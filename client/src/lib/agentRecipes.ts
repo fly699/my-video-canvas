@@ -33,6 +33,8 @@ export interface AgentRecipe {
     addMusic?: boolean;
     addSubtitle?: boolean;
     imageFirst?: boolean;
+    /** 逐镜默认转场（写入每个分镜的 transition，供「按镜头表装配」消费）；缺省 cut。 */
+    shotTransition?: "cut" | "fade" | "dissolve" | "wipe" | "match-cut";
   };
   /** Recipes that read as narration add a 配音(dubbing) track automatically. */
   voiceOver?: boolean;
@@ -98,7 +100,8 @@ export function buildRecipeOps(recipe: AgentRecipe, cfg: RecipeConfig): AgentOpe
       continue;
     }
     const sb = `sb${n}`, vt = `vt${n}`;
-    ops.push({ op: "create", nodeType: "storyboard", tempId: sb, title: `分镜${n}`, payload: { description: desc, duration: cfg.durationEach } });
+    // 镜号 + 逐镜转场：让配方产物直接满足「镜头表批量生产 → 按镜头表装配」的字段要求。
+    ops.push({ op: "create", nodeType: "storyboard", tempId: sb, title: `分镜${n}`, payload: { sceneNumber: n, description: desc, duration: cfg.durationEach, transition: recipe.defaults.shotTransition ?? "cut" } });
     ops.push({ op: "connect", sourceRef: "script", targetRef: sb });
     let tail = sb;
     if (cfg.imageFirst) {
@@ -192,7 +195,7 @@ export const AGENT_RECIPES: AgentRecipe[] = [
   },
   {
     id: "cinematic_trailer", name: "电影感预告", desc: "脚本 → 多分镜 → 视频 → 合并 + 配乐（16:9）", category: "叙事",
-    defaults: { shots: 6, aspect: "16:9", durationEach: 4, addMusic: true }, shotRange: [4, 12],
+    defaults: { shots: 6, aspect: "16:9", durationEach: 4, addMusic: true, shotTransition: "dissolve" }, shotRange: [4, 12],
     synopsis: (t) => t?.trim() || "电影感叙事预告片",
     beats: ["氛围空镜 + 旁白起势", "主角与世界观登场", "冲突/危机浮现", "节奏加快的冲突蒙太奇", "高潮悬念定格", "片名 Logo + 上映信息"],
   },

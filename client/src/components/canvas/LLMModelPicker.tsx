@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check, Bot } from "lucide-react";
-import { LLM_MODELS as ALL_LLM_MODELS, platformBadge } from "@/lib/models";
+import { LLM_MODELS as ALL_LLM_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
+import { useDisabledModels } from "@/lib/useDisabledModels";
 
 // Re-export for existing consumers (ScriptNode imports LLM_MODELS + LLMModelId
 // from here). Single source lives in lib/models.ts.
@@ -21,7 +22,12 @@ interface Props {
 }
 
 export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
-  const visible = filter ? VISIBLE_MODELS.filter(filter) : VISIBLE_MODELS;
+  const disabledModels = useDisabledModels();
+  // 过滤：管理员禁用的模型不显示（当前已选中的值除外）；排序：Kie 排在 Poyo 之前。
+  const visible = (filter ? VISIBLE_MODELS.filter(filter) : VISIBLE_MODELS)
+    .filter((m) => !disabledModels.has(m.id) || m.id === value)
+    .slice()
+    .sort((a, b) => modelGroupOrder(a.provider) - modelGroupOrder(b.provider));
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
@@ -81,10 +87,16 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
               border: "1px solid var(--c-bd2)",
               boxShadow: "0 8px 32px oklch(0 0 0 / 0.6)",
               minWidth: 196,
+              maxHeight: "min(60vh, 420px)",
+              overflowY: "auto",
             }}
           >
             <div
               style={{
+                position: "sticky",
+                top: 0,
+                background: "var(--c-base)",
+                zIndex: 1,
                 fontSize: 8,
                 fontWeight: 700,
                 textTransform: "uppercase",
@@ -124,7 +136,7 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
                       {m.label}
                     </div>
                     {m.costNote && (
-                      <div style={{ fontSize: 8.5, color: "var(--c-t4)", marginTop: 1 }}>{m.costNote} 点/百万tokens</div>
+                      <div style={{ fontSize: 8.5, color: "var(--c-t3)", marginTop: 1, fontWeight: 600 }}>{m.costNote} 点/百万tokens</div>
                     )}
                   </div>
                   {/* Upstream provider (Forge / Poyo / Kie) — 统一分色标签 */}

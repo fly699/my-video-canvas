@@ -8,8 +8,10 @@ import {
   Sparkles, Loader2, ChevronDown, Clapperboard,
   Minus, Plus, Copy, FileText, Check, Wand2, MessageSquare,
   Search, Layers2, GitBranch, Image, BookOpen, X, Languages,
+  Route, ClipboardCheck, Film,
 } from "lucide-react";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
+import { ScriptDevFlowPanel, ScriptCoveragePanel } from "../ScriptSidePanels";
 import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
@@ -156,11 +158,12 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   // Advanced panel state
   const [showAdvancedPanel, setShowAdvancedPanel] = useState(false);
-  const [advTab, setAdvTab] = useState<"review" | "variants" | "style" | "dialogue" | "moodboard">("review");
+  // 侧向展开面板（创作向导 / 专业审查）——新功能横向弹出，不再向下堆叠拉长节点。
+  const [sidePanel, setSidePanel] = useState<null | "flow" | "coverage">(null);
+  const [advTab, setAdvTab] = useState<"variants" | "style" | "dialogue" | "moodboard">("variants");
   const [variantCount, setVariantCount] = useState(3);
   const [variantResults, setVariantResults] = useState<Array<{ label: string; text: string }>>([]);
   const [selectedVariant, setSelectedVariant] = useState(0);
-  const [reviewResult, setReviewResult] = useState<{ score: number; issues: Array<{ type: string; line: string; suggestion: string }> } | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<ScriptStyle>("文艺");
   const [dialogueResult, setDialogueResult] = useState<string>("");
   const [moodBoardResult, setMoodBoardResult] = useState<Array<{ sceneIndex: number; sceneTitle: string; prompt: string; negPrompt?: string }>>([]);
@@ -399,14 +402,6 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   // ── Advanced panel mutations ──────────────────────────────────────────────
 
-  const reviewMutation = trpc.scripts.reviewScript.useMutation({
-    onSuccess: (result) => {
-      setReviewResult(result);
-      toast.success(`剧本审查完成，评分 ${result.score}/100`);
-    },
-    onError: (err) => { toast.error("剧本审查失败：" + err.message); },
-  });
-
   const variantsMutation = trpc.scripts.generateVariants.useMutation({
     onSuccess: (result) => {
       setVariantResults(result.variants);
@@ -440,7 +435,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     onError: (err) => { toast.error("Mood Board 生成失败：" + err.message); },
   });
 
-  const anyAdvancedPending = reviewMutation.isPending || variantsMutation.isPending
+  const anyAdvancedPending = variantsMutation.isPending
     || styleTransferMutation.isPending || extractDialogueMutation.isPending || moodBoardMutation.isPending;
 
   // styleTransfer writes to payload.content — it must block polish/generate to prevent concurrent overwrites.
@@ -448,9 +443,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const anyPending = generateMutation.isPending || polishMutation.isPending
     || fullScriptMutation.isPending || summarizeMutation.isPending || styleTransferMutation.isPending;
 
-  const handleFullGenerate = useCallback(() => {
+  // extra：创作向导传入的节拍表/角色档案约束（Story Bible 前置注入）。
+  const handleFullGenerate = useCallback((extra?: { beatSheetText?: string; characterProfiles?: string }) => {
     if (anyPending) return;
-    let synopsis = (payload.synopsis?.trim() || payload.content?.trim()) ?? "";
+    let synopsis = (payload.synopsis?.trim() || payload.logline?.trim() || payload.content?.trim()) ?? "";
     if (!synopsis) { toast.error("请先填写故事梗概或脚本内容"); return; }
     if (synopsis.length > 2000) {
       synopsis = synopsis.slice(0, 2000);
@@ -471,6 +467,8 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       model: llmModel,
       promptLang,
       templatePromptOverride: appliedTemplate?.systemPromptAddon,
+      beatSheetText: extra?.beatSheetText,
+      characterProfiles: extra?.characterProfiles,
     });
   }, [anyPending, payload.synopsis, payload.content, payload.aiScriptTemplate, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, promptLang, fullScriptMutation.mutate]);
 
@@ -536,7 +534,27 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const storyboardCount = Math.min(sceneCount, 8);
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable>
+    <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable
+      leftDock={
+        <>
+          {sidePanel === "flow" && (
+            <ScriptDevFlowPanel
+              id={id} payload={payload} llmModel={llmModel}
+              fullGenPending={fullScriptMutation.isPending}
+              storyboardsPending={generateMutation.isPending}
+              onGenerateScript={(extra) => handleFullGenerate(extra)}
+              onGenerateStoryboards={() => {
+                if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+                generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang, targetVideoModel: targetModel || undefined });
+              }}
+              onClose={() => setSidePanel(null)}
+            />
+          )}
+          {sidePanel === "coverage" && (
+            <ScriptCoveragePanel id={id} payload={payload} llmModel={llmModel} onClose={() => setSidePanel(null)} />
+          )}
+        </>
+      }>
       <div className="flex flex-col h-full p-3.5 gap-3">
 
         {/* Synopsis row */}
@@ -648,6 +666,24 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               : <Copy style={{ width: 9, height: 9 }} />
             }
             {copied ? "已复制" : "复制"}
+          </button>
+
+          {/* 侧向面板开关：创作向导（行业开发管线）/ 专业审查（Coverage） */}
+          <button
+            onClick={() => setSidePanel((v) => (v === "flow" ? null : "flow"))}
+            title="创作向导：想法 → Logline → 梗概 → 节拍表 → 剧本 → 分镜（侧向展开）"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{ fontSize: 9, fontWeight: sidePanel === "flow" ? 700 : 500, background: sidePanel === "flow" ? "oklch(0.66 0.18 250 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "flow" ? "oklch(0.66 0.18 250 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "flow" ? "oklch(0.66 0.18 250)" : "var(--c-t4)", cursor: "pointer" }}
+          >
+            <Route style={{ width: 9, height: 9 }} /> 向导
+          </button>
+          <button
+            onClick={() => setSidePanel((v) => (v === "coverage" ? null : "coverage"))}
+            title="专业审查：六维评分 + 裁决 + 一键修复闭环（侧向展开）"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{ fontSize: 9, fontWeight: sidePanel === "coverage" ? 700 : 500, background: sidePanel === "coverage" ? "oklch(0.68 0.20 295 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "coverage" ? "oklch(0.68 0.20 295 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "coverage" ? "oklch(0.68 0.20 295)" : "var(--c-t4)", cursor: "pointer" }}
+          >
+            <ClipboardCheck style={{ width: 9, height: 9 }} /> 审查
           </button>
 
           {/* Character count + duration */}
@@ -1033,7 +1069,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               <div className="flex items-center gap-1.5 mt-0.5">
                 <LLMModelPicker value={llmModel} onChange={handleLlmModelChange} disabled={anyPending} />
                 <button
-                  onClick={handleFullGenerate}
+                  onClick={() => handleFullGenerate()}
                   disabled={anyPending}
                   className="nodrag flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all"
                   style={{
@@ -1078,7 +1114,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               高级功能
             </span>
             <span style={{ fontSize: 9, color: "var(--c-t4)" }}>
-              {showAdvancedPanel ? "" : "审查 · 变体 · 文风 · 对白 · Mood Board"}
+              {showAdvancedPanel ? "" : "变体 · 文风 · 对白 · Mood Board"}
             </span>
             <ChevronDown style={{ width: 10, height: 10, color: "var(--c-t4)", transform: showAdvancedPanel ? "rotate(180deg)" : "none", transition: "transform 200ms ease", flexShrink: 0 }} />
           </button>
@@ -1090,7 +1126,6 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
               {/* Tab bar */}
               <div className="flex gap-0.5 p-0.5 rounded-lg overflow-x-auto nodrag" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)", scrollbarWidth: "none" }}>
                 {([
-                  { key: "review",   label: "审查",   Icon: Search },
                   { key: "variants", label: "变体",   Icon: GitBranch },
                   { key: "style",    label: "文风",   Icon: Layers2 },
                   { key: "dialogue", label: "对白",   Icon: MessageSquare },
@@ -1110,51 +1145,6 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
               {/* Tab content — capped height with internal scroll to keep the node compact */}
               <div className="nowheel nodrag" style={{ maxHeight: 360, overflowY: "auto", overflowX: "hidden" }}>
-              {/* ── 审查 tab ── */}
-              {advTab === "review" && (
-                <div className="flex flex-col gap-2">
-                  <p style={{ fontSize: 10, color: "var(--c-t3)" }}>AI 分析剧本结构、节奏和对白质量，给出评分和优化建议。</p>
-                  <button
-                    onClick={() => {
-                      if (reviewMutation.isPending) return;
-                      const text = payload.content?.trim();
-                      if (!text) { toast.error("请先填写脚本内容"); return; }
-                      reviewMutation.mutate({ scriptText: text.slice(0, 8000), model: llmModel });
-                    }}
-                    disabled={reviewMutation.isPending || !payload.content?.trim()}
-                    className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
-                    style={{ background: reviewMutation.isPending ? "var(--c-surface)" : ADV_ACCENT_A(0.12), border: `1px solid ${reviewMutation.isPending ? BORDER_DEFAULT : ADV_ACCENT_A(0.4)}`, color: reviewMutation.isPending || !payload.content?.trim() ? "var(--c-t4)" : ADV_ACCENT, cursor: reviewMutation.isPending || !payload.content?.trim() ? "not-allowed" : "pointer" }}
-                  >
-                    {reviewMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                    {reviewMutation.isPending ? "AI 审查中..." : "开始剧本审查"}
-                  </button>
-                  {reviewResult && (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: ADV_ACCENT_A(0.08), border: `1px solid ${ADV_ACCENT_A(0.3)}` }}>
-                        <span style={{ fontSize: 10, color: "var(--c-t3)" }}>综合评分</span>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: ADV_ACCENT, marginLeft: "auto" }}>{reviewResult.score}<span style={{ fontSize: 10 }}>/100</span></span>
-                      </div>
-                      {reviewResult.issues.length > 0 && (
-                        <div className="flex flex-col gap-1.5">
-                          {reviewResult.issues.map((issue, i) => (
-                            <div key={i} className="px-2.5 py-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
-                              <div className="flex items-center gap-1.5 mb-1">
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold" style={{ background: ADV_ACCENT_A(0.15), color: ADV_ACCENT }}>{issue.type}</span>
-                                <span style={{ fontSize: 9, color: "var(--c-t4)" }}>{issue.line}</span>
-                              </div>
-                              <p style={{ fontSize: 10, color: "var(--c-t2)", lineHeight: 1.5 }}>{issue.suggestion}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {reviewResult.issues.length === 0 && (
-                        <p style={{ fontSize: 10, color: "var(--c-t3)", textAlign: "center" }}>无明显问题，剧本质量良好！</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* ── 变体 tab ── */}
               {advTab === "variants" && (
                 <div className="flex flex-col gap-2">
@@ -1306,6 +1296,18 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                     {moodBoardMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Image className="w-3 h-3" />}
                     {moodBoardMutation.isPending ? "AI 生成 Mood Board 中..." : "生成场景 Mood Board"}
                   </button>
+                  {moodBoardResult.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const { count, target } = addScenesFromResult(moodBoardResult.map((s) => ({ description: s.sceneTitle, promptText: s.prompt, negativePrompt: s.negPrompt })));
+                        if (count > 0) toast.success(`已为 ${count} 个 Mood Board 场景创建${target === "comfyui_image" ? " ComfyUI 图像" : "分镜"}节点`);
+                      }}
+                      className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+                      style={{ background: ADV_ACCENT_A(0.12), border: `1px solid ${ADV_ACCENT_A(0.4)}`, color: ADV_ACCENT, cursor: "pointer" }}
+                    >
+                      <Film className="w-3 h-3" /> 一键为每个场景创建{storyboardTarget === "comfyui_image" ? " ComfyUI 图像" : "分镜"}节点
+                    </button>
+                  )}
                   {moodBoardResult.length > 0 && (
                     <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto nodrag">
                       {moodBoardResult.map((scene, i) => (

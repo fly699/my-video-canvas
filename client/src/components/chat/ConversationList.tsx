@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Hash, Lock, MessageSquare, Plus, Users, Globe, LogIn, ShieldCheck } from "lucide-react";
+import { Hash, Lock, MessageSquare, Plus, Users, Globe, LogIn, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useChat, type ConversationSummary, type JoinableRoom } from "@/hooks/useChat";
+import { trpc } from "@/lib/trpc";
 import { NewConversationDialog } from "./NewConversationDialog";
 import { C, avatarGrad, initials } from "./chatTheme";
 
@@ -9,6 +10,21 @@ export function ConversationList() {
   const { conversations, joinableRooms, activeId, selectConversation, joinRoom } = useChat();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [q, setQ] = useState("");
+  const utils = trpc.useUtils();
+  const aiQuery = trpc.chat.assistantUserId.useQuery(undefined, { staleTime: 60 * 60_000, refetchOnWindowFocus: false });
+  const assistantId = aiQuery.data?.userId;
+  const openAssistantMut = trpc.chat.openAssistant.useMutation();
+  const isAssistantConv = (c: ConversationSummary) => c.type === "dm" && assistantId != null && c.peer?.id === assistantId;
+
+  async function openAI() {
+    const existing = conversations.find(isAssistantConv);
+    if (existing) { selectConversation(existing.id); return; }
+    try {
+      const r = await openAssistantMut.mutateAsync();
+      await utils.chat.listConversations.refetch();
+      selectConversation(r.id);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "打开 AI 助手失败"); }
+  }
 
   const filt = (c: ConversationSummary) => {
     if (!q.trim()) return true;
@@ -17,7 +33,8 @@ export function ConversationList() {
   };
   const lobby = conversations.filter((c) => c.type === "lobby");
   const groups = conversations.filter((c) => c.type === "group" && filt(c));
-  const dms = conversations.filter((c) => c.type === "dm" && filt(c));
+  // AI 助手 DM 单列在顶部专属入口，不混进普通「私聊」列表。
+  const dms = conversations.filter((c) => c.type === "dm" && !isAssistantConv(c) && filt(c));
 
   async function handleJoin(r: JoinableRoom) {
     let password: string | undefined;
@@ -44,6 +61,25 @@ export function ConversationList() {
         }}><Plus size={16} /></button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "10px 8px" }}>
+        {/* 内建 AI 助手：与他私聊即 LLM 对话 */}
+        <button
+          onClick={openAI}
+          disabled={openAssistantMut.isPending}
+          title="与内建 AI 助手对话（LLM）"
+          style={{
+            ...rowBase, marginBottom: 12,
+            background: (() => { const a = conversations.find(isAssistantConv); return a && a.id === activeId ? C.accentSoft : "var(--c-elevated, rgba(128,128,128,0.08))"; })(),
+            border: `1px solid ${C.accent}55`,
+          }}
+        >
+          <span style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: `${C.accent}22`, color: C.accent }}>
+            <Sparkles size={15} />
+          </span>
+          <span style={nameCol}>
+            <span style={{ fontWeight: 700, fontSize: 13, color: C.t1, display: "block" }}>AI 助手</span>
+            <span style={{ fontSize: 11, color: C.t3, display: "block" }}>LLM 智能对话</span>
+          </span>
+        </button>
         <Section title="大厅" icon={<Globe size={12} />}>
           {lobby.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} onClick={() => selectConversation(c.id)} />)}
         </Section>

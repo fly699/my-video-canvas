@@ -5,7 +5,7 @@ import { usePersistentState } from "../../hooks/usePersistentState";
 import { useFloatingBox, type Corner } from "../../hooks/useFloatingBox";
 import { mediaFetchUrl } from "@/lib/download";
 import { useReactFlow } from "@xyflow/react";
-import { Users, X, Plus, Trash2, User as UserIcon, Mountain, Pin, PinOff, Pencil } from "lucide-react";
+import { Users, X, Plus, Trash2, User as UserIcon, Mountain, Pin, PinOff, Pencil, Music, Film } from "lucide-react";
 
 const DOCK_W = 300;
 
@@ -130,7 +130,18 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
             </div>
             <div className="flex-1 min-w-0" onDoubleClick={() => rename(it.id, it.name)} title="双击重命名">
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>{it.name}</div>
-              <div style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{it.characterKind === "scene" ? "场景" : "人物"}</div>
+              <div className="flex items-center gap-1" style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
+                <span>{it.characterKind === "scene" ? "场景" : "人物"}</span>
+                {(() => {
+                  const p = (it.payload ?? {}) as { referenceAudioUrl?: string; additionalAudioUrls?: string[]; referenceVideoUrl?: string; additionalVideoUrls?: string[] };
+                  const hasAudio = !!(p.referenceAudioUrl?.trim() || p.additionalAudioUrls?.length);
+                  const hasVideo = !!(p.referenceVideoUrl?.trim() || p.additionalVideoUrls?.length);
+                  return (<>
+                    {hasAudio && <span title="含音频参考" style={{ display: "inline-flex", alignItems: "center", gap: 1, padding: "0 3px", borderRadius: 4, background: "oklch(0.66 0.18 30 / 0.14)", color: "oklch(0.66 0.18 30)" }}><Music className="w-2.5 h-2.5" />音</span>}
+                    {hasVideo && <span title="含视频参考" style={{ display: "inline-flex", alignItems: "center", gap: 1, padding: "0 3px", borderRadius: 4, background: "oklch(0.62 0.16 240 / 0.14)", color: "oklch(0.62 0.16 240)" }}><Film className="w-2.5 h-2.5" />视</span>}
+                  </>);
+                })()}
+              </div>
             </div>
             <button onClick={() => dropOnCanvas(it.payload, it.characterKind, true)} title="编辑（放到画布并选中，改完「保存到角色库」即可覆盖更新）" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "none", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>
               <Pencil className="w-3 h-3" />

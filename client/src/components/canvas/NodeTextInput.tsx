@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ChangeEvent, type CompositionEvent, type FocusEvent } from "react";
 import { useMention } from "./useMention";
+import { useSlashMenu } from "./useSlashMenu";
 
 /** 稳定的「合并外部转发 ref + 内部 ref」回调（避免每次渲染重建导致 ref 反复挂卸）。 */
 function useMergedRef<T>(external: React.ForwardedRef<T>, internal: React.MutableRefObject<T | null>) {
@@ -67,62 +68,77 @@ function useImeSafeValue<T extends HTMLInputElement | HTMLTextAreaElement>(
 }
 
 // `noMention`: 关闭「@」角色/场景自动补全（默认开启）。
-type TextAreaProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & CommonProps & { noMention?: boolean };
+// `noSlash`: 关闭「/」提示词库快捷菜单（默认开启）。AI 对话节点自带 /命令，需单独关掉避免冲突。
+type TextAreaProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & CommonProps & { noMention?: boolean; noSlash?: boolean };
 
 export const NodeTextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function NodeTextArea(
-  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, ...rest },
+  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, noSlash, ...rest },
   ref,
 ) {
   const ime = useImeSafeValue<HTMLTextAreaElement>(value, onValueChange);
   const innerRef = useRef<HTMLTextAreaElement | null>(null);
   const mergedRef = useMergedRef(ref, innerRef);
   const mention = useMention(!noMention, innerRef, ime.commit);
+  const slash = useSlashMenu(!noMention && !noSlash, innerRef, ime.commit);
+  const probe = () => { mention.probe(); slash.probe(); };
+  // 暴露 commitValue：以编程方式设值并写回 store，直接更新内部 local（绕过「聚焦中不采纳外部 value」
+  // 守卫）。供外部按钮（如 AI 对话节点的 /命令、画布注入）即时改写输入框，避免聚焦时设值不生效。
+  useEffect(() => {
+    if (innerRef.current) (innerRef.current as HTMLTextAreaElement & { commitValue?: (v: string) => void }).commitValue = ime.commit;
+  });
   return (
     <>
       <textarea
         ref={mergedRef}
         {...rest}
         value={ime.local}
-        onChange={(e) => { ime.onChange(e); mention.probe(); }}
-        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && mention.onKeyDown(e)) return; onKeyDown?.(e); }}
-        onKeyUp={(e) => { mention.probe(); onKeyUp?.(e); }}
-        onClick={(e) => { mention.probe(); onClick?.(e); }}
+        onChange={(e) => { ime.onChange(e); probe(); }}
+        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && (mention.onKeyDown(e) || slash.onKeyDown(e))) return; onKeyDown?.(e); }}
+        onKeyUp={(e) => { probe(); onKeyUp?.(e); }}
+        onClick={(e) => { probe(); onClick?.(e); }}
         onCompositionStart={(e) => { ime.onCompositionStart(); onCompositionStart?.(e); }}
-        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); mention.probe(); }}
+        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); probe(); }}
         onFocus={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onFocus(); onFocus?.(e); }}
-        onBlur={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => mention.close(), 120); }}
+        onBlur={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => { mention.close(); slash.close(); }, 120); }}
       />
       {mention.dropdown}
+      {slash.dropdown}
     </>
   );
 });
 
-type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & CommonProps & { noMention?: boolean };
+type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & CommonProps & { noMention?: boolean; noSlash?: boolean };
 
 export const NodeInput = forwardRef<HTMLInputElement, InputProps>(function NodeInput(
-  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, ...rest },
+  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, noSlash, ...rest },
   ref,
 ) {
   const ime = useImeSafeValue<HTMLInputElement>(value, onValueChange);
   const innerRef = useRef<HTMLInputElement | null>(null);
   const mergedRef = useMergedRef(ref, innerRef);
   const mention = useMention(!noMention, innerRef, ime.commit);
+  const slash = useSlashMenu(!noMention && !noSlash, innerRef, ime.commit);
+  const probe = () => { mention.probe(); slash.probe(); };
+  useEffect(() => {
+    if (innerRef.current) (innerRef.current as HTMLInputElement & { commitValue?: (v: string) => void }).commitValue = ime.commit;
+  });
   return (
     <>
       <input
         ref={mergedRef}
         {...rest}
         value={ime.local}
-        onChange={(e) => { ime.onChange(e); mention.probe(); }}
-        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && mention.onKeyDown(e)) return; onKeyDown?.(e); }}
-        onKeyUp={(e) => { mention.probe(); onKeyUp?.(e); }}
-        onClick={(e) => { mention.probe(); onClick?.(e); }}
+        onChange={(e) => { ime.onChange(e); probe(); }}
+        onKeyDown={(e) => { if (!e.nativeEvent.isComposing && (mention.onKeyDown(e) || slash.onKeyDown(e))) return; onKeyDown?.(e); }}
+        onKeyUp={(e) => { probe(); onKeyUp?.(e); }}
+        onClick={(e) => { probe(); onClick?.(e); }}
         onCompositionStart={(e) => { ime.onCompositionStart(); onCompositionStart?.(e); }}
-        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); mention.probe(); }}
+        onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); probe(); }}
         onFocus={(e: FocusEvent<HTMLInputElement>) => { ime.onFocus(); onFocus?.(e); }}
-        onBlur={(e: FocusEvent<HTMLInputElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => mention.close(), 120); }}
+        onBlur={(e: FocusEvent<HTMLInputElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => { mention.close(); slash.close(); }, 120); }}
       />
       {mention.dropdown}
+      {slash.dropdown}
     </>
   );
 });

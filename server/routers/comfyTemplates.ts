@@ -146,6 +146,6 @@ export const comfyTemplatesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertLLMAllowed(ctx);
       const model = input.model ?? "claude-sonnet-4-5-20250929";
-      return runLibraryAnalysis(model, { full: input.full });
+      return runLibraryAnalysis(ctx, model, { full: input.full });
     }),
 });

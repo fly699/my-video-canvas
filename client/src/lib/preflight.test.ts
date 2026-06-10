@@ -61,6 +61,46 @@ describe("runPreflight", () => {
     expect(r.issues.length).toBe(0);
   });
 
+  it("shot-list readiness: flags mixed missing sceneNumbers and duplicates, stays quiet otherwise", () => {
+    // 部分有镜号、部分没有 → 提示补全
+    const mixed = runPreflight(
+      [node("s", "script", { synopsis: "x" }), node("b1", "storyboard", { description: "a", sceneNumber: 1 }), node("b2", "storyboard", { description: "b" })],
+      [{ source: "s", target: "b1" }, { source: "s", target: "b2" }],
+    );
+    expect(mixed.issues.some((i) => i.message.includes("缺镜号"))).toBe(true);
+    // 重复镜号 → 提示重编号
+    const dup = runPreflight(
+      [node("s", "script", { synopsis: "x" }), node("b1", "storyboard", { description: "a", sceneNumber: 2 }), node("b2", "storyboard", { description: "b", sceneNumber: 2 })],
+      [{ source: "s", target: "b1" }, { source: "s", target: "b2" }],
+    );
+    expect(dup.issues.some((i) => i.message.includes("镜号重复"))).toBe(true);
+    // 全都没有镜号（未在用镜头表）→ 不产生镜号噪声
+    const none = runPreflight(
+      [node("s", "script", { synopsis: "x" }), node("b1", "storyboard", { description: "a" }), node("b2", "storyboard", { description: "b" })],
+      [{ source: "s", target: "b1" }, { source: "s", target: "b2" }],
+    );
+    expect(none.issues.some((i) => i.message.includes("镜号"))).toBe(false);
+  });
+
+  it("merge assemble hint: fires when ≥2 storyboard-traceable videos have output, silent when assembled", () => {
+    const mk = (mergePayload: Record<string, unknown>) => runPreflight(
+      [
+        node("b1", "storyboard", { description: "a", sceneNumber: 1 }),
+        node("b2", "storyboard", { description: "b", sceneNumber: 2 }),
+        node("v1", "video_task", { resultVideoUrl: "https://x/1.mp4" }),
+        node("v2", "video_task", { outputUrl: "https://x/2.mp4" }),
+        node("m", "merge", mergePayload),
+      ],
+      [
+        { source: "b1", target: "v1" }, { source: "b2", target: "v2" },
+        { source: "v1", target: "m" }, { source: "v2", target: "m" },
+      ],
+    );
+    expect(mk({}).issues.some((i) => i.message.includes("按镜头表装配"))).toBe(true);
+    // 已装配（segTransitions 存在）→ 不再提示
+    expect(mk({ segTransitions: ["fade"] }).issues.some((i) => i.message.includes("按镜头表装配"))).toBe(false);
+  });
+
   it("estimates whole-canvas budget over nodes", () => {
     const nodes = [node("v1", "video_task"), node("v2", "video_task"), node("c", "comfyui_image")];
     const r = runPreflight(nodes, [

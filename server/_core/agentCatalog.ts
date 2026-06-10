@@ -30,6 +30,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     connectsTo: ["storyboard", "prompt", "ai_chat", "character"],
     fields: [
       { name: "synopsis", type: "string", desc: "故事梗概（一句话或一段）" },
+      { name: "logline", type: "string", desc: "一句话故事（25-35 字：主角+冲突+赌注）" },
       { name: "content", type: "string", desc: "完整剧本正文" },
       { name: "aiGenre", type: "string", desc: "类型，如 短视频/电影/广告片/MV" },
       { name: "aiStyle", type: "string", desc: "视觉风格，如 电影感/赛博朋克/写实" },
@@ -53,15 +54,21 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     ],
   },
   {
-    type: "storyboard", label: "分镜", purpose: "单个分镜的画面描述与生成提示词",
-    connectsTo: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video"],
+    type: "storyboard", label: "分镜", purpose: "单个分镜（镜头表的一行）：画面描述、生成提示词与 Shot List 字段。镜头表面板可按这些字段一键批量生关键帧图/生视频/配音",
+    connectsTo: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "audio"],
     fields: [
-      { name: "description", type: "string", desc: "画面描述（中文，看到什么）" },
-      { name: "promptText", type: "string", desc: "图像/视频生成提示词" },
+      { name: "sceneNumber", type: "number", desc: "镜号（1,2,3… 连续递增；「按镜头表装配」按它排序成片，必填）" },
+      { name: "description", type: "string", desc: "画面描述（中文，给人看；生成提示词放 promptText，勿堆在此）" },
+      { name: "promptText", type: "string", desc: "图像/视频生成提示词（必填，详细到可直接喂生成模型）" },
       { name: "negativePrompt", type: "string", desc: "反向提示词" },
+      { name: "dialogue", type: "string", desc: "对白/旁白（格式「角色名：台词」，纯旁白直接写文本；批量配音直接取用）" },
+      { name: "transition", type: "string", desc: "切到下一镜的转场：cut/fade/dissolve/wipe/match-cut（装配成片按它设逐切点转场）" },
+      { name: "shotType", type: "string", desc: "景别：ECU/CU/MS/MLS/WS/establishing" },
       { name: "cameraMovement", type: "string", desc: "运镜：static/pan-left/zoom-in 等" },
       { name: "duration", type: "number", desc: "时长（秒）" },
       { name: "lens", type: "string", desc: "焦段，如 35mm" },
+      { name: "lighting", type: "string", desc: "灯光，如 soft key + 轮廓光, golden hour" },
+      { name: "sfx", type: "string", desc: "音效/氛围声意图，如 雨声+远雷" },
       { name: "colorTone", type: "string", desc: "调色，如 暖色 teal-orange" },
     ],
   },
@@ -109,17 +116,19 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     ],
   },
   {
-    type: "merge", label: "合并", purpose: "把多个视频按顺序拼接成片",
+    type: "merge", label: "合并", purpose: "把多个视频拼接成片。上游视频若能回溯到分镜，用户可在节点上一键「按镜头表装配」（镜号排序 + 逐镜转场 + 配音对位），无需手动排序",
     connectsTo: ["subtitle", "overlay", "asset"],
     fields: [
-      { name: "transition", type: "string", desc: "转场：none/fade/dissolve" },
+      { name: "transition", type: "string", desc: "全局转场：none/fade/dissolve（逐镜转场由装配按分镜 transition 自动设置）" },
     ],
   },
   {
-    type: "audio", label: "音频", purpose: "AI 配乐/配音或上传音频",
+    type: "audio", label: "音频", purpose: "AI 配乐(music)/配音(dubbing)或上传音频。逐镜配音不要手建——镜头表面板会按分镜 dialogue 批量生成",
     connectsTo: ["merge", "clip"],
     fields: [
-      { name: "audioCategory", type: "string", desc: "music 或 voice" },
+      { name: "audioCategory", type: "string", desc: "music（配乐）或 dubbing（配音）" },
+      { name: "ttsText", type: "string", desc: "配音文案（audioCategory=dubbing 时）" },
+      { name: "musicPrompt", type: "string", desc: "配乐描述（audioCategory=music 时），如 轻快钢琴+弦乐" },
     ],
   },
   {

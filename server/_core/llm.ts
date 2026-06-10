@@ -1,4 +1,5 @@
 import { ENV } from "./env";
+import { isKieLLMModel, invokeKieLLM, type OAMessage } from "./kieLLM";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -67,6 +68,9 @@ export type InvokeParams = {
   output_schema?: OutputSchema;
   responseFormat?: ResponseFormat;
   response_format?: ResponseFormat;
+  /** kie.ai 自有对话模型（kie_*）用的密钥；由调用方按「临时>分配>公用」解析后传入。
+   *  缺省时回退公用 key（KIE_API_KEY）。非 kie 模型忽略此字段。 */
+  kieApiKey?: string;
 };
 
 export type ToolCall = {
@@ -380,6 +384,29 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const resolvedModel = resolveModelId(model);
+
+  // kie.ai 自有对话模型（kie_*）走专属 SDK（claude/openai-chat/responses 三种端点形态），
+  // 而非 OpenAI 兼容的 Forge/Poyo 网关——否则会把 kie_* 模型串发去 Forge 导致 404。
+  // 密钥必须由调用方（invokeLLMWithKie）按「临时>分配>公用」解析、并经各自权限门控
+  // （temp=用户自有放行 / assigned=绑定启用 / house=assertKieHouseAllowed 白名单）校验后注入。
+  // 底层这里【绝不】回退 ENV.kieApiKey，否则会绕过 house key 的白名单门控（未授权用户也能用公用 key）。
+  if (isKieLLMModel(resolvedModel)) {
+    const apiKey = params.kieApiKey?.trim();
+    if (!apiKey) throw new Error("kie.ai LLM 模型需经 invokeLLMWithKie 提供已授权的密钥（临时/分配/公用）");
+    const { text } = await invokeKieLLM({
+      model: resolvedModel,
+      messages: messages as unknown as OAMessage[],
+      apiKey,
+      maxTokens: params.maxTokens ?? params.max_tokens,
+    });
+    return {
+      id: `kie-${Date.now()}`,
+      created: Math.floor(Date.now() / 1000),
+      model: resolvedModel,
+      choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+    };
+  }
+
   assertApiKey(resolvedModel);
 
   const payload: Record<string, unknown> = {

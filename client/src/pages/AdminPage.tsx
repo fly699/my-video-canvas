@@ -8,9 +8,10 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { downloadTextFile } from "@/lib/download";
 import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
+import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -21,6 +22,7 @@ const ACTION_LABELS: Record<string, string> = {
   audio_dubbing: "配音生成",
   subtitle_transcribe: "语音转录",
   poyo_stage: "Poyo 暂存",
+  kie_gen: "kie 生成",
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -129,7 +131,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["kie", "kie.ai 密钥"], ["users", "用户管理"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["kie", "kie.ai 密钥"], ["users", "用户管理"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["models", "模型管理"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -164,6 +166,7 @@ export default function AdminPage() {
         {activeTab === "logs" && <LogsPanel />}
         {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
         {activeTab === "storage" && <StoragePanel />}
+        {activeTab === "models" && <ModelsPanel />}
         {activeTab === "chat" && <ChatAdminPanel />}
         {activeTab === "comfyStress" && <ComfyStressPanel />}
         {activeTab === "assets" && <AssetsAdminPanel />}
@@ -740,6 +743,201 @@ function ToggleRow({ label, description, enabled, disabled, onClick, statusOn, s
   );
 }
 
+// ── Model visibility (使能开关) Panel ─────────────────────────────────────────
+
+type ModelCatItem = { value: string; label: string; group: string };
+type ModelCat = { key: string; label: string; hint: string; accent: string; models: ModelCatItem[] };
+
+const MODEL_CATEGORIES: ModelCat[] = [
+  {
+    key: "llm",
+    label: "对话 / 推理（LLM）模型",
+    hint: "用于 AI对话、智能体(Agent)、脚本、提示词、分镜文本扩写、看图识人、ComfyUI 提示词翻译等节点",
+    accent: "oklch(0.68 0.18 280)",
+    models: LLM_MODELS.filter((m) => !m.hidden).map((m) => ({ value: m.id, label: m.label, group: m.provider })),
+  },
+  {
+    key: "image",
+    label: "图像生成模型",
+    hint: "用于 图像生成、分镜、提示词 节点",
+    accent: "oklch(0.72 0.20 330)",
+    models: IMAGE_MODELS.map((m) => ({ value: m.value, label: m.label, group: m.group })),
+  },
+  {
+    key: "video",
+    label: "视频生成模型",
+    hint: "用于 视频任务 节点",
+    accent: "oklch(0.68 0.22 25)",
+    models: VIDEO_MODELS.map((m) => ({ value: m.value, label: m.label, group: m.group })),
+  },
+  {
+    key: "chat",
+    label: "聊天 AI 模型",
+    hint: "用于「聊天」里内建 AI 助手的对话（独立于 LLM 节点的开关，单独控制）",
+    accent: "oklch(0.70 0.18 200)",
+    // 键加 "chat:" 前缀，使聊天 AI 的模型可见性与 LLM 节点分组互不影响。
+    models: LLM_MODELS.filter((m) => !m.hidden).map((m) => ({ value: "chat:" + m.id, label: m.label, group: m.provider })),
+  },
+];
+
+const ALL_MODEL_VALUES = MODEL_CATEGORIES.flatMap((c) => c.models.map((m) => m.value));
+
+function ModelsPanel() {
+  const utils = trpc.useUtils();
+  const query = trpc.admin.models.getDisabled.useQuery();
+  const [disabled, setDisabled] = useState<Set<string>>(new Set());
+  // 以服务端数据为准初始化本地集合（仅在服务端集合变化时同步，避免覆盖用户连续点选）。
+  const serverKey = (query.data?.disabledModels ?? []).slice().sort().join(",");
+  useEffect(() => {
+    setDisabled(new Set(query.data?.disabledModels ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverKey]);
+
+  const setMut = trpc.admin.models.setDisabled.useMutation({
+    onSuccess: () => {
+      void utils.admin.models.getDisabled.invalidate();
+      void utils.config.modelToggles.invalidate();
+    },
+    onError: (e) => toast.error(`保存失败：${e.message}`),
+  });
+
+  const persist = (next: Set<string>) => {
+    setDisabled(next);
+    setMut.mutate({ disabledModels: Array.from(next) });
+  };
+  const toggleOne = (value: string) => {
+    const next = new Set(disabled);
+    next.has(value) ? next.delete(value) : next.add(value);
+    persist(next);
+  };
+  // 对一组模型整体启用/禁用。
+  const setGroupEnabled = (values: string[], enabled: boolean) => {
+    const next = new Set(disabled);
+    for (const v of values) enabled ? next.delete(v) : next.add(v);
+    persist(next);
+  };
+
+  const enabledCount = ALL_MODEL_VALUES.filter((v) => !disabled.has(v)).length;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{
+        padding: "12px 16px", background: "oklch(0.70 0.16 285 / 0.10)",
+        border: "1px solid oklch(0.70 0.16 285 / 0.35)", borderRadius: 10,
+        fontSize: 12.5, lineHeight: 1.7, color: "var(--c-t2)",
+      }}>
+        <strong style={{ color: "var(--c-t1)" }}>模型使能开关</strong>
+        ：勾选 = 该模型在对应节点的模型下拉里<strong>显示</strong>，取消勾选 = 隐藏。按节点功能分组，
+        每组列出全部可用 AI 模型。仅控制「界面是否显示」，<strong>不影响</strong>已经选用该模型的旧节点继续运行。
+        修改即时保存、对所有用户生效（约 30 秒内）。当前已启用 <strong style={{ color: "var(--c-t1)" }}>{enabledCount}</strong> / {ALL_MODEL_VALUES.length} 个模型。
+        {query.isLoading && <span style={{ color: "var(--c-t3)" }}>（加载中…）</span>}
+      </div>
+
+      {MODEL_CATEGORIES.map((cat) => {
+        // 该分类下按来源平台分组（Kie 排在 Poyo 之前），便于整组开关。
+        const byGroup = new Map<string, ModelCatItem[]>();
+        for (const m of cat.models) {
+          const arr = byGroup.get(m.group) ?? [];
+          arr.push(m);
+          byGroup.set(m.group, arr);
+        }
+        const groups = Array.from(byGroup.entries()).sort((a, b) => modelGroupOrder(a[0]) - modelGroupOrder(b[0]));
+        const catValues = cat.models.map((m) => m.value);
+        const catEnabled = catValues.filter((v) => !disabled.has(v)).length;
+        const allOn = catEnabled === catValues.length;
+
+        return (
+          <div key={cat.key} style={{
+            border: `1px solid var(--c-bd1)`, borderRadius: 12, overflow: "hidden",
+            background: "var(--c-surface)",
+          }}>
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+              padding: "13px 16px", borderBottom: "1px solid var(--c-bd1)",
+              background: `${cat.accent}14`,
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)" }}>
+                  {cat.label}
+                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: cat.accent }}>
+                    {catEnabled}/{catValues.length} 已启用
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: "var(--c-t3)", marginTop: 3 }}>{cat.hint}</div>
+              </div>
+              <button
+                onClick={() => setGroupEnabled(catValues, !allOn)}
+                disabled={setMut.isPending}
+                style={{
+                  flexShrink: 0, padding: "6px 12px", borderRadius: 8, cursor: "pointer",
+                  border: `1px solid ${cat.accent}55`, background: "transparent",
+                  color: cat.accent, fontSize: 12, fontWeight: 700,
+                }}
+              >
+                {allOn ? "全部停用" : "全部启用"}
+              </button>
+            </div>
+
+            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 14 }}>
+              {groups.map(([group, items]) => {
+                const groupValues = items.map((m) => m.value);
+                const groupAllOn = groupValues.every((v) => !disabled.has(v));
+                const badge = platformBadge(group);
+                return (
+                  <div key={group}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 8px",
+                        borderRadius: 5, background: badge.bg, color: badge.fg,
+                      }}>{group}</span>
+                      <button
+                        onClick={() => setGroupEnabled(groupValues, !groupAllOn)}
+                        disabled={setMut.isPending}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          fontSize: 11, fontWeight: 600, color: "var(--c-t3)", padding: 0,
+                        }}
+                      >
+                        {groupAllOn ? "本组全不选" : "本组全选"}
+                      </button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 6 }}>
+                      {items.map((m) => {
+                        const on = !disabled.has(m.value);
+                        return (
+                          <button
+                            key={m.value}
+                            onClick={() => toggleOne(m.value)}
+                            disabled={setMut.isPending}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 8, textAlign: "left",
+                              padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+                              border: `1px solid ${on ? `${cat.accent}40` : "var(--c-bd1)"}`,
+                              background: on ? `${cat.accent}10` : "var(--c-base)",
+                            }}
+                          >
+                            {on
+                              ? <CheckSquare style={{ width: 16, height: 16, color: cat.accent, flexShrink: 0 }} />
+                              : <Square style={{ width: 16, height: 16, color: "var(--c-t4)", flexShrink: 0 }} />}
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 500, color: on ? "var(--c-t1)" : "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.label}</div>
+                              <div style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.value}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── System Update Panel ───────────────────────────────────────────────────────
 
 function SystemUpdatePanel() {
@@ -1163,22 +1361,70 @@ function WhitelistPanel() {
 
 // ── Logs Panel ────────────────────────────────────────────────────────────────
 
-type AuditAction = "login_email" | "login_oauth" | "image_gen" | "video_gen" | "audio_music" | "audio_dubbing" | "subtitle_transcribe";
+type AuditAction = "login_email" | "login_oauth" | "image_gen" | "video_gen" | "audio_music" | "audio_dubbing" | "subtitle_transcribe" | "kie_gen";
 
 function LogsPanel() {
   const [offset, setOffset] = useState(0);
   const [actionFilter, setActionFilter] = useState<AuditAction | "">("");
+  const [userInput, setUserInput] = useState("");   // 输入框（回车/失焦才应用）
+  const [userFilter, setUserFilter] = useState(""); // 已应用的用户名/邮箱/ID 筛选
   const utils = trpc.useUtils();
   const LIMIT = 50;
 
   const logsQuery = trpc.admin.logs.list.useQuery(
-    { limit: LIMIT, offset, action: actionFilter || undefined },
+    { limit: LIMIT, offset, action: actionFilter || undefined, user: userFilter || undefined },
     { keepPreviousData: true } as object
   );
+  const applyUser = () => { setUserFilter(userInput.trim()); setOffset(0); };
 
   const clearMut = trpc.admin.logs.clear.useMutation({
     onSuccess: () => { utils.admin.logs.list.invalidate(); setOffset(0); },
   });
+
+  // 导出 CSV：按当前筛选条件分页拉全量（1000/页，上限 2 万条），带 BOM 供 Excel 直开。
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const all: NonNullable<typeof logsQuery.data>["rows"] = [];
+      const PAGE = 1000, CAP = 20000;
+      for (let off = 0; ; off += PAGE) {
+        const d = await utils.admin.logs.list.fetch({ limit: PAGE, offset: off, action: actionFilter || undefined, user: userFilter || undefined });
+        all.push(...d.rows);
+        if (d.rows.length < PAGE || all.length >= Math.min(d.total, CAP)) break;
+      }
+      // 防 CSV 公式注入：用户可控内容（提示词等）以 =+-@ 开头时加 ' 前缀，避免 Excel 当公式执行。
+      const esc = (v: unknown) => {
+        let s = v == null ? "" : String(v);
+        if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const header = ["时间", "用户ID", "用户名", "邮箱", "IP", "国家", "城市", "操作类型", "是否成功", "预估点数", "详情JSON"];
+      const lines = all.map((r) => {
+        const d = r.detail as Record<string, unknown> | null;
+        return [
+          new Date(r.createdAt).toLocaleString("zh-CN"),
+          r.userId ?? "", r.userName ?? "", r.userEmail ?? "", r.ip,
+          r.country ?? "", r.city ?? "",
+          ACTION_LABELS[r.action] ?? r.action,
+          typeof d?.success === "boolean" ? (d.success ? "成功" : "失败") : "",
+          d?.estimatedCost ?? "",
+          d ? JSON.stringify(d) : "",
+        ].map(esc).join(",");
+      });
+      downloadTextFile(
+        `操作日志-${new Date().toISOString().slice(0, 10)}.csv`,
+        "\uFEFF" + [header.join(","), ...lines].join("\n"),
+        "text/csv;charset=utf-8",
+      );
+      toast.success(`已导出 ${all.length} 条日志`);
+    } catch (e) {
+      toast.error(`导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const rows = logsQuery.data?.rows ?? [];
   const total = logsQuery.data?.total ?? 0;
@@ -1196,7 +1442,18 @@ function LogsPanel() {
             {total > 0 && <span style={{ fontWeight: 400, color: "var(--c-t2, rgba(255,255,255,0.4))", fontSize: "13px", marginLeft: "8px" }}>（共 {total} 条）</span>}
           </h3>
         </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") applyUser(); }}
+            onBlur={applyUser}
+            placeholder="用户名 / 邮箱 / ID"
+            style={{ ...inputStyle, width: 150, padding: "6px 10px", fontSize: "12px" }}
+          />
+          {userFilter && (
+            <button onClick={() => { setUserInput(""); setUserFilter(""); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12, cursor: "pointer" }} title="清除用户筛选">用户：{userFilter} ✕</button>
+          )}
           <select
             value={actionFilter}
             onChange={(e) => { setActionFilter(e.target.value as AuditAction | ""); setOffset(0); }}
@@ -1207,6 +1464,9 @@ function LogsPanel() {
           </select>
           <button onClick={() => logsQuery.refetch()} style={iconBtn} title="刷新">
             <RefreshCw style={{ width: "14px", height: "14px" }} />
+          </button>
+          <button onClick={() => void exportCsv()} disabled={exporting} style={iconBtn} title="按当前筛选导出全部日志为 CSV（Excel 可直接打开）">
+            {exporting ? <Loader2 className="animate-spin" style={{ width: "14px", height: "14px" }} /> : <Download style={{ width: "14px", height: "14px" }} />}
           </button>
           <button
             onClick={() => { if (confirm("确定清空全部日志？此操作不可撤销。")) clearMut.mutate(); }}
@@ -1282,6 +1542,10 @@ function LogsPanel() {
 function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
   if (!detail) return <span>—</span>;
   const parts: string[] = [];
+  // 生成成败 + 预估点数放最前（计费审计的核心字段）。
+  if (typeof detail.success === "boolean") parts.push(detail.success ? "✓ 成功" : "✗ 失败");
+  if (detail.estimatedCost) parts.push(`预估 ${detail.estimatedCost}`);
+  if (detail.phase === "result") parts.push("生成结果");
   if (detail.model) parts.push(`模型：${detail.model}`);
   if (detail.provider) parts.push(`提供商：${detail.provider}`);
   if (detail.prompt) parts.push(`提示词：${String(detail.prompt).slice(0, 60)}${String(detail.prompt).length > 60 ? "…" : ""}`);
@@ -1292,8 +1556,9 @@ function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
   if (detail.method) parts.push(`方式：${detail.method}`);
   if (detail.segmentCount) parts.push(`字幕 ${detail.segmentCount} 条`);
   if (detail.language) parts.push(`语言：${detail.language}`);
+  if (detail.error) parts.push(`错误：${String(detail.error).slice(0, 60)}`);
   if (parts.length === 0) return <span>{JSON.stringify(detail).slice(0, 80)}</span>;
-  return <span title={parts.join(" | ")}>{parts.slice(0, 2).join(" | ")}{parts.length > 2 ? " …" : ""}</span>;
+  return <span title={parts.join(" | ")}>{parts.slice(0, 3).join(" | ")}{parts.length > 3 ? " …" : ""}</span>;
 }
 
 // ── ComfyUI usage logs (per-user / per-server, detailed) ─────────────────────
@@ -1315,6 +1580,49 @@ function ComfyUsageLogsPanel() {
   const clearMut = trpc.admin.comfyLogs.clear.useMutation({
     onSuccess: () => { utils.admin.comfyLogs.list.invalidate(); utils.admin.comfyLogs.summary.invalidate(); setOffset(0); },
   });
+
+  // 导出 CSV：按当前筛选条件分页拉全量（1000/页，上限 2 万条），带 BOM 供 Excel 直开。
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const all: Array<Record<string, unknown>> = [];
+      const PAGE = 1000, CAP = 20000;
+      for (let off = 0; ; off += PAGE) {
+        const d = await utils.admin.comfyLogs.list.fetch({ limit: PAGE, offset: off, status: statusFilter || undefined, host: hostFilter || undefined, sinceMs });
+        all.push(...(d.rows as Array<Record<string, unknown>>));
+        if (d.rows.length < PAGE || all.length >= Math.min(d.total, CAP)) break;
+      }
+      // 防 CSV 公式注入：用户可控内容（提示词等）以 =+-@ 开头时加 ' 前缀，避免 Excel 当公式执行。
+      const esc = (v: unknown) => {
+        let s = v == null ? "" : String(v);
+        if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const header = ["时间", "用户ID", "用户名", "邮箱", "IP", "操作", "服务器", "模型", "状态", "耗时(秒)", "结果数", "错误", "详情JSON"];
+      const lines = all.map((r) => [
+        new Date(r.createdAt as string).toLocaleString("zh-CN"),
+        r.userId ?? "", r.userName ?? "", r.userEmail ?? "", r.ip ?? "",
+        r.action ?? "", r.host ?? "", r.model ?? "",
+        r.status === "success" ? "成功" : "失败",
+        r.durationMs != null ? (Number(r.durationMs) / 1000).toFixed(1) : "",
+        r.resultCount ?? "",
+        r.errorMessage ?? "",
+        r.detail ? JSON.stringify(r.detail) : "",
+      ].map(esc).join(","));
+      downloadTextFile(
+        `ComfyUI日志-${new Date().toISOString().slice(0, 10)}.csv`,
+        "\uFEFF" + [header.join(","), ...lines].join("\n"),
+        "text/csv;charset=utf-8",
+      );
+      toast.success(`已导出 ${all.length} 条日志`);
+    } catch (e) {
+      toast.error(`导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const s = summaryQ.data;
   const rows = (listQ.data?.rows ?? []) as Array<Record<string, unknown>>;
@@ -1370,6 +1678,9 @@ function ComfyUsageLogsPanel() {
           </select>
           {hostFilter && <button onClick={() => { setHostFilter(""); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12, cursor: "pointer" }} title="清除服务器筛选">服务器：{hostFilter} ✕</button>}
           <button onClick={() => { listQ.refetch(); summaryQ.refetch(); }} style={iconBtn} title="刷新"><RefreshCw style={{ width: 14, height: 14 }} /></button>
+          <button onClick={() => void exportCsv()} disabled={exporting} style={iconBtn} title="按当前筛选导出全部日志为 CSV（Excel 可直接打开）">
+            {exporting ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> : <Download style={{ width: 14, height: 14 }} />}
+          </button>
           <button onClick={() => { if (confirm("确定清空全部 ComfyUI 使用日志？")) clearMut.mutate(); }} disabled={clearMut.isPending} style={{ ...iconBtn, color: "#f87171", borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)" }} title="清空"><Trash2 style={{ width: 14, height: 14 }} /></button>
         </div>
       </div>

@@ -24,7 +24,7 @@ describe("kie image model map", () => {
   it("每个 id 非空，编辑模型有正确的参考图字段（image_urls vs input_urls）", () => {
     for (const [, spec] of Object.entries(KIE_IMAGE_MODELS)) {
       expect(spec.id.length).toBeGreaterThan(0);
-      expect(["aspect_ratio", "image_size"]).toContain(spec.aspect);
+      expect(["aspect_ratio", "image_size", "image_size_raw"]).toContain(spec.aspect);
     }
     // 编辑模型必须有 ref；Flux-2 / GPT 用 input_urls，Seedream / Nano 用 image_urls（文档约定）。
     expect(KIE_IMAGE_MODELS.kie_nano_banana_edit.ref).toBe("image_urls");
@@ -47,6 +47,17 @@ describe("kie image model map", () => {
     // GPT Image 只接受 1:1 / 2:3 / 3:2（不含 16:9）——默认必须落在枚举内。
     expect(KIE_IMAGE_MODELS.kie_gpt_image_15.aspects).not.toContain("16:9");
     expect(KIE_IMAGE_MODELS.kie_grok_image.aspects).toContain("16:9");
+  });
+
+  it("专属端点模型 endpoint/ref 字段正确（Flux Kontext / OpenAI 4o）", () => {
+    expect(KIE_IMAGE_MODELS.kie_flux_kontext_pro.endpoint).toBe("flux-kontext");
+    expect(KIE_IMAGE_MODELS.kie_flux_kontext_max.endpoint).toBe("flux-kontext");
+    expect(KIE_IMAGE_MODELS.kie_flux_kontext_pro.ref).toBe("inputImage"); // 单数，可选编辑图
+    expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.endpoint).toBe("gpt4o");
+    expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.ref).toBe("filesUrl");       // 数组 ≤5
+    expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.aspect).toBe("image_size_raw"); // size 字段
+    // 4o size 仅 1:1 / 3:2 / 2:3（不含 16:9）。
+    expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.aspects).not.toContain("16:9");
   });
 
   it("有额外必填参数的模型带 fixed 默认（Seedream4.5/GPT quality、Flux resolution）", () => {

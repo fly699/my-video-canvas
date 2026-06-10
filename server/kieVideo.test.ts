@@ -43,11 +43,14 @@ describe("kie video specs", () => {
     expect(KIE_VIDEO_SPECS.kie_seedance2.ref?.required).toBeFalsy();
   });
 
-  it("每个 spec 都带文档计费标注 + 至少一个参数", () => {
+  it("每个 spec 都带文档计费标注 + 合法 wire/params", () => {
     for (const [k, s] of Object.entries(KIE_VIDEO_SPECS)) {
       expect(s.creditNote.length, `${k} 缺 creditNote`).toBeGreaterThan(0);
-      expect(s.params.length, `${k} 缺参数`).toBeGreaterThan(0);
+      expect(Array.isArray(s.params), `${k} params 非数组`).toBe(true); // 数字人等无可调参数 → 空数组合法
       expect(s.wire.length).toBeGreaterThan(0);
+      // 数字人需音频输入，动作控制/Animate 需源视频输入。
+      if (k.includes("avatar")) expect(s.audioRef?.key, `${k} 缺 audioRef`).toBeTruthy();
+      if (k.includes("motion") || k.includes("animate")) expect(s.videoRef?.key, `${k} 缺 videoRef`).toBeTruthy();
     }
   });
 

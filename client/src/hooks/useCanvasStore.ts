@@ -109,6 +109,9 @@ interface CanvasStore {
    *  it; Canvas watches the token and routes it through the normal run-confirm). */
   runRequest: { startNodeId: string | null; onlyIds?: string[]; token: number } | null;
   requestRun: (startNodeId: string | null, onlyIds?: string[]) => void;
+  /** 瞬时跨节点 UI 信号：请求某节点打开内嵌面板（如智能体引导卡「打开镜头表」）。 */
+  panelRequest: { nodeId: string; panel: string; token: number } | null;
+  requestPanel: (nodeId: string, panel: string) => void;
   setNodes: (nodes: CanvasNode[]) => void;
   setEdges: (edges: CanvasEdge[]) => void;
   onNodesChange: (changes: NodeChange[]) => void;
@@ -119,7 +122,7 @@ interface CanvasStore {
    *  Used by the agent apply layer to wrap a scene's shots. */
   addGroupBox: (rect: { x: number; y: number; width: number; height: number }, title: string) => void;
   batchAddSceneNodes: (
-    scenes: Array<{ description?: string; promptText?: string; negativePrompt?: string; cameraMovement?: string; duration?: number; lens?: string; colorGrade?: string; shotType?: string; lighting?: string }>,
+    scenes: Array<{ description?: string; promptText?: string; negativePrompt?: string; cameraMovement?: string; duration?: number; lens?: string; colorGrade?: string; shotType?: string; lighting?: string; dialogue?: string; sfx?: string; transition?: string; beatRef?: string }>,
     sourceNodeId: string,
     sourcePosition: { x: number; y: number },
     targetType?: "storyboard" | "comfyui_image"
@@ -207,6 +210,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   setCurrentUserId: (id) => set({ currentUserId: id }),
   runRequest: null,
   requestRun: (startNodeId, onlyIds) => set((s) => ({ runRequest: { startNodeId, onlyIds, token: (s.runRequest?.token ?? 0) + 1 } })),
+  panelRequest: null,
+  requestPanel: (nodeId, panel) => set((s) => ({ panelRequest: { nodeId, panel, token: (s.panelRequest?.token ?? 0) + 1 } })),
 
   // setNodes / setEdges are used for initial load — don't push to history
   setNodes: (nodes) => set({ nodes }),
@@ -396,6 +401,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
               nodeType: "storyboard" as const,
               title: `分镜 #${i + 1}`,
               payload: {
+                sceneNumber: i + 1,
                 description: scene.description ?? "",
                 promptText: scene.promptText ?? "",
                 negativePrompt: scene.negativePrompt || undefined,
@@ -403,6 +409,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
                 duration: scene.duration,
                 lens: scene.lens || undefined,
                 colorTone: scene.colorGrade || undefined,
+                // 行业 Shot List 字段（镜头表）：景别/灯光/对白/音效/转场/拍点
+                shotType: scene.shotType || undefined,
+                lighting: scene.lighting || undefined,
+                dialogue: scene.dialogue || undefined,
+                sfx: scene.sfx || undefined,
+                transition: scene.transition || undefined,
+                beatRef: scene.beatRef || undefined,
                 createdBy: sceneUid,
               },
               projectId,

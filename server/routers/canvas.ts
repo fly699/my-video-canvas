@@ -43,7 +43,9 @@ import {
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl, toInternalStoragePath, storagePresignPut, isStorageConfigured, finalizeStorageKey } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
-import { invokeLLM, extractTextContent } from "../_core/llm";
+import { getCachedDisabledModels } from "../_core/modelToggles";
+import { extractTextContent } from "../_core/llm";
+import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { generateImage } from "../_core/imageGeneration";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
@@ -55,7 +57,7 @@ import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio"
 import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame, concatAudioSegments } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -64,9 +66,11 @@ import { resolveKieKey } from "../_core/kie";
 import { isKieImageModel } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo } from "../_core/kieVideo";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
-import { isKieLLMModel, invokeKieLLM } from "../_core/kieLLM";
+import { isKieLLMModel } from "../_core/kieLLM";
+import { isKieTTS, submitAndPollKieTTS } from "../_core/kieTTS";
+import { submitAndPollKieSFX, KIE_SFX_MODEL } from "../_core/kieSFX";
 import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
-import { writeAuditLog, truncate } from "../_core/auditLog";
+import { writeAuditLog, truncate, auditVideoTaskResult } from "../_core/auditLog";
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
@@ -605,6 +609,8 @@ export const videoTasksRouter = router({
         params: z.record(z.string(), z.unknown()).optional(),
         // kie.ai temp key (localStorage kie:tempKey) — only used for kie_* providers.
         kieTempKey: z.string().max(256).optional(),
+        // 客户端按所选模型+参数实时计算的点数预估（如 "≈60 点"），仅供管理员日志参考。
+        estimatedCost: z.string().max(32).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -652,7 +658,7 @@ export const videoTasksRouter = router({
       const baseParams = (input.params as Record<string, unknown> | undefined) ?? undefined;
       // Only stash reference mode when it'd actually change mapping (reference + ≥1 ref).
       const stashRefMode = input.referenceMode === "reference" && refList.length > 0;
-      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0 || stashRefMode || !!kieKeyEnc;
+      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0 || stashRefMode || !!kieKeyEnc || !!input.estimatedCost;
       const mergedParams: Record<string, unknown> | undefined = needsStash
         ? {
             ...(baseParams ?? {}),
@@ -663,6 +669,8 @@ export const videoTasksRouter = router({
             // Encrypted kie key for the poller (filtered from any upstream payload
             // by kieVideo's allow-list — it only copies spec'd param keys).
             ...(kieKeyEnc ? { _kieKeyEnc: kieKeyEnc } : {}),
+            // 预估点数随任务存档，供异步终态日志（auditVideoTaskResult）回读。
+            ...(input.estimatedCost ? { _estimatedCost: input.estimatedCost } : {}),
           }
         : baseParams;
 
@@ -782,6 +790,9 @@ export const videoTasksRouter = router({
           taskId: task.id,
           nodeId: input.nodeId,
           submitted: !!externalTaskId,
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          // 提交即失败 → 直接记终态；提交成功的终态由轮询完成时补记（phase:"result"）。
+          ...(submitFailed ? { success: false } : {}),
         },
       });
 
@@ -807,6 +818,15 @@ export const videoTasksRouter = router({
       // the owner could see the task in the UI but couldn't poll it.
       await assertProjectAccess(task.projectId, ctx.user.id, "editor");
 
+      // 同步上游状态会用平台公用 key（Poyo/Higgsfield）。非白名单用户/协作者不得借 poll 触达公用 key——
+      // 此时跳过上游同步、直接返回当前状态（后台 poller 用平台凭证仍会推进），既守门控又不打断 UI。
+      // kie 任务不在此处同步（用任务内自带 key），故只对 Poyo/Higgsfield 门控。
+      const usesHouseUpstream = task.status === "processing" && !!task.externalTaskId &&
+        (isPoyoVideoProvider(task.provider) || isHiggsfieldVideoProvider(task.provider));
+      if (usesHouseUpstream) {
+        try { await assertWhitelisted(ctx); } catch { return task; }
+      }
+
       // For poyo.ai tasks still processing, sync status from upstream (throttled)
       if (task.status === "processing" && task.externalTaskId && isPoyoVideoProvider(task.provider)) {
         const now = Date.now();
@@ -824,6 +844,7 @@ export const videoTasksRouter = router({
                 // into re-paying for our parser miss.
                 const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在上游生成完成，但本系统未识别 URL（积分已扣，请勿重试；联系管理员查看 Poyo 控制台）" };
                 await updateVideoTask(task.id, update);
+                auditVideoTaskResult(task, false, update.errorMessage);
                 return { ...task, ...update };
               }
               // CRITICAL: same persistence step as the background poller —
@@ -836,6 +857,7 @@ export const videoTasksRouter = router({
               const persisted = persistedList.join("\n");
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, true);
               for (const u of persistedList) {
                 await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: u, name: task.provider });
               }
@@ -845,6 +867,7 @@ export const videoTasksRouter = router({
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
           } catch (err) {
@@ -868,6 +891,7 @@ export const videoTasksRouter = router({
               const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, true);
               await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: persisted, name: task.provider });
               return { ...task, ...update };
             }
@@ -876,12 +900,14 @@ export const videoTasksRouter = router({
               // Credits spent; [CHARGED] blocks UI from one-click resubmit.
               const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在 Higgsfield 生成完成，但本系统未识别 URL（积分已扣，请勿重试）" };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
             if (upstream.status === "failed") {
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
           } catch (err) {
@@ -958,11 +984,8 @@ export const aiChatRouter = router({
     .mutation(async ({ ctx, input }) => {
       // kie chat models authenticate with their own key (temp > assigned > house)
       // and bypass the LLM whitelist; everything else keeps the LLM gate.
-      let kieLLMKey: string | undefined;
-      if (isKieLLMModel(input.model)) {
-        const resolved = await resolveKieKey(ctx, input.kieTempKey);
-        kieLLMKey = resolved.key;
-      } else {
+      // 实际的 key 解析与权限门控在下方 invokeLLMWithKie 内统一进行（与所有其它 LLM 入口一致）。
+      if (!isKieLLMModel(input.model)) {
         // Gate on whitelist before access check so banned users get a uniform
         // "not whitelisted" error rather than a project FORBIDDEN; this also
         // closes the gap that let an editor invoke the LLM without any
@@ -1064,13 +1087,10 @@ export const aiChatRouter = router({
 
       let assistantContent: string;
       try {
-        if (kieLLMKey) {
-          const r = await invokeKieLLM({ model: input.model!, messages, apiKey: kieLLMKey });
-          assistantContent = r.text || "（模型返回内容为空）";
-        } else {
-          const response = await invokeLLM({ messages, model: input.model });
-          assistantContent = extractTextContent(response) || "（模型返回内容为空）";
-        }
+        // kie 模型与其它模型统一走 invokeLLMWithKie：内部按 临时(显式 kieTempKey 或请求头)>分配>公用
+        // 解析并校验权限。显式 input.kieTempKey 优先（与历史行为一致）。
+        const response = await invokeLLMWithKie(ctx, { messages, model: input.model }, input.kieTempKey);
+        assistantContent = extractTextContent(response) || "（模型返回内容为空）";
       } catch (err) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -1139,6 +1159,8 @@ export const imageGenRouter = router({
         fluxNumImages: z.number().int().min(1).max(4).optional(),
         // kie.ai: optional user-entered temporary key (from the toolbar popup).
         kieTempKey: z.string().max(256).optional(),
+        // 客户端实时计算的点数预估（如 "≈5 cr"），仅供管理员日志参考。
+        estimatedCost: z.string().max(32).optional(),
         projectId: z.number().optional(),
       })
     )
@@ -1171,6 +1193,7 @@ export const imageGenRouter = router({
       }
       // Server-side idempotency: collapse concurrent identical submits (e.g. devtools
       // replay, browser retries) into a single external image-gen call & charge.
+      // 失败也要计入管理员日志（带预估点数 + success:false），随后原样抛出。
       return dedupe("imageGen", ctx.user.id, input, async () => {
       const isHfModel = input.model?.startsWith("hf_");
 
@@ -1235,6 +1258,8 @@ export const imageGenRouter = router({
           prompt: truncate(input.prompt),
           resultUrl: result.url ?? result.urls?.[0] ?? null,
           resultCount: result.urls?.length ?? (result.url ? 1 : 0),
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: true,
         },
       });
       {
@@ -1250,6 +1275,19 @@ export const imageGenRouter = router({
         sourceUrls: result.sourceUrls,
         sourceAt: result.sourceAt,
       };
+      }).catch((err: unknown) => {
+        writeAuditLog({
+          ctx,
+          action: "image_gen",
+          detail: {
+            model: input.model ?? "default",
+            prompt: truncate(input.prompt),
+            ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+            success: false,
+            error: truncate(err instanceof Error ? err.message : String(err)),
+          },
+        });
+        throw err;
       });
     }),
 });
@@ -1296,6 +1334,11 @@ export interface GeneratedScene {
   lens?: string;
   lighting?: string;
   colorGrade?: string;
+  // ── 行业 Shot List 标准字段 ──
+  dialogue?: string;   // 对白/旁白（可直接作配音文案）
+  sfx?: string;        // 音效/BGM 意图
+  transition?: string; // 到下一镜的转场
+  beatRef?: string;    // 所属节拍表拍点
 }
 
 /** The JSON field contract handed to the LLM for each storyboard scene. Includes
@@ -1310,7 +1353,10 @@ function sceneFieldsInstruction(promptLangName: string, avgDuration: number): st
 - "lighting": string — short lighting setup (e.g. "soft key + rim, golden hour", "low-key chiaroscuro 3200K").
 - "colorGrade": string — short grade/palette (e.g. "warm teal-orange", "desaturated cold blue", "Kodak Portra").
 - "cameraMovement": string — one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking.
-- "duration": number — integer seconds, around ${avgDuration}.`;
+- "duration": number — integer seconds, around ${avgDuration}.
+- "dialogue": string — Chinese (中文). The spoken dialogue or voice-over line for this shot, ready for TTS dubbing ("角色名：台词" or narration text). Empty string if the shot is silent.
+- "sfx": string — Chinese (中文). Sound effect / music intent for this shot (e.g. "雨声渐强 + 低音弦乐"). Empty string if none.
+- "transition": string — transition INTO the next shot, one of: cut, dissolve, fade, wipe, match-cut. Use "cut" by default.`;
 }
 
 /** Validate + normalize one raw scene object from the LLM into a GeneratedScene. */
@@ -1328,6 +1374,10 @@ function normalizeScene(raw: Record<string, unknown>, avgDuration: number): Gene
     lens: str(raw.lens) || undefined,
     lighting: str(raw.lighting) || undefined,
     colorGrade: str(raw.colorGrade) || undefined,
+    dialogue: str(raw.dialogue) || undefined,
+    sfx: str(raw.sfx) || undefined,
+    transition: str(raw.transition) || undefined,
+    beatRef: str(raw.beatRef) || (typeof raw.beatRef === "number" ? String(raw.beatRef) : undefined),
   };
 }
 
@@ -1362,7 +1412,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
         `Script:\n${input.content}`,
       ].join("");
 
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: userContent },
@@ -1403,6 +1453,10 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
          *  system prompt. Sourced from client/src/lib/scriptCreationTemplates.ts
          *  by id (UI passes `systemPromptAddon` of the applied template). */
         templatePromptOverride: z.string().max(4000).optional(),
+        /** 节拍表（开发阶段流产物，文本化）。给出时剧本必须逐拍展开，结构受其约束。 */
+        beatSheetText: z.string().max(4000).optional(),
+        /** 已连接角色节点的档案文本（Story Bible 前置约束）：人物名/外貌/服装/性格等。 */
+        characterProfiles: z.string().max(3000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1446,11 +1500,23 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 # 输出
 只输出剧本正文。禁止 JSON、禁止解释、禁止 markdown 代码块。`;
 
-      const fullScriptSystemPrompt = input.templatePromptOverride
-        ? `${scriptSystemPrompt}\n\n## 模板专属写作要求\n${input.templatePromptOverride}`
+      // 节拍表与角色档案作为硬约束注入（行业 Story Bible / beat sheet 做法）：
+      // 有节拍表时剧本必须逐拍展开；有角色档案时人物设定必须遵循档案。
+      const constraintBlocks: string[] = [];
+      if (input.beatSheetText?.trim()) {
+        constraintBlocks.push(`## 节拍表（必须严格按以下拍点顺序展开剧情，每拍对应到场景）\n${input.beatSheetText.trim()}`);
+      }
+      if (input.characterProfiles?.trim()) {
+        constraintBlocks.push(`## 角色档案（人物名称、外貌、服装、性格必须与档案一致，不得自创设定）\n${input.characterProfiles.trim()}`);
+      }
+      if (input.templatePromptOverride) {
+        constraintBlocks.push(`## 模板专属写作要求\n${input.templatePromptOverride}`);
+      }
+      const fullScriptSystemPrompt = constraintBlocks.length
+        ? `${scriptSystemPrompt}\n\n${constraintBlocks.join("\n\n")}`
         : scriptSystemPrompt;
 
-      const scriptResponse = await invokeLLM({
+      const scriptResponse = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: fullScriptSystemPrompt },
           { role: "user" as const, content: `故事梗概：\n${input.synopsis}` },
@@ -1462,11 +1528,15 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 
       // ── Call 2: scene breakdown derived from the generated script ──
       // promptText language follows the toggle; description stays Chinese.
+      // 节拍表存在时：要求逐镜标注所属拍点（beatRef），并按拍点 duration 占比分配镜头时长。
+      const beatBlock = input.beatSheetText?.trim()
+        ? `\nBeat sheet (the script follows these beats; allocate scene durations proportionally to each beat's duration, and tag every scene):\n${input.beatSheetText.trim()}\nAdd to EVERY scene object: "beatRef": string — the beat index this scene belongs to (e.g. "3").\n`
+        : "";
       const scenesSystemPrompt = `You are a professional film director and storyboard artist. Break the given Chinese script into exactly ${input.sceneCount} visual storyboard scenes that together tell the whole story in order.
 
 Target generation-model prompt style guide (write every promptText to match it):
 ${modelGuide}
-
+${beatBlock}
 Output ONLY a valid JSON array — no markdown fences, no prose before or after the array.
 ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 
@@ -1474,7 +1544,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
       // nothing) so scenes match the actual narrative. Cap input to keep the
       // request bounded.
       const sceneSource = (scriptText || input.synopsis).slice(0, 8000);
-      const scenesResponse = await invokeLLM({
+      const scenesResponse = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: scenesSystemPrompt },
           { role: "user" as const, content: `Script:\n${sceneSource}` },
@@ -1520,7 +1590,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
         const userContent = input.intent
           ? `意图：${input.intent}\n\n原场景：\n${input.sceneText}`
           : `请优化以下场景：\n${input.sceneText}`;
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
@@ -1528,6 +1598,57 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
           model: input.model ?? "claude-sonnet-4-5-20250929",
         });
         return { result: extractTextContent(response).trim() };
+      });
+    }),
+
+  /** 镜头衔接优化：按行业剪辑规范（180° 轴线、景别递进避免同景别跳切、运镜动静衔接）
+   *  结合上一镜的参数优化当前镜，返回可直接落字段的修订建议。 */
+  refineShotContinuity: protectedProcedure
+    .input(z.object({
+      prevShot: z.object({
+        description: z.string().max(1000),
+        shotType: z.string().max(20).optional(),
+        cameraMovement: z.string().max(20).optional(),
+        transition: z.string().max(20).optional(),
+      }),
+      currentShot: z.object({
+        description: z.string().max(1000),
+        promptText: z.string().max(2000).optional(),
+        shotType: z.string().max(20).optional(),
+        cameraMovement: z.string().max(20).optional(),
+      }),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.refineShotContinuity", ctx.user.id, input, async () => {
+        const systemPrompt = `你是专业剪辑指导兼分镜师。根据「上一镜」的参数优化「当前镜」，使两镜衔接符合行业规范：
+- 180° 轴线规则：人物视线/运动方向不跳轴；
+- 景别递进：避免相同景别直接跳切（如 MS→MS），相邻镜景别至少差一级或换角度 30° 以上；
+- 运镜衔接：动接动、静接静；上一镜有方向性运动时当前镜顺势承接；
+- 视觉连续：光线、色调、人物位置合理延续。
+仅输出合法 JSON，无 markdown 代码块：
+{"description":"优化后的画面描述（中文）","promptText":"优化后的生成提示词（保持原语言）","shotType":"建议景别","cameraMovement":"建议运镜","note":"一句话说明改了什么、为什么（中文）"}`;
+        const userContent = `【上一镜】景别：${input.prevShot.shotType ?? "未知"}；运镜：${input.prevShot.cameraMovement ?? "未知"}；转场：${input.prevShot.transition ?? "cut"}\n描述：${input.prevShot.description}\n\n【当前镜】景别：${input.currentShot.shotType ?? "未知"}；运镜：${input.currentShot.cameraMovement ?? "未知"}\n描述：${input.currentShot.description}${input.currentShot.promptText ? `\n提示词：${input.currentShot.promptText}` : ""}`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: userContent },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 2000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\{[\s\S]*\}/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let parsed: Record<string, unknown>;
+        try { parsed = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        return {
+          description: String(parsed.description ?? ""),
+          promptText: String(parsed.promptText ?? ""),
+          shotType: String(parsed.shotType ?? "") || undefined,
+          cameraMovement: String(parsed.cameraMovement ?? "") || undefined,
+          note: String(parsed.note ?? ""),
+        };
       });
     }),
 
@@ -1542,7 +1663,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 仅输出合法 JSON，无 markdown 代码块，无额外文字：
 {"score":85,"issues":[{"type":"节奏","line":"场景二","suggestion":"节奏过快，建议增加过渡描写"},{"type":"对白","line":"第15行","suggestion":"对白生硬，可改为自然口语"}]}
 score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/suggestion 字段。`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: input.scriptText },
@@ -1558,6 +1679,237 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       const score = Number.isFinite(Number(parsed.score)) ? Math.round(Number(parsed.score)) : 0;
       const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
       return { score, issues };
+      });
+    }),
+
+  // ── 开发阶段流（对齐行业管线：logline → 梗概 → 节拍表 → 剧本）────────────────
+
+  /** ① Logline：把想法/梗概压成 25-35 字的一句话故事（主角+冲突+赌注），出 3 个候选。 */
+  generateLogline: protectedProcedure
+    .input(z.object({
+      idea: z.string().min(1).max(2000),
+      genre: z.string().max(40).optional(),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.generateLogline", ctx.user.id, input, async () => {
+        const systemPrompt = `你是好莱坞资深故事策划。把用户的想法提炼成 3 个风格各异的 logline（一句话故事）。
+行业标准：每条 25-35 个汉字，必须包含【主角是谁】【面临什么冲突】【赌注/代价是什么】，有戏剧张力，不剧透结局。
+${input.genre ? `类型：${input.genre}。` : ""}
+仅输出合法 JSON，无 markdown 代码块：{"loglines":["…","…","…"]}`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: input.idea },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 1000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\{[\s\S]*\}/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let parsed: { loglines: string[] };
+        try { parsed = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const loglines = (Array.isArray(parsed.loglines) ? parsed.loglines : []).filter((s) => typeof s === "string" && s.trim()).slice(0, 3);
+        if (loglines.length === 0) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回 logline" });
+        return { loglines };
+      });
+    }),
+
+  /** ② 节拍表：按所选叙事结构把 logline/梗概拆成结构化拍点（行业 beat sheet）。 */
+  generateBeatSheet: protectedProcedure
+    .input(z.object({
+      source: z.string().min(1).max(3000), // logline + 梗概合并文本
+      structure: z.enum(["three_act", "save_the_cat", "heros_journey", "short_drama", "documentary"]).default("three_act"),
+      totalDuration: z.number().int().min(10).max(7200).default(60),
+      genre: z.string().max(40).optional(),
+      mood: z.string().max(40).optional(),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.generateBeatSheet", ctx.user.id, input, async () => {
+        // 行业标准结构模板（拍点名照行业惯例，数量按结构）。
+        const STRUCTURES: Record<string, { name: string; guide: string }> = {
+          three_act: { name: "经典三幕结构", guide: "8 拍：开场画面 / 建置（人物与世界）/ 激励事件 / 第一幕转折 / 中点（升级或反转）/ 低谷（一无所有）/ 高潮对决 / 结局画面。" },
+          save_the_cat: { name: "Save the Cat 15 拍", guide: "15 拍：开场画面 / 主题陈述 / 铺垫 / 催化剂 / 争论 / 进入第二幕 / B故事 / 玩闹与游戏 / 中点 / 坏人逼近 / 一无所有 / 灵魂黑夜 / 进入第三幕 / 结局 / 终场画面。" },
+          heros_journey: { name: "英雄之旅 12 步", guide: "12 拍：平凡世界 / 冒险召唤 / 拒绝召唤 / 遇见导师 / 跨越门槛 / 考验盟友敌人 / 接近最深洞穴 / 磨难 / 获得奖赏 / 归途 / 复活 / 携万能药归来。" },
+          short_drama: { name: "竖屏短剧 钩子-反转-爽点", guide: "6-8 拍，工业标准节奏：前 3 秒钩子（强冲突/悬念开场）/ 6 秒进入冲突 / 10 秒点出悬念 / 快速共情（主角低谷）/ 情绪拉扯（压迫升级）/ 高能反转 / 爽点释放 / 结尾卡点钩子（勾住下一集）。每分钟保持 3-4 个情绪爆点。" },
+          documentary: { name: "纪录片结构", guide: "6 拍：悬念开场（抛出问题）/ 背景铺陈 / 深入主体（核心事实与人物）/ 冲突或转折 / 升华（意义与影响）/ 收束呼应。" },
+        };
+        const st = STRUCTURES[input.structure];
+        const systemPrompt = `你是专业故事结构师。把给定的故事按「${st.name}」拆成节拍表（beat sheet）。
+结构指南：${st.guide}
+${input.genre ? `类型：${input.genre}。` : ""}${input.mood ? `基调：${input.mood}。` : ""}总时长约 ${input.totalDuration} 秒——给每拍分配 duration（秒），总和≈总时长，重场戏多分配。
+每拍 summary 用 1-3 句中文具体写出「发生什么」（人物动作与情绪，不要抽象套话）。
+仅输出合法 JSON 数组，无 markdown 代码块：
+[{"index":1,"title":"拍点名","summary":"这一拍发生什么","duration":8}]`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: input.source },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 4000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\[[\s\S]*\]/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let raw: Array<Record<string, unknown>>;
+        try { raw = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const beats = raw.slice(0, 20).map((b, i) => ({
+          index: typeof b.index === "number" ? b.index : i + 1,
+          title: String(b.title ?? `第 ${i + 1} 拍`),
+          summary: String(b.summary ?? ""),
+          duration: Number.isFinite(Number(b.duration)) ? Math.round(Number(b.duration)) : undefined,
+        }));
+        if (beats.length === 0) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回拍点" });
+        return { beats };
+      });
+    }),
+
+  /** 短剧分集大纲：70-80 集工业模式（每集钩子 + 剧情 + 结尾卡点），含付费卡点策划。 */
+  generateEpisodeOutline: protectedProcedure
+    .input(z.object({
+      source: z.string().min(1).max(3000),
+      episodeCount: z.number().int().min(4).max(100).default(24),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.generateEpisodeOutline", ctx.user.id, input, async () => {
+        const systemPrompt = `你是爆款竖屏短剧总编剧。把故事拆成 ${input.episodeCount} 集分集大纲（每集 1-2 分钟）。
+工业标准：每集必须有【开场钩子】（前 3 秒抓人）与【结尾卡点】（悬念勾住下一集）；全剧遵循「钩子+反转+爽点」黄金结构，避免高开低走；在第 ${Math.min(10, input.episodeCount)}${input.episodeCount >= 30 ? "、30" : ""}${input.episodeCount >= 50 ? "、50" : ""} 集附近安排付费卡点级强钩子（剧情最揪心处断章）。
+每集 summary 用 2-3 句中文写清剧情推进。
+仅输出合法 JSON 数组，无 markdown 代码块：
+[{"episode":1,"title":"集名","hook":"开场钩子","summary":"本集剧情","cliffhanger":"结尾悬念"}]`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: input.source },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 8000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\[[\s\S]*\]/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let raw: Array<Record<string, unknown>>;
+        try { raw = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const episodes = raw.slice(0, input.episodeCount).map((e, i) => ({
+          episode: typeof e.episode === "number" ? e.episode : i + 1,
+          title: String(e.title ?? `第 ${i + 1} 集`),
+          hook: String(e.hook ?? ""),
+          summary: String(e.summary ?? ""),
+          cliffhanger: String(e.cliffhanger ?? ""),
+        }));
+        if (episodes.length === 0) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回分集" });
+        return { episodes };
+      });
+    }),
+
+  // ── 专业审查（行业 Script Coverage 体系）──────────────────────────────────────
+
+  /** 六维评分 + 裁决（推荐/修改后可用/不推荐）+ 结构化问题（带定位/严重度/可修复标志）。
+   *  shortDrama 模式附加工业检查（钩子节奏 / 台词长度 / 反转密度）。 */
+  scriptCoverage: protectedProcedure
+    .input(z.object({
+      scriptText: z.string().min(1).max(8000),
+      genre: z.string().max(40).optional(),
+      shortDrama: z.boolean().default(false),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.scriptCoverage", ctx.user.id, input, async () => {
+        const shortDramaBlock = input.shortDrama ? `
+另外按竖屏短剧工业标准做 3 项附加检查（shortDramaChecks）：
+1.「钩子节奏」：开场是否做到 3 秒抓人、6 秒进冲突、10 秒点悬念；
+2.「台词长度」：单句台词是否多数控制在 8-12 字（最长不超 15 字）；
+3.「反转/爽点密度」：是否每分钟保持 3-4 个情绪爆点、有明确反转与爽点。` : "";
+        const systemPrompt = `你是好莱坞制片厂专业剧本审稿人（script reader），按行业 Coverage 标准出具结构化审读报告。
+六个维度逐一评分（0-100）并各写一句具体短评：
+- premise 创意与前提：概念新鲜度、戏剧前提是否成立
+- structure 结构：起承转合/幕结构是否完整、转折是否有力
+- characters 人物：动机是否成立、弧光是否清晰、配角功能性
+- dialogue 对白：是否自然、有潜台词、符合人物身份
+- pacing 节奏：信息密度、场景长短分配、是否拖沓或过快
+- visual 视觉可实现性：场景描写是否具象、是否适合 AI 图像/视频生成（画面感、可拆分镜程度）
+裁决（verdict）按行业三档：recommend（强烈推荐，各维度均优）/ consider（有潜力，修复关键问题后可用）/ pass（核心缺陷过多，建议重写）。
+issues 列出最关键的问题（最多 10 条，按严重度从高到低），每条：dimension（六维之一）、sceneRef（精确定位如「场景三」「第12行」，全局问题写「全局」）、severity（high/medium/low）、description（问题是什么）、suggestion（具体怎么改）、autoFixable（AI 能否仅凭该建议定向改写解决，布尔值；涉及全局重构的为 false）。
+strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
+仅输出合法 JSON，无 markdown 代码块：
+{"verdict":"consider","overall":74,"summary":"…","dimensions":[{"key":"premise","score":80,"comment":"…"}],"strengths":["…"],"issues":[{"dimension":"dialogue","sceneRef":"场景二","severity":"high","description":"…","suggestion":"…","autoFixable":true}]${input.shortDrama ? `,"shortDramaChecks":[{"name":"钩子节奏","pass":false,"detail":"…"}]` : ""}}`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: `${input.genre ? `【类型】${input.genre}\n\n` : ""}${input.scriptText}` },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 4000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\{[\s\S]*\}/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let parsed: Record<string, unknown>;
+        try { parsed = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const DIMS = ["premise", "structure", "characters", "dialogue", "pacing", "visual"] as const;
+        const dimsRaw = Array.isArray(parsed.dimensions) ? parsed.dimensions as Array<Record<string, unknown>> : [];
+        const dimensions = DIMS.map((key) => {
+          const d = dimsRaw.find((x) => x.key === key);
+          return { key, score: Math.max(0, Math.min(100, Math.round(Number(d?.score ?? 0)))), comment: String(d?.comment ?? "") };
+        });
+        const verdict = (["recommend", "consider", "pass"] as const).includes(parsed.verdict as "recommend") ? parsed.verdict as "recommend" | "consider" | "pass" : "consider";
+        const issuesRaw = Array.isArray(parsed.issues) ? parsed.issues as Array<Record<string, unknown>> : [];
+        const issues = issuesRaw.slice(0, 10).map((x) => ({
+          dimension: (DIMS as readonly string[]).includes(String(x.dimension)) ? String(x.dimension) as typeof DIMS[number] : "structure" as const,
+          sceneRef: String(x.sceneRef ?? "全局"),
+          severity: (["low", "medium", "high"] as const).includes(x.severity as "low") ? x.severity as "low" | "medium" | "high" : "medium",
+          description: String(x.description ?? ""),
+          suggestion: String(x.suggestion ?? ""),
+          autoFixable: x.autoFixable === true,
+        }));
+        const checksRaw = Array.isArray(parsed.shortDramaChecks) ? parsed.shortDramaChecks as Array<Record<string, unknown>> : [];
+        return {
+          verdict,
+          overall: Math.max(0, Math.min(100, Math.round(Number(parsed.overall ?? 0)))),
+          summary: String(parsed.summary ?? ""),
+          dimensions,
+          strengths: (Array.isArray(parsed.strengths) ? parsed.strengths : []).map(String).slice(0, 4),
+          issues,
+          ...(input.shortDrama ? { shortDramaChecks: checksRaw.slice(0, 3).map((c) => ({ name: String(c.name ?? ""), pass: c.pass === true, detail: String(c.detail ?? "") })) } : {}),
+          reviewedAt: Date.now(),
+        };
+      });
+    }),
+
+  /** 审查闭环：按单条 issue 定向改写剧本（只动相关位置，其余原样保留），返回完整修订稿。 */
+  applyScriptFix: protectedProcedure
+    .input(z.object({
+      scriptText: z.string().min(1).max(8000),
+      issue: z.object({
+        dimension: z.string().max(20),
+        sceneRef: z.string().max(60),
+        description: z.string().max(500),
+        suggestion: z.string().max(500),
+      }),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.applyScriptFix", ctx.user.id, input, async () => {
+        const systemPrompt = `你是专业剧本医生（script doctor）。按给定的审稿意见对剧本做【定向修复】：
+- 只修改与意见相关的位置（${input.issue.sceneRef}），其余内容必须逐字保留；
+- 修复后保持剧本格式（场景标题、结构）不变；
+- 只输出修复后的完整剧本正文，禁止解释、禁止 markdown 代码块。`;
+        const userContent = `【审稿意见】维度：${input.issue.dimension}；位置：${input.issue.sceneRef}；问题：${input.issue.description}；建议：${input.issue.suggestion}\n\n【剧本】\n${input.scriptText}`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: userContent },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 8000,
+        });
+        const result = extractTextContent(response).trim();
+        if (!result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回修复结果" });
+        return { result };
       });
     }),
 
@@ -1621,7 +1973,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
           + `- issues 至多 8 条；sceneIndices 是 0-based 数组（指向输入图片顺序）；aspect 取值 hairstyle/outfit/facial/age/signature/other；severity 取值 low/medium/high\n`
           + `- recommendations 至多 5 条，每条具体可操作`;
 
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             {
@@ -1729,7 +2081,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
             + `{"name":"角色名(若无法判断留空)","role":"身份/职业","gender":"男 或 女 或 中性","age":"年龄段(如 青年/30岁左右)","appearance":"外貌(脸型/发型/发色/五官/体型)","personality":"性格气质(从神态衣着推断)","outfit":"服装(款式/颜色/配饰)","signature":"标志性特征(疤痕/眼镜/纹身/饰品等)"}\n`
             + `约束：gender 只能是 男/女/中性 三者之一或空；只描述图中可见信息，无法判断的字段填空字符串 ""；全部用中文；不要编造。`;
 
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             {
@@ -1783,7 +2135,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       return dedupe("scripts.generateVariants", ctx.user.id, input, async () => {
       const systemPrompt = `你是专业编剧。根据相同的故事梗概，生成风格各异的剧本开场段落（不超过200字/版本）。
 仅输出合法 JSON 数组，无 markdown 代码块：[{"label":"版本A","text":"..."},{"label":"版本B","text":"..."}]`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: `梗概：${input.synopsis}\n\n请生成 ${input.variantCount} 个风格不同的开场版本。` },
@@ -1812,7 +2164,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
         const userContent = input.intent
           ? `优化要求：${input.intent}\n\n原对白：\n${input.dialogueText}`
           : `请优化以下对白，使其更自然流畅：\n${input.dialogueText}`;
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
@@ -1840,7 +2192,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
         幽默: "轻松诙谐，妙语连珠，多用反转和对比制造喜感",
       };
       const systemPrompt = `你是专业编剧，负责将剧本改写为特定风格。风格要求：${STYLE_GUIDES[input.style]}。保留原故事框架和角色，只改变文风。只输出改写后的剧本，不加任何说明。`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: input.scriptText },
@@ -1860,7 +2212,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
     .mutation(async ({ ctx, input }) => {
       return dedupe("scripts.extractDialogue", ctx.user.id, input, async () => {
         const systemPrompt = `你是剧本分析师。从剧本中提取所有对白，格式化为清单：每行一条，格式为"角色名：台词内容"。若无明确角色名则用"旁白"。只输出对白清单，不加任何说明。`;
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: input.scriptText },
@@ -1887,7 +2239,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
 为每个主要场景生成一条${langName}视觉提示词（cinematic prompt）和一条负面提示词。提示词必须使用${langName}书写。
 仅输出合法 JSON 数组，无 markdown 代码块：
 [{"sceneIndex":1,"sceneTitle":"场景名称（中文）","prompt":"${promptExample}","negPrompt":"blurry, low quality, text"}]`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: input.scriptText },
@@ -1934,10 +2286,21 @@ export const audioGenRouter = router({
         negativeTags: z.string().optional(),
         lyrics: z.string().max(3500).optional(),   // MiniMax only
         kieTempKey: z.string().max(256).optional(), // kie_suno_* only
+        // 客户端实时计算的点数预估（如 "20 cr"），仅供管理员日志参考。
+        estimatedCost: z.string().max(32).optional(),
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // 失败也计入管理员日志（带预估点数 + success:false），随后原样抛出。
+      const auditMusicFail = (err: unknown): never => {
+        writeAuditLog({ ctx, action: "audio_music", detail: {
+          model: input.model, prompt: truncate(input.prompt),
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: false, error: truncate(err instanceof Error ? err.message : String(err)),
+        } });
+        throw err;
+      };
       // kie Suno authenticates with its own key (temp > assigned > house) and
       // bypasses the Poyo whitelist; non-kie keeps the whitelist gate.
       if (isKieMusicModel(input.model)) {
@@ -1953,10 +2316,10 @@ export const audioGenRouter = router({
             instrumental: input.instrumental,
             negativeTags: input.negativeTags,
           });
-          writeAuditLog({ ctx, action: "audio_music", detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration } });
+          writeAuditLog({ ctx, action: "audio_music", detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration, ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}), success: true } });
           await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "kie", model: input.model, url: result.url, name: input.model });
           return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
-        });
+        }).catch(auditMusicFail);
       }
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
@@ -1986,11 +2349,11 @@ export const audioGenRouter = router({
         writeAuditLog({
           ctx,
           action: "audio_music",
-          detail: { model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
+          detail: { model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration, ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}), success: true },
         });
         await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "poyo", model, url: result.url, name: model });
         return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
-      });
+      }).catch(auditMusicFail);
     }),
 
   generateDubbing: protectedProcedure
@@ -2008,6 +2371,8 @@ export const audioGenRouter = router({
           "elevenlabs-v3-tts",
           // Local / self-hosted Gradio TTS (VoxCPM2 等), via customBaseUrl
           "voxcpm-local",
+          // kie.ai ElevenLabs TTS（自有 key 体系，见 kieTTS.ts）
+          "kie_elevenlabs_tts", "kie_elevenlabs_tts_ml", "kie_elevenlabs_v3",
           // Legacy aliases — accepted for backward compat with saved nodes and
           // normalized below (elevenlabs_v3→live Poyo; the rest→openai_tts_real)
           // so old payloads don't hit an opaque Zod validation error.
@@ -2032,15 +2397,19 @@ export const audioGenRouter = router({
         ditSteps: z.number().int().min(1).max(100).optional(),
         denoise: z.boolean().optional(),
         doNormalize: z.boolean().optional(),
+        kieTempKey: z.string().max(256).optional(), // kie_elevenlabs_* only
+        // 客户端实时计算的点数预估（如 "≈6 点"），仅供管理员日志参考。
+        estimatedCost: z.string().max(32).optional(),
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       // 本地 / 自托管 VoxCPM 走用户自己的 Gradio 服务、不消耗任何平台积分，
-      // 故对该模型放开白名单——任何已登录用户都可使用。其余 TTS（OpenAI /
-      // ElevenLabs）仍是计费的外部服务，白名单照常拦截。
+      // 故对该模型放开白名单——任何已登录用户都可使用。kie ElevenLabs 走 kie 自有 key
+      // 体系（resolveKieKey）绕平台白名单。其余 TTS（OpenAI/Poyo）白名单照常拦截。
       const isLocalGradio = input.model === "voxcpm-local";
-      if (!isLocalGradio) await assertWhitelisted(ctx);
+      const isKieTTSModel = isKieTTS(input.model);
+      if (!isLocalGradio && !isKieTTSModel) await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
 
       // Normalize legacy ids: elevenlabs_v3 → live Poyo TTS; the retired
@@ -2060,11 +2429,16 @@ export const audioGenRouter = router({
       const TEXT_LIMIT: Record<string, number> = {
         "elevenlabs-v3-tts":   5000,
         "voxcpm-local":        5000,
+        kie_elevenlabs_tts:    5000,
+        kie_elevenlabs_tts_ml: 5000,
+        kie_elevenlabs_v3:     5000,
         openai_tts_real:       4096,
         openai_tts_hd_real:    4096,
         openai_gpt4o_mini_tts: 4096,
       };
       const limit = TEXT_LIMIT[model] ?? 4096;
+      // kie ElevenLabs 走自有 key（临时 > 分配 > 公用）。
+      const kieTTSKey = isKieTTSModel ? (await resolveKieKey(ctx, input.kieTempKey)).key : undefined;
       if (input.text.length > limit) {
         throw new TRPCError({ code: "BAD_REQUEST", message: `${model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
       }
@@ -2086,6 +2460,13 @@ export const audioGenRouter = router({
               ditSteps: input.ditSteps,
               denoise: input.denoise,
               doNormalize: input.doNormalize,
+            })
+          : isKieTTSModel
+          ? await submitAndPollKieTTS({
+              model, apiKey: kieTTSKey!,
+              text: input.text, voice: input.voice,
+              stability: input.stability,
+              languageCode: input.languageCode,
             })
           : isPoyoTTS
           ? await submitAndPollPoyoTTS({
@@ -2112,18 +2493,92 @@ export const audioGenRouter = router({
             voice: input.voice ?? null,
             resultUrl: result.url,
             duration: result.duration ?? null,
+            ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+            success: true,
             ...(isPoyoTTS ? { stability: input.stability ?? null, timestamps: input.timestamps ?? false } : {}),
             ...(isGradioTTS ? { gradioBaseUrl: input.customBaseUrl ?? null } : {}),
           },
         });
-        const provider = isGradioTTS ? "gradio" : isPoyoTTS ? "poyo" : "openai";
+        const provider = isGradioTTS ? "gradio" : isKieTTSModel ? "kie" : isPoyoTTS ? "poyo" : "openai";
         await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider, model, url: result.url, name: model });
         return {
           url: result.url,
           duration: result.duration,
           timestampsUrl: isPoyoTTS ? (result as { timestampsUrl?: string }).timestampsUrl : undefined,
         };
+      }).catch((err: unknown) => {
+        // 失败也计入管理员日志（带预估点数 + success:false），随后原样抛出。
+        writeAuditLog({ ctx, action: "audio_dubbing", detail: {
+          model, text: truncate(input.text),
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: false, error: truncate(err instanceof Error ? err.message : String(err)),
+        } });
+        throw err;
       });
+    }),
+
+  // 文本→音效（ElevenLabs Sound Effects via kie 统一 jobs API）。kie 走自有 key
+  // 体系（临时 > 分配 > 公用），与 kie TTS 同口径绕平台白名单。
+  generateSFX: protectedProcedure
+    .input(
+      z.object({
+        model: z.enum(["kie_elevenlabs_sfx"]),
+        // 官方 schema：text ≤5000 字符；duration_seconds 0.5–22（步进 0.1，缺省自动）；
+        // loop 无缝循环；prompt_influence 0–1（默认 0.3）。
+        prompt: z.string().min(1).max(5000),
+        duration: z.number().min(0.5).max(22).optional(),
+        loop: z.boolean().optional(),
+        promptInfluence: z.number().min(0).max(1).optional(),
+        kieTempKey: z.string().max(256).optional(),
+        estimatedCost: z.string().max(32).optional(),
+        projectId: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      const { key } = await resolveKieKey(ctx, input.kieTempKey);
+      return dedupe("audioGen.generateSFX", ctx.user.id, input, async () => {
+        const result = await submitAndPollKieSFX({
+          apiKey: key, text: input.prompt,
+          durationSeconds: input.duration, loop: input.loop, promptInfluence: input.promptInfluence,
+        });
+        writeAuditLog({
+          ctx, action: "audio_sfx",
+          detail: {
+            model: KIE_SFX_MODEL, text: truncate(input.prompt),
+            duration: input.duration ?? null, loop: input.loop ?? false,
+            resultUrl: result.url,
+            ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+            success: true,
+          },
+        });
+        await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "kie", model: KIE_SFX_MODEL, url: result.url, name: "音效" });
+        return result;
+      }).catch((err: unknown) => {
+        writeAuditLog({ ctx, action: "audio_sfx", detail: {
+          model: KIE_SFX_MODEL, text: truncate(input.prompt),
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: false, error: truncate(err instanceof Error ? err.message : String(err)),
+        } });
+        throw err;
+      });
+    }),
+
+  // 多角色配音 casting：客户端按「角色名：台词」逐段不同音色 TTS 后，把同一镜的
+  // 多段音频拼接为一条镜级配音（本地 ffmpeg，不消耗 AI 积分，故不做白名单拦截）。
+  concatSegments: protectedProcedure
+    .input(
+      z.object({
+        urls: z.array(mediaUrlSchema).min(2).max(20),
+        projectId: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      for (const u of input.urls) guardUrl(u);
+      const result = await concatAudioSegments(input.urls);
+      await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "ffmpeg", model: null, url: result.url, name: "配音拼接（多角色）" });
+      return result;
     }),
 });
 
@@ -2227,6 +2682,8 @@ export const clipRouter = router({
       inputUrl: mediaUrlSchema,
       aggressiveness: z.enum(["low", "medium", "high"]).default("medium"),
       targetDuration: z.number().min(5).max(3600).optional(),
+      /** 镜头边界（秒，来自装配成片的 segStarts）：剪辑边界优先落在切点上（镜界保护）。 */
+      shotBoundaries: z.array(z.number().min(0)).max(60).optional(),
       model: z.string().optional(),
       projectId: z.number().optional(),
       nodeId: z.string().optional(),
@@ -2250,13 +2707,17 @@ export const clipRouter = router({
           ? `\n目标剪辑后总时长：约 ${input.targetDuration} 秒，请优先选取最有价值的片段使保留片段总时长接近此目标。`
           : "";
 
+        const bounds = (input.shotBoundaries ?? []).filter((b) => Number.isFinite(b) && b >= 0).sort((a, b) => a - b);
+        const boundsHint = bounds.length
+          ? `\n镜头边界（秒）：[${bounds.map((b) => b.toFixed(2)).join(", ")}]。这是成片的镜头切点：保留/移除片段的边界应尽量落在这些切点上，不要在镜头中间起切或收切（除非该镜头内部确有冗余需要剔除）。`
+          : "";
         const systemPrompt = `你是专业视频剪辑师。给定视频转录片段，决定哪些片段应该保留。
 移除标准（移除值越高越激进）：无意义停顿、重复内容、低信息密度片段、口误填充词（"嗯"、"呃"等）。
-当前移除激进度：${input.aggressiveness}（${Math.round(removeThreshold * 100)}% 截止阈值）。${targetHint}
+当前移除激进度：${input.aggressiveness}（${Math.round(removeThreshold * 100)}% 截止阈值）。${targetHint}${boundsHint}
 仅输出合法 JSON，无 markdown：{"keep":[{"start":0.5,"end":5.2},{"start":8.1,"end":15.0}]}`;
 
         const transcriptJson = JSON.stringify(segments.map((s) => ({ s: s.start, e: s.end, t: s.text, ns: s.no_speech_prob })));
-        const response = await invokeLLM({
+        const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: `片段列表（JSON）：\n${transcriptJson}` },
@@ -2269,7 +2730,18 @@ export const clipRouter = router({
         if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
         let parsed: { keep: Array<{ start: number; end: number }> };
         try { parsed = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
-        const keepSegments = Array.isArray(parsed.keep) ? parsed.keep.filter((seg) => typeof seg.start === "number" && typeof seg.end === "number" && seg.end > seg.start) : [];
+        let keepSegments = Array.isArray(parsed.keep) ? parsed.keep.filter((seg) => typeof seg.start === "number" && typeof seg.end === "number" && seg.end > seg.start) : [];
+        // 镜界保护（确定性，不靠 LLM 自觉）：剪辑边界落在切点 ±0.5s 内时吸附到切点，
+        // 避免在镜头边缘留下几帧残片或吃掉镜头开头。
+        if (bounds.length) {
+          const snap = (t: number) => {
+            for (const b of bounds) if (Math.abs(t - b) <= 0.5) return b;
+            return t;
+          };
+          keepSegments = keepSegments
+            .map((s) => ({ start: snap(s.start), end: snap(s.end) }))
+            .filter((s) => s.end > s.start);
+        }
         if (keepSegments.length === 0) throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "AI 未找到可保留片段，请调低激进度后重试" });
         const originalDuration = segments.length > 0 ? Math.max(...segments.map((s) => s.end)) : 0;
         const result = await smartCutVideo({ inputUrl: input.inputUrl, keepSegments });
@@ -2316,6 +2788,10 @@ export const mergeRouter = router({
         inputUrls: z.array(mediaUrlSchema).min(2).max(50),
         transition: z.enum(["none", "fade", "dissolve"]).optional(),
         transitionDuration: z.number().min(0.1).max(2.0).optional(),
+        // 装配端：逐切点转场（来自分镜镜头表；长度=段数-1）+ 逐段配音/音效轨（与段对位）
+        transitions: z.array(z.enum(["none", "fade", "dissolve", "wipe"])).max(49).optional(),
+        voiceUrls: z.array(mediaUrlSchema.nullable()).max(50).optional(),
+        sfxUrls: z.array(mediaUrlSchema.nullable()).max(50).optional(),
         bgMusicUrl: mediaUrlSchema.optional(),
         bgMusicVolume: z.number().min(0).max(1).optional(),
         projectId: z.number().optional(),
@@ -2326,9 +2802,11 @@ export const mergeRouter = router({
       // local ffmpeg, no third-party AI — not whitelist-gated
       for (const url of input.inputUrls) guardUrl(url);
       if (input.bgMusicUrl) guardUrl(input.bgMusicUrl);
+      for (const v of input.voiceUrls ?? []) if (v) guardUrl(v);
+      for (const v of input.sfxUrls ?? []) if (v) guardUrl(v);
       const result = await mergeVideos(input);
       await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "合并视频" });
-      return { url: result.url, duration: result.duration };
+      return { url: result.url, duration: result.duration, segStarts: result.segStarts };
     }),
 });
 
@@ -3079,7 +3557,7 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
         condense: `You are a professional script editor. Condense the given script to approximately 60% of its original length while preserving all key story beats, character names, plot points, and dramatic tension. Maintain the original writing style and language. Output ONLY the condensed text, nothing else.`,
         summarize: `You are a professional story analyst. Extract a compelling one-to-two sentence synopsis from the given script or story content. Capture the core conflict, main characters, setting, and emotional tone. If the input is in Chinese, respond in Chinese. Output ONLY the synopsis, no labels or extra text.`,
       };
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: systemPrompts[input.mode] },
           { role: "user" as const, content: input.text },
@@ -3101,13 +3579,13 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const system = `You are a professional translator and Chinese-dialect (topolect) localizer.
 Rewrite the user's text into the target form: "${input.target}".
 - If the target is a language, translate faithfully and naturally for spoken delivery.
 - If the target is a Chinese dialect/topolect (粤语/四川话/东北话/闽南语/上海话/陕西话/河南话/天津话/客家话/台湾腔 等), rewrite into that dialect's natural COLLOQUIAL written form — its characteristic vocabulary, particles and phrasing — suitable to be read aloud, NOT standard Mandarin.
 Preserve the original meaning, tone, proper nouns and numbers. Output ONLY the resulting text — no quotes, no labels, no notes.`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: system },
           { role: "user" as const, content: input.text },
@@ -3129,7 +3607,7 @@ Preserve the original meaning, tone, proper nouns and numbers. Output ONLY the r
         model: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       let absoluteUrl = input.imageUrl;
       try { absoluteUrl = await resolveToAbsoluteUrl(input.imageUrl); }
       catch (err) { console.warn("[analyzeImage] resolveToAbsoluteUrl failed:", err instanceof Error ? err.message : err); }
@@ -3137,7 +3615,7 @@ Preserve the original meaning, tone, proper nouns and numbers. Output ONLY the r
 Study the image and produce a single detailed prompt that could regenerate it.
 Cover: subject, composition, style/medium, lighting, color palette, mood, and notable details.
 Output ONLY the prompt as vivid, comma-separated English descriptive phrases — no preamble, no labels.`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [
           { role: "system" as const, content: system },
           {
@@ -3175,5 +3653,11 @@ export const configRouter = router({
       // public URL as the reference source when it probes alive. Off by default.
       preferUpstreamRefSource: settings.preferUpstreamRefSource,
     };
+  }),
+
+  // 管理员在后台禁用的模型 id 集合 —— 所有登录用户可读，前端据此从节点模型下拉里隐藏。
+  // 仅作显示门控；空数组（默认）= 全部模型可见，行为与未配置时一致。
+  modelToggles: protectedProcedure.query(async () => {
+    return { disabledModels: await getCachedDisabledModels() };
   }),
 });

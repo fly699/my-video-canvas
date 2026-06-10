@@ -7,7 +7,8 @@ import type { AIChatNodeData, ChatAttachment, NodeType } from "../../../../../sh
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Paperclip, ImageIcon, FileText, X, PictureInPicture2, ChevronsRight, GripHorizontal, Download, Layers, Slash } from "lucide-react";
-import { CHAT_MODELS, platformBadge } from "@/lib/models";
+import { CHAT_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
+import { useDisabledModels } from "@/lib/useDisabledModels";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
   // Convert basic markdown to safe HTML
@@ -64,6 +65,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     () => ((data.payload as typeof payload).messages ?? []).map(m => ({ ...m, _id: crypto.randomUUID() }))
   );
   const [model, setModel] = useState<string>(payload.model ?? "claude-sonnet-4-5-20250929");
+  const disabledModels = useDisabledModels();
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -351,6 +353,13 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     return cmd.wrap(rest.trim());
   };
 
+  /** 以编程方式写入输入框：优先用 NodeTextArea 暴露的 commitValue（聚焦时也即时生效），否则回退 setInput。 */
+  const insertInputText = (next: string) => {
+    const el = inputRef.current as (HTMLTextAreaElement & { commitValue?: (v: string) => void }) | null;
+    if (el?.commitValue) el.commitValue(next);
+    else setInput(next);
+  };
+
   const handleSend = () => {
     const msgRaw = input.trim();
     if ((!msgRaw && pendingAttachments.length === 0) || sendMutation.isPending) return;
@@ -381,8 +390,32 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     });
   };
 
+  // 键入「/」即视为在打 AI 命令：自动弹出命令菜单并按已输入文本过滤（与点「/」按钮一致）。
+  // 仅当输入以「/」开头且其后无空格（仍在打命令名）时触发。
+  const slashMatch = input.match(/^\/([^\s]*)$/);
+  const slashTyping = !!slashMatch;
+  const slashQuery = (slashMatch?.[1] ?? "").toLowerCase();
+  const filteredSlash = slashQuery
+    ? SLASH_COMMANDS.filter((c) => c.aliases.some((a) => a.toLowerCase().includes(slashQuery)) || c.label.toLowerCase().includes(slashQuery))
+    : SLASH_COMMANDS;
+  const slashMenuOpen = (showSlashMenu || slashTyping) && filteredSlash.length > 0;
+
+  /** 应用一个斜杠命令：去掉正在输入的「/命令」词，再以「/别名 + 剩余内容」写回输入框。 */
+  const applySlashCommand = (c: { aliases: string[] }) => {
+    const cur = inputRef.current?.value ?? input;
+    const rest = cur.replace(/^\/\S*\s*/, ""); // 去掉开头的「/命令」token（按钮场景无 / 前缀则原样保留）
+    insertInputText(`/${c.aliases[0]} ${rest}`.trim() + " ");
+    setShowSlashMenu(false);
+    inputRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    if (e.key === "Escape" && showSlashMenu) { setShowSlashMenu(false); return; }
+    if (e.key === "Enter" && !e.shiftKey) {
+      // 命令菜单开着（键入 / 触发）→ Enter 选中首个命令，而不是直接发送。
+      if (slashTyping && filteredSlash.length > 0) { e.preventDefault(); applySlashCommand(filteredSlash[0]); return; }
+      e.preventDefault(); handleSend();
+    }
   };
 
   // ── Attachment handling ─────────────────────────────────────────────────
@@ -682,9 +715,15 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 border: "1px solid var(--c-bd2)",
                 boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
                 minWidth: 200,
+                maxHeight: "min(60vh, 420px)",
+                overflowY: "auto",
               }}
             >
-              {CHAT_MODELS.filter((m) => !m.hidden).map((m) => (
+              {CHAT_MODELS
+                .filter((m) => !m.hidden && (!disabledModels.has(m.id) || m.id === model))
+                .slice()
+                .sort((a, b) => modelGroupOrder(a.provider) - modelGroupOrder(b.provider))
+                .map((m) => (
                 <button
                   key={m.id}
                   className="nodrag w-full flex items-center justify-between px-3 py-2 transition-all text-left"
@@ -702,7 +741,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                       {m.label}
                     </span>
                     {m.costNote && (
-                      <span style={{ fontSize: 8.5, color: "var(--c-t4)" }}>{m.costNote} 点/百万tokens</span>
+                      <span style={{ fontSize: 8.5, color: "var(--c-t3)", fontWeight: 600 }}>{m.costNote} 点/百万tokens</span>
                     )}
                   </div>
                   <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -921,7 +960,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           {/* Inject whole-canvas summary */}
           <button
             onClick={() => {
-              setInput((cur) => (cur.startsWith("/画布") ? cur : `/画布 ${cur}`).trimEnd() + " ");
+              const cur = inputRef.current?.value ?? input;
+              insertInputText((cur.startsWith("/画布") ? cur : `/画布 ${cur}`).trimEnd() + " ");
               inputRef.current?.focus();
             }}
             disabled={sendMutation.isPending}
@@ -933,6 +973,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           </button>
           <NodeTextArea
             ref={inputRef}
+            noSlash
             placeholder={pendingAttachments.length > 0 ? "添加说明（可选）" : "发送消息或粘贴图片… (Enter 发送 / Shift+Enter 换行)"}
             value={input}
             onValueChange={(v) => setInput(v)}
@@ -1060,7 +1101,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           </div>
 
           {/* Slash command picker popup */}
-          {showSlashMenu && (
+          {slashMenuOpen && (
             <div
               className="absolute left-3 right-3 bottom-full mb-1 rounded-xl overflow-hidden z-40 nodrag nopan nowheel"
               style={{
@@ -1071,18 +1112,15 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 overflowY: "auto",
               }}
             >
-              {SLASH_COMMANDS.map((c) => (
+              {filteredSlash.map((c, idx) => (
                 <button
                   key={c.id}
+                  // 键入 / 时高亮首项（Enter 选中），与「按 / 按钮」一致的命令列表。
                   className="nodrag w-full flex items-center gap-2 px-3 py-2 text-left transition-all"
-                  style={{ borderBottom: "1px solid var(--c-bd1)", cursor: "pointer" }}
-                  onClick={() => {
-                    setInput((cur) => `/${c.aliases[0]} ${cur}`.trim() + " ");
-                    setShowSlashMenu(false);
-                    inputRef.current?.focus();
-                  }}
+                  style={{ borderBottom: "1px solid var(--c-bd1)", cursor: "pointer", background: slashTyping && idx === 0 ? "var(--c-elevated)" : "transparent" }}
+                  onMouseDown={(e) => { e.preventDefault(); applySlashCommand(c); }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = slashTyping && idx === 0 ? "var(--c-elevated)" : "transparent"; }}
                 >
                   <span style={{ fontSize: 10, fontFamily: "monospace", color: accentColor, minWidth: 70 }}>/{c.aliases[0]}</span>
                   <span style={{ fontSize: 11, color: "var(--c-t2)", flex: 1 }}>{c.label}</span>
