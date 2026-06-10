@@ -770,6 +770,14 @@ const MODEL_CATEGORIES: ModelCat[] = [
     accent: "oklch(0.68 0.22 25)",
     models: VIDEO_MODELS.map((m) => ({ value: m.value, label: m.label, group: m.group })),
   },
+  {
+    key: "chat",
+    label: "聊天 AI 模型",
+    hint: "用于「聊天」里内建 AI 助手的对话（独立于 LLM 节点的开关，单独控制）",
+    accent: "oklch(0.70 0.18 200)",
+    // 键加 "chat:" 前缀，使聊天 AI 的模型可见性与 LLM 节点分组互不影响。
+    models: LLM_MODELS.filter((m) => !m.hidden).map((m) => ({ value: "chat:" + m.id, label: m.label, group: m.provider })),
+  },
 ];
 
 const ALL_MODEL_VALUES = MODEL_CATEGORIES.flatMap((c) => c.models.map((m) => m.value));

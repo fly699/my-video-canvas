@@ -31,7 +31,13 @@ import {
   getChatSettings,
   searchUsersForChat,
   getUserById,
+  getOrCreateAssistantUserId,
+  ASSISTANT_NAME,
 } from "../db";
+import { assertLLMAllowed } from "../_core/whitelist";
+import { invokeLLMWithKie } from "../_core/llmWithKie";
+import { extractTextContent } from "../_core/llm";
+import { isKieLLMModel } from "../_core/kieLLM";
 import type { ChatWireMessage, ChatFileRef } from "../../shared/types";
 import type { ConversationMessage } from "../../drizzle/schema";
 
@@ -242,6 +248,83 @@ export const chatRouter = router({
       await addChatMember(conv.id, input.targetUserId, "member");
       if (userBroadcaster) userBroadcaster(input.targetUserId, "conversation:created", { id: conv.id });
       return { id: conv.id };
+    }),
+
+  // 内建「AI 助手」的用户 id（前端据此判断某会话是否为 AI 对话）。确保该用户已种子化。
+  assistantUserId: protectedProcedure.query(async () => {
+    return { userId: await getOrCreateAssistantUserId() };
+  }),
+
+  // 打开（或新建）与 AI 助手的私聊会话 —— 复用 DM 机制。
+  openAssistant: protectedProcedure.mutation(async ({ ctx }) => {
+    const aiId = await getOrCreateAssistantUserId();
+    const key = dmKeyFor(ctx.user.id, aiId);
+    const existing = await getConversationByDmKey(key);
+    if (existing) {
+      await addChatMember(existing.id, ctx.user.id, "member");
+      return { id: existing.id, assistantUserId: aiId };
+    }
+    const conv = await createConversation({ type: "dm", mode: "server", dmKey: key, createdBy: ctx.user.id });
+    await addChatMember(conv.id, ctx.user.id, "member");
+    await addChatMember(conv.id, aiId, "member");
+    return { id: conv.id, assistantUserId: aiId };
+  }),
+
+  // 向 AI 助手发消息：落库用户消息并广播 → 调 LLM（受所有权限门控）→ 落库 AI 回复并广播。
+  // 仅允许在「与 AI 助手的私聊」里调用；其它会话用普通 sendMessage。
+  sendToAssistant: protectedProcedure
+    .input(z.object({
+      conversationId: z.number(),
+      content: z.string().min(1).max(8000),
+      model: z.string().max(64).optional(),
+      kieTempKey: z.string().max(256).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const aiId = await getOrCreateAssistantUserId();
+      const conv = await getConversationById(input.conversationId);
+      if (!conv || conv.type !== "dm") throw new TRPCError({ code: "NOT_FOUND" });
+      if (conv.mode !== "server") throw new TRPCError({ code: "BAD_REQUEST", message: "AI 助手仅支持服务器模式会话" });
+      if (!(await isChatMember(conv.id, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN" });
+      // 安全：该会话必须确实是「当前用户 ↔ AI 助手」的私聊，杜绝借此向任意会话注入 AI 消息。
+      if (conv.dmKey !== dmKeyFor(ctx.user.id, aiId)) throw new TRPCError({ code: "FORBIDDEN", message: "非 AI 助手会话" });
+      if (await isChatBanned(ctx.user.id, conv.id)) throw new TRPCError({ code: "FORBIDDEN", message: "你已被封禁" });
+
+      // 权限门控：kie 模型走自有 key 体系（resolveKieKey 内含权限校验）；其余 LLM 受白名单/LLM 门控。
+      if (!isKieLLMModel(input.model)) await assertLLMAllowed(ctx);
+
+      // 1) 落库并广播用户消息
+      const userMsg = await insertConversationMessage({
+        conversationId: conv.id, senderId: ctx.user.id,
+        senderName: ctx.user.name ?? `用户${ctx.user.id}`, content: input.content,
+      });
+      if (!userMsg) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      if (broadcaster) broadcaster(conv.id, rowToWire(userMsg));
+
+      // 2) 取最近历史构造对话上下文（AI 的消息=assistant，其余=user），上限 20 条
+      const history = (await getConversationMessages(conv.id, { limit: 20 })).slice().reverse();
+      const llmMessages = [
+        { role: "system" as const, content: "你是内嵌在团队协作工具里的 AI 助手，用简洁、专业、友好的中文回答用户的问题，可协助创作、答疑、润色等。" },
+        ...history.map((m) => ({
+          role: (m.senderId === aiId ? "assistant" : "user") as "assistant" | "user",
+          content: m.content,
+        })),
+      ];
+
+      // 3) 调 LLM
+      let reply: string;
+      try {
+        const resp = await invokeLLMWithKie(ctx, { messages: llmMessages, model: input.model }, input.kieTempKey);
+        reply = extractTextContent(resp).trim() || "（模型未返回内容）";
+      } catch (err) {
+        reply = `⚠️ AI 回复失败：${err instanceof Error ? err.message : String(err)}`;
+      }
+
+      // 4) 落库并广播 AI 回复
+      const aiMsg = await insertConversationMessage({
+        conversationId: conv.id, senderId: aiId, senderName: ASSISTANT_NAME, content: reply,
+      });
+      if (aiMsg && broadcaster) broadcaster(conv.id, rowToWire(aiMsg));
+      return aiMsg ? rowToWire(aiMsg) : null;
     }),
 
   inviteToRoom: protectedProcedure
