@@ -35,6 +35,10 @@ export interface ApplyResult {
   updated: number;
   deleted: number;
   failures: { index: number; op: string; reason: string }[];
+  /** 本批操作实际触及的真实节点 id（create 的新节点 / update 目标 / connect 的下游
+   *  target）。自愈闭环用它把重跑范围收窄到「失败节点+本次修复涉及节点」，避免
+   *  全量重跑已成功节点烧钱。 */
+  touchedIds: string[];
 }
 
 const COMFY_NODE_TYPES = new Set<string>(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
@@ -77,7 +81,7 @@ export function applyAgentOperations(
   // would create a dangling edge, and an illegal pairing would bypass the rules.
   const liveIds = new Set(store.nodes.map((n) => n.id));
   const typeById = new Map<string, NodeType>(store.nodes.map((n) => [n.id, n.data.nodeType as NodeType]));
-  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, failures: [] };
+  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, failures: [], touchedIds: [] };
   const fail = (index: number, op: AgentOperation, reason: string) => {
     op.status = "failed"; op.error = reason;
     res.failures.push({ index, op: op.op, reason });
@@ -156,6 +160,7 @@ export function applyAgentOperations(
             y: anchor.y + Math.floor(createdIdx / 3) * 480,
           };
           const node = store.addNode(op.nodeType as NodeType, pos);
+          res.touchedIds.push(node.id);
           if (op.tempId) idMap.set(op.tempId, node.id);
           liveIds.add(node.id);
           typeById.set(node.id, op.nodeType as NodeType);
@@ -186,6 +191,7 @@ export function applyAgentOperations(
           const st = typeById.get(source), tt = typeById.get(target);
           if (st && tt && !isConnectionValid(st, tt)) { fail(index, op, `不允许的连接：${st} → ${tt}`); return; }
           store.onConnect({ source, target, sourceHandle: op.sourceHandle ?? "output", targetHandle: op.targetHandle ?? "input" });
+          res.touchedIds.push(target); // 补了输入连线的下游节点需要重跑
           op.status = "applied";
           res.connected++;
         } else if (op.op === "update") {
@@ -204,6 +210,7 @@ export function applyAgentOperations(
           }
           op.status = "applied";
           res.updated++;
+          res.touchedIds.push(target);
         } else if (op.op === "delete") {
           const target = resolve(op.targetRef);
           if (!target) { fail(index, op, `要删除的节点未找到（${op.targetRef}）`); return; }
@@ -218,6 +225,7 @@ export function applyAgentOperations(
     // Wrap each planned scene's shots in a 「场景」group container (behind nodes).
     for (const box of sceneBoxes) store.addGroupBox(box, box.title);
   });
+  res.touchedIds = Array.from(new Set(res.touchedIds));
   return res;
 }
 

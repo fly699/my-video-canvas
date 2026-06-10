@@ -87,3 +87,20 @@ describe("buildGraphSummary failure context", () => {
     expect(byId.get(ok.id)?.error).toBeUndefined(); // 仅 failed 才带，避免陈旧错误误导
   });
 });
+
+describe("applyAgentOperations touchedIds（自愈收窄重跑范围）", () => {
+  it("收集 create 新节点、update 目标与 connect 下游，并去重", () => {
+    const store = useCanvasStore.getState();
+    const existing = store.addNode("video_task", { x: 0, y: 0 });
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "prompt", tempId: "p1", payload: { positivePrompt: "x" } },
+      { op: "update", targetRef: existing.id, payload: { prompt: "fixed" } },
+      { op: "connect", sourceRef: "p1", targetRef: existing.id }, // 与 update 同目标 → 去重
+    ];
+    const r = applyAgentOperations(ops, { x: 0, y: 0 });
+    expect(r.failures).toEqual([]);
+    const created = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "prompt")!;
+    expect(new Set(r.touchedIds)).toEqual(new Set([created.id, existing.id]));
+    expect(r.touchedIds.length).toBe(2); // existing.id 不重复
+  });
+});
