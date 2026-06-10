@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useCanvasStore } from "../hooks/useCanvasStore";
-import { applyAgentOperations } from "./agentApply";
+import { applyAgentOperations, buildGraphSummary } from "./agentApply";
 import type { AgentOperation } from "../../../shared/types";
 
 // Phase A: when create ops carry sceneGroup, the apply layer lays each scene out
@@ -67,5 +67,23 @@ describe("applyAgentOperations storyboard promptText backstop", () => {
     applyAgentOperations(ops, { x: 0, y: 0 });
     const sb = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "storyboard")!;
     expect((sb.data.payload as { promptText?: string }).promptText).toBe("neon-lit rainy street, cinematic");
+  });
+});
+
+describe("buildGraphSummary failure context", () => {
+  it("includes errorMessage (clipped) for failed nodes so self-heal can target the root cause", () => {
+    const store = useCanvasStore.getState();
+    const n = store.addNode("comfyui_image", { x: 0, y: 0 });
+    store.updateNodeData(n.id, { status: "failed", errorMessage: "未配置 ComfyUI 服务器地址，请在节点中填写 customBaseUrl" });
+    const long = store.addNode("video_task", { x: 0, y: 100 });
+    store.updateNodeData(long.id, { status: "failed", errorMessage: "x".repeat(200) });
+    const ok = store.addNode("image_gen", { x: 0, y: 200 });
+    store.updateNodeData(ok.id, { status: "success", errorMessage: "陈旧的上次错误" });
+
+    const parsed = JSON.parse(buildGraphSummary("none")) as { nodes: Array<{ id: string; status?: string; error?: string }> };
+    const byId = new Map(parsed.nodes.map((x) => [x.id, x]));
+    expect(byId.get(n.id)?.error).toContain("未配置 ComfyUI 服务器地址");
+    expect(byId.get(long.id)?.error!.length).toBeLessThanOrEqual(161); // 160 + 省略号
+    expect(byId.get(ok.id)?.error).toBeUndefined(); // 仅 failed 才带，避免陈旧错误误导
   });
 });

@@ -16,7 +16,7 @@ import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
 import { AGENT_RECIPES, buildRecipeOps, recipeDefaultConfig, type AgentRecipe, type RecipeConfig } from "@/lib/agentRecipes";
-import { runPreflight } from "@/lib/preflight";
+import { runPreflight, buildSelfHealInstruction } from "@/lib/preflight";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 
 interface Props {
@@ -342,8 +342,17 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     void runChat(userMsg.content, msgs.slice(0, failedIdx));
   };
 
-  // 运行自愈：让智能体检查画布上运行失败/缺参的节点并给出修复方案（节点状态已随 graphSummary 提供）。
-  const handleSelfHeal = () => handleSend("请检查当前画布上运行失败或缺少必要参数的节点，并用 update / connect 操作给出修复方案（修正参数、补全缺失连接或参考图）。若无问题请说明。");
+  // 运行自愈：先确定性体检拿到具体问题清单（节点 id + 问题 + 失败原因），再让智能体
+  // 针对清单逐项精准修复——不让 LLM 自己从摘要里猜哪里坏了。失败原因已随 graphSummary
+  // 的 error 字段提供，这里额外点名失败节点，把修复目标锁死。
+  const handleSelfHeal = () => {
+    const { nodes, edges } = useCanvasStore.getState();
+    const pfNodes = nodes
+      .filter((n) => n.id !== id)
+      .map((n) => ({ id: n.id, data: { nodeType: n.data.nodeType, title: n.data.title, payload: n.data.payload as Record<string, unknown> } }));
+    const r = runPreflight(pfNodes, edges.map((e) => ({ source: e.source, target: e.target })));
+    handleSend(buildSelfHealInstruction(pfNodes, r.issues));
+  };
 
   // 运行前体检：扫描整张画布的结构问题与全画布成本预估，汇报为一条消息。
   const handlePreflight = () => {

@@ -252,6 +252,11 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       for (const f of fields) if (p[f] != null && p[f] !== "") kv[f] = clip(p[f]);
       // Surface generation status so the agent knows what's done/failed.
       if (typeof p.status === "string" && p.status !== "idle") kv.status = p.status;
+      // 失败原因直达：自愈要对症下药，光知道 failed 不知道为什么修不准。错误文本
+      // 用更宽的截断（根因常在 60 字之后，如 ComfyUI 返回的节点级报错）。
+      if (p.status === "failed" && typeof p.errorMessage === "string" && p.errorMessage.trim()) {
+        kv.error = p.errorMessage.length > 160 ? p.errorMessage.slice(0, 160) + "…" : p.errorMessage;
+      }
       return { id: n.id, type, title: n.data.title, ...kv };
     });
   const edgeLines = edges
