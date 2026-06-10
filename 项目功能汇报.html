@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 视频画布 · 项目功能汇报</title>
+<style>
+:root{
+  --bg:#070b16; --bg2:#0b1120; --card:#111a2e; --card2:#16203a;
+  --bd:#1e2a45; --bd2:#28375c;
+  --t1:#eef2fb; --t2:#aab6d4; --t3:#7286b0; --t4:#4a5a82;
+  --cyan:#22d3ee; --violet:#a855f7; --pink:#f43f9d; --green:#34d399; --amber:#fbbf24; --blue:#3b82f6; --red:#fb7185;
+  --grad:linear-gradient(135deg,#22d3ee 0%,#a855f7 55%,#f43f9d 100%);
+  --grad2:linear-gradient(135deg,#3b82f6,#a855f7);
+  --shadow:0 18px 50px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+::selection{background:rgba(168,85,247,.4)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:#3a4d7a}
+.glow{position:fixed;border-radius:50%;filter:blur(120px);opacity:.22;z-index:0;pointer-events:none}
+.glow.a{width:600px;height:600px;background:#22d3ee;top:-200px;left:-150px}
+.glow.b{width:560px;height:560px;background:#a855f7;top:30%;right:-180px}
+.glow.c{width:520px;height:520px;background:#f43f9d;bottom:-150px;left:25%}
+nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(18px);background:rgba(7,11,22,.78);border-bottom:1px solid var(--bd)}
+.nav-in{max-width:1240px;margin:0 auto;padding:13px 26px;display:flex;align-items:center;gap:22px}
+.brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:16px;letter-spacing:.3px;white-space:nowrap}
+.brand .logo{width:34px;height:34px;border-radius:9px;background:var(--grad);display:grid;place-items:center;font-size:18px;box-shadow:0 6px 18px rgba(168,85,247,.4)}
+.nav-links{display:flex;gap:3px;margin-left:auto;flex-wrap:wrap}
+.nav-links a{padding:7px 12px;border-radius:9px;font-size:12.5px;color:var(--t2);transition:.2s;font-weight:600}
+.nav-links a:hover{color:#fff;background:var(--card2)}
+.nav-links a.active{color:#fff;background:linear-gradient(135deg,rgba(34,211,238,.18),rgba(168,85,247,.18));border:1px solid var(--bd2)}
+@media(max-width:980px){.nav-links{display:none}}
+.wrap{max-width:1240px;margin:0 auto;padding:0 26px;position:relative;z-index:2}
+section{padding:74px 0;position:relative}
+.sec-tag{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:30px;background:var(--card2);border:1px solid var(--bd2);font-size:12.5px;color:var(--cyan);font-weight:700;letter-spacing:.5px;margin-bottom:18px}
+.sec-h{font-size:clamp(26px,3.4vw,40px);font-weight:850;letter-spacing:-.5px;line-height:1.2;margin-bottom:14px}
+.sec-h .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sec-sub{color:var(--t2);font-size:15.5px;max-width:820px;margin-bottom:42px}
+.hero{padding:78px 0 56px;text-align:center}
+.hero h1{font-size:clamp(34px,6vw,68px);font-weight:900;letter-spacing:-1.5px;line-height:1.06;margin-bottom:22px}
+.hero h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .lead{font-size:clamp(15px,2vw,20px);color:var(--t2);max-width:820px;margin:0 auto 30px}
+.badges{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:40px}
+.badge{padding:8px 16px;border-radius:30px;background:var(--card);border:1px solid var(--bd2);font-size:13px;color:var(--t1);font-weight:600;display:inline-flex;gap:7px;align-items:center}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
+.hero-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;max-width:980px;margin:0 auto}
+.hstat{background:linear-gradient(160deg,var(--card),var(--bg2));border:1px solid var(--bd);border-radius:16px;padding:22px 12px;position:relative;overflow:hidden}
+.hstat::before{content:"";position:absolute;inset:0;background:var(--grad);opacity:.06}
+.hstat .num{font-size:clamp(24px,3.6vw,40px);font-weight:900;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+.hstat .lab{font-size:12.5px;color:var(--t2);margin-top:8px;font-weight:600}
+@media(max-width:760px){.hero-stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:460px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+.arch{display:flex;flex-direction:column;gap:14px}
+.layer{background:linear-gradient(135deg,var(--card),var(--bg2));border:1px solid var(--bd);border-radius:18px;padding:20px 22px;position:relative;transition:.3s}
+.layer:hover{border-color:var(--bd2);transform:translateX(6px)}
+.layer .lh{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.layer .lh .ic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:19px;flex-shrink:0}
+.layer .lh h3{font-size:17px;font-weight:800}
+.layer .lh .tag{margin-left:auto;font-size:11.5px;color:var(--t3);font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.chips{display:flex;flex-wrap:wrap;gap:9px}
+.chip{padding:7px 13px;border-radius:9px;background:var(--card2);border:1px solid var(--bd);font-size:13px;color:var(--t1);font-weight:600;transition:.2s}
+.chip:hover{border-color:var(--cyan);color:var(--cyan);transform:translateY(-2px)}
+.arch-flow{text-align:center;color:var(--t4);font-size:22px;margin:-4px 0}
+.grid{display:grid;gap:18px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:980px){.g3,.g4{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.g2,.g3,.g4{grid-template-columns:1fr}}
+.card{background:linear-gradient(160deg,var(--card),var(--bg2));border:1px solid var(--bd);border-radius:16px;padding:22px;transition:.3s;position:relative;overflow:hidden}
+.card:hover{transform:translateY(-5px);border-color:var(--bd2);box-shadow:var(--shadow)}
+.card .ic{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:23px;margin-bottom:15px}
+.card h4{font-size:16.5px;font-weight:800;margin-bottom:9px}
+.card p{font-size:13.5px;color:var(--t2)}
+.card .feat{margin-top:13px;display:flex;flex-direction:column;gap:6px}
+.card .feat span{font-size:12.7px;color:var(--t3);display:flex;gap:8px;align-items:flex-start}
+.card .feat span::before{content:"▹";color:var(--cyan);flex-shrink:0}
+.ic-cyan{background:rgba(34,211,238,.13);color:var(--cyan)}
+.ic-violet{background:rgba(168,85,247,.14);color:var(--violet)}
+.ic-pink{background:rgba(244,63,157,.14);color:var(--pink)}
+.ic-green{background:rgba(52,211,153,.13);color:var(--green)}
+.ic-amber{background:rgba(251,191,36,.14);color:var(--amber)}
+.ic-blue{background:rgba(59,130,246,.14);color:var(--blue)}
+.ic-red{background:rgba(251,113,133,.14);color:var(--red)}
+.acc{display:flex;flex-direction:column;gap:13px}
+.acc-item{background:linear-gradient(160deg,var(--card),var(--bg2));border:1px solid var(--bd);border-radius:16px;overflow:hidden;transition:.3s}
+.acc-item.open{border-color:var(--bd2);box-shadow:var(--shadow)}
+.acc-head{padding:19px 22px;display:flex;align-items:center;gap:15px;cursor:pointer;user-select:none}
+.acc-head .ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:22px;flex-shrink:0}
+.acc-head .tt{flex:1;min-width:0}
+.acc-head .tt h3{font-size:17px;font-weight:800}
+.acc-head .tt p{font-size:12.8px;color:var(--t2);margin-top:3px}
+.acc-head .num-b{font-size:12px;font-weight:800;color:var(--violet);background:rgba(168,85,247,.12);padding:4px 11px;border-radius:20px;border:1px solid rgba(168,85,247,.25);white-space:nowrap}
+.acc-head .arr{font-size:16px;color:var(--t3);transition:.3s;margin-left:6px}
+.acc-item.open .arr{transform:rotate(180deg);color:var(--cyan)}
+.acc-item.feat-hot{border-color:rgba(244,63,157,.3)}
+.acc-body{max-height:0;overflow:hidden;transition:max-height .5s ease}
+.acc-inner{padding:4px 22px 24px 22px}
+.acc-inner .divider{height:1px;background:var(--bd);margin:0 0 18px}
+.fgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(max-width:680px){.fgrid{grid-template-columns:1fr}}
+.fitem{background:var(--card2);border:1px solid var(--bd);border-radius:11px;padding:13px 15px;transition:.2s}
+.fitem:hover{border-color:var(--bd2);transform:translateY(-2px)}
+.fitem b{font-size:14px;color:var(--t1);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.fitem b i{font-style:normal}
+.fitem small{display:block;color:var(--t3);font-size:12.3px;margin-top:5px;padding-left:24px}
+.star{color:var(--amber);font-size:11px;font-weight:800}
+.tabs{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:26px}
+.tab{padding:11px 20px;border-radius:11px;background:var(--card);border:1px solid var(--bd);font-size:14px;font-weight:700;color:var(--t2);cursor:pointer;transition:.2s;display:flex;gap:9px;align-items:center}
+.tab:hover{color:#fff;border-color:var(--bd2)}
+.tab.active{color:#fff;background:var(--grad2);border-color:transparent;box-shadow:0 8px 22px rgba(168,85,247,.3)}
+.tab .c{font-size:11.5px;background:rgba(255,255,255,.16);padding:2px 8px;border-radius:20px;font-weight:800}
+.panel{display:none;animation:fade .4s}
+.panel.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.vendor{margin-bottom:18px}
+.vendor h5{font-size:13px;font-weight:800;color:var(--cyan);margin-bottom:11px;display:flex;align-items:center;gap:9px;letter-spacing:.4px}
+.vendor h5 .ln{flex:1;height:1px;background:var(--bd)}
+.mgrid{display:flex;flex-wrap:wrap;gap:9px}
+.model{padding:8px 14px;border-radius:9px;background:var(--card);border:1px solid var(--bd);font-size:13px;color:var(--t1);font-weight:600;transition:.2s}
+.model:hover{transform:translateY(-2px);border-color:var(--violet);color:#fff;box-shadow:0 6px 16px rgba(168,85,247,.2)}
+.model.hot{border-color:rgba(244,63,157,.4)}
+.model.hot::after{content:"NEW";font-size:9px;color:var(--pink);font-weight:800;margin-left:7px;vertical-align:super}
+.spot{background:linear-gradient(135deg,rgba(34,211,238,.07),rgba(168,85,247,.07));border:1px solid var(--bd2);border-radius:20px;padding:28px;position:relative;overflow:hidden}
+.spot::before{content:"";position:absolute;top:-60px;right:-60px;width:200px;height:200px;background:var(--grad);opacity:.13;border-radius:50%;filter:blur(50px)}
+.spot .k{font-size:30px;margin-bottom:14px}
+.spot h4{font-size:18px;font-weight:850;margin-bottom:10px}
+.spot h4 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.spot p{font-size:13.6px;color:var(--t2)}
+.spot ul{margin-top:13px;list-style:none;display:flex;flex-direction:column;gap:7px}
+.spot ul li{font-size:12.8px;color:var(--t3);padding-left:22px;position:relative}
+.spot ul li::before{content:"✦";position:absolute;left:0;color:var(--violet)}
+.flowmap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:26px 18px}
+.fnode{padding:12px 17px;border-radius:11px;border:1px solid var(--bd2);font-size:13px;font-weight:700;white-space:nowrap;background:var(--card)}
+.fnode.s{border-color:var(--cyan);color:var(--cyan)}
+.fnode.g{border-color:var(--violet);color:var(--violet)}
+.fnode.o{border-color:var(--pink);color:var(--pink)}
+.farr{color:var(--t4);font-size:18px}
+.deploy{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:820px){.deploy{grid-template-columns:1fr}}
+/* 防护层 */
+.shield{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:8px}
+@media(max-width:880px){.shield{grid-template-columns:repeat(2,1fr)}}
+.slayer{background:linear-gradient(160deg,rgba(52,211,153,.06),var(--bg2));border:1px solid var(--bd);border-radius:14px;padding:16px;text-align:center;transition:.3s}
+.slayer:hover{transform:translateY(-4px);border-color:rgba(52,211,153,.4)}
+.slayer .e{font-size:24px;margin-bottom:8px}
+.slayer b{font-size:13.5px;display:block;margin-bottom:4px}
+.slayer small{font-size:11.8px;color:var(--t3)}
+footer{border-top:1px solid var(--bd);padding:48px 0 60px;margin-top:30px;text-align:center}
+footer .f-h{font-size:20px;font-weight:850;margin-bottom:10px}
+footer .f-h .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+footer p{color:var(--t3);font-size:13.5px;max-width:680px;margin:0 auto}
+footer .tech{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:24px}
+footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1px solid var(--bd);padding:6px 13px;border-radius:8px;font-weight:600}
+.reveal{opacity:0;transform:translateY(28px);transition:.7s cubic-bezier(.2,.7,.2,1)}
+.reveal.show{opacity:1;transform:none}
+.tcenter{text-align:center}
+/* KingTai 品牌 LOGO + 防泄露身份水印 */
+.kt-defs{position:absolute;width:0;height:0;overflow:hidden}
+.kt-mark{display:inline-block;vertical-align:middle}
+.brand .logo{background:transparent!important;box-shadow:none!important;width:38px;height:38px;padding:0}
+.wm{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.05;background-repeat:repeat;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='340' height='200'><text x='10' y='110' fill='white' font-size='17' font-family='sans-serif' font-weight='700' transform='rotate(-28 170 100)'>KingTai · 金泰智算 · 机密</text></svg>")}
+.hero-logo{width:124px;height:106px;margin:0 auto 18px;display:block;filter:drop-shadow(0 10px 30px rgba(207,163,94,.3))}
+.foot-logo{width:120px;height:102px;margin:0 auto 14px;display:block;opacity:.95}
+.confid{display:inline-flex;align-items:center;gap:7px;padding:5px 13px;border-radius:30px;background:rgba(251,113,133,.1);border:1px solid rgba(251,113,133,.3);font-size:11.5px;color:var(--red);font-weight:700;letter-spacing:.5px;margin-top:18px}
+</style>
+</head>
+<body>
+<div class="glow a"></div><div class="glow b"></div><div class="glow c"></div>
+<div class="wm"></div>
+
+<!-- KingTai 金泰智算 品牌 LOGO（SVG symbol，多处复用）-->
+<svg class="kt-defs" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="kt-goldGradient" x1="0%" y1="100%" x2="0%" y2="0%"><stop offset="0%" stop-color="#8a6b3f"/><stop offset="30%" stop-color="#cfa35e"/><stop offset="70%" stop-color="#fdf0b0"/><stop offset="100%" stop-color="#ffffff"/></linearGradient>
+    <linearGradient id="kt-silverGradient" x1="0%" y1="100%" x2="0%" y2="0%"><stop offset="0%" stop-color="#475569"/><stop offset="50%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#f1f5f9"/></linearGradient>
+    <filter id="kt-textShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.85"/></filter>
+    <filter id="kt-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3" result="b"/><feComposite in="SourceGraphic" in2="b" operator="over"/></filter>
+    <!-- 全标识（喷泉 + 文字）-->
+    <symbol id="kt-logo" viewBox="0 0 400 340">
+      <g transform="translate(0,-10)">
+        <path d="M 200,160 C 180,190 150,150 100,60" stroke="url(#kt-silverGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 170,200 120,160 60,50" stroke="url(#kt-goldGradient)" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M 200,160 C 160,210 100,170 20,60" stroke="url(#kt-silverGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 150,220 70,180 10,90" stroke="url(#kt-goldGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 140,230 50,190 5,120" stroke="url(#kt-silverGradient)" stroke-width="1" fill="none" stroke-linecap="round"/><path d="M 200,160 C 220,190 250,150 300,60" stroke="url(#kt-silverGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 230,200 280,160 340,50" stroke="url(#kt-goldGradient)" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M 200,160 C 240,210 300,170 380,60" stroke="url(#kt-silverGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 250,220 330,180 390,90" stroke="url(#kt-goldGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 260,230 350,190 395,120" stroke="url(#kt-silverGradient)" stroke-width="1" fill="none" stroke-linecap="round"/>
+        <path d="M 192,160 L 192,60" stroke="url(#kt-silverGradient)" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M 208,160 L 208,60" stroke="url(#kt-silverGradient)" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M 184,160 L 184,85" stroke="url(#kt-goldGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 216,160 L 216,85" stroke="url(#kt-goldGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M 200,160 L 200,40" stroke="url(#kt-goldGradient)" stroke-width="4" fill="none"/><polygon points="200,20 195,45 205,45" fill="url(#kt-goldGradient)" filter="url(#kt-glow)"/><polygon points="200,10 197,25 200,30 203,25" fill="#fff" filter="url(#kt-glow)"/>
+        <g fill="#fdf0b0" filter="url(#kt-glow)"><circle cx="60" cy="50" r="1.5"/><circle cx="100" cy="60" r="1.5"/><circle cx="20" cy="60" r="1.5"/><circle cx="340" cy="50" r="1.5"/><circle cx="300" cy="60" r="1.5"/><circle cx="380" cy="60" r="1.5"/></g>
+      </g>
+      <text x="200" y="225" fill="url(#kt-goldGradient)" filter="url(#kt-textShadow)" font-size="60" font-weight="900" text-anchor="middle" style="font-family:system-ui,sans-serif;letter-spacing:2px">KingTai</text>
+      <text x="200" y="285" fill="#f8fafc" filter="url(#kt-textShadow)" font-size="56" font-weight="900" text-anchor="middle" style="font-family:system-ui,sans-serif;letter-spacing:6px">金泰智算</text>
+      <text x="200" y="315" fill="url(#kt-goldGradient)" filter="url(#kt-textShadow)" font-size="18" font-weight="bold" text-anchor="middle" style="font-family:system-ui,sans-serif;letter-spacing:4px">AI Computing</text>
+    </symbol>
+    <!-- 标记（仅喷泉，用于导航小图标）-->
+    <symbol id="kt-mark" viewBox="0 5 400 165">
+      <g transform="translate(0,-10)">
+        <path d="M 200,160 C 170,200 120,160 60,50" stroke="url(#kt-goldGradient)" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M 200,160 C 160,210 100,170 20,60" stroke="url(#kt-silverGradient)" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M 200,160 C 230,200 280,160 340,50" stroke="url(#kt-goldGradient)" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M 200,160 C 240,210 300,170 380,60" stroke="url(#kt-silverGradient)" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <path d="M 184,160 L 184,85" stroke="url(#kt-goldGradient)" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M 216,160 L 216,85" stroke="url(#kt-goldGradient)" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <path d="M 200,160 L 200,40" stroke="url(#kt-goldGradient)" stroke-width="7" fill="none"/><polygon points="200,18 193,46 207,46" fill="url(#kt-goldGradient)" filter="url(#kt-glow)"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<nav>
+  <div class="nav-in">
+    <div class="brand"><span class="logo"><svg class="kt-mark" width="38" height="22"><use href="#kt-mark"/></svg></span><span>AI 视频画布 <span style="color:var(--t3);font-weight:600">| 金泰智算 · 智能创作平台</span></span></div>
+    <div class="nav-links">
+      <a href="#overview" class="active">概览</a>
+      <a href="#arch">系统架构</a>
+      <a href="#canvas">画布编排</a>
+      <a href="#models">AI 模型</a>
+      <a href="#comfy">ComfyUI 算力</a>
+      <a href="#modules">功能模块</a>
+      <a href="#security">安全防护</a>
+      <a href="#spotlight">特色亮点</a>
+      <a href="#private">私有定制</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="wrap hero" id="overview">
+  <div class="reveal show">
+    <svg class="hero-logo"><use href="#kt-logo"/></svg>
+    <div class="badge" style="margin-bottom:24px"><span class="dot"></span>企业级 · 私有化部署 · 全栈自主可控 · 数据不出域</div>
+    <h1>一张画布，编排<span class="g">全链路 AI 视频创作</span></h1>
+    <p class="lead">面向专业影视与营销内容生产的节点式 AI 创作中枢。从<b>脚本、分镜、角色</b>到<b>图像、视频、配音、剪辑成片</b>，将 6 大 AI 服务商、140+ 模型、27 类创作节点与<b>自建 ComfyUI 算力</b>汇聚于同一画布——<b>所见即所得、开闭互补、可控可信、私有定制</b>。</p>
+    <div class="badges">
+      <span class="badge">⚛️ React + Vite</span>
+      <span class="badge">🔗 tRPC v11 端到端类型安全</span>
+      <span class="badge">🗄️ MySQL · Drizzle ORM</span>
+      <span class="badge">🔐 OAuth + 邮箱密码双认证</span>
+      <span class="badge">🛡️ 13 轮安全审查 · 纵深防护</span>
+    </div>
+    <div class="confid">🔒 KingTai 金泰智算 出品 · 内部资料 · 身份水印溯源保护</div>
+  </div>
+  <div class="hero-stats reveal">
+    <div class="hstat"><div class="num" data-n="27">0</div><div class="lab">创作节点类型</div></div>
+    <div class="hstat"><div class="num" data-n="140" data-suf="+">0</div><div class="lab">接入 AI 模型</div></div>
+    <div class="hstat"><div class="num" data-n="6">0</div><div class="lab">AI 服务商聚合</div></div>
+    <div class="hstat"><div class="num" data-n="13">0</div><div class="lab">核心功能模块</div></div>
+    <div class="hstat"><div class="num" data-n="28">0</div><div class="lab">类操作审计</div></div>
+  </div>
+</header>
+
+<!-- ARCH -->
+<section id="arch" class="wrap">
+  <div class="reveal"><div class="sec-tag">🏗️ 系统架构</div>
+  <h2 class="sec-h">五层纵深架构，<span class="g">主干清晰 · 层次分明 · 安全贯通</span></h2>
+  <p class="sec-sub">交互层负责可视化编排与实时协作；编排层把创意转译为任务图与提示词；AI 能力层聚合多服务商模型并统一密钥与配额；算力层连通自建 ComfyUI 与弹性云、实现开闭互补；安全与基础设施层为全链路提供数据不出域、权限门控、审计留痕与私有部署支撑。各层职责单一、解耦演进、纵深防护。</p></div>
+  <div class="arch reveal">
+    <div class="layer">
+      <div class="lh"><span class="ic ic-cyan">🖥️</span><h3>交互层 · 可视化创作前端</h3><span class="tag">Presentation</span></div>
+      <div class="chips"><span class="chip">节点式画布（React Flow）</span><span class="chip">实时多人协作</span><span class="chip">团队即时通讯（端到端加密）</span><span class="chip">时间轴剪辑器</span><span class="chip">角色库 / 提示词库</span><span class="chip">@提及 与 / 快捷唤出</span><span class="chip">拉线建节点</span><span class="chip">演示模式</span></div>
+    </div>
+    <div class="arch-flow">⇅</div>
+    <div class="layer">
+      <div class="lh"><span class="ic ic-violet">🧠</span><h3>编排层 · 智能体与任务调度</h3><span class="tag">Orchestration</span></div>
+      <div class="chips"><span class="chip">智能体对话编排</span><span class="chip">角色一致性注入</span><span class="chip">提示词合成与翻译</span><span class="chip">连接矩阵校验</span><span class="chip">异步任务轮询器</span><span class="chip">时长感知拆镜</span><span class="chip">ComfyUI 工作流引擎</span></div>
+    </div>
+    <div class="arch-flow">⇅</div>
+    <div class="layer">
+      <div class="lh"><span class="ic ic-pink">✨</span><h3>AI 能力层 · 多服务商模型聚合</h3><span class="tag">AI Capability</span></div>
+      <div class="chips"><span class="chip">kie.ai（图/视/音/对话）</span><span class="chip">Poyo</span><span class="chip">Manus Forge</span><span class="chip">Higgsfield</span><span class="chip">三级密钥体系</span><span class="chip">统一计费与余额</span><span class="chip">闭源 API 模型</span></div>
+    </div>
+    <div class="arch-flow">⇅</div>
+    <div class="layer">
+      <div class="lh"><span class="ic ic-green">⚡</span><h3>算力层 · 自建 ComfyUI 与弹性云</h3><span class="tag">Compute</span></div>
+      <div class="chips"><span class="chip">自建 GPU 算力服务器</span><span class="chip">多服务器负载均衡</span><span class="chip">显存智能释放</span><span class="chip">官方云弹性扩容</span><span class="chip">开源模型生态</span><span class="chip">自定义工作流</span><span class="chip">本地 × 云互补</span></div>
+    </div>
+    <div class="arch-flow">⇅</div>
+    <div class="layer">
+      <div class="lh"><span class="ic ic-blue">🛡️</span><h3>安全与基础设施层 · 数据 · 权限 · 审计</h3><span class="tag">Security & Infra</span></div>
+      <div class="chips"><span class="chip">tRPC v11 + Express</span><span class="chip">MySQL + Drizzle 迁移</span><span class="chip">MinIO / S3 自有存储</span><span class="chip">数据不出域</span><span class="chip">下载鉴权网关</span><span class="chip">身份水印溯源</span><span class="chip">开发者工具阻断</span><span class="chip">白名单门控</span><span class="chip">全链路审计日志</span><span class="chip">一键系统更新</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 工作流示意 -->
+<section class="wrap" style="padding-top:0">
+  <div class="reveal tcenter"><div class="sec-tag">🔄 典型创作链路</div>
+  <h2 class="sec-h" style="font-size:24px">从一句创意到一条成片，<span class="g">全程节点驱动</span></h2></div>
+  <div class="flowmap reveal" style="margin-top:24px">
+    <span class="fnode s">💡 创意/脚本</span><span class="farr">→</span>
+    <span class="fnode s">🎞️ 分镜</span><span class="farr">→</span>
+    <span class="fnode">🧍 角色/场景</span><span class="farr">→</span>
+    <span class="fnode g">🖼️ 图像生成</span><span class="farr">→</span>
+    <span class="fnode g">🎥 视频生成</span><span class="farr">→</span>
+    <span class="fnode">🎙️ 配音/音乐</span><span class="farr">→</span>
+    <span class="fnode o">✂️ 剪辑/字幕</span><span class="farr">→</span>
+    <span class="fnode o">📦 合并成片</span>
+  </div>
+</section>
+
+<!-- CANVAS -->
+<section id="canvas" class="wrap">
+  <div class="reveal"><div class="sec-tag">🎨 可视化画布</div>
+  <h2 class="sec-h">27 类创作节点，<span class="g">自由连线 · 即插即用</span></h2>
+  <p class="sec-sub">每个节点封装一种创作能力，节点之间依<b>连接矩阵</b>智能校验、合法连线，覆盖创作、生成、后期、ComfyUI 与智能体五大类，逐级推进、彼此驱动，把复杂工作流编织得井然有序。</p></div>
+  <div class="grid g4 reveal">
+    <div class="card"><div class="ic ic-cyan">📝</div><h4>创作层</h4><p>把灵感结构化</p><div class="feat"><span>脚本 · 生成/润色/缩写</span><span>分镜 · 镜头拆解</span><span>提示词 · 正负向/反推</span><span>角色/场景 · 身份与场景库</span><span>AI 对话 · 多模态助手</span><span>智能体 · 对话搭画布</span></div></div>
+    <div class="card"><div class="ic ic-violet">🎇</div><h4>生成层</h4><p>调用 AI 产出素材</p><div class="feat"><span>图像生成 · 54 模型</span><span>视频任务 · 57+ 模型</span><span>音频 · 配音/音乐/音效</span><span>素材 · 上传/输出托管</span><span>构图控制 · 姿态约束</span></div></div>
+    <div class="card"><div class="ic ic-pink">🎬</div><h4>后期层</h4><p>剪辑成片</p><div class="feat"><span>剪辑 · 裁剪/变速/调色</span><span>合并 · 多片段成片</span><span>字幕 / 动态字幕</span><span>视频叠加 · 画中画</span><span>智能剪辑 · 自动卡点</span><span>后处理 · 放大/降噪/补帧</span></div></div>
+    <div class="card"><div class="ic ic-green">🧩</div><h4>ComfyUI / 扩展</h4><p>自托管深度定制</p><div class="feat"><span>ComfyUI 图像 / 视频</span><span>ComfyUI 自定义工作流</span><span>本地服务器 + 官方云</span><span>声音克隆 · 唇形同步 · 数字人</span><span>便签 / 分组容器</span></div></div>
+  </div>
+  <div class="grid g3 reveal" style="margin-top:18px">
+    <div class="card"><div class="ic ic-blue">🔗</div><h4>智能连线编排</h4><p>连接矩阵校验合法连接，拖拽时高亮可连接桩点；同一对节点自动去重，杜绝悬空重复边。</p></div>
+    <div class="card"><div class="ic ic-amber">🎯</div><h4>节点搜索与定位</h4><p>Ctrl+K 搜索现有节点，点选后可靠定位并高亮，大型工作流秒级跳转。</p></div>
+    <div class="card"><div class="ic ic-violet">💾</div><h4>节点模板库</h4><p>任意节点参数存为模板，一键套用、JSON 导入导出，沉淀团队最佳实践。</p></div>
+  </div>
+</section>
+
+<!-- MODELS -->
+<section id="models" class="wrap">
+  <div class="reveal"><div class="sec-tag">✨ AI 模型矩阵</div>
+  <h2 class="sec-h">6 大服务商 · 140+ 模型，<span class="g">一处聚合 · 开闭互补</span></h2>
+  <p class="sec-sub">图像、视频、对话、音频四大能力全覆盖，闭源旗舰 API 与开源本地模型同台混用。严格逐字段对照官方文档接入、杜绝参数错误；价格按官方计价透明标注，成本一目了然。</p></div>
+  <div class="tabs reveal">
+    <div class="tab active" data-tab="img">🖼️ 图像 <span class="c">54</span></div>
+    <div class="tab" data-tab="vid">🎥 视频 <span class="c">57+</span></div>
+    <div class="tab" data-tab="llm">💬 对话 <span class="c">31</span></div>
+    <div class="tab" data-tab="aud">🎙️ 音频 <span class="c">多类</span></div>
+  </div>
+  <div class="panel active reveal" data-panel="img">
+    <div class="vendor"><h5>Google / 字节 / OpenAI 系 <span class="ln"></span></h5><div class="mgrid"><span class="model">Nano Banana</span><span class="model">Nano Banana Pro</span><span class="model hot">Nano Banana 2</span><span class="model">Seedream 4.0 / 4.5</span><span class="model hot">Seedream 5.0 Lite</span><span class="model">Imagen 4</span><span class="model">GPT Image 1.5 / 2</span><span class="model hot">GPT-4o Image</span></div></div>
+    <div class="vendor"><h5>Flux / Qwen / 其它 <span class="ln"></span></h5><div class="mgrid"><span class="model">Flux-2 Pro / Flex</span><span class="model hot">Flux Kontext Pro / Max</span><span class="model">Qwen Image / 图生图 / 编辑</span><span class="model">Wan 2.7 Image / Pro</span><span class="model">Ideogram V3</span><span class="model">Z-Image</span><span class="model">Grok Image</span></div></div>
+    <p style="color:var(--t4);font-size:12.5px;margin-top:8px">能力：文生图 · 图生图 · 局部编辑 · 多图参考 · 蒙版 · 排版文字 · 多宽高比</p>
+  </div>
+  <div class="panel reveal" data-panel="vid">
+    <div class="vendor"><h5>旗舰视频模型 <span class="ln"></span></h5><div class="mgrid"><span class="model">Veo 3.1 Quality / Fast</span><span class="model">Kling 2.5T / 2.6 / 3.0</span><span class="model">Wan 2.5 / 2.6</span><span class="model">Hailuo 02 / 2.3</span><span class="model">Seedance 1 / 1.5 / 2</span><span class="model">Runway Gen 4.5</span><span class="model">Grok Imagine</span></div></div>
+    <div class="vendor"><h5>特殊能力 · 动作/数字人/放大 <span class="ln"></span></h5><div class="mgrid"><span class="model hot">Kling 动作控制</span><span class="model hot">Kling Avatar 数字人</span><span class="model hot">Wan Animate 换装/换人</span><span class="model hot">Topaz 视频放大</span><span class="model hot">Runway Aleph</span></div></div>
+    <p style="color:var(--t4);font-size:12.5px;margin-top:8px">能力：文生视频 · 图生视频 · 首尾帧 · 参考音/视频驱动 · 动作迁移 · 口型数字人 · 超分放大</p>
+  </div>
+  <div class="panel reveal" data-panel="llm">
+    <div class="vendor"><h5>Claude（Anthropic）<span class="ln"></span></h5><div class="mgrid"><span class="model">Opus 4.8 / 4.7 / 4.6 / 4.5</span><span class="model">Sonnet 4.6 / 4.5</span><span class="model">Haiku 4.5</span></div></div>
+    <div class="vendor"><h5>GPT（OpenAI）<span class="ln"></span></h5><div class="mgrid"><span class="model">GPT 5.5 / 5.4 / 5.2</span><span class="model">GPT 5 Codex 系列</span></div></div>
+    <div class="vendor"><h5>Gemini（Google）<span class="ln"></span></h5><div class="mgrid"><span class="model">Gemini 3 Pro / Flash</span><span class="model">Gemini 3.1 / 3.5</span><span class="model">Gemini 2.5 Pro / Flash</span></div></div>
+    <p style="color:var(--t4);font-size:12.5px;margin-top:8px">用于脚本/分镜/提示词/看图识人/翻译/智能体；统一封装 Claude / OpenAI-Chat / Responses 三种端点形态</p>
+  </div>
+  <div class="panel reveal" data-panel="aud">
+    <div class="grid g3" style="gap:14px">
+      <div class="card"><div class="ic ic-cyan">🎙️</div><h4>语音配音 TTS</h4><p>ElevenLabs（Turbo / 多语 / V3 对话）、OpenAI TTS、本地 VoxCPM、Gradio 自托管；音色、稳定度、多语言/方言翻译朗读全可控。</p></div>
+      <div class="card"><div class="ic ic-violet">🎵</div><h4>AI 音乐</h4><p>Suno V3.5 ~ V5.5 全系，文生音乐、歌词/风格控制，一键生成配乐。</p></div>
+      <div class="card"><div class="ic ic-pink">🔊</div><h4>音效与音色</h4><p>音效生成、音频参考音色克隆，作为视频 / 数字人驱动输入。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- COMFYUI 重点 -->
+<section id="comfy" class="wrap">
+  <div class="reveal"><div class="sec-tag">⚡ 自建算力 · 核心壁垒</div>
+  <h2 class="sec-h">深度集成 ComfyUI，<span class="g">自有算力 × 开闭互补</span></h2>
+  <p class="sec-sub">不止调用云端 API——平台<b>原生、深度</b>对接你的<b>自建 ComfyUI 算力服务器</b>，把私有 GPU 集群直接接入创作画布。开源工作流的无限可定制性，与闭源旗舰模型的开箱即用，在同一块画布上各取所长、优势互补，形成难以复制的能力壁垒。</p></div>
+  <div class="grid g3 reveal">
+    <div class="spot"><div class="k">🖧</div><h4><span class="g">自建算力无缝对接</span></h4><p>对接自有 ComfyUI 服务器，私有 GPU 算力直接驱动创作；数据与计算全程留在自有环境，零外发、零依赖第三方算力账号。</p><ul><li>多服务器配置，统一纳管</li><li>任务轮询分配，负载均匀打散</li><li>显存智能释放（freeVramAfterRun），长任务不爆显存</li></ul></div>
+    <div class="spot"><div class="k">☁️</div><h4><span class="g">本地 × 云 弹性互补</span></h4><p>本地强算力承载主力生产，官方云（cloud.comfy.org）按需弹性扩容；高峰扩、低谷收，算力成本与产能动态平衡。</p><ul><li>本地服务器零额度成本</li><li>云端弹性应对突发产能</li><li>云服务白名单门控，成本可控</li></ul></div>
+    <div class="spot"><div class="k">🔀</div><h4><span class="g">开源 × 闭源 优势互补</span></h4><p>开源模型生态（ComfyUI 自定义工作流 / 本地权重 / LoRA / ControlNet）与闭源旗舰 API 模型同台混用，效果、成本、可控性三者兼得。</p><ul><li>开源：无限定制、数据自主、风格独有</li><li>闭源：开箱即用、效果旗舰</li><li>同画布自由组合编排</li></ul></div>
+  </div>
+  <div class="grid g4 reveal" style="margin-top:18px">
+    <div class="card"><div class="ic ic-green">⚙️</div><h4>任意自定义工作流</h4><p>导入任意 ComfyUI 工作流，画布上节点化运行，上游图像/音频/视频自动绑定为工作流输入。</p></div>
+    <div class="card"><div class="ic ic-cyan">📚</div><h4>工作流模板库</h4><p>沉淀团队常用工作流，含完整参数与提示词，一键复用、跨项目共享。</p></div>
+    <div class="card"><div class="ic ic-violet">🧠</div><h4>AI 功能分析</h4><p>智能体自动分析工作流能力标签（文生图/图生视频/换脸/放大…），规划时精准选用。</p></div>
+    <div class="card"><div class="ic ic-amber">🧪</div><h4>算力压力测试</h4><p>管理员可对多服务器发起并发压测，评估吞吐与稳定性，为扩容决策提供依据。</p></div>
+  </div>
+</section>
+
+<!-- MODULES 手风琴 -->
+<section id="modules" class="wrap">
+  <div class="reveal"><div class="sec-tag">🧱 功能模块全景</div>
+  <h2 class="sec-h">13 大核心模块，<span class="g">细分功能逐一展开</span></h2>
+  <p class="sec-sub">点击每个模块查看其全部细分功能。主干能力 → 分支细节，层层深入，不遗漏任何一项。</p></div>
+  <div class="acc reveal">
+    <!-- 1 画布 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-cyan">🎨</span><div class="tt"><h3>可视化画布编排</h3><p>节点式工作流，所见即所得</p></div><span class="num-b">9 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>🔗</i>智能连线 & 连接矩阵</b><small>拖拽高亮可连接桩点，按矩阵校验合法连接，同对节点自动去重</small></div>
+        <div class="fitem"><b><i>🧲</i>拉线松手建节点 <span class="star">★特色</span></b><small>未连到节点即松手，鼠标处弹菜单——仅列可连接类型，可拖拽排序并云端持久化</small></div>
+        <div class="fitem"><b><i>@</i>@提及引用 <span class="star">★特色</span></b><small>文本框 @角色/@场景/@音频/@视频，无需连线即引用画布或库中元素</small></div>
+        <div class="fitem"><b><i>📦</i>分组容器</b><small>多节点组合为「场景」容器，折叠/展开，智能体按场景自动分组</small></div>
+        <div class="fitem"><b><i>🎯</i>搜索 / 定位 / 高亮</b><small>Ctrl+K 搜索节点，点选可靠定位并高亮目标</small></div>
+        <div class="fitem"><b><i>💾</i>节点模板库</b><small>参数存模板、一键套用、JSON 导入导出</small></div>
+        <div class="fitem"><b><i>📊</i>节点自驱体验 <span class="star">★特色</span></b><small>生成进度条与失败提示常驻标题栏，收缩/取消选中后仍可见</small></div>
+        <div class="fitem"><b><i>↩️</i>撤销重做 / 复制 / 对齐</b><small>完整画布编辑操作，历史回溯</small></div>
+        <div class="fitem"><b><i>📤</i>导入 / 导出画布</b><small>整个工作流 JSON 导出与导入，跨项目迁移</small></div>
+      </div></div></div>
+    </div>
+    <!-- 2 角色库 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-violet">🧍</span><div class="tt"><h3>角色 / 场景库</h3><p>跨项目复用的身份资产</p></div><span class="num-b">7 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>👤</i>人物 & 场景双类型</b><small>人物（外貌/服装/标志特征）与场景（地点/氛围/时间）结构化建模</small></div>
+        <div class="fitem"><b><i>🌐</i>全局库 · 跨项目复用</b><small>保存到角色库，任意项目一键拖到画布或 @引用（无需先拖）</small></div>
+        <div class="fitem"><b><i>🖼️</i>多角度参考图</b><small>主图 + 最多 8 张备用视角，增强身份一致性</small></div>
+        <div class="fitem"><b><i>🎵</i>音频 / 视频参考 <span class="star">★特色</span></b><small>角色可携带声音与动作视频，供数字人 / 全能模型驱动</small></div>
+        <div class="fitem"><b><i>🔍</i>看图识人（AI 视觉）</b><small>上传参考图，AI 自动识别并填充角色/场景参数</small></div>
+        <div class="fitem"><b><i>🎭</i>角色一致性注入</b><small>连线即注入 IPAdapter 人脸锁定 / 角色 LoRA，跨镜保持一致</small></div>
+        <div class="fitem"><b><i>🏷️</i>库徽标与管理</b><small>列表标注「含音频/含视频」，重命名/编辑/删除</small></div>
+      </div></div></div>
+    </div>
+    <!-- 3 提示词库 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-pink">⚡</span><div class="tt"><h3>快捷提示词库</h3><p>服务端同步的提示词资产</p></div><span class="num-b">7 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>☁️</i>服务端同步</b><small>提示词存数据库，跨设备/会话一致</small></div>
+        <div class="fitem"><b><i>/</i>「/」快捷唤出 <span class="star">★特色</span></b><small>任意文本框输入 / 即弹菜单，与 @提及并存互不干扰</small></div>
+        <div class="fitem"><b><i>🔢</i>10 个常用槽位</b><small>编号 1-10，输入 / 直接调出最常用提示词</small></div>
+        <div class="fitem"><b><i>📂</i>槽位可设为类别（二级菜单）</b><small>点开展开该类别提示词列表，进一步选择</small></div>
+        <div class="fitem"><b><i>🎨</i>多分类专业预设</b><small>镜头/光照/风格/画质/构图内置专业提示词，一键收藏</small></div>
+        <div class="fitem"><b><i>✏️</i>自定义增删改</b><small>就地内联编辑名称/类别/正文，分类管理</small></div>
+        <div class="fitem"><b><i>🔁</i>JSON 导入导出</b><small>提示词库整体备份与迁移</small></div>
+      </div></div></div>
+    </div>
+    <!-- 4 智能体 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-amber">🤖</span><div class="tt"><h3>智能体（Agent）编排</h3><p>对话一句话，自动搭好工作流</p></div><span class="num-b">6 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>💬</i>对话式生成工作流</b><small>描述需求，智能体自动创建节点并连线编排</small></div>
+        <div class="fitem"><b><i>⏱️</i>时长感知拆镜</b><small>按目标总时长与单镜上限自动计算镜头数（如 60s ÷ 5s = 12 镜）</small></div>
+        <div class="fitem"><b><i>🎬</i>场景分组规划</b><small>镜头组织为叙事场景，自动框入容器，统一合并成片</small></div>
+        <div class="fitem"><b><i>🎭</i>角色一致性自动连线</b><small>反复出现的人物建唯一角色节点，连接到每个镜头</small></div>
+        <div class="fitem"><b><i>🧩</i>ComfyUI 模板智能匹配</b><small>按输出类型与能力标签挑最贴合的工作流模板</small></div>
+        <div class="fitem"><b><i>🔧</i>运行自愈</b><small>识别失败/缺参节点，主动补全提示词/参考图/连线或换模板</small></div>
+      </div></div></div>
+    </div>
+    <!-- 5 剪辑 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-blue">✂️</span><div class="tt"><h3>专业剪辑器 / 时间轴</h3><p>生成即剪辑，一站式成片</p></div><span class="num-b">8 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>🎞️</i>多轨时间轴</b><small>视频/音频多轨编排，可视化时间线</small></div>
+        <div class="fitem"><b><i>⌨️</i>剪辑快捷键</b><small>空格播放/暂停、Home/End 跳首尾、←/→ 逐帧（Shift×10）</small></div>
+        <div class="fitem"><b><i>🔑</i>关键帧动画</b><small>关键帧菱形标记，时间轴可见可定位</small></div>
+        <div class="fitem"><b><i>🔍</i>适应窗口</b><small>一键缩放，整条时间轴完整铺满可视区</small></div>
+        <div class="fitem"><b><i>✂️</i>裁剪/变速/调色</b><small>片段裁剪、速度、音量与画面调整</small></div>
+        <div class="fitem"><b><i>📝</i>字幕 / 动态字幕</b><small>语音转录自动字幕、动态字幕特效</small></div>
+        <div class="fitem"><b><i>🖼️</i>叠加 / 智能剪辑</b><small>画中画叠加、自动卡点智能剪辑</small></div>
+        <div class="fitem"><b><i>📦</i>合并成片</b><small>多镜头/多片段合并导出最终视频</small></div>
+      </div></div></div>
+    </div>
+    <!-- 6 ComfyUI -->
+    <div class="acc-item feat-hot">
+      <div class="acc-head"><span class="ic ic-green">⚡</span><div class="tt"><h3>ComfyUI 自建算力深度集成 <span class="star">★核心壁垒</span></h3><p>私有 GPU 直驱 · 接口监测 · 开闭互补 · 弹性扩容</p></div><span class="num-b">10 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>🖧</i>自建算力服务器对接</b><small>对接自有 ComfyUI / 私有 GPU 集群，算力与数据全程留在自有环境</small></div>
+        <div class="fitem"><b><i>📡</i>接口监测与连接健康 <span class="star">★新增</span></b><small>实时探测服务器可达性与鉴权状态，连续连接失败即判不可达并自动早退容错；本地与云连接均可一键测试</small></div>
+        <div class="fitem"><b><i>⚖️</i>多服务器负载均衡</b><small>任务轮询分配到多台服务器，负载均匀打散，吞吐倍增</small></div>
+        <div class="fitem"><b><i>🧹</i>显存智能释放</b><small>运行后自动释放显存（freeVramAfterRun），长任务稳定不爆显存</small></div>
+        <div class="fitem"><b><i>☁️</i>本地 × 云 弹性互补</b><small>本地强算力主力 + 官方云按需扩容，产能与成本动态平衡</small></div>
+        <div class="fitem"><b><i>🔀</i>开源 × 闭源 互补</b><small>开源工作流/本地权重与闭源旗舰 API 同画布混用，各取所长</small></div>
+        <div class="fitem"><b><i>⚙️</i>任意自定义工作流</b><small>导入任意 ComfyUI 工作流，参数智能绑定上游素材</small></div>
+        <div class="fitem"><b><i>📚</i>工作流模板库 + AI 分析</b><small>沉淀团队工作流，AI 自动标注能力供智能体规划选用</small></div>
+        <div class="fitem"><b><i>🧪</i>算力压力测试</b><small>管理员对多服务器并发压测，评估吞吐与稳定性</small></div>
+      </div></div></div>
+    </div>
+    <!-- 7 密钥权限 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-violet">🔐</span><div class="tt"><h3>密钥 · 计费 · 额度治理</h3><p>额度可控、计费透明、权限严密</p></div><span class="num-b">9 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>🔑</i>三级密钥优先级 <span class="star">★特色</span></b><small>临时 key（用户自填）> 分配 key（管理员绑定）> 公用 key（平台环境变量），自动择优</small></div>
+        <div class="fitem"><b><i>🎁</i>管理员密钥分配</b><small>为指定用户绑定专属 kie 密钥、加备注；可启用/停用绑定与密钥、解绑、增删</small></div>
+        <div class="fitem"><b><i>🧮</i>多租户额度隔离</b><small>用户走各自分配密钥，额度与成本按用户隔离、互不挤占</small></div>
+        <div class="fitem"><b><i>🛡️</i>公用 key 白名单门控</b><small>所有平台公用 key 必经管理员白名单/开关门控，杜绝越权白嫖</small></div>
+        <div class="fitem"><b><i>🔒</i>密钥加密存储</b><small>分配密钥 AES-256-GCM 加密落库，永不明文暴露</small></div>
+        <div class="fitem"><b><i>🎚️</i>独立功能开关</b><small>LLM / ComfyUI / kie 公用额度可分别开放，付费媒体生成单独门控</small></div>
+        <div class="fitem"><b><i>💳</i>余额实时查询</b><small>kie / Poyo 平台余额按密钥优先级实时查询，顶栏徽标常驻显示</small></div>
+        <div class="fitem"><b><i>📈</i>消费趋势快照</b><small>余额定时快照入库，绘制平台消费/额度趋势，成本一目了然</small></div>
+        <div class="fitem"><b><i>📥</i>下载/分享额度授权</b><small>下载消费授权（grant）与分享链接次数消费，产出物流转可计量可控</small></div>
+      </div></div></div>
+    </div>
+    <!-- 8 数据安全防泄露 -->
+    <div class="acc-item feat-hot">
+      <div class="acc-head"><span class="ic ic-red">🛡️</span><div class="tt"><h3>数据安全 · 水印溯源 · 产出物防泄露 <span class="star">★强化</span></h3><p>数据不出域 · 身份水印可追责 · 纵深防护</p></div><span class="num-b">12 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>🏠</i>数据不出域</b><small>素材与产出物全程存于自托管 MySQL + MinIO/S3，私有环境内闭环，绝不外发</small></div>
+        <div class="fitem"><b><i>🚪</i>下载鉴权网关</b><small>所有媒体下载经登录态 + 所有权/项目角色校验，杜绝越权直取</small></div>
+        <div class="fitem"><b><i>⏳</i>预签名短时链接</b><small>S3 预签名 URL 短时效授权，防直链长期暴露与外传</small></div>
+        <div class="fitem"><b><i>🕵️</i>媒体代理隔离</b><small>经代理访问素材，隐藏真实存储地址，防地址被探测/盗链</small></div>
+        <div class="fitem"><b><i>🔗</i>限时分享 + 防暴力</b><small>项目分享链接限时有效，内置防暴力破解，公开开关仅所有者可控</small></div>
+        <div class="fitem"><b><i>👁️</i>分级协作权限</b><small>所有者/编辑者/只读者三级，只读者不可导出/修改，权限即时生效</small></div>
+        <div class="fitem"><b><i>♻️</i>产出物自主托管</b><small>第三方生成结果（如 14 天临时 URL）自动转存自有存储，杜绝外链失效与第三方留存</small></div>
+        <div class="fitem"><b><i>💧</i>下载身份水印溯源 <span class="star">★特色</span></b><small>下载时把下载者身份（邮箱/ID + 时间戳）烧录进图片/视频，一旦外泄即可溯源到具体下载人、可追责</small></div>
+        <div class="fitem"><b><i>👁️‍🗨️</i>页面级身份水印</b><small>开启后全站叠加淡身份水印，防截图/录屏盗用，截走的画面也带可追溯标识</small></div>
+        <div class="fitem"><b><i>🚫</i>开发者工具阻断</b><small>可启用防扒模式，阻断开发者工具，防止源码/接口/资源被探查窃取</small></div>
+        <div class="fitem"><b><i>🪪</i>下载鉴权 + 强制中继 + 仅自有存储</b><small>下载鉴权开关、强制经服务端中继（隐藏真实地址）、仅允许自有 MinIO 存储；预签名链接时效可配</small></div>
+        <div class="fitem"><b><i>📋</i>敏感操作留痕</b><small>下载、删除、分享、密钥变更等全部写入审计日志，可回溯追责</small></div>
+      </div></div></div>
+    </div>
+    <!-- 9 存储与媒体资源管理 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-cyan">🗄️</span><div class="tt"><h3>存储与媒体资源管理</h3><p>素材自主 · 井然有序 · 永不丢失</p></div><span class="num-b">8 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>📦</i>跨项目个人仓库</b><small>素材库跨项目复用，统一沉淀团队创作资产</small></div>
+        <div class="fitem"><b><i>📝</i>生成资产自动入库</b><small>每次生成结果自动记录归档，来源/模型/项目可追溯</small></div>
+        <div class="fitem"><b><i>⬆️</i>批量上传</b><small>素材批量导入，自动识别图/音/视类型</small></div>
+        <div class="fitem"><b><i>🗑️</i>软删除可恢复</b><small>删除标记保留，误删可恢复，不立即物理清除</small></div>
+        <div class="fitem"><b><i>🧹</i>管理员硬删除</b><small>管理员可彻底清除指定资产并释放存储</small></div>
+        <div class="fitem"><b><i>💽</i>多存储后端</b><small>MinIO / S3 / Forge 可选，按部署环境灵活配置</small></div>
+        <div class="fitem"><b><i>🎛️</i>持久化开关</b><small>图像/音频/视频是否落库可分别配置</small></div>
+        <div class="fitem"><b><i>♻️</i>去重与回退</b><small>同源资产自动去重；存储不可直达时 Poyo 暂存回退</small></div>
+      </div></div></div>
+    </div>
+    <!-- 10 日志审计 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-amber">📜</span><div class="tt"><h3>全链路日志审计</h3><p>28 类操作留痕，可追溯、可追责</p></div><span class="num-b">5 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>🔎</i>28 类操作审计</b><small>登录(邮箱/OAuth)、图/视/音/ComfyUI 生成、用户管理、密钥增删绑定、存储暂存、字幕转录、系统重启…全覆盖</small></div>
+        <div class="fitem"><b><i>🗂️</i>系统日志后台</b><small>管理后台按用户名/类别筛选，集中审阅</small></div>
+        <div class="fitem"><b><i>🧾</i>生成记录可追溯</b><small>每次生成自动入库，模型/来源/产出 URL 留痕</small></div>
+        <div class="fitem"><b><i>⚠️</i>敏感操作记录</b><small>删除/重置/分享/密钥变更/系统重启逐条记录</small></div>
+        <div class="fitem"><b><i>🧽</i>日志清理</b><small>管理员可清理历史日志，清理动作本身亦留痕</small></div>
+      </div></div></div>
+    </div>
+    <!-- 11 用户团队管理 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-blue">👥</span><div class="tt"><h3>用户与团队管理</h3><p>完善的成员与协作治理</p></div><span class="num-b">7 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>🔐</i>双认证体系</b><small>OAuth + 邮箱密码（scrypt 加盐哈希）双通道登录</small></div>
+        <div class="fitem"><b><i>👑</i>角色体系</b><small>管理员 / 普通用户分权；管理员全局治理</small></div>
+        <div class="fitem"><b><i>🧊</i>用户运维</b><small>冻结/解冻、改密、管理员重置密码、删除用户</small></div>
+        <div class="fitem"><b><i>🔎</i>用户检索</b><small>按用户名 / 邮箱搜索定位，运维高效</small></div>
+        <div class="fitem"><b><i>🤝</i>团队协作治理</b><small>项目成员增删、角色升降、协作者自主退出</small></div>
+        <div class="fitem"><b><i>🎫</i>白名单授权</b><small>用户 / IP 白名单精细授权，付费功能按需开放</small></div>
+        <div class="fitem"><b><i>🔑</i>密钥分配</b><small>为指定用户绑定专属 kie 密钥，额度隔离</small></div>
+      </div></div></div>
+    </div>
+    <!-- 12 协作沟通 -->
+    <div class="acc-item feat-hot">
+      <div class="acc-head"><span class="ic ic-pink">🗨️</span><div class="tt"><h3>团队协作与即时沟通 <span class="star">★新增</span></h3><p>实时共创 · 内置即时通讯 · 端到端加密</p></div><span class="num-b">9 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>🤝</i>实时多人协作</b><small>节点增删改/连线秒级同步；协作者光标可见，节点按创建者显示专属颜色，同项目共享素材库</small></div>
+        <div class="fitem"><b><i>🎭</i>分级协作角色</b><small>所有者 / 编辑者 / 只读者三级权限，升降即时生效，公开开关仅所有者可控</small></div>
+        <div class="fitem"><b><i>💬</i>私聊（DM）</b><small>一对一即时消息，团队成员随时直连沟通</small></div>
+        <div class="fitem"><b><i>👥</i>群聊房间</b><small>创建/邀请/加入/离开房间，可发现可加入的公共房间，项目级群组协作</small></div>
+        <div class="fitem"><b><i>🔐</i>端到端加密 <span class="star">★特色</span></b><small>公钥发布 + 客户端加密，消息内容服务端不可读，沟通隐私可信</small></div>
+        <div class="fitem"><b><i>📎</i>文件附件传输</b><small>聊天内上传/分享文件与图片，图片灯箱预览</small></div>
+        <div class="fitem"><b><i>✅</i>已读回执 + 表情回应</b><small>消息已读标记、表情互动，沟通状态一目了然</small></div>
+        <div class="fitem"><b><i>🖥️</i>画布内聊天窗 + 独立聊天页</b><small>边创作边沟通，或进入独立聊天页集中处理消息</small></div>
+        <div class="fitem"><b><i>🏠</i>局域网内网沟通</b><small>支持内网/局域网聊天与房间，离线环境团队也能高效协同</small></div>
+      </div></div></div>
+    </div>
+    <!-- 13 AI 工具与体验 -->
+    <div class="acc-item">
+      <div class="acc-head"><span class="ic ic-violet">💬</span><div class="tt"><h3>AI 内容工具与创作体验</h3><p>智能助手 + 演示 + 引导 + 通知</p></div><span class="num-b">9 项</span><span class="arr">▾</span></div>
+      <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
+        <div class="fitem"><b><i>💭</i>多模态 AI 对话节点</b><small>支持图片输入的创意对话，可衔接脚本/分镜</small></div>
+        <div class="fitem"><b><i>📜</i>剧本工具</b><small>生成、润色、缩写、一致性审查、分镜拆解</small></div>
+        <div class="fitem"><b><i>🌍</i>翻译 / 方言本地化</b><small>多语言翻译 + 粤语/四川话/东北话等方言口语化朗读改写</small></div>
+        <div class="fitem"><b><i>🔎</i>提示词分析提取</b><small>从图像反推生成提示词，沉淀到提示词库</small></div>
+        <div class="fitem"><b><i>🎚️</i>效果注入</b><small>后处理节点效果词注入下游生成，统一风格</small></div>
+        <div class="fitem"><b><i>🎦</i>演示模式</b><small>将画布节点逐页全屏放映，平滑切换动画，方案评审/路演直接演示</small></div>
+        <div class="fitem"><b><i>🧭</i>新手引导</b><small>内置分步功能引导，新成员快速上手全平台能力</small></div>
+        <div class="fitem"><b><i>🔔</i>任务完成通知</b><small>长任务生成完成主动通知项目所有者，无需盯屏等待</small></div>
+        <div class="fitem"><b><i>🖼️</i>项目封面 / 看板</b><small>项目自动生成封面缩略，仓库素材统计概览，资产一览无余</small></div>
+      </div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- SECURITY 防护层 -->
+<section id="security" class="wrap">
+  <div class="reveal"><div class="sec-tag">🛡️ 安全防护</div>
+  <h2 class="sec-h">产出物防泄露的<span class="g">纵深防护体系</span></h2>
+  <p class="sec-sub">从存储、传输、访问到分享，层层设防——让珍贵的创作产出与商业数据，可控、可信、可追溯，绝不流失。</p></div>
+  <div class="shield reveal">
+    <div class="slayer"><div class="e">🏠</div><b>存储层</b><small>自有 MinIO/S3，数据不出域</small></div>
+    <div class="slayer"><div class="e">🚪</div><b>访问层</b><small>下载鉴权网关 + 所有权校验</small></div>
+    <div class="slayer"><div class="e">⏳</div><b>传输层</b><small>预签名短链 + 媒体代理 + 强制中继</small></div>
+    <div class="slayer"><div class="e">💧</div><b>水印层</b><small>下载身份水印 + 页面水印，泄露可溯源</small></div>
+    <div class="slayer"><div class="e">🚫</div><b>防扒层</b><small>开发者工具阻断，防源码/接口窃取</small></div>
+    <div class="slayer"><div class="e">🔗</div><b>分享层</b><small>限时链接 + 防暴力 + 仅所有者可公开</small></div>
+    <div class="slayer"><div class="e">👁️</div><b>权限层</b><small>所有者/编辑者/只读者分级</small></div>
+    <div class="slayer"><div class="e">♻️</div><b>托管层</b><small>第三方产出自动转存，杜绝外链留存</small></div>
+    <div class="slayer"><div class="e">📋</div><b>审计层</b><small>28 类操作全程留痕可追责</small></div>
+    <div class="slayer"><div class="e">🔒</div><b>密钥层</b><small>AES-256-GCM 加密 + 白名单门控</small></div>
+  </div>
+</section>
+
+<!-- SPOTLIGHT -->
+<section id="spotlight" class="wrap">
+  <div class="reveal"><div class="sec-tag">⭐ 特色亮点</div>
+  <h2 class="sec-h">人无我有的<span class="g">差异化壁垒</span></h2>
+  <p class="sec-sub">这些设计让平台在专业度、自主可控与算力弹性上形成难以复制的护城河。</p></div>
+  <div class="grid g3 reveal">
+    <div class="spot"><div class="k">⚡</div><h4><span class="g">自建算力 · 开闭互补</span></h4><p>深度对接自有 ComfyUI 算力服务器，多服务器负载均衡、显存智能释放；开源工作流与闭源旗舰模型同台混用，本地强算力与官方云弹性互补。</p><ul><li>私有 GPU 直驱，算力数据自主</li><li>产能与成本动态平衡</li><li>能力壁垒难以复制</li></ul></div>
+    <div class="spot"><div class="k">🛡️</div><h4><span class="g">产出物防泄露</span></h4><p>数据不出域 + 下载鉴权 + 预签名短链 + 媒体代理 + 限时分享 + 分级权限 + 自动转存 + 审计留痕，八重纵深防护守住创作资产。</p><ul><li>珍贵产出可控可信</li><li>越权与盗链无门可入</li><li>敏感操作全程可追责</li></ul></div>
+    <div class="spot"><div class="k">🔑</div><h4><span class="g">三级密钥体系</span></h4><p>用户可填自有密钥（临时），管理员可绑定专属密钥（分配），平台兜底公用密钥——优先级清晰、权限严密、成本隔离。</p><ul><li>临时 > 分配 > 公用 自动择优</li><li>公用 key 严格白名单门控</li><li>多租户额度隔离</li></ul></div>
+    <div class="spot"><div class="k">🧲</div><h4><span class="g">拉线即建节点</span></h4><p>从节点拉出连线松手在空白处，鼠标位置立即弹出建节点菜单——只列合法可连接类型，点击即建好节点并连线。</p><ul><li>不可连接类型不出现，零误操作</li><li>菜单项可拖拽排序、偏好持久化</li><li>编排效率成倍提升</li></ul></div>
+    <div class="spot"><div class="k">@</div><h4><span class="g">@音视频全能参考</span></h4><p>不止 @角色/@场景，更可 @音频、@视频，引用画布独立音视频节点或角色携带的声音/动作素材，喂给数字人与全能模型。</p><ul><li>角色携带 + 独立节点双来源</li><li>吸附栏显示全部参与素材并注明来源</li><li>驱动数字人 / omni 模型</li></ul></div>
+    <div class="spot"><div class="k">🎛️</div><h4><span class="g">多服务商聚合</span></h4><p>kie.ai、Poyo、Manus Forge、Higgsfield、ComfyUI 一处接入，140+ 模型自由切换、同画布混用不同厂商。</p><ul><li>逐字段对照官方文档接入，防参数错误</li><li>价格按官方计价透明标注</li><li>新模型快速纳管</li></ul></div>
+  </div>
+</section>
+
+<!-- PRIVATE -->
+<section id="private" class="wrap">
+  <div class="reveal"><div class="sec-tag">🏢 私有定制 & 部署</div>
+  <h2 class="sec-h">为你而建的<span class="g">专属创作底座</span></h2>
+  <p class="sec-sub">不是通用 SaaS，而是可深度定制、数据自主、算力自有、成本可控的私有化 AI 创作中枢。</p></div>
+  <div class="deploy reveal">
+    <div class="card"><div class="ic ic-cyan">🔒</div><h4>数据完全自主</h4><p>自托管部署，素材与数据存自有 MySQL + MinIO/S3，不出域、不依赖第三方账号，满足合规与保密要求。</p></div>
+    <div class="card"><div class="ic ic-green">⚡</div><h4>算力自有可控</h4><p>对接自建 ComfyUI 算力服务器，私有 GPU 集群直驱创作；本地强算力 + 官方云弹性互补，开闭模型优势互补。</p></div>
+    <div class="card"><div class="ic ic-violet">🎨</div><h4>品牌与界面定制</h4><p>站内 LOGO、图标、加载页、品牌位全面可替换，打造企业专属视觉；功能模块可按业务裁剪。</p></div>
+    <div class="card"><div class="ic ic-pink">⚖️</div><h4>成本与权限可控</h4><p>三级密钥 + 白名单 + 功能开关，精细控制谁能用、用哪些模型、走谁的额度，多租户成本透明。</p></div>
+    <div class="card"><div class="ic ic-amber">🧩</div><h4>行业适配扩展</h4><p>节点化架构便于按行业（影视、电商、营销、教育）扩展专属节点、模板与提示词预设。</p></div>
+    <div class="card"><div class="ic ic-blue">🔄</div><h4>平滑运维升级</h4><p>管理后台「系统更新」一键拉取更新并自动迁移数据库；迁移经真实数据库幂等验证，稳定可靠。</p></div>
+  </div>
+</section>
+
+<footer class="wrap">
+  <div class="reveal">
+    <svg class="foot-logo"><use href="#kt-logo"/></svg>
+    <div class="f-h">AI 视频画布 · <span class="g">金泰智算 · 智能创作平台</span></div>
+    <p>把全链路 AI 视频创作汇聚于一块可视化画布，融合自建算力与多服务商模型，以水印溯源与纵深防护守护每一份产出——全面、严谨、技术先进、数据自主、产出可控。为专业创作团队打造的下一代生产力中枢。</p>
+    <div class="tech"><span>React + Vite</span><span>tRPC v11</span><span>Express</span><span>MySQL · Drizzle</span><span>React Flow</span><span>MinIO / S3</span><span>ComfyUI 算力</span><span>身份水印溯源</span><span>OAuth + 邮箱认证</span><span>AES-256-GCM</span></div>
+    <p style="margin-top:22px;color:var(--t4);font-size:12px">© KingTai 金泰智算 · 本汇报页为单文件交互网页 · 图文并茂 · 可离线浏览 · 内部资料请勿外传</p>
+  </div>
+</footer>
+
+<script>
+const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('show');io.unobserve(e.target)}})},{threshold:.1});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+function animNum(el){const n=+el.dataset.n,suf=el.dataset.suf||'';let c=0;const step=Math.max(1,n/55);const t=setInterval(()=>{c+=step;if(c>=n){c=n;clearInterval(t)}el.textContent=Math.floor(c)+suf},22)}
+const io2=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){animNum(e.target);io2.unobserve(e.target)}})},{threshold:.5});
+document.querySelectorAll('.num[data-n]').forEach(el=>io2.observe(el));
+document.querySelectorAll('.acc-head').forEach(h=>{h.addEventListener('click',()=>{const it=h.parentElement;const body=it.querySelector('.acc-body');const open=it.classList.contains('open');document.querySelectorAll('.acc-item').forEach(x=>{x.classList.remove('open');x.querySelector('.acc-body').style.maxHeight=null});if(!open){it.classList.add('open');body.style.maxHeight=body.scrollHeight+40+'px'}})});
+window.addEventListener('load',()=>{const f=document.querySelector('.acc-item');if(f){f.classList.add('open');f.querySelector('.acc-body').style.maxHeight=f.querySelector('.acc-body').scrollHeight+40+'px'}});
+document.querySelectorAll('.tab').forEach(t=>{t.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));t.classList.add('active');document.querySelector('.panel[data-panel="'+t.dataset.tab+'"]').classList.add('active')})});
+const secs=[...document.querySelectorAll('section[id],header[id]')];
+const links=[...document.querySelectorAll('.nav-links a')];
+window.addEventListener('scroll',()=>{let cur='';secs.forEach(s=>{if(scrollY>=s.offsetTop-120)cur=s.id});links.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+cur))});
+</script>
+</body>
+</html>

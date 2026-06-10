@@ -10,6 +10,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { estimateImageCost, costEstimateLabel } from "@/lib/costEstimate";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
@@ -20,6 +21,7 @@ import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
+import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import type { ImageGenModel } from "../../../../../shared/types";
@@ -170,26 +172,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // from this storyboard to ALL other storyboard nodes on the canvas.
   // Helps users keep a consistent style across an entire sequence without
   // hand-editing every scene.
-  const syncToAllStoryboards = useCallback(() => {
-    const { nodes: allNodes, batchUpdateNodeData } = useCanvasStore.getState();
-    const targets = allNodes.filter(
-      (n) => n.data.nodeType === "storyboard" && n.id !== id,
-    );
-    if (targets.length === 0) {
-      toast.info("当前画布只有这一个分镜节点");
-      return;
-    }
-    const patch: Partial<StoryboardNodeData> = {
-      imageModel: payload.imageModel,
-      colorTone: payload.colorTone,
-      batchSize: payload.batchSize,
-      negativePrompt: payload.negativePrompt,
-      cameraMovement: payload.cameraMovement,
-      lens: payload.lens,
-    };
-    batchUpdateNodeData(targets.map((t) => ({ id: t.id, payload: patch })));
-    toast.success(`已同步设置到 ${targets.length} 个分镜节点`);
-  }, [id, payload.imageModel, payload.colorTone, payload.batchSize, payload.negativePrompt, payload.cameraMovement, payload.lens]);
+  const [showSync, setShowSync] = useState(false);
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
@@ -386,6 +369,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         model,
         batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
         ...sizingFields,
+        // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
+        estimatedCost: costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1)) || undefined,
       });
     };
     guard({ model, refImageUrl: charRefUrl }, submit);
@@ -556,6 +541,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               >
                 {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                 {generating ? "生成中..." : "AI 生成分镜"}
+                {!generating && (() => {
+                  const lbl = costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1));
+                  return lbl ? (
+                    <span
+                      title="按当前模型与参数实时预估的点数消耗，仅供参考，实际以平台账单为准"
+                      style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "oklch(0.65 0.20 160 / 0.18)", letterSpacing: "0.02em" }}
+                    >
+                      {lbl}
+                    </span>
+                  ) : null;
+                })()}
               </button>
               {!payload.promptText?.trim() && (
                 <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>请先填写提示词</p>
@@ -943,8 +939,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             />
           </div>
           <button
-            onClick={syncToAllStoryboards}
-            title="把当前模型 / 色调 / 抽卡次数 / 反向提示词等参数同步到画布中所有其他分镜节点"
+            onClick={() => setShowSync(true)}
+            title="把当前模型 / 色调 / 抽卡次数 / 反向提示词等参数同步到所选分镜节点（弹窗勾选）"
             className="nodrag flex items-center gap-1 px-2 rounded-lg text-[10.5px] transition-all"
             style={{
               background: "oklch(0.65 0.20 160 / 0.08)",
@@ -957,9 +953,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 160 / 0.08)"; }}
           >
             <Copy className="w-3 h-3" />
-            同步到全部
+            同步参数
           </button>
         </div>
+        {showSync && (
+          <SyncNodesDialog
+            sourceId={id}
+            nodeType="storyboard"
+            typeLabel="分镜"
+            patch={{ imageModel: payload.imageModel, colorTone: payload.colorTone, batchSize: payload.batchSize, negativePrompt: payload.negativePrompt, cameraMovement: payload.cameraMovement, lens: payload.lens }}
+            onClose={() => setShowSync(false)}
+          />
+        )}
         {/* ── Sizing controls (per-model) ── Soul / Reve-like 走既有专属控件；
             Poyo 模型改由下方 schema 驱动的 ParamControls 渲染 ── */}
         {(isSoul || isV2HF) && (

@@ -28,6 +28,8 @@ import { ImageLightbox } from "../ImageLightbox";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
+import { estimateImageCost, costEstimateLabel } from "@/lib/costEstimate";
+import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import { NodeTextArea } from "../NodeTextInput";
@@ -127,6 +129,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (Object.keys(patch).length) updateNodeData(id, patch, true); // fill-only-when-blank
   }, [upstreamPrompt, upstreamNeg, payload.prompt, payload.negativePrompt, id, updateNodeData]);
   const [uploading, setUploading] = useState(false);
+  const [showSyncDlg, setShowSyncDlg] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [refZoom, setRefZoom] = useState<number | null>(null);
   // Multi-reference-image list + left-docked expandable strip.
@@ -374,6 +377,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
         aspectRatio: payload.aspectRatio || undefined,
       } : {}),
+      // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
+      estimatedCost: genCostLabel || undefined,
       projectId: data.projectId,
     });
     guard({ model: payload.model ?? "manus_forge", refImageUrl: payload.referenceImageUrl ?? charRefs[0] }, submit);
@@ -412,6 +417,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const isManus = payload.model === "manus_forge";
   // Models that use the collapsible params panel
   const isReveLike = isReve || isSeedreamV4 || isFluxPro;
+
+  // 实时点数预估：单价 × 张数（Soul 批量 / Flux 多图 / Poyo imageN），模型或数量一变即重算。
+  const genCount = (() => {
+    const poyoN = (payload as unknown as { imageN?: number }).imageN ?? 1;
+    if (isSoul && (payload.batchSize ?? 1) > 1) return payload.batchSize ?? 1;
+    if (isFluxPro && (payload.fluxNumImages ?? 1) > 1) return payload.fluxNumImages ?? 1;
+    return poyoN > 1 ? poyoN : 1;
+  })();
+  const genCostLabel = costEstimateLabel(estimateImageCost(payload.model || "manus_forge", genCount));
 
   // Collapse the params panel when switching model — old expansion state doesn't apply to a new param set
   useEffect(() => {
@@ -743,6 +757,26 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             </div>
           )}
         </div>
+        {/* 同步模型与参数到同类图像生成节点（弹窗勾选） */}
+        <button
+          onClick={() => setShowSyncDlg(true)}
+          title="把当前模型与全部参数同步到所选图像生成节点（弹窗勾选，默认同工作流）"
+          className="nodrag flex items-center justify-center gap-1 rounded-lg text-[10.5px] py-1 transition-all"
+          style={{ marginTop: 6, width: "100%", background: "oklch(0.66 0.19 300 / 0.08)", border: "1px dashed oklch(0.66 0.19 300 / 0.4)", color: "oklch(0.74 0.16 300)", cursor: "pointer" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.66 0.19 300 / 0.16)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.66 0.19 300 / 0.08)"; }}
+        >
+          <Grid2X2 className="w-3 h-3" /> 同步模型与参数到其它图像节点
+        </button>
+        {showSyncDlg && (
+          <SyncNodesDialog
+            sourceId={id}
+            nodeType="image_gen"
+            typeLabel="图像生成"
+            patch={{ model: payload.model, negativePrompt: payload.negativePrompt, style: payload.style, aspectRatio: payload.aspectRatio, poyoQuality: payload.poyoQuality, widthAndHeight: payload.widthAndHeight, soulQuality: payload.soulQuality, batchSize: payload.batchSize, seed: payload.seed, enhancePrompt: payload.enhancePrompt, reveAspectRatio: payload.reveAspectRatio, reveResolution: payload.reveResolution, fluxGuidanceScale: payload.fluxGuidanceScale, fluxSeed: payload.fluxSeed, fluxNumImages: payload.fluxNumImages }}
+            onClose={() => setShowSyncDlg(false)}
+          />
+        )}
 
         {/* Prompt */}
         <div>
@@ -1184,6 +1218,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             if (genMutation.isPending) return batch > 1 ? `批量生成中 (${batch} 张)...` : "AI 生成中...";
             return batch > 1 ? `批量生成 ${batch} 张` : "生成图像";
           })()}
+          {genCostLabel && !genMutation.isPending && (
+            <span
+              title="按当前模型与参数实时预估的点数消耗，仅供参考，实际以平台账单为准"
+              style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "oklch(0.72 0.20 330 / 0.15)", letterSpacing: "0.02em" }}
+            >
+              {genCostLabel}
+            </span>
+          )}
         </button>
 
         </div>{/* end input collapse wrapper */}

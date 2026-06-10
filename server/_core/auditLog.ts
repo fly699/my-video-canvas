@@ -145,3 +145,42 @@ export function truncate(s: string | undefined | null, max = 120): string {
   if (!s) return "";
   return s.length <= max ? s : s.slice(0, max) + "…";
 }
+
+/**
+ * 视频任务终态（succeeded/failed）审计日志 — 提交时的 video_gen 日志只记录
+ * 「是否提交成功」，真正的生成结果在异步轮询里才知道，因此在每个终态转移点调用
+ * 本函数补一条带 success 标志 + 预估点数（params._estimatedCost，创建时随请求
+ * 存入）的结果日志。轮询器无用户上下文 → 按 task.userId 反查用户后写入。
+ */
+export function auditVideoTaskResult(
+  task: { id: number; userId: number; nodeId: string; provider: string; params?: unknown },
+  success: boolean,
+  errorMessage?: string | null,
+): void {
+  const estimatedCost = (task.params as { _estimatedCost?: unknown } | null)?._estimatedCost;
+  void (async () => {
+    let userEmail: string | null = null;
+    let userName: string | null = null;
+    try {
+      const u = await db.getUserById(task.userId);
+      userEmail = u?.email ?? null;
+      userName = u?.name ?? null;
+    } catch { /* 用户查询失败不阻塞日志 */ }
+    writeAuditLog({
+      ip: "system",
+      userId: task.userId,
+      userEmail,
+      userName,
+      action: "video_gen",
+      detail: {
+        phase: "result",
+        provider: task.provider,
+        taskId: task.id,
+        nodeId: task.nodeId,
+        ...(typeof estimatedCost === "string" && estimatedCost ? { estimatedCost } : {}),
+        success,
+        ...(errorMessage ? { error: truncate(errorMessage) } : {}),
+      },
+    });
+  })();
+}

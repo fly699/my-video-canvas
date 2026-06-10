@@ -656,6 +656,15 @@ export const storageSettings = mysqlTable("storageSettings", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// Single-row (id always 1) admin-managed model visibility toggles. `disabledModels`
+// is a JSON array of model value/id strings that admins hid from the node model
+// pickers. Empty/null = all models visible (default, non-breaking).
+export const modelToggleSettings = mysqlTable("model_toggle_settings", {
+  id: int("id").primaryKey(),
+  disabledModels: json("disabledModels").$type<string[]>(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 /** Single-row (id always 1) admin-managed global ComfyUI server registry,
  *  shared across all users. `servers` is a JSON array of base URLs. */
 export const comfySettings = mysqlTable("comfy_settings", {
