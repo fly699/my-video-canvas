@@ -174,19 +174,20 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={14} /> 文件</button>
-          <button onClick={() => window.open("/relay", "_blank", "noopener")} title="局域网大文件中转站（几十 GB 大文件传输，支持断点续传）" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><HardDriveUpload size={14} /> 中转站</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* AI 助手会话：不是真人/群聊，隐藏 文件/中转站/删除/模式切换等无关按钮 */}
+          {!isAI && <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={13} /> 文件</button>}
+          {!isAI && <button onClick={() => window.open("/relay", "_blank", "noopener")} title="局域网大文件中转站（几十 GB 大文件传输，支持断点续传）" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><HardDriveUpload size={13} /> 中转站</button>}
           {activeConv.type === "group" && (isOwner
-            ? <button onClick={onDelete} title="删除群聊（群主）" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={14} /> 删除</button>
-            : <button onClick={onLeave} title="退出群聊" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><LogOut size={14} /> 退出</button>
+            ? <button onClick={onDelete} title="删除群聊（群主）" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={13} /> 删除</button>
+            : <button onClick={onLeave} title="退出群聊" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><LogOut size={13} /> 退出</button>
           )}
-          {activeConv.type === "dm" && (
-            <button onClick={onDeleteDm} title="删除该私聊" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={14} /> 删除</button>
+          {activeConv.type === "dm" && !isAI && (
+            <button onClick={onDeleteDm} title="删除该私聊" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={13} /> 删除</button>
           )}
-          {activeConv.type !== "lobby" && (
-            <button onClick={toggleMode} title="切换工作模式" style={{ ...pill, border: `1px solid ${activeConv.mode === "serverless" ? C.accent : C.borderStrong}`, background: activeConv.mode === "serverless" ? C.accentSoft : "var(--c-elevated, rgba(128,128,128,0.10))", color: activeConv.mode === "serverless" ? C.accent : C.t1 }}>
-              {activeConv.mode === "serverless" ? <><ShieldCheck size={14} /> 端到端加密</> : <>服务器模式</>}
+          {activeConv.type !== "lobby" && !isAI && (
+            <button onClick={toggleMode} title={activeConv.mode === "serverless" ? "当前端到端加密，点击切回服务器模式" : "当前服务器模式，点击切换端到端加密"} style={{ ...pill, border: `1px solid ${activeConv.mode === "serverless" ? C.accent : C.borderStrong}`, background: activeConv.mode === "serverless" ? C.accentSoft : "var(--c-elevated, rgba(128,128,128,0.10))", color: activeConv.mode === "serverless" ? C.accent : C.t1 }}>
+              {activeConv.mode === "serverless" ? <><ShieldCheck size={13} /> 加密</> : <>服务器</>}
             </button>
           )}
         </div>
@@ -414,5 +415,5 @@ function Attachment({ a, mine }: { a: ChatFileRef; mine: boolean }) {
   );
 }
 
-const pill: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, padding: "7px 12px", borderRadius: 10, cursor: "pointer" };
+const pill: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "4px 8px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 };
 const iconBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 11, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, cursor: "pointer", flexShrink: 0 };
