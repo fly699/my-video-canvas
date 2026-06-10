@@ -8,6 +8,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagatePromptToVideo, propagateControlMap } from "../../../lib/refImagePropagation";
 import { applyFreeVramToAllComfyNodes } from "../../../lib/comfyFreeVram";
 import { effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
+import { stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
@@ -83,7 +84,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // 「最终提示词」= 角色注入后的正向词（payload.prompt 已含上游自动填充结果）。
   const finalPromptDisplay = useCanvasStore((s) => {
     const base = payload.prompt ?? "";
-    return mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), effectiveCharacters(id, base, s.edges, s.nodes), 2000);
+    return mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes), effectiveCharacters(id, base, s.edges, s.nodes), 2000);
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
@@ -327,7 +328,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     // identity like 外貌/服装). Not persisted, mirrors video_task.
     const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
     // Cap to the server's prompt max(2000); preserves the base prompt, trims injection.
-    const finalPrompt = mergeCharactersIntoPrompt(stripCharacterMentions(payload.prompt, gnodes), effectiveCharacters(id, payload.prompt, gedges, gnodes), 2000);
+    const finalPrompt = mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.prompt, gnodes), gnodes), effectiveCharacters(id, payload.prompt, gedges, gnodes), 2000);
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,

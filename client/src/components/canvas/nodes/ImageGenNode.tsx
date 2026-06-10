@@ -11,7 +11,7 @@ import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { refUrls } from "../../../lib/referenceImages";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { detectUpstreamPrompt, detectUpstreamImagesExpanded } from "../../../lib/comfyWorkflowParams";
+import { detectUpstreamPrompt, detectUpstreamImagesExpanded, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
@@ -156,7 +156,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     const base = payload.prompt ?? "";
     const chars = effectiveCharacters(id, base, s.edges, s.nodes);
     return appendEffectPrompts(
-      mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), chars),
+      mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes), chars),
       connectedEffectPrompts(id, s.edges, s.nodes),
     );
   });
@@ -315,12 +315,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     // Cap to the server's referenceImageUrls limit (z.array().max(8)). Multiple
     // connected characters × multi-view can exceed 8, which would otherwise be
     // rejected as BAD_REQUEST before any image is generated.
-    const effectiveRefs = (manualRefs.length ? manualRefs : charRefs).slice(0, 8);
+    // @图像名 直接引用的独立图像节点 → 作为显式参考图并入（去重；用户主动 @ 即视为参考）。
+    const atImageRefs = mentionedMediaUrls(payload.prompt, "image", gnodes);
+    const effectiveRefs = Array.from(new Set([...(manualRefs.length ? manualRefs : charRefs), ...atImageRefs])).slice(0, 8);
     // Augment with any connected post_process「效果注入」effect prompts (after the
     // character merge), so a wired post_process node actually affects the image.
     // Strip the literal「@名字」from the base prompt — the character is injected structurally.
     const finalPrompt = appendEffectPrompts(
-      mergeCharactersIntoPrompt(stripCharacterMentions(payload.prompt, gnodes), connChars),
+      mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.prompt, gnodes), gnodes), connChars),
       connectedEffectPrompts(id, gedges, gnodes),
     );
     const submit = () => genMutation.mutate({

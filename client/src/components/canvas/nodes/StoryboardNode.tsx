@@ -13,6 +13,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { estimateImageCost, costEstimateLabel } from "@/lib/costEstimate";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
+import { mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { PromptDock } from "../PromptDock";
@@ -118,7 +119,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const finalPromptDisplay = useCanvasStore((s) => {
     const base = payload.promptText ?? "";
     const chars = effectiveCharacters(id, base, s.edges, s.nodes);
-    return mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), chars, 2000);
+    return mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes), chars, 2000);
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.promptText ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
@@ -313,16 +314,19 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // matching ImageGenNode — previously only the FIRST person's primary image was
     // sent, losing multi-view / multi-character locking. Cap to the server's max(8).
     const manualRef = payload.referenceImageUrl?.trim();
-    // Person identity refs first, then SCENE backdrop refs (location/style context).
-    const charRefs = manualRef
-      ? []
-      : [...effectiveCharacterRefImages(id, payload.promptText, allEdges, allNodes), ...effectiveSceneRefImages(id, payload.promptText, allEdges, allNodes)].slice(0, 8);
+    // @图像名 直接引用的独立图像节点 → 显式参考图。
+    const atImageRefs = mentionedMediaUrls(payload.promptText, "image", allNodes);
+    // Person identity refs first, then SCENE backdrop refs (location/style context), then @图像。
+    const charRefs = Array.from(new Set([
+      ...(manualRef ? [] : [...effectiveCharacterRefImages(id, payload.promptText, allEdges, allNodes), ...effectiveSceneRefImages(id, payload.promptText, allEdges, allNodes)]),
+      ...atImageRefs,
+    ])).slice(0, 8);
     const charRefUrl: string | undefined = manualRef || charRefs[0];
     // Cap to 2000 while PRESERVING the user's scene text — the previous crude
     // slice(0, 2000) cut from the END, dropping the scene description (which sits
     // after the prepended character blocks). maxLength trims the injection instead.
     // 去掉字面量「@名字」，改用结构化注入。
-    const enhancedPrompt = mergeCharactersIntoPrompt(stripCharacterMentions(payload.promptText, allNodes), chars, 2000);
+    const enhancedPrompt = mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.promptText, allNodes), allNodes), chars, 2000);
 
     // Per-model sizing: pass only the fields the chosen model actually
     // consumes. The imageGen.generate tRPC procedure validates each field

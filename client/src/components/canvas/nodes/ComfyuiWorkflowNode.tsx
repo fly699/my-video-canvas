@@ -9,7 +9,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding, ReferenceImage } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources } from "@/lib/comfyWorkflowParams";
 import { effectiveCharacters, connectedCharacterLora, effectiveCharacterRefImages, stripCharacterMentions } from "@/lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
@@ -423,12 +423,18 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       const sources = [
         ...listUpstreamImageSources(id, edges, nodes),
         ...charRefImgs.map((url, i) => ({ id: `char_ref_${i}`, title: `角色参考${i + 1}`, url })),
+        // @图像名 引用的独立图像节点（与上游来源并列，供参数自动填充 / 显式映射）。
+        ...mentionedMediaSources(mentionText, "image", nodes).map((m) => ({ id: m.id, title: m.name, url: m.url })),
       ];
       // Explicit per-param「来源」mapping first, then smart auto-fill the rest.
       const imgResolved = resolveImageParamsWithMap(payload.paramBindings, payload.paramValues ?? {}, sources, payload.imageSourceMap ?? {});
       const imageParamKeys = imgResolved.imageParamKeys;
-      // 音频参数：上游音频来源映射 + 自动填充（服务端运行时上传到 ComfyUI）。
-      const audioResolved = resolveAudioParamsWithMap(payload.paramBindings, imgResolved.paramValues, listUpstreamAudioSources(id, edges, nodes), payload.audioSourceMap ?? {});
+      // 音频参数：上游音频来源 + @音频名 引用 → 映射 + 自动填充（服务端运行时上传到 ComfyUI）。
+      const audioSources = [
+        ...listUpstreamAudioSources(id, edges, nodes),
+        ...mentionedMediaSources(mentionText, "audio", nodes).map((m) => ({ id: m.id, title: m.name, url: m.url })),
+      ];
+      const audioResolved = resolveAudioParamsWithMap(payload.paramBindings, imgResolved.paramValues, audioSources, payload.audioSourceMap ?? {});
       const audioParamKeys = audioResolved.audioParamKeys;
       let paramValues = fillWorkflowPromptParams(payload.paramBindings, audioResolved.paramValues, upstreamPrompt, { force: payload.preferUpstreamPrompt !== false });
       // Prepend character identity to the resolved positive (augment, not replace).

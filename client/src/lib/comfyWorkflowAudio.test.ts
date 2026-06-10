@@ -53,7 +53,7 @@ describe("resolveAudioParamsWithMap", () => {
   });
 });
 
-import { listUpstreamVideoSources, listCanvasMediaSources, mentionedMediaUrls, stripMediaMentions } from "./comfyWorkflowParams";
+import { listUpstreamVideoSources, listCanvasMediaSources, mentionedMediaUrls, mentionedMediaSources, stripMediaMentions } from "./comfyWorkflowParams";
 
 const NV = (id: string, nodeType: string, payload: unknown, title?: string) => ({ id, data: { nodeType, payload, title } });
 
@@ -95,5 +95,39 @@ describe("@音频名 / @视频名（独立媒体节点）", () => {
 
   it("stripMediaMentions 去掉 @媒体名 字面量", () => {
     expect(stripMediaMentions("配上 @旁白 做 @舞蹈 动作", nodes)).toBe("配上 做 动作");
+  });
+});
+
+describe("@图像名（独立图像节点）", () => {
+  const nodes = [
+    NV("i1", "image_gen", { imageUrl: "hero.png" }, "主角图"),
+    NV("i2", "storyboard", { imageUrl: "shot1.png" }, "分镜A"),
+    NV("i3", "asset", { url: "bg.jpg", type: "image", mimeType: "image/jpeg" }, "背景"),
+    NV("a1", "audio", { url: "v.mp3" }, "配音"),
+    // 同名同节点只归一类：既有视频又有图像时，视频优先（getNodeVideoUrl 先命中）。
+    NV("vt", "video_task", { resultVideoUrl: "c.mp4", imageUrl: "thumb.png" }, "成片"),
+  ];
+
+  it("listCanvasMediaSources 纳入图像节点（image_gen/storyboard/asset[image]）", () => {
+    const imgs = listCanvasMediaSources(nodes).filter((m) => m.kind === "image").map((m) => [m.name, m.url]);
+    expect(imgs).toEqual([["主角图", "hero.png"], ["分镜A", "shot1.png"], ["背景", "bg.jpg"]]);
+  });
+
+  it("一个节点只归一类：video_task 同时有视频和图像 → 归为视频", () => {
+    const m = listCanvasMediaSources(nodes).find((s) => s.name === "成片");
+    expect(m?.kind).toBe("video");
+  });
+
+  it("mentionedMediaUrls 解析 @图像名", () => {
+    expect(mentionedMediaUrls("参考 @主角图 和 @背景", "image", nodes)).toEqual(["hero.png", "bg.jpg"]);
+    expect(mentionedMediaUrls("@配音", "image", nodes)).toEqual([]); // 配音是音频，不计入图像
+  });
+
+  it("mentionedMediaSources 返回含来源名的对象", () => {
+    expect(mentionedMediaSources("用 @分镜A", "image", nodes).map((m) => [m.name, m.url, m.kind])).toEqual([["分镜A", "shot1.png", "image"]]);
+  });
+
+  it("stripMediaMentions 同时剥离 @图像名", () => {
+    expect(stripMediaMentions("画 @主角图 站在 @背景 前", nodes)).toBe("画 站在 前");
   });
 });
