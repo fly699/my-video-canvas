@@ -1065,11 +1065,24 @@ export interface AgentOperation {
   error?: string;
 }
 
+/** 管线下一步引导（apply 后确定性推导：分镜→批量生产→装配→内嵌字幕）。 */
+export interface PipelineStep {
+  action: "open_shotlist" | "assemble" | "burn_subtitle";
+  label: string;
+  hint: string;
+  /** 目标节点 id（open_shotlist→分镜，assemble/burn→合并）。 */
+  targetId: string;
+  /** 已完成（合并已装配 / 已开内嵌字幕）。 */
+  done?: boolean;
+}
+
 export interface AgentMessage {
   role: "user" | "assistant";
   content: string;
   /** assistant only: the graph operations proposed in this turn. */
   operations?: AgentOperation[];
+  /** assistant only: 管线下一步引导卡（与 operations 互斥，apply 后追加）。 */
+  pipeline?: PipelineStep[];
 }
 
 export interface AgentNodeData {

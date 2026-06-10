@@ -141,6 +141,15 @@ export function applyAgentOperations(
             if (serverOverride) payload.customBaseUrl = serverOverride;
             if (freeVramOverride) payload.freeVramAfterRun = true;
           }
+          // 分镜兜底（实测 bug）：LLM/配方常把生成提示词整段写进 description（场景描述框），
+          // promptText（提示词框）留空。批量生产本就按 promptText||description 回退——这里
+          // 在创建时把回退显式化：promptText 为空则补 description，提示词框不再空置。
+          // 仅创建时填空，绝不覆盖 LLM 已分别给出的两个字段。
+          if (op.nodeType === "storyboard" && payload) {
+            const d = typeof payload.description === "string" ? payload.description.trim() : "";
+            const pt = typeof payload.promptText === "string" ? payload.promptText.trim() : "";
+            if (!pt && d) payload = { ...payload, promptText: d };
+          }
           // Scene layout when planned, else fan out 3 per row to the agent's right.
           const pos = posByOp.get(op) ?? {
             x: anchor.x + 560 + (createdIdx % 3) * 540,

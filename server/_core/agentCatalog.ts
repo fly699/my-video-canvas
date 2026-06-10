@@ -58,8 +58,8 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     connectsTo: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "audio"],
     fields: [
       { name: "sceneNumber", type: "number", desc: "镜号（1,2,3… 连续递增；「按镜头表装配」按它排序成片，必填）" },
-      { name: "description", type: "string", desc: "画面描述（中文，看到什么）" },
-      { name: "promptText", type: "string", desc: "图像/视频生成提示词" },
+      { name: "description", type: "string", desc: "画面描述（中文，给人看；生成提示词放 promptText，勿堆在此）" },
+      { name: "promptText", type: "string", desc: "图像/视频生成提示词（必填，详细到可直接喂生成模型）" },
       { name: "negativePrompt", type: "string", desc: "反向提示词" },
       { name: "dialogue", type: "string", desc: "对白/旁白（格式「角色名：台词」，纯旁白直接写文本；批量配音直接取用）" },
       { name: "transition", type: "string", desc: "切到下一镜的转场：cut/fade/dissolve/wipe/match-cut（装配成片按它设逐切点转场）" },
