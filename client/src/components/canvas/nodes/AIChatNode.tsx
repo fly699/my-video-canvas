@@ -353,6 +353,13 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     return cmd.wrap(rest.trim());
   };
 
+  /** 以编程方式写入输入框：优先用 NodeTextArea 暴露的 commitValue（聚焦时也即时生效），否则回退 setInput。 */
+  const insertInputText = (next: string) => {
+    const el = inputRef.current as (HTMLTextAreaElement & { commitValue?: (v: string) => void }) | null;
+    if (el?.commitValue) el.commitValue(next);
+    else setInput(next);
+  };
+
   const handleSend = () => {
     const msgRaw = input.trim();
     if ((!msgRaw && pendingAttachments.length === 0) || sendMutation.isPending) return;
@@ -929,7 +936,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           {/* Inject whole-canvas summary */}
           <button
             onClick={() => {
-              setInput((cur) => (cur.startsWith("/画布") ? cur : `/画布 ${cur}`).trimEnd() + " ");
+              const cur = inputRef.current?.value ?? input;
+              insertInputText((cur.startsWith("/画布") ? cur : `/画布 ${cur}`).trimEnd() + " ");
               inputRef.current?.focus();
             }}
             disabled={sendMutation.isPending}
@@ -1086,7 +1094,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   className="nodrag w-full flex items-center gap-2 px-3 py-2 text-left transition-all"
                   style={{ borderBottom: "1px solid var(--c-bd1)", cursor: "pointer" }}
                   onClick={() => {
-                    setInput((cur) => `/${c.aliases[0]} ${cur}`.trim() + " ");
+                    const cur = inputRef.current?.value ?? input;
+                    insertInputText(`/${c.aliases[0]} ${cur}`.trim() + " ");
                     setShowSlashMenu(false);
                     inputRef.current?.focus();
                   }}
