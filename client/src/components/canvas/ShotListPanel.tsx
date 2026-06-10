@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard } from "lucide-react";
+import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic } from "lucide-react";
 import type { StoryboardNodeData, ScriptNodeData } from "../../../../shared/types";
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
 import { propagateRefImage } from "../../lib/refImagePropagation";
 import { PROVIDER_PARAMS, withParamDefaults, PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
 import { ModelPicker } from "./ModelPicker";
-import { estimateVideoCost, costEstimateLabel } from "../../lib/costEstimate";
+import { estimateVideoCost, estimateTtsCost, costEstimateLabel } from "../../lib/costEstimate";
+import { DUBBING_MODELS, voicesForModel } from "./nodes/AudioNode";
 
 // 「镜头表（Shot List）」侧向展开面板 —— 同组分镜的序列总览。
 // 行业前期制作的核心文档：镜号/景别/运镜/时长/转场/对白 一表统管；
@@ -55,15 +56,27 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
           }
           return "";
         })(),
+        // 下游配音节点：""=无；"empty"=有节点未出声；其余=音频时长（秒字符串）
+        (() => {
+          for (const e of s.edges) {
+            if (e.source !== n.id) continue;
+            const t = s.nodes.find((m) => m.id === e.target);
+            if (t?.data.nodeType === "audio") {
+              const ap = t.data.payload as { url?: string; duration?: number };
+              return ap.url ? String(Math.round(ap.duration ?? 0)) : "empty";
+            }
+          }
+          return "";
+        })(),
       ]),
     });
   });
   const { rows, targetDuration, scriptId } = useMemo(() => {
-    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; rows: [string, string, number, string, number, string][] };
-    const parsed: (ShotRow & { x: number; hasRefine: boolean; videoStatus: string })[] = g.rows.map(([rid, title, x, pj, refine, vstat], i) => {
+    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; rows: [string, string, number, string, number, string, string][] };
+    const parsed: (ShotRow & { x: number; hasRefine: boolean; videoStatus: string; audioStatus: string })[] = g.rows.map(([rid, title, x, pj, refine, vstat, astat], i) => {
       const payload = JSON.parse(pj) as StoryboardNodeData;
       const n = Number(payload.sceneNumber);
-      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1, videoStatus: vstat };
+      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1, videoStatus: vstat, audioStatus: astat };
     });
     parsed.sort((a, b) => a.num - b.num || a.x - b.x);
     return { rows: parsed, targetDuration: g.target, scriptId: g.src };
@@ -224,6 +237,64 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
   };
   const hasLabel = (v: string) => PROVIDER_PICKER_OPTIONS.find((o) => o.value === v)?.label ?? v;
 
+  // ── 批量配音（流水线第三段：逐镜 per-shot VO，行业对位口径）────────────────────
+  // 仅对「有对白」的勾选镜；已有下游音频节点的镜跳过（防重复扣费）；
+  // 每镜一条音频 → 与该镜片段天然对位；完成后行内标注 TTS 时长 vs 镜时长偏差。
+  const [dubModel, setDubModel] = useState<string>(() => localStorage.getItem("shotlist:dubModel") || "openai_tts_real");
+  const dubVoices = voicesForModel(dubModel);
+  const [dubVoice, setDubVoice] = useState<string>(() => localStorage.getItem("shotlist:dubVoice") || "");
+  const effDubVoice = dubVoices.some((v) => v.value === dubVoice) ? dubVoice : dubVoices[0]?.value;
+  const [dubBusy, setDubBusy] = useState(false);
+  const [dubState, setDubState] = useState<Record<string, "running" | "done" | "error">>({});
+
+  const submitDubOne = async (r: ShotRow): Promise<"done" | "error"> => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === r.id);
+    const projectId = store.projectId;
+    const text = r.payload.dialogue?.trim();
+    if (!own || !projectId || !text) return "error";
+    try {
+      const an = store.addNode("audio", { x: own.position.x, y: own.position.y + 980 });
+      store.updateNodeData(an.id, { audioCategory: "dubbing", ttsText: text, ttsModel: dubModel, ttsVoice: effDubVoice });
+      store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
+      const res = await utils.client.audioGen.generateDubbing.mutate({
+        model: dubModel as never, text, voice: effDubVoice, projectId,
+        estimatedCost: costEstimateLabel(estimateTtsCost(dubModel, text.length)) || undefined,
+        ...(dubModel.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+      });
+      useCanvasStore.getState().updateNodeData(an.id, { url: res.url, duration: res.duration, name: `配音 · 镜${r.payload.sceneNumber ?? "?"}` });
+      return "done";
+    } catch {
+      return "error";
+    }
+  };
+
+  const runDubBatch = async () => {
+    if (dubBusy) return;
+    const targets = rows.filter((r) => sel.has(r.id) && !r.audioStatus); // 已有配音工位的跳过
+    const ready = targets.filter((r) => r.payload.dialogue?.trim());
+    const skippedNoDlg = targets.length - ready.length;
+    if (!ready.length) { toast.error("勾选镜中没有「对白/旁白」可配音（在分镜或镜头表里填写）"); return; }
+    const totalChars = ready.reduce((s0, r) => s0 + (r.payload.dialogue?.trim().length ?? 0), 0);
+    const est = estimateTtsCost(dubModel, totalChars);
+    const sumText = est ? costEstimateLabel(est) : "按量计费";
+    if (!window.confirm(`将为 ${ready.length} 个分镜逐镜生成配音（共 ${totalChars} 字，预估 ${sumText}）${skippedNoDlg ? `；${skippedNoDlg} 个无对白跳过` : ""}。继续？`)) return;
+    setDubBusy(true);
+    const queue = [...ready];
+    const worker = async () => {
+      for (;;) {
+        const r = queue.shift();
+        if (!r) return;
+        setDubState((s0) => ({ ...s0, [r.id]: "running" }));
+        const st = await submitDubOne(r);
+        setDubState((s0) => ({ ...s0, [r.id]: st }));
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    setDubBusy(false);
+    toast.success("批量配音完成（每镜一条音频，已连线到对应分镜）");
+  };
+
   const continuityMut = trpc.scripts.refineShotContinuity.useMutation({
     onSuccess: (r, vars) => {
       const targetId = fixingId;
@@ -370,6 +441,29 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         </button>
       </div>
 
+      {/* 批量配音（流水线第三段：逐镜 per-shot VO） */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)", flexShrink: 0 }}>批量配音</span>
+        <select className="nodrag" value={dubModel} onChange={(e) => { setDubModel(e.target.value); localStorage.setItem("shotlist:dubModel", e.target.value); }}
+          style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", maxWidth: 150 }}>
+          {DUBBING_MODELS.filter((m) => m.value !== "voxcpm-local").map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+        <select className="nodrag" value={effDubVoice ?? ""} onChange={(e) => { setDubVoice(e.target.value); localStorage.setItem("shotlist:dubVoice", e.target.value); }}
+          style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", maxWidth: 110 }}>
+          {dubVoices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+        </select>
+        <button
+          onClick={() => void runDubBatch()}
+          disabled={dubBusy || sel.size === 0}
+          title="为勾选且有「对白/旁白」的镜逐镜生成配音（每镜一条音频、自动连线，与该镜片段天然对位）"
+          className="nodrag ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md"
+          style={{ fontSize: 10, fontWeight: 700, background: dubBusy || sel.size === 0 ? "var(--c-surface)" : "oklch(0.70 0.18 340 / 0.14)", border: `1px solid ${dubBusy || sel.size === 0 ? "var(--c-bd2)" : "oklch(0.70 0.18 340 / 0.5)"}`, color: dubBusy || sel.size === 0 ? "var(--c-t4)" : "oklch(0.70 0.18 340)", cursor: dubBusy || sel.size === 0 ? "not-allowed" : "pointer" }}
+        >
+          {dubBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Mic style={{ width: 11, height: 11 }} />}
+          批量生成配音
+        </button>
+      </div>
+
       {/* 表格 */}
       <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {rows.map((r, i) => {
@@ -404,6 +498,15 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
                   : r.videoStatus === "processing" || r.videoStatus === "pending" ? <span title="视频生成中" style={{ fontSize: 9 }}>🎬⏳</span>
                   : r.videoStatus === "succeeded" ? <span title="视频已生成" style={{ fontSize: 9 }}>🎬✓</span>
                   : r.videoStatus === "failed" ? <span title="视频生成失败" style={{ fontSize: 9, color: "oklch(0.62 0.20 25)" }}>🎬✗</span>
+                  : null}
+                {dubState[r.id] === "running" ? <Loader2 style={{ width: 10, height: 10, color: "oklch(0.70 0.18 340)" }} className="animate-spin" />
+                  : dubState[r.id] === "error" ? <span title="配音失败（可重新批量）" style={{ fontSize: 9, color: "oklch(0.62 0.20 25)" }}>🎙✗</span>
+                  : r.audioStatus && r.audioStatus !== "empty" ? (() => {
+                      const ad = Number(r.audioStatus), sd = Number(r.payload.duration) || 0;
+                      const over = sd > 0 && ad > sd;
+                      return <span title={`配音 ${ad}s / 镜 ${sd}s${over ? "——超出镜时长，建议精简对白或调慢镜" : ""}`} style={{ fontSize: 9, color: over ? "oklch(0.75 0.16 75)" : "oklch(0.70 0.18 150)" }}>🎙{ad}s{over ? "⚠" : ""}</span>;
+                    })()
+                  : r.audioStatus === "empty" ? <span title="已有配音工位（未出声）" style={{ fontSize: 9 }}>🎙…</span>
                   : null}
                 <button onClick={() => swap(i, i - 1)} disabled={i === 0} className="nodrag" title="上移" style={{ background: "none", border: "none", color: i === 0 ? "var(--c-bd2)" : "var(--c-t3)", cursor: i === 0 ? "default" : "pointer", padding: 1 }}><ArrowUp style={{ width: 12, height: 12 }} /></button>
                 <button onClick={() => swap(i, i + 1)} disabled={i === rows.length - 1} className="nodrag" title="下移" style={{ background: "none", border: "none", color: i === rows.length - 1 ? "var(--c-bd2)" : "var(--c-t3)", cursor: i === rows.length - 1 ? "default" : "pointer", padding: 1 }}><ArrowDown style={{ width: 12, height: 12 }} /></button>
