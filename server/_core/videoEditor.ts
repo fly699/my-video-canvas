@@ -531,6 +531,8 @@ export interface MergeOptions {
 export interface MergeResult {
   url: string;
   duration: number;
+  /** xfade 路径下各段在成片中的精确起点（offset 累计值）——下游字幕对位的时间轴真相源。 */
+  segStarts?: number[];
 }
 
 export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
@@ -560,6 +562,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
     }
 
     let totalDuration = 0;
+    let outSegStarts: number[] | undefined;
     const args: string[] = [];
 
     if (transition === "none" && !advanced) {
@@ -697,13 +700,16 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         throw new Error(`FFmpeg xfade merge failed:\n${e.stderr || e.message || String(err)}`);
       }
 
-      totalDuration = durations.reduce((s, d) => s + d, 0) - td * (n - 1);
+      // 末段起点 + 末段时长 = 成片总长（逐切点 duration 各异时仍精确；
+      // 全局统一转场时与旧公式 Σdur - td*(n-1) 等价）。
+      totalDuration = (segStarts[n - 1] ?? 0) + (durations[n - 1] ?? 0);
+      outSegStarts = segStarts;
     }
 
     const outBuffer = await fs.readFile(outPath);
     await assertObjectStorageWritable();
     const { url } = await storagePut(`generated/merge-${Date.now()}.mp4`, outBuffer, "video/mp4");
-    return { url, duration: Math.max(0, totalDuration) };
+    return { url, duration: Math.max(0, totalDuration), segStarts: outSegStarts };
   } finally {
     await Promise.all(inputPaths.map((p) => fs.unlink(p).catch(() => undefined)));
     await fs.unlink(outPath).catch(() => undefined);

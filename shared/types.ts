@@ -678,6 +678,12 @@ export interface MergeNodeData {
   voiceUrls?: (string | null)[];
   /** 装配端：逐段音效轨（与 inputVideoUrls 对位；混入权重低于配音）。 */
   sfxUrls?: (string | null)[];
+  /** 装配端：逐镜对白快照（来自分镜 dialogue；下游字幕节点「从镜头表生成字幕」消费）。 */
+  segDialogues?: (string | null)[];
+  /** 装配端：逐镜配音时长（秒；字幕在配音结束处收口用）。 */
+  segVoiceDurations?: (number | null)[];
+  /** 合并完成后服务端回传的各段成片起点（xfade offset 精确值；字幕对位的时间轴真相源）。 */
+  segStarts?: number[];
   transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
   bgMusicUrl?: string;
   bgMusicVolume?: number;       // 0.0–1.0, default 0.3

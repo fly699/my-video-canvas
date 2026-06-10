@@ -85,6 +85,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       updateNodeData(id, {
         outputUrl: result.url,
         outputDuration: result.duration,
+        // 各段成片精确起点（仅装配/xfade 路径返回）：字幕「从镜头表生成」的时间轴。
+        // 普通合并返回 undefined → 清掉旧值，避免陈旧起点误导字幕对位。
+        segStarts: result.segStarts,
         status: "done",
         errorMessage: undefined,
       });
@@ -197,7 +200,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
     const plan = assembleFromStoryboards(id, allNodes, allEdges);
     if ("error" in plan) { toast.error(plan.error); return; }
-    update({ inputVideoUrls: plan.inputVideoUrls, segTransitions: plan.transitions, voiceUrls: plan.voiceUrls, sfxUrls: plan.sfxUrls });
+    update({ inputVideoUrls: plan.inputVideoUrls, segTransitions: plan.transitions, voiceUrls: plan.voiceUrls, sfxUrls: plan.sfxUrls, segDialogues: plan.dialogues, segVoiceDurations: plan.voiceDurations });
     const voiced = plan.shots.filter((x) => x.hasVoice).length;
     const sfxed = plan.shots.filter((x) => x.hasSfx).length;
     toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐切点转场${voiced ? ` · ${voiced} 条配音对位` : ""}${sfxed ? ` · ${sfxed} 条音效对位` : ""}）`, { duration: 5000 });

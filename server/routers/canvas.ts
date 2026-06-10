@@ -2780,7 +2780,7 @@ export const mergeRouter = router({
       for (const v of input.sfxUrls ?? []) if (v) guardUrl(v);
       const result = await mergeVideos(input);
       await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "合并视频" });
-      return { url: result.url, duration: result.duration };
+      return { url: result.url, duration: result.duration, segStarts: result.segStarts };
     }),
 });
 
