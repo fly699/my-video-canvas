@@ -138,13 +138,67 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // 上游「提示词」节点 → 只填空自动填充（与 video_task/image_gen 同口径）：
   // 本镜 promptText / negativePrompt 为空时才填入，绝不覆盖已有内容。
   // 此前 prompt→storyboard 连接虽被矩阵允许但分镜不消费——连了白连（审计补齐）。
-  const upPrompt = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes));
+  // 注意：selector 必须返回原始值（string|undefined）——返回对象会每次新引用，
+  // 触发 zustand getSnapshot 无限循环（与 VideoTaskNode 的既有写法保持一致）。
+  const upPromptPos = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
+  const upPromptNeg = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).negative);
   useEffect(() => {
     const patch: Partial<StoryboardNodeData> = {};
-    if (upPrompt.positive && !payload.promptText?.trim()) patch.promptText = upPrompt.positive;
-    if (upPrompt.negative && !payload.negativePrompt?.trim()) patch.negativePrompt = upPrompt.negative;
+    if (upPromptPos && !payload.promptText?.trim()) patch.promptText = upPromptPos;
+    if (upPromptNeg && !payload.negativePrompt?.trim()) patch.negativePrompt = upPromptNeg;
     if (Object.keys(patch).length) updateNodeData(id, patch, true);
-  }, [upPrompt.positive, upPrompt.negative, payload.promptText, payload.negativePrompt, id, updateNodeData]);
+  }, [upPromptPos, upPromptNeg, payload.promptText, payload.negativePrompt, id, updateNodeData]);
+
+  // ── 精修工位往返（分镜 ⇄ 图像节点）─────────────────────────────────────────
+  // 上游精修节点（image_gen / comfyui_image）出图后亮「采用此图」候选条；
+  // 仅显式点击才回填关键帧，绝不自动写入（防覆盖已确认关键帧）。
+  const refineCandidate = useCanvasStore((s) => {
+    for (const e of s.edges) {
+      if (e.target !== id) continue;
+      const src = s.nodes.find((n) => n.id === e.source);
+      const t = src?.data.nodeType;
+      if (t !== "image_gen" && t !== "comfyui_image") continue;
+      const u = (src!.data.payload as { imageUrl?: string }).imageUrl;
+      if (u && u !== payload.imageUrl) return u;
+    }
+    return undefined;
+  });
+  const adoptRefineImage = useCallback(() => {
+    if (!refineCandidate) return;
+    const history = [refineCandidate, ...(payload.imageHistory ?? [])].filter((u): u is string => !!u).slice(0, 12);
+    updateNodeData(id, { imageUrl: refineCandidate, imageHistory: history });
+    propagateRefImage(id, refineCandidate);
+    toast.success("已采用精修图作为本镜关键帧");
+  }, [refineCandidate, payload.imageHistory, id, updateNodeData]);
+
+  /** 送精修：建图像生成节点（带走提示词/参考/模型/比例）+ 复制角色连线 + 工位边。 */
+  const handleSendToRefine = useCallback(() => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === id);
+    if (!own) return;
+    // 已有精修工位则不重复建
+    const existing = store.edges.find((e) => e.source === id && ["image_gen"].includes(store.nodes.find((n) => n.id === e.target)?.data.nodeType ?? ""));
+    if (existing) { toast.info("本镜已有精修工位（图像节点），请在其中继续"); return; }
+    const ig = store.addNode("image_gen", { x: own.position.x + 440, y: own.position.y - 40 });
+    store.updateNodeData(ig.id, {
+      prompt: payload.promptText ?? "",
+      negativePrompt: payload.negativePrompt,
+      model: payload.imageModel,
+      aspectRatio: payload.aspectRatio,
+      referenceImageUrl: payload.referenceImageUrl,
+      referenceImages: payload.referenceImages?.map((r) => ({ ...r })),
+    });
+    // 复制角色/场景连线（character→分镜 的源 → character→图像节点），身份控制不丢
+    for (const e of store.edges.filter((e) => e.target === id)) {
+      if (store.nodes.find((n) => n.id === e.source)?.data.nodeType === "character") {
+        store.onConnect({ source: e.source, target: ig.id, sourceHandle: null, targetHandle: null });
+      }
+    }
+    // 工位双链：分镜→图像（送出）+ 图像→分镜（关键帧候选回链）
+    store.onConnect({ source: id, target: ig.id, sourceHandle: null, targetHandle: null });
+    store.onConnect({ source: ig.id, target: id, sourceHandle: null, targetHandle: null });
+    toast.success("已创建精修工位：在图像节点里精修，出图后回本镜点「采用此图」");
+  }, [id, payload]);
   const [batchCount, setBatchCount] = useState<1 | 4>(([1, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
@@ -562,6 +616,24 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           >
             <ClipboardList style={{ width: 11, height: 11 }} /> 镜头表
           </button>
+          <button
+            onClick={handleSendToRefine}
+            title="送精修：创建图像生成节点（带走提示词/参考图/模型/角色连线），用工作台的全部能力精修本镜关键帧"
+            className="nodrag flex items-center gap-1 px-2 py-1 rounded-md transition-all"
+            style={{ fontSize: 10, fontWeight: 500, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
+          >
+            <Wand2 style={{ width: 11, height: 11 }} /> 送精修
+          </button>
+          {refineCandidate && (
+            <button
+              onClick={adoptRefineImage}
+              title="精修工位有新图，点击采用为本镜关键帧（不会自动覆盖）"
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-md transition-all"
+              style={{ fontSize: 10, fontWeight: 700, background: "oklch(0.72 0.20 330 / 0.14)", border: "1px solid oklch(0.72 0.20 330 / 0.5)", color: "oklch(0.72 0.20 330)", cursor: "pointer" }}
+            >
+              <ImageIcon style={{ width: 11, height: 11 }} /> 采用精修图
+            </button>
+          )}
           {payload.beatRef && (
             <span title="所属节拍表拍点（来自脚本节点的节拍表）" style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: "oklch(0.66 0.18 250 / 0.14)", color: "oklch(0.66 0.18 250)" }}>
               拍点 {payload.beatRef}
