@@ -81,6 +81,11 @@ export const NodeTextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(funct
   const mention = useMention(!noMention, innerRef, ime.commit);
   const slash = useSlashMenu(!noMention && !noSlash, innerRef, ime.commit);
   const probe = () => { mention.probe(); slash.probe(); };
+  // 暴露 commitValue：以编程方式设值并写回 store，直接更新内部 local（绕过「聚焦中不采纳外部 value」
+  // 守卫）。供外部按钮（如 AI 对话节点的 /命令、画布注入）即时改写输入框，避免聚焦时设值不生效。
+  useEffect(() => {
+    if (innerRef.current) (innerRef.current as HTMLTextAreaElement & { commitValue?: (v: string) => void }).commitValue = ime.commit;
+  });
   return (
     <>
       <textarea
@@ -114,6 +119,9 @@ export const NodeInput = forwardRef<HTMLInputElement, InputProps>(function NodeI
   const mention = useMention(!noMention, innerRef, ime.commit);
   const slash = useSlashMenu(!noMention && !noSlash, innerRef, ime.commit);
   const probe = () => { mention.probe(); slash.probe(); };
+  useEffect(() => {
+    if (innerRef.current) (innerRef.current as HTMLInputElement & { commitValue?: (v: string) => void }).commitValue = ime.commit;
+  });
   return (
     <>
       <input
