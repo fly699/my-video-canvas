@@ -316,9 +316,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     const manualRef = payload.referenceImageUrl?.trim();
     // @图像名 直接引用的独立图像节点 → 显式参考图。
     const atImageRefs = mentionedMediaUrls(payload.promptText, "image", allNodes);
-    // Person identity refs first, then SCENE backdrop refs (location/style context), then @图像。
+    // 手动参考图（若有）→ 否则角色身份图 + 场景图；再并入 @图像（与 ImageGenNode 一致，
+    // 手动图也进集合，保证「手动图 + 单张 @图像」组合下两者都下发、@图像 不被丢）。
     const charRefs = Array.from(new Set([
-      ...(manualRef ? [] : [...effectiveCharacterRefImages(id, payload.promptText, allEdges, allNodes), ...effectiveSceneRefImages(id, payload.promptText, allEdges, allNodes)]),
+      ...(manualRef ? [manualRef] : [...effectiveCharacterRefImages(id, payload.promptText, allEdges, allNodes), ...effectiveSceneRefImages(id, payload.promptText, allEdges, allNodes)]),
       ...atImageRefs,
     ])).slice(0, 8);
     const charRefUrl: string | undefined = manualRef || charRefs[0];
