@@ -15,6 +15,23 @@ describe("agentCatalog.sanitizeOperation", () => {
     expect((op!.payload as Record<string, unknown>).bogusField).toBeUndefined();
   });
 
+  it("whitelists the storyboard shot-list fields (sceneNumber/dialogue/transition…)", () => {
+    const op = sanitizeOperation({
+      op: "create", tempId: "sb1", nodeType: "storyboard",
+      payload: { sceneNumber: 3, description: "雨夜街头", dialogue: "阿明：站住！", transition: "match-cut", shotType: "CU", lighting: "霓虹侧光", sfx: "雨声", duration: 5, bogus: "x" },
+    });
+    expect(op).not.toBeNull();
+    expect(op!.payload).toMatchObject({ sceneNumber: 3, dialogue: "阿明：站住！", transition: "match-cut", shotType: "CU", lighting: "霓虹侧光", sfx: "雨声" });
+    expect((op!.payload as Record<string, unknown>).bogus).toBeUndefined();
+  });
+
+  it("whitelists audio ttsText/musicPrompt", () => {
+    const op = sanitizeOperation({ op: "create", nodeType: "audio", payload: { audioCategory: "music", musicPrompt: "轻快钢琴", ttsText: "旁白", junk: 1 } });
+    expect(op).not.toBeNull();
+    expect(op!.payload).toMatchObject({ audioCategory: "music", musicPrompt: "轻快钢琴", ttsText: "旁白" });
+    expect((op!.payload as Record<string, unknown>).junk).toBeUndefined();
+  });
+
   it("rejects a create op with an unknown/forbidden node type", () => {
     expect(sanitizeOperation({ op: "create", nodeType: "definitely_not_a_node", payload: {} })).toBeNull();
     // admin/niche types are not in the agent catalog → rejected

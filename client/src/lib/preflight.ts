@@ -121,6 +121,44 @@ export function runPreflight(nodes: PFNode[], edges: PFEdge[]): PreflightResult 
     issues.push({ severity: "error", message: "画布中存在循环依赖（节点首尾相连成环），无法确定运行顺序" });
   }
 
+  // 5) 镜头表管线就绪：镜号缺失/重复会让「按镜头表装配」排序失准。
+  //    仅在部分分镜已有镜号（说明在用镜头表）时提示，避免对随手画布产生噪声。
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const sbs = relevant.filter((n) => n.data.nodeType === "storyboard");
+  if (sbs.length >= 2) {
+    const numOf = (n: PFNode) => Number((n.data.payload ?? {}).sceneNumber);
+    const withNum = sbs.filter((n) => Number.isFinite(numOf(n)) && numOf(n) > 0);
+    if (withNum.length > 0 && withNum.length < sbs.length) {
+      issues.push({ severity: "warning", message: `有 ${sbs.length - withNum.length} 个分镜缺镜号（sceneNumber），装配成片时将排到末尾——建议在镜头表面板补全或一键重编号` });
+    }
+    const counts = new Map<number, number>();
+    for (const n of withNum) counts.set(numOf(n), (counts.get(numOf(n)) ?? 0) + 1);
+    const dups = Array.from(counts.entries()).filter(([, c]) => c > 1).map(([v]) => v).sort((a, b) => a - b);
+    if (dups.length > 0) {
+      issues.push({ severity: "warning", message: `分镜镜号重复（${dups.join("、")}），装配排序可能不符合预期——建议在镜头表面板一键重编号` });
+    }
+  }
+
+  // 6) 合并节点「可装配未装配」：上游已有 ≥2 个出片且能回溯到分镜的视频，
+  //    但尚未点「按镜头表装配」——提示一键获得镜号排序+逐镜转场+配音对位。
+  for (const m of relevant.filter((n) => n.data.nodeType === "merge")) {
+    const p = m.data.payload ?? {};
+    if (p.segTransitions) continue; // 已装配
+    let assemblable = 0;
+    for (const e of edges) {
+      if (e.target !== m.id) continue;
+      const vn = byId.get(e.source);
+      if (!vn || (vn.data.nodeType !== "video_task" && vn.data.nodeType !== "comfyui_video")) continue;
+      const vp = vn.data.payload ?? {};
+      if (!vp.resultVideoUrl && !vp.outputUrl) continue; // 未出片
+      const hasSb = edges.some((e2) => e2.target === vn.id && byId.get(e2.source)?.data.nodeType === "storyboard");
+      if (hasSb) assemblable++;
+    }
+    if (assemblable >= 2) {
+      issues.push({ severity: "warning", nodeId: m.id, nodeTitle: m.data.title, message: `「${m.data.title}」上游有 ${assemblable} 个可回溯到分镜的已出片视频，可点「按镜头表装配」自动完成镜号排序、逐镜转场与配音对位` });
+    }
+  }
+
   const runnableCount = relevant.filter((n) => RUNNABLE_TYPES.includes(n.data.nodeType)).length;
   const budget = estimateNodesBudget(relevant);
   const errorCount = issues.filter((i) => i.severity === "error").length;
