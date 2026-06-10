@@ -153,9 +153,13 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const prompt = (r.payload.promptText || r.payload.description || "").slice(0, 4000);
     if (!prompt.trim()) return "error";
     const targetType = imgEngine === "comfy_image" ? "comfyui_image" : "comfyui_workflow";
+    // workflow 工位复用必须匹配 templateId——批量生图与批量视频都可能建 comfyui_workflow
+    // 工位，仅按类型+状态复用会互相抢占并覆写对方模板（出图工位被写成视频模板）。
     const existing = store.edges
       .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
-      .find((n) => n?.data.nodeType === targetType && ["failed", "idle", undefined].includes((n.data.payload as { status?: string }).status as never));
+      .find((n) => n?.data.nodeType === targetType
+        && ["failed", "idle", undefined].includes((n.data.payload as { status?: string }).status as never)
+        && (targetType !== "comfyui_workflow" || (n.data.payload as { templateId?: number }).templateId === imgTplId));
     if (imgEngine === "comfy_workflow_img") {
       const tpl = (tplListQuery.data ?? []).find((t) => t.id === imgTplId);
       if (!tpl) return "error";
@@ -314,9 +318,12 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const hasImg = !!r.payload.imageUrl;
     const targetType = videoEngine === "comfy_video" ? "comfyui_video" : "comfyui_workflow";
     const prompt = (r.payload.promptText || r.payload.description || "").slice(0, 4000);
+    // workflow 工位复用必须匹配 templateId（同上：防与批量生图的出图工位互相抢占覆写）。
     const existing = store.edges
       .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
-      .find((n) => n?.data.nodeType === targetType && ["failed", "idle", undefined].includes((n.data.payload as { status?: string }).status as never));
+      .find((n) => n?.data.nodeType === targetType
+        && ["failed", "idle", undefined].includes((n.data.payload as { status?: string }).status as never)
+        && (targetType !== "comfyui_workflow" || (n.data.payload as { templateId?: number }).templateId === comfyTplId));
     if (videoEngine === "comfy_workflow") {
       const tpl = (tplListQuery.data ?? []).find((t) => t.id === comfyTplId);
       if (!tpl) return "error";
