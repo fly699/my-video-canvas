@@ -400,7 +400,8 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>🔗</i>智能连线 & 连接矩阵</b><small>拖拽高亮可连接桩点，按矩阵校验合法连接，同对节点自动去重</small></div>
         <div class="fitem"><b><i>🧲</i>拉线松手建节点 <span class="star">★特色</span></b><small>未连到节点即松手，鼠标处弹菜单——仅列可连接类型，可拖拽排序并云端持久化</small></div>
-        <div class="fitem"><b><i>@</i>@提及引用 <span class="star">★特色</span></b><small>文本框 @角色/@场景/@音频/@视频，无需连线即引用画布或库中元素</small></div>
+        <div class="fitem"><b><i>@</i>@提及引用 <span class="star">★特色</span></b><small>文本框 @角色/@场景/@图像/@音频/@视频，无需连线即引用画布或库中元素；被 @ 的对象在吸附栏显示为「参与项」并标注来源</small></div>
+        <div class="fitem"><b><i>🔁</i>一键同步模型与参数 <span class="star">★特色</span></b><small>分镜/图像/视频节点把当前模型与参数复制到画布内同类节点，默认勾选同一工作流、可全选</small></div>
         <div class="fitem"><b><i>📦</i>分组容器</b><small>多节点组合为「场景」容器，折叠/展开，智能体按场景自动分组</small></div>
         <div class="fitem"><b><i>🎯</i>搜索 / 定位 / 高亮</b><small>Ctrl+K 搜索节点，点选可靠定位并高亮目标</small></div>
         <div class="fitem"><b><i>💾</i>节点模板库</b><small>参数存模板、一键套用、JSON 导入导出</small></div>
@@ -478,7 +479,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     </div>
     <!-- 7 密钥权限 -->
     <div class="acc-item">
-      <div class="acc-head"><span class="ic ic-violet">🔐</span><div class="tt"><h3>密钥 · 计费 · 额度治理</h3><p>额度可控、计费透明、权限严密</p></div><span class="num-b">9 项</span><span class="arr">▾</span></div>
+      <div class="acc-head"><span class="ic ic-violet">🔐</span><div class="tt"><h3>密钥 · 计费 · 额度治理</h3><p>额度可控、计费透明、权限严密</p></div><span class="num-b">11 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>🔑</i>三级密钥优先级 <span class="star">★特色</span></b><small>临时 key（用户自填）> 分配 key（管理员绑定）> 公用 key（平台环境变量），自动择优</small></div>
         <div class="fitem"><b><i>🎁</i>管理员密钥分配</b><small>为指定用户绑定专属 kie 密钥、加备注；可启用/停用绑定与密钥、解绑、增删</small></div>
@@ -489,6 +490,8 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
         <div class="fitem"><b><i>💳</i>余额实时查询</b><small>kie / Poyo 平台余额按密钥优先级实时查询，顶栏徽标常驻显示</small></div>
         <div class="fitem"><b><i>📈</i>消费趋势快照</b><small>余额定时快照入库，绘制平台消费/额度趋势，成本一目了然</small></div>
         <div class="fitem"><b><i>📥</i>下载/分享额度授权</b><small>下载消费授权（grant）与分享链接次数消费，产出物流转可计量可控</small></div>
+        <div class="fitem"><b><i>🧮</i>实时点数预估 <span class="star">★特色</span></b><small>图/视/音/分镜生成按钮按所选模型与参数实时预估消耗点数，生成前即知预算</small></div>
+        <div class="fitem"><b><i>🎛️</i>模型使能开关 <span class="star">★特色</span></b><small>管理后台按节点分组列出全部 AI 模型，勾选控制各模型是否在界面显示</small></div>
       </div></div></div>
     </div>
     <!-- 8 数据安全防泄露 -->
@@ -525,11 +528,13 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     </div>
     <!-- 10 日志审计 -->
     <div class="acc-item">
-      <div class="acc-head"><span class="ic ic-amber">📜</span><div class="tt"><h3>全链路日志审计</h3><p>28 类操作留痕，可追溯、可追责</p></div><span class="num-b">5 项</span><span class="arr">▾</span></div>
+      <div class="acc-head"><span class="ic ic-amber">📜</span><div class="tt"><h3>全链路日志审计</h3><p>28 类操作留痕，可追溯、可追责</p></div><span class="num-b">7 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>🔎</i>28 类操作审计</b><small>登录(邮箱/OAuth)、图/视/音/ComfyUI 生成、用户管理、密钥增删绑定、存储暂存、字幕转录、系统重启…全覆盖</small></div>
         <div class="fitem"><b><i>🗂️</i>系统日志后台</b><small>管理后台按用户名/类别筛选，集中审阅</small></div>
         <div class="fitem"><b><i>🧾</i>生成记录可追溯</b><small>每次生成自动入库，模型/来源/产出 URL 留痕</small></div>
+        <div class="fitem"><b><i>🧮</i>预估点数入日志</b><small>每次生成的预估消耗随成功/失败状态写入审计，计费可对账</small></div>
+        <div class="fitem"><b><i>📤</i>日志一键导出</b><small>操作日志 / ComfyUI 日志按当前筛选导出 CSV（Excel 直开），便于统计对账</small></div>
         <div class="fitem"><b><i>⚠️</i>敏感操作记录</b><small>删除/重置/分享/密钥变更/系统重启逐条记录</small></div>
         <div class="fitem"><b><i>🧽</i>日志清理</b><small>管理员可清理历史日志，清理动作本身亦留痕</small></div>
       </div></div></div>
