@@ -205,6 +205,28 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
+// ── 内建「AI 助手」机器人用户 ───────────────────────────────────────────────────
+// 聊天里的 AI 功能以一个真实但不可登录的种子用户存在（与他私聊即 LLM 对话）。
+// 用固定 openId 标识、disabled=true 禁止登录。无需迁移（复用 users 表）。
+export const ASSISTANT_OPEN_ID = "__ai_assistant__";
+export const ASSISTANT_NAME = "AI 助手";
+let _assistantUserId: number | null = null;
+
+export async function getOrCreateAssistantUserId(): Promise<number> {
+  if (_assistantUserId != null) return _assistantUserId;
+  const db = await getDb();
+  if (!db) { _assistantUserId = 2; return 2; } // dev（无库）：返回固定 id，避免崩溃
+  let row = await getUserByOpenId(ASSISTANT_OPEN_ID);
+  if (!row) {
+    await db.insert(users).values({ openId: ASSISTANT_OPEN_ID, name: ASSISTANT_NAME, disabled: true })
+      .onDuplicateKeyUpdate({ set: { name: ASSISTANT_NAME, disabled: true } });
+    row = await getUserByOpenId(ASSISTANT_OPEN_ID);
+  }
+  if (!row) throw new Error("无法创建 AI 助手用户");
+  _assistantUserId = row.id;
+  return row.id;
+}
+
 export async function getUserById(id: number) {
   const db = await getDb();
   if (!db) {
@@ -2239,7 +2261,12 @@ export async function searchUsersForChat(q: string, excludeUserId: number, limit
   }
   const like = "%" + q + "%";
   const rows = await db.select({ id: users.id, name: users.name, email: users.email }).from(users)
-    .where(and(sql`(${users.name} LIKE ${like} OR ${users.email} LIKE ${like})`, sql`${users.id} <> ${excludeUserId}`))
+    .where(and(
+      sql`(${users.name} LIKE ${like} OR ${users.email} LIKE ${like})`,
+      sql`${users.id} <> ${excludeUserId}`,
+      // AI 助手机器人不在人员搜索里出现（通过专用入口进入）。
+      sql`${users.openId} <> ${ASSISTANT_OPEN_ID}`,
+    ))
     .limit(limit);
   return rows;
 }

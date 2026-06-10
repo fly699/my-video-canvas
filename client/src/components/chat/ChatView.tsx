@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles } from "lucide-react";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { CHAT_MODELS } from "@/lib/models";
+import { useDisabledModels } from "@/lib/useDisabledModels";
 import { goToAdminTab } from "@/lib/adminNav";
 import type { ChatWireMessage, ChatFileRef } from "@shared/types";
 import { toast } from "sonner";
@@ -50,6 +52,17 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const setModeMut = trpc.chat.setMode.useMutation();
   const detailQuery = trpc.chat.getConversation.useQuery({ conversationId: activeConv?.id ?? 0 }, { enabled: !!activeConv && activeConv.type === "group" });
   const isOwner = !!detailQuery.data && myUserId != null && detailQuery.data.createdBy === myUserId;
+
+  // ── 内建 AI 助手对话 ────────────────────────────────────────────────────────
+  const aiQuery = trpc.chat.assistantUserId.useQuery(undefined, { staleTime: 60 * 60_000, refetchOnWindowFocus: false });
+  const isAI = !!activeConv && activeConv.type === "dm" && aiQuery.data?.userId != null && activeConv.peer?.id === aiQuery.data.userId;
+  const disabledModels = useDisabledModels();
+  // 聊天 AI 可选模型：受「模型管理 · 聊天」分组开关过滤（独立于 LLM 节点的开关，键加 "chat:" 前缀）。
+  const chatModels = CHAT_MODELS.filter((m) => !m.hidden && !disabledModels.has("chat:" + m.id));
+  const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem("chat:aiModel") || "");
+  const effModel = chatModels.find((m) => m.id === chatModel)?.id ?? chatModels[0]?.id;
+  const sendToAssistantMut = trpc.chat.sendToAssistant.useMutation();
+  const pickChatModel = (id: string) => { setChatModel(id); localStorage.setItem("chat:aiModel", id); };
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
@@ -97,6 +110,21 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   async function doSend(encrypt?: boolean) {
     if (busy) return;
     if (!text.trim() && staged.length === 0) return;
+    // AI 助手会话：把输入发给 LLM（仅文本），用户消息与 AI 回复经广播实时回灌到列表。
+    if (isAI) {
+      if (!text.trim()) return;
+      if (!effModel) { toast.error("没有可用的聊天 AI 模型（管理员可能已全部停用）"); return; }
+      if (sendToAssistantMut.isPending) return;
+      const content = text.trim();
+      setText("");
+      try {
+        await sendToAssistantMut.mutateAsync({
+          conversationId: activeConv!.id, content, model: effModel,
+          kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
+        });
+      } catch (e) { toast.error(e instanceof Error ? e.message : "AI 回复失败"); setText(content); }
+      return;
+    }
     // serverless large file → ask encrypt vs fast (once for the batch)
     if (activeConv!.mode === "serverless" && encrypt === undefined && staged.some((f) => f.size > SERVERLESS_ENCRYPT_PROMPT_BYTES)) {
       setAskEncrypt(true); return;
@@ -147,7 +175,6 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <ComfyServerStatusIndicator />
           <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={14} /> 文件</button>
           <button onClick={() => window.open("/relay", "_blank", "noopener")} title="局域网大文件中转站（几十 GB 大文件传输，支持断点续传）" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><HardDriveUpload size={14} /> 中转站</button>
           {activeConv.type === "group" && (isOwner
@@ -163,6 +190,11 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
             </button>
           )}
         </div>
+      </div>
+
+      {/* 服务器状态指示 —— 单独一行显示 */}
+      <div style={{ display: "flex", alignItems: "center", padding: "6px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <ComfyServerStatusIndicator />
       </div>
 
       {/* 端到端加密模式警示 */}
@@ -181,13 +213,38 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
         {!loadingMessages && messages.length === 0 && <div style={{ alignSelf: "center", color: C.t4, fontSize: 13 }}>还没有消息，发送第一条吧</div>}
         {messages.map((m) => <Bubble key={`${m.id}-${m.createdAt}`} msg={m} mine={m.senderId === -1 || m.senderId === myUserId} />)}
         {typingUsers.length > 0 && <div style={{ fontSize: 12, color: C.t3 }}>{typingUsers.join("、")} 正在输入…</div>}
+        {isAI && sendToAssistantMut.isPending && (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: C.accent }}>
+            <Sparkles size={13} /> AI 正在思考…
+          </div>
+        )}
       </div>
 
-      {/* limit hint */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 16px 0", fontSize: 11, color: C.t3, flexWrap: "wrap" }}>
-        <span>单文件 ≤ <strong style={{ color: C.t2 }}>{maxFileMb}MB</strong></span>
-        {!serverlessAllowed && <><span>·</span><span>管理员已禁用端到端模式</span></>}
-      </div>
+      {/* AI 模型选择（仅 AI 助手会话） */}
+      {isAI ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 16px 0", fontSize: 11.5, color: C.t3, flexWrap: "wrap" }}>
+          <Sparkles size={13} style={{ color: C.accent }} />
+          <span>AI 模型</span>
+          {chatModels.length === 0 ? (
+            <span style={{ color: C.danger }}>管理员已停用全部聊天模型</span>
+          ) : (
+            <select
+              value={effModel ?? ""}
+              onChange={(e) => pickChatModel(e.target.value)}
+              style={{ padding: "3px 8px", borderRadius: 7, fontSize: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, outline: "none", maxWidth: 220 }}
+            >
+              {chatModels.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          )}
+          <span style={{ color: C.t4 }}>· 与 AI 助手的对话内容会经服务器处理</span>
+        </div>
+      ) : (
+        /* limit hint */
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 16px 0", fontSize: 11, color: C.t3, flexWrap: "wrap" }}>
+          <span>单文件 ≤ <strong style={{ color: C.t2 }}>{maxFileMb}MB</strong></span>
+          {!serverlessAllowed && <><span>·</span><span>管理员已禁用端到端模式</span></>}
+        </div>
+      )}
 
       {/* staging area */}
       {staged.length > 0 && (
@@ -199,8 +256,8 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       {/* input */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-        <button onClick={() => fileRef.current?.click()} title={`添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
-        <button onClick={() => screenshot()} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>
+        {!isAI && <button onClick={() => fileRef.current?.click()} title={`添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>}
+        {!isAI && <button onClick={() => screenshot()} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>}
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
           onPaste={(e) => {
@@ -214,10 +271,10 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
               .filter((f): f is File => !!f);
             if (files.length > 0) { e.preventDefault(); addFiles(files); }
           }}
-          placeholder="Enter 发送，Shift+Enter 换行，可拖拽或粘贴文件到此" rows={1}
+          placeholder={isAI ? "向 AI 助手提问，Enter 发送、Shift+Enter 换行" : "Enter 发送，Shift+Enter 换行，可拖拽或粘贴文件到此"} rows={1}
           style={{ flex: 1, resize: "none", maxHeight: 140, padding: "10px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
-        <button onClick={() => doSend()} disabled={busy || (!text.trim() && staged.length === 0)} title="发送"
-          style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || (!text.trim() && staged.length === 0) ? 0.5 : 1 }}>
+        <button onClick={() => doSend()} disabled={busy || sendToAssistantMut.isPending || (!text.trim() && (isAI || staged.length === 0))} title="发送"
+          style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || sendToAssistantMut.isPending || (!text.trim() && (isAI || staged.length === 0)) ? 0.5 : 1 }}>
           <Send size={18} />
         </button>
       </div>
