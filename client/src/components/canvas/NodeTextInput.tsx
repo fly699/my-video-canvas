@@ -68,17 +68,18 @@ function useImeSafeValue<T extends HTMLInputElement | HTMLTextAreaElement>(
 }
 
 // `noMention`: 关闭「@」角色/场景自动补全（默认开启）。
-type TextAreaProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & CommonProps & { noMention?: boolean };
+// `noSlash`: 关闭「/」提示词库快捷菜单（默认开启）。AI 对话节点自带 /命令，需单独关掉避免冲突。
+type TextAreaProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & CommonProps & { noMention?: boolean; noSlash?: boolean };
 
 export const NodeTextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function NodeTextArea(
-  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, ...rest },
+  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, noSlash, ...rest },
   ref,
 ) {
   const ime = useImeSafeValue<HTMLTextAreaElement>(value, onValueChange);
   const innerRef = useRef<HTMLTextAreaElement | null>(null);
   const mergedRef = useMergedRef(ref, innerRef);
   const mention = useMention(!noMention, innerRef, ime.commit);
-  const slash = useSlashMenu(!noMention, innerRef, ime.commit);
+  const slash = useSlashMenu(!noMention && !noSlash, innerRef, ime.commit);
   const probe = () => { mention.probe(); slash.probe(); };
   return (
     <>
@@ -101,17 +102,17 @@ export const NodeTextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(funct
   );
 });
 
-type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & CommonProps & { noMention?: boolean };
+type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & CommonProps & { noMention?: boolean; noSlash?: boolean };
 
 export const NodeInput = forwardRef<HTMLInputElement, InputProps>(function NodeInput(
-  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, ...rest },
+  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, noSlash, ...rest },
   ref,
 ) {
   const ime = useImeSafeValue<HTMLInputElement>(value, onValueChange);
   const innerRef = useRef<HTMLInputElement | null>(null);
   const mergedRef = useMergedRef(ref, innerRef);
   const mention = useMention(!noMention, innerRef, ime.commit);
-  const slash = useSlashMenu(!noMention, innerRef, ime.commit);
+  const slash = useSlashMenu(!noMention && !noSlash, innerRef, ime.commit);
   const probe = () => { mention.probe(); slash.probe(); };
   return (
     <>
