@@ -87,3 +87,41 @@ describe("clampDurationForProvider（时长夹取）", () => {
     expect(clampDurationForProvider(undefined, 8)).toBeUndefined();
   });
 });
+
+import { assembleFromStoryboards, mapShotTransition } from "./storyboardGen";
+
+describe("assembleFromStoryboards（装配端收集）", () => {
+  const nodes = [
+    N("m", "merge", {}),
+    N("sb1", "storyboard", { sceneNumber: 1, transition: "dissolve", dialogue: "hi" }),
+    N("sb2", "storyboard", { sceneNumber: 2, transition: "cut" }),
+    N("v1", "video_task", { resultVideoUrl: "v1.mp4" }),
+    N("v2", "video_task", { resultVideoUrl: "v2.mp4" }),
+    N("a1", "audio", { url: "voice1.mp3" }),
+  ];
+  const edges = [
+    { source: "sb1", target: "v1" }, { source: "sb2", target: "v2" },
+    { source: "v2", target: "m" }, { source: "v1", target: "m" }, // 故意乱序连入
+    { source: "sb1", target: "a1" },
+  ];
+
+  it("按镜号排序 + 逐切点转场 + 配音对位", () => {
+    const r = assembleFromStoryboards("m", nodes, edges);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.inputVideoUrls).toEqual(["v1.mp4", "v2.mp4"]); // 连线乱序仍按镜号
+    expect(r.transitions).toEqual(["dissolve"]);            // 镜1→镜2 用镜1 的 transition
+    expect(r.voiceUrls).toEqual(["voice1.mp3", null]);      // 镜1 有配音、镜2 无
+  });
+
+  it("少于 2 个可装配段时报错", () => {
+    const r = assembleFromStoryboards("m", nodes, edges.filter((e) => e.source !== "v2"));
+    expect("error" in r).toBe(true);
+  });
+
+  it("mapShotTransition：cut/match-cut→none", () => {
+    expect(mapShotTransition("cut")).toBe("none");
+    expect(mapShotTransition("match-cut")).toBe("none");
+    expect(mapShotTransition("wipe")).toBe("wipe");
+    expect(mapShotTransition(undefined)).toBe("none");
+  });
+});

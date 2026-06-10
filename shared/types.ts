@@ -665,6 +665,10 @@ export interface MergeNodeData {
   inputVideoUrls?: string[];
   outputUrl?: string;
   transition?: MergeTransition;
+  /** 装配端：逐切点转场（来自「按镜头表装配」；长度=段数-1，优先于全局 transition）。 */
+  segTransitions?: ("none" | "fade" | "dissolve" | "wipe")[];
+  /** 装配端：逐段配音轨（与 inputVideoUrls 对位；null=该段无配音）。 */
+  voiceUrls?: (string | null)[];
   transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
   bgMusicUrl?: string;
   bgMusicVolume?: number;       // 0.0–1.0, default 0.3

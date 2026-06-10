@@ -5,6 +5,7 @@ import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { assembleFromStoryboards } from "@/lib/storyboardGen";
 import { toast } from "sonner";
 import { mediaFetchUrl } from "@/lib/download";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -190,6 +191,17 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   })();
   const effectiveBgMusicUrl = payload.bgMusicUrl || detectedBgMusicUrl;
 
+  /** 按镜头表装配：上游视频→回溯各自分镜→按镜号排序，产出 段顺序+逐切点转场+逐段配音。
+   *  仅显式点击时写入（segTransitions/voiceUrls 持久化）；普通合并路径不受影响。 */
+  const handleAssemble = () => {
+    const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
+    const plan = assembleFromStoryboards(id, allNodes, allEdges);
+    if ("error" in plan) { toast.error(plan.error); return; }
+    update({ inputVideoUrls: plan.inputVideoUrls, segTransitions: plan.transitions, voiceUrls: plan.voiceUrls });
+    const voiced = plan.shots.filter((x) => x.hasVoice).length;
+    toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐切点转场${voiced ? ` · ${voiced} 条配音对位` : ""}）`, { duration: 5000 });
+  };
+
   const handleMerge = () => {
     if (mergeMutation.isPending || payload.status === "processing") return;
     // Use the effective ordered list (manual order + appended new connections), so a
@@ -208,12 +220,20 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     }
 
     update({ status: "processing", errorMessage: undefined });
+    // 装配产物仅在与当前段顺序完全对齐时随单发送（用户手动改过顺序/输入则失配丢弃，防错位）。
+    const aligned = !!payload.segTransitions
+      && payload.inputVideoUrls?.length === urls.length
+      && payload.inputVideoUrls.every((u, i) => u === urls[i]);
     mergeMutation.mutate({
       inputUrls: urls,
       projectId: data.projectId,
       nodeId: id,
       transition: payload.transition,
       transitionDuration: payload.transition !== "none" ? payload.transitionDuration : undefined,
+      ...(aligned ? {
+        transitions: payload.segTransitions?.slice(0, urls.length - 1),
+        voiceUrls: payload.voiceUrls?.slice(0, urls.length),
+      } : {}),
       bgMusicUrl: effectiveBgMusicUrl || undefined,
       bgMusicVolume: payload.bgMusicVolume,
     });
@@ -454,6 +474,22 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
               />
             </div>
           </div>
+        )}
+
+        {/* 按镜头表装配（装配端）：镜号排序 + 逐切点转场 + 配音对位 */}
+        <button
+          onClick={handleAssemble}
+          disabled={isProcessing}
+          title="从上游视频回溯各自的分镜：按镜号排序段顺序、按分镜转场字段设逐切点转场、把各镜配音对位混入成片"
+          className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+          style={{ background: "oklch(0.65 0.20 160 / 0.10)", border: "1px solid oklch(0.65 0.20 160 / 0.4)", color: "oklch(0.65 0.20 160)", cursor: isProcessing ? "not-allowed" : "pointer" }}
+        >
+          🎬 按镜头表装配（镜号排序 · 逐段转场 · 配音对位）
+        </button>
+        {payload.segTransitions && (
+          <p style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
+            已装配 {payload.inputVideoUrls?.length ?? 0} 段 · 逐切点转场 {payload.segTransitions.length} 个 · 配音 {payload.voiceUrls?.filter(Boolean).length ?? 0} 条（手动改动顺序后将回退为全局转场）
+          </p>
         )}
 
         {/* Merge button */}

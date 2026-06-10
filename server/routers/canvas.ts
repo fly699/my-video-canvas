@@ -2706,6 +2706,9 @@ export const mergeRouter = router({
         inputUrls: z.array(mediaUrlSchema).min(2).max(50),
         transition: z.enum(["none", "fade", "dissolve"]).optional(),
         transitionDuration: z.number().min(0.1).max(2.0).optional(),
+        // 装配端：逐切点转场（来自分镜镜头表；长度=段数-1）+ 逐段配音轨（与段对位）
+        transitions: z.array(z.enum(["none", "fade", "dissolve", "wipe"])).max(49).optional(),
+        voiceUrls: z.array(mediaUrlSchema.nullable()).max(50).optional(),
         bgMusicUrl: mediaUrlSchema.optional(),
         bgMusicVolume: z.number().min(0).max(1).optional(),
         projectId: z.number().optional(),
@@ -2716,6 +2719,7 @@ export const mergeRouter = router({
       // local ffmpeg, no third-party AI — not whitelist-gated
       for (const url of input.inputUrls) guardUrl(url);
       if (input.bgMusicUrl) guardUrl(input.bgMusicUrl);
+      for (const v of input.voiceUrls ?? []) if (v) guardUrl(v);
       const result = await mergeVideos(input);
       await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "合并视频" });
       return { url: result.url, duration: result.duration };

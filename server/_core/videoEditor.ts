@@ -517,6 +517,12 @@ export interface MergeOptions {
   transitionDuration?: number;
   bgMusicUrl?: string;
   bgMusicVolume?: number;
+  /** 逐切点转场（长度 = 段数-1；来自分镜镜头表的 transition 字段）。给出时覆盖全局
+   *  transition。"none"/cut 用 1 帧 xfade 实现硬切（避免 concat/xfade 混链时基问题）。 */
+  transitions?: ("none" | "fade" | "dissolve" | "wipe")[];
+  /** 逐段配音轨（与 inputUrls 对位；null=该段无配音）。每条按所在段起点 adelay 后
+   *  与原声/BGM amix——视频+配音对位混装（装配端）。 */
+  voiceUrls?: (string | null)[];
 }
 
 export interface MergeResult {
@@ -528,6 +534,10 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
   const transition = opts.transition ?? "none";
   const td = opts.transitionDuration ?? 0.5;
   const bgVol = opts.bgMusicVolume ?? 0.3;
+  // 装配模式：带逐切点转场或逐段配音时强制走 filter 路径（旧 concat 快路径不动）。
+  const segTransitions = opts.transitions?.length ? opts.transitions : null;
+  const voiceList = opts.voiceUrls?.some(Boolean) ? opts.voiceUrls! : null;
+  const advanced = !!(segTransitions || voiceList);
 
   const inputPaths: string[] = [];
   const outName = `ffmpeg-merge-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
@@ -548,7 +558,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
     let totalDuration = 0;
     const args: string[] = [];
 
-    if (transition === "none") {
+    if (transition === "none" && !advanced) {
       const listName = `ffmpeg-list-${Date.now()}.txt`;
       const listPath = path.join(os.tmpdir(), listName);
       const listContent = inputPaths.map((p) => `file '${p}'`).join("\n");
@@ -594,15 +604,25 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         } catch { durations.push(5); }
       }
 
-      const xfadeType = transition === "dissolve" ? "dissolve" : "fade";
+      const globalXfade = transition === "dissolve" ? "dissolve" : "fade";
+      // 逐切点：type/duration 各自决定。"none"(cut/match-cut) → 1 帧 fade ≈ 硬切。
+      const XFADE_MAP: Record<string, string> = { fade: "fade", dissolve: "dissolve", wipe: "wipeleft", none: "fade" };
+      const cutAt = (i: number): { type: string; dur: number } => {
+        const t = segTransitions?.[i] ?? (transition === "none" ? "none" : transition);
+        if (t === "none") return { type: "fade", dur: 1 / 30 };
+        return { type: XFADE_MAP[t] ?? globalXfade, dur: td };
+      };
       let filterStr = "";
       let lastLabel = "[0:v]";
       let timeOffset = 0;
+      const segStarts: number[] = [0]; // 各段在成片中的起点（配音 adelay 对位用）
 
       for (let i = 1; i < n; i++) {
-        timeOffset = Math.max(0, timeOffset + durations[i - 1] - td);
+        const c = cutAt(i - 1);
+        timeOffset = Math.max(0, timeOffset + durations[i - 1] - c.dur);
+        segStarts.push(timeOffset);
         const outLabel = i === n - 1 ? "[vout]" : `[v${i}]`;
-        filterStr += `${lastLabel}[${i}:v]xfade=transition=${xfadeType}:duration=${td.toFixed(3)}:offset=${timeOffset.toFixed(3)}${outLabel};`;
+        filterStr += `${lastLabel}[${i}:v]xfade=transition=${c.type}:duration=${c.dur.toFixed(3)}:offset=${timeOffset.toFixed(3)}${outLabel};`;
         lastLabel = `[v${i}]`;
       }
       if (n === 1) filterStr = "[0:v]copy[vout];";
@@ -616,25 +636,46 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
 
       // bgMusicPath is pushed as an input only here, after the audio check, so the
       // input index (n or n+1) is known and the stream is always referenced.
-      let audioFilter = "";
-      if (allHaveAudio) {
-        if (bgMusicPath) args.push("-i", bgMusicPath);
-        const audioInputs = inputPaths.map((_, i) => `[${i}:a]`).join("");
-        if (bgMusicPath) {
-          const bgIdx = n;
-          audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[acat];[acat][${bgIdx}:a]amix=inputs=2:weights=1|${bgVol.toFixed(4)}[aout]`;
-        } else {
-          audioFilter = `;${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
+      // 配音轨（装配端）：逐段下载，按段起点 adelay 对位。输入索引在 bg 之后排布。
+      const voicePaths: { path: string; segIdx: number }[] = [];
+      if (voiceList) {
+        for (let i = 0; i < Math.min(voiceList.length, n); i++) {
+          const vu = voiceList[i];
+          if (!vu) continue;
+          voicePaths.push({ path: await downloadToTemp(vu, "mp3"), segIdx: i });
+          inputPaths.push(voicePaths[voicePaths.length - 1].path); // 纳入 finally 清理
         }
-      } else if (bgMusicPath) {
-        // Videos have no audio — use bgMusic as the sole audio track.
+      }
+
+      let audioFilter = "";
+      const mixParts: { label: string; weight: number }[] = [];
+      let nextIdx = n; // 后续输入（bg / voices）的 ffmpeg 输入索引
+      let pre = "";
+      if (allHaveAudio) {
+        const audioInputs = Array.from({ length: n }, (_, i) => `[${i}:a]`).join("");
+        pre += `;${audioInputs}concat=n=${n}:v=0:a=1[acat]`;
+        mixParts.push({ label: "[acat]", weight: 1 });
+      }
+      if (bgMusicPath) {
         args.push("-i", bgMusicPath);
-        const bgIdx = n;
-        audioFilter = `;[${bgIdx}:a]aresample=async=1[aout]`;
+        mixParts.push({ label: `[${nextIdx}:a]`, weight: bgVol });
+        nextIdx++;
+      }
+      for (const vp of voicePaths) {
+        args.push("-i", vp.path);
+        const startMs = Math.round((segStarts[vp.segIdx] ?? 0) * 1000);
+        pre += `;[${nextIdx}:a]adelay=${startMs}|${startMs},aresample=async=1[vc${vp.segIdx}]`;
+        mixParts.push({ label: `[vc${vp.segIdx}]`, weight: 1 });
+        nextIdx++;
+      }
+      if (mixParts.length > 1) {
+        audioFilter = `${pre};${mixParts.map((m) => m.label).join("")}amix=inputs=${mixParts.length}:normalize=0:weights=${mixParts.map((m) => m.weight.toFixed(4)).join("|")},alimiter=limit=0.95[aout]`;
+      } else if (mixParts.length === 1) {
+        audioFilter = mixParts[0].label === "[acat]" ? `${pre};[acat]anull[aout]` : `${pre};${mixParts[0].label}aresample=async=1[aout]`;
       }
 
       args.push("-filter_complex", filterStr + audioFilter);
-      if (allHaveAudio || bgMusicPath) {
+      if (audioFilter) {
         args.push("-map", "[vout]", "-map", "[aout]");
         args.push("-c:v", "libx264", "-preset", "fast", "-c:a", "aac");
       } else {
