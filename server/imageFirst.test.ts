@@ -8,9 +8,9 @@ const creates = (ops: AgentOperation[], t: string) => ops.filter((o) => o.op ===
 describe("enforceImageFirst", () => {
   it("splices image_gen between a text source and a video node", () => {
     const ops: AgentOperation[] = [
-      { op: "create", nodeType: "storyboard", tempId: "sb1", payload: {} },
+      { op: "create", nodeType: "prompt", tempId: "p1", payload: {} },
       { op: "create", nodeType: "video_task", tempId: "vt1", payload: { prompt: "海边日落", aspectRatio: "9:16" } },
-      { op: "connect", sourceRef: "sb1", targetRef: "vt1" },
+      { op: "connect", sourceRef: "p1", targetRef: "vt1" },
       { op: "connect", sourceRef: "vt1", targetRef: "merge1" },
     ];
     const out = enforceImageFirst(ops);
@@ -19,12 +19,24 @@ describe("enforceImageFirst", () => {
     expect(imgs).toHaveLength(1);
     expect(imgs[0].payload).toMatchObject({ prompt: "海边日落", aspectRatio: "9:16" });
     const imgRef = imgs[0].tempId!;
-    // sb1 → image_gen, image_gen → vt1 (no direct sb1 → vt1 anymore)
-    expect(has(out, (o) => o.op === "connect" && o.sourceRef === "sb1" && o.targetRef === imgRef)).toBe(true);
+    // p1 → image_gen, image_gen → vt1 (no direct p1 → vt1 anymore)
+    expect(has(out, (o) => o.op === "connect" && o.sourceRef === "p1" && o.targetRef === imgRef)).toBe(true);
     expect(has(out, (o) => o.op === "connect" && o.sourceRef === imgRef && o.targetRef === "vt1")).toBe(true);
-    expect(has(out, (o) => o.op === "connect" && o.sourceRef === "sb1" && o.targetRef === "vt1")).toBe(false);
+    expect(has(out, (o) => o.op === "connect" && o.sourceRef === "p1" && o.targetRef === "vt1")).toBe(false);
     // the video → merge connection is preserved
     expect(has(out, (o) => o.op === "connect" && o.sourceRef === "vt1" && o.targetRef === "merge1")).toBe(true);
+  });
+
+  it("storyboard → video 直连保留：分镜本身是生图工位，不插 image_gen（避免一镜两次生图、批量管线断链）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "storyboard", tempId: "sb1", payload: {} },
+      { op: "create", nodeType: "video_task", tempId: "vt1", payload: { prompt: "海边日落" } },
+      { op: "connect", sourceRef: "sb1", targetRef: "vt1" },
+    ];
+    const out = enforceImageFirst(ops);
+    expect(creates(out, "image_gen")).toHaveLength(0);
+    expect(has(out, (o) => o.op === "connect" && o.sourceRef === "sb1" && o.targetRef === "vt1")).toBe(true);
+    expect(out).toEqual(ops);
   });
 
   it("image_gen create op precedes the connects that reference it (apply order)", () => {
@@ -54,7 +66,7 @@ describe("enforceImageFirst", () => {
 
   it("a video with two non-image sources gets ONE image node and ONE image→video edge", () => {
     const ops: AgentOperation[] = [
-      { op: "create", nodeType: "storyboard", tempId: "sb1", payload: {} },
+      { op: "create", nodeType: "script", tempId: "sb1", payload: {} },
       { op: "create", nodeType: "prompt", tempId: "p1", payload: {} },
       { op: "create", nodeType: "video_task", tempId: "vt1", payload: { prompt: "x" } },
       { op: "connect", sourceRef: "sb1", targetRef: "vt1" },
@@ -69,8 +81,8 @@ describe("enforceImageFirst", () => {
 
   it("handles multiple shots, one image_gen per video", () => {
     const ops: AgentOperation[] = [
-      { op: "create", nodeType: "storyboard", tempId: "sb1", payload: {} },
-      { op: "create", nodeType: "storyboard", tempId: "sb2", payload: {} },
+      { op: "create", nodeType: "prompt", tempId: "sb1", payload: {} },
+      { op: "create", nodeType: "prompt", tempId: "sb2", payload: {} },
       { op: "create", nodeType: "video_task", tempId: "vt1", payload: { prompt: "镜头1" } },
       { op: "create", nodeType: "video_task", tempId: "vt2", payload: { prompt: "镜头2" } },
       { op: "connect", sourceRef: "sb1", targetRef: "vt1" },

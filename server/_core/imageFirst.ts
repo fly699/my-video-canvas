@@ -1,7 +1,11 @@
 import type { AgentOperation, NodeType } from "../../shared/types";
 
 // Nodes that produce an image the downstream video node can use as its first frame.
-const IMAGE_PRODUCER_TYPES = new Set<NodeType>(["image_gen", "comfyui_image", "asset", "character"]);
+// storyboard 也算：分镜本身就是生图工位（镜头表批量生图把关键帧生成在分镜上，
+// 批量生视频按「分镜→视频直连」找工位并把关键帧作 referenceImageUrl 喂给视频）。
+// 在分镜→视频之间再插 image_gen 会一镜两次生图，且直连断裂导致批量生视频
+// 找不到既有工位再建一个新的。
+const IMAGE_PRODUCER_TYPES = new Set<NodeType>(["image_gen", "comfyui_image", "asset", "character", "storyboard"]);
 // Video-generating nodes that should be fed by an image when 生图→生视频 is on.
 const VIDEO_TARGET_TYPES = new Set<NodeType>(["video_task", "comfyui_video"]);
 
