@@ -1440,6 +1440,10 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
          *  system prompt. Sourced from client/src/lib/scriptCreationTemplates.ts
          *  by id (UI passes `systemPromptAddon` of the applied template). */
         templatePromptOverride: z.string().max(4000).optional(),
+        /** 节拍表（开发阶段流产物，文本化）。给出时剧本必须逐拍展开，结构受其约束。 */
+        beatSheetText: z.string().max(4000).optional(),
+        /** 已连接角色节点的档案文本（Story Bible 前置约束）：人物名/外貌/服装/性格等。 */
+        characterProfiles: z.string().max(3000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1483,8 +1487,20 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 # 输出
 只输出剧本正文。禁止 JSON、禁止解释、禁止 markdown 代码块。`;
 
-      const fullScriptSystemPrompt = input.templatePromptOverride
-        ? `${scriptSystemPrompt}\n\n## 模板专属写作要求\n${input.templatePromptOverride}`
+      // 节拍表与角色档案作为硬约束注入（行业 Story Bible / beat sheet 做法）：
+      // 有节拍表时剧本必须逐拍展开；有角色档案时人物设定必须遵循档案。
+      const constraintBlocks: string[] = [];
+      if (input.beatSheetText?.trim()) {
+        constraintBlocks.push(`## 节拍表（必须严格按以下拍点顺序展开剧情，每拍对应到场景）\n${input.beatSheetText.trim()}`);
+      }
+      if (input.characterProfiles?.trim()) {
+        constraintBlocks.push(`## 角色档案（人物名称、外貌、服装、性格必须与档案一致，不得自创设定）\n${input.characterProfiles.trim()}`);
+      }
+      if (input.templatePromptOverride) {
+        constraintBlocks.push(`## 模板专属写作要求\n${input.templatePromptOverride}`);
+      }
+      const fullScriptSystemPrompt = constraintBlocks.length
+        ? `${scriptSystemPrompt}\n\n${constraintBlocks.join("\n\n")}`
         : scriptSystemPrompt;
 
       const scriptResponse = await invokeLLMWithKie(ctx, {
@@ -1595,6 +1611,237 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
       const score = Number.isFinite(Number(parsed.score)) ? Math.round(Number(parsed.score)) : 0;
       const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
       return { score, issues };
+      });
+    }),
+
+  // ── 开发阶段流（对齐行业管线：logline → 梗概 → 节拍表 → 剧本）────────────────
+
+  /** ① Logline：把想法/梗概压成 25-35 字的一句话故事（主角+冲突+赌注），出 3 个候选。 */
+  generateLogline: protectedProcedure
+    .input(z.object({
+      idea: z.string().min(1).max(2000),
+      genre: z.string().max(40).optional(),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.generateLogline", ctx.user.id, input, async () => {
+        const systemPrompt = `你是好莱坞资深故事策划。把用户的想法提炼成 3 个风格各异的 logline（一句话故事）。
+行业标准：每条 25-35 个汉字，必须包含【主角是谁】【面临什么冲突】【赌注/代价是什么】，有戏剧张力，不剧透结局。
+${input.genre ? `类型：${input.genre}。` : ""}
+仅输出合法 JSON，无 markdown 代码块：{"loglines":["…","…","…"]}`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: input.idea },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 1000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\{[\s\S]*\}/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let parsed: { loglines: string[] };
+        try { parsed = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const loglines = (Array.isArray(parsed.loglines) ? parsed.loglines : []).filter((s) => typeof s === "string" && s.trim()).slice(0, 3);
+        if (loglines.length === 0) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回 logline" });
+        return { loglines };
+      });
+    }),
+
+  /** ② 节拍表：按所选叙事结构把 logline/梗概拆成结构化拍点（行业 beat sheet）。 */
+  generateBeatSheet: protectedProcedure
+    .input(z.object({
+      source: z.string().min(1).max(3000), // logline + 梗概合并文本
+      structure: z.enum(["three_act", "save_the_cat", "heros_journey", "short_drama", "documentary"]).default("three_act"),
+      totalDuration: z.number().int().min(10).max(7200).default(60),
+      genre: z.string().max(40).optional(),
+      mood: z.string().max(40).optional(),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.generateBeatSheet", ctx.user.id, input, async () => {
+        // 行业标准结构模板（拍点名照行业惯例，数量按结构）。
+        const STRUCTURES: Record<string, { name: string; guide: string }> = {
+          three_act: { name: "经典三幕结构", guide: "8 拍：开场画面 / 建置（人物与世界）/ 激励事件 / 第一幕转折 / 中点（升级或反转）/ 低谷（一无所有）/ 高潮对决 / 结局画面。" },
+          save_the_cat: { name: "Save the Cat 15 拍", guide: "15 拍：开场画面 / 主题陈述 / 铺垫 / 催化剂 / 争论 / 进入第二幕 / B故事 / 玩闹与游戏 / 中点 / 坏人逼近 / 一无所有 / 灵魂黑夜 / 进入第三幕 / 结局 / 终场画面。" },
+          heros_journey: { name: "英雄之旅 12 步", guide: "12 拍：平凡世界 / 冒险召唤 / 拒绝召唤 / 遇见导师 / 跨越门槛 / 考验盟友敌人 / 接近最深洞穴 / 磨难 / 获得奖赏 / 归途 / 复活 / 携万能药归来。" },
+          short_drama: { name: "竖屏短剧 钩子-反转-爽点", guide: "6-8 拍，工业标准节奏：前 3 秒钩子（强冲突/悬念开场）/ 6 秒进入冲突 / 10 秒点出悬念 / 快速共情（主角低谷）/ 情绪拉扯（压迫升级）/ 高能反转 / 爽点释放 / 结尾卡点钩子（勾住下一集）。每分钟保持 3-4 个情绪爆点。" },
+          documentary: { name: "纪录片结构", guide: "6 拍：悬念开场（抛出问题）/ 背景铺陈 / 深入主体（核心事实与人物）/ 冲突或转折 / 升华（意义与影响）/ 收束呼应。" },
+        };
+        const st = STRUCTURES[input.structure];
+        const systemPrompt = `你是专业故事结构师。把给定的故事按「${st.name}」拆成节拍表（beat sheet）。
+结构指南：${st.guide}
+${input.genre ? `类型：${input.genre}。` : ""}${input.mood ? `基调：${input.mood}。` : ""}总时长约 ${input.totalDuration} 秒——给每拍分配 duration（秒），总和≈总时长，重场戏多分配。
+每拍 summary 用 1-3 句中文具体写出「发生什么」（人物动作与情绪，不要抽象套话）。
+仅输出合法 JSON 数组，无 markdown 代码块：
+[{"index":1,"title":"拍点名","summary":"这一拍发生什么","duration":8}]`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: input.source },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 4000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\[[\s\S]*\]/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let raw: Array<Record<string, unknown>>;
+        try { raw = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const beats = raw.slice(0, 20).map((b, i) => ({
+          index: typeof b.index === "number" ? b.index : i + 1,
+          title: String(b.title ?? `第 ${i + 1} 拍`),
+          summary: String(b.summary ?? ""),
+          duration: Number.isFinite(Number(b.duration)) ? Math.round(Number(b.duration)) : undefined,
+        }));
+        if (beats.length === 0) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回拍点" });
+        return { beats };
+      });
+    }),
+
+  /** 短剧分集大纲：70-80 集工业模式（每集钩子 + 剧情 + 结尾卡点），含付费卡点策划。 */
+  generateEpisodeOutline: protectedProcedure
+    .input(z.object({
+      source: z.string().min(1).max(3000),
+      episodeCount: z.number().int().min(4).max(100).default(24),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.generateEpisodeOutline", ctx.user.id, input, async () => {
+        const systemPrompt = `你是爆款竖屏短剧总编剧。把故事拆成 ${input.episodeCount} 集分集大纲（每集 1-2 分钟）。
+工业标准：每集必须有【开场钩子】（前 3 秒抓人）与【结尾卡点】（悬念勾住下一集）；全剧遵循「钩子+反转+爽点」黄金结构，避免高开低走；在第 ${Math.min(10, input.episodeCount)}${input.episodeCount >= 30 ? "、30" : ""}${input.episodeCount >= 50 ? "、50" : ""} 集附近安排付费卡点级强钩子（剧情最揪心处断章）。
+每集 summary 用 2-3 句中文写清剧情推进。
+仅输出合法 JSON 数组，无 markdown 代码块：
+[{"episode":1,"title":"集名","hook":"开场钩子","summary":"本集剧情","cliffhanger":"结尾悬念"}]`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: input.source },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 8000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\[[\s\S]*\]/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let raw: Array<Record<string, unknown>>;
+        try { raw = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const episodes = raw.slice(0, input.episodeCount).map((e, i) => ({
+          episode: typeof e.episode === "number" ? e.episode : i + 1,
+          title: String(e.title ?? `第 ${i + 1} 集`),
+          hook: String(e.hook ?? ""),
+          summary: String(e.summary ?? ""),
+          cliffhanger: String(e.cliffhanger ?? ""),
+        }));
+        if (episodes.length === 0) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回分集" });
+        return { episodes };
+      });
+    }),
+
+  // ── 专业审查（行业 Script Coverage 体系）──────────────────────────────────────
+
+  /** 六维评分 + 裁决（推荐/修改后可用/不推荐）+ 结构化问题（带定位/严重度/可修复标志）。
+   *  shortDrama 模式附加工业检查（钩子节奏 / 台词长度 / 反转密度）。 */
+  scriptCoverage: protectedProcedure
+    .input(z.object({
+      scriptText: z.string().min(1).max(8000),
+      genre: z.string().max(40).optional(),
+      shortDrama: z.boolean().default(false),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.scriptCoverage", ctx.user.id, input, async () => {
+        const shortDramaBlock = input.shortDrama ? `
+另外按竖屏短剧工业标准做 3 项附加检查（shortDramaChecks）：
+1.「钩子节奏」：开场是否做到 3 秒抓人、6 秒进冲突、10 秒点悬念；
+2.「台词长度」：单句台词是否多数控制在 8-12 字（最长不超 15 字）；
+3.「反转/爽点密度」：是否每分钟保持 3-4 个情绪爆点、有明确反转与爽点。` : "";
+        const systemPrompt = `你是好莱坞制片厂专业剧本审稿人（script reader），按行业 Coverage 标准出具结构化审读报告。
+六个维度逐一评分（0-100）并各写一句具体短评：
+- premise 创意与前提：概念新鲜度、戏剧前提是否成立
+- structure 结构：起承转合/幕结构是否完整、转折是否有力
+- characters 人物：动机是否成立、弧光是否清晰、配角功能性
+- dialogue 对白：是否自然、有潜台词、符合人物身份
+- pacing 节奏：信息密度、场景长短分配、是否拖沓或过快
+- visual 视觉可实现性：场景描写是否具象、是否适合 AI 图像/视频生成（画面感、可拆分镜程度）
+裁决（verdict）按行业三档：recommend（强烈推荐，各维度均优）/ consider（有潜力，修复关键问题后可用）/ pass（核心缺陷过多，建议重写）。
+issues 列出最关键的问题（最多 10 条，按严重度从高到低），每条：dimension（六维之一）、sceneRef（精确定位如「场景三」「第12行」，全局问题写「全局」）、severity（high/medium/low）、description（问题是什么）、suggestion（具体怎么改）、autoFixable（AI 能否仅凭该建议定向改写解决，布尔值；涉及全局重构的为 false）。
+strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
+仅输出合法 JSON，无 markdown 代码块：
+{"verdict":"consider","overall":74,"summary":"…","dimensions":[{"key":"premise","score":80,"comment":"…"}],"strengths":["…"],"issues":[{"dimension":"dialogue","sceneRef":"场景二","severity":"high","description":"…","suggestion":"…","autoFixable":true}]${input.shortDrama ? `,"shortDramaChecks":[{"name":"钩子节奏","pass":false,"detail":"…"}]` : ""}}`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: `${input.genre ? `【类型】${input.genre}\n\n` : ""}${input.scriptText}` },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 4000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\{[\s\S]*\}/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let parsed: Record<string, unknown>;
+        try { parsed = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const DIMS = ["premise", "structure", "characters", "dialogue", "pacing", "visual"] as const;
+        const dimsRaw = Array.isArray(parsed.dimensions) ? parsed.dimensions as Array<Record<string, unknown>> : [];
+        const dimensions = DIMS.map((key) => {
+          const d = dimsRaw.find((x) => x.key === key);
+          return { key, score: Math.max(0, Math.min(100, Math.round(Number(d?.score ?? 0)))), comment: String(d?.comment ?? "") };
+        });
+        const verdict = (["recommend", "consider", "pass"] as const).includes(parsed.verdict as "recommend") ? parsed.verdict as "recommend" | "consider" | "pass" : "consider";
+        const issuesRaw = Array.isArray(parsed.issues) ? parsed.issues as Array<Record<string, unknown>> : [];
+        const issues = issuesRaw.slice(0, 10).map((x) => ({
+          dimension: (DIMS as readonly string[]).includes(String(x.dimension)) ? String(x.dimension) as typeof DIMS[number] : "structure" as const,
+          sceneRef: String(x.sceneRef ?? "全局"),
+          severity: (["low", "medium", "high"] as const).includes(x.severity as "low") ? x.severity as "low" | "medium" | "high" : "medium",
+          description: String(x.description ?? ""),
+          suggestion: String(x.suggestion ?? ""),
+          autoFixable: x.autoFixable === true,
+        }));
+        const checksRaw = Array.isArray(parsed.shortDramaChecks) ? parsed.shortDramaChecks as Array<Record<string, unknown>> : [];
+        return {
+          verdict,
+          overall: Math.max(0, Math.min(100, Math.round(Number(parsed.overall ?? 0)))),
+          summary: String(parsed.summary ?? ""),
+          dimensions,
+          strengths: (Array.isArray(parsed.strengths) ? parsed.strengths : []).map(String).slice(0, 4),
+          issues,
+          ...(input.shortDrama ? { shortDramaChecks: checksRaw.slice(0, 3).map((c) => ({ name: String(c.name ?? ""), pass: c.pass === true, detail: String(c.detail ?? "") })) } : {}),
+          reviewedAt: Date.now(),
+        };
+      });
+    }),
+
+  /** 审查闭环：按单条 issue 定向改写剧本（只动相关位置，其余原样保留），返回完整修订稿。 */
+  applyScriptFix: protectedProcedure
+    .input(z.object({
+      scriptText: z.string().min(1).max(8000),
+      issue: z.object({
+        dimension: z.string().max(20),
+        sceneRef: z.string().max(60),
+        description: z.string().max(500),
+        suggestion: z.string().max(500),
+      }),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.applyScriptFix", ctx.user.id, input, async () => {
+        const systemPrompt = `你是专业剧本医生（script doctor）。按给定的审稿意见对剧本做【定向修复】：
+- 只修改与意见相关的位置（${input.issue.sceneRef}），其余内容必须逐字保留；
+- 修复后保持剧本格式（场景标题、结构）不变；
+- 只输出修复后的完整剧本正文，禁止解释、禁止 markdown 代码块。`;
+        const userContent = `【审稿意见】维度：${input.issue.dimension}；位置：${input.issue.sceneRef}；问题：${input.issue.description}；建议：${input.issue.suggestion}\n\n【剧本】\n${input.scriptText}`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: userContent },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 8000,
+        });
+        const result = extractTextContent(response).trim();
+        if (!result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回修复结果" });
+        return { result };
       });
     }),
 

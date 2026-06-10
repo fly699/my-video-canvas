@@ -111,10 +111,68 @@ export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
 
 // ── Node Data Payloads ────────────────────────────────────────────────────────
 
+/** 节拍表单拍（beat sheet item）——行业开发管线的中间产物，介于梗概与剧本之间。 */
+export interface ScriptBeat {
+  index: number;
+  title: string;       // 拍点名（如「开场画面」「催化剂」「钩子」）
+  summary: string;     // 这一拍发生什么（1-3 句）
+  duration?: number;   // 目标时长（秒，可选）
+}
+
+/** 短剧分集大纲单集。 */
+export interface ScriptEpisode {
+  episode: number;
+  title: string;
+  hook: string;        // 本集开场钩子（前 3 秒抓人点）
+  summary: string;     // 本集剧情（2-4 句）
+  cliffhanger: string; // 结尾悬念/卡点
+}
+
+/** 专业审查（Coverage）维度评分。 */
+export interface CoverageDimension {
+  key: "premise" | "structure" | "characters" | "dialogue" | "pacing" | "visual";
+  score: number;       // 0-100
+  comment: string;     // 一句话短评
+}
+
+/** 专业审查问题条目（带定位与可修复标志，支撑「审→修→复审」闭环）。 */
+export interface CoverageIssue {
+  dimension: CoverageDimension["key"];
+  sceneRef: string;    // 定位（如「场景三」「第12行」「全局」）
+  severity: "low" | "medium" | "high";
+  description: string; // 问题描述
+  suggestion: string;  // 修改建议
+  autoFixable: boolean; // AI 可一键定向改写
+}
+
+/** 专业审查报告（对齐行业 Script Coverage：维度评分 + 裁决 + 结构化问题）。 */
+export interface ScriptCoverageReport {
+  verdict: "recommend" | "consider" | "pass"; // 推荐 / 修改后可用 / 不推荐
+  overall: number;     // 0-100 综合分
+  summary: string;     // 总评（2-4 句）
+  dimensions: CoverageDimension[];
+  strengths: string[]; // 亮点
+  issues: CoverageIssue[];
+  /** 短剧模式附加检查（钩子节奏/台词长度/反转密度等），非短剧为空。 */
+  shortDramaChecks?: { name: string; pass: boolean; detail: string }[];
+  reviewedAt?: number; // 时间戳，便于「修复后复审」对比
+}
+
 export interface ScriptNodeData {
   content: string;
   synopsis?: string;
   totalDuration?: number;
+  // ── 开发阶段流产物（对齐行业管线：logline → 梗概 → 节拍表 → 剧本 → 分镜）──
+  /** 一句话故事（logline，25-35 字，含主角/冲突/赌注）。 */
+  logline?: string;
+  /** 节拍表（beat sheet）：剧本生成时作为结构约束消费。 */
+  beatSheet?: ScriptBeat[];
+  /** 节拍表所用结构模板 id（three_act / save_the_cat / heros_journey / short_drama / documentary）。 */
+  beatStructure?: string;
+  /** 短剧分集大纲（多集模式产物）。 */
+  episodeOutline?: ScriptEpisode[];
+  /** 最近一次专业审查报告（持久化：留存 / 修复后对比 / 导出便签）。 */
+  coverage?: ScriptCoverageReport;
   // AI panel params — persisted so settings survive remount / project reload
   aiGenre?: string;
   aiStyle?: string;
