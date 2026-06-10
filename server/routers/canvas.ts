@@ -57,7 +57,7 @@ import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio"
 import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame, concatAudioSegments } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -68,6 +68,7 @@ import { isKieVideoProvider, submitKieVideo } from "../_core/kieVideo";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { isKieLLMModel } from "../_core/kieLLM";
 import { isKieTTS, submitAndPollKieTTS } from "../_core/kieTTS";
+import { submitAndPollKieSFX, KIE_SFX_MODEL } from "../_core/kieSFX";
 import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
 import { writeAuditLog, truncate, auditVideoTaskResult } from "../_core/auditLog";
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
@@ -2515,6 +2516,70 @@ export const audioGenRouter = router({
         throw err;
       });
     }),
+
+  // 文本→音效（ElevenLabs Sound Effects via kie 统一 jobs API）。kie 走自有 key
+  // 体系（临时 > 分配 > 公用），与 kie TTS 同口径绕平台白名单。
+  generateSFX: protectedProcedure
+    .input(
+      z.object({
+        model: z.enum(["kie_elevenlabs_sfx"]),
+        // 官方 schema：text ≤5000 字符；duration_seconds 0.5–22（步进 0.1，缺省自动）；
+        // loop 无缝循环；prompt_influence 0–1（默认 0.3）。
+        prompt: z.string().min(1).max(5000),
+        duration: z.number().min(0.5).max(22).optional(),
+        loop: z.boolean().optional(),
+        promptInfluence: z.number().min(0).max(1).optional(),
+        kieTempKey: z.string().max(256).optional(),
+        estimatedCost: z.string().max(32).optional(),
+        projectId: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      const { key } = await resolveKieKey(ctx, input.kieTempKey);
+      return dedupe("audioGen.generateSFX", ctx.user.id, input, async () => {
+        const result = await submitAndPollKieSFX({
+          apiKey: key, text: input.prompt,
+          durationSeconds: input.duration, loop: input.loop, promptInfluence: input.promptInfluence,
+        });
+        writeAuditLog({
+          ctx, action: "audio_sfx",
+          detail: {
+            model: KIE_SFX_MODEL, text: truncate(input.prompt),
+            duration: input.duration ?? null, loop: input.loop ?? false,
+            resultUrl: result.url,
+            ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+            success: true,
+          },
+        });
+        await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "kie", model: KIE_SFX_MODEL, url: result.url, name: "音效" });
+        return result;
+      }).catch((err: unknown) => {
+        writeAuditLog({ ctx, action: "audio_sfx", detail: {
+          model: KIE_SFX_MODEL, text: truncate(input.prompt),
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: false, error: truncate(err instanceof Error ? err.message : String(err)),
+        } });
+        throw err;
+      });
+    }),
+
+  // 多角色配音 casting：客户端按「角色名：台词」逐段不同音色 TTS 后，把同一镜的
+  // 多段音频拼接为一条镜级配音（本地 ffmpeg，不消耗 AI 积分，故不做白名单拦截）。
+  concatSegments: protectedProcedure
+    .input(
+      z.object({
+        urls: z.array(mediaUrlSchema).min(2).max(20),
+        projectId: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      for (const u of input.urls) guardUrl(u);
+      const result = await concatAudioSegments(input.urls);
+      await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "ffmpeg", model: null, url: result.url, name: "配音拼接（多角色）" });
+      return result;
+    }),
 });
 
 // ── Video Clip Editor ─────────────────────────────────────────────────────────
@@ -2706,9 +2771,10 @@ export const mergeRouter = router({
         inputUrls: z.array(mediaUrlSchema).min(2).max(50),
         transition: z.enum(["none", "fade", "dissolve"]).optional(),
         transitionDuration: z.number().min(0.1).max(2.0).optional(),
-        // 装配端：逐切点转场（来自分镜镜头表；长度=段数-1）+ 逐段配音轨（与段对位）
+        // 装配端：逐切点转场（来自分镜镜头表；长度=段数-1）+ 逐段配音/音效轨（与段对位）
         transitions: z.array(z.enum(["none", "fade", "dissolve", "wipe"])).max(49).optional(),
         voiceUrls: z.array(mediaUrlSchema.nullable()).max(50).optional(),
+        sfxUrls: z.array(mediaUrlSchema.nullable()).max(50).optional(),
         bgMusicUrl: mediaUrlSchema.optional(),
         bgMusicVolume: z.number().min(0).max(1).optional(),
         projectId: z.number().optional(),
@@ -2720,9 +2786,10 @@ export const mergeRouter = router({
       for (const url of input.inputUrls) guardUrl(url);
       if (input.bgMusicUrl) guardUrl(input.bgMusicUrl);
       for (const v of input.voiceUrls ?? []) if (v) guardUrl(v);
+      for (const v of input.sfxUrls ?? []) if (v) guardUrl(v);
       const result = await mergeVideos(input);
       await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "合并视频" });
-      return { url: result.url, duration: result.duration };
+      return { url: result.url, duration: result.duration, segStarts: result.segStarts };
     }),
 });
 

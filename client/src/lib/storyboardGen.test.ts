@@ -111,6 +111,44 @@ describe("assembleFromStoryboards（装配端收集）", () => {
     expect(r.inputVideoUrls).toEqual(["v1.mp4", "v2.mp4"]); // 连线乱序仍按镜号
     expect(r.transitions).toEqual(["dissolve"]);            // 镜1→镜2 用镜1 的 transition
     expect(r.voiceUrls).toEqual(["voice1.mp3", null]);      // 镜1 有配音、镜2 无
+    expect(r.sfxUrls).toEqual([null, null]);                // 无音效节点
+  });
+
+  it("音频按类别分轨：sfx→音效轨、music 排除、dubbing/未标→配音轨", () => {
+    const withSfx = [
+      ...nodes,
+      N("fx2", "audio", { url: "rain.mp3", audioCategory: "sfx" }),
+      N("bgm", "audio", { url: "bgm.mp3", audioCategory: "music" }),
+    ];
+    const e2 = [...edges, { source: "sb2", target: "fx2" }, { source: "sb2", target: "bgm" }];
+    const r = assembleFromStoryboards("m", withSfx, e2);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.voiceUrls).toEqual(["voice1.mp3", null]);  // music 不进配音轨
+    expect(r.sfxUrls).toEqual([null, "rain.mp3"]);      // sfx 进音效轨
+    expect(r.shots[1].hasSfx).toBe(true);
+    expect(r.shots[1].hasVoice).toBe(false);
+  });
+
+  it("comfyui_workflow 视频运行纳入装配、出图运行跳过；sourceShots 绑定段↔节点", () => {
+    const withComfy = [
+      N("m2", "merge", {}),
+      N("sb1", "storyboard", { sceneNumber: 1, transition: "fade" }),
+      N("sb2", "storyboard", { sceneNumber: 2 }),
+      N("cw1", "comfyui_workflow", { outputUrl: "w1.mp4", outputType: "video" }),
+      N("cw2", "comfyui_workflow", { outputUrl: "w2.mp4" }),          // outputType 未标 → 视频对待
+      N("cwImg", "comfyui_workflow", { outputUrl: "x.png", outputType: "image" }), // 出图运行 → 跳过
+    ];
+    const e2 = [
+      { source: "sb1", target: "cw1" }, { source: "sb2", target: "cw2" },
+      { source: "cw1", target: "m2" }, { source: "cw2", target: "m2" }, { source: "cwImg", target: "m2" },
+    ];
+    const r = assembleFromStoryboards("m2", withComfy, e2);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.inputVideoUrls).toEqual(["w1.mp4", "w2.mp4"]);
+    expect(r.sourceShots).toEqual([
+      { sb: "sb1", vid: "cw1", num: 1 },
+      { sb: "sb2", vid: "cw2", num: 2 },
+    ]);
   });
 
   it("少于 2 个可装配段时报错", () => {

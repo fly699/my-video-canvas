@@ -523,21 +523,27 @@ export interface MergeOptions {
   /** 逐段配音轨（与 inputUrls 对位；null=该段无配音）。每条按所在段起点 adelay 后
    *  与原声/BGM amix——视频+配音对位混装（装配端）。 */
   voiceUrls?: (string | null)[];
+  /** 逐段音效轨（与 inputUrls 对位）。同配音的 adelay 对位机制，混入权重 0.6
+   *  （氛围声不压人声）。 */
+  sfxUrls?: (string | null)[];
 }
 
 export interface MergeResult {
   url: string;
   duration: number;
+  /** xfade 路径下各段在成片中的精确起点（offset 累计值）——下游字幕对位的时间轴真相源。 */
+  segStarts?: number[];
 }
 
 export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
   const transition = opts.transition ?? "none";
   const td = opts.transitionDuration ?? 0.5;
   const bgVol = opts.bgMusicVolume ?? 0.3;
-  // 装配模式：带逐切点转场或逐段配音时强制走 filter 路径（旧 concat 快路径不动）。
+  // 装配模式：带逐切点转场或逐段配音/音效时强制走 filter 路径（旧 concat 快路径不动）。
   const segTransitions = opts.transitions?.length ? opts.transitions : null;
   const voiceList = opts.voiceUrls?.some(Boolean) ? opts.voiceUrls! : null;
-  const advanced = !!(segTransitions || voiceList);
+  const sfxList = opts.sfxUrls?.some(Boolean) ? opts.sfxUrls! : null;
+  const advanced = !!(segTransitions || voiceList || sfxList);
 
   const inputPaths: string[] = [];
   const outName = `ffmpeg-merge-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
@@ -556,6 +562,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
     }
 
     let totalDuration = 0;
+    let outSegStarts: number[] | undefined;
     const args: string[] = [];
 
     if (transition === "none" && !advanced) {
@@ -605,11 +612,15 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       }
 
       const globalXfade = transition === "dissolve" ? "dissolve" : "fade";
-      // 逐切点：type/duration 各自决定。"none"(cut/match-cut) → 1 帧 fade ≈ 硬切。
+      // 逐切点：type/duration 各自决定。"none"(cut/match-cut) → 极短 fade ≈ 硬切。
+      // 硬切时长必须 ≥ 一个帧间隔：真实 ffmpeg 复现发现 1/30 经 toFixed(3) 得 0.033 <
+      // 帧间隔 0.0333…，亚帧 duration 会让 xfade 在第一路 EOF 处提前终止、后段整段丢失
+      // （成片被截断）。取 1/15≈0.067（2 帧 @30fps；对 24fps 源也 > 单帧间隔 0.0417），
+      // 视觉上仍是硬切。
       const XFADE_MAP: Record<string, string> = { fade: "fade", dissolve: "dissolve", wipe: "wipeleft", none: "fade" };
       const cutAt = (i: number): { type: string; dur: number } => {
         const t = segTransitions?.[i] ?? (transition === "none" ? "none" : transition);
-        if (t === "none") return { type: "fade", dur: 1 / 30 };
+        if (t === "none") return { type: "fade", dur: 1 / 15 };
         return { type: XFADE_MAP[t] ?? globalXfade, dur: td };
       };
       let filterStr = "";
@@ -636,13 +647,15 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
 
       // bgMusicPath is pushed as an input only here, after the audio check, so the
       // input index (n or n+1) is known and the stream is always referenced.
-      // 配音轨（装配端）：逐段下载，按段起点 adelay 对位。输入索引在 bg 之后排布。
-      const voicePaths: { path: string; segIdx: number }[] = [];
-      if (voiceList) {
-        for (let i = 0; i < Math.min(voiceList.length, n); i++) {
-          const vu = voiceList[i];
+      // 配音/音效轨（装配端）：逐段下载，按段起点 adelay 对位。输入索引在 bg 之后排布。
+      // 音效权重 0.6（氛围声不压人声）。
+      const voicePaths: { path: string; segIdx: number; weight: number; tag: string }[] = [];
+      for (const [list, weight, tag] of [[voiceList, 1, "vc"], [sfxList, 0.6, "fx"]] as const) {
+        if (!list) continue;
+        for (let i = 0; i < Math.min(list.length, n); i++) {
+          const vu = list[i];
           if (!vu) continue;
-          voicePaths.push({ path: await downloadToTemp(vu, "mp3"), segIdx: i });
+          voicePaths.push({ path: await downloadToTemp(vu, "mp3"), segIdx: i, weight, tag });
           inputPaths.push(voicePaths[voicePaths.length - 1].path); // 纳入 finally 清理
         }
       }
@@ -652,8 +665,23 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       let nextIdx = n; // 后续输入（bg / voices）的 ffmpeg 输入索引
       let pre = "";
       if (allHaveAudio) {
-        const audioInputs = Array.from({ length: n }, (_, i) => `[${i}:a]`).join("");
-        pre += `;${audioInputs}concat=n=${n}:v=0:a=1[acat]`;
+        // 原声与视频同步交叠：视频走 xfade（相邻段重叠 c.dur），音频若用 concat 则不
+        // 重叠，每个切点音画漂移累计一次转场时长（3 段 0.5s 转场即漂 1s+，且与按视频
+        // 时间轴 adelay 的配音/音效错位）——真实 ffmpeg 复现确认。改用 acrossfade 链、
+        // 每切点取与视频相同的时长，音频总长 = 视频总长，逐段起点与 segStarts 对齐。
+        if (n === 1) {
+          pre += `;[0:a]anull[acat]`;
+        } else {
+          let lastA = "[0:a]";
+          for (let i = 1; i < n; i++) {
+            const c = cutAt(i - 1);
+            // acrossfade 要求两路都长于 d：用相邻段视频时长的一半夹取，极短段也能过。
+            const d = Math.max(0.03, Math.min(c.dur, (durations[i - 1] ?? 2) / 2, (durations[i] ?? 2) / 2));
+            const outLabel = i === n - 1 ? "[acat]" : `[ac${i}]`;
+            pre += `;${lastA}[${i}:a]acrossfade=d=${d.toFixed(3)}${outLabel}`;
+            lastA = `[ac${i}]`;
+          }
+        }
         mixParts.push({ label: "[acat]", weight: 1 });
       }
       if (bgMusicPath) {
@@ -664,8 +692,8 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       for (const vp of voicePaths) {
         args.push("-i", vp.path);
         const startMs = Math.round((segStarts[vp.segIdx] ?? 0) * 1000);
-        pre += `;[${nextIdx}:a]adelay=${startMs}|${startMs},aresample=async=1[vc${vp.segIdx}]`;
-        mixParts.push({ label: `[vc${vp.segIdx}]`, weight: 1 });
+        pre += `;[${nextIdx}:a]adelay=${startMs}|${startMs},aresample=async=1[${vp.tag}${vp.segIdx}]`;
+        mixParts.push({ label: `[${vp.tag}${vp.segIdx}]`, weight: vp.weight });
         nextIdx++;
       }
       if (mixParts.length > 1) {
@@ -691,17 +719,57 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         throw new Error(`FFmpeg xfade merge failed:\n${e.stderr || e.message || String(err)}`);
       }
 
-      totalDuration = durations.reduce((s, d) => s + d, 0) - td * (n - 1);
+      // 末段起点 + 末段时长 = 成片总长（逐切点 duration 各异时仍精确；
+      // 全局统一转场时与旧公式 Σdur - td*(n-1) 等价）。
+      totalDuration = (segStarts[n - 1] ?? 0) + (durations[n - 1] ?? 0);
+      outSegStarts = segStarts;
     }
 
     const outBuffer = await fs.readFile(outPath);
     await assertObjectStorageWritable();
     const { url } = await storagePut(`generated/merge-${Date.now()}.mp4`, outBuffer, "video/mp4");
-    return { url, duration: Math.max(0, totalDuration) };
+    return { url, duration: Math.max(0, totalDuration), segStarts: outSegStarts };
   } finally {
     await Promise.all(inputPaths.map((p) => fs.unlink(p).catch(() => undefined)));
     await fs.unlink(outPath).catch(() => undefined);
     if (bgMusicPath) await fs.unlink(bgMusicPath).catch(() => undefined);
+  }
+}
+
+// ── Audio segment concat（多角色配音 casting：分段 TTS 后拼接为镜级单条配音）────
+/** 把多段音频按顺序拼接为一条 mp3。各段先统一重采样 44.1kHz/单声道再 concat，
+ *  规避不同 TTS 提供商采样率/声道不一致导致的 concat 失败或变调。 */
+export async function concatAudioSegments(urls: string[]): Promise<{ url: string; duration: number }> {
+  const inputPaths: string[] = [];
+  const outPath = path.join(os.tmpdir(), `ffmpeg-acat-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
+  try {
+    for (const u of urls) {
+      inputPaths.push(await downloadToTemp(u, "mp3"));
+    }
+    const n = inputPaths.length;
+    const args: string[] = [];
+    inputPaths.forEach((p) => args.push("-i", p));
+    const pre = inputPaths.map((_, i) => `[${i}:a]aresample=44100,aformat=channel_layouts=mono[a${i}]`).join(";");
+    const cat = inputPaths.map((_, i) => `[a${i}]`).join("") + `concat=n=${n}:v=0:a=1[aout]`;
+    args.push("-filter_complex", `${pre};${cat}`, "-map", "[aout]", "-c:a", "libmp3lame", "-q:a", "2", "-y", outPath);
+    try {
+      await execFileAsync("ffmpeg", args);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      throw new Error(`FFmpeg audio concat failed:\n${e.stderr || e.message || String(err)}`);
+    }
+    let duration = 0;
+    try {
+      const r = await execFileAsync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", outPath]);
+      duration = parseFloat(r.stdout.trim()) || 0;
+    } catch { /* duration best-effort */ }
+    const buf = await fs.readFile(outPath);
+    await assertObjectStorageWritable();
+    const { url } = await storagePut(`generated/dub-cast-${Date.now()}.mp3`, buf, "audio/mpeg");
+    return { url, duration };
+  } finally {
+    await Promise.all(inputPaths.map((p) => fs.unlink(p).catch(() => undefined)));
+    await fs.unlink(outPath).catch(() => undefined);
   }
 }
 

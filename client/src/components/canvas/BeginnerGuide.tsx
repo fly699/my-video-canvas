@@ -52,6 +52,9 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
   const features = [
     { Icon: Layers, color: "oklch(0.68 0.22 285)",
       title: "节点式工作流", desc: "脚本 / 分镜 / 提示词 / 图像 / 视频 / 剪辑节点自由编排，可视化连线" },
+    { Icon: Clapperboard, color: "oklch(0.65 0.20 160)",
+      title: "分镜→成片流水线", desc: "镜头表一表统管：批量关键帧图 → 批量生视频（云端 / ComfyUI 本地免费三引擎）→ 批量配音（多角色分音色）→ 批量音效 → 合并节点「按镜头表装配」自动镜号排序、逐镜转场、配音音效对位，字幕再从镜头表一键对位生成；不满意的镜点「镜N」定位重生成",
+      badge: "NEW" },
     { Icon: Wand2, color: "oklch(0.72 0.20 330)",
       title: "AI 图像生成", desc: "对齐 Poyo 全量目录共 24 个模型：Nano Banana Pro、GPT Image、Flux 2 / Kontext、Seedream、Kling、Z-Image 等，含 Higgsfield Soul / Reve",
       badge: "NEW" },
@@ -91,7 +94,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       title: "ComfyUI 节点模板库", desc: "右键任意 ComfyUI 节点把全部参数（含提示词 / 工作流）存为共享模板，全员可调用；按节点外框颜色分类、可搜索 / 注释 / 重命名，点击即在画布快速新建带参节点",
       badge: "NEW" },
     { Icon: Music, color: "oklch(0.70 0.18 340)",
-      title: "AI 配乐与配音", desc: "音频节点接入 Suno / MiniMax 音乐生成与 ElevenLabs V3 文本转语音（TTS）配音，一键为视频生成背景音乐与旁白",
+      title: "AI 配乐 · 配音 · 音效", desc: "音频节点接入 Suno / MiniMax 音乐生成、OpenAI / ElevenLabs / 本地 VoxCPM 配音与 ElevenLabs SFX 音效生成；对白支持「角色名：台词」多角色分音色 casting，逐段各自配音自动拼接成镜级音频",
       badge: "NEW" },
     { Icon: Wallet, color: "oklch(0.72 0.18 155)",
       title: "Poyo 余额仪表盘", desc: "顶栏实时显示剩余 Poyo 点数，配合模型选择器的点数标注，生成前即可掌握预算与消耗",

@@ -1,4 +1,5 @@
 import { memo, useMemo, useState } from "react";
+import { useReactFlow } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
@@ -85,6 +86,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       updateNodeData(id, {
         outputUrl: result.url,
         outputDuration: result.duration,
+        // 各段成片精确起点（仅装配/xfade 路径返回）：字幕「从镜头表生成」的时间轴。
+        // 普通合并返回 undefined → 清掉旧值，避免陈旧起点误导字幕对位。
+        segStarts: result.segStarts,
         status: "done",
         errorMessage: undefined,
       });
@@ -197,9 +201,25 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
     const plan = assembleFromStoryboards(id, allNodes, allEdges);
     if ("error" in plan) { toast.error(plan.error); return; }
-    update({ inputVideoUrls: plan.inputVideoUrls, segTransitions: plan.transitions, voiceUrls: plan.voiceUrls });
+    update({ inputVideoUrls: plan.inputVideoUrls, segTransitions: plan.transitions, voiceUrls: plan.voiceUrls, sfxUrls: plan.sfxUrls, segDialogues: plan.dialogues, segVoiceDurations: plan.voiceDurations, sourceShots: plan.sourceShots });
     const voiced = plan.shots.filter((x) => x.hasVoice).length;
-    toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐切点转场${voiced ? ` · ${voiced} 条配音对位` : ""}）`, { duration: 5000 });
+    const sfxed = plan.shots.filter((x) => x.hasSfx).length;
+    toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐切点转场${voiced ? ` · ${voiced} 条配音对位` : ""}${sfxed ? ` · ${sfxed} 条音效对位` : ""}）`, { duration: 5000 });
+  };
+
+  const reactFlow = useReactFlow();
+  /** 按镜定位：选中并居中该镜的视频节点（按镜重生成入口——在该节点重提出片后，
+   *  回来重新点「按镜头表装配」即可替换该段，aligned 守卫天然兜住中间态）。 */
+  const focusShotNode = (nodeId: string) => {
+    const { nodes: cur, setNodes } = useCanvasStore.getState();
+    if (!cur.some((n) => n.id === nodeId)) { toast.error("该镜的视频节点已被删除，请重新装配"); return; }
+    setNodes(cur.map((n) => ({ ...n, selected: n.id === nodeId })));
+    const rfNode = reactFlow.getNode(nodeId);
+    if (rfNode) {
+      const w = rfNode.measured?.width ?? rfNode.width ?? 240;
+      const h = rfNode.measured?.height ?? rfNode.height ?? 120;
+      reactFlow.setCenter(rfNode.position.x + w / 2, rfNode.position.y + h / 2, { zoom: Math.min(Math.max(reactFlow.getZoom(), 0.85), 1.5), duration: 500 });
+    }
   };
 
   const handleMerge = () => {
@@ -233,6 +253,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       ...(aligned ? {
         transitions: payload.segTransitions?.slice(0, urls.length - 1),
         voiceUrls: payload.voiceUrls?.slice(0, urls.length),
+        sfxUrls: payload.sfxUrls?.slice(0, urls.length),
       } : {}),
       bgMusicUrl: effectiveBgMusicUrl || undefined,
       bgMusicVolume: payload.bgMusicVolume,
@@ -487,9 +508,26 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
           🎬 按镜头表装配（镜号排序 · 逐段转场 · 配音对位）
         </button>
         {payload.segTransitions && (
-          <p style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
-            已装配 {payload.inputVideoUrls?.length ?? 0} 段 · 逐切点转场 {payload.segTransitions.length} 个 · 配音 {payload.voiceUrls?.filter(Boolean).length ?? 0} 条（手动改动顺序后将回退为全局转场）
-          </p>
+          <>
+            <p style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
+              已装配 {payload.inputVideoUrls?.length ?? 0} 段 · 逐切点转场 {payload.segTransitions.length} 个 · 配音 {payload.voiceUrls?.filter(Boolean).length ?? 0} 条{(payload.sfxUrls?.filter(Boolean).length ?? 0) > 0 ? ` · 音效 ${payload.sfxUrls!.filter(Boolean).length} 条` : ""}（手动改动顺序后将回退为全局转场）
+            </p>
+            {(payload.sourceShots?.length ?? 0) > 0 && (
+              <div className="nodrag" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {payload.sourceShots!.map((s, i) => (
+                  <button
+                    key={`${s.vid}-${i}`}
+                    onClick={() => focusShotNode(s.vid)}
+                    title="定位该镜的视频节点（对某镜不满意：在节点上重新生成出片后，回来重新点「按镜头表装配」即可替换该段）"
+                    className="nodrag"
+                    style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: "oklch(0.65 0.20 160 / 0.08)", border: "1px solid oklch(0.65 0.20 160 / 0.3)", color: "oklch(0.65 0.20 160)", cursor: "pointer" }}
+                  >
+                    镜{s.num ?? i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* Merge button */}

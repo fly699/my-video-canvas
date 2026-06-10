@@ -60,6 +60,7 @@ export type AuditAction =
   | "video_gen"
   | "audio_music"
   | "audio_dubbing"
+  | "audio_sfx"
   | "subtitle_transcribe"
   | "logs_cleared"
   | "comfyui_image_gen"

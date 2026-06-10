@@ -173,6 +173,9 @@ export interface ScriptNodeData {
   episodeOutline?: ScriptEpisode[];
   /** 最近一次专业审查报告（持久化：留存 / 修复后对比 / 导出便签）。 */
   coverage?: ScriptCoverageReport;
+  /** 角色音色 casting 表：角色名 → 配音模型+音色（镜头表批量配音按「角色名：台词」
+   *  逐段套用；存在脚本节点上随画布持久化，同组分镜共享）。 */
+  castVoices?: Record<string, { model: string; voice: string }>;
   // AI panel params — persisted so settings survive remount / project reload
   aiGenre?: string;
   aiStyle?: string;
@@ -521,9 +524,12 @@ export interface AudioNodeData {
   ttsDoNormalize?: boolean;                       // 文本规范化
   ttsTranslateTarget?: string;                    // 配音文本翻译目标语言/方言
   ttsTranslateModel?: string;                     // 翻译所用 AI 模型（可选）
-  // SFX (音效)
+  // SFX (音效) — 对齐 kie elevenlabs/sound-effect-v2 官方 schema
   sfxPrompt?: string;
+  /** 0.5–22 秒（步进 0.1）；undefined=模型按描述自动决定时长。 */
   sfxDuration?: number;
+  /** 生成可无缝循环的氛围音效。 */
+  sfxLoop?: boolean;
   // Legacy compat
   source?: AudioSource;
 }
@@ -581,6 +587,10 @@ export interface CharacterNodeData {
    * Reference image(s) drive IPAdapter face-lock; an optional character LoRA is
    * added to the lora stack. All optional; absence = current text-only behavior.
    */
+  /** 角色声音档案（casting）：镜头表「角色音色」分配后回写到同名角色节点，
+   *  跨项目复用该角色时作为默认音色。 */
+  voiceModel?: string;        // 配音模型 id（如 elevenlabs-v3-tts）
+  voiceId?: string;           // 该模型下的音色 id
   loraName?: string;          // character-specific LoRA filename on the ComfyUI server
   loraStrength?: number;      // LoRA model strength (default 0.8)
   ipadapterWeight?: number;   // IPAdapter face-lock strength 0–2 (default 0.8)
@@ -669,6 +679,16 @@ export interface MergeNodeData {
   segTransitions?: ("none" | "fade" | "dissolve" | "wipe")[];
   /** 装配端：逐段配音轨（与 inputVideoUrls 对位；null=该段无配音）。 */
   voiceUrls?: (string | null)[];
+  /** 装配端：逐段音效轨（与 inputVideoUrls 对位；混入权重低于配音）。 */
+  sfxUrls?: (string | null)[];
+  /** 装配端：逐镜对白快照（来自分镜 dialogue；下游字幕节点「从镜头表生成字幕」消费）。 */
+  segDialogues?: (string | null)[];
+  /** 装配端：逐镜配音时长（秒；字幕在配音结束处收口用）。 */
+  segVoiceDurations?: (number | null)[];
+  /** 合并完成后服务端回传的各段成片起点（xfade offset 精确值；字幕对位的时间轴真相源）。 */
+  segStarts?: number[];
+  /** 装配端：段↔分镜/视频节点绑定（sb=分镜 id，vid=视频节点 id；按镜定位/重生成入口）。 */
+  sourceShots?: { sb: string | null; vid: string; num?: number | string }[];
   transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
   bgMusicUrl?: string;
   bgMusicVolume?: number;       // 0.0–1.0, default 0.3

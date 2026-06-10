@@ -755,6 +755,12 @@ export default function Home() {
                     badge: null,
                   },
                   {
+                    icon: Clapperboard, color: "oklch(0.65 0.20 160)",
+                    title: "分镜→成片流水线",
+                    desc: "镜头表批量：关键帧图 → 生视频（云端/ComfyUI 免费三引擎）→ 配音（多角色分音色）→ 音效 → 一键「按镜头表装配」成片（镜号排序·逐镜转场·音轨对位），字幕零转录对位生成",
+                    badge: "NEW",
+                  },
+                  {
                     icon: Wand2, color: "oklch(0.72 0.20 330)",
                     title: "AI 图像生成",
                     desc: "对齐 Poyo 全量 24 模型：Nano Banana Pro / GPT Image / Flux 2·Kontext / Seedream / Kling / Z-Image，含 Higgsfield Soul·Reve",

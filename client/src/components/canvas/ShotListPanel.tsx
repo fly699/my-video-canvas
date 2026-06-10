@@ -2,9 +2,11 @@ import { useMemo, useState } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic } from "lucide-react";
-import type { StoryboardNodeData, ScriptNodeData } from "../../../../shared/types";
+import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic, Zap } from "lucide-react";
+import type { StoryboardNodeData, ScriptNodeData, CharacterNodeData } from "../../../../shared/types";
+import { parseDialogueLines, extractRoles, shouldCast, planCastSegments, type CastMap, type CastVoice } from "../../lib/dialogueCasting";
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
+import { materializeTemplate } from "../../lib/agentApply";
 import { propagateRefImage } from "../../lib/refImagePropagation";
 import { PROVIDER_PARAMS, withParamDefaults, PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
 
@@ -50,27 +52,51 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     return JSON.stringify({
       src: srcScript ?? null,
       target: srcScript ? (s.nodes.find((n) => n.id === srcScript)?.data.payload as ScriptNodeData | undefined)?.totalDuration ?? null : null,
+      // 角色音色 casting：脚本上的分配表 + 同名角色节点的声音档案（作默认值）
+      cast: srcScript ? (s.nodes.find((n) => n.id === srcScript)?.data.payload as ScriptNodeData | undefined)?.castVoices ?? null : null,
+      chars: s.nodes
+        .filter((n) => n.data.nodeType === "character")
+        .map((n) => n.data.payload as CharacterNodeData)
+        .filter((p) => p.name && p.voiceModel && p.voiceId)
+        .map((p) => [p.name!, p.voiceModel!, p.voiceId!] as [string, string, string]),
       rows: members.map((n) => [
         n.id, n.data.title, Math.round(n.position.x / 50), JSON.stringify(n.data.payload), // x 量化 50px：拖动不再每帧重算面板
         // 精修工位标记：本镜出边指向 image_gen（批量生图默认跳过，避免覆盖精修流程）
         s.edges.some((e) => e.source === n.id && s.nodes.find((m) => m.id === e.target)?.data.nodeType === "image_gen") ? 1 : 0,
-        // 下游视频节点状态（第一个 video_task：无→"" / idle/pending/processing/succeeded/failed）
+        // 下游视频工位状态（video_task / comfyui_video / comfyui_workflow 任一；
+        // comfy 的 done→succeeded、processing→processing，统一口径）：无→"" / idle/pending/processing/succeeded/failed
         (() => {
           for (const e of s.edges) {
             if (e.source !== n.id) continue;
             const t = s.nodes.find((m) => m.id === e.target);
             if (t?.data.nodeType === "video_task") return (t.data.payload as { status?: string }).status ?? "idle";
+            if (t?.data.nodeType === "comfyui_video" || t?.data.nodeType === "comfyui_workflow") {
+              const st = (t.data.payload as { status?: string }).status ?? "idle";
+              return st === "done" ? "succeeded" : st;
+            }
           }
           return "";
         })(),
-        // 下游配音节点：""=无；"empty"=有节点未出声；其余=音频时长（秒字符串）
+        // 下游配音节点（排除 sfx/music 类别）：""=无；"empty"=有节点未出声；其余=音频时长（秒字符串）
         (() => {
           for (const e of s.edges) {
             if (e.source !== n.id) continue;
             const t = s.nodes.find((m) => m.id === e.target);
             if (t?.data.nodeType === "audio") {
-              const ap = t.data.payload as { url?: string; duration?: number };
+              const ap = t.data.payload as { url?: string; duration?: number; audioCategory?: string };
+              if (ap.audioCategory === "sfx" || ap.audioCategory === "music") continue;
               return ap.url ? String(Math.round(ap.duration ?? 0)) : "empty";
+            }
+          }
+          return "";
+        })(),
+        // 下游音效节点：""=无；"empty"=有工位未出声；"done"=已出声
+        (() => {
+          for (const e of s.edges) {
+            if (e.source !== n.id) continue;
+            const t = s.nodes.find((m) => m.id === e.target);
+            if (t?.data.nodeType === "audio" && (t.data.payload as { audioCategory?: string }).audioCategory === "sfx") {
+              return (t.data.payload as { url?: string }).url ? "done" : "empty";
             }
           }
           return "";
@@ -78,15 +104,17 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       ]),
     });
   });
-  const { rows, targetDuration, scriptId } = useMemo(() => {
-    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; rows: [string, string, number, string, number, string, string][] };
-    const parsed: (ShotRow & { x: number; hasRefine: boolean; videoStatus: string; audioStatus: string })[] = g.rows.map(([rid, title, x, pj, refine, vstat, astat], i) => {
+  const { rows, targetDuration, scriptId, scriptCast, charDefaults } = useMemo(() => {
+    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; cast: CastMap | null; chars: [string, string, string][]; rows: [string, string, number, string, number, string, string, string][] };
+    const parsed: (ShotRow & { x: number; hasRefine: boolean; videoStatus: string; audioStatus: string; sfxStatus: string })[] = g.rows.map(([rid, title, x, pj, refine, vstat, astat, sstat], i) => {
       const payload = JSON.parse(pj) as StoryboardNodeData;
       const n = Number(payload.sceneNumber);
-      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1, videoStatus: vstat, audioStatus: astat };
+      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1, videoStatus: vstat, audioStatus: astat, sfxStatus: sstat };
     });
     parsed.sort((a, b) => a.num - b.num || a.x - b.x);
-    return { rows: parsed, targetDuration: g.target, scriptId: g.src };
+    const charDefaults: CastMap = {};
+    for (const [name, model, voice] of g.chars) charDefaults[name] = { model, voice };
+    return { rows: parsed, targetDuration: g.target, scriptId: g.src, scriptCast: g.cast, charDefaults };
   }, [groupKey]);
 
   const totalDuration = rows.reduce((s, r) => s + (Number(r.payload.duration) || 0), 0);
@@ -107,7 +135,74 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
   const [batchBusy, setBatchBusy] = useState(false);
   const toggleSel = (rid: string) => setSel((s0) => { const n = new Set(s0); n.has(rid) ? n.delete(rid) : n.add(rid); return n; });
 
+  // 批量生图执行引擎：cloud（云端模型，提交即出图回填关键帧）/ comfy_image（本地 ComfyUI
+  // 图像节点）/ comfy_workflow_img（出图自定义模板）。comfy 两档只建好填满工位，由画布
+  // 「运行」本地批量执行（开源免费），出图后点「批量采用出图」显式回填关键帧（只填空，
+  // 与「精修工位绝不自动写入」同口径——自动写入仅限用户显式点击的批量动作）。
+  const [imgEngine, setImgEngine] = useState<string>(() => localStorage.getItem("shotlist:imgEngine") || "cloud");
+  const pickImgEngine = (v: string) => { setImgEngine(v); localStorage.setItem("shotlist:imgEngine", v); };
+  const [imgTplId, setImgTplId] = useState<number | null>(() => {
+    const v = Number(localStorage.getItem("shotlist:imgTplId")); return Number.isFinite(v) && v > 0 ? v : null;
+  });
+  const imgComfyMode = imgEngine !== "cloud";
+
+  const prepareComfyImageOne = (r: ShotRow): "done" | "error" => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === r.id);
+    if (!own) return "error";
+    const prompt = (r.payload.promptText || r.payload.description || "").slice(0, 4000);
+    if (!prompt.trim()) return "error";
+    const targetType = imgEngine === "comfy_image" ? "comfyui_image" : "comfyui_workflow";
+    // workflow 工位复用必须匹配 templateId——批量生图与批量视频都可能建 comfyui_workflow
+    // 工位，仅按类型+状态复用会互相抢占并覆写对方模板（出图工位被写成视频模板）。
+    const existing = store.edges
+      .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
+      .find((n) => n?.data.nodeType === targetType
+        && ["failed", "idle", undefined].includes((n.data.payload as { status?: string }).status as never)
+        && (targetType !== "comfyui_workflow" || (n.data.payload as { templateId?: number }).templateId === imgTplId));
+    if (imgEngine === "comfy_workflow_img") {
+      const tpl = (tplListQuery.data ?? []).find((t) => t.id === imgTplId);
+      if (!tpl) return "error";
+      const payload = materializeTemplate({ id: tpl.id, label: tpl.label, payload: tpl.payload as Record<string, unknown> }, prompt, r.payload.negativePrompt ?? "");
+      const gn = existing ?? store.addNode("comfyui_workflow", { x: own.position.x - 220, y: own.position.y + 560 });
+      store.updateNodeData(gn.id, payload as never);
+      if (!existing) store.onConnect({ source: r.id, target: gn.id, sourceHandle: null, targetHandle: null });
+      return "done";
+    }
+    const gn = existing ?? store.addNode("comfyui_image", { x: own.position.x - 220, y: own.position.y + 560 });
+    store.updateNodeData(gn.id, { prompt, negPrompt: r.payload.negativePrompt });
+    if (!existing) store.onConnect({ source: r.id, target: gn.id, sourceHandle: null, targetHandle: null });
+    return "done";
+  };
+
+  /** 批量采用 ComfyUI 出图为关键帧：只填空（分镜已有图的不动），显式点击触发。 */
+  const adoptComfyImages = () => {
+    const store = useCanvasStore.getState();
+    let adopted = 0, skippedHas = 0, noImg = 0;
+    for (const r of rows) {
+      if (!sel.has(r.id)) continue;
+      if (r.payload.imageUrl) { skippedHas++; continue; }
+      let url: string | undefined;
+      for (const e of store.edges) {
+        if (e.source !== r.id) continue;
+        const t = store.nodes.find((n) => n.id === e.target);
+        if (!t) continue;
+        const tp = t.data.payload as { imageUrl?: string; outputUrl?: string; outputType?: string };
+        if (t.data.nodeType === "comfyui_image") url = tp.imageUrl ?? tp.outputUrl;
+        else if (t.data.nodeType === "comfyui_workflow" && tp.outputType === "image") url = tp.outputUrl;
+        if (url) break;
+      }
+      if (!url) { noImg++; continue; }
+      store.updateNodeData(r.id, { imageUrl: url, imageHistory: [url, ...(r.payload.imageHistory ?? [])].slice(0, 12) });
+      propagateRefImage(r.id, url);
+      adopted++;
+    }
+    if (adopted) toast.success(`已采用 ${adopted} 张 ComfyUI 出图为关键帧${skippedHas ? `；${skippedHas} 镜已有图跳过` : ""}${noImg ? `；${noImg} 镜尚未出图` : ""}`, { duration: 5000 });
+    else toast.error(noImg ? "勾选镜的 ComfyUI 工位尚未出图（先点工具栏「运行」）" : "勾选镜均已有关键帧（只填空，不覆盖）");
+  };
+
   const genOne = async (r: ShotRow): Promise<"done" | "error"> => {
+    if (imgComfyMode) return prepareComfyImageOne(r);
     const { nodes, edges } = useCanvasStore.getState();
     const b = buildStoryboardGenInput({ id: r.id, payload: r.payload, nodes, edges, kieTempKey: localStorage.getItem("kie:tempKey") });
     if (b.blocked) return "error";
@@ -128,6 +223,25 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     if (batchBusy) return;
     const targets = rows.filter((r) => sel.has(r.id));
     if (!targets.length) { toast.error("请先勾选要生成的分镜"); return; }
+    // ComfyUI 引擎：建好填满工位（本地免费，不在此提交），由画布「运行」批量执行。
+    if (imgComfyMode) {
+      if (imgEngine === "comfy_workflow_img" && !imgTplId) { toast.error("请先选择一个「出图」的自定义工作流模板"); return; }
+      const readyC = targets.filter((r) => (r.payload.promptText || r.payload.description || "").trim());
+      const blockedC = targets.length - readyC.length;
+      if (!readyC.length) { toast.error("所选分镜均缺提示词，无法生成"); return; }
+      const engineLabel = imgEngine === "comfy_image" ? "ComfyUI 图像节点" : `ComfyUI 模板「${imgTplOptions.find((t) => t.id === imgTplId)?.label ?? imgTplId}」`;
+      if (!window.confirm(`将为 ${readyC.length} 个分镜创建并填好 ${engineLabel} 出图工位（本地开源免费，不在此提交）${blockedC ? `；${blockedC} 个缺提示词跳过` : ""}。继续？`)) return;
+      setBatchBusy(true);
+      setBatchState((s0) => { const n2 = { ...s0 }; for (const r of readyC) delete n2[r.id]; return n2; });
+      for (const r of readyC) {
+        setBatchState((s0) => ({ ...s0, [r.id]: "running" }));
+        const st = await genOne(r);
+        setBatchState((s0) => ({ ...s0, [r.id]: st }));
+      }
+      setBatchBusy(false);
+      toast.success("ComfyUI 出图工位已就位——点工具栏「运行」本地批量生成（免费）；出图后回本表点「批量采用出图」回填关键帧", { duration: 7000 });
+      return;
+    }
     // 组装 + Σ预估（按 cr/点 分单位汇总；blocked 镜跳过）
     const { nodes, edges } = useCanvasStore.getState();
     const builds = targets.map((r) => ({ r, b: buildStoryboardGenInput({ id: r.id, payload: r.payload, nodes, edges, kieTempKey: localStorage.getItem("kie:tempKey") }) }));
@@ -174,6 +288,67 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
   const [videoState, setVideoState] = useState<Record<string, "running" | "done" | "error">>({});
   const pickVideoProvider = (v: string) => { setVideoProvider(v); localStorage.setItem("shotlist:videoProvider", v); };
 
+  // 执行引擎：cloud（云端模型，提交即出片）/ comfy_video（本地 ComfyUI 视频节点）/
+  // comfy_workflow（自定义工作流模板）。comfy 两档只「建好并填满工位」，由用户点
+  // 工具栏「运行」批量执行（开源免费主力；执行机制复用画布 runner，零新链路）。
+  const [videoEngine, setVideoEngine] = useState<string>(() => localStorage.getItem("shotlist:videoEngine") || "cloud");
+  const pickVideoEngine = (v: string) => { setVideoEngine(v); localStorage.setItem("shotlist:videoEngine", v); };
+  const [comfyTplId, setComfyTplId] = useState<number | null>(() => {
+    const v = Number(localStorage.getItem("shotlist:comfyTplId")); return Number.isFinite(v) && v > 0 ? v : null;
+  });
+  const comfyMode = videoEngine !== "cloud";
+  const needTpl = videoEngine === "comfy_workflow" || imgEngine === "comfy_workflow_img";
+  const tplListQuery = trpc.comfyTemplates.list.useQuery(undefined, { enabled: needTpl, staleTime: 30_000 });
+  const tplAnalysisQuery = trpc.comfyTemplates.analysisList.useQuery(undefined, { enabled: needTpl, staleTime: 30_000 });
+  // 仅列出「自定义工作流」的已分析模板，按输出类型分目录（与智能体同口径）。
+  const videoTplOptions = useMemo(() => {
+    const rows = (tplAnalysisQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow" && (t.hasVideoOutput || t.outputType === "video" || t.outputType === "mixed"));
+    return rows.map((t) => ({ id: t.id, label: t.label as string }));
+  }, [tplAnalysisQuery.data]);
+  const imgTplOptions = useMemo(() => {
+    const rows = (tplAnalysisQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow" && (t.outputType === "image" || t.outputType === "mixed"));
+    return rows.map((t) => ({ id: t.id, label: t.label as string }));
+  }, [tplAnalysisQuery.data]);
+
+  /** comfy 工位：建（或复用 failed/idle 工位）+ 填参，不提交（用户点「运行」执行）。 */
+  const prepareComfyOne = (r: ShotRow): "done" | "error" => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === r.id);
+    if (!own) return "error";
+    const hasImg = !!r.payload.imageUrl;
+    const targetType = videoEngine === "comfy_video" ? "comfyui_video" : "comfyui_workflow";
+    const prompt = (r.payload.promptText || r.payload.description || "").slice(0, 4000);
+    // workflow 工位复用必须匹配 templateId（同上：防与批量生图的出图工位互相抢占覆写）。
+    const existing = store.edges
+      .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
+      .find((n) => n?.data.nodeType === targetType
+        && ["failed", "idle", undefined].includes((n.data.payload as { status?: string }).status as never)
+        && (targetType !== "comfyui_workflow" || (n.data.payload as { templateId?: number }).templateId === comfyTplId));
+    if (videoEngine === "comfy_workflow") {
+      const tpl = (tplListQuery.data ?? []).find((t) => t.id === comfyTplId);
+      if (!tpl) return "error";
+      const payload = materializeTemplate({ id: tpl.id, label: tpl.label, payload: tpl.payload as Record<string, unknown> }, prompt, r.payload.negativePrompt ?? "");
+      // 关键帧注入：填第一个 image 角色参数（I2V 锁定身份；模板无 image 参数则纯 T2V）。
+      if (hasImg) {
+        const bindings = (payload.paramBindings as { nodeId: string; fieldPath: string; type?: string }[] | undefined) ?? [];
+        const imgBind = bindings.find((b) => b.type === "image");
+        if (imgBind) {
+          const pv = { ...((payload.paramValues as Record<string, unknown>) ?? {}) };
+          pv[`${imgBind.nodeId}.${imgBind.fieldPath}`] = r.payload.imageUrl;
+          payload.paramValues = pv;
+        }
+      }
+      const vn = existing ?? store.addNode("comfyui_workflow", { x: own.position.x, y: own.position.y + 560 });
+      store.updateNodeData(vn.id, payload as never);
+      if (!existing) store.onConnect({ source: r.id, target: vn.id, sourceHandle: null, targetHandle: null });
+      return "done";
+    }
+    const vn = existing ?? store.addNode("comfyui_video", { x: own.position.x, y: own.position.y + 560 });
+    store.updateNodeData(vn.id, { prompt, negPrompt: r.payload.negativePrompt, ...(hasImg ? { referenceImageUrl: r.payload.imageUrl } : {}) });
+    if (!existing) store.onConnect({ source: r.id, target: vn.id, sourceHandle: null, targetHandle: null });
+    return "done";
+  };
+
   const submitVideoOne = async (r: ShotRow): Promise<"done" | "error"> => {
     const store = useCanvasStore.getState();
     const own = store.nodes.find((n) => n.id === r.id);
@@ -181,6 +356,7 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     if (!own || !projectId) return "error";
     const hasImg = !!r.payload.imageUrl;
     if (!hasImg && !allowT2V) return "error";
+    if (comfyMode) return prepareComfyOne(r);
     try {
       // 复用已有下游视频工位（failed/idle 的可重提，避免「失败后被跳过无法重试」）；否则新建。
       const existing = store.edges
@@ -221,16 +397,22 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const skippedNoImg = targets.length - ready.length;
     const skippedHasVideo = rows.filter((r) => sel.has(r.id) && ["pending", "processing", "succeeded"].includes(r.videoStatus)).length;
     if (!ready.length) { toast.error(allowT2V ? "勾选镜均已有视频工位" : "勾选镜中没有已出图的（可勾选「允许文生视频」直通）"); return; }
-    // Σ预估
-    const sums: Record<string, number> = {};
-    for (const r of ready) {
-      const clamped = clampDurationForProvider(PROVIDER_PARAMS[videoProvider], r.payload.duration);
-      const est = estimateVideoCost(videoProvider, withParamDefaults(videoProvider, clamped != null ? { duration: clamped } : {}));
-      if (est) sums[est.unit] = (sums[est.unit] ?? 0) + est.credits;
-    }
-    const sumText = Object.entries(sums).map(([u, v]) => `≈${Math.round(v * 10) / 10} ${u}`).join(" + ") || "按模型页计费";
+    if (videoEngine === "comfy_workflow" && !comfyTplId) { toast.error("请先选择一个「出视频」的自定义工作流模板"); return; }
     const skipNote = [skippedNoImg ? `${skippedNoImg} 个无图镜跳过` : "", skippedHasVideo ? `${skippedHasVideo} 个已有视频工位跳过` : ""].filter(Boolean).join("；");
-    if (!window.confirm(`将为 ${ready.length} 个分镜提交视频生成（${hasLabel(videoProvider)}，费用预估合计 ${sumText}）${skipNote ? `；${skipNote}` : ""}。继续？`)) return;
+    if (comfyMode) {
+      const engineLabel = videoEngine === "comfy_video" ? "ComfyUI 视频节点" : `ComfyUI 模板「${videoTplOptions.find((t) => t.id === comfyTplId)?.label ?? comfyTplId}」`;
+      if (!window.confirm(`将为 ${ready.length} 个分镜创建并填好 ${engineLabel} 工位（本地开源免费，不在此提交）${skipNote ? `；${skipNote}` : ""}。继续？`)) return;
+    } else {
+      // Σ预估（云端按模型计费）
+      const sums: Record<string, number> = {};
+      for (const r of ready) {
+        const clamped = clampDurationForProvider(PROVIDER_PARAMS[videoProvider], r.payload.duration);
+        const est = estimateVideoCost(videoProvider, withParamDefaults(videoProvider, clamped != null ? { duration: clamped } : {}));
+        if (est) sums[est.unit] = (sums[est.unit] ?? 0) + est.credits;
+      }
+      const sumText = Object.entries(sums).map(([u, v]) => `≈${Math.round(v * 10) / 10} ${u}`).join(" + ") || "按模型页计费";
+      if (!window.confirm(`将为 ${ready.length} 个分镜提交视频生成（${hasLabel(videoProvider)}，费用预估合计 ${sumText}）${skipNote ? `；${skipNote}` : ""}。继续？`)) return;
+    }
     setVideoBusy(true);
     const queue = [...ready];
     const worker = async () => {
@@ -244,7 +426,9 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     };
     await Promise.all([worker(), worker()]);
     setVideoBusy(false);
-    toast.success("批量视频任务已提交，后台生成中（状态见各视频节点 / 本表状态徽）");
+    toast.success(comfyMode
+      ? "ComfyUI 工位已就位并填好参数——点工具栏「运行」开始本地批量生成（免费）"
+      : "批量视频任务已提交，后台生成中（状态见各视频节点 / 本表状态徽）", { duration: 6000 });
   };
   const hasLabel = (v: string) => PROVIDER_PICKER_OPTIONS.find((o) => o.value === v)?.label ?? v;
 
@@ -258,6 +442,37 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
   const [dubBusy, setDubBusy] = useState(false);
   const [dubState, setDubState] = useState<Record<string, "running" | "done" | "error">>({});
 
+  // ── 角色音色 casting ─────────────────────────────────────────────────────────
+  // 角色名从全组对白解析；分配表存脚本节点 payload（随画布持久化，同组共享），
+  // 无脚本时落 localStorage（按项目隔离）；分配同时回写同名角色节点的声音档案。
+  const [showCast, setShowCast] = useState(false);
+  const [localCast, setLocalCast] = useState<CastMap>(() => {
+    try { return JSON.parse(localStorage.getItem(`shotlist:cast:${useCanvasStore.getState().projectId}`) || "{}") as CastMap; } catch { return {}; }
+  });
+  const castRoles = useMemo(() => extractRoles(rows.map((r) => r.payload.dialogue)), [rows]);
+  // 生效顺序：角色节点声音档案（默认）< 本面板分配（脚本 payload / localStorage）
+  const effCast: CastMap = useMemo(() => ({ ...charDefaults, ...(scriptId ? scriptCast ?? {} : localCast) }), [charDefaults, scriptCast, scriptId, localCast]);
+  const setRoleVoice = (role: string, cv: CastVoice | null) => {
+    const store = useCanvasStore.getState();
+    if (scriptId) {
+      const sp = store.nodes.find((n) => n.id === scriptId)?.data.payload as ScriptNodeData | undefined;
+      const next = { ...(sp?.castVoices ?? {}) };
+      if (cv) next[role] = cv; else delete next[role];
+      updateNodeData(scriptId, { castVoices: next });
+    } else {
+      setLocalCast((prev) => {
+        const next = { ...prev };
+        if (cv) next[role] = cv; else delete next[role];
+        localStorage.setItem(`shotlist:cast:${store.projectId}`, JSON.stringify(next));
+        return next;
+      });
+    }
+    if (cv) {
+      const ch = store.nodes.find((n) => n.data.nodeType === "character" && (n.data.payload as CharacterNodeData).name === role);
+      if (ch) updateNodeData(ch.id, { voiceModel: cv.model, voiceId: cv.voice });
+    }
+  };
+
   const submitDubOne = async (r: ShotRow): Promise<"done" | "error"> => {
     const store = useCanvasStore.getState();
     const own = store.nodes.find((n) => n.id === r.id);
@@ -266,12 +481,47 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     if (!own || !projectId || !text) return "error";
     try {
       // 复用未出声的已有配音工位（失败后可重试），否则新建。
+      // 类别过滤：不抢占 sfx/music 节点（音效/配乐工位同样挂在分镜下游）。
       const existing = store.edges
         .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
-        .find((n) => n?.data.nodeType === "audio" && !(n.data.payload as { url?: string }).url);
+        .find((n) => {
+          if (n?.data.nodeType !== "audio") return false;
+          const ap = n.data.payload as { url?: string; audioCategory?: string };
+          return !ap.url && ap.audioCategory !== "sfx" && ap.audioCategory !== "music";
+        });
       const an = existing ?? store.addNode("audio", { x: own.position.x, y: own.position.y + 980 });
       store.updateNodeData(an.id, { audioCategory: "dubbing", ttsText: text, ttsModel: dubModel, ttsVoice: effDubVoice });
       if (!existing) store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
+
+      // 角色音色 casting：对白含已分配音色的角色 → 逐段 TTS（相邻同音色合并）后
+      // 服务端拼接为镜级单条配音；否则维持原「整段单音色」路径，行为零变化。
+      const segs = parseDialogueLines(text);
+      if (shouldCast(segs, effCast)) {
+        const plan = planCastSegments(segs, effCast, { model: dubModel, voice: effDubVoice ?? "" });
+        const urls: string[] = [];
+        let dur = 0;
+        for (const seg of plan) {
+          // 音色按段所属模型校验（角色档案可能来自其他模型）——非法则回退该模型首音色。
+          const vs = voicesForModel(seg.model);
+          const voice = vs.some((v) => v.value === seg.voice) ? seg.voice : vs[0]?.value;
+          const sr = await utils.client.audioGen.generateDubbing.mutate({
+            model: seg.model as never, text: seg.text, voice, projectId,
+            estimatedCost: costEstimateLabel(estimateTtsCost(seg.model, seg.text.length)) || undefined,
+            ...(seg.model.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+          });
+          urls.push(sr.url);
+          dur += sr.duration ?? 0;
+        }
+        let url = urls[0];
+        if (urls.length > 1) {
+          const cr = await utils.client.audioGen.concatSegments.mutate({ urls, projectId });
+          url = cr.url; dur = cr.duration;
+        }
+        const roleCount = new Set(segs.map((s) => s.role).filter((x): x is string => x != null && effCast[x] != null)).size;
+        useCanvasStore.getState().updateNodeData(an.id, { url, duration: dur, name: `配音 · 镜${r.payload.sceneNumber ?? "?"}（${roleCount} 角色）` });
+        return "done";
+      }
+
       const res = await utils.client.audioGen.generateDubbing.mutate({
         model: dubModel as never, text, voice: effDubVoice, projectId,
         estimatedCost: costEstimateLabel(estimateTtsCost(dubModel, text.length)) || undefined,
@@ -294,7 +544,9 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const totalChars = ready.reduce((s0, r) => s0 + (r.payload.dialogue?.trim().length ?? 0), 0);
     const est = estimateTtsCost(dubModel, totalChars);
     const sumText = est ? costEstimateLabel(est) : "按量计费";
-    if (!window.confirm(`将为 ${ready.length} 个分镜逐镜生成配音（共 ${totalChars} 字，预估 ${sumText}）${skippedNoDlg ? `；${skippedNoDlg} 个无对白跳过` : ""}。继续？`)) return;
+    const castShots = ready.filter((r) => shouldCast(parseDialogueLines(r.payload.dialogue!.trim()), effCast)).length;
+    const castNote = castShots ? `；其中 ${castShots} 镜按「角色音色」分角色配音` : "";
+    if (!window.confirm(`将为 ${ready.length} 个分镜逐镜生成配音（共 ${totalChars} 字，预估 ${sumText}）${castNote}${skippedNoDlg ? `；${skippedNoDlg} 个无对白跳过` : ""}。继续？`)) return;
     setDubBusy(true);
     const queue = [...ready];
     const worker = async () => {
@@ -309,6 +561,67 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     await Promise.all([worker(), worker()]);
     setDubBusy(false);
     toast.success("批量配音完成（每镜一条音频，已连线到对应分镜）");
+  };
+
+  // ── 批量音效（可选段：仅当有镜填了 sfx 字段时显示）────────────────────────────
+  // 每镜一条音效（ElevenLabs SFX via kie）；已出声的跳过、空工位复用重试；
+  // 装配端按 audioCategory=sfx 识别并以低权重混入成片。
+  const [sfxBusy, setSfxBusy] = useState(false);
+  const [sfxState, setSfxState] = useState<Record<string, "running" | "done" | "error">>({});
+  const anySfxText = rows.some((r) => r.payload.sfx?.trim());
+
+  const submitSfxOne = async (r: ShotRow): Promise<"done" | "error"> => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === r.id);
+    const projectId = store.projectId;
+    const text = r.payload.sfx?.trim();
+    if (!own || !projectId || !text) return "error";
+    try {
+      const existing = store.edges
+        .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
+        .find((n) => {
+          if (n?.data.nodeType !== "audio") return false;
+          const ap = n.data.payload as { url?: string; audioCategory?: string };
+          return ap.audioCategory === "sfx" && !ap.url;
+        });
+      const an = existing ?? store.addNode("audio", { x: own.position.x + 220, y: own.position.y + 980 });
+      store.updateNodeData(an.id, { audioCategory: "sfx", sfxModel: "kie_elevenlabs_sfx", sfxPrompt: text });
+      if (!existing) store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
+      // 音效时长对位镜长（0.5–22s 夹取）；镜未设时长则交给模型按描述自动决定。
+      const shotDur = Number(r.payload.duration);
+      const res = await utils.client.audioGen.generateSFX.mutate({
+        model: "kie_elevenlabs_sfx", prompt: text.slice(0, 5000), projectId,
+        duration: Number.isFinite(shotDur) && shotDur > 0 ? Math.min(22, Math.max(0.5, shotDur)) : undefined,
+        kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
+      });
+      useCanvasStore.getState().updateNodeData(an.id, { url: res.url, duration: res.duration, name: `音效 · 镜${r.payload.sceneNumber ?? "?"}` });
+      return "done";
+    } catch {
+      return "error";
+    }
+  };
+
+  const runSfxBatch = async () => {
+    if (sfxBusy) return;
+    // 仅跳过已出声的音效工位；empty（上次失败）允许复用重试。
+    const targets = rows.filter((r) => sel.has(r.id) && r.sfxStatus !== "done");
+    const ready = targets.filter((r) => r.payload.sfx?.trim());
+    if (!ready.length) { toast.error("勾选镜中没有「音效」描述（在镜头表或分镜里填写 sfx）"); return; }
+    if (!window.confirm(`将为 ${ready.length} 个分镜逐镜生成音效（ElevenLabs SFX · kie 按量计费）。继续？`)) return;
+    setSfxBusy(true);
+    const queue = [...ready];
+    const worker = async () => {
+      for (;;) {
+        const r = queue.shift();
+        if (!r) return;
+        setSfxState((s0) => ({ ...s0, [r.id]: "running" }));
+        const st = await submitSfxOne(r);
+        setSfxState((s0) => ({ ...s0, [r.id]: st }));
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    setSfxBusy(false);
+    toast.success("批量音效完成（装配成片时自动按镜对位、低权重混入）");
   };
 
   const continuityMut = trpc.scripts.refineShotContinuity.useMutation({
@@ -422,27 +735,64 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       {/* 批量生产（流水线第一段：批量生成分镜图） */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)" }}>批量生产</span>
+        <select className="nodrag" value={imgEngine} onChange={(e) => pickImgEngine(e.target.value)}
+          title="云端=提交即出图回填关键帧（按模型计费）；ComfyUI 两档=建好填满出图工位，点工具栏「运行」本地批量执行（开源免费），出图后点「批量采用出图」回填关键帧"
+          style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}>
+          <option value="cloud">云端模型</option>
+          <option value="comfy_image">ComfyUI 图像</option>
+          <option value="comfy_workflow_img">ComfyUI 模板</option>
+        </select>
+        {imgEngine === "comfy_workflow_img" && (
+          <select className="nodrag" value={imgTplId ?? ""} onChange={(e) => { const v = Number(e.target.value) || null; setImgTplId(v); if (v) localStorage.setItem("shotlist:imgTplId", String(v)); }}
+            style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: imgTplId ? "var(--c-t1)" : "var(--c-t4)", outline: "none", maxWidth: 160 }}>
+            <option value="">{tplAnalysisQuery.isFetching ? "加载模板…" : imgTplOptions.length ? "选择出图模板" : "无已分析的出图模板"}</option>
+            {imgTplOptions.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        )}
         <button onClick={() => setSel(new Set(rows.map((r) => r.id)))} className="nodrag" style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>全选</button>
         <button onClick={() => setSel(new Set(rows.filter((r) => !r.payload.imageUrl && !r.hasRefine).map((r) => r.id)))} className="nodrag" style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>仅无图</button>
         <button onClick={() => setSel(new Set())} className="nodrag" style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>清空</button>
+        {imgComfyMode && (
+          <button onClick={adoptComfyImages} className="nodrag"
+            title="把勾选镜下游 ComfyUI 工位已生成的图采用为关键帧（只填空：已有关键帧的镜不覆盖）"
+            style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, fontWeight: 700, background: `${ACCENT}10`, border: `1px solid ${ACCENT}40`, color: ACCENT, cursor: "pointer" }}>
+            批量采用出图
+          </button>
+        )}
         <button
           onClick={() => void runBatch()}
           disabled={batchBusy || sel.size === 0}
-          title="为勾选的分镜批量生成关键帧图像（每镜各自注入角色/场景控制；提交前显示费用总预估）"
+          title={imgComfyMode ? "为勾选的分镜创建并填好 ComfyUI 出图工位（本地免费；点工具栏「运行」批量执行）" : "为勾选的分镜批量生成关键帧图像（每镜各自注入角色/场景控制；提交前显示费用总预估）"}
           className="nodrag ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md"
           style={{ fontSize: 10, fontWeight: 700, background: batchBusy || sel.size === 0 ? "var(--c-surface)" : `${ACCENT}16`, border: `1px solid ${batchBusy || sel.size === 0 ? "var(--c-bd2)" : `${ACCENT}50`}`, color: batchBusy || sel.size === 0 ? "var(--c-t4)" : ACCENT, cursor: batchBusy || sel.size === 0 ? "not-allowed" : "pointer" }}
         >
           {batchBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <ImagePlus style={{ width: 11, height: 11 }} />}
-          批量生成分镜图（{sel.size}）
+          {imgComfyMode ? `批量建出图工位（${sel.size}）` : `批量生成分镜图（${sel.size}）`}
         </button>
       </div>
 
       {/* 批量图生视频（流水线第二段） */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)", flexShrink: 0 }}>批量视频</span>
-        <div style={{ width: 190 }}>
-          <ModelPicker value={videoProvider} onChange={pickVideoProvider} options={BATCH_VIDEO_OPTIONS} minWidth={190} />
-        </div>
+        <select className="nodrag" value={videoEngine} onChange={(e) => pickVideoEngine(e.target.value)}
+          title="云端=提交即出片（按模型计费）；ComfyUI 两档=建好并填满工位，点工具栏「运行」本地批量执行（开源免费）"
+          style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}>
+          <option value="cloud">云端模型</option>
+          <option value="comfy_video">ComfyUI 视频</option>
+          <option value="comfy_workflow">ComfyUI 模板</option>
+        </select>
+        {videoEngine === "cloud" && (
+          <div style={{ width: 190 }}>
+            <ModelPicker value={videoProvider} onChange={pickVideoProvider} options={BATCH_VIDEO_OPTIONS} minWidth={190} />
+          </div>
+        )}
+        {videoEngine === "comfy_workflow" && (
+          <select className="nodrag" value={comfyTplId ?? ""} onChange={(e) => { const v = Number(e.target.value) || null; setComfyTplId(v); if (v) localStorage.setItem("shotlist:comfyTplId", String(v)); }}
+            style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: comfyTplId ? "var(--c-t1)" : "var(--c-t4)", outline: "none", maxWidth: 190 }}>
+            <option value="">{tplAnalysisQuery.isFetching ? "加载模板…" : videoTplOptions.length ? "选择出视频模板" : "无已分析的视频模板"}</option>
+            {videoTplOptions.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        )}
         <label className="nodrag" title="无关键帧图的镜也允许提交文生视频（跳过关键帧，角色/场景一致性弱）" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9.5, color: allowT2V ? "oklch(0.75 0.16 75)" : "var(--c-t4)", cursor: "pointer" }}>
           <input type="checkbox" checked={allowT2V} onChange={(e) => setAllowT2V(e.target.checked)} style={{ accentColor: "oklch(0.75 0.16 75)", margin: 0 }} />
           允许文生视频
@@ -470,6 +820,13 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
           style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", maxWidth: 110 }}>
           {dubVoices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
         </select>
+        {castRoles.length > 0 && (
+          <button onClick={() => setShowCast((v) => !v)} className="nodrag"
+            title="为对白中的角色分配各自的配音模型与音色（「角色名：台词」逐段套用，旁白用上面的全局音色）"
+            style={{ fontSize: 9.5, padding: "3px 7px", borderRadius: 6, fontWeight: 700, background: showCast ? "oklch(0.70 0.18 340 / 0.14)" : "var(--c-surface)", border: `1px solid ${showCast ? "oklch(0.70 0.18 340 / 0.5)" : "var(--c-bd2)"}`, color: showCast ? "oklch(0.70 0.18 340)" : "var(--c-t3)", cursor: "pointer" }}>
+            角色音色（{castRoles.filter((ro) => effCast[ro]).length}/{castRoles.length}）
+          </button>
+        )}
         <button
           onClick={() => void runDubBatch()}
           disabled={dubBusy || sel.size === 0}
@@ -481,6 +838,61 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
           批量生成配音
         </button>
       </div>
+
+      {/* 批量音效（仅当有镜填写了 sfx 时显示） */}
+      {anySfxText && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)", flexShrink: 0 }}>批量音效</span>
+          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>ElevenLabs SFX（kie）· 时长自动对位镜长（≤22s）</span>
+          <button
+            onClick={() => void runSfxBatch()}
+            disabled={sfxBusy || sel.size === 0}
+            title="为勾选且填写了「音效」的镜逐镜生成音效（每镜一条、自动连线；装配成片时按镜对位、低权重混入不压人声）"
+            className="nodrag ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md"
+            style={{ fontSize: 10, fontWeight: 700, background: sfxBusy || sel.size === 0 ? "var(--c-surface)" : "oklch(0.75 0.16 75 / 0.14)", border: `1px solid ${sfxBusy || sel.size === 0 ? "var(--c-bd2)" : "oklch(0.75 0.16 75 / 0.5)"}`, color: sfxBusy || sel.size === 0 ? "var(--c-t4)" : "oklch(0.75 0.16 75)", cursor: sfxBusy || sel.size === 0 ? "not-allowed" : "pointer" }}
+          >
+            {sfxBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Zap style={{ width: 11, height: 11 }} />}
+            批量生成音效
+          </button>
+        </div>
+      )}
+
+      {/* 角色音色 casting 分配表 */}
+      {showCast && castRoles.length > 0 && (
+        <div style={{ padding: "6px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto", background: "oklch(0.70 0.18 340 / 0.04)" }}>
+          {castRoles.map((role) => {
+            const cv = effCast[role];
+            const voices = cv ? voicesForModel(cv.model) : [];
+            return (
+              <div key={role} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span title={role} style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t1)", width: 76, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>{role}</span>
+                <select className="nodrag" value={cv?.model ?? ""}
+                  onChange={(e) => {
+                    const m = e.target.value;
+                    if (!m) { setRoleVoice(role, null); return; }
+                    const vs = voicesForModel(m);
+                    const keep = cv && vs.some((v) => v.value === cv.voice) ? cv.voice : vs[0]?.value ?? "";
+                    setRoleVoice(role, { model: m, voice: keep });
+                  }}
+                  style={{ fontSize: 9.5, padding: "2px 5px", borderRadius: 5, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: cv ? "var(--c-t1)" : "var(--c-t4)", outline: "none", maxWidth: 150 }}>
+                  <option value="">（用全局音色）</option>
+                  {DUBBING_MODELS.filter((m) => m.value !== "voxcpm-local").map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+                {cv && (
+                  <select className="nodrag" value={voices.some((v) => v.value === cv.voice) ? cv.voice : voices[0]?.value ?? ""}
+                    onChange={(e) => setRoleVoice(role, { model: cv.model, voice: e.target.value })}
+                    style={{ fontSize: 9.5, padding: "2px 5px", borderRadius: 5, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", maxWidth: 110 }}>
+                    {voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                  </select>
+                )}
+              </div>
+            );
+          })}
+          <p style={{ fontSize: 8.5, color: "var(--c-t4)", margin: 0, lineHeight: 1.5 }}>
+            对白按行解析「角色名：台词」；已分配的角色逐段各自配音并自动拼接为镜级单条音频（不念角色名），未分配的角色与旁白用上方全局音色。分配会回写同名「角色」节点的声音档案，便于复用。
+          </p>
+        </div>
+      )}
 
       {/* 表格 */}
       <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
@@ -525,6 +937,11 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
                       return <span title={`配音 ${ad}s / 镜 ${sd}s${over ? "——超出镜时长，建议精简对白或调慢镜" : ""}`} style={{ fontSize: 9, color: over ? "oklch(0.75 0.16 75)" : "oklch(0.70 0.18 150)" }}>🎙{ad}s{over ? "⚠" : ""}</span>;
                     })()
                   : r.audioStatus === "empty" ? <span title="已有配音工位（未出声）" style={{ fontSize: 9 }}>🎙…</span>
+                  : null}
+                {sfxState[r.id] === "running" ? <Loader2 style={{ width: 10, height: 10, color: "oklch(0.75 0.16 75)" }} className="animate-spin" />
+                  : sfxState[r.id] === "error" ? <span title="音效生成失败（可重新批量）" style={{ fontSize: 9, color: "oklch(0.62 0.20 25)" }}>🔊✗</span>
+                  : r.sfxStatus === "done" ? <span title="音效已生成" style={{ fontSize: 9 }}>🔊✓</span>
+                  : r.sfxStatus === "empty" ? <span title="已有音效工位（未出声）" style={{ fontSize: 9 }}>🔊…</span>
                   : null}
                 <button onClick={() => swap(i, i - 1)} disabled={i === 0} className="nodrag" title="上移" style={{ background: "none", border: "none", color: i === 0 ? "var(--c-bd2)" : "var(--c-t3)", cursor: i === 0 ? "default" : "pointer", padding: 1 }}><ArrowUp style={{ width: 12, height: 12 }} /></button>
                 <button onClick={() => swap(i, i + 1)} disabled={i === rows.length - 1} className="nodrag" title="下移" style={{ background: "none", border: "none", color: i === rows.length - 1 ? "var(--c-bd2)" : "var(--c-t3)", cursor: i === rows.length - 1 ? "default" : "pointer", padding: 1 }}><ArrowDown style={{ width: 12, height: 12 }} /></button>
