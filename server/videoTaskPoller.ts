@@ -5,6 +5,7 @@ import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoS
 import { isKieVideoProvider, submitKieVideo, checkKieVideoStatus } from "./_core/kieVideo";
 import { decryptKieKey } from "./_core/kieCrypto";
 import { persistVideoOrFallback, persistVideosOrFallback } from "./_core/persistVideo";
+import { auditVideoTaskResult } from "./_core/auditLog";
 
 
 // ── Video Provider Adapters ───────────────────────────────────────────────────
@@ -130,6 +131,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                 status: "failed",
                 errorMessage: `[CHARGED?] 提交失败: ${msg.slice(0, 200)}`,
               }).catch(() => { /* best-effort — task is in 'processing' state, no further submit will happen */ });
+              auditVideoTaskResult(task, false, `[CHARGED?] 提交失败: ${msg.slice(0, 200)}`);
               pollErrorCounts.delete(task.id);
               continue;
             }
@@ -220,6 +222,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               resultVideoUrl: result.resultVideoUrl,
               errorMessage: result.errorMessage,
             });
+            auditVideoTaskResult(task, result.status === "succeeded", result.errorMessage);
 
             // Index succeeded videos into the unified media library (dedupes with
             // the client-driven poll path by storageKey).
@@ -255,6 +258,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               status: "failed",
               errorMessage: err instanceof Error ? err.message : "轮询失败次数过多，请重试",
             });
+            auditVideoTaskResult(task, false, err instanceof Error ? err.message : "轮询失败次数过多");
           } else {
             pollErrorCounts.set(task.id, errCount);
             console.error(`[VideoPoller] Task ${task.id} transient error (attempt ${errCount}/${MAX_TRANSIENT_ERRORS}):`, err);

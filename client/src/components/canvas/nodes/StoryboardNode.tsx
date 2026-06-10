@@ -10,6 +10,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { estimateImageCost, costEstimateLabel } from "@/lib/costEstimate";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
@@ -368,6 +369,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         model,
         batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
         ...sizingFields,
+        // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
+        estimatedCost: costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1)) || undefined,
       });
     };
     guard({ model, refImageUrl: charRefUrl }, submit);
@@ -538,6 +541,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               >
                 {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                 {generating ? "生成中..." : "AI 生成分镜"}
+                {!generating && (() => {
+                  const lbl = costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1));
+                  return lbl ? (
+                    <span
+                      title="按当前模型与参数实时预估的点数消耗，仅供参考，实际以平台账单为准"
+                      style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "oklch(0.65 0.20 160 / 0.18)", letterSpacing: "0.02em" }}
+                    >
+                      {lbl}
+                    </span>
+                  ) : null;
+                })()}
               </button>
               {!payload.promptText?.trim() && (
                 <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>请先填写提示词</p>

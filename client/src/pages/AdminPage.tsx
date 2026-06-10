@@ -1373,6 +1373,46 @@ function LogsPanel() {
     onSuccess: () => { utils.admin.logs.list.invalidate(); setOffset(0); },
   });
 
+  // 导出 CSV：按当前筛选条件分页拉全量（1000/页，上限 2 万条），带 BOM 供 Excel 直开。
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const all: NonNullable<typeof logsQuery.data>["rows"] = [];
+      const PAGE = 1000, CAP = 20000;
+      for (let off = 0; ; off += PAGE) {
+        const d = await utils.admin.logs.list.fetch({ limit: PAGE, offset: off, action: actionFilter || undefined, user: userFilter || undefined });
+        all.push(...d.rows);
+        if (d.rows.length < PAGE || all.length >= Math.min(d.total, CAP)) break;
+      }
+      const esc = (v: unknown) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      const header = ["时间", "用户ID", "用户名", "邮箱", "IP", "国家", "城市", "操作类型", "是否成功", "预估点数", "详情JSON"];
+      const lines = all.map((r) => {
+        const d = r.detail as Record<string, unknown> | null;
+        return [
+          new Date(r.createdAt).toLocaleString("zh-CN"),
+          r.userId ?? "", r.userName ?? "", r.userEmail ?? "", r.ip,
+          r.country ?? "", r.city ?? "",
+          ACTION_LABELS[r.action] ?? r.action,
+          typeof d?.success === "boolean" ? (d.success ? "成功" : "失败") : "",
+          d?.estimatedCost ?? "",
+          d ? JSON.stringify(d) : "",
+        ].map(esc).join(",");
+      });
+      downloadTextFile(
+        `操作日志-${new Date().toISOString().slice(0, 10)}.csv`,
+        "\uFEFF" + [header.join(","), ...lines].join("\n"),
+        "text/csv;charset=utf-8",
+      );
+      toast.success(`已导出 ${all.length} 条日志`);
+    } catch (e) {
+      toast.error(`导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const rows = logsQuery.data?.rows ?? [];
   const total = logsQuery.data?.total ?? 0;
   const totalPages = Math.ceil(total / LIMIT);
@@ -1411,6 +1451,9 @@ function LogsPanel() {
           </select>
           <button onClick={() => logsQuery.refetch()} style={iconBtn} title="刷新">
             <RefreshCw style={{ width: "14px", height: "14px" }} />
+          </button>
+          <button onClick={() => void exportCsv()} disabled={exporting} style={iconBtn} title="按当前筛选导出全部日志为 CSV（Excel 可直接打开）">
+            {exporting ? <Loader2 className="animate-spin" style={{ width: "14px", height: "14px" }} /> : <Download style={{ width: "14px", height: "14px" }} />}
           </button>
           <button
             onClick={() => { if (confirm("确定清空全部日志？此操作不可撤销。")) clearMut.mutate(); }}
@@ -1486,6 +1529,10 @@ function LogsPanel() {
 function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
   if (!detail) return <span>—</span>;
   const parts: string[] = [];
+  // 生成成败 + 预估点数放最前（计费审计的核心字段）。
+  if (typeof detail.success === "boolean") parts.push(detail.success ? "✓ 成功" : "✗ 失败");
+  if (detail.estimatedCost) parts.push(`预估 ${detail.estimatedCost}`);
+  if (detail.phase === "result") parts.push("生成结果");
   if (detail.model) parts.push(`模型：${detail.model}`);
   if (detail.provider) parts.push(`提供商：${detail.provider}`);
   if (detail.prompt) parts.push(`提示词：${String(detail.prompt).slice(0, 60)}${String(detail.prompt).length > 60 ? "…" : ""}`);
@@ -1496,8 +1543,9 @@ function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
   if (detail.method) parts.push(`方式：${detail.method}`);
   if (detail.segmentCount) parts.push(`字幕 ${detail.segmentCount} 条`);
   if (detail.language) parts.push(`语言：${detail.language}`);
+  if (detail.error) parts.push(`错误：${String(detail.error).slice(0, 60)}`);
   if (parts.length === 0) return <span>{JSON.stringify(detail).slice(0, 80)}</span>;
-  return <span title={parts.join(" | ")}>{parts.slice(0, 2).join(" | ")}{parts.length > 2 ? " …" : ""}</span>;
+  return <span title={parts.join(" | ")}>{parts.slice(0, 3).join(" | ")}{parts.length > 3 ? " …" : ""}</span>;
 }
 
 // ── ComfyUI usage logs (per-user / per-server, detailed) ─────────────────────
@@ -1519,6 +1567,44 @@ function ComfyUsageLogsPanel() {
   const clearMut = trpc.admin.comfyLogs.clear.useMutation({
     onSuccess: () => { utils.admin.comfyLogs.list.invalidate(); utils.admin.comfyLogs.summary.invalidate(); setOffset(0); },
   });
+
+  // 导出 CSV：按当前筛选条件分页拉全量（1000/页，上限 2 万条），带 BOM 供 Excel 直开。
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const all: Array<Record<string, unknown>> = [];
+      const PAGE = 1000, CAP = 20000;
+      for (let off = 0; ; off += PAGE) {
+        const d = await utils.admin.comfyLogs.list.fetch({ limit: PAGE, offset: off, status: statusFilter || undefined, host: hostFilter || undefined, sinceMs });
+        all.push(...(d.rows as Array<Record<string, unknown>>));
+        if (d.rows.length < PAGE || all.length >= Math.min(d.total, CAP)) break;
+      }
+      const esc = (v: unknown) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      const header = ["时间", "用户ID", "用户名", "邮箱", "IP", "操作", "服务器", "模型", "状态", "耗时(秒)", "结果数", "错误", "详情JSON"];
+      const lines = all.map((r) => [
+        new Date(r.createdAt as string).toLocaleString("zh-CN"),
+        r.userId ?? "", r.userName ?? "", r.userEmail ?? "", r.ip ?? "",
+        r.action ?? "", r.host ?? "", r.model ?? "",
+        r.status === "success" ? "成功" : "失败",
+        r.durationMs != null ? (Number(r.durationMs) / 1000).toFixed(1) : "",
+        r.resultCount ?? "",
+        r.errorMessage ?? "",
+        r.detail ? JSON.stringify(r.detail) : "",
+      ].map(esc).join(","));
+      downloadTextFile(
+        `ComfyUI日志-${new Date().toISOString().slice(0, 10)}.csv`,
+        "\uFEFF" + [header.join(","), ...lines].join("\n"),
+        "text/csv;charset=utf-8",
+      );
+      toast.success(`已导出 ${all.length} 条日志`);
+    } catch (e) {
+      toast.error(`导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const s = summaryQ.data;
   const rows = (listQ.data?.rows ?? []) as Array<Record<string, unknown>>;
@@ -1574,6 +1660,9 @@ function ComfyUsageLogsPanel() {
           </select>
           {hostFilter && <button onClick={() => { setHostFilter(""); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12, cursor: "pointer" }} title="清除服务器筛选">服务器：{hostFilter} ✕</button>}
           <button onClick={() => { listQ.refetch(); summaryQ.refetch(); }} style={iconBtn} title="刷新"><RefreshCw style={{ width: 14, height: 14 }} /></button>
+          <button onClick={() => void exportCsv()} disabled={exporting} style={iconBtn} title="按当前筛选导出全部日志为 CSV（Excel 可直接打开）">
+            {exporting ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> : <Download style={{ width: 14, height: 14 }} />}
+          </button>
           <button onClick={() => { if (confirm("确定清空全部 ComfyUI 使用日志？")) clearMut.mutate(); }} disabled={clearMut.isPending} style={{ ...iconBtn, color: "#f87171", borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)" }} title="清空"><Trash2 style={{ width: 14, height: 14 }} /></button>
         </div>
       </div>

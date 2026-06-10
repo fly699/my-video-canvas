@@ -77,7 +77,8 @@ export const adminRouter = router({
   logs: router({
     list: adminProcedure
       .input(z.object({
-        limit: z.number().int().min(1).max(200).default(50),
+        // 上限 1000：管理面板分页用 50，「导出」按 1000/页 循环拉取。
+        limit: z.number().int().min(1).max(1000).default(50),
         offset: z.number().int().min(0).default(0),
         // "kie_gen" 伪类别：只看 kie 的生成日志（image/video/music 中 model/provider 为 kie_*）。
         action: z.enum([...AUDIT_ACTIONS, "kie_gen", "poyo_stage"]).optional(),
@@ -108,7 +109,8 @@ export const adminRouter = router({
   comfyLogs: router({
     list: adminProcedure
       .input(z.object({
-        limit: z.number().int().min(1).max(200).default(50),
+        // 上限 1000：管理面板分页用 50，「导出」按 1000/页 循环拉取。
+        limit: z.number().int().min(1).max(1000).default(50),
         offset: z.number().int().min(0).default(0),
         userId: z.number().int().optional(),
         host: z.string().max(255).optional(),

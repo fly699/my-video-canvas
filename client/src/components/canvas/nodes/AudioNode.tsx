@@ -15,6 +15,7 @@ import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker } from "../ModelPicker";
+import { estimateMusicCost, estimateTtsCost, costEstimateLabel } from "@/lib/costEstimate";
 
 interface Props {
   id: string;
@@ -351,8 +352,8 @@ function ModelSelect({ models, value, onChange }: {
 }
 
 function GenerateBtn({
-  disabled, label, loading, onClick,
-}: { disabled?: boolean; label: string; loading?: boolean; onClick: () => void }) {
+  disabled, label, loading, onClick, costLabel,
+}: { disabled?: boolean; label: string; loading?: boolean; onClick: () => void; costLabel?: string }) {
   return (
     <button
       onClick={onClick}
@@ -370,6 +371,14 @@ function GenerateBtn({
         ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
         : <Zap style={{ width: 12, height: 12 }} />}
       {loading ? "生成中..." : label}
+      {!loading && costLabel && (
+        <span
+          title="按当前模型与文本实时预估的点数消耗，仅供参考，实际以平台账单为准"
+          style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: accentA(0.18), letterSpacing: "0.02em" }}
+        >
+          {costLabel}
+        </span>
+      )}
     </button>
   );
 }
@@ -578,6 +587,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       lyrics: isMiniMax ? (payload.musicLyrics || undefined) : undefined,
       // kie Suno auths with its own key (临时 > 分配 > 公用).
       ...(musicModelIsKie(modelVal) ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+      // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
+      estimatedCost: costEstimateLabel(estimateMusicCost(modelVal)) || undefined,
       projectId: data.projectId,
     });
   };
@@ -615,6 +626,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         ditSteps: payload.ttsDitSteps ?? 10,
         denoise: payload.ttsDenoise ?? false,
         doNormalize: payload.ttsDoNormalize ?? false,
+        estimatedCost: costEstimateLabel(estimateTtsCost("voxcpm-local", payload.ttsText.length)) || undefined,
       });
       return;
     }
@@ -638,6 +650,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       applyTextNormalization: isEleven ? (payload.ttsTextNormalization ?? "auto") : undefined,
       // kie ElevenLabs：自有 key（临时 > 分配 > 公用）
       ...(modelIsKieTTS(model) ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+      // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
+      estimatedCost: costEstimateLabel(estimateTtsCost(model, payload.ttsText.length)) || undefined,
     });
   };
 
@@ -874,6 +888,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               loading={musicMutation.isPending}
               onClick={handleGenerateMusic}
               label="生成配乐"
+              costLabel={costEstimateLabel(estimateMusicCost(normalizeMusicModel(payload.musicModel ?? payload.aiModel)))}
             />
           </>
           );
@@ -1247,6 +1262,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               loading={ttsMutation.isPending}
               onClick={handleGenerateTTS}
               label="生成配音"
+              costLabel={costEstimateLabel(estimateTtsCost(ttsModel, textLen))}
             />
           </>
           );

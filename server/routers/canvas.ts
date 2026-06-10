@@ -69,7 +69,7 @@ import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { isKieLLMModel } from "../_core/kieLLM";
 import { isKieTTS, submitAndPollKieTTS } from "../_core/kieTTS";
 import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
-import { writeAuditLog, truncate } from "../_core/auditLog";
+import { writeAuditLog, truncate, auditVideoTaskResult } from "../_core/auditLog";
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
@@ -608,6 +608,8 @@ export const videoTasksRouter = router({
         params: z.record(z.string(), z.unknown()).optional(),
         // kie.ai temp key (localStorage kie:tempKey) — only used for kie_* providers.
         kieTempKey: z.string().max(256).optional(),
+        // 客户端按所选模型+参数实时计算的点数预估（如 "≈60 点"），仅供管理员日志参考。
+        estimatedCost: z.string().max(32).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -655,7 +657,7 @@ export const videoTasksRouter = router({
       const baseParams = (input.params as Record<string, unknown> | undefined) ?? undefined;
       // Only stash reference mode when it'd actually change mapping (reference + ≥1 ref).
       const stashRefMode = input.referenceMode === "reference" && refList.length > 0;
-      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0 || stashRefMode || !!kieKeyEnc;
+      const needsStash = refList.length > 1 || refVideos.length > 0 || refAudios.length > 0 || stashRefMode || !!kieKeyEnc || !!input.estimatedCost;
       const mergedParams: Record<string, unknown> | undefined = needsStash
         ? {
             ...(baseParams ?? {}),
@@ -666,6 +668,8 @@ export const videoTasksRouter = router({
             // Encrypted kie key for the poller (filtered from any upstream payload
             // by kieVideo's allow-list — it only copies spec'd param keys).
             ...(kieKeyEnc ? { _kieKeyEnc: kieKeyEnc } : {}),
+            // 预估点数随任务存档，供异步终态日志（auditVideoTaskResult）回读。
+            ...(input.estimatedCost ? { _estimatedCost: input.estimatedCost } : {}),
           }
         : baseParams;
 
@@ -785,6 +789,9 @@ export const videoTasksRouter = router({
           taskId: task.id,
           nodeId: input.nodeId,
           submitted: !!externalTaskId,
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          // 提交即失败 → 直接记终态；提交成功的终态由轮询完成时补记（phase:"result"）。
+          ...(submitFailed ? { success: false } : {}),
         },
       });
 
@@ -836,6 +843,7 @@ export const videoTasksRouter = router({
                 // into re-paying for our parser miss.
                 const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在上游生成完成，但本系统未识别 URL（积分已扣，请勿重试；联系管理员查看 Poyo 控制台）" };
                 await updateVideoTask(task.id, update);
+                auditVideoTaskResult(task, false, update.errorMessage);
                 return { ...task, ...update };
               }
               // CRITICAL: same persistence step as the background poller —
@@ -848,6 +856,7 @@ export const videoTasksRouter = router({
               const persisted = persistedList.join("\n");
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, true);
               for (const u of persistedList) {
                 await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: u, name: task.provider });
               }
@@ -857,6 +866,7 @@ export const videoTasksRouter = router({
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
           } catch (err) {
@@ -880,6 +890,7 @@ export const videoTasksRouter = router({
               const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, true);
               await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: persisted, name: task.provider });
               return { ...task, ...update };
             }
@@ -888,12 +899,14 @@ export const videoTasksRouter = router({
               // Credits spent; [CHARGED] blocks UI from one-click resubmit.
               const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在 Higgsfield 生成完成，但本系统未识别 URL（积分已扣，请勿重试）" };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
             if (upstream.status === "failed") {
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
               await updateVideoTask(task.id, update);
+              auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
           } catch (err) {
@@ -1145,6 +1158,8 @@ export const imageGenRouter = router({
         fluxNumImages: z.number().int().min(1).max(4).optional(),
         // kie.ai: optional user-entered temporary key (from the toolbar popup).
         kieTempKey: z.string().max(256).optional(),
+        // 客户端实时计算的点数预估（如 "≈5 cr"），仅供管理员日志参考。
+        estimatedCost: z.string().max(32).optional(),
         projectId: z.number().optional(),
       })
     )
@@ -1177,6 +1192,7 @@ export const imageGenRouter = router({
       }
       // Server-side idempotency: collapse concurrent identical submits (e.g. devtools
       // replay, browser retries) into a single external image-gen call & charge.
+      // 失败也要计入管理员日志（带预估点数 + success:false），随后原样抛出。
       return dedupe("imageGen", ctx.user.id, input, async () => {
       const isHfModel = input.model?.startsWith("hf_");
 
@@ -1241,6 +1257,8 @@ export const imageGenRouter = router({
           prompt: truncate(input.prompt),
           resultUrl: result.url ?? result.urls?.[0] ?? null,
           resultCount: result.urls?.length ?? (result.url ? 1 : 0),
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: true,
         },
       });
       {
@@ -1256,6 +1274,19 @@ export const imageGenRouter = router({
         sourceUrls: result.sourceUrls,
         sourceAt: result.sourceAt,
       };
+      }).catch((err: unknown) => {
+        writeAuditLog({
+          ctx,
+          action: "image_gen",
+          detail: {
+            model: input.model ?? "default",
+            prompt: truncate(input.prompt),
+            ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+            success: false,
+            error: truncate(err instanceof Error ? err.message : String(err)),
+          },
+        });
+        throw err;
       });
     }),
 });
@@ -1940,10 +1971,21 @@ export const audioGenRouter = router({
         negativeTags: z.string().optional(),
         lyrics: z.string().max(3500).optional(),   // MiniMax only
         kieTempKey: z.string().max(256).optional(), // kie_suno_* only
+        // 客户端实时计算的点数预估（如 "20 cr"），仅供管理员日志参考。
+        estimatedCost: z.string().max(32).optional(),
         projectId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // 失败也计入管理员日志（带预估点数 + success:false），随后原样抛出。
+      const auditMusicFail = (err: unknown): never => {
+        writeAuditLog({ ctx, action: "audio_music", detail: {
+          model: input.model, prompt: truncate(input.prompt),
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: false, error: truncate(err instanceof Error ? err.message : String(err)),
+        } });
+        throw err;
+      };
       // kie Suno authenticates with its own key (temp > assigned > house) and
       // bypasses the Poyo whitelist; non-kie keeps the whitelist gate.
       if (isKieMusicModel(input.model)) {
@@ -1959,10 +2001,10 @@ export const audioGenRouter = router({
             instrumental: input.instrumental,
             negativeTags: input.negativeTags,
           });
-          writeAuditLog({ ctx, action: "audio_music", detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration } });
+          writeAuditLog({ ctx, action: "audio_music", detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration, ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}), success: true } });
           await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "kie", model: input.model, url: result.url, name: input.model });
           return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
-        });
+        }).catch(auditMusicFail);
       }
       await assertWhitelisted(ctx);
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
@@ -1992,11 +2034,11 @@ export const audioGenRouter = router({
         writeAuditLog({
           ctx,
           action: "audio_music",
-          detail: { model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration },
+          detail: { model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration, ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}), success: true },
         });
         await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "poyo", model, url: result.url, name: model });
         return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
-      });
+      }).catch(auditMusicFail);
     }),
 
   generateDubbing: protectedProcedure
@@ -2041,6 +2083,8 @@ export const audioGenRouter = router({
         denoise: z.boolean().optional(),
         doNormalize: z.boolean().optional(),
         kieTempKey: z.string().max(256).optional(), // kie_elevenlabs_* only
+        // 客户端实时计算的点数预估（如 "≈6 点"），仅供管理员日志参考。
+        estimatedCost: z.string().max(32).optional(),
         projectId: z.number().optional(),
       })
     )
@@ -2134,6 +2178,8 @@ export const audioGenRouter = router({
             voice: input.voice ?? null,
             resultUrl: result.url,
             duration: result.duration ?? null,
+            ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+            success: true,
             ...(isPoyoTTS ? { stability: input.stability ?? null, timestamps: input.timestamps ?? false } : {}),
             ...(isGradioTTS ? { gradioBaseUrl: input.customBaseUrl ?? null } : {}),
           },
@@ -2145,6 +2191,14 @@ export const audioGenRouter = router({
           duration: result.duration,
           timestampsUrl: isPoyoTTS ? (result as { timestampsUrl?: string }).timestampsUrl : undefined,
         };
+      }).catch((err: unknown) => {
+        // 失败也计入管理员日志（带预估点数 + success:false），随后原样抛出。
+        writeAuditLog({ ctx, action: "audio_dubbing", detail: {
+          model, text: truncate(input.text),
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: false, error: truncate(err instanceof Error ? err.message : String(err)),
+        } });
+        throw err;
       });
     }),
 });

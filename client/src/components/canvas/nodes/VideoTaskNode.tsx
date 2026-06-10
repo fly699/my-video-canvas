@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
@@ -24,6 +24,7 @@ import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, prov
 import { ModelPicker } from "../ModelPicker";
 import { SyncNodesDialog } from "../SyncNodesDialog";
 import { platformBadge, VIDEO_MODELS } from "../../../lib/models";
+import { estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { ImageLightbox } from "../ImageLightbox";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
@@ -1027,6 +1028,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       referenceAudioUrls: refMedia.audioRefs,
       referenceMode: refModeForSubmit(),
       params: withParamDefaults(payload.provider, payload.params),
+      // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
+      estimatedCost: costEstimateLabel(estimateVideoCost(payload.provider, withParamDefaults(payload.provider, payload.params))) || undefined,
       // kie video models auth via their own key (temp > assigned > house).
       ...(payload.provider.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
     });
@@ -1185,6 +1188,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const paramDefs = PROVIDER_PARAMS[payload.provider] ?? [];
   const params = payload.params ?? {};
   const presets = PROVIDER_PRESETS[payload.provider] ?? [];
+
+  // 实时点数预估：模型或参数（时长/分辨率/音频等）一变即重算，显示在提交按钮上。
+  const costLabel = useMemo(
+    () => costEstimateLabel(estimateVideoCost(payload.provider, withParamDefaults(payload.provider, payload.params))),
+    [payload.provider, payload.params],
+  );
 
   // ── Custom presets (localStorage-backed) ────────────────────────────────
   const [customPresets, setCustomPresets] = useState<CustomVideoPreset[]>([]);
@@ -1559,7 +1568,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                       // but each provider still needs its OWN required-field defaults
                       // (resolution/aspect_ratio/duration/...) since the backend no longer
                       // hard-defaults them — so pass that provider's ParamDef defaults.
-                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), referenceVideoUrls: collectRefMedia(provider).videoRefs, referenceAudioUrls: collectRefMedia(provider).audioRefs, referenceMode: refModeForSubmit(), params: withParamDefaults(provider, {}), ...(provider.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}) },
+                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), referenceVideoUrls: collectRefMedia(provider).videoRefs, referenceAudioUrls: collectRefMedia(provider).audioRefs, referenceMode: refModeForSubmit(), params: withParamDefaults(provider, {}), estimatedCost: costEstimateLabel(estimateVideoCost(provider, withParamDefaults(provider, {}))) || undefined, ...(provider.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}) },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
@@ -2225,6 +2234,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               <Play className="w-3 h-3" />
             )}
             {payload.status === "processing" ? "生成中..." : "提交任务"}
+            {costLabel && payload.status !== "processing" && !createTaskMutation.isPending && (
+              <span
+                title="按当前模型与参数实时预估的点数消耗，仅供参考，实际以平台账单为准"
+                style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "oklch(0.62 0.20 25 / 0.18)", letterSpacing: "0.02em" }}
+              >
+                {costLabel}
+              </span>
+            )}
           </button>
         </div>
 
