@@ -28,6 +28,7 @@ import { ImageLightbox } from "../ImageLightbox";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
+import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import { NodeTextArea } from "../NodeTextInput";
@@ -127,6 +128,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (Object.keys(patch).length) updateNodeData(id, patch, true); // fill-only-when-blank
   }, [upstreamPrompt, upstreamNeg, payload.prompt, payload.negativePrompt, id, updateNodeData]);
   const [uploading, setUploading] = useState(false);
+  const [showSyncDlg, setShowSyncDlg] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [refZoom, setRefZoom] = useState<number | null>(null);
   // Multi-reference-image list + left-docked expandable strip.
@@ -743,6 +745,26 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             </div>
           )}
         </div>
+        {/* 同步模型与参数到同类图像生成节点（弹窗勾选） */}
+        <button
+          onClick={() => setShowSyncDlg(true)}
+          title="把当前模型与全部参数同步到所选图像生成节点（弹窗勾选，默认同工作流）"
+          className="nodrag flex items-center justify-center gap-1 rounded-lg text-[10.5px] py-1 transition-all"
+          style={{ marginTop: 6, width: "100%", background: "oklch(0.66 0.19 300 / 0.08)", border: "1px dashed oklch(0.66 0.19 300 / 0.4)", color: "oklch(0.74 0.16 300)", cursor: "pointer" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.66 0.19 300 / 0.16)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.66 0.19 300 / 0.08)"; }}
+        >
+          <Grid2X2 className="w-3 h-3" /> 同步模型与参数到其它图像节点
+        </button>
+        {showSyncDlg && (
+          <SyncNodesDialog
+            sourceId={id}
+            nodeType="image_gen"
+            typeLabel="图像生成"
+            patch={{ model: payload.model, negativePrompt: payload.negativePrompt, style: payload.style, aspectRatio: payload.aspectRatio, poyoQuality: payload.poyoQuality, widthAndHeight: payload.widthAndHeight, soulQuality: payload.soulQuality, batchSize: payload.batchSize, seed: payload.seed, enhancePrompt: payload.enhancePrompt, reveAspectRatio: payload.reveAspectRatio, reveResolution: payload.reveResolution, fluxGuidanceScale: payload.fluxGuidanceScale, fluxSeed: payload.fluxSeed, fluxNumImages: payload.fluxNumImages }}
+            onClose={() => setShowSyncDlg(false)}
+          />
+        )}
 
         {/* Prompt */}
         <div>

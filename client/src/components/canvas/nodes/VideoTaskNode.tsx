@@ -22,6 +22,7 @@ import { ensureNotificationPermission, showCompletionNotification } from "@/lib/
 import { CinematographyPicker } from "../CinematographyPicker";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, providerNeedsPublicMedia, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker } from "../ModelPicker";
+import { SyncNodesDialog } from "../SyncNodesDialog";
 import { platformBadge } from "../../../lib/models";
 import { ImageLightbox } from "../ImageLightbox";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -905,6 +906,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const { refOpen: stripOpen, setRefOpen: setStripOpen } = docks;
   const [refZoom, setRefZoom] = useState<number | null>(null);
   const [refUploading, setRefUploading] = useState(false);
+  const [showSyncDlg, setShowSyncDlg] = useState(false);
   const refFileInputRef = useRef<HTMLInputElement>(null);
   const refUploadMutation = trpc.upload.uploadImage.useMutation();
   const uploadRefFiles = useCallback(async (files: File[], index: number) => {
@@ -1758,6 +1760,26 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             }}
           />
         </div>
+        {/* 同步模型与参数到同类视频任务节点（弹窗勾选） */}
+        <button
+          onClick={() => setShowSyncDlg(true)}
+          title="把当前模型与全部参数同步到所选视频任务节点（弹窗勾选，默认同工作流）"
+          className="nodrag flex items-center justify-center gap-1 rounded-lg text-[10.5px] py-1 transition-all"
+          style={{ background: "oklch(0.7 0.18 25 / 0.08)", border: "1px dashed oklch(0.7 0.18 25 / 0.4)", color: "oklch(0.74 0.16 25)", cursor: "pointer" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.7 0.18 25 / 0.16)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.7 0.18 25 / 0.08)"; }}
+        >
+          <Layers className="w-3 h-3" /> 同步模型与参数到其它视频节点
+        </button>
+        {showSyncDlg && (
+          <SyncNodesDialog
+            sourceId={id}
+            nodeType="video_task"
+            typeLabel="视频任务"
+            patch={{ provider: payload.provider, negativePrompt: payload.negativePrompt, params: payload.params }}
+            onClose={() => setShowSyncDlg(false)}
+          />
+        )}
 
         {/* ── Prompt ── */}
         <div>
