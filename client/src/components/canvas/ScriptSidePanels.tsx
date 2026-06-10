@@ -314,7 +314,8 @@ export function ScriptCoveragePanel({ id, payload, llmModel, onClose }: {
   const { updateNodeData } = useCanvasStore();
   const [fixingIdx, setFixingIdx] = useState<number | null>(null);
   const report = payload.coverage;
-  const prevOverall = useState<number | null>(report?.overall ?? null);
+  // 复审差值基线：每次发起审查前记录当前分数（同一面板会话内 首审→修复→复审 也能显示 ±）。
+  const [prevOverall, setPrevOverall] = useState<number | null>(null);
   const shortDrama = /短剧|短视频/.test(payload.aiGenre ?? "") || payload.beatStructure === "short_drama";
 
   const covMut = trpc.scripts.scriptCoverage.useMutation({
@@ -336,6 +337,7 @@ export function ScriptCoveragePanel({ id, payload, llmModel, onClose }: {
   const runReview = () => {
     const text = payload.content?.trim();
     if (!text) { toast.error("请先填写脚本内容"); return; }
+    setPrevOverall(report?.overall ?? null);
     covMut.mutate({ scriptText: text.slice(0, 8000), genre: payload.aiGenre, shortDrama, model: llmModel });
   };
 
@@ -393,9 +395,9 @@ export function ScriptCoveragePanel({ id, payload, llmModel, onClose }: {
             <span style={{ marginLeft: "auto", fontSize: 18, fontWeight: 800, color: VERDICTS[report.verdict].color }}>
               {report.overall}<span style={{ fontSize: 10 }}>/100</span>
             </span>
-            {prevOverall[0] != null && prevOverall[0] !== report.overall && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: report.overall >= prevOverall[0] ? "oklch(0.70 0.18 150)" : "oklch(0.62 0.20 25)" }}>
-                {report.overall >= prevOverall[0] ? "+" : ""}{report.overall - prevOverall[0]}
+            {prevOverall != null && prevOverall !== report.overall && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: report.overall >= prevOverall ? "oklch(0.70 0.18 150)" : "oklch(0.62 0.20 25)" }}>
+                {report.overall >= prevOverall ? "+" : ""}{report.overall - prevOverall}
               </span>
             )}
           </div>
