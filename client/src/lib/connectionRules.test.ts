@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isConnectionValid } from "./connectionRules";
+import { isConnectionValid, getCompatibleTargets, getCompatibleSources } from "./connectionRules";
 
 describe("isConnectionValid", () => {
   it("allows comfy nodes to chain with the SAME comfy type (串并联)", () => {
@@ -29,6 +29,13 @@ describe("isConnectionValid", () => {
   it("treats null endpoints and note as always valid", () => {
     expect(isConnectionValid(null, "comfyui_image")).toBe(true);
     expect(isConnectionValid("note", "note")).toBe(true);
+  });
+
+  it("audio → merge（整片配乐）双向推导跟随矩阵：弹出菜单候选包含彼此", () => {
+    expect(isConnectionValid("audio", "merge")).toBe(true);
+    // 拖线落空白弹出的建节点菜单直接读这两个推导函数——矩阵更新即菜单更新
+    expect(getCompatibleTargets("audio")).toContain("merge");
+    expect(getCompatibleSources("merge")).toContain("audio");
   });
 
   it("lets a merge (合并) video feed a clip (剪辑) node", () => {
