@@ -131,7 +131,7 @@ const PROVIDERS = VIDEO_MODELS;
 // projecting it once (rather than `PROVIDERS.map(...)` inline each render) keeps
 // the reference stable so ModelPicker's `groups` useMemo isn't busted on every
 // re-render (this node re-renders on each 5s poll tick).
-const PROVIDER_PICKER_OPTIONS = PROVIDERS.map((p) => ({
+export const PROVIDER_PICKER_OPTIONS = PROVIDERS.map((p) => ({
   value: p.value,
   label: p.label,
   group: p.group,
@@ -495,7 +495,7 @@ const KIE_ALEPH_PARAMS: ParamDef[] = [
   { type: "select", key: "aspectRatio", label: "宽高比", default: "16:9", options: AR_ALEPH }, seedDef,
 ];
 
-const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
+export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
       options: [
@@ -656,7 +656,7 @@ interface ParamPreset {
 // in `params`, and several models require fields (Seedance resolution+
 // aspect_ratio, Kling 2.6 sound, etc.). Without this, a fresh node the user
 // never expanded would submit prompt-only and the upstream call would fail.
-function withParamDefaults(provider: string, params: Record<string, unknown> | undefined): Record<string, unknown> {
+export function withParamDefaults(provider: string, params: Record<string, unknown> | undefined): Record<string, unknown> {
   const defs = PROVIDER_PARAMS[provider] ?? [];
   const merged: Record<string, unknown> = { ...(params ?? {}) };
   for (const def of defs) {

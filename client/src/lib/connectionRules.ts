@@ -7,7 +7,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   storyboard: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
   prompt: ["image_gen", "video_task", "storyboard", "script", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
-  image_gen: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_video", "comfyui_workflow"],
+  // image_gen → storyboard：精修工位回链——分镜「送精修」后图像节点连回分镜，
+  // 出图仅作为「关键帧候选」供分镜显式点「采用此图」，无任何自动写入。
+  image_gen: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_video", "comfyui_workflow", "storyboard"],
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   // audio → audio: 把一段音频作为本地 VoxCPM 配音的参考音色喂给下游音频节点。
   // audio → comfyui_workflow: 作为自定义工作流的音频参数来源（VHS_LoadAudioUpload 等）。
@@ -29,7 +31,7 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   lip_sync: [],
   avatar: [],
   merge: ["asset", "clip"],
-  comfyui_image: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  comfyui_image: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
   comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "image_gen", "comfyui_workflow", "comfyui_image", "comfyui_video"],
   note: [],
@@ -84,7 +86,7 @@ export const CONNECTION_HINTS: Record<
   storyboard: {
     label: "分镜",
     outgoing: "→ 图像生成 / 视频任务 / 提示词 / 音频(对白配音)",
-    incoming: "← 脚本 / 提示词 / 角色 / AI对话",
+    incoming: "← 脚本 / 提示词 / 角色 / AI对话 / 图像生成(精修回填)",
   },
   prompt: {
     label: "提示词",
@@ -98,7 +100,7 @@ export const CONNECTION_HINTS: Record<
   },
   image_gen: {
     label: "图像生成",
-    outgoing: "→ 视频任务 / 素材 / 剪辑 / 角色 / 图像生成（参考图）",
+    outgoing: "→ 视频任务 / 素材 / 剪辑 / 角色 / 图像生成（参考图）/ 分镜(关键帧候选)",
     incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成 / ComfyUI 图像 / ComfyUI 自定义（参考图）",
   },
   video_task: {

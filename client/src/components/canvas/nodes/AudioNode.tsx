@@ -99,7 +99,7 @@ function normalizeMusicModel(m?: string): string {
 
 // Dubbing/TTS models. The "openai_*_real" entries hit OpenAI's /v1/audio/speech
 // directly (live). "elevenlabs-v3-tts" routes to Poyo's ElevenLabs V3 TTS.
-const DUBBING_MODELS = [
+export const DUBBING_MODELS = [
   // ── Live (OpenAI direct) ───
   { value: "openai_tts_real",       label: "OpenAI TTS",       desc: "标准 · $0.015/1k 字符",  group: "OpenAI" },
   { value: "openai_tts_hd_real",    label: "OpenAI TTS-HD",    desc: "高清 · $0.030/1k 字符",  group: "OpenAI" },
@@ -246,7 +246,7 @@ const ELEVENLABS_VOICES = [
   { value: "Bill",      label: "Bill",      desc: "男声" },
 ];
 
-function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
+export function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
   if (modelIsVoxCPM(model)) return []; // 音色来自参考音频，无固定列表
   if (modelIsElevenLabs(model)) return ELEVENLABS_VOICES;
   return OPENAI_VOICES; // default for openai_tts_real / *_hd_real / gpt4o-mini / unknown

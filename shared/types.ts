@@ -223,6 +223,10 @@ export interface StoryboardNodeData {
   beatRef?: string;
   imageModel?: ImageGenModel;
   referenceImageUrl?: string;
+  /** 手动多参考图管理（与 ImageGenNode 同款；[0].url 与 referenceImageUrl 镜像）。 */
+  referenceImages?: ReferenceImage[];
+  /** kie 图像模型的通用比例（服务端按模型枚举夹取）。 */
+  aspectRatio?: string;
   batchSize?: number;
   // ── Image-gen sizing/quality knobs (mirror ImageGenNodeData) ──
   // Stored here so each storyboard scene can override aspect ratio and
