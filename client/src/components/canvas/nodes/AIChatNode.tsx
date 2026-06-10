@@ -390,8 +390,32 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     });
   };
 
+  // 键入「/」即视为在打 AI 命令：自动弹出命令菜单并按已输入文本过滤（与点「/」按钮一致）。
+  // 仅当输入以「/」开头且其后无空格（仍在打命令名）时触发。
+  const slashMatch = input.match(/^\/([^\s]*)$/);
+  const slashTyping = !!slashMatch;
+  const slashQuery = (slashMatch?.[1] ?? "").toLowerCase();
+  const filteredSlash = slashQuery
+    ? SLASH_COMMANDS.filter((c) => c.aliases.some((a) => a.toLowerCase().includes(slashQuery)) || c.label.toLowerCase().includes(slashQuery))
+    : SLASH_COMMANDS;
+  const slashMenuOpen = (showSlashMenu || slashTyping) && filteredSlash.length > 0;
+
+  /** 应用一个斜杠命令：去掉正在输入的「/命令」词，再以「/别名 + 剩余内容」写回输入框。 */
+  const applySlashCommand = (c: { aliases: string[] }) => {
+    const cur = inputRef.current?.value ?? input;
+    const rest = cur.replace(/^\/\S*\s*/, ""); // 去掉开头的「/命令」token（按钮场景无 / 前缀则原样保留）
+    insertInputText(`/${c.aliases[0]} ${rest}`.trim() + " ");
+    setShowSlashMenu(false);
+    inputRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    if (e.key === "Escape" && showSlashMenu) { setShowSlashMenu(false); return; }
+    if (e.key === "Enter" && !e.shiftKey) {
+      // 命令菜单开着（键入 / 触发）→ Enter 选中首个命令，而不是直接发送。
+      if (slashTyping && filteredSlash.length > 0) { e.preventDefault(); applySlashCommand(filteredSlash[0]); return; }
+      e.preventDefault(); handleSend();
+    }
   };
 
   // ── Attachment handling ─────────────────────────────────────────────────
@@ -1077,7 +1101,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           </div>
 
           {/* Slash command picker popup */}
-          {showSlashMenu && (
+          {slashMenuOpen && (
             <div
               className="absolute left-3 right-3 bottom-full mb-1 rounded-xl overflow-hidden z-40 nodrag nopan nowheel"
               style={{
@@ -1088,19 +1112,15 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 overflowY: "auto",
               }}
             >
-              {SLASH_COMMANDS.map((c) => (
+              {filteredSlash.map((c, idx) => (
                 <button
                   key={c.id}
+                  // 键入 / 时高亮首项（Enter 选中），与「按 / 按钮」一致的命令列表。
                   className="nodrag w-full flex items-center gap-2 px-3 py-2 text-left transition-all"
-                  style={{ borderBottom: "1px solid var(--c-bd1)", cursor: "pointer" }}
-                  onClick={() => {
-                    const cur = inputRef.current?.value ?? input;
-                    insertInputText(`/${c.aliases[0]} ${cur}`.trim() + " ");
-                    setShowSlashMenu(false);
-                    inputRef.current?.focus();
-                  }}
+                  style={{ borderBottom: "1px solid var(--c-bd1)", cursor: "pointer", background: slashTyping && idx === 0 ? "var(--c-elevated)" : "transparent" }}
+                  onMouseDown={(e) => { e.preventDefault(); applySlashCommand(c); }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = slashTyping && idx === 0 ? "var(--c-elevated)" : "transparent"; }}
                 >
                   <span style={{ fontSize: 10, fontFamily: "monospace", color: accentColor, minWidth: 70 }}>/{c.aliases[0]}</span>
                   <span style={{ fontSize: 11, color: "var(--c-t2)", flex: 1 }}>{c.label}</span>
