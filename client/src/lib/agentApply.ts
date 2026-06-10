@@ -206,6 +206,17 @@ export function applyAgentOperations(
               const tpl = opts.templates?.find((t) => t.id === Number(up.templateId));
               if (!tpl || typeof tpl.payload?.workflowJson !== "string" || !(tpl.payload.workflowJson as string).trim()) delete up.templateId;
             }
+            // 截断回写守卫：画布摘要里长文本以「…」截断，LLM 增量编辑时可能把截断值
+            // 原样抄回 update——写入会把用户的长文本砍掉。识别特征：新值以…结尾、
+            // 恰为现有值的前缀且现有值更长 → 丢弃该字段，保住原文。
+            const curPayload = (useCanvasStore.getState().nodes.find((n) => n.id === target)?.data.payload ?? {}) as Record<string, unknown>;
+            for (const k of Object.keys(up)) {
+              const nv = up[k], cv = curPayload[k];
+              if (typeof nv === "string" && typeof cv === "string" && nv.endsWith("…")) {
+                const prefix = nv.slice(0, -1);
+                if (cv.length > prefix.length && cv.startsWith(prefix)) delete up[k];
+              }
+            }
             if (Object.keys(up).length) store.updateNodeData(target, up as Partial<NodeData>, true);
           }
           op.status = "applied";
@@ -249,7 +260,11 @@ const SUMMARY_FIELDS: Partial<Record<NodeType, string[]>> = {
 export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[] } = {}): string {
   const { nodes, edges } = useCanvasStore.getState();
   const focus = opts.focusNodeIds && opts.focusNodeIds.length ? new Set(opts.focusNodeIds) : null;
-  const clip = (v: unknown) => (typeof v === "string" ? (v.length > 60 ? v.slice(0, 60) + "…" : v) : v);
+  // 分级截断：小范围（微调选中/小画布，≤12 节点）放宽到 400 字——增量编辑需要看到
+  // 原文全貌才能精准改写；大画布维持 60 字防摘要爆 token（18000 硬帽兜底）。
+  const scopedCount = focus ? focus.size : nodes.length;
+  const clipLen = scopedCount <= 12 ? 400 : 60;
+  const clip = (v: unknown) => (typeof v === "string" ? (v.length > clipLen ? v.slice(0, clipLen) + "…" : v) : v);
   const nodeLines = nodes
     .filter((n) => n.id !== excludeNodeId && (!focus || focus.has(n.id)))
     .map((n) => {

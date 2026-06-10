@@ -104,3 +104,40 @@ describe("applyAgentOperations touchedIds（自愈收窄重跑范围）", () => 
     expect(r.touchedIds.length).toBe(2); // existing.id 不重复
   });
 });
+
+describe("精准增量编辑防护", () => {
+  it("分级截断：小范围摘要放宽到 400 字（增量编辑可见原文全貌）", () => {
+    const store = useCanvasStore.getState();
+    const n = store.addNode("storyboard", { x: 0, y: 0 });
+    store.updateNodeData(n.id, { promptText: "甲".repeat(200) });
+    const parsed = JSON.parse(buildGraphSummary("none")) as { nodes: Array<{ id: string; promptText?: string }> };
+    expect(parsed.nodes.find((x) => x.id === n.id)?.promptText).toBe("甲".repeat(200)); // 小画布不截断
+  });
+
+  it("截断回写守卫：LLM 抄回「前缀+…」时丢弃该字段保住原文", () => {
+    const store = useCanvasStore.getState();
+    const full = "雨夜街头" + "霓".repeat(120);
+    const n = store.addNode("storyboard", { x: 0, y: 0 });
+    store.updateNodeData(n.id, { promptText: full, description: "旧描述" });
+    const ops: AgentOperation[] = [
+      { op: "update", targetRef: n.id, payload: { promptText: full.slice(0, 60) + "…", description: "新描述" } },
+    ];
+    const r = applyAgentOperations(ops, { x: 0, y: 0 });
+    expect(r.failures).toEqual([]);
+    const p = useCanvasStore.getState().nodes.find((x) => x.id === n.id)!.data.payload as { promptText?: string; description?: string };
+    expect(p.promptText).toBe(full);      // 截断回写被拦截，原文完好
+    expect(p.description).toBe("新描述"); // 真实修改正常生效
+  });
+
+  it("真正以…结尾的新文本（非原文前缀）不被误拦", () => {
+    const store = useCanvasStore.getState();
+    const n = store.addNode("storyboard", { x: 0, y: 0 });
+    store.updateNodeData(n.id, { promptText: "完全不同的旧文本" });
+    const ops: AgentOperation[] = [
+      { op: "update", targetRef: n.id, payload: { promptText: "崭新的提示词，意境悠远…" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const p = useCanvasStore.getState().nodes.find((x) => x.id === n.id)!.data.payload as { promptText?: string };
+    expect(p.promptText).toBe("崭新的提示词，意境悠远…");
+  });
+});
