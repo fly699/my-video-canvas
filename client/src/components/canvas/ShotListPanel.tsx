@@ -135,7 +135,70 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
   const [batchBusy, setBatchBusy] = useState(false);
   const toggleSel = (rid: string) => setSel((s0) => { const n = new Set(s0); n.has(rid) ? n.delete(rid) : n.add(rid); return n; });
 
+  // 批量生图执行引擎：cloud（云端模型，提交即出图回填关键帧）/ comfy_image（本地 ComfyUI
+  // 图像节点）/ comfy_workflow_img（出图自定义模板）。comfy 两档只建好填满工位，由画布
+  // 「运行」本地批量执行（开源免费），出图后点「批量采用出图」显式回填关键帧（只填空，
+  // 与「精修工位绝不自动写入」同口径——自动写入仅限用户显式点击的批量动作）。
+  const [imgEngine, setImgEngine] = useState<string>(() => localStorage.getItem("shotlist:imgEngine") || "cloud");
+  const pickImgEngine = (v: string) => { setImgEngine(v); localStorage.setItem("shotlist:imgEngine", v); };
+  const [imgTplId, setImgTplId] = useState<number | null>(() => {
+    const v = Number(localStorage.getItem("shotlist:imgTplId")); return Number.isFinite(v) && v > 0 ? v : null;
+  });
+  const imgComfyMode = imgEngine !== "cloud";
+
+  const prepareComfyImageOne = (r: ShotRow): "done" | "error" => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === r.id);
+    if (!own) return "error";
+    const prompt = (r.payload.promptText || r.payload.description || "").slice(0, 4000);
+    if (!prompt.trim()) return "error";
+    const targetType = imgEngine === "comfy_image" ? "comfyui_image" : "comfyui_workflow";
+    const existing = store.edges
+      .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
+      .find((n) => n?.data.nodeType === targetType && ["failed", "idle", undefined].includes((n.data.payload as { status?: string }).status as never));
+    if (imgEngine === "comfy_workflow_img") {
+      const tpl = (tplListQuery.data ?? []).find((t) => t.id === imgTplId);
+      if (!tpl) return "error";
+      const payload = materializeTemplate({ id: tpl.id, label: tpl.label, payload: tpl.payload as Record<string, unknown> }, prompt, r.payload.negativePrompt ?? "");
+      const gn = existing ?? store.addNode("comfyui_workflow", { x: own.position.x - 220, y: own.position.y + 560 });
+      store.updateNodeData(gn.id, payload as never);
+      if (!existing) store.onConnect({ source: r.id, target: gn.id, sourceHandle: null, targetHandle: null });
+      return "done";
+    }
+    const gn = existing ?? store.addNode("comfyui_image", { x: own.position.x - 220, y: own.position.y + 560 });
+    store.updateNodeData(gn.id, { prompt, negPrompt: r.payload.negativePrompt });
+    if (!existing) store.onConnect({ source: r.id, target: gn.id, sourceHandle: null, targetHandle: null });
+    return "done";
+  };
+
+  /** 批量采用 ComfyUI 出图为关键帧：只填空（分镜已有图的不动），显式点击触发。 */
+  const adoptComfyImages = () => {
+    const store = useCanvasStore.getState();
+    let adopted = 0, skippedHas = 0, noImg = 0;
+    for (const r of rows) {
+      if (!sel.has(r.id)) continue;
+      if (r.payload.imageUrl) { skippedHas++; continue; }
+      let url: string | undefined;
+      for (const e of store.edges) {
+        if (e.source !== r.id) continue;
+        const t = store.nodes.find((n) => n.id === e.target);
+        if (!t) continue;
+        const tp = t.data.payload as { imageUrl?: string; outputUrl?: string; outputType?: string };
+        if (t.data.nodeType === "comfyui_image") url = tp.imageUrl ?? tp.outputUrl;
+        else if (t.data.nodeType === "comfyui_workflow" && tp.outputType === "image") url = tp.outputUrl;
+        if (url) break;
+      }
+      if (!url) { noImg++; continue; }
+      store.updateNodeData(r.id, { imageUrl: url, imageHistory: [url, ...(r.payload.imageHistory ?? [])].slice(0, 12) });
+      propagateRefImage(r.id, url);
+      adopted++;
+    }
+    if (adopted) toast.success(`已采用 ${adopted} 张 ComfyUI 出图为关键帧${skippedHas ? `；${skippedHas} 镜已有图跳过` : ""}${noImg ? `；${noImg} 镜尚未出图` : ""}`, { duration: 5000 });
+    else toast.error(noImg ? "勾选镜的 ComfyUI 工位尚未出图（先点工具栏「运行」）" : "勾选镜均已有关键帧（只填空，不覆盖）");
+  };
+
   const genOne = async (r: ShotRow): Promise<"done" | "error"> => {
+    if (imgComfyMode) return prepareComfyImageOne(r);
     const { nodes, edges } = useCanvasStore.getState();
     const b = buildStoryboardGenInput({ id: r.id, payload: r.payload, nodes, edges, kieTempKey: localStorage.getItem("kie:tempKey") });
     if (b.blocked) return "error";
@@ -156,6 +219,25 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     if (batchBusy) return;
     const targets = rows.filter((r) => sel.has(r.id));
     if (!targets.length) { toast.error("请先勾选要生成的分镜"); return; }
+    // ComfyUI 引擎：建好填满工位（本地免费，不在此提交），由画布「运行」批量执行。
+    if (imgComfyMode) {
+      if (imgEngine === "comfy_workflow_img" && !imgTplId) { toast.error("请先选择一个「出图」的自定义工作流模板"); return; }
+      const readyC = targets.filter((r) => (r.payload.promptText || r.payload.description || "").trim());
+      const blockedC = targets.length - readyC.length;
+      if (!readyC.length) { toast.error("所选分镜均缺提示词，无法生成"); return; }
+      const engineLabel = imgEngine === "comfy_image" ? "ComfyUI 图像节点" : `ComfyUI 模板「${imgTplOptions.find((t) => t.id === imgTplId)?.label ?? imgTplId}」`;
+      if (!window.confirm(`将为 ${readyC.length} 个分镜创建并填好 ${engineLabel} 出图工位（本地开源免费，不在此提交）${blockedC ? `；${blockedC} 个缺提示词跳过` : ""}。继续？`)) return;
+      setBatchBusy(true);
+      setBatchState((s0) => { const n2 = { ...s0 }; for (const r of readyC) delete n2[r.id]; return n2; });
+      for (const r of readyC) {
+        setBatchState((s0) => ({ ...s0, [r.id]: "running" }));
+        const st = await genOne(r);
+        setBatchState((s0) => ({ ...s0, [r.id]: st }));
+      }
+      setBatchBusy(false);
+      toast.success("ComfyUI 出图工位已就位——点工具栏「运行」本地批量生成（免费）；出图后回本表点「批量采用出图」回填关键帧", { duration: 7000 });
+      return;
+    }
     // 组装 + Σ预估（按 cr/点 分单位汇总；blocked 镜跳过）
     const { nodes, edges } = useCanvasStore.getState();
     const builds = targets.map((r) => ({ r, b: buildStoryboardGenInput({ id: r.id, payload: r.payload, nodes, edges, kieTempKey: localStorage.getItem("kie:tempKey") }) }));
@@ -211,11 +293,16 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const v = Number(localStorage.getItem("shotlist:comfyTplId")); return Number.isFinite(v) && v > 0 ? v : null;
   });
   const comfyMode = videoEngine !== "cloud";
-  const tplListQuery = trpc.comfyTemplates.list.useQuery(undefined, { enabled: videoEngine === "comfy_workflow", staleTime: 30_000 });
-  const tplAnalysisQuery = trpc.comfyTemplates.analysisList.useQuery(undefined, { enabled: videoEngine === "comfy_workflow", staleTime: 30_000 });
-  // 仅列出「自定义工作流 + 出视频」的已分析模板（与智能体同口径）。
+  const needTpl = videoEngine === "comfy_workflow" || imgEngine === "comfy_workflow_img";
+  const tplListQuery = trpc.comfyTemplates.list.useQuery(undefined, { enabled: needTpl, staleTime: 30_000 });
+  const tplAnalysisQuery = trpc.comfyTemplates.analysisList.useQuery(undefined, { enabled: needTpl, staleTime: 30_000 });
+  // 仅列出「自定义工作流」的已分析模板，按输出类型分目录（与智能体同口径）。
   const videoTplOptions = useMemo(() => {
     const rows = (tplAnalysisQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow" && (t.hasVideoOutput || t.outputType === "video" || t.outputType === "mixed"));
+    return rows.map((t) => ({ id: t.id, label: t.label as string }));
+  }, [tplAnalysisQuery.data]);
+  const imgTplOptions = useMemo(() => {
+    const rows = (tplAnalysisQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow" && (t.outputType === "image" || t.outputType === "mixed"));
     return rows.map((t) => ({ id: t.id, label: t.label as string }));
   }, [tplAnalysisQuery.data]);
 
@@ -638,18 +725,39 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       {/* 批量生产（流水线第一段：批量生成分镜图） */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)" }}>批量生产</span>
+        <select className="nodrag" value={imgEngine} onChange={(e) => pickImgEngine(e.target.value)}
+          title="云端=提交即出图回填关键帧（按模型计费）；ComfyUI 两档=建好填满出图工位，点工具栏「运行」本地批量执行（开源免费），出图后点「批量采用出图」回填关键帧"
+          style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}>
+          <option value="cloud">云端模型</option>
+          <option value="comfy_image">ComfyUI 图像</option>
+          <option value="comfy_workflow_img">ComfyUI 模板</option>
+        </select>
+        {imgEngine === "comfy_workflow_img" && (
+          <select className="nodrag" value={imgTplId ?? ""} onChange={(e) => { const v = Number(e.target.value) || null; setImgTplId(v); if (v) localStorage.setItem("shotlist:imgTplId", String(v)); }}
+            style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: imgTplId ? "var(--c-t1)" : "var(--c-t4)", outline: "none", maxWidth: 160 }}>
+            <option value="">{tplAnalysisQuery.isFetching ? "加载模板…" : imgTplOptions.length ? "选择出图模板" : "无已分析的出图模板"}</option>
+            {imgTplOptions.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        )}
         <button onClick={() => setSel(new Set(rows.map((r) => r.id)))} className="nodrag" style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>全选</button>
         <button onClick={() => setSel(new Set(rows.filter((r) => !r.payload.imageUrl && !r.hasRefine).map((r) => r.id)))} className="nodrag" style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>仅无图</button>
         <button onClick={() => setSel(new Set())} className="nodrag" style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>清空</button>
+        {imgComfyMode && (
+          <button onClick={adoptComfyImages} className="nodrag"
+            title="把勾选镜下游 ComfyUI 工位已生成的图采用为关键帧（只填空：已有关键帧的镜不覆盖）"
+            style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, fontWeight: 700, background: `${ACCENT}10`, border: `1px solid ${ACCENT}40`, color: ACCENT, cursor: "pointer" }}>
+            批量采用出图
+          </button>
+        )}
         <button
           onClick={() => void runBatch()}
           disabled={batchBusy || sel.size === 0}
-          title="为勾选的分镜批量生成关键帧图像（每镜各自注入角色/场景控制；提交前显示费用总预估）"
+          title={imgComfyMode ? "为勾选的分镜创建并填好 ComfyUI 出图工位（本地免费；点工具栏「运行」批量执行）" : "为勾选的分镜批量生成关键帧图像（每镜各自注入角色/场景控制；提交前显示费用总预估）"}
           className="nodrag ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md"
           style={{ fontSize: 10, fontWeight: 700, background: batchBusy || sel.size === 0 ? "var(--c-surface)" : `${ACCENT}16`, border: `1px solid ${batchBusy || sel.size === 0 ? "var(--c-bd2)" : `${ACCENT}50`}`, color: batchBusy || sel.size === 0 ? "var(--c-t4)" : ACCENT, cursor: batchBusy || sel.size === 0 ? "not-allowed" : "pointer" }}
         >
           {batchBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <ImagePlus style={{ width: 11, height: 11 }} />}
-          批量生成分镜图（{sel.size}）
+          {imgComfyMode ? `批量建出图工位（${sel.size}）` : `批量生成分镜图（${sel.size}）`}
         </button>
       </div>
 
