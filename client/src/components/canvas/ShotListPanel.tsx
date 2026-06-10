@@ -3,7 +3,8 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic } from "lucide-react";
-import type { StoryboardNodeData, ScriptNodeData } from "../../../../shared/types";
+import type { StoryboardNodeData, ScriptNodeData, CharacterNodeData } from "../../../../shared/types";
+import { parseDialogueLines, extractRoles, shouldCast, planCastSegments, type CastMap, type CastVoice } from "../../lib/dialogueCasting";
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
 import { propagateRefImage } from "../../lib/refImagePropagation";
 import { PROVIDER_PARAMS, withParamDefaults, PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
@@ -50,6 +51,13 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     return JSON.stringify({
       src: srcScript ?? null,
       target: srcScript ? (s.nodes.find((n) => n.id === srcScript)?.data.payload as ScriptNodeData | undefined)?.totalDuration ?? null : null,
+      // 角色音色 casting：脚本上的分配表 + 同名角色节点的声音档案（作默认值）
+      cast: srcScript ? (s.nodes.find((n) => n.id === srcScript)?.data.payload as ScriptNodeData | undefined)?.castVoices ?? null : null,
+      chars: s.nodes
+        .filter((n) => n.data.nodeType === "character")
+        .map((n) => n.data.payload as CharacterNodeData)
+        .filter((p) => p.name && p.voiceModel && p.voiceId)
+        .map((p) => [p.name!, p.voiceModel!, p.voiceId!] as [string, string, string]),
       rows: members.map((n) => [
         n.id, n.data.title, Math.round(n.position.x / 50), JSON.stringify(n.data.payload), // x 量化 50px：拖动不再每帧重算面板
         // 精修工位标记：本镜出边指向 image_gen（批量生图默认跳过，避免覆盖精修流程）
@@ -78,15 +86,17 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       ]),
     });
   });
-  const { rows, targetDuration, scriptId } = useMemo(() => {
-    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; rows: [string, string, number, string, number, string, string][] };
+  const { rows, targetDuration, scriptId, scriptCast, charDefaults } = useMemo(() => {
+    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; cast: CastMap | null; chars: [string, string, string][]; rows: [string, string, number, string, number, string, string][] };
     const parsed: (ShotRow & { x: number; hasRefine: boolean; videoStatus: string; audioStatus: string })[] = g.rows.map(([rid, title, x, pj, refine, vstat, astat], i) => {
       const payload = JSON.parse(pj) as StoryboardNodeData;
       const n = Number(payload.sceneNumber);
       return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1, videoStatus: vstat, audioStatus: astat };
     });
     parsed.sort((a, b) => a.num - b.num || a.x - b.x);
-    return { rows: parsed, targetDuration: g.target, scriptId: g.src };
+    const charDefaults: CastMap = {};
+    for (const [name, model, voice] of g.chars) charDefaults[name] = { model, voice };
+    return { rows: parsed, targetDuration: g.target, scriptId: g.src, scriptCast: g.cast, charDefaults };
   }, [groupKey]);
 
   const totalDuration = rows.reduce((s, r) => s + (Number(r.payload.duration) || 0), 0);
@@ -258,6 +268,37 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
   const [dubBusy, setDubBusy] = useState(false);
   const [dubState, setDubState] = useState<Record<string, "running" | "done" | "error">>({});
 
+  // ── 角色音色 casting ─────────────────────────────────────────────────────────
+  // 角色名从全组对白解析；分配表存脚本节点 payload（随画布持久化，同组共享），
+  // 无脚本时落 localStorage（按项目隔离）；分配同时回写同名角色节点的声音档案。
+  const [showCast, setShowCast] = useState(false);
+  const [localCast, setLocalCast] = useState<CastMap>(() => {
+    try { return JSON.parse(localStorage.getItem(`shotlist:cast:${useCanvasStore.getState().projectId}`) || "{}") as CastMap; } catch { return {}; }
+  });
+  const castRoles = useMemo(() => extractRoles(rows.map((r) => r.payload.dialogue)), [rows]);
+  // 生效顺序：角色节点声音档案（默认）< 本面板分配（脚本 payload / localStorage）
+  const effCast: CastMap = useMemo(() => ({ ...charDefaults, ...(scriptId ? scriptCast ?? {} : localCast) }), [charDefaults, scriptCast, scriptId, localCast]);
+  const setRoleVoice = (role: string, cv: CastVoice | null) => {
+    const store = useCanvasStore.getState();
+    if (scriptId) {
+      const sp = store.nodes.find((n) => n.id === scriptId)?.data.payload as ScriptNodeData | undefined;
+      const next = { ...(sp?.castVoices ?? {}) };
+      if (cv) next[role] = cv; else delete next[role];
+      updateNodeData(scriptId, { castVoices: next });
+    } else {
+      setLocalCast((prev) => {
+        const next = { ...prev };
+        if (cv) next[role] = cv; else delete next[role];
+        localStorage.setItem(`shotlist:cast:${store.projectId}`, JSON.stringify(next));
+        return next;
+      });
+    }
+    if (cv) {
+      const ch = store.nodes.find((n) => n.data.nodeType === "character" && (n.data.payload as CharacterNodeData).name === role);
+      if (ch) updateNodeData(ch.id, { voiceModel: cv.model, voiceId: cv.voice });
+    }
+  };
+
   const submitDubOne = async (r: ShotRow): Promise<"done" | "error"> => {
     const store = useCanvasStore.getState();
     const own = store.nodes.find((n) => n.id === r.id);
@@ -272,6 +313,36 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       const an = existing ?? store.addNode("audio", { x: own.position.x, y: own.position.y + 980 });
       store.updateNodeData(an.id, { audioCategory: "dubbing", ttsText: text, ttsModel: dubModel, ttsVoice: effDubVoice });
       if (!existing) store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
+
+      // 角色音色 casting：对白含已分配音色的角色 → 逐段 TTS（相邻同音色合并）后
+      // 服务端拼接为镜级单条配音；否则维持原「整段单音色」路径，行为零变化。
+      const segs = parseDialogueLines(text);
+      if (shouldCast(segs, effCast)) {
+        const plan = planCastSegments(segs, effCast, { model: dubModel, voice: effDubVoice ?? "" });
+        const urls: string[] = [];
+        let dur = 0;
+        for (const seg of plan) {
+          // 音色按段所属模型校验（角色档案可能来自其他模型）——非法则回退该模型首音色。
+          const vs = voicesForModel(seg.model);
+          const voice = vs.some((v) => v.value === seg.voice) ? seg.voice : vs[0]?.value;
+          const sr = await utils.client.audioGen.generateDubbing.mutate({
+            model: seg.model as never, text: seg.text, voice, projectId,
+            estimatedCost: costEstimateLabel(estimateTtsCost(seg.model, seg.text.length)) || undefined,
+            ...(seg.model.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+          });
+          urls.push(sr.url);
+          dur += sr.duration ?? 0;
+        }
+        let url = urls[0];
+        if (urls.length > 1) {
+          const cr = await utils.client.audioGen.concatSegments.mutate({ urls, projectId });
+          url = cr.url; dur = cr.duration;
+        }
+        const roleCount = new Set(segs.map((s) => s.role).filter((x): x is string => x != null && effCast[x] != null)).size;
+        useCanvasStore.getState().updateNodeData(an.id, { url, duration: dur, name: `配音 · 镜${r.payload.sceneNumber ?? "?"}（${roleCount} 角色）` });
+        return "done";
+      }
+
       const res = await utils.client.audioGen.generateDubbing.mutate({
         model: dubModel as never, text, voice: effDubVoice, projectId,
         estimatedCost: costEstimateLabel(estimateTtsCost(dubModel, text.length)) || undefined,
@@ -294,7 +365,9 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const totalChars = ready.reduce((s0, r) => s0 + (r.payload.dialogue?.trim().length ?? 0), 0);
     const est = estimateTtsCost(dubModel, totalChars);
     const sumText = est ? costEstimateLabel(est) : "按量计费";
-    if (!window.confirm(`将为 ${ready.length} 个分镜逐镜生成配音（共 ${totalChars} 字，预估 ${sumText}）${skippedNoDlg ? `；${skippedNoDlg} 个无对白跳过` : ""}。继续？`)) return;
+    const castShots = ready.filter((r) => shouldCast(parseDialogueLines(r.payload.dialogue!.trim()), effCast)).length;
+    const castNote = castShots ? `；其中 ${castShots} 镜按「角色音色」分角色配音` : "";
+    if (!window.confirm(`将为 ${ready.length} 个分镜逐镜生成配音（共 ${totalChars} 字，预估 ${sumText}）${castNote}${skippedNoDlg ? `；${skippedNoDlg} 个无对白跳过` : ""}。继续？`)) return;
     setDubBusy(true);
     const queue = [...ready];
     const worker = async () => {
@@ -470,6 +543,13 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
           style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", maxWidth: 110 }}>
           {dubVoices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
         </select>
+        {castRoles.length > 0 && (
+          <button onClick={() => setShowCast((v) => !v)} className="nodrag"
+            title="为对白中的角色分配各自的配音模型与音色（「角色名：台词」逐段套用，旁白用上面的全局音色）"
+            style={{ fontSize: 9.5, padding: "3px 7px", borderRadius: 6, fontWeight: 700, background: showCast ? "oklch(0.70 0.18 340 / 0.14)" : "var(--c-surface)", border: `1px solid ${showCast ? "oklch(0.70 0.18 340 / 0.5)" : "var(--c-bd2)"}`, color: showCast ? "oklch(0.70 0.18 340)" : "var(--c-t3)", cursor: "pointer" }}>
+            角色音色（{castRoles.filter((ro) => effCast[ro]).length}/{castRoles.length}）
+          </button>
+        )}
         <button
           onClick={() => void runDubBatch()}
           disabled={dubBusy || sel.size === 0}
@@ -481,6 +561,43 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
           批量生成配音
         </button>
       </div>
+
+      {/* 角色音色 casting 分配表 */}
+      {showCast && castRoles.length > 0 && (
+        <div style={{ padding: "6px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto", background: "oklch(0.70 0.18 340 / 0.04)" }}>
+          {castRoles.map((role) => {
+            const cv = effCast[role];
+            const voices = cv ? voicesForModel(cv.model) : [];
+            return (
+              <div key={role} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span title={role} style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t1)", width: 76, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>{role}</span>
+                <select className="nodrag" value={cv?.model ?? ""}
+                  onChange={(e) => {
+                    const m = e.target.value;
+                    if (!m) { setRoleVoice(role, null); return; }
+                    const vs = voicesForModel(m);
+                    const keep = cv && vs.some((v) => v.value === cv.voice) ? cv.voice : vs[0]?.value ?? "";
+                    setRoleVoice(role, { model: m, voice: keep });
+                  }}
+                  style={{ fontSize: 9.5, padding: "2px 5px", borderRadius: 5, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: cv ? "var(--c-t1)" : "var(--c-t4)", outline: "none", maxWidth: 150 }}>
+                  <option value="">（用全局音色）</option>
+                  {DUBBING_MODELS.filter((m) => m.value !== "voxcpm-local").map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+                {cv && (
+                  <select className="nodrag" value={voices.some((v) => v.value === cv.voice) ? cv.voice : voices[0]?.value ?? ""}
+                    onChange={(e) => setRoleVoice(role, { model: cv.model, voice: e.target.value })}
+                    style={{ fontSize: 9.5, padding: "2px 5px", borderRadius: 5, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", maxWidth: 110 }}>
+                    {voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                  </select>
+                )}
+              </div>
+            );
+          })}
+          <p style={{ fontSize: 8.5, color: "var(--c-t4)", margin: 0, lineHeight: 1.5 }}>
+            对白按行解析「角色名：台词」；已分配的角色逐段各自配音并自动拼接为镜级单条音频（不念角色名），未分配的角色与旁白用上方全局音色。分配会回写同名「角色」节点的声音档案，便于复用。
+          </p>
+        </div>
+      )}
 
       {/* 表格 */}
       <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>

@@ -705,6 +705,43 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
   }
 }
 
+// ── Audio segment concat（多角色配音 casting：分段 TTS 后拼接为镜级单条配音）────
+/** 把多段音频按顺序拼接为一条 mp3。各段先统一重采样 44.1kHz/单声道再 concat，
+ *  规避不同 TTS 提供商采样率/声道不一致导致的 concat 失败或变调。 */
+export async function concatAudioSegments(urls: string[]): Promise<{ url: string; duration: number }> {
+  const inputPaths: string[] = [];
+  const outPath = path.join(os.tmpdir(), `ffmpeg-acat-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
+  try {
+    for (const u of urls) {
+      inputPaths.push(await downloadToTemp(u, "mp3"));
+    }
+    const n = inputPaths.length;
+    const args: string[] = [];
+    inputPaths.forEach((p) => args.push("-i", p));
+    const pre = inputPaths.map((_, i) => `[${i}:a]aresample=44100,aformat=channel_layouts=mono[a${i}]`).join(";");
+    const cat = inputPaths.map((_, i) => `[a${i}]`).join("") + `concat=n=${n}:v=0:a=1[aout]`;
+    args.push("-filter_complex", `${pre};${cat}`, "-map", "[aout]", "-c:a", "libmp3lame", "-q:a", "2", "-y", outPath);
+    try {
+      await execFileAsync("ffmpeg", args);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      throw new Error(`FFmpeg audio concat failed:\n${e.stderr || e.message || String(err)}`);
+    }
+    let duration = 0;
+    try {
+      const r = await execFileAsync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", outPath]);
+      duration = parseFloat(r.stdout.trim()) || 0;
+    } catch { /* duration best-effort */ }
+    const buf = await fs.readFile(outPath);
+    await assertObjectStorageWritable();
+    const { url } = await storagePut(`generated/dub-cast-${Date.now()}.mp3`, buf, "audio/mpeg");
+    return { url, duration };
+  } finally {
+    await Promise.all(inputPaths.map((p) => fs.unlink(p).catch(() => undefined)));
+    await fs.unlink(outPath).catch(() => undefined);
+  }
+}
+
 // ── Subtitles ─────────────────────────────────────────────────────────────────
 
 export interface SubtitleEntry {

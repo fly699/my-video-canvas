@@ -57,7 +57,7 @@ import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio"
 import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame, concatAudioSegments } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -2514,6 +2514,23 @@ export const audioGenRouter = router({
         } });
         throw err;
       });
+    }),
+
+  // 多角色配音 casting：客户端按「角色名：台词」逐段不同音色 TTS 后，把同一镜的
+  // 多段音频拼接为一条镜级配音（本地 ffmpeg，不消耗 AI 积分，故不做白名单拦截）。
+  concatSegments: protectedProcedure
+    .input(
+      z.object({
+        urls: z.array(mediaUrlSchema).min(2).max(20),
+        projectId: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      for (const u of input.urls) guardUrl(u);
+      const result = await concatAudioSegments(input.urls);
+      await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "ffmpeg", model: null, url: result.url, name: "配音拼接（多角色）" });
+      return result;
     }),
 });
 

@@ -173,6 +173,9 @@ export interface ScriptNodeData {
   episodeOutline?: ScriptEpisode[];
   /** 最近一次专业审查报告（持久化：留存 / 修复后对比 / 导出便签）。 */
   coverage?: ScriptCoverageReport;
+  /** 角色音色 casting 表：角色名 → 配音模型+音色（镜头表批量配音按「角色名：台词」
+   *  逐段套用；存在脚本节点上随画布持久化，同组分镜共享）。 */
+  castVoices?: Record<string, { model: string; voice: string }>;
   // AI panel params — persisted so settings survive remount / project reload
   aiGenre?: string;
   aiStyle?: string;
@@ -581,6 +584,10 @@ export interface CharacterNodeData {
    * Reference image(s) drive IPAdapter face-lock; an optional character LoRA is
    * added to the lora stack. All optional; absence = current text-only behavior.
    */
+  /** 角色声音档案（casting）：镜头表「角色音色」分配后回写到同名角色节点，
+   *  跨项目复用该角色时作为默认音色。 */
+  voiceModel?: string;        // 配音模型 id（如 elevenlabs-v3-tts）
+  voiceId?: string;           // 该模型下的音色 id
   loraName?: string;          // character-specific LoRA filename on the ComfyUI server
   loraStrength?: number;      // LoRA model strength (default 0.8)
   ipadapterWeight?: number;   // IPAdapter face-lock strength 0–2 (default 0.8)
