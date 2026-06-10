@@ -56,6 +56,13 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
+      // 全局透传用户的 kie 临时 key（工具栏填写的，存 localStorage）。这样所有用到 kie 的
+      // 后端入口（不只 AI 对话）都能用「临时 > 分配 > 公用」的优先级，无需每个接口单独传。
+      headers() {
+        let t = "";
+        try { t = localStorage.getItem("kie:tempKey") || ""; } catch { /* SSR/无 localStorage */ }
+        return t ? { "x-kie-temp-key": t } : {};
+      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePersistentState } from "./usePersistentState";
 import { useCanvasStore } from "./useCanvasStore";
-import { effectiveCharacterRefImages, effectiveSceneRefImages } from "../lib/characterConditioning";
-import { listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
+import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacterAudioRefs, effectiveCharacterVideoRefs } from "../lib/characterConditioning";
+import { listUpstreamAudioSources, listUpstreamVideoSources, listUpstreamImageSources, mentionedMediaSources } from "../lib/comfyWorkflowParams";
 import type { StripItem } from "../components/canvas/ReferenceImageStrip";
 
 /**
@@ -13,10 +13,15 @@ import type { StripItem } from "../components/canvas/ReferenceImageStrip";
 export function useCharSceneItems(id: string, basePrompt: string): StripItem[] {
   const charKey = useCanvasStore((s) => effectiveCharacterRefImages(id, basePrompt, s.edges, s.nodes).join("\n"));
   const sceneKey = useCanvasStore((s) => effectiveSceneRefImages(id, basePrompt, s.edges, s.nodes).join("\n"));
-  return useMemo(() => [
-    ...charKey.split("\n").filter(Boolean).map((u) => ({ id: "char:" + u, url: u, label: "角色", removable: false })),
-    ...sceneKey.split("\n").filter(Boolean).map((u) => ({ id: "scene:" + u, url: u, label: "场景", removable: false })),
-  ], [charKey, sceneKey]);
+  // @图像名 直接引用的独立图像节点（标注来源名），与角色/场景图并列展示为参与项。
+  const mentionKey = useCanvasStore((s) => JSON.stringify(mentionedMediaSources(basePrompt, "image", s.nodes).map((m) => [m.url, m.name])));
+  return useMemo(() => {
+    const seen = new Set<string>();
+    const chars = charKey.split("\n").filter(Boolean).map((u) => { seen.add(u); return { id: "char:" + u, url: u, label: "角色", removable: false }; });
+    const scenes = sceneKey.split("\n").filter(Boolean).filter((u) => !seen.has(u)).map((u) => { seen.add(u); return { id: "scene:" + u, url: u, label: "场景", removable: false }; });
+    const mentions = (JSON.parse(mentionKey) as [string, string][]).filter(([u]) => !seen.has(u)).map(([u, nm]) => ({ id: "atimg:" + u, url: u, name: nm || undefined, label: "@图像", removable: false }));
+    return [...chars, ...scenes, ...mentions];
+  }, [charKey, sceneKey, mentionKey]);
 }
 
 /**
@@ -24,16 +29,58 @@ export function useCharSceneItems(id: string, basePrompt: string): StripItem[] {
  * 作为吸附窗里的「音频」波形项（放在图片项之后/末尾）。任何接入吸附窗的音频相关节点
  * 都可调用并把结果拼到 stripImages 末尾。
  */
-export function useAudioStripItems(id: string): StripItem[] {
+export function useAudioStripItems(id: string, basePrompt = ""): StripItem[] {
   const key = useCanvasStore((s) =>
     JSON.stringify(listUpstreamAudioSources(id, s.edges, s.nodes).map((a) => [a.id, a.url, a.title])),
   );
+  // 角色携带的音频参考（连线 + @提及），标注来源「角色音频」，与上游音频节点并列展示。
+  const charKey = useCanvasStore((s) => effectiveCharacterAudioRefs(id, basePrompt, s.edges, s.nodes).join("\n"));
+  // @音频名 直接引用的独立音频节点（标注来源名）。
+  const mentionKey = useCanvasStore((s) => JSON.stringify(mentionedMediaSources(basePrompt, "audio", s.nodes).map((m) => [m.url, m.name])));
   return useMemo(() => {
     const arr = JSON.parse(key) as [string, string, string][];
-    return arr.map(([sid, url, title]) => ({
+    const upstream = arr.map(([sid, url, title]) => ({
       id: "audio:" + sid, url, name: title || undefined, label: "音频", kind: "audio" as const, removable: false,
     }));
-  }, [key]);
+    const seen = new Set(upstream.map((a) => a.url));
+    const charAudios = charKey.split("\n").filter(Boolean).filter((u) => !seen.has(u)).map((u) => {
+      seen.add(u);
+      return { id: "charaudio:" + u, url: u, label: "角色音频", kind: "audio" as const, removable: false };
+    });
+    const mentions = (JSON.parse(mentionKey) as [string, string][]).filter(([u]) => !seen.has(u)).map(([u, nm]) => ({
+      id: "ataudio:" + u, url: u, name: nm || undefined, label: "@音频", kind: "audio" as const, removable: false,
+    }));
+    return [...upstream, ...charAudios, ...mentions];
+  }, [key, charKey, mentionKey]);
+}
+
+/**
+ * 「参与本节点工作」的视频元素：上游视频来源（video_task / comfyui_video / asset 视频）+
+ * 角色携带的视频参考（@视频 / 连线）。每项注明来源（「视频」/「角色视频」），只读不可删，
+ * 作为吸附窗里的「视频」磁贴。满足「不只角色自带，所有本节点参与工作的视频都要显示并注明来源」。
+ */
+export function useVideoStripItems(id: string, basePrompt = ""): StripItem[] {
+  const key = useCanvasStore((s) =>
+    JSON.stringify(listUpstreamVideoSources(id, s.edges, s.nodes).map((v) => [v.id, v.url, v.title])),
+  );
+  const charKey = useCanvasStore((s) => effectiveCharacterVideoRefs(id, basePrompt, s.edges, s.nodes).join("\n"));
+  // @视频名 直接引用的独立视频节点（标注来源名）。
+  const mentionKey = useCanvasStore((s) => JSON.stringify(mentionedMediaSources(basePrompt, "video", s.nodes).map((m) => [m.url, m.name])));
+  return useMemo(() => {
+    const arr = JSON.parse(key) as [string, string, string][];
+    const upstream = arr.map(([sid, url, title]) => ({
+      id: "video:" + sid, url, name: title || undefined, label: "视频", kind: "video" as const, removable: false,
+    }));
+    const seen = new Set(upstream.map((v) => v.url));
+    const charVideos = charKey.split("\n").filter(Boolean).filter((u) => !seen.has(u)).map((u) => {
+      seen.add(u);
+      return { id: "charvideo:" + u, url: u, label: "角色视频", kind: "video" as const, removable: false };
+    });
+    const mentions = (JSON.parse(mentionKey) as [string, string][]).filter(([u]) => !seen.has(u)).map(([u, nm]) => ({
+      id: "atvideo:" + u, url: u, name: nm || undefined, label: "@视频", kind: "video" as const, removable: false,
+    }));
+    return [...upstream, ...charVideos, ...mentions];
+  }, [key, charKey, mentionKey]);
 }
 
 /**

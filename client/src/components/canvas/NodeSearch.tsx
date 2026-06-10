@@ -46,11 +46,22 @@ export function NodeSearch({ onClose }: Props) {
 
   const focusNode = useCallback(
     (node: CanvasNode) => {
-      reactFlow.fitView({
-        nodes: [{ id: node.id }],
-        padding: 0.5,
-        duration: 400,
-      });
+      // 1) 选中目标节点（高亮，其余取消选中）。
+      const { nodes: cur, setNodes } = useCanvasStore.getState();
+      setNodes(cur.map((n) => ({ ...n, selected: n.id === node.id })));
+      // 2) 把视口居中到该节点——用 setCenter（按节点实际坐标，比 fitView 单节点更可靠，
+      //    即便节点在屏幕外/未测量也能定位）。
+      const rfNode = reactFlow.getNode(node.id);
+      if (rfNode) {
+        const w = rfNode.measured?.width ?? rfNode.width ?? 240;
+        const h = rfNode.measured?.height ?? rfNode.height ?? 120;
+        reactFlow.setCenter(rfNode.position.x + w / 2, rfNode.position.y + h / 2, {
+          zoom: Math.min(Math.max(reactFlow.getZoom(), 0.85), 1.5),
+          duration: 500,
+        });
+      } else {
+        reactFlow.fitView({ nodes: [{ id: node.id }], padding: 0.5, duration: 400 });
+      }
       onClose();
     },
     [reactFlow, onClose]

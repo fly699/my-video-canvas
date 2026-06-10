@@ -9,6 +9,7 @@ import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { effectiveCharacters, effectiveCharacterRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
+import { mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -85,7 +86,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   // 「最终提示词」= 角色注入后的正向词（payload.prompt 已含上游自动填充结果）。
   const finalPromptDisplay = useCanvasStore((s) => {
     const base = payload.prompt ?? "";
-    return mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), effectiveCharacters(id, base, s.edges, s.nodes), 2000);
+    return mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes), effectiveCharacters(id, base, s.edges, s.nodes), 2000);
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
@@ -226,8 +227,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     // connected PERSON character's reference image (scene-kind is filtered out by
     // connectedCharacterRefImages) — consistent with image_gen / video_task folding.
     const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
+    // 身份/起始图回退：角色身份图优先，其次 @图像名 引用的独立图像节点。
     const charRef = needsRef && !payload.referenceImageUrl
-      ? effectiveCharacterRefImages(id, payload.prompt, gedges, gnodes)[0]
+      ? (effectiveCharacterRefImages(id, payload.prompt, gedges, gnodes)[0] ?? mentionedMediaUrls(payload.prompt, "image", gnodes)[0])
       : undefined;
     const effectiveRefUrl = payload.referenceImageUrl || charRef;
     if (needsRef && !effectiveRefUrl) {
@@ -241,7 +243,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     // Inject connected characters' profile text into the prompt (visual refs/LoRA
     // are filled separately). Not persisted.
     // Cap to the server's prompt max(2000); preserves the base prompt, trims injection.
-    const finalPrompt = mergeCharactersIntoPrompt(stripCharacterMentions(payload.prompt, gnodes), effectiveCharacters(id, payload.prompt, gedges, gnodes), 2000);
+    const finalPrompt = mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.prompt, gnodes), gnodes), effectiveCharacters(id, payload.prompt, gedges, gnodes), 2000);
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,

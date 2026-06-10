@@ -1,10 +1,13 @@
 import { memo, useMemo, useState } from "react";
+import { useReactFlow } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
+import { buildShotSubtitles } from "@/lib/shotSubtitles";
 import { toast } from "sonner";
 import { mediaFetchUrl } from "@/lib/download";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -79,14 +82,48 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   // selected or pinned (mirrors NodeSelectedContext / the other nodes' behavior).
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
 
+  // 内嵌字幕烧录（成片字幕一步到位）：合并产物 + 镜头表对白 + 回传 segStarts → 烧字幕。
+  const burnSubMutation = trpc.subtitle.burnIn.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { outputUrl: result.url, status: "done", errorMessage: undefined });
+      toast.success("成片已内嵌字幕");
+    },
+    onError: (err) => {
+      // 字幕烧录失败不丢成片：保留无字幕成片为输出，仅提示。
+      updateNodeData(id, { status: "done", errorMessage: undefined });
+      toast.error("字幕烧录失败（已保留无字幕成片）：" + err.message);
+    },
+  });
+
   const mergeMutation = trpc.merge.mergeVideos.useMutation({
     onSuccess: (result) => {
       updateNodeData(id, {
         outputUrl: result.url,
         outputDuration: result.duration,
+        // 各段成片精确起点（仅装配/xfade 路径返回）：字幕「从镜头表生成」的时间轴。
+        // 普通合并返回 undefined → 清掉旧值，避免陈旧起点误导字幕对位。
+        segStarts: result.segStarts,
         status: "done",
         errorMessage: undefined,
       });
+      // 装配 + 开了内嵌字幕 + 有对白与精确起点 → 续烧字幕（保持 processing 不露无字幕中间版）。
+      if (payload.burnShotSubtitles && payload.segDialogues?.some(Boolean) && result.segStarts?.length) {
+        const entries = buildShotSubtitles({
+          segStarts: result.segStarts,
+          segDialogues: payload.segDialogues,
+          totalDuration: result.duration,
+          voiceDurations: payload.segVoiceDurations ?? undefined,
+        });
+        if (entries.length) {
+          updateNodeData(id, { status: "processing" });
+          burnSubMutation.mutate({
+            videoUrl: result.url, entries,
+            fontSize: payload.subFontSize,
+            projectId: data.projectId, nodeId: id,
+          });
+          return;
+        }
+      }
       toast.success(`合并完成，总时长 ${result.duration.toFixed(1)}s`);
     },
     onError: (err) => {
@@ -190,6 +227,33 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   })();
   const effectiveBgMusicUrl = payload.bgMusicUrl || detectedBgMusicUrl;
 
+  /** 按镜头表装配：上游视频→回溯各自分镜→按镜号排序，产出 段顺序+逐切点转场+逐段配音。
+   *  仅显式点击时写入（segTransitions/voiceUrls 持久化）；普通合并路径不受影响。 */
+  const handleAssemble = () => {
+    const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
+    const plan = assembleFromStoryboards(id, allNodes, allEdges);
+    if ("error" in plan) { toast.error(plan.error); return; }
+    update(assembledPlanToMergePatch(plan));
+    const voiced = plan.shots.filter((x) => x.hasVoice).length;
+    const sfxed = plan.shots.filter((x) => x.hasSfx).length;
+    toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐切点转场${voiced ? ` · ${voiced} 条配音对位` : ""}${sfxed ? ` · ${sfxed} 条音效对位` : ""}）`, { duration: 5000 });
+  };
+
+  const reactFlow = useReactFlow();
+  /** 按镜定位：选中并居中该镜的视频节点（按镜重生成入口——在该节点重提出片后，
+   *  回来重新点「按镜头表装配」即可替换该段，aligned 守卫天然兜住中间态）。 */
+  const focusShotNode = (nodeId: string) => {
+    const { nodes: cur, setNodes } = useCanvasStore.getState();
+    if (!cur.some((n) => n.id === nodeId)) { toast.error("该镜的视频节点已被删除，请重新装配"); return; }
+    setNodes(cur.map((n) => ({ ...n, selected: n.id === nodeId })));
+    const rfNode = reactFlow.getNode(nodeId);
+    if (rfNode) {
+      const w = rfNode.measured?.width ?? rfNode.width ?? 240;
+      const h = rfNode.measured?.height ?? rfNode.height ?? 120;
+      reactFlow.setCenter(rfNode.position.x + w / 2, rfNode.position.y + h / 2, { zoom: Math.min(Math.max(reactFlow.getZoom(), 0.85), 1.5), duration: 500 });
+    }
+  };
+
   const handleMerge = () => {
     if (mergeMutation.isPending || payload.status === "processing") return;
     // Use the effective ordered list (manual order + appended new connections), so a
@@ -208,12 +272,21 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     }
 
     update({ status: "processing", errorMessage: undefined });
+    // 装配产物仅在与当前段顺序完全对齐时随单发送（用户手动改过顺序/输入则失配丢弃，防错位）。
+    const aligned = !!payload.segTransitions
+      && payload.inputVideoUrls?.length === urls.length
+      && payload.inputVideoUrls.every((u, i) => u === urls[i]);
     mergeMutation.mutate({
       inputUrls: urls,
       projectId: data.projectId,
       nodeId: id,
       transition: payload.transition,
       transitionDuration: payload.transition !== "none" ? payload.transitionDuration : undefined,
+      ...(aligned ? {
+        transitions: payload.segTransitions?.slice(0, urls.length - 1),
+        voiceUrls: payload.voiceUrls?.slice(0, urls.length),
+        sfxUrls: payload.sfxUrls?.slice(0, urls.length),
+      } : {}),
       bgMusicUrl: effectiveBgMusicUrl || undefined,
       bgMusicVolume: payload.bgMusicVolume,
     });
@@ -223,7 +296,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     update({ outputUrl: undefined, outputDuration: undefined, status: "idle", errorMessage: undefined });
   };
 
-  const isProcessing = payload.status === "processing" || mergeMutation.isPending;
+  const isProcessing = payload.status === "processing" || mergeMutation.isPending || burnSubMutation.isPending;
   const isDone = payload.status === "done";
   const isFailed = payload.status === "failed";
 
@@ -454,6 +527,49 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
               />
             </div>
           </div>
+        )}
+
+        {/* 按镜头表装配（装配端）：镜号排序 + 逐切点转场 + 配音对位 */}
+        <button
+          onClick={handleAssemble}
+          disabled={isProcessing}
+          title="从上游视频回溯各自的分镜：按镜号排序段顺序、按分镜转场字段设逐切点转场、把各镜配音对位混入成片"
+          className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+          style={{ background: "oklch(0.65 0.20 160 / 0.10)", border: "1px solid oklch(0.65 0.20 160 / 0.4)", color: "oklch(0.65 0.20 160)", cursor: isProcessing ? "not-allowed" : "pointer" }}
+        >
+          🎬 按镜头表装配（镜号排序 · 逐段转场 · 配音对位）
+        </button>
+        {payload.segTransitions && (
+          <>
+            <p style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
+              已装配 {payload.inputVideoUrls?.length ?? 0} 段 · 逐切点转场 {payload.segTransitions.length} 个 · 配音 {payload.voiceUrls?.filter(Boolean).length ?? 0} 条{(payload.sfxUrls?.filter(Boolean).length ?? 0) > 0 ? ` · 音效 ${payload.sfxUrls!.filter(Boolean).length} 条` : ""}（手动改动顺序后将回退为全局转场）
+            </p>
+            {(payload.sourceShots?.length ?? 0) > 0 && (
+              <div className="nodrag" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {payload.sourceShots!.map((s, i) => (
+                  <button
+                    key={`${s.vid}-${i}`}
+                    onClick={() => focusShotNode(s.vid)}
+                    title="定位该镜的视频节点（对某镜不满意：在节点上重新生成出片后，回来重新点「按镜头表装配」即可替换该段）"
+                    className="nodrag"
+                    style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: "oklch(0.65 0.20 160 / 0.08)", border: "1px solid oklch(0.65 0.20 160 / 0.3)", color: "oklch(0.65 0.20 160)", cursor: "pointer" }}
+                  >
+                    镜{s.num ?? i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* 成片内嵌字幕：仅当装配出对白时可用——合并完成后直接烧进成片 */}
+            {payload.segDialogues?.some(Boolean) && (
+              <label className="nodrag" title="合并完成后，用镜头表对白 + 各段精确起点直接把字幕烧进成片，无需再接字幕节点（确定性对位、零转录）"
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: payload.burnShotSubtitles ? accent : "var(--c-t3)", cursor: "pointer" }}>
+                <input type="checkbox" checked={payload.burnShotSubtitles ?? false}
+                  onChange={(e) => update({ burnShotSubtitles: e.target.checked })}
+                  style={{ accentColor: accent, margin: 0 }} />
+                合并时内嵌字幕（{payload.segDialogues.filter(Boolean).length} 镜有对白）
+              </label>
+            )}
+          </>
         )}
 
         {/* Merge button */}

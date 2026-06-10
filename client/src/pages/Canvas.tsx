@@ -30,7 +30,10 @@ import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { FloatingAssetPanel } from "../components/canvas/FloatingAssetPanel";
 import { CharacterLibraryPanel } from "../components/canvas/CharacterLibraryPanel";
+import { PromptLibraryPanel } from "../components/canvas/PromptLibraryPanel";
 import { setLibraryCharacters } from "../lib/characterConditioning";
+import { setPromptLibrary } from "../lib/promptLibraryStore";
+import { ChangePasswordDialog } from "../components/ChangePasswordDialog";
 import { NodeImageLightbox } from "../components/canvas/NodeImageLightbox";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeTemplateLibrary } from "../components/canvas/NodeTemplateLibrary";
@@ -38,7 +41,7 @@ import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
-import { isConnectionValid } from "../lib/connectionRules";
+import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
 import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
 import { SaveComfyTemplateDialog } from "../components/canvas/SaveComfyTemplateDialog";
@@ -82,6 +85,7 @@ import {
   Scan,
   Play,
   LogOut,
+  KeyRound,
   Undo2,
   Redo2,
   Search,
@@ -101,6 +105,8 @@ import {
   Boxes,
   MoveHorizontal,
   MoveVertical,
+  BookText,
+  GripVertical,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -344,6 +350,7 @@ function validateBool(v: unknown): boolean | null {
 
 function CanvasInner({ projectId }: { projectId: number }) {
   const { user, isAuthenticated, logout } = useAuth();
+  const [showChangePw, setShowChangePw] = useState(false);
   const [, navigate] = useLocation();
   const reactFlow = useReactFlow();
   const isMobile = useIsMobile();
@@ -444,6 +451,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showCharLib, setShowCharLib] = usePersistentState<boolean>(
     "ui:panel:charlib:v1", false, { validate: validateBool, crossTab: false },
   );
+  const [showPromptLib, setShowPromptLib] = usePersistentState<boolean>(
+    "ui:panel:promptlib:v1", false, { validate: validateBool, crossTab: false },
+  );
   const [comfySaveTarget, setComfySaveTarget] = useState<
     { nodeType: ComfyNodeType; payload: Record<string, unknown>; useCloud: boolean; defaultName: string; thumbnail?: string } | null
   >(null);
@@ -516,6 +526,35 @@ function CanvasInner({ projectId }: { projectId: number }) {
     else setShowFilmstrip(false);
   }, [canvasMode, setShowFilmstrip]);
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
+  // 拉线松手落在空白处时，在鼠标位置弹出的「建节点并连线」小菜单（仅列可连接类型）。
+  const [connectMenu, setConnectMenu] = useState<{ x: number; y: number; types: NodeType[]; fromId: string; fromHandleType: "source" | "target"; fromHandle: string | null } | null>(null);
+  const [connectDragType, setConnectDragType] = useState<NodeType | null>(null); // 弹窗内拖拽排序中的项
+  // 建节点菜单的「节点类型自定义排序」——服务端持久化（user_prefs.connectMenuOrder），跨设备保留。
+  const [connectOrder, setConnectOrder] = useState<string[]>([]);
+  const { data: connectOrderData } = trpc.userPrefs.get.useQuery({ key: "connectMenuOrder" }, { enabled: isAuthenticated });
+  useEffect(() => { if (Array.isArray(connectOrderData?.value)) setConnectOrder(connectOrderData.value as string[]); }, [connectOrderData]);
+  const setConnectOrderMut = trpc.userPrefs.set.useMutation();
+  // 按用户排序给候选类型排序：order 里靠前的排前面；未排过的保持其原相对顺序接在后面。
+  const sortByConnectOrder = useCallback((types: NodeType[]): NodeType[] => {
+    if (connectOrder.length === 0) return types;
+    const rank = new Map(connectOrder.map((t, i) => [t, i]));
+    return [...types].sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity));
+  }, [connectOrder]);
+  // 弹窗内拖拽重排：更新弹窗显示顺序 + 合并进全局优先级并持久化。
+  const reorderConnectType = useCallback((from: NodeType, to: NodeType) => {
+    setConnectMenu((m) => {
+      if (!m || from === to) return m;
+      const arr = m.types.slice();
+      const fi = arr.indexOf(from), ti = arr.indexOf(to);
+      if (fi < 0 || ti < 0) return m;
+      arr.splice(fi, 1); arr.splice(ti, 0, from);
+      // 新全局优先级 = 这次重排后的可见顺序 + 其它历史排序项。
+      const merged = [...arr, ...connectOrder.filter((t) => !arr.includes(t as NodeType))];
+      setConnectOrder(merged);
+      setConnectOrderMut.mutate({ key: "connectMenuOrder", value: merged });
+      return { ...m, types: arr };
+    });
+  }, [connectOrder, setConnectOrderMut]);
 
   // Workflow runner
   const { runState, runWorkflow, reset: resetWorkflowRun } = useWorkflowRunner();
@@ -679,6 +718,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
       })),
     );
   }, [libraryChars]);
+
+  // 提示词库 → 灌进客户端镜像，让「/」快捷菜单 / 提示词库面板无需各自订阅 tRPC。
+  const { data: promptLib } = trpc.promptLibrary.list.useQuery(undefined, {
+    enabled: isAuthenticated, refetchOnWindowFocus: true,
+  });
+  useEffect(() => { setPromptLibrary((promptLib ?? []).map((it) => ({ ...it }))); }, [promptLib]);
 
   const utils = trpc.useUtils();
   const createComfyTemplateMut = trpc.comfyTemplates.create.useMutation();
@@ -1271,10 +1316,37 @@ function CanvasInner({ projectId }: { projectId: number }) {
     }
   }, [nodes]);
 
-  const handleConnectEnd = useCallback(() => {
+  const handleConnectEnd = useCallback((event: MouseEvent | TouchEvent, connectionState: { isValid: boolean | null; toNode?: { id: string } | null; fromHandle?: { id?: string | null } | null }) => {
+    const drag = useConnectingStore.getState();
+    const fromType = drag.fromType, fromId = drag.fromId, fromHandleType = drag.fromHandleType;
+    const fromHandle = connectionState.fromHandle?.id ?? null;
     setConnectingFromType(null);
     useConnectingStore.getState().end();
-  }, []);
+    // 仅在「未连到任何节点」（落在空白）时弹建节点菜单；落在节点上＝原行为（onConnect 已处理）。
+    if (isReadOnly || !fromType || !fromId || !fromHandleType || connectionState.toNode) return;
+    // 候选 = 该桩点「现有方向」可连接的节点类型（连接矩阵已排除不可连接者，列表里不会出现）。
+    const types = sortByConnectOrder(fromHandleType === "source" ? getCompatibleTargets(fromType) : getCompatibleSources(fromType));
+    if (types.length === 0) return;
+    const pt = "changedTouches" in event ? event.changedTouches[0] : (event as MouseEvent);
+    setConnectMenu({ x: pt.clientX, y: pt.clientY, types, fromId, fromHandleType, fromHandle });
+  }, [isReadOnly, sortByConnectOrder]);
+
+  // 在菜单里选了一个节点类型：在落点建该节点，并按拖出方向连边。
+  const handlePickConnectType = useCallback((type: NodeType) => {
+    if (!connectMenu) return;
+    const pos = reactFlow.screenToFlowPosition({ x: connectMenu.x, y: connectMenu.y });
+    const newNode = addNode(type, pos);
+    setConnectMenu(null);
+    if (!newNode) return;
+    emitCollabEvent("node:add", newNode);
+    const conn: Connection = connectMenu.fromHandleType === "source"
+      ? { source: connectMenu.fromId, sourceHandle: connectMenu.fromHandle ?? "output", target: newNode.id, targetHandle: "input" }
+      : { source: newNode.id, sourceHandle: "output", target: connectMenu.fromId, targetHandle: connectMenu.fromHandle ?? "input" };
+    const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));
+    onConnect(conn);
+    const newEdge = useCanvasStore.getState().edges.find((e) => !prevIds.has(e.id));
+    if (newEdge) emitCollabEvent("edge:add", newEdge);
+  }, [connectMenu, reactFlow, addNode, onConnect, emitCollabEvent]);
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const handleExport = () => {
@@ -1351,7 +1423,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
-      if (e.key === "Escape") { setContextMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); }
+      if (e.key === "Escape") { setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); }
 
       // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -1454,11 +1526,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
         className="w-screen h-screen flex flex-col items-center justify-center gap-3"
         style={{ background: "var(--c-canvas)" }}
       >
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))" }}
-        >
-          <Film className="w-5 h-5 text-white" />
+        <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center">
+          <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
         </div>
         <div className="flex items-center gap-2 text-sm" style={{ color: "var(--c-t4)" }}>
           <Loader2 className="w-4 h-4 animate-spin" />
@@ -1491,11 +1560,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* Logo + Project name */}
         <div className="flex items-center gap-2 mr-2">
-          <div
-            className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))" }}
-          >
-            <Film className="w-3.5 h-3.5 text-white" />
+          <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center flex-shrink-0">
+            <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
           </div>
 
           {renamingProject ? (
@@ -1724,6 +1790,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">角色库</TooltipContent>
+          </Tooltip>
+
+          {/* Prompt library */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowPromptLib(!showPromptLib)}
+                className="topbar-btn"
+                data-active={showPromptLib ? "true" : undefined}
+                style={showPromptLib ? { background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)" } : undefined}
+              >
+                <BookText className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">提示词库（/ 唤出）</TooltipContent>
           </Tooltip>
 
           {/* Video editor (jump to the timeline editor) */}
@@ -2001,6 +2082,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* Divider */}
           <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
+          {/* 修改密码 */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={() => setShowChangePw(true)} className="topbar-btn">
+                <KeyRound className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">修改密码</TooltipContent>
+          </Tooltip>
+          <ChangePasswordDialog open={showChangePw} onClose={() => setShowChangePw(false)} />
           {/* Logout */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -2884,6 +2975,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* ── Asset panel (floating, draggable, resizable) ── */}
         {showCharLib && <CharacterLibraryPanel onClose={() => setShowCharLib(false)} />}
+        {showPromptLib && <PromptLibraryPanel onClose={() => setShowPromptLib(false)} />}
         {showAssets && (
           <FloatingAssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
         )}
@@ -3129,6 +3221,70 @@ function CanvasInner({ projectId }: { projectId: number }) {
         );
       })()}
 
+      {/* ── 拉线松手建节点小菜单（落在空白处时，仅列可连接类型）── */}
+      {connectMenu && (
+        <>
+          {/* 透明遮罩：点击空白 / Esc 关闭 */}
+          <div
+            onClick={() => setConnectMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setConnectMenu(null); }}
+            style={{ position: "fixed", inset: 0, zIndex: 100050 }}
+          />
+          <div
+            className="nodrag nowheel"
+            style={{
+              position: "fixed", left: Math.min(connectMenu.x, window.innerWidth - 200), top: Math.min(connectMenu.y, window.innerHeight - 320),
+              zIndex: 100051, minWidth: 168, maxHeight: 300, overflowY: "auto",
+              background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 10,
+              boxShadow: "0 12px 36px oklch(0 0 0 / 0.45)", padding: 4,
+            }}
+          >
+            <div style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "4px 8px 5px", display: "flex", alignItems: "center", gap: 4 }}>
+              <span>{connectMenu.fromHandleType === "source" ? "连接到新节点…" : "从新节点连入…"}</span>
+              <span style={{ marginLeft: "auto", opacity: 0.7 }}><GripVertical style={{ width: 9, height: 9, display: "inline" }} /> 拖动排序</span>
+            </div>
+            {connectMenu.types.map((t) => {
+              const cfg = getNodeConfig(t);
+              const Icon = cfg ? (NODE_ICONS[cfg.icon] ?? FileText) : FileText;
+              const color = cfg?.color ?? "var(--c-t3)";
+              return (
+                <div
+                  key={t}
+                  className="nodrag flex items-center gap-1 w-full"
+                  onDragOver={(e) => { if (connectDragType) e.preventDefault(); }}
+                  onDrop={(e) => { e.preventDefault(); if (connectDragType) reorderConnectType(connectDragType, t); setConnectDragType(null); }}
+                  style={{ borderRadius: 7, background: connectDragType === t && connectDragType !== null ? `${color}14` : "transparent" }}
+                >
+                  {/* 拖拽手柄：按住重排（与单击建节点互不干扰） */}
+                  <span
+                    draggable
+                    onDragStart={() => setConnectDragType(t)}
+                    onDragEnd={() => setConnectDragType(null)}
+                    title="拖动排序"
+                    className="flex-shrink-0 flex items-center"
+                    style={{ cursor: "grab", color: "var(--c-t4)", padding: "0 1px" }}
+                  >
+                    <GripVertical style={{ width: 12, height: 12 }} />
+                  </span>
+                  <button
+                    onClick={() => handlePickConnectType(t)}
+                    className="flex items-center gap-2 text-left"
+                    style={{ flex: 1, minWidth: 0, padding: "6px 6px", borderRadius: 7, cursor: "pointer", border: "none", background: "transparent", color: "var(--c-t1)", fontSize: 12 }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = `${color}1f`)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <span className="flex items-center justify-center flex-shrink-0" style={{ width: 20, height: 20, borderRadius: 5, background: `${color}1a` }}>
+                      <Icon style={{ width: 12, height: 12, color }} />
+                    </span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cfg?.label ?? CONNECTION_HINTS[t]?.label ?? t}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       {/* ── Node search ── */}
       {showNodeSearch && (
         <NodeSearch onClose={() => setShowNodeSearch(false)} />
@@ -3263,11 +3419,8 @@ export default function Canvas() {
         className="w-screen h-screen flex flex-col items-center justify-center gap-3"
         style={{ background: "var(--c-canvas)" }}
       >
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))" }}
-        >
-          <Film className="w-5 h-5 text-white" />
+        <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center">
+          <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
         </div>
         <div className="flex items-center gap-2 text-sm" style={{ color: "var(--c-t4)" }}>
           <Loader2 className="w-4 h-4 animate-spin" />

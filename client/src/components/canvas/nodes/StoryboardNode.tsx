@@ -8,10 +8,15 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { estimateImageCost, costEstimateLabel } from "@/lib/costEstimate";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
+import { mentionedMediaUrls, stripMediaMentions, detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
+import { ShotListPanel } from "../ShotListPanel";
+import { buildStoryboardGenInput, applyStoryboardGenResult, SOUL_SIZES_LIST, V2_ASPECT_RATIOS, V2_RESOLUTIONS, KIE_RATIOS } from "../../../lib/storyboardGen";
+import { imageModelRequiresRef } from "@/lib/models";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { PromptDock } from "../PromptDock";
@@ -20,6 +25,7 @@ import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
+import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import type { ImageGenModel } from "../../../../../shared/types";
@@ -116,16 +122,89 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const finalPromptDisplay = useCanvasStore((s) => {
     const base = payload.promptText ?? "";
     const chars = effectiveCharacters(id, base, s.edges, s.nodes);
-    return mergeCharactersIntoPrompt(stripCharacterMentions(base, s.nodes), chars, 2000);
+    return mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes), chars, 2000);
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.promptText ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
   const charSceneItems = useCharSceneItems(id, payload.promptText ?? "");
   const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || charSceneItems.length > 0, hasPrompt: !!finalPromptDisplay.trim() });
-  const refStrip = useSimpleRefStrip(id, payload, "single", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, extraItems: charSceneItems });
+  const refStrip = useSimpleRefStrip(id, payload, "multi", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, extraItems: charSceneItems });
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
   const [showHistory, setShowHistory] = useState(false);
+  // 「镜头表」侧向展开面板（同组分镜序列总览：重排/时长校验/衔接优化）。
+  const [showShotList, setShowShotList] = useState(false);
+  // 智能体引导卡「打开镜头表」跨节点信号：本节点被点名时自动展开面板（token 防重触发；
+  // selector 返回原始 token 值，遵守 zustand「不返回新对象」铁律）。
+  const panelToken = useCanvasStore((s) => (s.panelRequest?.nodeId === id && s.panelRequest?.panel === "shotlist" ? s.panelRequest.token : 0));
+  useEffect(() => {
+    if (panelToken > 0) setShowShotList(true);
+  }, [panelToken]);
+
+  // 上游「提示词」节点 → 只填空自动填充（与 video_task/image_gen 同口径）：
+  // 本镜 promptText / negativePrompt 为空时才填入，绝不覆盖已有内容。
+  // 此前 prompt→storyboard 连接虽被矩阵允许但分镜不消费——连了白连（审计补齐）。
+  // 注意：selector 必须返回原始值（string|undefined）——返回对象会每次新引用，
+  // 触发 zustand getSnapshot 无限循环（与 VideoTaskNode 的既有写法保持一致）。
+  const upPromptPos = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
+  const upPromptNeg = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).negative);
+  useEffect(() => {
+    const patch: Partial<StoryboardNodeData> = {};
+    if (upPromptPos && !payload.promptText?.trim()) patch.promptText = upPromptPos;
+    if (upPromptNeg && !payload.negativePrompt?.trim()) patch.negativePrompt = upPromptNeg;
+    if (Object.keys(patch).length) updateNodeData(id, patch, true);
+  }, [upPromptPos, upPromptNeg, payload.promptText, payload.negativePrompt, id, updateNodeData]);
+
+  // ── 精修工位往返（分镜 ⇄ 图像节点）─────────────────────────────────────────
+  // 上游精修节点（image_gen / comfyui_image）出图后亮「采用此图」候选条；
+  // 仅显式点击才回填关键帧，绝不自动写入（防覆盖已确认关键帧）。
+  const refineCandidate = useCanvasStore((s) => {
+    for (const e of s.edges) {
+      if (e.target !== id) continue;
+      const src = s.nodes.find((n) => n.id === e.source);
+      const t = src?.data.nodeType;
+      if (t !== "image_gen" && t !== "comfyui_image") continue;
+      const u = (src!.data.payload as { imageUrl?: string }).imageUrl;
+      if (u && u !== payload.imageUrl) return u;
+    }
+    return undefined;
+  });
+  const adoptRefineImage = useCallback(() => {
+    if (!refineCandidate) return;
+    const history = [refineCandidate, ...(payload.imageHistory ?? [])].filter((u): u is string => !!u).slice(0, 12);
+    updateNodeData(id, { imageUrl: refineCandidate, imageHistory: history });
+    propagateRefImage(id, refineCandidate);
+    toast.success("已采用精修图作为本镜关键帧");
+  }, [refineCandidate, payload.imageHistory, id, updateNodeData]);
+
+  /** 送精修：建图像生成节点（带走提示词/参考/模型/比例）+ 复制角色连线 + 工位边。 */
+  const handleSendToRefine = useCallback(() => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === id);
+    if (!own) return;
+    // 已有精修工位则不重复建
+    const existing = store.edges.find((e) => e.source === id && ["image_gen"].includes(store.nodes.find((n) => n.id === e.target)?.data.nodeType ?? ""));
+    if (existing) { toast.info("本镜已有精修工位（图像节点），请在其中继续"); return; }
+    const ig = store.addNode("image_gen", { x: own.position.x + 440, y: own.position.y - 40 });
+    store.updateNodeData(ig.id, {
+      prompt: payload.promptText ?? "",
+      negativePrompt: payload.negativePrompt,
+      model: payload.imageModel,
+      aspectRatio: payload.aspectRatio,
+      referenceImageUrl: payload.referenceImageUrl,
+      referenceImages: payload.referenceImages?.map((r) => ({ ...r })),
+    });
+    // 复制角色/场景连线（character→分镜 的源 → character→图像节点），身份控制不丢
+    for (const e of store.edges.filter((e) => e.target === id)) {
+      if (store.nodes.find((n) => n.id === e.source)?.data.nodeType === "character") {
+        store.onConnect({ source: e.source, target: ig.id, sourceHandle: null, targetHandle: null });
+      }
+    }
+    // 工位双链：分镜→图像（送出）+ 图像→分镜（关键帧候选回链）
+    store.onConnect({ source: id, target: ig.id, sourceHandle: null, targetHandle: null });
+    store.onConnect({ source: ig.id, target: id, sourceHandle: null, targetHandle: null });
+    toast.success("已创建精修工位：在图像节点里精修，出图后回本镜点「采用此图」");
+  }, [id, payload]);
   const [batchCount, setBatchCount] = useState<1 | 4>(([1, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
@@ -158,38 +237,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // independently without forcing the user to round-trip via ImageGenNode.
   const isSoul = model === "hf_soul_standard";
   const isV2HF = model === "hf_reve" || model === "hf_seedream_v4" || model === "hf_flux_pro";
-  const SOUL_SIZES_LIST = [
-    "2048x1152", "2048x1536", "2016x1344", "1696x960", "1632x1088",
-    "1152x2048", "1536x2048", "1344x2016", "960x1696", "1088x1632",
-    "1536x1536", "1536x1152", "1152x1536",
-  ] as const;
-  const V2_ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] as const;
-  const V2_RESOLUTIONS = ["1K", "2K", "4K"] as const;
 
   // Sync key shared settings (model / color tone / batch / negative prompt)
   // from this storyboard to ALL other storyboard nodes on the canvas.
   // Helps users keep a consistent style across an entire sequence without
   // hand-editing every scene.
-  const syncToAllStoryboards = useCallback(() => {
-    const { nodes: allNodes, batchUpdateNodeData } = useCanvasStore.getState();
-    const targets = allNodes.filter(
-      (n) => n.data.nodeType === "storyboard" && n.id !== id,
-    );
-    if (targets.length === 0) {
-      toast.info("当前画布只有这一个分镜节点");
-      return;
-    }
-    const patch: Partial<StoryboardNodeData> = {
-      imageModel: payload.imageModel,
-      colorTone: payload.colorTone,
-      batchSize: payload.batchSize,
-      negativePrompt: payload.negativePrompt,
-      cameraMovement: payload.cameraMovement,
-      lens: payload.lens,
-    };
-    batchUpdateNodeData(targets.map((t) => ({ id: t.id, payload: patch })));
-    toast.success(`已同步设置到 ${targets.length} 个分镜节点`);
-  }, [id, payload.imageModel, payload.colorTone, payload.batchSize, payload.negativePrompt, payload.cameraMovement, payload.lens]);
+  const [showSync, setShowSync] = useState(false);
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
@@ -223,22 +276,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
-      // Guard: node may have been deleted while generation was in flight
-      if (!useCanvasStore.getState().nodes.some(n => n.id === id)) return;
-      const newUrls = (result.urls?.length ? result.urls : result.url ? [result.url] : []).filter(Boolean) as string[];
-      if (!newUrls.length) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
-      const imageUrl = newUrls[0];
-      const currentHistory = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data.payload as StoryboardNodeData)?.imageHistory ?? [];
-      const newHistory = [...newUrls, ...currentHistory].filter((u): u is string => !!u).slice(0, 12);
-      updateNodeData(id, {
-        imageUrl, imageHistory: newHistory,
-        imageUrlSource: result.sourceUrl ?? result.sourceUrls?.[0],
-        imageUrlSourceAt: result.sourceAt,
+      // 写回走单一事实源（历史维护 / 来源 URL / 推给已连视频节点），批量生成同一条路。
+      const newUrls = applyStoryboardGenResult(id, result, {
+        getNodes: () => useCanvasStore.getState().nodes,
+        updateNodeData: (nid, p) => updateNodeData(nid, p),
+        propagateRefImage,
       });
-      // Push the freshly generated image to any already-connected video node so
-      // "connect first, generate later" still auto-fills the reference image.
-      propagateRefImage(id, imageUrl);
       setGenerating(false);
+      if (!useCanvasStore.getState().nodes.some(n => n.id === id)) return; // 节点已删
+      if (!newUrls.length) { toast.error("生成完成但未返回图像"); return; }
       if (newUrls.length > 1) setShowHistory(true);
       toast.success(newUrls.length > 1 ? `已生成 ${newUrls.length} 张，可在历史中切换` : "分镜图像已生成");
     },
@@ -312,83 +358,19 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // Double guard — local state is async (could be stale on rapid double-click) so
     // also check the mutation's own isPending which tRPC flips synchronously
     if (generating || genImageMutation.isPending) return;
-    if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
-
-    // Character consistency: inject reference image + FULL character profile
-    // from connected CharacterNodes. Previously only appearance / sceneDescription
-    // were used; mergeCharactersIntoPrompt now renders the whole profile
-    // (name / role / outfit / signature / atmosphere / …) via the same
-    // template engine used by VideoTaskNode + PromptNode, so all three node
-    // types produce consistent injected prompts from a shared CharacterNode.
+    // 组装走单一事实源（lib/storyboardGen）：角色/场景/@图像注入、效果注入、
+    // 分模型 sizing、kie 块（临时 key + 比例）、点数预估——与镜头表批量同一条路。
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
-    // Position-ordered so the prompt's 角色1/角色2 numbering matches the convention
-    // used elsewhere (reference image priority = topmost connected character).
-    // 角色 = 连线 + prompt 里的「@角色」提及，两者等价生效。
-    const chars = effectiveCharacters(id, payload.promptText, allEdges, allNodes);
-    // Identity lock: when no reference image is manually attached, use ALL views of
-    // every connected PERSON character (multi-reference → image_urls server-side),
-    // matching ImageGenNode — previously only the FIRST person's primary image was
-    // sent, losing multi-view / multi-character locking. Cap to the server's max(8).
-    const manualRef = payload.referenceImageUrl?.trim();
-    // Person identity refs first, then SCENE backdrop refs (location/style context).
-    const charRefs = manualRef
-      ? []
-      : [...effectiveCharacterRefImages(id, payload.promptText, allEdges, allNodes), ...effectiveSceneRefImages(id, payload.promptText, allEdges, allNodes)].slice(0, 8);
-    const charRefUrl: string | undefined = manualRef || charRefs[0];
-    // Cap to 2000 while PRESERVING the user's scene text — the previous crude
-    // slice(0, 2000) cut from the END, dropping the scene description (which sits
-    // after the prepended character blocks). maxLength trims the injection instead.
-    // 去掉字面量「@名字」，改用结构化注入。
-    const enhancedPrompt = mergeCharactersIntoPrompt(stripCharacterMentions(payload.promptText, allNodes), chars, 2000);
-
-    // Per-model sizing: pass only the fields the chosen model actually
-    // consumes. The imageGen.generate tRPC procedure validates each field
-    // against its own zod enum; mismatched-model fields are dropped server-
-    // side, but staying clean here keeps the request small and obvious.
-    // 通用尺寸字段尚未写入 StoryboardNodeData 类型（由后端 Zod 接收）；宽松视图读取。
-    const generic = payload as unknown as {
-      imageSize?: string; imageResolution?: string; imageN?: number;
-      imageOutputFormat?: string; poyoAspectRatio?: string;
-    };
-    const sizingFields: Record<string, unknown> = {};
-    if (isSoul) {
-      if (SOUL_SIZES_LIST.includes(payload.widthAndHeight as (typeof SOUL_SIZES_LIST)[number])) {
-        sizingFields.widthAndHeight = payload.widthAndHeight;
-      }
-      if (payload.soulQuality) sizingFields.quality = payload.soulQuality;
-    } else if (isV2HF) {
-      if (V2_ASPECT_RATIOS.includes(payload.reveAspectRatio as (typeof V2_ASPECT_RATIOS)[number])) {
-        sizingFields.reveAspectRatio = payload.reveAspectRatio;
-      }
-      if (V2_RESOLUTIONS.includes(payload.reveResolution as (typeof V2_RESOLUTIONS)[number])) {
-        sizingFields.reveResolution = payload.reveResolution;
-      }
-    } else if (model.startsWith("poyo_")) {
-      // 对任意 poyo_ 模型转发通用参数字段（与 ImageGenNode 一致）。
-      // resolveImageParam: 控件只展示默认值不落库，提交时补上 ParamDef 默认，
-      // 避免未展开节点漏发必填字段（如 z-image 文生图 size 必填）。
-      sizingFields.imageSize = resolveImageParam(model, "imageSize", generic.imageSize);
-      sizingFields.imageResolution = resolveImageParam(model, "imageResolution", generic.imageResolution);
-      sizingFields.imageN = resolveImageParam(model, "imageN", generic.imageN);
-      sizingFields.imageOutputFormat = resolveImageParam(model, "imageOutputFormat", generic.imageOutputFormat);
-      sizingFields.poyoQuality = resolveImageParam(model, "poyoQuality", payload.poyoQuality);
-      // 兼容旧节点：旧 payload 用 poyoAspectRatio，后端 size 取 imageSize ?? poyoAspectRatio
-      sizingFields.poyoAspectRatio = generic.poyoAspectRatio;
-    }
+    const built = buildStoryboardGenInput({
+      id, payload, nodes: allNodes, edges: allEdges,
+      kieTempKey: localStorage.getItem("kie:tempKey"),
+    });
+    if (built.blocked) { toast.error(built.blocked); return; }
     const submit = () => {
       setGenerating(true);
-      genImageMutation.mutate({
-        prompt: enhancedPrompt,
-        negativePrompt: payload.negativePrompt,
-        style: payload.colorTone,
-        referenceImageUrl: charRefUrl,
-        referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
-        model,
-        batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
-        ...sizingFields,
-      });
+      genImageMutation.mutate(built.input as Parameters<typeof genImageMutation.mutate>[0]);
     };
-    guard({ model, refImageUrl: charRefUrl }, submit);
+    guard({ model, refImageUrl: built.refUrl }, submit);
   };
 
   // 绿点指示：结果图是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
@@ -461,6 +443,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onHoverChange={docks.onDockHoverChange}
             onPin={docks.pinPrompt}
           />
+          {showShotList && <ShotListPanel id={id} onClose={() => setShowShotList(false)} />}
         </>
       }>
       <div className="flex flex-col h-full p-3.5 gap-3">
@@ -556,6 +539,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               >
                 {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                 {generating ? "生成中..." : "AI 生成分镜"}
+                {!generating && (() => {
+                  const lbl = costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1));
+                  return lbl ? (
+                    <span
+                      title="按当前模型与参数实时预估的点数消耗，仅供参考，实际以平台账单为准"
+                      style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "oklch(0.65 0.20 160 / 0.18)", letterSpacing: "0.02em" }}
+                    >
+                      {lbl}
+                    </span>
+                  ) : null;
+                })()}
               </button>
               {!payload.promptText?.trim() && (
                 <p className="text-[10px]" style={{ color: "var(--c-t4)" }}>请先填写提示词</p>
@@ -618,6 +612,41 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             gap: 12,
           }}
         >
+        {/* ── Shot List 工具行：镜头表（侧向展开） + 拍点 ── */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setShowShotList((v) => !v)}
+            title="镜头表：同组分镜序列总览（重排 / 时长校验 / 衔接优化）"
+            className="nodrag flex items-center gap-1 px-2 py-1 rounded-md transition-all"
+            style={{ fontSize: 10, fontWeight: showShotList ? 700 : 500, background: showShotList ? "oklch(0.65 0.20 160 / 0.18)" : "var(--c-surface)", border: `1px solid ${showShotList ? "oklch(0.65 0.20 160 / 0.5)" : "var(--c-bd2)"}`, color: showShotList ? STORY_ACCENT : "var(--c-t3)", cursor: "pointer" }}
+          >
+            <ClipboardList style={{ width: 11, height: 11 }} /> 镜头表
+          </button>
+          <button
+            onClick={handleSendToRefine}
+            title="送精修：创建图像生成节点（带走提示词/参考图/模型/角色连线），用工作台的全部能力精修本镜关键帧"
+            className="nodrag flex items-center gap-1 px-2 py-1 rounded-md transition-all"
+            style={{ fontSize: 10, fontWeight: 500, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
+          >
+            <Wand2 style={{ width: 11, height: 11 }} /> 送精修
+          </button>
+          {refineCandidate && (
+            <button
+              onClick={adoptRefineImage}
+              title="精修工位有新图，点击采用为本镜关键帧（不会自动覆盖）"
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-md transition-all"
+              style={{ fontSize: 10, fontWeight: 700, background: "oklch(0.72 0.20 330 / 0.14)", border: "1px solid oklch(0.72 0.20 330 / 0.5)", color: "oklch(0.72 0.20 330)", cursor: "pointer" }}
+            >
+              <ImageIcon style={{ width: 11, height: 11 }} /> 采用精修图
+            </button>
+          )}
+          {payload.beatRef && (
+            <span title="所属节拍表拍点（来自脚本节点的节拍表）" style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: "oklch(0.66 0.18 250 / 0.14)", color: "oklch(0.66 0.18 250)" }}>
+              拍点 {payload.beatRef}
+            </span>
+          )}
+        </div>
+
         {/* ── Scene meta ── */}
         <div className="flex gap-1.5">
           <input
@@ -639,6 +668,50 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onFocus={onFocus}
             onBlur={onBlur}
           />
+          {/* 景别（行业 Shot List 标准字段） */}
+          <select
+            className="nodrag"
+            value={payload.shotType ?? ""}
+            onChange={(e) => handleChange("shotType", e.target.value || undefined)}
+            title="景别：ECU 大特写 / CU 特写 / MS 中景 / MLS 中远景 / WS 远景 / establishing 定场"
+            style={{ ...fieldStyle, width: 110, padding: "7px 6px" }}
+          >
+            <option value="">景别</option>
+            {["ECU", "CU", "MS", "MLS", "WS", "establishing"].map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+
+        {/* ── Shot List：对白/旁白 + 音效意图 + 转场 ── */}
+        <NodeTextArea
+          placeholder="对白 / 旁白（可直接喂给下游音频节点作配音文案）"
+          value={payload.dialogue ?? ""}
+          onValueChange={(v) => handleChange("dialogue", v || undefined)}
+          rows={2}
+          className="nodrag"
+          style={{ ...fieldStyle, resize: "vertical", minHeight: 40 }}
+          onFocus={onFocus}
+          onBlur={onBlur}
+        />
+        <div className="flex gap-1.5">
+          <NodeInput
+            placeholder="音效 / BGM 意图（如：雨声渐强 + 低音弦乐）"
+            value={payload.sfx ?? ""}
+            onValueChange={(v) => handleChange("sfx", v || undefined)}
+            className="nodrag flex-1"
+            style={fieldStyle}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          />
+          <select
+            className="nodrag"
+            value={payload.transition ?? ""}
+            onChange={(e) => handleChange("transition", e.target.value || undefined)}
+            title="到下一镜的转场方式"
+            style={{ ...fieldStyle, width: 110, padding: "7px 6px" }}
+          >
+            <option value="">转场→</option>
+            {["cut", "dissolve", "fade", "wipe", "match-cut"].map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
         </div>
         {/* ── Duration slider ── */}
         <div>
@@ -942,9 +1015,22 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               options={IMAGE_MODEL_PICKER_OPTIONS}
             />
           </div>
+          {/* kie 模型通用比例（审计补齐：此前分镜选 kie 比例不可控）。服务端按模型枚举夹取 */}
+          {model.startsWith("kie_") && (
+            <select
+              className="nodrag"
+              value={payload.aspectRatio ?? ""}
+              onChange={(e) => handleChange("aspectRatio", e.target.value || undefined)}
+              title="kie 模型画面比例"
+              style={{ ...fieldStyle, width: 76, padding: "6px 6px" }}
+            >
+              <option value="">比例</option>
+              {KIE_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
           <button
-            onClick={syncToAllStoryboards}
-            title="把当前模型 / 色调 / 抽卡次数 / 反向提示词等参数同步到画布中所有其他分镜节点"
+            onClick={() => setShowSync(true)}
+            title="把当前模型 / 色调 / 抽卡次数 / 反向提示词等参数同步到所选分镜节点（弹窗勾选）"
             className="nodrag flex items-center gap-1 px-2 rounded-lg text-[10.5px] transition-all"
             style={{
               background: "oklch(0.65 0.20 160 / 0.08)",
@@ -957,9 +1043,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 160 / 0.08)"; }}
           >
             <Copy className="w-3 h-3" />
-            同步到全部
+            同步参数
           </button>
         </div>
+        {showSync && (
+          <SyncNodesDialog
+            sourceId={id}
+            nodeType="storyboard"
+            typeLabel="分镜"
+            patch={{ imageModel: payload.imageModel, colorTone: payload.colorTone, batchSize: payload.batchSize, negativePrompt: payload.negativePrompt, cameraMovement: payload.cameraMovement, lens: payload.lens }}
+            onClose={() => setShowSync(false)}
+          />
+        )}
         {/* ── Sizing controls (per-model) ── Soul / Reve-like 走既有专属控件；
             Poyo 模型改由下方 schema 驱动的 ParamControls 渲染 ── */}
         {(isSoul || isV2HF) && (
@@ -1028,7 +1123,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           </div>
         )}
         {/* Poyo 模型参数控件（schema 驱动）—— 替代原 Poyo 宽高比/画质硬编码块 */}
+        {imageModelRequiresRef(model) && !payload.referenceImageUrl?.trim() && !(payload.referenceImages?.length) && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" style={{ background: "oklch(0.75 0.16 75 / 0.10)", border: "1px solid oklch(0.75 0.16 75 / 0.4)" }}>
+            <span style={{ fontSize: 10, color: "oklch(0.78 0.14 75)", lineHeight: 1.5 }}>
+              ⚠ 该模型为图生图 / 编辑模型，必须提供参考图——请连接图像、@图像名 或在参考栏上传。
+            </span>
+          </div>
+        )}
         {model && IMAGE_MODEL_PARAMS[model] && IMAGE_MODEL_PARAMS[model].length > 0 && (
+
           <div className="nodrag">
             <ParamControls
               defs={IMAGE_MODEL_PARAMS[model]}

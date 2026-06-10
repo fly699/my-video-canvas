@@ -9,6 +9,7 @@ import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
 import { Captions, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
+import { buildShotSubtitles } from "@/lib/shotSubtitles";
 
 interface Props {
   id: string;
@@ -139,6 +140,32 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
     if (!videoUrl) { toast.error("请先连接一个视频节点或填写视频 URL"); return; }
     update({ status: "transcribing" });
     transcribeMutation.mutate({ audioUrl: videoUrl, language: payload.language || undefined });
+  };
+
+  // 上游「已装配并完成合并」的成片：镜头表对白（segDialogues）+ 服务端回传的各段
+  // 精确起点（segStarts）→ 一键确定性生成字幕，零 ASR、零成本、零识别错误。
+  const shotSubsSource = (() => {
+    for (const e of edges) {
+      if (e.target !== id) continue;
+      const src = nodes.find((n) => n.id === e.source);
+      if (src?.data.nodeType !== "merge") continue;
+      const mp = src.data.payload as { segStarts?: number[]; segDialogues?: (string | null)[]; segVoiceDurations?: (number | null)[]; outputDuration?: number };
+      if (mp.segStarts?.length && mp.segDialogues?.some(Boolean)) return mp;
+    }
+    return null;
+  })();
+  const handleShotSubtitles = () => {
+    if (!shotSubsSource) return;
+    if (payload.entries?.length && !window.confirm(`已有 ${payload.entries.length} 条字幕，从镜头表重新生成将覆盖。继续？`)) return;
+    const entries = buildShotSubtitles({
+      segStarts: shotSubsSource.segStarts!,
+      segDialogues: shotSubsSource.segDialogues!,
+      totalDuration: shotSubsSource.outputDuration,
+      voiceDurations: shotSubsSource.segVoiceDurations ?? undefined,
+    });
+    if (!entries.length) { toast.error("镜头表中没有对白可生成字幕"); return; }
+    update({ entries, status: "done", errorMessage: undefined });
+    toast.success(`已从镜头表生成 ${entries.length} 条字幕（按装配时间轴确定性对位）`);
   };
 
   const handleBurnIn = () => {
@@ -281,6 +308,20 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                 : <Captions style={{ width: 12, height: 12 }} />}
               {isTranscribing ? "Whisper 识别中..." : "AI 语音识别生成字幕"}
             </button>
+
+            {/* 从镜头表生成（上游为已装配成片时；确定性对位，优先于 ASR） */}
+            {shotSubsSource && (
+              <button
+                onClick={handleShotSubtitles}
+                disabled={isTranscribing || isBurning}
+                title="用合并节点装配时的逐镜对白 + 成片各段精确起点直接生成字幕：零识别错误、零成本；多行对白按字数比例分配时间，有配音的镜按配音时长收口"
+                className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium transition-all"
+                style={{ background: "oklch(0.65 0.20 160 / 0.10)", border: "1px solid oklch(0.65 0.20 160 / 0.4)", color: "oklch(0.65 0.20 160)", cursor: isTranscribing || isBurning ? "not-allowed" : "pointer" }}
+              >
+                <Captions style={{ width: 12, height: 12 }} />
+                从镜头表生成字幕（对白确定性对位）
+              </button>
+            )}
 
             {/* Subtitle entries list */}
             {(payload.entries?.length ?? 0) > 0 && (

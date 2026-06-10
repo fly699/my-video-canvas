@@ -92,16 +92,90 @@ export const VIDEO_PROVIDERS = [
   "kie_hailuo23_std",
   "kie_seedance2",
   "kie_seedance2_fast",
+  // ── kie 视频 第二批扩充 ──
+  "kie_kling21_std", "kie_kling21_pro",
+  "kie_wan22_t2v", "kie_wan22_i2v",
+  "kie_wan27_t2v", "kie_wan27_i2v",
+  "kie_hailuo02_std", "kie_hailuo02_pro_t2v", "kie_hailuo02_pro_i2v",
+  "kie_grok_t2v", "kie_grok_i2v",
+  "kie_happyhorse_t2v", "kie_happyhorse_i2v",
+  // ── kie 视频 第三批：特殊输入（动作控制 / 数字人 / 替身）──
+  "kie_kling26_motion", "kie_kling30_motion",
+  "kie_kling_avatar_std", "kie_kling_avatar_pro",
+  "kie_wan_animate_move", "kie_wan_animate_replace",
+  "kie_runway45",
+  "kie_topaz_upscale", "kie_runway_aleph",
 ] as const;
 export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";
 
 // ── Node Data Payloads ────────────────────────────────────────────────────────
 
+/** 节拍表单拍（beat sheet item）——行业开发管线的中间产物，介于梗概与剧本之间。 */
+export interface ScriptBeat {
+  index: number;
+  title: string;       // 拍点名（如「开场画面」「催化剂」「钩子」）
+  summary: string;     // 这一拍发生什么（1-3 句）
+  duration?: number;   // 目标时长（秒，可选）
+}
+
+/** 短剧分集大纲单集。 */
+export interface ScriptEpisode {
+  episode: number;
+  title: string;
+  hook: string;        // 本集开场钩子（前 3 秒抓人点）
+  summary: string;     // 本集剧情（2-4 句）
+  cliffhanger: string; // 结尾悬念/卡点
+}
+
+/** 专业审查（Coverage）维度评分。 */
+export interface CoverageDimension {
+  key: "premise" | "structure" | "characters" | "dialogue" | "pacing" | "visual";
+  score: number;       // 0-100
+  comment: string;     // 一句话短评
+}
+
+/** 专业审查问题条目（带定位与可修复标志，支撑「审→修→复审」闭环）。 */
+export interface CoverageIssue {
+  dimension: CoverageDimension["key"];
+  sceneRef: string;    // 定位（如「场景三」「第12行」「全局」）
+  severity: "low" | "medium" | "high";
+  description: string; // 问题描述
+  suggestion: string;  // 修改建议
+  autoFixable: boolean; // AI 可一键定向改写
+}
+
+/** 专业审查报告（对齐行业 Script Coverage：维度评分 + 裁决 + 结构化问题）。 */
+export interface ScriptCoverageReport {
+  verdict: "recommend" | "consider" | "pass"; // 推荐 / 修改后可用 / 不推荐
+  overall: number;     // 0-100 综合分
+  summary: string;     // 总评（2-4 句）
+  dimensions: CoverageDimension[];
+  strengths: string[]; // 亮点
+  issues: CoverageIssue[];
+  /** 短剧模式附加检查（钩子节奏/台词长度/反转密度等），非短剧为空。 */
+  shortDramaChecks?: { name: string; pass: boolean; detail: string }[];
+  reviewedAt?: number; // 时间戳，便于「修复后复审」对比
+}
+
 export interface ScriptNodeData {
   content: string;
   synopsis?: string;
   totalDuration?: number;
+  // ── 开发阶段流产物（对齐行业管线：logline → 梗概 → 节拍表 → 剧本 → 分镜）──
+  /** 一句话故事（logline，25-35 字，含主角/冲突/赌注）。 */
+  logline?: string;
+  /** 节拍表（beat sheet）：剧本生成时作为结构约束消费。 */
+  beatSheet?: ScriptBeat[];
+  /** 节拍表所用结构模板 id（three_act / save_the_cat / heros_journey / short_drama / documentary）。 */
+  beatStructure?: string;
+  /** 短剧分集大纲（多集模式产物）。 */
+  episodeOutline?: ScriptEpisode[];
+  /** 最近一次专业审查报告（持久化：留存 / 修复后对比 / 导出便签）。 */
+  coverage?: ScriptCoverageReport;
+  /** 角色音色 casting 表：角色名 → 配音模型+音色（镜头表批量配音按「角色名：台词」
+   *  逐段套用；存在脚本节点上随画布持久化，同组分镜共享）。 */
+  castVoices?: Record<string, { model: string; voice: string }>;
   // AI panel params — persisted so settings survive remount / project reload
   aiGenre?: string;
   aiStyle?: string;
@@ -137,8 +211,25 @@ export interface StoryboardNodeData {
   cameraMovement?: string;
   lens?: string;
   colorTone?: string;
+  // ── 行业 Shot List 标准字段（镜头表）──
+  /** 景别：ECU/CU/MS/MLS/WS/establishing。 */
+  shotType?: string;
+  /** 灯光设置（如 "soft key + rim, golden hour"）。 */
+  lighting?: string;
+  /** 对白/旁白文本——可直接喂给下游音频节点作配音文案。 */
+  dialogue?: string;
+  /** 音效/BGM 意图（如「雨声渐强 + 低音弦乐」），供配乐参考。 */
+  sfx?: string;
+  /** 到下一镜的转场方式：cut/dissolve/fade/wipe/match-cut 等。 */
+  transition?: string;
+  /** 所属节拍表拍点（如「3」或「中点」），承接脚本节点的 beat sheet。 */
+  beatRef?: string;
   imageModel?: ImageGenModel;
   referenceImageUrl?: string;
+  /** 手动多参考图管理（与 ImageGenNode 同款；[0].url 与 referenceImageUrl 镜像）。 */
+  referenceImages?: ReferenceImage[];
+  /** kie 图像模型的通用比例（服务端按模型枚举夹取）。 */
+  aspectRatio?: string;
   batchSize?: number;
   // ── Image-gen sizing/quality knobs (mirror ImageGenNodeData) ──
   // Stored here so each storyboard scene can override aspect ratio and
@@ -314,7 +405,13 @@ export type ImageGenModel =
   | "kie_nano_banana" | "kie_nano_banana_pro" | "kie_seedream_v4" | "kie_seedream_45"
   | "kie_flux2_pro" | "kie_gpt_image_15" | "kie_imagen4" | "kie_z_image" | "kie_grok_image"
   // kie.ai — image-to-image / edit (require reference image)
-  | "kie_nano_banana_edit" | "kie_seedream_v4_edit" | "kie_flux2_pro_i2i" | "kie_gpt_image_15_edit";
+  | "kie_nano_banana_edit" | "kie_seedream_v4_edit" | "kie_flux2_pro_i2i" | "kie_gpt_image_15_edit"
+  // kie.ai — 第二批扩充
+  | "kie_nano_banana_2" | "kie_flux2_flex" | "kie_flux2_flex_i2i"
+  | "kie_gpt_image_2" | "kie_gpt_image_2_i2i" | "kie_seedream_5lite" | "kie_seedream_5lite_i2i"
+  | "kie_wan27_image" | "kie_wan27_image_pro" | "kie_ideogram_v3" | "kie_qwen_image"
+  | "kie_qwen_image_i2i" | "kie_qwen_image_edit" | "kie_qwen2_image_edit"
+  | "kie_flux_kontext_pro" | "kie_flux_kontext_max" | "kie_gpt_4o_image";
 
 /** UI value strings for every image model — single source for the Zod enum. */
 export const IMAGE_GEN_MODELS = [
@@ -330,6 +427,11 @@ export const IMAGE_GEN_MODELS = [
   "kie_nano_banana", "kie_nano_banana_pro", "kie_seedream_v4", "kie_seedream_45",
   "kie_flux2_pro", "kie_gpt_image_15", "kie_imagen4", "kie_z_image", "kie_grok_image",
   "kie_nano_banana_edit", "kie_seedream_v4_edit", "kie_flux2_pro_i2i", "kie_gpt_image_15_edit",
+  "kie_nano_banana_2", "kie_flux2_flex", "kie_flux2_flex_i2i",
+  "kie_gpt_image_2", "kie_gpt_image_2_i2i", "kie_seedream_5lite", "kie_seedream_5lite_i2i",
+  "kie_wan27_image", "kie_wan27_image_pro", "kie_ideogram_v3", "kie_qwen_image",
+  "kie_qwen_image_i2i", "kie_qwen_image_edit", "kie_qwen2_image_edit",
+  "kie_flux_kontext_pro", "kie_flux_kontext_max", "kie_gpt_4o_image",
 ] as const satisfies readonly ImageGenModel[];
 export interface ImageGenNodeData {
   prompt: string;
@@ -422,9 +524,12 @@ export interface AudioNodeData {
   ttsDoNormalize?: boolean;                       // 文本规范化
   ttsTranslateTarget?: string;                    // 配音文本翻译目标语言/方言
   ttsTranslateModel?: string;                     // 翻译所用 AI 模型（可选）
-  // SFX (音效)
+  // SFX (音效) — 对齐 kie elevenlabs/sound-effect-v2 官方 schema
   sfxPrompt?: string;
+  /** 0.5–22 秒（步进 0.1）；undefined=模型按描述自动决定时长。 */
   sfxDuration?: number;
+  /** 生成可无缝循环的氛围音效。 */
+  sfxLoop?: boolean;
   // Legacy compat
   source?: AudioSource;
 }
@@ -461,6 +566,16 @@ export interface CharacterNodeData {
    */
   additionalImageUrls?: string[];
   /**
+   * 角色携带的音频 / 视频参考（@音频 / @视频 的「角色携带」来源）。供全能（omni）
+   * 模型把角色的声音 / 动作视频一并作为参考输入（见 characterConditioning.ts 的
+   * effectiveCharacterAudioRefs / effectiveCharacterVideoRefs）。镜像图片参考的结构：
+   * referenceXxxUrl 为主项，additionalXxxUrls 为附加项。库 payload 存任意字段，无需迁移。
+   */
+  referenceAudioUrl?: string;
+  additionalAudioUrls?: string[];
+  referenceVideoUrl?: string;
+  additionalVideoUrls?: string[];
+  /**
    * Optional user-authored template that overrides the auto-generated
    * prompt injection. Supports the same `{name}`, `{outfit}` etc.
    * placeholders documented in lib/characterPrompt.ts.
@@ -472,6 +587,10 @@ export interface CharacterNodeData {
    * Reference image(s) drive IPAdapter face-lock; an optional character LoRA is
    * added to the lora stack. All optional; absence = current text-only behavior.
    */
+  /** 角色声音档案（casting）：镜头表「角色音色」分配后回写到同名角色节点，
+   *  跨项目复用该角色时作为默认音色。 */
+  voiceModel?: string;        // 配音模型 id（如 elevenlabs-v3-tts）
+  voiceId?: string;           // 该模型下的音色 id
   loraName?: string;          // character-specific LoRA filename on the ComfyUI server
   loraStrength?: number;      // LoRA model strength (default 0.8)
   ipadapterWeight?: number;   // IPAdapter face-lock strength 0–2 (default 0.8)
@@ -556,6 +675,24 @@ export interface MergeNodeData {
   inputVideoUrls?: string[];
   outputUrl?: string;
   transition?: MergeTransition;
+  /** 装配端：逐切点转场（来自「按镜头表装配」；长度=段数-1，优先于全局 transition）。 */
+  segTransitions?: ("none" | "fade" | "dissolve" | "wipe")[];
+  /** 装配端：逐段配音轨（与 inputVideoUrls 对位；null=该段无配音）。 */
+  voiceUrls?: (string | null)[];
+  /** 装配端：逐段音效轨（与 inputVideoUrls 对位；混入权重低于配音）。 */
+  sfxUrls?: (string | null)[];
+  /** 装配端：逐镜对白快照（来自分镜 dialogue；下游字幕节点「从镜头表生成字幕」消费）。 */
+  segDialogues?: (string | null)[];
+  /** 装配端：逐镜配音时长（秒；字幕在配音结束处收口用）。 */
+  segVoiceDurations?: (number | null)[];
+  /** 合并完成后服务端回传的各段成片起点（xfade offset 精确值；字幕对位的时间轴真相源）。 */
+  segStarts?: number[];
+  /** 装配端：段↔分镜/视频节点绑定（sb=分镜 id，vid=视频节点 id；按镜定位/重生成入口）。 */
+  sourceShots?: { sb: string | null; vid: string; num?: number | string }[];
+  /** 装配端：合并完成后用镜头表对白 + segStarts 直接把字幕烧进成片（免下游字幕节点）。 */
+  burnShotSubtitles?: boolean;
+  /** 内嵌字幕字号（默认 22）。 */
+  subFontSize?: number;
   transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
   bgMusicUrl?: string;
   bgMusicVolume?: number;       // 0.0–1.0, default 0.3
@@ -928,11 +1065,24 @@ export interface AgentOperation {
   error?: string;
 }
 
+/** 管线下一步引导（apply 后确定性推导：分镜→批量生产→装配→内嵌字幕）。 */
+export interface PipelineStep {
+  action: "open_shotlist" | "assemble" | "burn_subtitle";
+  label: string;
+  hint: string;
+  /** 目标节点 id（open_shotlist→分镜，assemble/burn→合并）。 */
+  targetId: string;
+  /** 已完成（合并已装配 / 已开内嵌字幕）。 */
+  done?: boolean;
+}
+
 export interface AgentMessage {
   role: "user" | "assistant";
   content: string;
   /** assistant only: the graph operations proposed in this turn. */
   operations?: AgentOperation[];
+  /** assistant only: 管线下一步引导卡（与 operations 互斥，apply 后追加）。 */
+  pipeline?: PipelineStep[];
 }
 
 export interface AgentNodeData {

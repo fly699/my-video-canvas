@@ -16,6 +16,7 @@ import {
   kieKeyBindings,
   kieBalanceSnapshots,
   storageSettings,
+  modelToggleSettings,
   auditLogs,
   comfyUsageLogs,
   poyoBalanceSnapshots,
@@ -74,6 +75,10 @@ import {
   characterLibrary,
   type CharacterLibraryRow,
   type InsertCharacterLibrary,
+  promptLibrary,
+  type PromptLibraryRow,
+  type InsertPromptLibrary,
+  userPrefs,
   comfyTemplateAnalysis,
   type ComfyTemplateAnalysisRow,
   type InsertComfyTemplateAnalysis,
@@ -84,6 +89,7 @@ import * as dev from "./_core/devStore";
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
+const devModelToggleSettings: { disabledModels: string[] } = { disabledModels: [] };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -197,6 +203,28 @@ export async function getUserByOpenId(openId: string) {
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
+}
+
+// ── 内建「AI 助手」机器人用户 ───────────────────────────────────────────────────
+// 聊天里的 AI 功能以一个真实但不可登录的种子用户存在（与他私聊即 LLM 对话）。
+// 用固定 openId 标识、disabled=true 禁止登录。无需迁移（复用 users 表）。
+export const ASSISTANT_OPEN_ID = "__ai_assistant__";
+export const ASSISTANT_NAME = "AI 助手";
+let _assistantUserId: number | null = null;
+
+export async function getOrCreateAssistantUserId(): Promise<number> {
+  if (_assistantUserId != null) return _assistantUserId;
+  const db = await getDb();
+  if (!db) { _assistantUserId = 2; return 2; } // dev（无库）：返回固定 id，避免崩溃
+  let row = await getUserByOpenId(ASSISTANT_OPEN_ID);
+  if (!row) {
+    await db.insert(users).values({ openId: ASSISTANT_OPEN_ID, name: ASSISTANT_NAME, disabled: true })
+      .onDuplicateKeyUpdate({ set: { name: ASSISTANT_NAME, disabled: true } });
+    row = await getUserByOpenId(ASSISTANT_OPEN_ID);
+  }
+  if (!row) throw new Error("无法创建 AI 助手用户");
+  _assistantUserId = row.id;
+  return row.id;
 }
 
 export async function getUserById(id: number) {
@@ -1318,6 +1346,25 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
   await db.insert(storageSettings).values({ id: 1, ...set }).onDuplicateKeyUpdate({ set });
 }
 
+// ── Model visibility toggles (admin-managed) ────────────────────────────────
+/** 读取被管理员禁用的模型 id 集合（空数组 = 全部可见）。 */
+export async function getDisabledModels(): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return [...devModelToggleSettings.disabledModels];
+  const rows = await db.select().from(modelToggleSettings).limit(1);
+  const v = rows[0]?.disabledModels;
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** 覆盖写入被禁用的模型 id 集合（去重）。upsert：单行 id=1。 */
+export async function setDisabledModels(ids: string[]): Promise<void> {
+  const disabledModels = Array.from(new Set(ids.filter((x) => typeof x === "string")));
+  const db = await getDb();
+  if (!db) { devModelToggleSettings.disabledModels = disabledModels; return; }
+  await db.insert(modelToggleSettings).values({ id: 1, disabledModels })
+    .onDuplicateKeyUpdate({ set: { disabledModels } });
+}
+
 export async function addWhitelistEntry(
   type: "ip" | "user",
   value: string,
@@ -1720,22 +1767,45 @@ export async function getAuditLogs(opts: {
   limit?: number;
   offset?: number;
   action?: string;
+  /** 按用户名 / 邮箱 / ID 模糊筛选。 */
+  user?: string;
 }): Promise<{ rows: typeof auditLogs.$inferSelect[]; total: number }> {
   const limit = opts.limit ?? 50;
   const offset = opts.offset ?? 0;
   const db = await getDb();
 
+  // "kie_gen" 是个伪类别：kie 的图/视频/音乐生成走的是 image_gen/video_gen/audio_music
+  // 等动作，靠 detail 里的 model/provider 以 "kie_" 开头来识别。
+  const KIE_GEN_ACTIONS = ["image_gen", "video_gen", "audio_music", "audio_dubbing"];
+
   if (!db) {
-    const filtered = opts.action
-      ? devAuditLogs.filter((l) => l.action === opts.action)
-      : devAuditLogs;
+    const uq = opts.user?.trim().toLowerCase();
+    const filtered = devAuditLogs.filter((l) => {
+      if (opts.action === "kie_gen") {
+        const d = (l.detail ?? {}) as { model?: string; provider?: string };
+        if (!(KIE_GEN_ACTIONS.includes(l.action) && (String(d.model ?? "").startsWith("kie_") || String(d.provider ?? "").startsWith("kie_")))) return false;
+      } else if (opts.action && l.action !== opts.action) return false;
+      if (uq && !(`${l.userName ?? ""} ${l.userEmail ?? ""} ${l.userId ?? ""}`.toLowerCase().includes(uq))) return false;
+      return true;
+    });
     return {
       rows: filtered.slice(offset, offset + limit) as typeof auditLogs.$inferSelect[],
       total: filtered.length,
     };
   }
 
-  const where = opts.action ? eq(auditLogs.action, opts.action) : undefined;
+  const conds = [];
+  if (opts.action === "kie_gen") {
+    conds.push(inArray(auditLogs.action, KIE_GEN_ACTIONS));
+    conds.push(sql`(JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.model')) LIKE 'kie_%' OR JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.provider')) LIKE 'kie_%')`);
+  } else if (opts.action) {
+    conds.push(eq(auditLogs.action, opts.action));
+  }
+  if (opts.user?.trim()) {
+    const like = `%${opts.user.trim()}%`;
+    conds.push(sql`(${auditLogs.userName} LIKE ${like} OR ${auditLogs.userEmail} LIKE ${like} OR CAST(${auditLogs.userId} AS CHAR) LIKE ${like})`);
+  }
+  const where = conds.length ? and(...conds) : undefined;
 
   const [rows, countRows] = await Promise.all([
     db.select().from(auditLogs)
@@ -2191,7 +2261,12 @@ export async function searchUsersForChat(q: string, excludeUserId: number, limit
   }
   const like = "%" + q + "%";
   const rows = await db.select({ id: users.id, name: users.name, email: users.email }).from(users)
-    .where(and(sql`(${users.name} LIKE ${like} OR ${users.email} LIKE ${like})`, sql`${users.id} <> ${excludeUserId}`))
+    .where(and(
+      sql`(${users.name} LIKE ${like} OR ${users.email} LIKE ${like})`,
+      sql`${users.id} <> ${excludeUserId}`,
+      // AI 助手机器人不在人员搜索里出现（通过专用入口进入）。
+      sql`${users.openId} <> ${ASSISTANT_OPEN_ID}`,
+    ))
     .limit(limit);
   return rows;
 }
@@ -2336,6 +2411,73 @@ export async function deleteCharacterLibrary(id: number): Promise<void> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { const i = _devCharLib.findIndex((r) => r.id === id); if (i >= 0) _devCharLib.splice(i, 1); return; } throw new Error("DB unavailable"); }
   await db.delete(characterLibrary).where(eq(characterLibrary.id, id));
+}
+
+// ── Prompt library（每用户私有；自定义提示词 + 10 个「/」快捷槽位）────────────────
+const _devPromptLib: PromptLibraryRow[] = [];
+let _devPromptLibSeq = 1;
+
+export async function listPromptLibrary(userId: number): Promise<PromptLibraryRow[]> {
+  const db = await getDb();
+  if (!db) {
+    if (!DEV_MODE) return [];
+    return [..._devPromptLib.filter((r) => r.userId === userId)]
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  }
+  return db.select().from(promptLibrary).where(eq(promptLibrary.userId, userId)).orderBy(promptLibrary.sortOrder);
+}
+
+export async function getPromptLibrary(id: number): Promise<PromptLibraryRow | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? _devPromptLib.find((r) => r.id === id) : undefined;
+  const rows = await db.select().from(promptLibrary).where(eq(promptLibrary.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createPromptLibrary(data: InsertPromptLibrary): Promise<PromptLibraryRow | null> {
+  const db = await getDb();
+  if (!db) {
+    if (!DEV_MODE) throw new Error("DB unavailable");
+    const now = new Date();
+    const row = { id: _devPromptLibSeq++, category: "通用", slot: null, slotKind: null, sortOrder: 0, ...data, createdAt: now, updatedAt: now } as PromptLibraryRow;
+    _devPromptLib.push(row);
+    return row;
+  }
+  const [header] = await db.insert(promptLibrary).values(data);
+  const insertId = (header as unknown as { insertId: number }).insertId;
+  const rows = await db.select().from(promptLibrary).where(eq(promptLibrary.id, insertId));
+  return rows[0] ?? null;
+}
+
+export async function updatePromptLibrary(id: number, patch: Partial<Pick<InsertPromptLibrary, "label" | "text" | "category" | "slot" | "slotKind" | "sortOrder">>): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) { const r = _devPromptLib.find((x) => x.id === id); if (r) Object.assign(r, patch, { updatedAt: new Date() }); return; }
+    throw new Error("DB unavailable");
+  }
+  await db.update(promptLibrary).set(patch).where(eq(promptLibrary.id, id));
+}
+
+export async function deletePromptLibrary(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { const i = _devPromptLib.findIndex((r) => r.id === id); if (i >= 0) _devPromptLib.splice(i, 1); return; } throw new Error("DB unavailable"); }
+  await db.delete(promptLibrary).where(eq(promptLibrary.id, id));
+}
+
+// ── 通用 per-user 偏好（user_prefs，upsert by (userId, prefKey)）─────────────────
+const _devUserPrefs = new Map<string, unknown>(); // key = `${userId}:${prefKey}`
+
+export async function getUserPref(userId: number, prefKey: string): Promise<unknown | undefined> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? _devUserPrefs.get(`${userId}:${prefKey}`) : undefined;
+  const rows = await db.select().from(userPrefs).where(and(eq(userPrefs.userId, userId), eq(userPrefs.prefKey, prefKey))).limit(1);
+  return rows[0]?.value;
+}
+
+export async function setUserPref(userId: number, prefKey: string, value: unknown): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { _devUserPrefs.set(`${userId}:${prefKey}`, value); return; } throw new Error("DB unavailable"); }
+  await db.insert(userPrefs).values({ userId, prefKey, value }).onDuplicateKeyUpdate({ set: { value } });
 }
 
 // ── ComfyUI template analysis (agent planning knowledge) ──────────────────────

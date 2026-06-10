@@ -1,13 +1,14 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { User, Mountain } from "lucide-react";
+import { User, Mountain, Music, Film, Image as ImageIcon } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getLibraryCharacters } from "../../lib/characterConditioning";
+import { listCanvasMediaSources } from "../../lib/comfyWorkflowParams";
 
-export interface MentionItem { name: string; kind: "person" | "scene"; fromLibrary?: boolean }
+export interface MentionItem { name: string; kind: "person" | "scene" | "audio" | "video" | "image"; fromLibrary?: boolean }
 
-/** 可被「@」引用的角色 / 场景：画布上的角色节点 + 全局角色库（画布上没有该节点也能引用）。
- *  去重，画布优先。用快照读取，不订阅 store，仅在用户输入「@」触发下拉时调用。 */
+/** 可被「@」引用的角色 / 场景 + 独立音/视频节点：画布上的角色节点 + 全局角色库 + 画布上
+ *  有标题的音/视频媒体节点。去重，画布优先。用快照读取，仅在用户输入「@」触发下拉时调用。 */
 function listCanvasCharacters(): MentionItem[] {
   const nodes = useCanvasStore.getState().nodes;
   const out: MentionItem[] = [];
@@ -24,6 +25,10 @@ function listCanvasCharacters(): MentionItem[] {
   // 角色库补充：画布上没有同名节点时，也能 @ 引用库里的角色（无需先拖到画布）。
   for (const n of getLibraryCharacters()) {
     add(n.data.payload as { characterKind?: string; name?: string; sceneName?: string }, true);
+  }
+  // 独立音/视频媒体节点：@音频名 / @视频名（标题去重，已被角色占用的名字不再加）。
+  for (const m of listCanvasMediaSources(nodes)) {
+    if (!seen.has(m.name)) { seen.add(m.name); out.push({ name: m.name, kind: m.kind }); }
   }
   return out;
 }
@@ -101,7 +106,7 @@ export function useMention(
         boxShadow: "0 12px 36px oklch(0 0 0 / 0.45)", padding: 4,
       }}
     >
-      <div style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "3px 8px 4px" }}>选择角色 / 场景插入</div>
+      <div style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "3px 8px 4px" }}>选择角色 / 场景 / 音视频插入</div>
       {st.items.map((it, i) => (
         <button
           key={it.kind + it.name}
@@ -116,9 +121,17 @@ export function useMention(
         >
           {it.kind === "scene"
             ? <Mountain className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--c-t4)" }} />
+            : it.kind === "audio"
+            ? <Music className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.66 0.18 30)" }} />
+            : it.kind === "video"
+            ? <Film className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.62 0.16 240)" }} />
+            : it.kind === "image"
+            ? <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.72 0.20 330)" }} />
             : <User className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.66 0.18 30)" }} />}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
-          <span style={{ marginLeft: "auto", fontSize: 9.5, color: "var(--c-t4)" }}>{it.kind === "scene" ? "场景" : "人物"}</span>
+          <span style={{ marginLeft: "auto", fontSize: 9.5, color: "var(--c-t4)" }}>
+            {it.kind === "scene" ? "场景" : it.kind === "audio" ? "音频" : it.kind === "video" ? "视频" : it.kind === "image" ? "图像" : "人物"}
+          </span>
         </button>
       ))}
     </div>,

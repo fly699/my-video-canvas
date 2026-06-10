@@ -134,6 +134,98 @@ export function listUpstreamAudioSources(targetId: string, edges: MiniEdge[], no
   return out;
 }
 
+// ── Video params — 与 audio 完全对称（视频任务输出 / comfy 视频 / 素材[视频]）─────
+const VIDEO_SOURCE_TYPES = new Set(["video_task", "comfyui_video", "asset"]);
+
+/** Pick a node's video-output URL（video_task / comfyui_video / 素材[视频]）。 */
+function getNodeVideoUrl(nodeType: string, payload: Record<string, unknown>): string | undefined {
+  if (nodeType === "asset") {
+    const mt = payload.mimeType as string | undefined;
+    const t = payload.type as string | undefined;
+    if ((mt && !mt.startsWith("video/")) || (t && t !== "video")) return undefined;
+    return payload.url as string | undefined;
+  }
+  if (nodeType === "video_task" || nodeType === "comfyui_video") {
+    const u = (payload.resultVideoUrl ?? payload.outputUrl ?? payload.url) as string | undefined;
+    return typeof u === "string" && u.trim() ? u : undefined;
+  }
+  return undefined;
+}
+
+export interface UpstreamVideoSource { id: string; title: string; url: string }
+
+/** 连入 targetId 的上游视频来源（id + 标题 + url），智能排序。供视频参考吸附栏 / 来源下拉用。 */
+export function listUpstreamVideoSources(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): UpstreamVideoSource[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = (edges as Array<{ source: string; target: string }>).map((e, i) => ({ e, i })).filter(({ e }) => e.target === targetId);
+  incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  const out: UpstreamVideoSource[] = [];
+  const seen = new Set<string>();
+  for (const { e } of incoming) {
+    const src = byId.get(e.source);
+    if (!src || seen.has(e.source) || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    const url = getNodeVideoUrl(src.data.nodeType, (src.data.payload ?? {}) as Record<string, unknown>);
+    if (url) { seen.add(e.source); out.push({ id: e.source, title: src.data.title || e.source, url }); }
+  }
+  return out;
+}
+
+// ── @音频名 / @视频名：引用画布上「独立」音/视频节点（无需连线）──────────────────
+// 与「@角色名」对称：在文本框 @某个音频/视频节点的标题，即把该媒体计入参考。媒体节点的
+// 「名字」用节点标题（node.data.title）。供 omni / 数字人 / 动作控制等模型用。
+
+export type MediaKind = "audio" | "video" | "image";
+export interface CanvasMediaSource { id: string; name: string; url: string; kind: MediaKind }
+
+/** 画布上所有可 @引用 的独立音/视频/图像媒体节点（有标题 + 媒体 URL），按名去重。
+ *  优先级：音频 > 视频 > 图像（同名同节点只归一类，避免一个节点既算音频又算图像）。 */
+export function listCanvasMediaSources(nodes: MiniNode[]): CanvasMediaSource[] {
+  const out: CanvasMediaSource[] = [];
+  const seen = new Set<string>();
+  for (const n of nodes) {
+    const name = (n.data.title ?? "").trim();
+    if (!name) continue;
+    const payload = (n.data.payload ?? {}) as Record<string, unknown>;
+    const aud = getNodeAudioUrl(n.data.nodeType, payload);
+    if (aud && !seen.has("a:" + name)) { seen.add("a:" + name); out.push({ id: n.id, name, url: aud, kind: "audio" }); continue; }
+    const vid = getNodeVideoUrl(n.data.nodeType, payload);
+    if (vid && !seen.has("v:" + name)) { seen.add("v:" + name); out.push({ id: n.id, name, url: vid, kind: "video" }); continue; }
+    const img = getNodeImageUrl(n.data.nodeType, payload);
+    if (img && !seen.has("i:" + name)) { seen.add("i:" + name); out.push({ id: n.id, name, url: img, kind: "image" }); }
+  }
+  return out;
+}
+
+/** prompt 里被「@名字」提及到的媒体来源（按 kind 过滤，去重，含 id/name/url）。长名优先消费，避免短名命中长名内部。 */
+export function mentionedMediaSources(prompt: string | undefined, kind: MediaKind, nodes: MiniNode[]): CanvasMediaSource[] {
+  let scan = prompt ?? "";
+  if (!scan.includes("@")) return [];
+  const sources = listCanvasMediaSources(nodes).filter((s) => s.kind === kind).sort((a, b) => b.name.length - a.name.length);
+  const out: CanvasMediaSource[] = [];
+  const seen = new Set<string>();
+  for (const s of sources) {
+    const token = "@" + s.name;
+    if (!scan.includes(token)) continue;
+    scan = scan.split(token).join(" ");
+    if (!seen.has(s.url)) { seen.add(s.url); out.push(s); }
+  }
+  return out;
+}
+
+/** prompt 里被「@名字」提及到的媒体 URL（按 kind 过滤，去重）。 */
+export function mentionedMediaUrls(prompt: string | undefined, kind: MediaKind, nodes: MiniNode[]): string[] {
+  return mentionedMediaSources(prompt, kind, nodes).map((s) => s.url);
+}
+
+/** 去掉 prompt 里所有被提及的「@媒体名」字面量（与 stripCharacterMentions 同理，避免模型读到 "@名字"）。 */
+export function stripMediaMentions(prompt: string | undefined, nodes: MiniNode[]): string {
+  let text = prompt ?? "";
+  if (!text.includes("@")) return text;
+  const names = listCanvasMediaSources(nodes).map((s) => s.name).sort((a, b) => b.length - a.length);
+  for (const name of names) text = text.split("@" + name).join(" ");
+  return text.replace(/[ \t]{2,}/g, " ").trim();
+}
+
 /** 解析音频参数：显式来源映射优先，剩余空位按顺序自动填充。镜像 resolveImageParamsWithMap。 */
 export function resolveAudioParamsWithMap(
   bindings: WorkflowParamBinding[] | undefined,

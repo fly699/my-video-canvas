@@ -67,6 +67,16 @@ describe("buildRecipeOps — prefs honored", () => {
     expect(audio.some((a) => (a.payload as { audioCategory?: string }).audioCategory === "dubbing")).toBe(true);
   });
 
+  it("storyboards carry sceneNumber + per-shot transition for shot-list assembly", () => {
+    const ops = buildRecipeOps(promo, base({ shots: 3 }));
+    const sbs = creates(ops, "storyboard");
+    expect(sbs.map((s) => (s.payload as { sceneNumber?: number }).sceneNumber)).toEqual([1, 2, 3]);
+    // 默认逐镜转场 cut；电影感预告配方覆盖为 dissolve
+    expect((sbs[0].payload as { transition?: string }).transition).toBe("cut");
+    const trailerSbs = creates(buildRecipeOps(getRecipe("cinematic_trailer")!, base({ shots: 4 })), "storyboard");
+    expect((trailerSbs[0].payload as { transition?: string }).transition).toBe("dissolve");
+  });
+
   it("AI shot descriptions are written into storyboards", () => {
     const ops = buildRecipeOps(promo, base({ shots: 2, shotDescriptions: ["镜头甲", "镜头乙"] }));
     const sbs = creates(ops, "storyboard");

@@ -20,6 +20,9 @@
     </filter>
   </defs>
 
+  <!-- 深色背景（网页/Chrome 应用图标不透明）-->
+  <rect x="0" y="0" width="400" height="340" fill="#14121c" />
+
   <g transform="translate(0, -10 )">
     <path d="M 200,160 C 180,190 150,150 100,60" stroke="url(#kt-silverGradient)" stroke-width="1.5" fill="none" stroke-linecap="round" />
     <path d="M 200,160 C 170,200 120,160 60,50" stroke="url(#kt-goldGradient)" stroke-width="3" fill="none" stroke-linecap="round" />

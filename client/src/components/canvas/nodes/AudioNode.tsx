@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AudioNodeData, AudioCategory } from "../../../../../shared/types";
@@ -15,6 +15,7 @@ import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker } from "../ModelPicker";
+import { estimateMusicCost, estimateTtsCost, costEstimateLabel } from "@/lib/costEstimate";
 
 interface Props {
   id: string;
@@ -98,13 +99,17 @@ function normalizeMusicModel(m?: string): string {
 
 // Dubbing/TTS models. The "openai_*_real" entries hit OpenAI's /v1/audio/speech
 // directly (live). "elevenlabs-v3-tts" routes to Poyo's ElevenLabs V3 TTS.
-const DUBBING_MODELS = [
+export const DUBBING_MODELS = [
   // ── Live (OpenAI direct) ───
   { value: "openai_tts_real",       label: "OpenAI TTS",       desc: "标准 · $0.015/1k 字符",  group: "OpenAI" },
   { value: "openai_tts_hd_real",    label: "OpenAI TTS-HD",    desc: "高清 · $0.030/1k 字符",  group: "OpenAI" },
   { value: "openai_gpt4o_mini_tts", label: "GPT-4o Mini TTS",  desc: "新 · 支持 instructions", group: "OpenAI" },
   // ── Live (Poyo) ───
   { value: "elevenlabs-v3-tts",     label: "ElevenLabs v3 TTS", desc: "Poyo · 16 积分/1k 字",  group: "ElevenLabs" },
+  // ── Live (kie ElevenLabs) ───
+  { value: "kie_elevenlabs_tts",    label: "ElevenLabs Turbo（kie）", desc: "kie · 6 积分/1k 字",  group: "ElevenLabs" },
+  { value: "kie_elevenlabs_tts_ml", label: "ElevenLabs 多语 v2（kie）", desc: "kie · 12 积分/1k 字", group: "ElevenLabs" },
+  { value: "kie_elevenlabs_v3",     label: "ElevenLabs V3 对话（kie）", desc: "kie · 14 积分/1k 字", group: "ElevenLabs" },
   // ── 本地 / 自托管（Gradio）───
   { value: "voxcpm-local",          label: "本地 VoxCPM2",      desc: "自托管 · 参考音色克隆",  group: "本地" },
 ];
@@ -198,10 +203,10 @@ function ControlTemplatePicker({ value, onChange }: { value: string; onChange: (
   );
 }
 
-// SFX — coming soon
+// SFX（文本→音效）。kie ElevenLabs Sound Effects 已实装；旧 stub id
+// （elevenlabs_sfx / audiogen）的存量节点由下方 value 解析回退到 live 模型。
 const SFX_MODELS = [
-  { value: "elevenlabs_sfx",   label: "ElevenLabs SFX",  desc: "音效 · 精准",     group: "ElevenLabs" },
-  { value: "audiogen",         label: "AudioGen",        desc: "Meta · 开源",     group: "Meta" },
+  { value: "kie_elevenlabs_sfx", label: "ElevenLabs SFX（kie）", desc: "文本→音效 · 0.5-22s", group: "ElevenLabs" },
 ];
 
 // Voice options vary by provider. Sending an OpenAI voice ID like "alloy" to
@@ -241,15 +246,18 @@ const ELEVENLABS_VOICES = [
   { value: "Bill",      label: "Bill",      desc: "男声" },
 ];
 
-function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
+export function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
   if (modelIsVoxCPM(model)) return []; // 音色来自参考音频，无固定列表
   if (modelIsElevenLabs(model)) return ELEVENLABS_VOICES;
   return OPENAI_VOICES; // default for openai_tts_real / *_hd_real / gpt4o-mini / unknown
 }
 
-// The Poyo ElevenLabs V3 TTS id (and its legacy underscore alias on old nodes).
+// ElevenLabs TTS：Poyo V3（+旧别名）+ kie 的 ElevenLabs（共用 ElevenLabs 音色与参数）。
 function modelIsElevenLabs(model?: string): boolean {
-  return model === "elevenlabs-v3-tts" || model === "elevenlabs_v3";
+  return model === "elevenlabs-v3-tts" || model === "elevenlabs_v3" || (!!model && model.startsWith("kie_elevenlabs"));
+}
+function modelIsKieTTS(model?: string): boolean {
+  return !!model && model.startsWith("kie_elevenlabs");
 }
 
 // `speed` is only meaningful for OpenAI TTS. ElevenLabs V3 uses `stability`
@@ -344,8 +352,8 @@ function ModelSelect({ models, value, onChange }: {
 }
 
 function GenerateBtn({
-  disabled, label, loading, onClick,
-}: { disabled?: boolean; label: string; loading?: boolean; onClick: () => void }) {
+  disabled, label, loading, onClick, costLabel,
+}: { disabled?: boolean; label: string; loading?: boolean; onClick: () => void; costLabel?: string }) {
   return (
     <button
       onClick={onClick}
@@ -363,6 +371,14 @@ function GenerateBtn({
         ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
         : <Zap style={{ width: 12, height: 12 }} />}
       {loading ? "生成中..." : label}
+      {!loading && costLabel && (
+        <span
+          title="按当前模型与文本实时预估的点数消耗，仅供参考，实际以平台账单为准"
+          style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: accentA(0.18), letterSpacing: "0.02em" }}
+        >
+          {costLabel}
+        </span>
+      )}
     </button>
   );
 }
@@ -372,6 +388,46 @@ function GenerateBtn({
 export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
   const payload = data.payload;
+  // 上游分镜的「对白/旁白」→ 配音文案（只填空：本节点 ttsText 为空时才自动填入，
+  // 与「上游提示词只填空」同口径，不覆盖用户已写内容）。多个上游分镜按镜号顺序拼接。
+  const upstreamDialogue = useCanvasStore((st) => {
+    const incoming = st.edges.filter((e) => e.target === id);
+    const lines: { num: number; text: string }[] = [];
+    for (const e of incoming) {
+      const src = st.nodes.find((n) => n.id === e.source);
+      if (src?.data.nodeType !== "storyboard") continue;
+      const p = src.data.payload as { dialogue?: string; sceneNumber?: number | string };
+      const d = p.dialogue?.trim();
+      if (d) lines.push({ num: Number(p.sceneNumber) || 9999, text: d });
+    }
+    lines.sort((a, b) => a.num - b.num);
+    return lines.map((l) => l.text).join("\n");
+  });
+  useEffect(() => {
+    if (upstreamDialogue && !payload.ttsText?.trim()) {
+      updateNodeData(id, { ttsText: upstreamDialogue, audioCategory: payload.audioCategory ?? "dubbing" }, true);
+    }
+  }, [upstreamDialogue, payload.ttsText, payload.audioCategory, id, updateNodeData]);
+  // 上游分镜的「音效意图」→ 音效描述（只填空，且仅当本节点已是音效类别时——
+  // 不抢 dubbing 的默认类别判定，新连线节点仍默认走配音填充）。
+  const upstreamSfx = useCanvasStore((st) => {
+    const incoming = st.edges.filter((e) => e.target === id);
+    const lines: { num: number; text: string }[] = [];
+    for (const e of incoming) {
+      const src = st.nodes.find((n) => n.id === e.source);
+      if (src?.data.nodeType !== "storyboard") continue;
+      const p = src.data.payload as { sfx?: string; sceneNumber?: number | string };
+      const s = p.sfx?.trim();
+      if (s) lines.push({ num: Number(p.sceneNumber) || 9999, text: s });
+    }
+    lines.sort((a, b) => a.num - b.num);
+    return lines.map((l) => l.text).join("，");
+  });
+  useEffect(() => {
+    if (upstreamSfx && payload.audioCategory === "sfx" && !payload.sfxPrompt?.trim()) {
+      updateNodeData(id, { sfxPrompt: upstreamSfx }, true);
+    }
+  }, [upstreamSfx, payload.audioCategory, payload.sfxPrompt, id, updateNodeData]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [uploading, setUploading] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -571,6 +627,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       lyrics: isMiniMax ? (payload.musicLyrics || undefined) : undefined,
       // kie Suno auths with its own key (临时 > 分配 > 公用).
       ...(musicModelIsKie(modelVal) ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+      // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
+      estimatedCost: costEstimateLabel(estimateMusicCost(modelVal)) || undefined,
       projectId: data.projectId,
     });
   };
@@ -608,6 +666,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         ditSteps: payload.ttsDitSteps ?? 10,
         denoise: payload.ttsDenoise ?? false,
         doNormalize: payload.ttsDoNormalize ?? false,
+        estimatedCost: costEstimateLabel(estimateTtsCost("voxcpm-local", payload.ttsText.length)) || undefined,
       });
       return;
     }
@@ -629,11 +688,37 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       timestamps: isEleven ? (payload.ttsTimestamps ?? false) : undefined,
       languageCode: isEleven ? (payload.ttsLanguageCode || undefined) : undefined,
       applyTextNormalization: isEleven ? (payload.ttsTextNormalization ?? "auto") : undefined,
+      // kie ElevenLabs：自有 key（临时 > 分配 > 公用）
+      ...(modelIsKieTTS(model) ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+      // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
+      estimatedCost: costEstimateLabel(estimateTtsCost(model, payload.ttsText.length)) || undefined,
     });
   };
 
-  const handleGenerateSFXStub = () => {
-    toast.info("音效生成即将上线，敬请期待");
+  const sfxMutation = trpc.audioGen.generateSFX.useMutation({
+    onSuccess: (result) => {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+      updateNodeData(id, {
+        url: result.url,
+        duration: result.duration,
+        name: `音效 · ${payload.sfxPrompt?.slice(0, 24) ?? ""}`,
+      });
+      toast.success("音效生成完成");
+    },
+    onError: (err) => toast.error("音效生成失败：" + err.message),
+  });
+  const handleGenerateSFX = () => {
+    const prompt = payload.sfxPrompt?.trim();
+    if (!prompt || sfxMutation.isPending) return;
+    sfxMutation.mutate({
+      model: "kie_elevenlabs_sfx",
+      prompt: prompt.slice(0, 5000),
+      duration: payload.sfxDuration != null ? Math.min(22, Math.max(0.5, payload.sfxDuration)) : undefined,
+      loop: payload.sfxLoop || undefined,
+      projectId: data.projectId,
+      kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
+    });
   };
 
   const formatDuration = (s?: number) =>
@@ -865,6 +950,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               loading={musicMutation.isPending}
               onClick={handleGenerateMusic}
               label="生成配乐"
+              costLabel={costEstimateLabel(estimateMusicCost(normalizeMusicModel(payload.musicModel ?? payload.aiModel)))}
             />
           </>
           );
@@ -1238,6 +1324,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               loading={ttsMutation.isPending}
               onClick={handleGenerateTTS}
               label="生成配音"
+              costLabel={costEstimateLabel(estimateTtsCost(ttsModel, textLen))}
             />
           </>
           );
@@ -1248,7 +1335,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           <>
             <ModelSelect
               models={SFX_MODELS}
-              value={payload.sfxModel ?? (SFX_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
+              value={SFX_MODELS.some((m) => m.value === payload.sfxModel) ? payload.sfxModel : "kie_elevenlabs_sfx"}
               onChange={(v) => update("sfxModel", v)}
             />
             <div>
@@ -1267,20 +1354,33 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             <div>
               <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
                 <label style={{ ...labelStyle, marginBottom: 0 }}>时长</label>
-                <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{payload.sfxDuration ?? 5}秒</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <label className="nodrag" title="不指定时长，由模型按描述自动决定" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: payload.sfxDuration == null ? accent : "var(--c-t4)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={payload.sfxDuration == null}
+                      onChange={(e) => update("sfxDuration", e.target.checked ? undefined : 5)}
+                      style={{ accentColor: accent, margin: 0 }} />
+                    自动
+                  </label>
+                  <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
+                    {payload.sfxDuration == null ? "按描述" : `${payload.sfxDuration}秒`}
+                  </span>
+                </span>
               </div>
-              <input
-                type="range"
-                min={1}
-                max={22}
-                step={1}
-                value={payload.sfxDuration ?? 5}
-                onChange={(e) => update("sfxDuration", Number(e.target.value))}
-                className="nodrag w-full"
-                style={{ accentColor: accent }}
-              />
+              {payload.sfxDuration != null && (
+                <input
+                  type="range" min={0.5} max={22} step={0.1}
+                  value={payload.sfxDuration}
+                  onChange={(e) => update("sfxDuration", Math.round(Number(e.target.value) * 10) / 10)}
+                  className="nodrag w-full"
+                  style={{ accentColor: accent }}
+                />
+              )}
             </div>
-            <GenerateBtn disabled={!payload.sfxPrompt?.trim()} loading={false} onClick={handleGenerateSFXStub} label="生成音效（即将上线）" />
+            <label className="nodrag" title="生成可平滑无缝循环的音效（适合雨声/风声等持续氛围）" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: payload.sfxLoop ? accent : "var(--c-t3)", cursor: "pointer" }}>
+              <input type="checkbox" checked={payload.sfxLoop ?? false} onChange={(e) => update("sfxLoop", e.target.checked)} style={{ accentColor: accent, margin: 0 }} />
+              无缝循环（氛围声）
+            </label>
+            <GenerateBtn disabled={!payload.sfxPrompt?.trim() || sfxMutation.isPending} loading={sfxMutation.isPending} onClick={handleGenerateSFX} label="生成音效" />
           </>
         )}
 

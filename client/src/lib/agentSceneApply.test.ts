@@ -49,3 +49,23 @@ describe("applyAgentOperations scene grouping", () => {
     expect(nodes.filter((n) => n.data.nodeType === "group").length).toBe(0);
   });
 });
+
+describe("applyAgentOperations storyboard promptText backstop", () => {
+  it("fills blank promptText from description on create (实测 bug：提示词框空置)", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "storyboard", tempId: "a", payload: { sceneNumber: 1, description: "雨夜街头，霓虹倒影" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const sb = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "storyboard")!;
+    expect((sb.data.payload as { promptText?: string }).promptText).toBe("雨夜街头，霓虹倒影");
+  });
+
+  it("never overwrites an explicit promptText", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "storyboard", tempId: "a", payload: { description: "中文描述", promptText: "neon-lit rainy street, cinematic" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const sb = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "storyboard")!;
+    expect((sb.data.payload as { promptText?: string }).promptText).toBe("neon-lit rainy street, cinematic");
+  });
+});

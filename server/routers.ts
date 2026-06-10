@@ -35,6 +35,8 @@ import { downloadsRouter } from "./routers/downloads";
 import { editorRouter } from "./routers/editor";
 import { comfyTemplatesRouter } from "./routers/comfyTemplates";
 import { characterLibraryRouter } from "./routers/characterLibrary";
+import { promptLibraryRouter } from "./routers/promptLibrary";
+import { userPrefsRouter } from "./routers/userPrefs";
 import { agentRouter } from "./routers/agent";
 
 export const appRouter = router({
@@ -85,6 +87,8 @@ export const appRouter = router({
   editor: editorRouter,
   comfyTemplates: comfyTemplatesRouter,
   characterLibrary: characterLibraryRouter,
+  promptLibrary: promptLibraryRouter,
+  userPrefs: userPrefsRouter,
 });
 
 export type AppRouter = typeof appRouter;

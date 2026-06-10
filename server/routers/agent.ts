@@ -2,7 +2,8 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { assertProjectAccess } from "../_core/permissions";
 import { assertLLMAllowed } from "../_core/whitelist";
-import { invokeLLM, extractTextContent } from "../_core/llm";
+import { extractTextContent } from "../_core/llm";
+import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { catalogText, sanitizeOperation, templateKnowledgeText } from "../_core/agentCatalog";
 import { enforceImageFirst, enforceImageFirstComfy } from "../_core/imageFirst";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
@@ -51,7 +52,7 @@ export const agentRouter = router({
       // library be analyzed (otherwise the agent only "knows" a partial subset and
       // picks the wrong templates), so analyze many per turn there; results are
       // cached so only new/changed templates re-run on later turns.
-      try { await runLibraryAnalysis(model, { max: input.comfyOnly ? 40 : 6 }); } catch { /* non-fatal */ }
+      try { await runLibraryAnalysis(ctx, model, { max: input.comfyOnly ? 40 : 6 }); } catch { /* non-fatal */ }
       let templateSection = "";
       const validTemplateIds = new Set<number>();
       let hasImageTemplate = false;
@@ -154,6 +155,8 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
 - 时长感知拆镜（重要）：视频模板/模型每镜有最长时长（上面括号里的「每镜≈Ns」就是单个镜头能生成的秒数上限）。当用户的目标总时长 T 大于所选模板的每镜上限 d 时，绝不能只做几个镜头，必须按 镜头数 = ceil(T / d) 规划足够多的镜头，使 镜头数 × d ≈ T（例：目标 60s、每镜 5s → 需 12 个镜头）。把这些镜头组织成若干「场景」（叙事段落），每个场景包含一个或多个镜头。
 - 场景分组：为每个生成节点加 sceneGroup 字段标注它属于哪个场景（如 "s1"/"s2"…，同一场景的镜头用同一个值），画布会据此把同场景的镜头框进一个「场景」分组容器。所有镜头仍各自连入 merge 合并成片。
 - 角色一致性：当故事有反复出现的人物/主角时，为每个主要角色创建一个 character 节点（填 name/role/appearance/outfit/signature），并把该 character 连接到它出现的每一个分镜/生成节点（character → storyboard/comfyui_image/image_gen/video_task）。这样跨镜的脸/服装/特征会保持一致（连到 ComfyUI 图像节点会自动用作 IPAdapter 人脸参考）。同一角色只建一个节点、复用连接到多个镜头，不要每镜各建一个。
+- 镜头表完备（重要）：创建 storyboard 时必须【同时】给 description（中文画面描述，给人看）和 promptText（详细生成提示词，直接喂生图/生视频模型，禁止留空、也不要把提示词堆进 description）；必须给连续镜号 sceneNumber（1,2,3…，装配成片按它排序）；有人声内容（台词/旁白/口播/解说）的镜头填 dialogue（多人对话每行一句「角色名：台词」，纯旁白直接写文本）；按叙事节奏给 transition（常规切换 cut、时间/地点跳跃 dissolve、开场收尾 fade、强调匹配 match-cut）；尽量补 duration/shotType。这些字段会被镜头表批量生产与装配直接消费，缺了用户就要手工补。
+- 分镜→成片管线：每镜建一个 video_task（或 ComfyUI 视频）工位并连入 merge——后续「镜头表面板」的批量生图/生视频会复用这些工位；逐镜配音【不要】建 audio 节点（批量配音按 dialogue 自动生成），只有整体配乐才建一个 audio(music) 连入 merge。视频出片后用户在合并节点点「按镜头表装配」即可自动完成镜号排序、逐镜转场与配音对位——请在 reply 末尾用一句话提醒该操作路径。
 - 规划摘要：当涉及视频时长拆分时，在返回 JSON 顶层additionally给出 plan 对象：{"targetSeconds":目标总秒数,"perShotSeconds":每镜秒数,"templateLabel":"所选模板名","shots":镜头总数}，供前端做时长校验与提示。
 - 运行自愈：当画布摘要里某节点 status=failed（或缺少必要参数/连接）时，可主动用 update/connect 修复（补全提示词、参考图、连线或换更合适的模板），并在 reply 说明修了什么。
 - 若用户只是提问、或当前无需改动画布，operations 给空数组 []，把回答写进 reply。
@@ -172,7 +175,7 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
       // response_format json_object — the default model is Claude (proxied), where
       // the OpenAI-style flag isn't reliably supported; the robust parse below
       // handles fences/prose instead.
-      const response = await invokeLLM({ messages, model, maxTokens: 16000 });
+      const response = await invokeLLMWithKie(ctx, { messages, model, maxTokens: 16000 });
       const text = extractTextContent(response);
 
       let reply = text.trim();
@@ -253,7 +256,7 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
       const model = input.model ?? "claude-sonnet-4-5-20250929";
       const system = `你是短视频分镜编剧。根据给定的视频类型与主题，输出恰好 ${input.shots} 个镜头的中文画面描述。要求：每条 15-40 字，具体可拍（画面主体 / 动作 / 环境 / 镜头语言），按叙事顺序连贯推进，不要编号前缀。严格只输出一个 JSON 字符串数组，例如 ["镜头1描述","镜头2描述"]，不要 markdown、不要任何多余文字。`;
       const user = `视频类型：${input.recipeName}\n主题：${input.topic?.trim() || "（未指定，请自拟一个吸引人的主题）"}${input.style?.trim() ? `\n风格：${input.style.trim()}` : ""}\n镜头数：${input.shots}`;
-      const response = await invokeLLM({
+      const response = await invokeLLMWithKie(ctx, {
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
         model, maxTokens: 1500,
       });

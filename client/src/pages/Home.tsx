@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
@@ -7,6 +8,7 @@ import { toast } from "sonner";
 import {
   Plus,
   Film,
+  KeyRound,
   Clapperboard,
   ArrowRight,
   MoreHorizontal,
@@ -440,6 +442,43 @@ function EditorEntryCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+// 平台介绍入口卡片 — 新标签打开单文件功能汇报网页（系统架构 / AI 模型矩阵 / 功能模块 / 特色一览）。
+function PlatformIntroCard() {
+  const accent = "oklch(0.7 0.16 200)"; // 平台介绍主色（青蓝）
+  return (
+    <div
+      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
+      onClick={() => window.open("/platform-intro.html", "_blank", "noopener")}
+      style={{
+        borderColor: `${accent.replace(")", " / 0.35)")}`,
+        background: "var(--c-surface)",
+        boxShadow: "0 1px 2px oklch(0 0 0 / 0.2), 0 4px 16px oklch(0 0 0 / 0.1)",
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = accent; (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accent.replace(")", " / 0.35)")}`; (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+    >
+      <div className="relative h-36 flex items-center justify-center overflow-hidden" style={{ background: `${accent.replace(")", " / 0.07)")}` }}>
+        <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${accent.replace(")", " / 0.18)")}`, border: `1px solid ${accent.replace(")", " / 0.4)")}` }}>
+          <Sparkles className="w-5 h-5" style={{ color: accent }} />
+        </div>
+        <span className="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide" style={{ background: `${accent.replace(")", " / 0.9)")}`, color: "#fff" }}>
+          平台介绍
+        </span>
+      </div>
+      <div className="flex flex-col gap-1 p-4">
+        <h3 className="text-sm font-semibold leading-snug flex items-center gap-1.5" style={{ color: "var(--c-t1)" }}>
+          功能总览
+          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" style={{ color: accent }} />
+        </h3>
+        <div className="flex items-center gap-1 text-xs" style={{ color: "var(--c-t4)" }}>
+          <Sparkles className="w-3 h-3" />
+          <span>架构 · 模型 · 特色一览</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── New project card ──────────────────────────────────────────────────────────
 function NewProjectCard({ onClick }: { onClick: () => void }) {
   return (
@@ -469,6 +508,7 @@ function NewProjectCard({ onClick }: { onClick: () => void }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Home() {
   const { user, isAuthenticated, loading, logout } = useAuth();
+  const [showChangePw, setShowChangePw] = useState(false);
   const [, navigate] = useLocation();
   const [creating, setCreating] = useState(false);
 
@@ -555,13 +595,8 @@ export default function Home() {
         {/* Nav */}
         <nav className="relative z-10 flex items-center justify-between px-8 py-5">
           <div className="flex items-center gap-2.5">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{
-                background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
-              }}
-            >
-              <Film className="w-4 h-4 text-white" />
+            <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center">
+              <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
             </div>
             <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
               AI Video Canvas
@@ -602,13 +637,10 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
                   <div className="flex items-center gap-2.5">
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center"
-                      style={{
-                        background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
-                        boxShadow: "0 4px 16px oklch(0.68 0.22 285 / 0.35)",
-                      }}
+                      className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center"
+                      style={{ boxShadow: "0 4px 16px oklch(0.68 0.22 285 / 0.35)" }}
                     >
-                      <Film className="w-5 h-5 text-white" />
+                      <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
                     </div>
                     <span className="text-sm font-bold tracking-tight" style={{ color: "var(--c-t1)" }}>
                       AI Video Canvas
@@ -721,6 +753,12 @@ export default function Home() {
                     title: "节点式工作流",
                     desc: "脚本 / 分镜 / 提示词 / 图像 / 视频 / 剪辑节点可视化连线",
                     badge: null,
+                  },
+                  {
+                    icon: Clapperboard, color: "oklch(0.65 0.20 160)",
+                    title: "分镜→成片流水线",
+                    desc: "镜头表批量：关键帧图 → 生视频（云端/ComfyUI 免费三引擎）→ 配音（多角色分音色）→ 音效 → 一键「按镜头表装配」成片（镜号排序·逐镜转场·音轨对位），字幕零转录对位生成",
+                    badge: "NEW",
                   },
                   {
                     icon: Wand2, color: "oklch(0.72 0.20 330)",
@@ -949,13 +987,8 @@ export default function Home() {
         style={{ background: "color-mix(in oklch, var(--c-base) 92%, transparent)", backdropFilter: "blur(20px)", borderColor: "var(--c-bd1)" }}
       >
         <div className="flex items-center gap-2.5">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
-            }}
-          >
-            <Film className="w-4 h-4 text-white" />
+          <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center">
+            <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
           </div>
           <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
             AI Video Canvas
@@ -1015,6 +1048,15 @@ export default function Home() {
               {(user.name ?? user.email ?? "U")[0].toUpperCase()}
             </div>
             <button
+              onClick={() => setShowChangePw(true)}
+              title="修改密码"
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150"
+              style={{ background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+            </button>
+            <ChangePasswordDialog open={showChangePw} onClose={() => setShowChangePw(false)} />
+            <button
               onClick={async () => {
                 await logout();
                 toast.success("已退出登录");
@@ -1060,6 +1102,7 @@ export default function Home() {
                   onOpen={() => navigate("/library")}
                 />
                 <EditorEntryCard onOpen={() => navigate("/editor")} />
+                <PlatformIntroCard />
               </div>
             </div>
           )}

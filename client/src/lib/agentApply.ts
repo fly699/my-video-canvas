@@ -7,8 +7,9 @@ import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding } from ".
 export interface AgentTemplate { id: number; label: string; payload: Record<string, unknown> }
 
 /** Build a comfyui_workflow node payload from a template, writing the agent's
- *  prompts into the template's positive/negative role params. */
-function materializeTemplate(tpl: AgentTemplate, prompt: string, negPrompt: string): Record<string, unknown> {
+ *  prompts into the template's positive/negative role params.
+ *  （也被镜头表「批量生成视频 · ComfyUI 模板」复用来物化逐镜工位。） */
+export function materializeTemplate(tpl: AgentTemplate, prompt: string, negPrompt: string): Record<string, unknown> {
   const base: Record<string, unknown> = { ...tpl.payload, templateId: tpl.id, templateLabel: tpl.label };
   const bindings = (base.paramBindings as WorkflowParamBinding[] | undefined) ?? [];
   const paramValues: Record<string, unknown> = { ...((base.paramValues as Record<string, unknown>) ?? {}) };
@@ -139,6 +140,15 @@ export function applyAgentOperations(
             payload = materializeTemplate(tpl, String(payload.prompt ?? ""), String(payload.negPrompt ?? ""));
             if (serverOverride) payload.customBaseUrl = serverOverride;
             if (freeVramOverride) payload.freeVramAfterRun = true;
+          }
+          // 分镜兜底（实测 bug）：LLM/配方常把生成提示词整段写进 description（场景描述框），
+          // promptText（提示词框）留空。批量生产本就按 promptText||description 回退——这里
+          // 在创建时把回退显式化：promptText 为空则补 description，提示词框不再空置。
+          // 仅创建时填空，绝不覆盖 LLM 已分别给出的两个字段。
+          if (op.nodeType === "storyboard" && payload) {
+            const d = typeof payload.description === "string" ? payload.description.trim() : "";
+            const pt = typeof payload.promptText === "string" ? payload.promptText.trim() : "";
+            if (!pt && d) payload = { ...payload, promptText: d };
           }
           // Scene layout when planned, else fan out 3 per row to the agent's right.
           const pos = posByOp.get(op) ?? {
