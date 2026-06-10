@@ -7,10 +7,10 @@ import { derivePipelineSteps } from "@/lib/pipelinePlan";
 import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw, ListChecks } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
-import { applyAgentOperations, buildGraphSummary, distributeServers } from "@/lib/agentApply";
+import { applyAgentOperations, buildGraphSummary, distributeServers, summarizePlanOps } from "@/lib/agentApply";
 import { ownedNodeIds } from "@/lib/agentOwnership";
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
@@ -304,7 +304,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         imageTemplateId: tp.imageTemplateId,
         videoTemplateId: tp.videoTemplateId,
       });
-      setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations }]);
+      setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations, plan: r.plan }]);
       // Duration-aware capacity check: if the plan split a target longer than the
       // model's per-shot cap into many shots, let the user choose how to proceed
       // before applying (instead of silently auto-applying a 12-shot plan).
@@ -571,6 +571,15 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               )}
               {m.role === "assistant" && m.operations && m.operations.length > 0 && (
                 <div style={{ marginTop: 6, border: `1px solid ${accentA(0.28)}`, borderRadius: 10, overflow: "hidden", background: accentA(0.06) }}>
+                  {(() => {
+                    const outline = summarizePlanOps(m.operations, m.plan);
+                    return outline ? (
+                      <div style={{ padding: "5px 9px", fontSize: 10.5, fontWeight: 700, color: accent, borderBottom: `1px solid ${accentA(0.18)}`, display: "flex", alignItems: "center", gap: 4 }}>
+                        <ListChecks className="w-3 h-3" style={{ flexShrink: 0 }} />
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={outline}>{outline}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   <div style={{ padding: "6px 9px", display: "flex", flexDirection: "column", gap: 4 }}>
                     {m.operations.map((op, j) => {
                       const { Icon, label } = OP_META[op.op];
@@ -580,7 +589,10 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                         <div key={j} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--c-t2)" }}>
                           <Icon className="w-3 h-3" style={{ color: c, flexShrink: 0 }} />
                           <span style={{ color: c, fontWeight: 600, flexShrink: 0 }}>{label}</span>
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={failed ? op.error : (op.note || opText(op))}>{opText(op)}</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={failed ? op.error : (op.note ? `${opText(op)}\n理由：${op.note}` : opText(op))}>
+                            {opText(op)}
+                            {op.note && <span style={{ color: "var(--c-t4)", fontWeight: 400 }}> — {op.note}</span>}
+                          </span>
                           {failed && <span style={{ color: "oklch(0.62 0.20 25)", flexShrink: 0, fontSize: 10 }}>失败</span>}
                         </div>
                       );

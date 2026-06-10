@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useCanvasStore } from "../hooks/useCanvasStore";
-import { applyAgentOperations, buildGraphSummary } from "./agentApply";
+import { applyAgentOperations, buildGraphSummary, summarizePlanOps } from "./agentApply";
 import type { AgentOperation } from "../../../shared/types";
 
 // Phase A: when create ops carry sceneGroup, the apply layer lays each scene out
@@ -139,5 +139,31 @@ describe("精准增量编辑防护", () => {
     applyAgentOperations(ops, { x: 0, y: 0 });
     const p = useCanvasStore.getState().nodes.find((x) => x.id === n.id)!.data.payload as { promptText?: string };
     expect(p.promptText).toBe("崭新的提示词，意境悠远…");
+  });
+});
+
+describe("summarizePlanOps 计划大纲", () => {
+  it("汇总场景/节点统计/模板/连线/删除警示与时长拆解", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "script", tempId: "sc" },
+      { op: "create", nodeType: "storyboard", tempId: "a", sceneGroup: "s1" },
+      { op: "create", nodeType: "storyboard", tempId: "b", sceneGroup: "s2" },
+      { op: "create", nodeType: "comfyui_workflow", tempId: "w", payload: { templateId: 7 } },
+      { op: "connect", sourceRef: "a", targetRef: "w" },
+      { op: "update", targetRef: "x1", payload: { prompt: "p" } },
+      { op: "delete", targetRef: "x2" },
+    ];
+    const t = summarizePlanOps(ops, { targetSeconds: 60, perShotSeconds: 5, shots: 12, templateLabel: "WAN" });
+    expect(t).toContain("60s ÷ 5s/镜 ≈ 12 镜（WAN）");
+    expect(t).toContain("2 个场景");
+    expect(t).toContain("分镜×2");
+    expect(t).toContain("引用 1 个模板");
+    expect(t).toContain("1 条连线");
+    expect(t).toContain("更新 1 处");
+    expect(t).toContain("⚠️ 删除 1 个节点");
+  });
+
+  it("空操作返回空串（不渲染大纲行）", () => {
+    expect(summarizePlanOps([])).toBe("");
   });
 });

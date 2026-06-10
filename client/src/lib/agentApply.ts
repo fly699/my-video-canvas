@@ -1,4 +1,5 @@
 import { useCanvasStore } from "../hooks/useCanvasStore";
+import { NODE_CONFIGS } from "./nodeConfig";
 import { isConnectionValid } from "./connectionRules";
 import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding } from "../../../shared/types";
 
@@ -256,6 +257,37 @@ const SUMMARY_FIELDS: Partial<Record<NodeType, string[]>> = {
   audio: ["audioCategory"],
   note: ["content"],
 };
+
+/**
+ * 规划可解释：从操作列表确定性推导一行「计划大纲」——场景/节点统计、模板引用、
+ * 连接/更新/删除计数（删除醒目标注）、时长拆解（plan 对象）。不依赖 LLM 的自述，
+ * 用户在应用前一眼看懂这个计划要对画布做什么。
+ */
+export function summarizePlanOps(
+  ops: AgentOperation[],
+  plan?: { targetSeconds: number; perShotSeconds: number; shots: number; templateLabel?: string },
+): string {
+  const creates = ops.filter((o) => o.op === "create");
+  const byType = new Map<string, number>();
+  for (const o of creates) {
+    const label = NODE_CONFIGS[o.nodeType as NodeType]?.label ?? o.nodeType ?? "节点";
+    byType.set(label, (byType.get(label) ?? 0) + 1);
+  }
+  const scenes = new Set(creates.map((o) => o.sceneGroup?.trim()).filter(Boolean)).size;
+  const templates = new Set(creates.map((o) => (o.payload as { templateId?: unknown } | undefined)?.templateId).filter((v) => v != null)).size;
+  const connects = ops.filter((o) => o.op === "connect").length;
+  const updates = ops.filter((o) => o.op === "update").length;
+  const deletes = ops.filter((o) => o.op === "delete").length;
+  const parts: string[] = [];
+  if (plan && plan.perShotSeconds > 0) parts.push(`${plan.targetSeconds}s ÷ ${plan.perShotSeconds}s/镜 ≈ ${plan.shots} 镜${plan.templateLabel ? `（${plan.templateLabel}）` : ""}`);
+  if (scenes > 0) parts.push(`${scenes} 个场景`);
+  if (byType.size > 0) parts.push(Array.from(byType.entries()).map(([l, n]) => `${l}×${n}`).join(" + "));
+  if (templates > 0) parts.push(`引用 ${templates} 个模板`);
+  if (connects > 0) parts.push(`${connects} 条连线`);
+  if (updates > 0) parts.push(`更新 ${updates} 处`);
+  if (deletes > 0) parts.push(`⚠️ 删除 ${deletes} 个节点`);
+  return parts.join(" · ");
+}
 
 export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[] } = {}): string {
   const { nodes, edges } = useCanvasStore.getState();
