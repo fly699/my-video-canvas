@@ -72,6 +72,24 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
     onError: (err) => { update({ status: "failed", errorMessage: err.message }); toast.error("智能剪辑失败：" + err.message); },
   });
 
+  // 镜界保护：上游是「已装配并完成合并」的成片、且本次剪辑源就是该成片时，
+  // 把各段精确起点（segStarts）作为镜头边界传给智能剪辑——剪辑边界优先落在切点上
+  // （LLM 提示 + 服务端 ±0.5s 确定性吸附），不在镜头中间起切。
+  const shotBoundariesFor = (videoUrl: string): number[] | undefined => {
+    for (const e of edges) {
+      if (e.target !== id) continue;
+      const src = nodes.find((n) => n.id === e.source);
+      if (src?.data.nodeType !== "merge") continue;
+      const mp = src.data.payload as { segStarts?: number[]; outputUrl?: string };
+      if (mp.segStarts?.length && mp.outputUrl === videoUrl) return mp.segStarts.slice(0, 60);
+    }
+    return undefined;
+  };
+  const boundaryCount = (() => {
+    const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
+    return videoUrl ? (shotBoundariesFor(videoUrl)?.length ?? 0) : 0;
+  })();
+
   const handleRun = () => {
     if (smartCutMutation.isPending) return;
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
@@ -83,6 +101,7 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
       nodeId: id,
       aggressiveness: payload.aggressiveness ?? "medium",
       targetDuration: payload.targetDuration,
+      shotBoundaries: shotBoundariesFor(videoUrl),
     });
   };
 
@@ -105,6 +124,13 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
           <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
             <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
           </div>
+        )}
+
+        {boundaryCount > 0 && (
+          <p title="上游成片的各镜起点将作为剪辑保护切点：剪辑边界优先落在镜头切点上（±0.5s 自动吸附），不在镜头中间起切"
+            style={{ fontSize: 9.5, color: "oklch(0.65 0.20 160)", margin: 0, lineHeight: 1.5 }}>
+            🎬 已识别上游装配成片：{boundaryCount} 个镜头切点将作为剪辑保护边界
+          </p>
         )}
 
         {/* Video URL */}

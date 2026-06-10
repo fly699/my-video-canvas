@@ -689,6 +689,10 @@ export interface MergeNodeData {
   segStarts?: number[];
   /** 装配端：段↔分镜/视频节点绑定（sb=分镜 id，vid=视频节点 id；按镜定位/重生成入口）。 */
   sourceShots?: { sb: string | null; vid: string; num?: number | string }[];
+  /** 装配端：合并完成后用镜头表对白 + segStarts 直接把字幕烧进成片（免下游字幕节点）。 */
+  burnShotSubtitles?: boolean;
+  /** 内嵌字幕字号（默认 22）。 */
+  subFontSize?: number;
   transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
   bgMusicUrl?: string;
   bgMusicVolume?: number;       // 0.0–1.0, default 0.3

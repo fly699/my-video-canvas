@@ -55,7 +55,7 @@ function fmt(s: number): string {
 
 function TrimBar({
   duration, startTime, endTime, currentTime,
-  onStartChange, onEndChange, onSeek,
+  onStartChange, onEndChange, onSeek, markers,
 }: {
   duration: number;
   startTime: number;
@@ -64,6 +64,8 @@ function TrimBar({
   onStartChange: (v: number) => void;
   onEndChange: (v: number) => void;
   onSeek: (v: number) => void;
+  /** 镜头边界标记（上游装配成片的 segStarts）：轨道上画刻度、下方镜号 chips 点击跳转。 */
+  markers?: { time: number; label: string }[];
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -96,6 +98,11 @@ function TrimBar({
             pointerEvents: "none",
           }}
         />
+        {/* 镜界刻度（来自装配成片 segStarts；纯视觉，不挡拖拽） */}
+        {markers?.map((m, i) => (
+          <div key={`mk-${i}`} className="absolute top-0 bottom-0"
+            style={{ left: pct(Math.min(Math.max(m.time, 0), duration)), width: 1, background: "oklch(0.65 0.20 160 / 0.55)", pointerEvents: "none" }} />
+        ))}
         {/* Playhead */}
         <div
           className="absolute top-0 bottom-0 w-0.5"
@@ -152,6 +159,18 @@ function TrimBar({
         <span>总 {fmt(duration)}</span>
         <span style={{ color: accent }}>出 {fmt(endTime)}</span>
       </div>
+      {/* 镜号快跳 chips：点击把播放头定位到该镜起点（裁剪入出点对镜界更顺手） */}
+      {(markers?.length ?? 0) > 0 && (
+        <div className="nodrag" style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+          {markers!.map((m, i) => (
+            <button key={`mc-${i}`} onClick={() => onSeek(m.time)} title={`跳到 ${m.label} 起点（${fmt(m.time)}）`}
+              className="nodrag"
+              style={{ fontSize: 8.5, fontWeight: 700, padding: "1px 6px", borderRadius: 5, background: "oklch(0.65 0.20 160 / 0.08)", border: "1px solid oklch(0.65 0.20 160 / 0.3)", color: "oklch(0.65 0.20 160)", cursor: "pointer" }}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -419,6 +438,21 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     }, [id]),
   );
 
+  // 上游「已装配并完成合并」的成片镜界（segStarts + 镜号）。字符串 key 订阅（zustand
+  // 规则：selector 返回原始值），仅当剪辑源就是该成片时才在 TrimBar 上显示镜界标记。
+  const shotMarkersKey = useCanvasStore(
+    useCallback((s: ReturnType<typeof useCanvasStore.getState>) => {
+      for (const edge of s.edges.filter(e => e.target === id && e.targetHandle === "video-in")) {
+        const node = s.nodes.find(n => n.id === edge.source);
+        if (node?.data.nodeType !== "merge") continue;
+        const mp = node.data.payload as { segStarts?: number[]; sourceShots?: { num?: number | string }[]; outputUrl?: string };
+        if (!mp.segStarts?.length || !mp.outputUrl) continue;
+        return JSON.stringify({ url: mp.outputUrl, starts: mp.segStarts, nums: (mp.sourceShots ?? []).map((x) => x.num ?? null) });
+      }
+      return "";
+    }, [id]),
+  );
+
   // All connected audio sources (multi-track). Stable string key avoids re-subscribe
   // churn; parsed back into objects below.
   const audioSourcesKey = useCanvasStore(
@@ -444,6 +478,13 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     : [];
 
   const activeVideoUrl = inputVideoUrl ?? payload.inputVideoUrl ?? null;
+
+  const shotMarkers = useMemo(() => {
+    if (!shotMarkersKey) return [];
+    const g = JSON.parse(shotMarkersKey) as { url: string; starts: number[]; nums: (number | string | null)[] };
+    if (g.url !== activeVideoUrl) return []; // 剪辑源不是该成片 → 标记会错位，不显示
+    return g.starts.map((t, i) => ({ time: t, label: `镜${g.nums[i] ?? i + 1}` }));
+  }, [shotMarkersKey, activeVideoUrl]);
 
   const duration = payload.sourceDuration ?? 0;
   const startTime = payload.startTime ?? 0;
@@ -778,6 +819,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                     if (videoRef.current) videoRef.current.currentTime = v;
                     setCurrentTime(v);
                   }}
+                  markers={shotMarkers}
                 />
 
                 {/* Precise numeric in / out (frame-accurate, complements the slider) */}

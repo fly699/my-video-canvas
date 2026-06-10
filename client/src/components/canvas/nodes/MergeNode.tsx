@@ -7,6 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { assembleFromStoryboards } from "@/lib/storyboardGen";
+import { buildShotSubtitles } from "@/lib/shotSubtitles";
 import { toast } from "sonner";
 import { mediaFetchUrl } from "@/lib/download";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -81,6 +82,19 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   // selected or pinned (mirrors NodeSelectedContext / the other nodes' behavior).
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
 
+  // 内嵌字幕烧录（成片字幕一步到位）：合并产物 + 镜头表对白 + 回传 segStarts → 烧字幕。
+  const burnSubMutation = trpc.subtitle.burnIn.useMutation({
+    onSuccess: (result) => {
+      updateNodeData(id, { outputUrl: result.url, status: "done", errorMessage: undefined });
+      toast.success("成片已内嵌字幕");
+    },
+    onError: (err) => {
+      // 字幕烧录失败不丢成片：保留无字幕成片为输出，仅提示。
+      updateNodeData(id, { status: "done", errorMessage: undefined });
+      toast.error("字幕烧录失败（已保留无字幕成片）：" + err.message);
+    },
+  });
+
   const mergeMutation = trpc.merge.mergeVideos.useMutation({
     onSuccess: (result) => {
       updateNodeData(id, {
@@ -92,6 +106,24 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         status: "done",
         errorMessage: undefined,
       });
+      // 装配 + 开了内嵌字幕 + 有对白与精确起点 → 续烧字幕（保持 processing 不露无字幕中间版）。
+      if (payload.burnShotSubtitles && payload.segDialogues?.some(Boolean) && result.segStarts?.length) {
+        const entries = buildShotSubtitles({
+          segStarts: result.segStarts,
+          segDialogues: payload.segDialogues,
+          totalDuration: result.duration,
+          voiceDurations: payload.segVoiceDurations ?? undefined,
+        });
+        if (entries.length) {
+          updateNodeData(id, { status: "processing" });
+          burnSubMutation.mutate({
+            videoUrl: result.url, entries,
+            fontSize: payload.subFontSize,
+            projectId: data.projectId, nodeId: id,
+          });
+          return;
+        }
+      }
       toast.success(`合并完成，总时长 ${result.duration.toFixed(1)}s`);
     },
     onError: (err) => {
@@ -264,7 +296,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     update({ outputUrl: undefined, outputDuration: undefined, status: "idle", errorMessage: undefined });
   };
 
-  const isProcessing = payload.status === "processing" || mergeMutation.isPending;
+  const isProcessing = payload.status === "processing" || mergeMutation.isPending || burnSubMutation.isPending;
   const isDone = payload.status === "done";
   const isFailed = payload.status === "failed";
 
@@ -526,6 +558,16 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
                   </button>
                 ))}
               </div>
+            )}
+            {/* 成片内嵌字幕：仅当装配出对白时可用——合并完成后直接烧进成片 */}
+            {payload.segDialogues?.some(Boolean) && (
+              <label className="nodrag" title="合并完成后，用镜头表对白 + 各段精确起点直接把字幕烧进成片，无需再接字幕节点（确定性对位、零转录）"
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: payload.burnShotSubtitles ? accent : "var(--c-t3)", cursor: "pointer" }}>
+                <input type="checkbox" checked={payload.burnShotSubtitles ?? false}
+                  onChange={(e) => update({ burnShotSubtitles: e.target.checked })}
+                  style={{ accentColor: accent, margin: 0 }} />
+                合并时内嵌字幕（{payload.segDialogues.filter(Boolean).length} 镜有对白）
+              </label>
             )}
           </>
         )}
