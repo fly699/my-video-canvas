@@ -580,8 +580,11 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       const an = existing ?? store.addNode("audio", { x: own.position.x + 220, y: own.position.y + 980 });
       store.updateNodeData(an.id, { audioCategory: "sfx", sfxModel: "kie_elevenlabs_sfx", sfxPrompt: text });
       if (!existing) store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
+      // 音效时长对位镜长（0.5–22s 夹取）；镜未设时长则交给模型按描述自动决定。
+      const shotDur = Number(r.payload.duration);
       const res = await utils.client.audioGen.generateSFX.mutate({
-        model: "kie_elevenlabs_sfx", prompt: text.slice(0, 450), projectId,
+        model: "kie_elevenlabs_sfx", prompt: text.slice(0, 5000), projectId,
+        duration: Number.isFinite(shotDur) && shotDur > 0 ? Math.min(22, Math.max(0.5, shotDur)) : undefined,
         kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
       });
       useCanvasStore.getState().updateNodeData(an.id, { url: res.url, duration: res.duration, name: `音效 · 镜${r.payload.sceneNumber ?? "?"}` });
@@ -833,7 +836,7 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       {anySfxText && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
           <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)", flexShrink: 0 }}>批量音效</span>
-          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>ElevenLabs SFX（kie）· 时长按描述自动</span>
+          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>ElevenLabs SFX（kie）· 时长自动对位镜长（≤22s）</span>
           <button
             onClick={() => void runSfxBatch()}
             disabled={sfxBusy || sel.size === 0}

@@ -2523,7 +2523,12 @@ export const audioGenRouter = router({
     .input(
       z.object({
         model: z.enum(["kie_elevenlabs_sfx"]),
-        prompt: z.string().min(1).max(450),
+        // 官方 schema：text ≤5000 字符；duration_seconds 0.5–22（步进 0.1，缺省自动）；
+        // loop 无缝循环；prompt_influence 0–1（默认 0.3）。
+        prompt: z.string().min(1).max(5000),
+        duration: z.number().min(0.5).max(22).optional(),
+        loop: z.boolean().optional(),
+        promptInfluence: z.number().min(0).max(1).optional(),
         kieTempKey: z.string().max(256).optional(),
         estimatedCost: z.string().max(32).optional(),
         projectId: z.number().optional(),
@@ -2533,11 +2538,15 @@ export const audioGenRouter = router({
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const { key } = await resolveKieKey(ctx, input.kieTempKey);
       return dedupe("audioGen.generateSFX", ctx.user.id, input, async () => {
-        const result = await submitAndPollKieSFX({ apiKey: key, text: input.prompt });
+        const result = await submitAndPollKieSFX({
+          apiKey: key, text: input.prompt,
+          durationSeconds: input.duration, loop: input.loop, promptInfluence: input.promptInfluence,
+        });
         writeAuditLog({
           ctx, action: "audio_sfx",
           detail: {
             model: KIE_SFX_MODEL, text: truncate(input.prompt),
+            duration: input.duration ?? null, loop: input.loop ?? false,
             resultUrl: result.url,
             ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
             success: true,

@@ -713,7 +713,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     if (!prompt || sfxMutation.isPending) return;
     sfxMutation.mutate({
       model: "kie_elevenlabs_sfx",
-      prompt: prompt.slice(0, 450),
+      prompt: prompt.slice(0, 5000),
+      duration: payload.sfxDuration != null ? Math.min(22, Math.max(0.5, payload.sfxDuration)) : undefined,
+      loop: payload.sfxLoop || undefined,
       projectId: data.projectId,
       kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
     });
@@ -1349,9 +1351,35 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
-            <p style={{ fontSize: 10, color: "var(--c-t4)", margin: 0, lineHeight: 1.5 }}>
-              时长由模型按描述自动决定；想要更长/循环氛围声可在描述中写明（如「持续的雨声，约 10 秒」）。
-            </p>
+            <div>
+              <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>时长</label>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <label className="nodrag" title="不指定时长，由模型按描述自动决定" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: payload.sfxDuration == null ? accent : "var(--c-t4)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={payload.sfxDuration == null}
+                      onChange={(e) => update("sfxDuration", e.target.checked ? undefined : 5)}
+                      style={{ accentColor: accent, margin: 0 }} />
+                    自动
+                  </label>
+                  <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
+                    {payload.sfxDuration == null ? "按描述" : `${payload.sfxDuration}秒`}
+                  </span>
+                </span>
+              </div>
+              {payload.sfxDuration != null && (
+                <input
+                  type="range" min={0.5} max={22} step={0.1}
+                  value={payload.sfxDuration}
+                  onChange={(e) => update("sfxDuration", Math.round(Number(e.target.value) * 10) / 10)}
+                  className="nodrag w-full"
+                  style={{ accentColor: accent }}
+                />
+              )}
+            </div>
+            <label className="nodrag" title="生成可平滑无缝循环的音效（适合雨声/风声等持续氛围）" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: payload.sfxLoop ? accent : "var(--c-t3)", cursor: "pointer" }}>
+              <input type="checkbox" checked={payload.sfxLoop ?? false} onChange={(e) => update("sfxLoop", e.target.checked)} style={{ accentColor: accent, margin: 0 }} />
+              无缝循环（氛围声）
+            </label>
             <GenerateBtn disabled={!payload.sfxPrompt?.trim() || sfxMutation.isPending} loading={sfxMutation.isPending} onClick={handleGenerateSFX} label="生成音效" />
           </>
         )}

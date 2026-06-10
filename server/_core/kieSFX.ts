@@ -5,20 +5,24 @@ import { KIE_BASE_URL } from "./kie";
 // ── kie.ai ElevenLabs Sound Effects ──────────────────────────────────────────
 //
 // 文本→音效走统一 jobs API（POST /api/v1/jobs/createTask，轮询
-// GET /api/v1/jobs/recordInfo?taskId=），与 kieTTS.ts 同形。model 串来自
-// docs/kie-api.md 的市场目录条目 `market/elevenlabs/sound-effect-v2`。
-//
-// 严格按文档口径：该模型的详情页在 docs/kie-api.md 中抓取失败（NotFound），
-// 未给出 input schema——因此请求体只发文档对全部 elevenlabs 市场模型一致记载的
-// `input.text`，不携带任何文档未载明的参数（时长等由上游按描述自动决定）。
-// 若后续文档补全该页 schema，再按文档逐字添加参数。
+// GET /api/v1/jobs/recordInfo?taskId=），与 kieTTS.ts 同形。
+// input schema 按用户提供的官方文档（operationId: elevenlabs-sound-effect-v2）逐字对齐：
+//   text(必填, ≤5000 字符) / duration_seconds(0.5–22 秒, 步进 0.1, 缺省=按描述自动) /
+//   loop(默认 false, 无缝循环) / prompt_influence(0–1, 默认 0.3, 步进 0.01) /
+//   output_format(默认 mp3_44100_128) / callBackUrl(可选, 本集成用轮询不用回调)。
 
 export const KIE_SFX_MODEL = "elevenlabs/sound-effect-v2";
 
 export interface KieSFXOptions {
   apiKey: string;
-  /** 音效文本描述（送 input.text）。 */
+  /** 音效文本描述（input.text，≤5000 字符）。 */
   text: string;
+  /** 0.5–22 秒（步进 0.1）；缺省=模型按描述自动决定。 */
+  durationSeconds?: number;
+  /** 生成可无缝循环的音效（氛围声）。 */
+  loop?: boolean;
+  /** 0–1：越高越严格按描述生成（上游默认 0.3）。 */
+  promptInfluence?: number;
 }
 export interface KieSFXResult { url: string; duration?: number }
 
@@ -42,10 +46,15 @@ async function persistAudioUrl(upstreamUrl: string): Promise<string> {
 
 /** Submit an ElevenLabs sound-effect job and poll until the audio is ready. */
 export async function submitAndPollKieSFX(opts: KieSFXOptions): Promise<KieSFXResult> {
+  const input: Record<string, unknown> = { text: opts.text };
+  // 0.5–22 夹取并对齐 0.1 步进
+  if (opts.durationSeconds != null) input.duration_seconds = Math.round(Math.min(22, Math.max(0.5, opts.durationSeconds)) * 10) / 10;
+  if (opts.loop != null) input.loop = opts.loop;
+  if (opts.promptInfluence != null) input.prompt_influence = Math.min(1, Math.max(0, opts.promptInfluence));
   const submitRes = await fetch(`${KIE_BASE_URL}/api/v1/jobs/createTask`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${opts.apiKey}` },
-    body: JSON.stringify({ model: KIE_SFX_MODEL, input: { text: opts.text } }),
+    body: JSON.stringify({ model: KIE_SFX_MODEL, input }),
     signal: AbortSignal.timeout(20_000),
   });
   if (!submitRes.ok) {
@@ -80,7 +89,7 @@ export async function submitAndPollKieSFX(opts: KieSFXOptions): Promise<KieSFXRe
         urls = Array.isArray(ru) ? ru : (() => { try { return JSON.parse(ru) as string[]; } catch { return []; } })();
       }
       if (!urls.length) throw new Error("[CHARGED] kie 音效已生成但未返回 URL（积分可能已扣，请勿重试）");
-      return { url: await persistAudioUrl(urls[0]) };
+      return { url: await persistAudioUrl(urls[0]), duration: input.duration_seconds as number | undefined };
     }
     if (d.successFlag === 2 || d.successFlag === 3) {
       throw new Error(`kie 音效生成失败：${d.errorMessage ?? "未知错误"}`);

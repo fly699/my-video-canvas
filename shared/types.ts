@@ -524,9 +524,12 @@ export interface AudioNodeData {
   ttsDoNormalize?: boolean;                       // 文本规范化
   ttsTranslateTarget?: string;                    // 配音文本翻译目标语言/方言
   ttsTranslateModel?: string;                     // 翻译所用 AI 模型（可选）
-  // SFX (音效)
+  // SFX (音效) — 对齐 kie elevenlabs/sound-effect-v2 官方 schema
   sfxPrompt?: string;
+  /** 0.5–22 秒（步进 0.1）；undefined=模型按描述自动决定时长。 */
   sfxDuration?: number;
+  /** 生成可无缝循环的氛围音效。 */
+  sfxLoop?: boolean;
   // Legacy compat
   source?: AudioSource;
 }
