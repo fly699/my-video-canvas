@@ -7,6 +7,13 @@ import type { StoryboardNodeData, ScriptNodeData } from "../../../../shared/type
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
 import { propagateRefImage } from "../../lib/refImagePropagation";
 import { PROVIDER_PARAMS, withParamDefaults, PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
+
+// 批量 I2V 不适用的特殊输入模型（需源视频/驱动音频，逐镜批量必败）——从选择器剔除。
+const BATCH_EXCLUDED_PROVIDERS = new Set([
+  "kie_kling26_motion", "kie_kling30_motion", "kie_wan_animate_move", "kie_wan_animate_replace",
+  "kie_topaz_upscale", "kie_runway_aleph", "kie_kling_avatar_std", "kie_kling_avatar_pro",
+]);
+const BATCH_VIDEO_OPTIONS = PROVIDER_PICKER_OPTIONS.filter((o) => !BATCH_EXCLUDED_PROVIDERS.has(o.value));
 import { ModelPicker } from "./ModelPicker";
 import { estimateVideoCost, estimateTtsCost, costEstimateLabel } from "../../lib/costEstimate";
 import { DUBBING_MODELS, voicesForModel } from "./nodes/AudioNode";
@@ -44,7 +51,7 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       src: srcScript ?? null,
       target: srcScript ? (s.nodes.find((n) => n.id === srcScript)?.data.payload as ScriptNodeData | undefined)?.totalDuration ?? null : null,
       rows: members.map((n) => [
-        n.id, n.data.title, n.position.x, JSON.stringify(n.data.payload),
+        n.id, n.data.title, Math.round(n.position.x / 50), JSON.stringify(n.data.payload), // x 量化 50px：拖动不再每帧重算面板
         // 精修工位标记：本镜出边指向 image_gen（批量生图默认跳过，避免覆盖精修流程）
         s.edges.some((e) => e.source === n.id && s.nodes.find((m) => m.id === e.target)?.data.nodeType === "image_gen") ? 1 : 0,
         // 下游视频节点状态（第一个 video_task：无→"" / idle/pending/processing/succeeded/failed）
@@ -175,8 +182,11 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const hasImg = !!r.payload.imageUrl;
     if (!hasImg && !allowT2V) return "error";
     try {
-      // 建视频节点 + 连线（分镜→视频）
-      const vn = store.addNode("video_task", { x: own.position.x, y: own.position.y + 560 });
+      // 复用已有下游视频工位（failed/idle 的可重提，避免「失败后被跳过无法重试」）；否则新建。
+      const existing = store.edges
+        .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
+        .find((n) => n?.data.nodeType === "video_task" && ["failed", "idle", undefined].includes((n.data.payload as { status?: string }).status as never));
+      const vn = existing ?? store.addNode("video_task", { x: own.position.x, y: own.position.y + 560 });
       const clamped = clampDurationForProvider(PROVIDER_PARAMS[videoProvider], r.payload.duration);
       const params = withParamDefaults(videoProvider, clamped != null ? { duration: clamped } : {});
       const prompt = (r.payload.promptText || r.payload.description || "").slice(0, 4000);
@@ -186,7 +196,7 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         referenceImageUrl: hasImg ? r.payload.imageUrl : undefined,
         params,
       });
-      store.onConnect({ source: r.id, target: vn.id, sourceHandle: null, targetHandle: null });
+      if (!existing) store.onConnect({ source: r.id, target: vn.id, sourceHandle: null, targetHandle: null });
       // 提交（服务端幂等：同 nodeId 在途任务不重复扣费）
       const task = await utils.client.videoTasks.create.mutate({
         projectId, nodeId: vn.id, provider: videoProvider as never, prompt,
@@ -205,10 +215,11 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
 
   const runVideoBatch = async () => {
     if (videoBusy) return;
-    const targets = rows.filter((r) => sel.has(r.id) && !r.videoStatus); // 已有视频工位的跳过
+    // 跳过条件细化：仅跳过 进行中/已成功 的工位；failed/idle 允许复用重提。
+    const targets = rows.filter((r) => sel.has(r.id) && !["pending", "processing", "succeeded"].includes(r.videoStatus));
     const ready = targets.filter((r) => r.payload.imageUrl || allowT2V);
     const skippedNoImg = targets.length - ready.length;
-    const skippedHasVideo = rows.filter((r) => sel.has(r.id) && r.videoStatus).length;
+    const skippedHasVideo = rows.filter((r) => sel.has(r.id) && ["pending", "processing", "succeeded"].includes(r.videoStatus)).length;
     if (!ready.length) { toast.error(allowT2V ? "勾选镜均已有视频工位" : "勾选镜中没有已出图的（可勾选「允许文生视频」直通）"); return; }
     // Σ预估
     const sums: Record<string, number> = {};
@@ -254,9 +265,13 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const text = r.payload.dialogue?.trim();
     if (!own || !projectId || !text) return "error";
     try {
-      const an = store.addNode("audio", { x: own.position.x, y: own.position.y + 980 });
+      // 复用未出声的已有配音工位（失败后可重试），否则新建。
+      const existing = store.edges
+        .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
+        .find((n) => n?.data.nodeType === "audio" && !(n.data.payload as { url?: string }).url);
+      const an = existing ?? store.addNode("audio", { x: own.position.x, y: own.position.y + 980 });
       store.updateNodeData(an.id, { audioCategory: "dubbing", ttsText: text, ttsModel: dubModel, ttsVoice: effDubVoice });
-      store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
+      if (!existing) store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
       const res = await utils.client.audioGen.generateDubbing.mutate({
         model: dubModel as never, text, voice: effDubVoice, projectId,
         estimatedCost: costEstimateLabel(estimateTtsCost(dubModel, text.length)) || undefined,
@@ -271,7 +286,8 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
 
   const runDubBatch = async () => {
     if (dubBusy) return;
-    const targets = rows.filter((r) => sel.has(r.id) && !r.audioStatus); // 已有配音工位的跳过
+    // 仅跳过「已出声」的配音工位；empty（有节点未出声=上次失败）允许复用重试。
+    const targets = rows.filter((r) => sel.has(r.id) && !(r.audioStatus && r.audioStatus !== "empty"));
     const ready = targets.filter((r) => r.payload.dialogue?.trim());
     const skippedNoDlg = targets.length - ready.length;
     if (!ready.length) { toast.error("勾选镜中没有「对白/旁白」可配音（在分镜或镜头表里填写）"); return; }
@@ -323,9 +339,11 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     ]);
   };
 
-  /** 按画布 x 坐标从左到右重编号（1..n）。 */
+  /** 按画布 x 坐标从左到右重编号（1..n）。点击时读 store 实时位置（key 中的 x 已量化）。 */
   const renumberByPosition = () => {
-    const byX = [...rows].sort((a, b) => (a as ShotRow & { x: number }).x - (b as ShotRow & { x: number }).x);
+    const live = useCanvasStore.getState().nodes;
+    const byX = [...rows].sort((a, b) =>
+      (live.find((n) => n.id === a.id)?.position.x ?? 0) - (live.find((n) => n.id === b.id)?.position.x ?? 0));
     batchUpdateNodeData(byX.map((r, i) => ({ id: r.id, payload: { sceneNumber: i + 1 } })));
     toast.success("已按画布位置重编号");
   };
@@ -423,7 +441,7 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)", flexShrink: 0 }}>批量视频</span>
         <div style={{ width: 190 }}>
-          <ModelPicker value={videoProvider} onChange={pickVideoProvider} options={PROVIDER_PICKER_OPTIONS} minWidth={190} />
+          <ModelPicker value={videoProvider} onChange={pickVideoProvider} options={BATCH_VIDEO_OPTIONS} minWidth={190} />
         </div>
         <label className="nodrag" title="无关键帧图的镜也允许提交文生视频（跳过关键帧，角色/场景一致性弱）" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9.5, color: allowT2V ? "oklch(0.75 0.16 75)" : "var(--c-t4)", cursor: "pointer" }}>
           <input type="checkbox" checked={allowT2V} onChange={(e) => setAllowT2V(e.target.checked)} style={{ accentColor: "oklch(0.75 0.16 75)", margin: 0 }} />
