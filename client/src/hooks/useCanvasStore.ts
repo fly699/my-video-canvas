@@ -109,6 +109,9 @@ interface CanvasStore {
    *  it; Canvas watches the token and routes it through the normal run-confirm). */
   runRequest: { startNodeId: string | null; onlyIds?: string[]; token: number } | null;
   requestRun: (startNodeId: string | null, onlyIds?: string[]) => void;
+  /** 瞬时跨节点 UI 信号：请求某节点打开内嵌面板（如智能体引导卡「打开镜头表」）。 */
+  panelRequest: { nodeId: string; panel: string; token: number } | null;
+  requestPanel: (nodeId: string, panel: string) => void;
   setNodes: (nodes: CanvasNode[]) => void;
   setEdges: (edges: CanvasEdge[]) => void;
   onNodesChange: (changes: NodeChange[]) => void;
@@ -207,6 +210,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   setCurrentUserId: (id) => set({ currentUserId: id }),
   runRequest: null,
   requestRun: (startNodeId, onlyIds) => set((s) => ({ runRequest: { startNodeId, onlyIds, token: (s.runRequest?.token ?? 0) + 1 } })),
+  panelRequest: null,
+  requestPanel: (nodeId, panel) => set((s) => ({ panelRequest: { nodeId, panel, token: (s.panelRequest?.token ?? 0) + 1 } })),
 
   // setNodes / setEdges are used for initial load — don't push to history
   setNodes: (nodes) => set({ nodes }),

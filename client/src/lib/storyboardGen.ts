@@ -209,6 +209,20 @@ export interface AssembledPlan {
   shots: { sceneNumber: number | string | undefined; hasVoice: boolean; hasSfx: boolean; transition: string }[];
 }
 
+/** 把装配清单映射成合并节点 payload 补丁（MergeNode.handleAssemble 与智能体引导卡共用，
+ *  单一事实源避免两处字段映射漂移）。 */
+export function assembledPlanToMergePatch(plan: AssembledPlan) {
+  return {
+    inputVideoUrls: plan.inputVideoUrls,
+    segTransitions: plan.transitions,
+    voiceUrls: plan.voiceUrls,
+    sfxUrls: plan.sfxUrls,
+    segDialogues: plan.dialogues,
+    segVoiceDurations: plan.voiceDurations,
+    sourceShots: plan.sourceShots,
+  };
+}
+
 /** 从合并节点出发，按「上游视频 → 其上游分镜」回溯，按镜号排序产出装配清单。
  *  纯函数（画布快照注入），便于单测。仅纳入「能回溯到分镜」且已出片的视频节点。 */
 export function assembleFromStoryboards(

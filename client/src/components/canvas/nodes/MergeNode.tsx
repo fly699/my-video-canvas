@@ -6,7 +6,7 @@ import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { assembleFromStoryboards } from "@/lib/storyboardGen";
+import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { buildShotSubtitles } from "@/lib/shotSubtitles";
 import { toast } from "sonner";
 import { mediaFetchUrl } from "@/lib/download";
@@ -233,7 +233,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
     const plan = assembleFromStoryboards(id, allNodes, allEdges);
     if ("error" in plan) { toast.error(plan.error); return; }
-    update({ inputVideoUrls: plan.inputVideoUrls, segTransitions: plan.transitions, voiceUrls: plan.voiceUrls, sfxUrls: plan.sfxUrls, segDialogues: plan.dialogues, segVoiceDurations: plan.voiceDurations, sourceShots: plan.sourceShots });
+    update(assembledPlanToMergePatch(plan));
     const voiced = plan.shots.filter((x) => x.hasVoice).length;
     const sfxed = plan.shots.filter((x) => x.hasSfx).length;
     toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐切点转场${voiced ? ` · ${voiced} 条配音对位` : ""}${sfxed ? ` · ${sfxed} 条音效对位` : ""}）`, { duration: 5000 });

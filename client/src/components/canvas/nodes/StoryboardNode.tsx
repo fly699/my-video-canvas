@@ -134,6 +134,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [showHistory, setShowHistory] = useState(false);
   // 「镜头表」侧向展开面板（同组分镜序列总览：重排/时长校验/衔接优化）。
   const [showShotList, setShowShotList] = useState(false);
+  // 智能体引导卡「打开镜头表」跨节点信号：本节点被点名时自动展开面板（token 防重触发；
+  // selector 返回原始 token 值，遵守 zustand「不返回新对象」铁律）。
+  const panelToken = useCanvasStore((s) => (s.panelRequest?.nodeId === id && s.panelRequest?.panel === "shotlist" ? s.panelRequest.token : 0));
+  useEffect(() => {
+    if (panelToken > 0) setShowShotList(true);
+  }, [panelToken]);
 
   // 上游「提示词」节点 → 只填空自动填充（与 video_task/image_gen 同口径）：
   // 本镜 promptText / negativePrompt 为空时才填入，绝不覆盖已有内容。

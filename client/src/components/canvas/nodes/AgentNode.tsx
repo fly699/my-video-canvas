@@ -1,7 +1,10 @@
 import { memo, useState, useRef, useEffect } from "react";
+import { useReactFlow } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { AgentNodeData, AgentMessage, AgentOperation } from "../../../../../shared/types";
+import type { AgentNodeData, AgentMessage, AgentOperation, PipelineStep } from "../../../../../shared/types";
+import { derivePipelineSteps } from "@/lib/pipelinePlan";
+import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw } from "lucide-react";
@@ -42,6 +45,7 @@ function opText(op: AgentOperation): string {
 
 export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const reactFlow = useReactFlow();
   const payload = data.payload;
   const messages = payload.messages ?? [];
   const model = (payload.model as LLMModelId) ?? DEFAULT_LLM;
@@ -203,7 +207,10 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     const r = applyAgentOperations(ops, pos, { templates, freeVramAfterRun: planPrefs.freeVramAfterRun, ownerAgentId: id }); // mutates op.status/op.error in place
     setAppliedIdx((prev) => new Set(prev).add(msgIdx));
     // Persist op statuses (read fresh so an auto-apply right after send is correct).
-    setMessages(freshMessages().map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m)));
+    // 管线协同：apply 后确定性推导「下一步路线」，追加一张引导卡（无分镜管线则不追加）。
+    const steps = derivePipelineSteps(id, useCanvasStore.getState().nodes);
+    const withOps = freshMessages().map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m));
+    setMessages(steps.length ? [...withOps, { role: "assistant", content: "", pipeline: steps }] : withOps);
     const parts = [r.created && `新建 ${r.created}`, r.connected && `连接 ${r.connected}`, r.updated && `更新 ${r.updated}`, r.deleted && `删除 ${r.deleted}`].filter(Boolean);
     if (r.failures.length > 0) {
       toast.warning(`已应用 ${parts.join(" · ") || "0 步"}，${r.failures.length} 步失败：${r.failures[0].reason}`);
@@ -219,13 +226,51 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     }
   };
 
+  // 管线引导卡：一键跳到/执行管线下一步。装配/字幕由智能体直接确定性写入（不花钱、
+  // 复用纯函数），打开镜头表用跨节点 panelRequest 信号（目标分镜自动展开面板）。
+  const focusNode = (nodeId: string) => {
+    const { nodes: cur, setNodes } = useCanvasStore.getState();
+    if (!cur.some((n) => n.id === nodeId)) { toast.error("目标节点已不存在"); return false; }
+    setNodes(cur.map((n) => ({ ...n, selected: n.id === nodeId })));
+    const rf = reactFlow.getNode(nodeId);
+    if (rf) {
+      const w = rf.measured?.width ?? rf.width ?? 240, h = rf.measured?.height ?? rf.height ?? 120;
+      reactFlow.setCenter(rf.position.x + w / 2, rf.position.y + h / 2, { zoom: Math.min(Math.max(reactFlow.getZoom(), 0.8), 1.4), duration: 500 });
+    }
+    return true;
+  };
+  const handlePipelineStep = (step: PipelineStep) => {
+    if (step.action === "open_shotlist") {
+      if (focusNode(step.targetId)) useCanvasStore.getState().requestPanel(step.targetId, "shotlist");
+      return;
+    }
+    if (step.action === "assemble") {
+      const { nodes, edges } = useCanvasStore.getState();
+      const plan = assembleFromStoryboards(step.targetId, nodes, edges);
+      if ("error" in plan) { toast.error(plan.error); focusNode(step.targetId); return; }
+      updateNodeData(step.targetId, assembledPlanToMergePatch(plan));
+      focusNode(step.targetId);
+      toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐镜转场 · 音轨对位）`, { duration: 5000 });
+      return;
+    }
+    // burn_subtitle
+    const m = useCanvasStore.getState().nodes.find((n) => n.id === step.targetId);
+    if (!m) { toast.error("合并节点已不存在"); return; }
+    const segD = (m.data.payload as { segDialogues?: (string | null)[] }).segDialogues;
+    if (!segD?.some(Boolean)) { toast.error("请先「按镜头表装配」得到逐镜对白，再开启内嵌字幕"); focusNode(step.targetId); return; }
+    updateNodeData(step.targetId, { burnShotSubtitles: true });
+    focusNode(step.targetId);
+    toast.success("已开启成片内嵌字幕（下次合并将用镜头表对白烧字幕）");
+  };
+
   const FAIL_PREFIX = "处理失败：";
 
   // Core planning call. `baseMessages` already ends with the user message being
   // answered (so history = everything before it). Shared by send and retry.
   const runChat = async (text: string, baseMessages: AgentMessage[], focusNodeIds?: string[]) => {
     if (!text || chat.isPending) return;
-    const history = baseMessages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
+    // 过滤掉管线引导卡（content 为空、仅 UI）——不污染发给 LLM 的对话历史。
+    const history = baseMessages.slice(0, -1).filter((m) => m.content.trim() !== "").map((m) => ({ role: m.role, content: m.content }));
     // Multi-agent isolation: scope the planning context to THIS agent's own nodes
     // (so it never sees or rewrites another agent's subgraph). An explicit
     // focusNodeIds (e.g. 微调选中) still wins. First plan owns nothing → empty context.
@@ -442,6 +487,29 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
           )}
           {messages.map((m, i) => (
             <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "92%" }}>
+              {m.pipeline && m.pipeline.length > 0 ? (
+                <div className="nodrag" style={{ border: `1px solid ${accentA(0.3)}`, borderRadius: 12, overflow: "hidden", background: accentA(0.06), minWidth: 230 }}>
+                  <div style={{ padding: "6px 10px", fontSize: 11, fontWeight: 800, color: accent, borderBottom: `1px solid ${accentA(0.2)}`, display: "flex", alignItems: "center", gap: 5 }}>
+                    🎬 管线下一步
+                  </div>
+                  <div style={{ padding: "7px 9px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {m.pipeline.map((step, j) => (
+                      <div key={j} style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+                        <span style={{ flexShrink: 0, width: 16, height: 16, borderRadius: "50%", background: step.done ? "oklch(0.70 0.18 150 / 0.18)" : accentA(0.16), color: step.done ? "oklch(0.70 0.18 150)" : accent, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+                          {step.done ? "✓" : j + 1}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t1)" }}>{step.label}</div>
+                          <div style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.45 }}>{step.hint}</div>
+                        </div>
+                        <button onClick={() => handlePipelineStep(step)} className="nodrag" style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: step.done ? "var(--c-surface)" : accentA(0.14), border: `1px solid ${step.done ? "var(--c-bd2)" : accentA(0.4)}`, color: step.done ? "var(--c-t3)" : accent, cursor: "pointer" }}>
+                          {step.action === "open_shotlist" ? "打开" : step.done ? "重做" : "执行"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
               <div style={{
                 fontSize: 12, lineHeight: 1.6, padding: "7px 10px", borderRadius: 10,
                 background: m.role === "user" ? accentA(0.14) : "var(--c-surface)",
@@ -450,6 +518,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               }}>
                 {m.content}
               </div>
+              )}
               {m.role === "assistant" && m.content.startsWith(FAIL_PREFIX) && (
                 <button
                   onClick={() => handleRetry(i)}
