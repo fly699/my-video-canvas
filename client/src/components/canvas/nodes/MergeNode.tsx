@@ -197,9 +197,10 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
     const plan = assembleFromStoryboards(id, allNodes, allEdges);
     if ("error" in plan) { toast.error(plan.error); return; }
-    update({ inputVideoUrls: plan.inputVideoUrls, segTransitions: plan.transitions, voiceUrls: plan.voiceUrls });
+    update({ inputVideoUrls: plan.inputVideoUrls, segTransitions: plan.transitions, voiceUrls: plan.voiceUrls, sfxUrls: plan.sfxUrls });
     const voiced = plan.shots.filter((x) => x.hasVoice).length;
-    toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐切点转场${voiced ? ` · ${voiced} 条配音对位` : ""}）`, { duration: 5000 });
+    const sfxed = plan.shots.filter((x) => x.hasSfx).length;
+    toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐切点转场${voiced ? ` · ${voiced} 条配音对位` : ""}${sfxed ? ` · ${sfxed} 条音效对位` : ""}）`, { duration: 5000 });
   };
 
   const handleMerge = () => {
@@ -233,6 +234,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       ...(aligned ? {
         transitions: payload.segTransitions?.slice(0, urls.length - 1),
         voiceUrls: payload.voiceUrls?.slice(0, urls.length),
+        sfxUrls: payload.sfxUrls?.slice(0, urls.length),
       } : {}),
       bgMusicUrl: effectiveBgMusicUrl || undefined,
       bgMusicVolume: payload.bgMusicVolume,
@@ -488,7 +490,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         </button>
         {payload.segTransitions && (
           <p style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
-            已装配 {payload.inputVideoUrls?.length ?? 0} 段 · 逐切点转场 {payload.segTransitions.length} 个 · 配音 {payload.voiceUrls?.filter(Boolean).length ?? 0} 条（手动改动顺序后将回退为全局转场）
+            已装配 {payload.inputVideoUrls?.length ?? 0} 段 · 逐切点转场 {payload.segTransitions.length} 个 · 配音 {payload.voiceUrls?.filter(Boolean).length ?? 0} 条{(payload.sfxUrls?.filter(Boolean).length ?? 0) > 0 ? ` · 音效 ${payload.sfxUrls!.filter(Boolean).length} 条` : ""}（手动改动顺序后将回退为全局转场）
           </p>
         )}
 

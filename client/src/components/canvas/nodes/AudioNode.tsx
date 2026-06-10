@@ -203,10 +203,10 @@ function ControlTemplatePicker({ value, onChange }: { value: string; onChange: (
   );
 }
 
-// SFX — coming soon
+// SFX（文本→音效）。kie ElevenLabs Sound Effects 已实装；旧 stub id
+// （elevenlabs_sfx / audiogen）的存量节点由下方 value 解析回退到 live 模型。
 const SFX_MODELS = [
-  { value: "elevenlabs_sfx",   label: "ElevenLabs SFX",  desc: "音效 · 精准",     group: "ElevenLabs" },
-  { value: "audiogen",         label: "AudioGen",        desc: "Meta · 开源",     group: "Meta" },
+  { value: "kie_elevenlabs_sfx", label: "ElevenLabs SFX（kie）", desc: "文本→音效 · 0.5-22s", group: "ElevenLabs" },
 ];
 
 // Voice options vary by provider. Sending an OpenAI voice ID like "alloy" to
@@ -408,6 +408,26 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       updateNodeData(id, { ttsText: upstreamDialogue, audioCategory: payload.audioCategory ?? "dubbing" }, true);
     }
   }, [upstreamDialogue, payload.ttsText, payload.audioCategory, id, updateNodeData]);
+  // 上游分镜的「音效意图」→ 音效描述（只填空，且仅当本节点已是音效类别时——
+  // 不抢 dubbing 的默认类别判定，新连线节点仍默认走配音填充）。
+  const upstreamSfx = useCanvasStore((st) => {
+    const incoming = st.edges.filter((e) => e.target === id);
+    const lines: { num: number; text: string }[] = [];
+    for (const e of incoming) {
+      const src = st.nodes.find((n) => n.id === e.source);
+      if (src?.data.nodeType !== "storyboard") continue;
+      const p = src.data.payload as { sfx?: string; sceneNumber?: number | string };
+      const s = p.sfx?.trim();
+      if (s) lines.push({ num: Number(p.sceneNumber) || 9999, text: s });
+    }
+    lines.sort((a, b) => a.num - b.num);
+    return lines.map((l) => l.text).join("，");
+  });
+  useEffect(() => {
+    if (upstreamSfx && payload.audioCategory === "sfx" && !payload.sfxPrompt?.trim()) {
+      updateNodeData(id, { sfxPrompt: upstreamSfx }, true);
+    }
+  }, [upstreamSfx, payload.audioCategory, payload.sfxPrompt, id, updateNodeData]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [uploading, setUploading] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -675,8 +695,28 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     });
   };
 
-  const handleGenerateSFXStub = () => {
-    toast.info("音效生成即将上线，敬请期待");
+  const sfxMutation = trpc.audioGen.generateSFX.useMutation({
+    onSuccess: (result) => {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+      updateNodeData(id, {
+        url: result.url,
+        duration: result.duration,
+        name: `音效 · ${payload.sfxPrompt?.slice(0, 24) ?? ""}`,
+      });
+      toast.success("音效生成完成");
+    },
+    onError: (err) => toast.error("音效生成失败：" + err.message),
+  });
+  const handleGenerateSFX = () => {
+    const prompt = payload.sfxPrompt?.trim();
+    if (!prompt || sfxMutation.isPending) return;
+    sfxMutation.mutate({
+      model: "kie_elevenlabs_sfx",
+      prompt: prompt.slice(0, 450),
+      projectId: data.projectId,
+      kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
+    });
   };
 
   const formatDuration = (s?: number) =>
@@ -1293,7 +1333,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           <>
             <ModelSelect
               models={SFX_MODELS}
-              value={payload.sfxModel ?? (SFX_MODELS.find(m => m.value === payload.aiModel) ? payload.aiModel : undefined)}
+              value={SFX_MODELS.some((m) => m.value === payload.sfxModel) ? payload.sfxModel : "kie_elevenlabs_sfx"}
               onChange={(v) => update("sfxModel", v)}
             />
             <div>
@@ -1309,23 +1349,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
             </div>
-            <div>
-              <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
-                <label style={{ ...labelStyle, marginBottom: 0 }}>时长</label>
-                <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{payload.sfxDuration ?? 5}秒</span>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={22}
-                step={1}
-                value={payload.sfxDuration ?? 5}
-                onChange={(e) => update("sfxDuration", Number(e.target.value))}
-                className="nodrag w-full"
-                style={{ accentColor: accent }}
-              />
-            </div>
-            <GenerateBtn disabled={!payload.sfxPrompt?.trim()} loading={false} onClick={handleGenerateSFXStub} label="生成音效（即将上线）" />
+            <p style={{ fontSize: 10, color: "var(--c-t4)", margin: 0, lineHeight: 1.5 }}>
+              时长由模型按描述自动决定；想要更长/循环氛围声可在描述中写明（如「持续的雨声，约 10 秒」）。
+            </p>
+            <GenerateBtn disabled={!payload.sfxPrompt?.trim() || sfxMutation.isPending} loading={sfxMutation.isPending} onClick={handleGenerateSFX} label="生成音效" />
           </>
         )}
 

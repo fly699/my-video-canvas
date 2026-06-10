@@ -676,6 +676,8 @@ export interface MergeNodeData {
   segTransitions?: ("none" | "fade" | "dissolve" | "wipe")[];
   /** 装配端：逐段配音轨（与 inputVideoUrls 对位；null=该段无配音）。 */
   voiceUrls?: (string | null)[];
+  /** 装配端：逐段音效轨（与 inputVideoUrls 对位；混入权重低于配音）。 */
+  sfxUrls?: (string | null)[];
   transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
   bgMusicUrl?: string;
   bgMusicVolume?: number;       // 0.0–1.0, default 0.3

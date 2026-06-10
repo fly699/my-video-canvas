@@ -523,6 +523,9 @@ export interface MergeOptions {
   /** 逐段配音轨（与 inputUrls 对位；null=该段无配音）。每条按所在段起点 adelay 后
    *  与原声/BGM amix——视频+配音对位混装（装配端）。 */
   voiceUrls?: (string | null)[];
+  /** 逐段音效轨（与 inputUrls 对位）。同配音的 adelay 对位机制，混入权重 0.6
+   *  （氛围声不压人声）。 */
+  sfxUrls?: (string | null)[];
 }
 
 export interface MergeResult {
@@ -534,10 +537,11 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
   const transition = opts.transition ?? "none";
   const td = opts.transitionDuration ?? 0.5;
   const bgVol = opts.bgMusicVolume ?? 0.3;
-  // 装配模式：带逐切点转场或逐段配音时强制走 filter 路径（旧 concat 快路径不动）。
+  // 装配模式：带逐切点转场或逐段配音/音效时强制走 filter 路径（旧 concat 快路径不动）。
   const segTransitions = opts.transitions?.length ? opts.transitions : null;
   const voiceList = opts.voiceUrls?.some(Boolean) ? opts.voiceUrls! : null;
-  const advanced = !!(segTransitions || voiceList);
+  const sfxList = opts.sfxUrls?.some(Boolean) ? opts.sfxUrls! : null;
+  const advanced = !!(segTransitions || voiceList || sfxList);
 
   const inputPaths: string[] = [];
   const outName = `ffmpeg-merge-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
@@ -636,13 +640,15 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
 
       // bgMusicPath is pushed as an input only here, after the audio check, so the
       // input index (n or n+1) is known and the stream is always referenced.
-      // 配音轨（装配端）：逐段下载，按段起点 adelay 对位。输入索引在 bg 之后排布。
-      const voicePaths: { path: string; segIdx: number }[] = [];
-      if (voiceList) {
-        for (let i = 0; i < Math.min(voiceList.length, n); i++) {
-          const vu = voiceList[i];
+      // 配音/音效轨（装配端）：逐段下载，按段起点 adelay 对位。输入索引在 bg 之后排布。
+      // 音效权重 0.6（氛围声不压人声）。
+      const voicePaths: { path: string; segIdx: number; weight: number; tag: string }[] = [];
+      for (const [list, weight, tag] of [[voiceList, 1, "vc"], [sfxList, 0.6, "fx"]] as const) {
+        if (!list) continue;
+        for (let i = 0; i < Math.min(list.length, n); i++) {
+          const vu = list[i];
           if (!vu) continue;
-          voicePaths.push({ path: await downloadToTemp(vu, "mp3"), segIdx: i });
+          voicePaths.push({ path: await downloadToTemp(vu, "mp3"), segIdx: i, weight, tag });
           inputPaths.push(voicePaths[voicePaths.length - 1].path); // 纳入 finally 清理
         }
       }
@@ -664,8 +670,8 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       for (const vp of voicePaths) {
         args.push("-i", vp.path);
         const startMs = Math.round((segStarts[vp.segIdx] ?? 0) * 1000);
-        pre += `;[${nextIdx}:a]adelay=${startMs}|${startMs},aresample=async=1[vc${vp.segIdx}]`;
-        mixParts.push({ label: `[vc${vp.segIdx}]`, weight: 1 });
+        pre += `;[${nextIdx}:a]adelay=${startMs}|${startMs},aresample=async=1[${vp.tag}${vp.segIdx}]`;
+        mixParts.push({ label: `[${vp.tag}${vp.segIdx}]`, weight: vp.weight });
         nextIdx++;
       }
       if (mixParts.length > 1) {

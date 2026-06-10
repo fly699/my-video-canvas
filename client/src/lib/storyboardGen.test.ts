@@ -111,6 +111,22 @@ describe("assembleFromStoryboards（装配端收集）", () => {
     expect(r.inputVideoUrls).toEqual(["v1.mp4", "v2.mp4"]); // 连线乱序仍按镜号
     expect(r.transitions).toEqual(["dissolve"]);            // 镜1→镜2 用镜1 的 transition
     expect(r.voiceUrls).toEqual(["voice1.mp3", null]);      // 镜1 有配音、镜2 无
+    expect(r.sfxUrls).toEqual([null, null]);                // 无音效节点
+  });
+
+  it("音频按类别分轨：sfx→音效轨、music 排除、dubbing/未标→配音轨", () => {
+    const withSfx = [
+      ...nodes,
+      N("fx2", "audio", { url: "rain.mp3", audioCategory: "sfx" }),
+      N("bgm", "audio", { url: "bgm.mp3", audioCategory: "music" }),
+    ];
+    const e2 = [...edges, { source: "sb2", target: "fx2" }, { source: "sb2", target: "bgm" }];
+    const r = assembleFromStoryboards("m", withSfx, e2);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.voiceUrls).toEqual(["voice1.mp3", null]);  // music 不进配音轨
+    expect(r.sfxUrls).toEqual([null, "rain.mp3"]);      // sfx 进音效轨
+    expect(r.shots[1].hasSfx).toBe(true);
+    expect(r.shots[1].hasVoice).toBe(false);
   });
 
   it("少于 2 个可装配段时报错", () => {

@@ -196,9 +196,11 @@ export interface AssembledPlan {
   inputVideoUrls: string[];
   /** 逐切点转场（长度 = 段数-1），取「前一镜」的 transition（指向下一镜）。 */
   transitions: ("none" | "fade" | "dissolve" | "wipe")[];
-  /** 逐段配音（该镜下游 audio 节点的 url；无则 null）。 */
+  /** 逐段配音（该镜下游 dubbing 音频节点的 url；无则 null）。 */
   voiceUrls: (string | null)[];
-  shots: { sceneNumber: number | string | undefined; hasVoice: boolean; transition: string }[];
+  /** 逐段音效（该镜下游 sfx 音频节点的 url；无则 null），混入时权重低于配音。 */
+  sfxUrls: (string | null)[];
+  shots: { sceneNumber: number | string | undefined; hasVoice: boolean; hasSfx: boolean; transition: string }[];
 }
 
 /** 从合并节点出发，按「上游视频 → 其上游分镜」回溯，按镜号排序产出装配清单。
@@ -209,7 +211,7 @@ export function assembleFromStoryboards(
   edges: Array<{ source: string; target: string }>,
 ): AssembledPlan | { error: string } {
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  type Entry = { num: number; url: string; transition: string | undefined; voice: string | null; sceneNumber: number | string | undefined };
+  type Entry = { num: number; url: string; transition: string | undefined; voice: string | null; sfx: string | null; sceneNumber: number | string | undefined };
   const entries: Entry[] = [];
   for (const e of edges) {
     if (e.target !== mergeId) continue;
@@ -222,20 +224,25 @@ export function assembleFromStoryboards(
     const sbEdge = edges.find((e2) => e2.target === vn.id && byId.get(e2.source)?.data.nodeType === "storyboard");
     const sb = sbEdge ? byId.get(sbEdge.source) : undefined;
     const sp = sb?.data.payload as { sceneNumber?: number | string; transition?: string; dialogue?: string } | undefined;
-    // 该分镜下游的配音（audio 节点已出声）
+    // 该分镜下游的已出声音频，按类别分轨：配音（dubbing/未标类别）与音效（sfx）。
+    // music 明确排除——整体配乐走合并节点的 BGM 通道，不按镜对位。
     let voice: string | null = null;
+    let sfx: string | null = null;
     if (sb) {
       for (const e3 of edges) {
         if (e3.source !== sb.id) continue;
         const an = byId.get(e3.target);
         if (an?.data.nodeType === "audio") {
-          const ap = an.data.payload as { url?: string };
-          if (ap.url) { voice = ap.url; break; }
+          const ap = an.data.payload as { url?: string; audioCategory?: string };
+          if (!ap.url) continue;
+          if (ap.audioCategory === "sfx") { if (!sfx) sfx = ap.url; }
+          else if (ap.audioCategory !== "music") { if (!voice) voice = ap.url; }
+          if (voice && sfx) break;
         }
       }
     }
     const num = Number(sp?.sceneNumber);
-    entries.push({ num: Number.isFinite(num) && num > 0 ? num : 9000 + entries.length, url, transition: sp?.transition, voice, sceneNumber: sp?.sceneNumber });
+    entries.push({ num: Number.isFinite(num) && num > 0 ? num : 9000 + entries.length, url, transition: sp?.transition, voice, sfx, sceneNumber: sp?.sceneNumber });
   }
   if (entries.length < 2) return { error: "需要至少 2 个已出片、且能回溯到分镜的上游视频节点" };
   entries.sort((a, b) => a.num - b.num);
@@ -243,6 +250,7 @@ export function assembleFromStoryboards(
     inputVideoUrls: entries.map((x) => x.url),
     transitions: entries.slice(0, -1).map((x) => mapShotTransition(x.transition)),
     voiceUrls: entries.map((x) => x.voice),
-    shots: entries.map((x) => ({ sceneNumber: x.sceneNumber, hasVoice: !!x.voice, transition: mapShotTransition(x.transition) })),
+    sfxUrls: entries.map((x) => x.sfx),
+    shots: entries.map((x) => ({ sceneNumber: x.sceneNumber, hasVoice: !!x.voice, hasSfx: !!x.sfx, transition: mapShotTransition(x.transition) })),
   };
 }

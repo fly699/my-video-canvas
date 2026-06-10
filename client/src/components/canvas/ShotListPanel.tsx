@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic } from "lucide-react";
+import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic, Zap } from "lucide-react";
 import type { StoryboardNodeData, ScriptNodeData, CharacterNodeData } from "../../../../shared/types";
 import { parseDialogueLines, extractRoles, shouldCast, planCastSegments, type CastMap, type CastVoice } from "../../lib/dialogueCasting";
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
@@ -71,14 +71,26 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
           }
           return "";
         })(),
-        // 下游配音节点：""=无；"empty"=有节点未出声；其余=音频时长（秒字符串）
+        // 下游配音节点（排除 sfx/music 类别）：""=无；"empty"=有节点未出声；其余=音频时长（秒字符串）
         (() => {
           for (const e of s.edges) {
             if (e.source !== n.id) continue;
             const t = s.nodes.find((m) => m.id === e.target);
             if (t?.data.nodeType === "audio") {
-              const ap = t.data.payload as { url?: string; duration?: number };
+              const ap = t.data.payload as { url?: string; duration?: number; audioCategory?: string };
+              if (ap.audioCategory === "sfx" || ap.audioCategory === "music") continue;
               return ap.url ? String(Math.round(ap.duration ?? 0)) : "empty";
+            }
+          }
+          return "";
+        })(),
+        // 下游音效节点：""=无；"empty"=有工位未出声；"done"=已出声
+        (() => {
+          for (const e of s.edges) {
+            if (e.source !== n.id) continue;
+            const t = s.nodes.find((m) => m.id === e.target);
+            if (t?.data.nodeType === "audio" && (t.data.payload as { audioCategory?: string }).audioCategory === "sfx") {
+              return (t.data.payload as { url?: string }).url ? "done" : "empty";
             }
           }
           return "";
@@ -87,11 +99,11 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     });
   });
   const { rows, targetDuration, scriptId, scriptCast, charDefaults } = useMemo(() => {
-    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; cast: CastMap | null; chars: [string, string, string][]; rows: [string, string, number, string, number, string, string][] };
-    const parsed: (ShotRow & { x: number; hasRefine: boolean; videoStatus: string; audioStatus: string })[] = g.rows.map(([rid, title, x, pj, refine, vstat, astat], i) => {
+    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; cast: CastMap | null; chars: [string, string, string][]; rows: [string, string, number, string, number, string, string, string][] };
+    const parsed: (ShotRow & { x: number; hasRefine: boolean; videoStatus: string; audioStatus: string; sfxStatus: string })[] = g.rows.map(([rid, title, x, pj, refine, vstat, astat, sstat], i) => {
       const payload = JSON.parse(pj) as StoryboardNodeData;
       const n = Number(payload.sceneNumber);
-      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1, videoStatus: vstat, audioStatus: astat };
+      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1, videoStatus: vstat, audioStatus: astat, sfxStatus: sstat };
     });
     parsed.sort((a, b) => a.num - b.num || a.x - b.x);
     const charDefaults: CastMap = {};
@@ -307,9 +319,14 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     if (!own || !projectId || !text) return "error";
     try {
       // 复用未出声的已有配音工位（失败后可重试），否则新建。
+      // 类别过滤：不抢占 sfx/music 节点（音效/配乐工位同样挂在分镜下游）。
       const existing = store.edges
         .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
-        .find((n) => n?.data.nodeType === "audio" && !(n.data.payload as { url?: string }).url);
+        .find((n) => {
+          if (n?.data.nodeType !== "audio") return false;
+          const ap = n.data.payload as { url?: string; audioCategory?: string };
+          return !ap.url && ap.audioCategory !== "sfx" && ap.audioCategory !== "music";
+        });
       const an = existing ?? store.addNode("audio", { x: own.position.x, y: own.position.y + 980 });
       store.updateNodeData(an.id, { audioCategory: "dubbing", ttsText: text, ttsModel: dubModel, ttsVoice: effDubVoice });
       if (!existing) store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
@@ -382,6 +399,64 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     await Promise.all([worker(), worker()]);
     setDubBusy(false);
     toast.success("批量配音完成（每镜一条音频，已连线到对应分镜）");
+  };
+
+  // ── 批量音效（可选段：仅当有镜填了 sfx 字段时显示）────────────────────────────
+  // 每镜一条音效（ElevenLabs SFX via kie）；已出声的跳过、空工位复用重试；
+  // 装配端按 audioCategory=sfx 识别并以低权重混入成片。
+  const [sfxBusy, setSfxBusy] = useState(false);
+  const [sfxState, setSfxState] = useState<Record<string, "running" | "done" | "error">>({});
+  const anySfxText = rows.some((r) => r.payload.sfx?.trim());
+
+  const submitSfxOne = async (r: ShotRow): Promise<"done" | "error"> => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === r.id);
+    const projectId = store.projectId;
+    const text = r.payload.sfx?.trim();
+    if (!own || !projectId || !text) return "error";
+    try {
+      const existing = store.edges
+        .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
+        .find((n) => {
+          if (n?.data.nodeType !== "audio") return false;
+          const ap = n.data.payload as { url?: string; audioCategory?: string };
+          return ap.audioCategory === "sfx" && !ap.url;
+        });
+      const an = existing ?? store.addNode("audio", { x: own.position.x + 220, y: own.position.y + 980 });
+      store.updateNodeData(an.id, { audioCategory: "sfx", sfxModel: "kie_elevenlabs_sfx", sfxPrompt: text });
+      if (!existing) store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
+      const res = await utils.client.audioGen.generateSFX.mutate({
+        model: "kie_elevenlabs_sfx", prompt: text.slice(0, 450), projectId,
+        kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
+      });
+      useCanvasStore.getState().updateNodeData(an.id, { url: res.url, duration: res.duration, name: `音效 · 镜${r.payload.sceneNumber ?? "?"}` });
+      return "done";
+    } catch {
+      return "error";
+    }
+  };
+
+  const runSfxBatch = async () => {
+    if (sfxBusy) return;
+    // 仅跳过已出声的音效工位；empty（上次失败）允许复用重试。
+    const targets = rows.filter((r) => sel.has(r.id) && r.sfxStatus !== "done");
+    const ready = targets.filter((r) => r.payload.sfx?.trim());
+    if (!ready.length) { toast.error("勾选镜中没有「音效」描述（在镜头表或分镜里填写 sfx）"); return; }
+    if (!window.confirm(`将为 ${ready.length} 个分镜逐镜生成音效（ElevenLabs SFX · kie 按量计费）。继续？`)) return;
+    setSfxBusy(true);
+    const queue = [...ready];
+    const worker = async () => {
+      for (;;) {
+        const r = queue.shift();
+        if (!r) return;
+        setSfxState((s0) => ({ ...s0, [r.id]: "running" }));
+        const st = await submitSfxOne(r);
+        setSfxState((s0) => ({ ...s0, [r.id]: st }));
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    setSfxBusy(false);
+    toast.success("批量音效完成（装配成片时自动按镜对位、低权重混入）");
   };
 
   const continuityMut = trpc.scripts.refineShotContinuity.useMutation({
@@ -562,6 +637,24 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         </button>
       </div>
 
+      {/* 批量音效（仅当有镜填写了 sfx 时显示） */}
+      {anySfxText && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)", flexShrink: 0 }}>批量音效</span>
+          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>ElevenLabs SFX（kie）· 时长按描述自动</span>
+          <button
+            onClick={() => void runSfxBatch()}
+            disabled={sfxBusy || sel.size === 0}
+            title="为勾选且填写了「音效」的镜逐镜生成音效（每镜一条、自动连线；装配成片时按镜对位、低权重混入不压人声）"
+            className="nodrag ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md"
+            style={{ fontSize: 10, fontWeight: 700, background: sfxBusy || sel.size === 0 ? "var(--c-surface)" : "oklch(0.75 0.16 75 / 0.14)", border: `1px solid ${sfxBusy || sel.size === 0 ? "var(--c-bd2)" : "oklch(0.75 0.16 75 / 0.5)"}`, color: sfxBusy || sel.size === 0 ? "var(--c-t4)" : "oklch(0.75 0.16 75)", cursor: sfxBusy || sel.size === 0 ? "not-allowed" : "pointer" }}
+          >
+            {sfxBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Zap style={{ width: 11, height: 11 }} />}
+            批量生成音效
+          </button>
+        </div>
+      )}
+
       {/* 角色音色 casting 分配表 */}
       {showCast && castRoles.length > 0 && (
         <div style={{ padding: "6px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto", background: "oklch(0.70 0.18 340 / 0.04)" }}>
@@ -642,6 +735,11 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
                       return <span title={`配音 ${ad}s / 镜 ${sd}s${over ? "——超出镜时长，建议精简对白或调慢镜" : ""}`} style={{ fontSize: 9, color: over ? "oklch(0.75 0.16 75)" : "oklch(0.70 0.18 150)" }}>🎙{ad}s{over ? "⚠" : ""}</span>;
                     })()
                   : r.audioStatus === "empty" ? <span title="已有配音工位（未出声）" style={{ fontSize: 9 }}>🎙…</span>
+                  : null}
+                {sfxState[r.id] === "running" ? <Loader2 style={{ width: 10, height: 10, color: "oklch(0.75 0.16 75)" }} className="animate-spin" />
+                  : sfxState[r.id] === "error" ? <span title="音效生成失败（可重新批量）" style={{ fontSize: 9, color: "oklch(0.62 0.20 25)" }}>🔊✗</span>
+                  : r.sfxStatus === "done" ? <span title="音效已生成" style={{ fontSize: 9 }}>🔊✓</span>
+                  : r.sfxStatus === "empty" ? <span title="已有音效工位（未出声）" style={{ fontSize: 9 }}>🔊…</span>
                   : null}
                 <button onClick={() => swap(i, i - 1)} disabled={i === 0} className="nodrag" title="上移" style={{ background: "none", border: "none", color: i === 0 ? "var(--c-bd2)" : "var(--c-t3)", cursor: i === 0 ? "default" : "pointer", padding: 1 }}><ArrowUp style={{ width: 12, height: 12 }} /></button>
                 <button onClick={() => swap(i, i + 1)} disabled={i === rows.length - 1} className="nodrag" title="下移" style={{ background: "none", border: "none", color: i === rows.length - 1 ? "var(--c-bd2)" : "var(--c-t3)", cursor: i === rows.length - 1 ? "default" : "pointer", padding: 1 }}><ArrowDown style={{ width: 12, height: 12 }} /></button>
