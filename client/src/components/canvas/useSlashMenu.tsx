@@ -42,7 +42,8 @@ function buildRootItems(query: string): SlashItem[] {
     if (out.some((o) => o.kind === "category" && o.category === c.category)) continue;
     out.push({ kind: "category", label: c.category, category: c.category });
   }
-  return out.slice(0, 12);
+  // 16：预设已扩到 11 个类别 + 最多 10 个槽位，12 会截断新增类别；下拉自带滚动。
+  return out.slice(0, 16);
 }
 
 /** 二级菜单：某类别下的「库提示词 + 预设提示词」。 */
