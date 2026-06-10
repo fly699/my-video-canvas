@@ -6,6 +6,7 @@ import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scal
 import type { StoryboardNodeData, ScriptNodeData, CharacterNodeData } from "../../../../shared/types";
 import { parseDialogueLines, extractRoles, shouldCast, planCastSegments, type CastMap, type CastVoice } from "../../lib/dialogueCasting";
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
+import { materializeTemplate } from "../../lib/agentApply";
 import { propagateRefImage } from "../../lib/refImagePropagation";
 import { PROVIDER_PARAMS, withParamDefaults, PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
 
@@ -62,12 +63,17 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         n.id, n.data.title, Math.round(n.position.x / 50), JSON.stringify(n.data.payload), // x 量化 50px：拖动不再每帧重算面板
         // 精修工位标记：本镜出边指向 image_gen（批量生图默认跳过，避免覆盖精修流程）
         s.edges.some((e) => e.source === n.id && s.nodes.find((m) => m.id === e.target)?.data.nodeType === "image_gen") ? 1 : 0,
-        // 下游视频节点状态（第一个 video_task：无→"" / idle/pending/processing/succeeded/failed）
+        // 下游视频工位状态（video_task / comfyui_video / comfyui_workflow 任一；
+        // comfy 的 done→succeeded、processing→processing，统一口径）：无→"" / idle/pending/processing/succeeded/failed
         (() => {
           for (const e of s.edges) {
             if (e.source !== n.id) continue;
             const t = s.nodes.find((m) => m.id === e.target);
             if (t?.data.nodeType === "video_task") return (t.data.payload as { status?: string }).status ?? "idle";
+            if (t?.data.nodeType === "comfyui_video" || t?.data.nodeType === "comfyui_workflow") {
+              const st = (t.data.payload as { status?: string }).status ?? "idle";
+              return st === "done" ? "succeeded" : st;
+            }
           }
           return "";
         })(),
@@ -196,6 +202,59 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
   const [videoState, setVideoState] = useState<Record<string, "running" | "done" | "error">>({});
   const pickVideoProvider = (v: string) => { setVideoProvider(v); localStorage.setItem("shotlist:videoProvider", v); };
 
+  // 执行引擎：cloud（云端模型，提交即出片）/ comfy_video（本地 ComfyUI 视频节点）/
+  // comfy_workflow（自定义工作流模板）。comfy 两档只「建好并填满工位」，由用户点
+  // 工具栏「运行」批量执行（开源免费主力；执行机制复用画布 runner，零新链路）。
+  const [videoEngine, setVideoEngine] = useState<string>(() => localStorage.getItem("shotlist:videoEngine") || "cloud");
+  const pickVideoEngine = (v: string) => { setVideoEngine(v); localStorage.setItem("shotlist:videoEngine", v); };
+  const [comfyTplId, setComfyTplId] = useState<number | null>(() => {
+    const v = Number(localStorage.getItem("shotlist:comfyTplId")); return Number.isFinite(v) && v > 0 ? v : null;
+  });
+  const comfyMode = videoEngine !== "cloud";
+  const tplListQuery = trpc.comfyTemplates.list.useQuery(undefined, { enabled: videoEngine === "comfy_workflow", staleTime: 30_000 });
+  const tplAnalysisQuery = trpc.comfyTemplates.analysisList.useQuery(undefined, { enabled: videoEngine === "comfy_workflow", staleTime: 30_000 });
+  // 仅列出「自定义工作流 + 出视频」的已分析模板（与智能体同口径）。
+  const videoTplOptions = useMemo(() => {
+    const rows = (tplAnalysisQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow" && (t.hasVideoOutput || t.outputType === "video" || t.outputType === "mixed"));
+    return rows.map((t) => ({ id: t.id, label: t.label as string }));
+  }, [tplAnalysisQuery.data]);
+
+  /** comfy 工位：建（或复用 failed/idle 工位）+ 填参，不提交（用户点「运行」执行）。 */
+  const prepareComfyOne = (r: ShotRow): "done" | "error" => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === r.id);
+    if (!own) return "error";
+    const hasImg = !!r.payload.imageUrl;
+    const targetType = videoEngine === "comfy_video" ? "comfyui_video" : "comfyui_workflow";
+    const prompt = (r.payload.promptText || r.payload.description || "").slice(0, 4000);
+    const existing = store.edges
+      .map((e) => (e.source === r.id ? store.nodes.find((n) => n.id === e.target) : undefined))
+      .find((n) => n?.data.nodeType === targetType && ["failed", "idle", undefined].includes((n.data.payload as { status?: string }).status as never));
+    if (videoEngine === "comfy_workflow") {
+      const tpl = (tplListQuery.data ?? []).find((t) => t.id === comfyTplId);
+      if (!tpl) return "error";
+      const payload = materializeTemplate({ id: tpl.id, label: tpl.label, payload: tpl.payload as Record<string, unknown> }, prompt, r.payload.negativePrompt ?? "");
+      // 关键帧注入：填第一个 image 角色参数（I2V 锁定身份；模板无 image 参数则纯 T2V）。
+      if (hasImg) {
+        const bindings = (payload.paramBindings as { nodeId: string; fieldPath: string; type?: string }[] | undefined) ?? [];
+        const imgBind = bindings.find((b) => b.type === "image");
+        if (imgBind) {
+          const pv = { ...((payload.paramValues as Record<string, unknown>) ?? {}) };
+          pv[`${imgBind.nodeId}.${imgBind.fieldPath}`] = r.payload.imageUrl;
+          payload.paramValues = pv;
+        }
+      }
+      const vn = existing ?? store.addNode("comfyui_workflow", { x: own.position.x, y: own.position.y + 560 });
+      store.updateNodeData(vn.id, payload as never);
+      if (!existing) store.onConnect({ source: r.id, target: vn.id, sourceHandle: null, targetHandle: null });
+      return "done";
+    }
+    const vn = existing ?? store.addNode("comfyui_video", { x: own.position.x, y: own.position.y + 560 });
+    store.updateNodeData(vn.id, { prompt, negPrompt: r.payload.negativePrompt, ...(hasImg ? { referenceImageUrl: r.payload.imageUrl } : {}) });
+    if (!existing) store.onConnect({ source: r.id, target: vn.id, sourceHandle: null, targetHandle: null });
+    return "done";
+  };
+
   const submitVideoOne = async (r: ShotRow): Promise<"done" | "error"> => {
     const store = useCanvasStore.getState();
     const own = store.nodes.find((n) => n.id === r.id);
@@ -203,6 +262,7 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     if (!own || !projectId) return "error";
     const hasImg = !!r.payload.imageUrl;
     if (!hasImg && !allowT2V) return "error";
+    if (comfyMode) return prepareComfyOne(r);
     try {
       // 复用已有下游视频工位（failed/idle 的可重提，避免「失败后被跳过无法重试」）；否则新建。
       const existing = store.edges
@@ -243,16 +303,22 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const skippedNoImg = targets.length - ready.length;
     const skippedHasVideo = rows.filter((r) => sel.has(r.id) && ["pending", "processing", "succeeded"].includes(r.videoStatus)).length;
     if (!ready.length) { toast.error(allowT2V ? "勾选镜均已有视频工位" : "勾选镜中没有已出图的（可勾选「允许文生视频」直通）"); return; }
-    // Σ预估
-    const sums: Record<string, number> = {};
-    for (const r of ready) {
-      const clamped = clampDurationForProvider(PROVIDER_PARAMS[videoProvider], r.payload.duration);
-      const est = estimateVideoCost(videoProvider, withParamDefaults(videoProvider, clamped != null ? { duration: clamped } : {}));
-      if (est) sums[est.unit] = (sums[est.unit] ?? 0) + est.credits;
-    }
-    const sumText = Object.entries(sums).map(([u, v]) => `≈${Math.round(v * 10) / 10} ${u}`).join(" + ") || "按模型页计费";
+    if (videoEngine === "comfy_workflow" && !comfyTplId) { toast.error("请先选择一个「出视频」的自定义工作流模板"); return; }
     const skipNote = [skippedNoImg ? `${skippedNoImg} 个无图镜跳过` : "", skippedHasVideo ? `${skippedHasVideo} 个已有视频工位跳过` : ""].filter(Boolean).join("；");
-    if (!window.confirm(`将为 ${ready.length} 个分镜提交视频生成（${hasLabel(videoProvider)}，费用预估合计 ${sumText}）${skipNote ? `；${skipNote}` : ""}。继续？`)) return;
+    if (comfyMode) {
+      const engineLabel = videoEngine === "comfy_video" ? "ComfyUI 视频节点" : `ComfyUI 模板「${videoTplOptions.find((t) => t.id === comfyTplId)?.label ?? comfyTplId}」`;
+      if (!window.confirm(`将为 ${ready.length} 个分镜创建并填好 ${engineLabel} 工位（本地开源免费，不在此提交）${skipNote ? `；${skipNote}` : ""}。继续？`)) return;
+    } else {
+      // Σ预估（云端按模型计费）
+      const sums: Record<string, number> = {};
+      for (const r of ready) {
+        const clamped = clampDurationForProvider(PROVIDER_PARAMS[videoProvider], r.payload.duration);
+        const est = estimateVideoCost(videoProvider, withParamDefaults(videoProvider, clamped != null ? { duration: clamped } : {}));
+        if (est) sums[est.unit] = (sums[est.unit] ?? 0) + est.credits;
+      }
+      const sumText = Object.entries(sums).map(([u, v]) => `≈${Math.round(v * 10) / 10} ${u}`).join(" + ") || "按模型页计费";
+      if (!window.confirm(`将为 ${ready.length} 个分镜提交视频生成（${hasLabel(videoProvider)}，费用预估合计 ${sumText}）${skipNote ? `；${skipNote}` : ""}。继续？`)) return;
+    }
     setVideoBusy(true);
     const queue = [...ready];
     const worker = async () => {
@@ -266,7 +332,9 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     };
     await Promise.all([worker(), worker()]);
     setVideoBusy(false);
-    toast.success("批量视频任务已提交，后台生成中（状态见各视频节点 / 本表状态徽）");
+    toast.success(comfyMode
+      ? "ComfyUI 工位已就位并填好参数——点工具栏「运行」开始本地批量生成（免费）"
+      : "批量视频任务已提交，后台生成中（状态见各视频节点 / 本表状态徽）", { duration: 6000 });
   };
   const hasLabel = (v: string) => PROVIDER_PICKER_OPTIONS.find((o) => o.value === v)?.label ?? v;
 
@@ -588,9 +656,25 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
       {/* 批量图生视频（流水线第二段） */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)", flexShrink: 0 }}>批量视频</span>
-        <div style={{ width: 190 }}>
-          <ModelPicker value={videoProvider} onChange={pickVideoProvider} options={BATCH_VIDEO_OPTIONS} minWidth={190} />
-        </div>
+        <select className="nodrag" value={videoEngine} onChange={(e) => pickVideoEngine(e.target.value)}
+          title="云端=提交即出片（按模型计费）；ComfyUI 两档=建好并填满工位，点工具栏「运行」本地批量执行（开源免费）"
+          style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}>
+          <option value="cloud">云端模型</option>
+          <option value="comfy_video">ComfyUI 视频</option>
+          <option value="comfy_workflow">ComfyUI 模板</option>
+        </select>
+        {videoEngine === "cloud" && (
+          <div style={{ width: 190 }}>
+            <ModelPicker value={videoProvider} onChange={pickVideoProvider} options={BATCH_VIDEO_OPTIONS} minWidth={190} />
+          </div>
+        )}
+        {videoEngine === "comfy_workflow" && (
+          <select className="nodrag" value={comfyTplId ?? ""} onChange={(e) => { const v = Number(e.target.value) || null; setComfyTplId(v); if (v) localStorage.setItem("shotlist:comfyTplId", String(v)); }}
+            style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: comfyTplId ? "var(--c-t1)" : "var(--c-t4)", outline: "none", maxWidth: 190 }}>
+            <option value="">{tplAnalysisQuery.isFetching ? "加载模板…" : videoTplOptions.length ? "选择出视频模板" : "无已分析的视频模板"}</option>
+            {videoTplOptions.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        )}
         <label className="nodrag" title="无关键帧图的镜也允许提交文生视频（跳过关键帧，角色/场景一致性弱）" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9.5, color: allowT2V ? "oklch(0.75 0.16 75)" : "var(--c-t4)", cursor: "pointer" }}>
           <input type="checkbox" checked={allowT2V} onChange={(e) => setAllowT2V(e.target.checked)} style={{ accentColor: "oklch(0.75 0.16 75)", margin: 0 }} />
           允许文生视频

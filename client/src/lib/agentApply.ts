@@ -7,8 +7,9 @@ import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding } from ".
 export interface AgentTemplate { id: number; label: string; payload: Record<string, unknown> }
 
 /** Build a comfyui_workflow node payload from a template, writing the agent's
- *  prompts into the template's positive/negative role params. */
-function materializeTemplate(tpl: AgentTemplate, prompt: string, negPrompt: string): Record<string, unknown> {
+ *  prompts into the template's positive/negative role params.
+ *  （也被镜头表「批量生成视频 · ComfyUI 模板」复用来物化逐镜工位。） */
+export function materializeTemplate(tpl: AgentTemplate, prompt: string, negPrompt: string): Record<string, unknown> {
   const base: Record<string, unknown> = { ...tpl.payload, templateId: tpl.id, templateLabel: tpl.label };
   const bindings = (base.paramBindings as WorkflowParamBinding[] | undefined) ?? [];
   const paramValues: Record<string, unknown> = { ...((base.paramValues as Record<string, unknown>) ?? {}) };

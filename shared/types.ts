@@ -684,6 +684,8 @@ export interface MergeNodeData {
   segVoiceDurations?: (number | null)[];
   /** 合并完成后服务端回传的各段成片起点（xfade offset 精确值；字幕对位的时间轴真相源）。 */
   segStarts?: number[];
+  /** 装配端：段↔分镜/视频节点绑定（sb=分镜 id，vid=视频节点 id；按镜定位/重生成入口）。 */
+  sourceShots?: { sb: string | null; vid: string; num?: number | string }[];
   transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
   bgMusicUrl?: string;
   bgMusicVolume?: number;       // 0.0–1.0, default 0.3

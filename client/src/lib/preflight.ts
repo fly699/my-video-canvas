@@ -148,8 +148,10 @@ export function runPreflight(nodes: PFNode[], edges: PFEdge[]): PreflightResult 
     for (const e of edges) {
       if (e.target !== m.id) continue;
       const vn = byId.get(e.source);
-      if (!vn || (vn.data.nodeType !== "video_task" && vn.data.nodeType !== "comfyui_video")) continue;
+      const vt = vn?.data.nodeType;
+      if (!vn || (vt !== "video_task" && vt !== "comfyui_video" && vt !== "comfyui_workflow")) continue;
       const vp = vn.data.payload ?? {};
+      if (vt === "comfyui_workflow" && vp.outputType === "image") continue; // 出图运行不算视频段
       if (!vp.resultVideoUrl && !vp.outputUrl) continue; // 未出片
       const hasSb = edges.some((e2) => e2.target === vn.id && byId.get(e2.source)?.data.nodeType === "storyboard");
       if (hasSb) assemblable++;

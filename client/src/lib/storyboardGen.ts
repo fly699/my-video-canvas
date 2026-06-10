@@ -204,6 +204,8 @@ export interface AssembledPlan {
   dialogues: (string | null)[];
   /** 逐镜配音时长（秒；字幕收口用）。 */
   voiceDurations: (number | null)[];
+  /** 段↔分镜/视频节点绑定（按镜定位与重生成入口）。 */
+  sourceShots: { sb: string | null; vid: string; num?: number | string }[];
   shots: { sceneNumber: number | string | undefined; hasVoice: boolean; hasSfx: boolean; transition: string }[];
 }
 
@@ -215,13 +217,17 @@ export function assembleFromStoryboards(
   edges: Array<{ source: string; target: string }>,
 ): AssembledPlan | { error: string } {
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  type Entry = { num: number; url: string; transition: string | undefined; voice: string | null; voiceDur: number | null; sfx: string | null; dialogue: string | null; sceneNumber: number | string | undefined };
+  type Entry = { num: number; url: string; transition: string | undefined; voice: string | null; voiceDur: number | null; sfx: string | null; dialogue: string | null; sbId: string | null; vidId: string; sceneNumber: number | string | undefined };
   const entries: Entry[] = [];
   for (const e of edges) {
     if (e.target !== mergeId) continue;
     const vn = byId.get(e.source);
-    if (!vn || (vn.data.nodeType !== "video_task" && vn.data.nodeType !== "comfyui_video")) continue;
-    const vp = vn.data.payload as { resultVideoUrl?: string; outputUrl?: string };
+    const vt = vn?.data.nodeType;
+    if (!vn || (vt !== "video_task" && vt !== "comfyui_video" && vt !== "comfyui_workflow")) continue;
+    const vp = vn.data.payload as { resultVideoUrl?: string; outputUrl?: string; outputType?: string };
+    // comfyui_workflow 出图运行（outputType=image）不是视频段，跳过（开源工作流主力：
+    // 出视频的自定义工作流与 comfyui_video / 云端 video_task 一视同仁纳入装配）。
+    if (vt === "comfyui_workflow" && vp.outputType === "image") continue;
     const url = (vp.resultVideoUrl ?? vp.outputUrl)?.split("\n")[0];
     if (!url) continue;
     // 回溯该视频的上游分镜
@@ -247,7 +253,7 @@ export function assembleFromStoryboards(
       }
     }
     const num = Number(sp?.sceneNumber);
-    entries.push({ num: Number.isFinite(num) && num > 0 ? num : 9000 + entries.length, url, transition: sp?.transition, voice, voiceDur, sfx, dialogue: sp?.dialogue?.trim() || null, sceneNumber: sp?.sceneNumber });
+    entries.push({ num: Number.isFinite(num) && num > 0 ? num : 9000 + entries.length, url, transition: sp?.transition, voice, voiceDur, sfx, dialogue: sp?.dialogue?.trim() || null, sbId: sb?.id ?? null, vidId: vn.id, sceneNumber: sp?.sceneNumber });
   }
   if (entries.length < 2) return { error: "需要至少 2 个已出片、且能回溯到分镜的上游视频节点" };
   entries.sort((a, b) => a.num - b.num);
@@ -258,6 +264,7 @@ export function assembleFromStoryboards(
     sfxUrls: entries.map((x) => x.sfx),
     dialogues: entries.map((x) => x.dialogue),
     voiceDurations: entries.map((x) => x.voiceDur),
+    sourceShots: entries.map((x) => ({ sb: x.sbId, vid: x.vidId, num: x.sceneNumber })),
     shots: entries.map((x) => ({ sceneNumber: x.sceneNumber, hasVoice: !!x.voice, hasSfx: !!x.sfx, transition: mapShotTransition(x.transition) })),
   };
 }
