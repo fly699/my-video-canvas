@@ -7,7 +7,8 @@ import type { AIChatNodeData, ChatAttachment, NodeType } from "../../../../../sh
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Paperclip, ImageIcon, FileText, X, PictureInPicture2, ChevronsRight, GripHorizontal, Download, Layers, Slash } from "lucide-react";
-import { CHAT_MODELS, platformBadge } from "@/lib/models";
+import { CHAT_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
+import { useDisabledModels } from "@/lib/useDisabledModels";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
   // Convert basic markdown to safe HTML
@@ -64,6 +65,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     () => ((data.payload as typeof payload).messages ?? []).map(m => ({ ...m, _id: crypto.randomUUID() }))
   );
   const [model, setModel] = useState<string>(payload.model ?? "claude-sonnet-4-5-20250929");
+  const disabledModels = useDisabledModels();
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -682,9 +684,15 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 border: "1px solid var(--c-bd2)",
                 boxShadow: "0 8px 32px oklch(0 0 0 / 0.55)",
                 minWidth: 200,
+                maxHeight: "min(60vh, 420px)",
+                overflowY: "auto",
               }}
             >
-              {CHAT_MODELS.filter((m) => !m.hidden).map((m) => (
+              {CHAT_MODELS
+                .filter((m) => !m.hidden && (!disabledModels.has(m.id) || m.id === model))
+                .slice()
+                .sort((a, b) => modelGroupOrder(a.provider) - modelGroupOrder(b.provider))
+                .map((m) => (
                 <button
                   key={m.id}
                   className="nodrag w-full flex items-center justify-between px-3 py-2 transition-all text-left"

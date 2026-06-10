@@ -1,7 +1,8 @@
 import { useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check, Search } from "lucide-react";
-import { IMAGE_MODELS, platformBadge } from "@/lib/models";
+import { IMAGE_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
+import { useDisabledModels } from "@/lib/useDisabledModels";
 
 // Shared, classified model picker used by image / video / LLM nodes.
 // Generalizes LLMModelPicker's createPortal + backdrop anchoring. Options are
@@ -40,11 +41,14 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
 
   const current = options.find((o) => o.value === value);
+  const disabledModels = useDisabledModels();
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     const visible = options.filter((o) => {
       if (o.hidden) return false;
+      // 管理员禁用的模型不出现在列表里；但当前已选中的值即便被禁用也保留，避免旧节点失选。
+      if (disabledModels.has(o.value) && o.value !== value) return false;
       if (!q) return true;
       return (
         o.label.toLowerCase().includes(q) ||
@@ -59,8 +63,9 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
       arr.push(o);
       map.set(o.group, arr);
     }
-    return Array.from(map.entries());
-  }, [options, query]);
+    // 分组排序：Kie 排在 Poyo 之前（统一优先级，见 modelGroupOrder）。
+    return Array.from(map.entries()).sort((a, b) => modelGroupOrder(a[0]) - modelGroupOrder(b[0]));
+  }, [options, query, disabledModels, value]);
 
   return (
     <>

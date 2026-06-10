@@ -4,6 +4,7 @@ import { adminProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
+import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
@@ -364,6 +365,22 @@ export const adminRouter = router({
         };
       }
     }),
+  }),
+
+  // ── Model visibility toggles ──────────────────────────────────────────
+  // Admin controls which AI models appear in the node model pickers. Display-only
+  // gate (does not affect already-configured nodes' ability to run their model).
+  models: router({
+    getDisabled: adminProcedure.query(async () => {
+      return { disabledModels: await db.getDisabledModels() };
+    }),
+    setDisabled: adminProcedure
+      .input(z.object({ disabledModels: z.array(z.string().max(120)).max(2000) }))
+      .mutation(async ({ input }) => {
+        await db.setDisabledModels(input.disabledModels);
+        invalidateModelTogglesCache();
+        return { success: true };
+      }),
   }),
 
   // ── Chat administration (cross-user moderation + history) ──────────────

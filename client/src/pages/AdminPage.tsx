@@ -8,9 +8,10 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { downloadTextFile } from "@/lib/download";
 import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
+import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -130,7 +131,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["kie", "kie.ai 密钥"], ["users", "用户管理"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
+          {([["whitelist", "白名单管理"], ["kie", "kie.ai 密钥"], ["users", "用户管理"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["models", "模型管理"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -165,6 +166,7 @@ export default function AdminPage() {
         {activeTab === "logs" && <LogsPanel />}
         {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
         {activeTab === "storage" && <StoragePanel />}
+        {activeTab === "models" && <ModelsPanel />}
         {activeTab === "chat" && <ChatAdminPanel />}
         {activeTab === "comfyStress" && <ComfyStressPanel />}
         {activeTab === "assets" && <AssetsAdminPanel />}
@@ -737,6 +739,193 @@ function ToggleRow({ label, description, enabled, disabled, onClick, statusOn, s
           color: enabled ? "oklch(0.7 0.18 145)" : "var(--c-t3, rgba(255,255,255,0.4))",
         }} />
       </button>
+    </div>
+  );
+}
+
+// ── Model visibility (使能开关) Panel ─────────────────────────────────────────
+
+type ModelCatItem = { value: string; label: string; group: string };
+type ModelCat = { key: string; label: string; hint: string; accent: string; models: ModelCatItem[] };
+
+const MODEL_CATEGORIES: ModelCat[] = [
+  {
+    key: "llm",
+    label: "对话 / 推理（LLM）模型",
+    hint: "用于 AI对话、智能体(Agent)、脚本、提示词、分镜文本扩写、看图识人、ComfyUI 提示词翻译等节点",
+    accent: "oklch(0.68 0.18 280)",
+    models: LLM_MODELS.filter((m) => !m.hidden).map((m) => ({ value: m.id, label: m.label, group: m.provider })),
+  },
+  {
+    key: "image",
+    label: "图像生成模型",
+    hint: "用于 图像生成、分镜、提示词 节点",
+    accent: "oklch(0.72 0.20 330)",
+    models: IMAGE_MODELS.map((m) => ({ value: m.value, label: m.label, group: m.group })),
+  },
+  {
+    key: "video",
+    label: "视频生成模型",
+    hint: "用于 视频任务 节点",
+    accent: "oklch(0.68 0.22 25)",
+    models: VIDEO_MODELS.map((m) => ({ value: m.value, label: m.label, group: m.group })),
+  },
+];
+
+const ALL_MODEL_VALUES = MODEL_CATEGORIES.flatMap((c) => c.models.map((m) => m.value));
+
+function ModelsPanel() {
+  const utils = trpc.useUtils();
+  const query = trpc.admin.models.getDisabled.useQuery();
+  const [disabled, setDisabled] = useState<Set<string>>(new Set());
+  // 以服务端数据为准初始化本地集合（仅在服务端集合变化时同步，避免覆盖用户连续点选）。
+  const serverKey = (query.data?.disabledModels ?? []).slice().sort().join(",");
+  useEffect(() => {
+    setDisabled(new Set(query.data?.disabledModels ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverKey]);
+
+  const setMut = trpc.admin.models.setDisabled.useMutation({
+    onSuccess: () => {
+      void utils.admin.models.getDisabled.invalidate();
+      void utils.config.modelToggles.invalidate();
+    },
+    onError: (e) => toast.error(`保存失败：${e.message}`),
+  });
+
+  const persist = (next: Set<string>) => {
+    setDisabled(next);
+    setMut.mutate({ disabledModels: Array.from(next) });
+  };
+  const toggleOne = (value: string) => {
+    const next = new Set(disabled);
+    next.has(value) ? next.delete(value) : next.add(value);
+    persist(next);
+  };
+  // 对一组模型整体启用/禁用。
+  const setGroupEnabled = (values: string[], enabled: boolean) => {
+    const next = new Set(disabled);
+    for (const v of values) enabled ? next.delete(v) : next.add(v);
+    persist(next);
+  };
+
+  const enabledCount = ALL_MODEL_VALUES.filter((v) => !disabled.has(v)).length;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{
+        padding: "12px 16px", background: "oklch(0.70 0.16 285 / 0.10)",
+        border: "1px solid oklch(0.70 0.16 285 / 0.35)", borderRadius: 10,
+        fontSize: 12.5, lineHeight: 1.7, color: "var(--c-t2)",
+      }}>
+        <strong style={{ color: "var(--c-t1)" }}>模型使能开关</strong>
+        ：勾选 = 该模型在对应节点的模型下拉里<strong>显示</strong>，取消勾选 = 隐藏。按节点功能分组，
+        每组列出全部可用 AI 模型。仅控制「界面是否显示」，<strong>不影响</strong>已经选用该模型的旧节点继续运行。
+        修改即时保存、对所有用户生效（约 30 秒内）。当前已启用 <strong style={{ color: "var(--c-t1)" }}>{enabledCount}</strong> / {ALL_MODEL_VALUES.length} 个模型。
+        {query.isLoading && <span style={{ color: "var(--c-t3)" }}>（加载中…）</span>}
+      </div>
+
+      {MODEL_CATEGORIES.map((cat) => {
+        // 该分类下按来源平台分组（Kie 排在 Poyo 之前），便于整组开关。
+        const byGroup = new Map<string, ModelCatItem[]>();
+        for (const m of cat.models) {
+          const arr = byGroup.get(m.group) ?? [];
+          arr.push(m);
+          byGroup.set(m.group, arr);
+        }
+        const groups = Array.from(byGroup.entries()).sort((a, b) => modelGroupOrder(a[0]) - modelGroupOrder(b[0]));
+        const catValues = cat.models.map((m) => m.value);
+        const catEnabled = catValues.filter((v) => !disabled.has(v)).length;
+        const allOn = catEnabled === catValues.length;
+
+        return (
+          <div key={cat.key} style={{
+            border: `1px solid var(--c-bd1)`, borderRadius: 12, overflow: "hidden",
+            background: "var(--c-surface)",
+          }}>
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+              padding: "13px 16px", borderBottom: "1px solid var(--c-bd1)",
+              background: `${cat.accent}14`,
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)" }}>
+                  {cat.label}
+                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: cat.accent }}>
+                    {catEnabled}/{catValues.length} 已启用
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: "var(--c-t3)", marginTop: 3 }}>{cat.hint}</div>
+              </div>
+              <button
+                onClick={() => setGroupEnabled(catValues, !allOn)}
+                disabled={setMut.isPending}
+                style={{
+                  flexShrink: 0, padding: "6px 12px", borderRadius: 8, cursor: "pointer",
+                  border: `1px solid ${cat.accent}55`, background: "transparent",
+                  color: cat.accent, fontSize: 12, fontWeight: 700,
+                }}
+              >
+                {allOn ? "全部停用" : "全部启用"}
+              </button>
+            </div>
+
+            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 14 }}>
+              {groups.map(([group, items]) => {
+                const groupValues = items.map((m) => m.value);
+                const groupAllOn = groupValues.every((v) => !disabled.has(v));
+                const badge = platformBadge(group);
+                return (
+                  <div key={group}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 8px",
+                        borderRadius: 5, background: badge.bg, color: badge.fg,
+                      }}>{group}</span>
+                      <button
+                        onClick={() => setGroupEnabled(groupValues, !groupAllOn)}
+                        disabled={setMut.isPending}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          fontSize: 11, fontWeight: 600, color: "var(--c-t3)", padding: 0,
+                        }}
+                      >
+                        {groupAllOn ? "本组全不选" : "本组全选"}
+                      </button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 6 }}>
+                      {items.map((m) => {
+                        const on = !disabled.has(m.value);
+                        return (
+                          <button
+                            key={m.value}
+                            onClick={() => toggleOne(m.value)}
+                            disabled={setMut.isPending}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 8, textAlign: "left",
+                              padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+                              border: `1px solid ${on ? `${cat.accent}40` : "var(--c-bd1)"}`,
+                              background: on ? `${cat.accent}10` : "var(--c-base)",
+                            }}
+                          >
+                            {on
+                              ? <CheckSquare style={{ width: 16, height: 16, color: cat.accent, flexShrink: 0 }} />
+                              : <Square style={{ width: 16, height: 16, color: "var(--c-t4)", flexShrink: 0 }} />}
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 500, color: on ? "var(--c-t1)" : "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.label}</div>
+                              <div style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.value}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

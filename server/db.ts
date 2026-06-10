@@ -16,6 +16,7 @@ import {
   kieKeyBindings,
   kieBalanceSnapshots,
   storageSettings,
+  modelToggleSettings,
   auditLogs,
   comfyUsageLogs,
   poyoBalanceSnapshots,
@@ -88,6 +89,7 @@ import * as dev from "./_core/devStore";
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
+const devModelToggleSettings: { disabledModels: string[] } = { disabledModels: [] };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -1320,6 +1322,25 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
   // every toggle / TTL change appears to do nothing. INSERT ... ON DUPLICATE
   // KEY UPDATE creates the row on first write and updates it thereafter.
   await db.insert(storageSettings).values({ id: 1, ...set }).onDuplicateKeyUpdate({ set });
+}
+
+// ── Model visibility toggles (admin-managed) ────────────────────────────────
+/** 读取被管理员禁用的模型 id 集合（空数组 = 全部可见）。 */
+export async function getDisabledModels(): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return [...devModelToggleSettings.disabledModels];
+  const rows = await db.select().from(modelToggleSettings).limit(1);
+  const v = rows[0]?.disabledModels;
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** 覆盖写入被禁用的模型 id 集合（去重）。upsert：单行 id=1。 */
+export async function setDisabledModels(ids: string[]): Promise<void> {
+  const disabledModels = Array.from(new Set(ids.filter((x) => typeof x === "string")));
+  const db = await getDb();
+  if (!db) { devModelToggleSettings.disabledModels = disabledModels; return; }
+  await db.insert(modelToggleSettings).values({ id: 1, disabledModels })
+    .onDuplicateKeyUpdate({ set: { disabledModels } });
 }
 
 export async function addWhitelistEntry(

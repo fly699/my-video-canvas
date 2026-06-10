@@ -43,6 +43,7 @@ import {
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl, toInternalStoragePath, storagePresignPut, isStorageConfigured, finalizeStorageKey } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
+import { getCachedDisabledModels } from "../_core/modelToggles";
 import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { generateImage } from "../_core/imageGeneration";
@@ -3196,5 +3197,11 @@ export const configRouter = router({
       // public URL as the reference source when it probes alive. Off by default.
       preferUpstreamRefSource: settings.preferUpstreamRefSource,
     };
+  }),
+
+  // 管理员在后台禁用的模型 id 集合 —— 所有登录用户可读，前端据此从节点模型下拉里隐藏。
+  // 仅作显示门控；空数组（默认）= 全部模型可见，行为与未配置时一致。
+  modelToggles: protectedProcedure.query(async () => {
+    return { disabledModels: await getCachedDisabledModels() };
   }),
 });
