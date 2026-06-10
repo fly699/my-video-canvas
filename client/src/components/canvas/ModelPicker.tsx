@@ -86,7 +86,7 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
           {current?.label ?? value ?? "选择模型"}
         </span>
         {current?.costLabel && (
-          <span style={{ fontSize: 9, color: "var(--c-t4)" }}>{current.costLabel}</span>
+          <span style={{ fontSize: 9, color: "var(--c-t3)", fontWeight: 600 }}>{current.costLabel}</span>
         )}
         <ChevronDown style={{ width: 12, height: 12, opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform 150ms ease" }} />
       </button>
@@ -193,7 +193,7 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
                             padding: "1px 5px",
                             borderRadius: 4,
                             background: selected ? `${accent}25` : "var(--c-bd1)",
-                            color: selected ? accent : "var(--c-t4)",
+                            color: selected ? accent : "var(--c-t2)",
                             flexShrink: 0,
                           }}
                         >

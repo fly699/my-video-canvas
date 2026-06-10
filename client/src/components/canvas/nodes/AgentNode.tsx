@@ -486,10 +486,10 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                     const b = estimateOpsBudget(m.operations);
                     const lbl = budgetLabel(b);
                     return lbl ? (
-                      <div style={{ padding: "2px 9px 4px", fontSize: 10, color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 4 }}>
+                      <div style={{ padding: "2px 9px 4px", fontSize: 10, color: "var(--c-t3)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                         <Zap className="w-3 h-3" style={{ flexShrink: 0 }} />预估消耗：{lbl}
                         {b.credits > 0 && balanceQuery.data?.configured && typeof balanceQuery.data.creditsAmount === "number" && (
-                          <span style={{ color: b.credits > balanceQuery.data.creditsAmount ? "oklch(0.62 0.20 25)" : "var(--c-t4)" }}>
+                          <span style={{ color: b.credits > balanceQuery.data.creditsAmount ? "oklch(0.62 0.20 25)" : "var(--c-t3)" }}>
                             （余额 {balanceQuery.data.creditsAmount}）
                           </span>
                         )}

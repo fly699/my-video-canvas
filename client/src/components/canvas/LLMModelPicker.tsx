@@ -124,7 +124,7 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
                       {m.label}
                     </div>
                     {m.costNote && (
-                      <div style={{ fontSize: 8.5, color: "var(--c-t4)", marginTop: 1 }}>{m.costNote} 点/百万tokens</div>
+                      <div style={{ fontSize: 8.5, color: "var(--c-t3)", marginTop: 1, fontWeight: 600 }}>{m.costNote} 点/百万tokens</div>
                     )}
                   </div>
                   {/* Upstream provider (Forge / Poyo / Kie) — 统一分色标签 */}

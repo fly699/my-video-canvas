@@ -702,7 +702,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                       {m.label}
                     </span>
                     {m.costNote && (
-                      <span style={{ fontSize: 8.5, color: "var(--c-t4)" }}>{m.costNote} 点/百万tokens</span>
+                      <span style={{ fontSize: 8.5, color: "var(--c-t3)", fontWeight: 600 }}>{m.costNote} 点/百万tokens</span>
                     )}
                   </div>
                   <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
