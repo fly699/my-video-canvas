@@ -1386,7 +1386,12 @@ function LogsPanel() {
         all.push(...d.rows);
         if (d.rows.length < PAGE || all.length >= Math.min(d.total, CAP)) break;
       }
-      const esc = (v: unknown) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      // 防 CSV 公式注入：用户可控内容（提示词等）以 =+-@ 开头时加 ' 前缀，避免 Excel 当公式执行。
+      const esc = (v: unknown) => {
+        let s = v == null ? "" : String(v);
+        if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
       const header = ["时间", "用户ID", "用户名", "邮箱", "IP", "国家", "城市", "操作类型", "是否成功", "预估点数", "详情JSON"];
       const lines = all.map((r) => {
         const d = r.detail as Record<string, unknown> | null;
@@ -1581,7 +1586,12 @@ function ComfyUsageLogsPanel() {
         all.push(...(d.rows as Array<Record<string, unknown>>));
         if (d.rows.length < PAGE || all.length >= Math.min(d.total, CAP)) break;
       }
-      const esc = (v: unknown) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      // 防 CSV 公式注入：用户可控内容（提示词等）以 =+-@ 开头时加 ' 前缀，避免 Excel 当公式执行。
+      const esc = (v: unknown) => {
+        let s = v == null ? "" : String(v);
+        if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
       const header = ["时间", "用户ID", "用户名", "邮箱", "IP", "操作", "服务器", "模型", "状态", "耗时(秒)", "结果数", "错误", "详情JSON"];
       const lines = all.map((r) => [
         new Date(r.createdAt as string).toLocaleString("zh-CN"),
