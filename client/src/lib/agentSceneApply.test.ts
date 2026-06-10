@@ -167,3 +167,18 @@ describe("summarizePlanOps 计划大纲", () => {
     expect(summarizePlanOps([])).toBe("");
   });
 });
+
+describe("智能体连接合并节点", () => {
+  it("audio → merge（整片配乐）连接成功，不再被矩阵拒绝", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "audio", tempId: "bgm", payload: { audioCategory: "music" } },
+      { op: "create", nodeType: "merge", tempId: "mg" },
+      { op: "create", nodeType: "video_task", tempId: "v1" },
+      { op: "connect", sourceRef: "bgm", targetRef: "mg" },
+      { op: "connect", sourceRef: "v1", targetRef: "mg" },
+    ];
+    const r = applyAgentOperations(ops, { x: 0, y: 0 });
+    expect(r.failures).toEqual([]);
+    expect(r.connected).toBe(2);
+  });
+});

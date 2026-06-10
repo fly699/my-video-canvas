@@ -13,7 +13,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   // audio → audio: 把一段音频作为本地 VoxCPM 配音的参考音色喂给下游音频节点。
   // audio → comfyui_workflow: 作为自定义工作流的音频参数来源（VHS_LoadAudioUpload 等）。
-  audio: ["clip", "audio", "comfyui_workflow"],
+  // audio → merge：合并节点自动把连入的音频节点用作整片背景音乐（MergeNode 的
+  // detectedBgMusicUrl），智能体「整体配乐连入 merge」与手动拖线都走这条。
+  audio: ["clip", "audio", "comfyui_workflow", "merge"],
   asset: ["image_gen", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
   ai_chat: ["script", "storyboard", "prompt"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
@@ -110,7 +112,7 @@ export const CONNECTION_HINTS: Record<
   },
   audio: {
     label: "音频",
-    outgoing: "→ 剪辑 / 音频（作参考音色）/ ComfyUI 自定义（音频参数）",
+    outgoing: "→ 剪辑 / 合并（整片配乐）/ 音频（作参考音色）/ ComfyUI 自定义（音频参数）",
     incoming: "← 分镜（对白→配音文案）/ 音频 / 素材（本地 VoxCPM 参考音色）",
   },
   asset: {
@@ -146,7 +148,7 @@ export const CONNECTION_HINTS: Record<
   merge: {
     label: "合并",
     outgoing: "→ 素材（保存）",
-    incoming: "← 剪辑 / 视频任务 / 素材",
+    incoming: "← 剪辑 / 视频任务 / 素材 / 音频（整片配乐）",
   },
   subtitle: {
     label: "字幕",
