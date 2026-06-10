@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { useComfyServersStore } from "@/hooks/useComfyServersStore";
 import type { inferRouterOutputs } from "@trpc/server";
 import { trpc } from "@/lib/trpc";
 import type { AppRouter } from "../../../../server/routers";
@@ -124,6 +125,27 @@ export function ComfyStressPanel() {
     setBaseUrls((arr) => (arr.length <= 1 ? arr : arr.filter((_, idx) => idx !== i)));
   }
 
+  // 一键加载「ComfyUI 服务器监视器」配置的全部地址（管理员全局列表 ∪ 本机注册表），
+  // 与已填地址合并去重，空行清掉，上限 16（与 addUrl 同口径）。
+  const [loadingMonitor, setLoadingMonitor] = useState(false);
+  async function loadMonitorServers() {
+    setLoadingMonitor(true);
+    try {
+      const globalList = await utils.comfyui.globalServers.fetch();
+      const monitor = Array.from(new Set([...(globalList ?? []), ...useComfyServersStore.getState().servers].map((u) => u.trim()).filter(Boolean)));
+      if (monitor.length === 0) { toast.info("服务器监视器中还没有配置地址（画布顶栏服务器图标可添加）"); return; }
+      const cur = baseUrls.map((u) => u.trim()).filter(Boolean);
+      const merged = Array.from(new Set([...cur, ...monitor])).slice(0, 16);
+      const added = merged.length - cur.length;
+      setBaseUrls(merged.length > 0 ? merged : [""]);
+      toast.success(added > 0 ? `已从服务器监视器加载 ${added} 个地址（共 ${merged.length} 个）` : "监视器中的地址均已在列表中");
+    } catch (e) {
+      toast.error(`读取服务器监视器列表失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoadingMonitor(false);
+    }
+  }
+
   async function onStart() {
     const urls = baseUrls.map((u) => u.trim()).filter((u) => u.length > 0);
     // 按来源组装压测参数。
@@ -220,6 +242,18 @@ export function ComfyStressPanel() {
             }}
           >
             + 添加地址
+          </button>
+          <button
+            onClick={loadMonitorServers}
+            disabled={loadingMonitor}
+            title="加载服务器监视器中的全部地址（画布顶栏服务器面板配置的全局+本机列表）"
+            style={{
+              marginTop: 8, marginLeft: 8, padding: "6px 12px", borderRadius: 8, border: `1px dashed ${C.border}`,
+              background: "transparent", color: C.green, cursor: loadingMonitor ? "wait" : "pointer",
+              fontSize: 13, opacity: loadingMonitor ? 0.5 : 1,
+            }}
+          >
+            {loadingMonitor ? "加载中…" : "⇩ 从服务器监视器加载"}
           </button>
         </div>
 

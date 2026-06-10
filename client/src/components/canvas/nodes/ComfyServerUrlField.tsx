@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { RefreshCw, Plus, X, Activity } from "lucide-react";
+import { RefreshCw, Plus, X, Activity, MonitorDown } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useComfyServersStore } from "../../../hooks/useComfyServersStore";
@@ -69,6 +69,33 @@ export function ComfyServerUrlField({
     if (serverUrls.includes(u)) onChangeServerUrls(serverUrls.filter((s) => s !== u));
   }, [serverUrls, onChangeServerUrls, removeGlobalServer]);
 
+  // 一键加载「ComfyUI 服务器监视器」里配置的全部地址 = 管理员全局列表（DB，
+  // 监视器顶栏同款 comfyui.globalServers）∪ 本机注册表。缺的地址写入本节点
+  // serverUrls（随节点持久化，chips 可单独移除）；输入框为空时顺手填第一个。
+  const utils = trpc.useUtils();
+  const [loadingMonitor, setLoadingMonitor] = useState(false);
+  const loadMonitorServers = useCallback(async () => {
+    setLoadingMonitor(true);
+    try {
+      const globalList = await utils.comfyui.globalServers.fetch();
+      const monitor = Array.from(new Set([...(globalList ?? []), ...useComfyServersStore.getState().servers].map((u) => u.trim()).filter(Boolean)));
+      if (monitor.length === 0) { toast.info("服务器监视器中还没有配置地址（顶栏服务器图标可添加）"); return; }
+      const missing = monitor.filter((u) => !allServers.includes(u));
+      if (missing.length === 0) {
+        toast.info("监视器中的地址均已在列表中");
+      } else {
+        const room = Math.max(0, MAX_SERVERS - allServers.length);
+        onChangeServerUrls([...serverUrls, ...missing.slice(0, room)]);
+        toast.success(`已从服务器监视器加载 ${Math.min(missing.length, room)} 个地址${missing.length > room ? `（已达上限 ${MAX_SERVERS}，其余截断）` : ""}`);
+      }
+      if (!value.trim()) onChange(monitor[0]);
+    } catch (e) {
+      toast.error(`读取服务器监视器列表失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoadingMonitor(false);
+    }
+  }, [utils, allServers, serverUrls, onChangeServerUrls, value, onChange]);
+
   // Live server status (online · VRAM · queue), fetched on demand.
   const [probe, setProbe] = useState(false);
   const probeUrls = useMemo(
@@ -113,6 +140,15 @@ export function ComfyServerUrlField({
           style={{ width: 30, height: 30, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: accent, cursor: "pointer" }}
         >
           <Plus className="w-3 h-3" />
+        </button>
+        <button
+          onClick={loadMonitorServers}
+          disabled={loadingMonitor}
+          className="nodrag flex-shrink-0 flex items-center justify-center rounded-md"
+          title="加载服务器监视器中的全部地址（顶栏服务器面板配置的全局+本机列表）"
+          style={{ width: 30, height: 30, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: loadingMonitor ? "var(--c-t4)" : accent, cursor: loadingMonitor ? "wait" : "pointer" }}
+        >
+          <MonitorDown className={loadingMonitor ? "w-3 h-3 animate-pulse" : "w-3 h-3"} />
         </button>
         <button
           onClick={onCheckStatus}
