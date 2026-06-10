@@ -33,3 +33,14 @@ describe("computeConnectState", () => {
     expect(computeConnectState(drag, "n3", "audio")).toEqual({ source: "invalid", target: "muted" });
   });
 });
+
+describe("拖线桩高亮跟随连接矩阵（audio↔merge）", () => {
+  it("从 audio 拖出：merge 的输入桩亮 valid", () => {
+    const r = computeConnectState({ fromType: "audio", fromId: "a1", fromHandleType: "source" }, "m1", "merge");
+    expect(r).toEqual({ target: "valid", source: "muted" });
+  });
+  it("从 merge 输入桩反拖：audio 的输出桩亮 valid", () => {
+    const r = computeConnectState({ fromType: "merge", fromId: "m1", fromHandleType: "target" }, "a1", "audio");
+    expect(r).toEqual({ source: "valid", target: "muted" });
+  });
+});
