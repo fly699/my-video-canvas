@@ -1083,6 +1083,8 @@ export interface AgentMessage {
   operations?: AgentOperation[];
   /** assistant only: 管线下一步引导卡（与 operations 互斥，apply 后追加）。 */
   pipeline?: PipelineStep[];
+  /** assistant only: 时长拆解摘要（目标秒数/每镜秒数/镜头数），供计划大纲展示。 */
+  plan?: { targetSeconds: number; perShotSeconds: number; shots: number; templateLabel?: string };
 }
 
 export interface AgentNodeData {
