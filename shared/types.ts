@@ -208,6 +208,19 @@ export interface StoryboardNodeData {
   cameraMovement?: string;
   lens?: string;
   colorTone?: string;
+  // ── 行业 Shot List 标准字段（镜头表）──
+  /** 景别：ECU/CU/MS/MLS/WS/establishing。 */
+  shotType?: string;
+  /** 灯光设置（如 "soft key + rim, golden hour"）。 */
+  lighting?: string;
+  /** 对白/旁白文本——可直接喂给下游音频节点作配音文案。 */
+  dialogue?: string;
+  /** 音效/BGM 意图（如「雨声渐强 + 低音弦乐」），供配乐参考。 */
+  sfx?: string;
+  /** 到下一镜的转场方式：cut/dissolve/fade/wipe/match-cut 等。 */
+  transition?: string;
+  /** 所属节拍表拍点（如「3」或「中点」），承接脚本节点的 beat sheet。 */
+  beatRef?: string;
   imageModel?: ImageGenModel;
   referenceImageUrl?: string;
   batchSize?: number;

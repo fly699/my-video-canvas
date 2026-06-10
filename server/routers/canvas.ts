@@ -1333,6 +1333,11 @@ export interface GeneratedScene {
   lens?: string;
   lighting?: string;
   colorGrade?: string;
+  // ── 行业 Shot List 标准字段 ──
+  dialogue?: string;   // 对白/旁白（可直接作配音文案）
+  sfx?: string;        // 音效/BGM 意图
+  transition?: string; // 到下一镜的转场
+  beatRef?: string;    // 所属节拍表拍点
 }
 
 /** The JSON field contract handed to the LLM for each storyboard scene. Includes
@@ -1347,7 +1352,10 @@ function sceneFieldsInstruction(promptLangName: string, avgDuration: number): st
 - "lighting": string — short lighting setup (e.g. "soft key + rim, golden hour", "low-key chiaroscuro 3200K").
 - "colorGrade": string — short grade/palette (e.g. "warm teal-orange", "desaturated cold blue", "Kodak Portra").
 - "cameraMovement": string — one of: static, pan-left, pan-right, zoom-in, zoom-out, tilt-up, tilt-down, tracking.
-- "duration": number — integer seconds, around ${avgDuration}.`;
+- "duration": number — integer seconds, around ${avgDuration}.
+- "dialogue": string — Chinese (中文). The spoken dialogue or voice-over line for this shot, ready for TTS dubbing ("角色名：台词" or narration text). Empty string if the shot is silent.
+- "sfx": string — Chinese (中文). Sound effect / music intent for this shot (e.g. "雨声渐强 + 低音弦乐"). Empty string if none.
+- "transition": string — transition INTO the next shot, one of: cut, dissolve, fade, wipe, match-cut. Use "cut" by default.`;
 }
 
 /** Validate + normalize one raw scene object from the LLM into a GeneratedScene. */
@@ -1365,6 +1373,10 @@ function normalizeScene(raw: Record<string, unknown>, avgDuration: number): Gene
     lens: str(raw.lens) || undefined,
     lighting: str(raw.lighting) || undefined,
     colorGrade: str(raw.colorGrade) || undefined,
+    dialogue: str(raw.dialogue) || undefined,
+    sfx: str(raw.sfx) || undefined,
+    transition: str(raw.transition) || undefined,
+    beatRef: str(raw.beatRef) || (typeof raw.beatRef === "number" ? String(raw.beatRef) : undefined),
   };
 }
 
@@ -1515,11 +1527,15 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 
       // ── Call 2: scene breakdown derived from the generated script ──
       // promptText language follows the toggle; description stays Chinese.
+      // 节拍表存在时：要求逐镜标注所属拍点（beatRef），并按拍点 duration 占比分配镜头时长。
+      const beatBlock = input.beatSheetText?.trim()
+        ? `\nBeat sheet (the script follows these beats; allocate scene durations proportionally to each beat's duration, and tag every scene):\n${input.beatSheetText.trim()}\nAdd to EVERY scene object: "beatRef": string — the beat index this scene belongs to (e.g. "3").\n`
+        : "";
       const scenesSystemPrompt = `You are a professional film director and storyboard artist. Break the given Chinese script into exactly ${input.sceneCount} visual storyboard scenes that together tell the whole story in order.
 
 Target generation-model prompt style guide (write every promptText to match it):
 ${modelGuide}
-
+${beatBlock}
 Output ONLY a valid JSON array — no markdown fences, no prose before or after the array.
 ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
 
@@ -1581,6 +1597,57 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
           model: input.model ?? "claude-sonnet-4-5-20250929",
         });
         return { result: extractTextContent(response).trim() };
+      });
+    }),
+
+  /** 镜头衔接优化：按行业剪辑规范（180° 轴线、景别递进避免同景别跳切、运镜动静衔接）
+   *  结合上一镜的参数优化当前镜，返回可直接落字段的修订建议。 */
+  refineShotContinuity: protectedProcedure
+    .input(z.object({
+      prevShot: z.object({
+        description: z.string().max(1000),
+        shotType: z.string().max(20).optional(),
+        cameraMovement: z.string().max(20).optional(),
+        transition: z.string().max(20).optional(),
+      }),
+      currentShot: z.object({
+        description: z.string().max(1000),
+        promptText: z.string().max(2000).optional(),
+        shotType: z.string().max(20).optional(),
+        cameraMovement: z.string().max(20).optional(),
+      }),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dedupe("scripts.refineShotContinuity", ctx.user.id, input, async () => {
+        const systemPrompt = `你是专业剪辑指导兼分镜师。根据「上一镜」的参数优化「当前镜」，使两镜衔接符合行业规范：
+- 180° 轴线规则：人物视线/运动方向不跳轴；
+- 景别递进：避免相同景别直接跳切（如 MS→MS），相邻镜景别至少差一级或换角度 30° 以上；
+- 运镜衔接：动接动、静接静；上一镜有方向性运动时当前镜顺势承接；
+- 视觉连续：光线、色调、人物位置合理延续。
+仅输出合法 JSON，无 markdown 代码块：
+{"description":"优化后的画面描述（中文）","promptText":"优化后的生成提示词（保持原语言）","shotType":"建议景别","cameraMovement":"建议运镜","note":"一句话说明改了什么、为什么（中文）"}`;
+        const userContent = `【上一镜】景别：${input.prevShot.shotType ?? "未知"}；运镜：${input.prevShot.cameraMovement ?? "未知"}；转场：${input.prevShot.transition ?? "cut"}\n描述：${input.prevShot.description}\n\n【当前镜】景别：${input.currentShot.shotType ?? "未知"}；运镜：${input.currentShot.cameraMovement ?? "未知"}\n描述：${input.currentShot.description}${input.currentShot.promptText ? `\n提示词：${input.currentShot.promptText}` : ""}`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: userContent },
+          ],
+          model: input.model ?? "claude-sonnet-4-6",
+          maxTokens: 2000,
+        });
+        const text = extractTextContent(response);
+        const m = text.match(/\{[\s\S]*\}/);
+        if (!m) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let parsed: Record<string, unknown>;
+        try { parsed = JSON.parse(m[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        return {
+          description: String(parsed.description ?? ""),
+          promptText: String(parsed.promptText ?? ""),
+          shotType: String(parsed.shotType ?? "") || undefined,
+          cameraMovement: String(parsed.cameraMovement ?? "") || undefined,
+          note: String(parsed.note ?? ""),
+        };
       });
     }),
 
