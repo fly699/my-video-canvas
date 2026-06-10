@@ -66,3 +66,24 @@ describe("buildStoryboardGenInput（分镜生图组装器）", () => {
     expect(String(r.input.prompt)).not.toContain("@主角图"); // 字面量被剥离
   });
 });
+
+import { clampDurationForProvider } from "./storyboardGen";
+
+describe("clampDurationForProvider（时长夹取）", () => {
+  const sel = [{ type: "select", key: "duration", options: [{ value: 5 }, { value: 10 }] }];
+  const rng = [{ type: "range", key: "duration", min: 3, max: 15 }];
+  it("select：取最接近档位", () => {
+    expect(clampDurationForProvider(sel, 7)).toBe(5);
+    expect(clampDurationForProvider(sel, 9)).toBe(10);
+    expect(clampDurationForProvider(sel, undefined)).toBe(5);
+  });
+  it("range：夹取到 min/max", () => {
+    expect(clampDurationForProvider(rng, 20)).toBe(15);
+    expect(clampDurationForProvider(rng, 1)).toBe(3);
+    expect(clampDurationForProvider(rng, 8)).toBe(8);
+  });
+  it("无 duration 定义（固定时长模型）→ undefined", () => {
+    expect(clampDurationForProvider([{ type: "select", key: "aspectRatio" }], 8)).toBeUndefined();
+    expect(clampDurationForProvider(undefined, 8)).toBeUndefined();
+  });
+});

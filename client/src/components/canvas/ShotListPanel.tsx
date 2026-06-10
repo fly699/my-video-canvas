@@ -2,10 +2,13 @@ import { useMemo, useState } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw } from "lucide-react";
+import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard } from "lucide-react";
 import type { StoryboardNodeData, ScriptNodeData } from "../../../../shared/types";
-import { buildStoryboardGenInput, applyStoryboardGenResult } from "../../lib/storyboardGen";
+import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
 import { propagateRefImage } from "../../lib/refImagePropagation";
+import { PROVIDER_PARAMS, withParamDefaults, PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
+import { ModelPicker } from "./ModelPicker";
+import { estimateVideoCost, costEstimateLabel } from "../../lib/costEstimate";
 
 // 「镜头表（Shot List）」侧向展开面板 —— 同组分镜的序列总览。
 // 行业前期制作的核心文档：镜号/景别/运镜/时长/转场/对白 一表统管；
@@ -43,15 +46,24 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         n.id, n.data.title, n.position.x, JSON.stringify(n.data.payload),
         // 精修工位标记：本镜出边指向 image_gen（批量生图默认跳过，避免覆盖精修流程）
         s.edges.some((e) => e.source === n.id && s.nodes.find((m) => m.id === e.target)?.data.nodeType === "image_gen") ? 1 : 0,
+        // 下游视频节点状态（第一个 video_task：无→"" / idle/pending/processing/succeeded/failed）
+        (() => {
+          for (const e of s.edges) {
+            if (e.source !== n.id) continue;
+            const t = s.nodes.find((m) => m.id === e.target);
+            if (t?.data.nodeType === "video_task") return (t.data.payload as { status?: string }).status ?? "idle";
+          }
+          return "";
+        })(),
       ]),
     });
   });
   const { rows, targetDuration, scriptId } = useMemo(() => {
-    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; rows: [string, string, number, string, number][] };
-    const parsed: (ShotRow & { x: number; hasRefine: boolean })[] = g.rows.map(([rid, title, x, pj, refine], i) => {
+    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; rows: [string, string, number, string, number, string][] };
+    const parsed: (ShotRow & { x: number; hasRefine: boolean; videoStatus: string })[] = g.rows.map(([rid, title, x, pj, refine, vstat], i) => {
       const payload = JSON.parse(pj) as StoryboardNodeData;
       const n = Number(payload.sceneNumber);
-      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1 };
+      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1, videoStatus: vstat };
     });
     parsed.sort((a, b) => a.num - b.num || a.x - b.x);
     return { rows: parsed, targetDuration: g.target, scriptId: g.src };
@@ -132,6 +144,85 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const st = await genOne(r);
     setBatchState((s0) => ({ ...s0, [r.id]: st }));
   };
+
+  // ── 批量图生视频（流水线第二段）────────────────────────────────────────────
+  // 仅对「已有关键帧图」的镜（I2V，首帧=分镜图锁定身份）；已有下游视频节点的镜跳过
+  // （防重复建/重复扣费）；时长夹取到模型档位；服务端幂等/预估/审计自动继承。
+  const [videoProvider, setVideoProvider] = useState<string>(() => localStorage.getItem("shotlist:videoProvider") || "poyo_kling21_std");
+  const [allowT2V, setAllowT2V] = useState(false);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoState, setVideoState] = useState<Record<string, "running" | "done" | "error">>({});
+  const pickVideoProvider = (v: string) => { setVideoProvider(v); localStorage.setItem("shotlist:videoProvider", v); };
+
+  const submitVideoOne = async (r: ShotRow): Promise<"done" | "error"> => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === r.id);
+    const projectId = store.projectId;
+    if (!own || !projectId) return "error";
+    const hasImg = !!r.payload.imageUrl;
+    if (!hasImg && !allowT2V) return "error";
+    try {
+      // 建视频节点 + 连线（分镜→视频）
+      const vn = store.addNode("video_task", { x: own.position.x, y: own.position.y + 560 });
+      const clamped = clampDurationForProvider(PROVIDER_PARAMS[videoProvider], r.payload.duration);
+      const params = withParamDefaults(videoProvider, clamped != null ? { duration: clamped } : {});
+      const prompt = (r.payload.promptText || r.payload.description || "").slice(0, 4000);
+      store.updateNodeData(vn.id, {
+        provider: videoProvider as import("../../../../shared/types").VideoProvider, prompt,
+        negativePrompt: r.payload.negativePrompt,
+        referenceImageUrl: hasImg ? r.payload.imageUrl : undefined,
+        params,
+      });
+      store.onConnect({ source: r.id, target: vn.id, sourceHandle: null, targetHandle: null });
+      // 提交（服务端幂等：同 nodeId 在途任务不重复扣费）
+      const task = await utils.client.videoTasks.create.mutate({
+        projectId, nodeId: vn.id, provider: videoProvider as never, prompt,
+        negativePrompt: r.payload.negativePrompt || undefined,
+        referenceImageUrl: hasImg ? r.payload.imageUrl : undefined,
+        params,
+        estimatedCost: costEstimateLabel(estimateVideoCost(videoProvider, params)) || undefined,
+        ...(videoProvider.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+      });
+      useCanvasStore.getState().updateNodeData(vn.id, { taskId: task.id, status: task.status });
+      return task.status === "failed" ? "error" : "done";
+    } catch {
+      return "error";
+    }
+  };
+
+  const runVideoBatch = async () => {
+    if (videoBusy) return;
+    const targets = rows.filter((r) => sel.has(r.id) && !r.videoStatus); // 已有视频工位的跳过
+    const ready = targets.filter((r) => r.payload.imageUrl || allowT2V);
+    const skippedNoImg = targets.length - ready.length;
+    const skippedHasVideo = rows.filter((r) => sel.has(r.id) && r.videoStatus).length;
+    if (!ready.length) { toast.error(allowT2V ? "勾选镜均已有视频工位" : "勾选镜中没有已出图的（可勾选「允许文生视频」直通）"); return; }
+    // Σ预估
+    const sums: Record<string, number> = {};
+    for (const r of ready) {
+      const clamped = clampDurationForProvider(PROVIDER_PARAMS[videoProvider], r.payload.duration);
+      const est = estimateVideoCost(videoProvider, withParamDefaults(videoProvider, clamped != null ? { duration: clamped } : {}));
+      if (est) sums[est.unit] = (sums[est.unit] ?? 0) + est.credits;
+    }
+    const sumText = Object.entries(sums).map(([u, v]) => `≈${Math.round(v * 10) / 10} ${u}`).join(" + ") || "按模型页计费";
+    const skipNote = [skippedNoImg ? `${skippedNoImg} 个无图镜跳过` : "", skippedHasVideo ? `${skippedHasVideo} 个已有视频工位跳过` : ""].filter(Boolean).join("；");
+    if (!window.confirm(`将为 ${ready.length} 个分镜提交视频生成（${hasLabel(videoProvider)}，费用预估合计 ${sumText}）${skipNote ? `；${skipNote}` : ""}。继续？`)) return;
+    setVideoBusy(true);
+    const queue = [...ready];
+    const worker = async () => {
+      for (;;) {
+        const r = queue.shift();
+        if (!r) return;
+        setVideoState((s0) => ({ ...s0, [r.id]: "running" }));
+        const st = await submitVideoOne(r);
+        setVideoState((s0) => ({ ...s0, [r.id]: st }));
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    setVideoBusy(false);
+    toast.success("批量视频任务已提交，后台生成中（状态见各视频节点 / 本表状态徽）");
+  };
+  const hasLabel = (v: string) => PROVIDER_PICKER_OPTIONS.find((o) => o.value === v)?.label ?? v;
 
   const continuityMut = trpc.scripts.refineShotContinuity.useMutation({
     onSuccess: (r, vars) => {
@@ -257,6 +348,28 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         </button>
       </div>
 
+      {/* 批量图生视频（流水线第二段） */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)", flexShrink: 0 }}>批量视频</span>
+        <div style={{ width: 190 }}>
+          <ModelPicker value={videoProvider} onChange={pickVideoProvider} options={PROVIDER_PICKER_OPTIONS} minWidth={190} />
+        </div>
+        <label className="nodrag" title="无关键帧图的镜也允许提交文生视频（跳过关键帧，角色/场景一致性弱）" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9.5, color: allowT2V ? "oklch(0.75 0.16 75)" : "var(--c-t4)", cursor: "pointer" }}>
+          <input type="checkbox" checked={allowT2V} onChange={(e) => setAllowT2V(e.target.checked)} style={{ accentColor: "oklch(0.75 0.16 75)", margin: 0 }} />
+          允许文生视频
+        </label>
+        <button
+          onClick={() => void runVideoBatch()}
+          disabled={videoBusy || sel.size === 0}
+          title="为勾选且已出图的镜批量提交图生视频（首帧=关键帧锁定身份；时长自动夹取到模型档位）"
+          className="nodrag ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md"
+          style={{ fontSize: 10, fontWeight: 700, background: videoBusy || sel.size === 0 ? "var(--c-surface)" : "oklch(0.62 0.20 25 / 0.14)", border: `1px solid ${videoBusy || sel.size === 0 ? "var(--c-bd2)" : "oklch(0.62 0.20 25 / 0.5)"}`, color: videoBusy || sel.size === 0 ? "var(--c-t4)" : "oklch(0.62 0.20 25)", cursor: videoBusy || sel.size === 0 ? "not-allowed" : "pointer" }}
+        >
+          {videoBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Clapperboard style={{ width: 11, height: 11 }} />}
+          批量生成视频
+        </button>
+      </div>
+
       {/* 表格 */}
       <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {rows.map((r, i) => {
@@ -286,6 +399,12 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
                 </span>
                 {p.beatRef && <span style={{ fontSize: 8.5, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: "oklch(0.66 0.18 250 / 0.15)", color: "oklch(0.66 0.18 250)" }}>拍{p.beatRef}</span>}
                 {p.dialogue && <span title={p.dialogue} style={{ fontSize: 8.5, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: "oklch(0.70 0.18 340 / 0.15)", color: "oklch(0.70 0.18 340)" }}>💬</span>}
+                {(videoState[r.id] === "running") ? <Loader2 style={{ width: 10, height: 10, color: "oklch(0.62 0.20 25)" }} className="animate-spin" />
+                  : videoState[r.id] === "error" ? <span title="视频提交失败（可重新批量或在视频节点中提交）" style={{ fontSize: 9, color: "oklch(0.62 0.20 25)" }}>🎬✗</span>
+                  : r.videoStatus === "processing" || r.videoStatus === "pending" ? <span title="视频生成中" style={{ fontSize: 9 }}>🎬⏳</span>
+                  : r.videoStatus === "succeeded" ? <span title="视频已生成" style={{ fontSize: 9 }}>🎬✓</span>
+                  : r.videoStatus === "failed" ? <span title="视频生成失败" style={{ fontSize: 9, color: "oklch(0.62 0.20 25)" }}>🎬✗</span>
+                  : null}
                 <button onClick={() => swap(i, i - 1)} disabled={i === 0} className="nodrag" title="上移" style={{ background: "none", border: "none", color: i === 0 ? "var(--c-bd2)" : "var(--c-t3)", cursor: i === 0 ? "default" : "pointer", padding: 1 }}><ArrowUp style={{ width: 12, height: 12 }} /></button>
                 <button onClick={() => swap(i, i + 1)} disabled={i === rows.length - 1} className="nodrag" title="下移" style={{ background: "none", border: "none", color: i === rows.length - 1 ? "var(--c-bd2)" : "var(--c-t3)", cursor: i === rows.length - 1 ? "default" : "pointer", padding: 1 }}><ArrowDown style={{ width: 12, height: 12 }} /></button>
               </div>

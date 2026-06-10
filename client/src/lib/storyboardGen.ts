@@ -157,3 +157,28 @@ export function applyStoryboardGenResult(
   deps.propagateRefImage(id, imageUrl);
   return newUrls;
 }
+
+// ── 批量图生视频：时长夹取 ───────────────────────────────────────────────────
+/** 把分镜时长夹取到视频模型支持的档位。defs = 该 provider 的参数定义（注入以便测试）。
+ *  select → 取最接近的选项；range → clamp；无 duration 定义 → undefined（模型固定时长）。 */
+export function clampDurationForProvider(
+  defs: Array<{ type: string; key: string; options?: { value: unknown }[]; min?: number; max?: number }> | undefined,
+  seconds: number | undefined,
+): number | undefined {
+  if (!defs) return undefined;
+  const d = defs.find((x) => x.key === "duration");
+  if (!d) return undefined;
+  const want = Number.isFinite(Number(seconds)) && Number(seconds)! > 0 ? Number(seconds) : undefined;
+  if (d.type === "select" && d.options?.length) {
+    const nums = d.options.map((o) => Number(o.value)).filter((n) => Number.isFinite(n));
+    if (!nums.length) return undefined;
+    if (want == null) return nums[0];
+    return nums.reduce((best, n) => (Math.abs(n - want) < Math.abs(best - want) ? n : best), nums[0]);
+  }
+  if (d.type === "range") {
+    const min = d.min ?? 1, max = d.max ?? 30;
+    if (want == null) return undefined; // 用模型默认
+    return Math.max(min, Math.min(max, Math.round(want)));
+  }
+  return undefined;
+}
