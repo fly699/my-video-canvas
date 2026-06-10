@@ -274,7 +274,7 @@ export function summarizePlanOps(
     byType.set(label, (byType.get(label) ?? 0) + 1);
   }
   const scenes = new Set(creates.map((o) => o.sceneGroup?.trim()).filter(Boolean)).size;
-  const templates = new Set(creates.map((o) => (o.payload as { templateId?: unknown } | undefined)?.templateId).filter((v) => v != null)).size;
+  const templates = new Set(creates.map((o) => (o.payload as { templateId?: unknown } | undefined)?.templateId).filter((v) => v != null).map(String)).size;
   const connects = ops.filter((o) => o.op === "connect").length;
   const updates = ops.filter((o) => o.op === "update").length;
   const deletes = ops.filter((o) => o.op === "delete").length;

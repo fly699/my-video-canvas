@@ -203,6 +203,8 @@ export function sanitizeOperation(
   const op = o.op;
   if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete") return null;
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  // note 是给人看的一句话理由，行内展示——超长（LLM 跑偏）截到 120 字防撑爆消息存储。
+  const noteStr = (v: unknown) => { const t = str(v); return t && t.length > 120 ? t.slice(0, 120) + "…" : t; };
 
   if (op === "create") {
     const nodeType = str(o.nodeType) as NodeType | undefined;
@@ -230,22 +232,22 @@ export function sanitizeOperation(
     }
     return {
       op: "create", nodeType, tempId: str(o.tempId), title: str(o.title),
-      payload, note: str(o.note), sceneGroup: str(o.sceneGroup),
+      payload, note: noteStr(o.note), sceneGroup: str(o.sceneGroup),
     };
   }
   if (op === "connect") {
     const sourceRef = str(o.sourceRef), targetRef = str(o.targetRef);
     if (!sourceRef || !targetRef) return null;
-    return { op: "connect", sourceRef, targetRef, sourceHandle: str(o.sourceHandle), targetHandle: str(o.targetHandle), note: str(o.note) };
+    return { op: "connect", sourceRef, targetRef, sourceHandle: str(o.sourceHandle), targetHandle: str(o.targetHandle), note: noteStr(o.note) };
   }
   if (op === "update") {
     const targetRef = str(o.targetRef);
     if (!targetRef) return null;
     const payload = (o.payload && typeof o.payload === "object") ? (o.payload as Record<string, unknown>) : {};
-    return { op: "update", targetRef, title: str(o.title), payload, note: str(o.note) };
+    return { op: "update", targetRef, title: str(o.title), payload, note: noteStr(o.note) };
   }
   // delete
   const targetRef = str(o.targetRef);
   if (!targetRef) return null;
-  return { op: "delete", targetRef, note: str(o.note) };
+  return { op: "delete", targetRef, note: noteStr(o.note) };
 }
