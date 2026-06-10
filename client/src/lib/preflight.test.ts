@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runPreflight, type PFNode, type PFEdge } from "./preflight";
+import { runPreflight, buildSelfHealInstruction, type PFNode, type PFEdge } from "./preflight";
 
 function node(id: string, nodeType: string, payload: Record<string, unknown> = {}, title = id): PFNode {
   return { id, data: { nodeType: nodeType as PFNode["data"]["nodeType"], title, payload } };
@@ -108,5 +108,40 @@ describe("runPreflight", () => {
     ]);
     expect(r.budget.byModelCount).toBe(2);
     expect(r.budget.localCount).toBe(1);
+  });
+});
+
+describe("buildSelfHealInstruction", () => {
+  const mk = (id: string, type: string, payload?: Record<string, unknown>): PFNode =>
+    ({ id, data: { nodeType: type as PFNode["data"]["nodeType"], title: `${type}#${id}`, payload } });
+
+  it("点名失败节点：id + 截断的失败原因", () => {
+    const nodes = [
+      mk("a", "comfyui_image", { status: "failed", errorMessage: "未配置 ComfyUI 服务器地址" }),
+      mk("b", "video_task", { status: "failed", errorMessage: "x".repeat(200) }),
+      mk("c", "image_gen", { status: "success" }),
+    ];
+    const text = buildSelfHealInstruction(nodes, []);
+    expect(text).toContain("【运行失败的节点】");
+    expect(text).toContain("（id=a）：未配置 ComfyUI 服务器地址");
+    expect(text).toContain("…"); // 长错误截断
+    expect(text).not.toContain("（id=c）"); // 成功节点不进清单
+    expect(text).toContain("最小化修复");
+  });
+
+  it("体检问题清单带节点定位与严重级别", () => {
+    const text = buildSelfHealInstruction([], [
+      { severity: "error", nodeId: "s1", nodeTitle: "分镜#1", message: "分镜描述未填写" },
+      { severity: "warning", message: "画布存在孤立节点" },
+    ]);
+    expect(text).toContain("【体检发现】");
+    expect(text).toContain("[错误] 分镜#1（id=s1）分镜描述未填写");
+    expect(text).toContain("[提醒] 画布存在孤立节点");
+  });
+
+  it("无失败且无体检问题时退回通用检查指令", () => {
+    const text = buildSelfHealInstruction([mk("a", "image_gen", { status: "success" })], []);
+    expect(text).toContain("请检查当前画布");
+    expect(text).not.toContain("【运行失败的节点】");
   });
 });

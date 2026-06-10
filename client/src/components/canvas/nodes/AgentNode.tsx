@@ -16,7 +16,7 @@ import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
 import { AGENT_RECIPES, buildRecipeOps, recipeDefaultConfig, type AgentRecipe, type RecipeConfig } from "@/lib/agentRecipes";
-import { runPreflight } from "@/lib/preflight";
+import { runPreflight, buildSelfHealInstruction } from "@/lib/preflight";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 
 interface Props {
@@ -77,6 +77,12 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   // Track agent-initiated workflow runs (执行感知 + 自动续作).
   const runInitiatedRef = useRef(false);
   const selfHealRoundsRef = useRef(0); // caps auto self-heal loops per user request
+  // 同因熔断：上一轮运行的失败签名（节点id+错误文本）。连续两轮签名相同说明修复
+  // 无效（LLM 没修对或属环境问题），立即停止自动重试，避免无效循环烧钱。
+  const lastFailSigRef = useRef("");
+  // 自愈轮重跑范围：触发自愈时记录失败节点 id，apply 后只重跑「失败+本次修复触及」
+  // 的节点，而不是全量重跑本智能体名下所有节点（已成功的不该重复花钱）。
+  const healTargetsRef = useRef<string[] | null>(null);
   const prevRunningRef = useRef(false);
   const sawRunningRef = useRef(false);
   const chat = trpc.agent.chat.useMutation();
@@ -221,8 +227,17 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     // 只运行本智能体名下的节点，互不干扰（经画布确认 + 余额守卫）。
     if (autoRun && (r.created > 0 || r.updated > 0) && budgetGuardPasses(ops)) {
       runInitiatedRef.current = true;
-      const mine = ownedNodeIds(useCanvasStore.getState().nodes, id);
-      useCanvasStore.getState().requestRun(null, mine.length > 0 ? mine : undefined);
+      const live = new Set(useCanvasStore.getState().nodes.map((n) => n.id));
+      if (healTargetsRef.current) {
+        // 自愈轮：只重跑失败节点 + 本次修复触及的节点（含 connect 补线的下游），
+        // 绝不全量重跑已成功节点。
+        const targets = Array.from(new Set([...healTargetsRef.current, ...r.touchedIds])).filter((nid) => live.has(nid));
+        healTargetsRef.current = null;
+        useCanvasStore.getState().requestRun(null, targets.length > 0 ? targets : undefined);
+      } else {
+        const mine = ownedNodeIds(useCanvasStore.getState().nodes, id);
+        useCanvasStore.getState().requestRun(null, mine.length > 0 ? mine : undefined);
+      }
     }
   };
 
@@ -270,7 +285,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const runChat = async (text: string, baseMessages: AgentMessage[], focusNodeIds?: string[]) => {
     if (!text || chat.isPending) return;
     // 过滤掉管线引导卡（content 为空、仅 UI）——不污染发给 LLM 的对话历史。
-    const history = baseMessages.slice(0, -1).filter((m) => m.content.trim() !== "").map((m) => ({ role: m.role, content: m.content }));
+    const history = baseMessages.slice(0, -1).filter((m) => m.content.trim() !== "").map((m) => ({ role: m.role, content: m.content })).slice(-20); // 服务端 history 上限 20，超限会 400
     // Multi-agent isolation: scope the planning context to THIS agent's own nodes
     // (so it never sees or rewrites another agent's subgraph). An explicit
     // focusNodeIds (e.g. 微调选中) still wins. First plan owns nothing → empty context.
@@ -313,7 +328,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const handleSend = async (override?: string, focusNodeIds?: string[]) => {
     const text = (override ?? input).trim();
     if (!text || chat.isPending) return;
-    if (!override) selfHealRoundsRef.current = 0; // genuine user send resets the self-heal cap
+    if (!override) { selfHealRoundsRef.current = 0; lastFailSigRef.current = ""; healTargetsRef.current = null; } // genuine user send resets the self-heal cap/熔断
     // 仅 ComfyUI：首次规划前先弹「模板选择」让用户指定/确认（或自动），选完再规划。
     if (comfyOnly && !templatePrefs.asked) {
       setPendingSend({ text, focusNodeIds });
@@ -342,8 +357,21 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     void runChat(userMsg.content, msgs.slice(0, failedIdx));
   };
 
-  // 运行自愈：让智能体检查画布上运行失败/缺参的节点并给出修复方案（节点状态已随 graphSummary 提供）。
-  const handleSelfHeal = () => handleSend("请检查当前画布上运行失败或缺少必要参数的节点，并用 update / connect 操作给出修复方案（修正参数、补全缺失连接或参考图）。若无问题请说明。");
+  // 运行自愈：先确定性体检拿到具体问题清单（节点 id + 问题 + 失败原因），再让智能体
+  // 针对清单逐项精准修复——不让 LLM 自己从摘要里猜哪里坏了。失败原因已随 graphSummary
+  // 的 error 字段提供，这里额外点名失败节点，把修复目标锁死。
+  const handleSelfHeal = () => {
+    const { nodes, edges } = useCanvasStore.getState();
+    const pfNodes = nodes
+      .filter((n) => n.id !== id)
+      .map((n) => ({ id: n.id, data: { nodeType: n.data.nodeType, title: n.data.title, payload: n.data.payload as Record<string, unknown> } }));
+    const r = runPreflight(pfNodes, edges.map((e) => ({ source: e.source, target: e.target })));
+    // 记录失败节点作为自愈轮重跑目标（手动/自动同源）：apply 后只重跑失败+修复触及
+    // 的节点。无失败（纯体检修复）时为 null → touchedIds 兜底。
+    const failedIds = pfNodes.filter((n) => (n.data.payload as { status?: string } | undefined)?.status === "failed").map((n) => n.id);
+    healTargetsRef.current = failedIds.length > 0 ? failedIds : null;
+    handleSend(buildSelfHealInstruction(pfNodes, r.issues));
+  };
 
   // 运行前体检：扫描整张画布的结构问题与全画布成本预估，汇报为一条消息。
   const handlePreflight = () => {
@@ -467,9 +495,16 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     setMessages([...freshMessages(), { role: "assistant", content, operations: [] }]);
     // Auto self-heal on failure — but cap rounds so a persistently-failing node
     // can't loop forever (and burn credits). Reset on a fresh user-initiated send.
-    if (failed.length > 0 && autoRun && selfHealRoundsRef.current < 2) {
-      selfHealRoundsRef.current += 1;
-      handleSelfHeal();
+    if (failed.length > 0 && autoRun) {
+      const sig = failed.map((nid) => `${nid}:${runState.nodeStates[nid]?.errorMessage ?? ""}`).sort().join("|");
+      if (sig === lastFailSigRef.current) {
+        // 同因熔断：上一轮自愈后失败集合与错误一字未变 → 修复无效，停止自动重试。
+        setMessages([...freshMessages(), { role: "assistant", content: "⚠️ 自动修复未生效（连续两轮出现完全相同的失败），已停止自动重试以免空转。请根据上方错误信息手动处理，或调整后点「诊断修复」。", operations: [] }]);
+      } else if (selfHealRoundsRef.current < 2) {
+        lastFailSigRef.current = sig;
+        selfHealRoundsRef.current += 1;
+        handleSelfHeal(); // 内部记录失败节点为自愈重跑目标
+      }
     }
   }, [runState.running]); // eslint-disable-line react-hooks/exhaustive-deps
 

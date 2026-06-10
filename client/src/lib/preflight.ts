@@ -167,3 +167,26 @@ export function runPreflight(nodes: PFNode[], edges: PFEdge[]): PreflightResult 
   const warningCount = issues.length - errorCount;
   return { issues, errorCount, warningCount, runnableCount, budget };
 }
+
+/**
+ * 组装「诊断修复」发给智能体的指令：确定性地点名运行失败的节点（id + 失败原因）
+ * 与体检问题清单，让 LLM 针对清单逐项精准修复，而不是从摘要里自己猜哪里坏了。
+ * 两个清单都为空时退回通用检查指令。纯函数，便于单测失败分支。
+ */
+export function buildSelfHealInstruction(nodes: PFNode[], issues: PreflightIssue[]): string {
+  const failed = nodes
+    .filter((n) => (n.data.payload as { status?: string } | undefined)?.status === "failed")
+    .map((n) => {
+      const em = ((n.data.payload as { errorMessage?: string }).errorMessage ?? "").trim();
+      return `- ${n.data.title}（id=${n.id}）${em ? `：${em.length > 120 ? em.slice(0, 120) + "…" : em}` : ""}`;
+    });
+  const issueLines = issues.slice(0, 12).map((iss) =>
+    `- [${iss.severity === "error" ? "错误" : "提醒"}] ${iss.nodeTitle ? `${iss.nodeTitle}（id=${iss.nodeId}）` : ""}${iss.message}`);
+  if (failed.length === 0 && issueLines.length === 0) {
+    return "请检查当前画布上运行失败或缺少必要参数的节点，并用 update / connect 操作给出修复方案。若无问题请说明。";
+  }
+  const parts: string[] = ["请精准修复以下画布问题。要求：针对每个问题的根因做最小化修复（优先 update 单个字段或补 connect），禁止删除重建节点；无法用画布操作解决的（如服务器未配置、余额不足、网络故障），不要乱改参数，在 reply 里说明原因和手动解决步骤。"];
+  if (failed.length > 0) parts.push(`【运行失败的节点】（完整错误见画布摘要 error 字段）\n${failed.slice(0, 10).join("\n")}`);
+  if (issueLines.length > 0) parts.push(`【体检发现】\n${issueLines.join("\n")}`);
+  return parts.join("\n\n");
+}
