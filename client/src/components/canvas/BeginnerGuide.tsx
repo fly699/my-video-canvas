@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   X, Sparkles, Layers, Wand2, Video, Boxes, Bot, Users, ScrollText, Activity,
   Shield, ArrowRight, MessageCircle, Music, Wallet, Clapperboard, Bookmark,
-  Palette, Upload, User,
+  Palette, Upload, User, AtSign, Calculator, Copy, BookOpen,
 } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -71,7 +71,19 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       title: "多智能体编排", desc: "一个画布可放多个智能体，各自分管自己规划生成的节点：归属彩色徽标标识、规划上下文相互隔离，一键「选中 / 运行 / 清空我的节点」，互不干扰",
       badge: "NEW" },
     { Icon: Boxes, color: "oklch(0.68 0.20 100)",
-      title: "分类模型选择器", desc: "图像 / 视频 / 对话节点统一的模型选择器：按供应商与家族分组、支持搜索，每个模型标注消耗点数（credits），按预算挑选",
+      title: "分类模型选择器", desc: "图像 / 视频 / 对话节点统一的模型选择器：按供应商与家族分组、支持搜索、列表限高可滚动，KIE 模型排在前；每个模型标注消耗点数（credits），按预算挑选；管理员可在后台「模型管理」按节点分组勾选各模型是否显示",
+      badge: "NEW" },
+    { Icon: AtSign, color: "oklch(0.66 0.18 30)",
+      title: "@ 引用：角色 / 场景 / 媒体节点", desc: "在任意提示词框输入 @ 即可引用画布上的角色 / 场景，以及已生成的图像 / 音频 / 视频节点：@角色 锁定身份、@图像 作参考图、@音频 驱动数字人口型、@视频 作动作迁移源；被 @ 的节点在吸附栏显示为「参与项」并标注来源，无需连线",
+      badge: "NEW" },
+    { Icon: Calculator, color: "oklch(0.72 0.18 155)",
+      title: "实时点数预估 · 审计可追溯", desc: "图像 / 视频 / 分镜 / 音频节点的生成按钮按所选模型与参数（时长 / 分辨率 / 张数 / 字数等）实时预估消耗点数；预估值随每次生成计入管理员审计日志并标注成功 / 失败，操作日志与 ComfyUI 日志均支持一键导出 CSV",
+      badge: "NEW" },
+    { Icon: Copy, color: "oklch(0.68 0.22 285)",
+      title: "一键同步模型与参数", desc: "分镜 / 图像 / 视频节点支持「同步参数」对话框：把当前节点选好的模型与全部参数一键复制到画布内同类节点，默认勾选同一工作流内的节点、支持全选，批量统一风格设置",
+      badge: "NEW" },
+    { Icon: BookOpen, color: "oklch(0.62 0.18 240)",
+      title: "提示词库 · 拉线建节点", desc: "提示词库可保存常用提示词、分类管理、内联编辑、导入导出，输入「/」快捷唤出，支持 10 个快捷槽位；从节点端口拉线到空白处松手，即在落点弹出建节点菜单并自动连线，顺手搭流程",
       badge: "NEW" },
     { Icon: Boxes, color: "oklch(0.68 0.20 100)",
       title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（AnimateDiff / Wan / LTX，支持角色 LoRA）、15 类模型自动发现、自定义工作流导入；上游提示词「优先/转发」、运行后队列空闲自动清显存、参数绑定失同步校验、随机/固定种子、多行提示词批量出图" },

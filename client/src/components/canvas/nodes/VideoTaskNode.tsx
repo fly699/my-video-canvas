@@ -1055,7 +1055,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     // 角色 = 连线 + prompt 里的「@角色」提及，两者等价生效。
     const chars = effectiveCharacters(id, payload.prompt, allEdges, allNodes);
     // Single-ref fallback: PERSON characters only — a 场景's image is location, not identity.
-    const charRefFallback = chars.find((c) => (c.characterKind ?? "person") !== "scene" && c.referenceImageUrl?.trim())?.referenceImageUrl;
+    // 角色身份图优先，其次 @图像名 引用的独立图像节点（保证单图模型下单张 @图像 不丢）。
+    const charRefFallback = chars.find((c) => (c.characterKind ?? "person") !== "scene" && c.referenceImageUrl?.trim())?.referenceImageUrl
+      ?? mentionedMediaUrls(payload.prompt, "image", allNodes)[0];
     return {
       // Cap to the server's prompt limit (z.string().max(4000)); the base prompt is
       // preserved and only the injected character text is trimmed to fit — otherwise
@@ -1076,15 +1078,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // backend keeps its unchanged single-image mapping.
   const buildRefUrls = useCallback((provider: string, primary: string | undefined): string[] | undefined => {
     const all = refImages.images.map((i) => i.url).filter((u): u is string => Boolean(u));
+    const { nodes: gn, edges: ge } = useCanvasStore.getState();
+    // @图像名 直接引用的独立图像节点 → 显式参考图（用户主动 @ 即视为参考，始终并入）。
+    const atImgs = mentionedMediaUrls(payload.prompt, "image", gn);
     let base = all;
     if (base.length === 0) {
       // No manually-attached refs → lock identity on ALL views of any connected
       // character (multi-reference); person identity refs first, then SCENE backdrop
       // refs (location/style context), falling back to the single primary ref.
-      const { nodes: gn, edges: ge } = useCanvasStore.getState();
       const charRefs = [...effectiveCharacterRefImages(id, payload.prompt, ge, gn), ...effectiveSceneRefImages(id, payload.prompt, ge, gn)];
       base = charRefs.length ? charRefs : (primary ? [primary] : []);
     }
+    base = Array.from(new Set([...base, ...atImgs]));
     const max = maxRefImagesForProvider(provider);
     return max > 1 && base.length > 1 ? base.slice(0, max) : undefined;
   }, [refImages.images, id, payload.prompt]);

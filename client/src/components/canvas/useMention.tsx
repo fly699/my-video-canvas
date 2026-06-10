@@ -1,11 +1,11 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { User, Mountain, Music, Film } from "lucide-react";
+import { User, Mountain, Music, Film, Image as ImageIcon } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { getLibraryCharacters } from "../../lib/characterConditioning";
 import { listCanvasMediaSources } from "../../lib/comfyWorkflowParams";
 
-export interface MentionItem { name: string; kind: "person" | "scene" | "audio" | "video"; fromLibrary?: boolean }
+export interface MentionItem { name: string; kind: "person" | "scene" | "audio" | "video" | "image"; fromLibrary?: boolean }
 
 /** 可被「@」引用的角色 / 场景 + 独立音/视频节点：画布上的角色节点 + 全局角色库 + 画布上
  *  有标题的音/视频媒体节点。去重，画布优先。用快照读取，仅在用户输入「@」触发下拉时调用。 */
@@ -125,10 +125,12 @@ export function useMention(
             ? <Music className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.66 0.18 30)" }} />
             : it.kind === "video"
             ? <Film className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.62 0.16 240)" }} />
+            : it.kind === "image"
+            ? <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.72 0.20 330)" }} />
             : <User className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.66 0.18 30)" }} />}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
           <span style={{ marginLeft: "auto", fontSize: 9.5, color: "var(--c-t4)" }}>
-            {it.kind === "scene" ? "场景" : it.kind === "audio" ? "音频" : it.kind === "video" ? "视频" : "人物"}
+            {it.kind === "scene" ? "场景" : it.kind === "audio" ? "音频" : it.kind === "video" ? "视频" : it.kind === "image" ? "图像" : "人物"}
           </span>
         </button>
       ))}

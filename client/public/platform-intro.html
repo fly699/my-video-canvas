@@ -176,6 +176,25 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
 <div class="glow a"></div><div class="glow b"></div><div class="glow c"></div>
 <div class="wm"></div>
 
+<!-- 返回首页：固定悬浮按钮（本页可能在新标签 / 应用内 webview 打开，页内必须能回首页）。
+     history 可回退就回退，否则跳到应用首页 /。 -->
+<a href="/" class="back-home"
+   onclick="if(window.history.length>1){history.back();return false;}"
+   title="返回首页">
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+  返回首页
+</a>
+<style>
+.back-home{position:fixed;top:16px;left:16px;z-index:9999;display:inline-flex;align-items:center;gap:6px;
+  padding:9px 15px 9px 12px;border-radius:999px;font-size:13.5px;font-weight:700;text-decoration:none;
+  color:#fff;background:rgba(20,22,30,.72);border:1px solid rgba(207,163,94,.45);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 6px 22px rgba(0,0,0,.4);
+  transition:background .15s ease,transform .15s ease,border-color .15s ease}
+.back-home:hover{background:rgba(207,163,94,.22);border-color:rgba(207,163,94,.8);transform:translateY(-1px)}
+.back-home svg{flex-shrink:0}
+@media(max-width:520px){.back-home{top:10px;left:10px;padding:8px 13px 8px 10px;font-size:12.5px}}
+</style>
+
 <!-- KingTai 金泰智算 品牌 LOGO（SVG symbol，多处复用）-->
 <svg class="kt-defs" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -229,7 +248,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     <svg class="hero-logo"><use href="#kt-logo"/></svg>
     <div class="badge" style="margin-bottom:24px"><span class="dot"></span>企业级 · 私有化部署 · 全栈自主可控 · 数据不出域</div>
     <h1>一张画布，编排<span class="g">全链路 AI 视频创作</span></h1>
-    <p class="lead">面向专业影视与营销内容生产的节点式 AI 创作中枢。从<b>脚本、分镜、角色</b>到<b>图像、视频、配音、剪辑成片</b>，将 6 大 AI 服务商、140+ 模型、27 类创作节点与<b>自建 ComfyUI 算力</b>汇聚于同一画布——<b>所见即所得、开闭互补、可控可信、私有定制</b>。</p>
+    <p class="lead">面向专业影视与营销内容生产的节点式 AI 创作中枢。从<b>脚本、分镜、角色</b>到<b>图像、视频、配音、剪辑成片</b>，将 6 大 AI 服务商、150+ 模型、27 类创作节点与<b>自建 ComfyUI 算力</b>汇聚于同一画布——<b>所见即所得、开闭互补、可控可信、私有定制</b>。</p>
     <div class="badges">
       <span class="badge">⚛️ React + Vite</span>
       <span class="badge">🔗 tRPC v11 端到端类型安全</span>
@@ -241,7 +260,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
   </div>
   <div class="hero-stats reveal">
     <div class="hstat"><div class="num" data-n="27">0</div><div class="lab">创作节点类型</div></div>
-    <div class="hstat"><div class="num" data-n="140" data-suf="+">0</div><div class="lab">接入 AI 模型</div></div>
+    <div class="hstat"><div class="num" data-n="150" data-suf="+">0</div><div class="lab">接入 AI 模型</div></div>
     <div class="hstat"><div class="num" data-n="6">0</div><div class="lab">AI 服务商聚合</div></div>
     <div class="hstat"><div class="num" data-n="13">0</div><div class="lab">核心功能模块</div></div>
     <div class="hstat"><div class="num" data-n="28">0</div><div class="lab">类操作审计</div></div>
@@ -304,7 +323,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
   <p class="sec-sub">每个节点封装一种创作能力，节点之间依<b>连接矩阵</b>智能校验、合法连线，覆盖创作、生成、后期、ComfyUI 与智能体五大类，逐级推进、彼此驱动，把复杂工作流编织得井然有序。</p></div>
   <div class="grid g4 reveal">
     <div class="card"><div class="ic ic-cyan">📝</div><h4>创作层</h4><p>把灵感结构化</p><div class="feat"><span>脚本 · 生成/润色/缩写</span><span>分镜 · 镜头拆解</span><span>提示词 · 正负向/反推</span><span>角色/场景 · 身份与场景库</span><span>AI 对话 · 多模态助手</span><span>智能体 · 对话搭画布</span></div></div>
-    <div class="card"><div class="ic ic-violet">🎇</div><h4>生成层</h4><p>调用 AI 产出素材</p><div class="feat"><span>图像生成 · 54 模型</span><span>视频任务 · 57+ 模型</span><span>音频 · 配音/音乐/音效</span><span>素材 · 上传/输出托管</span><span>构图控制 · 姿态约束</span></div></div>
+    <div class="card"><div class="ic ic-violet">🎇</div><h4>生成层</h4><p>调用 AI 产出素材</p><div class="feat"><span>图像生成 · 54 模型</span><span>视频任务 · 75 模型</span><span>音频 · 配音/音乐/音效</span><span>素材 · 上传/输出托管</span><span>构图控制 · 姿态约束</span></div></div>
     <div class="card"><div class="ic ic-pink">🎬</div><h4>后期层</h4><p>剪辑成片</p><div class="feat"><span>剪辑 · 裁剪/变速/调色</span><span>合并 · 多片段成片</span><span>字幕 / 动态字幕</span><span>视频叠加 · 画中画</span><span>智能剪辑 · 自动卡点</span><span>后处理 · 放大/降噪/补帧</span></div></div>
     <div class="card"><div class="ic ic-green">🧩</div><h4>ComfyUI / 扩展</h4><p>自托管深度定制</p><div class="feat"><span>ComfyUI 图像 / 视频</span><span>ComfyUI 自定义工作流</span><span>本地服务器 + 官方云</span><span>声音克隆 · 唇形同步 · 数字人</span><span>便签 / 分组容器</span></div></div>
   </div>
@@ -318,12 +337,12 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
 <!-- MODELS -->
 <section id="models" class="wrap">
   <div class="reveal"><div class="sec-tag">✨ AI 模型矩阵</div>
-  <h2 class="sec-h">6 大服务商 · 140+ 模型，<span class="g">一处聚合 · 开闭互补</span></h2>
+  <h2 class="sec-h">6 大服务商 · 150+ 模型，<span class="g">一处聚合 · 开闭互补</span></h2>
   <p class="sec-sub">图像、视频、对话、音频四大能力全覆盖，闭源旗舰 API 与开源本地模型同台混用。严格逐字段对照官方文档接入、杜绝参数错误；价格按官方计价透明标注，成本一目了然。</p></div>
   <div class="tabs reveal">
     <div class="tab active" data-tab="img">🖼️ 图像 <span class="c">54</span></div>
-    <div class="tab" data-tab="vid">🎥 视频 <span class="c">57+</span></div>
-    <div class="tab" data-tab="llm">💬 对话 <span class="c">31</span></div>
+    <div class="tab" data-tab="vid">🎥 视频 <span class="c">75</span></div>
+    <div class="tab" data-tab="llm">💬 对话 <span class="c">26</span></div>
     <div class="tab" data-tab="aud">🎙️ 音频 <span class="c">多类</span></div>
   </div>
   <div class="panel active reveal" data-panel="img">
@@ -381,7 +400,8 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>🔗</i>智能连线 & 连接矩阵</b><small>拖拽高亮可连接桩点，按矩阵校验合法连接，同对节点自动去重</small></div>
         <div class="fitem"><b><i>🧲</i>拉线松手建节点 <span class="star">★特色</span></b><small>未连到节点即松手，鼠标处弹菜单——仅列可连接类型，可拖拽排序并云端持久化</small></div>
-        <div class="fitem"><b><i>@</i>@提及引用 <span class="star">★特色</span></b><small>文本框 @角色/@场景/@音频/@视频，无需连线即引用画布或库中元素</small></div>
+        <div class="fitem"><b><i>@</i>@提及引用 <span class="star">★特色</span></b><small>文本框 @角色/@场景/@图像/@音频/@视频，无需连线即引用画布或库中元素；被 @ 的对象在吸附栏显示为「参与项」并标注来源</small></div>
+        <div class="fitem"><b><i>🔁</i>一键同步模型与参数 <span class="star">★特色</span></b><small>分镜/图像/视频节点把当前模型与参数复制到画布内同类节点，默认勾选同一工作流、可全选</small></div>
         <div class="fitem"><b><i>📦</i>分组容器</b><small>多节点组合为「场景」容器，折叠/展开，智能体按场景自动分组</small></div>
         <div class="fitem"><b><i>🎯</i>搜索 / 定位 / 高亮</b><small>Ctrl+K 搜索节点，点选可靠定位并高亮目标</small></div>
         <div class="fitem"><b><i>💾</i>节点模板库</b><small>参数存模板、一键套用、JSON 导入导出</small></div>
@@ -459,7 +479,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     </div>
     <!-- 7 密钥权限 -->
     <div class="acc-item">
-      <div class="acc-head"><span class="ic ic-violet">🔐</span><div class="tt"><h3>密钥 · 计费 · 额度治理</h3><p>额度可控、计费透明、权限严密</p></div><span class="num-b">9 项</span><span class="arr">▾</span></div>
+      <div class="acc-head"><span class="ic ic-violet">🔐</span><div class="tt"><h3>密钥 · 计费 · 额度治理</h3><p>额度可控、计费透明、权限严密</p></div><span class="num-b">11 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>🔑</i>三级密钥优先级 <span class="star">★特色</span></b><small>临时 key（用户自填）> 分配 key（管理员绑定）> 公用 key（平台环境变量），自动择优</small></div>
         <div class="fitem"><b><i>🎁</i>管理员密钥分配</b><small>为指定用户绑定专属 kie 密钥、加备注；可启用/停用绑定与密钥、解绑、增删</small></div>
@@ -470,6 +490,8 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
         <div class="fitem"><b><i>💳</i>余额实时查询</b><small>kie / Poyo 平台余额按密钥优先级实时查询，顶栏徽标常驻显示</small></div>
         <div class="fitem"><b><i>📈</i>消费趋势快照</b><small>余额定时快照入库，绘制平台消费/额度趋势，成本一目了然</small></div>
         <div class="fitem"><b><i>📥</i>下载/分享额度授权</b><small>下载消费授权（grant）与分享链接次数消费，产出物流转可计量可控</small></div>
+        <div class="fitem"><b><i>🧮</i>实时点数预估 <span class="star">★特色</span></b><small>图/视/音/分镜生成按钮按所选模型与参数实时预估消耗点数，生成前即知预算</small></div>
+        <div class="fitem"><b><i>🎛️</i>模型使能开关 <span class="star">★特色</span></b><small>管理后台按节点分组列出全部 AI 模型，勾选控制各模型是否在界面显示</small></div>
       </div></div></div>
     </div>
     <!-- 8 数据安全防泄露 -->
@@ -506,11 +528,13 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     </div>
     <!-- 10 日志审计 -->
     <div class="acc-item">
-      <div class="acc-head"><span class="ic ic-amber">📜</span><div class="tt"><h3>全链路日志审计</h3><p>28 类操作留痕，可追溯、可追责</p></div><span class="num-b">5 项</span><span class="arr">▾</span></div>
+      <div class="acc-head"><span class="ic ic-amber">📜</span><div class="tt"><h3>全链路日志审计</h3><p>28 类操作留痕，可追溯、可追责</p></div><span class="num-b">7 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>🔎</i>28 类操作审计</b><small>登录(邮箱/OAuth)、图/视/音/ComfyUI 生成、用户管理、密钥增删绑定、存储暂存、字幕转录、系统重启…全覆盖</small></div>
         <div class="fitem"><b><i>🗂️</i>系统日志后台</b><small>管理后台按用户名/类别筛选，集中审阅</small></div>
         <div class="fitem"><b><i>🧾</i>生成记录可追溯</b><small>每次生成自动入库，模型/来源/产出 URL 留痕</small></div>
+        <div class="fitem"><b><i>🧮</i>预估点数入日志</b><small>每次生成的预估消耗随成功/失败状态写入审计，计费可对账</small></div>
+        <div class="fitem"><b><i>📤</i>日志一键导出</b><small>操作日志 / ComfyUI 日志按当前筛选导出 CSV（Excel 直开），便于统计对账</small></div>
         <div class="fitem"><b><i>⚠️</i>敏感操作记录</b><small>删除/重置/分享/密钥变更/系统重启逐条记录</small></div>
         <div class="fitem"><b><i>🧽</i>日志清理</b><small>管理员可清理历史日志，清理动作本身亦留痕</small></div>
       </div></div></div>
@@ -591,7 +615,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     <div class="spot"><div class="k">🔑</div><h4><span class="g">三级密钥体系</span></h4><p>用户可填自有密钥（临时），管理员可绑定专属密钥（分配），平台兜底公用密钥——优先级清晰、权限严密、成本隔离。</p><ul><li>临时 > 分配 > 公用 自动择优</li><li>公用 key 严格白名单门控</li><li>多租户额度隔离</li></ul></div>
     <div class="spot"><div class="k">🧲</div><h4><span class="g">拉线即建节点</span></h4><p>从节点拉出连线松手在空白处，鼠标位置立即弹出建节点菜单——只列合法可连接类型，点击即建好节点并连线。</p><ul><li>不可连接类型不出现，零误操作</li><li>菜单项可拖拽排序、偏好持久化</li><li>编排效率成倍提升</li></ul></div>
     <div class="spot"><div class="k">@</div><h4><span class="g">@音视频全能参考</span></h4><p>不止 @角色/@场景，更可 @音频、@视频，引用画布独立音视频节点或角色携带的声音/动作素材，喂给数字人与全能模型。</p><ul><li>角色携带 + 独立节点双来源</li><li>吸附栏显示全部参与素材并注明来源</li><li>驱动数字人 / omni 模型</li></ul></div>
-    <div class="spot"><div class="k">🎛️</div><h4><span class="g">多服务商聚合</span></h4><p>kie.ai、Poyo、Manus Forge、Higgsfield、ComfyUI 一处接入，140+ 模型自由切换、同画布混用不同厂商。</p><ul><li>逐字段对照官方文档接入，防参数错误</li><li>价格按官方计价透明标注</li><li>新模型快速纳管</li></ul></div>
+    <div class="spot"><div class="k">🎛️</div><h4><span class="g">多服务商聚合</span></h4><p>kie.ai、Poyo、Manus Forge、Higgsfield、ComfyUI 一处接入，150+ 模型自由切换、同画布混用不同厂商。</p><ul><li>逐字段对照官方文档接入，防参数错误</li><li>价格按官方计价透明标注</li><li>新模型快速纳管</li></ul></div>
   </div>
 </section>
 
