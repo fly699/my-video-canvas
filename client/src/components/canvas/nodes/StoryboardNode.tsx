@@ -13,7 +13,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { estimateImageCost, costEstimateLabel } from "@/lib/costEstimate";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
-import { mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
+import { mentionedMediaUrls, stripMediaMentions, detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { ShotListPanel } from "../ShotListPanel";
 import { buildStoryboardGenInput, applyStoryboardGenResult, SOUL_SIZES_LIST, V2_ASPECT_RATIOS, V2_RESOLUTIONS, KIE_RATIOS } from "../../../lib/storyboardGen";
 import { imageModelRequiresRef } from "@/lib/models";
@@ -134,6 +134,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [showHistory, setShowHistory] = useState(false);
   // 「镜头表」侧向展开面板（同组分镜序列总览：重排/时长校验/衔接优化）。
   const [showShotList, setShowShotList] = useState(false);
+
+  // 上游「提示词」节点 → 只填空自动填充（与 video_task/image_gen 同口径）：
+  // 本镜 promptText / negativePrompt 为空时才填入，绝不覆盖已有内容。
+  // 此前 prompt→storyboard 连接虽被矩阵允许但分镜不消费——连了白连（审计补齐）。
+  const upPrompt = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes));
+  useEffect(() => {
+    const patch: Partial<StoryboardNodeData> = {};
+    if (upPrompt.positive && !payload.promptText?.trim()) patch.promptText = upPrompt.positive;
+    if (upPrompt.negative && !payload.negativePrompt?.trim()) patch.negativePrompt = upPrompt.negative;
+    if (Object.keys(patch).length) updateNodeData(id, patch, true);
+  }, [upPrompt.positive, upPrompt.negative, payload.promptText, payload.negativePrompt, id, updateNodeData]);
   const [batchCount, setBatchCount] = useState<1 | 4>(([1, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
 
