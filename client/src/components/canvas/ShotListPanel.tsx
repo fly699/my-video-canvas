@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling } from "lucide-react";
+import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw } from "lucide-react";
 import type { StoryboardNodeData, ScriptNodeData } from "../../../../shared/types";
+import { buildStoryboardGenInput, applyStoryboardGenResult } from "../../lib/storyboardGen";
+import { propagateRefImage } from "../../lib/refImagePropagation";
 
 // 「镜头表（Shot List）」侧向展开面板 —— 同组分镜的序列总览。
 // 行业前期制作的核心文档：镜号/景别/运镜/时长/转场/对白 一表统管；
@@ -37,15 +39,19 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     return JSON.stringify({
       src: srcScript ?? null,
       target: srcScript ? (s.nodes.find((n) => n.id === srcScript)?.data.payload as ScriptNodeData | undefined)?.totalDuration ?? null : null,
-      rows: members.map((n) => [n.id, n.data.title, n.position.x, JSON.stringify(n.data.payload)]),
+      rows: members.map((n) => [
+        n.id, n.data.title, n.position.x, JSON.stringify(n.data.payload),
+        // 精修工位标记：本镜出边指向 image_gen（批量生图默认跳过，避免覆盖精修流程）
+        s.edges.some((e) => e.source === n.id && s.nodes.find((m) => m.id === e.target)?.data.nodeType === "image_gen") ? 1 : 0,
+      ]),
     });
   });
   const { rows, targetDuration, scriptId } = useMemo(() => {
-    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; rows: [string, string, number, string][] };
-    const parsed: (ShotRow & { x: number })[] = g.rows.map(([rid, title, x, pj], i) => {
+    const g = JSON.parse(groupKey) as { src: string | null; target: number | null; rows: [string, string, number, string, number][] };
+    const parsed: (ShotRow & { x: number; hasRefine: boolean })[] = g.rows.map(([rid, title, x, pj, refine], i) => {
       const payload = JSON.parse(pj) as StoryboardNodeData;
       const n = Number(payload.sceneNumber);
-      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x };
+      return { id: rid, num: Number.isFinite(n) && n > 0 ? n : 1000 + i, title, payload, x, hasRefine: refine === 1 };
     });
     parsed.sort((a, b) => a.num - b.num || a.x - b.x);
     return { rows: parsed, targetDuration: g.target, scriptId: g.src };
@@ -53,6 +59,79 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
 
   const totalDuration = rows.reduce((s, r) => s + (Number(r.payload.duration) || 0), 0);
   const delta = targetDuration != null ? totalDuration - targetDuration : null;
+
+  // ── 批量生成分镜图（流水线第一段）────────────────────────────────────────────
+  // 每镜独立走 buildStoryboardGenInput（各自的角色/场景/@图像注入）；并发 2；
+  // 状态仅存面板本地（不污染节点 payload）；写回器自带「节点已删」守卫。
+  const utils = trpc.useUtils();
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const selInit = useState(() => ({ done: false }))[0];
+  // 默认勾选：无图 且 无精修工位 的镜（仅首次加载时初始化，用户改动后保持）。
+  if (!selInit.done && rows.length > 0) {
+    selInit.done = true;
+    setSel(new Set(rows.filter((r) => !r.payload.imageUrl && !r.hasRefine).map((r) => r.id)));
+  }
+  const [batchState, setBatchState] = useState<Record<string, "running" | "done" | "error">>({});
+  const [batchBusy, setBatchBusy] = useState(false);
+  const toggleSel = (rid: string) => setSel((s0) => { const n = new Set(s0); n.has(rid) ? n.delete(rid) : n.add(rid); return n; });
+
+  const genOne = async (r: ShotRow): Promise<"done" | "error"> => {
+    const { nodes, edges } = useCanvasStore.getState();
+    const b = buildStoryboardGenInput({ id: r.id, payload: r.payload, nodes, edges, kieTempKey: localStorage.getItem("kie:tempKey") });
+    if (b.blocked) return "error";
+    try {
+      const res = await utils.client.imageGen.generate.mutate(b.input as Parameters<typeof utils.client.imageGen.generate.mutate>[0]);
+      const urls = applyStoryboardGenResult(r.id, res, {
+        getNodes: () => useCanvasStore.getState().nodes,
+        updateNodeData: (nid, pl) => useCanvasStore.getState().updateNodeData(nid, pl),
+        propagateRefImage,
+      });
+      return urls.length ? "done" : "error";
+    } catch {
+      return "error";
+    }
+  };
+
+  const runBatch = async () => {
+    if (batchBusy) return;
+    const targets = rows.filter((r) => sel.has(r.id));
+    if (!targets.length) { toast.error("请先勾选要生成的分镜"); return; }
+    // 组装 + Σ预估（按 cr/点 分单位汇总；blocked 镜跳过）
+    const { nodes, edges } = useCanvasStore.getState();
+    const builds = targets.map((r) => ({ r, b: buildStoryboardGenInput({ id: r.id, payload: r.payload, nodes, edges, kieTempKey: localStorage.getItem("kie:tempKey") }) }));
+    const ready = builds.filter((x) => !x.b.blocked);
+    const blockedCount = builds.length - ready.length;
+    if (!ready.length) { toast.error("所选分镜均缺提示词，无法生成"); return; }
+    const sums: Record<string, number> = {};
+    for (const { b } of ready) {
+      const m = b.costLabel.match(/([\d.]+)\s*(cr|点)/);
+      if (m) sums[m[2]] = (sums[m[2]] ?? 0) + Number(m[1]);
+    }
+    const sumText = Object.entries(sums).map(([u, v]) => `≈${Math.round(v * 10) / 10} ${u}`).join(" + ") || "按模型页计费";
+    if (!window.confirm(`将为 ${ready.length} 个分镜批量生成图像（费用预估合计 ${sumText}）${blockedCount ? `；另有 ${blockedCount} 个缺提示词将跳过` : ""}。继续？`)) return;
+    setBatchBusy(true);
+    setBatchState((s0) => { const n = { ...s0 }; for (const { r } of ready) delete n[r.id]; return n; });
+    const queue = [...ready];
+    const worker = async () => {
+      for (;;) {
+        const item = queue.shift();
+        if (!item) return;
+        setBatchState((s0) => ({ ...s0, [item.r.id]: "running" }));
+        const st = await genOne(item.r);
+        setBatchState((s0) => ({ ...s0, [item.r.id]: st }));
+      }
+    };
+    await Promise.all([worker(), worker()]); // 并发 2，不打爆上游
+    setBatchBusy(false);
+    toast.success("批量生成完成（失败的镜可在列表中单独重试）");
+  };
+
+  const retryOne = async (r: ShotRow) => {
+    if (batchState[r.id] === "running") return;
+    setBatchState((s0) => ({ ...s0, [r.id]: "running" }));
+    const st = await genOne(r);
+    setBatchState((s0) => ({ ...s0, [r.id]: st }));
+  };
 
   const continuityMut = trpc.scripts.refineShotContinuity.useMutation({
     onSuccess: (r, vars) => {
@@ -160,6 +239,24 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         </div>
       </div>
 
+      {/* 批量生产（流水线第一段：批量生成分镜图） */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)" }}>批量生产</span>
+        <button onClick={() => setSel(new Set(rows.map((r) => r.id)))} className="nodrag" style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>全选</button>
+        <button onClick={() => setSel(new Set(rows.filter((r) => !r.payload.imageUrl && !r.hasRefine).map((r) => r.id)))} className="nodrag" style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>仅无图</button>
+        <button onClick={() => setSel(new Set())} className="nodrag" style={{ fontSize: 9.5, padding: "2px 7px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>清空</button>
+        <button
+          onClick={() => void runBatch()}
+          disabled={batchBusy || sel.size === 0}
+          title="为勾选的分镜批量生成关键帧图像（每镜各自注入角色/场景控制；提交前显示费用总预估）"
+          className="nodrag ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md"
+          style={{ fontSize: 10, fontWeight: 700, background: batchBusy || sel.size === 0 ? "var(--c-surface)" : `${ACCENT}16`, border: `1px solid ${batchBusy || sel.size === 0 ? "var(--c-bd2)" : `${ACCENT}50`}`, color: batchBusy || sel.size === 0 ? "var(--c-t4)" : ACCENT, cursor: batchBusy || sel.size === 0 ? "not-allowed" : "pointer" }}
+        >
+          {batchBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <ImagePlus style={{ width: 11, height: 11 }} />}
+          批量生成分镜图（{sel.size}）
+        </button>
+      </div>
+
       {/* 表格 */}
       <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {rows.map((r, i) => {
@@ -172,7 +269,18 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
               border: `1px solid ${isSelf ? `${ACCENT}45` : "var(--c-bd1)"}`,
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input type="checkbox" className="nodrag" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} style={{ accentColor: ACCENT, cursor: "pointer", margin: 0 }} />
                 <span style={{ fontSize: 10, fontWeight: 800, color: ACCENT, width: 22 }}>#{p.sceneNumber ?? i + 1}</span>
+                {/* 图像/生成状态徽：精修工位 > 批量状态 > 有图/无图 */}
+                {batchState[r.id] === "running" ? <Loader2 style={{ width: 11, height: 11, color: ACCENT }} className="animate-spin" />
+                  : batchState[r.id] === "error" ? (
+                    <button onClick={() => void retryOne(r)} title="生成失败，点击重试" className="nodrag flex items-center" style={{ background: "none", border: "none", color: "oklch(0.62 0.20 25)", cursor: "pointer", padding: 0 }}>
+                      <RotateCw style={{ width: 11, height: 11 }} />
+                    </button>
+                  )
+                  : r.hasRefine ? <span title="本镜有精修工位（图像节点），批量默认跳过" style={{ fontSize: 9 }}>🛠</span>
+                  : p.imageUrl ? <Check style={{ width: 11, height: 11, color: "oklch(0.70 0.18 150)" }} />
+                  : <span title="无图" style={{ width: 8, height: 8, borderRadius: "50%", border: "1.5px solid var(--c-t4)", display: "inline-block" }} />}
                 <span title={p.description} style={{ flex: 1, fontSize: 10.5, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {p.description?.slice(0, 40) || r.title}
                 </span>
