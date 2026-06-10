@@ -176,6 +176,25 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
 <div class="glow a"></div><div class="glow b"></div><div class="glow c"></div>
 <div class="wm"></div>
 
+<!-- 返回首页：固定悬浮按钮（本页可能在新标签 / 应用内 webview 打开，页内必须能回首页）。
+     history 可回退就回退，否则跳到应用首页 /。 -->
+<a href="/" class="back-home"
+   onclick="if(window.history.length>1){history.back();return false;}"
+   title="返回首页">
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+  返回首页
+</a>
+<style>
+.back-home{position:fixed;top:16px;left:16px;z-index:9999;display:inline-flex;align-items:center;gap:6px;
+  padding:9px 15px 9px 12px;border-radius:999px;font-size:13.5px;font-weight:700;text-decoration:none;
+  color:#fff;background:rgba(20,22,30,.72);border:1px solid rgba(207,163,94,.45);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 6px 22px rgba(0,0,0,.4);
+  transition:background .15s ease,transform .15s ease,border-color .15s ease}
+.back-home:hover{background:rgba(207,163,94,.22);border-color:rgba(207,163,94,.8);transform:translateY(-1px)}
+.back-home svg{flex-shrink:0}
+@media(max-width:520px){.back-home{top:10px;left:10px;padding:8px 13px 8px 10px;font-size:12.5px}}
+</style>
+
 <!-- KingTai 金泰智算 品牌 LOGO（SVG symbol，多处复用）-->
 <svg class="kt-defs" xmlns="http://www.w3.org/2000/svg">
   <defs>
