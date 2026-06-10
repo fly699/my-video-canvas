@@ -2682,6 +2682,8 @@ export const clipRouter = router({
       inputUrl: mediaUrlSchema,
       aggressiveness: z.enum(["low", "medium", "high"]).default("medium"),
       targetDuration: z.number().min(5).max(3600).optional(),
+      /** 镜头边界（秒，来自装配成片的 segStarts）：剪辑边界优先落在切点上（镜界保护）。 */
+      shotBoundaries: z.array(z.number().min(0)).max(60).optional(),
       model: z.string().optional(),
       projectId: z.number().optional(),
       nodeId: z.string().optional(),
@@ -2705,9 +2707,13 @@ export const clipRouter = router({
           ? `\n目标剪辑后总时长：约 ${input.targetDuration} 秒，请优先选取最有价值的片段使保留片段总时长接近此目标。`
           : "";
 
+        const bounds = (input.shotBoundaries ?? []).filter((b) => Number.isFinite(b) && b >= 0).sort((a, b) => a - b);
+        const boundsHint = bounds.length
+          ? `\n镜头边界（秒）：[${bounds.map((b) => b.toFixed(2)).join(", ")}]。这是成片的镜头切点：保留/移除片段的边界应尽量落在这些切点上，不要在镜头中间起切或收切（除非该镜头内部确有冗余需要剔除）。`
+          : "";
         const systemPrompt = `你是专业视频剪辑师。给定视频转录片段，决定哪些片段应该保留。
 移除标准（移除值越高越激进）：无意义停顿、重复内容、低信息密度片段、口误填充词（"嗯"、"呃"等）。
-当前移除激进度：${input.aggressiveness}（${Math.round(removeThreshold * 100)}% 截止阈值）。${targetHint}
+当前移除激进度：${input.aggressiveness}（${Math.round(removeThreshold * 100)}% 截止阈值）。${targetHint}${boundsHint}
 仅输出合法 JSON，无 markdown：{"keep":[{"start":0.5,"end":5.2},{"start":8.1,"end":15.0}]}`;
 
         const transcriptJson = JSON.stringify(segments.map((s) => ({ s: s.start, e: s.end, t: s.text, ns: s.no_speech_prob })));
@@ -2724,7 +2730,18 @@ export const clipRouter = router({
         if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
         let parsed: { keep: Array<{ start: number; end: number }> };
         try { parsed = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
-        const keepSegments = Array.isArray(parsed.keep) ? parsed.keep.filter((seg) => typeof seg.start === "number" && typeof seg.end === "number" && seg.end > seg.start) : [];
+        let keepSegments = Array.isArray(parsed.keep) ? parsed.keep.filter((seg) => typeof seg.start === "number" && typeof seg.end === "number" && seg.end > seg.start) : [];
+        // 镜界保护（确定性，不靠 LLM 自觉）：剪辑边界落在切点 ±0.5s 内时吸附到切点，
+        // 避免在镜头边缘留下几帧残片或吃掉镜头开头。
+        if (bounds.length) {
+          const snap = (t: number) => {
+            for (const b of bounds) if (Math.abs(t - b) <= 0.5) return b;
+            return t;
+          };
+          keepSegments = keepSegments
+            .map((s) => ({ start: snap(s.start), end: snap(s.end) }))
+            .filter((s) => s.end > s.start);
+        }
         if (keepSegments.length === 0) throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "AI 未找到可保留片段，请调低激进度后重试" });
         const originalDuration = segments.length > 0 ? Math.max(...segments.map((s) => s.end)) : 0;
         const result = await smartCutVideo({ inputUrl: input.inputUrl, keepSegments });
