@@ -1,7 +1,8 @@
 import type { NodeType } from "../../../shared/types";
 
 export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
-  script: ["storyboard", "prompt", "ai_chat", "character"],
+  // script → note：专业审查（Coverage）报告一键存为便签节点留档。
+  script: ["storyboard", "prompt", "ai_chat", "character", "note"],
   storyboard: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   prompt: ["image_gen", "video_task", "storyboard", "script", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
@@ -76,7 +77,7 @@ export const CONNECTION_HINTS: Record<
 > = {
   script: {
     label: "脚本",
-    outgoing: "→ 分镜 / 提示词 / AI对话 / 角色",
+    outgoing: "→ 分镜 / 提示词 / AI对话 / 角色 / 便签(审查报告)",
     incoming: "← AI对话 / 提示词",
   },
   storyboard: {

@@ -482,7 +482,75 @@ const EXPERIMENTAL: ScriptTemplate[] = [
   },
 ];
 
+// ── 竖屏短剧（行业工业化标准：钩子 3s/6s/10s 节奏 · 钩子+反转+爽点 · 卡点）──────
+const SHORT_DRAMA: ScriptTemplate[] = [
+  {
+    id: "drama-viral-episode",
+    label: "爆款短剧单集",
+    icon: Drama,
+    blurb: "3s 钩子 · 反转 · 爽点 · 结尾卡点",
+    recommendedLlm: M.SONNET,
+    presets: { genre: "短剧", style: "电影感", mood: "紧张刺激", targetVideoModel: "kling", aspectRatio: "9:16", sceneCount: 8, totalDuration: 90 },
+    systemPromptAddon: md(`
+      你是爆款竖屏短剧总编剧，写的是单集 1-2 分钟的竖屏短剧。工业标准硬指标：
+      - **节奏死线**：开场 3 秒钩住观众（强冲突/悬念/打脸前置）、6 秒进入正面冲突、10 秒点出本集悬念
+      - **黄金结构**：快速共情（主角低谷）→ 情绪拉扯（压迫升级）→ 高能反转 → 爽点释放，每分钟保持 3-4 个情绪爆点
+      - **台词**：单句 8-12 字，最长不超 15 字；口语化、带情绪、可被截成传播金句
+      - **结尾卡点**：最后一个场景必须断在最揪心处（新冲突抛出/身份揭穿一半/反派逼近），勾住下一集
+      - 人物关系与冲突在前 10 秒内全部交代清楚，禁止慢热铺垫
+    `),
+  },
+  {
+    id: "drama-emotion-curve",
+    label: "情绪四段式",
+    icon: Heart,
+    blurb: "快速共情 → 拉扯 → 反转 → 爽点",
+    recommendedLlm: M.SONNET,
+    presets: { genre: "短剧", style: "写实", mood: "紧张刺激", targetVideoModel: "kling", aspectRatio: "9:16", sceneCount: 8, totalDuration: 120 },
+    systemPromptAddon: md(`
+      按竖屏短剧「情绪曲线」四段式写作，把全片精确划成四段并在场景描写中体现情绪强度（1-10）：
+      1. **快速共情**（前 1/4）：主角遭遇不公/低谷，观众 10 秒内代入（情绪 6-7）
+      2. **情绪拉扯**（次 1/4）：压迫者步步紧逼，憋屈值拉满，穿插 1 个小反击（情绪 7-8 起伏）
+      3. **高能反转**（再 1/4）：身份/实力/真相揭晓，局势瞬间倒转（情绪 9-10）
+      4. **爽点释放**（末 1/4）：当众打脸 + 地位逆转 + 善恶有报，干净利落不拖泥带水（情绪 10）
+      台词短促有力（8-12 字），每段至少 1 个可截传播的「金句时刻」。
+    `),
+  },
+  {
+    id: "drama-novel-adapt",
+    label: "小说改短剧",
+    icon: BookOpenText,
+    blurb: "长文塞进强节奏分集框架",
+    recommendedLlm: M.SONNET,
+    presets: { genre: "短剧", style: "电影感", mood: "紧张刺激", targetVideoModel: "kling", aspectRatio: "9:16", sceneCount: 10, totalDuration: 120 },
+    systemPromptAddon: md(`
+      你是小说改编短剧的专业编剧。把用户给的故事素材（小说片段/大纲）改编成竖屏短剧：
+      - **只保留主线**：砍掉支线与心理描写，全部转成可拍的动作与对白
+      - **信息前置**：小说里铺垫几章的设定要在前 10 秒用台词/画面直给
+      - **对白替代叙述**：「他很愤怒」→ 写成具体的台词与动作（摔杯子/逼近/冷笑）
+      - 保留原著最强的 2-3 个名场面作为爽点，按 钩子→拉扯→反转→爽点 重新排布
+      - 台词单句 8-12 字；旁白只允许开场 1 句定场
+    `),
+  },
+  {
+    id: "drama-pilot-hook",
+    label: "短剧第一集（钩子集）",
+    icon: Compass,
+    blurb: "全剧成败在此一集 · 留存率导向",
+    recommendedLlm: M.GPT,
+    presets: { genre: "短剧", style: "电影感", mood: "紧张刺激", targetVideoModel: "kling", aspectRatio: "9:16", sceneCount: 8, totalDuration: 90 },
+    systemPromptAddon: md(`
+      写的是短剧第一集——决定用户付费与追剧的钩子集。除单集通用标准外：
+      - 开场即「事件进行中」：禁止从平静日常开始，第一镜就是冲突现场
+      - 第一集内完成：主角困境 + 金手指/身份伏笔 + 反派亮相 + 第一次小爽点
+      - 全集埋 3 个钩子：开场钩（3 秒）、中段钩（误会/危机升级）、结尾卡点钩（最大悬念）
+      - 结尾卡点要让观众「不点下一集睡不着」：身份将露未露 / 巴掌将扇未扇 / 反转话说一半
+    `),
+  },
+];
+
 export const SCRIPT_TEMPLATE_CATEGORIES: ScriptTemplateCategory[] = [
+  { id: "drama",        label: "竖屏短剧",      templates: SHORT_DRAMA },
   { id: "short",        label: "短视频",        templates: SHORT_VIDEO },
   { id: "ads",          label: "广告 · 营销",  templates: ADS },
   { id: "film",         label: "电影 · 剧集",  templates: FILM },

@@ -30,6 +30,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     connectsTo: ["storyboard", "prompt", "ai_chat", "character"],
     fields: [
       { name: "synopsis", type: "string", desc: "故事梗概（一句话或一段）" },
+      { name: "logline", type: "string", desc: "一句话故事（25-35 字：主角+冲突+赌注）" },
       { name: "content", type: "string", desc: "完整剧本正文" },
       { name: "aiGenre", type: "string", desc: "类型，如 短视频/电影/广告片/MV" },
       { name: "aiStyle", type: "string", desc: "视觉风格，如 电影感/赛博朋克/写实" },
