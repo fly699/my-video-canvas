@@ -941,6 +941,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           </button>
           <NodeTextArea
             ref={inputRef}
+            noSlash
             placeholder={pendingAttachments.length > 0 ? "添加说明（可选）" : "发送消息或粘贴图片… (Enter 发送 / Shift+Enter 换行)"}
             value={input}
             onValueChange={(v) => setInput(v)}
