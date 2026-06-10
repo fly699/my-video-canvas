@@ -15,6 +15,8 @@ import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { ShotListPanel } from "../ShotListPanel";
+import { buildStoryboardGenInput, applyStoryboardGenResult, SOUL_SIZES_LIST, V2_ASPECT_RATIOS, V2_RESOLUTIONS, KIE_RATIOS } from "../../../lib/storyboardGen";
+import { imageModelRequiresRef } from "@/lib/models";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { PromptDock } from "../PromptDock";
@@ -126,7 +128,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
   const charSceneItems = useCharSceneItems(id, payload.promptText ?? "");
   const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || charSceneItems.length > 0, hasPrompt: !!finalPromptDisplay.trim() });
-  const refStrip = useSimpleRefStrip(id, payload, "single", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, extraItems: charSceneItems });
+  const refStrip = useSimpleRefStrip(id, payload, "multi", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, extraItems: charSceneItems });
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
   const [showHistory, setShowHistory] = useState(false);
@@ -164,13 +166,6 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // independently without forcing the user to round-trip via ImageGenNode.
   const isSoul = model === "hf_soul_standard";
   const isV2HF = model === "hf_reve" || model === "hf_seedream_v4" || model === "hf_flux_pro";
-  const SOUL_SIZES_LIST = [
-    "2048x1152", "2048x1536", "2016x1344", "1696x960", "1632x1088",
-    "1152x2048", "1536x2048", "1344x2016", "960x1696", "1088x1632",
-    "1536x1536", "1536x1152", "1152x1536",
-  ] as const;
-  const V2_ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] as const;
-  const V2_RESOLUTIONS = ["1K", "2K", "4K"] as const;
 
   // Sync key shared settings (model / color tone / batch / negative prompt)
   // from this storyboard to ALL other storyboard nodes on the canvas.
@@ -210,22 +205,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const genImageMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
-      // Guard: node may have been deleted while generation was in flight
-      if (!useCanvasStore.getState().nodes.some(n => n.id === id)) return;
-      const newUrls = (result.urls?.length ? result.urls : result.url ? [result.url] : []).filter(Boolean) as string[];
-      if (!newUrls.length) { setGenerating(false); toast.error("生成完成但未返回图像"); return; }
-      const imageUrl = newUrls[0];
-      const currentHistory = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data.payload as StoryboardNodeData)?.imageHistory ?? [];
-      const newHistory = [...newUrls, ...currentHistory].filter((u): u is string => !!u).slice(0, 12);
-      updateNodeData(id, {
-        imageUrl, imageHistory: newHistory,
-        imageUrlSource: result.sourceUrl ?? result.sourceUrls?.[0],
-        imageUrlSourceAt: result.sourceAt,
+      // 写回走单一事实源（历史维护 / 来源 URL / 推给已连视频节点），批量生成同一条路。
+      const newUrls = applyStoryboardGenResult(id, result, {
+        getNodes: () => useCanvasStore.getState().nodes,
+        updateNodeData: (nid, p) => updateNodeData(nid, p),
+        propagateRefImage,
       });
-      // Push the freshly generated image to any already-connected video node so
-      // "connect first, generate later" still auto-fills the reference image.
-      propagateRefImage(id, imageUrl);
       setGenerating(false);
+      if (!useCanvasStore.getState().nodes.some(n => n.id === id)) return; // 节点已删
+      if (!newUrls.length) { toast.error("生成完成但未返回图像"); return; }
       if (newUrls.length > 1) setShowHistory(true);
       toast.success(newUrls.length > 1 ? `已生成 ${newUrls.length} 张，可在历史中切换` : "分镜图像已生成");
     },
@@ -299,89 +287,19 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     // Double guard — local state is async (could be stale on rapid double-click) so
     // also check the mutation's own isPending which tRPC flips synchronously
     if (generating || genImageMutation.isPending) return;
-    if (!payload.promptText?.trim()) { toast.error("请先填写提示词"); return; }
-
-    // Character consistency: inject reference image + FULL character profile
-    // from connected CharacterNodes. Previously only appearance / sceneDescription
-    // were used; mergeCharactersIntoPrompt now renders the whole profile
-    // (name / role / outfit / signature / atmosphere / …) via the same
-    // template engine used by VideoTaskNode + PromptNode, so all three node
-    // types produce consistent injected prompts from a shared CharacterNode.
+    // 组装走单一事实源（lib/storyboardGen）：角色/场景/@图像注入、效果注入、
+    // 分模型 sizing、kie 块（临时 key + 比例）、点数预估——与镜头表批量同一条路。
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
-    // Position-ordered so the prompt's 角色1/角色2 numbering matches the convention
-    // used elsewhere (reference image priority = topmost connected character).
-    // 角色 = 连线 + prompt 里的「@角色」提及，两者等价生效。
-    const chars = effectiveCharacters(id, payload.promptText, allEdges, allNodes);
-    // Identity lock: when no reference image is manually attached, use ALL views of
-    // every connected PERSON character (multi-reference → image_urls server-side),
-    // matching ImageGenNode — previously only the FIRST person's primary image was
-    // sent, losing multi-view / multi-character locking. Cap to the server's max(8).
-    const manualRef = payload.referenceImageUrl?.trim();
-    // @图像名 直接引用的独立图像节点 → 显式参考图。
-    const atImageRefs = mentionedMediaUrls(payload.promptText, "image", allNodes);
-    // 手动参考图（若有）→ 否则角色身份图 + 场景图；再并入 @图像（与 ImageGenNode 一致，
-    // 手动图也进集合，保证「手动图 + 单张 @图像」组合下两者都下发、@图像 不被丢）。
-    const charRefs = Array.from(new Set([
-      ...(manualRef ? [manualRef] : [...effectiveCharacterRefImages(id, payload.promptText, allEdges, allNodes), ...effectiveSceneRefImages(id, payload.promptText, allEdges, allNodes)]),
-      ...atImageRefs,
-    ])).slice(0, 8);
-    const charRefUrl: string | undefined = manualRef || charRefs[0];
-    // Cap to 2000 while PRESERVING the user's scene text — the previous crude
-    // slice(0, 2000) cut from the END, dropping the scene description (which sits
-    // after the prepended character blocks). maxLength trims the injection instead.
-    // 去掉字面量「@名字」，改用结构化注入。
-    const enhancedPrompt = mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.promptText, allNodes), allNodes), chars, 2000);
-
-    // Per-model sizing: pass only the fields the chosen model actually
-    // consumes. The imageGen.generate tRPC procedure validates each field
-    // against its own zod enum; mismatched-model fields are dropped server-
-    // side, but staying clean here keeps the request small and obvious.
-    // 通用尺寸字段尚未写入 StoryboardNodeData 类型（由后端 Zod 接收）；宽松视图读取。
-    const generic = payload as unknown as {
-      imageSize?: string; imageResolution?: string; imageN?: number;
-      imageOutputFormat?: string; poyoAspectRatio?: string;
-    };
-    const sizingFields: Record<string, unknown> = {};
-    if (isSoul) {
-      if (SOUL_SIZES_LIST.includes(payload.widthAndHeight as (typeof SOUL_SIZES_LIST)[number])) {
-        sizingFields.widthAndHeight = payload.widthAndHeight;
-      }
-      if (payload.soulQuality) sizingFields.quality = payload.soulQuality;
-    } else if (isV2HF) {
-      if (V2_ASPECT_RATIOS.includes(payload.reveAspectRatio as (typeof V2_ASPECT_RATIOS)[number])) {
-        sizingFields.reveAspectRatio = payload.reveAspectRatio;
-      }
-      if (V2_RESOLUTIONS.includes(payload.reveResolution as (typeof V2_RESOLUTIONS)[number])) {
-        sizingFields.reveResolution = payload.reveResolution;
-      }
-    } else if (model.startsWith("poyo_")) {
-      // 对任意 poyo_ 模型转发通用参数字段（与 ImageGenNode 一致）。
-      // resolveImageParam: 控件只展示默认值不落库，提交时补上 ParamDef 默认，
-      // 避免未展开节点漏发必填字段（如 z-image 文生图 size 必填）。
-      sizingFields.imageSize = resolveImageParam(model, "imageSize", generic.imageSize);
-      sizingFields.imageResolution = resolveImageParam(model, "imageResolution", generic.imageResolution);
-      sizingFields.imageN = resolveImageParam(model, "imageN", generic.imageN);
-      sizingFields.imageOutputFormat = resolveImageParam(model, "imageOutputFormat", generic.imageOutputFormat);
-      sizingFields.poyoQuality = resolveImageParam(model, "poyoQuality", payload.poyoQuality);
-      // 兼容旧节点：旧 payload 用 poyoAspectRatio，后端 size 取 imageSize ?? poyoAspectRatio
-      sizingFields.poyoAspectRatio = generic.poyoAspectRatio;
-    }
+    const built = buildStoryboardGenInput({
+      id, payload, nodes: allNodes, edges: allEdges,
+      kieTempKey: localStorage.getItem("kie:tempKey"),
+    });
+    if (built.blocked) { toast.error(built.blocked); return; }
     const submit = () => {
       setGenerating(true);
-      genImageMutation.mutate({
-        prompt: enhancedPrompt,
-        negativePrompt: payload.negativePrompt,
-        style: payload.colorTone,
-        referenceImageUrl: charRefUrl,
-        referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
-        model,
-        batchSize: model === "hf_soul_standard" && batchCount > 1 ? batchCount : undefined,
-        ...sizingFields,
-        // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
-        estimatedCost: costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1)) || undefined,
-      });
+      genImageMutation.mutate(built.input as Parameters<typeof genImageMutation.mutate>[0]);
     };
-    guard({ model, refImageUrl: charRefUrl }, submit);
+    guard({ model, refImageUrl: built.refUrl }, submit);
   };
 
   // 绿点指示：结果图是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
@@ -1008,6 +926,19 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               options={IMAGE_MODEL_PICKER_OPTIONS}
             />
           </div>
+          {/* kie 模型通用比例（审计补齐：此前分镜选 kie 比例不可控）。服务端按模型枚举夹取 */}
+          {model.startsWith("kie_") && (
+            <select
+              className="nodrag"
+              value={payload.aspectRatio ?? ""}
+              onChange={(e) => handleChange("aspectRatio", e.target.value || undefined)}
+              title="kie 模型画面比例"
+              style={{ ...fieldStyle, width: 76, padding: "6px 6px" }}
+            >
+              <option value="">比例</option>
+              {KIE_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
           <button
             onClick={() => setShowSync(true)}
             title="把当前模型 / 色调 / 抽卡次数 / 反向提示词等参数同步到所选分镜节点（弹窗勾选）"
@@ -1103,7 +1034,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           </div>
         )}
         {/* Poyo 模型参数控件（schema 驱动）—— 替代原 Poyo 宽高比/画质硬编码块 */}
+        {imageModelRequiresRef(model) && !payload.referenceImageUrl?.trim() && !(payload.referenceImages?.length) && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" style={{ background: "oklch(0.75 0.16 75 / 0.10)", border: "1px solid oklch(0.75 0.16 75 / 0.4)" }}>
+            <span style={{ fontSize: 10, color: "oklch(0.78 0.14 75)", lineHeight: 1.5 }}>
+              ⚠ 该模型为图生图 / 编辑模型，必须提供参考图——请连接图像、@图像名 或在参考栏上传。
+            </span>
+          </div>
+        )}
         {model && IMAGE_MODEL_PARAMS[model] && IMAGE_MODEL_PARAMS[model].length > 0 && (
+
           <div className="nodrag">
             <ParamControls
               defs={IMAGE_MODEL_PARAMS[model]}
