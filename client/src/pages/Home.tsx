@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
+import { BrandLogo } from "@/components/BrandLogo";
+import { AuroraBackground } from "@/components/AuroraBackground";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
@@ -37,40 +39,6 @@ import {
   Upload,
   ScrollText,
 } from "lucide-react";
-
-// ── Animated background grid ─────────────────────────────────────────────────
-function GridBackground() {
-  return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden>
-      {/* Dot grid */}
-      <svg className="absolute inset-0 w-full h-full opacity-[0.6]" xmlns="http://www.w3.org/2000/svg" style={{ color: "var(--c-bd2)" }}>
-        <defs>
-          <pattern id="dot-grid" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="1" fill="currentColor" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#dot-grid)" />
-      </svg>
-
-      {/* Radial gradient vignette */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 80% 60% at 50% -10%, oklch(0.68 0.22 285 / 0.08) 0%, transparent 70%)",
-        }}
-      />
-
-      {/* Bottom fade */}
-      <div
-        className="absolute bottom-0 left-0 right-0 h-64"
-        style={{
-          background: "linear-gradient(to top, var(--c-canvas), transparent)",
-        }}
-      />
-    </div>
-  );
-}
 
 // ── Project card ─────────────────────────────────────────────────────────────
 // The cover is persisted in `thumbnail` as a JSON array of 1–4 image URLs;
@@ -158,7 +126,7 @@ function ProjectCard({
 
   return (
     <div
-      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
+      className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
       onClick={() => !menuOpen && !renaming && onOpen()}
       style={{
         borderColor: "var(--c-bd1)",
@@ -357,7 +325,7 @@ function LibraryEntryCard({ covers, count, onOpen }: { covers: string[]; count: 
   const grid = covers.slice(0, 4);
   return (
     <div
-      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
+      className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
       onClick={onOpen}
       style={{
         borderColor: `${accent.replace(")", " / 0.35)")}`,
@@ -410,7 +378,7 @@ function EditorEntryCard({ onOpen }: { onOpen: () => void }) {
   const accent = "oklch(0.65 0.19 310)"; // 剪辑器主色（品红紫）
   return (
     <div
-      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
+      className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
       onClick={onOpen}
       style={{
         borderColor: `${accent.replace(")", " / 0.35)")}`,
@@ -447,7 +415,7 @@ function PlatformIntroCard() {
   const accent = "oklch(0.7 0.16 200)"; // 平台介绍主色（青蓝）
   return (
     <div
-      className="group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden"
+      className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
       onClick={() => window.open("/platform-intro.html", "_blank", "noopener")}
       style={{
         borderColor: `${accent.replace(")", " / 0.35)")}`,
@@ -484,13 +452,13 @@ function NewProjectCard({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="group relative flex flex-col items-center justify-center rounded-xl border border-dashed transition-all duration-200 h-full min-h-[220px]"
+      className="group relative flex flex-col items-center justify-center rounded-xl border border-dashed h-full min-h-[220px] lift-card animate-fade-up"
       style={{ borderColor: "var(--c-bd2)", background: "transparent" }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+      onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = "var(--c-surface)"; el.style.borderColor = "oklch(0.68 0.22 285 / 0.5)"; }}
+      onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = "transparent"; el.style.borderColor = "var(--c-bd2)"; }}
     >
       <div
-        className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-all duration-200 group-hover:scale-110"
+        className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-all duration-300 group-hover:scale-110 group-hover:rotate-90"
         style={{
           background: "oklch(0.68 0.22 285 / 0.10)",
           border: "1px solid oklch(0.68 0.22 285 / 0.25)",
@@ -590,15 +558,13 @@ export default function Home() {
   if (!loading && !isAuthenticated) {
     return (
       <div className="relative h-screen flex flex-col overflow-hidden">
-        <GridBackground />
+        <AuroraBackground />
 
         {/* Nav */}
-        <nav className="relative z-10 flex items-center justify-between px-8 py-5">
+        <nav className="relative z-10 flex items-center justify-between px-8 py-5 animate-fade-up">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center">
-              <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
-            </div>
-            <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
+            <BrandLogo size={30} />
+            <span className="text-sm font-bold tracking-tight text-gradient-animated">
               AI Video Canvas
             </span>
           </div>
@@ -621,28 +587,27 @@ export default function Home() {
 
             {/* ── Banner card ────────────────────────────────────────────── */}
             <div
-              className="relative rounded-2xl p-6 sm:p-8 animate-fade-in overflow-hidden"
+              className="relative rounded-2xl p-6 sm:p-10 animate-fade-up overflow-hidden"
               style={{
-                background: "linear-gradient(135deg, oklch(0.10 0.025 285) 0%, oklch(0.07 0.012 285) 100%)",
+                background: "linear-gradient(135deg, oklch(0.11 0.030 290) 0%, oklch(0.07 0.014 270) 60%, oklch(0.09 0.030 220) 100%)",
                 border: "1px solid oklch(0.68 0.22 285 / 0.25)",
                 boxShadow: "0 0 0 1px oklch(0.68 0.22 285 / 0.10), 0 12px 48px oklch(0.68 0.22 285 / 0.18)",
               }}
             >
-              {/* Decorative glow */}
+              {/* Decorative glows */}
               <div
                 className="absolute -top-32 -right-32 w-80 h-80 rounded-full pointer-events-none"
-                style={{ background: "radial-gradient(circle, oklch(0.68 0.22 285 / 0.20) 0%, transparent 70%)" }}
+                style={{ background: "radial-gradient(circle, oklch(0.68 0.22 285 / 0.22) 0%, transparent 70%)" }}
+              />
+              <div
+                className="absolute -bottom-40 -left-24 w-96 h-96 rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, oklch(0.70 0.16 210 / 0.14) 0%, transparent 70%)" }}
               />
               <div className="relative z-10">
-                <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center"
-                      style={{ boxShadow: "0 4px 16px oklch(0.68 0.22 285 / 0.35)" }}
-                    >
-                      <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
-                    </div>
-                    <span className="text-sm font-bold tracking-tight" style={{ color: "var(--c-t1)" }}>
+                <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+                  <div className="flex items-center gap-3">
+                    <BrandLogo size={40} />
+                    <span className="text-sm font-bold tracking-tight text-gradient-animated">
                       AI Video Canvas
                     </span>
                   </div>
@@ -659,19 +624,11 @@ export default function Home() {
                   </span>
                 </div>
 
-                <h1
-                  className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight"
-                  style={{
-                    background: "linear-gradient(135deg, oklch(0.95 0 0) 0%, oklch(0.78 0.16 285) 100%)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    backgroundClip: "text",
-                  }}
-                >
+                <h1 className="text-3xl sm:text-5xl font-bold mb-4 tracking-tight text-gradient-animated" style={{ lineHeight: 1.15 }}>
                   无限画布 · 影视创作工作流
                 </h1>
 
-                <p className="text-sm leading-relaxed mb-6 max-w-2xl" style={{ color: "var(--c-t3)" }}>
+                <p className="text-sm sm:text-base leading-relaxed mb-7 max-w-2xl" style={{ color: "var(--c-t3)" }}>
                   在无限画布上编排脚本、分镜、提示词与视频生成任务。
                   支持 23 种专业节点、12+ 主流 AI 模型，集成 ComfyUI 自建服务器，
                   实现从创意到成片的全流程可视化协作。
@@ -680,7 +637,7 @@ export default function Home() {
                 <div className="flex items-center gap-3 flex-wrap">
                   <a
                     href={getLoginUrl()}
-                    className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+                    className="group btn-shine inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:scale-[1.03]"
                     style={{
                       background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
                       boxShadow: "0 0 0 1px oklch(0.68 0.22 285 / 0.4), 0 4px 24px oklch(0.68 0.22 285 / 0.3)",
@@ -709,24 +666,26 @@ export default function Home() {
             </div>
 
             {/* ── Stats row ──────────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-in" style={{ animationDelay: "60ms" }}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { value: "23+", label: "专业节点", sub: "Node Types" },
                 { value: "12+", label: "AI 模型", sub: "AI Models" },
                 { value: "4", label: "视频提供商", sub: "Video Providers" },
                 { value: "8", label: "界面主题", sub: "UI Themes" },
-              ].map((s) => (
+              ].map((s, i) => (
                 <div
                   key={s.label}
-                  className="rounded-xl p-4 text-center"
+                  className="rounded-xl p-4 text-center lift-card animate-fade-up"
                   style={{
                     background: "var(--c-surface)",
                     border: "1px solid var(--c-bd1)",
+                    animationDelay: `${80 + i * 60}ms`,
                   }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "oklch(0.68 0.22 285 / 0.45)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd1)"; }}
                 >
                   <div
-                    className="text-2xl font-bold tracking-tight mb-1"
-                    style={{ color: "oklch(0.78 0.16 285)" }}
+                    className="text-2xl font-bold tracking-tight mb-1 text-gradient-animated"
                   >
                     {s.value}
                   </div>
@@ -741,7 +700,7 @@ export default function Home() {
             </div>
 
             {/* ── Feature entries grid ───────────────────────────────────── */}
-            <div id="features" className="animate-fade-in" style={{ animationDelay: "120ms" }}>
+            <div id="features" className="animate-fade-up" style={{ animationDelay: "160ms" }}>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>功能入口</h2>
                 <span className="text-[11px]" style={{ color: "var(--c-t4)" }}>Features</span>
@@ -862,16 +821,17 @@ export default function Home() {
                     desc: "大厅 / 群聊 / 端到端加密私聊，可装为 Chrome 桌面应用，含专属浅色主题",
                     badge: "NEW",
                   },
-                ].map((f) => (
+                ].map((f, i) => (
                   <div
                     key={f.title}
-                    className="relative p-4 rounded-xl transition-all duration-200"
+                    className="relative p-4 rounded-xl lift-card animate-fade-up"
                     style={{
                       background: "var(--c-surface)",
                       border: "1px solid var(--c-bd1)",
+                      animationDelay: `${200 + Math.min(i * 40, 480)}ms`,
                     }}
-                    onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = `${f.color}50`; el.style.background = "var(--c-elevated)"; }}
-                    onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--c-bd1)"; el.style.background = "var(--c-surface)"; }}
+                    onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = `${f.color}50`; el.style.background = "var(--c-elevated)"; el.style.boxShadow = `0 8px 28px ${f.color}1f`; }}
+                    onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--c-bd1)"; el.style.background = "var(--c-surface)"; el.style.boxShadow = "none"; }}
                   >
                     {f.badge && (
                       <span
@@ -903,11 +863,11 @@ export default function Home() {
 
             {/* ── Workflow showcase ──────────────────────────────────────── */}
             <div
-              className="rounded-xl p-5 animate-fade-in"
+              className="rounded-xl p-5 animate-fade-up"
               style={{
                 background: "var(--c-surface)",
                 border: "1px solid var(--c-bd1)",
-                animationDelay: "180ms",
+                animationDelay: "280ms",
               }}
             >
               <div className="flex items-center justify-between mb-4">
@@ -979,7 +939,7 @@ export default function Home() {
   // ── Authenticated dashboard ──────────────────────────────────────────────
   return (
     <div className="relative h-screen flex flex-col overflow-hidden">
-      <GridBackground />
+      <AuroraBackground />
 
       {/* Nav */}
       <nav
@@ -987,10 +947,8 @@ export default function Home() {
         style={{ background: "color-mix(in oklch, var(--c-base) 92%, transparent)", backdropFilter: "blur(20px)", borderColor: "var(--c-bd1)" }}
       >
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center">
-            <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
-          </div>
-          <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
+          <BrandLogo size={30} />
+          <span className="text-sm font-bold tracking-tight text-gradient-animated">
             AI Video Canvas
           </span>
         </div>
@@ -1090,7 +1048,7 @@ export default function Home() {
         <div className="max-w-5xl mx-auto">
           {/* 个人仓库入口（独立于项目网格 — 跨项目素材库） */}
           {!loading && (
-            <div className="mb-8">
+            <div className="mb-8 animate-fade-up">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-semibold" style={{ color: "var(--c-t2)" }}>个人仓库</h2>
                 <span className="text-[11px]" style={{ color: "var(--c-t4)" }}>跨项目素材</span>
@@ -1108,9 +1066,9 @@ export default function Home() {
           )}
 
           {/* Header */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-8 animate-fade-up" style={{ animationDelay: "60ms" }}>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight" style={{ color: "var(--c-t1)" }}>
+              <h1 className="text-xl font-bold tracking-tight" style={{ color: "var(--c-t1)" }}>
                 我的项目
               </h1>
               <p className="text-xs mt-0.5" style={{ color: "var(--c-t4)" }}>
@@ -1124,7 +1082,7 @@ export default function Home() {
             <button
               onClick={handleCreate}
               disabled={creating}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-all duration-150"
+              className="btn-shine inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-all duration-150 hover:scale-[1.03]"
               style={{
                 background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
                 boxShadow: "0 0 0 1px oklch(0.68 0.22 285 / 0.3), 0 2px 12px oklch(0.68 0.22 285 / 0.2)",
@@ -1138,7 +1096,7 @@ export default function Home() {
 
           {/* Grid */}
           {loading ? (
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {[...Array(4)].map((_, i) => (
                 <div
                   key={i}
@@ -1149,7 +1107,7 @@ export default function Home() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                 <NewProjectCard onClick={handleCreate} />
                 {(projects?.owned ?? []).map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
                   <ProjectCard
@@ -1166,7 +1124,7 @@ export default function Home() {
               {(projects?.shared ?? []).length > 0 && (
                 <div className="mt-10">
                   <h2 className="text-base font-semibold mb-3" style={{ color: "var(--c-t2)" }}>协作项目</h2>
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                     {projects!.shared.map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
                       <ProjectCard
                         key={project.id}
@@ -1199,7 +1157,7 @@ export default function Home() {
               <p className="text-sm mb-6" style={{ color: "var(--c-t4)" }}>创建你的第一个 AI 视频创作工作流</p>
               <button
                 onClick={handleCreate}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white"
+                className="btn-shine inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-transform hover:scale-[1.03]"
                 style={{
                   background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
                   boxShadow: "0 0 0 1px oklch(0.68 0.22 285 / 0.3), 0 4px 16px oklch(0.68 0.22 285 / 0.25)",
@@ -1213,7 +1171,7 @@ export default function Home() {
           )}
 
           {/* Feature overview */}
-          <div className="mt-12 pt-8 border-t" style={{ borderColor: "var(--c-bd1)" }}>
+          <div className="mt-12 pt-8 border-t animate-fade-up" style={{ borderColor: "var(--c-bd1)", animationDelay: "140ms" }}>
             <h2 className="text-base font-semibold mb-1" style={{ color: "var(--c-t1)" }}>
               21 种节点 · 全功能概览
             </h2>

@@ -674,6 +674,131 @@
     background: var(--color-surface-raised);
     color: var(--color-foreground-muted);
   }
+
+  /* ── 首页 / 管理后台 动效工具类 ──────────────────────────────────────────── */
+
+  /* 流动渐变文字 — 品牌三色（紫→品红→青）无缝循环 */
+  .text-gradient-animated {
+    background: linear-gradient(100deg,
+      oklch(0.72 0.19 285) 0%,
+      oklch(0.70 0.21 325) 30%,
+      oklch(0.74 0.14 210) 62%,
+      oklch(0.72 0.19 285) 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: avc-gradient-pan 7s linear infinite;
+  }
+
+  /* 入场上浮（带 forwards，可配合 animationDelay 做分层入场） */
+  .animate-fade-up {
+    opacity: 0;
+    animation: avc-fade-up 480ms var(--ease-out-expo) forwards;
+  }
+
+  /* 悬浮上抬卡片 */
+  .lift-card {
+    transition:
+      transform 220ms var(--ease-out-expo),
+      box-shadow 220ms ease,
+      border-color 200ms ease,
+      background 200ms ease;
+    will-change: transform;
+  }
+  .lift-card:hover { transform: translateY(-3px); }
+
+  /* 按钮高光扫过 */
+  .btn-shine { position: relative; overflow: hidden; }
+  .btn-shine::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    left: -70%;
+    width: 45%;
+    background: linear-gradient(105deg, transparent, oklch(1 0 0 / 0.32), transparent);
+    transform: skewX(-20deg);
+    animation: avc-shine 3.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+}
+
+/* ── 极光氛围背景（AuroraBackground 组件） ──────────────────────────────────── */
+.aurora-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  will-change: transform;
+}
+.aurora-blob-a {
+  width: 560px; height: 560px; top: -180px; left: -120px;
+  background: radial-gradient(circle at 35% 35%, oklch(0.62 0.24 295 / 0.30), transparent 65%);
+  animation: aurora-a 26s ease-in-out infinite alternate;
+}
+.aurora-blob-b {
+  width: 480px; height: 480px; top: 8%; right: -160px;
+  background: radial-gradient(circle at 60% 40%, oklch(0.65 0.21 330 / 0.24), transparent 65%);
+  animation: aurora-b 32s ease-in-out infinite alternate;
+}
+.aurora-blob-c {
+  width: 520px; height: 520px; bottom: -220px; left: 28%;
+  background: radial-gradient(circle at 50% 50%, oklch(0.70 0.16 210 / 0.20), transparent 65%);
+  animation: aurora-c 38s ease-in-out infinite alternate;
+}
+@keyframes aurora-a {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(140px, 90px) scale(1.15); }
+  100% { transform: translate(40px, 180px) scale(0.95); }
+}
+@keyframes aurora-b {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(-160px, 120px) scale(1.2); }
+  100% { transform: translate(-60px, -40px) scale(1.05); }
+}
+@keyframes aurora-c {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(120px, -110px) scale(1.12); }
+  100% { transform: translate(-140px, -30px) scale(0.92); }
+}
+
+/* ── 品牌动画 Logo（BrandLogo 组件） ───────────────────────────────────────── */
+.blg-orbit, .blg-orbit-rev, .blg-spin-slow {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+}
+.blg-orbit     { animation: blg-rot 6s linear infinite; }
+.blg-orbit-rev { animation: blg-rot 9s linear infinite reverse; }
+.blg-spin-slow { animation: blg-rot 24s linear infinite; }
+.blg-pulse {
+  animation: blg-pulse 2.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.blg-blink {
+  animation: blg-blink 3.4s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes blg-rot { to { transform: rotate(360deg); } }
+@keyframes blg-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+@keyframes blg-blink {
+  0%, 100% { opacity: 0.15; transform: scale(0.7); }
+  55%      { opacity: 1;    transform: scale(1); }
+}
+
+/* 动效偏好：减少动态时全部静止 */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob,
+  .blg-orbit, .blg-orbit-rev, .blg-spin-slow, .blg-pulse, .blg-blink,
+  .text-gradient-animated,
+  .btn-shine::after,
+  .lift-card { animation: none !important; transition: none !important; }
+  /* 入场动画禁用时必须同时强制可见，否则元素卡在初始 opacity:0 */
+  .animate-fade-up { animation: none !important; opacity: 1 !important; }
 }
 
 /* ── Keyframes ──────────────────────────────────────────────────────────────── */
@@ -696,6 +821,17 @@
 @keyframes avc-shimmer {
   0%   { background-position: -200% center; }
   100% { background-position: 200% center; }
+}
+@keyframes avc-gradient-pan {
+  to { background-position: 200% center; }
+}
+@keyframes avc-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes avc-shine {
+  0%, 55% { left: -70%; }
+  100%    { left: 150%; }
 }
 @keyframes avc-pulse-ring {
   0%   { transform: scale(1); opacity: 0.6; }
