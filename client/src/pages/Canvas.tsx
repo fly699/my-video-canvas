@@ -21,6 +21,7 @@ import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { NodeDefaultModelsProvider } from "../contexts/NodeDefaultModelsContext";
 import { NodeDefaultModelsButton } from "../components/canvas/NodeDefaultModelsButton";
+import { BudgetButton } from "../components/canvas/BudgetButton";
 import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
@@ -2829,6 +2830,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
             {/* 节点默认模型设置 */}
             <NodeDefaultModelsButton orient={toolbarOrient} />
+
+            {/* 预算管控（画布预估消耗 vs 余额） */}
+            <BudgetButton orient={toolbarOrient} />
 
             {/* Theme switcher */}
             <ThemeSwitcher />

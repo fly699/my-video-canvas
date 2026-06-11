@@ -12,7 +12,7 @@
 //   unit     — "cr"（Poyo）或 "点"（kie）；Higgsfield 独立计费、无法换算，返回 null
 //   approx   — true 表示取近似/中值（标 ≈）
 //   null     — 无法预估（模型页未公布固定价 / 本地免费除外）
-import { IMAGE_MODELS } from "./models";
+import { IMAGE_MODELS, VIDEO_MODELS } from "./models";
 
 export type CostEstimate = {
   credits: number;
@@ -201,4 +201,75 @@ export function estimateTtsCost(model: string, textLength: number): CostEstimate
   if (/elevenlabs/i.test(model)) return cr(16 * kChars); // Poyo ElevenLabs V3：16 cr/1k 字
   if (/voxcpm|local/i.test(model)) return cr(0);
   return null; // OpenAI TTS 按 token 计费，无固定点数
+}
+
+// ── 画布级预算汇总 ───────────────────────────────────────────────────────────
+// 把整张画布上所有「会消耗云端点数/积分」的生成节点逐个用上面的精确单价函数估算，
+// 汇总成 kie 点 / Poyo cr 两路总额 + 按模型分组明细，供「预算管控面板」对照余额。
+// comfyui_* 走用户自有服务器，记为本地免费；无法估价的记为 unknown。
+export type CanvasBudgetLine = { key: string; label: string; unit: "点" | "cr"; count: number; credits: number };
+export type CanvasBudget = {
+  pt: number;            // kie 点 总额
+  cr: number;            // Poyo cr 总额
+  approx: boolean;       // 任一项取了近似值
+  lines: CanvasBudgetLine[];
+  unknownCount: number;  // 选了模型但无法估价 / 未选模型
+  localCount: number;    // comfyui_*（自有服务器，免费）
+  runnableCount: number; // 参与估算的生成节点总数
+};
+type BudgetNode = { data: { nodeType: string; payload?: Record<string, unknown> } };
+const LOCAL_BUDGET_TYPES = new Set(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
+
+/** 逐节点精确汇总画布预算（复用 estimateVideoCost/Image/Music/Tts）。framework-free，可单测。 */
+export function estimateCanvasBudget(nodes: BudgetNode[]): CanvasBudget {
+  const map = new Map<string, CanvasBudgetLine>();
+  let totPt = 0, totCr = 0, approx = false, unknownCount = 0, localCount = 0, runnableCount = 0;
+  const vLabel = (v: string) => VIDEO_MODELS.find((m) => m.value === v)?.label ?? v;
+  const iLabel = (v: string) => IMAGE_MODELS.find((m) => m.value === v)?.label ?? v;
+  const add = (key: string, label: string, est: CostEstimate) => {
+    if (!est) { unknownCount++; return; }
+    if (est.approx) approx = true;
+    if (est.unit === "点") totPt += est.credits; else totCr += est.credits;
+    const ex = map.get(key);
+    if (ex) { ex.count++; ex.credits += est.credits; }
+    else map.set(key, { key, label, unit: est.unit, count: 1, credits: est.credits });
+  };
+  for (const n of nodes) {
+    const t = n.data.nodeType;
+    const p = (n.data.payload ?? {}) as Record<string, unknown>;
+    if (LOCAL_BUDGET_TYPES.has(t)) { localCount++; continue; }
+    if (t === "video_task") {
+      runnableCount++;
+      const provider = String(p.provider ?? "");
+      if (!provider) { unknownCount++; continue; }
+      add(provider, vLabel(provider), estimateVideoCost(provider, p));
+    } else if (t === "image_gen") {
+      runnableCount++;
+      const model = String(p.model ?? "");
+      if (!model) { unknownCount++; continue; }
+      const count = Math.max(1, Number(p.imageN ?? p.batchSize ?? p.fluxNumImages ?? 1) || 1);
+      add(model, iLabel(model), estimateImageCost(model, count, { resolution: p.imageResolution as string | undefined }));
+    } else if (t === "audio") {
+      runnableCount++;
+      const cat = String(p.audioCategory ?? "");
+      if (cat === "music") {
+        const m = String(p.musicModel ?? p.aiModel ?? "");
+        if (!m) { unknownCount++; continue; }
+        add(m, `配乐 ${m}`, estimateMusicCost(m));
+      } else if (cat === "dubbing") {
+        const m = String(p.ttsModel ?? p.aiModel ?? "");
+        if (!m) { unknownCount++; continue; }
+        add(m, `配音 ${m}`, estimateTtsCost(m, String(p.ttsText ?? "").length));
+      } else if (cat === "sfx") {
+        const secs = Math.max(0.5, Number(p.sfxDuration ?? 5) || 5);
+        add("kie_sfx", "音效 SFX", pt(0.24 * secs, true)); // kie ElevenLabs SFX 0.24 点/秒
+      } // upload：非生成，免费
+    }
+  }
+  return {
+    pt: Math.round(totPt * 10) / 10,
+    cr: Math.round(totCr * 10) / 10,
+    approx, unknownCount, localCount, runnableCount,
+    lines: Array.from(map.values()).sort((a, b) => b.credits - a.credits),
+  };
 }

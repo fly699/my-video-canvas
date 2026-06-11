@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel } from "./costEstimate";
+import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, estimateCanvasBudget } from "./costEstimate";
 
 describe("estimateVideoCost", () => {
   it("按时长线性计费（poyo kling 2.1 std：6 cr/s）", () => {
@@ -132,5 +132,39 @@ describe("estimateImageCost — 全量审计补齐档位（nano banana 2 / flux2
   });
   it("ideogram v3 按文档默认 BALANCED 档精确 7 点", () => {
     expect(estimateImageCost("kie_ideogram_v3", 1)).toEqual({ credits: 7, unit: "点", approx: false });
+  });
+});
+
+describe("estimateCanvasBudget — 画布级预算汇总", () => {
+  const node = (nodeType: string, payload: Record<string, unknown>) => ({ data: { nodeType, payload } });
+  it("分 kie 点 / Poyo cr 两路汇总，并按模型分组计数", () => {
+    const b = estimateCanvasBudget([
+      node("video_task", { provider: "kie_kling21_std", duration: 10 }), // 50 点
+      node("video_task", { provider: "kie_kling21_std", duration: 5 }),  // 25 点（同模型合并）
+      node("image_gen", { model: "kie_gpt_image_2", imageResolution: "2K", imageN: 2 }), // 20 点
+      node("video_task", { provider: "poyo_runway45", duration: 5 }),    // 75 cr
+      node("comfyui_image", {}),                                          // 本地免费
+      node("image_gen", {}),                                              // 未选模型 → unknown
+    ]);
+    expect(b.pt).toBe(95);   // 50 + 25 + 20
+    expect(b.cr).toBe(75);
+    expect(b.localCount).toBe(1);
+    expect(b.unknownCount).toBe(1);
+    const kling = b.lines.find((l) => l.key === "kie_kling21_std");
+    expect(kling?.count).toBe(2);
+    expect(kling?.credits).toBe(75);
+    expect(kling?.unit).toBe("点");
+  });
+  it("音频：配乐/配音/音效分别计入对应单位", () => {
+    const b = estimateCanvasBudget([
+      node("audio", { audioCategory: "music", musicModel: "kie_suno_v5" }),            // 12 点
+      node("audio", { audioCategory: "dubbing", ttsModel: "kie_elevenlabs_tts", ttsText: "a".repeat(1500) }), // 6*2=12 点
+      node("audio", { audioCategory: "sfx", sfxDuration: 10 }),                          // 0.24*10=2.4 点
+      node("audio", { audioCategory: "music", musicModel: "poyo_suno" }),               // 20 cr
+      node("audio", { audioCategory: "upload" }),                                        // 免费，不计
+    ]);
+    expect(b.pt).toBeCloseTo(26.4); // 12 + 12 + 2.4
+    expect(b.cr).toBe(20);
+    expect(b.runnableCount).toBe(5);
   });
 });
