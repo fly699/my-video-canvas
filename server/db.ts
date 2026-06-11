@@ -2560,12 +2560,44 @@ export async function deleteComfyTemplateAnalysis(templateId: number): Promise<v
 // 历史：任务结束（completed/cancelled/failed）由 comfyStress core 自动落库。
 // dev bypass（无 DB）时静默跳过——压测页本就是管理员专属，dev 下不可达。
 
+// 强健自愈：每次压测读写前确保两张表存在（CREATE TABLE IF NOT EXISTS 幂等）。
+// 不依赖启动时序/迁移是否跑过——只要 DB 可连，查询路径自身保证表可用。memo 一次即可，
+// 失败不缓存（下次重试）；DDL 隐式提交，对后续 DML 无副作用。
+let _stressTablesReady: Promise<void> | null = null;
+async function ensureStressTables(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<void> {
+  if (_stressTablesReady) return _stressTablesReady;
+  _stressTablesReady = (async () => {
+    await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`comfy_stress_history\` (
+      \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+      \`jobId\` VARCHAR(64) NOT NULL UNIQUE,
+      \`status\` VARCHAR(16) NOT NULL,
+      \`startedByEmail\` VARCHAR(255),
+      \`config\` JSON,
+      \`result\` JSON NOT NULL,
+      \`startedAt\` TIMESTAMP NOT NULL,
+      \`finishedAt\` TIMESTAMP NULL,
+      \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`));
+    await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`comfy_stress_templates\` (
+      \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+      \`name\` VARCHAR(128) NOT NULL,
+      \`config\` JSON NOT NULL,
+      \`createdByEmail\` VARCHAR(255),
+      \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`));
+  })();
+  try { await _stressTablesReady; }
+  catch (e) { _stressTablesReady = null; throw e; } // 失败不缓存，下次重试
+}
+
 export async function insertComfyStressHistory(row: {
   jobId: string; status: string; startedByEmail: string | null;
   config: unknown; result: unknown; startedAt: Date; finishedAt: Date | null;
 }): Promise<void> {
   const db = await getDb();
   if (!db) return;
+  await ensureStressTables(db);
   await db.insert(comfyStressHistory).values(row).onDuplicateKeyUpdate({
     set: { status: row.status, result: row.result, finishedAt: row.finishedAt },
   });
@@ -2574,35 +2606,41 @@ export async function insertComfyStressHistory(row: {
 export async function listComfyStressHistory(limit = 50): Promise<ComfyStressHistoryRow[]> {
   const db = await getDb();
   if (!db) return [];
+  await ensureStressTables(db);
   return db.select().from(comfyStressHistory).orderBy(desc(comfyStressHistory.startedAt)).limit(limit);
 }
 
 export async function deleteComfyStressHistory(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
+  await ensureStressTables(db);
   await db.delete(comfyStressHistory).where(eq(comfyStressHistory.id, id));
 }
 
 export async function clearComfyStressHistory(): Promise<void> {
   const db = await getDb();
   if (!db) return;
+  await ensureStressTables(db);
   await db.delete(comfyStressHistory);
 }
 
 export async function listComfyStressTemplates(): Promise<ComfyStressTemplateRow[]> {
   const db = await getDb();
   if (!db) return [];
+  await ensureStressTables(db);
   return db.select().from(comfyStressTemplates).orderBy(desc(comfyStressTemplates.updatedAt));
 }
 
 export async function saveComfyStressTemplate(name: string, config: unknown, createdByEmail: string | null): Promise<void> {
   const db = await getDb();
   if (!db) return;
+  await ensureStressTables(db);
   await db.insert(comfyStressTemplates).values({ name, config, createdByEmail });
 }
 
 export async function deleteComfyStressTemplate(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
+  await ensureStressTables(db);
   await db.delete(comfyStressTemplates).where(eq(comfyStressTemplates.id, id));
 }
