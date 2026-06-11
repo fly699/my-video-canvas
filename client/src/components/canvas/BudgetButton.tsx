@@ -3,14 +3,14 @@ import { Wallet, X, AlertTriangle, Server } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { estimateCanvasBudget } from "../../lib/costEstimate";
+import { readProjectBudgetCap, writeProjectBudgetCap } from "../../lib/budgetCap";
 
 // 工具栏「预算管控」弹层：把整张画布上所有生成节点按精确单价（docs/kie-pricing.md /
 // docs/poyo-credits-pricing.md 同源的 costEstimate）汇总成 kie 点 / Poyo cr 两路总额，
 // 对照当前 kie / Poyo 余额，并支持设「项目预算上限（kie 点）」超额告警。
-// 预算上限按项目存 localStorage（无需 DB 迁移，软上限即可）。
+// 预算上限按项目存 localStorage（lib/budgetCap.ts；智能体 autoRun 闸门同读此值）。
 
 const KIE_TEMP_KEY = "kie:tempKey";
-const capKey = (pid: number | null) => `avc:budget-cap:${pid ?? "0"}`;
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
 
@@ -22,17 +22,10 @@ export function BudgetButton({ orient = "h" }: { orient?: "h" | "v" }) {
 
   const [cap, setCap] = useState<number | null>(null);
   // 项目切换时读取该项目的预算上限。
-  useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    const v = localStorage.getItem(capKey(projectId));
-    const n = v != null && v !== "" ? Number(v) : null;
-    setCap(n != null && Number.isFinite(n) && n > 0 ? n : null);
-  }, [projectId]);
+  useEffect(() => { setCap(readProjectBudgetCap(projectId)); }, [projectId]);
   const persistCap = (n: number | null) => {
     setCap(n);
-    if (typeof localStorage === "undefined") return;
-    if (n != null && n > 0) localStorage.setItem(capKey(projectId), String(n));
-    else localStorage.removeItem(capKey(projectId));
+    writeProjectBudgetCap(projectId, n);
   };
 
   useEffect(() => {

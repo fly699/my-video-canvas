@@ -550,6 +550,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                 if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
                 generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang, targetVideoModel: targetModel || undefined });
               }}
+              onOpenCoverage={() => setSidePanel("coverage")}
               onClose={() => setSidePanel(null)}
             />
           )}

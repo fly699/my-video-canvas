@@ -16,6 +16,8 @@ import { ownedNodeIds } from "@/lib/agentOwnership";
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
 import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
+import { estimateCanvasBudget } from "@/lib/costEstimate";
+import { readProjectBudgetCap } from "@/lib/budgetCap";
 import { AGENT_RECIPES, buildRecipeOps, recipeDefaultConfig, type AgentRecipe, type RecipeConfig } from "@/lib/agentRecipes";
 import { runPreflight, buildSelfHealInstruction } from "@/lib/preflight";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
@@ -154,13 +156,24 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length, chat.isPending]);
 
-  // 余额/成本守卫：估算本批生成的云端消耗，与 Poyo 余额比较。返回 true=可继续。
+  // 余额/成本守卫：估算本批生成的云端消耗，与 Poyo 余额比较；另对照「项目预算上限
+  // （kie 点，工具栏预算面板可设）」——该守卫在 ops 已应用后调用，画布即最终状态，
+  // 直接用精确的 estimateCanvasBudget 对账。返回 true=可继续自动执行。
   const budgetGuardPasses = (ops: AgentOperation[]): boolean => {
     const est = estimateOpsBudget(ops);
     const bal = balanceQuery.data;
     if (est.credits > 0 && bal?.configured && typeof bal.creditsAmount === "number" && est.credits > bal.creditsAmount) {
       toast.error(`预计消耗约 ${est.credits} credits，超过当前余额 ${bal.creditsAmount}，已暂停自动执行。请充值或减少生成节点。`);
       return false;
+    }
+    const cap = readProjectBudgetCap(data.projectId);
+    if (cap != null) {
+      const st = useCanvasStore.getState();
+      const cb = estimateCanvasBudget(st.nodes.map((n) => ({ data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })));
+      if (cb.pt > cap) {
+        toast.error(`画布预估 ${cb.pt} 点已超项目预算上限 ${cap} 点，已暂停自动执行。可在工具栏「预算管控」调整上限或精简节点后手动运行。`);
+        return false;
+      }
     }
     return true;
   };

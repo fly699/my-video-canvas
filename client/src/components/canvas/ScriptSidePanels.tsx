@@ -233,7 +233,7 @@ const DURATION_MODES = [
   { id: "hook_front", label: "钩子前置" },
 ] as const;
 
-export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, storyboardsPending, onGenerateScript, onGenerateStoryboards, onClose }: {
+export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, storyboardsPending, onGenerateScript, onGenerateStoryboards, onOpenCoverage, onClose }: {
   id: string;
   payload: ScriptNodeData;
   llmModel: string;
@@ -241,6 +241,8 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
   storyboardsPending: boolean;
   onGenerateScript: (extra: { beatSheetText?: string; characterProfiles?: string; scriptOnly?: boolean }) => void;
   onGenerateStoryboards: () => void;
+  /** 切换到「专业审查」面板（向导↔审查闭环：剧本生成后建议先审查再拆分镜）。 */
+  onOpenCoverage?: () => void;
   onClose: () => void;
 }) {
   const { updateNodeData } = useCanvasStore();
@@ -481,6 +483,19 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
           })}>
           生成剧本{beats.length ? "（按节拍表）" : ""}{genMode === "both" ? " + 分镜" : ""}
         </ActionBtn>
+        {/* 向导↔审查闭环：剧本就绪且还没拆分镜时，建议先专业审查（六维评分+一键修复）再拆 */}
+        {hasScript && !hasStoryboards && onOpenCoverage && (
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: `${COV_ACCENT}0e`, border: `1px solid ${COV_ACCENT}35` }}>
+            <ClipboardCheck style={{ width: 11, height: 11, flexShrink: 0, color: COV_ACCENT }} />
+            <span style={{ fontSize: 9.5, color: "var(--c-t3)", flex: 1, lineHeight: 1.4 }}>
+              剧本已生成{payload.coverage ? `（上次审查 ${payload.coverage.overall} 分）` : ""}——建议先专业审查再拆分镜
+            </span>
+            <button onClick={onOpenCoverage} className="nodrag flex-shrink-0 px-2 py-0.5 rounded-md"
+              style={{ fontSize: 9.5, fontWeight: 700, background: `${COV_ACCENT}16`, border: `1px solid ${COV_ACCENT}45`, color: COV_ACCENT, cursor: "pointer" }}>
+              去审查
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ⑤ 分镜 */}
