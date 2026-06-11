@@ -14,6 +14,7 @@
 
 import type { Server as SocketIOServer } from "socket.io";
 import { runComfyProbe, type ComfyProbeResult } from "./comfyui";
+import { insertComfyStressHistory } from "../db";
 
 // 安全上限——防止管理员误填超大值把服务器或目标 ComfyUI 打挂。
 const MAX_TOTAL = 1000;
@@ -377,11 +378,10 @@ async function runPool(job: StressJob): Promise<void> {
   sample(job); // 收尾再打一个点（内部 recompute + emit），保证曲线到达终态
 
   // 历史落库：完整 view（含 timeSeries/servers/errorSamples），供压测页「历史记录」
-  // 重新渲染图表与导出。动态 import 避免 _core ↔ db 静态依赖；失败静默（dev 无 DB）。
+  // 重新渲染图表与导出。失败仅告警（dev 无 DB / 迁移未跑时不影响压测本身）。
   void (async () => {
     try {
-      const dbMod = await import("../db");
-      await dbMod.insertComfyStressHistory({
+      await insertComfyStressHistory({
         jobId: job.id,
         status: job.status,
         startedByEmail: job.startedByEmail,
