@@ -10,7 +10,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles, Music } from "lucide-react";
+import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles, Music, Dices } from "lucide-react";
 import {
   characterToPromptInjection,
   clampLen,
@@ -203,7 +203,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     // Strip the OPPOSITE kind's fields: a node toggled person↔scene keeps the now-hidden
     // fields in its payload, which would otherwise be saved and resurface if the library
     // entry is later toggled. Keep only this kind's fields + the shared ones.
-    const PERSON_ONLY = ["name", "role", "gender", "age", "appearance", "personality", "outfit", "signature", "loraName", "loraStrength", "ipadapterWeight"];
+    const PERSON_ONLY = ["name", "role", "gender", "age", "appearance", "personality", "outfit", "signature", "loraName", "loraStrength", "ipadapterWeight", "consistencySeed"];
     const SCENE_ONLY = ["sceneName", "locationType", "sceneDescription", "atmosphere", "timeOfDay"];
     const stripKeys = kind === "scene" ? PERSON_ONLY : SCENE_ONLY;
     const clean = Object.fromEntries(Object.entries(rest).filter(([k]) => !stripKeys.includes(k)));
@@ -273,6 +273,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       if (!loras.some((l) => l.name === loraName)) p.loras = [...loras, { name: loraName, strengthModel: payload.loraStrength ?? 0.8 }];
     };
     const fillRefIfBlank = () => { if (refs[0] && !((tp.referenceImageUrl as string | undefined)?.trim())) p.referenceImageUrl = refs[0]; };
+    // 一致性种子：设了就钉到所有支持 seed 的下游生成节点（权威覆盖——锁种子的本意就是
+    // 让同角色跨镜头用同一随机种子；未支持 seed 的节点忽略该字段，无副作用）。
+    const cs = payload.consistencySeed;
+    if (typeof cs === "number" && Number.isFinite(cs) && ["image_gen", "storyboard", "comfyui_image", "comfyui_video", "video_task"].includes(nt)) {
+      if ((tp.seed as number | undefined) !== cs) p.seed = cs;
+    }
     if (nt === "comfyui_image") {
       // Identity via IPAdapter + LoRA only — do NOT set referenceImageUrl (that's the
       // img2img/inpaint source; setting it would unintentionally turn a txt2img into img2img).
@@ -762,6 +768,22 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
                 <NodeInput value={String(payload.ipadapterWeight ?? "")} placeholder="0.8"
                   onValueChange={(v: string) => { const n = parseFloat(v); update("ipadapterWeight", Number.isFinite(n) ? n : undefined); }} />
               </div>
+            </div>
+            {/* 一致性种子：设了就在「应用到分镜」时把同一 seed 钉到该角色所有下游生成节点 */}
+            <div className="flex items-center gap-1.5">
+              <label style={{ ...labelStyle, marginBottom: 0, flexShrink: 0 }} title="同一角色跨镜头用相同随机种子 → 最大化一致性。应用到分镜时一并下发。">一致性种子</label>
+              <NodeInput value={String(payload.consistencySeed ?? "")} placeholder="未锁定（各镜头随机）"
+                onValueChange={(v: string) => { const n = parseInt(v, 10); update("consistencySeed", Number.isFinite(n) ? n : undefined); }} />
+              <button onClick={() => update("consistencySeed", Math.floor(Math.random() * 2_147_483_647))} className="nodrag flex items-center justify-center rounded-lg"
+                title="随机一个种子并锁定" style={{ width: 28, height: 28, flexShrink: 0, background: accentA(0.14), border: `1px solid ${accentA(0.4)}`, color: accent, cursor: "pointer" }}>
+                <Dices className="w-3.5 h-3.5" />
+              </button>
+              {payload.consistencySeed != null && (
+                <button onClick={() => update("consistencySeed", undefined)} className="nodrag flex items-center justify-center rounded-lg"
+                  title="解除锁定" style={{ width: 28, height: 28, flexShrink: 0, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <div className="flex gap-1.5">
               <button onClick={() => applyToConnectedShots(false)} className="nodrag flex items-center justify-center gap-1.5 flex-1 py-1.5 rounded-lg transition-all"

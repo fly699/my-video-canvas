@@ -607,6 +607,10 @@ export interface CharacterNodeData {
   loraName?: string;          // character-specific LoRA filename on the ComfyUI server
   loraStrength?: number;      // LoRA model strength (default 0.8)
   ipadapterWeight?: number;   // IPAdapter face-lock strength 0–2 (default 0.8)
+  /** 一致性种子：设置后，「应用到连接的分镜 / 套用到本场景」会把同一 seed 钉到该角色的
+   *  所有下游生成节点（image_gen 等），让同一角色跨镜头用相同随机种子，最大化一致性。
+   *  未设置 = 各镜头自由随机（现状）。 */
+  consistencySeed?: number;
 }
 
 export type PostProcessOp = "upscale2x" | "upscale4x" | "denoise" | "sharpen" | "fps2x";
