@@ -9,6 +9,7 @@ import {
 import { useNodeDefaultModels } from "../../contexts/NodeDefaultModelsContext";
 import { LLMModelPicker, type LLMModelId } from "./LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "./ModelPicker";
+import { PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
 
 // 拥有「文本模型」槽位的节点类型（含 ComfyUI 的提示词翻译 LLM）。
 const LLM_NODES: { type: NodeType; label: string }[] = [
@@ -25,6 +26,11 @@ const LLM_NODES: { type: NodeType; label: string }[] = [
 const IMAGE_NODES: { type: NodeType; label: string }[] = [
   { type: "image_gen", label: "图像生成" },
   { type: "storyboard", label: "分镜（生图）" },
+];
+
+// 拥有「视频」槽位的节点类型（非 ComfyUI）。
+const VIDEO_NODES: { type: NodeType; label: string }[] = [
+  { type: "video_task", label: "视频任务" },
 ];
 
 /** 工具栏「节点默认模型」设置弹层。类别级默认 + 按节点类型覆盖，持久化到项目。 */
@@ -45,6 +51,7 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
 
   const catLlm = config?.categories?.llm ?? FACTORY_DEFAULT_MODELS.llm;
   const catImage = config?.categories?.image ?? FACTORY_DEFAULT_MODELS.image;
+  const catVideo = config?.categories?.video ?? FACTORY_DEFAULT_MODELS.video;
 
   const setCategory = (slot: ModelSlot, modelId: string) =>
     setConfig({ ...config, categories: { ...config?.categories, [slot]: modelId } });
@@ -59,7 +66,7 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
   };
 
   const overrideCount = Object.keys(config?.perSlot ?? {}).length;
-  const customized = !!config?.categories?.llm || !!config?.categories?.image || overrideCount > 0;
+  const customized = !!config?.categories?.llm || !!config?.categories?.image || !!config?.categories?.video || overrideCount > 0;
 
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--c-t2)", marginBottom: 5 };
   const rowStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 8, marginBottom: 7 };
@@ -133,6 +140,15 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
               options={IMAGE_MODEL_PICKER_OPTIONS}
             />
           </div>
+          <div style={{ marginBottom: 12, opacity: readOnly ? 0.6 : 1, pointerEvents: readOnly ? "none" : "auto" }}>
+            <div style={labelStyle}>视频模型（非 ComfyUI 视频任务节点）</div>
+            <ModelPicker
+              value={catVideo}
+              onChange={(v) => setCategory("video", v)}
+              options={PROVIDER_PICKER_OPTIONS}
+              accent="oklch(0.7 0.18 25)"
+            />
+          </div>
 
           {/* ── 按节点类型覆盖 ── */}
           <button
@@ -186,6 +202,26 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
                   </div>
                 );
               })}
+
+              <div style={{ ...labelStyle, marginTop: 8 }}>视频</div>
+              {VIDEO_NODES.map(({ type, label }) => {
+                const k = slotKey(type, "video");
+                const overridden = !!config?.perSlot?.[k];
+                return (
+                  <div style={rowStyle} key={k}>
+                    <span style={rowLabel}>{label}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <ModelPicker
+                        value={config?.perSlot?.[k] ?? catVideo}
+                        onChange={(v) => setOverride(type, "video", v)}
+                        options={PROVIDER_PICKER_OPTIONS}
+                        accent="oklch(0.7 0.18 25)"
+                      />
+                    </div>
+                    <OverrideReset shown={overridden} onClick={() => clearOverride(type, "video")} />
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -200,7 +236,7 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
               }}
             >
               <RotateCcw className="w-3 h-3" />
-              恢复出厂默认（Opus 4.7 / GPT Image 2）
+              恢复出厂默认（Opus 4.7 / GPT Image 2 / Grok 图生）
             </button>
           )}
         </div>

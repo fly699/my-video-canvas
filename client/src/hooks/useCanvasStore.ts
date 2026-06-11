@@ -11,7 +11,7 @@ import {
   addEdge,
 } from "@xyflow/react";
 import type { NodeType, NodeData, CollaboratorCursor, GroupNodeData } from "../../../shared/types";
-import { FACTORY_DEFAULT_MODELS } from "../../../shared/nodeDefaultModels";
+import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { getNodeConfig } from "../lib/nodeConfig";
 import { resolveNodeOutputImageUrl, isRefImageTarget } from "../lib/refImagePropagation";
 
@@ -911,8 +911,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { name: "素材", type: "image", url: "" };
     case "video_task":
       return {
-        // 非 ComfyUI 视频默认 = kie Grok Imagine 图生（i2v）。
-        provider: FACTORY_DEFAULT_MODELS.video,
+        // 非 ComfyUI 视频默认：项目级配置 > 出厂（kie Grok Imagine 图生 i2v）。
+        provider: resolveActiveNodeModel("video_task", "video"),
         status: "pending",
         prompt: "",
       } as NodeData;
