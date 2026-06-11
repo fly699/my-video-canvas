@@ -82,11 +82,12 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
               position: "fixed",
               zIndex: 99981,
               bottom: window.innerHeight - btnRect.top + 6,
-              left: btnRect.left,
+              // 钳制左缘：窄触发器下拉更宽时不溢出视口右缘。
+              left: Math.max(8, Math.min(btnRect.left, window.innerWidth - 244 - 8)),
               background: "var(--c-base)",
               border: "1px solid var(--c-bd2)",
               boxShadow: "0 8px 32px oklch(0 0 0 / 0.6)",
-              minWidth: 196,
+              minWidth: 244,
               maxHeight: "min(60vh, 420px)",
               overflowY: "auto",
             }}

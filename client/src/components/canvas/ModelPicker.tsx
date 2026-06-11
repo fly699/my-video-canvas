@@ -111,7 +111,9 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
               position: "fixed",
               zIndex: 99981,
               top: btnRect.bottom + 6,
-              left: btnRect.left,
+              // 钳制左缘：触发器很窄时下拉更宽，避免右溢出视口（portal 到 body，
+              // 可超出父弹层）。
+              left: Math.max(8, Math.min(btnRect.left, window.innerWidth - Math.max(btnRect.width, minWidth) - 8)),
               width: Math.max(btnRect.width, minWidth),
               maxHeight: 380,
               overflowY: "auto",

@@ -196,6 +196,7 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
                         value={config?.perSlot?.[k] ?? catImage}
                         onChange={(v) => setOverride(type, "image", v)}
                         options={IMAGE_MODEL_PICKER_OPTIONS}
+                        minWidth={300}
                       />
                     </div>
                     <OverrideReset shown={overridden} onClick={() => clearOverride(type, "image")} />
@@ -216,6 +217,7 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
                         onChange={(v) => setOverride(type, "video", v)}
                         options={PROVIDER_PICKER_OPTIONS}
                         accent="oklch(0.7 0.18 25)"
+                        minWidth={300}
                       />
                     </div>
                     <OverrideReset shown={overridden} onClick={() => clearOverride(type, "video")} />
