@@ -37,12 +37,14 @@ describe("buildRecipeOps — structure", () => {
 });
 
 describe("buildRecipeOps — prefs honored", () => {
-  it("imageFirst inserts an image_gen before each video_task", () => {
+  it("imageFirst keeps storyboard→video direct (storyboard IS the image station — no extra image_gen)", () => {
+    // 分镜本身就是生图工位：imageFirst 由 分镜→视频 直连天然满足，不再插冗余 image_gen 静帧，
+    // 否则一镜两次生图、且直连断裂会让批量生视频找不到既有工位再新建一个。
     const ops = buildRecipeOps(promo, base({ shots: 2, imageFirst: true }));
-    expect(creates(ops, "image_gen")).toHaveLength(2);
-    // storyboard → image_gen → video_task chain (img1 connects from sb1)
-    expect(ops.some((o) => o.op === "connect" && o.sourceRef === "sb1" && o.targetRef === "img1")).toBe(true);
-    expect(ops.some((o) => o.op === "connect" && o.sourceRef === "img1" && o.targetRef === "vt1")).toBe(true);
+    expect(creates(ops, "image_gen")).toHaveLength(0);
+    // storyboard → video_task 直连（无中间 image_gen）
+    expect(ops.some((o) => o.op === "connect" && o.sourceRef === "sb1" && o.targetRef === "vt1")).toBe(true);
+    expect(ops.some((o) => o.op === "connect" && o.sourceRef === "sb2" && o.targetRef === "vt2")).toBe(true);
   });
 
   it("addMusic adds one audio(music) node into merge", () => {

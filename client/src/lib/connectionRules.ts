@@ -21,8 +21,11 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   post_process: ["video_task", "image_gen", "asset"],
   overlay: ["asset"],
-  subtitle: ["asset"],
-  subtitle_motion: ["asset"],
+  // subtitle / subtitle_motion → merge：字幕节点输出的「已挂字幕视频」可直接连入
+  // 合并节点参与成片（MergeNode 的 VIDEO_SOURCE_TYPES 已认这两类为视频源）。配方
+  // 「视频→字幕→合并」链路与手动拖线都走这条；此前缺失导致 字幕→合并 连线判定失败。
+  subtitle: ["asset", "merge"],
+  subtitle_motion: ["asset", "merge"],
   smart_cut: ["asset", "merge"],
   pose_control: ["image_gen", "asset"],
   // voice_clone / lip_sync / avatar are "即将上线" placeholders (no payload logic,
@@ -152,7 +155,7 @@ export const CONNECTION_HINTS: Record<
   },
   subtitle: {
     label: "字幕",
-    outgoing: "→ 素材（保存）",
+    outgoing: "→ 素材（保存）/ 合并（成片）",
     incoming: "← 剪辑 / 视频任务 / 素材",
   },
   overlay: {
@@ -162,7 +165,7 @@ export const CONNECTION_HINTS: Record<
   },
   subtitle_motion: {
     label: "动态字幕",
-    outgoing: "→ 素材（保存）",
+    outgoing: "→ 素材（保存）/ 合并（成片）",
     incoming: "← 剪辑 / 视频任务 / 素材",
   },
   smart_cut: {

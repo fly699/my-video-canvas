@@ -1006,9 +1006,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           )}
         </div>
 
-        {/* ── Model selector + sync-all-storyboards ── */}
+        {/* ── Model selector ── 单独占整行，避免下拉被同行按钮挤窄 ── */}
         <div className="nodrag flex items-stretch gap-1.5">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <ModelPicker
               value={model}
               onChange={(v) => setModel(v)}
@@ -1028,10 +1028,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               {KIE_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           )}
+        </div>
+        {/* ── 同步参数 ── 移到模型选择下方独立一行，右对齐，让模型下拉拿到整行宽度 ── */}
+        <div className="nodrag flex justify-end">
           <button
             onClick={() => setShowSync(true)}
             title="把当前模型 / 色调 / 抽卡次数 / 反向提示词等参数同步到所选分镜节点（弹窗勾选）"
-            className="nodrag flex items-center gap-1 px-2 rounded-lg text-[10.5px] transition-all"
+            className="nodrag flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10.5px] transition-all"
             style={{
               background: "oklch(0.65 0.20 160 / 0.08)",
               border: "1px dashed oklch(0.65 0.20 160 / 0.4)",
