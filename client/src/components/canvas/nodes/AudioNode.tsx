@@ -531,7 +531,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       : [];
     return [...upstreamAudio, ...own];
   }, [upstreamAudio, category, payload.ttsRefWavUrl, payload.ttsRefWavName]);
-  const docks = useNodeDocks(id, { hasRef: audioItems.length > 0, hasPrompt: !!promptDock.text.trim() });
+  const docks = useNodeDocks(id, { hasRef: audioItems.length > 0, hasPrompt: !!promptDock.text.trim() }, { prompt: promptDock.text, ref: audioItems.map((a) => a.id).join(",") });
 
   const update = useCallback(
     (key: keyof AudioNodeData, value: unknown) => updateNodeData(id, { [key]: value }),

@@ -87,7 +87,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const hasRefImg = !!(payload.referenceImageUrl?.trim() || (payload.additionalImageUrls?.length ?? 0) > 0);
   // 角色特征文字 → 连线下游生成节点时注入其提示词的那段文本（与运行时同源）。
   const charPromptText = characterToPromptInjection(payload);
-  const docks = useNodeDocks(id, { hasRef: hasRefImg, hasPrompt: !!charPromptText.trim() });
+  const docks = useNodeDocks(id, { hasRef: hasRefImg, hasPrompt: !!charPromptText.trim() }, { prompt: charPromptText, ref: `${payload.referenceImageUrl ?? ""}|${(payload.additionalImageUrls ?? []).join(",")}` });
   const refStrip = useSimpleRefStrip(id, payload, "multi", { accent, maxAdditional: MAX_ADDITIONAL_IMAGES, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
   const fileInputRef = useRef<HTMLInputElement>(null);
 

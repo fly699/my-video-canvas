@@ -89,7 +89,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
 
   // 统一吸附窗：左侧参考构图（单张）+ 顶部「最终提示词」（本地图像描述）。无按钮：悬停标题栏
   // 1 秒临时展开，点击吸附窗钉住。
-  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim(), hasPrompt: !!payload.prompt?.trim() });
+  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim(), hasPrompt: !!payload.prompt?.trim() }, { prompt: payload.prompt ?? "", ref: payload.referenceImageUrl ?? "" });
   const refStrip = useSimpleRefStrip(id, payload, "single", { accent, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
 
   return (

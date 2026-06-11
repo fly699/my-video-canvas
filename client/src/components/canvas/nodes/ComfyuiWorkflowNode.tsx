@@ -636,7 +636,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const charSceneItems = useCharSceneItems(id, finalPromptInfo.basePos);
   const audioItems = useAudioStripItems(id); // 「音频」波形项放最后
   const stripImages: StripItem[] = [...paramImages, ...charSceneItems, ...audioItems];
-  const docks = useNodeDocks(id, { hasRef: stripImages.length >= 1, hasPrompt: finalPromptInfo.hasPos });
+  const docks = useNodeDocks(id, { hasRef: stripImages.length >= 1, hasPrompt: finalPromptInfo.hasPos }, { prompt: finalPromptInfo.pos, ref: stripImages.map((i) => i.id).join(",") });
   const stripOpen = docks.refOpen;
   const setStripOpen = docks.setRefOpen;
 
