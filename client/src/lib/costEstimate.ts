@@ -75,7 +75,7 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   kie_veo31_fast:    () => pt(60, true),
   kie_kling26_t2v: (p) => pt(11 * num(p, "duration", 5) * (on(p, "sound") ? 2 : 1)),
   kie_kling26_i2v: (p) => pt(11 * num(p, "duration", 5) * (on(p, "sound") ? 2 : 1)),
-  kie_kling30: (p) => pt(({ std: 18, pro: 27, "4K": 67 }[str(p, "mode", "std")] ?? 18) * num(p, "duration", 5), true),
+  kie_kling30: (p) => pt(({ std: 18, pro: 27, "4K": 67 }[str(p, "mode", "pro")] ?? 27) * num(p, "duration", 5), true),
   kie_kling25turbo_t2v: (p) => pt(8.4 * num(p, "duration", 5)),
   kie_kling25turbo_i2v: (p) => pt(8.4 * num(p, "duration", 5)),
   kie_wan25_t2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 100 : 60) * (num(p, "duration", 5) / 5), true),
@@ -149,6 +149,10 @@ function imageUnitCost(model: string): CostEstimate {
 export const KIE_IMAGE_RES_COST: Record<string, Record<string, number>> = {
   kie_gpt_image_2:     { "1K": 6, "2K": 10, "4K": 16 },
   kie_gpt_image_2_i2i: { "1K": 6, "2K": 10, "4K": 16 },
+  // 全量审计补齐（kie-pricing.md 逐行价）
+  kie_nano_banana_2:   { "1K": 8, "2K": 12, "4K": 18 },
+  kie_flux2_flex:      { "1K": 14, "2K": 24 },
+  kie_flux2_flex_i2i:  { "1K": 14, "2K": 24 },
 };
 
 /** 图像生成：单价 × 张数（批量/多图参数）。`opts.resolution` 命中逐档计价表时用精确档价。 */
