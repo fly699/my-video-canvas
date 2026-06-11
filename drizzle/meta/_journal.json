@@ -372,6 +372,13 @@
       "when": 1781400000000,
       "tag": "0052_project_default_models",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "5",
+      "when": 1781500000000,
+      "tag": "0053_video_provider_varchar",
+      "breakpoints": true
     }
   ]
 }

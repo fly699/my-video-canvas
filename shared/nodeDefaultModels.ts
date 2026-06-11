@@ -14,12 +14,12 @@ export type ModelSlot = "llm" | "image" | "video";
  * 出厂默认模型（项目级配置缺省时的兜底）。
  * - llm：除 ComfyUI 外的文本/对话/规划，以及 ComfyUI 节点的提示词翻译，统一用 kie Opus 4.7。
  * - image：生图统一用 kie GPT Image 2。
- * - video：保持现状（用户未要求变更），仅为「每种节点可配」预留类别。
+ * - video：非 ComfyUI 视频节点统一用 kie Grok Imagine 图生（i2v）。
  */
 export const FACTORY_DEFAULT_MODELS: Record<ModelSlot, string> = {
   llm: "kie_claude_opus_47",
   image: "kie_gpt_image_2",
-  video: "poyo_kling21_std",
+  video: "kie_grok_i2v",
 };
 
 /** 项目级「节点默认模型」配置。存于 projects.defaultModels（JSON 列）。 */

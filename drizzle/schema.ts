@@ -12,7 +12,6 @@ import {
   float,
   boolean,
 } from "drizzle-orm/mysql-core";
-import { VIDEO_PROVIDERS } from "../shared/types";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -319,7 +318,11 @@ export const videoTasks = mysqlTable("video_tasks", {
   userId: int("userId").notNull(),
   projectId: int("projectId").notNull(),
   nodeId: varchar("nodeId", { length: 64 }).notNull(),
-  provider: mysqlEnum("provider", [...VIDEO_PROVIDERS] as [string, ...string[]]).notNull(),
+  // varchar (not enum): the provider list grows with every new model. An ENUM
+  // column froze the DB at the providers known when the last enum migration ran
+  // (0013), so any newer provider (kie_*, newer poyo_*) failed to INSERT. varchar
+  // accepts any provider; the API layer still validates against VIDEO_PROVIDERS (Zod).
+  provider: varchar("provider", { length: 64 }).notNull(),
   externalTaskId: varchar("externalTaskId", { length: 255 }),
   status: mysqlEnum("status", [
     "pending",
