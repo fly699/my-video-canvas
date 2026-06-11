@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, type LucideIcon } from "lucide-react";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
+import { AuroraBackground } from "@/components/AuroraBackground";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { downloadTextFile } from "@/lib/download";
 import { toast } from "sonner";
@@ -12,6 +13,22 @@ import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, modelGroupOrder, platformBadge 
 
 type EntryType = "ip" | "user";
 type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "assets" | "downloads" | "system";
+
+// 标签页定义：[key, 中文标签, 图标]
+const TAB_DEFS: [Tab, string, LucideIcon][] = [
+  ["whitelist", "白名单管理", Shield],
+  ["kie", "kie.ai 密钥", KeyRound],
+  ["users", "用户管理", Users],
+  ["logs", "操作日志", ClipboardList],
+  ["comfyLogs", "ComfyUI 日志", ScrollText],
+  ["storage", "存储设置", HardDrive],
+  ["models", "模型管理", Boxes],
+  ["chat", "聊天管理", MessageCircle],
+  ["comfyStress", "ComfyUI 压测", Activity],
+  ["assets", "素材库(全用户)", ImageIcon],
+  ["downloads", "下载审批", DownloadCloud],
+  ["system", "系统更新", RotateCw],
+];
 
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
@@ -96,16 +113,17 @@ export default function AdminPage() {
 
   return (
     <div style={pageStyle}>
-      <div style={{ width: "100%", maxWidth: "900px" }}>
-        {/* Header — back button + title */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "24px" }}>
+      <AuroraBackground />
+      <div style={{ width: "100%", maxWidth: "1040px", position: "relative", zIndex: 1 }}>
+        {/* Header — back button + gradient icon tile + title */}
+        <div className="animate-fade-up" style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
           <button
             onClick={handleBack}
             title="返回上一页"
             style={{
-              width: 32, height: 32, padding: 0,
+              width: 34, height: 34, padding: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
-              borderRadius: 8,
+              borderRadius: 10,
               background: "var(--c-surface, rgba(255,255,255,0.04))",
               border: "1px solid var(--c-bd2, rgba(255,255,255,0.08))",
               color: "var(--c-t2, rgba(255,255,255,0.65))",
@@ -123,55 +141,91 @@ export default function AdminPage() {
           >
             <ArrowLeft style={{ width: 16, height: 16 }} />
           </button>
-          <Shield style={{ width: "22px", height: "22px", color: "oklch(0.72 0.2 285)" }} />
-          <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "var(--c-t1, #f0f0f4)" }}>
-            管理后台
-          </h1>
+          <div
+            style={{
+              width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))",
+              boxShadow: "0 4px 18px oklch(0.68 0.22 285 / 0.35)",
+            }}
+          >
+            <Shield style={{ width: 19, height: 19, color: "#fff" }} />
+          </div>
+          <div>
+            <h1 className="text-gradient-animated" style={{ margin: 0, fontSize: "21px", fontWeight: 700 }}>
+              管理后台
+            </h1>
+            <p style={{ margin: 0, fontSize: "11px", color: "var(--c-t4, rgba(255,255,255,0.35))" }}>
+              Admin Console · 系统管理与运维
+            </p>
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: "4px", marginBottom: "20px", borderBottom: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", paddingBottom: "0" }}>
-          {([["whitelist", "白名单管理"], ["kie", "kie.ai 密钥"], ["users", "用户管理"], ["logs", "操作日志"], ["comfyLogs", "ComfyUI 日志"], ["storage", "存储设置"], ["models", "模型管理"], ["chat", "聊天管理"], ["comfyStress", "ComfyUI 压测"], ["assets", "素材库(全用户)"], ["downloads", "下载审批"], ["system", "系统更新"]] as [Tab, string][]).map(([tab, label]) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                position: "relative",
-                padding: "8px 18px",
-                border: "none",
-                borderBottom: activeTab === tab ? "2px solid oklch(0.72 0.2 285)" : "2px solid transparent",
-                background: "none",
-                color: activeTab === tab ? "var(--c-t1, #f0f0f4)" : "var(--c-t2, rgba(255,255,255,0.45))",
-                fontSize: "14px",
-                fontWeight: activeTab === tab ? 600 : 400,
-                cursor: "pointer",
-                marginBottom: "-1px",
-                transition: "color 150ms ease",
-              }}
-            >
-              {label}
-              {tab === "system" && hasUpdate && (
-                <span style={{
-                  position: "absolute", top: 4, right: 6, width: 7, height: 7, borderRadius: "50%",
-                  background: "oklch(0.65 0.22 25)",
-                }} />
-              )}
-            </button>
-          ))}
+        {/* Tabs — 胶囊式（带图标） */}
+        <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px", animationDelay: "60ms" }}>
+          {TAB_DEFS.map(([tab, label, Icon]) => {
+            const active = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  position: "relative",
+                  display: "inline-flex", alignItems: "center", gap: "6px",
+                  padding: "7px 13px",
+                  borderRadius: 10,
+                  border: active ? "1px solid oklch(0.68 0.22 285 / 0.45)" : "1px solid var(--c-bd1, rgba(255,255,255,0.06))",
+                  background: active
+                    ? "linear-gradient(135deg, oklch(0.68 0.22 285 / 0.18), oklch(0.60 0.20 310 / 0.14))"
+                    : "var(--c-surface, rgba(255,255,255,0.03))",
+                  color: active ? "var(--c-t1, #f0f0f4)" : "var(--c-t3, rgba(255,255,255,0.45))",
+                  fontSize: "13px",
+                  fontWeight: active ? 600 : 500,
+                  cursor: "pointer",
+                  boxShadow: active ? "0 2px 14px oklch(0.68 0.22 285 / 0.18)" : "none",
+                  transition: "all 160ms ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (activeTab === tab) return;
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.background = "var(--c-elevated, rgba(255,255,255,0.07))";
+                  el.style.color = "var(--c-t1, #f0f0f4)";
+                }}
+                onMouseLeave={(e) => {
+                  if (activeTab === tab) return;
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.background = "var(--c-surface, rgba(255,255,255,0.03))";
+                  el.style.color = "var(--c-t3, rgba(255,255,255,0.45))";
+                }}
+              >
+                <Icon style={{ width: 14, height: 14, color: active ? "oklch(0.74 0.18 290)" : "currentColor" }} />
+                {label}
+                {tab === "system" && hasUpdate && (
+                  <span style={{
+                    position: "absolute", top: 5, right: 6, width: 7, height: 7, borderRadius: "50%",
+                    background: "oklch(0.65 0.22 25)", boxShadow: "0 0 6px oklch(0.65 0.22 25 / 0.8)",
+                  }} />
+                )}
+              </button>
+            );
+          })}
         </div>
 
-        {activeTab === "whitelist" && <WhitelistPanel />}
-        {activeTab === "kie" && <KiePanel />}
-        {activeTab === "users" && <UsersPanel />}
-        {activeTab === "logs" && <LogsPanel />}
-        {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
-        {activeTab === "storage" && <StoragePanel />}
-        {activeTab === "models" && <ModelsPanel />}
-        {activeTab === "chat" && <ChatAdminPanel />}
-        {activeTab === "comfyStress" && <ComfyStressPanel />}
-        {activeTab === "assets" && <AssetsAdminPanel />}
-        {activeTab === "downloads" && <DownloadsAdminPanel />}
-        {activeTab === "system" && <SystemUpdatePanel />}
+        {/* 面板：key 驱动切换入场动效 */}
+        <div key={activeTab} className="animate-fade-up">
+          {activeTab === "whitelist" && <WhitelistPanel />}
+          {activeTab === "kie" && <KiePanel />}
+          {activeTab === "users" && <UsersPanel />}
+          {activeTab === "logs" && <LogsPanel />}
+          {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
+          {activeTab === "storage" && <StoragePanel />}
+          {activeTab === "models" && <ModelsPanel />}
+          {activeTab === "chat" && <ChatAdminPanel />}
+          {activeTab === "comfyStress" && <ComfyStressPanel />}
+          {activeTab === "assets" && <AssetsAdminPanel />}
+          {activeTab === "downloads" && <DownloadsAdminPanel />}
+          {activeTab === "system" && <SystemUpdatePanel />}
+        </div>
       </div>
     </div>
   );
@@ -2104,7 +2158,8 @@ const cardStyle: React.CSSProperties = {
   display: "flex", flexDirection: "column",
   background: "var(--c-surface, #1a1a22)",
   border: "1px solid var(--c-bd2, rgba(255,255,255,0.08))",
-  borderRadius: "12px", padding: "24px",
+  borderRadius: "14px", padding: "24px",
+  boxShadow: "0 1px 2px oklch(0 0 0 / 0.16), 0 8px 28px oklch(0 0 0 / 0.10)",
 };
 
 const labelStyle: React.CSSProperties = {
