@@ -114,6 +114,9 @@ export function ComfyServerStatusIndicator() {
   // Compact inline indicator: collapse each server chip to just the online dot +
   // GPU bar, hiding 显存/内存 to keep the toolbar narrow. Persisted across reloads.
   const [compact, setCompact] = usePersistentState<boolean>("ui:comfyStatus:compact:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
+  // 弹出面板的精简模式：隐藏每个服务器卡的「选卡」栏与底部操作按钮区，
+  // 只留地址/设备/三条指标，监控密度更高。持久化。
+  const [panelCompact, setPanelCompact] = usePersistentState<boolean>("ui:comfyStatus:panelCompact:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
   const [draft, setDraft] = useState("");
   // Admins pick where a new address goes; non-admins are always local.
   const [addScope, setAddScope] = useState<"global" | "local">("global");
@@ -324,6 +327,14 @@ export function ComfyServerStatusIndicator() {
                 <button title="刷新全部" className="topbar-btn" style={{ width: 22, height: 22 }} onClick={() => statusQuery.refetch()}>
                   <RefreshCw className={`w-3 h-3 ${statusQuery.isFetching ? "animate-spin" : ""}`} />
                 </button>
+                <button
+                  title={panelCompact ? "展开：显示选卡栏与操作按钮" : "折叠：隐藏选卡栏与操作按钮（仅留指标）"}
+                  className="topbar-btn"
+                  style={{ width: 22, height: 22, color: panelCompact ? "oklch(0.68 0.22 285)" : undefined }}
+                  onClick={() => setPanelCompact((v) => !v)}
+                >
+                  {panelCompact ? <ChevronsLeftRight className="w-3 h-3" style={{ transform: "rotate(90deg)" }} /> : <ChevronsRightLeft className="w-3 h-3" style={{ transform: "rotate(90deg)" }} />}
+                </button>
                 <button title={pinned ? "取消固定" : "固定显示"} className="topbar-btn" style={{ width: 22, height: 22, color: pinned ? "oklch(0.68 0.22 285)" : undefined }} onClick={() => { setPinned((p) => !p); setOpen(true); }}>
                   {pinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
                 </button>
@@ -370,25 +381,30 @@ export function ComfyServerStatusIndicator() {
                             <div className="flex flex-col gap-1">
                               {s.deviceName && <div style={{ fontSize: 9, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.deviceName}>{s.deviceName}</div>}
                               <PanelBar label="GPU" pct={s.gpuUtilization ?? null} used={typeof s.gpuUtilization === "number" ? `${s.gpuUtilization}%` : "需Crystools"} />
-                              {s.gpus && s.gpus.length > 1 && (
+                              {/* 精简模式：选卡栏隐藏（监控密度优先） */}
+                              {!panelCompact && s.gpus && s.gpus.length > 1 && (
                                 <GpuPicker gpus={s.gpus} selected={s.gpuIndex ?? 0} isAdmin={isAdmin} onSelect={(i) => pickGpu(s.baseUrl, i)} />
                               )}
                               <PanelBar label="显存" pct={vram} used={gb(s.vramTotalMB != null && s.vramFreeMB != null ? s.vramTotalMB - s.vramFreeMB : undefined)} total={gb(s.vramTotalMB)} />
                               <PanelBar label="内存" pct={ram} used={gb(s.ramTotalMB != null && s.ramFreeMB != null ? s.ramTotalMB - s.ramFreeMB : undefined)} total={gb(s.ramTotalMB)} />
                             </div>
-                            {/* Per-server actions */}
-                            <div className="flex items-center gap-1" style={{ marginTop: 7 }}>
-                              <ActBtn icon={<Zap className="w-3 h-3" />} label="释放显存" color="oklch(0.72 0.18 155)" disabled={busy} onClick={() => runAction(s.baseUrl, "free", "释放显存")} />
-                              <ActBtn icon={<Ban className="w-3 h-3" />} label="中断" color="oklch(0.65 0.21 25)" disabled={busy} onClick={() => runAction(s.baseUrl, "interrupt", "中断")} />
-                              <ActBtn icon={<ListX className="w-3 h-3" />} label="清空队列" color="oklch(0.74 0.16 80)" disabled={busy} onClick={() => runAction(s.baseUrl, "clearQueue", "清空队列")} />
-                              <ActBtn icon={<Sparkles className="w-3 h-3" />} label="推荐工作流" color="oklch(0.72 0.18 285)" onClick={() => setRecommendFor(s.baseUrl)} />
-                              <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="刷新" color="oklch(0.64 0.16 250)" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
-                            </div>
+                            {/* Per-server actions（精简模式隐藏） */}
+                            {!panelCompact && (
+                              <div className="flex items-center gap-1" style={{ marginTop: 7 }}>
+                                <ActBtn icon={<Zap className="w-3 h-3" />} label="释放显存" color="oklch(0.72 0.18 155)" disabled={busy} onClick={() => runAction(s.baseUrl, "free", "释放显存")} />
+                                <ActBtn icon={<Ban className="w-3 h-3" />} label="中断" color="oklch(0.65 0.21 25)" disabled={busy} onClick={() => runAction(s.baseUrl, "interrupt", "中断")} />
+                                <ActBtn icon={<ListX className="w-3 h-3" />} label="清空队列" color="oklch(0.74 0.16 80)" disabled={busy} onClick={() => runAction(s.baseUrl, "clearQueue", "清空队列")} />
+                                <ActBtn icon={<Sparkles className="w-3 h-3" />} label="推荐工作流" color="oklch(0.72 0.18 285)" onClick={() => setRecommendFor(s.baseUrl)} />
+                                <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="刷新" color="oklch(0.64 0.16 250)" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
+                              </div>
+                            )}
                           </>
                         ) : (
                           <div className="flex items-center justify-between gap-2">
                             <span style={{ fontSize: 10, color: "oklch(0.7 0.18 25)" }}>{s.error ?? "离线"}</span>
-                            <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="重试" color="oklch(0.64 0.16 250)" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
+                            {!panelCompact && (
+                              <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="重试" color="oklch(0.64 0.16 250)" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
+                            )}
                           </div>
                         )}
                       </div>
