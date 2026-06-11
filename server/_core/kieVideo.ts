@@ -1,4 +1,5 @@
 import { KIE_BASE_URL } from "./kie";
+import { resolveToAbsoluteUrl } from "../storage";
 
 // ── kie.ai VIDEO models ───────────────────────────────────────────────────────
 //
@@ -93,7 +94,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "sound", type: "bool", def: false },
       { key: "aspect_ratio", type: "str", def: "16:9" },
       { key: "duration", type: "str", def: "5" },
-      { key: "mode", type: "str", def: "std" },
+      { key: "mode", type: "str", def: "pro" },
     ],
     ref: { key: "image_urls", array: true },
     creditNote: "std/pro 1080p≈18-27 · 4K 67 点·秒（含/无音轨，详见价格表）",
@@ -444,10 +445,22 @@ export interface KieVideoSubmitOptions {
 export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ externalTaskId: string }> {
   const spec = KIE_VIDEO_SPECS[opts.provider];
   if (!spec) throw new Error(`未知 kie 视频模型：${opts.provider}`);
-  const refs = (opts.referenceImageUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u);
+  // kie 从公网拉取参考媒体：相对路径（/manus-storage/...）它无法解析 → 400。
+  // 与 Poyo 提交同口径：先转绝对预签名 URL（Poyo 一直有这步，kie 此前缺失——
+  // 正是 Grok 图生带参考图必 400、文生却成功的根因）。
+  const rawRefs = (opts.referenceImageUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u);
+  const refs = await Promise.all(rawRefs.map((u) => resolveToAbsoluteUrl(u)));
   if (spec.ref?.required && refs.length === 0) {
     throw new Error(`${spec.label} 需要参考图（图生视频），请连接或上传参考图`);
   }
+  // 源视频/驱动音频同样公网化（motion-control / Wan Animate / Kling Avatar / Aleph / 多模态）。
+  const resolveList = async (list?: string[]) =>
+    Promise.all((list ?? []).map((u) => u?.trim()).filter((u): u is string => !!u).map((u) => resolveToAbsoluteUrl(u)));
+  opts = {
+    ...opts,
+    referenceVideoUrls: await resolveList(opts.referenceVideoUrls),
+    referenceAudioUrls: await resolveList(opts.referenceAudioUrls),
+  };
 
   // Build the param bag from the allow-list (defaults fill upstream-required keys).
   const src = opts.params ?? {};

@@ -22,6 +22,7 @@ export const KIE_MUSIC_MODELS: Record<string, KieMusicSpec> = {
   kie_suno_v4_5plus: { model: "V4_5PLUS", label: "Suno v4.5 PLUS（kie）" },
   kie_suno_v4_5:     { model: "V4_5", label: "Suno v4.5（kie）" },
   kie_suno_v4:       { model: "V4", label: "Suno v4（kie）" },
+  kie_suno_v3_5:     { model: "V3_5", label: "Suno v3.5（kie）" },
 };
 
 export function isKieMusicModel(model?: string): boolean {

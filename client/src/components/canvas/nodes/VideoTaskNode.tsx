@@ -371,7 +371,7 @@ const KIE_KLING26_I2V_PARAMS: ParamDef[] = [
   { type: "toggle", key: "sound", label: "原生音频（有声 2x 计费）", default: false },
 ];
 const KIE_KLING30_PARAMS: ParamDef[] = [
-  { type: "select", key: "mode", label: "画质档", default: "std",
+  { type: "select", key: "mode", label: "画质档", default: "pro",
     options: [{ value: "std", label: "标准" }, { value: "pro", label: "Pro 1080p" }, { value: "4K", label: "4K" }] },
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },

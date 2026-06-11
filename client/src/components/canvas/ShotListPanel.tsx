@@ -502,8 +502,13 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         let dur = 0;
         for (const seg of plan) {
           // 音色按段所属模型校验（角色档案可能来自其他模型）——非法则回退该模型首音色。
+          // ElevenLabs 系例外：voice 字段接受任意 voice id（见 kieTTS 注释），角色档案常存
+          // 自定义 id、不在预设枚举里也必须透传——此前被打回首音色，表现为「角色音色
+          // 没能覆盖全局选项」。
           const vs = voicesForModel(seg.model);
-          const voice = vs.some((v) => v.value === seg.voice) ? seg.voice : vs[0]?.value;
+          const voice = seg.model.includes("elevenlabs") && seg.voice
+            ? seg.voice
+            : vs.some((v) => v.value === seg.voice) ? seg.voice : vs[0]?.value;
           const sr = await utils.client.audioGen.generateDubbing.mutate({
             model: seg.model as never, text: seg.text, voice, projectId,
             estimatedCost: costEstimateLabel(estimateTtsCost(seg.model, seg.text.length)) || undefined,
@@ -518,7 +523,14 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
           url = cr.url; dur = cr.duration;
         }
         const roleCount = new Set(segs.map((s) => s.role).filter((x): x is string => x != null && effCast[x] != null)).size;
-        useCanvasStore.getState().updateNodeData(an.id, { url, duration: dur, name: `配音 · 镜${r.payload.sceneNumber ?? "?"}（${roleCount} 角色）` });
+        // 节点上回写主角色的模型/音色（首段 cast 值）：此前留着全局值，节点 UI 显示
+        // OpenAI/Alloy 让人误以为 casting 没生效，且从节点重生成会回退全局单音色。
+        const first = plan[0];
+        useCanvasStore.getState().updateNodeData(an.id, {
+          url, duration: dur,
+          ...(first ? { ttsModel: first.model, ttsVoice: first.voice } : {}),
+          name: `配音 · 镜${r.payload.sceneNumber ?? "?"}（${roleCount} 角色）`,
+        });
         return "done";
       }
 

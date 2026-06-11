@@ -31,8 +31,8 @@ describe("estimateVideoCost", () => {
     expect(estimateVideoCost("poyo_veo", {})).toBeNull();
     expect(estimateVideoCost("unknown_model", {})).toBeNull();
   });
-  it("缺省参数取默认值（kie kling 3.0 默认 std 5s）", () => {
-    expect(estimateVideoCost("kie_kling30", {})?.credits).toBe(18 * 5);
+  it("缺省参数取默认值（kie kling 3.0 默认 pro 5s，对齐文档 default）", () => {
+    expect(estimateVideoCost("kie_kling30", {})?.credits).toBe(27 * 5); // 文档默认 pro
     expect(estimateVideoCost("kie_kling30", { mode: "4K", duration: 10 })?.credits).toBe(670);
   });
 });
@@ -88,5 +88,19 @@ describe("estimateImageCost — kie 分辨率逐档计价（GPT Image 2）", () 
   });
   it("非法档回退默认档", () => {
     expect(estimateImageCost("kie_gpt_image_2", 1, { resolution: "8K" })?.credits).toBe(6);
+  });
+});
+
+describe("estimateImageCost — 全量审计补齐档位（nano banana 2 / flux2 flex）", () => {
+  it("nano banana 2：1K=8 默认精确，4K=18", () => {
+    expect(estimateImageCost("kie_nano_banana_2", 1)).toEqual({ credits: 8, unit: "点", approx: false });
+    expect(estimateImageCost("kie_nano_banana_2", 1, { resolution: "4K" })?.credits).toBe(18);
+  });
+  it("flux2 flex：1K=14 / 2K=24（t2i 与 i2i 同价）", () => {
+    expect(estimateImageCost("kie_flux2_flex", 1)?.credits).toBe(14);
+    expect(estimateImageCost("kie_flux2_flex_i2i", 1, { resolution: "2K" })?.credits).toBe(24);
+  });
+  it("ideogram v3 按文档默认 BALANCED 档精确 7 点", () => {
+    expect(estimateImageCost("kie_ideogram_v3", 1)).toEqual({ credits: 7, unit: "点", approx: false });
   });
 });

@@ -80,6 +80,7 @@ const MUSIC_MODELS = [
   { value: "kie_suno_v4_5plus", label: "Suno v4.5 PLUS（kie）", desc: "增强版", group: "Suno" },
   { value: "kie_suno_v4_5",     label: "Suno v4.5（kie）", desc: "旗舰",   group: "Suno" },
   { value: "kie_suno_v4",       label: "Suno v4（kie）",   desc: "经典",   group: "Suno" },
+  { value: "kie_suno_v3_5",     label: "Suno v3.5（kie）", desc: "兼容旧曲风", group: "Suno" },
 ];
 
 function musicModelIsMiniMax(m?: string): boolean {

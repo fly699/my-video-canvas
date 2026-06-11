@@ -1,4 +1,4 @@
-import { storagePut } from "server/storage";
+import { storagePut, resolveToAbsoluteUrl } from "server/storage";
 import { isImagePersistenceEnabled } from "./storageConfig";
 import { KIE_BASE_URL } from "./kie";
 import { parseKieJobStatus } from "./kieVideo";
@@ -75,9 +75,9 @@ export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   kie_flux2_pro_i2i:    { id: "flux-2/pro-image-to-image", label: "Flux-2 Pro 图生图", family: "Flux-2", ref: "input_urls", aspect: "aspect_ratio", aspects: A_FLUX_I2I, fixed: { resolution: "1K" } },
   kie_gpt_image_15_edit:{ id: "gpt-image/1.5-image-to-image", label: "GPT Image 1.5 编辑", family: "GPT Image", ref: "input_urls", aspect: "aspect_ratio", aspects: A_GPT, fixed: { quality: "medium" } },
   // ── 第二批扩充（均走 jobs/createTask，参数对照 docs/kie-api.md）──
-  kie_nano_banana_2:   { id: "nano-banana-2", label: "Nano Banana 2", family: "Nano Banana", aspect: "aspect_ratio", aspects: A_NANO2, fixed: { resolution: "1K", output_format: "jpg" } },
-  kie_flux2_flex:      { id: "flux-2/flex-text-to-image", label: "Flux-2 Flex", family: "Flux-2", aspect: "aspect_ratio", aspects: A_FLUX, fixed: { resolution: "1K" } },
-  kie_flux2_flex_i2i:  { id: "flux-2/flex-image-to-image", label: "Flux-2 Flex 图生图", family: "Flux-2", ref: "input_urls", aspect: "aspect_ratio", aspects: A_FLUX_I2I, fixed: { resolution: "1K" } },
+  kie_nano_banana_2:   { id: "nano-banana-2", label: "Nano Banana 2", family: "Nano Banana", aspect: "aspect_ratio", aspects: A_NANO2, fixed: { resolution: "1K", output_format: "jpg" }, resOptions: ["1K", "2K", "4K"] },
+  kie_flux2_flex:      { id: "flux-2/flex-text-to-image", label: "Flux-2 Flex", family: "Flux-2", aspect: "aspect_ratio", aspects: A_FLUX, fixed: { resolution: "1K" }, resOptions: ["1K", "2K"] },
+  kie_flux2_flex_i2i:  { id: "flux-2/flex-image-to-image", label: "Flux-2 Flex 图生图", family: "Flux-2", ref: "input_urls", aspect: "aspect_ratio", aspects: A_FLUX_I2I, fixed: { resolution: "1K" }, resOptions: ["1K", "2K"] },
   kie_gpt_image_2:     { id: "gpt-image-2-text-to-image", label: "GPT Image 2", family: "GPT Image", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" }, resOptions: ["1K", "2K", "4K"] },
   kie_gpt_image_2_i2i: { id: "gpt-image-2-image-to-image", label: "GPT Image 2 图生图", family: "GPT Image", ref: "input_urls", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" }, resOptions: ["1K", "2K", "4K"] },
   kie_seedream_5lite:  { id: "seedream/5-lite-text-to-image", label: "Seedream 5.0 Lite", family: "Seedream", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
@@ -127,7 +127,10 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
     const a = spec.aspects ?? [def];
     return aspect && a.includes(aspect) ? aspect : a[0];
   };
-  const refs = (options.originalImages ?? []).map((o) => o.url).filter((u): u is string => !!u);
+  // kie 从公网拉取参考图：相对路径（/manus-storage/...）它无法解析 → 4xx。
+  // 与视频提交同口径，先转绝对预签名 URL（图生图/编辑模型必需）。
+  const rawRefs = (options.originalImages ?? []).map((o) => o.url).filter((u): u is string => !!u);
+  const refs = await Promise.all(rawRefs.map((u) => resolveToAbsoluteUrl(u)));
 
   // ── Build per-endpoint submit URL + body ──
   let submitUrl: string;
