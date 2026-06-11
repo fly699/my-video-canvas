@@ -649,7 +649,13 @@ export function parseKieJobStatus(d: Record<string, unknown>, provider = "", tas
     return { status: "finished", resultVideoUrls: urls };
   }
   if (isFailed) {
-    return { status: "failed", errorMessage: (typeof d.errorMessage === "string" && d.errorMessage) || "生成失败" };
+    // kie 把失败原因放在不同字段（errorMessage/failMsg/error/msg/message），逐一兜底，
+    // 否则只显示通用「生成失败」让人无从排查（SFX/TTS 500 实录）。失败时打印原始响应。
+    const errMsg = [d.errorMessage, d.failMsg, d.error, d.message, d.msg]
+      .find((v) => typeof v === "string" && (v as string).trim());
+    const errCode = d.errorCode ?? d.failCode ?? d.code;
+    console.warn(`[kie] ${provider} task ${taskId} FAILED; code=${String(errCode)}; data: ${JSON.stringify(d).slice(0, 400)}`);
+    return { status: "failed", errorMessage: (typeof errMsg === "string" ? errMsg : "") || `生成失败${errCode != null ? `（code ${errCode}）` : ""}` };
   }
   return { status: "processing" };
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { mentionedCharacters } from "../../lib/characterConditioning";
 import { NodeTextArea } from "./NodeTextInput";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -46,24 +47,43 @@ function SideShell({ title, icon, accent, onClose, children }: {
 }
 
 /** 收集与脚本节点相连（任一方向）的角色/场景节点档案，拼成 Story Bible 约束文本。 */
-export function collectCharacterProfiles(scriptId: string): string {
+function characterProfileLine(p: Record<string, string | undefined>): string | null {
+  if ((p.characterKind ?? "person") === "scene") {
+    const parts = [p.sceneName && `场景「${p.sceneName}」`, p.locationType, p.sceneDescription, p.atmosphere && `氛围：${p.atmosphere}`, p.timeOfDay && `时间：${p.timeOfDay}`].filter(Boolean);
+    return parts.length ? `- ${parts.join("；")}` : null;
+  }
+  const parts = [p.name && `人物「${p.name}」`, p.role && `身份：${p.role}`, p.gender, p.age && `年龄：${p.age}`, p.appearance && `外貌：${p.appearance}`, p.outfit && `服装：${p.outfit}`, p.personality && `性格：${p.personality}`, p.signature && `标志特征：${p.signature}`].filter(Boolean);
+  return parts.length ? `- ${parts.join("；")}` : null;
+}
+
+/**
+ * 汇总角色档案约束文本，供向导每一步生成（logline/梗概/节拍表/剧本）注入，保证人物
+ * 设定一致。来源合并：① 与脚本节点相连（任一方向）的角色/场景节点；② 文本里 @提及
+ * 的角色（含未拖上画布的全局角色库影子节点）。`mentionText` 传 logline/梗概/节拍表
+ * 等文本，让 @林晓 即使被 LLM 改写掉，其档案仍贯穿后续链路。去重按角色名。
+ */
+export function collectCharacterProfiles(scriptId: string, mentionText?: string): string {
   const { nodes, edges } = useCanvasStore.getState();
   const linked = new Set<string>();
   for (const e of edges) {
     if (e.source === scriptId) linked.add(e.target);
     if (e.target === scriptId) linked.add(e.source);
   }
+  const seen = new Set<string>();
   const lines: string[] = [];
+  const add = (p: Record<string, string | undefined>) => {
+    const key = (p.sceneName ?? p.name ?? "").trim();
+    if (key && seen.has(key)) return;
+    if (key) seen.add(key);
+    const line = characterProfileLine(p);
+    if (line) lines.push(line);
+  };
   for (const n of nodes) {
-    if (!linked.has(n.id) || n.data.nodeType !== "character") continue;
-    const p = n.data.payload as Record<string, string | undefined>;
-    if ((p.characterKind ?? "person") === "scene") {
-      const parts = [p.sceneName && `场景「${p.sceneName}」`, p.locationType, p.sceneDescription, p.atmosphere && `氛围：${p.atmosphere}`, p.timeOfDay && `时间：${p.timeOfDay}`].filter(Boolean);
-      if (parts.length) lines.push(`- ${parts.join("；")}`);
-    } else {
-      const parts = [p.name && `人物「${p.name}」`, p.role && `身份：${p.role}`, p.gender, p.age && `年龄：${p.age}`, p.appearance && `外貌：${p.appearance}`, p.outfit && `服装：${p.outfit}`, p.personality && `性格：${p.personality}`, p.signature && `标志特征：${p.signature}`].filter(Boolean);
-      if (parts.length) lines.push(`- ${parts.join("；")}`);
-    }
+    if (linked.has(n.id) && n.data.nodeType === "character") add(n.data.payload as Record<string, string | undefined>);
+  }
+  // @提及（含库影子）——mentionedCharacters 已合并全局角色库。
+  for (const p of mentionedCharacters(mentionText ?? "", nodes as unknown as Parameters<typeof mentionedCharacters>[1])) {
+    add(p as unknown as Record<string, string | undefined>);
   }
   return lines.join("\n").slice(0, 3000);
 }
@@ -151,6 +171,10 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
   const beats = payload.beatSheet ?? [];
   const episodes = payload.episodeOutline ?? [];
   const source = [logline && `Logline：${logline}`, idea && `梗概：${idea}`].filter(Boolean).join("\n");
+  // 角色档案 = 连线角色 ∪ 文本 @提及角色（含库影子）。把当前所有阶段文本喂进 @解析，
+  // 这样即使 LLM 把 @林晓 改写掉，林晓的设定仍贯穿 logline/梗概/节拍表/剧本/分镜。
+  const mentionText = [logline, idea, beats.map((b) => `${b.title} ${b.summary}`).join(" ")].filter(Boolean).join("\n");
+  const charProfiles = collectCharacterProfiles(id, mentionText) || undefined;
 
   const updateBeat = (i: number, patch: Partial<ScriptBeat>) => {
     const next = beats.map((b, j) => (j === i ? { ...b, ...patch } : b));
@@ -170,7 +194,7 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
         <NodeTextArea className="nodrag" rows={2} style={taStyle} placeholder="25-35 字：主角 + 冲突 + 赌注。可手写、可 @角色，或由下方按钮从梗概/想法提炼"
           value={payload.logline ?? ""} onValueChange={(v) => updateNodeData(id, { logline: v })} />
         <ActionBtn pending={loglineMut.isPending} disabled={!idea && !logline}
-          onClick={() => loglineMut.mutate({ idea: idea || logline, genre: payload.aiGenre, model: llmModel })}>
+          onClick={() => loglineMut.mutate({ idea: idea || logline, genre: payload.aiGenre, characterProfiles: charProfiles, model: llmModel })}>
           从想法/梗概提炼 3 个候选
         </ActionBtn>
         {loglineCands.length > 0 && (
@@ -191,7 +215,7 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
         <StageHeader num={2} title="故事梗概（300-500 字）" done={idea.length >= 60} />
         <p style={{ fontSize: 9.5, color: "var(--c-t4)" }}>梗概就是节点顶部的「故事梗概」框（共用），可在这里扩写。</p>
         <ActionBtn pending={synopsisMut.isPending} disabled={!logline && !idea}
-          onClick={() => synopsisMut.mutate({ sceneText: (logline || idea).slice(0, 2000), intent: "把这个故事扩写为 300-500 字的故事梗概：现在时态，按三幕走向（建置/对抗/结局）交代主角、冲突升级与结局方向，具体可拍，不要抽象套话", model: llmModel })}>
+          onClick={() => synopsisMut.mutate({ sceneText: (logline || idea).slice(0, 2000), intent: "把这个故事扩写为 300-500 字的故事梗概：现在时态，按三幕走向（建置/对抗/结局）交代主角、冲突升级与结局方向，具体可拍，不要抽象套话", characterProfiles: charProfiles, model: llmModel })}>
           {idea ? "按 Logline 重写梗概" : "由 Logline 扩写梗概"}
         </ActionBtn>
       </div>
@@ -208,7 +232,7 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
           ))}
         </div>
         <ActionBtn pending={beatsMut.isPending} disabled={!source}
-          onClick={() => beatsMut.mutate({ source, structure: structure as "three_act", totalDuration: payload.totalDuration ?? 60, genre: payload.aiGenre, mood: payload.aiMood, model: llmModel })}>
+          onClick={() => beatsMut.mutate({ source, structure: structure as "three_act", totalDuration: payload.totalDuration ?? 60, genre: payload.aiGenre, mood: payload.aiMood, characterProfiles: charProfiles, model: llmModel })}>
           {beats.length ? "重新生成节拍表" : "生成节拍表"}
         </ActionBtn>
         {beats.length > 0 && (
@@ -238,7 +262,7 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
         <ActionBtn pending={fullGenPending} disabled={!idea && !logline}
           onClick={() => onGenerateScript({
             beatSheetText: beats.length ? beatSheetToText(beats) : undefined,
-            characterProfiles: collectCharacterProfiles(id) || undefined,
+            characterProfiles: charProfiles, // 连线 ∪ @提及（含库影子）
           })}>
           生成剧本{beats.length ? "（按节拍表）" : ""} + 分镜
         </ActionBtn>
