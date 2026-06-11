@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles } from "lucide-react";
+import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles, ChevronsLeftRight, ChevronsRightLeft } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { WorkflowRecommenderDialog } from "./WorkflowRecommenderDialog";
@@ -51,8 +51,9 @@ function PanelBar({ label, pct, used, total }: { label: string; pct: number | nu
   );
 }
 
-/** One compact per-server group shown inline in the topbar: dot + G/V/M bars. */
-function ServerChip({ s }: { s: ComfyServerStatus }) {
+/** One compact per-server group shown inline in the topbar: dot + G/V/M bars.
+ *  `compact` collapses it to just the online dot + GPU (G) bar, hiding 显存/内存. */
+function ServerChip({ s, compact }: { s: ComfyServerStatus; compact?: boolean }) {
   const vram = usedPct(s.vramTotalMB, s.vramFreeMB);
   const ram = usedPct(s.ramTotalMB, s.ramFreeMB);
   const queue = (s.queueRunning ?? 0) + (s.queuePending ?? 0);
@@ -63,8 +64,8 @@ function ServerChip({ s }: { s: ComfyServerStatus }) {
       <span className="rounded-full" style={{ width: 5, height: 5, background: dot, flexShrink: 0 }} />
       <div style={{ display: "flex", alignItems: "flex-end", gap: 1.5 }}>
         <MiniBar label="G" pct={s.gpuUtilization ?? null} title={`${host} GPU 计算 ${s.gpuUtilization != null ? s.gpuUtilization + "%" : "需Crystools"}`} />
-        <MiniBar label="V" pct={vram} title={`${host} 显存 ${vram ?? "—"}%`} />
-        <MiniBar label="M" pct={ram} title={`${host} 内存 ${ram ?? "—"}%`} />
+        {!compact && <MiniBar label="V" pct={vram} title={`${host} 显存 ${vram ?? "—"}%`} />}
+        {!compact && <MiniBar label="M" pct={ram} title={`${host} 内存 ${ram ?? "—"}%`} />}
       </div>
       {queue > 0 && <span style={{ fontSize: 9, fontWeight: 700, color: "var(--c-t3)" }}>{queue}</span>}
     </div>
@@ -110,6 +111,9 @@ export function ComfyServerStatusIndicator() {
   // Persist the open state too, so the floating panel reliably survives a reload
   // (pin / position / size are already persisted below).
   const [open, setOpen] = usePersistentState<boolean>("ui:comfyStatus:open:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
+  // Compact inline indicator: collapse each server chip to just the online dot +
+  // GPU bar, hiding 显存/内存 to keep the toolbar narrow. Persisted across reloads.
+  const [compact, setCompact] = usePersistentState<boolean>("ui:comfyStatus:compact:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
   const [draft, setDraft] = useState("");
   // Admins pick where a new address goes; non-admins are always local.
   const [addScope, setAddScope] = useState<"global" | "local">("global");
@@ -252,6 +256,7 @@ export function ComfyServerStatusIndicator() {
 
   return (
     <>
+      <div className="flex items-center" style={{ gap: 2, flexShrink: 0 }}>
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
@@ -274,12 +279,24 @@ export function ComfyServerStatusIndicator() {
             {statuses.map((s, i) => (
               <div key={s.baseUrl} className="flex items-center" style={{ gap: 6, flexShrink: 0 }}>
                 {i > 0 && <span style={{ width: 1, height: 14, background: "var(--c-bd1)" }} />}
-                <ServerChip s={s} />
+                <ServerChip s={s} compact={compact} />
               </div>
             ))}
           </div>
         )}
       </button>
+      {/* 折叠开关：折叠后每台服务器只显示在线灯 + GPU，隐藏显存/内存 */}
+      {statuses.length > 0 && (
+        <button
+          onClick={() => setCompact((v) => !v)}
+          title={compact ? "展开：显示显存/内存指示" : "折叠：仅显示在线灯 + GPU"}
+          className="topbar-btn"
+          style={{ width: 20, height: 20, flexShrink: 0 }}
+        >
+          {compact ? <ChevronsLeftRight className="w-3 h-3" /> : <ChevronsRightLeft className="w-3 h-3" />}
+        </button>
+      )}
+      </div>
 
       {visible && createPortal(
         <>
