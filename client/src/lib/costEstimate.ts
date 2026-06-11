@@ -144,8 +144,21 @@ function imageUnitCost(model: string): CostEstimate {
   return null; // 模型页 / 分辨率×n 等无法预估
 }
 
-/** 图像生成：单价 × 张数（批量/多图参数）。 */
-export function estimateImageCost(model: string, count = 1): CostEstimate {
+// 按分辨率档逐档计价的 kie 图像模型（docs/kie-pricing.md 权威价；与服务端 resOptions 同步）。
+// 未选档时按服务端默认（首项）计价——不再用区间中值（曾把 GPT Image 2 默认 1K=6 估成 ≈11）。
+export const KIE_IMAGE_RES_COST: Record<string, Record<string, number>> = {
+  kie_gpt_image_2:     { "1K": 6, "2K": 10, "4K": 16 },
+  kie_gpt_image_2_i2i: { "1K": 6, "2K": 10, "4K": 16 },
+};
+
+/** 图像生成：单价 × 张数（批量/多图参数）。`opts.resolution` 命中逐档计价表时用精确档价。 */
+export function estimateImageCost(model: string, count = 1, opts?: { resolution?: string }): CostEstimate {
+  const tier = KIE_IMAGE_RES_COST[model];
+  if (tier) {
+    const keys = Object.keys(tier);
+    const res = opts?.resolution && tier[opts.resolution] != null ? opts.resolution : keys[0];
+    return { credits: tier[res] * count, unit: "点", approx: false };
+  }
   const u = imageUnitCost(model);
   if (!u) return null;
   const n = Number.isFinite(count) && count > 0 ? count : 1;

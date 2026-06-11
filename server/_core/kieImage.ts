@@ -38,6 +38,9 @@ export interface KieImageSpec {
    *  defaults so behaviour/cost matches kie's own default. */
   fixed?: Record<string, string>;
   outFmt?: boolean;
+  /** 可由用户选择的 resolution 档位（如 GPT Image 2 的 1K/2K/4K，逐档计价）。
+   *  options.resolution 合法时覆盖 fixed.resolution；首项/fixed 值为默认。 */
+  resOptions?: readonly string[];
 }
 // Common enum sets (docs/kie-api.md). First entry = default.
 const A_NANO = ["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9", "auto"] as const;
@@ -75,8 +78,8 @@ export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   kie_nano_banana_2:   { id: "nano-banana-2", label: "Nano Banana 2", family: "Nano Banana", aspect: "aspect_ratio", aspects: A_NANO2, fixed: { resolution: "1K", output_format: "jpg" } },
   kie_flux2_flex:      { id: "flux-2/flex-text-to-image", label: "Flux-2 Flex", family: "Flux-2", aspect: "aspect_ratio", aspects: A_FLUX, fixed: { resolution: "1K" } },
   kie_flux2_flex_i2i:  { id: "flux-2/flex-image-to-image", label: "Flux-2 Flex 图生图", family: "Flux-2", ref: "input_urls", aspect: "aspect_ratio", aspects: A_FLUX_I2I, fixed: { resolution: "1K" } },
-  kie_gpt_image_2:     { id: "gpt-image-2-text-to-image", label: "GPT Image 2", family: "GPT Image", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" } },
-  kie_gpt_image_2_i2i: { id: "gpt-image-2-image-to-image", label: "GPT Image 2 图生图", family: "GPT Image", ref: "input_urls", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" } },
+  kie_gpt_image_2:     { id: "gpt-image-2-text-to-image", label: "GPT Image 2", family: "GPT Image", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" }, resOptions: ["1K", "2K", "4K"] },
+  kie_gpt_image_2_i2i: { id: "gpt-image-2-image-to-image", label: "GPT Image 2 图生图", family: "GPT Image", ref: "input_urls", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" }, resOptions: ["1K", "2K", "4K"] },
   kie_seedream_5lite:  { id: "seedream/5-lite-text-to-image", label: "Seedream 5.0 Lite", family: "Seedream", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
   kie_seedream_5lite_i2i: { id: "seedream/5-lite-image-to-image", label: "Seedream 5.0 Lite 编辑", family: "Seedream", ref: "image_urls", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
   kie_wan27_image:     { id: "wan/2-7-image", label: "Wan 2.7 Image", family: "Wan", aspect: "aspect_ratio", aspects: A_WAN27, fixed: { resolution: "1K" } },
@@ -156,6 +159,10 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
     else if (spec.aspect === "image_size_raw") input.image_size = clampAspect("1:1");
     else input.aspect_ratio = clampAspect("1:1");
     if (spec.fixed) for (const [k, v] of Object.entries(spec.fixed)) input[k] = v;
+    // 用户可选分辨率档（合法时覆盖 fixed 默认；逐档计价，如 GPT Image 2 1K/2K/4K=6/10/16 点）
+    if (spec.resOptions && options.resolution && spec.resOptions.includes(options.resolution)) {
+      input.resolution = options.resolution;
+    }
     if (spec.ref) { // jobs 端点下 ref 存在 = 编辑模型，必填
       if (refs.length === 0) throw new Error(`${spec.label} 需要参考图，请先连接或上传参考图`);
       input[spec.ref] = spec.refSingle ? refs[0] : refs;
