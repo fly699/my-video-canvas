@@ -84,8 +84,9 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   kie_wan26_i2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 105 : 70) * (num(p, "duration", 5) / 5), true),
   kie_hailuo23_pro: (p) => pt(num(p, "duration", 6) >= 10 ? 90 : (str(p, "resolution", "768P") === "1080P" ? 80 : 45), true),
   kie_hailuo23_std: (p) => pt(num(p, "duration", 6) >= 10 ? 50 : (str(p, "resolution", "768P") === "1080P" ? 50 : 30), true),
-  kie_seedance2:      (p) => pt(({ "480p": 19, "720p": 38, "1080p": 86 }[str(p, "resolution", "720p")] ?? 38) * num(p, "duration", 5) / 5 * (on(p, "generate_audio") ? 1.2 : 1), true),
-  kie_seedance2_fast: (p) => pt(({ "480p": 15.5, "720p": 22, "1080p": 33 }[str(p, "resolution", "720p")] ?? 22) * num(p, "duration", 5) / 5, true),
+  // Seedance 2：kieVideo.ts 权威单价为「点·秒」（每秒）× 时长，无音频附加（label 上限即 1080p）。
+  kie_seedance2:      (p) => pt(({ "480p": 19, "720p": 41, "1080p": 102 }[str(p, "resolution", "720p")] ?? 41) * num(p, "duration", 5), true),
+  kie_seedance2_fast: (p) => pt(({ "480p": 15.5, "720p": 33 }[str(p, "resolution", "720p")] ?? 33) * num(p, "duration", 5), true),
   kie_kling21_std: (p) => pt(6 * num(p, "duration", 5)),
   kie_kling21_pro: (p) => pt(11 * num(p, "duration", 5)),
   kie_wan22_t2v: (p) => pt(str(p, "resolution", "720p") === "480p" ? 6 : 12),

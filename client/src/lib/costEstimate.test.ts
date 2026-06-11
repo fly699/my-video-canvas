@@ -19,6 +19,13 @@ describe("estimateVideoCost", () => {
     const multi = estimateVideoCost("poyo_wan25_t2v", { duration: 5, resolution: "720p", multi_shots: true });
     expect(multi!.credits).toBe(single!.credits * 3);
   });
+  it("Seedance 2 按「点·秒」× 时长计费（权威单价，非 /5）", () => {
+    // kieVideo.ts：Fast 480p 15.5 / 720p 33 点·秒；Pro 480p 19 / 720p 41 / 1080p 102 点·秒
+    expect(estimateVideoCost("kie_seedance2_fast", { resolution: "720p", duration: 5 })?.credits).toBe(33 * 5);
+    expect(estimateVideoCost("kie_seedance2_fast", { resolution: "480p", duration: 10 })?.credits).toBe(15.5 * 10);
+    expect(estimateVideoCost("kie_seedance2", { resolution: "1080p", duration: 5 })?.credits).toBe(102 * 5);
+    expect(estimateVideoCost("kie_seedance2", { duration: 5 })?.credits).toBe(41 * 5); // 默认 720p
+  });
   it("固定价（sora2 pro 100 cr/次）与未知模型返回 null", () => {
     expect(estimateVideoCost("poyo_sora2_pro", {})).toEqual({ credits: 100, unit: "cr", approx: false });
     expect(estimateVideoCost("poyo_veo", {})).toBeNull();
