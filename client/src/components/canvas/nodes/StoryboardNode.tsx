@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { TRPCClientError } from "@trpc/client";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -77,6 +78,7 @@ const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 
 export const StoryboardNode = memo(function StoryboardNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
+  const { resolve } = useNodeDefaultModels();
   // Detect connected CharacterNodes that have their own referenceImageUrl
   const connectedCharRefUrl = useCanvasStore((s) => {
     const incomingEdges = s.edges.filter((e) => e.target === id);
@@ -130,7 +132,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || charSceneItems.length > 0, hasPrompt: !!finalPromptDisplay.trim() });
   const refStrip = useSimpleRefStrip(id, payload, "multi", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, extraItems: charSceneItems });
   const [inputExpanded, setInputExpanded] = useState(!!selected);
-  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
+  const [llmModel, setLlmModel] = useState<LLMModelId>(() => resolve("storyboard", "llm") as LLMModelId);
   const [showHistory, setShowHistory] = useState(false);
   // 「镜头表」侧向展开面板（同组分镜序列总览：重排/时长校验/衔接优化）。
   const [showShotList, setShowShotList] = useState(false);
@@ -228,7 +230,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   }, [selected]);
   const model: ImageGenModel = IMAGE_MODELS.some(m => m.value === payload.imageModel)
     ? (payload.imageModel as ImageGenModel)
-    : "manus_forge";
+    : (resolve("storyboard", "image") as ImageGenModel);
   const setModel = (m: string) => { updateNodeData(id, { imageModel: m as ImageGenModel }); };
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
 
@@ -1006,9 +1008,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           )}
         </div>
 
-        {/* ── Model selector + sync-all-storyboards ── */}
+        {/* ── Model selector ── 单独占整行，避免下拉被同行按钮挤窄 ── */}
         <div className="nodrag flex items-stretch gap-1.5">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <ModelPicker
               value={model}
               onChange={(v) => setModel(v)}
@@ -1028,10 +1030,13 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               {KIE_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           )}
+        </div>
+        {/* ── 同步参数 ── 移到模型选择下方独立一行，右对齐，让模型下拉拿到整行宽度 ── */}
+        <div className="nodrag flex justify-end">
           <button
             onClick={() => setShowSync(true)}
             title="把当前模型 / 色调 / 抽卡次数 / 反向提示词等参数同步到所选分镜节点（弹窗勾选）"
-            className="nodrag flex items-center gap-1 px-2 rounded-lg text-[10.5px] transition-all"
+            className="nodrag flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10.5px] transition-all"
             style={{
               background: "oklch(0.65 0.20 160 / 0.08)",
               border: "1px dashed oklch(0.65 0.20 160 / 0.4)",

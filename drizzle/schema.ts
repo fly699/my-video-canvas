@@ -12,7 +12,6 @@ import {
   float,
   boolean,
 } from "drizzle-orm/mysql-core";
-import { VIDEO_PROVIDERS } from "../shared/types";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -41,6 +40,8 @@ export const projects = mysqlTable("projects", {
   thumbnail: text("thumbnail"),
   /** Viewport state: { x, y, scale } */
   viewportState: json("viewportState"),
+  /** Per-node-type default model config (NodeDefaultModelsConfig). Editable from toolbar. */
+  defaultModels: json("defaultModels"),
   /** When true, any authenticated user with the URL can view (read-only). */
   publicReadAccess: boolean("publicReadAccess").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -317,7 +318,11 @@ export const videoTasks = mysqlTable("video_tasks", {
   userId: int("userId").notNull(),
   projectId: int("projectId").notNull(),
   nodeId: varchar("nodeId", { length: 64 }).notNull(),
-  provider: mysqlEnum("provider", [...VIDEO_PROVIDERS] as [string, ...string[]]).notNull(),
+  // varchar (not enum): the provider list grows with every new model. An ENUM
+  // column froze the DB at the providers known when the last enum migration ran
+  // (0013), so any newer provider (kie_*, newer poyo_*) failed to INSERT. varchar
+  // accepts any provider; the API layer still validates against VIDEO_PROVIDERS (Zod).
+  provider: varchar("provider", { length: 64 }).notNull(),
   externalTaskId: varchar("externalTaskId", { length: 255 }),
   status: mysqlEnum("status", [
     "pending",

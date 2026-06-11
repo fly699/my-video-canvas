@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ScriptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -141,10 +142,11 @@ const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 
 export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
+  const { resolve } = useNodeDefaultModels();
   const payload = data.payload;
 
   // LLM model — persisted to payload; validate against known IDs to handle stale/removed model IDs
-  const _validLlmModel = LLM_MODELS.some((m) => m.id === payload.aiLlmModel) ? (payload.aiLlmModel as LLMModelId) : "claude-sonnet-4-6";
+  const _validLlmModel = LLM_MODELS.some((m) => m.id === payload.aiLlmModel) ? (payload.aiLlmModel as LLMModelId) : (resolve("script", "llm") as LLMModelId);
   const [llmModel, setLlmModel] = useState<LLMModelId>(_validLlmModel);
   const handleLlmModelChange = useCallback((m: LLMModelId) => {
     setLlmModel(m);

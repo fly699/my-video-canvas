@@ -19,6 +19,9 @@ import { usePersistentState } from "../hooks/usePersistentState";
 import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
+import { NodeDefaultModelsProvider } from "../contexts/NodeDefaultModelsContext";
+import { NodeDefaultModelsButton } from "../components/canvas/NodeDefaultModelsButton";
+import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
 import { KieBalanceDashboard } from "../components/KieBalanceDashboard";
@@ -740,6 +743,20 @@ function CanvasInner({ projectId }: { projectId: number }) {
       utils.projects.list.invalidate();
     },
   });
+
+  // 项目级「节点默认模型」配置 + 持久化。新建节点据此取默认模型；工具栏弹层可改。
+  const defaultModelsConfig =
+    (project as { defaultModels?: NodeDefaultModelsConfig | null } | undefined)?.defaultModels ?? null;
+  const handleDefaultModelsChange = useCallback(
+    (next: NodeDefaultModelsConfig) => {
+      // 乐观更新：先写入 query 缓存让节点解析即时生效，再持久化到项目。
+      utils.projects.get.setData({ id: projectId }, (prev) =>
+        prev ? ({ ...prev, defaultModels: next } as typeof prev) : prev,
+      );
+      updateProject.mutate({ id: projectId, defaultModels: next });
+    },
+    [projectId, updateProject, utils],
+  );
   const saveAsMutation = trpc.projects.saveAs.useMutation({
     onSuccess: (proj) => { utils.projects.list.invalidate(); if (proj) navigate(`/canvas/${proj.id}`); },
     onError: (e) => toast.error("另存为失败：" + e.message),
@@ -1538,6 +1555,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }
 
   return (
+   <NodeDefaultModelsProvider config={defaultModelsConfig} onChange={handleDefaultModelsChange} readOnly={isReadOnly}>
     <div className="w-screen h-screen flex flex-col overflow-hidden" style={{ background: "var(--c-canvas)" }}>
 
       {/* ══ Top Bar ══════════════════════════════════════════════════════════ */}
@@ -2809,6 +2827,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </TooltipContent>
             </Tooltip>
 
+            {/* 节点默认模型设置 */}
+            <NodeDefaultModelsButton orient={toolbarOrient} />
+
             {/* Theme switcher */}
             <ThemeSwitcher />
 
@@ -3398,6 +3419,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
       {!isPopout && chatOpen && <CanvasChatWindow onClose={() => setChatOpen(false)} />}
     </div>
+   </NodeDefaultModelsProvider>
   );
 }
 

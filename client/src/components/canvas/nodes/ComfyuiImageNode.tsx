@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
@@ -79,6 +80,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
   const connectState = useConnectState(id, "comfyui_image");
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const { resolve } = useNodeDefaultModels();
   const payload = data.payload;
   useComfyUpstreamAutoFill(id, payload, updateNodeData, { characterConditioning: true });
   // 「最终提示词」= 角色注入后的正向词（payload.prompt 已含上游自动填充结果）。
@@ -112,7 +114,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const [translating, setTranslating] = useState(false);
   // Translation LLM — let the user pick a model that's available in their
   // deployment (some setups have no Gemini but do have Claude/GPT via Poyo).
-  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
+  const [llmModel, setLlmModel] = useState<LLMModelId>(() => resolve("comfyui_image", "llm") as LLMModelId);
   const [urlExpanded, setUrlExpanded] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [cfgTab, setCfgTab] = useState("basic");

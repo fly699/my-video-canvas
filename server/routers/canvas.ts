@@ -225,11 +225,19 @@ export const projectsRouter = router({
         viewportState: z
           .object({ x: z.number(), y: z.number(), zoom: z.number() })
           .optional(),
+        // Per-node-type default model config (toolbar-editable, project-level).
+        defaultModels: z
+          .object({
+            categories: z.record(z.string(), z.string()).optional(),
+            perSlot: z.record(z.string(), z.string()).optional(),
+          })
+          .nullable()
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
-      // Editor+ may rename / change thumbnail / save viewport
+      // Editor+ may rename / change thumbnail / save viewport / set default models
       const access = await assertProjectAccess(id, ctx.user.id, "editor");
       // updateProject uses (id, userId) WHERE clause on owner; route through raw helper
       await updateProject(id, access.project.userId, data as Parameters<typeof updateProject>[2]);

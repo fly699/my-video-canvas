@@ -10,6 +10,7 @@
 // 3. 手动多参考图（payload.referenceImages[]）并入参考集合；
 // 4. imageN/批量张数计入点数预估。
 import type { StoryboardNodeData, ReferenceImage } from "../../../shared/types";
+import { FACTORY_DEFAULT_MODELS } from "../../../shared/nodeDefaultModels";
 import {
   effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions,
 } from "./characterConditioning";
@@ -56,7 +57,9 @@ export function buildStoryboardGenInput(args: {
   kieTempKey?: string | null;
 }): StoryboardGenBuild {
   const { id, payload, nodes, edges } = args;
-  const model = (payload.imageModel as string) || "manus_forge";
+  // 兜底：分镜节点通常已把项目默认（kie GPT Image 2）写入 payload.imageModel；
+  // 此处仅在缺失时用出厂默认，保持与节点 picker 显示一致。
+  const model = (payload.imageModel as string) || FACTORY_DEFAULT_MODELS.image;
   const promptText = payload.promptText ?? "";
   if (!promptText.trim()) return { input: {}, count: 0, costLabel: "", blocked: "请先填写提示词" };
 

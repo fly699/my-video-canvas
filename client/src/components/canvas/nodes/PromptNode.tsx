@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
@@ -38,10 +39,10 @@ const monoStyle: React.CSSProperties = {
   ...fieldStyle, fontFamily: "'JetBrains Mono', 'Fira Code', monospace", fontSize: 11, resize: "none", lineHeight: 1.7,
 };
 
-const DEFAULT_LLM: LLMModelId = "claude-sonnet-4-5-20250929";
 
 export const PromptNode = memo(function PromptNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
+  const { resolve } = useNodeDefaultModels();
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
   const payload = data.payload;
@@ -61,7 +62,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
     if (Object.keys(patch).length) updateNodeData(id, patch, true);
   }, [upstreamPos, upstreamNeg, payload.positivePrompt, payload.negativePrompt, id, updateNodeData]);
 
-  const llmModel = (payload.llmModel as LLMModelId) ?? DEFAULT_LLM;
+  const llmModel = (payload.llmModel as LLMModelId) ?? (resolve("prompt", "llm") as LLMModelId);
   const setLlmModel = (m: LLMModelId) => updateNodeData(id, { llmModel: m });
 
   const [uploadingRef, setUploadingRef] = useState(false);

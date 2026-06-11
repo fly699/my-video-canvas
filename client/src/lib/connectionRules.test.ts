@@ -38,6 +38,13 @@ describe("isConnectionValid", () => {
     expect(getCompatibleSources("merge")).toContain("audio");
   });
 
+  it("subtitle / subtitle_motion → merge（已挂字幕视频入成片）跟随矩阵：配方 视频→字幕→合并 不再判失败", () => {
+    expect(isConnectionValid("subtitle", "merge")).toBe(true);
+    expect(isConnectionValid("subtitle_motion", "merge")).toBe(true);
+    expect(getCompatibleTargets("subtitle")).toContain("merge");
+    expect(getCompatibleSources("merge")).toContain("subtitle");
+  });
+
   it("lets a merge (合并) video feed a clip (剪辑) node", () => {
     expect(isConnectionValid("merge", "clip")).toBe(true);
     expect(isConnectionValid("merge", "asset")).toBe(true); // still allowed

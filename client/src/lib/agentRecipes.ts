@@ -103,16 +103,13 @@ export function buildRecipeOps(recipe: AgentRecipe, cfg: RecipeConfig): AgentOpe
     // 镜号 + 逐镜转场：让配方产物直接满足「镜头表批量生产 → 按镜头表装配」的字段要求。
     ops.push({ op: "create", nodeType: "storyboard", tempId: sb, title: `分镜${n}`, payload: { sceneNumber: n, description: desc, duration: cfg.durationEach, transition: recipe.defaults.shotTransition ?? "cut" } });
     ops.push({ op: "connect", sourceRef: "script", targetRef: sb });
-    let tail = sb;
-    if (cfg.imageFirst) {
-      const img = `img${n}`;
-      ops.push({ op: "create", nodeType: "image_gen", tempId: img, title: `静帧${n}`, payload: { aspectRatio: cfg.aspect } });
-      ops.push({ op: "connect", sourceRef: tail, targetRef: img });
-      tail = img;
-    }
+    // 分镜本身就是「生图工位」：镜头表批量生产会把关键帧生成在分镜上，批量生视频按
+    // 「分镜→视频直连」找到该工位并把关键帧作首帧。因此 imageFirst（生图→再生视频）
+    // 在分镜管线里由 分镜→视频 直连天然满足——不再额外插 image_gen 静帧节点，否则
+    // 一镜两次生图，且直连断裂会让批量生视频找不到既有工位再新建一个。
     ops.push({ op: "create", nodeType: "video_task", tempId: vt, title: `视频${n}`, payload: {} });
-    ops.push({ op: "connect", sourceRef: tail, targetRef: vt });
-    tail = vt;
+    ops.push({ op: "connect", sourceRef: sb, targetRef: vt });
+    let tail = vt;
     if (cfg.addSubtitle) {
       const sub = `sub${n}`;
       ops.push({ op: "create", nodeType: "subtitle", tempId: sub, title: `字幕${n}`, payload: {} });
