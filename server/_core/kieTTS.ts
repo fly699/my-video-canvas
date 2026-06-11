@@ -1,6 +1,7 @@
 import { storagePut } from "../storage";
 import { isAudioPersistenceEnabled } from "./storageConfig";
 import { KIE_BASE_URL } from "./kie";
+import { parseKieJobStatus } from "./kieVideo";
 
 // ── kie.ai ElevenLabs TTS ─────────────────────────────────────────────────────
 //
@@ -103,23 +104,19 @@ export async function submitAndPollKieTTS(opts: KieTTSOptions): Promise<KieTTSRe
       if (res.status === 429 || res.status >= 500) continue; // transient
       throw new Error(`kie 配音状态查询失败 (${res.status})`);
     }
-    const body = (await res.json()) as {
-      code?: number;
-      data?: { successFlag?: number; errorMessage?: string; response?: { result_urls?: string[]; resultUrls?: string[] | string } };
-    };
+    const body = (await res.json()) as { code?: number; data?: Record<string, unknown> };
     const d = body.data;
     if (!d) continue;
-    if (d.successFlag === 1) {
-      let urls = d.response?.result_urls ?? [];
-      if (!urls.length && d.response?.resultUrls) {
-        const ru = d.response.resultUrls;
-        urls = Array.isArray(ru) ? ru : (() => { try { return JSON.parse(ru) as string[]; } catch { return []; } })();
-      }
+    // 多形态解析（与图像/视频共用）：新模型实测返回 state="success" 而非 successFlag=1，
+    // 旧解析只认数字 → 永远判进行中、误报超时（"音频生成了也没有结果"）。
+    const st = parseKieJobStatus(d, "kie_tts", taskId);
+    if (st.status === "finished") {
+      const urls = st.resultVideoUrls ?? [];
       if (!urls.length) throw new Error("[CHARGED] kie 配音已生成但未返回 URL（积分可能已扣，请勿重试）");
       return { url: await persistAudioUrl(urls[0]) };
     }
-    if (d.successFlag === 2 || d.successFlag === 3) {
-      throw new Error(`kie 配音生成失败：${d.errorMessage ?? "未知错误"}`);
+    if (st.status === "failed") {
+      throw new Error(`kie 配音生成失败：${st.errorMessage ?? "未知错误"}`);
     }
   }
   throw new Error("kie 配音生成超时");

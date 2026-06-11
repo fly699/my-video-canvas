@@ -108,3 +108,10 @@ describe("parseKieJobStatus — 多形态兼容（seedance-2 / grok 卡死修复
     expect(parseKieJobStatus({ state: "failed" }).status).toBe("failed");
   });
 });
+
+describe("parseKieJobStatus — 音频字段（TTS/SFX 共用）", () => {
+  it("response.audio_url / audioUrl 提取", () => {
+    expect(parseKieJobStatus({ state: "success", response: { audio_url: "https://x/v.mp3" } }).resultVideoUrls).toEqual(["https://x/v.mp3"]);
+    expect(parseKieJobStatus({ successFlag: 1, response: { audioUrl: "https://x/a.mp3" } }).resultVideoUrls).toEqual(["https://x/a.mp3"]);
+  });
+});
