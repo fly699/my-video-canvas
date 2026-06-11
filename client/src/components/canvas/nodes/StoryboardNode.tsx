@@ -1105,6 +1105,31 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     <option value="1080p">1080p</option>
                   </select>
                 </div>
+                {/* 与 ImageGenNode 对齐：种子（复现一致画面）+ AI 增强提示词 */}
+                <div style={{ width: 90 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
+                    Seed
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="随机"
+                    value={payload.seed ?? ""}
+                    onChange={(e) => updateNodeData(id, { seed: e.target.value ? Number(e.target.value) : undefined })}
+                    className="nodrag"
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)" }}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 7 }}>
+                  <label className="nodrag" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--c-t3)", cursor: "pointer", whiteSpace: "nowrap" }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(payload.enhancePrompt)}
+                      onChange={(e) => updateNodeData(id, { enhancePrompt: e.target.checked })}
+                      style={{ width: 11, height: 11 }}
+                    />
+                    AI 增强
+                  </label>
+                </div>
               </>
             )}
             {isV2HF && (
@@ -1137,6 +1162,43 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 </div>
               </>
             )}
+          </div>
+        )}
+        {/* Flux Pro Kontext 专属参数（与 ImageGenNode 对齐：引导强度/批量/种子） */}
+        {model === "hf_flux_pro" && (
+          <div className="flex gap-1.5 nodrag" style={{ alignItems: "flex-end" }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>
+                引导强度 {(payload.fluxGuidanceScale ?? 3.5).toFixed(1)}
+              </label>
+              <input
+                type="range" min={1} max={20} step={0.5}
+                value={payload.fluxGuidanceScale ?? 3.5}
+                onChange={(e) => updateNodeData(id, { fluxGuidanceScale: Number(e.target.value) })}
+                className="nodrag" style={{ width: "100%" }}
+              />
+            </div>
+            <div style={{ width: 70 }}>
+              <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>批量</label>
+              <select
+                value={String(payload.fluxNumImages ?? 1)}
+                onChange={(e) => updateNodeData(id, { fluxNumImages: Number(e.target.value) })}
+                className="nodrag"
+                style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)", cursor: "pointer" }}
+              >
+                {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n} 张</option>)}
+              </select>
+            </div>
+            <div style={{ width: 90 }}>
+              <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>Seed</label>
+              <input
+                type="number" placeholder="随机"
+                value={payload.fluxSeed ?? ""}
+                onChange={(e) => updateNodeData(id, { fluxSeed: e.target.value ? Number(e.target.value) : undefined })}
+                className="nodrag"
+                style={{ width: "100%", padding: "6px 8px", fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t1)" }}
+              />
+            </div>
           </div>
         )}
         {/* Poyo 模型参数控件（schema 驱动）—— 替代原 Poyo 宽高比/画质硬编码块 */}

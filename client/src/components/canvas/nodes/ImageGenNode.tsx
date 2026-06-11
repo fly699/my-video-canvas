@@ -361,10 +361,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         seed: validSeed(payload.seed),
         enhancePrompt: payload.enhancePrompt,
       } : {}),
-      // Reve / Seedream v4 / Flux Pro aspect ratio
+      // Reve / Seedream v4 / Flux Pro aspect ratio + resolution.
+      // 三个 v2 端点共用 { aspect_ratio, resolution } 扁平 schema（服务端注释同），
+      // 此前 resolution 只发给 hf_reve——seedream/flux 用户选的分辨率被静默忽略。
       ...(isReveOrSeedream ? {
         reveAspectRatio: reveAspect,
-        ...(payload.model === "hf_reve" ? { reveResolution } : {}),
+        reveResolution,
       } : {}),
       // Flux Pro Kontext extra params
       ...(payload.model === "hf_flux_pro" ? {
