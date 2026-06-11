@@ -1,6 +1,7 @@
 import { storagePut } from "server/storage";
 import { isImagePersistenceEnabled } from "./storageConfig";
 import { KIE_BASE_URL } from "./kie";
+import { parseKieJobStatus } from "./kieVideo";
 import type { GenerateImageOptions, GenerateImageResponse } from "./imageGeneration";
 
 // kie.ai image models via the UNIFIED jobs API (POST /api/v1/jobs/createTask +
@@ -107,7 +108,7 @@ export function isKieImageModel(model?: string): boolean {
 }
 
 const POLL_INTERVAL_MS = 3000;
-const POLL_MAX_ATTEMPTS = 60; // 3 min max — kie market models can be slower than Poyo
+const POLL_MAX_ATTEMPTS = 100; // 5 min max — GPT Image 2 等新模型实测可超 3 分钟
 
 // The resolved kie key is passed in by the router (which owns the kie auth via
 // resolveKieKey); this function never touches the whitelist or env directly.
@@ -197,36 +198,36 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
     }
     const body = (await statusRes.json()) as {
       code?: number;
-      data?: {
+      data?: Record<string, unknown> & {
         successFlag?: number; errorMessage?: string;
         // record-info 轮询响应统一把结果放在 data.response（回调才是 data.info，勿混用）：
         //   flux-kontext → response.resultImageUrl（单数驼峰）
         //   gpt4o        → response.result_urls（数组蛇形）
-        //   jobs         → response.result_urls / resultUrls
+        //   jobs         → 字段不统一（successFlag/state、result_urls/resultUrls/…），
+        //                  复用视频的 parseKieJobStatus 多形态解析（GPT Image 2 等新模型
+        //                  实测返回 state="success"，旧解析只认 successFlag=1 → 误报超时）
         response?: { resultImageUrl?: string; result_urls?: string[]; resultUrls?: string[] | string };
       };
     };
     const d = body.data;
     if (!d) continue;
-    if (d.successFlag === 1) {
-      let urls: string[] = [];
-      if (endpoint === "flux-kontext") {
-        if (d.response?.resultImageUrl) urls = [d.response.resultImageUrl];
-      } else if (endpoint === "gpt4o") {
-        urls = d.response?.result_urls ?? [];
-      } else {
-        urls = d.response?.result_urls ?? [];
-        if (!urls.length && d.response?.resultUrls) {
-          const ru = d.response.resultUrls;
-          urls = Array.isArray(ru) ? ru : (() => { try { return JSON.parse(ru) as string[]; } catch { return []; } })();
-        }
+    if (endpoint === "flux-kontext" || endpoint === "gpt4o") {
+      if (d.successFlag === 1) {
+        const urls = endpoint === "flux-kontext"
+          ? (d.response?.resultImageUrl ? [d.response.resultImageUrl] : [])
+          : (d.response?.result_urls ?? []);
+        if (!urls.length) throw new Error("[CHARGED] kie 图像生成完成但未返回 URL（积分可能已扣，请勿重试）");
+        return persistKieImages(urls);
       }
-      if (!urls.length) throw new Error("[CHARGED] kie 图像生成完成但未返回 URL（积分可能已扣，请勿重试）");
-      return persistKieImages(urls);
+      if (d.successFlag === 2 || d.successFlag === 3) {
+        throw new Error(`kie 图像生成失败：${d.errorMessage ?? "未知错误"}`);
+      }
+      continue;
     }
-    if (d.successFlag === 2 || d.successFlag === 3) {
-      throw new Error(`kie 图像生成失败：${d.errorMessage ?? "未知错误"}`);
-    }
+    // jobs 端点：多形态解析（与视频共用）。
+    const st = parseKieJobStatus(d, options.model, taskId);
+    if (st.status === "finished") return persistKieImages(st.resultVideoUrls ?? []);
+    if (st.status === "failed") throw new Error(`kie 图像生成失败：${st.errorMessage ?? "未知错误"}`);
   }
   throw new Error("kie 图像生成超时");
 }
