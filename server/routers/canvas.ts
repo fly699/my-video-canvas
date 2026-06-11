@@ -1593,14 +1593,17 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
     .input(z.object({
       sceneText: z.string().min(1).max(2000),
       intent: z.string().max(500).optional(),
+      characterProfiles: z.string().max(3000).optional(),
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       return dedupe("scripts.refineScene", ctx.user.id, input, async () => {
+        const profileBlock = input.characterProfiles?.trim()
+          ? `\n\n## 角色档案（人物姓名/外貌/性格须与档案一致，不得自创设定）\n${input.characterProfiles.trim()}` : "";
         const systemPrompt = `你是专业编剧，负责优化单个场景描述。根据用户意图，改写或精化场景文字，保持原有叙事方向。只输出改写后的场景文字，不加任何说明。`;
-        const userContent = input.intent
+        const userContent = (input.intent
           ? `意图：${input.intent}\n\n原场景：\n${input.sceneText}`
-          : `请优化以下场景：\n${input.sceneText}`;
+          : `请优化以下场景：\n${input.sceneText}`) + profileBlock;
         const response = await invokeLLMWithKie(ctx, {
           messages: [
             { role: "system" as const, content: systemPrompt },
@@ -1700,13 +1703,14 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
     .input(z.object({
       idea: z.string().min(1).max(2000),
       genre: z.string().max(40).optional(),
+      characterProfiles: z.string().max(3000).optional(),
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       return dedupe("scripts.generateLogline", ctx.user.id, input, async () => {
         const systemPrompt = `你是好莱坞资深故事策划。把用户的想法提炼成 3 个风格各异的 logline（一句话故事）。
 行业标准：每条 25-35 个汉字，必须包含【主角是谁】【面临什么冲突】【赌注/代价是什么】，有戏剧张力，不剧透结局。
-${input.genre ? `类型：${input.genre}。` : ""}
+${input.genre ? `类型：${input.genre}。` : ""}${input.characterProfiles?.trim() ? `\n## 角色档案（主角/人物须与档案一致，姓名设定不得自创）\n${input.characterProfiles.trim()}` : ""}
 仅输出合法 JSON，无 markdown 代码块：{"loglines":["…","…","…"]}`;
         const response = await invokeLLMWithKie(ctx, {
           messages: [
@@ -1735,6 +1739,7 @@ ${input.genre ? `类型：${input.genre}。` : ""}
       totalDuration: z.number().int().min(10).max(7200).default(60),
       genre: z.string().max(40).optional(),
       mood: z.string().max(40).optional(),
+      characterProfiles: z.string().max(3000).optional(),
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -1750,7 +1755,7 @@ ${input.genre ? `类型：${input.genre}。` : ""}
         const st = STRUCTURES[input.structure];
         const systemPrompt = `你是专业故事结构师。把给定的故事按「${st.name}」拆成节拍表（beat sheet）。
 结构指南：${st.guide}
-${input.genre ? `类型：${input.genre}。` : ""}${input.mood ? `基调：${input.mood}。` : ""}总时长约 ${input.totalDuration} 秒——给每拍分配 duration（秒），总和≈总时长，重场戏多分配。
+${input.genre ? `类型：${input.genre}。` : ""}${input.mood ? `基调：${input.mood}。` : ""}${input.characterProfiles?.trim() ? `\n## 角色档案（拍点涉及的人物须与档案一致，不得自创设定）\n${input.characterProfiles.trim()}\n` : ""}总时长约 ${input.totalDuration} 秒——给每拍分配 duration（秒），总和≈总时长，重场戏多分配。
 每拍 summary 用 1-3 句中文具体写出「发生什么」（人物动作与情绪，不要抽象套话）。
 仅输出合法 JSON 数组，无 markdown 代码块：
 [{"index":1,"title":"拍点名","summary":"这一拍发生什么","duration":8}]`;

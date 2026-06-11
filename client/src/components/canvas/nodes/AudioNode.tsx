@@ -330,14 +330,22 @@ function ModelSelect({ models, value, onChange }: {
   onChange: (v: string) => void;
 }) {
   // 统一 ModelPicker：group=厂家（Suno/MiniMax/OpenAI/ElevenLabs/本地），family=真实来源平台。
-  // kie Suno 标价 12 点/次（docs/kie-pricing.md 行276）；其它平台价格写在 desc 里。
+  // kie 各音频模型计价不同（docs/kie-pricing.md）：Suno 12点/次、SFX 0.24点/秒、
+  // ElevenLabs TTS 6点/千字、V3 对话 14点/千字。此前一律标「12点/次」——SFX 等被误导。
+  const kieAudioCost = (v: string): string | undefined => {
+    if (!v.startsWith("kie_")) return undefined;
+    if (v.includes("sfx")) return "0.24 点/秒";
+    if (v.includes("v3")) return "14 点/千字";
+    if (v.includes("elevenlabs")) return "6 点/千字";
+    return "12 点/次"; // kie Suno
+  };
   const options = models.map((m) => ({
     value: m.value,
     label: m.label,
     group: m.group,                          // 厂家
     family: audioModelPlatform(m.value),     // 来源平台（准确）
     caps: [m.desc],
-    costLabel: m.value.startsWith("kie_") ? "12 点/次" : undefined,
+    costLabel: kieAudioCost(m.value),
   }));
   return (
     <div>
