@@ -295,3 +295,17 @@ export function deriveCharacterConditioning(
 
   return patch;
 }
+
+/** 把文本中命中的「@角色名」替换为纯名字（去掉 @ 前缀、保留姓名可读）——
+ *  供音频（配音/音效/配乐）等「不该出现 @ 标记」的提示词在提交前清洗。
+ *  与 stripCharacterMentions 的区别：strip 是删除整个提及（生图结构化注入用），
+ *  这里要保留名字让 TTS 正常朗读。未命中任何角色时原样返回。 */
+export function unmentionText(text: string | undefined, nodes: CharNodeLike[]): string {
+  let out = text ?? "";
+  if (!out.includes("@")) return out;
+  for (const c of mentionedCharacters(out, nodes)) {
+    const name = charDisplayName(c);
+    if (name) out = out.split("@" + name).join(name);
+  }
+  return out;
+}
