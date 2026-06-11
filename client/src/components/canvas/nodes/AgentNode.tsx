@@ -8,7 +8,7 @@ import { derivePipelineSteps } from "@/lib/pipelinePlan";
 import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw, ListChecks } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw, ListChecks, ImageIcon } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary, distributeServers, summarizePlanOps } from "@/lib/agentApply";
@@ -500,11 +500,18 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
       const sig = failed.map((nid) => `${nid}:${runState.nodeStates[nid]?.errorMessage ?? ""}`).sort().join("|");
       if (sig === lastFailSigRef.current) {
         // 同因熔断：上一轮自愈后失败集合与错误一字未变 → 修复无效，停止自动重试。
-        setMessages([...freshMessages(), { role: "assistant", content: "⚠️ 自动修复未生效（连续两轮出现完全相同的失败），已停止自动重试以免空转。请根据上方错误信息手动处理，或调整后点「诊断修复」。", operations: [] }]);
+        setMessages([...freshMessages(), { role: "assistant", content: `⚠️ 自动修复已停止：连续两轮出现完全相同的失败（同因熔断），继续重试只会空转、白扣点数。\n失败原因见上。请手动调整后点下方「诊断修复」再试，或直接修改对应节点参数。`, operations: [] }]);
+        toast.warning("自动修复已停止（同因熔断）");
       } else if (selfHealRoundsRef.current < 2) {
         lastFailSigRef.current = sig;
         selfHealRoundsRef.current += 1;
-        handleSelfHeal(); // 内部记录失败节点为自愈重跑目标
+        // 明示自愈进度：第 N/2 轮，针对哪些节点（解决「自愈停止信号隐晦」）。
+        toast.info(`检测到 ${failed.length} 个失败，自动修复中（第 ${selfHealRoundsRef.current}/2 轮）`);
+        handleSelfHeal(); // 内部记录失败节点为自愈重跑目标，并发起一条可见的修复指令
+      } else {
+        // 轮次用尽（已自愈 2 轮仍有失败）：明确停止并给出手动入口，不再静默。
+        setMessages([...freshMessages(), { role: "assistant", content: `已自动修复 2 轮但仍有 ${failed.length} 个节点失败，为避免持续扣点已停止自动重试。\n失败原因见上。可手动调整后点下方「诊断修复」单独再试，或检查对应节点的模型/参数/参考图。`, operations: [] }]);
+        toast.warning("已达自动修复上限（2 轮），停止重试");
       }
     }
   }, [runState.running]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -581,19 +588,31 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                       </div>
                     ) : null;
                   })()}
+                  {/* 透明化：明示「生图→生视频」自动插入了几个静帧/出图节点，并指向开关（解决强制改写不透明） */}
+                  {(() => {
+                    const autoIns = m.operations!.filter((op) => op.op === "create" && op.note?.startsWith("生图→生视频")).length;
+                    return autoIns > 0 ? (
+                      <div style={{ padding: "4px 9px", fontSize: 10, color: "var(--c-t3)", lineHeight: 1.5, display: "flex", alignItems: "flex-start", gap: 5, background: accentA(0.05), borderBottom: `1px solid ${accentA(0.14)}` }}>
+                        <ImageIcon className="w-3 h-3" style={{ flexShrink: 0, marginTop: 1, color: accent }} />
+                        <span>已按「生图 → 生视频」自动插入 <b style={{ color: accent }}>{autoIns}</b> 个静帧节点作视频首帧（避免直接文生视频）。不需要可在 ⚙ 规划设置里关闭后重新规划。</span>
+                      </div>
+                    ) : null;
+                  })()}
                   <div style={{ padding: "6px 9px", display: "flex", flexDirection: "column", gap: 4 }}>
                     {m.operations.map((op, j) => {
                       const { Icon, label } = OP_META[op.op];
                       const failed = op.status === "failed";
+                      const autoIns = op.op === "create" && op.note?.startsWith("生图→生视频");
                       const c = failed ? "oklch(0.62 0.20 25)" : accent;
                       return (
-                        <div key={j} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--c-t2)" }}>
+                        <div key={j} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--c-t2)", paddingLeft: autoIns ? 5 : 0, borderLeft: autoIns ? `2px solid ${accentA(0.4)}` : "2px solid transparent" }}>
                           <Icon className="w-3 h-3" style={{ color: c, flexShrink: 0 }} />
                           <span style={{ color: c, fontWeight: 600, flexShrink: 0 }}>{label}</span>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={failed ? op.error : (op.note ? `${opText(op)}\n理由：${op.note}` : opText(op))}>
                             {opText(op)}
                             {op.note && <span style={{ color: "var(--c-t4)", fontWeight: 400 }}> — {op.note}</span>}
                           </span>
+                          {autoIns && <span style={{ color: accent, flexShrink: 0, fontSize: 8.5, fontWeight: 700, padding: "0 4px", borderRadius: 4, background: accentA(0.14) }}>自动</span>}
                           {failed && <span style={{ color: "oklch(0.62 0.20 25)", flexShrink: 0, fontSize: 10 }}>失败</span>}
                         </div>
                       );
