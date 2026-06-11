@@ -75,7 +75,12 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   kie_veo31_fast:    () => pt(60, true),
   kie_kling26_t2v: (p) => pt(11 * num(p, "duration", 5) * (on(p, "sound") ? 2 : 1)),
   kie_kling26_i2v: (p) => pt(11 * num(p, "duration", 5) * (on(p, "sound") ? 2 : 1)),
-  kie_kling30: (p) => pt(({ std: 18, pro: 27, "4K": 67 }[str(p, "mode", "pro")] ?? 27) * num(p, "duration", 5), true),
+  // kie 价格表：std=720p(无14/有20) · pro=1080p(无18/有27) · 4K=67（含/无音轨），随 mode+sound 变。
+  kie_kling30: (p) => {
+    const m = str(p, "mode", "pro"); const snd = on(p, "sound");
+    const perSec = m === "4K" ? 67 : m === "pro" ? (snd ? 27 : 18) : (snd ? 20 : 14);
+    return pt(perSec * num(p, "duration", 5), true);
+  },
   kie_kling25turbo_t2v: (p) => pt(8.4 * num(p, "duration", 5)),
   kie_kling25turbo_i2v: (p) => pt(8.4 * num(p, "duration", 5)),
   kie_wan25_t2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 100 : 60) * (num(p, "duration", 5) / 5), true),
@@ -87,26 +92,36 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   // Seedance 2：kieVideo.ts 权威单价为「点·秒」（每秒）× 时长，无音频附加（label 上限即 1080p）。
   kie_seedance2:      (p) => pt(({ "480p": 19, "720p": 41, "1080p": 102 }[str(p, "resolution", "720p")] ?? 41) * num(p, "duration", 5), true),
   kie_seedance2_fast: (p) => pt(({ "480p": 15.5, "720p": 33 }[str(p, "resolution", "720p")] ?? 33) * num(p, "duration", 5), true),
-  kie_kling21_std: (p) => pt(6 * num(p, "duration", 5)),
-  kie_kling21_pro: (p) => pt(11 * num(p, "duration", 5)),
-  kie_wan22_t2v: (p) => pt(str(p, "resolution", "720p") === "480p" ? 6 : 12),
-  kie_wan22_i2v: (p) => pt(str(p, "resolution", "720p") === "480p" ? 6 : 12),
-  kie_wan27_t2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 18 : 12) * num(p, "duration", 5)),
-  kie_wan27_i2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 18 : 12) * num(p, "duration", 5)),
-  kie_hailuo02_std:     (p) => pt(7 * num(p, "duration", 6)),
-  kie_hailuo02_pro_t2v: () => pt(65),
-  kie_hailuo02_pro_i2v: () => pt(65),
-  kie_grok_t2v: (p) => pt(num(p, "duration", 6) <= 6 ? 30 : 40, num(p, "duration", 6) > 10),
-  kie_grok_i2v: (p) => pt(num(p, "duration", 6) <= 6 ? 30 : 40, num(p, "duration", 6) > 10),
-  kie_happyhorse_t2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 32 : 16) * num(p, "duration", 5)),
-  kie_happyhorse_i2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 32 : 16) * num(p, "duration", 5)),
-  kie_kling26_motion: (p) => pt((str(p, "mode", "720p") === "1080p" ? 12 : 8) * 5, true),  // 时长随源视频，按 5s 估
-  kie_kling30_motion: (p) => pt((str(p, "mode", "720p") === "1080p" ? 15 : 9) * 5, true),
-  kie_kling_avatar_std: () => pt(7 * 10, true),  // 时长随音频，按 10s 估
-  kie_kling_avatar_pro: () => pt(14 * 10, true),
-  kie_wan_animate_move:    (p) => pt(str(p, "resolution", "480p") === "720p" ? 15 : 7, true),
-  kie_wan_animate_replace: (p) => pt(str(p, "resolution", "480p") === "720p" ? 15 : 7, true),
-  kie_runway45:     (p) => pt(15 * num(p, "duration", 5)),
+  // Kling 2.1：价格表 标准 5s25/10s50（5/s）· 专业 5s50/10s100（10/s）。
+  kie_kling21_std: (p) => pt(5 * num(p, "duration", 5)),
+  kie_kling21_pro: (p) => pt(10 * num(p, "duration", 5)),
+  // Wan 2.2 turbo：价格表按整条计（5s 固定）480p 40 / 720p 80 点。
+  kie_wan22_t2v: (p) => pt(str(p, "resolution", "720p") === "480p" ? 40 : 80),
+  kie_wan22_i2v: (p) => pt(str(p, "resolution", "720p") === "480p" ? 40 : 80),
+  // Wan 2.7：价格表 720p 16 / 1080p 24 点·秒。
+  kie_wan27_t2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 24 : 16) * num(p, "duration", 5)),
+  kie_wan27_i2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 24 : 16) * num(p, "duration", 5)),
+  // Hailuo 02：价格表 标准 6s30/10s50（5/s，768p）· 专业 6s 1080p 固定 57。
+  kie_hailuo02_std:     (p) => pt(5 * num(p, "duration", 6)),
+  kie_hailuo02_pro_t2v: () => pt(57),
+  kie_hailuo02_pro_i2v: () => pt(57),
+  // Grok Imagine：价格表 480p 1.6 / 720p 3 点·秒（duration 6–30s）。
+  kie_grok_t2v: (p) => pt(({ "480p": 1.6, "720p": 3 }[str(p, "resolution", "480p")] ?? 1.6) * num(p, "duration", 6)),
+  kie_grok_i2v: (p) => pt(({ "480p": 1.6, "720p": 3 }[str(p, "resolution", "480p")] ?? 1.6) * num(p, "duration", 6)),
+  // HappyHorse：价格表 720p 28 / 1080p 48 点·秒。
+  kie_happyhorse_t2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 48 : 28) * num(p, "duration", 5)),
+  kie_happyhorse_i2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 48 : 28) * num(p, "duration", 5)),
+  // 动作控制：价格表 2.6→720p 11/1080p 18 · 3.0→720p 20/1080p 27 点·秒；时长随源视频，按 5s 估。
+  kie_kling26_motion: (p) => pt((str(p, "mode", "720p") === "1080p" ? 18 : 11) * 5, true),
+  kie_kling30_motion: (p) => pt((str(p, "mode", "720p") === "1080p" ? 27 : 20) * 5, true),
+  // 数字人：价格表 标准 8 / 专业 16 点·秒；时长随音频，按 10s 估。
+  kie_kling_avatar_std: () => pt(8 * 10, true),
+  kie_kling_avatar_pro: () => pt(16 * 10, true),
+  // Wan Animate：价格表 480p 6 / 580p 9.5 / 720p 12.5 点·秒；时长随源视频，按 5s 估。
+  kie_wan_animate_move:    (p) => pt(({ "480p": 6, "580p": 9.5, "720p": 12.5 }[str(p, "resolution", "480p")] ?? 6) * 5, true),
+  kie_wan_animate_replace: (p) => pt(({ "480p": 6, "580p": 9.5, "720p": 12.5 }[str(p, "resolution", "480p")] ?? 6) * 5, true),
+  // Runway Gen 4.5：价格表 720p 5s12/10s30 · 1080p（仅 5s）30 点·条。
+  kie_runway45:     (p) => pt(str(p, "quality", "720p") === "1080p" ? 30 : (num(p, "duration", 5) >= 10 ? 30 : 12)),
   kie_topaz_upscale: (p) => pt((str(p, "upscale_factor", "2") === "4" ? 14 : 8) * 10, true), // 按 10s 源视频估
   kie_runway_aleph: () => pt(110),
   mock: () => cr(0),

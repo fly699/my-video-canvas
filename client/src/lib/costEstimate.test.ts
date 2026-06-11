@@ -31,9 +31,39 @@ describe("estimateVideoCost", () => {
     expect(estimateVideoCost("poyo_veo", {})).toBeNull();
     expect(estimateVideoCost("unknown_model", {})).toBeNull();
   });
-  it("缺省参数取默认值（kie kling 3.0 默认 pro 5s，对齐文档 default）", () => {
-    expect(estimateVideoCost("kie_kling30", {})?.credits).toBe(27 * 5); // 文档默认 pro
-    expect(estimateVideoCost("kie_kling30", { mode: "4K", duration: 10 })?.credits).toBe(670);
+  // 穷尽式对账锁定：kie 视频价格必须取自 docs/kie-pricing.md（曾误抄 Poyo 同名模型的价，
+  // 全量审计后逐档校正）。任何回归到 Poyo 数值都会在此处失败。
+  it("kie 视频逐档价对齐 docs/kie-pricing.md（防回退 Poyo 误值）", () => {
+    const v = (m: string, p: Record<string, unknown>) => estimateVideoCost(m, p)?.credits;
+    expect(v("kie_kling21_std", { duration: 5 })).toBe(25);    // 标准 5/s（曾误 30）
+    expect(v("kie_kling21_pro", { duration: 5 })).toBe(50);    // 专业 10/s（曾误 55）
+    expect(v("kie_wan22_t2v", { resolution: "480p" })).toBe(40);  // 曾误 6
+    expect(v("kie_wan22_i2v", { resolution: "720p" })).toBe(80);  // 曾误 12
+    expect(v("kie_wan27_t2v", { resolution: "720p", duration: 5 })).toBe(80);    // 16/s（曾误 12）
+    expect(v("kie_wan27_i2v", { resolution: "1080p", duration: 5 })).toBe(120);  // 24/s（曾误 18）
+    expect(v("kie_hailuo02_std", { duration: 6 })).toBe(30);   // 5/s（曾误 7/s=42）
+    expect(v("kie_hailuo02_pro_t2v", {})).toBe(57);            // 曾误 65
+    expect(v("kie_hailuo02_pro_i2v", {})).toBe(57);
+    expect(v("kie_grok_t2v", { resolution: "720p", duration: 6 })).toBe(18);  // 3/s（曾误 30 固定）
+    expect(v("kie_grok_i2v", { resolution: "480p", duration: 6 })).toBeCloseTo(9.6); // 1.6/s
+    expect(v("kie_happyhorse_t2v", { resolution: "720p", duration: 5 })).toBe(140);  // 28/s（曾误 16/s）
+    expect(v("kie_happyhorse_i2v", { resolution: "1080p", duration: 5 })).toBe(240); // 48/s（曾误 32/s）
+    expect(v("kie_kling26_motion", { mode: "1080p" })).toBe(18 * 5);  // 18/s（曾误 12/s）
+    expect(v("kie_kling30_motion", { mode: "720p" })).toBe(20 * 5);   // 20/s（曾误 9/s）
+    expect(v("kie_kling_avatar_std", {})).toBe(8 * 10);   // 8/s（曾误 7/s）
+    expect(v("kie_kling_avatar_pro", {})).toBe(16 * 10);  // 16/s（曾误 14/s）
+    expect(v("kie_wan_animate_move", { resolution: "720p" })).toBe(12.5 * 5);    // 12.5/s（曾误 15 固定）
+    expect(v("kie_wan_animate_replace", { resolution: "480p" })).toBe(6 * 5);    // 6/s
+    expect(v("kie_runway45", { quality: "720p", duration: 5 })).toBe(12);   // 曾误 75
+    expect(v("kie_runway45", { quality: "720p", duration: 10 })).toBe(30);  // 曾误 150
+    expect(v("kie_runway45", { quality: "1080p", duration: 5 })).toBe(30);
+  });
+  it("kie kling 3.0 随 mode+sound 计价（价格表 std720p 14/20·pro1080p 18/27·4K 67 点·秒）", () => {
+    expect(estimateVideoCost("kie_kling30", {})?.credits).toBe(18 * 5);                          // 默认 pro 无音轨 18/s
+    expect(estimateVideoCost("kie_kling30", { sound: true })?.credits).toBe(27 * 5);             // pro 有音轨 27/s
+    expect(estimateVideoCost("kie_kling30", { mode: "std" })?.credits).toBe(14 * 5);             // std 无音轨 14/s
+    expect(estimateVideoCost("kie_kling30", { mode: "std", sound: true })?.credits).toBe(20 * 5);// std 有音轨 20/s
+    expect(estimateVideoCost("kie_kling30", { mode: "4K", duration: 10 })?.credits).toBe(670);   // 4K 67/s
   });
 });
 
