@@ -446,7 +446,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     || fullScriptMutation.isPending || summarizeMutation.isPending || styleTransferMutation.isPending;
 
   // extra：创作向导传入的节拍表/角色档案约束（Story Bible 前置注入）。
-  const handleFullGenerate = useCallback((extra?: { beatSheetText?: string; characterProfiles?: string }) => {
+  const handleFullGenerate = useCallback((extra?: { beatSheetText?: string; characterProfiles?: string; scriptOnly?: boolean }) => {
     if (anyPending) return;
     let synopsis = (payload.synopsis?.trim() || payload.logline?.trim() || payload.content?.trim()) ?? "";
     if (!synopsis) { toast.error("请先填写故事梗概或脚本内容"); return; }
@@ -471,6 +471,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
       templatePromptOverride: appliedTemplate?.systemPromptAddon,
       beatSheetText: extra?.beatSheetText,
       characterProfiles: extra?.characterProfiles,
+      scriptOnly: extra?.scriptOnly,
     });
   }, [anyPending, payload.synopsis, payload.content, payload.aiScriptTemplate, commitDuration, genre, style, mood, sceneCount, targetModel, aspectRatio, llmModel, promptLang, fullScriptMutation.mutate]);
 

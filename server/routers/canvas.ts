@@ -1468,6 +1468,9 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
         beatSheetText: z.string().max(4000).optional(),
         /** 已连接角色节点的档案文本（Story Bible 前置约束）：人物名/外貌/服装/性格等。 */
         characterProfiles: z.string().max(3000).optional(),
+        /** 仅生成剧本正文、跳过分镜拆解（创作向导「分两步」：先出剧本供审视/编辑，
+         *  再由「拆分镜」单独成镜）。省去第二次 LLM 调用，更快更省。 */
+        scriptOnly: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1536,6 +1539,14 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
         maxTokens: 8000,
       });
       const scriptText = extractTextContent(scriptResponse).trim();
+
+      // 「仅剧本」两步流：跳过分镜拆解（Call 2），让用户先审视/编辑剧本再单独拆分镜。
+      if (input.scriptOnly) {
+        if (!scriptText) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效剧本，请重试" });
+        }
+        return { scriptText, scenes: [] as GeneratedScene[] };
+      }
 
       // ── Call 2: scene breakdown derived from the generated script ──
       // promptText language follows the toggle; description stays Chinese.
@@ -1740,6 +1751,8 @@ ${input.genre ? `类型：${input.genre}。` : ""}${input.characterProfiles?.tri
       genre: z.string().max(40).optional(),
       mood: z.string().max(40).optional(),
       characterProfiles: z.string().max(3000).optional(),
+      /** 时长分配策略（创作向导可调）：均等 / 重场优先 / 钩子前置。影响每拍 duration 分配。 */
+      durationMode: z.enum(["even", "weighted", "hook_front"]).optional(),
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -1753,9 +1766,15 @@ ${input.genre ? `类型：${input.genre}。` : ""}${input.characterProfiles?.tri
           documentary: { name: "纪录片结构", guide: "6 拍：悬念开场（抛出问题）/ 背景铺陈 / 深入主体（核心事实与人物）/ 冲突或转折 / 升华（意义与影响）/ 收束呼应。" },
         };
         const st = STRUCTURES[input.structure];
+        const DURATION_GUIDE: Record<string, string> = {
+          even: "时长分配策略：各拍尽量均等分配 duration（每拍≈总时长/拍数）。",
+          weighted: "时长分配策略：重场戏（中点、低谷、高潮对决等情绪爆点）多分配 duration，过场拍点少分配。",
+          hook_front: "时长分配策略：前 1/3 拍点（开场钩子与建置）合计占总时长约一半，快速抓住观众；后续拍点紧凑推进。",
+        };
+        const durationGuide = DURATION_GUIDE[input.durationMode ?? "weighted"];
         const systemPrompt = `你是专业故事结构师。把给定的故事按「${st.name}」拆成节拍表（beat sheet）。
 结构指南：${st.guide}
-${input.genre ? `类型：${input.genre}。` : ""}${input.mood ? `基调：${input.mood}。` : ""}${input.characterProfiles?.trim() ? `\n## 角色档案（拍点涉及的人物须与档案一致，不得自创设定）\n${input.characterProfiles.trim()}\n` : ""}总时长约 ${input.totalDuration} 秒——给每拍分配 duration（秒），总和≈总时长，重场戏多分配。
+${input.genre ? `类型：${input.genre}。` : ""}${input.mood ? `基调：${input.mood}。` : ""}${input.characterProfiles?.trim() ? `\n## 角色档案（拍点涉及的人物须与档案一致，不得自创设定）\n${input.characterProfiles.trim()}\n` : ""}总时长约 ${input.totalDuration} 秒——给每拍分配 duration（秒），总和≈总时长。${durationGuide}
 每拍 summary 用 1-3 句中文具体写出「发生什么」（人物动作与情绪，不要抽象套话）。
 仅输出合法 JSON 数组，无 markdown 代码块：
 [{"index":1,"title":"拍点名","summary":"这一拍发生什么","duration":8}]`;
