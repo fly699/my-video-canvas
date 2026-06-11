@@ -643,7 +643,7 @@ export function parseKieJobStatus(d: Record<string, unknown>, provider = "", tas
   if (isSuccess) {
     const urls = extractKieVideoUrls(d);
     if (!urls.length) {
-      console.warn(`[kie] ${provider} task ${taskId} success but no URL parsed; data keys: ${Object.keys(d).join(",")}; response: ${JSON.stringify(d.response).slice(0, 300)}`);
+      console.warn(`[kie] ${provider} task ${taskId} success but no URL parsed; data keys: ${Object.keys(d).join(",")}; response: ${JSON.stringify(d.response ?? null).slice(0, 300)}`);
       return { status: "failed", errorMessage: "[CHARGED] kie 视频已生成完成但未返回 URL（积分已扣，请勿重试）" };
     }
     return { status: "finished", resultVideoUrls: urls };

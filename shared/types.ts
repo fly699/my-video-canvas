@@ -492,6 +492,10 @@ export type AudioCategory = "upload" | "music" | "dubbing" | "sfx";
 export type AudioSource = "upload" | "tts"; // legacy compat
 export interface AudioNodeData {
   audioCategory?: AudioCategory;
+  /** 生成状态（BaseNode 常驻进度条/失败红条读取，节点收缩后仍可见）。 */
+  status?: "processing" | "success" | "failed";
+  /** status="failed" 时的错误摘要（BaseNode 红条展示）。 */
+  errorMessage?: string;
   // Shared / upload
   name?: string;
   url?: string;

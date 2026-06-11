@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic, Zap } from "lucide-react";
 import type { StoryboardNodeData, ScriptNodeData, CharacterNodeData } from "../../../../shared/types";
-import { parseDialogueLines, extractRoles, shouldCast, planCastSegments, type CastMap, type CastVoice } from "../../lib/dialogueCasting";
+import { parseDialogueLines, stripDialogueRoles, extractRoles, shouldCast, planCastSegments, type CastMap, type CastVoice } from "../../lib/dialogueCasting";
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
 import { materializeTemplate } from "../../lib/agentApply";
 import { propagateRefImage } from "../../lib/refImagePropagation";
@@ -490,7 +490,8 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
           return !ap.url && ap.audioCategory !== "sfx" && ap.audioCategory !== "music";
         });
       const an = existing ?? store.addNode("audio", { x: own.position.x, y: own.position.y + 980 });
-      store.updateNodeData(an.id, { audioCategory: "dubbing", ttsText: text, ttsModel: dubModel, ttsVoice: effDubVoice });
+      // 工位上的配音文本存「净词」（剥角色名/舞台指示）——节点展示与手动重生成都不念名字。
+      store.updateNodeData(an.id, { audioCategory: "dubbing", ttsText: stripDialogueRoles(text), ttsModel: dubModel, ttsVoice: effDubVoice });
       if (!existing) store.onConnect({ source: r.id, target: an.id, sourceHandle: null, targetHandle: null });
 
       // 角色音色 casting：对白含已分配音色的角色 → 逐段 TTS（相邻同音色合并）后
@@ -534,12 +535,14 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         return "done";
       }
 
+      // 非 casting 路径同样剥掉「角色名（标注）：」前缀——角色名/舞台指示不该被念出来。
+      const speakText = stripDialogueRoles(text);
       const res = await utils.client.audioGen.generateDubbing.mutate({
-        model: dubModel as never, text, voice: effDubVoice, projectId,
-        estimatedCost: costEstimateLabel(estimateTtsCost(dubModel, text.length)) || undefined,
+        model: dubModel as never, text: speakText, voice: effDubVoice, projectId,
+        estimatedCost: costEstimateLabel(estimateTtsCost(dubModel, speakText.length)) || undefined,
         ...(dubModel.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
       });
-      useCanvasStore.getState().updateNodeData(an.id, { url: res.url, duration: res.duration, name: `配音 · 镜${r.payload.sceneNumber ?? "?"}` });
+      useCanvasStore.getState().updateNodeData(an.id, { url: res.url, duration: res.duration, ttsText: speakText, name: `配音 · 镜${r.payload.sceneNumber ?? "?"}` });
       return "done";
     } catch {
       return "error";
