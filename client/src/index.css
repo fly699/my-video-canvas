@@ -797,6 +797,8 @@
   .text-gradient-animated,
   .btn-shine::after,
   .lift-card { animation: none !important; transition: none !important; }
+  /* 入场动画禁用时必须同时强制可见，否则元素卡在初始 opacity:0 */
+  .animate-fade-up { animation: none !important; opacity: 1 !important; }
 }
 
 /* ── Keyframes ──────────────────────────────────────────────────────────────── */
