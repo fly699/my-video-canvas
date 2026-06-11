@@ -606,20 +606,65 @@ export async function checkKieVideoStatus(provider: string, externalTaskId: stri
     // counter handles them (same contract as the Poyo status check).
     throw new Error(`kie 视频状态查询失败 (${res.status})`);
   }
-  const body = (await res.json()) as {
-    code?: number;
-    data?: { successFlag?: number; errorMessage?: string; resultUrls?: unknown; response?: { result_urls?: unknown; resultUrls?: unknown } };
-  };
-  const d = body.data;
-  if (!d) return { status: "processing" };
-  // successFlag: 0 generating, 1 success, 2/3 failed (both endpoint families).
-  if (d.successFlag === 1) {
-    const urls = parseUrls(d.response?.result_urls ?? d.response?.resultUrls ?? d.resultUrls);
-    if (!urls.length) return { status: "failed", errorMessage: "[CHARGED] kie 视频已生成完成但未返回 URL（积分已扣，请勿重试）" };
+  const body = (await res.json()) as { code?: number; data?: Record<string, unknown> };
+  if (!body.data) return { status: "processing" };
+  return parseKieJobStatus(body.data, provider, externalTaskId);
+}
+
+/**
+ * 解析 kie jobs/recordInfo 的 data 对象 → 统一状态。纯函数，便于单测。
+ *
+ * kie 在不同模型上字段不统一（successFlag 数字 vs state 字符串，较新视频模型如
+ * seedance-2 / grok-imagine 实测会用 state="success" 而非 successFlag=1）。对「成功/
+ * 失败/URL」三类信号都做多形态兼容，避免新模型已完成却被误判进行中而永远卡住。
+ */
+export function parseKieJobStatus(d: Record<string, unknown>, provider = "", taskId = ""): KieVideoStatus {
+  const flag = d.successFlag;
+  const state = String(d.state ?? d.status ?? d.taskStatus ?? "").toLowerCase();
+  const isSuccess = flag === 1 || flag === "1" || ["success", "succeeded", "completed", "finished", "done"].includes(state);
+  const isFailed = flag === 2 || flag === 3 || flag === "2" || flag === "3" || ["fail", "failed", "error"].includes(state);
+
+  if (isSuccess) {
+    const urls = extractKieVideoUrls(d);
+    if (!urls.length) {
+      console.warn(`[kie] ${provider} task ${taskId} success but no URL parsed; data keys: ${Object.keys(d).join(",")}; response: ${JSON.stringify(d.response).slice(0, 300)}`);
+      return { status: "failed", errorMessage: "[CHARGED] kie 视频已生成完成但未返回 URL（积分已扣，请勿重试）" };
+    }
     return { status: "finished", resultVideoUrls: urls };
   }
-  if (d.successFlag === 2 || d.successFlag === 3) {
-    return { status: "failed", errorMessage: d.errorMessage ?? "生成失败" };
+  if (isFailed) {
+    return { status: "failed", errorMessage: (typeof d.errorMessage === "string" && d.errorMessage) || "生成失败" };
   }
   return { status: "processing" };
+}
+
+// 从 kie recordInfo 的 data 里尽力提取视频 URL，兼容多种字段命名/嵌套：
+//   response.result_urls / resultUrls / resultUrl / video_url / videoUrl / videos[].url /
+//   resultJson(JSON 字符串) / 顶层 resultUrls。
+function extractKieVideoUrls(d: Record<string, unknown>): string[] {
+  const resp = (d.response ?? {}) as Record<string, unknown>;
+  const candidates: unknown[] = [
+    resp.result_urls, resp.resultUrls, resp.resultUrl, resp.video_url, resp.videoUrl,
+    resp.url, resp.urls, d.resultUrls, d.result_urls,
+  ];
+  for (const c of candidates) {
+    const urls = parseUrls(c);
+    if (urls.length) return urls;
+  }
+  // videos: [{ url }]
+  const videos = (resp.videos ?? d.videos) as unknown;
+  if (Array.isArray(videos)) {
+    const urls = videos.map((v) => (v && typeof v === "object" ? (v as { url?: unknown }).url : v)).filter((u): u is string => typeof u === "string" && !!u);
+    if (urls.length) return urls;
+  }
+  // resultJson: 一个 JSON 字符串，里面可能是 { resultUrls: [...] } 或 { result_urls: [...] }
+  const rj = (resp.resultJson ?? d.resultJson) as unknown;
+  if (typeof rj === "string" && rj) {
+    try {
+      const o = JSON.parse(rj) as Record<string, unknown>;
+      const urls = parseUrls(o.resultUrls ?? o.result_urls ?? o.urls ?? o.videoUrl ?? o.video_url);
+      if (urls.length) return urls;
+    } catch { /* ignore */ }
+  }
+  return [];
 }
