@@ -60,6 +60,7 @@ import { synthesizeGradioTTS } from "../_core/gradioTTS";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame, concatAudioSegments } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
+import { FACTORY_DEFAULT_MODELS } from "../../shared/nodeDefaultModels";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
 import { resolveKieKey } from "../_core/kie";
@@ -1425,7 +1426,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: userContent },
         ],
-        model: input.model ?? "claude-sonnet-4-5-20250929",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         maxTokens: 4000,
       });
 
@@ -1529,7 +1530,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
           { role: "system" as const, content: fullScriptSystemPrompt },
           { role: "user" as const, content: `故事梗概：\n${input.synopsis}` },
         ],
-        model: input.model ?? "claude-sonnet-4-6",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         maxTokens: 8000,
       });
       const scriptText = extractTextContent(scriptResponse).trim();
@@ -1557,7 +1558,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
           { role: "system" as const, content: scenesSystemPrompt },
           { role: "user" as const, content: `Script:\n${sceneSource}` },
         ],
-        model: input.model ?? "claude-sonnet-4-6",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         maxTokens: 4000,
       });
 
@@ -1603,7 +1604,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
           ],
-          model: input.model ?? "claude-sonnet-4-5-20250929",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         });
         return { result: extractTextContent(response).trim() };
       });
@@ -1642,7 +1643,7 @@ ${sceneFieldsInstruction(promptLangName, avgDuration)}`;
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
           ],
-          model: input.model ?? "claude-sonnet-4-6",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
           maxTokens: 2000,
         });
         const text = extractTextContent(response);
@@ -1676,7 +1677,7 @@ score 为 0-100 整数，issues 数组最多 8 条，每条包含 type/line/sugg
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: input.scriptText },
         ],
-        model: input.model ?? "claude-sonnet-4-6",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         maxTokens: 2000,
       });
       const text = extractTextContent(response);
@@ -1710,7 +1711,7 @@ ${input.genre ? `类型：${input.genre}。` : ""}
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: input.idea },
           ],
-          model: input.model ?? "claude-sonnet-4-6",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
           maxTokens: 1000,
         });
         const text = extractTextContent(response);
@@ -1756,7 +1757,7 @@ ${input.genre ? `类型：${input.genre}。` : ""}${input.mood ? `基调：${inp
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: input.source },
           ],
-          model: input.model ?? "claude-sonnet-4-6",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
           maxTokens: 4000,
         });
         const text = extractTextContent(response);
@@ -1794,7 +1795,7 @@ ${input.genre ? `类型：${input.genre}。` : ""}${input.mood ? `基调：${inp
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: input.source },
           ],
-          model: input.model ?? "claude-sonnet-4-6",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
           maxTokens: 8000,
         });
         const text = extractTextContent(response);
@@ -1850,7 +1851,7 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: `${input.genre ? `【类型】${input.genre}\n\n` : ""}${input.scriptText}` },
           ],
-          model: input.model ?? "claude-sonnet-4-6",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
           maxTokens: 4000,
         });
         const text = extractTextContent(response);
@@ -1912,7 +1913,7 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
           ],
-          model: input.model ?? "claude-sonnet-4-6",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
           maxTokens: 8000,
         });
         const result = extractTextContent(response).trim();
@@ -2148,7 +2149,7 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: `梗概：${input.synopsis}\n\n请生成 ${input.variantCount} 个风格不同的开场版本。` },
         ],
-        model: input.model ?? "claude-sonnet-4-6",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         maxTokens: 4000,
       });
       const text = extractTextContent(response);
@@ -2177,7 +2178,7 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userContent },
           ],
-          model: input.model ?? "claude-sonnet-4-5-20250929",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         });
         return { result: extractTextContent(response).trim() };
       });
@@ -2205,7 +2206,7 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: input.scriptText },
         ],
-        model: input.model ?? "claude-sonnet-4-6",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         maxTokens: 8000,
       });
       return { result: extractTextContent(response).trim() };
@@ -2225,7 +2226,7 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: input.scriptText },
           ],
-          model: input.model ?? "claude-sonnet-4-5-20250929",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         });
         return { result: extractTextContent(response).trim() };
       });
@@ -2252,7 +2253,7 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
           { role: "system" as const, content: systemPrompt },
           { role: "user" as const, content: input.scriptText },
         ],
-        model: input.model ?? "claude-sonnet-4-6",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         maxTokens: 4000,
       });
       const text = extractTextContent(response);
@@ -2730,7 +2731,7 @@ export const clipRouter = router({
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: `片段列表（JSON）：\n${transcriptJson}` },
           ],
-          model: input.model ?? "claude-sonnet-4-5-20250929",
+          model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
           maxTokens: 2000,
         });
         const text = extractTextContent(response);
@@ -3570,7 +3571,7 @@ Output an optimized English prompt under 80 words. Output ONLY the prompt text.`
           { role: "system" as const, content: systemPrompts[input.mode] },
           { role: "user" as const, content: input.text },
         ],
-        model: input.model ?? "claude-sonnet-4-5-20250929",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
       });
       return { result: extractTextContent(response).trim() };
     }),
@@ -3598,7 +3599,7 @@ Preserve the original meaning, tone, proper nouns and numbers. Output ONLY the r
           { role: "system" as const, content: system },
           { role: "user" as const, content: input.text },
         ],
-        model: input.model ?? "claude-sonnet-4-5-20250929",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         maxTokens: 2400,
       });
       return { result: extractTextContent(response).trim() };
@@ -3634,7 +3635,7 @@ Output ONLY the prompt as vivid, comma-separated English descriptive phrases —
             ],
           },
         ],
-        model: input.model ?? "claude-sonnet-4-5-20250929",
+        model: input.model ?? FACTORY_DEFAULT_MODELS.llm,
         maxTokens: 600,
       });
       return { result: extractTextContent(response).trim() };

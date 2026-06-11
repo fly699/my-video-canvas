@@ -39,6 +39,8 @@ const C = {
 const SERVER_COLORS = ["#38bdf8", "#a78bfa", "#f472b6", "#fbbf24", "#34d399", "#fb7185", "#60a5fa", "#c084fc"];
 const OVERALL_COLOR = "#8b5cf6";
 const CHART_GRID = "#94a3b8";
+// 历史对比每条记录的配色（最多 4 条）。
+const COMPARE_COLORS = ["#8b5cf6", "#38bdf8", "#fbbf24", "#fb7185"];
 
 function fmtMs(ms: number | null): string {
   if (ms == null) return "—";
@@ -243,6 +245,10 @@ export function ComfyStressPanel() {
     onError: (e) => toast.error(`清空失败：${e.message}`),
   });
   const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null);
+  // 历史对比：勾选 2+ 条记录，把吞吐/延迟曲线叠加对比（多机调优）。
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const toggleCompare = (id: number) =>
+    setCompareIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.length >= 4 ? s : [...s, id]));
 
   const setM = (patch: Partial<typeof model>) => setModel((m) => ({ ...m, ...patch }));
 
@@ -809,8 +815,16 @@ export function ComfyStressPanel() {
       {/* ── 历史记录（任务结束自动落库 · 跨重启保留）──────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "28px 0 12px" }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>历史记录</h3>
-        <span style={{ fontSize: 12, color: C.sub }}>{historyQuery.data?.length ?? 0} 条 · 任务结束自动保存</span>
+        <span style={{ fontSize: 12, color: C.sub }}>{historyQuery.data?.length ?? 0} 条 · 任务结束自动保存 · 勾选 2+ 条可对比</span>
         <span style={{ flex: 1 }} />
+        {compareIds.length > 0 && (
+          <button
+            onClick={() => setCompareIds([])}
+            style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.sub, cursor: "pointer", fontSize: 12 }}
+          >
+            取消对比（{compareIds.length}）
+          </button>
+        )}
         {(historyQuery.data?.length ?? 0) > 0 && (
           <button
             onClick={() => { if (window.confirm("清空全部压测历史？此操作不可恢复。")) clearHistoryMut.mutate(); }}
@@ -821,6 +835,16 @@ export function ComfyStressPanel() {
           </button>
         )}
       </div>
+
+      {/* 对比叠加图：≥2 条勾选时显示 */}
+      {compareIds.length >= 2 && (
+        <CompareCharts
+          jobs={compareIds
+            .map((id) => (historyQuery.data ?? []).find((h) => h.id === id))
+            .filter((h): h is NonNullable<typeof h> => !!h && !!h.result)
+            .map((h) => ({ label: fmtTime(h.startedAt), job: h.result as JobView }))}
+        />
+      )}
       {historyQuery.error ? (
         // 历史查询失败时必须明示，不能伪装成「0 条」——最常见原因是生产库还没跑
         // 0054 迁移（comfy_stress_history 表不存在），任务结束的自动落库也会一并失败。
@@ -837,15 +861,27 @@ export function ComfyStressPanel() {
           {(historyQuery.data ?? []).map((h) => {
             const r = h.result as JobView | null;
             const expanded = expandedHistoryId === h.id;
+            const checked = compareIds.includes(h.id);
+            const cmpColor = checked ? COMPARE_COLORS[compareIds.indexOf(h.id) % COMPARE_COLORS.length] : null;
             const okRate = r && r.completed > 0 ? Math.round((r.succeeded / r.completed) * 100) : null;
             const statusColor = h.status === "completed" ? C.green : h.status === "cancelled" ? C.sub : C.red;
             return (
-              <div key={h.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+              <div key={h.id} style={{ background: C.card, border: `1px solid ${cmpColor ?? C.border}`, borderRadius: 10, overflow: "hidden", boxShadow: cmpColor ? `0 0 0 1px ${cmpColor}` : undefined }}>
                 {/* 摘要行（点击展开详情） */}
                 <div
                   onClick={() => setExpandedHistoryId(expanded ? null : h.id)}
                   style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer", flexWrap: "wrap" }}
                 >
+                  {/* 对比勾选（仅有曲线数据的记录可选） */}
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={!r || (r.timeSeries?.length ?? 0) < 2}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleCompare(h.id)}
+                    title={!r || (r.timeSeries?.length ?? 0) < 2 ? "无曲线数据，无法对比" : "加入对比"}
+                    style={{ flexShrink: 0, width: 14, height: 14, accentColor: cmpColor ?? C.blue, cursor: "pointer" }}
+                  />
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: statusColor, padding: "2px 8px", borderRadius: 5, flexShrink: 0 }}>
                     {h.status === "completed" ? "已完成" : h.status === "cancelled" ? "已取消" : "失败"}
                   </span>
@@ -1113,6 +1149,53 @@ function StressCharts({ job, multi }: { job: JobView; multi: boolean }) {
 // 时间轴刻度：短任务显秒，超过 2 分钟显「m分」。
 function fmtAxisSec(v: number): string {
   return v >= 120 ? `${Math.round(v / 60)}m` : `${v}s`;
+}
+
+// 历史对比：把多条记录的吞吐/延迟/进度曲线按「距开始秒数」对齐叠加。
+function CompareCharts({ jobs }: { jobs: { label: string; job: JobView }[] }) {
+  // 各曲线一个唯一 series key（标签可能重名 → 加序号）。
+  const series = jobs.map((j, i) => ({ key: `s${i}`, name: `${i + 1}. ${j.label}`, color: COMPARE_COLORS[i % COMPARE_COLORS.length] }));
+  // 按 t（秒）归并：收集所有时间点，每条曲线在该点取值（缺失为 null，connectNulls 连线）。
+  const build = (pick: (s: NonNullable<JobView["timeSeries"]>[number]) => number | null) => {
+    const byT = new Map<number, Record<string, number | null>>();
+    jobs.forEach((j, i) => {
+      for (const p of j.job.timeSeries ?? []) {
+        const t = Math.round(p.t / 1000);
+        const row = byT.get(t) ?? { t };
+        row[`s${i}`] = pick(p);
+        byT.set(t, row);
+      }
+    });
+    return Array.from(byT.values()).sort((a, b) => (a.t as number) - (b.t as number));
+  };
+  const tput = build((p) => p.throughputPerSec);
+  const lat = build((p) => p.avgMs);
+  const prog = build((p) => p.completed);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+        对比 {jobs.length} 条记录
+      </div>
+      {/* 图例：标签 + 关键汇总，方便对照 */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 10 }}>
+        {jobs.map((j, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: series[i].color, flexShrink: 0 }} />
+            <span style={{ color: C.text, fontWeight: 600 }}>{i + 1}.</span>
+            <span style={{ color: C.sub }}>
+              {j.label} · 并发 {j.job.concurrency} · {j.job.baseUrls?.length ?? 1} 台 · 吞吐 {j.job.throughputPerSec}/s · p95 {fmtMs(j.job.p95Ms)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16 }}>
+        <ChartBox title="吞吐对比（次/秒）" data={tput} series={series} yUnit="/s" overallKey={null} />
+        <ChartBox title="平均延迟对比（ms）" data={lat} series={series} yUnit="ms" overallKey={null} />
+        <ChartBox title="累计完成对比" data={prog} series={series} yUnit="" overallKey={null} />
+      </div>
+    </div>
+  );
 }
 
 let _gradSeq = 0;

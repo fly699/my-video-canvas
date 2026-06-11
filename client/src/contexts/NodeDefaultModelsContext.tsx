@@ -6,6 +6,14 @@ import {
   type ModelSlot,
 } from "../../../shared/nodeDefaultModels";
 
+// 模块级活动配置快照：让非 React 代码（zustand store 的 getDefaultPayload）也能读到
+// 当前项目的「节点默认模型」配置。Provider 挂载时写入、卸载时清空。
+let _activeConfig: NodeDefaultModelsConfig | null = null;
+/** 解析活动项目的节点默认模型（供节点新建工厂等非 React 处调用）。 */
+export function resolveActiveNodeModel(nodeType: NodeType, slot: ModelSlot): string {
+  return resolveNodeModel(_activeConfig, nodeType, slot);
+}
+
 /**
  * 项目级「节点默认模型」上下文。
  * - config：当前项目的配置（来自 projects.defaultModels，可为空）。
@@ -35,6 +43,8 @@ export function NodeDefaultModelsProvider({
   readOnly: boolean;
   children: React.ReactNode;
 }) {
+  // 同步模块级快照（渲染期赋值即可——总是反映最新已加载配置；非 React 工厂读它）。
+  _activeConfig = config;
   const value = useMemo<NodeDefaultModelsCtx>(
     () => ({
       config,
