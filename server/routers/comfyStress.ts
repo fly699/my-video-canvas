@@ -9,6 +9,7 @@ import { adminProcedure, router } from "../_core/trpc";
 import { ENV } from "../_core/env";
 import { startStressTest, getJob, listJobs, cancelJob, stopJob, toView } from "../_core/comfyStress";
 import { buildImageWorkflow } from "../_core/comfyui";
+import * as db from "../db";
 
 export const comfyStressRouter = router({
   // 启动一次压测，立即返回任务概要（含 id）。
@@ -109,11 +110,55 @@ export const comfyStressRouter = router({
           total: input.total,
           randomizeSeed: input.randomizeSeed,
           startedBy: { id: ctx.user.id, email: ctx.user.email ?? null },
+          meta: input.model ? { source: "model", ckpt: input.model.ckpt } : { source: "json" },
         });
       } catch (err) {
         throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) });
       }
     }),
+
+  // ── 历史记录（任务结束自动落库；跨重启保留）────────────────────────────────
+  history: router({
+    list: adminProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional())
+      .query(async ({ input }) => {
+        const rows = await db.listComfyStressHistory(input?.limit ?? 50);
+        return rows.map((r) => ({
+          id: r.id, jobId: r.jobId, status: r.status, startedByEmail: r.startedByEmail,
+          config: r.config, result: r.result,
+          startedAt: r.startedAt, finishedAt: r.finishedAt,
+        }));
+      }),
+    remove: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input }) => { await db.deleteComfyStressHistory(input.id); return { success: true }; }),
+    clear: adminProcedure
+      .mutation(async () => { await db.clearComfyStressHistory(); return { success: true }; }),
+  }),
+
+  // ── 参数模板（保存整套压测表单；管理员共享）──────────────────────────────────
+  templates: router({
+    list: adminProcedure.query(async () => {
+      const rows = await db.listComfyStressTemplates();
+      return rows.map((r) => ({ id: r.id, name: r.name, config: r.config, createdByEmail: r.createdByEmail, updatedAt: r.updatedAt }));
+    }),
+    save: adminProcedure
+      .input(z.object({
+        name: z.string().min(1).max(128),
+        // 整套表单 JSON（含 workflowJson，可较大但有限）。
+        config: z.unknown(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (JSON.stringify(input.config ?? null).length > 2_200_000) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "模板内容过大" });
+        }
+        await db.saveComfyStressTemplate(input.name, input.config ?? {}, ctx.user.email ?? null);
+        return { success: true };
+      }),
+    remove: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input }) => { await db.deleteComfyStressTemplate(input.id); return { success: true }; }),
+  }),
 
   // 查询单个任务的实时状态。
   status: adminProcedure

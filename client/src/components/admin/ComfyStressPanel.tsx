@@ -14,24 +14,30 @@ import type { inferRouterOutputs } from "@trpc/server";
 import { trpc } from "@/lib/trpc";
 import type { AppRouter } from "../../../../server/routers";
 import { toast } from "sonner";
+import { downloadTextFile } from "@/lib/download";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
+// 主题化配色：跟随全局主题变量（深浅主题均协调），语义色保留品牌 oklch。
 const C = {
-  card: "#1e293b",
-  border: "#334155",
-  text: "#e2e8f0",
-  sub: "#94a3b8",
-  blue: "#2563eb",
-  red: "#dc2626",
-  green: "#16a34a",
-  inputBg: "#0f172a",
+  card: "var(--c-surface)",
+  border: "var(--c-bd2)",
+  text: "var(--c-t1)",
+  sub: "var(--c-t3)",
+  blue: "oklch(0.62 0.18 255)",
+  red: "oklch(0.63 0.21 25)",
+  green: "oklch(0.65 0.18 150)",
+  amber: "oklch(0.74 0.15 80)",
+  violet: "oklch(0.68 0.20 285)",
+  inputBg: "var(--c-input)",
 };
 
-// 每服务器曲线/卡片配色。
+// 每服务器曲线/卡片配色。SVG stroke 属性不解析 CSS 变量，图表内部用具体色值
+//（中性灰对深浅主题均可读；整体线用品牌紫）。
 const SERVER_COLORS = ["#38bdf8", "#a78bfa", "#f472b6", "#fbbf24", "#34d399", "#fb7185", "#60a5fa", "#c084fc"];
-const OVERALL_COLOR = "#e2e8f0";
+const OVERALL_COLOR = "#8b5cf6";
+const CHART_GRID = "#94a3b8";
 
 function fmtMs(ms: number | null): string {
   if (ms == null) return "—";
@@ -39,8 +45,59 @@ function fmtMs(ms: number | null): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function fmtTime(t: number | string | Date | null): string {
+  if (t == null) return "—";
+  const d = new Date(t);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function fmtDuration(startMs: number, endMs: number | null): string {
+  if (!endMs) return "—";
+  const s = Math.max(0, Math.round((endMs - startMs) / 1000));
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m${s % 60}s`;
+}
+
 function shortUrl(u: string): string {
   try { return new URL(u).host; } catch { return u.replace(/^https?:\/\//, "").slice(0, 30); }
+}
+
+// ── 导出 ──────────────────────────────────────────────────────────────────────
+function exportJobJson(j: JobView, jobLabel: string) {
+  downloadTextFile(`comfy-stress-${jobLabel}.json`, JSON.stringify(j, null, 2), "application/json");
+}
+
+function exportJobCsv(j: JobView, jobLabel: string) {
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines: string[] = [];
+  lines.push("范围,服务器,完成,成功,失败,吞吐/s,avg_ms,p50_ms,p95_ms,max_ms,提交_ms,执行排队_ms,下载_ms,最近错误");
+  const row = (scope: string, url: string, s: { completed: number; succeeded: number; failed: number; throughputPerSec: number; avgMs: number | null; p50Ms: number | null; p95Ms: number | null; maxMs: number | null; avgSubmitMs: number | null; avgWaitMs: number | null; avgDownloadMs: number | null }, lastError?: string | null) =>
+    [scope, url, s.completed, s.succeeded, s.failed, s.throughputPerSec, s.avgMs ?? "", s.p50Ms ?? "", s.p95Ms ?? "", s.maxMs ?? "", s.avgSubmitMs ?? "", s.avgWaitMs ?? "", s.avgDownloadMs ?? "", lastError ?? ""].map(esc).join(",");
+  lines.push(row("总体", j.baseUrls.join(" | "), j));
+  for (const s of j.servers ?? []) lines.push(row("服务器", s.baseUrl, s, s.lastError));
+  if ((j.timeSeries?.length ?? 0) > 0) {
+    lines.push("");
+    lines.push("时间序列_t_s,完成,成功,失败,在途,吞吐/s,avg_ms");
+    for (const p of j.timeSeries) lines.push([Math.round(p.t / 1000), p.completed, p.succeeded, p.failed, p.inFlight, p.throughputPerSec, p.avgMs ?? ""].map(esc).join(","));
+  }
+  if ((j.errorSamples?.length ?? 0) > 0) {
+    lines.push("");
+    lines.push("错误样本");
+    for (const e of j.errorSamples) lines.push(esc(e));
+  }
+  downloadTextFile(`comfy-stress-${jobLabel}.csv`, "﻿" + lines.join("\n"), "text/csv");
+}
+
+// 模板内容 = 整套压测表单。
+interface StressTemplateConfig {
+  baseUrls: string[];
+  source: "json" | "model";
+  workflowJson: string;
+  model: Record<string, unknown>;
+  mode: "lean" | "full";
+  concurrency: number;
+  total: number;
+  randomizeSeed: boolean;
 }
 
 const PLACEHOLDER_HINT = `粘贴 ComfyUI 导出的「API 格式」工作流 JSON。
@@ -93,6 +150,52 @@ export function ComfyStressPanel() {
   const startMut = trpc.comfyStress.start.useMutation();
   const cancelMut = trpc.comfyStress.cancel.useMutation();
   const stopMut = trpc.comfyStress.stop.useMutation();
+
+  // ── 参数模板（DB 持久化，管理员共享）────────────────────────────────────────
+  const templatesQuery = trpc.comfyStress.templates.list.useQuery(undefined, { refetchOnWindowFocus: false });
+  const saveTemplateMut = trpc.comfyStress.templates.save.useMutation({
+    onSuccess: () => { utils.comfyStress.templates.list.invalidate(); toast.success("模板已保存"); },
+    onError: (e) => toast.error(`保存模板失败：${e.message}`),
+  });
+  const deleteTemplateMut = trpc.comfyStress.templates.remove.useMutation({
+    onSuccess: () => { utils.comfyStress.templates.list.invalidate(); toast.success("模板已删除"); },
+    onError: (e) => toast.error(`删除失败：${e.message}`),
+  });
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | "">("");
+
+  function currentConfig(): StressTemplateConfig {
+    return { baseUrls, source, workflowJson, model: model as unknown as Record<string, unknown>, mode, concurrency, total, randomizeSeed };
+  }
+  function saveAsTemplate() {
+    const name = window.prompt("模板名称：", source === "model" ? (model.ckpt || "压测模板") : "压测模板");
+    if (!name?.trim()) return;
+    saveTemplateMut.mutate({ name: name.trim(), config: currentConfig() });
+  }
+  function applyTemplate(cfg: unknown) {
+    const c = cfg as Partial<StressTemplateConfig> | null;
+    if (!c || typeof c !== "object") { toast.error("模板内容无效"); return; }
+    if (Array.isArray(c.baseUrls) && c.baseUrls.every((x) => typeof x === "string")) setBaseUrls(c.baseUrls.length > 0 ? c.baseUrls : [""]);
+    if (c.source === "json" || c.source === "model") setSource(c.source);
+    if (typeof c.workflowJson === "string") setWorkflowJson(c.workflowJson);
+    if (c.model && typeof c.model === "object") setModel((m) => ({ ...m, ...(c.model as Partial<typeof model>) }));
+    if (c.mode === "lean" || c.mode === "full") setMode(c.mode);
+    if (typeof c.concurrency === "number") setConcurrency(c.concurrency);
+    if (typeof c.total === "number") setTotal(c.total);
+    if (typeof c.randomizeSeed === "boolean") setRandomizeSeed(c.randomizeSeed);
+    toast.success("模板已应用到表单");
+  }
+
+  // ── 历史记录（任务结束自动落库）────────────────────────────────────────────
+  const historyQuery = trpc.comfyStress.history.list.useQuery({ limit: 50 }, { refetchOnWindowFocus: false, refetchInterval: 15_000 });
+  const deleteHistoryMut = trpc.comfyStress.history.remove.useMutation({
+    onSuccess: () => utils.comfyStress.history.list.invalidate(),
+    onError: (e) => toast.error(`删除失败：${e.message}`),
+  });
+  const clearHistoryMut = trpc.comfyStress.history.clear.useMutation({
+    onSuccess: () => { utils.comfyStress.history.list.invalidate(); toast.success("历史已清空"); },
+    onError: (e) => toast.error(`清空失败：${e.message}`),
+  });
+  const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null);
 
   const setM = (patch: Partial<typeof model>) => setModel((m) => ({ ...m, ...patch }));
 
@@ -205,6 +308,52 @@ export function ComfyStressPanel() {
 
       {/* 配置表单 */}
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+        {/* ── 参数模板（保存整套表单 · 管理员共享 · DB 持久化）─────────────── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 18, paddingBottom: 14, borderBottom: `1px dashed ${C.border}` }}>
+          <span style={{ fontSize: 13, color: C.sub, fontWeight: 600 }}>参数模板</span>
+          <select
+            style={{ ...inputStyle, width: 260, padding: "7px 10px" }}
+            value={selectedTemplateId}
+            onChange={(e) => setSelectedTemplateId(e.target.value === "" ? "" : Number(e.target.value))}
+          >
+            <option value="">— 选择模板（{templatesQuery.data?.length ?? 0} 个）—</option>
+            {(templatesQuery.data ?? []).map((t) => (
+              <option key={t.id} value={t.id}>{t.name}（{t.createdByEmail ?? "?"} · {fmtTime(t.updatedAt)}）</option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              const t = (templatesQuery.data ?? []).find((x) => x.id === selectedTemplateId);
+              if (!t) { toast.error("请先选择一个模板"); return; }
+              applyTemplate(t.config);
+            }}
+            disabled={selectedTemplateId === ""}
+            style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.blue}`, background: "transparent", color: C.blue, cursor: selectedTemplateId === "" ? "not-allowed" : "pointer", fontSize: 13, opacity: selectedTemplateId === "" ? 0.5 : 1 }}
+          >
+            应用
+          </button>
+          <button
+            onClick={() => {
+              const t = (templatesQuery.data ?? []).find((x) => x.id === selectedTemplateId);
+              if (!t) { toast.error("请先选择一个模板"); return; }
+              if (window.confirm(`删除模板「${t.name}」？`)) { deleteTemplateMut.mutate({ id: t.id }); setSelectedTemplateId(""); }
+            }}
+            disabled={selectedTemplateId === "" || deleteTemplateMut.isPending}
+            style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.red, cursor: selectedTemplateId === "" ? "not-allowed" : "pointer", fontSize: 13, opacity: selectedTemplateId === "" ? 0.5 : 1 }}
+          >
+            删除
+          </button>
+          <span style={{ flex: 1 }} />
+          <button
+            onClick={saveAsTemplate}
+            disabled={saveTemplateMut.isPending}
+            title="把当前整套表单（地址/来源/工作流/模型参数/模式/并发/次数）存为模板"
+            style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.green}`, background: "transparent", color: C.green, cursor: "pointer", fontSize: 13 }}
+          >
+            {saveTemplateMut.isPending ? "保存中…" : "💾 当前参数存为模板"}
+          </button>
+        </div>
+
         <div style={{ marginBottom: 16 }}>
           <label style={labelStyle}>ComfyUI 地址（可添加多个；全部留空则使用服务器配置的 COMFYUI_BASE_URL）</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -567,113 +716,225 @@ export function ComfyStressPanel() {
       <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 12px" }}>任务（近 30 分钟）</h3>
       {jobs.length === 0 && <p style={{ fontSize: 13, color: C.sub }}>暂无任务。</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {jobs.map((j) => {
-          const pct = j.total > 0 ? Math.round((j.completed / j.total) * 100) : 0;
-          const statusColor = j.status === "running" ? C.blue
-            : j.status === "completed" ? C.green
-            : j.status === "cancelled" ? C.sub : C.red;
-          const statusLabel = j.status === "running" ? "运行中"
-            : j.status === "completed" ? "已完成"
-            : j.status === "cancelled" ? "已取消" : "失败";
-          const multi = (j.baseUrls?.length ?? 0) > 1;
-          return (
-            <div key={j.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", background: statusColor, padding: "2px 8px", borderRadius: 6 }}>
-                    {statusLabel}
+        {jobs.map((j) => (
+          <JobCard key={j.id} j={j} live onCancel={onCancel} onStop={onStop} />
+        ))}
+      </div>
+
+      {/* ── 历史记录（任务结束自动落库 · 跨重启保留）──────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "28px 0 12px" }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>历史记录</h3>
+        <span style={{ fontSize: 12, color: C.sub }}>{historyQuery.data?.length ?? 0} 条 · 任务结束自动保存</span>
+        <span style={{ flex: 1 }} />
+        {(historyQuery.data?.length ?? 0) > 0 && (
+          <button
+            onClick={() => { if (window.confirm("清空全部压测历史？此操作不可恢复。")) clearHistoryMut.mutate(); }}
+            disabled={clearHistoryMut.isPending}
+            style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.red, cursor: "pointer", fontSize: 12 }}
+          >
+            清空历史
+          </button>
+        )}
+      </div>
+      {(historyQuery.data?.length ?? 0) === 0 ? (
+        <p style={{ fontSize: 13, color: C.sub }}>暂无历史记录——任务结束后会自动保存到这里。</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {(historyQuery.data ?? []).map((h) => {
+            const r = h.result as JobView | null;
+            const expanded = expandedHistoryId === h.id;
+            const okRate = r && r.completed > 0 ? Math.round((r.succeeded / r.completed) * 100) : null;
+            const statusColor = h.status === "completed" ? C.green : h.status === "cancelled" ? C.sub : C.red;
+            return (
+              <div key={h.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                {/* 摘要行（点击展开详情） */}
+                <div
+                  onClick={() => setExpandedHistoryId(expanded ? null : h.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer", flexWrap: "wrap" }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: statusColor, padding: "2px 8px", borderRadius: 5, flexShrink: 0 }}>
+                    {h.status === "completed" ? "已完成" : h.status === "cancelled" ? "已取消" : "失败"}
                   </span>
-                  <span style={{ fontSize: 13, color: C.sub }}>
-                    {j.mode === "lean" ? "精简" : "完整"} · 并发 {j.concurrency} · 共 {j.total} · {j.baseUrls?.length ?? 1} 台
-                  </span>
+                  <span style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>{fmtTime(h.startedAt)}</span>
+                  {r && (
+                    <>
+                      <span style={{ fontSize: 12, color: C.sub }}>
+                        {r.mode === "lean" ? "精简" : "完整"} · 并发 {r.concurrency} · {r.completed}/{r.total} 次 · {r.baseUrls?.length ?? 1} 台
+                        {r.meta?.source === "model" ? ` · 模型 ${r.meta.ckpt ?? ""}` : " · 工作流 JSON"}
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      {okRate != null && (
+                        <span style={{ fontSize: 12, fontWeight: 700, color: okRate >= 99 ? C.green : okRate >= 90 ? C.amber : C.red }}>成功率 {okRate}%</span>
+                      )}
+                      <span style={{ fontSize: 12, color: C.sub }}>吞吐 {r.throughputPerSec}/s · avg {fmtMs(r.avgMs)} · p95 {fmtMs(r.p95Ms)}</span>
+                    </>
+                  )}
+                  <span style={{ fontSize: 11, color: C.sub }}>{h.startedByEmail ?? ""}</span>
+                  <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                    {r && (
+                      <>
+                        <button onClick={() => exportJobJson(r, `${h.jobId}`)} title="导出完整 JSON（含时间序列）" style={histBtn(C.blue)}>JSON</button>
+                        <button onClick={() => exportJobCsv(r, `${h.jobId}`)} title="导出 CSV（汇总+每服务器+时间序列）" style={histBtn(C.green)}>CSV</button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => { if (window.confirm("删除这条历史记录？")) deleteHistoryMut.mutate({ id: h.id }); }}
+                      title="删除此记录"
+                      style={histBtn(C.red)}
+                    >
+                      删除
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 11, color: C.sub, width: 24, textAlign: "center" }}>{expanded ? "▲" : "▼"}</span>
                 </div>
-                {j.status === "running" && (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      onClick={() => onCancel(j.id)}
-                      title="不再派发新请求，已在途的请求会先跑完"
-                      style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.sub, cursor: "pointer", fontSize: 13 }}
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={() => onStop(j.id)}
-                      title="立即中断所有在途的 ComfyUI 请求，不等其完成"
-                      style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: C.red, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-                    >
-                      立即停止
-                    </button>
+                {/* 展开：完整任务卡（同实时任务渲染，含图表/每服务器/错误样本） */}
+                {expanded && r && (
+                  <div style={{ borderTop: `1px solid ${C.border}` }}>
+                    <JobCard j={r} live={false} />
                   </div>
                 )}
               </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
-              {/* 进度条 */}
-              <div style={{ height: 6, background: C.inputBg, borderRadius: 3, overflow: "hidden", marginBottom: 12 }}>
-                <div style={{ height: "100%", width: `${pct}%`, background: statusColor, transition: "width 0.3s" }} />
-              </div>
+function histBtn(color: string): React.CSSProperties {
+  return { padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: "transparent", color, cursor: "pointer", fontSize: 11, fontWeight: 600 };
+}
 
-              {/* 整体指标 */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 12, fontSize: 13 }}>
-                <Stat label="完成 / 总数" value={`${j.completed} / ${j.total}`} />
-                <Stat label="成功 / 失败" value={`${j.succeeded} / ${j.failed}`} valueColor={j.failed > 0 ? C.red : undefined} />
-                <Stat label="在途" value={String(j.inFlight)} />
-                <Stat label="吞吐" value={`${j.throughputPerSec}/s`} />
-                <Stat label="avg" value={fmtMs(j.avgMs)} />
-                <Stat label="p50" value={fmtMs(j.p50Ms)} />
-                <Stat label="p95" value={fmtMs(j.p95Ms)} />
-                <Stat label="max" value={fmtMs(j.maxMs)} />
-                <Stat label="提交延迟" value={fmtMs(j.avgSubmitMs)} />
-                <Stat label="执行+排队" value={fmtMs(j.avgWaitMs)} />
-                {j.mode === "full" && <Stat label="下载/回传" value={fmtMs(j.avgDownloadMs)} />}
-              </div>
-
-              {/* 实时曲线 */}
-              <StressCharts job={j} multi={multi} />
-
-              {/* 每服务器状态 */}
-              {(j.servers?.length ?? 0) > 0 && (
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 13, color: C.sub, marginBottom: 8 }}>各服务器状态</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
-                    {j.servers.map((s, i) => (
-                      <div key={s.baseUrl} style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                          <span style={{ width: 10, height: 10, borderRadius: 3, background: SERVER_COLORS[i % SERVER_COLORS.length], flexShrink: 0 }} />
-                          <span style={{ fontSize: 12, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.baseUrl}>
-                            {shortUrl(s.baseUrl)}
-                          </span>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, fontSize: 12 }}>
-                          <Stat label="成功 / 失败" value={`${s.succeeded} / ${s.failed}`} valueColor={s.failed > 0 ? C.red : undefined} small />
-                          <Stat label="在途" value={String(s.inFlight)} small />
-                          <Stat label="吞吐" value={`${s.throughputPerSec}/s`} small />
-                          <Stat label="avg" value={fmtMs(s.avgMs)} small />
-                          <Stat label="p95" value={fmtMs(s.p95Ms)} small />
-                          <Stat label="max" value={fmtMs(s.maxMs)} small />
-                        </div>
-                        {s.lastError && (
-                          <div style={{ marginTop: 8, fontSize: 11, color: C.red, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.lastError}>
-                            最近错误：{s.lastError}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {j.errorSamples.length > 0 && (
-                <details style={{ marginTop: 12 }}>
-                  <summary style={{ fontSize: 13, color: C.red, cursor: "pointer" }}>错误样本（{j.errorSamples.length}）</summary>
-                  <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: C.sub }}>
-                    {j.errorSamples.map((e, i) => <li key={i} style={{ marginBottom: 4 }}>{e}</li>)}
-                  </ul>
-                </details>
-              )}
-            </div>
-          );
-        })}
+// ── 任务卡（实时任务与历史详情共用）─────────────────────────────────────────
+function JobCard({ j, live, onCancel, onStop }: {
+  j: JobView; live: boolean;
+  onCancel?: (id: string) => void; onStop?: (id: string) => void;
+}) {
+  const pct = j.total > 0 ? Math.round((j.completed / j.total) * 100) : 0;
+  const statusColor = j.status === "running" ? C.blue
+    : j.status === "completed" ? C.green
+    : j.status === "cancelled" ? C.sub : C.red;
+  const statusLabel = j.status === "running" ? "运行中"
+    : j.status === "completed" ? "已完成"
+    : j.status === "cancelled" ? "已取消" : "失败";
+  const multi = (j.baseUrls?.length ?? 0) > 1;
+  const okRate = j.completed > 0 ? Math.round((j.succeeded / j.completed) * 100) : null;
+  return (
+    <div style={{ background: C.card, border: live ? `1px solid ${C.border}` : "none", borderRadius: live ? 12 : 0, padding: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", background: statusColor, padding: "2px 8px", borderRadius: 6 }}>
+            {statusLabel}
+          </span>
+          <span style={{ fontSize: 13, color: C.sub }}>
+            {j.mode === "lean" ? "精简" : "完整"} · 并发 {j.concurrency} · 共 {j.total} · {j.baseUrls?.length ?? 1} 台
+            {j.meta?.source === "model" ? ` · 模型 ${j.meta.ckpt ?? ""}` : j.meta?.source === "json" ? " · 工作流 JSON" : ""}
+          </span>
+          <span style={{ fontSize: 12, color: C.sub }}>
+            {fmtTime(j.startedAt)} 开始 · 用时 {fmtDuration(j.startedAt, j.finishedAt ?? (j.status === "running" ? Date.now() : null))}
+            {j.startedByEmail ? ` · ${j.startedByEmail}` : ""}
+          </span>
+          {okRate != null && j.status !== "running" && (
+            <span style={{ fontSize: 12, fontWeight: 700, color: okRate >= 99 ? C.green : okRate >= 90 ? C.amber : C.red }}>
+              成功率 {okRate}%
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => exportJobJson(j, j.id)} title="导出完整 JSON（含时间序列）" style={histBtn(C.blue)}>导出 JSON</button>
+          <button onClick={() => exportJobCsv(j, j.id)} title="导出 CSV（汇总+每服务器+时间序列）" style={histBtn(C.green)}>导出 CSV</button>
+          {live && j.status === "running" && onCancel && onStop && (
+            <>
+              <button
+                onClick={() => onCancel(j.id)}
+                title="不再派发新请求，已在途的请求会先跑完"
+                style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.sub, cursor: "pointer", fontSize: 13 }}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => onStop(j.id)}
+                title="立即中断所有在途的 ComfyUI 请求，不等其完成"
+                style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: C.red, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+              >
+                立即停止
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* 进度条 */}
+      <div style={{ height: 6, background: C.inputBg, borderRadius: 3, overflow: "hidden", marginBottom: 12 }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: statusColor, transition: "width 0.3s" }} />
+      </div>
+
+      {/* 整体指标 */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 12, fontSize: 13 }}>
+        <Stat label="完成 / 总数" value={`${j.completed} / ${j.total}`} />
+        <Stat label="成功 / 失败" value={`${j.succeeded} / ${j.failed}`} valueColor={j.failed > 0 ? C.red : undefined} />
+        <Stat label="在途" value={String(j.inFlight)} />
+        <Stat label="吞吐" value={`${j.throughputPerSec}/s`} />
+        <Stat label="avg" value={fmtMs(j.avgMs)} />
+        <Stat label="p50" value={fmtMs(j.p50Ms)} />
+        <Stat label="p95" value={fmtMs(j.p95Ms)} />
+        <Stat label="max" value={fmtMs(j.maxMs)} />
+        <Stat label="提交延迟" value={fmtMs(j.avgSubmitMs)} />
+        <Stat label="执行+排队" value={fmtMs(j.avgWaitMs)} />
+        {j.mode === "full" && <Stat label="下载/回传" value={fmtMs(j.avgDownloadMs)} />}
+      </div>
+
+      {/* 实时曲线 */}
+      <StressCharts job={j} multi={multi} />
+
+      {/* 每服务器状态 */}
+      {(j.servers?.length ?? 0) > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 13, color: C.sub, marginBottom: 8 }}>各服务器状态</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
+            {j.servers.map((s, i) => (
+              <div key={s.baseUrl} style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: SERVER_COLORS[i % SERVER_COLORS.length], flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.baseUrl}>
+                    {shortUrl(s.baseUrl)}
+                  </span>
+                  {s.completed > 0 && (
+                    <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 700, color: s.failed === 0 ? C.green : C.red }}>
+                      {Math.round((s.succeeded / s.completed) * 100)}%
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, fontSize: 12 }}>
+                  <Stat label="成功 / 失败" value={`${s.succeeded} / ${s.failed}`} valueColor={s.failed > 0 ? C.red : undefined} small />
+                  <Stat label="在途" value={String(s.inFlight)} small />
+                  <Stat label="吞吐" value={`${s.throughputPerSec}/s`} small />
+                  <Stat label="avg" value={fmtMs(s.avgMs)} small />
+                  <Stat label="p50" value={fmtMs(s.p50Ms)} small />
+                  <Stat label="p95" value={fmtMs(s.p95Ms)} small />
+                  <Stat label="max" value={fmtMs(s.maxMs)} small />
+                  <Stat label="提交" value={fmtMs(s.avgSubmitMs)} small />
+                </div>
+                {s.lastError && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: C.red, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.lastError}>
+                    最近错误：{s.lastError}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {j.errorSamples.length > 0 && (
+        <details style={{ marginTop: 12 }}>
+          <summary style={{ fontSize: 13, color: C.red, cursor: "pointer" }}>错误样本（{j.errorSamples.length}）</summary>
+          <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: C.sub }}>
+            {j.errorSamples.map((e, i) => <li key={i} style={{ marginBottom: 4 }}>{e}</li>)}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }
@@ -701,6 +962,11 @@ function StressCharts({ job, multi }: { job: JobView; multi: boolean }) {
     s.perServer.forEach((ps) => { o[ps.baseUrl] = ps.avgMs; });
     return o;
   });
+  // 第三图：累计完成/成功/失败 + 瞬时在途——直观看到收敛速度与排队堆积。
+  const prog = ts.map((s) => ({
+    t: Math.round(s.t / 1000),
+    完成: s.completed, 成功: s.succeeded, 失败: s.failed, 在途: s.inFlight,
+  }));
 
   const serverSeries = multi
     ? job.baseUrls.map((url, i) => ({ key: url, name: shortUrl(url), color: SERVER_COLORS[i % SERVER_COLORS.length] }))
@@ -710,33 +976,46 @@ function StressCharts({ job, multi }: { job: JobView; multi: boolean }) {
     <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
       <ChartBox title="吞吐（次/秒）" data={tput} series={serverSeries} yUnit="/s" />
       <ChartBox title="平均延迟（ms）" data={lat} series={serverSeries} yUnit="ms" />
+      <ChartBox
+        title="进度与在途"
+        data={prog}
+        series={[
+          { key: "成功", name: "成功", color: "#34d399" },
+          { key: "失败", name: "失败", color: "#fb7185" },
+          { key: "在途", name: "在途", color: "#fbbf24" },
+        ]}
+        yUnit=""
+        overallKey="完成"
+      />
     </div>
   );
 }
 
 function ChartBox({
-  title, data, series, yUnit,
+  title, data, series, yUnit, overallKey = "总体",
 }: {
   title: string;
   data: Record<string, number | null>[];
   series: { key: string; name: string; color: string }[];
   yUnit: string;
+  overallKey?: string;
 }) {
   return (
     <div style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 12px 4px" }}>
       <div style={{ fontSize: 12, color: C.sub, marginBottom: 8 }}>{title}</div>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={data} margin={{ top: 4, right: 12, bottom: 4, left: -8 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-          <XAxis dataKey="t" tick={{ fontSize: 10, fill: C.sub }} stroke={C.border} unit="s" />
-          <YAxis tick={{ fontSize: 10, fill: C.sub }} stroke={C.border} width={44} unit={yUnit} />
+          {/* SVG stroke 属性不解析 CSS 变量——图表内部用具体色值 */}
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} strokeOpacity={0.35} />
+          <XAxis dataKey="t" tick={{ fontSize: 10, fill: CHART_GRID }} stroke={CHART_GRID} unit="s" />
+          <YAxis tick={{ fontSize: 10, fill: CHART_GRID }} stroke={CHART_GRID} width={44} unit={yUnit} />
           <Tooltip
             contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
             labelStyle={{ color: C.sub }}
             labelFormatter={(v) => `${v}s`}
           />
           {(series.length > 0) && <Legend wrapperStyle={{ fontSize: 11 }} />}
-          <Line type="monotone" dataKey="总体" stroke={OVERALL_COLOR} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+          <Line type="monotone" dataKey={overallKey} stroke={OVERALL_COLOR} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
           {series.map((s) => (
             <Line key={s.key} type="monotone" dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
           ))}

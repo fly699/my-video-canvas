@@ -379,6 +379,13 @@
       "when": 1781500000000,
       "tag": "0053_video_provider_varchar",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "5",
+      "when": 1781600000000,
+      "tag": "0054_comfy_stress_history_templates",
+      "breakpoints": true
     }
   ]
 }

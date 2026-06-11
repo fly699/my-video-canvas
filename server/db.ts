@@ -82,6 +82,10 @@ import {
   comfyTemplateAnalysis,
   type ComfyTemplateAnalysisRow,
   type InsertComfyTemplateAnalysis,
+  comfyStressHistory,
+  type ComfyStressHistoryRow,
+  comfyStressTemplates,
+  type ComfyStressTemplateRow,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -2522,4 +2526,55 @@ export async function deleteComfyTemplateAnalysis(templateId: number): Promise<v
   const db = await getDb();
   if (!db) { if (DEV_MODE) dev.devDeleteComfyTemplateAnalysis(templateId); return; }
   await db.delete(comfyTemplateAnalysis).where(eq(comfyTemplateAnalysis.templateId, templateId));
+}
+
+// ── ComfyUI 压测历史 / 模板 ───────────────────────────────────────────────────
+// 历史：任务结束（completed/cancelled/failed）由 comfyStress core 自动落库。
+// dev bypass（无 DB）时静默跳过——压测页本就是管理员专属，dev 下不可达。
+
+export async function insertComfyStressHistory(row: {
+  jobId: string; status: string; startedByEmail: string | null;
+  config: unknown; result: unknown; startedAt: Date; finishedAt: Date | null;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(comfyStressHistory).values(row).onDuplicateKeyUpdate({
+    set: { status: row.status, result: row.result, finishedAt: row.finishedAt },
+  });
+}
+
+export async function listComfyStressHistory(limit = 50): Promise<ComfyStressHistoryRow[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(comfyStressHistory).orderBy(desc(comfyStressHistory.startedAt)).limit(limit);
+}
+
+export async function deleteComfyStressHistory(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(comfyStressHistory).where(eq(comfyStressHistory.id, id));
+}
+
+export async function clearComfyStressHistory(): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(comfyStressHistory);
+}
+
+export async function listComfyStressTemplates(): Promise<ComfyStressTemplateRow[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(comfyStressTemplates).orderBy(desc(comfyStressTemplates.updatedAt));
+}
+
+export async function saveComfyStressTemplate(name: string, config: unknown, createdByEmail: string | null): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(comfyStressTemplates).values({ name, config, createdByEmail });
+}
+
+export async function deleteComfyStressTemplate(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(comfyStressTemplates).where(eq(comfyStressTemplates.id, id));
 }
