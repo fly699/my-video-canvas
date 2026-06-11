@@ -448,18 +448,18 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
   // kie 从公网拉取参考媒体：相对路径（/manus-storage/...）它无法解析 → 400。
   // 与 Poyo 提交同口径：先转绝对预签名 URL（Poyo 一直有这步，kie 此前缺失——
   // 正是 Grok 图生带参考图必 400、文生却成功的根因）。
-  const rawRefs = (opts.referenceImageUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u);
-  const refs = await Promise.all(rawRefs.map((u) => resolveToAbsoluteUrl(u)));
+  // 与 poyoVideo.ts 的转换逻辑完全同构（trim/filter → Set 去重保序 → resolveToAbsoluteUrl）：
+  // 该口径已在 Poyo 链路实测通过，勿引入差异。
+  const cleanList = (list?: string[]) => Array.from(new Set((list ?? []).map((u) => u?.trim()).filter((u): u is string => Boolean(u))));
+  const refs = await Promise.all(cleanList(opts.referenceImageUrls).map((u) => resolveToAbsoluteUrl(u)));
   if (spec.ref?.required && refs.length === 0) {
     throw new Error(`${spec.label} 需要参考图（图生视频），请连接或上传参考图`);
   }
   // 源视频/驱动音频同样公网化（motion-control / Wan Animate / Kling Avatar / Aleph / 多模态）。
-  const resolveList = async (list?: string[]) =>
-    Promise.all((list ?? []).map((u) => u?.trim()).filter((u): u is string => !!u).map((u) => resolveToAbsoluteUrl(u)));
   opts = {
     ...opts,
-    referenceVideoUrls: await resolveList(opts.referenceVideoUrls),
-    referenceAudioUrls: await resolveList(opts.referenceAudioUrls),
+    referenceVideoUrls: await Promise.all(cleanList(opts.referenceVideoUrls).map((u) => resolveToAbsoluteUrl(u))),
+    referenceAudioUrls: await Promise.all(cleanList(opts.referenceAudioUrls).map((u) => resolveToAbsoluteUrl(u))),
   };
 
   // Build the param bag from the allow-list (defaults fill upstream-required keys).

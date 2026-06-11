@@ -128,8 +128,11 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
     return aspect && a.includes(aspect) ? aspect : a[0];
   };
   // kie 从公网拉取参考图：相对路径（/manus-storage/...）它无法解析 → 4xx。
-  // 与视频提交同口径，先转绝对预签名 URL（图生图/编辑模型必需）。
-  const rawRefs = (options.originalImages ?? []).map((o) => o.url).filter((u): u is string => !!u);
+  // 与 poyoVideo.ts 完全同构（trim/filter → Set 去重保序 → resolveToAbsoluteUrl），
+  // 该口径已在 Poyo 链路实测通过，勿引入差异。
+  const rawRefs = Array.from(new Set(
+    (options.originalImages ?? []).map((o) => o.url?.trim()).filter((u): u is string => Boolean(u)),
+  ));
   const refs = await Promise.all(rawRefs.map((u) => resolveToAbsoluteUrl(u)));
 
   // ── Build per-endpoint submit URL + body ──
