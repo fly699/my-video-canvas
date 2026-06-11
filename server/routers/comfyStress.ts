@@ -11,6 +11,17 @@ import { startStressTest, getJob, listJobs, cancelJob, stopJob, toView } from ".
 import { buildImageWorkflow } from "../_core/comfyui";
 import * as db from "../db";
 
+// drizzle 把底层 DB 错误包成 "Failed query: …"，把真正的 sqlMessage 藏在 .cause。
+// 透出 cause 让前端能看到确切原因（表/列不存在、权限、语法等），而不是泛泛的 Failed query。
+function dbErrMessage(e: unknown): string {
+  const top = e instanceof Error ? e.message : String(e);
+  const cause = (e as { cause?: unknown })?.cause;
+  const causeMsg = cause instanceof Error ? cause.message
+    : (cause && typeof cause === "object" && "sqlMessage" in cause) ? String((cause as { sqlMessage: unknown }).sqlMessage)
+    : "";
+  return causeMsg ? `${causeMsg}` : top;
+}
+
 export const comfyStressRouter = router({
   // 启动一次压测，立即返回任务概要（含 id）。
   start: adminProcedure
@@ -122,12 +133,17 @@ export const comfyStressRouter = router({
     list: adminProcedure
       .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional())
       .query(async ({ input }) => {
-        const rows = await db.listComfyStressHistory(input?.limit ?? 50);
-        return rows.map((r) => ({
-          id: r.id, jobId: r.jobId, status: r.status, startedByEmail: r.startedByEmail,
-          config: r.config, result: r.result,
-          startedAt: r.startedAt, finishedAt: r.finishedAt,
-        }));
+        try {
+          const rows = await db.listComfyStressHistory(input?.limit ?? 50);
+          return rows.map((r) => ({
+            id: r.id, jobId: r.jobId, status: r.status, startedByEmail: r.startedByEmail,
+            config: r.config, result: r.result,
+            startedAt: r.startedAt, finishedAt: r.finishedAt,
+          }));
+        } catch (e) {
+          console.error("[ComfyStress] history.list 失败：", e);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `读取历史失败：${dbErrMessage(e)}` });
+        }
       }),
     remove: adminProcedure
       .input(z.object({ id: z.number().int() }))
@@ -139,8 +155,13 @@ export const comfyStressRouter = router({
   // ── 参数模板（保存整套压测表单；管理员共享）──────────────────────────────────
   templates: router({
     list: adminProcedure.query(async () => {
-      const rows = await db.listComfyStressTemplates();
-      return rows.map((r) => ({ id: r.id, name: r.name, config: r.config, createdByEmail: r.createdByEmail, updatedAt: r.updatedAt }));
+      try {
+        const rows = await db.listComfyStressTemplates();
+        return rows.map((r) => ({ id: r.id, name: r.name, config: r.config, createdByEmail: r.createdByEmail, updatedAt: r.updatedAt }));
+      } catch (e) {
+        console.error("[ComfyStress] templates.list 失败：", e);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `读取模板失败：${dbErrMessage(e)}` });
+      }
     }),
     save: adminProcedure
       .input(z.object({
