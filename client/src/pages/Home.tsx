@@ -374,8 +374,45 @@ function LibraryEntryCard({ covers, count, onOpen }: { covers: string[]; count: 
 }
 
 // 视频剪辑器入口卡片 — 进入综合时间轴剪辑器（独立于画布节点）。
-function EditorEntryCard({ onOpen }: { onOpen: () => void }) {
+// 封面：有剪辑草稿缩略图时用 2×2 拼贴（与素材库卡一致）；否则绘制迷你时间轴装饰预览。
+function EditorEntryCard({ onOpen, isAuthenticated }: { onOpen: () => void; isAuthenticated: boolean }) {
   const accent = "oklch(0.65 0.19 310)"; // 剪辑器主色（品红紫）
+  const { data: editDocs } = trpc.editor.list.useQuery(undefined, { enabled: isAuthenticated, staleTime: 60_000 });
+  const covers = (editDocs ?? []).map((d: { thumbnailUrl?: string | null }) => d.thumbnailUrl).filter((u): u is string => !!u).slice(0, 4);
+  const docCount = editDocs?.length ?? 0;
+
+  // 迷你时间轴装饰预览（无草稿缩略图时）：三条轨道彩色片段 + 播放头 + 刻度。
+  const miniTimeline = (
+    <div className="absolute inset-0 flex flex-col justify-center gap-1.5 px-5" aria-hidden>
+      {/* 刻度线 */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+        {Array.from({ length: 9 }).map((_, i) => (
+          <span key={i} style={{ width: 1, height: i % 2 === 0 ? 6 : 3, background: `${accent.replace(")", " / 0.35)")}` }} />
+        ))}
+      </div>
+      {/* 轨道片段（视频/音频/字幕三轨） */}
+      {[
+        [["18%", 0.55], ["30%", 0.8], ["24%", 0.65]],
+        [["42%", 0.45], ["26%", 0.6]],
+        [["12%", 0.5], ["16%", 0.7], ["10%", 0.45], ["20%", 0.6]],
+      ].map((track, ti) => (
+        <div key={ti} style={{ display: "flex", gap: 3, height: 13 }}>
+          {track.map(([w, alpha], ci) => (
+            <span key={ci} style={{
+              width: w as string, borderRadius: 3,
+              background: `${accent.replace(")", ` / ${alpha as number * 0.4})`)}`,
+              border: `1px solid ${accent.replace(")", ` / ${alpha})`)}`,
+            }} />
+          ))}
+        </div>
+      ))}
+      {/* 播放头 */}
+      <div style={{ position: "absolute", top: "18%", bottom: "16%", left: "38%", width: 1.5, background: accent, boxShadow: `0 0 6px ${accent.replace(")", " / 0.7)")}` }}>
+        <span style={{ position: "absolute", top: -4, left: -3.5, width: 8, height: 6, background: accent, borderRadius: "2px 2px 50% 50%" }} />
+      </div>
+    </div>
+  );
+
   return (
     <div
       className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
@@ -389,7 +426,21 @@ function EditorEntryCard({ onOpen }: { onOpen: () => void }) {
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accent.replace(")", " / 0.35)")}`; (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
     >
       <div className="relative h-36 flex items-center justify-center overflow-hidden" style={{ background: `${accent.replace(")", " / 0.07)")}` }}>
-        <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${accent.replace(")", " / 0.18)")}`, border: `1px solid ${accent.replace(")", " / 0.4)")}` }}>
+        {covers.length > 0 ? (
+          <>
+            <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-px">
+              {covers.map((url, i) => (
+                <img key={i} src={url} alt="" loading="lazy" className="w-full h-full object-cover"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
+              ))}
+              {Array.from({ length: Math.max(0, 4 - covers.length) }).map((_, i) => (
+                <div key={`f${i}`} style={{ background: `${accent.replace(")", " / 0.05)")}` }} />
+              ))}
+            </div>
+            <div className="absolute inset-0" style={{ background: "oklch(0 0 0 / 0.35)" }} />
+          </>
+        ) : miniTimeline}
+        <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${accent.replace(")", " / 0.18)")}`, border: `1px solid ${accent.replace(")", " / 0.4)")}`, backdropFilter: "blur(4px)" }}>
           <Clapperboard className="w-5 h-5" style={{ color: accent }} />
         </div>
         <span className="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide" style={{ background: `${accent.replace(")", " / 0.9)")}`, color: "#fff" }}>
@@ -403,7 +454,7 @@ function EditorEntryCard({ onOpen }: { onOpen: () => void }) {
         </h3>
         <div className="flex items-center gap-1 text-xs" style={{ color: "var(--c-t4)" }}>
           <Clapperboard className="w-3 h-3" />
-          <span>时间轴剪辑 · 单遍导出</span>
+          <span>{docCount > 0 ? `${docCount} 个剪辑草稿 · 单遍导出` : "时间轴剪辑 · 单遍导出"}</span>
         </div>
       </div>
     </div>
@@ -411,27 +462,60 @@ function EditorEntryCard({ onOpen }: { onOpen: () => void }) {
 }
 
 // 平台介绍入口卡片 — 新标签打开单文件功能汇报网页（系统架构 / AI 模型矩阵 / 功能模块 / 特色一览）。
+// 封面：迷你「架构总览」装饰预览（统计数字 + 模块块 + 连线），呼应介绍页内容。
 function PlatformIntroCard() {
   const accent = "oklch(0.7 0.16 200)"; // 平台介绍主色（青蓝）
+  const a = (alpha: number) => accent.replace(")", ` / ${alpha})`);
   return (
     <div
       className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
       onClick={() => window.open("/platform-intro.html", "_blank", "noopener")}
       style={{
-        borderColor: `${accent.replace(")", " / 0.35)")}`,
+        borderColor: a(0.35),
         background: "var(--c-surface)",
         boxShadow: "0 1px 2px oklch(0 0 0 / 0.2), 0 4px 16px oklch(0 0 0 / 0.1)",
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = accent; (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = `${accent.replace(")", " / 0.35)")}`; (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = a(0.35); (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
     >
-      <div className="relative h-36 flex items-center justify-center overflow-hidden" style={{ background: `${accent.replace(")", " / 0.07)")}` }}>
-        <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${accent.replace(")", " / 0.18)")}`, border: `1px solid ${accent.replace(")", " / 0.4)")}` }}>
-          <Sparkles className="w-5 h-5" style={{ color: accent }} />
+      <div className="relative h-36 overflow-hidden" style={{ background: a(0.07) }}>
+        {/* 迷你架构总览：统计行 + 三个模块块 + 连线 */}
+        <div className="absolute inset-0 flex flex-col justify-center gap-2 px-5" aria-hidden>
+          {/* 统计行 */}
+          <div style={{ display: "flex", gap: 6 }}>
+            {[["23+", "节点"], ["37", "视频模型"], ["24", "图像模型"]].map(([n, l]) => (
+              <div key={l} style={{ flex: 1, textAlign: "center", padding: "4px 0", borderRadius: 6, background: a(0.10), border: `1px solid ${a(0.30)}` }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: accent, lineHeight: 1.1 }}>{n}</div>
+                <div style={{ fontSize: 7.5, color: "var(--c-t4)" }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          {/* 模块块 + 连线 */}
+          <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px" }}>
+            <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
+              <line x1="22%" y1="50%" x2="46%" y2="50%" stroke={a(0.5)} strokeWidth="1" strokeDasharray="3 2" />
+              <line x1="56%" y1="50%" x2="80%" y2="50%" stroke={a(0.5)} strokeWidth="1" strokeDasharray="3 2" />
+            </svg>
+            {["脚本", "生成", "成片"].map((label) => (
+              <div key={label} style={{ position: "relative", zIndex: 1, padding: "5px 10px", borderRadius: 7, fontSize: 9, fontWeight: 700, color: accent, background: a(0.14), border: `1px solid ${a(0.40)}` }}>
+                {label}
+              </div>
+            ))}
+          </div>
+          {/* 文本骨架行 */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {["72%", "58%", "64%"].map((w, i) => (
+              <span key={i} style={{ width: w, height: 3, borderRadius: 2, background: a(0.22) }} />
+            ))}
+          </div>
         </div>
-        <span className="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide" style={{ background: `${accent.replace(")", " / 0.9)")}`, color: "#fff" }}>
+        <span className="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide" style={{ background: a(0.9), color: "#fff" }}>
           平台介绍
         </span>
+        {/* 角标图标（不再居中遮挡预览） */}
+        <div className="absolute bottom-2 right-2 z-10 w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: a(0.18), border: `1px solid ${a(0.4)}`, backdropFilter: "blur(4px)" }}>
+          <Sparkles className="w-3.5 h-3.5" style={{ color: accent }} />
+        </div>
       </div>
       <div className="flex flex-col gap-1 p-4">
         <h3 className="text-sm font-semibold leading-snug flex items-center gap-1.5" style={{ color: "var(--c-t1)" }}>
@@ -1059,7 +1143,7 @@ export default function Home() {
                   count={librarySummary?.count ?? 0}
                   onOpen={() => navigate("/library")}
                 />
-                <EditorEntryCard onOpen={() => navigate("/editor")} />
+                <EditorEntryCard onOpen={() => navigate("/editor")} isAuthenticated={isAuthenticated} />
                 <PlatformIntroCard />
               </div>
             </div>
