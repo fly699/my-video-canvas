@@ -127,10 +127,38 @@ async function ensureNodeTypeEnum(db: NonNullable<typeof _db>): Promise<void> {
     await db.execute(sql.raw(`ALTER TABLE \`canvas_nodes\` MODIFY COLUMN \`type\` ENUM(${enumList}) NOT NULL`));
     console.warn(`[Database] self-heal: added missing canvas_nodes.type enum values: ${missing.join(", ")}`);
   })();
+  // Boot-time self-heal #2: the ComfyUI stress-test history/template tables. They
+  // arrived in migration 0054; when an instance updates code without (or before) a
+  // successful db:push the tables are missing — every job finish then fails to
+  // persist and the history list errors out. CREATE TABLE IF NOT EXISTS is
+  // idempotent on MySQL and MariaDB, so just guarantee them here.
+  const stressTables = (async () => {
+    await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`comfy_stress_history\` (
+      \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+      \`jobId\` VARCHAR(64) NOT NULL UNIQUE,
+      \`status\` VARCHAR(16) NOT NULL,
+      \`startedByEmail\` VARCHAR(255),
+      \`config\` JSON,
+      \`result\` JSON NOT NULL,
+      \`startedAt\` TIMESTAMP NOT NULL,
+      \`finishedAt\` TIMESTAMP NULL,
+      \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`));
+    await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`comfy_stress_templates\` (
+      \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+      \`name\` VARCHAR(128) NOT NULL,
+      \`config\` JSON NOT NULL,
+      \`createdByEmail\` VARCHAR(255),
+      \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`));
+  })();
+  stressTables.catch((e) => console.warn("[Database] stress tables self-heal skipped:", e instanceof Error ? e.message : e));
+
   // Bound the wait: a hung information_schema/ALTER must NOT block every other DB
   // call (getDb awaits this once). The ALTER, if slow, still finishes in the bg.
   const timeout = new Promise<void>((resolve) => setTimeout(resolve, 8000));
-  try { await Promise.race([work, timeout]); }
+  try { await Promise.race([Promise.all([work, stressTables]), timeout]); }
   catch (e) { console.warn("[Database] canvas_nodes enum self-heal skipped:", e instanceof Error ? e.message : e); }
   work.catch(() => { /* background completion errors are non-fatal */ });
 }
