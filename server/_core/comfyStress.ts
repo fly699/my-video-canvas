@@ -37,6 +37,8 @@ export interface StressStartOptions {
   total: number;
   randomizeSeed: boolean;
   startedBy: { id: number; email: string | null };
+  /** 压测来源摘要（前端展示 + 历史落库）：工作流 JSON 或 服务器模型（含 ckpt 名）。 */
+  meta?: { source: "json" | "model"; ckpt?: string };
 }
 
 interface RunRecord {
@@ -95,6 +97,9 @@ export interface StressJobView extends Stats {
   servers: ServerStatView[];
   timeSeries: TimeSample[];
   errorSamples: string[];
+  /** 来源摘要 + 发起人（随 view 下发给前端、随历史落库）。 */
+  meta?: { source: "json" | "model"; ckpt?: string };
+  startedByEmail: string | null;
 }
 
 interface StressJob extends StressJobView {
@@ -285,6 +290,8 @@ export function startStressTest(opts: StressStartOptions): StressJobView {
       avgSubmitMs: null, avgWaitMs: null, avgDownloadMs: null,
     })),
     timeSeries: [],
+    meta: opts.meta,
+    startedByEmail: opts.startedBy.email,
     records: [],
     cancelRequested: false,
     workflowJson: opts.workflowJson,
@@ -362,6 +369,28 @@ async function runPool(job: StressJob): Promise<void> {
   job.finishedAt = Date.now();
   job.status = (job.cancelRequested || job.abort.signal.aborted) ? "cancelled" : "completed";
   sample(job); // 收尾再打一个点（内部 recompute + emit），保证曲线到达终态
+
+  // 历史落库：完整 view（含 timeSeries/servers/errorSamples），供压测页「历史记录」
+  // 重新渲染图表与导出。动态 import 避免 _core ↔ db 静态依赖；失败静默（dev 无 DB）。
+  void (async () => {
+    try {
+      const dbMod = await import("../db");
+      await dbMod.insertComfyStressHistory({
+        jobId: job.id,
+        status: job.status,
+        startedByEmail: job.startedByEmail,
+        config: {
+          baseUrls: job.baseUrls, mode: job.mode, concurrency: job.concurrency,
+          total: job.total, randomizeSeed: job.randomizeSeed, meta: job.meta ?? null,
+        },
+        result: toView(job),
+        startedAt: new Date(job.startedAt),
+        finishedAt: job.finishedAt ? new Date(job.finishedAt) : null,
+      });
+    } catch (e) {
+      console.warn("[ComfyStress] 历史落库失败（不影响压测）：", e instanceof Error ? e.message : e);
+    }
+  })();
 
   // 完成后延迟清理，给前端留出读取窗口。
   job.cleanupTimer = setTimeout(() => { jobs.delete(job.id); }, JOB_RETENTION_MS);

@@ -289,6 +289,36 @@ export const userPrefs = mysqlTable("user_prefs", {
 export type UserPrefRow = typeof userPrefs.$inferSelect;
 export type InsertUserPref = typeof userPrefs.$inferInsert;
 
+// ── ComfyUI stress-test persistence ───────────────────────────────────────────
+// History: one row per finished stress job (auto-saved by the core when a job
+// reaches completed/cancelled/failed). `result` is the full StressJobView
+// (stats + per-server + timeSeries + errorSamples) so the UI can re-render
+// charts for past runs. `config` is the start parameters summary.
+export const comfyStressHistory = mysqlTable("comfy_stress_history", {
+  id: int("id").autoincrement().primaryKey(),
+  jobId: varchar("jobId", { length: 64 }).notNull().unique(),
+  status: varchar("status", { length: 16 }).notNull(),
+  startedByEmail: varchar("startedByEmail", { length: 255 }),
+  config: json("config"),
+  result: json("result").notNull(),
+  startedAt: timestamp("startedAt").notNull(),
+  finishedAt: timestamp("finishedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ComfyStressHistoryRow = typeof comfyStressHistory.$inferSelect;
+
+// Reusable stress-test parameter templates (admin-shared). `config` carries the
+// whole form: baseUrls/source/workflowJson/model/mode/concurrency/total/randomizeSeed.
+export const comfyStressTemplates = mysqlTable("comfy_stress_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  config: json("config").notNull(),
+  createdByEmail: varchar("createdByEmail", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ComfyStressTemplateRow = typeof comfyStressTemplates.$inferSelect;
+
 // ── ComfyUI template functional analysis (for the agent's planning) ───────────
 // One row per template (1:1 via unique templateId). The agent reads these
 // LLM-produced functional summaries to recommend/configure comfyui_workflow nodes.
