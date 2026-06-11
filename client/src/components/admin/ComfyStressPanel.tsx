@@ -369,7 +369,7 @@ export function ComfyStressPanel() {
             value={selectedTemplateId}
             onChange={(e) => setSelectedTemplateId(e.target.value === "" ? "" : Number(e.target.value))}
           >
-            <option value="">— 选择模板（{templatesQuery.data?.length ?? 0} 个）—</option>
+            <option value="">{templatesQuery.error ? "— 模板读取失败（见右侧提示）—" : `— 选择模板（${templatesQuery.data?.length ?? 0} 个）—`}</option>
             {(templatesQuery.data ?? []).map((t) => (
               <option key={t.id} value={t.id}>{t.name}（{t.createdByEmail ?? "?"} · {fmtTime(t.updatedAt)}）</option>
             ))}
@@ -432,6 +432,11 @@ export function ComfyStressPanel() {
           >
             {saveTemplateMut.isPending ? "保存中…" : "💾 当前参数存为模板"}
           </button>
+          {templatesQuery.error && (
+            <div style={{ width: "100%", fontSize: 12, color: C.red }}>
+              模板读取失败：{templatesQuery.error.message}（若提示表不存在，请先到「系统更新」执行一次更新以应用数据库迁移）
+            </div>
+          )}
         </div>
 
         <div style={{ marginBottom: 16 }}>
@@ -816,7 +821,16 @@ export function ComfyStressPanel() {
           </button>
         )}
       </div>
-      {(historyQuery.data?.length ?? 0) === 0 ? (
+      {historyQuery.error ? (
+        // 历史查询失败时必须明示，不能伪装成「0 条」——最常见原因是生产库还没跑
+        // 0054 迁移（comfy_stress_history 表不存在），任务结束的自动落库也会一并失败。
+        <div style={{ padding: "10px 14px", borderRadius: 10, fontSize: 13, lineHeight: 1.6, background: "oklch(0.63 0.21 25 / 0.10)", border: `1px solid oklch(0.63 0.21 25 / 0.35)`, color: C.red }}>
+          历史记录读取失败：{historyQuery.error.message}
+          <div style={{ color: C.sub, fontSize: 12, marginTop: 4 }}>
+            若提示表不存在（comfy_stress_history），说明数据库迁移尚未应用——请到「系统更新」页执行一次更新（会自动跑 db:push），之后压测历史与模板才能持久化。
+          </div>
+        </div>
+      ) : (historyQuery.data?.length ?? 0) === 0 ? (
         <p style={{ fontSize: 13, color: C.sub }}>暂无历史记录——任务结束后会自动保存到这里。</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
