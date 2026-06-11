@@ -645,6 +645,7 @@ function extractKieVideoUrls(d: Record<string, unknown>): string[] {
   const resp = (d.response ?? {}) as Record<string, unknown>;
   const candidates: unknown[] = [
     resp.result_urls, resp.resultUrls, resp.resultUrl, resp.video_url, resp.videoUrl,
+    resp.audio_url, resp.audioUrl, // TTS/SFX 共用本解析器（kieTTS/kieSFX）
     resp.url, resp.urls, d.resultUrls, d.result_urls,
   ];
   for (const c of candidates) {

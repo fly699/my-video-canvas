@@ -1,6 +1,7 @@
 import { storagePut } from "../storage";
 import { isAudioPersistenceEnabled } from "./storageConfig";
 import { KIE_BASE_URL } from "./kie";
+import { parseKieJobStatus } from "./kieVideo";
 
 // ── kie.ai ElevenLabs Sound Effects ──────────────────────────────────────────
 //
@@ -77,22 +78,18 @@ export async function submitAndPollKieSFX(opts: KieSFXOptions): Promise<KieSFXRe
       if (res.status === 429 || res.status >= 500) continue; // transient
       throw new Error(`kie 音效状态查询失败 (${res.status})`);
     }
-    const body = (await res.json()) as {
-      data?: { successFlag?: number; errorMessage?: string; response?: { result_urls?: string[]; resultUrls?: string[] | string } };
-    };
+    const body = (await res.json()) as { code?: number; data?: Record<string, unknown> };
     const d = body.data;
     if (!d) continue;
-    if (d.successFlag === 1) {
-      let urls = d.response?.result_urls ?? [];
-      if (!urls.length && d.response?.resultUrls) {
-        const ru = d.response.resultUrls;
-        urls = Array.isArray(ru) ? ru : (() => { try { return JSON.parse(ru) as string[]; } catch { return []; } })();
-      }
+    // 多形态解析（与图像/视频/TTS 共用）：见 parseKieJobStatus 注释。
+    const st = parseKieJobStatus(d, "kie_sfx", taskId);
+    if (st.status === "finished") {
+      const urls = st.resultVideoUrls ?? [];
       if (!urls.length) throw new Error("[CHARGED] kie 音效已生成但未返回 URL（积分可能已扣，请勿重试）");
       return { url: await persistAudioUrl(urls[0]), duration: input.duration_seconds as number | undefined };
     }
-    if (d.successFlag === 2 || d.successFlag === 3) {
-      throw new Error(`kie 音效生成失败：${d.errorMessage ?? "未知错误"}`);
+    if (st.status === "failed") {
+      throw new Error(`kie 音效生成失败：${st.errorMessage ?? "未知错误"}`);
     }
   }
   throw new Error("kie 音效生成超时");
