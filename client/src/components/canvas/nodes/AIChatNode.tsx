@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
 import { MediaImage } from "../MediaImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -56,6 +57,7 @@ import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
+  const { resolve } = useNodeDefaultModels();
   const hasDownstream = useCanvasStore(useMemo(() => (s) => s.edges.some(e => e.source === id), [id]));
   const payload = data.payload;
   const [input, setInput] = useState("");
@@ -64,7 +66,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string; attachments?: ChatAttachment[]; _id: string }>>(
     () => ((data.payload as typeof payload).messages ?? []).map(m => ({ ...m, _id: crypto.randomUUID() }))
   );
-  const [model, setModel] = useState<string>(payload.model ?? "claude-sonnet-4-5-20250929");
+  const [model, setModel] = useState<string>(payload.model ?? resolve("ai_chat", "llm"));
   const disabledModels = useDisabledModels();
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);

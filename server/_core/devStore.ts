@@ -71,6 +71,7 @@ export function devCreateProject(data: InsertProject): Project {
     description: data.description ?? null,
     thumbnail: data.thumbnail ?? null,
     viewportState: (data.viewportState as Project["viewportState"]) ?? null,
+    defaultModels: (data.defaultModels as Project["defaultModels"]) ?? null,
     publicReadAccess: data.publicReadAccess ?? false,
     createdAt: now(),
     updatedAt: now(),

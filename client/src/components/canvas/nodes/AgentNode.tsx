@@ -1,5 +1,6 @@
 import { memo, useState, useRef, useEffect } from "react";
 import { useReactFlow } from "@xyflow/react";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation, PipelineStep } from "../../../../../shared/types";
@@ -27,7 +28,6 @@ interface Props {
 
 const accent = "oklch(0.70 0.20 310)";
 const accentA = (a: number) => `oklch(0.70 0.20 310 / ${a})`;
-const DEFAULT_LLM: LLMModelId = "claude-sonnet-4-5-20250929";
 
 const OP_META: Record<AgentOperation["op"], { Icon: typeof Plus; label: string }> = {
   create: { Icon: Plus, label: "新建" },
@@ -45,10 +45,11 @@ function opText(op: AgentOperation): string {
 
 export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const { resolve } = useNodeDefaultModels();
   const reactFlow = useReactFlow();
   const payload = data.payload;
   const messages = payload.messages ?? [];
-  const model = (payload.model as LLMModelId) ?? DEFAULT_LLM;
+  const model = (payload.model as LLMModelId) ?? (resolve("agent", "llm") as LLMModelId);
 
   const [input, setInput] = useState("");
   const [appliedIdx, setAppliedIdx] = useState<Set<number>>(new Set());

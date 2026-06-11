@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { TRPCClientError } from "@trpc/client";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -77,6 +78,7 @@ const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 
 export const StoryboardNode = memo(function StoryboardNode({ id, selected, data }: Props) {
   const { updateNodeData } = useCanvasStore();
+  const { resolve } = useNodeDefaultModels();
   // Detect connected CharacterNodes that have their own referenceImageUrl
   const connectedCharRefUrl = useCanvasStore((s) => {
     const incomingEdges = s.edges.filter((e) => e.target === id);
@@ -130,7 +132,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || charSceneItems.length > 0, hasPrompt: !!finalPromptDisplay.trim() });
   const refStrip = useSimpleRefStrip(id, payload, "multi", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, extraItems: charSceneItems });
   const [inputExpanded, setInputExpanded] = useState(!!selected);
-  const [llmModel, setLlmModel] = useState<LLMModelId>("claude-sonnet-4-5-20250929");
+  const [llmModel, setLlmModel] = useState<LLMModelId>(() => resolve("storyboard", "llm") as LLMModelId);
   const [showHistory, setShowHistory] = useState(false);
   // 「镜头表」侧向展开面板（同组分镜序列总览：重排/时长校验/衔接优化）。
   const [showShotList, setShowShotList] = useState(false);
@@ -228,7 +230,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   }, [selected]);
   const model: ImageGenModel = IMAGE_MODELS.some(m => m.value === payload.imageModel)
     ? (payload.imageModel as ImageGenModel)
-    : "manus_forge";
+    : (resolve("storyboard", "image") as ImageGenModel);
   const setModel = (m: string) => { updateNodeData(id, { imageModel: m as ImageGenModel }); };
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
 

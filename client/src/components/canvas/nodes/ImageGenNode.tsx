@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
@@ -110,6 +111,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const connectState = useConnectState(id, "image_gen");
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const { resolve } = useNodeDefaultModels();
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
   const payload = data.payload;
@@ -331,10 +333,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       style: payload.style,
       referenceImageUrl: payload.referenceImageUrl ?? charRefs[0],
       referenceImageUrls: effectiveRefs.length ? effectiveRefs : undefined,
-      // Match the picker, which displays "manus_forge" when unset — otherwise a
-      // fresh node shows Manus Forge but the backend's undefined-fallback routes
-      // to Poyo gpt-image-2 (different model; errors with no Poyo key).
-      model: payload.model || "manus_forge",
+      // Default model comes from the project-level config (toolbar) → factory
+      // default (kie GPT Image 2). Must match what the picker displays for an
+      // unset node so the backend routes to the same model.
+      model: payload.model || (resolve("image_gen", "image") as ImageGenModel),
       // Poyo image model params —— 对任意 poyo_ 开头模型转发通用参数字段。
       // 通用尺寸字段（imageSize / imageResolution / imageN / imageOutputFormat）
       // 与旧 poyoAspectRatio 由 ParamControls/旧节点写入，后端 Zod 校验枚举；前端
@@ -383,7 +385,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       estimatedCost: genCostLabel || undefined,
       projectId: data.projectId,
     });
-    guard({ model: payload.model ?? "manus_forge", refImageUrl: payload.referenceImageUrl ?? charRefs[0] }, submit);
+    guard({ model: payload.model ?? resolve("image_gen", "image"), refImageUrl: payload.referenceImageUrl ?? charRefs[0] }, submit);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -427,7 +429,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (isFluxPro && (payload.fluxNumImages ?? 1) > 1) return payload.fluxNumImages ?? 1;
     return poyoN > 1 ? poyoN : 1;
   })();
-  const genCostLabel = costEstimateLabel(estimateImageCost(payload.model || "manus_forge", genCount));
+  const genCostLabel = costEstimateLabel(estimateImageCost(payload.model || resolve("image_gen", "image"), genCount));
 
   // Collapse the params panel when switching model — old expansion state doesn't apply to a new param set
   useEffect(() => {
@@ -743,7 +745,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             模型
           </label>
           <ModelPicker
-            value={payload.model ?? "manus_forge"}
+            value={payload.model ?? resolve("image_gen", "image")}
             onChange={(v) => update("model", v as ImageGenModel)}
             options={IMAGE_MODEL_PICKER_OPTIONS}
           />

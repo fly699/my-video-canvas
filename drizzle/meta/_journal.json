@@ -365,6 +365,13 @@
       "when": 1781300000000,
       "tag": "0051_model_toggle_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "5",
+      "when": 1781400000000,
+      "tag": "0052_project_default_models",
+      "breakpoints": true
     }
   ]
 }

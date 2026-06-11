@@ -41,6 +41,8 @@ export const projects = mysqlTable("projects", {
   thumbnail: text("thumbnail"),
   /** Viewport state: { x, y, scale } */
   viewportState: json("viewportState"),
+  /** Per-node-type default model config (NodeDefaultModelsConfig). Editable from toolbar. */
+  defaultModels: json("defaultModels"),
   /** When true, any authenticated user with the URL can view (read-only). */
   publicReadAccess: boolean("publicReadAccess").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
