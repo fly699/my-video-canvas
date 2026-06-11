@@ -161,6 +161,12 @@ interface CanvasStore {
   updateNodeTitle: (id: string, title: string) => void;
   deleteNode: (id: string) => void;
   duplicateNode: (id: string) => void;
+  /** 复制一组节点为子图：克隆这些节点 + 它们之间的内部连线（跨边界的连线丢弃），
+   *  偏移落位并选中克隆体，返回新节点 id 列表。用于「框选 → Ctrl+C/Ctrl+V 复制镜头链」。 */
+  cloneSubgraph: (ids: string[], offset?: { x: number; y: number }) => string[];
+  /** 一键整理：按连线方向把自由节点（不在任何群组里的）做从左到右的分层布局，
+   *  锚定在原包围盒左上角、保留层内大致上下顺序。返回被重排的节点数。 */
+  autoLayout: () => number;
   /** Clone a generation node into `count` A/B variants (fresh seed each, same
    *  upstream inputs re-wired). Returns the number of variants created. */
   createVariants: (id: string, count: number) => number;
@@ -728,6 +734,99 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       nodes: [...state.nodes, newNode],
       isDirty: true,
     }));
+  },
+
+  cloneSubgraph: (ids, offset = { x: 60, y: 60 }) => {
+    const state0 = get();
+    const idSet = new Set(ids);
+    const sources = state0.nodes.filter((n) => idSet.has(n.id));
+    if (sources.length === 0) return [];
+    const dupUid = state0.currentUserId;
+    const idMap = new Map<string, string>();
+    // 1) 克隆节点（新 id、洗掉运行态字段、作者归当前用户、偏移落位、选中）
+    const newNodes: CanvasNode[] = sources.map((node) => {
+      const newId = nanoid();
+      idMap.set(node.id, newId);
+      const p = JSON.parse(JSON.stringify(node.data.payload)) as Record<string, unknown>;
+      for (const k of CLONE_RUNTIME_FIELDS) delete p[k];
+      if (dupUid != null) p.createdBy = dupUid;
+      return {
+        ...node, id: newId,
+        position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
+        data: { ...node.data, payload: p as typeof node.data.payload },
+        selected: true,
+      };
+    });
+    // 2) group 容器的 childIds 重映射到一并复制的新成员（未复制的成员丢弃引用）
+    for (const nn of newNodes) {
+      if (nn.data.nodeType === "group") {
+        const gp = nn.data.payload as GroupNodeData;
+        const childIds = (gp.childIds ?? []).map((c) => idMap.get(c)).filter((c): c is string => !!c);
+        nn.data = { ...nn.data, payload: { ...gp, childIds } as typeof nn.data.payload };
+      }
+    }
+    // 3) 仅重建「两端都在复制集内」的内部连线（跨边界的连线丢弃，得到自洽子图）
+    const newEdges: CanvasEdge[] = [];
+    for (const e of state0.edges) {
+      if (idSet.has(e.source) && idSet.has(e.target)) {
+        newEdges.push({ ...e, id: nanoid(), source: idMap.get(e.source)!, target: idMap.get(e.target)! });
+      }
+    }
+    set((s) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(s)),
+      nodes: [...s.nodes.map((n) => ({ ...n, selected: false })), ...newNodes],
+      edges: [...s.edges, ...newEdges],
+      isDirty: true,
+    }));
+    return newNodes.map((n) => n.id);
+  },
+
+  autoLayout: () => {
+    const { nodes, edges } = get();
+    // 跳过群组容器与「群组成员」——挪动成员会破坏群组框选，只排自由节点。
+    const grouped = new Set<string>();
+    for (const n of nodes) if (n.data.nodeType === "group") for (const c of (n.data.payload as GroupNodeData).childIds ?? []) grouped.add(c);
+    const free = nodes.filter((n) => n.data.nodeType !== "group" && !grouped.has(n.id));
+    if (free.length < 2) return 0;
+    const idSet = new Set(free.map((n) => n.id));
+    const preds = new Map<string, string[]>();
+    for (const n of free) preds.set(n.id, []);
+    for (const e of edges) if (idSet.has(e.source) && idSet.has(e.target)) preds.get(e.target)!.push(e.source);
+    // 最长路径分层：layer = max(前驱 layer)+1，无前驱=0（含环保护）。
+    const layer = new Map<string, number>();
+    const visiting = new Set<string>();
+    const calc = (id: string): number => {
+      const cached = layer.get(id);
+      if (cached != null) return cached;
+      if (visiting.has(id)) return 0;
+      visiting.add(id);
+      const ps = preds.get(id) ?? [];
+      const l = ps.length === 0 ? 0 : Math.max(...ps.map(calc)) + 1;
+      visiting.delete(id);
+      layer.set(id, l);
+      return l;
+    };
+    for (const n of free) calc(n.id);
+    const minX = Math.min(...free.map((n) => n.position.x));
+    const minY = Math.min(...free.map((n) => n.position.y));
+    const COL = 360, ROW = 220;
+    const byLayer = new Map<number, CanvasNode[]>();
+    for (const n of free) {
+      const l = layer.get(n.id) ?? 0;
+      const arr = byLayer.get(l) ?? [];
+      arr.push(n); byLayer.set(l, arr);
+    }
+    const pos = new Map<string, { x: number; y: number }>();
+    byLayer.forEach((group, l) => {
+      group.sort((a, b) => a.position.y - b.position.y); // 保留层内大致上下顺序，减少交叉
+      group.forEach((n, i) => pos.set(n.id, { x: minX + l * COL, y: minY + i * ROW }));
+    });
+    set((s) => ({
+      ...pushHistory(s),
+      nodes: s.nodes.map((n) => (pos.has(n.id) ? { ...n, position: pos.get(n.id)! } : n)),
+      isDirty: true,
+    }));
+    return free.length;
   },
 
   createVariants: (id, count) => {
