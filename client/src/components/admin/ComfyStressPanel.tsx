@@ -7,7 +7,7 @@
 // 支持多地址：可同时压测多台 ComfyUI 服务器，请求按轮询打散到各机器；
 // 结果按服务器分桶展示，并用 recharts 画出吞吐/延迟的实时曲线。
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { useComfyServersStore } from "@/hooks/useComfyServersStore";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -15,8 +15,9 @@ import { trpc } from "@/lib/trpc";
 import type { AppRouter } from "../../../../server/routers";
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/download";
+import { ComfyServerStatusIndicator } from "@/components/canvas/ComfyServerStatusIndicator";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
 // 主题化配色：跟随全局主题变量（深浅主题均协调），语义色保留品牌 oklch。
@@ -162,6 +163,52 @@ export function ComfyStressPanel() {
     onError: (e) => toast.error(`删除失败：${e.message}`),
   });
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | "">("");
+  // 导入专用 mutation：不挂 onSuccess toast，避免批量导入时每条弹一次提示。
+  const importTemplateMut = trpc.comfyStress.templates.save.useMutation();
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  // 导出：选中了模板则导出该模板，否则导出全部。文件为带元信息的 JSON，可直接再导入。
+  function exportTemplates() {
+    const all = templatesQuery.data ?? [];
+    if (all.length === 0) { toast.error("还没有模板可导出"); return; }
+    const sel = all.find((x) => x.id === selectedTemplateId);
+    const items = sel ? [sel] : all;
+    const payload = {
+      kind: "comfy-stress-templates",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      templates: items.map((t) => ({ name: t.name, config: t.config })),
+    };
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadTextFile(`comfy-stress-templates-${stamp}.json`, JSON.stringify(payload, null, 2), "application/json");
+    toast.success(sel ? `已导出模板「${sel.name}」` : `已导出全部 ${items.length} 个模板`);
+  }
+
+  // 导入：兼容三种形态——本功能的导出文件 / 模板数组 / 单个 {name, config}。
+  async function importTemplates(file: File) {
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      const p = parsed as { templates?: unknown; name?: unknown; config?: unknown } | unknown[];
+      const arr: unknown[] | null = Array.isArray(p) ? p
+        : Array.isArray((p as { templates?: unknown }).templates) ? (p as { templates: unknown[] }).templates
+        : (p && typeof p === "object" && typeof (p as { name?: unknown }).name === "string" && (p as { config?: unknown }).config) ? [p]
+        : null;
+      if (!arr || arr.length === 0) { toast.error("无法识别的文件格式（应为模板导出 JSON）"); return; }
+      let ok = 0, skip = 0;
+      for (const raw of arr) {
+        const it = raw as { name?: unknown; config?: unknown };
+        const name = typeof it.name === "string" ? it.name.trim() : "";
+        if (!name || !it.config || typeof it.config !== "object") { skip++; continue; }
+        await importTemplateMut.mutateAsync({ name: name.slice(0, 128), config: it.config });
+        ok++;
+      }
+      utils.comfyStress.templates.list.invalidate();
+      if (ok > 0) toast.success(`已导入 ${ok} 个模板${skip > 0 ? `，跳过 ${skip} 个无效项` : ""}`);
+      else toast.error("文件中没有有效模板");
+    } catch (e) {
+      toast.error(`导入失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   function currentConfig(): StressTemplateConfig {
     return { baseUrls, source, workflowJson, model: model as unknown as Record<string, unknown>, mode, concurrency, total, randomizeSeed };
@@ -301,7 +348,13 @@ export function ComfyStressPanel() {
 
   return (
     <div style={{ color: C.text }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 4px" }}>ComfyUI 压力测试</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>ComfyUI 压力测试</h2>
+        {/* 复用画布顶栏的服务器监视器（自带弹出面板/固定/拖拽），压测时实时盯 GPU/显存/队列 */}
+        <div style={{ display: "flex", alignItems: "center", padding: "2px 6px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.inputBg }} title="服务器监视器（与画布顶栏一致）">
+          <ComfyServerStatusIndicator />
+        </div>
+      </div>
       <p style={{ fontSize: 13, color: C.sub, margin: "0 0 20px" }}>
         重复并发执行同一个工作流，测量 ComfyUI 服务器的吞吐与延迟。支持多地址（请求按轮询打散到各机器，结果按服务器分别统计）。⚠️ 压测会真实消耗目标 GPU 资源，请勿对生产服务器高并发压测。
       </p>
@@ -344,6 +397,33 @@ export function ComfyStressPanel() {
             删除
           </button>
           <span style={{ flex: 1 }} />
+          <button
+            onClick={exportTemplates}
+            disabled={(templatesQuery.data?.length ?? 0) === 0}
+            title={selectedTemplateId === "" ? "导出全部模板为 JSON 文件" : "导出选中的模板为 JSON 文件（不选则导出全部）"}
+            style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.blue}`, background: "transparent", color: C.blue, cursor: (templatesQuery.data?.length ?? 0) === 0 ? "not-allowed" : "pointer", fontSize: 13, opacity: (templatesQuery.data?.length ?? 0) === 0 ? 0.5 : 1 }}
+          >
+            ⇧ 导出{selectedTemplateId === "" ? "全部" : "选中"}
+          </button>
+          <button
+            onClick={() => importInputRef.current?.click()}
+            disabled={importTemplateMut.isPending}
+            title="从 JSON 文件导入模板（支持本页导出的文件 / 模板数组 / 单个模板对象）"
+            style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.violet}`, background: "transparent", color: C.violet, cursor: "pointer", fontSize: 13 }}
+          >
+            {importTemplateMut.isPending ? "导入中…" : "⇩ 导入"}
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void importTemplates(f);
+              e.target.value = "";
+            }}
+          />
           <button
             onClick={saveAsTemplate}
             disabled={saveTemplateMut.isPending}
@@ -957,69 +1037,135 @@ function StressCharts({ job, multi }: { job: JobView; multi: boolean }) {
     s.perServer.forEach((ps) => { o[ps.baseUrl] = ps.throughputPerSec; });
     return o;
   });
+  // 延迟：avg 主线 + p50/p95 分位虚线（旧历史记录可能没有分位快照，自动缺省）。
   const lat = ts.map((s) => {
-    const o: Record<string, number | null> = { t: Math.round(s.t / 1000), 总体: s.avgMs };
+    const o: Record<string, number | null> = { t: Math.round(s.t / 1000), avg: s.avgMs, p50: s.p50Ms ?? null, p95: s.p95Ms ?? null };
     s.perServer.forEach((ps) => { o[ps.baseUrl] = ps.avgMs; });
     return o;
   });
-  // 第三图：累计完成/成功/失败 + 瞬时在途——直观看到收敛速度与排队堆积。
+  const hasPercentiles = ts.some((s) => s.p50Ms != null || s.p95Ms != null);
+  // 进度：累计完成/成功/失败 + 瞬时在途——直观看到收敛速度与排队堆积。
   const prog = ts.map((s) => ({
     t: Math.round(s.t / 1000),
     完成: s.completed, 成功: s.succeeded, 失败: s.failed, 在途: s.inFlight,
   }));
+  // 每服务器在途（多机时）：哪台机器堆积一目了然。
+  const flight = multi
+    ? ts.map((s) => {
+        const o: Record<string, number> = { t: Math.round(s.t / 1000) };
+        s.perServer.forEach((ps) => { o[ps.baseUrl] = ps.inFlight; });
+        return o;
+      })
+    : [];
 
   const serverSeries = multi
     ? job.baseUrls.map((url, i) => ({ key: url, name: shortUrl(url), color: SERVER_COLORS[i % SERVER_COLORS.length] }))
     : [];
 
   return (
-    <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-      <ChartBox title="吞吐（次/秒）" data={tput} series={serverSeries} yUnit="/s" />
-      <ChartBox title="平均延迟（ms）" data={lat} series={serverSeries} yUnit="ms" />
+    <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16 }}>
+      <ChartBox title="吞吐（次/秒）" data={tput} series={serverSeries} yUnit="/s" overallKey="总体" />
+      <ChartBox
+        title={hasPercentiles ? "延迟（avg 实线 · p50/p95 虚线）" : "平均延迟"}
+        data={lat}
+        yUnit="ms"
+        overallKey="avg"
+        series={[
+          ...(hasPercentiles ? [
+            { key: "p50", name: "p50", color: "#34d399", dash: "5 4", width: 1.4 },
+            { key: "p95", name: "p95", color: "#fbbf24", dash: "5 4", width: 1.4 },
+          ] : []),
+          ...serverSeries,
+        ]}
+      />
       <ChartBox
         title="进度与在途"
         data={prog}
         series={[
           { key: "成功", name: "成功", color: "#34d399" },
           { key: "失败", name: "失败", color: "#fb7185" },
-          { key: "在途", name: "在途", color: "#fbbf24" },
+          { key: "在途", name: "在途", color: "#fbbf24", dash: "4 3" },
         ]}
         yUnit=""
         overallKey="完成"
       />
+      {multi && (
+        <ChartBox title="每服务器在途（堆积观察）" data={flight} series={serverSeries} yUnit="" overallKey={null} />
+      )}
     </div>
   );
 }
+
+// 时间轴刻度：短任务显秒，超过 2 分钟显「m分」。
+function fmtAxisSec(v: number): string {
+  return v >= 120 ? `${Math.round(v / 60)}m` : `${v}s`;
+}
+
+let _gradSeq = 0;
 
 function ChartBox({
   title, data, series, yUnit, overallKey = "总体",
 }: {
   title: string;
   data: Record<string, number | null>[];
-  series: { key: string; name: string; color: string }[];
+  series: { key: string; name: string; color: string; dash?: string; width?: number }[];
   yUnit: string;
-  overallKey?: string;
+  /** 主线（渐变面积填充）。传 null 则只画 series 多线（如每服务器在途图）。 */
+  overallKey?: string | null;
 }) {
+  // 渐变 id 需全局唯一（同页多图 + 历史展开多卡）。
+  const [gid] = useState(() => `csg-${++_gradSeq}`);
   return (
-    <div style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 12px 4px" }}>
-      <div style={{ fontSize: 12, color: C.sub, marginBottom: 8 }}>{title}</div>
-      <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={data} margin={{ top: 4, right: 12, bottom: 4, left: -8 }}>
+    <div style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 12px 4px", boxShadow: "0 1px 2px oklch(0 0 0 / 0.12)" }}>
+      <div style={{ fontSize: 12.5, color: C.text, fontWeight: 600, marginBottom: 8 }}>{title}</div>
+      <ResponsiveContainer width="100%" height={235}>
+        <ComposedChart data={data} margin={{ top: 6, right: 14, bottom: 4, left: -4 }}>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={OVERALL_COLOR} stopOpacity={0.30} />
+              <stop offset="100%" stopColor={OVERALL_COLOR} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
           {/* SVG stroke 属性不解析 CSS 变量——图表内部用具体色值 */}
-          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} strokeOpacity={0.35} />
-          <XAxis dataKey="t" tick={{ fontSize: 10, fill: CHART_GRID }} stroke={CHART_GRID} unit="s" />
-          <YAxis tick={{ fontSize: 10, fill: CHART_GRID }} stroke={CHART_GRID} width={44} unit={yUnit} />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} strokeOpacity={0.22} vertical={false} />
+          <XAxis
+            dataKey="t"
+            tick={{ fontSize: 10.5, fill: CHART_GRID }}
+            stroke={CHART_GRID} strokeOpacity={0.5}
+            tickLine={false}
+            tickFormatter={(v) => fmtAxisSec(Number(v))}
+            minTickGap={28}
+          />
+          <YAxis
+            tick={{ fontSize: 10.5, fill: CHART_GRID }}
+            stroke="transparent"
+            width={48} unit={yUnit}
+            tickLine={false}
+            domain={[0, "auto"]}
+          />
           <Tooltip
             contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
             labelStyle={{ color: C.sub }}
-            labelFormatter={(v) => `${v}s`}
+            labelFormatter={(v) => fmtAxisSec(Number(v))}
+            itemSorter={(item) => -(typeof item.value === "number" ? item.value : 0)}
           />
-          {(series.length > 0) && <Legend wrapperStyle={{ fontSize: 11 }} />}
-          <Line type="monotone" dataKey={overallKey} stroke={OVERALL_COLOR} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+          {(series.length > 0) && <Legend verticalAlign="top" height={22} wrapperStyle={{ fontSize: 11 }} />}
+          {overallKey != null && (
+            <Area
+              type="monotone" dataKey={overallKey}
+              stroke={OVERALL_COLOR} strokeWidth={2.4}
+              fill={`url(#${gid})`}
+              dot={false} isAnimationActive={false} connectNulls
+            />
+          )}
           {series.map((s) => (
-            <Line key={s.key} type="monotone" dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
+            <Line
+              key={s.key} type="monotone" dataKey={s.key} name={s.name}
+              stroke={s.color} strokeWidth={s.width ?? 1.8} strokeDasharray={s.dash}
+              dot={false} isAnimationActive={false} connectNulls
+            />
           ))}
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

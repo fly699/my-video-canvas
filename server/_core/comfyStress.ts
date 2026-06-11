@@ -81,6 +81,9 @@ export interface TimeSample {
   inFlight: number;
   throughputPerSec: number; // 整体瞬时吞吐（本采样区间内）
   avgMs: number | null; // 整体累计平均延迟
+  /** 累计分位数快照（旧历史记录可能缺省）。 */
+  p50Ms?: number | null;
+  p95Ms?: number | null;
   perServer: { baseUrl: string; throughputPerSec: number; inFlight: number; avgMs: number | null }[];
 }
 
@@ -210,6 +213,9 @@ function sample(job: StressJob): void {
     inFlight: job.inFlight,
     throughputPerSec: overallTp,
     avgMs: job.avgMs,
+    // 累计分位数快照（recompute 已算好）——延迟曲线可画 avg/p50/p95 三条。
+    p50Ms: job.p50Ms,
+    p95Ms: job.p95Ms,
     perServer,
   });
   if (job.timeSeries.length > MAX_SAMPLES) job.timeSeries.shift();
