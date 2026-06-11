@@ -114,7 +114,7 @@ export function buildStoryboardGenInput(args: {
   const batchSize = isSoul && [1, 4].includes(payload.batchSize as number) ? (payload.batchSize as 1 | 4) : 1;
   const poyoN = Number(sizing.imageN);
   const count = isSoul && batchSize > 1 ? batchSize : Number.isFinite(poyoN) && poyoN > 1 ? poyoN : 1;
-  const costLabel = costEstimateLabel(estimateImageCost(model, count));
+  const costLabel = costEstimateLabel(estimateImageCost(model, count, { resolution: payload.imageResolution }));
 
   const input: Record<string, unknown> = {
     prompt: enhancedPrompt,
@@ -129,6 +129,8 @@ export function buildStoryboardGenInput(args: {
     ...(model.startsWith("kie_") ? {
       kieTempKey: args.kieTempKey || undefined,
       aspectRatio: (payload.aspectRatio as string | undefined) || undefined,
+      // 分辨率档（如 GPT Image 2 1K/2K/4K，逐档计价；服务端按模型 resOptions 夹取）
+      imageResolution: payload.imageResolution || undefined,
     } : {}),
     estimatedCost: costLabel || undefined,
   };

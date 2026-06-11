@@ -230,6 +230,8 @@ export interface StoryboardNodeData {
   referenceImages?: ReferenceImage[];
   /** kie 图像模型的通用比例（服务端按模型枚举夹取）。 */
   aspectRatio?: string;
+  /** kie 分辨率档（如 GPT Image 2 的 1K/2K/4K，逐档计价；服务端按模型 resOptions 夹取）。 */
+  imageResolution?: string;
   batchSize?: number;
   // ── Image-gen sizing/quality knobs (mirror ImageGenNodeData) ──
   // Stored here so each storyboard scene can override aspect ratio and
@@ -438,6 +440,8 @@ export interface ImageGenNodeData {
   negativePrompt?: string;
   style?: string;
   aspectRatio?: string;
+  /** kie 分辨率档（如 GPT Image 2 的 1K/2K/4K，逐档计价；服务端按模型 resOptions 夹取）。 */
+  imageResolution?: string;
   referenceImageUrl?: string;
   /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
   referenceImages?: ReferenceImage[];

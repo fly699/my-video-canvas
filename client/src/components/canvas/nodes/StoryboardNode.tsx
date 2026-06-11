@@ -11,7 +11,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
-import { estimateImageCost, costEstimateLabel } from "@/lib/costEstimate";
+import { estimateImageCost, costEstimateLabel, KIE_IMAGE_RES_COST } from "@/lib/costEstimate";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mentionedMediaUrls, stripMediaMentions, detectUpstreamPrompt } from "../../../lib/comfyWorkflowParams";
@@ -542,7 +542,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                 {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                 {generating ? "生成中..." : "AI 生成分镜"}
                 {!generating && (() => {
-                  const lbl = costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1));
+                  const lbl = costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1, { resolution: payload.imageResolution }));
                   return lbl ? (
                     <span
                       title="按当前模型与参数实时预估的点数消耗，仅供参考，实际以平台账单为准"
@@ -1028,6 +1028,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             >
               <option value="">比例</option>
               {KIE_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
+          {/* kie 分辨率档（如 GPT Image 2 1K/2K/4K = 6/10/16 点，逐档计价） */}
+          {KIE_IMAGE_RES_COST[model] && (
+            <select
+              className="nodrag"
+              value={payload.imageResolution ?? Object.keys(KIE_IMAGE_RES_COST[model])[0]}
+              onChange={(e) => handleChange("imageResolution", e.target.value)}
+              title={`分辨率档（${Object.entries(KIE_IMAGE_RES_COST[model]).map(([k, v]) => `${k}=${v}点`).join(" / ")}）`}
+              style={{ ...fieldStyle, width: 64, padding: "6px 6px" }}
+            >
+              {Object.keys(KIE_IMAGE_RES_COST[model]).map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           )}
         </div>

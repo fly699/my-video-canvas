@@ -29,7 +29,7 @@ import { ImageLightbox } from "../ImageLightbox";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
-import { estimateImageCost, costEstimateLabel } from "@/lib/costEstimate";
+import { estimateImageCost, costEstimateLabel, KIE_IMAGE_RES_COST } from "@/lib/costEstimate";
 import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
@@ -380,6 +380,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       ...(payload.model?.startsWith("kie_") ? {
         kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
         aspectRatio: payload.aspectRatio || undefined,
+        // 分辨率档（如 GPT Image 2 1K/2K/4K，逐档计价；服务端按模型 resOptions 夹取。
+        // zod 侧复用 poyo 的 imageResolution 枚举，kie 档位是其子集）
+        imageResolution: (payload.imageResolution || undefined) as "1K" | "2K" | "4K" | undefined,
       } : {}),
       // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
       estimatedCost: genCostLabel || undefined,
@@ -429,7 +432,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (isFluxPro && (payload.fluxNumImages ?? 1) > 1) return payload.fluxNumImages ?? 1;
     return poyoN > 1 ? poyoN : 1;
   })();
-  const genCostLabel = costEstimateLabel(estimateImageCost(payload.model || resolve("image_gen", "image"), genCount));
+  const genCostLabel = costEstimateLabel(estimateImageCost(payload.model || resolve("image_gen", "image"), genCount, { resolution: payload.imageResolution }));
 
   // Collapse the params panel when switching model — old expansion state doesn't apply to a new param set
   useEffect(() => {
@@ -843,6 +846,20 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     style={{ ...fieldBase, cursor: "pointer" }}
                   >
                     {(RATIOS as readonly string[]).map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              )}
+              {/* kie 分辨率档（如 GPT Image 2 1K/2K/4K = 6/10/16 点，逐档计价） */}
+              {payload.model && KIE_IMAGE_RES_COST[payload.model] && (
+                <div style={{ width: 72 }}>
+                  <label style={labelStyle} title={Object.entries(KIE_IMAGE_RES_COST[payload.model]).map(([k, v]) => `${k}=${v}点`).join(" / ")}>分辨率</label>
+                  <select
+                    value={payload.imageResolution ?? Object.keys(KIE_IMAGE_RES_COST[payload.model])[0]}
+                    onChange={(e) => update("imageResolution", e.target.value)}
+                    className="nodrag"
+                    style={{ ...fieldBase, cursor: "pointer" }}
+                  >
+                    {Object.keys(KIE_IMAGE_RES_COST[payload.model]).map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
               )}

@@ -1256,6 +1256,8 @@ export const imageGenRouter = router({
         ...(isKieImageModel(input.model) ? {
           kieApiKey,
           size: input.aspectRatio ?? input.imageSize ?? input.poyoAspectRatio ?? input.reveAspectRatio,
+          // 可选分辨率档（如 GPT Image 2 1K/2K/4K，逐档计价）；服务端按模型 resOptions 夹取。
+          resolution: input.imageResolution,
         } : {}),
       });
 

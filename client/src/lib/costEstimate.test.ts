@@ -76,3 +76,17 @@ describe("costEstimateLabel", () => {
     expect(costEstimateLabel(null)).toBe("");
   });
 });
+
+describe("estimateImageCost — kie 分辨率逐档计价（GPT Image 2）", () => {
+  it("默认（未选档）按 1K=6 点，不再取区间中值", () => {
+    expect(estimateImageCost("kie_gpt_image_2", 1)).toEqual({ credits: 6, unit: "点", approx: false });
+  });
+  it("2K=10 / 4K=16，张数相乘", () => {
+    expect(estimateImageCost("kie_gpt_image_2", 1, { resolution: "2K" })?.credits).toBe(10);
+    expect(estimateImageCost("kie_gpt_image_2", 2, { resolution: "4K" })?.credits).toBe(32);
+    expect(estimateImageCost("kie_gpt_image_2_i2i", 1, { resolution: "4K" })?.credits).toBe(16);
+  });
+  it("非法档回退默认档", () => {
+    expect(estimateImageCost("kie_gpt_image_2", 1, { resolution: "8K" })?.credits).toBe(6);
+  });
+});
