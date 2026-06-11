@@ -934,7 +934,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={sendMutation.isPending || isUploadingAttachment}
-            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
               background: "transparent",
               border: "1px solid var(--c-bd2)",
@@ -949,7 +949,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           <button
             onClick={() => setShowSlashMenu((v) => !v)}
             disabled={sendMutation.isPending}
-            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
               background: showSlashMenu ? accentA(0.18) : "transparent",
               border: `1px solid ${showSlashMenu ? accentA(0.4) : "var(--c-bd2)"}`,
@@ -967,7 +967,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
               inputRef.current?.focus();
             }}
             disabled={sendMutation.isPending}
-            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{ background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
             title="注入整个画布摘要作为上下文"
           >
@@ -1006,7 +1006,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           <button
             onClick={handleSend}
             disabled={(!input.trim() && pendingAttachments.length === 0) || sendMutation.isPending}
-            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
               background: (!input.trim() && pendingAttachments.length === 0) || sendMutation.isPending
                 ? "var(--c-surface)"
@@ -1027,7 +1027,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           <button
             onClick={() => clearMutation.mutate({ nodeId: id, projectId: data.projectId })}
             disabled={localMessages.length === 0}
-            className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+            className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
             style={{
               background: "transparent",
               borderWidth: 1,
@@ -1076,7 +1076,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 URL.revokeObjectURL(url);
                 toast.success("已导出对话为 Markdown");
               }}
-              className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+              className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
               title="导出对话为 Markdown"
               style={{ background: "transparent", border: "1px solid transparent", color: "var(--c-t4)" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
@@ -1091,7 +1091,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 const lastAI = [...localMessages].reverse().find(m => m.role === "assistant");
                 if (lastAI) pushToDownstream(lastAI.content);
               }}
-              className="nodrag w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+              className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
               title="推送最新 AI 回复到连接的下游节点"
               style={{ background: "transparent", border: "1px solid transparent", color: "var(--c-t3)" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.70 0.18 200 / 0.12)"; (e.currentTarget as HTMLElement).style.color = accentColor; }}
