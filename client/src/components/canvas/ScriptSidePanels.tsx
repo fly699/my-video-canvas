@@ -213,7 +213,12 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
       {/* ② 梗概 */}
       <div className="flex flex-col gap-1.5">
         <StageHeader num={2} title="故事梗概（300-500 字）" done={idea.length >= 60} />
-        <p style={{ fontSize: 9.5, color: "var(--c-t4)" }}>梗概就是节点顶部的「故事梗概」框（共用），可在这里扩写。</p>
+        {/* 与节点顶部「故事梗概」框共用同一字段（payload.synopsis）——生成/编辑双向同步，
+            不用回首页找；支持 @角色 自动补全。「生成剧本」读取的就是这里的内容。 */}
+        <NodeTextArea className="nodrag" rows={5} style={taStyle}
+          placeholder="300-500 字故事梗概（与节点顶部「故事梗概」框同步；可 @角色）"
+          value={payload.synopsis ?? ""} onValueChange={(v) => updateNodeData(id, { synopsis: v })} />
+        <p style={{ fontSize: 9.5, color: "var(--c-t4)" }}>与节点顶部「故事梗概」框实时同步（同一字段）；「生成剧本」直接取此内容。</p>
         <ActionBtn pending={synopsisMut.isPending} disabled={!logline && !idea}
           onClick={() => synopsisMut.mutate({ sceneText: (logline || idea).slice(0, 2000), intent: "把这个故事扩写为 300-500 字的故事梗概：现在时态，按三幕走向（建置/对抗/结局）交代主角、冲突升级与结局方向，具体可拍，不要抽象套话", characterProfiles: charProfiles, model: llmModel })}>
           {idea ? "按 Logline 重写梗概" : "由 Logline 扩写梗概"}

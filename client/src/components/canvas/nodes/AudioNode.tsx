@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { unmentionText } from "../../../lib/characterConditioning";
 import type { AudioNodeData, AudioCategory } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -213,38 +214,40 @@ const SFX_MODELS = [
 // Voice options vary by provider. Sending an OpenAI voice ID like "alloy" to
 // ElevenLabs/CosyVoice causes upstream errors or silent default-voice fallback —
 // both cases still bill the user. Pick a per-model list and reset on switch.
+// 发音人显示统一中文（音频节点音色 chips 与镜头表 casting 下拉共用本数据源）；
+// value 仍是上游 wire 名，不影响提交。
 const OPENAI_VOICES = [
-  { value: "alloy",   label: "Alloy",   desc: "中性" },
-  { value: "echo",    label: "Echo",    desc: "男声" },
-  { value: "fable",   label: "Fable",   desc: "英式" },
-  { value: "onyx",    label: "Onyx",    desc: "低沉" },
-  { value: "nova",    label: "Nova",    desc: "女声" },
-  { value: "shimmer", label: "Shimmer", desc: "柔和" },
+  { value: "alloy",   label: "艾洛伊 Alloy",   desc: "中性" },
+  { value: "echo",    label: "回声 Echo",      desc: "男声" },
+  { value: "fable",   label: "寓言 Fable",     desc: "英式" },
+  { value: "onyx",    label: "玛瑙 Onyx",      desc: "低沉" },
+  { value: "nova",    label: "新星 Nova",      desc: "女声" },
+  { value: "shimmer", label: "微光 Shimmer",   desc: "柔和" },
 ];
 // ElevenLabs V3 voice names (per Poyo OpenAPI). value === the wire name; Rachel
 // is first so it becomes the default selection (matches the spec default).
 const ELEVENLABS_VOICES = [
-  { value: "Rachel",    label: "Rachel",    desc: "女声 · 旁白" },
-  { value: "Aria",      label: "Aria",      desc: "女声" },
-  { value: "Sarah",     label: "Sarah",     desc: "女声" },
-  { value: "Laura",     label: "Laura",     desc: "女声" },
-  { value: "Charlotte", label: "Charlotte", desc: "女声" },
-  { value: "Alice",     label: "Alice",     desc: "女声" },
-  { value: "Matilda",   label: "Matilda",   desc: "女声" },
-  { value: "Jessica",   label: "Jessica",   desc: "女声" },
-  { value: "Lily",      label: "Lily",      desc: "女声" },
-  { value: "River",     label: "River",     desc: "中性" },
-  { value: "Roger",     label: "Roger",     desc: "男声" },
-  { value: "Charlie",   label: "Charlie",   desc: "男声" },
-  { value: "George",    label: "George",    desc: "男声" },
-  { value: "Callum",    label: "Callum",    desc: "男声" },
-  { value: "Liam",      label: "Liam",      desc: "男声" },
-  { value: "Will",      label: "Will",      desc: "男声" },
-  { value: "Eric",      label: "Eric",      desc: "男声" },
-  { value: "Chris",     label: "Chris",     desc: "男声" },
-  { value: "Brian",     label: "Brian",     desc: "男声" },
-  { value: "Daniel",    label: "Daniel",    desc: "男声" },
-  { value: "Bill",      label: "Bill",      desc: "男声" },
+  { value: "Rachel",    label: "瑞秋 Rachel",       desc: "女声 · 旁白" },
+  { value: "Aria",      label: "阿莉雅 Aria",       desc: "女声" },
+  { value: "Sarah",     label: "莎拉 Sarah",        desc: "女声" },
+  { value: "Laura",     label: "劳拉 Laura",        desc: "女声" },
+  { value: "Charlotte", label: "夏洛特 Charlotte",  desc: "女声" },
+  { value: "Alice",     label: "爱丽丝 Alice",      desc: "女声" },
+  { value: "Matilda",   label: "玛蒂尔达 Matilda",  desc: "女声" },
+  { value: "Jessica",   label: "杰西卡 Jessica",    desc: "女声" },
+  { value: "Lily",      label: "莉莉 Lily",         desc: "女声" },
+  { value: "River",     label: "里弗 River",        desc: "中性" },
+  { value: "Roger",     label: "罗杰 Roger",        desc: "男声" },
+  { value: "Charlie",   label: "查理 Charlie",      desc: "男声" },
+  { value: "George",    label: "乔治 George",       desc: "男声" },
+  { value: "Callum",    label: "卡勒姆 Callum",     desc: "男声" },
+  { value: "Liam",      label: "利亚姆 Liam",       desc: "男声" },
+  { value: "Will",      label: "威尔 Will",         desc: "男声" },
+  { value: "Eric",      label: "埃里克 Eric",       desc: "男声" },
+  { value: "Chris",     label: "克里斯 Chris",      desc: "男声" },
+  { value: "Brian",     label: "布莱恩 Brian",      desc: "男声" },
+  { value: "Daniel",    label: "丹尼尔 Daniel",     desc: "男声" },
+  { value: "Bill",      label: "比尔 Bill",         desc: "男声" },
 ];
 
 export function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
@@ -636,7 +639,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       : undefined;
     musicMutation.mutate({
       model: modelVal,
-      prompt: payload.musicPrompt,
+      prompt: unmentionText(payload.musicPrompt, useCanvasStore.getState().nodes),
       style: styleEn,
       instrumental: payload.musicInstrumental ?? (isMiniMax ? false : true),
       negativeTags: !isMiniMax ? (payload.musicNegativeTags || undefined) : undefined,
@@ -667,13 +670,16 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       return;
     }
     const isVox = modelIsVoxCPM(model);
+    // 音频提示词不该出现 @角色 标记：提交前把命中的「@角色名」清洗为纯名字
+    //（TTS 正常朗读姓名，不念 at 符号；未提及时原样）。
+    const speakText = unmentionText(payload.ttsText, useCanvasStore.getState().nodes);
     // 本地 VoxCPM：需服务地址；参考音频可选（上传或上游接入），不给则用模型自带/随机音色。
     if (isVox) {
       if (!payload.ttsGradioBaseUrl?.trim()) { toast.error("请先填写本地 VoxCPM 的 Gradio 服务地址"); return; }
       const refUrl = payload.ttsRefWavUrl?.trim() || detectUpstreamAudioUrl(id)?.url;
       ttsMutation.mutate({
         model: "voxcpm-local",
-        text: payload.ttsText,
+        text: speakText,
         projectId: data.projectId,
         customBaseUrl: payload.ttsGradioBaseUrl.trim(),
         refWavUrl: refUrl || undefined,
@@ -682,7 +688,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         ditSteps: payload.ttsDitSteps ?? 10,
         denoise: payload.ttsDenoise ?? false,
         doNormalize: payload.ttsDoNormalize ?? false,
-        estimatedCost: costEstimateLabel(estimateTtsCost("voxcpm-local", payload.ttsText.length)) || undefined,
+        estimatedCost: costEstimateLabel(estimateTtsCost("voxcpm-local", speakText.length)) || undefined,
       });
       return;
     }
@@ -694,7 +700,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     const isEleven = modelIsElevenLabs(model);
     ttsMutation.mutate({
       model,
-      text: payload.ttsText,
+      text: speakText,
       voice,
       projectId: data.projectId,
       // OpenAI-only
@@ -728,7 +734,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("音效生成失败：" + err.message); },
   });
   const handleGenerateSFX = () => {
-    const prompt = payload.sfxPrompt?.trim();
+    const prompt = unmentionText(payload.sfxPrompt, useCanvasStore.getState().nodes).trim();
     if (!prompt || sfxMutation.isPending) return;
     sfxMutation.mutate({
       model: "kie_elevenlabs_sfx",
