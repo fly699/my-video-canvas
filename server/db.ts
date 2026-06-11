@@ -127,38 +127,13 @@ async function ensureNodeTypeEnum(db: NonNullable<typeof _db>): Promise<void> {
     await db.execute(sql.raw(`ALTER TABLE \`canvas_nodes\` MODIFY COLUMN \`type\` ENUM(${enumList}) NOT NULL`));
     console.warn(`[Database] self-heal: added missing canvas_nodes.type enum values: ${missing.join(", ")}`);
   })();
-  // Boot-time self-heal #2: the ComfyUI stress-test history/template tables. They
-  // arrived in migration 0054; when an instance updates code without (or before) a
-  // successful db:push the tables are missing — every job finish then fails to
-  // persist and the history list errors out. CREATE TABLE IF NOT EXISTS is
-  // idempotent on MySQL and MariaDB, so just guarantee them here.
-  const stressTables = (async () => {
-    await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`comfy_stress_history\` (
-      \`id\` INT AUTO_INCREMENT PRIMARY KEY,
-      \`jobId\` VARCHAR(64) NOT NULL UNIQUE,
-      \`status\` VARCHAR(16) NOT NULL,
-      \`startedByEmail\` VARCHAR(255),
-      \`config\` JSON,
-      \`result\` JSON NOT NULL,
-      \`startedAt\` TIMESTAMP NOT NULL,
-      \`finishedAt\` TIMESTAMP NULL,
-      \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`));
-    await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`comfy_stress_templates\` (
-      \`id\` INT AUTO_INCREMENT PRIMARY KEY,
-      \`name\` VARCHAR(128) NOT NULL,
-      \`config\` JSON NOT NULL,
-      \`createdByEmail\` VARCHAR(255),
-      \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`));
-  })();
-  stressTables.catch((e) => console.warn("[Database] stress tables self-heal skipped:", e instanceof Error ? e.message : e));
+  // 注：压测历史/模板表的自愈已下沉到查询路径（ensureStressTables，见下方压测
+  // helpers）——每次读写前幂等保证，无需在启动期重复建表。
 
   // Bound the wait: a hung information_schema/ALTER must NOT block every other DB
   // call (getDb awaits this once). The ALTER, if slow, still finishes in the bg.
   const timeout = new Promise<void>((resolve) => setTimeout(resolve, 8000));
-  try { await Promise.race([Promise.all([work, stressTables]), timeout]); }
+  try { await Promise.race([work, timeout]); }
   catch (e) { console.warn("[Database] canvas_nodes enum self-heal skipped:", e instanceof Error ? e.message : e); }
   work.catch(() => { /* background completion errors are non-fatal */ });
 }
@@ -2576,7 +2551,8 @@ async function ensureStressTables(db: NonNullable<Awaited<ReturnType<typeof getD
       \`result\` JSON NOT NULL,
       \`startedAt\` TIMESTAMP NOT NULL,
       \`finishedAt\` TIMESTAMP NULL,
-      \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX \`csh_startedAt_idx\` (\`startedAt\`)
     )`));
     await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`comfy_stress_templates\` (
       \`id\` INT AUTO_INCREMENT PRIMARY KEY,
@@ -2584,8 +2560,24 @@ async function ensureStressTables(db: NonNullable<Awaited<ReturnType<typeof getD
       \`config\` JSON NOT NULL,
       \`createdByEmail\` VARCHAR(255),
       \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX \`cst_updatedAt_idx\` (\`updatedAt\`)
     )`));
+    // 存量表幂等补排序索引（MySQL 无 ADD INDEX IF NOT EXISTS → information_schema 守卫）。
+    // ORDER BY 走索引避免 filesort，是 1038 Out-of-sort-memory 的第二道防线
+    // （第一道是 list 的两步查询，见下）。
+    for (const [table, index, column] of [
+      ["comfy_stress_history", "csh_startedAt_idx", "startedAt"],
+      ["comfy_stress_templates", "cst_updatedAt_idx", "updatedAt"],
+    ] as const) {
+      const res = await db.execute(sql.raw(
+        `SELECT COUNT(*) AS n FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}' AND INDEX_NAME = '${index}'`,
+      ));
+      const rows = (Array.isArray(res) ? res[0] : res) as unknown as Array<{ n?: number | string }>;
+      if (Number(rows?.[0]?.n ?? 0) === 0) {
+        await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD INDEX \`${index}\` (\`${column}\`)`));
+      }
+    }
   })();
   try { await _stressTablesReady; }
   catch (e) { _stressTablesReady = null; throw e; } // 失败不缓存，下次重试
@@ -2607,7 +2599,20 @@ export async function listComfyStressHistory(limit = 50): Promise<ComfyStressHis
   const db = await getDb();
   if (!db) return [];
   await ensureStressTables(db);
-  return db.select().from(comfyStressHistory).orderBy(desc(comfyStressHistory.startedAt)).limit(limit);
+  // 两步查询：history.result 是 MB 级 JSON（含 timeSeries），直接
+  // SELECT * ORDER BY startedAt 会让 MySQL filesort 把巨大行塞进 sort buffer，
+  // 触发 1038 "Out of sort memory"。先只排序 id+startedAt 小行，再按 id 取整行、
+  // JS 里恢复顺序——不依赖索引与 DB 参数。
+  const idRows = await db
+    .select({ id: comfyStressHistory.id })
+    .from(comfyStressHistory)
+    .orderBy(desc(comfyStressHistory.startedAt))
+    .limit(limit);
+  if (idRows.length === 0) return [];
+  const ids = idRows.map((r) => r.id);
+  const rows = await db.select().from(comfyStressHistory).where(inArray(comfyStressHistory.id, ids));
+  const order = new Map(ids.map((id, i) => [id, i]));
+  return rows.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 }
 
 export async function deleteComfyStressHistory(id: number): Promise<void> {
@@ -2628,7 +2633,16 @@ export async function listComfyStressTemplates(): Promise<ComfyStressTemplateRow
   const db = await getDb();
   if (!db) return [];
   await ensureStressTables(db);
-  return db.select().from(comfyStressTemplates).orderBy(desc(comfyStressTemplates.updatedAt));
+  // 同 history：config 可含 2MB 工作流 JSON，避免大行 filesort（1038）→ 两步查询。
+  const idRows = await db
+    .select({ id: comfyStressTemplates.id })
+    .from(comfyStressTemplates)
+    .orderBy(desc(comfyStressTemplates.updatedAt));
+  if (idRows.length === 0) return [];
+  const ids = idRows.map((r) => r.id);
+  const rows = await db.select().from(comfyStressTemplates).where(inArray(comfyStressTemplates.id, ids));
+  const order = new Map(ids.map((id, i) => [id, i]));
+  return rows.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 }
 
 export async function saveComfyStressTemplate(name: string, config: unknown, createdByEmail: string | null): Promise<void> {
