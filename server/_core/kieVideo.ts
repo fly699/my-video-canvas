@@ -296,7 +296,10 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     wire: "grok-imagine/image-to-video", endpoint: "jobs", label: "Grok Imagine 图生视频", family: "Grok",
     params: [
       { key: "mode", type: "str", def: "normal" },
-      { key: "duration", type: "num", def: 6 },
+      // 注意：kie 同一家族两端点类型不一致——t2v 的 duration 是 number，
+      // i2v 的 duration 是 string（docs/kie-api.md grok-imagine-image-to-video：
+      // duration type: string）。发数字会被 400 拒绝。
+      { key: "duration", type: "str", def: "6" },
       { key: "resolution", type: "str", def: "480p" },
       { key: "aspect_ratio", type: "str", def: "16:9" },
     ],

@@ -95,12 +95,26 @@ export function buildStoryboardGenInput(args: {
     imageOutputFormat?: string; poyoAspectRatio?: string;
   };
   const sizing: Record<string, unknown> = {};
+  const validSeed = (s: unknown): number | undefined =>
+    typeof s === "number" && Number.isInteger(s) && s >= 0 && s <= 2147483647 ? s : undefined;
   if (isSoul) {
     if (SOUL_SIZES_LIST.includes(payload.widthAndHeight as (typeof SOUL_SIZES_LIST)[number])) sizing.widthAndHeight = payload.widthAndHeight;
     if (payload.soulQuality) sizing.quality = payload.soulQuality;
+    // 与 ImageGenNode 对齐：种子锁定 + AI 增强提示词（此前分镜未透传，复现一致画面失效）
+    const seed = validSeed(payload.seed);
+    if (seed != null) sizing.seed = seed;
+    if (payload.enhancePrompt != null) sizing.enhancePrompt = !!payload.enhancePrompt;
   } else if (isV2HF) {
     if (V2_ASPECT_RATIOS.includes(payload.reveAspectRatio as (typeof V2_ASPECT_RATIOS)[number])) sizing.reveAspectRatio = payload.reveAspectRatio;
     if (V2_RESOLUTIONS.includes(payload.reveResolution as (typeof V2_RESOLUTIONS)[number])) sizing.reveResolution = payload.reveResolution;
+    // Flux Pro Kontext 专属参数（与 ImageGenNode 对齐；此前分镜未透传）
+    if (model === "hf_flux_pro") {
+      const g = payload.fluxGuidanceScale;
+      if (typeof g === "number" && g >= 1 && g <= 20) sizing.fluxGuidanceScale = g;
+      const fs = validSeed(payload.fluxSeed);
+      if (fs != null) sizing.fluxSeed = fs;
+      if ([1, 2, 3, 4].includes(payload.fluxNumImages as number)) sizing.fluxNumImages = payload.fluxNumImages;
+    }
   } else if (model.startsWith("poyo_")) {
     sizing.imageSize = resolveImageParam(model, "imageSize", generic.imageSize);
     sizing.imageResolution = resolveImageParam(model, "imageResolution", generic.imageResolution);
@@ -110,10 +124,13 @@ export function buildStoryboardGenInput(args: {
     sizing.poyoAspectRatio = generic.poyoAspectRatio;
   }
 
-  // ── 批量数 → 预估张数 ──
+  // ── 批量数 → 预估张数（Soul 批量 / Flux 张数 / Poyo n，与 ImageGenNode.genCount 同口径）──
   const batchSize = isSoul && [1, 4].includes(payload.batchSize as number) ? (payload.batchSize as 1 | 4) : 1;
   const poyoN = Number(sizing.imageN);
-  const count = isSoul && batchSize > 1 ? batchSize : Number.isFinite(poyoN) && poyoN > 1 ? poyoN : 1;
+  const fluxN = Number(sizing.fluxNumImages);
+  const count = isSoul && batchSize > 1 ? batchSize
+    : Number.isFinite(fluxN) && fluxN > 1 ? fluxN
+    : Number.isFinite(poyoN) && poyoN > 1 ? poyoN : 1;
   const costLabel = costEstimateLabel(estimateImageCost(model, count, { resolution: payload.imageResolution }));
 
   const input: Record<string, unknown> = {

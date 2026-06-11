@@ -239,8 +239,13 @@ export interface StoryboardNodeData {
   // tRPC input — the mutation accepts them as-is per model.
   widthAndHeight?: string;            // Soul Standard 13-value enum
   soulQuality?: "720p" | "1080p";     // Soul Standard only
+  seed?: number;                      // Soul Standard：种子锁定（复现一致画面）
+  enhancePrompt?: boolean;            // Soul Standard：AI 增强提示词
   reveAspectRatio?: string;           // Reve / Seedream / Flux Pro
   reveResolution?: "1K" | "2K" | "4K";// Reve / Seedream / Flux Pro
+  fluxGuidanceScale?: number;         // Flux Pro Kontext：引导强度 1-20
+  fluxSeed?: number;                  // Flux Pro Kontext：种子
+  fluxNumImages?: number;             // Flux Pro Kontext：每次张数 1-4
   poyoAspectRatio?: string;           // Poyo image models
   poyoQuality?: "low" | "medium" | "high"; // Poyo image models
   // Original upstream AI-platform URL for the generated image (see ImageGenNodeData)

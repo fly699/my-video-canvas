@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { NodeTextArea } from "./NodeTextInput";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
@@ -165,8 +166,9 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
       {/* ① Logline */}
       <div className="flex flex-col gap-1.5">
         <StageHeader num={1} title="一句话故事（Logline）" done={!!logline} />
-        <textarea className="nodrag" rows={2} style={taStyle} placeholder="25-35 字：主角 + 冲突 + 赌注。可手写，或由下方按钮从梗概/想法提炼"
-          value={payload.logline ?? ""} onChange={(e) => updateNodeData(id, { logline: e.target.value })} />
+        {/* NodeTextArea：自带 @角色/场景 自动补全（与脚本/分镜输入一致） */}
+        <NodeTextArea className="nodrag" rows={2} style={taStyle} placeholder="25-35 字：主角 + 冲突 + 赌注。可手写、可 @角色，或由下方按钮从梗概/想法提炼"
+          value={payload.logline ?? ""} onValueChange={(v) => updateNodeData(id, { logline: v })} />
         <ActionBtn pending={loglineMut.isPending} disabled={!idea && !logline}
           onClick={() => loglineMut.mutate({ idea: idea || logline, genre: payload.aiGenre, model: llmModel })}>
           从想法/梗概提炼 3 个候选
@@ -219,7 +221,7 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
                     style={{ flex: 1, fontSize: 10, fontWeight: 700, background: "transparent", border: "none", outline: "none", color: "var(--c-t1)" }} />
                   {b.duration != null && <span style={{ fontSize: 8.5, color: "var(--c-t4)" }}>≈{b.duration}s</span>}
                 </div>
-                <textarea className="nodrag" rows={2} value={b.summary} onChange={(e) => updateBeat(i, { summary: e.target.value })}
+                <NodeTextArea className="nodrag" rows={2} value={b.summary} onValueChange={(v) => updateBeat(i, { summary: v })}
                   style={{ ...taStyle, fontSize: 10, padding: "4px 6px" }} />
               </div>
             ))}
