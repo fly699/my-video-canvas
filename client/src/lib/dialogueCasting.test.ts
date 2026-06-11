@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDialogueLines, extractRoles, shouldCast, planCastSegments } from "./dialogueCasting";
+import { parseDialogueLines, stripDialogueRoles, extractRoles, shouldCast, planCastSegments } from "./dialogueCasting";
 
 describe("parseDialogueLines", () => {
   it("parses 「角色名：台词」 with Chinese or Latin colons and strips the prefix", () => {
@@ -58,5 +58,19 @@ describe("shouldCast / planCastSegments", () => {
     expect(plan.map((p) => p.voice)).toEqual(["v1", "alloy"]);
     // 小红未分配 → 与旁白同 fallback，相邻全部合并为一次 TTS
     expect(plan[1].text).toBe("嗯。\n坐吧。\n（雨声渐起）");
+  });
+});
+
+describe("括号标注与净词（镜头表批量配音「念出角色名」修复）", () => {
+  it("「林晓（独白）：」→ role=林晓（纯名），标注与名字都不进 text", () => {
+    const segs = parseDialogueLines("林晓（独白）：谈判桌上输掉的，从来不只是一份合同……");
+    expect(segs).toEqual([{ role: "林晓", text: "谈判桌上输掉的，从来不只是一份合同……" }]);
+  });
+  it("半角括号「孙朗(画外音):」同样剥净", () => {
+    expect(parseDialogueLines("孙朗(画外音): 你究竟是从哪里来的人？")[0]).toEqual({ role: "孙朗", text: "你究竟是从哪里来的人？" });
+  });
+  it("stripDialogueRoles：多行混合 → 只留台词", () => {
+    expect(stripDialogueRoles("林晓（独白）：第一句\n旁白没有前缀\n孙朗：第二句"))
+      .toBe("第一句\n旁白没有前缀\n第二句");
   });
 });

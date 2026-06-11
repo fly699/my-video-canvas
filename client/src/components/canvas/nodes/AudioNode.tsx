@@ -436,17 +436,21 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const refFileInputRef = useRef<HTMLInputElement>(null);
 
   const musicMutation = trpc.audioGen.generateMusic.useMutation({
+    // payload.status 驱动 BaseNode 标题栏下方的常驻进度条/失败红条——节点收缩
+    // （取消选中）后依然可见「生成中/失败」（音乐生成可达数分钟，此前收缩即失联）。
+    onMutate: () => updateNodeData(id, { status: "processing", errorMessage: undefined }),
     onSuccess: (result) => {
       audioRef.current?.pause();
       setIsPlaying(false);
       updateNodeData(id, {
         url: result.url,
         duration: result.duration,
+        status: "success",
         name: `${payload.musicStyle ? payload.musicStyle + " · " : ""}${payload.musicPrompt?.slice(0, 24) ?? "配乐"}`,
       });
       toast.success("配乐生成完成");
     },
-    onError: (err) => toast.error("生成失败：" + err.message),
+    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
   });
 
   // 配音文本翻译（支持语言与中文方言），翻译后覆盖 ttsText。
@@ -473,6 +477,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   };
 
   const ttsMutation = trpc.audioGen.generateDubbing.useMutation({
+    // 同 musicMutation：payload.status 让 BaseNode 常驻进度条在节点收缩后仍可见。
+    onMutate: () => updateNodeData(id, { status: "processing", errorMessage: undefined }),
     onSuccess: (result) => {
       audioRef.current?.pause();
       setIsPlaying(false);
@@ -483,6 +489,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       updateNodeData(id, {
         url: result.url,
         duration: result.duration,
+        status: "success",
         // timestampsUrl is only present for ElevenLabs V3 TTS with timestamps on;
         // clear any stale value from a previous run otherwise.
         ttsTimestampsUrl: result.timestampsUrl ?? undefined,
@@ -490,7 +497,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       });
       toast.success("配音生成完成");
     },
-    onError: (err) => toast.error("配音生成失败：" + err.message),
+    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("配音生成失败：" + err.message); },
   });
 
   // Resolve active category (support legacy source field)
@@ -697,17 +704,20 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   };
 
   const sfxMutation = trpc.audioGen.generateSFX.useMutation({
+    // 同 musicMutation：payload.status 让 BaseNode 常驻进度条在节点收缩后仍可见。
+    onMutate: () => updateNodeData(id, { status: "processing", errorMessage: undefined }),
     onSuccess: (result) => {
       audioRef.current?.pause();
       setIsPlaying(false);
       updateNodeData(id, {
         url: result.url,
         duration: result.duration,
+        status: "success",
         name: `音效 · ${payload.sfxPrompt?.slice(0, 24) ?? ""}`,
       });
       toast.success("音效生成完成");
     },
-    onError: (err) => toast.error("音效生成失败：" + err.message),
+    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("音效生成失败：" + err.message); },
   });
   const handleGenerateSFX = () => {
     const prompt = payload.sfxPrompt?.trim();

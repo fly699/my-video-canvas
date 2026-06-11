@@ -13,17 +13,26 @@ export interface DialogueSegment {
 }
 
 /** 逐行解析对白：「角色名：台词」（中英文冒号均可；角色名 ≤12 字、不含空白与
- *  常见标点）识别为角色段，其余行视为旁白（role=null）。空行忽略。 */
+ *  常见标点）识别为角色段，其余行视为旁白（role=null）。空行忽略。
+ *  角色名后可跟全/半角括号标注——「林晓（独白）：」「孙朗(画外音):」——role 取
+ *  括号前的纯名（否则与 casting 表里的「林晓」对不上、音色分配失效），括号标注
+ *  是舞台指示，不进 TTS 文本。 */
 export function parseDialogueLines(dialogue: string): DialogueSegment[] {
   const out: DialogueSegment[] = [];
   for (const raw of dialogue.split(/\n+/)) {
     const line = raw.trim();
     if (!line) continue;
-    const m = line.match(/^([^：:，。！？!?,.\s]{1,12})[：:]\s*(.+)$/);
+    const m = line.match(/^([^：:，。！？!?,.\s（(）)]{1,12})(?:[（(][^（）()]{0,16}[）)])?\s*[：:]\s*(.+)$/);
     if (m) out.push({ role: m[1], text: m[2].trim() });
     else out.push({ role: null, text: line });
   }
   return out;
+}
+
+/** 把对白剥成「只含台词」的纯文本（去掉每行「角色名（标注）：」前缀）——
+ *  非 casting 的整段单音色 TTS 同样不该把角色名/舞台指示念出来。 */
+export function stripDialogueRoles(dialogue: string): string {
+  return parseDialogueLines(dialogue).map((s) => s.text).join("\n");
 }
 
 /** 从多镜对白中提取出现过的角色名（保持首次出现顺序、去重）。 */
