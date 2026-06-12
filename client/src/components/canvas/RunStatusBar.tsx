@@ -1,4 +1,4 @@
-import { useReactFlow } from "reactflow";
+import { useReactFlow } from "@xyflow/react";
 import { Loader2, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 import type { WorkflowRunState } from "../../hooks/useWorkflowRunner";
 
