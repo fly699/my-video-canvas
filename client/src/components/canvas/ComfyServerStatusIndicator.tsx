@@ -245,12 +245,28 @@ export function ComfyServerStatusIndicator() {
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
   };
 
-  // Resize from the bottom-right handle.
-  const startResize = (e: React.MouseEvent) => {
+  // Resize from any of the four corners. East/south corners grow rightward/downward;
+  // west/north corners keep the OPPOSITE edge anchored (the window moves as it grows),
+  // so we also update `pos` — captured from the live rect because `pos` may still be
+  // null (auto-anchored under the toolbar button) when the user first grabs a corner.
+  const startResize = (corner: "nw" | "ne" | "sw" | "se") => (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
-    const sx = e.clientX, sy = e.clientY, iw = size.w, ih = size.h;
+    if (!panelRef.current) return;
+    const rect = panelRef.current.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY, iw = size.w, ih = size.h, il = rect.left, it = rect.top;
     const onMove = (mv: MouseEvent) => {
-      setSize({ w: Math.max(260, iw + mv.clientX - sx), h: Math.max(200, ih + mv.clientY - sy) });
+      const dx = mv.clientX - sx, dy = mv.clientY - sy;
+      const w = corner.includes("e") ? iw + dx : corner.includes("w") ? iw - dx : iw;
+      const h = corner.includes("s") ? ih + dy : corner.includes("n") ? ih - dy : ih;
+      const cw = Math.max(260, Math.min(window.innerWidth - 16, w));
+      const ch = Math.max(200, Math.min(window.innerHeight - 16, h));
+      setSize({ w: cw, h: ch });
+      if (corner.includes("w") || corner.includes("n")) {
+        setPos({
+          left: Math.max(0, corner.includes("w") ? il + iw - cw : il),
+          top: Math.max(0, corner.includes("n") ? it + ih - ch : it),
+        });
+      }
     };
     const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
@@ -470,10 +486,13 @@ export function ComfyServerStatusIndicator() {
               })()}
             </div>
 
-            {/* Resize handle */}
-            <div onMouseDown={startResize} title="拖拽缩放" style={{ position: "absolute", right: 0, bottom: 0, width: 16, height: 16, cursor: "nwse-resize", zIndex: 2 }}>
+            {/* Resize handles — 四角均可拖拽缩放（右下角带视觉抓手，其余三角隐形热区） */}
+            <div onMouseDown={startResize("se")} title="拖拽缩放" style={{ position: "absolute", right: 0, bottom: 0, width: 16, height: 16, cursor: "nwse-resize", zIndex: 3 }}>
               <div style={{ position: "absolute", right: 3, bottom: 3, width: 7, height: 7, borderRight: "2px solid var(--c-bd3)", borderBottom: "2px solid var(--c-bd3)" }} />
             </div>
+            <div onMouseDown={startResize("sw")} title="拖拽缩放" style={{ position: "absolute", left: 0, bottom: 0, width: 16, height: 16, cursor: "nesw-resize", zIndex: 3 }} />
+            <div onMouseDown={startResize("ne")} title="拖拽缩放" style={{ position: "absolute", right: 0, top: 0, width: 16, height: 16, cursor: "nesw-resize", zIndex: 3 }} />
+            <div onMouseDown={startResize("nw")} title="拖拽缩放" style={{ position: "absolute", left: 0, top: 0, width: 16, height: 16, cursor: "nwse-resize", zIndex: 3 }} />
           </div>
         </>,
         document.body,
