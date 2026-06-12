@@ -145,16 +145,11 @@ export const BaseNode = memo(function BaseNode({
     const node = s.nodes.find((n) => n.id === id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
   });
-  // 框选/多选时是否选中了 ≥2 个节点。多选时节点保持收起（只显选中描边，不展开配置区），
-  // 避免框选一片节点时它们全部展开、画布瞬间被撑乱。单选仍展开。返回 boolean，仅在
-  // 「是否多选」翻转时触发本节点重渲染。
-  const multiSelected = useCanvasStore((s) => {
-    let c = 0;
-    for (const n of s.nodes) { if (n.selected) { c++; if (c > 1) return true; } }
-    return false;
-  });
-  // 真正决定「展开配置」的开关：单选（或置顶）才展开；多选时即便本节点 selected 也不展开。
-  const expandSelected = (!!selected && !multiSelected) || pinned;
+  // 注意：多选时上游 CustomNode 已把 selected prop 压成 false（所有节点统一「框选不展开」），
+  // 这里的 selected 即「单选展开」语义；选中描边用 store 真实选中态（storeSelected），
+  // 框选高亮不丢。
+  const storeSelected = useCanvasStore((s) => !!s.nodes.find((n) => n.id === id)?.selected);
+  const expandSelected = !!selected || pinned;
   // Creator id (stamped into the payload at creation) → a per-collaborator color
   // dot in the title bar, matching the cursor / "在线协作者" colors. Only shown
   // for OTHER collaborators' nodes (your own stay undotted — no solo noise).
@@ -315,7 +310,7 @@ export const BaseNode = memo(function BaseNode({
   return (
     <div
       className={`group/node relative${runStatus === "running" ? " node-run-pulse" : ""}`}
-      data-selected={(selected || pinned) ? "true" : "false"}
+      data-selected={(storeSelected || pinned) ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
       style={{
         borderRadius: 16,

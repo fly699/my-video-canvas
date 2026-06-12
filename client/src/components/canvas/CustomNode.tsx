@@ -1,5 +1,6 @@
 import { memo } from "react";
 import type { NodeProps } from "@xyflow/react";
+import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { ScriptNode } from "./nodes/ScriptNode";
 import { StoryboardNode } from "./nodes/StoryboardNode";
 import { PromptNode } from "./nodes/PromptNode";
@@ -41,6 +42,15 @@ type AnyNodeProps = NodeProps<any>;
 
 export const CustomNode = memo(function CustomNode(props: NodeProps) {
   const data = props.data as unknown as CustomNodeData;
+  // 框选/多选（≥2 个选中）时把 selected 压成 false 再传给节点组件：所有节点的「选中即展开
+  // 配置区」（不管是用 NodeSelectedContext 还是直接读 selected prop）都统一不触发，避免
+  // 框选一片节点画布被撑乱。选中描边不受影响——BaseNode 的描边读 store 真实选中态。
+  const multiSelected = useCanvasStore((s) => {
+    let c = 0;
+    for (const n of s.nodes) { if (n.selected) { c++; if (c > 1) return true; } }
+    return false;
+  });
+  if (props.selected && multiSelected) props = { ...props, selected: false };
 
   switch (data.nodeType) {
     case "script":
