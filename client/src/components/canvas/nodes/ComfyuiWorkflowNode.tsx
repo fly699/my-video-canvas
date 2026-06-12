@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { ComfyWorkflowImportWizard, type ImportWizardResult } from "../ComfyWorkflowImportWizard";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
@@ -26,7 +27,7 @@ import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
-  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle,
+  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle, Wand2,
 } from "lucide-react";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
@@ -345,6 +346,25 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const convertMutation = trpc.comfyui.convertWorkflow.useMutation();
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
+  // 向导完成：把已预检/修正过的工作流 + 分析结果落到节点，进入既有参数绑定阶段。
+  const applyWizardResult = useCallback((r: ImportWizardResult) => {
+    const bindings = r.analyze.detectedParams;
+    setLocalJson(r.workflowJson);
+    setLocalBindings(bindings);
+    update({
+      workflowJson: r.workflowJson,
+      paramBindings: bindings,
+      outputNodeIds: r.analyze.outputNodeIds,
+      outputNodes: r.analyze.outputNodes,
+      outputType: r.analyze.outputType === "mixed" ? "auto" : r.analyze.outputType,
+      paramValues: {},
+      ...(r.customBaseUrl ? { customBaseUrl: r.customBaseUrl } : {}),
+    });
+    setPhase("binding");
+    setShowWizard(false);
+    toast.success(`向导导入成功 · 检测到 ${bindings.length} 个参数`);
+  }, [update]);
 
   const toApiThenAnalyze = useCallback(async (parsed: unknown, rawText: string) => {
     const fmt = detectWorkflowFormat(parsed);
@@ -824,6 +844,28 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
             onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f) void handleFile(f); }}
           >
+            {/* 推荐：专业导入向导（分步 + 服务器预检 + 一键重映射，一次跑通） */}
+            <button
+              onClick={() => setShowWizard(true)}
+              style={{
+                width: "100%", marginBottom: 8, padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                background: `${accent}1f`, border: `1px solid ${accent}`, color: accent,
+                fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              }}
+              title="分步引导：载入 → 选服务器 → 预检（检查节点/模型是否存在并一键替换）→ 导入"
+            >
+              <Wand2 size={14} /> 导入向导（推荐 · 导入前预检，一次跑通）
+            </button>
+            <div style={{ fontSize: 10, color: "var(--c-t4)", marginBottom: 8, textAlign: "center" }}>—— 或手动导入 ——</div>
+
+            {showWizard && (
+              <ComfyWorkflowImportWizard
+                initialServerUrl={payload.customBaseUrl?.trim() || undefined}
+                onCancel={() => setShowWizard(false)}
+                onComplete={applyWizardResult}
+              />
+            )}
+
             {/* Import from file (.json / ComfyUI .png) */}
             <div
               onClick={() => { if (!importing) importFileRef.current?.click(); }}
