@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   X, Sparkles, Layers, Wand2, Video, Boxes, Bot, Users, ScrollText, Activity,
   Shield, ArrowRight, MessageCircle, Music, Wallet, Clapperboard, Bookmark,
-  Palette, Upload, User, AtSign, Calculator, Copy, BookOpen,
+  Palette, Upload, User, AtSign, Calculator, Copy, BookOpen, Route, ShieldCheck, Zap,
 } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -68,7 +68,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       title: "剪辑节点 · 专业升级", desc: "节点级精剪：双向裁剪 + 精确入出点 / 自定义倍速 / 截取封面帧；多音轨混音（每轨音量·延迟·淡入淡出·静音·独奏·语音闪避 Ducking）、响度标准化 + 降噪、调色预设、淡入淡出、裁剪比例 / 旋转翻转、输出分辨率·帧率·格式；预览可循环播放并随节点缩放充满",
       badge: "NEW" },
     { Icon: User, color: "oklch(0.66 0.18 30)",
-      title: "角色一致性 · 全局角色库", desc: "角色节点的多视角参考图自动锁定身份，贯穿 ComfyUI 图/视频/工作流（IPAdapter / LoRA / 参考图）与 Poyo 图/视频（多模态参考）；一键「应用到本场景所有镜头」、多角色按布局定优先级、LLM 一致性校验；角色保存到全局角色库，跨项目快速调用",
+      title: "角色一致性 · 全局角色库", desc: "角色节点的多视角参考图自动锁定身份，贯穿 ComfyUI 图/视频/工作流（IPAdapter / LoRA / 参考图）与 Poyo 图/视频（多模态参考）；一键「应用到本场景所有镜头」、多角色按布局定优先级、LLM 一致性校验；角色保存到全局角色库，跨项目快速调用；「一致性种子」一键把同一随机种子钉到该角色全部镜头，跨镜头一致性最大化",
       badge: "NEW" },
     { Icon: Bot, color: "oklch(0.70 0.18 250)",
       title: "多智能体编排", desc: "一个画布可放多个智能体，各自分管自己规划生成的节点：归属彩色徽标标识、规划上下文相互隔离，一键「选中 / 运行 / 清空我的节点」，互不干扰",
@@ -89,7 +89,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       title: "提示词库 · 拉线建节点", desc: "提示词库可保存常用提示词、分类管理、内联编辑、导入导出，输入「/」快捷唤出，支持 10 个快捷槽位；从节点端口拉线到空白处松手，即在落点弹出建节点菜单并自动连线，顺手搭流程",
       badge: "NEW" },
     { Icon: Boxes, color: "oklch(0.68 0.20 100)",
-      title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（AnimateDiff / Wan / LTX，支持角色 LoRA）、15 类模型自动发现、自定义工作流导入；上游提示词「优先/转发」、运行后队列空闲自动清显存、参数绑定失同步校验、随机/固定种子、多行提示词批量出图" },
+      title: "ComfyUI 自建集成", desc: "图像（多 LoRA / ControlNet+预处理 / IPAdapter / Inpaint / 放大）+ 视频（AnimateDiff / Wan / LTX，支持角色 LoRA）、15 类模型自动发现、自定义工作流导入（含专业导入向导，见下）；上游提示词「优先/转发」、运行后队列空闲自动清显存、参数绑定失同步校验、随机/固定种子、多行提示词批量出图" },
     { Icon: Bookmark, color: "oklch(0.65 0.20 140)",
       title: "ComfyUI 节点模板库", desc: "右键任意 ComfyUI 节点把全部参数（含提示词 / 工作流）存为共享模板，全员可调用；按节点外框颜色分类、可搜索 / 注释 / 重命名，点击即在画布快速新建带参节点",
       badge: "NEW" },
@@ -118,6 +118,18 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       badge: "NEW" },
     { Icon: Users, color: "oklch(0.66 0.18 140)",
       title: "多人实时协作", desc: "多用户同时编辑，节点变更秒同步，协作者光标可见；他人放置的节点按创建者显示专属颜色标识，一眼辨认归属",
+      badge: "NEW" },
+    { Icon: ShieldCheck, color: "oklch(0.7 0.17 195)",
+      title: "ComfyUI 工作流导入向导", desc: "分步导入：粘贴 JSON / 拖文件 / ComfyUI PNG（UI 格式自动转 API）→ 下拉选服务器（节点保存 ∪ 本机注册 ∪ 全局列表）→ 用服务器真实节点定义预检——未装的自定义节点、ckpt/LoRA/采样器等不存在的取值（下拉一键替换成服务器上的真实选项）、必填缺失，全部导入前查出，一次跑通；节点选择器「导入工作流」磁贴一键直达，已导入节点可随时「换工作流」",
+      badge: "NEW" },
+    { Icon: Route, color: "oklch(0.66 0.18 250)",
+      title: "创作向导 · 专业开发管线", desc: "脚本节点「向导」分步推进：Logline → 梗概（风格基调 + 自定义意图可调）→ 节拍表（结构模板 + 时长分配策略，逐拍可编辑、总时长对账）→ 剧本（「仅剧本先审视」或「剧本+分镜」两种模式）→ 分镜；「约束预览」明示将注入的节拍表与角色档案（可临时改写），剧本生成后一键转「专业审查」六维评分闭环",
+      badge: "NEW" },
+    { Icon: Wallet, color: "oklch(0.72 0.15 160)",
+      title: "预算管控面板", desc: "工具栏一键查看整张画布的预估消耗：逐节点按所选模型/参数精算，分 kie 点与 Poyo cr 两路对照实时余额（超额标红）、按模型分组明细；可设项目预算上限（超限时智能体自动执行暂停并提醒），计价与官方价格表全量对账",
+      badge: "NEW" },
+    { Icon: Zap, color: "oklch(0.72 0.18 60)",
+      title: "画布效率操作", desc: "顶栏全局运行状态条（生成中/排队/失败一目了然，点失败直接跳到出错节点）；框选后 Ctrl+C/V 复制整条镜头链（含内部连线）；「一键整理」按连线方向自动排版 + 网格吸附；吸附窗在提示词/参考元素变更时自动弹出 2 秒",
       badge: "NEW" },
   ];
 
