@@ -7,6 +7,7 @@ import {
   CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft, FileJson, Wand2, PackageX,
 } from "lucide-react";
 import { detectWorkflowFormat, extractComfyWorkflowsFromPng } from "@/lib/comfyWorkflowImport";
+import { useComfyServersStore } from "@/hooks/useComfyServersStore";
 
 // ── ComfyUI 工作流「专业导入向导」──────────────────────────────────────────────
 // 解决「导入即报错、反复调参」的痛点：分步引导 + 用目标服务器 /object_info 做导入前预检，
@@ -62,8 +63,10 @@ const boxStyle: React.CSSProperties = {
   outline: "none", resize: "vertical", fontFamily: "ui-monospace, monospace",
 };
 
-export function ComfyWorkflowImportWizard({ initialServerUrl, onCancel, onComplete }: {
+export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCancel, onComplete }: {
   initialServerUrl?: string;
+  /** 节点上已保存的服务器地址（payload.serverUrls），并入下拉候选。 */
+  knownServers?: string[];
   onCancel: () => void;
   onComplete: (r: ImportWizardResult) => void;
 }) {
@@ -112,15 +115,27 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, onCancel, onComple
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const utils = trpc.useUtils();
+  // 已有服务器候选 = 节点保存的 serverUrls ∪ 本机注册表（localStorage）∪ 管理员全局列表，
+  // 与 ComfyServerUrlField 同源——选了即填入输入框，仍可手输新地址。
+  const localServers = useComfyServersStore((s) => s.servers);
+  const globalServersQ = trpc.comfyui.globalServers.useQuery(undefined, { staleTime: 60_000, retry: false });
+  const serverOptions = useMemo(() => {
+    const merged = [...(knownServers ?? []), ...localServers, ...(globalServersQ.data ?? [])]
+      .map((s) => s.trim()).filter(Boolean);
+    return Array.from(new Set(merged));
+  }, [knownServers, localServers, globalServersQ.data]);
+  const addLocalServer = useComfyServersStore((s) => s.add);
   const testServer = useCallback(async () => {
     setTesting(true); setTestResult(null);
     try {
       const r = await utils.comfyui.fetchModels.fetch({ customBaseUrl: serverUrl.trim() || undefined });
       setTestResult({ ok: true, msg: `连接成功 · checkpoint ${r.ckpts.length} · LoRA ${r.loras.length} · 采样器 ${r.samplers.length}` });
+      // 测试通过的地址记入本机注册表，下次（任何节点/向导）下拉可直接选。
+      if (serverUrl.trim()) addLocalServer(serverUrl.trim());
     } catch (e) {
       setTestResult({ ok: false, msg: "连接失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 100) });
     } finally { setTesting(false); }
-  }, [utils, serverUrl]);
+  }, [utils, serverUrl, addLocalServer]);
 
   // ── 预检 + 重映射 ──
   const convertMut = trpc.comfyui.convertWorkflow.useMutation();
@@ -257,6 +272,21 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, onCancel, onComple
               <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6 }}>
                 选择要导入到的 ComfyUI 服务器——向导会用它的 <b>真实节点定义</b> 预检你的工作流（检查自定义节点是否安装、模型/采样器等是否存在）。留空使用默认服务器。
               </p>
+              {/* 已有服务器下拉（节点保存 ∪ 本机注册 ∪ 管理员全局列表），选了即填入下方输入框 */}
+              {serverOptions.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: 10.5, color: "var(--c-t4)", flexShrink: 0 }}>已有服务器</span>
+                  <select
+                    value={serverOptions.includes(serverUrl.trim()) ? serverUrl.trim() : ""}
+                    onChange={(e) => { if (e.target.value) { setServerUrl(e.target.value); setTestResult(null); } }}
+                    className="nodrag"
+                    style={{ flex: 1, fontSize: 11.5, padding: "7px 9px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}
+                  >
+                    <option value="">选择已保存的服务器…（{serverOptions.length} 个）</option>
+                    {serverOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <ServerCog className="w-4 h-4" style={{ color: "var(--c-t3)", flexShrink: 0 }} />
                 <input value={serverUrl} onChange={(e) => { setServerUrl(e.target.value); setTestResult(null); }} placeholder="http://127.0.0.1:8188（留空=默认）"

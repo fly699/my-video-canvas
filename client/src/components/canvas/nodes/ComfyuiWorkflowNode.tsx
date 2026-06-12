@@ -726,6 +726,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       {showWizard && (
         <ComfyWorkflowImportWizard
           initialServerUrl={payload.customBaseUrl?.trim() || undefined}
+          knownServers={payload.serverUrls}
           onCancel={() => setShowWizard(false)}
           onComplete={applyWizardResult}
         />
