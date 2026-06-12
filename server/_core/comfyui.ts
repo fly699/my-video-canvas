@@ -1769,6 +1769,103 @@ export async function analyzeWorkflow(
   return { detectedParams, outputNodeIds, outputNodes, outputType, videoCapabilities };
 }
 
+// ── Pre-flight validation against a target server's /object_info ───────────────
+// 导入向导的核心：在「生成节点 / 运行」之前，拿目标 ComfyUI 服务器的真实节点定义把
+// 工作流逐项核对，把「装没装这个自定义节点、ckpt/lora/sampler 等枚举值在不在服务器上、
+// 必填 widget 有没有值」一次性查出来，让用户当场改对——而不是运行后才报错反复试。
+export interface WorkflowValidationIssue {
+  nodeId: string;
+  classType: string;
+  /** widget 字段名（不含 inputs. 前缀）。 */
+  field: string;
+  /** 当前（非法）值，仅枚举类有。 */
+  current?: string;
+  /** 服务器上的合法可选值（供下拉重映射），已截断上限。 */
+  options?: string[];
+}
+export interface WorkflowValidationResult {
+  /** 是否成功取到目标服务器 /object_info（取不到=无法预检，只能盲导）。 */
+  objectInfoAvailable: boolean;
+  nodeCount: number;
+  /** 服务器上不存在的节点类型（自定义节点未安装）。 */
+  missingNodes: string[];
+  /** widget 值不在服务器枚举内（ckpt/lora/sampler/vae… 不存在）。 */
+  invalidEnums: WorkflowValidationIssue[];
+  /** 必填 widget 输入缺失（既没连线也没值）。 */
+  missingRequired: WorkflowValidationIssue[];
+  /** objectInfoAvailable 且无任何问题 = 预检通过，可放心导入。 */
+  ok: boolean;
+}
+
+type ApiWorkflow = Record<string, { class_type?: unknown; inputs?: Record<string, unknown> } | undefined>;
+
+/** 纯函数：用已取到的 /object_info 核对一个 API 工作流。无网络，便于单测。 */
+export function validateWorkflowWithInfo(
+  workflow: ApiWorkflow,
+  info: ObjectInfo,
+  objectInfoAvailable: boolean,
+): WorkflowValidationResult {
+  const missingNodes = new Set<string>();
+  const invalidEnums: WorkflowValidationIssue[] = [];
+  const missingRequired: WorkflowValidationIssue[] = [];
+  let nodeCount = 0;
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    if (!node || typeof node !== "object") continue;
+    const ct = node.class_type;
+    if (typeof ct !== "string") continue;
+    nodeCount++;
+    if (!objectInfoAvailable) continue; // 没有 object_info，无法核对该节点
+    if (!info[ct]) { missingNodes.add(ct); continue; } // 节点类型在服务器上不存在
+    const inputs = (node.inputs ?? {}) as Record<string, unknown>;
+    // 1) 枚举/模型 widget 值是否合法
+    for (const [field, val] of Object.entries(inputs)) {
+      if (Array.isArray(val)) continue;     // [nodeId, slot] = 连线输入，跳过
+      if (typeof val !== "string") continue; // 枚举/模型名都是字符串
+      const spec = readInputSpec(info, ct, field);
+      if (spec?.kind === "enum" && spec.options && spec.options.length > 0 && !spec.options.includes(val)) {
+        invalidEnums.push({ nodeId, classType: ct, field, current: val, options: spec.options.slice(0, 500) });
+      }
+    }
+    // 2) 必填 widget 输入缺失（连线类输入 spec.kind==="other"，不在此列）
+    const req = info[ct].input?.required ?? {};
+    for (const field of Object.keys(req)) {
+      if (field in inputs) continue;
+      const spec = readInputSpec(info, ct, field);
+      if (spec && spec.kind !== "other") {
+        missingRequired.push({ nodeId, classType: ct, field, options: spec.kind === "enum" ? spec.options?.slice(0, 500) : undefined });
+      }
+    }
+  }
+  const ok = objectInfoAvailable && missingNodes.size === 0 && invalidEnums.length === 0 && missingRequired.length === 0;
+  return { objectInfoAvailable, nodeCount, missingNodes: Array.from(missingNodes).sort(), invalidEnums, missingRequired, ok };
+}
+
+/** 解析工作流 + best-effort 拉 /object_info，再核对。供 tRPC comfyui.validateWorkflow 调用。 */
+export async function validateWorkflow(workflowJson: string, rawBaseUrl?: string): Promise<WorkflowValidationResult> {
+  let workflow: ApiWorkflow;
+  try {
+    workflow = JSON.parse(workflowJson) as ApiWorkflow;
+  } catch {
+    throw new Error("Workflow JSON 格式错误，无法解析");
+  }
+  if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
+    throw new Error("Workflow JSON 结构无效：应为 { 节点ID: {...} } 的 ComfyUI API 格式（非 UI 导出格式）");
+  }
+  if (Array.isArray((workflow as Record<string, unknown>).nodes)) {
+    throw new Error("检测到 ComfyUI「UI 导出格式」。请在 ComfyUI 用 “Save (API Format)” / “Export (API)” 导出 API 格式再导入。");
+  }
+  let info: ObjectInfo = {};
+  let objectInfoAvailable = false;
+  if (rawBaseUrl) {
+    try {
+      const baseUrl = normalizeBaseUrl(rawBaseUrl);
+      const res = await fetch(`${baseUrl}/object_info`, { signal: AbortSignal.timeout(15_000) });
+      if (res.ok) { info = (await res.json()) as ObjectInfo; objectInfoAvailable = Object.keys(info).length > 0; }
+    } catch { /* 服务器离线/超时 → 无法预检 */ }
+  }
+  return validateWorkflowWithInfo(workflow, info, objectInfoAvailable);
+}
+
 // ── Custom workflow execution ─────────────────────────────────────────────────
 
 export interface ExecuteCustomWorkflowOptions {
