@@ -347,6 +347,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
+  // 工具栏「一键导入」创建的节点：挂载即自动打开向导，随后清除瞬态标志（避免重开/被持久化）。
+  useEffect(() => {
+    if (payload._openWizard) {
+      setShowWizard(true);
+      update({ _openWizard: undefined });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // 向导完成：把已预检/修正过的工作流 + 分析结果落到节点，进入既有参数绑定阶段。
   const applyWizardResult = useCallback((r: ImportWizardResult) => {
     const bindings = r.analyze.detectedParams;
@@ -714,6 +722,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         </>
       }
     >
+      {/* 导入向导（弹层，任意阶段可用：空节点首次导入 / 已导入节点换工作流） */}
+      {showWizard && (
+        <ComfyWorkflowImportWizard
+          initialServerUrl={payload.customBaseUrl?.trim() || undefined}
+          onCancel={() => setShowWizard(false)}
+          onComplete={applyWizardResult}
+        />
+      )}
       {/* ref-image-in (top:28%): feed an upstream image into the first blank image
           param. The generic input/output dots are provided by BaseNode (id="input"
           at 50% left / id="output" at 50% right) — we no longer render duplicate
@@ -858,14 +874,6 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             </button>
             <div style={{ fontSize: 10, color: "var(--c-t4)", marginBottom: 8, textAlign: "center" }}>—— 或手动导入 ——</div>
 
-            {showWizard && (
-              <ComfyWorkflowImportWizard
-                initialServerUrl={payload.customBaseUrl?.trim() || undefined}
-                onCancel={() => setShowWizard(false)}
-                onComplete={applyWizardResult}
-              />
-            )}
-
             {/* Import from file (.json / ComfyUI .png) */}
             <div
               onClick={() => { if (!importing) importFileRef.current?.click(); }}
@@ -968,6 +976,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                     onClick={() => setEditingBindings(true)}
                   >编辑</button>
                 )}
+                <button
+                  style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: `${accent}14`, border: `1px solid ${accent}55`, color: accent, fontFamily: "var(--font-sans)" }}
+                  onClick={() => setShowWizard(true)}
+                  title="用导入向导换一个工作流（重新预检/重映射）"
+                >
+                  <Wand2 size={11} style={{ display: "inline", marginRight: 3 }} />
+                  换工作流
+                </button>
                 <button
                   style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontFamily: "var(--font-sans)" }}
                   onClick={handleReset}
@@ -1104,6 +1120,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                   style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontFamily: "var(--font-sans)" }}
                   onClick={() => setPhase("binding")}
                 >← 参数绑定</button>
+                <button
+                  style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: `${accent}14`, border: `1px solid ${accent}55`, color: accent, fontFamily: "var(--font-sans)" }}
+                  onClick={() => setShowWizard(true)}
+                  title="用导入向导换一个工作流（重新预检/重映射）"
+                >
+                  <Wand2 size={11} style={{ display: "inline", marginRight: 3 }} />
+                  换工作流
+                </button>
                 <button
                   style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontFamily: "var(--font-sans)" }}
                   onClick={handleReset}

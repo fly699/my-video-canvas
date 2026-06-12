@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
@@ -198,9 +199,22 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, onCancel, onComple
   const unresolvedInvalid = validation
     ? validation.invalidEnums.filter((iv) => !remaps[`${iv.nodeId}|${iv.field}`]).length
     : 0;
-  const hardBlock = !!validation && (validation.missingNodes.length > 0); // 缺节点无法在向导内修
+  // 导入按钮文案/配色：通过=绿；有遗留问题=黄（仍允许导入，缺节点需到服务器装后再运行）。
+  const importHint = !validation
+    ? ""
+    : validation.ok
+      ? "导入到节点"
+      : !validation.objectInfoAvailable
+        ? "未预检，仍导入"
+        : validation.missingNodes.length > 0
+          ? "仍导入（需先装缺失节点）"
+          : unresolvedInvalid > 0
+            ? `仍有 ${unresolvedInvalid} 项未修，仍导入`
+            : "导入到节点";
 
-  return (
+  // 通过 portal 渲染到 body：节点处于 ReactFlow 的 transform 画布内，position:fixed 会被
+  // 变换祖先「劫持」（相对缩放后的画布定位、随缩放放大），portal 到 body 才能真正铺满屏幕。
+  return createPortal(
     <div className="nodrag nowheel nopan" style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0 0 0 / 0.55)", backdropFilter: "blur(3px)" }}
       onMouseDown={onCancel}>
       <div className="animate-scale-in" style={{ width: 640, maxWidth: "94vw", maxHeight: "90vh", display: "flex", flexDirection: "column", background: "var(--c-base)", border: `1px solid ${A(0.4)}`, borderRadius: 16, boxShadow: "0 24px 80px oklch(0 0 0 / 0.5)", overflow: "hidden" }}
@@ -363,20 +377,21 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, onCancel, onComple
             <NavNext disabled={false} onClick={enterValidate} label="下一步：预检工作流" />
           )}
           {step === "validate" && validation && (
-            <button onClick={finish} disabled={preparing || hardBlock}
+            <button onClick={finish} disabled={preparing}
               className="nodrag flex items-center gap-1.5 px-4 py-2 rounded-lg"
-              title={hardBlock ? "请先在服务器安装缺失的自定义节点" : undefined}
-              style={{ fontSize: 12, fontWeight: 700, cursor: preparing || hardBlock ? "not-allowed" : "pointer",
-                background: hardBlock ? "var(--c-bd1)" : validation.ok ? "oklch(0.7 0.16 150)" : A(0.2),
-                border: `1px solid ${hardBlock ? "var(--c-bd2)" : validation.ok ? "oklch(0.7 0.16 150 / 0.5)" : A(0.5)}`,
-                color: hardBlock ? "var(--c-t4)" : validation.ok ? "#06250f" : ACCENT }}>
+              title={validation.missingNodes.length > 0 ? "可先导入；运行前需在该服务器安装缺失的自定义节点" : undefined}
+              style={{ fontSize: 12, fontWeight: 700, cursor: preparing ? "not-allowed" : "pointer",
+                background: validation.ok ? "oklch(0.7 0.16 150)" : A(0.2),
+                border: `1px solid ${validation.ok ? "oklch(0.7 0.16 150 / 0.5)" : A(0.5)}`,
+                color: validation.ok ? "#06250f" : ACCENT }}>
               {preparing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              {validation.ok ? "导入到节点" : unresolvedInvalid > 0 ? `仍有 ${unresolvedInvalid} 项未修，仍导入` : "导入到节点"}
+              {importHint}
             </button>
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

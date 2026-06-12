@@ -1799,6 +1799,23 @@ export interface WorkflowValidationResult {
 
 type ApiWorkflow = Record<string, { class_type?: unknown; inputs?: Record<string, unknown> } | undefined>;
 
+/** 取某 (节点类, 字段) 的 /object_info 配置对象（slot[1]）。 */
+function slotConfigOf(info: ObjectInfo, ct: string, field: string): Record<string, unknown> {
+  const slot = info[ct]?.input?.required?.[field] ?? info[ct]?.input?.optional?.[field];
+  const cfg = slot?.[1];
+  return cfg && typeof cfg === "object" && !Array.isArray(cfg) ? (cfg as Record<string, unknown>) : {};
+}
+
+/** 运行时由「上游连线 / 上传」提供的媒体输入（LoadImage.image / VHS_LoadAudioUpload.audio 等）。
+ *  这类枚举其实是服务器上「已上传文件」列表，导入的工作流里的文件名必然不在其中——不能当
+ *  「取值非法」校验（否则每个图像/音频/视频工作流都会满屏误报）。判定：配置含 *_upload 标志，
+ *  或字段名是常见媒体字段。这些值由 executeCustomWorkflow 运行时上传替换。 */
+function isRuntimeMediaField(info: ObjectInfo, ct: string, field: string): boolean {
+  const cfg = slotConfigOf(info, ct, field);
+  for (const k of Object.keys(cfg)) if (/upload/i.test(k) && cfg[k]) return true;
+  return /^(image|mask|audio|video|file)$/i.test(field);
+}
+
 /** 纯函数：用已取到的 /object_info 核对一个 API 工作流。无网络，便于单测。 */
 export function validateWorkflowWithInfo(
   workflow: ApiWorkflow,
@@ -1817,19 +1834,21 @@ export function validateWorkflowWithInfo(
     if (!objectInfoAvailable) continue; // 没有 object_info，无法核对该节点
     if (!info[ct]) { missingNodes.add(ct); continue; } // 节点类型在服务器上不存在
     const inputs = (node.inputs ?? {}) as Record<string, unknown>;
-    // 1) 枚举/模型 widget 值是否合法
+    // 1) 枚举/模型 widget 值是否合法（跳过运行时媒体输入）
     for (const [field, val] of Object.entries(inputs)) {
       if (Array.isArray(val)) continue;     // [nodeId, slot] = 连线输入，跳过
       if (typeof val !== "string") continue; // 枚举/模型名都是字符串
+      if (isRuntimeMediaField(info, ct, field)) continue; // LoadImage/上传类，运行时填
       const spec = readInputSpec(info, ct, field);
       if (spec?.kind === "enum" && spec.options && spec.options.length > 0 && !spec.options.includes(val)) {
         invalidEnums.push({ nodeId, classType: ct, field, current: val, options: spec.options.slice(0, 500) });
       }
     }
-    // 2) 必填 widget 输入缺失（连线类输入 spec.kind==="other"，不在此列）
+    // 2) 必填 widget 输入缺失（连线类输入 spec.kind==="other"，运行时媒体也不计）
     const req = info[ct].input?.required ?? {};
     for (const field of Object.keys(req)) {
       if (field in inputs) continue;
+      if (isRuntimeMediaField(info, ct, field)) continue;
       const spec = readInputSpec(info, ct, field);
       if (spec && spec.kind !== "other") {
         missingRequired.push({ nodeId, classType: ct, field, options: spec.kind === "enum" ? spec.options?.slice(0, 500) : undefined });

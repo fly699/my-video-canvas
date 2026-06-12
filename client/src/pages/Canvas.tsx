@@ -114,6 +114,7 @@ import {
   GripVertical,
   Network,
   Magnet,
+  Wand2,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1243,6 +1244,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setShowNodePicker(false);
   }, [addNode, reactFlow, emitCollabEvent]);
 
+  // 一键：在画布中心新建 ComfyUI 自定义节点，并自动打开「导入向导」（_openWizard 瞬态标志）。
+  const addComfyWorkflowWithWizard = useCallback(() => {
+    const vp = reactFlow.getViewport();
+    const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
+    const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
+    try {
+      const n = addNode("comfyui_workflow", { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+      updateNodeData(n.id, { _openWizard: true });
+      emitCollabEvent("node:add", n);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "添加节点失败");
+    }
+    setShowNodePicker(false);
+  }, [addNode, updateNodeData, reactFlow, emitCollabEvent]);
+
   // Re-create a fully-configured ComfyUI node from a library template (like
   // duplicating): add a fresh node at the viewport center, then inject the saved
   // payload. Autosave + collab follow the normal add/update paths.
@@ -2247,8 +2263,29 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 const list = q
                   ? NODE_TYPE_LIST.filter((c) => c.label.toLowerCase().includes(q) || c.type.toLowerCase().includes(q))
                   : sortNodeConfigsForPalette(NODE_TYPE_LIST);
-                if (list.length === 0) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
-                return <div className="grid grid-cols-4 gap-1.5">{list.map(renderTile)}</div>;
+                // 置顶快捷入口：一键「新建 ComfyUI 工作流并打开导入向导」（带服务器预检）。
+                const COMFY_ACC = "oklch(0.7 0.17 195)";
+                const showWizardTile = !q || "comfyui工作流导入向导wizardcomfy".includes(q);
+                const wizardTile = (
+                  <button
+                    key="__comfy_wizard"
+                    onClick={addComfyWorkflowWithWizard}
+                    title="新建 ComfyUI 自定义节点并打开导入向导（含服务器预检 + 一键重映射）"
+                    className="group/picker relative flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
+                    style={{ color: COMFY_ACC, background: `${COMFY_ACC}0e`, border: `1px solid ${COMFY_ACC}40` }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = `${COMFY_ACC}1c`; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = `${COMFY_ACC}0e`; }}
+                  >
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${COMFY_ACC}1f`, border: `1px solid ${COMFY_ACC}40` }}>
+                      <Wand2 style={{ color: COMFY_ACC, width: 18, height: 18 }} />
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>导入工作流</p>
+                    </div>
+                  </button>
+                );
+                if (list.length === 0 && !showWizardTile) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
+                return <div className="grid grid-cols-4 gap-1.5">{showWizardTile && wizardTile}{list.map(renderTile)}</div>;
               })()}
             </div>
           </div>

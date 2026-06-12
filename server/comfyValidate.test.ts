@@ -13,6 +13,8 @@ const INFO: any = {
   } } },
   CheckpointLoaderSimple: { input: { required: { ckpt_name: [["sdxl.safetensors", "sd15.safetensors"]] } } },
   CLIPTextEncode: { input: { required: { text: ["STRING"], clip: ["CLIP"] } } },
+  // LoadImage.image 是「已上传文件」枚举 + image_upload 标志：运行时上传，不该按服务器现有文件校验。
+  LoadImage: { input: { required: { image: [["alreadyOnServer.png"], { image_upload: true }] } } },
 };
 
 describe("validateWorkflowWithInfo", () => {
@@ -45,6 +47,15 @@ describe("validateWorkflowWithInfo", () => {
   it("连线输入（数组）不当作枚举校验", () => {
     const wf: any = { "3": { class_type: "KSampler", inputs: { sampler_name: "euler", scheduler: "normal", seed: 1, steps: 20, model: ["4", 0], positive: ["6", 0], negative: ["6", 0], latent_image: ["5", 0] } } };
     expect(validateWorkflowWithInfo(wf, INFO, true).invalidEnums).toHaveLength(0);
+  });
+  it("运行时媒体输入（LoadImage.image / image_upload）不当枚举校验，避免误报", () => {
+    const wf: any = {
+      "11": { class_type: "LoadImage", inputs: { image: "导入工作流里的文件名.png" } },
+    };
+    const r = validateWorkflowWithInfo(wf, INFO, true);
+    expect(r.invalidEnums).toHaveLength(0);
+    expect(r.missingRequired).toHaveLength(0);
+    expect(r.ok).toBe(true);
   });
   it("无 object_info → 不报错但 ok=false（无法预检）", () => {
     const wf: any = { "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "随便.ckpt" } } };

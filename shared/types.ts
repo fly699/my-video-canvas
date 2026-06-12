@@ -1010,6 +1010,8 @@ export interface WorkflowParamBinding {
 
 export interface ComfyuiWorkflowNodeData {
   customBaseUrl?: string;
+  /** 瞬态：由「工具栏一键导入 ComfyUI 工作流」创建时置 true，节点挂载即打开导入向导后清除。 */
+  _openWizard?: boolean;
   serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)
   // When true, run on the official ComfyUI cloud (cloud.comfy.org) instead of the
   // local/self-hosted server. The cloud endpoint + API key live server-side; only
