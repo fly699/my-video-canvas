@@ -853,7 +853,7 @@ export default function Home() {
                   {
                     icon: User, color: "oklch(0.66 0.18 30)",
                     title: "角色一致性 · 全局角色库",
-                    desc: "角色多视角参考图自动锁定身份，贯穿 ComfyUI 图/视频/工作流与 Poyo 图/视频；一键套用整组分镜、多角色优先级、一致性校验；角色存入全局库跨项目复用",
+                    desc: "角色多视角参考图自动锁定身份，贯穿 ComfyUI 图/视频/工作流与 Poyo 图/视频；一键套用整组分镜、多角色优先级、一致性校验、一致性种子跨镜头锁定；角色存入全局库跨项目复用",
                     badge: "NEW",
                   },
                   {
@@ -926,6 +926,30 @@ export default function Home() {
                     icon: MessageCircle, color: "oklch(0.70 0.18 285)",
                     title: "团队聊天 · 桌面应用",
                     desc: "大厅 / 群聊 / 端到端加密私聊，可装为 Chrome 桌面应用，含专属浅色主题",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Wand2, color: "oklch(0.70 0.17 195)",
+                    title: "ComfyUI 工作流导入向导",
+                    desc: "分步导入 + 服务器预检：未装节点 / 模型取值不存在（一键替换为服务器真实选项）/ 必填缺失，导入前全部查出，一次跑通；支持 JSON / 文件 / ComfyUI PNG，UI 格式自动转换",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: ScrollText, color: "oklch(0.66 0.18 250)",
+                    title: "创作向导 · 专业开发管线",
+                    desc: "Logline → 梗概 → 节拍表 → 剧本 → 分镜分步推进，风格与时长分配可调；约束预览可见可改，剧本生成后一键转专业审查闭环",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Wallet, color: "oklch(0.72 0.15 160)",
+                    title: "预算管控面板",
+                    desc: "整张画布逐节点精算预估消耗，kie 点 / Poyo cr 双路对照实时余额；项目预算上限超限自动暂停智能体执行，计价与官方价格表全量对账",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Zap, color: "oklch(0.72 0.18 60)",
+                    title: "画布效率操作",
+                    desc: "全局运行状态条点击直达失败节点；Ctrl+C/V 复制整条镜头链（含连线）；一键整理自动排版 + 网格吸附；吸附窗变更自动弹出",
                     badge: "NEW",
                   },
                 ].map((f, i) => (
