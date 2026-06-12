@@ -815,7 +815,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     ...(supportsRefVideo ? videoItems : []),
     ...(supportsRefAudio ? audioItems : []),
   ];
-  const docks = useNodeDocks(id, { hasRef: stripImages.length > 0, hasPrompt: !!finalPromptDisplay.trim() });
+  const docks = useNodeDocks(id, { hasRef: stripImages.length > 0, hasPrompt: !!finalPromptDisplay.trim() }, { prompt: finalPromptDisplay, ref: stripImages.map((i) => i.id).join(",") });
   const { refOpen: stripOpen, setRefOpen: setStripOpen } = docks;
   const [refZoom, setRefZoom] = useState<number | null>(null);
   const [refUploading, setRefUploading] = useState(false);

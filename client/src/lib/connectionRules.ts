@@ -20,7 +20,10 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   ai_chat: ["script", "storyboard", "prompt"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   post_process: ["video_task", "image_gen", "asset"],
-  overlay: ["asset"],
+  // overlay → merge：叠加合成后的视频是一路视频源，可直接连入合并节点参与成片
+  // （MergeNode 的 VIDEO_SOURCE_TYPES 已认 overlay 为视频源）。此前 overlay 仅允许
+  // → asset，导致「叠加 → 合并」拖线与智能体建线判定失败。
+  overlay: ["asset", "merge"],
   // subtitle / subtitle_motion → merge：字幕节点输出的「已挂字幕视频」可直接连入
   // 合并节点参与成片（MergeNode 的 VIDEO_SOURCE_TYPES 已认这两类为视频源）。配方
   // 「视频→字幕→合并」链路与手动拖线都走这条；此前缺失导致 字幕→合并 连线判定失败。
@@ -35,7 +38,10 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   voice_clone: [],
   lip_sync: [],
   avatar: [],
-  merge: ["asset", "clip"],
+  // merge → merge：合并链——把若干子序列各自合并后再汇入一个总合并节点（MergeNode 的
+  // VIDEO_SOURCE_TYPES 已认 merge 为视频源）。此前 merge 仅允许 → asset/clip，导致
+  // 「合并 → 合并」串联与智能体建线判定失败。
+  merge: ["asset", "clip", "merge"],
   comfyui_image: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
   comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "image_gen", "comfyui_workflow", "comfyui_image", "comfyui_video"],
@@ -150,8 +156,8 @@ export const CONNECTION_HINTS: Record<
   },
   merge: {
     label: "合并",
-    outgoing: "→ 素材（保存）",
-    incoming: "← 剪辑 / 视频任务 / 素材 / 音频（整片配乐）",
+    outgoing: "→ 素材（保存）/ 合并（合并链）",
+    incoming: "← 视频任务 / 剪辑 / 叠加 / 字幕 / 动态字幕 / 智能剪辑 / 合并 / ComfyUI 视频·自定义 / 素材 / 音频（整片配乐）",
   },
   subtitle: {
     label: "字幕",
@@ -160,7 +166,7 @@ export const CONNECTION_HINTS: Record<
   },
   overlay: {
     label: "视频叠加",
-    outgoing: "→ 素材（保存）",
+    outgoing: "→ 素材（保存）/ 合并（成片）",
     incoming: "← 剪辑 / 视频任务 / 素材",
   },
   subtitle_motion: {

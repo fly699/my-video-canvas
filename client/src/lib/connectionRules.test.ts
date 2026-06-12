@@ -50,6 +50,21 @@ describe("isConnectionValid", () => {
     expect(isConnectionValid("merge", "asset")).toBe(true); // still allowed
   });
 
+  it("合并节点的「可连入」矩阵必须覆盖 MergeNode 实际消费的全部视频源类型（防再次漂移）", () => {
+    // 与 MergeNode.tsx 的 VIDEO_SOURCE_TYPES 保持一致——任一类型缺失都会让该视频源
+    // 无法拖线/被智能体建线连入合并节点（曾缺 overlay→merge、merge→merge）。
+    const MERGE_VIDEO_SOURCES = [
+      "video_task", "clip", "merge", "overlay", "asset",
+      "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow",
+    ] as const;
+    for (const src of MERGE_VIDEO_SOURCES) {
+      expect(isConnectionValid(src, "merge"), `${src}→merge 应允许`).toBe(true);
+      expect(getCompatibleSources("merge"), `merge 可连入来源应含 ${src}`).toContain(src);
+    }
+    // 音频作整片配乐也必须能连入
+    expect(isConnectionValid("audio", "merge")).toBe(true);
+  });
+
   it("lets image producers feed a character (角色) node as a reference image", () => {
     expect(isConnectionValid("asset", "character")).toBe(true);
     expect(isConnectionValid("image_gen", "character")).toBe(true);

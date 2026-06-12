@@ -97,7 +97,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "mode", type: "str", def: "pro" },
     ],
     ref: { key: "image_urls", array: true },
-    creditNote: "std/pro 1080p≈18-27 · 4K 67 点·秒（含/无音轨，详见价格表）",
+    creditNote: "std(720p) 14/20 · pro(1080p) 18/27 · 4K 67 点·秒（无/有音轨）",
   },
   // ── Kling V2.5 Turbo Pro ──
   kie_kling25turbo_t2v: {
@@ -217,13 +217,13 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     wire: "kling/v2-1-standard", endpoint: "jobs", label: "Kling 2.1 标准 图生视频", family: "Kling",
     params: [{ key: "duration", type: "str", def: "5" }, { key: "cfg_scale", type: "num" }],
     ref: { key: "image_url", array: false, required: true }, negPrompt: true,
-    creditNote: "5s 30 / 10s 60 点·条",
+    creditNote: "标准 5s 25 / 10s 50 点·条",
   },
   kie_kling21_pro: {
     wire: "kling/v2-1-pro", endpoint: "jobs", label: "Kling 2.1 专业 图生视频", family: "Kling",
     params: [{ key: "duration", type: "str", def: "5" }, { key: "cfg_scale", type: "num" }],
     ref: { key: "image_url", array: false, required: true }, negPrompt: true,
-    creditNote: "5s 55 / 10s 110 点·条",
+    creditNote: "专业 5s 50 / 10s 100 点·条",
   },
   kie_wan22_t2v: {
     wire: "wan/2-2-a14b-text-to-video-turbo", endpoint: "jobs", label: "Wan 2.2 文生视频(快)", family: "Wan",
@@ -233,7 +233,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "enable_prompt_expansion", type: "bool" },
       { key: "seed", type: "num" },
     ],
-    creditNote: "480p 6 / 720p 12 点·条",
+    creditNote: "480p 40 / 720p 80 点·条(5s)",
   },
   kie_wan22_i2v: {
     wire: "wan/2-2-a14b-image-to-video-turbo", endpoint: "jobs", label: "Wan 2.2 图生视频(快)", family: "Wan",
@@ -243,7 +243,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "seed", type: "num" },
     ],
     ref: { key: "image_url", array: false, required: true },
-    creditNote: "480p 6 / 720p 12 点·条",
+    creditNote: "480p 40 / 720p 80 点·条(5s)",
   },
   kie_wan27_t2v: {
     wire: "wan/2-7-text-to-video", endpoint: "jobs", label: "Wan 2.7 文生视频", family: "Wan",
@@ -254,7 +254,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "prompt_extend", type: "bool", def: true },
       { key: "seed", type: "num" },
     ],
-    creditNote: "720p 12 / 1080p 18 点·秒",
+    creditNote: "720p 16 / 1080p 24 点·秒",
   },
   kie_wan27_i2v: {
     wire: "wan/2-7-image-to-video", endpoint: "jobs", label: "Wan 2.7 图生视频", family: "Wan",
@@ -265,23 +265,23 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "seed", type: "num" },
     ],
     ref: { key: "first_frame_url", array: false, required: true },
-    creditNote: "720p 12 / 1080p 18 点·秒",
+    creditNote: "720p 16 / 1080p 24 点·秒",
   },
   kie_hailuo02_std: {
     wire: "hailuo/02-text-to-video-standard", endpoint: "jobs", label: "Hailuo 02 标准 文生视频", family: "Hailuo",
     params: [{ key: "duration", type: "str", def: "6" }, { key: "prompt_optimizer", type: "bool", def: true }],
-    creditNote: "768p 7 点·秒",
+    creditNote: "6s 30 / 10s 50 点·条(768p)",
   },
   kie_hailuo02_pro_t2v: {
     wire: "hailuo/02-text-to-video-pro", endpoint: "jobs", label: "Hailuo 02 专业 文生视频", family: "Hailuo",
     params: [{ key: "prompt_optimizer", type: "bool", def: true }],
-    creditNote: "固定 65 点·条",
+    creditNote: "固定 57 点·条(6s 1080p)",
   },
   kie_hailuo02_pro_i2v: {
     wire: "hailuo/02-image-to-video-pro", endpoint: "jobs", label: "Hailuo 02 专业 图生视频", family: "Hailuo",
     params: [{ key: "prompt_optimizer", type: "bool", def: true }],
     ref: { key: "image_url", array: false, required: true },
-    creditNote: "固定 65 点·条",
+    creditNote: "固定 57 点·条(6s 1080p)",
   },
   kie_grok_t2v: {
     wire: "grok-imagine/text-to-video", endpoint: "jobs", label: "Grok Imagine 文生视频", family: "Grok",
@@ -291,7 +291,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "duration", type: "num", def: 6 },
       { key: "resolution", type: "str", def: "480p" },
     ],
-    creditNote: "6s 30 / 10s 40 点·条",
+    creditNote: "480p 1.6 / 720p 3 点·秒",
   },
   kie_grok_i2v: {
     wire: "grok-imagine/image-to-video", endpoint: "jobs", label: "Grok Imagine 图生视频", family: "Grok",
@@ -305,7 +305,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "aspect_ratio", type: "str", def: "16:9" },
     ],
     ref: { key: "image_urls", array: true, required: true },
-    creditNote: "6s 30 / 10s 40 点·条",
+    creditNote: "480p 1.6 / 720p 3 点·秒",
   },
   kie_happyhorse_t2v: {
     wire: "happyhorse/text-to-video", endpoint: "jobs", label: "HappyHorse 文生视频", family: "HappyHorse",
@@ -315,7 +315,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "duration", type: "num", def: 5 },
       { key: "seed", type: "num" },
     ],
-    creditNote: "720p 16 / 1080p 32 点·秒",
+    creditNote: "720p 28 / 1080p 48 点·秒",
   },
   kie_happyhorse_i2v: {
     wire: "happyhorse/image-to-video", endpoint: "jobs", label: "HappyHorse 图生视频", family: "HappyHorse",
@@ -326,7 +326,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "seed", type: "num" },
     ],
     ref: { key: "image_url", array: false, required: true },
-    creditNote: "720p 16 / 1080p 32 点·秒",
+    creditNote: "720p 28 / 1080p 48 点·秒",
   },
   // ── 第三批：特殊输入（动作控制 / 数字人 / 替身）──
   kie_kling26_motion: {
@@ -337,7 +337,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ],
     ref: { key: "input_urls", array: true, required: true },
     videoRef: { key: "video_urls", array: true },
-    creditNote: "720p 8 / 1080p 12 点·秒",
+    creditNote: "720p 11 / 1080p 18 点·秒",
   },
   kie_kling30_motion: {
     wire: "kling-3.0/motion-control", endpoint: "jobs", label: "Kling 3.0 动作控制", family: "Kling",
@@ -348,35 +348,35 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ],
     ref: { key: "input_urls", array: true, required: true },
     videoRef: { key: "video_urls", array: true },
-    creditNote: "720p 9 / 1080p 15 点·秒",
+    creditNote: "720p 20 / 1080p 27 点·秒",
   },
   kie_kling_avatar_std: {
     wire: "kling/ai-avatar-standard", endpoint: "jobs", label: "Kling 数字人 标准", family: "Kling",
     params: [],
     ref: { key: "image_url", array: false, required: true },
     audioRef: { key: "audio_url" },
-    creditNote: "7 点·秒",
+    creditNote: "8 点·秒",
   },
   kie_kling_avatar_pro: {
     wire: "kling/ai-avatar-pro", endpoint: "jobs", label: "Kling 数字人 专业", family: "Kling",
     params: [],
     ref: { key: "image_url", array: false, required: true },
     audioRef: { key: "audio_url" },
-    creditNote: "14 点·秒",
+    creditNote: "16 点·秒",
   },
   kie_wan_animate_move: {
     wire: "wan/2-2-animate-move", endpoint: "jobs", label: "Wan 2.2 Animate 动作迁移", family: "Wan",
     params: [{ key: "resolution", type: "str", def: "480p" }],
     ref: { key: "image_url", array: false, required: true },
     videoRef: { key: "video_url", array: false },
-    creditNote: "480p 7 / 580p 12 / 720p 15 点·条",
+    creditNote: "480p 6 / 580p 9.5 / 720p 12.5 点·秒",
   },
   kie_wan_animate_replace: {
     wire: "wan/2-2-animate-replace", endpoint: "jobs", label: "Wan 2.2 Animate 角色替换", family: "Wan",
     params: [{ key: "resolution", type: "str", def: "480p" }],
     ref: { key: "image_url", array: false, required: true },
     videoRef: { key: "video_url", array: false },
-    creditNote: "480p 7 / 580p 12 / 720p 15 点·条",
+    creditNote: "480p 6 / 580p 9.5 / 720p 12.5 点·秒",
   },
   // ── Runway（专属端点 /api/v1/runway/generate；轮询 /record-detail，响应形态不同）──
   kie_runway45: {
@@ -387,7 +387,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
       { key: "aspectRatio", type: "str", def: "16:9" },
     ],
     ref: { key: "imageUrl", array: false }, // 可选：有图则图生视频
-    creditNote: "5s 75 / 10s 150 点·条",
+    creditNote: "720p 5s12/10s30 · 1080p 30 点·条",
   },
   // Topaz 视频放大（jobs + 源视频 video_url）
   kie_topaz_upscale: {

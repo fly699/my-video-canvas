@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel } from "./costEstimate";
+import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, estimateCanvasBudget } from "./costEstimate";
 
 describe("estimateVideoCost", () => {
   it("按时长线性计费（poyo kling 2.1 std：6 cr/s）", () => {
@@ -31,9 +31,39 @@ describe("estimateVideoCost", () => {
     expect(estimateVideoCost("poyo_veo", {})).toBeNull();
     expect(estimateVideoCost("unknown_model", {})).toBeNull();
   });
-  it("缺省参数取默认值（kie kling 3.0 默认 pro 5s，对齐文档 default）", () => {
-    expect(estimateVideoCost("kie_kling30", {})?.credits).toBe(27 * 5); // 文档默认 pro
-    expect(estimateVideoCost("kie_kling30", { mode: "4K", duration: 10 })?.credits).toBe(670);
+  // 穷尽式对账锁定：kie 视频价格必须取自 docs/kie-pricing.md（曾误抄 Poyo 同名模型的价，
+  // 全量审计后逐档校正）。任何回归到 Poyo 数值都会在此处失败。
+  it("kie 视频逐档价对齐 docs/kie-pricing.md（防回退 Poyo 误值）", () => {
+    const v = (m: string, p: Record<string, unknown>) => estimateVideoCost(m, p)?.credits;
+    expect(v("kie_kling21_std", { duration: 5 })).toBe(25);    // 标准 5/s（曾误 30）
+    expect(v("kie_kling21_pro", { duration: 5 })).toBe(50);    // 专业 10/s（曾误 55）
+    expect(v("kie_wan22_t2v", { resolution: "480p" })).toBe(40);  // 曾误 6
+    expect(v("kie_wan22_i2v", { resolution: "720p" })).toBe(80);  // 曾误 12
+    expect(v("kie_wan27_t2v", { resolution: "720p", duration: 5 })).toBe(80);    // 16/s（曾误 12）
+    expect(v("kie_wan27_i2v", { resolution: "1080p", duration: 5 })).toBe(120);  // 24/s（曾误 18）
+    expect(v("kie_hailuo02_std", { duration: 6 })).toBe(30);   // 5/s（曾误 7/s=42）
+    expect(v("kie_hailuo02_pro_t2v", {})).toBe(57);            // 曾误 65
+    expect(v("kie_hailuo02_pro_i2v", {})).toBe(57);
+    expect(v("kie_grok_t2v", { resolution: "720p", duration: 6 })).toBe(18);  // 3/s（曾误 30 固定）
+    expect(v("kie_grok_i2v", { resolution: "480p", duration: 6 })).toBeCloseTo(9.6); // 1.6/s
+    expect(v("kie_happyhorse_t2v", { resolution: "720p", duration: 5 })).toBe(140);  // 28/s（曾误 16/s）
+    expect(v("kie_happyhorse_i2v", { resolution: "1080p", duration: 5 })).toBe(240); // 48/s（曾误 32/s）
+    expect(v("kie_kling26_motion", { mode: "1080p" })).toBe(18 * 5);  // 18/s（曾误 12/s）
+    expect(v("kie_kling30_motion", { mode: "720p" })).toBe(20 * 5);   // 20/s（曾误 9/s）
+    expect(v("kie_kling_avatar_std", {})).toBe(8 * 10);   // 8/s（曾误 7/s）
+    expect(v("kie_kling_avatar_pro", {})).toBe(16 * 10);  // 16/s（曾误 14/s）
+    expect(v("kie_wan_animate_move", { resolution: "720p" })).toBe(12.5 * 5);    // 12.5/s（曾误 15 固定）
+    expect(v("kie_wan_animate_replace", { resolution: "480p" })).toBe(6 * 5);    // 6/s
+    expect(v("kie_runway45", { quality: "720p", duration: 5 })).toBe(12);   // 曾误 75
+    expect(v("kie_runway45", { quality: "720p", duration: 10 })).toBe(30);  // 曾误 150
+    expect(v("kie_runway45", { quality: "1080p", duration: 5 })).toBe(30);
+  });
+  it("kie kling 3.0 随 mode+sound 计价（价格表 std720p 14/20·pro1080p 18/27·4K 67 点·秒）", () => {
+    expect(estimateVideoCost("kie_kling30", {})?.credits).toBe(18 * 5);                          // 默认 pro 无音轨 18/s
+    expect(estimateVideoCost("kie_kling30", { sound: true })?.credits).toBe(27 * 5);             // pro 有音轨 27/s
+    expect(estimateVideoCost("kie_kling30", { mode: "std" })?.credits).toBe(14 * 5);             // std 无音轨 14/s
+    expect(estimateVideoCost("kie_kling30", { mode: "std", sound: true })?.credits).toBe(20 * 5);// std 有音轨 20/s
+    expect(estimateVideoCost("kie_kling30", { mode: "4K", duration: 10 })?.credits).toBe(670);   // 4K 67/s
   });
 });
 
@@ -102,5 +132,39 @@ describe("estimateImageCost — 全量审计补齐档位（nano banana 2 / flux2
   });
   it("ideogram v3 按文档默认 BALANCED 档精确 7 点", () => {
     expect(estimateImageCost("kie_ideogram_v3", 1)).toEqual({ credits: 7, unit: "点", approx: false });
+  });
+});
+
+describe("estimateCanvasBudget — 画布级预算汇总", () => {
+  const node = (nodeType: string, payload: Record<string, unknown>) => ({ data: { nodeType, payload } });
+  it("分 kie 点 / Poyo cr 两路汇总，并按模型分组计数", () => {
+    const b = estimateCanvasBudget([
+      node("video_task", { provider: "kie_kling21_std", duration: 10 }), // 50 点
+      node("video_task", { provider: "kie_kling21_std", duration: 5 }),  // 25 点（同模型合并）
+      node("image_gen", { model: "kie_gpt_image_2", imageResolution: "2K", imageN: 2 }), // 20 点
+      node("video_task", { provider: "poyo_runway45", duration: 5 }),    // 75 cr
+      node("comfyui_image", {}),                                          // 本地免费
+      node("image_gen", {}),                                              // 未选模型 → unknown
+    ]);
+    expect(b.pt).toBe(95);   // 50 + 25 + 20
+    expect(b.cr).toBe(75);
+    expect(b.localCount).toBe(1);
+    expect(b.unknownCount).toBe(1);
+    const kling = b.lines.find((l) => l.key === "kie_kling21_std");
+    expect(kling?.count).toBe(2);
+    expect(kling?.credits).toBe(75);
+    expect(kling?.unit).toBe("点");
+  });
+  it("音频：配乐/配音/音效分别计入对应单位", () => {
+    const b = estimateCanvasBudget([
+      node("audio", { audioCategory: "music", musicModel: "kie_suno_v5" }),            // 12 点
+      node("audio", { audioCategory: "dubbing", ttsModel: "kie_elevenlabs_tts", ttsText: "a".repeat(1500) }), // 6*2=12 点
+      node("audio", { audioCategory: "sfx", sfxDuration: 10 }),                          // 0.24*10=2.4 点
+      node("audio", { audioCategory: "music", musicModel: "poyo_suno" }),               // 20 cr
+      node("audio", { audioCategory: "upload" }),                                        // 免费，不计
+    ]);
+    expect(b.pt).toBeCloseTo(26.4); // 12 + 12 + 2.4
+    expect(b.cr).toBe(20);
+    expect(b.runnableCount).toBe(5);
   });
 });

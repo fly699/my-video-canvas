@@ -408,7 +408,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
       : [];
     return [...upstreamAudio, ...own];
   }, [upstreamAudio, payload.inputAudioUrl]);
-  const docks = useNodeDocks(id, { hasRef: audioItems.length > 0, hasPrompt: false });
+  const docks = useNodeDocks(id, { hasRef: audioItems.length > 0, hasPrompt: false }, { ref: audioItems.map((a) => a.id).join(",") });
   const [isPlaying, setIsPlaying] = useState(false);
   const [loopPlayback, setLoopPlayback] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);

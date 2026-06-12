@@ -145,6 +145,16 @@ export const BaseNode = memo(function BaseNode({
     const node = s.nodes.find((n) => n.id === id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
   });
+  // 框选/多选时是否选中了 ≥2 个节点。多选时节点保持收起（只显选中描边，不展开配置区），
+  // 避免框选一片节点时它们全部展开、画布瞬间被撑乱。单选仍展开。返回 boolean，仅在
+  // 「是否多选」翻转时触发本节点重渲染。
+  const multiSelected = useCanvasStore((s) => {
+    let c = 0;
+    for (const n of s.nodes) { if (n.selected) { c++; if (c > 1) return true; } }
+    return false;
+  });
+  // 真正决定「展开配置」的开关：单选（或置顶）才展开；多选时即便本节点 selected 也不展开。
+  const expandSelected = (!!selected && !multiSelected) || pinned;
   // Creator id (stamped into the payload at creation) → a per-collaborator color
   // dot in the title bar, matching the cursor / "在线协作者" colors. Only shown
   // for OTHER collaborators' nodes (your own stay undotted — no solo noise).
@@ -176,7 +186,7 @@ export const BaseNode = memo(function BaseNode({
   // not pinned) renders collapsed: only the title bar + warning/error/progress +
   // the hero preview. In that state drop the min-height floor so the node shrinks
   // to fit the preview's natural aspect ratio instead of leaving empty space.
-  const isCollapsedPreview = hasHero && !selected && !pinned;
+  const isCollapsedPreview = hasHero && !expandSelected;
 
   // Whole-node height cap (e.g. Agent's long output): clamp the node to 3× its
   // width and let the node's own internal scroll area absorb the overflow. A
@@ -734,7 +744,7 @@ export const BaseNode = memo(function BaseNode({
           The denoising in-progress image streamed over the WS. Shown only while
           busy and when the node is expanded (selected/pinned), so collapsed nodes
           stay compact. Transient — discarded when the run finishes. */}
-      {genBusy && livePreview && (selected || pinned) && (
+      {genBusy && livePreview && expandSelected && (
         <div style={{ padding: "4px 8px", flexShrink: 0, background: "var(--c-node-bg)", borderBottom: "1px solid var(--c-bd1)" }}>
           <img
             src={livePreview}
@@ -769,7 +779,7 @@ export const BaseNode = memo(function BaseNode({
       )}
 
       {/* ── Content area (collapsible in creative mode when hero exists) ── */}
-      <NodeSelectedContext.Provider value={!!selected || pinned}>
+      <NodeSelectedContext.Provider value={expandSelected}>
         <div className="node-body-wrap">
           {/* When the node height is capped, make this wrapper a flex column so a
               flex:1 child can inherit the bounded height (percentage height/h-full

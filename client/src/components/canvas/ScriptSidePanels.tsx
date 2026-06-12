@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { mentionedCharacters } from "../../lib/characterConditioning";
 import { NodeTextArea } from "./NodeTextInput";
@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   X, Loader2, Sparkles, Route, ClipboardCheck, Check, ChevronRight,
   Wand2, ListOrdered, Film, StickyNote, RefreshCw, Tv,
+  Users, Eye, Clock, FileText, Lock,
 } from "lucide-react";
 import type { ScriptNodeData, ScriptBeat, ScriptCoverageReport, CoverageIssue } from "../../../../shared/types";
 
@@ -88,6 +89,32 @@ export function collectCharacterProfiles(scriptId: string, mentionText?: string)
   return lines.join("\n").slice(0, 3000);
 }
 
+/** 与 collectCharacterProfiles 同源，但只返回去重后的角色/场景「名字」清单，
+ *  用于「约束预览」明示本次生成会带入哪些人物档案（解决约束隐形）。 */
+export function collectCharacterNames(scriptId: string, mentionText?: string): string[] {
+  const { nodes, edges } = useCanvasStore.getState();
+  const linked = new Set<string>();
+  for (const e of edges) {
+    if (e.source === scriptId) linked.add(e.target);
+    if (e.target === scriptId) linked.add(e.source);
+  }
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const add = (p: Record<string, string | undefined>) => {
+    const key = (p.sceneName ?? p.name ?? "").trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    names.push(key);
+  };
+  for (const n of nodes) {
+    if (linked.has(n.id) && n.data.nodeType === "character") add(n.data.payload as Record<string, string | undefined>);
+  }
+  for (const p of mentionedCharacters(mentionText ?? "", nodes as unknown as Parameters<typeof mentionedCharacters>[1])) {
+    add(p as unknown as Record<string, string | undefined>);
+  }
+  return names;
+}
+
 const beatSheetToText = (beats: ScriptBeat[]): string =>
   beats.map((b) => `${b.index}. ${b.title}${b.duration ? `（约${b.duration}s）` : ""}：${b.summary}`).join("\n").slice(0, 4000);
 
@@ -105,16 +132,76 @@ function StageHeader({ num, title, done }: { num: number; title: string; done: b
   );
 }
 
-function ActionBtn({ onClick, pending, disabled, children, accent = FLOW_ACCENT }: {
-  onClick: () => void; pending?: boolean; disabled?: boolean; children: React.ReactNode; accent?: string;
+/** 顶部步骤进度导航：圆点显示每步完成态，点击跳转到对应区块（解决「流程不直观」）。
+ *  current 高亮当前应做的步骤（首个未完成步）。 */
+function StepNav({ steps, current, onJump }: {
+  steps: { label: string; done: boolean }[]; current: number; onJump: (i: number) => void;
 }) {
-  const off = pending || disabled;
   return (
-    <button onClick={onClick} disabled={off} className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg transition-all"
-      style={{ fontSize: 11, fontWeight: 600, background: off ? "var(--c-surface)" : `${accent}16`, border: `1px solid ${off ? "var(--c-bd2)" : `${accent}45`}`, color: off ? "var(--c-t4)" : accent, cursor: off ? "not-allowed" : "pointer" }}>
-      {pending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+    <div className="flex items-stretch" style={{ gap: 2, padding: "2px 0 6px" }}>
+      {steps.map((s, i) => {
+        const active = i === current;
+        return (
+          <button key={i} onClick={() => onJump(i)} title={s.label}
+            className="nodrag flex flex-col items-center gap-1"
+            style={{ flex: 1, background: "none", border: "none", cursor: "pointer", padding: 0, minWidth: 0 }}>
+            <div className="flex items-center w-full">
+              <div style={{ flex: 1, height: 2, background: i === 0 ? "transparent" : (steps[i - 1].done ? FLOW_ACCENT : "var(--c-bd1)") }} />
+              <span style={{
+                width: 18, height: 18, borderRadius: "50%", flexShrink: 0, fontSize: 9.5, fontWeight: 800,
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                background: s.done ? FLOW_ACCENT : active ? `${FLOW_ACCENT}22` : "var(--c-bd1)",
+                color: s.done ? "#fff" : active ? FLOW_ACCENT : "var(--c-t3)",
+                border: active && !s.done ? `1.5px solid ${FLOW_ACCENT}` : "none",
+              }}>{s.done ? <Check style={{ width: 10, height: 10 }} /> : i + 1}</span>
+              <div style={{ flex: 1, height: 2, background: i === steps.length - 1 ? "transparent" : (s.done ? FLOW_ACCENT : "var(--c-bd1)") }} />
+            </div>
+            <span style={{ fontSize: 8, lineHeight: 1.1, color: active ? FLOW_ACCENT : "var(--c-t4)", fontWeight: active ? 700 : 500, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{s.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 通用「选项胶囊」（结构 / 风格 / 时长策略 等可调创作方向）。 */
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} className="nodrag px-1.5 py-0.5 rounded-md transition-all"
+      style={{ fontSize: 9.5, fontWeight: active ? 700 : 500, background: active ? `${FLOW_ACCENT}18` : "var(--c-surface)", border: `1px solid ${active ? `${FLOW_ACCENT}50` : "var(--c-bd2)"}`, color: active ? FLOW_ACCENT : "var(--c-t3)", cursor: "pointer" }}>
       {children}
     </button>
+  );
+}
+
+function ActionBtn({ onClick, pending, disabled, disabledHint, pendingLabel, icon, children, accent = FLOW_ACCENT }: {
+  onClick: () => void; pending?: boolean; disabled?: boolean; disabledHint?: string; pendingLabel?: string;
+  icon?: React.ReactNode; children: React.ReactNode; accent?: string;
+}) {
+  const off = pending || disabled;
+  // 关键：区分「生成中」（转圈 + 进行文案）与「禁用」（斜纹 + 缺前置条件提示），
+  // 用户一眼分清是在跑还是缺东西（解决「灰按钮分不清原因」）。
+  const blocked = disabled && !pending;
+  return (
+    <div className="flex flex-col gap-1">
+      <button onClick={onClick} disabled={off} className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg transition-all"
+        style={{
+          fontSize: 11, fontWeight: 600,
+          background: pending ? `${accent}0e` : blocked ? "var(--c-surface)" : `${accent}16`,
+          border: `1px solid ${off ? (blocked ? "var(--c-bd2)" : `${accent}30`) : `${accent}45`}`,
+          color: pending ? accent : blocked ? "var(--c-t4)" : accent,
+          cursor: pending ? "wait" : blocked ? "not-allowed" : "pointer",
+          backgroundImage: blocked ? "repeating-linear-gradient(45deg, transparent, transparent 5px, var(--c-bd1) 5px, var(--c-bd1) 6px)" : "none",
+        }}>
+        {pending ? <Loader2 className="w-3 h-3 animate-spin" /> : (icon ?? <Sparkles className="w-3 h-3" />)}
+        {pending ? (pendingLabel ?? "生成中…") : children}
+      </button>
+      {blocked && disabledHint && (
+        <span className="flex items-center justify-center gap-1" style={{ fontSize: 9, color: "var(--c-t4)" }}>
+          <Lock style={{ width: 9, height: 9 }} /> {disabledHint}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -133,21 +220,46 @@ const BEAT_STRUCTURES = [
   { id: "documentary", label: "纪录片" },
 ] as const;
 
-export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, storyboardsPending, onGenerateScript, onGenerateStoryboards, onClose }: {
+const SYN_STYLES = [
+  { id: "", label: "默认", hint: "" },
+  { id: "epic", label: "史诗宏大", hint: "格局宏大、史诗感与命运感" },
+  { id: "warm", label: "温暖治愈", hint: "温暖、细腻、治愈系情感" },
+  { id: "noir", label: "悬疑黑色", hint: "悬疑、黑色电影、紧张压抑" },
+  { id: "punchy", label: "爽快直给", hint: "强冲突、快节奏、爽点密集" },
+] as const;
+const DURATION_MODES = [
+  { id: "weighted", label: "重场优先" },
+  { id: "even", label: "均等" },
+  { id: "hook_front", label: "钩子前置" },
+] as const;
+
+export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, storyboardsPending, onGenerateScript, onGenerateStoryboards, onOpenCoverage, onClose }: {
   id: string;
   payload: ScriptNodeData;
   llmModel: string;
   fullGenPending: boolean;
   storyboardsPending: boolean;
-  onGenerateScript: (extra: { beatSheetText?: string; characterProfiles?: string }) => void;
+  onGenerateScript: (extra: { beatSheetText?: string; characterProfiles?: string; scriptOnly?: boolean }) => void;
   onGenerateStoryboards: () => void;
+  /** 切换到「专业审查」面板（向导↔审查闭环：剧本生成后建议先审查再拆分镜）。 */
+  onOpenCoverage?: () => void;
   onClose: () => void;
 }) {
   const { updateNodeData } = useCanvasStore();
   const [loglineCands, setLoglineCands] = useState<string[]>([]);
   const [structure, setStructure] = useState<string>(payload.beatStructure ?? "three_act");
+  const [durationMode, setDurationMode] = useState<"weighted" | "even" | "hook_front">("weighted");
+  const [synStyle, setSynStyle] = useState<string>("");
+  const [customIntent, setCustomIntent] = useState("");
+  const [genMode, setGenMode] = useState<"scriptOnly" | "both">("scriptOnly");
+  const [showConstraints, setShowConstraints] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<string | null>(null);
   const [epCount, setEpCount] = useState(12);
   const [showEpisodes, setShowEpisodes] = useState(false);
+
+  // 步骤区块的 DOM 引用——顶部进度导航点击即平滑滚动到对应步骤。
+  const stageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const jump = (i: number) => stageRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
   const loglineMut = trpc.scripts.generateLogline.useMutation({
     onSuccess: (r) => { setLoglineCands(r.loglines); toast.success("已生成 3 个 logline 候选，点击选用"); },
@@ -170,37 +282,70 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
   const logline = (payload.logline ?? "").trim();
   const beats = payload.beatSheet ?? [];
   const episodes = payload.episodeOutline ?? [];
+  const hasScript = !!payload.content?.trim();
   const source = [logline && `Logline：${logline}`, idea && `梗概：${idea}`].filter(Boolean).join("\n");
   // 角色档案 = 连线角色 ∪ 文本 @提及角色（含库影子）。把当前所有阶段文本喂进 @解析，
   // 这样即使 LLM 把 @林晓 改写掉，林晓的设定仍贯穿 logline/梗概/节拍表/剧本/分镜。
   const mentionText = [logline, idea, beats.map((b) => `${b.title} ${b.summary}`).join(" ")].filter(Boolean).join("\n");
-  const charProfiles = collectCharacterProfiles(id, mentionText) || undefined;
+  const autoProfiles = collectCharacterProfiles(id, mentionText);
+  const charNames = collectCharacterNames(id, mentionText);
+  // 用户在「约束预览」里临时改过则用草稿，否则用自动收集——贯穿所有步骤生成。
+  const effProfiles = ((profileDraft?.trim() || autoProfiles) || undefined);
+
+  // 已连接/已生成的分镜节点（用于「⑤ 分镜」完成态与步骤导航）。
+  const hasStoryboards = (() => {
+    const { nodes, edges } = useCanvasStore.getState();
+    const outs = new Set(edges.filter((e) => e.source === id).map((e) => e.target));
+    return nodes.some((n) => outs.has(n.id) && (n.data.nodeType === "storyboard" || n.data.nodeType === "comfyui_image"));
+  })();
+
+  const beatsTotal = beats.reduce((s, b) => s + (b.duration ?? 0), 0);
+  const targetDur = payload.totalDuration ?? 60;
+  const durOff = beatsTotal > 0 ? Math.abs(beatsTotal - targetDur) / targetDur : 0;
+
+  const synHint = SYN_STYLES.find((s) => s.id === synStyle)?.hint;
+  const synIntent = [
+    "把这个故事扩写为 300-500 字的故事梗概：现在时态，按三幕走向（建置/对抗/结局）交代主角、冲突升级与结局方向，具体可拍，不要抽象套话",
+    synHint && `风格基调：${synHint}`,
+    customIntent.trim() && `额外要求：${customIntent.trim()}`,
+  ].filter(Boolean).join("。");
+
+  const steps = [
+    { label: "Logline", done: !!logline },
+    { label: "梗概", done: idea.length >= 60 },
+    { label: "节拍表", done: beats.length > 0 },
+    { label: "剧本", done: hasScript },
+    { label: "分镜", done: hasStoryboards },
+  ];
+  const current = (() => { const i = steps.findIndex((s) => !s.done); return i === -1 ? steps.length - 1 : i; })();
 
   const updateBeat = (i: number, patch: Partial<ScriptBeat>) => {
     const next = beats.map((b, j) => (j === i ? { ...b, ...patch } : b));
     updateNodeData(id, { beatSheet: next });
   };
+  const setRef = (i: number) => (el: HTMLDivElement | null) => { stageRefs.current[i] = el; };
 
   return (
     <SideShell title="创作向导 · 想法 → 成片剧本" icon={<Route style={{ width: 14, height: 14 }} />} accent={FLOW_ACCENT} onClose={onClose}>
+      <StepNav steps={steps} current={current} onJump={jump} />
       <p style={{ fontSize: 10, color: "var(--c-t3)", lineHeight: 1.6 }}>
-        按行业开发管线逐阶段推进：每一步产物可编辑、可重生成、可跳过。赶时间也可直接用节点里的「一键生成」。
+        逐阶段推进，每一步产物可编辑、可重生成、可跳过。点上方圆点可跳到任意步骤；赶时间也可直接用节点里的「一键生成」。
       </p>
 
       {/* ① Logline */}
-      <div className="flex flex-col gap-1.5">
+      <div ref={setRef(0)} className="flex flex-col gap-1.5">
         <StageHeader num={1} title="一句话故事（Logline）" done={!!logline} />
         {/* NodeTextArea：自带 @角色/场景 自动补全（与脚本/分镜输入一致） */}
         <NodeTextArea className="nodrag" rows={2} style={taStyle} placeholder="25-35 字：主角 + 冲突 + 赌注。可手写、可 @角色，或由下方按钮从梗概/想法提炼"
           value={payload.logline ?? ""} onValueChange={(v) => updateNodeData(id, { logline: v })} />
-        <ActionBtn pending={loglineMut.isPending} disabled={!idea && !logline}
-          onClick={() => loglineMut.mutate({ idea: idea || logline, genre: payload.aiGenre, characterProfiles: charProfiles, model: llmModel })}>
+        <ActionBtn pending={loglineMut.isPending} disabled={!idea && !logline} disabledHint="先写梗概或 Logline" pendingLabel="提炼候选中…"
+          onClick={() => loglineMut.mutate({ idea: idea || logline, genre: payload.aiGenre, characterProfiles: effProfiles, model: llmModel })}>
           从想法/梗概提炼 3 个候选
         </ActionBtn>
         {loglineCands.length > 0 && (
           <div className="flex flex-col gap-1">
             {loglineCands.map((l, i) => (
-              <button key={i} onClick={() => { updateNodeData(id, { logline: l }); setLoglineCands([]); }}
+              <button key={i} onClick={() => { updateNodeData(id, { logline: l }); setLoglineCands([]); toast.success("已选用该 Logline"); }}
                 className="nodrag text-left px-2 py-1.5 rounded-lg transition-all"
                 style={{ fontSize: 10.5, lineHeight: 1.5, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
                 {l}
@@ -211,7 +356,7 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
       </div>
 
       {/* ② 梗概 */}
-      <div className="flex flex-col gap-1.5">
+      <div ref={setRef(1)} className="flex flex-col gap-1.5">
         <StageHeader num={2} title="故事梗概（300-500 字）" done={idea.length >= 60} />
         {/* 与节点顶部「故事梗概」框共用同一字段（payload.synopsis）——生成/编辑双向同步，
             不用回首页找；支持 @角色 自动补全。「生成剧本」读取的就是这里的内容。 */}
@@ -219,65 +364,146 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
           placeholder="300-500 字故事梗概（与节点顶部「故事梗概」框同步；可 @角色）"
           value={payload.synopsis ?? ""} onValueChange={(v) => updateNodeData(id, { synopsis: v })} />
         <p style={{ fontSize: 9.5, color: "var(--c-t4)" }}>与节点顶部「故事梗概」框实时同步（同一字段）；「生成剧本」直接取此内容。</p>
-        <ActionBtn pending={synopsisMut.isPending} disabled={!logline && !idea}
-          onClick={() => synopsisMut.mutate({ sceneText: (logline || idea).slice(0, 2000), intent: "把这个故事扩写为 300-500 字的故事梗概：现在时态，按三幕走向（建置/对抗/结局）交代主角、冲突升级与结局方向，具体可拍，不要抽象套话", characterProfiles: charProfiles, model: llmModel })}>
-          {idea ? "按 Logline 重写梗概" : "由 Logline 扩写梗概"}
+        {/* 可调创作方向：风格基调 + 自定义意图（解决「扩写方向黑盒」） */}
+        <div className="flex flex-wrap gap-1 items-center">
+          <span style={{ fontSize: 9, color: "var(--c-t4)" }}>风格</span>
+          {SYN_STYLES.map((s) => <Chip key={s.id} active={synStyle === s.id} onClick={() => setSynStyle(s.id)}>{s.label}</Chip>)}
+        </div>
+        <input className="nodrag" value={customIntent} onChange={(e) => setCustomIntent(e.target.value)}
+          placeholder="自定义要求（可选）：如「结局留开放式」「突出母女关系」"
+          style={{ width: "100%", fontSize: 10, padding: "5px 8px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+        <ActionBtn pending={synopsisMut.isPending} disabled={!logline && !idea} disabledHint="先写 Logline 或梗概" pendingLabel="扩写梗概中…"
+          onClick={() => synopsisMut.mutate({ sceneText: (logline || idea).slice(0, 2000), intent: synIntent, characterProfiles: effProfiles, model: llmModel })}>
+          {idea ? "按当前风格重写梗概" : "由 Logline 扩写梗概"}
         </ActionBtn>
       </div>
 
       {/* ③ 节拍表 */}
-      <div className="flex flex-col gap-1.5">
+      <div ref={setRef(2)} className="flex flex-col gap-1.5">
         <StageHeader num={3} title="节拍表（Beat Sheet）" done={beats.length > 0} />
-        <div className="flex flex-wrap gap-1">
-          {BEAT_STRUCTURES.map((s) => (
-            <button key={s.id} onClick={() => setStructure(s.id)} className="nodrag px-1.5 py-0.5 rounded-md transition-all"
-              style={{ fontSize: 9.5, fontWeight: structure === s.id ? 700 : 500, background: structure === s.id ? `${FLOW_ACCENT}18` : "var(--c-surface)", border: `1px solid ${structure === s.id ? `${FLOW_ACCENT}50` : "var(--c-bd2)"}`, color: structure === s.id ? FLOW_ACCENT : "var(--c-t3)", cursor: "pointer" }}>
-              {s.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1 items-center">
+          <span style={{ fontSize: 9, color: "var(--c-t4)" }}>结构</span>
+          {BEAT_STRUCTURES.map((s) => <Chip key={s.id} active={structure === s.id} onClick={() => setStructure(s.id)}>{s.label}</Chip>)}
         </div>
-        <ActionBtn pending={beatsMut.isPending} disabled={!source}
-          onClick={() => beatsMut.mutate({ source, structure: structure as "three_act", totalDuration: payload.totalDuration ?? 60, genre: payload.aiGenre, mood: payload.aiMood, characterProfiles: charProfiles, model: llmModel })}>
+        <div className="flex flex-wrap gap-1 items-center">
+          <span style={{ fontSize: 9, color: "var(--c-t4)" }}>时长分配</span>
+          {DURATION_MODES.map((m) => <Chip key={m.id} active={durationMode === m.id} onClick={() => setDurationMode(m.id)}>{m.label}</Chip>)}
+        </div>
+        <ActionBtn pending={beatsMut.isPending} disabled={!source} disabledHint="先写 Logline 或梗概" pendingLabel="生成节拍表中…"
+          onClick={() => beatsMut.mutate({ source, structure: structure as "three_act", totalDuration: targetDur, genre: payload.aiGenre, mood: payload.aiMood, characterProfiles: effProfiles, durationMode, model: llmModel })}>
           {beats.length ? "重新生成节拍表" : "生成节拍表"}
         </ActionBtn>
         {beats.length > 0 && (
-          <div className="flex flex-col gap-1.5" style={{ maxHeight: 220, overflowY: "auto" }}>
-            {beats.map((b, i) => (
-              <div key={i} className="px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span style={{ fontSize: 9, fontWeight: 800, color: FLOW_ACCENT }}>{b.index}</span>
-                  <input className="nodrag" value={b.title} onChange={(e) => updateBeat(i, { title: e.target.value })}
-                    style={{ flex: 1, fontSize: 10, fontWeight: 700, background: "transparent", border: "none", outline: "none", color: "var(--c-t1)" }} />
-                  {b.duration != null && <span style={{ fontSize: 8.5, color: "var(--c-t4)" }}>≈{b.duration}s</span>}
+          <>
+            {/* 实际总时长 vs 目标对比（解决「时长分配看不见」） */}
+            <div className="flex items-center gap-1.5" style={{ fontSize: 9.5 }}>
+              <Clock style={{ width: 10, height: 10, color: "var(--c-t4)" }} />
+              <span style={{ color: "var(--c-t3)" }}>实际 {beatsTotal}s / 目标 {targetDur}s</span>
+              <span style={{ marginLeft: "auto", fontWeight: 700, color: durOff > 0.25 ? "oklch(0.75 0.16 75)" : "oklch(0.70 0.16 150)" }}>
+                {durOff > 0.25 ? `偏差 ${Math.round(durOff * 100)}%，可重生成或手动调` : "时长匹配"}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1.5" style={{ maxHeight: 220, overflowY: "auto" }}>
+              {beats.map((b, i) => (
+                <div key={i} className="px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span style={{ fontSize: 9, fontWeight: 800, color: FLOW_ACCENT }}>{b.index}</span>
+                    <input className="nodrag" value={b.title} onChange={(e) => updateBeat(i, { title: e.target.value })}
+                      style={{ flex: 1, fontSize: 10, fontWeight: 700, background: "transparent", border: "none", outline: "none", color: "var(--c-t1)" }} />
+                    {/* 每拍时长可直接微调（解决「只能看不能改时长」） */}
+                    <input className="nodrag" type="number" min={1} value={b.duration ?? ""} onChange={(e) => updateBeat(i, { duration: Math.max(1, Number(e.target.value) || 1) })}
+                      style={{ width: 38, fontSize: 9, textAlign: "right", background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none", color: "var(--c-t3)", padding: "1px 3px" }} />
+                    <span style={{ fontSize: 8.5, color: "var(--c-t4)" }}>s</span>
+                  </div>
+                  <NodeTextArea className="nodrag" rows={2} value={b.summary} onValueChange={(v) => updateBeat(i, { summary: v })}
+                    style={{ ...taStyle, fontSize: 10, padding: "4px 6px" }} />
                 </div>
-                <NodeTextArea className="nodrag" rows={2} value={b.summary} onValueChange={(v) => updateBeat(i, { summary: v })}
-                  style={{ ...taStyle, fontSize: 10, padding: "4px 6px" }} />
-              </div>
-            ))}
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 约束预览（生成剧本前明示将带入的节拍表 + 角色档案，可临时编辑）——解决「约束隐形」 */}
+      <div ref={setRef(3)} className="flex flex-col gap-1.5" style={{ borderTop: "1px solid var(--c-bd1)", paddingTop: 8 }}>
+        <button onClick={() => setShowConstraints((v) => !v)} className="nodrag flex items-center gap-1.5"
+          style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+          <Eye style={{ width: 12, height: 12, color: FLOW_ACCENT }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t1)" }}>约束预览</span>
+          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
+            {beats.length ? `${beats.length} 拍` : "无节拍表"} · 角色 {charNames.length}{profileDraft != null ? "（已改）" : ""}
+          </span>
+          <ChevronRight style={{ width: 11, height: 11, marginLeft: "auto", color: "var(--c-t4)", transform: showConstraints ? "rotate(90deg)" : "none", transition: "transform 150ms" }} />
+        </button>
+        {showConstraints && (
+          <div className="flex flex-col gap-1.5 px-2 py-2 rounded-lg" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd1)" }}>
+            <div className="flex items-start gap-1.5" style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
+              <ListOrdered style={{ width: 11, height: 11, marginTop: 1, flexShrink: 0, color: FLOW_ACCENT }} />
+              <span>节拍表：{beats.length ? `${beats.length} 拍，剧本将逐拍展开并按拍点时长占比分配镜头` : "无——剧本不受结构约束，可先去③生成"}</span>
+            </div>
+            <div className="flex items-start gap-1.5" style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
+              <Users style={{ width: 11, height: 11, marginTop: 1, flexShrink: 0, color: FLOW_ACCENT }} />
+              <span>角色档案（{charNames.length}）：{charNames.length ? charNames.join("、") : "无——连线角色节点或在文本里 @角色 即可带入"}</span>
+            </div>
+            {/* 可见可编辑：用户可临时覆盖角色档案约束文本，再生成剧本/节拍表/梗概 */}
+            <NodeTextArea className="nodrag" rows={4} style={{ ...taStyle, fontSize: 9.5 }}
+              placeholder="角色档案约束（留空=自动收集）。在此临时编辑会覆盖自动收集，贯穿后续所有生成。"
+              value={profileDraft ?? autoProfiles} onValueChange={(v) => setProfileDraft(v)} />
+            {profileDraft != null && (
+              <button onClick={() => setProfileDraft(null)} className="nodrag flex items-center justify-center gap-1"
+                style={{ fontSize: 9.5, padding: "3px 8px", borderRadius: 6, background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>
+                <RefreshCw style={{ width: 10, height: 10 }} /> 恢复自动收集
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* ④ 剧本 */}
+      {/* ④ 剧本（分两步：先「仅剧本」审视，或一步「剧本 + 分镜」） */}
       <div className="flex flex-col gap-1.5">
-        <StageHeader num={4} title="生成完整剧本" done={!!payload.content?.trim()} />
-        <p style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
-          自动注入约束：{beats.length ? "✓ 节拍表（逐拍展开）" : "✗ 无节拍表"} · {collectCharacterProfiles(id) ? "✓ 已连接角色档案" : "✗ 未连接角色节点"}
+        <StageHeader num={4} title="生成完整剧本" done={hasScript} />
+        <div className="flex gap-1">
+          {([["scriptOnly", "仅剧本（先审视）"], ["both", "剧本 + 分镜"]] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setGenMode(v)} className="nodrag flex-1 py-1 rounded-md transition-all"
+              style={{ fontSize: 9.5, fontWeight: genMode === v ? 700 : 500, background: genMode === v ? `${FLOW_ACCENT}18` : "var(--c-surface)", border: `1px solid ${genMode === v ? `${FLOW_ACCENT}50` : "var(--c-bd2)"}`, color: genMode === v ? FLOW_ACCENT : "var(--c-t3)", cursor: "pointer" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.5 }}>
+          将注入：{beats.length ? "✓ 节拍表" : "✗ 无节拍表"} · {charNames.length ? `✓ 角色档案(${charNames.length})` : "✗ 无角色"}
+          {genMode === "scriptOnly" ? " — 先出剧本，审视/编辑后再到 ⑤ 拆分镜" : " — 一步生成剧本并自动拆分镜"}
         </p>
-        <ActionBtn pending={fullGenPending} disabled={!idea && !logline}
+        <ActionBtn pending={fullGenPending} disabled={!idea && !logline} disabledHint="先写梗概或 Logline" icon={<FileText className="w-3 h-3" />}
+          pendingLabel={genMode === "both" ? "生成剧本 + 拆分镜中…" : "生成剧本中…"}
           onClick={() => onGenerateScript({
             beatSheetText: beats.length ? beatSheetToText(beats) : undefined,
-            characterProfiles: charProfiles, // 连线 ∪ @提及（含库影子）
+            characterProfiles: effProfiles, // 连线 ∪ @提及（含库影子），或约束预览里的临时覆盖
+            scriptOnly: genMode === "scriptOnly",
           })}>
-          生成剧本{beats.length ? "（按节拍表）" : ""} + 分镜
+          生成剧本{beats.length ? "（按节拍表）" : ""}{genMode === "both" ? " + 分镜" : ""}
         </ActionBtn>
+        {/* 向导↔审查闭环：剧本就绪且还没拆分镜时，建议先专业审查（六维评分+一键修复）再拆 */}
+        {hasScript && !hasStoryboards && onOpenCoverage && (
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: `${COV_ACCENT}0e`, border: `1px solid ${COV_ACCENT}35` }}>
+            <ClipboardCheck style={{ width: 11, height: 11, flexShrink: 0, color: COV_ACCENT }} />
+            <span style={{ fontSize: 9.5, color: "var(--c-t3)", flex: 1, lineHeight: 1.4 }}>
+              剧本已生成{payload.coverage ? `（上次审查 ${payload.coverage.overall} 分）` : ""}——建议先专业审查再拆分镜
+            </span>
+            <button onClick={onOpenCoverage} className="nodrag flex-shrink-0 px-2 py-0.5 rounded-md"
+              style={{ fontSize: 9.5, fontWeight: 700, background: `${COV_ACCENT}16`, border: `1px solid ${COV_ACCENT}45`, color: COV_ACCENT, cursor: "pointer" }}>
+              去审查
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ⑤ 分镜 */}
-      <div className="flex flex-col gap-1.5">
-        <StageHeader num={5} title="从剧本拆分镜节点" done={false} />
-        <ActionBtn pending={storyboardsPending} disabled={!payload.content?.trim()} onClick={onGenerateStoryboards}>
-          <Film className="w-3 h-3" /> AI 生成分镜节点
+      <div ref={setRef(4)} className="flex flex-col gap-1.5">
+        <StageHeader num={5} title="从剧本拆分镜节点" done={hasStoryboards} />
+        <ActionBtn pending={storyboardsPending} disabled={!hasScript} disabledHint="先生成剧本（④）" icon={<Film className="w-3 h-3" />} pendingLabel="拆分镜中…"
+          onClick={onGenerateStoryboards}>
+          AI 生成分镜节点
         </ActionBtn>
       </div>
 

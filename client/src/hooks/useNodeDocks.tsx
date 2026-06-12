@@ -98,6 +98,9 @@ export function useVideoStripItems(id: string, basePrompt = ""): StripItem[] {
 export function useNodeDocks(
   id: string,
   opts: { hasRef: boolean; hasPrompt: boolean },
+  /** 内容变更监听：传入「提示词文本」与「参考/参与元素签名（如各项 id 拼接）」。
+   *  任一在挂载后发生变化（新增/删除/编辑）→ 对应吸附窗自动展开 2 秒，便于一眼看到变更。 */
+  watch?: { prompt?: string; ref?: string },
 ): {
   refOpen: boolean;
   promptOpen: boolean;
@@ -112,12 +115,42 @@ export function useNodeDocks(
   const [refPersist, setRefPersist] = usePersistentState<boolean>(`ui:refstrip:${id}`, false, { crossTab: false });
   const [promptPersist, setPromptPersist] = usePersistentState<boolean>(`ui:promptdock:${id}`, false, { crossTab: false });
   const [peek, setPeek] = useState(false);
+  // 内容变更 → 自动展开 2 秒（与 peek/钉住并行）。
+  const [autoRef, setAutoRef] = useState(false);
+  const [autoPrompt, setAutoPrompt] = useState(false);
+  const autoRefTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoPromptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 初值取首帧内容——首次挂载不触发，仅后续变化触发。
+  const prevPromptKey = useRef<string | undefined>(watch?.prompt);
+  const prevRefKey = useRef<string | undefined>(watch?.ref);
+
+  useEffect(() => {
+    const cur = watch?.prompt;
+    if (prevPromptKey.current === cur) return;
+    prevPromptKey.current = cur;
+    if (autoPromptTimer.current) clearTimeout(autoPromptTimer.current);
+    setAutoPrompt(true);
+    autoPromptTimer.current = setTimeout(() => { autoPromptTimer.current = null; setAutoPrompt(false); }, 2000);
+  }, [watch?.prompt]);
+
+  useEffect(() => {
+    const cur = watch?.ref;
+    if (prevRefKey.current === cur) return;
+    prevRefKey.current = cur;
+    if (autoRefTimer.current) clearTimeout(autoRefTimer.current);
+    setAutoRef(true);
+    autoRefTimer.current = setTimeout(() => { autoRefTimer.current = null; setAutoRef(false); }, 2000);
+  }, [watch?.ref]);
 
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearOpen = () => { if (openTimer.current) { clearTimeout(openTimer.current); openTimer.current = null; } };
   const clearClose = () => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; } };
-  useEffect(() => () => { clearOpen(); clearClose(); }, []);
+  useEffect(() => () => {
+    clearOpen(); clearClose();
+    if (autoRefTimer.current) clearTimeout(autoRefTimer.current);
+    if (autoPromptTimer.current) clearTimeout(autoPromptTimer.current);
+  }, []);
 
   const onHeaderHoverChange = useCallback((hovering: boolean) => {
     if (hovering) {
@@ -135,8 +168,8 @@ export function useNodeDocks(
     else { clearClose(); closeTimer.current = setTimeout(() => { closeTimer.current = null; setPeek(false); }, 300); }
   }, []);
 
-  const refOpen = hasRef && (refPersist || peek);
-  const promptOpen = hasPrompt && (promptPersist || peek);
+  const refOpen = hasRef && (refPersist || peek || autoRef);
+  const promptOpen = hasPrompt && (promptPersist || peek || autoPrompt);
   const pinRef = useCallback(() => setRefPersist(true), [setRefPersist]);
   const pinPrompt = useCallback(() => setPromptPersist(true), [setPromptPersist]);
 

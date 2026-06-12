@@ -21,10 +21,12 @@ import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { NodeDefaultModelsProvider } from "../contexts/NodeDefaultModelsContext";
 import { NodeDefaultModelsButton } from "../components/canvas/NodeDefaultModelsButton";
+import { BudgetButton } from "../components/canvas/BudgetButton";
 import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
 import { KieBalanceDashboard } from "../components/KieBalanceDashboard";
+import { RunStatusBar } from "../components/canvas/RunStatusBar";
 import { CustomNode } from "../components/canvas/CustomNode";
 import { ComfyServerStatusIndicator } from "../components/canvas/ComfyServerStatusIndicator";
 import { PoyoStorageStatusChip } from "../components/canvas/mediaReachability";
@@ -110,6 +112,9 @@ import {
   MoveVertical,
   BookText,
   GripVertical,
+  Network,
+  Magnet,
+  Wand2,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -500,6 +505,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
     "ui:panel:connectionHints:v1", false, { validate: validateBool },
   );
   const [showHelp, setShowHelp] = useState(false);
+  // 拖动吸附到网格（持久化到 localStorage）。
+  const [snapEnabled, setSnapEnabled] = useState<boolean>(() => (typeof localStorage !== "undefined" && localStorage.getItem("avc:snap") === "1"));
+  const toggleSnap = useCallback(() => setSnapEnabled((v) => {
+    const nv = !v;
+    try { localStorage.setItem("avc:snap", nv ? "1" : "0"); } catch { /* ignore */ }
+    toast.success(nv ? "已开启网格吸附" : "已关闭网格吸附", { duration: 1000 });
+    return nv;
+  }), []);
   // Chat floating window: remember whether it was open across reloads (its
   // position/size/scale/pin already persist inside CanvasChatWindow).
   const [chatOpen, setChatOpen] = usePersistentState<boolean>(
@@ -569,6 +582,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const runConfirmOpenRef = useRef(false);
   const runStateRunningRef = useRef(false);
   runStateRunningRef.current = runState.running;
+  // 子图复制粘贴剪贴板：Ctrl+C 记下框选的节点 id（含展开的群组成员），Ctrl+V 克隆。
+  const clipboardRef = useRef<string[]>([]);
+  const pasteCountRef = useRef(0);
 
   const handleRunRequest = useCallback((startNodeId: string | null, onlyIds?: string[]) => {
     if (runConfirmOpenRef.current) return;
@@ -1228,6 +1244,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setShowNodePicker(false);
   }, [addNode, reactFlow, emitCollabEvent]);
 
+  // 一键：在画布中心新建 ComfyUI 自定义节点，并自动打开「导入向导」（_openWizard 瞬态标志）。
+  const addComfyWorkflowWithWizard = useCallback(() => {
+    const vp = reactFlow.getViewport();
+    const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
+    const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
+    try {
+      const n = addNode("comfyui_workflow", { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+      updateNodeData(n.id, { _openWizard: true });
+      emitCollabEvent("node:add", n);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "添加节点失败");
+    }
+    setShowNodePicker(false);
+  }, [addNode, updateNodeData, reactFlow, emitCollabEvent]);
+
   // Re-create a fully-configured ComfyUI node from a library template (like
   // duplicating): add a fresh node at the viewport center, then inject the saved
   // payload. Autosave + collab follow the normal add/update paths.
@@ -1475,6 +1506,31 @@ function CanvasInner({ projectId }: { projectId: number }) {
         }
       }
 
+      // 子图复制：Cmd/Ctrl+C 记下框选节点（群组展开含成员），不立即克隆。
+      if (!isEditing && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "c") {
+        const store = useCanvasStore.getState();
+        const selected = store.nodes.filter((n) => n.selected);
+        if (selected.length === 0) return; // 不拦截浏览器默认复制
+        e.preventDefault();
+        const ids = new Set(selected.map((n) => n.id));
+        for (const g of selected) {
+          if (g.data.nodeType === "group") for (const c of (g.data.payload as GroupNodeData).childIds ?? []) ids.add(c);
+        }
+        clipboardRef.current = Array.from(ids);
+        pasteCountRef.current = 0;
+        toast.success(`已复制 ${ids.size} 个节点（含内部连线），Ctrl+V 粘贴`, { duration: 1400 });
+      }
+      // 子图粘贴：Cmd/Ctrl+V 克隆剪贴板子图，连内部连线一并复制；重复粘贴递增偏移。
+      if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "v") {
+        if (clipboardRef.current.length === 0) return;
+        e.preventDefault();
+        const store = useCanvasStore.getState();
+        pasteCountRef.current += 1;
+        const off = 50 + 40 * pasteCountRef.current;
+        const newIds = store.cloneSubgraph(clipboardRef.current, { x: off, y: off });
+        if (newIds.length > 0) toast.success(`已粘贴 ${newIds.length} 个节点`, { duration: 1200 });
+      }
+
       // 群组：Cmd/Ctrl+G 组合选中节点；Cmd/Ctrl+Shift+G 解组（删除选中的 group 容器）。
       if (!isEditing && (e.metaKey || e.ctrlKey) && (e.key === "g" || e.key === "G")) {
         e.preventDefault();
@@ -1638,6 +1694,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             未保存
           </div>
         )}
+
+        {/* 全局运行状态条（生成中/排队/完成/失败，点失败跳转）——仅运行中或有失败时显示 */}
+        <RunStatusBar runState={runState} />
 
         {/* Poyo 暂存/存储可达状态灯（顶部工具栏左侧；可达且未暂存时不显示） */}
         <PoyoStorageStatusChip className="flex-shrink-0" />
@@ -2204,8 +2263,29 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 const list = q
                   ? NODE_TYPE_LIST.filter((c) => c.label.toLowerCase().includes(q) || c.type.toLowerCase().includes(q))
                   : sortNodeConfigsForPalette(NODE_TYPE_LIST);
-                if (list.length === 0) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
-                return <div className="grid grid-cols-4 gap-1.5">{list.map(renderTile)}</div>;
+                // 置顶快捷入口：一键「新建 ComfyUI 工作流并打开导入向导」（带服务器预检）。
+                const COMFY_ACC = "oklch(0.7 0.17 195)";
+                const showWizardTile = !q || "comfyui工作流导入向导wizardcomfy".includes(q);
+                const wizardTile = (
+                  <button
+                    key="__comfy_wizard"
+                    onClick={addComfyWorkflowWithWizard}
+                    title="新建 ComfyUI 自定义节点并打开导入向导（含服务器预检 + 一键重映射）"
+                    className="group/picker relative flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
+                    style={{ color: COMFY_ACC, background: `${COMFY_ACC}0e`, border: `1px solid ${COMFY_ACC}40` }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = `${COMFY_ACC}1c`; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = `${COMFY_ACC}0e`; }}
+                  >
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${COMFY_ACC}1f`, border: `1px solid ${COMFY_ACC}40` }}>
+                      <Wand2 style={{ color: COMFY_ACC, width: 18, height: 18 }} />
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>导入工作流</p>
+                    </div>
+                  </button>
+                );
+                if (list.length === 0 && !showWizardTile) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
+                return <div className="grid grid-cols-4 gap-1.5">{showWizardTile && wizardTile}{list.map(renderTile)}</div>;
               })()}
             </div>
           </div>
@@ -2311,6 +2391,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             }}
             nodesDraggable={!isReadOnly}
             nodesConnectable={!isReadOnly}
+            snapToGrid={snapEnabled}
+            snapGrid={[20, 20]}
             edgesFocusable={!isReadOnly}
             elementsSelectable
             selectionMode={SelectionMode.Partial}
@@ -2623,6 +2705,40 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">适应视图</TooltipContent>
             </Tooltip>
 
+            {/* 一键整理：按连线方向分层排布自由节点 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => { const n = useCanvasStore.getState().autoLayout(); if (n > 0) { toast.success(`已整理 ${n} 个节点`, { duration: 1200 }); setTimeout(() => reactFlow.fitView({ padding: 0.15, duration: 400 }), 60); } else toast.info("没有可整理的自由节点（群组内节点不参与）"); }}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                >
+                  <Network className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">一键整理画布</TooltipContent>
+            </Tooltip>
+
+            {/* 网格吸附开关 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={toggleSnap}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={snapEnabled
+                    ? { background: "oklch(0.68 0.22 285 / 0.18)", color: "oklch(0.72 0.18 285)", border: "1px solid oklch(0.68 0.22 285 / 0.4)" }
+                    : { color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { if (!snapEnabled) { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
+                  onMouseLeave={(e) => { if (!snapEnabled) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
+                >
+                  <Magnet className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">网格吸附{snapEnabled ? "（开）" : "（关）"}</TooltipContent>
+            </Tooltip>
+
             {/* 框选放大区域：开启后在画布拖出矩形，松手放大铺满全屏 */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -2724,7 +2840,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     ]},
                     { group: "节点操作", items: [
                       { key: "Delete / Backspace", desc: "删除选中节点" },
-                      { key: "Cmd/Ctrl + D", desc: "复制节点" },
+                      { key: "Cmd/Ctrl + D", desc: "原地复制选中节点" },
+                      { key: "Cmd/Ctrl + C / V", desc: "复制/粘贴子图（含内部连线）" },
+                      { key: "Cmd/Ctrl + G", desc: "组合为群组（Shift 解组）" },
                       { key: "Cmd/Ctrl + A", desc: "全选节点" },
                       { key: "Esc", desc: "取消选中" },
                     ]},
@@ -2829,6 +2947,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
             {/* 节点默认模型设置 */}
             <NodeDefaultModelsButton orient={toolbarOrient} />
+
+            {/* 预算管控（画布预估消耗 vs 余额） */}
+            <BudgetButton orient={toolbarOrient} />
 
             {/* Theme switcher */}
             <ThemeSwitcher />

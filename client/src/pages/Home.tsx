@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -38,6 +38,8 @@ import {
   Palette,
   Upload,
   ScrollText,
+  Search,
+  ArrowDownUp,
 } from "lucide-react";
 
 // ── Project card ─────────────────────────────────────────────────────────────
@@ -563,6 +565,9 @@ export default function Home() {
   const [showChangePw, setShowChangePw] = useState(false);
   const [, navigate] = useLocation();
   const [creating, setCreating] = useState(false);
+  // 仪表盘：项目搜索 + 排序（项目多时按名查找/按最近编辑或名称排序）。
+  const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"recent" | "name">("recent");
 
   const { data: projects, refetch } = trpc.projects.list.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -627,6 +632,24 @@ export default function Home() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects?.owned]);
+
+  // 按时段问候 + 显示名（仪表盘头部个性化）。
+  const greetHour = new Date().getHours();
+  const greeting = greetHour < 5 ? "夜深了" : greetHour < 11 ? "早上好" : greetHour < 13 ? "中午好" : greetHour < 18 ? "下午好" : "晚上好";
+  const displayName = (user?.name ?? user?.email ?? "").split("@")[0] || "创作者";
+
+  // 过滤 + 排序后的自有项目（搜索框/排序即时反映）。
+  const filteredOwned = useMemo(() => {
+    const list = [...(projects?.owned ?? [])];
+    const q = query.trim().toLowerCase();
+    const filtered = q ? list.filter((p) => p.name.toLowerCase().includes(q)) : list;
+    filtered.sort((a, b) =>
+      sortBy === "name"
+        ? a.name.localeCompare(b.name, "zh-Hans-CN")
+        : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+    return filtered;
+  }, [projects?.owned, query, sortBy]);
 
   const handleCreate = async () => {
     if (creating) return;
@@ -1149,16 +1172,19 @@ export default function Home() {
             </div>
           )}
 
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8 animate-fade-up" style={{ animationDelay: "60ms" }}>
+          {/* Header — 个性化问候 + 统计 + 新建 */}
+          <div className="flex items-end justify-between mb-5 animate-fade-up" style={{ animationDelay: "60ms" }}>
             <div>
-              <h1 className="text-xl font-bold tracking-tight" style={{ color: "var(--c-t1)" }}>
-                我的项目
+              <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--c-t1)" }}>
+                {greeting}，<span className="text-gradient-animated">{displayName}</span>
               </h1>
-              <p className="text-xs mt-0.5" style={{ color: "var(--c-t4)" }}>
-                {projects?.owned.length ?? 0} 个项目
+              <p className="text-xs mt-1" style={{ color: "var(--c-t4)" }}>
+                共 {projects?.owned.length ?? 0} 个项目
                 {(projects?.shared.length ?? 0) > 0 && (
                   <span style={{ marginLeft: 8 }}>· 协作中 {projects!.shared.length} 个</span>
+                )}
+                {(librarySummary?.count ?? 0) > 0 && (
+                  <span style={{ marginLeft: 8 }}>· 素材 {librarySummary!.count} 项</span>
                 )}
               </p>
             </div>
@@ -1178,6 +1204,36 @@ export default function Home() {
             </button>
           </div>
 
+          {/* 搜索 + 排序（仅在有项目时显示） */}
+          {(projects?.owned.length ?? 0) > 0 && (
+            <div className="flex items-center gap-2 mb-6 animate-fade-up" style={{ animationDelay: "90ms" }}>
+              <div className="relative flex-1 max-w-xs">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--c-t4)" }} />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="搜索项目…"
+                  className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none transition-colors focus:border-[oklch(0.68_0.22_285_/_0.5)]"
+                  style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}
+                />
+                {query && (
+                  <button onClick={() => setQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--c-t4)" }} title="清除">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => setSortBy((s) => (s === "recent" ? "name" : "recent"))}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors hover:text-[var(--c-t1)]"
+                style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}
+                title="切换排序方式"
+              >
+                <ArrowDownUp className="w-3.5 h-3.5" />
+                {sortBy === "recent" ? "最近编辑" : "名称"}
+              </button>
+            </div>
+          )}
+
           {/* Grid */}
           {loading ? (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -1192,8 +1248,8 @@ export default function Home() {
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                <NewProjectCard onClick={handleCreate} />
-                {(projects?.owned ?? []).map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
+                {!query && <NewProjectCard onClick={handleCreate} />}
+                {filteredOwned.map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
                   <ProjectCard
                     key={project.id}
                     project={project}
@@ -1205,6 +1261,14 @@ export default function Home() {
                   />
                 ))}
               </div>
+              {/* 搜索无匹配 */}
+              {query && filteredOwned.length === 0 && (projects?.owned.length ?? 0) > 0 && (
+                <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
+                  <Search className="w-7 h-7 mb-3" style={{ color: "var(--c-bd3)" }} />
+                  <p className="text-sm" style={{ color: "var(--c-t4)" }}>没有匹配「{query}」的项目</p>
+                  <button onClick={() => setQuery("")} className="mt-3 text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}>清除搜索</button>
+                </div>
+              )}
               {(projects?.shared ?? []).length > 0 && (
                 <div className="mt-10">
                   <h2 className="text-base font-semibold mb-3" style={{ color: "var(--c-t2)" }}>协作项目</h2>

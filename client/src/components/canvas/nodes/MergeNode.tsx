@@ -76,7 +76,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       : [];
     return [...upstreamAudio, ...own];
   }, [upstreamAudio, payload.bgMusicUrl]);
-  const docks = useNodeDocks(id, { hasRef: audioItems.length > 0, hasPrompt: false });
+  const docks = useNodeDocks(id, { hasRef: audioItems.length > 0, hasPrompt: false }, { ref: audioItems.map((a) => a.id).join(",") });
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   // Auto-collapse the editing controls when the node is deselected; expand when
   // selected or pinned (mirrors NodeSelectedContext / the other nodes' behavior).
