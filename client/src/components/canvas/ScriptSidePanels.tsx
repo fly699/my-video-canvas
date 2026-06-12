@@ -19,15 +19,15 @@ const FLOW_ACCENT = "oklch(0.66 0.18 250)";   // 向导蓝
 const COV_ACCENT = "oklch(0.68 0.20 295)";    // 审查紫
 
 // ── 共用：侧向面板外壳 ─────────────────────────────────────────────────────────
-function SideShell({ title, icon, accent, onClose, children }: {
-  title: string; icon: React.ReactNode; accent: string; onClose: () => void; children: React.ReactNode;
+function SideShell({ title, icon, accent, onClose, children, width = 400 }: {
+  title: string; icon: React.ReactNode; accent: string; onClose: () => void; children: React.ReactNode; width?: number;
 }) {
   return (
     <div
       className="nodrag nowheel nopan"
       style={{
         position: "absolute", left: "calc(100% + 14px)", top: 0,
-        width: 400, maxHeight: 640, display: "flex", flexDirection: "column",
+        width, maxHeight: 680, display: "flex", flexDirection: "column",
         background: "var(--c-base)", border: `1px solid ${accent}50`, borderRadius: 14,
         boxShadow: "0 18px 60px oklch(0 0 0 / 0.45)", zIndex: 30, overflow: "hidden",
       }}
@@ -119,15 +119,29 @@ const beatSheetToText = (beats: ScriptBeat[]): string =>
   beats.map((b) => `${b.index}. ${b.title}${b.duration ? `（约${b.duration}s）` : ""}：${b.summary}`).join("\n").slice(0, 4000);
 
 // ── 小组件 ───────────────────────────────────────────────────────────────────
-function StageHeader({ num, title, done }: { num: number; title: string; done: boolean }) {
+/** 可折叠步骤区块（二级展开）：收起时只占一行（编号 + 标题 + 状态摘要），点标题
+ *  展开详情——解决五个步骤全部平铺导致面板拥挤。flexShrink:0 防止滚动容器压缩区块。 */
+function Stage({ idx, title, done, summary, open, onToggle, refCb, children }: {
+  idx: number; title: string; done: boolean; summary: string;
+  open: boolean; onToggle: () => void; refCb: (el: HTMLDivElement | null) => void; children: React.ReactNode;
+}) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-      <span style={{
-        width: 18, height: 18, borderRadius: "50%", flexShrink: 0, fontSize: 10, fontWeight: 800,
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        background: done ? FLOW_ACCENT : "var(--c-bd1)", color: done ? "#fff" : "var(--c-t3)",
-      }}>{done ? <Check style={{ width: 11, height: 11 }} /> : num}</span>
-      <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t1)" }}>{title}</span>
+    <div ref={refCb} style={{
+      border: `1px solid ${open ? `${FLOW_ACCENT}40` : "var(--c-bd1)"}`, borderRadius: 10,
+      background: open ? "transparent" : "var(--c-surface)", flexShrink: 0,
+    }}>
+      <button onClick={onToggle} className="nodrag flex items-center gap-2 w-full text-left"
+        style={{ padding: "9px 11px", background: "none", border: "none", cursor: "pointer", minWidth: 0 }}>
+        <span style={{
+          width: 20, height: 20, borderRadius: "50%", flexShrink: 0, fontSize: 10.5, fontWeight: 800,
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          background: done ? FLOW_ACCENT : "var(--c-bd1)", color: done ? "#fff" : "var(--c-t3)",
+        }}>{done ? <Check style={{ width: 12, height: 12 }} /> : idx + 1}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t1)", flexShrink: 0 }}>{title}</span>
+        <span style={{ fontSize: 10, color: "var(--c-t4)", flex: 1, minWidth: 0, textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summary}</span>
+        <ChevronRight style={{ width: 12, height: 12, flexShrink: 0, color: "var(--c-t4)", transform: open ? "rotate(90deg)" : "none", transition: "transform 150ms" }} />
+      </button>
+      {open && <div className="flex flex-col" style={{ gap: 8, padding: "0 11px 11px" }}>{children}</div>}
     </div>
   );
 }
@@ -138,7 +152,7 @@ function StepNav({ steps, current, onJump }: {
   steps: { label: string; done: boolean }[]; current: number; onJump: (i: number) => void;
 }) {
   return (
-    <div className="flex items-stretch" style={{ gap: 2, padding: "2px 0 6px" }}>
+    <div className="flex items-stretch" style={{ gap: 2, padding: "2px 0 4px", flexShrink: 0 }}>
       {steps.map((s, i) => {
         const active = i === current;
         return (
@@ -148,15 +162,15 @@ function StepNav({ steps, current, onJump }: {
             <div className="flex items-center w-full">
               <div style={{ flex: 1, height: 2, background: i === 0 ? "transparent" : (steps[i - 1].done ? FLOW_ACCENT : "var(--c-bd1)") }} />
               <span style={{
-                width: 18, height: 18, borderRadius: "50%", flexShrink: 0, fontSize: 9.5, fontWeight: 800,
+                width: 20, height: 20, borderRadius: "50%", flexShrink: 0, fontSize: 10.5, fontWeight: 800,
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
                 background: s.done ? FLOW_ACCENT : active ? `${FLOW_ACCENT}22` : "var(--c-bd1)",
                 color: s.done ? "#fff" : active ? FLOW_ACCENT : "var(--c-t3)",
                 border: active && !s.done ? `1.5px solid ${FLOW_ACCENT}` : "none",
-              }}>{s.done ? <Check style={{ width: 10, height: 10 }} /> : i + 1}</span>
+              }}>{s.done ? <Check style={{ width: 11, height: 11 }} /> : i + 1}</span>
               <div style={{ flex: 1, height: 2, background: i === steps.length - 1 ? "transparent" : (s.done ? FLOW_ACCENT : "var(--c-bd1)") }} />
             </div>
-            <span style={{ fontSize: 8, lineHeight: 1.1, color: active ? FLOW_ACCENT : "var(--c-t4)", fontWeight: active ? 700 : 500, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{s.label}</span>
+            <span style={{ fontSize: 9.5, lineHeight: 1.2, color: active ? FLOW_ACCENT : "var(--c-t4)", fontWeight: active ? 700 : 500, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{s.label}</span>
           </button>
         );
       })}
@@ -167,8 +181,8 @@ function StepNav({ steps, current, onJump }: {
 /** 通用「选项胶囊」（结构 / 风格 / 时长策略 等可调创作方向）。 */
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className="nodrag px-1.5 py-0.5 rounded-md transition-all"
-      style={{ fontSize: 9.5, fontWeight: active ? 700 : 500, background: active ? `${FLOW_ACCENT}18` : "var(--c-surface)", border: `1px solid ${active ? `${FLOW_ACCENT}50` : "var(--c-bd2)"}`, color: active ? FLOW_ACCENT : "var(--c-t3)", cursor: "pointer" }}>
+    <button onClick={onClick} className="nodrag px-2 py-1 rounded-md transition-all"
+      style={{ fontSize: 10.5, fontWeight: active ? 700 : 500, background: active ? `${FLOW_ACCENT}18` : "var(--c-surface)", border: `1px solid ${active ? `${FLOW_ACCENT}50` : "var(--c-bd2)"}`, color: active ? FLOW_ACCENT : "var(--c-t3)", cursor: "pointer", whiteSpace: "nowrap" }}>
       {children}
     </button>
   );
@@ -186,7 +200,7 @@ function ActionBtn({ onClick, pending, disabled, disabledHint, pendingLabel, ico
     <div className="flex flex-col gap-1">
       <button onClick={onClick} disabled={off} className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg transition-all"
         style={{
-          fontSize: 11, fontWeight: 600,
+          fontSize: 11.5, fontWeight: 600,
           background: pending ? `${accent}0e` : blocked ? "var(--c-surface)" : `${accent}16`,
           border: `1px solid ${off ? (blocked ? "var(--c-bd2)" : `${accent}30`) : `${accent}45`}`,
           color: pending ? accent : blocked ? "var(--c-t4)" : accent,
@@ -197,8 +211,8 @@ function ActionBtn({ onClick, pending, disabled, disabledHint, pendingLabel, ico
         {pending ? (pendingLabel ?? "生成中…") : children}
       </button>
       {blocked && disabledHint && (
-        <span className="flex items-center justify-center gap-1" style={{ fontSize: 9, color: "var(--c-t4)" }}>
-          <Lock style={{ width: 9, height: 9 }} /> {disabledHint}
+        <span className="flex items-center justify-center gap-1" style={{ fontSize: 10, color: "var(--c-t4)" }}>
+          <Lock style={{ width: 10, height: 10 }} /> {disabledHint}
         </span>
       )}
     </div>
@@ -206,7 +220,7 @@ function ActionBtn({ onClick, pending, disabled, disabledHint, pendingLabel, ico
 }
 
 const taStyle: React.CSSProperties = {
-  width: "100%", fontSize: 11, lineHeight: 1.55, padding: "7px 9px", borderRadius: 8,
+  width: "100%", fontSize: 11.5, lineHeight: 1.55, padding: "7px 9px", borderRadius: 8,
   background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)",
   outline: "none", resize: "vertical", fontFamily: "inherit",
 };
@@ -255,11 +269,18 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
   const [showConstraints, setShowConstraints] = useState(false);
   const [profileDraft, setProfileDraft] = useState<string | null>(null);
   const [epCount, setEpCount] = useState(12);
-  const [showEpisodes, setShowEpisodes] = useState(false);
+  // 分集大纲整块默认收起（可选功能，不挤占主流程空间）。
+  const [epOpen, setEpOpen] = useState(false);
+  // 手风琴展开：null = 跟随「当前应做步骤」自动展开；用户点过则记住其选择（-1 = 全收起）。
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
 
-  // 步骤区块的 DOM 引用——顶部进度导航点击即平滑滚动到对应步骤。
+  // 步骤区块的 DOM 引用——顶部进度导航点击即展开并平滑滚动到对应步骤。
   const stageRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const jump = (i: number) => stageRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const jump = (i: number) => {
+    setOpenIdx(i);
+    // 等展开后的布局生效再滚动，否则目标位置不准。
+    setTimeout(() => stageRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 60);
+  };
 
   const loglineMut = trpc.scripts.generateLogline.useMutation({
     onSuccess: (r) => { setLoglineCands(r.loglines); toast.success("已生成 3 个 logline 候选，点击选用"); },
@@ -274,7 +295,7 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
     onError: (e) => toast.error("节拍表生成失败：" + e.message),
   });
   const episodesMut = trpc.scripts.generateEpisodeOutline.useMutation({
-    onSuccess: (r) => { updateNodeData(id, { episodeOutline: r.episodes }); setShowEpisodes(true); toast.success(`分集大纲已生成（${r.episodes.length} 集）`); },
+    onSuccess: (r) => { updateNodeData(id, { episodeOutline: r.episodes }); setEpOpen(true); toast.success(`分集大纲已生成（${r.episodes.length} 集）`); },
     onError: (e) => toast.error("分集大纲生成失败：" + e.message),
   });
 
@@ -318,6 +339,9 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
     { label: "分镜", done: hasStoryboards },
   ];
   const current = (() => { const i = steps.findIndex((s) => !s.done); return i === -1 ? steps.length - 1 : i; })();
+  // 实际展开的步骤：用户没点过时跟随当前步（完成一步自动推进到下一步）。
+  const effOpen = openIdx ?? current;
+  const toggle = (i: number) => setOpenIdx(effOpen === i ? -1 : i);
 
   const updateBeat = (i: number, patch: Partial<ScriptBeat>) => {
     const next = beats.map((b, j) => (j === i ? { ...b, ...patch } : b));
@@ -326,15 +350,15 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
   const setRef = (i: number) => (el: HTMLDivElement | null) => { stageRefs.current[i] = el; };
 
   return (
-    <SideShell title="创作向导 · 想法 → 成片剧本" icon={<Route style={{ width: 14, height: 14 }} />} accent={FLOW_ACCENT} onClose={onClose}>
+    <SideShell title="创作向导 · 想法 → 成片剧本" icon={<Route style={{ width: 14, height: 14 }} />} accent={FLOW_ACCENT} onClose={onClose} width={444}>
       <StepNav steps={steps} current={current} onJump={jump} />
-      <p style={{ fontSize: 10, color: "var(--c-t3)", lineHeight: 1.6 }}>
-        逐阶段推进，每一步产物可编辑、可重生成、可跳过。点上方圆点可跳到任意步骤；赶时间也可直接用节点里的「一键生成」。
+      <p style={{ fontSize: 10.5, color: "var(--c-t3)", lineHeight: 1.6, flexShrink: 0 }}>
+        逐阶段推进，每步产物可编辑、可重生成、可跳过。默认只展开当前步骤；点步骤标题或上方圆点展开任意一步。
       </p>
 
       {/* ① Logline */}
-      <div ref={setRef(0)} className="flex flex-col gap-1.5">
-        <StageHeader num={1} title="一句话故事（Logline）" done={!!logline} />
+      <Stage idx={0} title="一句话故事（Logline）" done={!!logline} summary={logline || "未填写"}
+        open={effOpen === 0} onToggle={() => toggle(0)} refCb={setRef(0)}>
         {/* NodeTextArea：自带 @角色/场景 自动补全（与脚本/分镜输入一致） */}
         <NodeTextArea className="nodrag" rows={2} style={taStyle} placeholder="25-35 字：主角 + 冲突 + 赌注。可手写、可 @角色，或由下方按钮从梗概/想法提炼"
           value={payload.logline ?? ""} onValueChange={(v) => updateNodeData(id, { logline: v })} />
@@ -347,46 +371,46 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
             {loglineCands.map((l, i) => (
               <button key={i} onClick={() => { updateNodeData(id, { logline: l }); setLoglineCands([]); toast.success("已选用该 Logline"); }}
                 className="nodrag text-left px-2 py-1.5 rounded-lg transition-all"
-                style={{ fontSize: 10.5, lineHeight: 1.5, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                style={{ fontSize: 11, lineHeight: 1.5, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
                 {l}
               </button>
             ))}
           </div>
         )}
-      </div>
+      </Stage>
 
       {/* ② 梗概 */}
-      <div ref={setRef(1)} className="flex flex-col gap-1.5">
-        <StageHeader num={2} title="故事梗概（300-500 字）" done={idea.length >= 60} />
+      <Stage idx={1} title="故事梗概（300-500 字）" done={idea.length >= 60} summary={idea ? `${idea.length} 字` : "未填写"}
+        open={effOpen === 1} onToggle={() => toggle(1)} refCb={setRef(1)}>
         {/* 与节点顶部「故事梗概」框共用同一字段（payload.synopsis）——生成/编辑双向同步，
             不用回首页找；支持 @角色 自动补全。「生成剧本」读取的就是这里的内容。 */}
         <NodeTextArea className="nodrag" rows={5} style={taStyle}
           placeholder="300-500 字故事梗概（与节点顶部「故事梗概」框同步；可 @角色）"
           value={payload.synopsis ?? ""} onValueChange={(v) => updateNodeData(id, { synopsis: v })} />
-        <p style={{ fontSize: 9.5, color: "var(--c-t4)" }}>与节点顶部「故事梗概」框实时同步（同一字段）；「生成剧本」直接取此内容。</p>
+        <p style={{ fontSize: 10, color: "var(--c-t4)", lineHeight: 1.5 }}>与节点顶部「故事梗概」框实时同步（同一字段）；「生成剧本」直接取此内容。</p>
         {/* 可调创作方向：风格基调 + 自定义意图（解决「扩写方向黑盒」） */}
-        <div className="flex flex-wrap gap-1 items-center">
-          <span style={{ fontSize: 9, color: "var(--c-t4)" }}>风格</span>
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <span style={{ fontSize: 10, color: "var(--c-t4)", flexShrink: 0 }}>风格</span>
           {SYN_STYLES.map((s) => <Chip key={s.id} active={synStyle === s.id} onClick={() => setSynStyle(s.id)}>{s.label}</Chip>)}
         </div>
         <input className="nodrag" value={customIntent} onChange={(e) => setCustomIntent(e.target.value)}
           placeholder="自定义要求（可选）：如「结局留开放式」「突出母女关系」"
-          style={{ width: "100%", fontSize: 10, padding: "5px 8px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+          style={{ width: "100%", fontSize: 11, padding: "6px 9px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
         <ActionBtn pending={synopsisMut.isPending} disabled={!logline && !idea} disabledHint="先写 Logline 或梗概" pendingLabel="扩写梗概中…"
           onClick={() => synopsisMut.mutate({ sceneText: (logline || idea).slice(0, 2000), intent: synIntent, characterProfiles: effProfiles, model: llmModel })}>
           {idea ? "按当前风格重写梗概" : "由 Logline 扩写梗概"}
         </ActionBtn>
-      </div>
+      </Stage>
 
       {/* ③ 节拍表 */}
-      <div ref={setRef(2)} className="flex flex-col gap-1.5">
-        <StageHeader num={3} title="节拍表（Beat Sheet）" done={beats.length > 0} />
-        <div className="flex flex-wrap gap-1 items-center">
-          <span style={{ fontSize: 9, color: "var(--c-t4)" }}>结构</span>
+      <Stage idx={2} title="节拍表（Beat Sheet）" done={beats.length > 0} summary={beats.length ? `${beats.length} 拍 · 共 ${beatsTotal}s` : "未生成"}
+        open={effOpen === 2} onToggle={() => toggle(2)} refCb={setRef(2)}>
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <span style={{ fontSize: 10, color: "var(--c-t4)", flexShrink: 0 }}>结构</span>
           {BEAT_STRUCTURES.map((s) => <Chip key={s.id} active={structure === s.id} onClick={() => setStructure(s.id)}>{s.label}</Chip>)}
         </div>
-        <div className="flex flex-wrap gap-1 items-center">
-          <span style={{ fontSize: 9, color: "var(--c-t4)" }}>时长分配</span>
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <span style={{ fontSize: 10, color: "var(--c-t4)", flexShrink: 0 }}>时长分配</span>
           {DURATION_MODES.map((m) => <Chip key={m.id} active={durationMode === m.id} onClick={() => setDurationMode(m.id)}>{m.label}</Chip>)}
         </div>
         <ActionBtn pending={beatsMut.isPending} disabled={!source} disabledHint="先写 Logline 或梗概" pendingLabel="生成节拍表中…"
@@ -396,81 +420,79 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
         {beats.length > 0 && (
           <>
             {/* 实际总时长 vs 目标对比（解决「时长分配看不见」） */}
-            <div className="flex items-center gap-1.5" style={{ fontSize: 9.5 }}>
-              <Clock style={{ width: 10, height: 10, color: "var(--c-t4)" }} />
+            <div className="flex items-center gap-1.5" style={{ fontSize: 10.5 }}>
+              <Clock style={{ width: 11, height: 11, color: "var(--c-t4)" }} />
               <span style={{ color: "var(--c-t3)" }}>实际 {beatsTotal}s / 目标 {targetDur}s</span>
               <span style={{ marginLeft: "auto", fontWeight: 700, color: durOff > 0.25 ? "oklch(0.75 0.16 75)" : "oklch(0.70 0.16 150)" }}>
                 {durOff > 0.25 ? `偏差 ${Math.round(durOff * 100)}%，可重生成或手动调` : "时长匹配"}
               </span>
             </div>
-            <div className="flex flex-col gap-1.5" style={{ maxHeight: 220, overflowY: "auto" }}>
+            <div className="flex flex-col gap-1.5" style={{ maxHeight: 240, overflowY: "auto" }}>
               {beats.map((b, i) => (
-                <div key={i} className="px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+                <div key={i} className="px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)", flexShrink: 0 }}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <span style={{ fontSize: 9, fontWeight: 800, color: FLOW_ACCENT }}>{b.index}</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: FLOW_ACCENT }}>{b.index}</span>
                     <input className="nodrag" value={b.title} onChange={(e) => updateBeat(i, { title: e.target.value })}
-                      style={{ flex: 1, fontSize: 10, fontWeight: 700, background: "transparent", border: "none", outline: "none", color: "var(--c-t1)" }} />
+                      style={{ flex: 1, fontSize: 11, fontWeight: 700, background: "transparent", border: "none", outline: "none", color: "var(--c-t1)" }} />
                     {/* 每拍时长可直接微调（解决「只能看不能改时长」） */}
                     <input className="nodrag" type="number" min={1} value={b.duration ?? ""} onChange={(e) => updateBeat(i, { duration: Math.max(1, Number(e.target.value) || 1) })}
-                      style={{ width: 38, fontSize: 9, textAlign: "right", background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none", color: "var(--c-t3)", padding: "1px 3px" }} />
-                    <span style={{ fontSize: 8.5, color: "var(--c-t4)" }}>s</span>
+                      style={{ width: 42, fontSize: 10, textAlign: "right", background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none", color: "var(--c-t3)", padding: "1px 3px" }} />
+                    <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>s</span>
                   </div>
                   <NodeTextArea className="nodrag" rows={2} value={b.summary} onValueChange={(v) => updateBeat(i, { summary: v })}
-                    style={{ ...taStyle, fontSize: 10, padding: "4px 6px" }} />
+                    style={{ ...taStyle, fontSize: 10.5, padding: "4px 6px" }} />
                 </div>
               ))}
             </div>
           </>
         )}
-      </div>
+      </Stage>
 
-      {/* 约束预览（生成剧本前明示将带入的节拍表 + 角色档案，可临时编辑）——解决「约束隐形」 */}
-      <div ref={setRef(3)} className="flex flex-col gap-1.5" style={{ borderTop: "1px solid var(--c-bd1)", paddingTop: 8 }}>
+      {/* ④ 剧本（分两步：先「仅剧本」审视，或一步「剧本 + 分镜」） */}
+      <Stage idx={3} title="生成完整剧本" done={hasScript}
+        summary={hasScript ? (payload.coverage ? `已生成 · 上次审查 ${payload.coverage.overall} 分` : "已生成") : "未生成"}
+        open={effOpen === 3} onToggle={() => toggle(3)} refCb={setRef(3)}>
+        {/* 约束预览（生成剧本前明示将带入的节拍表 + 角色档案，可临时编辑）——解决「约束隐形」 */}
         <button onClick={() => setShowConstraints((v) => !v)} className="nodrag flex items-center gap-1.5"
           style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-          <Eye style={{ width: 12, height: 12, color: FLOW_ACCENT }} />
+          <Eye style={{ width: 12, height: 12, color: FLOW_ACCENT, flexShrink: 0 }} />
           <span style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t1)" }}>约束预览</span>
-          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
+          <span style={{ fontSize: 10, color: "var(--c-t4)" }}>
             {beats.length ? `${beats.length} 拍` : "无节拍表"} · 角色 {charNames.length}{profileDraft != null ? "（已改）" : ""}
           </span>
           <ChevronRight style={{ width: 11, height: 11, marginLeft: "auto", color: "var(--c-t4)", transform: showConstraints ? "rotate(90deg)" : "none", transition: "transform 150ms" }} />
         </button>
         {showConstraints && (
           <div className="flex flex-col gap-1.5 px-2 py-2 rounded-lg" style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd1)" }}>
-            <div className="flex items-start gap-1.5" style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
+            <div className="flex items-start gap-1.5" style={{ fontSize: 10, color: "var(--c-t3)", lineHeight: 1.5 }}>
               <ListOrdered style={{ width: 11, height: 11, marginTop: 1, flexShrink: 0, color: FLOW_ACCENT }} />
               <span>节拍表：{beats.length ? `${beats.length} 拍，剧本将逐拍展开并按拍点时长占比分配镜头` : "无——剧本不受结构约束，可先去③生成"}</span>
             </div>
-            <div className="flex items-start gap-1.5" style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
+            <div className="flex items-start gap-1.5" style={{ fontSize: 10, color: "var(--c-t3)", lineHeight: 1.5 }}>
               <Users style={{ width: 11, height: 11, marginTop: 1, flexShrink: 0, color: FLOW_ACCENT }} />
               <span>角色档案（{charNames.length}）：{charNames.length ? charNames.join("、") : "无——连线角色节点或在文本里 @角色 即可带入"}</span>
             </div>
             {/* 可见可编辑：用户可临时覆盖角色档案约束文本，再生成剧本/节拍表/梗概 */}
-            <NodeTextArea className="nodrag" rows={4} style={{ ...taStyle, fontSize: 9.5 }}
+            <NodeTextArea className="nodrag" rows={4} style={{ ...taStyle, fontSize: 10 }}
               placeholder="角色档案约束（留空=自动收集）。在此临时编辑会覆盖自动收集，贯穿后续所有生成。"
               value={profileDraft ?? autoProfiles} onValueChange={(v) => setProfileDraft(v)} />
             {profileDraft != null && (
               <button onClick={() => setProfileDraft(null)} className="nodrag flex items-center justify-center gap-1"
-                style={{ fontSize: 9.5, padding: "3px 8px", borderRadius: 6, background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>
+                style={{ fontSize: 10, padding: "3px 8px", borderRadius: 6, background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>
                 <RefreshCw style={{ width: 10, height: 10 }} /> 恢复自动收集
               </button>
             )}
           </div>
         )}
-      </div>
-
-      {/* ④ 剧本（分两步：先「仅剧本」审视，或一步「剧本 + 分镜」） */}
-      <div className="flex flex-col gap-1.5">
-        <StageHeader num={4} title="生成完整剧本" done={hasScript} />
-        <div className="flex gap-1">
+        <div className="flex gap-1.5">
           {([["scriptOnly", "仅剧本（先审视）"], ["both", "剧本 + 分镜"]] as const).map(([v, label]) => (
-            <button key={v} onClick={() => setGenMode(v)} className="nodrag flex-1 py-1 rounded-md transition-all"
-              style={{ fontSize: 9.5, fontWeight: genMode === v ? 700 : 500, background: genMode === v ? `${FLOW_ACCENT}18` : "var(--c-surface)", border: `1px solid ${genMode === v ? `${FLOW_ACCENT}50` : "var(--c-bd2)"}`, color: genMode === v ? FLOW_ACCENT : "var(--c-t3)", cursor: "pointer" }}>
+            <button key={v} onClick={() => setGenMode(v)} className="nodrag flex-1 py-1.5 rounded-md transition-all"
+              style={{ fontSize: 10.5, fontWeight: genMode === v ? 700 : 500, background: genMode === v ? `${FLOW_ACCENT}18` : "var(--c-surface)", border: `1px solid ${genMode === v ? `${FLOW_ACCENT}50` : "var(--c-bd2)"}`, color: genMode === v ? FLOW_ACCENT : "var(--c-t3)", cursor: "pointer", whiteSpace: "nowrap" }}>
               {label}
             </button>
           ))}
         </div>
-        <p style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.5 }}>
+        <p style={{ fontSize: 10, color: "var(--c-t4)", lineHeight: 1.5 }}>
           将注入：{beats.length ? "✓ 节拍表" : "✗ 无节拍表"} · {charNames.length ? `✓ 角色档案(${charNames.length})` : "✗ 无角色"}
           {genMode === "scriptOnly" ? " — 先出剧本，审视/编辑后再到 ⑤ 拆分镜" : " — 一步生成剧本并自动拆分镜"}
         </p>
@@ -487,67 +509,72 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
         {hasScript && !hasStoryboards && onOpenCoverage && (
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: `${COV_ACCENT}0e`, border: `1px solid ${COV_ACCENT}35` }}>
             <ClipboardCheck style={{ width: 11, height: 11, flexShrink: 0, color: COV_ACCENT }} />
-            <span style={{ fontSize: 9.5, color: "var(--c-t3)", flex: 1, lineHeight: 1.4 }}>
+            <span style={{ fontSize: 10, color: "var(--c-t3)", flex: 1, lineHeight: 1.4 }}>
               剧本已生成{payload.coverage ? `（上次审查 ${payload.coverage.overall} 分）` : ""}——建议先专业审查再拆分镜
             </span>
-            <button onClick={onOpenCoverage} className="nodrag flex-shrink-0 px-2 py-0.5 rounded-md"
-              style={{ fontSize: 9.5, fontWeight: 700, background: `${COV_ACCENT}16`, border: `1px solid ${COV_ACCENT}45`, color: COV_ACCENT, cursor: "pointer" }}>
+            <button onClick={onOpenCoverage} className="nodrag flex-shrink-0 px-2 py-1 rounded-md"
+              style={{ fontSize: 10, fontWeight: 700, background: `${COV_ACCENT}16`, border: `1px solid ${COV_ACCENT}45`, color: COV_ACCENT, cursor: "pointer" }}>
               去审查
             </button>
           </div>
         )}
-      </div>
+      </Stage>
 
       {/* ⑤ 分镜 */}
-      <div ref={setRef(4)} className="flex flex-col gap-1.5">
-        <StageHeader num={5} title="从剧本拆分镜节点" done={hasStoryboards} />
+      <Stage idx={4} title="从剧本拆分镜节点" done={hasStoryboards}
+        summary={hasStoryboards ? "已生成分镜" : hasScript ? "待拆分" : "需先生成剧本"}
+        open={effOpen === 4} onToggle={() => toggle(4)} refCb={setRef(4)}>
         <ActionBtn pending={storyboardsPending} disabled={!hasScript} disabledHint="先生成剧本（④）" icon={<Film className="w-3 h-3" />} pendingLabel="拆分镜中…"
           onClick={onGenerateStoryboards}>
           AI 生成分镜节点
         </ActionBtn>
-      </div>
+      </Stage>
 
-      {/* 可选：短剧分集大纲 */}
-      <div className="flex flex-col gap-1.5" style={{ borderTop: "1px solid var(--c-bd1)", paddingTop: 8 }}>
-        <div className="flex items-center gap-2">
-          <Tv style={{ width: 12, height: 12, color: FLOW_ACCENT }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t1)", flex: 1 }}>短剧分集大纲（可选）</span>
-          <input className="nodrag" type="number" min={4} max={100} value={epCount}
-            onChange={(e) => setEpCount(Math.max(4, Math.min(100, Number(e.target.value) || 12)))}
-            style={{ width: 48, fontSize: 10, padding: "2px 5px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
-          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>集</span>
-        </div>
-        <ActionBtn pending={episodesMut.isPending} disabled={!source}
-          onClick={() => episodesMut.mutate({ source, episodeCount: epCount, model: llmModel })}>
-          生成分集大纲（每集钩子 + 卡点）
-        </ActionBtn>
-        {episodes.length > 0 && (
-          <>
-            <button onClick={() => setShowEpisodes((v) => !v)} className="nodrag flex items-center gap-1" style={{ background: "none", border: "none", fontSize: 10, color: FLOW_ACCENT, cursor: "pointer", padding: 0 }}>
-              <ChevronRight style={{ width: 10, height: 10, transform: showEpisodes ? "rotate(90deg)" : "none", transition: "transform 150ms" }} />
-              {episodes.length} 集大纲 {showEpisodes ? "收起" : "展开"}
-            </button>
-            {showEpisodes && (
-              <div className="flex flex-col gap-1" style={{ maxHeight: 200, overflowY: "auto" }}>
-                {episodes.map((ep) => (
-                  <div key={ep.episode} className="px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t1)" }}>第{ep.episode}集 · {ep.title}</div>
-                    <div style={{ fontSize: 9.5, color: "var(--c-t3)", lineHeight: 1.5 }}>钩子：{ep.hook}</div>
-                    <div style={{ fontSize: 9.5, color: "var(--c-t2)", lineHeight: 1.5 }}>{ep.summary}</div>
-                    <div style={{ fontSize: 9.5, color: FLOW_ACCENT, lineHeight: 1.5 }}>卡点：{ep.cliffhanger}</div>
-                  </div>
-                ))}
-              </div>
+      {/* 可选：短剧分集大纲——独立可折叠区块，默认收起，不挤占主流程空间 */}
+      <div style={{ border: "1px solid var(--c-bd1)", borderRadius: 10, background: epOpen ? "transparent" : "var(--c-surface)", flexShrink: 0 }}>
+        <button onClick={() => setEpOpen((v) => !v)} className="nodrag flex items-center gap-2 w-full text-left"
+          style={{ padding: "9px 11px", background: "none", border: "none", cursor: "pointer" }}>
+          <Tv style={{ width: 13, height: 13, color: FLOW_ACCENT, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t1)" }}>短剧分集大纲（可选）</span>
+          <span style={{ fontSize: 10, color: "var(--c-t4)", flex: 1, textAlign: "right" }}>{episodes.length ? `${episodes.length} 集` : "未生成"}</span>
+          <ChevronRight style={{ width: 12, height: 12, flexShrink: 0, color: "var(--c-t4)", transform: epOpen ? "rotate(90deg)" : "none", transition: "transform 150ms" }} />
+        </button>
+        {epOpen && (
+          <div className="flex flex-col" style={{ gap: 8, padding: "0 11px 11px" }}>
+            <div className="flex items-center gap-2">
+              <span style={{ fontSize: 10.5, color: "var(--c-t3)", flex: 1 }}>集数</span>
+              <input className="nodrag" type="number" min={4} max={100} value={epCount}
+                onChange={(e) => setEpCount(Math.max(4, Math.min(100, Number(e.target.value) || 12)))}
+                style={{ width: 52, fontSize: 11, padding: "3px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+              <span style={{ fontSize: 10, color: "var(--c-t4)" }}>集</span>
+            </div>
+            <ActionBtn pending={episodesMut.isPending} disabled={!source} disabledHint="先写 Logline 或梗概"
+              onClick={() => episodesMut.mutate({ source, episodeCount: epCount, model: llmModel })}>
+              生成分集大纲（每集钩子 + 卡点）
+            </ActionBtn>
+            {episodes.length > 0 && (
+              <>
+                <div className="flex flex-col gap-1" style={{ maxHeight: 220, overflowY: "auto" }}>
+                  {episodes.map((ep) => (
+                    <div key={ep.episode} className="px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)", flexShrink: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t1)" }}>第{ep.episode}集 · {ep.title}</div>
+                      <div style={{ fontSize: 10, color: "var(--c-t3)", lineHeight: 1.5 }}>钩子：{ep.hook}</div>
+                      <div style={{ fontSize: 10, color: "var(--c-t2)", lineHeight: 1.5 }}>{ep.summary}</div>
+                      <div style={{ fontSize: 10, color: FLOW_ACCENT, lineHeight: 1.5 }}>卡点：{ep.cliffhanger}</div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    const md = episodes.map((ep) => `第${ep.episode}集 ${ep.title}\n钩子：${ep.hook}\n剧情:${ep.summary}\n卡点：${ep.cliffhanger}`).join("\n\n");
+                    void navigator.clipboard?.writeText(md).then(() => toast.success("分集大纲已复制"));
+                  }}
+                  className="nodrag" style={{ fontSize: 10.5, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+                  复制全部大纲
+                </button>
+              </>
             )}
-            <button
-              onClick={() => {
-                const md = episodes.map((ep) => `第${ep.episode}集 ${ep.title}\n钩子：${ep.hook}\n剧情:${ep.summary}\n卡点：${ep.cliffhanger}`).join("\n\n");
-                void navigator.clipboard?.writeText(md).then(() => toast.success("分集大纲已复制"));
-              }}
-              className="nodrag" style={{ fontSize: 10, padding: "4px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
-              复制全部大纲
-            </button>
-          </>
+          </div>
         )}
       </div>
     </SideShell>
