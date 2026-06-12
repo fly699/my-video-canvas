@@ -161,6 +161,12 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
 .reveal{opacity:0;transform:translateY(28px);transition:.7s cubic-bezier(.2,.7,.2,1)}
 .reveal.show{opacity:1;transform:none}
 .tcenter{text-align:center}
+.progress{position:fixed;top:0;left:0;height:3px;background:var(--grad);z-index:300;width:0;transition:width .1s linear;border-radius:0 3px 3px 0}
+.to-top{position:fixed;right:18px;bottom:18px;z-index:200;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+  color:#fff;background:rgba(20,22,30,.72);border:1px solid var(--bd2);backdrop-filter:blur(10px);box-shadow:0 6px 22px rgba(0,0,0,.4);
+  opacity:0;pointer-events:none;transition:.25s;font-size:18px}
+.to-top.show{opacity:1;pointer-events:auto}
+.to-top:hover{border-color:var(--violet);transform:translateY(-2px)}
 /* KingTai 品牌 LOGO + 防泄露身份水印 */
 .kt-defs{position:absolute;width:0;height:0;overflow:hidden}
 .kt-mark{display:inline-block;vertical-align:middle}
@@ -174,6 +180,8 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
 </head>
 <body>
 <div class="glow a"></div><div class="glow b"></div><div class="glow c"></div>
+<div class="progress" id="progress"></div>
+<button type="button" class="to-top" id="toTop" title="回到顶部" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <div class="wm"></div>
 
 <!-- 关闭页面：固定悬浮按钮（本页由项目首页用新窗口/新标签打开，返回无意义，直接关闭）。
@@ -235,6 +243,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
       <a href="#canvas">画布编排</a>
       <a href="#models">AI 模型</a>
       <a href="#comfy">ComfyUI 算力</a>
+      <a href="#updates">最近更新</a>
       <a href="#modules">功能模块</a>
       <a href="#security">安全防护</a>
       <a href="#spotlight">特色亮点</a>
@@ -256,6 +265,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
       <span class="badge">🗄️ MySQL · Drizzle ORM</span>
       <span class="badge">🔐 OAuth + 邮箱密码双认证</span>
       <span class="badge">🛡️ 13 轮安全审查 · 纵深防护</span>
+      <span class="badge">🧪 600+ 自动化测试守护</span>
     </div>
     <div class="confid">🔒 KingTai 金泰智算 出品 · 内部资料 · 身份水印溯源保护</div>
   </div>
@@ -352,7 +362,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     <p style="color:var(--t4);font-size:12.5px;margin-top:8px">能力：文生图 · 图生图 · 局部编辑 · 多图参考 · 蒙版 · 排版文字 · 多宽高比</p>
   </div>
   <div class="panel reveal" data-panel="vid">
-    <div class="vendor"><h5>旗舰视频模型 <span class="ln"></span></h5><div class="mgrid"><span class="model">Veo 3.1 Quality / Fast</span><span class="model">Kling 2.5T / 2.6 / 3.0</span><span class="model">Wan 2.5 / 2.6</span><span class="model">Hailuo 02 / 2.3</span><span class="model">Seedance 1 / 1.5 / 2</span><span class="model">Runway Gen 4.5</span><span class="model">Grok Imagine</span></div></div>
+    <div class="vendor"><h5>旗舰视频模型 <span class="ln"></span></h5><div class="mgrid"><span class="model">Sora 2 / Pro</span><span class="model">Veo 3.1 Quality / Fast</span><span class="model">Kling 2.5T / 2.6 / 3.0</span><span class="model">Wan 2.5 / 2.6</span><span class="model">Hailuo 02 / 2.3</span><span class="model">Seedance 1 / 1.5 / 2</span><span class="model">Runway Gen 4.5</span><span class="model">Grok Imagine</span></div></div>
     <div class="vendor"><h5>特殊能力 · 动作/数字人/放大 <span class="ln"></span></h5><div class="mgrid"><span class="model hot">Kling 动作控制</span><span class="model hot">Kling Avatar 数字人</span><span class="model hot">Wan Animate 换装/换人</span><span class="model hot">Topaz 视频放大</span><span class="model hot">Runway Aleph</span></div></div>
     <p style="color:var(--t4);font-size:12.5px;margin-top:8px">能力：文生视频 · 图生视频 · 首尾帧 · 参考音/视频驱动 · 动作迁移 · 口型数字人 · 超分放大</p>
   </div>
@@ -386,6 +396,21 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     <div class="card"><div class="ic ic-cyan">📚</div><h4>工作流模板库</h4><p>沉淀团队常用工作流，含完整参数与提示词，一键复用、跨项目共享。</p></div>
     <div class="card"><div class="ic ic-violet">🧠</div><h4>AI 功能分析</h4><p>智能体自动分析工作流能力标签（文生图/图生视频/换脸/放大…），规划时精准选用。</p></div>
     <div class="card"><div class="ic ic-amber">🧪</div><h4>算力压力测试</h4><p>管理员可对多服务器发起并发压测，评估吞吐与稳定性，为扩容决策提供依据。</p></div>
+  </div>
+</section>
+
+<!-- UPDATES 最近更新 -->
+<section id="updates" class="wrap">
+  <div class="reveal"><div class="sec-tag">🆕 最近更新</div>
+  <h2 class="sec-h">本期亮点，<span class="g">导入更稳 · 创作更顺 · 成本更明</span></h2>
+  <p class="sec-sub">最新一轮迭代聚焦三件事：把 ComfyUI 工作流「导入即跑通」、把创作流程「步步可控」、把每一分消耗「算得明白」。以下能力均已上线，详情见下方功能模块。</p></div>
+  <div class="grid g3 reveal">
+    <div class="card"><div class="ic ic-green">🪄</div><h4>ComfyUI 工作流导入向导</h4><p>分步导入：服务器下拉直选 → 用真实节点定义预检（缺节点 / 模型取值不存在 / 必填缺失）→ 非法取值下拉一键替换为服务器真实选项——导入前查清，一次跑通。</p></div>
+    <div class="card"><div class="ic ic-violet">🧭</div><h4>创作向导 · 专业开发管线</h4><p>Logline → 梗概 → 节拍表 → 剧本 → 分镜分步推进；风格基调与时长分配可调，约束预览可见可改，剧本生成后一键转六维专业审查闭环。</p></div>
+    <div class="card"><div class="ic ic-amber">👛</div><h4>预算管控面板</h4><p>整张画布逐节点精算预估消耗，kie 点 / Poyo cr 双路对照实时余额；项目预算上限超限自动暂停智能体执行，计价与官方价格表全量对账。</p></div>
+    <div class="card"><div class="ic ic-blue">🚀</div><h4>画布效率操作</h4><p>全局运行状态条点击直达失败节点；Ctrl+C/V 复制整条镜头链（含内部连线）；一键整理自动排版 + 网格吸附；吸附窗内容变更自动弹出。</p></div>
+    <div class="card"><div class="ic ic-pink">🎲</div><h4>角色一致性种子</h4><p>同一随机种子一键钉到该角色全部镜头——相同种子 + 相同参考图，跨镜头一致性最大化；随角色入库跨项目复用。</p></div>
+    <div class="card"><div class="ic ic-cyan">🔍</div><h4>智能体透明规划</h4><p>自动插入的静帧节点明示标注、可在规划设置关闭；运行自愈逐轮提示进度、同因熔断防空转；超出项目预算自动暂停。</p></div>
   </div>
 </section>
 
@@ -468,7 +493,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     </div>
     <!-- 6 ComfyUI -->
     <div class="acc-item feat-hot">
-      <div class="acc-head"><span class="ic ic-green">⚡</span><div class="tt"><h3>ComfyUI 自建算力深度集成 <span class="star">★核心壁垒</span></h3><p>私有 GPU 直驱 · 接口监测 · 开闭互补 · 弹性扩容</p></div><span class="num-b">11 项</span><span class="arr">▾</span></div>
+      <div class="acc-head"><span class="ic ic-green">⚡</span><div class="tt"><h3>ComfyUI 自建算力深度集成 <span class="star">★核心壁垒</span></h3><p>私有 GPU 直驱 · 接口监测 · 开闭互补 · 弹性扩容</p></div><span class="num-b">10 项</span><span class="arr">▾</span></div>
       <div class="acc-body"><div class="acc-inner"><div class="divider"></div><div class="fgrid">
         <div class="fitem"><b><i>🖧</i>自建算力服务器对接</b><small>对接自有 ComfyUI / 私有 GPU 集群，算力与数据全程留在自有环境</small></div>
         <div class="fitem"><b><i>📡</i>接口监测与连接健康 <span class="star">★新增</span></b><small>实时探测服务器可达性与鉴权状态，连续连接失败即判不可达并自动早退容错；本地与云连接均可一键测试</small></div>
@@ -584,7 +609,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
         <div class="fitem"><b><i>🔎</i>提示词分析提取</b><small>从图像反推生成提示词，沉淀到提示词库</small></div>
         <div class="fitem"><b><i>🎚️</i>效果注入</b><small>后处理节点效果词注入下游生成，统一风格</small></div>
         <div class="fitem"><b><i>🎦</i>演示模式</b><small>将画布节点逐页全屏放映，平滑切换动画，方案评审/路演直接演示</small></div>
-        <div class="fitem"><b><i>🧭</i>新手引导</b><small>内置分步功能引导，新成员快速上手全平台能力</small></div>
+        <div class="fitem"><b><i>🎓</i>新手引导</b><small>内置分步功能引导，新成员快速上手全平台能力</small></div>
         <div class="fitem"><b><i>🔔</i>任务完成通知</b><small>长任务生成完成主动通知项目所有者，无需盯屏等待</small></div>
         <div class="fitem"><b><i>🖼️</i>项目封面 / 看板</b><small>项目自动生成封面缩略，仓库素材统计概览，资产一览无余</small></div>
       </div></div></div>
@@ -657,12 +682,16 @@ document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 function animNum(el){const n=+el.dataset.n,suf=el.dataset.suf||'';let c=0;const step=Math.max(1,n/55);const t=setInterval(()=>{c+=step;if(c>=n){c=n;clearInterval(t)}el.textContent=Math.floor(c)+suf},22)}
 const io2=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){animNum(e.target);io2.unobserve(e.target)}})},{threshold:.5});
 document.querySelectorAll('.num[data-n]').forEach(el=>io2.observe(el));
-document.querySelectorAll('.acc-head').forEach(h=>{h.addEventListener('click',()=>{const it=h.parentElement;const body=it.querySelector('.acc-body');const open=it.classList.contains('open');document.querySelectorAll('.acc-item').forEach(x=>{x.classList.remove('open');x.querySelector('.acc-body').style.maxHeight=null});if(!open){it.classList.add('open');body.style.maxHeight=body.scrollHeight+40+'px'}})});
-window.addEventListener('load',()=>{const f=document.querySelector('.acc-item');if(f){f.classList.add('open');f.querySelector('.acc-body').style.maxHeight=f.querySelector('.acc-body').scrollHeight+40+'px'}});
+function openAcc(it){it.classList.add('open');const b=it.querySelector('.acc-body');b.style.maxHeight=(b.scrollHeight+200)+'px'}
+document.querySelectorAll('.acc-head').forEach(h=>{h.addEventListener('click',()=>{const it=h.parentElement;const open=it.classList.contains('open');document.querySelectorAll('.acc-item').forEach(x=>{x.classList.remove('open');x.querySelector('.acc-body').style.maxHeight=null});if(!open)openAcc(it)})});
+window.addEventListener('load',()=>{const f=document.querySelector('.acc-item');if(f)openAcc(f)});
+window.addEventListener('resize',()=>{document.querySelectorAll('.acc-item.open').forEach(openAcc)});
 document.querySelectorAll('.tab').forEach(t=>{t.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));t.classList.add('active');document.querySelector('.panel[data-panel="'+t.dataset.tab+'"]').classList.add('active')})});
 const secs=[...document.querySelectorAll('section[id],header[id]')];
 const links=[...document.querySelectorAll('.nav-links a')];
-window.addEventListener('scroll',()=>{let cur='';secs.forEach(s=>{if(scrollY>=s.offsetTop-120)cur=s.id});links.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+cur))});
+const progEl=document.getElementById('progress'),topEl=document.getElementById('toTop');
+window.addEventListener('scroll',()=>{let cur='';secs.forEach(s=>{if(scrollY>=s.offsetTop-120)cur=s.id});links.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+cur));
+const max=document.documentElement.scrollHeight-innerHeight;progEl.style.width=(max>0?Math.min(100,scrollY/max*100):0)+'%';topEl.classList.toggle('show',scrollY>600)});
 </script>
 </body>
 </html>
