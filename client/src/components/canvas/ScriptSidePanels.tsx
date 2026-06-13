@@ -130,7 +130,8 @@ function Stage({ idx, title, done, summary, open, onToggle, refCb, children }: {
       border: `1px solid ${open ? `${FLOW_ACCENT}40` : "var(--c-bd1)"}`, borderRadius: 10,
       background: open ? "transparent" : "var(--c-surface)", flexShrink: 0,
     }}>
-      <button onClick={onToggle} className="nodrag flex items-center gap-2 w-full text-left"
+      <button onClick={onToggle} aria-expanded={open} title={`${title} · ${open ? "点击收起" : "点击展开"}`}
+        className="nodrag flex items-center gap-2 w-full text-left"
         style={{ padding: "9px 11px", background: "none", border: "none", cursor: "pointer", minWidth: 0 }}>
         <span style={{
           width: 20, height: 20, borderRadius: "50%", flexShrink: 0, fontSize: 10.5, fontWeight: 800,
@@ -453,7 +454,8 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
         summary={hasScript ? (payload.coverage ? `已生成 · 上次审查 ${payload.coverage.overall} 分` : "已生成") : "未生成"}
         open={effOpen === 3} onToggle={() => toggle(3)} refCb={setRef(3)}>
         {/* 约束预览（生成剧本前明示将带入的节拍表 + 角色档案，可临时编辑）——解决「约束隐形」 */}
-        <button onClick={() => setShowConstraints((v) => !v)} className="nodrag flex items-center gap-1.5"
+        <button onClick={() => setShowConstraints((v) => !v)} aria-expanded={showConstraints}
+          title={`约束预览 · ${showConstraints ? "点击收起" : "点击展开"}`} className="nodrag flex items-center gap-1.5"
           style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}>
           <Eye style={{ width: 12, height: 12, color: FLOW_ACCENT, flexShrink: 0 }} />
           <span style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t1)" }}>约束预览</span>
@@ -532,7 +534,8 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
 
       {/* 可选：短剧分集大纲——独立可折叠区块，默认收起，不挤占主流程空间 */}
       <div style={{ border: "1px solid var(--c-bd1)", borderRadius: 10, background: epOpen ? "transparent" : "var(--c-surface)", flexShrink: 0 }}>
-        <button onClick={() => setEpOpen((v) => !v)} className="nodrag flex items-center gap-2 w-full text-left"
+        <button onClick={() => setEpOpen((v) => !v)} aria-expanded={epOpen}
+          title={`短剧分集大纲 · ${epOpen ? "点击收起" : "点击展开"}`} className="nodrag flex items-center gap-2 w-full text-left"
           style={{ padding: "9px 11px", background: "none", border: "none", cursor: "pointer" }}>
           <Tv style={{ width: 13, height: 13, color: FLOW_ACCENT, flexShrink: 0 }} />
           <span style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t1)" }}>短剧分集大纲（可选）</span>
