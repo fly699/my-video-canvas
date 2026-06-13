@@ -1,11 +1,12 @@
 import { trpc } from "@/lib/trpc";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useFloatingBox, type Corner } from "../../hooks/useFloatingBox";
 import { mediaFetchUrl } from "@/lib/download";
 import { useReactFlow } from "@xyflow/react";
-import { Users, X, Plus, Trash2, User as UserIcon, Mountain, Pin, PinOff, Pencil, Music, Film } from "lucide-react";
+import { Users, X, Plus, Trash2, User as UserIcon, Mountain, Pin, PinOff, Pencil, Music, Film, Search } from "lucide-react";
 
 const DOCK_W = 300;
 
@@ -24,8 +25,16 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
     { minW: 220, minH: 200 },
   );
   const [pinned, setPinned] = usePersistentState<boolean>("ui:character-library:pinned:v1", false, { crossTab: false });
+  const [query, setQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<"all" | "person" | "scene">("all");
 
   const { data: items, refetch } = trpc.characterLibrary.list.useQuery(undefined, { refetchOnWindowFocus: true });
+  const qq = query.trim().toLowerCase();
+  const shownItems = (items ?? []).filter((it) => {
+    const kind = it.characterKind === "scene" ? "scene" : "person";
+    if (kindFilter !== "all" && kind !== kindFilter) return false;
+    return !qq || (it.name ?? "").toLowerCase().includes(qq);
+  });
   const delMut = trpc.characterLibrary.delete.useMutation({
     onSuccess: () => { toast.success("已从角色库删除"); refetch(); },
     onError: (e) => toast.error("删除失败：" + e.message),
@@ -116,12 +125,31 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="flex flex-col gap-1.5 p-2 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
+        {/* 搜索 + 类型筛选 */}
+        {(items?.length ?? 0) > 0 && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-1.5" style={{ flex: 1, padding: "4px 8px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
+              <Search className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--c-t4)" }} />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索角色名" className="nodrag"
+                style={{ flex: 1, fontSize: 11, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", minWidth: 0 }} />
+              {query && <button onClick={() => setQuery("")} className="nodrag" style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 0, flexShrink: 0 }}><X className="w-3 h-3" /></button>}
+            </div>
+            {(["all", "person", "scene"] as const).map((k) => (
+              <button key={k} onClick={() => setKindFilter(k)} className="nodrag" style={{ fontSize: 10.5, padding: "4px 8px", borderRadius: 7, cursor: "pointer", border: `1px solid ${kindFilter === k ? "oklch(0.66 0.18 30 / 0.4)" : "var(--c-bd2)"}`, background: kindFilter === k ? "oklch(0.66 0.18 30 / 0.14)" : "transparent", color: kindFilter === k ? "oklch(0.66 0.18 30)" : "var(--c-t3)" }}>
+                {k === "all" ? "全部" : k === "person" ? "人物" : "场景"}
+              </button>
+            ))}
+          </div>
+        )}
         {(!items || items.length === 0) && (
           <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "24px 8px" }}>
             还没有保存的角色。<br />在角色节点点「保存到角色库」即可。
           </div>
         )}
-        {items?.map((it) => (
+        {shownItems.length === 0 && (items?.length ?? 0) > 0 && (
+          <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "20px 8px" }}>没有匹配的角色/场景</div>
+        )}
+        {shownItems.map((it) => (
           <div key={it.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
             <div className="flex-shrink-0 rounded-md overflow-hidden flex items-center justify-center" style={{ width: 36, height: 36, background: "var(--c-canvas)", border: "1px solid var(--c-bd2)" }}>
               {it.thumbnail
