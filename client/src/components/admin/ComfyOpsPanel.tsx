@@ -8,7 +8,7 @@ import "@xterm/xterm/css/xterm.css";
 import {
   Server, Gauge, TerminalSquare, Zap, Plus, Trash2, Pencil, Plug, Loader2,
   ShieldAlert, X, RefreshCw, Cpu, HardDrive, Box, Container, Play, Square, RotateCw, FileText,
-  Package, Download, Stethoscope, Sparkles,
+  Package, Download, Stethoscope, Sparkles, FileCode, Save,
 } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "@/components/canvas/LLMModelPicker";
 
@@ -34,13 +34,14 @@ const btnGhost: React.CSSProperties = {
   background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)",
 };
 
-type SubTab = "servers" | "dashboard" | "docker" | "models" | "ai" | "terminal" | "exec";
+type SubTab = "servers" | "dashboard" | "docker" | "models" | "ai" | "scripts" | "terminal" | "exec";
 const SUB_TABS: [SubTab, string, typeof Server][] = [
   ["servers", "服务器", Server],
   ["dashboard", "资源仪表盘", Gauge],
   ["docker", "Docker", Container],
   ["models", "模型/节点", Package],
   ["ai", "AI 助手", Sparkles],
+  ["scripts", "脚本库", FileCode],
   ["terminal", "终端", TerminalSquare],
   ["exec", "快捷命令", Zap],
 ];
@@ -66,6 +67,7 @@ export function ComfyOpsPanel() {
       {sub === "docker" && <DockerPanel />}
       {sub === "models" && <ModelsPanel />}
       {sub === "ai" && <AiPanel />}
+      {sub === "scripts" && <ScriptsPanel />}
       {sub === "terminal" && <TerminalPanel />}
       {sub === "exec" && <ExecPanel />}
     </div>
@@ -427,6 +429,15 @@ function AiPanel() {
     onError: (e) => toast.error("生成失败：" + e.message),
   });
   const exec = trpc.comfyOps.exec.useMutation();
+  const saveScript = trpc.comfyOps.scripts.save.useMutation({
+    onSuccess: () => toast.success("已存为脚本（脚本库可见）"),
+    onError: (e) => toast.error("保存失败：" + e.message),
+  });
+  const saveAsScript = () => {
+    if (!plan || plan.steps.length === 0) return;
+    const body = plan.steps.map((s) => `# ${s.explain}\n${s.command}`).join("\n\n");
+    saveScript.mutate({ name: `AI · ${query.slice(0, 40) || "运维方案"}`, category: "ai", description: plan.plan, body, source: "ai" });
+  };
 
   const runStep = async (idx: number, confirmedDangerous = false) => {
     if (serverId == null || !plan) return;
@@ -464,11 +475,18 @@ function AiPanel() {
 
       {plan && (
         <div style={{ ...card, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>
-            📋 {plan.plan}
-            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: plan.source === "ai" ? "oklch(0.7 0.18 285)" : "var(--c-t4)" }}>
-              {plan.source === "ai" ? "AI 生成" : "启发式（未用 LLM）"}
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>
+              📋 {plan.plan}
+              <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: plan.source === "ai" ? "oklch(0.7 0.18 285)" : "var(--c-t4)" }}>
+                {plan.source === "ai" ? "AI 生成" : "启发式（未用 LLM）"}
+              </span>
+            </div>
+            {plan.steps.length > 0 && (
+              <button style={{ ...btnGhost, marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5 }} disabled={saveScript.isPending} onClick={saveAsScript}>
+                <Save size={13} /> 存为脚本
+              </button>
+            )}
           </div>
           {plan.steps.length === 0 && <div style={{ fontSize: 13, color: "var(--c-t3)" }}>未生成可执行步骤，请改用终端手动排查。</div>}
           {plan.steps.map((step, i) => (
@@ -484,6 +502,127 @@ function AiPanel() {
               </button>
               {results[i] && <pre style={{ fontSize: 11.5, fontFamily: "monospace", whiteSpace: "pre-wrap", maxHeight: 220, overflow: "auto", color: "var(--c-t3)", margin: 0, background: "var(--c-input)", borderRadius: 6, padding: 8 }}>{results[i]}</pre>}
             </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 脚本库（批量执行）────────────────────────────────────────────────────────
+type ScriptForm = { id?: number; name: string; category: string; description: string; body: string };
+const emptyScript: ScriptForm = { name: "", category: "linux", description: "", body: "" };
+
+function ScriptsPanel() {
+  const utils = trpc.useUtils();
+  const servers = trpc.comfyOps.servers.list.useQuery();
+  const scripts = trpc.comfyOps.scripts.list.useQuery();
+  const [form, setForm] = useState<ScriptForm | null>(null);
+  const [targets, setTargets] = useState<Set<number>>(new Set());
+  const [results, setResults] = useState<{ serverId: number; ok: boolean; exitCode: number; output: string }[] | null>(null);
+  const [runBody, setRunBody] = useState("");
+
+  const classify = trpc.comfyOps.classify.useQuery({ command: form?.body ?? "" }, { enabled: !!form?.body.trim() });
+  const save = trpc.comfyOps.scripts.save.useMutation({
+    onSuccess: () => { toast.success("脚本已保存"); setForm(null); utils.comfyOps.scripts.list.invalidate(); },
+    onError: (e) => toast.error("保存失败：" + e.message),
+  });
+  const del = trpc.comfyOps.scripts.delete.useMutation({
+    onSuccess: () => { toast.success("已删除"); utils.comfyOps.scripts.list.invalidate(); },
+    onError: (e) => toast.error("删除失败：" + e.message),
+  });
+  const run = trpc.comfyOps.scripts.run.useMutation();
+
+  const toggleTarget = (id: number) => setTargets((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const doRun = async (confirmedDangerous = false) => {
+    if (!runBody.trim() || targets.size === 0) { toast.error("请选择脚本与目标服务器"); return; }
+    try {
+      const r = await run.mutateAsync({ body: runBody, serverIds: Array.from(targets), confirmedDangerous });
+      if (r.blocked) {
+        if (confirm(`⚠ 危险脚本：\n${r.reasons.join("\n")}\n\n确认在 ${targets.size} 台服务器执行？`)) return doRun(true);
+        return;
+      }
+      setResults(r.results);
+    } catch (e) { toast.error("执行失败：" + (e as Error).message); }
+  };
+
+  const serverName = (id: number) => servers.data?.find((s) => s.id === id)?.name ?? `#${id}`;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 13, color: "var(--c-t3)" }}>脚本库 {scripts.data?.length ?? 0} 条 · 可一键在多台服务器并发执行</div>
+        <button style={{ ...btnPrimary, display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setForm({ ...emptyScript })}><Plus size={15} /> 新建脚本</button>
+      </div>
+
+      {scripts.data?.map((s) => (
+        <div key={s.id} style={{ ...card, display: "flex", alignItems: "center", gap: 12, padding: 14 }}>
+          <FileCode size={16} style={{ color: s.dangerous ? "oklch(0.65 0.2 25)" : "oklch(0.68 0.2 285)", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)" }}>
+              {s.name}
+              {s.category && <span style={{ marginLeft: 7, fontSize: 11, padding: "1px 7px", borderRadius: 20, background: "var(--c-input)", color: "var(--c-t3)" }}>{s.category}</span>}
+              {s.dangerous && <span style={{ marginLeft: 6, fontSize: 11, color: "oklch(0.7 0.2 25)" }}>⚠ 含危险操作</span>}
+              {s.source === "ai" && <span style={{ marginLeft: 6, fontSize: 11, color: "oklch(0.7 0.18 285)" }}>AI</span>}
+            </div>
+            {s.description && <div style={{ fontSize: 12, color: "var(--c-t3)", marginTop: 2 }}>{s.description}</div>}
+          </div>
+          <button style={btnGhost} title="装载到执行区" onClick={() => { setRunBody(s.body); toast.success("已装载，请在下方选目标执行"); }}><Play size={14} /></button>
+          <button style={btnGhost} onClick={() => setForm({ id: s.id, name: s.name, category: s.category ?? "", description: s.description ?? "", body: s.body })}><Pencil size={14} /></button>
+          <button style={{ ...btnGhost, color: "oklch(0.65 0.2 25)" }} onClick={() => { if (confirm(`删除脚本「${s.name}」？`)) del.mutate({ id: s.id }); }}><Trash2 size={14} /></button>
+        </div>
+      ))}
+
+      {form && (
+        <div style={{ ...card, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{form.id ? "编辑脚本" : "新建脚本"}</div>
+            <button style={btnGhost} onClick={() => setForm(null)}><X size={15} /></button>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input style={input} placeholder="脚本名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input style={{ ...input, maxWidth: 160 }} placeholder="分类（linux/docker/comfy…）" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+          </div>
+          <input style={input} placeholder="说明（可选）" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <textarea style={{ ...input, minHeight: 120, fontFamily: "monospace", fontSize: 12 }} placeholder="脚本正文（bash，支持多行）" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
+          {classify.data?.dangerous && <div style={{ fontSize: 12, color: "oklch(0.7 0.2 25)" }}>⚠ 检测到危险操作：{classify.data.reasons.join("、")}（执行时需二次确认）</div>}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button style={btnGhost} onClick={() => setForm(null)}>取消</button>
+            <button style={btnPrimary} disabled={save.isPending || !form.name.trim() || !form.body.trim()}
+              onClick={() => save.mutate({ id: form.id, name: form.name, category: form.category || undefined, description: form.description || undefined, body: form.body })}>保存</button>
+          </div>
+        </div>
+      )}
+
+      {/* 执行区 */}
+      <div style={{ ...card, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>批量执行</div>
+        <textarea style={{ ...input, minHeight: 80, fontFamily: "monospace", fontSize: 12 }} placeholder="待执行脚本（点上方脚本的 ▶ 装载，或直接粘贴）" value={runBody} onChange={(e) => setRunBody(e.target.value)} />
+        <div style={{ fontSize: 12, color: "var(--c-t3)" }}>选择目标服务器（{targets.size} 台）：</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {servers.data?.filter((s) => s.enabled).map((s) => (
+            <label key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, padding: "5px 11px", borderRadius: 8, background: targets.has(s.id) ? "oklch(0.68 0.22 285 / 0.16)" : "var(--c-input)", border: `1px solid ${targets.has(s.id) ? "oklch(0.68 0.22 285 / 0.4)" : "var(--c-bd2)"}`, color: "var(--c-t2)", cursor: "pointer" }}>
+              <input type="checkbox" checked={targets.has(s.id)} onChange={() => toggleTarget(s.id)} /> {s.name}
+            </label>
+          ))}
+        </div>
+        <button style={{ ...btnPrimary, alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 7 }}
+          disabled={run.isPending || !runBody.trim() || targets.size === 0} onClick={() => doRun(false)}>
+          {run.isPending ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />} 在 {targets.size} 台执行
+        </button>
+      </div>
+
+      {results && (
+        <div style={{ ...card, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>执行结果矩阵</div>
+          {results.map((r) => (
+            <details key={r.serverId} style={{ border: "1px solid var(--c-bd2)", borderRadius: 8, padding: "8px 12px" }}>
+              <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--c-t2)" }}>
+                <span style={{ color: r.ok ? "oklch(0.7 0.18 145)" : "oklch(0.65 0.2 25)" }}>{r.ok ? "✓" : "✗"}</span> {serverName(r.serverId)} <span style={{ color: "var(--c-t4)", fontSize: 11 }}>[退出码 {r.exitCode}]</span>
+              </summary>
+              <pre style={{ fontSize: 11.5, fontFamily: "monospace", whiteSpace: "pre-wrap", maxHeight: 240, overflow: "auto", color: "var(--c-t3)", marginTop: 8 }}>{r.output}</pre>
+            </details>
           ))}
         </div>
       )}

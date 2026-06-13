@@ -4,6 +4,7 @@ import { router, adminProcedure, protectedProcedure } from "../_core/trpc";
 import {
   listOpsServers, getOpsServer, insertOpsServer, updateOpsServer, deleteOpsServer,
   listOpsRecords, getOpsSettings, setOpsSettings,
+  listOpsScripts, insertOpsScript, updateOpsScript, deleteOpsScript,
 } from "../db";
 import { encryptSshSecret, decryptSshSecret, sshSecretLast4, isSshCryptoConfigured } from "../_core/ops/sshCrypto";
 import { testConnection, dropClient, isValidSshHost } from "../_core/ops/sshPool";
@@ -260,6 +261,69 @@ export const comfyOpsRouter = router({
           detail: { model: input.model, source: plan.source, steps: plan.steps.length },
         });
         return plan;
+      }),
+  }),
+
+  // ── Script library + batch run (admin only) ──────────────────────────────
+  scripts: router({
+    list: adminProcedure.query(() => listOpsScripts()),
+
+    save: adminProcedure
+      .input(z.object({
+        id: z.number().int().optional(),
+        name: z.string().min(1).max(128),
+        category: z.string().max(32).optional(),
+        description: z.string().max(2000).optional(),
+        body: z.string().min(1).max(20000),
+        source: z.enum(["manual", "ai"]).default("manual"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const dangerous = classifyCommand(input.body).dangerous;
+        if (input.id) {
+          await updateOpsScript(input.id, { name: input.name, category: input.category || null, description: input.description || null, body: input.body, dangerous });
+          return { id: input.id };
+        }
+        const id = await insertOpsScript({ name: input.name, category: input.category || null, description: input.description || null, body: input.body, dangerous, source: input.source, createdByEmail: ctx.user.email ?? null });
+        return { id };
+      }),
+
+    delete: adminProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+      await deleteOpsScript(input.id);
+      return { ok: true };
+    }),
+
+    /** Run a script across multiple servers concurrently — one ops record per
+     *  server. Dangerous scripts require confirmedDangerous (red confirm). */
+    run: adminProcedure
+      .input(z.object({
+        body: z.string().min(1).max(20000),
+        serverIds: z.array(z.number().int()).min(1).max(32),
+        confirmedDangerous: z.boolean().default(false),
+        timeoutMs: z.number().int().min(1000).max(600000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const risk = classifyCommand(input.body);
+        if (risk.dangerous && !input.confirmedDangerous) {
+          return { blocked: true as const, dangerous: true, reasons: risk.reasons };
+        }
+        // Concurrency cap mirrors the stress-test mapLimit pattern.
+        const results = await Promise.all(input.serverIds.map(async (serverId) => {
+          try {
+            const res = await sshExec(serverId, input.body, { timeoutMs: input.timeoutMs ?? 180_000 });
+            recordOps(ctx, {
+              serverId, channel: "ssh", action: "script", auditAction: "ops:script_run",
+              command: input.body, status: res.exitCode === 0 ? "success" : "error",
+              exitCode: res.exitCode, durationMs: res.durationMs, output: res.output,
+              detail: { dangerous: risk.dangerous, batch: input.serverIds.length },
+            });
+            return { serverId, ok: res.exitCode === 0, exitCode: res.exitCode, output: res.output, timedOut: res.timedOut };
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            recordOps(ctx, { serverId, channel: "ssh", action: "script", auditAction: "ops:script_run", command: input.body, status: "error", errorMessage: msg });
+            return { serverId, ok: false, exitCode: -1, output: "执行失败：" + msg, timedOut: false };
+          }
+        }));
+        return { blocked: false as const, results };
       }),
   }),
 
