@@ -8,9 +8,10 @@ import "@xterm/xterm/css/xterm.css";
 import {
   Server, Gauge, TerminalSquare, Zap, Plus, Trash2, Pencil, Plug, Loader2,
   ShieldAlert, X, RefreshCw, Cpu, HardDrive, Box, Container, Play, Square, RotateCw, FileText,
-  Package, Download, Stethoscope, Sparkles, FileCode, Save,
+  Package, Download, Stethoscope, Sparkles, FileCode, Save, BookOpen, ShieldAlert as ShieldAlertIcon,
 } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "@/components/canvas/LLMModelPicker";
+import { OPS_PRESETS, OPS_PRESET_CATEGORIES, fillPreset, validateParamValue, type OpsPreset } from "../../../../shared/opsPresets";
 
 // ComfyUI 运维中心（P0）：服务器注册(SSH凭据) + 只读资源仪表盘 + 交互式终端 +
 // 快捷命令执行。变更类操作 admin-only（后端 adminProcedure 强制）；危险命令服务端
@@ -34,10 +35,11 @@ const btnGhost: React.CSSProperties = {
   background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)",
 };
 
-type SubTab = "servers" | "dashboard" | "docker" | "models" | "ai" | "scripts" | "terminal" | "exec";
+type SubTab = "servers" | "dashboard" | "docker" | "models" | "presets" | "ai" | "scripts" | "terminal" | "exec";
 const SUB_TABS: [SubTab, string, typeof Server][] = [
   ["servers", "服务器", Server],
   ["dashboard", "资源仪表盘", Gauge],
+  ["presets", "配方库", BookOpen],
   ["docker", "Docker", Container],
   ["models", "模型/节点", Package],
   ["ai", "AI 助手", Sparkles],
@@ -64,6 +66,7 @@ export function ComfyOpsPanel() {
       </div>
       {sub === "servers" && <ServersPanel />}
       {sub === "dashboard" && <DashboardPanel />}
+      {sub === "presets" && <PresetsPanel />}
       {sub === "docker" && <DockerPanel />}
       {sub === "models" && <ModelsPanel />}
       {sub === "ai" && <AiPanel />}
@@ -719,6 +722,123 @@ function TerminalPanel() {
         <span style={{ fontSize: 12, color: connected ? "oklch(0.7 0.18 145)" : "var(--c-t4)" }}>{connected ? "● 已连接" : "○ 未连接"}</span>
       </div>
       <div ref={termRef} style={{ height: 460, borderRadius: 10, overflow: "hidden", border: "1px solid var(--c-bd2)", background: "#0b0e16", padding: 6 }} />
+    </div>
+  );
+}
+
+// ── 内置配方库（点选+填空，无需懂命令行）──────────────────────────────────────
+function PresetsPanel() {
+  const servers = trpc.comfyOps.servers.list.useQuery();
+  const [serverId, setServerId] = useState<number | null>(null);
+  const [cat, setCat] = useState<string>(OPS_PRESET_CATEGORIES[0].id);
+  const [active, setActive] = useState<OpsPreset | null>(null);
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [out, setOut] = useState<{ title: string; text: string } | null>(null);
+  const exec = trpc.comfyOps.exec.useMutation();
+
+  const list = OPS_PRESETS.filter((p) => p.category === cat);
+  const openPreset = (p: OpsPreset) => {
+    setActive(p);
+    const init: Record<string, string> = {};
+    for (const param of p.params ?? []) init[param.key] = param.default ?? "";
+    setVals(init);
+    setOut(null);
+  };
+
+  let preview = "";
+  let previewErr = "";
+  if (active) {
+    try { preview = fillPreset(active, vals); } catch (e) { previewErr = (e as Error).message; }
+  }
+
+  const run = async (confirmedDangerous = false) => {
+    if (!active || serverId == null) { toast.error("请先选择服务器"); return; }
+    if (active.interactive) { toast.message("该配方需在「终端」中运行（会持续刷新）"); return; }
+    let cmd = "";
+    try { cmd = fillPreset(active, vals); } catch (e) { toast.error((e as Error).message); return; }
+    try {
+      const r = await exec.mutateAsync({ serverId, command: cmd, confirmedDangerous });
+      if (r.blocked) {
+        if (confirm(`⚠ 危险操作：\n${r.reasons.join("\n")}\n\n确认执行？`)) return run(true);
+        return;
+      }
+      setOut({ title: active.title, text: `$ ${cmd}\n${r.output}\n[退出码 ${r.exitCode}${r.timedOut ? " · 超时" : ""} · ${r.durationMs}ms]` });
+    } catch (e) { setOut({ title: active.title, text: "执行失败：" + (e as Error).message }); }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ ...card, color: "var(--c-t3)", fontSize: 12.5, lineHeight: 1.6, borderColor: "oklch(0.68 0.22 285 / 0.3)" }}>
+        📚 内置 {OPS_PRESETS.length} 个常用运维配方，<b style={{ color: "var(--c-t2)" }}>点选 + 填空即可执行</b>，无需懂 Linux/Python/Docker。选服务器 → 选分类 → 点配方 → 填参数 → 执行；危险操作会红色二次确认。
+      </div>
+      <select style={{ ...input, maxWidth: 280 }} value={serverId ?? ""} onChange={(e) => setServerId(e.target.value ? Number(e.target.value) : null)}>
+        <option value="">选择服务器…</option>
+        {servers.data?.filter((s) => s.enabled).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+
+      {/* 分类 */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+        {OPS_PRESET_CATEGORIES.map((c) => (
+          <button key={c.id} onClick={() => { setCat(c.id); setActive(null); }} style={{
+            ...btnGhost, fontSize: 12.5,
+            background: cat === c.id ? "oklch(0.68 0.22 285 / 0.16)" : "var(--c-input)",
+            border: `1px solid ${cat === c.id ? "oklch(0.68 0.22 285 / 0.4)" : "var(--c-bd2)"}`,
+            color: cat === c.id ? "oklch(0.82 0.14 285)" : "var(--c-t2)",
+          }}>{c.icon} {c.label}</button>
+        ))}
+      </div>
+
+      {/* 配方卡片 */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+        {list.map((p) => (
+          <button key={p.id} onClick={() => openPreset(p)} style={{
+            textAlign: "left", cursor: "pointer", borderRadius: 10, padding: 13,
+            background: active?.id === p.id ? "oklch(0.68 0.22 285 / 0.1)" : "var(--c-surface)",
+            border: `1px solid ${active?.id === p.id ? "oklch(0.68 0.22 285 / 0.45)" : p.dangerous ? "oklch(0.6 0.2 25 / 0.35)" : "var(--c-bd2)"}`,
+          }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--c-t1)", display: "flex", alignItems: "center", gap: 6 }}>
+              {p.title}
+              {p.dangerous && <ShieldAlertIcon size={13} style={{ color: "oklch(0.7 0.2 25)" }} />}
+              {p.interactive && <TerminalSquare size={12} style={{ color: "var(--c-t4)" }} />}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--c-t3)", marginTop: 4, lineHeight: 1.5 }}>{p.desc}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* 选中配方：填参 + 预览 + 执行 */}
+      {active && (
+        <div style={{ ...card, display: "flex", flexDirection: "column", gap: 10, borderColor: "oklch(0.68 0.22 285 / 0.4)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>{active.title}</div>
+            {active.dangerous && <span style={{ fontSize: 11, color: "oklch(0.7 0.2 25)", fontWeight: 700 }}>⚠ 危险操作</span>}
+            <button style={{ ...btnGhost, marginLeft: "auto" }} onClick={() => setActive(null)}><X size={14} /></button>
+          </div>
+          {(active.params ?? []).map((param) => {
+            const v = vals[param.key] ?? "";
+            const bad = v.trim() !== "" && !validateParamValue(param.type, v);
+            return (
+              <div key={param.key}>
+                <label style={label}>{param.label}{param.default ? `（默认 ${param.default}）` : ""}</label>
+                <input style={{ ...input, borderColor: bad ? "oklch(0.6 0.2 25)" : "var(--c-bd2)" }} placeholder={param.placeholder} value={v}
+                  onChange={(e) => setVals((s) => ({ ...s, [param.key]: e.target.value }))} />
+                {bad && <span style={{ fontSize: 11, color: "oklch(0.7 0.2 25)" }}>含非法字符</span>}
+              </div>
+            );
+          })}
+          <div>
+            <label style={label}>将执行的命令</label>
+            <code style={{ display: "block", fontSize: 12, fontFamily: "monospace", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "8px 11px", color: previewErr ? "var(--c-t4)" : "var(--c-t1)", whiteSpace: "pre-wrap" }}>{previewErr ? `（${previewErr}）` : preview}</code>
+          </div>
+          {active.interactive
+            ? <div style={{ fontSize: 12.5, color: "oklch(0.75 0.16 60)" }}>⌨ 该配方是持续刷新型，请到「终端」子页运行：<code>{active.command}</code></div>
+            : <button style={{ ...btnPrimary, alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 7, background: active.dangerous ? "oklch(0.55 0.22 25 / 0.9)" : btnPrimary.background, borderColor: active.dangerous ? "oklch(0.6 0.22 25)" : undefined }}
+                disabled={exec.isPending || serverId == null || !!previewErr} onClick={() => run(false)}>
+                {exec.isPending ? <Loader2 size={14} className="animate-spin" /> : active.dangerous ? <ShieldAlertIcon size={14} /> : <Play size={14} />} 在所选服务器执行
+              </button>}
+          {out && <pre style={{ fontSize: 11.5, fontFamily: "monospace", whiteSpace: "pre-wrap", maxHeight: 320, overflow: "auto", color: "var(--c-t2)", margin: 0, background: "var(--c-input)", borderRadius: 6, padding: 10 }}>{out.text}</pre>}
+        </div>
+      )}
     </div>
   );
 }

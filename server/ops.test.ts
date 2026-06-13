@@ -105,6 +105,43 @@ describe("aiOps.sanitizeAiSteps (danger override + hallucination guard)", () => 
   });
 });
 
+describe("opsPresets fillPreset (param injection guard)", () => {
+  it("fills placeholders with valid values", async () => {
+    const { OPS_PRESETS, fillPreset } = await import("../shared/opsPresets");
+    const p = OPS_PRESETS.find((x) => x.id === "comfy_logs_docker")!;
+    expect(fillPreset(p, { container: "comfyui" })).toBe("docker logs --tail 200 --timestamps comfyui");
+  });
+
+  it("uses defaults and throws on missing required params", async () => {
+    const { OPS_PRESETS, fillPreset } = await import("../shared/opsPresets");
+    const find = OPS_PRESETS.find((x) => x.id === "disk_comfy_output")!;
+    // days has a default (7); comfyPath has a default too
+    expect(fillPreset(find, {})).toContain("-mtime +7");
+    const noDefault = OPS_PRESETS.find((x) => x.id === "proc_kill_pid")!;
+    expect(() => fillPreset(noDefault, {})).toThrow();
+  });
+
+  it("rejects shell-injection in param values", async () => {
+    const { OPS_PRESETS, fillPreset, validateParamValue } = await import("../shared/opsPresets");
+    const p = OPS_PRESETS.find((x) => x.id === "comfy_restart_docker")!;
+    expect(() => fillPreset(p, { container: "x; rm -rf /" })).toThrow();
+    expect(() => fillPreset(p, { container: "$(whoami)" })).toThrow();
+    expect(() => fillPreset(p, { container: "a`b`" })).toThrow();
+    expect(validateParamValue("number", "5; reboot")).toBe(false);
+    expect(validateParamValue("port", "8188")).toBe(true);
+    expect(validateParamValue("url", "https://x.com/m && reboot")).toBe(false);
+  });
+
+  it("catalog integrity: every {{placeholder}} has a matching param", async () => {
+    const { OPS_PRESETS } = await import("../shared/opsPresets");
+    for (const p of OPS_PRESETS) {
+      const placeholders = [...p.command.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
+      const declared = new Set((p.params ?? []).map((x) => x.key));
+      for (const ph of placeholders) expect(declared.has(ph), `${p.id} 缺参数 ${ph}`).toBe(true);
+    }
+  });
+});
+
 describe("sshCrypto round-trip", () => {
   beforeAll(() => { process.env.SSH_KEY_SECRET = "test-ssh-secret-12345"; });
 
