@@ -38,6 +38,7 @@ import { characterLibraryRouter } from "./routers/characterLibrary";
 import { promptLibraryRouter } from "./routers/promptLibrary";
 import { userPrefsRouter } from "./routers/userPrefs";
 import { agentRouter } from "./routers/agent";
+import { comfyOpsRouter } from "./routers/comfyOps";
 
 export const appRouter = router({
   system: systemRouter,
@@ -76,6 +77,7 @@ export const appRouter = router({
   comfyui: comfyuiRouter,
   agent: agentRouter,
   comfyStress: comfyStressRouter,
+  comfyOps: comfyOpsRouter,
   config: configRouter,
   upload: uploadRouter,
   admin: adminRouter,

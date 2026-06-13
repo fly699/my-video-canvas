@@ -86,6 +86,17 @@ import {
   type ComfyStressHistoryRow,
   comfyStressTemplates,
   type ComfyStressTemplateRow,
+  comfyOpsServers,
+  type ComfyOpsServer,
+  type InsertComfyOpsServer,
+  comfyOpsScripts,
+  type ComfyOpsScript,
+  type InsertComfyOpsScript,
+  comfyOpsRecords,
+  type ComfyOpsRecord,
+  type InsertComfyOpsRecord,
+  comfyOpsSettings,
+  type ComfyOpsSettings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -2657,4 +2668,96 @@ export async function deleteComfyStressTemplate(id: number): Promise<void> {
   if (!db) return;
   await ensureStressTables(db);
   await db.delete(comfyStressTemplates).where(eq(comfyStressTemplates.id, id));
+}
+
+// ── ComfyUI 运维中心（ops center）─────────────────────────────────────────────
+// All helpers require a real DB (admin feature). In dev-bypass (no DATABASE_URL)
+// they return empty/no-op so the app still boots, but the ops center is inert.
+
+export async function listOpsServers(): Promise<ComfyOpsServer[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(comfyOpsServers).orderBy(desc(comfyOpsServers.createdAt));
+}
+
+export async function getOpsServer(id: number): Promise<ComfyOpsServer | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(comfyOpsServers).where(eq(comfyOpsServers.id, id)).limit(1);
+  return row ?? null;
+}
+
+export async function insertOpsServer(data: InsertComfyOpsServer): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("运维中心需要数据库（未配置 DATABASE_URL）");
+  const [header] = await db.insert(comfyOpsServers).values(data);
+  return Number(header.insertId);
+}
+
+export async function updateOpsServer(id: number, patch: Partial<InsertComfyOpsServer>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(comfyOpsServers).set(patch).where(eq(comfyOpsServers.id, id));
+}
+
+export async function deleteOpsServer(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(comfyOpsServers).where(eq(comfyOpsServers.id, id));
+}
+
+export async function listOpsScripts(): Promise<ComfyOpsScript[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(comfyOpsScripts).orderBy(desc(comfyOpsScripts.updatedAt));
+}
+
+export async function insertOpsScript(data: InsertComfyOpsScript): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("运维中心需要数据库");
+  const [header] = await db.insert(comfyOpsScripts).values(data);
+  return Number(header.insertId);
+}
+
+export async function updateOpsScript(id: number, patch: Partial<InsertComfyOpsScript>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(comfyOpsScripts).set(patch).where(eq(comfyOpsScripts.id, id));
+}
+
+export async function deleteOpsScript(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(comfyOpsScripts).where(eq(comfyOpsScripts.id, id));
+}
+
+export async function insertOpsRecord(data: InsertComfyOpsRecord): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(comfyOpsRecords).values(data);
+}
+
+export async function listOpsRecords(opts: { serverId?: number; limit?: number } = {}): Promise<ComfyOpsRecord[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+  const base = db.select().from(comfyOpsRecords);
+  const rows = opts.serverId != null
+    ? await base.where(eq(comfyOpsRecords.serverId, opts.serverId)).orderBy(desc(comfyOpsRecords.createdAt)).limit(limit)
+    : await base.orderBy(desc(comfyOpsRecords.createdAt)).limit(limit);
+  return rows;
+}
+
+export async function getOpsSettings(): Promise<ComfyOpsSettings> {
+  const db = await getDb();
+  if (!db) return { id: 1, globalTrustMode: false, autoExecWhitelist: null, readOnlyOpenToWhitelist: true };
+  const [row] = await db.select().from(comfyOpsSettings).where(eq(comfyOpsSettings.id, 1)).limit(1);
+  return row ?? { id: 1, globalTrustMode: false, autoExecWhitelist: null, readOnlyOpenToWhitelist: true };
+}
+
+export async function setOpsSettings(patch: Partial<Omit<ComfyOpsSettings, "id">>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(comfyOpsSettings).values({ id: 1, ...patch })
+    .onDuplicateKeyUpdate({ set: patch });
 }

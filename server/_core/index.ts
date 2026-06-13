@@ -19,6 +19,11 @@ import { Server as SocketIOServer } from "socket.io";
 import { setupVideoTaskPoller } from "../videoTaskPoller";
 import { setComfySocketIO } from "./comfyui";
 import { setStressSocketIO, STRESS_ROOM } from "./comfyStress";
+import {
+  setOpsTerminalSocketIO, openTerminalSession, writeToSession,
+  resizeSession, closeSession, closeSessionsForSocket,
+} from "./ops/sshTerminal";
+import { setupOpsAlerts } from "./ops/opsAlerts";
 import { setDownloadSocketIO, ADMIN_ROOM } from "./downloadNotify";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
@@ -187,6 +192,30 @@ async function startServer() {
     });
     socket.on("comfystress:unsubscribe", () => { socket.leave(STRESS_ROOM); });
 
+    // ── ComfyUI 运维中心：交互式 SSH 终端（仅管理员）──────────────────────────
+    // Each session is bound to this socket; writes/resize are owner-checked in
+    // sshTerminal so a leaked sessionId can't inject into another admin's shell.
+    socket.on("ops:term:open", async (data: { serverId: number; cols?: number; rows?: number }, ack?: (r: { sessionId?: string; error?: string }) => void) => {
+      if (user.role !== "admin") { ack?.({ error: "forbidden" }); return; }
+      try {
+        const sessionId = await openTerminalSession(socket, user.id, data.serverId, { cols: data.cols ?? 80, rows: data.rows ?? 24 });
+        ack?.({ sessionId });
+      } catch (e) {
+        ack?.({ error: e instanceof Error ? e.message : String(e) });
+      }
+    });
+    socket.on("ops:term:input", (data: { sessionId: string; data: string }) => {
+      if (user.role !== "admin") return;
+      writeToSession(socket.id, data.sessionId, data.data);
+    });
+    socket.on("ops:term:resize", (data: { sessionId: string; cols: number; rows: number }) => {
+      if (user.role !== "admin") return;
+      resizeSession(socket.id, data.sessionId, data.cols, data.rows);
+    });
+    socket.on("ops:term:close", (data: { sessionId: string }) => {
+      closeSession(socket.id, data.sessionId);
+    });
+
     // Admins auto-join the notifications room so new download requests reach
     // them in-app (anywhere — canvas, library, etc.) for on-the-spot approval.
     if (user.role === "admin") socket.join(ADMIN_ROOM);
@@ -267,6 +296,7 @@ async function startServer() {
 
     socket.on("disconnect", () => {
       unsubscribeBus();
+      closeSessionsForSocket(socket.id);
       if (currentProjectId !== null) {
         const room = `project:${currentProjectId}`;
         const du = projectUsers.get(currentProjectId);
@@ -398,6 +428,8 @@ async function startServer() {
   setComfySocketIO(io);
   setStressSocketIO(io);
   setDownloadSocketIO(io);
+  setOpsTerminalSocketIO(io);
+  setupOpsAlerts(io);
 
   // ── Video task background poller ───────────────────────────────────────────
   setupVideoTaskPoller(io);

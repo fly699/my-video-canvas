@@ -100,7 +100,17 @@ export type AuditAction =
   | "user_reset_password"
   | "user_set_disabled"
   | "user_delete"
-  | "user_change_password";
+  | "user_change_password"
+  | "ops:server_add"
+  | "ops:server_update"
+  | "ops:server_delete"
+  | "ops:exec"
+  | "ops:script_run"
+  | "ops:terminal_open"
+  | "ops:install_model"
+  | "ops:install_node"
+  | "ops:ai_generate"
+  | "ops:trust_toggle";
 
 export interface AuditOpts {
   ctx?: TrpcContext;
