@@ -6,7 +6,7 @@ import { useFloatingBox, type Corner } from "../../hooks/useFloatingBox";
 import { BookText, X, Plus, Trash2, Pin, PinOff, Pencil, Download, Upload, FolderOpen, Hash, Star, Check } from "lucide-react";
 import { PROMPT_PRESETS } from "../../lib/promptLibraryPresets";
 
-const DOCK_W = 340;
+const DOCK_W = 380;
 
 /**
  * 快捷提示词库面板：浏览内置预设、管理自定义提示词、设置 10 个「/」常用槽位、JSON 导入导出。
@@ -15,11 +15,12 @@ const DOCK_W = 340;
 export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
   const { box, onHeaderMouseDown, onResizeMouseDown } = useFloatingBox(
     "ui:prompt-library:v1",
-    { x: Math.max(16, (typeof window !== "undefined" ? window.innerWidth : 1200) - DOCK_W - 16), y: 56, w: DOCK_W, h: 520 },
-    { minW: 260, minH: 240 },
+    { x: Math.max(16, (typeof window !== "undefined" ? window.innerWidth : 1200) - DOCK_W - 16), y: 56, w: DOCK_W, h: 640 },
+    { minW: 260, minH: 300 },
   );
   const [pinned, setPinned] = usePersistentState<boolean>("ui:prompt-library:pinned:v1", false, { crossTab: false });
   const [tab, setTab] = useState<"mine" | "presets">("mine");
+  const [showAdd, setShowAdd] = useState(false);
 
   const utils = trpc.useUtils();
   const { data: items } = trpc.promptLibrary.list.useQuery(undefined, { refetchOnWindowFocus: true });
@@ -96,7 +97,7 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
   const left = pinned ? vw - DOCK_W - 16 : box.x;
   const top = pinned ? 56 : box.y;
   const width = pinned ? DOCK_W : box.w;
-  const maxHeight = pinned ? Math.min(680, vh - 96) : Math.min(box.h, vh - top - 16);
+  const maxHeight = pinned ? Math.max(360, vh - 88) : Math.min(box.h, vh - top - 16);
 
   const cornerHandle = (corner: Corner, style: React.CSSProperties) => (
     <div onMouseDown={onResizeMouseDown(corner)} style={{ position: "absolute", width: 16, height: 16, zIndex: 3, cursor: corner === "tl" || corner === "br" ? "nwse-resize" : "nesw-resize", ...style }} />
@@ -146,18 +147,25 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
-      <div className="flex flex-col gap-2 p-2 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
+      <div className="flex flex-col gap-2.5 p-2.5 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
         {tab === "mine" && (
           <>
-            {/* 新增表单 */}
-            <div className="flex flex-col gap-1.5 p-2" style={{ border: "1px dashed var(--c-bd2)", borderRadius: 8 }}>
-              <div className="flex gap-1.5">
-                <input value={draft.label} onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))} placeholder="名称" className="nodrag" style={{ flex: 1, fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
-                <input value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))} placeholder="类别" className="nodrag" style={{ width: 88, fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+            {/* 新增表单：默认收起为一个按钮，点开才展开，把高度还给列表 */}
+            {!showAdd ? (
+              <button onClick={() => setShowAdd(true)} className="nodrag flex items-center justify-center gap-1 flex-shrink-0" style={{ fontSize: 11.5, fontWeight: 600, padding: "7px", borderRadius: 8, cursor: "pointer", border: "1px dashed var(--c-bd2)", background: "transparent", color: "oklch(0.66 0.18 30)" }}><Plus className="w-3.5 h-3.5" /> 新增提示词</button>
+            ) : (
+              <div className="flex flex-col gap-1.5 p-2 flex-shrink-0" style={{ border: "1px dashed oklch(0.66 0.18 30 / 0.4)", borderRadius: 8 }}>
+                <div className="flex gap-1.5">
+                  <input value={draft.label} onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))} placeholder="名称" className="nodrag" style={{ flex: 1, fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                  <input value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))} placeholder="类别" className="nodrag" style={{ width: 88, fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                </div>
+                <textarea value={draft.text} onChange={(e) => setDraft((d) => ({ ...d, text: e.target.value }))} placeholder="提示词内容" rows={2} className="nodrag" style={{ fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", resize: "vertical" }} />
+                <div className="flex gap-1.5">
+                  <button onClick={() => { addPrompt(); }} disabled={createMut.isPending} className="nodrag flex items-center justify-center gap-1" style={{ flex: 1, fontSize: 11, fontWeight: 600, padding: "5px", borderRadius: 6, cursor: "pointer", border: "none", background: "oklch(0.66 0.18 30 / 0.14)", color: "oklch(0.66 0.18 30)" }}><Plus className="w-3.5 h-3.5" /> 新增提示词</button>
+                  <button onClick={() => setShowAdd(false)} className="nodrag" style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, cursor: "pointer", border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)" }}>收起</button>
+                </div>
               </div>
-              <textarea value={draft.text} onChange={(e) => setDraft((d) => ({ ...d, text: e.target.value }))} placeholder="提示词内容" rows={2} className="nodrag" style={{ fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", resize: "vertical" }} />
-              <button onClick={addPrompt} disabled={createMut.isPending} className="nodrag flex items-center justify-center gap-1" style={{ fontSize: 11, fontWeight: 600, padding: "5px", borderRadius: 6, cursor: "pointer", border: "none", background: "oklch(0.66 0.18 30 / 0.14)", color: "oklch(0.66 0.18 30)" }}><Plus className="w-3.5 h-3.5" /> 新增提示词</button>
-            </div>
+            )}
 
             {list.length === 0 && <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "16px 8px" }}>还没有自定义提示词。<br />在文本框输入「/」可快速调出。</div>}
 
@@ -179,15 +187,17 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
                   ) : (
-                    <div key={it.id} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
+                    <div key={it.id} className="group flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
                       {it.slot != null && <Star className="w-3 h-3 flex-shrink-0" style={{ color: "oklch(0.66 0.18 30)", fill: "oklch(0.66 0.18 30)" }} />}
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditing({ id: it.id, label: it.label, text: it.text, category: it.category })} title="点击编辑">
-                        <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.label}</div>
-                        <div title={it.text} style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.text}</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.label}</div>
+                        <div title={it.text} style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.45, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.text}</div>
                       </div>
                       {slotPicker(it.id, "prompt", it.slot)}
-                      <button onClick={() => setEditing({ id: it.id, label: it.label, text: it.text, category: it.category })} className="nodrag flex-shrink-0" title="编辑（名称/类别/正文）" style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 2 }}><Pencil className="w-3 h-3" /></button>
-                      <button onClick={() => { if (window.confirm(`删除「${it.label}」？`)) deleteMut.mutate({ id: it.id }); }} className="nodrag flex-shrink-0" title="删除" style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 2 }}><Trash2 className="w-3 h-3" /></button>
+                      <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setEditing({ id: it.id, label: it.label, text: it.text, category: it.category })} className="nodrag" title="编辑（名称/类别/正文）" style={{ background: "none", border: "none", color: "var(--c-t3)", cursor: "pointer", padding: 3 }}><Pencil className="w-3 h-3" /></button>
+                        <button onClick={() => { if (window.confirm(`删除「${it.label}」？`)) deleteMut.mutate({ id: it.id }); }} className="nodrag" title="删除" style={{ background: "none", border: "none", color: "var(--c-t3)", cursor: "pointer", padding: 3 }}><Trash2 className="w-3 h-3" /></button>
+                      </div>
                     </div>
                   )
                 ))}
@@ -220,12 +230,12 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
             <div key={c.category} className="flex flex-col gap-1">
               <div className="flex items-center gap-1" style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}><FolderOpen className="w-3 h-3" /> {c.category}</div>
               {c.items.map((p) => (
-                <div key={p.label} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
+                <div key={p.label} className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
                   <div className="flex-1 min-w-0">
-                    <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</div>
-                    <div title={p.text} style={{ fontSize: 9.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.text}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</div>
+                    <div title={p.text} style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.45, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.text}</div>
                   </div>
-                  <button onClick={() => favPrompt(p.label, p.text, c.category)} className="nodrag flex-shrink-0 flex items-center gap-0.5" title="加入我的库" style={{ fontSize: 10, padding: "2px 5px", borderRadius: 5, border: "1px solid oklch(0.66 0.18 30 / 0.3)", background: "oklch(0.66 0.18 30 / 0.1)", color: "oklch(0.66 0.18 30)", cursor: "pointer" }}><Plus className="w-3 h-3" /></button>
+                  <button onClick={() => favPrompt(p.label, p.text, c.category)} className="nodrag flex-shrink-0 flex items-center gap-0.5" title="加入我的库" style={{ fontSize: 10, padding: "3px 7px", borderRadius: 6, border: "1px solid oklch(0.66 0.18 30 / 0.3)", background: "oklch(0.66 0.18 30 / 0.1)", color: "oklch(0.66 0.18 30)", cursor: "pointer" }}><Plus className="w-3 h-3" /></button>
                 </div>
               ))}
             </div>
