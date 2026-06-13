@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useFloatingBox, type Corner } from "../../hooks/useFloatingBox";
-import { BookText, X, Plus, Trash2, Pin, PinOff, Pencil, Download, Upload, FolderOpen, Hash, Star, Check } from "lucide-react";
+import { BookText, X, Plus, Trash2, Pin, PinOff, Pencil, Download, Upload, FolderOpen, Hash, Star, Check, Search } from "lucide-react";
 import { PROMPT_PRESETS } from "../../lib/promptLibraryPresets";
 
 const DOCK_W = 380;
@@ -21,6 +21,9 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
   const [pinned, setPinned] = usePersistentState<boolean>("ui:prompt-library:pinned:v1", false, { crossTab: false });
   const [tab, setTab] = useState<"mine" | "presets">("mine");
   const [showAdd, setShowAdd] = useState(false);
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const hit = (...ss: (string | undefined)[]) => !q || ss.some((s) => (s ?? "").toLowerCase().includes(q));
 
   const utils = trpc.useUtils();
   const { data: items } = trpc.promptLibrary.list.useQuery(undefined, { refetchOnWindowFocus: true });
@@ -147,6 +150,16 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
+      {/* 搜索（跨名称/内容/类别）*/}
+      <div className="flex items-center gap-1.5 px-2 pt-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5" style={{ flex: 1, padding: "4px 8px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
+          <Search className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--c-t4)" }} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索名称 / 内容 / 类别" className="nodrag"
+            style={{ flex: 1, fontSize: 11, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", minWidth: 0 }} />
+          {query && <button onClick={() => setQuery("")} className="nodrag" style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 0, flexShrink: 0 }}><X className="w-3 h-3" /></button>}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-2.5 p-2.5 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
         {tab === "mine" && (
           <>
@@ -168,8 +181,11 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
             )}
 
             {list.length === 0 && <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "16px 8px" }}>还没有自定义提示词。<br />在文本框输入「/」可快速调出。</div>}
+            {list.length > 0 && q && !list.some((it) => hit(it.label, it.text, it.category)) && <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "16px 8px" }}>没有匹配「{query}」的提示词</div>}
 
-            {byCategory.map(([cat, arr]) => (
+            {byCategory.map(([cat, all]) => [cat, all.filter((it) => hit(it.label, it.text, it.category))] as const)
+              .filter(([, arr]) => arr.length > 0)
+              .map(([cat, arr]) => (
               <div key={cat} className="flex flex-col gap-1">
                 <div className="flex items-center gap-1" style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}><FolderOpen className="w-3 h-3" /> {cat}</div>
                 {arr.map((it) => (
@@ -205,7 +221,7 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
             ))}
 
             {/* 把某「类别」设为槽位（点击「/」时展开二级菜单） */}
-            {byCategory.length > 0 && (
+            {!q && byCategory.length > 0 && (
               <div className="flex flex-col gap-1 mt-1 pt-2" style={{ borderTop: "1px solid var(--c-bd2)" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)" }}>把类别设为槽位（展开二级菜单）</div>
                 {byCategory.map(([cat, arr]) => {
@@ -225,8 +241,12 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
           </>
         )}
 
-        {tab === "presets" && (
-          PROMPT_PRESETS.map((c) => (
+        {tab === "presets" && (() => {
+          const cats = PROMPT_PRESETS
+            .map((c) => ({ category: c.category, items: c.items.filter((p) => hit(p.label, p.text, c.category)) }))
+            .filter((c) => c.items.length > 0);
+          if (cats.length === 0) return <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "16px 8px" }}>没有匹配「{query}」的预设</div>;
+          return cats.map((c) => (
             <div key={c.category} className="flex flex-col gap-1">
               <div className="flex items-center gap-1" style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}><FolderOpen className="w-3 h-3" /> {c.category}</div>
               {c.items.map((p) => (
@@ -239,8 +259,8 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
                 </div>
               ))}
             </div>
-          ))
-        )}
+          ));
+        })()}
       </div>
 
       <input ref={importRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); e.target.value = ""; }} />
