@@ -894,3 +894,90 @@ export const kieBalanceSnapshots = mysqlTable("kieBalanceSnapshots", {
 
 export type KieBalanceSnapshot = typeof kieBalanceSnapshots.$inferSelect;
 export type InsertKieBalanceSnapshot = typeof kieBalanceSnapshots.$inferInsert;
+
+// ── ComfyUI 运维中心（ops center）─────────────────────────────────────────────
+// Registered ComfyUI hosts with SSH credentials for the admin ops center.
+// `encryptedSecret` is AES-256-GCM (see server/_core/ops/sshCrypto.ts) — the
+// plaintext password/private key NEVER leaves the backend. `comfyBaseUrl` links
+// to the ComfyUI HTTP API (optional: a pure host has none). Mixed deploy forms
+// (docker container vs bare/systemd) are tagged so ops commands adapt.
+export const comfyOpsServers = mysqlTable("comfy_ops_servers", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  comfyBaseUrl: varchar("comfyBaseUrl", { length: 512 }),
+  sshHost: varchar("sshHost", { length: 255 }).notNull(),
+  sshPort: int("sshPort").notNull().default(22),
+  sshUser: varchar("sshUser", { length: 128 }).notNull(),
+  authType: mysqlEnum("authType", ["password", "privateKey"]).notNull(),
+  encryptedSecret: varchar("encryptedSecret", { length: 8192 }).notNull(),
+  encryptedPassphrase: varchar("encryptedPassphrase", { length: 1024 }),
+  secretLast4: varchar("secretLast4", { length: 8 }),
+  deployForm: mysqlEnum("deployForm", ["docker", "bare", "systemd"]).notNull().default("bare"),
+  dockerContainer: varchar("dockerContainer", { length: 128 }),
+  comfyPath: varchar("comfyPath", { length: 512 }),
+  trustMode: boolean("trustMode").notNull().default(false),
+  enabled: boolean("enabled").notNull().default(true),
+  note: varchar("note", { length: 255 }),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ComfyOpsServer = typeof comfyOpsServers.$inferSelect;
+export type InsertComfyOpsServer = typeof comfyOpsServers.$inferInsert;
+
+// Shared (admin) ops script library. `dangerous` flags scripts containing
+// destructive ops; `source` distinguishes hand-written from AI-generated.
+export const comfyOpsScripts = mysqlTable("comfy_ops_scripts", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  category: varchar("category", { length: 32 }),
+  description: text("description"),
+  body: text("body").notNull(),
+  dangerous: boolean("dangerous").notNull().default(false),
+  source: mysqlEnum("source", ["manual", "ai"]).notNull().default("manual"),
+  createdByEmail: varchar("createdByEmail", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ComfyOpsScript = typeof comfyOpsScripts.$inferSelect;
+export type InsertComfyOpsScript = typeof comfyOpsScripts.$inferInsert;
+
+// Execution history / audit detail for every ops action (api/ssh/terminal).
+// Complements the cross-feature auditLogs with ops-specific output/exit/duration.
+export const comfyOpsRecords = mysqlTable("comfy_ops_records", {
+  id: int("id").autoincrement().primaryKey(),
+  serverId: int("serverId"),
+  userId: int("userId"),
+  userEmail: varchar("userEmail", { length: 320 }),
+  channel: mysqlEnum("channel", ["api", "ssh", "terminal"]).notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  command: text("command"),
+  approvedByAi: boolean("approvedByAi"),
+  autoExecuted: boolean("autoExecuted").notNull().default(false),
+  status: varchar("status", { length: 16 }).notNull(),
+  exitCode: int("exitCode"),
+  durationMs: int("durationMs"),
+  outputTail: text("outputTail"),
+  errorMessage: varchar("errorMessage", { length: 1024 }),
+  detail: json("detail"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  serverIdIdx: index("comfy_ops_records_serverId_idx").on(t.serverId),
+  createdAtIdx: index("comfy_ops_records_createdAt_idx").on(t.createdAt),
+}));
+
+export type ComfyOpsRecord = typeof comfyOpsRecords.$inferSelect;
+export type InsertComfyOpsRecord = typeof comfyOpsRecords.$inferInsert;
+
+// Single-row global ops settings (id is fixed = 1).
+export const comfyOpsSettings = mysqlTable("comfy_ops_settings", {
+  id: int("id").primaryKey(),
+  globalTrustMode: boolean("globalTrustMode").notNull().default(false),
+  autoExecWhitelist: json("autoExecWhitelist"),
+  readOnlyOpenToWhitelist: boolean("readOnlyOpenToWhitelist").notNull().default(true),
+});
+
+export type ComfyOpsSettings = typeof comfyOpsSettings.$inferSelect;
+export type InsertComfyOpsSettings = typeof comfyOpsSettings.$inferInsert;

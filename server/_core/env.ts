@@ -43,6 +43,10 @@ export const ENV = {
   // Secret used to AES-256-GCM encrypt admin-distributed kie keys at rest (these
   // are stored in the DB, never in env). Required to add/use distributed keys.
   kieKeySecret: process.env.KIE_KEY_SECRET ?? "",
+  // Secret used to AES-256-GCM encrypt ComfyUI ops-center SSH credentials at rest
+  // (DB, never env). Required to add/use SSH servers in the ops center. Kept
+  // separate from KIE_KEY_SECRET so the two credential domains are isolated.
+  sshKeySecret: process.env.SSH_KEY_SECRET ?? "",
   higgsfieldApiKey: process.env.HIGGSFIELD_API_KEY ?? "",
   higgsfieldApiSecret: process.env.HIGGSFIELD_API_SECRET ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",

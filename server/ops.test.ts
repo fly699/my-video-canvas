@@ -1,0 +1,76 @@
+import { describe, it, expect, beforeAll } from "vitest";
+import { classifyCommand, mayAutoExecute } from "./_core/ops/commandPolicy";
+
+describe("commandPolicy.classifyCommand", () => {
+  it("flags rm -rf as dangerous", () => {
+    const r = classifyCommand("rm -rf /var/log/comfy");
+    expect(r.dangerous).toBe(true);
+    expect(r.autoExecEligible).toBe(false);
+    expect(r.reasons.length).toBeGreaterThan(0);
+  });
+
+  it("flags mkfs / dd-to-device / reboot / fork bomb", () => {
+    expect(classifyCommand("mkfs.ext4 /dev/sdb").dangerous).toBe(true);
+    expect(classifyCommand("dd if=/dev/zero of=/dev/sda").dangerous).toBe(true);
+    expect(classifyCommand("sudo reboot").dangerous).toBe(true);
+    expect(classifyCommand(":(){ :|:& };:").dangerous).toBe(true);
+    expect(classifyCommand("docker system prune -af").dangerous).toBe(true);
+  });
+
+  it("treats read-only commands as safe + auto-exec eligible", () => {
+    for (const c of ["nvidia-smi", "df -h", "free -m", "docker ps", "uptime"]) {
+      const r = classifyCommand(c);
+      expect(r.dangerous).toBe(false);
+      expect(r.autoExecEligible).toBe(true);
+    }
+  });
+
+  it("non-whitelisted but harmless command is not auto-exec eligible", () => {
+    const r = classifyCommand("pip install some-package");
+    expect(r.dangerous).toBe(false);
+    expect(r.autoExecEligible).toBe(false);
+  });
+
+  it("multi-line: any dangerous line taints the whole block", () => {
+    const r = classifyCommand("df -h\nrm -rf /tmp/x");
+    expect(r.dangerous).toBe(true);
+    expect(r.autoExecEligible).toBe(false);
+  });
+
+  it("ignores comments and blank lines", () => {
+    const r = classifyCommand("# just checking\n\nnvidia-smi");
+    expect(r.autoExecEligible).toBe(true);
+  });
+});
+
+describe("commandPolicy.mayAutoExecute", () => {
+  it("only auto-executes safe commands when trustMode on and not AI-generated", () => {
+    expect(mayAutoExecute("df -h", { trustMode: true, aiGenerated: false })).toBe(true);
+    expect(mayAutoExecute("df -h", { trustMode: false, aiGenerated: false })).toBe(false);
+    expect(mayAutoExecute("df -h", { trustMode: true, aiGenerated: true })).toBe(false);
+    expect(mayAutoExecute("rm -rf /x", { trustMode: true, aiGenerated: false })).toBe(false);
+    expect(mayAutoExecute("pip install x", { trustMode: true, aiGenerated: false })).toBe(false);
+  });
+});
+
+describe("sshCrypto round-trip", () => {
+  beforeAll(() => { process.env.SSH_KEY_SECRET = "test-ssh-secret-12345"; });
+
+  it("encrypts and decrypts back to plaintext, with random ciphertext", async () => {
+    const { encryptSshSecret, decryptSshSecret, sshSecretLast4, isSshCryptoConfigured } = await import("./_core/ops/sshCrypto");
+    expect(isSshCryptoConfigured()).toBe(true);
+    const plain = "hunter2-private-key-or-password";
+    const a = encryptSshSecret(plain);
+    const b = encryptSshSecret(plain);
+    expect(a).not.toBe(b); // random salt/iv
+    expect(a.startsWith("v1:")).toBe(true);
+    expect(decryptSshSecret(a)).toBe(plain);
+    expect(decryptSshSecret(b)).toBe(plain);
+    expect(sshSecretLast4(plain)).toBe("word");
+  });
+
+  it("rejects malformed ciphertext", async () => {
+    const { decryptSshSecret } = await import("./_core/ops/sshCrypto");
+    expect(() => decryptSshSecret("not-a-valid-blob")).toThrow();
+  });
+});

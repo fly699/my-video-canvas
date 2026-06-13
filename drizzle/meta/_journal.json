@@ -386,6 +386,13 @@
       "when": 1781600000000,
       "tag": "0054_comfy_stress_history_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "5",
+      "when": 1781700000000,
+      "tag": "0055_comfy_ops_center",
+      "breakpoints": true
     }
   ]
 }
