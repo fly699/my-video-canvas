@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   X, Loader2, Upload, ServerCog, ShieldCheck, ShieldAlert,
-  CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft, FileJson, Wand2, PackageX, Sparkles, Copy,
+  CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft, FileJson, Wand2, PackageX, Sparkles, Copy, Save,
 } from "lucide-react";
 import { detectWorkflowFormat, extractComfyWorkflowsFromPng, suggestBestMatch } from "@/lib/comfyWorkflowImport";
 import { useComfyServersStore } from "@/hooks/useComfyServersStore";
@@ -149,10 +149,13 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
   const convertMut = trpc.comfyui.convertWorkflow.useMutation();
   const validateMut = trpc.comfyui.validateWorkflow.useMutation();
   const analyzeMut = trpc.comfyui.analyzeWorkflow.useMutation();
+  const tplCreateMut = trpc.comfyTemplates.create.useMutation();
   const [apiJson, setApiJson] = useState<string>("");     // 转换后的 API 格式（UI 自动转）
   const [remaps, setRemaps] = useState<Record<string, string>>({}); // `${nodeId}|${field}` → 新值
   const [validation, setValidation] = useState<ValidateResult | null>(null);
   const [preparing, setPreparing] = useState(false);
+  const [tplName, setTplName] = useState("");   // 另存为共享模板的名称
+  const [tplSaved, setTplSaved] = useState(false);
 
   const applyRemaps = useCallback((json: string, rm: Record<string, string>): string => {
     if (Object.keys(rm).length === 0) return json;
@@ -218,6 +221,36 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
     if (hit > 0) toast.success(`已智能匹配 ${hit} 项，请复核后重新预检`);
     else toast.message("没有找到足够相近的选项，请手动选择");
   }, [validation]);
+
+  // 另存为「共享节点模板库」：用修正后的工作流 + 分析结果建一个 comfyui_workflow 模板，
+  // 全员（含智能体规划）可复用——把「导入→预检通过→沉淀」在向导内一处闭环。
+  const saveAsTemplate = useCallback(async () => {
+    const name = tplName.trim();
+    if (!name) { toast.error("请先填模板名"); return; }
+    setPreparing(true);
+    try {
+      const corrected = applyRemaps(apiJson, remaps);
+      const analyze = await analyzeMut.mutateAsync({ customBaseUrl: serverUrl.trim() || undefined, workflowJson: corrected });
+      await tplCreateMut.mutateAsync({
+        label: name,
+        nodeType: "comfyui_workflow",
+        payload: {
+          workflowJson: corrected,
+          paramBindings: analyze.detectedParams,
+          outputNodeIds: analyze.outputNodeIds,
+          outputNodes: analyze.outputNodes,
+          outputType: analyze.outputType === "mixed" ? "auto" : analyze.outputType,
+          ...(serverUrl.trim() ? { customBaseUrl: serverUrl.trim() } : {}),
+        },
+        note: validation?.missingNodes.length ? `需先装节点：${validation.missingNodes.join(", ")}`.slice(0, 200) : undefined,
+        useCloud: false,
+      });
+      setTplSaved(true);
+      toast.success(`已存为共享模板「${name}」`);
+    } catch (e) {
+      toast.error("存模板失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140));
+    } finally { setPreparing(false); }
+  }, [tplName, apiJson, remaps, serverUrl, analyzeMut, tplCreateMut, validation, applyRemaps]);
 
   // 完成：用修正后的 JSON 分析参数，交回节点。
   const finish = useCallback(async () => {
@@ -437,6 +470,22 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
                       {preparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />} 应用修改并重新预检
                     </button>
                   )}
+
+                  {/* 另存为共享模板（可选）：导入的同时沉淀到模板库，全员/智能体可复用 */}
+                  <Section icon={<Save className="w-3.5 h-3.5" style={{ color: ACCENT }} />} title="另存为共享模板（可选）">
+                    <p style={{ fontSize: 10, color: "var(--c-t4)", marginBottom: 6 }}>存进「ComfyUI 节点模板库（共享）」，全员可一键新建带参节点，智能体规划也能选用。</p>
+                    <div className="flex items-center gap-2">
+                      <input value={tplName} onChange={(e) => { setTplName(e.target.value); setTplSaved(false); }} placeholder="模板名，如：Flux 文生图（已校验）"
+                        className="nodrag" style={{ flex: 1, fontSize: 11.5, padding: "7px 9px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+                      <button onClick={saveAsTemplate} disabled={preparing || !tplName.trim() || tplSaved}
+                        className="nodrag flex items-center gap-1.5 px-3 py-2 rounded-lg whitespace-nowrap"
+                        style={{ fontSize: 11, fontWeight: 600, cursor: preparing || tplSaved ? "default" : "pointer",
+                          background: tplSaved ? "oklch(0.7 0.16 150 / 0.16)" : A(0.14), border: `1px solid ${tplSaved ? "oklch(0.7 0.16 150 / 0.4)" : A(0.4)}`, color: tplSaved ? "oklch(0.72 0.16 150)" : ACCENT }}>
+                        {preparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : tplSaved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                        {tplSaved ? "已保存" : "存为模板"}
+                      </button>
+                    </div>
+                  </Section>
                 </>
               ) : null}
             </>
