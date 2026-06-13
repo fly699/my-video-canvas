@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import {
   Server, Gauge, TerminalSquare, Zap, Plus, Trash2, Pencil, Plug, Loader2,
-  ShieldAlert, X, RefreshCw, Cpu, HardDrive, Box,
+  ShieldAlert, X, RefreshCw, Cpu, HardDrive, Box, Container, Play, Square, RotateCw, FileText,
 } from "lucide-react";
 
 // ComfyUI 运维中心（P0）：服务器注册(SSH凭据) + 只读资源仪表盘 + 交互式终端 +
@@ -32,10 +32,11 @@ const btnGhost: React.CSSProperties = {
   background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)",
 };
 
-type SubTab = "servers" | "dashboard" | "terminal" | "exec";
+type SubTab = "servers" | "dashboard" | "docker" | "terminal" | "exec";
 const SUB_TABS: [SubTab, string, typeof Server][] = [
   ["servers", "服务器", Server],
   ["dashboard", "资源仪表盘", Gauge],
+  ["docker", "Docker", Container],
   ["terminal", "终端", TerminalSquare],
   ["exec", "快捷命令", Zap],
 ];
@@ -58,6 +59,7 @@ export function ComfyOpsPanel() {
       </div>
       {sub === "servers" && <ServersPanel />}
       {sub === "dashboard" && <DashboardPanel />}
+      {sub === "docker" && <DockerPanel />}
       {sub === "terminal" && <TerminalPanel />}
       {sub === "exec" && <ExecPanel />}
     </div>
@@ -347,6 +349,75 @@ function TerminalPanel() {
         <span style={{ fontSize: 12, color: connected ? "oklch(0.7 0.18 145)" : "var(--c-t4)" }}>{connected ? "● 已连接" : "○ 未连接"}</span>
       </div>
       <div ref={termRef} style={{ height: 460, borderRadius: 10, overflow: "hidden", border: "1px solid var(--c-bd2)", background: "#0b0e16", padding: 6 }} />
+    </div>
+  );
+}
+
+// ── Docker 容器管理 ───────────────────────────────────────────────────────────
+function DockerPanel() {
+  const servers = trpc.comfyOps.servers.list.useQuery();
+  const [serverId, setServerId] = useState<number | null>(null);
+  const [logs, setLogs] = useState<{ container: string; text: string } | null>(null);
+  const utils = trpc.useUtils();
+  const list = trpc.comfyOps.docker.list.useQuery({ serverId: serverId! }, { enabled: serverId != null, refetchInterval: 8000, retry: false });
+  const action = trpc.comfyOps.docker.action.useMutation({
+    onSuccess: (_r, v) => { toast.success(`已${v.action === "start" ? "启动" : v.action === "stop" ? "停止" : "重启"} ${v.container}`); utils.comfyOps.docker.list.invalidate(); },
+    onError: (e) => toast.error("操作失败：" + e.message),
+  });
+
+  const fetchLogs = async (container: string) => {
+    if (serverId == null) return;
+    try {
+      const text = await utils.comfyOps.docker.logs.fetch({ serverId, container, tail: 300 });
+      setLogs({ container, text: text || "(无日志)" });
+    } catch (e) { toast.error("拉取日志失败：" + (e as Error).message); }
+  };
+
+  const running = (state: string) => /up|running/i.test(state);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <select style={{ ...input, maxWidth: 280 }} value={serverId ?? ""} onChange={(e) => setServerId(e.target.value ? Number(e.target.value) : null)}>
+          <option value="">选择服务器…</option>
+          {servers.data?.filter((s) => s.enabled).map((s) => <option key={s.id} value={s.id}>{s.name}{s.deployForm === "docker" ? " 🐳" : ""}</option>)}
+        </select>
+        {serverId != null && <button style={btnGhost} onClick={() => list.refetch()}><RefreshCw size={14} /> 刷新</button>}
+        {list.isFetching && <Loader2 size={14} className="animate-spin" style={{ color: "var(--c-t3)" }} />}
+      </div>
+
+      {serverId == null && <div style={{ ...card, color: "var(--c-t3)", fontSize: 13 }}>选择一台服务器查看其 Docker 容器。</div>}
+      {list.error && <div style={{ ...card, color: "oklch(0.7 0.2 25)", fontSize: 13 }}>读取失败：{list.error.message}</div>}
+      {list.data?.length === 0 && <div style={{ ...card, color: "var(--c-t3)", fontSize: 13 }}>该服务器无容器（或未安装 docker）。</div>}
+
+      {list.data?.map((c) => (
+        <div key={c.id} style={{ ...card, display: "flex", alignItems: "center", gap: 14, padding: 16 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: running(c.state || c.status) ? "oklch(0.7 0.18 145)" : "var(--c-t4)" }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)" }}>{c.name || c.id}</div>
+            <div style={{ fontSize: 12, color: "var(--c-t3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {c.image} · {c.status}{c.stat ? ` · CPU ${c.stat.cpu} · 内存 ${c.stat.mem}` : ""}{c.ports ? ` · ${c.ports}` : ""}
+            </div>
+          </div>
+          <button style={btnGhost} title="日志" onClick={() => fetchLogs(c.name || c.id)}><FileText size={14} /></button>
+          {running(c.state || c.status)
+            ? <>
+                <button style={btnGhost} title="重启" disabled={action.isPending} onClick={() => action.mutate({ serverId: serverId!, container: c.name || c.id, action: "restart" })}><RotateCw size={14} /></button>
+                <button style={{ ...btnGhost, color: "oklch(0.75 0.16 60)" }} title="停止" disabled={action.isPending} onClick={() => action.mutate({ serverId: serverId!, container: c.name || c.id, action: "stop" })}><Square size={14} /></button>
+              </>
+            : <button style={{ ...btnGhost, color: "oklch(0.7 0.18 145)" }} title="启动" disabled={action.isPending} onClick={() => action.mutate({ serverId: serverId!, container: c.name || c.id, action: "start" })}><Play size={14} /></button>}
+        </div>
+      ))}
+
+      {logs && (
+        <div style={{ ...card, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>📋 {logs.container} 日志（最近 300 行）</div>
+            <button style={btnGhost} onClick={() => setLogs(null)}><X size={14} /></button>
+          </div>
+          <pre style={{ fontSize: 11.5, fontFamily: "monospace", whiteSpace: "pre-wrap", maxHeight: 380, overflow: "auto", color: "var(--c-t2)", margin: 0 }}>{logs.text}</pre>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { encryptSshSecret, decryptSshSecret, sshSecretLast4, isSshCryptoConfigur
 import { testConnection, dropClient, isValidSshHost } from "../_core/ops/sshPool";
 import { sshExec } from "../_core/ops/sshExec";
 import { classifyCommand, mayAutoExecute } from "../_core/ops/commandPolicy";
+import { dockerPs, dockerStats, dockerLogs, dockerAction, dockerInspect } from "../_core/ops/dockerOps";
 import { recordOps } from "../_core/ops/opsRecords";
 import { assertComfyuiAllowed } from "../_core/whitelist";
 import { fetchComfyServerStatus } from "../_core/comfyui";
@@ -157,6 +158,44 @@ export const comfyOpsRouter = router({
 
   /** Classify a command without running it (for live danger badge in the UI). */
   classify: adminProcedure.input(z.object({ command: z.string().max(8000) })).query(({ input }) => classifyCommand(input.command)),
+
+  // ── Docker container management (admin only, SSH) ─────────────────────────
+  docker: router({
+    list: adminProcedure.input(z.object({ serverId: z.number().int() })).query(async ({ input }) => {
+      const [containers, stats] = await Promise.all([
+        dockerPs(input.serverId),
+        dockerStats(input.serverId).catch(() => []),
+      ]);
+      const statByName = new Map(stats.map((s) => [s.name, s]));
+      return containers.map((c) => ({ ...c, stat: statByName.get(c.name) ?? null }));
+    }),
+
+    logs: adminProcedure
+      .input(z.object({ serverId: z.number().int(), container: z.string().max(128), tail: z.number().int().min(1).max(5000).default(200) }))
+      .query(({ input }) => dockerLogs(input.serverId, input.container, input.tail)),
+
+    inspect: adminProcedure
+      .input(z.object({ serverId: z.number().int(), container: z.string().max(128) }))
+      .query(({ input }) => dockerInspect(input.serverId, input.container)),
+
+    action: adminProcedure
+      .input(z.object({ serverId: z.number().int(), container: z.string().max(128), action: z.enum(["start", "stop", "restart"]) }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const r = await dockerAction(input.serverId, input.container, input.action);
+          recordOps(ctx, {
+            serverId: input.serverId, channel: "ssh", action: "docker", auditAction: "ops:exec",
+            command: `docker ${input.action} ${input.container}`, status: r.ok ? "success" : "error",
+            output: r.output, detail: { docker: input.action, container: input.container },
+          });
+          return r;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          recordOps(ctx, { serverId: input.serverId, channel: "ssh", action: "docker", auditAction: "ops:exec", command: `docker ${input.action} ${input.container}`, status: "error", errorMessage: msg });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
+        }
+      }),
+  }),
 
   // ── Records & settings (admin only) ───────────────────────────────────────
   records: adminProcedure.input(z.object({ serverId: z.number().int().optional(), limit: z.number().int().max(500).optional() })).query(({ input }) => listOpsRecords(input)),
