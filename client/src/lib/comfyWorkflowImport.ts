@@ -22,6 +22,52 @@ export function detectWorkflowFormat(obj: unknown): WorkflowFormat {
   return "unknown";
 }
 
+// ── 智能匹配：把工作流里「服务器上不存在的取值」自动映射到最相近的真实选项 ─────────
+// 典型场景：模型文件名因目录前缀/大小写/版本后缀/扩展名不同而对不上（如
+// "SDXL/sd_xl_base_1.0.safetensors" vs 服务器上的 "sd_xl_base_1.0.safetensors"）。
+// 纯函数、可单测；返回最佳候选与一个 0-1 的置信度分。
+
+/** 归一化：取 basename（去路径）、去扩展名、转小写、非字母数字折叠为空。 */
+function normName(s: string): string {
+  const base = s.split(/[\\/]/).pop() ?? s;
+  const noExt = base.replace(/\.[a-z0-9]+$/i, "");
+  return noExt.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/** 两字符串的相似度 0-1：归一化后用 (最长公共子串 / 较长串长度)，并对完全相等/
+ *  互为子串给高分。轻量、无依赖，足够给模型/枚举名排序。 */
+export function nameSimilarity(a: string, b: string): number {
+  const x = normName(a), y = normName(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  if (long.includes(short)) return 0.9 * (short.length / long.length) + 0.1;
+  // 最长公共子串长度
+  let best = 0;
+  const prev = new Array(short.length + 1).fill(0);
+  for (let i = 1; i <= long.length; i++) {
+    let diagPrev = 0;
+    for (let j = 1; j <= short.length; j++) {
+      const tmp = prev[j];
+      if (long[i - 1] === short[j - 1]) { prev[j] = diagPrev + 1; if (prev[j] > best) best = prev[j]; }
+      else prev[j] = 0;
+      diagPrev = tmp;
+    }
+  }
+  return best / long.length;
+}
+
+/** 从候选选项里挑与 current 最相近的一个；低于阈值返回 null（不瞎猜）。 */
+export function suggestBestMatch(current: string, options: string[], threshold = 0.45): { value: string; score: number } | null {
+  let best: { value: string; score: number } | null = null;
+  for (const o of options) {
+    const score = nameSimilarity(current, o);
+    if (!best || score > best.score) best = { value: o, score };
+  }
+  return best && best.score >= threshold ? best : null;
+}
+
+
 function latin1(bytes: Uint8Array, start: number, end: number): string {
   let s = "";
   for (let i = start; i < end; i++) s += String.fromCharCode(bytes[i]);
