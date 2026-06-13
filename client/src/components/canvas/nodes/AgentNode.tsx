@@ -31,6 +31,15 @@ interface Props {
 const accent = "oklch(0.70 0.20 310)";
 const accentA = (a: number) => `oklch(0.70 0.20 310 / ${a})`;
 
+// 示例指令：对话为空时给新用户起点，展示智能体能干什么（点击填入输入框）。
+const AGENT_EXAMPLES = [
+  "做一个 30 秒产品广告，3 个镜头",
+  "赛博朋克城市短片，6 镜拼成 1 分钟",
+  "把这句话扩成分镜：猫在厨房打翻牛奶",
+  "古风女主角，生成 4 个一致性镜头",
+  "给现有分镜配音并合并成片",
+];
+
 const OP_META: Record<AgentOperation["op"], { Icon: typeof Plus; label: string }> = {
   create: { Icon: Plus, label: "新建" },
   connect: { Icon: Link2, label: "连接" },
@@ -812,6 +821,17 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
             </label>
           </div>
           <LLMModelPicker value={model} onChange={(m) => updateNodeData(id, { model: m })} disabled={chat.isPending} />
+          {/* 示例指令：对话为空时引导新用户，点击填入输入框（不知道能让它做什么时的起点）*/}
+          {messages.length === 0 && !input.trim() && (
+            <div className="flex flex-wrap gap-1.5">
+              {AGENT_EXAMPLES.map((ex) => (
+                <button key={ex} onClick={() => setInput(ex)} className="nodrag" title="点击填入"
+                  style={{ fontSize: 10.5, padding: "3px 9px", borderRadius: 999, cursor: "pointer", background: accentA(0.08), border: `1px solid ${accentA(0.25)}`, color: accent }}>
+                  {ex}
+                </button>
+              ))}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
             <NodeTextArea
               className="nodrag nowheel"
