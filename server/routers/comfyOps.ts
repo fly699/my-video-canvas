@@ -13,6 +13,7 @@ import { classifyCommand, mayAutoExecute } from "../_core/ops/commandPolicy";
 import { dockerPs, dockerStats, dockerLogs, dockerAction, dockerInspect } from "../_core/ops/dockerOps";
 import { listModels, listCustomNodes, installCustomNode, installModel, MODEL_DIRS } from "../_core/ops/modelOps";
 import { aiGenerateOps } from "../_core/ops/aiOps";
+import { getCurrentOpsAlerts } from "../_core/ops/opsAlerts";
 import { recordOps } from "../_core/ops/opsRecords";
 import { assertComfyuiAllowed, assertLLMAllowed } from "../_core/whitelist";
 import { fetchComfyServerStatus, comfyErrorHint } from "../_core/comfyui";
@@ -111,6 +112,13 @@ export const comfyOpsRouter = router({
       if (!server) throw new TRPCError({ code: "NOT_FOUND" });
       return testConnection(server);
     }),
+  }),
+
+  /** Current ops alerts snapshot (offline / low VRAM / queue backlog). Live
+   *  pushes arrive via the `ops:alerts` socket event to the admin room. */
+  alerts: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== "admin") await assertComfyuiAllowed(ctx);
+    return getCurrentOpsAlerts();
   }),
 
   // ── Dashboard (read-only, whitelist-gated) ────────────────────────────────

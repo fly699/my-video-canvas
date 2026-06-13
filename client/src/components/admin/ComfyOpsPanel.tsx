@@ -246,12 +246,37 @@ function bar(used: number, total: number, color: string) {
   );
 }
 
+type Alert = { serverId: number; name: string; level: "error" | "warn"; kind: string; message: string };
+
 function DashboardPanel() {
   const dash = trpc.comfyOps.dashboard.useQuery(undefined, { refetchInterval: 5000 });
+  const alertsQ = trpc.comfyOps.alerts.useQuery(undefined, { refetchInterval: 30000 });
+  const [liveAlerts, setLiveAlerts] = useState<Alert[] | null>(null);
+
+  // Live alert pushes over socket.io (admin room) — falls back to the polled query.
+  useEffect(() => {
+    const socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true });
+    socket.on("ops:alerts", (a: Alert[]) => setLiveAlerts(a));
+    return () => { socket.disconnect(); };
+  }, []);
+  const alerts = liveAlerts ?? (alertsQ.data as Alert[] | undefined) ?? [];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {alerts.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {alerts.map((a, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "9px 13px", borderRadius: 10,
+              background: a.level === "error" ? "oklch(0.65 0.2 25 / 0.12)" : "oklch(0.75 0.16 60 / 0.12)",
+              border: `1px solid ${a.level === "error" ? "oklch(0.65 0.2 25 / 0.4)" : "oklch(0.75 0.16 60 / 0.4)"}`,
+              color: a.level === "error" ? "oklch(0.75 0.16 25)" : "oklch(0.82 0.14 60)" }}>
+              {a.level === "error" ? "🔴" : "🟡"} {a.message}
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 13, color: "var(--c-t3)" }}>每 5 秒自动刷新 · 仅显示已配 ComfyUI API 地址的服务器</div>
+        <div style={{ fontSize: 13, color: "var(--c-t3)" }}>每 5 秒自动刷新 · 仅显示已配 ComfyUI API 地址的服务器{alerts.length === 0 ? " · 无告警" : ""}</div>
         <button style={btnGhost} onClick={() => dash.refetch()}><RefreshCw size={14} /> 刷新</button>
       </div>
       {dash.data?.length === 0 && <div style={{ ...card, color: "var(--c-t3)", fontSize: 13 }}>暂无服务器。请先在「服务器」页添加。</div>}

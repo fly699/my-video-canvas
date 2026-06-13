@@ -23,6 +23,7 @@ import {
   setOpsTerminalSocketIO, openTerminalSession, writeToSession,
   resizeSession, closeSession, closeSessionsForSocket,
 } from "./ops/sshTerminal";
+import { setupOpsAlerts } from "./ops/opsAlerts";
 import { setDownloadSocketIO, ADMIN_ROOM } from "./downloadNotify";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
@@ -428,6 +429,7 @@ async function startServer() {
   setStressSocketIO(io);
   setDownloadSocketIO(io);
   setOpsTerminalSocketIO(io);
+  setupOpsAlerts(io);
 
   // ── Video task background poller ───────────────────────────────────────────
   setupVideoTaskPoller(io);
