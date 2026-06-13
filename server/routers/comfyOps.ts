@@ -11,8 +11,9 @@ import { sshExec } from "../_core/ops/sshExec";
 import { classifyCommand, mayAutoExecute } from "../_core/ops/commandPolicy";
 import { dockerPs, dockerStats, dockerLogs, dockerAction, dockerInspect } from "../_core/ops/dockerOps";
 import { listModels, listCustomNodes, installCustomNode, installModel, MODEL_DIRS } from "../_core/ops/modelOps";
+import { aiGenerateOps } from "../_core/ops/aiOps";
 import { recordOps } from "../_core/ops/opsRecords";
-import { assertComfyuiAllowed } from "../_core/whitelist";
+import { assertComfyuiAllowed, assertLLMAllowed } from "../_core/whitelist";
 import { fetchComfyServerStatus, comfyErrorHint } from "../_core/comfyui";
 import type { ComfyOpsServer } from "../../drizzle/schema";
 
@@ -131,6 +132,8 @@ export const comfyOpsRouter = router({
       command: z.string().min(1).max(8000),
       /** Caller acknowledged the danger (red confirm) for this run. */
       confirmedDangerous: z.boolean().default(false),
+      /** Command came from the AI assistant — never auto-executes, recorded as AI-approved. */
+      aiGenerated: z.boolean().default(false),
       timeoutMs: z.number().int().min(1000).max(600000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -140,12 +143,12 @@ export const comfyOpsRouter = router({
       if (risk.dangerous && !input.confirmedDangerous) {
         return { blocked: true as const, dangerous: true, reasons: risk.reasons };
       }
-      const auto = mayAutoExecute(input.command, { trustMode: server.trustMode, aiGenerated: false });
+      const auto = mayAutoExecute(input.command, { trustMode: server.trustMode, aiGenerated: input.aiGenerated });
       try {
         const res = await sshExec(input.serverId, input.command, { timeoutMs: input.timeoutMs });
         recordOps(ctx, {
           serverId: input.serverId, channel: "ssh", action: "exec", auditAction: "ops:exec",
-          command: input.command, autoExecuted: auto, status: res.exitCode === 0 ? "success" : "error",
+          command: input.command, approvedByAi: input.aiGenerated, autoExecuted: auto, status: res.exitCode === 0 ? "success" : "error",
           exitCode: res.exitCode, durationMs: res.durationMs, output: res.output,
           detail: { dangerous: risk.dangerous, timedOut: res.timedOut },
         });
@@ -242,6 +245,22 @@ export const comfyOpsRouter = router({
       const hint = comfyErrorHint(input.errorText);
       return { hint: hint.trim() || "未识别到已知错误模式。可把完整报错贴到终端/AI 助手进一步排查。" };
     }),
+  }),
+
+  // ── AI 运维助手（admin only）──────────────────────────────────────────────
+  ai: router({
+    generate: adminProcedure
+      .input(z.object({ serverId: z.number().int(), model: z.string().max(64), query: z.string().min(1).max(4000) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertLLMAllowed(ctx);
+        const plan = await aiGenerateOps(ctx, { model: input.model, serverId: input.serverId, userQuery: input.query });
+        recordOps(ctx, {
+          serverId: input.serverId, channel: "api", action: "aiGenerate", auditAction: "ops:ai_generate",
+          approvedByAi: true, status: "success", command: input.query,
+          detail: { model: input.model, source: plan.source, steps: plan.steps.length },
+        });
+        return plan;
+      }),
   }),
 
   // ── Records & settings (admin only) ───────────────────────────────────────

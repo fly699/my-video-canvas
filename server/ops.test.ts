@@ -76,6 +76,35 @@ describe("modelOps validators (injection guard)", () => {
   });
 });
 
+describe("aiOps.sanitizeAiSteps (danger override + hallucination guard)", () => {
+  it("forces dangerous=true even when the LLM claims a destructive cmd is safe", async () => {
+    const { sanitizeAiSteps } = await import("./_core/ops/aiOps");
+    const steps = sanitizeAiSteps({ steps: [{ explain: "清理", command: "rm -rf /opt/ComfyUI/output", channel: "ssh", dangerous: false }] });
+    expect(steps).toHaveLength(1);
+    expect(steps[0].dangerous).toBe(true);
+  });
+
+  it("drops steps with no command, clamps channel, caps count", async () => {
+    const { sanitizeAiSteps } = await import("./_core/ops/aiOps");
+    const steps = sanitizeAiSteps({ steps: [
+      { explain: "ok", command: "nvidia-smi", channel: "weird" },
+      { explain: "empty", command: "" },
+      { explain: "nocmd" },
+      null,
+      "garbage",
+    ] });
+    expect(steps).toHaveLength(1);
+    expect(steps[0].channel).toBe("ssh"); // unknown channel clamped to ssh
+    expect(steps[0].dangerous).toBe(false);
+  });
+
+  it("returns empty for non-array steps", async () => {
+    const { sanitizeAiSteps } = await import("./_core/ops/aiOps");
+    expect(sanitizeAiSteps({ steps: "not-an-array" })).toEqual([]);
+    expect(sanitizeAiSteps({})).toEqual([]);
+  });
+});
+
 describe("sshCrypto round-trip", () => {
   beforeAll(() => { process.env.SSH_KEY_SECRET = "test-ssh-secret-12345"; });
 

@@ -8,8 +8,9 @@ import "@xterm/xterm/css/xterm.css";
 import {
   Server, Gauge, TerminalSquare, Zap, Plus, Trash2, Pencil, Plug, Loader2,
   ShieldAlert, X, RefreshCw, Cpu, HardDrive, Box, Container, Play, Square, RotateCw, FileText,
-  Package, Download, Stethoscope,
+  Package, Download, Stethoscope, Sparkles,
 } from "lucide-react";
+import { LLMModelPicker, type LLMModelId } from "@/components/canvas/LLMModelPicker";
 
 // ComfyUI 运维中心（P0）：服务器注册(SSH凭据) + 只读资源仪表盘 + 交互式终端 +
 // 快捷命令执行。变更类操作 admin-only（后端 adminProcedure 强制）；危险命令服务端
@@ -33,12 +34,13 @@ const btnGhost: React.CSSProperties = {
   background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)",
 };
 
-type SubTab = "servers" | "dashboard" | "docker" | "models" | "terminal" | "exec";
+type SubTab = "servers" | "dashboard" | "docker" | "models" | "ai" | "terminal" | "exec";
 const SUB_TABS: [SubTab, string, typeof Server][] = [
   ["servers", "服务器", Server],
   ["dashboard", "资源仪表盘", Gauge],
   ["docker", "Docker", Container],
   ["models", "模型/节点", Package],
+  ["ai", "AI 助手", Sparkles],
   ["terminal", "终端", TerminalSquare],
   ["exec", "快捷命令", Zap],
 ];
@@ -63,6 +65,7 @@ export function ComfyOpsPanel() {
       {sub === "dashboard" && <DashboardPanel />}
       {sub === "docker" && <DockerPanel />}
       {sub === "models" && <ModelsPanel />}
+      {sub === "ai" && <AiPanel />}
       {sub === "terminal" && <TerminalPanel />}
       {sub === "exec" && <ExecPanel />}
     </div>
@@ -401,6 +404,88 @@ function ModelsPanel() {
             {hint && <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--c-t2)", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 8, padding: 12, whiteSpace: "pre-wrap" }}>{hint}</div>}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// ── AI 运维助手 ───────────────────────────────────────────────────────────────
+type PlanStep = { explain: string; command: string; channel: "ssh" | "api"; dangerous: boolean };
+type Plan = { plan: string; steps: PlanStep[]; source: "ai" | "heuristic" };
+
+function AiPanel() {
+  const servers = trpc.comfyOps.servers.list.useQuery();
+  const [serverId, setServerId] = useState<number | null>(null);
+  const [model, setModel] = useState<LLMModelId>("kie_claude_opus_47" as LLMModelId);
+  const [query, setQuery] = useState("");
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [results, setResults] = useState<Record<number, string>>({});
+  const [runningIdx, setRunningIdx] = useState<number | null>(null);
+
+  const gen = trpc.comfyOps.ai.generate.useMutation({
+    onSuccess: (p) => { setPlan(p as Plan); setResults({}); },
+    onError: (e) => toast.error("生成失败：" + e.message),
+  });
+  const exec = trpc.comfyOps.exec.useMutation();
+
+  const runStep = async (idx: number, confirmedDangerous = false) => {
+    if (serverId == null || !plan) return;
+    const step = plan.steps[idx];
+    setRunningIdx(idx);
+    try {
+      const r = await exec.mutateAsync({ serverId, command: step.command, aiGenerated: true, confirmedDangerous });
+      if (r.blocked) {
+        if (confirm(`⚠ 危险命令：\n${r.reasons.join("\n")}\n\n确认仍要执行？`)) return runStep(idx, true);
+        return;
+      }
+      setResults((p) => ({ ...p, [idx]: `[退出码 ${r.exitCode}${r.timedOut ? " · 超时" : ""}]\n${r.output}` }));
+    } catch (e) { setResults((p) => ({ ...p, [idx]: "执行失败：" + (e as Error).message })); }
+    finally { setRunningIdx(null); }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ ...card, color: "var(--c-t3)", fontSize: 12.5, lineHeight: 1.6, borderColor: "oklch(0.68 0.22 285 / 0.3)" }}>
+        💡 用自然语言描述要解决的问题（如「清理 ComfyUI 输出缓存并重启容器」「显存占满怎么释放」「贴一段报错帮我诊断」），AI 生成方案后<b style={{ color: "var(--c-t2)" }}>逐条展示+你确认才执行</b>——AI 命令永不自动执行，危险命令仍需红色二次确认。
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <select style={{ ...input, maxWidth: 240 }} value={serverId ?? ""} onChange={(e) => setServerId(e.target.value ? Number(e.target.value) : null)}>
+          <option value="">选择服务器…</option>
+          {servers.data?.filter((s) => s.enabled).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <LLMModelPicker value={model} onChange={setModel} />
+      </div>
+      <textarea style={{ ...input, minHeight: 90 }} placeholder="描述你的运维诉求或粘贴报错…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <button style={{ ...btnPrimary, alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 7 }}
+        disabled={gen.isPending || serverId == null || !query.trim()}
+        onClick={() => serverId != null && gen.mutate({ serverId, model, query: query.trim() })}>
+        {gen.isPending ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} 生成方案
+      </button>
+
+      {plan && (
+        <div style={{ ...card, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>
+            📋 {plan.plan}
+            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: plan.source === "ai" ? "oklch(0.7 0.18 285)" : "var(--c-t4)" }}>
+              {plan.source === "ai" ? "AI 生成" : "启发式（未用 LLM）"}
+            </span>
+          </div>
+          {plan.steps.length === 0 && <div style={{ fontSize: 13, color: "var(--c-t3)" }}>未生成可执行步骤，请改用终端手动排查。</div>}
+          {plan.steps.map((step, i) => (
+            <div key={i} style={{ border: `1px solid ${step.dangerous ? "oklch(0.6 0.22 25 / 0.5)" : "var(--c-bd2)"}`, borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 12.5, color: "var(--c-t2)", lineHeight: 1.5 }}>
+                {step.dangerous && <span style={{ color: "oklch(0.7 0.2 25)", fontWeight: 700, marginRight: 6 }}>⚠ 危险</span>}
+                {i + 1}. {step.explain}
+              </div>
+              <code style={{ fontSize: 12, fontFamily: "monospace", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "7px 10px", color: "var(--c-t1)", whiteSpace: "pre-wrap" }}>{step.command}</code>
+              <button style={{ ...btnGhost, alignSelf: "flex-start", color: step.dangerous ? "oklch(0.7 0.2 25)" : "oklch(0.82 0.14 285)" }}
+                disabled={runningIdx === i} onClick={() => runStep(i)}>
+                {runningIdx === i ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} 执行此步
+              </button>
+              {results[i] && <pre style={{ fontSize: 11.5, fontFamily: "monospace", whiteSpace: "pre-wrap", maxHeight: 220, overflow: "auto", color: "var(--c-t3)", margin: 0, background: "var(--c-input)", borderRadius: 6, padding: 8 }}>{results[i]}</pre>}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
