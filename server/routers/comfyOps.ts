@@ -10,9 +10,10 @@ import { testConnection, dropClient, isValidSshHost } from "../_core/ops/sshPool
 import { sshExec } from "../_core/ops/sshExec";
 import { classifyCommand, mayAutoExecute } from "../_core/ops/commandPolicy";
 import { dockerPs, dockerStats, dockerLogs, dockerAction, dockerInspect } from "../_core/ops/dockerOps";
+import { listModels, listCustomNodes, installCustomNode, installModel, MODEL_DIRS } from "../_core/ops/modelOps";
 import { recordOps } from "../_core/ops/opsRecords";
 import { assertComfyuiAllowed } from "../_core/whitelist";
-import { fetchComfyServerStatus } from "../_core/comfyui";
+import { fetchComfyServerStatus, comfyErrorHint } from "../_core/comfyui";
 import type { ComfyOpsServer } from "../../drizzle/schema";
 
 // Strip secrets before any server row leaves the backend. The frontend only ever
@@ -195,6 +196,52 @@ export const comfyOpsRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
         }
       }),
+  }),
+
+  // ── Models / LoRA / custom nodes (admin only) ─────────────────────────────
+  models: router({
+    // Read-only model listing via the ComfyUI API (whitelist-gated like dashboard).
+    list: protectedProcedure.input(z.object({ serverId: z.number().int() })).query(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") await assertComfyuiAllowed(ctx);
+      return listModels(input.serverId);
+    }),
+
+    nodes: adminProcedure.input(z.object({ serverId: z.number().int() })).query(({ input }) => listCustomNodes(input.serverId)),
+
+    installNode: adminProcedure
+      .input(z.object({ serverId: z.number().int(), gitUrl: z.string().max(512) }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const r = await installCustomNode(input.serverId, input.gitUrl);
+          recordOps(ctx, { serverId: input.serverId, channel: "ssh", action: "installNode", auditAction: "ops:install_node", command: r.command, status: r.ok ? "success" : "error", output: r.output, detail: { gitUrl: input.gitUrl } });
+          return r;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          recordOps(ctx, { serverId: input.serverId, channel: "ssh", action: "installNode", auditAction: "ops:install_node", status: "error", errorMessage: msg, detail: { gitUrl: input.gitUrl } });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
+        }
+      }),
+
+    installModel: adminProcedure
+      .input(z.object({ serverId: z.number().int(), url: z.string().max(2048), dir: z.enum(MODEL_DIRS), filename: z.string().max(255) }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const r = await installModel(input.serverId, input.url, input.dir, input.filename);
+          recordOps(ctx, { serverId: input.serverId, channel: "ssh", action: "installModel", auditAction: "ops:install_model", command: r.command, status: r.ok ? "success" : "error", output: r.output, detail: { dir: input.dir, filename: input.filename } });
+          return r;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          recordOps(ctx, { serverId: input.serverId, channel: "ssh", action: "installModel", auditAction: "ops:install_model", status: "error", errorMessage: msg, detail: { dir: input.dir, filename: input.filename } });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
+        }
+      }),
+
+    /** Diagnose a ComfyUI error string → human hint (missing node→plugin, missing
+     *  file→directory, dimension mismatch). Reuses the canvas-side knowledge base. */
+    diagnose: adminProcedure.input(z.object({ errorText: z.string().max(8000) })).query(({ input }) => {
+      const hint = comfyErrorHint(input.errorText);
+      return { hint: hint.trim() || "未识别到已知错误模式。可把完整报错贴到终端/AI 助手进一步排查。" };
+    }),
   }),
 
   // ── Records & settings (admin only) ───────────────────────────────────────

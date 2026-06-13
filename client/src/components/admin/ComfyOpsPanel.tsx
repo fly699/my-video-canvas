@@ -8,6 +8,7 @@ import "@xterm/xterm/css/xterm.css";
 import {
   Server, Gauge, TerminalSquare, Zap, Plus, Trash2, Pencil, Plug, Loader2,
   ShieldAlert, X, RefreshCw, Cpu, HardDrive, Box, Container, Play, Square, RotateCw, FileText,
+  Package, Download, Stethoscope,
 } from "lucide-react";
 
 // ComfyUI 运维中心（P0）：服务器注册(SSH凭据) + 只读资源仪表盘 + 交互式终端 +
@@ -32,11 +33,12 @@ const btnGhost: React.CSSProperties = {
   background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)",
 };
 
-type SubTab = "servers" | "dashboard" | "docker" | "terminal" | "exec";
+type SubTab = "servers" | "dashboard" | "docker" | "models" | "terminal" | "exec";
 const SUB_TABS: [SubTab, string, typeof Server][] = [
   ["servers", "服务器", Server],
   ["dashboard", "资源仪表盘", Gauge],
   ["docker", "Docker", Container],
+  ["models", "模型/节点", Package],
   ["terminal", "终端", TerminalSquare],
   ["exec", "快捷命令", Zap],
 ];
@@ -60,6 +62,7 @@ export function ComfyOpsPanel() {
       {sub === "servers" && <ServersPanel />}
       {sub === "dashboard" && <DashboardPanel />}
       {sub === "docker" && <DockerPanel />}
+      {sub === "models" && <ModelsPanel />}
       {sub === "terminal" && <TerminalPanel />}
       {sub === "exec" && <ExecPanel />}
     </div>
@@ -281,6 +284,124 @@ function DashboardPanel() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ── 模型 / LoRA / 自定义节点 ──────────────────────────────────────────────────
+const MODEL_CATS: [string, string][] = [
+  ["ckpts", "Checkpoint"], ["loras", "LoRA"], ["vaes", "VAE"], ["controlnets", "ControlNet"],
+  ["ipadapters", "IPAdapter"], ["clips", "CLIP"], ["unets", "UNet"], ["upscaleModels", "放大模型"],
+  ["clipVisions", "CLIP Vision"], ["embeddings", "Embedding"],
+];
+const MODEL_DIRS_UI = ["checkpoints", "loras", "vae", "controlnet", "clip", "text_encoders", "unet", "diffusion_models", "ipadapter", "upscale_models", "embeddings", "clip_vision", "style_models"] as const;
+
+function ModelsPanel() {
+  const servers = trpc.comfyOps.servers.list.useQuery();
+  const [serverId, setServerId] = useState<number | null>(null);
+  const utils = trpc.useUtils();
+  const models = trpc.comfyOps.models.list.useQuery({ serverId: serverId! }, { enabled: serverId != null, retry: false });
+  const nodes = trpc.comfyOps.models.nodes.useQuery({ serverId: serverId! }, { enabled: serverId != null, retry: false });
+  const [gitUrl, setGitUrl] = useState("");
+  const [dlUrl, setDlUrl] = useState(""); const [dlDir, setDlDir] = useState<typeof MODEL_DIRS_UI[number]>("checkpoints"); const [dlName, setDlName] = useState("");
+  const [errText, setErrText] = useState(""); const [hint, setHint] = useState("");
+
+  const installNode = trpc.comfyOps.models.installNode.useMutation({
+    onSuccess: (r) => { r.ok ? toast.success("节点已安装，请重启 ComfyUI") : toast.error("安装失败，见输出"); setGitUrl(""); nodes.refetch(); },
+    onError: (e) => toast.error("安装失败：" + e.message),
+  });
+  const installModelMut = trpc.comfyOps.models.installModel.useMutation({
+    onSuccess: (r) => { r.ok ? toast.success("模型已下载") : toast.error("下载失败，见输出"); setDlUrl(""); setDlName(""); },
+    onError: (e) => toast.error("下载失败：" + e.message),
+  });
+  const diagnose = async () => {
+    if (!errText.trim()) return;
+    try { const r = await utils.comfyOps.models.diagnose.fetch({ errorText: errText }); setHint(r.hint); }
+    catch (e) { toast.error("诊断失败：" + (e as Error).message); }
+  };
+
+  const m = models.data as Record<string, string[]> | undefined;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <select style={{ ...input, maxWidth: 280 }} value={serverId ?? ""} onChange={(e) => setServerId(e.target.value ? Number(e.target.value) : null)}>
+        <option value="">选择服务器…</option>
+        {servers.data?.filter((s) => s.enabled).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+
+      {serverId == null && <div style={{ ...card, color: "var(--c-t3)", fontSize: 13 }}>选择一台服务器查看其模型与自定义节点。模型列表走 ComfyUI API（需配 API 地址），节点/安装走 SSH（需配 comfyPath）。</div>}
+
+      {serverId != null && (
+        <>
+          {/* 模型清单 */}
+          <div style={{ ...card, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Box size={16} style={{ color: "oklch(0.7 0.18 145)" }} />
+              <div style={{ fontSize: 14, fontWeight: 700 }}>模型清单（ComfyUI API）</div>
+              <button style={{ ...btnGhost, marginLeft: "auto" }} onClick={() => models.refetch()}><RefreshCw size={13} /> 刷新</button>
+            </div>
+            {models.isLoading && <div style={{ fontSize: 13, color: "var(--c-t3)" }}>加载中…</div>}
+            {models.error && <div style={{ fontSize: 13, color: "oklch(0.7 0.2 25)" }}>读取失败：{models.error.message}</div>}
+            {m && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {MODEL_CATS.map(([key, lbl]) => (
+                  <span key={key} title={(m[key] ?? []).slice(0, 30).join("\n")} style={{ fontSize: 12, padding: "5px 11px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}>
+                    {lbl} <b style={{ color: "var(--c-t1)" }}>{(m[key] ?? []).length}</b>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 自定义节点 */}
+          <div style={{ ...card, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Package size={16} style={{ color: "oklch(0.68 0.2 285)" }} />
+              <div style={{ fontSize: 14, fontWeight: 700 }}>自定义节点（{nodes.data?.length ?? 0}）</div>
+              <button style={{ ...btnGhost, marginLeft: "auto" }} onClick={() => nodes.refetch()}><RefreshCw size={13} /> 刷新</button>
+            </div>
+            {nodes.error && <div style={{ fontSize: 13, color: "oklch(0.7 0.2 25)" }}>{nodes.error.message}</div>}
+            {nodes.data && nodes.data.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflow: "auto" }}>
+                {nodes.data.map((n) => <span key={n.name} style={{ fontSize: 11.5, padding: "3px 8px", borderRadius: 6, background: "var(--c-input)", color: "var(--c-t3)" }}>{n.isGit ? "📦" : "📁"} {n.name}</span>)}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <input style={input} placeholder="https://github.com/作者/插件仓库  (git clone 安装)" value={gitUrl} onChange={(e) => setGitUrl(e.target.value)} />
+              <button style={{ ...btnPrimary, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }} disabled={installNode.isPending || !gitUrl.trim()}
+                onClick={() => serverId != null && installNode.mutate({ serverId, gitUrl: gitUrl.trim() })}>
+                {installNode.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} 安装节点
+              </button>
+            </div>
+          </div>
+
+          {/* 下载模型 */}
+          <div style={{ ...card, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>下载模型 / LoRA</div>
+            <input style={input} placeholder="模型直链 URL（https）" value={dlUrl} onChange={(e) => setDlUrl(e.target.value)} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <select style={{ ...input, maxWidth: 200 }} value={dlDir} onChange={(e) => setDlDir(e.target.value as typeof MODEL_DIRS_UI[number])}>
+                {MODEL_DIRS_UI.map((d) => <option key={d} value={d}>models/{d}</option>)}
+              </select>
+              <input style={input} placeholder="保存文件名（如 model.safetensors）" value={dlName} onChange={(e) => setDlName(e.target.value)} />
+              <button style={{ ...btnPrimary, whiteSpace: "nowrap" }} disabled={installModelMut.isPending || !dlUrl.trim() || !dlName.trim()}
+                onClick={() => serverId != null && installModelMut.mutate({ serverId, url: dlUrl.trim(), dir: dlDir, filename: dlName.trim() })}>
+                {installModelMut.isPending ? <Loader2 size={14} className="animate-spin" /> : "下载"}
+              </button>
+            </div>
+          </div>
+
+          {/* 错误诊断 */}
+          <div style={{ ...card, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Stethoscope size={16} style={{ color: "oklch(0.75 0.16 60)" }} />
+              <div style={{ fontSize: 14, fontWeight: 700 }}>错误诊断（缺节点 / 缺文件 / 维度不匹配）</div>
+            </div>
+            <textarea style={{ ...input, minHeight: 70, fontFamily: "monospace", fontSize: 11.5 }} placeholder="把 ComfyUI 报错原文贴进来，自动给出修复建议" value={errText} onChange={(e) => setErrText(e.target.value)} />
+            <button style={{ ...btnPrimary, alignSelf: "flex-start" }} onClick={diagnose} disabled={!errText.trim()}>诊断</button>
+            {hint && <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--c-t2)", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 8, padding: 12, whiteSpace: "pre-wrap" }}>{hint}</div>}
+          </div>
+        </>
+      )}
     </div>
   );
 }

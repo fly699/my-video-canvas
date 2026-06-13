@@ -53,6 +53,29 @@ describe("commandPolicy.mayAutoExecute", () => {
   });
 });
 
+describe("modelOps validators (injection guard)", () => {
+  it("accepts clean git/model/download inputs", async () => {
+    const { isValidGitUrl, isValidModelFilename, isValidDownloadUrl } = await import("./_core/ops/modelOps");
+    expect(isValidGitUrl("https://github.com/ltdrdata/ComfyUI-Manager.git")).toBe(true);
+    expect(isValidGitUrl("https://github.com/cubiq/ComfyUI_IPAdapter_plus")).toBe(true);
+    expect(isValidModelFilename("flux1-dev.safetensors")).toBe(true);
+    expect(isValidModelFilename("model.gguf")).toBe(true);
+    expect(isValidDownloadUrl("https://huggingface.co/x/resolve/main/m.safetensors")).toBe(true);
+  });
+
+  it("rejects shell-injection / scheme / extension violations", async () => {
+    const { isValidGitUrl, isValidModelFilename, isValidDownloadUrl } = await import("./_core/ops/modelOps");
+    expect(isValidGitUrl("https://x.com/r.git; rm -rf /")).toBe(false);
+    expect(isValidGitUrl("git@github.com:x/y.git")).toBe(false); // ssh scheme not allowed
+    expect(isValidGitUrl("https://x.com/$(whoami)")).toBe(false);
+    expect(isValidModelFilename("a.safetensors; rm -rf /")).toBe(false);
+    expect(isValidModelFilename("../../etc/passwd")).toBe(false);
+    expect(isValidModelFilename("notamodel.txt")).toBe(false);
+    expect(isValidDownloadUrl("http://x.com/m && reboot")).toBe(false);
+    expect(isValidDownloadUrl("file:///etc/passwd")).toBe(false);
+  });
+});
+
 describe("sshCrypto round-trip", () => {
   beforeAll(() => { process.env.SSH_KEY_SECRET = "test-ssh-secret-12345"; });
 
