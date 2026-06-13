@@ -132,6 +132,15 @@ describe("opsPresets fillPreset (param injection guard)", () => {
     expect(validateParamValue("url", "https://x.com/m && reboot")).toBe(false);
   });
 
+  it("every popular custom node has an install-valid git URL", async () => {
+    const { POPULAR_COMFY_NODES } = await import("../shared/opsPresets");
+    const { isValidGitUrl } = await import("./_core/ops/modelOps");
+    expect(POPULAR_COMFY_NODES.length).toBeGreaterThan(10);
+    for (const n of POPULAR_COMFY_NODES) {
+      expect(isValidGitUrl(n.gitUrl), `${n.name}: ${n.gitUrl}`).toBe(true);
+    }
+  });
+
   it("catalog integrity: every {{placeholder}} has a matching param", async () => {
     const { OPS_PRESETS } = await import("../shared/opsPresets");
     for (const p of OPS_PRESETS) {

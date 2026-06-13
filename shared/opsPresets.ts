@@ -41,6 +41,27 @@ export const OPS_PRESET_CATEGORIES: OpsPresetCategory[] = [
   { id: "models", label: "模型/文件", icon: "📦" },
 ];
 
+// 常用自定义节点清单：让用户在「模型/节点」页一键填入 git 地址安装，无需知道仓库
+// 地址。仅收录广泛使用、活跃维护的插件。
+export interface PopularNode { name: string; desc: string; gitUrl: string; }
+export const POPULAR_COMFY_NODES: PopularNode[] = [
+  { name: "ComfyUI-Manager", desc: "节点/模型管理器（必装，图形化装插件）", gitUrl: "https://github.com/ltdrdata/ComfyUI-Manager" },
+  { name: "ComfyUI_IPAdapter_plus", desc: "IPAdapter 人脸/风格参考", gitUrl: "https://github.com/cubiq/ComfyUI_IPAdapter_plus" },
+  { name: "ComfyUI-VideoHelperSuite", desc: "视频合成/导出（VHS 节点）", gitUrl: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite" },
+  { name: "ComfyUI-AnimateDiff-Evolved", desc: "AnimateDiff 视频生成", gitUrl: "https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved" },
+  { name: "ComfyUI-Advanced-ControlNet", desc: "进阶 ControlNet 控制", gitUrl: "https://github.com/Kosinkadink/ComfyUI-Advanced-ControlNet" },
+  { name: "comfyui_controlnet_aux", desc: "ControlNet 预处理器（姿态/深度/线稿）", gitUrl: "https://github.com/Fannovel16/comfyui_controlnet_aux" },
+  { name: "ComfyUI-Impact-Pack", desc: "人脸修复/细节增强/检测", gitUrl: "https://github.com/ltdrdata/ComfyUI-Impact-Pack" },
+  { name: "ComfyUI-Custom-Scripts", desc: "实用增强（预览/自动补全等）", gitUrl: "https://github.com/pythongosssss/ComfyUI-Custom-Scripts" },
+  { name: "ComfyUI-GGUF", desc: "GGUF 量化模型加载（省显存）", gitUrl: "https://github.com/city96/ComfyUI-GGUF" },
+  { name: "ComfyUI-WanVideoWrapper", desc: "Wan 视频模型封装", gitUrl: "https://github.com/kijai/ComfyUI-WanVideoWrapper" },
+  { name: "ComfyUI-KJNodes", desc: "KJ 工具节点合集", gitUrl: "https://github.com/kijai/ComfyUI-KJNodes" },
+  { name: "rgthree-comfy", desc: "工作流增强（组节点/连线优化）", gitUrl: "https://github.com/rgthree/rgthree-comfy" },
+  { name: "was-node-suite-comfyui", desc: "WAS 超全工具节点合集", gitUrl: "https://github.com/WASasquatch/was-node-suite-comfyui" },
+  { name: "ComfyUI-Frame-Interpolation", desc: "补帧（提升视频帧率）", gitUrl: "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation" },
+  { name: "ComfyUI_essentials", desc: "常用基础节点补全", gitUrl: "https://github.com/cubiq/ComfyUI_essentials" },
+];
+
 // 常用参数定义（复用）
 const P_COMFY: OpsPresetParam = { key: "comfyPath", label: "ComfyUI 路径", type: "path", placeholder: "/opt/ComfyUI", default: "/opt/ComfyUI" };
 const P_CONTAINER: OpsPresetParam = { key: "container", label: "容器名", type: "container", placeholder: "comfyui" };

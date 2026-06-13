@@ -11,7 +11,7 @@ import {
   Package, Download, Stethoscope, Sparkles, FileCode, Save, BookOpen, ShieldAlert as ShieldAlertIcon,
 } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "@/components/canvas/LLMModelPicker";
-import { OPS_PRESETS, OPS_PRESET_CATEGORIES, fillPreset, validateParamValue, type OpsPreset } from "../../../../shared/opsPresets";
+import { OPS_PRESETS, OPS_PRESET_CATEGORIES, fillPreset, validateParamValue, POPULAR_COMFY_NODES, type OpsPreset } from "../../../../shared/opsPresets";
 
 // ComfyUI 运维中心（P0）：服务器注册(SSH凭据) + 只读资源仪表盘 + 交互式终端 +
 // 快捷命令执行。变更类操作 admin-only（后端 adminProcedure 强制）；危险命令服务端
@@ -398,8 +398,21 @@ function ModelsPanel() {
                 {nodes.data.map((n) => <span key={n.name} style={{ fontSize: 11.5, padding: "3px 8px", borderRadius: 6, background: "var(--c-input)", color: "var(--c-t3)" }}>{n.isGit ? "📦" : "📁"} {n.name}</span>)}
               </div>
             )}
+            {/* 常用节点一键填入（无需知道仓库地址）*/}
+            <div style={{ fontSize: 11.5, color: "var(--c-t4)" }}>常用节点（点击填入地址）：</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {POPULAR_COMFY_NODES.map((n) => (
+                <button key={n.name} title={`${n.desc}\n${n.gitUrl}`} onClick={() => setGitUrl(n.gitUrl)}
+                  style={{ fontSize: 11.5, padding: "4px 9px", borderRadius: 7, cursor: "pointer",
+                    background: gitUrl === n.gitUrl ? "oklch(0.68 0.22 285 / 0.18)" : "var(--c-input)",
+                    border: `1px solid ${gitUrl === n.gitUrl ? "oklch(0.68 0.22 285 / 0.45)" : "var(--c-bd2)"}`,
+                    color: gitUrl === n.gitUrl ? "oklch(0.82 0.14 285)" : "var(--c-t2)" }}>
+                  {n.name.replace(/^ComfyUI[-_]?/i, "") || n.name}
+                </button>
+              ))}
+            </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <input style={input} placeholder="https://github.com/作者/插件仓库  (git clone 安装)" value={gitUrl} onChange={(e) => setGitUrl(e.target.value)} />
+              <input style={input} placeholder="或粘贴 https://github.com/作者/插件仓库  (git clone 安装)" value={gitUrl} onChange={(e) => setGitUrl(e.target.value)} />
               <button style={{ ...btnPrimary, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }} disabled={installNode.isPending || !gitUrl.trim()}
                 onClick={() => serverId != null && installNode.mutate({ serverId, gitUrl: gitUrl.trim() })}>
                 {installNode.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} 安装节点
