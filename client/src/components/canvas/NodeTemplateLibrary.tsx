@@ -34,9 +34,14 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
     (t: ComfyNodeTemplate) => !!me && (t.userId === me.id || me.role === "admin"),
     [me],
   );
+  const isMine = useCallback(
+    (t: ComfyNodeTemplate) => !!me && t.userId === me.id,
+    [me],
+  );
 
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryId>("all");
+  const [mineOnly, setMineOnly] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [editNote, setEditNote] = useState("");
@@ -110,22 +115,26 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
     );
   }, [createMut, utils]);
 
+  const mineCount = useMemo(() => items.filter(isMine).length, [items, isMine]);
+
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: items.length };
-    for (const t of items) c[t.nodeType] = (c[t.nodeType] ?? 0) + 1;
+    const base = mineOnly ? items.filter(isMine) : items;
+    const c: Record<string, number> = { all: base.length };
+    for (const t of base) c[t.nodeType] = (c[t.nodeType] ?? 0) + 1;
     return c;
-  }, [items]);
+  }, [items, mineOnly, isMine]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((t) => {
+      if (mineOnly && !isMine(t)) return false;
       if (category !== "all" && t.nodeType !== category) return false;
       if (!q) return true;
       const hay = [t.label, t.note ?? "", t.creatorName ?? "", getNodeConfig(t.nodeType).label, describeComfyTemplate(t.nodeType, t.payload)]
         .join(" ").toLowerCase();
       return hay.includes(q);
     });
-  }, [items, category, query]);
+  }, [items, category, query, mineOnly, isMine]);
 
   return (
     <div
@@ -226,6 +235,25 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
               </button>
             );
           })}
+
+          {/* Mine-only filter */}
+          {mineCount > 0 && (
+            <button
+              onClick={() => setMineOnly((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap ml-auto flex-shrink-0"
+              style={{
+                background: mineOnly ? "oklch(0.62 0.18 265 / 0.18)" : "transparent",
+                border: mineOnly ? "1px solid oklch(0.62 0.18 265 / 0.40)" : "1px solid var(--c-bd2)",
+                color: mineOnly ? "oklch(0.62 0.18 265)" : "var(--c-t3)",
+              }}
+              title="只显示我创建的模板"
+            >
+              <User className="w-3.5 h-3.5" /> 只看我的
+              <span className="text-[9px] px-1 py-0.5 rounded-full font-semibold" style={{ background: mineOnly ? "oklch(0.62 0.18 265 / 0.25)" : "var(--c-bd1)", color: mineOnly ? "oklch(0.62 0.18 265)" : "var(--c-t4)" }}>
+                {mineCount}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Grid (scrollable) */}
