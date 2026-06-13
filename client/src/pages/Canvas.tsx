@@ -472,6 +472,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showCollaboratorPanel, setShowCollaboratorPanel] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [nodePickerSearch, setNodePickerSearch] = useState("");
+  // 最近添加的节点类型（置顶快速访问），localStorage 持久化、跨会话保留。
+  const [recentNodeTypes, setRecentNodeTypes] = usePersistentState<string[]>(
+    "ui:nodepicker:recent:v1", [],
+    { validate: (v) => (Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null), crossTab: false },
+  );
   useEffect(() => { if (!showNodePicker) setNodePickerSearch(""); }, [showNodePicker]); // fresh search each open
   const [showPresentation, setShowPresentation] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -1238,11 +1243,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
     try {
       const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
       emitCollabEvent("node:add", newNode);
+      setRecentNodeTypes((prev) => [type, ...prev.filter((t) => t !== type)].slice(0, 8));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "添加节点失败");
     }
     setShowNodePicker(false);
-  }, [addNode, reactFlow, emitCollabEvent]);
+  }, [addNode, reactFlow, emitCollabEvent, setRecentNodeTypes]);
 
   // 一键：在画布中心新建 ComfyUI 自定义节点，并自动打开「导入向导」（_openWizard 瞬态标志）。
   const addComfyWorkflowWithWizard = useCallback(() => {
@@ -2303,7 +2309,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   </button>
                 );
                 if (list.length === 0 && !showWizardTile) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
-                return <div className="grid grid-cols-4 gap-1.5">{showWizardTile && wizardTile}{list.map(renderTile)}</div>;
+                // 无搜索时，把最近添加过的类型置顶为「最近使用」快速区。
+                const recentConfigs = !q
+                  ? recentNodeTypes.map((t) => NODE_TYPE_LIST.find((c) => c.type === t)).filter((c): c is NodeConfig => !!c && c.comingSoon !== true).slice(0, 8)
+                  : [];
+                return (
+                  <>
+                    {recentConfigs.length > 0 && (
+                      <div className="mb-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 px-0.5" style={{ color: "var(--c-t4)" }}>最近使用</p>
+                        <div className="grid grid-cols-4 gap-1.5">{recentConfigs.map(renderTile)}</div>
+                        <div className="mt-2.5 mb-0.5" style={{ height: 1, background: "var(--c-bd1)" }} />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-4 gap-1.5">{showWizardTile && wizardTile}{list.map(renderTile)}</div>
+                  </>
+                );
               })()}
             </div>
           </div>
