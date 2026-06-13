@@ -1471,7 +1471,25 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
-      if (e.key === "Escape") { setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); }
+      if (e.key === "Escape") {
+        setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); setShowShortcuts(false);
+        // 取消节点选中（与快捷键面板「Esc 取消选中」对齐）。用 reactFlow.setNodes 才能让
+        // ReactFlow 内部选中态正确同步（直接改 store 的 node.selected 不取消选中）。
+        if (!isEditing) reactFlow.setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)));
+      }
+
+      // Cmd+A / Ctrl+A — 全选节点（仅画布，不在输入框时）
+      if (!isEditing && (e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        const n = useCanvasStore.getState().nodes.length;
+        if (n > 0) { reactFlow.setNodes((nds) => nds.map((x) => ({ ...x, selected: true }))); toast.success(`已全选 ${n} 个节点`, { duration: 1000 }); }
+      }
+
+      // ? — 开关快捷键速查面板（Shift+/ 产生 "?"）
+      if (!isEditing && e.key === "?") {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+      }
 
       // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -1576,7 +1594,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveCanvas, undo, redo, runWorkflow, nodes, handleRunRequest]);
+  }, [saveCanvas, undo, redo, runWorkflow, nodes, handleRunRequest, reactFlow]);
 
   const collaboratorList = Array.from(collaborators.values());
 
@@ -2408,7 +2426,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             fitViewOptions={{ padding: 0.2 }}
             minZoom={0.05}
             maxZoom={6}
-            deleteKeyCode="Delete"
+            deleteKeyCode={["Delete", "Backspace"]}
             multiSelectionKeyCode="Shift"
             proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={{ type: "custom", animated: false }}
