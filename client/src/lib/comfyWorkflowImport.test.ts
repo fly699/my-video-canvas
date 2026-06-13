@@ -1,5 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { detectWorkflowFormat, parsePngTextChunks, extractComfyWorkflowsFromPng } from "./comfyWorkflowImport";
+import { detectWorkflowFormat, parsePngTextChunks, extractComfyWorkflowsFromPng, nameSimilarity, suggestBestMatch } from "./comfyWorkflowImport";
+
+describe("nameSimilarity / suggestBestMatch", () => {
+  it("matches across path prefix / extension / case differences", () => {
+    const opts = ["sd_xl_base_1.0.safetensors", "sd_xl_refiner_1.0.safetensors", "v1-5-pruned.ckpt"];
+    expect(suggestBestMatch("SDXL/sd_xl_base_1.0.safetensors", opts)?.value).toBe("sd_xl_base_1.0.safetensors");
+    expect(suggestBestMatch("sd_xl_base_1.0", opts)?.value).toBe("sd_xl_base_1.0.safetensors");
+  });
+  it("picks the closer of two similar options", () => {
+    const opts = ["dreamshaper_8.safetensors", "dreamshaperXL_v21.safetensors"];
+    expect(suggestBestMatch("dreamshaper_8", opts)?.value).toBe("dreamshaper_8.safetensors");
+  });
+  it("returns null when nothing is close enough", () => {
+    expect(suggestBestMatch("totally_unrelated_xyz", ["abc.safetensors", "def.ckpt"])).toBeNull();
+  });
+  it("similarity is 1 for identical normalized names, 0 for empty", () => {
+    expect(nameSimilarity("a/b/Model.SAFETENSORS", "model.safetensors")).toBe(1);
+    expect(nameSimilarity("", "x")).toBe(0);
+  });
+});
 
 describe("detectWorkflowFormat", () => {
   it("detects API (prompt) format", () => {

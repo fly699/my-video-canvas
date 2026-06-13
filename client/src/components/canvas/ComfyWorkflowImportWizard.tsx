@@ -3,10 +3,10 @@ import { createPortal } from "react-dom";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
-  X, Loader2, Upload, ClipboardPaste, ServerCog, ShieldCheck, ShieldAlert,
-  CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft, FileJson, Wand2, PackageX,
+  X, Loader2, Upload, ServerCog, ShieldCheck, ShieldAlert,
+  CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft, FileJson, Wand2, PackageX, Sparkles, Copy,
 } from "lucide-react";
-import { detectWorkflowFormat, extractComfyWorkflowsFromPng } from "@/lib/comfyWorkflowImport";
+import { detectWorkflowFormat, extractComfyWorkflowsFromPng, suggestBestMatch } from "@/lib/comfyWorkflowImport";
 import { useComfyServersStore } from "@/hooks/useComfyServersStore";
 
 // ── ComfyUI 工作流「专业导入向导」──────────────────────────────────────────────
@@ -76,8 +76,16 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
   const [rawText, setRawText] = useState("");      // 用户粘贴/文件里的原始 JSON 文本
   const [parsed, setParsed] = useState<unknown>(null);
   const fmt = useMemo(() => (parsed ? detectWorkflowFormat(parsed) : "unknown"), [parsed]);
+  // 节点数预览：API 格式 = 顶层键数；UI 格式 = nodes 数组长度。
+  const nodeCount = useMemo(() => {
+    if (!parsed || typeof parsed !== "object") return 0;
+    const o = parsed as Record<string, unknown>;
+    if (Array.isArray(o.nodes)) return o.nodes.length;
+    return Object.keys(o).length;
+  }, [parsed]);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const acceptParsed = (obj: unknown, text: string) => {
     const f = detectWorkflowFormat(obj);
@@ -192,6 +200,25 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
     } finally { setPreparing(false); }
   }, [apiJson, remaps, serverUrl, validateMut, applyRemaps]);
 
+  // 🪄 智能匹配：把每个「服务器上不存在的取值」自动映射到最相近的真实选项。只填未手动
+  // 选过的项，已选的不动；命中即写入 remaps，用户再一眼复核即可，免去逐个手选。
+  const smartMatchAll = useCallback(() => {
+    if (!validation) return;
+    let hit = 0;
+    setRemaps((prev) => {
+      const next = { ...prev };
+      for (const iv of validation.invalidEnums) {
+        const key = `${iv.nodeId}|${iv.field}`;
+        if (next[key]) continue; // 已手动选过，不覆盖
+        const sug = suggestBestMatch(iv.current ?? "", iv.options ?? []);
+        if (sug) { next[key] = sug.value; hit++; }
+      }
+      return next;
+    });
+    if (hit > 0) toast.success(`已智能匹配 ${hit} 项，请复核后重新预检`);
+    else toast.message("没有找到足够相近的选项，请手动选择");
+  }, [validation]);
+
   // 完成：用修正后的 JSON 分析参数，交回节点。
   const finish = useCallback(async () => {
     setPreparing(true);
@@ -245,12 +272,16 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
         {/* 内容 */}
         <div className="nowheel" style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           {step === "load" && (
-            <>
+            <div className="flex flex-col gap-3"
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) void onFile(f); }}>
               <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6 }}>
-                粘贴 ComfyUI 的 <b>API 格式</b> 工作流（菜单 “Save (API Format)” / “Export (API)”），或拖入 .json / ComfyUI 生成的 .png。
+                粘贴 ComfyUI 的 <b>API 格式</b> 工作流（菜单 “Save (API Format)” / “Export (API)”），或<b>拖入 / 选择</b> .json / ComfyUI 生成的 .png。
                 UI 导出格式会在下一步自动转换。
               </p>
-              <textarea rows={9} value={rawText} onChange={(e) => onPaste(e.target.value)} placeholder='粘贴 Workflow JSON，例如 {"3":{"class_type":"KSampler",...}}' style={boxStyle} />
+              <textarea rows={9} value={rawText} onChange={(e) => onPaste(e.target.value)} placeholder='粘贴 Workflow JSON，或把 .json / .png 文件拖到此处'
+                style={{ ...boxStyle, borderColor: dragOver ? ACCENT : "var(--c-bd2)", background: dragOver ? A(0.07) : "var(--c-input)" }} />
               <div className="flex items-center gap-2">
                 <button onClick={() => fileRef.current?.click()} disabled={importing} className="nodrag flex items-center gap-1.5 px-3 py-2 rounded-lg"
                   style={{ fontSize: 11.5, fontWeight: 600, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
@@ -261,10 +292,11 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
                   <span className="flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600, color: fmt === "unknown" ? "oklch(0.7 0.18 60)" : ACCENT }}>
                     <FileJson className="w-3.5 h-3.5" />
                     {fmt === "api" ? "已识别：API 格式" : fmt === "ui" ? "已识别：UI 格式（将自动转换）" : "格式无法识别"}
+                    {fmt !== "unknown" && nodeCount > 0 && <span style={{ color: "var(--c-t4)", fontWeight: 500 }}>· {nodeCount} 个节点</span>}
                   </span>
                 )}
               </div>
-            </>
+            </div>
           )}
 
           {step === "server" && (
@@ -329,7 +361,13 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
                   {/* 缺失的自定义节点 */}
                   {validation.missingNodes.length > 0 && (
                     <Section icon={<PackageX className="w-3.5 h-3.5" style={{ color: "oklch(0.64 0.2 25)" }} />} title={`服务器未安装的节点（${validation.missingNodes.length}）`}>
-                      <p style={{ fontSize: 10, color: "var(--c-t4)", marginBottom: 6 }}>这些自定义节点需先在目标 ComfyUI 安装（ComfyUI-Manager → Install Missing Custom Nodes），向导内无法修复。</p>
+                      <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                        <p style={{ fontSize: 10, color: "var(--c-t4)", flex: 1 }}>需先在目标 ComfyUI 安装（ComfyUI-Manager → Install Missing Custom Nodes / 运维中心「模型/节点」）。</p>
+                        <button onClick={() => { void navigator.clipboard?.writeText(validation.missingNodes.join("\n")).then(() => toast.success("已复制节点名，可粘到 Manager 搜索")); }}
+                          className="nodrag flex items-center gap-1 px-2 py-1 rounded-md flex-shrink-0" style={{ fontSize: 10, fontWeight: 600, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>
+                          <Copy className="w-3 h-3" /> 复制全部
+                        </button>
+                      </div>
                       <div className="flex flex-wrap gap-1.5">
                         {validation.missingNodes.map((n) => (
                           <span key={n} style={{ fontSize: 10.5, fontFamily: "ui-monospace, monospace", padding: "2px 7px", borderRadius: 6, background: "oklch(0.62 0.2 25 / 0.12)", border: "1px solid oklch(0.62 0.2 25 / 0.3)", color: "oklch(0.66 0.2 25)" }}>{n}</span>
@@ -338,13 +376,21 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
                     </Section>
                   )}
 
-                  {/* 非法枚举/模型 → 下拉重映射 */}
+                  {/* 非法枚举/模型 → 下拉重映射（含 🪄 智能匹配） */}
                   {validation.invalidEnums.length > 0 && (
                     <Section icon={<AlertTriangle className="w-3.5 h-3.5" style={{ color: "oklch(0.7 0.18 60)" }} />} title={`服务器上不存在的取值（${validation.invalidEnums.length}）— 选一个替换`}>
+                      <div className="flex items-center justify-between" style={{ marginBottom: 7 }}>
+                        <p style={{ fontSize: 10, color: "var(--c-t4)" }}>多因路径前缀/大小写/版本后缀对不上。试试智能匹配，再复核。</p>
+                        <button onClick={smartMatchAll} className="nodrag flex items-center gap-1 px-2.5 py-1 rounded-md flex-shrink-0"
+                          style={{ fontSize: 10.5, fontWeight: 700, background: A(0.16), border: `1px solid ${A(0.45)}`, color: ACCENT, cursor: "pointer" }}>
+                          <Sparkles className="w-3 h-3" /> 智能匹配全部
+                        </button>
+                      </div>
                       <div className="flex flex-col gap-2">
                         {validation.invalidEnums.map((iv) => {
                           const key = `${iv.nodeId}|${iv.field}`;
                           const picked = remaps[key] ?? "";
+                          const sug = picked ? null : suggestBestMatch(iv.current ?? "", iv.options ?? []);
                           return (
                             <div key={key} className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: "var(--c-surface)", border: `1px solid ${picked ? "oklch(0.7 0.16 150 / 0.4)" : "var(--c-bd1)"}` }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
@@ -353,9 +399,15 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
                                   <span style={{ color: "var(--c-t4)" }}> #{iv.nodeId} · {iv.field}</span>
                                 </div>
                                 <div style={{ fontSize: 10, color: "oklch(0.66 0.2 25)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={iv.current}>当前：{iv.current}（不存在）</div>
+                                {sug && (
+                                  <button onClick={() => setRemaps((m) => ({ ...m, [key]: sug.value }))} className="nodrag flex items-center gap-1" title={`用推荐：${sug.value}`}
+                                    style={{ marginTop: 3, fontSize: 9.5, padding: "1px 6px", borderRadius: 5, background: A(0.12), border: `1px solid ${A(0.35)}`, color: ACCENT, cursor: "pointer", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    <Sparkles className="w-2.5 h-2.5 flex-shrink-0" /> 推荐 {sug.value}（{Math.round(sug.score * 100)}%）· 用此
+                                  </button>
+                                )}
                               </div>
                               <select value={picked} onChange={(e) => setRemaps((m) => ({ ...m, [key]: e.target.value }))}
-                                className="nodrag" style={{ flexShrink: 0, maxWidth: 230, fontSize: 11, padding: "5px 7px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}>
+                                className="nodrag" style={{ flexShrink: 0, maxWidth: 230, fontSize: 11, padding: "5px 7px", borderRadius: 7, background: "var(--c-input)", border: `1px solid ${picked ? "oklch(0.7 0.16 150 / 0.4)" : "var(--c-bd2)"}`, color: "var(--c-t1)", outline: "none" }}>
                                 <option value="">选择服务器上的选项…</option>
                                 {(iv.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
                               </select>
