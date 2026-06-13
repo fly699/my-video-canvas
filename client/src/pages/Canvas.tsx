@@ -2245,7 +2245,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <input
                 value={nodePickerSearch}
                 onChange={(e) => setNodePickerSearch(e.target.value)}
-                placeholder="搜索节点…"
+                onKeyDown={(e) => {
+                  // Enter 直接添加首个匹配节点（键盘流：输入即建，无需再点选）。
+                  if (e.key === "Enter") {
+                    const q = nodePickerSearch.trim().toLowerCase();
+                    if (!q) return;
+                    const first = NODE_TYPE_LIST.find((c) => c.comingSoon !== true && (c.label.toLowerCase().includes(q) || c.type.toLowerCase().includes(q)));
+                    if (first) { e.preventDefault(); addNodeAtCenter(first.type); }
+                  }
+                }}
+                placeholder="搜索节点…（回车添加首个匹配）"
                 autoFocus
                 className="nodrag w-full"
                 style={{ padding: "7px 10px", borderRadius: 9, fontSize: 12, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}
