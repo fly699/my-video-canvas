@@ -62,6 +62,23 @@ export const POPULAR_COMFY_NODES: PopularNode[] = [
   { name: "ComfyUI_essentials", desc: "常用基础节点补全", gitUrl: "https://github.com/cubiq/ComfyUI_essentials" },
 ];
 
+// 热门模型一键下载：点选后自动填好「目录 + 文件名 + 直链」，无需自己找地址。仅收录
+// 公开可直接下载（无需登录授权）、广泛使用的实用模型（VAE/放大/IPAdapter/ControlNet/
+// CLIP Vision）。大模型本体（SDXL/Flux 等）因体积大、授权各异，建议用户自行填链。
+export interface PopularModel { name: string; desc: string; dir: string; filename: string; url: string; }
+export const POPULAR_MODELS: PopularModel[] = [
+  { name: "SDXL VAE", desc: "SDXL 通用 VAE，修复发灰/偏色", dir: "vae", filename: "sdxl_vae.safetensors", url: "https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors" },
+  { name: "SD1.5 VAE (840000)", desc: "SD1.5 经典 VAE，提升清晰度", dir: "vae", filename: "vae-ft-mse-840000-ema-pruned.safetensors", url: "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors" },
+  { name: "RealESRGAN x4plus", desc: "通用 4 倍放大模型", dir: "upscale_models", filename: "RealESRGAN_x4plus.pth", url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth" },
+  { name: "RealESRGAN x4 动漫", desc: "动漫专用 4 倍放大", dir: "upscale_models", filename: "RealESRGAN_x4plus_anime_6B.pth", url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth" },
+  { name: "IPAdapter SDXL", desc: "SDXL 人脸/风格参考", dir: "ipadapter", filename: "ip-adapter_sdxl.safetensors", url: "https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter_sdxl.safetensors" },
+  { name: "IPAdapter Plus SD1.5", desc: "SD1.5 增强版风格参考", dir: "ipadapter", filename: "ip-adapter-plus_sd15.safetensors", url: "https://huggingface.co/h94/IP-Adapter/resolve/main/models/ip-adapter-plus_sd15.safetensors" },
+  { name: "CLIP Vision (ViT-H)", desc: "IPAdapter 配套图像编码器", dir: "clip_vision", filename: "CLIP-ViT-H-14.safetensors", url: "https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors" },
+  { name: "ControlNet OpenPose", desc: "SD1.5 姿态控制", dir: "controlnet", filename: "control_v11p_sd15_openpose.pth", url: "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11p_sd15_openpose.pth" },
+  { name: "ControlNet Depth", desc: "SD1.5 深度控制", dir: "controlnet", filename: "control_v11f1p_sd15_depth.pth", url: "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11f1p_sd15_depth.pth" },
+  { name: "ControlNet Canny", desc: "SD1.5 线稿/边缘控制", dir: "controlnet", filename: "control_v11p_sd15_canny.pth", url: "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11p_sd15_canny.pth" },
+];
+
 // 常用参数定义（复用）
 const P_COMFY: OpsPresetParam = { key: "comfyPath", label: "ComfyUI 路径", type: "path", placeholder: "/opt/ComfyUI", default: "/opt/ComfyUI" };
 const P_CONTAINER: OpsPresetParam = { key: "container", label: "容器名", type: "container", placeholder: "comfyui" };
@@ -148,6 +165,24 @@ export const OPS_PRESETS: OpsPreset[] = [
   { id: "mdl_usage", category: "models", title: "模型各目录占用", desc: "models 下各子目录占多少空间。", command: "du -sh {{comfyPath}}/models/* 2>/dev/null | sort -hr", params: [P_COMFY] },
   { id: "mdl_recent", category: "models", title: "最近新增的模型", desc: "找出 7 天内新增/修改的模型文件。", command: "find {{comfyPath}}/models -type f -mtime -7 -printf '%TY-%Tm-%Td %p\\n' 2>/dev/null | sort -r | head -30", params: [P_COMFY] },
   { id: "mdl_download", category: "models", title: "下载模型到 Checkpoints", desc: "把一个直链模型下载到 checkpoints 目录。", command: "wget -c -O {{comfyPath}}/models/checkpoints/{{filename}} {{url}}", params: [P_COMFY, { key: "filename", label: "保存文件名", type: "filename", placeholder: "model.safetensors" }, { key: "url", label: "下载直链", type: "url", placeholder: "https://…/model.safetensors" }] },
+
+  // ── 追加：更多实用配方 ──
+  { id: "comfy_status_systemd", category: "comfy", title: "ComfyUI 服务状态（systemd）", desc: "查看 systemd 服务是否在运行、最近重启情况。", command: "systemctl status {{service}} --no-pager -l | head -20", params: [P_SERVICE] },
+  { id: "comfy_node_count", category: "comfy", title: "已装自定义节点数量", desc: "统计 custom_nodes 下安装了多少个插件。", command: "ls -1 {{comfyPath}}/custom_nodes 2>/dev/null | grep -v __pycache__ | wc -l", params: [P_COMFY] },
+  { id: "comfy_compose_restart", category: "comfy", title: "docker compose 重启 ComfyUI", desc: "用 docker compose 重启整套 ComfyUI 编排。", command: "cd {{path}} && (docker compose restart || docker-compose restart)", params: [{ key: "path", label: "compose 文件目录", type: "path", placeholder: "/opt/comfyui" }] },
+  { id: "gpu_info", category: "gpu", title: "GPU 型号与驱动", desc: "查看显卡型号、驱动版本、CUDA 版本。", command: "nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv" },
+  { id: "gpu_pids_detail", category: "gpu", title: "占显存进程（含命令行）", desc: "列出占显存进程的 PID 与完整命令，定位是谁。", command: "for p in $(nvidia-smi --query-compute-apps=pid --format=csv,noheader); do echo \"PID $p:\"; ps -p $p -o cmd= 2>/dev/null; done" },
+  { id: "disk_inode", category: "disk", title: "查看 inode 使用", desc: "磁盘没满却报 No space？看是不是 inode 用尽。", command: "df -i" },
+  { id: "disk_journal_vacuum", category: "disk", title: "清理系统日志（journal）", desc: "清理超过指定天数的 systemd 日志，释放 /var 空间。", command: "sudo journalctl --vacuum-time={{days}}d", dangerous: true, params: [{ key: "days", label: "保留天数", type: "number", default: "7", placeholder: "7" }] },
+  { id: "sys_cpu", category: "system", title: "CPU 信息", desc: "查看 CPU 型号、核心数、架构。", command: "lscpu | head -25" },
+  { id: "sys_time", category: "system", title: "系统时间/时区", desc: "查看当前时间与时区设置（排查任务定时问题）。", command: "timedatectl 2>/dev/null || date" },
+  { id: "sys_users", category: "system", title: "当前登录用户", desc: "看现在有谁登录到这台机器。", command: "w 2>/dev/null || who" },
+  { id: "net_route", category: "network", title: "路由表", desc: "查看网络路由与默认网关。", command: "ip route 2>/dev/null || route -n" },
+  { id: "net_speed", category: "network", title: "下载测速", desc: "下载一个测试文件估算带宽（约 100MB）。", command: "curl -o /dev/null -w '速度 %{speed_download} B/s · 用时 %{time_total}s\\n' -s https://speed.cloudflare.com/__down?bytes=100000000" },
+  { id: "py_pip_upgrade", category: "python", title: "升级 pip 自身", desc: "把 pip 升级到最新版（解决装包报错）。", command: "python3 -m pip install --upgrade pip" },
+  { id: "py_reinstall", category: "python", title: "重装某个包", desc: "强制重装指定包（修复损坏的依赖）。", command: "pip install --force-reinstall {{package}}", params: [{ key: "package", label: "包名", type: "text", placeholder: "numpy" }] },
+  { id: "log_tail_file", category: "logs", title: "实时跟踪日志文件", desc: "实时滚动查看某个日志文件（在终端运行，Ctrl+C 退出）。", command: "tail -f {{path}}", interactive: true, params: [{ key: "path", label: "日志文件路径", type: "path", placeholder: "/var/log/syslog" }] },
+  { id: "mdl_checksum", category: "models", title: "校验模型文件 SHA256", desc: "计算模型文件哈希，核对下载是否完整。", command: "sha256sum {{path}}", params: [{ key: "path", label: "模型文件完整路径", type: "path", placeholder: "/opt/ComfyUI/models/checkpoints/x.safetensors" }] },
 ];
 
 // 参数值校验：按类型限制字符，阻断把 shell 元字符塞进命令。

@@ -141,6 +141,17 @@ describe("opsPresets fillPreset (param injection guard)", () => {
     }
   });
 
+  it("every popular model has install-valid url + filename + known dir", async () => {
+    const { POPULAR_MODELS } = await import("../shared/opsPresets");
+    const { isValidDownloadUrl, isValidModelFilename, MODEL_DIRS } = await import("./_core/ops/modelOps");
+    expect(POPULAR_MODELS.length).toBeGreaterThan(5);
+    for (const mdl of POPULAR_MODELS) {
+      expect(isValidDownloadUrl(mdl.url), `${mdl.name} url`).toBe(true);
+      expect(isValidModelFilename(mdl.filename), `${mdl.name} file`).toBe(true);
+      expect((MODEL_DIRS as readonly string[]).includes(mdl.dir), `${mdl.name} dir`).toBe(true);
+    }
+  });
+
   it("catalog integrity: every {{placeholder}} has a matching param", async () => {
     const { OPS_PRESETS } = await import("../shared/opsPresets");
     for (const p of OPS_PRESETS) {

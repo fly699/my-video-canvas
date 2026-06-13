@@ -11,7 +11,7 @@ import {
   Package, Download, Stethoscope, Sparkles, FileCode, Save, BookOpen, ShieldAlert as ShieldAlertIcon,
 } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "@/components/canvas/LLMModelPicker";
-import { OPS_PRESETS, OPS_PRESET_CATEGORIES, fillPreset, validateParamValue, POPULAR_COMFY_NODES, type OpsPreset } from "../../../../shared/opsPresets";
+import { OPS_PRESETS, OPS_PRESET_CATEGORIES, fillPreset, validateParamValue, POPULAR_COMFY_NODES, POPULAR_MODELS, type OpsPreset } from "../../../../shared/opsPresets";
 
 // ComfyUI 运维中心（P0）：服务器注册(SSH凭据) + 只读资源仪表盘 + 交互式终端 +
 // 快捷命令执行。变更类操作 admin-only（后端 adminProcedure 强制）；危险命令服务端
@@ -423,7 +423,20 @@ function ModelsPanel() {
           {/* 下载模型 */}
           <div style={{ ...card, display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ fontSize: 14, fontWeight: 700 }}>下载模型 / LoRA</div>
-            <input style={input} placeholder="模型直链 URL（https）" value={dlUrl} onChange={(e) => setDlUrl(e.target.value)} />
+            <div style={{ fontSize: 11.5, color: "var(--c-t4)" }}>热门模型（点击自动填好目录+文件名+地址）：</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {POPULAR_MODELS.map((mdl) => (
+                <button key={mdl.name} title={`${mdl.desc}\n→ models/${mdl.dir}/${mdl.filename}`}
+                  onClick={() => { setDlUrl(mdl.url); setDlDir(mdl.dir as typeof MODEL_DIRS_UI[number]); setDlName(mdl.filename); }}
+                  style={{ fontSize: 11.5, padding: "4px 9px", borderRadius: 7, cursor: "pointer",
+                    background: dlUrl === mdl.url ? "oklch(0.68 0.22 285 / 0.18)" : "var(--c-input)",
+                    border: `1px solid ${dlUrl === mdl.url ? "oklch(0.68 0.22 285 / 0.45)" : "var(--c-bd2)"}`,
+                    color: dlUrl === mdl.url ? "oklch(0.82 0.14 285)" : "var(--c-t2)" }}>
+                  {mdl.name}
+                </button>
+              ))}
+            </div>
+            <input style={input} placeholder="或粘贴模型直链 URL（https）" value={dlUrl} onChange={(e) => setDlUrl(e.target.value)} />
             <div style={{ display: "flex", gap: 8 }}>
               <select style={{ ...input, maxWidth: 200 }} value={dlDir} onChange={(e) => setDlDir(e.target.value as typeof MODEL_DIRS_UI[number])}>
                 {MODEL_DIRS_UI.map((d) => <option key={d} value={d}>models/{d}</option>)}
@@ -926,16 +939,15 @@ function DockerPanel() {
 }
 
 // ── 快捷命令执行 ──────────────────────────────────────────────────────────────
-const QUICK_CMDS: [string, string][] = [
-  ["nvidia-smi", "GPU 状态"], ["df -h", "磁盘占用"], ["free -m", "内存"],
-  ["docker ps", "容器列表"], ["uptime", "负载"], ["ls -la", "列目录"],
-];
+// 一键命令来自配方库里「无参数、非持续刷新」的安全配方，自动随配方库增长。
+const QUICK_PRESETS = OPS_PRESETS.filter((p) => !p.params?.length && !p.interactive);
 
 function ExecPanel() {
   const servers = trpc.comfyOps.servers.list.useQuery();
   const [serverId, setServerId] = useState<number | null>(null);
   const [cmd, setCmd] = useState("");
   const [out, setOut] = useState("");
+  const [qcat, setQcat] = useState<string>("");
   const classify = trpc.comfyOps.classify.useQuery({ command: cmd }, { enabled: cmd.trim().length > 0 });
   const exec = trpc.comfyOps.exec.useMutation();
 
@@ -952,16 +964,31 @@ function ExecPanel() {
   };
 
   const dangerous = classify.data?.dangerous;
+  const cats = OPS_PRESET_CATEGORIES.filter((c) => QUICK_PRESETS.some((p) => p.category === c.id));
+  const shown = QUICK_PRESETS.filter((p) => !qcat || p.category === qcat);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <select style={{ ...input, maxWidth: 280 }} value={serverId ?? ""} onChange={(e) => setServerId(e.target.value ? Number(e.target.value) : null)}>
-          <option value="">选择服务器…</option>
-          {servers.data?.filter((s) => s.enabled).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        {QUICK_CMDS.map(([c, lbl]) => <button key={c} style={btnGhost} onClick={() => setCmd(c)} title={c}>{lbl}</button>)}
+      <select style={{ ...input, maxWidth: 280 }} value={serverId ?? ""} onChange={(e) => setServerId(e.target.value ? Number(e.target.value) : null)}>
+        <option value="">选择服务器…</option>
+        {servers.data?.filter((s) => s.enabled).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+      {/* 一键命令：分类筛选 + 命令芯片（来自配方库无参配方）*/}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <button onClick={() => setQcat("")} style={{ ...btnGhost, fontSize: 11.5, background: !qcat ? "oklch(0.68 0.22 285 / 0.16)" : "var(--c-input)", color: !qcat ? "oklch(0.82 0.14 285)" : "var(--c-t2)" }}>全部</button>
+        {cats.map((c) => (
+          <button key={c.id} onClick={() => setQcat(c.id)} style={{ ...btnGhost, fontSize: 11.5, background: qcat === c.id ? "oklch(0.68 0.22 285 / 0.16)" : "var(--c-input)", color: qcat === c.id ? "oklch(0.82 0.14 285)" : "var(--c-t2)" }}>{c.icon} {c.label}</button>
+        ))}
       </div>
-      <textarea style={{ ...input, minHeight: 70, fontFamily: "monospace" }} value={cmd} onChange={(e) => setCmd(e.target.value)} placeholder="输入要执行的命令（支持多行）" />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {shown.map((p) => (
+          <button key={p.id} title={`${p.desc}\n${p.command}`} onClick={() => setCmd(p.command)}
+            style={{ fontSize: 11.5, padding: "4px 9px", borderRadius: 7, cursor: "pointer", background: "var(--c-input)",
+              border: `1px solid ${p.dangerous ? "oklch(0.6 0.2 25 / 0.4)" : "var(--c-bd2)"}`, color: p.dangerous ? "oklch(0.75 0.16 25)" : "var(--c-t2)" }}>
+            {p.dangerous ? "⚠ " : ""}{p.title}
+          </button>
+        ))}
+      </div>
+      <textarea style={{ ...input, minHeight: 70, fontFamily: "monospace" }} value={cmd} onChange={(e) => setCmd(e.target.value)} placeholder="点上方一键命令填入，或直接输入（支持多行）" />
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <button style={{ ...btnPrimary, background: dangerous ? "oklch(0.55 0.22 25 / 0.9)" : btnPrimary.background, borderColor: dangerous ? "oklch(0.6 0.22 25)" : undefined }}
           onClick={() => run(false)} disabled={exec.isPending || serverId == null || !cmd.trim()}>
