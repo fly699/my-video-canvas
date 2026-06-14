@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
-import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play, Filter, ChevronDown, ChevronUp } from "lucide-react";
+import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play, Filter, ChevronDown, ChevronUp, Search } from "lucide-react";
 import { ImageLightbox } from "./ImageLightbox";
 import { uploadAssetFile } from "@/lib/assetUpload";
 import { downloadMedia } from "@/lib/download";
@@ -29,6 +29,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   // 复选：空集合 = 全部。按类型 / 来源各自多选。
   const [typeFilter, setTypeFilter] = useState<Set<TypeFilter>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<Set<SourceFilter>>(new Set());
+  const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
@@ -48,10 +49,12 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
     refetchOnWindowFocus: true,
   });
 
-  // 应用复选过滤（空集合 = 全部）。
+  // 应用复选过滤（空集合 = 全部）+ 名称搜索（按素材名，忽略大小写）。
+  const nameQ = query.trim().toLowerCase();
   const filteredAssets = (assets ?? []).filter((a) =>
     (typeFilter.size === 0 || typeFilter.has(a.type as TypeFilter)) &&
-    (sourceFilter.size === 0 || sourceFilter.has((a.source ?? "") as SourceFilter))
+    (sourceFilter.size === 0 || sourceFilter.has((a.source ?? "") as SourceFilter)) &&
+    (!nameQ || (a.name ?? "").toLowerCase().includes(nameQ))
   );
 
   // Image URLs (in list order) for the click-to-zoom lightbox.
@@ -191,7 +194,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
         <div>
           <h3 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>素材库</h3>
           <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
-            {filteredAssets.length} 个素材{(typeFilter.size || sourceFilter.size) ? ` / 共 ${assets?.length ?? 0}` : ""}
+            {filteredAssets.length} 个素材{(typeFilter.size || sourceFilter.size || nameQ) ? ` / 共 ${assets?.length ?? 0}` : ""}
           </p>
         </div>
         <button
@@ -245,6 +248,23 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
 
       {/* ── Filters (collapsible — collapsed by default to save space) ── */}
       <div className="px-3 py-1.5 flex flex-col gap-1.5 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
+        {/* Name search (always visible) */}
+        <div className="flex items-center gap-1.5" style={{ padding: "3px 8px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
+          <Search className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--c-t4)" }} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onMouseDown={(e) => e.stopPropagation()}
+            placeholder="搜索素材名称"
+            className="flex-1 min-w-0"
+            style={{ fontSize: 11, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none" }}
+          />
+          {query && (
+            <button onClick={() => setQuery("")} style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 0, flexShrink: 0, display: "flex" }} title="清除">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
         {(() => {
           const chip = (active: boolean): React.CSSProperties => ({
             fontSize: 10, padding: "2px 8px", borderRadius: 999, cursor: "pointer",
@@ -311,8 +331,8 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
               <FileImage className="w-6 h-6" style={{ color: "var(--c-bd3)" }} />
             </div>
             <p className="text-xs text-center" style={{ color: "var(--c-t4)" }}>
-              {(typeFilter.size || sourceFilter.size) ? "没有符合筛选的素材" : "暂无素材"}<br />
-              <span style={{ color: "var(--c-bd3)", fontSize: 10 }}>{(typeFilter.size || sourceFilter.size) ? "试试调整筛选条件" : "上传后将在此显示"}</span>
+              {(typeFilter.size || sourceFilter.size || nameQ) ? "没有符合条件的素材" : "暂无素材"}<br />
+              <span style={{ color: "var(--c-bd3)", fontSize: 10 }}>{nameQ ? `无名称含「${query.trim()}」的素材` : (typeFilter.size || sourceFilter.size) ? "试试调整筛选条件" : "上传后将在此显示"}</span>
             </p>
           </div>
         ) : (
