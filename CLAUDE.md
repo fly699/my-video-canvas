@@ -174,6 +174,34 @@ cd /tmp && node my_test.js 2>&1
 
 ---
 
+## ffmpeg 导出滤镜真机验证方法（2026-06，强烈推荐！）
+
+**本机默认无 ffmpeg，但可直接装：`apt-get install -y ffmpeg`（实测装到 7:6.1.1）。** 凡是改动 `server/_core/videoComposer.ts` 的导出滤镜（fit/缩放/平移/Ken-Burns/blur/overlay 等），**务必装上 ffmpeg 用真机跑一遍，别再靠「字符串级单测 + 人工核对 ffmpeg 语义」赌**——曾因此漏掉真 bug（见下）。
+
+### 标准流程
+
+1. **取「真实代码生成」的滤镜串**（不要手敲近似串，手敲极易把全角逗号/括号写错）：用 tsx 直接 import 导出函数或 `buildFilterGraph`，打印出来。注意 import 路径要用**绝对路径**（`/home/user/my-video-canvas/server/_core/videoComposer.ts`），相对路径在 /tmp 下解析不到。
+   ```bash
+   cat > /tmp/gen.ts <<'EOF'
+   import { buildFilterGraph, type Segment } from "/home/user/my-video-canvas/server/_core/videoComposer.ts";
+   const g = buildFilterGraph([{isImage:true,hasAudio:false,trimIn:0,trimOut:1,speed:1,fit:"cover",transform:{scale:2,x:0.2}} as Segment], {width:1280,height:720,fps:30}).filterComplex;
+   console.log(/\[0:v\](.*?)\[v0\]/s.exec(g)?.[1] ?? g);  // 抽出单段滤镜
+   EOF
+   npx tsx /tmp/gen.ts
+   ```
+2. **合成可测量输入**（无需真实素材）：`-f lavfi -i "color=black:s=WxH:d=2:r=10"`，再用 `drawbox` 画一个已知位置/大小的白块或白条作标记。蓄意选「宽>画布且高<画布」的尺寸（如 1600×400 喂 1280×720 画布）可同时压到 fit 的裁切/补黑两支。
+3. **跑滤镜**：带 `;`/具名 label 的链（如 blur 的 split/overlay）必须用 `-filter_complex "[0:v]CHAIN[v0]" -map "[v0]"`；纯线性链用 `-vf` 即可。覆盖输出加 `-y`（否则残留 0 字节文件会报 `Error opening output file`，别误判成滤镜错）。先 grep 退出码与 `error|not found|invalid|fail|reinit`。
+4. **量化验证动画**：`signalstats,metadata=print:key=lavfi.signalstats.YAVG` 打印每帧平均亮度。白块随时间放大 → YAVG 升（验证 zoom）；裁左半/右半分别测 YAVG → 标记物水平移动（验证 pan）。理论值能精确对上（如 20px 方块在 400×400 上 YAVG≈16.5，2× 放大后≈18.2）。
+
+### 已踩中的关键坑（务必记住）
+
+1. **`crop` 滤镜在本版 ffmpeg(6.1.1) 没有 `eval` 选项！** 给 crop 加 `:eval=frame` 直接报 `Error applying option 'eval' to filter 'crop': Option not found`、导出退出码 8。**crop 的 `x/y` 本来就逐帧求值，不需要也不能加 eval。**（曾经的 Ken-Burns 导出 bug 正是误加了它。）
+2. **`scale` 滤镜的 `eval=frame` 支持时间变量 `t`**（也支持 `n`）——`scale=w='W*(z(t))':h=...:eval=frame` 能做逐帧缩放，**实测 t 确实生效**（别轻信「scale 不支持 t」的说法，那对本版不成立；以真机为准）。scale 默认 `eval=init` 只算一次，要动画必须显式 `eval=frame`。
+3. 表达式里的逗号用**单引号**包整段保护即可（如 `x='clip((iw-W)/2-(EXPR),0,iw-W)'`），与同文件 overlay 的 `'${xExpr}'`、fitChain 的 `pad=w='max(...)'` 一致；**不要再额外反斜杠转义**（双重转义反而出错）。
+4. scale 中间产生奇数维度通常无碍（下游 `crop`/`format=yuv420p` 修正到偶数），实测可过。
+
+---
+
 ## 第 13 轮更新说明（2026-05-23）
 
 **提交**：`cccdc2b` — `fix: add IP format validation and use fresh timestamp for whitelist cache TTL`
