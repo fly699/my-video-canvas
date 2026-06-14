@@ -177,6 +177,32 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
 
   const selectedAssets = (assets ?? []).filter((a) => selected.has(a.id));
 
+  // 全选/取消全选：作用于当前过滤后的可见素材。
+  const allFilteredSelected = filteredAssets.length > 0 && filteredAssets.every((a) => selected.has(a.id));
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) filteredAssets.forEach((a) => next.delete(a.id));
+      else filteredAssets.forEach((a) => next.add(a.id));
+      return next;
+    });
+  };
+
+  // 批量下载：逐个触发下载（间隔以免浏览器拦截连续下载）。
+  const [batchDownloading, setBatchDownloading] = useState(false);
+  const downloadSelected = async () => {
+    if (batchDownloading) return;
+    setBatchDownloading(true);
+    try {
+      for (const a of selectedAssets) {
+        await downloadMedia(a.url, a.name, a.type === "video" ? "video" : "image", a.id);
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    } finally {
+      setBatchDownloading(false);
+    }
+  };
+
   const getIcon = (type: string) => {
     if (type === "video") return FileVideo;
     if (type === "audio") return FileAudio;
@@ -204,8 +230,17 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
       >
         <div>
           <h3 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>素材库</h3>
-          <p className="text-[10px] mt-0.5" style={{ color: "var(--c-t4)" }}>
-            {filteredAssets.length} 个素材{(typeFilter.size || sourceFilter.size || nameQ) ? ` / 共 ${assets?.length ?? 0}` : ""}
+          <p className="text-[10px] mt-0.5 flex items-center gap-2" style={{ color: "var(--c-t4)" }}>
+            <span>{filteredAssets.length} 个素材{(typeFilter.size || sourceFilter.size || nameQ) ? ` / 共 ${assets?.length ?? 0}` : ""}</span>
+            {filteredAssets.length > 0 && (
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={toggleSelectAll}
+                style={{ fontSize: 10, background: "transparent", border: "none", padding: 0, cursor: "pointer", color: "var(--c-accent, oklch(0.68 0.18 285))" }}
+              >
+                {allFilteredSelected ? "取消全选" : "全选"}
+              </button>
+            )}
           </p>
         </div>
         <button
@@ -447,6 +482,16 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             style={{ border: "1px solid oklch(0.72 0.18 155 / 0.4)", background: "oklch(0.72 0.18 155 / 0.12)", color: "oklch(0.72 0.18 155)", cursor: "pointer" }}
           >
             添加到画布
+          </button>
+          <button
+            onClick={() => { void downloadSelected(); }}
+            disabled={batchDownloading}
+            title="逐个下载选中素材"
+            className="text-[11px] px-2 py-1 rounded-md transition-all flex items-center gap-1"
+            style={{ border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: batchDownloading ? "default" : "pointer" }}
+          >
+            {batchDownloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+            下载
           </button>
           <button
             onClick={() => {
