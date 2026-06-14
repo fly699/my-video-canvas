@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
@@ -23,6 +23,8 @@ export function Timeline() {
   const playhead = useEditorStore((s) => s.playhead);
   const selectedClipIds = useEditorStore((s) => s.selectedClipIds);
   const duration = useEditorStore((s) => s.duration());
+  const inPoint = useEditorStore((s) => s.inPoint);
+  const outPoint = useEditorStore((s) => s.outPoint);
   const [band, setBand] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -269,6 +271,12 @@ export function Timeline() {
         <div style={{ flex: 1 }} />
         <button onClick={() => setSnapOn((v) => !v)} title={snapOn ? "吸附：开（拖动时对齐片段/播放头）" : "吸附：关"} style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, color: snapOn ? EC.accent : EC.t3, borderColor: snapOn ? EC.accent : EC.border, display: "inline-flex", alignItems: "center" }}><Magnet size={13} /><span style={{ fontSize: 11 }}>吸附</span></button>
         <button onClick={() => useEditorStore.getState().splitAllAtPlayhead(playhead)} title="全轨分割：在播放头切开所有轨道的片段 (Shift+S)" style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center" }}><Scissors size={13} /><span style={{ fontSize: 11 }}>全轨分割</span></button>
+        {/* 导出区段：在播放头设入/出点，仅导出选定范围 */}
+        <button onClick={() => useEditorStore.getState().setInPoint(playhead)} title="设入点（导出区段起点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: inPoint != null ? EC.accent : EC.t3, borderColor: inPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>入点</span></button>
+        <button onClick={() => useEditorStore.getState().setOutPoint(playhead)} title="设出点（导出区段终点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: outPoint != null ? EC.accent : EC.t3, borderColor: outPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>出点</span></button>
+        {(inPoint != null || outPoint != null) && (
+          <button onClick={() => { const st = useEditorStore.getState(); st.setInPoint(null); st.setOutPoint(null); }} title="清除导出区段" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: "oklch(0.65 0.2 25)" }}><span style={{ fontSize: 11 }}>清除区段</span></button>
+        )}
         <button onClick={() => setPxPerSec(pxPerSec / 1.4)} title="缩小" style={zoomBtn}><ZoomOut size={14} /></button>
         <button onClick={() => setPxPerSec(pxPerSec * 1.4)} title="放大" style={zoomBtn}><ZoomIn size={14} /></button>
         <button onClick={fitToWindow} title="适应窗口（缩放至完整显示时间轴）" style={zoomBtn}><Maximize2 size={13} /></button>
@@ -344,6 +352,13 @@ export function Timeline() {
                         display: "flex", alignItems: "center",
                       }}>
                       <ClipThumb kind={c.kind} assetUrl={c.assetUrl} trimIn={c.trimIn} color={col} />
+                      {/* 转场标识：该片段设了入场转场时，左缘显示一个交叠图标 */}
+                      {c.transitionIn && c.transitionIn.type !== "none" && (
+                        <div title={`入场转场：${c.transitionIn.type} ${c.transitionIn.duration}s（与前一片段交叉）`}
+                          style={{ position: "absolute", left: -1, top: "50%", transform: "translateY(-50%)", zIndex: 3, width: 14, height: 14, borderRadius: "50%", background: EC.surface, border: `1px solid ${EC.accent}`, color: EC.accent, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                          <Blend size={9} />
+                        </div>
+                      )}
                       <span style={{ position: "relative", fontSize: 10, color: EC.t1, padding: "0 10px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none" }}>
                         {c.kind === "text" ? (c.text?.content ?? "文字") : (c.assetUrl?.split("/").pop() ?? c.kind)}
                       </span>
@@ -371,6 +386,15 @@ export function Timeline() {
                 })}
               </div>
             ))}
+
+            {/* export range — shaded band + in/out marker lines */}
+            {(inPoint != null || outPoint != null) && (() => {
+              const a = inPoint ?? 0;
+              const b = outPoint ?? Math.max(duration, a);
+              return (
+                <div style={{ position: "absolute", top: 0, bottom: 0, left: a * pxPerSec, width: Math.max(0, (b - a) * pxPerSec), background: "oklch(0.68 0.22 285 / 0.1)", borderLeft: inPoint != null ? `2px solid ${EC.accent}` : "none", borderRight: outPoint != null ? `2px solid ${EC.accent}` : "none", pointerEvents: "none", zIndex: 4 }} />
+              );
+            })()}
 
             {/* snap guide */}
             {snapX != null && (

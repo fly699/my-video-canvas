@@ -107,9 +107,16 @@ export interface EditorStore {
   setPlaying: (b: boolean) => void;
   setPxPerSec: (n: number) => void;
 
+  // export range (in/out points) — transient UI state, not part of the doc/history.
+  inPoint: number | null;
+  outPoint: number | null;
+  setInPoint: (t: number | null) => void;
+  setOutPoint: (t: number | null) => void;
+
   duration: () => number;
   selectedClip: () => Clip | null;
 }
+
 
 /** Build a state patch that applies `nextDoc` and records the prior doc on the
  *  undo stack (coalescing rapid bursts). `s.doc` must be non-null. */
@@ -129,11 +136,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   pxPerSec: 60,
   dirty: false,
   clipboard: null,
+  inPoint: null,
+  outPoint: null,
   past: [],
   future: [],
   _lastMutateTs: 0,
 
-  load: (doc) => set({ doc, dirty: false, selectedClipId: null, selectedClipIds: [], playhead: 0, playing: false, past: [], future: [], _lastMutateTs: 0 }),
+  load: (doc) => set({ doc, dirty: false, selectedClipId: null, selectedClipIds: [], playhead: 0, playing: false, past: [], future: [], _lastMutateTs: 0, inPoint: null, outPoint: null }),
   markClean: () => set({ dirty: false }),
 
   undo: () => set((s) => {
@@ -571,6 +580,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setPlayhead: (t) => set({ playhead: Math.max(0, t) }),
   setPlaying: (b) => set({ playing: b }),
   setPxPerSec: (n) => set({ pxPerSec: Math.min(400, Math.max(8, n)) }),
+  setInPoint: (t) => set((s) => ({ inPoint: t == null ? null : Math.max(0, t), outPoint: t != null && s.outPoint != null && s.outPoint <= t ? null : s.outPoint })),
+  setOutPoint: (t) => set((s) => ({ outPoint: t == null ? null : Math.max(0, t), inPoint: t != null && s.inPoint != null && s.inPoint >= t ? null : s.inPoint })),
 
   duration: () => { const d = get().doc; return d ? editorDocDuration(d) : 0; },
   selectedClip: () => {

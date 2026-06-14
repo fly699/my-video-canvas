@@ -182,6 +182,8 @@ function EditorWorkspace({ id }: { id: number }) {
   const [showShortcuts, setShowShortcuts] = useState(false);
   // Resizable panel sizes (persisted across sessions).
   const numVal = (min: number, max: number) => (p: unknown) => (typeof p === "number" && isFinite(p) ? clampSize(p, min, max) : null);
+  const inPoint = useEditorStore((s) => s.inPoint);
+  const outPoint = useEditorStore((s) => s.outPoint);
   const [leftW, setLeftW] = usePersistentState<number>("ui:editor:leftW:v1", 252, { validate: numVal(180, 480) });
   const [rightW, setRightW] = usePersistentState<number>("ui:editor:rightW:v1", 250, { validate: numVal(180, 520) });
   const [bottomH, setBottomH] = usePersistentState<number>("ui:editor:bottomH:v1", 230, { validate: numVal(120, 560) });
@@ -215,7 +217,14 @@ function EditorWorkspace({ id }: { id: number }) {
       height = even(targetH);
       width = even((d.width * targetH) / d.height);
     }
-    exportMut.mutate({ id, format: exportFormat, quality: exportQuality, width, height });
+    // export range (in/out points) — only render the selected span when set
+    const { inPoint, outPoint } = useEditorStore.getState();
+    const hasRange = inPoint != null || outPoint != null;
+    exportMut.mutate({
+      id, format: exportFormat, quality: exportQuality, width, height,
+      rangeStart: hasRange ? (inPoint ?? 0) : undefined,
+      rangeEnd: hasRange ? (outPoint ?? undefined) : undefined,
+    });
   };
 
   // Load the fetched doc into the editor store once.
@@ -370,6 +379,11 @@ function EditorWorkspace({ id }: { id: number }) {
           <button onClick={() => downloadMedia(exportUrl, `${displayName}.${exportFormat === "hevc" ? "mp4" : exportFormat}`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
             <Download size={15} /> 下载成片
           </button>
+        )}
+        {(inPoint != null || outPoint != null) && (
+          <span title="已设导出区段，仅导出选定范围（在时间轴用「入点/出点」设置）" style={{ fontSize: 11, color: ACCENT, border: `1px solid ${ACCENT}`, borderRadius: 6, padding: "3px 7px", whiteSpace: "nowrap" }}>
+            仅导出选区
+          </span>
         )}
         {/* Export settings (format / quality / resolution) */}
         <div style={{ position: "relative" }}>
