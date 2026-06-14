@@ -305,11 +305,15 @@ export function PreviewStage() {
             if (fullFrame) {
               // main full-frame clip — click to select; sizing via 画面适配
               const common = { onPointerDown: (e: React.PointerEvent) => { e.stopPropagation(); selectClip(clip.id); } };
-              const st: React.CSSProperties = { position: "absolute", inset: 0, objectFit: objFit, opacity: xfade, filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
+              // width/height:100% are REQUIRED — without them a replaced element
+              // (img/video) keeps its intrinsic size under inset:0, so object-fit
+              // (contain/cover/stretch) has nothing to fit into and the media sits
+              // un-centered at its native size.
+              const st: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: objFit, opacity: xfade, filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
               // 模糊填充：近似预览 = 模糊放大的同画面铺满作背景 + 原画完整居中（导出由后端为准）
               if (clip.fit === "blur") {
                 const bg: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(22px) brightness(0.85)", transform: "scale(1.12)", pointerEvents: "none" };
-                const fg: React.CSSProperties = { position: "absolute", inset: 0, objectFit: "contain", filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
+                const fg: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
                 return (
                   <div key={clip.id} style={{ position: "absolute", inset: 0, opacity: xfade }}>
                     {clip.kind === "image" ? (
