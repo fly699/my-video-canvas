@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput } from "./_core/videoComposer";
+import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentZoomPanChain, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput } from "./_core/videoComposer";
 import { emptyEditorDoc } from "@shared/editorTypes";
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
@@ -180,6 +180,45 @@ describe("segmentTransformChain (main-track zoom/pan export)", () => {
 
   it("rotation emits a frame-size-preserving rotate", () => {
     expect(segmentTransformChain({ rotation: 90 }, 1920, 1080)[0]).toBe("rotate=1.57080:ow=iw:oh=ih");
+  });
+});
+
+describe("segmentZoomPanChain (main-track Ken-Burns export)", () => {
+  it("no / single keyframe → falls back to the static transform chain", () => {
+    expect(segmentZoomPanChain({ scale: 2 }, undefined, 1920, 1080)).toEqual(segmentTransformChain({ scale: 2 }, 1920, 1080));
+    expect(segmentZoomPanChain({ scale: 2 }, [{ t: 0, scale: 2, x: 0, y: 0 }], 1920, 1080)).toEqual(segmentTransformChain({ scale: 2 }, 1920, 1080));
+  });
+
+  it("animated zoom/pan → per-frame scale + clip()-clamped crop expressions", () => {
+    const out = segmentZoomPanChain(undefined, [
+      { t: 0, scale: 1, x: 0, y: 0 },
+      { t: 2, scale: 2, x: 0.2, y: -0.1 },
+    ], 1920, 1080);
+    // scale grows over t via a piecewise-linear expr, evaluated per frame
+    expect(out[0]).toMatch(/^scale=w='1920\*\(if\(lt\(t,/);
+    expect(out[0]).toContain(":eval=frame");
+    // crop stays w×h, offset clamped in-bounds so it can never leave the zoomed frame
+    expect(out[1]).toContain("crop=1920:1080:x='clip((iw-1920)/2-(");
+    expect(out[1]).toContain("),0,iw-1920)'");
+    expect(out[1]).toContain(":eval=frame");
+  });
+
+  it("clamps animated scale to ≥1 (no shrink-to-black)", () => {
+    const out = segmentZoomPanChain(undefined, [
+      { t: 0, scale: 0.5 },
+      { t: 1, scale: 0.8 },
+    ], 1920, 1080);
+    // both keyframes clamp to 1 → the raw 0.5 / 0.8 never reach the expression
+    expect(out[0]).toContain("scale=w='1920*(");
+    expect(out[0]).not.toContain("0.5");
+    expect(out[0]).not.toContain("0.8");
+  });
+
+  it("appears in the full graph for a segment carrying animation keyframes", () => {
+    const seg: Segment = { isImage: true, hasAudio: false, trimIn: 0, trimOut: 3, speed: 1, fit: "cover", keyframes: [{ t: 0, scale: 1, x: 0, y: 0 }, { t: 3, scale: 1.5, x: 0.1, y: 0 }] } as Segment;
+    const g = buildFilterGraph([seg], OPTS).filterComplex;
+    expect(g).toContain("eval=frame");
+    expect(g).toContain("scale=w='1920*(");
   });
 });
 
