@@ -254,7 +254,7 @@ export function PreviewStage() {
           <>
             <span style={{ fontSize: 11, color: EC.t4 }}>适配</span>
             {FIT_MODES.map(([v, label]) => (
-              <button key={v} title={`将选中素材：${label}`} style={fitBtn((fitClip!.fit ?? "contain") === v)} onClick={() => updateClip(fitClip!.id, { fit: v })}>{label}</button>
+              <button key={v} title={`将选中素材：${label}（整屏适配）`} style={fitBtn((fitClip!.fit ?? "contain") === v)} onClick={() => updateClip(fitClip!.id, { fit: v, transform: undefined, keyframes: undefined })}>{label}</button>
             ))}
             <span style={{ width: 1, height: 16, background: EC.border, margin: "0 2px" }} />
           </>

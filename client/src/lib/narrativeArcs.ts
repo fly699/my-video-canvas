@@ -39,7 +39,7 @@ export const NARRATIVE_ARCS: NarrativeArc[] = [
   // ── 经典 (Classic) ─────────────────────────────────────────────
   {
     id: "three_act",
-    label: "三幕剧",
+    label: "经典三幕",
     englishLabel: "Three Act Structure",
     emoji: "🎭",
     category: "classic",

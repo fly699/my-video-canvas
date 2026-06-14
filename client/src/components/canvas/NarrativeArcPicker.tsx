@@ -205,7 +205,7 @@ export function NarrativeArcPicker({ onClose }: Props) {
               🎞️ 叙事弧线编排器
             </h3>
             <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--c-t3)" }}>
-              一键将完整叙事节拍应用到画布上的分镜序列（三幕剧 / 英雄之旅 / 短视频钩子等）
+              按叙事弧线一键铺设<b style={{ color: "var(--c-t2)" }}>运镜</b>到画布分镜序列（三幕剧 / 英雄之旅 / 短视频钩子等的镜头运动编排）。与脚本节点的「节拍表/故事结构」相互独立。
             </p>
           </div>
           <button
