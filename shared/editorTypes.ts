@@ -145,6 +145,45 @@ export function emptyEditorDoc(width = 1920, height = 1080, fps = 30): EditorDoc
   };
 }
 
+/** Visible duration of a clip on the timeline (seconds), accounting for speed. */
+export function clipVisibleDuration(c: Clip): number {
+  return Math.max(0.05, (c.trimOut - c.trimIn) / (c.speed ?? 1));
+}
+
+/** Produce a new doc containing only the [start, end] slice of the timeline:
+ *  clips outside are dropped, clips crossing a boundary are trimmed, and everything
+ *  is shifted so the slice begins at 0. Pure — used for "export selected range".
+ *  Image/text clips are duration-encoded (trimOut = display seconds), so they're
+ *  shortened directly; video/audio map the cut back to source trimIn/trimOut. */
+export function sliceEditorDoc(doc: EditorDoc, start: number, end: number): EditorDoc {
+  const lo = Math.max(0, Math.min(start, end));
+  const hi = Math.max(start, end);
+  const tracks = doc.tracks.map((t) => ({
+    ...t,
+    clips: t.clips.flatMap((c): Clip[] => {
+      const dur = clipVisibleDuration(c);
+      const cStart = c.start, cEnd = c.start + dur;
+      if (cEnd <= lo || cStart >= hi) return []; // fully outside the slice
+      const newStartTL = Math.max(cStart, lo);
+      const newEndTL = Math.min(cEnd, hi);
+      const leftTrim = newStartTL - cStart;   // timeline secs cut from the left
+      const rightTrim = cEnd - newEndTL;       // timeline secs cut from the right
+      const speed = c.speed ?? 1;
+      const durationBased = c.kind === "image" || c.kind === "text";
+      const newTrimIn = durationBased ? 0 : c.trimIn + leftTrim * speed;
+      const newTrimOut = durationBased ? Math.max(0.05, newEndTL - newStartTL) : c.trimOut - rightTrim * speed;
+      // keyframes are clip-relative timeline seconds → shift by -leftTrim, drop those
+      // that fall outside the surviving span.
+      const newDurTL = newEndTL - newStartTL;
+      const keyframes = c.keyframes
+        ? c.keyframes.map((k) => ({ ...k, t: k.t - leftTrim })).filter((k) => k.t >= -1e-6 && k.t <= newDurTL + 1e-6)
+        : undefined;
+      return [{ ...c, start: newStartTL - lo, trimIn: newTrimIn, trimOut: newTrimOut, ...(keyframes ? { keyframes } : {}) }];
+    }),
+  }));
+  return { ...doc, tracks };
+}
+
 /** Total timeline duration (seconds) = furthest clip end across all tracks. */
 export function editorDocDuration(doc: EditorDoc): number {
   let max = 0;

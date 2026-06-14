@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
-import { EDITOR_DOC_VERSION, emptyEditorDoc, type EditorDoc } from "@shared/editorTypes";
+import { EDITOR_DOC_VERSION, emptyEditorDoc, sliceEditorDoc, editorDocDuration, type EditorDoc } from "@shared/editorTypes";
 import { composeTimeline } from "../_core/videoComposer";
 import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs } from "../_core/editorRenderJobs";
 import { assertProjectAccess } from "../_core/permissions";
@@ -150,6 +150,9 @@ export const editorRouter = router({
       width: z.number().int().min(16).max(7680).optional(),
       height: z.number().int().min(16).max(7680).optional(),
       fps: z.number().int().min(1).max(120).optional(),
+      // optional export range (seconds) — render only [rangeStart, rangeEnd].
+      rangeStart: z.number().min(0).optional(),
+      rangeEnd: z.number().min(0).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const session = await db.getEditSession(input.id, ctx.user.id);
@@ -159,7 +162,13 @@ export const editorRouter = router({
       if (countRunningRenderJobs(ctx.user.id) >= 3) {
         throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "已有多个导出任务进行中，请稍后再试" });
       }
-      const doc = session.doc as EditorDoc;
+      let doc = session.doc as EditorDoc;
+      // Export range: slice the timeline to [rangeStart, rangeEnd] before rendering.
+      if (input.rangeStart != null || input.rangeEnd != null) {
+        const start = input.rangeStart ?? 0;
+        const end = input.rangeEnd ?? editorDocDuration(doc);
+        if (end - start > 0.05) doc = sliceEditorDoc(doc, start, end);
+      }
       const job = createRenderJob(ctx.user.id, input.id);
       const mimeType = input.format === "webm" ? "video/webm" : input.format === "mov" ? "video/quicktime" : "video/mp4";
 
