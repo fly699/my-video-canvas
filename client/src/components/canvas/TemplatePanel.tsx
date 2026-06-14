@@ -53,6 +53,32 @@ interface Template {
 const TEMPLATES: Template[] = [
   // ── Starter ──────────────────────────────────────────────────────────────
   {
+    id: "full-creation-wizard",
+    name: "完整创作向导",
+    desc: "角色 + 脚本（向导：Logline→梗概→节拍表→剧本→分镜）→ 多分镜 → 图像 → 视频，一条端到端制作管线",
+    icon: "Rocket",
+    category: "starter",
+    nodes: [
+      { type: "character",  dx: -760, dy: 250,  title: "主角设定" },
+      { type: "script",     dx: 0,    dy: 0,    title: "脚本 · 创作向导" },
+      { type: "storyboard", dx: -420, dy: 430,  title: "分镜 #1", initialData: { sceneNumber: 1, description: "开场：建立场景与主角", cameraMovement: "static",   duration: 4, lens: "广角 24mm", colorTone: "自然真实" } },
+      { type: "storyboard", dx: 0,    dy: 430,  title: "分镜 #2", initialData: { sceneNumber: 2, description: "推进：冲突或情节升级", cameraMovement: "pan-right", duration: 4, lens: "标准 50mm", colorTone: "自然真实" } },
+      { type: "storyboard", dx: 420,  dy: 430,  title: "分镜 #3", initialData: { sceneNumber: 3, description: "收束：高潮或落点",     cameraMovement: "static",   duration: 4, lens: "标准 50mm", colorTone: "暖色调，金色" } },
+      { type: "image_gen",  dx: -420, dy: 810,  title: "图像 #1", initialData: { aspectRatio: "16:9" } },
+      { type: "image_gen",  dx: 0,    dy: 810,  title: "图像 #2", initialData: { aspectRatio: "16:9" } },
+      { type: "image_gen",  dx: 420,  dy: 810,  title: "图像 #3", initialData: { aspectRatio: "16:9" } },
+      { type: "video_task", dx: -420, dy: 1160, title: "视频 #1" },
+      { type: "video_task", dx: 0,    dy: 1160, title: "视频 #2" },
+      { type: "video_task", dx: 420,  dy: 1160, title: "视频 #3" },
+    ],
+    edgeSpecs: [
+      { fromIndex: 1, toIndex: 2 }, { fromIndex: 1, toIndex: 3 }, { fromIndex: 1, toIndex: 4 },   // 脚本 → 各分镜
+      { fromIndex: 0, toIndex: 2 }, { fromIndex: 0, toIndex: 3 }, { fromIndex: 0, toIndex: 4 },   // 角色 → 各分镜（一致性）
+      { fromIndex: 2, toIndex: 5 }, { fromIndex: 3, toIndex: 6 }, { fromIndex: 4, toIndex: 7 },   // 分镜 → 图像
+      { fromIndex: 5, toIndex: 8 }, { fromIndex: 6, toIndex: 9 }, { fromIndex: 7, toIndex: 10 },  // 图像 → 视频
+    ],
+  },
+  {
     id: "single-shot",
     name: "单镜头视频",
     desc: "脚本 → 分镜 → 图像 → 视频，最简单的完整流程",

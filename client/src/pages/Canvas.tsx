@@ -105,6 +105,7 @@ import {
   ListVideo,
   HelpCircle,
   Clapperboard,
+  Spline,
   MessageSquare,
   MonitorUp,
   Boxes,
@@ -1977,7 +1978,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 className="topbar-btn"
                 style={{ color: "oklch(0.72 0.18 45)" }}
               >
-                <Clapperboard className="w-3.5 h-3.5" />
+                <Spline className="w-3.5 h-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">叙事弧线编排器</TooltipContent>
