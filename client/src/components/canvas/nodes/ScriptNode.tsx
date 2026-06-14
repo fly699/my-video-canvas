@@ -9,10 +9,12 @@ import {
   Sparkles, Loader2, ChevronDown, Clapperboard,
   Minus, Plus, Copy, FileText, Check, Wand2, MessageSquare,
   Search, Layers2, GitBranch, Image, BookOpen, X, Languages,
-  Route, ClipboardCheck, Film,
+  Route, ClipboardCheck, Film, History,
 } from "lucide-react";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { ScriptDevFlowPanel, ScriptCoveragePanel } from "../ScriptSidePanels";
+import { ScriptHistoryPanel } from "../ScriptHistoryPanel";
+import { snapshotContent } from "@/lib/scriptHistory";
 import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
@@ -161,7 +163,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   // Advanced panel state
   const [showAdvancedPanel, setShowAdvancedPanel] = useState(false);
   // 侧向展开面板（创作向导 / 专业审查）——新功能横向弹出，不再向下堆叠拉长节点。
-  const [sidePanel, setSidePanel] = useState<null | "flow" | "coverage">(null);
+  const [sidePanel, setSidePanel] = useState<null | "flow" | "coverage" | "history">(null);
   const [advTab, setAdvTab] = useState<"variants" | "style" | "dialogue" | "moodboard">("variants");
   const [variantCount, setVariantCount] = useState(3);
   const [variantResults, setVariantResults] = useState<Array<{ label: string; text: string }>>([]);
@@ -359,6 +361,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   // Use variables.mode (the actual sent mode) for the toast, not the closure value
   const polishMutation = trpc.aiEnhance.enhance.useMutation({
     onSuccess: (result, variables) => {
+      snapshotContent(id, variables.mode === "condense" ? "精简前" : "润色前");
       updateNodeData(id, { content: result.result });
       toast.success(variables.mode === "condense" ? "脚本已精简" : "脚本已润色");
     },
@@ -382,6 +385,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     onSuccess: (result) => {
       const scriptFilled = !!result.scriptText;
       if (scriptFilled) {
+        snapshotContent(id, "整本生成前");
         updateNodeData(id, { content: result.scriptText });
       }
       let nodesCreated = 0;
@@ -415,6 +419,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
   const styleTransferMutation = trpc.scripts.applyStyleTransfer.useMutation({
     onSuccess: (result) => {
+      snapshotContent(id, "风格迁移前");
       updateNodeData(id, { content: result.result });
       toast.success(`文风已迁移为「${selectedStyle}」`);
     },
@@ -557,6 +562,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           {sidePanel === "coverage" && (
             <ScriptCoveragePanel id={id} payload={payload} llmModel={llmModel} onClose={() => setSidePanel(null)} />
           )}
+          {sidePanel === "history" && (
+            <ScriptHistoryPanel id={id} payload={payload} onClose={() => setSidePanel(null)} />
+          )}
         </>
       }>
       <div className="flex flex-col h-full p-3.5 gap-3">
@@ -688,6 +696,15 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
             style={{ fontSize: 9, fontWeight: sidePanel === "coverage" ? 700 : 500, background: sidePanel === "coverage" ? "oklch(0.68 0.20 295 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "coverage" ? "oklch(0.68 0.20 295 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "coverage" ? "oklch(0.68 0.20 295)" : "var(--c-t4)", cursor: "pointer" }}
           >
             <ClipboardCheck style={{ width: 9, height: 9 }} /> 审查
+          </button>
+          <button
+            onClick={() => setSidePanel((v) => (v === "history" ? null : "history"))}
+            title="版本历史：AI 改写前的正文快照，逐行 diff 对比 + 一键还原（侧向展开）"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{ fontSize: 9, fontWeight: sidePanel === "history" ? 700 : 500, background: sidePanel === "history" ? "oklch(0.70 0.15 165 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "history" ? "oklch(0.70 0.15 165 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "history" ? "oklch(0.70 0.15 165)" : "var(--c-t4)", cursor: "pointer" }}
+          >
+            <History style={{ width: 9, height: 9 }} />
+            历史{(payload.scriptHistory?.length ?? 0) > 0 ? ` ${payload.scriptHistory!.length}` : ""}
           </button>
 
           {/* Character count + duration */}
@@ -1193,6 +1210,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                           <p style={{ fontSize: 10.5, color: "var(--c-t1)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{variantResults[selectedVariant].text}</p>
                           <button
                             onClick={() => {
+                              snapshotContent(id, "变体应用前");
                               updateNodeData(id, { content: variantResults[selectedVariant].text });
                               toast.success(`已应用「${variantResults[selectedVariant].label}」版本`);
                             }}

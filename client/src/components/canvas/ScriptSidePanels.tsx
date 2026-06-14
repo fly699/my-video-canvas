@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { snapshotContent } from "../../lib/scriptHistory";
 import { mentionedCharacters } from "../../lib/characterConditioning";
 import { NodeTextArea } from "./NodeTextInput";
 import { trpc } from "@/lib/trpc";
@@ -19,7 +20,7 @@ const FLOW_ACCENT = "oklch(0.66 0.18 250)";   // 向导蓝
 const COV_ACCENT = "oklch(0.68 0.20 295)";    // 审查紫
 
 // ── 共用：侧向面板外壳 ─────────────────────────────────────────────────────────
-function SideShell({ title, icon, accent, onClose, children, width = 400 }: {
+export function SideShell({ title, icon, accent, onClose, children, width = 400 }: {
   title: string; icon: React.ReactNode; accent: string; onClose: () => void; children: React.ReactNode; width?: number;
 }) {
   return (
@@ -614,6 +615,7 @@ export function ScriptCoveragePanel({ id, payload, llmModel, onClose }: {
   });
   const fixMut = trpc.scripts.applyScriptFix.useMutation({
     onSuccess: (r) => {
+      snapshotContent(id, "定向修复前");
       updateNodeData(id, { content: r.result });
       toast.success("已定向修复，建议点击「复审」查看分数变化");
     },

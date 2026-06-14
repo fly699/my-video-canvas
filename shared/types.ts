@@ -176,6 +176,9 @@ export interface ScriptNodeData {
   /** 角色音色 casting 表：角色名 → 配音模型+音色（镜头表批量配音按「角色名：台词」
    *  逐段套用；存在脚本节点上随画布持久化，同组分镜共享）。 */
   castVoices?: Record<string, { model: string; voice: string }>;
+  /** 脚本正文版本历史：每次 AI 改写（润色/精简/风格迁移/整本生成/变体/定向修复）
+   *  前自动快照旧正文，供「历史」面板逐行 diff 对比与一键还原。最多保留 20 条。 */
+  scriptHistory?: { content: string; label: string; at: number }[];
   // AI panel params — persisted so settings survive remount / project reload
   aiGenre?: string;
   aiStyle?: string;
