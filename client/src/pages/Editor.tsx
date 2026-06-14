@@ -10,6 +10,32 @@ import { PreviewStage } from "@/components/editor/PreviewStage";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import { CanvasSettings } from "@/components/editor/CanvasSettings";
 import { downloadMedia } from "@/lib/download";
+import { usePersistentState } from "@/hooks/usePersistentState";
+
+// Draggable divider between editor panels. Reports incremental pixel deltas; the
+// parent applies them to the adjacent panel's size (persisted).
+function Resizer({ axis, onResize }: { axis: "x" | "y"; onResize: (deltaPx: number) => void }) {
+  const last = useRef<number | null>(null);
+  const [active, setActive] = useState(false);
+  return (
+    <div
+      onPointerDown={(e) => { e.preventDefault(); last.current = axis === "x" ? e.clientX : e.clientY; setActive(true); try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* no pointer */ } }}
+      onPointerMove={(e) => { if (last.current == null) return; const cur = axis === "x" ? e.clientX : e.clientY; onResize(cur - last.current); last.current = cur; }}
+      onPointerUp={(e) => { last.current = null; setActive(false); try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ } }}
+      title="拖动调整大小"
+      style={{
+        flexShrink: 0, alignSelf: "stretch",
+        [axis === "x" ? "width" : "height"]: 6,
+        cursor: axis === "x" ? "col-resize" : "row-resize",
+        background: active ? "var(--c-accent, oklch(0.68 0.22 285))" : "transparent",
+        transition: "background 120ms", touchAction: "none", zIndex: 5,
+      }}
+      onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "var(--c-bd2)"; }}
+      onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+    />
+  );
+}
+const clampSize = (v: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(v)));
 
 const ACCENT = "oklch(0.65 0.19 310)"; // 剪辑器主色（品红紫）
 
@@ -154,6 +180,11 @@ function EditorWorkspace({ id }: { id: number }) {
   const [exportRes, setExportRes] = useState<"source" | "2160" | "1080" | "720" | "480">("source");
   const [exportMenu, setExportMenu] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // Resizable panel sizes (persisted across sessions).
+  const numVal = (min: number, max: number) => (p: unknown) => (typeof p === "number" && isFinite(p) ? clampSize(p, min, max) : null);
+  const [leftW, setLeftW] = usePersistentState<number>("ui:editor:leftW:v1", 252, { validate: numVal(180, 480) });
+  const [rightW, setRightW] = usePersistentState<number>("ui:editor:rightW:v1", 250, { validate: numVal(180, 520) });
+  const [bottomH, setBottomH] = usePersistentState<number>("ui:editor:bottomH:v1", 230, { validate: numVal(120, 560) });
   const exportMut = trpc.editor.export.useMutation({
     onSuccess: ({ jobId }) => { setJobId(jobId); setExportUrl(null); setExportPct(0); setExportStage("排队中"); },
     onError: (e) => toast.error("导出失败：" + e.message),
@@ -384,11 +415,14 @@ function EditorWorkspace({ id }: { id: number }) {
       </header>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        <MediaBin />
+        <MediaBin width={leftW} />
+        <Resizer axis="x" onResize={(d) => setLeftW((w) => clampSize(w + d, 180, 480))} />
         <PreviewStage />
-        <PropertiesPanel />
+        <Resizer axis="x" onResize={(d) => setRightW((w) => clampSize(w - d, 180, 520))} />
+        <PropertiesPanel width={rightW} />
       </div>
-      <div style={{ height: 230, borderTop: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+      <Resizer axis="y" onResize={(d) => setBottomH((h) => clampSize(h - d, 120, 560))} />
+      <div style={{ height: bottomH, borderTop: "1px solid var(--c-bd2)", flexShrink: 0, minHeight: 0 }}>
         <Timeline />
       </div>
     </div>

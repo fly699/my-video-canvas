@@ -32,7 +32,7 @@ const FILTERS: [string, string][] = [["", "无"], ["cinematic", "电影感"], ["
 const TRANSITIONS: [string, string][] = [["none", "无"], ["fade", "淡入淡出"], ["dissolve", "叠化"], ["slide", "滑动"], ["wipe", "擦除"]];
 const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["roll", "滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
 
-export function PropertiesPanel() {
+export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const doc = useEditorStore((s) => s.doc);
   const update = useEditorStore((s) => s.updateClip);
@@ -90,7 +90,7 @@ export function PropertiesPanel() {
     if (doc) for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === selectedClipId); if (c) { primary = c; break; } }
     const pv = primary ?? ({} as Clip);
     return (
-      <aside style={panel}>
+      <aside style={{ ...panel, width }}>
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: EC.t1 }}>已选 {n} 个片段</div>
           <div style={{ fontSize: 11, color: EC.t4, lineHeight: 1.5 }}>在时间轴上拖动可整体移动；下列操作作用于全部选中片段。Shift/Ctrl 点击可加选/减选，空白处拖拽框选。</div>
@@ -128,7 +128,7 @@ export function PropertiesPanel() {
   }
 
   if (!clip) {
-    return <aside style={panel}><div style={{ padding: 14, fontSize: 12, color: EC.t4 }}>选中一个片段以编辑属性</div></aside>;
+    return <aside style={{ ...panel, width }}><div style={{ padding: 14, fontSize: 12, color: EC.t4 }}>选中一个片段以编辑属性</div></aside>;
   }
   const c = clip;
   const isVisual = c.kind === "video" || c.kind === "image" || c.kind === "text";
@@ -153,7 +153,7 @@ export function PropertiesPanel() {
   };
 
   return (
-    <aside style={panel}>
+    <aside style={{ ...panel, width }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 12px", borderBottom: `1px solid ${EC.border}` }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: EC.t1, flex: 1 }}>{labelKind(c.kind)} 属性</span>
         <button onClick={() => remove(c.id)} title="删除片段" style={{ display: "inline-flex", width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 7, border: `1px solid ${EC.border}`, background: "transparent", color: "oklch(0.62 0.20 25)", cursor: "pointer" }}><Trash2 size={14} /></button>

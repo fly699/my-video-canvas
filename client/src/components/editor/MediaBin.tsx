@@ -20,7 +20,7 @@ export interface MediaDragPayload {
 }
 export const MEDIA_DND_MIME = "application/x-editor-media";
 
-export function MediaBin() {
+export function MediaBin({ width = 252 }: { width?: number } = {}) {
   const [type, setType] = useState<TypeFilter>("");
   const [q, setQ] = useState("");
   const [preview, setPreview] = useState<PreviewAsset | null>(null);
@@ -93,7 +93,7 @@ export function MediaBin() {
   }
 
   return (
-    <aside style={{ width: 252, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.surface }}>
+    <aside style={{ width, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.surface }}>
       <div style={{ padding: 10, borderBottom: `1px solid ${EC.border}` }}>
         <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
           <div style={{ position: "relative", flex: 1 }}>
