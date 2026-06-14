@@ -69,9 +69,33 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
     updateMut.mutate({ id: editingId, label: editLabel.trim(), note: editNote });
   }, [editingId, editLabel, editNote, updateMut]);
 
+  const mineCount = useMemo(() => items.filter(isMine).length, [items, isMine]);
+
+  const counts = useMemo(() => {
+    const base = mineOnly ? items.filter(isMine) : items;
+    const c: Record<string, number> = { all: base.length };
+    for (const t of base) c[t.nodeType] = (c[t.nodeType] ?? 0) + 1;
+    return c;
+  }, [items, mineOnly, isMine]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return items.filter((t) => {
+      if (mineOnly && !isMine(t)) return false;
+      if (category !== "all" && t.nodeType !== category) return false;
+      if (!q) return true;
+      const hay = [t.label, t.note ?? "", t.creatorName ?? "", getNodeConfig(t.nodeType).label, describeComfyTemplate(t.nodeType, t.payload)]
+        .join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }, [items, category, query, mineOnly, isMine]);
+
+  // Export honors the current view (search / category / 只看我的).
+  const exportList = filtered;
+
   const handleExport = useCallback(() => {
-    if (items.length === 0) { toast.info("模板库还是空的"); return; }
-    const templates = items.map((t) => ({
+    if (exportList.length === 0) { toast.info("当前筛选下没有可导出的模板"); return; }
+    const templates = exportList.map((t) => ({
       label: t.label, nodeType: t.nodeType, payload: t.payload, note: t.note, useCloud: t.useCloud,
     }));
     const json = JSON.stringify({ version: 1, kind: "comfyNodeTemplates", exportedAt: new Date().toISOString(), templates }, null, 2);
@@ -82,7 +106,8 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
     a.download = "comfy-node-templates.json";
     a.click();
     URL.revokeObjectURL(url);
-  }, [items]);
+    toast.success(`已导出 ${exportList.length} 个模板`);
+  }, [exportList]);
 
   const handleImport = useCallback(async (file: File) => {
     let parsed: unknown;
@@ -114,27 +139,6 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
       imported > 0 ? `已导入 ${imported} 个模板${skipped ? `（跳过 ${skipped}）` : ""}` : "未导入任何模板（格式不符）",
     );
   }, [createMut, utils]);
-
-  const mineCount = useMemo(() => items.filter(isMine).length, [items, isMine]);
-
-  const counts = useMemo(() => {
-    const base = mineOnly ? items.filter(isMine) : items;
-    const c: Record<string, number> = { all: base.length };
-    for (const t of base) c[t.nodeType] = (c[t.nodeType] ?? 0) + 1;
-    return c;
-  }, [items, mineOnly, isMine]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return items.filter((t) => {
-      if (mineOnly && !isMine(t)) return false;
-      if (category !== "all" && t.nodeType !== category) return false;
-      if (!q) return true;
-      const hay = [t.label, t.note ?? "", t.creatorName ?? "", getNodeConfig(t.nodeType).label, describeComfyTemplate(t.nodeType, t.payload)]
-        .join(" ").toLowerCase();
-      return hay.includes(q);
-    });
-  }, [items, category, query, mineOnly, isMine]);
 
   return (
     <div
@@ -184,9 +188,18 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
             onClick={handleExport}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex-shrink-0"
             style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "var(--c-t3)" }}
-            title="导出模板库为 .json（不含缩略图）"
+            title={
+              exportList.length < items.length
+                ? `导出当前筛选结果（${exportList.length} 个）为 .json，不含缩略图`
+                : "导出模板库为 .json（不含缩略图）"
+            }
           >
             <Download className="w-3.5 h-3.5" /> 导出
+            {exportList.length < items.length && (
+              <span className="text-[9px] px-1 py-0.5 rounded-full font-semibold" style={{ background: "var(--c-bd1)", color: "var(--c-t4)" }}>
+                {exportList.length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => fileRef.current?.click()}
