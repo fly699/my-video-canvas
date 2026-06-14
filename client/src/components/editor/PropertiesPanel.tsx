@@ -49,6 +49,7 @@ export function PropertiesPanel() {
   const copySelected = useEditorStore((s) => s.copySelected);
   const closeGapsSelected = useEditorStore((s) => s.closeGapsSelected);
   const alignSelectedStartTo = useEditorStore((s) => s.alignSelectedStartTo);
+  const updateSelected = useEditorStore((s) => s.updateSelected);
   const dubMut = trpc.audioGen.generateDubbing.useMutation();
   const [ttsModel, setTtsModel] = usePersistentState<string>(
     "ui:editor:tts-model:v1", "openai_tts_real",
@@ -84,6 +85,10 @@ export function PropertiesPanel() {
   if (selectedClipIds.length > 1) {
     const n = selectedClipIds.length;
     const mBtn: React.CSSProperties = { width: "100%", padding: "8px 0", fontSize: 12, borderRadius: 7, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent", color: EC.t1 };
+    // seed the bulk sliders from the primary (last-selected) clip
+    let primary: Clip | null = null;
+    if (doc) for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === selectedClipId); if (c) { primary = c; break; } }
+    const pv = primary ?? ({} as Clip);
     return (
       <aside style={panel}>
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -93,6 +98,22 @@ export function PropertiesPanel() {
             <button style={{ ...mBtn, flex: 1 }} title="把所选片段在各自轨道上首尾相接，闭合中间的空隙" onClick={() => closeGapsSelected()}>紧排</button>
             <button style={{ ...mBtn, flex: 1 }} title="整体平移，使最早的选中片段对齐到播放头" onClick={() => alignSelectedStartTo(useEditorStore.getState().playhead)}>对齐到播放头</button>
           </div>
+
+          <Section title="批量调整（应用到全部选中）">
+            <Slider label={`速度 ${(pv.speed ?? 1).toFixed(2)}x`} min={0.25} max={4} step={0.05} value={pv.speed ?? 1} onChange={(v) => updateSelected({ speed: v })} />
+            <Slider label={`音量 ${Math.round((pv.volume ?? 1) * 100)}%`} min={0} max={2} step={0.05} value={pv.volume ?? 1} onChange={(v) => updateSelected({ volume: v })} />
+            <Slider label={`不透明度 ${Math.round((pv.transform?.opacity ?? 1) * 100)}%`} min={0} max={1} step={0.01} value={pv.transform?.opacity ?? 1} onChange={(v) => updateSelected({ transform: { opacity: v } })} />
+            <Slider label={`淡入 ${(pv.fadeIn ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={pv.fadeIn ?? 0} onChange={(v) => updateSelected({ fadeIn: v })} />
+            <Slider label={`淡出 ${(pv.fadeOut ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={pv.fadeOut ?? 0} onChange={(v) => updateSelected({ fadeOut: v })} />
+            <div style={{ fontSize: 11, color: EC.t3, marginTop: 2 }}>适配方式</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"]] as const).map(([v, label]) => (
+                <button key={v} onClick={() => updateSelected({ fit: v })}
+                  style={{ flex: 1, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${(pv.fit ?? "contain") === v ? EC.accent : EC.border}`, background: (pv.fit ?? "contain") === v ? EC.accentSoft : "transparent", color: (pv.fit ?? "contain") === v ? EC.accent : EC.t2 }}>{label}</button>
+              ))}
+            </div>
+          </Section>
+
           <button style={mBtn} onClick={() => duplicateSelected()}>原地复制全部（Ctrl+D）</button>
           <button style={mBtn} onClick={() => copySelected()}>拷贝到剪贴板（Ctrl+C）</button>
           <button style={{ ...mBtn, color: "oklch(0.65 0.2 25)", borderColor: "oklch(0.65 0.2 25 / 0.5)" }} onClick={() => removeSelected()}>删除全部（Del）</button>

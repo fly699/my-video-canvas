@@ -82,6 +82,7 @@ export interface EditorStore {
   moveSelectedTo: (primaryClipId: string, newPrimaryStart: number) => void;
   closeGapsSelected: () => void;          // pack selected clips end-to-end per track
   alignSelectedStartTo: (time: number) => void; // shift selection so its earliest clip starts at `time`
+  updateSelected: (patch: Partial<Clip>) => void; // apply a patch to every selected clip (nested effects/transform merged)
 
   // clipboard — copy clip(s) then paste at the playhead, preserving each clip's
   // offset relative to the earliest. Survives across clips/sessions within a page
@@ -439,6 +440,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t) => ({
       ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + dx) } : c)),
     }));
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // Apply a partial patch to every selected clip in one history step. `effects`
+  // and `transform` are merged per-clip so a single field (e.g. opacity) can be
+  // bulk-set without wiping a clip's other adjustments.
+  updateSelected: (patch) => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    const apply = (c: Clip): Clip => {
+      const next: Clip = { ...c, ...patch };
+      if (patch.effects) next.effects = { ...(c.effects ?? {}), ...patch.effects };
+      if (patch.transform) next.transform = { ...(c.transform ?? {}), ...patch.transform };
+      return next;
+    };
+    const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.map((c) => (sel.has(c.id) ? apply(c) : c)) }));
     return withHistory(s, { ...s.doc, tracks });
   }),
 

@@ -119,6 +119,32 @@ describe("arrange selection", () => {
   });
 });
 
+describe("bulk property edit", () => {
+  it("updateSelected applies a scalar patch to every selected clip", () => {
+    const a = st().addClip("v1", { kind: "video", start: 0, trimIn: 0, trimOut: 2, assetUrl: "x", volume: 1 });
+    const b = st().addClip("a1", { kind: "audio", start: 0, trimIn: 0, trimOut: 2, assetUrl: "y", volume: 1 });
+    const other = st().addClip("v1", { kind: "video", start: 5, trimIn: 0, trimOut: 2, assetUrl: "z", volume: 1 });
+    st().setSelection([a, b]);
+    st().updateSelected({ volume: 0.5 });
+    expect(clipsOf("v1").find((c) => c.id === a)!.volume).toBe(0.5);
+    expect(clipsOf("a1").find((c) => c.id === b)!.volume).toBe(0.5);
+    expect(clipsOf("v1").find((c) => c.id === other)!.volume).toBe(1); // unselected untouched
+  });
+
+  it("updateSelected merges nested transform/effects per clip without wiping siblings", () => {
+    const a = st().addClip("v1", { kind: "image", start: 0, trimIn: 0, trimOut: 2, transform: { scale: 0.5, opacity: 1 } });
+    const b = st().addClip("v1", { kind: "image", start: 2, trimIn: 0, trimOut: 2, transform: { rotation: 30 } });
+    st().setSelection([a, b]);
+    st().updateSelected({ transform: { opacity: 0.3 } });
+    const ca = clipsOf("v1").find((c) => c.id === a)!;
+    const cb = clipsOf("v1").find((c) => c.id === b)!;
+    expect(ca.transform!.opacity).toBe(0.3);
+    expect(ca.transform!.scale).toBe(0.5);   // sibling field preserved
+    expect(cb.transform!.opacity).toBe(0.3);
+    expect(cb.transform!.rotation).toBe(30);  // sibling field preserved
+  });
+});
+
 describe("multi copy / paste", () => {
   it("copySelected + pasteClip preserves relative offsets and re-targets by track type", () => {
     const a = st().addClip("v1", { kind: "image", start: 2, trimIn: 0, trimOut: 2 });
