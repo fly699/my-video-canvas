@@ -85,6 +85,21 @@ describe("multi-clip ops", () => {
     expect(st().selectedClipIds).toEqual([]);
   });
 
+  it("rippleDeleteSelected removes the selection and closes the gaps it leaves", () => {
+    const a = st().addClip("v1", { kind: "image", start: 0, trimIn: 0, trimOut: 2 }); // [0,2] keep
+    const b = st().addClip("v1", { kind: "image", start: 2, trimIn: 0, trimOut: 2 }); // [2,4] remove (dur 2)
+    const c = st().addClip("v1", { kind: "image", start: 4, trimIn: 0, trimOut: 2 }); // [4,6] keep → 2
+    const d = st().addClip("v1", { kind: "image", start: 6, trimIn: 0, trimOut: 2 }); // [6,8] keep → 4
+    st().setSelection([b]);
+    st().rippleDeleteSelected();
+    const clips = clipsOf("v1");
+    expect(clips.length).toBe(3);
+    expect(clips.find((x) => x.id === a)!.start).toBe(0);
+    expect(clips.find((x) => x.id === c)!.start).toBe(2); // pulled left by b's duration (2)
+    expect(clips.find((x) => x.id === d)!.start).toBe(4);
+    expect(st().selectedClipIds).toEqual([]);
+  });
+
   it("duplicateSelected copies each selected clip and selects the copies", () => {
     const a = st().addClip("v1", { kind: "image", start: 0, trimIn: 0, trimOut: 2 });
     const b = st().addClip("v1", { kind: "image", start: 2, trimIn: 0, trimOut: 2 });

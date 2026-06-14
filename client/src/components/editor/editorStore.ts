@@ -78,6 +78,7 @@ export interface EditorStore {
 
   // multi-clip ops (operate on the whole selection)
   removeSelected: () => void;
+  rippleDeleteSelected: () => void;
   duplicateSelected: () => void;
   copySelected: () => void;
   moveSelectedTo: (primaryClipId: string, newPrimaryStart: number) => void;
@@ -395,6 +396,24 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (!s.doc || s.selectedClipIds.length === 0) return s;
     const kill = new Set(s.selectedClipIds);
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => !kill.has(c.id)) }));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([]));
+  }),
+
+  // Ripple-delete the whole selection: on each affected track, remove the selected
+  // clips and pull every remaining later clip left by the total duration of the
+  // removed clips that started before it, closing the gaps.
+  rippleDeleteSelected: () => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    const tracks = s.doc.tracks.map((t) => {
+      const removed = t.clips.filter((c) => sel.has(c.id));
+      if (removed.length === 0) return t;
+      const clips = t.clips.filter((c) => !sel.has(c.id)).map((c) => {
+        const shift = removed.reduce((acc, r) => acc + (r.start < c.start ? clipDuration(r) : 0), 0);
+        return shift > 0 ? { ...c, start: Math.max(0, c.start - shift) } : c;
+      });
+      return { ...t, clips };
+    });
     return withHistory(s, { ...s.doc, tracks }, selPatch([]));
   }),
 

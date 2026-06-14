@@ -54,7 +54,7 @@ export function Timeline() {
       const sel = st.selectedClipId;
       if (!sel) return;
       const multi = st.selectedClipIds.length > 1;
-      if ((e.key === "Delete" || e.key === "Backspace") && e.shiftKey) { e.preventDefault(); multi ? st.removeSelected() : st.rippleDeleteClip(sel); }
+      if ((e.key === "Delete" || e.key === "Backspace") && e.shiftKey) { e.preventDefault(); multi ? st.rippleDeleteSelected() : st.rippleDeleteClip(sel); }
       else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); multi ? st.removeSelected() : st.removeClip(sel); }
       else if ((e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); multi ? st.copySelected() : st.copyClip(sel); }
       else if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitClip(sel, st.playhead); }
@@ -75,12 +75,15 @@ export function Timeline() {
   const contentSec = Math.max(duration + 5, 20);
   const contentW = contentSec * pxPerSec;
 
-  /** All snap targets (seconds): 0, the playhead, and every other clip's edges. */
-  const snapPoints = useCallback((excludeClipId?: string): number[] => {
+  /** All snap targets (seconds): 0, the playhead, and every other clip's edges.
+   *  `exclude` skips a clip (string) or a whole set of clips (e.g. a moving group,
+   *  so the group never snaps to its own members). */
+  const snapPoints = useCallback((exclude?: string | Set<string>): number[] => {
     const st = useEditorStore.getState();
     const pts = [0, st.playhead];
+    const skip = (id: string) => (exclude instanceof Set ? exclude.has(id) : id === exclude);
     if (st.doc) for (const t of st.doc.tracks) for (const c of t.clips) {
-      if (c.id === excludeClipId) continue;
+      if (skip(c.id)) continue;
       pts.push(c.start, c.start + clipDuration(c));
     }
     return pts;
@@ -88,7 +91,7 @@ export function Timeline() {
 
   /** Snap a candidate time to the nearest target within threshold; returns the
    *  snapped time + the matched target (for the guide line), or the input. */
-  const snap = useCallback((sec: number, exclude?: string, extra: number[] = []): { sec: number; at: number | null } => {
+  const snap = useCallback((sec: number, exclude?: string | Set<string>, extra: number[] = []): { sec: number; at: number | null } => {
     if (!snapOn) return { sec, at: null };
     const thr = SNAP_PX / pxPerSec;
     let best: number | null = null, bestD = thr;
@@ -167,8 +170,10 @@ export function Timeline() {
       // drag the whole multi-selection together: snap the primary clip's start/end,
       // then shift every selected clip by the same delta (track-locked, time only).
       const rawStart = Math.max(0, (e.clientX - rect.left - d.grabDx) / pxPerSec);
-      const s1 = snap(rawStart, d.clipId);
-      const s2 = snap(rawStart + d.orig.dur, d.clipId);
+      // exclude the entire moving group from snap targets (not just the primary)
+      const groupIds = new Set(store.selectedClipIds);
+      const s1 = snap(rawStart, groupIds);
+      const s2 = snap(rawStart + d.orig.dur, groupIds);
       let start = rawStart, at: number | null = null;
       if (s1.at != null && (s2.at == null || Math.abs(s1.sec - rawStart) <= Math.abs((s2.sec - d.orig.dur) - rawStart))) { start = s1.sec; at = s1.at; }
       else if (s2.at != null) { start = s2.sec - d.orig.dur; at = s2.at; }
