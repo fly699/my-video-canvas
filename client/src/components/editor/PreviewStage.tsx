@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { Play, Pause, SkipBack, Grid3x3 } from "lucide-react";
 import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
@@ -66,9 +66,24 @@ function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; m
 }
 
 type DragState =
-  | { mode: "move"; id: string; px: number; py: number; tf: ClipTransform }
+  | { mode: "move"; id: string; px: number; py: number; tf: ClipTransform; bw: number; bh: number }
   | { mode: "scale"; id: string; cx: number; cy: number; startW: number; startScale: number; aspect: number }
   | { mode: "rotate"; id: string; cx: number; cy: number; start: number };
+
+// Composition snap targets (normalized 0..1): edges, thirds, center.
+const SNAP_TARGETS = [0, 1 / 3, 0.5, 2 / 3, 1];
+/** Snap one axis: try aligning the box's left/center/right (pos, pos+size/2, pos+size)
+ *  to a target within `thr`. Returns the snapped position + the matched guide line. */
+export function snapAxis(pos: number, size: number, thr: number): { pos: number; guide: number | null } {
+  let best: { pos: number; guide: number; dist: number } | null = null;
+  for (const anchor of [pos, pos + size / 2, pos + size]) {
+    for (const g of SNAP_TARGETS) {
+      const dist = Math.abs(anchor - g);
+      if (dist < thr && (!best || dist < best.dist)) best = { pos: pos + (g - anchor), guide: g, dist };
+    }
+  }
+  return best ? { pos: best.pos, guide: best.guide } : { pos, guide: null };
+}
 
 export function PreviewStage() {
   const doc = useEditorStore((s) => s.doc);
@@ -81,6 +96,7 @@ export function PreviewStage() {
   const selectClip = useEditorStore((s) => s.selectClip);
   const updateClip = useEditorStore((s) => s.updateClip);
   const [thirds, setThirds] = usePersistentState<boolean>("ui:editor:preview-thirds:v1", false, { validate: (p) => (typeof p === "boolean" ? p : null) });
+  const [snapGuide, setSnapGuide] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
 
   const mediaRefs = useRef<Map<string, HTMLVideoElement | HTMLAudioElement>>(new Map());
   const stageRef = useRef<HTMLDivElement>(null);
@@ -129,8 +145,17 @@ export function PreviewStage() {
     const d = dragRef.current; if (!d) return;
     const { w, h, left, top } = stageSize();
     if (d.mode === "move") {
-      const nx = d.tf.x! + (e.clientX - d.px) / w;
-      const ny = d.tf.y! + (e.clientY - d.py) / h;
+      let nx = d.tf.x! + (e.clientX - d.px) / w;
+      let ny = d.tf.y! + (e.clientY - d.py) / h;
+      // snap edges/center to thirds/center/edges (hold Alt to bypass)
+      if (!e.altKey) {
+        const sx = snapAxis(nx, d.bw, 8 / w);
+        const sy = snapAxis(ny, d.bh, 8 / h);
+        nx = sx.pos; ny = sy.pos;
+        setSnapGuide({ x: sx.guide, y: sy.guide });
+      } else {
+        setSnapGuide({ x: null, y: null });
+      }
       updateClip(d.id, { transform: { ...d.tf, x: Math.max(-0.5, Math.min(1, nx)), y: Math.max(-0.5, Math.min(1, ny)) } });
     } else if (d.mode === "scale") {
       const distX = Math.abs(e.clientX - left - d.cx);
@@ -148,6 +173,7 @@ export function PreviewStage() {
 
   const endDrag = useCallback(() => {
     dragRef.current = null;
+    setSnapGuide({ x: null, y: null });
     window.removeEventListener("pointermove", onWinMove);
     window.removeEventListener("pointerup", endDrag);
   }, [onWinMove]);
@@ -155,7 +181,10 @@ export function PreviewStage() {
   const beginMove = useCallback((e: React.PointerEvent, clip: Clip) => {
     e.stopPropagation(); selectClip(clip.id);
     const tf = { x: clip.transform?.x ?? 0.1, y: clip.transform?.y ?? 0.1, scale: clip.transform?.scale ?? 0.4, rotation: clip.transform?.rotation ?? 0, opacity: clip.transform?.opacity ?? 1 };
-    dragRef.current = { mode: "move", id: clip.id, px: e.clientX, py: e.clientY, tf };
+    // capture the box's normalized size for edge/center snapping
+    const { w, h } = stageSize();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    dragRef.current = { mode: "move", id: clip.id, px: e.clientX, py: e.clientY, tf, bw: r.width / w, bh: r.height / h };
     window.addEventListener("pointermove", onWinMove); window.addEventListener("pointerup", endDrag);
   }, [selectClip, onWinMove, endDrag]);
 
@@ -297,6 +326,14 @@ export function PreviewStage() {
                 <div key={`h${f}`} style={{ position: "absolute", left: 0, right: 0, top: `${f * 100}%`, height: 1, background: "oklch(1 0 0 / 0.28)" }} />
               ))}
             </div>
+          )}
+
+          {/* live alignment guides while dragging an overlay into snap */}
+          {snapGuide.x != null && (
+            <div data-snap-guide="x" style={{ position: "absolute", top: 0, bottom: 0, left: `${snapGuide.x * 100}%`, width: 1, background: EC.accent, boxShadow: `0 0 4px ${EC.accent}`, pointerEvents: "none", zIndex: 10 }} />
+          )}
+          {snapGuide.y != null && (
+            <div data-snap-guide="y" style={{ position: "absolute", left: 0, right: 0, top: `${snapGuide.y * 100}%`, height: 1, background: EC.accent, boxShadow: `0 0 4px ${EC.accent}`, pointerEvents: "none", zIndex: 10 }} />
           )}
         </div>
       </div>
