@@ -16,10 +16,11 @@ const TIERS = [480, 720, 1080, 1440, 2160]; // long-edge px
 const FPSES = [24, 25, 30, 50, 60];
 
 const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
-function dims(rw: number, rh: number, longEdge: number) {
-  return rw >= rh
-    ? { w: even(longEdge), h: even(longEdge * rh / rw) }
-    : { w: even(longEdge * rw / rh), h: even(longEdge) };
+// Tiers (720p / 1080p …) are defined by the VERTICAL edge = height — the "p" number
+// is the count of vertical scan lines, i.e. the height. 720p = 1280×720 (16:9),
+// 1080p = 1920×1080. Width is derived from the aspect ratio.
+function dims(rw: number, rh: number, vEdge: number) {
+  return { w: even(vEdge * rw / rh), h: even(vEdge) };
 }
 function gcd(a: number, b: number): number { return b ? gcd(b, a % b) : a; }
 function ratioLabel(w: number, h: number) { const g = gcd(w, h) || 1; return `${w / g}:${h / g}`; }
@@ -39,11 +40,11 @@ export function CanvasSettings() {
   }, [open]);
 
   if (!doc) return null;
-  const longEdge = Math.max(doc.width, doc.height);
-  const curTier = TIERS.reduce((a, b) => (Math.abs(b - longEdge) < Math.abs(a - longEdge) ? b : a), TIERS[0]);
+  const vEdge = doc.height;
+  const curTier = TIERS.reduce((a, b) => (Math.abs(b - vEdge) < Math.abs(a - vEdge) ? b : a), TIERS[0]);
   const curRatio = ratioLabel(doc.width, doc.height);
 
-  const applyRatio = (rw: number, rh: number) => { const d = dims(rw, rh, longEdge); setCanvas(d.w, d.h, doc.fps); };
+  const applyRatio = (rw: number, rh: number) => { const d = dims(rw, rh, vEdge); setCanvas(d.w, d.h, doc.fps); };
   const applyTier = (tier: number) => { const g = gcd(doc.width, doc.height) || 1; const d = dims(doc.width / g, doc.height / g, tier); setCanvas(d.w, d.h, doc.fps); };
 
   // custom edits (respect aspect lock)
@@ -78,7 +79,7 @@ export function CanvasSettings() {
             })}
           </div>
 
-          <Label>分辨率（长边）</Label>
+          <Label>分辨率（纵边 / 高）</Label>
           <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
             {TIERS.map((t) => (
               <button key={t} onClick={() => applyTier(t)}
