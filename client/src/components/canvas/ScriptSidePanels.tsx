@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { snapshotContent } from "../../lib/scriptHistory";
+import { buildEpisodeNodes } from "../../lib/episodeSplit";
 import { mentionedCharacters } from "../../lib/characterConditioning";
 import { NodeTextArea } from "./NodeTextInput";
 import { trpc } from "@/lib/trpc";
@@ -351,6 +352,22 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
   };
   const setRef = (i: number) => (el: HTMLDivElement | null) => { stageRefs.current[i] = el; };
 
+  // 把分集大纲拆成独立脚本子节点：每集一个节点（synopsis 填该集大纲、content 留空待
+  // 生成），纵向错开排在父节点右侧并用分组框包裹，逐一连线（父脚本 → 各分集）。
+  const splitEpisodesToNodes = () => {
+    const store = useCanvasStore.getState();
+    const own = store.nodes.find((n) => n.id === id);
+    if (!own || episodes.length === 0) return;
+    const plan = buildEpisodeNodes(episodes, own.position ?? { x: 0, y: 0 });
+    store.addGroupBox(plan.group, "分集大纲");
+    plan.items.forEach((item) => {
+      const child = store.addNode("script", item.position);
+      store.updateNodeData(child.id, { synopsis: item.synopsis, content: "" });
+      store.onConnect({ source: id, target: child.id, sourceHandle: null, targetHandle: null });
+    });
+    toast.success(`已拆为 ${episodes.length} 个分集脚本节点`);
+  };
+
   return (
     <SideShell title="创作向导 · 想法 → 成片剧本" icon={<Route style={{ width: 14, height: 14 }} />} accent={FLOW_ACCENT} onClose={onClose} width={444}>
       <StepNav steps={steps} current={current} onJump={jump} />
@@ -568,14 +585,22 @@ export function ScriptDevFlowPanel({ id, payload, llmModel, fullGenPending, stor
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={() => {
-                    const md = episodes.map((ep) => `第${ep.episode}集 ${ep.title}\n钩子：${ep.hook}\n剧情:${ep.summary}\n卡点：${ep.cliffhanger}`).join("\n\n");
-                    void navigator.clipboard?.writeText(md).then(() => toast.success("分集大纲已复制"));
-                  }}
-                  className="nodrag" style={{ fontSize: 10.5, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
-                  复制全部大纲
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      const md = episodes.map((ep) => `第${ep.episode}集 ${ep.title}\n钩子：${ep.hook}\n剧情:${ep.summary}\n卡点：${ep.cliffhanger}`).join("\n\n");
+                      void navigator.clipboard?.writeText(md).then(() => toast.success("分集大纲已复制"));
+                    }}
+                    className="nodrag" style={{ fontSize: 10.5, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", flex: 1 }}>
+                    复制全部大纲
+                  </button>
+                  <button
+                    onClick={splitEpisodesToNodes}
+                    title="为每集创建一个脚本子节点（synopsis 填该集大纲），并连线、编组"
+                    className="nodrag flex items-center justify-center gap-1" style={{ fontSize: 10.5, fontWeight: 600, padding: "5px 9px", borderRadius: 7, background: `${FLOW_ACCENT}1f`, border: `1px solid ${FLOW_ACCENT}66`, color: FLOW_ACCENT, cursor: "pointer", flex: 1 }}>
+                    <Film style={{ width: 11, height: 11 }} /> 拆成节点
+                  </button>
+                </div>
               </>
             )}
           </div>
