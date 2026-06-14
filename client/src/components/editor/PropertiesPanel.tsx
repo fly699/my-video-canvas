@@ -32,6 +32,18 @@ const FILTERS: [string, string][] = [["", "无"], ["cinematic", "电影感"], ["
 const TRANSITIONS: [string, string][] = [["none", "无"], ["fade", "淡入淡出"], ["dissolve", "叠化"], ["slide", "滑动"], ["wipe", "擦除"]];
 const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["roll", "滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
 
+// 字幕样式预设库 — 一键套用成套文字样式（仅样式，不改文字内容）。每个预设显式写全
+// 描边/投影/背景框的开关，避免和上一套样式叠加出意外效果。
+type TextStyle = Partial<NonNullable<Clip["text"]>>;
+const TEXT_PRESETS: { id: string; label: string; style: TextStyle }[] = [
+  { id: "variety",  label: "综艺花字", style: { size: 72, color: "#FFE600", bold: true,  italic: false, strokeWidth: 9,  strokeColor: "#000000", shadow: true,  shadowColor: "#000000", bgColor: undefined, font: "SimHei" } },
+  { id: "cinema",   label: "电影字幕", style: { size: 40, color: "#FFFFFF", bold: false, italic: false, strokeWidth: 2,  strokeColor: "#000000", shadow: true,  shadowColor: "#000000", bgColor: undefined, font: "" } },
+  { id: "minimal",  label: "极简",     style: { size: 42, color: "#FFFFFF", bold: false, italic: false, strokeWidth: 0,  shadow: false, bgColor: undefined, font: "" } },
+  { id: "neon",     label: "霓虹",     style: { size: 56, color: "#00F0FF", bold: true,  italic: false, strokeWidth: 3,  strokeColor: "#0050FF", shadow: true,  shadowColor: "#00C8FF", bgColor: undefined, font: "SimHei" } },
+  { id: "pop",      label: "卡通描边", style: { size: 64, color: "#FFFFFF", bold: true,  italic: false, strokeWidth: 11, strokeColor: "#FF2D55", shadow: false, bgColor: undefined, font: "SimHei" } },
+  { id: "bar",      label: "字幕条",   style: { size: 38, color: "#FFFFFF", bold: false, italic: false, strokeWidth: 0,  shadow: false, bgColor: "#000000", font: "" } },
+];
+
 export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const doc = useEditorStore((s) => s.doc);
@@ -165,6 +177,16 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           <Section title="文字">
             <textarea value={txt?.content ?? ""} onChange={(e) => setText({ content: e.target.value })}
               rows={2} style={{ ...input, resize: "vertical" }} placeholder="输入文字…" />
+            {/* 样式预设库：一键套用成套字幕样式 */}
+            <div>
+              <div style={{ fontSize: 10.5, color: EC.t4, marginBottom: 4 }}>样式预设</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {TEXT_PRESETS.map((p) => (
+                  <button key={p.id} onClick={() => setText(p.style)} title={`一键套用「${p.label}」样式`}
+                    style={{ padding: "4px 10px", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent", color: EC.t2 }}>{p.label}</button>
+                ))}
+              </div>
+            </div>
             <Row label="字号"><input type="number" value={txt?.size ?? 48} onChange={(e) => setText({ size: Number(e.target.value) })} style={input} /></Row>
             <Row label="字体"><Select value={txt?.font ?? ""} options={FONTS} onChange={(v) => setText({ font: v || undefined })} /></Row>
             {/* style row: bold / italic / alignment */}
