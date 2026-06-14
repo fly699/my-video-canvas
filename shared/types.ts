@@ -1111,6 +1111,8 @@ export interface AgentMessage {
   pipeline?: PipelineStep[];
   /** assistant only: 时长拆解摘要（目标秒数/每镜秒数/镜头数），供计划大纲展示。 */
   plan?: { targetSeconds: number; perShotSeconds: number; shots: number; templateLabel?: string };
+  /** assistant only: LLM 提议但被服务端校验丢弃的操作原因（去重，≤6 条），供「N 项被忽略」提示。 */
+  dropped?: string[];
 }
 
 export interface AgentNodeData {

@@ -198,19 +198,33 @@ export function sanitizeOperation(
   raw: unknown,
   opts: { comfyOnly?: boolean; validTemplateIds?: Set<number> } = {},
 ): AgentOperation | null {
-  if (!raw || typeof raw !== "object") return null;
+  const r = sanitizeOperationDetailed(raw, opts);
+  return "op" in r ? r.op : null;
+}
+
+/**
+ * Same validation as {@link sanitizeOperation} but distinguishes "kept" from
+ * "dropped + why" so the agent can tell the user *which* of the LLM's proposed
+ * operations were silently discarded (hallucinated node types, fabricated
+ * template ids, malformed connects, …) instead of them just vanishing.
+ */
+export function sanitizeOperationDetailed(
+  raw: unknown,
+  opts: { comfyOnly?: boolean; validTemplateIds?: Set<number> } = {},
+): { op: AgentOperation } | { drop: string } {
+  if (!raw || typeof raw !== "object") return { drop: "无法识别的操作（非对象）" };
   const o = raw as Record<string, unknown>;
   const op = o.op;
-  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete") return null;
+  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete") return { drop: `未知的操作类型「${String(op)}」` };
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
   // note 是给人看的一句话理由，行内展示——超长（LLM 跑偏）截到 120 字防撑爆消息存储。
   const noteStr = (v: unknown) => { const t = str(v); return t && t.length > 120 ? t.slice(0, 120) + "…" : t; };
 
   if (op === "create") {
     const nodeType = str(o.nodeType) as NodeType | undefined;
-    if (!nodeType || !SPEC_BY_TYPE.has(nodeType)) return null;
+    if (!nodeType || !SPEC_BY_TYPE.has(nodeType)) return { drop: `不支持的节点类型「${String(o.nodeType)}」` };
     // comfyOnly: drop any generation node that isn't comfyui_workflow.
-    if (opts.comfyOnly && COMFY_ONLY_EXCLUDED.has(nodeType)) return null;
+    if (opts.comfyOnly && COMFY_ONLY_EXCLUDED.has(nodeType)) return { drop: `「仅 ComfyUI」模式下不支持 ${nodeType} 节点` };
     const spec = SPEC_BY_TYPE.get(nodeType)!;
     const allowed = new Set(spec.fields.map((f) => f.name));
     const payload: Record<string, unknown> = {};
@@ -226,28 +240,30 @@ export function sanitizeOperation(
       const tid = payload.templateId != null ? Number(payload.templateId) : NaN;
       const hasValidTemplate = Number.isInteger(tid) && opts.validTemplateIds.has(tid);
       // comfyOnly: a workflow node is meaningless without a real template → drop.
-      if (opts.comfyOnly && !hasValidTemplate) return null;
+      if (opts.comfyOnly && !hasValidTemplate) return { drop: "ComfyUI 工作流节点缺少有效模板" };
       // Any mode: a templateId that doesn't resolve is a hallucination → drop.
-      if (payload.templateId != null && !hasValidTemplate) return null;
+      if (payload.templateId != null && !hasValidTemplate) return { drop: `引用了不存在的工作流模板（id=${String(payload.templateId)}）` };
     }
     return {
-      op: "create", nodeType, tempId: str(o.tempId), title: str(o.title),
-      payload, note: noteStr(o.note), sceneGroup: str(o.sceneGroup),
+      op: {
+        op: "create", nodeType, tempId: str(o.tempId), title: str(o.title),
+        payload, note: noteStr(o.note), sceneGroup: str(o.sceneGroup),
+      },
     };
   }
   if (op === "connect") {
     const sourceRef = str(o.sourceRef), targetRef = str(o.targetRef);
-    if (!sourceRef || !targetRef) return null;
-    return { op: "connect", sourceRef, targetRef, sourceHandle: str(o.sourceHandle), targetHandle: str(o.targetHandle), note: noteStr(o.note) };
+    if (!sourceRef || !targetRef) return { drop: "连接操作缺少起点或终点引用" };
+    return { op: { op: "connect", sourceRef, targetRef, sourceHandle: str(o.sourceHandle), targetHandle: str(o.targetHandle), note: noteStr(o.note) } };
   }
   if (op === "update") {
     const targetRef = str(o.targetRef);
-    if (!targetRef) return null;
+    if (!targetRef) return { drop: "修改操作缺少目标节点引用" };
     const payload = (o.payload && typeof o.payload === "object") ? (o.payload as Record<string, unknown>) : {};
-    return { op: "update", targetRef, title: str(o.title), payload, note: noteStr(o.note) };
+    return { op: { op: "update", targetRef, title: str(o.title), payload, note: noteStr(o.note) } };
   }
   // delete
   const targetRef = str(o.targetRef);
-  if (!targetRef) return null;
-  return { op: "delete", targetRef, note: noteStr(o.note) };
+  if (!targetRef) return { drop: "删除操作缺少目标节点引用" };
+  return { op: { op: "delete", targetRef, note: noteStr(o.note) } };
 }

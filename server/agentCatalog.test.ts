@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeOperation } from "./_core/agentCatalog";
+import { sanitizeOperation, sanitizeOperationDetailed } from "./_core/agentCatalog";
 
 describe("agentCatalog.sanitizeOperation", () => {
   it("accepts a valid create op and filters unknown payload fields", () => {
@@ -82,5 +82,53 @@ describe("agentCatalog.sanitizeOperation", () => {
       { op: "create", nodeType: "comfyui_workflow", payload: { prompt: "p" } },
       { comfyOnly: true, validTemplateIds },
     )).toBeNull();
+  });
+});
+
+describe("agentCatalog.sanitizeOperationDetailed", () => {
+  it("kept op returns { op }", () => {
+    const r = sanitizeOperationDetailed({ op: "create", nodeType: "prompt", payload: { positivePrompt: "x" } });
+    expect("op" in r).toBe(true);
+    if ("op" in r) expect(r.op.nodeType).toBe("prompt");
+  });
+
+  it("unknown node type → drop reason names the type", () => {
+    const r = sanitizeOperationDetailed({ op: "create", nodeType: "definitely_not_a_node", payload: {} });
+    expect("drop" in r).toBe(true);
+    if ("drop" in r) expect(r.drop).toContain("definitely_not_a_node");
+  });
+
+  it("comfyOnly excluded node → drop reason mentions ComfyUI", () => {
+    const r = sanitizeOperationDetailed({ op: "create", nodeType: "video_task", payload: {} }, { comfyOnly: true });
+    expect("drop" in r && r.drop.includes("ComfyUI")).toBe(true);
+  });
+
+  it("fabricated template id → drop reason names the id", () => {
+    const r = sanitizeOperationDetailed(
+      { op: "create", nodeType: "comfyui_workflow", payload: { templateId: 999, prompt: "p" } },
+      { validTemplateIds: new Set<number>([7]) },
+    );
+    expect("drop" in r && r.drop.includes("999")).toBe(true);
+  });
+
+  it("malformed connect / missing op → drop", () => {
+    expect("drop" in sanitizeOperationDetailed({ op: "connect", sourceRef: "n1" })).toBe(true);
+    expect("drop" in sanitizeOperationDetailed(null)).toBe(true);
+    expect("drop" in sanitizeOperationDetailed({ op: "explode" })).toBe(true);
+  });
+
+  it("stays consistent with sanitizeOperation (kept ⇔ non-null)", () => {
+    const inputs = [
+      { op: "create", nodeType: "prompt", payload: { positivePrompt: "x" } },
+      { op: "create", nodeType: "bogus", payload: {} },
+      { op: "connect", sourceRef: "a", targetRef: "b" },
+      { op: "delete" },
+      null,
+    ];
+    for (const i of inputs) {
+      const detailed = sanitizeOperationDetailed(i);
+      const plain = sanitizeOperation(i);
+      expect("op" in detailed).toBe(plain !== null);
+    }
   });
 });
