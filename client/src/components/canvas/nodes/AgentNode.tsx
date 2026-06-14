@@ -8,14 +8,14 @@ import { derivePipelineSteps } from "@/lib/pipelinePlan";
 import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw, ListChecks, ImageIcon } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw, ListChecks, ImageIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary, distributeServers, summarizePlanOps } from "@/lib/agentApply";
 import { ownedNodeIds } from "@/lib/agentOwnership";
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { LAYOUTS, computeLayout } from "@/lib/layoutUtils";
-import { estimateOpsBudget, budgetLabel } from "@/lib/agentBudget";
+import { estimateOpsBudget, budgetLabel, estimateOpsBudgetBreakdown } from "@/lib/agentBudget";
 import { estimateCanvasBudget } from "@/lib/costEstimate";
 import { readProjectBudgetCap } from "@/lib/budgetCap";
 import { AGENT_RECIPES, buildRecipeOps, recipeDefaultConfig, type AgentRecipe, type RecipeConfig } from "@/lib/agentRecipes";
@@ -64,6 +64,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   const [input, setInput] = useState("");
   const [appliedIdx, setAppliedIdx] = useState<Set<number>>(new Set());
+  const [costOpenIdx, setCostOpenIdx] = useState<Set<number>>(new Set()); // 展开「预估消耗明细」的计划卡下标
   const [layoutIdx, setLayoutIdx] = useState(0);
   const [analyzeFull, setAnalyzeFull] = useState(false);
   const [showRecipes, setShowRecipes] = useState(false);
@@ -643,16 +644,38 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                   {(() => {
                     const b = estimateOpsBudget(m.operations);
                     const lbl = budgetLabel(b);
-                    return lbl ? (
-                      <div style={{ padding: "2px 9px 4px", fontSize: 10, color: "var(--c-t3)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
-                        <Zap className="w-3 h-3" style={{ flexShrink: 0 }} />预估消耗：{lbl}
-                        {b.credits > 0 && balanceQuery.data?.configured && typeof balanceQuery.data.creditsAmount === "number" && (
-                          <span style={{ color: b.credits > balanceQuery.data.creditsAmount ? "oklch(0.62 0.20 25)" : "var(--c-t3)" }}>
-                            （余额 {balanceQuery.data.creditsAmount}）
-                          </span>
-                        )}
+                    if (!lbl) return null;
+                    const breakdown = estimateOpsBudgetBreakdown(m.operations);
+                    const open = costOpenIdx.has(i);
+                    return (
+                      <div style={{ padding: "2px 9px 4px", fontSize: 10, color: "var(--c-t3)", fontWeight: 600, display: "flex", flexDirection: "column", gap: 2 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <Zap className="w-3 h-3" style={{ flexShrink: 0 }} />预估消耗：{lbl}
+                          {b.credits > 0 && balanceQuery.data?.configured && typeof balanceQuery.data.creditsAmount === "number" && (
+                            <span style={{ color: b.credits > balanceQuery.data.creditsAmount ? "oklch(0.62 0.20 25)" : "var(--c-t3)" }}>
+                              （余额 {balanceQuery.data.creditsAmount}）
+                            </span>
+                          )}
+                          {breakdown.length > 0 && (
+                            <button
+                              onClick={() => setCostOpenIdx((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; })}
+                              className="nodrag"
+                              style={{ marginLeft: "auto", background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 2, fontSize: 9.5, fontWeight: 600 }}
+                            >
+                              明细 {open ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+                            </button>
+                          )}
+                        </div>
+                        {open && breakdown.map((it) => (
+                          <div key={it.key} style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 16, fontWeight: 400 }}>
+                            <span style={{ color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{it.label} ×{it.count}</span>
+                            <span style={{ flexShrink: 0, color: it.kind === "credits" ? "var(--c-t2)" : "var(--c-t4)" }}>
+                              {it.kind === "credits" ? `${it.totalCredits} credits` : it.kind === "local" ? "免费" : "按用量"}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    ) : null;
+                    );
                   })()}
                   {(() => {
                     // "Applied" must survive node re-render / reopen: apply stamps each
