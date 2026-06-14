@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download, Undo2, Redo2, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download, Undo2, Redo2, SlidersHorizontal, Keyboard } from "lucide-react";
 import { useEditorStore } from "@/components/editor/editorStore";
 import { MediaBin } from "@/components/editor/MediaBin";
 import { Timeline } from "@/components/editor/Timeline";
@@ -112,6 +112,9 @@ function EditorWorkspace({ id }: { id: number }) {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, [contenteditable='true'], select")) return;
+      // ? 开关快捷键速查浮层（Shift+/ 产生 "?"）；Esc 关闭。与画布速查面板对齐。
+      if (e.key === "?") { e.preventDefault(); setShowShortcuts((v) => !v); return; }
+      if (e.key === "Escape") { setShowShortcuts(false); return; }
       const st = useEditorStore.getState();
       if (e.ctrlKey || e.metaKey) {
         const k = e.key.toLowerCase();
@@ -142,6 +145,7 @@ function EditorWorkspace({ id }: { id: number }) {
   const [exportQuality, setExportQuality] = useState<"high" | "medium" | "low">("high");
   const [exportRes, setExportRes] = useState<"source" | "2160" | "1080" | "720" | "480">("source");
   const [exportMenu, setExportMenu] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const exportMut = trpc.editor.export.useMutation({
     onSuccess: ({ jobId }) => { setJobId(jobId); setExportUrl(null); setExportPct(0); setExportStage("排队中"); },
     onError: (e) => toast.error("导出失败：" + e.message),
@@ -256,6 +260,62 @@ function EditorWorkspace({ id }: { id: number }) {
           style={{ ...iconBtn, opacity: canRedo ? 1 : 0.4, cursor: canRedo ? "pointer" : "default" }}
         ><Redo2 size={16} /></button>
         <CanvasSettings />
+        {/* 快捷键速查（? 开关 / Esc 关闭）——剪辑器自身的播放·定位·片段·撤销快捷键一处可查 */}
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => setShowShortcuts((v) => !v)}
+            title="快捷键速查 (?)"
+            style={{ ...iconBtn, color: showShortcuts ? ACCENT : "var(--c-t2)", borderColor: showShortcuts ? ACCENT : "var(--c-bd2)" }}
+          ><Keyboard size={16} /></button>
+          {showShortcuts && (
+            <div
+              style={{
+                position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 50, width: 280,
+                borderRadius: 16, padding: 16,
+                background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
+                backdropFilter: "blur(24px)", border: "1px solid var(--c-bd2)",
+                boxShadow: "0 16px 48px oklch(0 0 0 / 0.55), 0 4px 12px oklch(0 0 0 / 0.35)",
+              }}
+            >
+              <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 12, color: "var(--c-t4)" }}>剪辑器快捷键</p>
+              {[
+                { group: "播放 / 定位", items: [
+                  { key: "空格", desc: "播放 / 暂停" },
+                  { key: "Home", desc: "跳到开头" },
+                  { key: "End", desc: "跳到结尾" },
+                  { key: "← / →", desc: "逐帧步进" },
+                  { key: "Shift + ← / →", desc: "一次跳 10 帧" },
+                ]},
+                { group: "片段编辑（需先选中片段）", items: [
+                  { key: "Del / Backspace", desc: "删除选中片段" },
+                  { key: "S", desc: "在播放头处分割片段" },
+                  { key: "Cmd/Ctrl + D", desc: "复制选中片段" },
+                ]},
+                { group: "撤销 / 重做", items: [
+                  { key: "Cmd/Ctrl + Z", desc: "撤销" },
+                  { key: "Cmd/Ctrl + Shift + Z", desc: "重做" },
+                  { key: "Ctrl + Y", desc: "重做（Windows）" },
+                ]},
+                { group: "其他", items: [
+                  { key: "?", desc: "开关本速查面板" },
+                  { key: "Esc", desc: "关闭本面板" },
+                ]},
+              ].map(({ group, items }) => (
+                <div key={group} style={{ marginBottom: 12 }}>
+                  <p style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6, color: "var(--c-t4)" }}>{group}</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {items.map(({ key, desc }) => (
+                      <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontSize: 11, color: "var(--c-t2)" }}>{desc}</span>
+                        <span style={{ fontFamily: "monospace", fontSize: 10, padding: "1px 6px", borderRadius: 6, background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "oklch(0.72 0.12 285)", whiteSpace: "nowrap", flexShrink: 0 }}>{key}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {exportUrl && (
           <button onClick={() => downloadMedia(exportUrl, `${displayName}.${exportFormat === "hevc" ? "mp4" : exportFormat}`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
             <Download size={15} /> 下载成片
