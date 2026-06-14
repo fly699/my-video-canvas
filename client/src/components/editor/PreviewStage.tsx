@@ -261,7 +261,7 @@ export function PreviewStage() {
       if (c) { fitClip = c; break; }
     }
   }
-  const FIT_MODES: [FitMode, string][] = [["contain", "维持比例"], ["cover", "撑满"], ["stretch", "拉伸"], ["blur", "模糊填充"]];
+  const FIT_MODES: [FitMode, string][] = [["contain", "维持比例"], ["cover", "撑满"], ["stretch", "拉伸"], ["blur", "模糊填充"], ["none", "原始1:1"]];
   const fitBtn = (active: boolean): React.CSSProperties => ({
     padding: "3px 9px", fontSize: 11, borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap",
     border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2,
@@ -313,7 +313,7 @@ export function PreviewStage() {
             }
             const mainOpacity = xfade * (fullFrame && tf ? (tf.opacity ?? 1) : 1);
             const objFit: React.CSSProperties["objectFit"] = fullFrame
-              ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : "contain")
+              ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : clip.fit === "none" ? "none" : "contain")
               : "cover";
 
             if (fullFrame) {

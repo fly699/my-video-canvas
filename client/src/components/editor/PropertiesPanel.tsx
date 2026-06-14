@@ -119,7 +119,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <Slider label={`淡出 ${(pv.fadeOut ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={pv.fadeOut ?? 0} onChange={(v) => updateSelected({ fadeOut: v })} />
             <div style={{ fontSize: 11, color: EC.t3, marginTop: 2 }}>适配方式</div>
             <div style={{ display: "flex", gap: 4 }}>
-              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"]] as const).map(([v, label]) => (
+              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"], ["none", "原始1:1"]] as const).map(([v, label]) => (
                 <button key={v} onClick={() => updateSelected({ fit: v, transform: undefined, keyframes: undefined })}
                   style={{ flex: 1, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${(pv.fit ?? "contain") === v ? EC.accent : EC.border}`, background: (pv.fit ?? "contain") === v ? EC.accentSoft : "transparent", color: (pv.fit ?? "contain") === v ? EC.accent : EC.t2 }}>{label}</button>
               ))}
@@ -245,7 +245,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
         {(c.kind === "video" || c.kind === "image") && clipTrackType === "video" && (
           <Section title="画面适配">
             <div style={{ display: "flex", gap: 6 }}>
-              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"]] as const).map(([v, label]) => {
+              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"], ["none", "原始1:1"]] as const).map(([v, label]) => {
                 const active = (c.fit ?? "contain") === v;
                 return (
                   // 适配=整屏：清掉手动位置/缩放/旋转与关键帧，让 fit 真正作用于画面
@@ -255,7 +255,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
                 );
               })}
             </div>
-            <div style={{ fontSize: 10.5, color: EC.t4 }}>适应=留黑边 · 填充=铺满裁切 · 拉伸=变形铺满 · 模糊=模糊背景填黑边（针对主轨整屏画面）</div>
+            <div style={{ fontSize: 10.5, color: EC.t4 }}>适应=留黑边 · 填充=铺满裁切 · 拉伸=变形铺满 · 模糊=模糊背景填黑边 · 原始=源生像素 1:1 居中（针对主轨整屏画面）</div>
           </Section>
         )}
 
@@ -293,7 +293,9 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
         {isVisual && (
           <Section title="关键帧动画">
             <div style={{ fontSize: 11, color: EC.t3, marginBottom: 6, lineHeight: 1.5 }}>
-              在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间，预览实时演示。导出：<b>位置（移动）动画已支持</b>；缩放 / 旋转 / 不透明度关键帧目前仅预览，导出取静态值。
+              在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间，预览实时演示。{clipTrackType === "video"
+                ? <>导出：<b>主轨片段关键帧动画仅预览</b>，导出取静态值（需要 Ken-Burns 推拉动画请把素材放到「叠加」轨）。</>
+                : <>导出：<b>位置（移动）动画已支持</b>；缩放 / 旋转 / 不透明度关键帧目前仅预览，导出取静态值。</>}
             </div>
             <button
               onClick={() => {

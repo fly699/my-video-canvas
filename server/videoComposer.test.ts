@@ -183,6 +183,31 @@ describe("segmentTransformChain (main-track zoom/pan export)", () => {
   });
 });
 
+describe("fit modes incl. 1:1 原始 (none) + blur honours transform", () => {
+  const base = (fit: "none" | "blur", transform?: object): Segment[] =>
+    [{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 3, speed: 1, fit, ...(transform ? { transform } : {}) } as Segment];
+
+  it("fit=none renders the source 1:1, centered, padded-or-cropped to the canvas", () => {
+    const g = buildFilterGraph(base("none"), OPTS).filterComplex;
+    expect(g).toContain("pad=w='max(1920,iw)':h='max(1080,ih)':x=(ow-iw)/2:y=(oh-ih)/2:color=black");
+    expect(g).toContain("crop=1920:1080");
+    expect(g).not.toContain("scale=1920:1080"); // 1:1 = no scaling
+  });
+
+  it("fit=blur with a zoom transform now applies the zoom in export (preview/export parity)", () => {
+    const g = buildFilterGraph(base("blur", { scale: 2 }), OPTS).filterComplex;
+    expect(g).toContain("boxblur"); // blur path still active
+    expect(g).toContain("scale=3840:2160"); // the transform zoom is applied
+    expect(g).toContain("crop=1920:1080:960:540");
+  });
+
+  it("fit=blur without a transform is unchanged (no zoom filter)", () => {
+    const g = buildFilterGraph(base("blur"), OPTS).filterComplex;
+    expect(g).toContain("boxblur");
+    expect(g).not.toContain("scale=3840"); // no zoom
+  });
+});
+
 describe("overlay position keyframes (export animation)", () => {
   const baseSeg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
 

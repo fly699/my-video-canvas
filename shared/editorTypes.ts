@@ -15,8 +15,9 @@ export type TransitionType = "none" | "fade" | "dissolve" | "slide" | "wipe";
 
 /** How a visual clip fills the output frame.
  *  contain = 适应（完整显示，留黑边）; cover = 填充（铺满，裁剪溢出）; stretch = 拉伸（变形铺满）;
- *  blur = 模糊填充（原画完整居中，放大模糊的同画面铺满作背景，消除黑边）. */
-export type FitMode = "contain" | "cover" | "stretch" | "blur";
+ *  blur = 模糊填充（原画完整居中，放大模糊的同画面铺满作背景，消除黑边）;
+ *  none = 原始 1:1（源生分辨率不缩放，居中——小留黑、大居中裁切）. */
+export type FitMode = "contain" | "cover" | "stretch" | "blur" | "none";
 
 /** Preset color/filter adjustments applied to a visual clip. */
 export interface ClipEffects {

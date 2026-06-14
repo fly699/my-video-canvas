@@ -70,6 +70,10 @@ function fitChain(fit: FitMode | undefined, w: number, h: number): string[] {
       return [`scale=${w}:${h}:force_original_aspect_ratio=increase`, `crop=${w}:${h}`];
     case "stretch": // 拉伸：精确铺满，可能变形
       return [`scale=${w}:${h}`];
+    case "none":    // 原始 1:1：源生分辨率不缩放，居中（小留黑、大居中裁切）
+      // pad up to at least the canvas so pad never fails for oversize sources,
+      // centered, then crop back to the canvas. Quotes protect the commas in max().
+      return [`pad=w='max(${w},iw)':h='max(${h},ih)':x=(ow-iw)/2:y=(oh-ih)/2:color=black`, `crop=${w}:${h}`];
     default:        // 适应：完整显示，居中留黑边
       return [`scale=${w}:${h}:force_original_aspect_ratio=decrease`, `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`];
   }
@@ -279,7 +283,7 @@ export function buildFilterGraph(
       parts.push(`[${i}:v]${pre.join(",")},split[bg${i}][fg${i}]`);
       parts.push(`[bg${i}]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=20:2,setsar=1[bgb${i}]`);
       parts.push(`[fg${i}]scale=${w}:${h}:force_original_aspect_ratio=decrease,setsar=1[fgs${i}]`);
-      parts.push(`[bgb${i}][fgs${i}]overlay=(W-w)/2:(H-h)/2,${post.join(",")}[v${i}]`);
+      parts.push(`[bgb${i}][fgs${i}]overlay=(W-w)/2:(H-h)/2,${[...segmentTransformChain(s.transform, w, h), ...post].join(",")}[v${i}]`);
     } else {
       parts.push(`[${i}:v]${[...pre, ...fitChain(s.fit, w, h), ...segmentTransformChain(s.transform, w, h), ...post].join(",")}[v${i}]`);
     }
