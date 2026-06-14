@@ -85,6 +85,20 @@ export function snapAxis(pos: number, size: number, thr: number): { pos: number;
   return best ? { pos: best.pos, guide: best.guide } : { pos, guide: null };
 }
 
+// Snap a width fraction to tidy sizes (25/33/50/66/75/100%) within `thr`.
+const NICE_SCALES = [0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1];
+export function snapScale(w: number, thr: number): number {
+  let best = w, bestDist = thr;
+  for (const s of NICE_SCALES) { const dist = Math.abs(w - s); if (dist < bestDist) { best = s; bestDist = dist; } }
+  return best;
+}
+
+// Snap a rotation (degrees) to the nearest 15° increment within `thr` degrees.
+export function snapAngle(deg: number, thr: number): number {
+  const nearest = Math.round(deg / 15) * 15;
+  return Math.abs(deg - nearest) <= thr ? nearest : deg;
+}
+
 export function PreviewStage() {
   const doc = useEditorStore((s) => s.doc);
   const playhead = useEditorStore((s) => s.playhead);
@@ -159,15 +173,17 @@ export function PreviewStage() {
       updateClip(d.id, { transform: { ...d.tf, x: Math.max(-0.5, Math.min(1, nx)), y: Math.max(-0.5, Math.min(1, ny)) } });
     } else if (d.mode === "scale") {
       const distX = Math.abs(e.clientX - left - d.cx);
-      const newW = Math.max(0.04, (distX * 2) / w);             // width fraction (symmetric from center)
+      let newW = Math.max(0.04, (distX * 2) / w);                // width fraction (symmetric from center)
+      if (!e.altKey) newW = snapScale(newW, 0.02);               // snap to tidy sizes (Alt bypasses)
       const newH = newW / d.aspect;                              // height fraction (keep media aspect)
       const cxFrac = d.cx / w, cyFrac = d.cy / h;
       const st = useEditorStore.getState();
       const cur = findClip(st.doc, d.id);
       updateClip(d.id, { transform: { ...(cur?.transform ?? {}), scale: newW, x: cxFrac - newW / 2, y: cyFrac - newH / 2 } });
     } else if (d.mode === "rotate") {
-      const ang = Math.atan2(e.clientY - top - d.cy, e.clientX - left - d.cx) * 180 / Math.PI + 90;
-      updateClip(d.id, { transform: { ...(findClip(useEditorStore.getState().doc, d.id)?.transform ?? {}), rotation: Math.round(ang) } });
+      let ang = Math.round(Math.atan2(e.clientY - top - d.cy, e.clientX - left - d.cx) * 180 / Math.PI + 90);
+      if (!e.altKey) ang = snapAngle(ang, 6);                    // snap to 15° steps (Alt bypasses)
+      updateClip(d.id, { transform: { ...(findClip(useEditorStore.getState().doc, d.id)?.transform ?? {}), rotation: ang } });
     }
   }, [updateClip]);
 

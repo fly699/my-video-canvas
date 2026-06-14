@@ -88,7 +88,8 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
     const track = doc.tracks.find((t) => t.type === trackType) ?? doc.tracks[0];
     let dur = 5;
     if (kind === "video" || kind === "audio") dur = await probeMediaDuration(a.url, kind);
-    const start = trackEnd(useEditorStore.getState().doc!, track.id);
+    // insert at the playhead (not appended to the track's end)
+    const start = Math.max(0, useEditorStore.getState().playhead);
     addClip(track.id, { kind, assetId: a.id, assetUrl: a.url, start, trimIn: 0, trimOut: dur });
   }
 

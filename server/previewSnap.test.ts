@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { snapAxis } from "../client/src/components/editor/PreviewStage";
+import { snapAxis, snapScale, snapAngle } from "../client/src/components/editor/PreviewStage";
 
 describe("preview composition snapping", () => {
   it("snaps the box CENTER to canvas center (0.5)", () => {
@@ -34,6 +34,21 @@ describe("preview composition snapping", () => {
     const r = snapAxis(0.15, 0.1, 0.02); // left 0.15, center 0.2, right 0.25 — none near a target
     expect(r.guide).toBeNull();
     expect(r.pos).toBe(0.15);
+  });
+
+  it("snapScale snaps to tidy sizes within threshold, else leaves the value", () => {
+    expect(snapScale(0.51, 0.02)).toBe(0.5);
+    expect(snapScale(0.99, 0.02)).toBe(1);
+    expect(snapScale(0.252, 0.02)).toBe(0.25);
+    expect(snapScale(0.6, 0.02)).toBe(0.6); // 0.6 is >0.02 from 0.5/0.667 → unchanged
+  });
+
+  it("snapAngle snaps to 15° steps within threshold, else leaves the angle", () => {
+    expect(snapAngle(2, 6)).toBe(0);
+    expect(snapAngle(88, 6)).toBe(90);
+    expect(snapAngle(46, 6)).toBe(45);
+    expect(snapAngle(37, 6)).toBe(37);   // 37 is 7° from 30/45 → unchanged
+    expect(snapAngle(-44, 6)).toBe(-45);
   });
 
   it("prefers the closest target when several are within threshold", () => {
