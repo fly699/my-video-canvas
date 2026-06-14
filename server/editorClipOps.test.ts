@@ -17,7 +17,7 @@ describe("copy / paste clip", () => {
     const id = st().addClip("v1", { kind: "image", start: 0, trimIn: 0, trimOut: 3, transform: { scale: 0.5 } });
     st().copyClip(id);
     expect(st().clipboard).not.toBeNull();
-    expect(st().clipboard!.trackType).toBe("video");
+    expect(st().clipboard!.clips[0].trackType).toBe("video");
 
     st().setPlayhead(10);
     st().pasteClip(st().playhead);

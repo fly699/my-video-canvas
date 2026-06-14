@@ -286,6 +286,11 @@ function EditorWorkspace({ id }: { id: number }) {
                   { key: "← / →", desc: "逐帧步进" },
                   { key: "Shift + ← / →", desc: "一次跳 10 帧" },
                 ]},
+                { group: "选择", items: [
+                  { key: "点击", desc: "选中片段" },
+                  { key: "Shift/Ctrl + 点击", desc: "加选 / 减选片段" },
+                  { key: "空白处拖拽", desc: "框选多个片段" },
+                ]},
                 { group: "片段编辑", items: [
                   { key: "Del / Backspace", desc: "删除选中片段" },
                   { key: "Shift + Del", desc: "波纹删除（关闭缺口）" },

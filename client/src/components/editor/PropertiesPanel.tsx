@@ -43,6 +43,10 @@ export function PropertiesPanel() {
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
   const removeKeyframe = useEditorStore((s) => s.removeKeyframe);
   const clearKeyframes = useEditorStore((s) => s.clearKeyframes);
+  const selectedClipIds = useEditorStore((s) => s.selectedClipIds);
+  const removeSelected = useEditorStore((s) => s.removeSelected);
+  const duplicateSelected = useEditorStore((s) => s.duplicateSelected);
+  const copySelected = useEditorStore((s) => s.copySelected);
   const dubMut = trpc.audioGen.generateDubbing.useMutation();
   const [ttsModel, setTtsModel] = usePersistentState<string>(
     "ui:editor:tts-model:v1", "openai_tts_real",
@@ -72,6 +76,23 @@ export function PropertiesPanel() {
       addClip(audioTrack.id, { kind: "audio", assetUrl: r.url, start, trimIn: 0, trimOut: dur, volume: 1 });
       toast.success("已生成配音并加入音频轨");
     } catch (e) { toast.error("配音失败：" + (e instanceof Error ? e.message : "")); }
+  }
+
+  // Multi-selection → a compact bulk-action panel instead of single-clip props.
+  if (selectedClipIds.length > 1) {
+    const n = selectedClipIds.length;
+    const mBtn: React.CSSProperties = { width: "100%", padding: "8px 0", fontSize: 12, borderRadius: 7, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent", color: EC.t1 };
+    return (
+      <aside style={panel}>
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: EC.t1 }}>已选 {n} 个片段</div>
+          <div style={{ fontSize: 11, color: EC.t4, lineHeight: 1.5 }}>在时间轴上拖动可整体移动；下列操作作用于全部选中片段。Shift/Ctrl 点击可加选/减选，空白处拖拽框选。</div>
+          <button style={mBtn} onClick={() => duplicateSelected()}>原地复制全部（Ctrl+D）</button>
+          <button style={mBtn} onClick={() => copySelected()}>拷贝到剪贴板（Ctrl+C）</button>
+          <button style={{ ...mBtn, color: "oklch(0.65 0.2 25)", borderColor: "oklch(0.65 0.2 25 / 0.5)" }} onClick={() => removeSelected()}>删除全部（Del）</button>
+        </div>
+      </aside>
+    );
   }
 
   let clip: Clip | null = null;
