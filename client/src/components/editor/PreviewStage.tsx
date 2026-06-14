@@ -227,6 +227,31 @@ export function PreviewStage() {
   const visible = activeAt(doc, playhead);
   const aspect = doc.width / doc.height;
 
+  // Cross-dissolve preview: when the playhead is in the last `d` seconds before an
+  // adjacent main-track clip that has a transitionIn, crossfade the outgoing clip
+  // out and the incoming clip in (opacity approximation of the export's xfade).
+  const fade = new Map<string, number>();
+  const incoming: { clip: Clip; trackType: string; muted: boolean }[] = [];
+  for (const track of doc.tracks) {
+    if (track.type !== "video" || track.hidden) continue;
+    const clips = [...track.clips].sort((a, b) => a.start - b.start);
+    for (let i = 1; i < clips.length; i++) {
+      const A = clips[i - 1], B = clips[i];
+      const d = B.transitionIn?.duration ?? 0;
+      if (!B.transitionIn || B.transitionIn.type === "none" || d <= 0) continue;
+      if (Math.abs(B.start - (A.start + clipDuration(A))) > 0.05) continue; // not adjacent
+      const winStart = B.start - d;
+      if (playhead >= winStart && playhead < B.start) {
+        const p = Math.max(0, Math.min(1, (playhead - winStart) / d));
+        fade.set(A.id, 1 - p);
+        fade.set(B.id, p);
+        incoming.push({ clip: B, trackType: "video", muted: true }); // B not active yet
+      }
+    }
+  }
+  const renderList = incoming.length ? [...visible, ...incoming] : visible;
+  const fadeOf = (id: string) => fade.get(id) ?? 1;
+
   // The selected main-track visual clip whose framing the 适配 buttons control.
   let fitClip: Clip | null = null;
   if (selectedClipId) {
@@ -267,11 +292,12 @@ export function PreviewStage() {
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0 }}>
         <div ref={stageRef} onPointerDown={() => selectClip(null)} onContextMenu={(e) => e.preventDefault()}
           style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)", outline: `1px solid ${EC.border}`, outlineOffset: -1 }}>
-          {visible.map(({ clip, trackType }) => {
+          {renderList.map(({ clip, trackType }) => {
             const hasKf = !!clip.keyframes && clip.keyframes.length > 0;
             const tf = hasKf ? transformAt(clip, playhead - clip.start) : clip.transform;
             const fullFrame = !clip.transform && !hasKf && trackType === "video";
             const selected = clip.id === selectedClipId;
+            const xfade = fadeOf(clip.id);
             const objFit: React.CSSProperties["objectFit"] = fullFrame
               ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : "contain")
               : "cover";
@@ -279,13 +305,13 @@ export function PreviewStage() {
             if (fullFrame) {
               // main full-frame clip — click to select; sizing via 画面适配
               const common = { onPointerDown: (e: React.PointerEvent) => { e.stopPropagation(); selectClip(clip.id); } };
-              const st: React.CSSProperties = { position: "absolute", inset: 0, objectFit: objFit, filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
+              const st: React.CSSProperties = { position: "absolute", inset: 0, objectFit: objFit, opacity: xfade, filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
               // 模糊填充：近似预览 = 模糊放大的同画面铺满作背景 + 原画完整居中（导出由后端为准）
               if (clip.fit === "blur") {
                 const bg: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(22px) brightness(0.85)", transform: "scale(1.12)", pointerEvents: "none" };
                 const fg: React.CSSProperties = { position: "absolute", inset: 0, objectFit: "contain", filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
                 return (
-                  <div key={clip.id} style={{ position: "absolute", inset: 0 }}>
+                  <div key={clip.id} style={{ position: "absolute", inset: 0, opacity: xfade }}>
                     {clip.kind === "image" ? (
                       <><img src={clip.assetUrl} alt="" style={bg} /><img {...common} src={clip.assetUrl} alt="" style={fg} /></>
                     ) : (
@@ -304,7 +330,7 @@ export function PreviewStage() {
               position: "absolute",
               left: `${(tf?.x ?? 0.1) * 100}%`, top: `${(tf?.y ?? 0.1) * 100}%`,
               width: `${(tf?.scale ?? 0.4) * 100}%`,
-              opacity: tf?.opacity ?? 1,
+              opacity: (tf?.opacity ?? 1) * xfade,
               transform: `rotate(${tf?.rotation ?? 0}deg)`,
               cursor: "move", touchAction: "none",
               outline: selected ? `2px solid ${EC.accent}` : "none",

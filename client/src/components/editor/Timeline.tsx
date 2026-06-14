@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
@@ -352,6 +352,13 @@ export function Timeline() {
                         display: "flex", alignItems: "center",
                       }}>
                       <ClipThumb kind={c.kind} assetUrl={c.assetUrl} trimIn={c.trimIn} color={col} />
+                      {/* 转场标识：该片段设了入场转场时，左缘显示一个交叠图标 */}
+                      {c.transitionIn && c.transitionIn.type !== "none" && (
+                        <div title={`入场转场：${c.transitionIn.type} ${c.transitionIn.duration}s（与前一片段交叉）`}
+                          style={{ position: "absolute", left: -1, top: "50%", transform: "translateY(-50%)", zIndex: 3, width: 14, height: 14, borderRadius: "50%", background: EC.surface, border: `1px solid ${EC.accent}`, color: EC.accent, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                          <Blend size={9} />
+                        </div>
+                      )}
                       <span style={{ position: "relative", fontSize: 10, color: EC.t1, padding: "0 10px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none" }}>
                         {c.kind === "text" ? (c.text?.content ?? "文字") : (c.assetUrl?.split("/").pop() ?? c.kind)}
                       </span>

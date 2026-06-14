@@ -322,6 +322,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           {c.transitionIn && c.transitionIn.type !== "none" && (
             <Slider label={`时长 ${c.transitionIn.duration.toFixed(1)}s`} min={0.1} max={2} step={0.1} value={c.transitionIn.duration} onChange={(v) => update(c.id, { transitionIn: { type: c.transitionIn!.type, duration: v } })} />
           )}
+          <div style={{ fontSize: 10.5, color: EC.t4, lineHeight: 1.5 }}>与<b>前一个主轨片段</b>交叉转场（cross-dissolve）。预览在转场区间叠化演示；导出由 ffmpeg xfade 精确合成。</div>
         </Section>
       </div>
     </aside>
