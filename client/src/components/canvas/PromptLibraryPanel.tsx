@@ -201,12 +201,12 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
             {byCategory.map(([cat, all]) => [cat, all.filter((it) => hit(it.label, it.text, it.category))] as const)
               .filter(([, arr]) => arr.length > 0)
               .map(([cat, arr]) => (
-              <div key={cat} className="flex flex-col gap-1">
+              <div key={cat} className="flex flex-col gap-1 flex-shrink-0">
                 <div className="flex items-center gap-1" style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}><FolderOpen className="w-3 h-3" /> {cat}</div>
                 {arr.map((it) => (
                   editing?.id === it.id ? (
                     // 内联编辑：名称 / 类别 / 正文 + 保存/取消。
-                    <div key={it.id} className="flex flex-col gap-1.5 px-2 py-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid oklch(0.66 0.18 30 / 0.4)" }}>
+                    <div key={it.id} className="flex flex-col gap-1.5 px-2 py-2 rounded-lg flex-shrink-0" style={{ background: "var(--c-input)", border: "1px solid oklch(0.66 0.18 30 / 0.4)" }}>
                       <div className="flex gap-1.5">
                         <input value={editing.label} onChange={(e) => setEditing((s) => s && { ...s, label: e.target.value })} placeholder="名称" className="nodrag" style={{ flex: 1, fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
                         <input value={editing.category} onChange={(e) => setEditing((s) => s && { ...s, category: e.target.value })} placeholder="类别" className="nodrag" style={{ width: 88, fontSize: 11, padding: "4px 6px", borderRadius: 6, background: "var(--c-base)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
@@ -218,7 +218,7 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
                   ) : (
-                    <div key={it.id} className="group flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
+                    <div key={it.id} className="group flex items-center gap-2 px-2.5 py-2 rounded-lg flex-shrink-0" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
                       {it.slot != null && <Star className="w-3 h-3 flex-shrink-0" style={{ color: "oklch(0.66 0.18 30)", fill: "oklch(0.66 0.18 30)" }} />}
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditing({ id: it.id, label: it.label, text: it.text, category: it.category })} title="点击编辑">
                         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.label}</div>
@@ -237,7 +237,7 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
 
             {/* 把某「类别」设为槽位（点击「/」时展开二级菜单） */}
             {!q && byCategory.length > 0 && (
-              <div className="flex flex-col gap-1 mt-1 pt-2" style={{ borderTop: "1px solid var(--c-bd2)" }}>
+              <div className="flex flex-col gap-1 mt-1 pt-2 flex-shrink-0" style={{ borderTop: "1px solid var(--c-bd2)" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)" }}>把类别设为槽位（展开二级菜单）</div>
                 {byCategory.map(([cat, arr]) => {
                   // 用该类第一条作为「类别槽位」载体（slotKind=category）。
@@ -262,12 +262,12 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
             .filter((c) => c.items.length > 0);
           if (cats.length === 0) return <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "16px 8px" }}>没有匹配「{query}」的预设</div>;
           return cats.map((c) => (
-            <div key={c.category} className="flex flex-col gap-1">
+            <div key={c.category} className="flex flex-col gap-1 flex-shrink-0">
               <div className="flex items-center gap-1" style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}><FolderOpen className="w-3 h-3" /> {c.category}</div>
               {c.items.map((p) => {
                 const added = isAdded(p.label, p.text);
                 return (
-                <div key={p.label} className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
+                <div key={p.label} className="flex items-center gap-2 px-2.5 py-2 rounded-lg flex-shrink-0" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
                   <div className="flex-1 min-w-0">
                     <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</div>
                     <div title={p.text} style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.45, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.text}</div>

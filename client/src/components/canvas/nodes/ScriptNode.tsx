@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -16,7 +16,7 @@ import { ScriptDevFlowPanel, ScriptCoveragePanel } from "../ScriptSidePanels";
 import { ScriptHistoryPanel } from "../ScriptHistoryPanel";
 import { ScriptCastPanel } from "../ScriptCastPanel";
 import { snapshotContent } from "@/lib/scriptHistory";
-import { hashContent, hasDownstreamStoryboardForId, isStoryboardStale } from "@/lib/scriptStoryboardSync";
+import { hashContent, hasDownstreamStoryboardForId } from "@/lib/scriptStoryboardSync";
 import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
@@ -356,6 +356,14 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     updateNodeData(id, { lastStoryboardContentHash: hashContent(c), lastStoryboardAt: Date.now() }, true);
   }, [id, updateNodeData]);
 
+  // 分镜过期判定：先做廉价短路（记录过基线 + 正文已变），仅在此前提下才扫描下游分镜，
+  // 并用 useMemo 缓存——避免每次渲染都全画布遍历 nodes/edges。
+  const storyboardStale = useMemo(() => {
+    const base = payload.lastStoryboardContentHash;
+    if (!base || base === hashContent(payload.content ?? "")) return false;
+    return hasDownstreamStoryboardForId(id);
+  }, [payload.content, payload.lastStoryboardContentHash, id]);
+
   const generateMutation = trpc.scripts.generateStoryboards.useMutation({
     onSuccess: (result) => {
       const { count, target } = addScenesFromResult(result.scenes);
@@ -629,7 +637,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         />
 
         {/* 脚本↔分镜过期提示：脚本在拆分镜后又被修改时出现，提示而非自动覆盖已有分镜 */}
-        {isStoryboardStale(payload, hasDownstreamStoryboardForId(id)) && (
+        {storyboardStale && (
           <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg nodrag" style={{ background: "oklch(0.72 0.16 70 / 0.12)", border: "1px solid oklch(0.72 0.16 70 / 0.4)" }}>
             <AlertTriangle style={{ width: 13, height: 13, color: "oklch(0.72 0.16 70)", flexShrink: 0 }} />
             <span style={{ fontSize: 10, color: "var(--c-t2)", flex: 1, lineHeight: 1.5 }}>脚本已修改，下游分镜可能已过期</span>
