@@ -87,6 +87,38 @@ describe("multi-clip ops", () => {
   });
 });
 
+describe("arrange selection", () => {
+  it("closeGapsSelected packs selected clips end-to-end from the earliest, per track", () => {
+    const a = st().addClip("v1", { kind: "image", start: 0, trimIn: 0, trimOut: 2 }); // [0,2]
+    const b = st().addClip("v1", { kind: "image", start: 5, trimIn: 0, trimOut: 2 }); // gap → should move to 2
+    const c = st().addClip("v1", { kind: "image", start: 9, trimIn: 0, trimOut: 2 }); // → 4
+    st().setSelection([a, b, c]);
+    st().closeGapsSelected();
+    const clips = clipsOf("v1");
+    expect(clips.find((x) => x.id === a)!.start).toBe(0);
+    expect(clips.find((x) => x.id === b)!.start).toBe(2);
+    expect(clips.find((x) => x.id === c)!.start).toBe(4);
+  });
+
+  it("closeGapsSelected leaves unselected clips alone", () => {
+    const a = st().addClip("v1", { kind: "image", start: 0, trimIn: 0, trimOut: 2 });
+    const b = st().addClip("v1", { kind: "image", start: 5, trimIn: 0, trimOut: 2 });
+    const other = st().addClip("v1", { kind: "image", start: 20, trimIn: 0, trimOut: 2 }); // not selected
+    st().setSelection([a, b]);
+    st().closeGapsSelected();
+    expect(clipsOf("v1").find((x) => x.id === other)!.start).toBe(20);
+  });
+
+  it("alignSelectedStartTo shifts the group so its earliest clip lands on the time", () => {
+    const a = st().addClip("v1", { kind: "image", start: 4, trimIn: 0, trimOut: 2 }); // earliest
+    const b = st().addClip("a1", { kind: "audio", start: 7, trimIn: 0, trimOut: 2, assetUrl: "x" });
+    st().setSelection([a, b]);
+    st().alignSelectedStartTo(1); // earliest 4 → 1, dx = -3
+    expect(clipsOf("v1").find((x) => x.id === a)!.start).toBe(1);
+    expect(clipsOf("a1").find((x) => x.id === b)!.start).toBe(4);
+  });
+});
+
 describe("multi copy / paste", () => {
   it("copySelected + pasteClip preserves relative offsets and re-targets by track type", () => {
     const a = st().addClip("v1", { kind: "image", start: 2, trimIn: 0, trimOut: 2 });

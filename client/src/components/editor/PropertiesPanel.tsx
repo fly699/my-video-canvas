@@ -47,6 +47,8 @@ export function PropertiesPanel() {
   const removeSelected = useEditorStore((s) => s.removeSelected);
   const duplicateSelected = useEditorStore((s) => s.duplicateSelected);
   const copySelected = useEditorStore((s) => s.copySelected);
+  const closeGapsSelected = useEditorStore((s) => s.closeGapsSelected);
+  const alignSelectedStartTo = useEditorStore((s) => s.alignSelectedStartTo);
   const dubMut = trpc.audioGen.generateDubbing.useMutation();
   const [ttsModel, setTtsModel] = usePersistentState<string>(
     "ui:editor:tts-model:v1", "openai_tts_real",
@@ -87,6 +89,10 @@ export function PropertiesPanel() {
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: EC.t1 }}>已选 {n} 个片段</div>
           <div style={{ fontSize: 11, color: EC.t4, lineHeight: 1.5 }}>在时间轴上拖动可整体移动；下列操作作用于全部选中片段。Shift/Ctrl 点击可加选/减选，空白处拖拽框选。</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button style={{ ...mBtn, flex: 1 }} title="把所选片段在各自轨道上首尾相接，闭合中间的空隙" onClick={() => closeGapsSelected()}>紧排</button>
+            <button style={{ ...mBtn, flex: 1 }} title="整体平移，使最早的选中片段对齐到播放头" onClick={() => alignSelectedStartTo(useEditorStore.getState().playhead)}>对齐到播放头</button>
+          </div>
           <button style={mBtn} onClick={() => duplicateSelected()}>原地复制全部（Ctrl+D）</button>
           <button style={mBtn} onClick={() => copySelected()}>拷贝到剪贴板（Ctrl+C）</button>
           <button style={{ ...mBtn, color: "oklch(0.65 0.2 25)", borderColor: "oklch(0.65 0.2 25 / 0.5)" }} onClick={() => removeSelected()}>删除全部（Del）</button>

@@ -80,6 +80,8 @@ export interface EditorStore {
   duplicateSelected: () => void;
   copySelected: () => void;
   moveSelectedTo: (primaryClipId: string, newPrimaryStart: number) => void;
+  closeGapsSelected: () => void;          // pack selected clips end-to-end per track
+  alignSelectedStartTo: (time: number) => void; // shift selection so its earliest clip starts at `time`
 
   // clipboard — copy clip(s) then paste at the playhead, preserving each clip's
   // offset relative to the earliest. Survives across clips/sessions within a page
@@ -433,6 +435,41 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     let minStart = Infinity;
     for (const t of s.doc.tracks) for (const c of t.clips) if (sel.has(c.id)) minStart = Math.min(minStart, c.start);
     if (minStart + dx < 0) dx = -minStart;
+    if (dx === 0) return s;
+    const tracks = s.doc.tracks.map((t) => ({
+      ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + dx) } : c)),
+    }));
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // 紧排：on each track, pack the SELECTED clips end-to-end (in time order),
+  // starting from the earliest selected clip's current start. Unselected clips and
+  // other tracks are untouched, so cross-track A/V sync is the user's call.
+  closeGapsSelected: () => set((s) => {
+    if (!s.doc || s.selectedClipIds.length < 2) return s;
+    const sel = new Set(s.selectedClipIds);
+    let changed = false;
+    const tracks = s.doc.tracks.map((t) => {
+      const onTrack = t.clips.filter((c) => sel.has(c.id)).sort((a, b) => a.start - b.start);
+      if (onTrack.length < 2) return t;
+      const newStart = new Map<string, number>();
+      let cursor = onTrack[0].start;
+      for (const c of onTrack) { newStart.set(c.id, cursor); cursor += clipDuration(c); }
+      if (onTrack.some((c) => Math.abs(newStart.get(c.id)! - c.start) > 1e-9)) changed = true;
+      return { ...t, clips: t.clips.map((c) => (newStart.has(c.id) ? { ...c, start: newStart.get(c.id)! } : c)) };
+    });
+    if (!changed) return s;
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // Shift the whole selection so its earliest clip starts exactly at `time`.
+  alignSelectedStartTo: (time) => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    let earliest = Infinity;
+    for (const t of s.doc.tracks) for (const c of t.clips) if (sel.has(c.id)) earliest = Math.min(earliest, c.start);
+    if (!isFinite(earliest)) return s;
+    const dx = Math.max(0, time) - earliest;
     if (dx === 0) return s;
     const tracks = s.doc.tracks.map((t) => ({
       ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + dx) } : c)),
