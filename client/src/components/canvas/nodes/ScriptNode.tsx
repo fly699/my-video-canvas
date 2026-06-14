@@ -9,11 +9,12 @@ import {
   Sparkles, Loader2, ChevronDown, Clapperboard,
   Minus, Plus, Copy, FileText, Check, Wand2, MessageSquare,
   Search, Layers2, GitBranch, Image, BookOpen, X, Languages,
-  Route, ClipboardCheck, Film, History, AlertTriangle,
+  Route, ClipboardCheck, Film, History, AlertTriangle, Mic,
 } from "lucide-react";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { ScriptDevFlowPanel, ScriptCoveragePanel } from "../ScriptSidePanels";
 import { ScriptHistoryPanel } from "../ScriptHistoryPanel";
+import { ScriptCastPanel } from "../ScriptCastPanel";
 import { snapshotContent } from "@/lib/scriptHistory";
 import { hashContent, hasDownstreamStoryboardForId, isStoryboardStale } from "@/lib/scriptStoryboardSync";
 import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
@@ -164,7 +165,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   // Advanced panel state
   const [showAdvancedPanel, setShowAdvancedPanel] = useState(false);
   // 侧向展开面板（创作向导 / 专业审查）——新功能横向弹出，不再向下堆叠拉长节点。
-  const [sidePanel, setSidePanel] = useState<null | "flow" | "coverage" | "history">(null);
+  const [sidePanel, setSidePanel] = useState<null | "flow" | "coverage" | "history" | "cast">(null);
   const [advTab, setAdvTab] = useState<"variants" | "style" | "dialogue" | "moodboard">("variants");
   const [variantCount, setVariantCount] = useState(3);
   const [variantResults, setVariantResults] = useState<Array<{ label: string; text: string }>>([]);
@@ -576,6 +577,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           {sidePanel === "history" && (
             <ScriptHistoryPanel id={id} payload={payload} onClose={() => setSidePanel(null)} />
           )}
+          {sidePanel === "cast" && (
+            <ScriptCastPanel id={id} payload={payload} onClose={() => setSidePanel(null)} />
+          )}
         </>
       }>
       <div className="flex flex-col h-full p-3.5 gap-3">
@@ -738,6 +742,14 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           >
             <History style={{ width: 9, height: 9 }} />
             历史{(payload.scriptHistory?.length ?? 0) > 0 ? ` ${payload.scriptHistory!.length}` : ""}
+          </button>
+          <button
+            onClick={() => setSidePanel((v) => (v === "cast" ? null : "cast"))}
+            title="角色配音：从脚本识别角色，逐个指定配音模型 + 音色（与镜头表共享，侧向展开）"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{ fontSize: 9, fontWeight: sidePanel === "cast" ? 700 : 500, background: sidePanel === "cast" ? "oklch(0.70 0.18 340 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "cast" ? "oklch(0.70 0.18 340 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "cast" ? "oklch(0.70 0.18 340)" : "var(--c-t4)", cursor: "pointer" }}
+          >
+            <Mic style={{ width: 9, height: 9 }} /> 配音
           </button>
 
           {/* Character count + duration */}
