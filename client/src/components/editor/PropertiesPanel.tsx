@@ -285,7 +285,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <NumSlider label="旋转" value={tf.rotation ?? 0} min={-180} max={180} step={1} disp={(v) => Math.round(v)} parse={(s) => s} suffix="°" onChange={(v) => setTf("rotation", v)} />
             <NumSlider label="不透明度" value={tf.opacity ?? 1} min={0} max={1} step={0.01} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("opacity", v)} />
             {clipTrackType === "video" && (
-              <div style={{ fontSize: 10.5, color: "oklch(0.72 0.16 70)", lineHeight: 1.5 }}>⚠ 主轨片段的缩放/位置/旋转<b>仅预览</b>，导出以「画面适配」为准。要铺满消黑请用上方<b>「填满」</b>。需要画中画/局部放大请放到「叠加」轨。</div>
+              <div style={{ fontSize: 10.5, color: EC.t4, lineHeight: 1.5 }}>主轨：先「填满」消黑，再用<b>缩放</b>放大局部、<b>X/Y</b>平移取景（裁切到画框，导出一致）。缩放&lt;1 不生效——要画中画/缩小浮窗请放到「叠加」轨。</div>
             )}
           </Section>
         )}
