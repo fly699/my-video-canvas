@@ -1,9 +1,17 @@
 import { useEffect, useRef, useCallback } from "react";
-import { Play, Pause, SkipBack } from "lucide-react";
+import { Play, Pause, SkipBack, Grid3x3 } from "lucide-react";
 import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
-import type { Clip, ClipTransform, EditorDoc } from "@shared/editorTypes";
+import { usePersistentState } from "@/hooks/usePersistentState";
+import type { Clip, ClipTransform, EditorDoc, FitMode } from "@shared/editorTypes";
 import { transformAt } from "@shared/editorTypes";
+
+/** Reduce W:H to a tidy ratio label (e.g. 1920×1080 → "16:9"). */
+function ratioLabel(w: number, h: number): string {
+  const g = (a: number, b: number): number => (b === 0 ? a : g(b, a % b));
+  const d = g(w, h) || 1;
+  return `${Math.round(w / d)}:${Math.round(h / d)}`;
+}
 
 /** CSS approximation of the ffmpeg color effects (preview only; export is exact). */
 function cssFilter(c: Clip): string {
@@ -72,6 +80,7 @@ export function PreviewStage() {
   const setPlaying = useEditorStore((s) => s.setPlaying);
   const selectClip = useEditorStore((s) => s.selectClip);
   const updateClip = useEditorStore((s) => s.updateClip);
+  const [thirds, setThirds] = usePersistentState<boolean>("ui:editor:preview-thirds:v1", false, { validate: (p) => (typeof p === "boolean" ? p : null) });
 
   const mediaRefs = useRef<Map<string, HTMLVideoElement | HTMLAudioElement>>(new Map());
   const stageRef = useRef<HTMLDivElement>(null);
@@ -173,11 +182,46 @@ export function PreviewStage() {
   const visible = activeAt(doc, playhead);
   const aspect = doc.width / doc.height;
 
+  // The selected main-track visual clip whose framing the 适配 buttons control.
+  let fitClip: Clip | null = null;
+  if (selectedClipId) {
+    for (const tr of doc.tracks) {
+      if (tr.type !== "video") continue;
+      const c = tr.clips.find((x) => x.id === selectedClipId && (x.kind === "video" || x.kind === "image"));
+      if (c) { fitClip = c; break; }
+    }
+  }
+  const FIT_MODES: [FitMode, string][] = [["contain", "维持比例"], ["cover", "撑满"], ["stretch", "拉伸"], ["blur", "模糊填充"]];
+  const fitBtn = (active: boolean): React.CSSProperties => ({
+    padding: "3px 9px", fontSize: 11, borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap",
+    border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2,
+  });
+
   return (
     <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, #0c0c10)" }}>
+      {/* preview toolbar: export-frame readout + thirds guide + per-clip 适配 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", flexShrink: 0, borderBottom: `1px solid ${EC.border}` }}>
+        <span title="最终导出画面比例与分辨率（画布设置）" style={{ fontSize: 11, color: EC.t3, fontVariantNumeric: "tabular-nums" }}>
+          {doc.width}×{doc.height} · {ratioLabel(doc.width, doc.height)}
+        </span>
+        <div style={{ flex: 1 }} />
+        {fitClip && (
+          <>
+            <span style={{ fontSize: 11, color: EC.t4 }}>适配</span>
+            {FIT_MODES.map(([v, label]) => (
+              <button key={v} title={`将选中素材：${label}`} style={fitBtn((fitClip!.fit ?? "contain") === v)} onClick={() => updateClip(fitClip!.id, { fit: v })}>{label}</button>
+            ))}
+            <span style={{ width: 1, height: 16, background: EC.border, margin: "0 2px" }} />
+          </>
+        )}
+        <button title="三分参考线（构图辅助）" onClick={() => setThirds((v) => !v)}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, ...fitBtn(thirds) }}>
+          <Grid3x3 size={12} /> 参考线
+        </button>
+      </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0 }}>
         <div ref={stageRef} onPointerDown={() => selectClip(null)} onContextMenu={(e) => e.preventDefault()}
-          style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)" }}>
+          style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)", outline: `1px solid ${EC.border}`, outlineOffset: -1 }}>
           {visible.map(({ clip, trackType }) => {
             const hasKf = !!clip.keyframes && clip.keyframes.length > 0;
             const tf = hasKf ? transformAt(clip, playhead - clip.start) : clip.transform;
@@ -242,6 +286,18 @@ export function PreviewStage() {
             <audio key={clip.id} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} />
           ))}
           {visible.length === 0 && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: EC.t4, fontSize: 13, pointerEvents: "none" }}>把素材拖到时间轴开始剪辑</div>}
+
+          {/* rule-of-thirds composition guides (overlay; never intercepts pointers) */}
+          {thirds && (
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 9 }}>
+              {[1 / 3, 2 / 3].map((f) => (
+                <div key={`v${f}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${f * 100}%`, width: 1, background: "oklch(1 0 0 / 0.28)" }} />
+              ))}
+              {[1 / 3, 2 / 3].map((f) => (
+                <div key={`h${f}`} style={{ position: "absolute", left: 0, right: 0, top: `${f * 100}%`, height: 1, background: "oklch(1 0 0 / 0.28)" }} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
