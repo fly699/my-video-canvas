@@ -39,6 +39,7 @@ export interface Segment {
   fit?: FitMode;                                  // contain (default) | cover | stretch | blur
   reverse?: boolean;                              // 倒放：逆序播放（图片无效）
   transform?: ClipTransform;                      // main-track zoom(scale≥1)/pan(x,y)/rotate within the frame
+  keyframes?: TransformKeyframe[];                // main-track Ken-Burns: animate zoom/pan over time
 }
 
 /** Zoom/pan/rotate a frame-sized image WITHIN the output frame (main-track clips):
@@ -60,6 +61,34 @@ export function segmentTransformChain(tf: ClipTransform | undefined, w: number, 
     out.push(`scale=${Math.round(w * s)}:${Math.round(h * s)}`);
     out.push(`crop=${w}:${h}:${Math.round((maxFrac - px) * w)}:${Math.round((maxFrac - py) * h)}`);
   }
+  return out;
+}
+
+/** True when a main-track clip's keyframes actually animate zoom/pan (≥2 points
+ *  touching scale/x/y) — i.e. a Ken-Burns move that must be rendered over time. */
+function hasZoomPanAnimation(kfs: TransformKeyframe[] | undefined): boolean {
+  return (kfs?.filter((k) => k.scale != null || k.x != null || k.y != null).length ?? 0) >= 2;
+}
+
+/** Ken-Burns for a main-track clip: animate zoom (scale≥1) + pan (x/y) over time
+ *  using per-frame `t` expressions. Falls back to the static chain when there's no
+ *  real animation. The `t` here is clip-local (segments run pre-concat after
+ *  setpts=PTS-STARTPTS), so keyframe times are used as-is. The crop offset is
+ *  clip()-clamped in-expression so it can never leave the (zoomed) frame. */
+export function segmentZoomPanChain(tf: ClipTransform | undefined, kfs: TransformKeyframe[] | undefined, w: number, h: number): string[] {
+  if (!hasZoomPanAnimation(kfs)) return segmentTransformChain(tf, w, h);
+  const out: string[] = [];
+  if (tf?.rotation) out.push(`rotate=${(tf.rotation * Math.PI / 180).toFixed(5)}:ow=iw:oh=ih`);
+  // scale clamped ≥1; pan in pixels. Missing fields on a keyframe just drop out of
+  // that field's point list (buildKeyframeExpr interpolates the ones present).
+  const zExpr = buildKeyframeExpr(keyframePoints(kfs, "scale", 0, (v) => Math.max(1, v)));
+  const pxExpr = buildKeyframeExpr(keyframePoints(kfs, "x", 0, (v) => v * w));
+  const pyExpr = buildKeyframeExpr(keyframePoints(kfs, "y", 0, (v) => v * h));
+  const z = zExpr ?? Number(Math.max(1, tf?.scale ?? 1).toFixed(4)).toString();
+  const px = pxExpr ?? "0";
+  const py = pyExpr ?? "0";
+  out.push(`scale=w='${w}*(${z})':h='${h}*(${z})':eval=frame`);
+  out.push(`crop=${w}:${h}:x='clip((iw-${w})/2-(${px}),0,iw-${w})':y='clip((ih-${h})/2-(${py}),0,ih-${h})':eval=frame`);
   return out;
 }
 
@@ -112,7 +141,7 @@ export function buildKeyframeExpr(pts: { t: number; v: number }[]): string | nul
  *  `tOffset` (absolute timeline seconds for the overlay clock) and values mapped
  *  by `toUnit` (e.g. normalized→pixels). Empty when no keyframe defines the field. */
 function keyframePoints(
-  kfs: TransformKeyframe[] | undefined, field: "x" | "y", tOffset: number, toUnit: (v: number) => number,
+  kfs: TransformKeyframe[] | undefined, field: "x" | "y" | "scale", tOffset: number, toUnit: (v: number) => number,
 ): { t: number; v: number }[] {
   if (!kfs || kfs.length === 0) return [];
   return kfs
@@ -283,9 +312,9 @@ export function buildFilterGraph(
       parts.push(`[${i}:v]${pre.join(",")},split[bg${i}][fg${i}]`);
       parts.push(`[bg${i}]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=20:2,setsar=1[bgb${i}]`);
       parts.push(`[fg${i}]scale=${w}:${h}:force_original_aspect_ratio=decrease,setsar=1[fgs${i}]`);
-      parts.push(`[bgb${i}][fgs${i}]overlay=(W-w)/2:(H-h)/2,${[...segmentTransformChain(s.transform, w, h), ...post].join(",")}[v${i}]`);
+      parts.push(`[bgb${i}][fgs${i}]overlay=(W-w)/2:(H-h)/2,${[...segmentZoomPanChain(s.transform, s.keyframes, w, h), ...post].join(",")}[v${i}]`);
     } else {
-      parts.push(`[${i}:v]${[...pre, ...fitChain(s.fit, w, h), ...segmentTransformChain(s.transform, w, h), ...post].join(",")}[v${i}]`);
+      parts.push(`[${i}:v]${[...pre, ...fitChain(s.fit, w, h), ...segmentZoomPanChain(s.transform, s.keyframes, w, h), ...post].join(",")}[v${i}]`);
     }
     vLabels.push(`[v${i}]`);
 
@@ -511,7 +540,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
