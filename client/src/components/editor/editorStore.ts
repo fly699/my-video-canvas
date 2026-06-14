@@ -16,9 +16,14 @@ function findClip(doc: EditorDoc, clipId: string): { trackIdx: number; clipIdx: 
   return null;
 }
 
-/** Drop a selection that no longer exists in the given doc (e.g. after undoing a paste). */
-function clampSelection(doc: EditorDoc, sel: string | null): string | null {
-  return sel && findClip(doc, sel) ? sel : null;
+/** Keep only the selection ids that still resolve to a clip in `doc`. */
+function clampIds(doc: EditorDoc, ids: string[]): string[] {
+  return ids.filter((id) => findClip(doc, id) !== null);
+}
+
+/** Build a consistent selection patch (full set + mirrored primary). */
+function selPatch(ids: string[]): Pick<EditorStore, "selectedClipIds" | "selectedClipId"> {
+  return { selectedClipIds: ids, selectedClipId: ids.length ? ids[ids.length - 1] : null };
 }
 
 // ── Undo/redo history ──────────────────────────────────────────────────────────
@@ -30,7 +35,8 @@ const COALESCE_MS = 450;
 
 export interface EditorStore {
   doc: EditorDoc | null;
-  selectedClipId: string | null;
+  selectedClipId: string | null;   // primary (last-selected) clip, for the properties panel
+  selectedClipIds: string[];       // full selection
   playhead: number;     // seconds
   playing: boolean;
   pxPerSec: number;     // timeline zoom
@@ -57,8 +63,36 @@ export interface EditorStore {
   removeKeyframe: (clipId: string, t: number) => void;
   clearKeyframes: (clipId: string) => void;
   splitClip: (clipId: string, atTime: number) => void;
+  splitAllAtPlayhead: (atTime: number) => void;
   duplicateClip: (clipId: string) => void;
+  rippleDeleteClip: (clipId: string) => void;
+
+  // selection — `selectedClipIds` is the source of truth; `selectedClipId` mirrors
+  // the primary (last-added) clip for the single-clip properties panel.
   selectClip: (id: string | null) => void;
+  toggleClipSelection: (id: string) => void;
+  setSelection: (ids: string[]) => void;
+  selectAll: () => void;
+  clearSelection: () => void;
+  selectedClips: () => Clip[];
+
+  // multi-clip ops (operate on the whole selection)
+  removeSelected: () => void;
+  rippleDeleteSelected: () => void;
+  duplicateSelected: () => void;
+  copySelected: () => void;
+  moveSelectedTo: (primaryClipId: string, newPrimaryStart: number) => void;
+  nudgeSelected: (dx: number) => void;    // shift selection by ±dx seconds (clamped at 0)
+  closeGapsSelected: () => void;          // pack selected clips end-to-end per track
+  alignSelectedStartTo: (time: number) => void; // shift selection so its earliest clip starts at `time`
+  updateSelected: (patch: Partial<Clip>) => void; // apply a patch to every selected clip (nested effects/transform merged)
+
+  // clipboard — copy clip(s) then paste at the playhead, preserving each clip's
+  // offset relative to the earliest. Survives across clips/sessions within a page
+  // life; not part of undo history.
+  clipboard: { clips: { clip: Clip; trackType: TrackType; offset: number }[] } | null;
+  copyClip: (clipId: string) => void;
+  pasteClip: (atTime: number) => void;
 
   // track ops
   updateTrack: (trackId: string, patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name">>) => void;
@@ -89,15 +123,17 @@ function withHistory(s: EditorStore, nextDoc: EditorDoc, extra: Partial<EditorSt
 export const useEditorStore = create<EditorStore>((set, get) => ({
   doc: null,
   selectedClipId: null,
+  selectedClipIds: [],
   playhead: 0,
   playing: false,
   pxPerSec: 60,
   dirty: false,
+  clipboard: null,
   past: [],
   future: [],
   _lastMutateTs: 0,
 
-  load: (doc) => set({ doc, dirty: false, selectedClipId: null, playhead: 0, playing: false, past: [], future: [], _lastMutateTs: 0 }),
+  load: (doc) => set({ doc, dirty: false, selectedClipId: null, selectedClipIds: [], playhead: 0, playing: false, past: [], future: [], _lastMutateTs: 0 }),
   markClean: () => set({ dirty: false }),
 
   undo: () => set((s) => {
@@ -109,7 +145,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       future: [s.doc, ...s.future].slice(0, HISTORY_CAP),
       dirty: true,
       _lastMutateTs: 0, // break coalescing so the next edit records cleanly
-      selectedClipId: clampSelection(prev, s.selectedClipId),
+      ...selPatch(clampIds(prev, s.selectedClipIds)),
     };
   }),
 
@@ -122,7 +158,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       future: s.future.slice(1),
       dirty: true,
       _lastMutateTs: 0,
-      selectedClipId: clampSelection(next, s.selectedClipId),
+      ...selPatch(clampIds(next, s.selectedClipIds)),
     };
   }),
 
@@ -133,7 +169,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const tracks = s.doc.tracks.map((t) =>
         t.id === trackId ? { ...t, clips: [...t.clips, { ...clip, id }] } : t,
       );
-      return withHistory(s, { ...s.doc, tracks }, { selectedClipId: id });
+      return withHistory(s, { ...s.doc, tracks }, selPatch([id]));
     });
     return id;
   },
@@ -185,7 +221,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   removeClip: (clipId) => set((s) => {
     if (!s.doc) return s;
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => c.id !== clipId) }));
-    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: s.selectedClipId === clipId ? null : s.selectedClipId });
+    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)));
   }),
 
   // Cut a clip in two at the given timeline time (only if the time is inside it).
@@ -204,7 +240,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
       ...t, clips: t.clips.flatMap((x) => x.id === clipId ? [left, right] : [x]),
     });
-    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: right.id });
+    return withHistory(s, { ...s.doc, tracks }, selPatch([right.id]));
   }),
 
   // Copy a clip and drop the copy right after the original on the same track.
@@ -215,7 +251,80 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
     const copy: Clip = { ...c, id: `c_${nanoid(8)}`, start: c.start + clipDuration(c) };
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : { ...t, clips: [...t.clips, copy] });
-    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: copy.id });
+    return withHistory(s, { ...s.doc, tracks }, selPatch([copy.id]));
+  }),
+
+  // Razor at the playhead across EVERY track at once: any clip the time passes
+  // through is cut in two (locked tracks are left untouched). Mirrors splitClip's
+  // source-time math so cuts are frame-accurate per clip speed.
+  splitAllAtPlayhead: (atTime) => set((s) => {
+    if (!s.doc) return s;
+    let changed = false;
+    const tracks = s.doc.tracks.map((t) => {
+      if (t.locked) return t;
+      const clips = t.clips.flatMap((c) => {
+        const speed = c.speed ?? 1;
+        const dur = clipDuration(c);
+        const offset = atTime - c.start;
+        if (offset <= 0.05 || offset >= dur - 0.05) return [c];
+        changed = true;
+        const cutSrc = c.trimIn + offset * speed;
+        const left: Clip = { ...c, trimOut: cutSrc };
+        const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc };
+        return [left, right];
+      });
+      return { ...t, clips };
+    });
+    if (!changed) return s;
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // Delete a clip AND pull every later clip on the same track left by its
+  // duration, so no gap is left behind (a.k.a. ripple delete).
+  rippleDeleteClip: (clipId) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const removed = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    const dur = clipDuration(removed);
+    const tracks = s.doc.tracks.map((t, ti) => {
+      if (ti !== loc.trackIdx) return t;
+      const clips = t.clips
+        .filter((c) => c.id !== clipId)
+        .map((c) => (c.start >= removed.start ? { ...c, start: Math.max(0, c.start - dur) } : c));
+      return { ...t, clips };
+    });
+    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)));
+  }),
+
+  // Snapshot a single clip into the clipboard (deep clone so later edits to the
+  // original don't bleed into the copy). Pure UI state — no doc change, no history.
+  copyClip: (clipId) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const clip = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    return { clipboard: { clips: [{ clip: JSON.parse(JSON.stringify(clip)) as Clip, trackType: s.doc.tracks[loc.trackIdx].type, offset: 0 }] } };
+  }),
+
+  // Paste every clipboard clip at `atTime` (+ its stored offset) onto the first
+  // track of each clip's original type, as fresh clips, and select them all.
+  pasteClip: (atTime) => set((s) => {
+    if (!s.doc || !s.clipboard || s.clipboard.clips.length === 0) return s;
+    const base = Math.max(0, atTime);
+    const newIds: string[] = [];
+    const additions = new Map<string, Clip[]>(); // trackId -> new clips
+    for (const entry of s.clipboard.clips) {
+      const target = s.doc.tracks.find((t) => t.type === entry.trackType) ?? s.doc.tracks[0];
+      if (!target) continue;
+      const id = `c_${nanoid(8)}`;
+      newIds.push(id);
+      const fresh: Clip = { ...(JSON.parse(JSON.stringify(entry.clip)) as Clip), id, start: Math.max(0, base + entry.offset) };
+      additions.set(target.id, [...(additions.get(target.id) ?? []), fresh]);
+    }
+    if (newIds.length === 0) return s;
+    const tracks = s.doc.tracks.map((t) => (additions.has(t.id) ? { ...t, clips: [...t.clips, ...additions.get(t.id)!] } : t));
+    return withHistory(s, { ...s.doc, tracks }, selPatch(newIds));
   }),
 
   // Snapshot the clip's current (base) transform as a keyframe at time `t`
@@ -257,7 +366,178 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return withHistory(s, { ...s.doc, tracks });
   }),
 
-  selectClip: (id) => set({ selectedClipId: id }),
+  selectClip: (id) => set(selPatch(id ? [id] : [])),
+
+  toggleClipSelection: (id) => set((s) => {
+    const has = s.selectedClipIds.includes(id);
+    return selPatch(has ? s.selectedClipIds.filter((x) => x !== id) : [...s.selectedClipIds, id]);
+  }),
+
+  setSelection: (ids) => set(selPatch(ids)),
+  clearSelection: () => set(selPatch([])),
+
+  selectAll: () => set((s) => {
+    if (!s.doc) return s;
+    const ids: string[] = [];
+    for (const t of s.doc.tracks) for (const c of t.clips) ids.push(c.id);
+    return selPatch(ids);
+  }),
+
+  selectedClips: () => {
+    const { doc, selectedClipIds } = get();
+    if (!doc) return [];
+    const byId = new Map<string, Clip>();
+    for (const t of doc.tracks) for (const c of t.clips) byId.set(c.id, c);
+    return selectedClipIds.map((id) => byId.get(id)).filter((c): c is Clip => !!c);
+  },
+
+  // Delete every selected clip (across tracks) in a single history step.
+  removeSelected: () => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const kill = new Set(s.selectedClipIds);
+    const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => !kill.has(c.id)) }));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([]));
+  }),
+
+  // Ripple-delete the whole selection: on each affected track, remove the selected
+  // clips and pull every remaining later clip left by the total duration of the
+  // removed clips that started before it, closing the gaps.
+  rippleDeleteSelected: () => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    const tracks = s.doc.tracks.map((t) => {
+      const removed = t.clips.filter((c) => sel.has(c.id));
+      if (removed.length === 0) return t;
+      const clips = t.clips.filter((c) => !sel.has(c.id)).map((c) => {
+        const shift = removed.reduce((acc, r) => acc + (r.start < c.start ? clipDuration(r) : 0), 0);
+        return shift > 0 ? { ...c, start: Math.max(0, c.start - shift) } : c;
+      });
+      return { ...t, clips };
+    });
+    return withHistory(s, { ...s.doc, tracks }, selPatch([]));
+  }),
+
+  // Duplicate each selected clip in place (offset after itself on its own track);
+  // the new copies become the selection.
+  duplicateSelected: () => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    const newIds: string[] = [];
+    const tracks = s.doc.tracks.map((t) => {
+      const copies: Clip[] = [];
+      for (const c of t.clips) {
+        if (!sel.has(c.id)) continue;
+        const id = `c_${nanoid(8)}`;
+        newIds.push(id);
+        copies.push({ ...c, id, start: c.start + clipDuration(c) });
+      }
+      return copies.length ? { ...t, clips: [...t.clips, ...copies] } : t;
+    });
+    return withHistory(s, { ...s.doc, tracks }, selPatch(newIds));
+  }),
+
+  // Snapshot the whole selection to the clipboard, each clip's `offset` measured
+  // from the earliest selected start so paste preserves their relative layout.
+  copySelected: () => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    const picked: { clip: Clip; trackType: TrackType }[] = [];
+    for (const t of s.doc.tracks) for (const c of t.clips) {
+      if (sel.has(c.id)) picked.push({ clip: JSON.parse(JSON.stringify(c)) as Clip, trackType: t.type });
+    }
+    if (picked.length === 0) return s;
+    const base = Math.min(...picked.map((p) => p.clip.start));
+    return { clipboard: { clips: picked.map((p) => ({ ...p, offset: p.clip.start - base })) } };
+  }),
+
+  // Shift the entire selection so the primary clip lands at `newPrimaryStart`,
+  // clamped so no selected clip crosses below 0. Tracks are preserved.
+  moveSelectedTo: (primaryClipId, newPrimaryStart) => set((s) => {
+    if (!s.doc) return s;
+    const sel = new Set(s.selectedClipIds);
+    if (!sel.has(primaryClipId)) return s;
+    const loc = findClip(s.doc, primaryClipId);
+    if (!loc) return s;
+    const primary = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    let dx = Math.max(0, newPrimaryStart) - primary.start;
+    // don't let the earliest selected clip go negative
+    let minStart = Infinity;
+    for (const t of s.doc.tracks) for (const c of t.clips) if (sel.has(c.id)) minStart = Math.min(minStart, c.start);
+    if (minStart + dx < 0) dx = -minStart;
+    if (dx === 0) return s;
+    const tracks = s.doc.tracks.map((t) => ({
+      ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + dx) } : c)),
+    }));
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // Apply a partial patch to every selected clip in one history step. `effects`
+  // and `transform` are merged per-clip so a single field (e.g. opacity) can be
+  // bulk-set without wiping a clip's other adjustments.
+  updateSelected: (patch) => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    const apply = (c: Clip): Clip => {
+      const next: Clip = { ...c, ...patch };
+      if (patch.effects) next.effects = { ...(c.effects ?? {}), ...patch.effects };
+      if (patch.transform) next.transform = { ...(c.transform ?? {}), ...patch.transform };
+      return next;
+    };
+    const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.map((c) => (sel.has(c.id) ? apply(c) : c)) }));
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // Nudge the whole selection by ±dx seconds, clamped so the earliest clip
+  // never crosses below 0. Used for frame-precise keyboard positioning.
+  nudgeSelected: (dx) => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    let minStart = Infinity;
+    for (const t of s.doc.tracks) for (const c of t.clips) if (sel.has(c.id)) minStart = Math.min(minStart, c.start);
+    if (!isFinite(minStart)) return s;
+    let d = dx;
+    if (minStart + d < 0) d = -minStart;
+    if (d === 0) return s;
+    const tracks = s.doc.tracks.map((t) => ({
+      ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + d) } : c)),
+    }));
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // 紧排：on each track, pack the SELECTED clips end-to-end (in time order),
+  // starting from the earliest selected clip's current start. Unselected clips and
+  // other tracks are untouched, so cross-track A/V sync is the user's call.
+  closeGapsSelected: () => set((s) => {
+    if (!s.doc || s.selectedClipIds.length < 2) return s;
+    const sel = new Set(s.selectedClipIds);
+    let changed = false;
+    const tracks = s.doc.tracks.map((t) => {
+      const onTrack = t.clips.filter((c) => sel.has(c.id)).sort((a, b) => a.start - b.start);
+      if (onTrack.length < 2) return t;
+      const newStart = new Map<string, number>();
+      let cursor = onTrack[0].start;
+      for (const c of onTrack) { newStart.set(c.id, cursor); cursor += clipDuration(c); }
+      if (onTrack.some((c) => Math.abs(newStart.get(c.id)! - c.start) > 1e-9)) changed = true;
+      return { ...t, clips: t.clips.map((c) => (newStart.has(c.id) ? { ...c, start: newStart.get(c.id)! } : c)) };
+    });
+    if (!changed) return s;
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // Shift the whole selection so its earliest clip starts exactly at `time`.
+  alignSelectedStartTo: (time) => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    let earliest = Infinity;
+    for (const t of s.doc.tracks) for (const c of t.clips) if (sel.has(c.id)) earliest = Math.min(earliest, c.start);
+    if (!isFinite(earliest)) return s;
+    const dx = Math.max(0, time) - earliest;
+    if (dx === 0) return s;
+    const tracks = s.doc.tracks.map((t) => ({
+      ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + dx) } : c)),
+    }));
+    return withHistory(s, { ...s.doc, tracks });
+  }),
 
   updateTrack: (trackId, patch) => set((s) => {
     if (!s.doc) return s;

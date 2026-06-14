@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
@@ -12,16 +12,18 @@ const TRACK_H = 52;
 const SNAP_PX = 7; // snap threshold in screen pixels
 
 type DragMode =
-  | { kind: "move"; clipId: string; startX: number; grabDx: number; orig: { start: number; dur: number; trackId: string } }
+  | { kind: "move"; clipId: string; startX: number; grabDx: number; group: boolean; orig: { start: number; dur: number; trackId: string } }
   | { kind: "trim-l" | "trim-r"; clipId: string; startX: number; orig: { start: number; trimIn: number; trimOut: number; speed: number; isImage: boolean } }
-  | { kind: "scrub"; startX: number };
+  | { kind: "scrub"; startX: number }
+  | { kind: "band"; startX: number; startY: number; additive: boolean; baseIds: string[] };
 
 export function Timeline() {
   const doc = useEditorStore((s) => s.doc);
   const pxPerSec = useEditorStore((s) => s.pxPerSec);
   const playhead = useEditorStore((s) => s.playhead);
-  const selectedClipId = useEditorStore((s) => s.selectedClipId);
+  const selectedClipIds = useEditorStore((s) => s.selectedClipIds);
   const duration = useEditorStore((s) => s.duration());
+  const [band, setBand] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const laneRef = useRef<HTMLDivElement>(null);
@@ -39,17 +41,24 @@ export function Timeline() {
   const removeTrack = useEditorStore((s) => s.removeTrack);
   const [addMenu, setAddMenu] = useState(false);
 
-  // Keyboard: Delete/Backspace = remove selected clip; S = split at playhead; Ctrl/⌘+D = duplicate.
+  // Keyboard — clip ops. Del 删除 / Shift+Del 波纹删除 / S 分割 / Shift+S 全轨分割 /
+  // Ctrl+D 原地复制 / Ctrl+C 拷贝 / Ctrl+V 粘贴到播放头. Paste needs no selection.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, [contenteditable='true']")) return;
       const st = useEditorStore.getState();
+      // paste & 全轨分割 work without a current selection
+      if ((e.key === "v" || e.key === "V") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.pasteClip(st.playhead); return; }
+      if ((e.key === "s" || e.key === "S") && e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitAllAtPlayhead(st.playhead); return; }
       const sel = st.selectedClipId;
       if (!sel) return;
-      if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); st.removeClip(sel); }
+      const multi = st.selectedClipIds.length > 1;
+      if ((e.key === "Delete" || e.key === "Backspace") && e.shiftKey) { e.preventDefault(); multi ? st.rippleDeleteSelected() : st.rippleDeleteClip(sel); }
+      else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); multi ? st.removeSelected() : st.removeClip(sel); }
+      else if ((e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); multi ? st.copySelected() : st.copyClip(sel); }
       else if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitClip(sel, st.playhead); }
-      else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.duplicateClip(sel); }
+      else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); multi ? st.duplicateSelected() : st.duplicateClip(sel); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -66,12 +75,15 @@ export function Timeline() {
   const contentSec = Math.max(duration + 5, 20);
   const contentW = contentSec * pxPerSec;
 
-  /** All snap targets (seconds): 0, the playhead, and every other clip's edges. */
-  const snapPoints = useCallback((excludeClipId?: string): number[] => {
+  /** All snap targets (seconds): 0, the playhead, and every other clip's edges.
+   *  `exclude` skips a clip (string) or a whole set of clips (e.g. a moving group,
+   *  so the group never snaps to its own members). */
+  const snapPoints = useCallback((exclude?: string | Set<string>): number[] => {
     const st = useEditorStore.getState();
     const pts = [0, st.playhead];
+    const skip = (id: string) => (exclude instanceof Set ? exclude.has(id) : id === exclude);
     if (st.doc) for (const t of st.doc.tracks) for (const c of t.clips) {
-      if (c.id === excludeClipId) continue;
+      if (skip(c.id)) continue;
       pts.push(c.start, c.start + clipDuration(c));
     }
     return pts;
@@ -79,7 +91,7 @@ export function Timeline() {
 
   /** Snap a candidate time to the nearest target within threshold; returns the
    *  snapped time + the matched target (for the guide line), or the input. */
-  const snap = useCallback((sec: number, exclude?: string, extra: number[] = []): { sec: number; at: number | null } => {
+  const snap = useCallback((sec: number, exclude?: string | Set<string>, extra: number[] = []): { sec: number; at: number | null } => {
     if (!snapOn) return { sec, at: null };
     const thr = SNAP_PX / pxPerSec;
     let best: number | null = null, bestD = thr;
@@ -98,10 +110,15 @@ export function Timeline() {
     let clip = null, trackId = "", trackLocked = false;
     for (const t of st.doc.tracks) { const c = t.clips.find((x) => x.id === clipId); if (c) { clip = c; trackId = t.id; trackLocked = !!t.locked; break; } }
     if (!clip || trackLocked) return; // locked tracks: no select/move/trim
-    selectClip(clipId);
+    // Shift/Ctrl/⌘ + click on a clip body toggles its membership and starts no drag.
+    if (mode === "move" && (e.shiftKey || e.ctrlKey || e.metaKey)) { st.toggleClipSelection(clipId); return; }
+    // Plain click on a non-selected clip → single select. Clicking an already-
+    // selected clip keeps the whole selection so the group can be dragged together.
+    if (!st.selectedClipIds.includes(clipId)) selectClip(clipId);
     if (mode === "move") {
       const grabDx = e.clientX - (laneRect()?.left ?? 0) - clip.start * pxPerSec; // cursor offset within clip
-      dragRef.current = { kind: "move", clipId, startX: e.clientX, grabDx, orig: { start: clip.start, dur: clipDuration(clip), trackId } };
+      const group = useEditorStore.getState().selectedClipIds.length > 1;
+      dragRef.current = { kind: "move", clipId, startX: e.clientX, grabDx, group, orig: { start: clip.start, dur: clipDuration(clip), trackId } };
     } else {
       dragRef.current = { kind: mode, clipId, startX: e.clientX, orig: { start: clip.start, trimIn: clip.trimIn, trimOut: clip.trimOut, speed: clip.speed ?? 1, isImage: clip.kind === "image" } };
     }
@@ -129,6 +146,39 @@ export function Timeline() {
       const x = e.clientX - rect.left;
       const { sec, at } = snap(Math.max(0, x / pxPerSec));
       setPlayhead(sec); setSnapX(at);
+      return;
+    }
+    if (d.kind === "band") {
+      setBand((b) => (b ? { ...b, x1: e.clientX, y1: e.clientY } : b));
+      const x0 = Math.min(d.startX, e.clientX), x1 = Math.max(d.startX, e.clientX);
+      const y0 = Math.min(d.startY, e.clientY), y1 = Math.max(d.startY, e.clientY);
+      const t0 = (x0 - rect.left) / pxPerSec, t1 = (x1 - rect.left) / pxPerSec;
+      const hit: string[] = [];
+      scrollRef.current?.querySelectorAll<HTMLElement>("[data-track-id]").forEach((row) => {
+        const r = row.getBoundingClientRect();
+        if (r.bottom < y0 || r.top > y1) return; // band doesn't span this track vertically
+        const track = store.doc?.tracks.find((t) => t.id === row.dataset.trackId);
+        if (!track || track.locked) return;
+        for (const c of track.clips) {
+          if (c.start + clipDuration(c) >= t0 && c.start <= t1) hit.push(c.id);
+        }
+      });
+      store.setSelection(d.additive ? Array.from(new Set([...d.baseIds, ...hit])) : hit);
+      return;
+    }
+    if (d.kind === "move" && d.group) {
+      // drag the whole multi-selection together: snap the primary clip's start/end,
+      // then shift every selected clip by the same delta (track-locked, time only).
+      const rawStart = Math.max(0, (e.clientX - rect.left - d.grabDx) / pxPerSec);
+      // exclude the entire moving group from snap targets (not just the primary)
+      const groupIds = new Set(store.selectedClipIds);
+      const s1 = snap(rawStart, groupIds);
+      const s2 = snap(rawStart + d.orig.dur, groupIds);
+      let start = rawStart, at: number | null = null;
+      if (s1.at != null && (s2.at == null || Math.abs(s1.sec - rawStart) <= Math.abs((s2.sec - d.orig.dur) - rawStart))) { start = s1.sec; at = s1.at; }
+      else if (s2.at != null) { start = s2.sec - d.orig.dur; at = s2.at; }
+      setSnapX(at);
+      store.moveSelectedTo(d.clipId, Math.max(0, start));
       return;
     }
     if (d.kind === "move") {
@@ -171,7 +221,18 @@ export function Timeline() {
     }
   }, [pxPerSec, snap, setPlayhead]);
 
-  const onPointerUp = useCallback(() => { dragRef.current = null; setSnapX(null); }, []);
+  const onPointerUp = useCallback(() => { dragRef.current = null; setSnapX(null); setBand(null); }, []);
+
+  // Rubber-band selection: pointer-down on empty track space starts a marquee.
+  const onLanePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const st = useEditorStore.getState();
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    dragRef.current = { kind: "band", startX: e.clientX, startY: e.clientY, additive, baseIds: additive ? [...st.selectedClipIds] : [] };
+    setBand({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY });
+    if (!additive) st.clearSelection();
+    try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* no active pointer */ }
+  }, []);
 
   // Zoom so the whole timeline fits the visible lane width.
   const fitToWindow = useCallback(() => {
@@ -207,6 +268,7 @@ export function Timeline() {
         <span style={{ fontSize: 12, color: EC.t2, fontVariantNumeric: "tabular-nums" }}>{fmtTime(playhead)} / {fmtTime(duration)}</span>
         <div style={{ flex: 1 }} />
         <button onClick={() => setSnapOn((v) => !v)} title={snapOn ? "吸附：开（拖动时对齐片段/播放头）" : "吸附：关"} style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, color: snapOn ? EC.accent : EC.t3, borderColor: snapOn ? EC.accent : EC.border, display: "inline-flex", alignItems: "center" }}><Magnet size={13} /><span style={{ fontSize: 11 }}>吸附</span></button>
+        <button onClick={() => useEditorStore.getState().splitAllAtPlayhead(playhead)} title="全轨分割：在播放头切开所有轨道的片段 (Shift+S)" style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center" }}><Scissors size={13} /><span style={{ fontSize: 11 }}>全轨分割</span></button>
         <button onClick={() => setPxPerSec(pxPerSec / 1.4)} title="缩小" style={zoomBtn}><ZoomOut size={14} /></button>
         <button onClick={() => setPxPerSec(pxPerSec * 1.4)} title="放大" style={zoomBtn}><ZoomIn size={14} /></button>
         <button onClick={fitToWindow} title="适应窗口（缩放至完整显示时间轴）" style={zoomBtn}><Maximize2 size={13} /></button>
@@ -259,6 +321,7 @@ export function Timeline() {
             {/* tracks */}
             {doc.tracks.map((t) => (
               <div key={t.id} data-track-id={t.id}
+                onPointerDown={onLanePointerDown}
                 onDragOver={(e) => { if (t.locked) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
                 onDrop={(e) => { if (!t.locked) onDrop(e, t.id); }}
                 style={{ height: TRACK_H, position: "relative", borderBottom: `1px solid ${EC.border}`, background: t.locked ? "oklch(0.5 0 0 / 0.06)" : "var(--c-bg, #0c0c10)", opacity: t.hidden ? 0.4 : 1 }}>
@@ -266,7 +329,7 @@ export function Timeline() {
                   const left = c.start * pxPerSec;
                   const width = Math.max(8, clipDuration(c) * pxPerSec);
                   const col = trackColor(t.type);
-                  const selected = c.id === selectedClipId;
+                  const selected = selectedClipIds.includes(c.id);
                   return (
                     <div key={c.id}
                       onPointerDown={(e) => onClipPointerDown(e, c.id, "move")}
@@ -331,7 +394,7 @@ export function Timeline() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderTop: `1px solid ${EC.border}`, fontSize: 10, color: EC.t4, flexShrink: 0 }}>
-        <Scissors size={11} /> 拖动移动/换轨 · 拖两端裁剪 · 拖标尺定位 · 右键片段菜单 · Del 删除 · S 分割 · Ctrl+D 复制 · 空格 播放/暂停 · ←/→ 逐帧 · Home/End 首尾
+        <Scissors size={11} /> 拖动移动/换轨 · Shift/Ctrl 点击多选 · 空白拖拽框选 · Ctrl+A 全选 · ,/. 逐帧微移 · Del 删除 · Shift+Del 波纹删除 · S 分割 · Shift+S 全轨分割 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 复制 · 空格 播放/暂停
       </div>
 
       {menu && (() => {
@@ -342,11 +405,24 @@ export function Timeline() {
           <div style={{ position: "fixed", left: menu.x, top: menu.y, zIndex: 1000, minWidth: 150, padding: 4, borderRadius: 10, background: EC.surface, border: `1px solid ${EC.border}`, boxShadow: "0 12px 40px oklch(0 0 0 / 0.5)" }}
             onPointerDown={(e) => e.stopPropagation()}>
             <div style={item} onClick={() => act(() => st.splitClip(menu.clipId, st.playhead))}><SplitSquareHorizontal size={14} /> 在播放头分割<span style={{ marginLeft: "auto", color: EC.t4 }}>S</span></div>
-            <div style={item} onClick={() => act(() => st.duplicateClip(menu.clipId))}><Copy size={14} /> 复制片段<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+D</span></div>
+            <div style={item} onClick={() => act(() => st.duplicateClip(menu.clipId))}><Copy size={14} /> 原地复制<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+D</span></div>
+            <div style={item} onClick={() => act(() => st.copyClip(menu.clipId))}><ClipboardCopy size={14} /> 拷贝<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+C</span></div>
+            <div style={{ ...item, opacity: st.clipboard ? 1 : 0.4, pointerEvents: st.clipboard ? "auto" : "none" }} onClick={() => act(() => st.pasteClip(st.playhead))}><ClipboardPaste size={14} /> 粘贴到播放头<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+V</span></div>
             <div style={{ ...item, color: "oklch(0.65 0.2 25)" }} onClick={() => act(() => st.removeClip(menu.clipId))}><Trash2 size={14} /> 删除片段<span style={{ marginLeft: "auto", color: EC.t4 }}>Del</span></div>
+            <div style={{ ...item, color: "oklch(0.65 0.2 25)" }} onClick={() => act(() => st.rippleDeleteClip(menu.clipId))}><Trash2 size={14} /> 波纹删除（关闭缺口）<span style={{ marginLeft: "auto", color: EC.t4 }}>Shift+Del</span></div>
           </div>
         );
       })()}
+
+      {/* rubber-band selection marquee */}
+      {band && (
+        <div style={{
+          position: "fixed", zIndex: 999, pointerEvents: "none",
+          left: Math.min(band.x0, band.x1), top: Math.min(band.y0, band.y1),
+          width: Math.abs(band.x1 - band.x0), height: Math.abs(band.y1 - band.y0),
+          border: `1px solid ${EC.accent}`, background: `${EC.accent.replace(")", " / 0.12)")}`, borderRadius: 2,
+        }} />
+      )}
     </div>
   );
 }

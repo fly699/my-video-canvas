@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFilterGraph, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput } from "./_core/videoComposer";
+import { buildFilterGraph, buildKeyframeExpr, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput } from "./_core/videoComposer";
 import { emptyEditorDoc } from "@shared/editorTypes";
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
@@ -146,5 +146,39 @@ describe("buildFilterGraph (single-pass composer)", () => {
     doc.tracks[2].clips.push({ id: "txt", kind: "text", start: 0, trimIn: 0, trimOut: 2, text: { content: "hi" } });
     const got = collectVideoSegments(doc);
     expect(got.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("overlay position keyframes (export animation)", () => {
+  const baseSeg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+
+  it("buildKeyframeExpr: empty → null, single → constant, two → clamped linear", () => {
+    expect(buildKeyframeExpr([])).toBeNull();
+    expect(buildKeyframeExpr([{ t: 1, v: 5 }])).toBe("5");
+    const e = buildKeyframeExpr([{ t: 0, v: 0 }, { t: 2, v: 10 }])!;
+    expect(e.startsWith("if(lt(t,0),0,")).toBe(true);     // hold first value before t=0
+    expect(e).toContain("if(lt(t,2),(0+(t-0)*5)");        // segment with slope 5
+    expect(e.endsWith(",10))")).toBe(true);               // hold last value after t=2
+  });
+
+  it("animates overlay x/y from keyframes via per-frame expr in absolute time", () => {
+    const overlays = [{
+      isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 2, duration: 3,
+      transform: { x: 0.1, y: 0.5 },
+      keyframes: [{ t: 0, x: 0.1, y: 0.5 }, { t: 3, x: 0.8, y: 0.5 }],
+    }];
+    const g = buildFilterGraph(baseSeg, OPTS, overlays);
+    expect(g.filterComplex).toContain("eval=frame");
+    expect(g.filterComplex).toContain("overlay=x='if(lt(t,");
+    expect(g.filterComplex).toContain("192");             // first kf: 0.1 * 1920
+    expect(g.filterComplex).toContain("1536");            // last kf: 0.8 * 1920
+    expect(g.filterComplex).toContain("if(lt(t,5)");      // boundary at absolute time 2 + 3
+  });
+
+  it("keeps overlay x/y static numeric when there are no keyframes", () => {
+    const overlays = [{ isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 0, duration: 3, transform: { x: 0.25, y: 0.25 } }];
+    const g = buildFilterGraph(baseSeg, OPTS, overlays);
+    expect(g.filterComplex).not.toContain("eval=frame");
+    expect(g.filterComplex).toContain("overlay=x=480:y=270"); // 0.25*1920, 0.25*1080
   });
 });

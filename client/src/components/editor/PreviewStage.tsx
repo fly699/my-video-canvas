@@ -1,9 +1,17 @@
-import { useEffect, useRef, useCallback } from "react";
-import { Play, Pause, SkipBack } from "lucide-react";
+import { useEffect, useRef, useCallback, useState } from "react";
+import { Play, Pause, SkipBack, Grid3x3 } from "lucide-react";
 import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
-import type { Clip, ClipTransform, EditorDoc } from "@shared/editorTypes";
+import { usePersistentState } from "@/hooks/usePersistentState";
+import type { Clip, ClipTransform, EditorDoc, FitMode } from "@shared/editorTypes";
 import { transformAt } from "@shared/editorTypes";
+
+/** Reduce W:H to a tidy ratio label (e.g. 1920×1080 → "16:9"). */
+function ratioLabel(w: number, h: number): string {
+  const g = (a: number, b: number): number => (b === 0 ? a : g(b, a % b));
+  const d = g(w, h) || 1;
+  return `${Math.round(w / d)}:${Math.round(h / d)}`;
+}
 
 /** CSS approximation of the ffmpeg color effects (preview only; export is exact). */
 function cssFilter(c: Clip): string {
@@ -58,9 +66,38 @@ function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; m
 }
 
 type DragState =
-  | { mode: "move"; id: string; px: number; py: number; tf: ClipTransform }
+  | { mode: "move"; id: string; px: number; py: number; tf: ClipTransform; bw: number; bh: number }
   | { mode: "scale"; id: string; cx: number; cy: number; startW: number; startScale: number; aspect: number }
   | { mode: "rotate"; id: string; cx: number; cy: number; start: number };
+
+// Composition snap targets (normalized 0..1): edges, thirds, center.
+const SNAP_TARGETS = [0, 1 / 3, 0.5, 2 / 3, 1];
+/** Snap one axis: try aligning the box's left/center/right (pos, pos+size/2, pos+size)
+ *  to a target within `thr`. Returns the snapped position + the matched guide line. */
+export function snapAxis(pos: number, size: number, thr: number): { pos: number; guide: number | null } {
+  let best: { pos: number; guide: number; dist: number } | null = null;
+  for (const anchor of [pos, pos + size / 2, pos + size]) {
+    for (const g of SNAP_TARGETS) {
+      const dist = Math.abs(anchor - g);
+      if (dist < thr && (!best || dist < best.dist)) best = { pos: pos + (g - anchor), guide: g, dist };
+    }
+  }
+  return best ? { pos: best.pos, guide: best.guide } : { pos, guide: null };
+}
+
+// Snap a width fraction to tidy sizes (25/33/50/66/75/100%) within `thr`.
+const NICE_SCALES = [0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1];
+export function snapScale(w: number, thr: number): number {
+  let best = w, bestDist = thr;
+  for (const s of NICE_SCALES) { const dist = Math.abs(w - s); if (dist < bestDist) { best = s; bestDist = dist; } }
+  return best;
+}
+
+// Snap a rotation (degrees) to the nearest 15° increment within `thr` degrees.
+export function snapAngle(deg: number, thr: number): number {
+  const nearest = Math.round(deg / 15) * 15;
+  return Math.abs(deg - nearest) <= thr ? nearest : deg;
+}
 
 export function PreviewStage() {
   const doc = useEditorStore((s) => s.doc);
@@ -72,6 +109,8 @@ export function PreviewStage() {
   const setPlaying = useEditorStore((s) => s.setPlaying);
   const selectClip = useEditorStore((s) => s.selectClip);
   const updateClip = useEditorStore((s) => s.updateClip);
+  const [thirds, setThirds] = usePersistentState<boolean>("ui:editor:preview-thirds:v1", false, { validate: (p) => (typeof p === "boolean" ? p : null) });
+  const [snapGuide, setSnapGuide] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
 
   const mediaRefs = useRef<Map<string, HTMLVideoElement | HTMLAudioElement>>(new Map());
   const stageRef = useRef<HTMLDivElement>(null);
@@ -120,25 +159,37 @@ export function PreviewStage() {
     const d = dragRef.current; if (!d) return;
     const { w, h, left, top } = stageSize();
     if (d.mode === "move") {
-      const nx = d.tf.x! + (e.clientX - d.px) / w;
-      const ny = d.tf.y! + (e.clientY - d.py) / h;
+      let nx = d.tf.x! + (e.clientX - d.px) / w;
+      let ny = d.tf.y! + (e.clientY - d.py) / h;
+      // snap edges/center to thirds/center/edges (hold Alt to bypass)
+      if (!e.altKey) {
+        const sx = snapAxis(nx, d.bw, 8 / w);
+        const sy = snapAxis(ny, d.bh, 8 / h);
+        nx = sx.pos; ny = sy.pos;
+        setSnapGuide({ x: sx.guide, y: sy.guide });
+      } else {
+        setSnapGuide({ x: null, y: null });
+      }
       updateClip(d.id, { transform: { ...d.tf, x: Math.max(-0.5, Math.min(1, nx)), y: Math.max(-0.5, Math.min(1, ny)) } });
     } else if (d.mode === "scale") {
       const distX = Math.abs(e.clientX - left - d.cx);
-      const newW = Math.max(0.04, (distX * 2) / w);             // width fraction (symmetric from center)
+      let newW = Math.max(0.04, (distX * 2) / w);                // width fraction (symmetric from center)
+      if (!e.altKey) newW = snapScale(newW, 0.02);               // snap to tidy sizes (Alt bypasses)
       const newH = newW / d.aspect;                              // height fraction (keep media aspect)
       const cxFrac = d.cx / w, cyFrac = d.cy / h;
       const st = useEditorStore.getState();
       const cur = findClip(st.doc, d.id);
       updateClip(d.id, { transform: { ...(cur?.transform ?? {}), scale: newW, x: cxFrac - newW / 2, y: cyFrac - newH / 2 } });
     } else if (d.mode === "rotate") {
-      const ang = Math.atan2(e.clientY - top - d.cy, e.clientX - left - d.cx) * 180 / Math.PI + 90;
-      updateClip(d.id, { transform: { ...(findClip(useEditorStore.getState().doc, d.id)?.transform ?? {}), rotation: Math.round(ang) } });
+      let ang = Math.round(Math.atan2(e.clientY - top - d.cy, e.clientX - left - d.cx) * 180 / Math.PI + 90);
+      if (!e.altKey) ang = snapAngle(ang, 6);                    // snap to 15° steps (Alt bypasses)
+      updateClip(d.id, { transform: { ...(findClip(useEditorStore.getState().doc, d.id)?.transform ?? {}), rotation: ang } });
     }
   }, [updateClip]);
 
   const endDrag = useCallback(() => {
     dragRef.current = null;
+    setSnapGuide({ x: null, y: null });
     window.removeEventListener("pointermove", onWinMove);
     window.removeEventListener("pointerup", endDrag);
   }, [onWinMove]);
@@ -146,7 +197,10 @@ export function PreviewStage() {
   const beginMove = useCallback((e: React.PointerEvent, clip: Clip) => {
     e.stopPropagation(); selectClip(clip.id);
     const tf = { x: clip.transform?.x ?? 0.1, y: clip.transform?.y ?? 0.1, scale: clip.transform?.scale ?? 0.4, rotation: clip.transform?.rotation ?? 0, opacity: clip.transform?.opacity ?? 1 };
-    dragRef.current = { mode: "move", id: clip.id, px: e.clientX, py: e.clientY, tf };
+    // capture the box's normalized size for edge/center snapping
+    const { w, h } = stageSize();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    dragRef.current = { mode: "move", id: clip.id, px: e.clientX, py: e.clientY, tf, bw: r.width / w, bh: r.height / h };
     window.addEventListener("pointermove", onWinMove); window.addEventListener("pointerup", endDrag);
   }, [selectClip, onWinMove, endDrag]);
 
@@ -173,11 +227,46 @@ export function PreviewStage() {
   const visible = activeAt(doc, playhead);
   const aspect = doc.width / doc.height;
 
+  // The selected main-track visual clip whose framing the 适配 buttons control.
+  let fitClip: Clip | null = null;
+  if (selectedClipId) {
+    for (const tr of doc.tracks) {
+      if (tr.type !== "video") continue;
+      const c = tr.clips.find((x) => x.id === selectedClipId && (x.kind === "video" || x.kind === "image"));
+      if (c) { fitClip = c; break; }
+    }
+  }
+  const FIT_MODES: [FitMode, string][] = [["contain", "维持比例"], ["cover", "撑满"], ["stretch", "拉伸"], ["blur", "模糊填充"]];
+  const fitBtn = (active: boolean): React.CSSProperties => ({
+    padding: "3px 9px", fontSize: 11, borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap",
+    border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2,
+  });
+
   return (
     <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, #0c0c10)" }}>
+      {/* preview toolbar: export-frame readout + thirds guide + per-clip 适配 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", flexShrink: 0, borderBottom: `1px solid ${EC.border}` }}>
+        <span title="最终导出画面比例与分辨率（画布设置）" style={{ fontSize: 11, color: EC.t3, fontVariantNumeric: "tabular-nums" }}>
+          {doc.width}×{doc.height} · {ratioLabel(doc.width, doc.height)}
+        </span>
+        <div style={{ flex: 1 }} />
+        {fitClip && (
+          <>
+            <span style={{ fontSize: 11, color: EC.t4 }}>适配</span>
+            {FIT_MODES.map(([v, label]) => (
+              <button key={v} title={`将选中素材：${label}`} style={fitBtn((fitClip!.fit ?? "contain") === v)} onClick={() => updateClip(fitClip!.id, { fit: v })}>{label}</button>
+            ))}
+            <span style={{ width: 1, height: 16, background: EC.border, margin: "0 2px" }} />
+          </>
+        )}
+        <button title="三分参考线（构图辅助）" onClick={() => setThirds((v) => !v)}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, ...fitBtn(thirds) }}>
+          <Grid3x3 size={12} /> 参考线
+        </button>
+      </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0 }}>
         <div ref={stageRef} onPointerDown={() => selectClip(null)} onContextMenu={(e) => e.preventDefault()}
-          style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)" }}>
+          style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)", outline: `1px solid ${EC.border}`, outlineOffset: -1 }}>
           {visible.map(({ clip, trackType }) => {
             const hasKf = !!clip.keyframes && clip.keyframes.length > 0;
             const tf = hasKf ? transformAt(clip, playhead - clip.start) : clip.transform;
@@ -242,6 +331,26 @@ export function PreviewStage() {
             <audio key={clip.id} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} />
           ))}
           {visible.length === 0 && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: EC.t4, fontSize: 13, pointerEvents: "none" }}>把素材拖到时间轴开始剪辑</div>}
+
+          {/* rule-of-thirds composition guides (overlay; never intercepts pointers) */}
+          {thirds && (
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 9 }}>
+              {[1 / 3, 2 / 3].map((f) => (
+                <div key={`v${f}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${f * 100}%`, width: 1, background: "oklch(1 0 0 / 0.28)" }} />
+              ))}
+              {[1 / 3, 2 / 3].map((f) => (
+                <div key={`h${f}`} style={{ position: "absolute", left: 0, right: 0, top: `${f * 100}%`, height: 1, background: "oklch(1 0 0 / 0.28)" }} />
+              ))}
+            </div>
+          )}
+
+          {/* live alignment guides while dragging an overlay into snap */}
+          {snapGuide.x != null && (
+            <div data-snap-guide="x" style={{ position: "absolute", top: 0, bottom: 0, left: `${snapGuide.x * 100}%`, width: 1, background: EC.accent, boxShadow: `0 0 4px ${EC.accent}`, pointerEvents: "none", zIndex: 10 }} />
+          )}
+          {snapGuide.y != null && (
+            <div data-snap-guide="y" style={{ position: "absolute", left: 0, right: 0, top: `${snapGuide.y * 100}%`, height: 1, background: EC.accent, boxShadow: `0 0 4px ${EC.accent}`, pointerEvents: "none", zIndex: 10 }} />
+          )}
         </div>
       </div>
 

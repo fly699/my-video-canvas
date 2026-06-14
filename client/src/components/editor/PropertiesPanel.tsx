@@ -32,7 +32,7 @@ const FILTERS: [string, string][] = [["", "无"], ["cinematic", "电影感"], ["
 const TRANSITIONS: [string, string][] = [["none", "无"], ["fade", "淡入淡出"], ["dissolve", "叠化"], ["slide", "滑动"], ["wipe", "擦除"]];
 const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["roll", "滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
 
-export function PropertiesPanel() {
+export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const doc = useEditorStore((s) => s.doc);
   const update = useEditorStore((s) => s.updateClip);
@@ -43,6 +43,13 @@ export function PropertiesPanel() {
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
   const removeKeyframe = useEditorStore((s) => s.removeKeyframe);
   const clearKeyframes = useEditorStore((s) => s.clearKeyframes);
+  const selectedClipIds = useEditorStore((s) => s.selectedClipIds);
+  const removeSelected = useEditorStore((s) => s.removeSelected);
+  const duplicateSelected = useEditorStore((s) => s.duplicateSelected);
+  const copySelected = useEditorStore((s) => s.copySelected);
+  const closeGapsSelected = useEditorStore((s) => s.closeGapsSelected);
+  const alignSelectedStartTo = useEditorStore((s) => s.alignSelectedStartTo);
+  const updateSelected = useEditorStore((s) => s.updateSelected);
   const dubMut = trpc.audioGen.generateDubbing.useMutation();
   const [ttsModel, setTtsModel] = usePersistentState<string>(
     "ui:editor:tts-model:v1", "openai_tts_real",
@@ -74,13 +81,54 @@ export function PropertiesPanel() {
     } catch (e) { toast.error("配音失败：" + (e instanceof Error ? e.message : "")); }
   }
 
+  // Multi-selection → a compact bulk-action panel instead of single-clip props.
+  if (selectedClipIds.length > 1) {
+    const n = selectedClipIds.length;
+    const mBtn: React.CSSProperties = { width: "100%", padding: "8px 0", fontSize: 12, borderRadius: 7, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent", color: EC.t1 };
+    // seed the bulk sliders from the primary (last-selected) clip
+    let primary: Clip | null = null;
+    if (doc) for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === selectedClipId); if (c) { primary = c; break; } }
+    const pv = primary ?? ({} as Clip);
+    return (
+      <aside style={{ ...panel, width }}>
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: EC.t1 }}>已选 {n} 个片段</div>
+          <div style={{ fontSize: 11, color: EC.t4, lineHeight: 1.5 }}>在时间轴上拖动可整体移动；下列操作作用于全部选中片段。Shift/Ctrl 点击可加选/减选，空白处拖拽框选。</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button style={{ ...mBtn, flex: 1 }} title="把所选片段在各自轨道上首尾相接，闭合中间的空隙" onClick={() => closeGapsSelected()}>紧排</button>
+            <button style={{ ...mBtn, flex: 1 }} title="整体平移，使最早的选中片段对齐到播放头" onClick={() => alignSelectedStartTo(useEditorStore.getState().playhead)}>对齐到播放头</button>
+          </div>
+
+          <Section title="批量调整（应用到全部选中）">
+            <Slider label={`速度 ${(pv.speed ?? 1).toFixed(2)}x`} min={0.25} max={4} step={0.05} value={pv.speed ?? 1} onChange={(v) => updateSelected({ speed: v })} />
+            <Slider label={`音量 ${Math.round((pv.volume ?? 1) * 100)}%`} min={0} max={2} step={0.05} value={pv.volume ?? 1} onChange={(v) => updateSelected({ volume: v })} />
+            <Slider label={`不透明度 ${Math.round((pv.transform?.opacity ?? 1) * 100)}%`} min={0} max={1} step={0.01} value={pv.transform?.opacity ?? 1} onChange={(v) => updateSelected({ transform: { opacity: v } })} />
+            <Slider label={`淡入 ${(pv.fadeIn ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={pv.fadeIn ?? 0} onChange={(v) => updateSelected({ fadeIn: v })} />
+            <Slider label={`淡出 ${(pv.fadeOut ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={pv.fadeOut ?? 0} onChange={(v) => updateSelected({ fadeOut: v })} />
+            <div style={{ fontSize: 11, color: EC.t3, marginTop: 2 }}>适配方式</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"]] as const).map(([v, label]) => (
+                <button key={v} onClick={() => updateSelected({ fit: v })}
+                  style={{ flex: 1, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${(pv.fit ?? "contain") === v ? EC.accent : EC.border}`, background: (pv.fit ?? "contain") === v ? EC.accentSoft : "transparent", color: (pv.fit ?? "contain") === v ? EC.accent : EC.t2 }}>{label}</button>
+              ))}
+            </div>
+          </Section>
+
+          <button style={mBtn} onClick={() => duplicateSelected()}>原地复制全部（Ctrl+D）</button>
+          <button style={mBtn} onClick={() => copySelected()}>拷贝到剪贴板（Ctrl+C）</button>
+          <button style={{ ...mBtn, color: "oklch(0.65 0.2 25)", borderColor: "oklch(0.65 0.2 25 / 0.5)" }} onClick={() => removeSelected()}>删除全部（Del）</button>
+        </div>
+      </aside>
+    );
+  }
+
   let clip: Clip | null = null;
   if (doc && selectedClipId) {
     for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === selectedClipId); if (c) { clip = c; break; } }
   }
 
   if (!clip) {
-    return <aside style={panel}><div style={{ padding: 14, fontSize: 12, color: EC.t4 }}>选中一个片段以编辑属性</div></aside>;
+    return <aside style={{ ...panel, width }}><div style={{ padding: 14, fontSize: 12, color: EC.t4 }}>选中一个片段以编辑属性</div></aside>;
   }
   const c = clip;
   const isVisual = c.kind === "video" || c.kind === "image" || c.kind === "text";
@@ -105,7 +153,7 @@ export function PropertiesPanel() {
   };
 
   return (
-    <aside style={panel}>
+    <aside style={{ ...panel, width }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 12px", borderBottom: `1px solid ${EC.border}` }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: EC.t1, flex: 1 }}>{labelKind(c.kind)} 属性</span>
         <button onClick={() => remove(c.id)} title="删除片段" style={{ display: "inline-flex", width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 7, border: `1px solid ${EC.border}`, background: "transparent", color: "oklch(0.62 0.20 25)", cursor: "pointer" }}><Trash2 size={14} /></button>
@@ -214,7 +262,7 @@ export function PropertiesPanel() {
         {isVisual && (
           <Section title="关键帧动画">
             <div style={{ fontSize: 11, color: EC.t3, marginBottom: 6, lineHeight: 1.5 }}>
-              在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间。预览实时演示。
+              在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间，预览实时演示。导出：<b>位置（移动）动画已支持</b>；缩放 / 旋转 / 不透明度关键帧目前仅预览，导出取静态值。
             </div>
             <button
               onClick={() => {

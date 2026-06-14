@@ -20,7 +20,7 @@ export interface MediaDragPayload {
 }
 export const MEDIA_DND_MIME = "application/x-editor-media";
 
-export function MediaBin() {
+export function MediaBin({ width = 252 }: { width?: number } = {}) {
   const [type, setType] = useState<TypeFilter>("");
   const [q, setQ] = useState("");
   const [preview, setPreview] = useState<PreviewAsset | null>(null);
@@ -88,12 +88,13 @@ export function MediaBin() {
     const track = doc.tracks.find((t) => t.type === trackType) ?? doc.tracks[0];
     let dur = 5;
     if (kind === "video" || kind === "audio") dur = await probeMediaDuration(a.url, kind);
-    const start = trackEnd(useEditorStore.getState().doc!, track.id);
+    // insert at the playhead (not appended to the track's end)
+    const start = Math.max(0, useEditorStore.getState().playhead);
     addClip(track.id, { kind, assetId: a.id, assetUrl: a.url, start, trimIn: 0, trimOut: dur });
   }
 
   return (
-    <aside style={{ width: 252, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.surface }}>
+    <aside style={{ width, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.surface }}>
       <div style={{ padding: 10, borderBottom: `1px solid ${EC.border}` }}>
         <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
           <div style={{ position: "relative", flex: 1 }}>

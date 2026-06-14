@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download, Undo2, Redo2, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download, Undo2, Redo2, SlidersHorizontal, Keyboard } from "lucide-react";
 import { useEditorStore } from "@/components/editor/editorStore";
 import { MediaBin } from "@/components/editor/MediaBin";
 import { Timeline } from "@/components/editor/Timeline";
@@ -10,6 +10,32 @@ import { PreviewStage } from "@/components/editor/PreviewStage";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import { CanvasSettings } from "@/components/editor/CanvasSettings";
 import { downloadMedia } from "@/lib/download";
+import { usePersistentState } from "@/hooks/usePersistentState";
+
+// Draggable divider between editor panels. Reports incremental pixel deltas; the
+// parent applies them to the adjacent panel's size (persisted).
+function Resizer({ axis, onResize }: { axis: "x" | "y"; onResize: (deltaPx: number) => void }) {
+  const last = useRef<number | null>(null);
+  const [active, setActive] = useState(false);
+  return (
+    <div
+      onPointerDown={(e) => { e.preventDefault(); last.current = axis === "x" ? e.clientX : e.clientY; setActive(true); try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* no pointer */ } }}
+      onPointerMove={(e) => { if (last.current == null) return; const cur = axis === "x" ? e.clientX : e.clientY; onResize(cur - last.current); last.current = cur; }}
+      onPointerUp={(e) => { last.current = null; setActive(false); try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ } }}
+      title="拖动调整大小"
+      style={{
+        flexShrink: 0, alignSelf: "stretch",
+        [axis === "x" ? "width" : "height"]: 6,
+        cursor: axis === "x" ? "col-resize" : "row-resize",
+        background: active ? "var(--c-accent, oklch(0.68 0.22 285))" : "transparent",
+        transition: "background 120ms", touchAction: "none", zIndex: 5,
+      }}
+      onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "var(--c-bd2)"; }}
+      onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+    />
+  );
+}
+const clampSize = (v: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(v)));
 
 const ACCENT = "oklch(0.65 0.19 310)"; // 剪辑器主色（品红紫）
 
@@ -112,11 +138,15 @@ function EditorWorkspace({ id }: { id: number }) {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, [contenteditable='true'], select")) return;
+      // ? 开关快捷键速查浮层（Shift+/ 产生 "?"）；Esc 关闭。与画布速查面板对齐。
+      if (e.key === "?") { e.preventDefault(); setShowShortcuts((v) => !v); return; }
+      if (e.key === "Escape") { setShowShortcuts(false); return; }
       const st = useEditorStore.getState();
       if (e.ctrlKey || e.metaKey) {
         const k = e.key.toLowerCase();
         if (k === "z" && !e.shiftKey) { e.preventDefault(); st.undo(); }
         else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); st.redo(); }
+        else if (k === "a") { e.preventDefault(); st.selectAll(); } // 全选片段
         return;
       }
       if (!st.doc) return;
@@ -127,6 +157,13 @@ function EditorWorkspace({ id }: { id: number }) {
       else if (e.key === "End") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(st.duration()); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(Math.max(0, st.playhead - step)); }
       else if (e.key === "ArrowRight") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(Math.min(st.duration(), st.playhead + step)); }
+      // , / . 逐帧微移选中片段（Shift = 5 帧）。用 e.code 而非 e.key——按住 Shift
+      // 时 "." / "," 会变成 ">" / "<"，e.code 不受影响。无选中时不响应。
+      else if ((e.code === "Comma" || e.code === "Period") && st.selectedClipIds.length > 0) {
+        e.preventDefault();
+        const frames = e.shiftKey ? 5 : 1;
+        st.nudgeSelected((e.code === "Period" ? frames : -frames) / fps);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -142,6 +179,12 @@ function EditorWorkspace({ id }: { id: number }) {
   const [exportQuality, setExportQuality] = useState<"high" | "medium" | "low">("high");
   const [exportRes, setExportRes] = useState<"source" | "2160" | "1080" | "720" | "480">("source");
   const [exportMenu, setExportMenu] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  // Resizable panel sizes (persisted across sessions).
+  const numVal = (min: number, max: number) => (p: unknown) => (typeof p === "number" && isFinite(p) ? clampSize(p, min, max) : null);
+  const [leftW, setLeftW] = usePersistentState<number>("ui:editor:leftW:v1", 252, { validate: numVal(180, 480) });
+  const [rightW, setRightW] = usePersistentState<number>("ui:editor:rightW:v1", 250, { validate: numVal(180, 520) });
+  const [bottomH, setBottomH] = usePersistentState<number>("ui:editor:bottomH:v1", 230, { validate: numVal(120, 560) });
   const exportMut = trpc.editor.export.useMutation({
     onSuccess: ({ jobId }) => { setJobId(jobId); setExportUrl(null); setExportPct(0); setExportStage("排队中"); },
     onError: (e) => toast.error("导出失败：" + e.message),
@@ -256,6 +299,73 @@ function EditorWorkspace({ id }: { id: number }) {
           style={{ ...iconBtn, opacity: canRedo ? 1 : 0.4, cursor: canRedo ? "pointer" : "default" }}
         ><Redo2 size={16} /></button>
         <CanvasSettings />
+        {/* 快捷键速查（? 开关 / Esc 关闭）——剪辑器自身的播放·定位·片段·撤销快捷键一处可查 */}
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => setShowShortcuts((v) => !v)}
+            title="快捷键速查 (?)"
+            style={{ ...iconBtn, color: showShortcuts ? ACCENT : "var(--c-t2)", borderColor: showShortcuts ? ACCENT : "var(--c-bd2)" }}
+          ><Keyboard size={16} /></button>
+          {showShortcuts && (
+            <div
+              style={{
+                position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 50, width: 280,
+                borderRadius: 16, padding: 16,
+                background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
+                backdropFilter: "blur(24px)", border: "1px solid var(--c-bd2)",
+                boxShadow: "0 16px 48px oklch(0 0 0 / 0.55), 0 4px 12px oklch(0 0 0 / 0.35)",
+              }}
+            >
+              <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 12, color: "var(--c-t4)" }}>剪辑器快捷键</p>
+              {[
+                { group: "播放 / 定位", items: [
+                  { key: "空格", desc: "播放 / 暂停" },
+                  { key: "Home", desc: "跳到开头" },
+                  { key: "End", desc: "跳到结尾" },
+                  { key: "← / →", desc: "逐帧步进" },
+                  { key: "Shift + ← / →", desc: "一次跳 10 帧" },
+                ]},
+                { group: "选择", items: [
+                  { key: "点击", desc: "选中片段" },
+                  { key: "Shift/Ctrl + 点击", desc: "加选 / 减选片段" },
+                  { key: "空白处拖拽", desc: "框选多个片段" },
+                  { key: "Cmd/Ctrl + A", desc: "全选所有片段" },
+                  { key: ", / .", desc: "逐帧微移所选（Shift = 5 帧）" },
+                ]},
+                { group: "片段编辑", items: [
+                  { key: "Del / Backspace", desc: "删除选中片段" },
+                  { key: "Shift + Del", desc: "波纹删除（关闭缺口）" },
+                  { key: "S", desc: "在播放头处分割" },
+                  { key: "Shift + S", desc: "全轨分割（切所有轨道）" },
+                  { key: "Cmd/Ctrl + D", desc: "原地复制片段" },
+                  { key: "Cmd/Ctrl + C", desc: "拷贝选中片段" },
+                  { key: "Cmd/Ctrl + V", desc: "粘贴到播放头" },
+                ]},
+                { group: "撤销 / 重做", items: [
+                  { key: "Cmd/Ctrl + Z", desc: "撤销" },
+                  { key: "Cmd/Ctrl + Shift + Z", desc: "重做" },
+                  { key: "Ctrl + Y", desc: "重做（Windows）" },
+                ]},
+                { group: "其他", items: [
+                  { key: "?", desc: "开关本速查面板" },
+                  { key: "Esc", desc: "关闭本面板" },
+                ]},
+              ].map(({ group, items }) => (
+                <div key={group} style={{ marginBottom: 12 }}>
+                  <p style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6, color: "var(--c-t4)" }}>{group}</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {items.map(({ key, desc }) => (
+                      <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontSize: 11, color: "var(--c-t2)" }}>{desc}</span>
+                        <span style={{ fontFamily: "monospace", fontSize: 10, padding: "1px 6px", borderRadius: 6, background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "oklch(0.72 0.12 285)", whiteSpace: "nowrap", flexShrink: 0 }}>{key}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {exportUrl && (
           <button onClick={() => downloadMedia(exportUrl, `${displayName}.${exportFormat === "hevc" ? "mp4" : exportFormat}`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
             <Download size={15} /> 下载成片
@@ -305,11 +415,14 @@ function EditorWorkspace({ id }: { id: number }) {
       </header>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        <MediaBin />
+        <MediaBin width={leftW} />
+        <Resizer axis="x" onResize={(d) => setLeftW((w) => clampSize(w + d, 180, 480))} />
         <PreviewStage />
-        <PropertiesPanel />
+        <Resizer axis="x" onResize={(d) => setRightW((w) => clampSize(w - d, 180, 520))} />
+        <PropertiesPanel width={rightW} />
       </div>
-      <div style={{ height: 230, borderTop: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+      <Resizer axis="y" onResize={(d) => setBottomH((h) => clampSize(h - d, 120, 560))} />
+      <div style={{ height: bottomH, borderTop: "1px solid var(--c-bd2)", flexShrink: 0, minHeight: 0 }}>
         <Timeline />
       </div>
     </div>
