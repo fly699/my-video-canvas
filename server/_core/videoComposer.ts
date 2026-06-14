@@ -4,7 +4,7 @@ import * as os from "os";
 import { storagePut, assertObjectStorageWritable } from "../storage";
 import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssColorToASSHex, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
-import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode } from "@shared/editorTypes";
+import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode, TransformKeyframe } from "@shared/editorTypes";
 
 // Render timeouts are generous: a full multi-clip render re-encodes everything
 // in ONE pass, which can take minutes for long timelines.
@@ -61,6 +61,37 @@ export interface OverlayInput {
   start: number;       // timeline position (seconds)
   duration: number;    // visible duration on the timeline
   transform?: ClipTransform;
+  keyframes?: TransformKeyframe[]; // position (x/y) animated on export; others static
+}
+
+/** Build a piecewise-linear ffmpeg expression (in the overlay's `t` time base, in
+ *  seconds) for a keyframed field. Values hold flat before the first and after the
+ *  last point. Returns null when there are no keyframes for the field. `pts` must
+ *  be sorted ascending by `t`; `v` is already in target units (e.g. pixels). */
+export function buildKeyframeExpr(pts: { t: number; v: number }[]): string | null {
+  if (pts.length === 0) return null;
+  const f = (n: number) => Number(n.toFixed(4)).toString();
+  if (pts.length === 1) return f(pts[0].v); // single keyframe → constant
+  let expr = f(pts[pts.length - 1].v); // after the last point: hold
+  for (let i = pts.length - 2; i >= 0; i--) {
+    const a = pts[i], b = pts[i + 1];
+    const slope = (b.v - a.v) / Math.max(1e-6, b.t - a.t);
+    expr = `if(lt(t,${f(b.t)}),(${f(a.v)}+(t-${f(a.t)})*${f(slope)}),${expr})`;
+  }
+  return `if(lt(t,${f(pts[0].t)}),${f(pts[0].v)},${expr})`; // before the first: hold
+}
+
+/** Sorted keyframe points for one field, with clip-relative time shifted by
+ *  `tOffset` (absolute timeline seconds for the overlay clock) and values mapped
+ *  by `toUnit` (e.g. normalized→pixels). Empty when no keyframe defines the field. */
+function keyframePoints(
+  kfs: TransformKeyframe[] | undefined, field: "x" | "y", tOffset: number, toUnit: (v: number) => number,
+): { t: number; v: number }[] {
+  if (!kfs || kfs.length === 0) return [];
+  return kfs
+    .filter((k) => k[field] != null)
+    .sort((a, b) => a.t - b.t)
+    .map((k) => ({ t: k.t + tOffset, v: toUnit(k[field] as number) }));
 }
 
 /** A clip on a dedicated audio track, mixed into the output. */
@@ -304,10 +335,18 @@ export function buildFilterGraph(
     oc.push(`setpts=PTS+${o.start.toFixed(3)}/TB`);
     parts.push(`[${inIdx}:v]${oc.join(",")}[ov${j}]`);
 
-    const x = Math.round((o.transform?.x ?? 0.1) * w);
-    const y = Math.round((o.transform?.y ?? 0.1) * h);
+    // Position: animate x/y from keyframes (overlay's `t` is absolute timeline
+    // seconds, so shift clip-relative keyframe times by o.start), else static.
+    const xPts = keyframePoints(o.keyframes, "x", o.start, (v) => v * w);
+    const yPts = keyframePoints(o.keyframes, "y", o.start, (v) => v * h);
+    const xExpr = buildKeyframeExpr(xPts);
+    const yExpr = buildKeyframeExpr(yPts);
+    const xArg = xExpr != null ? `'${xExpr}'` : `${Math.round((o.transform?.x ?? 0.1) * w)}`;
+    const yArg = yExpr != null ? `'${yExpr}'` : `${Math.round((o.transform?.y ?? 0.1) * h)}`;
+    // re-evaluate per frame only when something is actually animated
+    const evalArg = (xExpr != null || yExpr != null) ? ":eval=frame" : "";
     const end = o.start + o.duration;
-    parts.push(`${curV}[ov${j}]overlay=x=${x}:y=${y}:enable='between(t,${o.start.toFixed(3)},${end.toFixed(3)})':eof_action=pass[ob${j}]`);
+    parts.push(`${curV}[ov${j}]overlay=x=${xArg}:y=${yArg}${evalArg}:enable='between(t,${o.start.toFixed(3)},${end.toFixed(3)})':eof_action=pass[ob${j}]`);
     curV = `[ob${j}]`;
   });
 
@@ -469,7 +508,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
       const dur = clipVisibleDuration(c);
-      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform });
+      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes });
       if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");

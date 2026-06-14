@@ -262,7 +262,7 @@ export function PropertiesPanel() {
         {isVisual && (
           <Section title="关键帧动画">
             <div style={{ fontSize: 11, color: EC.t3, marginBottom: 6, lineHeight: 1.5 }}>
-              在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间。预览实时演示。
+              在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间，预览实时演示。导出：<b>位置（移动）动画已支持</b>；缩放 / 旋转 / 不透明度关键帧目前仅预览，导出取静态值。
             </div>
             <button
               onClick={() => {
