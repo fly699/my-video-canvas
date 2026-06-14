@@ -197,10 +197,12 @@ describe("segmentZoomPanChain (main-track Ken-Burns export)", () => {
     // scale grows over t via a piecewise-linear expr, evaluated per frame
     expect(out[0]).toMatch(/^scale=w='1920\*\(if\(lt\(t,/);
     expect(out[0]).toContain(":eval=frame");
-    // crop stays w×h, offset clamped in-bounds so it can never leave the zoomed frame
+    // crop stays w×h, offset clamped in-bounds so it can never leave the zoomed
+    // frame. NO eval=frame on crop — the crop filter has no such option (it errors
+    // "Option not found"); crop's x/y are evaluated per-frame by default.
     expect(out[1]).toContain("crop=1920:1080:x='clip((iw-1920)/2-(");
     expect(out[1]).toContain("),0,iw-1920)'");
-    expect(out[1]).toContain(":eval=frame");
+    expect(out[1]).not.toContain("eval=frame");
   });
 
   it("clamps animated scale to ≥1 (no shrink-to-black)", () => {

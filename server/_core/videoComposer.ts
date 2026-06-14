@@ -87,8 +87,11 @@ export function segmentZoomPanChain(tf: ClipTransform | undefined, kfs: Transfor
   const z = zExpr ?? Number(Math.max(1, tf?.scale ?? 1).toFixed(4)).toString();
   const px = pxExpr ?? "0";
   const py = pyExpr ?? "0";
+  // scale eval=frame supports the `t` (timestamp) variable → per-frame zoom.
+  // crop's x/y are ALWAYS evaluated per-frame (no eval option on the crop filter —
+  // adding `:eval=frame` errors with "Option not found"), so the pan animates too.
   out.push(`scale=w='${w}*(${z})':h='${h}*(${z})':eval=frame`);
-  out.push(`crop=${w}:${h}:x='clip((iw-${w})/2-(${px}),0,iw-${w})':y='clip((ih-${h})/2-(${py}),0,ih-${h})':eval=frame`);
+  out.push(`crop=${w}:${h}:x='clip((iw-${w})/2-(${px}),0,iw-${w})':y='clip((ih-${h})/2-(${py}),0,ih-${h})'`);
   return out;
 }
 
