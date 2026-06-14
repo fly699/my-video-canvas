@@ -19,6 +19,7 @@ interface Props {
 
 type TypeFilter = "image" | "video" | "audio" | "other";
 type SourceFilter = "upload" | "generated" | "external";
+type SortKey = "new" | "old" | "name" | "size";
 
 export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const { addNode, updateNodeData } = useCanvasStore();
@@ -30,6 +31,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const [typeFilter, setTypeFilter] = useState<Set<TypeFilter>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<Set<SourceFilter>>(new Set());
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("new");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
@@ -55,7 +57,16 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
     (typeFilter.size === 0 || typeFilter.has(a.type as TypeFilter)) &&
     (sourceFilter.size === 0 || sourceFilter.has((a.source ?? "") as SourceFilter)) &&
     (!nameQ || (a.name ?? "").toLowerCase().includes(nameQ))
-  );
+  ).sort((a, b) => {
+    // 服务端默认按 createdAt 倒序返回；此处客户端排序覆盖之。
+    switch (sort) {
+      case "old": return (a.createdAt ? +new Date(a.createdAt) : 0) - (b.createdAt ? +new Date(b.createdAt) : 0);
+      case "name": return (a.name ?? "").localeCompare(b.name ?? "", "zh");
+      case "size": return (b.size ?? 0) - (a.size ?? 0);
+      case "new":
+      default: return (b.createdAt ? +new Date(b.createdAt) : 0) - (a.createdAt ? +new Date(a.createdAt) : 0);
+    }
+  });
 
   // Image URLs (in list order) for the click-to-zoom lightbox.
   const imageUrls = filteredAssets.filter((a) => a.type === "image").map((a) => a.url);
@@ -276,7 +287,8 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           const SRC_LABEL: Record<SourceFilter, string> = { upload: "上传", generated: "生成", external: "外部" };
           const typeLabel = typeFilter.size === 0 ? "全部" : Array.from(typeFilter).map((v) => TYPE_LABEL[v]).join("/");
           const srcLabel = sourceFilter.size === 0 ? "全来源" : Array.from(sourceFilter).map((v) => SRC_LABEL[v]).join("/");
-          const summary = `${scope === "all" ? "全部项目" : "本项目"} · ${typeLabel} · ${srcLabel}`;
+          const SORT_LABEL: Record<SortKey, string> = { new: "最新", old: "最早", name: "名称", size: "大小" };
+          const summary = `${scope === "all" ? "全部项目" : "本项目"} · ${typeLabel} · ${srcLabel} · ${SORT_LABEL[sort]}`;
           const toggle = <T,>(set: Set<T>, setter: (s: Set<T>) => void, v: T) => {
             const n = new Set(set);
             n.has(v) ? n.delete(v) : n.add(v);
@@ -311,6 +323,12 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                     <button style={chip(sourceFilter.size === 0)} onClick={() => setSourceFilter(new Set())}>全来源</button>
                     {([["upload", "上传"], ["generated", "生成"], ["external", "外部"]] as [SourceFilter, string][]).map(([v, l]) => (
                       <button key={v} style={chip(sourceFilter.has(v))} onClick={() => toggle(sourceFilter, setSourceFilter, v)}>{l}</button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span style={{ fontSize: 10, color: "var(--c-t4)", marginRight: 2 }}>排序</span>
+                    {([["new", "最新"], ["old", "最早"], ["name", "名称"], ["size", "大小"]] as [SortKey, string][]).map(([v, l]) => (
+                      <button key={v} style={chip(sort === v)} onClick={() => setSort(v)}>{l}</button>
                     ))}
                   </div>
                 </div>
