@@ -1,7 +1,8 @@
 import { useCallback, useState, useMemo } from "react";
 import { toast } from "sonner";
-import { X, Search, Zap, BookmarkPlus, Trash2, ArrowLeft, Check, Clapperboard, Lightbulb, Sparkles, LayoutGrid, Film, Play, Video, Scale, Megaphone, Mic, ShoppingBag, Bot, Rocket, FolderOpen, Star, Bookmark, Briefcase, Target, Flame, Sun, Palette, Layers, Trophy, Grid2x2, Smartphone, Scissors, AudioLines, type LucideIcon } from "lucide-react";
+import { X, Search, Zap, BookmarkPlus, Trash2, ArrowLeft, Check, Clapperboard, Lightbulb, Sparkles, LayoutGrid, Film, Play, Video, Scale, Megaphone, Mic, ShoppingBag, Bot, Rocket, FolderOpen, Star, Bookmark, Briefcase, Target, Flame, Sun, Palette, Layers, Trophy, Grid2x2, Smartphone, Scissors, AudioLines, Clock, type LucideIcon } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { usePersistentState } from "../../hooks/usePersistentState";
 import type { NodeType, NodeData } from "../../../../shared/types";
 
 const TEMPLATE_ICONS: Record<string, LucideIcon> = {
@@ -988,8 +989,21 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [customTemplates, setCustomTemplates] = useState<Template[]>(() => loadCustomTemplates());
+  // Recently-applied template ids (most-recent first), persisted locally.
+  const [recentIds, setRecentIds] = usePersistentState<string[]>(
+    "ui:workflow-template:recent:v1", [],
+    { validate: (v) => (Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null), crossTab: false },
+  );
 
   const allTemplates = useMemo(() => [...TEMPLATES, ...customTemplates], [customTemplates]);
+
+  // Recently-applied templates that still exist, in recency order — only
+  // surfaced in the clean default view (no search / category filter).
+  const recentTemplates = useMemo(() => {
+    if (query.trim() || category !== "all") return [];
+    const byId = new Map(allTemplates.map((t) => [t.id, t]));
+    return recentIds.map((id) => byId.get(id)).filter((t): t is Template => !!t).slice(0, 6);
+  }, [allTemplates, recentIds, query, category]);
 
   const filtered = useMemo(() => {
     return allTemplates.filter((t) => {
@@ -1044,12 +1058,18 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
         }
       }
 
+      // Record as recently-used. onClose() unmounts this panel before the
+      // usePersistentState write-through effect commits, so persist now.
+      const nextRecent = [template.id, ...recentIds.filter((id) => id !== template.id)].slice(0, 6);
+      setRecentIds(nextRecent);
+      try { window.localStorage.setItem("ui:workflow-template:recent:v1", JSON.stringify(nextRecent)); } catch { /* ignore */ }
+
       onClose();
       } catch (err) {
         toast.error("应用模板失败：" + (err instanceof Error ? err.message : String(err)));
       }
     },
-    [addNode, onConnect, updateNodeData, centerX, centerY, onClose]
+    [addNode, onConnect, updateNodeData, centerX, centerY, onClose, recentIds, setRecentIds]
   );
 
   const handleSaveCanvas = useCallback((name: string, icon: string) => {
@@ -1346,6 +1366,30 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
 
             {/* Template grid */}
             <div className="flex-1 overflow-y-auto p-5">
+              {recentTemplates.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1.5" style={{ color: "var(--c-t4)" }}>
+                    <Clock className="w-3 h-3" /> 最近使用
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {recentTemplates.map((t) => {
+                      const Icon = TEMPLATE_ICONS[t.icon] ?? Zap;
+                      return (
+                        <button
+                          key={`recent-${t.id}`}
+                          onClick={() => applyTemplate(t)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all"
+                          style={{ background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.30)", color: "var(--c-t1)" }}
+                          title={`一键应用：${t.name}`}
+                        >
+                          <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.72 0.20 285)" }} />
+                          <span className="truncate" style={{ maxWidth: 140 }}>{t.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {filtered.length === 0 ? (
                 category === "custom" && customCount === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
