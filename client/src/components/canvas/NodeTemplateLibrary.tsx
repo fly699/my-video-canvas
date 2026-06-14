@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { X, Boxes, Workflow, Trash2, Download, Upload, FolderOpen, Cloud, Server, Search, Pencil, Check, Loader2, User } from "lucide-react";
+import { X, Boxes, Workflow, Trash2, Download, Upload, FolderOpen, Cloud, Server, Search, Pencil, Check, Loader2, User, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { usePersistentState } from "../../hooks/usePersistentState";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import {
   colorForTemplate, describeComfyTemplate, isComfyNodeType,
@@ -42,6 +43,20 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryId>("all");
   const [mineOnly, setMineOnly] = useState(false);
+  // Recently-used template ids (most-recent first), persisted locally.
+  const [recentIds, setRecentIds] = usePersistentState<number[]>(
+    "ui:nodetpl:recent:v1", [],
+    { validate: (v) => (Array.isArray(v) && v.every((x) => typeof x === "number") ? (v as number[]) : null), crossTab: false },
+  );
+  const useTemplate = useCallback((t: ComfyNodeTemplate) => {
+    const next = [t.id, ...recentIds.filter((id) => id !== t.id)].slice(0, 6);
+    setRecentIds(next);
+    // Persist synchronously: onClose() unmounts this panel before the
+    // usePersistentState write-through effect can commit, so write now.
+    try { window.localStorage.setItem("ui:nodetpl:recent:v1", JSON.stringify(next)); } catch { /* ignore */ }
+    onUse(t.nodeType, t.payload, t.label);
+    onClose();
+  }, [recentIds, onUse, onClose, setRecentIds]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [editNote, setEditNote] = useState("");
@@ -92,6 +107,14 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
 
   // Export honors the current view (search / category / 只看我的).
   const exportList = filtered;
+
+  // Recently-used templates that still exist, in recency order — only surfaced
+  // in the clean default view (no search / category / 只看我的 filter).
+  const recentTemplates = useMemo(() => {
+    if (query.trim() || category !== "all" || mineOnly) return [];
+    const byId = new Map(items.map((t) => [t.id, t]));
+    return recentIds.map((id) => byId.get(id)).filter((t): t is ComfyNodeTemplate => !!t).slice(0, 6);
+  }, [items, recentIds, query, category, mineOnly]);
 
   const handleExport = useCallback(() => {
     if (exportList.length === 0) { toast.info("当前筛选下没有可导出的模板"); return; }
@@ -290,7 +313,33 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
               <p className="text-sm" style={{ color: "var(--c-t4)" }}>没有匹配的模板</p>
             </div>
           ) : (
-            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
+            <>
+              {recentTemplates.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1.5" style={{ color: "var(--c-t4)" }}>
+                    <Clock className="w-3 h-3" /> 最近使用
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {recentTemplates.map((t) => {
+                      const color = colorForTemplate(t.nodeType, t.useCloud);
+                      const Icon = t.nodeType === "comfyui_workflow" ? Workflow : Boxes;
+                      return (
+                        <button
+                          key={`recent-${t.id}`}
+                          onClick={() => useTemplate(t)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all"
+                          style={{ background: `${color}12`, border: `1px solid ${color}35`, color: "var(--c-t1)" }}
+                          title={`快速创建：${t.label}`}
+                        >
+                          <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color }} />
+                          <span className="truncate" style={{ maxWidth: 140 }}>{t.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
               {filtered.map((t) => {
                 const color = colorForTemplate(t.nodeType, t.useCloud);
                 const config = getNodeConfig(t.nodeType);
@@ -335,8 +384,8 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
                     key={t.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => { onUse(t.nodeType, t.payload, t.label); onClose(); }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onUse(t.nodeType, t.payload, t.label); onClose(); } }}
+                    onClick={() => useTemplate(t)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); useTemplate(t); } }}
                     className="group w-full text-left rounded-2xl overflow-hidden transition-all duration-150 flex flex-col relative cursor-pointer"
                     style={{ background: "var(--c-base)", border: `1.5px solid ${color}` }}
                     onMouseEnter={(e) => {
@@ -426,7 +475,8 @@ export function NodeTemplateLibrary({ onClose, onUse }: Props) {
                   </div>
                 );
               })}
-            </div>
+              </div>
+            </>
           )}
         </div>
 
