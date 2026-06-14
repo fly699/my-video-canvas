@@ -179,6 +179,10 @@ export interface ScriptNodeData {
   /** 脚本正文版本历史：每次 AI 改写（润色/精简/风格迁移/整本生成/变体/定向修复）
    *  前自动快照旧正文，供「历史」面板逐行 diff 对比与一键还原。最多保留 20 条。 */
   scriptHistory?: { content: string; label: string; at: number }[];
+  /** 上次「拆分镜」时的脚本正文 hash + 时间戳。脚本之后被改动则下游分镜视为「可能过期」，
+   *  在节点上提示「重新拆分镜」（提示而非自动覆盖已编辑分镜）。 */
+  lastStoryboardContentHash?: string;
+  lastStoryboardAt?: number;
   // AI panel params — persisted so settings survive remount / project reload
   aiGenre?: string;
   aiStyle?: string;
