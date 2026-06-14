@@ -119,7 +119,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <Slider label={`淡出 ${(pv.fadeOut ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={pv.fadeOut ?? 0} onChange={(v) => updateSelected({ fadeOut: v })} />
             <div style={{ fontSize: 11, color: EC.t3, marginTop: 2 }}>适配方式</div>
             <div style={{ display: "flex", gap: 4 }}>
-              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"]] as const).map(([v, label]) => (
+              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"], ["none", "原始1:1"]] as const).map(([v, label]) => (
                 <button key={v} onClick={() => updateSelected({ fit: v, transform: undefined, keyframes: undefined })}
                   style={{ flex: 1, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${(pv.fit ?? "contain") === v ? EC.accent : EC.border}`, background: (pv.fit ?? "contain") === v ? EC.accentSoft : "transparent", color: (pv.fit ?? "contain") === v ? EC.accent : EC.t2 }}>{label}</button>
               ))}
@@ -158,11 +158,12 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const centerAxis = (axis: "x" | "y") => {
     const box = document.querySelector(`[data-clip-box="${c.id}"]`) as HTMLElement | null;
     const stage = box?.offsetParent as HTMLElement | null;
-    if (box && stage?.offsetWidth && stage.offsetHeight) {
-      if (axis === "x") setTf("x", Math.max(0, (1 - box.offsetWidth / stage.offsetWidth) / 2));
-      else setTf("y", Math.max(0, (1 - box.offsetHeight / stage.offsetHeight) / 2));
-    } else if (axis === "x") setTf("x", Math.max(0, (1 - (tf.scale ?? 1)) / 2));
-    else setTf("y", 0.4);
+    // Only positioned (PiP) clips have a box to center. A full-frame clip (no
+    // transform) is already centered by object-fit — don't fabricate a transform
+    // that would shrink it into a small floating box.
+    if (!box || !stage?.offsetWidth || !stage.offsetHeight) return;
+    if (axis === "x") setTf("x", Math.max(0, (1 - box.offsetWidth / stage.offsetWidth) / 2));
+    else setTf("y", Math.max(0, (1 - box.offsetHeight / stage.offsetHeight) / 2));
   };
 
   return (
@@ -244,7 +245,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
         {(c.kind === "video" || c.kind === "image") && clipTrackType === "video" && (
           <Section title="画面适配">
             <div style={{ display: "flex", gap: 6 }}>
-              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"]] as const).map(([v, label]) => {
+              {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"], ["none", "原始1:1"]] as const).map(([v, label]) => {
                 const active = (c.fit ?? "contain") === v;
                 return (
                   // 适配=整屏：清掉手动位置/缩放/旋转与关键帧，让 fit 真正作用于画面
@@ -254,7 +255,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
                 );
               })}
             </div>
-            <div style={{ fontSize: 10.5, color: EC.t4 }}>适应=留黑边 · 填充=铺满裁切 · 拉伸=变形铺满 · 模糊=模糊背景填黑边（针对主轨整屏画面）</div>
+            <div style={{ fontSize: 10.5, color: EC.t4 }}>适应=留黑边 · 填充=铺满裁切 · 拉伸=变形铺满 · 模糊=模糊背景填黑边 · 原始=源生像素 1:1 居中（针对主轨整屏画面）</div>
           </Section>
         )}
 
@@ -270,9 +271,12 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
         {isVisual && (
           <Section title="位置 / 大小">
             <div style={{ display: "flex", gap: 6, marginBottom: 2 }}>
-              <button onClick={() => centerAxis("x")} title="水平居中" style={alignBtn}>水平居中</button>
-              <button onClick={() => centerAxis("y")} title="垂直居中" style={alignBtn}>垂直居中</button>
-              <button onClick={() => { centerAxis("x"); centerAxis("y"); }} title="居中" style={alignBtn}>居中</button>
+              {clipTrackType === "video" && (c.kind === "video" || c.kind === "image") && (
+                <button onClick={() => update(c.id, { fit: "cover", transform: undefined, keyframes: undefined })} title="自动缩放铺满画框、消除黑边（按比例裁切溢出；预览与导出一致）" style={{ ...alignBtn, color: EC.accent, borderColor: EC.accent }}>填满</button>
+              )}
+              <button onClick={() => centerAxis("x")} title="水平居中（画中画时居中框）" style={alignBtn}>水平居中</button>
+              <button onClick={() => centerAxis("y")} title="垂直居中（画中画时居中框）" style={alignBtn}>垂直居中</button>
+              <button onClick={() => update(c.id, { transform: undefined, keyframes: undefined })} title="复位为整屏居中（清除手动位置/缩放/旋转）" style={alignBtn}>居中</button>
               <button onClick={() => update(c.id, { transform: undefined })} title="清除位置/缩放/旋转" style={alignBtn}>重置</button>
             </div>
             <NumSlider label="缩放" value={tf.scale ?? 1} min={0.05} max={3} step={0.01} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("scale", v)} />
@@ -280,13 +284,18 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <NumSlider label="Y" value={tf.y ?? 0} min={-0.5} max={1} step={0.005} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("y", v)} />
             <NumSlider label="旋转" value={tf.rotation ?? 0} min={-180} max={180} step={1} disp={(v) => Math.round(v)} parse={(s) => s} suffix="°" onChange={(v) => setTf("rotation", v)} />
             <NumSlider label="不透明度" value={tf.opacity ?? 1} min={0} max={1} step={0.01} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("opacity", v)} />
+            {clipTrackType === "video" && (
+              <div style={{ fontSize: 10.5, color: EC.t4, lineHeight: 1.5 }}>主轨：先「填满」消黑，再用<b>缩放</b>放大局部、<b>X/Y</b>平移取景（裁切到画框，导出一致）。缩放&lt;1 不生效——要画中画/缩小浮窗请放到「叠加」轨。</div>
+            )}
           </Section>
         )}
 
         {isVisual && (
           <Section title="关键帧动画">
             <div style={{ fontSize: 11, color: EC.t3, marginBottom: 6, lineHeight: 1.5 }}>
-              在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间，预览实时演示。导出：<b>位置（移动）动画已支持</b>；缩放 / 旋转 / 不透明度关键帧目前仅预览，导出取静态值。
+              在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间，预览实时演示。{clipTrackType === "video"
+                ? <>导出：<b>主轨片段关键帧动画仅预览</b>，导出取静态值（需要 Ken-Burns 推拉动画请把素材放到「叠加」轨）。</>
+                : <>导出：<b>位置（移动）动画已支持</b>；缩放 / 旋转 / 不透明度关键帧目前仅预览，导出取静态值。</>}
             </div>
             <button
               onClick={() => {

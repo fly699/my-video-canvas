@@ -261,7 +261,7 @@ export function PreviewStage() {
       if (c) { fitClip = c; break; }
     }
   }
-  const FIT_MODES: [FitMode, string][] = [["contain", "维持比例"], ["cover", "撑满"], ["stretch", "拉伸"], ["blur", "模糊填充"]];
+  const FIT_MODES: [FitMode, string][] = [["contain", "维持比例"], ["cover", "撑满"], ["stretch", "拉伸"], ["blur", "模糊填充"], ["none", "原始1:1"]];
   const fitBtn = (active: boolean): React.CSSProperties => ({
     padding: "3px 9px", fontSize: 11, borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap",
     border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2,
@@ -295,23 +295,41 @@ export function PreviewStage() {
           {renderList.map(({ clip, trackType }) => {
             const hasKf = !!clip.keyframes && clip.keyframes.length > 0;
             const tf = hasKf ? transformAt(clip, playhead - clip.start) : clip.transform;
-            const fullFrame = !clip.transform && !hasKf && trackType === "video";
+            // Main-track (video) clips are ALWAYS full-frame; their transform means
+            // zoom(scale≥1)/pan within the frame (matches the export). Overlay-track
+            // clips stay positioned PiP boxes.
+            const fullFrame = trackType === "video";
             const selected = clip.id === selectedClipId;
             const xfade = fadeOf(clip.id);
+            // zoom/pan CSS for a full-frame clip that has a transform — same clamp
+            // as the export: pan only once zoomed (scale≥1), bounded to the room.
+            let mainTransform: string | undefined;
+            if (fullFrame && tf) {
+              const s = Math.max(1, tf.scale ?? 1);
+              const maxFrac = (s - 1) / 2;
+              const px = Math.max(-maxFrac, Math.min(maxFrac, tf.x ?? 0));
+              const py = Math.max(-maxFrac, Math.min(maxFrac, tf.y ?? 0));
+              mainTransform = `translate(${(px * 100).toFixed(2)}%, ${(py * 100).toFixed(2)}%) scale(${s.toFixed(3)}) rotate(${tf.rotation ?? 0}deg)`;
+            }
+            const mainOpacity = xfade * (fullFrame && tf ? (tf.opacity ?? 1) : 1);
             const objFit: React.CSSProperties["objectFit"] = fullFrame
-              ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : "contain")
+              ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : clip.fit === "none" ? "none" : "contain")
               : "cover";
 
             if (fullFrame) {
-              // main full-frame clip — click to select; sizing via 画面适配
+              // main full-frame clip — click to select; sizing via 画面适配 + zoom/pan
               const common = { onPointerDown: (e: React.PointerEvent) => { e.stopPropagation(); selectClip(clip.id); } };
-              const st: React.CSSProperties = { position: "absolute", inset: 0, objectFit: objFit, opacity: xfade, filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
+              // width/height:100% are REQUIRED — without them a replaced element
+              // (img/video) keeps its intrinsic size under inset:0, so object-fit
+              // (contain/cover/stretch) has nothing to fit into and the media sits
+              // un-centered at its native size.
+              const st: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: objFit, opacity: mainOpacity, transform: mainTransform, transformOrigin: "center", filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
               // 模糊填充：近似预览 = 模糊放大的同画面铺满作背景 + 原画完整居中（导出由后端为准）
               if (clip.fit === "blur") {
                 const bg: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(22px) brightness(0.85)", transform: "scale(1.12)", pointerEvents: "none" };
-                const fg: React.CSSProperties = { position: "absolute", inset: 0, objectFit: "contain", filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
+                const fg: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", filter: cssFilter(clip), outline: selected ? `2px solid ${EC.accent}` : "none", outlineOffset: -2 };
                 return (
-                  <div key={clip.id} style={{ position: "absolute", inset: 0, opacity: xfade }}>
+                  <div key={clip.id} style={{ position: "absolute", inset: 0, opacity: mainOpacity, transform: mainTransform, transformOrigin: "center" }}>
                     {clip.kind === "image" ? (
                       <><img src={clip.assetUrl} alt="" style={bg} /><img {...common} src={clip.assetUrl} alt="" style={fg} /></>
                     ) : (

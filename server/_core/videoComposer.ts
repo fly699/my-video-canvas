@@ -38,6 +38,29 @@ export interface Segment {
   transition?: { type: string; duration: number }; // entry transition vs the previous segment
   fit?: FitMode;                                  // contain (default) | cover | stretch | blur
   reverse?: boolean;                              // 倒放：逆序播放（图片无效）
+  transform?: ClipTransform;                      // main-track zoom(scale≥1)/pan(x,y)/rotate within the frame
+}
+
+/** Zoom/pan/rotate a frame-sized image WITHIN the output frame (main-track clips):
+ *  scale ≥ 1 zooms in; x/y pan as a fraction of the frame (0 = centered); the result
+ *  stays w×h (overflow cropped). scale < 1 is treated as 1 (no shrink-to-black —
+ *  that's what the overlay track is for). */
+export function segmentTransformChain(tf: ClipTransform | undefined, w: number, h: number): string[] {
+  if (!tf) return [];
+  const out: string[] = [];
+  if (tf.rotation) out.push(`rotate=${(tf.rotation * Math.PI / 180).toFixed(5)}:ow=iw:oh=ih`);
+  const s = Math.max(1, tf.scale ?? 1);
+  // Pan only matters once zoomed in (s>1) — that's the only time there's hidden
+  // area to reveal. Clamp pan to the available room so the crop is always a valid,
+  // in-bounds rectangle (plain numbers — no fragile ffmpeg expressions).
+  if (s > 1.001) {
+    const maxFrac = (s - 1) / 2;
+    const px = Math.max(-maxFrac, Math.min(maxFrac, tf.x ?? 0));
+    const py = Math.max(-maxFrac, Math.min(maxFrac, tf.y ?? 0));
+    out.push(`scale=${Math.round(w * s)}:${Math.round(h * s)}`);
+    out.push(`crop=${w}:${h}:${Math.round((maxFrac - px) * w)}:${Math.round((maxFrac - py) * h)}`);
+  }
+  return out;
 }
 
 /** ffmpeg filters that fit a frame into the output canvas per the fit mode. */
@@ -47,6 +70,10 @@ function fitChain(fit: FitMode | undefined, w: number, h: number): string[] {
       return [`scale=${w}:${h}:force_original_aspect_ratio=increase`, `crop=${w}:${h}`];
     case "stretch": // 拉伸：精确铺满，可能变形
       return [`scale=${w}:${h}`];
+    case "none":    // 原始 1:1：源生分辨率不缩放，居中（小留黑、大居中裁切）
+      // pad up to at least the canvas so pad never fails for oversize sources,
+      // centered, then crop back to the canvas. Quotes protect the commas in max().
+      return [`pad=w='max(${w},iw)':h='max(${h},ih)':x=(ow-iw)/2:y=(oh-ih)/2:color=black`, `crop=${w}:${h}`];
     default:        // 适应：完整显示，居中留黑边
       return [`scale=${w}:${h}:force_original_aspect_ratio=decrease`, `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`];
   }
@@ -256,9 +283,9 @@ export function buildFilterGraph(
       parts.push(`[${i}:v]${pre.join(",")},split[bg${i}][fg${i}]`);
       parts.push(`[bg${i}]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=20:2,setsar=1[bgb${i}]`);
       parts.push(`[fg${i}]scale=${w}:${h}:force_original_aspect_ratio=decrease,setsar=1[fgs${i}]`);
-      parts.push(`[bgb${i}][fgs${i}]overlay=(W-w)/2:(H-h)/2,${post.join(",")}[v${i}]`);
+      parts.push(`[bgb${i}][fgs${i}]overlay=(W-w)/2:(H-h)/2,${[...segmentTransformChain(s.transform, w, h), ...post].join(",")}[v${i}]`);
     } else {
-      parts.push(`[${i}:v]${[...pre, ...fitChain(s.fit, w, h), ...post].join(",")}[v${i}]`);
+      parts.push(`[${i}:v]${[...pre, ...fitChain(s.fit, w, h), ...segmentTransformChain(s.transform, w, h), ...post].join(",")}[v${i}]`);
     }
     vLabels.push(`[v${i}]`);
 
@@ -484,7 +511,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);

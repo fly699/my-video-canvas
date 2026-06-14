@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFilterGraph, buildKeyframeExpr, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput } from "./_core/videoComposer";
+import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput } from "./_core/videoComposer";
 import { emptyEditorDoc } from "@shared/editorTypes";
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
@@ -146,6 +146,65 @@ describe("buildFilterGraph (single-pass composer)", () => {
     doc.tracks[2].clips.push({ id: "txt", kind: "text", start: 0, trimIn: 0, trimOut: 2, text: { content: "hi" } });
     const got = collectVideoSegments(doc);
     expect(got.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("segmentTransformChain (main-track zoom/pan export)", () => {
+  it("no transform / no zoom → empty (no-op)", () => {
+    expect(segmentTransformChain(undefined, 1920, 1080)).toEqual([]);
+    expect(segmentTransformChain({}, 1920, 1080)).toEqual([]);
+    expect(segmentTransformChain({ scale: 1 }, 1920, 1080)).toEqual([]);
+    expect(segmentTransformChain({ scale: 0.5 }, 1920, 1080)).toEqual([]); // <1 ignored (no shrink-to-black)
+    expect(segmentTransformChain({ x: 0.2 }, 1920, 1080)).toEqual([]); // pan w/o zoom → nothing to reveal
+  });
+
+  it("zoom 2x centered → scale up then center-crop back to frame", () => {
+    expect(segmentTransformChain({ scale: 2 }, 1920, 1080)).toEqual([
+      "scale=3840:2160",
+      "crop=1920:1080:960:540", // maxFrac 0.5 → cropX 0.5*1920, cropY 0.5*1080
+    ]);
+  });
+
+  it("zoom 2x + pan → crop offset reduced by the (clamped) pan", () => {
+    expect(segmentTransformChain({ scale: 2, x: 0.25, y: -0.25 }, 1920, 1080)).toEqual([
+      "scale=3840:2160",
+      "crop=1920:1080:480:810", // x:(0.5-0.25)*1920=480 ; y:(0.5+0.25)*1080=810
+    ]);
+  });
+
+  it("pan beyond the available room is clamped so the crop stays in-bounds", () => {
+    // scale 2 → maxFrac 0.5. x=5 clamps to 0.5 → cropX (0.5-0.5)*1920 = 0 (valid, not negative)
+    const out = segmentTransformChain({ scale: 2, x: 5 }, 1920, 1080);
+    expect(out[1]).toBe("crop=1920:1080:0:540");
+  });
+
+  it("rotation emits a frame-size-preserving rotate", () => {
+    expect(segmentTransformChain({ rotation: 90 }, 1920, 1080)[0]).toBe("rotate=1.57080:ow=iw:oh=ih");
+  });
+});
+
+describe("fit modes incl. 1:1 原始 (none) + blur honours transform", () => {
+  const base = (fit: "none" | "blur", transform?: object): Segment[] =>
+    [{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 3, speed: 1, fit, ...(transform ? { transform } : {}) } as Segment];
+
+  it("fit=none renders the source 1:1, centered, padded-or-cropped to the canvas", () => {
+    const g = buildFilterGraph(base("none"), OPTS).filterComplex;
+    expect(g).toContain("pad=w='max(1920,iw)':h='max(1080,ih)':x=(ow-iw)/2:y=(oh-ih)/2:color=black");
+    expect(g).toContain("crop=1920:1080");
+    expect(g).not.toContain("scale=1920:1080"); // 1:1 = no scaling
+  });
+
+  it("fit=blur with a zoom transform now applies the zoom in export (preview/export parity)", () => {
+    const g = buildFilterGraph(base("blur", { scale: 2 }), OPTS).filterComplex;
+    expect(g).toContain("boxblur"); // blur path still active
+    expect(g).toContain("scale=3840:2160"); // the transform zoom is applied
+    expect(g).toContain("crop=1920:1080:960:540");
+  });
+
+  it("fit=blur without a transform is unchanged (no zoom filter)", () => {
+    const g = buildFilterGraph(base("blur"), OPTS).filterComplex;
+    expect(g).toContain("boxblur");
+    expect(g).not.toContain("scale=3840"); // no zoom
   });
 });
 
