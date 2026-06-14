@@ -108,7 +108,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <div style={{ fontSize: 11, color: EC.t3, marginTop: 2 }}>适配方式</div>
             <div style={{ display: "flex", gap: 4 }}>
               {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"]] as const).map(([v, label]) => (
-                <button key={v} onClick={() => updateSelected({ fit: v })}
+                <button key={v} onClick={() => updateSelected({ fit: v, transform: undefined, keyframes: undefined })}
                   style={{ flex: 1, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${(pv.fit ?? "contain") === v ? EC.accent : EC.border}`, background: (pv.fit ?? "contain") === v ? EC.accentSoft : "transparent", color: (pv.fit ?? "contain") === v ? EC.accent : EC.t2 }}>{label}</button>
               ))}
             </div>
@@ -123,8 +123,9 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   }
 
   let clip: Clip | null = null;
+  let clipTrackType: string | null = null;
   if (doc && selectedClipId) {
-    for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === selectedClipId); if (c) { clip = c; break; } }
+    for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === selectedClipId); if (c) { clip = c; clipTrackType = t.type; break; } }
   }
 
   if (!clip) {
@@ -218,13 +219,14 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           </Section>
         )}
 
-        {(c.kind === "video" || c.kind === "image") && (
+        {(c.kind === "video" || c.kind === "image") && clipTrackType === "video" && (
           <Section title="画面适配">
             <div style={{ display: "flex", gap: 6 }}>
               {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"]] as const).map(([v, label]) => {
                 const active = (c.fit ?? "contain") === v;
                 return (
-                  <button key={v} onClick={() => update(c.id, { fit: v })}
+                  // 适配=整屏：清掉手动位置/缩放/旋转与关键帧，让 fit 真正作用于画面
+                  <button key={v} onClick={() => update(c.id, { fit: v, transform: undefined, keyframes: undefined })}
                     title={v === "contain" ? "完整显示，留黑边" : v === "cover" ? "铺满画面，裁掉溢出" : v === "stretch" ? "拉伸铺满（可能变形）" : "模糊填充：原画完整居中，模糊放大的同画面铺满背景（消除黑边）"}
                     style={{ flex: 1, padding: "7px 0", fontSize: 11.5, borderRadius: 7, cursor: "pointer", border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2 }}>{label}</button>
                 );
