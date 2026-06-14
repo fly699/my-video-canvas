@@ -8,7 +8,7 @@ import { derivePipelineSteps } from "@/lib/pipelinePlan";
 import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw, ListChecks, ImageIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { Sparkles, Loader2, Send, Check, Plus, Link2, Pencil, Trash2, LayoutGrid, Boxes, Wrench, Zap, BookTemplate, Focus, ShieldCheck, SlidersHorizontal, RotateCw, ListChecks, ImageIcon, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea } from "../NodeTextInput";
 import { applyAgentOperations, buildGraphSummary, distributeServers, summarizePlanOps } from "@/lib/agentApply";
@@ -328,7 +328,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         imageTemplateId: tp.imageTemplateId,
         videoTemplateId: tp.videoTemplateId,
       });
-      setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations, plan: r.plan }]);
+      setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations, plan: r.plan, dropped: r.dropped }]);
       // Duration-aware capacity check: if the plan split a target longer than the
       // model's per-shot cap into many shots, let the user choose how to proceed
       // before applying (instead of silently auto-applying a 12-shot plan).
@@ -700,6 +700,13 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                   </button>
                     );
                   })()}
+                </div>
+              )}
+              {/* 透明化：LLM 提议但被服务端校验丢弃的操作——明示原因，避免「凭空消失」 */}
+              {m.role === "assistant" && m.dropped && m.dropped.length > 0 && (
+                <div style={{ marginTop: 6, padding: "5px 9px", fontSize: 10, lineHeight: 1.55, borderRadius: 8, background: "oklch(0.72 0.16 70 / 0.1)", border: "1px solid oklch(0.72 0.16 70 / 0.35)", color: "var(--c-t2)", display: "flex", alignItems: "flex-start", gap: 5 }}>
+                  <AlertTriangle className="w-3 h-3" style={{ flexShrink: 0, marginTop: 1, color: "oklch(0.72 0.16 70)" }} />
+                  <span>部分操作因不合规被忽略：{m.dropped.join("；")}</span>
                 </div>
               )}
             </div>

@@ -5,7 +5,7 @@ import { assertProjectAccess } from "../_core/permissions";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
-import { catalogText, sanitizeOperation, templateKnowledgeText } from "../_core/agentCatalog";
+import { catalogText, sanitizeOperationDetailed, templateKnowledgeText } from "../_core/agentCatalog";
 import { enforceImageFirst, enforceImageFirstComfy } from "../_core/imageFirst";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import * as db from "../db";
@@ -183,6 +183,7 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
 
       let reply = text.trim();
       let operations: AgentOperation[] = [];
+      const dropped: string[] = []; // reasons for ops the LLM proposed but we discarded
       let plan: { targetSeconds: number; perShotSeconds: number; templateLabel?: string; shots: number } | undefined;
       // Strip an accidental ```json fence (belt-and-suspenders; json_object mode
       // shouldn't add one) before matching the outermost { … } object.
@@ -195,9 +196,13 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
           parsedOk = true;
           reply = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : "已规划完成。";
           if (Array.isArray(parsed.operations)) {
-            operations = parsed.operations
-              .map((o) => sanitizeOperation(o, { comfyOnly: input.comfyOnly, validTemplateIds }))
-              .filter((o): o is AgentOperation => o !== null);
+            // Sanitize each op, collecting *why* any were dropped so the user isn't
+            // left wondering where a hallucinated/invalid step went.
+            for (const o of parsed.operations) {
+              const r = sanitizeOperationDetailed(o, { comfyOnly: input.comfyOnly, validTemplateIds });
+              if ("op" in r) operations.push(r.op);
+              else dropped.push(r.drop);
+            }
             // 生图→生视频：确定性强制——即使 LLM 没照做也保证生效。
             // 非 ComfyUI：插 image_gen（文本→image_gen→视频）。
             // 仅 ComfyUI：插出图 comfyui_workflow（prompt→出图→图生视频），用识别到的出图/视频模板。
@@ -236,7 +241,9 @@ ${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n#
           reply = text.trim();
         }
       }
-      return { reply, operations, plan };
+      // Dedupe + cap the drop reasons (same reason often repeats across many ops).
+      const droppedReasons = Array.from(new Set(dropped)).slice(0, 6);
+      return { reply, operations, plan, dropped: droppedReasons, droppedCount: dropped.length };
     }),
 
   // Generate per-shot descriptions for a 成片配方 from a topic, so the recipe's
