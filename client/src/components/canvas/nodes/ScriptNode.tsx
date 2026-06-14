@@ -9,12 +9,13 @@ import {
   Sparkles, Loader2, ChevronDown, Clapperboard,
   Minus, Plus, Copy, FileText, Check, Wand2, MessageSquare,
   Search, Layers2, GitBranch, Image, BookOpen, X, Languages,
-  Route, ClipboardCheck, Film, History,
+  Route, ClipboardCheck, Film, History, AlertTriangle,
 } from "lucide-react";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { ScriptDevFlowPanel, ScriptCoveragePanel } from "../ScriptSidePanels";
 import { ScriptHistoryPanel } from "../ScriptHistoryPanel";
 import { snapshotContent } from "@/lib/scriptHistory";
+import { hashContent, hasDownstreamStoryboardForId, isStoryboardStale } from "@/lib/scriptStoryboardSync";
 import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
@@ -346,10 +347,19 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     return { count: scenes.length, target };
   }, [id]);
 
+  // 记录「上次拆分镜时的脚本正文」基线 hash，供后续检测脚本是否被改动（→ 分镜过期）。
+  // 从 store 读最新 content（onSuccess 里 content 可能刚被写入）。
+  const recordStoryboardBaseline = useCallback(() => {
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === id);
+    const c = (node?.data.payload as ScriptNodeData | undefined)?.content ?? "";
+    updateNodeData(id, { lastStoryboardContentHash: hashContent(c), lastStoryboardAt: Date.now() }, true);
+  }, [id, updateNodeData]);
+
   const generateMutation = trpc.scripts.generateStoryboards.useMutation({
     onSuccess: (result) => {
       const { count, target } = addScenesFromResult(result.scenes);
       if (count === 0) return;
+      recordStoryboardBaseline();
       toast.success(target === "comfyui_image" ? "ComfyUI 图像节点已生成" : "分镜已生成", {
         description: `共 ${count} 个${target === "comfyui_image" ? "ComfyUI 图像" : "场景"}节点已添加到画布`,
         duration: 4000,
@@ -394,6 +404,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
         const res = addScenesFromResult(result.scenes);
         nodesCreated = res.count;
         target = res.target;
+        if (res.count > 0) recordStoryboardBaseline();
       }
       const tgtLabel = target === "comfyui_image" ? "ComfyUI 图像" : "分镜";
       toast.success("AI 剧本已生成", {
@@ -612,6 +623,28 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           onFocus={onFocus}
           onBlur={onBlur}
         />
+
+        {/* 脚本↔分镜过期提示：脚本在拆分镜后又被修改时出现，提示而非自动覆盖已有分镜 */}
+        {isStoryboardStale(payload, hasDownstreamStoryboardForId(id)) && (
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg nodrag" style={{ background: "oklch(0.72 0.16 70 / 0.12)", border: "1px solid oklch(0.72 0.16 70 / 0.4)" }}>
+            <AlertTriangle style={{ width: 13, height: 13, color: "oklch(0.72 0.16 70)", flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: "var(--c-t2)", flex: 1, lineHeight: 1.5 }}>脚本已修改，下游分镜可能已过期</span>
+            <button
+              onClick={() => {
+                if (anyPending) return;
+                if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+                generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang, targetVideoModel: targetModel || undefined });
+              }}
+              disabled={generateMutation.isPending}
+              title="按当前脚本重新拆分镜（新增分镜节点，不覆盖已有分镜）"
+              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-semibold transition-all flex-shrink-0"
+              style={{ background: "oklch(0.72 0.16 70 / 0.2)", border: "1px solid oklch(0.72 0.16 70 / 0.5)", color: "oklch(0.72 0.16 70)", cursor: generateMutation.isPending ? "default" : "pointer" }}
+            >
+              {generateMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Film className="w-2.5 h-2.5" />}
+              重新拆分镜
+            </button>
+          </div>
+        )}
 
         {/* Quick AI buttons row */}
         <div className="flex items-center gap-1 flex-wrap">
