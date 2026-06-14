@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
@@ -39,15 +39,21 @@ export function Timeline() {
   const removeTrack = useEditorStore((s) => s.removeTrack);
   const [addMenu, setAddMenu] = useState(false);
 
-  // Keyboard: Delete/Backspace = remove selected clip; S = split at playhead; Ctrl/⌘+D = duplicate.
+  // Keyboard — clip ops. Del 删除 / Shift+Del 波纹删除 / S 分割 / Shift+S 全轨分割 /
+  // Ctrl+D 原地复制 / Ctrl+C 拷贝 / Ctrl+V 粘贴到播放头. Paste needs no selection.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, [contenteditable='true']")) return;
       const st = useEditorStore.getState();
+      // paste & 全轨分割 work without a current selection
+      if ((e.key === "v" || e.key === "V") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.pasteClip(st.playhead); return; }
+      if ((e.key === "s" || e.key === "S") && e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitAllAtPlayhead(st.playhead); return; }
       const sel = st.selectedClipId;
       if (!sel) return;
-      if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); st.removeClip(sel); }
+      if ((e.key === "Delete" || e.key === "Backspace") && e.shiftKey) { e.preventDefault(); st.rippleDeleteClip(sel); }
+      else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); st.removeClip(sel); }
+      else if ((e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.copyClip(sel); }
       else if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitClip(sel, st.playhead); }
       else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.duplicateClip(sel); }
     };
@@ -207,6 +213,7 @@ export function Timeline() {
         <span style={{ fontSize: 12, color: EC.t2, fontVariantNumeric: "tabular-nums" }}>{fmtTime(playhead)} / {fmtTime(duration)}</span>
         <div style={{ flex: 1 }} />
         <button onClick={() => setSnapOn((v) => !v)} title={snapOn ? "吸附：开（拖动时对齐片段/播放头）" : "吸附：关"} style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, color: snapOn ? EC.accent : EC.t3, borderColor: snapOn ? EC.accent : EC.border, display: "inline-flex", alignItems: "center" }}><Magnet size={13} /><span style={{ fontSize: 11 }}>吸附</span></button>
+        <button onClick={() => useEditorStore.getState().splitAllAtPlayhead(playhead)} title="全轨分割：在播放头切开所有轨道的片段 (Shift+S)" style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center" }}><Scissors size={13} /><span style={{ fontSize: 11 }}>全轨分割</span></button>
         <button onClick={() => setPxPerSec(pxPerSec / 1.4)} title="缩小" style={zoomBtn}><ZoomOut size={14} /></button>
         <button onClick={() => setPxPerSec(pxPerSec * 1.4)} title="放大" style={zoomBtn}><ZoomIn size={14} /></button>
         <button onClick={fitToWindow} title="适应窗口（缩放至完整显示时间轴）" style={zoomBtn}><Maximize2 size={13} /></button>
@@ -331,7 +338,7 @@ export function Timeline() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderTop: `1px solid ${EC.border}`, fontSize: 10, color: EC.t4, flexShrink: 0 }}>
-        <Scissors size={11} /> 拖动移动/换轨 · 拖两端裁剪 · 拖标尺定位 · 右键片段菜单 · Del 删除 · S 分割 · Ctrl+D 复制 · 空格 播放/暂停 · ←/→ 逐帧 · Home/End 首尾
+        <Scissors size={11} /> 拖动移动/换轨 · 拖两端裁剪 · 拖标尺定位 · 右键片段菜单 · Del 删除 · Shift+Del 波纹删除 · S 分割 · Shift+S 全轨分割 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 原地复制 · 空格 播放/暂停 · ←/→ 逐帧 · Home/End 首尾
       </div>
 
       {menu && (() => {
@@ -342,8 +349,11 @@ export function Timeline() {
           <div style={{ position: "fixed", left: menu.x, top: menu.y, zIndex: 1000, minWidth: 150, padding: 4, borderRadius: 10, background: EC.surface, border: `1px solid ${EC.border}`, boxShadow: "0 12px 40px oklch(0 0 0 / 0.5)" }}
             onPointerDown={(e) => e.stopPropagation()}>
             <div style={item} onClick={() => act(() => st.splitClip(menu.clipId, st.playhead))}><SplitSquareHorizontal size={14} /> 在播放头分割<span style={{ marginLeft: "auto", color: EC.t4 }}>S</span></div>
-            <div style={item} onClick={() => act(() => st.duplicateClip(menu.clipId))}><Copy size={14} /> 复制片段<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+D</span></div>
+            <div style={item} onClick={() => act(() => st.duplicateClip(menu.clipId))}><Copy size={14} /> 原地复制<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+D</span></div>
+            <div style={item} onClick={() => act(() => st.copyClip(menu.clipId))}><ClipboardCopy size={14} /> 拷贝<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+C</span></div>
+            <div style={{ ...item, opacity: st.clipboard ? 1 : 0.4, pointerEvents: st.clipboard ? "auto" : "none" }} onClick={() => act(() => st.pasteClip(st.playhead))}><ClipboardPaste size={14} /> 粘贴到播放头<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+V</span></div>
             <div style={{ ...item, color: "oklch(0.65 0.2 25)" }} onClick={() => act(() => st.removeClip(menu.clipId))}><Trash2 size={14} /> 删除片段<span style={{ marginLeft: "auto", color: EC.t4 }}>Del</span></div>
+            <div style={{ ...item, color: "oklch(0.65 0.2 25)" }} onClick={() => act(() => st.rippleDeleteClip(menu.clipId))}><Trash2 size={14} /> 波纹删除（关闭缺口）<span style={{ marginLeft: "auto", color: EC.t4 }}>Shift+Del</span></div>
           </div>
         );
       })()}

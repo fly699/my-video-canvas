@@ -286,10 +286,14 @@ function EditorWorkspace({ id }: { id: number }) {
                   { key: "← / →", desc: "逐帧步进" },
                   { key: "Shift + ← / →", desc: "一次跳 10 帧" },
                 ]},
-                { group: "片段编辑（需先选中片段）", items: [
+                { group: "片段编辑", items: [
                   { key: "Del / Backspace", desc: "删除选中片段" },
-                  { key: "S", desc: "在播放头处分割片段" },
-                  { key: "Cmd/Ctrl + D", desc: "复制选中片段" },
+                  { key: "Shift + Del", desc: "波纹删除（关闭缺口）" },
+                  { key: "S", desc: "在播放头处分割" },
+                  { key: "Shift + S", desc: "全轨分割（切所有轨道）" },
+                  { key: "Cmd/Ctrl + D", desc: "原地复制片段" },
+                  { key: "Cmd/Ctrl + C", desc: "拷贝选中片段" },
+                  { key: "Cmd/Ctrl + V", desc: "粘贴到播放头" },
                 ]},
                 { group: "撤销 / 重做", items: [
                   { key: "Cmd/Ctrl + Z", desc: "撤销" },

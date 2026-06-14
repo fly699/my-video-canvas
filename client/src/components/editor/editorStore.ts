@@ -57,8 +57,16 @@ export interface EditorStore {
   removeKeyframe: (clipId: string, t: number) => void;
   clearKeyframes: (clipId: string) => void;
   splitClip: (clipId: string, atTime: number) => void;
+  splitAllAtPlayhead: (atTime: number) => void;
   duplicateClip: (clipId: string) => void;
+  rippleDeleteClip: (clipId: string) => void;
   selectClip: (id: string | null) => void;
+
+  // clipboard — copy a clip then paste it at the playhead (survives across clips
+  // and sessions within a page life). Not part of undo history.
+  clipboard: { clip: Clip; trackType: TrackType } | null;
+  copyClip: (clipId: string) => void;
+  pasteClip: (atTime: number) => void;
 
   // track ops
   updateTrack: (trackId: string, patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name">>) => void;
@@ -93,6 +101,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   playing: false,
   pxPerSec: 60,
   dirty: false,
+  clipboard: null,
   past: [],
   future: [],
   _lastMutateTs: 0,
@@ -216,6 +225,71 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const copy: Clip = { ...c, id: `c_${nanoid(8)}`, start: c.start + clipDuration(c) };
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : { ...t, clips: [...t.clips, copy] });
     return withHistory(s, { ...s.doc, tracks }, { selectedClipId: copy.id });
+  }),
+
+  // Razor at the playhead across EVERY track at once: any clip the time passes
+  // through is cut in two (locked tracks are left untouched). Mirrors splitClip's
+  // source-time math so cuts are frame-accurate per clip speed.
+  splitAllAtPlayhead: (atTime) => set((s) => {
+    if (!s.doc) return s;
+    let changed = false;
+    const tracks = s.doc.tracks.map((t) => {
+      if (t.locked) return t;
+      const clips = t.clips.flatMap((c) => {
+        const speed = c.speed ?? 1;
+        const dur = clipDuration(c);
+        const offset = atTime - c.start;
+        if (offset <= 0.05 || offset >= dur - 0.05) return [c];
+        changed = true;
+        const cutSrc = c.trimIn + offset * speed;
+        const left: Clip = { ...c, trimOut: cutSrc };
+        const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc };
+        return [left, right];
+      });
+      return { ...t, clips };
+    });
+    if (!changed) return s;
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // Delete a clip AND pull every later clip on the same track left by its
+  // duration, so no gap is left behind (a.k.a. ripple delete).
+  rippleDeleteClip: (clipId) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const removed = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    const dur = clipDuration(removed);
+    const tracks = s.doc.tracks.map((t, ti) => {
+      if (ti !== loc.trackIdx) return t;
+      const clips = t.clips
+        .filter((c) => c.id !== clipId)
+        .map((c) => (c.start >= removed.start ? { ...c, start: Math.max(0, c.start - dur) } : c));
+      return { ...t, clips };
+    });
+    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: s.selectedClipId === clipId ? null : s.selectedClipId });
+  }),
+
+  // Snapshot a clip into the clipboard (deep clone so later edits to the original
+  // don't bleed into the copy). Pure UI state — no doc change, no history.
+  copyClip: (clipId) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const clip = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    return { clipboard: { clip: JSON.parse(JSON.stringify(clip)) as Clip, trackType: s.doc.tracks[loc.trackIdx].type } };
+  }),
+
+  // Paste the clipboard clip at `atTime` onto the first track of its original
+  // type (falling back to the first track), as a fresh clip, and select it.
+  pasteClip: (atTime) => set((s) => {
+    if (!s.doc || !s.clipboard) return s;
+    const target = s.doc.tracks.find((t) => t.type === s.clipboard!.trackType) ?? s.doc.tracks[0];
+    if (!target) return s;
+    const id = `c_${nanoid(8)}`;
+    const fresh: Clip = { ...(JSON.parse(JSON.stringify(s.clipboard.clip)) as Clip), id, start: Math.max(0, atTime) };
+    const tracks = s.doc.tracks.map((t) => (t.id === target.id ? { ...t, clips: [...t.clips, fresh] } : t));
+    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: id });
   }),
 
   // Snapshot the clip's current (base) transform as a keyframe at time `t`
