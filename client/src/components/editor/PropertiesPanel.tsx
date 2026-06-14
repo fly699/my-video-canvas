@@ -158,11 +158,12 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const centerAxis = (axis: "x" | "y") => {
     const box = document.querySelector(`[data-clip-box="${c.id}"]`) as HTMLElement | null;
     const stage = box?.offsetParent as HTMLElement | null;
-    if (box && stage?.offsetWidth && stage.offsetHeight) {
-      if (axis === "x") setTf("x", Math.max(0, (1 - box.offsetWidth / stage.offsetWidth) / 2));
-      else setTf("y", Math.max(0, (1 - box.offsetHeight / stage.offsetHeight) / 2));
-    } else if (axis === "x") setTf("x", Math.max(0, (1 - (tf.scale ?? 1)) / 2));
-    else setTf("y", 0.4);
+    // Only positioned (PiP) clips have a box to center. A full-frame clip (no
+    // transform) is already centered by object-fit — don't fabricate a transform
+    // that would shrink it into a small floating box.
+    if (!box || !stage?.offsetWidth || !stage.offsetHeight) return;
+    if (axis === "x") setTf("x", Math.max(0, (1 - box.offsetWidth / stage.offsetWidth) / 2));
+    else setTf("y", Math.max(0, (1 - box.offsetHeight / stage.offsetHeight) / 2));
   };
 
   return (
@@ -270,9 +271,12 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
         {isVisual && (
           <Section title="位置 / 大小">
             <div style={{ display: "flex", gap: 6, marginBottom: 2 }}>
-              <button onClick={() => centerAxis("x")} title="水平居中" style={alignBtn}>水平居中</button>
-              <button onClick={() => centerAxis("y")} title="垂直居中" style={alignBtn}>垂直居中</button>
-              <button onClick={() => { centerAxis("x"); centerAxis("y"); }} title="居中" style={alignBtn}>居中</button>
+              {clipTrackType === "video" && (c.kind === "video" || c.kind === "image") && (
+                <button onClick={() => update(c.id, { fit: "cover", transform: undefined, keyframes: undefined })} title="自动缩放铺满画框、消除黑边（按比例裁切溢出；预览与导出一致）" style={{ ...alignBtn, color: EC.accent, borderColor: EC.accent }}>填满</button>
+              )}
+              <button onClick={() => centerAxis("x")} title="水平居中（画中画时居中框）" style={alignBtn}>水平居中</button>
+              <button onClick={() => centerAxis("y")} title="垂直居中（画中画时居中框）" style={alignBtn}>垂直居中</button>
+              <button onClick={() => update(c.id, { transform: undefined, keyframes: undefined })} title="复位为整屏居中（清除手动位置/缩放/旋转）" style={alignBtn}>居中</button>
               <button onClick={() => update(c.id, { transform: undefined })} title="清除位置/缩放/旋转" style={alignBtn}>重置</button>
             </div>
             <NumSlider label="缩放" value={tf.scale ?? 1} min={0.05} max={3} step={0.01} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("scale", v)} />
@@ -280,6 +284,9 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <NumSlider label="Y" value={tf.y ?? 0} min={-0.5} max={1} step={0.005} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("y", v)} />
             <NumSlider label="旋转" value={tf.rotation ?? 0} min={-180} max={180} step={1} disp={(v) => Math.round(v)} parse={(s) => s} suffix="°" onChange={(v) => setTf("rotation", v)} />
             <NumSlider label="不透明度" value={tf.opacity ?? 1} min={0} max={1} step={0.01} disp={(v) => Math.round(v * 100)} parse={(s) => s / 100} suffix="%" onChange={(v) => setTf("opacity", v)} />
+            {clipTrackType === "video" && (
+              <div style={{ fontSize: 10.5, color: "oklch(0.72 0.16 70)", lineHeight: 1.5 }}>⚠ 主轨片段的缩放/位置/旋转<b>仅预览</b>，导出以「画面适配」为准。要铺满消黑请用上方<b>「填满」</b>。需要画中画/局部放大请放到「叠加」轨。</div>
+            )}
           </Section>
         )}
 
