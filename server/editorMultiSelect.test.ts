@@ -43,6 +43,34 @@ describe("selection model", () => {
     expect(st().selectedClipIds).toEqual([]);
     expect(st().selectedClipId).toBeNull();
   });
+
+  it("selectAll selects every clip across tracks", () => {
+    const a = st().addClip("v1", { kind: "image", start: 0, trimIn: 0, trimOut: 2 });
+    const b = st().addClip("a1", { kind: "audio", start: 0, trimIn: 0, trimOut: 2, assetUrl: "x" });
+    const c = st().addClip("t1", { kind: "text", start: 0, trimIn: 0, trimOut: 2, text: { content: "hi" } });
+    st().selectAll();
+    expect(st().selectedClipIds.sort()).toEqual([a, b, c].sort());
+  });
+});
+
+describe("nudge selection", () => {
+  it("nudgeSelected shifts every selected clip by the delta", () => {
+    const a = st().addClip("v1", { kind: "image", start: 2, trimIn: 0, trimOut: 2 });
+    const b = st().addClip("a1", { kind: "audio", start: 5, trimIn: 0, trimOut: 2, assetUrl: "x" });
+    st().setSelection([a, b]);
+    st().nudgeSelected(0.5);
+    expect(clipsOf("v1").find((c) => c.id === a)!.start).toBeCloseTo(2.5, 6);
+    expect(clipsOf("a1").find((c) => c.id === b)!.start).toBeCloseTo(5.5, 6);
+  });
+
+  it("nudgeSelected clamps so the earliest clip never goes below 0", () => {
+    const a = st().addClip("v1", { kind: "image", start: 1, trimIn: 0, trimOut: 2 });
+    const b = st().addClip("a1", { kind: "audio", start: 0.3, trimIn: 0, trimOut: 2, assetUrl: "x" }); // earliest
+    st().setSelection([a, b]);
+    st().nudgeSelected(-1); // wants -1 but earliest is 0.3 → clamp to -0.3
+    expect(clipsOf("a1").find((c) => c.id === b)!.start).toBeCloseTo(0, 6);
+    expect(clipsOf("v1").find((c) => c.id === a)!.start).toBeCloseTo(0.7, 6);
+  });
 });
 
 describe("multi-clip ops", () => {

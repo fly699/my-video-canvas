@@ -72,6 +72,7 @@ export interface EditorStore {
   selectClip: (id: string | null) => void;
   toggleClipSelection: (id: string) => void;
   setSelection: (ids: string[]) => void;
+  selectAll: () => void;
   clearSelection: () => void;
   selectedClips: () => Clip[];
 
@@ -80,6 +81,7 @@ export interface EditorStore {
   duplicateSelected: () => void;
   copySelected: () => void;
   moveSelectedTo: (primaryClipId: string, newPrimaryStart: number) => void;
+  nudgeSelected: (dx: number) => void;    // shift selection by ±dx seconds (clamped at 0)
   closeGapsSelected: () => void;          // pack selected clips end-to-end per track
   alignSelectedStartTo: (time: number) => void; // shift selection so its earliest clip starts at `time`
   updateSelected: (patch: Partial<Clip>) => void; // apply a patch to every selected clip (nested effects/transform merged)
@@ -373,6 +375,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setSelection: (ids) => set(selPatch(ids)),
   clearSelection: () => set(selPatch([])),
 
+  selectAll: () => set((s) => {
+    if (!s.doc) return s;
+    const ids: string[] = [];
+    for (const t of s.doc.tracks) for (const c of t.clips) ids.push(c.id);
+    return selPatch(ids);
+  }),
+
   selectedClips: () => {
     const { doc, selectedClipIds } = get();
     if (!doc) return [];
@@ -456,6 +465,23 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return next;
     };
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.map((c) => (sel.has(c.id) ? apply(c) : c)) }));
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // Nudge the whole selection by ±dx seconds, clamped so the earliest clip
+  // never crosses below 0. Used for frame-precise keyboard positioning.
+  nudgeSelected: (dx) => set((s) => {
+    if (!s.doc || s.selectedClipIds.length === 0) return s;
+    const sel = new Set(s.selectedClipIds);
+    let minStart = Infinity;
+    for (const t of s.doc.tracks) for (const c of t.clips) if (sel.has(c.id)) minStart = Math.min(minStart, c.start);
+    if (!isFinite(minStart)) return s;
+    let d = dx;
+    if (minStart + d < 0) d = -minStart;
+    if (d === 0) return s;
+    const tracks = s.doc.tracks.map((t) => ({
+      ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + d) } : c)),
+    }));
     return withHistory(s, { ...s.doc, tracks });
   }),
 

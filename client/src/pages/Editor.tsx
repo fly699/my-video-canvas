@@ -120,6 +120,7 @@ function EditorWorkspace({ id }: { id: number }) {
         const k = e.key.toLowerCase();
         if (k === "z" && !e.shiftKey) { e.preventDefault(); st.undo(); }
         else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); st.redo(); }
+        else if (k === "a") { e.preventDefault(); st.selectAll(); } // 全选片段
         return;
       }
       if (!st.doc) return;
@@ -130,6 +131,13 @@ function EditorWorkspace({ id }: { id: number }) {
       else if (e.key === "End") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(st.duration()); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(Math.max(0, st.playhead - step)); }
       else if (e.key === "ArrowRight") { e.preventDefault(); st.setPlaying(false); st.setPlayhead(Math.min(st.duration(), st.playhead + step)); }
+      // , / . 逐帧微移选中片段（Shift = 5 帧）。用 e.code 而非 e.key——按住 Shift
+      // 时 "." / "," 会变成 ">" / "<"，e.code 不受影响。无选中时不响应。
+      else if ((e.code === "Comma" || e.code === "Period") && st.selectedClipIds.length > 0) {
+        e.preventDefault();
+        const frames = e.shiftKey ? 5 : 1;
+        st.nudgeSelected((e.code === "Period" ? frames : -frames) / fps);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -290,6 +298,8 @@ function EditorWorkspace({ id }: { id: number }) {
                   { key: "点击", desc: "选中片段" },
                   { key: "Shift/Ctrl + 点击", desc: "加选 / 减选片段" },
                   { key: "空白处拖拽", desc: "框选多个片段" },
+                  { key: "Cmd/Ctrl + A", desc: "全选所有片段" },
+                  { key: ", / .", desc: "逐帧微移所选（Shift = 5 帧）" },
                 ]},
                 { group: "片段编辑", items: [
                   { key: "Del / Backspace", desc: "删除选中片段" },

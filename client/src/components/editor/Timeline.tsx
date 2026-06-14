@@ -389,7 +389,7 @@ export function Timeline() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderTop: `1px solid ${EC.border}`, fontSize: 10, color: EC.t4, flexShrink: 0 }}>
-        <Scissors size={11} /> 拖动移动/换轨 · 拖两端裁剪 · Shift/Ctrl 点击多选 · 空白拖拽框选 · Del 删除 · Shift+Del 波纹删除 · S 分割 · Shift+S 全轨分割 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 复制 · 空格 播放/暂停 · ←/→ 逐帧
+        <Scissors size={11} /> 拖动移动/换轨 · Shift/Ctrl 点击多选 · 空白拖拽框选 · Ctrl+A 全选 · ,/. 逐帧微移 · Del 删除 · Shift+Del 波纹删除 · S 分割 · Shift+S 全轨分割 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 复制 · 空格 播放/暂停
       </div>
 
       {menu && (() => {
