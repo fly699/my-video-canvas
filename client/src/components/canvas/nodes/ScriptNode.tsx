@@ -344,9 +344,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     const p = ownNode.data.payload as ScriptNodeData;
     const target = p.aiStoryboardTarget ?? "storyboard";
     const ownPos = ownNode.position ?? { x: 0, y: 0 };
-    store.batchAddSceneNodes(scenes, id, ownPos, target);
+    store.batchAddSceneNodes(scenes, id, ownPos, target, aspectRatio);
     return { count: scenes.length, target };
-  }, [id]);
+  }, [id, aspectRatio]);
 
   // 记录「上次拆分镜时的脚本正文」基线 hash，供后续检测脚本是否被改动（→ 分镜过期）。
   // 从 store 读最新 content（onSuccess 里 content 可能刚被写入）。

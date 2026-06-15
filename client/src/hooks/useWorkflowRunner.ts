@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import type { NodeType, WorkflowParamBinding } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
-import { computeRefImageUpdates, computePromptToVideoUpdates } from "../lib/refImagePropagation";
+import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputImageUrl } from "../lib/refImagePropagation";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../lib/characterPrompt";
@@ -84,6 +84,24 @@ function isVideoAsset(nodeType: string, payload: Record<string, unknown>): boole
     if (mt?.startsWith("audio/")) return false;
   }
   return true;
+}
+
+/** Auto-detect the first available reference IMAGE from nodes connected into
+ *  targetId — regardless of which handle the edge lands on. This makes i2v video
+ *  tasks pull the upstream storyboard/image at run time even when the edge wasn't
+ *  drawn onto the `ref-image-in` handle or the source already had its image (so the
+ *  one-shot post-generation propagation never fired). Pass FRESH store nodes. */
+function autoDetectInputImage(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: CanvasNode[],
+): string | undefined {
+  for (const edge of edges) {
+    if (edge.target !== targetId) continue;
+    const url = resolveNodeOutputImageUrl(nodes.find((n) => n.id === edge.source));
+    if (url) return url;
+  }
+  return undefined;
 }
 
 /** Auto-detect the first available video URL from nodes connected into targetId. */
@@ -453,7 +471,11 @@ export function useWorkflowRunner() {
           // 注入连线 + @角色（描述合并入 prompt；无手动参考图时用角色参考图作主体参考）。
           const ci = injectCharacters(nodeId, rawPrompt, 4000);
           const manualRef = ((p.referenceImageUrl as string) || "").trim();
-          const charRefs = manualRef ? [] : [...ci.personRefs, ...ci.sceneRefs].slice(0, 9);
+          // 无手动参考图时，自动从上游连接的图像节点（分镜/图像/asset 等）取参考图，
+          // 使「分镜 → 视频」连线在运行时即可作 i2v（无需手动「传送」/特定 handle）。
+          const upstreamRef = manualRef ? "" : (autoDetectInputImage(nodeId, edges, useCanvasStore.getState().nodes) ?? "");
+          const primaryRef = manualRef || upstreamRef;
+          const charRefs = primaryRef ? [] : [...ci.personRefs, ...ci.sceneRefs].slice(0, 9);
 
           type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
           const providerValue = (p.provider as string) || "poyo_seedance";
@@ -466,7 +488,7 @@ export function useWorkflowRunner() {
             nodeId,
             provider,
             prompt: ci.prompt || "cinematic video",
-            referenceImageUrl: manualRef || charRefs[0] || undefined,
+            referenceImageUrl: primaryRef || charRefs[0] || undefined,
             referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
             params: (p.params as Record<string, unknown>) || {},
           });
