@@ -40,6 +40,8 @@ export interface Segment {
   reverse?: boolean;                              // 倒放：逆序播放（图片无效）
   transform?: ClipTransform;                      // main-track zoom(scale≥1)/pan(x,y)/rotate within the frame
   keyframes?: TransformKeyframe[];                // main-track Ken-Burns: animate zoom/pan over time
+  fadeIn?: number;                                // 画面+音频淡入（秒，从黑/静音渐显）
+  fadeOut?: number;                               // 画面+音频淡出（秒，渐隐到黑/静音）
 }
 
 /** Zoom/pan/rotate a frame-sized image WITHIN the output frame (main-track clips):
@@ -95,6 +97,24 @@ export function segmentZoomPanChain(tf: ClipTransform | undefined, kfs: Transfor
   return out;
 }
 
+/** Visual fade filters (picture fade from/to black, or alpha fade for overlays).
+ *  `dur` is the clip's visible seconds (fade times are clip-local, st-from-0). */
+function videoFadeFilters(fadeIn: number | undefined, fadeOut: number | undefined, dur: number, alpha = false): string[] {
+  const out: string[] = [];
+  const a = alpha ? ":alpha=1" : "";
+  if (fadeIn && fadeIn > 0) out.push(`fade=t=in:st=0:d=${Math.min(fadeIn, dur).toFixed(3)}${a}`);
+  if (fadeOut && fadeOut > 0) { const d = Math.min(fadeOut, dur); out.push(`fade=t=out:st=${Math.max(0, dur - d).toFixed(3)}:d=${d.toFixed(3)}${a}`); }
+  return out;
+}
+
+/** Audio fade-in/out (afade) for a clip-local stream of `dur` seconds. */
+function audioFadeFilters(fadeIn: number | undefined, fadeOut: number | undefined, dur: number): string[] {
+  const out: string[] = [];
+  if (fadeIn && fadeIn > 0) out.push(`afade=t=in:st=0:d=${Math.min(fadeIn, dur).toFixed(3)}`);
+  if (fadeOut && fadeOut > 0) { const d = Math.min(fadeOut, dur); out.push(`afade=t=out:st=${Math.max(0, dur - d).toFixed(3)}:d=${d.toFixed(3)}`); }
+  return out;
+}
+
 /** ffmpeg filters that fit a frame into the output canvas per the fit mode. */
 function fitChain(fit: FitMode | undefined, w: number, h: number): string[] {
   switch (fit) {
@@ -122,6 +142,8 @@ export interface OverlayInput {
   transform?: ClipTransform;
   keyframes?: TransformKeyframe[]; // position (x/y) animated on export; others static
   chromaKey?: { color?: string; similarity?: number; blend?: number }; // 绿幕抠像
+  fadeIn?: number;                 // 叠加层 alpha 淡入（秒）
+  fadeOut?: number;                // 叠加层 alpha 淡出（秒）
 }
 
 /** Build a sanitized `chromakey` filter (keys the given colour transparent). Colour
@@ -366,7 +388,7 @@ export function buildFilterGraph(
     // feeding a concat (hard cut) output into a later xfade alongside a fresh
     // segment then fails with "timebase ... do not match" → "Failed to
     // configure output pad". settb keeps all combine inputs on 1/fps.
-    const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), "format=yuv420p", `settb=1/${fps}`];
+    const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), "format=yuv420p", ...videoFadeFilters(s.fadeIn, s.fadeOut, dur), `settb=1/${fps}`];
 
     if (s.fit === "blur") {
       // 模糊填充：同一画面放大铺满 + 高斯/盒式模糊作背景，原画完整居中叠加，消除黑边。
@@ -386,6 +408,7 @@ export function buildFilterGraph(
       aChain.push("asetpts=PTS-STARTPTS");
       if (Math.abs(s.speed - 1) > 0.001) aChain.push(...buildAtempoFilters(s.speed));
       aChain.push("aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100");
+      aChain.push(...audioFadeFilters(s.fadeIn, s.fadeOut, dur)); // 片段画面淡入淡出时音频同步渐变
       parts.push(`[${i}:a]${aChain.join(",")}[a${i}]`);
     } else {
       // Silence MUST use the same sample format as real-audio chains (fltp), else
@@ -450,6 +473,8 @@ export function buildFilterGraph(
     if (op < 0.999) oc.push(`colorchannelmixer=aa=${op.toFixed(3)}`);
     const rot = o.transform?.rotation ?? 0;
     if (rot) oc.push(`rotate=${(rot * Math.PI / 180).toFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)`);
+    // alpha fade in/out while the overlay's PTS is still clip-local (0..duration)
+    oc.push(...videoFadeFilters(o.fadeIn, o.fadeOut, o.duration, true));
     // shift the overlay so its frames land at its timeline start
     oc.push(`setpts=PTS+${o.start.toFixed(3)}/TB`);
     parts.push(`[${inIdx}:v]${oc.join(",")}[ov${j}]`);
@@ -630,7 +655,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
@@ -654,7 +679,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
       const dur = clipVisibleDuration(c);
-      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey });
+      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut });
       if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");

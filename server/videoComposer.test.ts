@@ -393,3 +393,33 @@ describe("applyEase / transformAt — 关键帧补间缓动（预览与导出同
     expect(transformAt(mk("in"), 1).scale).toBeCloseTo(2, 6);
   });
 });
+
+describe("片段画面淡入淡出（visual fade：video fade / overlay alpha / 同步音频 afade）", () => {
+  it("主轨视频片段：画面 fade=t=in/out + 音频 afade", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1, fadeIn: 0.5, fadeOut: 0.5 }];
+    const g = buildFilterGraph(segs, OPTS).filterComplex;
+    expect(g).toContain("fade=t=in:st=0:d=0.500");
+    expect(g).toContain("fade=t=out:st=3.500:d=0.500");   // dur 4 - 0.5
+    expect(g).toContain("afade=t=in:st=0:d=0.500");        // 音频同步淡入
+    expect(g).toContain("afade=t=out:st=3.500:d=0.500");
+  });
+
+  it("无淡入淡出 → 不产生 fade=t= / afade（且不误伤 xfade transition=fade）", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 3, speed: 1 }], OPTS).filterComplex;
+    expect(g).not.toContain("fade=t=in");
+    expect(g).not.toContain("afade=t=");
+  });
+
+  it("淡入时长被夹到片段时长，st 不为负", () => {
+    const g = buildFilterGraph([{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, fadeOut: 5 }], OPTS).filterComplex;
+    expect(g).toContain("fade=t=out:st=0.000:d=2.000"); // 5 夹到 2，st=2-2=0
+  });
+
+  it("叠加层：alpha 淡入淡出（fade=...:alpha=1，在时间轴位移前的本地时基）", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const overlays: OverlayInput[] = [{ isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 1, duration: 3, transform: { x: 0.2, y: 0.2, scale: 0.3 }, fadeIn: 0.4, fadeOut: 0.6 }];
+    const g = buildFilterGraph(segs, OPTS, overlays).filterComplex;
+    expect(g).toContain("fade=t=in:st=0:d=0.400:alpha=1");
+    expect(g).toContain("fade=t=out:st=2.400:d=0.600:alpha=1"); // duration 3 - 0.6
+  });
+});

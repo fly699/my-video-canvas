@@ -61,6 +61,15 @@ function textCss(t: Clip["text"], canvasH: number): React.CSSProperties {
   return css;
 }
 
+/** Fade-in/out opacity multiplier for a clip at `tInto` seconds from its start
+ *  (0..1). Mirrors the export's picture/alpha fade so the preview matches WYSIWYG. */
+function clipFadeOpacity(c: Clip, tInto: number, dur: number): number {
+  let o = 1;
+  if (c.fadeIn && c.fadeIn > 0 && tInto < c.fadeIn) o = Math.min(o, Math.max(0, tInto / c.fadeIn));
+  if (c.fadeOut && c.fadeOut > 0 && tInto > dur - c.fadeOut) o = Math.min(o, Math.max(0, (dur - tInto) / c.fadeOut));
+  return o;
+}
+
 function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; muted: boolean }[] {
   const out: { clip: Clip; trackType: string; muted: boolean }[] = [];
   for (const track of doc.tracks) {
@@ -348,6 +357,7 @@ export function PreviewStage() {
             const fullFrame = trackType === "video";
             const selected = clip.id === selectedClipId;
             const xfade = fadeOf(clip.id);
+            const fadeMul = clipFadeOpacity(clip, playhead - clip.start, clipDuration(clip)); // 片段淡入淡出（预览=透明度，导出=画面/alpha 渐变）
             // zoom/pan CSS for a full-frame clip that has a transform — same clamp
             // as the export: pan only once zoomed (scale≥1), bounded to the room.
             let mainTransform: string | undefined;
@@ -358,7 +368,7 @@ export function PreviewStage() {
               const py = Math.max(-maxFrac, Math.min(maxFrac, tf.y ?? 0));
               mainTransform = `translate(${(px * 100).toFixed(2)}%, ${(py * 100).toFixed(2)}%) scale(${s.toFixed(3)}) rotate(${tf.rotation ?? 0}deg)`;
             }
-            const mainOpacity = xfade * (fullFrame && tf ? (tf.opacity ?? 1) : 1);
+            const mainOpacity = xfade * fadeMul * (fullFrame && tf ? (tf.opacity ?? 1) : 1);
             const objFit: React.CSSProperties["objectFit"] = fullFrame
               ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : clip.fit === "none" ? "none" : "contain")
               : "cover";
@@ -395,7 +405,7 @@ export function PreviewStage() {
               position: "absolute",
               left: `${(tf?.x ?? 0.1) * 100}%`, top: `${(tf?.y ?? 0.1) * 100}%`,
               width: `${(tf?.scale ?? 0.4) * 100}%`,
-              opacity: (tf?.opacity ?? 1) * xfade,
+              opacity: (tf?.opacity ?? 1) * xfade * fadeMul,
               transform: `rotate(${tf?.rotation ?? 0}deg)`,
               cursor: "move", touchAction: "none",
               outline: selected ? `2px solid ${EC.accent}` : "none",
