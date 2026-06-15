@@ -579,6 +579,7 @@ export function useWorkflowRunner() {
             const transcribeResult = await subtitleTranscribeMutation.mutateAsync({
               audioUrl: videoUrl,
               language: (p.language as string) || undefined,
+              model: (p.transcribeModel as string) || undefined,
             });
             entries = transcribeResult.entries;
             useCanvasStore.getState().updateNodeData(nodeId, {

@@ -735,6 +735,7 @@ export interface SubtitleNodeData {
   inputVideoUrl?: string;
   entries?: SubtitleEntry[];
   language?: string;
+  transcribeModel?: string; // 转录模型（whisper-1 / gpt-4o-transcribe / gpt-4o-mini-transcribe）
   outputUrl?: string;
   srtContent?: string;
   status?: "idle" | "transcribing" | "burning" | "done" | "failed";

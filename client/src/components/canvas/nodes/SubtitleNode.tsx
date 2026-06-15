@@ -139,7 +139,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
     if (!videoUrl) { toast.error("请先连接一个视频节点或填写视频 URL"); return; }
     update({ status: "transcribing" });
-    transcribeMutation.mutate({ audioUrl: videoUrl, language: payload.language || undefined });
+    transcribeMutation.mutate({ audioUrl: videoUrl, language: payload.language || undefined, model: payload.transcribeModel || undefined });
   };
 
   // 上游「已装配并完成合并」的成片：镜头表对白（segDialogues）+ 服务端回传的各段
@@ -265,19 +265,28 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
 
         {tab === "edit" && (
           <>
-            {/* Video URL input */}
-            <div>
-              <label style={labelStyle}>视频 URL（自动从连接节点读取）</label>
-              <input
-                className="nodrag"
-                placeholder="https://..."
-                value={payload.inputVideoUrl ?? ""}
-                onChange={(e) => update({ inputVideoUrl: e.target.value })}
-                style={fieldStyle}
-                onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-              />
-            </div>
+            {/* Video URL input — 连了视频节点时实时显示自动检测到的 URL（无需运行）。
+                手动填写则覆盖自动值；清空手动值后回落到自动检测。 */}
+            {(() => {
+              const detected = findSourceVideoUrl();
+              const auto = !payload.inputVideoUrl && !!detected;
+              return (
+                <div>
+                  <label style={labelStyle}>视频 URL（自动从连接节点读取）</label>
+                  <input
+                    className="nodrag"
+                    placeholder="https://...（连接视频节点后自动填充）"
+                    value={payload.inputVideoUrl || detected || ""}
+                    onChange={(e) => update({ inputVideoUrl: e.target.value })}
+                    style={fieldStyle}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                  {auto && <div style={{ fontSize: 10.5, color: "oklch(0.7 0.16 155)", marginTop: 3 }}>✓ 已自动从连接的视频节点读取</div>}
+                  {!detected && !payload.inputVideoUrl && <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 3 }}>未检测到已生成视频的上游节点——请连接一个有结果的视频节点，或手动填 URL</div>}
+                </div>
+              );
+            })()}
 
             {/* Language */}
             <div>
@@ -289,6 +298,21 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                 onChange={(e) => update({ language: e.target.value })}
                 style={{ ...fieldStyle, width: 120 }}
               />
+            </div>
+
+            {/* 转录模型下拉（OpenAI 兼容 STT；具体可用取决于已配置的转录服务后端）*/}
+            <div>
+              <label style={labelStyle}>转录模型</label>
+              <select
+                className="nodrag"
+                value={payload.transcribeModel ?? "whisper-1"}
+                onChange={(e) => update({ transcribeModel: e.target.value })}
+                style={{ ...fieldStyle, cursor: "pointer" }}
+              >
+                <option value="whisper-1">Whisper v1（默认 · 稳定）</option>
+                <option value="gpt-4o-transcribe">GPT-4o Transcribe（更准）</option>
+                <option value="gpt-4o-mini-transcribe">GPT-4o mini（更快 / 更省）</option>
+              </select>
             </div>
 
             {/* Transcribe button */}

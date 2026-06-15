@@ -18,8 +18,9 @@ const DEV_USER: User = {
   email: "dev@localhost",
   loginMethod: "dev",
   passwordHash: null,
-  role: "user",
-  adminLevel: 0,
+  // dev bypass = 本地超级管理员，便于本地访问/测试管理后台（生产由真实 role/adminLevel 决定）。
+  role: "admin",
+  adminLevel: 4,
   disabled: false,
   createdAt: new Date("2024-01-01"),
   updatedAt: new Date("2024-01-01"),
