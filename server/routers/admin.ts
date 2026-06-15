@@ -245,7 +245,7 @@ export const adminRouter = router({
         return { success: true };
       }),
 
-    deleteKey: adminProcedure
+    deleteKey: managerProc
       .input(z.object({ keyId: z.number().int() }))
       .mutation(async ({ ctx, input }) => {
         const ok = await db.deleteKieKey(input.keyId);
@@ -524,7 +524,7 @@ export const adminRouter = router({
         return { id: row.id };
       }),
 
-    unbanUser: adminProcedure
+    unbanUser: managerProc
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => {
         await db.removeChatBan(input.id);
@@ -547,7 +547,7 @@ export const adminRouter = router({
       return { serverlessAllowed: s.serverlessAllowed, lobbyEnabled: s.lobbyEnabled, maxFileMb: s.maxFileMb };
     }),
 
-    setSettings: adminProcedure
+    setSettings: managerProc
       .input(z.object({
         serverlessAllowed: z.boolean().optional(),
         lobbyEnabled: z.boolean().optional(),

@@ -5,8 +5,11 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { adminProcedure, router } from "../_core/trpc";
+import { adminProcedure, levelProcedure, router } from "../_core/trpc";
 import { ENV } from "../_core/env";
+
+// 压测属「管理员」级运维：查看员(L1)/运营(L2)只读看板，启动/取消/停止/改模板历史需管理员(L3+)。
+const managerProc = levelProcedure(3);
 import { startStressTest, getJob, listJobs, cancelJob, stopJob, toView } from "../_core/comfyStress";
 import { buildImageWorkflow } from "../_core/comfyui";
 import * as db from "../db";
@@ -24,7 +27,7 @@ function dbErrMessage(e: unknown): string {
 
 export const comfyStressRouter = router({
   // 启动一次压测，立即返回任务概要（含 id）。
-  start: adminProcedure
+  start: managerProc
     .input(
       z.object({
         // 多地址压测：留空则回退到全局 ENV.comfyuiBaseUrl。
@@ -145,10 +148,10 @@ export const comfyStressRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `读取历史失败：${dbErrMessage(e)}` });
         }
       }),
-    remove: adminProcedure
+    remove: managerProc
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => { await db.deleteComfyStressHistory(input.id); return { success: true }; }),
-    clear: adminProcedure
+    clear: managerProc
       .mutation(async () => { await db.clearComfyStressHistory(); return { success: true }; }),
   }),
 
@@ -163,7 +166,7 @@ export const comfyStressRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `读取模板失败：${dbErrMessage(e)}` });
       }
     }),
-    save: adminProcedure
+    save: managerProc
       .input(z.object({
         name: z.string().min(1).max(128),
         // 整套表单 JSON（含 workflowJson，可较大但有限）。
@@ -176,7 +179,7 @@ export const comfyStressRouter = router({
         await db.saveComfyStressTemplate(input.name, input.config ?? {}, ctx.user.email ?? null);
         return { success: true };
       }),
-    remove: adminProcedure
+    remove: managerProc
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => { await db.deleteComfyStressTemplate(input.id); return { success: true }; }),
   }),
@@ -194,7 +197,7 @@ export const comfyStressRouter = router({
   list: adminProcedure.query(() => listJobs()),
 
   // 优雅取消：不再派发新请求，已在途的请求会跑完。
-  cancel: adminProcedure
+  cancel: managerProc
     .input(z.object({ id: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
       const ok = cancelJob(input.id);
@@ -203,7 +206,7 @@ export const comfyStressRouter = router({
     }),
 
   // 立即停止：abort 所有在途的 ComfyUI 请求，不等其完成。
-  stop: adminProcedure
+  stop: managerProc
     .input(z.object({ id: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
       const ok = stopJob(input.id);

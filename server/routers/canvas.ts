@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
-import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
+import { protectedProcedure, adminProcedure, levelProcedure, router } from "../_core/trpc";
 import {
   getComfyGlobalServers,
   setComfyGlobalServers,
@@ -3302,9 +3302,10 @@ export const comfyuiRouter = router({
       }
     }),
 
-  // Admin-managed global server registry — every user reads it; only admins write.
+  // Admin-managed global server registry — every user reads it; writing global
+  // infrastructure is a manager action (L3+), not for viewer/operator admins.
   globalServers: protectedProcedure.query(() => getComfyGlobalServers()),
-  setGlobalServers: adminProcedure
+  setGlobalServers: levelProcedure(3)
     .input(z.object({ servers: z.array(z.string().max(2048)).max(50) }))
     .mutation(async ({ input }) => {
       await setComfyGlobalServers(input.servers);
@@ -3313,8 +3314,9 @@ export const comfyuiRouter = router({
 
   // Admin-managed per-server physical GPU pin (the server's --cuda-device), shared
   // by all users so the admin's choice syncs everywhere. Every user reads it.
+  // Writing is a manager action (L3+).
   globalGpuIndex: protectedProcedure.query(() => getComfyGlobalGpuIndex()),
-  setGlobalGpuIndex: adminProcedure
+  setGlobalGpuIndex: levelProcedure(3)
     .input(z.object({ gpuIndex: z.record(z.string().max(2048), z.number().int().min(0).max(63)) }))
     .mutation(async ({ input }) => {
       await setComfyGlobalGpuIndex(input.gpuIndex);
