@@ -9,7 +9,19 @@
 export const EDITOR_DOC_VERSION = 1 as const;
 
 export type TrackType = "video" | "audio" | "text" | "overlay";
-export type ClipKind = "video" | "image" | "audio" | "text";
+export type ClipKind = "video" | "image" | "audio" | "text" | "shape";
+
+/** Vector shape overlay (drawn via ffmpeg drawbox on export; div in preview).
+ *  Position is the clip's transform x/y (top-left); size is w/h (canvas fraction). */
+export interface ClipShape {
+  type: "rect";          // v1: rectangle (filled or outline). 矩形：高亮框/打码块/色块/分隔条
+  color?: string;        // #RRGGBB
+  fill?: boolean;        // true=填充, false=描边
+  lineWidth?: number;    // 描边粗细 px（fill=false 时）
+  opacity?: number;      // 0..1
+  w?: number;            // normalized width (fraction of canvas)
+  h?: number;            // normalized height
+}
 
 // Values map 1:1 to ffmpeg xfade transition names (verified on ffmpeg 6.1.1), plus
 // "none" and the legacy aliases "slide"/"wipe" (kept for older saved projects).
@@ -102,6 +114,8 @@ export interface Clip {
   trimOut: number;          // source out-point (seconds); for image/text = display duration from start
   speed?: number;           // 0.25..4, default 1
   reverse?: boolean;        // 倒放：视频/音频逆序播放（图片无效）
+  flipH?: boolean;          // 水平镜像（左右翻转）
+  flipV?: boolean;          // 垂直翻转（上下翻转）
   volume?: number;          // 0..2, default 1 (audio/video)
   fadeIn?: number;          // seconds
   fadeOut?: number;         // seconds
@@ -117,6 +131,7 @@ export interface Clip {
   keyframes?: TransformKeyframe[];
   fit?: FitMode;            // how a full-frame visual clip fills the canvas (default contain)
   text?: ClipText;
+  shape?: ClipShape;        // 矢量形状叠加（kind === "shape"）
 }
 
 /** The effective transform of a clip at `tIntoClip` seconds from its start —
@@ -159,6 +174,9 @@ export interface EditorDoc {
   width: number;   // output canvas width  (e.g. 1080)
   height: number;  // output canvas height (e.g. 1920)
   fps: number;     // output fps (e.g. 30)
+  normalizeAudio?: boolean; // 导出时把最终音轨响度归一化到 -14 LUFS（流媒体标准）
+  masterFadeIn?: number;    // 整片开头淡入（秒，从黑+静音渐显），0/缺省=关
+  masterFadeOut?: number;   // 整片结尾淡出（秒，渐隐到黑+静音），0/缺省=关
   tracks: Track[];
 }
 

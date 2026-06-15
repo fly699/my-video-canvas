@@ -168,6 +168,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const setTf = (k: keyof NonNullable<Clip["transform"]>, v: number) => update(c.id, { transform: { ...tf, [k]: v } });
   const txt = c.text;
   const setText = (patch: Partial<NonNullable<Clip["text"]>>) => update(c.id, { text: { ...txt, content: txt?.content ?? "", ...patch } });
+  const setShape = (patch: Partial<NonNullable<Clip["shape"]>>) => update(c.id, { shape: { type: "rect", ...(c.shape ?? {}), ...patch } as NonNullable<Clip["shape"]> });
   // Center on an axis using the actually-rendered box size (falls back to an
   // estimate when the clip isn't visible at the current playhead).
   const centerAxis = (axis: "x" | "y") => {
@@ -258,6 +259,21 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           </Section>
         )}
 
+        {c.kind === "shape" && (
+          <Section title="形状（矩形）">
+            <div style={{ fontSize: 11, color: EC.t3, marginBottom: 4 }}>高亮框 / 打码块 / 色块 / 分隔条。拖动可移动位置，下面调样式与大小。</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Toggle on={!!c.shape?.fill} onClick={() => setShape({ fill: !c.shape?.fill })} title="填充 / 描边" wide>{c.shape?.fill ? "填充" : "描边"}</Toggle>
+              <span style={{ fontSize: 11, color: EC.t2 }}>颜色</span>
+              <input type="color" value={c.shape?.color ?? "#FFD400"} onChange={(e) => setShape({ color: e.target.value })} style={{ ...input, width: 40, height: 30, padding: 2 }} />
+            </div>
+            {!c.shape?.fill && <Slider label={`描边粗细 ${c.shape?.lineWidth ?? 6}px`} min={1} max={40} step={1} value={c.shape?.lineWidth ?? 6} onChange={(v) => setShape({ lineWidth: v })} />}
+            <Slider label={`不透明度 ${Math.round((c.shape?.opacity ?? 1) * 100)}%`} min={0} max={1} step={0.01} value={c.shape?.opacity ?? 1} onChange={(v) => setShape({ opacity: v })} />
+            <Slider label={`宽 ${Math.round((c.shape?.w ?? 0.3) * 100)}%`} min={0.05} max={1} step={0.01} value={c.shape?.w ?? 0.3} onChange={(v) => setShape({ w: v })} />
+            <Slider label={`高 ${Math.round((c.shape?.h ?? 0.2) * 100)}%`} min={0.05} max={1} step={0.01} value={c.shape?.h ?? 0.2} onChange={(v) => setShape({ h: v })} />
+          </Section>
+        )}
+
         {isMedia && (
           <Section title="播放">
             <Slider label={`速度 ${(c.speed ?? 1).toFixed(2)}x`} min={0.25} max={4} step={0.05} value={c.speed ?? 1} onChange={(v) => update(c.id, { speed: v })} />
@@ -303,6 +319,15 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
               })}
             </div>
             <div style={{ fontSize: 10.5, color: EC.t4 }}>适应=留黑边 · 填充=铺满裁切 · 拉伸=变形铺满 · 模糊=模糊背景填黑边 · 原始=源生像素 1:1 居中（针对主轨整屏画面）</div>
+          </Section>
+        )}
+
+        {(c.kind === "video" || c.kind === "image") && (
+          <Section title="镜像 / 翻转">
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Toggle on={!!c.flipH} onClick={() => update(c.id, { flipH: !c.flipH })} title="水平镜像（左右翻转）" wide>↔ 水平镜像</Toggle>
+              <Toggle on={!!c.flipV} onClick={() => update(c.id, { flipV: !c.flipV })} title="垂直翻转（上下翻转）" wide>↕ 垂直翻转</Toggle>
+            </div>
           </Section>
         )}
 
@@ -367,8 +392,8 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           <Section title="关键帧动画">
             <div style={{ fontSize: 11, color: EC.t3, marginBottom: 6, lineHeight: 1.5 }}>
               在播放头处记录当前「位置 / 缩放 / 旋转 / 不透明度」为关键帧；多个关键帧之间自动补间，预览实时演示。{clipTrackType === "video"
-                ? <>导出：<b>缩放 / 平移（Ken-Burns 推拉）动画 + 缓动曲线已支持</b>；旋转 / 不透明度关键帧目前仅预览，导出取静态值。</>
-                : <>导出：<b>位置（移动）动画 + 缓动曲线已支持</b>；缩放 / 旋转 / 不透明度关键帧目前仅预览，导出取静态值。</>}
+                ? <>导出：<b>缩放 / 平移（Ken-Burns）+ 旋转 + 缓动曲线已支持</b>；不透明度关键帧仅预览。</>
+                : <>导出：<b>位置（移动）+ 缩放（PiP 推拉）+ 缓动曲线已支持</b>；旋转 / 不透明度关键帧仅预览。</>}
             </div>
             <button
               onClick={() => {

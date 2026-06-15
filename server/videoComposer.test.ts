@@ -456,3 +456,106 @@ describe("音频淡变曲线（afade curve=）", () => {
     expect(g).toContain("afade=t=in:st=0:d=0.500:curve=qsin");
   });
 });
+
+describe("响度归一化（loudnorm -14 LUFS，导出最终音轨）", () => {
+  it("开启时在最终音轨加 loudnorm 并改 outA；关闭时零回归", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 3, speed: 1 }];
+    const on = buildFilterGraph(seg, { ...OPTS, normalizeAudio: true });
+    expect(on.filterComplex).toContain("[outa]loudnorm=I=-14:TP=-1.5:LRA=11[outan]");
+    expect(on.outA).toBe("[outan]");
+    const off = buildFilterGraph(seg, OPTS);
+    expect(off.filterComplex).not.toContain("loudnorm");
+    expect(off.outA).toBe("[outa]");
+  });
+
+  it("通用路径（有音频轨）也在混音后归一化", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const g = buildFilterGraph(seg, { ...OPTS, normalizeAudio: true }, [], { audioClips: [{ trimIn: 0, trimOut: 4, speed: 1, start: 0, volume: 1, fadeIn: 0, fadeOut: 0 }] });
+    expect(g.filterComplex).toContain("loudnorm=I=-14:TP=-1.5:LRA=11[outan]");
+    expect(g.outA).toBe("[outan]");
+    expect(g.filterComplex.indexOf("amix")).toBeLessThan(g.filterComplex.indexOf("loudnorm")); // 先混音后归一化
+  });
+});
+
+describe("整片首尾淡入淡出（master fade，最终视频+音频总线）", () => {
+  it("开启 → 最终视频 fade、音频 afade，outV/outA 指向 finalize 标签", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const g = buildFilterGraph(seg, { ...OPTS, masterFadeIn: 1, masterFadeOut: 1 });
+    expect(g.filterComplex).toContain("[outv]fade=t=in:st=0:d=1.000,fade=t=out:st=3.000:d=1.000[outvf]");
+    expect(g.filterComplex).toContain("[outa]afade=t=in:st=0:d=1.000,afade=t=out:st=3.000:d=1.000[outan]");
+    expect(g.outV).toBe("[outvf]");
+    expect(g.outA).toBe("[outan]");
+  });
+
+  it("关闭 → 零回归（无 fade=t= / afade，outV=[outv]）", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 3, speed: 1 }], OPTS);
+    expect(g.filterComplex).not.toContain("fade=t=in");
+    expect(g.outV).toBe("[outv]");
+    expect(g.outA).toBe("[outa]");
+  });
+
+  it("与响度归一化并用：loudnorm 在前、首尾 afade 在后", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }], { ...OPTS, normalizeAudio: true, masterFadeIn: 0.5, masterFadeOut: 0.5 });
+    expect(g.filterComplex).toContain("[outa]loudnorm=I=-14:TP=-1.5:LRA=11,afade=t=in:st=0:d=0.500,afade=t=out:st=3.500:d=0.500[outan]");
+  });
+});
+
+import { shapeDrawbox, type ShapeInput } from "./_core/videoComposer";
+
+describe("形状叠加（shapeDrawbox + buildFilterGraph shapes）", () => {
+  const base: ShapeInput = { start: 1, end: 4, type: "rect", x: 0.1, y: 0.2, w: 0.4, h: 0.3 };
+  it("矩形几何/颜色/时间门控正确；填充 vs 描边", () => {
+    const fill = shapeDrawbox({ ...base, fill: true, color: "#FF0000", opacity: 0.5 }, 1920, 1080);
+    expect(fill).toBe("drawbox=x=192:y=216:w=768:h=324:color=0xFF0000@0.500:t=fill:enable='between(t,1.000,4.000)'");
+    const line = shapeDrawbox({ ...base, fill: false, color: "#00FF00", lineWidth: 6 }, 1920, 1080);
+    expect(line).toContain("color=0x00FF00@1.000:t=6:");
+  });
+  it("非法颜色/注入串被白名单拒绝为默认色", () => {
+    const s = shapeDrawbox({ ...base, color: "red;drawtext=evil" }, 1920, 1080);
+    expect(s).toContain("color=0xFFD400@");   // 默认黄
+    expect(s).not.toContain("drawtext");
+  });
+  it("buildFilterGraph：shapes 在最终视频上 drawbox，且禁用快路径", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const g = buildFilterGraph(seg, OPTS, [], { shapes: [{ ...base, fill: true, color: "#3366FF" }] });
+    expect(g.filterComplex).toContain("drawbox=");
+    expect(g.filterComplex).toContain("[shp0]");
+    expect(g.filterComplex).not.toContain("concat=n=1:v=1:a=1[outv][outa]"); // 快路径被禁用
+  });
+});
+
+describe("画面镜像/翻转（hflip/vflip）", () => {
+  it("主轨片段 flipH→hflip、flipV→vflip；无翻转不出现", () => {
+    const h = buildFilterGraph([{ isImage: false, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, flipH: true }], OPTS).filterComplex;
+    expect(h).toContain("hflip");
+    expect(h).not.toContain("vflip");
+    const v = buildFilterGraph([{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, flipV: true }], OPTS).filterComplex;
+    expect(v).toContain("vflip");
+    expect(buildFilterGraph([{ isImage: false, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1 }], OPTS).filterComplex).not.toContain("hflip");
+  });
+  it("叠加层 flipH 进入 overlay 链", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const g = buildFilterGraph(seg, OPTS, [{ isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2, transform: { scale: 0.3 }, flipH: true }]).filterComplex;
+    expect(g).toContain("format=rgba,hflip");
+  });
+});
+
+describe("旋转 / 缩放 关键帧动画导出", () => {
+  it("主轨旋转关键帧 → rotate=a='expr'（仅靠旋转也触发动画路径）", () => {
+    const s = segmentZoomPanChain(undefined, [{ t: 0, rotation: 0 }, { t: 1, rotation: 90 }], 1280, 720).join(",");
+    expect(s).toContain("rotate=a='if(lt(t,");
+    expect(s).toContain("scale=w='1280*(");           // 动画链（缩放静态 1×，旋转动画）
+    // 无旋转关键帧时仍是静态 rotate（或无）
+    const s2 = segmentZoomPanChain({ rotation: 30 }, [{ t: 0, scale: 1 }, { t: 1, scale: 2 }], 1280, 720).join(",");
+    expect(s2).toContain("rotate=0.52360:ow=iw:oh=ih"); // 30° 静态
+  });
+  it("叠加层 scale 关键帧 → scale=w='expr':h=-2:eval=frame（PiP 推拉）", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const g = buildFilterGraph(seg, OPTS, [{ isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 0, duration: 3, transform: { scale: 0.3 }, keyframes: [{ t: 0, scale: 0.2 }, { t: 3, scale: 0.5 }] }]).filterComplex;
+    expect(g).toContain("scale=w='if(lt(t,");
+    expect(g).toContain(":h=-2:eval=frame");
+    // 无 scale 关键帧 → 静态 scale=NNN:-2
+    const g2 = buildFilterGraph(seg, OPTS, [{ isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 0, duration: 3, transform: { scale: 0.3 } }]).filterComplex;
+    expect(g2).toContain("scale=576:-2");
+  });
+});

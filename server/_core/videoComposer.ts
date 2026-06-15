@@ -38,6 +38,8 @@ export interface Segment {
   transition?: { type: string; duration: number }; // entry transition vs the previous segment
   fit?: FitMode;                                  // contain (default) | cover | stretch | blur
   reverse?: boolean;                              // 倒放：逆序播放（图片无效）
+  flipH?: boolean;                                // 水平镜像
+  flipV?: boolean;                                // 垂直翻转
   transform?: ClipTransform;                      // main-track zoom(scale≥1)/pan(x,y)/rotate within the frame
   keyframes?: TransformKeyframe[];                // main-track Ken-Burns: animate zoom/pan over time
   fadeIn?: number;                                // 画面+音频淡入（秒，从黑/静音渐显）
@@ -72,6 +74,10 @@ export function segmentTransformChain(tf: ClipTransform | undefined, w: number, 
 function hasZoomPanAnimation(kfs: TransformKeyframe[] | undefined): boolean {
   return (kfs?.filter((k) => k.scale != null || k.x != null || k.y != null).length ?? 0) >= 2;
 }
+/** ≥2 keyframes touch rotation → animate the picture's rotation over time. */
+function hasRotationAnimation(kfs: TransformKeyframe[] | undefined): boolean {
+  return (kfs?.filter((k) => k.rotation != null).length ?? 0) >= 2;
+}
 
 /** Ken-Burns for a main-track clip: animate zoom (scale≥1) + pan (x/y) over time
  *  using per-frame `t` expressions. Falls back to the static chain when there's no
@@ -79,9 +85,13 @@ function hasZoomPanAnimation(kfs: TransformKeyframe[] | undefined): boolean {
  *  setpts=PTS-STARTPTS), so keyframe times are used as-is. The crop offset is
  *  clip()-clamped in-expression so it can never leave the (zoomed) frame. */
 export function segmentZoomPanChain(tf: ClipTransform | undefined, kfs: TransformKeyframe[] | undefined, w: number, h: number): string[] {
-  if (!hasZoomPanAnimation(kfs)) return segmentTransformChain(tf, w, h);
+  if (!hasZoomPanAnimation(kfs) && !hasRotationAnimation(kfs)) return segmentTransformChain(tf, w, h);
   const out: string[] = [];
-  if (tf?.rotation) out.push(`rotate=${(tf.rotation * Math.PI / 180).toFixed(5)}:ow=iw:oh=ih`);
+  // rotation: animate over keyframes when present (rotate's `a` is per-frame — no
+  // eval option, like crop), else static. ow=iw:oh=ih keeps the frame size.
+  const rotExpr = buildKeyframeExpr(keyframePoints(kfs, "rotation", 0, (v) => v * Math.PI / 180));
+  if (rotExpr != null) out.push(`rotate=a='${rotExpr}':ow=iw:oh=ih`);
+  else if (tf?.rotation) out.push(`rotate=${(tf.rotation * Math.PI / 180).toFixed(5)}:ow=iw:oh=ih`);
   // scale clamped ≥1; pan in pixels. Missing fields on a keyframe just drop out of
   // that field's point list (buildKeyframeExpr interpolates the ones present).
   const zExpr = buildKeyframeExpr(keyframePoints(kfs, "scale", 0, (v) => Math.max(1, v)));
@@ -151,6 +161,8 @@ export interface OverlayInput {
   chromaKey?: { color?: string; similarity?: number; blend?: number }; // 绿幕抠像
   fadeIn?: number;                 // 叠加层 alpha 淡入（秒）
   fadeOut?: number;                // 叠加层 alpha 淡出（秒）
+  flipH?: boolean;                 // 水平镜像
+  flipV?: boolean;                 // 垂直翻转
 }
 
 /** Build a sanitized `chromakey` filter (keys the given colour transparent). Colour
@@ -162,6 +174,31 @@ export function chromaKeyFilter(ck: { color?: string; similarity?: number; blend
   const sim = Math.min(1, Math.max(0.01, ck.similarity ?? 0.3));
   const blend = Math.min(1, Math.max(0, ck.blend ?? 0.1));
   return `chromakey=${color}:${sim.toFixed(3)}:${blend.toFixed(3)}`;
+}
+
+/** A vector shape drawn onto the composed video (rect via drawbox), time-gated. */
+export interface ShapeInput {
+  start: number; end: number;
+  type: string;
+  color?: string; fill?: boolean; lineWidth?: number; opacity?: number;
+  x: number; y: number; w: number; h: number; // all normalized 0..1
+}
+
+/** Build a sanitized `drawbox` filter for a rectangle shape. Color is strictly
+ *  validated to `0xRRGGBB` and all geometry clamped/rounded, so nothing from the
+ *  shape can inject into the filter string. Time-gated via `enable=between`. */
+export function shapeDrawbox(s: ShapeInput, w: number, h: number): string {
+  const cl = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+  const hex = (s.color ?? "").replace(/^#/, "").replace(/^0x/i, "");
+  const color = /^[0-9a-fA-F]{6}$/.test(hex) ? `0x${hex}` : "0xFFD400";
+  const op = cl(s.opacity ?? 1, 0, 1);
+  const bx = Math.round(cl(s.x, 0, 1) * w);
+  const by = Math.round(cl(s.y, 0, 1) * h);
+  const bw = Math.max(1, Math.round(cl(s.w, 0.005, 1) * w));
+  const bh = Math.max(1, Math.round(cl(s.h, 0.005, 1) * h));
+  const thick = s.fill ? "fill" : String(Math.round(cl(s.lineWidth ?? 4, 1, 100)));
+  const start = Math.max(0, s.start), end = Math.max(start, s.end);
+  return `drawbox=x=${bx}:y=${by}:w=${bw}:h=${bh}:color=${color}@${op.toFixed(3)}:t=${thick}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'`;
 }
 
 const exprF = (n: number) => Number(n.toFixed(4)).toString();
@@ -201,7 +238,7 @@ export function buildKeyframeExpr(pts: { t: number; v: number; ease?: EaseType }
  *  `tOffset` (absolute timeline seconds for the overlay clock) and values mapped
  *  by `toUnit` (e.g. normalized→pixels). Empty when no keyframe defines the field. */
 function keyframePoints(
-  kfs: TransformKeyframe[] | undefined, field: "x" | "y" | "scale", tOffset: number, toUnit: (v: number) => number,
+  kfs: TransformKeyframe[] | undefined, field: "x" | "y" | "scale" | "rotation", tOffset: number, toUnit: (v: number) => number,
 ): { t: number; v: number; ease?: EaseType }[] {
   if (!kfs || kfs.length === 0) return [];
   return kfs
@@ -372,9 +409,9 @@ function hasTransitions(segs: Segment[]): boolean {
  */
 export function buildFilterGraph(
   segs: Segment[],
-  opts: { width: number; height: number; fps: number },
+  opts: { width: number; height: number; fps: number; normalizeAudio?: boolean; masterFadeIn?: number; masterFadeOut?: number },
   overlays: OverlayInput[] = [],
-  extra: { audioClips?: AudioInput[]; assPath?: string } = {},
+  extra: { audioClips?: AudioInput[]; assPath?: string; shapes?: ShapeInput[] } = {},
 ): { filterComplex: string; outV: string; outA: string; duration: number } {
   const { fps } = opts;
   // even dims only (libx264/yuv420p reject odd sizes → empty graph, -22)
@@ -383,6 +420,25 @@ export function buildFilterGraph(
   const parts: string[] = [];
   const vLabels: string[] = [];
   const aLabels: string[] = [];
+
+  // 最终音轨处理（混音之后）：可选响度归一化（loudnorm → 流媒体标准 -14 LUFS）+
+  // 整片首尾淡入淡出（afade）。都不启用时不加滤镜（旧导出零回归）。`dur` 为成片总时长。
+  const finalizeAudio = (label: string, dur: number): string => {
+    const f: string[] = [];
+    if (opts.normalizeAudio) f.push("loudnorm=I=-14:TP=-1.5:LRA=11");
+    if (opts.masterFadeIn && opts.masterFadeIn > 0) f.push(`afade=t=in:st=0:d=${Math.min(opts.masterFadeIn, dur).toFixed(3)}`);
+    if (opts.masterFadeOut && opts.masterFadeOut > 0) { const d = Math.min(opts.masterFadeOut, dur); f.push(`afade=t=out:st=${Math.max(0, dur - d).toFixed(3)}:d=${d.toFixed(3)}`); }
+    if (f.length === 0) return label;
+    parts.push(`${label}${f.join(",")}[outan]`);
+    return "[outan]";
+  };
+  // 整片首尾画面淡入淡出（从黑/到黑），作用于最终视频输出。
+  const finalizeVideo = (label: string, dur: number): string => {
+    const f = videoFadeFilters(opts.masterFadeIn, opts.masterFadeOut, dur);
+    if (f.length === 0) return label;
+    parts.push(`${label}${f.join(",")}[outvf]`);
+    return "[outvf]";
+  };
 
   segs.forEach((s, i) => {
     const dur = segmentDuration(s);
@@ -400,6 +456,8 @@ export function buildFilterGraph(
     } else {
       pre.push("setpts=PTS-STARTPTS");
     }
+    if (s.flipH) pre.push("hflip");                 // 水平镜像
+    if (s.flipV) pre.push("vflip");                 // 垂直翻转
     // Pin the timebase so every segment matches when folded. concat emits a
     // microsecond timebase (1/1000000) while fps-filtered segments are 1/fps;
     // feeding a concat (hard cut) output into a later xfade alongside a fresh
@@ -439,11 +497,13 @@ export function buildFilterGraph(
   const audioClips = extra.audioClips ?? [];
 
   // Fast path: nothing but a plain concat is needed.
-  if (!hasTransitions(segs) && overlays.length === 0 && audioClips.length === 0 && !extra.assPath) {
+  if (!hasTransitions(segs) && overlays.length === 0 && audioClips.length === 0 && !extra.assPath && (extra.shapes?.length ?? 0) === 0) {
     const concatInputs = segs.map((_, i) => `${vLabels[i]}${aLabels[i]}`).join("");
     parts.push(`${concatInputs}concat=n=${segs.length}:v=1:a=1[outv][outa]`);
     const duration = segs.reduce((sum, s) => sum + segmentDuration(s), 0);
-    return { filterComplex: parts.join(";"), outV: "[outv]", outA: "[outa]", duration };
+    const outvLabel = finalizeVideo("[outv]", duration);
+    const outaLabel = finalizeAudio("[outa]", duration);
+    return { filterComplex: parts.join(";"), outV: outvLabel, outA: outaLabel, duration };
   }
 
   // General path: fold segments left-to-right with per-pair xfade or concat,
@@ -481,9 +541,13 @@ export function buildFilterGraph(
       oc.push("setpts=PTS-STARTPTS");
     }
     const scaleW = Math.max(2, Math.round((o.transform?.scale ?? 0.4) * w));
-    oc.push(`scale=${scaleW}:-2`);
+    // PiP 缩放动画：有 scale 关键帧时逐帧缩放（clip-local 时基，在位移前），否则静态。
+    const sExpr = buildKeyframeExpr(keyframePoints(o.keyframes, "scale", 0, (v) => Math.max(0.02, v) * w));
+    oc.push(sExpr != null ? `scale=w='${sExpr}':h=-2:eval=frame` : `scale=${scaleW}:-2`);
     oc.push(`fps=${fps}`);
     oc.push("format=rgba");
+    if (o.flipH) oc.push("hflip");
+    if (o.flipV) oc.push("vflip");
     const ckf = chromaKeyFilter(o.chromaKey);
     if (ckf) oc.push(ckf); // 绿幕抠像：把指定颜色变透明，再合成
     const op = o.transform?.opacity ?? 1;
@@ -509,6 +573,12 @@ export function buildFilterGraph(
     const end = o.start + o.duration;
     parts.push(`${curV}[ov${j}]overlay=x=${xArg}:y=${yArg}${evalArg}:enable='between(t,${o.start.toFixed(3)},${end.toFixed(3)})':eof_action=pass[ob${j}]`);
     curV = `[ob${j}]`;
+  });
+
+  // Draw vector shapes (rects) onto the composed video, UNDER the subtitles.
+  (extra.shapes ?? []).forEach((sh, k) => {
+    parts.push(`${curV}${shapeDrawbox(sh, w, h)}[shp${k}]`);
+    curV = `[shp${k}]`;
   });
 
   // Burn positioned text/subtitles (ASS) over the composed video.
@@ -566,7 +636,9 @@ export function buildFilterGraph(
     curA = "[outa]";
   }
 
-  return { filterComplex: parts.join(";"), outV: curV, outA: curA, duration: curDur };
+  const outvLabel = finalizeVideo(curV, curDur);
+  const outaLabel = finalizeAudio(curA, curDur);
+  return { filterComplex: parts.join(";"), outV: outvLabel, outA: outaLabel, duration: curDur };
 }
 
 /** Main (base) video-track clips that get concatenated, in play order. */
@@ -613,6 +685,24 @@ export function collectTextClips(doc: EditorDoc): TextInput[] {
   return out.sort((a, b) => a.start - b.start);
 }
 
+/** Shape clips (kind "shape") on overlay/text tracks → drawbox inputs, in time order. */
+export function collectShapeClips(doc: EditorDoc): ShapeInput[] {
+  const out: ShapeInput[] = [];
+  for (const t of doc.tracks) {
+    if (t.hidden || (t.type !== "overlay" && t.type !== "text")) continue;
+    for (const c of t.clips) {
+      if (c.kind !== "shape" || !c.shape) continue;
+      const dur = Math.max(0.05, c.trimOut - c.trimIn);
+      out.push({
+        start: c.start, end: c.start + dur, type: c.shape.type ?? "rect",
+        color: c.shape.color, fill: c.shape.fill, lineWidth: c.shape.lineWidth, opacity: c.shape.opacity,
+        x: c.transform?.x ?? 0.1, y: c.transform?.y ?? 0.1, w: c.shape.w ?? 0.3, h: c.shape.h ?? 0.2,
+      });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
 function clipVisibleDuration(c: Clip): number {
   if (c.kind === "image") return Math.max(0.05, c.trimOut - c.trimIn);
   return Math.max(0.05, (c.trimOut - c.trimIn) / (c.speed ?? 1));
@@ -632,6 +722,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
   const overlayClips = collectOverlayClips(doc);
   const audioClipsSrc = collectAudioClips(doc);
   const textClips = collectTextClips(doc);
+  const shapeClips = collectShapeClips(doc);
 
   const report = (p: number, s: string) => opts.onProgress?.(p, s);
   report(2, "准备素材");
@@ -671,7 +762,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut, fadeCurve: c.fadeCurve };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut, fadeCurve: c.fadeCurve, flipH: c.flipH, flipV: c.flipV };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
@@ -695,7 +786,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
       const dur = clipVisibleDuration(c);
-      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut });
+      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut, flipH: c.flipH, flipV: c.flipV });
       if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
@@ -728,7 +819,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       tmpFiles.push(assPath);
     }
 
-    const graph = buildFilterGraph(segs, { width: W, height: H, fps }, overlays, { audioClips, assPath });
+    const graph = buildFilterGraph(segs, { width: W, height: H, fps, normalizeAudio: doc.normalizeAudio, masterFadeIn: doc.masterFadeIn, masterFadeOut: doc.masterFadeOut }, overlays, { audioClips, assPath, shapes: shapeClips });
 
     // Export container/codec/quality. Default mp4 + H.264 + high.
     const format = opts.format ?? "mp4";

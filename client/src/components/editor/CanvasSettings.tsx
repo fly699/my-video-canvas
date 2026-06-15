@@ -28,6 +28,8 @@ function ratioLabel(w: number, h: number) { const g = gcd(w, h) || 1; return `${
 export function CanvasSettings() {
   const doc = useEditorStore((s) => s.doc);
   const setCanvas = useEditorStore((s) => s.setCanvas);
+  const setNormalizeAudio = useEditorStore((s) => s.setNormalizeAudio);
+  const setMasterFade = useEditorStore((s) => s.setMasterFade);
   const reframe = useEditorStore((s) => s.reframe);
   const [open, setOpen] = useState(false);
   const [locked, setLocked] = useState(true);
@@ -124,6 +126,27 @@ export function CanvasSettings() {
                 style={{ flex: 1, padding: "6px 0", fontSize: 11, borderRadius: 7, cursor: "pointer", border: `1px solid ${doc.fps === f ? EC.accent : EC.border}`, background: doc.fps === f ? EC.accentSoft : "transparent", color: doc.fps === f ? EC.accent : EC.t2 }}>{f}</button>
             ))}
           </div>
+
+          <Label>音频</Label>
+          <button onClick={() => setNormalizeAudio(!doc.normalizeAudio)}
+            title="导出时把最终音轨整体响度归一化到 -14 LUFS（YouTube/Spotify 等流媒体标准），不同片段/项目响度一致；仅在导出时生效"
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 10px", fontSize: 12, borderRadius: 7, cursor: "pointer", border: `1px solid ${doc.normalizeAudio ? EC.accent : EC.border}`, background: doc.normalizeAudio ? EC.accentSoft : "transparent", color: doc.normalizeAudio ? EC.accent : EC.t2 }}>
+            <span>响度归一化（-14 LUFS）</span>
+            <span style={{ fontWeight: 800 }}>{doc.normalizeAudio ? "开" : "关"}</span>
+          </button>
+
+          <Label>整片首尾淡入淡出</Label>
+          <div style={{ fontSize: 11, color: EC.t3, marginBottom: 6, lineHeight: 1.5 }}>整片开头从黑淡入、结尾淡到黑（画面+声音一起），作专业片头/片尾。</div>
+          {(["in", "out"] as const).map((w) => {
+            const v = (w === "in" ? doc.masterFadeIn : doc.masterFadeOut) ?? 0;
+            return (
+              <div key={w} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 11, color: EC.t2, width: 36, flexShrink: 0 }}>{w === "in" ? "淡入" : "淡出"}</span>
+                <input type="range" min={0} max={5} step={0.1} value={v} onChange={(e) => setMasterFade(w, Number(e.target.value))} style={{ flex: 1, accentColor: EC.accent }} />
+                <span style={{ fontSize: 11, color: EC.t2, width: 34, textAlign: "right", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{v.toFixed(1)}s</span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

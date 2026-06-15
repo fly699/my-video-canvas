@@ -360,7 +360,7 @@ export function Timeline() {
                         </div>
                       )}
                       <span style={{ position: "relative", fontSize: 10, color: EC.t1, padding: "0 10px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none" }}>
-                        {c.kind === "text" ? (c.text?.content ?? "文字") : (c.assetUrl?.split("/").pop() ?? c.kind)}
+                        {c.kind === "text" ? (c.text?.content ?? "文字") : c.kind === "shape" ? (c.shape?.fill ? "形状·填充" : "形状·描边") : (c.assetUrl?.split("/").pop() ?? c.kind)}
                       </span>
                       {/* keyframe markers — diamonds along the clip at each keyframe's time */}
                       {(c.keyframes?.length ?? 0) > 0 && (() => {

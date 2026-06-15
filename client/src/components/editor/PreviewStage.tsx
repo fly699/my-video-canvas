@@ -294,6 +294,14 @@ export function PreviewStage() {
   if (!doc) return null;
   const visible = activeAt(doc, playhead);
   const aspect = doc.width / doc.height;
+  // 整片首尾淡入淡出的黑场不透明度（预览与导出一致）
+  const masterFadeOpacity = (() => {
+    const fi = doc.masterFadeIn ?? 0, fo = doc.masterFadeOut ?? 0;
+    let o = 0;
+    if (fi > 0 && playhead < fi) o = Math.max(o, 1 - playhead / fi);
+    if (fo > 0 && duration > 0 && playhead > duration - fo) o = Math.max(o, 1 - (duration - playhead) / fo);
+    return Math.max(0, Math.min(1, o));
+  })();
 
   // Cross-dissolve preview: when the playhead is in the last `d` seconds before an
   // adjacent main-track clip that has a transitionIn, crossfade the outgoing clip
@@ -375,6 +383,8 @@ export function PreviewStage() {
             const selected = clip.id === selectedClipId;
             const xfade = fadeOf(clip.id);
             const fadeMul = clipFadeOpacity(clip, playhead - clip.start, clipDuration(clip)); // 片段淡入淡出（预览=透明度，导出=画面/alpha 渐变）
+            // 镜像/翻转：最右(最内)应用，与导出在 pre 阶段先 hflip/vflip 一致
+            const flipFrag = `${clip.flipH ? " scaleX(-1)" : ""}${clip.flipV ? " scaleY(-1)" : ""}`;
             // zoom/pan CSS for a full-frame clip that has a transform — same clamp
             // as the export: pan only once zoomed (scale≥1), bounded to the room.
             let mainTransform: string | undefined;
@@ -383,7 +393,9 @@ export function PreviewStage() {
               const maxFrac = (s - 1) / 2;
               const px = Math.max(-maxFrac, Math.min(maxFrac, tf.x ?? 0));
               const py = Math.max(-maxFrac, Math.min(maxFrac, tf.y ?? 0));
-              mainTransform = `translate(${(px * 100).toFixed(2)}%, ${(py * 100).toFixed(2)}%) scale(${s.toFixed(3)}) rotate(${tf.rotation ?? 0}deg)`;
+              mainTransform = `translate(${(px * 100).toFixed(2)}%, ${(py * 100).toFixed(2)}%) scale(${s.toFixed(3)}) rotate(${tf.rotation ?? 0}deg)${flipFrag}`;
+            } else if (fullFrame && flipFrag) {
+              mainTransform = flipFrag.trim(); // 仅翻转、无其它变换
             }
             const mainOpacity = xfade * fadeMul * (fullFrame && tf ? (tf.opacity ?? 1) : 1);
             const objFit: React.CSSProperties["objectFit"] = fullFrame
@@ -417,17 +429,22 @@ export function PreviewStage() {
               return null;
             }
 
-            // positioned (overlay / PiP / text) — interactive box with handles.
+            // positioned (overlay / PiP / text / shape) — interactive box with handles.
             // 文字片段叠加入场动效（按播放头实时演示，与导出 ASS 同步）。
             const tmo = clip.kind === "text" ? textMotionPreview(clip.text?.motionStyle, playhead - clip.start) : { opacity: 1, transform: "" };
+            const isShape = clip.kind === "shape";
+            const sh = clip.shape;
+            const shColor = sh?.color ?? "#FFD400";
             const boxStyle: React.CSSProperties = {
               position: "absolute",
               left: `${(tf?.x ?? 0.1) * 100}%`, top: `${(tf?.y ?? 0.1) * 100}%`,
-              width: `${(tf?.scale ?? 0.4) * 100}%`,
-              opacity: (tf?.opacity ?? 1) * xfade * fadeMul * tmo.opacity,
-              transform: `${tmo.transform} rotate(${tf?.rotation ?? 0}deg)`,
+              width: isShape ? `${(sh?.w ?? 0.3) * 100}%` : `${(tf?.scale ?? 0.4) * 100}%`,
+              ...(isShape ? { height: `${(sh?.h ?? 0.2) * 100}%`, boxSizing: "border-box" as const } : {}),
+              opacity: (tf?.opacity ?? 1) * xfade * fadeMul * tmo.opacity * (isShape ? (sh?.opacity ?? 1) : 1),
+              transform: `${tmo.transform} rotate(${tf?.rotation ?? 0}deg)${flipFrag}`,
               cursor: "move", touchAction: "none",
               outline: selected ? `2px solid ${EC.accent}` : "none",
+              ...(isShape ? (sh?.fill ? { background: shColor } : { border: `${Math.max(1, sh?.lineWidth ?? 4)}px solid ${shColor}` }) : {}),
             };
             return (
               <div key={clip.id} data-clip-box={clip.id} style={boxStyle}
@@ -442,7 +459,7 @@ export function PreviewStage() {
                   <video ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline muted={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none" }} />
                 ) : null}
 
-                {selected && <SelectionHandles clip={clip} onScale={beginScale} onRotate={beginRotate} />}
+                {selected && !isShape && <SelectionHandles clip={clip} onScale={beginScale} onRotate={beginRotate} />}
               </div>
             );
           })}
@@ -505,6 +522,10 @@ export function PreviewStage() {
           )}
           {snapGuide.y != null && (
             <div data-snap-guide="y" style={{ position: "absolute", left: 0, right: 0, top: `${snapGuide.y * 100}%`, height: 1, background: EC.accent, boxShadow: `0 0 4px ${EC.accent}`, pointerEvents: "none", zIndex: 10 }} />
+          )}
+          {/* 整片首尾淡入淡出：覆盖整台的黑场，按播放头实时演示（与导出一致） */}
+          {masterFadeOpacity > 0.001 && (
+            <div style={{ position: "absolute", inset: 0, background: "#000", opacity: masterFadeOpacity, pointerEvents: "none", zIndex: 20 }} />
           )}
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload } from "lucide-react";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square } from "lucide-react";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
 import { MusicGen } from "./MusicGen";
 import { EC } from "./theme";
@@ -180,6 +180,15 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
           }}
           style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: EC.t2, cursor: "pointer" }}
         ><TypeIcon size={13} /> 添加文字</button>
+        <button
+          onClick={() => {
+            const doc = useEditorStore.getState().doc; if (!doc) return;
+            const track = doc.tracks.find((t) => t.type === "overlay") ?? doc.tracks.find((t) => t.type === "text") ?? doc.tracks[0];
+            const start = trackEnd(doc, track.id);
+            addClip(track.id, { kind: "shape", start, trimIn: 0, trimOut: 3, transform: { x: 0.3, y: 0.35 }, shape: { type: "rect", color: "#FFD400", fill: false, lineWidth: 6, opacity: 1, w: 0.4, h: 0.3 } });
+          }}
+          style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: EC.t2, cursor: "pointer" }}
+        ><Square size={13} /> 添加形状（矩形）</button>
         <button
           disabled={transcribeMut.isPending}
           onClick={autoSubtitle}
