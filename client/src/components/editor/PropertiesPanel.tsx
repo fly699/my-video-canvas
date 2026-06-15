@@ -40,7 +40,7 @@ const TRANSITIONS: [string, string][] = [
   ["radial", "径向擦除"], ["pixelize", "像素化"], ["zoomin", "缩放进入"],
   ["diagtl", "对角 ↖"], ["diagbr", "对角 ↘"], ["hlslice", "切片"], ["squeezeh", "水平挤压"], ["squeezev", "垂直挤压"],
 ];
-const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["slideup", "上滑入"], ["slidedown", "下滑入"], ["pop", "弹入"], ["roll", "滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
+const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["slideup", "上滑入"], ["slidedown", "下滑入"], ["pop", "弹入"], ["typewriter", "打字机"], ["roll", "滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
 // 关键帧补间曲线（作用于整段动画）：线性=匀速；缓入=慢起加速；缓出=快起减速；缓入缓出=两端平滑 S 曲线。
 const EASE_OPTIONS: [string, string][] = [["linear", "线性（匀速）"], ["in", "缓入"], ["out", "缓出"], ["inout", "缓入缓出"]];
 // 音频淡变曲线（afade curve）：线性听感生硬；正弦/对数/指数更自然。仅影响声音，画面 fade 仍线性。
@@ -249,6 +249,9 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
               </div>
             )}
             <Row label="动效"><Select value={txt?.motionStyle ?? "none"} options={MOTIONS} onChange={(v) => setText({ motionStyle: v as NonNullable<Clip["text"]>["motionStyle"] })} /></Row>
+            {txt?.motionStyle === "typewriter" && (
+              <Slider label={`打字速度 ${txt?.typewriterCps ?? 16} 字/秒`} min={4} max={40} step={1} value={txt?.typewriterCps ?? 16} onChange={(v) => setText({ typewriterCps: v })} />
+            )}
             <Row label="配音模型"><Select value={ttsModel} options={TTS_MODELS} onChange={pickModel} /></Row>
             <Row label="发音人"><Select value={ttsVoice} options={voicesForModel(ttsModel)} onChange={setTtsVoice} /></Row>
             <button

@@ -559,3 +559,26 @@ describe("旋转 / 缩放 关键帧动画导出", () => {
     expect(g2).toContain("scale=576:-2");
   });
 });
+
+import { typewriterText } from "./_core/videoComposer";
+
+describe("打字机字幕（typewriter，逐字 \\alpha 显现）", () => {
+  it("typewriterText：每字一个 \\alpha+\\t 块，时刻递增；空串→空", () => {
+    expect(typewriterText("", 5000)).toBe("");
+    // 默认 ~16 字/秒 → 62.5ms/字（充裕时长不压缩）；第2字 round(62.5)=63
+    expect(typewriterText("AB", 10000)).toBe("{\\alpha&HFF&\\t(0,1,\\alpha&H00&)}A{\\alpha&HFF&\\t(63,64,\\alpha&H00&)}B");
+    // 显式速度 cps=10 → 100ms/字
+    expect(typewriterText("AB", 10000, 10)).toBe("{\\alpha&HFF&\\t(0,1,\\alpha&H00&)}A{\\alpha&HFF&\\t(100,101,\\alpha&H00&)}B");
+    // 短片段压缩节奏（5字、300ms → per=min(62.5, 270/5=54)=54；第5字 4*54=216）
+    const s = typewriterText("ABCDE", 300);
+    expect(s).toContain("\\t(0,1,");
+    expect(s).toContain("\\t(216,217,");
+    expect((s.match(/\\alpha&HFF&/g) || []).length).toBe(5);
+  });
+  it("buildEditorASS 用 typewriter 时正文走逐字块（且仍带定位/样式）", () => {
+    const ass = buildEditorASS([{ start: 0, end: 2, text: { content: "你好", size: 60, motionStyle: "typewriter" }, x: 0.1, y: 0.8 }], { width: 1920, height: 1080 });
+    expect(ass).toContain("\\pos(192,864)");
+    expect(ass).toContain("\\alpha&HFF&\\t(0,1,\\alpha&H00&)}你");
+    expect(ass).not.toContain("\\fad"); // 打字机不淡入
+  });
+});

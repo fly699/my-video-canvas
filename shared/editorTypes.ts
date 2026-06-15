@@ -64,7 +64,7 @@ export interface ClipText {
   size?: number;        // px at output resolution
   color?: string;       // CSS fill color
   bgColor?: string;     // optional text background box
-  motionStyle?: "none" | "fade" | "roll" | "karaoke" | "bounce" | "slideup" | "slidedown" | "pop";
+  motionStyle?: "none" | "fade" | "roll" | "karaoke" | "bounce" | "slideup" | "slidedown" | "pop" | "typewriter";
   // ── rich styling (preview via CSS; export via ASS override tags) ──
   bold?: boolean;
   italic?: boolean;
@@ -73,6 +73,7 @@ export interface ClipText {
   strokeWidth?: number; // 描边粗细 (px @ output res, 0 = none)
   shadow?: boolean;     // 投影
   shadowColor?: string; // 投影色 (default semi-black)
+  typewriterCps?: number; // 打字机速度（字符/秒，默认 ~16），仅 motionStyle="typewriter" 时生效
 }
 
 /** Keyframe interpolation curve. Controls the segment LEAVING a keyframe (kf→next):
