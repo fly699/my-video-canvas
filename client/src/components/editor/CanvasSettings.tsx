@@ -28,6 +28,7 @@ function ratioLabel(w: number, h: number) { const g = gcd(w, h) || 1; return `${
 export function CanvasSettings() {
   const doc = useEditorStore((s) => s.doc);
   const setCanvas = useEditorStore((s) => s.setCanvas);
+  const setNormalizeAudio = useEditorStore((s) => s.setNormalizeAudio);
   const reframe = useEditorStore((s) => s.reframe);
   const [open, setOpen] = useState(false);
   const [locked, setLocked] = useState(true);
@@ -124,6 +125,14 @@ export function CanvasSettings() {
                 style={{ flex: 1, padding: "6px 0", fontSize: 11, borderRadius: 7, cursor: "pointer", border: `1px solid ${doc.fps === f ? EC.accent : EC.border}`, background: doc.fps === f ? EC.accentSoft : "transparent", color: doc.fps === f ? EC.accent : EC.t2 }}>{f}</button>
             ))}
           </div>
+
+          <Label>音频</Label>
+          <button onClick={() => setNormalizeAudio(!doc.normalizeAudio)}
+            title="导出时把最终音轨整体响度归一化到 -14 LUFS（YouTube/Spotify 等流媒体标准），不同片段/项目响度一致；仅在导出时生效"
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 10px", fontSize: 12, borderRadius: 7, cursor: "pointer", border: `1px solid ${doc.normalizeAudio ? EC.accent : EC.border}`, background: doc.normalizeAudio ? EC.accentSoft : "transparent", color: doc.normalizeAudio ? EC.accent : EC.t2 }}>
+            <span>响度归一化（-14 LUFS）</span>
+            <span style={{ fontWeight: 800 }}>{doc.normalizeAudio ? "开" : "关"}</span>
+          </button>
         </div>
       )}
     </div>

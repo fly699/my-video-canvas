@@ -372,7 +372,7 @@ function hasTransitions(segs: Segment[]): boolean {
  */
 export function buildFilterGraph(
   segs: Segment[],
-  opts: { width: number; height: number; fps: number },
+  opts: { width: number; height: number; fps: number; normalizeAudio?: boolean },
   overlays: OverlayInput[] = [],
   extra: { audioClips?: AudioInput[]; assPath?: string } = {},
 ): { filterComplex: string; outV: string; outA: string; duration: number } {
@@ -383,6 +383,14 @@ export function buildFilterGraph(
   const parts: string[] = [];
   const vLabels: string[] = [];
   const aLabels: string[] = [];
+
+  // 响度归一化：导出时把最终音轨整体压到流媒体标准 -14 LUFS（loudnorm 单趟动态模式），
+  // 让不同片段/项目导出的响度一致。关闭时不加该滤镜（旧导出零回归）。
+  const finalizeAudio = (label: string): string => {
+    if (!opts.normalizeAudio) return label;
+    parts.push(`${label}loudnorm=I=-14:TP=-1.5:LRA=11[outan]`);
+    return "[outan]";
+  };
 
   segs.forEach((s, i) => {
     const dur = segmentDuration(s);
@@ -443,7 +451,8 @@ export function buildFilterGraph(
     const concatInputs = segs.map((_, i) => `${vLabels[i]}${aLabels[i]}`).join("");
     parts.push(`${concatInputs}concat=n=${segs.length}:v=1:a=1[outv][outa]`);
     const duration = segs.reduce((sum, s) => sum + segmentDuration(s), 0);
-    return { filterComplex: parts.join(";"), outV: "[outv]", outA: "[outa]", duration };
+    const outaLabel = finalizeAudio("[outa]");
+    return { filterComplex: parts.join(";"), outV: "[outv]", outA: outaLabel, duration };
   }
 
   // General path: fold segments left-to-right with per-pair xfade or concat,
@@ -566,7 +575,8 @@ export function buildFilterGraph(
     curA = "[outa]";
   }
 
-  return { filterComplex: parts.join(";"), outV: curV, outA: curA, duration: curDur };
+  const outaLabel = finalizeAudio(curA);
+  return { filterComplex: parts.join(";"), outV: curV, outA: outaLabel, duration: curDur };
 }
 
 /** Main (base) video-track clips that get concatenated, in play order. */
@@ -728,7 +738,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       tmpFiles.push(assPath);
     }
 
-    const graph = buildFilterGraph(segs, { width: W, height: H, fps }, overlays, { audioClips, assPath });
+    const graph = buildFilterGraph(segs, { width: W, height: H, fps, normalizeAudio: doc.normalizeAudio }, overlays, { audioClips, assPath });
 
     // Export container/codec/quality. Default mp4 + H.264 + high.
     const format = opts.format ?? "mp4";

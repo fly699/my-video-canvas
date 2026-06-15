@@ -456,3 +456,23 @@ describe("音频淡变曲线（afade curve=）", () => {
     expect(g).toContain("afade=t=in:st=0:d=0.500:curve=qsin");
   });
 });
+
+describe("响度归一化（loudnorm -14 LUFS，导出最终音轨）", () => {
+  it("开启时在最终音轨加 loudnorm 并改 outA；关闭时零回归", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 3, speed: 1 }];
+    const on = buildFilterGraph(seg, { ...OPTS, normalizeAudio: true });
+    expect(on.filterComplex).toContain("[outa]loudnorm=I=-14:TP=-1.5:LRA=11[outan]");
+    expect(on.outA).toBe("[outan]");
+    const off = buildFilterGraph(seg, OPTS);
+    expect(off.filterComplex).not.toContain("loudnorm");
+    expect(off.outA).toBe("[outa]");
+  });
+
+  it("通用路径（有音频轨）也在混音后归一化", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const g = buildFilterGraph(seg, { ...OPTS, normalizeAudio: true }, [], { audioClips: [{ trimIn: 0, trimOut: 4, speed: 1, start: 0, volume: 1, fadeIn: 0, fadeOut: 0 }] });
+    expect(g.filterComplex).toContain("loudnorm=I=-14:TP=-1.5:LRA=11[outan]");
+    expect(g.outA).toBe("[outan]");
+    expect(g.filterComplex.indexOf("amix")).toBeLessThan(g.filterComplex.indexOf("loudnorm")); // 先混音后归一化
+  });
+});

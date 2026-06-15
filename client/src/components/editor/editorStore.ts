@@ -101,6 +101,7 @@ export interface EditorStore {
 
   // output canvas (ratio / resolution / fps)
   setCanvas: (width: number, height: number, fps?: number) => void;
+  setNormalizeAudio: (on: boolean) => void;
   reframe: (width: number, height: number, fps?: number) => void; // 转比例 + 所有主轨可视片段自动 cover 填满
 
   // playback / view
@@ -577,6 +578,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const even = (n: number) => { const v = Math.max(16, Math.min(7680, Math.round(n))); return v - (v % 2); };
     return withHistory(s, { ...s.doc, width: even(width), height: even(height), fps: fps ?? s.doc.fps });
   }),
+
+  setNormalizeAudio: (on) => set((s) => s.doc ? withHistory(s, { ...s.doc, normalizeAudio: on }) : s),
 
   // One-click reframe: change the canvas aspect AND fill every main-track visual clip
   // (fit: cover) so nothing letterboxes into the new frame — single undo step.

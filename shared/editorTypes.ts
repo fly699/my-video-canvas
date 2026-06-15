@@ -159,6 +159,7 @@ export interface EditorDoc {
   width: number;   // output canvas width  (e.g. 1080)
   height: number;  // output canvas height (e.g. 1920)
   fps: number;     // output fps (e.g. 30)
+  normalizeAudio?: boolean; // 导出时把最终音轨响度归一化到 -14 LUFS（流媒体标准）
   tracks: Track[];
 }
 
