@@ -167,4 +167,15 @@ describe("estimateCanvasBudget — 画布级预算汇总", () => {
     expect(b.cr).toBe(20);
     expect(b.runnableCount).toBe(5);
   });
+  it("分镜(storyboard)按 imageModel 计入图像成本（此前漏算）", () => {
+    const b = estimateCanvasBudget([
+      node("storyboard", { imageModel: "kie_gpt_image_2", imageResolution: "1K" }), // 6 点
+      node("storyboard", { imageModel: "kie_gpt_image_2", imageResolution: "2K" }), // 10 点（同模型合并）
+      node("storyboard", {}),                                                        // 未设模型 → unknown
+    ]);
+    expect(b.pt).toBe(16);            // 6 + 10，分镜不再被漏算
+    expect(b.runnableCount).toBe(3);
+    expect(b.unknownCount).toBe(1);
+    expect(b.lines.find((l) => l.key === "kie_gpt_image_2")?.count).toBe(2);
+  });
 });
