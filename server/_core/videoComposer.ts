@@ -235,13 +235,20 @@ export function segmentDuration(s: Segment): number {
 }
 
 /** Map our transition names to ffmpeg xfade transition identifiers. */
+const XFADE_NAMES = new Set([
+  "fade", "fadeblack", "fadewhite", "dissolve",
+  "wipeleft", "wiperight", "wipeup", "wipedown",
+  "slideleft", "slideright", "slideup", "slidedown",
+  "smoothleft", "smoothright", "circleopen", "circleclose",
+  "circlecrop", "rectcrop", "radial", "pixelize", "zoomin",
+  "diagtl", "diagbr", "hlslice", "squeezeh", "squeezev",
+  "fadegrays", "hblur",
+]);
 function xfadeName(t: string): string {
-  switch (t) {
-    case "dissolve": return "dissolve";
-    case "slide": return "slideleft";
-    case "wipe": return "wipeleft";
-    case "fade": default: return "fade";
-  }
+  if (t === "slide") return "slideleft"; // legacy alias
+  if (t === "wipe") return "wipeleft";   // legacy alias
+  if (XFADE_NAMES.has(t)) return t;      // new values are valid xfade names as-is
+  return "fade";                          // unknown → safe default
 }
 
 /** Color/filter chain for a visual clip (ffmpeg eq + preset). Empty when none. */

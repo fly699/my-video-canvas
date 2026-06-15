@@ -11,7 +11,17 @@ export const EDITOR_DOC_VERSION = 1 as const;
 export type TrackType = "video" | "audio" | "text" | "overlay";
 export type ClipKind = "video" | "image" | "audio" | "text";
 
-export type TransitionType = "none" | "fade" | "dissolve" | "slide" | "wipe";
+// Values map 1:1 to ffmpeg xfade transition names (verified on ffmpeg 6.1.1), plus
+// "none" and the legacy aliases "slide"/"wipe" (kept for older saved projects).
+export type TransitionType =
+  | "none" | "slide" | "wipe" // legacy aliases
+  | "fade" | "fadeblack" | "fadewhite" | "dissolve"
+  | "wipeleft" | "wiperight" | "wipeup" | "wipedown"
+  | "slideleft" | "slideright" | "slideup" | "slidedown"
+  | "smoothleft" | "smoothright" | "circleopen" | "circleclose"
+  | "circlecrop" | "rectcrop" | "radial" | "pixelize" | "zoomin"
+  | "diagtl" | "diagbr" | "hlslice" | "squeezeh" | "squeezev"
+  | "fadegrays" | "hblur";
 
 /** How a visual clip fills the output frame.
  *  contain = 适应（完整显示，留黑边）; cover = 填充（铺满，裁剪溢出）; stretch = 拉伸（变形铺满）;

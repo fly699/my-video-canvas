@@ -83,6 +83,19 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g.duration).toBeCloseTo(5, 3); // 3 + 3 - 1
   });
 
+  it("maps transition names to xfade ids: new types pass through, legacy/unknown map safely", () => {
+    const mk = (type: string): Segment[] => [
+      { isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1 },
+      { isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, transition: { type, duration: 0.5 } },
+    ];
+    const fc = (type: string) => buildFilterGraph(mk(type), OPTS).filterComplex;
+    expect(fc("circleopen")).toContain("xfade=transition=circleopen:");   // new value, verified valid in ffmpeg
+    expect(fc("pixelize")).toContain("xfade=transition=pixelize:");
+    expect(fc("slide")).toContain("xfade=transition=slideleft:");          // legacy alias
+    expect(fc("wipe")).toContain("xfade=transition=wipeleft:");            // legacy alias
+    expect(fc("bogus")).toContain("xfade=transition=fade:");               // unknown → safe default
+  });
+
   it("inserts color eq + preset filter into the clip chain", () => {
     const segs: Segment[] = [{ isImage: false, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, effects: { brightness: 0.1, contrast: 1.2, saturation: 1.3, filter: "warm" } }];
     const g = buildFilterGraph(segs, OPTS);

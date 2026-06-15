@@ -29,7 +29,17 @@ const FONTS: [string, string][] = [
   ["KaiTi", "楷体"], ["FangSong", "仿宋"], ["Arial", "Arial"], ["Times New Roman", "Times"],
 ];
 const FILTERS: [string, string][] = [["", "无"], ["cinematic", "电影感"], ["vintage", "复古"], ["warm", "暖色"], ["cool", "冷色"], ["bw", "黑白"]];
-const TRANSITIONS: [string, string][] = [["none", "无"], ["fade", "淡入淡出"], ["dissolve", "叠化"], ["slide", "滑动"], ["wipe", "擦除"]];
+const TRANSITIONS: [string, string][] = [
+  ["none", "无"],
+  ["fade", "淡入淡出"], ["fadeblack", "淡入黑场"], ["fadewhite", "淡入白场"],
+  ["dissolve", "叠化"], ["fadegrays", "灰度淡化"], ["hblur", "模糊过渡"],
+  ["wipeleft", "擦除 ←"], ["wiperight", "擦除 →"], ["wipeup", "擦除 ↑"], ["wipedown", "擦除 ↓"],
+  ["slideleft", "滑动 ←"], ["slideright", "滑动 →"], ["slideup", "滑动 ↑"], ["slidedown", "滑动 ↓"],
+  ["smoothleft", "平滑滑动 ←"], ["smoothright", "平滑滑动 →"],
+  ["circleopen", "圆形展开"], ["circleclose", "圆形收拢"], ["circlecrop", "圆形裁切"], ["rectcrop", "矩形裁切"],
+  ["radial", "径向擦除"], ["pixelize", "像素化"], ["zoomin", "缩放进入"],
+  ["diagtl", "对角 ↖"], ["diagbr", "对角 ↘"], ["hlslice", "切片"], ["squeezeh", "水平挤压"], ["squeezev", "垂直挤压"],
+];
 const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["roll", "滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
 
 // 字幕样式预设库 — 一键套用成套文字样式（仅样式，不改文字内容）。每个预设显式写全
