@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 视频画布 · 工作量全景报表</title>
+<style>
+:root{
+  --bg:#070b16; --bg2:#0b1120; --card:#111a2e; --card2:#16203a;
+  --bd:#1e2a45; --bd2:#28375c;
+  --t1:#eef2fb; --t2:#aab6d4; --t3:#7286b0; --t4:#4a5a82;
+  --cyan:#22d3ee; --violet:#a855f7; --pink:#f43f9d; --green:#34d399; --amber:#fbbf24; --blue:#3b82f6; --red:#fb7185;
+  --grad:linear-gradient(135deg,#22d3ee 0%,#a855f7 55%,#f43f9d 100%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.65;-webkit-font-smoothing:antialiased;padding-bottom:60px}
+.glow{position:fixed;border-radius:50%;filter:blur(120px);opacity:.18;z-index:0;pointer-events:none}
+.glow.a{width:560px;height:560px;background:#22d3ee;top:-180px;left:-140px}
+.glow.b{width:520px;height:520px;background:#a855f7;top:24%;right:-160px}
+.glow.c{width:480px;height:480px;background:#f43f9d;bottom:-140px;left:24%}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px;position:relative;z-index:2}
+header{padding:60px 0 30px;text-align:center}
+header .tag{display:inline-flex;gap:8px;align-items:center;padding:6px 15px;border-radius:30px;background:var(--card2);border:1px solid var(--bd2);font-size:12.5px;color:var(--cyan);font-weight:700;margin-bottom:18px}
+header h1{font-size:clamp(28px,5vw,46px);font-weight:900;letter-spacing:-1px;line-height:1.1}
+header h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+header p{color:var(--t2);font-size:15px;max-width:760px;margin:14px auto 0}
+.note{max-width:880px;margin:22px auto 0;padding:13px 18px;border-radius:12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#f3d488;font-size:13px;text-align:left;line-height:1.7}
+.note b{color:#fbbf24}
+.sec{margin-top:54px}
+.sec-h{font-size:20px;font-weight:850;margin-bottom:4px;display:flex;align-items:center;gap:10px}
+.sec-h .bar{width:4px;height:20px;border-radius:3px;background:var(--grad)}
+.sec-sub{color:var(--t3);font-size:13px;margin-bottom:22px;padding-left:14px}
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media(max-width:860px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:linear-gradient(160deg,var(--card),var(--bg2));border:1px solid var(--bd);border-radius:16px;padding:20px 18px;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;inset:0;background:var(--grad);opacity:.05}
+.kpi .v{font-size:30px;font-weight:900;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1.05}
+.kpi .l{font-size:12.5px;color:var(--t2);margin-top:7px;font-weight:600}
+.kpi .s{font-size:11px;color:var(--t4);margin-top:3px}
+/* chart grid */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:820px){.grid2{grid-template-columns:1fr}}
+.panel{background:linear-gradient(160deg,var(--card),var(--bg2));border:1px solid var(--bd);border-radius:18px;padding:22px}
+.panel h3{font-size:15px;font-weight:800;margin-bottom:4px}
+.panel .ph{font-size:12px;color:var(--t3);margin-bottom:18px}
+/* vertical bars */
+.vbars{display:flex;align-items:flex-end;gap:10px;height:180px;padding-top:10px}
+.vbar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px}
+.vbar .col{width:100%;max-width:46px;border-radius:7px 7px 3px 3px;background:linear-gradient(180deg,var(--cyan),var(--violet));transition:.5s;min-height:4px}
+.vbar .n{font-size:12px;font-weight:800;color:var(--t1)}
+.vbar .x{font-size:11px;color:var(--t3)}
+/* horizontal bars */
+.hbars{display:flex;flex-direction:column;gap:11px}
+.hbar .top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px}
+.hbar .top .lab{color:var(--t1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%}
+.hbar .top .val{color:var(--t2);font-weight:700;font-variant-numeric:tabular-nums}
+.hbar .track{height:9px;border-radius:6px;background:var(--card2);overflow:hidden}
+.hbar .fill{height:100%;border-radius:6px;transition:.6s}
+/* donut */
+.donut-wrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.legend{display:flex;flex-direction:column;gap:9px;flex:1;min-width:160px}
+.legend .li{display:flex;align-items:center;gap:9px;font-size:12.5px}
+.legend .dot{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+.legend .lab{color:var(--t2);flex:1}
+.legend .val{color:var(--t1);font-weight:800;font-variant-numeric:tabular-nums}
+.legend .pct{color:var(--t4);font-size:11px;width:42px;text-align:right}
+/* timeline */
+.tl{position:relative;padding-left:26px}
+.tl::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:linear-gradient(180deg,var(--cyan),var(--violet),var(--pink))}
+.tl .ev{position:relative;padding:0 0 22px 0}
+.tl .ev::before{content:"";position:absolute;left:-26px;top:4px;width:16px;height:16px;border-radius:50%;background:var(--bg);border:3px solid var(--violet);box-shadow:0 0 0 3px rgba(168,85,247,.18)}
+.tl .ev.hot::before{border-color:var(--pink);box-shadow:0 0 0 3px rgba(244,63,157,.22)}
+.tl .d{font-size:12px;color:var(--cyan);font-weight:800;letter-spacing:.3px}
+.tl .t{font-size:15px;font-weight:800;margin:2px 0 4px}
+.tl .x{font-size:12.5px;color:var(--t2)}
+/* scope cards */
+.scope{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:760px){.scope{grid-template-columns:repeat(2,1fr)}}
+.sc{background:var(--card2);border:1px solid var(--bd);border-radius:14px;padding:16px}
+.sc .v{font-size:22px;font-weight:900;color:var(--t1)}
+.sc .v small{font-size:13px;color:var(--t3);font-weight:600}
+.sc .l{font-size:12.5px;color:var(--t2);margin-top:4px}
+footer{margin-top:60px;padding-top:26px;border-top:1px solid var(--bd);text-align:center;color:var(--t4);font-size:12px}
+</style>
+</head>
+<body>
+<div class="glow a"></div><div class="glow b"></div><div class="glow c"></div>
+<div class="wrap">
+  <header>
+    <div class="tag">📊 项目工作量全景</div>
+    <h1>AI 视频画布 · <span class="g">工作量与产出报表</span></h1>
+    <p>从数据库迁移记录、PR 编号与提交历史追溯：这是一套约 <b>4 周</b>、<b>≈495 个 PR</b> 累积的全栈 AI 视频创作平台。下列图表覆盖代码体量、功能规模、提交节奏与开发里程碑。</p>
+    <div class="note">⚠️ <b>口径说明</b>：当前 git 仓库的<b>提交历史</b>只追溯到 2026-06-09（近 7 天、140 次提交），但<b>迁移 journal（#0 起于 2026-05-19）</b>、<b>最高 PR 编号 #495</b> 与 <code>CLAUDE.md</code> 记录的「13/14 轮安全审查」表明真实开发周期更长。故「代码体量 / 功能规模 / PR 总数 / 里程碑」反映真实累积工作量，「每日提交」仅为近 7 天窗口。</div>
+  </header>
+
+  <!-- KPIs -->
+  <div class="sec">
+    <div class="kpis" id="kpis"></div>
+  </div>
+
+  <!-- charts row 1 -->
+  <div class="sec">
+    <div class="sec-h"><span class="bar"></span>开发节奏与产出构成</div>
+    <div class="sec-sub">提交节奏取近 7 天 git 窗口；代码构成为当前仓库全量手写代码。</div>
+    <div class="grid2">
+      <div class="panel"><h3>每日提交节奏</h3><div class="ph">近 7 天 squash-merge 提交数（高强度、几乎不间断）</div><div class="vbars" id="daily"></div></div>
+      <div class="panel"><h3>代码构成（行数）</h3><div class="ph">合计 ≈122,820 行手写代码（不含锁文件/数据/截图）</div><div class="donut-wrap"><div id="langDonut"></div><div class="legend" id="langLegend"></div></div></div>
+    </div>
+  </div>
+
+  <!-- charts row 2 -->
+  <div class="sec">
+    <div class="grid2">
+      <div class="panel"><h3>各模块文件分布</h3><div class="ph">631 个受版本控制文件的归属</div><div class="hbars" id="modules"></div></div>
+      <div class="panel"><h3>提交类型分布</h3><div class="ph">近 7 天窗口内 feat / fix / docs / perf 占比</div><div class="donut-wrap"><div id="ctypeDonut"></div><div class="legend" id="ctypeLegend"></div></div></div>
+    </div>
+  </div>
+
+  <!-- charts row 3 -->
+  <div class="sec">
+    <div class="grid2">
+      <div class="panel"><h3>功能领域分布</h3><div class="ph">按 PR 主题关键词归类（一条 PR 可计入多域）</div><div class="hbars" id="areas"></div></div>
+      <div class="panel"><h3>最大源文件 Top 10</h3><div class="ph">单文件行数（体现核心模块复杂度）</div><div class="hbars" id="topfiles"></div></div>
+    </div>
+  </div>
+
+  <!-- timeline -->
+  <div class="sec">
+    <div class="sec-h"><span class="bar"></span>开发里程碑（追溯）</div>
+    <div class="sec-sub">综合迁移 journal 时间戳、CLAUDE.md 安全审查记录与 PR 历史还原的关键节点。</div>
+    <div class="panel"><div class="tl" id="timeline"></div></div>
+  </div>
+
+  <!-- functional scope -->
+  <div class="sec">
+    <div class="sec-h"><span class="bar"></span>功能规模指标</div>
+    <div class="sec-sub">当前仓库的可量化能力面。</div>
+    <div class="scope" id="scope"></div>
+  </div>
+
+  <footer>
+    数据来源：git 历史 / drizzle migration journal / 源码统计 / CLAUDE.md。统计时点 2026-06-15。<br>
+    单文件自包含报表，可离线浏览。
+  </footer>
+</div>
+
+<script>
+const DATA = {
+  kpis: [
+    ["≈495","累计 PR","最高 #495 · 约 4 周"],
+    ["≈122k","手写代码行","源码 114k + 测试 7.8k"],
+    ["631","受控文件","client 310 / server 157"],
+    ["57","数据库迁移","46 张表 · journal #0 起 05-19"],
+    ["28","画布节点类型","16 个 tRPC 路由模块"],
+    ["186","React 组件","10 个剪辑器组件"],
+    ["792","测试用例","vitest 全绿 (+2 跳过)"],
+    ["140","近 7 天提交","2 名提交者"],
+  ],
+  daily: [["06-09",26],["06-10",24],["06-11",27],["06-12",9],["06-13",10],["06-14",17],["06-15",27]],
+  lang: [["React TSX",66572,"#a855f7"],["TypeScript",52986,"#22d3ee"],["CSS",1353,"#34d399"],["SQL 迁移",1082,"#fbbf24"],["JS",827,"#f43f9d"]],
+  modules: [["client/src（前端）",310,"#22d3ee"],["server（后端）",157,"#a855f7"],["drizzle（迁移/库）",97,"#fbbf24"],["shared（共享类型）",9,"#34d399"]],
+  ctype: [["feat 新功能",77,"#34d399"],["fix 修复",49,"#fbbf24"],["docs 文档",5,"#22d3ee"],["perf 性能",1,"#f43f9d"]],
+  areas: [["画布 / 节点编排",53,"#22d3ee"],["素材 / 模型 / 成本",38,"#a855f7"],["智能体 / 创作向导",26,"#f43f9d"],["剪辑 / 视频后期",23,"#34d399"],["权限 / 安全 / 审计",17,"#fbbf24"],["ComfyUI / 算力运维",10,"#3b82f6"],["聊天 / 协作",1,"#7286b0"]],
+  topfiles: [["server/routers/canvas.ts",3718],["client/pages/Canvas.tsx",3641],["client/AdminPage.tsx",2802],["server/db.ts",2772],["server/_core/comfyui.ts",2671],["VideoTaskNode.tsx",2285],["ComfyuiImageNode.tsx",1874],["ComfyuiWorkflowNode.tsx",1842],["AudioNode.tsx",1482],["TemplatePanel.tsx",1469]],
+  timeline: [
+    ["2026-05-19","项目奠基","首个数据库迁移落库（drizzle journal #0）；React + tRPC v11 + Express + MySQL 架构成形。",0],
+    ["2026-05-23","第 13 轮安全审查","修复 IP 白名单格式校验绕过（杜绝 unknown 入库）、白名单缓存 TTL 时间戳一致性（commit cccdc2b）。",0],
+    ["2026-06-04","第 14 轮 · 体验优化","节点生成进度/失败提示常驻标题栏；剪辑播放定位快捷键、时间轴「适应窗口」、关键帧菱形标记。",0],
+    ["2026-06-09","kie.ai 接入 + 画布编排","kie 主key余额/白名单/分发限额key/临时key；连线矩阵、拉线建节点、@提及、模板库、分组容器。",0],
+    ["2026-06-14","创作管线沉淀","剧本节点版本历史+diff、分集一键拆节点、角色配音映射；素材库搜索/排序/全选批量下载。",0],
+    ["2026-06-15","剪辑大升级 + 全面治理","主轨运镜导出/绿幕抠像/智能重构图/调色13种/转场28种/降噪；管理员四级权限分级；字幕样式与透明度；安全区可拖拽缩放。",1],
+  ],
+  scope: [
+    ["46","张","数据库表"],["57","个","迁移脚本"],["16","个","tRPC 路由模块"],
+    ["28","类","画布创作节点"],["186","个","React 组件"],["10","个","剪辑器组件"],
+    ["792","项","自动化测试用例"],["6","商","AI 模型服务商"],["150+","款","聚合 AI 模型"],
+  ],
+};
+
+const $ = (id) => document.getElementById(id);
+
+// KPIs
+$("kpis").innerHTML = DATA.kpis.map(k => `<div class="kpi"><div class="v">${k[0]}</div><div class="l">${k[1]}</div><div class="s">${k[2]}</div></div>`).join("");
+
+// vertical bars (daily)
+(() => {
+  const max = Math.max(...DATA.daily.map(d => d[1]));
+  $("daily").innerHTML = DATA.daily.map(d => {
+    const h = Math.round((d[1] / max) * 150) + 4;
+    return `<div class="vbar"><div class="n">${d[1]}</div><div class="col" style="height:${h}px"></div><div class="x">${d[0]}</div></div>`;
+  }).join("");
+})();
+
+// horizontal bars
+function hbars(el, rows, unit) {
+  const max = Math.max(...rows.map(r => r[1]));
+  el.innerHTML = rows.map((r, i) => {
+    const color = r[2] || ["#22d3ee","#a855f7","#f43f9d","#34d399","#fbbf24","#3b82f6","#fb7185","#7286b0","#22d3ee","#a855f7"][i % 10];
+    const w = Math.max(2, (r[1] / max) * 100);
+    return `<div class="hbar"><div class="top"><span class="lab">${r[0]}</span><span class="val">${r[1].toLocaleString()}${unit||""}</span></div><div class="track"><div class="fill" style="width:${w}%;background:linear-gradient(90deg,${color},${color}99)"></div></div></div>`;
+  }).join("");
+}
+hbars($("modules"), DATA.modules, " 文件");
+hbars($("areas"), DATA.areas, " PR");
+hbars($("topfiles"), DATA.topfiles, " 行");
+
+// donut
+function donut(svgEl, legendEl, rows) {
+  const total = rows.reduce((s, r) => s + r[1], 0);
+  const r = 54, c = 2 * Math.PI * r;
+  let off = 0, segs = "";
+  rows.forEach(d => {
+    const len = (d[1] / total) * c;
+    segs += `<circle r="${r}" cx="70" cy="70" fill="none" stroke="${d[2]}" stroke-width="20" stroke-linecap="butt" stroke-dasharray="${len.toFixed(2)} ${(c-len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)"></circle>`;
+    off += len;
+  });
+  svgEl.innerHTML = `<svg viewBox="0 0 140 140" width="150" height="150">${segs}<text x="70" y="66" text-anchor="middle" fill="#eef2fb" font-size="18" font-weight="800">${total.toLocaleString()}</text><text x="70" y="84" text-anchor="middle" fill="#7286b0" font-size="10">合计</text></svg>`;
+  legendEl.innerHTML = rows.map(d => `<div class="li"><span class="dot" style="background:${d[2]}"></span><span class="lab">${d[0]}</span><span class="val">${d[1].toLocaleString()}</span><span class="pct">${(d[1]/total*100).toFixed(1)}%</span></div>`).join("");
+}
+donut($("langDonut"), $("langLegend"), DATA.lang);
+donut($("ctypeDonut"), $("ctypeLegend"), DATA.ctype);
+
+// timeline
+$("timeline").innerHTML = DATA.timeline.map(e => `<div class="ev${e[3] ? " hot" : ""}"><div class="d">${e[0]}</div><div class="t">${e[1]}</div><div class="x">${e[2]}</div></div>`).join("");
+
+// scope
+$("scope").innerHTML = DATA.scope.map(s => `<div class="sc"><div class="v">${s[0]}<small> ${s[1]}</small></div><div class="l">${s[2]}</div></div>`).join("");
+</script>
+</body></html>
