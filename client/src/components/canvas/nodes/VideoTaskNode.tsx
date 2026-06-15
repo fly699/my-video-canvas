@@ -1295,7 +1295,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         controls
         className="w-full"
         preload="metadata"
-        style={{ display: "block", maxHeight: 240 }}
+        style={{ display: "block" }}
       />
       {videoStoredInMinio && <MinioStorageBadge />}
     </div>
