@@ -168,6 +168,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const setTf = (k: keyof NonNullable<Clip["transform"]>, v: number) => update(c.id, { transform: { ...tf, [k]: v } });
   const txt = c.text;
   const setText = (patch: Partial<NonNullable<Clip["text"]>>) => update(c.id, { text: { ...txt, content: txt?.content ?? "", ...patch } });
+  const setShape = (patch: Partial<NonNullable<Clip["shape"]>>) => update(c.id, { shape: { type: "rect", ...(c.shape ?? {}), ...patch } as NonNullable<Clip["shape"]> });
   // Center on an axis using the actually-rendered box size (falls back to an
   // estimate when the clip isn't visible at the current playhead).
   const centerAxis = (axis: "x" | "y") => {
@@ -255,6 +256,21 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
               onClick={() => aiDub(c.text?.content ?? "", c.start)}
               style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent, cursor: dubMut.isPending ? "default" : "pointer" }}
             ><Mic size={13} /> {dubMut.isPending ? "生成中…" : "AI 配音（朗读这段文字）"}</button>
+          </Section>
+        )}
+
+        {c.kind === "shape" && (
+          <Section title="形状（矩形）">
+            <div style={{ fontSize: 11, color: EC.t3, marginBottom: 4 }}>高亮框 / 打码块 / 色块 / 分隔条。拖动可移动位置，下面调样式与大小。</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Toggle on={!!c.shape?.fill} onClick={() => setShape({ fill: !c.shape?.fill })} title="填充 / 描边" wide>{c.shape?.fill ? "填充" : "描边"}</Toggle>
+              <span style={{ fontSize: 11, color: EC.t2 }}>颜色</span>
+              <input type="color" value={c.shape?.color ?? "#FFD400"} onChange={(e) => setShape({ color: e.target.value })} style={{ ...input, width: 40, height: 30, padding: 2 }} />
+            </div>
+            {!c.shape?.fill && <Slider label={`描边粗细 ${c.shape?.lineWidth ?? 6}px`} min={1} max={40} step={1} value={c.shape?.lineWidth ?? 6} onChange={(v) => setShape({ lineWidth: v })} />}
+            <Slider label={`不透明度 ${Math.round((c.shape?.opacity ?? 1) * 100)}%`} min={0} max={1} step={0.01} value={c.shape?.opacity ?? 1} onChange={(v) => setShape({ opacity: v })} />
+            <Slider label={`宽 ${Math.round((c.shape?.w ?? 0.3) * 100)}%`} min={0.05} max={1} step={0.01} value={c.shape?.w ?? 0.3} onChange={(v) => setShape({ w: v })} />
+            <Slider label={`高 ${Math.round((c.shape?.h ?? 0.2) * 100)}%`} min={0.05} max={1} step={0.01} value={c.shape?.h ?? 0.2} onChange={(v) => setShape({ h: v })} />
           </Section>
         )}
 

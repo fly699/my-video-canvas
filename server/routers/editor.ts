@@ -19,7 +19,7 @@ const transformSchema = z.object({
 
 const clipSchema = z.object({
   id: z.string().min(1).max(64),
-  kind: z.enum(["video", "image", "audio", "text"]),
+  kind: z.enum(["video", "image", "audio", "text", "shape"]),
   assetId: z.number().optional(),
   assetUrl: z.string().max(2048).optional(),
   start: z.number().min(0),
@@ -30,8 +30,22 @@ const clipSchema = z.object({
   volume: z.number().min(0).max(4).optional(),
   fadeIn: z.number().min(0).optional(),
   fadeOut: z.number().min(0).optional(),
+  fadeCurve: z.enum(["tri", "qsin", "hsin", "log", "exp"]).optional(),
   ducking: z.boolean().optional(),
   denoise: z.boolean().optional(),
+  // 关键帧动画（含缓动曲线）——此前漏在 schema 外被剥离、不持久化，现补上。
+  keyframes: z.array(z.object({
+    t: z.number(), x: z.number().optional(), y: z.number().optional(), scale: z.number().optional(),
+    opacity: z.number().optional(), rotation: z.number().optional(),
+    ease: z.enum(["linear", "in", "out", "inout"]).optional(),
+  })).max(120).optional(),
+  // 矢量形状叠加
+  shape: z.object({
+    type: z.enum(["rect"]),
+    color: z.string().max(16).optional(), fill: z.boolean().optional(),
+    lineWidth: z.number().min(0).max(100).optional(), opacity: z.number().min(0).max(1).optional(),
+    w: z.number().min(0).max(1).optional(), h: z.number().min(0).max(1).optional(),
+  }).optional(),
   chromaKey: z.object({ color: z.string().max(16).optional(), similarity: z.number().min(0).max(1).optional(), blend: z.number().min(0).max(1).optional() }).optional(),
   transitionIn: z.object({ type: z.string().max(32), duration: z.number().min(0).max(10) }).optional(),
   effects: z.object({
@@ -57,6 +71,9 @@ const docSchema = z.object({
   width: z.number().int().min(16).max(7680),
   height: z.number().int().min(16).max(7680),
   fps: z.number().int().min(1).max(120),
+  normalizeAudio: z.boolean().optional(),
+  masterFadeIn: z.number().min(0).max(10).optional(),
+  masterFadeOut: z.number().min(0).max(10).optional(),
   tracks: z.array(z.object({
     id: z.string().min(1).max(64),
     type: z.enum(["video", "audio", "text", "overlay"]),

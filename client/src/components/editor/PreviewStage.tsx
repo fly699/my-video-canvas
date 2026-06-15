@@ -425,17 +425,22 @@ export function PreviewStage() {
               return null;
             }
 
-            // positioned (overlay / PiP / text) — interactive box with handles.
+            // positioned (overlay / PiP / text / shape) — interactive box with handles.
             // 文字片段叠加入场动效（按播放头实时演示，与导出 ASS 同步）。
             const tmo = clip.kind === "text" ? textMotionPreview(clip.text?.motionStyle, playhead - clip.start) : { opacity: 1, transform: "" };
+            const isShape = clip.kind === "shape";
+            const sh = clip.shape;
+            const shColor = sh?.color ?? "#FFD400";
             const boxStyle: React.CSSProperties = {
               position: "absolute",
               left: `${(tf?.x ?? 0.1) * 100}%`, top: `${(tf?.y ?? 0.1) * 100}%`,
-              width: `${(tf?.scale ?? 0.4) * 100}%`,
-              opacity: (tf?.opacity ?? 1) * xfade * fadeMul * tmo.opacity,
+              width: isShape ? `${(sh?.w ?? 0.3) * 100}%` : `${(tf?.scale ?? 0.4) * 100}%`,
+              ...(isShape ? { height: `${(sh?.h ?? 0.2) * 100}%`, boxSizing: "border-box" as const } : {}),
+              opacity: (tf?.opacity ?? 1) * xfade * fadeMul * tmo.opacity * (isShape ? (sh?.opacity ?? 1) : 1),
               transform: `${tmo.transform} rotate(${tf?.rotation ?? 0}deg)`,
               cursor: "move", touchAction: "none",
               outline: selected ? `2px solid ${EC.accent}` : "none",
+              ...(isShape ? (sh?.fill ? { background: shColor } : { border: `${Math.max(1, sh?.lineWidth ?? 4)}px solid ${shColor}` }) : {}),
             };
             return (
               <div key={clip.id} data-clip-box={clip.id} style={boxStyle}
@@ -450,7 +455,7 @@ export function PreviewStage() {
                   <video ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline muted={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none" }} />
                 ) : null}
 
-                {selected && <SelectionHandles clip={clip} onScale={beginScale} onRotate={beginRotate} />}
+                {selected && !isShape && <SelectionHandles clip={clip} onScale={beginScale} onRotate={beginRotate} />}
               </div>
             );
           })}

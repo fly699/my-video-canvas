@@ -164,6 +164,31 @@ export function chromaKeyFilter(ck: { color?: string; similarity?: number; blend
   return `chromakey=${color}:${sim.toFixed(3)}:${blend.toFixed(3)}`;
 }
 
+/** A vector shape drawn onto the composed video (rect via drawbox), time-gated. */
+export interface ShapeInput {
+  start: number; end: number;
+  type: string;
+  color?: string; fill?: boolean; lineWidth?: number; opacity?: number;
+  x: number; y: number; w: number; h: number; // all normalized 0..1
+}
+
+/** Build a sanitized `drawbox` filter for a rectangle shape. Color is strictly
+ *  validated to `0xRRGGBB` and all geometry clamped/rounded, so nothing from the
+ *  shape can inject into the filter string. Time-gated via `enable=between`. */
+export function shapeDrawbox(s: ShapeInput, w: number, h: number): string {
+  const cl = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+  const hex = (s.color ?? "").replace(/^#/, "").replace(/^0x/i, "");
+  const color = /^[0-9a-fA-F]{6}$/.test(hex) ? `0x${hex}` : "0xFFD400";
+  const op = cl(s.opacity ?? 1, 0, 1);
+  const bx = Math.round(cl(s.x, 0, 1) * w);
+  const by = Math.round(cl(s.y, 0, 1) * h);
+  const bw = Math.max(1, Math.round(cl(s.w, 0.005, 1) * w));
+  const bh = Math.max(1, Math.round(cl(s.h, 0.005, 1) * h));
+  const thick = s.fill ? "fill" : String(Math.round(cl(s.lineWidth ?? 4, 1, 100)));
+  const start = Math.max(0, s.start), end = Math.max(start, s.end);
+  return `drawbox=x=${bx}:y=${by}:w=${bw}:h=${bh}:color=${color}@${op.toFixed(3)}:t=${thick}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'`;
+}
+
 const exprF = (n: number) => Number(n.toFixed(4)).toString();
 
 /** ffmpeg expression for one keyframe segment a→b in the `t` time base. Linear keeps
@@ -374,7 +399,7 @@ export function buildFilterGraph(
   segs: Segment[],
   opts: { width: number; height: number; fps: number; normalizeAudio?: boolean; masterFadeIn?: number; masterFadeOut?: number },
   overlays: OverlayInput[] = [],
-  extra: { audioClips?: AudioInput[]; assPath?: string } = {},
+  extra: { audioClips?: AudioInput[]; assPath?: string; shapes?: ShapeInput[] } = {},
 ): { filterComplex: string; outV: string; outA: string; duration: number } {
   const { fps } = opts;
   // even dims only (libx264/yuv420p reject odd sizes → empty graph, -22)
@@ -458,7 +483,7 @@ export function buildFilterGraph(
   const audioClips = extra.audioClips ?? [];
 
   // Fast path: nothing but a plain concat is needed.
-  if (!hasTransitions(segs) && overlays.length === 0 && audioClips.length === 0 && !extra.assPath) {
+  if (!hasTransitions(segs) && overlays.length === 0 && audioClips.length === 0 && !extra.assPath && (extra.shapes?.length ?? 0) === 0) {
     const concatInputs = segs.map((_, i) => `${vLabels[i]}${aLabels[i]}`).join("");
     parts.push(`${concatInputs}concat=n=${segs.length}:v=1:a=1[outv][outa]`);
     const duration = segs.reduce((sum, s) => sum + segmentDuration(s), 0);
@@ -530,6 +555,12 @@ export function buildFilterGraph(
     const end = o.start + o.duration;
     parts.push(`${curV}[ov${j}]overlay=x=${xArg}:y=${yArg}${evalArg}:enable='between(t,${o.start.toFixed(3)},${end.toFixed(3)})':eof_action=pass[ob${j}]`);
     curV = `[ob${j}]`;
+  });
+
+  // Draw vector shapes (rects) onto the composed video, UNDER the subtitles.
+  (extra.shapes ?? []).forEach((sh, k) => {
+    parts.push(`${curV}${shapeDrawbox(sh, w, h)}[shp${k}]`);
+    curV = `[shp${k}]`;
   });
 
   // Burn positioned text/subtitles (ASS) over the composed video.
@@ -636,6 +667,24 @@ export function collectTextClips(doc: EditorDoc): TextInput[] {
   return out.sort((a, b) => a.start - b.start);
 }
 
+/** Shape clips (kind "shape") on overlay/text tracks → drawbox inputs, in time order. */
+export function collectShapeClips(doc: EditorDoc): ShapeInput[] {
+  const out: ShapeInput[] = [];
+  for (const t of doc.tracks) {
+    if (t.hidden || (t.type !== "overlay" && t.type !== "text")) continue;
+    for (const c of t.clips) {
+      if (c.kind !== "shape" || !c.shape) continue;
+      const dur = Math.max(0.05, c.trimOut - c.trimIn);
+      out.push({
+        start: c.start, end: c.start + dur, type: c.shape.type ?? "rect",
+        color: c.shape.color, fill: c.shape.fill, lineWidth: c.shape.lineWidth, opacity: c.shape.opacity,
+        x: c.transform?.x ?? 0.1, y: c.transform?.y ?? 0.1, w: c.shape.w ?? 0.3, h: c.shape.h ?? 0.2,
+      });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
 function clipVisibleDuration(c: Clip): number {
   if (c.kind === "image") return Math.max(0.05, c.trimOut - c.trimIn);
   return Math.max(0.05, (c.trimOut - c.trimIn) / (c.speed ?? 1));
@@ -655,6 +704,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
   const overlayClips = collectOverlayClips(doc);
   const audioClipsSrc = collectAudioClips(doc);
   const textClips = collectTextClips(doc);
+  const shapeClips = collectShapeClips(doc);
 
   const report = (p: number, s: string) => opts.onProgress?.(p, s);
   report(2, "准备素材");
@@ -751,7 +801,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       tmpFiles.push(assPath);
     }
 
-    const graph = buildFilterGraph(segs, { width: W, height: H, fps, normalizeAudio: doc.normalizeAudio, masterFadeIn: doc.masterFadeIn, masterFadeOut: doc.masterFadeOut }, overlays, { audioClips, assPath });
+    const graph = buildFilterGraph(segs, { width: W, height: H, fps, normalizeAudio: doc.normalizeAudio, masterFadeIn: doc.masterFadeIn, masterFadeOut: doc.masterFadeOut }, overlays, { audioClips, assPath, shapes: shapeClips });
 
     // Export container/codec/quality. Default mp4 + H.264 + high.
     const format = opts.format ?? "mp4";

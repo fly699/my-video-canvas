@@ -499,3 +499,27 @@ describe("整片首尾淡入淡出（master fade，最终视频+音频总线）"
     expect(g.filterComplex).toContain("[outa]loudnorm=I=-14:TP=-1.5:LRA=11,afade=t=in:st=0:d=0.500,afade=t=out:st=3.500:d=0.500[outan]");
   });
 });
+
+import { shapeDrawbox, type ShapeInput } from "./_core/videoComposer";
+
+describe("形状叠加（shapeDrawbox + buildFilterGraph shapes）", () => {
+  const base: ShapeInput = { start: 1, end: 4, type: "rect", x: 0.1, y: 0.2, w: 0.4, h: 0.3 };
+  it("矩形几何/颜色/时间门控正确；填充 vs 描边", () => {
+    const fill = shapeDrawbox({ ...base, fill: true, color: "#FF0000", opacity: 0.5 }, 1920, 1080);
+    expect(fill).toBe("drawbox=x=192:y=216:w=768:h=324:color=0xFF0000@0.500:t=fill:enable='between(t,1.000,4.000)'");
+    const line = shapeDrawbox({ ...base, fill: false, color: "#00FF00", lineWidth: 6 }, 1920, 1080);
+    expect(line).toContain("color=0x00FF00@1.000:t=6:");
+  });
+  it("非法颜色/注入串被白名单拒绝为默认色", () => {
+    const s = shapeDrawbox({ ...base, color: "red;drawtext=evil" }, 1920, 1080);
+    expect(s).toContain("color=0xFFD400@");   // 默认黄
+    expect(s).not.toContain("drawtext");
+  });
+  it("buildFilterGraph：shapes 在最终视频上 drawbox，且禁用快路径", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const g = buildFilterGraph(seg, OPTS, [], { shapes: [{ ...base, fill: true, color: "#3366FF" }] });
+    expect(g.filterComplex).toContain("drawbox=");
+    expect(g.filterComplex).toContain("[shp0]");
+    expect(g.filterComplex).not.toContain("concat=n=1:v=1:a=1[outv][outa]"); // 快路径被禁用
+  });
+});
