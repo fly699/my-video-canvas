@@ -278,6 +278,14 @@ function colorChain(e?: ClipEffects): string[] {
     case "cool": out.push("colorbalance=rm=-0.12:gm=-0.02:bm=0.12"); break;
     case "bw": case "mono": out.push("hue=s=0"); break;
     case "cinematic": out.push("curves=preset=increase_contrast"); break;
+    case "teal_orange": out.push("colorbalance=rs=-0.08:bs=0.08:rh=0.10:bh=-0.08", "eq=contrast=1.06"); break;
+    case "sepia": out.push("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"); break;
+    case "noir": out.push("hue=s=0", "eq=contrast=1.25:brightness=-0.02"); break;
+    case "faded": out.push("curves=preset=lighter", "eq=saturation=0.72"); break;
+    case "vivid": out.push("eq=saturation=1.40:contrast=1.08"); break;
+    case "cyberpunk": out.push("colorbalance=rs=0.05:bs=0.12:rh=0.05:bh=0.10", "eq=saturation=1.30:contrast=1.05"); break;
+    case "moody": out.push("colorbalance=rs=-0.06:bs=0.06", "eq=contrast=1.10:brightness=-0.05:saturation=0.90"); break;
+    case "gold": out.push("colorbalance=rm=0.12:gm=0.06:bm=-0.10", "eq=saturation=1.10"); break;
   }
   return out;
 }
