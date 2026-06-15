@@ -3,6 +3,7 @@ import { Wallet, X, AlertTriangle, Server } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { estimateCanvasBudget } from "../../lib/costEstimate";
+import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
 import { readProjectBudgetCap, writeProjectBudgetCap } from "../../lib/budgetCap";
 
 // 工具栏「预算管控」弹层：把整张画布上所有生成节点按精确单价（docs/kie-pricing.md /
@@ -36,7 +37,7 @@ export function BudgetButton({ orient = "h" }: { orient?: "h" | "v" }) {
   }, [open]);
 
   const budget = useMemo(
-    () => estimateCanvasBudget(nodes.map((n) => ({ data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } }))),
+    () => estimateCanvasBudget(nodes.map((n) => ({ data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })), resolveActiveNodeModel as (nt: string, slot: "llm" | "image" | "video") => string),
     [nodes],
   );
 
