@@ -5,7 +5,7 @@ import { useEditorStore, clipDuration } from "./editorStore";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { computeSafeRect } from "@/lib/safeZone";
 import type { Clip, ClipTransform, EditorDoc, FitMode } from "@shared/editorTypes";
-import { transformAt } from "@shared/editorTypes";
+import { transformAt, applyEase } from "@shared/editorTypes";
 
 /** Reduce W:H to a tidy ratio label (e.g. 1920×1080 → "16:9"). */
 function ratioLabel(w: number, h: number): string {
@@ -68,6 +68,23 @@ function clipFadeOpacity(c: Clip, tInto: number, dur: number): number {
   if (c.fadeIn && c.fadeIn > 0 && tInto < c.fadeIn) o = Math.min(o, Math.max(0, tInto / c.fadeIn));
   if (c.fadeOut && c.fadeOut > 0 && tInto > dur - c.fadeOut) o = Math.min(o, Math.max(0, (dur - tInto) / c.fadeOut));
   return o;
+}
+
+/** Live preview of a text clip's entrance motion at `tInto` seconds from its
+ *  start — mirrors the export ASS (\move / \fad / \t scale) over the first ~0.35s
+ *  so scrubbing the playhead演示 the animation (WYSIWYG). */
+function textMotionPreview(motion: string | undefined, tInto: number): { opacity: number; transform: string } {
+  const MD = 0.35;
+  if (!motion || motion === "none" || tInto < 0 || tInto >= MD) return { opacity: 1, transform: "" };
+  const e = applyEase(tInto / MD, "out");
+  switch (motion) {
+    case "fade": case "bounce": case "karaoke": return { opacity: e, transform: "" };
+    case "slideup": return { opacity: e, transform: `translateY(${((1 - e) * 40).toFixed(1)}px)` };
+    case "slidedown": return { opacity: e, transform: `translateY(${(-(1 - e) * 40).toFixed(1)}px)` };
+    case "pop": return { opacity: e, transform: `scale(${(0.4 + 0.6 * e).toFixed(3)})` };
+    case "roll": return { opacity: e, transform: `translateY(${((1 - e) * 120).toFixed(1)}px)` };
+    default: return { opacity: 1, transform: "" };
+  }
 }
 
 function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; muted: boolean }[] {
@@ -400,13 +417,15 @@ export function PreviewStage() {
               return null;
             }
 
-            // positioned (overlay / PiP / text) — interactive box with handles
+            // positioned (overlay / PiP / text) — interactive box with handles.
+            // 文字片段叠加入场动效（按播放头实时演示，与导出 ASS 同步）。
+            const tmo = clip.kind === "text" ? textMotionPreview(clip.text?.motionStyle, playhead - clip.start) : { opacity: 1, transform: "" };
             const boxStyle: React.CSSProperties = {
               position: "absolute",
               left: `${(tf?.x ?? 0.1) * 100}%`, top: `${(tf?.y ?? 0.1) * 100}%`,
               width: `${(tf?.scale ?? 0.4) * 100}%`,
-              opacity: (tf?.opacity ?? 1) * xfade * fadeMul,
-              transform: `rotate(${tf?.rotation ?? 0}deg)`,
+              opacity: (tf?.opacity ?? 1) * xfade * fadeMul * tmo.opacity,
+              transform: `${tmo.transform} rotate(${tf?.rotation ?? 0}deg)`,
               cursor: "move", touchAction: "none",
               outline: selected ? `2px solid ${EC.accent}` : "none",
             };

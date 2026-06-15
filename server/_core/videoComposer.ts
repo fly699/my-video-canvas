@@ -279,8 +279,17 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     if (motion === "roll") {
       return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{\\an7\\move(${px},${opts.height},${px},${py})${base.join("")}}${escapeASSText(t.content)}`;
     }
-    const tags = [`\\an7`, `\\pos(${px},${py})`, ...base];
+    // 入场动效（前 ~350ms）：滑入用 \move 从偏移位归位 + 淡入；弹入用 \fscx/\fscy + \t 缩放。
+    const MD = 350;
+    const off = Math.max(8, Math.round(opts.height * 0.06)); // 滑入距离（脚本像素）
+    const lead: string[] = ["\\an7"];
+    if (motion === "slideup") lead.push(`\\move(${px},${py + off},${px},${py},0,${MD})`);
+    else if (motion === "slidedown") lead.push(`\\move(${px},${py - off},${px},${py},0,${MD})`);
+    else lead.push(`\\pos(${px},${py})`);
+    const tags = [...lead, ...base];
     if (motion === "fade") tags.push("\\fad(300,300)");
+    else if (motion === "slideup" || motion === "slidedown") tags.push(`\\fad(${MD},0)`);
+    else if (motion === "pop") tags.push(`\\fscx40\\fscy40\\t(0,${MD},\\fscx100\\fscy100)`, "\\fad(150,0)");
     else if (motion === "bounce" || motion === "karaoke") tags.push("\\fad(200,200)");
     return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{${tags.join("")}}${escapeASSText(t.content)}`;
   });
