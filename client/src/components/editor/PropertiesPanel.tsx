@@ -234,11 +234,18 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <Slider label={`音量 ${Math.round((c.volume ?? 1) * 100)}%`} min={0} max={2} step={0.05} value={c.volume ?? 1} onChange={(v) => update(c.id, { volume: v })} />
             <Slider label={`淡入 ${(c.fadeIn ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={c.fadeIn ?? 0} onChange={(v) => update(c.id, { fadeIn: v })} />
             <Slider label={`淡出 ${(c.fadeOut ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={c.fadeOut ?? 0} onChange={(v) => update(c.id, { fadeOut: v })} />
-            <button
+            {c.kind === "audio" && (
+              <button
+                onClick={() => update(c.id, { ducking: !c.ducking })}
+                title="背景音乐：导出时遇到人声/其它音频自动压低音量（侧链压缩）"
+                style={{ width: "100%", marginTop: 2, padding: "7px 0", fontSize: 11.5, borderRadius: 7, cursor: "pointer", border: `1px solid ${c.ducking ? EC.accent : EC.border}`, background: c.ducking ? EC.accentSoft : "transparent", color: c.ducking ? EC.accent : EC.t2 }}
+              >{c.ducking ? "✓ 背景乐自动闪避（遇人声压低）" : "设为背景乐（遇人声自动闪避）"}</button>
+            )}
+            {c.kind !== "audio" && <button
               onClick={() => update(c.id, { reverse: !c.reverse })}
               title="倒放：本片段逆序播放（导出时生效；预览为正放近似）"
               style={{ width: "100%", marginTop: 2, padding: "7px 0", fontSize: 11.5, borderRadius: 7, cursor: "pointer", border: `1px solid ${c.reverse ? EC.accent : EC.border}`, background: c.reverse ? EC.accentSoft : "transparent", color: c.reverse ? EC.accent : EC.t2 }}
-            >{c.reverse ? "✓ 倒放已开启" : "倒放（逆序播放）"}</button>
+            >{c.reverse ? "✓ 倒放已开启" : "倒放（逆序播放）"}</button>}
           </Section>
         )}
 

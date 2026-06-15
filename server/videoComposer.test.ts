@@ -114,6 +114,27 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g.outV).toBe("[sv]");
   });
 
+  it("ducking music: sidechaincompress against the voice bus, key split back into the mix", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const audioClips: AudioInput[] = [
+      { trimIn: 0, trimOut: 5, speed: 1, start: 0, volume: 1, fadeIn: 0, fadeOut: 0, ducking: true }, // music
+      { trimIn: 0, trimOut: 5, speed: 1, start: 0, volume: 1, fadeIn: 0, fadeOut: 0 },                // voiceover
+    ];
+    const g = buildFilterGraph(segs, OPTS, [], { audioClips }).filterComplex;
+    expect(g).toContain("asplit=2[keyout][keysc]");
+    expect(g).toContain("[musicfmt][keysc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=300[ducked]");
+    expect(g).toContain("[keyout][ducked]amix=inputs=2:normalize=0");
+    // the voice bus = base audio + the non-ducking clip, amixed into the key
+    expect(g).toContain("[keyraw]");
+  });
+
+  it("no ducking flag → original plain amix (no sidechaincompress)", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const g = buildFilterGraph(segs, OPTS, [], { audioClips: [{ trimIn: 0, trimOut: 5, speed: 1, start: 0, volume: 1, fadeIn: 0, fadeOut: 0 }] }).filterComplex;
+    expect(g).not.toContain("sidechaincompress");
+    expect(g).toContain("amix=inputs=2:normalize=0");
+  });
+
   it("buildEditorASS emits positioned, faded CJK-capable dialogue", () => {
     const clips: TextInput[] = [{ start: 1, end: 3, text: { content: "中文字幕", size: 60, color: "#ffff00", motionStyle: "fade" }, x: 0.1, y: 0.8 }];
     const ass = buildEditorASS(clips, { width: 1920, height: 1080 });
