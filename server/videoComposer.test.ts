@@ -141,6 +141,15 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g).toContain("[keyraw]");
   });
 
+  it("color-grade presets emit their filter chains into the segment", () => {
+    const mk = (filter: string): Segment[] => [{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, effects: { filter } } as Segment];
+    const fc = (filter: string) => buildFilterGraph(mk(filter), OPTS).filterComplex;
+    expect(fc("teal_orange")).toContain("colorbalance=rs=-0.08:bs=0.08:rh=0.10:bh=-0.08");
+    expect(fc("sepia")).toContain("colorchannelmixer=.393:.769:.189:0");
+    expect(fc("cyberpunk")).toContain("eq=saturation=1.30:contrast=1.05");
+    expect(fc("noir")).toContain("hue=s=0");
+  });
+
   it("chromaKeyFilter sanitizes colour to 0xRRGGBB and clamps params (injection-safe)", () => {
     expect(chromaKeyFilter(undefined)).toBeNull();
     expect(chromaKeyFilter({ color: "#00ff00", similarity: 0.3, blend: 0.1 })).toBe("chromakey=0x00ff00:0.300:0.100");
