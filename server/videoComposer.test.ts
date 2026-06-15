@@ -167,6 +167,14 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g).toContain("format=rgba,chromakey=0x00ff00:0.300:0.100");
   });
 
+  it("denoise flag inserts afftdn on the audio clip; absent → no afftdn", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const on = buildFilterGraph(segs, OPTS, [], { audioClips: [{ trimIn: 0, trimOut: 5, speed: 1, start: 0, volume: 1, fadeIn: 0, fadeOut: 0, denoise: true }] }).filterComplex;
+    expect(on).toContain("afftdn=nr=20:nf=-30");
+    const off = buildFilterGraph(segs, OPTS, [], { audioClips: [{ trimIn: 0, trimOut: 5, speed: 1, start: 0, volume: 1, fadeIn: 0, fadeOut: 0 }] }).filterComplex;
+    expect(off).not.toContain("afftdn");
+  });
+
   it("no ducking flag → original plain amix (no sidechaincompress)", () => {
     const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
     const g = buildFilterGraph(segs, OPTS, [], { audioClips: [{ trimIn: 0, trimOut: 5, speed: 1, start: 0, volume: 1, fadeIn: 0, fadeOut: 0 }] }).filterComplex;

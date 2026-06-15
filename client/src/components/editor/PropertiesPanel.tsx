@@ -251,6 +251,13 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
                 style={{ width: "100%", marginTop: 2, padding: "7px 0", fontSize: 11.5, borderRadius: 7, cursor: "pointer", border: `1px solid ${c.ducking ? EC.accent : EC.border}`, background: c.ducking ? EC.accentSoft : "transparent", color: c.ducking ? EC.accent : EC.t2 }}
               >{c.ducking ? "✓ 背景乐自动闪避（遇人声压低）" : "设为背景乐（遇人声自动闪避）"}</button>
             )}
+            {c.kind === "audio" && (
+              <button
+                onClick={() => update(c.id, { denoise: !c.denoise })}
+                title="降噪：对该音频做 FFT 降噪，清理底噪/嗡声/电流声（导出时生效）"
+                style={{ width: "100%", marginTop: 2, padding: "7px 0", fontSize: 11.5, borderRadius: 7, cursor: "pointer", border: `1px solid ${c.denoise ? EC.accent : EC.border}`, background: c.denoise ? EC.accentSoft : "transparent", color: c.denoise ? EC.accent : EC.t2 }}
+              >{c.denoise ? "✓ 降噪已开启" : "降噪（清理底噪）"}</button>
+            )}
             {c.kind !== "audio" && <button
               onClick={() => update(c.id, { reverse: !c.reverse })}
               title="倒放：本片段逆序播放（导出时生效；预览为正放近似）"
