@@ -234,6 +234,10 @@ export default function AdminPage() {
   );
 }
 
+// 管理员级别标签（与服务端 levelProcedure 一致）。
+const ADMIN_LEVELS: [number, string][] = [[0, "普通用户"], [1, "查看员"], [2, "运营"], [3, "管理员"], [4, "超级管理员"]];
+const adminLevelLabel = (lv: number) => ADMIN_LEVELS.find(([n]) => n === lv)?.[1] ?? "普通用户";
+
 // ── 用户管理 Panel（管理员）─────────────────────────────────────────────────
 function UsersPanel() {
   const utils = trpc.useUtils();
@@ -251,6 +255,12 @@ function UsersPanel() {
     onSuccess: () => { toast.success("用户已删除"); void utils.admin.users.list.invalidate(); },
     onError: (e) => toast.error("删除失败：" + e.message),
   });
+  // 管理员分级：仅超级管理员(L4)可改他人级别。0=普通·1=查看员·2=运营·3=管理员·4=超管。
+  const setLevelMut = trpc.admin.users.setLevel.useMutation({
+    onSuccess: () => { toast.success("已更新管理员级别"); void utils.admin.users.list.invalidate(); },
+    onError: (e) => toast.error("操作失败：" + e.message),
+  });
+  const isSuper = (me?.adminLevel ?? 0) >= 4;
 
   const onReset = (id: number, label: string) => {
     const pw = window.prompt(`为「${label}」设置新密码（至少 6 位）：`)?.trim();
@@ -273,6 +283,9 @@ function UsersPanel() {
         <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1)" }}>用户管理</h3>
         <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2)", lineHeight: 1.5 }}>
           重置密码、冻结/解冻、删除用户。冻结的用户无法登录、现有会话立即失效。不能对自己冻结或删除。
+          {isSuper
+            ? "「管理员级别」列可加/降管理员并设级别（仅你这个超级管理员可改，且不能改自己）：查看员=只读看板 · 运营=白名单/冻结/清日志 · 管理员=设置/密钥/删除 · 超级管理员=管理员管理/系统更新。"
+            : "「管理员级别」仅超级管理员可修改。"}
         </p>
       </div>
       <div style={{ ...cardStyle, padding: 0, overflowX: "auto" }}>
@@ -283,7 +296,7 @@ function UsersPanel() {
             <thead>
               <tr>
                 <th style={thStyle}>ID</th><th style={thStyle}>名称 / 邮箱</th><th style={thStyle}>登录方式</th>
-                <th style={thStyle}>角色</th><th style={thStyle}>状态</th><th style={thStyle}>最近登录</th><th style={thStyle}>操作</th>
+                <th style={thStyle}>管理员级别</th><th style={thStyle}>状态</th><th style={thStyle}>最近登录</th><th style={thStyle}>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -298,7 +311,24 @@ function UsersPanel() {
                       <div style={{ fontSize: 11, color: "var(--c-t3)" }}>{u.email || u.openId}</div>
                     </td>
                     <td style={tdStyle}>{u.loginMethod || "—"}</td>
-                    <td style={tdStyle}>{u.role === "admin" ? "管理员" : "用户"}</td>
+                    <td style={tdStyle}>
+                      {isSuper && !isSelf ? (
+                        <select
+                          value={u.adminLevel ?? 0}
+                          onChange={(e) => setLevelMut.mutate({ userId: u.id, level: Number(e.target.value) })}
+                          disabled={setLevelMut.isPending}
+                          style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer" }}
+                        >
+                          {ADMIN_LEVELS.map(([lv, lb]) => <option key={lv} value={lv}>{lb}</option>)}
+                        </select>
+                      ) : (
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
+                          background: (u.adminLevel ?? 0) >= 1 ? "oklch(0.65 0.19 310 / 0.15)" : "var(--c-bd1)",
+                          color: (u.adminLevel ?? 0) >= 1 ? "oklch(0.65 0.19 310)" : "var(--c-t3)" }}>
+                          {adminLevelLabel(u.adminLevel ?? 0)}{isSelf && (u.adminLevel ?? 0) >= 1 ? "（你）" : ""}
+                        </span>
+                      )}
+                    </td>
                     <td style={tdStyle}>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
                         background: u.disabled ? "oklch(0.62 0.2 25 / 0.15)" : "oklch(0.72 0.18 155 / 0.15)",
