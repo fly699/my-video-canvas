@@ -101,14 +101,21 @@ export function buildRecipeOps(recipe: AgentRecipe, cfg: RecipeConfig): AgentOpe
     }
     const sb = `sb${n}`, vt = `vt${n}`;
     // 镜号 + 逐镜转场：让配方产物直接满足「镜头表批量生产 → 按镜头表装配」的字段要求。
-    ops.push({ op: "create", nodeType: "storyboard", tempId: sb, title: `分镜${n}`, payload: { sceneNumber: n, description: desc, duration: cfg.durationEach, transition: recipe.defaults.shotTransition ?? "cut" } });
+    // 把配方画面比例透传给分镜节点。storyboardGen 按模型族读不同字段：kie→aspectRatio、
+    // Poyo→poyoAspectRatio、V2/HF→reveAspectRatio。分镜默认模型可能是任一族，故三者都写
+    // （各模型只读自己的字段、互不影响）；此前一个都没写，导致分镜无视配方比例按默认出图。
+    ops.push({ op: "create", nodeType: "storyboard", tempId: sb, title: `分镜${n}`, payload: { sceneNumber: n, description: desc, duration: cfg.durationEach, transition: recipe.defaults.shotTransition ?? "cut", aspectRatio: cfg.aspect, poyoAspectRatio: cfg.aspect, reveAspectRatio: cfg.aspect } });
     ops.push({ op: "connect", sourceRef: "script", targetRef: sb });
     // 分镜本身就是「生图工位」：镜头表批量生产会把关键帧生成在分镜上，批量生视频按
     // 「分镜→视频直连」找到该工位并把关键帧作首帧。因此 imageFirst（生图→再生视频）
     // 在分镜管线里由 分镜→视频 直连天然满足——不再额外插 image_gen 静帧节点，否则
     // 一镜两次生图，且直连断裂会让批量生视频找不到既有工位再新建一个。
-    ops.push({ op: "create", nodeType: "video_task", tempId: vt, title: `视频${n}`, payload: {} });
-    ops.push({ op: "connect", sourceRef: sb, targetRef: vt });
+    // 把配方每镜时长传给视频节点（params.duration，服务端按 provider 夹取）；此前 payload
+    // 为空，视频按模型默认时长生成、无视配方设定。比例无需传——i2v 跟随分镜参考图比例。
+    ops.push({ op: "create", nodeType: "video_task", tempId: vt, title: `视频${n}`, payload: { params: { duration: cfg.durationEach } } });
+    // 分镜关键帧 = 视频的参考图（i2v 首帧）。必须连到 video 的 `ref-image-in` 句柄，
+    // 否则连线预填 / 生成后传播（都按该句柄识别参考图边）都不会把分镜图填进视频参考图。
+    ops.push({ op: "connect", sourceRef: sb, targetRef: vt, targetHandle: "ref-image-in" });
     let tail = vt;
     if (cfg.addSubtitle) {
       const sub = `sub${n}`;

@@ -21,6 +21,31 @@ describe("buildRecipeOps — structure", () => {
     expect(connectsTo(ops, "merge")).toHaveLength(3);
   });
 
+  it("分镜节点收到配方画面比例（kie/Poyo/V2 三族字段都写）", () => {
+    const ops = buildRecipeOps(promo, base({ aspect: "16:9" }));
+    for (const sb of creates(ops, "storyboard")) {
+      const p = (sb as { payload: Record<string, unknown> }).payload;
+      expect(p.aspectRatio).toBe("16:9");
+      expect(p.poyoAspectRatio).toBe("16:9");
+      expect(p.reveAspectRatio).toBe("16:9");
+    }
+  });
+
+  it("视频节点收到配方每镜时长（params.duration）", () => {
+    const ops = buildRecipeOps(promo, base({ durationEach: 7 }));
+    for (const vt of creates(ops, "video_task")) {
+      const params = ((vt as { payload: Record<string, unknown> }).payload.params) as Record<string, unknown>;
+      expect(params?.duration).toBe(7);
+    }
+  });
+
+  it("分镜→视频 连线落在 ref-image-in 句柄（否则参考图传播/预填都不触发）", () => {
+    const ops = buildRecipeOps(promo, base({ shots: 2 }));
+    const sbToVt = ops.filter((o) => o.op === "connect" && /^sb\d+$/.test((o as { sourceRef: string }).sourceRef) && /^vt\d+$/.test((o as { targetRef: string }).targetRef));
+    expect(sbToVt).toHaveLength(2);
+    for (const e of sbToVt) expect((e as { targetHandle?: string }).targetHandle).toBe("ref-image-in");
+  });
+
   it("respects the chosen shot count", () => {
     const ops = buildRecipeOps(promo, base({ shots: 6 }));
     expect(creates(ops, "storyboard")).toHaveLength(6);

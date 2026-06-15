@@ -44,6 +44,20 @@ export interface NamedSnapshot {
   edges: CanvasEdge[];
 }
 
+/** Map an aspect ratio ("16:9" / "9:16" / "1:1" …) to /64-aligned ComfyUI latent
+ *  dimensions with the short edge ≈ 512 (SD1.5-safe, SDXL-ok). Returns {} when the
+ *  ratio can't be parsed, so callers can spread it safely. */
+function aspectToComfyWH(aspect?: string): { width?: number; height?: number } {
+  const m = /^(\d+):(\d+)$/.exec((aspect ?? "").trim());
+  if (!m) return {};
+  const rw = Number(m[1]), rh = Number(m[2]);
+  if (!(rw > 0) || !(rh > 0)) return {};
+  const r64 = (n: number) => Math.max(64, Math.round(n / 64) * 64);
+  return rw >= rh
+    ? { width: r64(512 * rw / rh), height: 512 }
+    : { width: 512, height: r64(512 * rh / rw) };
+}
+
 function getSnapshotKey(projectId: number | null) {
   return `ai-video-canvas:snapshots:${projectId ?? "default"}`;
 }
@@ -126,7 +140,8 @@ interface CanvasStore {
     scenes: Array<{ description?: string; promptText?: string; negativePrompt?: string; cameraMovement?: string; duration?: number; lens?: string; colorGrade?: string; shotType?: string; lighting?: string; dialogue?: string; sfx?: string; transition?: string; beatRef?: string }>,
     sourceNodeId: string,
     sourcePosition: { x: number; y: number },
-    targetType?: "storyboard" | "comfyui_image"
+    targetType?: "storyboard" | "comfyui_image",
+    aspectRatio?: string
   ) => void;
   // payload allows an extra `pinned?: boolean` field — a transient UI flag stored
   // on every node payload (no DB schema change) controlling whether the node's
@@ -378,7 +393,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }));
   },
 
-  batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition, targetType = "storyboard") => {
+  batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition, targetType = "storyboard", aspectRatio) => {
     const storeProjectId = get().projectId;
     if (!storeProjectId) return; // guard: project not loaded yet
     set((state) => {
@@ -401,6 +416,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
                 prompt: scene.promptText || scene.description || "",
                 negPrompt: scene.negativePrompt || undefined,
                 createdBy: sceneUid,
+                // 画面比例 → ComfyUI 生成尺寸（/64 对齐，短边≈512）。否则 ComfyUI 图像默认
+                // 512×512（1:1），无视项目比例。仅在能解析比例时设。
+                ...aspectToComfyWH(aspectRatio),
               },
               projectId,
             }
@@ -424,6 +442,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
                 transition: scene.transition || undefined,
                 beatRef: scene.beatRef || undefined,
                 createdBy: sceneUid,
+                // 画面比例透传：分镜生图按模型族读不同字段（kie→aspectRatio /
+                // Poyo→poyoAspectRatio / V2·HF→reveAspectRatio），三者都写。
+                ...(aspectRatio ? { aspectRatio, poyoAspectRatio: aspectRatio, reveAspectRatio: aspectRatio } : {}),
               },
               projectId,
             },
