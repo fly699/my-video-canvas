@@ -74,6 +74,10 @@ export function segmentTransformChain(tf: ClipTransform | undefined, w: number, 
 function hasZoomPanAnimation(kfs: TransformKeyframe[] | undefined): boolean {
   return (kfs?.filter((k) => k.scale != null || k.x != null || k.y != null).length ?? 0) >= 2;
 }
+/** ≥2 keyframes touch rotation → animate the picture's rotation over time. */
+function hasRotationAnimation(kfs: TransformKeyframe[] | undefined): boolean {
+  return (kfs?.filter((k) => k.rotation != null).length ?? 0) >= 2;
+}
 
 /** Ken-Burns for a main-track clip: animate zoom (scale≥1) + pan (x/y) over time
  *  using per-frame `t` expressions. Falls back to the static chain when there's no
@@ -81,9 +85,13 @@ function hasZoomPanAnimation(kfs: TransformKeyframe[] | undefined): boolean {
  *  setpts=PTS-STARTPTS), so keyframe times are used as-is. The crop offset is
  *  clip()-clamped in-expression so it can never leave the (zoomed) frame. */
 export function segmentZoomPanChain(tf: ClipTransform | undefined, kfs: TransformKeyframe[] | undefined, w: number, h: number): string[] {
-  if (!hasZoomPanAnimation(kfs)) return segmentTransformChain(tf, w, h);
+  if (!hasZoomPanAnimation(kfs) && !hasRotationAnimation(kfs)) return segmentTransformChain(tf, w, h);
   const out: string[] = [];
-  if (tf?.rotation) out.push(`rotate=${(tf.rotation * Math.PI / 180).toFixed(5)}:ow=iw:oh=ih`);
+  // rotation: animate over keyframes when present (rotate's `a` is per-frame — no
+  // eval option, like crop), else static. ow=iw:oh=ih keeps the frame size.
+  const rotExpr = buildKeyframeExpr(keyframePoints(kfs, "rotation", 0, (v) => v * Math.PI / 180));
+  if (rotExpr != null) out.push(`rotate=a='${rotExpr}':ow=iw:oh=ih`);
+  else if (tf?.rotation) out.push(`rotate=${(tf.rotation * Math.PI / 180).toFixed(5)}:ow=iw:oh=ih`);
   // scale clamped ≥1; pan in pixels. Missing fields on a keyframe just drop out of
   // that field's point list (buildKeyframeExpr interpolates the ones present).
   const zExpr = buildKeyframeExpr(keyframePoints(kfs, "scale", 0, (v) => Math.max(1, v)));
@@ -230,7 +238,7 @@ export function buildKeyframeExpr(pts: { t: number; v: number; ease?: EaseType }
  *  `tOffset` (absolute timeline seconds for the overlay clock) and values mapped
  *  by `toUnit` (e.g. normalized→pixels). Empty when no keyframe defines the field. */
 function keyframePoints(
-  kfs: TransformKeyframe[] | undefined, field: "x" | "y" | "scale", tOffset: number, toUnit: (v: number) => number,
+  kfs: TransformKeyframe[] | undefined, field: "x" | "y" | "scale" | "rotation", tOffset: number, toUnit: (v: number) => number,
 ): { t: number; v: number; ease?: EaseType }[] {
   if (!kfs || kfs.length === 0) return [];
   return kfs
@@ -533,7 +541,9 @@ export function buildFilterGraph(
       oc.push("setpts=PTS-STARTPTS");
     }
     const scaleW = Math.max(2, Math.round((o.transform?.scale ?? 0.4) * w));
-    oc.push(`scale=${scaleW}:-2`);
+    // PiP 缩放动画：有 scale 关键帧时逐帧缩放（clip-local 时基，在位移前），否则静态。
+    const sExpr = buildKeyframeExpr(keyframePoints(o.keyframes, "scale", 0, (v) => Math.max(0.02, v) * w));
+    oc.push(sExpr != null ? `scale=w='${sExpr}':h=-2:eval=frame` : `scale=${scaleW}:-2`);
     oc.push(`fps=${fps}`);
     oc.push("format=rgba");
     if (o.flipH) oc.push("hflip");

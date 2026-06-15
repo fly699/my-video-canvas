@@ -539,3 +539,23 @@ describe("画面镜像/翻转（hflip/vflip）", () => {
     expect(g).toContain("format=rgba,hflip");
   });
 });
+
+describe("旋转 / 缩放 关键帧动画导出", () => {
+  it("主轨旋转关键帧 → rotate=a='expr'（仅靠旋转也触发动画路径）", () => {
+    const s = segmentZoomPanChain(undefined, [{ t: 0, rotation: 0 }, { t: 1, rotation: 90 }], 1280, 720).join(",");
+    expect(s).toContain("rotate=a='if(lt(t,");
+    expect(s).toContain("scale=w='1280*(");           // 动画链（缩放静态 1×，旋转动画）
+    // 无旋转关键帧时仍是静态 rotate（或无）
+    const s2 = segmentZoomPanChain({ rotation: 30 }, [{ t: 0, scale: 1 }, { t: 1, scale: 2 }], 1280, 720).join(",");
+    expect(s2).toContain("rotate=0.52360:ow=iw:oh=ih"); // 30° 静态
+  });
+  it("叠加层 scale 关键帧 → scale=w='expr':h=-2:eval=frame（PiP 推拉）", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const g = buildFilterGraph(seg, OPTS, [{ isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 0, duration: 3, transform: { scale: 0.3 }, keyframes: [{ t: 0, scale: 0.2 }, { t: 3, scale: 0.5 }] }]).filterComplex;
+    expect(g).toContain("scale=w='if(lt(t,");
+    expect(g).toContain(":h=-2:eval=frame");
+    // 无 scale 关键帧 → 静态 scale=NNN:-2
+    const g2 = buildFilterGraph(seg, OPTS, [{ isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 0, duration: 3, transform: { scale: 0.3 } }]).filterComplex;
+    expect(g2).toContain("scale=576:-2");
+  });
+});
