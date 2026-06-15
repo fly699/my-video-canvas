@@ -4,7 +4,7 @@ import * as os from "os";
 import { storagePut, assertObjectStorageWritable } from "../storage";
 import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssColorToASSHex, cssColorToASSAlpha, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
-import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode, TransformKeyframe } from "@shared/editorTypes";
+import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode, TransformKeyframe, EaseType } from "@shared/editorTypes";
 
 // Render timeouts are generous: a full multi-clip render re-encodes everything
 // in ONE pass, which can take minutes for long timelines.
@@ -135,21 +135,37 @@ export function chromaKeyFilter(ck: { color?: string; similarity?: number; blend
   return `chromakey=${color}:${sim.toFixed(3)}:${blend.toFixed(3)}`;
 }
 
-/** Build a piecewise-linear ffmpeg expression (in the overlay's `t` time base, in
- *  seconds) for a keyframed field. Values hold flat before the first and after the
- *  last point. Returns null when there are no keyframes for the field. `pts` must
- *  be sorted ascending by `t`; `v` is already in target units (e.g. pixels). */
-export function buildKeyframeExpr(pts: { t: number; v: number }[]): string | null {
+const exprF = (n: number) => Number(n.toFixed(4)).toString();
+
+/** ffmpeg expression for one keyframe segment a→b in the `t` time base. Linear keeps
+ *  the exact previous form (byte-identical, zero export regression); easing replaces
+ *  the progress `r=(t-at)/dt` with the matching polynomial — same curves as the
+ *  preview's `applyEase`, so preview and export agree. */
+function segmentKeyframeExpr(av: number, bv: number, at: number, dt: number, ease: EaseType | undefined): string {
+  if (!ease || ease === "linear") {
+    const slope = (bv - av) / dt;
+    return `(${exprF(av)}+(t-${exprF(at)})*${exprF(slope)})`;
+  }
+  const R = `((t-${exprF(at)})/${exprF(dt)})`;
+  const poly = ease === "in" ? `${R}*${R}` : ease === "out" ? `${R}*(2-${R})` : `${R}*${R}*(3-2*${R})`;
+  return `(${exprF(av)}+(${exprF(bv)}-${exprF(av)})*(${poly}))`;
+}
+
+/** Build a piecewise ffmpeg expression (in the overlay's `t` time base, seconds)
+ *  for a keyframed field. Values hold flat before the first and after the last
+ *  point; each segment uses its start keyframe's `ease` curve. Returns null when
+ *  there are no keyframes. `pts` must be sorted ascending by `t`; `v` is already
+ *  in target units (e.g. pixels). */
+export function buildKeyframeExpr(pts: { t: number; v: number; ease?: EaseType }[]): string | null {
   if (pts.length === 0) return null;
-  const f = (n: number) => Number(n.toFixed(4)).toString();
-  if (pts.length === 1) return f(pts[0].v); // single keyframe → constant
-  let expr = f(pts[pts.length - 1].v); // after the last point: hold
+  if (pts.length === 1) return exprF(pts[0].v); // single keyframe → constant
+  let expr = exprF(pts[pts.length - 1].v); // after the last point: hold
   for (let i = pts.length - 2; i >= 0; i--) {
     const a = pts[i], b = pts[i + 1];
-    const slope = (b.v - a.v) / Math.max(1e-6, b.t - a.t);
-    expr = `if(lt(t,${f(b.t)}),(${f(a.v)}+(t-${f(a.t)})*${f(slope)}),${expr})`;
+    const seg = segmentKeyframeExpr(a.v, b.v, a.t, Math.max(1e-6, b.t - a.t), a.ease);
+    expr = `if(lt(t,${exprF(b.t)}),${seg},${expr})`;
   }
-  return `if(lt(t,${f(pts[0].t)}),${f(pts[0].v)},${expr})`; // before the first: hold
+  return `if(lt(t,${exprF(pts[0].t)}),${exprF(pts[0].v)},${expr})`; // before the first: hold
 }
 
 /** Sorted keyframe points for one field, with clip-relative time shifted by
@@ -157,12 +173,12 @@ export function buildKeyframeExpr(pts: { t: number; v: number }[]): string | nul
  *  by `toUnit` (e.g. normalized→pixels). Empty when no keyframe defines the field. */
 function keyframePoints(
   kfs: TransformKeyframe[] | undefined, field: "x" | "y" | "scale", tOffset: number, toUnit: (v: number) => number,
-): { t: number; v: number }[] {
+): { t: number; v: number; ease?: EaseType }[] {
   if (!kfs || kfs.length === 0) return [];
   return kfs
     .filter((k) => k[field] != null)
     .sort((a, b) => a.t - b.t)
-    .map((k) => ({ t: k.t + tOffset, v: toUnit(k[field] as number) }));
+    .map((k) => ({ t: k.t + tOffset, v: toUnit(k[field] as number), ease: k.ease }));
 }
 
 /** A clip on a dedicated audio track, mixed into the output. */

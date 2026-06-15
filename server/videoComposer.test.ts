@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentZoomPanChain, chromaKeyFilter, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput, type OverlayInput } from "./_core/videoComposer";
-import { emptyEditorDoc } from "@shared/editorTypes";
+import { emptyEditorDoc, applyEase, transformAt, type Clip } from "@shared/editorTypes";
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
 
@@ -329,6 +329,20 @@ describe("overlay position keyframes (export animation)", () => {
     expect(e.endsWith(",10))")).toBe(true);               // hold last value after t=2
   });
 
+  it("buildKeyframeExpr: 缓动曲线（ease）改区间插值，linear 仍逐字不变", () => {
+    // linear 与无 ease 字节一致（零回归）
+    expect(buildKeyframeExpr([{ t: 0, v: 0, ease: "linear" }, { t: 2, v: 10 }]))
+      .toBe(buildKeyframeExpr([{ t: 0, v: 0 }, { t: 2, v: 10 }]));
+    // 缓入：区间用 R*R 多项式（R=(t-at)/dt），不再是线性 slope
+    const ein = buildKeyframeExpr([{ t: 0, v: 0, ease: "in" }, { t: 2, v: 10 }])!;
+    expect(ein).toContain("((t-0)/2)*((t-0)/2)");          // R*R
+    expect(ein).toContain("(0+(10-0)*");                   // a + (b-a)*ease
+    expect(ein).not.toContain("(t-0)*5");                  // 不是线性段
+    // 缓出 / 缓入缓出 各自的多项式
+    expect(buildKeyframeExpr([{ t: 0, v: 0, ease: "out" }, { t: 2, v: 10 }])!).toContain("(2-((t-0)/2))");
+    expect(buildKeyframeExpr([{ t: 0, v: 0, ease: "inout" }, { t: 2, v: 10 }])!).toContain("(3-2*((t-0)/2))");
+  });
+
   it("animates overlay x/y from keyframes via per-frame expr in absolute time", () => {
     const overlays = [{
       isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 2, duration: 3,
@@ -348,5 +362,34 @@ describe("overlay position keyframes (export animation)", () => {
     const g = buildFilterGraph(baseSeg, OPTS, overlays);
     expect(g.filterComplex).not.toContain("eval=frame");
     expect(g.filterComplex).toContain("overlay=x=480:y=270"); // 0.25*1920, 0.25*1080
+  });
+});
+
+describe("applyEase / transformAt — 关键帧补间缓动（预览与导出同曲线）", () => {
+  it("applyEase 各曲线在 r=0/0.5/1 的取值", () => {
+    for (const e of ["linear", "in", "out", "inout"] as const) {
+      expect(applyEase(0, e)).toBeCloseTo(0, 6);
+      expect(applyEase(1, e)).toBeCloseTo(1, 6);
+    }
+    expect(applyEase(0.5, "linear")).toBeCloseTo(0.5, 6);
+    expect(applyEase(0.5, "in")).toBeCloseTo(0.25, 6);    // r*r
+    expect(applyEase(0.5, "out")).toBeCloseTo(0.75, 6);   // r*(2-r)
+    expect(applyEase(0.5, "inout")).toBeCloseTo(0.5, 6);  // smoothstep 对称
+    expect(applyEase(0.25, "inout")).toBeCloseTo(0.15625, 6);
+    expect(applyEase(-1, "in")).toBe(0); expect(applyEase(2, "in")).toBe(1); // 夹紧
+  });
+
+  it("transformAt 用起始关键帧的 ease 做补间", () => {
+    const mk = (ease?: "linear" | "in" | "out" | "inout"): Clip => ({
+      id: "c", kind: "image", start: 0, trimIn: 0, trimOut: 2,
+      keyframes: [{ t: 0, scale: 1, ease }, { t: 1, scale: 2 }],
+    });
+    expect(transformAt(mk("linear"), 0.5).scale).toBeCloseTo(1.5, 6);
+    expect(transformAt(mk("in"), 0.5).scale).toBeCloseTo(1.25, 6);
+    expect(transformAt(mk("out"), 0.5).scale).toBeCloseTo(1.75, 6);
+    expect(transformAt(mk("inout"), 0.5).scale).toBeCloseTo(1.5, 6);
+    // 端点不受曲线影响
+    expect(transformAt(mk("in"), 0).scale).toBeCloseTo(1, 6);
+    expect(transformAt(mk("in"), 1).scale).toBeCloseTo(2, 6);
   });
 });
