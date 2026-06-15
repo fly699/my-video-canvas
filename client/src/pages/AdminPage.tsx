@@ -32,6 +32,17 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["system", "系统更新", RotateCw],
 ];
 
+// 每个标签页要求的最低管理员级别（与服务端 levelProcedure 一致）：
+//   L1 查看员=只读看板（日志/对话/素材/用户列表/下载审批）
+//   L2 运营=白名单管理  ·  L3 管理员=密钥/存储/模型/压测/运维  ·  L4 超管=系统更新
+const TAB_MIN_LEVEL: Record<Tab, number> = {
+  logs: 1, comfyLogs: 1, chat: 1, assets: 1, users: 1, downloads: 1,
+  whitelist: 2,
+  kie: 3, storage: 3, models: 3, comfyStress: 3, comfyOps: 3,
+  system: 4,
+};
+const LEVEL_NAME: Record<number, string> = { 1: "查看员", 2: "运营", 3: "管理员", 4: "超级管理员" };
+
 const ACTION_LABELS: Record<string, string> = {
   login_email: "邮箱登录",
   login_oauth: "OAuth 登录",
@@ -80,6 +91,14 @@ export default function AdminPage() {
     retry: false,
   });
   const hasUpdate = (updateInfo?.behind ?? 0) > 0;
+  const lvl = user?.adminLevel ?? 0; // 当前管理员级别，用于按级别禁用越权标签/操作
+  // 若当前标签越权（如查看员默认落在白名单 L2），自动切到第一个可访问标签。
+  useEffect(() => {
+    if (lvl >= 1 && lvl < (TAB_MIN_LEVEL[activeTab] ?? 1)) {
+      const firstOk = TAB_DEFS.find(([t]) => lvl >= (TAB_MIN_LEVEL[t] ?? 1))?.[0];
+      if (firstOk) setActiveTab(firstOk);
+    }
+  }, [lvl, activeTab]);
   // History.back() handles "I came from a project" / "I came via direct URL"
   // both correctly. If there's no history entry (e.g. direct deep link), fall
   // back to the home page so the user is never trapped on this screen.
@@ -167,10 +186,13 @@ export default function AdminPage() {
         <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px", animationDelay: "60ms" }}>
           {TAB_DEFS.map(([tab, label, Icon]) => {
             const active = activeTab === tab;
+            const locked = lvl < (TAB_MIN_LEVEL[tab] ?? 1); // 级别不足 → 禁用（显示但不可点）
             return (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => { if (!locked) setActiveTab(tab); }}
+                disabled={locked}
+                title={locked ? `需「${LEVEL_NAME[TAB_MIN_LEVEL[tab]] ?? "更高"}」及以上权限` : undefined}
                 style={{
                   position: "relative",
                   display: "inline-flex", alignItems: "center", gap: "6px",
@@ -183,18 +205,19 @@ export default function AdminPage() {
                   color: active ? "var(--c-t1, #f0f0f4)" : "var(--c-t3, rgba(255,255,255,0.45))",
                   fontSize: "13px",
                   fontWeight: active ? 600 : 500,
-                  cursor: "pointer",
+                  cursor: locked ? "not-allowed" : "pointer",
+                  opacity: locked ? 0.4 : 1,
                   boxShadow: active ? "0 2px 14px oklch(0.68 0.22 285 / 0.18)" : "none",
                   transition: "all 160ms ease",
                 }}
                 onMouseEnter={(e) => {
-                  if (activeTab === tab) return;
+                  if (activeTab === tab || locked) return;
                   const el = e.currentTarget as HTMLElement;
                   el.style.background = "var(--c-elevated, rgba(255,255,255,0.07))";
                   el.style.color = "var(--c-t1, #f0f0f4)";
                 }}
                 onMouseLeave={(e) => {
-                  if (activeTab === tab) return;
+                  if (activeTab === tab || locked) return;
                   const el = e.currentTarget as HTMLElement;
                   el.style.background = "var(--c-surface, rgba(255,255,255,0.03))";
                   el.style.color = "var(--c-t3, rgba(255,255,255,0.45))";
@@ -260,7 +283,10 @@ function UsersPanel() {
     onSuccess: () => { toast.success("已更新管理员级别"); void utils.admin.users.list.invalidate(); },
     onError: (e) => toast.error("操作失败：" + e.message),
   });
-  const isSuper = (me?.adminLevel ?? 0) >= 4;
+  const lvl = me?.adminLevel ?? 0;
+  const isSuper = lvl >= 4;
+  const canFreeze = lvl >= 2;   // 冻结/解冻=运营 L2+
+  const canManage = lvl >= 3;   // 重置密码/删除=管理员 L3+
 
   const onReset = (id: number, label: string) => {
     const pw = window.prompt(`为「${label}」设置新密码（至少 6 位）：`)?.trim();
@@ -339,9 +365,9 @@ function UsersPanel() {
                     <td style={tdStyle}>{u.lastSignedIn ? new Date(u.lastSignedIn).toLocaleString() : "—"}</td>
                     <td style={tdStyle}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button onClick={() => onReset(u.id, label)} disabled={!u.hasPassword} style={btnSecondary(!u.hasPassword)} title={u.hasPassword ? "重置该用户密码" : "非邮箱密码账号，无法重置密码"}>重置密码</button>
-                        <button onClick={() => onToggleDisabled(u.id, !u.disabled, label)} disabled={isSelf} style={btnSecondary(isSelf)}>{u.disabled ? "解冻" : "冻结"}</button>
-                        <button onClick={() => onDelete(u.id, label)} disabled={isSelf} style={{ ...btnSecondary(isSelf), color: isSelf ? "var(--c-t4)" : "oklch(0.65 0.2 25)" }}>删除</button>
+                        <button onClick={() => onReset(u.id, label)} disabled={!u.hasPassword || !canManage} style={btnSecondary(!u.hasPassword || !canManage)} title={!canManage ? "需「管理员」及以上权限" : (u.hasPassword ? "重置该用户密码" : "非邮箱密码账号，无法重置密码")}>重置密码</button>
+                        <button onClick={() => onToggleDisabled(u.id, !u.disabled, label)} disabled={isSelf || !canFreeze} style={btnSecondary(isSelf || !canFreeze)} title={!canFreeze ? "需「运营」及以上权限" : undefined}>{u.disabled ? "解冻" : "冻结"}</button>
+                        <button onClick={() => onDelete(u.id, label)} disabled={isSelf || !canManage} style={{ ...btnSecondary(isSelf || !canManage), color: (isSelf || !canManage) ? "var(--c-t4)" : "oklch(0.65 0.2 25)" }} title={!canManage ? "需「管理员」及以上权限" : undefined}>删除</button>
                       </div>
                     </td>
                   </tr>
@@ -1248,6 +1274,7 @@ function btnSecondary(disabled: boolean): React.CSSProperties {
 }
 
 function WhitelistPanel() {
+  const canSettings = (useAuth().user?.adminLevel ?? 0) >= 3; // 旁路/启用开关=管理员 L3+（白名单条目增删=运营 L2，由标签页门控）
   const settingsQuery = trpc.admin.whitelist.getSettings.useQuery();
   const entriesQuery = trpc.admin.whitelist.listEntries.useQuery();
   const utils = trpc.useUtils();
@@ -1317,7 +1344,7 @@ function WhitelistPanel() {
         <button
           type="button"
           onClick={() => setEnabledMut.mutate({ enabled: !enabled })}
-          disabled={setEnabledMut.isPending}
+          disabled={setEnabledMut.isPending || !canSettings}
           style={{
             display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px",
             border: "none", borderRadius: "8px", cursor: "pointer", flexShrink: 0,
@@ -1347,7 +1374,7 @@ function WhitelistPanel() {
         <button
           type="button"
           onClick={() => setComfyuiBypassMut.mutate({ comfyuiBypass: !comfyuiBypass })}
-          disabled={setComfyuiBypassMut.isPending}
+          disabled={setComfyuiBypassMut.isPending || !canSettings}
           style={{
             display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px",
             border: "none", borderRadius: "8px", cursor: "pointer", flexShrink: 0,
@@ -1377,7 +1404,7 @@ function WhitelistPanel() {
         <button
           type="button"
           onClick={() => setLlmBypassMut.mutate({ llmBypass: !llmBypass })}
-          disabled={setLlmBypassMut.isPending}
+          disabled={setLlmBypassMut.isPending || !canSettings}
           style={{
             display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px",
             border: "none", borderRadius: "8px", cursor: "pointer", flexShrink: 0,
@@ -1458,6 +1485,7 @@ function WhitelistPanel() {
 type AuditAction = "login_email" | "login_oauth" | "image_gen" | "video_gen" | "audio_music" | "audio_dubbing" | "subtitle_transcribe" | "kie_gen";
 
 function LogsPanel() {
+  const canClear = (useAuth().user?.adminLevel ?? 0) >= 2; // 清空日志=运营 L2+
   const [offset, setOffset] = useState(0);
   const [actionFilter, setActionFilter] = useState<AuditAction | "">("");
   const [userInput, setUserInput] = useState("");   // 输入框（回车/失焦才应用）
@@ -1564,9 +1592,9 @@ function LogsPanel() {
           </button>
           <button
             onClick={() => { if (confirm("确定清空全部日志？此操作不可撤销。")) clearMut.mutate(); }}
-            disabled={clearMut.isPending}
-            style={{ ...iconBtn, color: "#f87171", borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)" }}
-            title="清空日志"
+            disabled={clearMut.isPending || !canClear}
+            style={{ ...iconBtn, color: "#f87171", borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", opacity: canClear ? 1 : 0.4, cursor: canClear ? "pointer" : "not-allowed" }}
+            title={canClear ? "清空日志" : "需「运营」及以上权限"}
           >
             <Trash2 style={{ width: "14px", height: "14px" }} />
           </button>
@@ -1657,6 +1685,7 @@ function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
 
 // ── ComfyUI usage logs (per-user / per-server, detailed) ─────────────────────
 function ComfyUsageLogsPanel() {
+  const canClear = (useAuth().user?.adminLevel ?? 0) >= 2; // 清空=运营 L2+
   const [offset, setOffset] = useState(0);
   const [rangeDays, setRangeDays] = useState("7");
   const [statusFilter, setStatusFilter] = useState<"" | "success" | "error">("");
@@ -1775,7 +1804,7 @@ function ComfyUsageLogsPanel() {
           <button onClick={() => void exportCsv()} disabled={exporting} style={iconBtn} title="按当前筛选导出全部日志为 CSV（Excel 可直接打开）">
             {exporting ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> : <Download style={{ width: 14, height: 14 }} />}
           </button>
-          <button onClick={() => { if (confirm("确定清空全部 ComfyUI 使用日志？")) clearMut.mutate(); }} disabled={clearMut.isPending} style={{ ...iconBtn, color: "#f87171", borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)" }} title="清空"><Trash2 style={{ width: 14, height: 14 }} /></button>
+          <button onClick={() => { if (confirm("确定清空全部 ComfyUI 使用日志？")) clearMut.mutate(); }} disabled={clearMut.isPending || !canClear} style={{ ...iconBtn, color: "#f87171", borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", opacity: canClear ? 1 : 0.4, cursor: canClear ? "pointer" : "not-allowed" }} title={canClear ? "清空" : "需「运营」及以上权限"}><Trash2 style={{ width: 14, height: 14 }} /></button>
         </div>
       </div>
 
@@ -1954,6 +1983,7 @@ function ChatMessageSearchPanel() {
 }
 
 function ChatBansPanel() {
+  const canBan = (useAuth().user?.adminLevel ?? 0) >= 3; // 封禁/解封=管理员 L3+
   const utils = trpc.useUtils();
   const q = trpc.admin.chat.listBans.useQuery();
   const [userId, setUserId] = useState("");
@@ -1964,7 +1994,7 @@ function ChatBansPanel() {
       <h3 style={chatCardTitle}>封禁管理</h3>
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <input placeholder="用户ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ ...chatInput, width: 120 }} />
-        <button onClick={() => { if (userId) banMu.mutate({ userId: Number(userId), scope: "global" }); }} style={chatDanger}>全局封禁</button>
+        <button onClick={() => { if (userId) banMu.mutate({ userId: Number(userId), scope: "global" }); }} disabled={!canBan} style={{ ...chatDanger, opacity: canBan ? 1 : 0.4, cursor: canBan ? "pointer" : "not-allowed" }} title={canBan ? undefined : "需「管理员」及以上权限"}>全局封禁</button>
       </div>
       <table style={chatTable}>
         <thead><tr><ChatTh>用户</ChatTh><ChatTh>范围</ChatTh><ChatTh>原因</ChatTh><ChatTh>操作</ChatTh></tr></thead>
@@ -1974,7 +2004,7 @@ function ChatBansPanel() {
               <ChatTd>{b.userName} (#{b.userId})</ChatTd>
               <ChatTd>{b.scope === "global" ? "全局" : `会话#${b.conversationId}`}</ChatTd>
               <ChatTd>{b.reason ?? "—"}</ChatTd>
-              <ChatTd><button onClick={() => unbanMu.mutate({ id: b.id })} style={paginBtn}>解封</button></ChatTd>
+              <ChatTd><button onClick={() => unbanMu.mutate({ id: b.id })} disabled={!canBan} style={{ ...paginBtn, opacity: canBan ? 1 : 0.4, cursor: canBan ? "pointer" : "not-allowed" }} title={canBan ? undefined : "需「管理员」及以上权限"}>解封</button></ChatTd>
             </tr>
           ))}
         </tbody>
