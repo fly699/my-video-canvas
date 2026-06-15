@@ -332,7 +332,7 @@ export function Timeline() {
                 onPointerDown={onLanePointerDown}
                 onDragOver={(e) => { if (t.locked) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
                 onDrop={(e) => { if (!t.locked) onDrop(e, t.id); }}
-                style={{ height: TRACK_H, position: "relative", borderBottom: `1px solid ${EC.border}`, background: t.locked ? "oklch(0.5 0 0 / 0.06)" : "var(--c-bg, #0c0c10)", opacity: t.hidden ? 0.4 : 1 }}>
+                style={{ height: TRACK_H, position: "relative", borderBottom: `1px solid ${EC.border}`, background: t.locked ? "oklch(0.5 0 0 / 0.06)" : "var(--c-canvas, #0c0c10)", opacity: t.hidden ? 0.4 : 1 }}>
                 {t.clips.map((c) => {
                   const left = c.start * pxPerSec;
                   const width = Math.max(8, clipDuration(c) * pxPerSec);

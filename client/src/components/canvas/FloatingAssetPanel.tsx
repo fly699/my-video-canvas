@@ -26,7 +26,6 @@ export function FloatingAssetPanel({ projectId, onClose }: { projectId: number; 
     { validate: (p) => (p && typeof p === "object" && "x" in p && "w" in p ? (p as Box) : null) },
   );
   const dragRef = useRef<{ mx: number; my: number; x: number; y: number } | null>(null);
-  const rezRef = useRef<{ mx: number; my: number; w: number; h: number } | null>(null);
 
   // Keep the panel on-screen when the window shrinks (e.g. exiting F11 fullscreen),
   // and on mount in case it was persisted from a larger window.
@@ -59,18 +58,24 @@ export function FloatingAssetPanel({ projectId, onClose }: { projectId: number; 
     window.addEventListener("mouseup", up);
   }
 
-  function onResizeDown(e: React.MouseEvent) {
+  // 四角缩放：east/south 角拉伸宽/高；west/north 角固定对边、移动 x/y 反向改尺寸。
+  function onResizeDown(e: React.MouseEvent, dir: "se" | "sw" | "ne" | "nw") {
     e.preventDefault(); e.stopPropagation();
-    rezRef.current = { mx: e.clientX, my: e.clientY, w: box.w, h: box.h };
+    const start = { mx: e.clientX, my: e.clientY, x: box.x, y: box.y, w: box.w, h: box.h };
+    const east = dir === "se" || dir === "ne";
+    const south = dir === "se" || dir === "sw";
     const move = (ev: MouseEvent) => {
-      const r = rezRef.current; if (!r) return;
-      setBox((b) => ({
-        ...b,
-        w: clamp(r.w + (ev.clientX - r.mx), MIN_W, window.innerWidth - b.x),
-        h: clamp(r.h + (ev.clientY - r.my), MIN_H, window.innerHeight - b.y),
-      }));
+      const dx = ev.clientX - start.mx, dy = ev.clientY - start.my;
+      setBox(() => {
+        let { x, y, w, h } = start;
+        if (east) { w = clamp(start.w + dx, MIN_W, window.innerWidth - start.x); }
+        else { const right = start.x + start.w; x = clamp(start.x + dx, 0, right - MIN_W); w = right - x; }
+        if (south) { h = clamp(start.h + dy, MIN_H, window.innerHeight - start.y); }
+        else { const bottom = start.y + start.h; y = clamp(start.y + dy, 0, bottom - MIN_H); h = bottom - y; }
+        return { x, y, w, h };
+      });
     };
-    const up = () => { rezRef.current = null; window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+    const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   }
@@ -92,16 +97,24 @@ export function FloatingAssetPanel({ projectId, onClose }: { projectId: number; 
     >
       <AssetPanel projectId={projectId} onClose={onClose} onHeaderMouseDown={onHeaderDown} />
 
-      {/* Resize handle (bottom-right corner) */}
-      <div
-        onMouseDown={onResizeDown}
-        title="拖拽缩放"
-        style={{
-          position: "absolute", right: 0, bottom: 0, width: 16, height: 16,
-          cursor: "nwse-resize", zIndex: 2,
-          background: "linear-gradient(135deg, transparent 50%, var(--c-bd3) 50%)",
-        }}
-      />
+      {/* 四角拖拽缩放手柄（右下角带可见斜纹提示，其余三角为透明热区 + 对应光标）*/}
+      {([
+        ["se", { right: 0, bottom: 0 }, "nwse-resize", true],
+        ["sw", { left: 0, bottom: 0 }, "nesw-resize", false],
+        ["ne", { right: 0, top: 0 }, "nesw-resize", false],
+        ["nw", { left: 0, top: 0 }, "nwse-resize", false],
+      ] as const).map(([dir, pos, cursor, visible]) => (
+        <div
+          key={dir}
+          onMouseDown={(e) => onResizeDown(e, dir)}
+          title="拖拽缩放"
+          style={{
+            position: "absolute", ...pos, width: 16, height: 16,
+            cursor, zIndex: 3,
+            background: visible ? "linear-gradient(135deg, transparent 50%, var(--c-bd3) 50%)" : "transparent",
+          }}
+        />
+      ))}
     </div>
   );
 }

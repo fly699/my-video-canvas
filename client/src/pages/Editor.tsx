@@ -68,7 +68,7 @@ function EditorGallery() {
   const sessions = listQuery.data ?? [];
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--c-bg, #0c0c10)", color: "var(--c-t1)" }}>
+    <div style={{ minHeight: "100vh", background: "var(--c-canvas, #0c0c10)", color: "var(--c-t1)" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 20px", borderBottom: "1px solid var(--c-bd2)" }}>
         <button onClick={() => goBack(navigate, "/")} title="返回" style={iconBtn}><ArrowLeft size={18} /></button>
         <Clapperboard size={20} style={{ color: ACCENT }} />
@@ -267,11 +267,11 @@ function EditorWorkspace({ id }: { id: number }) {
   }, [id]);
 
   if (sessionQuery.isLoading || (sessionQuery.data && !doc)) {
-    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-bg, #0c0c10)", color: "var(--c-t3)" }}><Loader2 className="animate-spin" /></div>;
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-canvas, #0c0c10)", color: "var(--c-t3)" }}><Loader2 className="animate-spin" /></div>;
   }
   if (sessionQuery.error || !sessionQuery.data) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: "var(--c-bg, #0c0c10)", color: "var(--c-t2)" }}>
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: "var(--c-canvas, #0c0c10)", color: "var(--c-t2)" }}>
         <div>剪辑不存在或无权访问。</div>
         <button onClick={() => navigate("/editor")} style={primaryBtn}>返回列表</button>
       </div>
@@ -281,7 +281,7 @@ function EditorWorkspace({ id }: { id: number }) {
   const displayName = name ?? session.name;
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--c-bg, #0c0c10)", color: "var(--c-t1)" }}>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--c-canvas, #0c0c10)", color: "var(--c-t1)" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
         <button onClick={() => goBack(navigate, "/editor")} title="返回" style={iconBtn}><ArrowLeft size={18} /></button>
         <Clapperboard size={18} style={{ color: ACCENT }} />
