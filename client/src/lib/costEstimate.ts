@@ -218,7 +218,8 @@ export type CanvasBudget = {
   runnableCount: number; // 参与估算的生成节点总数
 };
 type BudgetNode = { data: { nodeType: string; payload?: Record<string, unknown> } };
-const LOCAL_BUDGET_TYPES = new Set(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
+// comfyui_*（自有服务器）与 subtitle（内置 Forge STT 转录）都不计 kie 点 / Poyo cr，记为本地/内置免费。
+const LOCAL_BUDGET_TYPES = new Set(["comfyui_image", "comfyui_video", "comfyui_workflow", "subtitle"]);
 
 /** 逐节点精确汇总画布预算（复用 estimateVideoCost/Image/Music/Tts）。framework-free，可单测。
  *  `resolveModel(nodeType, slot)` 用于补全「节点未显式存模型、运行时取默认模型」的情形

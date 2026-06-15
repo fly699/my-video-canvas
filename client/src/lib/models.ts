@@ -317,3 +317,20 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "hf_dop_turbo",            label: "DoP Turbo",           group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "4s"] },
   { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ] as const;
+
+// ── 字幕转录（STT）模型 ──────────────────────────────────────────────────────
+// 经内置 Forge（OpenAI 兼容）转录代理调用；与 image/video 一样进「管理员模型管理」
+// 可禁用、「节点默认模型」可设默认。计费为内置服务（不计 kie 点 / Poyo cr）。
+export type TranscribeModelMeta = {
+  value: string;
+  label: string;
+  desc: string;
+  group: "Forge";
+  provider: "Forge";
+  costNote: string;
+};
+export const TRANSCRIBE_MODELS: readonly TranscribeModelMeta[] = [
+  { value: "whisper-1",              label: "Whisper v1",          desc: "默认 · 稳定",  group: "Forge", provider: "Forge", costNote: "内置" },
+  { value: "gpt-4o-transcribe",      label: "GPT-4o Transcribe",   desc: "更准",         group: "Forge", provider: "Forge", costNote: "内置" },
+  { value: "gpt-4o-mini-transcribe", label: "GPT-4o mini Transcribe", desc: "更快 / 更省", group: "Forge", provider: "Forge", costNote: "内置" },
+] as const;

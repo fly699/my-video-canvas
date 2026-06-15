@@ -8,6 +8,9 @@ import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
+import { TRANSCRIBE_MODELS } from "@/lib/models";
+import { useDisabledModels } from "@/lib/useDisabledModels";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { Captions, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
 import { buildShotSubtitles } from "@/lib/shotSubtitles";
 
@@ -67,7 +70,12 @@ function formatTime(s: number): string {
 
 export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: Props) {
   const { updateNodeData, nodes, edges } = useCanvasStore();
+  const { resolve } = useNodeDefaultModels();
+  const disabledModels = useDisabledModels();
   const payload = data.payload;
+  // 转录模型：节点显式选 > 「节点默认模型」里 subtitle.transcribe 的默认 > 出厂 whisper-1。
+  const defaultTranscribeModel = resolve("subtitle", "transcribe");
+  const transcribeModel = payload.transcribeModel || defaultTranscribeModel;
   const [tab, setTab] = useState<"edit" | "settings">("edit");
 
   const update = useCallback((patch: Partial<SubtitleNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
@@ -139,7 +147,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
     if (!videoUrl) { toast.error("请先连接一个视频节点或填写视频 URL"); return; }
     update({ status: "transcribing" });
-    transcribeMutation.mutate({ audioUrl: videoUrl, language: payload.language || undefined, model: payload.transcribeModel || undefined });
+    transcribeMutation.mutate({ audioUrl: videoUrl, language: payload.language || undefined, model: transcribeModel });
   };
 
   // 上游「已装配并完成合并」的成片：镜头表对白（segDialogues）+ 服务端回传的各段
@@ -305,13 +313,13 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
               <label style={labelStyle}>转录模型</label>
               <select
                 className="nodrag"
-                value={payload.transcribeModel ?? "whisper-1"}
+                value={transcribeModel}
                 onChange={(e) => update({ transcribeModel: e.target.value })}
                 style={{ ...fieldStyle, cursor: "pointer" }}
               >
-                <option value="whisper-1">Whisper v1（默认 · 稳定）</option>
-                <option value="gpt-4o-transcribe">GPT-4o Transcribe（更准）</option>
-                <option value="gpt-4o-mini-transcribe">GPT-4o mini（更快 / 更省）</option>
+                {TRANSCRIBE_MODELS.filter((m) => !disabledModels.has(m.value) || m.value === transcribeModel).map((m) => (
+                  <option key={m.value} value={m.value}>{m.label} · {m.desc}</option>
+                ))}
               </select>
             </div>
 
