@@ -489,3 +489,32 @@ export function fillWorkflowPromptParams(
   set(negB, prompts.negative);
   return next;
 }
+
+/** 按目标宽高比覆盖工作流里所有「空 latent」节点（EmptyLatentImage / EmptySD3LatentImage /
+ *  EmptyHunyuanLatentVideo / EmptyWanLatentVideo …）的 width/height。**保留每个 latent 节点
+ *  原有的像素面积**、只改比例并对齐到 /64，从而不破坏模型原生分辨率量级（如 SDXL 1024² →
+ *  16:9 约 1344×768、视频 832×480 → 16:9 约 832×468）。纯函数：无法解析 / 比例非法 / 无可改
+ *  latent 时原样返回。 */
+export function applyAspectToWorkflow(workflowJson: string, aspect: string | undefined): { json: string; patched: number } {
+  const m = /^(\d+):(\d+)$/.exec((aspect ?? "").trim());
+  if (!m) return { json: workflowJson, patched: 0 };
+  const rw = Number(m[1]), rh = Number(m[2]);
+  if (!(rw > 0) || !(rh > 0)) return { json: workflowJson, patched: 0 };
+  let wf: Record<string, unknown>;
+  try { wf = JSON.parse(workflowJson) as Record<string, unknown>; } catch { return { json: workflowJson, patched: 0 }; }
+  if (!wf || typeof wf !== "object") return { json: workflowJson, patched: 0 };
+  const r64 = (v: number) => Math.max(64, Math.round(v / 64) * 64);
+  let patched = 0;
+  for (const node of Object.values(wf)) {
+    if (!node || typeof node !== "object") continue;
+    const nd = node as { class_type?: string; inputs?: Record<string, unknown> };
+    if (!/Empty.*Latent/.test(nd.class_type ?? "") || !nd.inputs) continue;
+    const w = nd.inputs.width, h = nd.inputs.height;
+    if (typeof w !== "number" || typeof h !== "number" || w <= 0 || h <= 0) continue;
+    const area = w * h;
+    nd.inputs.width = r64(Math.sqrt((area * rw) / rh));
+    nd.inputs.height = r64(Math.sqrt((area * rh) / rw));
+    patched++;
+  }
+  return { json: patched > 0 ? JSON.stringify(wf) : workflowJson, patched };
+}

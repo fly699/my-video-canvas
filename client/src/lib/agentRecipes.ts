@@ -93,7 +93,8 @@ export function buildRecipeOps(recipe: AgentRecipe, cfg: RecipeConfig): AgentOpe
     if (useComfy) {
       const p = `p${n}`, cw = `cw${n}`;
       ops.push({ op: "create", nodeType: "prompt", tempId: p, title: `提示词${n}`, payload: { positivePrompt: desc, aspectRatio: cfg.aspect, ...(cfg.style?.trim() ? { style: cfg.style.trim() } : {}) } });
-      ops.push({ op: "create", nodeType: "comfyui_workflow", tempId: cw, title: `镜头${n}`, payload: { templateId: cfg.videoTemplateId, prompt: desc } });
+      // 默认按项目比例覆盖工作流 latent 尺寸（保留面积、/64 对齐），让 ComfyUI 出片符合配方比例。
+      ops.push({ op: "create", nodeType: "comfyui_workflow", tempId: cw, title: `镜头${n}`, payload: { templateId: cfg.videoTemplateId, prompt: desc, overrideRatioSize: true, aspectRatio: cfg.aspect } });
       ops.push({ op: "connect", sourceRef: "script", targetRef: p });
       ops.push({ op: "connect", sourceRef: p, targetRef: cw });
       ops.push({ op: "connect", sourceRef: cw, targetRef: "merge" });
