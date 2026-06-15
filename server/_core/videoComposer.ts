@@ -42,6 +42,7 @@ export interface Segment {
   keyframes?: TransformKeyframe[];                // main-track Ken-Burns: animate zoom/pan over time
   fadeIn?: number;                                // 画面+音频淡入（秒，从黑/静音渐显）
   fadeOut?: number;                               // 画面+音频淡出（秒，渐隐到黑/静音）
+  fadeCurve?: string;                             // 音频淡变曲线（afade curve；画面 fade 仍线性）
 }
 
 /** Zoom/pan/rotate a frame-sized image WITHIN the output frame (main-track clips):
@@ -107,11 +108,17 @@ function videoFadeFilters(fadeIn: number | undefined, fadeOut: number | undefine
   return out;
 }
 
-/** Audio fade-in/out (afade) for a clip-local stream of `dur` seconds. */
-function audioFadeFilters(fadeIn: number | undefined, fadeOut: number | undefined, dur: number): string[] {
+/** afade curve names we expose (others rejected to keep the filter string safe). */
+const ALLOWED_FADE_CURVES = new Set(["tri", "qsin", "hsin", "log", "exp"]);
+
+/** Audio fade-in/out (afade) for a clip-local stream of `dur` seconds. `curve`
+ *  shapes the gain envelope (tri=linear default; qsin/hsin smooth; log fast-then-
+ *  slow; exp slow-then-fast). Unknown curves fall back to linear (no `:curve=`). */
+function audioFadeFilters(fadeIn: number | undefined, fadeOut: number | undefined, dur: number, curve?: string): string[] {
+  const cv = curve && curve !== "tri" && ALLOWED_FADE_CURVES.has(curve) ? `:curve=${curve}` : "";
   const out: string[] = [];
-  if (fadeIn && fadeIn > 0) out.push(`afade=t=in:st=0:d=${Math.min(fadeIn, dur).toFixed(3)}`);
-  if (fadeOut && fadeOut > 0) { const d = Math.min(fadeOut, dur); out.push(`afade=t=out:st=${Math.max(0, dur - d).toFixed(3)}:d=${d.toFixed(3)}`); }
+  if (fadeIn && fadeIn > 0) out.push(`afade=t=in:st=0:d=${Math.min(fadeIn, dur).toFixed(3)}${cv}`);
+  if (fadeOut && fadeOut > 0) { const d = Math.min(fadeOut, dur); out.push(`afade=t=out:st=${Math.max(0, dur - d).toFixed(3)}:d=${d.toFixed(3)}${cv}`); }
   return out;
 }
 
@@ -212,6 +219,7 @@ export interface AudioInput {
   volume: number;
   fadeIn: number;
   fadeOut: number;
+  fadeCurve?: string;  // afade 曲线（tri/qsin/hsin/log/exp）
   ducking?: boolean;   // background music: auto-duck under the other (voice) audio
   denoise?: boolean;   // FFT noise reduction (afftdn) — clean up hiss/hum
 }
@@ -417,7 +425,7 @@ export function buildFilterGraph(
       aChain.push("asetpts=PTS-STARTPTS");
       if (Math.abs(s.speed - 1) > 0.001) aChain.push(...buildAtempoFilters(s.speed));
       aChain.push("aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100");
-      aChain.push(...audioFadeFilters(s.fadeIn, s.fadeOut, dur)); // 片段画面淡入淡出时音频同步渐变
+      aChain.push(...audioFadeFilters(s.fadeIn, s.fadeOut, dur, s.fadeCurve)); // 片段画面淡入淡出时音频同步渐变
       parts.push(`[${i}:a]${aChain.join(",")}[a${i}]`);
     } else {
       // Silence MUST use the same sample format as real-audio chains (fltp), else
@@ -527,8 +535,7 @@ export function buildFilterGraph(
       if (a.denoise) ac.push("afftdn=nr=20:nf=-30"); // 降噪：对原始音频做 FFT 降噪（实测噪声带降约 12dB）
       if (Math.abs(a.speed - 1) > 0.001) ac.push(...buildAtempoFilters(a.speed));
       if (Math.abs(a.volume - 1) > 0.001) ac.push(`volume=${a.volume.toFixed(3)}`);
-      if (a.fadeIn > 0) ac.push(`afade=t=in:st=0:d=${a.fadeIn.toFixed(3)}`);
-      if (a.fadeOut > 0) ac.push(`afade=t=out:st=${Math.max(0, dur - a.fadeOut).toFixed(3)}:d=${a.fadeOut.toFixed(3)}`);
+      ac.push(...audioFadeFilters(a.fadeIn, a.fadeOut, dur, a.fadeCurve));
       ac.push(`adelay=delays=${Math.round(a.start * 1000)}:all=1`);
       ac.push(AFMT);
       parts.push(`[${inIdx}:a]${ac.join(",")}[ax${k}]`);
@@ -664,7 +671,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut, fadeCurve: c.fadeCurve };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
@@ -699,7 +706,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       if (!c.assetUrl) continue;
       const p = await downloadToTemp(c.assetUrl, "m4a");
       tmpFiles.push(p);
-      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: c.volume ?? 1, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, ducking: c.ducking, denoise: c.denoise });
+      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: c.volume ?? 1, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, fadeCurve: c.fadeCurve, ducking: c.ducking, denoise: c.denoise });
       inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }

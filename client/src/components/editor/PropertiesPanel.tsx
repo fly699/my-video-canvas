@@ -43,6 +43,8 @@ const TRANSITIONS: [string, string][] = [
 const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["slideup", "上滑入"], ["slidedown", "下滑入"], ["pop", "弹入"], ["roll", "滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
 // 关键帧补间曲线（作用于整段动画）：线性=匀速；缓入=慢起加速；缓出=快起减速；缓入缓出=两端平滑 S 曲线。
 const EASE_OPTIONS: [string, string][] = [["linear", "线性（匀速）"], ["in", "缓入"], ["out", "缓出"], ["inout", "缓入缓出"]];
+// 音频淡变曲线（afade curve）：线性听感生硬；正弦/对数/指数更自然。仅影响声音，画面 fade 仍线性。
+const FADE_CURVES: [string, string][] = [["tri", "线性"], ["qsin", "平滑（正弦）"], ["log", "对数（先快后慢）"], ["exp", "指数（先慢后快）"]];
 
 // 字幕样式预设库 — 一键套用成套文字样式（仅样式，不改文字内容）。每个预设显式写全
 // 描边/投影/背景框的开关，避免和上一套样式叠加出意外效果。
@@ -129,6 +131,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <Slider label={`不透明度 ${Math.round((pv.transform?.opacity ?? 1) * 100)}%`} min={0} max={1} step={0.01} value={pv.transform?.opacity ?? 1} onChange={(v) => updateSelected({ transform: { opacity: v } })} />
             <Slider label={`淡入 ${(pv.fadeIn ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={pv.fadeIn ?? 0} onChange={(v) => updateSelected({ fadeIn: v })} />
             <Slider label={`淡出 ${(pv.fadeOut ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={pv.fadeOut ?? 0} onChange={(v) => updateSelected({ fadeOut: v })} />
+            <Row label="淡变曲线"><Select value={pv.fadeCurve ?? "tri"} options={FADE_CURVES} onChange={(v) => updateSelected({ fadeCurve: v as NonNullable<Clip["fadeCurve"]> })} /></Row>
             <div style={{ fontSize: 11, color: EC.t3, marginTop: 2 }}>适配方式</div>
             <div style={{ display: "flex", gap: 4 }}>
               {([["contain", "适应"], ["cover", "填充"], ["stretch", "拉伸"], ["blur", "模糊"], ["none", "原始1:1"]] as const).map(([v, label]) => (
@@ -261,6 +264,9 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <Slider label={`音量 ${Math.round((c.volume ?? 1) * 100)}%`} min={0} max={2} step={0.05} value={c.volume ?? 1} onChange={(v) => update(c.id, { volume: v })} />
             <Slider label={`淡入 ${(c.fadeIn ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={c.fadeIn ?? 0} onChange={(v) => update(c.id, { fadeIn: v })} />
             <Slider label={`淡出 ${(c.fadeOut ?? 0).toFixed(1)}s`} min={0} max={5} step={0.1} value={c.fadeOut ?? 0} onChange={(v) => update(c.id, { fadeOut: v })} />
+            {((c.fadeIn ?? 0) > 0 || (c.fadeOut ?? 0) > 0) && (
+              <Row label="淡变曲线"><Select value={c.fadeCurve ?? "tri"} options={FADE_CURVES} onChange={(v) => update(c.id, { fadeCurve: v as NonNullable<Clip["fadeCurve"]> })} /></Row>
+            )}
             {c.kind === "audio" && (
               <button
                 onClick={() => update(c.id, { ducking: !c.ducking })}

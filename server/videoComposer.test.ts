@@ -436,3 +436,23 @@ describe("片段画面淡入淡出（visual fade：video fade / overlay alpha / 
     expect(g).toContain("fade=t=out:st=2.400:d=0.600:alpha=1"); // duration 3 - 0.6
   });
 });
+
+describe("音频淡变曲线（afade curve=）", () => {
+  it("curve 透传 / 未知曲线白名单拒绝 / 无曲线与 tri 逐字不变（零回归）", () => {
+    const mk = (curve?: string) => buildFilterGraph(
+      [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }], OPTS, [],
+      { audioClips: [{ trimIn: 0, trimOut: 4, speed: 1, start: 0, volume: 1, fadeIn: 0.5, fadeOut: 0.5, fadeCurve: curve }] },
+    ).filterComplex;
+    expect(mk("log")).toContain("afade=t=in:st=0:d=0.500:curve=log");
+    expect(mk("exp")).toContain("afade=t=out:st=3.500:d=0.500:curve=exp");
+    expect(mk("evil;rm -rf /")).not.toContain("curve=");  // 注入防护：白名单外拒绝
+    expect(mk(undefined)).toContain("afade=t=in:st=0:d=0.500");
+    expect(mk(undefined)).not.toContain("curve=");
+    expect(mk("tri")).not.toContain("curve=");            // 线性默认不加 :curve=
+  });
+
+  it("主轨片段的 fadeCurve 也作用到其音频", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1, fadeIn: 0.5, fadeCurve: "qsin" }], OPTS).filterComplex;
+    expect(g).toContain("afade=t=in:st=0:d=0.500:curve=qsin");
+  });
+});
