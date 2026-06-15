@@ -266,7 +266,7 @@ export async function listAllUsers() {
   if (!db) return [];
   return db.select({
     id: users.id, openId: users.openId, name: users.name, email: users.email,
-    loginMethod: users.loginMethod, role: users.role, disabled: users.disabled,
+    loginMethod: users.loginMethod, role: users.role, adminLevel: users.adminLevel, disabled: users.disabled,
     hasPassword: sql<boolean>`(${users.passwordHash} IS NOT NULL)`,
     createdAt: users.createdAt, lastSignedIn: users.lastSignedIn,
   }).from(users).orderBy(desc(users.lastSignedIn));
@@ -277,6 +277,15 @@ export async function setUserDisabled(id: number, disabled: boolean): Promise<vo
   const db = await getDb();
   if (!db) return;
   await db.update(users).set({ disabled }).where(eq(users.id, id));
+}
+
+/** 设置某用户的管理员级别（0=普通用户·1=查看员·2=运营·3=管理员·4=超管）。
+ *  同步 role：level>=1 → 'admin'，否则 'user'。 */
+export async function setUserAdminLevel(id: number, level: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const lv = Math.max(0, Math.min(4, Math.floor(level)));
+  await db.update(users).set({ adminLevel: lv, role: lv >= 1 ? "admin" : "user" }).where(eq(users.id, id));
 }
 
 /** 管理员重置某用户的密码（直接写入新哈希）。 */

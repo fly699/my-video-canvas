@@ -43,3 +43,18 @@ export const adminProcedure = t.procedure.use(
     });
   }),
 );
+
+/** 管理员分级过程：要求 role='admin' 且 adminLevel >= `minLevel`。
+ *  级别：1=查看员 · 2=运营 · 3=管理员 · 4=超级管理员。
+ *  `adminProcedure` 等价于「任意管理员」（level≥1）。 */
+export function levelProcedure(minLevel: number) {
+  return t.procedure.use(
+    t.middleware(async opts => {
+      const { ctx, next } = opts;
+      if (!ctx.user || ctx.user.role !== 'admin' || (ctx.user.adminLevel ?? 0) < minLevel) {
+        throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
+      }
+      return next({ ctx: { ...ctx, user: ctx.user } });
+    }),
+  );
+}

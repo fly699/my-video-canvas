@@ -21,6 +21,9 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   passwordHash: varchar("passwordHash", { length: 255 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  // 管理员分级：0=普通用户 · 1=查看员 · 2=运营 · 3=管理员 · 4=超级管理员。
+  // role='admin' 当且仅当 adminLevel>=1（设级别时同步两者）。仅供管理界面分权。
+  adminLevel: int("adminLevel").notNull().default(0),
   // 冻结：true=禁止登录（管理员可冻结/解冻）。
   disabled: boolean("disabled").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
