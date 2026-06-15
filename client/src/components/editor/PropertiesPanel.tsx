@@ -249,6 +249,9 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
               </div>
             )}
             <Row label="动效"><Select value={txt?.motionStyle ?? "none"} options={MOTIONS} onChange={(v) => setText({ motionStyle: v as NonNullable<Clip["text"]>["motionStyle"] })} /></Row>
+            {txt?.motionStyle === "typewriter" && (
+              <Slider label={`打字速度 ${txt?.typewriterCps ?? 16} 字/秒`} min={4} max={40} step={1} value={txt?.typewriterCps ?? 16} onChange={(v) => setText({ typewriterCps: v })} />
+            )}
             <Row label="配音模型"><Select value={ttsModel} options={TTS_MODELS} onChange={pickModel} /></Row>
             <Row label="发音人"><Select value={ttsVoice} options={voicesForModel(ttsModel)} onChange={setTtsVoice} /></Row>
             <button

@@ -88,11 +88,11 @@ function textMotionPreview(motion: string | undefined, tInto: number): { opacity
 }
 
 /** 打字机：在 `tInto` 秒已显现的字符数（与导出 ASS 同节奏 ~60ms/字、压到片段时长 80% 内）。 */
-function typewriterVisibleCount(content: string, tInto: number, clipDur: number): number {
+function typewriterVisibleCount(content: string, tInto: number, clipDur: number, cps?: number): number {
   const chars = Array.from(content);
   if (chars.length === 0) return 0;
-  const revealSec = Math.min(Math.max(0, clipDur) * 0.8, chars.length * 0.06);
-  const per = revealSec / chars.length;
+  const perCps = 1 / Math.max(1, Math.min(60, cps ?? 16));
+  const per = Math.min(perCps, (Math.max(0, clipDur) * 0.9) / chars.length);
   if (tInto < 0) return 0;
   if (per <= 0) return chars.length;
   return Math.min(chars.length, Math.floor(tInto / per) + 1);
@@ -463,7 +463,7 @@ export function PreviewStage() {
                 {clip.kind === "text" ? (
                   <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: clip.text?.align === "left" ? "flex-start" : clip.text?.align === "right" ? "flex-end" : "center", textAlign: clip.text?.align ?? "center", pointerEvents: "none" }}>
                     <span style={textCss(clip.text, doc.height)}>{clip.text?.motionStyle === "typewriter"
-                      ? Array.from(clip.text?.content ?? "").slice(0, typewriterVisibleCount(clip.text?.content ?? "", playhead - clip.start, clipDuration(clip))).join("")
+                      ? Array.from(clip.text?.content ?? "").slice(0, typewriterVisibleCount(clip.text?.content ?? "", playhead - clip.start, clipDuration(clip), clip.text?.typewriterCps)).join("")
                       : clip.text?.content}</span>
                   </div>
                 ) : clip.kind === "image" ? (
