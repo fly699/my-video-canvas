@@ -283,26 +283,35 @@ export const BaseNode = memo(function BaseNode({
         ? `0 0 0 3px oklch(0.62 0.22 25 / 0.18)`
         : null;
 
+  // Selection outline reads the STORE's real selected state (selVis), not the
+  // `selected` prop — that prop is forced false during multi/box-select, but every
+  // selected node should still show its highlight. Made a clearly-visible solid
+  // accent ring (the old 0x14≈8% glow was effectively invisible).
+  const selVis = storeSelected;
   const borderStyle = runBorder
     ? runBorder
     : borderTint
-      ? selected
-        ? `1.5px solid ${borderTint}`
+      ? selVis
+        ? `2px solid ${borderTint}`
         : `1px solid ${borderTint}99`
       : isCreative
-        ? selected
-          ? `1.5px solid ${config.color}70`
+        ? selVis
+          ? `2px solid ${config.color}`
           : `1px solid var(--c-bd2)`
-        : selected
-          ? `1.5px solid ${config.color}80`
+        : selVis
+          ? `2px solid ${config.color}`
           : isHovered
             ? `1px solid var(--c-bd3)`
             : `1px solid var(--c-bd1)`;
 
+  // NOTE: config.color is an oklch() string, so it must NOT be suffixed with a hex
+  // alpha (the old `${config.color}14` produced `oklch(...)14` → invalid CSS → the
+  // whole box-shadow was dropped to `none`, which is why selection looked unhighlighted).
+  // Use the solid colour for the ring and color-mix() for the soft glow.
   const shadowStyle = runShadow
     ? `${runShadow}, var(--c-node-shadow-run)`
-    : selected
-      ? `0 0 0 ${isLight ? "3px" : "4px"} ${config.color}${isLight ? "22" : "14"}, var(--c-node-shadow-selected)`
+    : selVis
+      ? `0 0 0 2.5px ${config.color}, 0 0 0 9px color-mix(in oklch, ${config.color} 22%, transparent), var(--c-node-shadow-selected)`
       : isHovered
         ? `var(--c-node-shadow-hover)`
         : `var(--c-node-shadow-rest)`;
