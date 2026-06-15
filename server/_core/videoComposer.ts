@@ -2,7 +2,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { storagePut, assertObjectStorageWritable } from "../storage";
-import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssColorToASSHex, escapeASSText, formatASSTime } from "./videoEditor";
+import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssColorToASSHex, cssColorToASSAlpha, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
 import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode, TransformKeyframe } from "@shared/editorTypes";
 
@@ -207,22 +207,35 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
   const events = clips.map((c) => {
     const t = c.text;
     const size = t.size ?? 48;
-    const color = cssColorToASSHex(t.color ?? "white");
+    const fill = t.color ?? "white";
     const px = Math.round(c.x * opts.width);
     const py = Math.round(c.y * opts.height);
-    // base styling tags shared by all motion styles
-    const base: string[] = [`\\fs${size}`, `\\c${color}`];
+    // base styling tags shared by all motion styles. ASS colours are `\c&HBBGGRR&`
+    // and alpha is a SEPARATE inverted tag (`\1a&HAA&`, 00=opaque, FF=transparent).
+    const base: string[] = [`\\fs${size}`, `\\c&H${cssColorToASSHex(fill)}&`];
+    const fillAlpha = cssColorToASSAlpha(fill);
+    if (fillAlpha !== "00") base.push(`\\1a&H${fillAlpha}&`);
     // Strip override-block delimiters from the font name so a `}` can't close
     // the tag block early and inject arbitrary ASS tags/text into the render.
     if (t.font) base.push(`\\fn${t.font.replace(/[{}\\]/g, "")}`); // requires the font installed on the render host
     if (t.bold) base.push("\\b1");
     if (t.italic) base.push("\\i1");
-    // 描边 (outline): explicit width + colour, or 0 to disable the style default
+    // 描边 (outline): explicit width + colour (+ alpha), or 0 to disable the style default
     base.push(`\\bord${t.strokeWidth && t.strokeWidth > 0 ? t.strokeWidth : 0}`);
-    if (t.strokeWidth && t.strokeWidth > 0) base.push(`\\3c${cssColorToASSHex(t.strokeColor ?? "black")}`);
-    // 投影 (shadow): depth + back colour, or 0
+    if (t.strokeWidth && t.strokeWidth > 0) {
+      const sc = t.strokeColor ?? "black";
+      base.push(`\\3c&H${cssColorToASSHex(sc)}&`);
+      const sa = cssColorToASSAlpha(sc);
+      if (sa !== "00") base.push(`\\3a&H${sa}&`);
+    }
+    // 投影 (shadow): depth + back colour (+ alpha), or 0
     base.push(`\\shad${t.shadow ? 3 : 0}`);
-    if (t.shadow) base.push(`\\4c${cssColorToASSHex(t.shadowColor ?? "#000000")}`);
+    if (t.shadow) {
+      const dc = t.shadowColor ?? "#000000";
+      base.push(`\\4c&H${cssColorToASSHex(dc)}&`);
+      const da = cssColorToASSAlpha(dc);
+      if (da !== "00") base.push(`\\4a&H${da}&`);
+    }
 
     const motion = t.motionStyle;
     if (motion === "roll") {

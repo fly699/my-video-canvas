@@ -48,8 +48,14 @@ function textCss(t: Clip["text"], canvasH: number): React.CSSProperties {
     whiteSpace: "pre-wrap",
     lineHeight: 1.25,
   };
-  // stroke (scaled to font via em so it tracks the preview zoom)
-  if (stroke > 0) (css as Record<string, unknown>).WebkitTextStroke = `${(stroke / size).toFixed(3)}em ${t?.strokeColor ?? "#000"}`;
+  // stroke (scaled to font via em so it tracks the preview zoom). paint-order:stroke
+  // 让描边绘制在文字填充「之下」——否则居中描边会盖住字形、看起来粗一倍（用户反馈
+  // 「描边 1 也太粗」）。改成真正的外描边后，同样的数值看起来细得多、更接近导出效果。
+  // 颜色支持 8 位十六进制(#RRGGBBAA) / rgba()，故透明度直接由颜色字符串带过来。
+  if (stroke > 0) {
+    (css as Record<string, unknown>).WebkitTextStroke = `${(stroke / size).toFixed(3)}em ${t?.strokeColor ?? "#000"}`;
+    (css as Record<string, unknown>).paintOrder = "stroke";
+  }
   if (t?.shadow) css.textShadow = `0 0.05em 0.12em ${t?.shadowColor ?? "rgba(0,0,0,0.65)"}`;
   return css;
 }

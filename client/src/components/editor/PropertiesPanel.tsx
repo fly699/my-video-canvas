@@ -208,25 +208,40 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
               <Toggle on={(txt?.align ?? "center") === "center"} onClick={() => setText({ align: "center" })} title="居中"><AlignCenter size={13} /></Toggle>
               <Toggle on={(txt?.align ?? "center") === "right"} onClick={() => setText({ align: "right" })} title="右对齐"><AlignRight size={13} /></Toggle>
             </div>
-            <Row label="颜色"><input type="color" value={txt?.color ?? "#ffffff"} onChange={(e) => setText({ color: e.target.value })} style={{ ...input, height: 30, padding: 2 }} /></Row>
-            {/* 描边 */}
+            <Row label="颜色"><ColorAlpha value={txt?.color} fallback="#ffffff" onChange={(v) => setText({ color: v })} /></Row>
+            {/* 描边：粗细默认 2（配合预览 paint-order 外描边，更细更接近导出）；色+不透明度独立一行 */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Toggle on={(txt?.strokeWidth ?? 0) > 0} onClick={() => setText({ strokeWidth: (txt?.strokeWidth ?? 0) > 0 ? 0 : 4, strokeColor: txt?.strokeColor ?? "#000000" })} title="描边" wide>描边</Toggle>
-              {(txt?.strokeWidth ?? 0) > 0 && <>
-                <input type="number" min={0} max={40} value={txt?.strokeWidth ?? 4} onChange={(e) => setText({ strokeWidth: Number(e.target.value) })} style={{ ...input, width: 54 }} />
-                <input type="color" value={txt?.strokeColor ?? "#000000"} onChange={(e) => setText({ strokeColor: e.target.value })} style={{ ...input, width: 34, height: 30, padding: 2 }} />
-              </>}
+              <Toggle on={(txt?.strokeWidth ?? 0) > 0} onClick={() => setText({ strokeWidth: (txt?.strokeWidth ?? 0) > 0 ? 0 : 2, strokeColor: txt?.strokeColor ?? "#000000" })} title="描边" wide>描边</Toggle>
+              {(txt?.strokeWidth ?? 0) > 0 && (
+                <input type="number" min={0} max={12} step={0.5} value={txt?.strokeWidth ?? 2} onChange={(e) => setText({ strokeWidth: Number(e.target.value) })} style={{ ...input, width: 56 }} title="描边粗细 (px)" />
+              )}
             </div>
+            {(txt?.strokeWidth ?? 0) > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 2 }}>
+                <span style={{ fontSize: 11, color: EC.t3, width: 44, flexShrink: 0 }}>描边色</span>
+                <ColorAlpha value={txt?.strokeColor} fallback="#000000" onChange={(v) => setText({ strokeColor: v })} />
+              </div>
+            )}
             {/* 投影 */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Toggle on={!!txt?.shadow} onClick={() => setText({ shadow: !txt?.shadow, shadowColor: txt?.shadowColor ?? "#000000" })} title="投影" wide>投影</Toggle>
-              {txt?.shadow && <input type="color" value={txt?.shadowColor ?? "#000000"} onChange={(e) => setText({ shadowColor: e.target.value })} style={{ ...input, width: 34, height: 30, padding: 2 }} />}
             </div>
+            {txt?.shadow && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 2 }}>
+                <span style={{ fontSize: 11, color: EC.t3, width: 44, flexShrink: 0 }}>投影色</span>
+                <ColorAlpha value={txt?.shadowColor} fallback="#000000" onChange={(v) => setText({ shadowColor: v })} />
+              </div>
+            )}
             {/* 背景框 */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Toggle on={!!txt?.bgColor} onClick={() => setText({ bgColor: txt?.bgColor ? undefined : "#000000" })} title="背景框" wide>背景框</Toggle>
-              {txt?.bgColor && <input type="color" value={txt?.bgColor ?? "#000000"} onChange={(e) => setText({ bgColor: e.target.value })} style={{ ...input, width: 34, height: 30, padding: 2 }} />}
+              <Toggle on={!!txt?.bgColor} onClick={() => setText({ bgColor: txt?.bgColor ? undefined : "#00000080" })} title="背景框" wide>背景框</Toggle>
             </div>
+            {txt?.bgColor && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 2 }}>
+                <span style={{ fontSize: 11, color: EC.t3, width: 44, flexShrink: 0 }}>背景色</span>
+                <ColorAlpha value={txt?.bgColor} fallback="#000000" onChange={(v) => setText({ bgColor: v })} />
+              </div>
+            )}
             <Row label="动效"><Select value={txt?.motionStyle ?? "none"} options={MOTIONS} onChange={(v) => setText({ motionStyle: v as NonNullable<Clip["text"]>["motionStyle"] })} /></Row>
             <Row label="配音模型"><Select value={ttsModel} options={TTS_MODELS} onChange={pickModel} /></Row>
             <Row label="发音人"><Select value={ttsVoice} options={voicesForModel(ttsModel)} onChange={setTtsVoice} /></Row>
@@ -449,3 +464,31 @@ function Select({ value, options, onChange }: { value: string; options: [string,
 
 const panel: React.CSSProperties = { width: 250, flexShrink: 0, borderLeft: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.surface };
 const input: React.CSSProperties = { width: "100%", padding: "5px 7px", fontSize: 12, borderRadius: 6, border: `1px solid ${EC.border}`, background: EC.elevated, color: EC.t1, outline: "none" };
+
+// 颜色字符串 ↔ {纯色 #RRGGBB, 不透明度 0..1}。支持 8 位十六进制(#RRGGBBAA)读写；
+// 完全不透明时回写 6 位 #RRGGBB（向后兼容、不污染老数据）。
+function splitColor(v: string | undefined, fallback: string): { rgb: string; a: number } {
+  const hex = (v ?? fallback).trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{8}$/.test(hex)) return { rgb: "#" + hex.slice(0, 6), a: parseInt(hex.slice(6, 8), 16) / 255 };
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) return { rgb: "#" + hex, a: 1 };
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) return { rgb: "#" + hex.split("").map((c) => c + c).join(""), a: 1 };
+  return { rgb: fallback, a: 1 };
+}
+function joinColor(rgb: string, a: number): string {
+  const clamped = Math.max(0, Math.min(1, a));
+  if (clamped >= 1) return rgb;
+  return rgb + Math.round(clamped * 255).toString(16).padStart(2, "0");
+}
+
+/** 颜色 + 不透明度控件：色板选 RGB，滑杆调透明度，回写为 #RRGGBB / #RRGGBBAA。 */
+function ColorAlpha({ value, fallback, onChange, compact }: { value?: string; fallback: string; onChange: (v: string) => void; compact?: boolean }) {
+  const { rgb, a } = splitColor(value, fallback);
+  const pct = Math.round(a * 100);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flex: compact ? undefined : 1 }}>
+      <input type="color" value={rgb} onChange={(e) => onChange(joinColor(e.target.value, a))} style={{ ...input, width: 34, height: 30, padding: 2, flexShrink: 0 }} />
+      <input type="range" min={0} max={100} value={pct} onChange={(e) => onChange(joinColor(rgb, Number(e.target.value) / 100))} title={`不透明度 ${pct}%`} style={{ flex: 1, minWidth: 44, accentColor: EC.accent }} />
+      <span style={{ fontSize: 10.5, color: EC.t2, width: 30, textAlign: "right", flexShrink: 0 }}>{pct}%</span>
+    </div>
+  );
+}

@@ -852,12 +852,53 @@ export async function burnSubtitles(
   }
 }
 
+/** CSS color → ASS colour hex `BBGGRR` (ASS is BGR, not RGB). Accepts named colors,
+ *  #RGB / #RRGGBB / #RRGGBBAA (alpha ignored here — see cssColorToASSAlpha), and
+ *  rgb()/rgba(). Falls back to white on anything unparseable. */
 export function cssColorToASSHex(color: string): string {
   const MAP: Record<string, string> = {
     white: "FFFFFF", yellow: "00FFFF", red: "0000FF", blue: "FF0000",
     green: "00FF00", black: "000000", orange: "0080FF",
   };
-  return MAP[color.toLowerCase()] ?? "FFFFFF";
+  const c = (color ?? "").trim().toLowerCase();
+  if (MAP[c]) return MAP[c];
+  const hex = c.replace(/^#/, "");
+  const dup = (s: string) => (s.length === 1 ? s + s : s);
+  if (/^[0-9a-f]{3}$/.test(hex)) {
+    const r = dup(hex[0]), g = dup(hex[1]), b = dup(hex[2]);
+    return (b + g + r).toUpperCase();
+  }
+  if (/^[0-9a-f]{6}$/.test(hex) || /^[0-9a-f]{8}$/.test(hex)) {
+    return (hex.slice(4, 6) + hex.slice(2, 4) + hex.slice(0, 2)).toUpperCase();
+  }
+  const m = c.match(/^rgba?\(([^)]+)\)/);
+  if (m) {
+    const p = m[1].split(",").map((s) => parseFloat(s.trim()));
+    const h = (n: number) => Math.max(0, Math.min(255, Math.round(n || 0))).toString(16).padStart(2, "0");
+    if (p.length >= 3) return (h(p[2]) + h(p[1]) + h(p[0])).toUpperCase();
+  }
+  return "FFFFFF";
+}
+
+/** Alpha of a CSS color → ASS alpha hex. NOTE: ASS alpha is inverted vs CSS —
+ *  `00` = fully opaque, `FF` = fully transparent. Returns `00` (opaque) when no
+ *  alpha is present (#RRGGBB, named, rgb()). */
+export function cssColorToASSAlpha(color: string): string {
+  const c = (color ?? "").trim().toLowerCase();
+  const hex = c.replace(/^#/, "");
+  if (/^[0-9a-f]{8}$/.test(hex)) {
+    const a = parseInt(hex.slice(6, 8), 16); // CSS: FF = opaque
+    return (255 - a).toString(16).padStart(2, "0").toUpperCase();
+  }
+  const m = c.match(/^rgba\(([^)]+)\)/);
+  if (m) {
+    const p = m[1].split(",").map((s) => s.trim());
+    if (p.length >= 4) {
+      const a = Math.max(0, Math.min(255, Math.round(parseFloat(p[3]) * 255)));
+      return (255 - a).toString(16).padStart(2, "0").toUpperCase();
+    }
+  }
+  return "00";
 }
 
 // ── ASS Motion Subtitles ──────────────────────────────────────────────────────
