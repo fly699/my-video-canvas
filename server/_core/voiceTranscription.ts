@@ -32,6 +32,7 @@ export type TranscribeOptions = {
   audioUrl: string; // URL to the audio file (e.g., S3 URL)
   language?: string; // Optional: specify language code (e.g., "en", "es", "zh")
   prompt?: string; // Optional: custom prompt for the transcription
+  model?: string; // 转录模型（OpenAI 兼容：whisper-1 / gpt-4o-transcribe / gpt-4o-mini-transcribe）；缺省 whisper-1
 };
 
 // Native Whisper API segment format
@@ -153,7 +154,7 @@ export async function transcribeAudio(
     const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
     formData.append("file", audioBlob, filename);
     
-    formData.append("model", "whisper-1");
+    formData.append("model", options.model || "whisper-1");
     formData.append("response_format", "verbose_json");
     
     // Add prompt - use custom prompt if provided, otherwise generate based on language

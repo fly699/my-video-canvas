@@ -2852,15 +2852,16 @@ export const subtitleRouter = router({
       z.object({
         audioUrl: mediaUrlSchema,
         language: z.string().optional(),
+        model: z.string().max(64).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
-      // (audioUrl, language) deterministically map to a Whisper transcription, so
-      // dedupe by that pair — repeated submits during the long Whisper call collapse.
+      // (audioUrl, language, model) deterministically map to a transcription, so
+      // dedupe by that triple — repeated submits during the long call collapse.
       guardUrl(input.audioUrl);
       return dedupe("subtitle.transcribe", ctx.user.id, input, async () => {
-        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
+        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language, model: input.model });
         if ("error" in result) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
         }
