@@ -121,6 +121,18 @@ export interface OverlayInput {
   duration: number;    // visible duration on the timeline
   transform?: ClipTransform;
   keyframes?: TransformKeyframe[]; // position (x/y) animated on export; others static
+  chromaKey?: { color?: string; similarity?: number; blend?: number }; // 绿幕抠像
+}
+
+/** Build a sanitized `chromakey` filter (keys the given colour transparent). Colour
+ *  is strictly validated to `0xRRGGBB` to prevent any filter-string injection. */
+export function chromaKeyFilter(ck: { color?: string; similarity?: number; blend?: number } | undefined): string | null {
+  if (!ck) return null;
+  const hex = (ck.color ?? "").replace(/^#/, "").replace(/^0x/i, "");
+  const color = /^[0-9a-fA-F]{6}$/.test(hex) ? `0x${hex}` : "0x00D000"; // default green
+  const sim = Math.min(1, Math.max(0.01, ck.similarity ?? 0.3));
+  const blend = Math.min(1, Math.max(0, ck.blend ?? 0.1));
+  return `chromakey=${color}:${sim.toFixed(3)}:${blend.toFixed(3)}`;
 }
 
 /** Build a piecewise-linear ffmpeg expression (in the overlay's `t` time base, in
@@ -394,6 +406,8 @@ export function buildFilterGraph(
     oc.push(`scale=${scaleW}:-2`);
     oc.push(`fps=${fps}`);
     oc.push("format=rgba");
+    const ckf = chromaKeyFilter(o.chromaKey);
+    if (ckf) oc.push(ckf); // 绿幕抠像：把指定颜色变透明，再合成
     const op = o.transform?.opacity ?? 1;
     if (op < 0.999) oc.push(`colorchannelmixer=aa=${op.toFixed(3)}`);
     const rot = o.transform?.rotation ?? 0;
@@ -601,7 +615,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
       const dur = clipVisibleDuration(c);
-      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes });
+      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey });
       if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");

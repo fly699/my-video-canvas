@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentZoomPanChain, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput } from "./_core/videoComposer";
+import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentZoomPanChain, chromaKeyFilter, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput, type OverlayInput } from "./_core/videoComposer";
 import { emptyEditorDoc } from "@shared/editorTypes";
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
@@ -139,6 +139,23 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g).toContain("[keyout][ducked]amix=inputs=2:normalize=0");
     // the voice bus = base audio + the non-ducking clip, amixed into the key
     expect(g).toContain("[keyraw]");
+  });
+
+  it("chromaKeyFilter sanitizes colour to 0xRRGGBB and clamps params (injection-safe)", () => {
+    expect(chromaKeyFilter(undefined)).toBeNull();
+    expect(chromaKeyFilter({ color: "#00ff00", similarity: 0.3, blend: 0.1 })).toBe("chromakey=0x00ff00:0.300:0.100");
+    expect(chromaKeyFilter({ color: "0x123ABC" })).toBe("chromakey=0x123ABC:0.300:0.100"); // defaults applied
+    // malicious / malformed colour never reaches the filter string → safe default
+    expect(chromaKeyFilter({ color: "green'):crop=1:1:0:0" })).toBe("chromakey=0x00D000:0.300:0.100");
+    // params clamped into range
+    expect(chromaKeyFilter({ color: "#00ff00", similarity: 9, blend: -5 })).toBe("chromakey=0x00ff00:1.000:0.000");
+  });
+
+  it("overlay chromaKey injects chromakey after format=rgba", () => {
+    const segs: Segment[] = [{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1 }];
+    const overlays: OverlayInput[] = [{ isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2, chromaKey: { color: "#00ff00", similarity: 0.3, blend: 0.1 } }];
+    const g = buildFilterGraph(segs, OPTS, overlays).filterComplex;
+    expect(g).toContain("format=rgba,chromakey=0x00ff00:0.300:0.100");
   });
 
   it("no ducking flag → original plain amix (no sidechaincompress)", () => {
