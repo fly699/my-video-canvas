@@ -10,7 +10,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding, ReferenceImage } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources, applyAspectToWorkflow } from "@/lib/comfyWorkflowParams";
 import { effectiveCharacters, connectedCharacterLora, effectiveCharacterRefImages, stripCharacterMentions } from "@/lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
@@ -270,6 +270,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   // blue cloud); detail powers the hover tooltip.
   const accentColor = useCloud ? CLOUD_ACCENT : accent;
   const summary = useMemo(() => summarizeComfyWorkflow(payload.workflowJson), [payload.workflowJson]);
+  // 工作流是否含可按比例覆盖尺寸的空 latent 节点（决定是否显示「尺寸比例」开关）。
+  const hasOverridableLatent = useMemo(() => {
+    if (!payload.workflowJson?.trim()) return false;
+    try {
+      const wf = JSON.parse(payload.workflowJson) as Record<string, { class_type?: string; inputs?: Record<string, unknown> }>;
+      return Object.values(wf).some((n) => n && /Empty.*Latent/.test(n.class_type ?? "") && typeof n.inputs?.width === "number" && typeof n.inputs?.height === "number");
+    } catch { return false; }
+  }, [payload.workflowJson]);
   const annotationText = `${payload.workflowName ? payload.workflowName + " · " : ""}${summary.brief}`;
   const annotationDetail = `${payload.workflowName ? "工作流: " + payload.workflowName + "\n" : ""}${summary.detail}`;
   // Corner annotation prefers the template-library name when the node came from one.
@@ -489,12 +497,17 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       if (Object.keys(seedPatch).length > 0) {
         update({ paramValues: { ...(payload.paramValues ?? {}), ...seedPatch } }, true);
       }
+      // 按项目比例覆盖工作流尺寸：开启时把空 latent 节点的 width/height 改写为目标比例
+      // （保留像素面积、/64 对齐）。比例无法解析 / 无可改 latent 时原样提交。
+      const runWorkflowJson = payload.overrideRatioSize
+        ? applyAspectToWorkflow(workflowJson, payload.aspectRatio).json
+        : workflowJson;
       const result = await executeMutation.mutateAsync({
         nodeId: id,
         projectId: data.projectId,
         customBaseUrl: payload.customBaseUrl?.trim() || undefined,
         useCloudComfy: payload.useCloudComfy === true,
-        workflowJson,
+        workflowJson: runWorkflowJson,
         paramValues: effectiveParamValues,
         imageParamKeys: imageParamKeys.length > 0 ? imageParamKeys : undefined,
         audioParamKeys: audioParamKeys.length > 0 ? audioParamKeys : undefined,
@@ -1165,6 +1178,30 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                       >{lbl}</button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* 尺寸比例：按项目比例覆盖工作流的 latent 尺寸（保留像素面积、/64 对齐）。
+                只在工作流含可改的空 latent 节点时显示。 */}
+            {hasOverridableLatent && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>尺寸比例</label>
+                <div style={{ display: "flex", gap: 6, flex: 1, alignItems: "center" }}>
+                  <button
+                    onClick={() => update({ overrideRatioSize: !payload.overrideRatioSize })}
+                    title="开启后，提交前把工作流里空 latent 节点的宽高按所选比例改写（保留原像素面积、对齐到 64），让 ComfyUI 出图/出视频符合项目比例"
+                    style={{ flex: 1, padding: "5px 4px", fontSize: 11, borderRadius: 7, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: payload.overrideRatioSize ? accent : BORDER_DEFAULT, background: payload.overrideRatioSize ? `${accent}1f` : "transparent", color: payload.overrideRatioSize ? accent : "var(--c-t2)", fontWeight: payload.overrideRatioSize ? 600 : 400 }}
+                  >{payload.overrideRatioSize ? "✓ 按比例覆盖" : "用工作流原尺寸"}</button>
+                  {payload.overrideRatioSize && (
+                    <select
+                      value={payload.aspectRatio ?? "16:9"}
+                      onChange={(e) => update({ aspectRatio: e.target.value })}
+                      style={{ padding: "5px 6px", fontSize: 11, borderRadius: 7, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: accent, background: "var(--c-input)", color: "var(--c-t1)" }}
+                    >
+                      {["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "4:5"].map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  )}
                 </div>
               </div>
             )}

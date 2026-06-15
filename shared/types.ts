@@ -1031,6 +1031,10 @@ export interface ComfyuiWorkflowNodeData {
   /** Seed handling on run: when true (default), seed params are re-randomized
    *  each run; when false, the fixed value from the form is used as-is. */
   randomizeSeed?: boolean;
+  /** 按项目比例覆盖工作流尺寸：开启后，提交前把所有空 latent 节点的 width/height 按
+   *  `aspectRatio` 改写（保留原像素面积、/64 对齐）。比例由 `aspectRatio` 决定。 */
+  overrideRatioSize?: boolean;
+  aspectRatio?: string;
   /** Whether a connected upstream prompt/storyboard OVERRIDES this node's
    *  positive/negative prompt params even if the user typed a value. Defaults to
    *  ON (undefined ⇒ upstream-priority); set explicitly to false for "fill only
