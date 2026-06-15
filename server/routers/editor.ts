@@ -30,6 +30,7 @@ const clipSchema = z.object({
   volume: z.number().min(0).max(4).optional(),
   fadeIn: z.number().min(0).optional(),
   fadeOut: z.number().min(0).optional(),
+  ducking: z.boolean().optional(),
   transitionIn: z.object({ type: z.string().max(32), duration: z.number().min(0).max(10) }).optional(),
   effects: z.object({
     brightness: z.number().optional(), contrast: z.number().optional(),

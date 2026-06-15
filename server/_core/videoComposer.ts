@@ -162,6 +162,7 @@ export interface AudioInput {
   volume: number;
   fadeIn: number;
   fadeOut: number;
+  ducking?: boolean;   // background music: auto-duck under the other (voice) audio
 }
 
 /** A text clip rendered as an ASS dialogue event. */
@@ -417,7 +418,12 @@ export function buildFilterGraph(
 
   // Mix dedicated audio-track clips into the base audio (positioned + faded).
   if (audioClips.length > 0) {
-    const mixLabels = [curA];
+    // The base (video) audio is the dialogue/"voice" bus; non-ducking clips join it,
+    // ducking clips ("background music") form a separate bus that gets compressed by
+    // the voice bus via sidechaincompress.
+    const voiceLabels = [curA];
+    const musicLabels: string[] = [];
+    const AFMT = "aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100";
     audioClips.forEach((a, k) => {
       const inIdx = segs.length + overlays.length + k;
       const dur = Math.max(0.05, (a.trimOut - a.trimIn) / (a.speed || 1));
@@ -430,11 +436,32 @@ export function buildFilterGraph(
       if (a.fadeIn > 0) ac.push(`afade=t=in:st=0:d=${a.fadeIn.toFixed(3)}`);
       if (a.fadeOut > 0) ac.push(`afade=t=out:st=${Math.max(0, dur - a.fadeOut).toFixed(3)}:d=${a.fadeOut.toFixed(3)}`);
       ac.push(`adelay=delays=${Math.round(a.start * 1000)}:all=1`);
-      ac.push("aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100");
+      ac.push(AFMT);
       parts.push(`[${inIdx}:a]${ac.join(",")}[ax${k}]`);
-      mixLabels.push(`[ax${k}]`);
+      (a.ducking ? musicLabels : voiceLabels).push(`[ax${k}]`);
     });
-    parts.push(`${mixLabels.join("")}amix=inputs=${mixLabels.length}:normalize=0:dropout_transition=0[outa]`);
+
+    if (musicLabels.length === 0) {
+      parts.push(`${voiceLabels.join("")}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0[outa]`);
+    } else {
+      // voice bus (the sidechain key)
+      let keyLabel = voiceLabels[0];
+      if (voiceLabels.length > 1) {
+        parts.push(`${voiceLabels.join("")}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0[keyraw]`);
+        keyLabel = "[keyraw]";
+      }
+      // music bus
+      let musicLabel = musicLabels[0];
+      if (musicLabels.length > 1) {
+        parts.push(`${musicLabels.join("")}amix=inputs=${musicLabels.length}:normalize=0:dropout_transition=0[musicraw]`);
+        musicLabel = "[musicraw]";
+      }
+      // duck the music by the voice; split the key so it also survives into the mix
+      parts.push(`${keyLabel}${AFMT},asplit=2[keyout][keysc]`);
+      parts.push(`${musicLabel}${AFMT}[musicfmt]`);
+      parts.push(`[musicfmt][keysc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=300[ducked]`);
+      parts.push(`[keyout][ducked]amix=inputs=2:normalize=0:dropout_transition=0[outa]`);
+    }
     curA = "[outa]";
   }
 
@@ -578,7 +605,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       if (!c.assetUrl) continue;
       const p = await downloadToTemp(c.assetUrl, "m4a");
       tmpFiles.push(p);
-      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: c.volume ?? 1, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0 });
+      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: c.volume ?? 1, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, ducking: c.ducking });
       inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }

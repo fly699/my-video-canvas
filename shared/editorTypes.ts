@@ -77,6 +77,7 @@ export interface Clip {
   volume?: number;          // 0..2, default 1 (audio/video)
   fadeIn?: number;          // seconds
   fadeOut?: number;         // seconds
+  ducking?: boolean;        // audio: 背景音乐，遇人声(其余音频)自动闪避压低
   transitionIn?: { type: TransitionType; duration: number };
   effects?: ClipEffects;
   transform?: ClipTransform;
