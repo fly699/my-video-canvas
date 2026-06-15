@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { adminProcedure, router } from "../_core/trpc";
+import { adminProcedure, levelProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
@@ -15,6 +15,16 @@ import { writeAuditLog } from "../_core/auditLog";
 import { adminDownloadsRouter } from "./downloads";
 import { encryptKieKey, kieKeyHash, kieKeyLast4, isKieCryptoConfigured } from "../_core/kieCrypto";
 import { fetchKieCredit } from "../_core/kie";
+
+// 分级过程别名（见 levelProcedure）：
+//   viewerProc(L1+)   只读看板（list/get/summary/status/version）——任意管理员
+//   operatorProc(L2+) 轻运维：白名单增删、冻结用户、清日志
+//   managerProc(L3+)  全运维：重置密码、系统设置、KIE 密钥、删除数据、封禁、回填
+//   superProc(L4)     超管独占：管理员管理、系统更新/重启
+const viewerProc = adminProcedure;
+const operatorProc = levelProcedure(2);
+const managerProc = levelProcedure(3);
+const superProc = levelProcedure(4);
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
@@ -44,11 +54,11 @@ export const adminRouter = router({
       .query(({ input }) => db.getAllAssets(input ?? {})),
     // 一键回填历史素材：扫描全部画布节点，把已在 MinIO 但未入库的图片/视频
     // 记录进素材库（幂等，按 userId+storageKey 去重）。后台异步执行，前端轮询 status。
-    backfill: adminProcedure.mutation(() => startBackfill()),
+    backfill: managerProc.mutation(() => startBackfill()),
     backfillStatus: adminProcedure.query(() => getBackfillStatus()),
     // Cross-user bulk soft-delete (admin library multi-select). Soft delete keeps
     // the MinIO object + row; only visibility is cleared. Audited.
-    delete: adminProcedure
+    delete: managerProc
       .input(z.object({ ids: z.array(z.number()).min(1).max(500) }))
       .mutation(async ({ ctx, input }) => {
         await db.deleteAssetAdmin(input.ids);
@@ -59,7 +69,7 @@ export const adminRouter = router({
     // the DB row(s). Irreversible — gated by adminProcedure (admins only) and
     // double-confirmed in the UI. Deletes blobs first (best-effort per file), then
     // the rows; reports how many objects were actually removed. Audited.
-    hardDelete: adminProcedure
+    hardDelete: managerProc
       .input(z.object({ ids: z.array(z.number()).min(1).max(200) }))
       .mutation(async ({ ctx, input }) => {
         const rows = await db.getAssetStorageKeysByIds(input.ids);
@@ -88,7 +98,7 @@ export const adminRouter = router({
         return db.getAuditLogs({ limit: input.limit, offset: input.offset, action: input.action, user: input.user });
       }),
 
-    clear: adminProcedure.mutation(async ({ ctx }) => {
+    clear: operatorProc.mutation(async ({ ctx }) => {
       await db.clearAuditLogs();
       // Write a sentinel so the next log review shows when and who cleared
       await db.insertAuditLog({
@@ -124,7 +134,7 @@ export const adminRouter = router({
       .input(z.object({ sinceMs: z.number().int().optional() }).optional())
       .query(async ({ input }) => db.getComfyUsageSummary({ sinceMs: input?.sinceMs })),
 
-    clear: adminProcedure.mutation(async () => {
+    clear: operatorProc.mutation(async () => {
       await db.clearComfyUsageLogs();
       return { success: true };
     }),
@@ -136,7 +146,7 @@ export const adminRouter = router({
       return { enabled: settings?.enabled ?? false, comfyuiBypass: settings?.comfyuiBypass ?? false, llmBypass: settings?.llmBypass ?? false, kieEnabled: settings?.kieEnabled ?? false };
     }),
 
-    setKieEnabled: adminProcedure
+    setKieEnabled: managerProc
       .input(z.object({ kieEnabled: z.boolean() }))
       .mutation(async ({ input }) => {
         await db.setWhitelistKieEnabled(input.kieEnabled);
@@ -144,7 +154,7 @@ export const adminRouter = router({
         return { success: true };
       }),
 
-    setEnabled: adminProcedure
+    setEnabled: managerProc
       .input(z.object({ enabled: z.boolean() }))
       .mutation(async ({ input }) => {
         await db.setWhitelistEnabled(input.enabled);
@@ -152,7 +162,7 @@ export const adminRouter = router({
         return { success: true };
       }),
 
-    setComfyuiBypass: adminProcedure
+    setComfyuiBypass: managerProc
       .input(z.object({ comfyuiBypass: z.boolean() }))
       .mutation(async ({ input }) => {
         await db.setWhitelistComfyuiBypass(input.comfyuiBypass);
@@ -160,7 +170,7 @@ export const adminRouter = router({
         return { success: true };
       }),
 
-    setLlmBypass: adminProcedure
+    setLlmBypass: managerProc
       .input(z.object({ llmBypass: z.boolean() }))
       .mutation(async ({ input }) => {
         await db.setWhitelistLlmBypass(input.llmBypass);
@@ -172,7 +182,7 @@ export const adminRouter = router({
       return db.getWhitelistEntries();
     }),
 
-    addEntry: adminProcedure
+    addEntry: operatorProc
       .input(z.object({
         type: z.enum(["ip", "user"]),
         value: z.string().min(1).max(320),
@@ -190,7 +200,7 @@ export const adminRouter = router({
         return { success: true };
       }),
 
-    removeEntry: adminProcedure
+    removeEntry: operatorProc
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => {
         const deleted = await db.removeWhitelistEntry(input.id);
@@ -206,7 +216,7 @@ export const adminRouter = router({
 
     listKeys: adminProcedure.query(async () => db.listKieKeysWithCounts()),
 
-    addKey: adminProcedure
+    addKey: managerProc
       .input(z.object({
         name: z.string().trim().min(1).max(128),
         apiKey: z.string().trim().min(8).max(256),
@@ -226,7 +236,7 @@ export const adminRouter = router({
         return { id: res.id, credit };
       }),
 
-    setKeyEnabled: adminProcedure
+    setKeyEnabled: managerProc
       .input(z.object({ keyId: z.number().int(), enabled: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
         const ok = await db.setKieKeyEnabled(input.keyId, input.enabled);
@@ -248,7 +258,7 @@ export const adminRouter = router({
       .input(z.object({ keyId: z.number().int() }))
       .query(async ({ input }) => db.listKieBindings(input.keyId)),
 
-    bindUser: adminProcedure
+    bindUser: managerProc
       .input(z.object({ keyId: z.number().int(), userId: z.number().int().positive(), note: z.string().max(255).optional() }))
       .mutation(async ({ ctx, input }) => {
         const user = await db.getUserById(input.userId);
@@ -259,7 +269,7 @@ export const adminRouter = router({
         return { id: res.id };
       }),
 
-    setBindingEnabled: adminProcedure
+    setBindingEnabled: managerProc
       .input(z.object({ bindingId: z.number().int(), enabled: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
         const ok = await db.setKieBindingEnabled(input.bindingId, input.enabled);
@@ -268,7 +278,7 @@ export const adminRouter = router({
         return { success: true };
       }),
 
-    unbind: adminProcedure
+    unbind: managerProc
       .input(z.object({ bindingId: z.number().int() }))
       .mutation(async ({ ctx, input }) => {
         const ok = await db.deleteKieBinding(input.bindingId);
@@ -283,7 +293,7 @@ export const adminRouter = router({
       return db.getStorageSettings();
     }),
 
-    setPersist: adminProcedure
+    setPersist: managerProc
       .input(z.object({
         persistAudio: z.boolean().optional(),
         persistVideo: z.boolean().optional(),
@@ -327,7 +337,7 @@ export const adminRouter = router({
     // returns the result. Lets the admin verify that storagePut actually
     // works rather than guessing from "the URL still looks like upstream"
     // (which can be caused by Forge config missing, S3 quota, network, etc.).
-    test: adminProcedure.mutation(async () => {
+    test: managerProc.mutation(async () => {
       const t0 = Date.now();
       // Cheap config check first so the error message points at the actual
       // root cause rather than a downstream symptom.
@@ -376,7 +386,7 @@ export const adminRouter = router({
     getDisabled: adminProcedure.query(async () => {
       return { disabledModels: await db.getDisabledModels() };
     }),
-    setDisabled: adminProcedure
+    setDisabled: managerProc
       .input(z.object({ disabledModels: z.array(z.string().max(120)).max(2000) }))
       .mutation(async ({ input }) => {
         await db.setDisabledModels(input.disabledModels);
@@ -480,21 +490,21 @@ export const adminRouter = router({
         };
       }),
 
-    deleteMessage: adminProcedure
+    deleteMessage: managerProc
       .input(z.object({ messageId: z.number().int() }))
       .mutation(async ({ input }) => {
         await db.deleteConversationMessage(input.messageId);
         return { success: true };
       }),
 
-    deleteConversation: adminProcedure
+    deleteConversation: managerProc
       .input(z.object({ conversationId: z.number().int() }))
       .mutation(async ({ input }) => {
         await db.deleteConversation(input.conversationId);
         return { success: true };
       }),
 
-    banUser: adminProcedure
+    banUser: managerProc
       .input(z.object({
         userId: z.number().int(),
         scope: z.enum(["global", "conversation"]),
@@ -554,14 +564,14 @@ export const adminRouter = router({
     list: adminProcedure.query(async () => {
       return db.listAllUsers();
     }),
-    resetPassword: adminProcedure
+    resetPassword: managerProc
       .input(z.object({ userId: z.number().int().positive(), newPassword: z.string().min(6).max(200) }))
       .mutation(async ({ ctx, input }) => {
         await db.adminSetUserPassword(input.userId, await hashPassword(input.newPassword));
         writeAuditLog({ ctx, action: "user_reset_password", detail: { userId: input.userId } });
         return { success: true };
       }),
-    setDisabled: adminProcedure
+    setDisabled: operatorProc
       .input(z.object({ userId: z.number().int().positive(), disabled: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
         if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能冻结自己" });
@@ -569,7 +579,7 @@ export const adminRouter = router({
         writeAuditLog({ ctx, action: "user_set_disabled", detail: { userId: input.userId, disabled: input.disabled } });
         return { success: true };
       }),
-    delete: adminProcedure
+    delete: managerProc
       .input(z.object({ userId: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
         if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能删除自己" });
@@ -577,9 +587,19 @@ export const adminRouter = router({
         writeAuditLog({ ctx, action: "user_delete", detail: { userId: input.userId } });
         return { success: true };
       }),
+    // 设置某用户的管理员级别（0=普通·1=查看员·2=运营·3=管理员·4=超管）——仅超管(L4)。
+    // 加管理员 = 设为 ≥1；降为普通 = 设 0。禁止改自己（防自我锁死/误降）。
+    setLevel: superProc
+      .input(z.object({ userId: z.number().int().positive(), level: z.number().int().min(0).max(4) }))
+      .mutation(async ({ ctx, input }) => {
+        if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能修改自己的管理员级别" });
+        await db.setUserAdminLevel(input.userId, input.level);
+        writeAuditLog({ ctx, action: "admin_set_level", detail: { userId: input.userId, level: input.level } });
+        return { success: true };
+      }),
   }),
 
-  // ── 系统更新（应用内一键更新；仅管理员）──
+  // ── 系统更新（应用内一键更新；仅超管 L4）──
   update: router({
     version: adminProcedure.query(async () => {
       return getVersionInfo();
@@ -589,17 +609,17 @@ export const adminRouter = router({
       return getUpdateAvailable(false);
     }),
     // 手动「检查更新」：强制刷新缓存
-    check: adminProcedure.mutation(async () => {
+    check: superProc.mutation(async () => {
       return getUpdateAvailable(true);
     }),
     status: adminProcedure.query(() => {
       return getUpdateStatus();
     }),
-    run: adminProcedure.mutation(async () => {
+    run: superProc.mutation(async () => {
       return startUpdate();
     }),
     // 仅重启服务（不更新代码）——用于加载手动改过的 .env。退出进程由 NSSM/pm2 拉起。
-    restart: adminProcedure.mutation(async ({ ctx }) => {
+    restart: superProc.mutation(async ({ ctx }) => {
       writeAuditLog({ ctx, action: "system_restart", detail: {} });
       return restartServer();
     }),

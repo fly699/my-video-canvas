@@ -100,6 +100,7 @@ export type AuditAction =
   | "user_reset_password"
   | "user_set_disabled"
   | "user_delete"
+  | "admin_set_level"
   | "user_change_password"
   | "ops:server_add"
   | "ops:server_update"
