@@ -1,6 +1,6 @@
 import { memo, useState, useRef, useEffect } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
+import { useNodeDefaultModels, resolveActiveNodeModel } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation, PipelineStep } from "../../../../../shared/types";
@@ -179,7 +179,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     const cap = readProjectBudgetCap(data.projectId);
     if (cap != null) {
       const st = useCanvasStore.getState();
-      const cb = estimateCanvasBudget(st.nodes.map((n) => ({ data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })));
+      const cb = estimateCanvasBudget(st.nodes.map((n) => ({ data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })), resolveActiveNodeModel as (nt: string, slot: "llm" | "image" | "video") => string);
       if (cb.pt > cap) {
         toast.error(`画布预估 ${cb.pt} 点已超项目预算上限 ${cap} 点，已暂停自动执行。可在工具栏「预算管控」调整上限或精简节点后手动运行。`);
         return false;

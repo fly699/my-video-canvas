@@ -178,4 +178,19 @@ describe("estimateCanvasBudget — 画布级预算汇总", () => {
     expect(b.unknownCount).toBe(1);
     expect(b.lines.find((l) => l.key === "kie_gpt_image_2")?.count).toBe(2);
   });
+  it("分镜/图像/视频未显式存模型时，用 resolveModel 的默认模型计价（不再记未估价）", () => {
+    const resolve = (nt: string, slot: string): string | undefined => {
+      if (nt === "storyboard" && slot === "image") return "kie_gpt_image_2";
+      if (nt === "video_task" && slot === "video") return "kie_kling21_std";
+      return undefined;
+    };
+    const b = estimateCanvasBudget([
+      node("storyboard", {}),                          // 无 imageModel → 默认 kie_gpt_image_2 1K=6
+      node("storyboard", { imageResolution: "2K" }),   // 默认模型 2K=10
+      node("video_task", { duration: 5 }),             // 无 provider → 默认 kie_kling21_std 5*5=25
+    ], resolve);
+    expect(b.unknownCount).toBe(0);                    // 关键：不再有「未估价」
+    expect(b.pt).toBe(41);                             // 6 + 10 + 25
+    expect(b.runnableCount).toBe(3);
+  });
 });

@@ -220,8 +220,14 @@ export type CanvasBudget = {
 type BudgetNode = { data: { nodeType: string; payload?: Record<string, unknown> } };
 const LOCAL_BUDGET_TYPES = new Set(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
 
-/** 逐节点精确汇总画布预算（复用 estimateVideoCost/Image/Music/Tts）。framework-free，可单测。 */
-export function estimateCanvasBudget(nodes: BudgetNode[]): CanvasBudget {
+/** 逐节点精确汇总画布预算（复用 estimateVideoCost/Image/Music/Tts）。framework-free，可单测。
+ *  `resolveModel(nodeType, slot)` 用于补全「节点未显式存模型、运行时取默认模型」的情形
+ *  （分镜/图像/视频任务都可能不在 payload 里存模型，而用 resolveActiveNodeModel 的默认）——
+ *  传入后这些节点不再被记为「未估价」。调用方（BudgetButton/AgentNode）传 resolveActiveNodeModel。 */
+export function estimateCanvasBudget(
+  nodes: BudgetNode[],
+  resolveModel?: (nodeType: string, slot: "llm" | "image" | "video") => string | undefined,
+): CanvasBudget {
   const map = new Map<string, CanvasBudgetLine>();
   let totPt = 0, totCr = 0, approx = false, unknownCount = 0, localCount = 0, runnableCount = 0;
   const vLabel = (v: string) => VIDEO_MODELS.find((m) => m.value === v)?.label ?? v;
@@ -240,12 +246,12 @@ export function estimateCanvasBudget(nodes: BudgetNode[]): CanvasBudget {
     if (LOCAL_BUDGET_TYPES.has(t)) { localCount++; continue; }
     if (t === "video_task") {
       runnableCount++;
-      const provider = String(p.provider ?? "");
+      const provider = String(p.provider ?? resolveModel?.("video_task", "video") ?? "");
       if (!provider) { unknownCount++; continue; }
       add(provider, vLabel(provider), estimateVideoCost(provider, p));
     } else if (t === "image_gen") {
       runnableCount++;
-      const model = String(p.model ?? "");
+      const model = String(p.model ?? resolveModel?.("image_gen", "image") ?? "");
       if (!model) { unknownCount++; continue; }
       const count = Math.max(1, Number(p.imageN ?? p.batchSize ?? p.fluxNumImages ?? 1) || 1);
       add(model, iLabel(model), estimateImageCost(model, count, { resolution: p.imageResolution as string | undefined }));
@@ -253,7 +259,7 @@ export function estimateCanvasBudget(nodes: BudgetNode[]): CanvasBudget {
       // 分镜节点本质是「按分镜生成图像」，计价与 image_gen 同源（StoryboardNode 用 imageModel
       // 字段；hf_soul 批量 batchSize 张，其余 1 张）。此前漏算导致分镜不计入预算。
       runnableCount++;
-      const model = String(p.imageModel ?? p.model ?? "");
+      const model = String(p.imageModel ?? p.model ?? resolveModel?.("storyboard", "image") ?? "");
       if (!model || !IMAGE_MODELS.some((m) => m.value === model)) { unknownCount++; continue; }
       const count = model === "hf_soul_standard" ? (Number(p.batchSize) === 4 ? 4 : 1) : 1;
       add(model, iLabel(model), estimateImageCost(model, count, { resolution: p.imageResolution as string | undefined }));
