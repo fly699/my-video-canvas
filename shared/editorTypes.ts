@@ -160,6 +160,8 @@ export interface EditorDoc {
   height: number;  // output canvas height (e.g. 1920)
   fps: number;     // output fps (e.g. 30)
   normalizeAudio?: boolean; // 导出时把最终音轨响度归一化到 -14 LUFS（流媒体标准）
+  masterFadeIn?: number;    // 整片开头淡入（秒，从黑+静音渐显），0/缺省=关
+  masterFadeOut?: number;   // 整片结尾淡出（秒，渐隐到黑+静音），0/缺省=关
   tracks: Track[];
 }
 

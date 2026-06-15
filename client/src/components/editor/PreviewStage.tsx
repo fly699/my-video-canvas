@@ -294,6 +294,14 @@ export function PreviewStage() {
   if (!doc) return null;
   const visible = activeAt(doc, playhead);
   const aspect = doc.width / doc.height;
+  // 整片首尾淡入淡出的黑场不透明度（预览与导出一致）
+  const masterFadeOpacity = (() => {
+    const fi = doc.masterFadeIn ?? 0, fo = doc.masterFadeOut ?? 0;
+    let o = 0;
+    if (fi > 0 && playhead < fi) o = Math.max(o, 1 - playhead / fi);
+    if (fo > 0 && duration > 0 && playhead > duration - fo) o = Math.max(o, 1 - (duration - playhead) / fo);
+    return Math.max(0, Math.min(1, o));
+  })();
 
   // Cross-dissolve preview: when the playhead is in the last `d` seconds before an
   // adjacent main-track clip that has a transitionIn, crossfade the outgoing clip
@@ -505,6 +513,10 @@ export function PreviewStage() {
           )}
           {snapGuide.y != null && (
             <div data-snap-guide="y" style={{ position: "absolute", left: 0, right: 0, top: `${snapGuide.y * 100}%`, height: 1, background: EC.accent, boxShadow: `0 0 4px ${EC.accent}`, pointerEvents: "none", zIndex: 10 }} />
+          )}
+          {/* 整片首尾淡入淡出：覆盖整台的黑场，按播放头实时演示（与导出一致） */}
+          {masterFadeOpacity > 0.001 && (
+            <div style={{ position: "absolute", inset: 0, background: "#000", opacity: masterFadeOpacity, pointerEvents: "none", zIndex: 20 }} />
           )}
         </div>
       </div>

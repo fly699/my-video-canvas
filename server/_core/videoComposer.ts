@@ -372,7 +372,7 @@ function hasTransitions(segs: Segment[]): boolean {
  */
 export function buildFilterGraph(
   segs: Segment[],
-  opts: { width: number; height: number; fps: number; normalizeAudio?: boolean },
+  opts: { width: number; height: number; fps: number; normalizeAudio?: boolean; masterFadeIn?: number; masterFadeOut?: number },
   overlays: OverlayInput[] = [],
   extra: { audioClips?: AudioInput[]; assPath?: string } = {},
 ): { filterComplex: string; outV: string; outA: string; duration: number } {
@@ -384,12 +384,23 @@ export function buildFilterGraph(
   const vLabels: string[] = [];
   const aLabels: string[] = [];
 
-  // 响度归一化：导出时把最终音轨整体压到流媒体标准 -14 LUFS（loudnorm 单趟动态模式），
-  // 让不同片段/项目导出的响度一致。关闭时不加该滤镜（旧导出零回归）。
-  const finalizeAudio = (label: string): string => {
-    if (!opts.normalizeAudio) return label;
-    parts.push(`${label}loudnorm=I=-14:TP=-1.5:LRA=11[outan]`);
+  // 最终音轨处理（混音之后）：可选响度归一化（loudnorm → 流媒体标准 -14 LUFS）+
+  // 整片首尾淡入淡出（afade）。都不启用时不加滤镜（旧导出零回归）。`dur` 为成片总时长。
+  const finalizeAudio = (label: string, dur: number): string => {
+    const f: string[] = [];
+    if (opts.normalizeAudio) f.push("loudnorm=I=-14:TP=-1.5:LRA=11");
+    if (opts.masterFadeIn && opts.masterFadeIn > 0) f.push(`afade=t=in:st=0:d=${Math.min(opts.masterFadeIn, dur).toFixed(3)}`);
+    if (opts.masterFadeOut && opts.masterFadeOut > 0) { const d = Math.min(opts.masterFadeOut, dur); f.push(`afade=t=out:st=${Math.max(0, dur - d).toFixed(3)}:d=${d.toFixed(3)}`); }
+    if (f.length === 0) return label;
+    parts.push(`${label}${f.join(",")}[outan]`);
     return "[outan]";
+  };
+  // 整片首尾画面淡入淡出（从黑/到黑），作用于最终视频输出。
+  const finalizeVideo = (label: string, dur: number): string => {
+    const f = videoFadeFilters(opts.masterFadeIn, opts.masterFadeOut, dur);
+    if (f.length === 0) return label;
+    parts.push(`${label}${f.join(",")}[outvf]`);
+    return "[outvf]";
   };
 
   segs.forEach((s, i) => {
@@ -451,8 +462,9 @@ export function buildFilterGraph(
     const concatInputs = segs.map((_, i) => `${vLabels[i]}${aLabels[i]}`).join("");
     parts.push(`${concatInputs}concat=n=${segs.length}:v=1:a=1[outv][outa]`);
     const duration = segs.reduce((sum, s) => sum + segmentDuration(s), 0);
-    const outaLabel = finalizeAudio("[outa]");
-    return { filterComplex: parts.join(";"), outV: "[outv]", outA: outaLabel, duration };
+    const outvLabel = finalizeVideo("[outv]", duration);
+    const outaLabel = finalizeAudio("[outa]", duration);
+    return { filterComplex: parts.join(";"), outV: outvLabel, outA: outaLabel, duration };
   }
 
   // General path: fold segments left-to-right with per-pair xfade or concat,
@@ -575,8 +587,9 @@ export function buildFilterGraph(
     curA = "[outa]";
   }
 
-  const outaLabel = finalizeAudio(curA);
-  return { filterComplex: parts.join(";"), outV: curV, outA: outaLabel, duration: curDur };
+  const outvLabel = finalizeVideo(curV, curDur);
+  const outaLabel = finalizeAudio(curA, curDur);
+  return { filterComplex: parts.join(";"), outV: outvLabel, outA: outaLabel, duration: curDur };
 }
 
 /** Main (base) video-track clips that get concatenated, in play order. */
@@ -738,7 +751,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       tmpFiles.push(assPath);
     }
 
-    const graph = buildFilterGraph(segs, { width: W, height: H, fps, normalizeAudio: doc.normalizeAudio }, overlays, { audioClips, assPath });
+    const graph = buildFilterGraph(segs, { width: W, height: H, fps, normalizeAudio: doc.normalizeAudio, masterFadeIn: doc.masterFadeIn, masterFadeOut: doc.masterFadeOut }, overlays, { audioClips, assPath });
 
     // Export container/codec/quality. Default mp4 + H.264 + high.
     const format = opts.format ?? "mp4";

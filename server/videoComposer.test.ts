@@ -476,3 +476,26 @@ describe("响度归一化（loudnorm -14 LUFS，导出最终音轨）", () => {
     expect(g.filterComplex.indexOf("amix")).toBeLessThan(g.filterComplex.indexOf("loudnorm")); // 先混音后归一化
   });
 });
+
+describe("整片首尾淡入淡出（master fade，最终视频+音频总线）", () => {
+  it("开启 → 最终视频 fade、音频 afade，outV/outA 指向 finalize 标签", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const g = buildFilterGraph(seg, { ...OPTS, masterFadeIn: 1, masterFadeOut: 1 });
+    expect(g.filterComplex).toContain("[outv]fade=t=in:st=0:d=1.000,fade=t=out:st=3.000:d=1.000[outvf]");
+    expect(g.filterComplex).toContain("[outa]afade=t=in:st=0:d=1.000,afade=t=out:st=3.000:d=1.000[outan]");
+    expect(g.outV).toBe("[outvf]");
+    expect(g.outA).toBe("[outan]");
+  });
+
+  it("关闭 → 零回归（无 fade=t= / afade，outV=[outv]）", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 3, speed: 1 }], OPTS);
+    expect(g.filterComplex).not.toContain("fade=t=in");
+    expect(g.outV).toBe("[outv]");
+    expect(g.outA).toBe("[outa]");
+  });
+
+  it("与响度归一化并用：loudnorm 在前、首尾 afade 在后", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }], { ...OPTS, normalizeAudio: true, masterFadeIn: 0.5, masterFadeOut: 0.5 });
+    expect(g.filterComplex).toContain("[outa]loudnorm=I=-14:TP=-1.5:LRA=11,afade=t=in:st=0:d=0.500,afade=t=out:st=3.500:d=0.500[outan]");
+  });
+});

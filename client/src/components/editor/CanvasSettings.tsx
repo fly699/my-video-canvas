@@ -29,6 +29,7 @@ export function CanvasSettings() {
   const doc = useEditorStore((s) => s.doc);
   const setCanvas = useEditorStore((s) => s.setCanvas);
   const setNormalizeAudio = useEditorStore((s) => s.setNormalizeAudio);
+  const setMasterFade = useEditorStore((s) => s.setMasterFade);
   const reframe = useEditorStore((s) => s.reframe);
   const [open, setOpen] = useState(false);
   const [locked, setLocked] = useState(true);
@@ -133,6 +134,19 @@ export function CanvasSettings() {
             <span>响度归一化（-14 LUFS）</span>
             <span style={{ fontWeight: 800 }}>{doc.normalizeAudio ? "开" : "关"}</span>
           </button>
+
+          <Label>整片首尾淡入淡出</Label>
+          <div style={{ fontSize: 11, color: EC.t3, marginBottom: 6, lineHeight: 1.5 }}>整片开头从黑淡入、结尾淡到黑（画面+声音一起），作专业片头/片尾。</div>
+          {(["in", "out"] as const).map((w) => {
+            const v = (w === "in" ? doc.masterFadeIn : doc.masterFadeOut) ?? 0;
+            return (
+              <div key={w} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 11, color: EC.t2, width: 36, flexShrink: 0 }}>{w === "in" ? "淡入" : "淡出"}</span>
+                <input type="range" min={0} max={5} step={0.1} value={v} onChange={(e) => setMasterFade(w, Number(e.target.value))} style={{ flex: 1, accentColor: EC.accent }} />
+                <span style={{ fontSize: 11, color: EC.t2, width: 34, textAlign: "right", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{v.toFixed(1)}s</span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
