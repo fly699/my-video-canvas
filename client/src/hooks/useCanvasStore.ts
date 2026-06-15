@@ -13,7 +13,7 @@ import {
 import type { NodeType, NodeData, CollaboratorCursor, GroupNodeData } from "../../../shared/types";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { getNodeConfig } from "../lib/nodeConfig";
-import { resolveNodeOutputImageUrl, isRefImageTarget } from "../lib/refImagePropagation";
+import { resolveNodeOutputImageUrl, isRefImageTarget, effectiveTargetHandle } from "../lib/refImagePropagation";
 
 export interface CanvasNode extends Node {
   data: {
@@ -278,33 +278,39 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       }
       // Pre-populate so the video node is ready immediately if an image was generated before connecting
       let updatedNodes = state.nodes;
-      if (connection.source && connection.target) {
-        const sourceNode = state.nodes.find((n) => n.id === connection.source);
-        const targetNode = state.nodes.find((n) => n.id === connection.target);
+      let conn = connection;
+      if (conn.source && conn.target) {
+        const sourceNode = state.nodes.find((n) => n.id === conn.source);
+        const targetNode = state.nodes.find((n) => n.id === conn.target);
+        const srcImageUrl = resolveNodeOutputImageUrl(sourceNode);
+        // 连线落点容错：视频/图像等节点左侧有两个 target 句柄——参考图句柄 `ref-image-in`
+        // (top:25%) 与 BaseNode 默认 `input` 句柄(top:50%)。用户把「图像/分镜 → 视频」的
+        // 参考图线拖到节点中部时，ReactFlow 常吸附到更近的 `input`，可参考图边仅以
+        // targetHandle==="ref-image-in" 识别，于是参考图既不预填也不在工作流里传递（本次 bug）。
+        // effectiveTargetHandle 把这类「图像源→参考图目标」的边统一规正到 ref-image-in；
+        // 文本/提示词等无图源不受影响，仍按原句柄(input)连接。
+        conn = { ...conn, targetHandle: effectiveTargetHandle(conn.targetHandle, sourceNode, targetNode) ?? null };
         // A `ref-image-in` target handle uniquely identifies a reference-image
         // wire regardless of which source dot was dragged from. Source/target
         // coverage (which source types expose an output image, which targets
         // accept a reference image) is centralized in refImagePropagation and
         // shared with each node's post-generation propagateRefImage call.
         if (
-          connection.targetHandle === "ref-image-in" &&
-          targetNode && isRefImageTarget(targetNode.data.nodeType)
+          conn.targetHandle === "ref-image-in" &&
+          targetNode && isRefImageTarget(targetNode.data.nodeType) && srcImageUrl
         ) {
-          const imageUrl = resolveNodeOutputImageUrl(sourceNode);
-          if (imageUrl) {
-            updatedNodes = state.nodes.map((n) =>
-              n.id === connection.target
-                ? { ...n, data: { ...n.data, payload: { ...n.data.payload, referenceImageUrl: imageUrl } } }
-                : n
-            ) as CanvasNode[];
-          }
+          updatedNodes = state.nodes.map((n) =>
+            n.id === conn.target
+              ? { ...n, data: { ...n.data, payload: { ...n.data.payload, referenceImageUrl: srcImageUrl } } }
+              : n
+          ) as CanvasNode[];
         }
       }
       return {
         ...(get()._suppressHistory ? {} : pushHistory(state)),
         nodes: updatedNodes,
         edges: addEdge(
-          { ...connection, id: nanoid(), type: "custom", animated: false },
+          { ...conn, id: nanoid(), type: "custom", animated: false },
           state.edges
         ) as CanvasEdge[],
         isDirty: true,

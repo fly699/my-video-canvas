@@ -76,12 +76,19 @@ async function getWhitelistSettingsCached(): Promise<WhitelistSettingsCache> {
   }
 }
 
-/** Shared whitelist gate. When the whitelist is disabled, or the caller is an
- * admin / whitelisted user / whitelisted IP, resolves; otherwise throws FORBIDDEN. */
+/** 只有「超级管理员」(adminLevel>=4) 不受 AI 资源使用门控（白名单 / kie 公用额度 /
+ *  ComfyUI 云）限制，可无限使用。L1 查看员 / L2 运营 / L3 管理员与普通用户一样受门控
+ *  （需在白名单内或对应开关开启）——管理后台权限 ≠ AI 资源使用额度。 */
+function isUsageUnrestricted(ctx: TrpcContext): boolean {
+  return (ctx.user?.adminLevel ?? 0) >= 4;
+}
+
+/** Shared whitelist gate. When the whitelist is disabled, or the caller is a
+ * super-admin / whitelisted user / whitelisted IP, resolves; otherwise throws FORBIDDEN. */
 export async function assertWhitelisted(ctx: TrpcContext): Promise<void> {
   const { enabled } = await getWhitelistSettingsCached();
   if (!enabled) return;
-  if (ctx.user?.role === "admin") return; // admins always bypass
+  if (isUsageUnrestricted(ctx)) return; // 仅超级管理员(L4)无条件放行
 
   const userId = ctx.user?.id;
   if (userId != null && (await db.isWhitelisted("user", String(userId)))) return;
@@ -125,7 +132,7 @@ export async function assertComfyuiAllowed(ctx: TrpcContext): Promise<void> {
  * AND the caller must pass the standard whitelist (when the global whitelist is
  * off, assertWhitelisted resolves for everyone, so kieEnabled alone gates it). */
 export async function assertKieHouseAllowed(ctx: TrpcContext): Promise<void> {
-  if (ctx.user?.role === "admin") return;
+  if (isUsageUnrestricted(ctx)) return; // 仅超级管理员(L4)无条件放行
   const { kieEnabled } = await getWhitelistSettingsCached();
   if (!kieEnabled) {
     throw new TRPCError({ code: "FORBIDDEN", message: "kie.ai 公用额度未开放，请联系管理员分配专属 key 或开启白名单 kie 开关" });
@@ -138,7 +145,7 @@ export async function assertKieHouseAllowed(ctx: TrpcContext): Promise<void> {
  * ALWAYS restricted to admins and explicitly whitelisted users — regardless of
  * the global whitelist toggle or the comfyui bypass (those govern local use). */
 export async function isComfyuiCloudAllowed(ctx: TrpcContext): Promise<boolean> {
-  if (ctx.user?.role === "admin") return true;
+  if (isUsageUnrestricted(ctx)) return true; // 仅超级管理员(L4)无条件放行
   const userId = ctx.user?.id;
   if (userId != null && (await db.isWhitelisted("user", String(userId)))) return true;
   return false;

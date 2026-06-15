@@ -32,15 +32,10 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["system", "系统更新", RotateCw],
 ];
 
-// 每个标签页要求的最低管理员级别（与服务端 levelProcedure 一致）：
-//   L1 查看员=只读看板（日志/对话/素材/用户列表/下载审批）
-//   L2 运营=白名单管理  ·  L3 管理员=密钥/存储/模型/压测/运维  ·  L4 超管=系统更新
-const TAB_MIN_LEVEL: Record<Tab, number> = {
-  logs: 1, comfyLogs: 1, chat: 1, assets: 1, users: 1, downloads: 1,
-  whitelist: 2,
-  kie: 3, storage: 3, models: 3, comfyStress: 3, comfyOps: 3,
-  system: 4,
-};
+// 管理员级别 → 可执行的「写操作」最低级别（与服务端 levelProcedure 一致）：
+//   L1 查看员=只读看板  ·  L2 运营=白名单/冻结/清日志/下载审批
+//   L3 管理员=密钥/存储/模型/聊天治理/压测/运维  ·  L4 超管=管理员管理/系统更新/配置导出导入
+// 任意管理员都可「进入查看」全部标签；下面各 Panel 用 LevelGate / canX 按级别禁用写操作。
 const LEVEL_NAME: Record<number, string> = { 1: "查看员", 2: "运营", 3: "管理员", 4: "超级管理员" };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -91,14 +86,8 @@ export default function AdminPage() {
     retry: false,
   });
   const hasUpdate = (updateInfo?.behind ?? 0) > 0;
-  const lvl = user?.adminLevel ?? 0; // 当前管理员级别，用于按级别禁用越权标签/操作
-  // 若当前标签越权（如查看员默认落在白名单 L2），自动切到第一个可访问标签。
-  useEffect(() => {
-    if (lvl >= 1 && lvl < (TAB_MIN_LEVEL[activeTab] ?? 1)) {
-      const firstOk = TAB_DEFS.find(([t]) => lvl >= (TAB_MIN_LEVEL[t] ?? 1))?.[0];
-      if (firstOk) setActiveTab(firstOk);
-    }
-  }, [lvl, activeTab]);
+  // 任意管理员（L1+）都可进入所有标签页「查看」；页内的「写操作」再按级别禁用
+  // （见各 Panel 的 LevelGate / canX 门控）。故此处不再按级别锁标签。
   // History.back() handles "I came from a project" / "I came via direct URL"
   // both correctly. If there's no history entry (e.g. direct deep link), fall
   // back to the home page so the user is never trapped on this screen.
@@ -186,13 +175,10 @@ export default function AdminPage() {
         <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px", animationDelay: "60ms" }}>
           {TAB_DEFS.map(([tab, label, Icon]) => {
             const active = activeTab === tab;
-            const locked = lvl < (TAB_MIN_LEVEL[tab] ?? 1); // 级别不足 → 禁用（显示但不可点）
             return (
               <button
                 key={tab}
-                onClick={() => { if (!locked) setActiveTab(tab); }}
-                disabled={locked}
-                title={locked ? `需「${LEVEL_NAME[TAB_MIN_LEVEL[tab]] ?? "更高"}」及以上权限` : undefined}
+                onClick={() => setActiveTab(tab)}
                 style={{
                   position: "relative",
                   display: "inline-flex", alignItems: "center", gap: "6px",
@@ -205,19 +191,18 @@ export default function AdminPage() {
                   color: active ? "var(--c-t1, #f0f0f4)" : "var(--c-t3, rgba(255,255,255,0.45))",
                   fontSize: "13px",
                   fontWeight: active ? 600 : 500,
-                  cursor: locked ? "not-allowed" : "pointer",
-                  opacity: locked ? 0.4 : 1,
+                  cursor: "pointer",
                   boxShadow: active ? "0 2px 14px oklch(0.68 0.22 285 / 0.18)" : "none",
                   transition: "all 160ms ease",
                 }}
                 onMouseEnter={(e) => {
-                  if (activeTab === tab || locked) return;
+                  if (activeTab === tab) return;
                   const el = e.currentTarget as HTMLElement;
                   el.style.background = "var(--c-elevated, rgba(255,255,255,0.07))";
                   el.style.color = "var(--c-t1, #f0f0f4)";
                 }}
                 onMouseLeave={(e) => {
-                  if (activeTab === tab || locked) return;
+                  if (activeTab === tab) return;
                   const el = e.currentTarget as HTMLElement;
                   el.style.background = "var(--c-surface, rgba(255,255,255,0.03))";
                   el.style.color = "var(--c-t3, rgba(255,255,255,0.45))";
@@ -238,16 +223,18 @@ export default function AdminPage() {
 
         {/* 面板：key 驱动切换入场动效 */}
         <div key={activeTab} className="animate-fade-up">
+          {/* 单一级别面板：整面在 switch 处用 LevelGate 包裹（低于该级别 → 整面只读）。
+              混合级别面板（白名单/存储/聊天/素材/下载/用户/系统）在各自 Panel 内部按操作分级门控。 */}
           {activeTab === "whitelist" && <WhitelistPanel />}
-          {activeTab === "kie" && <KiePanel />}
+          {activeTab === "kie" && <LevelGate need={3}><KiePanel /></LevelGate>}
           {activeTab === "users" && <UsersPanel />}
           {activeTab === "logs" && <LogsPanel />}
           {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
-          {activeTab === "models" && <ModelsPanel />}
+          {activeTab === "models" && <LevelGate need={3}><ModelsPanel /></LevelGate>}
           {activeTab === "chat" && <ChatAdminPanel />}
-          {activeTab === "comfyStress" && <ComfyStressPanel />}
-          {activeTab === "comfyOps" && <ComfyOpsPanel />}
+          {activeTab === "comfyStress" && <LevelGate need={3} label="只读模式 · ComfyUI 压测需「管理员」及以上权限"><ComfyStressPanel /></LevelGate>}
+          {activeTab === "comfyOps" && <LevelGate need={3} label="只读模式 · ComfyUI 运维（SSH/Docker/安装/脚本）需「管理员」及以上权限"><ComfyOpsPanel /></LevelGate>}
           {activeTab === "assets" && <AssetsAdminPanel />}
           {activeTab === "downloads" && <DownloadsAdminPanel />}
           {activeTab === "system" && <SystemUpdatePanel />}
@@ -260,6 +247,40 @@ export default function AdminPage() {
 // 管理员级别标签（与服务端 levelProcedure 一致）。
 const ADMIN_LEVELS: [number, string][] = [[0, "普通用户"], [1, "查看员"], [2, "运营"], [3, "管理员"], [4, "超级管理员"]];
 const adminLevelLabel = (lv: number) => ADMIN_LEVELS.find(([n]) => n === lv)?.[1] ?? "普通用户";
+
+/** 当前登录管理员的级别（0 普通 … 4 超管）。 */
+function useMyLevel(): number {
+  return useAuth().user?.adminLevel ?? 0;
+}
+
+/**
+ * 只读门控容器：级别不足 `need` 时，把 children 整体设为「只读」——顶部显示一条
+ * 提示条，内容区 `pointer-events:none` + 降透明度（仍可见、可滚动，但任何控件都点不动）。
+ * 用于「点进去能看、不能改」的写操作区域；与服务端 levelProcedure 一一对应，是 UI 层防误触，
+ * 真正的权限以后端为准。级别足够时原样渲染、零副作用。
+ */
+function LevelGate({ need, children, label, innerStyle }: { need: number; children: React.ReactNode; label?: string; innerStyle?: React.CSSProperties }) {
+  const lvl = useMyLevel();
+  // 级别足够：原样渲染（fragment 不产生 DOM 节点，外层 flex gap 等布局完全不受影响）。
+  if (lvl >= need) return <>{children}</>;
+  return (
+    <div>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, marginBottom: 10,
+        padding: "8px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 500,
+        background: "oklch(0.70 0.14 65 / 0.10)", border: "1px solid oklch(0.70 0.14 65 / 0.30)",
+        color: "oklch(0.82 0.13 65)",
+      }}>
+        <Shield style={{ width: 14, height: 14, flexShrink: 0 }} />
+        {label ?? `只读模式 · 修改需「${LEVEL_NAME[need] ?? "更高"}」及以上权限`}
+        <span style={{ color: "var(--c-t3, rgba(255,255,255,0.45))", fontWeight: 400 }}>（当前：{adminLevelLabel(lvl)}）</span>
+      </div>
+      <div style={{ pointerEvents: "none", opacity: 0.5, ...innerStyle }} aria-disabled>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 // ── 用户管理 Panel（管理员）─────────────────────────────────────────────────
 function UsersPanel() {
@@ -404,6 +425,9 @@ function StoragePanel() {
   // failing pipeline stage so the fix is obvious.
   const testMut = trpc.admin.storage.test.useMutation();
 
+  // 级别门控（用页内 LevelGate 包裹实现）：存储设置/连通性测试=管理员(L3+)；
+  // 配置「导出/导入」（跨部署迁移、批量覆盖）=超管(L4)。
+
   // Admin config export/import: the storage-settings panel + admin-managed global
   // ComfyUI servers and per-server GPU pins, as a single JSON file (backup /
   // migrate between deployments).
@@ -490,7 +514,8 @@ function StoragePanel() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Config export / import (backup & migrate between deployments) */}
+      {/* Config export / import — 超管(L4)专属：跨部署迁移 / 批量覆盖配置 */}
+      <LevelGate need={4} label="配置「导出 / 导入」仅「超级管理员」(L4) 可用">
       <div style={{ ...cardStyle, alignItems: "stretch", padding: "14px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <DownloadCloud style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0 }} />
@@ -512,6 +537,9 @@ function StoragePanel() {
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void importConfig(f); e.target.value = ""; }} />
         </div>
       </div>
+      </LevelGate>
+      {/* 存储设置 / 连通性测试 — 管理员(L3+)可改，查看员/运营只读 */}
+      <LevelGate need={3} innerStyle={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
           <HardDrive style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0, marginTop: 2 }} />
@@ -756,6 +784,7 @@ function StoragePanel() {
           />
         </>
       )}
+      </LevelGate>
     </div>
   );
 }
@@ -1091,6 +1120,7 @@ function SystemUpdatePanel() {
 
   const status = statusQuery.data;
   const running = status?.state === "running";
+  const canEdit = useMyLevel() >= 4; // 检查更新 / 立即更新 / 重启服务 = 超管(L4) 独占
   const version = versionQuery.data;
   // 缓存的可用更新信息（打开标签即显示，未手动检查时也可见）
   const available = checkMut.data ?? availableQuery.data;
@@ -1143,11 +1173,17 @@ function SystemUpdatePanel() {
             </div>
 
             {/* 操作按钮 */}
+            {!canEdit && (
+              <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 500, background: "oklch(0.70 0.14 65 / 0.10)", border: "1px solid oklch(0.70 0.14 65 / 0.30)", color: "oklch(0.82 0.13 65)" }}>
+                <Shield style={{ width: 14, height: 14, flexShrink: 0 }} />
+                只读模式 · 检查更新 / 立即更新 / 重启服务仅「超级管理员」(L4) 可操作
+              </div>
+            )}
             <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <button
                 onClick={() => checkMut.mutate()}
-                disabled={checkMut.isPending || running}
-                style={btnSecondary(checkMut.isPending || running)}
+                disabled={checkMut.isPending || running || !canEdit}
+                style={btnSecondary(checkMut.isPending || running || !canEdit)}
               >
                 {checkMut.isPending
                   ? <Loader2 className="animate-spin" style={{ width: 12, height: 12 }} />
@@ -1157,8 +1193,8 @@ function SystemUpdatePanel() {
 
               <button
                 onClick={handleRun}
-                disabled={running}
-                style={btnPrimary(running)}
+                disabled={running || !canEdit}
+                style={btnPrimary(running || !canEdit)}
               >
                 {running
                   ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} />
@@ -1168,8 +1204,8 @@ function SystemUpdatePanel() {
 
               <button
                 onClick={handleRestart}
-                disabled={running || restartMut.isPending}
-                style={btnSecondary(running || restartMut.isPending)}
+                disabled={running || restartMut.isPending || !canEdit}
+                style={btnSecondary(running || restartMut.isPending || !canEdit)}
                 title="仅重启服务（不更新代码），用于加载手动修改过的 .env 配置"
               >
                 {restartMut.isPending
@@ -1417,6 +1453,8 @@ function WhitelistPanel() {
         </button>
       </div>
 
+      {/* 白名单条目「添加 / 删除」= 运营(L2+)；查看员(L1) 只读 */}
+      <LevelGate need={2} label="白名单条目「添加 / 删除」需「运营」(L2) 及以上权限">
       {/* Add entry form */}
       <div style={{ ...cardStyle, marginBottom: "20px" }}>
         <h3 style={{ margin: "0 0 16px", fontSize: "15px", fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>添加白名单条目</h3>
@@ -1476,6 +1514,7 @@ function WhitelistPanel() {
           </div>
         )}
       </div>
+      </LevelGate>
     </>
   );
 }
@@ -1886,6 +1925,7 @@ function ChatSettingsPanel() {
     <div style={chatCard}>
       <h3 style={chatCardTitle}>聊天设置</h3>
       {!s ? <p style={chatDim}>加载中…</p> : (
+        <LevelGate need={3} label="聊天设置修改需「管理员」(L3) 及以上权限">
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <label style={chatToggleRow}>
             <span>允许「无服务器（端到端加密）」模式</span>
@@ -1900,6 +1940,7 @@ function ChatSettingsPanel() {
             <input type="number" min={1} max={5120} defaultValue={s.maxFileMb} onBlur={(e) => mu.mutate({ maxFileMb: Number(e.target.value) })} style={{ width: 80, ...chatInput }} />
           </label>
         </div>
+        </LevelGate>
       )}
     </div>
   );
@@ -1924,6 +1965,8 @@ function ChatConversationsPanel() {
           <option value="">全部模式</option><option value="server">服务器</option><option value="serverless">端到端</option>
         </select>
       </div>
+      {/* 删除会话 = 管理员(L3+)；查看员/运营只读（筛选保持可用） */}
+      <LevelGate need={3} label="删除会话需「管理员」(L3) 及以上权限">
       <table style={chatTable}>
         <thead><tr><ChatTh>ID</ChatTh><ChatTh>类型</ChatTh><ChatTh>模式</ChatTh><ChatTh>标题</ChatTh><ChatTh>成员</ChatTh><ChatTh>操作</ChatTh></tr></thead>
         <tbody>
@@ -1938,6 +1981,7 @@ function ChatConversationsPanel() {
           ))}
         </tbody>
       </table>
+      </LevelGate>
       {q.data?.rows.length === 0 && <p style={chatDim}>暂无会话</p>}
     </div>
   );
@@ -2303,7 +2347,9 @@ function DownloadsAdminPanel() {
   const decideMut = trpc.admin.downloads.decide.useMutation({ onSuccess: onDone });
   const revokeMut = trpc.admin.downloads.revoke.useMutation({ onSuccess: onDone });
   const grantMut = trpc.admin.downloads.grant.useMutation({ onSuccess: onDone });
-  const busy = decideMut.isPending || revokeMut.isPending || grantMut.isPending;
+  const canDecide = useMyLevel() >= 2; // 批准/拒绝/授权/撤销 = 运营(L2+)；查看员(L1) 只读
+  // 折进 busy：级别不足时所有审批/授权/撤销按钮一并禁用（查证文件/预览仍可用）。
+  const busy = decideMut.isPending || revokeMut.isPending || grantMut.isPending || !canDecide;
 
   const chip = (active: boolean): React.CSSProperties => ({
     fontSize: 12, padding: "4px 11px", borderRadius: 999, cursor: "pointer",
@@ -2313,13 +2359,19 @@ function DownloadsAdminPanel() {
   });
   const statusColor = (s: string) => s === "pending" ? "oklch(0.8 0.16 85)" : s === "active" ? "oklch(0.72 0.18 155)" : s === "denied" ? "oklch(0.7 0.18 25)" : "var(--c-t3,rgba(255,255,255,0.4))";
   const statusLabel = (s: string) => ({ pending: "待审批", active: "已授权", revoked: "已撤销", denied: "已拒绝" } as Record<string, string>)[s] ?? s;
-  const btn = (color: string, bg = "transparent"): React.CSSProperties => ({ fontSize: 12, padding: "5px 11px", borderRadius: 7, border: `1px solid ${color}`, background: bg, color, cursor: busy ? "not-allowed" : "pointer", whiteSpace: "nowrap" });
+  const btn = (color: string, bg = "transparent"): React.CSSProperties => ({ fontSize: 12, padding: "5px 11px", borderRadius: 7, border: `1px solid ${color}`, background: bg, color, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, whiteSpace: "nowrap" });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontSize: 12.5, color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6 }}>
         在「存储设置 → 严格下载授权」开启后，非管理员下载原文件须持「一次性授权」。可在此审批用户申请、查证文件，或主动按文件/整个项目授权。每张授权对每个文件仅可成功下载一次。
       </div>
+      {!canDecide && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 500, background: "oklch(0.70 0.14 65 / 0.10)", border: "1px solid oklch(0.70 0.14 65 / 0.30)", color: "oklch(0.82 0.13 65)" }}>
+          <Shield style={{ width: 14, height: 14, flexShrink: 0 }} />
+          只读模式 · 审批 / 授权 / 撤销需「运营」(L2) 及以上权限（查证文件、预览仍可用）
+        </div>
+      )}
 
       {/* 主动授权（无需用户提交申请）— 直接给某用户授权某项目，可指定任意有效期 */}
       <div style={{ border: "1px solid oklch(0.72 0.2 285 / 0.3)", borderRadius: 8, overflow: "hidden", background: "oklch(0.72 0.2 285 / 0.04)" }}>
@@ -2332,7 +2384,7 @@ function DownloadsAdminPanel() {
           const projects = userProjects.data?.projects ?? [];
           const owned = projects.filter((p) => p.role === "owner");
           const collab = projects.filter((p) => p.role === "collaborator");
-          const canGrant = !!u && grantProjectSel.size > 0 && !grantMut.isPending;
+          const canGrant = !!u && grantProjectSel.size > 0 && !grantMut.isPending && canDecide;
           const inp: React.CSSProperties = { fontSize: 12.5, padding: "6px 9px", borderRadius: 7, border: "1px solid var(--c-bd2, rgba(255,255,255,0.14))", background: "var(--c-input, rgba(255,255,255,0.04))", color: "var(--c-t1,#f0f0f4)", width: "100%" };
           const toggleProj = (id: number) => setGrantProjectSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
           const submit = async () => {
@@ -2533,6 +2585,7 @@ function AssetsAdminPanel() {
   const [source, setSource] = useState<"" | "upload" | "generated" | "external">("");
   const [q, setQ] = useState("");
   const utils = trpc.useUtils();
+  const canEdit = useMyLevel() >= 3; // 删除/彻底删除/回填 = 管理员(L3+)；查看员/运营只读（筛选/预览仍可用）
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [preview, setPreview] = useState<AdminAsset | null>(null);
   const { data: assets, isFetching } = trpc.admin.assets.list.useQuery({
@@ -2608,6 +2661,12 @@ function AssetsAdminPanel() {
   });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {!canEdit && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 500, background: "oklch(0.70 0.14 65 / 0.10)", border: "1px solid oklch(0.70 0.14 65 / 0.30)", color: "oklch(0.82 0.13 65)" }}>
+          <Shield style={{ width: 14, height: 14, flexShrink: 0 }} />
+          只读模式 · 删除 / 彻底删除 / 回填需「管理员」(L3) 及以上权限（浏览、筛选、预览仍可用）
+        </div>
+      )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="用户 ID（空=全部）" inputMode="numeric"
           style={{ width: 130, padding: "6px 10px", borderRadius: 7, border: "1px solid var(--c-bd2, rgba(255,255,255,0.12))", background: "var(--c-input, rgba(255,255,255,0.04))", color: "var(--c-t1,#f0f0f4)", fontSize: 13 }} />
@@ -2631,14 +2690,15 @@ function AssetsAdminPanel() {
       }}>
         <button
           onClick={handleBackfill}
-          disabled={bfRunning}
+          disabled={bfRunning || !canEdit}
+          title={canEdit ? undefined : "需「管理员」(L3) 及以上权限"}
           style={{
             display: "flex", alignItems: "center", gap: 7,
             padding: "7px 14px", fontSize: 12.5, fontWeight: 600,
             background: bfRunning ? "var(--c-input, rgba(255,255,255,0.06))" : "oklch(0.62 0.18 60 / 0.85)",
             border: "1px solid oklch(0.68 0.18 60 / 0.4)", borderRadius: 8,
             color: bfRunning ? "var(--c-t3, rgba(255,255,255,0.4))" : "#1a1205",
-            cursor: bfRunning ? "not-allowed" : "pointer", flexShrink: 0,
+            cursor: bfRunning || !canEdit ? "not-allowed" : "pointer", flexShrink: 0, opacity: canEdit ? 1 : 0.45,
           }}
         >
           {bfRunning
@@ -2674,12 +2734,12 @@ function AssetsAdminPanel() {
         </div>
         {selecting && (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <button onClick={handleBulkDelete} disabled={deleteMut.isPending}
-              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.16 25 / 0.4)", background: "transparent", color: "oklch(0.78 0.16 25)", cursor: deleteMut.isPending ? "not-allowed" : "pointer" }}>
+            <button onClick={handleBulkDelete} disabled={deleteMut.isPending || !canEdit} title={canEdit ? undefined : "需「管理员」(L3) 及以上权限"}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.16 25 / 0.4)", background: "transparent", color: "oklch(0.78 0.16 25)", cursor: deleteMut.isPending || !canEdit ? "not-allowed" : "pointer", opacity: canEdit ? 1 : 0.45 }}>
               {deleteMut.isPending ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} /> : <Trash2 style={{ width: 13, height: 13 }} />} 删除选中（隐藏）
             </button>
-            <button onClick={handleHardDelete} disabled={hardDeleteMut.isPending} title="物理删除 MinIO 文件 + 数据库记录，不可恢复（仅管理员）"
-              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.2 25 / 0.7)", background: "oklch(0.6 0.2 25 / 0.12)", color: "oklch(0.82 0.2 25)", fontWeight: 600, cursor: hardDeleteMut.isPending ? "not-allowed" : "pointer" }}>
+            <button onClick={handleHardDelete} disabled={hardDeleteMut.isPending || !canEdit} title={canEdit ? "物理删除 MinIO 文件 + 数据库记录，不可恢复（仅管理员）" : "需「管理员」(L3) 及以上权限"}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "5px 11px", borderRadius: 7, border: "1px solid oklch(0.6 0.2 25 / 0.7)", background: "oklch(0.6 0.2 25 / 0.12)", color: "oklch(0.82 0.2 25)", fontWeight: 600, cursor: hardDeleteMut.isPending || !canEdit ? "not-allowed" : "pointer", opacity: canEdit ? 1 : 0.45 }}>
               {hardDeleteMut.isPending ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} /> : <Trash2 style={{ width: 13, height: 13 }} />} 彻底删除
             </button>
             <button onClick={() => setSelected(new Set())}

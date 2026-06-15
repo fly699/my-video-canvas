@@ -23,6 +23,52 @@ export function isRefImageTarget(nodeType: string): boolean {
   return REF_TARGET_TYPES.has(nodeType);
 }
 
+// Source node types that ALWAYS produce an image (never a video). Used to route
+// a freshly-drawn wire onto the `ref-image-in` handle even before the source has
+// produced its image yet ("connect first, generate later") — otherwise the later
+// propagation, which only matches `targetHandle === "ref-image-in"`, would
+// silently skip the edge.
+// Deliberately excludes the ambiguous `asset` and `comfyui_workflow` (which can
+// be VIDEO): those are routed only when they currently resolve to an image URL
+// (resolveNodeOutputImageUrl), so a video asset / video workflow output is never
+// mis-routed onto the reference-image handle.
+const REF_SOURCE_TYPES = new Set([
+  "image_gen", "comfyui_image", "storyboard", "pose_control", "post_process",
+]);
+
+/** Whether a node type can act as a reference-image source (may not have an image yet). */
+export function isRefImageSource(nodeType: string): boolean {
+  return REF_SOURCE_TYPES.has(nodeType);
+}
+
+/**
+ * Decide the effective `targetHandle` for a freshly-drawn connection.
+ *
+ * Video / image nodes expose two left target handles: the reference-image handle
+ * `ref-image-in` (top:25%) and BaseNode's generic `input` (top:50%). ReactFlow
+ * snaps a wire dropped near the node's middle onto the closer `input`, but a
+ * reference-image edge is only ever recognised by `targetHandle === "ref-image-in"`
+ * — so an image wire that lands on `input` silently fails to load/propagate the
+ * reference image. Here we route any "image source → ref-image target" wire onto
+ * `ref-image-in` regardless of which handle was hit (covers both generate-first,
+ * via a current image URL, and connect-first, via the source node type). Text
+ * sources (e.g. 提示词) expose no image and keep their original handle.
+ */
+export function effectiveTargetHandle(
+  rawTargetHandle: string | null | undefined,
+  sourceNode: CanvasNode | undefined,
+  targetNode: CanvasNode | undefined,
+): string | null | undefined {
+  if (
+    targetNode && isRefImageTarget(targetNode.data.nodeType) &&
+    rawTargetHandle !== "ref-image-in" &&
+    sourceNode && (resolveNodeOutputImageUrl(sourceNode) || isRefImageSource(sourceNode.data.nodeType))
+  ) {
+    return "ref-image-in";
+  }
+  return rawTargetHandle;
+}
+
 /**
  * The current output-image URL of a source node, by node type. Returns
  * undefined for nodes that don't (currently) expose an output image.

@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
+import { protectedProcedure, adminProcedure, levelProcedure, router } from "../_core/trpc";
+
+// 下载审批属「运营」级日常操作：查看员(L1)只读，批准/授权/撤销需运营(L2+)。
+const operatorProc = levelProcedure(2);
 import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
 import { toInternalStoragePath } from "../storage";
@@ -103,7 +106,7 @@ export const adminDownloadsRouter = router({
       }));
     }),
 
-  decide: adminProcedure
+  decide: operatorProc
     .input(z.object({
       grantId: z.number(), approve: z.boolean(), note: z.string().max(500).optional(),
       // Validity, in priority order: `permanent` (no expiry) > `expiresAt` (epoch ms,
@@ -129,7 +132,7 @@ export const adminDownloadsRouter = router({
     }),
 
   // Admin-initiated batch grant: per file (assetId/storageKey) or per project.
-  grant: adminProcedure
+  grant: operatorProc
     .input(z.object({
       userId: z.number(),
       scope: z.enum(["asset", "project"]),
@@ -174,7 +177,7 @@ export const adminDownloadsRouter = router({
   // Cheap count of un-handled requests — drives the global admin badge.
   pendingCount: adminProcedure.query(async () => (await db.listDownloadGrants({ status: "pending", limit: 500 })).length),
 
-  revoke: adminProcedure
+  revoke: operatorProc
     .input(z.object({ grantId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       await db.revokeDownloadGrant(input.grantId, ctx.user.id);

@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, adminProcedure, protectedProcedure } from "../_core/trpc";
+import { router, adminProcedure, levelProcedure, protectedProcedure } from "../_core/trpc";
+
+// ComfyUI 运维（SSH 执行 / Docker / 安装 / 脚本 / 改服务器配置）属高危「管理员」级操作：
+// 查看员(L1)/运营(L2) 只读看板，所有写操作需管理员(L3+)。读接口仍 adminProcedure(L1)。
+const managerProc = levelProcedure(3);
 import {
   listOpsServers, getOpsServer, insertOpsServer, updateOpsServer, deleteOpsServer,
   listOpsRecords, getOpsSettings, setOpsSettings,
@@ -54,7 +58,7 @@ export const comfyOpsRouter = router({
 
     cryptoReady: adminProcedure.query(() => ({ ready: isSshCryptoConfigured() })),
 
-    create: adminProcedure.input(serverInput).mutation(async ({ ctx, input }) => {
+    create: managerProc.input(serverInput).mutation(async ({ ctx, input }) => {
       if (!isSshCryptoConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "未配置 SSH_KEY_SECRET，无法保存凭据" });
       if (!input.secret) throw new TRPCError({ code: "BAD_REQUEST", message: "新增服务器必须提供密码或私钥" });
       if (!isValidSshHost(input.sshHost)) throw new TRPCError({ code: "BAD_REQUEST", message: "SSH 主机格式非法" });
@@ -73,7 +77,7 @@ export const comfyOpsRouter = router({
       return { id };
     }),
 
-    update: adminProcedure.input(serverInput.partial().extend({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    update: managerProc.input(serverInput.partial().extend({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
       const { id, secret, passphrase, ...rest } = input;
       const existing = await getOpsServer(id);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
@@ -100,14 +104,14 @@ export const comfyOpsRouter = router({
       return { ok: true };
     }),
 
-    delete: adminProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    delete: managerProc.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
       await deleteOpsServer(input.id);
       dropClient(input.id);
       recordOps(ctx, { serverId: input.id, channel: "ssh", action: "server_delete", auditAction: "ops:server_delete", status: "success" });
       return { ok: true };
     }),
 
-    testConnection: adminProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+    testConnection: managerProc.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
       const server = await getOpsServer(input.id);
       if (!server) throw new TRPCError({ code: "NOT_FOUND" });
       return testConnection(server);
@@ -135,7 +139,7 @@ export const comfyOpsRouter = router({
   }),
 
   // ── Quick command exec (admin only) ───────────────────────────────────────
-  exec: adminProcedure
+  exec: managerProc
     .input(z.object({
       serverId: z.number().int(),
       command: z.string().min(1).max(8000),
@@ -191,7 +195,7 @@ export const comfyOpsRouter = router({
       .input(z.object({ serverId: z.number().int(), container: z.string().max(128) }))
       .query(({ input }) => dockerInspect(input.serverId, input.container)),
 
-    action: adminProcedure
+    action: managerProc
       .input(z.object({ serverId: z.number().int(), container: z.string().max(128), action: z.enum(["start", "stop", "restart"]) }))
       .mutation(async ({ ctx, input }) => {
         try {
@@ -220,7 +224,7 @@ export const comfyOpsRouter = router({
 
     nodes: adminProcedure.input(z.object({ serverId: z.number().int() })).query(({ input }) => listCustomNodes(input.serverId)),
 
-    installNode: adminProcedure
+    installNode: managerProc
       .input(z.object({ serverId: z.number().int(), gitUrl: z.string().max(512) }))
       .mutation(async ({ ctx, input }) => {
         try {
@@ -234,7 +238,7 @@ export const comfyOpsRouter = router({
         }
       }),
 
-    installModel: adminProcedure
+    installModel: managerProc
       .input(z.object({ serverId: z.number().int(), url: z.string().max(2048), dir: z.enum(MODEL_DIRS), filename: z.string().max(255) }))
       .mutation(async ({ ctx, input }) => {
         try {
@@ -258,7 +262,7 @@ export const comfyOpsRouter = router({
 
   // ── AI 运维助手（admin only）──────────────────────────────────────────────
   ai: router({
-    generate: adminProcedure
+    generate: managerProc
       .input(z.object({ serverId: z.number().int(), model: z.string().max(64), query: z.string().min(1).max(4000) }))
       .mutation(async ({ ctx, input }) => {
         await assertLLMAllowed(ctx);
@@ -276,7 +280,7 @@ export const comfyOpsRouter = router({
   scripts: router({
     list: adminProcedure.query(() => listOpsScripts()),
 
-    save: adminProcedure
+    save: managerProc
       .input(z.object({
         id: z.number().int().optional(),
         name: z.string().min(1).max(128),
@@ -295,14 +299,14 @@ export const comfyOpsRouter = router({
         return { id };
       }),
 
-    delete: adminProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+    delete: managerProc.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
       await deleteOpsScript(input.id);
       return { ok: true };
     }),
 
     /** Run a script across multiple servers concurrently — one ops record per
      *  server. Dangerous scripts require confirmedDangerous (red confirm). */
-    run: adminProcedure
+    run: managerProc
       .input(z.object({
         body: z.string().min(1).max(20000),
         serverIds: z.array(z.number().int()).min(1).max(32),
@@ -340,7 +344,7 @@ export const comfyOpsRouter = router({
 
   settings: router({
     get: adminProcedure.query(() => getOpsSettings()),
-    set: adminProcedure
+    set: managerProc
       .input(z.object({ globalTrustMode: z.boolean().optional(), readOnlyOpenToWhitelist: z.boolean().optional(), autoExecWhitelist: z.array(z.string()).optional() }))
       .mutation(async ({ ctx, input }) => {
         await setOpsSettings(input);
