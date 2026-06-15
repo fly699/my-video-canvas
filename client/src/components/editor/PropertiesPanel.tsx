@@ -276,6 +276,32 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           </Section>
         )}
 
+        {(c.kind === "video" || c.kind === "image") && clipTrackType === "overlay" && (
+          <Section title="绿幕抠像">
+            <button
+              onClick={() => update(c.id, { chromaKey: c.chromaKey ? undefined : { color: "#00D000", similarity: 0.3, blend: 0.1 } })}
+              title="把指定颜色（绿幕/蓝幕）抠成透明，与下层画面合成（导出时生效；预览暂显示原始绿幕）"
+              style={{ width: "100%", padding: "7px 0", fontSize: 11.5, borderRadius: 7, cursor: "pointer", border: `1px solid ${c.chromaKey ? EC.accent : EC.border}`, background: c.chromaKey ? EC.accentSoft : "transparent", color: c.chromaKey ? EC.accent : EC.t2 }}
+            >{c.chromaKey ? "✓ 绿幕抠像已开启" : "开启绿幕抠像"}</button>
+            {c.chromaKey && (() => {
+              const ck = c.chromaKey!;
+              const setCk = (p: Partial<typeof ck>) => update(c.id, { chromaKey: { ...ck, ...p } });
+              return (
+                <>
+                  <Row label="抠除色">
+                    <input type="color" value={ck.color ?? "#00D000"} onChange={(e) => setCk({ color: e.target.value })} style={{ ...input, width: 34, height: 30, padding: 2 }} />
+                    <button onClick={() => setCk({ color: "#00D000" })} style={{ marginLeft: 6, padding: "4px 8px", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent", color: EC.t2 }}>绿</button>
+                    <button onClick={() => setCk({ color: "#0047FF" })} style={{ marginLeft: 4, padding: "4px 8px", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent", color: EC.t2 }}>蓝</button>
+                  </Row>
+                  <Slider label={`容差 ${(ck.similarity ?? 0.3).toFixed(2)}`} min={0.01} max={1} step={0.01} value={ck.similarity ?? 0.3} onChange={(v) => setCk({ similarity: v })} />
+                  <Slider label={`边缘羽化 ${(ck.blend ?? 0.1).toFixed(2)}`} min={0} max={1} step={0.01} value={ck.blend ?? 0.1} onChange={(v) => setCk({ blend: v })} />
+                  <div style={{ fontSize: 10.5, color: EC.t4, lineHeight: 1.5 }}>容差越大抠得越多（抠不干净就调大）；羽化让边缘更柔和。导出时抠除，预览暂显示原始画面。</div>
+                </>
+              );
+            })()}
+          </Section>
+        )}
+
         {isVisual && c.kind !== "text" && (
           <Section title="调色 / 滤镜">
             <Slider label={`亮度 ${(eff.brightness ?? 0).toFixed(2)}`} min={-1} max={1} step={0.02} value={eff.brightness ?? 0} onChange={(v) => setEff("brightness", v)} />
