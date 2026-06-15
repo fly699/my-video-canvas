@@ -88,6 +88,7 @@ export interface Clip {
   fadeIn?: number;          // seconds
   fadeOut?: number;         // seconds
   ducking?: boolean;        // audio: 背景音乐，遇人声(其余音频)自动闪避压低
+  denoise?: boolean;        // audio: FFT 降噪（afftdn），清理底噪/嗡声
   chromaKey?: { color?: string; similarity?: number; blend?: number }; // overlay 绿幕抠像
   transitionIn?: { type: TransitionType; duration: number };
   effects?: ClipEffects;
