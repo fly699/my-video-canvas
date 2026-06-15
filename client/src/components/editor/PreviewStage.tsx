@@ -72,6 +72,15 @@ type DragState =
 
 // Composition snap targets (normalized 0..1): edges, thirds, center.
 const SNAP_TARGETS = [0, 1 / 3, 0.5, 2 / 3, 1];
+
+// Vertical-platform UI-safe zones (fractions of the frame covered by the app's
+// caption / buttons / nav). Keep key content inside the dashed safe rectangle.
+const SAFE_ZONES: { id: string; label: string; top: number; bottom: number; left: number; right: number }[] = [
+  { id: "tiktok", label: "抖音/TikTok", top: 0.06, bottom: 0.20, left: 0.02, right: 0.12 },
+  { id: "reels",  label: "Reels",       top: 0.10, bottom: 0.22, left: 0.02, right: 0.13 },
+  { id: "shorts", label: "YT Shorts",   top: 0.06, bottom: 0.14, left: 0.02, right: 0.14 },
+  { id: "generic", label: "通用竖屏",    top: 0.08, bottom: 0.22, left: 0.03, right: 0.12 },
+];
 /** Snap one axis: try aligning the box's left/center/right (pos, pos+size/2, pos+size)
  *  to a target within `thr`. Returns the snapped position + the matched guide line. */
 export function snapAxis(pos: number, size: number, thr: number): { pos: number; guide: number | null } {
@@ -110,6 +119,7 @@ export function PreviewStage() {
   const selectClip = useEditorStore((s) => s.selectClip);
   const updateClip = useEditorStore((s) => s.updateClip);
   const [thirds, setThirds] = usePersistentState<boolean>("ui:editor:preview-thirds:v1", false, { validate: (p) => (typeof p === "boolean" ? p : null) });
+  const [safeZone, setSafeZone] = usePersistentState<string>("ui:editor:preview-safezone:v1", "", { validate: (p) => (typeof p === "string" ? p : null) });
   const [snapGuide, setSnapGuide] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
 
   const mediaRefs = useRef<Map<string, HTMLVideoElement | HTMLAudioElement>>(new Map());
@@ -288,6 +298,11 @@ export function PreviewStage() {
           style={{ display: "inline-flex", alignItems: "center", gap: 4, ...fitBtn(thirds) }}>
           <Grid3x3 size={12} /> 参考线
         </button>
+        <button title="竖屏平台安全区：标出抖音/Reels/Shorts 等界面遮挡区，把关键内容留在虚线框内（点击切换平台）"
+          onClick={() => { const idx = SAFE_ZONES.findIndex((z) => z.id === safeZone); setSafeZone(idx + 1 >= SAFE_ZONES.length ? "" : SAFE_ZONES[idx + 1].id); }}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, ...fitBtn(!!safeZone) }}>
+          安全区{safeZone ? "·" + (SAFE_ZONES.find((z) => z.id === safeZone)?.label ?? "") : ""}
+        </button>
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0 }}>
         <div ref={stageRef} onPointerDown={() => selectClip(null)} onContextMenu={(e) => e.preventDefault()}
@@ -387,6 +402,22 @@ export function PreviewStage() {
               ))}
             </div>
           )}
+
+          {/* vertical-platform UI-safe zone: dim the covered margins, dash the safe area */}
+          {safeZone && (() => {
+            const z = SAFE_ZONES.find((s) => s.id === safeZone);
+            if (!z) return null;
+            const dim = "oklch(0 0 0 / 0.34)";
+            return (
+              <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 9 }}>
+                <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: `${z.top * 100}%`, background: dim }} />
+                <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${z.bottom * 100}%`, background: dim }} />
+                <div style={{ position: "absolute", top: `${z.top * 100}%`, bottom: `${z.bottom * 100}%`, left: 0, width: `${z.left * 100}%`, background: dim }} />
+                <div style={{ position: "absolute", top: `${z.top * 100}%`, bottom: `${z.bottom * 100}%`, right: 0, width: `${z.right * 100}%`, background: dim }} />
+                <div style={{ position: "absolute", top: `${z.top * 100}%`, bottom: `${z.bottom * 100}%`, left: `${z.left * 100}%`, right: `${z.right * 100}%`, border: "1px dashed oklch(0.86 0.17 145 / 0.9)" }} />
+              </div>
+            );
+          })()}
 
           {/* live alignment guides while dragging an overlay into snap */}
           {snapGuide.x != null && (
