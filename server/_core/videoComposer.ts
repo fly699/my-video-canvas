@@ -270,6 +270,19 @@ export interface TextInput {
   y: number;           // 0..1 of canvas
 }
 
+/** 打字机逐字显现：每个字符先 \alpha&HFF&（全透明），到自己的时刻用 \t 瞬变 \alpha&H00&
+ *  （不透明）出现。节奏约 60ms/字，并压缩到不超过片段时长的 80%，CJK/emoji 按码点切分。 */
+export function typewriterText(content: string, clipDurMs: number): string {
+  const chars = Array.from(content);
+  if (chars.length === 0) return "";
+  const revealMs = Math.min(Math.max(0, clipDurMs) * 0.8, chars.length * 60);
+  const per = revealMs / chars.length;
+  return chars.map((ch, i) => {
+    const t0 = Math.round(i * per);
+    return `{\\alpha&HFF&\\t(${t0},${t0 + 1},\\alpha&H00&)}${escapeASSText(ch)}`;
+  }).join("");
+}
+
 /** Build an ASS subtitle document for the editor's text clips (CJK-safe, positioned). */
 export function buildEditorASS(clips: TextInput[], opts: { width: number; height: number }): string {
   const head = [
@@ -336,7 +349,11 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     else if (motion === "slideup" || motion === "slidedown") tags.push(`\\fad(${MD},0)`);
     else if (motion === "pop") tags.push(`\\fscx40\\fscy40\\t(0,${MD},\\fscx100\\fscy100)`, "\\fad(150,0)");
     else if (motion === "bounce" || motion === "karaoke") tags.push("\\fad(200,200)");
-    return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{${tags.join("")}}${escapeASSText(t.content)}`;
+    // 打字机：逐字显现（每字先全透明、到时刻瞬变不透明），文本本身改成 per-char 块。
+    const body = motion === "typewriter"
+      ? typewriterText(t.content, (c.end - c.start) * 1000)
+      : escapeASSText(t.content);
+    return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{${tags.join("")}}${body}`;
   });
   return head.concat(events).join("\n") + "\n";
 }

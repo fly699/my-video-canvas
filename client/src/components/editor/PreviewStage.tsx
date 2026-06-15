@@ -87,6 +87,17 @@ function textMotionPreview(motion: string | undefined, tInto: number): { opacity
   }
 }
 
+/** 打字机：在 `tInto` 秒已显现的字符数（与导出 ASS 同节奏 ~60ms/字、压到片段时长 80% 内）。 */
+function typewriterVisibleCount(content: string, tInto: number, clipDur: number): number {
+  const chars = Array.from(content);
+  if (chars.length === 0) return 0;
+  const revealSec = Math.min(Math.max(0, clipDur) * 0.8, chars.length * 0.06);
+  const per = revealSec / chars.length;
+  if (tInto < 0) return 0;
+  if (per <= 0) return chars.length;
+  return Math.min(chars.length, Math.floor(tInto / per) + 1);
+}
+
 function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; muted: boolean }[] {
   const out: { clip: Clip; trackType: string; muted: boolean }[] = [];
   for (const track of doc.tracks) {
@@ -451,7 +462,9 @@ export function PreviewStage() {
                 onPointerDown={(e) => beginMove(e, clip)}>
                 {clip.kind === "text" ? (
                   <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: clip.text?.align === "left" ? "flex-start" : clip.text?.align === "right" ? "flex-end" : "center", textAlign: clip.text?.align ?? "center", pointerEvents: "none" }}>
-                    <span style={textCss(clip.text, doc.height)}>{clip.text?.content}</span>
+                    <span style={textCss(clip.text, doc.height)}>{clip.text?.motionStyle === "typewriter"
+                      ? Array.from(clip.text?.content ?? "").slice(0, typewriterVisibleCount(clip.text?.content ?? "", playhead - clip.start, clipDuration(clip))).join("")
+                      : clip.text?.content}</span>
                   </div>
                 ) : clip.kind === "image" ? (
                   <img src={clip.assetUrl} alt="" draggable={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none" }} />

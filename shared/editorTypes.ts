@@ -64,7 +64,7 @@ export interface ClipText {
   size?: number;        // px at output resolution
   color?: string;       // CSS fill color
   bgColor?: string;     // optional text background box
-  motionStyle?: "none" | "fade" | "roll" | "karaoke" | "bounce" | "slideup" | "slidedown" | "pop";
+  motionStyle?: "none" | "fade" | "roll" | "karaoke" | "bounce" | "slideup" | "slidedown" | "pop" | "typewriter";
   // ── rich styling (preview via CSS; export via ASS override tags) ──
   bold?: boolean;
   italic?: boolean;
