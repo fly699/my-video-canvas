@@ -249,6 +249,14 @@ export function estimateCanvasBudget(nodes: BudgetNode[]): CanvasBudget {
       if (!model) { unknownCount++; continue; }
       const count = Math.max(1, Number(p.imageN ?? p.batchSize ?? p.fluxNumImages ?? 1) || 1);
       add(model, iLabel(model), estimateImageCost(model, count, { resolution: p.imageResolution as string | undefined }));
+    } else if (t === "storyboard") {
+      // 分镜节点本质是「按分镜生成图像」，计价与 image_gen 同源（StoryboardNode 用 imageModel
+      // 字段；hf_soul 批量 batchSize 张，其余 1 张）。此前漏算导致分镜不计入预算。
+      runnableCount++;
+      const model = String(p.imageModel ?? p.model ?? "");
+      if (!model || !IMAGE_MODELS.some((m) => m.value === model)) { unknownCount++; continue; }
+      const count = model === "hf_soul_standard" ? (Number(p.batchSize) === 4 ? 4 : 1) : 1;
+      add(model, iLabel(model), estimateImageCost(model, count, { resolution: p.imageResolution as string | undefined }));
     } else if (t === "audio") {
       runnableCount++;
       const cat = String(p.audioCategory ?? "");
