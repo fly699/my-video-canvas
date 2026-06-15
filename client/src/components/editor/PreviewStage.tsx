@@ -5,7 +5,7 @@ import { useEditorStore, clipDuration } from "./editorStore";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { computeSafeRect } from "@/lib/safeZone";
 import type { Clip, ClipTransform, EditorDoc, FitMode } from "@shared/editorTypes";
-import { transformAt } from "@shared/editorTypes";
+import { transformAt, applyEase } from "@shared/editorTypes";
 
 /** Reduce W:H to a tidy ratio label (e.g. 1920×1080 → "16:9"). */
 function ratioLabel(w: number, h: number): string {
@@ -59,6 +59,32 @@ function textCss(t: Clip["text"], canvasH: number): React.CSSProperties {
   }
   if (t?.shadow) css.textShadow = `0 0.05em 0.12em ${t?.shadowColor ?? "rgba(0,0,0,0.65)"}`;
   return css;
+}
+
+/** Fade-in/out opacity multiplier for a clip at `tInto` seconds from its start
+ *  (0..1). Mirrors the export's picture/alpha fade so the preview matches WYSIWYG. */
+function clipFadeOpacity(c: Clip, tInto: number, dur: number): number {
+  let o = 1;
+  if (c.fadeIn && c.fadeIn > 0 && tInto < c.fadeIn) o = Math.min(o, Math.max(0, tInto / c.fadeIn));
+  if (c.fadeOut && c.fadeOut > 0 && tInto > dur - c.fadeOut) o = Math.min(o, Math.max(0, (dur - tInto) / c.fadeOut));
+  return o;
+}
+
+/** Live preview of a text clip's entrance motion at `tInto` seconds from its
+ *  start — mirrors the export ASS (\move / \fad / \t scale) over the first ~0.35s
+ *  so scrubbing the playhead演示 the animation (WYSIWYG). */
+function textMotionPreview(motion: string | undefined, tInto: number): { opacity: number; transform: string } {
+  const MD = 0.35;
+  if (!motion || motion === "none" || tInto < 0 || tInto >= MD) return { opacity: 1, transform: "" };
+  const e = applyEase(tInto / MD, "out");
+  switch (motion) {
+    case "fade": case "bounce": case "karaoke": return { opacity: e, transform: "" };
+    case "slideup": return { opacity: e, transform: `translateY(${((1 - e) * 40).toFixed(1)}px)` };
+    case "slidedown": return { opacity: e, transform: `translateY(${(-(1 - e) * 40).toFixed(1)}px)` };
+    case "pop": return { opacity: e, transform: `scale(${(0.4 + 0.6 * e).toFixed(3)})` };
+    case "roll": return { opacity: e, transform: `translateY(${((1 - e) * 120).toFixed(1)}px)` };
+    default: return { opacity: 1, transform: "" };
+  }
 }
 
 function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; muted: boolean }[] {
@@ -348,6 +374,7 @@ export function PreviewStage() {
             const fullFrame = trackType === "video";
             const selected = clip.id === selectedClipId;
             const xfade = fadeOf(clip.id);
+            const fadeMul = clipFadeOpacity(clip, playhead - clip.start, clipDuration(clip)); // 片段淡入淡出（预览=透明度，导出=画面/alpha 渐变）
             // zoom/pan CSS for a full-frame clip that has a transform — same clamp
             // as the export: pan only once zoomed (scale≥1), bounded to the room.
             let mainTransform: string | undefined;
@@ -358,7 +385,7 @@ export function PreviewStage() {
               const py = Math.max(-maxFrac, Math.min(maxFrac, tf.y ?? 0));
               mainTransform = `translate(${(px * 100).toFixed(2)}%, ${(py * 100).toFixed(2)}%) scale(${s.toFixed(3)}) rotate(${tf.rotation ?? 0}deg)`;
             }
-            const mainOpacity = xfade * (fullFrame && tf ? (tf.opacity ?? 1) : 1);
+            const mainOpacity = xfade * fadeMul * (fullFrame && tf ? (tf.opacity ?? 1) : 1);
             const objFit: React.CSSProperties["objectFit"] = fullFrame
               ? (clip.fit === "cover" ? "cover" : clip.fit === "stretch" ? "fill" : clip.fit === "none" ? "none" : "contain")
               : "cover";
@@ -390,13 +417,15 @@ export function PreviewStage() {
               return null;
             }
 
-            // positioned (overlay / PiP / text) — interactive box with handles
+            // positioned (overlay / PiP / text) — interactive box with handles.
+            // 文字片段叠加入场动效（按播放头实时演示，与导出 ASS 同步）。
+            const tmo = clip.kind === "text" ? textMotionPreview(clip.text?.motionStyle, playhead - clip.start) : { opacity: 1, transform: "" };
             const boxStyle: React.CSSProperties = {
               position: "absolute",
               left: `${(tf?.x ?? 0.1) * 100}%`, top: `${(tf?.y ?? 0.1) * 100}%`,
               width: `${(tf?.scale ?? 0.4) * 100}%`,
-              opacity: (tf?.opacity ?? 1) * xfade,
-              transform: `rotate(${tf?.rotation ?? 0}deg)`,
+              opacity: (tf?.opacity ?? 1) * xfade * fadeMul * tmo.opacity,
+              transform: `${tmo.transform} rotate(${tf?.rotation ?? 0}deg)`,
               cursor: "move", touchAction: "none",
               outline: selected ? `2px solid ${EC.accent}` : "none",
             };

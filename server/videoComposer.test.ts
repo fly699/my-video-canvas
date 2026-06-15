@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentZoomPanChain, chromaKeyFilter, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput, type OverlayInput } from "./_core/videoComposer";
-import { emptyEditorDoc } from "@shared/editorTypes";
+import { emptyEditorDoc, applyEase, transformAt, type Clip } from "@shared/editorTypes";
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
 
@@ -192,6 +192,19 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(ass).toContain("中文字幕");
   });
 
+  it("buildEditorASS 文字入场动效：滑入(\\move+\\fad)/弹入(\\fscx\\t)/滚动(\\move 全屏)", () => {
+    const mk = (m: string) => buildEditorASS([{ start: 1, end: 3, text: { content: "字", size: 60, motionStyle: m as never }, x: 0.1, y: 0.8 }], { width: 1920, height: 1080 });
+    // off = round(1080*0.06)=65 → 上滑入从 864+65=929 归位到 864
+    expect(mk("slideup")).toContain("\\move(192,929,192,864,0,350)");
+    expect(mk("slideup")).toContain("\\fad(350,0)");
+    expect(mk("slidedown")).toContain("\\move(192,799,192,864,0,350)"); // 864-65=799
+    expect(mk("pop")).toContain("\\fscx40\\fscy40\\t(0,350,\\fscx100\\fscy100)");
+    expect(mk("pop")).toContain("\\fad(150,0)");
+    expect(mk("roll")).toContain("\\move(192,1080,192,864)");           // 从画面底部滚入（不变）
+    expect(mk("none")).toContain("\\pos(192,864)");                     // 无动效仅定位
+    expect(mk("none")).not.toContain("\\move");
+  });
+
   it("buildEditorASS applies bold/italic/stroke/shadow styling", () => {
     const clips: TextInput[] = [{ start: 0, end: 2, x: 0.1, y: 0.8, text: {
       content: "样式", size: 50, color: "#ffffff", bold: true, italic: true,
@@ -329,6 +342,20 @@ describe("overlay position keyframes (export animation)", () => {
     expect(e.endsWith(",10))")).toBe(true);               // hold last value after t=2
   });
 
+  it("buildKeyframeExpr: 缓动曲线（ease）改区间插值，linear 仍逐字不变", () => {
+    // linear 与无 ease 字节一致（零回归）
+    expect(buildKeyframeExpr([{ t: 0, v: 0, ease: "linear" }, { t: 2, v: 10 }]))
+      .toBe(buildKeyframeExpr([{ t: 0, v: 0 }, { t: 2, v: 10 }]));
+    // 缓入：区间用 R*R 多项式（R=(t-at)/dt），不再是线性 slope
+    const ein = buildKeyframeExpr([{ t: 0, v: 0, ease: "in" }, { t: 2, v: 10 }])!;
+    expect(ein).toContain("((t-0)/2)*((t-0)/2)");          // R*R
+    expect(ein).toContain("(0+(10-0)*");                   // a + (b-a)*ease
+    expect(ein).not.toContain("(t-0)*5");                  // 不是线性段
+    // 缓出 / 缓入缓出 各自的多项式
+    expect(buildKeyframeExpr([{ t: 0, v: 0, ease: "out" }, { t: 2, v: 10 }])!).toContain("(2-((t-0)/2))");
+    expect(buildKeyframeExpr([{ t: 0, v: 0, ease: "inout" }, { t: 2, v: 10 }])!).toContain("(3-2*((t-0)/2))");
+  });
+
   it("animates overlay x/y from keyframes via per-frame expr in absolute time", () => {
     const overlays = [{
       isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 2, duration: 3,
@@ -348,5 +375,84 @@ describe("overlay position keyframes (export animation)", () => {
     const g = buildFilterGraph(baseSeg, OPTS, overlays);
     expect(g.filterComplex).not.toContain("eval=frame");
     expect(g.filterComplex).toContain("overlay=x=480:y=270"); // 0.25*1920, 0.25*1080
+  });
+});
+
+describe("applyEase / transformAt — 关键帧补间缓动（预览与导出同曲线）", () => {
+  it("applyEase 各曲线在 r=0/0.5/1 的取值", () => {
+    for (const e of ["linear", "in", "out", "inout"] as const) {
+      expect(applyEase(0, e)).toBeCloseTo(0, 6);
+      expect(applyEase(1, e)).toBeCloseTo(1, 6);
+    }
+    expect(applyEase(0.5, "linear")).toBeCloseTo(0.5, 6);
+    expect(applyEase(0.5, "in")).toBeCloseTo(0.25, 6);    // r*r
+    expect(applyEase(0.5, "out")).toBeCloseTo(0.75, 6);   // r*(2-r)
+    expect(applyEase(0.5, "inout")).toBeCloseTo(0.5, 6);  // smoothstep 对称
+    expect(applyEase(0.25, "inout")).toBeCloseTo(0.15625, 6);
+    expect(applyEase(-1, "in")).toBe(0); expect(applyEase(2, "in")).toBe(1); // 夹紧
+  });
+
+  it("transformAt 用起始关键帧的 ease 做补间", () => {
+    const mk = (ease?: "linear" | "in" | "out" | "inout"): Clip => ({
+      id: "c", kind: "image", start: 0, trimIn: 0, trimOut: 2,
+      keyframes: [{ t: 0, scale: 1, ease }, { t: 1, scale: 2 }],
+    });
+    expect(transformAt(mk("linear"), 0.5).scale).toBeCloseTo(1.5, 6);
+    expect(transformAt(mk("in"), 0.5).scale).toBeCloseTo(1.25, 6);
+    expect(transformAt(mk("out"), 0.5).scale).toBeCloseTo(1.75, 6);
+    expect(transformAt(mk("inout"), 0.5).scale).toBeCloseTo(1.5, 6);
+    // 端点不受曲线影响
+    expect(transformAt(mk("in"), 0).scale).toBeCloseTo(1, 6);
+    expect(transformAt(mk("in"), 1).scale).toBeCloseTo(2, 6);
+  });
+});
+
+describe("片段画面淡入淡出（visual fade：video fade / overlay alpha / 同步音频 afade）", () => {
+  it("主轨视频片段：画面 fade=t=in/out + 音频 afade", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1, fadeIn: 0.5, fadeOut: 0.5 }];
+    const g = buildFilterGraph(segs, OPTS).filterComplex;
+    expect(g).toContain("fade=t=in:st=0:d=0.500");
+    expect(g).toContain("fade=t=out:st=3.500:d=0.500");   // dur 4 - 0.5
+    expect(g).toContain("afade=t=in:st=0:d=0.500");        // 音频同步淡入
+    expect(g).toContain("afade=t=out:st=3.500:d=0.500");
+  });
+
+  it("无淡入淡出 → 不产生 fade=t= / afade（且不误伤 xfade transition=fade）", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 3, speed: 1 }], OPTS).filterComplex;
+    expect(g).not.toContain("fade=t=in");
+    expect(g).not.toContain("afade=t=");
+  });
+
+  it("淡入时长被夹到片段时长，st 不为负", () => {
+    const g = buildFilterGraph([{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, fadeOut: 5 }], OPTS).filterComplex;
+    expect(g).toContain("fade=t=out:st=0.000:d=2.000"); // 5 夹到 2，st=2-2=0
+  });
+
+  it("叠加层：alpha 淡入淡出（fade=...:alpha=1，在时间轴位移前的本地时基）", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const overlays: OverlayInput[] = [{ isImage: true, trimIn: 0, trimOut: 3, speed: 1, start: 1, duration: 3, transform: { x: 0.2, y: 0.2, scale: 0.3 }, fadeIn: 0.4, fadeOut: 0.6 }];
+    const g = buildFilterGraph(segs, OPTS, overlays).filterComplex;
+    expect(g).toContain("fade=t=in:st=0:d=0.400:alpha=1");
+    expect(g).toContain("fade=t=out:st=2.400:d=0.600:alpha=1"); // duration 3 - 0.6
+  });
+});
+
+describe("音频淡变曲线（afade curve=）", () => {
+  it("curve 透传 / 未知曲线白名单拒绝 / 无曲线与 tri 逐字不变（零回归）", () => {
+    const mk = (curve?: string) => buildFilterGraph(
+      [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }], OPTS, [],
+      { audioClips: [{ trimIn: 0, trimOut: 4, speed: 1, start: 0, volume: 1, fadeIn: 0.5, fadeOut: 0.5, fadeCurve: curve }] },
+    ).filterComplex;
+    expect(mk("log")).toContain("afade=t=in:st=0:d=0.500:curve=log");
+    expect(mk("exp")).toContain("afade=t=out:st=3.500:d=0.500:curve=exp");
+    expect(mk("evil;rm -rf /")).not.toContain("curve=");  // 注入防护：白名单外拒绝
+    expect(mk(undefined)).toContain("afade=t=in:st=0:d=0.500");
+    expect(mk(undefined)).not.toContain("curve=");
+    expect(mk("tri")).not.toContain("curve=");            // 线性默认不加 :curve=
+  });
+
+  it("主轨片段的 fadeCurve 也作用到其音频", () => {
+    const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1, fadeIn: 0.5, fadeCurve: "qsin" }], OPTS).filterComplex;
+    expect(g).toContain("afade=t=in:st=0:d=0.500:curve=qsin");
   });
 });

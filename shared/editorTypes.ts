@@ -52,7 +52,7 @@ export interface ClipText {
   size?: number;        // px at output resolution
   color?: string;       // CSS fill color
   bgColor?: string;     // optional text background box
-  motionStyle?: "none" | "fade" | "roll" | "karaoke" | "bounce";
+  motionStyle?: "none" | "fade" | "roll" | "karaoke" | "bounce" | "slideup" | "slidedown" | "pop";
   // ── rich styling (preview via CSS; export via ASS override tags) ──
   bold?: boolean;
   italic?: boolean;
@@ -63,8 +63,25 @@ export interface ClipText {
   shadowColor?: string; // 投影色 (default semi-black)
 }
 
+/** Keyframe interpolation curve. Controls the segment LEAVING a keyframe (kf→next):
+ *  linear=匀速; in=缓入(慢起加速); out=缓出(快起减速); inout=缓入缓出(S 曲线). */
+export type EaseType = "linear" | "in" | "out" | "inout";
+
+/** Apply an easing curve to a normalized progress `r`∈[0,1]. Pure; shared by the
+ *  preview interpolation and (as an expression) the ffmpeg export. */
+export function applyEase(r: number, ease: EaseType | undefined): number {
+  const x = r <= 0 ? 0 : r >= 1 ? 1 : r;
+  switch (ease) {
+    case "in": return x * x;               // 二次缓入
+    case "out": return x * (2 - x);        // 二次缓出
+    case "inout": return x * x * (3 - 2 * x); // smoothstep S 曲线
+    default: return x;                     // linear
+  }
+}
+
 /** A transform keyframe: `t` seconds from the clip's start; any subset of the
- *  transform fields it animates. Between keyframes, values interpolate linearly. */
+ *  transform fields it animates. Between keyframes, values interpolate with the
+ *  start keyframe's `ease` curve (default linear). */
 export interface TransformKeyframe {
   t: number;         // seconds from the clip start
   x?: number;
@@ -72,6 +89,7 @@ export interface TransformKeyframe {
   scale?: number;
   opacity?: number;
   rotation?: number;
+  ease?: EaseType;   // 补间曲线（作用于本关键帧→下一关键帧的区间），缺省 linear
 }
 
 export interface Clip {
@@ -87,6 +105,7 @@ export interface Clip {
   volume?: number;          // 0..2, default 1 (audio/video)
   fadeIn?: number;          // seconds
   fadeOut?: number;         // seconds
+  fadeCurve?: "tri" | "qsin" | "hsin" | "log" | "exp"; // 音频淡变曲线（默认 tri=线性）
   ducking?: boolean;        // audio: 背景音乐，遇人声(其余音频)自动闪避压低
   denoise?: boolean;        // audio: FFT 降噪（afftdn），清理底噪/嗡声
   chromaKey?: { color?: string; similarity?: number; blend?: number }; // overlay 绿幕抠像
@@ -117,7 +136,7 @@ export function transformAt(clip: Clip, tIntoClip: number): ClipTransform {
       const a = pts[i], b = pts[i + 1];
       if (tIntoClip >= a.t && tIntoClip <= b.t) {
         const r = (tIntoClip - a.t) / Math.max(1e-6, b.t - a.t);
-        base[f] = (a[f] as number) + ((b[f] as number) - (a[f] as number)) * r;
+        base[f] = (a[f] as number) + ((b[f] as number) - (a[f] as number)) * applyEase(r, a.ease);
         break;
       }
     }

@@ -4,7 +4,7 @@ import * as os from "os";
 import { storagePut, assertObjectStorageWritable } from "../storage";
 import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssColorToASSHex, cssColorToASSAlpha, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
-import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode, TransformKeyframe } from "@shared/editorTypes";
+import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode, TransformKeyframe, EaseType } from "@shared/editorTypes";
 
 // Render timeouts are generous: a full multi-clip render re-encodes everything
 // in ONE pass, which can take minutes for long timelines.
@@ -40,6 +40,9 @@ export interface Segment {
   reverse?: boolean;                              // 倒放：逆序播放（图片无效）
   transform?: ClipTransform;                      // main-track zoom(scale≥1)/pan(x,y)/rotate within the frame
   keyframes?: TransformKeyframe[];                // main-track Ken-Burns: animate zoom/pan over time
+  fadeIn?: number;                                // 画面+音频淡入（秒，从黑/静音渐显）
+  fadeOut?: number;                               // 画面+音频淡出（秒，渐隐到黑/静音）
+  fadeCurve?: string;                             // 音频淡变曲线（afade curve；画面 fade 仍线性）
 }
 
 /** Zoom/pan/rotate a frame-sized image WITHIN the output frame (main-track clips):
@@ -95,6 +98,30 @@ export function segmentZoomPanChain(tf: ClipTransform | undefined, kfs: Transfor
   return out;
 }
 
+/** Visual fade filters (picture fade from/to black, or alpha fade for overlays).
+ *  `dur` is the clip's visible seconds (fade times are clip-local, st-from-0). */
+function videoFadeFilters(fadeIn: number | undefined, fadeOut: number | undefined, dur: number, alpha = false): string[] {
+  const out: string[] = [];
+  const a = alpha ? ":alpha=1" : "";
+  if (fadeIn && fadeIn > 0) out.push(`fade=t=in:st=0:d=${Math.min(fadeIn, dur).toFixed(3)}${a}`);
+  if (fadeOut && fadeOut > 0) { const d = Math.min(fadeOut, dur); out.push(`fade=t=out:st=${Math.max(0, dur - d).toFixed(3)}:d=${d.toFixed(3)}${a}`); }
+  return out;
+}
+
+/** afade curve names we expose (others rejected to keep the filter string safe). */
+const ALLOWED_FADE_CURVES = new Set(["tri", "qsin", "hsin", "log", "exp"]);
+
+/** Audio fade-in/out (afade) for a clip-local stream of `dur` seconds. `curve`
+ *  shapes the gain envelope (tri=linear default; qsin/hsin smooth; log fast-then-
+ *  slow; exp slow-then-fast). Unknown curves fall back to linear (no `:curve=`). */
+function audioFadeFilters(fadeIn: number | undefined, fadeOut: number | undefined, dur: number, curve?: string): string[] {
+  const cv = curve && curve !== "tri" && ALLOWED_FADE_CURVES.has(curve) ? `:curve=${curve}` : "";
+  const out: string[] = [];
+  if (fadeIn && fadeIn > 0) out.push(`afade=t=in:st=0:d=${Math.min(fadeIn, dur).toFixed(3)}${cv}`);
+  if (fadeOut && fadeOut > 0) { const d = Math.min(fadeOut, dur); out.push(`afade=t=out:st=${Math.max(0, dur - d).toFixed(3)}:d=${d.toFixed(3)}${cv}`); }
+  return out;
+}
+
 /** ffmpeg filters that fit a frame into the output canvas per the fit mode. */
 function fitChain(fit: FitMode | undefined, w: number, h: number): string[] {
   switch (fit) {
@@ -122,6 +149,8 @@ export interface OverlayInput {
   transform?: ClipTransform;
   keyframes?: TransformKeyframe[]; // position (x/y) animated on export; others static
   chromaKey?: { color?: string; similarity?: number; blend?: number }; // 绿幕抠像
+  fadeIn?: number;                 // 叠加层 alpha 淡入（秒）
+  fadeOut?: number;                // 叠加层 alpha 淡出（秒）
 }
 
 /** Build a sanitized `chromakey` filter (keys the given colour transparent). Colour
@@ -135,21 +164,37 @@ export function chromaKeyFilter(ck: { color?: string; similarity?: number; blend
   return `chromakey=${color}:${sim.toFixed(3)}:${blend.toFixed(3)}`;
 }
 
-/** Build a piecewise-linear ffmpeg expression (in the overlay's `t` time base, in
- *  seconds) for a keyframed field. Values hold flat before the first and after the
- *  last point. Returns null when there are no keyframes for the field. `pts` must
- *  be sorted ascending by `t`; `v` is already in target units (e.g. pixels). */
-export function buildKeyframeExpr(pts: { t: number; v: number }[]): string | null {
+const exprF = (n: number) => Number(n.toFixed(4)).toString();
+
+/** ffmpeg expression for one keyframe segment a→b in the `t` time base. Linear keeps
+ *  the exact previous form (byte-identical, zero export regression); easing replaces
+ *  the progress `r=(t-at)/dt` with the matching polynomial — same curves as the
+ *  preview's `applyEase`, so preview and export agree. */
+function segmentKeyframeExpr(av: number, bv: number, at: number, dt: number, ease: EaseType | undefined): string {
+  if (!ease || ease === "linear") {
+    const slope = (bv - av) / dt;
+    return `(${exprF(av)}+(t-${exprF(at)})*${exprF(slope)})`;
+  }
+  const R = `((t-${exprF(at)})/${exprF(dt)})`;
+  const poly = ease === "in" ? `${R}*${R}` : ease === "out" ? `${R}*(2-${R})` : `${R}*${R}*(3-2*${R})`;
+  return `(${exprF(av)}+(${exprF(bv)}-${exprF(av)})*(${poly}))`;
+}
+
+/** Build a piecewise ffmpeg expression (in the overlay's `t` time base, seconds)
+ *  for a keyframed field. Values hold flat before the first and after the last
+ *  point; each segment uses its start keyframe's `ease` curve. Returns null when
+ *  there are no keyframes. `pts` must be sorted ascending by `t`; `v` is already
+ *  in target units (e.g. pixels). */
+export function buildKeyframeExpr(pts: { t: number; v: number; ease?: EaseType }[]): string | null {
   if (pts.length === 0) return null;
-  const f = (n: number) => Number(n.toFixed(4)).toString();
-  if (pts.length === 1) return f(pts[0].v); // single keyframe → constant
-  let expr = f(pts[pts.length - 1].v); // after the last point: hold
+  if (pts.length === 1) return exprF(pts[0].v); // single keyframe → constant
+  let expr = exprF(pts[pts.length - 1].v); // after the last point: hold
   for (let i = pts.length - 2; i >= 0; i--) {
     const a = pts[i], b = pts[i + 1];
-    const slope = (b.v - a.v) / Math.max(1e-6, b.t - a.t);
-    expr = `if(lt(t,${f(b.t)}),(${f(a.v)}+(t-${f(a.t)})*${f(slope)}),${expr})`;
+    const seg = segmentKeyframeExpr(a.v, b.v, a.t, Math.max(1e-6, b.t - a.t), a.ease);
+    expr = `if(lt(t,${exprF(b.t)}),${seg},${expr})`;
   }
-  return `if(lt(t,${f(pts[0].t)}),${f(pts[0].v)},${expr})`; // before the first: hold
+  return `if(lt(t,${exprF(pts[0].t)}),${exprF(pts[0].v)},${expr})`; // before the first: hold
 }
 
 /** Sorted keyframe points for one field, with clip-relative time shifted by
@@ -157,12 +202,12 @@ export function buildKeyframeExpr(pts: { t: number; v: number }[]): string | nul
  *  by `toUnit` (e.g. normalized→pixels). Empty when no keyframe defines the field. */
 function keyframePoints(
   kfs: TransformKeyframe[] | undefined, field: "x" | "y" | "scale", tOffset: number, toUnit: (v: number) => number,
-): { t: number; v: number }[] {
+): { t: number; v: number; ease?: EaseType }[] {
   if (!kfs || kfs.length === 0) return [];
   return kfs
     .filter((k) => k[field] != null)
     .sort((a, b) => a.t - b.t)
-    .map((k) => ({ t: k.t + tOffset, v: toUnit(k[field] as number) }));
+    .map((k) => ({ t: k.t + tOffset, v: toUnit(k[field] as number), ease: k.ease }));
 }
 
 /** A clip on a dedicated audio track, mixed into the output. */
@@ -174,6 +219,7 @@ export interface AudioInput {
   volume: number;
   fadeIn: number;
   fadeOut: number;
+  fadeCurve?: string;  // afade 曲线（tri/qsin/hsin/log/exp）
   ducking?: boolean;   // background music: auto-duck under the other (voice) audio
   denoise?: boolean;   // FFT noise reduction (afftdn) — clean up hiss/hum
 }
@@ -241,8 +287,17 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     if (motion === "roll") {
       return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{\\an7\\move(${px},${opts.height},${px},${py})${base.join("")}}${escapeASSText(t.content)}`;
     }
-    const tags = [`\\an7`, `\\pos(${px},${py})`, ...base];
+    // 入场动效（前 ~350ms）：滑入用 \move 从偏移位归位 + 淡入；弹入用 \fscx/\fscy + \t 缩放。
+    const MD = 350;
+    const off = Math.max(8, Math.round(opts.height * 0.06)); // 滑入距离（脚本像素）
+    const lead: string[] = ["\\an7"];
+    if (motion === "slideup") lead.push(`\\move(${px},${py + off},${px},${py},0,${MD})`);
+    else if (motion === "slidedown") lead.push(`\\move(${px},${py - off},${px},${py},0,${MD})`);
+    else lead.push(`\\pos(${px},${py})`);
+    const tags = [...lead, ...base];
     if (motion === "fade") tags.push("\\fad(300,300)");
+    else if (motion === "slideup" || motion === "slidedown") tags.push(`\\fad(${MD},0)`);
+    else if (motion === "pop") tags.push(`\\fscx40\\fscy40\\t(0,${MD},\\fscx100\\fscy100)`, "\\fad(150,0)");
     else if (motion === "bounce" || motion === "karaoke") tags.push("\\fad(200,200)");
     return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{${tags.join("")}}${escapeASSText(t.content)}`;
   });
@@ -350,7 +405,7 @@ export function buildFilterGraph(
     // feeding a concat (hard cut) output into a later xfade alongside a fresh
     // segment then fails with "timebase ... do not match" → "Failed to
     // configure output pad". settb keeps all combine inputs on 1/fps.
-    const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), "format=yuv420p", `settb=1/${fps}`];
+    const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), "format=yuv420p", ...videoFadeFilters(s.fadeIn, s.fadeOut, dur), `settb=1/${fps}`];
 
     if (s.fit === "blur") {
       // 模糊填充：同一画面放大铺满 + 高斯/盒式模糊作背景，原画完整居中叠加，消除黑边。
@@ -370,6 +425,7 @@ export function buildFilterGraph(
       aChain.push("asetpts=PTS-STARTPTS");
       if (Math.abs(s.speed - 1) > 0.001) aChain.push(...buildAtempoFilters(s.speed));
       aChain.push("aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100");
+      aChain.push(...audioFadeFilters(s.fadeIn, s.fadeOut, dur, s.fadeCurve)); // 片段画面淡入淡出时音频同步渐变
       parts.push(`[${i}:a]${aChain.join(",")}[a${i}]`);
     } else {
       // Silence MUST use the same sample format as real-audio chains (fltp), else
@@ -434,6 +490,8 @@ export function buildFilterGraph(
     if (op < 0.999) oc.push(`colorchannelmixer=aa=${op.toFixed(3)}`);
     const rot = o.transform?.rotation ?? 0;
     if (rot) oc.push(`rotate=${(rot * Math.PI / 180).toFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)`);
+    // alpha fade in/out while the overlay's PTS is still clip-local (0..duration)
+    oc.push(...videoFadeFilters(o.fadeIn, o.fadeOut, o.duration, true));
     // shift the overlay so its frames land at its timeline start
     oc.push(`setpts=PTS+${o.start.toFixed(3)}/TB`);
     parts.push(`[${inIdx}:v]${oc.join(",")}[ov${j}]`);
@@ -477,8 +535,7 @@ export function buildFilterGraph(
       if (a.denoise) ac.push("afftdn=nr=20:nf=-30"); // 降噪：对原始音频做 FFT 降噪（实测噪声带降约 12dB）
       if (Math.abs(a.speed - 1) > 0.001) ac.push(...buildAtempoFilters(a.speed));
       if (Math.abs(a.volume - 1) > 0.001) ac.push(`volume=${a.volume.toFixed(3)}`);
-      if (a.fadeIn > 0) ac.push(`afade=t=in:st=0:d=${a.fadeIn.toFixed(3)}`);
-      if (a.fadeOut > 0) ac.push(`afade=t=out:st=${Math.max(0, dur - a.fadeOut).toFixed(3)}:d=${a.fadeOut.toFixed(3)}`);
+      ac.push(...audioFadeFilters(a.fadeIn, a.fadeOut, dur, a.fadeCurve));
       ac.push(`adelay=delays=${Math.round(a.start * 1000)}:all=1`);
       ac.push(AFMT);
       parts.push(`[${inIdx}:a]${ac.join(",")}[ax${k}]`);
@@ -614,7 +671,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut, fadeCurve: c.fadeCurve };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
@@ -638,7 +695,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
       const dur = clipVisibleDuration(c);
-      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey });
+      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut });
       if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
@@ -649,7 +706,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       if (!c.assetUrl) continue;
       const p = await downloadToTemp(c.assetUrl, "m4a");
       tmpFiles.push(p);
-      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: c.volume ?? 1, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, ducking: c.ducking, denoise: c.denoise });
+      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: c.volume ?? 1, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, fadeCurve: c.fadeCurve, ducking: c.ducking, denoise: c.denoise });
       inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }
