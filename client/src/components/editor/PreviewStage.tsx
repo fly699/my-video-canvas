@@ -3,6 +3,7 @@ import { Play, Pause, SkipBack, Grid3x3 } from "lucide-react";
 import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { computeSafeRect } from "@/lib/safeZone";
 import type { Clip, ClipTransform, EditorDoc, FitMode } from "@shared/editorTypes";
 import { transformAt } from "@shared/editorTypes";
 
@@ -48,8 +49,14 @@ function textCss(t: Clip["text"], canvasH: number): React.CSSProperties {
     whiteSpace: "pre-wrap",
     lineHeight: 1.25,
   };
-  // stroke (scaled to font via em so it tracks the preview zoom)
-  if (stroke > 0) (css as Record<string, unknown>).WebkitTextStroke = `${(stroke / size).toFixed(3)}em ${t?.strokeColor ?? "#000"}`;
+  // stroke (scaled to font via em so it tracks the preview zoom). paint-order:stroke
+  // 让描边绘制在文字填充「之下」——否则居中描边会盖住字形、看起来粗一倍（用户反馈
+  // 「描边 1 也太粗」）。改成真正的外描边后，同样的数值看起来细得多、更接近导出效果。
+  // 颜色支持 8 位十六进制(#RRGGBBAA) / rgba()，故透明度直接由颜色字符串带过来。
+  if (stroke > 0) {
+    (css as Record<string, unknown>).WebkitTextStroke = `${(stroke / size).toFixed(3)}em ${t?.strokeColor ?? "#000"}`;
+    (css as Record<string, unknown>).paintOrder = "stroke";
+  }
   if (t?.shadow) css.textShadow = `0 0.05em 0.12em ${t?.shadowColor ?? "rgba(0,0,0,0.65)"}`;
   return css;
 }
@@ -120,11 +127,17 @@ export function PreviewStage() {
   const updateClip = useEditorStore((s) => s.updateClip);
   const [thirds, setThirds] = usePersistentState<boolean>("ui:editor:preview-thirds:v1", false, { validate: (p) => (typeof p === "boolean" ? p : null) });
   const [safeZone, setSafeZone] = usePersistentState<string>("ui:editor:preview-safezone:v1", "", { validate: (p) => (typeof p === "string" ? p : null) });
+  // 自定义安全区（可拖动/缩放）。safeZone === "custom" 时用它，否则用 SAFE_ZONES 预设。
+  const [safeRect, setSafeRect] = usePersistentState<{ top: number; bottom: number; left: number; right: number }>(
+    "ui:editor:preview-saferect:v1", { top: 0.08, bottom: 0.22, left: 0.03, right: 0.12 },
+    { validate: (p) => (p && typeof p === "object" && ["top", "bottom", "left", "right"].every((k) => typeof (p as Record<string, unknown>)[k] === "number") ? (p as { top: number; bottom: number; left: number; right: number }) : null) },
+  );
   const [snapGuide, setSnapGuide] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
 
   const mediaRefs = useRef<Map<string, HTMLVideoElement | HTMLAudioElement>>(new Map());
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  const safeDragRef = useRef<{ mode: "move" | "nw" | "ne" | "sw" | "se"; sx: number; sy: number; start: { x: number; y: number; w: number; h: number } } | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastTsRef = useRef<number>(0);
 
@@ -233,6 +246,25 @@ export function PreviewStage() {
     window.addEventListener("pointermove", onWinMove); window.addEventListener("pointerup", endDrag);
   }, [onWinMove, endDrag]);
 
+  // ── 安全区拖动 / 缩放（边框拖动=移动，四角=缩放；内部仍可点选片段）──
+  const onSafeMove = useCallback((e: PointerEvent) => {
+    const d = safeDragRef.current; if (!d) return;
+    const { w, h } = stageSize();
+    setSafeRect(computeSafeRect(d.start, d.mode, (e.clientX - d.sx) / w, (e.clientY - d.sy) / h));
+  }, [setSafeRect]);
+  const endSafeDrag = useCallback(() => {
+    safeDragRef.current = null;
+    window.removeEventListener("pointermove", onSafeMove);
+    window.removeEventListener("pointerup", endSafeDrag);
+  }, [onSafeMove]);
+  const beginSafeDrag = useCallback((e: React.PointerEvent, mode: "move" | "nw" | "ne" | "sw" | "se", rect: { top: number; bottom: number; left: number; right: number }) => {
+    e.stopPropagation(); e.preventDefault();
+    // 拖动预设安全区时，原地转为「自定义」并以当前矩形为起点，之后可自由移动/缩放。
+    if (safeZone !== "custom") { setSafeRect({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }); setSafeZone("custom"); }
+    safeDragRef.current = { mode, sx: e.clientX, sy: e.clientY, start: { x: rect.left, y: rect.top, w: 1 - rect.left - rect.right, h: 1 - rect.top - rect.bottom } };
+    window.addEventListener("pointermove", onSafeMove); window.addEventListener("pointerup", endSafeDrag);
+  }, [safeZone, setSafeRect, setSafeZone, onSafeMove, endSafeDrag]);
+
   if (!doc) return null;
   const visible = activeAt(doc, playhead);
   const aspect = doc.width / doc.height;
@@ -298,10 +330,10 @@ export function PreviewStage() {
           style={{ display: "inline-flex", alignItems: "center", gap: 4, ...fitBtn(thirds) }}>
           <Grid3x3 size={12} /> 参考线
         </button>
-        <button title="竖屏平台安全区：标出抖音/Reels/Shorts 等界面遮挡区，把关键内容留在虚线框内（点击切换平台）"
+        <button title="竖屏平台安全区：标出抖音/Reels/Shorts 等界面遮挡区，把关键内容留在虚线框内。点击切换平台预设；直接拖动虚线框边可移动、拖四角可缩放（转为「自定义」）"
           onClick={() => { const idx = SAFE_ZONES.findIndex((z) => z.id === safeZone); setSafeZone(idx + 1 >= SAFE_ZONES.length ? "" : SAFE_ZONES[idx + 1].id); }}
           style={{ display: "inline-flex", alignItems: "center", gap: 4, ...fitBtn(!!safeZone) }}>
-          安全区{safeZone ? "·" + (SAFE_ZONES.find((z) => z.id === safeZone)?.label ?? "") : ""}
+          安全区{safeZone ? "·" + (safeZone === "custom" ? "自定义" : SAFE_ZONES.find((z) => z.id === safeZone)?.label ?? "") : ""}
         </button>
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0 }}>
@@ -403,19 +435,38 @@ export function PreviewStage() {
             </div>
           )}
 
-          {/* vertical-platform UI-safe zone: dim the covered margins, dash the safe area */}
+          {/* vertical-platform UI-safe zone: dim the covered margins; dashed box is
+              draggable (edges = move, corners = resize). Interior stays click-through
+              so clips beneath remain selectable/movable. */}
           {safeZone && (() => {
-            const z = SAFE_ZONES.find((s) => s.id === safeZone);
+            const z = safeZone === "custom" ? safeRect : SAFE_ZONES.find((s) => s.id === safeZone);
             if (!z) return null;
             const dim = "oklch(0 0 0 / 0.34)";
+            const GRN = "oklch(0.86 0.17 145 / 0.95)";
+            const box: React.CSSProperties = { position: "absolute", top: `${z.top * 100}%`, bottom: `${z.bottom * 100}%`, left: `${z.left * 100}%`, right: `${z.right * 100}%` };
+            const cBase: React.CSSProperties = { position: "absolute", width: 13, height: 13, background: GRN, border: "1.5px solid #06281a", borderRadius: 3, pointerEvents: "auto" };
             return (
-              <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 9 }}>
-                <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: `${z.top * 100}%`, background: dim }} />
-                <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${z.bottom * 100}%`, background: dim }} />
-                <div style={{ position: "absolute", top: `${z.top * 100}%`, bottom: `${z.bottom * 100}%`, left: 0, width: `${z.left * 100}%`, background: dim }} />
-                <div style={{ position: "absolute", top: `${z.top * 100}%`, bottom: `${z.bottom * 100}%`, right: 0, width: `${z.right * 100}%`, background: dim }} />
-                <div style={{ position: "absolute", top: `${z.top * 100}%`, bottom: `${z.bottom * 100}%`, left: `${z.left * 100}%`, right: `${z.right * 100}%`, border: "1px dashed oklch(0.86 0.17 145 / 0.9)" }} />
-              </div>
+              <>
+                {/* dim margins + dashed frame (click-through) */}
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 9 }}>
+                  <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: `${z.top * 100}%`, background: dim }} />
+                  <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${z.bottom * 100}%`, background: dim }} />
+                  <div style={{ position: "absolute", top: `${z.top * 100}%`, bottom: `${z.bottom * 100}%`, left: 0, width: `${z.left * 100}%`, background: dim }} />
+                  <div style={{ position: "absolute", top: `${z.top * 100}%`, bottom: `${z.bottom * 100}%`, right: 0, width: `${z.right * 100}%`, background: dim }} />
+                  <div style={{ ...box, border: `1px dashed ${GRN}` }} />
+                </div>
+                {/* interactive handles: edges move, corners resize (rest is click-through) */}
+                <div style={{ ...box, pointerEvents: "none", zIndex: 11 }}>
+                  <div title="拖动边框移动安全区" onPointerDown={(e) => beginSafeDrag(e, "move", z)} style={{ position: "absolute", top: -4, left: 6, right: 6, height: 9, cursor: "move", pointerEvents: "auto" }} />
+                  <div title="拖动边框移动安全区" onPointerDown={(e) => beginSafeDrag(e, "move", z)} style={{ position: "absolute", bottom: -4, left: 6, right: 6, height: 9, cursor: "move", pointerEvents: "auto" }} />
+                  <div title="拖动边框移动安全区" onPointerDown={(e) => beginSafeDrag(e, "move", z)} style={{ position: "absolute", left: -4, top: 6, bottom: 6, width: 9, cursor: "move", pointerEvents: "auto" }} />
+                  <div title="拖动边框移动安全区" onPointerDown={(e) => beginSafeDrag(e, "move", z)} style={{ position: "absolute", right: -4, top: 6, bottom: 6, width: 9, cursor: "move", pointerEvents: "auto" }} />
+                  <div title="拖动缩放" onPointerDown={(e) => beginSafeDrag(e, "nw", z)} style={{ ...cBase, left: -6, top: -6, cursor: "nwse-resize" }} />
+                  <div title="拖动缩放" onPointerDown={(e) => beginSafeDrag(e, "ne", z)} style={{ ...cBase, right: -6, top: -6, cursor: "nesw-resize" }} />
+                  <div title="拖动缩放" onPointerDown={(e) => beginSafeDrag(e, "sw", z)} style={{ ...cBase, left: -6, bottom: -6, cursor: "nesw-resize" }} />
+                  <div title="拖动缩放" onPointerDown={(e) => beginSafeDrag(e, "se", z)} style={{ ...cBase, right: -6, bottom: -6, cursor: "nwse-resize" }} />
+                </div>
+              </>
             );
           })()}
 
