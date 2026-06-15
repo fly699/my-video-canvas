@@ -27,6 +27,8 @@ const clipSchema = z.object({
   trimOut: z.number().min(0),
   speed: z.number().min(0.1).max(8).optional(),
   reverse: z.boolean().optional(),
+  flipH: z.boolean().optional(),
+  flipV: z.boolean().optional(),
   volume: z.number().min(0).max(4).optional(),
   fadeIn: z.number().min(0).optional(),
   fadeOut: z.number().min(0).optional(),

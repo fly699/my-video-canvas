@@ -114,6 +114,8 @@ export interface Clip {
   trimOut: number;          // source out-point (seconds); for image/text = display duration from start
   speed?: number;           // 0.25..4, default 1
   reverse?: boolean;        // 倒放：视频/音频逆序播放（图片无效）
+  flipH?: boolean;          // 水平镜像（左右翻转）
+  flipV?: boolean;          // 垂直翻转（上下翻转）
   volume?: number;          // 0..2, default 1 (audio/video)
   fadeIn?: number;          // seconds
   fadeOut?: number;         // seconds

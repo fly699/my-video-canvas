@@ -322,6 +322,15 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           </Section>
         )}
 
+        {(c.kind === "video" || c.kind === "image") && (
+          <Section title="镜像 / 翻转">
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Toggle on={!!c.flipH} onClick={() => update(c.id, { flipH: !c.flipH })} title="水平镜像（左右翻转）" wide>↔ 水平镜像</Toggle>
+              <Toggle on={!!c.flipV} onClick={() => update(c.id, { flipV: !c.flipV })} title="垂直翻转（上下翻转）" wide>↕ 垂直翻转</Toggle>
+            </div>
+          </Section>
+        )}
+
         {(c.kind === "video" || c.kind === "image") && clipTrackType === "overlay" && (
           <Section title="绿幕抠像">
             <button

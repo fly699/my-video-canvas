@@ -383,6 +383,8 @@ export function PreviewStage() {
             const selected = clip.id === selectedClipId;
             const xfade = fadeOf(clip.id);
             const fadeMul = clipFadeOpacity(clip, playhead - clip.start, clipDuration(clip)); // 片段淡入淡出（预览=透明度，导出=画面/alpha 渐变）
+            // 镜像/翻转：最右(最内)应用，与导出在 pre 阶段先 hflip/vflip 一致
+            const flipFrag = `${clip.flipH ? " scaleX(-1)" : ""}${clip.flipV ? " scaleY(-1)" : ""}`;
             // zoom/pan CSS for a full-frame clip that has a transform — same clamp
             // as the export: pan only once zoomed (scale≥1), bounded to the room.
             let mainTransform: string | undefined;
@@ -391,7 +393,9 @@ export function PreviewStage() {
               const maxFrac = (s - 1) / 2;
               const px = Math.max(-maxFrac, Math.min(maxFrac, tf.x ?? 0));
               const py = Math.max(-maxFrac, Math.min(maxFrac, tf.y ?? 0));
-              mainTransform = `translate(${(px * 100).toFixed(2)}%, ${(py * 100).toFixed(2)}%) scale(${s.toFixed(3)}) rotate(${tf.rotation ?? 0}deg)`;
+              mainTransform = `translate(${(px * 100).toFixed(2)}%, ${(py * 100).toFixed(2)}%) scale(${s.toFixed(3)}) rotate(${tf.rotation ?? 0}deg)${flipFrag}`;
+            } else if (fullFrame && flipFrag) {
+              mainTransform = flipFrag.trim(); // 仅翻转、无其它变换
             }
             const mainOpacity = xfade * fadeMul * (fullFrame && tf ? (tf.opacity ?? 1) : 1);
             const objFit: React.CSSProperties["objectFit"] = fullFrame
@@ -437,7 +441,7 @@ export function PreviewStage() {
               width: isShape ? `${(sh?.w ?? 0.3) * 100}%` : `${(tf?.scale ?? 0.4) * 100}%`,
               ...(isShape ? { height: `${(sh?.h ?? 0.2) * 100}%`, boxSizing: "border-box" as const } : {}),
               opacity: (tf?.opacity ?? 1) * xfade * fadeMul * tmo.opacity * (isShape ? (sh?.opacity ?? 1) : 1),
-              transform: `${tmo.transform} rotate(${tf?.rotation ?? 0}deg)`,
+              transform: `${tmo.transform} rotate(${tf?.rotation ?? 0}deg)${flipFrag}`,
               cursor: "move", touchAction: "none",
               outline: selected ? `2px solid ${EC.accent}` : "none",
               ...(isShape ? (sh?.fill ? { background: shColor } : { border: `${Math.max(1, sh?.lineWidth ?? 4)}px solid ${shColor}` }) : {}),

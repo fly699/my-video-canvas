@@ -523,3 +523,19 @@ describe("形状叠加（shapeDrawbox + buildFilterGraph shapes）", () => {
     expect(g.filterComplex).not.toContain("concat=n=1:v=1:a=1[outv][outa]"); // 快路径被禁用
   });
 });
+
+describe("画面镜像/翻转（hflip/vflip）", () => {
+  it("主轨片段 flipH→hflip、flipV→vflip；无翻转不出现", () => {
+    const h = buildFilterGraph([{ isImage: false, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, flipH: true }], OPTS).filterComplex;
+    expect(h).toContain("hflip");
+    expect(h).not.toContain("vflip");
+    const v = buildFilterGraph([{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, flipV: true }], OPTS).filterComplex;
+    expect(v).toContain("vflip");
+    expect(buildFilterGraph([{ isImage: false, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1 }], OPTS).filterComplex).not.toContain("hflip");
+  });
+  it("叠加层 flipH 进入 overlay 链", () => {
+    const seg: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const g = buildFilterGraph(seg, OPTS, [{ isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2, transform: { scale: 0.3 }, flipH: true }]).filterComplex;
+    expect(g).toContain("format=rgba,hflip");
+  });
+});

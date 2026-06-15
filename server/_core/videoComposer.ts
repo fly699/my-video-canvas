@@ -38,6 +38,8 @@ export interface Segment {
   transition?: { type: string; duration: number }; // entry transition vs the previous segment
   fit?: FitMode;                                  // contain (default) | cover | stretch | blur
   reverse?: boolean;                              // 倒放：逆序播放（图片无效）
+  flipH?: boolean;                                // 水平镜像
+  flipV?: boolean;                                // 垂直翻转
   transform?: ClipTransform;                      // main-track zoom(scale≥1)/pan(x,y)/rotate within the frame
   keyframes?: TransformKeyframe[];                // main-track Ken-Burns: animate zoom/pan over time
   fadeIn?: number;                                // 画面+音频淡入（秒，从黑/静音渐显）
@@ -151,6 +153,8 @@ export interface OverlayInput {
   chromaKey?: { color?: string; similarity?: number; blend?: number }; // 绿幕抠像
   fadeIn?: number;                 // 叠加层 alpha 淡入（秒）
   fadeOut?: number;                // 叠加层 alpha 淡出（秒）
+  flipH?: boolean;                 // 水平镜像
+  flipV?: boolean;                 // 垂直翻转
 }
 
 /** Build a sanitized `chromakey` filter (keys the given colour transparent). Colour
@@ -444,6 +448,8 @@ export function buildFilterGraph(
     } else {
       pre.push("setpts=PTS-STARTPTS");
     }
+    if (s.flipH) pre.push("hflip");                 // 水平镜像
+    if (s.flipV) pre.push("vflip");                 // 垂直翻转
     // Pin the timebase so every segment matches when folded. concat emits a
     // microsecond timebase (1/1000000) while fps-filtered segments are 1/fps;
     // feeding a concat (hard cut) output into a later xfade alongside a fresh
@@ -530,6 +536,8 @@ export function buildFilterGraph(
     oc.push(`scale=${scaleW}:-2`);
     oc.push(`fps=${fps}`);
     oc.push("format=rgba");
+    if (o.flipH) oc.push("hflip");
+    if (o.flipV) oc.push("vflip");
     const ckf = chromaKeyFilter(o.chromaKey);
     if (ckf) oc.push(ckf); // 绿幕抠像：把指定颜色变透明，再合成
     const op = o.transform?.opacity ?? 1;
@@ -744,7 +752,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut, fadeCurve: c.fadeCurve };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut, fadeCurve: c.fadeCurve, flipH: c.flipH, flipV: c.flipV };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
@@ -768,7 +776,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
       const dur = clipVisibleDuration(c);
-      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut });
+      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut, flipH: c.flipH, flipV: c.flipV });
       if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
