@@ -278,7 +278,7 @@ export function PreviewStage() {
   });
 
   return (
-    <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, #0c0c10)" }}>
+    <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-canvas, #0c0c10)" }}>
       {/* preview toolbar: export-frame readout + thirds guide + per-clip 适配 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", flexShrink: 0, borderBottom: `1px solid ${EC.border}` }}>
         <span title="最终导出画面比例与分辨率（画布设置）" style={{ fontSize: 11, color: EC.t3, fontVariantNumeric: "tabular-nums" }}>

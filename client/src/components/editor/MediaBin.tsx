@@ -153,11 +153,11 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
                   inside a flex box — so the thumbnail box can't collapse even in
                   WebViews that mishandle aspect-ratio / percentage heights. */}
               {kind === "image" ? (
-                <div style={{ height: 92, minHeight: 92, backgroundImage: `url("${a.url}")`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: "var(--c-bg, #0c0c10)" }} />
+                <div style={{ height: 92, minHeight: 92, backgroundImage: `url("${a.url}")`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
               ) : kind === "video" ? (
-                <video src={a.url} muted preload="metadata" style={{ display: "block", width: "100%", height: 92, minHeight: 92, objectFit: "cover", backgroundColor: "var(--c-bg, #0c0c10)" }} />
+                <video src={a.url} muted preload="metadata" style={{ display: "block", width: "100%", height: 92, minHeight: 92, objectFit: "cover", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
               ) : (
-                <div style={{ height: 92, minHeight: 92, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--c-bg, #0c0c10)" }}>
+                <div style={{ height: 92, minHeight: 92, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }}>
                   <Icon size={22} style={{ color: EC.t3 }} />
                 </div>
               )}

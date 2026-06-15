@@ -3,7 +3,7 @@
 export const EC = {
   accent: "oklch(0.65 0.19 310)",        // 剪辑器主色（品红紫）
   accentSoft: "oklch(0.65 0.19 310 / 0.15)",
-  bg: "var(--c-bg, #0c0c10)",
+  bg: "var(--c-canvas, #0c0c10)",
   surface: "var(--c-surface, #14141a)",
   elevated: "var(--c-elevated, #1a1a20)",
   border: "var(--c-bd2, rgba(255,255,255,0.1))",
