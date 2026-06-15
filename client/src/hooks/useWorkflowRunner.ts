@@ -6,6 +6,7 @@ import type { NodeType, WorkflowParamBinding } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
 import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputImageUrl } from "../lib/refImagePropagation";
+import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../lib/characterPrompt";
@@ -579,7 +580,7 @@ export function useWorkflowRunner() {
             const transcribeResult = await subtitleTranscribeMutation.mutateAsync({
               audioUrl: videoUrl,
               language: (p.language as string) || undefined,
-              model: (p.transcribeModel as string) || undefined,
+              model: (p.transcribeModel as string) || resolveActiveNodeModel("subtitle", "transcribe"),
             });
             entries = transcribeResult.entries;
             useCanvasStore.getState().updateNodeData(nodeId, {

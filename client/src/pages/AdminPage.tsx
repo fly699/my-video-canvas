@@ -10,7 +10,7 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { downloadTextFile } from "@/lib/download";
 import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
-import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
+import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 
 type EntryType = "ip" | "user";
 type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system";
@@ -856,6 +856,13 @@ const MODEL_CATEGORIES: ModelCat[] = [
     hint: "用于 视频任务 节点",
     accent: "oklch(0.68 0.22 25)",
     models: VIDEO_MODELS.map((m) => ({ value: m.value, label: m.label, group: m.group })),
+  },
+  {
+    key: "transcribe",
+    label: "字幕转录（STT）模型",
+    hint: "用于 字幕 节点的语音识别转录（内置 Forge STT 代理）",
+    accent: "oklch(0.65 0.19 310)",
+    models: TRANSCRIBE_MODELS.map((m) => ({ value: m.value, label: m.label, group: m.group })),
   },
   {
     key: "chat",

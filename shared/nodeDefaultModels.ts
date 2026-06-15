@@ -8,18 +8,20 @@
 import type { NodeType } from "./types";
 
 /** 一个节点可能持有的「模型槽位」类别。 */
-export type ModelSlot = "llm" | "image" | "video";
+export type ModelSlot = "llm" | "image" | "video" | "transcribe";
 
 /**
  * 出厂默认模型（项目级配置缺省时的兜底）。
  * - llm：除 ComfyUI 外的文本/对话/规划，以及 ComfyUI 节点的提示词翻译，统一用 kie Opus 4.7。
  * - image：生图统一用 kie GPT Image 2。
  * - video：非 ComfyUI 视频节点统一用 kie Grok Imagine 图生（i2v）。
+ * - transcribe：字幕节点的语音转录，统一用 Whisper v1（内置 Forge STT）。
  */
 export const FACTORY_DEFAULT_MODELS: Record<ModelSlot, string> = {
   llm: "kie_claude_opus_47",
   image: "kie_gpt_image_2",
   video: "kie_grok_i2v",
+  transcribe: "whisper-1",
 };
 
 /** 项目级「节点默认模型」配置。存于 projects.defaultModels（JSON 列）。 */

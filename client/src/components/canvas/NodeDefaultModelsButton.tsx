@@ -7,6 +7,8 @@ import {
   type ModelSlot,
 } from "../../../../shared/nodeDefaultModels";
 import { useNodeDefaultModels } from "../../contexts/NodeDefaultModelsContext";
+import { TRANSCRIBE_MODELS } from "../../lib/models";
+import { useDisabledModels } from "../../lib/useDisabledModels";
 import { LLMModelPicker, type LLMModelId } from "./LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "./ModelPicker";
 import { PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
@@ -52,6 +54,8 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
   const catLlm = config?.categories?.llm ?? FACTORY_DEFAULT_MODELS.llm;
   const catImage = config?.categories?.image ?? FACTORY_DEFAULT_MODELS.image;
   const catVideo = config?.categories?.video ?? FACTORY_DEFAULT_MODELS.video;
+  const catTranscribe = config?.categories?.transcribe ?? FACTORY_DEFAULT_MODELS.transcribe;
+  const disabledModels = useDisabledModels();
 
   const setCategory = (slot: ModelSlot, modelId: string) =>
     setConfig({ ...config, categories: { ...config?.categories, [slot]: modelId } });
@@ -148,6 +152,18 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
               options={PROVIDER_PICKER_OPTIONS}
               accent="oklch(0.7 0.18 25)"
             />
+          </div>
+          <div style={{ marginBottom: 12, opacity: readOnly ? 0.6 : 1, pointerEvents: readOnly ? "none" : "auto" }}>
+            <div style={labelStyle}>字幕转录模型（语音识别 STT · 字幕节点）</div>
+            <select
+              value={catTranscribe}
+              onChange={(e) => setCategory("transcribe", e.target.value)}
+              style={{ width: "100%", fontSize: 12, padding: "7px 8px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer" }}
+            >
+              {TRANSCRIBE_MODELS.filter((m) => !disabledModels.has(m.value)).map((m) => (
+                <option key={m.value} value={m.value}>{m.label} · {m.desc}</option>
+              ))}
+            </select>
           </div>
 
           {/* ── 按节点类型覆盖 ── */}
