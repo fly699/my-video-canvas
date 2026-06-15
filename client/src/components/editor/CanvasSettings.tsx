@@ -28,6 +28,7 @@ function ratioLabel(w: number, h: number) { const g = gcd(w, h) || 1; return `${
 export function CanvasSettings() {
   const doc = useEditorStore((s) => s.doc);
   const setCanvas = useEditorStore((s) => s.setCanvas);
+  const reframe = useEditorStore((s) => s.reframe);
   const [open, setOpen] = useState(false);
   const [locked, setLocked] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
@@ -62,6 +63,24 @@ export function CanvasSettings() {
 
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 50, width: 290, padding: 12, borderRadius: 12, background: EC.surface, border: `1px solid ${EC.border}`, boxShadow: "0 12px 40px oklch(0 0 0 / 0.5)" }}>
+          <Label>一键重构图（转比例并填满）</Label>
+          <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+            {([["竖屏 9:16", 9, 16], ["横屏 16:9", 16, 9], ["方形 1:1", 1, 1], ["4:5", 4, 5]] as const).map(([label, rw, rh]) => {
+              const active = curRatio === ratioLabel(rw, rh);
+              return (
+                <button key={label} onClick={() => {
+                    // preserve resolution: keep the current long edge as the new frame's longer side
+                    const longEdge = Math.max(doc.width, doc.height);
+                    const d = rw >= rh ? { w: even(longEdge), h: even(longEdge * rh / rw) } : { w: even(longEdge * rw / rh), h: even(longEdge) };
+                    reframe(d.w, d.h, doc.fps);
+                  }}
+                  title="切换到该比例，并把所有主轨片段自动填满（cover）以消除黑边（一步撤销）"
+                  style={{ flex: 1, padding: "7px 0", fontSize: 11, borderRadius: 7, cursor: "pointer", border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2 }}>{label}</button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 10.5, color: EC.t4, lineHeight: 1.5, marginBottom: 12 }}>一键转比例并让所有片段铺满新画框。需精确取景/跟随主体，可再用「位置/大小」的缩放+X/Y（关键帧可做推拉跟随）。</div>
+
           <Label>比例</Label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
             {RATIOS.map((r) => {
