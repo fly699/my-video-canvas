@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
+import { useComfyServersStore } from "@/hooks/useComfyServersStore";
 import { toast } from "sonner";
 import { io, type Socket } from "socket.io-client";
 import { Terminal } from "@xterm/xterm";
@@ -95,6 +96,19 @@ function ServersPanel() {
   const servers = trpc.comfyOps.servers.list.useQuery();
   const [form, setForm] = useState<ServerForm | null>(null);
   const [testing, setTesting] = useState<number | null>(null);
+  // 「服务器监控」里已配置的服务器列表（全局注册 + 本地浏览器记录），供这里一键读取/导入。
+  const globalServers = trpc.comfyui.globalServers.useQuery();
+  const localServers = useComfyServersStore((s) => s.servers);
+  const monitorList = useMemo(
+    () => Array.from(new Set([...(globalServers.data ?? []), ...localServers].map((u) => u.trim()).filter(Boolean))),
+    [globalServers.data, localServers],
+  );
+  // 从监控 URL 解析出 host/port，回填表单（comfyBaseUrl/SSH 主机/显示名；SSH 端口默认 22）。
+  const fillFromMonitor = (url: string) => {
+    if (!form || !url) return;
+    let host = url; try { host = new URL(/^https?:\/\//i.test(url) ? url : `http://${url}`).hostname || url; } catch { /* keep raw */ }
+    setForm({ ...form, comfyBaseUrl: url, sshHost: host, name: form.name || host });
+  };
 
   const create = trpc.comfyOps.servers.create.useMutation({
     onSuccess: () => { toast.success("服务器已添加"); setForm(null); utils.comfyOps.servers.list.invalidate(); },
@@ -186,6 +200,15 @@ function ServersPanel() {
             <div style={{ fontSize: 15, fontWeight: 700 }}>{form.id ? "编辑服务器" : "添加服务器"}</div>
             <button style={btnGhost} onClick={() => setForm(null)}><X size={15} /></button>
           </div>
+          {monitorList.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ ...label, marginBottom: 0, whiteSpace: "nowrap" }}>从「服务器监控」读取</label>
+              <select style={{ ...input, flex: 1 }} value="" onChange={(e) => { if (e.target.value) fillFromMonitor(e.target.value); }}>
+                <option value="">选择一个监控中的服务器自动填充地址…（共 {monitorList.length} 台）</option>
+                {monitorList.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div><label style={label}>显示名</label><input style={input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div><label style={label}>ComfyUI API 地址（可空）</label><input style={input} placeholder="http://192.168.0.10:8188" value={form.comfyBaseUrl} onChange={(e) => setForm({ ...form, comfyBaseUrl: e.target.value })} /></div>
