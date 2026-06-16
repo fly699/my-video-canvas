@@ -76,8 +76,10 @@ export function injectFreeVramIntoOps(ops: AgentOperation[], enabled: boolean): 
 export function aspectFieldsFor(nodeType: NodeType, aspect: string): Record<string, unknown> {
   if (!aspect) return {};
   switch (nodeType) {
+    // storyboard 关键帧与 image_gen 走同一图像后端（generateImage）——按模型族读不同字段：
+    // kie→aspectRatio、poyo→poyoAspectRatio、Reve/Seedream/Flux→reveAspectRatio，故三者都写。
     case "storyboard": return { aspectRatio: aspect, poyoAspectRatio: aspect, reveAspectRatio: aspect };
-    case "image_gen": return { aspectRatio: aspect, reveAspectRatio: aspect };
+    case "image_gen": return { aspectRatio: aspect, poyoAspectRatio: aspect, reveAspectRatio: aspect };
     case "prompt": return { aspectRatio: aspect };
     case "comfyui_workflow": return { aspectRatio: aspect, overrideRatioSize: true };
     default: return {};

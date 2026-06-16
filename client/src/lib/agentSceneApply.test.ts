@@ -237,7 +237,9 @@ describe("applyAgentOperations 角色库代入（@角色 生成节点）", () =>
 describe("aspectFieldsFor 画面比例字段映射", () => {
   it("各节点类型返回对应模型族比例字段", () => {
     expect(aspectFieldsFor("storyboard", "9:16")).toEqual({ aspectRatio: "9:16", poyoAspectRatio: "9:16", reveAspectRatio: "9:16" });
-    expect(aspectFieldsFor("image_gen", "16:9")).toEqual({ aspectRatio: "16:9", reveAspectRatio: "16:9" });
+    // image_gen 与 storyboard 走同一图像后端：poyo 读 poyoAspectRatio、kie 读 aspectRatio、
+    // Reve/Seedream/Flux 读 reveAspectRatio——三者都写，否则 poyo 图像模型比例被静默丢弃。
+    expect(aspectFieldsFor("image_gen", "16:9")).toEqual({ aspectRatio: "16:9", poyoAspectRatio: "16:9", reveAspectRatio: "16:9" });
     expect(aspectFieldsFor("prompt", "1:1")).toEqual({ aspectRatio: "1:1" });
     expect(aspectFieldsFor("comfyui_workflow", "9:16")).toEqual({ aspectRatio: "9:16", overrideRatioSize: true });
     expect(aspectFieldsFor("video_task", "9:16")).toEqual({}); // i2v 跟随分镜参考图，不写
