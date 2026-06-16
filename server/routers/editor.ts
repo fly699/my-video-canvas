@@ -82,6 +82,7 @@ const docSchema = z.object({
     id: z.string().min(1).max(64),
     type: z.enum(["video", "audio", "text", "overlay"]),
     muted: z.boolean().optional(),
+    volume: z.number().min(0).max(4).optional(),
     hidden: z.boolean().optional(),
     locked: z.boolean().optional(),
     name: z.string().max(64).optional(),

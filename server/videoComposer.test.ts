@@ -103,6 +103,21 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g.filterComplex).toContain("colorbalance=");
   });
 
+  it("原声音量：主轨视频片段的 volume 增益作用于其原声（1/缺省时不出现 → 零回归）", () => {
+    const mk = (volume?: number): Segment[] => [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 2, speed: 1, volume }];
+    const fc = (volume?: number) => buildFilterGraph(mk(volume), OPTS).filterComplex;
+    // 半音量 → [0:a] 链含 volume=0.500
+    expect(fc(0.5)).toContain("[0:a]");
+    expect(fc(0.5)).toContain("volume=0.500");
+    expect(fc(1.6)).toContain("volume=1.600"); // 可增益超过 100%
+    // 1 / 缺省 → 不出现 volume= 滤镜
+    expect(fc(1)).not.toContain("volume=");
+    expect(fc(undefined)).not.toContain("volume=");
+    // 静音片段（hasAudio=false）走 anullsrc，无 volume
+    const silent = buildFilterGraph([{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, volume: 0.5 }], OPTS).filterComplex;
+    expect(silent).not.toContain("volume=");
+  });
+
   it("composites an overlay with position/scale/opacity and time-gated enable", () => {
     const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
     const overlays = [{ isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 1, duration: 2, transform: { x: 0.5, y: 0.25, scale: 0.3, opacity: 0.8 } }];
