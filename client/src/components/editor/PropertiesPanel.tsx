@@ -6,6 +6,7 @@ import { EC, probeMediaDuration } from "./theme";
 import { useEditorStore } from "./editorStore";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import type { Clip } from "@shared/editorTypes";
+import { SHAPE_ICONS, iconSvg } from "@shared/shapeIcons";
 
 // TTS models available for AI 配音 (mirror audioGen.generateDubbing).
 const TTS_MODELS: [string, string][] = [
@@ -81,6 +82,8 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const alignSelectedStartTo = useEditorStore((s) => s.alignSelectedStartTo);
   const updateSelected = useEditorStore((s) => s.updateSelected);
   const dubMut = trpc.audioGen.generateDubbing.useMutation();
+  const aiSvgMut = trpc.editor.generateShapeSvg.useMutation();
+  const [aiSvgPrompt, setAiSvgPrompt] = useState("");
   const [ttsModel, setTtsModel] = usePersistentState<string>(
     "ui:editor:tts-model:v1", "openai_tts_real",
     { validate: (p) => (typeof p === "string" && TTS_MODELS.some(([v]) => v === p) ? p : null) },
@@ -301,6 +304,25 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
               {(!sh?.fill || (sh?.lineWidth ?? 0) > 0) && <Slider label={`描边粗细 ${sh?.lineWidth ?? (sh?.fill ? 0 : 6)}px`} min={0} max={60} step={1} value={sh?.lineWidth ?? (sh?.fill ? 0 : 6)} onChange={(v) => setShape({ lineWidth: v })} />}
               {(sh?.type === "roundRect" || sh?.type === "star") && <Slider label={sh?.type === "star" ? `星形内径 ${Math.round((sh?.radius ?? 0.45) * 100)}%` : `圆角 ${Math.round((sh?.radius ?? 0.18) * 100)}%`} min={0.05} max={sh?.type === "star" ? 0.9 : 0.5} step={0.01} value={sh?.radius ?? (sh?.type === "star" ? 0.45 : 0.18)} onChange={(v) => setShape({ radius: v })} />}
             </>}
+            {/* 图标库 */}
+            <div style={{ fontSize: 10.5, color: EC.t4, margin: "8px 0 3px" }}>图标库（点选写入自定义 SVG，用上面颜色着色）</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4 }}>
+              {SHAPE_ICONS.map((ic) => (
+                <button key={ic.id} title={ic.label} onClick={() => setShape({ svg: iconSvg(ic, sh?.color ?? "#FFD400") })}
+                  style={{ aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center", padding: 3, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent" }}
+                  dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="100%" height="100%">${iconSvg(ic, EC.t1)}</svg>` }} />
+              ))}
+            </div>
+            {/* AI 生成 SVG */}
+            <div style={{ fontSize: 10.5, color: EC.t4, margin: "8px 0 3px" }}>AI 生成 SVG（描述想要的图形）</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input value={aiSvgPrompt} onChange={(e) => setAiSvgPrompt(e.target.value)} placeholder="如：一只卡通小猫 / 圆形进度环"
+                onKeyDown={(e) => { if (e.key === "Enter" && aiSvgPrompt.trim() && !aiSvgMut.isPending) { aiSvgMut.mutate({ prompt: aiSvgPrompt.trim() }, { onSuccess: (r) => setShape({ svg: r.svg }), onError: (err) => toast.error("生成失败：" + err.message) }); } }}
+                style={{ ...input, flex: 1 }} />
+              <button disabled={aiSvgMut.isPending || !aiSvgPrompt.trim()}
+                onClick={() => aiSvgMut.mutate({ prompt: aiSvgPrompt.trim() }, { onSuccess: (r) => setShape({ svg: r.svg }), onError: (err) => toast.error("生成失败：" + err.message) })}
+                style={{ padding: "0 10px", fontSize: 11.5, borderRadius: 6, cursor: aiSvgMut.isPending ? "default" : "pointer", border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent, whiteSpace: "nowrap" }}>{aiSvgMut.isPending ? "生成中…" : "生成"}</button>
+            </div>
             {/* 自定义 SVG（键入/粘贴代码） */}
             <div style={{ fontSize: 10.5, color: EC.t4, margin: "8px 0 3px" }}>自定义 SVG（键入/粘贴 SVG 代码，留空则用上面的形状库）</div>
             <textarea value={sh?.svg ?? ""} onChange={(e) => setShape({ svg: e.target.value || undefined })} placeholder='<circle cx="50" cy="50" r="40" fill="red"/>' spellCheck={false}

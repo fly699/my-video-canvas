@@ -7,6 +7,8 @@ import { EDITOR_DOC_VERSION, emptyEditorDoc, sliceEditorDoc, editorDocDuration, 
 import { composeTimeline } from "../_core/videoComposer";
 import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs } from "../_core/editorRenderJobs";
 import { assertProjectAccess } from "../_core/permissions";
+import { invokeLLMWithKie } from "../_core/llmWithKie";
+import { extractTextContent } from "../_core/llm";
 
 // ── EDL validation ────────────────────────────────────────────────────────────
 // Kept tolerant: unknown effect/transition keys are allowed through so the
@@ -164,6 +166,24 @@ export const editorRouter = router({
         ...(input.doc !== undefined ? { doc: input.doc } : {}),
       });
       return { success: true };
+    }),
+
+  // AI 生成 SVG：自然语言描述 → LLM 产出一段 <svg>，用于「添加形状/SVG」叠加。
+  generateShapeSvg: protectedProcedure
+    .input(z.object({ prompt: z.string().min(1).max(1000), model: z.string().max(64).optional(), kieTempKey: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const sys = "你是一个 SVG 生成器，用于视频画面叠加。要求：只输出一个完整的 <svg>…</svg> 代码，"
+        + "使用 viewBox=\"0 0 100 100\"，背景透明（不要画整块背景矩形），图形简洁清晰、适合作为贴纸/装饰。"
+        + "禁止输出任何解释文字、Markdown 代码围栏或 <script>/<foreignObject>/外链引用。";
+      const res = await invokeLLMWithKie(ctx, { messages: [{ role: "system", content: sys }, { role: "user", content: input.prompt }], model: input.model, maxTokens: 1500 }, input.kieTempKey ?? null);
+      const text = extractTextContent(res);
+      const m = /<svg[\s\S]*?<\/svg>/i.exec(text);
+      let svg = (m ? m[0] : text).trim();
+      // 安全清理：移除脚本/事件/外链等危险内容（叠加只需纯矢量图形）。
+      svg = svg.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, "")
+        .replace(/\son\w+="[^"]*"/gi, "").replace(/(href|xlink:href)\s*=\s*"(?!#)[^"]*"/gi, "");
+      if (!/<svg[\s\S]*<\/svg>/i.test(svg)) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 SVG，请换个描述再试" });
+      return { svg: svg.slice(0, 20000) };
     }),
 
   // Soft-delete (hidden from the user; row kept).
