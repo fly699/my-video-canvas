@@ -31,10 +31,11 @@ describe("buildFilterGraph (single-pass composer)", () => {
       [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 2, speed: 1, fit }], OPTS).filterComplex;
     expect(mk("contain")).toContain("force_original_aspect_ratio=decrease");
     expect(mk("contain")).toContain("pad=1920:1080");
+    expect(mk("contain")).toContain(":flags=lanczos"); // 高质量缩放算法（下采样更锐）
     expect(mk("cover")).toContain("force_original_aspect_ratio=increase");
     expect(mk("cover")).toContain("crop=1920:1080");
     const s = mk("stretch");
-    expect(s).toContain("scale=1920:1080,"); // exact, no ratio flag
+    expect(s).toContain("scale=1920:1080:flags=lanczos,"); // exact, no ratio flag（lanczos 高质量缩放）
     expect(s).not.toContain("force_original_aspect_ratio");
   });
 
@@ -42,7 +43,7 @@ describe("buildFilterGraph (single-pass composer)", () => {
     const g = buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 2, speed: 1, fit: "blur" }], OPTS).filterComplex;
     expect(g).toContain("split[bg0][fg0]");
     // background: cover-scale + crop + blur
-    expect(g).toContain("[bg0]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=20:2");
+    expect(g).toContain("[bg0]scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:1080,boxblur=20:2");
     // foreground: contain-scale, then centered overlay → normalized output [v0]
     expect(g).toContain("[fg0]scale=1920:1080:force_original_aspect_ratio=decrease");
     expect(g).toContain("overlay=(W-w)/2:(H-h)/2");
