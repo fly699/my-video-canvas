@@ -150,6 +150,24 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(fc("noir")).toContain("hue=s=0");
   });
 
+  it("画质质感：暗角 vignette + 锐化 unsharp（叠加在调色预设之后，0/缺省时零回归）", () => {
+    const mk = (effects: Segment["effects"]): Segment[] => [{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, effects } as Segment];
+    const fc = (effects: Segment["effects"]) => buildFilterGraph(mk(effects), OPTS).filterComplex;
+    // 暗角强度 1 → 角度 = PI/2.2 ≈ 1.4280
+    expect(fc({ vignette: 1 })).toContain("vignette=a=1.4280");
+    expect(fc({ vignette: 0.5 })).toContain("vignette=a=0.7140");
+    // 锐化强度 1 → unsharp 亮度增益 1.8（仅亮度通道，色度 0）
+    expect(fc({ sharpen: 1 })).toContain("unsharp=5:5:1.800:5:5:0");
+    expect(fc({ sharpen: 0.5 })).toContain("unsharp=5:5:0.900:5:5:0");
+    // 叠加在预设之后：cinematic 的 curves 在前，vignette 在其后
+    const stacked = fc({ filter: "cinematic", vignette: 0.5, sharpen: 0.5 });
+    expect(stacked.indexOf("curves=preset=increase_contrast")).toBeLessThan(stacked.indexOf("vignette="));
+    // 0 / 缺省 → 完全不出现（零回归）
+    expect(fc({ vignette: 0, sharpen: 0 })).not.toContain("vignette=");
+    expect(fc({ vignette: 0, sharpen: 0 })).not.toContain("unsharp=");
+    expect(fc({ filter: "warm" })).not.toContain("vignette=");
+  });
+
   it("chromaKeyFilter sanitizes colour to 0xRRGGBB and clamps params (injection-safe)", () => {
     expect(chromaKeyFilter(undefined)).toBeNull();
     expect(chromaKeyFilter({ color: "#00ff00", similarity: 0.3, blend: 0.1 })).toBe("chromakey=0x00ff00:0.300:0.100");

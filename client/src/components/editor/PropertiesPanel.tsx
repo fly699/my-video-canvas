@@ -366,6 +366,8 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <Slider label={`对比度 ${(eff.contrast ?? 1).toFixed(2)}`} min={0} max={2} step={0.02} value={eff.contrast ?? 1} onChange={(v) => setEff("contrast", v)} />
             <Slider label={`饱和度 ${(eff.saturation ?? 1).toFixed(2)}`} min={0} max={3} step={0.02} value={eff.saturation ?? 1} onChange={(v) => setEff("saturation", v)} />
             <Row label="滤镜"><Select value={eff.filter ?? ""} options={FILTERS} onChange={(v) => setEff("filter", v || undefined)} /></Row>
+            <Slider label={`暗角 ${Math.round((eff.vignette ?? 0) * 100)}%`} min={0} max={1} step={0.02} value={eff.vignette ?? 0} onChange={(v) => setEff("vignette", v || undefined)} />
+            <Slider label={`锐化 ${Math.round((eff.sharpen ?? 0) * 100)}%`} min={0} max={1} step={0.02} value={eff.sharpen ?? 0} onChange={(v) => setEff("sharpen", v || undefined)} />
           </Section>
         )}
 

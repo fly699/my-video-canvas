@@ -47,6 +47,9 @@ export interface ClipEffects {
   contrast?: number;    // 0..2    (eq contrast, 1 = neutral)
   saturation?: number;  // 0..3    (eq saturation, 1 = neutral)
   filter?: string;      // named LUT/preset, e.g. "cinematic" | "vintage" | "cool" | "warm"
+  // ── 画质质感（独立于调色预设，叠加在其后）──
+  vignette?: number;    // 0..1 暗角强度（0 = 关闭；映射到 ffmpeg vignette 角度）
+  sharpen?: number;     // 0..1 锐化强度（0 = 关闭；映射到 ffmpeg unsharp luma amount）
 }
 
 /** Position/size for overlay/PiP/text clips, normalized to the output canvas. */
