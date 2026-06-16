@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import { Trash2, Mic, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -531,11 +532,52 @@ function NumSlider({ label, value, min, max, step, suffix, disp, parse, onChange
   );
 }
 const alignBtn: React.CSSProperties = { flex: 1, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent", color: EC.t2 };
+/** 自定义下拉：键盘 ↑/↓ 与鼠标悬停都【实时应用】高亮项（实时预览效果，而非点击才生效）；
+ *  Enter/点击确认并关闭，Esc 还原打开前的值。 */
 function Select({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const committedRef = useRef(value);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const idx = Math.max(0, options.findIndex(([v]) => v === value));
+  const label = options[idx]?.[1] ?? value;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const move = (delta: number) => {
+    const ni = Math.min(options.length - 1, Math.max(0, idx + delta));
+    if (ni !== idx) onChange(options[ni][0]); // 实时预览
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); if (!open) { committedRef.current = value; setOpen(true); } else move(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!open) committedRef.current = value; setOpen((o) => !o); }
+    else if (e.key === "Escape" && open) { e.preventDefault(); onChange(committedRef.current); setOpen(false); }
+  };
+
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...input, cursor: "pointer" }}>
-      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-    </select>
+    <div ref={rootRef} tabIndex={0} onKeyDown={onKey}
+      onClick={() => { if (!open) committedRef.current = value; setOpen((o) => !o); }}
+      style={{ ...input, cursor: "pointer", position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ color: EC.t4, fontSize: 10, flexShrink: 0 }}>▾</span>
+      {open && (
+        <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 2px)", left: 0, right: 0, zIndex: 50, maxHeight: 240, overflowY: "auto", background: EC.elevated, border: `1px solid ${EC.border}`, borderRadius: 6, boxShadow: "0 8px 24px oklch(0 0 0 / 0.4)" }}>
+          {options.map(([v, l]) => (
+            <div key={v}
+              onMouseEnter={() => { if (v !== value) onChange(v); }}
+              onClick={() => { onChange(v); setOpen(false); }}
+              style={{ padding: "6px 9px", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", background: v === value ? EC.accentSoft : "transparent", color: v === value ? EC.accent : EC.t2 }}>
+              {l}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
