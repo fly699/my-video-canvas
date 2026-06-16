@@ -6,7 +6,7 @@ import * as db from "../db";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import { fetchComfyServerStatus, fetchComfyModels } from "../_core/comfyui";
-import { extractTemplateModelRefs, flattenModelList, qualifyingServers } from "../_core/templateServerSync";
+import { extractTemplateModelRefs, flattenModelList, qualifyingServers, requiredModelsFor, serverFailures, type FailReason } from "../_core/templateServerSync";
 import {
   sanitizeComfyPayload, COMFY_TEMPLATE_LIMITS,
   type ComfyNodeType, type ComfyNodeTemplate,
@@ -118,40 +118,81 @@ export const comfyTemplatesRouter = router({
       return { success: true };
     }),
 
-  // 一键更新所有模板的「服务器存储列表」(payload.serverUrls)：扫描全局服务器，按「在线 +
-  // 装有该模板所需全部模型」把符合的服务器并入每个模板的 serverUrls（只增不删）。仅管理员。
-  refreshServerLists: protectedProcedure.mutation(async ({ ctx }) => {
+  // 扫描所有模板的「服务器存储列表」(payload.serverUrls)：只读不改库，按模板列出
+  // 「失效服务器」(离线 / 在线却缺所需模型) 与「可补入的新服务器」，交由前端对话框由
+  // 用户确认清理。补入池来自全局服务器（在线且装齐模型）。仅管理员。
+  scanServerLists: protectedProcedure.mutation(async ({ ctx }) => {
     if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "仅管理员可执行" });
-    const urls = await db.getComfyGlobalServers();
-    const servers: { url: string; models: Set<string> }[] = [];
-    const offlineServers: string[] = [];
-    // 每台服务器各抓一次：在线? + 已装模型清单。离线/出错的归入 offline。
-    await Promise.all(urls.map(async (url) => {
-      try {
-        const status = await fetchComfyServerStatus(url);
-        if (!status.online) { offlineServers.push(url); return; }
-        const models = await fetchComfyModels(url);
-        servers.push({ url, models: new Set(flattenModelList(models as unknown as Record<string, unknown>)) });
-      } catch { offlineServers.push(url); }
-    }));
+    const globalUrls = await db.getComfyGlobalServers();
     const templates = await db.listComfyNodeTemplates();
-    const perTemplate: { id: number; label: string; added: number }[] = [];
-    let updated = 0;
+    // 候选 URL = 全局服务器 ∪ 所有模板已存的 serverUrls（去重），逐个只抓一次。
+    const templateUrls = new Set<string>();
     for (const t of templates) {
       const payload = (t.payload ?? {}) as Record<string, unknown>;
-      const refs = extractTemplateModelRefs({ payload });
-      const qualifying = qualifyingServers(refs, servers);
-      const existing = Array.isArray(payload.serverUrls) ? (payload.serverUrls as unknown[]).filter((x): x is string => typeof x === "string") : [];
-      const merged = Array.from(new Set([...existing, ...qualifying])); // 只增不删
-      const added = merged.length - existing.length;
-      if (added > 0) {
-        await db.updateComfyNodeTemplate(t.id, { payload: sanitizeComfyPayload({ ...payload, serverUrls: merged }) });
-        updated++;
-        perTemplate.push({ id: t.id, label: t.label, added });
+      if (Array.isArray(payload.serverUrls)) {
+        for (const u of payload.serverUrls) if (typeof u === "string") templateUrls.add(u);
       }
     }
-    return { onlineServers: servers.map((s) => s.url), offlineServers, scanned: templates.length, updated, perTemplate };
+    const candidates = Array.from(new Set([...globalUrls, ...Array.from(templateUrls)]));
+    const scanByUrl = new Map<string, { online: boolean; models: Set<string> }>();
+    await Promise.all(candidates.map(async (url) => {
+      try {
+        const status = await fetchComfyServerStatus(url);
+        if (!status.online) { scanByUrl.set(url, { online: false, models: new Set() }); return; }
+        const models = await fetchComfyModels(url);
+        scanByUrl.set(url, { online: true, models: new Set(flattenModelList(models as unknown as Record<string, unknown>)) });
+      } catch { scanByUrl.set(url, { online: false, models: new Set() }); }
+    }));
+    const onlineServers = candidates.filter((u) => scanByUrl.get(u)?.online);
+    const offlineServers = candidates.filter((u) => !scanByUrl.get(u)?.online);
+    // 补入池：仅在线的全局服务器（带模型集），用 qualifyingServers 判定能否跑该模板。
+    const onlineGlobalServers = globalUrls
+      .filter((u) => scanByUrl.get(u)?.online)
+      .map((u) => ({ url: u, models: scanByUrl.get(u)!.models }));
+    const onlineAll = onlineServers.map((u) => ({ models: scanByUrl.get(u)!.models }));
+    const result: { id: number; label: string; serverCount: number; failed: { url: string; reason: FailReason }[]; additions: string[] }[] = [];
+    for (const t of templates) {
+      const payload = (t.payload ?? {}) as Record<string, unknown>;
+      const serverUrls = Array.isArray(payload.serverUrls) ? (payload.serverUrls as unknown[]).filter((x): x is string => typeof x === "string") : [];
+      const refs = extractTemplateModelRefs({ payload });
+      const required = requiredModelsFor(refs, onlineAll);
+      const failed = serverFailures(serverUrls, required, scanByUrl);
+      const additions = qualifyingServers(refs, onlineGlobalServers).filter((u) => !serverUrls.includes(u));
+      if (failed.length || additions.length) {
+        result.push({ id: t.id, label: t.label, serverCount: serverUrls.length, failed, additions });
+      }
+    }
+    return { onlineServers, offlineServers, templates: result };
   }),
+
+  // 应用对话框中用户确认的「清理失效 + 补入」：对每个模板 next = 去掉 remove、并入 add（去重）。仅管理员。
+  applyServerChanges: protectedProcedure
+    .input(z.object({
+      items: z.array(z.object({
+        templateId: z.number(),
+        remove: z.array(z.string()).default([]),
+        add: z.array(z.string()).default([]),
+      })).max(2000),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "仅管理员可执行" });
+      let updated = 0, removed = 0, added = 0;
+      for (const item of input.items) {
+        if (!item.remove.length && !item.add.length) continue;
+        const existing = await db.getComfyNodeTemplate(item.templateId);
+        if (!existing) continue;
+        const payload = (existing.payload ?? {}) as Record<string, unknown>;
+        const current = Array.isArray(payload.serverUrls) ? (payload.serverUrls as unknown[]).filter((x): x is string => typeof x === "string") : [];
+        const removeSet = new Set(item.remove);
+        const next = Array.from(new Set([...current.filter((u) => !removeSet.has(u)), ...item.add]));
+        if (next.length === current.length && next.every((u, i) => u === current[i])) continue;
+        await db.updateComfyNodeTemplate(item.templateId, { payload: sanitizeComfyPayload({ ...payload, serverUrls: next }) });
+        updated++;
+        removed += current.filter((u) => removeSet.has(u)).length;
+        added += item.add.filter((u) => !current.includes(u)).length;
+      }
+      return { updated, removed, added };
+    }),
 
   // ── Template-library functional analysis (for the agent) ───────────────────
   // List stored analyses joined with template label (compact, for the agent's

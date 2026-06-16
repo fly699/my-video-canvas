@@ -21,6 +21,7 @@ import { readProjectBudgetCap } from "@/lib/budgetCap";
 import { AGENT_RECIPES, buildRecipeOps, recipeDefaultConfig, type AgentRecipe, type RecipeConfig } from "@/lib/agentRecipes";
 import { runPreflight, buildSelfHealInstruction } from "@/lib/preflight";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
+import { ServerCleanupDialog } from "../ServerCleanupDialog";
 
 interface Props {
   id: string;
@@ -106,10 +107,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     updateNodeData(id, { templatePrefs: { ...templatePrefs, ...patch } });
   const analyzeMut = trpc.comfyTemplates.analyzeLibrary.useMutation();
   const meRole = trpc.auth.me.useQuery(undefined, { staleTime: 60_000 }).data?.role;
-  const refreshServersMut = trpc.comfyTemplates.refreshServerLists.useMutation({
-    onSuccess: (r) => toast.success(`已更新 ${r.updated}/${r.scanned} 个模板的服务器列表（在线服务器 ${r.onlineServers.length}${r.offlineServers.length ? `，离线 ${r.offlineServers.length}` : ""}）`),
-    onError: (e) => toast.error("更新失败：" + e.message),
-  });
+  const [showCleanup, setShowCleanup] = useState(false);
   const recipeShotsMut = trpc.agent.recipeShots.useMutation();
   const balanceQuery = trpc.poyo.balance.useQuery(undefined, { staleTime: 60_000 });
   const comfyOnly = payload.comfyOnlyMode ?? false;
@@ -810,13 +808,12 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
             </button>
             {meRole === "admin" && (
               <button
-                onClick={() => { if (confirm("将扫描所有全局 ComfyUI 服务器（在线检测 + 已装模型），把『在线且装有所需模型』的服务器并入每个模板的服务器列表（只增不删）。可能较慢，确定继续？")) refreshServersMut.mutate(); }}
-                disabled={refreshServersMut.isPending}
+                onClick={() => setShowCleanup(true)}
                 className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
-                title="根据服务器在线与模型状况，一键更新所有模板的服务器列表"
-                style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: refreshServersMut.isPending ? "wait" : "pointer" }}
+                title="扫描各服务器在线与模型状况，确认清理失效服务器、补入新可用服务器"
+                style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
               >
-                {refreshServersMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}更新服务器列表
+                <RotateCw className="w-3 h-3" />清理服务器列表
               </button>
             )}
             <button
@@ -911,6 +908,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
           </div>
         </div>
       </div>
+      {showCleanup && <ServerCleanupDialog onClose={() => setShowCleanup(false)} />}
       {showPrefs && (
         <div className="nodrag nowheel" style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setShowPrefs(false)}>

@@ -46,3 +46,27 @@ export function qualifyingServers(refs: string[], servers: { url: string; models
   const required = refs.filter((r) => known.has(r));
   return servers.filter((s) => required.every((r) => s.models.has(r))).map((s) => s.url);
 }
+
+/** 模板真正需要的模型 = 引用集合 ∩「所有在线服务器模型并集」（过滤占位/非模型/全网都没有的串）。 */
+export function requiredModelsFor(refs: string[], onlineServers: { models: Set<string> }[]): string[] {
+  const known = new Set<string>();
+  for (const s of onlineServers) s.models.forEach((m) => known.add(m));
+  return refs.filter((r) => known.has(r));
+}
+
+export type FailReason = "offline" | "missing_models";
+
+/** 模板 serverUrls 里「失效」的服务器：在扫描结果中离线/查不到 → offline；在线但缺所需模型 → missing_models。 */
+export function serverFailures(
+  serverUrls: string[],
+  required: string[],
+  scanByUrl: Map<string, { online: boolean; models: Set<string> }>,
+): { url: string; reason: FailReason }[] {
+  const out: { url: string; reason: FailReason }[] = [];
+  for (const url of serverUrls) {
+    const s = scanByUrl.get(url);
+    if (!s || !s.online) { out.push({ url, reason: "offline" }); continue; }
+    if (!required.every((m) => s.models.has(m))) out.push({ url, reason: "missing_models" });
+  }
+  return out;
+}
