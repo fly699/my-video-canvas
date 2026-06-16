@@ -6,7 +6,7 @@ import { ClipThumb } from "./ClipThumb";
 import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
 import type { TrackType } from "@shared/editorTypes";
 
-const LABEL_W = 96;
+const LABEL_W = 132;
 const RULER_H = 26;
 const TRACK_H = 52;
 const SNAP_PX = 7; // snap threshold in screen pixels
@@ -117,6 +117,11 @@ export function Timeline() {
     // Plain click on a non-selected clip → single select. Clicking an already-
     // selected clip keeps the whole selection so the group can be dragged together.
     if (!st.selectedClipIds.includes(clipId)) selectClip(clipId);
+    // 点击片段：把播放头跟随到点击处，预览该时间点（仅片段体点击，不含裁剪手柄）。
+    if (mode === "move") {
+      const lr = laneRect();
+      if (lr) { st.setPlaying(false); st.setPlayhead(Math.max(0, (e.clientX - lr.left) / pxPerSec)); }
+    }
     if (mode === "move") {
       const grabDx = e.clientX - (laneRect()?.left ?? 0) - clip.start * pxPerSec; // cursor offset within clip
       const group = useEditorStore.getState().selectedClipIds.length > 1;
@@ -311,10 +316,13 @@ export function Timeline() {
                     {doc.tracks.length > 1 && <button onClick={() => { if (t.clips.length === 0 || confirm(`删除「${t.name ?? trackLabel(t.type)}」轨道及其 ${t.clips.length} 个片段？`)) removeTrack(t.id); }} title="删除轨道" style={{ ...trackBtn, color: EC.t3 }}><Trash2 size={12} /></button>}
                   </div>
                   {hasAudio && !t.muted && (
-                    <input type="range" min={0} max={2} step={0.05} value={t.volume ?? 1}
-                      title={`轨道音量 ${Math.round((t.volume ?? 1) * 100)}%`}
-                      onChange={(e) => updateTrack(t.id, { volume: Number(e.target.value) })}
-                      style={{ width: "100%", height: 3, accentColor: EC.accent, cursor: "pointer" }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input className="tl-vol" type="range" min={0} max={2} step={0.05} value={t.volume ?? 1}
+                        title={`轨道音量 ${Math.round((t.volume ?? 1) * 100)}%`}
+                        onChange={(e) => updateTrack(t.id, { volume: Number(e.target.value) })}
+                        style={{ flex: 1, minWidth: 0, color: EC.accent }} />
+                      <span style={{ fontSize: 9.5, color: EC.t3, fontVariantNumeric: "tabular-nums", width: 30, textAlign: "right", flexShrink: 0 }}>{Math.round((t.volume ?? 1) * 100)}%</span>
+                    </div>
                   )}
                 </div>
               );
@@ -352,7 +360,7 @@ export function Timeline() {
                       style={{
                         position: "absolute", left, width, top: 5, bottom: 5,
                         borderRadius: 6, overflow: "hidden", cursor: "grab", touchAction: "none",
-                        background: `${col.replace(")", " / 0.25)")}`,
+                        background: `${col.replace(")", " / 0.12)")}`,
                         border: `1.5px solid ${selected ? "#fff" : col}`,
                         boxShadow: selected ? `0 0 0 2px ${col}` : "none",
                         display: "flex", alignItems: "center",
