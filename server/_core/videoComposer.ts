@@ -19,6 +19,7 @@ export interface ComposeOptions {
   format?: "mp4" | "hevc" | "webm" | "mov";
   quality?: "high" | "medium" | "low";
   qualityPct?: number; // 1..100 精细质量（优先于 quality 档位）→ 映射为对应编码的 CRF
+  encoder?: "software" | "hardware"; // 软件(CPU/libx264)质量优先 | 硬件(GPU/NVENC 等)速度优先；硬件不可用自动回退
   width?: number;   // output width override (even); preserves aspect at the caller
   height?: number;  // output height override (even)
   fps?: number;     // output fps override
@@ -802,6 +803,36 @@ function clipVisibleDuration(c: Clip): number {
   return Math.max(0.05, (c.trimOut - c.trimIn) / (c.speed ?? 1));
 }
 
+// ── 硬件(GPU)编码 ───────────────────────────────────────────────────────────────
+// 「ffmpeg -encoders 列出」≠「可用」：无 GPU 时 nvenc/qsv 等会在运行期失败。故用「实跑
+// 1 帧」探测真实可用性，结果进程内缓存（探测一次）。
+const _hwProbeCache = new Map<string, boolean>();
+async function probeEncoder(name: string): Promise<boolean> {
+  const cached = _hwProbeCache.get(name);
+  if (cached !== undefined) return cached;
+  let ok = false;
+  try {
+    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=black:s=256x256:d=0.1:r=10", "-c:v", name, "-frames:v", "1", "-f", "null", "-"], { timeoutMs: 15000 });
+    ok = true;
+  } catch { ok = false; }
+  _hwProbeCache.set(name, ok);
+  return ok;
+}
+
+/** drop-in 硬件编码器候选（仅选无需改滤镜链的 nvenc/amf/videotoolbox；qsv/vaapi 需 hwupload，略）。 */
+function hwCandidates(isHevc: boolean): string[] {
+  return isHevc ? ["hevc_nvenc", "hevc_amf", "hevc_videotoolbox"] : ["h264_nvenc", "h264_amf", "h264_videotoolbox"];
+}
+
+/** 硬件编码器输出参数（质量参数因编码器而异；输入 yuv420p 直接喂，GPU 内部上传）。 */
+export function hwVideoArgs(encoder: string, crf: number, isHevc: boolean): string[] {
+  const tag = isHevc ? ["-tag:v", "hvc1"] : [];
+  if (encoder.includes("nvenc")) return ["-c:v", encoder, "-preset", "p5", "-rc", "vbr", "-cq", String(crf), "-b:v", "0", "-pix_fmt", "yuv420p", ...tag];
+  if (encoder.includes("amf")) return ["-c:v", encoder, "-rc", "cqp", "-qp_i", String(crf), "-qp_p", String(crf), "-pix_fmt", "yuv420p", ...tag];
+  const q = Math.max(10, Math.min(100, Math.round(((51 - crf) / 51) * 100))); // videotoolbox: -q:v 1..100（越大越好）
+  return ["-c:v", encoder, "-q:v", String(q), "-pix_fmt", "yuv420p", ...tag];
+}
+
 /**
  * Render an EditorDoc to a single MP4 in ONE ffmpeg pass and upload to storage.
  * PR3 scope: the main video track (video + image clips), trim/speed/scale/concat
@@ -933,30 +964,47 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     const h264Crf = pctCrf ?? ({ high: "18", medium: "22", low: "27" } as const)[quality];
     const hevcCrf = pctCrf ?? ({ high: "20", medium: "24", low: "28" } as const)[quality];
     const vp9Crf = pctCrf ?? ({ high: "28", medium: "33", low: "38" } as const)[quality];
-    const vCodec = isWebm
+    // 软件(CPU)编码：质量优先（libx264/265/vpx-vp9）。
+    const swVCodec = isWebm
       ? ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", vp9Crf, "-row-mt", "1", "-pix_fmt", "yuv420p"]
       : isHevc
         ? ["-c:v", "libx265", "-preset", "medium", "-crf", hevcCrf, "-tag:v", "hvc1", "-pix_fmt", "yuv420p"]
         : ["-c:v", "libx264", "-preset", "medium", "-crf", h264Crf, "-pix_fmt", "yuv420p"];
+    // 硬件(GPU)编码：仅 mp4/mov/hevc（webm 无理想 drop-in 硬件路径，保持软件）。实跑探测，
+    // 选第一个真正可用的；都不可用则回退软件。
+    let vCodec = swVCodec;
+    let hwUsed: string | null = null;
+    if (opts.encoder === "hardware" && !isWebm) {
+      const crfNum = Number(isHevc ? hevcCrf : h264Crf);
+      for (const enc of hwCandidates(isHevc)) {
+        if (await probeEncoder(enc)) { vCodec = hwVideoArgs(enc, crfNum, isHevc); hwUsed = enc; break; }
+      }
+    }
     const aCodec = isWebm ? ["-c:a", "libopus", "-b:a", "160k"] : ["-c:a", "aac", "-b:a", "192k"];
     const containerArgs = isWebm ? [] : ["-movflags", "+faststart"];
 
     const outName = `compose-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const outPath = path.join(os.tmpdir(), outName);
 
-    const args = [
+    const buildArgs = (vc: string[]) => [
       ...inputArgs,
       "-filter_complex", graph.filterComplex,
       "-map", graph.outV, "-map", graph.outA,
-      ...vCodec,
+      ...vc,
       ...aCodec,
       ...containerArgs,
       "-y", outPath,
     ];
 
-    report(32, "渲染中");
-    try {
-      await execFileAsync("ffmpeg", args, { timeoutMs: COMPOSE_TIMEOUT_MS });
+    report(32, hwUsed ? `渲染中（GPU 加速：${hwUsed}）` : "渲染中");
+    // 硬件编码若运行期失败（如 GPU 驱动问题），静默回退软件重试一次——保证导出不因 GPU 失败。
+    let hwOk = false;
+    if (hwUsed) {
+      try { await execFileAsync("ffmpeg", buildArgs(vCodec), { timeoutMs: COMPOSE_TIMEOUT_MS }); hwOk = true; }
+      catch { hwOk = false; report(32, "GPU 编码失败，回退软件渲染中"); }
+    }
+    if (!hwOk) try {
+      await execFileAsync("ffmpeg", buildArgs(swVCodec), { timeoutMs: COMPOSE_TIMEOUT_MS });
     } catch (err: unknown) {
       const e = err as { stderr?: string; message?: string; code?: string };
       if (e.code === "ENOENT" || /ENOENT/.test(e.message ?? "")) {

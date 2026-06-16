@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentZoomPanChain, chromaKeyFilter, segmentDuration, collectVideoSegments, buildEditorASS, type Segment, type AudioInput, type TextInput, type OverlayInput } from "./_core/videoComposer";
+import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentZoomPanChain, chromaKeyFilter, segmentDuration, collectVideoSegments, buildEditorASS, hwVideoArgs, type Segment, type AudioInput, type TextInput, type OverlayInput } from "./_core/videoComposer";
 import { emptyEditorDoc, applyEase, transformAt, type Clip } from "@shared/editorTypes";
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
@@ -212,6 +212,20 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(mk({ type: "ellipse", x: 0.25, y: 0.25, w: 0.5, h: 0.5, invert: true })).toContain("(1-(clip(");
     // 无 mask → 不出现 geq
     expect(mk(undefined)).not.toContain("geq=");
+  });
+
+  it("硬件编码参数 hwVideoArgs：nvenc/amf/videotoolbox 各自的恒定质量参数 + HEVC 标签", () => {
+    expect(hwVideoArgs("h264_nvenc", 20, false)).toEqual(["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "20", "-b:v", "0", "-pix_fmt", "yuv420p"]);
+    // HEVC → 追加 hvc1 标签
+    expect(hwVideoArgs("hevc_nvenc", 22, true)).toContain("-tag:v");
+    expect(hwVideoArgs("hevc_nvenc", 22, true)).toContain("hvc1");
+    // amf 用 cqp
+    expect(hwVideoArgs("h264_amf", 23, false)).toEqual(["-c:v", "h264_amf", "-rc", "cqp", "-qp_i", "23", "-qp_p", "23", "-pix_fmt", "yuv420p"]);
+    // videotoolbox 用 -q:v（由 crf 反推：crf 小→q 大）
+    const vt = hwVideoArgs("h264_videotoolbox", 16, false);
+    expect(vt).toContain("-q:v");
+    const q = Number(vt[vt.indexOf("-q:v") + 1]);
+    expect(q).toBeGreaterThan(Number(hwVideoArgs("h264_videotoolbox", 30, false)[3])); // crf16 比 crf30 质量高
   });
 
   it("chromaKeyFilter sanitizes colour to 0xRRGGBB and clamps params (injection-safe)", () => {
