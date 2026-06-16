@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useCallback, useState } from "react";
-import { Play, Pause, SkipBack, Grid3x3 } from "lucide-react";
+import { Play, Pause, SkipBack, Grid3x3, Maximize, Minimize } from "lucide-react";
 import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { usePersistentState } from "@/hooks/usePersistentState";
@@ -194,6 +194,18 @@ export function PreviewStage() {
 
   const mediaRefs = useRef<Map<string, HTMLVideoElement | HTMLAudioElement>>(new Map());
   const stageRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  // 全屏：把整个预览区(含播放控件)送入浏览器全屏；监听变化以同步图标。
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else mainRef.current?.requestFullscreen().catch(() => {});
+  }, []);
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
   const dragRef = useRef<DragState | null>(null);
   const safeDragRef = useRef<{ mode: "move" | "nw" | "ne" | "sw" | "se"; sx: number; sy: number; start: { x: number; y: number; w: number; h: number } } | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -377,7 +389,7 @@ export function PreviewStage() {
   });
 
   return (
-    <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-canvas, #0c0c10)" }}>
+    <main ref={mainRef} style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-canvas, #0c0c10)" }}>
       {/* preview toolbar: export-frame readout + thirds guide + per-clip 适配 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", flexShrink: 0, borderBottom: `1px solid ${EC.border}` }}>
         <span title="最终导出画面比例与分辨率（画布设置）" style={{ fontSize: 11, color: EC.t3, fontVariantNumeric: "tabular-nums" }}>
@@ -401,6 +413,10 @@ export function PreviewStage() {
           onClick={() => { const idx = SAFE_ZONES.findIndex((z) => z.id === safeZone); setSafeZone(idx + 1 >= SAFE_ZONES.length ? "" : SAFE_ZONES[idx + 1].id); }}
           style={{ display: "inline-flex", alignItems: "center", gap: 4, ...fitBtn(!!safeZone) }}>
           安全区{safeZone ? "·" + (safeZone === "custom" ? "自定义" : SAFE_ZONES.find((z) => z.id === safeZone)?.label ?? "") : ""}
+        </button>
+        <button title={isFullscreen ? "退出全屏 (Esc)" : "全屏预览"} onClick={toggleFullscreen}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, ...fitBtn(isFullscreen) }}>
+          {isFullscreen ? <Minimize size={12} /> : <Maximize size={12} />} 全屏
         </button>
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0 }}>
@@ -472,11 +488,15 @@ export function PreviewStage() {
             // 文字片段叠加入场动效（按播放头实时演示，与导出 ASS 同步）。
             const tmo = clip.kind === "text" ? textMotionPreview(clip.text?.motionStyle, playhead - clip.start) : { opacity: 1, transform: "" };
             const isShape = clip.kind === "shape";
+            // 片尾滚动：整段文字在本片段时长内从画面底部下方(top 100%)持续上滚至顶部上方
+            // (top -100%)，用相对舞台的 % 定位（与导出 \move 从 H→-H 一致）。
+            const isCredits = clip.kind === "text" && clip.text?.motionStyle === "credits";
+            const creditsP = isCredits ? Math.min(1, Math.max(0, (playhead - clip.start) / Math.max(0.01, clipDuration(clip)))) : 0;
             const sh = clip.shape;
             const shColor = sh?.color ?? "#FFD400";
             const boxStyle: React.CSSProperties = {
               position: "absolute",
-              left: `${(tf?.x ?? 0.1) * 100}%`, top: `${(tf?.y ?? 0.1) * 100}%`,
+              left: `${(tf?.x ?? 0.1) * 100}%`, top: isCredits ? `${(100 - creditsP * 200).toFixed(1)}%` : `${(tf?.y ?? 0.1) * 100}%`,
               width: isShape ? `${(sh?.w ?? 0.3) * 100}%` : `${(tf?.scale ?? 0.4) * 100}%`,
               ...(isShape ? { height: `${(sh?.h ?? 0.2) * 100}%`, boxSizing: "border-box" as const } : {}),
               opacity: (tf?.opacity ?? 1) * xfade * fadeMul * tmo.opacity * (isShape ? (sh?.opacity ?? 1) : 1),

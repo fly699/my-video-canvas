@@ -257,6 +257,7 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(mk("pop")).toContain("\\fscx40\\fscy40\\t(0,350,\\fscx100\\fscy100)");
     expect(mk("pop")).toContain("\\fad(150,0)");
     expect(mk("roll")).toContain("\\move(192,1080,192,864)");           // 从画面底部滚入（不变）
+    expect(mk("credits")).toContain("\\move(192,1080,192,-1080)");      // 片尾滚动：底部下方→顶部上方贯穿全程
     expect(mk("none")).toContain("\\pos(192,864)");                     // 无动效仅定位
     expect(mk("none")).not.toContain("\\move");
   });
