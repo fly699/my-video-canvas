@@ -6,6 +6,8 @@ import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssCol
 import { sanitizeFilenamePrefix } from "./comfyui";
 import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, ClipMask, FitMode, TransformKeyframe, EaseType } from "@shared/editorTypes";
 import { qualityPctToCrf } from "@shared/exportQuality";
+import { shapeToSvg, type ShapeSpec } from "@shared/shapeSvg";
+import { Resvg } from "@resvg/resvg-js";
 
 // Render timeouts are generous: a full multi-clip render re-encodes everything
 // in ONE pass, which can take minutes for long timelines.
@@ -782,22 +784,22 @@ export function collectTextClips(doc: EditorDoc): TextInput[] {
   return out.sort((a, b) => a.start - b.start);
 }
 
-/** Shape clips (kind "shape") on overlay/text tracks → drawbox inputs, in time order. */
-export function collectShapeClips(doc: EditorDoc): ShapeInput[] {
-  const out: ShapeInput[] = [];
+/** Shape clips (kind "shape") on attachment/overlay/text tracks → raster-overlay sources, time-ordered. */
+export function collectShapeClips(doc: EditorDoc): Clip[] {
+  const out: Clip[] = [];
   for (const t of doc.tracks) {
-    if (t.hidden || (t.type !== "overlay" && t.type !== "text")) continue;
+    if (t.hidden || (t.type !== "attachment" && t.type !== "overlay" && t.type !== "text")) continue;
     for (const c of t.clips) {
-      if (c.kind !== "shape" || !c.shape) continue;
-      const dur = Math.max(0.05, c.trimOut - c.trimIn);
-      out.push({
-        start: c.start, end: c.start + dur, type: c.shape.type ?? "rect",
-        color: c.shape.color, fill: c.shape.fill, lineWidth: c.shape.lineWidth, opacity: c.shape.opacity,
-        x: c.transform?.x ?? 0.1, y: c.transform?.y ?? 0.1, w: c.shape.w ?? 0.3, h: c.shape.h ?? 0.2,
-      });
+      if (c.kind === "shape" && c.shape) out.push(c);
     }
   }
   return out.sort((a, b) => a.start - b.start);
+}
+
+/** 形状 → SVG → PNG（resvg 光栅化，带透明通道），返回 PNG 字节。 */
+export function rasterizeShape(shape: ShapeSpec, wPx: number, hPx: number): Buffer {
+  const svg = shapeToSvg(shape, Math.max(1, wPx), Math.max(1, hPx));
+  return Buffer.from(new Resvg(svg, { background: "rgba(0,0,0,0)" }).render().asPng());
 }
 
 function clipVisibleDuration(c: Clip): number {
@@ -910,6 +912,12 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       );
     }
 
+    // 输出尺寸/帧率（偶数维度——奇数会让 yuv420p 失败）。形状光栅化按此分辨率以保清晰。
+    const even = (n: number) => Math.max(2, Math.round(n) - (Math.round(n) % 2));
+    const W = even(opts.width ?? doc.width);
+    const H = even(opts.height ?? doc.height);
+    const fps = Math.max(1, Math.min(120, Math.round(opts.fps ?? doc.fps)));
+
     // Overlay clips next (composited on top).
     for (const c of overlayClips) {
       if (!c.assetUrl) continue;
@@ -923,6 +931,29 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }
 
+    // 形状/SVG 片段：按输出分辨率光栅化为透明 PNG，作为图片叠加层合成（复用叠加管线：
+    // 位置 transform.x/y、尺寸=shape.w/h、时长、透明度/旋转/淡入淡出/蒙版均沿用）。
+    for (const c of shapeClips) {
+      const sh = c.shape!;
+      const wFrac = sh.w ?? 0.3, hFrac = sh.h ?? 0.2;
+      const dur = clipVisibleDuration(c);
+      try {
+        const png = rasterizeShape(sh as ShapeSpec, Math.round(wFrac * W), Math.round(hFrac * H));
+        const p = path.join(os.tmpdir(), `shape-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+        await fs.writeFile(p, png);
+        tmpFiles.push(p);
+        overlays.push({
+          isImage: true, trimIn: 0, trimOut: dur, speed: 1, start: c.start, duration: dur,
+          transform: { x: c.transform?.x ?? 0.1, y: c.transform?.y ?? 0.1, scale: wFrac, opacity: 1, rotation: c.transform?.rotation },
+          fadeIn: c.fadeIn, fadeOut: c.fadeOut,
+        });
+        inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
+      } catch (e) {
+        console.error("[videoComposer] 形状光栅化失败，跳过该形状：", e instanceof Error ? e.message : e);
+      }
+      report(2 + Math.round((++done) / total * 28), "渲染形状");
+    }
+
     // Audio-track clips next (input order: main → overlays → audio).
     for (const c of audioClipsSrc) {
       if (!c.assetUrl) continue;
@@ -933,15 +964,6 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }
 
-    // libx264 + yuv420p require EVEN dimensions — odd width/height (e.g. from a
-    // custom canvas size) makes format=yuv420p fail and the whole graph produce
-    // no packets (both encoders error -22). Round down to even. Resolution/fps
-    // may be overridden by the export settings (default = doc dimensions).
-    const even = (n: number) => Math.max(2, Math.round(n) - (Math.round(n) % 2));
-    const W = even(opts.width ?? doc.width);
-    const H = even(opts.height ?? doc.height);
-    const fps = Math.max(1, Math.min(120, Math.round(opts.fps ?? doc.fps)));
-
     // Positioned text/subtitles → ASS file (referenced by the ass filter).
     let assPath: string | undefined;
     if (textClips.length > 0) {
@@ -950,7 +972,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       tmpFiles.push(assPath);
     }
 
-    const graph = buildFilterGraph(segs, { width: W, height: H, fps, normalizeAudio: doc.normalizeAudio, masterFadeIn: doc.masterFadeIn, masterFadeOut: doc.masterFadeOut }, overlays, { audioClips, assPath, shapes: shapeClips });
+    const graph = buildFilterGraph(segs, { width: W, height: H, fps, normalizeAudio: doc.normalizeAudio, masterFadeIn: doc.masterFadeIn, masterFadeOut: doc.masterFadeOut }, overlays, { audioClips, assPath });
 
     // Export container/codec/quality. Default mp4 + H.264 + high.
     const format = opts.format ?? "mp4";

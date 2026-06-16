@@ -41,12 +41,16 @@ const clipSchema = z.object({
     opacity: z.number().optional(), rotation: z.number().optional(),
     ease: z.enum(["linear", "in", "out", "inout"]).optional(),
   })).max(120).optional(),
-  // 矢量形状叠加
+  // 矢量形状/SVG 叠加（导出 resvg 光栅化）
   shape: z.object({
-    type: z.enum(["rect"]),
-    color: z.string().max(16).optional(), fill: z.boolean().optional(),
-    lineWidth: z.number().min(0).max(100).optional(), opacity: z.number().min(0).max(1).optional(),
-    w: z.number().min(0).max(1).optional(), h: z.number().min(0).max(1).optional(),
+    type: z.enum(["rect", "roundRect", "circle", "ellipse", "triangle", "diamond", "pentagon", "hexagon", "star", "heart", "arrow", "line"]),
+    color: z.string().max(32).optional(), color2: z.string().max(32).optional(), fill: z.boolean().optional(),
+    fillType: z.enum(["solid", "linear", "radial", "pattern"]).optional(),
+    pattern: z.enum(["dots", "stripes", "grid", "checker"]).optional(),
+    lineWidth: z.number().min(0).max(200).optional(), opacity: z.number().min(0).max(1).optional(),
+    radius: z.number().min(0).max(1).optional(),
+    svg: z.string().max(20000).optional(),
+    w: z.number().min(0).max(2).optional(), h: z.number().min(0).max(2).optional(),
   }).optional(),
   chromaKey: z.object({ color: z.string().max(16).optional(), similarity: z.number().min(0).max(1).optional(), blend: z.number().min(0).max(1).optional() }).optional(),
   // 形状蒙版（叠加层/画中画）
@@ -88,7 +92,7 @@ const docSchema = z.object({
   masterFadeOut: z.number().min(0).max(10).optional(),
   tracks: z.array(z.object({
     id: z.string().min(1).max(64),
-    type: z.enum(["video", "audio", "text", "overlay"]),
+    type: z.enum(["video", "audio", "text", "overlay", "attachment"]),
     muted: z.boolean().optional(),
     volume: z.number().min(0).max(4).optional(),
     hidden: z.boolean().optional(),
