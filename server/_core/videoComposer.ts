@@ -5,6 +5,7 @@ import { storagePut, assertObjectStorageWritable } from "../storage";
 import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssColorToASSHex, cssColorToASSAlpha, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
 import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode, TransformKeyframe, EaseType } from "@shared/editorTypes";
+import { qualityPctToCrf } from "@shared/exportQuality";
 
 // Render timeouts are generous: a full multi-clip render re-encodes everything
 // in ONE pass, which can take minutes for long timelines.
@@ -17,6 +18,7 @@ export interface ComposeOptions {
   // Export overrides (optional). Default: doc dimensions/fps, mp4/H.264, high quality.
   format?: "mp4" | "hevc" | "webm" | "mov";
   quality?: "high" | "medium" | "low";
+  qualityPct?: number; // 1..100 精细质量（优先于 quality 档位）→ 映射为对应编码的 CRF
   width?: number;   // output width override (even); preserves aspect at the caller
   height?: number;  // output height override (even)
   fps?: number;     // output fps override
@@ -892,9 +894,12 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     const mimeType = format === "webm" ? "video/webm" : format === "mov" ? "video/quicktime" : "video/mp4";
     const isWebm = format === "webm";
     const isHevc = format === "hevc";
-    const h264Crf = ({ high: "18", medium: "22", low: "27" } as const)[quality];
-    const hevcCrf = ({ high: "20", medium: "24", low: "28" } as const)[quality];
-    const vp9Crf = ({ high: "28", medium: "33", low: "38" } as const)[quality];
+    // 精细质量：传了 qualityPct(1..100) 则按编码映射成 CRF，覆盖三档预设（只有匹配
+    // 当前格式编码的那一路会被实际使用，故三者同赋无副作用）。
+    const pctCrf = opts.qualityPct != null ? String(qualityPctToCrf(format, opts.qualityPct)) : null;
+    const h264Crf = pctCrf ?? ({ high: "18", medium: "22", low: "27" } as const)[quality];
+    const hevcCrf = pctCrf ?? ({ high: "20", medium: "24", low: "28" } as const)[quality];
+    const vp9Crf = pctCrf ?? ({ high: "28", medium: "33", low: "38" } as const)[quality];
     const vCodec = isWebm
       ? ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", vp9Crf, "-row-mt", "1", "-pix_fmt", "yuv420p"]
       : isHevc
