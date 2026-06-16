@@ -103,18 +103,18 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   useEffect(() => {
     const list = upstreamImagesKey ? upstreamImagesKey.split("\n").filter(Boolean) : [];
     if (list.length === 0) return;
-    // Fill main + alternate views INDEPENDENTLY (each only-when-blank). Independent gating
-    // matters because upstream images can arrive in stages (a batch finishes after the
-    // first image): once the main ref was set, a combined "no refs at all" gate would block
-    // the alternate views forever. Each fills once, then stays under the user's control.
     const patch: Record<string, unknown> = {};
+    // 主参考图：仅当还没有时用第一张上游图填充（不覆盖手动上传/选择的主图）。
     const hasMain = !!payload.referenceImageUrl?.trim();
     if (!hasMain) { patch.referenceImageUrl = list[0]; patch.referenceStorageKey = undefined; }
-    if ((payload.additionalImageUrls?.length ?? 0) === 0) {
-      const main = payload.referenceImageUrl?.trim() || list[0];
-      const extras = list.filter((u) => u !== main).slice(0, MAX_ADDITIONAL_IMAGES);
-      if (extras.length) patch.additionalImageUrls = extras;
-    }
+    const main = hasMain ? payload.referenceImageUrl!.trim() : list[0];
+    // 备用视角：把「所有已连接的上游图」并入（去重、排除主图、上限 8）。【只增不删】——
+    // 新连进来的会被纳入、已有的（含手动添加）保留。修复此前「fill-once」导致增量连线时
+    // 只保留最早那一两张、后连的被忽略（用户连了多张却只显示「参考图 2」）的问题。
+    const curExtras = (payload.additionalImageUrls ?? []).map((u) => (u ?? "").trim()).filter(Boolean);
+    const merged = Array.from(new Set([...curExtras, ...list.filter((u) => u !== main)])).slice(0, MAX_ADDITIONAL_IMAGES);
+    const changed = merged.length !== curExtras.length || merged.some((u, i) => u !== curExtras[i]);
+    if (changed) patch.additionalImageUrls = merged;
     if (Object.keys(patch).length) updateNodeData(id, patch, true);
   }, [upstreamImagesKey, payload.referenceImageUrl, payload.additionalImageUrls, id, updateNodeData]);
 
