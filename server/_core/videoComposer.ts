@@ -512,7 +512,11 @@ export function buildFilterGraph(
     // feeding a concat (hard cut) output into a later xfade alongside a fresh
     // segment then fails with "timebase ... do not match" → "Failed to
     // configure output pad". settb keeps all combine inputs on 1/fps.
-    const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), "format=yuv420p", ...videoFadeFilters(s.fadeIn, s.fadeOut, dur), `settb=1/${fps}`];
+    // 片段不透明度（主轨）：与预览一致 = 在 RGB 上朝黑乘 op。仅 op<1 时插入此滤镜，
+    // op=1（绝大多数片段）链路保持原样、无任何额外转换 → 对常规导出零影响、零质量损失。
+    const op = s.transform?.opacity ?? 1;
+    const opChain = op < 0.999 ? [`colorchannelmixer=rr=${op.toFixed(3)}:gg=${op.toFixed(3)}:bb=${op.toFixed(3)}`] : [];
+    const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), ...opChain, "format=yuv420p", ...videoFadeFilters(s.fadeIn, s.fadeOut, dur), `settb=1/${fps}`];
 
     if (s.fit === "blur") {
       // 模糊填充：同一画面放大铺满 + 高斯/盒式模糊作背景，原画完整居中叠加，消除黑边。
