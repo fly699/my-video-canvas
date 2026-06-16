@@ -7,6 +7,9 @@ import { useEditorStore } from "./editorStore";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import type { Clip } from "@shared/editorTypes";
 import { SHAPE_ICONS, iconSvg } from "@shared/shapeIcons";
+import { LLMModelPicker, type LLMModelId } from "@/components/canvas/LLMModelPicker";
+import { LLM_MODELS } from "@/lib/models";
+import { useDisabledModels } from "@/lib/useDisabledModels";
 
 // TTS models available for AI 配音 (mirror audioGen.generateDubbing).
 const TTS_MODELS: [string, string][] = [
@@ -84,6 +87,9 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const dubMut = trpc.audioGen.generateDubbing.useMutation();
   const aiSvgMut = trpc.editor.generateShapeSvg.useMutation();
   const [aiSvgPrompt, setAiSvgPrompt] = useState("");
+  const editorDisabled = useDisabledModels();
+  const defaultLlm = LLM_MODELS.find((m) => !m.hidden)?.id ?? "claude-sonnet-4-6";
+  const [svgModel, setSvgModel] = usePersistentState<string>("ui:editor:svg-llm-model", defaultLlm, { validate: (p) => (typeof p === "string" && LLM_MODELS.some((m) => m.id === p) ? p : null) });
   const setCanvas = useEditorStore((s) => s.setCanvas);
   // 选中的视频/图片片段的素材地址 → 探测原始像素/编码/比例
   const probeUrl = useEditorStore((s) => {
@@ -322,13 +328,16 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
               ))}
             </div>
             {/* AI 生成 SVG */}
-            <div style={{ fontSize: 10.5, color: EC.t4, margin: "8px 0 3px" }}>AI 生成 SVG（描述想要的图形）</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0 3px" }}>
+              <span style={{ fontSize: 10.5, color: EC.t4 }}>AI 生成 SVG（描述想要的图形）</span>
+              <LLMModelPicker value={svgModel as LLMModelId} onChange={(v) => setSvgModel(v)} filter={(m) => !editorDisabled.has("editor:" + m.id)} />
+            </div>
             <div style={{ display: "flex", gap: 6 }}>
               <input value={aiSvgPrompt} onChange={(e) => setAiSvgPrompt(e.target.value)} placeholder="如：一只卡通小猫 / 圆形进度环"
-                onKeyDown={(e) => { if (e.key === "Enter" && aiSvgPrompt.trim() && !aiSvgMut.isPending) { aiSvgMut.mutate({ prompt: aiSvgPrompt.trim() }, { onSuccess: (r) => setShape({ svg: r.svg }), onError: (err) => toast.error("生成失败：" + err.message) }); } }}
+                onKeyDown={(e) => { if (e.key === "Enter" && aiSvgPrompt.trim() && !aiSvgMut.isPending) { aiSvgMut.mutate({ prompt: aiSvgPrompt.trim(), model: svgModel }, { onSuccess: (r) => setShape({ svg: r.svg }), onError: (err) => toast.error("生成失败：" + err.message) }); } }}
                 style={{ ...input, flex: 1 }} />
               <button disabled={aiSvgMut.isPending || !aiSvgPrompt.trim()}
-                onClick={() => aiSvgMut.mutate({ prompt: aiSvgPrompt.trim() }, { onSuccess: (r) => setShape({ svg: r.svg }), onError: (err) => toast.error("生成失败：" + err.message) })}
+                onClick={() => aiSvgMut.mutate({ prompt: aiSvgPrompt.trim(), model: svgModel }, { onSuccess: (r) => setShape({ svg: r.svg }), onError: (err) => toast.error("生成失败：" + err.message) })}
                 style={{ padding: "0 10px", fontSize: 11.5, borderRadius: 6, cursor: aiSvgMut.isPending ? "default" : "pointer", border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent, whiteSpace: "nowrap" }}>{aiSvgMut.isPending ? "生成中…" : "生成"}</button>
             </div>
             {/* 自定义 SVG（键入/粘贴代码） */}
