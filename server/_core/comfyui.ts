@@ -1527,15 +1527,18 @@ export async function analyzeWorkflow(
     "ConditioningZeroOut", "ConditioningAverage",
   ]);
   const negativeClipNodeIds = new Set<string>();
-  function collectNegClip(nodeId: string, visited: Set<string>): void {
+  const positiveClipNodeIds = new Set<string>();
+  // Walk a sampler conditioning input down to its CLIPTextEncode leaves (through
+  // transparent ConditioningCombine/SetMask/… nodes), collecting them into `target`.
+  function collectClipLeaves(nodeId: string, visited: Set<string>, target: Set<string>): void {
     if (visited.has(nodeId)) return;
     visited.add(nodeId);
     const n = (workflow as Record<string, unknown>)[nodeId] as Record<string, unknown> | undefined;
     if (!n?.class_type) return;
-    if (n.class_type === "CLIPTextEncode") { negativeClipNodeIds.add(nodeId); return; }
+    if (n.class_type === "CLIPTextEncode") { target.add(nodeId); return; }
     if (!COND_PASSTHROUGH.has(n.class_type as string)) return;
     for (const v of Object.values((n.inputs as Record<string, unknown>) ?? {})) {
-      if (Array.isArray(v) && v[0] != null) collectNegClip(String(v[0]), visited);
+      if (Array.isArray(v) && v[0] != null) collectClipLeaves(String(v[0]), visited, target);
     }
   }
   // Samplers/guiders that expose a direct `negative` conditioning input:
@@ -1548,8 +1551,16 @@ export async function analyzeWorkflow(
   for (const [, n] of Object.entries(workflow)) {
     if (typeof n !== "object" || !n.class_type) continue;
     if (NEG_INPUT_SAMPLERS.has(n.class_type as string)) {
-      const negRef = (n.inputs ?? {}).negative;
-      if (Array.isArray(negRef) && negRef[0] != null) collectNegClip(String(negRef[0]), new Set());
+      const inp = (n.inputs ?? {}) as Record<string, unknown>;
+      const negRef = inp.negative;
+      if (Array.isArray(negRef) && negRef[0] != null) collectClipLeaves(String(negRef[0]), new Set(), negativeClipNodeIds);
+      // Also map the `positive` input. When a CLIPTextEncode feeds BOTH inputs of a
+      // sampler (the official Flux default + our built-in PRESET_FLUX, where
+      // negative is unused at CFG=1), positive must win — otherwise the only text
+      // node is mislabeled negative, the upstream/positive prompt is dropped, and
+      // the negative text gets written into the encoder that actually drives output.
+      const posRef = inp.positive;
+      if (Array.isArray(posRef) && posRef[0] != null) collectClipLeaves(String(posRef[0]), new Set(), positiveClipNodeIds);
     }
   }
 
@@ -1577,7 +1588,8 @@ export async function analyzeWorkflow(
       // silently collapse the batch to a single image. The upstream source node
       // is surfaced instead by the generic prompt/text fallback below.
       if (Array.isArray(inputs.text)) continue;
-      const isPositive = !negativeClipNodeIds.has(nodeId);
+      // Positive wins when a node is wired to BOTH positive and negative (Flux).
+      const isPositive = positiveClipNodeIds.has(nodeId) || !negativeClipNodeIds.has(nodeId);
       detectedParams.push({
         nodeId, fieldPath: "inputs.text",
         label: isPositive ? "提示词" : "负向提示词",
