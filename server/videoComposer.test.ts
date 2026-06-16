@@ -264,6 +264,20 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(ass).toContain("\\4c");      // shadow colour
   });
 
+  it("buildEditorASS 文字底色 bgColor → 用 Box 样式画不透明背景框（与预览的底框一致）", () => {
+    const ass = buildEditorASS([{ start: 0, end: 2, x: 0.1, y: 0.8, text: {
+      content: "底色", size: 50, color: "#ffffff", bgColor: "#0000ff",
+    } }], { width: 1920, height: 1080 });
+    expect(ass).toContain("Style: Box,");                 // 头部声明了 BorderStyle=3 的 Box 样式
+    expect(ass).toContain(",Box,,0,0,0,,");                // 该字幕事件引用 Box 样式
+    expect(ass).toContain("\\3c&HFF0000&");               // 框色 = bgColor 蓝(#0000ff → ASS BBGGRR=FF0000)
+    expect(ass).toMatch(/\\bord\d+/);                      // 内边距
+    // 无底色时仍走 Default、不出现 Box 引用
+    const plain = buildEditorASS([{ start: 0, end: 2, x: 0.1, y: 0.8, text: { content: "无", size: 50 } }], { width: 1920, height: 1080 });
+    expect(plain).toContain(",Default,,0,0,0,,");
+    expect(plain).not.toContain(",Box,,0,0,0,,");
+  });
+
   it("collectVideoSegments sorts video/image clips by start and ignores audio/text", () => {
     const doc = emptyEditorDoc();
     doc.tracks[0].clips.push({ id: "b", kind: "video", start: 5, trimIn: 0, trimOut: 2, assetUrl: "x" });
