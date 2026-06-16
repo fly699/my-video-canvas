@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useState, useRef, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useNodeDefaultModels, resolveActiveNodeModel } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
@@ -31,6 +31,15 @@ interface Props {
 
 const accent = "oklch(0.70 0.20 310)";
 const accentA = (a: number) => `oklch(0.70 0.20 310 / ${a})`;
+
+// 工具栏按钮共享样式：主操作=实色 accent / 维护操作=淡色 ghost（hover 提升到 accent）。
+const TBTN = "nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium";
+const primaryBtn = { background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" } as const;
+const ghostBtn = { background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" } as const;
+const ghostHover = {
+  onMouseEnter: (e: ReactMouseEvent<HTMLButtonElement>) => { e.currentTarget.style.borderColor = accentA(0.45); e.currentTarget.style.color = accent; },
+  onMouseLeave: (e: ReactMouseEvent<HTMLButtonElement>) => { e.currentTarget.style.borderColor = "var(--c-bd2)"; e.currentTarget.style.color = "var(--c-t3)"; },
+};
 
 // 示例指令：对话为空时给新用户起点，展示智能体能干什么（点击填入输入框）。
 const AGENT_EXAMPLES = [
@@ -723,14 +732,15 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
         {/* Composer */}
         <div style={{ flexShrink: 0, borderTop: "1px solid var(--c-bd1)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
-          {/* Tools row */}
+          {/* 工具栏第 1 行 · 主操作（实色）+ 多智能体（竖线分隔） */}
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            {/* 组 A · 主操作 */}
             <div style={{ position: "relative" }}>
               <button
                 onClick={() => setShowRecipes((v) => !v)}
-                className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+                className={TBTN}
                 title="成片配方：一键展开常见成片的完整节点链"
-                style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+                style={{ ...primaryBtn }}
               >
                 <BookTemplate className="w-3 h-3" />配方
               </button>
@@ -757,102 +767,117 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               )}
             </div>
             <button
+              onClick={() => setShowPrefs(true)}
+              className={TBTN}
+              title="规划设置：生图→再生视频 / 配乐 / 字幕 / 画面比例等特殊要求"
+              style={{ ...primaryBtn }}
+            >
+              <SlidersHorizontal className="w-3 h-3" />规划设置
+            </button>
+            <button
+              onClick={() => setShowTemplates(true)}
+              className={TBTN}
+              title="模板选择：分类列出可用的 ComfyUI 工作流模板，指定生图/图生视频用哪个（或自动）"
+              style={{ ...primaryBtn }}
+            >
+              <BookTemplate className="w-3 h-3" />模板选择
+              {(templatePrefs.imageTemplateId || templatePrefs.videoTemplateId) ? <span style={{ width: 6, height: 6, borderRadius: 999, background: accent }} /> : null}
+            </button>
+            <button
+              onClick={handleSmartLayout}
+              className={TBTN}
+              title="智能排序：点击在多种布局间循环"
+              style={{ ...primaryBtn }}
+            >
+              <LayoutGrid className="w-3 h-3" />智能排序
+            </button>
+            {/* 竖分隔 */}
+            <div style={{ width: 1, alignSelf: "stretch", background: "var(--c-bd2)", margin: "0 2px" }} />
+            {/* 组 B · 多智能体 */}
+            <button
+              onClick={handleSelectMine}
+              className={TBTN}
+              title="选中本智能体生成的全部节点"
+              style={{ ...primaryBtn }}
+            >
+              <Focus className="w-3 h-3" />选中我的
+            </button>
+            <button
+              onClick={handleRunMine}
+              className={TBTN}
+              title="只运行本智能体名下的节点（不影响其它智能体）"
+              style={{ ...primaryBtn }}
+            >
+              <Zap className="w-3 h-3" />运行我的
+            </button>
+            <button
               onClick={handleRefineSelected}
               disabled={chat.isPending || selectedNodeIds.length === 0}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              className={TBTN}
               title="局部编辑：只针对画布上选中的节点微调（不新建无关节点）"
               style={{ background: selectedNodeIds.length ? accentA(0.1) : "var(--c-surface)", border: `1px solid ${selectedNodeIds.length ? accentA(0.3) : "var(--c-bd2)"}`, color: selectedNodeIds.length ? accent : "var(--c-t4)", cursor: selectedNodeIds.length && !chat.isPending ? "pointer" : "not-allowed" }}
             >
               <Focus className="w-3 h-3" />微调选中{selectedNodeIds.length ? `(${selectedNodeIds.length})` : ""}
             </button>
             <button
-              onClick={handleSelectMine}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
-              title="选中本智能体生成的全部节点"
-              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
-            >
-              <Focus className="w-3 h-3" />选中我的
-            </button>
-            <button
-              onClick={handleRunMine}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
-              title="只运行本智能体名下的节点（不影响其它智能体）"
-              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
-            >
-              <Zap className="w-3 h-3" />运行我的
-            </button>
-            <button
               onClick={handleClearMine}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              className={TBTN}
               title="清空本智能体生成的全部节点（可撤销）"
               style={{ background: "oklch(0.70 0.18 25 / 0.1)", border: "1px solid oklch(0.70 0.18 25 / 0.3)", color: "oklch(0.70 0.18 25)", cursor: "pointer" }}
             >
               <Trash2 className="w-3 h-3" />清空我的
             </button>
-            <button
-              onClick={handleSmartLayout}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
-              title="智能排序：点击在多种布局间循环"
-              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
-            >
-              <LayoutGrid className="w-3 h-3" />智能排序
-            </button>
-            <button
-              onClick={handleAnalyzeLibrary}
-              disabled={analyzeMut.isPending}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
-              title="分析 ComfyUI 模板库功能并入库（增量；勾选全量则重新分析全部）"
-              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: analyzeMut.isPending ? "wait" : "pointer" }}
-            >
-              {analyzeMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Boxes className="w-3 h-3" />}新增节点模板库分析
-            </button>
-            {meRole === "admin" && (
-              <button
-                onClick={() => setShowCleanup(true)}
-                className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
-                title="扫描各服务器在线与模型状况，确认清理失效服务器、补入新可用服务器"
-                style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
-              >
-                <RotateCw className="w-3 h-3" />清理服务器列表
-              </button>
-            )}
-            <button
-              onClick={() => setShowPrefs(true)}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
-              title="规划设置：生图→再生视频 / 配乐 / 字幕 / 画面比例等特殊要求"
-              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
-            >
-              <SlidersHorizontal className="w-3 h-3" />规划设置
-            </button>
-            <button
-              onClick={() => setShowTemplates(true)}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
-              title="模板选择：分类列出可用的 ComfyUI 工作流模板，指定生图/图生视频用哪个（或自动）"
-              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
-            >
-              <BookTemplate className="w-3 h-3" />模板选择
-              {(templatePrefs.imageTemplateId || templatePrefs.videoTemplateId) ? <span style={{ width: 6, height: 6, borderRadius: 999, background: accent }} /> : null}
-            </button>
+          </div>
+
+          {/* 横向分隔线 */}
+          <div style={{ height: 1, background: "var(--c-bd1)" }} />
+
+          {/* 工具栏第 2 行 · 诊断 / 维护（淡色 ghost） */}
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <button
               onClick={handlePreflight}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              className={TBTN}
               title="运行前体检：扫描结构问题（缺参/孤立/断链/循环）并预估全画布成本"
-              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: "pointer" }}
+              style={{ ...ghostBtn }}
+              {...ghostHover}
             >
               <ShieldCheck className="w-3 h-3" />运行前体检
             </button>
             <button
               onClick={handleSelfHeal}
               disabled={chat.isPending}
-              className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+              className={TBTN}
               title="运行自愈：检查画布上运行失败/缺参的节点并给出修复方案"
-              style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: chat.isPending ? "wait" : "pointer" }}
+              style={{ ...ghostBtn, cursor: chat.isPending ? "wait" : "pointer" }}
+              {...ghostHover}
             >
               <Wrench className="w-3 h-3" />诊断修复
             </button>
-            <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: "var(--c-t3)", cursor: "pointer" }} title="重新分析全部模板（而非仅新增/变更）">
-              <input type="checkbox" checked={analyzeFull} onChange={(e) => setAnalyzeFull(e.target.checked)} style={{ accentColor: accent }} />全量
-            </label>
+            <button
+              onClick={handleAnalyzeLibrary}
+              disabled={analyzeMut.isPending}
+              className={TBTN}
+              title="分析 ComfyUI 模板库功能并入库（增量；勾选全量则重新分析全部）"
+              style={{ ...ghostBtn, cursor: analyzeMut.isPending ? "wait" : "pointer" }}
+              {...ghostHover}
+            >
+              {analyzeMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Boxes className="w-3 h-3" />}库分析
+            </button>
+            {meRole === "admin" && (
+              <button
+                onClick={() => setShowCleanup(true)}
+                className={TBTN}
+                title="扫描各服务器在线与模型状况，确认清理失效服务器、补入新可用服务器"
+                style={{ ...ghostBtn }}
+                {...ghostHover}
+              >
+                <RotateCw className="w-3 h-3" />清理服务器列表
+              </button>
+            )}
+          </div>
+
+          {/* 工具栏第 3 行 · 模式开关 */}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: comfyOnly ? accent : "var(--c-t3)", cursor: "pointer" }} title="开启后：音视频生成只用 ComfyUI 自定义工作流节点（从模板库选模板）">
               <input type="checkbox" checked={comfyOnly} onChange={(e) => updateNodeData(id, { comfyOnlyMode: e.target.checked })} style={{ accentColor: accent }} />仅 ComfyUI 生成
             </label>
@@ -861,6 +886,9 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
             </label>
             <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: autoRun ? accent : "var(--c-t3)", cursor: "pointer" }} title="一句话成片：应用后自动发起运行（仍需画布确认）">
               <input type="checkbox" checked={autoRun} onChange={(e) => updateNodeData(id, { autoRun: e.target.checked })} style={{ accentColor: accent }} /><Zap className="w-3 h-3" />自动执行
+            </label>
+            <label className="nodrag flex items-center gap-1 text-[10px]" style={{ color: "var(--c-t3)", cursor: "pointer" }} title="勾选后『库分析』改为全量重新分析（默认仅新增/变更）">
+              <input type="checkbox" checked={analyzeFull} onChange={(e) => setAnalyzeFull(e.target.checked)} style={{ accentColor: accent }} />全量
             </label>
           </div>
           <LLMModelPicker value={model} onChange={(m) => updateNodeData(id, { model: m })} disabled={chat.isPending} />
