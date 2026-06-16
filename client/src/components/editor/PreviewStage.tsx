@@ -152,7 +152,7 @@ function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; m
 
 type DragState =
   | { mode: "move"; id: string; px: number; py: number; tf: ClipTransform; bw: number; bh: number }
-  | { mode: "scale"; id: string; cx: number; cy: number; startW: number; startScale: number; aspect: number }
+  | { mode: "scale"; id: string; cx: number; cy: number; startW: number; startScale: number; aspect: number; kind: string; startSize: number }
   | { mode: "rotate"; id: string; cx: number; cy: number; start: number };
 
 // Composition snap targets (normalized 0..1): edges, thirds, center.
@@ -307,11 +307,22 @@ export function PreviewStage() {
       const distX = Math.abs(e.clientX - left - d.cx);
       let newW = Math.max(0.04, (distX * 2) / w);                // width fraction (symmetric from center)
       if (!e.altKey) newW = snapScale(newW, 0.02);               // snap to tidy sizes (Alt bypasses)
-      const newH = newW / d.aspect;                              // height fraction (keep media aspect)
+      const newH = newW / d.aspect;                              // height fraction (keep box aspect)
       const cxFrac = d.cx / w, cyFrac = d.cy / h;
       const st = useEditorStore.getState();
       const cur = findClip(st.doc, d.id);
-      updateClip(d.id, { transform: { ...(cur?.transform ?? {}), scale: newW, x: cxFrac - newW / 2, y: cyFrac - newH / 2 } });
+      const pos = { x: cxFrac - newW / 2, y: cyFrac - newH / 2 };
+      if (d.kind === "shape") {
+        // 形状：拖动手柄改 shape.w/h（保持形状比例），位置随之居中。
+        updateClip(d.id, { shape: { ...(cur?.shape ?? { type: "rect" }), w: newW, h: newH } as NonNullable<Clip["shape"]>, transform: { ...(cur?.transform ?? {}), ...pos } });
+      } else if (d.kind === "text") {
+        // 文字：拖动手柄同时缩放字号（按宽度比例）+ 文本框宽度，所见即所得。
+        const ratio = newW / Math.max(0.001, d.startW);
+        const newSize = Math.max(6, Math.round(d.startSize * ratio));
+        updateClip(d.id, { transform: { ...(cur?.transform ?? {}), scale: newW, ...pos }, text: { ...(cur?.text ?? { content: "" }), size: newSize } as NonNullable<Clip["text"]> });
+      } else {
+        updateClip(d.id, { transform: { ...(cur?.transform ?? {}), scale: newW, ...pos } });
+      }
     } else if (d.mode === "rotate") {
       let ang = Math.round(Math.atan2(e.clientY - top - d.cy, e.clientX - left - d.cx) * 180 / Math.PI + 90);
       if (!e.altKey) ang = snapAngle(ang, 6);                    // snap to 15° steps (Alt bypasses)
@@ -343,7 +354,7 @@ export function PreviewStage() {
     if (!r) return;
     const cx = r.left + r.width / 2 - left, cy = r.top + r.height / 2 - top;
     const aspect = r.width / Math.max(1, r.height);
-    dragRef.current = { mode: "scale", id: clip.id, cx, cy, startW: r.width / w, startScale: clip.transform?.scale ?? 0.4, aspect };
+    dragRef.current = { mode: "scale", id: clip.id, cx, cy, startW: r.width / w, startScale: clip.transform?.scale ?? 0.4, aspect, kind: clip.kind, startSize: clip.text?.size ?? 48 };
     window.addEventListener("pointermove", onWinMove); window.addEventListener("pointerup", endDrag);
   }, [onWinMove, endDrag]);
 
@@ -563,7 +574,7 @@ export function PreviewStage() {
                 ) : null}
 
                 {!isShape && clip.kind !== "text" && vignetteOverlay(clip) && <div style={vignetteOverlay(clip)!} />}
-                {selected && !isShape && <SelectionHandles clip={clip} onScale={beginScale} onRotate={beginRotate} />}
+                {selected && <SelectionHandles clip={clip} onScale={beginScale} onRotate={beginRotate} />}
               </div>
             );
           })}
