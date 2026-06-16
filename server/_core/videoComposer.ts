@@ -267,8 +267,9 @@ export interface TextInput {
   start: number;
   end: number;
   text: ClipText;
-  x: number;           // 0..1 of canvas (top-left anchor)
+  x: number;           // 0..1 of canvas (text box left edge)
   y: number;           // 0..1 of canvas
+  boxW?: number;       // 文本框宽度（画布占比，默认 0.4）——用于按 align 求左/中/右锚点
 }
 
 /** 打字机逐字显现：每个字符先 \alpha&HFF&（全透明），到自己的时刻用 \t 瞬变 \alpha&H00&
@@ -305,7 +306,13 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     const t = c.text;
     const size = t.size ?? 48;
     const fill = t.color ?? "white";
-    const px = Math.round(c.x * opts.width);
+    // 水平对齐（与预览一致的盒模型）：文本框左缘在 c.x、宽 boxW；左/中/右对齐分别把
+    // 锚点取在框左/中/右，并用 \an7/8/9 让多行文字同向对齐。默认居中（与预览默认一致）。
+    const align = t.align ?? "center";
+    const boxW = c.boxW ?? 0.4;
+    const anchorFrac = align === "left" ? c.x : align === "right" ? c.x + boxW : c.x + boxW / 2;
+    const an = align === "left" ? 7 : align === "right" ? 9 : 8;
+    const px = Math.round(anchorFrac * opts.width);
     const py = Math.round(c.y * opts.height);
     // base styling tags shared by all motion styles. ASS colours are `\c&HBBGGRR&`
     // and alpha is a SEPARATE inverted tag (`\1a&HAA&`, 00=opaque, FF=transparent).
@@ -336,12 +343,12 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
 
     const motion = t.motionStyle;
     if (motion === "roll") {
-      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{\\an7\\move(${px},${opts.height},${px},${py})${base.join("")}}${escapeASSText(t.content)}`;
+      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{\\an${an}\\move(${px},${opts.height},${px},${py})${base.join("")}}${escapeASSText(t.content)}`;
     }
     // 入场动效（前 ~350ms）：滑入用 \move 从偏移位归位 + 淡入；弹入用 \fscx/\fscy + \t 缩放。
     const MD = 350;
     const off = Math.max(8, Math.round(opts.height * 0.06)); // 滑入距离（脚本像素）
-    const lead: string[] = ["\\an7"];
+    const lead: string[] = [`\\an${an}`];
     if (motion === "slideup") lead.push(`\\move(${px},${py + off},${px},${py},0,${MD})`);
     else if (motion === "slidedown") lead.push(`\\move(${px},${py - off},${px},${py},0,${MD})`);
     else lead.push(`\\pos(${px},${py})`);
@@ -710,7 +717,7 @@ export function collectTextClips(doc: EditorDoc): TextInput[] {
     for (const c of t.clips) {
       if (c.kind !== "text" || !c.text?.content) continue;
       const dur = Math.max(0.05, c.trimOut - c.trimIn);
-      out.push({ start: c.start, end: c.start + dur, text: c.text, x: c.transform?.x ?? 0.1, y: c.transform?.y ?? 0.8 });
+      out.push({ start: c.start, end: c.start + dur, text: c.text, x: c.transform?.x ?? 0.1, y: c.transform?.y ?? 0.8, boxW: c.transform?.scale ?? 0.4 });
     }
   }
   return out.sort((a, b) => a.start - b.start);
