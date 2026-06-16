@@ -298,6 +298,8 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     "Style: Default,Arial,48,&H00FFFFFF,&H00000000,&H64000000,1,1,2,1,7,0,0,0,1",
+    // 背景框样式：BorderStyle=3（不透明框），\3c 即框色、\bord 即内边距。用于设了底色的字幕。
+    "Style: Box,Arial,48,&H00FFFFFF,&H00000000,&H64000000,1,3,2,1,7,0,0,0,1",
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -324,13 +326,24 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     if (t.font) base.push(`\\fn${t.font.replace(/[{}\\]/g, "")}`); // requires the font installed on the render host
     if (t.bold) base.push("\\b1");
     if (t.italic) base.push("\\i1");
-    // 描边 (outline): explicit width + colour (+ alpha), or 0 to disable the style default
-    base.push(`\\bord${t.strokeWidth && t.strokeWidth > 0 ? t.strokeWidth : 0}`);
-    if (t.strokeWidth && t.strokeWidth > 0) {
-      const sc = t.strokeColor ?? "black";
-      base.push(`\\3c&H${cssColorToASSHex(sc)}&`);
-      const sa = cssColorToASSAlpha(sc);
-      if (sa !== "00") base.push(`\\3a&H${sa}&`);
+    // 背景框（bgColor）：用 Box 样式（BorderStyle=3 不透明框），\3c=框色、\bord=内边距。
+    // ASS 的不透明框会占用描边通道，故有底色时不再单独画描边（与预览的「底框」语义一致）。
+    const hasBox = !!t.bgColor;
+    const styleName = hasBox ? "Box" : "Default";
+    if (hasBox) {
+      base.push(`\\bord${Math.max(2, Math.round(size * 0.22))}`);
+      base.push(`\\3c&H${cssColorToASSHex(t.bgColor!)}&`);
+      const ba = cssColorToASSAlpha(t.bgColor!);
+      if (ba !== "00") base.push(`\\3a&H${ba}&`);
+    } else {
+      // 描边 (outline): explicit width + colour (+ alpha), or 0 to disable the style default
+      base.push(`\\bord${t.strokeWidth && t.strokeWidth > 0 ? t.strokeWidth : 0}`);
+      if (t.strokeWidth && t.strokeWidth > 0) {
+        const sc = t.strokeColor ?? "black";
+        base.push(`\\3c&H${cssColorToASSHex(sc)}&`);
+        const sa = cssColorToASSAlpha(sc);
+        if (sa !== "00") base.push(`\\3a&H${sa}&`);
+      }
     }
     // 投影 (shadow): depth + back colour (+ alpha), or 0
     base.push(`\\shad${t.shadow ? 3 : 0}`);
@@ -343,7 +356,7 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
 
     const motion = t.motionStyle;
     if (motion === "roll") {
-      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{\\an${an}\\move(${px},${opts.height},${px},${py})${base.join("")}}${escapeASSText(t.content)}`;
+      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},${styleName},,0,0,0,,{\\an${an}\\move(${px},${opts.height},${px},${py})${base.join("")}}${escapeASSText(t.content)}`;
     }
     // 入场动效（前 ~350ms）：滑入用 \move 从偏移位归位 + 淡入；弹入用 \fscx/\fscy + \t 缩放。
     const MD = 350;
@@ -361,7 +374,7 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     const body = motion === "typewriter"
       ? typewriterText(t.content, (c.end - c.start) * 1000, t.typewriterCps)
       : escapeASSText(t.content);
-    return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},Default,,0,0,0,,{${tags.join("")}}${body}`;
+    return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},${styleName},,0,0,0,,{${tags.join("")}}${body}`;
   });
   return head.concat(events).join("\n") + "\n";
 }

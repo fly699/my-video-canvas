@@ -23,11 +23,19 @@ function cssFilter(c: Clip): string {
     if (e.contrast != null) parts.push(`contrast(${e.contrast})`);
     if (e.saturation != null) parts.push(`saturate(${e.saturation})`);
     switch (e.filter) {
-      case "vintage": parts.push("sepia(0.5)"); break;
+      case "vintage": parts.push("sepia(0.5) contrast(0.95) saturate(0.9)"); break;
       case "cool": parts.push("hue-rotate(-15deg) saturate(1.1)"); break;
       case "warm": parts.push("sepia(0.25) saturate(1.2)"); break;
       case "bw": case "mono": parts.push("grayscale(1)"); break;
       case "cinematic": parts.push("contrast(1.1) saturate(1.15)"); break;
+      case "teal_orange": parts.push("contrast(1.08) saturate(1.25) hue-rotate(-6deg)"); break;
+      case "sepia": parts.push("sepia(0.85)"); break;
+      case "noir": parts.push("grayscale(1) contrast(1.35) brightness(0.97)"); break;
+      case "faded": parts.push("brightness(1.08) saturate(0.72) contrast(0.9)"); break;
+      case "vivid": parts.push("saturate(1.4) contrast(1.08)"); break;
+      case "cyberpunk": parts.push("saturate(1.35) contrast(1.05) hue-rotate(8deg)"); break;
+      case "moody": parts.push("saturate(0.9) contrast(1.1) brightness(0.93)"); break;
+      case "gold": parts.push("sepia(0.35) saturate(1.15) brightness(1.03)"); break;
     }
     // 锐化：CSS 无真正卷积锐化，用轻微对比度提升近似（导出由 ffmpeg unsharp 精确处理）。
     if (e.sharpen != null && e.sharpen > 0) parts.push(`contrast(${(1 + e.sharpen * 0.28).toFixed(3)})`);
