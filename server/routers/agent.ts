@@ -38,6 +38,8 @@ export const agentRouter = router({
         /** 用户在「模板选择」里指定的 comfyui_workflow 模板（留空=自动选择）。 */
         imageTemplateId: z.number().optional(),
         videoTemplateId: z.number().optional(),
+        /** 让智能体「知道」角色库：系统提示里列出已有角色/场景名，要求按原名复用。默认开启。 */
+        includeCharacterLibrary: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -88,6 +90,29 @@ export const agentRouter = router({
         console.warn("[agent] template analysis unavailable:", e instanceof Error ? e.message : e);
       }
 
+      // 让智能体「知道」角色库（可选）：列出用户保存的角色/场景名 + 简介，引导它按原名
+      // 复用、不重编外观。参考图/LoRA/语音由客户端在应用时按用户选择的力度自动代入。
+      let characterSection = "";
+      if (input.includeCharacterLibrary !== false) {
+        try {
+          const chars = await db.listCharacterLibrary(ctx.user.id);
+          if (chars.length) {
+            const trunc = (s: string) => (s.length > 40 ? s.slice(0, 40) + "…" : s);
+            const lines = chars.slice(0, 60).map((c) => {
+              const p = (c.payload ?? {}) as Record<string, unknown>;
+              const kind = c.characterKind === "scene" ? "scene" : "person";
+              const brief = kind === "scene"
+                ? String(p.sceneDescription ?? p.atmosphere ?? "").trim()
+                : [p.role, p.appearance].filter((x) => typeof x === "string" && x.trim()).map(String).join("·");
+              return `- 「${c.name}」(${kind})${brief ? " — " + trunc(brief) : ""}`;
+            });
+            characterSection = `\n\n# 已有角色库（用户保存的可复用角色/场景）\n${lines.join("\n")}\n（若用户用 @名字 引用、或剧情需要这些角色/场景，创建 character 节点时务必用与库中完全一致的 name/sceneName，并沿用其设定、不要另行编造外观；其参考图/LoRA/语音会在应用时自动代入，你无需也无法填写这些字段。）`;
+          }
+        } catch (e) {
+          console.warn("[agent] character library unavailable:", e instanceof Error ? e.message : e);
+        }
+      }
+
       // 仅 ComfyUI 模式但没有任何「已分析模板」可用：拒绝并明确指引，避免 LLM 编造模板生成空壳节点。
       if (input.comfyOnly && validTemplateIds.size === 0) {
         return {
@@ -134,7 +159,7 @@ export const agentRouter = router({
 ${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}
 
 # 当前画布
-${input.graphSummary?.trim() || "（空画布）"}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}
+${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}
 
 # 输出要求
 严格只输出一个 JSON 对象（不要 markdown 代码块、不要任何多余文字），结构如下：

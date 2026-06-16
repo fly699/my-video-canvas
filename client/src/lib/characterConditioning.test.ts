@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, setLibraryCharacters, characterReferenceAudios, characterReferenceVideos, characterHasMedia, effectiveCharacterAudioRefs, effectiveCharacterVideoRefs } from "./characterConditioning";
+import { characterReferenceImages, characterHasConditioning, deriveCharacterConditioning, connectedCharacterRefImages, connectedSceneRefImages, connectedCharacterLora, mentionedCharacters, stripCharacterMentions, effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, setLibraryCharacters, libraryOverlayByName, characterReferenceAudios, characterReferenceVideos, characterHasMedia, effectiveCharacterAudioRefs, effectiveCharacterVideoRefs } from "./characterConditioning";
 import type { CharacterNodeData } from "../../../shared/types";
 
 const char = (over: Partial<CharacterNodeData>): CharacterNodeData => ({ characterKind: "person", ...over });
@@ -224,5 +224,61 @@ describe("角色携带音频/视频参考（@音频 / @视频）", () => {
     expect(effectiveCharacterVideoRefs("vt", "@配角", edges, nodes)).toEqual(["move1.mp4"]);
     // 无连线无提及 → 空。
     expect(effectiveCharacterAudioRefs("vt", "", [], nodes)).toEqual([]);
+  });
+});
+
+describe("libraryOverlayByName（@角色 从角色库代入）", () => {
+  const libNode = (payload: Partial<CharacterNodeData>, kind: "person" | "scene" = "person") =>
+    ({ id: "lib:1", data: { nodeType: "character" as const, payload: { characterKind: kind, ...payload } } });
+
+  const LIN = {
+    name: "林晓", role: "侦探", appearance: "短发女性",
+    referenceImageUrl: "lin.png", additionalImageUrls: ["lin_side.png"],
+    loraName: "lin.safetensors", loraStrength: 0.9, voiceId: "v_lin", consistencySeed: 42,
+  } as Partial<CharacterNodeData>;
+
+  it("conditioning：只代入参考图/LoRA/语音，保留智能体写的文字字段", () => {
+    setLibraryCharacters([libNode(LIN)]);
+    const agent: CharacterNodeData = { characterKind: "person", name: "林晓", appearance: "本剧定制外观", role: "女主" };
+    const overlay = libraryOverlayByName("林晓", "person", "conditioning", agent);
+    expect(overlay).toMatchObject({ referenceImageUrl: "lin.png", additionalImageUrls: ["lin_side.png"], loraName: "lin.safetensors", loraStrength: 0.9, voiceId: "v_lin", consistencySeed: 42 });
+    // 文字字段不在 conditioning 的代入范围内（由调用方保留智能体所写）。
+    expect(overlay).not.toHaveProperty("appearance");
+    expect(overlay).not.toHaveProperty("role");
+  });
+
+  it("full：代入库里全部非空字段（覆盖智能体同名字段，跳过 characterKind）", () => {
+    setLibraryCharacters([libNode(LIN)]);
+    const agent: CharacterNodeData = { characterKind: "person", name: "林晓", appearance: "本剧定制外观" };
+    const overlay = libraryOverlayByName("林晓", "person", "full", agent)!;
+    expect(overlay.appearance).toBe("短发女性"); // 库覆盖智能体
+    expect(overlay.role).toBe("侦探");
+    expect(overlay.referenceImageUrl).toBe("lin.png");
+    expect(overlay).not.toHaveProperty("characterKind");
+  });
+
+  it("fillEmpty：只补智能体留空的字段，不覆盖已写的", () => {
+    setLibraryCharacters([libNode(LIN)]);
+    const agent: CharacterNodeData = { characterKind: "person", name: "林晓", appearance: "本剧定制外观" };
+    const overlay = libraryOverlayByName("林晓", "person", "fillEmpty", agent)!;
+    expect(overlay).not.toHaveProperty("appearance"); // 智能体已写 → 不覆盖
+    expect(overlay.role).toBe("侦探");               // 智能体留空 → 补
+    expect(overlay.referenceImageUrl).toBe("lin.png");
+  });
+
+  it("未命中（无同名角色）返回 null", () => {
+    setLibraryCharacters([libNode(LIN)]);
+    expect(libraryOverlayByName("不存在", "person", "conditioning", { characterKind: "person" })).toBeNull();
+    expect(libraryOverlayByName("", "person", "conditioning", { characterKind: "person" })).toBeNull();
+  });
+
+  it("同名跨 kind：优先同 kind 命中", () => {
+    setLibraryCharacters([
+      libNode({ sceneName: "码头", sceneDescription: "夜晚的港口" }, "scene"),
+      libNode({ name: "码头", referenceImageUrl: "person.png" }, "person"),
+    ]);
+    const sceneOverlay = libraryOverlayByName("码头", "scene", "full", { characterKind: "scene" })!;
+    expect(sceneOverlay.sceneDescription).toBe("夜晚的港口");
+    expect(sceneOverlay).not.toHaveProperty("referenceImageUrl");
   });
 });
