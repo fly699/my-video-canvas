@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyAspectToWorkflow } from "./comfyWorkflowParams";
+import { applyAspectToWorkflow, parseAspectRatioFromText } from "./comfyWorkflowParams";
 
 const wf = (w: number, h: number, ct = "EmptyLatentImage") =>
   JSON.stringify({ "5": { class_type: ct, inputs: { width: w, height: h, batch_size: 1 } }, "3": { class_type: "KSampler", inputs: { seed: 1 } } });
@@ -45,5 +45,26 @@ describe("applyAspectToWorkflow", () => {
     const { width, height } = latent(applyAspectToWorkflow(wf(1024, 1024), "1:1").json);
     expect(width).toBe(1024);
     expect(height).toBe(1024);
+  });
+});
+
+describe("parseAspectRatioFromText", () => {
+  it("从提示词里识别常见画面比例（半角 / 全角冒号 / 含空格）", () => {
+    expect(parseAspectRatioFromText("cinematic shot, 16:9")).toBe("16:9");
+    expect(parseAspectRatioFromText("竖屏 9：16 人物")).toBe("9:16");
+    expect(parseAspectRatioFromText("ratio 4 : 3")).toBe("4:3");
+    expect(parseAspectRatioFromText("画面比例 21:9 宽银幕")).toBe("21:9");
+  });
+
+  it("命中多个时取最后一个", () => {
+    expect(parseAspectRatioFromText("先 1:1 再改成 16:9")).toBe("16:9");
+  });
+
+  it("非比例 token 不误判（时间 / 比分 / 分辨率 / 空）", () => {
+    expect(parseAspectRatioFromText("拍摄于 2:30 下午")).toBeUndefined(); // 2:30 不在白名单
+    expect(parseAspectRatioFromText("分辨率 1024:768")).toBeUndefined();   // 4 位数不匹配
+    expect(parseAspectRatioFromText("没有比例")).toBeUndefined();
+    expect(parseAspectRatioFromText(undefined)).toBeUndefined();
+    expect(parseAspectRatioFromText("")).toBeUndefined();
   });
 });
