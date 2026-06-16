@@ -398,7 +398,20 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
       )}
     </div>
-  ) : null;
+  ) : (() => {
+    // 无参考图：用紧凑摘要卡作折叠预览（角色/场景关键字段），使节点收缩后高度与提示词
+    // 节点相当，而不是被 minHeight 撑高、依旧显示整张表单。
+    const bits = [payload.role, payload.appearance, payload.outfit, payload.locationType, payload.atmosphere, payload.sceneDescription]
+      .map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean);
+    if (bits.length === 0) return null; // 完全空 → 不收缩（提示用户填写）
+    return (
+      <div style={{ padding: "9px 14px 11px", display: "flex", flexDirection: "column", gap: 3, textAlign: "left" }}>
+        {bits.slice(0, 3).map((b, i) => (
+          <div key={i} style={{ fontSize: 11.5, lineHeight: 1.5, color: i === 0 ? "var(--c-t2)" : "var(--c-t3)", fontWeight: i === 0 ? 600 : 400, display: "-webkit-box", WebkitLineClamp: i === 0 ? 1 : 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{b}</div>
+        ))}
+      </div>
+    );
+  })();
 
   return (
     <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={160} resizable heroMedia={heroMedia}
