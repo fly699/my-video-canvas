@@ -554,6 +554,12 @@ export const assetsRouter = router({
       } catch (err) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "无法下载该链接：" + (err instanceof Error ? err.message : String(err)) });
       }
+      // SSRF: re-validate the POST-redirect URL. `redirect: "follow"` may have
+      // landed on a private/loopback host that the initial guardUrl(input.url)
+      // couldn't see (a public URL 302-ing to 169.254.169.254 / 内网). Block
+      // before reading the body so an internal response can't be exfiltrated
+      // into the asset library. Mirrors imageProxy/videoProxy's re-check.
+      if (res.url) guardUrl(res.url);
       if (!res.ok || !res.body) throw new TRPCError({ code: "BAD_REQUEST", message: `下载失败 (HTTP ${res.status})` });
       // Stream with a hard size cap.
       const reader = res.body.getReader();

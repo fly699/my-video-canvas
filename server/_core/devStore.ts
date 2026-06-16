@@ -417,14 +417,18 @@ export function devUpsertCollaborator(data: InsertProjectCollaborator): ProjectC
   return created;
 }
 
-export function devUpdateCollaboratorRole(id: number, role: "viewer" | "editor" | "admin") {
+export function devUpdateCollaboratorRole(id: number, projectId: number, role: "viewer" | "editor" | "admin"): boolean {
   const c = collaboratorsMap.get(id);
-  if (!c) return;
+  if (!c || c.projectId !== projectId) return false; // projectId scope mirrors prod (IDOR guard)
   collaboratorsMap.set(id, { ...c, role, updatedAt: now() });
+  return true;
 }
 
-export function devRemoveCollaborator(id: number) {
+export function devRemoveCollaborator(id: number, projectId: number): boolean {
+  const c = collaboratorsMap.get(id);
+  if (!c || c.projectId !== projectId) return false;
   collaboratorsMap.delete(id);
+  return true;
 }
 
 export function devClaimPendingCollaboratorsByEmail(email: string, userId: number) {
@@ -490,10 +494,11 @@ export function devConsumeShareLink(id: number): boolean {
   return true;
 }
 
-export function devRevokeShareLink(id: number) {
+export function devRevokeShareLink(id: number, projectId: number): boolean {
   const l = shareLinksMap.get(id);
-  if (!l) return;
+  if (!l || l.projectId !== projectId) return false; // projectId scope mirrors prod (IDOR guard)
   shareLinksMap.set(id, { ...l, revokedAt: now() });
+  return true;
 }
 
 // ── LAN Chat (dev) ───────────────────────────────────────────────────────────

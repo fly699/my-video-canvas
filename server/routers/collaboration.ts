@@ -100,7 +100,8 @@ export const collaborationRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "admin");
-      await updateCollaboratorRole(input.memberId, input.role);
+      const ok = await updateCollaboratorRole(input.memberId, input.projectId, input.role);
+      if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "协作者不存在或不属于该项目" });
       writeAuditLog({ ctx, action: "collab:update_role", detail: input });
       // Invalidate any cached socket role for users in this project so a
       // demoted editor immediately loses mutating-event privileges.
@@ -116,7 +117,8 @@ export const collaborationRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "admin");
-      await removeCollaborator(input.memberId);
+      const ok = await removeCollaborator(input.memberId, input.projectId);
+      if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "协作者不存在或不属于该项目" });
       writeAuditLog({ ctx, action: "collab:remove", detail: input });
       collabBus.emitRoleInvalidated({ projectId: input.projectId });
       return { success: true };
@@ -131,7 +133,7 @@ export const collaborationRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "项目所有者不能离开自己的项目" });
       }
       const member = await findCollaboratorByUserId(input.projectId, ctx.user.id);
-      if (member) await removeCollaborator(member.id);
+      if (member) await removeCollaborator(member.id, input.projectId);
       writeAuditLog({ ctx, action: "collab:leave", detail: { projectId: input.projectId } });
       collabBus.emitRoleInvalidated({ projectId: input.projectId, userId: ctx.user.id });
       return { success: true };
@@ -210,7 +212,8 @@ export const collaborationRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "admin");
-      await revokeShareLink(input.linkId);
+      const ok = await revokeShareLink(input.linkId, input.projectId);
+      if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "分享链接不存在或不属于该项目" });
       writeAuditLog({ ctx, action: "collab:revoke_link", detail: input });
       return { success: true };
     }),

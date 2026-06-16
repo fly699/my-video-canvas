@@ -474,16 +474,24 @@ export async function upsertCollaborator(data: InsertProjectCollaborator) {
   return rows[0];
 }
 
-export async function updateCollaboratorRole(id: number, role: "viewer" | "editor" | "admin") {
+// SECURITY: scope by projectId too — the caller only proves admin on `projectId`,
+// so a bare `WHERE id=?` would let an admin of project A mutate a collaborator
+// row belonging to project B (cross-tenant IDOR). Returns false when no row in
+// THIS project matched, so the router can reject instead of silently succeeding.
+export async function updateCollaboratorRole(id: number, projectId: number, role: "viewer" | "editor" | "admin"): Promise<boolean> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) { dev.devUpdateCollaboratorRole(id, role); return; } throw new Error("DB unavailable"); }
-  await db.update(projectCollaborators).set({ role }).where(eq(projectCollaborators.id, id));
+  if (!db) { if (DEV_MODE) return dev.devUpdateCollaboratorRole(id, projectId, role); throw new Error("DB unavailable"); }
+  const result = await db.update(projectCollaborators).set({ role })
+    .where(and(eq(projectCollaborators.id, id), eq(projectCollaborators.projectId, projectId)));
+  return ((result[0] as { affectedRows?: number })?.affectedRows ?? 0) > 0;
 }
 
-export async function removeCollaborator(id: number) {
+export async function removeCollaborator(id: number, projectId: number): Promise<boolean> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) { dev.devRemoveCollaborator(id); return; } throw new Error("DB unavailable"); }
-  await db.delete(projectCollaborators).where(eq(projectCollaborators.id, id));
+  if (!db) { if (DEV_MODE) return dev.devRemoveCollaborator(id, projectId); throw new Error("DB unavailable"); }
+  const result = await db.delete(projectCollaborators)
+    .where(and(eq(projectCollaborators.id, id), eq(projectCollaborators.projectId, projectId)));
+  return ((result[0] as { affectedRows?: number })?.affectedRows ?? 0) > 0;
 }
 
 /** Claim pending email invites for a user that just registered/logged in.
@@ -581,10 +589,14 @@ export async function consumeShareLink(id: number): Promise<boolean> {
   return header.affectedRows > 0;
 }
 
-export async function revokeShareLink(id: number) {
+// SECURITY: scope by projectId (see updateCollaboratorRole) — prevents an admin
+// of one project from revoking another project's share link by raw linkId.
+export async function revokeShareLink(id: number, projectId: number): Promise<boolean> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) { dev.devRevokeShareLink(id); return; } throw new Error("DB unavailable"); }
-  await db.update(projectShareLinks).set({ revokedAt: new Date() }).where(eq(projectShareLinks.id, id));
+  if (!db) { if (DEV_MODE) return dev.devRevokeShareLink(id, projectId); throw new Error("DB unavailable"); }
+  const result = await db.update(projectShareLinks).set({ revokedAt: new Date() })
+    .where(and(eq(projectShareLinks.id, id), eq(projectShareLinks.projectId, projectId)));
+  return ((result[0] as { affectedRows?: number })?.affectedRows ?? 0) > 0;
 }
 
 /** Find a user by email (case-insensitive). Returns undefined if not found. */
