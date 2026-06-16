@@ -340,7 +340,7 @@ export const comfyOpsRouter = router({
   }),
 
   // ── Records & settings (admin only) ───────────────────────────────────────
-  records: adminProcedure.input(z.object({ serverId: z.number().int().optional(), limit: z.number().int().max(500).optional() })).query(({ input }) => listOpsRecords(input)),
+  records: adminProcedure.input(z.object({ serverId: z.number().int().optional(), limit: z.number().int().min(1).max(500).optional() })).query(({ input }) => listOpsRecords(input)),
 
   settings: router({
     get: adminProcedure.query(() => getOpsSettings()),

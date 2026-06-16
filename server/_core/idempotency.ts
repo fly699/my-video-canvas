@@ -48,8 +48,21 @@ function canonicalize(v: unknown): unknown {
   return v;
 }
 
+// Top-level request fields that are purely cosmetic / client-computed (display
+// labels, logging hints) and MUST NOT participate in the dedupe key. They can
+// differ between otherwise-identical requests — e.g. `estimatedCost` ("≈5 cr") is
+// recomputed per render and a one-char difference would silently defeat dedup and
+// double-charge. Stripped only at the top level (the request root), never deep.
+const IGNORED_KEY_FIELDS = new Set(["estimatedCost"]);
+
 function hashKey(bucket: string, userId: number, keyInput: unknown): string {
-  const h = createHash("sha256").update(JSON.stringify(canonicalize(keyInput))).digest("hex");
+  let k = keyInput;
+  if (k && typeof k === "object" && !Array.isArray(k)) {
+    k = Object.fromEntries(
+      Object.entries(k as Record<string, unknown>).filter(([key]) => !IGNORED_KEY_FIELDS.has(key)),
+    );
+  }
+  const h = createHash("sha256").update(JSON.stringify(canonicalize(k))).digest("hex");
   return `${bucket}:${userId}:${h}`;
 }
 

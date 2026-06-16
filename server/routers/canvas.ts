@@ -1149,7 +1149,7 @@ export const imageGenRouter = router({
   generate: protectedProcedure
     .input(
       z.object({
-        prompt: z.string().min(1),
+        prompt: z.string().min(1).max(8000), // bound to avoid unbounded payloads (char-injected prompts stay well under)
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         // Multi-angle reference images (first mirrors referenceImageUrl). Edit/
@@ -2329,7 +2329,7 @@ export const audioGenRouter = router({
           // Legacy aliases — normalized below
           "suno-v3.5", "minimax-music-02", "mureka",
         ]),
-        prompt: z.string().min(1),
+        prompt: z.string().min(1).max(5000), // align with dubbing/sfx; was unbounded
         style: z.string().optional(),
         title: z.string().max(120).optional(),     // Suno custom-mode title
         instrumental: z.boolean().optional(),
