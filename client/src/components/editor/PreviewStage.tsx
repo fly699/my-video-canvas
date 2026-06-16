@@ -111,12 +111,12 @@ function typewriterVisibleCount(content: string, tInto: number, clipDur: number,
   return Math.min(chars.length, Math.floor(tInto / per) + 1);
 }
 
-function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; muted: boolean }[] {
-  const out: { clip: Clip; trackType: string; muted: boolean }[] = [];
+function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; muted: boolean; trackVolume: number }[] {
+  const out: { clip: Clip; trackType: string; muted: boolean; trackVolume: number }[] = [];
   for (const track of doc.tracks) {
     if (track.hidden) continue;
     for (const c of track.clips) {
-      if (t >= c.start && t < c.start + clipDuration(c)) out.push({ clip: c, trackType: track.type, muted: !!track.muted });
+      if (t >= c.start && t < c.start + clipDuration(c)) out.push({ clip: c, trackType: track.type, muted: !!track.muted, trackVolume: track.volume ?? 1 });
     }
   }
   return out;
@@ -210,7 +210,7 @@ export function PreviewStage() {
   useEffect(() => {
     if (!doc) return;
     const active = new Set<string>();
-    for (const { clip, muted } of activeAt(doc, playhead)) {
+    for (const { clip, muted, trackVolume } of activeAt(doc, playhead)) {
       if (clip.kind !== "video" && clip.kind !== "audio") continue;
       active.add(clip.id);
       const el = mediaRefs.current.get(clip.id);
@@ -218,7 +218,8 @@ export function PreviewStage() {
       const localSrc = clip.trimIn + (playhead - clip.start) * (clip.speed ?? 1);
       if (Math.abs(el.currentTime - localSrc) > 0.25) el.currentTime = localSrc;
       el.playbackRate = clip.speed ?? 1;
-      el.volume = muted ? 0 : Math.min(1, clip.volume ?? 1);
+      // 预览音量 = 片段音量 × 轨道音量（HTML media 上限 1；导出可超过 1）。
+      el.volume = muted ? 0 : Math.max(0, Math.min(1, (clip.volume ?? 1) * trackVolume));
       if (playing && el.paused) el.play().catch(() => {});
       if (!playing && !el.paused) el.pause();
     }

@@ -310,6 +310,12 @@ export function Timeline() {
                     <button onClick={() => updateTrack(t.id, { locked: !t.locked })} title={t.locked ? "解锁" : "锁定"} style={{ ...trackBtn, color: t.locked ? EC.accent : EC.t3 }}>{t.locked ? <Lock size={12} /> : <Unlock size={12} />}</button>
                     {doc.tracks.length > 1 && <button onClick={() => { if (t.clips.length === 0 || confirm(`删除「${t.name ?? trackLabel(t.type)}」轨道及其 ${t.clips.length} 个片段？`)) removeTrack(t.id); }} title="删除轨道" style={{ ...trackBtn, color: EC.t3 }}><Trash2 size={12} /></button>}
                   </div>
+                  {hasAudio && !t.muted && (
+                    <input type="range" min={0} max={2} step={0.05} value={t.volume ?? 1}
+                      title={`轨道音量 ${Math.round((t.volume ?? 1) * 100)}%`}
+                      onChange={(e) => updateTrack(t.id, { volume: Number(e.target.value) })}
+                      style={{ width: "100%", height: 3, accentColor: EC.accent, cursor: "pointer" }} />
+                  )}
                 </div>
               );
             })}

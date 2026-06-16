@@ -167,6 +167,7 @@ export interface Track {
   id: string;
   type: TrackType;
   muted?: boolean;   // 静音：本轨音频不计入导出/预览
+  volume?: number;   // 轨道音量增益 0..2（1=原始）；与片段音量相乘后作用于本轨所有音频
   hidden?: boolean;  // 隐藏：本轨画面不参与渲染
   locked?: boolean;  // 锁定：禁止在时间轴上选中/拖动/裁剪
   name?: string;     // optional custom label

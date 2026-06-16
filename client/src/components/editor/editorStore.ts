@@ -95,7 +95,7 @@ export interface EditorStore {
   pasteClip: (atTime: number) => void;
 
   // track ops
-  updateTrack: (trackId: string, patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name">>) => void;
+  updateTrack: (trackId: string, patch: Partial<Pick<Track, "muted" | "volume" | "hidden" | "locked" | "name">>) => void;
   addTrack: (type: TrackType) => void;
   removeTrack: (trackId: string) => void;
 

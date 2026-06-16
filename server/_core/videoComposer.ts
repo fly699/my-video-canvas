@@ -34,6 +34,7 @@ export interface Segment {
   trimIn: number;
   trimOut: number;
   speed: number;
+  volume?: number;                                // 原声音量增益（片段音量 × 轨道音量；1=原始）
   effects?: ClipEffects;                          // color/filter (eq + preset)
   transition?: { type: string; duration: number }; // entry transition vs the previous segment
   fit?: FitMode;                                  // contain (default) | cover | stretch | blur
@@ -511,6 +512,8 @@ export function buildFilterGraph(
       aChain.push("asetpts=PTS-STARTPTS");
       if (Math.abs(s.speed - 1) > 0.001) aChain.push(...buildAtempoFilters(s.speed));
       aChain.push("aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=44100");
+      // 原声音量（片段音量 × 轨道音量）。1 时跳过 → 零回归。
+      if (s.volume != null && Math.abs(s.volume - 1) > 0.001) aChain.push(`volume=${Math.max(0, s.volume).toFixed(3)}`);
       aChain.push(...audioFadeFilters(s.fadeIn, s.fadeOut, dur, s.fadeCurve)); // 片段画面淡入淡出时音频同步渐变
       parts.push(`[${i}:a]${aChain.join(",")}[a${i}]`);
     } else {
@@ -746,6 +749,10 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
   const clips = collectVideoSegments(doc);
   // clips whose (video) track is muted → drop their audio in the render
   const mutedClipIds = new Set(doc.tracks.filter((t) => t.type === "video" && t.muted).flatMap((t) => t.clips.map((c) => c.id)));
+  // 每个片段所属轨道的音量增益（默认 1）。原声/音轨音量 = 片段音量 × 轨道音量。
+  const trackVolOf = new Map<string, number>();
+  for (const t of doc.tracks) { const v = t.volume ?? 1; for (const c of t.clips) trackVolOf.set(c.id, v); }
+  const effVolume = (c: Clip) => (c.volume ?? 1) * (trackVolOf.get(c.id) ?? 1);
   if (clips.length === 0) throw new Error("时间轴没有可渲染的视频/图片片段");
   const overlayClips = collectOverlayClips(doc);
   const audioClipsSrc = collectAudioClips(doc);
@@ -790,7 +797,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       }
       const trimIn = isImage ? 0 : c.trimIn;
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
-      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut, fadeCurve: c.fadeCurve, flipH: c.flipH, flipV: c.flipV };
+      const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, volume: effVolume(c), effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut, fadeCurve: c.fadeCurve, flipH: c.flipH, flipV: c.flipV };
       segs.push(seg);
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
@@ -825,7 +832,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       if (!c.assetUrl) continue;
       const p = await downloadToTemp(c.assetUrl, "m4a");
       tmpFiles.push(p);
-      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: c.volume ?? 1, fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, fadeCurve: c.fadeCurve, ducking: c.ducking, denoise: c.denoise });
+      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: effVolume(c), fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, fadeCurve: c.fadeCurve, ducking: c.ducking, denoise: c.denoise });
       inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }
