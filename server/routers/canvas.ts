@@ -689,28 +689,37 @@ export const videoTasksRouter = router({
           }
         : baseParams;
 
-      // Idempotency: if this node already has a pending/processing task, return it
-      // instead of creating a new one. Prevents double-charges when the client is
-      // bypassed (devtools, scripts, retried requests) — the in-app flow already
-      // guards against this client-side, but server enforcement is the last line
-      // of defence for paid external API calls.
-      const existing = await findInFlightVideoTask(input.projectId, input.nodeId);
-      if (existing) {
-        return existing;
-      }
-
-      // Create DB record first so the task is tracked even if provider submission fails
-      const task = await createVideoTask({
-        userId: ctx.user.id,
-        projectId: input.projectId,
-        nodeId: input.nodeId,
-        provider: input.provider,
-        prompt: input.prompt,
-        negativePrompt: input.negativePrompt,
-        referenceImageUrl: refList[0] ?? input.referenceImageUrl,
-        params: mergedParams,
-        status: "pending",
-      });
+      // Idempotency + concurrent-create guard for a node's in-flight video task.
+      // findInFlightVideoTask handles the SEQUENTIAL duplicate (a task already
+      // pending/processing → reuse it). But two CONCURRENT requests for the same
+      // node can both pass that check before either INSERTs — the table has no
+      // unique (projectId,nodeId) in-flight constraint — yielding two rows that
+      // each get claimed & submitted upstream → real double charge. dedupe (keyed
+      // ONLY on projectId+nodeId, never on display fields like estimatedCost so
+      // the merge can't be bypassed) collapses the get-or-create into ONE shared
+      // row; the per-row claim-lock below then admits exactly one provider submit.
+      const { task, preexisting } = await dedupe(
+        "videoCreateRow", ctx.user.id,
+        { projectId: input.projectId, nodeId: input.nodeId },
+        async () => {
+          const existing = await findInFlightVideoTask(input.projectId, input.nodeId);
+          if (existing) return { task: existing, preexisting: true as const };
+          // Create DB record first so the task is tracked even if submission fails.
+          const created = await createVideoTask({
+            userId: ctx.user.id,
+            projectId: input.projectId,
+            nodeId: input.nodeId,
+            provider: input.provider,
+            prompt: input.prompt,
+            negativePrompt: input.negativePrompt,
+            referenceImageUrl: refList[0] ?? input.referenceImageUrl,
+            params: mergedParams,
+            status: "pending" as const,
+          });
+          return { task: created, preexisting: false as const };
+        },
+      );
+      if (preexisting) return task;
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
 
       // ── Submit to external provider ──────────────────────────────────────────
