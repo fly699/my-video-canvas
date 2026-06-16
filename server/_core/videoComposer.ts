@@ -410,6 +410,17 @@ function colorChain(e?: ClipEffects): string[] {
     case "moody": out.push("colorbalance=rs=-0.06:bs=0.06", "eq=contrast=1.10:brightness=-0.05:saturation=0.90"); break;
     case "gold": out.push("colorbalance=rm=0.12:gm=0.06:bm=-0.10", "eq=saturation=1.10"); break;
   }
+  // 画质质感：暗角 / 锐化（独立于上面的调色预设，叠加其后）。0/缺省时完全跳过 → 零回归。
+  if (e.vignette != null && e.vignette > 0) {
+    // 强度 0..1 → 暗角角度 0..PI/2.2（越大边角越暗）；clamp 防越界。
+    const a = (Math.min(1, Math.max(0, e.vignette)) * Math.PI / 2.2).toFixed(4);
+    out.push(`vignette=a=${a}`);
+  }
+  if (e.sharpen != null && e.sharpen > 0) {
+    // 强度 0..1 → unsharp 亮度增益 0..1.8（5x5 高斯核），仅锐化亮度通道。
+    const amt = (Math.min(1, Math.max(0, e.sharpen)) * 1.8).toFixed(3);
+    out.push(`unsharp=5:5:${amt}:5:5:0`);
+  }
   return out;
 }
 

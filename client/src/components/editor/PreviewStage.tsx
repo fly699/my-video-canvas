@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { Fragment, useEffect, useRef, useCallback, useState } from "react";
 import { Play, Pause, SkipBack, Grid3x3 } from "lucide-react";
 import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
@@ -29,8 +29,21 @@ function cssFilter(c: Clip): string {
       case "bw": case "mono": parts.push("grayscale(1)"); break;
       case "cinematic": parts.push("contrast(1.1) saturate(1.15)"); break;
     }
+    // 锐化：CSS 无真正卷积锐化，用轻微对比度提升近似（导出由 ffmpeg unsharp 精确处理）。
+    if (e.sharpen != null && e.sharpen > 0) parts.push(`contrast(${(1 + e.sharpen * 0.28).toFixed(3)})`);
   }
   return parts.join(" ");
+}
+
+/** 暗角预览叠加层（近似 ffmpeg vignette；导出精确）。无暗角时返回 null（零回归）。 */
+function vignetteOverlay(c: Clip): React.CSSProperties | null {
+  const v = c.effects?.vignette;
+  if (v == null || v <= 0) return null;
+  const edge = Math.min(0.85, 0.22 + v * 0.6).toFixed(3); // 边角变暗强度随 v 提升
+  return {
+    position: "absolute", inset: 0, pointerEvents: "none", borderRadius: "inherit",
+    background: `radial-gradient(ellipse at center, transparent 42%, rgba(0,0,0,${edge}) 100%)`,
+  };
 }
 
 /** CSS for a text clip — mirrors the ASS styling used at export (approximate). */
@@ -435,9 +448,15 @@ export function PreviewStage() {
                   </div>
                 );
               }
-              if (clip.kind === "image") return <img key={clip.id} {...common} src={clip.assetUrl} alt="" style={st} />;
-              if (clip.kind === "video") return <video key={clip.id} {...common} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline style={st} />;
-              return null;
+              const vig = vignetteOverlay(clip);
+              const media = clip.kind === "image"
+                ? <img {...common} src={clip.assetUrl} alt="" style={st} />
+                : clip.kind === "video"
+                ? <video {...common} ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline style={st} />
+                : null;
+              if (!media) return null;
+              if (!vig) return <Fragment key={clip.id}>{media}</Fragment>;
+              return <Fragment key={clip.id}>{media}<div style={vig} /></Fragment>;
             }
 
             // positioned (overlay / PiP / text / shape) — interactive box with handles.
@@ -472,6 +491,7 @@ export function PreviewStage() {
                   <video ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline muted={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none" }} />
                 ) : null}
 
+                {!isShape && clip.kind !== "text" && vignetteOverlay(clip) && <div style={vignetteOverlay(clip)!} />}
                 {selected && !isShape && <SelectionHandles clip={clip} onScale={beginScale} onRotate={beginRotate} />}
               </div>
             );
