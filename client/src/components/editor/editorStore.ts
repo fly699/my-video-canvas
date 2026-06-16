@@ -570,7 +570,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (!s.doc) return s;
     const track: Track = { id: `${type[0]}_${nanoid(6)}`, type, clips: [] };
     // place video/overlay near the top, audio at the bottom, text in the middle.
-    const order: Record<TrackType, number> = { video: 0, overlay: 1, text: 2, audio: 3 };
+    const order: Record<TrackType, number> = { video: 0, overlay: 1, attachment: 2, text: 3, audio: 4 };
     const tracks = [...s.doc.tracks, track].sort((a, b) => order[a.type] - order[b.type]);
     return withHistory(s, { ...s.doc, tracks });
   }),

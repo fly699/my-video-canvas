@@ -4,6 +4,7 @@ import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { computeSafeRect } from "@/lib/safeZone";
+import { shapeToDataUrl } from "@shared/shapeSvg";
 import type { Clip, ClipTransform, EditorDoc, FitMode } from "@shared/editorTypes";
 import { transformAt, applyEase } from "@shared/editorTypes";
 
@@ -515,7 +516,6 @@ export function PreviewStage() {
             const isCredits = clip.kind === "text" && clip.text?.motionStyle === "credits";
             const creditsP = isCredits ? Math.min(1, Math.max(0, (playhead - clip.start) / Math.max(0.01, clipDuration(clip)))) : 0;
             const sh = clip.shape;
-            const shColor = sh?.color ?? "#FFD400";
             const boxStyle: React.CSSProperties = {
               position: "absolute",
               left: `${(tf?.x ?? 0.1) * 100}%`, top: isCredits ? `${(100 - creditsP * 200).toFixed(1)}%` : `${(tf?.y ?? 0.1) * 100}%`,
@@ -525,7 +525,6 @@ export function PreviewStage() {
               transform: `${tmo.transform} rotate(${tf?.rotation ?? 0}deg)${flipFrag}`,
               cursor: "move", touchAction: "none",
               outline: selected ? `2px solid ${EC.accent}` : "none",
-              ...(isShape ? (sh?.fill ? { background: shColor } : { border: `${Math.max(1, sh?.lineWidth ?? 4)}px solid ${shColor}` }) : {}),
             };
             return (
               <div key={clip.id} data-clip-box={clip.id} style={boxStyle}
@@ -540,6 +539,8 @@ export function PreviewStage() {
                   <img src={clip.assetUrl} alt="" draggable={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none", ...maskCss(clip.mask) }} />
                 ) : clip.kind === "video" ? (
                   <video ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline muted={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none", ...maskCss(clip.mask) }} />
+                ) : isShape && sh ? (
+                  <img src={shapeToDataUrl(sh, 600, Math.max(1, Math.round(600 * (sh.h ?? 0.2) / (sh.w ?? 0.3))))} alt="" draggable={false} style={{ width: "100%", height: "100%", display: "block", pointerEvents: "none", objectFit: "fill" }} />
                 ) : null}
 
                 {!isShape && clip.kind !== "text" && vignetteOverlay(clip) && <div style={vignetteOverlay(clip)!} />}

@@ -6,19 +6,26 @@
 // All time values are in seconds. Positions/sizes for overlays are normalized
 // (0..1) relative to the output canvas so the EDL is resolution-independent.
 
+import type { ShapeType, FillType, PatternKind } from "./shapeSvg";
+
 export const EDITOR_DOC_VERSION = 1 as const;
 
-export type TrackType = "video" | "audio" | "text" | "overlay";
+export type TrackType = "video" | "audio" | "text" | "overlay" | "attachment";
 export type ClipKind = "video" | "image" | "audio" | "text" | "shape";
 
-/** Vector shape overlay (drawn via ffmpeg drawbox on export; div in preview).
- *  Position is the clip's transform x/y (top-left); size is w/h (canvas fraction). */
+/** 矢量形状/SVG 叠加（导出经 resvg 光栅化为 PNG 叠加；预览内联 SVG）。
+ *  位置取片段 transform x/y(左上)，尺寸 w/h(画布占比)。 */
 export interface ClipShape {
-  type: "rect";          // v1: rectangle (filled or outline). 矩形：高亮框/打码块/色块/分隔条
-  color?: string;        // #RRGGBB
-  fill?: boolean;        // true=填充, false=描边
-  lineWidth?: number;    // 描边粗细 px（fill=false 时）
+  type: ShapeType;       // 形状类型（矩形/圆/椭圆/三角/菱形/五边形/六边形/星形/心形/箭头/线条）
+  color?: string;        // 主色（填充或描边）
+  color2?: string;       // 渐变第二色
+  fill?: boolean;        // true=填充, false=仅描边
+  fillType?: FillType;   // 填充方式：纯色/线性渐变/径向渐变/图案
+  pattern?: PatternKind; // 图案类型（fillType=pattern）
+  lineWidth?: number;    // 描边粗细 px
   opacity?: number;      // 0..1
+  radius?: number;       // 圆角矩形圆角 / 星形内径比
+  svg?: string;          // 自定义 SVG（优先于 type）
   w?: number;            // normalized width (fraction of canvas)
   h?: number;            // normalized height
 }

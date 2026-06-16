@@ -20,6 +20,7 @@ export function trackColor(type: string): string {
     case "audio": return "oklch(0.68 0.20 145)";   // 绿
     case "text": return "oklch(0.70 0.16 250)";    // 蓝
     case "overlay": return "oklch(0.72 0.18 90)";  // 黄
+    case "attachment": return "oklch(0.70 0.18 320)"; // 紫粉（形状/SVG/图标）
     default: return "var(--c-t3)";
   }
 }
@@ -30,6 +31,7 @@ export function trackLabel(type: string): string {
     case "audio": return "音频";
     case "text": return "文字";
     case "overlay": return "叠加";
+    case "attachment": return "附件";
     default: return type;
   }
 }

@@ -42,6 +42,9 @@ const TRANSITIONS: [string, string][] = [
   ["diagtl", "对角 ↖"], ["diagbr", "对角 ↘"], ["hlslice", "切片"], ["squeezeh", "水平挤压"], ["squeezev", "垂直挤压"],
 ];
 const MOTIONS: [string, string][] = [["none", "无"], ["fade", "淡入"], ["slideup", "上滑入"], ["slidedown", "下滑入"], ["pop", "弹入"], ["typewriter", "打字机"], ["roll", "滚动"], ["credits", "片尾滚动"], ["karaoke", "卡拉OK"], ["bounce", "弹跳"]];
+const SHAPES: [string, string][] = [["rect", "矩形"], ["roundRect", "圆角矩形"], ["circle", "圆形"], ["ellipse", "椭圆"], ["triangle", "三角形"], ["diamond", "菱形"], ["pentagon", "五边形"], ["hexagon", "六边形"], ["star", "星形"], ["heart", "心形"], ["arrow", "箭头"], ["line", "线条"]];
+const FILL_TYPES: [string, string][] = [["solid", "纯色"], ["linear", "线性渐变"], ["radial", "径向渐变"], ["pattern", "图案"]];
+const PATTERNS: [string, string][] = [["dots", "圆点"], ["stripes", "条纹"], ["grid", "网格"], ["checker", "棋盘"]];
 // 关键帧补间曲线（作用于整段动画）：线性=匀速；缓入=慢起加速；缓出=快起减速；缓入缓出=两端平滑 S 曲线。
 const EASE_OPTIONS: [string, string][] = [["linear", "线性（匀速）"], ["in", "缓入"], ["out", "缓出"], ["inout", "缓入缓出"]];
 // 音频淡变曲线（afade curve）：线性听感生硬；正弦/对数/指数更自然。仅影响声音，画面 fade 仍线性。
@@ -264,20 +267,50 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           </Section>
         )}
 
-        {c.kind === "shape" && (
-          <Section title="形状（矩形）">
-            <div style={{ fontSize: 11, color: EC.t3, marginBottom: 4 }}>高亮框 / 打码块 / 色块 / 分隔条。拖动可移动位置，下面调样式与大小。</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Toggle on={!!c.shape?.fill} onClick={() => setShape({ fill: !c.shape?.fill })} title="填充 / 描边" wide>{c.shape?.fill ? "填充" : "描边"}</Toggle>
-              <span style={{ fontSize: 11, color: EC.t2 }}>颜色</span>
-              <input type="color" value={c.shape?.color ?? "#FFD400"} onChange={(e) => setShape({ color: e.target.value })} style={{ ...input, width: 40, height: 30, padding: 2 }} />
+        {c.kind === "shape" && (() => {
+          const sh = c.shape;
+          const usingSvg = !!sh?.svg?.trim();
+          const fillType = sh?.fillType ?? "solid";
+          return (
+          <Section title="形状 / SVG">
+            {/* 形状库 */}
+            <div style={{ fontSize: 10.5, color: EC.t4, marginBottom: 4 }}>形状库（点选切换；下方可调填充/描边/大小，或键入自定义 SVG）</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4, opacity: usingSvg ? 0.4 : 1 }}>
+              {SHAPES.map(([v, l]) => {
+                const active = !usingSvg && (sh?.type ?? "rect") === v;
+                return <button key={v} onClick={() => setShape({ type: v as NonNullable<Clip["shape"]>["type"], svg: undefined })}
+                  style={{ padding: "5px 0", fontSize: 10.5, borderRadius: 6, cursor: "pointer", border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2 }}>{l}</button>;
+              })}
             </div>
-            {!c.shape?.fill && <Slider label={`描边粗细 ${c.shape?.lineWidth ?? 6}px`} min={1} max={40} step={1} value={c.shape?.lineWidth ?? 6} onChange={(v) => setShape({ lineWidth: v })} />}
-            <Slider label={`不透明度 ${Math.round((c.shape?.opacity ?? 1) * 100)}%`} min={0} max={1} step={0.01} value={c.shape?.opacity ?? 1} onChange={(v) => setShape({ opacity: v })} />
-            <Slider label={`宽 ${Math.round((c.shape?.w ?? 0.3) * 100)}%`} min={0.05} max={1} step={0.01} value={c.shape?.w ?? 0.3} onChange={(v) => setShape({ w: v })} />
-            <Slider label={`高 ${Math.round((c.shape?.h ?? 0.2) * 100)}%`} min={0.05} max={1} step={0.01} value={c.shape?.h ?? 0.2} onChange={(v) => setShape({ h: v })} />
+            {!usingSvg && <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                <Toggle on={!!sh?.fill} onClick={() => setShape({ fill: !sh?.fill })} title="填充 / 描边" wide>{sh?.fill ? "填充" : "描边"}</Toggle>
+                <span style={{ fontSize: 11, color: EC.t2 }}>颜色</span>
+                <input type="color" value={sh?.color ?? "#FFD400"} onChange={(e) => setShape({ color: e.target.value })} style={{ ...input, width: 38, height: 30, padding: 2 }} />
+              </div>
+              {sh?.fill && <Row label="填充"><Select value={fillType} options={FILL_TYPES} onChange={(v) => setShape({ fillType: v as NonNullable<Clip["shape"]>["fillType"] })} /></Row>}
+              {sh?.fill && (fillType === "linear" || fillType === "radial") && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 11, color: EC.t2 }}>渐变第二色</span>
+                  <input type="color" value={sh?.color2 ?? "#ff00ff"} onChange={(e) => setShape({ color2: e.target.value })} style={{ ...input, width: 38, height: 30, padding: 2 }} /></div>
+              )}
+              {sh?.fill && fillType === "pattern" && <>
+                <Row label="图案"><Select value={sh?.pattern ?? "dots"} options={PATTERNS} onChange={(v) => setShape({ pattern: v as NonNullable<Clip["shape"]>["pattern"] })} /></Row>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 11, color: EC.t2 }}>底色</span>
+                  <input type="color" value={sh?.color2 ?? "#ffffff"} onChange={(e) => setShape({ color2: e.target.value })} style={{ ...input, width: 38, height: 30, padding: 2 }} /></div>
+              </>}
+              {(!sh?.fill || (sh?.lineWidth ?? 0) > 0) && <Slider label={`描边粗细 ${sh?.lineWidth ?? (sh?.fill ? 0 : 6)}px`} min={0} max={60} step={1} value={sh?.lineWidth ?? (sh?.fill ? 0 : 6)} onChange={(v) => setShape({ lineWidth: v })} />}
+              {(sh?.type === "roundRect" || sh?.type === "star") && <Slider label={sh?.type === "star" ? `星形内径 ${Math.round((sh?.radius ?? 0.45) * 100)}%` : `圆角 ${Math.round((sh?.radius ?? 0.18) * 100)}%`} min={0.05} max={sh?.type === "star" ? 0.9 : 0.5} step={0.01} value={sh?.radius ?? (sh?.type === "star" ? 0.45 : 0.18)} onChange={(v) => setShape({ radius: v })} />}
+            </>}
+            {/* 自定义 SVG（键入/粘贴代码） */}
+            <div style={{ fontSize: 10.5, color: EC.t4, margin: "8px 0 3px" }}>自定义 SVG（键入/粘贴 SVG 代码，留空则用上面的形状库）</div>
+            <textarea value={sh?.svg ?? ""} onChange={(e) => setShape({ svg: e.target.value || undefined })} placeholder='<circle cx="50" cy="50" r="40" fill="red"/>' spellCheck={false}
+              style={{ ...input, height: 64, fontFamily: "monospace", fontSize: 10.5, resize: "vertical" }} />
+            <Slider label={`不透明度 ${Math.round((sh?.opacity ?? 1) * 100)}%`} min={0} max={1} step={0.01} value={sh?.opacity ?? 1} onChange={(v) => setShape({ opacity: v })} />
+            <Slider label={`宽 ${Math.round((sh?.w ?? 0.3) * 100)}%`} min={0.05} max={1} step={0.01} value={sh?.w ?? 0.3} onChange={(v) => setShape({ w: v })} />
+            <Slider label={`高 ${Math.round((sh?.h ?? 0.3) * 100)}%`} min={0.05} max={1} step={0.01} value={sh?.h ?? 0.3} onChange={(v) => setShape({ h: v })} />
           </Section>
-        )}
+          );
+        })()}
 
         {isMedia && (
           <Section title="播放">

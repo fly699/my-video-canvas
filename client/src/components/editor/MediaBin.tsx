@@ -182,13 +182,15 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
         ><TypeIcon size={13} /> 添加文字</button>
         <button
           onClick={() => {
-            const doc = useEditorStore.getState().doc; if (!doc) return;
-            const track = doc.tracks.find((t) => t.type === "overlay") ?? doc.tracks.find((t) => t.type === "text") ?? doc.tracks[0];
-            const start = trackEnd(doc, track.id);
-            addClip(track.id, { kind: "shape", start, trimIn: 0, trimOut: 3, transform: { x: 0.3, y: 0.35 }, shape: { type: "rect", color: "#FFD400", fill: false, lineWidth: 6, opacity: 1, w: 0.4, h: 0.3 } });
+            const st = useEditorStore.getState();
+            let track = st.doc?.tracks.find((t) => t.type === "attachment");
+            if (!track) { st.addTrack("attachment"); track = useEditorStore.getState().doc?.tracks.find((t) => t.type === "attachment"); }
+            const doc2 = useEditorStore.getState().doc; if (!doc2 || !track) return;
+            const start = trackEnd(doc2, track.id);
+            addClip(track.id, { kind: "shape", start, trimIn: 0, trimOut: 3, transform: { x: 0.3, y: 0.35 }, shape: { type: "star", color: "#FFD400", fill: true, fillType: "solid", opacity: 1, w: 0.3, h: 0.3 } });
           }}
           style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: EC.t2, cursor: "pointer" }}
-        ><Square size={13} /> 添加形状（矩形）</button>
+        ><Square size={13} /> 添加形状 / SVG</button>
         <button
           disabled={transcribeMut.isPending}
           onClick={autoSubtitle}
