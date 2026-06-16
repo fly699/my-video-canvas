@@ -457,6 +457,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const [showTemplates, setShowTemplates] = useState(false);
   const [showNodeLib, setShowNodeLib] = useState(false);
+  // 从「连线放置」菜单打开节点模板库时的连接上下文：选中模板后在落点建节点并连边。
+  const [tplLibConnect, setTplLibConnect] = useState<{ x: number; y: number; fromId: string; fromHandleType: "source" | "target"; fromHandle: string | null } | null>(null);
   const [showCharLib, setShowCharLib] = usePersistentState<boolean>(
     "ui:panel:charlib:v1", false, { validate: validateBool, crossTab: false },
   );
@@ -1270,19 +1272,35 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // duplicating): add a fresh node at the viewport center, then inject the saved
   // payload. Autosave + collab follow the normal add/update paths.
   const addNodeFromTemplate = useCallback((type: ComfyNodeType, payload: Record<string, unknown>, label: string) => {
-    const vp = reactFlow.getViewport();
-    const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
-    const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
+    const fromConnect = tplLibConnect;
+    let pos: { x: number; y: number };
+    if (fromConnect) {
+      pos = reactFlow.screenToFlowPosition({ x: fromConnect.x, y: fromConnect.y });
+    } else {
+      const vp = reactFlow.getViewport();
+      pos = { x: (window.innerWidth / 2 - vp.x) / vp.zoom + Math.random() * 80 - 40, y: (window.innerHeight / 2 - vp.y) / vp.zoom + Math.random() * 80 - 40 };
+    }
     try {
-      const newNode = addNode(type, { x: cx + Math.random() * 80 - 40, y: cy + Math.random() * 80 - 40 });
+      const newNode = addNode(type, pos);
       // Inject templateLabel so the new node's corner annotation shows the template name.
       updateNodeData(newNode.id, { ...payload, templateLabel: label } as Partial<NodeData>);
       emitCollabEvent("node:add", newNode);
+      // 从「连线放置」打开的：把新模板节点按拖出方向连到源节点。
+      if (fromConnect) {
+        const conn: Connection = fromConnect.fromHandleType === "source"
+          ? { source: fromConnect.fromId, sourceHandle: fromConnect.fromHandle ?? "output", target: newNode.id, targetHandle: "input" }
+          : { source: newNode.id, sourceHandle: "output", target: fromConnect.fromId, targetHandle: fromConnect.fromHandle ?? "input" };
+        const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));
+        onConnect(conn);
+        const newEdge = useCanvasStore.getState().edges.find((e) => !prevIds.has(e.id));
+        if (newEdge) emitCollabEvent("edge:add", newEdge);
+        setTplLibConnect(null);
+      }
       toast.success("已从模板创建节点");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "创建节点失败");
     }
-  }, [addNode, updateNodeData, reactFlow, emitCollabEvent]);
+  }, [addNode, updateNodeData, reactFlow, emitCollabEvent, tplLibConnect, onConnect]);
 
   // ── Drag assets from the library onto the canvas ────────────────────────────
   // FloatingAssetPanel rows set `application/x-asset-list` (JSON array of
@@ -3107,7 +3125,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         {/* ── ComfyUI node template library (full-param, click → new node) ── */}
         {showNodeLib && (
           <NodeTemplateLibrary
-            onClose={() => setShowNodeLib(false)}
+            onClose={() => { setShowNodeLib(false); setTplLibConnect(null); }}
             onUse={addNodeFromTemplate}
           />
         )}
@@ -3436,8 +3454,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </div>
             {connectMenu.types.map((t) => {
               const cfg = getNodeConfig(t);
-              const Icon = cfg ? (NODE_ICONS[cfg.icon] ?? FileText) : FileText;
+              // ComfyUI 自定义节点 → 改为「节点模板库」：点击打开模板库二级列表，选模板后在落点
+              // 建节点并连边（替代直接建空白工作流节点）。
+              const isTplLib = t === "comfyui_workflow";
+              const Icon = isTplLib ? LayoutGrid : (cfg ? (NODE_ICONS[cfg.icon] ?? FileText) : FileText);
               const color = cfg?.color ?? "var(--c-t3)";
+              if (isTplLib) {
+                return (
+                  <div key={t} className="nodrag flex items-center gap-1 w-full"
+                    onDragOver={(e) => { if (connectDragType) e.preventDefault(); }}
+                    onDrop={(e) => { e.preventDefault(); if (connectDragType) reorderConnectType(connectDragType, t); setConnectDragType(null); }}
+                    style={{ borderRadius: 7 }}>
+                    <span draggable onDragStart={() => setConnectDragType(t)} onDragEnd={() => setConnectDragType(null)} title="拖动排序" className="flex-shrink-0 flex items-center" style={{ cursor: "grab", color: "var(--c-t4)", padding: "0 1px" }}><GripVertical style={{ width: 12, height: 12 }} /></span>
+                    <button onClick={() => { setTplLibConnect({ x: connectMenu.x, y: connectMenu.y, fromId: connectMenu.fromId, fromHandleType: connectMenu.fromHandleType, fromHandle: connectMenu.fromHandle }); setConnectMenu(null); setShowNodeLib(true); }}
+                      className="flex items-center gap-2 text-left" style={{ flex: 1, minWidth: 0, padding: "6px 6px", borderRadius: 7, cursor: "pointer", border: "none", background: "transparent", color: "var(--c-t1)", fontSize: 12 }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = `${color}1f`)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                      <span className="flex items-center justify-center flex-shrink-0" style={{ width: 20, height: 20, borderRadius: 5, background: `${color}1a` }}><Icon style={{ width: 12, height: 12, color }} /></span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>节点模板库<span style={{ color: "var(--c-t4)", marginLeft: 4, fontSize: 10 }}>›</span></span>
+                    </button>
+                  </div>
+                );
+              }
               return (
                 <div
                   key={t}
