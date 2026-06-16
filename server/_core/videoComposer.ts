@@ -921,12 +921,16 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     // Overlay clips next (composited on top).
     for (const c of overlayClips) {
       if (!c.assetUrl) continue;
-      const isImage = c.kind === "image";
-      const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
+      // 动图(GIF/APNG/动态WebP)：当作循环视频处理(逐帧播放并循环铺满时长)，而非静态图片
+      // (静态图用 -loop 1 会冻结首帧)。按扩展名识别。
+      const animated = /\.(gif|apng|webp)(\?|#|$)/i.test(c.assetUrl);
+      const isImage = c.kind === "image" && !animated;
+      const p = await downloadToTemp(c.assetUrl, animated ? "gif" : isImage ? "img" : "mp4");
       tmpFiles.push(p);
       const dur = clipVisibleDuration(c);
-      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut, flipH: c.flipH, flipV: c.flipV, mask: c.mask });
-      if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
+      overlays.push({ isImage, trimIn: (isImage || animated) ? 0 : c.trimIn, trimOut: (isImage || animated) ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut, flipH: c.flipH, flipV: c.flipV, mask: c.mask });
+      if (animated) inputArgs.push("-stream_loop", "-1", "-t", dur.toFixed(3), "-i", p); // 循环动图铺满时长
+      else if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }
