@@ -10,6 +10,7 @@ import { PreviewStage } from "@/components/editor/PreviewStage";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import { CanvasSettings } from "@/components/editor/CanvasSettings";
 import { downloadMedia } from "@/lib/download";
+import { estimateExportBytes, formatBytes } from "@shared/exportQuality";
 import { usePersistentState } from "@/hooks/usePersistentState";
 
 // Draggable divider between editor panels. Reports incremental pixel deltas; the
@@ -176,7 +177,7 @@ function EditorWorkspace({ id }: { id: number }) {
   const [exportUrl, setExportUrl] = useState<string | null>(null);
   // Export settings (format / quality / resolution).
   const [exportFormat, setExportFormat] = useState<"mp4" | "hevc" | "webm" | "mov">("mp4");
-  const [exportQuality, setExportQuality] = useState<"high" | "medium" | "low">("high");
+  const [exportQualityPct, setExportQualityPct] = useState<number>(85);
   const [exportRes, setExportRes] = useState<"source" | "2160" | "1080" | "720" | "480">("source");
   const [exportMenu, setExportMenu] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -184,6 +185,18 @@ function EditorWorkspace({ id }: { id: number }) {
   const numVal = (min: number, max: number) => (p: unknown) => (typeof p === "number" && isFinite(p) ? clampSize(p, min, max) : null);
   const inPoint = useEditorStore((s) => s.inPoint);
   const outPoint = useEditorStore((s) => s.outPoint);
+  const fullDuration = useEditorStore((s) => s.duration());
+  // 预估导出文件大小：目标分辨率(保持画布比例)、实际渲染时长(含 in/out 区间)、所选格式与质量。
+  const estBytes = (() => {
+    if (!doc) return 0;
+    const dims = exportRes === "source"
+      ? { w: doc.width, h: doc.height }
+      : { w: Math.round((doc.width * parseInt(exportRes, 10)) / doc.height), h: parseInt(exportRes, 10) };
+    const dur = (inPoint != null || outPoint != null)
+      ? Math.max(0, (outPoint ?? fullDuration) - (inPoint ?? 0))
+      : fullDuration;
+    return estimateExportBytes({ width: dims.w, height: dims.h, fps: doc.fps, durationSec: dur, format: exportFormat, qualityPct: exportQualityPct });
+  })();
   const [leftW, setLeftW] = usePersistentState<number>("ui:editor:leftW:v1", 252, { validate: numVal(180, 480) });
   const [rightW, setRightW] = usePersistentState<number>("ui:editor:rightW:v1", 250, { validate: numVal(180, 520) });
   const [bottomH, setBottomH] = usePersistentState<number>("ui:editor:bottomH:v1", 230, { validate: numVal(120, 560) });
@@ -221,7 +234,7 @@ function EditorWorkspace({ id }: { id: number }) {
     const { inPoint, outPoint } = useEditorStore.getState();
     const hasRange = inPoint != null || outPoint != null;
     exportMut.mutate({
-      id, format: exportFormat, quality: exportQuality, width, height,
+      id, format: exportFormat, qualityPct: exportQualityPct, width, height,
       rangeStart: hasRange ? (inPoint ?? 0) : undefined,
       rangeEnd: hasRange ? (outPoint ?? undefined) : undefined,
     });
@@ -400,7 +413,6 @@ function EditorWorkspace({ id }: { id: number }) {
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)" }}>导出设置</div>
                 {([
                   { label: "格式", value: exportFormat, set: (v: string) => setExportFormat(v as typeof exportFormat), opts: [["mp4", "MP4 (H.264)"], ["hevc", "MP4 (H.265/HEVC)"], ["webm", "WebM (VP9)"], ["mov", "MOV (H.264)"]] },
-                  { label: "质量", value: exportQuality, set: (v: string) => setExportQuality(v as typeof exportQuality), opts: [["high", "高（清晰，文件大）"], ["medium", "中"], ["low", "低（小文件）"]] },
                   { label: "分辨率", value: exportRes, set: (v: string) => setExportRes(v as typeof exportRes), opts: [["source", "原始（画布尺寸）"], ["2160", "2160p (4K)"], ["1080", "1080p"], ["720", "720p"], ["480", "480p"]] },
                 ] as const).map((row) => (
                   <label key={row.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -414,6 +426,21 @@ function EditorWorkspace({ id }: { id: number }) {
                     </select>
                   </label>
                 ))}
+                {/* 质量：百分比精细调节（100%=最清晰文件最大；越低文件越小） */}
+                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--c-t3)" }}>
+                    <span>质量</span>
+                    <span style={{ color: "var(--c-t1)", fontWeight: 600 }}>{exportQualityPct}%{exportQualityPct >= 90 ? "（接近无损）" : exportQualityPct >= 70 ? "（高清）" : exportQualityPct >= 45 ? "（标准）" : "（省空间）"}</span>
+                  </span>
+                  <input type="range" min={20} max={100} step={1} value={exportQualityPct}
+                    onChange={(e) => setExportQualityPct(Number(e.target.value))}
+                    style={{ width: "100%", accentColor: ACCENT, cursor: "pointer" }} />
+                </label>
+                {/* 预估文件大小（内容相关，仅供参考） */}
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--c-t3)", padding: "2px 1px" }}>
+                  <span>预估大小</span>
+                  <span style={{ color: "var(--c-t2)" }}>~{formatBytes(estBytes)}</span>
+                </div>
                 <button onClick={startExport} disabled={exporting} style={{ ...primaryBtn, justifyContent: "center", marginTop: 2 }}>开始导出</button>
               </div>
             </>
