@@ -213,6 +213,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
               <Toggle on={(txt?.align ?? "center") === "left"} onClick={() => setText({ align: "left" })} title="左对齐"><AlignLeft size={13} /></Toggle>
               <Toggle on={(txt?.align ?? "center") === "center"} onClick={() => setText({ align: "center" })} title="居中"><AlignCenter size={13} /></Toggle>
               <Toggle on={(txt?.align ?? "center") === "right"} onClick={() => setText({ align: "right" })} title="右对齐"><AlignRight size={13} /></Toggle>
+              <Toggle on={!!txt?.vertical} onClick={() => setText({ vertical: !txt?.vertical })} title="竖排（逐字纵向排列）"><span style={{ fontSize: 11, lineHeight: 1 }}>竖</span></Toggle>
             </div>
             <Row label="颜色"><ColorAlpha value={txt?.color} fallback="#ffffff" onChange={(v) => setText({ color: v })} /></Row>
             {/* 描边：粗细默认 2（配合预览 paint-order 外描边，更细更接近导出）；色+不透明度独立一行 */}

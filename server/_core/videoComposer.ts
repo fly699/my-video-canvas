@@ -308,7 +308,7 @@ export interface TextInput {
 
 /** 打字机逐字显现：每个字符先 \alpha&HFF&（全透明），到自己的时刻用 \t 瞬变 \alpha&H00&
  *  （不透明）出现。节奏约 60ms/字，并压缩到不超过片段时长的 80%，CJK/emoji 按码点切分。 */
-export function typewriterText(content: string, clipDurMs: number, cps?: number): string {
+export function typewriterText(content: string, clipDurMs: number, cps?: number, vertical?: boolean): string {
   const chars = Array.from(content);
   if (chars.length === 0) return "";
   const perCps = 1000 / Math.max(1, Math.min(60, cps ?? 16)); // 字符间隔(ms)，默认 ~16 字/秒
@@ -316,7 +316,7 @@ export function typewriterText(content: string, clipDurMs: number, cps?: number)
   return chars.map((ch, i) => {
     const t0 = Math.round(i * per);
     return `{\\alpha&HFF&\\t(${t0},${t0 + 1},\\alpha&H00&)}${escapeASSText(ch)}`;
-  }).join("");
+  }).join(vertical ? "\\N" : ""); // 竖排：逐字换行
 }
 
 /** Build an ASS subtitle document for the editor's text clips (CJK-safe, positioned). */
@@ -389,12 +389,14 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     }
 
     const motion = t.motionStyle;
+    // 竖排：把正文逐字用 \N 换行（单列纵向）；否则正常转义。
+    const plainBody = t.vertical ? Array.from(t.content).map((ch) => escapeASSText(ch)).join("\\N") : escapeASSText(t.content);
     if (motion === "roll") {
-      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},${styleName},,0,0,0,,{\\an${an}\\move(${px},${opts.height},${px},${py})${base.join("")}}${escapeASSText(t.content)}`;
+      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},${styleName},,0,0,0,,{\\an${an}\\move(${px},${opts.height},${px},${py})${base.join("")}}${plainBody}`;
     }
     // 片尾滚动字幕：整段文字在本片段时长内从画面底部下方持续上滚至顶部上方（多行 credits）。
     if (motion === "credits") {
-      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},${styleName},,0,0,0,,{\\an${an}\\move(${px},${opts.height},${px},${-opts.height})${base.join("")}}${escapeASSText(t.content)}`;
+      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},${styleName},,0,0,0,,{\\an${an}\\move(${px},${opts.height},${px},${-opts.height})${base.join("")}}${plainBody}`;
     }
     // 入场动效（前 ~350ms）：滑入用 \move 从偏移位归位 + 淡入；弹入用 \fscx/\fscy + \t 缩放。
     const MD = 350;
@@ -410,8 +412,8 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     else if (motion === "bounce" || motion === "karaoke") tags.push("\\fad(200,200)");
     // 打字机：逐字显现（每字先全透明、到时刻瞬变不透明），文本本身改成 per-char 块。
     const body = motion === "typewriter"
-      ? typewriterText(t.content, (c.end - c.start) * 1000, t.typewriterCps)
-      : escapeASSText(t.content);
+      ? typewriterText(t.content, (c.end - c.start) * 1000, t.typewriterCps, t.vertical)
+      : plainBody;
     return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},${styleName},,0,0,0,,{${tags.join("")}}${body}`;
   });
   return head.concat(events).join("\n") + "\n";

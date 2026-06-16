@@ -140,8 +140,12 @@ function EditorWorkspace({ id }: { id: number }) {
     const cur = useEditorStore.getState();
     const docNow = cur.doc;
     if (!docNow) return;
+    const proposed = (displayName || "未命名剪辑") + " 副本";
+    const chosen = window.prompt("另存为新剪辑，请输入名称：", proposed);
+    if (chosen === null) return; // 取消
+    const finalName = chosen.trim() || proposed;
     saveAsMut.mutate(
-      { name: (displayName || "未命名剪辑") + " 副本", width: docNow.width, height: docNow.height, fps: docNow.fps, ...(session?.projectId != null ? { projectId: session.projectId } : {}) },
+      { name: finalName, width: docNow.width, height: docNow.height, fps: docNow.fps, ...(session?.projectId != null ? { projectId: session.projectId } : {}) },
       {
         onSuccess: (res) => saveMut.mutate({ id: res.id, doc: docNow }, {
           onSuccess: () => { toast.success("已另存为副本"); navigate(`/editor/${res.id}`); },

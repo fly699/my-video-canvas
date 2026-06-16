@@ -270,6 +270,15 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(ass).toContain("中文字幕");
   });
 
+  it("buildEditorASS 竖排：正文逐字用 \\N 换行（单列纵向）", () => {
+    const v = buildEditorASS([{ start: 0, end: 2, x: 0.1, y: 0.1, text: { content: "竖排字", size: 48, vertical: true } }], { width: 1920, height: 1080 });
+    expect(v).toContain("竖\\N排\\N字");
+    // 非竖排不插入 \N
+    const h = buildEditorASS([{ start: 0, end: 2, x: 0.1, y: 0.1, text: { content: "横排字", size: 48 } }], { width: 1920, height: 1080 });
+    expect(h).toContain("横排字");
+    expect(h).not.toContain("横\\N排");
+  });
+
   it("buildEditorASS 文字对齐：左/中/右 → \\an7/8/9 + 盒模型锚点（与预览一致）", () => {
     const mk = (align: "left" | "center" | "right" | undefined) =>
       buildEditorASS([{ start: 0, end: 2, text: { content: "对齐", size: 48, align }, x: 0.1, y: 0.8, boxW: 0.4 }], { width: 1920, height: 1080 });
