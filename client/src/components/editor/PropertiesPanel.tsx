@@ -84,6 +84,14 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const dubMut = trpc.audioGen.generateDubbing.useMutation();
   const aiSvgMut = trpc.editor.generateShapeSvg.useMutation();
   const [aiSvgPrompt, setAiSvgPrompt] = useState("");
+  const setCanvas = useEditorStore((s) => s.setCanvas);
+  // 选中的视频/图片片段的素材地址 → 探测原始像素/编码/比例
+  const probeUrl = useEditorStore((s) => {
+    if (!s.doc) return null;
+    for (const t of s.doc.tracks) { const c = t.clips.find((x) => x.id === s.selectedClipId); if (c && (c.kind === "video" || c.kind === "image")) return c.assetUrl ?? null; }
+    return null;
+  });
+  const mediaInfo = trpc.editor.probeMedia.useQuery({ url: probeUrl ?? "" }, { enabled: !!probeUrl, staleTime: 5 * 60 * 1000, retry: false });
   const [ttsModel, setTtsModel] = usePersistentState<string>(
     "ui:editor:tts-model:v1", "openai_tts_real",
     { validate: (p) => (typeof p === "string" && TTS_MODELS.some(([v]) => v === p) ? p : null) },
@@ -365,6 +373,34 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           </Section>
         )}
 
+        {(c.kind === "video" || c.kind === "image") && (
+          <Section title="媒体信息">
+            {mediaInfo.isLoading && <div style={{ fontSize: 11, color: EC.t4 }}>读取素材信息…</div>}
+            {mediaInfo.data && (mediaInfo.data.width ? (() => {
+              const d = mediaInfo.data!; const W = d.width!, H = d.height!;
+              const g = (a: number, b: number): number => (b === 0 ? a : g(b, a % b)); const k = g(W, H) || 1;
+              const matchCanvas = doc!.width === W && doc!.height === H;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: EC.t2 }}>
+                  <Info label="像素" value={`${W} × ${H}`} />
+                  <Info label="比例" value={`${Math.round(W / k)}:${Math.round(H / k)}（${(W / H).toFixed(3)}）`} />
+                  {d.codec && <Info label="编码" value={d.codec.toUpperCase() + (d.pixFmt ? ` · ${d.pixFmt}` : "")} />}
+                  {d.fps && <Info label="帧率" value={`${d.fps} fps`} />}
+                  {d.duration && <Info label="时长" value={`${d.duration}s`} />}
+                  {d.bitrate && <Info label="码率" value={`${(d.bitrate / 1e6).toFixed(2)} Mbps`} />}
+                  <Info label="画布" value={`${doc!.width} × ${doc!.height}（${(doc!.width / doc!.height).toFixed(3)}）`} />
+                  {!matchCanvas && (W / H).toFixed(3) !== (doc!.width / doc!.height).toFixed(3) && (
+                    <div style={{ fontSize: 10.5, color: "oklch(0.75 0.16 60)", lineHeight: 1.5, marginTop: 2 }}>素材比例与画布不同 → 「维持比例」会留黑边；用「撑满/填满」铺满（裁切边缘），或点下方按钮把画布改成素材比例（不裁切、不留黑边、不损画质）。</div>
+                  )}
+                  {!matchCanvas && (
+                    <button onClick={() => setCanvas(W, H)} style={{ marginTop: 4, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent }}>画布适配此素材（{W}×{H}）</button>
+                  )}
+                </div>
+              );
+            })() : <div style={{ fontSize: 11, color: EC.t4 }}>无法读取素材信息（可能是图片或链接不可达）。</div>)}
+          </Section>
+        )}
+
         {(c.kind === "video" || c.kind === "image") && clipTrackType === "video" && (
           <Section title="画面适配">
             <div style={{ display: "flex", gap: 6 }}>
@@ -587,6 +623,10 @@ function NumSlider({ label, value, min, max, step, suffix, disp, parse, onChange
   );
 }
 const alignBtn: React.CSSProperties = { flex: 1, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent", color: EC.t2 };
+function Info({ label, value }: { label: string; value: string }) {
+  return <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: EC.t4 }}>{label}</span><span style={{ color: EC.t1, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>{value}</span></div>;
+}
+
 /** 自定义下拉：键盘 ↑/↓ 与鼠标悬停都【实时应用】高亮项（实时预览效果，而非点击才生效）；
  *  Enter/点击确认并关闭，Esc 还原打开前的值。 */
 function Select({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (v: string) => void }) {

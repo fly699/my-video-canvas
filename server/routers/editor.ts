@@ -5,6 +5,7 @@ import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
 import { EDITOR_DOC_VERSION, emptyEditorDoc, sliceEditorDoc, editorDocDuration, type EditorDoc } from "@shared/editorTypes";
 import { composeTimeline } from "../_core/videoComposer";
+import { execFileAsync } from "../_core/videoEditor";
 import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs } from "../_core/editorRenderJobs";
 import { assertProjectAccess } from "../_core/permissions";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
@@ -182,6 +183,29 @@ export const editorRouter = router({
         ...(input.doc !== undefined ? { doc: input.doc, thumbnailUrl: deriveThumbnailUrl(input.doc) } : {}),
       });
       return { success: true };
+    }),
+
+  // 探测素材原始信息（像素/编码/帧率/时长/码率/比例）——用 ffprobe 读 URL 头部。
+  probeMedia: protectedProcedure
+    .input(z.object({ url: z.string().max(2048) }))
+    .query(async ({ input }) => {
+      const empty = { width: null, height: null, codec: null, pixFmt: null, fps: null, duration: null, bitrate: null, container: null } as const;
+      try {
+        const { stdout } = await execFileAsync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,codec_name,r_frame_rate,pix_fmt", "-show_entries", "format=duration,bit_rate,format_name", "-of", "json", input.url], { timeoutMs: 20000 });
+        const j = JSON.parse(stdout) as { streams?: Record<string, unknown>[]; format?: Record<string, unknown> };
+        const s = j.streams?.[0] ?? {}; const f = j.format ?? {};
+        const [n, d] = String(s.r_frame_rate ?? "0/1").split("/").map(Number);
+        return {
+          width: typeof s.width === "number" ? s.width : null,
+          height: typeof s.height === "number" ? s.height : null,
+          codec: typeof s.codec_name === "string" ? s.codec_name : null,
+          pixFmt: typeof s.pix_fmt === "string" ? s.pix_fmt : null,
+          fps: d ? Math.round((n / d) * 100) / 100 : null,
+          duration: f.duration ? Math.round(Number(f.duration) * 100) / 100 : null,
+          bitrate: f.bit_rate ? Number(f.bit_rate) : null,
+          container: typeof f.format_name === "string" ? f.format_name : null,
+        };
+      } catch { return empty; }
     }),
 
   // AI 生成 SVG：自然语言描述 → LLM 产出一段 <svg>，用于「添加形状/SVG」叠加。
