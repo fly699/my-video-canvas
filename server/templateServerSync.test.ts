@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractTemplateModelRefs, flattenModelList, qualifyingServers } from "./_core/templateServerSync";
+import { extractTemplateModelRefs, flattenModelList, qualifyingServers, requiredModelsFor, serverFailures } from "./_core/templateServerSync";
 
 describe("templateServerSync", () => {
   it("extractTemplateModelRefs：图像/视频 payload 的模型字段", () => {
@@ -49,5 +49,26 @@ describe("templateServerSync", () => {
   it("qualifyingServers：无模型约束 → 所有在线服务器入选", () => {
     const servers = [{ url: "s1", models: new Set(["a"]) }, { url: "s2", models: new Set(["b"]) }];
     expect(new Set(qualifyingServers([], servers))).toEqual(new Set(["s1", "s2"]));
+  });
+
+  it("requiredModelsFor：只保留至少某台在线服务器确有的模型", () => {
+    const online = [{ models: new Set(["a.ckpt", "b.lora"]) }];
+    expect(new Set(requiredModelsFor(["a.ckpt", "b.lora", "ghost.ckpt"], online))).toEqual(new Set(["a.ckpt", "b.lora"]));
+  });
+
+  it("serverFailures：离线→offline、在线缺模型→missing_models、在线全模型→不失效", () => {
+    const scan = new Map<string, { online: boolean; models: Set<string> }>([
+      ["s1", { online: true, models: new Set(["a.ckpt", "b.lora"]) }], // 全有
+      ["s2", { online: true, models: new Set(["a.ckpt"]) }],            // 缺 b.lora
+      ["s3", { online: false, models: new Set() }],                     // 离线
+    ]);
+    const required = ["a.ckpt", "b.lora"];
+    const fails = serverFailures(["s1", "s2", "s3", "sUnknown"], required, scan);
+    expect(fails).toEqual([
+      { url: "s2", reason: "missing_models" },
+      { url: "s3", reason: "offline" },
+      { url: "sUnknown", reason: "offline" }, // 扫描里没有 → 当作离线/失效
+    ]);
+    expect(fails.find((f) => f.url === "s1")).toBeUndefined(); // s1 全有 → 不失效
   });
 });
