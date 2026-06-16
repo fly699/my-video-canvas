@@ -206,6 +206,7 @@ function EditorWorkspace({ id }: { id: number }) {
   // Export settings (format / quality / resolution).
   const [exportFormat, setExportFormat] = useState<"mp4" | "hevc" | "webm" | "mov">("mp4");
   const [exportQualityPct, setExportQualityPct] = useState<number>(85);
+  const [exportEncoder, setExportEncoder] = useState<"software" | "hardware">("software");
   const [exportRes, setExportRes] = useState<"source" | "2160" | "1080" | "720" | "480">("source");
   const [exportMenu, setExportMenu] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -262,7 +263,7 @@ function EditorWorkspace({ id }: { id: number }) {
     const { inPoint, outPoint } = useEditorStore.getState();
     const hasRange = inPoint != null || outPoint != null;
     exportMut.mutate({
-      id, format: exportFormat, qualityPct: exportQualityPct, width, height,
+      id, format: exportFormat, qualityPct: exportQualityPct, encoder: exportEncoder, width, height,
       rangeStart: hasRange ? (inPoint ?? 0) : undefined,
       rangeEnd: hasRange ? (outPoint ?? undefined) : undefined,
     });
@@ -460,6 +461,20 @@ function EditorWorkspace({ id }: { id: number }) {
                     </select>
                   </label>
                 ))}
+                {/* 编码方式：软件(CPU) vs 硬件(GPU) */}
+                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span style={{ fontSize: 11, color: "var(--c-t3)" }}>编码方式</span>
+                  <select value={exportEncoder} onChange={(e) => setExportEncoder(e.target.value as typeof exportEncoder)}
+                    style={{ padding: "6px 8px", borderRadius: 8, fontSize: 12, background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "var(--c-t1)", outline: "none" }}>
+                    <option value="software">软件编码（CPU · 画质优先）</option>
+                    <option value="hardware">硬件编码（GPU · 速度优先）</option>
+                  </select>
+                  <span style={{ fontSize: 10, color: "var(--c-t4)", lineHeight: 1.5 }}>
+                    {exportEncoder === "software"
+                      ? "用 CPU（libx264/265）编码：同体积画质最佳、文件更小，但较慢。"
+                      : "用 GPU（NVENC 等）编码：速度快很多、省 CPU，同体积画质略逊；服务器无对应 GPU 时自动回退软件。WebM 不支持硬件。"}
+                  </span>
+                </label>
                 {/* 质量：百分比精细调节（100%=最清晰文件最大；越低文件越小） */}
                 <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <span style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--c-t3)" }}>

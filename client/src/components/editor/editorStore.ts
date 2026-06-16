@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { EditorDoc, Clip, ClipKind, Track, TrackType, TransformKeyframe } from "@shared/editorTypes";
 import { editorDocDuration } from "@shared/editorTypes";
+import { arrangeClips } from "@/lib/arrangeClips";
 
 /** Visible duration of a clip on the timeline (seconds), accounting for speed. */
 export function clipDuration(c: Clip): number {
@@ -96,6 +97,7 @@ export interface EditorStore {
 
   // track ops
   updateTrack: (trackId: string, patch: Partial<Pick<Track, "muted" | "volume" | "hidden" | "locked" | "name">>) => void;
+  arrangeTrack: (trackId: string, clipIds?: string[]) => void; // 首尾衔接排布本轨片段（clipIds 为空=全部）
   addTrack: (type: TrackType) => void;
   removeTrack: (trackId: string) => void;
 
@@ -537,6 +539,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   // Shift the whole selection so its earliest clip starts exactly at `time`.
+  arrangeTrack: (trackId, clipIds) => set((s) => {
+    if (!s.doc) return s;
+    const ids = clipIds && clipIds.length ? new Set(clipIds) : null;
+    const tracks = s.doc.tracks.map((t) => (t.id !== trackId ? t : { ...t, clips: arrangeClips(t.clips, clipDuration, ids) }));
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
   alignSelectedStartTo: (time) => set((s) => {
     if (!s.doc || s.selectedClipIds.length === 0) return s;
     const sel = new Set(s.selectedClipIds);

@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend, AlignHorizontalJustifyStart } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
@@ -41,6 +41,7 @@ export function Timeline() {
   const updateTrack = useEditorStore((s) => s.updateTrack);
   const addTrack = useEditorStore((s) => s.addTrack);
   const removeTrack = useEditorStore((s) => s.removeTrack);
+  const arrangeTrack = useEditorStore((s) => s.arrangeTrack);
   const [addMenu, setAddMenu] = useState(false);
 
   // Keyboard — clip ops. Del 删除 / Shift+Del 波纹删除 / S 分割 / Shift+S 全轨分割 /
@@ -313,6 +314,7 @@ export function Timeline() {
                     {hasAudio && <button onClick={() => updateTrack(t.id, { muted: !t.muted })} title={t.muted ? "取消静音" : "静音"} style={{ ...trackBtn, color: t.muted ? "oklch(0.62 0.2 25)" : EC.t3 }}>{t.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}</button>}
                     {isVisual && <button onClick={() => updateTrack(t.id, { hidden: !t.hidden })} title={t.hidden ? "显示" : "隐藏"} style={{ ...trackBtn, color: t.hidden ? "oklch(0.62 0.2 25)" : EC.t3 }}>{t.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>}
                     <button onClick={() => updateTrack(t.id, { locked: !t.locked })} title={t.locked ? "解锁" : "锁定"} style={{ ...trackBtn, color: t.locked ? EC.accent : EC.t3 }}>{t.locked ? <Lock size={12} /> : <Unlock size={12} />}</button>
+                    {t.clips.length > 1 && <button onClick={() => arrangeTrack(t.id, selectedClipIds.filter((id) => t.clips.some((c) => c.id === id)))} title="一键排布：把本轨已选片段首尾衔接（无缝拼接）；未选则排布全部" style={{ ...trackBtn, color: EC.t3 }}><AlignHorizontalJustifyStart size={12} /></button>}
                     {doc.tracks.length > 1 && <button onClick={() => { if (t.clips.length === 0 || confirm(`删除「${t.name ?? trackLabel(t.type)}」轨道及其 ${t.clips.length} 个片段？`)) removeTrack(t.id); }} title="删除轨道" style={{ ...trackBtn, color: EC.t3 }}><Trash2 size={12} /></button>}
                   </div>
                   {hasAudio && !t.muted && (
