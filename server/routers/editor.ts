@@ -104,13 +104,29 @@ const docSchema = z.object({
   })).max(40),
 });
 
+/** 取一帧代表性缩略图地址：优先图片片段，其次视频片段（列表里视频按首帧海报显示）。 */
+function deriveThumbnailUrl(doc: { tracks: { type: string; clips: { kind: string; assetUrl?: string; start: number }[] }[] }): string | null {
+  const visual: { url: string; isImg: boolean; start: number }[] = [];
+  for (const t of doc.tracks) {
+    if (t.type !== "video" && t.type !== "overlay") continue;
+    for (const c of t.clips) {
+      if ((c.kind === "image" || c.kind === "video") && c.assetUrl) visual.push({ url: c.assetUrl, isImg: c.kind === "image", start: c.start });
+    }
+  }
+  if (visual.length === 0) return null;
+  visual.sort((a, b) => (Number(b.isImg) - Number(a.isImg)) || (a.start - b.start)); // 图片优先，再按时间靠前
+  return visual[0].url;
+}
+
 export const editorRouter = router({
   // List the current user's editor sessions (most-recent first; soft-deleted hidden).
   list: protectedProcedure.query(async ({ ctx }) => {
     const rows = await db.listEditSessions(ctx.user.id);
     return rows.map((s) => ({
       id: s.id, name: s.name, projectId: s.projectId,
-      thumbnailUrl: s.thumbnailUrl, updatedAt: s.updatedAt, createdAt: s.createdAt,
+      // 已存的优先；旧项目未存缩略图时按其文档现取一帧（图片优先/视频首帧）。
+      thumbnailUrl: s.thumbnailUrl ?? (s.doc ? deriveThumbnailUrl(s.doc as { tracks: { type: string; clips: { kind: string; assetUrl?: string; start: number }[] }[] }) : null),
+      updatedAt: s.updatedAt, createdAt: s.createdAt,
     }));
   }),
 
@@ -163,7 +179,7 @@ export const editorRouter = router({
       if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
       await db.updateEditSession(input.id, ctx.user.id, {
         ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.doc !== undefined ? { doc: input.doc } : {}),
+        ...(input.doc !== undefined ? { doc: input.doc, thumbnailUrl: deriveThumbnailUrl(input.doc) } : {}),
       });
       return { success: true };
     }),
