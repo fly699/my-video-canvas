@@ -410,7 +410,8 @@ export const adminRouter = router({
       .query(async ({ input }) => {
         const { rows, total } = await db.adminListConversations(input);
         const enriched = await Promise.all(rows.map(async (c) => {
-          const members = await db.listChatMembers(c.id);
+          // Per-row fallback: one failed member lookup must not 500 the whole list.
+          const members = await db.listChatMembers(c.id).catch(() => []);
           return {
             id: c.id, type: c.type, mode: c.mode, title: c.title,
             isPrivate: !!c.passwordHash, memberCount: members.length,
@@ -427,7 +428,7 @@ export const adminRouter = router({
         if (!conv) throw new TRPCError({ code: "NOT_FOUND" });
         const members = await db.listChatMembers(conv.id);
         const membersWithNames = await Promise.all(members.map(async (m) => {
-          const u = await db.getUserById(m.userId);
+          const u = await db.getUserById(m.userId).catch(() => undefined);
           return { userId: m.userId, name: u?.name ?? `用户${m.userId}`, role: m.role };
         }));
         return { id: conv.id, type: conv.type, mode: conv.mode, title: conv.title, members: membersWithNames };
@@ -534,7 +535,7 @@ export const adminRouter = router({
     listBans: adminProcedure.query(async () => {
       const rows = await db.listChatBans();
       return Promise.all(rows.map(async (b) => {
-        const u = await db.getUserById(b.userId);
+        const u = await db.getUserById(b.userId).catch(() => undefined);
         return {
           id: b.id, userId: b.userId, userName: u?.name ?? `用户${b.userId}`,
           scope: b.scope, conversationId: b.conversationId, reason: b.reason, createdAt: b.createdAt,
