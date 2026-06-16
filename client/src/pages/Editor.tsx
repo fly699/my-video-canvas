@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download, Undo2, Redo2, SlidersHorizontal, Keyboard } from "lucide-react";
+import { ArrowLeft, Plus, Film, Trash2, Loader2, Clapperboard, Check, Download, Undo2, Redo2, SlidersHorizontal, Keyboard, Save, Copy } from "lucide-react";
 import { useEditorStore } from "@/components/editor/editorStore";
 import { MediaBin } from "@/components/editor/MediaBin";
 import { Timeline } from "@/components/editor/Timeline";
@@ -123,6 +123,34 @@ function EditorWorkspace({ id }: { id: number }) {
   const [name, setName] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const saveMut = trpc.editor.save.useMutation();
+  const saveAsMut = trpc.editor.create.useMutation();
+
+  // 立即保存（不等自动保存的防抖）。
+  const saveNow = () => {
+    const cur = useEditorStore.getState();
+    if (!cur.doc) return;
+    setSaveState("saving");
+    saveMut.mutate({ id, doc: cur.doc, ...(name != null ? { name } : {}) }, {
+      onSuccess: () => { useEditorStore.getState().markClean(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1500); toast.success("已保存"); },
+      onError: (e) => { setSaveState("idle"); toast.error("保存失败：" + e.message); },
+    });
+  };
+  // 另存为副本：用当前文档新建一个剪辑会话并跳转过去。
+  const saveAs = () => {
+    const cur = useEditorStore.getState();
+    const docNow = cur.doc;
+    if (!docNow) return;
+    saveAsMut.mutate(
+      { name: (displayName || "未命名剪辑") + " 副本", width: docNow.width, height: docNow.height, fps: docNow.fps, ...(session?.projectId != null ? { projectId: session.projectId } : {}) },
+      {
+        onSuccess: (res) => saveMut.mutate({ id: res.id, doc: docNow }, {
+          onSuccess: () => { toast.success("已另存为副本"); navigate(`/editor/${res.id}`); },
+          onError: (e) => toast.error("另存失败：" + e.message),
+        }),
+        onError: (e) => toast.error("另存失败：" + e.message),
+      },
+    );
+  };
 
   const load = useEditorStore((s) => s.load);
   const doc = useEditorStore((s) => s.doc);
@@ -320,6 +348,12 @@ function EditorWorkspace({ id }: { id: number }) {
           title="重做 (Ctrl+Shift+Z)"
           style={{ ...iconBtn, opacity: canRedo ? 1 : 0.4, cursor: canRedo ? "pointer" : "default" }}
         ><Redo2 size={16} /></button>
+        <button onClick={saveNow} disabled={saveMut.isPending} title="立即保存"
+          style={{ ...iconBtn, width: "auto", padding: "0 10px", gap: 5, display: "inline-flex", alignItems: "center", fontSize: 12, opacity: saveMut.isPending ? 0.6 : 1 }}
+        ><Save size={15} /> 保存</button>
+        <button onClick={saveAs} disabled={saveAsMut.isPending} title="用当前内容另存为新剪辑"
+          style={{ ...iconBtn, width: "auto", padding: "0 10px", gap: 5, display: "inline-flex", alignItems: "center", fontSize: 12, opacity: saveAsMut.isPending ? 0.6 : 1 }}
+        >{saveAsMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />} 另存为</button>
         <CanvasSettings />
         {/* 快捷键速查（? 开关 / Esc 关闭）——剪辑器自身的播放·定位·片段·撤销快捷键一处可查 */}
         <div style={{ position: "relative" }}>

@@ -1351,3 +1351,31 @@ button:active:not(:disabled) {
   background: oklch(0.68 0.20 285 / 0.85);
   border-color: oklch(0.78 0.16 285);
 }
+
+/* 时间轴轨道音量滑块：细轨 + 小圆钮（默认的原生滑块圆钮过大） */
+input.tl-vol {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 3px;
+  background: var(--c-bd3, #2a2a30);
+  outline: none;
+  cursor: pointer;
+}
+input.tl-vol::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  cursor: pointer;
+}
+input.tl-vol::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border: none;
+  border-radius: 50%;
+  background: currentColor;
+  cursor: pointer;
+}
