@@ -31,6 +31,22 @@ describe("buildRecipeOps — structure", () => {
     }
   });
 
+  it("分镜节点收到配方风格（colorTone）——storyboardGen 按 colorTone 作 style 入参", () => {
+    const ops = buildRecipeOps(promo, base({ style: "电影感, teal-orange" }));
+    const sbs = creates(ops, "storyboard");
+    expect(sbs.length).toBeGreaterThan(0);
+    for (const sb of sbs) {
+      expect((sb as { payload: Record<string, unknown> }).payload.colorTone).toBe("电影感, teal-orange");
+    }
+  });
+
+  it("配方无 style 时不写 colorTone（不污染空值）", () => {
+    const ops = buildRecipeOps(promo, base());
+    for (const sb of creates(ops, "storyboard")) {
+      expect((sb as { payload: Record<string, unknown> }).payload.colorTone).toBeUndefined();
+    }
+  });
+
   it("视频节点收到配方每镜时长（params.duration）", () => {
     const ops = buildRecipeOps(promo, base({ durationEach: 7 }));
     for (const vt of creates(ops, "video_task")) {
