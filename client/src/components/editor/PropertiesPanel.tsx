@@ -93,30 +93,37 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const setCanvas = useEditorStore((s) => s.setCanvas);
   // 选中的视频/图片片段 → 在浏览器端读原始像素/比例/时长（服务端 ffprobe 常因素材 URL
   // 需鉴权/不可直达而失败；浏览器本就已加载这些素材，客户端读取最可靠）。
-  const probe = useEditorStore((s) => {
+  // 注意：选择器必须返回稳定的「原始值」，不能每次返回新对象——否则 useSyncExternalStore
+  // 视作每次都变 → 无限重渲染（React #185 崩溃）。故 url/kind 分两个原始值选择器。
+  const probeUrl = useEditorStore((s) => {
     if (!s.doc) return null;
-    for (const t of s.doc.tracks) { const c = t.clips.find((x) => x.id === s.selectedClipId); if (c && (c.kind === "video" || c.kind === "image") && c.assetUrl) return { url: c.assetUrl, kind: c.kind }; }
+    for (const t of s.doc.tracks) { const c = t.clips.find((x) => x.id === s.selectedClipId); if (c && (c.kind === "video" || c.kind === "image") && c.assetUrl) return c.assetUrl; }
+    return null;
+  });
+  const probeKind = useEditorStore((s) => {
+    if (!s.doc) return null;
+    for (const t of s.doc.tracks) { const c = t.clips.find((x) => x.id === s.selectedClipId); if (c && (c.kind === "video" || c.kind === "image") && c.assetUrl) return c.kind; }
     return null;
   });
   const [mediaMeta, setMediaMeta] = useState<{ w: number; h: number; duration?: number } | "loading" | "error" | null>(null);
   useEffect(() => {
-    if (!probe) { setMediaMeta(null); return; }
+    if (!probeUrl) { setMediaMeta(null); return; }
     setMediaMeta("loading");
     let cancelled = false;
-    const isVid = probe.kind === "video" || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(probe.url);
+    const isVid = probeKind === "video" || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(probeUrl);
     if (isVid) {
       const v = document.createElement("video"); v.preload = "metadata"; v.muted = true; v.crossOrigin = "anonymous";
       v.onloadedmetadata = () => { if (!cancelled) setMediaMeta({ w: v.videoWidth, h: v.videoHeight, duration: isFinite(v.duration) ? v.duration : undefined }); try { v.removeAttribute("src"); v.load(); } catch { /* ignore */ } };
       v.onerror = () => { if (!cancelled) setMediaMeta("error"); };
-      v.src = probe.url;
+      v.src = probeUrl;
       return () => { cancelled = true; };
     }
     const img = new Image(); img.crossOrigin = "anonymous";
     img.onload = () => { if (!cancelled) setMediaMeta({ w: img.naturalWidth, h: img.naturalHeight }); };
     img.onerror = () => { if (!cancelled) setMediaMeta("error"); };
-    img.src = probe.url;
+    img.src = probeUrl;
     return () => { cancelled = true; };
-  }, [probe?.url, probe?.kind]);
+  }, [probeUrl, probeKind]);
   const [ttsModel, setTtsModel] = usePersistentState<string>(
     "ui:editor:tts-model:v1", "openai_tts_real",
     { validate: (p) => (typeof p === "string" && TTS_MODELS.some(([v]) => v === p) ? p : null) },
