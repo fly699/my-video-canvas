@@ -360,6 +360,35 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           </Section>
         )}
 
+        {(c.kind === "video" || c.kind === "image") && clipTrackType === "overlay" && (
+          <Section title="形状蒙版">
+            <div style={{ display: "flex", gap: 6 }}>
+              {([["", "无"], ["rect", "矩形"], ["ellipse", "椭圆"]] as [string, string][]).map(([v, l]) => {
+                const active = (c.mask?.type ?? "") === v;
+                return (
+                  <button key={v || "none"} onClick={() => update(c.id, { mask: v === "" ? undefined : { type: v as "rect" | "ellipse", x: c.mask?.x ?? 0.2, y: c.mask?.y ?? 0.2, w: c.mask?.w ?? 0.6, h: c.mask?.h ?? 0.6, feather: c.mask?.feather, invert: c.mask?.invert } })}
+                    style={{ flex: 1, padding: "6px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${active ? EC.accent : EC.border}`, background: active ? EC.accentSoft : "transparent", color: active ? EC.accent : EC.t2 }}>{l}</button>
+                );
+              })}
+            </div>
+            {c.mask && (() => {
+              const mask = c.mask!;
+              const setMask = (p: Partial<typeof mask>) => update(c.id, { mask: { ...mask, ...p } });
+              return (
+                <>
+                  <Slider label={`X ${Math.round(mask.x * 100)}%`} min={-0.2} max={1} step={0.01} value={mask.x} onChange={(v) => setMask({ x: v })} />
+                  <Slider label={`Y ${Math.round(mask.y * 100)}%`} min={-0.2} max={1} step={0.01} value={mask.y} onChange={(v) => setMask({ y: v })} />
+                  <Slider label={`宽 ${Math.round(mask.w * 100)}%`} min={0.05} max={1.2} step={0.01} value={mask.w} onChange={(v) => setMask({ w: v })} />
+                  <Slider label={`高 ${Math.round(mask.h * 100)}%`} min={0.05} max={1.2} step={0.01} value={mask.h} onChange={(v) => setMask({ h: v })} />
+                  <Slider label={`羽化 ${Math.round((mask.feather ?? 0) * 100)}%`} min={0} max={1} step={0.02} value={mask.feather ?? 0} onChange={(v) => setMask({ feather: v || undefined })} />
+                  <Toggle on={!!mask.invert} onClick={() => setMask({ invert: !mask.invert })} title="反转：保留形状外、挖空形状内"><span style={{ fontSize: 11 }}>反转蒙版</span></Toggle>
+                  <div style={{ fontSize: 10.5, color: EC.t4, lineHeight: 1.5 }}>只显示形状内（或反转后形状外）的画面。羽化让边缘柔和过渡。仅叠加层/画中画生效。</div>
+                </>
+              );
+            })()}
+          </Section>
+        )}
+
         {isVisual && c.kind !== "text" && (
           <Section title="调色 / 滤镜">
             <Slider label={`亮度 ${(eff.brightness ?? 0).toFixed(2)}`} min={-1} max={1} step={0.02} value={eff.brightness ?? 0} onChange={(v) => setEff("brightness", v)} />

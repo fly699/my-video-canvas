@@ -136,6 +136,15 @@ export interface Clip {
   fit?: FitMode;            // how a full-frame visual clip fills the canvas (default contain)
   text?: ClipText;
   shape?: ClipShape;        // 矢量形状叠加（kind === "shape"）
+  mask?: ClipMask;          // 形状蒙版（仅叠加层/画中画生效）：只显示形状内（或反转）的区域
+}
+
+/** 形状蒙版：把片段裁成矩形/椭圆区域（叠加层/画中画）。x/y/w/h 为片段画面占比(0..1)。 */
+export interface ClipMask {
+  type: "rect" | "ellipse";
+  x: number; y: number; w: number; h: number; // 形状外接框：左上角 + 宽高（占片段画面比例）
+  feather?: number;  // 0..1 边缘羽化（占形状半径/半边比例，0 = 硬边）
+  invert?: boolean;  // 反转：保留形状外、挖空形状内
 }
 
 /** The effective transform of a clip at `tIntoClip` seconds from its start —

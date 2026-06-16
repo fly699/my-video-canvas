@@ -4,7 +4,7 @@ import * as os from "os";
 import { storagePut, assertObjectStorageWritable } from "../storage";
 import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssColorToASSHex, cssColorToASSAlpha, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
-import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, FitMode, TransformKeyframe, EaseType } from "@shared/editorTypes";
+import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, ClipMask, FitMode, TransformKeyframe, EaseType } from "@shared/editorTypes";
 import { qualityPctToCrf } from "@shared/exportQuality";
 
 // Render timeouts are generous: a full multi-clip render re-encodes everything
@@ -170,6 +170,7 @@ export interface OverlayInput {
   fadeOut?: number;                // 叠加层 alpha 淡出（秒）
   flipH?: boolean;                 // 水平镜像
   flipV?: boolean;                 // 垂直翻转
+  mask?: ClipMask;                 // 形状蒙版（裁成矩形/椭圆 + 羽化/反转）
 }
 
 /** Build a sanitized `chromakey` filter (keys the given colour transparent). Colour
@@ -181,6 +182,32 @@ export function chromaKeyFilter(ck: { color?: string; similarity?: number; blend
   const sim = Math.min(1, Math.max(0.01, ck.similarity ?? 0.3));
   const blend = Math.min(1, Math.max(0, ck.blend ?? 0.1));
   return `chromakey=${color}:${sim.toFixed(3)}:${blend.toFixed(3)}`;
+}
+
+/** 形状蒙版 → 作用于片段 alpha 通道的 `geq` 滤镜（叠加层）。用 W/H 符号表达，故与片段
+ *  实际分辨率无关。形状内 alpha 保留、形状外置 0（invert 时相反），feather 给软边过渡。
+ *  表达式整体用单引号包裹保护逗号（与本文件其它表达式选项一致）。 */
+export function maskAlphaFilter(mask: ClipMask | undefined): string | null {
+  if (!mask) return null;
+  const cl = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+  const x = cl(mask.x, -1, 2), y = cl(mask.y, -1, 2);
+  const w = cl(mask.w, 0.01, 2), h = cl(mask.h, 0.01, 2);
+  const f = cl(mask.feather ?? 0, 0, 1);
+  const n = (v: number) => v.toFixed(4);
+  let m: string;
+  if (mask.type === "ellipse") {
+    const cx = n(x + w / 2), cy = n(y + h / 2), rx = n(w / 2), ry = n(h / 2);
+    const fEff = Math.max(f, 0.0001).toFixed(4);
+    // 归一化椭圆距离 d（边缘=1）；clip((1-d)/feather,0,1) 给软边，feather→0 即硬边。
+    m = `clip((1-sqrt(pow((X-${cx}*W)/(${rx}*W),2)+pow((Y-${cy}*H)/(${ry}*H),2)))/${fEff},0,1)`;
+  } else {
+    const x1 = n(x), x2 = n(x + w), y1 = n(y), y2 = n(y + h);
+    // 羽化像素 = feather/2 × 形状短边；至少 1 像素避免除零。
+    const fpx = `max(1,${(f * 0.5).toFixed(4)}*min(${n(w)}*W,${n(h)}*H))`;
+    m = `clip(min(min(X-${x1}*W,${x2}*W-X),min(Y-${y1}*H,${y2}*H-Y))/${fpx},0,1)`;
+  }
+  const mm = mask.invert ? `(1-(${m}))` : m;
+  return `geq=r='p(X,Y)':g='p(X,Y)':b='p(X,Y)':a='p(X,Y)*(${mm})'`;
 }
 
 /** A vector shape drawn onto the composed video (rect via drawbox), time-gated. */
@@ -613,6 +640,8 @@ export function buildFilterGraph(
     oc.push("format=rgba");
     if (o.flipH) oc.push("hflip");
     if (o.flipV) oc.push("vflip");
+    const maskF = maskAlphaFilter(o.mask);
+    if (maskF) oc.push(maskF); // 形状蒙版：裁成矩形/椭圆（含羽化/反转），作用于 alpha
     const ckf = chromaKeyFilter(o.chromaKey);
     if (ckf) oc.push(ckf); // 绿幕抠像：把指定颜色变透明，再合成
     const op = o.transform?.opacity ?? 1;
@@ -855,7 +884,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
       tmpFiles.push(p);
       const dur = clipVisibleDuration(c);
-      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut, flipH: c.flipH, flipV: c.flipV });
+      overlays.push({ isImage, trimIn: isImage ? 0 : c.trimIn, trimOut: isImage ? dur : c.trimOut, speed: c.speed ?? 1, start: c.start, duration: dur, transform: c.transform, keyframes: c.keyframes, chromaKey: c.chromaKey, fadeIn: c.fadeIn, fadeOut: c.fadeOut, flipH: c.flipH, flipV: c.flipV, mask: c.mask });
       if (isImage) inputArgs.push("-loop", "1", "-t", dur.toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");

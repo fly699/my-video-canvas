@@ -49,6 +49,13 @@ const clipSchema = z.object({
     w: z.number().min(0).max(1).optional(), h: z.number().min(0).max(1).optional(),
   }).optional(),
   chromaKey: z.object({ color: z.string().max(16).optional(), similarity: z.number().min(0).max(1).optional(), blend: z.number().min(0).max(1).optional() }).optional(),
+  // 形状蒙版（叠加层/画中画）
+  mask: z.object({
+    type: z.enum(["rect", "ellipse"]),
+    x: z.number().min(-1).max(2), y: z.number().min(-1).max(2),
+    w: z.number().min(0).max(2), h: z.number().min(0).max(2),
+    feather: z.number().min(0).max(1).optional(), invert: z.boolean().optional(),
+  }).optional(),
   transitionIn: z.object({ type: z.string().max(32), duration: z.number().min(0).max(10) }).optional(),
   effects: z.object({
     brightness: z.number().optional(), contrast: z.number().optional(),

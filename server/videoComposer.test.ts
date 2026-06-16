@@ -194,6 +194,26 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(fc({ filter: "warm" })).not.toContain("vignette=");
   });
 
+  it("形状蒙版：叠加层 mask → geq 改 alpha（矩形/椭圆/反转），无 mask 时不出现", () => {
+    const mk = (mask?: { type: "rect" | "ellipse"; x: number; y: number; w: number; h: number; feather?: number; invert?: boolean }) =>
+      buildFilterGraph([{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }], OPTS,
+        [{ isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2, transform: { x: 0.2, y: 0.2, scale: 0.5 }, mask }]).filterComplex;
+    // 椭圆蒙版 → geq 含 alpha 表达式与归一化椭圆距离
+    const e = mk({ type: "ellipse", x: 0.25, y: 0.25, w: 0.5, h: 0.5, feather: 0.2 });
+    expect(e).toContain("geq=r='p(X,Y)'");
+    expect(e).toContain("a='p(X,Y)*(");
+    expect(e).toContain("sqrt(");
+    // 矩形蒙版 → 用 min(...) 边距，不含 sqrt
+    const r = mk({ type: "rect", x: 0.1, y: 0.1, w: 0.6, h: 0.4 });
+    expect(r).toContain("geq=");
+    expect(r).toContain("min(min(X-");
+    expect(r).not.toContain("sqrt(");
+    // 反转 → (1-(...))
+    expect(mk({ type: "ellipse", x: 0.25, y: 0.25, w: 0.5, h: 0.5, invert: true })).toContain("(1-(clip(");
+    // 无 mask → 不出现 geq
+    expect(mk(undefined)).not.toContain("geq=");
+  });
+
   it("chromaKeyFilter sanitizes colour to 0xRRGGBB and clamps params (injection-safe)", () => {
     expect(chromaKeyFilter(undefined)).toBeNull();
     expect(chromaKeyFilter({ color: "#00ff00", similarity: 0.3, blend: 0.1 })).toBe("chromakey=0x00ff00:0.300:0.100");
