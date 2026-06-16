@@ -13,7 +13,7 @@ const SNAP_PX = 7; // snap threshold in screen pixels
 
 type DragMode =
   | { kind: "move"; clipId: string; startX: number; grabDx: number; group: boolean; orig: { start: number; dur: number; trackId: string } }
-  | { kind: "trim-l" | "trim-r"; clipId: string; startX: number; orig: { start: number; trimIn: number; trimOut: number; speed: number; isImage: boolean } }
+  | { kind: "trim-l" | "trim-r"; clipId: string; startX: number; orig: { start: number; trimIn: number; trimOut: number; speed: number; isImage: boolean; isVideo: boolean; dur: number; trackId: string; followers: { id: string; start: number }[] } }
   | { kind: "scrub"; startX: number }
   | { kind: "band"; startX: number; startY: number; additive: boolean; baseIds: string[] };
 
@@ -110,9 +110,9 @@ export function Timeline() {
     e.stopPropagation();
     const st = useEditorStore.getState();
     if (!st.doc) return;
-    let clip = null, trackId = "", trackLocked = false;
-    for (const t of st.doc.tracks) { const c = t.clips.find((x) => x.id === clipId); if (c) { clip = c; trackId = t.id; trackLocked = !!t.locked; break; } }
-    if (!clip || trackLocked) return; // locked tracks: no select/move/trim
+    let clip = null, trackId = "", trackLocked = false, track = null;
+    for (const t of st.doc.tracks) { const c = t.clips.find((x) => x.id === clipId); if (c) { clip = c; trackId = t.id; trackLocked = !!t.locked; track = t; break; } }
+    if (!clip || trackLocked || !track) return; // locked tracks: no select/move/trim
     // Shift/Ctrl/⌘ + click on a clip body toggles its membership and starts no drag.
     if (mode === "move" && (e.shiftKey || e.ctrlKey || e.metaKey)) { st.toggleClipSelection(clipId); return; }
     // Plain click on a non-selected clip → single select. Clicking an already-
@@ -128,7 +128,14 @@ export function Timeline() {
       const group = useEditorStore.getState().selectedClipIds.length > 1;
       dragRef.current = { kind: "move", clipId, startX: e.clientX, grabDx, group, orig: { start: clip.start, dur: clipDuration(clip), trackId } };
     } else {
-      dragRef.current = { kind: mode, clipId, startX: e.clientX, orig: { start: clip.start, trimIn: clip.trimIn, trimOut: clip.trimOut, speed: clip.speed ?? 1, isImage: clip.kind === "image" } };
+      const dur = clipDuration(clip);
+      const myEnd = clip.start + dur;
+      // 同轨道、起点在本片段之后的片段（按时间排序）——拉伸时随之平移（联动跟随）。
+      const followers = track.clips
+        .filter((c) => c.id !== clipId && c.start >= myEnd - 1e-4)
+        .map((c) => ({ id: c.id, start: c.start }))
+        .sort((a, b) => a.start - b.start);
+      dragRef.current = { kind: mode, clipId, startX: e.clientX, orig: { start: clip.start, trimIn: clip.trimIn, trimOut: clip.trimOut, speed: clip.speed ?? 1, isImage: clip.kind === "image", isVideo: clip.kind === "video", dur, trackId, followers } };
     }
     try { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* synthetic/no-active-pointer */ }
   }, [pxPerSec, selectClip]);
@@ -210,7 +217,20 @@ export function Timeline() {
       const { sec, at } = snap(edge, d.clipId);
       setSnapX(at);
       const newDur = Math.max(0.05, sec - d.orig.start);
-      store.trimClip(d.clipId, { trimOut: d.orig.trimIn + newDur * d.orig.speed });
+      const srcLen = d.orig.trimOut - d.orig.trimIn;
+      let realDur = newDur;
+      if (d.orig.isVideo) {
+        // 视频：拉长/缩短 = 变速（保留整段已裁素材，按新长度拉伸播放）。speed=源长/目标长。
+        const speed = Math.max(0.25, Math.min(4, srcLen / newDur));
+        realDur = srcLen / speed;                            // 受 speed 上下限约束后的实际长度
+        store.updateClip(d.clipId, { speed });
+      } else {
+        // 图片/其它：直接改时长（图片循环铺满）。
+        store.trimClip(d.clipId, { trimOut: d.orig.trimIn + newDur * d.orig.speed });
+      }
+      // 联动跟随：后续片段按本片段右缘的位移整体平移（保持原有间隙、不重叠）。
+      const delta = (d.orig.start + realDur) - (d.orig.start + d.orig.dur);
+      if (Math.abs(delta) > 1e-4) for (const f of d.orig.followers) store.moveClip(f.id, d.orig.trackId, Math.max(0, f.start + delta));
     } else if (d.kind === "trim-l") {
       const edge = Math.max(0, (e.clientX - rect.left) / pxPerSec); // left edge target
       const { sec, at } = snap(edge, d.clipId);
