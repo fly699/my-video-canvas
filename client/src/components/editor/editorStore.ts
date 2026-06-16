@@ -9,6 +9,24 @@ export function clipDuration(c: Clip): number {
   return Math.max(0.05, (c.trimOut - c.trimIn) / (c.speed ?? 1));
 }
 
+// Split a clip's keyframes at `offset` (timeline seconds from the clip's start).
+// Keyframe `t` is clip-start-relative timeline seconds (see transformAt /
+// addKeyframe: `playhead - clip.start`). The left half keeps its start, so kf
+// in [0, offset] carry over verbatim; the right half's start moves forward by
+// `offset`, so every kept kf MUST be re-based by `t - offset` — otherwise the
+// split clip's animation jumps to the wrong times. Boundary keyframes stay on
+// both sides for visual continuity across the cut.
+export function splitKeyframesAt(
+  kfs: TransformKeyframe[] | undefined,
+  offset: number,
+): { left?: TransformKeyframe[]; right?: TransformKeyframe[] } {
+  if (!kfs?.length) return { left: undefined, right: undefined };
+  const EPS = 1e-6;
+  const left = kfs.filter((k) => k.t <= offset + EPS);
+  const right = kfs.filter((k) => k.t >= offset - EPS).map((k) => ({ ...k, t: k.t - offset }));
+  return { left: left.length ? left : undefined, right: right.length ? right : undefined };
+}
+
 function findClip(doc: EditorDoc, clipId: string): { trackIdx: number; clipIdx: number } | null {
   for (let ti = 0; ti < doc.tracks.length; ti++) {
     const ci = doc.tracks[ti].clips.findIndex((c) => c.id === clipId);
@@ -250,8 +268,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const offset = atTime - c.start;                 // seconds into the clip (timeline)
     if (offset <= 0.05 || offset >= dur - 0.05) return s; // too close to an edge
     const cutSrc = c.trimIn + offset * speed; // source time at the cut
-    const left: Clip = { ...c, trimOut: cutSrc };
-    const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc };
+    const { left: lkf, right: rkf } = splitKeyframesAt(c.keyframes, offset);
+    const left: Clip = { ...c, trimOut: cutSrc, keyframes: lkf };
+    const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc, keyframes: rkf };
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
       ...t, clips: t.clips.flatMap((x) => x.id === clipId ? [left, right] : [x]),
     });
@@ -284,8 +303,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         if (offset <= 0.05 || offset >= dur - 0.05) return [c];
         changed = true;
         const cutSrc = c.trimIn + offset * speed;
-        const left: Clip = { ...c, trimOut: cutSrc };
-        const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc };
+        const { left: lkf, right: rkf } = splitKeyframesAt(c.keyframes, offset);
+        const left: Clip = { ...c, trimOut: cutSrc, keyframes: lkf };
+        const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc, keyframes: rkf };
         return [left, right];
       });
       return { ...t, clips };
