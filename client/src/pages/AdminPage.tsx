@@ -927,6 +927,14 @@ const MODEL_CATEGORIES: ModelCat[] = [
     // 键加 "chat:" 前缀，使聊天 AI 的模型可见性与 LLM 节点分组互不影响。
     models: LLM_MODELS.filter((m) => !m.hidden).map((m) => ({ value: "chat:" + m.id, label: m.label, group: m.provider })),
   },
+  {
+    key: "editor",
+    label: "剪辑器 AI 模型",
+    hint: "用于视频剪辑器里的 AI 生成 SVG 形状（文字描述 → 矢量图形）",
+    accent: "oklch(0.70 0.18 250)",
+    // "editor:" 前缀，单独控制剪辑器可用模型（不影响 LLM 节点/聊天）。
+    models: LLM_MODELS.filter((m) => !m.hidden).map((m) => ({ value: "editor:" + m.id, label: m.label, group: m.provider })),
+  },
 ];
 
 const ALL_MODEL_VALUES = MODEL_CATEGORIES.flatMap((c) => c.models.map((m) => m.value));
