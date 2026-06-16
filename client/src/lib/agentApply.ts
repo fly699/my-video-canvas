@@ -1,7 +1,8 @@
 import { useCanvasStore } from "../hooks/useCanvasStore";
 import { NODE_CONFIGS } from "./nodeConfig";
 import { isConnectionValid } from "./connectionRules";
-import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding } from "../../../shared/types";
+import { charDisplayName, libraryOverlayByName, type CharacterImportMode } from "./characterConditioning";
+import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding, CharacterNodeData, CharacterKind } from "../../../shared/types";
 
 /** Library template shape (subset of comfyTemplates.list output) used to
  *  materialize an agent-proposed comfyui_workflow node from a templateId. */
@@ -71,7 +72,7 @@ export function injectFreeVramIntoOps(ops: AgentOperation[], enabled: boolean): 
 export function applyAgentOperations(
   ops: AgentOperation[],
   anchor: { x: number; y: number },
-  opts: { templates?: AgentTemplate[]; freeVramAfterRun?: boolean; ownerAgentId?: string } = {},
+  opts: { templates?: AgentTemplate[]; freeVramAfterRun?: boolean; ownerAgentId?: string; characterImportMode?: CharacterImportMode } = {},
 ): ApplyResult {
   injectFreeVramIntoOps(ops, opts.freeVramAfterRun === true);
   const store = useCanvasStore.getState();
@@ -166,6 +167,18 @@ export function applyAgentOperations(
           liveIds.add(node.id);
           typeById.set(node.id, op.nodeType as NodeType);
           if (op.title) store.updateNodeTitle(node.id, op.title);
+          // @角色 代入：智能体新建的 character 节点只有文字字段——按显示名匹配角色库，
+          // 把参考图/LoRA/语音等（按用户选的代入力度）合并进来，让它真正"代入"库中角色。
+          if (op.nodeType === "character" && payload) {
+            const cp = payload as CharacterNodeData;
+            const overlay = libraryOverlayByName(
+              charDisplayName(cp),
+              (cp.characterKind ?? "person") as CharacterKind,
+              opts.characterImportMode ?? "conditioning",
+              cp,
+            );
+            if (overlay) payload = { ...payload, ...overlay };
+          }
           // Stamp ownership (multi-agent) + scene membership (so a Character can
           // "应用到本场景所有镜头"). Both stored in payload like `createdBy`.
           const ownedPayload = {

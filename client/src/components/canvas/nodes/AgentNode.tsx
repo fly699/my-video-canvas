@@ -246,7 +246,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     if (ops.length === 0) return;
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
     const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
-    const r = applyAgentOperations(ops, pos, { templates, freeVramAfterRun: planPrefs.freeVramAfterRun, ownerAgentId: id }); // mutates op.status/op.error in place
+    const r = applyAgentOperations(ops, pos, { templates, freeVramAfterRun: planPrefs.freeVramAfterRun, ownerAgentId: id, characterImportMode: planPrefs.characterImportMode ?? "conditioning" }); // mutates op.status/op.error in place
     setAppliedIdx((prev) => new Set(prev).add(msgIdx));
     // Persist op statuses (read fresh so an auto-apply right after send is correct).
     // 管线协同：apply 后确定性推导「下一步路线」，追加一张引导卡（无分镜管线则不追加）。
@@ -339,6 +339,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         imageFirst: planPrefs.imageFirst ?? false,
         imageTemplateId: tp.imageTemplateId,
         videoTemplateId: tp.videoTemplateId,
+        includeCharacterLibrary: planPrefs.tellAgentCharacters !== false,
       });
       setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations, plan: r.plan, dropped: r.dropped }]);
       // Duration-aware capacity check: if the plan split a target longer than the
@@ -975,6 +976,33 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
                   placeholder="如：电影感 / 赛博朋克 / 水彩插画"
                   style={{ width: "100%", padding: "6px 8px", fontSize: 12, borderRadius: 8, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
               </div>
+              {/* @角色 从角色库代入的力度 */}
+              <div>
+                <div style={{ fontSize: 12, color: "var(--c-t2)", marginBottom: 4 }}>@角色 代入角色库</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {([
+                    ["full", "完整代入"],
+                    ["conditioning", "参考图·LoRA·语音"],
+                    ["fillEmpty", "只填空"],
+                  ] as const).map(([val, lbl]) => {
+                    const cur = planPrefs.characterImportMode ?? "conditioning";
+                    return (
+                      <button key={val} className="nodrag" onClick={() => setPref({ characterImportMode: val })}
+                        style={{ flex: 1, padding: "5px 4px", fontSize: 10.5, borderRadius: 7, cursor: "pointer",
+                          background: cur === val ? accentA(0.18) : "var(--c-surface)",
+                          border: `1px solid ${cur === val ? accentA(0.4) : "var(--c-bd2)"}`,
+                          color: cur === val ? accent : "var(--c-t3)" }}>
+                        {lbl}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 4 }}>@角色名时，从角色库把对应角色的参考图/LoRA/语音等代入生成的角色节点。</div>
+              </div>
+              <label className="nodrag" style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={planPrefs.tellAgentCharacters !== false} onChange={(e) => setPref({ tellAgentCharacters: e.target.checked })} style={{ accentColor: accent, marginTop: 2 }} />
+                <span><span style={{ fontSize: 12.5, color: "var(--c-t1)", fontWeight: 600 }}>让智能体知道角色库</span><br /><span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>系统提示里列出已有角色/场景名，要求按原名复用、不重编外观（名称匹配更可靠）</span></span>
+              </label>
             </div>
             <button className="nodrag" onClick={() => setShowPrefs(false)}
               style={{ width: "100%", marginTop: 16, padding: "8px", fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", background: accentA(0.18), border: `1px solid ${accentA(0.4)}`, color: accent }}>

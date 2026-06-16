@@ -1151,6 +1151,10 @@ export interface AgentPlanPrefs {
   style?: string;
   /** 规划生成的 ComfyUI 节点运行后清显存（仅本地 ComfyUI）。 */
   freeVramAfterRun?: boolean;
+  /** @角色 生成 character 节点时，从角色库代入多少数据（默认 conditioning=仅参考图/LoRA/语音）。 */
+  characterImportMode?: "full" | "conditioning" | "fillEmpty";
+  /** 让智能体「知道」角色库（系统提示列出已有角色名，要求按原名复用）。默认开启。 */
+  tellAgentCharacters?: boolean;
 }
 
 export type NodeData =

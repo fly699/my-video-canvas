@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useCanvasStore } from "../hooks/useCanvasStore";
 import { applyAgentOperations, buildGraphSummary, summarizePlanOps } from "./agentApply";
+import { setLibraryCharacters } from "./characterConditioning";
 import type { AgentOperation } from "../../../shared/types";
 
 // Phase A: when create ops carry sceneGroup, the apply layer lays each scene out
@@ -180,5 +181,55 @@ describe("智能体连接合并节点", () => {
     const r = applyAgentOperations(ops, { x: 0, y: 0 });
     expect(r.failures).toEqual([]);
     expect(r.connected).toBe(2);
+  });
+});
+
+describe("applyAgentOperations 角色库代入（@角色 生成节点）", () => {
+  const LIB = [{
+    id: "lib:1",
+    data: { nodeType: "character" as const, payload: {
+      characterKind: "person", name: "林晓", role: "侦探", appearance: "短发女性",
+      referenceImageUrl: "lin.png", additionalImageUrls: ["lin_side.png"], loraName: "lin.safetensors", loraStrength: 0.9,
+    } },
+  }];
+
+  it("conditioning（默认）：智能体建的同名 character 节点拿到参考图/LoRA，文字字段保留智能体所写", () => {
+    setLibraryCharacters(LIB);
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1", payload: { name: "林晓", appearance: "本剧定制外观" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 }, { characterImportMode: "conditioning" });
+    const node = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "character")!;
+    const p = node.data.payload as Record<string, unknown>;
+    expect(p.referenceImageUrl).toBe("lin.png");
+    expect(p.additionalImageUrls).toEqual(["lin_side.png"]);
+    expect(p.loraName).toBe("lin.safetensors");
+    expect(p.appearance).toBe("本剧定制外观"); // 智能体文字不被覆盖
+    setLibraryCharacters([]);
+  });
+
+  it("full：库数据覆盖智能体同名文字字段", () => {
+    setLibraryCharacters(LIB);
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1", payload: { name: "林晓", appearance: "本剧定制外观" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 }, { characterImportMode: "full" });
+    const p = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "character")!.data.payload as Record<string, unknown>;
+    expect(p.appearance).toBe("短发女性");
+    expect(p.role).toBe("侦探");
+    expect(p.referenceImageUrl).toBe("lin.png");
+    setLibraryCharacters([]);
+  });
+
+  it("库无同名：节点保持智能体原样（不代入）", () => {
+    setLibraryCharacters(LIB);
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1", payload: { name: "无名氏", appearance: "路人" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 }, { characterImportMode: "conditioning" });
+    const p = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "character")!.data.payload as Record<string, unknown>;
+    expect(p.referenceImageUrl).toBeUndefined();
+    expect(p.appearance).toBe("路人");
+    setLibraryCharacters([]);
   });
 });

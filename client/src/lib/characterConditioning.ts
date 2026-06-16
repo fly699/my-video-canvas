@@ -8,7 +8,7 @@
 // no update loop. Text identity (name/outfit/…) already flows via the prompt
 // injection path (characterPrompt.ts), so this only handles model conditioning.
 
-import type { CharacterNodeData, ComfyuiIPAdapter, ComfyuiLoraEntry } from "../../../shared/types";
+import type { CharacterNodeData, CharacterKind, ComfyuiIPAdapter, ComfyuiLoraEntry } from "../../../shared/types";
 
 /** Distinct, non-empty reference image URLs for a character (main + extra views). */
 export function characterReferenceImages(c: CharacterNodeData): string[] {
@@ -121,6 +121,58 @@ export function charDisplayName(p: CharacterNodeData): string {
 let _libraryChars: CharNodeLike[] = [];
 export function setLibraryCharacters(chars: CharNodeLike[]): void { _libraryChars = chars; }
 export function getLibraryCharacters(): CharNodeLike[] { return _libraryChars; }
+
+// ── 智能体 @角色 生成节点时，从角色库代入数据 ───────────────────────────────────
+// 智能体只会给 character 节点写文字字段（name/role/appearance/…），参考图/LoRA/语音
+// 等「一致性硬条件」它填不了。这里按节点显示名在角色库里找同名角色，把库里的数据按
+// 用户选择的「代入力度」合并进去，让 @角色 等价于从角色库放置该角色。
+
+/** 代入力度：完整代入 / 仅一致性硬条件（参考图·LoRA·语音）/ 只填智能体留空的字段。 */
+export type CharacterImportMode = "full" | "conditioning" | "fillEmpty";
+
+// 一致性「硬条件」字段：参考图 / 音视频参考 / LoRA / IPAdapter / 语音 / 一致性种子。
+const HARD_CONDITIONING_KEYS: (keyof CharacterNodeData)[] = [
+  "referenceImageUrl", "referenceStorageKey", "additionalImageUrls",
+  "referenceAudioUrl", "additionalAudioUrls", "referenceVideoUrl", "additionalVideoUrls",
+  "loraName", "loraStrength", "ipadapterWeight", "voiceModel", "voiceId", "consistencySeed",
+];
+// 代入时永不复制的字段（归属/分组/瞬时态由应用层各自管理）。
+const SKIP_IMPORT_KEYS = new Set(["createdBy", "ownerAgentId", "sceneGroup", "characterKind"]);
+
+const isEmptyVal = (v: unknown): boolean =>
+  v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+
+/** 按显示名在角色库找同名（优先同 kind）角色，按 mode 返回要代入的字段子集；找不到/无可代入返回 null。
+ *  full=库全部非空字段（覆盖智能体同名字段）；conditioning=仅 HARD_CONDITIONING_KEYS；
+ *  fillEmpty=仅智能体留空的字段。三种都跳过 SKIP_IMPORT_KEYS、且只代入库里的非空值。 */
+export function libraryOverlayByName(
+  name: string,
+  kind: CharacterKind,
+  mode: CharacterImportMode,
+  agentPayload: CharacterNodeData,
+): Partial<CharacterNodeData> | null {
+  const target = (name ?? "").trim();
+  if (!target) return null;
+  const libs = _libraryChars.filter((n) => n.data.nodeType === "character");
+  const named = libs.map((n) => n.data.payload as CharacterNodeData);
+  const match =
+    named.find((p) => charDisplayName(p) === target && (p.characterKind ?? "person") === kind) ??
+    named.find((p) => charDisplayName(p) === target);
+  if (!match) return null;
+
+  const overlay: Record<string, unknown> = {};
+  const lib = match as unknown as Record<string, unknown>;
+  const agent = agentPayload as unknown as Record<string, unknown>;
+  const keys = mode === "conditioning" ? (HARD_CONDITIONING_KEYS as string[]) : Object.keys(lib);
+  for (const k of keys) {
+    if (SKIP_IMPORT_KEYS.has(k)) continue;
+    const v = lib[k];
+    if (isEmptyVal(v)) continue;
+    if (mode === "fillEmpty" && !isEmptyVal(agent[k])) continue; // 只填智能体留空的
+    overlay[k] = v;
+  }
+  return Object.keys(overlay).length ? (overlay as Partial<CharacterNodeData>) : null;
+}
 
 /** prompt 里被「@名字」提及到的角色/场景（去重）。长名优先：匹配后「消费」掉该段，
  *  避免 @张三 在 @张三丰 内部被误匹配。画布节点 + 角色库影子节点（画布优先）都可命中。 */
