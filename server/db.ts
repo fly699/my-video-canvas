@@ -1147,6 +1147,11 @@ export async function getPendingVideoTasks() {
     .select()
     .from(videoTasks)
     .where(inArray(videoTasks.status, ["pending", "processing"]))
+    // Deterministic oldest-first (MySQL's default order is unspecified). Combined
+    // with the poller's stuck-task reclaim, the oldest permanently-stuck rows are
+    // seen and failed-out from the front each cycle, draining a backlog instead of
+    // letting it sit forever and crowd the 200-row window.
+    .orderBy(videoTasks.createdAt)
     .limit(200);
 }
 
