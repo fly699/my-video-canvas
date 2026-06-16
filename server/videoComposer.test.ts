@@ -103,6 +103,16 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g.filterComplex).toContain("colorbalance=");
   });
 
+  it("主轨片段不透明度：op<1 时 RGB 朝黑乘 op（与预览一致）；op=1/缺省时零回归", () => {
+    const mk = (opacity?: number): Segment[] => [{ isImage: false, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, transform: opacity != null ? { opacity } : undefined }];
+    const fc = (opacity?: number) => buildFilterGraph(mk(opacity), OPTS).filterComplex;
+    expect(fc(0.5)).toContain("colorchannelmixer=rr=0.500:gg=0.500:bb=0.500");
+    expect(fc(0.25)).toContain("colorchannelmixer=rr=0.250:gg=0.250:bb=0.250");
+    // op=1 / 缺省 → 完全不插入（链路逐字节不变）
+    expect(fc(1)).not.toContain("colorchannelmixer");
+    expect(fc(undefined)).not.toContain("colorchannelmixer");
+  });
+
   it("原声音量：主轨视频片段的 volume 增益作用于其原声（1/缺省时不出现 → 零回归）", () => {
     const mk = (volume?: number): Segment[] => [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 2, speed: 1, volume }];
     const fc = (volume?: number) => buildFilterGraph(mk(volume), OPTS).filterComplex;
