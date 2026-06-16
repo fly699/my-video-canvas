@@ -135,6 +135,10 @@ export function devUpsertNode(data: InsertCanvasNode) {
 export function devDeleteNode(id: string, projectId: number) {
   const n = nodesMap.get(id);
   if (n && n.projectId === projectId) nodesMap.delete(id);
+  // Cascade-delete referencing edges (mirrors prod deleteNode — no orphan edges).
+  Array.from(edgesMap.values())
+    .filter((e) => e.projectId === projectId && (e.sourceNodeId === id || e.targetNodeId === id))
+    .forEach((e) => edgesMap.delete(e.id));
 }
 
 // ── Canvas Edges ──────────────────────────────────────────────────────────────

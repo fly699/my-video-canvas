@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, isNull, like, count, gte } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray, isNull, like, count, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -635,6 +635,15 @@ export async function upsertNode(data: InsertCanvasNode) {
 export async function deleteNode(id: string, projectId: number): Promise<number> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteNode(id, projectId); return 1; } throw new Error("DB unavailable"); }
+  // Cascade-delete edges referencing this node. canvas_edges has no FK/ON DELETE
+  // cascade, and saveCanvas only ever UPSERTs edges (never diffs deletions), so
+  // without this a deleted node leaves orphan edge rows that edges.list revives
+  // (endpoint-less) on the next load. Runs first so a node-delete failure doesn't
+  // strand already-removed edges.
+  await db.delete(canvasEdges).where(and(
+    eq(canvasEdges.projectId, projectId),
+    or(eq(canvasEdges.sourceNodeId, id), eq(canvasEdges.targetNodeId, id)),
+  ));
   const [header] = await db.delete(canvasNodes).where(and(eq(canvasNodes.id, id), eq(canvasNodes.projectId, projectId)));
   return (header as unknown as { affectedRows?: number })?.affectedRows ?? 0;
 }
