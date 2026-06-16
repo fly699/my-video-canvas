@@ -364,6 +364,10 @@ export function buildEditorASS(clips: TextInput[], opts: { width: number; height
     if (motion === "roll") {
       return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},${styleName},,0,0,0,,{\\an${an}\\move(${px},${opts.height},${px},${py})${base.join("")}}${escapeASSText(t.content)}`;
     }
+    // 片尾滚动字幕：整段文字在本片段时长内从画面底部下方持续上滚至顶部上方（多行 credits）。
+    if (motion === "credits") {
+      return `Dialogue: 0,${formatASSTime(c.start)},${formatASSTime(c.end)},${styleName},,0,0,0,,{\\an${an}\\move(${px},${opts.height},${px},${-opts.height})${base.join("")}}${escapeASSText(t.content)}`;
+    }
     // 入场动效（前 ~350ms）：滑入用 \move 从偏移位归位 + 淡入；弹入用 \fscx/\fscy + \t 缩放。
     const MD = 350;
     const off = Math.max(8, Math.round(opts.height * 0.06)); // 滑入距离（脚本像素）
