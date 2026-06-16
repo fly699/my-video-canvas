@@ -5,6 +5,8 @@ import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
+import { fetchComfyServerStatus, fetchComfyModels } from "../_core/comfyui";
+import { extractTemplateModelRefs, flattenModelList, qualifyingServers } from "../_core/templateServerSync";
 import {
   sanitizeComfyPayload, COMFY_TEMPLATE_LIMITS,
   type ComfyNodeType, type ComfyNodeTemplate,
@@ -115,6 +117,41 @@ export const comfyTemplatesRouter = router({
       await db.deleteComfyTemplateAnalysis(input.id); // drop its analysis too (no orphan)
       return { success: true };
     }),
+
+  // 一键更新所有模板的「服务器存储列表」(payload.serverUrls)：扫描全局服务器，按「在线 +
+  // 装有该模板所需全部模型」把符合的服务器并入每个模板的 serverUrls（只增不删）。仅管理员。
+  refreshServerLists: protectedProcedure.mutation(async ({ ctx }) => {
+    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "仅管理员可执行" });
+    const urls = await db.getComfyGlobalServers();
+    const servers: { url: string; models: Set<string> }[] = [];
+    const offlineServers: string[] = [];
+    // 每台服务器各抓一次：在线? + 已装模型清单。离线/出错的归入 offline。
+    await Promise.all(urls.map(async (url) => {
+      try {
+        const status = await fetchComfyServerStatus(url);
+        if (!status.online) { offlineServers.push(url); return; }
+        const models = await fetchComfyModels(url);
+        servers.push({ url, models: new Set(flattenModelList(models as unknown as Record<string, unknown>)) });
+      } catch { offlineServers.push(url); }
+    }));
+    const templates = await db.listComfyNodeTemplates();
+    const perTemplate: { id: number; label: string; added: number }[] = [];
+    let updated = 0;
+    for (const t of templates) {
+      const payload = (t.payload ?? {}) as Record<string, unknown>;
+      const refs = extractTemplateModelRefs({ payload });
+      const qualifying = qualifyingServers(refs, servers);
+      const existing = Array.isArray(payload.serverUrls) ? (payload.serverUrls as unknown[]).filter((x): x is string => typeof x === "string") : [];
+      const merged = Array.from(new Set([...existing, ...qualifying])); // 只增不删
+      const added = merged.length - existing.length;
+      if (added > 0) {
+        await db.updateComfyNodeTemplate(t.id, { payload: sanitizeComfyPayload({ ...payload, serverUrls: merged }) });
+        updated++;
+        perTemplate.push({ id: t.id, label: t.label, added });
+      }
+    }
+    return { onlineServers: servers.map((s) => s.url), offlineServers, scanned: templates.length, updated, perTemplate };
+  }),
 
   // ── Template-library functional analysis (for the agent) ───────────────────
   // List stored analyses joined with template label (compact, for the agent's

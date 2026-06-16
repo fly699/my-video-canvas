@@ -105,6 +105,11 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const setTemplatePref = (patch: Partial<NonNullable<AgentNodeData["templatePrefs"]>>) =>
     updateNodeData(id, { templatePrefs: { ...templatePrefs, ...patch } });
   const analyzeMut = trpc.comfyTemplates.analyzeLibrary.useMutation();
+  const meRole = trpc.auth.me.useQuery(undefined, { staleTime: 60_000 }).data?.role;
+  const refreshServersMut = trpc.comfyTemplates.refreshServerLists.useMutation({
+    onSuccess: (r) => toast.success(`已更新 ${r.updated}/${r.scanned} 个模板的服务器列表（在线服务器 ${r.onlineServers.length}${r.offlineServers.length ? `，离线 ${r.offlineServers.length}` : ""}）`),
+    onError: (e) => toast.error("更新失败：" + e.message),
+  });
   const recipeShotsMut = trpc.agent.recipeShots.useMutation();
   const balanceQuery = trpc.poyo.balance.useQuery(undefined, { staleTime: 60_000 });
   const comfyOnly = payload.comfyOnlyMode ?? false;
@@ -803,6 +808,17 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
             >
               {analyzeMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Boxes className="w-3 h-3" />}新增节点模板库分析
             </button>
+            {meRole === "admin" && (
+              <button
+                onClick={() => { if (confirm("将扫描所有全局 ComfyUI 服务器（在线检测 + 已装模型），把『在线且装有所需模型』的服务器并入每个模板的服务器列表（只增不删）。可能较慢，确定继续？")) refreshServersMut.mutate(); }}
+                disabled={refreshServersMut.isPending}
+                className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+                title="根据服务器在线与模型状况，一键更新所有模板的服务器列表"
+                style={{ background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: refreshServersMut.isPending ? "wait" : "pointer" }}
+              >
+                {refreshServersMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}更新服务器列表
+              </button>
+            )}
             <button
               onClick={() => setShowPrefs(true)}
               className="nodrag flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
