@@ -99,6 +99,7 @@ export interface EditorStore {
   updateTrack: (trackId: string, patch: Partial<Pick<Track, "muted" | "volume" | "hidden" | "locked" | "name">>) => void;
   arrangeTrack: (trackId: string, clipIds?: string[]) => void; // 首尾衔接排布本轨片段（clipIds 为空=全部）
   addTrack: (type: TrackType) => void;
+  reorderTrack: (trackId: string, toIndex: number) => void;
   removeTrack: (trackId: string) => void;
 
   // output canvas (ratio / resolution / fps)
@@ -569,9 +570,24 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   addTrack: (type) => set((s) => {
     if (!s.doc) return s;
     const track: Track = { id: `${type[0]}_${nanoid(6)}`, type, clips: [] };
-    // place video/overlay near the top, audio at the bottom, text in the middle.
+    // 不再整体重排（保留用户手动拖动的轨道顺序）；新轨道按类型插入到合适位置：
+    // 落在第一个「类型序更大」的轨道之前，否则追加到末尾。
     const order: Record<TrackType, number> = { video: 0, overlay: 1, attachment: 2, text: 3, audio: 4 };
-    const tracks = [...s.doc.tracks, track].sort((a, b) => order[a.type] - order[b.type]);
+    const tracks = [...s.doc.tracks];
+    let idx = tracks.findIndex((t) => order[t.type] > order[type]);
+    if (idx < 0) idx = tracks.length;
+    tracks.splice(idx, 0, track);
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // 拖动重排轨道：把 trackId 移动到目标索引（影响预览/导出的图层叠放顺序）。
+  reorderTrack: (trackId: string, toIndex: number) => set((s) => {
+    if (!s.doc) return s;
+    const tracks = [...s.doc.tracks];
+    const from = tracks.findIndex((t) => t.id === trackId);
+    if (from < 0) return s;
+    const [t] = tracks.splice(from, 1);
+    tracks.splice(Math.max(0, Math.min(tracks.length, toIndex)), 0, t);
     return withHistory(s, { ...s.doc, tracks });
   }),
 

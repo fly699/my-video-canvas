@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend, AlignHorizontalJustifyStart } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend, AlignHorizontalJustifyStart, GripVertical } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
@@ -42,6 +42,9 @@ export function Timeline() {
   const addTrack = useEditorStore((s) => s.addTrack);
   const removeTrack = useEditorStore((s) => s.removeTrack);
   const arrangeTrack = useEditorStore((s) => s.arrangeTrack);
+  const reorderTrack = useEditorStore((s) => s.reorderTrack);
+  const [dragTrackId, setDragTrackId] = useState<string | null>(null);
+  const [dropTrackIdx, setDropTrackIdx] = useState<number | null>(null);
   const [addMenu, setAddMenu] = useState(false);
 
   // Keyboard — clip ops. Del 删除 / Shift+Del 波纹删除 / S 分割 / Shift+S 全轨分割 /
@@ -325,12 +328,21 @@ export function Timeline() {
                 </div>
               )}
             </div>
-            {doc.tracks.map((t) => {
+            {doc.tracks.map((t, ti) => {
               const hasAudio = t.type === "audio" || t.type === "video";
               const isVisual = t.type === "video" || t.type === "overlay" || t.type === "text";
               return (
-                <div key={t.id} style={{ height: TRACK_H, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3, padding: "0 6px", borderBottom: `1px solid ${EC.border}`, opacity: t.hidden ? 0.5 : 1 }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: trackColor(t.type) }}>{t.name ?? trackLabel(t.type)}</span>
+                <div key={t.id}
+                  onDragOver={(e) => { if (dragTrackId && dragTrackId !== t.id) { e.preventDefault(); setDropTrackIdx(ti); } }}
+                  onDrop={(e) => { e.preventDefault(); if (dragTrackId && dragTrackId !== t.id) reorderTrack(dragTrackId, ti); setDragTrackId(null); setDropTrackIdx(null); }}
+                  style={{ height: TRACK_H, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3, padding: "0 6px", borderBottom: `1px solid ${EC.border}`, opacity: t.hidden ? 0.5 : (dragTrackId === t.id ? 0.4 : 1), borderTop: dropTrackIdx === ti && dragTrackId ? `2px solid ${EC.accent}` : "2px solid transparent" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span draggable title="拖动重排轨道"
+                      onDragStart={(e) => { setDragTrackId(t.id); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", t.id); } catch { /* ignore */ } }}
+                      onDragEnd={() => { setDragTrackId(null); setDropTrackIdx(null); }}
+                      style={{ cursor: "grab", color: EC.t4, display: "inline-flex", touchAction: "none" }}><GripVertical size={12} /></span>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: trackColor(t.type) }}>{t.name ?? trackLabel(t.type)}</span>
+                  </div>
                   <div style={{ display: "flex", gap: 2 }}>
                     {hasAudio && <button onClick={() => updateTrack(t.id, { muted: !t.muted })} title={t.muted ? "取消静音" : "静音"} style={{ ...trackBtn, color: t.muted ? "oklch(0.62 0.2 25)" : EC.t3 }}>{t.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}</button>}
                     {isVisual && <button onClick={() => updateTrack(t.id, { hidden: !t.hidden })} title={t.hidden ? "显示" : "隐藏"} style={{ ...trackBtn, color: t.hidden ? "oklch(0.62 0.2 25)" : EC.t3 }}>{t.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>}
