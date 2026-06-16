@@ -43,6 +43,24 @@ function cssFilter(c: Clip): string {
   return parts.join(" ");
 }
 
+/** 形状蒙版的 CSS 近似（叠加层/画中画）：椭圆用 radial-gradient mask（支持羽化/反转），
+ *  矩形用 clip-path inset（硬边、非反转）。导出由 ffmpeg geq 精确处理。 */
+function maskCss(m: Clip["mask"]): React.CSSProperties {
+  if (!m) return {};
+  const cx = ((m.x + m.w / 2) * 100).toFixed(2), cy = ((m.y + m.h / 2) * 100).toFixed(2);
+  const rx = ((m.w / 2) * 100).toFixed(2), ry = ((m.h / 2) * 100).toFixed(2);
+  if (m.type === "ellipse") {
+    const f = Math.max(0, Math.min(1, m.feather ?? 0));
+    const inner = (Math.max(0, 1 - f) * 100).toFixed(1);
+    const aIn = m.invert ? 0 : 1, aOut = m.invert ? 1 : 0;
+    const g = `radial-gradient(ellipse ${rx}% ${ry}% at ${cx}% ${cy}%, rgba(0,0,0,${aIn}) ${inner}%, rgba(0,0,0,${aOut}) 100%)`;
+    return { WebkitMaskImage: g, maskImage: g };
+  }
+  if (m.invert) return {}; // 矩形反转预览从略（导出精确）
+  const inset = `inset(${(m.y * 100).toFixed(2)}% ${((1 - m.x - m.w) * 100).toFixed(2)}% ${((1 - m.y - m.h) * 100).toFixed(2)}% ${(m.x * 100).toFixed(2)}%)`;
+  return { clipPath: inset, WebkitClipPath: inset };
+}
+
 /** 暗角预览叠加层（近似 ffmpeg vignette；导出精确）。无暗角时返回 null（零回归）。 */
 function vignetteOverlay(c: Clip): React.CSSProperties | null {
   const v = c.effects?.vignette;
@@ -515,9 +533,9 @@ export function PreviewStage() {
                       : clip.text?.content}</span>
                   </div>
                 ) : clip.kind === "image" ? (
-                  <img src={clip.assetUrl} alt="" draggable={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none" }} />
+                  <img src={clip.assetUrl} alt="" draggable={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none", ...maskCss(clip.mask) }} />
                 ) : clip.kind === "video" ? (
-                  <video ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline muted={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none" }} />
+                  <video ref={(el) => { if (el) mediaRefs.current.set(clip.id, el); else mediaRefs.current.delete(clip.id); }} src={clip.assetUrl} playsInline muted={false} style={{ width: "100%", height: "auto", display: "block", filter: cssFilter(clip), pointerEvents: "none", ...maskCss(clip.mask) }} />
                 ) : null}
 
                 {!isShape && clip.kind !== "text" && vignetteOverlay(clip) && <div style={vignetteOverlay(clip)!} />}
