@@ -218,14 +218,15 @@ export function Timeline() {
       setSnapX(at);
       const newDur = Math.max(0.05, sec - d.orig.start);
       const srcLen = d.orig.trimOut - d.orig.trimIn;
+      const ctrl = e.ctrlKey || e.metaKey;
       let realDur = newDur;
-      if (d.orig.isVideo) {
-        // 视频：拉长/缩短 = 变速（保留整段已裁素材，按新长度拉伸播放）。speed=源长/目标长。
+      if (d.orig.isVideo && !ctrl) {
+        // 视频默认：拉长/缩短 = 变速（保留整段已裁素材，按新长度拉伸播放）。speed=源长/目标长。
         const speed = Math.max(0.25, Math.min(4, srcLen / newDur));
         realDur = srcLen / speed;                            // 受 speed 上下限约束后的实际长度
         store.updateClip(d.clipId, { speed });
       } else {
-        // 图片/其它：直接改时长（图片循环铺满）。
+        // 图片/音频，或视频按住 Ctrl：在素材内裁剪（改 trimOut，保持当前速度）。
         store.trimClip(d.clipId, { trimOut: d.orig.trimIn + newDur * d.orig.speed });
       }
       // 联动跟随：后续片段按本片段右缘的位移整体平移（保持原有间隙、不重叠）。
@@ -410,10 +411,12 @@ export function Timeline() {
                       })()}
                       {/* trim handles — wider hit area + visible grip */}
                       <div onPointerDown={(e) => onClipPointerDown(e, c.id, "trim-l")} className="editor-trim"
+                        title={c.kind === "video" ? "拖动裁剪片头（按住 Ctrl 同样裁剪）" : "拖动裁剪片头"}
                         style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 10, cursor: "ew-resize", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <div style={{ width: 3, height: "55%", borderRadius: 2, background: selected ? "#fff" : col }} />
                       </div>
                       <div onPointerDown={(e) => onClipPointerDown(e, c.id, "trim-r")} className="editor-trim"
+                        title={c.kind === "video" ? "拖动 = 变速（拉长变慢/缩短变快）；按住 Ctrl = 在素材内裁剪" : "拖动裁剪/调整时长"}
                         style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 10, cursor: "ew-resize", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <div style={{ width: 3, height: "55%", borderRadius: 2, background: selected ? "#fff" : col }} />
                       </div>
