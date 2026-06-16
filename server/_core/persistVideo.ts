@@ -17,6 +17,7 @@
 import { Readable, Transform } from "node:stream";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { storagePutStream, storageBackend } from "../storage";
+import { assertPublicUrl } from "./ssrfGuard";
 import { isVideoPersistenceEnabled } from "./storageConfig";
 
 // Streaming multipart upload only buffers one part at a time, so memory is no
@@ -88,7 +89,12 @@ async function persistImpl(upstreamUrl: string, provider: string): Promise<strin
     return upstreamUrl;
   }
   try {
+    // SSRF: don't let a manipulated provider response point us at an internal
+    // host (initial + post-redirect). On block, skip server-side re-hosting and
+    // keep the upstream URL (the client loading it is not a server SSRF).
+    assertPublicUrl(upstreamUrl);
     const res = await fetch(upstreamUrl, { signal: AbortSignal.timeout(PERSIST_FETCH_TIMEOUT_MS) });
+    if (res.url) assertPublicUrl(res.url);
     if (!res.ok) {
       console.warn(`[persistVideo] fetch ${res.status} for ${provider}, falling back to upstream URL`);
       return upstreamUrl;

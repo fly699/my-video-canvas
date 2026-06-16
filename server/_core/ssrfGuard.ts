@@ -50,3 +50,21 @@ export function isAllowedExternalUrl(rawUrl: string): boolean {
     return false;
   }
 }
+
+/** Throwing guard for download points that must also allow http:// (LAN storage,
+ *  self-hosted media). Uses the SAME strong host check as the proxies — covering
+ *  decimal/hex integer IPv4, IPv6 ULA/link-local, IPv4-mapped, localhost,
+ *  metadata — so the older per-call dotted-only regexes can't be bypassed via
+ *  `http://2130706433/` etc. Call on BOTH the input URL and the post-redirect
+ *  `res.url` (redirect:"follow" can land on an internal host the first check
+ *  couldn't see). */
+export function assertPublicUrl(rawUrl: string): void {
+  let u: URL;
+  try { u = new URL(rawUrl); } catch { throw new Error(`Invalid URL: ${rawUrl}`); }
+  if (u.protocol !== "https:" && u.protocol !== "http:") {
+    throw new Error(`Unsupported URL scheme: ${u.protocol}`);
+  }
+  if (isBlockedHost(u.hostname)) {
+    throw new Error(`Access to private/local hosts is not allowed: ${u.hostname}`);
+  }
+}
