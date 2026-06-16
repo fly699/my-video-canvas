@@ -299,7 +299,13 @@ function EditorWorkspace({ id }: { id: number }) {
         });
       }, 800);
     });
-    return () => unsub();
+    // Cancel any pending debounced save on teardown. Without this, switching
+    // editor sessions within the 800ms window leaves a stale timer that fires
+    // AFTER load() swapped the store doc, writing the NEW session's doc into the
+    // OLD `id` captured in this closure (cross-session corruption). The `flush`
+    // effect below already persists the outgoing session's doc on cleanup, so
+    // dropping the debounce here loses no edits.
+    return () => { unsub(); clearTimeout((autosaveTimer as { t?: ReturnType<typeof setTimeout> }).t); };
   }, [id, saveMut]);
 
   // Flush a pending (debounced) save when leaving the editor — navigation or tab
