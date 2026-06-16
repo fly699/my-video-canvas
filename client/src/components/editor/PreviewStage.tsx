@@ -439,7 +439,10 @@ export function PreviewStage() {
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0 }}>
         <div ref={stageRef} onPointerDown={() => selectClip(null)} onContextMenu={(e) => e.preventDefault()}
-          style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)", outline: `1px solid ${EC.border}`, outlineOffset: -1 }}>
+          style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)", outline: `1px solid ${EC.border}`, outlineOffset: -1,
+            // 关键：声明尺寸容器，使文字用的 cqh 单位按「舞台高度」解析（= 导出画布高度的等比）。
+            // 否则 cqh 退化为按视口高度计算 → 预览字号比导出大很多、换行不一致（竖排）。
+            containerType: "size" } as React.CSSProperties}>
           {renderList.map(({ clip, trackType }) => {
             const hasKf = !!clip.keyframes && clip.keyframes.length > 0;
             const tf = hasKf ? transformAt(clip, playhead - clip.start) : clip.transform;
