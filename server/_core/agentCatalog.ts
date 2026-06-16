@@ -113,6 +113,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     connectsTo: ["merge", "clip", "asset"],
     fields: [
       { name: "prompt", type: "string", desc: "视频提示词" },
+      { name: "negativePrompt", type: "string", desc: "反向提示词" },
     ],
   },
   {
@@ -148,6 +149,14 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
 ];
 
 const SPEC_BY_TYPE = new Map(AGENT_NODE_CATALOG.map((s) => [s.type, s]));
+
+// update 操作只带 targetRef（节点 id）不带 nodeType，服务端无法按类型过滤——改用「全目录
+// 字段名并集」过滤：保留属于任一节点类型 spec 的字段，丢弃并集外的纯幻觉字段。再显式放行
+// 自愈用的 customBaseUrl（补 ComfyUI 服务器地址，不在任何 create spec 里）。
+const ALL_SPEC_FIELDS = new Set<string>([
+  ...AGENT_NODE_CATALOG.flatMap((s) => s.fields.map((f) => f.name)),
+  "customBaseUrl",
+]);
 
 // In "仅 ComfyUI 生成" mode these node types are excluded. The generation nodes
 // (image_gen / video_task / audio / comfyui_image / comfyui_video) are dropped so
@@ -259,7 +268,14 @@ export function sanitizeOperationDetailed(
   if (op === "update") {
     const targetRef = str(o.targetRef);
     if (!targetRef) return { drop: "修改操作缺少目标节点引用" };
-    const payload = (o.payload && typeof o.payload === "object") ? (o.payload as Record<string, unknown>) : {};
+    // 与 create 对称地过滤字段：targetRef 不带 nodeType，按全目录字段并集 + customBaseUrl 放行，
+    // 丢弃并集外的幻觉字段（截断回写损坏仍由客户端 agentApply 的截断守卫兜底）。
+    const payload: Record<string, unknown> = {};
+    if (o.payload && typeof o.payload === "object") {
+      for (const [k, v] of Object.entries(o.payload as Record<string, unknown>)) {
+        if (ALL_SPEC_FIELDS.has(k)) payload[k] = v;
+      }
+    }
     return { op: { op: "update", targetRef, title: str(o.title), payload, note: noteStr(o.note) } };
   }
   // delete

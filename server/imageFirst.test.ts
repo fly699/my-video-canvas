@@ -100,6 +100,25 @@ describe("enforceImageFirst", () => {
     ];
     expect(enforceImageFirst(ops)).toEqual(ops);
   });
+
+  it("把视频的 negativePrompt 一并搬到中间 image_gen（审计修复）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "prompt", tempId: "p1", payload: {} },
+      { op: "create", nodeType: "video_task", tempId: "vt1", payload: { prompt: "森林晨雾", negativePrompt: "模糊, 畸变", aspectRatio: "16:9" } },
+      { op: "connect", sourceRef: "p1", targetRef: "vt1" },
+    ];
+    const img = creates(enforceImageFirst(ops), "image_gen")[0];
+    expect(img.payload).toMatchObject({ prompt: "森林晨雾", negativePrompt: "模糊, 畸变", aspectRatio: "16:9" });
+  });
+
+  it("sceneGroup 透传到中间 image_gen", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "prompt", tempId: "p1", payload: {} },
+      { op: "create", nodeType: "video_task", tempId: "vt1", payload: { prompt: "x" }, sceneGroup: "s2" },
+      { op: "connect", sourceRef: "p1", targetRef: "vt1" },
+    ];
+    expect(creates(enforceImageFirst(ops), "image_gen")[0].sceneGroup).toBe("s2");
+  });
 });
 
 describe("enforceImageFirstComfy", () => {
