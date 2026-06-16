@@ -91,13 +91,32 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const defaultLlm = LLM_MODELS.find((m) => !m.hidden)?.id ?? "claude-sonnet-4-6";
   const [svgModel, setSvgModel] = usePersistentState<string>("ui:editor:svg-llm-model", defaultLlm, { validate: (p) => (typeof p === "string" && LLM_MODELS.some((m) => m.id === p) ? p : null) });
   const setCanvas = useEditorStore((s) => s.setCanvas);
-  // 选中的视频/图片片段的素材地址 → 探测原始像素/编码/比例
-  const probeUrl = useEditorStore((s) => {
+  // 选中的视频/图片片段 → 在浏览器端读原始像素/比例/时长（服务端 ffprobe 常因素材 URL
+  // 需鉴权/不可直达而失败；浏览器本就已加载这些素材，客户端读取最可靠）。
+  const probe = useEditorStore((s) => {
     if (!s.doc) return null;
-    for (const t of s.doc.tracks) { const c = t.clips.find((x) => x.id === s.selectedClipId); if (c && (c.kind === "video" || c.kind === "image")) return c.assetUrl ?? null; }
+    for (const t of s.doc.tracks) { const c = t.clips.find((x) => x.id === s.selectedClipId); if (c && (c.kind === "video" || c.kind === "image") && c.assetUrl) return { url: c.assetUrl, kind: c.kind }; }
     return null;
   });
-  const mediaInfo = trpc.editor.probeMedia.useQuery({ url: probeUrl ?? "" }, { enabled: !!probeUrl, staleTime: 5 * 60 * 1000, retry: false });
+  const [mediaMeta, setMediaMeta] = useState<{ w: number; h: number; duration?: number } | "loading" | "error" | null>(null);
+  useEffect(() => {
+    if (!probe) { setMediaMeta(null); return; }
+    setMediaMeta("loading");
+    let cancelled = false;
+    const isVid = probe.kind === "video" || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(probe.url);
+    if (isVid) {
+      const v = document.createElement("video"); v.preload = "metadata"; v.muted = true; v.crossOrigin = "anonymous";
+      v.onloadedmetadata = () => { if (!cancelled) setMediaMeta({ w: v.videoWidth, h: v.videoHeight, duration: isFinite(v.duration) ? v.duration : undefined }); try { v.removeAttribute("src"); v.load(); } catch { /* ignore */ } };
+      v.onerror = () => { if (!cancelled) setMediaMeta("error"); };
+      v.src = probe.url;
+      return () => { cancelled = true; };
+    }
+    const img = new Image(); img.crossOrigin = "anonymous";
+    img.onload = () => { if (!cancelled) setMediaMeta({ w: img.naturalWidth, h: img.naturalHeight }); };
+    img.onerror = () => { if (!cancelled) setMediaMeta("error"); };
+    img.src = probe.url;
+    return () => { cancelled = true; };
+  }, [probe?.url, probe?.kind]);
   const [ttsModel, setTtsModel] = usePersistentState<string>(
     "ui:editor:tts-model:v1", "openai_tts_real",
     { validate: (p) => (typeof p === "string" && TTS_MODELS.some(([v]) => v === p) ? p : null) },
@@ -384,29 +403,29 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
 
         {(c.kind === "video" || c.kind === "image") && (
           <Section title="媒体信息">
-            {mediaInfo.isLoading && <div style={{ fontSize: 11, color: EC.t4 }}>读取素材信息…</div>}
-            {mediaInfo.data && (mediaInfo.data.width ? (() => {
-              const d = mediaInfo.data!; const W = d.width!, H = d.height!;
+            {mediaMeta === "loading" && <div style={{ fontSize: 11, color: EC.t4 }}>读取素材信息…</div>}
+            {mediaMeta === "error" && <div style={{ fontSize: 11, color: EC.t4 }}>无法读取素材信息（链接不可达或格式不支持）。</div>}
+            {mediaMeta && typeof mediaMeta === "object" && (() => {
+              const W = mediaMeta.w, H = mediaMeta.h;
+              if (!W || !H) return <div style={{ fontSize: 11, color: EC.t4 }}>无法读取素材尺寸。</div>;
               const g = (a: number, b: number): number => (b === 0 ? a : g(b, a % b)); const k = g(W, H) || 1;
-              const matchCanvas = doc!.width === W && doc!.height === H;
+              const matchAspect = (W / H).toFixed(3) === (doc!.width / doc!.height).toFixed(3);
               return (
                 <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: EC.t2 }}>
                   <Info label="像素" value={`${W} × ${H}`} />
                   <Info label="比例" value={`${Math.round(W / k)}:${Math.round(H / k)}（${(W / H).toFixed(3)}）`} />
-                  {d.codec && <Info label="编码" value={d.codec.toUpperCase() + (d.pixFmt ? ` · ${d.pixFmt}` : "")} />}
-                  {d.fps && <Info label="帧率" value={`${d.fps} fps`} />}
-                  {d.duration && <Info label="时长" value={`${d.duration}s`} />}
-                  {d.bitrate && <Info label="码率" value={`${(d.bitrate / 1e6).toFixed(2)} Mbps`} />}
+                  {c.kind === "video" && <Info label="格式" value={(c.assetUrl?.split(".").pop()?.split(/[?#]/)[0] ?? "—").toUpperCase()} />}
+                  {mediaMeta.duration != null && <Info label="素材时长" value={`${mediaMeta.duration.toFixed(2)}s`} />}
                   <Info label="画布" value={`${doc!.width} × ${doc!.height}（${(doc!.width / doc!.height).toFixed(3)}）`} />
-                  {!matchCanvas && (W / H).toFixed(3) !== (doc!.width / doc!.height).toFixed(3) && (
+                  {!matchAspect && (
                     <div style={{ fontSize: 10.5, color: "oklch(0.75 0.16 60)", lineHeight: 1.5, marginTop: 2 }}>素材比例与画布不同 → 「维持比例」会留黑边；用「撑满/填满」铺满（裁切边缘），或点下方按钮把画布改成素材比例（不裁切、不留黑边、不损画质）。</div>
                   )}
-                  {!matchCanvas && (
+                  {!(doc!.width === W && doc!.height === H) && (
                     <button onClick={() => setCanvas(W, H)} style={{ marginTop: 4, padding: "5px 0", fontSize: 11, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent }}>画布适配此素材（{W}×{H}）</button>
                   )}
                 </div>
               );
-            })() : <div style={{ fontSize: 11, color: EC.t4 }}>无法读取素材信息（可能是图片或链接不可达）。</div>)}
+            })()}
           </Section>
         )}
 
