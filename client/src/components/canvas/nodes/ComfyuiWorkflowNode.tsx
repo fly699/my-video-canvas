@@ -10,7 +10,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding, ReferenceImage } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
-import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources, applyAspectToWorkflow } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources, applyAspectToWorkflow, parseAspectRatioFromText } from "@/lib/comfyWorkflowParams";
 import { effectiveCharacters, connectedCharacterLora, effectiveCharacterRefImages, stripCharacterMentions } from "@/lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
@@ -497,10 +497,17 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       if (Object.keys(seedPatch).length > 0) {
         update({ paramValues: { ...(payload.paramValues ?? {}), ...seedPatch } }, true);
       }
-      // 按项目比例覆盖工作流尺寸：开启时把空 latent 节点的 width/height 改写为目标比例
-      // （保留像素面积、/64 对齐）。比例无法解析 / 无可改 latent 时原样提交。
-      const runWorkflowJson = payload.overrideRatioSize
-        ? applyAspectToWorkflow(workflowJson, payload.aspectRatio).json
+      // 按比例覆盖工作流尺寸（保留像素面积、/64 对齐）：① 用户显式「按比例覆盖」→ 用
+      // payload.aspectRatio；② 否则尝试从生效提示词里解析画面比例（如 "16:9"），让节点
+      // 响应提示词中写的比例。用户已手动设置 width/height 参数值时仍以参数值为准（覆盖
+      // 工作流 latent），故不会冲掉显式选择。比例无法解析 / 无可改 latent 时原样提交。
+      const effPosForRatio = posPromptKey && typeof effectiveParamValues[posPromptKey] === "string"
+        ? (effectiveParamValues[posPromptKey] as string) : "";
+      const effectiveAspect = payload.overrideRatioSize
+        ? payload.aspectRatio
+        : parseAspectRatioFromText(effPosForRatio || mentionText || upstreamPrompt.positive);
+      const runWorkflowJson = effectiveAspect
+        ? applyAspectToWorkflow(workflowJson, effectiveAspect).json
         : workflowJson;
       const result = await executeMutation.mutateAsync({
         nodeId: id,

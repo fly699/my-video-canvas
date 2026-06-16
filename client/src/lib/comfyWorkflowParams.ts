@@ -518,3 +518,24 @@ export function applyAspectToWorkflow(workflowJson: string, aspect: string | und
   }
   return { json: patched > 0 ? JSON.stringify(wf) : workflowJson, patched };
 }
+
+/** 文本里可识别为「画面比例」的常见比例白名单（避免把时间 "2:30"、比分等误判为比例）。 */
+const RECOGNIZED_ASPECTS = new Set([
+  "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3",
+  "21:9", "9:21", "16:10", "10:16", "4:5", "5:4", "2:1", "1:2",
+]);
+
+/** 从自由文本（如上游提示词）里识别画面比例 token（支持半角 "16:9" 与全角 "16：9"）。
+ *  仅接受 RECOGNIZED_ASPECTS 中的常见比例，命中多个时取最后一个（更贴近用户最终意图）。
+ *  纯函数，无副作用；用于让自定义工作流节点「响应提示词里写的画面比例」。 */
+export function parseAspectRatioFromText(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const re = /(\d{1,2})\s*[:：]\s*(\d{1,2})/g;
+  let best: string | undefined;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const cand = `${Number(m[1])}:${Number(m[2])}`;
+    if (RECOGNIZED_ASPECTS.has(cand)) best = cand;
+  }
+  return best;
+}
