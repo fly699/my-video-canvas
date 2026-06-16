@@ -69,10 +69,25 @@ export function injectFreeVramIntoOps(ops: AgentOperation[], enabled: boolean): 
   return ops;
 }
 
+/** 画面比例字段映射（单一真源）：按节点类型返回应写入的比例字段。各模型族读不同字段——
+ *  kie→aspectRatio、Poyo 图→poyoAspectRatio、Reve/Seedream/Flux→reveAspectRatio——故同族
+ *  节点把对应字段全写、互不影响。被配方（buildRecipeOps）与智能体应用层（applyAgentOperations）
+ *  复用，保证两条路径的画面比例一致落地到下游生成节点。aspect 为空时返回空。 */
+export function aspectFieldsFor(nodeType: NodeType, aspect: string): Record<string, unknown> {
+  if (!aspect) return {};
+  switch (nodeType) {
+    case "storyboard": return { aspectRatio: aspect, poyoAspectRatio: aspect, reveAspectRatio: aspect };
+    case "image_gen": return { aspectRatio: aspect, reveAspectRatio: aspect };
+    case "prompt": return { aspectRatio: aspect };
+    case "comfyui_workflow": return { aspectRatio: aspect, overrideRatioSize: true };
+    default: return {};
+  }
+}
+
 export function applyAgentOperations(
   ops: AgentOperation[],
   anchor: { x: number; y: number },
-  opts: { templates?: AgentTemplate[]; freeVramAfterRun?: boolean; ownerAgentId?: string; characterImportMode?: CharacterImportMode } = {},
+  opts: { templates?: AgentTemplate[]; freeVramAfterRun?: boolean; ownerAgentId?: string; characterImportMode?: CharacterImportMode; aspect?: string } = {},
 ): ApplyResult {
   injectFreeVramIntoOps(ops, opts.freeVramAfterRun === true);
   const store = useCanvasStore.getState();
@@ -179,6 +194,15 @@ export function applyAgentOperations(
             );
             if (overlay) payload = { ...payload, ...overlay };
           }
+          // 画面比例确定性透传：用户在「规划设置」选了统一比例时，对生成节点补齐比例字段
+          // （仅 LLM 未自行设置时填，fill-only），让非 KIE 模型也按所选比例出片。
+          if (opts.aspect) {
+            const af = aspectFieldsFor(op.nodeType as NodeType, opts.aspect);
+            const cur = (payload ?? {}) as Record<string, unknown>;
+            const add: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(af)) if (cur[k] === undefined || cur[k] === "") add[k] = v;
+            if (Object.keys(add).length) payload = { ...(payload ?? {}), ...add };
+          }
           // Stamp ownership (multi-agent) + scene membership (so a Character can
           // "应用到本场景所有镜头"). Both stored in payload like `createdBy`.
           const ownedPayload = {
@@ -259,16 +283,19 @@ export function applyAgentOperations(
 // exists (for incremental edits) without shipping the whole node data.
 const SUMMARY_FIELDS: Partial<Record<NodeType, string[]>> = {
   script: ["aiGenre", "aiStyle", "aiMood", "aiSceneCount", "aiTargetModel", "synopsis"],
-  storyboard: ["description", "promptText", "negativePrompt", "cameraMovement", "duration"],
+  // 镜号/转场/对白是镜头表与装配的核心字段，增量编辑必须可见（否则智能体盲改/重复）。
+  storyboard: ["sceneNumber", "description", "promptText", "negativePrompt", "dialogue", "transition", "cameraMovement", "duration", "aspectRatio"],
   prompt: ["positivePrompt", "negativePrompt", "style", "aspectRatio"],
   image_gen: ["prompt", "negativePrompt", "model", "aspectRatio"],
-  comfyui_image: ["prompt", "negPrompt", "templateId"],
-  comfyui_video: ["prompt", "negPrompt", "templateId"],
-  comfyui_workflow: ["templateLabel", "templateId"],
-  video_task: ["prompt", "provider"],
+  comfyui_image: ["prompt", "negPrompt", "templateLabel", "templateId"],
+  comfyui_video: ["prompt", "negPrompt", "templateLabel", "templateId"],
+  comfyui_workflow: ["templateLabel", "templateId", "aspectRatio"],
+  video_task: ["prompt", "negativePrompt", "provider"],
   merge: ["transition"],
-  audio: ["audioCategory"],
+  audio: ["audioCategory", "ttsText", "musicPrompt"],
   note: ["content"],
+  // 角色：此前完全缺失——智能体看不到已建角色，跨镜一致性/后续编辑无从协调。
+  character: ["characterKind", "name", "role", "appearance", "outfit", "signature", "sceneName", "sceneDescription"],
 };
 
 /**

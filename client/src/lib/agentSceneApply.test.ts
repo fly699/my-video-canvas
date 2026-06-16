@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useCanvasStore } from "../hooks/useCanvasStore";
-import { applyAgentOperations, buildGraphSummary, summarizePlanOps } from "./agentApply";
+import { applyAgentOperations, buildGraphSummary, summarizePlanOps, aspectFieldsFor } from "./agentApply";
 import { setLibraryCharacters } from "./characterConditioning";
 import type { AgentOperation } from "../../../shared/types";
 
@@ -231,5 +231,64 @@ describe("applyAgentOperations 角色库代入（@角色 生成节点）", () =>
     expect(p.referenceImageUrl).toBeUndefined();
     expect(p.appearance).toBe("路人");
     setLibraryCharacters([]);
+  });
+});
+
+describe("aspectFieldsFor 画面比例字段映射", () => {
+  it("各节点类型返回对应模型族比例字段", () => {
+    expect(aspectFieldsFor("storyboard", "9:16")).toEqual({ aspectRatio: "9:16", poyoAspectRatio: "9:16", reveAspectRatio: "9:16" });
+    expect(aspectFieldsFor("image_gen", "16:9")).toEqual({ aspectRatio: "16:9", reveAspectRatio: "16:9" });
+    expect(aspectFieldsFor("prompt", "1:1")).toEqual({ aspectRatio: "1:1" });
+    expect(aspectFieldsFor("comfyui_workflow", "9:16")).toEqual({ aspectRatio: "9:16", overrideRatioSize: true });
+    expect(aspectFieldsFor("video_task", "9:16")).toEqual({}); // i2v 跟随分镜参考图，不写
+    expect(aspectFieldsFor("storyboard", "")).toEqual({}); // 空比例不写
+  });
+});
+
+describe("applyAgentOperations 画面比例确定性透传", () => {
+  it("opts.aspect 在生成节点上补齐比例字段（LLM 未填时）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "storyboard", tempId: "sb", payload: { sceneNumber: 1, description: "x" } },
+      { op: "create", nodeType: "prompt", tempId: "pr", payload: { positivePrompt: "y" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 }, { aspect: "9:16" });
+    const sb = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "storyboard")!.data.payload as Record<string, unknown>;
+    expect(sb).toMatchObject({ aspectRatio: "9:16", poyoAspectRatio: "9:16", reveAspectRatio: "9:16" });
+    const pr = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "prompt")!.data.payload as Record<string, unknown>;
+    expect(pr.aspectRatio).toBe("9:16");
+  });
+
+  it("LLM 已设比例则不覆盖（fill-only）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "storyboard", tempId: "sb", payload: { aspectRatio: "16:9" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 }, { aspect: "9:16" });
+    const sb = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "storyboard")!.data.payload as Record<string, unknown>;
+    expect(sb.aspectRatio).toBe("16:9");          // 不覆盖用户/LLM 显式值
+    expect(sb.poyoAspectRatio).toBe("9:16");       // 未设的仍补
+  });
+
+  it("无 opts.aspect 时不动比例字段", () => {
+    applyAgentOperations([{ op: "create", nodeType: "storyboard", tempId: "sb", payload: { description: "x" } }], { x: 0, y: 0 });
+    const sb = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "storyboard")!.data.payload as Record<string, unknown>;
+    expect(sb.aspectRatio).toBeUndefined();
+  });
+});
+
+describe("buildGraphSummary 关键字段补齐（增量编辑可见）", () => {
+  it("storyboard 暴露镜号/转场/对白；video_task 暴露 negativePrompt；character 暴露文本属性", () => {
+    const store = useCanvasStore.getState();
+    const sb = store.addNode("storyboard", { x: 0, y: 0 });
+    store.updateNodeData(sb.id, { sceneNumber: 2, transition: "dissolve", dialogue: "阿明：快跑", description: "巷战" });
+    const vt = store.addNode("video_task", { x: 0, y: 100 });
+    store.updateNodeData(vt.id, { prompt: "追逐", negativePrompt: "模糊" });
+    const ch = store.addNode("character", { x: 0, y: 200 });
+    store.updateNodeData(ch.id, { characterKind: "person", name: "阿明", role: "逃犯", appearance: "黑衣" });
+
+    const parsed = JSON.parse(buildGraphSummary("none")) as { nodes: Array<Record<string, unknown>> };
+    const byId = new Map(parsed.nodes.map((n) => [n.id, n]));
+    expect(byId.get(sb.id)).toMatchObject({ sceneNumber: 2, transition: "dissolve", dialogue: "阿明：快跑" });
+    expect(byId.get(vt.id)).toMatchObject({ negativePrompt: "模糊" });
+    expect(byId.get(ch.id)).toMatchObject({ name: "阿明", role: "逃犯", appearance: "黑衣" });
   });
 });

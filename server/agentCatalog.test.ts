@@ -132,3 +132,33 @@ describe("agentCatalog.sanitizeOperationDetailed", () => {
     }
   });
 });
+
+// ── 审计修复：video_task 反向词 + update 字段并集过滤 ──────────────────────────
+describe("agentCatalog 审计修复", () => {
+  it("video_task create 现在允许 negativePrompt", () => {
+    const op = sanitizeOperation({ op: "create", nodeType: "video_task", payload: { prompt: "海浪翻涌", negativePrompt: "模糊, 噪点" } });
+    expect(op).not.toBeNull();
+    expect(op!.payload).toMatchObject({ prompt: "海浪翻涌", negativePrompt: "模糊, 噪点" });
+  });
+
+  it("update 并集过滤：保留任一节点 spec 字段 + customBaseUrl，丢弃幻觉字段", () => {
+    const op = sanitizeOperation({
+      op: "update", targetRef: "node1",
+      payload: { promptText: "改写", synopsis: "梗概", customBaseUrl: "http://gpu:8188", __hack: "x", bogusField: 1 },
+    });
+    expect(op).not.toBeNull();
+    expect(op!.payload).toEqual({ promptText: "改写", synopsis: "梗概", customBaseUrl: "http://gpu:8188" });
+    expect((op!.payload as Record<string, unknown>).__hack).toBeUndefined();
+    expect((op!.payload as Record<string, unknown>).bogusField).toBeUndefined();
+  });
+
+  it("update 全是幻觉字段 → payload 清空（但 op 仍保留）", () => {
+    const op = sanitizeOperation({ op: "update", targetRef: "n", payload: { foo: 1, bar: 2 } });
+    expect(op).not.toBeNull();
+    expect(op!.payload).toEqual({});
+  });
+
+  it("update 缺 targetRef → 丢", () => {
+    expect(sanitizeOperation({ op: "update", payload: { prompt: "x" } })).toBeNull();
+  });
+});

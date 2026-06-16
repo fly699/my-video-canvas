@@ -62,6 +62,8 @@ export function enforceImageFirst(ops: AgentOperation[]): AgentOperation[] {
           const vPayload = (vCreate?.payload ?? {}) as Record<string, unknown>;
           const imgPayload: Record<string, unknown> = {};
           if (typeof vPayload.prompt === "string" && vPayload.prompt) imgPayload.prompt = vPayload.prompt;
+          // 反向词同样要带到中间图像节点（否则生成的首帧不避开这些负面，再喂给视频就晚了）。
+          if (typeof vPayload.negativePrompt === "string" && vPayload.negativePrompt) imgPayload.negativePrompt = vPayload.negativePrompt;
           if (typeof vPayload.aspectRatio === "string" && vPayload.aspectRatio) imgPayload.aspectRatio = vPayload.aspectRatio;
           result.push({ op: "create", nodeType: "image_gen", tempId: imgRef, title: "静帧", payload: imgPayload, sceneGroup: vCreate?.sceneGroup, note: "生图→生视频：自动插入图像节点作为视频首帧" });
           // image_gen → video ONCE (only when the image node is first created),

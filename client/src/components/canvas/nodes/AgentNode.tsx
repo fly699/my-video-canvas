@@ -246,7 +246,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     if (ops.length === 0) return;
     const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
     const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
-    const r = applyAgentOperations(ops, pos, { templates, freeVramAfterRun: planPrefs.freeVramAfterRun, ownerAgentId: id, characterImportMode: planPrefs.characterImportMode ?? "conditioning" }); // mutates op.status/op.error in place
+    const r = applyAgentOperations(ops, pos, { templates, freeVramAfterRun: planPrefs.freeVramAfterRun, ownerAgentId: id, characterImportMode: planPrefs.characterImportMode ?? "conditioning", aspect: planPrefs.aspect || undefined }); // mutates op.status/op.error in place
     setAppliedIdx((prev) => new Set(prev).add(msgIdx));
     // Persist op statuses (read fresh so an auto-apply right after send is correct).
     // 管线协同：apply 后确定性推导「下一步路线」，追加一张引导卡（无分镜管线则不追加）。
