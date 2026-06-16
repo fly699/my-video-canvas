@@ -243,7 +243,37 @@ describe("aspectFieldsFor 画面比例字段映射", () => {
     expect(aspectFieldsFor("prompt", "1:1")).toEqual({ aspectRatio: "1:1" });
     expect(aspectFieldsFor("comfyui_workflow", "9:16")).toEqual({ aspectRatio: "9:16", overrideRatioSize: true });
     expect(aspectFieldsFor("video_task", "9:16")).toEqual({}); // i2v 跟随分镜参考图，不写
+    // ComfyUI 图像/视频读 payload.width/height（无 aspectRatio）——换算成 /64 对齐尺寸。
+    expect(aspectFieldsFor("comfyui_image", "9:16")).toEqual({ width: 512, height: 896 });
+    expect(aspectFieldsFor("comfyui_video", "16:9")).toEqual({ width: 896, height: 512 });
     expect(aspectFieldsFor("storyboard", "")).toEqual({}); // 空比例不写
+  });
+});
+
+describe("applyAgentOperations 应用顺序加固（D）+ 重复边计数（E）", () => {
+  it("connect 排在 create 之前仍正确建边（create 优先排序）", () => {
+    const ops: AgentOperation[] = [
+      { op: "connect", sourceRef: "a", targetRef: "b" },        // 引用尚未出现的 create
+      { op: "create", nodeType: "script", tempId: "a" },
+      { op: "create", nodeType: "storyboard", tempId: "b" },
+    ];
+    const r = applyAgentOperations(ops, { x: 0, y: 0 });
+    expect(r.created).toBe(2);
+    expect(r.connected).toBe(1);                                 // 不再因顺序误判失败
+    expect(r.failures).toHaveLength(0);
+    expect(useCanvasStore.getState().edges).toHaveLength(1);
+  });
+
+  it("重复 connect 不虚增 connected（store 按 源+目标 去重）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "script", tempId: "a" },
+      { op: "create", nodeType: "storyboard", tempId: "b" },
+      { op: "connect", sourceRef: "a", targetRef: "b" },
+      { op: "connect", sourceRef: "a", targetRef: "b" },        // 重复
+    ];
+    const r = applyAgentOperations(ops, { x: 0, y: 0 });
+    expect(r.connected).toBe(1);                                 // 只计一条真正新增的边
+    expect(useCanvasStore.getState().edges).toHaveLength(1);
   });
 });
 

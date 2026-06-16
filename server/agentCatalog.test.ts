@@ -161,4 +161,13 @@ describe("agentCatalog 审计修复", () => {
   it("update 缺 targetRef → 丢", () => {
     expect(sanitizeOperation({ op: "update", payload: { prompt: "x" } })).toBeNull();
   });
+
+  it("comfyui_workflow create 现在允许 aspectRatio / overrideRatioSize（LLM 可结构化设工作流比例）", () => {
+    const op = sanitizeOperation({
+      op: "create", nodeType: "comfyui_workflow",
+      payload: { templateId: 7, prompt: "p", aspectRatio: "9:16", overrideRatioSize: true },
+    }, { validTemplateIds: new Set([7]) });
+    expect(op).not.toBeNull();
+    expect(op!.payload).toMatchObject({ aspectRatio: "9:16", overrideRatioSize: true });
+  });
 });

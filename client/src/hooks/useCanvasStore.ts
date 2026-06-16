@@ -47,7 +47,7 @@ export interface NamedSnapshot {
 /** Map an aspect ratio ("16:9" / "9:16" / "1:1" …) to /64-aligned ComfyUI latent
  *  dimensions with the short edge ≈ 512 (SD1.5-safe, SDXL-ok). Returns {} when the
  *  ratio can't be parsed, so callers can spread it safely. */
-function aspectToComfyWH(aspect?: string): { width?: number; height?: number } {
+export function aspectToComfyWH(aspect?: string): { width?: number; height?: number } {
   const m = /^(\d+):(\d+)$/.exec((aspect ?? "").trim());
   if (!m) return {};
   const rw = Number(m[1]), rh = Number(m[2]);

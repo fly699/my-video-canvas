@@ -34,6 +34,29 @@ export const KIE_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1"] as const;
 type MiniNode = { id: string; data: { nodeType: string; payload?: unknown; title?: string }; position?: { x: number; y: number } };
 type MiniEdge = { source: string; target: string };
 
+// 镜头表的「景别/运镜/焦段/灯光」此前只在 UI 展示、不进生成请求（智能体填了也不影响出图）。
+// 把它们译成生成模型能理解的提示词短语，追加到分镜生图提示词末尾，让 Shot List 真正生效。
+// 仅追加非空字段；未知 code 原样降级（连字符转空格）。
+const SHOT_TYPE_WORDS: Record<string, string> = {
+  ECU: "extreme close-up", CU: "close-up", MS: "medium shot",
+  MLS: "medium long shot", WS: "wide shot", establishing: "establishing wide shot",
+};
+const CAMERA_WORDS: Record<string, string> = {
+  static: "static camera", "pan-left": "camera pans left", "pan-right": "camera pans right",
+  "tilt-up": "camera tilts up", "tilt-down": "camera tilts down",
+  "zoom-in": "camera zooms in", "zoom-out": "camera zooms out",
+  "dolly-in": "dolly in", "dolly-out": "dolly out", tracking: "tracking shot",
+};
+function cinematographyClause(payload: StoryboardNodeData): string {
+  const s = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  const parts: string[] = [];
+  const shot = s(payload.shotType); if (shot) parts.push(SHOT_TYPE_WORDS[shot] ?? shot.replace(/-/g, " "));
+  const cam = s(payload.cameraMovement); if (cam) parts.push(CAMERA_WORDS[cam] ?? cam.replace(/-/g, " "));
+  const lens = s(payload.lens); if (lens) parts.push(`${lens} lens`);
+  const light = s(payload.lighting); if (light) parts.push(light);
+  return parts.join(", ");
+}
+
 export interface StoryboardGenBuild {
   /** trpc.imageGen.generate 的入参（loose——服务端 Zod 二次校验）。 */
   input: Record<string, unknown>;
@@ -83,11 +106,12 @@ export function buildStoryboardGenInput(args: {
   ])).slice(0, 8);
   const refUrl = manualRefs[0] || manualRef || refs[0];
 
-  // ── 提示词：剥 @字面量 → 结构化注入角色 → 追加效果注入（与 ImageGenNode 同序）──
+  // ── 提示词：剥 @字面量 → 结构化注入角色 → 追加效果注入（与 ImageGenNode 同序）→ 追加镜头表运镜/灯光 ──
+  const cineClause = cinematographyClause(payload);
   const enhancedPrompt = appendEffectPrompts(
     mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(promptText, nodes), nodes), chars, 2000),
     connectedEffectPrompts(id, edges, nodes),
-  );
+  ) + (cineClause ? `, ${cineClause}` : "");
 
   // ── 分模型 sizing（与服务端 Zod 对齐；缺省由 resolveImageParam 补 ParamDef 默认）──
   const generic = payload as unknown as {

@@ -49,6 +49,22 @@ describe("buildStoryboardGenInput（分镜生图组装器）", () => {
     expect(r.input.referenceImageUrls).toEqual(["a.png", "b.png"]);
   });
 
+  it("镜头表运镜/景别/焦段/灯光追加进生成提示词（Shot List 真正生效）", () => {
+    const p: StoryboardNodeData = { ...base, shotType: "CU", cameraMovement: "zoom-in", lens: "35mm", lighting: "golden hour" };
+    const r = buildStoryboardGenInput({ id: "sb", payload: p, nodes: [], edges: [] });
+    const prompt = String(r.input.prompt);
+    expect(prompt).toContain("城市夜景");
+    expect(prompt).toContain("close-up");        // CU → 映射成自然语
+    expect(prompt).toContain("camera zooms in");  // zoom-in → 映射
+    expect(prompt).toContain("35mm lens");
+    expect(prompt).toContain("golden hour");
+  });
+
+  it("无运镜/灯光字段时提示词不追加多余内容", () => {
+    const r = buildStoryboardGenInput({ id: "sb", payload: base, nodes: [], edges: [] });
+    expect(String(r.input.prompt).trimEnd()).toBe("城市夜景");
+  });
+
   it("soul 批量张数计入 count；普通模型 imageN 计入", () => {
     const soul = buildStoryboardGenInput({ id: "sb", payload: { ...base, imageModel: "hf_soul_standard" as StoryboardNodeData["imageModel"], batchSize: 4 }, nodes: [], edges: [] });
     expect(soul.count).toBe(4);
