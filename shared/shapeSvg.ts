@@ -109,10 +109,17 @@ function buildFill(s: ShapeSpec, color: string): { defs: string; ref: string } {
 export function shapeToSvg(s: ShapeSpec, w: number, h: number): string {
   const W = Math.max(1, Math.round(w)), H = Math.max(1, Math.round(h));
   if (s.svg && s.svg.trim()) {
-    // 自定义 SVG：包一层定宽高的外壳，保持其内部 viewBox 自适应填满画框。
-    const inner = s.svg.trim();
     const op = Math.max(0, Math.min(1, s.opacity ?? 1));
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" opacity="${op}"><svg width="${W}" height="${H}" preserveAspectRatio="xMidYMid meet">${inner}</svg></svg>`;
+    let inner = s.svg.trim();
+    if (/^<svg[\s>]/i.test(inner)) {
+      // 完整 <svg>：去掉根标签的固定 width/height，改成 100% 并按自身 viewBox 缩放填满画框。
+      inner = inner.replace(/<svg([^>]*)>/i, (_m, attrs: string) =>
+        `<svg${attrs.replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*')/gi, "")} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">`);
+    } else {
+      // 裸元素（无 <svg>）：按 0 0 100 100 视框包裹（与占位示例/AI 约定一致），缩放填满。
+      inner = `<svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">${inner}</svg>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" opacity="${op}">${inner}</svg>`;
   }
   const color = safeColor(s.color, "#FFD400");
   const filled = s.fill !== false;

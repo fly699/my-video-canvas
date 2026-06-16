@@ -322,7 +322,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <div style={{ fontSize: 10.5, color: EC.t4, margin: "8px 0 3px" }}>图标库（点选写入自定义 SVG，用上面颜色着色）</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4 }}>
               {SHAPE_ICONS.map((ic) => (
-                <button key={ic.id} title={ic.label} onClick={() => setShape({ svg: iconSvg(ic, sh?.color ?? "#FFD400") })}
+                <button key={ic.id} title={ic.label} onClick={() => setShape({ svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${iconSvg(ic, sh?.color ?? "#FFD400")}</svg>` })}
                   style={{ aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center", padding: 3, borderRadius: 6, cursor: "pointer", border: `1px solid ${EC.border}`, background: "transparent" }}
                   dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="100%" height="100%">${iconSvg(ic, EC.t1)}</svg>` }} />
               ))}
