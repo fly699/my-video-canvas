@@ -97,7 +97,9 @@ function EditorGallery() {
           <div key={s.id} style={card} onClick={() => navigate(`/editor/${s.id}`)}>
             <div style={{ height: 124, background: "var(--c-elevated, #1a1a20)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
               {s.thumbnailUrl
-                ? <img src={s.thumbnailUrl} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ? (/\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(s.thumbnailUrl)
+                    ? <video src={`${s.thumbnailUrl}#t=0.1`} muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : <img src={s.thumbnailUrl} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />)
                 : <Film size={28} style={{ color: "var(--c-t4)" }} />}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
