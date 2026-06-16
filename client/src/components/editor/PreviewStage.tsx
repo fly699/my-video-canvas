@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useCallback, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useCallback, useState } from "react";
 import { Play, Pause, SkipBack, Grid3x3, Maximize, Minimize } from "lucide-react";
 import { EC, fmtTime } from "./theme";
 import { useEditorStore, clipDuration } from "./editorStore";
@@ -214,6 +214,24 @@ export function PreviewStage() {
 
   const mediaRefs = useRef<Map<string, HTMLVideoElement | HTMLAudioElement>>(new Map());
   const stageRef = useRef<HTMLDivElement>(null);
+  const frameWrapRef = useRef<HTMLDivElement>(null);
+  const [frameSize, setFrameSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const docAspect = useEditorStore((s) => (s.doc && s.doc.height ? s.doc.width / s.doc.height : 16 / 9));
+  // 预览框尺寸 = 把「画布比例」的盒子完整放进可用区域（letterbox）。用 JS 实测，避免
+  // aspect-ratio + max-* 在「方形画布/宽容器」等组合下算错比例（1:1 被压成长方形）。
+  useLayoutEffect(() => {
+    const el = frameWrapRef.current; if (!el) return;
+    const recompute = () => {
+      const availW = Math.max(1, el.clientWidth - 32), availH = Math.max(1, el.clientHeight - 32); // 减 padding(16×2)
+      let w = availW, h = availW / docAspect;
+      if (h > availH) { h = availH; w = availH * docAspect; }
+      setFrameSize({ w: Math.round(w), h: Math.round(h) });
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [docAspect]);
   const mainRef = useRef<HTMLElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   // 全屏：把整个预览区(含播放控件)送入浏览器全屏；监听变化以同步图标。
@@ -439,12 +457,13 @@ export function PreviewStage() {
           {isFullscreen ? <Minimize size={12} /> : <Maximize size={12} />} 全屏
         </button>
       </div>
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0 }}>
+      <div ref={frameWrapRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, minHeight: 0, overflow: "hidden" }}>
         <div ref={stageRef} onPointerDown={() => selectClip(null)} onContextMenu={(e) => e.preventDefault()}
-          style={{ position: "relative", aspectRatio: `${aspect}`, maxWidth: "100%", maxHeight: "100%", width: aspect >= 1 ? "100%" : "auto", height: aspect >= 1 ? "auto" : "100%", background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)", outline: `1px solid ${EC.border}`, outlineOffset: -1,
-            // 关键：声明尺寸容器，使文字用的 cqh 单位按「舞台高度」解析（= 导出画布高度的等比）。
-            // 否则 cqh 退化为按视口高度计算 → 预览字号比导出大很多、换行不一致（竖排）。
-            containerType: "size" } as React.CSSProperties}>
+          style={{ position: "relative", width: frameSize.w || undefined, height: frameSize.h || undefined, aspectRatio: frameSize.w ? undefined : `${aspect}`, background: "#000", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 32px oklch(0 0 0 / 0.5)", outline: `1px solid ${EC.border}`, outlineOffset: -1 }}>
+          {/* 内层尺寸容器：让文字 cqh 单位按「舞台高度」解析（=导出画布高度等比）。container-type
+              不能放在带 aspect-ratio 的外框上——尺寸containment 会破坏按比例自适应（1:1 变长方形）。
+              内层 inset:0 充满外框、不带 aspect-ratio，既给 cqh 上下文又不影响外框比例。 */}
+          <div style={{ position: "absolute", inset: 0, containerType: "size" } as React.CSSProperties}>
           {renderList.map(({ clip, trackType }) => {
             const hasKf = !!clip.keyframes && clip.keyframes.length > 0;
             const tf = hasKf ? transformAt(clip, playhead - clip.start) : clip.transform;
@@ -612,6 +631,7 @@ export function PreviewStage() {
           {masterFadeOpacity > 0.001 && (
             <div style={{ position: "absolute", inset: 0, background: "#000", opacity: masterFadeOpacity, pointerEvents: "none", zIndex: 20 }} />
           )}
+          </div>
         </div>
       </div>
 
