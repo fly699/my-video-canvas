@@ -87,6 +87,7 @@ function textCss(t: Clip["text"], canvasH: number): React.CSSProperties {
     borderRadius: t?.bgColor ? "0.1em" : undefined,
     whiteSpace: "pre-wrap",
     lineHeight: 1.25,
+    ...(t?.vertical ? { writingMode: "vertical-rl" as const } : {}), // 竖排
   };
   // stroke (scaled to font via em so it tracks the preview zoom). paint-order:stroke
   // 让描边绘制在文字填充「之下」——否则居中描边会盖住字形、看起来粗一倍（用户反馈

@@ -77,6 +77,7 @@ export interface ClipText {
   shadow?: boolean;     // 投影
   shadowColor?: string; // 投影色 (default semi-black)
   typewriterCps?: number; // 打字机速度（字符/秒，默认 ~16），仅 motionStyle="typewriter" 时生效
+  vertical?: boolean;     // 竖排：文字逐字纵向排列（CJK 竖排）
 }
 
 /** Keyframe interpolation curve. Controls the segment LEAVING a keyframe (kf→next):

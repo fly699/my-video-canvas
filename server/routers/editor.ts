@@ -74,6 +74,7 @@ const clipSchema = z.object({
     strokeColor: z.string().max(32).optional(), strokeWidth: z.number().min(0).max(40).optional(),
     shadow: z.boolean().optional(), shadowColor: z.string().max(32).optional(),
     typewriterCps: z.number().min(1).max(60).optional(),
+    vertical: z.boolean().optional(),
   }).optional(),
 });
 
