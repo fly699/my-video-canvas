@@ -32,7 +32,7 @@ import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel, KIE_IMAGE_RES_COST } from "@/lib/costEstimate";
 import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
-import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
+import { IMAGE_MODEL_PARAMS, resolveImageParam, resolvePoyoImageSize } from "@/lib/paramDefs";
 import { NodeTextArea } from "../NodeTextInput";
 
 interface Props {
@@ -345,7 +345,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         // Resolve each param to payload value OR the ParamDef default — the
         // controls only display defaults, so an untouched node would otherwise
         // omit fields some models require (e.g. z-image text-to-image size).
-        imageSize: resolveImageParam(payload.model, "imageSize", generic.imageSize) as GenInput["imageSize"],
+        // 统一比例（写进 generic.poyoAspectRatio）在模型接受时升级为 imageSize，否则模型默认。
+        imageSize: resolvePoyoImageSize(payload.model, generic.imageSize, generic.poyoAspectRatio) as GenInput["imageSize"],
         imageResolution: resolveImageParam(payload.model, "imageResolution", generic.imageResolution) as GenInput["imageResolution"],
         imageN: resolveImageParam(payload.model, "imageN", generic.imageN) as GenInput["imageN"],
         imageOutputFormat: resolveImageParam(payload.model, "imageOutputFormat", generic.imageOutputFormat) as GenInput["imageOutputFormat"],

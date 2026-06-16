@@ -17,7 +17,7 @@ import {
 import { mentionedMediaUrls, stripMediaMentions } from "./comfyWorkflowParams";
 import { mergeCharactersIntoPrompt } from "./characterPrompt";
 import { connectedEffectPrompts, appendEffectPrompts } from "./effectPrompt";
-import { resolveImageParam } from "./paramDefs";
+import { resolveImageParam, resolvePoyoImageSize } from "./paramDefs";
 import { estimateImageCost, costEstimateLabel } from "./costEstimate";
 
 // 与 StoryboardNode UI 共用的模型常量（单一事实源）。
@@ -140,7 +140,9 @@ export function buildStoryboardGenInput(args: {
       if ([1, 2, 3, 4].includes(payload.fluxNumImages as number)) sizing.fluxNumImages = payload.fluxNumImages;
     }
   } else if (model.startsWith("poyo_")) {
-    sizing.imageSize = resolveImageParam(model, "imageSize", generic.imageSize);
+    // 统一比例（aspectFieldsFor 写进 poyoAspectRatio）在模型接受时升级为 imageSize——
+    // 否则被强制填的默认 imageSize 在服务端 size=imageSize??poyoAspectRatio 遮蔽，比例失效。
+    sizing.imageSize = resolvePoyoImageSize(model, generic.imageSize, generic.poyoAspectRatio);
     sizing.imageResolution = resolveImageParam(model, "imageResolution", generic.imageResolution);
     sizing.imageN = resolveImageParam(model, "imageN", generic.imageN);
     sizing.imageOutputFormat = resolveImageParam(model, "imageOutputFormat", generic.imageOutputFormat);

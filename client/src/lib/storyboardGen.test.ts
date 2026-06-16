@@ -1,6 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { buildStoryboardGenInput } from "./storyboardGen";
+import { resolvePoyoImageSize } from "./paramDefs";
 import type { StoryboardNodeData } from "../../../shared/types";
+
+describe("resolvePoyoImageSize（poyo 尺寸/比例解析优先级）", () => {
+  it("用户显式 imageSize 最高优先", () => {
+    expect(resolvePoyoImageSize("poyo_flux", "1:1", "9:16")).toBe("1:1");
+  });
+  it("无显式值 + 统一比例在模型选项内 → 采用统一比例", () => {
+    expect(resolvePoyoImageSize("poyo_flux", undefined, "9:16")).toBe("9:16");
+  });
+  it("统一比例不在模型选项内（WAN token 模型）→ 回退模型默认", () => {
+    expect(resolvePoyoImageSize("poyo_wan_image", undefined, "9:16")).toBe("1024x1024");
+  });
+  it("既无显式值也无统一比例 → 模型默认", () => {
+    expect(resolvePoyoImageSize("poyo_flux", undefined, undefined)).toBe("16:9");
+  });
+});
 
 const N = (id: string, nodeType: string, payload: unknown, title?: string) => ({ id, data: { nodeType, payload, title }, position: { x: 0, y: 0 } });
 
@@ -69,6 +85,19 @@ describe("buildStoryboardGenInput（分镜生图组装器）", () => {
     const soul = buildStoryboardGenInput({ id: "sb", payload: { ...base, imageModel: "hf_soul_standard" as StoryboardNodeData["imageModel"], batchSize: 4 }, nodes: [], edges: [] });
     expect(soul.count).toBe(4);
     expect(soul.input.batchSize).toBe(4);
+  });
+
+  it("poyo 分镜：统一比例（poyoAspectRatio）升级为 imageSize，不再被默认遮蔽", () => {
+    // poyo_flux 的 imageSize 选项含比例串 → 统一比例 9:16 应成为 imageSize（而非默认 16:9）。
+    const p = { ...base, imageModel: "poyo_flux" as StoryboardNodeData["imageModel"], poyoAspectRatio: "9:16" } as StoryboardNodeData;
+    const r = buildStoryboardGenInput({ id: "sb", payload: p, nodes: [], edges: [] });
+    expect(r.input.imageSize).toBe("9:16");
+  });
+
+  it("poyo 分镜：WAN 只收 WxH token，统一比例不适用 → 回退默认尺寸", () => {
+    const p = { ...base, imageModel: "poyo_wan_image" as StoryboardNodeData["imageModel"], poyoAspectRatio: "9:16" } as StoryboardNodeData;
+    const r = buildStoryboardGenInput({ id: "sb", payload: p, nodes: [], edges: [] });
+    expect(r.input.imageSize).toBe("1024x1024"); // 默认 token，未被非法的 9:16 污染
   });
 
   it("@图像名 提及并入参考（与角色图去重合并）", () => {
