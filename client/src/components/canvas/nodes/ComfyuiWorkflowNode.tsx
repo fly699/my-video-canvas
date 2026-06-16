@@ -1630,12 +1630,19 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             ) : (
               /* Image grid */
               <div style={{ display: "grid", gridTemplateColumns: payload.outputUrls.length > 1 ? "1fr 1fr" : "1fr", gap: 6 }}>
-                {payload.outputUrls.map((url, i) => (
-                  <div key={i} className="nodrag" style={{ position: "relative", paddingTop: "100%", borderRadius: 8, overflow: "hidden", background: "var(--c-input)", cursor: "zoom-in" }} onClick={() => setLightboxIdx(i)} title="点击放大">
+                {payload.outputUrls.map((url, i) => {
+                  // 单张：按原图比例自适应高度（不留黑边）；多张网格：方块铺满裁切(cover，不留黑边)。
+                  const single = payload.outputUrls!.length === 1;
+                  return (
+                  <div key={i} className="nodrag" style={single
+                    ? { position: "relative", borderRadius: 8, overflow: "hidden", background: "var(--c-input)", cursor: "zoom-in" }
+                    : { position: "relative", paddingTop: "100%", borderRadius: 8, overflow: "hidden", background: "var(--c-input)", cursor: "zoom-in" }} onClick={() => setLightboxIdx(i)} title="点击放大">
                     <MediaImage
                       src={url}
                       alt={`Output ${i + 1}`}
-                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }}
+                      style={single
+                        ? { width: "100%", height: "auto", display: "block" }
+                        : { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
                     />
                     {/* MinIO storage indicator (ComfyUI outputs are hard-locked to MinIO) */}
                     {isOwnStorageUrl(url) && (
@@ -1651,7 +1658,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                       </a>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
