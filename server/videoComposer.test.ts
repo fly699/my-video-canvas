@@ -216,17 +216,29 @@ describe("buildFilterGraph (single-pass composer)", () => {
   });
 
   it("buildEditorASS emits positioned, faded CJK-capable dialogue", () => {
-    const clips: TextInput[] = [{ start: 1, end: 3, text: { content: "中文字幕", size: 60, color: "#ffff00", motionStyle: "fade" }, x: 0.1, y: 0.8 }];
+    const clips: TextInput[] = [{ start: 1, end: 3, text: { content: "中文字幕", size: 60, color: "#ffff00", motionStyle: "fade", align: "left" }, x: 0.1, y: 0.8 }];
     const ass = buildEditorASS(clips, { width: 1920, height: 1080 });
     expect(ass).toContain("PlayResX: 1920");
-    expect(ass).toContain("\\pos(192,864)"); // 0.1*1920, 0.8*1080
+    expect(ass).toContain("\\an7\\pos(192,864)"); // 左对齐：锚点=框左缘 0.1*1920, 0.8*1080
     expect(ass).toContain("\\fs60");
     expect(ass).toContain("\\fad(300,300)");
     expect(ass).toContain("中文字幕");
   });
 
+  it("buildEditorASS 文字对齐：左/中/右 → \\an7/8/9 + 盒模型锚点（与预览一致）", () => {
+    const mk = (align: "left" | "center" | "right" | undefined) =>
+      buildEditorASS([{ start: 0, end: 2, text: { content: "对齐", size: 48, align }, x: 0.1, y: 0.8, boxW: 0.4 }], { width: 1920, height: 1080 });
+    // 左：锚点=框左缘 0.1 → 192；\an7
+    expect(mk("left")).toContain("\\an7\\pos(192,864)");
+    // 中（也是默认）：锚点=框中心 0.1+0.4/2=0.3 → 576；\an8
+    expect(mk("center")).toContain("\\an8\\pos(576,864)");
+    expect(mk(undefined)).toContain("\\an8\\pos(576,864)"); // 缺省=居中，与预览默认一致
+    // 右：锚点=框右缘 0.1+0.4=0.5 → 960；\an9
+    expect(mk("right")).toContain("\\an9\\pos(960,864)");
+  });
+
   it("buildEditorASS 文字入场动效：滑入(\\move+\\fad)/弹入(\\fscx\\t)/滚动(\\move 全屏)", () => {
-    const mk = (m: string) => buildEditorASS([{ start: 1, end: 3, text: { content: "字", size: 60, motionStyle: m as never }, x: 0.1, y: 0.8 }], { width: 1920, height: 1080 });
+    const mk = (m: string) => buildEditorASS([{ start: 1, end: 3, text: { content: "字", size: 60, motionStyle: m as never, align: "left" }, x: 0.1, y: 0.8 }], { width: 1920, height: 1080 });
     // off = round(1080*0.06)=65 → 上滑入从 864+65=929 归位到 864
     expect(mk("slideup")).toContain("\\move(192,929,192,864,0,350)");
     expect(mk("slideup")).toContain("\\fad(350,0)");
@@ -609,8 +621,8 @@ describe("打字机字幕（typewriter，逐字 \\alpha 显现）", () => {
     expect((s.match(/\\alpha&HFF&/g) || []).length).toBe(5);
   });
   it("buildEditorASS 用 typewriter 时正文走逐字块（且仍带定位/样式）", () => {
-    const ass = buildEditorASS([{ start: 0, end: 2, text: { content: "你好", size: 60, motionStyle: "typewriter" }, x: 0.1, y: 0.8 }], { width: 1920, height: 1080 });
-    expect(ass).toContain("\\pos(192,864)");
+    const ass = buildEditorASS([{ start: 0, end: 2, text: { content: "你好", size: 60, motionStyle: "typewriter", align: "left" }, x: 0.1, y: 0.8 }], { width: 1920, height: 1080 });
+    expect(ass).toContain("\\an7\\pos(192,864)");
     expect(ass).toContain("\\alpha&HFF&\\t(0,1,\\alpha&H00&)}你");
     expect(ass).not.toContain("\\fad"); // 打字机不淡入
   });
