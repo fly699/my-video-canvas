@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isAllowedExternalUrl, assertPublicUrl } from "./_core/ssrfGuard";
+import { isAllowedExternalUrl, assertPublicUrl, isCloudMetadataHost } from "./_core/ssrfGuard";
 
 describe("isAllowedExternalUrl — SSRF guard", () => {
   it("allows normal public https hosts", () => {
@@ -59,5 +59,25 @@ describe("assertPublicUrl — http(s) 下载点强守卫", () => {
     expect(blocked("file:///etc/passwd")).toBe(true);
     expect(blocked("gopher://x/")).toBe(true);
     expect(blocked("not a url")).toBe(true);
+  });
+});
+
+describe("isCloudMetadataHost — 仅拦云元数据端点（保留内网放行，供 ComfyUI 等用）", () => {
+  it("拦截 IMDS 的各种字面形式", () => {
+    for (const h of [
+      "169.254.169.254",        // AWS/GCP/Azure/Oracle/OpenStack IMDS（点分）
+      "2852039166",             // 169.254.169.254 的十进制整数形式
+      "0xa9fea9fe",             // 十六进制形式
+      "metadata.google.internal", "foo.metadata.google.internal",
+      "100.100.100.200",        // 阿里云
+      "fd00:ec2::254",          // AWS IPv6 IMDS
+    ]) expect(isCloudMetadataHost(h)).toBe(true);
+  });
+
+  it("放行普通内网/环回/公网主机（不破坏自建内网 ComfyUI）", () => {
+    for (const h of [
+      "127.0.0.1", "localhost", "10.0.0.5", "192.168.1.50", "172.16.0.9",
+      "comfy.lan", "example.com", "169.254.1.1", // 链路本地但非 IMDS → 仍放行
+    ]) expect(isCloudMetadataHost(h)).toBe(false);
   });
 });

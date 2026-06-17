@@ -11,6 +11,7 @@
 import type { Server as SocketIOServer } from "socket.io";
 import { storagePut, resolveToAbsoluteUrl, assertMinioOnlyWrite, isOwnStorageUrl, toInternalStoragePath } from "server/storage";
 import { assertSafeUrl } from "./videoEditor";
+import { isCloudMetadataHost } from "./ssrfGuard";
 import { ensureCrystoolsMonitor, getCrystoolsReading, getCrystoolsGpus } from "./comfyMonitor";
 import { convertUiWorkflowToApiPrompt } from "./comfyWorkflowConvert";
 import { buildControlMapWorkflow, CONTROL_MAP_PREPROCESSORS } from "./controlMapWorkflow";
@@ -66,6 +67,13 @@ function normalizeBaseUrl(raw: string): string {
   // should not require credentials; if they do, use a reverse proxy with token auth.
   if (url.username || url.password) {
     throw new Error("ComfyUI URL 不允许包含用户名/密码（user:pass@host）");
+  }
+  // Internal/private ComfyUI hosts are allowed by design (see header note), but the
+  // cloud instance-metadata service is NOT a ComfyUI server — it only leaks instance
+  // credentials. A普通登录用户能任意填 baseUrl，故必须拒绝 IMDS 端点（含十进制/十六进制
+  // 等绕过写法），否则即为带回显的云凭证窃取 SSRF。其余内网地址仍放行。
+  if (isCloudMetadataHost(url.hostname)) {
+    throw new Error("ComfyUI URL 不允许指向云元数据端点");
   }
   // Strip trailing slash for consistent path joining.
   return url.origin + url.pathname.replace(/\/+$/, "");
