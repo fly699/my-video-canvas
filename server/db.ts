@@ -101,6 +101,19 @@ import {
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
 
+/** True for a MySQL duplicate-key violation (ER_DUP_ENTRY / errno 1062), raised when
+ *  an INSERT hits a UNIQUE index — used to turn unique-constraint races into
+ *  get-or-create instead of a 500. drizzle wraps driver errors in DrizzleQueryError,
+ *  so walk the `.cause` chain (the real mysql2 error carries code/errno). */
+export function isDupEntryError(e: unknown): boolean {
+  let cur = e as { code?: string; errno?: number; cause?: unknown } | null | undefined;
+  for (let depth = 0; cur && depth < 5; depth++) {
+    if (cur.code === "ER_DUP_ENTRY" || cur.errno === 1062) return true;
+    cur = cur.cause as typeof cur;
+  }
+  return false;
+}
+
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
@@ -466,6 +479,19 @@ export async function upsertCollaborator(data: InsertProjectCollaborator) {
       })
       .where(eq(projectCollaborators.id, existing.id));
     const rows = await db.select().from(projectCollaborators).where(eq(projectCollaborators.id, existing.id));
+    return rows[0];
+  }
+  // No existing row was seen — but a CONCURRENT accept could insert the same
+  // (projectId, userId) between our SELECT and this INSERT. The unique index
+  // `project_collab_project_user_uniq` (migration 0057) turns that race into an
+  // upsert instead of a phantom duplicate row / 500. Only userId-keyed rows carry
+  // the unique constraint (pending email rows have userId=NULL → multiple allowed),
+  // so the email-only path keeps the plain insert.
+  if (data.userId != null) {
+    await db.insert(projectCollaborators).values(data)
+      .onDuplicateKeyUpdate({ set: { role: data.role, status: data.status ?? "active", email: data.email ?? sql`email` } });
+    const rows = await db.select().from(projectCollaborators)
+      .where(and(eq(projectCollaborators.projectId, data.projectId), eq(projectCollaborators.userId, data.userId)));
     return rows[0];
   }
   const [header] = await db.insert(projectCollaborators).values(data);
@@ -1047,10 +1073,22 @@ export async function consumeDownloadGrant(grantId: number, userId: number, stor
 export async function createVideoTask(data: InsertVideoTask) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devCreateVideoTask(data); throw new Error("DB unavailable"); }
-  const [header] = await db.insert(videoTasks).values(data);
-  const insertId = (header as unknown as { insertId: number }).insertId;
-  const rows = await db.select().from(videoTasks).where(eq(videoTasks.id, insertId));
-  return rows[0] ?? null;
+  try {
+    const [header] = await db.insert(videoTasks).values(data);
+    const insertId = (header as unknown as { insertId: number }).insertId;
+    const rows = await db.select().from(videoTasks).where(eq(videoTasks.id, insertId));
+    return rows[0] ?? null;
+  } catch (e) {
+    // The in-flight unique index `video_tasks_inflight_uniq` (migration 0058)
+    // rejected a concurrent/cross-user/multi-process duplicate in-flight task for
+    // the same (projectId, nodeId). Collapse to the existing in-flight row so we
+    // never submit — and charge — the upstream provider twice (get-or-create).
+    if (isDupEntryError(e)) {
+      const existing = await findInFlightVideoTask(data.projectId, data.nodeId);
+      if (existing) return existing;
+    }
+    throw e;
+  }
 }
 
 export async function getVideoTask(id: number) {

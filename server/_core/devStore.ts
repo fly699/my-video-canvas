@@ -274,6 +274,10 @@ export function devCreateVideoTask(data: InsertVideoTask): VideoTask {
     params: (data.params as VideoTask["params"]) ?? null,
     createdAt: now(),
     updatedAt: now(),
+    // Mirrors the DB stored generated column (migration 0058): the in-flight natural
+    // key, NULL once finished. Dev mode is single-process so the router's dedupe +
+    // devFindInFlightVideoTask already guard duplicates; this just keeps the shape.
+    inflightKey: (data.status ?? "pending") === "pending" || data.status === "processing" ? `${data.projectId}-${data.nodeId}` : null,
   };
   videoTasksMap.set(id, task);
   return task;
