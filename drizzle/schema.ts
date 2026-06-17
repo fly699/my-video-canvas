@@ -186,7 +186,16 @@ export const assets = mysqlTable("assets", {
   nodeId: varchar("nodeId", { length: 64 }),        // canvas node that produced it (if any)
   deletedAt: timestamp("deletedAt"),                // soft delete: hidden from user, file kept in MinIO
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  // One asset row per (userId, storageKey). recordGeneratedAsset is invoked from both
+  // the video poller and the request path for the same completed generation, so a
+  // SELECT-then-INSERT race could create duplicate library rows. storageKey is TEXT,
+  // so the index uses a 255-char prefix (storage keys embed a random uuid and are far
+  // shorter than that, so the prefix is effectively the full key). Maintained by
+  // migration 0059. NOTE: prefix indexes can't be conditional on deletedAt — fine here
+  // because keys are unique per generation, so the same key is never re-recorded.
+  userStorageKeyUniq: uniqueIndex("assets_user_storagekey_uniq").on(t.userId, sql`\`storageKey\`(255)`),
+}));
 
 export type Asset = typeof assets.$inferSelect;
 export type InsertAsset = typeof assets.$inferInsert;

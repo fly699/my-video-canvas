@@ -896,7 +896,10 @@ export async function recordGeneratedAsset(a: {
       nodeId: a.nodeId ?? null,
     } as InsertAsset);
   } catch (err) {
-    console.error("[recordGeneratedAsset] non-fatal:", err);
+    // The (userId, storageKey) unique index (migration 0059) rejects a concurrent
+    // duplicate record of the same generation — exactly the no-dup outcome we want,
+    // so a dup-key error here is expected and silent. Anything else stays a warning.
+    if (!isDupEntryError(err)) console.error("[recordGeneratedAsset] non-fatal:", err);
   }
 }
 
@@ -1628,8 +1631,16 @@ export async function bindKieUser(keyId: number, userId: number, note: string | 
   }
   const existing = await db.select({ id: kieKeyBindings.id }).from(kieKeyBindings).where(and(eq(kieKeyBindings.keyId, keyId), eq(kieKeyBindings.userId, userId))).limit(1);
   if (existing.length) return null;
-  const [res] = await db.insert(kieKeyBindings).values({ keyId, userId, note: note ?? undefined, createdBy: createdBy ?? undefined });
-  return { id: (res as { insertId?: number }).insertId ?? 0 };
+  try {
+    const [res] = await db.insert(kieKeyBindings).values({ keyId, userId, note: note ?? undefined, createdBy: createdBy ?? undefined });
+    return { id: (res as { insertId?: number }).insertId ?? 0 };
+  } catch (e) {
+    // Concurrent bind of the same (keyId, userId): the `keyUserUniq` index rejected the
+    // second insert. Report it as the same "already bound" outcome (null) the SELECT
+    // above returns, not a 500.
+    if (isDupEntryError(e)) return null;
+    throw e;
+  }
 }
 
 export async function setKieBindingEnabled(bindingId: number, enabled: boolean): Promise<boolean> {
@@ -2138,10 +2149,21 @@ export async function getOrCreateDownloadChannel(): Promise<ChatConversation> {
 export async function createConversation(data: InsertChatConversation): Promise<ChatConversation> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devCreateConversation(data); throw new Error("DB unavailable"); }
-  const [header] = await db.insert(chatConversations).values(data);
-  const insertId = (header as unknown as { insertId: number }).insertId;
-  const rows = await db.select().from(chatConversations).where(eq(chatConversations.id, insertId)).limit(1);
-  return rows[0]!;
+  try {
+    const [header] = await db.insert(chatConversations).values(data);
+    const insertId = (header as unknown as { insertId: number }).insertId;
+    const rows = await db.select().from(chatConversations).where(eq(chatConversations.id, insertId)).limit(1);
+    return rows[0]!;
+  } catch (e) {
+    // Concurrent first-create of a dmKey-unique conversation (DM / download channel /
+    // assistant): the `chat_conv_dmkey_uniq` index rejected our insert. Return the row
+    // the sibling created instead of surfacing a 500.
+    if (isDupEntryError(e) && data.dmKey) {
+      const existing = await getConversationByDmKey(data.dmKey);
+      if (existing) return existing;
+    }
+    throw e;
+  }
 }
 
 export async function getConversationById(id: number): Promise<ChatConversation | undefined> {
