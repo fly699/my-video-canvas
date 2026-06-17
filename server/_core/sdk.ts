@@ -228,6 +228,15 @@ class SDKServer {
         return null;
       }
 
+      // Cross-app token-reuse guard (defense-in-depth for shared JWT_SECRET):
+      // reject a token that carries a DIFFERENT non-empty appId than this
+      // deployment's. Only enforced when BOTH sides are non-empty, so legacy /
+      // no-VITE_APP_ID email-auth sessions (empty appId) are never locked out.
+      if (isNonEmptyString(appId) && ENV.appId && appId !== ENV.appId) {
+        console.warn("[Auth] Session appId mismatch — rejecting cross-app token");
+        return null;
+      }
+
       return {
         openId,
         appId: typeof appId === "string" ? appId : "",
