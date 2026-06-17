@@ -42,9 +42,19 @@ async function pollMockTask(externalTaskId: string, createdAt: Date): Promise<Po
 export function setupVideoTaskPoller(io: SocketIOServer) {
   const POLL_INTERVAL = 10_000; // 10 seconds
   const MAX_TRANSIENT_ERRORS = 10; // after this many consecutive errors, mark task failed
+  // A `processing` task with no externalTaskId means submit's DB write never
+  // landed (crash / transient failure mid-submit) — it can NEVER complete and
+  // would otherwise occupy a getPendingVideoTasks slot forever (and, once enough
+  // accumulate past the 200 cap, starve fresh pending tasks). Reclaim it as failed
+  // after a grace period far beyond the microsecond claim→save window so we never
+  // race a normal in-progress submit.
+  const STUCK_TASK_MS = 10 * 60_000; // 10 minutes
   const pollErrorCounts = new Map<number, number>();
+  let running = false; // reentrancy guard: a slow cycle must not overlap the next
 
   const poll = async () => {
+    if (running) return; // previous cycle (many tasks / video re-hosting) still in flight
+    running = true;
     try {
       const tasks = await getPendingVideoTasks();
 
@@ -147,7 +157,20 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
           }
 
           // ── Poll status ──────────────────────────────────────────────────
-          if (!task.externalTaskId) continue;
+          if (!task.externalTaskId) {
+            // Reclaim a permanently-stuck task (submit DB write never landed) so
+            // it stops occupying a poll slot. Grace period guards the normal
+            // claim→save window. (See STUCK_TASK_MS.)
+            if (Date.now() - task.createdAt.getTime() > STUCK_TASK_MS) {
+              await updateVideoTask(task.id, {
+                status: "failed",
+                errorMessage: "提交未完成（处理超时，已回收），请重试",
+              }).catch(() => { /* best-effort */ });
+              auditVideoTaskResult(task, false, "stuck 'processing' without externalTaskId — reclaimed");
+              pollErrorCounts.delete(task.id);
+            }
+            continue;
+          }
 
           if (isPoyoVideoProvider(task.provider)) {
             // Poyo.ai status check
@@ -267,6 +290,8 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
       }
     } catch (err) {
       console.error("[VideoPoller] Poll cycle error:", err);
+    } finally {
+      running = false;
     }
   };
 

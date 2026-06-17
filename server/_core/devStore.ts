@@ -135,6 +135,10 @@ export function devUpsertNode(data: InsertCanvasNode) {
 export function devDeleteNode(id: string, projectId: number) {
   const n = nodesMap.get(id);
   if (n && n.projectId === projectId) nodesMap.delete(id);
+  // Cascade-delete referencing edges (mirrors prod deleteNode — no orphan edges).
+  Array.from(edgesMap.values())
+    .filter((e) => e.projectId === projectId && (e.sourceNodeId === id || e.targetNodeId === id))
+    .forEach((e) => edgesMap.delete(e.id));
 }
 
 // ── Canvas Edges ──────────────────────────────────────────────────────────────
@@ -270,6 +274,10 @@ export function devCreateVideoTask(data: InsertVideoTask): VideoTask {
     params: (data.params as VideoTask["params"]) ?? null,
     createdAt: now(),
     updatedAt: now(),
+    // Mirrors the DB stored generated column (migration 0058): the in-flight natural
+    // key, NULL once finished. Dev mode is single-process so the router's dedupe +
+    // devFindInFlightVideoTask already guard duplicates; this just keeps the shape.
+    inflightKey: (data.status ?? "pending") === "pending" || data.status === "processing" ? `${data.projectId}-${data.nodeId}` : null,
   };
   videoTasksMap.set(id, task);
   return task;
@@ -417,14 +425,18 @@ export function devUpsertCollaborator(data: InsertProjectCollaborator): ProjectC
   return created;
 }
 
-export function devUpdateCollaboratorRole(id: number, role: "viewer" | "editor" | "admin") {
+export function devUpdateCollaboratorRole(id: number, projectId: number, role: "viewer" | "editor" | "admin"): boolean {
   const c = collaboratorsMap.get(id);
-  if (!c) return;
+  if (!c || c.projectId !== projectId) return false; // projectId scope mirrors prod (IDOR guard)
   collaboratorsMap.set(id, { ...c, role, updatedAt: now() });
+  return true;
 }
 
-export function devRemoveCollaborator(id: number) {
+export function devRemoveCollaborator(id: number, projectId: number): boolean {
+  const c = collaboratorsMap.get(id);
+  if (!c || c.projectId !== projectId) return false;
   collaboratorsMap.delete(id);
+  return true;
 }
 
 export function devClaimPendingCollaboratorsByEmail(email: string, userId: number) {
@@ -490,10 +502,18 @@ export function devConsumeShareLink(id: number): boolean {
   return true;
 }
 
-export function devRevokeShareLink(id: number) {
+export function devRefundShareLink(id: number): boolean {
   const l = shareLinksMap.get(id);
-  if (!l) return;
+  if (!l || l.usesCount <= 0) return false;
+  shareLinksMap.set(id, { ...l, usesCount: l.usesCount - 1 });
+  return true;
+}
+
+export function devRevokeShareLink(id: number, projectId: number): boolean {
+  const l = shareLinksMap.get(id);
+  if (!l || l.projectId !== projectId) return false; // projectId scope mirrors prod (IDOR guard)
   shareLinksMap.set(id, { ...l, revokedAt: now() });
+  return true;
 }
 
 // ── LAN Chat (dev) ───────────────────────────────────────────────────────────

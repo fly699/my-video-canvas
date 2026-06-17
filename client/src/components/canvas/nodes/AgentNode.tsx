@@ -160,7 +160,11 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   // Render the prefs into a constraint block the agent must follow.
   const buildPrefsText = (): string | undefined => {
     const lines: string[] = [];
-    if (planPrefs.imageFirst) lines.push("- 【强制·先生图再生视频】每个视频镜头必须走图生视频管线：为该镜头先建一个 image_gen 图像节点（把镜头画面描述作为它的 prompt），再建 video_task 视频节点，并连接 image_gen → video_task，让生成的静帧作为视频首帧。严禁让 storyboard/prompt/script 直接连到 video_task 做文生视频。");
+    // 仅 ComfyUI 模式禁用 image_gen（catalog 会过滤掉），此处必须改用 comfyui_workflow 出图，
+    // 否则会与 comfyOnly 约束「只能用 comfyui_workflow、禁止 image_gen」自相矛盾、误导 LLM。
+    if (planPrefs.imageFirst) lines.push(comfyOnly
+      ? "- 【强制·先生图再生视频】每个视频镜头必须图生视频：先建一个出图的 comfyui_workflow 节点（用识别到的出图模板，把镜头画面描述作为 prompt），再建图生视频节点并把出图节点连到它，严禁文生视频直连。"
+      : "- 【强制·先生图再生视频】每个视频镜头必须走图生视频管线：为该镜头先建一个 image_gen 图像节点（把镜头画面描述作为它的 prompt），再建 video_task 视频节点，并连接 image_gen → video_task，让生成的静帧作为视频首帧。严禁让 storyboard/prompt/script 直接连到 video_task 做文生视频。");
     if (planPrefs.addMusic) lines.push("- 自动添加 audio 配乐节点并连入 merge 合并节点。");
     if (planPrefs.addSubtitle) lines.push("- 自动添加 subtitle 字幕节点（接在视频/合并之后）。");
     if (planPrefs.aspect) lines.push(`- 画面比例统一为 ${planPrefs.aspect}。`);

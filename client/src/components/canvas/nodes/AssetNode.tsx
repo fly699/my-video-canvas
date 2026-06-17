@@ -6,6 +6,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { safeHref } from "@/lib/safeUrl";
 import { mediaFetchUrl } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { MediaImage } from "../MediaImage";
@@ -116,7 +117,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
               {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
             </button>
             <a
-              href={payload.url}
+              href={safeHref(payload.url)}
               target="_blank"
               rel="noopener noreferrer"
               className="nodrag w-6 h-6 rounded-md flex items-center justify-center"
@@ -181,7 +182,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
             style={{ width: 8, height: 8, borderRadius: "50%", background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2px oklch(0.72 0.18 155 / 0.35)", flexShrink: 0 }}
           />
         )}
-        <a href={payload.url} target="_blank" rel="noopener noreferrer" className="nodrag">
+        <a href={safeHref(payload.url)} target="_blank" rel="noopener noreferrer" className="nodrag">
           <ExternalLink className="w-3.5 h-3.5" style={{ color: "var(--c-t4)" }} />
         </a>
       </div>

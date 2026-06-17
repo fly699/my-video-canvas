@@ -73,7 +73,7 @@ const clipSchema = z.object({
   fit: z.enum(["contain", "cover", "stretch", "blur", "none"]).optional(),
   text: z.object({
     content: z.string().max(2000),
-    font: z.string().max(64).optional(), size: z.number().optional(),
+    font: z.string().max(64).optional(), size: z.number().min(1).max(2000).optional(),
     color: z.string().max(32).optional(), bgColor: z.string().max(32).optional(),
     motionStyle: z.string().max(32).optional(),
     bold: z.boolean().optional(), italic: z.boolean().optional(),

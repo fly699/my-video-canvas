@@ -554,6 +554,12 @@ export const assetsRouter = router({
       } catch (err) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "无法下载该链接：" + (err instanceof Error ? err.message : String(err)) });
       }
+      // SSRF: re-validate the POST-redirect URL. `redirect: "follow"` may have
+      // landed on a private/loopback host that the initial guardUrl(input.url)
+      // couldn't see (a public URL 302-ing to 169.254.169.254 / 内网). Block
+      // before reading the body so an internal response can't be exfiltrated
+      // into the asset library. Mirrors imageProxy/videoProxy's re-check.
+      if (res.url) guardUrl(res.url);
       if (!res.ok || !res.body) throw new TRPCError({ code: "BAD_REQUEST", message: `下载失败 (HTTP ${res.status})` });
       // Stream with a hard size cap.
       const reader = res.body.getReader();
@@ -683,28 +689,37 @@ export const videoTasksRouter = router({
           }
         : baseParams;
 
-      // Idempotency: if this node already has a pending/processing task, return it
-      // instead of creating a new one. Prevents double-charges when the client is
-      // bypassed (devtools, scripts, retried requests) — the in-app flow already
-      // guards against this client-side, but server enforcement is the last line
-      // of defence for paid external API calls.
-      const existing = await findInFlightVideoTask(input.projectId, input.nodeId);
-      if (existing) {
-        return existing;
-      }
-
-      // Create DB record first so the task is tracked even if provider submission fails
-      const task = await createVideoTask({
-        userId: ctx.user.id,
-        projectId: input.projectId,
-        nodeId: input.nodeId,
-        provider: input.provider,
-        prompt: input.prompt,
-        negativePrompt: input.negativePrompt,
-        referenceImageUrl: refList[0] ?? input.referenceImageUrl,
-        params: mergedParams,
-        status: "pending",
-      });
+      // Idempotency + concurrent-create guard for a node's in-flight video task.
+      // findInFlightVideoTask handles the SEQUENTIAL duplicate (a task already
+      // pending/processing → reuse it). But two CONCURRENT requests for the same
+      // node can both pass that check before either INSERTs — the table has no
+      // unique (projectId,nodeId) in-flight constraint — yielding two rows that
+      // each get claimed & submitted upstream → real double charge. dedupe (keyed
+      // ONLY on projectId+nodeId, never on display fields like estimatedCost so
+      // the merge can't be bypassed) collapses the get-or-create into ONE shared
+      // row; the per-row claim-lock below then admits exactly one provider submit.
+      const { task, preexisting } = await dedupe(
+        "videoCreateRow", ctx.user.id,
+        { projectId: input.projectId, nodeId: input.nodeId },
+        async () => {
+          const existing = await findInFlightVideoTask(input.projectId, input.nodeId);
+          if (existing) return { task: existing, preexisting: true as const };
+          // Create DB record first so the task is tracked even if submission fails.
+          const created = await createVideoTask({
+            userId: ctx.user.id,
+            projectId: input.projectId,
+            nodeId: input.nodeId,
+            provider: input.provider,
+            prompt: input.prompt,
+            negativePrompt: input.negativePrompt,
+            referenceImageUrl: refList[0] ?? input.referenceImageUrl,
+            params: mergedParams,
+            status: "pending" as const,
+          });
+          return { task: created, preexisting: false as const };
+        },
+      );
+      if (preexisting) return task;
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
 
       // ── Submit to external provider ──────────────────────────────────────────
@@ -1134,7 +1149,7 @@ export const imageGenRouter = router({
   generate: protectedProcedure
     .input(
       z.object({
-        prompt: z.string().min(1),
+        prompt: z.string().min(1).max(8000), // bound to avoid unbounded payloads (char-injected prompts stay well under)
         negativePrompt: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         // Multi-angle reference images (first mirrors referenceImageUrl). Edit/
@@ -2314,7 +2329,7 @@ export const audioGenRouter = router({
           // Legacy aliases — normalized below
           "suno-v3.5", "minimax-music-02", "mureka",
         ]),
-        prompt: z.string().min(1),
+        prompt: z.string().min(1).max(5000), // align with dubbing/sfx; was unbounded
         style: z.string().optional(),
         title: z.string().max(120).optional(),     // Suno custom-mode title
         instrumental: z.boolean().optional(),
@@ -2685,6 +2700,7 @@ export const clipRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg, no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.inputUrl);
       if (input.audioUrl) guardUrl(input.audioUrl);
       for (const t of input.audioTracks ?? []) guardUrl(t.url);
@@ -2697,6 +2713,7 @@ export const clipRouter = router({
     .input(z.object({ inputUrl: mediaUrlSchema, time: z.number().min(0), projectId: z.number().optional(), nodeId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg, no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.inputUrl);
       const result = await extractFrame(input);
       await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "image", name: "剪辑封面帧" });
@@ -2724,6 +2741,7 @@ export const clipRouter = router({
       nodeId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await assertWhitelisted(ctx);
       guardUrl(input.inputUrl);
       return dedupe("clip.smartCut", ctx.user.id, input, async () => {
@@ -2835,6 +2853,7 @@ export const mergeRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg, no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       for (const url of input.inputUrls) guardUrl(url);
       if (input.bgMusicUrl) guardUrl(input.bgMusicUrl);
       for (const v of input.voiceUrls ?? []) if (v) guardUrl(v);
@@ -2892,6 +2911,7 @@ export const subtitleRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg, no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.videoUrl);
       const result = await burnSubtitles(input.videoUrl, input.entries as SubtitleEntry[], {
         fontSize: input.fontSize,
@@ -2940,6 +2960,7 @@ export const subtitleMotionRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg (ASS burn), no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.videoUrl);
       return dedupe("subtitleMotion.burnMotion", ctx.user.id, input, async () => {
         const result = await burnAssSubtitles(
@@ -3008,6 +3029,7 @@ export const overlayRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg (overlay/水印/调色), no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.inputUrl);
       if (input.overlayImageUrl) guardUrl(input.overlayImageUrl);
       if (input.pipVideoUrl) guardUrl(input.pipVideoUrl);

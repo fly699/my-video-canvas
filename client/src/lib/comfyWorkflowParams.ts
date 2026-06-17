@@ -530,7 +530,10 @@ const RECOGNIZED_ASPECTS = new Set([
  *  纯函数，无副作用；用于让自定义工作流节点「响应提示词里写的画面比例」。 */
 export function parseAspectRatioFromText(text: string | undefined): string | undefined {
   if (!text) return undefined;
-  const re = /(\d{1,2})\s*[:：]\s*(\d{1,2})/g;
+  // Digit boundaries (?<!\d) … (?!\d) so a longer number like "216:9" or "1216:9"
+  // isn't sliced into a bogus "16:9". Resolutions like "1920:1080" already fail
+  // the whitelist, but "2xx:y" / "xx1x:y" would otherwise mis-match.
+  const re = /(?<!\d)(\d{1,2})\s*[:：]\s*(\d{1,2})(?!\d)/g;
   let best: string | undefined;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {

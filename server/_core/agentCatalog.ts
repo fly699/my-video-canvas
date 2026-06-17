@@ -139,6 +139,8 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "templateId", type: "number", desc: "引用「已分析的 ComfyUI 模板」中的模板 id" },
       { name: "prompt", type: "string", desc: "正向提示词（写入模板的 positive 角色参数）" },
       { name: "negPrompt", type: "string", desc: "反向提示词（写入 negative 角色参数）" },
+      { name: "aspectRatio", type: "string", desc: "画面比例，如 16:9 / 9:16（配合 overrideRatioSize 覆盖工作流 latent 尺寸）" },
+      { name: "overrideRatioSize", type: "boolean", desc: "true 时按 aspectRatio 覆盖工作流出图尺寸（保留面积、/64 对齐）" },
     ],
   },
   {

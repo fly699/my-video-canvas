@@ -27,6 +27,7 @@
  */
 import { ENV } from "./env";
 import { resolveToAbsoluteUrl, toInternalStoragePath, isOwnStorageUrl } from "../storage";
+import { assertPublicUrl } from "./ssrfGuard";
 
 export type TranscribeOptions = {
   audioUrl: string; // URL to the audio file (e.g., S3 URL)
@@ -103,21 +104,23 @@ export async function transcribeAudio(
       audioUrl = await resolveToAbsoluteUrl(internal);
     } else if (!isOwnStorageUrl(audioUrl)) {
       try {
-        const { protocol, hostname } = new URL(audioUrl);
-        // URL.hostname wraps IPv6 in brackets (e.g. "[::1]") — strip them before matching.
-        const host = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
-        const privatePatterns = [/^localhost$/i, /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^::1$/, /^::ffff:/i, /^0\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, /^f[cd][0-9a-f]{2}:/i, /^fe[89ab][0-9a-f]:/i];
-        if ((protocol !== "https:" && protocol !== "http:") || privatePatterns.some((p) => p.test(host))) {
-          return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Private or non-HTTP URLs are not allowed" };
-        }
+        // Strong shared guard (covers integer/hex IPv4 the old regex missed).
+        assertPublicUrl(audioUrl);
       } catch {
         return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Could not parse URL" };
       }
     }
+    const wasExternal = !internal && !isOwnStorageUrl(options.audioUrl);
     let audioBuffer: Buffer;
     let mimeType: string;
     try {
       const response = await fetch(audioUrl);
+      // SSRF: re-validate post-redirect URL — internal responses transcribed back
+      // to the user are a direct exfiltration channel.
+      if (wasExternal && response.url) {
+        try { assertPublicUrl(response.url); }
+        catch { return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Redirect to private host blocked" }; }
+      }
       if (!response.ok) {
         return {
           error: "Failed to download audio file",

@@ -181,10 +181,36 @@ async function startServer() {
     const projectRoles = new Map<number, "viewer" | "editor" | "admin" | "owner">();
     const unsubscribeBus = collabBus.onRoleInvalidated(({ projectId, userId }) => {
       if (userId != null && userId !== user.id) return;
-      projectRoles.delete(projectId);
-      // Best-effort: tell the client to re-derive UI state. Client may
-      // refetch listMembers / projects.get to learn the new role.
-      socket.emit("role-invalidated", { projectId });
+      if (!projectRoles.has(projectId)) return; // this socket isn't in that project room
+      // Re-derive access instead of only clearing the cache:
+      //  - revoked (removed member / public-access turned off) → LEAVE the room,
+      //    otherwise the socket keeps receiving the project's realtime edit stream
+      //    after losing access (info leak);
+      //  - still a member → refresh the cached role. Bulk invalidations (userId
+      //    unset, e.g. someone ELSE's role changed) would otherwise clear the cache
+      //    and never refill it, silently dropping a still-valid editor's broadcasts
+      //    until reconnect.
+      void (async () => {
+        let access: Awaited<ReturnType<typeof getProjectAccess>>;
+        try { access = await getProjectAccess(projectId, user.id); }
+        catch { return; } // transient DB error → keep prior state (next event re-gates)
+        const room = `project:${projectId}`;
+        if (!access) {
+          projectRoles.delete(projectId);
+          socket.leave(room);
+          const lu = projectUsers.get(projectId);
+          lu?.delete(user.id);
+          if (lu && lu.size === 0) projectUsers.delete(projectId);
+          if (currentProjectId === projectId) currentProjectId = null;
+          socket.to(room).emit("collaboration-event", {
+            type: "user:leave", userId: user.id, userName: user.name ?? "", color: "", projectId, payload: {},
+          });
+        } else {
+          projectRoles.set(projectId, access.role);
+        }
+        // Tell the client to re-derive its UI state (refetch members / role).
+        socket.emit("role-invalidated", { projectId });
+      })();
     });
 
     // 管理员订阅 ComfyUI 压测进度房间（非管理员忽略）。

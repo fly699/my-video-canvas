@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, isNull, like, count, gte } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray, isNull, like, count, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -31,6 +31,7 @@ import {
   InsertAuditLog,
   InsertComfyUsageLog,
   InsertProjectCollaborator,
+  ProjectCollaborator,
   InsertProjectShareLink,
   lanChatRooms,
   lanChatMessages,
@@ -100,6 +101,19 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
+
+/** True for a MySQL duplicate-key violation (ER_DUP_ENTRY / errno 1062), raised when
+ *  an INSERT hits a UNIQUE index — used to turn unique-constraint races into
+ *  get-or-create instead of a 500. drizzle wraps driver errors in DrizzleQueryError,
+ *  so walk the `.cause` chain (the real mysql2 error carries code/errno). */
+export function isDupEntryError(e: unknown): boolean {
+  let cur = e as { code?: string; errno?: number; cause?: unknown } | null | undefined;
+  for (let depth = 0; cur && depth < 5; depth++) {
+    if (cur.code === "ER_DUP_ENTRY" || cur.errno === 1062) return true;
+    cur = cur.cause as typeof cur;
+  }
+  return false;
+}
 
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
@@ -446,9 +460,23 @@ export async function findCollaboratorByEmail(projectId: number, email: string) 
   return rows[0];
 }
 
-export async function upsertCollaborator(data: InsertProjectCollaborator) {
+/** Returns the resulting row plus `wasNew` = whether THIS call actually inserted a
+ *  brand-new collaborator (vs. updating/colliding with an existing one). Callers use
+ *  `wasNew` to decide whether a share-link slot should be consumed (so a concurrent
+ *  same-user accept can't burn two link uses for one membership). */
+export async function upsertCollaborator(
+  data: InsertProjectCollaborator,
+): Promise<{ row: ProjectCollaborator | undefined; wasNew: boolean }> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) return dev.devUpsertCollaborator(data); throw new Error("DB unavailable"); }
+  if (!db) {
+    if (DEV_MODE) {
+      const before = data.userId != null
+        ? dev.devFindCollaborator(data.projectId, data.userId)
+        : data.email != null ? dev.devFindCollaboratorByEmail(data.projectId, data.email) : undefined;
+      return { row: dev.devUpsertCollaborator(data), wasNew: !before };
+    }
+    throw new Error("DB unavailable");
+  }
   // Try userId first, fall back to email
   const existing = data.userId
     ? await findCollaboratorByUserId(data.projectId, data.userId)
@@ -466,24 +494,49 @@ export async function upsertCollaborator(data: InsertProjectCollaborator) {
       })
       .where(eq(projectCollaborators.id, existing.id));
     const rows = await db.select().from(projectCollaborators).where(eq(projectCollaborators.id, existing.id));
-    return rows[0];
+    return { row: rows[0], wasNew: false };
+  }
+  // No existing row was seen — but a CONCURRENT accept could insert the same
+  // (projectId, userId) between our SELECT and this INSERT. The unique index
+  // `project_collab_project_user_uniq` (migration 0057) turns that race into an
+  // upsert instead of a phantom duplicate row / 500. Only userId-keyed rows carry
+  // the unique constraint (pending email rows have userId=NULL → multiple allowed),
+  // so the email-only path keeps the plain insert.
+  if (data.userId != null) {
+    const [header] = await db.insert(projectCollaborators).values(data)
+      .onDuplicateKeyUpdate({ set: { role: data.role, status: data.status ?? "active", email: data.email ?? sql`email` } });
+    // MySQL affectedRows: 1 = inserted (new), 2 = updated an existing row, 0 = matched
+    // but unchanged. So only `=== 1` is a genuinely new membership — a concurrent
+    // sibling that lost the race sees 2/0 and reports wasNew=false.
+    const affected = (header as unknown as { affectedRows?: number })?.affectedRows ?? 0;
+    const rows = await db.select().from(projectCollaborators)
+      .where(and(eq(projectCollaborators.projectId, data.projectId), eq(projectCollaborators.userId, data.userId)));
+    return { row: rows[0], wasNew: affected === 1 };
   }
   const [header] = await db.insert(projectCollaborators).values(data);
   const insertId = (header as unknown as { insertId: number }).insertId;
   const rows = await db.select().from(projectCollaborators).where(eq(projectCollaborators.id, insertId));
-  return rows[0];
+  return { row: rows[0], wasNew: true };
 }
 
-export async function updateCollaboratorRole(id: number, role: "viewer" | "editor" | "admin") {
+// SECURITY: scope by projectId too — the caller only proves admin on `projectId`,
+// so a bare `WHERE id=?` would let an admin of project A mutate a collaborator
+// row belonging to project B (cross-tenant IDOR). Returns false when no row in
+// THIS project matched, so the router can reject instead of silently succeeding.
+export async function updateCollaboratorRole(id: number, projectId: number, role: "viewer" | "editor" | "admin"): Promise<boolean> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) { dev.devUpdateCollaboratorRole(id, role); return; } throw new Error("DB unavailable"); }
-  await db.update(projectCollaborators).set({ role }).where(eq(projectCollaborators.id, id));
+  if (!db) { if (DEV_MODE) return dev.devUpdateCollaboratorRole(id, projectId, role); throw new Error("DB unavailable"); }
+  const result = await db.update(projectCollaborators).set({ role })
+    .where(and(eq(projectCollaborators.id, id), eq(projectCollaborators.projectId, projectId)));
+  return ((result[0] as { affectedRows?: number })?.affectedRows ?? 0) > 0;
 }
 
-export async function removeCollaborator(id: number) {
+export async function removeCollaborator(id: number, projectId: number): Promise<boolean> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) { dev.devRemoveCollaborator(id); return; } throw new Error("DB unavailable"); }
-  await db.delete(projectCollaborators).where(eq(projectCollaborators.id, id));
+  if (!db) { if (DEV_MODE) return dev.devRemoveCollaborator(id, projectId); throw new Error("DB unavailable"); }
+  const result = await db.delete(projectCollaborators)
+    .where(and(eq(projectCollaborators.id, id), eq(projectCollaborators.projectId, projectId)));
+  return ((result[0] as { affectedRows?: number })?.affectedRows ?? 0) > 0;
 }
 
 /** Claim pending email invites for a user that just registered/logged in.
@@ -581,10 +634,37 @@ export async function consumeShareLink(id: number): Promise<boolean> {
   return header.affectedRows > 0;
 }
 
-export async function revokeShareLink(id: number) {
+/**
+ * Give back one slot previously taken by consumeShareLink. Used when a slot was
+ * consumed but no NEW membership resulted — e.g. a concurrent same-user accept
+ * raced us and the unique index collapsed our INSERT to a no-op. Clamped at >0 so
+ * it can never drive usesCount negative. Returns true if a slot was actually refunded.
+ */
+export async function refundShareLink(id: number): Promise<boolean> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) { dev.devRevokeShareLink(id); return; } throw new Error("DB unavailable"); }
-  await db.update(projectShareLinks).set({ revokedAt: new Date() }).where(eq(projectShareLinks.id, id));
+  if (!db) {
+    if (DEV_MODE) return dev.devRefundShareLink(id);
+    throw new Error("DB unavailable");
+  }
+  const result = await db
+    .update(projectShareLinks)
+    .set({ usesCount: sql`${projectShareLinks.usesCount} - 1` })
+    .where(and(
+      eq(projectShareLinks.id, id),
+      sql`${projectShareLinks.usesCount} > 0`,
+    ));
+  const header = (Array.isArray(result) ? result[0] : result) as { affectedRows?: number };
+  return (header?.affectedRows ?? 0) > 0;
+}
+
+// SECURITY: scope by projectId (see updateCollaboratorRole) — prevents an admin
+// of one project from revoking another project's share link by raw linkId.
+export async function revokeShareLink(id: number, projectId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devRevokeShareLink(id, projectId); throw new Error("DB unavailable"); }
+  const result = await db.update(projectShareLinks).set({ revokedAt: new Date() })
+    .where(and(eq(projectShareLinks.id, id), eq(projectShareLinks.projectId, projectId)));
+  return ((result[0] as { affectedRows?: number })?.affectedRows ?? 0) > 0;
 }
 
 /** Find a user by email (case-insensitive). Returns undefined if not found. */
@@ -623,6 +703,15 @@ export async function upsertNode(data: InsertCanvasNode) {
 export async function deleteNode(id: string, projectId: number): Promise<number> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteNode(id, projectId); return 1; } throw new Error("DB unavailable"); }
+  // Cascade-delete edges referencing this node. canvas_edges has no FK/ON DELETE
+  // cascade, and saveCanvas only ever UPSERTs edges (never diffs deletions), so
+  // without this a deleted node leaves orphan edge rows that edges.list revives
+  // (endpoint-less) on the next load. Runs first so a node-delete failure doesn't
+  // strand already-removed edges.
+  await db.delete(canvasEdges).where(and(
+    eq(canvasEdges.projectId, projectId),
+    or(eq(canvasEdges.sourceNodeId, id), eq(canvasEdges.targetNodeId, id)),
+  ));
   const [header] = await db.delete(canvasNodes).where(and(eq(canvasNodes.id, id), eq(canvasNodes.projectId, projectId)));
   return (header as unknown as { affectedRows?: number })?.affectedRows ?? 0;
 }
@@ -1026,10 +1115,22 @@ export async function consumeDownloadGrant(grantId: number, userId: number, stor
 export async function createVideoTask(data: InsertVideoTask) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devCreateVideoTask(data); throw new Error("DB unavailable"); }
-  const [header] = await db.insert(videoTasks).values(data);
-  const insertId = (header as unknown as { insertId: number }).insertId;
-  const rows = await db.select().from(videoTasks).where(eq(videoTasks.id, insertId));
-  return rows[0] ?? null;
+  try {
+    const [header] = await db.insert(videoTasks).values(data);
+    const insertId = (header as unknown as { insertId: number }).insertId;
+    const rows = await db.select().from(videoTasks).where(eq(videoTasks.id, insertId));
+    return rows[0] ?? null;
+  } catch (e) {
+    // The in-flight unique index `video_tasks_inflight_uniq` (migration 0058)
+    // rejected a concurrent/cross-user/multi-process duplicate in-flight task for
+    // the same (projectId, nodeId). Collapse to the existing in-flight row so we
+    // never submit — and charge — the upstream provider twice (get-or-create).
+    if (isDupEntryError(e)) {
+      const existing = await findInFlightVideoTask(data.projectId, data.nodeId);
+      if (existing) return existing;
+    }
+    throw e;
+  }
 }
 
 export async function getVideoTask(id: number) {
@@ -1126,6 +1227,11 @@ export async function getPendingVideoTasks() {
     .select()
     .from(videoTasks)
     .where(inArray(videoTasks.status, ["pending", "processing"]))
+    // Deterministic oldest-first (MySQL's default order is unspecified). Combined
+    // with the poller's stuck-task reclaim, the oldest permanently-stuck rows are
+    // seen and failed-out from the front each cycle, draining a backlog instead of
+    // letting it sit forever and crowd the 200-row window.
+    .orderBy(videoTasks.createdAt)
     .limit(200);
 }
 
@@ -2279,11 +2385,19 @@ export async function setChatSettings(patch: Partial<Pick<ChatSettingsRow, "serv
   return getChatSettings();
 }
 
+/** Only reveal a user's email back to the searcher when the query IS that exact full
+ *  email (they already know it — e.g. inviting by address). Substring/name matches get
+ *  email=null, so nobody can harvest全站邮箱(PII) by enumerating with partial queries. */
+export function redactSearchEmail<T extends { email: string | null }>(rows: T[], q: string): T[] {
+  const qExact = q.trim().toLowerCase();
+  return rows.map((u) => ({ ...u, email: u.email && u.email.toLowerCase() === qExact ? u.email : null }));
+}
+
 /** Search users by name/email for starting DMs or inviting (capped, excludes self). */
 export async function searchUsersForChat(q: string, excludeUserId: number, limit = 20): Promise<{ id: number; name: string | null; email: string | null }[]> {
   const db = await getDb();
   if (!db) {
-    if (DEV_MODE) return [{ id: 2, name: "Dev User 2", email: "dev2@localhost" }].filter((u) => u.id !== excludeUserId && (`${u.name}${u.email}`).toLowerCase().includes(q.toLowerCase()));
+    if (DEV_MODE) return redactSearchEmail([{ id: 2, name: "Dev User 2", email: "dev2@localhost" as string | null }].filter((u) => u.id !== excludeUserId && (`${u.name}${u.email}`).toLowerCase().includes(q.toLowerCase())), q);
     return [];
   }
   const like = "%" + q + "%";
@@ -2295,7 +2409,7 @@ export async function searchUsersForChat(q: string, excludeUserId: number, limit
       sql`${users.openId} <> ${ASSISTANT_OPEN_ID}`,
     ))
     .limit(limit);
-  return rows;
+  return redactSearchEmail(rows, q);
 }
 
 // ── Video Editor sessions ─────────────────────────────────────────────────────

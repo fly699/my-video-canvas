@@ -60,12 +60,23 @@ function write(store: Store): void {
   }
 }
 
-/** Drop transient/output fields and oversized strings (likely base64 data). */
+// URL-ish keys whose string value gets bound to an href/src somewhere downstream.
+// Imported template/canvas JSON is fully attacker-authored, so a `javascript:`/`data:`
+// value here could reach an <a href> and execute on click. Drop unsafe-protocol
+// values at ingestion (defense in depth alongside the render-time safeHref guard).
+const UNSAFE_URL_PROTO = /^\s*(javascript|data|vbscript|file|blob):/i;
+function isUrlKey(k: string): boolean {
+  return k === "url" || /url$/i.test(k); // url, *Url, *URL
+}
+
+/** Drop transient/output fields, oversized strings (likely base64 data), and any
+ *  URL-keyed field carrying an unsafe (script-capable) protocol. */
 export function sanitizeTemplatePayload(payload: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(payload ?? {})) {
     if (TRANSIENT_KEYS.has(k) || v === undefined) continue;
     if (typeof v === "string" && v.length > 8000) continue;
+    if (typeof v === "string" && isUrlKey(k) && UNSAFE_URL_PROTO.test(v)) continue;
     out[k] = v;
   }
   return out;

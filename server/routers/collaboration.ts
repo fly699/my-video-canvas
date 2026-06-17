@@ -15,6 +15,7 @@ import {
   getShareLinkByToken,
   getShareLinkById,
   consumeShareLink,
+  refundShareLink,
   revokeShareLink,
   findUserByEmail,
 } from "../db";
@@ -47,14 +48,29 @@ function parseShortCode(code: string): { id: number; prefix: string } | null {
 // input) can never orphan a pending invite.
 const emailSchema = z.string().email().max(320).transform((s) => s.trim().toLowerCase());
 
+// 邮箱是 PII：publicReadAccess 项目对「任意登录用户」授予 viewer（source="public"），
+// 若原样返回协作者整行，任何人打开公开项目即可收割全部协作者/受邀者邮箱。规则：
+//  1) 待激活邀请(pending)属管理信息，仅 owner/admin 可见——不向普通成员/公开访客暴露受邀人；
+//  2) 公开只读访客一律看不到成员邮箱（置 null）。真正的协作者维持原有展示。
+export function redactRosterFor<T extends { email: string | null; status: string }>(
+  role: string, source: string, rows: T[],
+): T[] {
+  const isManager = role === "owner" || role === "admin";
+  const isPublicViewer = source === "public";
+  return rows
+    .filter((r) => isManager || r.status === "active")
+    .map((r) => (isPublicViewer ? { ...r, email: null } : r));
+}
+
 export const collaborationRouter = router({
   // ── Member listing ───────────────────────────────────────────────────────
   listMembers: protectedProcedure
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
       // Any member can see the roster (so viewers know who else is collaborating)
-      await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
-      return listCollaborators(input.projectId);
+      const access = await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
+      const rows = await listCollaborators(input.projectId);
+      return redactRosterFor(access.role, access.source, rows);
     }),
 
   // ── Email invitation ─────────────────────────────────────────────────────
@@ -74,7 +90,7 @@ export const collaborationRouter = router({
       if (target && target.id === access.project.userId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "项目所有者无需邀请" });
       }
-      const row = await upsertCollaborator({
+      const { row } = await upsertCollaborator({
         projectId: input.projectId,
         userId: target?.id ?? null,
         email: input.email,
@@ -100,7 +116,8 @@ export const collaborationRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "admin");
-      await updateCollaboratorRole(input.memberId, input.role);
+      const ok = await updateCollaboratorRole(input.memberId, input.projectId, input.role);
+      if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "协作者不存在或不属于该项目" });
       writeAuditLog({ ctx, action: "collab:update_role", detail: input });
       // Invalidate any cached socket role for users in this project so a
       // demoted editor immediately loses mutating-event privileges.
@@ -116,7 +133,8 @@ export const collaborationRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "admin");
-      await removeCollaborator(input.memberId);
+      const ok = await removeCollaborator(input.memberId, input.projectId);
+      if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "协作者不存在或不属于该项目" });
       writeAuditLog({ ctx, action: "collab:remove", detail: input });
       collabBus.emitRoleInvalidated({ projectId: input.projectId });
       return { success: true };
@@ -131,7 +149,7 @@ export const collaborationRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "项目所有者不能离开自己的项目" });
       }
       const member = await findCollaboratorByUserId(input.projectId, ctx.user.id);
-      if (member) await removeCollaborator(member.id);
+      if (member) await removeCollaborator(member.id, input.projectId);
       writeAuditLog({ ctx, action: "collab:leave", detail: { projectId: input.projectId } });
       collabBus.emitRoleInvalidated({ projectId: input.projectId, userId: ctx.user.id });
       return { success: true };
@@ -210,7 +228,8 @@ export const collaborationRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "admin");
-      await revokeShareLink(input.linkId);
+      const ok = await revokeShareLink(input.linkId, input.projectId);
+      if (!ok) throw new TRPCError({ code: "NOT_FOUND", message: "分享链接不存在或不属于该项目" });
       writeAuditLog({ ctx, action: "collab:revoke_link", detail: input });
       return { success: true };
     }),
@@ -267,7 +286,7 @@ async function acceptLinkRow(
     throw new TRPCError({ code: "FORBIDDEN", message: "邀请链接已达使用上限" });
   }
 
-  await upsertCollaborator({
+  const { wasNew } = await upsertCollaborator({
     projectId: link.projectId,
     userId: ctx.user.id,
     email: ctx.user.email ?? null,
@@ -275,6 +294,14 @@ async function acceptLinkRow(
     invitedBy: link.createdBy,
     status: "active",
   });
+  // We reached consume() believing we were NOT a member (the owner/sufficient-role
+  // shortcuts above already returned). If the upsert nonetheless found the row
+  // already present (wasNew=false), a CONCURRENT same-user accept beat us in — we
+  // double-consumed a link slot for one membership. Refund ours so a double-click
+  // can't burn two uses. The role-upgrade case (existing!=null) keeps consuming.
+  if (!existing && !wasNew) {
+    await refundShareLink(link.id);
+  }
   writeAuditLog({ ctx, action: "collab:accept_link", detail: {
     projectId: link.projectId,
     linkId: link.id,

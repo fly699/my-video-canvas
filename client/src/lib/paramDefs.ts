@@ -91,3 +91,23 @@ export function resolveImageParam(model: string | undefined, key: string, persis
   const def = (IMAGE_MODEL_PARAMS[model] ?? []).find((d) => d.key === key);
   return def?.default ?? persisted;
 }
+
+// poyo 模型的「尺寸/比例」解析（修复「统一画面比例对 poyo 图像模型失效」）：
+// 优先级 = 用户在节点上显式选的 imageSize > 规划统一比例（仅当该模型的 imageSize 选项确实
+// 接受这个比例字符串时）> 模型默认。
+// 为什么需要：智能体/配方的统一比例此前只写进 legacy `poyoAspectRatio` 字段，而本函数的旧
+// 实现（resolveImageParam）总会把 `imageSize` 填成模型默认；服务端 `size = imageSize ?? poyoAspectRatio`
+// 永远取默认 imageSize，poyoAspectRatio 被彻底遮蔽 → 统一比例对 poyo 无效。
+// 模型感知是必须的：多数 poyo 模型的 imageSize 直接收 "16:9" 这类比例串，但 WAN 只收
+// "1024x1024" 这类 WxH token（塞 "9:16" 会被 poyo 拒），故仅当比例在该模型选项内才采用。
+export function resolvePoyoImageSize(model: string | undefined, persistedImageSize: unknown, unifiedAspect: unknown): unknown {
+  if (persistedImageSize !== undefined && persistedImageSize !== "") return persistedImageSize;
+  if (typeof unifiedAspect === "string" && unifiedAspect && model) {
+    const def = (IMAGE_MODEL_PARAMS[model] ?? []).find((d) => d.key === "imageSize");
+    if (def?.type === "select") {
+      const values = paramOptions(def).map((o) => o.value);
+      if (values.includes(unifiedAspect)) return unifiedAspect;
+    }
+  }
+  return resolveImageParam(model, "imageSize", persistedImageSize);
+}

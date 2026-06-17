@@ -106,7 +106,7 @@ export function buildRecipeOps(recipe: AgentRecipe, cfg: RecipeConfig): AgentOpe
     // 把配方画面比例透传给分镜节点。storyboardGen 按模型族读不同字段：kie→aspectRatio、
     // Poyo→poyoAspectRatio、V2/HF→reveAspectRatio。分镜默认模型可能是任一族，故三者都写
     // （各模型只读自己的字段、互不影响）；此前一个都没写，导致分镜无视配方比例按默认出图。
-    ops.push({ op: "create", nodeType: "storyboard", tempId: sb, title: `分镜${n}`, payload: { sceneNumber: n, description: desc, duration: cfg.durationEach, transition: recipe.defaults.shotTransition ?? "cut", ...aspectFieldsFor("storyboard", cfg.aspect) } });
+    ops.push({ op: "create", nodeType: "storyboard", tempId: sb, title: `分镜${n}`, payload: { sceneNumber: n, description: desc, duration: cfg.durationEach, transition: recipe.defaults.shotTransition ?? "cut", ...aspectFieldsFor("storyboard", cfg.aspect), ...(cfg.style?.trim() ? { colorTone: cfg.style.trim() } : {}) } });
     ops.push({ op: "connect", sourceRef: "script", targetRef: sb });
     // 分镜本身就是「生图工位」：镜头表批量生产会把关键帧生成在分镜上，批量生视频按
     // 「分镜→视频直连」找到该工位并把关键帧作首帧。因此 imageFirst（生图→再生视频）

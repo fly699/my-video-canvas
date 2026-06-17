@@ -140,6 +140,41 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(g.outV).toBe("[ob0]");
   });
 
+  it("animated PiP scale (scale keyframes) emits eval=frame AS THE LAST pixel filter (dimension-safe for overlay)", () => {
+    // overlay caches its input dims at config_props time, so ANY geometry/format
+    // filter after a per-frame `scale=...:eval=frame` freezes the PiP at its first
+    // frame → 推拉 silently static in export. Guard the verified ordering: the
+    // animated scale must come AFTER format=rgba and right before the timing setpts.
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const overlays: OverlayInput[] = [{
+      isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2,
+      transform: { x: 0.1, y: 0.1, scale: 0.2, opacity: 0.8 }, fadeIn: 0.4,
+      keyframes: [{ t: 0, scale: 0.2 }, { t: 2, scale: 0.6 }],
+    }];
+    const fc = buildFilterGraph(segs, OPTS, overlays).filterComplex;
+    const chain = fc.split(";").find((l) => l.includes("[ov0]"))!;
+    const scaleIdx = chain.indexOf(":eval=frame");
+    const fmtIdx = chain.indexOf("format=rgba");
+    const opacIdx = chain.indexOf("colorchannelmixer=aa=0.800");
+    const lastSetptsIdx = chain.lastIndexOf("setpts=PTS+"); // timeline-start shift
+    expect(scaleIdx).toBeGreaterThan(-1);
+    expect(scaleIdx).toBeGreaterThan(fmtIdx);   // scale AFTER format
+    expect(scaleIdx).toBeGreaterThan(opacIdx);  // scale AFTER opacity/fade
+    expect(scaleIdx).toBeLessThan(lastSetptsIdx); // but BEFORE the start-shift setpts
+    // only timing filters may follow the animated scale (fps/setpts), no pixel filters
+    const tail = chain.slice(scaleIdx).replace(/^[^,]*/, ""); // after the scale token
+    expect(tail).not.toMatch(/format=|hflip|vflip|colorchannelmixer|rotate=|crop=|overlay=/);
+  });
+
+  it("static PiP scale keeps scale BEFORE format (byte-identical to legacy order)", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const overlays: OverlayInput[] = [{ isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2, transform: { x: 0.1, y: 0.1, scale: 0.3 } }];
+    const chain = buildFilterGraph(segs, OPTS, overlays).filterComplex.split(";").find((l) => l.includes("[ov0]"))!;
+    expect(chain).toContain("scale=576:-2"); // static, no eval
+    expect(chain).not.toContain("eval=frame");
+    expect(chain.indexOf("scale=576")).toBeLessThan(chain.indexOf("format=rgba")); // legacy order preserved
+  });
+
   it("mixes audio-track clips with delay/volume/fades + the ass filter for text", () => {
     const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
     const audioClips: AudioInput[] = [{ trimIn: 0, trimOut: 4, speed: 1, start: 0.5, volume: 0.8, fadeIn: 0.5, fadeOut: 0.5 }];

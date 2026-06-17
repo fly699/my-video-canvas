@@ -173,6 +173,10 @@ export function registerEmailAuthRoutes(app: Express) {
 
   // 修改自己的密码（需登录，校验当前密码）。仅邮箱密码账号可用。
   app.post("/api/auth/change-password", async (req: Request, res: Response) => {
+    // Rate-limit like register/login — currentPassword is verified here, so an
+    // unthrottled endpoint allows online brute-force of the current password.
+    const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+    if (!checkRateLimit(ip)) { res.status(429).json({ error: "请求过于频繁，请稍后再试" }); return; }
     try {
       let user;
       try { user = await sdk.authenticateRequest(req); } catch { user = null; }
@@ -180,7 +184,8 @@ export function registerEmailAuthRoutes(app: Express) {
       if (user.disabled) { res.status(403).json({ error: "账号已被冻结" }); return; }
       const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
       if (!user.passwordHash) { res.status(400).json({ error: "当前账号非邮箱密码登录，无法修改密码" }); return; }
-      if (typeof newPassword !== "string" || newPassword.length < 6) { res.status(400).json({ error: "新密码至少 6 位" }); return; }
+      // Match the register policy (8) — was 6, weaker than account creation.
+      if (typeof newPassword !== "string" || newPassword.length < 8) { res.status(400).json({ error: "新密码至少 8 位" }); return; }
       const ok = await verifyPassword(typeof currentPassword === "string" ? currentPassword : "", user.passwordHash);
       if (!ok) { res.status(401).json({ error: "当前密码错误" }); return; }
       await db.upsertUser({ openId: user.openId, passwordHash: await hashPassword(newPassword) });

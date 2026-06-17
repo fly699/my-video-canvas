@@ -1,6 +1,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { storagePut, assertObjectStorageWritable, resolveToAbsoluteUrl, toInternalStoragePath, isOwnStorageUrl } from "../storage";
+import { assertPublicUrl } from "./ssrfGuard";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
 import * as path from "path";
@@ -51,30 +52,11 @@ export function execFileAsync(cmd: "ffmpeg" | "ffprobe", args: string[], opts?: 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Delegate to the shared strong guard (covers integer/hex IPv4 forms the old
+// dotted-only regexes missed, e.g. http://2130706433/). Kept as a named export so
+// existing call sites stay unchanged.
 export function assertSafeUrl(url: string): void {
-  const { protocol, hostname } = new URL(url);
-  if (protocol !== "https:" && protocol !== "http:") {
-    throw new Error(`Unsupported URL scheme: ${protocol}`);
-  }
-  // URL.hostname wraps IPv6 addresses in brackets (e.g. "[::1]") — strip them before pattern matching.
-  const host = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
-  const privatePatterns = [
-    /^localhost$/i,
-    /^127\./,
-    /^10\./,
-    /^172\.(1[6-9]|2\d|3[01])\./,
-    /^192\.168\./,
-    /^169\.254\./,
-    /^::1$/,
-    /^::ffff:/i,
-    /^0\./,
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // RFC 6598 CGNAT 100.64.0.0/10
-    /^f[cd][0-9a-f]{2}:/i,  // fc00::/7 ULA (fc and fd prefix)
-    /^fe[89ab][0-9a-f]:/i,  // fe80::/10 link-local
-  ];
-  if (privatePatterns.some((p) => p.test(host))) {
-    throw new Error(`Access to private/local hosts is not allowed: ${hostname}`);
-  }
+  assertPublicUrl(url);
 }
 
 export async function downloadToTemp(url: string, ext: string): Promise<string> {
@@ -94,6 +76,10 @@ export async function downloadToTemp(url: string, ext: string): Promise<string> 
   const tmpPath = path.join(os.tmpdir(), uniqueName);
 
   const res = await fetch(fetchUrl);
+  // SSRF: re-validate the post-redirect URL for externally-supplied inputs — a
+  // public URL can 302 to an internal host the initial guard couldn't see. (Skip
+  // for our own storage, whose presigned host is trusted.)
+  if (!internal && !isOwnStorageUrl(url) && res.url) assertSafeUrl(res.url);
   if (!res.ok) {
     throw new Error(`Failed to download ${url}: HTTP ${res.status} ${res.statusText}`);
   }

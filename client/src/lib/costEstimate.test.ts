@@ -82,6 +82,12 @@ describe("estimateImageCost", () => {
     expect(estimateImageCost("manus_forge", 1)?.credits).toBe(0);
     expect(estimateImageCost("hf_soul_standard", 4)).toBeNull();
   });
+  it("逐档计价：按分辨率档取价 × 张数；非法 count 钳到 1（两分支一致）", () => {
+    expect(estimateImageCost("kie_gpt_image_2", 2, { resolution: "2K" })).toEqual({ credits: 20, unit: "点", approx: false });
+    expect(estimateImageCost("kie_gpt_image_2", NaN, { resolution: "2K" })?.credits).toBe(10); // NaN → 1
+    expect(estimateImageCost("kie_gpt_image_2", 0, { resolution: "1K" })?.credits).toBe(6);    // 0 → 1
+    expect(estimateImageCost("kie_gpt_image_2", -3, { resolution: "4K" })?.credits).toBe(16);  // 负 → 1
+  });
 });
 
 describe("estimateMusicCost / estimateTtsCost", () => {

@@ -127,10 +127,13 @@ export const comfyOpsRouter = router({
 
   // ── Dashboard (read-only, whitelist-gated) ────────────────────────────────
   dashboard: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") await assertComfyuiAllowed(ctx);
+    const isAdmin = ctx.user.role === "admin";
+    if (!isAdmin) await assertComfyuiAllowed(ctx);
     const servers = await listOpsServers();
     const out = await Promise.all(servers.map(async (s) => {
-      const base = { id: s.id, name: s.name, deployForm: s.deployForm, enabled: s.enabled, comfyBaseUrl: s.comfyBaseUrl, sshHost: s.sshHost };
+      // sshHost 是内部基础设施标识（运维 SSH 主机/IP），仪表盘前端并不展示它，且本接口对
+      // 非管理员白名单用户开放——故仅管理员返回 sshHost，避免向普通用户泄露内网主机信息。
+      const base = { id: s.id, name: s.name, deployForm: s.deployForm, enabled: s.enabled, comfyBaseUrl: s.comfyBaseUrl, ...(isAdmin ? { sshHost: s.sshHost } : {}) };
       if (!s.comfyBaseUrl || !s.enabled) return { ...base, status: null };
       const status = await fetchComfyServerStatus(s.comfyBaseUrl).catch(() => null);
       return { ...base, status };
@@ -340,7 +343,7 @@ export const comfyOpsRouter = router({
   }),
 
   // ── Records & settings (admin only) ───────────────────────────────────────
-  records: adminProcedure.input(z.object({ serverId: z.number().int().optional(), limit: z.number().int().max(500).optional() })).query(({ input }) => listOpsRecords(input)),
+  records: adminProcedure.input(z.object({ serverId: z.number().int().optional(), limit: z.number().int().min(1).max(500).optional() })).query(({ input }) => listOpsRecords(input)),
 
   settings: router({
     get: adminProcedure.query(() => getOpsSettings()),

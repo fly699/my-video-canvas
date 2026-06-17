@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo } from "react";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { safeHref } from "@/lib/safeUrl";
 import { ZoomableImage } from "../ZoomableImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
@@ -179,7 +180,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
                   style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
               )}
             </div>
-            <a href={payload.outputImageUrl} target="_blank" rel="noreferrer"
+            <a href={safeHref(payload.outputImageUrl)} target="_blank" rel="noreferrer"
               className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
               style={{ background: accentA(0.08), border: `1px solid ${accentA(0.25)}`, color: accent, textDecoration: "none" }}>
               <Download style={{ width: 10, height: 10 }} /> 下载图像

@@ -142,11 +142,16 @@ export function registerGoogleAuthRoutes(app: Express) {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
-      const { sub, email, name } = profileResp.data;
+      const { sub, email: rawEmail, name, email_verified } = profileResp.data;
       if (!sub) {
         res.status(502).json({ error: "Google 用户信息缺少 sub" });
         return;
       }
+      // Only trust the email for identity when Google asserts it's verified. An
+      // unverified Google email could be attacker-set; trusting it would let them
+      // claim invitations addressed to that email and (with owner-by-email
+      // promotion) escalate. Unverified → treat as no email.
+      const email = email_verified === true ? rawEmail : null;
 
       const openId = `google:${sub}`;
       await db.upsertUser({

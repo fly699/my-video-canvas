@@ -9,6 +9,7 @@ import {
   Music, Upload, Mic, Loader2, Play, Pause, X, Volume2, Zap, Wind, HardDriveDownload, Languages, Sparkles,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
+import { safeHref } from "@/lib/safeUrl";
 import { mediaFetchUrl } from "@/lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { PromptDock } from "../PromptDock";
@@ -1464,7 +1465,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           {/* ElevenLabs V3 TTS timestamps.json download link */}
           {payload.ttsTimestampsUrl && (
             <a
-              href={payload.ttsTimestampsUrl}
+              href={safeHref(payload.ttsTimestampsUrl)}
               target="_blank"
               rel="noopener noreferrer"
               download

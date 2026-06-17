@@ -12,6 +12,7 @@ import {
   float,
   boolean,
 } from "drizzle-orm/mysql-core";
+import { sql } from "drizzle-orm";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -69,7 +70,12 @@ export const projectCollaborators = mysqlTable("project_collaborators", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (t) => ({
-  projectUserIdx: index("project_collab_project_user_idx").on(t.projectId, t.userId),
+  // UNIQUE (not plain index): a (projectId, userId) pair must be one row. Concurrent
+  // share-link accepts used to race past the app-level "already a member?" check and
+  // INSERT two collaborator rows (phantom roster entries + wasted link quota). Pending
+  // email invites have userId=NULL; MySQL allows multiple NULLs so they don't collide.
+  // Maintained by migration 0057 (replaces the old non-unique project_collab_project_user_idx).
+  projectUserUniq: uniqueIndex("project_collab_project_user_uniq").on(t.projectId, t.userId),
   emailIdx: index("project_collab_email_idx").on(t.email),
 }));
 
@@ -374,7 +380,20 @@ export const videoTasks = mysqlTable("video_tasks", {
   params: json("params"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+  // Stored generated column = the natural key of an IN-FLIGHT task (pending/processing):
+  // `projectId-nodeId`, else NULL when finished. With the unique index below it makes
+  // "at most one in-flight task per node" a DB invariant, so two concurrent/cross-user/
+  // multi-process submits can't both INSERT and double-charge the upstream provider.
+  // A finished task's key becomes NULL (MySQL allows multiple NULLs) → frees the node
+  // for a legitimate re-generation. Maintained by migration 0058.
+  inflightKey: varchar("inflightKey", { length: 96 })
+    .generatedAlwaysAs(
+      sql`(case when \`status\` in ('pending','processing') then concat(\`projectId\`,'-',\`nodeId\`) else null end)`,
+      { mode: "stored" },
+    ),
+}, (t) => ({
+  inflightUniq: uniqueIndex("video_tasks_inflight_uniq").on(t.inflightKey),
+}));
 
 export type VideoTask = typeof videoTasks.$inferSelect;
 export type InsertVideoTask = typeof videoTasks.$inferInsert;

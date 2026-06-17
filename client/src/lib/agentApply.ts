@@ -1,4 +1,4 @@
-import { useCanvasStore } from "../hooks/useCanvasStore";
+import { useCanvasStore, aspectToComfyWH } from "../hooks/useCanvasStore";
 import { NODE_CONFIGS } from "./nodeConfig";
 import { isConnectionValid } from "./connectionRules";
 import { charDisplayName, libraryOverlayByName, type CharacterImportMode } from "./characterConditioning";
@@ -76,10 +76,16 @@ export function injectFreeVramIntoOps(ops: AgentOperation[], enabled: boolean): 
 export function aspectFieldsFor(nodeType: NodeType, aspect: string): Record<string, unknown> {
   if (!aspect) return {};
   switch (nodeType) {
+    // storyboard 关键帧与 image_gen 走同一图像后端（generateImage）——按模型族读不同字段：
+    // kie→aspectRatio、poyo→poyoAspectRatio、Reve/Seedream/Flux→reveAspectRatio，故三者都写。
     case "storyboard": return { aspectRatio: aspect, poyoAspectRatio: aspect, reveAspectRatio: aspect };
-    case "image_gen": return { aspectRatio: aspect, reveAspectRatio: aspect };
+    case "image_gen": return { aspectRatio: aspect, poyoAspectRatio: aspect, reveAspectRatio: aspect };
     case "prompt": return { aspectRatio: aspect };
     case "comfyui_workflow": return { aspectRatio: aspect, overrideRatioSize: true };
+    // ComfyUI 图像/视频节点直接读 payload.width/height（无 aspectRatio 概念）——按比例换算成
+    // /64 对齐的生成尺寸，与「按镜头表批量装配」路径（aspectToComfyWH）一致，否则回退 512×512。
+    case "comfyui_image":
+    case "comfyui_video": return aspectToComfyWH(aspect);
     default: return {};
   }
 }
@@ -135,10 +141,25 @@ export function applyAgentOperations(
     }
   }
 
+  // Apply order: all `create` first (preserving their relative order), then the
+  // rest (connect/update/delete) in their original relative order. The LLM's op
+  // array isn't guaranteed to be topologically sorted — a connect/update that
+  // references a node created later in the array would otherwise resolve to an
+  // unknown id and be wrongly dropped. Each op keeps its ORIGINAL index for
+  // failure reporting. (Manual UI / recipes already emit create-first; this just
+  // hardens the LLM path.)
+  const ordered: Array<readonly [AgentOperation, number]> = [
+    ...ops.map((o, i) => [o, i] as const).filter(([o]) => o.op === "create"),
+    ...ops.map((o, i) => [o, i] as const).filter(([o]) => o.op !== "create"),
+  ];
+  // Seed with existing edges so a connect that duplicates an already-present edge
+  // (store.onConnect dedupes by source+target and silently no-ops) is not counted
+  // as a freshly established connection — keeps `res.connected` truthful.
+  const edgeKeys = new Set(store.edges.map((e) => `${e.source} ${e.target}`));
   // Whole plan = one undo step.
   store.runBatch(() => {
     let createdIdx = 0;
-    ops.forEach((op, index) => {
+    ordered.forEach(([op, index]) => {
       try {
         if (op.op === "create") {
           if (!op.nodeType) { fail(index, op, "缺少 nodeType"); return; }
@@ -158,9 +179,15 @@ export function applyAgentOperations(
             // rebuilds payload from the template and would otherwise drop them.
             const serverOverride = typeof payload.customBaseUrl === "string" ? payload.customBaseUrl : undefined;
             const freeVramOverride = payload.freeVramAfterRun === true;
+            // 画面比例（LLM 经 catalog 设的，或配方/opts.aspect fill 进来的）也要跨物化保留，
+            // 否则 ComfyuiWorkflowNode 拿不到 aspectRatio/overrideRatioSize、无法覆盖 latent 尺寸。
+            const aspectOverride = typeof payload.aspectRatio === "string" ? payload.aspectRatio : undefined;
+            const ratioSizeOverride = payload.overrideRatioSize === true;
             payload = materializeTemplate(tpl, String(payload.prompt ?? ""), String(payload.negPrompt ?? ""));
             if (serverOverride) payload.customBaseUrl = serverOverride;
             if (freeVramOverride) payload.freeVramAfterRun = true;
+            if (aspectOverride) payload.aspectRatio = aspectOverride;
+            if (ratioSizeOverride) payload.overrideRatioSize = true;
           }
           // 分镜兜底（实测 bug）：LLM/配方常把生成提示词整段写进 description（场景描述框），
           // promptText（提示词框）留空。批量生产本就按 promptText||description 回退——这里
@@ -228,10 +255,18 @@ export function applyAgentOperations(
           // build illegal pairings (e.g. merge → script).
           const st = typeById.get(source), tt = typeById.get(target);
           if (st && tt && !isConnectionValid(st, tt)) { fail(index, op, `不允许的连接：${st} → ${tt}`); return; }
+          const edgeKey = `${source} ${target}`;
+          const isNewEdge = !edgeKeys.has(edgeKey);
           store.onConnect({ source, target, sourceHandle: op.sourceHandle ?? "output", targetHandle: op.targetHandle ?? "input" });
-          res.touchedIds.push(target); // 补了输入连线的下游节点需要重跑
           op.status = "applied";
-          res.connected++;
+          // Only count + flag-for-rerun when an edge was actually added; a duplicate
+          // (source→target already wired) is a no-op in the store, so counting it
+          // would inflate `connected` and needlessly re-run the downstream node.
+          if (isNewEdge) {
+            edgeKeys.add(edgeKey);
+            res.touchedIds.push(target); // 补了输入连线的下游节点需要重跑
+            res.connected++;
+          }
         } else if (op.op === "update") {
           const target = resolve(op.targetRef);
           if (!target) { fail(index, op, `要更新的节点未找到（${op.targetRef}）`); return; }
