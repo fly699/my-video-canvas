@@ -175,6 +175,34 @@ describe("buildFilterGraph (single-pass composer)", () => {
     expect(chain.indexOf("scale=576")).toBeLessThan(chain.indexOf("format=rgba")); // legacy order preserved
   });
 
+  it("animated PiP opacity/rotation keyframes emit per-frame geq/rotate (verified on ffmpeg 6.1.1)", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const overlays: OverlayInput[] = [{
+      isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2,
+      transform: { x: 0.1, y: 0.1, scale: 0.3, opacity: 1, rotation: 0 },
+      keyframes: [{ t: 0, opacity: 0.2, rotation: 0 }, { t: 2, opacity: 1, rotation: 90 }],
+    }];
+    const chain = buildFilterGraph(segs, OPTS, overlays).filterComplex.split(";").find((l) => l.includes("[ov0]"))!;
+    // opacity → geq on the alpha plane, with the time var converted to geq's uppercase T
+    // (colorchannelmixer's aa takes no expression). No static colorchannelmixer in this case.
+    expect(chain).toMatch(/geq=.*a='clip\(.*\*alpha\(X,Y\)'/);
+    expect(chain).toContain("lt(T,"); // T, not lowercase t, inside geq
+    expect(chain).not.toContain("colorchannelmixer");
+    // rotation → per-frame rotate=a=expr with c=black@0 (c=none would freeze the angle)
+    expect(chain).toMatch(/rotate=a='if\(lt\(t,/);
+    expect(chain).toContain("c=black@0");
+    expect(chain).not.toContain("rotw(iw)"); // not the static expand-box form
+  });
+
+  it("static PiP opacity/rotation stay on the legacy filters (no regression)", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 4, speed: 1 }];
+    const overlays: OverlayInput[] = [{ isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2, transform: { x: 0.1, y: 0.1, scale: 0.3, opacity: 0.5, rotation: 30 } }];
+    const chain = buildFilterGraph(segs, OPTS, overlays).filterComplex.split(";").find((l) => l.includes("[ov0]"))!;
+    expect(chain).toContain("colorchannelmixer=aa=0.500"); // static opacity unchanged
+    expect(chain).toContain("c=none:ow=rotw(iw):oh=roth(ih)"); // static rotation unchanged
+    expect(chain).not.toContain("geq=");
+  });
+
   it("mixes audio-track clips with delay/volume/fades + the ass filter for text", () => {
     const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
     const audioClips: AudioInput[] = [{ trimIn: 0, trimOut: 4, speed: 1, start: 0.5, volume: 0.8, fadeIn: 0.5, fadeOut: 0.5 }];
