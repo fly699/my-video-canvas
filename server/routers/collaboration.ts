@@ -15,6 +15,7 @@ import {
   getShareLinkByToken,
   getShareLinkById,
   consumeShareLink,
+  refundShareLink,
   revokeShareLink,
   findUserByEmail,
 } from "../db";
@@ -89,7 +90,7 @@ export const collaborationRouter = router({
       if (target && target.id === access.project.userId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "项目所有者无需邀请" });
       }
-      const row = await upsertCollaborator({
+      const { row } = await upsertCollaborator({
         projectId: input.projectId,
         userId: target?.id ?? null,
         email: input.email,
@@ -285,7 +286,7 @@ async function acceptLinkRow(
     throw new TRPCError({ code: "FORBIDDEN", message: "邀请链接已达使用上限" });
   }
 
-  await upsertCollaborator({
+  const { wasNew } = await upsertCollaborator({
     projectId: link.projectId,
     userId: ctx.user.id,
     email: ctx.user.email ?? null,
@@ -293,6 +294,14 @@ async function acceptLinkRow(
     invitedBy: link.createdBy,
     status: "active",
   });
+  // We reached consume() believing we were NOT a member (the owner/sufficient-role
+  // shortcuts above already returned). If the upsert nonetheless found the row
+  // already present (wasNew=false), a CONCURRENT same-user accept beat us in — we
+  // double-consumed a link slot for one membership. Refund ours so a double-click
+  // can't burn two uses. The role-upgrade case (existing!=null) keeps consuming.
+  if (!existing && !wasNew) {
+    await refundShareLink(link.id);
+  }
   writeAuditLog({ ctx, action: "collab:accept_link", detail: {
     projectId: link.projectId,
     linkId: link.id,

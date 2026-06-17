@@ -502,6 +502,13 @@ export function devConsumeShareLink(id: number): boolean {
   return true;
 }
 
+export function devRefundShareLink(id: number): boolean {
+  const l = shareLinksMap.get(id);
+  if (!l || l.usesCount <= 0) return false;
+  shareLinksMap.set(id, { ...l, usesCount: l.usesCount - 1 });
+  return true;
+}
+
 export function devRevokeShareLink(id: number, projectId: number): boolean {
   const l = shareLinksMap.get(id);
   if (!l || l.projectId !== projectId) return false; // projectId scope mirrors prod (IDOR guard)

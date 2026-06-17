@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   devUpsertCollaborator, devUpdateCollaboratorRole, devRemoveCollaborator,
   devListCollaborators, devCreateShareLink, devRevokeShareLink, devListShareLinks,
+  devConsumeShareLink, devRefundShareLink, devFindCollaborator,
 } from "./_core/devStore";
 import { redactRosterFor } from "./routers/collaboration";
 
@@ -56,5 +57,42 @@ describe("listMembers 名册脱敏（PII 泄露回归）", () => {
   it("owner/admin：完整名册（含 pending 与邮箱）", () => {
     expect(redactRosterFor("owner", "owner", rows)).toHaveLength(2);
     expect(redactRosterFor("admin", "collaborator", rows).find((r) => r.status === "pending")?.email).toBe("pending@x.com");
+  });
+});
+
+describe("share-link 名额：同一用户并发双击只净扣 1（refund 回归）", () => {
+  // Mirrors acceptLinkRow accounting: each accept consumes a slot, then refunds it
+  // when the upsert was NOT a new membership (a concurrent same-user accept won the
+  // race). Without the refund, one user double-clicking would burn two link uses.
+  const upsertWithWasNew = (projectId: number, userId: number) => {
+    const before = devFindCollaborator(projectId, userId);
+    const row = devUpsertCollaborator({ projectId, userId, email: `u${userId}@x.com`, role: "viewer", invitedBy: 1, status: "active" });
+    return { row, wasNew: !before };
+  };
+
+  it("两次并发接受（maxUses=2）→ usesCount 净=1、协作者 1 行", () => {
+    const link = devCreateShareLink({ token: "tok-refund", projectId: 7000, role: "viewer", maxUses: 2, usesCount: 0, expiresAt: new Date(Date.now() + 86400_000), createdBy: 1 });
+    // 两个并发请求都先扣名额（各成功），再各自 upsert
+    expect(devConsumeShareLink(link.id)).toBe(true);
+    expect(devConsumeShareLink(link.id)).toBe(true);
+    const a = upsertWithWasNew(7000, 42);
+    const b = upsertWithWasNew(7000, 42);
+    if (!a.wasNew) devRefundShareLink(link.id);
+    if (!b.wasNew) devRefundShareLink(link.id);
+    expect([a.wasNew, b.wasNew]).toEqual([true, false]);
+    expect(devListShareLinks(7000).find((l) => l.id === link.id)!.usesCount).toBe(1); // 净扣 1
+    expect(devListCollaborators(7000).filter((c) => c.userId === 42)).toHaveLength(1);
+  });
+
+  it("正常单次接受仍扣 1；refund 不会把 usesCount 压到负数", () => {
+    const link = devCreateShareLink({ token: "tok-solo", projectId: 7001, role: "viewer", maxUses: 2, usesCount: 0, expiresAt: new Date(Date.now() + 86400_000), createdBy: 1 });
+    devConsumeShareLink(link.id);
+    const a = upsertWithWasNew(7001, 50);
+    if (!a.wasNew) devRefundShareLink(link.id);
+    expect(devListShareLinks(7001).find((l) => l.id === link.id)!.usesCount).toBe(1);
+    // 越界保护：usesCount 已是 1，连退两次也不会变负
+    expect(devRefundShareLink(link.id)).toBe(true);
+    expect(devRefundShareLink(link.id)).toBe(false);
+    expect(devListShareLinks(7001).find((l) => l.id === link.id)!.usesCount).toBe(0);
   });
 });

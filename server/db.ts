@@ -31,6 +31,7 @@ import {
   InsertAuditLog,
   InsertComfyUsageLog,
   InsertProjectCollaborator,
+  ProjectCollaborator,
   InsertProjectShareLink,
   lanChatRooms,
   lanChatMessages,
@@ -459,9 +460,23 @@ export async function findCollaboratorByEmail(projectId: number, email: string) 
   return rows[0];
 }
 
-export async function upsertCollaborator(data: InsertProjectCollaborator) {
+/** Returns the resulting row plus `wasNew` = whether THIS call actually inserted a
+ *  brand-new collaborator (vs. updating/colliding with an existing one). Callers use
+ *  `wasNew` to decide whether a share-link slot should be consumed (so a concurrent
+ *  same-user accept can't burn two link uses for one membership). */
+export async function upsertCollaborator(
+  data: InsertProjectCollaborator,
+): Promise<{ row: ProjectCollaborator | undefined; wasNew: boolean }> {
   const db = await getDb();
-  if (!db) { if (DEV_MODE) return dev.devUpsertCollaborator(data); throw new Error("DB unavailable"); }
+  if (!db) {
+    if (DEV_MODE) {
+      const before = data.userId != null
+        ? dev.devFindCollaborator(data.projectId, data.userId)
+        : data.email != null ? dev.devFindCollaboratorByEmail(data.projectId, data.email) : undefined;
+      return { row: dev.devUpsertCollaborator(data), wasNew: !before };
+    }
+    throw new Error("DB unavailable");
+  }
   // Try userId first, fall back to email
   const existing = data.userId
     ? await findCollaboratorByUserId(data.projectId, data.userId)
@@ -479,7 +494,7 @@ export async function upsertCollaborator(data: InsertProjectCollaborator) {
       })
       .where(eq(projectCollaborators.id, existing.id));
     const rows = await db.select().from(projectCollaborators).where(eq(projectCollaborators.id, existing.id));
-    return rows[0];
+    return { row: rows[0], wasNew: false };
   }
   // No existing row was seen — but a CONCURRENT accept could insert the same
   // (projectId, userId) between our SELECT and this INSERT. The unique index
@@ -488,16 +503,20 @@ export async function upsertCollaborator(data: InsertProjectCollaborator) {
   // the unique constraint (pending email rows have userId=NULL → multiple allowed),
   // so the email-only path keeps the plain insert.
   if (data.userId != null) {
-    await db.insert(projectCollaborators).values(data)
+    const [header] = await db.insert(projectCollaborators).values(data)
       .onDuplicateKeyUpdate({ set: { role: data.role, status: data.status ?? "active", email: data.email ?? sql`email` } });
+    // MySQL affectedRows: 1 = inserted (new), 2 = updated an existing row, 0 = matched
+    // but unchanged. So only `=== 1` is a genuinely new membership — a concurrent
+    // sibling that lost the race sees 2/0 and reports wasNew=false.
+    const affected = (header as unknown as { affectedRows?: number })?.affectedRows ?? 0;
     const rows = await db.select().from(projectCollaborators)
       .where(and(eq(projectCollaborators.projectId, data.projectId), eq(projectCollaborators.userId, data.userId)));
-    return rows[0];
+    return { row: rows[0], wasNew: affected === 1 };
   }
   const [header] = await db.insert(projectCollaborators).values(data);
   const insertId = (header as unknown as { insertId: number }).insertId;
   const rows = await db.select().from(projectCollaborators).where(eq(projectCollaborators.id, insertId));
-  return rows[0];
+  return { row: rows[0], wasNew: true };
 }
 
 // SECURITY: scope by projectId too — the caller only proves admin on `projectId`,
@@ -613,6 +632,29 @@ export async function consumeShareLink(id: number): Promise<boolean> {
     throw new Error("consumeShareLink: drizzle result missing affectedRows");
   }
   return header.affectedRows > 0;
+}
+
+/**
+ * Give back one slot previously taken by consumeShareLink. Used when a slot was
+ * consumed but no NEW membership resulted — e.g. a concurrent same-user accept
+ * raced us and the unique index collapsed our INSERT to a no-op. Clamped at >0 so
+ * it can never drive usesCount negative. Returns true if a slot was actually refunded.
+ */
+export async function refundShareLink(id: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) {
+    if (DEV_MODE) return dev.devRefundShareLink(id);
+    throw new Error("DB unavailable");
+  }
+  const result = await db
+    .update(projectShareLinks)
+    .set({ usesCount: sql`${projectShareLinks.usesCount} - 1` })
+    .where(and(
+      eq(projectShareLinks.id, id),
+      sql`${projectShareLinks.usesCount} > 0`,
+    ));
+  const header = (Array.isArray(result) ? result[0] : result) as { affectedRows?: number };
+  return (header?.affectedRows ?? 0) > 0;
 }
 
 // SECURITY: scope by projectId (see updateCollaboratorRole) — prevents an admin
