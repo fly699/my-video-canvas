@@ -93,6 +93,13 @@ export function buildAtempoFilters(speed: number): string[] {
   // atempo supports 0.5–2.0; chain multiple filters for values outside this range
   const filters: string[] = [];
 
+  // Guard: speed must be a finite positive number. speed=0 would make the `< 0.5`
+  // loop below spin forever (0/0.5=0), and a non-positive speed is meaningless for
+  // tempo. The editor API already clamps to [0.1, 8]; this is defense-in-depth so the
+  // shared helper can never hang regardless of caller.
+  if (!(speed > 0) || !Number.isFinite(speed)) return filters; // treat as 1× (no atempo)
+  speed = Math.min(speed, 256);
+
   if (speed < 0.5) {
     // e.g. speed=0.25 → atempo=0.5,atempo=0.5
     let remaining = speed;
@@ -607,7 +614,11 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       const cutAt = (i: number): { type: string; dur: number } => {
         const t = segTransitions?.[i] ?? (transition === "none" ? "none" : transition);
         if (t === "none") return { type: "fade", dur: 1 / 15 };
-        return { type: XFADE_MAP[t] ?? globalXfade, dur: td };
+        // 夹取转场时长 ≤ 相邻两段各自时长（transition i crossfades 段 i 与 i+1）。否则 xfade 会
+        // 超出短段帧数，使 offset 倒退、相邻转场重叠、短镜头被洗掉（实测 6.1.1：0.3s 段配 0.5s 转场
+        // → 中间帧变红蓝混合品红、绿段丢失）。与 composeTimeline 的 Math.min(td, curDur, dur) 同理。
+        const dur = Math.min(td, durations[i] ?? td, durations[i + 1] ?? td);
+        return { type: XFADE_MAP[t] ?? globalXfade, dur };
       };
       let filterStr = "";
       let lastLabel = "[0:v]";
