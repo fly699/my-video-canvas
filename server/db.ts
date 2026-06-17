@@ -2305,11 +2305,19 @@ export async function setChatSettings(patch: Partial<Pick<ChatSettingsRow, "serv
   return getChatSettings();
 }
 
+/** Only reveal a user's email back to the searcher when the query IS that exact full
+ *  email (they already know it — e.g. inviting by address). Substring/name matches get
+ *  email=null, so nobody can harvest全站邮箱(PII) by enumerating with partial queries. */
+export function redactSearchEmail<T extends { email: string | null }>(rows: T[], q: string): T[] {
+  const qExact = q.trim().toLowerCase();
+  return rows.map((u) => ({ ...u, email: u.email && u.email.toLowerCase() === qExact ? u.email : null }));
+}
+
 /** Search users by name/email for starting DMs or inviting (capped, excludes self). */
 export async function searchUsersForChat(q: string, excludeUserId: number, limit = 20): Promise<{ id: number; name: string | null; email: string | null }[]> {
   const db = await getDb();
   if (!db) {
-    if (DEV_MODE) return [{ id: 2, name: "Dev User 2", email: "dev2@localhost" }].filter((u) => u.id !== excludeUserId && (`${u.name}${u.email}`).toLowerCase().includes(q.toLowerCase()));
+    if (DEV_MODE) return redactSearchEmail([{ id: 2, name: "Dev User 2", email: "dev2@localhost" as string | null }].filter((u) => u.id !== excludeUserId && (`${u.name}${u.email}`).toLowerCase().includes(q.toLowerCase())), q);
     return [];
   }
   const like = "%" + q + "%";
@@ -2321,7 +2329,7 @@ export async function searchUsersForChat(q: string, excludeUserId: number, limit
       sql`${users.openId} <> ${ASSISTANT_OPEN_ID}`,
     ))
     .limit(limit);
-  return rows;
+  return redactSearchEmail(rows, q);
 }
 
 // ── Video Editor sessions ─────────────────────────────────────────────────────
