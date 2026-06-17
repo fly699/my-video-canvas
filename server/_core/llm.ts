@@ -223,7 +223,16 @@ const isGptModel = (model?: string) => !!model && /^gpt/i.test(model);
 const POYO_MODEL_IDS = new Set(["claude-sonnet-4-5-20250929"]);
 const routesToPoyo = (model?: string) => isGptModel(model) || (!!model && POYO_MODEL_IDS.has(model));
 
+// Built-in self-hosted model ids (keep in sync with client models.ts provider:"SelfHosted").
+// Used as the default SELF_HOSTED_LLM_MODELS so a deployer only has to set the URL.
+const DEFAULT_SELF_HOSTED_MODELS = ["Qwen3.6-35B-A3B-FP8"];
+const selfHostedModelIds = () => (ENV.selfHostedLlmModels.length ? ENV.selfHostedLlmModels : DEFAULT_SELF_HOSTED_MODELS);
+const isSelfHostedModel = (model?: string) => !!model && !!ENV.selfHostedLlmUrl.trim() && selfHostedModelIds().includes(model);
+
 const resolveApiUrl = (model?: string) => {
+  // Self-hosted OpenAI-compatible endpoint — only for its OWN model ids, so it never
+  // redirects Forge/Poyo/kie models. Takes priority over everything else.
+  if (isSelfHostedModel(model)) return `${ENV.selfHostedLlmUrl.replace(/\/$/, "")}/v1/chat/completions`;
   // Poyo-routed models (GPT-*, Poyo Claude) → Poyo API when key is available
   if (ENV.poyoApiKey && routesToPoyo(model)) return "https://api.poyo.ai/v1/chat/completions";
   // Other models (Gemini, Claude Sonnet 4.6 / Haiku, etc.) → Forge/Manus API
@@ -235,6 +244,9 @@ const resolveApiUrl = (model?: string) => {
 };
 
 const getApiKey = (model?: string) => {
+  // Self-hosted endpoint: its own key (may be empty for no-auth vLLM/Ollama; send a
+  // placeholder so the Authorization header is well-formed and ignored by the server).
+  if (isSelfHostedModel(model)) return ENV.selfHostedLlmKey || "sk-local-noauth";
   if (ENV.poyoApiKey && routesToPoyo(model)) return ENV.poyoApiKey;
   // When a custom forge URL is configured, require the forge key — don't fall through to poyoApiKey
   // which would send the wrong credentials to the custom proxy.

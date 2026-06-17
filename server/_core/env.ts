@@ -18,6 +18,15 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // Self-hosted OpenAI-compatible LLM endpoint (vLLM / Ollama / LM Studio / TGI …).
+  // Routes ONLY the model ids in SELF_HOSTED_LLM_MODELS (comma list; defaults to the
+  // built-in self-hosted entries) to `${URL}/v1/chat/completions`, so it coexists with
+  // Forge/Poyo/kie without redirecting their models. KEY may be empty for no-auth
+  // servers. Internal addresses are fine (server-configured, trusted).
+  // e.g. SELF_HOSTED_LLM_URL=http://172.16.0.10:8000
+  selfHostedLlmUrl: process.env.SELF_HOSTED_LLM_URL ?? "",
+  selfHostedLlmKey: process.env.SELF_HOSTED_LLM_KEY ?? "",
+  selfHostedLlmModels: (process.env.SELF_HOSTED_LLM_MODELS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   // Self-hosted S3-compatible storage (MinIO / Cloudflare R2 / AWS S3).
   // When S3_ENDPOINT + S3_BUCKET + keys are set, this takes precedence over Forge.
   // For MinIO set S3_ENDPOINT=http://127.0.0.1:9000 and S3_FORCE_PATH_STYLE=true.

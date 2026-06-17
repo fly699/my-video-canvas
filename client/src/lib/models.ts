@@ -18,9 +18,9 @@ export type LLMModelMeta = {
   id: string;
   label: string;
   short: string;       // compact chip label
-  family: "Gemini" | "Claude" | "GPT";
+  family: "Gemini" | "Claude" | "GPT" | "Qwen";
   tag: string;
-  provider: "Forge" | "Poyo" | "Kie"; // upstream API the model is served by
+  provider: "Forge" | "Poyo" | "Kie" | "SelfHosted"; // upstream API the model is served by
   color: string;
   costTier: "低" | "中" | "高";
   /** 点数标注（kie 模型用真实价格，单位：点/百万tokens，入/出）。docs/kie-pricing.md。
@@ -34,6 +34,9 @@ export type LLMModelMeta = {
 };
 
 export const LLM_MODELS: readonly LLMModelMeta[] = [
+  // Self-hosted (OpenAI-compatible endpoint, e.g. vLLM). Server routes these by id to
+  // SELF_HOSTED_LLM_URL — set that env var (e.g. http://172.16.0.10:8000) to enable.
+  { id: "Qwen3.6-35B-A3B-FP8", label: "Qwen3.6 35B（自建）", short: "Qwen", family: "Qwen", tag: "自建", provider: "SelfHosted", color: "oklch(0.70 0.16 200)", costTier: "低" },
   // Gemini (Google) — routed to Forge
   { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低", vision: true },
   // No longer served by the upstream gateway (returns unknown-model). Hidden from
