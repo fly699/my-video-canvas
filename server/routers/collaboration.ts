@@ -47,14 +47,29 @@ function parseShortCode(code: string): { id: number; prefix: string } | null {
 // input) can never orphan a pending invite.
 const emailSchema = z.string().email().max(320).transform((s) => s.trim().toLowerCase());
 
+// 邮箱是 PII：publicReadAccess 项目对「任意登录用户」授予 viewer（source="public"），
+// 若原样返回协作者整行，任何人打开公开项目即可收割全部协作者/受邀者邮箱。规则：
+//  1) 待激活邀请(pending)属管理信息，仅 owner/admin 可见——不向普通成员/公开访客暴露受邀人；
+//  2) 公开只读访客一律看不到成员邮箱（置 null）。真正的协作者维持原有展示。
+export function redactRosterFor<T extends { email: string | null; status: string }>(
+  role: string, source: string, rows: T[],
+): T[] {
+  const isManager = role === "owner" || role === "admin";
+  const isPublicViewer = source === "public";
+  return rows
+    .filter((r) => isManager || r.status === "active")
+    .map((r) => (isPublicViewer ? { ...r, email: null } : r));
+}
+
 export const collaborationRouter = router({
   // ── Member listing ───────────────────────────────────────────────────────
   listMembers: protectedProcedure
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
       // Any member can see the roster (so viewers know who else is collaborating)
-      await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
-      return listCollaborators(input.projectId);
+      const access = await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
+      const rows = await listCollaborators(input.projectId);
+      return redactRosterFor(access.role, access.source, rows);
     }),
 
   // ── Email invitation ─────────────────────────────────────────────────────

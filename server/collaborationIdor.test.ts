@@ -3,6 +3,7 @@ import {
   devUpsertCollaborator, devUpdateCollaboratorRole, devRemoveCollaborator,
   devListCollaborators, devCreateShareLink, devRevokeShareLink, devListShareLinks,
 } from "./_core/devStore";
+import { redactRosterFor } from "./routers/collaboration";
 
 // Regression for the cross-tenant IDOR: collaborator-role/remove/share-revoke
 // helpers must scope mutations by projectId, not just the row id. An admin who
@@ -34,5 +35,26 @@ describe("协作操作 projectId 归属约束（IDOR 回归）", () => {
     expect(devListShareLinks(1005).find((l) => l.id === link.id)!.revokedAt).toBeFalsy(); // not revoked
     expect(devRevokeShareLink(link.id, 1005)).toBe(true);
     expect(devListShareLinks(1005).find((l) => l.id === link.id)!.revokedAt).toBeTruthy();
+  });
+});
+
+describe("listMembers 名册脱敏（PII 泄露回归）", () => {
+  const rows = [
+    { id: 1, email: "owner@x.com" as string | null, status: "active" },
+    { id: 2, email: "pending@x.com" as string | null, status: "pending" },
+  ];
+  it("公开只读访客：看不到任何邮箱，且看不到待激活邀请", () => {
+    const out = redactRosterFor("viewer", "public", rows);
+    expect(out).toHaveLength(1); // pending 被隐藏
+    expect(out[0].email).toBeNull(); // active 邮箱被置空
+  });
+  it("普通协作者(viewer/editor)：保留 active 邮箱，但隐藏待激活邀请", () => {
+    const out = redactRosterFor("editor", "collaborator", rows);
+    expect(out).toHaveLength(1);
+    expect(out[0].email).toBe("owner@x.com");
+  });
+  it("owner/admin：完整名册（含 pending 与邮箱）", () => {
+    expect(redactRosterFor("owner", "owner", rows)).toHaveLength(2);
+    expect(redactRosterFor("admin", "collaborator", rows).find((r) => r.status === "pending")?.email).toBe("pending@x.com");
   });
 });
