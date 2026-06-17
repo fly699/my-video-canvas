@@ -1,6 +1,7 @@
 import { invokeLLM, type InvokeParams, type InvokeResult } from "./llm";
 import { isKieLLMModel } from "./kieLLM";
 import { resolveKieKey } from "./kie";
+import { assertLLMAllowed } from "./whitelist";
 import type { TrpcContext } from "./context";
 
 /**
@@ -20,5 +21,11 @@ export async function invokeLLMWithKie(ctx: TrpcContext, params: InvokeParams, t
     const r = await resolveKieKey(ctx, tempKey ?? null); // throwing：含三种 key 优先级 + 各自权限门控
     return invokeLLM({ ...params, kieApiKey: r.key });
   }
+  // 非 kie 模型走平台自有 env key——invokeLLM 只校验 env key 是否存在，不做用户白名单。
+  // 故必须在此补 LLM 白名单门控，否则非白名单用户只要传一个非 kie 模型 id，即可绕过管理员
+  // 开启的白名单、白嫖平台公用 LLM（enhance/translate/分镜/看图等近 20 个入口都经此包装）。
+  // 与 chat.ts 既有范式 `if(!isKieLLMModel) assertLLMAllowed` 一致，收敛到唯一包装处覆盖全部入口。
+  // 仅当使用平台 key（kieApiKey 未显式提供）时门控；显式自带 key 的调用不在此列。
+  if (params.kieApiKey === undefined) await assertLLMAllowed(ctx);
   return invokeLLM(params);
 }
