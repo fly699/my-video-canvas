@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Paperclip, ImageIcon, FileText, X, PictureInPicture2, ChevronsRight, GripHorizontal, Download, Layers, Slash } from "lucide-react";
 import { CHAT_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
+import { safeHref } from "@/lib/safeUrl";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
@@ -1235,7 +1236,7 @@ function AttachmentChip({ att }: { att: ChatAttachment }) {
   if (att.type === "image") {
     return (
       <a
-        href={att.url}
+        href={safeHref(att.url)}
         target="_blank"
         rel="noreferrer"
         className="block rounded overflow-hidden"
