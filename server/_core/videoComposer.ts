@@ -640,7 +640,13 @@ export function buildFilterGraph(
     const scaleW = Math.max(2, Math.round((o.transform?.scale ?? 0.4) * w));
     // PiP 缩放动画：有 scale 关键帧时逐帧缩放（clip-local 时基，在位移前），否则静态。
     const sExpr = buildKeyframeExpr(keyframePoints(o.keyframes, "scale", 0, (v) => Math.max(0.02, v) * w));
-    oc.push(sExpr != null ? `scale=w='${sExpr}':h=-2:eval=frame` : `scale=${scaleW}:-2${LANCZOS}`);
+    // 动画缩放 `scale=...:eval=frame` 必须是「位移 setpts 前的最后一个像素滤镜」：它之后任何会
+    // config_props 的几何/格式滤镜（format/flip/crop/rotate/colorchannelmixer 等）都会把叠加输入
+    // 尺寸冻结在首帧，overlay 便按首帧尺寸合成——PiP 推拉在导出里静止（预览却在动）。只有时间类
+    // 滤镜（fps/setpts）在它之后是尺寸安全的；对等比缩放这些滤镜与 scale 可交换，放到前面视觉等价。
+    // 已用 ffmpeg 6.1.1 真机量化验证（仅此顺序下叠加区域 YAVG 逐帧上升）。静态缩放无此问题，按原序提前做。
+    const animScale = sExpr != null ? `scale=w='${sExpr}':h=-2:eval=frame` : null;
+    if (!animScale) oc.push(`scale=${scaleW}:-2${LANCZOS}`);
     oc.push(`fps=${fps}`);
     oc.push("format=rgba");
     if (o.flipH) oc.push("hflip");
@@ -655,6 +661,8 @@ export function buildFilterGraph(
     if (rot) oc.push(`rotate=${(rot * Math.PI / 180).toFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)`);
     // alpha fade in/out while the overlay's PTS is still clip-local (0..duration)
     oc.push(...videoFadeFilters(o.fadeIn, o.fadeOut, o.duration, true));
+    // 动画缩放放到所有像素滤镜之后、位移 setpts 之前（见上方说明：尺寸安全顺序）
+    if (animScale) oc.push(animScale);
     // shift the overlay so its frames land at its timeline start
     oc.push(`setpts=PTS+${o.start.toFixed(3)}/TB`);
     parts.push(`[${inIdx}:v]${oc.join(",")}[ov${j}]`);
