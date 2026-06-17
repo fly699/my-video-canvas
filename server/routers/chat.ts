@@ -332,7 +332,20 @@ export const chatRouter = router({
     .mutation(async ({ ctx, input }) => {
       const conv = await getConversationById(input.conversationId);
       if (!conv || conv.type !== "group") throw new TRPCError({ code: "NOT_FOUND" });
-      if (!(await isChatMember(conv.id, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN" });
+      // 仅群主可拉人（与 setMode/deleteRoom 一致；客户端 createGroupWith 里拉人者即建群者=群主，
+      // 故不影响正常流程）。此前只校验「是成员」，任意普通成员都能拉人——属越权。
+      const members = await listChatMembers(conv.id);
+      const me = members.find((m) => m.userId === ctx.user.id);
+      if (!me || (me.role !== "owner" && conv.createdBy !== ctx.user.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "仅群主可邀请成员" });
+      }
+      // 目标用户须真实存在，避免写入孤儿成员行。
+      if (!(await getUserById(input.targetUserId))) throw new TRPCError({ code: "NOT_FOUND", message: "目标用户不存在" });
+      // 关键：不得把被本群封禁的用户重新拉回（sendMessage 有此校验，邀请此前漏写→绕过封禁）。
+      if (await isChatBanned(input.targetUserId, conv.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "该用户已被封禁，无法邀请" });
+      }
+      if (members.some((m) => m.userId === input.targetUserId)) return { success: true }; // 已在群中→幂等
       await addChatMember(conv.id, input.targetUserId, "member");
       if (userBroadcaster) userBroadcaster(input.targetUserId, "conversation:created", { id: conv.id });
       return { success: true };
