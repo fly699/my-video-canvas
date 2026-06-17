@@ -172,15 +172,15 @@ export const KIE_IMAGE_RES_COST: Record<string, Record<string, number>> = {
 
 /** 图像生成：单价 × 张数（批量/多图参数）。`opts.resolution` 命中逐档计价表时用精确档价。 */
 export function estimateImageCost(model: string, count = 1, opts?: { resolution?: string }): CostEstimate {
+  const n = Number.isFinite(count) && count > 0 ? count : 1; // clamp once for both branches
   const tier = KIE_IMAGE_RES_COST[model];
   if (tier) {
     const keys = Object.keys(tier);
     const res = opts?.resolution && tier[opts.resolution] != null ? opts.resolution : keys[0];
-    return { credits: tier[res] * count, unit: "点", approx: false };
+    return { credits: tier[res] * n, unit: "点", approx: false };
   }
   const u = imageUnitCost(model);
   if (!u) return null;
-  const n = Number.isFinite(count) && count > 0 ? count : 1;
   return { credits: u.credits * n, unit: u.unit, approx: u.approx };
 }
 
