@@ -2700,6 +2700,7 @@ export const clipRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg, no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.inputUrl);
       if (input.audioUrl) guardUrl(input.audioUrl);
       for (const t of input.audioTracks ?? []) guardUrl(t.url);
@@ -2712,6 +2713,7 @@ export const clipRouter = router({
     .input(z.object({ inputUrl: mediaUrlSchema, time: z.number().min(0), projectId: z.number().optional(), nodeId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg, no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.inputUrl);
       const result = await extractFrame(input);
       await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "image", name: "剪辑封面帧" });
@@ -2739,6 +2741,7 @@ export const clipRouter = router({
       nodeId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await assertWhitelisted(ctx);
       guardUrl(input.inputUrl);
       return dedupe("clip.smartCut", ctx.user.id, input, async () => {
@@ -2850,6 +2853,7 @@ export const mergeRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg, no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       for (const url of input.inputUrls) guardUrl(url);
       if (input.bgMusicUrl) guardUrl(input.bgMusicUrl);
       for (const v of input.voiceUrls ?? []) if (v) guardUrl(v);
@@ -2907,6 +2911,7 @@ export const subtitleRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg, no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.videoUrl);
       const result = await burnSubtitles(input.videoUrl, input.entries as SubtitleEntry[], {
         fontSize: input.fontSize,
@@ -2955,6 +2960,7 @@ export const subtitleMotionRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg (ASS burn), no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.videoUrl);
       return dedupe("subtitleMotion.burnMotion", ctx.user.id, input, async () => {
         const result = await burnAssSubtitles(
@@ -3023,6 +3029,7 @@ export const overlayRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // local ffmpeg (overlay/水印/调色), no third-party AI — not whitelist-gated
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       guardUrl(input.inputUrl);
       if (input.overlayImageUrl) guardUrl(input.overlayImageUrl);
       if (input.pipVideoUrl) guardUrl(input.pipVideoUrl);

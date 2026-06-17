@@ -117,8 +117,15 @@ export function registerStorageProxy(app: Express) {
       if (contentRange) res.set("Content-Range", contentRange);
       if (typeof contentLength === "number") res.set("Content-Length", String(contentLength));
       res.set("Cache-Control", "private, max-age=300");
-      // Optional ?download=1 forces a save dialog with the original filename.
-      if (req.query.download !== undefined) {
+      // Never let the browser MIME-sniff a stored object into an executable type
+      // (image/video proxies already do this). Without it, an attachment uploaded
+      // with mimeType "text/html"/"image/svg+xml" would render as same-origin HTML
+      // → stored XSS for any authenticated viewer opening /manus-storage/<key>.
+      res.set("X-Content-Type-Options", "nosniff");
+      // Force a download for anything that isn't a safe inline media type, so a
+      // stored HTML/SVG/etc. can never execute in this origin even with nosniff.
+      const inlineOk = /^(image\/(?!svg)|video\/|audio\/|application\/pdf)/i.test(contentType ?? "");
+      if (req.query.download !== undefined || !inlineOk) {
         const name = key.split("/").pop() || "file";
         res.set("Content-Disposition", `attachment; filename="${encodeURIComponent(name)}"`);
       }
