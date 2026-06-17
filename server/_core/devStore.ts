@@ -832,10 +832,10 @@ export function devInsertChatAttachment(data: InsertChatAttachment): ChatAttachm
   return row;
 }
 
-export function devLinkAttachments(messageId: number, attachmentIds: number[]): void {
+export function devLinkAttachments(messageId: number, attachmentIds: number[], conversationId: number): void {
   for (const aid of attachmentIds) {
     const a = chatAttachMap.get(aid);
-    if (a) chatAttachMap.set(aid, { ...a, messageId });
+    if (a && a.conversationId === conversationId) chatAttachMap.set(aid, { ...a, messageId }); // 只重链属于本会话的附件
   }
 }
 

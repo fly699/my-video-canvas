@@ -418,7 +418,7 @@ export const chatRouter = router({
         content: input.content, attachments: attachments ?? undefined,
       });
       if (!msg) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-      if (input.attachmentIds?.length) await linkAttachmentsToMessage(msg.id, input.attachmentIds);
+      if (input.attachmentIds?.length) await linkAttachmentsToMessage(msg.id, input.attachmentIds, conv.id);
       const wire = rowToWire(msg);
       if (broadcaster) broadcaster(conv.id, wire);
       return wire;
