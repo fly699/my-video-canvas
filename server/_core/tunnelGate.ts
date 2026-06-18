@@ -33,11 +33,16 @@ export function isTunnelRequest(localPort: number | undefined, tunnelPort: numbe
  *  so a whitelisted USER can still load the page and log in. Everything else (all app
  *  functionality) is blocked until the requester proves they're tunnel-whitelisted. */
 export function isTunnelExemptPath(path: string): boolean {
-  // Auth is always exempt (whitelisted users must be able to sign in).
+  // Auth REST endpoints always exempt (whitelisted users must be able to sign in).
   if (path.startsWith("/api/auth/")) return true;            // login / oauth / register / providers
-  if (/^\/api\/trpc\/auth\./.test(path)) return true;        // tRPC auth.* (login/me)
+  if (path.startsWith("/api/trpc/")) {
+    // tRPC batches multiple procedures into ONE path: /api/trpc/auth.me,projects.list .
+    // Exempt ONLY when EVERY batched procedure is auth.* — otherwise the gate is bypassed
+    // by batching an app procedure alongside auth.me (the path starts with "auth.").
+    const procs = path.slice("/api/trpc/".length).split("?")[0].split(",").filter(Boolean);
+    return procs.length > 0 && procs.every((p) => p.startsWith("auth."));
+  }
   // Gated app resources — blocked for non-whitelisted tunnel visitors:
-  if (path.startsWith("/api/trpc/")) return false;           // all other tRPC (canvas/comfyui/…)
   if (path.startsWith("/manus-storage")) return false;       // media storage + upload proxy
   if (path.startsWith("/relay")) return false;               // LAN file relay
   if (path.startsWith("/api/video-proxy") || path.startsWith("/api/image-proxy")) return false;

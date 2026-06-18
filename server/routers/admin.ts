@@ -8,6 +8,7 @@ import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort } from "../_core/tunnel";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
+import { sendTunnelUrlEmail } from "../_core/tunnelEmail";
 import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
@@ -420,7 +421,28 @@ export const adminRouter = router({
       const s = await db.getTunnelSettings();
       const rt = getTunnelRuntimeStatus();
       // 绝不回传 token 明文，只给「是否已配置」。
-      return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, originPort: getTunnelListenerPort(), whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps };
+      const e = s.emailNotify;
+      return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, originPort: getTunnelListenerPort(), whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps,
+        email: { to: e.to, host: e.host, port: e.port, user: e.user, secure: e.secure, from: e.from, hasPass: !!e.pass } }; // 不回传 pass 明文
+    }),
+    setEmailNotify: managerProc.input(z.object({
+      to: z.string().max(320), host: z.string().max(255), port: z.number().int().min(1).max(65535),
+      user: z.string().max(255), pass: z.string().max(512).optional(), secure: z.boolean(), from: z.string().max(320),
+    })).mutation(async ({ input }) => {
+      const cur = await db.getTunnelSettings();
+      await db.setTunnelSettings({ emailNotify: {
+        to: input.to.trim(), host: input.host.trim(), port: input.port,
+        user: input.user.trim(), pass: input.pass !== undefined ? input.pass : cur.emailNotify.pass, // 留空保持原密码
+        secure: input.secure, from: input.from.trim(),
+      } });
+      return { success: true };
+    }),
+    testEmail: managerProc.mutation(async () => {
+      const s = await db.getTunnelSettings();
+      const url = (getTunnelRuntimeStatus().publicUrl || s.publicUrl) || "https://example.trycloudflare.com（测试）";
+      const r = await sendTunnelUrlEmail(s.emailNotify, url);
+      if (!r.ok) throw new TRPCError({ code: "BAD_REQUEST", message: "测试邮件发送失败：" + (r.error ?? "未知错误") });
+      return { success: true };
     }),
     setEnabled: managerProc.input(z.object({ enabled: z.boolean() })).mutation(async ({ input }) => {
       await applyTunnelEnabled(input.enabled);

@@ -15,11 +15,15 @@ export function TunnelPanel() {
   const wlMut = trpc.admin.tunnel.setWhitelist.useMutation();
   const dlMut = trpc.admin.tunnel.downloadCloudflared.useMutation();
 
+  const emailMut = trpc.admin.tunnel.setEmailNotify.useMutation();
+  const testMut = trpc.admin.tunnel.testEmail.useMutation();
+
   const [token, setToken] = useState("");
   const [publicUrl, setPublicUrl] = useState("");
   const [runCf, setRunCf] = useState(true);
   const [users, setUsers] = useState<string>("");   // 逗号分隔的用户 id
   const [ips, setIps] = useState<string>("");
+  const [em, setEm] = useState({ to: "", host: "", port: 587, user: "", pass: "", secure: false, from: "" });
 
   useEffect(() => {
     if (q.data) {
@@ -27,8 +31,18 @@ export function TunnelPanel() {
       setRunCf(q.data.runCloudflared ?? true);
       setUsers((q.data.whitelistUsers ?? []).join(", "));
       setIps((q.data.whitelistIps ?? []).join(", "));
+      const e = q.data.email; if (e) setEm({ to: e.to, host: e.host, port: e.port, user: e.user, pass: "", secure: e.secure, from: e.from });
     }
   }, [q.data]);
+
+  const saveEmail = async () => {
+    try { await emailMut.mutateAsync({ to: em.to.trim(), host: em.host.trim(), port: em.port, user: em.user.trim(), pass: em.pass || undefined, secure: em.secure, from: em.from.trim() }); setEm((s) => ({ ...s, pass: "" })); await utils.admin.tunnel.get.invalidate(); toast.success("已保存邮件通知配置"); }
+    catch (e) { toast.error("保存失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
+  };
+  const testEmail = async () => {
+    try { await testMut.mutateAsync(); toast.success("测试邮件已发送，请查收"); }
+    catch (e) { toast.error((e instanceof Error ? e.message : String(e)).slice(0, 180)); }
+  };
 
   const download = async () => {
     try { await dlMut.mutateAsync(); await cf.refetch(); } catch { /* status surfaced below */ }
@@ -147,6 +161,31 @@ export function TunnelPanel() {
         <button onClick={saveWl} disabled={wlMut.isPending} className="nodrag flex items-center gap-1.5 px-4 py-2 rounded-lg self-start" style={{ fontSize: 12, fontWeight: 700, background: "oklch(0.7 0.16 150)", border: "1px solid oklch(0.7 0.16 150 / 0.5)", color: "#06250f", cursor: "pointer" }}>
           {wlMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} 保存白名单
         </button>
+      </div>
+
+      {/* 新网址自动发邮件（SMTP） */}
+      <div style={card}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600 }}><Globe className="w-4 h-4" style={{ color: "oklch(0.7 0.14 200)" }} /> 新网址自动发邮件</div>
+        <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6, margin: 0 }}>快速隧道每次重启地址会变。配好 SMTP 后，系统在获取到新公网地址时会自动把地址发到下面的收件邮箱。（Gmail 用应用专用密码；465 勾选 SSL，587 不勾。）</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <label style={{ fontSize: 11, color: "var(--c-t3)" }}>收件邮箱<input value={em.to} onChange={(e) => setEm((s) => ({ ...s, to: e.target.value }))} placeholder="you@example.com" className="nodrag" style={{ ...box, marginTop: 4 }} /></label>
+          <label style={{ fontSize: 11, color: "var(--c-t3)" }}>发件人 From<input value={em.from} onChange={(e) => setEm((s) => ({ ...s, from: e.target.value }))} placeholder="留空=用 SMTP 用户名" className="nodrag" style={{ ...box, marginTop: 4 }} /></label>
+          <label style={{ fontSize: 11, color: "var(--c-t3)" }}>SMTP 主机<input value={em.host} onChange={(e) => setEm((s) => ({ ...s, host: e.target.value }))} placeholder="smtp.gmail.com" className="nodrag" style={{ ...box, marginTop: 4 }} /></label>
+          <label style={{ fontSize: 11, color: "var(--c-t3)" }}>端口<input type="number" value={em.port} onChange={(e) => setEm((s) => ({ ...s, port: parseInt(e.target.value, 10) || 587 }))} className="nodrag" style={{ ...box, marginTop: 4 }} /></label>
+          <label style={{ fontSize: 11, color: "var(--c-t3)" }}>SMTP 用户名<input value={em.user} onChange={(e) => setEm((s) => ({ ...s, user: e.target.value }))} placeholder="you@gmail.com" className="nodrag" style={{ ...box, marginTop: 4 }} /></label>
+          <label style={{ fontSize: 11, color: "var(--c-t3)" }}>SMTP 密码{q.data?.email?.hasPass ? "（已配置，留空保持不变）" : ""}<input type="password" value={em.pass} onChange={(e) => setEm((s) => ({ ...s, pass: e.target.value }))} placeholder={q.data?.email?.hasPass ? "••••••" : "应用专用密码"} className="nodrag" style={{ ...box, marginTop: 4 }} /></label>
+        </div>
+        <label style={{ fontSize: 11, color: "var(--c-t3)", display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={em.secure} onChange={(e) => setEm((s) => ({ ...s, secure: e.target.checked }))} /> 使用 SSL（端口 465 勾选；587/STARTTLS 不勾）
+        </label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={saveEmail} disabled={emailMut.isPending} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11.5, fontWeight: 600, background: "var(--c-bd1)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+            {emailMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 保存
+          </button>
+          <button onClick={testEmail} disabled={testMut.isPending} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11.5, fontWeight: 600, background: "oklch(0.70 0.16 200 / 0.16)", border: "1px solid oklch(0.70 0.16 200 / 0.4)", color: "oklch(0.7 0.14 200)", cursor: "pointer" }}>
+            {testMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />} 发送测试邮件
+          </button>
+        </div>
       </div>
     </div>
   );
