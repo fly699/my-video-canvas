@@ -8,6 +8,7 @@ import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort } from "../_core/tunnel";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
+import { tunnelHostFromUrl } from "../_core/tunnelGate";
 import { sendTunnelUrlEmail } from "../_core/tunnelEmail";
 import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
@@ -466,6 +467,21 @@ export const adminRouter = router({
     downloadCloudflared: managerProc.mutation(async () => {
       void startCloudflaredDownload(); // 后台下载，前端轮询 cloudflared 查询
       return { started: true };
+    }),
+    // 连通性自检：从服务器去 GET 自己的公网地址（经 Cloudflare→隧道→回源）。能拿到响应=端到端通；
+    // Cloudflare 5xx=回源失败（cloudflared 没连上 / 回源端口不对）；网络错=DNS 未生效 / 隧道没运行。
+    checkConnectivity: adminProcedure.mutation(async () => {
+      const s = await db.getTunnelSettings();
+      const host = tunnelHostFromUrl(getTunnelRuntimeStatus().publicUrl || s.publicUrl);
+      if (!host) return { reachable: false as const, error: "尚无公网地址：先启用快速隧道，或在配置里填命名隧道的公网域名" };
+      try {
+        const res = await fetch(`https://${host}/`, { method: "GET", redirect: "manual", signal: AbortSignal.timeout(8000), headers: { "user-agent": "avc-tunnel-selfcheck" } });
+        const CF_DOWN = new Set([502, 503, 520, 521, 522, 523, 530]);
+        if (CF_DOWN.has(res.status)) return { reachable: false as const, status: res.status, error: `Cloudflare 回源失败（HTTP ${res.status}）：cloudflared 未连上或回源端口不对` };
+        return { reachable: true as const, status: res.status, host };
+      } catch (e) {
+        return { reachable: false as const, error: (e as Error).message.slice(0, 140) + "（DNS 未生效 / 隧道未运行 / 网络不通？）" };
+      }
     }),
     setWhitelist: managerProc.input(z.object({
       whitelistUsers: z.array(z.number().int()).max(2000),
