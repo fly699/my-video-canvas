@@ -13,6 +13,7 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useUIStyle } from "../../contexts/UIStyleContext";
+import { StudioCuratedFields } from "./studio/StudioCuratedFields";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers,
 } from "lucide-react";
@@ -177,9 +178,14 @@ export const BaseNode = memo(function BaseNode({
   const { theme } = useTheme();
   const { uiStyle } = useUIStyle();
   const isStudio = uiStyle === "studio";
+  // Studio: when selected, the param body floats below the node, so the node card
+  // itself shrinks to a compact media/title header (minHeight collapsed).
   const isCreative = canvasMode === "creative";
   const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || isCreative;
   const hasHero = heroMedia != null;
+  // Studio: when selected, the node card stays compact (header + hero media if any)
+  // and the params float in a wide, short panel attached BELOW it (LibLib layout).
+  const studioFloated = isStudio && (storeSelected || pinned);
   // A previewable node that has a result and is NOT being edited (not selected,
   // not pinned) renders collapsed: only the title bar + warning/error/progress +
   // the hero preview. In that state drop the min-height floor so the node shrinks
@@ -332,7 +338,7 @@ export const BaseNode = memo(function BaseNode({
         border: borderStyle,
         boxShadow: shadowStyle,
         minWidth: (isCreative || isStudio) ? Math.round(minWidth * 1.25) : minWidth,
-        minHeight: isCollapsedPreview ? 0 : minHeight,
+        minHeight: (isCollapsedPreview || studioFloated) ? 0 : minHeight,
         width: "100%",
         height: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
@@ -852,15 +858,50 @@ export const BaseNode = memo(function BaseNode({
         </div>
       )}
 
-      {/* ── Content area (collapsible in creative mode when hero exists) ── */}
-      <NodeSelectedContext.Provider value={expandSelected}>
-        <div className="node-body-wrap">
-          {/* When the node height is capped, make this wrapper a flex column so a
-              flex:1 child can inherit the bounded height (percentage height/h-full
-              can't resolve here because the parent height is flex-derived). */}
-          <div className="overflow-visible nopan" style={{ flex: 1, minHeight: 0, ...(capNodeHeight ? { display: "flex", flexDirection: "column" } : {}) }}>{children}</div>
-        </div>
-      </NodeSelectedContext.Provider>
+      {/* ── Content area ──
+          Studio skin: when selected, the param body floats in a panel ATTACHED BELOW
+          the node (LibLib-style 上下吸附) so the node card itself stays compact/media-first
+          instead of expanding inline. Same `children` (every control preserved) — only
+          relocated. Pro/creative render the body inline (collapsible) exactly as before. */}
+      {studioFloated ? (
+        <NodeToolbar nodeId={id} position={Position.Bottom} offset={12} isVisible>
+          <div
+            className="nodrag nopan"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: Math.max(nodeStyleWidth ?? config.defaultWidth ?? 0, Math.round(minWidth * 1.25)),
+              maxHeight: "64vh",
+              overflowY: "auto",
+              background: "var(--c-base)",
+              border: "1px solid var(--c-bd2)",
+              borderRadius: 14,
+              boxShadow: "var(--c-node-shadow-selected)",
+              padding: "14px 14px 16px",
+            }}
+          >
+            {/* Simple by default: the node's most-used controls. */}
+            <StudioCuratedFields nodeId={id} />
+            {/* Fully functional on demand: the complete node body, collapsed. */}
+            <details className="studio-full-settings" style={{ marginTop: 12 }}>
+              <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--c-t3)", userSelect: "none", listStyle: "none", padding: "7px 0" }}>
+                完整设置 / 全部参数
+              </summary>
+              <div style={{ marginTop: 8 }}>
+                <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
+              </div>
+            </details>
+          </div>
+        </NodeToolbar>
+      ) : (
+        <NodeSelectedContext.Provider value={expandSelected}>
+          <div className="node-body-wrap">
+            {/* When the node height is capped, make this wrapper a flex column so a
+                flex:1 child can inherit the bounded height (percentage height/h-full
+                can't resolve here because the parent height is flex-derived). */}
+            <div className="overflow-visible nopan" style={{ flex: 1, minHeight: 0, ...(capNodeHeight ? { display: "flex", flexDirection: "column" } : {}) }}>{children}</div>
+          </div>
+        </NodeSelectedContext.Provider>
+      )}
 
       </div>{/* end inner overflow:hidden content wrapper */}
 
