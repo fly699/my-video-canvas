@@ -15,12 +15,13 @@ export function tunnelHostFromUrl(url: string | null | undefined): string {
 type Headers = Record<string, string | string[] | undefined>;
 const hv = (h: Headers, k: string): string => { const v = h[k]; return (Array.isArray(v) ? v[0] : v ?? "").toString(); };
 
-/** True when this request arrived through the public tunnel. Identified by Cloudflare
- *  edge markers (cf-ray / cdn-loop:cloudflare / cf-connecting-ip) — present on ALL
- *  cloudflared traffic regardless of Host rewriting, and never on local/LAN requests.
- *  For "external entry" mode (own reverse proxy, no CF markers) it falls back to an
- *  exact Host match against the configured public hostname. */
-export function isTunnelRequest(headers: Headers, tunnelHost: string): boolean {
+/** True when this request arrived through the public tunnel. PRIMARY (bulletproof) signal:
+ *  the request hit the dedicated loopback listener (socket.localPort === tunnelPort) that
+ *  ONLY cloudflared forwards to. Local/LAN traffic hits the main port. Fallbacks for
+ *  "external entry" mode (own reverse proxy, no dedicated port): Cloudflare edge markers,
+ *  then an exact Host match against the configured public hostname. */
+export function isTunnelRequest(localPort: number | undefined, tunnelPort: number, headers: Headers, tunnelHost: string): boolean {
+  if (tunnelPort > 0 && localPort === tunnelPort) return true;
   const cdnLoop = hv(headers, "cdn-loop").toLowerCase();
   if (cdnLoop.includes("cloudflare") || hv(headers, "cf-ray") || hv(headers, "cf-connecting-ip")) return true;
   if (!tunnelHost) return false;

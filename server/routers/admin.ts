@@ -6,7 +6,7 @@ import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
-import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate } from "../_core/tunnel";
+import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort } from "../_core/tunnel";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
 import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
@@ -420,7 +420,7 @@ export const adminRouter = router({
       const s = await db.getTunnelSettings();
       const rt = getTunnelRuntimeStatus();
       // 绝不回传 token 明文，只给「是否已配置」。
-      return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps };
+      return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, originPort: getTunnelListenerPort(), whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps };
     }),
     setEnabled: managerProc.input(z.object({ enabled: z.boolean() })).mutation(async ({ input }) => {
       await applyTunnelEnabled(input.enabled);

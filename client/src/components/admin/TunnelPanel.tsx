@@ -114,6 +114,9 @@ export function TunnelPanel() {
             <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6, margin: 0 }}>
               留空 Token = <b>快速隧道</b>（免账号，自动 *.trycloudflare.com，重启会变）。填 Cloudflare <b>命名隧道 Token</b> = 固定自有域名（更稳），此时在下面填你在 Cloudflare 配置的公网域名。
             </p>
+            {token.trim() && q.data?.originPort ? (
+              <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5 }}>命名隧道请在 Cloudflare 面板把该隧道的回源(Service)设为 <code>http://localhost:{q.data.originPort}</code></div>
+            ) : null}
             <label style={{ fontSize: 11, color: "var(--c-t3)" }}>命名隧道 Token（可选，{q.data?.hasToken ? "已配置，留空保持不变" : "未配置"}）
               <input value={token} onChange={(e) => setToken(e.target.value)} placeholder={q.data?.hasToken ? "••••••（留空保持不变）" : "粘贴 cloudflared tunnel token"} className="nodrag" style={{ ...box, marginTop: 4 }} />
             </label>

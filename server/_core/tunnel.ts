@@ -10,11 +10,12 @@ let proc: ChildProcess | null = null;
 let status: { running: boolean; publicUrl: string; error: string | null } = { running: false, publicUrl: "", error: null };
 let logBuf = "";
 
-// Actual local origin cloudflared forwards to — set at server boot to the REAL
-// listening port + scheme (the server auto-picks a free port and may run HTTPS with a
-// self-signed cert, so a hardcoded http://localhost:3000 causes 502 Bad Gateway).
-let origin = { port: Number(process.env.PORT) || 3000, https: false };
-export function setTunnelOrigin(port: number, https: boolean): void { origin = { port, https }; }
+// Dedicated loopback port cloudflared forwards to. A request whose socket.localPort
+// equals this is UNAMBIGUOUSLY tunnel traffic (no header guessing). Plain HTTP on
+// 127.0.0.1, so the app's self-signed HTTPS never causes a 502 on the tunnel path.
+let tunnelPort = 0;
+export function setTunnelOrigin(port: number): void { tunnelPort = port; }
+export function getTunnelListenerPort(): number { return tunnelPort; }
 
 export function getTunnelRuntimeStatus() { return { running: status.running, publicUrl: status.publicUrl, error: status.error }; }
 
@@ -24,17 +25,13 @@ export async function startTunnel(): Promise<void> {
   if (!cfg.runCloudflared) { status = { running: false, publicUrl: cfg.publicUrl, error: null }; return; } // 纯门控模式：不起进程
   const bin = await resolveCloudflaredPath();
   if (!bin) { status = { running: false, publicUrl: "", error: "未检测到 cloudflared，请在「公网隧道」页点「下载 cloudflared」，或改用「我已有公网入口」模式" }; return; }
+  if (!tunnelPort) { status = { running: false, publicUrl: "", error: "隧道内部回环监听未就绪，请稍后重试" }; return; }
   const named = cfg.token.trim().length > 0;
-  const originUrl = `${origin.https ? "https" : "http"}://localhost:${origin.port}`;
-  // Named tunnel: `tunnel run --token` (route configured in CF dashboard → must point to
-  // the SAME originUrl). Quick tunnel: `tunnel --url` → we parse the *.trycloudflare.com URL.
-  // `--no-tls-verify`: the app's HTTPS uses a self-signed cert, which cloudflared would
-  // otherwise reject → 502. Default Host header passthrough is kept so our gate can match it.
-  // Named tunnel: origin URL + TLS verify are configured in the Cloudflare dashboard,
-  // so we只 pass the token. Quick tunnel: we own the origin → set scheme + no-tls-verify.
-  const tlsArgs = origin.https ? ["--no-tls-verify"] : [];
+  // Quick tunnel forwards to our dedicated loopback listener (plain HTTP → no 502 from
+  // self-signed TLS). Named tunnel's origin is configured in the CF dashboard — point it
+  // at http://localhost:<this port> (shown in the admin UI).
   const args = named ? ["tunnel", "run", "--token", cfg.token.trim()]
-                     : ["tunnel", "--no-autoupdate", ...tlsArgs, "--url", originUrl];
+                     : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`];
   try {
     proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
   } catch {
