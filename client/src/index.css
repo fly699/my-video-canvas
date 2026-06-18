@@ -907,6 +907,19 @@
   opacity: 0.45;
   z-index: 1;
 }
+/* Studio skin only: a faint diagonal "film" texture over the canvas + a touch
+   stronger vignette. Pure CSS via the free ::before — additive, pointer-events
+   none, near-imperceptible over nodes; "pro" has no [data-ui="studio"] so it is
+   wholly unaffected. */
+:root[data-ui="studio"] .canvas-vignette::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: repeating-linear-gradient(118deg, oklch(1 0 0 / 0.012) 0 1px, transparent 1px 52px);
+}
+:root[data-ui="studio"] .canvas-vignette::after { opacity: 0.58; }
 
 /* ── Button active state ────────────────────────────────────────────────────── */
 button:active:not(:disabled) {
