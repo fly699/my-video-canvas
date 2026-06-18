@@ -12,12 +12,19 @@ export function tunnelHostFromUrl(url: string | null | undefined): string {
   } catch { return ""; }
 }
 
-/** True when this request arrived through OUR public tunnel — identified precisely by
- *  the Host header matching the tunnel's public hostname (not just "behind Cloudflare",
- *  so a deployment already fronted by CF for OTHER hostnames isn't falsely gated). */
-export function isTunnelRequest(reqHost: string | undefined, tunnelHost: string): boolean {
+type Headers = Record<string, string | string[] | undefined>;
+const hv = (h: Headers, k: string): string => { const v = h[k]; return (Array.isArray(v) ? v[0] : v ?? "").toString(); };
+
+/** True when this request arrived through the public tunnel. Identified by Cloudflare
+ *  edge markers (cf-ray / cdn-loop:cloudflare / cf-connecting-ip) — present on ALL
+ *  cloudflared traffic regardless of Host rewriting, and never on local/LAN requests.
+ *  For "external entry" mode (own reverse proxy, no CF markers) it falls back to an
+ *  exact Host match against the configured public hostname. */
+export function isTunnelRequest(headers: Headers, tunnelHost: string): boolean {
+  const cdnLoop = hv(headers, "cdn-loop").toLowerCase();
+  if (cdnLoop.includes("cloudflare") || hv(headers, "cf-ray") || hv(headers, "cf-connecting-ip")) return true;
   if (!tunnelHost) return false;
-  const h = (reqHost ?? "").split(",")[0].trim().toLowerCase().replace(/:\d+$/, "");
+  const h = hv(headers, "host").split(",")[0].trim().toLowerCase().replace(/:\d+$/, "");
   return h !== "" && h === tunnelHost;
 }
 

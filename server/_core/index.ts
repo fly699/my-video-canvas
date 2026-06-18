@@ -14,7 +14,7 @@ import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
 import { appRouter } from "../routers";
 import { createContext, resolveRequestUser } from "./context";
-import { getTunnelGate, initTunnel } from "./tunnel";
+import { getTunnelGate, initTunnel, setTunnelOrigin } from "./tunnel";
 import { isTunnelRequest, isTunnelExemptPath, isTunnelAllowed } from "./tunnelGate";
 import { serveStatic, setupVite } from "./vite";
 import { Server as SocketIOServer } from "socket.io";
@@ -92,10 +92,13 @@ async function startServer() {
   // untouched. Placed first so it covers all downstream routes.
   app.use(async (req, res, next) => {
     const g = getTunnelGate();
-    if (!g.enabled || !g.host) return next();
-    if (!isTunnelRequest(req.headers.host, g.host)) return next();   // not via our tunnel
+    if (!g.enabled) return next();
+    if (!isTunnelRequest(req.headers, g.host)) return next();   // not via our tunnel (CF marker / Host)
     if (isTunnelExemptPath(req.path)) return next();                  // auth + static SPA
-    const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+    // Real public visitor IP for the IP-whitelist: cloudflared/Cloudflare passes it in
+    // cf-connecting-ip (req.ip would be the localhost origin hop).
+    const cfIp = (Array.isArray(req.headers["cf-connecting-ip"]) ? req.headers["cf-connecting-ip"][0] : req.headers["cf-connecting-ip"]) as string | undefined;
+    const ip = cfIp || req.ip || req.socket?.remoteAddress || "unknown";
     let userId: number | undefined;
     try { userId = (await resolveRequestUser(req))?.id; } catch { /* unauthenticated */ }
     if (isTunnelAllowed(ip, userId, g.wl)) return next();
@@ -499,6 +502,7 @@ async function startServer() {
     const proto = isHttps ? "https" : "http";
     console.log(`Server running on ${proto}://localhost:${port}/`);
     if (isHttps) console.log(`[HTTPS] self-signed cert active — LAN clients can trust it via ${proto}://<本机IP>:${port}/cert.crt`);
+    setTunnelOrigin(port, isHttps); // 隧道回源用真实端口+协议（避免 502：自动端口/HTTPS 自签）
     void initTunnel(); // 若管理员之前已启用公网隧道，开机自动拉起 cloudflared + 预热门控缓存
   });
 
