@@ -4,6 +4,8 @@ import { getNodeConfig } from "../../../lib/nodeConfig";
 import { NodeInput, NodeTextArea } from "../NodeTextInput";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
+import { PROVIDER_PICKER_OPTIONS, videoProviderChangePatch } from "../nodes/VideoTaskNode";
+import type { VideoProvider } from "../../../../../shared/types";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { X } from "lucide-react";
 
@@ -152,8 +154,22 @@ export function StudioInspector() {
           </div>
         )}
 
+        {/* video provider/model — reuse VideoTaskNode's EXACT exported change handler
+            (videoProviderChangePatch resets params + clears unsupported neg-prompt), so
+            no node-specific logic is duplicated/diverged. */}
+        {node.data.nodeType === "video_task" && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>模型</div>
+            <ModelPicker
+              value={str("provider")}
+              onChange={(v) => updateNodeData(node.id, videoProviderChangePatch(v as VideoProvider))}
+              options={PROVIDER_PICKER_OPTIONS}
+            />
+          </div>
+        )}
+
         {/* model (read-only display for other node types; edit via the node card's picker) */}
-        {modelVal && node.data.nodeType !== "script" && !imageModelField && (
+        {modelVal && node.data.nodeType !== "script" && !imageModelField && node.data.nodeType !== "video_task" && (
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>模型</div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 11px", borderRadius: 9, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
