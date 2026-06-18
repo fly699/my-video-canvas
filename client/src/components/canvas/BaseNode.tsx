@@ -399,6 +399,17 @@ export const BaseNode = memo(function BaseNode({
             >
               <Copy size={13} />
             </button>
+            {/* variants — identical call to the title-bar variants action (store action, gated to VARIANT_TYPES) */}
+            {VARIANT_TYPES.includes(nodeType) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); const n = createVariants(id, 3); if (n > 0) toast.success(`已生成 ${n} 个变体（各带随机种子，复用相同输入）`); }}
+                title="生成变体（×3，随机种子）"
+                className="flex items-center justify-center w-7 h-7 rounded-lg"
+                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
+              >
+                <Layers size={13} />
+              </button>
+            )}
             {/* delete — identical composed call to the title-bar delete (store + server mutation) */}
             <button
               onClick={(e) => { e.stopPropagation(); deleteNode(id); if (projectId) deleteNodeMutation.mutate({ id, projectId }); }}
