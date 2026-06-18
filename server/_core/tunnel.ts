@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./tunnelGate";
 import { getTunnelSettings, setTunnelSettings } from "../db";
+import { resolveCloudflaredPath } from "./cloudflaredBin";
 
 // Manages the built-in cloudflared tunnel process + a small cached gate snapshot the
 // per-request Express middleware reads synchronously.
@@ -16,15 +17,18 @@ export function getTunnelRuntimeStatus() { return { running: status.running, pub
 export async function startTunnel(): Promise<void> {
   if (proc) return;
   const cfg = await getTunnelSettings();
+  if (!cfg.runCloudflared) { status = { running: false, publicUrl: cfg.publicUrl, error: null }; return; } // 纯门控模式：不起进程
+  const bin = await resolveCloudflaredPath();
+  if (!bin) { status = { running: false, publicUrl: "", error: "未检测到 cloudflared，请在「公网隧道」页点「下载 cloudflared」，或改用「我已有公网入口」模式" }; return; }
   const named = cfg.token.trim().length > 0;
   // Named tunnel: `tunnel run --token` (hostname configured in CF dashboard, admin sets publicUrl).
   // Quick tunnel: `tunnel --url` → we parse the *.trycloudflare.com URL from the log.
   const args = named ? ["tunnel", "run", "--token", cfg.token.trim()]
                      : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${appPort()}`];
   try {
-    proc = spawn("cloudflared", args, { stdio: ["ignore", "pipe", "pipe"] });
+    proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
   } catch {
-    status = { running: false, publicUrl: "", error: "无法启动 cloudflared（宿主机未安装？）" };
+    status = { running: false, publicUrl: "", error: "无法启动 cloudflared" };
     return;
   }
   status = { running: true, publicUrl: named ? cfg.publicUrl : "", error: null };

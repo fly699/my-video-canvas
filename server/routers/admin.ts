@@ -7,6 +7,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate } from "../_core/tunnel";
+import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
 import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
@@ -419,14 +420,15 @@ export const adminRouter = router({
       const s = await db.getTunnelSettings();
       const rt = getTunnelRuntimeStatus();
       // 绝不回传 token 明文，只给「是否已配置」。
-      return { enabled: s.enabled, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps };
+      return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps };
     }),
     setEnabled: managerProc.input(z.object({ enabled: z.boolean() })).mutation(async ({ input }) => {
       await applyTunnelEnabled(input.enabled);
       return { success: true };
     }),
-    setConfig: managerProc.input(z.object({ token: z.string().max(4096).optional(), publicUrl: z.string().max(512).optional() })).mutation(async ({ input }) => {
-      const patch: { token?: string; publicUrl?: string } = {};
+    setConfig: managerProc.input(z.object({ token: z.string().max(4096).optional(), publicUrl: z.string().max(512).optional(), runCloudflared: z.boolean().optional() })).mutation(async ({ input }) => {
+      const patch: { token?: string; publicUrl?: string; runCloudflared?: boolean } = {};
+      if (input.runCloudflared !== undefined) patch.runCloudflared = input.runCloudflared;
       if (input.token !== undefined) patch.token = input.token.trim();
       if (input.publicUrl !== undefined) {
         const u = input.publicUrl.trim();
@@ -436,6 +438,12 @@ export const adminRouter = router({
       await db.setTunnelSettings(patch);
       await reloadTunnelGate();
       return { success: true };
+    }),
+    // cloudflared 二进制状态（是否已装/可自动下载/下载进度）
+    cloudflared: adminProcedure.query(() => cloudflaredInfo()),
+    downloadCloudflared: managerProc.mutation(async () => {
+      void startCloudflaredDownload(); // 后台下载，前端轮询 cloudflared 查询
+      return { started: true };
     }),
     setWhitelist: managerProc.input(z.object({
       whitelistUsers: z.array(z.number().int()).max(2000),

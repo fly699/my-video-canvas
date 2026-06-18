@@ -728,6 +728,8 @@ export const storageSettings = mysqlTable("storageSettings", {
 export const tunnelSettings = mysqlTable("tunnel_settings", {
   id: int("id").primaryKey(),
   enabled: boolean("enabled").notNull().default(false),
+  // true=app 自起 cloudflared；false=管理员已有公网入口，仅按 Host 门控、不起进程。
+  runCloudflared: boolean("runCloudflared").notNull().default(true),
   token: text("token"),               // cloudflared 命名隧道 token（可空 → 快速隧道）。绝不回传前端。
   publicUrl: text("publicUrl"),        // 公网地址（快速隧道自动解析；命名隧道管理员填）
   whitelistUsers: json("whitelistUsers").$type<number[]>(),
