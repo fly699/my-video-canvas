@@ -13,6 +13,7 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useUIStyle } from "../../contexts/UIStyleContext";
+import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioCommandBar";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers,
 } from "lucide-react";
@@ -912,10 +913,15 @@ export const BaseNode = memo(function BaseNode({
             zIndex: 20,
           }}
         >
-          {/* The node's full body (all its main params + its own advanced toggles),
-              relocated here. Simplicity comes from the FORM (compact node + attached
-              panel), not from dropping params. */}
-          <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
+          {/* Studio param panel. Supported generative types get a compact LibLib-style
+              COMMAND BAR (prompt + one horizontal row of model/ratio/params + cost/send),
+              with NO media (the node card already shows it). Other types fall back to the
+              full node body. */}
+          {STUDIO_COMMAND_BAR_TYPES.has(nodeType) ? (
+            <StudioCommandBar nodeId={id} onRun={onRun} canRun={canRun} running={nodeRunning} hasResult={hasResult} />
+          ) : (
+            <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
+          )}
         </div>
       )}
 
