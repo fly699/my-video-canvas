@@ -6,6 +6,7 @@ import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
+import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate } from "../_core/tunnel";
 import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
@@ -410,6 +411,40 @@ export const adminRouter = router({
         await reloadSelfHostedConfig(); // 立即热更新路由/门控缓存
         return { success: true };
       }),
+  }),
+
+  // ── 内置公网隧道（cloudflared）+ 单独白名单 ──
+  tunnel: router({
+    get: adminProcedure.query(async () => {
+      const s = await db.getTunnelSettings();
+      const rt = getTunnelRuntimeStatus();
+      // 绝不回传 token 明文，只给「是否已配置」。
+      return { enabled: s.enabled, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps };
+    }),
+    setEnabled: managerProc.input(z.object({ enabled: z.boolean() })).mutation(async ({ input }) => {
+      await applyTunnelEnabled(input.enabled);
+      return { success: true };
+    }),
+    setConfig: managerProc.input(z.object({ token: z.string().max(4096).optional(), publicUrl: z.string().max(512).optional() })).mutation(async ({ input }) => {
+      const patch: { token?: string; publicUrl?: string } = {};
+      if (input.token !== undefined) patch.token = input.token.trim();
+      if (input.publicUrl !== undefined) {
+        const u = input.publicUrl.trim();
+        if (u && !/^https?:\/\//i.test(u) && !/^[a-z0-9.-]+$/i.test(u)) throw new TRPCError({ code: "BAD_REQUEST", message: "公网地址应为域名或 http(s) URL" });
+        patch.publicUrl = u;
+      }
+      await db.setTunnelSettings(patch);
+      await reloadTunnelGate();
+      return { success: true };
+    }),
+    setWhitelist: managerProc.input(z.object({
+      whitelistUsers: z.array(z.number().int()).max(2000),
+      whitelistIps: z.array(z.string().max(64)).max(2000),
+    })).mutation(async ({ input }) => {
+      await db.setTunnelSettings({ whitelistUsers: input.whitelistUsers, whitelistIps: input.whitelistIps });
+      await reloadTunnelGate();
+      return { success: true };
+    }),
   }),
 
   // ── Chat administration (cross-user moderation + history) ──────────────

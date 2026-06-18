@@ -428,6 +428,13 @@
       "when": 1782200000000,
       "tag": "0060_self_hosted_llm",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "5",
+      "when": 1782300000000,
+      "tag": "0061_tunnel_settings",
+      "breakpoints": true
     }
   ]
 }

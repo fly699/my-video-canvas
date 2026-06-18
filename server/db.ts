@@ -17,6 +17,7 @@ import {
   kieBalanceSnapshots,
   storageSettings,
   modelToggleSettings,
+  tunnelSettings,
   type SelfHostedLlmConfig,
   auditLogs,
   comfyUsageLogs,
@@ -1527,6 +1528,35 @@ export async function setSelfHostedLlmConfig(cfg: SelfHostedLlmConfig): Promise<
   if (!db) { devModelToggleSettings.selfHostedLlm = selfHostedLlm; return; }
   await db.insert(modelToggleSettings).values({ id: 1, selfHostedLlm })
     .onDuplicateKeyUpdate({ set: { selfHostedLlm } });
+}
+
+// ── Public tunnel (cloudflared) settings + its separate access whitelist ──
+export type TunnelSettings = { enabled: boolean; token: string; publicUrl: string; whitelistUsers: number[]; whitelistIps: string[] };
+const devTunnel: TunnelSettings = { enabled: false, token: "", publicUrl: "", whitelistUsers: [], whitelistIps: [] };
+function _safeJson(s: string): unknown { try { return JSON.parse(s); } catch { return null; } }
+function _strArr(v: unknown): string[] { const a = typeof v === "string" ? _safeJson(v) : v; return Array.isArray(a) ? a.filter((x): x is string => typeof x === "string") : []; }
+function _numArr(v: unknown): number[] { const a = typeof v === "string" ? _safeJson(v) : v; return Array.isArray(a) ? a.filter((x): x is number => typeof x === "number") : []; }
+
+export async function getTunnelSettings(): Promise<TunnelSettings> {
+  const db = await getDb();
+  if (!db) return { ...devTunnel };
+  const rows = await db.select().from(tunnelSettings).limit(1);
+  const r = rows[0];
+  if (!r) return { enabled: false, token: "", publicUrl: "", whitelistUsers: [], whitelistIps: [] };
+  return { enabled: !!r.enabled, token: r.token ?? "", publicUrl: r.publicUrl ?? "", whitelistUsers: _numArr(r.whitelistUsers), whitelistIps: _strArr(r.whitelistIps) };
+}
+
+export async function setTunnelSettings(patch: Partial<TunnelSettings>): Promise<void> {
+  const db = await getDb();
+  if (!db) { Object.assign(devTunnel, patch); return; }
+  const set: Record<string, unknown> = {};
+  if (patch.enabled !== undefined) set.enabled = patch.enabled;
+  if (patch.token !== undefined) set.token = patch.token;
+  if (patch.publicUrl !== undefined) set.publicUrl = patch.publicUrl;
+  if (patch.whitelistUsers !== undefined) set.whitelistUsers = patch.whitelistUsers;
+  if (patch.whitelistIps !== undefined) set.whitelistIps = patch.whitelistIps;
+  await db.insert(tunnelSettings).values({ id: 1, enabled: patch.enabled ?? false, token: patch.token, publicUrl: patch.publicUrl, whitelistUsers: patch.whitelistUsers, whitelistIps: patch.whitelistIps })
+    .onDuplicateKeyUpdate({ set });
 }
 
 export async function addWhitelistEntry(

@@ -725,6 +725,16 @@ export const storageSettings = mysqlTable("storageSettings", {
 // Single-row (id always 1) admin-managed model visibility toggles. `disabledModels`
 // is a JSON array of model value/id strings that admins hid from the node model
 // pickers. Empty/null = all models visible (default, non-breaking).
+export const tunnelSettings = mysqlTable("tunnel_settings", {
+  id: int("id").primaryKey(),
+  enabled: boolean("enabled").notNull().default(false),
+  token: text("token"),               // cloudflared 命名隧道 token（可空 → 快速隧道）。绝不回传前端。
+  publicUrl: text("publicUrl"),        // 公网地址（快速隧道自动解析；命名隧道管理员填）
+  whitelistUsers: json("whitelistUsers").$type<number[]>(),
+  whitelistIps: json("whitelistIps").$type<string[]>(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export type SelfHostedLlmConfig = { url: string; apiKey: string; models: { id: string; label: string }[] };
 export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   id: int("id").primaryKey(),

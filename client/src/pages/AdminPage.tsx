@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, type LucideIcon } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, type LucideIcon } from "lucide-react";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 import { ComfyOpsPanel } from "@/components/admin/ComfyOpsPanel";
 import { AuroraBackground } from "@/components/AuroraBackground";
@@ -11,10 +11,11 @@ import { downloadTextFile } from "@/lib/download";
 import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 import { SelfHostedLlmSection } from "@/components/admin/SelfHostedLlmSection";
+import { TunnelPanel } from "@/components/admin/TunnelPanel";
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "tunnel";
 
 // 标签页定义：[key, 中文标签, 图标]
 const TAB_DEFS: [Tab, string, LucideIcon][] = [
@@ -25,6 +26,7 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["comfyLogs", "ComfyUI 日志", ScrollText],
   ["storage", "存储设置", HardDrive],
   ["models", "模型管理", Boxes],
+  ["tunnel", "公网隧道", Globe2],
   ["chat", "聊天管理", MessageCircle],
   ["comfyStress", "ComfyUI 压测", Activity],
   ["comfyOps", "ComfyUI 运维中心", Wrench],
@@ -239,6 +241,7 @@ export default function AdminPage() {
           {activeTab === "assets" && <AssetsAdminPanel />}
           {activeTab === "downloads" && <DownloadsAdminPanel />}
           {activeTab === "system" && <SystemUpdatePanel />}
+          {activeTab === "tunnel" && <LevelGate need={3}><TunnelPanel /></LevelGate>}
         </div>
       </div>
     </div>
