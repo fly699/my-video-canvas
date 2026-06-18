@@ -456,9 +456,9 @@ export const BaseNode = memo(function BaseNode({
       {/* ── Color accent strip at top ── */}
       <div
         style={{
-          height: isCreative ? 3 : 2,
-          background: `linear-gradient(90deg, transparent 0%, ${config.color}${isCreative ? "90" : "70"} 30%, ${config.color}${isCreative ? "bb" : "90"} 50%, ${config.color}${isCreative ? "90" : "70"} 70%, transparent 100%)`,
-          opacity: isCreative
+          height: (isCreative || isStudio) ? 3 : 2,
+          background: `linear-gradient(90deg, transparent 0%, ${config.color}${(isCreative || isStudio) ? "90" : "70"} 30%, ${config.color}${(isCreative || isStudio) ? "bb" : "90"} 50%, ${config.color}${(isCreative || isStudio) ? "90" : "70"} 70%, transparent 100%)`,
+          opacity: (isCreative || isStudio)
             ? selected ? 1 : isHovered ? 0.85 : 0.55
             : selected ? 1 : isHovered ? 0.7 : 0.35,
           transition: "opacity 180ms ease",
