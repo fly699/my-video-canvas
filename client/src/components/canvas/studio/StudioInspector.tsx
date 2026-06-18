@@ -11,12 +11,14 @@ import { X } from "lucide-react";
 // "pro" or when not exactly one node is selected, so it is purely additive.
 const TEXT_FIELD_PRIORITY = [
   "prompt", "content", "description", "positivePrompt", "promptText",
-  "ttsText", "musicPrompt", "text",
+  "ttsText", "musicPrompt", "lyrics", "dialogue", "sceneDescription",
+  "appearance", "text",
 ] as const;
 
 const TEXT_FIELD_LABEL: Record<string, string> = {
   prompt: "提示词", content: "内容", description: "描述", positivePrompt: "正向提示词",
-  promptText: "提示词", ttsText: "配音文本", musicPrompt: "音乐描述", text: "文本",
+  promptText: "提示词", ttsText: "配音文本", musicPrompt: "音乐描述", lyrics: "歌词",
+  dialogue: "对白", sceneDescription: "场景描述", appearance: "外观", text: "文本",
 };
 
 export function StudioInspector() {
