@@ -39,6 +39,12 @@ export function StudioInspector() {
   const payload = node.data.payload as Record<string, unknown>;
   const textField = TEXT_FIELD_PRIORITY.find((k) => typeof payload[k] === "string");
 
+  const str = (k: string) => (typeof payload[k] === "string" ? (payload[k] as string) : "");
+  const videoUrl = str("videoUrl") || str("resultVideoUrl") || str("outputVideoUrl");
+  const imageUrl = str("imageUrl") || str("resultImageUrl") || str("outputImageUrl");
+  const hasAspect = typeof payload.aspectRatio === "string";
+  const RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
+
   const deselect = () => setNodes(useCanvasStore.getState().nodes.map((n) => (n.selected ? { ...n, selected: false } : n)));
 
   const box: React.CSSProperties = {
@@ -70,6 +76,15 @@ export function StudioInspector() {
 
       {/* body */}
       <div style={{ padding: 15, display: "flex", flexDirection: "column", gap: 16, overflowY: "auto" }}>
+        {/* media-first preview (read-only) */}
+        {(videoUrl || imageUrl) && (
+          <div style={{ borderRadius: 12, overflow: "hidden", background: "var(--c-canvas)", border: "1px solid var(--c-bd1)" }}>
+            {videoUrl
+              ? <video src={videoUrl} controls style={{ display: "block", width: "100%", maxHeight: 220, objectFit: "contain", background: "#000" }} />
+              : <img src={imageUrl} alt="" style={{ display: "block", width: "100%", maxHeight: 220, objectFit: "contain", background: "#000" }} />}
+          </div>
+        )}
+
         <label style={{ display: "block" }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>标题</div>
           <NodeInput value={node.data.title} onValueChange={(v) => updateNodeTitle(node.id, v)} style={box} />
@@ -85,8 +100,29 @@ export function StudioInspector() {
               style={{ ...box, resize: "vertical", minHeight: 120 }}
             />
           </label>
-        ) : (
+        ) : (videoUrl || imageUrl) ? null : (
           <div style={{ fontSize: 12.5, color: "var(--c-t3)", lineHeight: 1.6 }}>该节点的参数请在节点卡片上直接编辑；右栏会随更多节点逐步支持。</div>
+        )}
+
+        {/* aspect ratio (only when the node has the field) */}
+        {hasAspect && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>画面比例</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {RATIOS.map((r) => {
+                const active = payload.aspectRatio === r;
+                return (
+                  <button key={r} onClick={() => updateNodeData(node.id, { aspectRatio: r })}
+                    style={{
+                      fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: 9, cursor: "pointer",
+                      background: active ? `${cfg.color}22` : "var(--c-input)",
+                      border: `1px solid ${active ? cfg.color : "var(--c-bd2)"}`,
+                      color: active ? cfg.color : "var(--c-t2)",
+                    }}>{r}</button>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         <div style={{ fontSize: 11.5, color: "var(--c-t4)", lineHeight: 1.6, marginTop: "auto", paddingTop: 8 }}>
