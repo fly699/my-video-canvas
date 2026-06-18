@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import * as db from "../db";
 import type { TrpcContext } from "./context";
+import { isSelfHostedLlmModel } from "./selfHostedLlm";
 
 interface WhitelistSettingsCache {
   enabled: boolean;
@@ -110,7 +111,11 @@ export async function assertWhitelisted(ctx: TrpcContext): Promise<void> {
  * generation whitelist-gated. When the bypass is on, LLM procedures are freely
  * usable; otherwise this falls back to the standard whitelist check — so when
  * the bypass is off it is byte-for-byte equivalent to the previous gate. */
-export async function assertLLMAllowed(ctx: TrpcContext): Promise<void> {
+export async function assertLLMAllowed(ctx: TrpcContext, model?: string): Promise<void> {
+  // 自建 LLM（部署方自己的 OpenAI 兼容服务器，零云成本）与 ComfyUI 自建服务器同性质：
+  // 走 comfyui 免白名单门控（comfyuiBypass），而非云 LLM 白名单。这样"自建基础设施"的两类
+  // 功能门控一致——管理员开了「ComfyUI 免白名单」即同时放行自建 LLM。
+  if (isSelfHostedLlmModel(model)) return assertComfyuiAllowed(ctx);
   const { llmBypass } = await getWhitelistSettingsCached();
   if (llmBypass) return;
   await assertWhitelisted(ctx);

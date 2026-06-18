@@ -1,5 +1,6 @@
 import { ENV } from "./env";
 import { isKieLLMModel, invokeKieLLM, type OAMessage } from "./kieLLM";
+import { isSelfHostedLlmModel } from "./selfHostedLlm";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -223,11 +224,8 @@ const isGptModel = (model?: string) => !!model && /^gpt/i.test(model);
 const POYO_MODEL_IDS = new Set(["claude-sonnet-4-5-20250929"]);
 const routesToPoyo = (model?: string) => isGptModel(model) || (!!model && POYO_MODEL_IDS.has(model));
 
-// Built-in self-hosted model ids (keep in sync with client models.ts provider:"SelfHosted").
-// Used as the default SELF_HOSTED_LLM_MODELS so a deployer only has to set the URL.
-const DEFAULT_SELF_HOSTED_MODELS = ["Qwen3.6-35B-A3B-FP8"];
-const selfHostedModelIds = () => (ENV.selfHostedLlmModels.length ? ENV.selfHostedLlmModels : DEFAULT_SELF_HOSTED_MODELS);
-const isSelfHostedModel = (model?: string) => !!model && !!ENV.selfHostedLlmUrl.trim() && selfHostedModelIds().includes(model);
+// Self-hosted model detection lives in selfHostedLlm.ts (shared with whitelist gating).
+const isSelfHostedModel = isSelfHostedLlmModel;
 
 const resolveApiUrl = (model?: string) => {
   // Self-hosted OpenAI-compatible endpoint — only for its OWN model ids, so it never

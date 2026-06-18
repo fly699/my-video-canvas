@@ -1015,7 +1015,7 @@ export const aiChatRouter = router({
         // closes the gap that let an editor invoke the LLM without any
         // platform-side limit (all other AI mutations call assertWhitelisted).
         // LLM-scoped gate: respects the admin "open LLM" bypass.
-        await assertLLMAllowed(ctx);
+        await assertLLMAllowed(ctx, input.model);
       }
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // Allow empty message when there's at least one attachment — image-only prompts are valid.
@@ -1985,7 +1985,7 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertLLMAllowed(ctx);
+      await assertLLMAllowed(ctx, input.model);
       return dedupe("scripts.checkCharacterConsistency", ctx.user.id, input, async () => {
         // LLM providers (Anthropic / OpenAI / Gemini) require absolute HTTPS
         // URLs in image_url fields; our internal /manus-storage/{key} proxy
@@ -2110,7 +2110,7 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
       model: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertLLMAllowed(ctx);
+      await assertLLMAllowed(ctx, input.model);
       return dedupe("scripts.analyzeCharacterFromImages", ctx.user.id, input, async () => {
         const absoluteUrls: string[] = [];
         for (const u of input.imageUrls) {
