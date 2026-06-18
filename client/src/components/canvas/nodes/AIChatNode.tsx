@@ -205,7 +205,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   }, [showTemplates]);
 
   const utils = trpc.useUtils();
-  const uploadMutation = trpc.upload.uploadImage.useMutation();
+  const uploadMutation = trpc.upload.uploadAiChatImage.useMutation();
   const sendMutation = trpc.aiChat.sendMessage.useMutation({
     onSuccess: (result) => {
       setLocalMessages((prev) => [...prev, { role: "assistant", content: result.content, _id: crypto.randomUUID() }]);
