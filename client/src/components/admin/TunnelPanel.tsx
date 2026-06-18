@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Globe, Save, Loader2, Power, ExternalLink, ShieldCheck, DownloadCloud, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Globe, Save, Loader2, Power, ExternalLink, ShieldCheck, DownloadCloud, CheckCircle2, AlertTriangle, Wifi, BookOpen, ChevronDown, XCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 /** 管理员后台「公网隧道」：一键启用内置 cloudflared 隧道（快速隧道免账号，或填 Cloudflare
@@ -17,6 +17,10 @@ export function TunnelPanel() {
 
   const emailMut = trpc.admin.tunnel.setEmailNotify.useMutation();
   const testMut = trpc.admin.tunnel.testEmail.useMutation();
+  const checkMut = trpc.admin.tunnel.checkConnectivity.useMutation();
+  type CheckResult = { reachable: boolean; status?: number; host?: string; error?: string };
+  const [checkRes, setCheckRes] = useState<CheckResult | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const [token, setToken] = useState("");
   const [publicUrl, setPublicUrl] = useState("");
@@ -46,6 +50,11 @@ export function TunnelPanel() {
 
   const download = async () => {
     try { await dlMut.mutateAsync(); await cf.refetch(); } catch { /* status surfaced below */ }
+  };
+  const checkConn = async () => {
+    setCheckRes(null);
+    try { setCheckRes(await checkMut.mutateAsync()); }
+    catch (e) { setCheckRes({ reachable: false, error: (e instanceof Error ? e.message : String(e)).slice(0, 180) }); }
   };
 
   const enabled = q.data?.enabled ?? false;
@@ -144,9 +153,49 @@ export function TunnelPanel() {
         <label style={{ fontSize: 11, color: "var(--c-t3)" }}>{runCf ? "公网地址（命名隧道必填；快速隧道留空自动获取）" : "公网地址（你的外网访问域名，必填）"}
           <input value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} placeholder="video.example.com 或 https://video.example.com" className="nodrag" style={{ ...box, marginTop: 4 }} />
         </label>
-        <button onClick={saveConfig} disabled={configMut.isPending} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg self-start" style={{ fontSize: 11.5, fontWeight: 600, background: "var(--c-bd1)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
-          {configMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 保存配置
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={saveConfig} disabled={configMut.isPending} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11.5, fontWeight: 600, background: "var(--c-bd1)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+            {configMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 保存配置
+          </button>
+          {/* 连通性自检：服务器去 GET 自己的公网地址，判断 Cloudflare→隧道→回源是否端到端通 */}
+          <button onClick={checkConn} disabled={checkMut.isPending} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11.5, fontWeight: 600, background: "oklch(0.70 0.16 200 / 0.16)", border: "1px solid oklch(0.70 0.16 200 / 0.4)", color: "oklch(0.7 0.14 200)", cursor: "pointer" }}>
+            {checkMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wifi className="w-3.5 h-3.5" />} 检测命名隧道是否连通
+          </button>
+        </div>
+        {checkRes && (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11.5, lineHeight: 1.6, padding: "8px 10px", borderRadius: 8,
+            background: checkRes.reachable ? "oklch(0.7 0.16 150 / 0.12)" : "oklch(0.70 0.16 25 / 0.10)",
+            border: `1px solid ${checkRes.reachable ? "oklch(0.7 0.16 150 / 0.4)" : "oklch(0.70 0.16 25 / 0.35)"}`,
+            color: checkRes.reachable ? "oklch(0.72 0.16 150)" : "oklch(0.72 0.16 28)" }}>
+            {checkRes.reachable ? <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> : <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+            <span>{checkRes.reachable
+              ? <>隧道连通正常（HTTP {checkRes.status}{checkRes.host ? ` · ${checkRes.host}` : ""}）：Cloudflare → cloudflared → 本服务 回源成功。</>
+              : <>未连通：{checkRes.error}</>}</span>
+          </div>
+        )}
+
+        {/* 命名隧道图文配置引导 */}
+        <div>
+          <button onClick={() => setShowGuide((v) => !v)} className="nodrag flex items-center gap-1.5" style={{ fontSize: 11.5, fontWeight: 600, background: "none", border: "none", color: "oklch(0.7 0.14 200)", cursor: "pointer", padding: 0 }}>
+            <BookOpen className="w-3.5 h-3.5" /> 命名隧道配置图文引导（固定自有域名）<ChevronDown className="w-3.5 h-3.5" style={{ transform: showGuide ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+          </button>
+          {showGuide && (
+            <ol style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 11.5, lineHeight: 1.85, color: "var(--c-t2)", display: "flex", flexDirection: "column", gap: 6 }}>
+              <li>登录 <a href="https://one.dash.cloudflare.com/" target="_blank" rel="noreferrer" style={{ color: "oklch(0.7 0.14 200)" }}>Cloudflare Zero Trust 控制台 <ExternalLink className="inline w-3 h-3" /></a>，左侧进入 <b>Networks → Tunnels</b>（旧版在 Access → Tunnels）。</li>
+              <li>点 <b>Create a tunnel</b> → 选 <b>Cloudflared</b> → 给隧道起个名字（如 <code>my-video-canvas</code>）→ Save。</li>
+              <li>在 “Install and run a connector” 页，找到形如 <code>cloudflared … run --token <b>eyJ...</b></code> 的命令，<b>复制其中的 token（eyJ 开头那串）</b>。无需自己跑命令，本应用会用它启动 cloudflared。</li>
+              <li>把上面复制的 token 粘到本页 <b>「命名隧道 Token」</b>输入框。</li>
+              <li>回到 Cloudflare 隧道页的 <b>Public Hostname</b> 标签 → <b>Add a public hostname</b>：
+                <ul style={{ margin: "2px 0 0", paddingLeft: 16 }}>
+                  <li><b>Subdomain + Domain</b>：选你托管在 Cloudflare 的域名，填子域（如 <code>video.example.com</code>）。</li>
+                  <li><b>Service</b>：Type 选 <b>HTTP</b>，URL 填 <code>localhost:{q.data?.originPort ?? "<本机回源端口>"}</code>（即本应用的内部回环端口，见下方提示）。</li>
+                </ul>
+              </li>
+              <li>把同一个公网域名（如 <code>video.example.com</code>）填到本页下方 <b>「公网地址」</b>，并把要放行的用户/IP 加入 <b>隧道白名单</b>。</li>
+              <li>点 <b>保存配置</b> → 顶部 <b>启用隧道</b> → 等状态变 <b>● 运行中</b> → 点 <b>「检测命名隧道是否连通」</b>确认端到端打通。</li>
+            </ol>
+          )}
+        </div>
       </div>
 
       {/* 单独白名单 */}
