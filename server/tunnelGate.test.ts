@@ -27,13 +27,14 @@ describe("isTunnelRequest — 专用回环端口 / CF 标记 / Host", () => {
 });
 
 describe("isTunnelExemptPath — 仅放行登录/静态", () => {
-  it("放行 auth + 静态 SPA", () => {
-    for (const p of ["/", "/login", "/assets/app.js", "/api/auth/login", "/api/auth/providers", "/api/trpc/auth.me"]) {
+  it("放行 auth + 静态 SPA + 纯 auth 的 tRPC 批", () => {
+    for (const p of ["/", "/login", "/assets/app.js", "/api/auth/login", "/api/auth/providers", "/api/trpc/auth.me", "/api/trpc/auth.me,auth.providers"]) {
       expect(isTunnelExemptPath(p)).toBe(true);
     }
   });
-  it("拦截一切应用 API", () => {
-    for (const p of ["/api/trpc/canvas.list", "/api/trpc/comfyui.generateImage", "/manus-storage/x", "/api/image-proxy"]) {
+  it("拦截一切应用 API（含 batch 把 auth 和应用过程混在一起）", () => {
+    for (const p of ["/api/trpc/canvas.list", "/api/trpc/comfyui.generateImage", "/manus-storage/x", "/api/image-proxy",
+      "/api/trpc/auth.me,projects.list", "/api/trpc/auth.me,canvas.nodes.list,projects.list"]) {
       expect(isTunnelExemptPath(p)).toBe(false);
     }
   });
