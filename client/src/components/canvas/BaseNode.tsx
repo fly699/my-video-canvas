@@ -331,7 +331,7 @@ export const BaseNode = memo(function BaseNode({
         background: "var(--c-node-bg)",
         border: borderStyle,
         boxShadow: shadowStyle,
-        minWidth: isCreative ? Math.round(minWidth * 1.25) : minWidth,
+        minWidth: (isCreative || isStudio) ? Math.round(minWidth * 1.25) : minWidth,
         minHeight: isCollapsedPreview ? 0 : minHeight,
         width: "100%",
         height: "100%",
