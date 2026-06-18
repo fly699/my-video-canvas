@@ -14,7 +14,7 @@ import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
 import { appRouter } from "../routers";
 import { createContext, resolveRequestUser } from "./context";
-import { getTunnelGate, initTunnel, setTunnelOrigin } from "./tunnel";
+import { getTunnelGate, initTunnel, setTunnelOrigin, getTunnelListenerPort } from "./tunnel";
 import { isTunnelRequest, isTunnelExemptPath, isTunnelAllowed } from "./tunnelGate";
 import { serveStatic, setupVite } from "./vite";
 import { Server as SocketIOServer } from "socket.io";
@@ -93,7 +93,7 @@ async function startServer() {
   app.use(async (req, res, next) => {
     const g = getTunnelGate();
     if (!g.enabled) return next();
-    if (!isTunnelRequest(req.headers, g.host)) return next();   // not via our tunnel (CF marker / Host)
+    if (!isTunnelRequest(req.socket?.localPort, getTunnelListenerPort(), req.headers, g.host)) return next();   // not via our tunnel
     if (isTunnelExemptPath(req.path)) return next();                  // auth + static SPA
     // Real public visitor IP for the IP-whitelist: cloudflared/Cloudflare passes it in
     // cf-connecting-ip (req.ip would be the localhost origin hop).
@@ -498,12 +498,21 @@ async function startServer() {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
+  server.listen(port, async () => {
     const proto = isHttps ? "https" : "http";
     console.log(`Server running on ${proto}://localhost:${port}/`);
     if (isHttps) console.log(`[HTTPS] self-signed cert active — LAN clients can trust it via ${proto}://<本机IP>:${port}/cert.crt`);
-    setTunnelOrigin(port, isHttps); // 隧道回源用真实端口+协议（避免 502：自动端口/HTTPS 自签）
-    void initTunnel(); // 若管理员之前已启用公网隧道，开机自动拉起 cloudflared + 预热门控缓存
+    // Dedicated 127.0.0.1 loopback listener that cloudflared forwards to (plain HTTP →
+    // no self-signed-TLS 502). Any request arriving on THIS port is unambiguously tunnel
+    // traffic, so the access gate identifies it by socket.localPort — no header guessing.
+    try {
+      const tunnelPort = await findAvailablePort(port + 1);
+      createServer(app).listen(tunnelPort, "127.0.0.1", () => {
+        setTunnelOrigin(tunnelPort);
+        console.log(`[Tunnel] internal origin on http://127.0.0.1:${tunnelPort}`);
+        void initTunnel(); // 隧道监听就绪后再拉起 cloudflared + 预热门控缓存
+      });
+    } catch (e) { console.warn("[Tunnel] internal listener failed:", e); }
   });
 
   // When HTTPS is on, run a tiny HTTP listener that 301-redirects to HTTPS so
