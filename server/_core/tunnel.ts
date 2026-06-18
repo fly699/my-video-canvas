@@ -2,6 +2,21 @@ import { spawn, type ChildProcess } from "child_process";
 import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./tunnelGate";
 import { getTunnelSettings, setTunnelSettings } from "../db";
 import { resolveCloudflaredPath } from "./cloudflaredBin";
+import { sendTunnelUrlEmail } from "./tunnelEmail";
+
+// Email the new public URL once per distinct URL (quick tunnels change on restart).
+let lastEmailedUrl = "";
+async function notifyNewUrl(url: string): Promise<void> {
+  if (!url || url === lastEmailedUrl) return;
+  lastEmailedUrl = url;
+  try {
+    const cfg = await getTunnelSettings();
+    if (cfg.emailNotify.to.trim() && cfg.emailNotify.host.trim()) {
+      const r = await sendTunnelUrlEmail(cfg.emailNotify, url);
+      if (!r.ok) console.warn("[Tunnel] 新地址邮件发送失败:", r.error);
+    }
+  } catch (e) { console.warn("[Tunnel] notifyNewUrl error:", (e as Error).message); }
+}
 
 // Manages the built-in cloudflared tunnel process + a small cached gate snapshot the
 // per-request Express middleware reads synchronously.
@@ -44,7 +59,7 @@ export async function startTunnel(): Promise<void> {
     logBuf = (logBuf + d.toString()).slice(-8000);
     if (!named) {
       const url = parseQuickTunnelUrl(logBuf);
-      if (url && url !== status.publicUrl) { status.publicUrl = url; void setTunnelSettings({ publicUrl: url }).then(reloadTunnelGate); }
+      if (url && url !== status.publicUrl) { status.publicUrl = url; void setTunnelSettings({ publicUrl: url }).then(reloadTunnelGate); void notifyNewUrl(url); }
     }
   };
   proc.stdout?.on("data", onData);

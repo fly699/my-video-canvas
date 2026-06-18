@@ -734,8 +734,11 @@ export const tunnelSettings = mysqlTable("tunnel_settings", {
   publicUrl: text("publicUrl"),        // 公网地址（快速隧道自动解析；命名隧道管理员填）
   whitelistUsers: json("whitelistUsers").$type<number[]>(),
   whitelistIps: json("whitelistIps").$type<string[]>(),
+  // 新网址自动发邮件的 SMTP 配置 + 收件人。pass 敏感，绝不回传前端。
+  emailNotify: json("emailNotify").$type<TunnelEmailNotify>(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
+export type TunnelEmailNotify = { to: string; host: string; port: number; user: string; pass: string; secure: boolean; from: string };
 
 export type SelfHostedLlmConfig = { url: string; apiKey: string; models: { id: string; label: string }[] };
 export const modelToggleSettings = mysqlTable("model_toggle_settings", {
