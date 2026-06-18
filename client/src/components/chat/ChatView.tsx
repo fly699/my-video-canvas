@@ -16,6 +16,14 @@ import { C, avatarGrad, initials } from "./chatTheme";
 import { MessageContent } from "./MessageContent";
 import { openLightbox } from "./chatLightbox";
 
+/** Read a File as a bare base64 string (no data: prefix) for chat.uploadFile. */
+const fileToBase64 = (f: File): Promise<string> => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve((r.result as string).split(",")[1] ?? "");
+  r.onerror = () => reject(r.error ?? new Error("读取文件失败"));
+  r.readAsDataURL(f);
+});
+
 export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, e2eAvailable, myUserId, deleteRoom, leaveRoom } = useChat();
   const [text, setText] = useState("");
@@ -65,6 +73,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem("chat:aiModel") || "");
   const effModel = chatModels.find((m) => m.id === chatModel)?.id ?? chatModels[0]?.id;
   const sendToAssistantMut = trpc.chat.sendToAssistant.useMutation();
+  const uploadFileMut = trpc.chat.uploadFile.useMutation();
   const pickChatModel = (id: string) => { setChatModel(id); localStorage.setItem("chat:aiModel", id); };
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
@@ -113,19 +122,30 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   async function doSend(encrypt?: boolean) {
     if (busy) return;
     if (!text.trim() && staged.length === 0) return;
-    // AI 助手会话：把输入发给 LLM（仅文本），用户消息与 AI 回复经广播实时回灌到列表。
+    // AI 助手会话：把输入（文本 + 图片附件）发给 LLM，用户消息与 AI 回复经广播实时回灌到列表。
     if (isAI) {
-      if (!text.trim()) return;
+      if (!text.trim() && staged.length === 0) return;
       if (!effModel) { toast.error("没有可用的聊天 AI 模型（管理员可能已全部停用）"); return; }
-      if (sendToAssistantMut.isPending) return;
+      if (busy || sendToAssistantMut.isPending) return;
       const content = text.trim();
-      setText("");
+      const files = staged;
+      setText(""); setStaged([]);
+      setBusy(true);
       try {
+        let attachmentIds: number[] | undefined;
+        if (files.length > 0) {
+          attachmentIds = await Promise.all(files.map(async (f) => {
+            const base64 = await fileToBase64(f);
+            const r = await uploadFileMut.mutateAsync({ conversationId: activeConv!.id, base64, mimeType: f.type || "application/octet-stream", filename: f.name });
+            return r.attachmentId;
+          }));
+        }
         await sendToAssistantMut.mutateAsync({
           conversationId: activeConv!.id, content, model: effModel,
-          kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
+          kieTempKey: localStorage.getItem("kie:tempKey") || undefined, attachmentIds,
         });
-      } catch (e) { toast.error(e instanceof Error ? e.message : "AI 回复失败"); setText(content); }
+      } catch (e) { toast.error(e instanceof Error ? e.message : "AI 回复失败"); setText(content); setStaged(files); }
+      finally { setBusy(false); }
       return;
     }
     // serverless large file → ask encrypt vs fast (once for the batch)
@@ -260,7 +280,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       {/* input */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-        {!isAI && <button onClick={() => fileRef.current?.click()} title={`添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>}
+        <button onClick={() => fileRef.current?.click()} title={isAI ? "添加附件（图片可作参考图，需视觉模型）" : `添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
         {!isAI && <button onClick={() => screenshot()} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>}
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
@@ -277,8 +297,8 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           }}
           placeholder={isAI ? "向 AI 助手提问，Enter 发送、Shift+Enter 换行" : "Enter 发送，Shift+Enter 换行，可拖拽或粘贴文件到此"} rows={1}
           style={{ flex: 1, resize: "none", maxHeight: 140, padding: "10px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
-        <button onClick={() => doSend()} disabled={busy || sendToAssistantMut.isPending || (!text.trim() && (isAI || staged.length === 0))} title="发送"
-          style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || sendToAssistantMut.isPending || (!text.trim() && (isAI || staged.length === 0)) ? 0.5 : 1 }}>
+        <button onClick={() => doSend()} disabled={busy || sendToAssistantMut.isPending || (!text.trim() && staged.length === 0)} title="发送"
+          style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || sendToAssistantMut.isPending || (!text.trim() && staged.length === 0) ? 0.5 : 1 }}>
           <Send size={18} />
         </button>
       </div>

@@ -2,7 +2,7 @@ import path from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
-import { storagePut, storagePresignPut, isStorageConfigured, canBrowserReachStorageDirectly, assertObjectStorageWritable, finalizeStorageKey } from "../storage";
+import { storagePut, storagePresignPut, isStorageConfigured, canBrowserReachStorageDirectly, assertObjectStorageWritable, finalizeStorageKey, resolveToAbsoluteUrl } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
 import { hashPassword, verifyPassword } from "../_core/scrypt";
 import {
@@ -58,6 +58,21 @@ function kindFromMime(mime: string): "image" | "video" | "file" {
   if (mime.startsWith("image/")) return "image";
   if (mime.startsWith("video/")) return "video";
   return "file";
+}
+
+/** Turn a stored attachment URL into one the LLM gateway can fetch (absolute http(s)
+ *  or data:). Relative /manus-storage/ paths are resolved to an absolute URL. Returns
+ *  null for unusable schemes (blob:) so the caller drops them. Mirrors canvas aiChat. */
+async function chatImageUrlForLLM(url: string): Promise<string | null> {
+  if (!url) return null;
+  if (url.startsWith("blob:")) return null;
+  if (url.startsWith("data:")) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/manus-storage/")) {
+    try { return await resolveToAbsoluteUrl(url); }
+    catch (err) { console.warn("[chatAssistant] resolveToAbsoluteUrl failed:", err instanceof Error ? err.message : err); return null; }
+  }
+  return null;
 }
 
 function dmKeyFor(a: number, b: number): string {
@@ -275,9 +290,10 @@ export const chatRouter = router({
   sendToAssistant: protectedProcedure
     .input(z.object({
       conversationId: z.number(),
-      content: z.string().min(1).max(8000),
+      content: z.string().max(8000),
       model: z.string().max(64).optional(),
       kieTempKey: z.string().max(256).optional(),
+      attachmentIds: z.array(z.number()).max(10).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const aiId = await getOrCreateAssistantUserId();
@@ -288,26 +304,52 @@ export const chatRouter = router({
       // 安全：该会话必须确实是「当前用户 ↔ AI 助手」的私聊，杜绝借此向任意会话注入 AI 消息。
       if (conv.dmKey !== dmKeyFor(ctx.user.id, aiId)) throw new TRPCError({ code: "FORBIDDEN", message: "非 AI 助手会话" });
       if (await isChatBanned(ctx.user.id, conv.id)) throw new TRPCError({ code: "FORBIDDEN", message: "你已被封禁" });
+      if (!input.content.trim() && !input.attachmentIds?.length) throw new TRPCError({ code: "BAD_REQUEST", message: "请输入内容或附件" });
 
       // 权限门控：kie 模型走自有 key 体系（resolveKieKey 内含权限校验）；其余 LLM 受白名单/LLM 门控。
       if (!isKieLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
 
-      // 1) 落库并广播用户消息
+      // 0) 解析本会话内的附件（仅限当前用户上传到本会话的，杜绝越权引用他人附件）
+      let attachments: ChatFileRef[] | null = null;
+      if (input.attachmentIds?.length) {
+        const all = await listConversationAttachments(conv.id);
+        attachments = all
+          .filter((a) => input.attachmentIds!.includes(a.id))
+          .map((a) => ({ attachmentId: a.id, name: a.name, mimeType: a.mimeType, size: a.size, url: a.url, kind: a.kind }));
+      }
+
+      // 1) 落库并广播用户消息（带附件）
       const userMsg = await insertConversationMessage({
         conversationId: conv.id, senderId: ctx.user.id,
         senderName: ctx.user.name ?? `用户${ctx.user.id}`, content: input.content,
+        attachments: attachments ?? undefined,
       });
       if (!userMsg) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       if (broadcaster) broadcaster(conv.id, rowToWire(userMsg));
 
-      // 2) 取最近历史构造对话上下文（AI 的消息=assistant，其余=user），上限 20 条
+      // 2) 取最近历史构造对话上下文（AI 的消息=assistant，其余=user），上限 20 条。
+      //    用户消息若带图片附件，拼成多模态 content（image_url），让视觉模型能「看到」参考图；
+      //    非图片附件附一行说明。文本/普通模型会忽略图片部分，不影响。
       const history = (await getConversationMessages(conv.id, { limit: 20 })).slice().reverse();
+      const histMsgs = await Promise.all(history.map(async (m) => {
+        const role = (m.senderId === aiId ? "assistant" : "user") as "assistant" | "user";
+        const atts = ((m as { attachments?: ChatFileRef[] | null }).attachments) ?? null;
+        if (role === "user" && atts && atts.length > 0) {
+          const imgs = atts.filter((a) => a.kind === "image" || a.mimeType.startsWith("image/"));
+          const resolved = (await Promise.all(imgs.map((a) => chatImageUrlForLLM(a.url)))).filter((u): u is string => !!u);
+          const otherNote = atts.filter((a) => !(a.kind === "image" || a.mimeType.startsWith("image/")))
+            .map((a) => `[附件：${a.name}]`).join(" ");
+          const text = [m.content, otherNote].filter(Boolean).join("\n") || "请分析附带的图片。";
+          if (resolved.length > 0) {
+            return { role, content: [{ type: "text" as const, text }, ...resolved.map((url) => ({ type: "image_url" as const, image_url: { url } }))] };
+          }
+          return { role, content: text };
+        }
+        return { role, content: m.content };
+      }));
       const llmMessages = [
         { role: "system" as const, content: "你是内嵌在团队协作工具里的 AI 助手，用简洁、专业、友好的中文回答用户的问题，可协助创作、答疑、润色等。" },
-        ...history.map((m) => ({
-          role: (m.senderId === aiId ? "assistant" : "user") as "assistant" | "user",
-          content: m.content,
-        })),
+        ...histMsgs,
       ];
 
       // 3) 调 LLM
