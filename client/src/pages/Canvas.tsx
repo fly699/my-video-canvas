@@ -58,7 +58,6 @@ import { NarrativeArcPicker } from "../components/canvas/NarrativeArcPicker";
 import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { UIStyleSwitcher } from "../components/canvas/UIStyleSwitcher";
-import { StudioInspector } from "../components/canvas/studio/StudioInspector";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { useCanvasMode } from "../contexts/CanvasModeContext";
 import { useTheme, THEMES } from "../contexts/ThemeContext";
@@ -2369,8 +2368,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           onMouseMove={handleMouseMove}
           onClick={() => { setShowNodePicker(false); }}
         >
-          {/* Studio skin: right-side inspector for the selected node (self-gates to studio + 1 selection) */}
-          <StudioInspector />
+          {/* Studio skin: the selected node's params float BELOW the node (handled in
+              BaseNode via NodeToolbar), so the right-side inspector is no longer mounted. */}
           {isReadOnly && (
             <div
               className="absolute top-3 left-1/2 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs"
