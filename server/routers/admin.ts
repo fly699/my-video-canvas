@@ -5,6 +5,7 @@ import * as db from "../db";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
+import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
@@ -391,6 +392,22 @@ export const adminRouter = router({
       .mutation(async ({ input }) => {
         await db.setDisabledModels(input.disabledModels);
         invalidateModelTogglesCache();
+        return { success: true };
+      }),
+    // ── 自建 OpenAI 兼容 LLM 配置（admin） ──
+    getSelfHostedLlm: adminProcedure.query(async () => db.getSelfHostedLlmConfig()),
+    setSelfHostedLlm: managerProc
+      .input(z.object({
+        url: z.string().trim().max(2048),
+        apiKey: z.string().max(512).default(""),
+        models: z.array(z.object({ id: z.string().min(1).max(120), label: z.string().max(120) })).max(50),
+      }))
+      .mutation(async ({ input }) => {
+        // 仅接受 http(s)（与代理一致），允许内网地址（部署方自有服务器）。
+        const url = input.url.trim();
+        if (url && !/^https?:\/\//i.test(url)) throw new TRPCError({ code: "BAD_REQUEST", message: "地址必须以 http:// 或 https:// 开头" });
+        await db.setSelfHostedLlmConfig({ url, apiKey: input.apiKey, models: input.models });
+        await reloadSelfHostedConfig(); // 立即热更新路由/门控缓存
         return { success: true };
       }),
   }),

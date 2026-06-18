@@ -7,6 +7,7 @@ import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { CHAT_MODELS } from "@/lib/models";
+import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { goToAdminTab } from "@/lib/adminNav";
 import type { ChatWireMessage, ChatFileRef } from "@shared/types";
@@ -58,7 +59,9 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const isAI = !!activeConv && activeConv.type === "dm" && aiQuery.data?.userId != null && activeConv.peer?.id === aiQuery.data.userId;
   const disabledModels = useDisabledModels();
   // 聊天 AI 可选模型：受「模型管理 · 聊天」分组开关过滤（独立于 LLM 节点的开关，键加 "chat:" 前缀）。
-  const chatModels = CHAT_MODELS.filter((m) => !m.hidden && !disabledModels.has("chat:" + m.id));
+  const _selfHostedChat = useSelfHostedLlmModels();
+  const _chatPool = _selfHostedChat.length ? [..._selfHostedChat.filter((x) => !CHAT_MODELS.some((m) => m.id === x.id)), ...CHAT_MODELS] : CHAT_MODELS;
+  const chatModels = _chatPool.filter((m) => !m.hidden && !disabledModels.has("chat:" + m.id));
   const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem("chat:aiModel") || "");
   const effModel = chatModels.find((m) => m.id === chatModel)?.id ?? chatModels[0]?.id;
   const sendToAssistantMut = trpc.chat.sendToAssistant.useMutation();

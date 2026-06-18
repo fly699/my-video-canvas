@@ -290,7 +290,7 @@ export const chatRouter = router({
       if (await isChatBanned(ctx.user.id, conv.id)) throw new TRPCError({ code: "FORBIDDEN", message: "你已被封禁" });
 
       // 权限门控：kie 模型走自有 key 体系（resolveKieKey 内含权限校验）；其余 LLM 受白名单/LLM 门控。
-      if (!isKieLLMModel(input.model)) await assertLLMAllowed(ctx);
+      if (!isKieLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
 
       // 1) 落库并广播用户消息
       const userMsg = await insertConversationMessage({

@@ -17,6 +17,7 @@ import {
   kieBalanceSnapshots,
   storageSettings,
   modelToggleSettings,
+  type SelfHostedLlmConfig,
   auditLogs,
   comfyUsageLogs,
   poyoBalanceSnapshots,
@@ -118,7 +119,7 @@ export function isDupEntryError(e: unknown): boolean {
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
-const devModelToggleSettings: { disabledModels: string[] } = { disabledModels: [] };
+const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig } = { disabledModels: [] };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -1499,6 +1500,33 @@ export async function setDisabledModels(ids: string[]): Promise<void> {
   if (!db) { devModelToggleSettings.disabledModels = disabledModels; return; }
   await db.insert(modelToggleSettings).values({ id: 1, disabledModels })
     .onDuplicateKeyUpdate({ set: { disabledModels } });
+}
+
+export function normalizeSelfHostedLlm(v: unknown): SelfHostedLlmConfig {
+  // JSON columns come back parsed on MySQL 8 but as a STRING on MariaDB (JSON=longtext),
+  // so accept both: parse a string, else use the object.
+  let o: Record<string, unknown> = {};
+  if (typeof v === "string") { try { o = JSON.parse(v) as Record<string, unknown>; } catch { o = {}; } }
+  else if (v && typeof v === "object") o = v as Record<string, unknown>;
+  const models = Array.isArray(o.models) ? o.models.filter((m): m is { id: string; label: string } =>
+    !!m && typeof m === "object" && typeof (m as { id?: unknown }).id === "string").map((m) => ({ id: String(m.id), label: String((m as { label?: unknown }).label ?? m.id) })) : [];
+  return { url: typeof o.url === "string" ? o.url : "", apiKey: typeof o.apiKey === "string" ? o.apiKey : "", models };
+}
+
+/** 管理员配置的自建 OpenAI 兼容 LLM（url/apiKey/models）。单行 id=1 的 JSON 列。 */
+export async function getSelfHostedLlmConfig(): Promise<SelfHostedLlmConfig> {
+  const db = await getDb();
+  if (!db) return normalizeSelfHostedLlm(devModelToggleSettings.selfHostedLlm);
+  const rows = await db.select().from(modelToggleSettings).limit(1);
+  return normalizeSelfHostedLlm(rows[0]?.selfHostedLlm);
+}
+
+export async function setSelfHostedLlmConfig(cfg: SelfHostedLlmConfig): Promise<void> {
+  const selfHostedLlm = normalizeSelfHostedLlm(cfg);
+  const db = await getDb();
+  if (!db) { devModelToggleSettings.selfHostedLlm = selfHostedLlm; return; }
+  await db.insert(modelToggleSettings).values({ id: 1, selfHostedLlm })
+    .onDuplicateKeyUpdate({ set: { selfHostedLlm } });
 }
 
 export async function addWhitelistEntry(

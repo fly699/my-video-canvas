@@ -86,10 +86,24 @@ describe("convertUiWorkflowToApiPrompt", () => {
     expect(prompt!["1"]).toBeUndefined();          // the Primitive itself is not emitted
   });
 
-  it("skips muted/bypassed nodes", () => {
+  it("skips muted/bypassed LEAF nodes (no downstream depends on them)", () => {
     const withMuted = { ...ui, nodes: [...ui.nodes, { id: 99, type: "SaveImage", mode: 4, inputs: [], widgets_values: ["x"] }] };
     const { prompt } = convertUiWorkflowToApiPrompt(withMuted, objectInfo);
     expect(prompt!["99"]).toBeUndefined();
+  });
+
+  it("rejects (clear error) when an active node depends on a BYPASSED upstream node — no dangling ref", () => {
+    // Bypass the checkpoint loader (id 4); KSampler.model/CLIP/VAE all dangle off it.
+    const bypassedCkpt = {
+      ...ui,
+      nodes: ui.nodes.map((n) => (n.id === 4 ? { ...n, mode: 4 } : n)),
+    };
+    const { prompt, error } = convertUiWorkflowToApiPrompt(bypassedCkpt, objectInfo);
+    expect(prompt).toBeUndefined();
+    expect(error).toBeTruthy();
+    expect(error).toContain("未输出的上游节点"); // names the dangling edges instead of emitting a broken graph
+    expect(error).toContain("KSampler.model→#4");
+    expect(error).toMatch(/bypass|静音/);
   });
 
   it("returns an error for empty / non-UI input", () => {

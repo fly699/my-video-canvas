@@ -152,6 +152,10 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
   const tplCreateMut = trpc.comfyTemplates.create.useMutation();
   const [apiJson, setApiJson] = useState<string>("");     // 转换后的 API 格式（UI 自动转）
   const [remaps, setRemaps] = useState<Record<string, string>>({}); // `${nodeId}|${field}` → 新值
+  // 上次预检所基于的 remaps 快照（稳定序列化）。用来判断"改完重映射但没重新预检"——这种状态下
+  // 展示的 validation 与实际将导入的（applyRemaps 后）JSON 不一致，必须强制复检后才能导入。
+  const [validatedRemaps, setValidatedRemaps] = useState<string>("{}");
+  const serializeRemaps = (rm: Record<string, string>) => JSON.stringify(Object.entries(rm).sort());
   const [validation, setValidation] = useState<ValidateResult | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [tplName, setTplName] = useState("");   // 另存为共享模板的名称
@@ -184,6 +188,7 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
       setApiJson(json);
       const v = await validateMut.mutateAsync({ customBaseUrl: serverUrl.trim() || undefined, workflowJson: json });
       setValidation(v);
+      setValidatedRemaps("{}"); // remaps 已在上方重置为 {}，validation 即对应空 remaps
     } catch (e) {
       toast.error("预检失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 160));
       setStep("server"); // 退回，让用户检查格式/服务器
@@ -197,6 +202,7 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
       const corrected = applyRemaps(apiJson, remaps);
       const v = await validateMut.mutateAsync({ customBaseUrl: serverUrl.trim() || undefined, workflowJson: corrected });
       setValidation(v);
+      setValidatedRemaps(serializeRemaps(remaps)); // 本次 validation 对应当前 remaps → 不再 dirty
       if (v.ok) toast.success("预检通过，可以导入");
     } catch (e) {
       toast.error("重新预检失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 120));
@@ -274,18 +280,25 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
   const unresolvedInvalid = validation
     ? validation.invalidEnums.filter((iv) => !remaps[`${iv.nodeId}|${iv.field}`]).length
     : 0;
+  // 改了重映射但没重新预检：展示的 validation 与将导入的 JSON 不一致 → 强制先复检，避免"所见≠所导入"
+  // （例如智能匹配把模型映射成了错误的相近名，复检能现形）。仅在能预检（拿得到 object_info）时生效。
+  const remapsDirty = !!validation && validation.objectInfoAvailable && serializeRemaps(remaps) !== validatedRemaps;
   // 导入按钮文案/配色：通过=绿；有遗留问题=黄（仍允许导入，缺节点需到服务器装后再运行）。
   const importHint = !validation
     ? ""
-    : validation.ok
+    : remapsDirty
+      ? "改动未复检 · 请先点重新预检"
+      : validation.ok
       ? "导入到节点"
-      : !validation.objectInfoAvailable
-        ? "未预检，仍导入"
-        : validation.missingNodes.length > 0
-          ? "仍导入（需先装缺失节点）"
-          : unresolvedInvalid > 0
-            ? `仍有 ${unresolvedInvalid} 项未修，仍导入`
-            : "导入到节点";
+      : validation.danglingLinks.length > 0
+        ? "结构有悬空连线，仍导入"
+        : !validation.objectInfoAvailable
+          ? "未预检，仍导入"
+          : validation.missingNodes.length > 0
+            ? "仍导入（需先装缺失节点）"
+            : unresolvedInvalid > 0
+              ? `仍有 ${unresolvedInvalid} 项未修，仍导入`
+              : "导入到节点";
 
   // 通过 portal 渲染到 body：节点处于 ReactFlow 的 transform 画布内，position:fixed 会被
   // 变换祖先「劫持」（相对缩放后的画布定位、随缩放放大），portal 到 body 才能真正铺满屏幕。
@@ -382,13 +395,28 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
                 </div>
               ) : validation ? (
                 <>
-                  {/* 总判定 */}
-                  {!validation.objectInfoAvailable ? (
+                  {/* 总判定。悬空连线是纯结构问题（不依赖 object_info、服务器离线也能查出），
+                      运行必报「node not found」，故优先级最高，先于「服务器不可达」展示。 */}
+                  {validation.danglingLinks.length > 0 ? (
+                    <Banner tone="warn" icon={<ShieldAlert className="w-4 h-4" />} title="工作流结构有悬空连线（运行必报错）" text={`有 ${validation.danglingLinks.length} 条连线指向图中不存在的节点。多为复制/裁剪工作流时漏带了上游节点，请回 ComfyUI 重新完整导出（Save API Format）再导入。`} />
+                  ) : !validation.objectInfoAvailable ? (
                     <Banner tone="warn" icon={<ShieldAlert className="w-4 h-4" />} title="未能预检（服务器不可达）" text="拿不到该服务器的 /object_info，无法核对节点与模型。可返回上一步检查地址，或冒险直接导入（运行时可能报错）。" />
                   ) : validation.ok ? (
                     <Banner tone="ok" icon={<ShieldCheck className="w-4 h-4" />} title="预检通过" text={`${validation.nodeCount} 个节点全部可识别，模型/采样器等取值均在服务器上存在。可以放心导入。`} />
                   ) : (
-                    <Banner tone="warn" icon={<ShieldAlert className="w-4 h-4" />} title="预检发现问题（导入前请修正）" text={`缺节点 ${validation.missingNodes.length} · 取值非法 ${validation.invalidEnums.length}（待修 ${unresolvedInvalid}） · 必填缺失 ${validation.missingRequired.length}`} />
+                    <Banner tone="warn" icon={<ShieldAlert className="w-4 h-4" />} title="预检发现问题（导入前请修正）" text={`缺节点 ${validation.missingNodes.length} · 取值非法 ${validation.invalidEnums.length}（待修 ${unresolvedInvalid}） · 必填缺失 ${validation.missingRequired.length}${validation.danglingLinks.length ? ` · 悬空连线 ${validation.danglingLinks.length}` : ""}`} />
+                  )}
+
+                  {/* 悬空连线明细 */}
+                  {validation.danglingLinks.length > 0 && (
+                    <Section icon={<PackageX className="w-3.5 h-3.5" style={{ color: "oklch(0.64 0.2 25)" }} />} title={`悬空连线（${validation.danglingLinks.length}）`}>
+                      <div style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6 }}>
+                        {validation.danglingLinks.slice(0, 12).map((d, i) => (
+                          <div key={i}>· <b>{d.classType}</b>#{d.nodeId} 的 <code>{d.field}</code> 连到了不存在的节点 #{d.current}</div>
+                        ))}
+                        {validation.danglingLinks.length > 12 && <div>… 等 {validation.danglingLinks.length} 条</div>}
+                      </div>
+                    </Section>
                   )}
 
                   {/* 缺失的自定义节点 */}
@@ -463,11 +491,11 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
                     </Section>
                   )}
 
-                  {/* 重新预检 */}
-                  {validation.objectInfoAvailable && !validation.ok && (
+                  {/* 重新预检（有未复检的改动时高亮提示） */}
+                  {validation.objectInfoAvailable && (!validation.ok || remapsDirty) && (
                     <button onClick={reValidate} disabled={preparing} className="nodrag flex items-center justify-center gap-1.5 py-2 rounded-lg"
-                      style={{ fontSize: 11.5, fontWeight: 600, background: A(0.14), border: `1px solid ${A(0.4)}`, color: ACCENT, cursor: "pointer" }}>
-                      {preparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />} 应用修改并重新预检
+                      style={{ fontSize: 11.5, fontWeight: 600, background: remapsDirty ? "oklch(0.75 0.15 75 / 0.18)" : A(0.14), border: `1px solid ${remapsDirty ? "oklch(0.75 0.15 75 / 0.5)" : A(0.4)}`, color: remapsDirty ? "oklch(0.7 0.14 75)" : ACCENT, cursor: "pointer" }}>
+                      {preparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />} {remapsDirty ? "有改动未复检 · 应用并重新预检" : "应用修改并重新预检"}
                     </button>
                   )}
 
@@ -477,7 +505,8 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
                     <div className="flex items-center gap-2">
                       <input value={tplName} onChange={(e) => { setTplName(e.target.value); setTplSaved(false); }} placeholder="模板名，如：Flux 文生图（已校验）"
                         className="nodrag" style={{ flex: 1, fontSize: 11.5, padding: "7px 9px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
-                      <button onClick={saveAsTemplate} disabled={preparing || !tplName.trim() || tplSaved}
+                      <button onClick={saveAsTemplate} disabled={preparing || !tplName.trim() || tplSaved || remapsDirty}
+                        title={remapsDirty ? "请先重新预检，确保存入模板的与所见一致" : undefined}
                         className="nodrag flex items-center gap-1.5 px-3 py-2 rounded-lg whitespace-nowrap"
                         style={{ fontSize: 11, fontWeight: 600, cursor: preparing || tplSaved ? "default" : "pointer",
                           background: tplSaved ? "oklch(0.7 0.16 150 / 0.16)" : A(0.14), border: `1px solid ${tplSaved ? "oklch(0.7 0.16 150 / 0.4)" : A(0.4)}`, color: tplSaved ? "oklch(0.72 0.16 150)" : ACCENT }}>
@@ -508,13 +537,13 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
             <NavNext disabled={false} onClick={enterValidate} label="下一步：预检工作流" />
           )}
           {step === "validate" && validation && (
-            <button onClick={finish} disabled={preparing}
+            <button onClick={remapsDirty ? reValidate : finish} disabled={preparing}
               className="nodrag flex items-center gap-1.5 px-4 py-2 rounded-lg"
-              title={validation.missingNodes.length > 0 ? "可先导入；运行前需在该服务器安装缺失的自定义节点" : undefined}
+              title={remapsDirty ? "你改了取值映射，先重新预检以确保导入的与所见一致" : validation.missingNodes.length > 0 ? "可先导入；运行前需在该服务器安装缺失的自定义节点" : undefined}
               style={{ fontSize: 12, fontWeight: 700, cursor: preparing ? "not-allowed" : "pointer",
-                background: validation.ok ? "oklch(0.7 0.16 150)" : A(0.2),
-                border: `1px solid ${validation.ok ? "oklch(0.7 0.16 150 / 0.5)" : A(0.5)}`,
-                color: validation.ok ? "#06250f" : ACCENT }}>
+                background: remapsDirty ? "oklch(0.75 0.15 75)" : validation.ok ? "oklch(0.7 0.16 150)" : A(0.2),
+                border: `1px solid ${remapsDirty ? "oklch(0.75 0.15 75 / 0.5)" : validation.ok ? "oklch(0.7 0.16 150 / 0.5)" : A(0.5)}`,
+                color: remapsDirty ? "#2a1c00" : validation.ok ? "#06250f" : ACCENT }}>
               {preparing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
               {importHint}
             </button>

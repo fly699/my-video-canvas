@@ -223,7 +223,7 @@ export const comfyTemplatesRouter = router({
   analyzeLibrary: protectedProcedure
     .input(z.object({ model: z.string().max(64).optional(), full: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
-      await assertLLMAllowed(ctx);
+      await assertLLMAllowed(ctx, input.model);
       const model = input.model ?? FACTORY_DEFAULT_MODELS.llm;
       return runLibraryAnalysis(ctx, model, { full: input.full });
     }),

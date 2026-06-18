@@ -268,7 +268,7 @@ export const comfyOpsRouter = router({
     generate: managerProc
       .input(z.object({ serverId: z.number().int(), model: z.string().max(64), query: z.string().min(1).max(4000) }))
       .mutation(async ({ ctx, input }) => {
-        await assertLLMAllowed(ctx);
+        await assertLLMAllowed(ctx, input.model);
         const plan = await aiGenerateOps(ctx, { model: input.model, serverId: input.serverId, userQuery: input.query });
         recordOps(ctx, {
           serverId: input.serverId, channel: "api", action: "aiGenerate", auditAction: "ops:ai_generate",

@@ -725,9 +725,12 @@ export const storageSettings = mysqlTable("storageSettings", {
 // Single-row (id always 1) admin-managed model visibility toggles. `disabledModels`
 // is a JSON array of model value/id strings that admins hid from the node model
 // pickers. Empty/null = all models visible (default, non-breaking).
+export type SelfHostedLlmConfig = { url: string; apiKey: string; models: { id: string; label: string }[] };
 export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   id: int("id").primaryKey(),
   disabledModels: json("disabledModels").$type<string[]>(),
+  // 管理员后台配置的自建 OpenAI 兼容 LLM（替代 env）：{ url, apiKey, models:[{id,label}] }。
+  selfHostedLlm: json("selfHostedLlm").$type<SelfHostedLlmConfig>(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

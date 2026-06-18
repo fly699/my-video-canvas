@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, Check, Bot } from "lucide-react";
 import { LLM_MODELS as ALL_LLM_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
 import { useDisabledModels } from "@/lib/useDisabledModels";
+import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 
 // Re-export for existing consumers (ScriptNode imports LLM_MODELS + LLMModelId
 // from here). Single source lives in lib/models.ts.
@@ -23,15 +24,19 @@ interface Props {
 
 export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
   const disabledModels = useDisabledModels();
-  // 过滤：管理员禁用的模型不显示（当前已选中的值除外）；排序：Kie 排在 Poyo 之前。
-  const visible = (filter ? VISIBLE_MODELS.filter(filter) : VISIBLE_MODELS)
+  const selfHosted = useSelfHostedLlmModels(); // 管理员后台配置的自建模型，动态并入
+  // 自建模型置顶 + 内置模型；按 id 去重。过滤：管理员禁用的不显示（当前已选值除外）。
+  const pool = selfHosted.length
+    ? [...selfHosted.filter((s) => !VISIBLE_MODELS.some((m) => m.id === s.id)), ...VISIBLE_MODELS]
+    : VISIBLE_MODELS;
+  const visible = (filter ? pool.filter(filter) : pool)
     .filter((m) => !disabledModels.has(m.id) || m.id === value)
     .slice()
     .sort((a, b) => modelGroupOrder(a.provider) - modelGroupOrder(b.provider));
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
-  const current = ALL_LLM_MODELS.find((m) => m.id === value) ?? ALL_LLM_MODELS[0];
+  const current = [...selfHosted, ...ALL_LLM_MODELS].find((m) => m.id === value) ?? ALL_LLM_MODELS[0];
 
   return (
     <>

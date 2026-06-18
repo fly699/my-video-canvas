@@ -26,6 +26,8 @@ export async function invokeLLMWithKie(ctx: TrpcContext, params: InvokeParams, t
   // 开启的白名单、白嫖平台公用 LLM（enhance/translate/分镜/看图等近 20 个入口都经此包装）。
   // 与 chat.ts 既有范式 `if(!isKieLLMModel) assertLLMAllowed` 一致，收敛到唯一包装处覆盖全部入口。
   // 仅当使用平台 key（kieApiKey 未显式提供）时门控；显式自带 key 的调用不在此列。
-  if (params.kieApiKey === undefined) await assertLLMAllowed(ctx);
+  // 传入 model：自建 LLM 模型在 assertLLMAllowed 内走 comfyui 免白名单门控（与 ComfyUI 一致），
+  // 云 LLM 仍走原 LLM 白名单。
+  if (params.kieApiKey === undefined) await assertLLMAllowed(ctx, params.model);
   return invokeLLM(params);
 }
