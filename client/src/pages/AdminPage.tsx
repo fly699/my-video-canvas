@@ -13,6 +13,7 @@ import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 import { SelfHostedLlmSection } from "@/components/admin/SelfHostedLlmSection";
 import { TunnelPanel } from "@/components/admin/TunnelPanel";
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
+import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 
 type EntryType = "ip" | "user";
 type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "tunnel";
@@ -941,7 +942,6 @@ const MODEL_CATEGORIES: ModelCat[] = [
   },
 ];
 
-const ALL_MODEL_VALUES = MODEL_CATEGORIES.flatMap((c) => c.models.map((m) => m.value));
 
 function ModelsPanel() {
   const utils = trpc.useUtils();
@@ -978,7 +978,25 @@ function ModelsPanel() {
     persist(next);
   };
 
-  const enabledCount = ALL_MODEL_VALUES.filter((v) => !disabled.has(v)).length;
+  // 把管理员配置的自建 LLM 动态注入到「对话/推理 LLM」「聊天 AI」「剪辑器 AI」三类网格里
+  // （图像/视频/转录不适用）。各类用各自的 value 前缀，与对应节点的门控键一致：
+  // llm=裸 id（AI对话/脚本/Agent）、chat:=聊天助手、editor:=剪辑器。这样自建模型在模型管理里
+  // 可见、可单独启用/禁用，与内置模型行为一致。
+  const selfHosted = useSelfHostedLlmModels();
+  const categories = useMemo(() => {
+    if (!selfHosted.length) return MODEL_CATEGORIES;
+    const prefixByCat: Record<string, string> = { llm: "", chat: "chat:", editor: "editor:" };
+    return MODEL_CATEGORIES.map((cat) => {
+      const prefix = prefixByCat[cat.key];
+      if (prefix === undefined) return cat;
+      const injected: ModelCatItem[] = selfHosted
+        .filter((s) => !cat.models.some((m) => m.value === prefix + s.id))
+        .map((s) => ({ value: prefix + s.id, label: s.label, group: "SelfHosted" }));
+      return injected.length ? { ...cat, models: [...injected, ...cat.models] } : cat;
+    });
+  }, [selfHosted]);
+  const allValues = useMemo(() => categories.flatMap((c) => c.models.map((m) => m.value)), [categories]);
+  const enabledCount = allValues.filter((v) => !disabled.has(v)).length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -990,14 +1008,14 @@ function ModelsPanel() {
         <strong style={{ color: "var(--c-t1)" }}>模型使能开关</strong>
         ：勾选 = 该模型在对应节点的模型下拉里<strong>显示</strong>，取消勾选 = 隐藏。按节点功能分组，
         每组列出全部可用 AI 模型。仅控制「界面是否显示」，<strong>不影响</strong>已经选用该模型的旧节点继续运行。
-        修改即时保存、对所有用户生效（约 30 秒内）。当前已启用 <strong style={{ color: "var(--c-t1)" }}>{enabledCount}</strong> / {ALL_MODEL_VALUES.length} 个模型。
+        修改即时保存、对所有用户生效（约 30 秒内）。当前已启用 <strong style={{ color: "var(--c-t1)" }}>{enabledCount}</strong> / {allValues.length} 个模型。
         {query.isLoading && <span style={{ color: "var(--c-t3)" }}>（加载中…）</span>}
       </div>
 
       {/* 自建 LLM 配置（粘贴 curl 登记 OpenAI 兼容端点） */}
       <SelfHostedLlmSection />
 
-      {MODEL_CATEGORIES.map((cat) => {
+      {categories.map((cat) => {
         // 该分类下按来源平台分组（Kie 排在 Poyo 之前），便于整组开关。
         const byGroup = new Map<string, ModelCatItem[]>();
         for (const m of cat.models) {
