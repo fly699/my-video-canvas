@@ -352,12 +352,33 @@ export function resolveMaxTokens(model: string | undefined, requested: number): 
   return ceiling ? Math.min(requested, ceiling) : requested;
 }
 
+/** Reasoning models (Qwen3, DeepSeek-R1, QwQ…) emit their chain-of-thought as a
+ *  <think>…</think> block at the START of the message content. Strip it so the raw
+ *  reasoning never leaks into the answer — this caused ai_chat replies to show the
+ *  whole "Here's a thinking process…" dump, and broke JSON parsing in other nodes. */
+export function stripReasoning(text: string): string {
+  if (!text) return text;
+  // 1) Remove well-formed <think>…</think> blocks (case-insensitive, spans newlines).
+  let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  // 2) Orphan closing tag (some servers stream only </think>, opening lost) → drop
+  //    everything up to and including the last </think>.
+  const close = out.toLowerCase().lastIndexOf("</think>");
+  if (close !== -1) out = out.slice(close + "</think>".length);
+  // 3) Orphan opening tag (reasoning truncated before it closed) → drop the tail.
+  const open = out.toLowerCase().lastIndexOf("<think>");
+  if (open !== -1) out = out.slice(0, open);
+  return out.trim();
+}
+
 /** Extract plain text from an LLM response, handling both string and array content. */
 export function extractTextContent(response: InvokeResult): string {
   const raw = response.choices?.[0]?.message?.content;
-  if (typeof raw === "string") return raw;
-  if (Array.isArray(raw)) return raw.map((p) => (p.type === "text" ? p.text : "")).join("");
-  return "";
+  const text = typeof raw === "string"
+    ? raw
+    : Array.isArray(raw)
+      ? raw.map((p) => (p.type === "text" ? p.text : "")).join("")
+      : "";
+  return stripReasoning(text);
 }
 
 // Upstream gateway hiccups (Gemini 3 preview especially) intermittently return
