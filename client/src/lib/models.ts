@@ -132,10 +132,13 @@ export function platformBadge(name: string): { bg: string; fg: string } {
   return { bg: `oklch(0.70 0.15 ${h} / 0.18)`, fg: `oklch(0.74 0.14 ${h})` };
 }
 
-// 模型下拉里「来源平台 / 分组」的排序优先级：内置(Manus/Forge)最前，其后 **Kie 排在
-// Poyo 之前**，再到 Higgsfield，最后 Dev。所有节点（图像 / 视频 / LLM）的下拉统一按此排序。
+// 模型下拉里「来源平台 / 分组」的排序优先级：**自建 LLM 置顶**（管理员自己配的基建、
+// 零云成本，理应最显眼），其后内置(Manus/Forge)，再 **Kie 排在 Poyo 之前**，再到
+// Higgsfield，最后 Dev。所有节点（图像 / 视频 / LLM）的下拉统一按此排序。
+// 注意：SelfHosted 未登记时会落到默认值 4、被埋在长长的 kie 列表最底（用户配了却"看不到"），
+// 故必须显式置顶（-1），与各 picker「self-hosted 数组前插」的本意一致。
 const GROUP_ORDER: Record<string, number> = {
-  Manus: 0, Forge: 0, Kie: 1, Poyo: 2, Higgsfield: 3, Dev: 8,
+  SelfHosted: -1, Manus: 0, Forge: 0, Kie: 1, Poyo: 2, Higgsfield: 3, Dev: 8,
 };
 export function modelGroupOrder(group: string): number {
   return GROUP_ORDER[group] ?? 4;
