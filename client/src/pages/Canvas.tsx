@@ -57,6 +57,7 @@ import { CollaborationPanel } from "../components/canvas/CollaborationPanel";
 import { NarrativeArcPicker } from "../components/canvas/NarrativeArcPicker";
 import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
+import { UIStyleSwitcher } from "../components/canvas/UIStyleSwitcher";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { useCanvasMode } from "../contexts/CanvasModeContext";
 import { useTheme, THEMES } from "../contexts/ThemeContext";
@@ -3017,6 +3018,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
             {/* 预算管控（画布预估消耗 vs 余额） */}
             <BudgetButton orient={toolbarOrient} />
+
+            {/* UI style skin switcher (pro / studio) */}
+            <UIStyleSwitcher />
 
             {/* Theme switcher */}
             <ThemeSwitcher />
