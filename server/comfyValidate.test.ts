@@ -13,6 +13,7 @@ const INFO: any = {
   } } },
   CheckpointLoaderSimple: { input: { required: { ckpt_name: [["sdxl.safetensors", "sd15.safetensors"]] } } },
   CLIPTextEncode: { input: { required: { text: ["STRING"], clip: ["CLIP"] } } },
+  EmptyLatentImage: { input: { required: { width: ["INT", { default: 512 }], height: ["INT", { default: 512 }], batch_size: ["INT", { default: 1 }] } } },
   // LoadImage.image 是「已上传文件」枚举 + image_upload 标志：运行时上传，不该按服务器现有文件校验。
   LoadImage: { input: { required: { image: [["alreadyOnServer.png"], { image_upload: true }] } } },
 };
@@ -30,13 +31,38 @@ describe("validateWorkflowWithInfo", () => {
     expect(r.invalidEnums[0]).toMatchObject({ nodeId: "4", classType: "CheckpointLoaderSimple", field: "ckpt_name", current: "不存在的模型.ckpt" });
     expect(r.invalidEnums[0].options).toEqual(["sdxl.safetensors", "sd15.safetensors"]);
   });
-  it("合法值 → 预检通过 ok=true", () => {
+  it("合法值（完整图）→ 预检通过 ok=true", () => {
     const wf: any = {
       "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "sdxl.safetensors" } },
+      "5": { class_type: "EmptyLatentImage", inputs: { width: 512, height: 512, batch_size: 1 } },
       "3": { class_type: "KSampler", inputs: { seed: 1, sampler_name: "euler", scheduler: "normal", steps: 20, model: ["4", 0], positive: ["6", 0], negative: ["6", 0], latent_image: ["5", 0] } },
       "6": { class_type: "CLIPTextEncode", inputs: { text: "hi", clip: ["4", 1] } },
     };
-    expect(validateWorkflowWithInfo(wf, INFO, true).ok).toBe(true);
+    const r = validateWorkflowWithInfo(wf, INFO, true);
+    expect(r.ok).toBe(true);
+    expect(r.danglingLinks).toHaveLength(0);
+  });
+
+  it("连线指向不存在的节点 → danglingLinks，ok=false（即便其它都合法）", () => {
+    const wf: any = {
+      "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "sdxl.safetensors" } },
+      "3": { class_type: "KSampler", inputs: { seed: 1, sampler_name: "euler", scheduler: "normal", steps: 20, model: ["4", 0], positive: ["6", 0], negative: ["6", 0], latent_image: ["99", 0] } }, // 99 不存在
+      "6": { class_type: "CLIPTextEncode", inputs: { text: "hi", clip: ["4", 1] } },
+    };
+    const r = validateWorkflowWithInfo(wf, INFO, true);
+    expect(r.ok).toBe(false);
+    expect(r.danglingLinks).toHaveLength(1);
+    expect(r.danglingLinks[0]).toMatchObject({ nodeId: "3", classType: "KSampler", field: "latent_image", current: "99" });
+  });
+
+  it("悬空连线纯结构、不依赖 object_info（服务器离线也能查出）", () => {
+    const wf: any = {
+      "3": { class_type: "KSampler", inputs: { latent_image: ["99", 0], model: ["4", 0] } },
+      "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "x" } },
+    };
+    const r = validateWorkflowWithInfo(wf, {}, false); // objectInfoAvailable=false
+    expect(r.danglingLinks).toHaveLength(1);
+    expect(r.danglingLinks[0].current).toBe("99");
   });
   it("未安装的自定义节点 → missingNodes", () => {
     const wf: any = { "9": { class_type: "FooCustomNode", inputs: { bar: "x" } } };

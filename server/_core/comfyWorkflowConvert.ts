@@ -86,6 +86,11 @@ export function convertUiWorkflowToApiPrompt(ui: UiWorkflow, objectInfo: ObjectI
   const prompt: Record<string, ApiNode> = {};
   const missingDefs = new Set<string>();
   const unresolved: string[] = [];
+  // Every concrete graph edge we emit, so we can verify after the pass that its target
+  // node was actually output. A bypassed/muted upstream node is skipped (not emitted)
+  // but resolveLink still returns its id → a dangling reference that ComfyUI rejects at
+  // runtime ("node X not found"). We catch that here instead of emitting a broken graph.
+  const linkRefs: { from: number; field: string; to: string }[] = [];
 
   for (const node of nodes) {
     if (!isActive(node)) continue;
@@ -111,6 +116,7 @@ export function convertUiWorkflowToApiPrompt(ui: UiWorkflow, objectInfo: ObjectI
         const r = resolveLink(connectedByName.get(name)!);
         if (!r) { unresolved.push(`${node.type}.${name}`); nodeFailed = true; break; }
         apiInputs[name] = r.link ?? r.value;
+        if (r.link) linkRefs.push({ from: node.id, field: name, to: r.link[0] });
       } else if (isWidgetSpec(spec)) {
         if (!widgets || wi >= widgets.length) {
           // Missing widget value: use the spec default if any, else leave out.
@@ -142,6 +148,14 @@ export function convertUiWorkflowToApiPrompt(ui: UiWorkflow, objectInfo: ObjectI
   }
   if (unresolved.length > 0) {
     return { error: `部分连线/参数无法自动转换：${unresolved.slice(0, 6).join("、")}${unresolved.length > 6 ? " 等" : ""}${ADVICE}` };
+  }
+  // Graph integrity: refuse to emit a graph whose edges point at nodes we didn't output
+  // (bypassed/muted upstream, or otherwise dropped). Name the offending edges + source.
+  const dangling = linkRefs
+    .filter((r) => !(r.to in prompt))
+    .map((r) => `${nodeById.get(r.from)?.type ?? r.from}.${r.field}→#${r.to}${nodeById.get(Number(r.to))?.type ? `(${nodeById.get(Number(r.to))!.type})` : ""}`);
+  if (dangling.length > 0) {
+    return { error: `部分连线指向未输出的上游节点（多为被 bypass/静音的节点）：${dangling.slice(0, 6).join("、")}${dangling.length > 6 ? " 等" : ""}。请在 ComfyUI 取消这些节点的 bypass/mute，或${ADVICE.replace(/^。/, "")}` };
   }
   if (Object.keys(prompt).length === 0) return { error: `没有可转换的有效节点${ADVICE}` };
   return { prompt };

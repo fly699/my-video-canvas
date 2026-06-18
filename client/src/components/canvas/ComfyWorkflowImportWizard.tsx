@@ -279,13 +279,15 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
     ? ""
     : validation.ok
       ? "导入到节点"
-      : !validation.objectInfoAvailable
-        ? "未预检，仍导入"
-        : validation.missingNodes.length > 0
-          ? "仍导入（需先装缺失节点）"
-          : unresolvedInvalid > 0
-            ? `仍有 ${unresolvedInvalid} 项未修，仍导入`
-            : "导入到节点";
+      : validation.danglingLinks.length > 0
+        ? "结构有悬空连线，仍导入"
+        : !validation.objectInfoAvailable
+          ? "未预检，仍导入"
+          : validation.missingNodes.length > 0
+            ? "仍导入（需先装缺失节点）"
+            : unresolvedInvalid > 0
+              ? `仍有 ${unresolvedInvalid} 项未修，仍导入`
+              : "导入到节点";
 
   // 通过 portal 渲染到 body：节点处于 ReactFlow 的 transform 画布内，position:fixed 会被
   // 变换祖先「劫持」（相对缩放后的画布定位、随缩放放大），portal 到 body 才能真正铺满屏幕。
@@ -382,13 +384,28 @@ export function ComfyWorkflowImportWizard({ initialServerUrl, knownServers, onCa
                 </div>
               ) : validation ? (
                 <>
-                  {/* 总判定 */}
-                  {!validation.objectInfoAvailable ? (
+                  {/* 总判定。悬空连线是纯结构问题（不依赖 object_info、服务器离线也能查出），
+                      运行必报「node not found」，故优先级最高，先于「服务器不可达」展示。 */}
+                  {validation.danglingLinks.length > 0 ? (
+                    <Banner tone="warn" icon={<ShieldAlert className="w-4 h-4" />} title="工作流结构有悬空连线（运行必报错）" text={`有 ${validation.danglingLinks.length} 条连线指向图中不存在的节点。多为复制/裁剪工作流时漏带了上游节点，请回 ComfyUI 重新完整导出（Save API Format）再导入。`} />
+                  ) : !validation.objectInfoAvailable ? (
                     <Banner tone="warn" icon={<ShieldAlert className="w-4 h-4" />} title="未能预检（服务器不可达）" text="拿不到该服务器的 /object_info，无法核对节点与模型。可返回上一步检查地址，或冒险直接导入（运行时可能报错）。" />
                   ) : validation.ok ? (
                     <Banner tone="ok" icon={<ShieldCheck className="w-4 h-4" />} title="预检通过" text={`${validation.nodeCount} 个节点全部可识别，模型/采样器等取值均在服务器上存在。可以放心导入。`} />
                   ) : (
-                    <Banner tone="warn" icon={<ShieldAlert className="w-4 h-4" />} title="预检发现问题（导入前请修正）" text={`缺节点 ${validation.missingNodes.length} · 取值非法 ${validation.invalidEnums.length}（待修 ${unresolvedInvalid}） · 必填缺失 ${validation.missingRequired.length}`} />
+                    <Banner tone="warn" icon={<ShieldAlert className="w-4 h-4" />} title="预检发现问题（导入前请修正）" text={`缺节点 ${validation.missingNodes.length} · 取值非法 ${validation.invalidEnums.length}（待修 ${unresolvedInvalid}） · 必填缺失 ${validation.missingRequired.length}${validation.danglingLinks.length ? ` · 悬空连线 ${validation.danglingLinks.length}` : ""}`} />
+                  )}
+
+                  {/* 悬空连线明细 */}
+                  {validation.danglingLinks.length > 0 && (
+                    <Section icon={<PackageX className="w-3.5 h-3.5" style={{ color: "oklch(0.64 0.2 25)" }} />} title={`悬空连线（${validation.danglingLinks.length}）`}>
+                      <div style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6 }}>
+                        {validation.danglingLinks.slice(0, 12).map((d, i) => (
+                          <div key={i}>· <b>{d.classType}</b>#{d.nodeId} 的 <code>{d.field}</code> 连到了不存在的节点 #{d.current}</div>
+                        ))}
+                        {validation.danglingLinks.length > 12 && <div>… 等 {validation.danglingLinks.length} 条</div>}
+                      </div>
+                    </Section>
                   )}
 
                   {/* 缺失的自定义节点 */}

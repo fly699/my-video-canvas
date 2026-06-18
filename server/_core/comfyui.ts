@@ -1813,6 +1813,9 @@ export interface WorkflowValidationResult {
   invalidEnums: WorkflowValidationIssue[];
   /** 必填 widget 输入缺失（既没连线也没值）。 */
   missingRequired: WorkflowValidationIssue[];
+  /** 连线 [nodeId, slot] 指向了图中不存在的节点（悬空引用）。纯结构检查，不依赖
+   *  object_info——这类图运行时必报「node not found」，但旧版预检会放过。 */
+  danglingLinks: WorkflowValidationIssue[];
   /** objectInfoAvailable 且无任何问题 = 预检通过，可放心导入。 */
   ok: boolean;
 }
@@ -1845,6 +1848,21 @@ export function validateWorkflowWithInfo(
   const missingNodes = new Set<string>();
   const invalidEnums: WorkflowValidationIssue[] = [];
   const missingRequired: WorkflowValidationIssue[] = [];
+  const danglingLinks: WorkflowValidationIssue[] = [];
+  // Pure-structure pass (no object_info needed): every `[nodeId, slot]` link must
+  // point at a node that exists in the graph. A dangling edge runs fine through the
+  // old validator but ComfyUI rejects it at submit time — surface it up front.
+  const presentIds = new Set(Object.keys(workflow));
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    if (!node || typeof node !== "object") continue;
+    const ct = typeof node.class_type === "string" ? node.class_type : "?";
+    const inputs = (node.inputs ?? {}) as Record<string, unknown>;
+    for (const [field, val] of Object.entries(inputs)) {
+      if (Array.isArray(val) && val.length === 2 && typeof val[0] === "string" && typeof val[1] === "number" && !presentIds.has(val[0])) {
+        danglingLinks.push({ nodeId, classType: ct, field, current: String(val[0]) });
+      }
+    }
+  }
   let nodeCount = 0;
   for (const [nodeId, node] of Object.entries(workflow)) {
     if (!node || typeof node !== "object") continue;
@@ -1875,8 +1893,8 @@ export function validateWorkflowWithInfo(
       }
     }
   }
-  const ok = objectInfoAvailable && missingNodes.size === 0 && invalidEnums.length === 0 && missingRequired.length === 0;
-  return { objectInfoAvailable, nodeCount, missingNodes: Array.from(missingNodes).sort(), invalidEnums, missingRequired, ok };
+  const ok = objectInfoAvailable && missingNodes.size === 0 && invalidEnums.length === 0 && missingRequired.length === 0 && danglingLinks.length === 0;
+  return { objectInfoAvailable, nodeCount, missingNodes: Array.from(missingNodes).sort(), invalidEnums, missingRequired, danglingLinks, ok };
 }
 
 /** 解析工作流 + best-effort 拉 /object_info，再核对。供 tRPC comfyui.validateWorkflow 调用。 */
