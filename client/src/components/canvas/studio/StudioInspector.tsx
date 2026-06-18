@@ -2,6 +2,8 @@ import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { NodeInput, NodeTextArea } from "../NodeTextInput";
+import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { X } from "lucide-react";
 
 // Studio-only right-side inspector. Renders the selected node's primary editable
@@ -34,6 +36,7 @@ export function StudioInspector() {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const updateNodeTitle = useCanvasStore((s) => s.updateNodeTitle);
   const setNodes = useCanvasStore((s) => s.setNodes);
+  const { resolve } = useNodeDefaultModels();
 
   if (uiStyle !== "studio" || !node) return null;
 
@@ -120,8 +123,20 @@ export function StudioInspector() {
           </label>
         )}
 
-        {/* model (read-only display; edit via the node card's picker) */}
-        {modelVal && (
+        {/* LLM model — editable via the existing LLMModelPicker (same field/handler/default
+            the Script node card uses: aiLlmModel + resolve("script","llm") + updateNodeData). */}
+        {node.data.nodeType === "script" && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>模型</div>
+            <LLMModelPicker
+              value={(LLM_MODELS.some((m) => m.id === payload.aiLlmModel) ? payload.aiLlmModel : resolve("script", "llm")) as LLMModelId}
+              onChange={(v) => updateNodeData(node.id, { aiLlmModel: v })}
+            />
+          </div>
+        )}
+
+        {/* model (read-only display for non-LLM model fields; edit via the node card's picker) */}
+        {modelVal && node.data.nodeType !== "script" && (
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>模型</div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 11px", borderRadius: 9, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
