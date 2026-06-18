@@ -35,6 +35,8 @@ export function SelfHostedLlmSection() {
   const save = async () => {
     const cleanModels = models.filter((m) => m.id.trim()).map((m) => ({ id: m.id.trim(), label: (m.label || m.id).trim() }));
     if (url.trim() && cleanModels.length === 0) { toast.error("配置了地址就至少要登记一个模型 id"); return; }
+    // 反向守卫：填了模型却没地址 → 后端 configured=false、模型不会进任何选择器（静默消失），明确报错。
+    if (cleanModels.length > 0 && !url.trim()) { toast.error("登记了模型就必须填「服务器地址」，否则模型不会出现在选择器里"); return; }
     try {
       await saveMut.mutateAsync({ url: url.trim(), apiKey: apiKey, models: cleanModels });
       await Promise.all([utils.admin.models.getSelfHostedLlm.invalidate(), utils.config.selfHostedLlmModels.invalidate()]);
@@ -66,8 +68,16 @@ export function SelfHostedLlmSection() {
         </button>
       </div>
 
+      {/* 配了模型却没填地址 → 模型不会出现在任何选择器（后端 configured=false）。常驻红条提醒。 */}
+      {models.some((m) => m.id.trim()) && !url.trim() && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11.5, lineHeight: 1.6, padding: "8px 10px", borderRadius: 8, background: "oklch(0.70 0.16 25 / 0.10)", border: "1px solid oklch(0.70 0.16 25 / 0.35)", color: "oklch(0.72 0.16 28)" }}>
+          <span style={{ fontWeight: 700 }}>⚠</span>
+          <span>已登记模型但<strong>「服务器地址」为空</strong>——这样保存后模型<strong>不会出现在任何下拉里</strong>。请在下方填服务器地址（如 <code>http://172.16.0.10:8000</code>）。</span>
+        </div>
+      )}
+
       {/* 字段 */}
-      <label style={{ fontSize: 11, color: "var(--c-t3)" }}>服务器地址（base，自动去掉 /v1/chat/completions）
+      <label style={{ fontSize: 11, color: "var(--c-t3)" }}>服务器地址（base，自动去掉 /v1/chat/completions）<span style={{ color: "oklch(0.7 0.16 25)" }}> *必填</span>
         <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://172.16.0.10:8000" className="nodrag" style={{ ...box, marginTop: 4 }} />
       </label>
       <label style={{ fontSize: 11, color: "var(--c-t3)" }}>API Key（无鉴权可留空）
