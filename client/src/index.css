@@ -519,27 +519,27 @@
      leaves every token untouched. Structural tokens (--ui-*) are reserved for
      the studio component skin and are inert until those components consume them. */
   :root[data-ui="studio"] {
-    --c-canvas:   oklch(0.155 0.012 265);   /* cinematic near-black backdrop */
-    --c-base:     oklch(0.205 0.011 265);   /* panels */
-    --c-surface:  oklch(0.235 0.011 265);   /* cards */
-    --c-elevated: oklch(0.265 0.011 265);   /* elevated */
-    --c-overlay:  oklch(0.290 0.011 265);   /* overlays */
-    --c-input:    oklch(0.185 0.010 265);   /* recessed input */
+    --c-canvas:   oklch(0.135 0.014 265);   /* deep cinematic backdrop — media pops */
+    --c-base:     oklch(0.205 0.012 265);   /* panels — clearly above canvas */
+    --c-surface:  oklch(0.232 0.012 265);   /* cards */
+    --c-elevated: oklch(0.262 0.012 265);   /* elevated */
+    --c-overlay:  oklch(0.290 0.012 265);   /* overlays */
+    --c-input:    oklch(0.178 0.011 265);   /* recessed input */
     --c-bd1:      oklch(0.300 0.012 265);   /* divider */
-    --c-bd2:      oklch(0.360 0.013 265);   /* node border */
-    --c-bd3:      oklch(0.450 0.014 265);   /* strong border */
-    --c-t1:       oklch(0.945 0.006 265);   /* primary text */
-    --c-t2:       oklch(0.770 0.008 265);   /* secondary */
-    --c-t3:       oklch(0.585 0.008 265);   /* labels */
-    --c-t4:       oklch(0.435 0.007 265);   /* hints */
-    --c-node-bg:  oklch(0.215 0.011 265);
-    --c-node-shadow-rest:     0 2px 12px oklch(0 0 0 / 0.45), 0 1px 3px oklch(0 0 0 / 0.35);
-    --c-node-shadow-hover:    0 10px 36px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40);
-    --c-node-shadow-selected: 0 16px 48px oklch(0 0 0 / 0.62), 0 4px 14px oklch(0 0 0 / 0.45);
-    --c-node-shadow-run:      0 10px 36px oklch(0 0 0 / 0.55);
+    --c-bd2:      oklch(0.365 0.013 265);   /* node border */
+    --c-bd3:      oklch(0.455 0.014 265);   /* strong border */
+    --c-t1:       oklch(0.952 0.006 265);   /* primary text */
+    --c-t2:       oklch(0.775 0.008 265);   /* secondary */
+    --c-t3:       oklch(0.590 0.008 265);   /* labels */
+    --c-t4:       oklch(0.440 0.007 265);   /* hints */
+    --c-node-bg:  oklch(0.212 0.012 265);
+    --c-node-shadow-rest:     0 2px 14px oklch(0 0 0 / 0.50), 0 1px 3px oklch(0 0 0 / 0.38);
+    --c-node-shadow-hover:    0 12px 40px oklch(0 0 0 / 0.58), 0 2px 8px oklch(0 0 0 / 0.42);
+    --c-node-shadow-selected: 0 18px 52px oklch(0 0 0 / 0.64), 0 4px 14px oklch(0 0 0 / 0.46);
+    --c-node-shadow-run:      0 12px 40px oklch(0 0 0 / 0.58);
     color-scheme: dark;
-    /* ── reserved studio structural tokens (consumed by canvas/studio/* later) ── */
-    --ui-radius-node: 16px;
+    /* ── studio structural tokens (consumed by BaseNode + canvas/studio/* ) ── */
+    --ui-radius-node: 18px;
     --ui-radius-ctl: 11px;
     --ui-gap: 12px;
     --ui-font-scale: 1.08;

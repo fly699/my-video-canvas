@@ -322,7 +322,9 @@ export const BaseNode = memo(function BaseNode({
       data-selected={(storeSelected || pinned) ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
       style={{
-        borderRadius: 16,
+        // var() with the exact current literal as fallback → "pro" (no --ui-radius-node)
+        // is byte-identical; "studio" skin overrides it for softer cards.
+        borderRadius: "var(--ui-radius-node, 16px)",
         background: "var(--c-node-bg)",
         border: borderStyle,
         boxShadow: shadowStyle,
@@ -355,7 +357,7 @@ export const BaseNode = memo(function BaseNode({
     >
       {/* 素材拖入高亮 */}
       {assetDragOver && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center" style={{ borderRadius: 16, border: `2px dashed ${config.color}`, background: `${config.color}14` }}>
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center" style={{ borderRadius: "var(--ui-radius-node, 16px)", border: `2px dashed ${config.color}`, background: `${config.color}14` }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: config.color, background: "var(--c-base)", padding: "4px 10px", borderRadius: 8, border: `1px solid ${config.color}55` }}>放到此处用作参考图</span>
         </div>
       )}
