@@ -13,7 +13,9 @@ import { registerFileRelay } from "./fileRelay";
 import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
 import { appRouter } from "../routers";
-import { createContext } from "./context";
+import { createContext, resolveRequestUser } from "./context";
+import { getTunnelGate, initTunnel } from "./tunnel";
+import { isTunnelRequest, isTunnelExemptPath, isTunnelAllowed } from "./tunnelGate";
 import { serveStatic, setupVite } from "./vite";
 import { Server as SocketIOServer } from "socket.io";
 import { setupVideoTaskPoller } from "../videoTaskPoller";
@@ -81,6 +83,24 @@ async function startServer() {
   // Trust the first proxy hop so req.ip reflects the real client IP from X-Forwarded-For.
   // This prevents IP spoofing via direct connections while supporting reverse-proxy deployments.
   app.set("trust proxy", 1);
+
+  // ── Public-tunnel access gate ───────────────────────────────────────────────
+  // When the built-in cloudflared tunnel is enabled, requests arriving THROUGH it
+  // (Host == tunnel hostname) are gated by a SEPARATE tunnel whitelist: non-whitelisted
+  // visitors may only load the page + sign in (so a whitelisted USER can log in); every
+  // other resource (tRPC/storage/proxies/socket) returns 403. Local/LAN traffic is
+  // untouched. Placed first so it covers all downstream routes.
+  app.use(async (req, res, next) => {
+    const g = getTunnelGate();
+    if (!g.enabled || !g.host) return next();
+    if (!isTunnelRequest(req.headers.host, g.host)) return next();   // not via our tunnel
+    if (isTunnelExemptPath(req.path)) return next();                  // auth + static SPA
+    const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+    let userId: number | undefined;
+    try { userId = (await resolveRequestUser(req))?.id; } catch { /* unauthenticated */ }
+    if (isTunnelAllowed(ip, userId, g.wl)) return next();
+    res.status(403).json({ error: "此公网隧道仅对白名单内用户开放，请联系管理员把你的账号或 IP 加入隧道白名单。" });
+  });
 
   // Streamed upload proxy must be registered BEFORE the body parsers so the raw
   // file stream reaches S3/MinIO untouched (no 50MB JSON limit, no base64).
@@ -479,6 +499,7 @@ async function startServer() {
     const proto = isHttps ? "https" : "http";
     console.log(`Server running on ${proto}://localhost:${port}/`);
     if (isHttps) console.log(`[HTTPS] self-signed cert active — LAN clients can trust it via ${proto}://<本机IP>:${port}/cert.crt`);
+    void initTunnel(); // 若管理员之前已启用公网隧道，开机自动拉起 cloudflared + 预热门控缓存
   });
 
   // When HTTPS is on, run a tiny HTTP listener that 301-redirects to HTTPS so
