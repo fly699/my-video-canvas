@@ -51,6 +51,8 @@ export function StudioInspector() {
   const hasAspect = typeof payload.aspectRatio === "string";
   const RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
   const modelVal = str("model") || str("aiLlmModel") || str("videoModel") || str("imageModel");
+  const imageModelField = node.data.nodeType === "image_gen" ? "model"
+    : node.data.nodeType === "storyboard" ? "imageModel" : null;
 
   const deselect = () => setNodes(useCanvasStore.getState().nodes.map((n) => (n.selected ? { ...n, selected: false } : n)));
 
@@ -136,21 +138,22 @@ export function StudioInspector() {
           </div>
         )}
 
-        {/* image model — editable via the shared ModelPicker + IMAGE_MODEL_PICKER_OPTIONS
-            (same field/options/default the ImageGen card uses: model + resolve("image_gen","image")). */}
-        {node.data.nodeType === "image_gen" && (
+        {/* image model — editable via the shared ModelPicker + IMAGE_MODEL_PICKER_OPTIONS.
+            image_gen uses payload.model; storyboard uses payload.imageModel. Same options/
+            default(resolve(type,"image"))/handler the node cards use. */}
+        {imageModelField && (
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>模型</div>
             <ModelPicker
-              value={str("model") || resolve("image_gen", "image")}
-              onChange={(v) => updateNodeData(node.id, { model: v })}
+              value={str(imageModelField) || resolve(node.data.nodeType, "image")}
+              onChange={(v) => updateNodeData(node.id, { [imageModelField]: v })}
               options={IMAGE_MODEL_PICKER_OPTIONS}
             />
           </div>
         )}
 
         {/* model (read-only display for other node types; edit via the node card's picker) */}
-        {modelVal && node.data.nodeType !== "script" && node.data.nodeType !== "image_gen" && (
+        {modelVal && node.data.nodeType !== "script" && !imageModelField && (
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>模型</div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 11px", borderRadius: 9, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
