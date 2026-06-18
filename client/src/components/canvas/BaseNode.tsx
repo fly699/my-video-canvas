@@ -415,6 +415,17 @@ export const BaseNode = memo(function BaseNode({
                 <Layers size={13} />
               </button>
             )}
+            {/* direct pass — identical to the title-bar 直传 action (push output downstream) */}
+            {canDirectPass && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDirectPass(); }}
+                title="直传：把当前输出直接传给已连接的下游节点（无需运行）"
+                className="flex items-center justify-center w-7 h-7 rounded-lg"
+                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
+              >
+                <Share2 size={13} />
+              </button>
+            )}
             {/* delete — identical composed call to the title-bar delete (store + server mutation) */}
             <button
               onClick={(e) => { e.stopPropagation(); deleteNode(id); if (projectId) deleteNodeMutation.mutate({ id, projectId }); }}
