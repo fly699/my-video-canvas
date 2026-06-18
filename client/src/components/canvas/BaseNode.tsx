@@ -13,7 +13,6 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useUIStyle } from "../../contexts/UIStyleContext";
-import { StudioCuratedFields } from "./studio/StudioCuratedFields";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers,
 } from "lucide-react";
@@ -863,36 +862,10 @@ export const BaseNode = memo(function BaseNode({
           the node (LibLib-style 上下吸附) so the node card itself stays compact/media-first
           instead of expanding inline. Same `children` (every control preserved) — only
           relocated. Pro/creative render the body inline (collapsible) exactly as before. */}
-      {studioFloated ? (
-        <NodeToolbar nodeId={id} position={Position.Bottom} offset={12} isVisible>
-          <div
-            className="nodrag nopan"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: Math.max(nodeStyleWidth ?? config.defaultWidth ?? 0, Math.round(minWidth * 1.25)),
-              maxHeight: "64vh",
-              overflowY: "auto",
-              background: "var(--c-base)",
-              border: "1px solid var(--c-bd2)",
-              borderRadius: 14,
-              boxShadow: "var(--c-node-shadow-selected)",
-              padding: "14px 14px 16px",
-            }}
-          >
-            {/* Simple by default: the node's most-used controls. */}
-            <StudioCuratedFields nodeId={id} />
-            {/* Fully functional on demand: the complete node body, collapsed. */}
-            <details className="studio-full-settings" style={{ marginTop: 12 }}>
-              <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--c-t3)", userSelect: "none", listStyle: "none", padding: "7px 0" }}>
-                完整设置 / 全部参数
-              </summary>
-              <div style={{ marginTop: 8 }}>
-                <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
-              </div>
-            </details>
-          </div>
-        </NodeToolbar>
-      ) : (
+      {/* Studio (selected): the body is relocated to a panel attached BELOW the node,
+          rendered OUTSIDE this overflow:hidden wrapper (see below) so it isn't clipped
+          and lives in the node's transformed space (scales with canvas zoom). */}
+      {studioFloated ? null : (
         <NodeSelectedContext.Provider value={expandSelected}>
           <div className="node-body-wrap">
             {/* When the node height is capped, make this wrapper a flex column so a
@@ -904,6 +877,36 @@ export const BaseNode = memo(function BaseNode({
       )}
 
       </div>{/* end inner overflow:hidden content wrapper */}
+
+      {/* Studio: param panel attached BELOW the node. Rendered as an absolutely-positioned
+          child of the node root (NOT a NodeToolbar), so it lives inside the node's
+          transformed space → scales with canvas zoom, and matches the node width (100%).
+          `nowheel` lets it scroll internally without ReactFlow hijacking the wheel. */}
+      {studioFloated && (
+        <div
+          className="nodrag nopan nowheel"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute",
+            top: "calc(100% + 12px)",
+            left: 0,
+            width: "100%",
+            maxHeight: 520,
+            overflowY: "auto",
+            background: "var(--c-base)",
+            border: "1px solid var(--c-bd2)",
+            borderRadius: 14,
+            boxShadow: "var(--c-node-shadow-selected)",
+            padding: "14px 14px 16px",
+            zIndex: 20,
+          }}
+        >
+          {/* The node's full body (all its main params + its own advanced toggles),
+              relocated here. Simplicity comes from the FORM (compact node + attached
+              panel), not from dropping params. */}
+          <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
+        </div>
+      )}
 
       {/* 左侧吸附浮层：渲染在折叠 body 之外，节点收缩后仍常驻可见（绝对定位于节点根，向左吸附）。 */}
       {leftDock}
