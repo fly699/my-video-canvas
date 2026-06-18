@@ -10,17 +10,20 @@ describe("tunnelHostFromUrl", () => {
   });
 });
 
-describe("isTunnelRequest — 精确按 Host 匹配", () => {
+describe("isTunnelRequest — CF 边缘标记 或 Host 匹配", () => {
   const th = "abc.trycloudflare.com";
-  it("Host 等于隧道主机 → true（忽略端口/大小写/逗号链）", () => {
-    expect(isTunnelRequest("abc.trycloudflare.com", th)).toBe(true);
-    expect(isTunnelRequest("ABC.trycloudflare.com:443", th)).toBe(true);
-    expect(isTunnelRequest("abc.trycloudflare.com, edge", th)).toBe(true);
+  it("有 Cloudflare 边缘标记 → true（不依赖 Host，cloudflared 改写 Host 也能识别）", () => {
+    expect(isTunnelRequest({ host: "localhost:3000", "cf-ray": "abc123" }, th)).toBe(true);
+    expect(isTunnelRequest({ "cdn-loop": "cloudflare; loops=1" }, "")).toBe(true);
+    expect(isTunnelRequest({ "cf-connecting-ip": "203.0.113.5" }, "")).toBe(true);
   });
-  it("其它 Host / 未配置隧道 → false（不误伤本地/已在CF后的其它域名）", () => {
-    expect(isTunnelRequest("localhost:3000", th)).toBe(false);
-    expect(isTunnelRequest("video.example.com", th)).toBe(false);
-    expect(isTunnelRequest("abc.trycloudflare.com", "")).toBe(false);
+  it("无 CF 标记时回退 Host 匹配（external 反代模式）", () => {
+    expect(isTunnelRequest({ host: "video.example.com:443" }, "video.example.com")).toBe(true);
+    expect(isTunnelRequest({ host: "video.example.com" }, "")).toBe(false);
+  });
+  it("本地/局域网（无 CF 标记 + Host 不匹配）→ false", () => {
+    expect(isTunnelRequest({ host: "localhost:3000" }, th)).toBe(false);
+    expect(isTunnelRequest({ host: "192.168.1.10:3000" }, th)).toBe(false);
   });
 });
 

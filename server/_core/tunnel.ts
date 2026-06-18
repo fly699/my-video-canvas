@@ -10,7 +10,11 @@ let proc: ChildProcess | null = null;
 let status: { running: boolean; publicUrl: string; error: string | null } = { running: false, publicUrl: "", error: null };
 let logBuf = "";
 
-const appPort = () => Number(process.env.PORT) || 3000;
+// Actual local origin cloudflared forwards to — set at server boot to the REAL
+// listening port + scheme (the server auto-picks a free port and may run HTTPS with a
+// self-signed cert, so a hardcoded http://localhost:3000 causes 502 Bad Gateway).
+let origin = { port: Number(process.env.PORT) || 3000, https: false };
+export function setTunnelOrigin(port: number, https: boolean): void { origin = { port, https }; }
 
 export function getTunnelRuntimeStatus() { return { running: status.running, publicUrl: status.publicUrl, error: status.error }; }
 
@@ -21,10 +25,16 @@ export async function startTunnel(): Promise<void> {
   const bin = await resolveCloudflaredPath();
   if (!bin) { status = { running: false, publicUrl: "", error: "未检测到 cloudflared，请在「公网隧道」页点「下载 cloudflared」，或改用「我已有公网入口」模式" }; return; }
   const named = cfg.token.trim().length > 0;
-  // Named tunnel: `tunnel run --token` (hostname configured in CF dashboard, admin sets publicUrl).
-  // Quick tunnel: `tunnel --url` → we parse the *.trycloudflare.com URL from the log.
+  const originUrl = `${origin.https ? "https" : "http"}://localhost:${origin.port}`;
+  // Named tunnel: `tunnel run --token` (route configured in CF dashboard → must point to
+  // the SAME originUrl). Quick tunnel: `tunnel --url` → we parse the *.trycloudflare.com URL.
+  // `--no-tls-verify`: the app's HTTPS uses a self-signed cert, which cloudflared would
+  // otherwise reject → 502. Default Host header passthrough is kept so our gate can match it.
+  // Named tunnel: origin URL + TLS verify are configured in the Cloudflare dashboard,
+  // so we只 pass the token. Quick tunnel: we own the origin → set scheme + no-tls-verify.
+  const tlsArgs = origin.https ? ["--no-tls-verify"] : [];
   const args = named ? ["tunnel", "run", "--token", cfg.token.trim()]
-                     : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${appPort()}`];
+                     : ["tunnel", "--no-autoupdate", ...tlsArgs, "--url", originUrl];
   try {
     proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
   } catch {
