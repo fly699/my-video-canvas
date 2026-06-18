@@ -399,6 +399,15 @@ export const BaseNode = memo(function BaseNode({
             >
               <Copy size={13} />
             </button>
+            {/* delete — identical composed call to the title-bar delete (store + server mutation) */}
+            <button
+              onClick={(e) => { e.stopPropagation(); deleteNode(id); if (projectId) deleteNodeMutation.mutate({ id, projectId }); }}
+              title="删除节点"
+              className="flex items-center justify-center w-7 h-7 rounded-lg"
+              style={{ background: "var(--c-surface)", color: "oklch(0.7 0.18 25)", border: "none", cursor: "pointer" }}
+            >
+              <Trash2 size={13} />
+            </button>
           </div>
         </NodeToolbar>
       )}
