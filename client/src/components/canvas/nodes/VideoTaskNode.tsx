@@ -207,6 +207,18 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   "kie_kling21_std", "kie_kling21_pro",
 ]);
 
+/** The exact payload patch applied when the video provider/model changes: switch
+ *  provider, reset params (each provider has its own param schema), and drop a stale
+ *  negative prompt for providers that don't support it. Exported as the single source
+ *  of truth so the studio inspector can reuse it verbatim (no logic duplication). */
+export function videoProviderChangePatch(newProvider: VideoProvider) {
+  return {
+    provider: newProvider,
+    params: {},
+    ...(!SUPPORTS_NEGATIVE_PROMPT.has(newProvider) ? { negativePrompt: undefined } : {}),
+  };
+}
+
 // Multi-modal reference (docs/poyo-video-api.md §六): models that accept reference
 // videos / audios on the SAME wire model. Only Seedance-2 qualifies — Wan 2.7's
 // reference mode is a separate wire model not yet mapped. Collected from connected
@@ -1675,15 +1687,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             disabled={isLocked}
             accent="oklch(0.7 0.18 25)"
             options={PROVIDER_PICKER_OPTIONS}
-            onChange={(v) => {
-              const newProvider = v as VideoProvider;
-              updateNodeData(id, {
-                provider: newProvider,
-                params: {},
-                // Clear stale negative prompt when switching to a provider that doesn't support it
-                ...(!SUPPORTS_NEGATIVE_PROMPT.has(newProvider) ? { negativePrompt: undefined } : {}),
-              });
-            }}
+            onChange={(v) => updateNodeData(id, videoProviderChangePatch(v as VideoProvider))}
           />
         </div>
         {/* 同步模型与参数到同类视频任务节点（弹窗勾选） */}
