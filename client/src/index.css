@@ -920,6 +920,9 @@
   background: repeating-linear-gradient(118deg, oklch(1 0 0 / 0.012) 0 1px, transparent 1px 52px);
 }
 :root[data-ui="studio"] .canvas-vignette::after { opacity: 0.58; }
+/* Studio: slightly larger node titles (the "bigger type" direction). The
+   :root[data-ui] prefix outranks Tailwind's .text-xs, and "pro" keeps text-xs. */
+:root[data-ui="studio"] .ui-node-title { font-size: 13.5px; }
 
 /* ── Button active state ────────────────────────────────────────────────────── */
 button:active:not(:disabled) {
