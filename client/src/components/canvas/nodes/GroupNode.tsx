@@ -1,8 +1,9 @@
 import { memo, useState, useEffect } from "react";
-import { NodeResizer } from "@xyflow/react";
+import { NodeResizer, NodeToolbar, Position } from "@xyflow/react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
 import type { GroupNodeData } from "../../../../../shared/types";
-import { FolderOpen, FolderClosed, Maximize2 } from "lucide-react";
+import { FolderOpen, FolderClosed, Maximize2, Play, Ungroup } from "lucide-react";
 
 interface Props {
   id: string;
@@ -24,7 +25,9 @@ const GROUP_COLORS = [
 ];
 
 export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) {
-  const { updateNodeData, updateNodeTitle, fitGroupToMembers, toggleGroupCollapsed } = useCanvasStore();
+  const { updateNodeData, updateNodeTitle, fitGroupToMembers, toggleGroupCollapsed, ungroup, requestRun } = useCanvasStore();
+  const { uiStyle } = useUIStyle();
+  const isStudio = uiStyle === "studio";
   const payload = data.payload;
   const [editingLabel, setEditingLabel] = useState(false);
   const [labelValue, setLabelValue] = useState(data.title);
@@ -43,6 +46,32 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
 
   return (
     <>
+      {/* Studio skin: floating group toolbar — run-all / ungroup. Reuses existing
+          store actions (requestRun with member ids, ungroup). Studio + selected only. */}
+      {isStudio && selected && (
+        <NodeToolbar nodeId={id} isVisible position={Position.Top} offset={10}>
+          <div className="nodrag flex items-center gap-1" style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", borderRadius: 11, padding: "5px 7px", boxShadow: "var(--c-node-shadow-hover)" }}>
+            {memberCount > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); requestRun(null, payload.childIds ?? []); }}
+                title="整组执行（运行组内全部节点）"
+                className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
+                style={{ background: `${color.accent}22`, color: color.accent, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+              >
+                <Play size={12} /> 整组执行
+              </button>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); ungroup(id); }}
+              title="解组（保留组内节点，移除分组框）"
+              className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
+              style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+            >
+              <Ungroup size={12} /> 解组
+            </button>
+          </div>
+        </NodeToolbar>
+      )}
       {/* 折叠成小条时禁用缩放（避免与小条高度冲突） */}
       <NodeResizer
         isVisible={selected && !collapsed}
