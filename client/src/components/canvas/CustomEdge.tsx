@@ -6,6 +6,7 @@ import { useHoverStore } from "../../hooks/useHoverStore";
 import { edgeOrderIndex } from "../../lib/inputOrder";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
+import { useUIStyle } from "../../contexts/UIStyleContext";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import { Check, X, Trash2 } from "lucide-react";
 
@@ -80,6 +81,8 @@ export const CustomEdge = memo(function CustomEdge({
   const typeColor = sourceNodeType ? getNodeConfig(sourceNodeType as Parameters<typeof getNodeConfig>[0]).color : null;
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
+  const { uiStyle } = useUIStyle();
+  const isStudio = uiStyle === "studio";
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX, sourceY, sourcePosition,
@@ -143,7 +146,9 @@ export const CustomEdge = memo(function CustomEdge({
   // hover/selection still step up for emphasis.
   const strokeWidth = isCreative
     ? selected ? 2.75 : hovered ? 2.25 : 1.5
-    : selected ? 3.5 : hovered ? 2.75 : 2;
+    : isStudio
+      ? selected ? 3.5 : hovered ? 3 : 2.4   // studio: a touch thicker/softer flow
+      : selected ? 3.5 : hovered ? 2.75 : 2;
 
   // ── Particle flow ───────────────────────────────────────────────────────────
   const svgPathId = `pp-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
