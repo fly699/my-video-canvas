@@ -1184,6 +1184,26 @@ button:active:not(:disabled) {
   max-height: 2600px;
   opacity: 1;
 }
+/* Studio skin: keep the hero media visible ABOVE the params even when selected —
+   media-first layout (result on top, controls below) with NO control hidden. Pure
+   CSS, studio-only; "pro" keeps the existing "hide hero when selected" behavior. */
+:root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+  line-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+:root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media img,
+:root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media video {
+  width: 100%;
+  height: auto;
+  aspect-ratio: auto;
+  display: block;
+  object-fit: contain;
+  max-height: 300px;
+}
 /* No result yet → always show body (script, note, ai_chat, unconfigured gen nodes). */
 [data-has-hero="false"] .node-body-wrap {
   max-height: none;
