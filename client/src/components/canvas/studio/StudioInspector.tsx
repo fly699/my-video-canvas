@@ -44,6 +44,7 @@ export function StudioInspector() {
   const imageUrl = str("imageUrl") || str("resultImageUrl") || str("outputImageUrl");
   const hasAspect = typeof payload.aspectRatio === "string";
   const RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
+  const modelVal = str("model") || str("aiLlmModel") || str("videoModel") || str("imageModel");
 
   const deselect = () => setNodes(useCanvasStore.getState().nodes.map((n) => (n.selected ? { ...n, selected: false } : n)));
 
@@ -115,6 +116,16 @@ export function StudioInspector() {
               style={{ ...box, resize: "vertical", minHeight: 60 }}
             />
           </label>
+        )}
+
+        {/* model (read-only display; edit via the node card's picker) */}
+        {modelVal && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>模型</div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 11px", borderRadius: 9, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ width: 7, height: 7, borderRadius: 2, background: cfg.color, flexShrink: 0 }} /> {modelVal}
+            </div>
+          </div>
         )}
 
         {/* aspect ratio (only when the node has the field) */}
