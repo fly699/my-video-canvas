@@ -275,7 +275,7 @@ export function buildKeyframeExpr(pts: { t: number; v: number; ease?: EaseType }
  *  `tOffset` (absolute timeline seconds for the overlay clock) and values mapped
  *  by `toUnit` (e.g. normalized→pixels). Empty when no keyframe defines the field. */
 function keyframePoints(
-  kfs: TransformKeyframe[] | undefined, field: "x" | "y" | "scale" | "rotation", tOffset: number, toUnit: (v: number) => number,
+  kfs: TransformKeyframe[] | undefined, field: "x" | "y" | "scale" | "rotation" | "opacity", tOffset: number, toUnit: (v: number) => number,
 ): { t: number; v: number; ease?: EaseType }[] {
   if (!kfs || kfs.length === 0) return [];
   return kfs
@@ -655,10 +655,23 @@ export function buildFilterGraph(
     if (maskF) oc.push(maskF); // 形状蒙版：裁成矩形/椭圆（含羽化/反转），作用于 alpha
     const ckf = chromaKeyFilter(o.chromaKey);
     if (ckf) oc.push(ckf); // 绿幕抠像：把指定颜色变透明，再合成
-    const op = o.transform?.opacity ?? 1;
-    if (op < 0.999) oc.push(`colorchannelmixer=aa=${op.toFixed(3)}`);
-    const rot = o.transform?.rotation ?? 0;
-    if (rot) oc.push(`rotate=${(rot * Math.PI / 180).toFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)`);
+    // 透明度：有 opacity 关键帧时逐帧改 alpha。colorchannelmixer 的 aa 不吃表达式，故改用 geq
+    // 改写 alpha 平面；geq 的时间变量是大写 T（小写 t 无效），且此处在位移 setpts 之前=clip-local。
+    // 静态情形保持原 colorchannelmixer（零回归）。
+    const opExpr = buildKeyframeExpr(keyframePoints(o.keyframes, "opacity", 0, (v) => Math.max(0, Math.min(1, v))));
+    if (opExpr != null) {
+      oc.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='clip(${opExpr.replace(/\bt\b/g, "T")},0,1)*alpha(X,Y)'`);
+    } else {
+      const op = o.transform?.opacity ?? 1;
+      if (op < 0.999) oc.push(`colorchannelmixer=aa=${op.toFixed(3)}`);
+    }
+    // 旋转：有 rotation 关键帧时逐帧旋转。坑：rotate 的 a 本应逐帧求值，但 c=none（透明填充）
+    // 会禁用逐帧（实测 6.1.1：c=none 下 a 冻结在首帧）；必须用 c=black@0（透明黑）才能既保透明角
+    // 又动画，ow=iw:oh=ih 固定输出尺寸（绕开下游缩放的 config_props 尺寸锁，且中心对齐预览）。
+    // 静态情形保持原 c=none:ow=rotw/roth（零回归）。
+    const rotExpr = buildKeyframeExpr(keyframePoints(o.keyframes, "rotation", 0, (v) => v * Math.PI / 180));
+    if (rotExpr != null) oc.push(`rotate=a='${rotExpr}':c=black@0:ow=iw:oh=ih`);
+    else if (o.transform?.rotation) oc.push(`rotate=${(o.transform.rotation * Math.PI / 180).toFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)`);
     // alpha fade in/out while the overlay's PTS is still clip-local (0..duration)
     oc.push(...videoFadeFilters(o.fadeIn, o.fadeOut, o.duration, true));
     // 动画缩放放到所有像素滤镜之后、位移 setpts 之前（见上方说明：尺寸安全顺序）

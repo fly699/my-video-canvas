@@ -2294,11 +2294,16 @@ export async function insertChatAttachment(data: InsertChatAttachment): Promise<
   return rows[0] ?? null;
 }
 
-export async function linkAttachmentsToMessage(messageId: number, attachmentIds: number[]): Promise<void> {
+export async function linkAttachmentsToMessage(messageId: number, attachmentIds: number[], conversationId: number): Promise<void> {
   if (!attachmentIds.length) return;
   const db = await getDb();
-  if (!db) { if (DEV_MODE) dev.devLinkAttachments(messageId, attachmentIds); return; }
-  await db.update(chatAttachments).set({ messageId }).where(inArray(chatAttachments.id, attachmentIds));
+  if (!db) { if (DEV_MODE) dev.devLinkAttachments(messageId, attachmentIds, conversationId); return; }
+  // Scope by conversationId: the caller passes raw client-supplied attachmentIds, so
+  // without this a member of conversation B could re-home conversation A's attachments
+  // (write IDOR / cross-conversation attachment hijack). Only rows that already belong
+  // to THIS conversation may be linked.
+  await db.update(chatAttachments).set({ messageId })
+    .where(and(inArray(chatAttachments.id, attachmentIds), eq(chatAttachments.conversationId, conversationId)));
 }
 
 export async function listConversationAttachments(conversationId: number): Promise<ChatAttachment[]> {
