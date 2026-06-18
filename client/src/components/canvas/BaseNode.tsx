@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
-import { Handle, Position, NodeResizer } from "@xyflow/react";
+import { Handle, Position, NodeResizer, NodeToolbar } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS } from "../../lib/connectionRules";
 import type { NodeType } from "../../../../shared/types";
@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useUIStyle } from "../../contexts/UIStyleContext";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers,
 } from "lucide-react";
@@ -174,6 +175,8 @@ export const BaseNode = memo(function BaseNode({
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
+  const { uiStyle } = useUIStyle();
+  const isStudio = uiStyle === "studio";
   const isCreative = canvasMode === "creative";
   const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || isCreative;
   const hasHero = heroMedia != null;
@@ -322,7 +325,9 @@ export const BaseNode = memo(function BaseNode({
       data-selected={(storeSelected || pinned) ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
       style={{
-        borderRadius: 16,
+        // var() with the exact current literal as fallback → "pro" (no --ui-radius-node)
+        // is byte-identical; "studio" skin overrides it for softer cards.
+        borderRadius: "var(--ui-radius-node, 16px)",
         background: "var(--c-node-bg)",
         border: borderStyle,
         boxShadow: shadowStyle,
@@ -353,9 +358,63 @@ export const BaseNode = memo(function BaseNode({
         onAssetImageDrop(urls);
       } : undefined}
     >
+      {/* Studio skin: a floating contextual toolbar above the selected node
+          (LibLib-style). Additive & studio-only — pro never renders it. Reuses
+          the EXACT existing handlers (same onRun reference the title-bar run uses,
+          and the self-contained duplicateNode store action), so it cannot diverge
+          from or break existing behavior. */}
+      {isStudio && (storeSelected || pinned) && (
+        <NodeToolbar nodeId={id} isVisible position={Position.Top} offset={10}>
+          <div
+            className="nodrag flex items-center gap-1"
+            style={{
+              background: "var(--c-elevated)",
+              border: "1px solid var(--c-bd2)",
+              borderRadius: 11,
+              padding: "5px 7px",
+              boxShadow: "var(--c-node-shadow-hover)",
+            }}
+          >
+            {onRun && (
+              <button
+                onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
+                disabled={!canRun || nodeRunning}
+                title={nodeRunning ? "生成中…" : (hasResult ? "重新生成" : "运行")}
+                className="flex items-center justify-center w-7 h-7 rounded-lg"
+                style={{
+                  background: !canRun || nodeRunning ? "var(--c-surface)" : `${config.color}22`,
+                  color: !canRun || nodeRunning ? "var(--c-t4)" : config.color,
+                  border: "none",
+                  cursor: !canRun || nodeRunning ? "not-allowed" : "pointer",
+                }}
+              >
+                {nodeRunning ? <Loader2 size={13} className="animate-spin" /> : (hasResult ? <RefreshCw size={13} /> : <Play size={13} />)}
+              </button>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); duplicateNode(id); }}
+              title="复制节点"
+              className="flex items-center justify-center w-7 h-7 rounded-lg"
+              style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
+            >
+              <Copy size={13} />
+            </button>
+            {/* delete — identical composed call to the title-bar delete (store + server mutation) */}
+            <button
+              onClick={(e) => { e.stopPropagation(); deleteNode(id); if (projectId) deleteNodeMutation.mutate({ id, projectId }); }}
+              title="删除节点"
+              className="flex items-center justify-center w-7 h-7 rounded-lg"
+              style={{ background: "var(--c-surface)", color: "oklch(0.7 0.18 25)", border: "none", cursor: "pointer" }}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </NodeToolbar>
+      )}
+
       {/* 素材拖入高亮 */}
       {assetDragOver && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center" style={{ borderRadius: 16, border: `2px dashed ${config.color}`, background: `${config.color}14` }}>
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center" style={{ borderRadius: "var(--ui-radius-node, 16px)", border: `2px dashed ${config.color}`, background: `${config.color}14` }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: config.color, background: "var(--c-base)", padding: "4px 10px", borderRadius: 8, border: `1px solid ${config.color}55` }}>放到此处用作参考图</span>
         </div>
       )}
@@ -470,7 +529,7 @@ export const BaseNode = memo(function BaseNode({
             // React Flow's node-select behavior (preserved on purpose).
             <div className="flex items-center gap-1 min-w-0 flex-1 group/title">
               <span
-                className="text-xs font-semibold truncate"
+                className="text-xs font-semibold truncate ui-node-title"
                 style={{
                   color: "var(--c-t1)",
                   cursor: "text",

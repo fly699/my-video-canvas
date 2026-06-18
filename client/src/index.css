@@ -513,6 +513,41 @@
     color-scheme: light;
   }
 
+  /* ── UI style skin: "studio" (media-first cinema). Orthogonal to data-theme.
+     Pure color-token remap (same approach as data-canvas-mode above), so it is
+     layout-safe and fully reversible. Default ("pro", no [data-ui="studio"])
+     leaves every token untouched. Structural tokens (--ui-*) are reserved for
+     the studio component skin and are inert until those components consume them. */
+  :root[data-ui="studio"] {
+    --c-canvas:   oklch(0.135 0.014 265);   /* deep cinematic backdrop — media pops */
+    --c-base:     oklch(0.205 0.012 265);   /* panels — clearly above canvas */
+    --c-surface:  oklch(0.232 0.012 265);   /* cards */
+    --c-elevated: oklch(0.262 0.012 265);   /* elevated */
+    --c-overlay:  oklch(0.290 0.012 265);   /* overlays */
+    --c-input:    oklch(0.178 0.011 265);   /* recessed input */
+    --c-bd1:      oklch(0.300 0.012 265);   /* divider */
+    --c-bd2:      oklch(0.365 0.013 265);   /* node border */
+    --c-bd3:      oklch(0.455 0.014 265);   /* strong border */
+    --c-t1:       oklch(0.952 0.006 265);   /* primary text */
+    --c-t2:       oklch(0.775 0.008 265);   /* secondary */
+    --c-t3:       oklch(0.590 0.008 265);   /* labels */
+    --c-t4:       oklch(0.440 0.007 265);   /* hints */
+    --c-node-bg:  oklch(0.212 0.012 265);
+    --c-node-shadow-rest:     0 2px 14px oklch(0 0 0 / 0.50), 0 1px 3px oklch(0 0 0 / 0.38);
+    --c-node-shadow-hover:    0 12px 40px oklch(0 0 0 / 0.58), 0 2px 8px oklch(0 0 0 / 0.42);
+    --c-node-shadow-selected: 0 18px 52px oklch(0 0 0 / 0.64), 0 4px 14px oklch(0 0 0 / 0.46);
+    --c-node-shadow-run:      0 12px 40px oklch(0 0 0 / 0.58);
+    color-scheme: dark;
+    /* ── studio structural tokens (consumed by BaseNode + canvas/studio/* ) ── */
+    --ui-radius-node: 18px;
+    --ui-radius-ctl: 11px;
+    --ui-gap: 12px;
+    --ui-font-scale: 1.08;
+    --ui-accent: oklch(0.70 0.16 255);      /* studio accent (selection/links) */
+    --ui-lime: oklch(0.90 0.20 125);        /* primary run button */
+    --ui-amber: oklch(0.82 0.15 75);        /* cost / credits */
+  }
+
   *, *::before, *::after {
     border-color: var(--color-border);
     outline-color: var(--color-ring);
@@ -872,6 +907,22 @@
   opacity: 0.45;
   z-index: 1;
 }
+/* Studio skin only: a faint diagonal "film" texture over the canvas + a touch
+   stronger vignette. Pure CSS via the free ::before — additive, pointer-events
+   none, near-imperceptible over nodes; "pro" has no [data-ui="studio"] so it is
+   wholly unaffected. */
+:root[data-ui="studio"] .canvas-vignette::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: repeating-linear-gradient(118deg, oklch(1 0 0 / 0.012) 0 1px, transparent 1px 52px);
+}
+:root[data-ui="studio"] .canvas-vignette::after { opacity: 0.58; }
+/* Studio: slightly larger node titles (the "bigger type" direction). The
+   :root[data-ui] prefix outranks Tailwind's .text-xs, and "pro" keeps text-xs. */
+:root[data-ui="studio"] .ui-node-title { font-size: 13.5px; }
 
 /* ── Button active state ────────────────────────────────────────────────────── */
 button:active:not(:disabled) {
