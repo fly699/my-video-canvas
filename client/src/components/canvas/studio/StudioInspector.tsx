@@ -104,6 +104,19 @@ export function StudioInspector() {
           <div style={{ fontSize: 12.5, color: "var(--c-t3)", lineHeight: 1.6 }}>该节点的参数请在节点卡片上直接编辑；右栏会随更多节点逐步支持。</div>
         )}
 
+        {/* negative prompt (only when present) */}
+        {typeof payload.negativePrompt === "string" && (
+          <label style={{ display: "block" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>反向提示词</div>
+            <NodeTextArea
+              value={String(payload.negativePrompt ?? "")}
+              onValueChange={(v) => updateNodeData(node.id, { negativePrompt: v })}
+              rows={3}
+              style={{ ...box, resize: "vertical", minHeight: 60 }}
+            />
+          </label>
+        )}
+
         {/* aspect ratio (only when the node has the field) */}
         {hasAspect && (
           <div>
