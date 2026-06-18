@@ -3,6 +3,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { getNodeConfig } from "../../../lib/nodeConfig";
 import { NodeInput, NodeTextArea } from "../NodeTextInput";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { X } from "lucide-react";
 
@@ -135,8 +136,21 @@ export function StudioInspector() {
           </div>
         )}
 
-        {/* model (read-only display for non-LLM model fields; edit via the node card's picker) */}
-        {modelVal && node.data.nodeType !== "script" && (
+        {/* image model — editable via the shared ModelPicker + IMAGE_MODEL_PICKER_OPTIONS
+            (same field/options/default the ImageGen card uses: model + resolve("image_gen","image")). */}
+        {node.data.nodeType === "image_gen" && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>模型</div>
+            <ModelPicker
+              value={str("model") || resolve("image_gen", "image")}
+              onChange={(v) => updateNodeData(node.id, { model: v })}
+              options={IMAGE_MODEL_PICKER_OPTIONS}
+            />
+          </div>
+        )}
+
+        {/* model (read-only display for other node types; edit via the node card's picker) */}
+        {modelVal && node.data.nodeType !== "script" && node.data.nodeType !== "image_gen" && (
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t3)", marginBottom: 7 }}>模型</div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "7px 11px", borderRadius: 9, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
