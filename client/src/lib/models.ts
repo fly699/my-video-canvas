@@ -34,9 +34,8 @@ export type LLMModelMeta = {
 };
 
 export const LLM_MODELS: readonly LLMModelMeta[] = [
-  // Self-hosted (OpenAI-compatible endpoint, e.g. vLLM). Server routes these by id to
-  // SELF_HOSTED_LLM_URL — set that env var (e.g. http://172.16.0.10:8000) to enable.
-  { id: "Qwen3.6-35B-A3B-FP8", label: "Qwen3.6 35B（自建）", short: "Qwen", family: "Qwen", tag: "自建", provider: "SelfHosted", color: "oklch(0.70 0.16 200)", costTier: "低" },
+  // 自建 LLM 模型不再写死在此——由管理员后台「模型管理 › 自建 LLM」配置，前端经
+  // useSelfHostedLlmModels() 动态并入各选择器。
   // Gemini (Google) — routed to Forge
   { id: "gemini-3-flash-preview",    label: "Gemini 3 Flash",    short: "Gemini3", family: "Gemini", tag: "最新", provider: "Forge", color: "oklch(0.68 0.18 160)", costTier: "低", vision: true },
   // No longer served by the upstream gateway (returns unknown-model). Hidden from
@@ -126,7 +125,7 @@ export function imageModelRequiresRef(value?: string): boolean {
 // 便于一眼区分。脚本/对话节点的 Forge/Poyo 绿/蓝即源于此。
 const PLATFORM_HUE: Record<string, number> = {
   Poyo: 240, Manus: 160, Forge: 160, Higgsfield: 310, Kie: 200,
-  Suno: 285, MiniMax: 30, OpenAI: 150, Local: 95, Dev: 20,
+  Suno: 285, MiniMax: 30, OpenAI: 150, Local: 95, Dev: 20, SelfHosted: 200,
 };
 export function platformBadge(name: string): { bg: string; fg: string } {
   const h = PLATFORM_HUE[name] ?? 265;

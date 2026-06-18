@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Paperclip, ImageIcon, FileText, X, PictureInPicture2, ChevronsRight, GripHorizontal, Download, Layers, Slash } from "lucide-react";
 import { CHAT_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
 import { safeHref } from "@/lib/safeUrl";
+import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 // Streamdown removed — replaced with safe inline markdown renderer to avoid ReactFlow DOM conflicts
 function SimpleMarkdown({ children }: { children: string }) {
@@ -69,6 +70,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   );
   const [model, setModel] = useState<string>(payload.model ?? resolve("ai_chat", "llm"));
   const disabledModels = useDisabledModels();
+  const _selfHosted = useSelfHostedLlmModels();
+  const CHAT_LIST = _selfHosted.length ? [..._selfHosted.filter((x) => !CHAT_MODELS.some((m) => m.id === x.id)), ...CHAT_MODELS] : CHAT_MODELS;
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -706,7 +709,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             }}
             onClick={() => setShowModelPicker(!showModelPicker)}
           >
-            {CHAT_MODELS.find((m) => m.id === model)?.label ?? model}
+            {CHAT_LIST.find((m) => m.id === model)?.label ?? model}
             <ChevronDown style={{ width: 9, height: 9, opacity: 0.7 }} />
           </button>
           {/* Model dropdown */}
@@ -722,7 +725,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                 overflowY: "auto",
               }}
             >
-              {CHAT_MODELS
+              {CHAT_LIST
                 .filter((m) => !m.hidden && (!disabledModels.has(m.id) || m.id === model))
                 .slice()
                 .sort((a, b) => modelGroupOrder(a.provider) - modelGroupOrder(b.provider))

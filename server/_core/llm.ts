@@ -1,6 +1,6 @@
 import { ENV } from "./env";
 import { isKieLLMModel, invokeKieLLM, type OAMessage } from "./kieLLM";
-import { isSelfHostedLlmModel } from "./selfHostedLlm";
+import { isSelfHostedLlmModel, getSelfHostedConfig } from "./selfHostedLlm";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -230,7 +230,7 @@ const isSelfHostedModel = isSelfHostedLlmModel;
 const resolveApiUrl = (model?: string) => {
   // Self-hosted OpenAI-compatible endpoint — only for its OWN model ids, so it never
   // redirects Forge/Poyo/kie models. Takes priority over everything else.
-  if (isSelfHostedModel(model)) return `${ENV.selfHostedLlmUrl.replace(/\/$/, "")}/v1/chat/completions`;
+  if (isSelfHostedModel(model)) return `${getSelfHostedConfig().url.replace(/\/$/, "")}/v1/chat/completions`;
   // Poyo-routed models (GPT-*, Poyo Claude) → Poyo API when key is available
   if (ENV.poyoApiKey && routesToPoyo(model)) return "https://api.poyo.ai/v1/chat/completions";
   // Other models (Gemini, Claude Sonnet 4.6 / Haiku, etc.) → Forge/Manus API
@@ -244,7 +244,7 @@ const resolveApiUrl = (model?: string) => {
 const getApiKey = (model?: string) => {
   // Self-hosted endpoint: its own key (may be empty for no-auth vLLM/Ollama; send a
   // placeholder so the Authorization header is well-formed and ignored by the server).
-  if (isSelfHostedModel(model)) return ENV.selfHostedLlmKey || "sk-local-noauth";
+  if (isSelfHostedModel(model)) return getSelfHostedConfig().apiKey || "sk-local-noauth";
   if (ENV.poyoApiKey && routesToPoyo(model)) return ENV.poyoApiKey;
   // When a custom forge URL is configured, require the forge key — don't fall through to poyoApiKey
   // which would send the wrong credentials to the custom proxy.

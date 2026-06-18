@@ -44,6 +44,7 @@ import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, stora
 import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { getCachedDisabledModels } from "../_core/modelToggles";
+import { getSelfHostedConfig } from "../_core/selfHostedLlm";
 import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { generateImage } from "../_core/imageGeneration";
@@ -3736,5 +3737,13 @@ export const configRouter = router({
   // 仅作显示门控；空数组（默认）= 全部模型可见，行为与未配置时一致。
   modelToggles: protectedProcedure.query(async () => {
     return { disabledModels: await getCachedDisabledModels() };
+  }),
+
+  // 管理员配置的自建 LLM 模型清单（仅 id/label，绝不含 apiKey）——所有登录用户可读，
+  // 前端据此把自建模型动态并入各模型选择器。url 仅返回是否已配置（布尔），不回传具体地址。
+  selfHostedLlmModels: protectedProcedure.query(async () => {
+    const cfg = getSelfHostedConfig(); // 含 env 兜底（DB 优先）
+    const configured = !!cfg.url.trim();
+    return { configured, models: configured ? cfg.models.map((m) => ({ id: m.id, label: m.label })) : [] };
   }),
 });
