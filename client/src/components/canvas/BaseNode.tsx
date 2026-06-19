@@ -26,6 +26,10 @@ import { hasPassableOutput, directPassDownstream } from "../../lib/canvasPassthr
 import { handleStyle } from "../../lib/handleStyle";
 import { agentBadge } from "../../lib/agentOwnership";
 
+// Nodes that keep their full PRO body in the studio skin (no floating command bar,
+// no top toolbar, no compact panel). Their UX isn't a parameter form.
+const STUDIO_PRO_BODY_TYPES = new Set<NodeType>(["ai_chat"]);
+
 interface BaseNodeProps {
   id: string;
   selected?: boolean;
@@ -185,9 +189,13 @@ export const BaseNode = memo(function BaseNode({
   const isCreative = canvasMode === "creative";
   const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || isCreative;
   const hasHero = heroMedia != null;
+  // Some nodes keep their full PRO body even in the studio skin (no floating
+  // command bar / panel) — their editing UX doesn't fit a compact bar (e.g. the
+  // AI chat node is a live conversation, not a parameter form).
+  const usesStudioFloating = isStudio && !STUDIO_PRO_BODY_TYPES.has(nodeType);
   // Studio: when selected, the node card stays compact (header + hero media if any)
   // and the params float in a wide, short panel attached BELOW it (LibLib layout).
-  const studioFloated = isStudio && (storeSelected || pinned);
+  const studioFloated = usesStudioFloating && (storeSelected || pinned);
   // Every fresh selection starts COMPACT: reset the expand flag whenever the node
   // is no longer the floating/selected one, so re-clicking never reopens expanded.
   useEffect(() => { if (!studioFloated) setStudioExpanded(false); }, [studioFloated]);
@@ -403,7 +411,7 @@ export const BaseNode = memo(function BaseNode({
           the EXACT existing handlers (same onRun reference the title-bar run uses,
           and the self-contained duplicateNode store action), so it cannot diverge
           from or break existing behavior. */}
-      {isStudio && (storeSelected || pinned) && (
+      {usesStudioFloating && (storeSelected || pinned) && (
         <NodeToolbar nodeId={id} isVisible position={Position.Top} offset={10}>
           <div
             className="nodrag flex items-center gap-1"
@@ -919,12 +927,12 @@ export const BaseNode = memo(function BaseNode({
           style={{
             position: "absolute",
             top: "calc(100% + 12px)",
-            // Match the OUTER edge of the node's selection highlight: the glow is a
-            // `0 0 0 9px` box-shadow beyond the 2px border-box, and width:100% on an
-            // absolute child resolves to the padding box (2px inside the border). So
-            // pull out by 2(border)+9(glow)=11px each side to sit flush with the glow.
-            left: -11,
-            width: "calc(100% + 22px)",
+            // Align the panel outer edge with the node's SOLID highlight border outer
+            // line (the 2px colored frame). width:100% on an absolute child resolves to
+            // the padding box (2px inside that border), so pull out by the 2px border
+            // width each side to sit flush with the border's outer edge.
+            left: -2,
+            width: "calc(100% + 4px)",
             maxHeight: 520,
             overflowY: "auto",
             background: "var(--c-base)",
