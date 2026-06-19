@@ -7,6 +7,7 @@ import { NodeTextArea } from "../NodeTextInput";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { PROVIDER_PICKER_OPTIONS, videoProviderChangePatch, PROVIDER_PARAMS, withParamDefaults } from "../nodes/VideoTaskNode";
+import { MUSIC_MODELS, DUBBING_MODELS, SFX_MODELS, MUSIC_STYLES_ZH, voicesForModel } from "../nodes/AudioNode";
 import { IMAGE_MODEL_PARAMS, paramOptions } from "../../../lib/paramDefs";
 import { estimateImageCost, estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
@@ -49,6 +50,7 @@ export function StudioCommandBar(props: Props) {
   const nodeType = useCanvasStore((s) => s.nodes.find((n) => n.id === props.nodeId)?.data.nodeType);
   if (!nodeType) return null;
   if (GENERATIVE_TYPES.has(nodeType)) return <GenerativeBar {...props} />;
+  if (nodeType === "audio") return <AudioBar {...props} />;
   if (SIMPLE_FORMS[nodeType]) return <SimpleBar {...props} form={SIMPLE_FORMS[nodeType]!} />;
   return null;
 }
@@ -459,6 +461,100 @@ function SimpleBar({ nodeId, onRun, canRun = true, running = false, hasResult = 
   );
 }
 
+// ── Audio bar: 3 sub-modes (配乐/配音/音效), each with its own model + key params.
+// Model/voice/style options are imported from AudioNode (single source of truth);
+// all fields are payload-safe (the node reads payload fresh). ───────────────────
+type AudioModelOpt = { value: string; label: string; group?: string };
+function audioModelSelect(value: string, opts: readonly AudioModelOpt[], onChange: (v: string) => void, title: string) {
+  const groups = Array.from(new Set(opts.map((o) => o.group ?? "")));
+  return (
+    <select className="nodrag" title={title} value={value} onChange={(e) => onChange(e.target.value)} style={{ ...chip, maxWidth: 190 }}>
+      {groups.map((g) => (
+        <optgroup key={g || "_"} label={g || "模型"}>
+          {opts.filter((o) => (o.group ?? "") === g).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
+function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = false }: Props) {
+  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId));
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  if (!node) return null;
+  const payload = node.data.payload as Record<string, unknown>;
+  const set = (patch: Record<string, unknown>) => updateNodeData(nodeId, patch);
+  // node default category is "dubbing"
+  const cat = typeof payload.audioCategory === "string" ? payload.audioCategory : "dubbing";
+  const textField = cat === "music" ? "musicPrompt" : cat === "sfx" ? "sfxPrompt" : "ttsText";
+  const placeholder = cat === "music" ? "描述配乐风格 / 情绪…" : cat === "sfx" ? "描述音效…" : "输入要配音的文字…";
+
+  const musicModel = (typeof payload.musicModel === "string" && payload.musicModel) || "suno-v5";
+  const isMiniMax = musicModel === "minimax-music-2.6";
+  const ttsModel = (typeof payload.ttsModel === "string" && payload.ttsModel) || "openai_tts_real";
+  const voices = voicesForModel(ttsModel);
+  const ttsVoice = (typeof payload.ttsVoice === "string" && payload.ttsVoice) || voices[0]?.value || "";
+  const isOpenAITts = ttsModel.startsWith("openai");
+  const sfxModel = (typeof payload.sfxModel === "string" && payload.sfxModel) || "kie_elevenlabs_sfx";
+  // switching tts model resets a now-incompatible voice to the new model's first voice
+  const onTtsModelChange = (v: string) => {
+    const nv = voicesForModel(v);
+    const keep = nv.some((x) => x.value === payload.ttsVoice);
+    set({ ttsModel: v, ...(keep ? {} : { ttsVoice: nv[0]?.value }) });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+      <div className="nodrag" style={{ display: "flex", gap: 6 }}>
+        {[{ v: "music", l: "配乐" }, { v: "dubbing", l: "配音" }, { v: "sfx", l: "音效" }].map((t) => {
+          const on = t.v === cat;
+          return <button key={t.v} onClick={(e) => { e.stopPropagation(); set({ audioCategory: t.v }); }}
+            style={{ ...chip, maxWidth: "none", background: on ? "var(--ui-accent, var(--c-elevated))" : "var(--c-input)", color: on ? "#fff" : "var(--c-t2)", borderColor: on ? "transparent" : "var(--c-bd2)" }}>{t.l}</button>;
+        })}
+      </div>
+
+      <PromptBox nodeId={nodeId} field={textField} placeholder={placeholder} enhance={cat !== "dubbing"} />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+        {cat === "music" && (
+          <>
+            {audioModelSelect(musicModel, MUSIC_MODELS, (v) => set({ musicModel: v }), "音乐模型")}
+            {!isMiniMax && (
+              <select className="nodrag" title="风格" value={typeof payload.musicStyle === "string" ? payload.musicStyle : ""}
+                onChange={(e) => set({ musicStyle: e.target.value || undefined })} style={chip}>
+                <option value="">风格（不限）</option>
+                {MUSIC_STYLES_ZH.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
+            {renderCtrl({ key: "musicInstrumental", type: "toggle", label: "纯器乐" }, payload, set)}
+          </>
+        )}
+        {cat === "dubbing" && (
+          <>
+            {audioModelSelect(ttsModel, DUBBING_MODELS, onTtsModelChange, "配音模型")}
+            {voices.length > 0 && (
+              <select className="nodrag" title="发音人" value={ttsVoice} onChange={(e) => set({ ttsVoice: e.target.value })} style={{ ...chip, maxWidth: 180 }}>
+                {voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+              </select>
+            )}
+            {isOpenAITts && renderCtrl({ key: "ttsSpeed", type: "number", label: "语速", min: 0.5, max: 2, step: 0.1, default: 1, width: 84 }, payload, set)}
+          </>
+        )}
+        {cat === "sfx" && (
+          <>
+            {SFX_MODELS.length > 1 && audioModelSelect(sfxModel, SFX_MODELS, (v) => set({ sfxModel: v }), "音效模型")}
+            {renderCtrl({ key: "sfxDuration", type: "number", label: "时长(秒，留空=自动)", min: 0.5, max: 22, step: 0.5, width: 96 }, payload, set)}
+            {renderCtrl({ key: "sfxLoop", type: "toggle", label: "无缝循环" }, payload, set)}
+          </>
+        )}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9 }}>
+          <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const COLORS: Opt[] = [{ value: "white", label: "白" }, { value: "yellow", label: "黄" }, { value: "red", label: "红" }, { value: "green", label: "绿" }, { value: "orange", label: "橙" }];
 const FONT_CTRLS: Ctrl[] = [
   { key: "fontSize", type: "number", label: "字号", min: 12, max: 40, step: 1, default: 22 },
@@ -485,14 +581,6 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
     text: { field: "prompt", placeholder: "描述新画面内容（保持参考构图）…" },
     controls: [{ key: "guidanceScale", type: "number", label: "引导强度", min: 1, max: 10, step: 0.5, default: 3.5, width: 84 }],
     refImages: true,
-  },
-  audio: {
-    tabsField: "audioCategory",
-    tabs: [
-      { value: "music", label: "配乐", text: { field: "musicPrompt", placeholder: "描述配乐风格 / 情绪…", enhance: true }, controls: [{ key: "musicInstrumental", type: "toggle", label: "纯音乐" }] },
-      { value: "tts", label: "配音", text: { field: "ttsText", placeholder: "输入要配音的文字…" }, controls: [{ key: "ttsSpeed", type: "number", label: "语速", min: 0.5, max: 2, step: 0.1, default: 1, width: 84 }] },
-      { value: "sfx", label: "音效", text: { field: "sfxPrompt", placeholder: "描述音效…", enhance: true }, controls: [{ key: "sfxDuration", type: "number", label: "时长", min: 1, max: 30, step: 1, default: 5 }] },
-    ],
   },
   character: {
     tabsField: "characterKind",
@@ -593,5 +681,6 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
 // Exported union consumed by BaseNode to decide which nodes get a command bar.
 export const STUDIO_COMMAND_BAR_TYPES = new Set<NodeType>([
   ...Array.from(GENERATIVE_TYPES),
+  "audio",
   ...(Object.keys(SIMPLE_FORMS) as NodeType[]),
 ]);
