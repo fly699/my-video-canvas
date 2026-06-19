@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy } from "lucide-react";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
@@ -405,7 +405,7 @@ function Bubble({ msg, mine }: { msg: ChatWireMessage; mine: boolean }) {
   const dl = msg.content.match(/^\[#DLREQ:(\d+)\]\n?/);
   const displayContent = dl ? msg.content.slice(dl[0].length) : msg.content;
   return (
-    <div style={{ display: "flex", gap: 9, alignItems: "flex-start", flexDirection: mine ? "row-reverse" : "row" }}>
+    <div className="group/msg" style={{ display: "flex", gap: 9, alignItems: "flex-start", flexDirection: mine ? "row-reverse" : "row" }}>
       <span style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, background: avatarGrad(`u${msg.senderId}`), color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{initials(msg.senderName || "我")}</span>
       <div style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start", gap: 3, maxWidth: "72%" }}>
         {!mine && <span style={{ fontSize: 11, color: C.t3, paddingLeft: 2 }}>{msg.senderName}</span>}
@@ -416,7 +416,19 @@ function Bubble({ msg, mine }: { msg: ChatWireMessage; mine: boolean }) {
           {msg.attachments?.map((a, i) => <Attachment key={i} a={a} mine={mine} />)}
           {dl && <DownloadApproveInline grantId={Number(dl[1])} />}
         </div>
-        <span style={{ fontSize: 10, color: C.t4, padding: "0 2px" }}>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: mine ? "row-reverse" : "row" }}>
+          <span style={{ fontSize: 10, color: C.t4, padding: "0 2px" }}>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+          {displayContent.trim() && (
+            <button
+              onClick={() => navigator.clipboard.writeText(displayContent).then(() => toast.success("已复制", { duration: 1200 }))}
+              className="opacity-0 group-hover/msg:opacity-100 transition-opacity"
+              style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: C.t4, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              title="复制本条消息"
+            >
+              <Copy size={11} /> 复制
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
