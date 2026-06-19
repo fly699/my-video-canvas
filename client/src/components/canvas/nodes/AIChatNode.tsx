@@ -1053,6 +1053,25 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           >
             <Trash2 className="w-3 h-3" />
           </button>
+          {/* Copy the ENTIRE conversation (with speaker labels) to the clipboard */}
+          {localMessages.length > 0 && (
+            <button
+              onClick={() => {
+                const text = localMessages
+                  .filter((m) => m.content)
+                  .map((m) => `${m.role === "user" ? "用户" : "助手"}：${m.content}`)
+                  .join("\n\n");
+                navigator.clipboard.writeText(text).then(() => toast.success("已复制整段对话", { duration: 1400 }));
+              }}
+              className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+              title="复制整段对话"
+              style={{ background: "transparent", border: "1px solid transparent", color: "var(--c-t4)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+            >
+              <Layers className="w-3 h-3" />
+            </button>
+          )}
           {/* Export conversation to markdown */}
           {localMessages.length > 0 && (
             <button
