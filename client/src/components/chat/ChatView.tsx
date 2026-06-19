@@ -80,7 +80,12 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const sendToAssistantMut = trpc.chat.sendToAssistant.useMutation();
   const uploadFileMut = trpc.chat.uploadFile.useMutation();
   const pickChatModel = (id: string) => { setChatModel(id); localStorage.setItem("chat:aiModel", id); };
-  const pickChatTemplate = (id: string) => { setChatTemplate(id); localStorage.setItem("chat:aiTemplate", id); };
+  const pickChatTemplate = (id: string) => {
+    setChatTemplate(id);
+    localStorage.setItem("chat:aiTemplate", id);
+    const name = id ? (ALL_AI_TEMPLATES.find((t) => t.id === id)?.label ?? id) : "默认助手";
+    toast.success(`已切换 AI 助手模板：${name}`, { duration: 1500 });
+  };
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
