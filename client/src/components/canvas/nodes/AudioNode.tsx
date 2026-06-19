@@ -66,7 +66,7 @@ const labelStyle: React.CSSProperties = {
 // Poyo-backed music models. Suno variants route to `generate-music` (mv param);
 // MiniMax Music 2.6 routes to its own model id via the standard status endpoint.
 // Suno track length is determined by the model version — there is no duration param.
-const MUSIC_MODELS = [
+export const MUSIC_MODELS = [
   // ── Suno (generate-music endpoint) ───
   { value: "suno-v5.5",        label: "Suno v5.5",        desc: "最新",          group: "Suno" },
   { value: "suno-v5",          label: "Suno v5",          desc: "最高质量",      group: "Suno" },
@@ -208,7 +208,7 @@ function ControlTemplatePicker({ value, onChange }: { value: string; onChange: (
 
 // SFX（文本→音效）。kie ElevenLabs Sound Effects 已实装；旧 stub id
 // （elevenlabs_sfx / audiogen）的存量节点由下方 value 解析回退到 live 模型。
-const SFX_MODELS = [
+export const SFX_MODELS = [
   { value: "kie_elevenlabs_sfx", label: "ElevenLabs SFX（kie）", desc: "文本→音效 · 0.5-22s", group: "ElevenLabs" },
 ];
 
@@ -300,7 +300,7 @@ const MUSIC_STYLE_MAP: { zh: string; en: string }[] = [
   { zh: "轻音乐", en: "easy listening" },
   { zh: "中国风", en: "traditional chinese" },
 ];
-const MUSIC_STYLES_ZH = MUSIC_STYLE_MAP.map(s => s.zh);
+export const MUSIC_STYLES_ZH = MUSIC_STYLE_MAP.map(s => s.zh);
 const MUSIC_STYLE_ZH_TO_EN: Record<string, string> = Object.fromEntries(
   MUSIC_STYLE_MAP.map(s => [s.zh, s.en]),
 );
