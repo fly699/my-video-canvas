@@ -919,11 +919,12 @@ export const BaseNode = memo(function BaseNode({
           style={{
             position: "absolute",
             top: "calc(100% + 12px)",
-            // width:100% on an absolute child resolves to the node's PADDING box (2px
-            // inside the selected border on each side). Pull out by the border width so
-            // the panel is flush with the highlighted node frame ("与节点框同宽").
-            left: -2,
-            width: "calc(100% + 4px)",
+            // Match the OUTER edge of the node's selection highlight: the glow is a
+            // `0 0 0 9px` box-shadow beyond the 2px border-box, and width:100% on an
+            // absolute child resolves to the padding box (2px inside the border). So
+            // pull out by 2(border)+9(glow)=11px each side to sit flush with the glow.
+            left: -11,
+            width: "calc(100% + 22px)",
             maxHeight: 520,
             overflowY: "auto",
             background: "var(--c-base)",

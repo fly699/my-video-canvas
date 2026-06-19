@@ -32,6 +32,7 @@ import { openNodeImage } from "../NodeImageLightbox";
 import { PromptDock } from "../PromptDock";
 import { useNodeDocks, useCharSceneItems, useAudioStripItems, useVideoStripItems } from "../../../hooks/useNodeDocks";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
+import { HideWhenStudioFloating } from "../../../contexts/StudioFloatingContext";
 import { MediaImage } from "../MediaImage";
 import {
   applyCinematographyToPrompt,
@@ -1367,7 +1368,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {/* ── Result video(s) ──
             Single result: full-width player.
             Multi-shot result (Wan 2.6 multi_shots=true → 3 clips):
-            2-column grid showing all clips; each gets its own download link. */}
+            2-column grid showing all clips; each gets its own download link.
+            Hidden inside the studio floating panel — the card hero already shows it. */}
+        <HideWhenStudioFloating>
         {payload.status === "succeeded" && videoSrc && (
           <div className="flex-shrink-0">
             {hasMultiResults && (
@@ -1420,6 +1423,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             )}
           </div>
         )}
+        </HideWhenStudioFloating>
 
         {/* ── Error ──
             When errorMessage carries the server-side [CHARGED] / [CHARGED?]
