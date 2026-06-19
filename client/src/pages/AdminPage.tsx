@@ -421,6 +421,10 @@ function AuthPanel() {
     onSuccess: () => { utils.admin.auth.getSettings.invalidate(); toast.success("已保存"); },
     onError: (e) => toast.error(e.message),
   });
+  const importTunnel = trpc.admin.auth.importFromTunnel.useMutation({
+    onSuccess: (r) => { utils.admin.auth.getSettings.invalidate(); toast.success(r.hasPass ? "已读取公网隧道的 SMTP 配置（含密码）" : "已读取公网隧道的 SMTP 配置（隧道未设密码）"); },
+    onError: (e) => toast.error(e.message),
+  });
   type AuthForm = { emailVerificationEnabled: boolean; smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpPass: string; smtpFrom: string; smtpPassSet: boolean };
   const [form, setForm] = useState<AuthForm | null>(null);
   useEffect(() => {
@@ -463,6 +467,15 @@ function AuthPanel() {
       </button>
 
       {/* SMTP config */}
+      <div className="flex items-center justify-between">
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--c-t2)" }}>SMTP 邮件服务</span>
+        <button onClick={() => importTunnel.mutate()} disabled={importTunnel.isPending}
+          className="nodrag flex items-center gap-1.5" title="把「公网隧道」页配置的 SMTP 账号（含密码）复制到这里，两处共用一套"
+          style={{ fontSize: 12, fontWeight: 600, color: "oklch(0.74 0.16 285)", background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.35)", borderRadius: 8, padding: "6px 11px", cursor: importTunnel.isPending ? "wait" : "pointer" }}>
+          {importTunnel.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe2 className="w-3.5 h-3.5" />}
+          读取公网隧道的 SMTP
+        </button>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div style={{ gridColumn: "1 / -1" }}>
           <label style={lbl}>SMTP 服务器</label>

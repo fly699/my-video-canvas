@@ -410,6 +410,21 @@ export const adminRouter = router({
         await db.setAuthSettings(patch);
         return { success: true };
       }),
+    // One-click: copy the SMTP account configured on the 公网隧道 page into the
+    // auth settings (server-side, so the password is shared without ever leaving
+    // the server). Lets both features reuse a single SMTP account.
+    importFromTunnel: managerProc.mutation(async () => {
+      const t = await db.getTunnelSettings();
+      const e = t.emailNotify;
+      if (!e || !e.host?.trim()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "公网隧道页尚未配置 SMTP（请先在「公网隧道」页填写邮件通知的 SMTP）" });
+      }
+      await db.setAuthSettings({
+        smtpHost: e.host.trim(), smtpPort: e.port || 587, smtpSecure: !!e.secure,
+        smtpUser: e.user ?? "", smtpPass: e.pass ?? "", smtpFrom: (e.from || e.user) ?? "",
+      });
+      return { success: true, hasPass: !!(e.pass && e.pass.length > 0) };
+    }),
   }),
 
   // ── Model visibility toggles ──────────────────────────────────────────

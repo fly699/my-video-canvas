@@ -474,7 +474,11 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
     controls: [
       { key: "style", type: "text", label: "风格", placeholder: "风格", width: 110 },
       { key: "aspectRatio", type: "select", label: "比例", options: RATIOS },
+      { key: "enableAnalyze", type: "toggle", label: "自动分析图" },
+      { key: "enableExpand", type: "toggle", label: "自动扩写" },
+      { key: "enableTranslate", type: "toggle", label: "自动翻译" },
     ],
+    refImages: true,
   },
   note: { text: { field: "content", placeholder: "在此记录想法…（支持 Markdown）" }, noRun: true },
   pose_control: {
@@ -494,7 +498,12 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
     tabsField: "characterKind",
     tabs: [
       { value: "person", label: "人物", text: { field: "appearance", placeholder: "外貌：身高、发色、服饰…" },
-        controls: [{ key: "name", type: "text", label: "姓名", placeholder: "角色姓名", width: 120 }, { key: "gender", type: "select", label: "性别", options: [{ value: "", label: "不限" }, { value: "男", label: "男" }, { value: "女", label: "女" }, { value: "中性", label: "中性" }] }] },
+        controls: [
+          { key: "name", type: "text", label: "姓名", placeholder: "角色姓名", width: 120 },
+          { key: "gender", type: "select", label: "性别", options: [{ value: "", label: "不限" }, { value: "男", label: "男" }, { value: "女", label: "女" }, { value: "中性", label: "中性" }] },
+          { key: "loraName", type: "text", label: "LoRA", placeholder: "LoRA 名称（可选）", width: 130 },
+          { key: "loraStrength", type: "number", label: "LoRA 强度", min: 0, max: 2, step: 0.05, default: 0.8, width: 88 },
+        ] },
       { value: "scene", label: "场景", text: { field: "sceneDescription", placeholder: "场景描述…" },
         controls: [{ key: "sceneName", type: "text", label: "场景名", placeholder: "场景名称", width: 120 }] },
     ],
@@ -504,10 +513,17 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
     controls: [
       { key: "transition", type: "select", label: "转场", options: [{ value: "none", label: "直切" }, { value: "fade", label: "淡入淡出" }, { value: "dissolve", label: "叠化" }] },
       { key: "transitionDuration", type: "number", label: "转场时长", min: 0.1, max: 2, step: 0.1, default: 0.5, width: 84 },
+      { key: "bgMusicUrl", type: "text", label: "背景音乐 URL", placeholder: "背景音乐 URL（可选）", width: 160 },
       { key: "bgMusicVolume", type: "number", label: "配乐音量", min: 0, max: 1, step: 0.1, default: 0.3, width: 84 },
+      { key: "burnShotSubtitles", type: "toggle", label: "烧录分镜字幕" },
     ],
   },
-  subtitle: { controls: FONT_CTRLS },
+  subtitle: {
+    controls: [
+      { key: "transcribeModel", type: "select", label: "识别模型", options: [{ value: "whisper-1", label: "Whisper v1" }, { value: "gpt-4o-transcribe", label: "GPT-4o" }, { value: "gpt-4o-mini-transcribe", label: "GPT-4o mini" }] },
+      ...FONT_CTRLS,
+    ],
+  },
   subtitle_motion: {
     controls: [
       { key: "motionStyle", type: "select", label: "动效", options: [{ value: "fade", label: "淡入" }, { value: "roll", label: "滚动" }, { value: "karaoke", label: "卡拉OK" }, { value: "bounce", label: "弹跳" }] },
@@ -517,18 +533,24 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
   overlay: {
     controls: [
       { key: "mode", type: "select", label: "模式", options: [{ value: "watermark", label: "水印" }, { value: "pip", label: "画中画" }, { value: "color_correction", label: "色彩校正" }] },
+      { key: "overlayImageUrl", type: "text", label: "叠加图 URL", placeholder: "水印 / 叠加图 URL", width: 160 },
       { key: "overlayPosition", type: "select", label: "位置", options: [{ value: "top-left", label: "左上" }, { value: "top-right", label: "右上" }, { value: "bottom-left", label: "左下" }, { value: "bottom-right", label: "右下" }, { value: "center", label: "居中" }] },
       { key: "overlayScale", type: "number", label: "缩放", min: 0.05, max: 1, step: 0.05, default: 0.2, width: 80 },
     ],
   },
   smart_cut: {
-    controls: [{ key: "aggressiveness", type: "select", label: "力度", options: [{ value: "low", label: "保守" }, { value: "medium", label: "适中" }, { value: "high", label: "激进" }] }],
+    controls: [
+      { key: "aggressiveness", type: "select", label: "力度", options: [{ value: "low", label: "保守" }, { value: "medium", label: "适中" }, { value: "high", label: "激进" }] },
+      { key: "targetDuration", type: "number", label: "目标时长(秒)", min: 0, max: 600, step: 1, width: 100 },
+    ],
   },
   clip: {
     controls: [
       { key: "speed", type: "select", label: "速度", numeric: true, options: [{ value: "0.5", label: "0.5×" }, { value: "1", label: "1×" }, { value: "1.5", label: "1.5×" }, { value: "2", label: "2×" }] },
       { key: "aspect", type: "select", label: "比例", options: [{ value: "original", label: "原始" }, { value: "9:16", label: "9:16" }, { value: "16:9", label: "16:9" }, { value: "1:1", label: "1:1" }] },
       { key: "colorPreset", type: "select", label: "调色", options: [{ value: "none", label: "无" }, { value: "cinematic", label: "电影" }, { value: "warm", label: "暖色" }, { value: "cool", label: "冷色" }, { value: "bw", label: "黑白" }, { value: "vintage", label: "复古" }, { value: "vivid", label: "鲜艳" }] },
+      { key: "muteOriginal", type: "toggle", label: "静音原声" },
+      { key: "reverse", type: "toggle", label: "倒放" },
     ],
   },
   comfyui_image: {
@@ -537,6 +559,7 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
     controls: [
       { key: "workflowTemplate", type: "select", label: "工作流", options: [{ value: "txt2img", label: "文生图" }, { value: "img2img", label: "图生图" }, { value: "inpaint", label: "局部重绘" }] },
       { key: "arch", type: "select", label: "架构", options: ["sd", "flux", "sd3", "qwen"] },
+      { key: "ckpt", type: "text", label: "Checkpoint", placeholder: "模型文件名", width: 150 },
       { key: "steps", type: "number", label: "步数", min: 1, max: 100, step: 1, default: 20 },
       { key: "cfg", type: "number", label: "CFG", min: 1, max: 30, step: 0.5, default: 7 },
       { key: "seed", type: "number", label: "种子", default: -1, width: 96 },
@@ -548,6 +571,7 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
     neg: { field: "negPrompt", placeholder: "反向提示词（可选）" },
     controls: [
       { key: "workflowTemplate", type: "select", label: "工作流", options: [{ value: "animatediff", label: "AnimateDiff" }, { value: "svd", label: "SVD" }, { value: "wan_t2v", label: "Wan 文生视频" }, { value: "wan_i2v", label: "Wan 图生视频" }, { value: "ltxv", label: "LTX-Video" }] },
+      { key: "ckpt", type: "text", label: "Checkpoint", placeholder: "模型文件名", width: 150 },
       { key: "frames", type: "number", label: "帧数", min: 1, max: 240, step: 1, default: 16 },
       { key: "fps", type: "number", label: "帧率", min: 1, max: 60, step: 1, default: 8 },
       { key: "steps", type: "number", label: "步数", min: 1, max: 100, step: 1, default: 20 },
@@ -558,8 +582,10 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
   comfyui_workflow: {
     controls: [
       { key: "aspectRatio", type: "select", label: "比例", options: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "4:5"] },
+      { key: "preferUpstreamPrompt", type: "toggle", label: "上游提示词优先", default: true },
       { key: "randomizeSeed", type: "toggle", label: "随机种子", default: true },
       { key: "useCloudComfy", type: "toggle", label: "云端运行" },
+      { key: "customBaseUrl", type: "text", label: "ComfyUI 地址", placeholder: "自定义地址（可选）", width: 170 },
     ],
   },
 };
