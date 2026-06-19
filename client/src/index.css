@@ -514,11 +514,25 @@
   }
 
   /* ── UI style skin: "studio" (media-first cinema). Orthogonal to data-theme.
-     Pure color-token remap (same approach as data-canvas-mode above), so it is
-     layout-safe and fully reversible. Default ("pro", no [data-ui="studio"])
-     leaves every token untouched. Structural tokens (--ui-*) are reserved for
-     the studio component skin and are inert until those components consume them. */
+     Structural tokens (--ui-*) apply on EVERY theme so the studio layout/shape is
+     consistent. The signature cinematic COLOR palette is scoped to the dark/default
+     theme only (block below), so switching to any other theme lets that theme's
+     colors show through — i.e. studio now supports theme switching. */
   :root[data-ui="studio"] {
+    /* ── studio structural tokens (consumed by BaseNode + canvas/studio/* ) ── */
+    --ui-radius-node: 18px;
+    --ui-radius-ctl: 11px;
+    --ui-gap: 12px;
+    --ui-font-scale: 1.08;
+    --ui-accent: oklch(0.70 0.16 255);      /* studio accent (selection/links) */
+    --ui-lime: oklch(0.90 0.20 125);        /* primary run button */
+    --ui-amber: oklch(0.82 0.15 75);        /* cost / credits */
+  }
+
+  /* Studio's cinematic dark palette — ONLY on the dark/default theme. Higher
+     specificity than the base dark theme, so it deepens the backdrop there; absent
+     on other themes, which therefore render in their own colors + studio layout. */
+  :root[data-ui="studio"][data-theme="dark"] {
     --c-canvas:   oklch(0.135 0.014 265);   /* deep cinematic backdrop — media pops */
     --c-base:     oklch(0.205 0.012 265);   /* panels — clearly above canvas */
     --c-surface:  oklch(0.232 0.012 265);   /* cards */
@@ -538,14 +552,6 @@
     --c-node-shadow-selected: 0 18px 52px oklch(0 0 0 / 0.64), 0 4px 14px oklch(0 0 0 / 0.46);
     --c-node-shadow-run:      0 12px 40px oklch(0 0 0 / 0.58);
     color-scheme: dark;
-    /* ── studio structural tokens (consumed by BaseNode + canvas/studio/* ) ── */
-    --ui-radius-node: 18px;
-    --ui-radius-ctl: 11px;
-    --ui-gap: 12px;
-    --ui-font-scale: 1.08;
-    --ui-accent: oklch(0.70 0.16 255);      /* studio accent (selection/links) */
-    --ui-lime: oklch(0.90 0.20 125);        /* primary run button */
-    --ui-amber: oklch(0.82 0.15 75);        /* cost / credits */
   }
 
   *, *::before, *::after {
@@ -919,7 +925,9 @@
   z-index: 1;
   background: repeating-linear-gradient(118deg, oklch(1 0 0 / 0.012) 0 1px, transparent 1px 52px);
 }
-:root[data-ui="studio"] .canvas-vignette::after { opacity: 0.58; }
+/* the stronger vignette is a dark wash → only intensify it on the dark theme so
+   light themes don't get darkened edges (studio respects theme switching). */
+:root[data-ui="studio"][data-theme="dark"] .canvas-vignette::after { opacity: 0.58; }
 /* Studio: slightly larger node titles (the "bigger type" direction). The
    :root[data-ui] prefix outranks Tailwind's .text-xs, and "pro" keeps text-xs. */
 :root[data-ui="studio"] .ui-node-title { font-size: 13.5px; }

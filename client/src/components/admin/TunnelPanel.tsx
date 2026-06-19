@@ -116,6 +116,28 @@ export function TunnelPanel() {
           ))}
         </div>
 
+        {/* 开机自启说明 */}
+        <details style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.65, background: "var(--c-bd1)", borderRadius: 8, padding: "8px 11px" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--c-t2)" }}>如何让公网隧道随宿主机开机自启？</summary>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 9 }}>
+            <div>
+              <b style={{ color: "var(--c-t2)" }}>说明：</b>「app 自起 cloudflared」模式下，cloudflared 不是独立服务，而是<b>本应用启动隧道时拉起的子进程</b>，生命周期跟着应用走；应用启动时若隧道为「已启用」会<b>自动把它拉起</b>。所以要随宿主机启动，本质是让<b>应用本身随机器启动</b>。
+            </div>
+            <div>
+              <b style={{ color: "var(--c-t2)" }}>方式一（推荐 · 随应用一起起）：</b>把本应用注册成开机服务，隧道就会跟着自动起。
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                <li>Windows（开机即启、登录前）：以管理员运行 <code>deploy\install-services.bat</code>（NSSM 注册为 Windows 服务）。</li>
+                <li>Windows（登录后自启）：<code>deploy\add-to-startup.bat</code>。</li>
+                <li>Linux：把应用做成 systemd 服务设为开机启动即可（应用起来后会自动起隧道）。</li>
+              </ul>
+              前提：隧道在本页保持「启用」+「app 自起 cloudflared」，且 cloudflared 已就绪（上方「下载 cloudflared」或装在系统 PATH）。
+            </div>
+            <div>
+              <b style={{ color: "var(--c-t2)" }}>方式二（让 cloudflared 自己随机器起、独立于应用）：</b>用 Cloudflare <b>命名隧道</b> + cloudflared 官方的 <code>cloudflared service install</code>（注册成 systemd / Windows 服务，开机自启、独立运行），把隧道回源(Service)指向 <code>http://localhost:&lt;本页显示的回源端口&gt;</code>；本页这边切到<b>「我已有公网入口（只门控）」</b>模式即可（应用不再自己起 cloudflared，只按公网域名做白名单门控）。
+            </div>
+          </div>
+        </details>
+
         {runCf ? (
           <>
             {/* cloudflared 安装状态 + 一键下载 */}
