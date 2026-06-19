@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, ChevronDown } from "lucide-react";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
@@ -274,30 +274,30 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           {chatModels.length === 0 ? (
             <span style={{ color: C.danger }}>管理员已停用全部聊天模型</span>
           ) : (
-            <select
+            <MiniSelect
               value={effModel ?? ""}
-              onChange={(e) => pickChatModel(e.target.value)}
-              style={{ padding: "3px 8px", borderRadius: 7, fontSize: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, outline: "none", maxWidth: 220 }}
-            >
-              {chatModels.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
+              placeholder="模型"
+              maxWidth={200}
+              groups={[{ options: chatModels.map((m) => ({ value: m.id, label: m.label })) }]}
+              onChange={pickChatModel}
+            />
           )}
-          {/* 模板（人设）—— 复用 ai_chat 节点的同一套模板，选中即设定 AI 助手系统提示词 */}
+          {/* 模板（人设）—— 复用 ai_chat 节点的同一套模板，选中即设定 AI 助手系统提示词。
+              用自绘下拉而非原生 <select>：聊天窗在画布里会被 transform: scale 缩放，
+              缩放下原生 select 弹层点击会错位/不生效（Chromium 已知问题）。 */}
           <BookOpen size={13} style={{ color: C.accent, marginLeft: 4 }} />
           <span>模板</span>
-          <select
+          <MiniSelect
             value={chatTemplate}
-            onChange={(e) => pickChatTemplate(e.target.value)}
+            placeholder="默认助手"
+            maxWidth={190}
             title={effSystemPrompt ? ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.blurb : "默认助手人设"}
-            style={{ padding: "3px 8px", borderRadius: 7, fontSize: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, outline: "none", maxWidth: 200 }}
-          >
-            <option value="">默认助手</option>
-            {AI_TEMPLATE_CATEGORIES.map((cat) => (
-              <optgroup key={cat.id} label={cat.label}>
-                {cat.templates.map((t) => <option key={t.id} value={t.id} title={t.blurb}>{t.label}</option>)}
-              </optgroup>
-            ))}
-          </select>
+            groups={[
+              { options: [{ value: "", label: "默认助手" }] },
+              ...AI_TEMPLATE_CATEGORIES.map((cat) => ({ label: cat.label, options: cat.templates.map((t) => ({ value: t.id, label: t.label, title: t.blurb })) })),
+            ]}
+            onChange={pickChatTemplate}
+          />
           <span style={{ color: C.t4 }}>· 与 AI 助手的对话内容会经服务器处理</span>
         </div>
       ) : (
@@ -410,6 +410,51 @@ function StagedChip({ file, onRemove }: { file: File; onRemove: () => void }) {
         <div style={{ fontSize: 11, color: C.t3 }}>{(file.size / 1024 / 1024).toFixed(1)}MB</div>
       </div>
       <button onClick={onRemove} title="移除" style={{ marginLeft: "auto", width: 22, height: 22, borderRadius: 6, border: "none", background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><X size={13} /></button>
+    </div>
+  );
+}
+
+// Custom dropdown (replaces native <select>). The chat window is rendered inside a
+// CSS `transform: scale()` in the canvas, under which native <select> popups
+// mis-hit-test in Chromium — so we draw the menu as an in-DOM absolutely-positioned
+// element that scales correctly with the window.
+interface MiniGroup { label?: string; options: { value: string; label: string; title?: string }[] }
+function MiniSelect({ value, placeholder, groups, onChange, maxWidth, title }: {
+  value: string; placeholder: string; groups: MiniGroup[]; onChange: (v: string) => void; maxWidth?: number; title?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  const cur = groups.flatMap((g) => g.options).find((o) => o.value === value);
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button type="button" title={title} onClick={() => setOpen((o) => !o)}
+        style={{ padding: "3px 8px", borderRadius: 7, fontSize: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, outline: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, maxWidth }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur?.label ?? placeholder}</span>
+        <ChevronDown size={11} style={{ flexShrink: 0, opacity: 0.6 }} />
+      </button>
+      {open && (
+        <div className="nowheel" style={{ position: "absolute", bottom: "calc(100% + 4px)", left: 0, minWidth: 170, maxHeight: 300, overflowY: "auto",
+          background: "var(--c-elevated, #1b1b1f)", border: `1px solid ${C.borderStrong}`, borderRadius: 9, boxShadow: "0 10px 30px rgba(0,0,0,0.45)", zIndex: 60, padding: 4 }}>
+          {groups.map((g, gi) => (
+            <div key={gi}>
+              {g.label && <div style={{ fontSize: 10, color: C.t4, padding: "5px 8px 2px", fontWeight: 600 }}>{g.label}</div>}
+              {g.options.map((o) => (
+                <button key={o.value} type="button" title={o.title} onClick={() => { onChange(o.value); setOpen(false); }}
+                  style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 9px", borderRadius: 6, fontSize: 12, lineHeight: 1.4,
+                    background: o.value === value ? C.accentSoft : "transparent", color: o.value === value ? C.accent : C.t1, border: "none", cursor: "pointer" }}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
