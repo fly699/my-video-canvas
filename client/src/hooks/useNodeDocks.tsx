@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePersistentState } from "./usePersistentState";
 import { useCanvasStore } from "./useCanvasStore";
+import { useGlobalPeek } from "./useGlobalPeekStore";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacterAudioRefs, effectiveCharacterVideoRefs } from "../lib/characterConditioning";
 import { listUpstreamAudioSources, listUpstreamVideoSources, listUpstreamImageSources, mentionedMediaSources } from "../lib/comfyWorkflowParams";
 import type { StripItem } from "../components/canvas/ReferenceImageStrip";
@@ -168,8 +169,10 @@ export function useNodeDocks(
     else { clearClose(); closeTimer.current = setTimeout(() => { closeTimer.current = null; setPeek(false); }, 300); }
   }, []);
 
-  const refOpen = hasRef && (refPersist || peek || autoRef);
-  const promptOpen = hasPrompt && (promptPersist || peek || autoPrompt);
+  // Alt+W global peek temporarily opens both docks on every node.
+  const globalPeek = useGlobalPeek();
+  const refOpen = hasRef && (refPersist || peek || autoRef || globalPeek);
+  const promptOpen = hasPrompt && (promptPersist || peek || autoPrompt || globalPeek);
   const pinRef = useCallback(() => setRefPersist(true), [setRefPersist]);
   const pinPrompt = useCallback(() => setPromptPersist(true), [setPromptPersist]);
 

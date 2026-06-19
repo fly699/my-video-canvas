@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../hooks/useComfyPreviewStore";
 import { useConnectingStore } from "../hooks/useConnectingStore";
+import { useGlobalPeekStore } from "../hooks/useGlobalPeekStore";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
@@ -1504,6 +1505,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
         if (!isEditing) reactFlow.setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)));
       }
 
+      // Alt+W — 临时「速览」：所有节点的左侧参考窗 + 顶部提示词窗一起展开，再次按下或
+      // 5 秒后自动恢复。用 e.code === "KeyW" 以兼容 Alt 组合在部分键盘上产生特殊字符。
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyW") {
+        e.preventDefault();
+        useGlobalPeekStore.getState().toggle();
+      }
+
       // Cmd+A / Ctrl+A — 全选节点（仅画布，不在输入框时）
       if (!isEditing && (e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) {
         e.preventDefault();
@@ -2937,6 +2945,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     { group: "其他", items: [
                       { key: "Cmd/Ctrl + K", desc: "搜索节点" },
                       { key: "Cmd/Ctrl + S", desc: "保存画布" },
+                      { key: "Alt + W", desc: "速览：临时展开全部节点的参考图 + 提示词窗（再按或 5 秒后恢复）" },
                       { key: "?", desc: "开关快捷键面板" },
                     ]},
                   ].map(({ group, items }) => (
