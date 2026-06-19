@@ -8,6 +8,7 @@ import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
 import { useConnectState } from "../../hooks/useConnectingStore";
 import { useHoverStore } from "../../hooks/useHoverStore";
 import { NodeSelectedContext } from "../../contexts/NodeSelectedContext";
+import { StudioFloatingContext } from "../../contexts/StudioFloatingContext";
 import { trpc } from "@/lib/trpc";
 import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
@@ -187,6 +188,18 @@ export const BaseNode = memo(function BaseNode({
   // Studio: when selected, the node card stays compact (header + hero media if any)
   // and the params float in a wide, short panel attached BELOW it (LibLib layout).
   const studioFloated = isStudio && (storeSelected || pinned);
+  // Every fresh selection starts COMPACT: reset the expand flag whenever the node
+  // is no longer the floating/selected one, so re-clicking never reopens expanded.
+  useEffect(() => { if (!studioFloated) setStudioExpanded(false); }, [studioFloated]);
+  // Measure whether the capped compact body overflows → only then show the fade +
+  // 展开 affordance (short bodies have nothing to expand). Runs after layout each
+  // render but bails when the value is unchanged, so no update loop.
+  useEffect(() => {
+    const el = compactBodyRef.current;
+    if (!el) { if (bodyOverflows) setBodyOverflows(false); return; }
+    const overflows = el.scrollHeight > el.clientHeight + 4;
+    if (overflows !== bodyOverflows) setBodyOverflows(overflows);
+  });
   // Studio top toolbar: a real, gated download of the node's result media (the only
   // genuinely non-duplicate "top toolbar" action this app supports — the LibLib
   // AI ops like 打光/全景 don't exist here, so we don't fake them). Stable string
@@ -255,6 +268,10 @@ export const BaseNode = memo(function BaseNode({
   // command bar into the FULL node body (every param). Single source of truth —
   // expanding just renders the same `children` the pro node uses, no duplication.
   const [studioExpanded, setStudioExpanded] = useState(false);
+  // For non-command-bar nodes the compact view is the pro body capped to a short
+  // height; only show the fade + 展开 affordance when it actually overflows.
+  const compactBodyRef = useRef<HTMLDivElement>(null);
+  const [bodyOverflows, setBodyOverflows] = useState(false);
 
   const handleTitleSave = useCallback(() => {
     if (titleCancelingRef.current) { titleCancelingRef.current = false; return; }
@@ -429,18 +446,6 @@ export const BaseNode = memo(function BaseNode({
                 style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
               >
                 <Download size={13} />
-              </button>
-            )}
-            {/* expand-all params toggle — only for command-bar types (which have a
-                compact view to expand FROM). Mirrors the panel's own toggle. */}
-            {STUDIO_COMMAND_BAR_TYPES.has(nodeType) && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setStudioExpanded((v) => !v); }}
-                title={studioExpanded ? "收起为命令栏" : "展开全部参数"}
-                className="flex items-center justify-center w-7 h-7 rounded-lg"
-                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
-              >
-                {studioExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
               </button>
             )}
           </div>
@@ -909,13 +914,16 @@ export const BaseNode = memo(function BaseNode({
             // double-click anywhere on the panel background toggles full params
             // (ignore dblclick that originates inside an input/control)
             if ((e.target as HTMLElement).closest("input,textarea,select,button")) return;
-            if (STUDIO_COMMAND_BAR_TYPES.has(nodeType)) { e.stopPropagation(); setStudioExpanded((v) => !v); }
+            e.stopPropagation(); setStudioExpanded((v) => !v);
           }}
           style={{
             position: "absolute",
             top: "calc(100% + 12px)",
-            left: 0,
-            width: "100%",
+            // width:100% on an absolute child resolves to the node's PADDING box (2px
+            // inside the selected border on each side). Pull out by the border width so
+            // the panel is flush with the highlighted node frame ("与节点框同宽").
+            left: -2,
+            width: "calc(100% + 4px)",
             maxHeight: 520,
             overflowY: "auto",
             background: "var(--c-base)",
@@ -926,41 +934,63 @@ export const BaseNode = memo(function BaseNode({
             zIndex: 20,
           }}
         >
-          {/* Studio param panel. Supported generative types get a compact LibLib-style
-              COMMAND BAR (prompt + one horizontal row of model/ratio/params + cost/send),
-              with NO media (the node card already shows it). Other types fall back to the
-              full node body. */}
-          {STUDIO_COMMAND_BAR_TYPES.has(nodeType) ? (
-            studioExpanded ? (
-              <>
-                <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t3)" }}>全部参数</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setStudioExpanded(false); }}
-                    title="收起为命令栏（也可双击面板空白处）"
-                    className="flex items-center gap-1 rounded-lg"
-                    style={{ fontSize: 11, fontWeight: 600, color: "var(--c-t2)", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", padding: "3px 8px", cursor: "pointer" }}
-                  >
-                    <ChevronUp size={12} /> 收起
-                  </button>
-                </div>
+          {/* Studio param panel. EVERY node defaults to a COMPACT view + 展开全部参数:
+              command-bar types get the curated LibLib row; all other types show their
+              pro body capped to a short height (top = primary params). Expanding renders
+              the same `children` the pro node uses (single source of truth). The body is
+              wrapped in StudioFloatingContext so media-result nodes skip their in-body
+              preview (the card hero already shows it → no duplicate). */}
+          {studioExpanded ? (
+            <>
+              <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t3)" }}>全部参数</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setStudioExpanded(false); }}
+                  title="收起（也可双击面板空白处）"
+                  className="flex items-center gap-1 rounded-lg"
+                  style={{ fontSize: 11, fontWeight: 600, color: "var(--c-t2)", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", padding: "3px 8px", cursor: "pointer" }}
+                >
+                  <ChevronUp size={12} /> 收起
+                </button>
+              </div>
+              <StudioFloatingContext.Provider value={true}>
                 <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
-              </>
-            ) : (
-              <>
-                <StudioCommandBar nodeId={id} onRun={onRun} canRun={canRun} running={nodeRunning} hasResult={hasResult} />
+              </StudioFloatingContext.Provider>
+            </>
+          ) : STUDIO_COMMAND_BAR_TYPES.has(nodeType) ? (
+            <>
+              <StudioCommandBar nodeId={id} onRun={onRun} canRun={canRun} running={nodeRunning} hasResult={hasResult} />
+              <button
+                onClick={(e) => { e.stopPropagation(); setStudioExpanded(true); }}
+                title="展开全部参数（也可双击面板空白处）"
+                className="flex items-center justify-center gap-1 w-full rounded-lg"
+                style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: "var(--c-t3)", background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", padding: "5px 0", cursor: "pointer" }}
+              >
+                <ChevronDown size={12} /> 展开全部参数
+              </button>
+            </>
+          ) : (
+            <>
+              {/* compact: pro body capped to a short height; fade + 展开 only when it overflows */}
+              <div ref={compactBodyRef} style={{ position: "relative", maxHeight: 200, overflow: "hidden" }}>
+                <StudioFloatingContext.Provider value={true}>
+                  <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
+                </StudioFloatingContext.Provider>
+                {bodyOverflows && (
+                  <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 46, background: "linear-gradient(to bottom, transparent, var(--c-base))", pointerEvents: "none" }} />
+                )}
+              </div>
+              {bodyOverflows && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setStudioExpanded(true); }}
                   title="展开全部参数（也可双击面板空白处）"
                   className="flex items-center justify-center gap-1 w-full rounded-lg"
-                  style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: "var(--c-t3)", background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", padding: "5px 0", cursor: "pointer" }}
+                  style={{ marginTop: 8, fontSize: 11, fontWeight: 600, color: "var(--c-t3)", background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", padding: "5px 0", cursor: "pointer" }}
                 >
                   <ChevronDown size={12} /> 展开全部参数
                 </button>
-              </>
-            )
-          ) : (
-            <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
+              )}
+            </>
           )}
         </div>
       )}
