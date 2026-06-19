@@ -2646,16 +2646,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
             className={`canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl ${toolbarOrient === "v" ? "flex-col" : ""}`}
             data-bar-orient={toolbarOrient}
             onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => {
-              // 只响应直接在工具栏背景上的拖拽（不拦截按钮点击）
+            onPointerDown={(e) => {
+              // 只响应直接在工具栏背景上的拖拽（不拦截按钮点击）。Pointer 事件统一鼠标 +
+              // 触屏 → 移动端也能拖动；setPointerCapture 让 move/up 始终落到本元素。
               if ((e.target as HTMLElement).closest("button,input,select")) return;
               e.preventDefault();
               const el = e.currentTarget as HTMLElement;
+              try { el.setPointerCapture(e.pointerId); } catch { /* older browsers */ }
               const rect = el.getBoundingClientRect();
               const offX = e.clientX - rect.left, offY = e.clientY - rect.top;
               const startX = e.clientX, startY = e.clientY;
               let dragged = false;
-              const onMove = (mv: MouseEvent) => {
+              const onMove = (mv: PointerEvent) => {
                 if (!dragged && Math.hypot(mv.clientX - startX, mv.clientY - startY) < 5) return;
                 dragged = true;
                 const w = el.offsetWidth, h = el.offsetHeight;
@@ -2663,13 +2665,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 const y = Math.max(0, Math.min(window.innerHeight - h, mv.clientY - offY));
                 setToolbarPos({ x, y });
               };
-              const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-              window.addEventListener("mousemove", onMove);
-              window.addEventListener("mouseup", onUp);
+              const onUp = () => {
+                el.removeEventListener("pointermove", onMove);
+                el.removeEventListener("pointerup", onUp);
+                el.removeEventListener("pointercancel", onUp);
+              };
+              el.addEventListener("pointermove", onMove);
+              el.addEventListener("pointerup", onUp);
+              el.addEventListener("pointercancel", onUp);
             }}
             style={{
               left: toolbarPos.x < 0 ? Math.max(8, window.innerWidth / 2 - 180) : toolbarPos.x,
-              top: toolbarPos.x < 0 ? window.innerHeight - 64 : toolbarPos.y,
+              // 默认位置上移并改用 visualViewport 高度：移动端浏览器地址栏会吃掉 innerHeight，
+              // 旧的 innerHeight-64 常把工具栏顶到可视区外只露一半。
+              top: toolbarPos.x < 0 ? (window.visualViewport?.height ?? window.innerHeight) - 104 : toolbarPos.y,
+              touchAction: "none",
               cursor: "grab",
               background: "color-mix(in oklch, var(--c-base) 38%, transparent)",
               backdropFilter: "blur(24px)",

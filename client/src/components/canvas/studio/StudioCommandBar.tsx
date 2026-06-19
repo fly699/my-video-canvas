@@ -6,9 +6,9 @@ import { toast } from "sonner";
 import { NodeTextArea } from "../NodeTextInput";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
-import { PROVIDER_PICKER_OPTIONS, videoProviderChangePatch } from "../nodes/VideoTaskNode";
+import { PROVIDER_PICKER_OPTIONS, videoProviderChangePatch, PROVIDER_PARAMS, withParamDefaults } from "../nodes/VideoTaskNode";
 import { IMAGE_MODEL_PARAMS, paramOptions } from "../../../lib/paramDefs";
-import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
+import { estimateImageCost, estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { ArrowUp, Loader2, ImagePlus, Languages, Sparkles, X } from "lucide-react";
 import type { NodeType, VideoProvider } from "../../../../../shared/types";
@@ -87,8 +87,21 @@ export function StudioCommandBar({ nodeId, onRun, canRun = true, running = false
   const imageModelField = nodeType === "image_gen" ? "model" : nodeType === "storyboard" ? "imageModel" : "";
   const imageDefs = imageModel ? (IMAGE_MODEL_PARAMS[imageModel] ?? []) : [];
   const showAspect = nodeType === "image_gen" || nodeType === "storyboard";
+  // 参考图：图像/分镜/视频任务（图生视频）都用同一套 referenceImages 模型。
+  const showRefImages = nodeType === "image_gen" || nodeType === "storyboard" || nodeType === "video_task";
   const count = Number(payload.imageN ?? payload.batchSize ?? payload.fluxNumImages ?? 1) || 1;
-  const cost = (nodeType === "image_gen" || nodeType === "storyboard") && imageModel ? estimateImageCost(imageModel, count) : null;
+
+  // video_task：按 provider 的 PROVIDER_PARAMS（时长/分辨率/宽高比/镜头等）渲染紧凑控件，
+  // 写入 payload.params（与节点同一真源，节点每次渲染 fresh 读取，零分叉）。
+  const videoProvider = nodeType === "video_task" ? str("provider") : "";
+  const videoDefs = videoProvider ? (PROVIDER_PARAMS[videoProvider] ?? []) : [];
+  const videoParams = (payload.params as Record<string, unknown> | undefined) ?? {};
+  const setVideoParam = (key: string, value: unknown) => set({ params: { ...videoParams, [key]: value } });
+
+  const cost = (nodeType === "image_gen" || nodeType === "storyboard") && imageModel ? estimateImageCost(imageModel, count)
+    : nodeType === "video_task" && videoProvider ? estimateVideoCost(videoProvider, withParamDefaults(videoProvider, videoParams))
+    : null;
+  const costLabel = cost ? costEstimateLabel(cost) : "";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
@@ -151,12 +164,40 @@ export function StudioCommandBar({ nodeId, onRun, canRun = true, running = false
           );
         })}
 
+        {/* video provider params — duration/resolution/aspect/… each as a compact control */}
+        {videoDefs.map((def) => {
+          const curRaw = videoParams[def.key] ?? def.default;
+          if (def.type === "select") {
+            return (
+              <select key={def.key} className="nodrag" title={def.label} value={String(curRaw ?? "")}
+                onChange={(e) => { const raw = e.target.value; const num = Number(raw); setVideoParam(def.key, raw === "" || Number.isNaN(num) ? raw : num); }} style={chip}>
+                {def.options.map((o) => <option key={String(o.value)} value={String(o.value)}>{o.label}</option>)}
+              </select>
+            );
+          }
+          if (def.type === "number" || def.type === "range") {
+            const cur = typeof curRaw === "number" ? curRaw : (def.default ?? def.min);
+            return (
+              <input key={def.key} type="number" className="nodrag" title={def.label + (def.type === "range" && def.unit ? `（${def.unit}）` : "")}
+                value={cur} min={def.min} max={def.max} step={def.step}
+                onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) setVideoParam(def.key, n); }} style={{ ...chip, width: 76, maxWidth: 76 }} />
+            );
+          }
+          const cur = typeof curRaw === "boolean" ? curRaw : (def.default ?? false);
+          return (
+            <label key={def.key} className="nodrag" title={def.label} style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              <input type="checkbox" checked={cur} onChange={(e) => setVideoParam(def.key, e.target.checked)} />
+              <span style={{ fontSize: 11.5, color: "var(--c-t2)" }}>{def.label}</span>
+            </label>
+          );
+        })}
+
         {/* reference images — compact thumbnails + upload, fills the middle of the row */}
-        {showAspect && <StudioRefImages nodeId={nodeId} payload={payload} />}
+        {showRefImages && <StudioRefImages nodeId={nodeId} payload={payload} />}
 
         {/* right group: cost (⚡) + send/generate (↑) — pushed to the far right */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9 }}>
-          {cost && <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ui-amber, var(--c-t2))", whiteSpace: "nowrap" }}>⚡ {costEstimateLabel(cost)}</span>}
+          {costLabel && <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ui-amber, var(--c-t2))", whiteSpace: "nowrap" }}>⚡ {costLabel}</span>}
           {onRun && (
             <button onClick={(e) => { e.stopPropagation(); if (canRun && !running) onRun(); }} disabled={!canRun || running}
               title={running ? "生成中…" : hasResult ? "重新生成" : "生成"}
