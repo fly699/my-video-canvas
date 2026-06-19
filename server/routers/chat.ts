@@ -294,6 +294,8 @@ export const chatRouter = router({
       model: z.string().max(64).optional(),
       kieTempKey: z.string().max(256).optional(),
       attachmentIds: z.array(z.number()).max(10).optional(),
+      // 可选「模板」人设：客户端选模板后把其 prompt 作为系统提示词传入，覆盖默认人设。
+      systemPrompt: z.string().max(2000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const aiId = await getOrCreateAssistantUserId();
@@ -347,8 +349,11 @@ export const chatRouter = router({
         }
         return { role, content: m.content };
       }));
+      // 系统提示词：客户端选了「模板」则用其人设，否则用默认助手人设。
+      const systemContent = input.systemPrompt?.trim()
+        || "你是内嵌在团队协作工具里的 AI 助手，用简洁、专业、友好的中文回答用户的问题，可协助创作、答疑、润色等。";
       const llmMessages = [
-        { role: "system" as const, content: "你是内嵌在团队协作工具里的 AI 助手，用简洁、专业、友好的中文回答用户的问题，可协助创作、答疑、润色等。" },
+        { role: "system" as const, content: systemContent },
         ...histMsgs,
       ];
 

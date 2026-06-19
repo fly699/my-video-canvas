@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen } from "lucide-react";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { CHAT_MODELS } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { useDisabledModels } from "@/lib/useDisabledModels";
+import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES } from "@/lib/aiAssistantTemplates";
 import { goToAdminTab } from "@/lib/adminNav";
 import type { ChatWireMessage, ChatFileRef } from "@shared/types";
 import { toast } from "sonner";
@@ -72,9 +73,14 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const chatModels = _chatPool.filter((m) => !m.hidden && !disabledModels.has("chat:" + m.id));
   const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem("chat:aiModel") || "");
   const effModel = chatModels.find((m) => m.id === chatModel)?.id ?? chatModels[0]?.id;
+  // AI 助手「模板」人设：复用 ai_chat 节点的同一套模板（ALL_AI_TEMPLATES）。存模板 id，
+  // 发送时解析为其 prompt 作为 systemPrompt 传给后端，覆盖默认助手人设。空 = 默认助手。
+  const [chatTemplate, setChatTemplate] = useState<string>(() => localStorage.getItem("chat:aiTemplate") || "");
+  const effSystemPrompt = ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.prompt;
   const sendToAssistantMut = trpc.chat.sendToAssistant.useMutation();
   const uploadFileMut = trpc.chat.uploadFile.useMutation();
   const pickChatModel = (id: string) => { setChatModel(id); localStorage.setItem("chat:aiModel", id); };
+  const pickChatTemplate = (id: string) => { setChatTemplate(id); localStorage.setItem("chat:aiTemplate", id); };
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
@@ -143,6 +149,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
         await sendToAssistantMut.mutateAsync({
           conversationId: activeConv!.id, content, model: effModel,
           kieTempKey: localStorage.getItem("kie:tempKey") || undefined, attachmentIds,
+          systemPrompt: effSystemPrompt,
         });
       } catch (e) { toast.error(e instanceof Error ? e.message : "AI 回复失败"); setText(content); setStaged(files); }
       finally { setBusy(false); }
@@ -260,6 +267,22 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
               {chatModels.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           )}
+          {/* 模板（人设）—— 复用 ai_chat 节点的同一套模板，选中即设定 AI 助手系统提示词 */}
+          <BookOpen size={13} style={{ color: C.accent, marginLeft: 4 }} />
+          <span>模板</span>
+          <select
+            value={chatTemplate}
+            onChange={(e) => pickChatTemplate(e.target.value)}
+            title={effSystemPrompt ? ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.blurb : "默认助手人设"}
+            style={{ padding: "3px 8px", borderRadius: 7, fontSize: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, outline: "none", maxWidth: 200 }}
+          >
+            <option value="">默认助手</option>
+            {AI_TEMPLATE_CATEGORIES.map((cat) => (
+              <optgroup key={cat.id} label={cat.label}>
+                {cat.templates.map((t) => <option key={t.id} value={t.id} title={t.blurb}>{t.label}</option>)}
+              </optgroup>
+            ))}
+          </select>
           <span style={{ color: C.t4 }}>· 与 AI 助手的对话内容会经服务器处理</span>
         </div>
       ) : (
