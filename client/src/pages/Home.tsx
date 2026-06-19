@@ -821,6 +821,24 @@ export default function Home() {
                     badge: null,
                   },
                   {
+                    icon: Clapperboard, color: "oklch(0.62 0.16 265)",
+                    title: "工作室界面风格",
+                    desc: "一键切换「专业 / 工作室」：工作室影院深色皮肤，参数以紧凑命令栏吸附节点下方，双击展开全部；逻辑两风格共用",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Zap, color: "oklch(0.72 0.17 90)",
+                    title: "速览快捷键 Alt+W",
+                    desc: "一键临时展开全部节点的参考图窗 + 提示词窗速览，再按或 5 秒后自动恢复",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: KeyRound, color: "oklch(0.66 0.16 150)",
+                    title: "注册邮箱验证",
+                    desc: "管理员可启用：邮箱注册需收 6 位验证码方可登录，SMTP 可共用「公网隧道」配置；关闭则注册即登录",
+                    badge: "NEW",
+                  },
+                  {
                     icon: Clapperboard, color: "oklch(0.65 0.20 160)",
                     title: "分镜→成片流水线",
                     desc: "镜头表批量：关键帧图 → 生视频（云端/ComfyUI 免费三引擎）→ 配音（多角色分音色）→ 音效 → 一键「按镜头表装配」成片（镜号排序·逐镜转场·音轨对位），字幕零转录对位生成",
