@@ -845,12 +845,12 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                         msg.content ? <span>{msg.content}</span> : null
                       )}
                     </div>
-                    {msg.role === "assistant" && (
+                    {msg.content && (
                       <button
                         onClick={() => navigator.clipboard.writeText(msg.content).then(() => toast.success("已复制", { duration: 1200 }))}
-                        className="nodrag opacity-0 group-hover/msg:opacity-100 transition-opacity mt-1 flex items-center gap-1 text-[10px] self-start"
+                        className={`nodrag opacity-0 group-hover/msg:opacity-100 transition-opacity mt-1 flex items-center gap-1 text-[10px] ${msg.role === "user" ? "self-end" : "self-start"}`}
                         style={{ color: "var(--c-t4)" }}
-                        title="复制消息"
+                        title="复制本条消息"
                       >
                         <Copy style={{ width: 10, height: 10 }} />
                         复制
