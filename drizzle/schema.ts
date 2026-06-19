@@ -27,6 +27,12 @@ export const users = mysqlTable("users", {
   adminLevel: int("adminLevel").notNull().default(0),
   // 冻结：true=禁止登录（管理员可冻结/解冻）。
   disabled: boolean("disabled").notNull().default(false),
+  // 邮箱验证：默认 true（向后兼容——已有用户、以及「未启用验证」时一律视为已验证）。
+  // 仅当管理员启用「注册邮箱验证」后，新邮箱注册才写入 false，验证通过后置回 true。
+  emailVerified: boolean("emailVerified").notNull().default(true),
+  // 6 位验证码 + 过期时间，仅在等待验证期间有值；验证成功或重发时更新/清空。
+  verifyCode: varchar("verifyCode", { length: 16 }),
+  verifyCodeExpiresAt: timestamp("verifyCodeExpiresAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -34,6 +40,22 @@ export const users = mysqlTable("users", {
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+// Single-row (id always 1) admin auth settings: registration email-verification
+// toggle + the SMTP account used to send the verification codes. Off by default
+// → registration behaves exactly as before (non-breaking).
+export const authSettings = mysqlTable("auth_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  emailVerificationEnabled: boolean("emailVerificationEnabled").notNull().default(false),
+  smtpHost: varchar("smtpHost", { length: 255 }).notNull().default(""),
+  smtpPort: int("smtpPort").notNull().default(587),
+  smtpSecure: boolean("smtpSecure").notNull().default(false),
+  smtpUser: varchar("smtpUser", { length: 255 }).notNull().default(""),
+  smtpPass: varchar("smtpPass", { length: 255 }).notNull().default(""),
+  smtpFrom: varchar("smtpFrom", { length: 320 }).notNull().default(""),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type AuthSettingsRow = typeof authSettings.$inferSelect;
 
 // ── Canvas Projects ──────────────────────────────────────────────────────────
 export const projects = mysqlTable("projects", {

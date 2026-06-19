@@ -384,6 +384,34 @@ export const adminRouter = router({
     }),
   }),
 
+  // ── Auth settings: registration email-verification toggle + SMTP ──────
+  auth: router({
+    getSettings: adminProcedure.query(async () => {
+      const s = await db.getAuthSettings();
+      // Never leak the SMTP password — expose only whether one is configured.
+      return { ...s, smtpPass: "", smtpPassSet: s.smtpPass.length > 0 };
+    }),
+    setSettings: managerProc
+      .input(z.object({
+        emailVerificationEnabled: z.boolean().optional(),
+        smtpHost: z.string().max(255).optional(),
+        smtpPort: z.number().int().min(1).max(65535).optional(),
+        smtpSecure: z.boolean().optional(),
+        smtpUser: z.string().max(255).optional(),
+        smtpPass: z.string().max(255).optional(),
+        smtpFrom: z.string().max(320).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        // Empty smtpPass = "leave unchanged" (the client never receives the real
+        // password, so a blank submit must not wipe it).
+        const patch: Record<string, unknown> = { ...input };
+        if (patch.smtpPass === "") delete patch.smtpPass;
+        if (Object.keys(patch).length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "至少需要指定一项设置" });
+        await db.setAuthSettings(patch);
+        return { success: true };
+      }),
+  }),
+
   // ── Model visibility toggles ──────────────────────────────────────────
   // Admin controls which AI models appear in the node model pickers. Display-only
   // gate (does not affect already-configured nodes' ability to run their model).

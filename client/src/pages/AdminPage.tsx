@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, type LucideIcon } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, type LucideIcon } from "lucide-react";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 import { ComfyOpsPanel } from "@/components/admin/ComfyOpsPanel";
 import { AuroraBackground } from "@/components/AuroraBackground";
@@ -16,13 +16,14 @@ import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOr
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "tunnel";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "tunnel" | "auth";
 
 // 标签页定义：[key, 中文标签, 图标]
 const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["whitelist", "白名单管理", Shield],
   ["kie", "kie.ai 密钥", KeyRound],
   ["users", "用户管理", Users],
+  ["auth", "注册认证", MailCheck],
   ["logs", "操作日志", ClipboardList],
   ["comfyLogs", "ComfyUI 日志", ScrollText],
   ["storage", "存储设置", HardDrive],
@@ -232,6 +233,7 @@ export default function AdminPage() {
           {activeTab === "whitelist" && <WhitelistPanel />}
           {activeTab === "kie" && <LevelGate need={3}><KiePanel /></LevelGate>}
           {activeTab === "users" && <UsersPanel />}
+          {activeTab === "auth" && <LevelGate need={3}><AuthPanel /></LevelGate>}
           {activeTab === "logs" && <LogsPanel />}
           {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
@@ -411,6 +413,97 @@ function UsersPanel() {
 // ── Whitelist Panel ───────────────────────────────────────────────────────────
 
 // ── Storage Panel ─────────────────────────────────────────────────────────────
+
+function AuthPanel() {
+  const q = trpc.admin.auth.getSettings.useQuery();
+  const utils = trpc.useUtils();
+  const save = trpc.admin.auth.setSettings.useMutation({
+    onSuccess: () => { utils.admin.auth.getSettings.invalidate(); toast.success("已保存"); },
+    onError: (e) => toast.error(e.message),
+  });
+  type AuthForm = { emailVerificationEnabled: boolean; smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpPass: string; smtpFrom: string; smtpPassSet: boolean };
+  const [form, setForm] = useState<AuthForm | null>(null);
+  useEffect(() => {
+    if (!q.data) return;
+    setForm({
+      emailVerificationEnabled: q.data.emailVerificationEnabled, smtpHost: q.data.smtpHost,
+      smtpPort: q.data.smtpPort, smtpSecure: q.data.smtpSecure, smtpUser: q.data.smtpUser,
+      smtpPass: "", smtpFrom: q.data.smtpFrom, smtpPassSet: (q.data as { smtpPassSet?: boolean }).smtpPassSet ?? false,
+    });
+  }, [q.data]);
+
+  if (!form) return <div className="text-sm" style={{ color: "var(--c-t3)" }}>加载中…</div>;
+  const set = (patch: Partial<AuthForm>) => setForm((f) => f ? { ...f, ...patch } : f);
+  const onSave = () => {
+    const payload: Record<string, unknown> = {
+      emailVerificationEnabled: form.emailVerificationEnabled, smtpHost: form.smtpHost.trim(),
+      smtpPort: form.smtpPort, smtpSecure: form.smtpSecure, smtpUser: form.smtpUser.trim(), smtpFrom: form.smtpFrom.trim(),
+    };
+    if (form.smtpPass) payload.smtpPass = form.smtpPass; // empty = leave unchanged
+    save.mutate(payload);
+  };
+  const field: React.CSSProperties = { width: "100%", padding: "8px 10px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", fontSize: 13, outline: "none" };
+  const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 500, color: "var(--c-t2)", marginBottom: 5 };
+
+  return (
+    <div style={{ maxWidth: 560, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div>
+        <h2 className="text-base font-semibold" style={{ color: "var(--c-t1)" }}>注册邮箱验证</h2>
+        <p className="text-xs" style={{ color: "var(--c-t3)", marginTop: 4, lineHeight: 1.6 }}>
+          开启后，新用户邮箱注册时会收到 6 位验证码，验证通过才能登录。需配置可用的 SMTP 邮件服务。
+          关闭则恢复为注册即登录（不影响已注册的账号）。
+        </p>
+      </div>
+
+      {/* master toggle */}
+      <button onClick={() => set({ emailVerificationEnabled: !form.emailVerificationEnabled })}
+        className="nodrag flex items-center justify-between" style={{ ...field, cursor: "pointer", padding: "12px 14px" }}>
+        <span style={{ fontWeight: 600, color: "var(--c-t1)" }}>启用注册邮箱验证</span>
+        {form.emailVerificationEnabled ? <ToggleRight className="w-7 h-7" style={{ color: "oklch(0.7 0.18 145)" }} /> : <ToggleLeft className="w-7 h-7" style={{ color: "var(--c-t4)" }} />}
+      </button>
+
+      {/* SMTP config */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label style={lbl}>SMTP 服务器</label>
+          <input style={field} value={form.smtpHost} onChange={(e) => set({ smtpHost: e.target.value })} placeholder="smtp.example.com" />
+        </div>
+        <div>
+          <label style={lbl}>端口</label>
+          <input style={field} type="number" value={form.smtpPort} onChange={(e) => set({ smtpPort: Number(e.target.value) || 587 })} placeholder="587" />
+        </div>
+        <div>
+          <label style={lbl}>加密方式</label>
+          <button onClick={() => set({ smtpSecure: !form.smtpSecure })} className="nodrag flex items-center justify-between" style={{ ...field, cursor: "pointer" }}>
+            <span style={{ color: "var(--c-t2)" }}>{form.smtpSecure ? "SSL (465)" : "STARTTLS (587/25)"}</span>
+            {form.smtpSecure ? <ToggleRight className="w-6 h-6" style={{ color: "oklch(0.7 0.18 145)" }} /> : <ToggleLeft className="w-6 h-6" style={{ color: "var(--c-t4)" }} />}
+          </button>
+        </div>
+        <div>
+          <label style={lbl}>用户名</label>
+          <input style={field} value={form.smtpUser} onChange={(e) => set({ smtpUser: e.target.value })} placeholder="发信账号" autoComplete="off" />
+        </div>
+        <div>
+          <label style={lbl}>密码 {form.smtpPassSet && <span style={{ color: "oklch(0.7 0.18 145)" }}>· 已设置</span>}</label>
+          <input style={field} type="password" value={form.smtpPass} onChange={(e) => set({ smtpPass: e.target.value })} placeholder={form.smtpPassSet ? "（留空则不修改）" : "发信密码 / 授权码"} autoComplete="new-password" />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label style={lbl}>发件人地址（From）</label>
+          <input style={field} value={form.smtpFrom} onChange={(e) => set({ smtpFrom: e.target.value })} placeholder="noreply@example.com（留空则用用户名）" />
+        </div>
+      </div>
+
+      {form.emailVerificationEnabled && !form.smtpHost.trim() && (
+        <div style={{ fontSize: 12, color: "oklch(0.7 0.17 60)" }}>⚠ 已启用验证但未配置 SMTP，验证码将无法发送——请先填写 SMTP 服务器。</div>
+      )}
+
+      <button onClick={onSave} disabled={save.isPending}
+        className="nodrag" style={{ alignSelf: "flex-start", padding: "9px 20px", borderRadius: 8, border: "none", background: "oklch(0.58 0.22 285 / 0.9)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: save.isPending ? "wait" : "pointer" }}>
+        {save.isPending ? "保存中…" : "保存设置"}
+      </button>
+    </div>
+  );
+}
 
 function StoragePanel() {
   const settingsQuery = trpc.admin.storage.getSettings.useQuery();

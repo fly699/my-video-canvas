@@ -6,6 +6,7 @@ import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 import { writeAuditLog } from "./auditLog";
+import { sendVerificationEmail, generateVerifyCode, VERIFY_CODE_TTL_MS } from "./verificationEmail";
 
 const scryptAsync = promisify(scrypt);
 
@@ -97,6 +98,28 @@ export function registerEmailAuthRoutes(app: Express) {
         try { await db.claimPendingInvitations(email.toLowerCase(), newUserId); } catch { /* non-fatal */ }
       }
 
+      // When the admin has enabled registration email-verification, the account is
+      // created UNVERIFIED and NO session is issued — the user must POST the emailed
+      // code to /api/auth/verify-email first. When the feature is off, behaviour is
+      // unchanged (immediate login below). Non-breaking by default.
+      const authSettings = await db.getAuthSettings();
+      if (authSettings.emailVerificationEnabled) {
+        const code = generateVerifyCode();
+        await db.setUserVerification(openId, {
+          emailVerified: false,
+          verifyCode: code,
+          verifyCodeExpiresAt: new Date(Date.now() + VERIFY_CODE_TTL_MS),
+        });
+        const sent = await sendVerificationEmail(authSettings, email.toLowerCase(), code);
+        writeAuditLog({
+          ip, userId: newUserId, userEmail: email.toLowerCase(),
+          userName: name?.trim() || email.split("@")[0],
+          action: "login_email", detail: { method: "email_register_pending" },
+        });
+        res.json({ success: true, needVerification: true, emailSent: sent.ok, ...(sent.ok ? {} : { warning: "验证码邮件发送失败：" + (sent.error ?? "") }) });
+        return;
+      }
+
       const sessionToken = await sdk.createSessionToken(openId, {
         name: name?.trim() || email.split("@")[0],
         expiresInMs: ONE_YEAR_MS,
@@ -146,6 +169,15 @@ export function registerEmailAuthRoutes(app: Express) {
       if (user.disabled) {
         res.status(403).json({ error: "账号已被冻结，请联系管理员" }); return;
       }
+      // Block unverified accounts only while the feature is enabled — so toggling it
+      // off restores normal login, and accounts created before it was on (emailVerified
+      // defaults true) are unaffected.
+      if (user.emailVerified === false) {
+        const authSettings = await db.getAuthSettings();
+        if (authSettings.emailVerificationEnabled) {
+          res.status(403).json({ error: "邮箱尚未验证，请先完成验证", needVerification: true }); return;
+        }
+      }
       await db.upsertUser({ openId, lastSignedIn: new Date() });
       const sessionToken = await sdk.createSessionToken(openId, {
         name: user.name || email.split("@")[0],
@@ -168,6 +200,63 @@ export function registerEmailAuthRoutes(app: Express) {
     } catch (err) {
       console.error("[EmailAuth] Login error", err);
       res.status(500).json({ error: "登录失败，请稍后重试" });
+    }
+  });
+
+  // Verify the emailed code → mark verified and issue a session (completes a
+  // pending registration / unblocks login). Idempotent: an already-verified
+  // account just logs in.
+  app.post("/api/auth/verify-email", async (req: Request, res: Response) => {
+    const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+    if (!checkRateLimit(ip)) { res.status(429).json({ error: "请求过于频繁，请稍后再试" }); return; }
+    try {
+      const { email, code } = req.body as { email?: string; code?: string };
+      if (!email?.trim() || !code?.trim()) { res.status(400).json({ error: "邮箱和验证码不能为空" }); return; }
+      const openId = `email:${email.toLowerCase()}`;
+      const user = await db.getUserByOpenId(openId);
+      if (!user) { res.status(400).json({ error: "验证失败，请重新注册" }); return; }
+      if (user.emailVerified === false) {
+        if (!user.verifyCode || !user.verifyCodeExpiresAt) { res.status(400).json({ error: "请先获取验证码" }); return; }
+        if (new Date(user.verifyCodeExpiresAt).getTime() < Date.now()) { res.status(400).json({ error: "验证码已过期，请重新获取" }); return; }
+        if (String(code).trim() !== user.verifyCode) { res.status(400).json({ error: "验证码错误" }); return; }
+        await db.setUserVerification(openId, { emailVerified: true, verifyCode: null, verifyCodeExpiresAt: null });
+      }
+      if (user.disabled) { res.status(403).json({ error: "账号已被冻结，请联系管理员" }); return; }
+      await db.upsertUser({ openId, lastSignedIn: new Date() });
+      const sessionToken = await sdk.createSessionToken(openId, { name: user.name || email.split("@")[0], expiresInMs: ONE_YEAR_MS });
+      const cookieOptions = getSessionCookieOptions(req);
+      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      writeAuditLog({ ip, userId: user.id, userEmail: user.email ?? null, userName: user.name ?? null, action: "login_email", detail: { method: "email_verify" } });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[EmailAuth] Verify error", err);
+      res.status(500).json({ error: "验证失败，请稍后重试" });
+    }
+  });
+
+  // Resend a fresh verification code (only meaningful while the feature is on and
+  // the account is unverified). Always returns success to avoid email enumeration.
+  app.post("/api/auth/resend-code", async (req: Request, res: Response) => {
+    const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+    if (!checkRateLimit(ip)) { res.status(429).json({ error: "请求过于频繁，请稍后再试" }); return; }
+    try {
+      const { email } = req.body as { email?: string };
+      if (!email?.trim()) { res.status(400).json({ error: "邮箱不能为空" }); return; }
+      const authSettings = await db.getAuthSettings();
+      if (!authSettings.emailVerificationEnabled) { res.json({ success: true, emailSent: false }); return; }
+      const openId = `email:${email.toLowerCase()}`;
+      const user = await db.getUserByOpenId(openId);
+      if (user && user.emailVerified === false) {
+        const code = generateVerifyCode();
+        await db.setUserVerification(openId, { verifyCode: code, verifyCodeExpiresAt: new Date(Date.now() + VERIFY_CODE_TTL_MS) });
+        const sent = await sendVerificationEmail(authSettings, email.toLowerCase(), code);
+        res.json({ success: true, emailSent: sent.ok, ...(sent.ok ? {} : { warning: "验证码邮件发送失败：" + (sent.error ?? "") }) });
+        return;
+      }
+      res.json({ success: true, emailSent: false });
+    } catch (err) {
+      console.error("[EmailAuth] Resend error", err);
+      res.status(500).json({ error: "发送失败，请稍后重试" });
     }
   });
 
