@@ -9,6 +9,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { usePersistentState } from "../../../hooks/usePersistentState";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
+import { HideWhenStudioFloating } from "../../../contexts/StudioFloatingContext";
 import { refUrls } from "../../../lib/referenceImages";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
@@ -548,7 +549,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       }>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
-        {/* ── Batch grid result ── */}
+        {/* ── Batch grid result ── (hidden inside the studio floating panel — the
+            node card's hero preview already shows the result there → no duplicate) */}
+        <HideWhenStudioFloating>
         {hasMultiple ? (
           <div className="flex-shrink-0">
             {/* Header */}
@@ -732,6 +735,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             </div>
           )
         )}
+        </HideWhenStudioFloating>
 
         {/* ── Input area (collapsed when not selected, kept open if pinned) ── */}
         <div
