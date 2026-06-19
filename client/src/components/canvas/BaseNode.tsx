@@ -15,7 +15,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useUIStyle } from "../../contexts/UIStyleContext";
 import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioCommandBar";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -251,6 +251,10 @@ export const BaseNode = memo(function BaseNode({
   const onHeaderLeave = () => onHeaderHoverChange?.(false);
 
   const [assetDragOver, setAssetDragOver] = useState(false);
+  // Studio: double-click the floating param panel to expand it from the compact
+  // command bar into the FULL node body (every param). Single source of truth —
+  // expanding just renders the same `children` the pro node uses, no duplication.
+  const [studioExpanded, setStudioExpanded] = useState(false);
 
   const handleTitleSave = useCallback(() => {
     if (titleCancelingRef.current) { titleCancelingRef.current = false; return; }
@@ -425,6 +429,18 @@ export const BaseNode = memo(function BaseNode({
                 style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
               >
                 <Download size={13} />
+              </button>
+            )}
+            {/* expand-all params toggle — only for command-bar types (which have a
+                compact view to expand FROM). Mirrors the panel's own toggle. */}
+            {STUDIO_COMMAND_BAR_TYPES.has(nodeType) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setStudioExpanded((v) => !v); }}
+                title={studioExpanded ? "收起为命令栏" : "展开全部参数"}
+                className="flex items-center justify-center w-7 h-7 rounded-lg"
+                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
+              >
+                {studioExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
               </button>
             )}
           </div>
@@ -889,6 +905,12 @@ export const BaseNode = memo(function BaseNode({
         <div
           className="nodrag nopan nowheel"
           onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => {
+            // double-click anywhere on the panel background toggles full params
+            // (ignore dblclick that originates inside an input/control)
+            if ((e.target as HTMLElement).closest("input,textarea,select,button")) return;
+            if (STUDIO_COMMAND_BAR_TYPES.has(nodeType)) { e.stopPropagation(); setStudioExpanded((v) => !v); }
+          }}
           style={{
             position: "absolute",
             top: "calc(100% + 12px)",
@@ -909,7 +931,34 @@ export const BaseNode = memo(function BaseNode({
               with NO media (the node card already shows it). Other types fall back to the
               full node body. */}
           {STUDIO_COMMAND_BAR_TYPES.has(nodeType) ? (
-            <StudioCommandBar nodeId={id} onRun={onRun} canRun={canRun} running={nodeRunning} hasResult={hasResult} />
+            studioExpanded ? (
+              <>
+                <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t3)" }}>全部参数</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setStudioExpanded(false); }}
+                    title="收起为命令栏（也可双击面板空白处）"
+                    className="flex items-center gap-1 rounded-lg"
+                    style={{ fontSize: 11, fontWeight: 600, color: "var(--c-t2)", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", padding: "3px 8px", cursor: "pointer" }}
+                  >
+                    <ChevronUp size={12} /> 收起
+                  </button>
+                </div>
+                <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
+              </>
+            ) : (
+              <>
+                <StudioCommandBar nodeId={id} onRun={onRun} canRun={canRun} running={nodeRunning} hasResult={hasResult} />
+                <button
+                  onClick={(e) => { e.stopPropagation(); setStudioExpanded(true); }}
+                  title="展开全部参数（也可双击面板空白处）"
+                  className="flex items-center justify-center gap-1 w-full rounded-lg"
+                  style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: "var(--c-t3)", background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", padding: "5px 0", cursor: "pointer" }}
+                >
+                  <ChevronDown size={12} /> 展开全部参数
+                </button>
+              </>
+            )
           ) : (
             <NodeSelectedContext.Provider value={true}>{children}</NodeSelectedContext.Provider>
           )}
