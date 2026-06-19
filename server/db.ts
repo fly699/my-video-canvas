@@ -18,6 +18,7 @@ import {
   storageSettings,
   modelToggleSettings,
   tunnelSettings,
+  authSettings,
   type SelfHostedLlmConfig,
   auditLogs,
   comfyUsageLogs,
@@ -121,6 +122,7 @@ export function isDupEntryError(e: unknown): boolean {
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
 const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig } = { disabledModels: [] };
+const devAuthSettings = { emailVerificationEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -1482,6 +1484,52 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
   // every toggle / TTL change appears to do nothing. INSERT ... ON DUPLICATE
   // KEY UPDATE creates the row on first write and updates it thereafter.
   await db.insert(storageSettings).values({ id: 1, ...set }).onDuplicateKeyUpdate({ set });
+}
+
+// ── Auth settings (registration email-verification toggle + SMTP) ───────────
+export interface AuthSettings {
+  emailVerificationEnabled: boolean;
+  smtpHost: string; smtpPort: number; smtpSecure: boolean;
+  smtpUser: string; smtpPass: string; smtpFrom: string;
+}
+
+export async function getAuthSettings(): Promise<AuthSettings> {
+  const db = await getDb();
+  if (!db) return { ...devAuthSettings };
+  const rows = await db.select().from(authSettings).limit(1);
+  const r = rows[0];
+  return {
+    emailVerificationEnabled: r?.emailVerificationEnabled ?? false,
+    smtpHost: r?.smtpHost ?? "",
+    smtpPort: r?.smtpPort ?? 587,
+    smtpSecure: r?.smtpSecure ?? false,
+    smtpUser: r?.smtpUser ?? "",
+    smtpPass: r?.smtpPass ?? "",
+    smtpFrom: r?.smtpFrom ?? "",
+  };
+}
+
+export async function setAuthSettings(patch: Partial<AuthSettings>): Promise<void> {
+  const db = await getDb();
+  if (!db) { Object.assign(devAuthSettings, patch); return; }
+  const set: Record<string, boolean | number | string> = {};
+  for (const k of ["emailVerificationEnabled", "smtpHost", "smtpPort", "smtpSecure", "smtpUser", "smtpPass", "smtpFrom"] as const) {
+    if (patch[k] !== undefined) set[k] = patch[k]!;
+  }
+  if (Object.keys(set).length === 0) return;
+  await db.insert(authSettings).values({ id: 1, ...set }).onDuplicateKeyUpdate({ set });
+}
+
+// Set/clear a user's email-verification state + pending code (by openId).
+export async function setUserVerification(openId: string, patch: { emailVerified?: boolean; verifyCode?: string | null; verifyCodeExpiresAt?: Date | null }): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const set: Record<string, unknown> = {};
+  if (patch.emailVerified !== undefined) set.emailVerified = patch.emailVerified;
+  if (patch.verifyCode !== undefined) set.verifyCode = patch.verifyCode;
+  if (patch.verifyCodeExpiresAt !== undefined) set.verifyCodeExpiresAt = patch.verifyCodeExpiresAt;
+  if (Object.keys(set).length === 0) return;
+  await db.update(users).set(set).where(eq(users.openId, openId));
 }
 
 // ── Model visibility toggles (admin-managed) ────────────────────────────────

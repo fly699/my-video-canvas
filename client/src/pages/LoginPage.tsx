@@ -53,7 +53,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Email-verification step (only when the admin enabled registration verification).
+  const [verifyStep, setVerifyStep] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
   // Whether the server has Google OAuth configured (runtime probe — no rebuild needed).
   const [googleAvailable, setGoogleAvailable] = useState(false);
 
@@ -117,7 +122,18 @@ export default function LoginPage() {
         credentials: "include",
         body: JSON.stringify(body),
       });
-      const data = await res.json() as { success?: boolean; error?: string };
+      const data = await res.json() as { success?: boolean; error?: string; needVerification?: boolean; emailSent?: boolean; warning?: string };
+      // Registration (or login of an unverified account) when verification is on:
+      // switch to the code-entry step instead of erroring/redirecting.
+      if (data.needVerification) {
+        setPendingEmail(email);
+        setVerifyStep(true);
+        setError(null);
+        setInfo(data.emailSent === false
+          ? (data.warning ?? "验证码发送失败，请点击「重新发送」或联系管理员")
+          : "验证码已发送至你的邮箱，请查收并填写");
+        return;
+      }
       if (!res.ok || !data.success) { setError(data.error ?? "操作失败，请稍后重试"); return; }
       persistOnSuccess();
       const nextParam = new URLSearchParams(window.location.search).get("next");
@@ -128,6 +144,39 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function doVerify() {
+    setError(null); setLoading(true);
+    try {
+      const res = await fetch("/api/auth/verify-email", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ email: pendingEmail, code: verifyCode.trim() }),
+      });
+      const data = await res.json() as { success?: boolean; error?: string };
+      if (!res.ok || !data.success) { setError(data.error ?? "验证失败，请重试"); return; }
+      persistOnSuccess();
+      const nextParam = new URLSearchParams(window.location.search).get("next");
+      const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+      window.location.href = safeNext;
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    } finally { setLoading(false); }
+  }
+
+  async function doResend() {
+    setError(null); setInfo(null); setLoading(true);
+    try {
+      const res = await fetch("/api/auth/resend-code", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ email: pendingEmail }),
+      });
+      const data = await res.json() as { success?: boolean; emailSent?: boolean; warning?: string; error?: string };
+      if (!res.ok) { setError(data.error ?? "发送失败，请重试"); return; }
+      setInfo(data.emailSent ? "验证码已重新发送，请查收" : (data.warning ?? "验证码发送失败，请稍后重试或联系管理员"));
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    } finally { setLoading(false); }
   }
 
   // 下次自动登录：预填完成且开启时，自动提交一次。
@@ -274,6 +323,38 @@ export default function LoginPage() {
           ))}
         </div>
 
+        {verifyStep ? (
+          <form onSubmit={(e) => { e.preventDefault(); if (!loading && verifyCode.trim()) void doVerify(); }} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div style={{ fontSize: "13px", color: "var(--c-t2, rgba(255,255,255,0.55))", lineHeight: 1.6 }}>
+              我们已向 <b style={{ color: "var(--c-t1,#f0f0f4)" }}>{pendingEmail}</b> 发送了 6 位验证码，请填写完成注册。
+            </div>
+            <div>
+              <label style={labelStyle}>验证码</label>
+              <input type="text" inputMode="numeric" value={verifyCode}
+                onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="6 位数字" autoFocus style={{ ...inputStyle, letterSpacing: "6px", textAlign: "center", fontSize: "18px" }} />
+            </div>
+            {info && (
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "oklch(0.6 0.13 250 / 0.12)", border: "1px solid oklch(0.6 0.13 250 / 0.3)", color: "oklch(0.78 0.1 250)", fontSize: "13px" }}>{info}</div>
+            )}
+            {error && (
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "oklch(0.5 0.2 25 / 0.14)", border: "1px solid oklch(0.5 0.2 25 / 0.3)", color: "#f87171", fontSize: "13px" }}>{error}</div>
+            )}
+            <button type="submit" disabled={loading || verifyCode.trim().length < 6}
+              style={{ marginTop: "4px", padding: "11px 0", border: "none", borderRadius: "8px",
+                background: loading || verifyCode.trim().length < 6 ? "var(--c-input, rgba(255,255,255,0.06))" : "oklch(0.58 0.22 285 / 0.85)",
+                color: loading || verifyCode.trim().length < 6 ? "var(--c-t3, rgba(255,255,255,0.4))" : "#fff", fontSize: "14px", fontWeight: 600,
+                cursor: loading || verifyCode.trim().length < 6 ? "not-allowed" : "pointer" }}>
+              {loading ? "验证中…" : "验证并登录"}
+            </button>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
+              <button type="button" onClick={() => { setVerifyStep(false); setVerifyCode(""); setError(null); setInfo(null); }}
+                style={{ background: "none", border: "none", color: "var(--c-t2, rgba(255,255,255,0.45))", cursor: "pointer" }}>返回</button>
+              <button type="button" onClick={() => { if (!loading) void doResend(); }} disabled={loading}
+                style={{ background: "none", border: "none", color: "oklch(0.72 0.15 285)", cursor: loading ? "not-allowed" : "pointer" }}>重新发送验证码</button>
+            </div>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {/* Name field (register only) */}
           {mode === "register" && (
@@ -403,6 +484,7 @@ export default function LoginPage() {
             {loading ? "处理中…" : mode === "login" ? "登录" : "注册"}
           </button>
         </form>
+        )}
 
         {/* OAuth divider + buttons */}
         {(oauthAvailable || googleAvailable) && (
