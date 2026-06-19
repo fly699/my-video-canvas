@@ -205,6 +205,21 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* 复制整段对话（含发言人标注）到剪贴板 */}
+          {messages.length > 0 && (
+            <button
+              onClick={() => {
+                const text = messages
+                  .map((m) => ({ name: m.senderName || (m.senderId === myUserId ? "我" : "对方"), content: (m.content || "").replace(/^\[#DLREQ:\d+\]\n?/, "").trim() }))
+                  .filter((m) => m.content)
+                  .map((m) => `${m.name}：${m.content}`)
+                  .join("\n\n");
+                navigator.clipboard.writeText(text).then(() => toast.success("已复制整段对话", { duration: 1400 }));
+              }}
+              title="复制整段对话"
+              style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}
+            ><Copy size={13} /> 复制全部</button>
+          )}
           {/* AI 助手会话：不是真人/群聊，隐藏 文件/中转站/删除/模式切换等无关按钮 */}
           {!isAI && <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={13} /> 文件</button>}
           {!isAI && <button onClick={() => window.open("/relay", "_blank", "noopener")} title="局域网大文件中转站（几十 GB 大文件传输，支持断点续传）" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><HardDriveUpload size={13} /> 中转站</button>}
