@@ -15,8 +15,9 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useUIStyle } from "../../contexts/UIStyleContext";
 import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioCommandBar";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download,
 } from "lucide-react";
+import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 import { VARIANT_TYPES } from "../../hooks/useCanvasStore";
 import { toast } from "sonner";
@@ -186,6 +187,18 @@ export const BaseNode = memo(function BaseNode({
   // Studio: when selected, the node card stays compact (header + hero media if any)
   // and the params float in a wide, short panel attached BELOW it (LibLib layout).
   const studioFloated = isStudio && (storeSelected || pinned);
+  // Studio top toolbar: a real, gated download of the node's result media (the only
+  // genuinely non-duplicate "top toolbar" action this app supports — the LibLib
+  // AI ops like 打光/全景 don't exist here, so we don't fake them). Stable string
+  // selectors so the subscription never churns.
+  const resultVideoUrl = useCanvasStore((s) => {
+    const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
+    return typeof p?.videoUrl === "string" ? (p.videoUrl as string) : "";
+  });
+  const resultImageUrl = useCanvasStore((s) => {
+    const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
+    return typeof p?.imageUrl === "string" ? (p.imageUrl as string) : "";
+  });
   // A previewable node that has a result and is NOT being edited (not selected,
   // not pinned) renders collapsed: only the title bar + warning/error/progress +
   // the hero preview. In that state drop the min-height floor so the node shrinks
@@ -397,45 +410,23 @@ export const BaseNode = memo(function BaseNode({
                 {nodeRunning ? <Loader2 size={13} className="animate-spin" /> : (hasResult ? <RefreshCw size={13} /> : <Play size={13} />)}
               </button>
             )}
-            <button
-              onClick={(e) => { e.stopPropagation(); duplicateNode(id); }}
-              title="复制节点"
-              className="flex items-center justify-center w-7 h-7 rounded-lg"
-              style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
-            >
-              <Copy size={13} />
-            </button>
-            {/* variants — identical call to the title-bar variants action (store action, gated to VARIANT_TYPES) */}
-            {VARIANT_TYPES.includes(nodeType) && (
+            {/* download — the one genuinely non-duplicate top-toolbar action (the title
+                bar has no download). Gated by downloadMedia's authorization gate; the
+                server still enforces. Only shown when the node has a result media URL. */}
+            {(resultVideoUrl || resultImageUrl) && (
               <button
-                onClick={(e) => { e.stopPropagation(); const n = createVariants(id, 3); if (n > 0) toast.success(`已生成 ${n} 个变体（各带随机种子，复用相同输入）`); }}
-                title="生成变体（×3，随机种子）"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (resultVideoUrl) void downloadMedia(resultVideoUrl, `${title || "video"}.mp4`, "video");
+                  else void downloadMedia(resultImageUrl, `${title || "image"}.png`, "image");
+                }}
+                title="下载结果"
                 className="flex items-center justify-center w-7 h-7 rounded-lg"
                 style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
               >
-                <Layers size={13} />
+                <Download size={13} />
               </button>
             )}
-            {/* direct pass — identical to the title-bar 直传 action (push output downstream) */}
-            {canDirectPass && (
-              <button
-                onClick={(e) => { e.stopPropagation(); handleDirectPass(); }}
-                title="直传：把当前输出直接传给已连接的下游节点（无需运行）"
-                className="flex items-center justify-center w-7 h-7 rounded-lg"
-                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
-              >
-                <Share2 size={13} />
-              </button>
-            )}
-            {/* delete — identical composed call to the title-bar delete (store + server mutation) */}
-            <button
-              onClick={(e) => { e.stopPropagation(); deleteNode(id); if (projectId) deleteNodeMutation.mutate({ id, projectId }); }}
-              title="删除节点"
-              className="flex items-center justify-center w-7 h-7 rounded-lg"
-              style={{ background: "var(--c-surface)", color: "oklch(0.7 0.18 25)", border: "none", cursor: "pointer" }}
-            >
-              <Trash2 size={13} />
-            </button>
           </div>
         </NodeToolbar>
       )}
