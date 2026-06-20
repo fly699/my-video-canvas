@@ -19,7 +19,8 @@ export function UIStyleSwitcher() {
         display: "flex",
         alignItems: "center",
         gap: 2,
-        background: "oklch(0.30 0.006 260 / 0.45)",
+        background: "var(--c-input)",
+        border: "1px solid var(--c-bd2)",
         borderRadius: 8,
         padding: 2,
         flexShrink: 0,
@@ -37,12 +38,15 @@ export function UIStyleSwitcher() {
               border: "none",
               cursor: "pointer",
               fontSize: 11,
-              fontWeight: 600,
+              fontWeight: 700,
               lineHeight: 1,
               padding: "5px 9px",
               borderRadius: 6,
-              background: active ? "oklch(0.68 0.22 285 / 0.22)" : "transparent",
-              color: active ? "oklch(0.78 0.16 285)" : "oklch(0.70 0.010 260)",
+              // Theme-aware so it stays legible on light skins too: active = solid
+              // accent pill + white text (high contrast on any backdrop); inactive =
+              // the theme's secondary text token.
+              background: active ? "oklch(0.62 0.22 285)" : "transparent",
+              color: active ? "#fff" : "var(--c-t2)",
               transition: "background 120ms ease, color 120ms ease",
             }}
           >

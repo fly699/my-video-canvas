@@ -39,9 +39,9 @@ export function ThemeSwitcher() {
           width: 20,
           height: 20,
           borderRadius: 5,
-          border: "none",
-          background: "oklch(0.30 0.006 260 / 0.55)",
-          color: "oklch(0.75 0.010 260)",
+          border: "1px solid var(--c-bd2)",
+          background: "var(--c-elevated)",
+          color: "var(--c-t2)",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
@@ -53,12 +53,10 @@ export function ThemeSwitcher() {
           flexShrink: 0,
         }}
         onMouseEnter={(e) =>
-          ((e.currentTarget as HTMLElement).style.background =
-            "oklch(0.38 0.008 260 / 0.70)")
+          ((e.currentTarget as HTMLElement).style.background = "var(--c-overlay)")
         }
         onMouseLeave={(e) =>
-          ((e.currentTarget as HTMLElement).style.background =
-            "oklch(0.30 0.006 260 / 0.55)")
+          ((e.currentTarget as HTMLElement).style.background = "var(--c-elevated)")
         }
       >
         {expanded ? "‹" : "›"}
