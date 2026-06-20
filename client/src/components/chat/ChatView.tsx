@@ -26,7 +26,7 @@ const fileToBase64 = (f: File): Promise<string> => new Promise((resolve, reject)
 });
 
 export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
-  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, e2eAvailable, myUserId, deleteRoom, leaveRoom } = useChat();
+  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, e2eAvailable, myUserId, deleteRoom, leaveRoom, reloadActiveMessages } = useChat();
   const [text, setText] = useState("");
   const [staged, setStaged] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
@@ -236,10 +236,15 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
             <button
               onClick={() => {
                 if (clearAssistantMut.isPending) return;
-                if (!confirm("清空与 AI 助手的全部对话历史，开启新对话？（用于切换人设后彻底重来）")) return;
                 clearAssistantMut.mutate({ conversationId: activeConv!.id }, {
-                  onSuccess: () => toast.success("已清空，开启新对话", { duration: 1400 }),
-                  onError: (e) => toast.error(e.message),
+                  onSuccess: () => {
+                    // 从服务器权威重载（清空后 DB 为空）→ 不依赖 socket 广播，
+                    // 隧道/弱网下也能立即清掉本地消息列表。先失效缓存再重载，避免取到旧缓存。
+                    void utils.chat.getMessages.invalidate({ conversationId: activeConv!.id });
+                    reloadActiveMessages();
+                    toast.success("已清空，开启新对话（下一条消息将以当前模板人设回复）", { duration: 2200 });
+                  },
+                  onError: (e) => toast.error("清空失败：" + e.message),
                 });
               }}
               title="新对话（清空 AI 助手历史，换人设后从零开始）"
