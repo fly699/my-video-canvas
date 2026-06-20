@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { RefreshCw, Plus, X, Activity, MonitorDown } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCw, Plus, X, Activity, MonitorDown, Eraser } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useComfyServersStore } from "../../../hooks/useComfyServersStore";
@@ -117,6 +117,25 @@ export function ComfyServerUrlField({
     if (!probe) setProbe(true); else statusQuery.refetch();
   }, [probe, probeUrls.length, statusQuery]);
 
+  // 一键清理失效：探测本节点 serverUrls，删掉离线的（同时从全局注册表移除）。先触发探测，
+  // 数据到了再清。这才是「画布节点上的失效服务器」的清理入口——模板清理对话框管不到这里。
+  const [cleanPending, setCleanPending] = useState(false);
+  const cleanFailed = useCallback(() => {
+    if (serverUrls.length === 0) { toast.info("本节点没有服务器列表"); return; }
+    if (!probe) setProbe(true); else statusQuery.refetch();
+    setCleanPending(true);
+  }, [serverUrls.length, probe, statusQuery]);
+  useEffect(() => {
+    if (!cleanPending || statusQuery.isFetching || !statusQuery.data) return;
+    setCleanPending(false);
+    const offline = serverUrls.filter((u) => { const s = statusByUrl.get(u); return s && !s.online; });
+    if (offline.length === 0) { toast.success("没有检测到失效服务器"); return; }
+    const offlineSet = new Set(offline);
+    onChangeServerUrls(serverUrls.filter((u) => !offlineSet.has(u)));
+    for (const u of offline) removeGlobalServer(u);
+    toast.success(`已清理 ${offline.length} 台失效服务器`);
+  }, [cleanPending, statusQuery.isFetching, statusQuery.data, statusByUrl, serverUrls, onChangeServerUrls, removeGlobalServer]);
+
   return (
     <>
       <div className="flex items-center gap-1.5">
@@ -158,6 +177,15 @@ export function ComfyServerUrlField({
           style={{ width: 30, height: 30, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: statusQuery.isFetching ? "var(--c-t4)" : accent, cursor: statusQuery.isFetching ? "wait" : "pointer" }}
         >
           <Activity className={statusQuery.isFetching ? "w-3 h-3 animate-pulse" : "w-3 h-3"} />
+        </button>
+        <button
+          onClick={cleanFailed}
+          disabled={statusQuery.isFetching || serverUrls.length === 0}
+          className="nodrag flex-shrink-0 flex items-center justify-center rounded-md"
+          title="一键清理失效服务器（探测后删除本节点离线地址，并从全局列表移除）"
+          style={{ width: 30, height: 30, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: (statusQuery.isFetching || serverUrls.length === 0) ? "var(--c-t4)" : "oklch(0.66 0.18 30)", cursor: (statusQuery.isFetching || serverUrls.length === 0) ? "not-allowed" : "pointer" }}
+        >
+          <Eraser className={cleanPending ? "w-3 h-3 animate-pulse" : "w-3 h-3"} />
         </button>
         {onRefresh && (
           <button
