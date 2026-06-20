@@ -48,6 +48,9 @@ import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
+import { Lightbox } from "../components/canvas/studio/Lightbox";
+import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
+import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
 import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
@@ -2609,6 +2612,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </div>
           </ReactFlow>
           </WorkflowRunProvider>
+
+          {/* Studio fullscreen media viewer (opened from a node hero) */}
+          <Lightbox />
+          {/* Studio multi-select action bar (≥2 nodes selected) */}
+          <MultiSelectBar />
+          {/* Studio global creation bar (nothing selected → quick prompt → 生成) */}
+          <StudioCreateBar />
 
           <ConnectionHintsPanel
             visible={showConnectionHints}
