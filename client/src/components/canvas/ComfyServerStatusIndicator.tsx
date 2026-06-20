@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles, ChevronsLeftRight, ChevronsRightLeft } from "lucide-react";
+import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles, ChevronsLeftRight, ChevronsRightLeft, Eraser } from "lucide-react";
+import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { WorkflowRecommenderDialog } from "./WorkflowRecommenderDialog";
@@ -106,6 +107,34 @@ export function ComfyServerStatusIndicator() {
   const removeServer = (url: string) => {
     if (isGlobal(url)) { if (isAdmin) setGlobal(globalServers.filter((u) => u !== url)); }
     else removeLocal(url);
+  };
+
+  // 一键「清理画布所有失效服务器」：把当前探测为离线的服务器，从 全局注册表（服务端+浏览器）
+  // 以及 画布内每个 ComfyUI 节点的 serverUrls/customBaseUrl 里统统删除。这才是覆盖全画布的清理
+  // （模板由模板库对话框单独清）。需先「刷新」拿到在线状态。
+  const cleanAllFailed = () => {
+    const offline = statuses.filter((s) => !s.online).map((s) => s.baseUrl);
+    if (offline.length === 0) { toast.success("没有检测到失效服务器（如未检测请先点刷新）"); return; }
+    const offSet = new Set(offline);
+    // 1) 全局注册表：服务端（admin）+ 浏览器本地
+    if (isAdmin) setGlobal(globalServers.filter((u) => !offSet.has(u)));
+    for (const u of offline) removeLocal(u);
+    // 2) 画布内所有 ComfyUI 节点
+    const cs = useCanvasStore.getState();
+    const COMFY = new Set(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
+    let nodeCount = 0;
+    for (const n of cs.nodes) {
+      if (!COMFY.has(n.data.nodeType)) continue;
+      const p = n.data.payload as Record<string, unknown>;
+      const patch: Record<string, unknown> = {};
+      if (Array.isArray(p.serverUrls)) {
+        const f = (p.serverUrls as unknown[]).filter((u): u is string => typeof u === "string" && !offSet.has(u));
+        if (f.length !== (p.serverUrls as unknown[]).length) patch.serverUrls = f;
+      }
+      if (typeof p.customBaseUrl === "string" && offSet.has((p.customBaseUrl as string).trim())) patch.customBaseUrl = "";
+      if (Object.keys(patch).length) { cs.updateNodeData(n.id, patch); nodeCount++; }
+    }
+    toast.success(`已清理 ${offline.length} 台失效服务器（全局 + ${nodeCount} 个画布节点）`);
   };
 
   // Persist the open state too, so the floating panel reliably survives a reload
@@ -344,6 +373,10 @@ export function ComfyServerStatusIndicator() {
               <div className="flex items-center gap-0.5">
                 <button title="刷新全部" className="topbar-btn" style={{ width: 22, height: 22 }} onClick={() => statusQuery.refetch()}>
                   <RefreshCw className={`w-3 h-3 ${statusQuery.isFetching ? "animate-spin" : ""}`} />
+                </button>
+                <button title="清理画布所有失效服务器（从全局列表 + 每个 ComfyUI 节点删除离线地址）"
+                  className="topbar-btn" style={{ width: 22, height: 22, color: "oklch(0.66 0.18 30)" }} onClick={cleanAllFailed}>
+                  <Eraser className="w-3 h-3" />
                 </button>
                 <button
                   title={panelCompact ? "展开：显示选卡栏与操作按钮" : "折叠：隐藏选卡栏与操作按钮（仅留指标）"}
