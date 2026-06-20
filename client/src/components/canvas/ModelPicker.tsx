@@ -87,6 +87,12 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
           cursor: disabled ? "not-allowed" : "pointer",
         }}
       >
+        {current && (
+          <span aria-hidden style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            background: platformBadge(current.group).bg, color: platformBadge(current.group).fg, fontSize: 9, fontWeight: 800 }}>
+            {(current.family || current.label).trim().slice(0, 1).toUpperCase()}
+          </span>
+        )}
         <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {current?.label ?? value ?? "选择模型"}
         </span>
@@ -96,7 +102,14 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
         <ChevronDown style={{ width: 12, height: 12, opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform 150ms ease" }} />
       </button>
 
-      {open && btnRect && createPortal(
+      {open && btnRect && (() => {
+        // Flip the menu above the trigger when there isn't room below (e.g. the studio
+        // bottom creation bar) — keeps the list on-screen instead of off the bottom edge.
+        const spaceBelow = window.innerHeight - btnRect.bottom - 8;
+        const spaceAbove = btnRect.top - 8;
+        const flipUp = spaceBelow < 240 && spaceAbove > spaceBelow;
+        const menuMaxH = Math.min(380, Math.max(160, flipUp ? spaceAbove : spaceBelow));
+        return createPortal(
         <>
           <div
             style={{ position: "fixed", inset: 0, zIndex: 99980 }}
@@ -110,12 +123,12 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
             style={{
               position: "fixed",
               zIndex: 99981,
-              top: btnRect.bottom + 6,
+              ...(flipUp ? { bottom: window.innerHeight - btnRect.top + 6 } : { top: btnRect.bottom + 6 }),
               // 钳制左缘：触发器很窄时下拉更宽，避免右溢出视口（portal 到 body，
               // 可超出父弹层）。
               left: Math.max(8, Math.min(btnRect.left, window.innerWidth - Math.max(btnRect.width, minWidth) - 8)),
               width: Math.max(btnRect.width, minWidth),
-              maxHeight: 380,
+              maxHeight: menuMaxH,
               overflowY: "auto",
               background: "var(--c-base)",
               border: "1px solid var(--c-bd2)",
@@ -175,6 +188,10 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
                         textAlign: "left",
                       }}
                     >
+                      <span aria-hidden style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                        background: platformBadge(group).bg, color: platformBadge(group).fg, fontSize: 10.5, fontWeight: 800 }}>
+                        {(o.family || o.label).trim().slice(0, 1).toUpperCase()}
+                      </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ fontSize: 11.5, color: selected ? "var(--c-t1)" : "var(--c-t2)", fontWeight: selected ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -216,7 +233,8 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
           </div>
         </>,
         document.body
-      )}
+        );
+      })()}
     </>
   );
 }

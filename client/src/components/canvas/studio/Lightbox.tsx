@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { create } from "zustand";
-import { X, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
+import { X, Download, ChevronLeft, ChevronRight, Star, RefreshCw } from "lucide-react";
 import { downloadMedia } from "../../../lib/download";
+import { useCanvasStore } from "../../../hooks/useCanvasStore";
 
 // Global, studio-only fullscreen media viewer. A node's hero opens it with its result
 // media (one or many); the viewer is rendered once at the canvas root. Presentation
@@ -11,7 +13,8 @@ interface LightboxState {
   index: number;
   type: "image" | "video";
   title: string;
-  open: (urls: string[], index: number, type: "image" | "video", title?: string) => void;
+  nodeId: string | null;   // source node → enables 设为封面 / 重新生成
+  open: (urls: string[], index: number, type: "image" | "video", title?: string, nodeId?: string) => void;
   close: () => void;
   step: (delta: number) => void;
 }
@@ -21,7 +24,8 @@ export const useLightbox = create<LightboxState>((set) => ({
   index: 0,
   type: "image",
   title: "",
-  open: (urls, index, type, title = "") => set({ urls, index: Math.max(0, Math.min(index, urls.length - 1)), type, title }),
+  nodeId: null,
+  open: (urls, index, type, title = "", nodeId) => set({ urls, index: Math.max(0, Math.min(index, urls.length - 1)), type, title, nodeId: nodeId ?? null }),
   close: () => set({ urls: [] }),
   step: (delta) => set((s) => {
     if (s.urls.length < 2) return s;
@@ -33,7 +37,7 @@ export const useLightbox = create<LightboxState>((set) => ({
 const isVideoUrl = (u: string) => /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(u);
 
 export function Lightbox() {
-  const { urls, index, type, title, close, step } = useLightbox();
+  const { urls, index, type, title, nodeId, close, step } = useLightbox();
   const openLb = urls.length > 0;
 
   useEffect(() => {
@@ -52,6 +56,20 @@ export function Lightbox() {
   // Trust the explicit type, but fall back to the URL extension (mixed lists are rare).
   const asVideo = type === "video" || isVideoUrl(url);
   const multi = urls.length > 1;
+  // 设为封面: make the viewed image the node's primary `imageUrl` (what downstream uses).
+  // Only meaningful for a multi-result image node.
+  const canSetCover = !!nodeId && !asVideo && multi;
+  const setCover = () => {
+    if (!nodeId) return;
+    useCanvasStore.getState().updateNodeData(nodeId, { imageUrl: url });
+    toast.success("已设为该节点封面（下游将使用此图）", { duration: 1400 });
+  };
+  const regen = () => {
+    if (!nodeId) return;
+    useCanvasStore.getState().requestRun(null, [nodeId]);
+    toast.success("已重新生成", { duration: 1200 });
+    close();
+  };
 
   return (
     <div
@@ -61,6 +79,8 @@ export function Lightbox() {
     >
       {/* top-right actions */}
       <div onClick={(e) => e.stopPropagation()} style={{ position: "fixed", top: 16, right: 16, display: "flex", gap: 8, cursor: "default" }}>
+        {canSetCover && <button onClick={setCover} title="设为封面（下游使用此图）" style={btn}><Star size={16} /></button>}
+        {nodeId && <button onClick={regen} title="重新生成此节点" style={btn}><RefreshCw size={16} /></button>}
         <button onClick={() => void downloadMedia(url, `${title || (asVideo ? "video" : "image")}.${asVideo ? "mp4" : "png"}`, asVideo ? "video" : "image")}
           title="下载" style={btn}><Download size={17} /></button>
         <button onClick={close} title="关闭 (Esc)" style={btn}><X size={17} /></button>
