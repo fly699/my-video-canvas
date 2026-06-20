@@ -324,11 +324,23 @@ function AdvancedEditPanel({ payload, update, hasAudioTracks }: {
                 <button key={f} onClick={() => update("output", { ...out, format: f })} style={segBtn((out.format ?? "mp4") === f)}>{lbl}</button>
               ))}
               <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: 4 }}>帧率</span>
-              <input type="number" min={0} max={60} step={1} value={out.fps ?? 0}
-                onChange={(e) => update("output", { ...out, fps: Math.max(0, Math.min(60, Number(e.target.value) || 0)) || undefined })}
+              <input type="number" min={0} max={120} step={1} value={out.fps ?? 0}
+                onChange={(e) => update("output", { ...out, fps: Math.max(0, Math.min(120, Number(e.target.value) || 0)) || undefined })}
                 placeholder="原始"
                 className="nodrag w-14 px-2 py-1 rounded text-[11px]"
                 style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }} />
+              <label className="flex items-center gap-1 nodrag" style={{ fontSize: 10, color: "var(--c-t4)", cursor: "pointer" }} title="用运动插帧（minterpolate）生成中间帧，30→60/90 更顺滑（较慢）">
+                <input type="checkbox" className="nodrag" checked={!!out.fpsInterpolate} onChange={(e) => update("output", { ...out, fpsInterpolate: e.target.checked || undefined })} />
+                平滑插帧
+              </label>
+            </div>
+            {/* 真实放大（ffmpeg lanczos 超分）：2/4/6× */}
+            <div className="flex items-center gap-1.5">
+              <span style={{ fontSize: 10, color: "var(--c-t4)" }}>放大</span>
+              {([1, 2, 4, 6] as const).map((n) => (
+                <button key={n} onClick={() => update("output", { ...out, upscale: n === 1 ? undefined : n })} style={segBtn((out.upscale ?? 1) === n)}>{n}×</button>
+              ))}
+              <span style={{ fontSize: 9, color: "var(--c-t4)", marginLeft: 2 }}>更高画质用 Topaz/ComfyUI 超分</span>
             </div>
           </div>
         </div>

@@ -718,7 +718,7 @@ export interface ClipNodeData {
   loudnorm?: boolean;        // EBU R128 normalize final mix
   ducking?: boolean;         // voice ducking when a source is marked voice
   colorPreset?: "none" | "cinematic" | "warm" | "cool" | "bw" | "vintage" | "vivid";
-  output?: { resolution?: "source" | "720p" | "1080p" | "4k"; fps?: number; format?: "mp4" | "webm" };
+  output?: { resolution?: "source" | "720p" | "1080p" | "4k"; fps?: number; upscale?: 2 | 4 | 6; fpsInterpolate?: boolean; format?: "mp4" | "webm" };
   // Output
   outputUrl?: string;
   outputDuration?: number;

@@ -141,7 +141,11 @@ export interface AudioTrackInput {
 
 export interface ClipOutputSettings {
   resolution?: "source" | "720p" | "1080p" | "4k";
-  fps?: number;                 // 1..60
+  fps?: number;                 // 1..120
+  /** Real super-res multiplier on the source (2/4/6), ffmpeg lanczos scale. */
+  upscale?: number;
+  /** Smooth fps boost via motion interpolation (minterpolate) instead of plain -r. */
+  fpsInterpolate?: boolean;
   format?: "mp4" | "webm";
 }
 
@@ -375,8 +379,20 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
     // emitted) but the helper appended speed/fade last; insert preset before those.
     const presetFilters = buildColorPresetFilters(opts.colorPreset);
     const scaleFilter = resolutionScaleFilter(opts.output?.resolution);
-    const allVideoFilters = [...videoFilters, ...presetFilters, ...(scaleFilter ? [scaleFilter] : [])];
+    // Real super-resolution multiplier (2/4/6×) — lanczos, even dims for yuv420p.
+    const up = opts.output?.upscale;
+    const upscaleFilter = up && up > 1 ? `scale=trunc(iw*${up}/2)*2:trunc(ih*${up}/2)*2:flags=lanczos` : null;
     const fpsArg = opts.output?.fps && opts.output.fps > 0 ? opts.output.fps : null;
+    // Smooth fps boost: motion-interpolated frames (mci) — must be the LAST filter so
+    // it interpolates the final, already-scaled stream. Heavy; opt-in per clip.
+    const interpolate = !!(opts.output?.fpsInterpolate && fpsArg);
+    const minterpFilter = interpolate ? `minterpolate=fps=${fpsArg}:mi_mode=mci` : null;
+    const allVideoFilters = [
+      ...videoFilters, ...presetFilters,
+      ...(scaleFilter ? [scaleFilter] : []),
+      ...(upscaleFilter ? [upscaleFilter] : []),
+      ...(minterpFilter ? [minterpFilter] : []),
+    ];
     const needVideoEncode = allVideoFilters.length > 0 || fpsArg != null || fmt === "webm";
 
     // ── Audio sources (original + external tracks) ──
