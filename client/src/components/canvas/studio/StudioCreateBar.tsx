@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUp, Sparkles, X } from "lucide-react";
+import { ArrowUp, Sparkles, X, History, Trash2 } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -8,6 +8,11 @@ import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext
 import { makeRefImage, refPatch } from "../../../lib/referenceImages";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { RatioPicker, RATIOS } from "./StudioCommandBar";
+
+interface HistItem { prompt: string; model: string; ratio: string; refUrl?: string; t: number }
+const HIST_KEY = "avc:studio-create-history";
+const readHist = (): HistItem[] => { try { const r = localStorage.getItem(HIST_KEY); return r ? (JSON.parse(r) as HistItem[]) : []; } catch { return []; } };
+const writeHist = (h: HistItem[]) => { try { localStorage.setItem(HIST_KEY, JSON.stringify(h)); } catch { /* quota */ } };
 
 // Parse the canvas asset-drag payload → image URLs (mirrors BaseNode's reader).
 function imageUrlsFromAssetDrag(dt: DataTransfer): string[] {
@@ -33,6 +38,8 @@ export function StudioCreateBar() {
   const [ratio, setRatio] = useState("16:9");
   const [refUrl, setRefUrl] = useState("");      // dropped reference image → 图生图
   const [dragOver, setDragOver] = useState(false);
+  const [history, setHistory] = useState<HistItem[]>(readHist);
+  const [showHist, setShowHist] = useState(false);
 
   if (uiStyle !== "studio" || anySelected) return null;
   const mdl = model || resolve("image_gen", "image");
@@ -53,8 +60,19 @@ export function StudioCreateBar() {
     });
     st.setNodes(st.nodes.map((n) => ({ ...n, selected: n.id === node!.id })));
     if (run && text) { st.requestRun(null, [node.id]); toast.success(refUrl ? "已创建图生图并开始生成" : "已创建并开始生成", { duration: 1200 }); }
+    if (text) {
+      const item: HistItem = { prompt: text, model: mdl, ratio, refUrl: refUrl || undefined, t: Date.now() };
+      setHistory((prev) => {
+        const next = [item, ...prev.filter((h) => !(h.prompt === item.prompt && h.model === item.model && h.ratio === item.ratio))].slice(0, 12);
+        writeHist(next);
+        return next;
+      });
+    }
     setPrompt(""); setRefUrl("");
   };
+
+  const applyHist = (h: HistItem) => { setPrompt(h.prompt); setModel(h.model); setRatio(h.ratio); setRefUrl(h.refUrl ?? ""); setShowHist(false); };
+  const clearHist = () => { setHistory([]); writeHist([]); setShowHist(false); };
 
   return (
     <div
@@ -71,6 +89,27 @@ export function StudioCreateBar() {
         background: "color-mix(in oklch, var(--c-elevated) 94%, transparent)", backdropFilter: "blur(20px)",
         border: `1px solid ${dragOver ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, boxShadow: "var(--c-node-shadow-hover)" }}
     >
+      {showHist && history.length > 0 && (
+        <div className="nodrag" onClick={(e) => e.stopPropagation()}
+          style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, right: 0, maxHeight: 260, overflowY: "auto",
+            background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 14, boxShadow: "var(--c-node-shadow-hover)", padding: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 8px 6px" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)" }}>创作历史</span>
+            <button onClick={clearHist} title="清空历史" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t4)", background: "none", border: "none", cursor: "pointer" }}><Trash2 size={11} /> 清空</button>
+          </div>
+          {history.map((h, i) => (
+            <button key={i} onClick={() => applyHist(h)}
+              className="studio-toolbtn"
+              style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 8px", borderRadius: 9,
+                border: "none", background: "transparent", cursor: "pointer", color: "var(--c-t1)" }}>
+              {h.refUrl && <img src={h.refUrl} alt="" style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover", flexShrink: 0, border: "1px solid var(--c-bd2)" }} />}
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.prompt}</span>
+              <span style={{ fontSize: 10, color: "var(--c-t4)", flexShrink: 0 }}>{h.ratio}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div style={{ position: "relative" }}>
         <textarea
           value={prompt}
@@ -87,6 +126,14 @@ export function StudioCreateBar() {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: "var(--ui-accent, var(--c-t2))" }}>
           <Sparkles size={13} /> 快速创作
         </span>
+        {history.length > 0 && (
+          <button className="studio-toolbtn" title="创作历史" onClick={() => setShowHist((v) => !v)}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 30, padding: "0 9px", borderRadius: 9,
+              border: `1px solid ${showHist ? "var(--ui-accent)" : "var(--c-bd2)"}`, cursor: "pointer", fontSize: 11.5, fontWeight: 600,
+              background: "var(--c-surface)", color: "var(--c-t2)" }}>
+            <History size={13} /> 历史
+          </button>
+        )}
         {refUrl ? (
           <span title="图生图参考图（拖入替换）" style={{ position: "relative", width: 30, height: 30, borderRadius: 7, overflow: "hidden", border: "1px solid var(--c-bd2)", flexShrink: 0 }}>
             <img src={refUrl} alt="参考图" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />

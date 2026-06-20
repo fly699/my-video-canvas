@@ -17,6 +17,7 @@ interface LightboxState {
   open: (urls: string[], index: number, type: "image" | "video", title?: string, nodeId?: string) => void;
   close: () => void;
   step: (delta: number) => void;
+  goto: (i: number) => void;
 }
 
 export const useLightbox = create<LightboxState>((set) => ({
@@ -27,6 +28,7 @@ export const useLightbox = create<LightboxState>((set) => ({
   nodeId: null,
   open: (urls, index, type, title = "", nodeId) => set({ urls, index: Math.max(0, Math.min(index, urls.length - 1)), type, title, nodeId: nodeId ?? null }),
   close: () => set({ urls: [] }),
+  goto: (i) => set((s) => (i >= 0 && i < s.urls.length ? { index: i } : s)),
   step: (delta) => set((s) => {
     if (s.urls.length < 2) return s;
     const n = (s.index + delta + s.urls.length) % s.urls.length;
@@ -37,7 +39,7 @@ export const useLightbox = create<LightboxState>((set) => ({
 const isVideoUrl = (u: string) => /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(u);
 
 export function Lightbox() {
-  const { urls, index, type, title, nodeId, close, step } = useLightbox();
+  const { urls, index, type, title, nodeId, close, step, goto } = useLightbox();
   const openLb = urls.length > 0;
 
   useEffect(() => {
@@ -95,11 +97,32 @@ export function Lightbox() {
       )}
 
       <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "92vw", maxHeight: "90vh", cursor: "default", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        {asVideo
-          ? <video src={url} controls autoPlay style={{ maxWidth: "92vw", maxHeight: "84vh", borderRadius: 12, boxShadow: "0 20px 60px oklch(0 0 0 / 0.6)" }} />
-          : <img src={url} alt={title || "预览"} style={{ maxWidth: "92vw", maxHeight: "84vh", objectFit: "contain", borderRadius: 12, boxShadow: "0 20px 60px oklch(0 0 0 / 0.6)" }} />}
+        {(() => {
+          const mediaMaxH = multi ? "72vh" : "86vh";
+          return asVideo
+            ? <video src={url} controls autoPlay style={{ maxWidth: "92vw", maxHeight: mediaMaxH, borderRadius: 12, boxShadow: "0 20px 60px oklch(0 0 0 / 0.6)" }} />
+            : <img src={url} alt={title || "预览"} style={{ maxWidth: "92vw", maxHeight: mediaMaxH, objectFit: "contain", borderRadius: 12, boxShadow: "0 20px 60px oklch(0 0 0 / 0.6)" }} />;
+        })()}
         {multi && <div style={{ fontSize: 12, color: "oklch(0.85 0 0)", fontWeight: 600 }}>{index + 1} / {urls.length}</div>}
       </div>
+
+      {/* Filmstrip: thumbnails of all results, click to jump, current highlighted. */}
+      {multi && (
+        <div onClick={(e) => e.stopPropagation()}
+          style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 6,
+            padding: 8, borderRadius: 12, background: "oklch(0 0 0 / 0.45)", border: "1px solid oklch(1 0 0 / 0.12)",
+            maxWidth: "92vw", overflowX: "auto" }}>
+          {urls.map((u, i) => (
+            <button key={i} onClick={() => goto(i)} title={`第 ${i + 1} 张`}
+              style={{ width: 56, height: 56, borderRadius: 8, overflow: "hidden", flexShrink: 0, padding: 0, cursor: "pointer", background: "#000",
+                border: i === index ? "2px solid var(--ui-accent, #fff)" : "2px solid transparent" }}>
+              {isVideoUrl(u)
+                ? <video src={u} muted style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", opacity: i === index ? 1 : 0.55 }} />
+                : <img src={u} alt={`${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", opacity: i === index ? 1 : 0.55 }} />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
