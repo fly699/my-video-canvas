@@ -5,7 +5,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { CanvasModeProvider } from "./contexts/CanvasModeContext";
-import { UIStyleProvider } from "./contexts/UIStyleContext";
+import { UIStyleProvider, UIStyleServerSync } from "./contexts/UIStyleContext";
 import Home from "./pages/Home";
 import Canvas from "./pages/Canvas";
 import LoginPage from "./pages/LoginPage";
@@ -111,6 +111,7 @@ function App() {
       <ThemeProvider>
         <CanvasModeProvider>
         <UIStyleProvider>
+        <UIStyleServerSync />
         <TooltipProvider delayDuration={400}>
           <Toaster
             position="bottom-right"
