@@ -3080,6 +3080,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => setShowConnectionHints(h => !h)}
                   style={{
                     width: 32, height: 32, borderRadius: 10,
@@ -3108,11 +3109,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* UI style skin switcher (pro / studio) */}
             <UIStyleSwitcher />
 
-            {/* Theme switcher */}
-            <ThemeSwitcher />
+            {/* Theme switcher (foldable) */}
+            <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><ThemeSwitcher /></span>
 
-            {/* Canvas background picker */}
-            <CanvasBgPicker value={canvasBg} onChange={setCanvasBg} />
+            {/* Canvas background picker (foldable) */}
+            <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><CanvasBgPicker value={canvasBg} onChange={setCanvasBg} /></span>
           </div>
 
           {/* Filmstrip panel */}
