@@ -217,8 +217,13 @@ export const BaseNode = memo(function BaseNode({
     return typeof p?.videoUrl === "string" ? (p.videoUrl as string) : "";
   });
   const resultImageUrl = useCanvasStore((s) => {
-    const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
-    return typeof p?.imageUrl === "string" ? (p.imageUrl as string) : "";
+    const n = s.nodes.find((n) => n.id === id);
+    const p = n?.data.payload as Record<string, unknown> | undefined;
+    if (typeof p?.imageUrl === "string") return p.imageUrl as string;
+    // image-output nodes that store their result in `outputUrl` (e.g. image_edit) —
+    // narrowly matched so video nodes (whose outputUrl is a video) aren't misread.
+    if (n?.data.nodeType === "image_edit" && typeof p?.outputUrl === "string") return p.outputUrl as string;
+    return "";
   });
   // A previewable node that has a result and is NOT being edited (not selected,
   // not pinned) renders collapsed: only the title bar + warning/error/progress +
