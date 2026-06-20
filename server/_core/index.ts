@@ -510,9 +510,14 @@ async function startServer() {
     // traffic, so the access gate identifies it by socket.localPort — no header guessing.
     try {
       const tunnelPort = await findAvailablePort(port + 1);
-      createServer(app).listen(tunnelPort, "127.0.0.1", () => {
+      const tunnelServer = createServer(app);
+      // 关键：把 Socket.IO 也挂到这台隧道回环服务器上。否则经公网隧道进来的 WebSocket
+      // 升级请求落在这台没有 io 的服务器上无人处理 → 聊天/协作 socket 永远「连接中」。
+      // io 可同时附着多台 HTTP 服务器，沿用同一份配置（path /api/socket、cors 等）。
+      io.attach(tunnelServer);
+      tunnelServer.listen(tunnelPort, "127.0.0.1", () => {
         setTunnelOrigin(tunnelPort);
-        console.log(`[Tunnel] internal origin on http://127.0.0.1:${tunnelPort}`);
+        console.log(`[Tunnel] internal origin on http://127.0.0.1:${tunnelPort} (socket.io attached)`);
         void initTunnel(); // 隧道监听就绪后再拉起 cloudflared + 预热门控缓存
       });
     } catch (e) { console.warn("[Tunnel] internal listener failed:", e); }
