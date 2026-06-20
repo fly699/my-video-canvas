@@ -33,6 +33,7 @@ import { NodeConfigTabs } from "../NodeConfigTabs";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { PromptDock } from "../PromptDock";
+import { RefHeroPreview } from "../RefHeroPreview";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 
 interface Props {
@@ -551,6 +552,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         </button>
       </div>
     </div>
+  ) : payload.referenceImageUrl ? (
+    // 无结果但有参考图（img2img/参考）→ 收缩时显示参考图，否则工作室收缩只剩标题栏。
+    <RefHeroPreview url={payload.referenceImageUrl} />
   ) : null;
 
   return (

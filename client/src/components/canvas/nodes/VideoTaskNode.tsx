@@ -30,6 +30,7 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
 import { PromptDock } from "../PromptDock";
+import { RefHeroPreview } from "../RefHeroPreview";
 import { useNodeDocks, useCharSceneItems, useAudioStripItems, useVideoStripItems } from "../../../hooks/useNodeDocks";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { HideWhenStudioFloating } from "../../../contexts/StudioFloatingContext";
@@ -1312,6 +1313,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       />
       {videoStoredInMinio && <MinioStorageBadge />}
     </div>
+  ) : payload.referenceImageUrl ? (
+    // 无视频结果但有参考图（图生视频首帧/参考）→ 收缩时显示参考图，
+    // 否则工作室收缩只剩标题栏、参考图看不见。
+    <RefHeroPreview url={payload.referenceImageUrl} />
   ) : null;
 
   return (

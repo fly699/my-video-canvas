@@ -1,7 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
 import { Handle, Position, NodeResizer, NodeToolbar } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
-import { CONNECTION_HINTS } from "../../lib/connectionRules";
+import { CONNECTION_HINTS, getCompatibleTargets } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
@@ -18,7 +18,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2,
-  Scissors, Sun, Crop, Expand,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine,
 } from "lucide-react";
 import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -262,6 +262,31 @@ export const BaseNode = memo(function BaseNode({
     { op: "outpaint", label: "扩图", Icon: Expand },
     { op: "relight", label: "重打光", Icon: Sun },
     { op: "reframe", label: "改比例", Icon: Crop },
+  ];
+
+  // Liblib-style quick video actions: spawn a connected downstream video node
+  // (剪辑/字幕/智能剪辑/合并). The new node auto-detects this node's result video
+  // through the edge (clip/subtitle/merge/smart_cut all read upstream video), so
+  // just create + wire + select. Which actions show is filtered by the connection
+  // matrix per nodeType (getCompatibleTargets), so each is always a valid wire.
+  const spawnDownstream = (type: NodeType, label: string) => {
+    if (!resultVideoUrl) return;
+    const st = useCanvasStore.getState();
+    const self = st.nodes.find((n) => n.id === id);
+    if (!self) return;
+    const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
+    let node;
+    try { node = st.addNode(type, { x: self.position.x + w + 60, y: self.position.y }); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
+    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
+    useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
+    toast.success(`已创建「${label}」节点（已连源视频，可直接处理）`, { duration: 1800 });
+  };
+  const VIDEO_QUICK: { type: NodeType; label: string; Icon: typeof Film }[] = [
+    { type: "clip", label: "剪辑", Icon: Film },
+    { type: "subtitle", label: "字幕", Icon: Captions },
+    { type: "smart_cut", label: "智能剪辑", Icon: Wand2 },
+    { type: "merge", label: "合并", Icon: Combine },
   ];
   // A previewable node that has a result and is NOT being edited (not selected,
   // not pinned) renders collapsed: only the title bar + warning/error/progress +
@@ -518,6 +543,29 @@ export const BaseNode = memo(function BaseNode({
                 ))}
               </>
             )}
+            {/* Liblib-style quick VIDEO actions — only for nodes with a video result.
+                Each spawns a connected downstream video node (剪辑/字幕/智能剪辑/合并);
+                filtered by the connection matrix so every shown action is a valid wire. */}
+            {resultVideoUrl && (() => {
+              const targets = getCompatibleTargets(nodeType);
+              const acts = VIDEO_QUICK.filter((a) => targets.includes(a.type));
+              if (acts.length === 0) return null;
+              return (
+                <>
+                  <div style={{ width: 1, height: 16, background: "var(--c-bd2)", margin: "0 1px" }} />
+                  {acts.map(({ type, label, Icon }) => (
+                    <button key={type}
+                      onClick={(e) => { e.stopPropagation(); spawnDownstream(type, label); }}
+                      title={`${label}（生成连好源视频的下游节点）`}
+                      className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                      style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                    >
+                      <Icon size={12} /> {label}
+                    </button>
+                  ))}
+                </>
+              );
+            })()}
           </div>
         </NodeToolbar>
       )}

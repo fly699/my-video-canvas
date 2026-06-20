@@ -18,6 +18,7 @@ import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effect
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
 import { PromptDock } from "../PromptDock";
+import { RefHeroPreview } from "../RefHeroPreview";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
@@ -518,23 +519,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       </div>
     </div>
   ) : heroRefUrl ? (
-    // 无结果但有参考图 → 收缩时把参考图当 hero 预览（带「参考图」角标），
-    // 避免工作室收缩后只剩标题栏、参考图完全看不见。
-    <div className="relative overflow-hidden" style={{ width: "100%", background: "var(--c-canvas)" }}>
-      <MediaImage
-        src={heroRefUrl}
-        alt="参考图"
-        className="w-full"
-        draggable={false}
-        style={{ display: "block", objectFit: "contain", maxHeight: 240 }}
-      />
-      <span
-        className="absolute top-1.5 left-1.5 z-10 rounded-md pointer-events-none"
-        style={{ fontSize: 9.5, fontWeight: 700, color: "#fff", background: "oklch(0 0 0 / 0.55)", padding: "2px 7px" }}
-      >
-        参考图
-      </span>
-    </div>
+    // 无结果但有参考图 → 收缩时把参考图当 hero 预览（避免只剩标题栏、参考图看不见）。
+    <RefHeroPreview url={heroRefUrl} />
   ) : null;
 
   return (
