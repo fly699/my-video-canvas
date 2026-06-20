@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canMergeClips, mergeClips, rightNeighbour, mergeContiguousRun, canMergeSource, mergeSourceRun } from "../components/editor/editorStore";
+import { canMergeClips, mergeClips, rightNeighbour, mergeContiguousRun, canMergeSource, mergeSourceRun, rippleMergeTrack } from "../components/editor/editorStore";
 import type { Clip, Track } from "@shared/editorTypes";
 
 // Minimal clip factory mirroring a video source split into [0,2]+[2,5] on the timeline.
@@ -100,6 +100,31 @@ describe("canMergeSource / mergeSourceRun（波纹合并：容忍时间间隙）
     expect(out[0].id).toBe("a");
     expect(out[0].start).toBe(0);
     expect(out[0].trimOut).toBe(7);
+  });
+});
+
+describe("rippleMergeTrack（合并 + 闭合所释放间隙，与波纹删除一致）", () => {
+  it("合并跨间隙的同源段，并把后续片段左移「释放的间隙量」（保留其它间隙）", () => {
+    const A = clip({ id: "a", start: 0, trimIn: 0, trimOut: 2 });   // 可见 2s
+    const B = clip({ id: "b", start: 5, trimIn: 2, trimOut: 4 });   // 与 A 源连续，时间隔了 3s
+    const D = clip({ id: "d", start: 12, trimIn: 0, trimOut: 3, assetUrl: "other.mp4" }); // 末尾无关段
+    const res = rippleMergeTrack([A, B, D], new Set(["a", "b"]))!;
+    expect(res).not.toBeNull();
+    expect(res.mergedIds).toEqual(["a"]);
+    const merged = res.clips.find((c) => c.id === "a")!;
+    expect(merged.start).toBe(0);
+    expect(merged.trimOut).toBe(4);           // 拼回一段
+    // runSpan = (5+2)-0 = 7；合并可见时长 = 4；释放 3 → D 左移 3：12→9
+    expect(res.clips.find((c) => c.id === "d")!.start).toBe(9);
+  });
+  it("两段之间夹着未选中片段 → 不跨它合并（避免重叠）", () => {
+    const A = clip({ id: "a", start: 0, trimIn: 0, trimOut: 2 });
+    const X = clip({ id: "x", start: 2, trimIn: 0, trimOut: 1, assetUrl: "other.mp4" }); // 中间未选
+    const B = clip({ id: "b", start: 3, trimIn: 2, trimOut: 4 });
+    expect(rippleMergeTrack([A, X, B], new Set(["a", "b"]))).toBeNull(); // 无可合并的连续对
+  });
+  it("无可合并 → 返回 null", () => {
+    expect(rippleMergeTrack([clip({ id: "a" })], new Set(["a"]))).toBeNull();
   });
 });
 

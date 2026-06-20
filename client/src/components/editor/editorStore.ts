@@ -89,6 +89,41 @@ export function mergeContiguousRun(sorted: Clip[]): Clip[] {
   return out;
 }
 
+/** Ripple-merge ONE track: fold maximal runs of selected, source-contiguous,
+ *  timeline-adjacent (no clip sitting between them) pieces into a single clip, then
+ *  shift later clips left by exactly the gap each merge collapsed — the SAME
+ *  "close the freed space, keep other gaps" rule as ripple-delete (consistency).
+ *  Pure → unit-tested. Returns the new clip list + merged clip ids, or null if no
+ *  change. `allClips` may be unsorted. */
+export function rippleMergeTrack(allClips: Clip[], selIds: Set<string>): { clips: Clip[]; mergedIds: string[] } | null {
+  const sorted = [...allClips].sort((a, b) => a.start - b.start);
+  const result: Clip[] = [];
+  const mergedIds: string[] = [];
+  let changed = false;
+  let shift = 0; // cumulative left-shift accrued from earlier collapsed gaps
+  let i = 0;
+  while (i < sorted.length) {
+    const c = sorted[i];
+    if (!selIds.has(c.id)) { result.push(shift ? { ...c, start: Math.max(0, c.start - shift) } : c); i++; continue; }
+    // Grow a run of consecutive selected, source-contiguous pieces (an unselected
+    // clip in between breaks the run, so we never merge across other content).
+    const run: Clip[] = [c];
+    let j = i + 1;
+    while (j < sorted.length && selIds.has(sorted[j].id) && canMergeSource(run[run.length - 1], sorted[j])) { run.push(sorted[j]); j++; }
+    if (run.length < 2) { result.push(shift ? { ...c, start: Math.max(0, c.start - shift) } : c); i++; continue; }
+    changed = true;
+    const m = mergeSourceRun(run)[0]; // source-contiguous run folds to exactly one clip
+    const mergedClip = { ...m, start: Math.max(0, m.start - shift) };
+    mergedIds.push(mergedClip.id);
+    result.push(mergedClip);
+    const last = run[run.length - 1];
+    const runSpan = (last.start + clipDuration(last)) - run[0].start;
+    shift += Math.max(0, runSpan - clipDuration(mergedClip)); // gap collapsed within the run
+    i = j;
+  }
+  return changed ? { clips: result, mergedIds } : null;
+}
+
 /** Like canMergeClips but IGNORING timeline position — same source continuing in
  *  source (b.trimIn ≈ a.trimOut), used by ripple-merge to rejoin pieces that drifted
  *  apart on the timeline. Pure. */
@@ -423,25 +458,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     let changed = false;
     const newSel: string[] = [];
     const tracks = s.doc.tracks.map((t) => {
-      const sel = t.clips.filter((c) => selSet.has(c.id)).sort((a, b) => a.start - b.start);
-      if (sel.length < 2) { sel.forEach((c) => newSel.push(c.id)); return t; }
-      const merged = mergeSourceRun(sel);
-      merged.forEach((c) => newSel.push(c.id));
-      if (merged.length === sel.length) return t; // nothing folded
+      const res = rippleMergeTrack(t.clips, selSet);
+      if (!res) { t.clips.forEach((c) => { if (selSet.has(c.id)) newSel.push(c.id); }); return t; }
       changed = true;
-      const others = t.clips.filter((c) => !selSet.has(c.id));
-      const startAt = merged.reduce((m, c) => Math.min(m, c.start), Infinity);
-      // Rebuild + ripple-pack everything at/after the merge point end-to-end.
-      let cursor = startAt;
-      const clips = [...others, ...merged]
-        .sort((a, b) => a.start - b.start)
-        .map((c) => {
-          if (c.start < startAt - 1e-6) return c; // before the merge point: untouched
-          const nc = { ...c, start: Math.round(cursor * 1000) / 1000 };
-          cursor += clipDuration(c);
-          return nc;
-        });
-      return { ...t, clips };
+      // Re-select the merged clips + any still-selected (unmerged) clips on this track.
+      const mergedSet = new Set(res.mergedIds);
+      for (const c of res.clips) if (mergedSet.has(c.id) || selSet.has(c.id)) newSel.push(c.id);
+      return { ...t, clips: res.clips };
     });
     if (!changed) return s;
     return withHistory(s, { ...s.doc, tracks }, selPatch(newSel));

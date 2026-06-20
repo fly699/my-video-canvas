@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Handle, Position } from "@xyflow/react";
+import { Handle, Position, useReactFlow } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
@@ -410,6 +410,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
   const connectState = useConnectState(id, "clip");
   const { updateNodeData } = useCanvasStore();
+  const reactFlow = useReactFlow();
   const payload = data.payload;
 
   // 左侧吸附窗「音频」波形项：上游音频 + 本节点输入音频（只读，放末尾）。
@@ -570,13 +571,19 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
       brightness: payload.brightness, contrast: payload.contrast, saturation: payload.saturation,
       aspect: payload.aspect, muteOriginal: payload.muteOriginal, originalVolume: payload.originalVolume,
     };
+    const created: string[] = [];
     segs.forEach((seg, i) => {
       const node = st.addNode("clip", { x: baseX + i * (w + 40), y: baseY });
       st.updateNodeData(node.id, { ...carryBase, startTime: seg.start, endTime: seg.end } as Partial<ClipNodeData>);
       if (srcEdge) st.onConnect({ source: srcEdge.source, target: node.id, sourceHandle: srcEdge.sourceHandle ?? null, targetHandle: "video-in" });
+      created.push(node.id);
     });
+    // 自动选中新建的 N 段 + 视图聚焦到它们，方便立刻继续操作。
+    const sel = new Set(created);
+    st.setNodes(st.nodes.map((n) => ({ ...n, selected: sel.has(n.id) })));
+    setTimeout(() => { try { reactFlow.fitView({ nodes: created.map((nid) => ({ id: nid })), duration: 500, padding: 0.25 }); } catch { /* ignore */ } }, 60);
     toast.success(`已按镜号分割为 ${segs.length} 段剪辑`);
-  }, [activeVideoUrl, shotMarkers, duration, id, payload]);
+  }, [activeVideoUrl, shotMarkers, duration, id, payload, reactFlow]);
 
   // When source video loads, capture duration and init trim points
   const handleVideoMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
