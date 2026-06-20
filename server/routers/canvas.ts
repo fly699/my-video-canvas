@@ -49,6 +49,7 @@ import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { generateImage } from "../_core/imageGeneration";
 import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL } from "../../shared/imageEdit";
+import { sliceGridImage } from "../_core/imageGrid";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
@@ -2919,6 +2920,26 @@ export const imageEditRouter = router({
           throw err;
         }
       });
+    }),
+});
+
+// ── Image Grid slice (网格分镜：把一张网格大图切成 N 张分镜关键帧) ───────────────
+// Local ffmpeg crop, no third-party AI → gated by project access only (mirrors
+// mergeRouter/burnIn), with SSRF guard on the source URL.
+export const imageGridRouter = router({
+  slice: protectedProcedure
+    .input(z.object({
+      imageUrl: mediaUrlSchema,
+      rows: z.number().int().min(1).max(8),
+      cols: z.number().int().min(1).max(8),
+      projectId: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.rows * input.cols > 64) throw new TRPCError({ code: "BAD_REQUEST", message: "网格单元过多（上限 64）" });
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.imageUrl);
+      const result = await sliceGridImage(input.imageUrl, input.rows, input.cols);
+      return { urls: result.urls, rows: result.rows, cols: result.cols };
     }),
 });
 
