@@ -2678,7 +2678,9 @@ export const clipRouter = router({
         colorPreset: z.enum(["none", "cinematic", "warm", "cool", "bw", "vintage", "vivid"]).optional(),
         output: z.object({
           resolution: z.enum(["source", "720p", "1080p", "4k"]).optional(),
-          fps: z.number().int().min(1).max(60).optional(),
+          fps: z.number().int().min(1).max(120).optional(),
+          upscale: z.union([z.literal(2), z.literal(4), z.literal(6)]).optional(),
+          fpsInterpolate: z.boolean().optional(),
           format: z.enum(["mp4", "webm"]).optional(),
         }).optional(),
         edit: z.object({
