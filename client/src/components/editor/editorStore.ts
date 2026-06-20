@@ -89,6 +89,33 @@ export function mergeContiguousRun(sorted: Clip[]): Clip[] {
   return out;
 }
 
+/** Like canMergeClips but IGNORING timeline position — same source continuing in
+ *  source (b.trimIn ≈ a.trimOut), used by ripple-merge to rejoin pieces that drifted
+ *  apart on the timeline. Pure. */
+export function canMergeSource(a: Clip, b: Clip): boolean {
+  if (a.kind !== b.kind) return false;
+  if ((a.assetUrl ?? "") !== (b.assetUrl ?? "")) return false;
+  if ((a.assetId ?? null) !== (b.assetId ?? null)) return false;
+  if ((a.speed ?? 1) !== (b.speed ?? 1)) return false;
+  if (!!a.reverse !== !!b.reverse) return false;
+  return Math.abs(b.trimIn - a.trimOut) <= MERGE_EPS;
+}
+
+/** Fold a start-sorted run by SOURCE contiguity (timeline-gap tolerant). The merged
+ *  clip keeps the first clip's start; gaps are dropped. Pure → unit-tested. */
+export function mergeSourceRun(sorted: Clip[]): Clip[] {
+  if (sorted.length <= 1) return sorted.slice();
+  const out: Clip[] = [];
+  let acc = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    const next = sorted[i];
+    if (canMergeSource(acc, next)) acc = mergeClips(acc, next);
+    else { out.push(acc); acc = next; }
+  }
+  out.push(acc);
+  return out;
+}
+
 function findClip(doc: EditorDoc, clipId: string): { trackIdx: number; clipIdx: number } | null {
   for (let ti = 0; ti < doc.tracks.length; ti++) {
     const ci = doc.tracks[ti].clips.findIndex((c) => c.id === clipId);
@@ -167,6 +194,7 @@ export interface EditorStore {
   moveSelectedTo: (primaryClipId: string, newPrimaryStart: number) => void;
   nudgeSelected: (dx: number) => void;    // shift selection by ±dx seconds (clamped at 0)
   mergeSelectedClips: () => void;         // 合并选区里每条轨道上「连续同源」的多段为一段（多段连续合并）
+  rippleMergeSelected: () => void;        // 波纹合并：按源连续合并（容忍时间间隙），并从合并点起把本轨后续片段左移紧凑
   closeGapsSelected: () => void;          // pack selected clips end-to-end per track
   alignSelectedStartTo: (time: number) => void; // shift selection so its earliest clip starts at `time`
   updateSelected: (patch: Partial<Clip>) => void; // apply a patch to every selected clip (nested effects/transform merged)
@@ -378,6 +406,41 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       changed = true;
       const others = t.clips.filter((c) => !selSet.has(c.id));
       const clips = [...others, ...merged].sort((a, b) => a.start - b.start);
+      return { ...t, clips };
+    });
+    if (!changed) return s;
+    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel));
+  }),
+
+  // Ripple-merge: like mergeSelectedClips but source-contiguity is gap-tolerant
+  // (rejoins same-source pieces even with a timeline gap), then packs the affected
+  // track end-to-end FROM the merge point rightward so no gap is left (紧凑排布).
+  // Clips before the merge point stay put.
+  rippleMergeSelected: () => set((s) => {
+    if (!s.doc) return s;
+    const selSet = new Set(s.selectedClipIds);
+    if (selSet.size < 2) return s;
+    let changed = false;
+    const newSel: string[] = [];
+    const tracks = s.doc.tracks.map((t) => {
+      const sel = t.clips.filter((c) => selSet.has(c.id)).sort((a, b) => a.start - b.start);
+      if (sel.length < 2) { sel.forEach((c) => newSel.push(c.id)); return t; }
+      const merged = mergeSourceRun(sel);
+      merged.forEach((c) => newSel.push(c.id));
+      if (merged.length === sel.length) return t; // nothing folded
+      changed = true;
+      const others = t.clips.filter((c) => !selSet.has(c.id));
+      const startAt = merged.reduce((m, c) => Math.min(m, c.start), Infinity);
+      // Rebuild + ripple-pack everything at/after the merge point end-to-end.
+      let cursor = startAt;
+      const clips = [...others, ...merged]
+        .sort((a, b) => a.start - b.start)
+        .map((c) => {
+          if (c.start < startAt - 1e-6) return c; // before the merge point: untouched
+          const nc = { ...c, start: Math.round(cursor * 1000) / 1000 };
+          cursor += clipDuration(c);
+          return nc;
+        });
       return { ...t, clips };
     });
     if (!changed) return s;

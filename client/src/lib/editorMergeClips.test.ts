@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canMergeClips, mergeClips, rightNeighbour, mergeContiguousRun } from "../components/editor/editorStore";
+import { canMergeClips, mergeClips, rightNeighbour, mergeContiguousRun, canMergeSource, mergeSourceRun } from "../components/editor/editorStore";
 import type { Clip, Track } from "@shared/editorTypes";
 
 // Minimal clip factory mirroring a video source split into [0,2]+[2,5] on the timeline.
@@ -76,6 +76,30 @@ describe("mergeContiguousRun（多段连续合并）", () => {
   it("单段 / 空 原样返回", () => {
     expect(mergeContiguousRun([four[0]]).map((c) => c.id)).toEqual(["a"]);
     expect(mergeContiguousRun([])).toEqual([]);
+  });
+});
+
+describe("canMergeSource / mergeSourceRun（波纹合并：容忍时间间隙）", () => {
+  it("源连续但时间线有间隙 → canMergeSource 仍为真（canMergeClips 为假）", () => {
+    const a = clip({ id: "a", start: 0, trimIn: 0, trimOut: 2 });
+    const b = clip({ id: "b", start: 5, trimIn: 2, trimOut: 4 }); // 时间隔了，但源接上
+    expect(canMergeClips(a, b)).toBe(false);
+    expect(canMergeSource(a, b)).toBe(true);
+  });
+  it("源不连续仍不可合并", () => {
+    expect(canMergeSource(clip({ trimOut: 2 }), clip({ id: "b", start: 5, trimIn: 4, trimOut: 6 }))).toBe(false);
+  });
+  it("折叠跨间隙的同源多段为一段，保留首段起点", () => {
+    const run = [
+      clip({ id: "a", start: 0, trimIn: 0, trimOut: 2 }),
+      clip({ id: "b", start: 5, trimIn: 2, trimOut: 4 }),
+      clip({ id: "c", start: 9, trimIn: 4, trimOut: 7 }),
+    ];
+    const out = mergeSourceRun(run);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("a");
+    expect(out[0].start).toBe(0);
+    expect(out[0].trimOut).toBe(7);
   });
 });
 
