@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Loader2, Download, RotateCcw, Sparkles, Scissors, Maximize, Brush, Eraser, Lightbulb, Crop, Cloud, Cpu, type LucideIcon } from "lucide-react";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { HideWhenStudioFloating } from "../../../contexts/StudioFloatingContext";
 import { MaskCanvas } from "./MaskCanvas";
 
 const OP_ICONS: Record<string, LucideIcon> = { Scissors, Maximize, Brush, Eraser, Lightbulb, Crop };
@@ -140,6 +141,8 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
 
   return (
     <BaseNode id={id} selected={selected} nodeType="image_edit" title={data.title} minHeight={220} resizable
+      onRun={handleRun} running={isProcessing} canRun={!!srcUrl} hasResult={!!payload.outputUrl}
+      heroMedia={payload.outputUrl ? <img src={payload.outputUrl} alt="编辑结果" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} /> : undefined}
       onAssetImageDrop={(urls) => update({ sourceImageUrl: urls[0] })}>
 
       <div className="flex flex-col gap-3 p-3.5">
@@ -291,8 +294,9 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
           />
         </div>
 
-        {/* Output */}
+        {/* Output — hidden in studio's floating panel (the node card hero already shows it) */}
         {payload.outputUrl && (
+          <HideWhenStudioFloating>
           <div className="flex flex-col gap-1.5">
             <label style={labelStyle}>编辑结果</label>
             <div className="relative">
@@ -314,6 +318,7 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
               <RotateCcw style={{ width: 9, height: 9 }} /> 重置
             </button>
           </div>
+          </HideWhenStudioFloating>
         )}
 
         {/* Run */}
