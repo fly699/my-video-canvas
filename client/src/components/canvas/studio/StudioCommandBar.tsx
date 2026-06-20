@@ -49,6 +49,27 @@ function RatioPicker({ value, options, onChange }: { value: string; options: rea
   );
 }
 
+// Liblib-style segmented count: small integer tiles (×1 / ×2 / …) instead of a number
+// spinner, for "how many to generate". Used for small-range counts (e.g. imageN ≤ 8).
+function SegNumber({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (n: number) => void }) {
+  const opts: number[] = [];
+  for (let i = min; i <= max; i++) opts.push(i);
+  return (
+    <div className="nodrag" title={label} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span style={{ fontSize: 10, color: "var(--c-t4)", fontWeight: 600 }}>数量</span>
+      {opts.map((i) => {
+        const on = i === value;
+        return (
+          <button key={i} className="studio-chip" onClick={(e) => { e.stopPropagation(); onChange(i); }}
+            style={{ ...chip, minWidth: 30, padding: "0 7px", justifyContent: "center", display: "inline-flex", alignItems: "center", maxWidth: "none",
+              borderColor: on ? "var(--ui-accent)" : "var(--c-bd2)", color: on ? "var(--c-t1)" : "var(--c-t3)", fontWeight: on ? 700 : 600,
+              background: on ? "color-mix(in oklab, var(--ui-accent) 15%, var(--c-input))" : "var(--c-input)" }}>{i}</button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Compact inline control styling — small "pill" dropdowns/inputs that sit in one row.
 const chip: React.CSSProperties = {
   fontSize: 12, fontWeight: 600, height: 32, padding: "0 9px", borderRadius: 9,
@@ -187,6 +208,10 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
           }
           if (def.type === "number") {
             const cur = (payload[def.key] as number | undefined) ?? def.default ?? def.min ?? 1;
+            // 生成数量（imageN，小范围）→ Liblib 式分段数量块
+            if (def.key === "imageN" && typeof def.max === "number" && def.max >= 2 && def.max <= 8) {
+              return <SegNumber key={def.key} label={def.label} value={cur} min={def.min ?? 1} max={def.max} onChange={(n) => set({ [def.key]: n })} />;
+            }
             return (
               <input key={def.key} type="number" className="nodrag studio-chip" title={def.label} value={cur} min={def.min} max={def.max} step={def.step ?? 1}
                 onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) set({ [def.key]: n }); }} style={{ ...chip, width: 72, maxWidth: 72 }} />

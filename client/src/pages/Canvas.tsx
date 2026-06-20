@@ -48,6 +48,7 @@ import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
+import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
 import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
@@ -2609,6 +2610,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </div>
           </ReactFlow>
           </WorkflowRunProvider>
+
+          {/* Studio fullscreen media viewer (opened from a node hero) */}
+          <Lightbox />
 
           <ConnectionHintsPanel
             visible={showConnectionHints}

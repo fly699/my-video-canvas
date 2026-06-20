@@ -15,8 +15,9 @@ import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useUIStyle } from "../../contexts/UIStyleContext";
 import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioCommandBar";
+import { useLightbox } from "./studio/Lightbox";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2,
 } from "lucide-react";
 import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -225,6 +226,18 @@ export const BaseNode = memo(function BaseNode({
     if (n?.data.nodeType === "image_edit" && typeof p?.outputUrl === "string") return p.outputUrl as string;
     return "";
   });
+  // All result images of this node (image_gen batch → imageUrls) for lightbox ←/→ paging.
+  const heroImageList = useCanvasStore((s) => {
+    const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
+    const arr = Array.isArray(p?.imageUrls) ? (p!.imageUrls as unknown[]).filter((u): u is string => typeof u === "string") : [];
+    return arr.join("\n");
+  });
+  const openLightbox = () => {
+    if (resultVideoUrl) { useLightbox.getState().open([resultVideoUrl], 0, "video", title); return; }
+    if (!resultImageUrl) return;
+    const list = heroImageList ? heroImageList.split("\n") : [resultImageUrl];
+    useLightbox.getState().open(list, Math.max(0, list.indexOf(resultImageUrl)), "image", title);
+  };
   // A previewable node that has a result and is NOT being edited (not selected,
   // not pinned) renders collapsed: only the title bar + warning/error/progress +
   // the hero preview. In that state drop the min-height floor so the node shrinks
@@ -891,6 +904,19 @@ export const BaseNode = memo(function BaseNode({
       {hasHero && (
         <div className="node-hero-media">
           {heroMedia}
+          {/* Studio: fullscreen lightbox trigger on the result media */}
+          {isStudio && (resultVideoUrl || resultImageUrl) && (
+            <button
+              className="nodrag studio-toolbtn"
+              onClick={(e) => { e.stopPropagation(); openLightbox(); }}
+              title="全屏预览"
+              style={{ position: "absolute", top: 6, right: 6, zIndex: 6, width: 26, height: 26, borderRadius: 8,
+                border: "1px solid oklch(1 0 0 / 0.18)", background: "oklch(0 0 0 / 0.45)", color: "#fff",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <Maximize2 size={13} />
+            </button>
+          )}
         </div>
       )}
 
