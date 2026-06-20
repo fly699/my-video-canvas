@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { ArrowUp, Sparkles, X, History, Trash2, ChevronDown } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
@@ -43,6 +43,7 @@ export function StudioCreateBar() {
   const [history, setHistory] = useState<HistItem[]>(readHist);
   const [showHist, setShowHist] = useState(false);
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(COLLAPSE_KEY) === "1"; } catch { return false; } });
+  const taRef = useRef<HTMLTextAreaElement>(null);
   const toggleCollapsed = (v: boolean) => { setCollapsed(v); try { localStorage.setItem(COLLAPSE_KEY, v ? "1" : "0"); } catch { /* quota */ } };
 
   if (uiStyle !== "studio" || anySelected) return null;
@@ -78,6 +79,7 @@ export function StudioCreateBar() {
     });
     st.setNodes(st.nodes.map((n) => ({ ...n, selected: n.id === node!.id })));
     if (run && text) { st.requestRun(null, [node.id]); toast.success(refUrl ? "已创建图生图并开始生成" : "已创建并开始生成", { duration: 1200 }); }
+    else { toast.success("已在画布中心创建图像节点（可继续配置）", { duration: 1400 }); }
     if (text) {
       const item: HistItem = { prompt: text, model: mdl, ratio, refUrl: refUrl || undefined, t: Date.now() };
       setHistory((prev) => {
@@ -136,6 +138,7 @@ export function StudioCreateBar() {
 
       <div style={{ position: "relative" }}>
         <textarea
+          ref={taRef}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (text) create(true); } }}
@@ -183,13 +186,12 @@ export function StudioCreateBar() {
               fontSize: 12, fontWeight: 600, background: "var(--c-surface)", color: "var(--c-t2)" }}
           >仅创建</button>
           <button
-            onClick={() => create(true)}
-            disabled={!text}
-            title="创建并生成"
+            onClick={() => { if (!text) { taRef.current?.focus(); toast.error("请先输入提示词，再点生成"); return; } create(true); }}
+            title="创建并生成（⌘/Ctrl+Enter）"
             className="studio-send" data-state={text ? "run" : "off"}
             style={{ width: 36, height: 36, borderRadius: "50%", border: "none", flexShrink: 0,
               background: text ? "#fff" : "var(--c-surface)", color: text ? "#111" : "var(--c-t4)",
-              cursor: text ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center" }}
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
           ><ArrowUp size={17} /></button>
         </div>
       </div>
