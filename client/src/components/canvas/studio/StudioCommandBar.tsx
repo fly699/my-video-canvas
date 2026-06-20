@@ -582,6 +582,23 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
     controls: [{ key: "guidanceScale", type: "number", label: "引导强度", min: 1, max: 10, step: 0.5, default: 3.5, width: 84 }],
     refImages: true,
   },
+  image_edit: {
+    text: { field: "prompt", placeholder: "编辑指令（局部重绘/擦除/重打光需要；抠图/扩图可选）…", enhance: true },
+    controls: [
+      { key: "operation", type: "select", label: "操作", options: [
+        { value: "remove_bg", label: "抠图去背" },
+        { value: "outpaint", label: "扩图外扩" },
+        { value: "inpaint", label: "局部重绘" },
+        { value: "erase", label: "擦除物体" },
+        { value: "relight", label: "重打光" },
+        { value: "reframe", label: "改比例" },
+      ] },
+      { key: "backend", type: "select", label: "后端", options: [{ value: "cloud", label: "云端" }, { value: "comfyui", label: "本地 ComfyUI" }] },
+      { key: "aspectRatio", type: "select", label: "画幅", options: ["original", ...RATIOS] },
+      { key: "ckpt", type: "text", label: "Checkpoint", placeholder: "本地模型(comfyui)", width: 140 },
+    ],
+    // 源图来自上游图像节点连线（自动），不走通用 referenceImages 数组，故不开 refImages。
+  },
   character: {
     tabsField: "characterKind",
     tabs: [
