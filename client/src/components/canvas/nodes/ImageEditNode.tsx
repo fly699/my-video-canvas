@@ -14,6 +14,18 @@ import { Loader2, Download, RotateCcw, Sparkles, Scissors, Maximize, Brush, Eras
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { HideWhenStudioFloating } from "../../../contexts/StudioFloatingContext";
 import { MaskCanvas } from "./MaskCanvas";
+import { ModelPicker, type ModelPickerOption } from "../ModelPicker";
+import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
+
+// Edit-model options for the rich ModelPicker: provider-grouped + per-model 点数 label
+// (via estimateImageCost, same as image-gen). Built once.
+const IMAGE_EDIT_MODEL_OPTIONS: ModelPickerOption[] = [
+  { value: "", label: "默认（Higgsfield · Flux Pro Kontext）", group: "默认", family: "默认" },
+  ...IMAGE_EDIT_MODEL_GROUPS.flatMap((g) => g.models.map((m) => {
+    const c = estimateImageCost(m.value);
+    return { value: m.value, label: m.label, group: g.label, family: g.label, costLabel: c ? costEstimateLabel(c) : undefined };
+  })),
+];
 
 const OP_ICONS: Record<string, LucideIcon> = { Scissors, Maximize, Brush, Eraser, Lightbulb, Crop };
 
@@ -222,15 +234,8 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
         {backend === "cloud" && (
           <div>
             <label style={labelStyle}>编辑模型</label>
-            <select className="nodrag" value={payload.model ?? ""} onChange={(e) => update({ model: e.target.value || undefined })}
-              style={{ ...fieldStyle, cursor: "pointer" }}>
-              <option value="">默认（Higgsfield · Flux Pro Kontext）</option>
-              {IMAGE_EDIT_MODEL_GROUPS.map((g) => (
-                <optgroup key={g.provider} label={g.label}>
-                  {g.models.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </optgroup>
-              ))}
-            </select>
+            <ModelPicker value={payload.model ?? ""} onChange={(v) => update({ model: v || undefined })}
+              options={IMAGE_EDIT_MODEL_OPTIONS} disabled={isProcessing} minWidth={260} accent={accent} />
           </div>
         )}
 
