@@ -975,6 +975,16 @@
   :root[data-ui="studio"] .studio-send[data-state="running"] { animation: none; }
 }
 
+/* Studio floating toolbars (node top toolbar + group toolbar): button hover lift —
+   brighten + nudge so the icon/label buttons feel responsive like the command-bar chips. */
+:root[data-ui="studio"] .studio-toolbtn {
+  transition: filter 120ms ease, transform 120ms ease, background-color 120ms ease;
+}
+:root[data-ui="studio"] .studio-toolbtn:not(:disabled):hover {
+  filter: brightness(1.14);
+  transform: translateY(-1px);
+}
+
 /* ── Button active state ────────────────────────────────────────────────────── */
 button:active:not(:disabled) {
   transform: scale(0.97);
@@ -1254,6 +1264,14 @@ button:active:not(:disabled) {
   display: block;
   object-fit: contain;
   max-height: 300px;
+}
+/* Studio: when selected, inset the hero into a rounded media block with a hairline
+   ring so the result reads as a framed preview (media-first card), not a flush band. */
+:root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media {
+  width: calc(100% - 16px);
+  margin: 2px 8px 8px;
+  border-radius: var(--ui-radius-ctl, 11px);
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.08);
 }
 /* No result yet → always show body (script, note, ai_chat, unconfigured gen nodes). */
 [data-has-hero="false"] .node-body-wrap {
