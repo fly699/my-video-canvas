@@ -85,7 +85,12 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
     setChatTemplate(id);
     localStorage.setItem("chat:aiTemplate", id);
     const name = id ? (ALL_AI_TEMPLATES.find((t) => t.id === id)?.label ?? id) : "默认助手";
-    toast.success(`已切换 AI 助手模板：${name}`, { duration: 1500 });
+    // 已有历史时，旧角色可能因对话惯性残留——提示用「新对话」彻底切换。
+    if (id && isAI && messages.length > 0) {
+      toast.success(`已切换模板：${name}。若 AI 仍沿用旧角色，点右上角「新对话」清空历史即可彻底切换`, { duration: 4000 });
+    } else {
+      toast.success(`已切换 AI 助手模板：${name}`, { duration: 1500 });
+    }
   };
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
