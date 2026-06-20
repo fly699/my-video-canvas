@@ -645,11 +645,17 @@ export interface PostProcessNodeData {
 export type ImageEditOp = "remove_bg" | "outpaint" | "inpaint" | "erase" | "relight" | "reframe";
 export interface ImageEditNodeData {
   operation?: ImageEditOp;
-  /** Edit-capable image model (subset of IMAGE_GEN_MODELS). Empty = server default. */
+  /** cloud = Higgsfield/KIE/Poyo edit models; comfyui = local ComfyUI inpaint/img2img. */
+  backend?: "cloud" | "comfyui";
+  /** Edit-capable image model (subset of IMAGE_GEN_MODELS). Empty = server default. (cloud) */
   model?: string;
+  /** ComfyUI server URL (empty → server-side COMFYUI_BASE_URL). (comfyui) */
+  comfyBaseUrl?: string;
+  /** ComfyUI checkpoint name (required for comfyui backend). */
+  ckpt?: string;
   /** Source image — auto-detected from an upstream image node, or pasted manually. */
   sourceImageUrl?: string;
-  /** Optional mask (for inpaint/erase) — painted region passed as extra context. */
+  /** Mask (inpaint/erase). cloud: extra context image; comfyui: true inpaint mask. */
   maskUrl?: string;
   /** User instruction (relight look / outpaint scene / inpaint fill / erase target). */
   prompt?: string;

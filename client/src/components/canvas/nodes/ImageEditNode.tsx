@@ -7,11 +7,12 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { getNodeImageOutput } from "@/lib/canvasPassthrough";
 import type { ImageEditNodeData, ImageEditOp } from "../../../../../shared/types";
-import { IMAGE_EDIT_OPS, IMAGE_EDIT_MODEL_GROUPS, getImageEditOp } from "../../../../../shared/imageEdit";
+import { IMAGE_EDIT_OPS, IMAGE_EDIT_MODEL_GROUPS, getImageEditOp, buildImageEditInstruction, comfyTemplateForOp, comfyDenoiseForOp } from "../../../../../shared/imageEdit";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Loader2, Download, RotateCcw, Sparkles, Scissors, Maximize, Brush, Eraser, Lightbulb, Crop, type LucideIcon } from "lucide-react";
+import { Loader2, Download, RotateCcw, Sparkles, Scissors, Maximize, Brush, Eraser, Lightbulb, Crop, Cloud, Cpu, type LucideIcon } from "lucide-react";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { MaskCanvas } from "./MaskCanvas";
 
 const OP_ICONS: Record<string, LucideIcon> = { Scissors, Maximize, Brush, Eraser, Lightbulb, Crop };
 
@@ -63,25 +64,62 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
     return undefined;
   }, [edges, nodes, id]);
 
+  const backend: "cloud" | "comfyui" = payload.backend ?? "cloud";
+  const srcUrl = payload.sourceImageUrl?.trim() || sourceImageUrl;
+
+  const onResult = useCallback((url?: string) => {
+    if (!url) { update({ status: "failed", errorMessage: "未返回结果图像" }); toast.error("编辑失败：未返回图像"); return; }
+    update({ outputUrl: url, status: "done", errorMessage: undefined });
+    propagateRefImage(id, url);
+    toast.success("图像编辑完成");
+  }, [id, update]);
+  const onFail = useCallback((msg: string) => { update({ status: "failed", errorMessage: msg }); toast.error("编辑失败：" + msg); }, [update]);
+
   const editMutation = trpc.imageEdit.run.useMutation({
-    onSuccess: (result) => {
-      if (!result.url) { update({ status: "failed", errorMessage: "未返回结果图像" }); toast.error("编辑失败：未返回图像"); return; }
-      update({ outputUrl: result.url, status: "done", errorMessage: undefined });
-      propagateRefImage(id, result.url);
-      toast.success("图像编辑完成");
-    },
-    onError: (err) => { update({ status: "failed", errorMessage: err.message }); toast.error("编辑失败：" + err.message); },
+    onSuccess: (result) => onResult(result.url),
+    onError: (err) => onFail(err.message),
+  });
+  const comfyMutation = trpc.comfyui.generateImage.useMutation({
+    onSuccess: (result) => onResult(result.url),
+    onError: (err) => onFail(err.message),
+  });
+  // Mask painter → upload → maskUrl (comfyui inpaint needs a real mask).
+  const uploadMutation = trpc.upload.uploadImage.useMutation({
+    onSuccess: (result) => update({ maskUrl: result.url }),
+    onError: (err) => toast.error("蒙版上传失败：" + err.message),
   });
 
-  const isProcessing = payload.status === "processing" || editMutation.isPending;
+  const isProcessing = payload.status === "processing" || editMutation.isPending || comfyMutation.isPending;
 
   const handleRun = () => {
-    if (editMutation.isPending) return;
-    const srcUrl = payload.sourceImageUrl?.trim() || sourceImageUrl;
+    if (editMutation.isPending || comfyMutation.isPending) return;
     if (!srcUrl) { toast.error("请先连接上游图像节点，或填写源图 URL"); return; }
     const prompt = payload.prompt?.trim() ?? "";
     if (opSpec.needsPrompt && !prompt) { toast.error(`「${opSpec.label}」需要填写说明`); return; }
     if (prompt.length > 1000) { toast.error("说明上限 1000 字，请截断"); return; }
+
+    if (backend === "comfyui") {
+      const ckpt = payload.ckpt?.trim();
+      if (!ckpt) { toast.error("ComfyUI 后端需填写 checkpoint 模型名"); return; }
+      const template = comfyTemplateForOp(operation, !!payload.maskUrl?.trim());
+      if (template === "inpaint" && !payload.maskUrl?.trim()) { toast.error("局部重绘/擦除请先涂抹蒙版"); return; }
+      // Compose the edit instruction client-side (same builder the cloud route uses server-side).
+      const instruction = buildImageEditInstruction(operation, prompt, opSpec.needsAspect ? payload.aspectRatio : undefined).slice(0, 2000);
+      update({ status: "processing", errorMessage: undefined });
+      comfyMutation.mutate({
+        nodeId: id,
+        projectId: data.projectId,
+        ...(payload.comfyBaseUrl?.trim() ? { customBaseUrl: payload.comfyBaseUrl.trim() } : {}),
+        workflowTemplate: template,
+        prompt: instruction || "edit",
+        ckpt,
+        referenceImageUrl: srcUrl,
+        ...(template === "inpaint" ? { maskUrl: payload.maskUrl!.trim() } : { denoise: comfyDenoiseForOp(operation) }),
+      });
+      return;
+    }
+
+    // cloud backend (Higgsfield / KIE / Poyo edit models)
     update({ status: "processing", errorMessage: undefined });
     editMutation.mutate({
       sourceImageUrl: srcUrl,
@@ -89,9 +127,16 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
       ...(payload.model ? { model: payload.model } : {}),
       ...(prompt ? { prompt } : {}),
       ...(opSpec.needsAspect && payload.aspectRatio ? { aspectRatio: payload.aspectRatio } : {}),
+      ...(payload.maskUrl?.trim() ? { maskUrl: payload.maskUrl.trim() } : {}),
       ...(data.projectId ? { projectId: data.projectId } : {}),
     });
   };
+
+  const exportMask = useCallback((dataUrl: string) => {
+    if (!dataUrl) { update({ maskUrl: undefined }); return; }
+    const base64 = dataUrl.split(",")[1];
+    if (base64) uploadMutation.mutate({ base64, mimeType: "image/png", filename: "image-edit-mask.png" });
+  }, [update, uploadMutation]);
 
   return (
     <BaseNode id={id} selected={selected} nodeType="image_edit" title={data.title} minHeight={220} resizable
@@ -124,6 +169,27 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
           <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: "5px 0 0" }}>{opSpec.desc}</p>
         </div>
 
+        {/* Backend toggle: cloud edit models vs. local ComfyUI */}
+        <div>
+          <label style={labelStyle}>后端</label>
+          <div className="flex gap-1.5">
+            {([["cloud", "云端一键", Cloud], ["comfyui", "本地 ComfyUI", Cpu]] as const).map(([val, lbl, Icon]) => {
+              const active = backend === val;
+              return (
+                <button key={val} onClick={() => update({ backend: val })}
+                  className="nodrag flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10.5px] font-medium transition-all"
+                  style={{
+                    background: active ? accentA(0.16) : "var(--c-input)",
+                    border: active ? `1.5px solid ${accentA(0.5)}` : "1px solid var(--c-bd1)",
+                    color: active ? accent : "var(--c-t4)", cursor: "pointer",
+                  }}>
+                  <Icon style={{ width: 11, height: 11 }} /> {lbl}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Status / error */}
         {isProcessing && (
           <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
@@ -150,18 +216,53 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
         )}
 
         {/* Model (provider-grouped = the three cloud backends) */}
-        <div>
-          <label style={labelStyle}>编辑模型</label>
-          <select className="nodrag" value={payload.model ?? ""} onChange={(e) => update({ model: e.target.value || undefined })}
-            style={{ ...fieldStyle, cursor: "pointer" }}>
-            <option value="">默认（Higgsfield · Flux Pro Kontext）</option>
-            {IMAGE_EDIT_MODEL_GROUPS.map((g) => (
-              <optgroup key={g.provider} label={g.label}>
-                {g.models.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </optgroup>
-            ))}
-          </select>
-        </div>
+        {backend === "cloud" && (
+          <div>
+            <label style={labelStyle}>编辑模型</label>
+            <select className="nodrag" value={payload.model ?? ""} onChange={(e) => update({ model: e.target.value || undefined })}
+              style={{ ...fieldStyle, cursor: "pointer" }}>
+              <option value="">默认（Higgsfield · Flux Pro Kontext）</option>
+              {IMAGE_EDIT_MODEL_GROUPS.map((g) => (
+                <optgroup key={g.provider} label={g.label}>
+                  {g.models.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* ComfyUI backend config */}
+        {backend === "comfyui" && (
+          <>
+            <div>
+              <label style={labelStyle}>ComfyUI 服务器 URL（留空用服务端默认）</label>
+              <NodeInput className="nodrag" placeholder="http://127.0.0.1:8188" value={payload.comfyBaseUrl ?? ""}
+                onValueChange={(v) => update({ comfyBaseUrl: v })} style={fieldStyle}
+                onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Checkpoint 模型名（必填）</label>
+              <NodeInput className="nodrag" placeholder="如 sd_xl_base_1.0.safetensors" value={payload.ckpt ?? ""}
+                onValueChange={(v) => update({ ckpt: v })} style={fieldStyle}
+                onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
+            </div>
+            <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: 0 }}>
+              本地后端：局部重绘/擦除走真·蒙版 inpaint；其余操作走 img2img 重绘（重打光/改比例等以指令引导）。
+            </p>
+          </>
+        )}
+
+        {/* Mask painter (inpaint / erase) — required for ComfyUI inpaint, optional context for cloud */}
+        {(operation === "inpaint" || operation === "erase") && srcUrl && (
+          <div>
+            <label style={labelStyle}>蒙版（涂抹要编辑的区域）{backend === "comfyui" ? " *" : "（可选）"}</label>
+            <MaskCanvas imageUrl={srcUrl} onExport={exportMask} accent={accent} />
+            {payload.maskUrl && <p style={{ fontSize: 9.5, color: "oklch(0.65 0.18 145)", margin: "2px 0 0" }}>✓ 蒙版已就绪</p>}
+            {uploadMutation.isPending && <p style={{ fontSize: 9.5, color: "var(--c-t4)", margin: "2px 0 0" }}>蒙版上传中…</p>}
+          </div>
+        )}
 
         {/* Aspect (outpaint / reframe) */}
         {opSpec.needsAspect && (
@@ -224,7 +325,7 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
         </button>
 
         <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: 0 }}>
-          云端一键编辑（Higgsfield / KIE / Poyo 可选）。本地 ComfyUI 局部重绘/放大仍可用 ComfyUI 图像节点。
+          云端一键（Higgsfield / KIE / Poyo）或本地 ComfyUI（inpaint / img2img）。结果自动入库并可下游直传。
         </p>
       </div>
     </BaseNode>

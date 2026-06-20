@@ -109,6 +109,28 @@ export const IMAGE_EDIT_MODELS: string[] = IMAGE_EDIT_MODEL_GROUPS.flatMap((g) =
 /** Server default when the node leaves model empty — same proven path as pose_control. */
 export const DEFAULT_IMAGE_EDIT_MODEL = "hf_flux_pro";
 
+// ── ComfyUI-local backend mapping ─────────────────────────────────────────────
+// Maps an edit operation (+ whether a painted mask exists) to the ComfyUI
+// workflowTemplate the comfyui.generateImage executor understands. Mask-based ops
+// (inpaint/erase with a mask) → true "inpaint"; everything else → "img2img"
+// restyle from the source. Pure & unit-tested.
+export function comfyTemplateForOp(op: ImageEditOp, hasMask: boolean): "inpaint" | "img2img" {
+  if ((op === "inpaint" || op === "erase") && hasMask) return "inpaint";
+  return "img2img";
+}
+
+/** ComfyUI img2img denoise per op: lower = preserve more of the source. Inpaint
+ *  uses the executor default (full denoise inside the mask). */
+export function comfyDenoiseForOp(op: ImageEditOp): number {
+  switch (op) {
+    case "relight": return 0.55;   // keep structure, change light
+    case "reframe": return 0.5;
+    case "remove_bg": return 0.6;
+    case "outpaint": return 0.7;
+    default: return 0.65;
+  }
+}
+
 // ── Instruction builder ───────────────────────────────────────────────────────
 // Turns (operation + optional user text + optional aspect) into a single English
 // edit instruction for the edit model. Pure & deterministic → unit-tested.

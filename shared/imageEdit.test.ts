@@ -6,6 +6,8 @@ import {
   DEFAULT_IMAGE_EDIT_MODEL,
   getImageEditOp,
   buildImageEditInstruction,
+  comfyTemplateForOp,
+  comfyDenoiseForOp,
 } from "./imageEdit";
 import { IMAGE_GEN_MODELS, type ImageEditOp } from "./types";
 
@@ -73,6 +75,28 @@ describe("buildImageEditInstruction", () => {
   it("produces a non-empty string for every op", () => {
     for (const op of IMAGE_EDIT_OPS) {
       expect(buildImageEditInstruction(op.id as ImageEditOp, "test").length).toBeGreaterThan(10);
+    }
+  });
+});
+
+describe("ComfyUI backend mapping", () => {
+  it("inpaint/erase WITH a mask → true inpaint; otherwise img2img", () => {
+    expect(comfyTemplateForOp("inpaint", true)).toBe("inpaint");
+    expect(comfyTemplateForOp("erase", true)).toBe("inpaint");
+    expect(comfyTemplateForOp("inpaint", false)).toBe("img2img"); // no mask → can't inpaint
+    expect(comfyTemplateForOp("erase", false)).toBe("img2img");
+  });
+  it("non-mask ops always map to img2img regardless of mask", () => {
+    for (const op of ["remove_bg", "outpaint", "relight", "reframe"] as const) {
+      expect(comfyTemplateForOp(op, true)).toBe("img2img");
+      expect(comfyTemplateForOp(op, false)).toBe("img2img");
+    }
+  });
+  it("denoise is a valid 0..1 strength for every op (structure-preserving < 1)", () => {
+    for (const op of IMAGE_EDIT_OPS) {
+      const d = comfyDenoiseForOp(op.id as ImageEditOp);
+      expect(d).toBeGreaterThan(0);
+      expect(d).toBeLessThanOrEqual(1);
     }
   });
 });
