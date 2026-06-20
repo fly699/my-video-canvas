@@ -88,6 +88,11 @@ export function Lightbox() {
         <button onClick={close} title="关闭 (Esc)" style={btn}><X size={17} /></button>
       </div>
 
+      {/* keyboard hint */}
+      <div style={{ position: "fixed", top: 22, left: 18, fontSize: 11.5, color: "oklch(0.78 0 0)", pointerEvents: "none", fontWeight: 500 }}>
+        {multi ? "← → 切换 · " : ""}Esc 关闭
+      </div>
+
       {/* prev / next */}
       {multi && (
         <>

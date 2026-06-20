@@ -998,7 +998,7 @@
   opacity: 1;
   pointer-events: auto;
 }
-:root[data-ui="studio"] .studio-quickrun:not(:disabled):hover { transform: translateY(-1px); }
+:root[data-ui="studio"] .studio-quickrun button:not(:disabled):hover { transform: translateY(-1px); }
 
 /* ── Button active state ────────────────────────────────────────────────────── */
 button:active:not(:disabled) {
