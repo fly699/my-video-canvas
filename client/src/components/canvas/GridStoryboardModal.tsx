@@ -5,17 +5,16 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { X, Grid2x2, Loader2, Sparkles, Scissors, Clapperboard } from "lucide-react";
 import { GRID_PRESETS, getGridPreset, gridCellCount, buildGridPrompt } from "../../../../shared/grid";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption } from "./ModelPicker";
 
 const ACCENT = "oklch(0.65 0.20 160)"; // storyboard 绿
 const accentA = (a: number) => `oklch(0.65 0.20 160 / ${a})`;
 
 // 网格分镜起稿：生成（或粘贴）一张 N 宫格大图 → 切分为 N 张 → 各落成一个分镜节点。
-const GRID_MODELS = [
-  { value: "", label: "默认生图模型" },
-  { value: "poyo_nano_banana_pro", label: "Nano Banana Pro" },
-  { value: "poyo_seedream_4", label: "Seedream 4" },
-  { value: "hf_seedream_v4", label: "Seedream 4 (HF)" },
-  { value: "poyo_flux", label: "Flux 2 Pro" },
+// 用与图像生成节点同一套完整模型列表（含分组/搜索/点数），而不是写死的少量几个。
+const GRID_MODEL_OPTIONS: ModelPickerOption[] = [
+  { value: "", label: "默认生图模型（服务端推荐）", group: "默认", family: "默认" },
+  ...IMAGE_MODEL_PICKER_OPTIONS,
 ];
 
 export function GridStoryboardModal({ projectId, onClose }: { projectId: number; onClose: () => void }) {
@@ -187,9 +186,7 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
             </div>
             <div>
               <label style={labelStyle}>生图模型</label>
-              <select value={model} onChange={(e) => setModel(e.target.value)} disabled={busy} style={{ ...inputStyle, cursor: "pointer" }}>
-                {GRID_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
+              <ModelPicker value={model} onChange={setModel} options={GRID_MODEL_OPTIONS} disabled={busy} minWidth={300} accent="oklch(0.62 0.17 150)" />
             </div>
           </>
         )}
