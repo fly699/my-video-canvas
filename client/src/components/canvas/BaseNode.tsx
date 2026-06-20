@@ -478,6 +478,26 @@ export const BaseNode = memo(function BaseNode({
         </NodeToolbar>
       )}
 
+      {/* Studio: hover quick-run — re-run this node without selecting/expanding it.
+          Reuses the exact onRun the toolbar uses; visibility is pure CSS (node hover,
+          non-selected). Only for runnable nodes. */}
+      {isStudio && onRun && (
+        <button
+          className="studio-quickrun nodrag"
+          onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
+          disabled={!canRun || nodeRunning}
+          title={nodeRunning ? "生成中…" : (hasResult ? "重新生成" : "运行")}
+          style={{ position: "absolute", bottom: 8, right: 8, zIndex: 7, width: 30, height: 30, borderRadius: "50%",
+            border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+            background: !canRun || nodeRunning ? "var(--c-surface)" : "#fff",
+            color: !canRun || nodeRunning ? "var(--c-t4)" : "#111",
+            cursor: !canRun || nodeRunning ? "not-allowed" : "pointer",
+            boxShadow: "0 3px 12px oklch(0 0 0 / 0.4)" }}
+        >
+          {nodeRunning ? <Loader2 size={14} className="animate-spin" /> : (hasResult ? <RefreshCw size={14} /> : <Play size={14} />)}
+        </button>
+      )}
+
       {/* 素材拖入高亮 */}
       {assetDragOver && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center" style={{ borderRadius: "var(--ui-radius-node, 16px)", border: `2px dashed ${config.color}`, background: `${config.color}14` }}>
