@@ -446,6 +446,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // 绿点指示：结果图是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
   const imgStoredInMinio = isOwnStorageUrl(payload.imageUrl);
 
+  // 收缩态 hero 兜底：尚无生成结果、但已有参考图时，用参考图作为预览。
+  // 否则工作室收缩后（无 inline body）整个节点只剩标题栏，参考图根本看不见。
+  const heroRefUrl = refImages.images[0]?.url ?? payload.referenceImageUrl ?? payload.referenceImages?.[0];
+
   // Collapsed hero: a multi-image batch shows the whole grid by default
   // ("grid"); "single" falls back to just the selected image.
   const heroShowGrid = hasMultiple && payload.heroView !== "single";
@@ -512,6 +516,24 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           放大
         </button>
       </div>
+    </div>
+  ) : heroRefUrl ? (
+    // 无结果但有参考图 → 收缩时把参考图当 hero 预览（带「参考图」角标），
+    // 避免工作室收缩后只剩标题栏、参考图完全看不见。
+    <div className="relative overflow-hidden" style={{ width: "100%", background: "var(--c-canvas)" }}>
+      <MediaImage
+        src={heroRefUrl}
+        alt="参考图"
+        className="w-full"
+        draggable={false}
+        style={{ display: "block", objectFit: "contain", maxHeight: 240 }}
+      />
+      <span
+        className="absolute top-1.5 left-1.5 z-10 rounded-md pointer-events-none"
+        style={{ fontSize: 9.5, fontWeight: 700, color: "#fff", background: "oklch(0 0 0 / 0.55)", padding: "2px 7px" }}
+      >
+        参考图
+      </span>
     </div>
   ) : null;
 
