@@ -57,6 +57,7 @@ export type AuditAction =
   | "login_email"
   | "login_oauth"
   | "image_gen"
+  | "image_edit"
   | "video_gen"
   | "audio_music"
   | "audio_dubbing"

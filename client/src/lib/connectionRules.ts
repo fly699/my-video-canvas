@@ -9,14 +9,16 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   // image_gen → storyboard：精修工位回链——分镜「送精修」后图像节点连回分镜，
   // 出图仅作为「关键帧候选」供分镜显式点「采用此图」，无任何自动写入。
-  image_gen: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_video", "comfyui_workflow", "storyboard"],
+  image_gen: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
+  // image_edit 输出仍是一张图：可作 i2v 首帧、存素材、当角色/参考图、回链分镜关键帧、或再串一次编辑。
+  image_edit: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   // audio → audio: 把一段音频作为本地 VoxCPM 配音的参考音色喂给下游音频节点。
   // audio → comfyui_workflow: 作为自定义工作流的音频参数来源（VHS_LoadAudioUpload 等）。
   // audio → merge：合并节点自动把连入的音频节点用作整片背景音乐（MergeNode 的
   // detectedBgMusicUrl），智能体「整体配乐连入 merge」与手动拖线都走这条。
   audio: ["clip", "audio", "comfyui_workflow", "merge"],
-  asset: ["image_gen", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
+  asset: ["image_gen", "image_edit", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
   ai_chat: ["script", "storyboard", "prompt"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   post_process: ["video_task", "image_gen", "asset"],
@@ -30,7 +32,7 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   subtitle: ["asset", "merge"],
   subtitle_motion: ["asset", "merge"],
   smart_cut: ["asset", "merge"],
-  pose_control: ["image_gen", "asset"],
+  pose_control: ["image_gen", "image_edit", "asset"],
   // voice_clone / lip_sync / avatar are "即将上线" placeholders (no payload logic,
   // handles disabled) — keep them out of the matrix so we don't advertise
   // connections that can't actually be made. Restore their edges (see git
@@ -42,9 +44,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // VIDEO_SOURCE_TYPES 已认 merge 为视频源）。此前 merge 仅允许 → asset/clip，导致
   // 「合并 → 合并」串联与智能体建线判定失败。
   merge: ["asset", "clip", "merge"],
-  comfyui_image: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
+  comfyui_image: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
   comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "comfyui_image", "comfyui_video", "comfyui_workflow"],
-  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "image_gen", "comfyui_workflow", "comfyui_image", "comfyui_video"],
+  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "image_gen", "image_edit", "comfyui_workflow", "comfyui_image", "comfyui_video"],
   note: [],
   group: [],
   // The agent (Copilot) orchestrates by CREATING nodes via chat, not via edges —
@@ -148,6 +150,11 @@ export const CONNECTION_HINTS: Record<
     label: "后处理",
     outgoing: "→ 视频任务 / 图像生成 / 素材（效果注入）",
     incoming: "← 图像 / 视频 / 素材",
+  },
+  image_edit: {
+    label: "图像编辑",
+    outgoing: "→ 视频任务（i2v 首帧）/ 素材 / 角色 / 图像生成（参考图）/ 分镜（关键帧）/ 图像编辑（再串）",
+    incoming: "← 图像生成 / ComfyUI 图像·自定义 / 素材 / 构图控制",
   },
   group: {
     label: "分组",

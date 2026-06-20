@@ -1054,6 +1054,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { speed: 1.0, audioVolume: 1.0, status: "idle" };
     case "post_process":
       return { selectedEffects: [], effectIntensities: {}, generatedPrompt: "" };
+    case "image_edit":
+      return { operation: "remove_bg", prompt: "", status: "idle" };
     case "merge":
       return { transition: "none", transitionDuration: 0.5, bgMusicVolume: 0.3, status: "idle" };
     case "subtitle":
