@@ -1321,6 +1321,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   return (
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}
+      onRun={handleSubmit} running={createTaskMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim()} hasResult={payload.status === "succeeded"}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={

@@ -18,6 +18,7 @@ import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { detectWorkflowFormat, extractComfyWorkflowsFromPng } from "@/lib/comfyWorkflowImport";
 import { MediaImage } from "../MediaImage";
+import { RefHeroPreview } from "../RefHeroPreview";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ImageLightbox } from "../ImageLightbox";
@@ -689,6 +690,22 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const stripOpen = docks.refOpen;
   const setStripOpen = docks.setRefOpen;
 
+  // 收缩态 hero：有结果显示首个输出（视频/图像按 outputType），否则用工作流的图像参数
+  // （paramImages = 参考图）兜底——否则工作室收缩后整张卡片只剩标题栏，结果/参考都看不见。
+  const wfHero = (payload.status === "done" && payload.outputUrls && payload.outputUrls.length > 0) ? (
+    payload.outputType === "video" ? (
+      <div className="relative" style={{ width: "100%" }}>
+        <WatermarkedVideo block src={payload.outputUrls[0]} controls className="w-full" preload="metadata" style={{ display: "block", maxHeight: 240 }} />
+      </div>
+    ) : (
+      <div className="relative overflow-hidden" style={{ width: "100%" }}>
+        <MediaImage src={payload.outputUrls[0]} alt="workflow-output" className="w-full" draggable={false} style={{ display: "block" }} />
+      </div>
+    )
+  ) : paramImages[0]?.url ? (
+    <RefHeroPreview url={paramImages[0].url} />
+  ) : null;
+
   return (
     <BaseNode
       id={id}
@@ -696,6 +713,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       nodeType="comfyui_workflow"
       title={data.title}
       resizable
+      heroMedia={wfHero}
       onRun={handleRun}
       running={isProcessing}
       canRun={phase === "run" && !!payload.workflowJson?.trim()}
