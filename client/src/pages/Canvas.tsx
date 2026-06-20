@@ -51,6 +51,7 @@ import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
 import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
+import { ModelQuickSwitch, MODEL_SWITCH_FIELD } from "../components/canvas/studio/ModelQuickSwitch";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
 import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
@@ -476,6 +477,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     { nodeType: ComfyNodeType; payload: Record<string, unknown>; useCloud: boolean; defaultName: string; thumbnail?: string } | null
   >(null);
   const [showNodeSearch, setShowNodeSearch] = useState(false);
+  const [modelSwitch, setModelSwitch] = useState<{ nodeId: string; nodeType: NodeType } | null>(null);
   const [showCollaborators, setShowCollaborators] = usePersistentState<boolean>(
     "ui:canvas:collab-open:v1", false, { validate: validateBool, crossTab: false },
   );
@@ -1531,9 +1533,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
         setShowShortcuts((v) => !v);
       }
 
-      // Cmd+K / Ctrl+K — Node search (skip when typing in an input)
+      // Cmd+K / Ctrl+K — studio: switch the selected generative node's model; else node search.
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
+        if (document.documentElement.getAttribute("data-ui") === "studio") {
+          const sel = useCanvasStore.getState().nodes.filter((n) => n.selected);
+          const gen = sel.length === 1 && MODEL_SWITCH_FIELD[sel[0].data.nodeType] ? sel[0] : null;
+          if (gen) { setModelSwitch({ nodeId: gen.id, nodeType: gen.data.nodeType }); return; }
+        }
         setShowNodeSearch((v) => !v);
       }
 
@@ -2619,6 +2626,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <MultiSelectBar />
           {/* Studio global creation bar (nothing selected → quick prompt → 生成) */}
           <StudioCreateBar />
+          {/* Studio ⌘K model quick-switch (a generative node is selected) */}
+          {modelSwitch && <ModelQuickSwitch nodeId={modelSwitch.nodeId} nodeType={modelSwitch.nodeType} onClose={() => setModelSwitch(null)} />}
 
           <ConnectionHintsPanel
             visible={showConnectionHints}
