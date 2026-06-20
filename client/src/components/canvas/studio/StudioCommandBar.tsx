@@ -299,11 +299,14 @@ function StudioRefImages({ nodeId, payload }: { nodeId: string; payload: Record<
 // generalise the audio (配乐/配音/音效) and character (人物/场景) sub-modes.
 // ───────────────────────────────────────────────────────────────────────────
 type Opt = string | { value: string; label: string };
+// `when` (optional on every control): show the control only when the predicate of the
+// current payload is true — lets a form reveal op-/backend-specific controls inline.
+type CtrlBase = { when?: (p: Record<string, unknown>) => boolean };
 type Ctrl =
-  | { key: string; type: "select"; label: string; options: Opt[]; numeric?: boolean; default?: string | number }
-  | { key: string; type: "number"; label: string; min?: number; max?: number; step?: number; default?: number; width?: number }
-  | { key: string; type: "toggle"; label: string; default?: boolean }
-  | { key: string; type: "text"; label: string; placeholder?: string; width?: number };
+  | (CtrlBase & { key: string; type: "select"; label: string; options: Opt[]; numeric?: boolean; default?: string | number })
+  | (CtrlBase & { key: string; type: "number"; label: string; min?: number; max?: number; step?: number; default?: number; width?: number })
+  | (CtrlBase & { key: string; type: "toggle"; label: string; default?: boolean })
+  | (CtrlBase & { key: string; type: "text"; label: string; placeholder?: string; width?: number });
 interface TextSpec { field: string; placeholder: string; enhance?: boolean }
 interface Tab { value: string; label: string; text?: TextSpec; controls?: Ctrl[] }
 interface Form {
@@ -324,7 +327,7 @@ function renderCtrl(c: Ctrl, payload: Record<string, unknown>, set: (p: Record<s
     const opts = optList(c.options);
     const cur = (payload[c.key] as string | number | undefined) ?? c.default ?? opts[0]?.value ?? "";
     return (
-      <select key={c.key} className="nodrag" title={c.label} value={String(cur)}
+      <select key={c.key} className="nodrag studio-chip" title={c.label} value={String(cur)}
         onChange={(e) => { const v = e.target.value; set({ [c.key]: c.numeric ? Number(v) : v }); }} style={chip}>
         {opts.map((o) => <option key={String(o.value)} value={String(o.value)}>{o.label}</option>)}
       </select>
@@ -333,7 +336,7 @@ function renderCtrl(c: Ctrl, payload: Record<string, unknown>, set: (p: Record<s
   if (c.type === "number") {
     const cur = (payload[c.key] as number | undefined) ?? c.default ?? c.min ?? 0;
     return (
-      <input key={c.key} type="number" className="nodrag" title={c.label} value={cur} min={c.min} max={c.max} step={c.step ?? 1}
+      <input key={c.key} type="number" className="nodrag studio-chip" title={c.label} value={cur} min={c.min} max={c.max} step={c.step ?? 1}
         onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) set({ [c.key]: n }); }}
         style={{ ...chip, width: c.width ?? 76, maxWidth: c.width ?? 76 }} />
     );
@@ -341,13 +344,13 @@ function renderCtrl(c: Ctrl, payload: Record<string, unknown>, set: (p: Record<s
   if (c.type === "text") {
     const cur = (payload[c.key] as string | undefined) ?? "";
     return (
-      <input key={c.key} type="text" className="nodrag" title={c.label} value={cur} placeholder={c.placeholder ?? c.label}
+      <input key={c.key} type="text" className="nodrag studio-chip" title={c.label} value={cur} placeholder={c.placeholder ?? c.label}
         onChange={(e) => set({ [c.key]: e.target.value })} style={{ ...chip, width: c.width ?? 130, maxWidth: c.width ?? 130, fontWeight: 500 }} />
     );
   }
   const cur = (payload[c.key] as boolean | undefined) ?? c.default ?? false;
   return (
-    <label key={c.key} className="nodrag" title={c.label} style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+    <label key={c.key} className="nodrag studio-chip" title={c.label} style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
       <input type="checkbox" checked={cur} onChange={(e) => set({ [c.key]: e.target.checked })} />
       <span style={{ fontSize: 11.5, color: "var(--c-t2)" }}>{c.label}</span>
     </label>
@@ -416,7 +419,7 @@ function SimpleBar({ nodeId, onRun, canRun = true, running = false, hasResult = 
   const activeTabVal = form.tabsField ? ((payload[form.tabsField] as string) ?? tabs[0]?.value) : undefined;
   const activeTab = tabs.find((t) => t.value === activeTabVal) ?? tabs[0];
   const text = activeTab?.text ?? form.text;
-  const controls = [...(form.controls ?? []), ...(activeTab?.controls ?? [])];
+  const controls = [...(form.controls ?? []), ...(activeTab?.controls ?? [])].filter((c) => !c.when || c.when(payload));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
@@ -594,8 +597,8 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
         { value: "reframe", label: "改比例" },
       ] },
       { key: "backend", type: "select", label: "后端", options: [{ value: "cloud", label: "云端" }, { value: "comfyui", label: "本地 ComfyUI" }] },
-      { key: "aspectRatio", type: "select", label: "画幅", options: ["original", ...RATIOS] },
-      { key: "ckpt", type: "text", label: "Checkpoint", placeholder: "本地模型(comfyui)", width: 140 },
+      { key: "aspectRatio", type: "select", label: "画幅", options: ["original", ...RATIOS], when: (p) => p.operation === "outpaint" || p.operation === "reframe" },
+      { key: "ckpt", type: "text", label: "Checkpoint", placeholder: "本地模型(comfyui)", width: 140, when: (p) => p.backend === "comfyui" },
     ],
     // 源图来自上游图像节点连线（自动），不走通用 referenceImages 数组，故不开 refImages。
   },
@@ -638,9 +641,9 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
   overlay: {
     controls: [
       { key: "mode", type: "select", label: "模式", options: [{ value: "watermark", label: "水印" }, { value: "pip", label: "画中画" }, { value: "color_correction", label: "色彩校正" }] },
-      { key: "overlayImageUrl", type: "text", label: "叠加图 URL", placeholder: "水印 / 叠加图 URL", width: 160 },
-      { key: "overlayPosition", type: "select", label: "位置", options: [{ value: "top-left", label: "左上" }, { value: "top-right", label: "右上" }, { value: "bottom-left", label: "左下" }, { value: "bottom-right", label: "右下" }, { value: "center", label: "居中" }] },
-      { key: "overlayScale", type: "number", label: "缩放", min: 0.05, max: 1, step: 0.05, default: 0.2, width: 80 },
+      { key: "overlayImageUrl", type: "text", label: "叠加图 URL", placeholder: "水印 / 叠加图 URL", width: 160, when: (p) => (p.mode ?? "watermark") !== "color_correction" },
+      { key: "overlayPosition", type: "select", label: "位置", options: [{ value: "top-left", label: "左上" }, { value: "top-right", label: "右上" }, { value: "bottom-left", label: "左下" }, { value: "bottom-right", label: "右下" }, { value: "center", label: "居中" }], when: (p) => (p.mode ?? "watermark") !== "color_correction" },
+      { key: "overlayScale", type: "number", label: "缩放", min: 0.05, max: 1, step: 0.05, default: 0.2, width: 80, when: (p) => (p.mode ?? "watermark") !== "color_correction" },
     ],
   },
   smart_cut: {
@@ -690,7 +693,7 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
       { key: "preferUpstreamPrompt", type: "toggle", label: "上游提示词优先", default: true },
       { key: "randomizeSeed", type: "toggle", label: "随机种子", default: true },
       { key: "useCloudComfy", type: "toggle", label: "云端运行" },
-      { key: "customBaseUrl", type: "text", label: "ComfyUI 地址", placeholder: "自定义地址（可选）", width: 170 },
+      { key: "customBaseUrl", type: "text", label: "ComfyUI 地址", placeholder: "自定义地址（可选）", width: 170, when: (p) => !p.useCloudComfy },
     ],
   },
 };

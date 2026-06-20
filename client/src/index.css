@@ -932,6 +932,24 @@
    :root[data-ui] prefix outranks Tailwind's .text-xs, and "pro" keeps text-xs. */
 :root[data-ui="studio"] .ui-node-title { font-size: 13.5px; }
 
+/* Studio command-bar chips (select / number / text / toggle): unified hover +
+   focus affordance. Hover lifts the border/background; keyboard/click focus rings
+   in the studio accent. Scoped to studio so the pro skin is untouched. */
+:root[data-ui="studio"] .studio-chip {
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+:root[data-ui="studio"] .studio-chip:hover {
+  border-color: var(--c-bd3);
+  background-color: var(--c-elevated);
+}
+:root[data-ui="studio"] .studio-chip:focus-within,
+:root[data-ui="studio"] select.studio-chip:focus,
+:root[data-ui="studio"] input.studio-chip:focus {
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ui-accent) 28%, transparent);
+  outline: none;
+}
+
 /* ── Button active state ────────────────────────────────────────────────────── */
 button:active:not(:disabled) {
   transform: scale(0.97);
