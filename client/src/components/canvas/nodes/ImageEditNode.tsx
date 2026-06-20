@@ -142,7 +142,7 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
   return (
     <BaseNode id={id} selected={selected} nodeType="image_edit" title={data.title} minHeight={220} resizable
       onRun={handleRun} running={isProcessing} canRun={!!srcUrl} hasResult={!!payload.outputUrl}
-      heroMedia={payload.outputUrl ? <img src={payload.outputUrl} alt="编辑结果" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} /> : undefined}
+      heroMedia={payload.outputUrl ? <img src={payload.outputUrl} alt="编辑结果" style={{ width: "100%", height: "auto", display: "block" }} /> : undefined}
       onAssetImageDrop={(urls) => update({ sourceImageUrl: urls[0] })}>
 
       <div className="flex flex-col gap-3 p-3.5">
