@@ -156,6 +156,7 @@ export const canvasNodes = mysqlTable("canvas_nodes", {
     "comfyui_image",
     "comfyui_video",
     "comfyui_workflow",
+    "image_edit",
     "agent",
   ]).notNull(),
   title: varchar("title", { length: 255 }),

@@ -126,6 +126,16 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     defaultWidth: 420,
     defaultTitle: "后处理",
   },
+  image_edit: {
+    type: "image_edit",
+    label: "图像编辑",
+    icon: "Sparkles",
+    color: "oklch(0.70 0.17 145)",
+    bgColor: "oklch(0.70 0.17 145 / 0.08)",
+    borderColor: "oklch(0.70 0.17 145 / 0.4)",
+    defaultWidth: 320,
+    defaultTitle: "图像编辑",
+  },
   group: {
     type: "group",
     label: "分组",

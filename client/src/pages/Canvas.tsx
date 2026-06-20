@@ -47,6 +47,7 @@ import { NodeSearch } from "../components/canvas/NodeSearch";
 import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
+import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
 import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
@@ -79,6 +80,7 @@ import {
   Users,
   ChevronLeft,
   Plus,
+  Grid2x2,
   Paperclip,
   Image,
   Loader2,
@@ -476,6 +478,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const [showCollaboratorPanel, setShowCollaboratorPanel] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
+  const [showGridStoryboard, setShowGridStoryboard] = useState(false);
   const [nodePickerSearch, setNodePickerSearch] = useState("");
   // 最近添加的节点类型（置顶快速访问），localStorage 持久化、跨会话保留。
   const [recentNodeTypes, setRecentNodeTypes] = usePersistentState<string[]>(
@@ -1499,7 +1502,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         if (wasDirty) toast.success("已保存");
       }
       if (e.key === "Escape") {
-        setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); setShowShortcuts(false);
+        setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); setShowShortcuts(false); setShowGridStoryboard(false);
         // 取消节点选中（与快捷键面板「Esc 取消选中」对齐）。用 reactFlow.setNodes 才能让
         // ReactFlow 内部选中态正确同步（直接改 store 的 node.selected 不取消选中）。
         if (!isEditing) reactFlow.setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)));
@@ -2733,6 +2736,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">添加节点</TooltipContent>
             </Tooltip>}
 
+            {/* Grid storyboard starter (hidden for viewers) */}
+            {!isReadOnly && <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowGridStoryboard(true)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: "oklch(0.65 0.20 160)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.20 160 / 0.14)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <Grid2x2 className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">网格分镜起稿（九宫格/三视图…）</TooltipContent>
+            </Tooltip>}
+
             {/* Divider (only when add button is shown) */}
             {!isReadOnly && <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />}
 
@@ -3053,6 +3072,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
           {/* Filmstrip panel */}
           {showFilmstrip && (
             <FilmstripPanel onClose={() => setShowFilmstrip(false)} />
+          )}
+
+          {/* Grid storyboard starter modal */}
+          {showGridStoryboard && (
+            <GridStoryboardModal projectId={projectId} onClose={() => setShowGridStoryboard(false)} />
           )}
 
           {/* Timeline panel */}

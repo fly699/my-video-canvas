@@ -48,6 +48,9 @@ import { getSelfHostedConfig } from "../_core/selfHostedLlm";
 import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { generateImage } from "../_core/imageGeneration";
+import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL } from "../../shared/imageEdit";
+import { sliceGridImage } from "../_core/imageGrid";
+import { extractStoryboardFrames } from "../_core/videoStoryboard";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
@@ -297,7 +300,7 @@ export const nodesRouter = router({
       z.object({
         id: z.string().optional(),
         projectId: z.number(),
-        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video", "comfyui_workflow", "agent"]),
+        type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video", "comfyui_workflow", "image_edit", "agent"]),
         title: z.string().optional(),
         data: nodeDataSchema,
         posX: z.number(),
@@ -329,7 +332,7 @@ export const nodesRouter = router({
         z.object({
           id: z.string(),
           projectId: z.number(),
-          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video", "comfyui_workflow", "agent"]),
+          type: z.enum(["script", "storyboard", "prompt", "image_gen", "asset", "video_task", "ai_chat", "note", "audio", "post_process", "group", "character", "clip", "merge", "subtitle", "overlay", "subtitle_motion", "smart_cut", "pose_control", "voice_clone", "lip_sync", "avatar", "comfyui_image", "comfyui_video", "comfyui_workflow", "image_edit", "agent"]),
           title: z.string().optional().nullable(),
           data: nodeDataSchema,
           posX: z.number(),
@@ -2831,6 +2834,127 @@ export const clipRouter = router({
         });
         return { url: result.url };
       });
+    }),
+});
+
+// ── Image Edit (cloud one-click 图像编辑) ───────────────────────────────────────
+// A real executor: operation + source image → edit instruction → generateImage with
+// an edit-capable model (higgsfield / KIE / Poyo). Reuses the EXACT auth + dedupe +
+// persistence machinery as imageGen/poseControl, so it works wherever those do.
+export const imageEditRouter = router({
+  run: protectedProcedure
+    .input(z.object({
+      sourceImageUrl: mediaUrlSchema,
+      operation: z.enum(["remove_bg", "outpaint", "inpaint", "erase", "relight", "reframe"]),
+      // Edit-capable model (validated against the shared allow-list). Empty → default.
+      model: z.string().max(64).optional(),
+      prompt: z.string().max(1000).optional(),
+      maskUrl: mediaUrlSchema.optional(),
+      aspectRatio: z.string().max(32).optional(),
+      kieTempKey: z.string().max(256).optional(),
+      estimatedCost: z.string().max(32).optional(),
+      projectId: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Resolve model: reject anything not on the edit-capable allow-list (a non-edit
+      // model would ignore the source image and re-generate from scratch).
+      const model = input.model && IMAGE_EDIT_MODELS.includes(input.model) ? input.model : DEFAULT_IMAGE_EDIT_MODEL;
+      // Auth mirrors imageGenRouter: kie models use their own key resolution and
+      // bypass the global whitelist; everything else stays whitelist-gated.
+      let kieApiKey: string | undefined;
+      if (isKieImageModel(model)) {
+        const resolved = await resolveKieKey(ctx, input.kieTempKey);
+        kieApiKey = resolved.key;
+      } else {
+        await assertWhitelisted(ctx);
+      }
+      if (input.projectId != null) {
+        await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      }
+      guardUrl(input.sourceImageUrl);
+      if (input.maskUrl) guardUrl(input.maskUrl);
+      return dedupe("imageEdit", ctx.user.id, input, async () => {
+        let instruction = buildImageEditInstruction(input.operation, input.prompt, input.aspectRatio);
+        // When a painted mask is supplied (inpaint/erase), pass it as an extra
+        // reference image and point the model at it. Best-effort: cloud edit models
+        // primarily follow the text instruction (local ComfyUI inpaint uses a true mask).
+        const images: Array<{ url: string }> = [{ url: input.sourceImageUrl }];
+        if (input.maskUrl && (input.operation === "inpaint" || input.operation === "erase")) {
+          images.push({ url: input.maskUrl });
+          instruction += " The second provided image is a mask: its white area marks the exact region to edit; leave the rest untouched.";
+        }
+        try {
+          const result = await generateImage({
+            prompt: instruction,
+            model,
+            originalImages: images,
+            ...(kieApiKey ? { kieApiKey } : {}),
+          });
+          const url = result.url ?? result.urls?.[0];
+          writeAuditLog({
+            ctx,
+            action: "image_edit",
+            detail: {
+              operation: input.operation, model,
+              prompt: truncate(instruction),
+              resultUrl: url ?? null,
+              ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+              success: true,
+            },
+          });
+          if (url) {
+            const prov = model.startsWith("hf_") ? "higgsfield" : model.startsWith("kie_") ? "kie" : model.startsWith("poyo_") ? "poyo" : "forge";
+            await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "image", source: "generated", provider: prov, model, url, name: `图像编辑·${input.operation}` });
+          }
+          return { url, sourceUrl: result.sourceUrl, sourceAt: result.sourceAt };
+        } catch (err: unknown) {
+          writeAuditLog({
+            ctx,
+            action: "image_edit",
+            detail: {
+              operation: input.operation, model,
+              ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+              success: false,
+              error: truncate(err instanceof Error ? err.message : String(err)),
+            },
+          });
+          throw err;
+        }
+      });
+    }),
+});
+
+// ── Image Grid slice (网格分镜：把一张网格大图切成 N 张分镜关键帧) ───────────────
+// Local ffmpeg crop, no third-party AI → gated by project access only (mirrors
+// mergeRouter/burnIn), with SSRF guard on the source URL.
+export const imageGridRouter = router({
+  slice: protectedProcedure
+    .input(z.object({
+      imageUrl: mediaUrlSchema,
+      rows: z.number().int().min(1).max(8),
+      cols: z.number().int().min(1).max(8),
+      projectId: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.rows * input.cols > 64) throw new TRPCError({ code: "BAD_REQUEST", message: "网格单元过多（上限 64）" });
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.imageUrl);
+      const result = await sliceGridImage(input.imageUrl, input.rows, input.cols);
+      return { urls: result.urls, rows: result.rows, cols: result.cols };
+    }),
+
+  // 视频→分镜反解：抽 N 张等距关键帧（本地 ffmpeg，仅项目门控 + SSRF 守卫）。
+  fromVideo: protectedProcedure
+    .input(z.object({
+      videoUrl: mediaUrlSchema,
+      count: z.number().int().min(1).max(24),
+      projectId: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.videoUrl);
+      const result = await extractStoryboardFrames(input.videoUrl, input.count);
+      return { frames: result.frames, duration: result.duration };
     }),
 });
 

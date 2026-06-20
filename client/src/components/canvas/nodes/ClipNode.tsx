@@ -491,6 +491,33 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   const endTime = payload.endTime ?? (payload.sourceDuration ?? Infinity);
   const speed = Math.max(0.01, payload.speed ?? 1.0);
 
+  // 在播放头分割为两段：本节点截到播放头，再建一个剪辑节点承接 [播放头, 出点]，
+  // 连到同一视频源（并直接带上源 URL，单独也能用）。复制本段的主要视觉/速度设置。
+  const handleSplit = useCallback(() => {
+    if (!activeVideoUrl) { toast.error("请先连接或设置视频源"); return; }
+    const at = currentTime;
+    const end = Number.isFinite(endTime) ? endTime : duration;
+    if (!(at > startTime + 0.1 && at < end - 0.1)) { toast.error("请把播放头移到选段中间再分割"); return; }
+    const st = useCanvasStore.getState();
+    const self = st.nodes.find((n) => n.id === id);
+    if (!self) return;
+    const srcEdge = st.edges.find((e) => e.target === id && e.targetHandle === "video-in");
+    const carry: Partial<ClipNodeData> = {
+      inputVideoUrl: activeVideoUrl, sourceDuration: duration || undefined,
+      startTime: at, endTime: end,
+      speed: payload.speed, audioVolume: payload.audioVolume,
+      reverse: payload.reverse, rotate: payload.rotate, flipH: payload.flipH, flipV: payload.flipV,
+      brightness: payload.brightness, contrast: payload.contrast, saturation: payload.saturation,
+      aspect: payload.aspect, muteOriginal: payload.muteOriginal, originalVolume: payload.originalVolume,
+    };
+    const w = (self.style?.width as number | undefined) ?? 360;
+    const newNode = st.addNode("clip", { x: self.position.x + w + 48, y: self.position.y });
+    st.updateNodeData(newNode.id, carry);
+    if (srcEdge) st.onConnect({ source: srcEdge.source, target: newNode.id, sourceHandle: srcEdge.sourceHandle ?? null, targetHandle: "video-in" });
+    update("endTime", at); // 本段截到分割点
+    toast.success("已在播放头分割为两段");
+  }, [activeVideoUrl, currentTime, startTime, endTime, duration, id, payload, update]);
+
   // When source video loads, capture duration and init trim points
   const handleVideoMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
     const dur = (e.target as HTMLVideoElement).duration;
@@ -843,6 +870,16 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                     />
                   </div>
                 </div>
+
+                {/* 在播放头分割为两段（裁切已由上方双滑块/数值入出点提供） */}
+                <button
+                  onClick={handleSplit}
+                  className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={{ background: accentA(0.10), border: `1px solid ${accentA(0.30)}`, color: accent, cursor: "pointer" }}
+                  title="在播放头把本剪辑分成两段（生成第二个剪辑节点承接后半段）"
+                >
+                  <Scissors style={{ width: 12, height: 12 }} /> 在播放头分割为两段
+                </button>
 
                 {/* Clip info */}
                 <div

@@ -1,7 +1,7 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend, AlignHorizontalJustifyStart, GripVertical } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Combine, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend, AlignHorizontalJustifyStart, GripVertical } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
-import { useEditorStore, clipDuration } from "./editorStore";
+import { useEditorStore, clipDuration, canMergeClips, rightNeighbour } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
 import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
 import type { TrackType } from "@shared/editorTypes";
@@ -25,6 +25,17 @@ export function Timeline() {
   const duration = useEditorStore((s) => s.duration());
   const inPoint = useEditorStore((s) => s.inPoint);
   const outPoint = useEditorStore((s) => s.outPoint);
+  // 选中片段：驱动工具栏「分割 / 合并 / 删除」按钮的可用态。
+  const selectedClipId = useEditorStore((s) => s.selectedClipId);
+  const selCount = useEditorStore((s) => s.selectedClipIds.length);
+  const canMergeSel = useEditorStore((s) => {
+    const id = s.selectedClipId; if (!id || !s.doc) return false;
+    for (const tr of s.doc.tracks) {
+      const a = tr.clips.find((c) => c.id === id);
+      if (a) { const b = rightNeighbour(tr, a); return !!b && canMergeClips(a, b); }
+    }
+    return false;
+  });
   const [band, setBand] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -64,6 +75,7 @@ export function Timeline() {
       else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); multi ? st.removeSelected() : st.removeClip(sel); }
       else if ((e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); multi ? st.copySelected() : st.copyClip(sel); }
       else if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitClip(sel, st.playhead); }
+      else if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.mergeClipWithNext(sel); }
       else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); multi ? st.duplicateSelected() : st.duplicateClip(sel); }
     };
     window.addEventListener("keydown", onKey);
@@ -300,6 +312,20 @@ export function Timeline() {
         <span style={{ fontSize: 12, color: EC.t2, fontVariantNumeric: "tabular-nums" }}>{fmtTime(playhead)} / {fmtTime(duration)}</span>
         <div style={{ flex: 1 }} />
         <button onClick={() => setSnapOn((v) => !v)} title={snapOn ? "吸附：开（拖动时对齐片段/播放头）" : "吸附：关"} style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, color: snapOn ? EC.accent : EC.t3, borderColor: snapOn ? EC.accent : EC.border, display: "inline-flex", alignItems: "center" }}><Magnet size={13} /><span style={{ fontSize: 11 }}>吸附</span></button>
+        {/* 选中片段操作：分割 / 合并 / 删除（与键盘 S / M / Del 等价，按钮更直观） */}
+        <button disabled={!selectedClipId}
+          onClick={() => { if (selectedClipId) useEditorStore.getState().splitClip(selectedClipId, playhead); }}
+          title="在播放头处分割选中片段 (S)"
+          style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selectedClipId ? EC.t2 : EC.t4, opacity: selectedClipId ? 1 : 0.5, cursor: selectedClipId ? "pointer" : "not-allowed" }}><SplitSquareHorizontal size={13} /><span style={{ fontSize: 11 }}>分割</span></button>
+        <button disabled={!canMergeSel}
+          onClick={() => { if (selectedClipId && canMergeSel) useEditorStore.getState().mergeClipWithNext(selectedClipId); }}
+          title={canMergeSel ? "把选中片段与右侧相邻、同源连续的片段拼回一段 (M)" : "合并：需选中一个与右侧相邻、同源连续的片段（split 的逆操作）"}
+          style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: canMergeSel ? EC.t2 : EC.t4, opacity: canMergeSel ? 1 : 0.5, cursor: canMergeSel ? "pointer" : "not-allowed" }}><Combine size={13} /><span style={{ fontSize: 11 }}>合并</span></button>
+        <button disabled={selCount === 0}
+          onClick={() => { const st = useEditorStore.getState(); if (selCount > 1) st.removeSelected(); else if (selectedClipId) st.removeClip(selectedClipId); }}
+          title="删除选中片段 (Del)"
+          style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selCount ? "oklch(0.65 0.2 25)" : EC.t4, opacity: selCount ? 1 : 0.5, cursor: selCount ? "pointer" : "not-allowed" }}><Trash2 size={13} /><span style={{ fontSize: 11 }}>删除</span></button>
+        <div style={{ width: 1, height: 16, background: EC.border, flexShrink: 0 }} />
         <button onClick={() => useEditorStore.getState().splitAllAtPlayhead(playhead)} title="全轨分割：在播放头切开所有轨道的片段 (Shift+S)" style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center" }}><Scissors size={13} /><span style={{ fontSize: 11 }}>全轨分割</span></button>
         {/* 导出区段：在播放头设入/出点，仅导出选定范围 */}
         <button onClick={() => useEditorStore.getState().setInPoint(playhead)} title="设入点（导出区段起点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: inPoint != null ? EC.accent : EC.t3, borderColor: inPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>入点</span></button>
@@ -469,7 +495,7 @@ export function Timeline() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderTop: `1px solid ${EC.border}`, fontSize: 10, color: EC.t4, flexShrink: 0 }}>
-        <Scissors size={11} /> 拖动移动/换轨 · Shift/Ctrl 点击多选 · 空白拖拽框选 · Ctrl+A 全选 · ,/. 逐帧微移 · Del 删除 · Shift+Del 波纹删除 · S 分割 · Shift+S 全轨分割 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 复制 · 空格 播放/暂停
+        <Scissors size={11} /> 拖动移动/换轨 · Shift/Ctrl 点击多选 · 空白拖拽框选 · Ctrl+A 全选 · ,/. 逐帧微移 · 拖两端 裁切 · Del 删除 · Shift+Del 波纹删除 · S 分割 · M 合并相邻 · Shift+S 全轨分割 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 复制 · 空格 播放/暂停
       </div>
 
       {menu && (() => {
@@ -480,6 +506,13 @@ export function Timeline() {
           <div style={{ position: "fixed", left: menu.x, top: menu.y, zIndex: 1000, minWidth: 150, padding: 4, borderRadius: 10, background: EC.surface, border: `1px solid ${EC.border}`, boxShadow: "0 12px 40px oklch(0 0 0 / 0.5)" }}
             onPointerDown={(e) => e.stopPropagation()}>
             <div style={item} onClick={() => act(() => st.splitClip(menu.clipId, st.playhead))}><SplitSquareHorizontal size={14} /> 在播放头分割<span style={{ marginLeft: "auto", color: EC.t4 }}>S</span></div>
+            {(() => {
+              const tr = st.doc?.tracks.find((t) => t.clips.some((c) => c.id === menu.clipId));
+              const a = tr?.clips.find((c) => c.id === menu.clipId);
+              const b = tr && a ? rightNeighbour(tr, a) : undefined;
+              const ok = !!a && !!b && canMergeClips(a, b);
+              return <div style={{ ...item, opacity: ok ? 1 : 0.4, pointerEvents: ok ? "auto" : "none" }} onClick={() => act(() => st.mergeClipWithNext(menu.clipId))}><Combine size={14} /> 合并右侧相邻段<span style={{ marginLeft: "auto", color: EC.t4 }}>M</span></div>;
+            })()}
             <div style={item} onClick={() => act(() => st.duplicateClip(menu.clipId))}><Copy size={14} /> 原地复制<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+D</span></div>
             <div style={item} onClick={() => act(() => st.copyClip(menu.clipId))}><ClipboardCopy size={14} /> 拷贝<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+C</span></div>
             <div style={{ ...item, opacity: st.clipboard ? 1 : 0.4, pointerEvents: st.clipboard ? "auto" : "none" }} onClick={() => act(() => st.pasteClip(st.playhead))}><ClipboardPaste size={14} /> 粘贴到播放头<span style={{ marginLeft: "auto", color: EC.t4 }}>Ctrl+V</span></div>

@@ -143,6 +143,20 @@ interface CanvasStore {
     targetType?: "storyboard" | "comfyui_image",
     aspectRatio?: string
   ) => void;
+  /** 网格分镜：把一张网格大图切出的 N 张子图各落成一个 storyboard 节点（按 rows×cols 网格排布、
+   *  带关键帧图与镜号，可选链接到来源节点），返回新建节点 id 列表。 */
+  addStoryboardGridNodes: (
+    cells: string[],
+    opts: {
+      rows: number;
+      cols: number;
+      sourcePosition: { x: number; y: number };
+      sourceNodeId?: string;
+      titlePrefix?: string;
+      promptText?: string;
+      aspectRatio?: string;
+    }
+  ) => string[];
   // payload allows an extra `pinned?: boolean` field — a transient UI flag stored
   // on every node payload (no DB schema change) controlling whether the node's
   // input panel stays expanded regardless of `selected`. Toggled from the
@@ -472,6 +486,68 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         isDirty: true,
       };
     });
+  },
+
+  addStoryboardGridNodes: (cells, opts) => {
+    const storeProjectId = get().projectId;
+    if (!storeProjectId || cells.length === 0) return [];
+    const newIds: string[] = [];
+    set((state) => {
+      const projectId = (opts.sourceNodeId && state.nodes.find((n) => n.id === opts.sourceNodeId)?.data.projectId) || storeProjectId;
+      const uid = get().currentUserId ?? undefined;
+      const config = getNodeConfig("storyboard");
+      const nodeW = (config.defaultWidth as number) ?? 340;
+      const nodeH = ((config.defaultHeight as number) ?? 420);
+      const gapX = 40;
+      const gapY = 80;
+      const newNodes: CanvasNode[] = cells.map((url, i) => {
+        const r = Math.floor(i / opts.cols);
+        const c = i % opts.cols;
+        const id = nanoid();
+        newIds.push(id);
+        return {
+          id,
+          type: "custom" as const,
+          position: {
+            x: opts.sourcePosition.x + c * (nodeW + gapX),
+            y: opts.sourcePosition.y + 500 + r * (nodeH + gapY),
+          },
+          data: {
+            nodeType: "storyboard" as const,
+            title: `${opts.titlePrefix ?? "分镜"} #${i + 1}`,
+            payload: {
+              sceneNumber: i + 1,
+              description: "",
+              promptText: opts.promptText ?? "",
+              imageUrl: url,
+              imageHistory: [url],
+              createdBy: uid,
+              ...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio, poyoAspectRatio: opts.aspectRatio, reveAspectRatio: opts.aspectRatio } : {}),
+            } as NodeData,
+            projectId,
+          },
+          style: { width: nodeW },
+        };
+      });
+      const newEdges: CanvasEdge[] = opts.sourceNodeId
+        ? newNodes.map((node) => ({
+            id: nanoid(),
+            source: opts.sourceNodeId!,
+            target: node.id,
+            sourceHandle: "output",
+            targetHandle: "input",
+            type: "custom",
+            animated: false,
+          }))
+        : [];
+      return {
+        ...pushHistory(state),
+        nodes: [...state.nodes, ...newNodes],
+        edges: [...state.edges, ...newEdges],
+        isDirty: true,
+      };
+    });
+    return newIds;
   },
 
   updateNodeData: (id, payload, silent = false) => {
@@ -1054,6 +1130,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { speed: 1.0, audioVolume: 1.0, status: "idle" };
     case "post_process":
       return { selectedEffects: [], effectIntensities: {}, generatedPrompt: "" };
+    case "image_edit":
+      return { operation: "remove_bg", prompt: "", status: "idle" };
     case "merge":
       return { transition: "none", transitionDuration: 0.5, bgMusicVolume: 0.3, status: "idle" };
     case "subtitle":

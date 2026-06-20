@@ -27,6 +27,52 @@ export function splitKeyframesAt(
   return { left: left.length ? left : undefined, right: right.length ? right : undefined };
 }
 
+// ── Merge (join adjacent, the inverse of split) ─────────────────────────────────
+// Tolerance for "adjacent on timeline" / "contiguous in source". Slightly above
+// splitClip's 0.05 edge threshold so a just-split pair always re-joins cleanly.
+const MERGE_EPS = 0.06;
+
+/** Whether clip `b` is the same source continuing right after clip `a` (so they
+ *  can be joined back into one). Mirrors what splitClip produces in reverse:
+ *  same media/speed/direction, b starts where a ends, b's source in-point equals
+ *  a's source out-point. Pure → unit-tested. */
+export function canMergeClips(a: Clip, b: Clip): boolean {
+  if (a.kind !== b.kind) return false;
+  if ((a.assetUrl ?? "") !== (b.assetUrl ?? "")) return false;
+  if ((a.assetId ?? null) !== (b.assetId ?? null)) return false;
+  if ((a.speed ?? 1) !== (b.speed ?? 1)) return false;
+  if (!!a.reverse !== !!b.reverse) return false;
+  if (Math.abs(b.start - (a.start + clipDuration(a))) > MERGE_EPS) return false; // adjacent on timeline
+  if (Math.abs(b.trimIn - a.trimOut) > MERGE_EPS) return false;                  // contiguous in source
+  return true;
+}
+
+/** The immediate right-neighbour clip on the same track (smallest start strictly
+ *  greater than `clip`'s), or undefined. */
+export function rightNeighbour(track: Track, clip: Clip): Clip | undefined {
+  let best: Clip | undefined;
+  for (const c of track.clips) {
+    if (c.id === clip.id) continue;
+    if (c.start <= clip.start) continue;
+    if (!best || c.start < best.start) best = c;
+  }
+  return best;
+}
+
+/** Join clip `a` with its contiguous right neighbour `b`: extend a's source
+ *  out-point to b's, concatenating keyframes (b's re-based by +a's visible
+ *  duration; the duplicate boundary keyframe is dropped). Pure. */
+export function mergeClips(a: Clip, b: Clip): Clip {
+  const durA = clipDuration(a);
+  const aKfs = a.keyframes ?? [];
+  const aMaxT = aKfs.length ? Math.max(...aKfs.map((k) => k.t)) : -1;
+  const bKfs = (b.keyframes ?? [])
+    .map((k) => ({ ...k, t: k.t + durA }))
+    .filter((k) => Math.abs(k.t - aMaxT) > 1e-4); // drop the boundary dup
+  const keyframes = [...aKfs, ...bKfs];
+  return { ...a, trimOut: b.trimOut, keyframes: keyframes.length ? keyframes : undefined };
+}
+
 function findClip(doc: EditorDoc, clipId: string): { trackIdx: number; clipIdx: number } | null {
   for (let ti = 0; ti < doc.tracks.length; ti++) {
     const ci = doc.tracks[ti].clips.findIndex((c) => c.id === clipId);
@@ -83,6 +129,8 @@ export interface EditorStore {
   clearKeyframes: (clipId: string) => void;
   splitClip: (clipId: string, atTime: number) => void;
   splitAllAtPlayhead: (atTime: number) => void;
+  /** 合并：把片段与同轨右侧相邻、同源连续的片段拼回一段（split 的逆操作）。无可合并目标则空操作。 */
+  mergeClipWithNext: (clipId: string) => void;
   duplicateClip: (clipId: string) => void;
   rippleDeleteClip: (clipId: string) => void;
 
@@ -275,6 +323,24 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ...t, clips: t.clips.flatMap((x) => x.id === clipId ? [left, right] : [x]),
     });
     return withHistory(s, { ...s.doc, tracks }, selPatch([right.id]));
+  }),
+
+  // Join the clip with its same-source, contiguous right neighbour (inverse of
+  // split). No-op when there's no mergeable neighbour (UI gates/toasts via
+  // canMergeClips + rightNeighbour).
+  mergeClipWithNext: (clipId) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const track = s.doc.tracks[loc.trackIdx];
+    const a = track.clips[loc.clipIdx];
+    const b = rightNeighbour(track, a);
+    if (!b || !canMergeClips(a, b)) return s;
+    const merged = mergeClips(a, b);
+    const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
+      ...t, clips: t.clips.flatMap((x) => x.id === a.id ? [merged] : x.id === b.id ? [] : [x]),
+    });
+    return withHistory(s, { ...s.doc, tracks }, selPatch([merged.id]));
   }),
 
   // Copy a clip and drop the copy right after the original on the same track.
