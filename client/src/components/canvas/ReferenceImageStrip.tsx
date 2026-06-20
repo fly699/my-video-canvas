@@ -183,7 +183,7 @@ export function ReferenceImageStrip({
     <div
       className="nodrag nowheel"
       style={{
-        position: "absolute", right: "calc(100% + 8px)", top: 0, width: 92, maxHeight: "100%",
+        position: "absolute", right: "calc(100% + 8px)", top: 0, width: 168, maxHeight: "120%",
         display: "flex", flexDirection: "column", gap: 6, padding: 8,
         borderRadius: 12,
         // 拖拽中整框高亮，提示「拖到框内任意处即可添加」（无需独立拖拽区）
