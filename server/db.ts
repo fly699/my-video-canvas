@@ -2312,6 +2312,15 @@ export async function deleteConversation(id: number): Promise<void> {
   await db.delete(chatConversations).where(eq(chatConversations.id, id));
 }
 
+/** Clear all MESSAGES (and their attachments) of a conversation, keeping the
+ *  conversation itself. Used by the AI-assistant「新对话」reset. */
+export async function clearConversationMessages(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(conversationMessages).where(eq(conversationMessages.conversationId, id));
+  await db.delete(chatAttachments).where(eq(chatAttachments.conversationId, id));
+}
+
 export async function addChatMember(conversationId: number, userId: number, role: "owner" | "member"): Promise<void> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) dev.devAddMember(conversationId, userId, role); return; }
