@@ -278,6 +278,17 @@ export function ComfyServerStatusIndicator() {
   return (
     <>
       <div className="flex items-center" style={{ gap: 2, flexShrink: 0 }}>
+      {/* 折叠开关移到左侧：折叠后每台服务器只显示在线灯 + GPU，隐藏显存/内存 */}
+      {statuses.length > 0 && (
+        <button
+          onClick={() => setCompact((v) => !v)}
+          title={compact ? "展开：显示显存/内存指示" : "折叠：仅显示在线灯 + GPU"}
+          className="topbar-btn"
+          style={{ width: 20, height: 20, flexShrink: 0 }}
+        >
+          {compact ? <ChevronsLeftRight className="w-3 h-3" /> : <ChevronsRightLeft className="w-3 h-3" />}
+        </button>
+      )}
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
@@ -306,17 +317,6 @@ export function ComfyServerStatusIndicator() {
           </div>
         )}
       </button>
-      {/* 折叠开关：折叠后每台服务器只显示在线灯 + GPU，隐藏显存/内存 */}
-      {statuses.length > 0 && (
-        <button
-          onClick={() => setCompact((v) => !v)}
-          title={compact ? "展开：显示显存/内存指示" : "折叠：仅显示在线灯 + GPU"}
-          className="topbar-btn"
-          style={{ width: 20, height: 20, flexShrink: 0 }}
-        >
-          {compact ? <ChevronsLeftRight className="w-3 h-3" /> : <ChevronsRightLeft className="w-3 h-3" />}
-        </button>
-      )}
       </div>
 
       {visible && createPortal(

@@ -105,6 +105,8 @@ import {
   Lock,
   Unlock,
   ChevronDown,
+  ChevronsLeft,
+  ChevronsRight,
   History,
   Trash2,
   RotateCcw,
@@ -362,6 +364,18 @@ function nodeSig(n: CanvasNode): string {
 // Discards corrupted localStorage payloads for persisted boolean panel toggles.
 function validateBool(v: unknown): boolean | null {
   return typeof v === "boolean" ? v : null;
+}
+
+// Per-node-type payload patch that applies a global aspect-ratio lock — each node
+// stores ratio differently. Returns null when the type/ratio isn't applicable. Shared
+// by the lock action AND the new-node auto-inherit effect.
+function aspectPatchFor(type: NodeType, ratio: string, params?: Record<string, unknown>): Record<string, unknown> | null {
+  if (type === "image_gen" || type === "storyboard" || type === "prompt" || type === "image_edit") return { aspectRatio: ratio };
+  if (type === "comfyui_workflow") return { overrideRatioSize: true, aspectRatio: ratio };
+  if (type === "comfyui_image" || type === "comfyui_video") { const wh = aspectToComfyWH(ratio); return wh.width ? wh : null; }
+  if (type === "video_task") return { params: { ...(params ?? {}), aspect_ratio: ratio } };
+  if (type === "clip" && (ratio === "16:9" || ratio === "9:16" || ratio === "1:1")) return { aspect: ratio };
+  return null;
 }
 
 function CanvasInner({ projectId }: { projectId: number }) {
@@ -663,6 +677,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
     "ui:toolbar:orient:v1",
     "h",
     { validate: (v) => (v === "h" || v === "v" ? v : null) },
+  );
+  // Collapse the toolbar to just the essentials (add / zoom / run / skin), folding away
+  // the less-used tools (orientation, grid, fit, layout, snap, region-zoom, help).
+  const [toolbarCollapsed, setToolbarCollapsed] = usePersistentState<boolean>(
+    "ui:toolbar:collapsed:v1", false,
+    { validate: (v) => (typeof v === "boolean" ? v : null) },
   );
   const [mmPos, setMmPos] = usePersistentState<{ bottom: number; right: number }>(
     "ui:minimap:pos:v1",
@@ -1373,31 +1393,35 @@ function CanvasInner({ projectId }: { projectId: number }) {
     //   ComfyUI 图像/视频: width/height（按比例换算 /64 对齐）
     //   video_task: provider 参数 params.aspect_ratio
     //   clip: aspect（仅支持 16:9 / 9:16 / 1:1）
-    const wh = aspectToComfyWH(ratio);
-    const clipOk = ["16:9", "9:16", "1:1"].includes(ratio);
     const updates: { id: string; payload: Record<string, unknown> }[] = [];
     for (const n of useCanvasStore.getState().nodes) {
-      const t = n.data.nodeType;
-      const p = n.data.payload as Record<string, unknown>;
-      if (t === "image_gen" || t === "storyboard" || t === "prompt" || t === "image_edit") {
-        updates.push({ id: n.id, payload: { aspectRatio: ratio } });
-      } else if (t === "comfyui_workflow") {
-        updates.push({ id: n.id, payload: { overrideRatioSize: true, aspectRatio: ratio } });
-      } else if ((t === "comfyui_image" || t === "comfyui_video") && wh.width) {
-        updates.push({ id: n.id, payload: { ...wh } });
-      } else if (t === "video_task") {
-        updates.push({ id: n.id, payload: { params: { ...(p.params as Record<string, unknown> ?? {}), aspect_ratio: ratio } } });
-      } else if (t === "clip" && clipOk) {
-        updates.push({ id: n.id, payload: { aspect: ratio } });
-      }
+      const patch = aspectPatchFor(n.data.nodeType, ratio, (n.data.payload as Record<string, unknown>).params as Record<string, unknown> | undefined);
+      if (patch) updates.push({ id: n.id, payload: patch });
     }
     if (updates.length > 0) {
       batchUpdateNodeData(updates);
       toast.success(`已将 ${updates.length} 个节点纵横比锁定为 ${ratio}`);
     } else {
-      toast.info(`纵横比锁定为 ${ratio}（画布暂无可锁定的生成节点）`);
+      toast.info(`纵横比锁定为 ${ratio}，新建节点将自动继承`);
     }
   }, [batchUpdateNodeData]);
+
+  // New-node auto-inherit: when a ratio lock is active, any newly-added node gets the
+  // lock applied. Centralized (catches every add path incl. drop/connect/collab) via a
+  // seen-id set so existing nodes are never re-patched (no loops).
+  const seenNodeIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const fresh = nodes.filter((n) => !seenNodeIdsRef.current.has(n.id));
+    fresh.forEach((n) => seenNodeIdsRef.current.add(n.id));
+    if (!globalAspectRatio || fresh.length === 0) return;
+    const updates = fresh
+      .map((n) => {
+        const patch = aspectPatchFor(n.data.nodeType, globalAspectRatio, (n.data.payload as Record<string, unknown>).params as Record<string, unknown> | undefined);
+        return patch ? { id: n.id, payload: patch } : null;
+      })
+      .filter((x): x is { id: string; payload: Record<string, unknown> } => x !== null);
+    if (updates.length) batchUpdateNodeData(updates);
+  }, [nodes, globalAspectRatio, batchUpdateNodeData]);
 
   const isValidConnectionFn = useCallback((connection: Connection | CanvasEdge) => {
     if (!connection.source || !connection.target || connection.source === connection.target) return false;
@@ -2694,6 +2718,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <div
             className={`canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl ${toolbarOrient === "v" ? "flex-col" : ""}`}
             data-bar-orient={toolbarOrient}
+            data-toolbar-collapsed={toolbarCollapsed ? "true" : "false"}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => {
               // 只响应直接在工具栏背景上的拖拽（不拦截按钮点击）。Pointer 事件统一鼠标 +
@@ -2736,10 +2761,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
               boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
             }}
           >
+            {/* Collapse toggle — folds the less-used tools (always visible, far left) */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setToolbarCollapsed((v) => !v)}
+                  className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+                  style={{ color: toolbarCollapsed ? "oklch(0.72 0.18 285)" : "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = toolbarCollapsed ? "oklch(0.72 0.18 285)" : "var(--c-t3)"; }}
+                >
+                  {toolbarCollapsed ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">{toolbarCollapsed ? "展开工具栏" : "折叠工具栏（隐藏不常用）"}</TooltipContent>
+            </Tooltip>
+
             {/* Orientation toggle (horizontal ↔ vertical) */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => setToolbarOrient((o) => (o === "h" ? "v" : "h"))}
                   className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
                   style={{ color: "var(--c-t3)" }}
@@ -2778,6 +2820,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => setShowGridStoryboard(true)}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ color: "oklch(0.65 0.20 160)" }}
@@ -2838,6 +2881,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => reactFlow.fitView({ padding: 0.15, duration: 400 })}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ color: "var(--c-t3)" }}
@@ -2854,6 +2898,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => { const n = useCanvasStore.getState().autoLayout(); if (n > 0) { toast.success(`已整理 ${n} 个节点`, { duration: 1200 }); setTimeout(() => reactFlow.fitView({ padding: 0.15, duration: 400 }), 60); } else toast.info("没有可整理的自由节点（群组内节点不参与）"); }}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ color: "var(--c-t3)" }}
@@ -2870,6 +2915,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={toggleSnap}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={snapEnabled
@@ -2888,6 +2934,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => setRegionZoomActive((v) => !v)}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={regionZoomActive
@@ -2944,7 +2991,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {!isReadOnly && <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />}
 
             {/* Shortcut help button */}
-            <div className="relative">
+            <div className="relative" data-tb-sec>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
