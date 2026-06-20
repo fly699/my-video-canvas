@@ -12,7 +12,7 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCanvasStore, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
+import { useCanvasStore, aspectToComfyWH, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../hooks/useComfyPreviewStore";
 import { useConnectingStore } from "../hooks/useConnectingStore";
 import { useGlobalPeekStore } from "../hooks/useGlobalPeekStore";
@@ -1368,14 +1368,34 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setGlobalAspectRatio(ratio);
     setShowRatioPicker(false);
     if (!ratio) { toast.info("已解除纵横比锁定"); return; }
-    const targets = useCanvasStore.getState().nodes.filter(n =>
-      ["storyboard", "prompt", "image_gen"].includes(n.data.nodeType)
-    );
-    if (targets.length > 0) {
-      batchUpdateNodeData(targets.map(n => ({ id: n.id, payload: { aspectRatio: ratio } })));
-      toast.success(`已将 ${targets.length} 个节点纵横比锁定为 ${ratio}`);
+    // Per-node-type patch: different nodes store ratio differently —
+    //   aspectRatio 字段: image_gen / storyboard / prompt / image_edit / comfyui_workflow
+    //   ComfyUI 图像/视频: width/height（按比例换算 /64 对齐）
+    //   video_task: provider 参数 params.aspect_ratio
+    //   clip: aspect（仅支持 16:9 / 9:16 / 1:1）
+    const wh = aspectToComfyWH(ratio);
+    const clipOk = ["16:9", "9:16", "1:1"].includes(ratio);
+    const updates: { id: string; payload: Record<string, unknown> }[] = [];
+    for (const n of useCanvasStore.getState().nodes) {
+      const t = n.data.nodeType;
+      const p = n.data.payload as Record<string, unknown>;
+      if (t === "image_gen" || t === "storyboard" || t === "prompt" || t === "image_edit") {
+        updates.push({ id: n.id, payload: { aspectRatio: ratio } });
+      } else if (t === "comfyui_workflow") {
+        updates.push({ id: n.id, payload: { overrideRatioSize: true, aspectRatio: ratio } });
+      } else if ((t === "comfyui_image" || t === "comfyui_video") && wh.width) {
+        updates.push({ id: n.id, payload: { ...wh } });
+      } else if (t === "video_task") {
+        updates.push({ id: n.id, payload: { params: { ...(p.params as Record<string, unknown> ?? {}), aspect_ratio: ratio } } });
+      } else if (t === "clip" && clipOk) {
+        updates.push({ id: n.id, payload: { aspect: ratio } });
+      }
+    }
+    if (updates.length > 0) {
+      batchUpdateNodeData(updates);
+      toast.success(`已将 ${updates.length} 个节点纵横比锁定为 ${ratio}`);
     } else {
-      toast.info(`纵横比锁定为 ${ratio}，新建节点将自动继承`);
+      toast.info(`纵横比锁定为 ${ratio}（画布暂无可锁定的生成节点）`);
     }
   }, [batchUpdateNodeData]);
 
