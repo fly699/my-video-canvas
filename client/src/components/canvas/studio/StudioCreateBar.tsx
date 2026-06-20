@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUp, Sparkles, X, History, Trash2 } from "lucide-react";
+import { ArrowUp, Sparkles, X, History, Trash2, ChevronDown } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -11,6 +11,7 @@ import { RatioPicker, RATIOS } from "./StudioCommandBar";
 
 interface HistItem { prompt: string; model: string; ratio: string; refUrl?: string; t: number }
 const HIST_KEY = "avc:studio-create-history";
+const COLLAPSE_KEY = "avc:studio-createbar-collapsed";
 const readHist = (): HistItem[] => { try { const r = localStorage.getItem(HIST_KEY); return r ? (JSON.parse(r) as HistItem[]) : []; } catch { return []; } };
 const writeHist = (h: HistItem[]) => { try { localStorage.setItem(HIST_KEY, JSON.stringify(h)); } catch { /* quota */ } };
 
@@ -40,8 +41,24 @@ export function StudioCreateBar() {
   const [dragOver, setDragOver] = useState(false);
   const [history, setHistory] = useState<HistItem[]>(readHist);
   const [showHist, setShowHist] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(COLLAPSE_KEY) === "1"; } catch { return false; } });
+  const toggleCollapsed = (v: boolean) => { setCollapsed(v); try { localStorage.setItem(COLLAPSE_KEY, v ? "1" : "0"); } catch { /* quota */ } };
 
   if (uiStyle !== "studio" || anySelected) return null;
+
+  // Collapsed → a small pill, so the always-on bar never gets in the way.
+  if (collapsed) {
+    return (
+      <button className="nodrag studio-toolbtn" onClick={() => toggleCollapsed(false)} title="展开快速创作栏"
+        style={{ position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)", zIndex: 44,
+          display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 14px", borderRadius: 17,
+          background: "color-mix(in oklch, var(--c-elevated) 94%, transparent)", backdropFilter: "blur(20px)",
+          border: "1px solid var(--c-bd2)", boxShadow: "var(--c-node-shadow-hover)", color: "var(--ui-accent, var(--c-t2))",
+          fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+        <Sparkles size={14} /> 快速创作
+      </button>
+    );
+  }
   const mdl = model || resolve("image_gen", "image");
   const text = prompt.trim();
 
@@ -126,6 +143,11 @@ export function StudioCreateBar() {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: "var(--ui-accent, var(--c-t2))" }}>
           <Sparkles size={13} /> 快速创作
         </span>
+        <button className="studio-toolbtn" title="收起创作栏" onClick={() => toggleCollapsed(true)}
+          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 7,
+            border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer" }}>
+          <ChevronDown size={14} />
+        </button>
         {history.length > 0 && (
           <button className="studio-toolbtn" title="创作历史" onClick={() => setShowHist((v) => !v)}
             style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 30, padding: "0 9px", borderRadius: 9,
