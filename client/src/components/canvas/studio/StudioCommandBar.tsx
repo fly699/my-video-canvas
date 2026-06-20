@@ -23,6 +23,32 @@ const GENERATIVE_TYPES = new Set<NodeType>([
 
 const RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
 
+// Liblib-style visual aspect-ratio picker: each option is a little proportion-shaped
+// rectangle + label, so the framing is read at a glance (vs a plain dropdown).
+const RATIO_BOX: Record<string, [number, number]> = {
+  "16:9": [18, 10], "9:16": [10, 18], "1:1": [14, 14], "4:3": [17, 13],
+  "3:4": [13, 17], "21:9": [20, 9], "4:5": [12, 15], "2:3": [12, 18], "3:2": [18, 12],
+};
+function RatioPicker({ value, options, onChange }: { value: string; options: readonly string[]; onChange: (v: string) => void }) {
+  return (
+    <div className="nodrag" style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+      {options.map((r) => {
+        const on = r === value;
+        const [w, h] = RATIO_BOX[r] ?? [15, 15];
+        return (
+          <button key={r} className="studio-chip" title={`画面比例 ${r}`} onClick={(e) => { e.stopPropagation(); onChange(r); }}
+            style={{ ...chip, maxWidth: "none", padding: "0 8px", gap: 6, display: "inline-flex", alignItems: "center", justifyContent: "center",
+              borderColor: on ? "var(--ui-accent)" : "var(--c-bd2)",
+              background: on ? "color-mix(in oklab, var(--ui-accent) 15%, var(--c-input))" : "var(--c-input)" }}>
+            <span style={{ width: w, height: h, borderRadius: 2.5, flexShrink: 0, border: `1.5px solid ${on ? "var(--ui-accent)" : "var(--c-t3)"}` }} />
+            <span style={{ fontSize: 11, fontWeight: on ? 700 : 600, color: on ? "var(--c-t1)" : "var(--c-t3)" }}>{r}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Compact inline control styling — small "pill" dropdowns/inputs that sit in one row.
 const chip: React.CSSProperties = {
   fontSize: 12, fontWeight: 600, height: 32, padding: "0 9px", borderRadius: 9,
@@ -143,12 +169,9 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
           <ModelPicker value={imageModel} onChange={(v) => set({ [imageModelField]: v })} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={140} />
         )}
 
-        {/* aspect — compact dropdown */}
+        {/* aspect — Liblib-style visual proportion picker */}
         {showAspect && (
-          <select className="nodrag studio-chip" title="画面比例" value={typeof payload.aspectRatio === "string" ? payload.aspectRatio : "16:9"}
-            onChange={(e) => set({ aspectRatio: e.target.value })} style={chip}>
-            {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
+          <RatioPicker value={typeof payload.aspectRatio === "string" ? payload.aspectRatio : "16:9"} options={RATIOS} onChange={(v) => set({ aspectRatio: v })} />
         )}
 
         {/* model main params — each as a compact inline control in the SAME row */}
@@ -298,6 +321,7 @@ type Opt = string | { value: string; label: string };
 type CtrlBase = { when?: (p: Record<string, unknown>) => boolean };
 type Ctrl =
   | (CtrlBase & { key: string; type: "select"; label: string; options: Opt[]; numeric?: boolean; default?: string | number })
+  | (CtrlBase & { key: string; type: "ratio"; label: string; options: readonly string[]; default?: string })
   | (CtrlBase & { key: string; type: "number"; label: string; min?: number; max?: number; step?: number; default?: number; width?: number })
   | (CtrlBase & { key: string; type: "toggle"; label: string; default?: boolean })
   | (CtrlBase & { key: string; type: "text"; label: string; placeholder?: string; width?: number });
@@ -317,6 +341,10 @@ interface Form {
 const optList = (opts: Opt[]) => opts.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
 
 function renderCtrl(c: Ctrl, payload: Record<string, unknown>, set: (p: Record<string, unknown>) => void) {
+  if (c.type === "ratio") {
+    const cur = (payload[c.key] as string | undefined) ?? c.default ?? c.options[0] ?? "";
+    return <RatioPicker key={c.key} value={cur} options={c.options} onChange={(v) => set({ [c.key]: v })} />;
+  }
   if (c.type === "select") {
     const opts = optList(c.options);
     const cur = (payload[c.key] as string | number | undefined) ?? c.default ?? opts[0]?.value ?? "";
@@ -571,7 +599,7 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
     llm: "llmModel",
     controls: [
       { key: "style", type: "text", label: "风格", placeholder: "风格", width: 110 },
-      { key: "aspectRatio", type: "select", label: "比例", options: RATIOS },
+      { key: "aspectRatio", type: "ratio", label: "比例", options: RATIOS },
       { key: "enableAnalyze", type: "toggle", label: "自动分析图" },
       { key: "enableExpand", type: "toggle", label: "自动扩写" },
       { key: "enableTranslate", type: "toggle", label: "自动翻译" },
@@ -688,7 +716,7 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
   },
   comfyui_workflow: {
     controls: [
-      { key: "aspectRatio", type: "select", label: "比例", options: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "4:5"] },
+      { key: "aspectRatio", type: "ratio", label: "比例", options: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "4:5"] },
       { key: "preferUpstreamPrompt", type: "toggle", label: "上游提示词优先", default: true },
       { key: "randomizeSeed", type: "toggle", label: "随机种子", default: true },
       { key: "useCloudComfy", type: "toggle", label: "云端运行" },
