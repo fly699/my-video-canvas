@@ -955,6 +955,26 @@
   outline: none;
 }
 
+/* Studio run button: lift on hover when ready; a calm accent pulse while running so
+   the working state never looks like the disabled (off) state. */
+:root[data-ui="studio"] .studio-send {
+  transition: box-shadow 140ms ease, transform 140ms ease, background-color 140ms ease;
+}
+:root[data-ui="studio"] .studio-send[data-state="run"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px oklch(0 0 0 / 0.35);
+}
+:root[data-ui="studio"] .studio-send[data-state="running"] {
+  animation: studio-send-pulse 1.4s ease-in-out infinite;
+}
+@keyframes studio-send-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--ui-accent) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 5px color-mix(in oklab, var(--ui-accent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui="studio"] .studio-send[data-state="running"] { animation: none; }
+}
+
 /* ── Button active state ────────────────────────────────────────────────────── */
 button:active:not(:disabled) {
   transform: scale(0.97);

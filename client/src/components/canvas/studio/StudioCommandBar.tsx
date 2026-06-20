@@ -49,10 +49,14 @@ interface Props {
 export function StudioCommandBar(props: Props) {
   const nodeType = useCanvasStore((s) => s.nodes.find((n) => n.id === props.nodeId)?.data.nodeType);
   if (!nodeType) return null;
-  if (GENERATIVE_TYPES.has(nodeType)) return <GenerativeBar {...props} />;
-  if (nodeType === "audio") return <AudioBar {...props} />;
-  if (SIMPLE_FORMS[nodeType]) return <SimpleBar {...props} form={SIMPLE_FORMS[nodeType]!} />;
-  return null;
+  let bar: React.ReactNode = null;
+  if (GENERATIVE_TYPES.has(nodeType)) bar = <GenerativeBar {...props} />;
+  else if (nodeType === "audio") bar = <AudioBar {...props} />;
+  else if (SIMPLE_FORMS[nodeType]) bar = <SimpleBar {...props} form={SIMPLE_FORMS[nodeType]!} />;
+  if (!bar) return null;
+  // Cap content width so an ultra-wide node doesn't stretch the prompt into one long
+  // hard-to-read line; the surplus node width becomes left-anchored whitespace.
+  return <div style={{ width: "100%", maxWidth: 760 }}>{bar}</div>;
 }
 
 function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResult = false }: Props) {
@@ -396,12 +400,17 @@ function PromptBox({ nodeId, field, placeholder, enhance }: { nodeId: string; fi
 
 function SendButton({ onRun, canRun = true, running = false, hasResult = false }: { onRun?: () => void; canRun?: boolean; running?: boolean; hasResult?: boolean }) {
   if (!onRun) return null;
+  // Three explicit visual states: run (white, ready) / running (accent-tinted with a
+  // pulsing ring → reads as "working", not disabled) / off (muted, can't run).
+  const state = running ? "running" : canRun ? "run" : "off";
   return (
-    <button onClick={(e) => { e.stopPropagation(); if (canRun && !running) onRun(); }} disabled={!canRun || running}
+    <button className="studio-send" data-state={state}
+      onClick={(e) => { e.stopPropagation(); if (canRun && !running) onRun(); }} disabled={!canRun || running}
       title={running ? "运行中…" : hasResult ? "重新运行" : "运行"}
       style={{ width: 34, height: 34, borderRadius: "50%", border: "none", flexShrink: 0,
-        background: canRun && !running ? "#fff" : "var(--c-surface)", color: canRun && !running ? "#111" : "var(--c-t4)",
-        cursor: canRun && !running ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        background: state === "run" ? "#fff" : state === "running" ? "color-mix(in oklab, var(--ui-accent) 22%, var(--c-surface))" : "var(--c-surface)",
+        color: state === "run" ? "#111" : state === "running" ? "var(--ui-accent)" : "var(--c-t4)",
+        cursor: state === "run" ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center" }}>
       {running ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={16} />}
     </button>
   );
@@ -429,8 +438,8 @@ function SimpleBar({ nodeId, onRun, canRun = true, running = false, hasResult = 
             const on = t.value === activeTabVal;
             return (
               <button key={t.value} onClick={(e) => { e.stopPropagation(); set({ [form.tabsField!]: t.value }); }}
-                style={{ ...chip, maxWidth: "none", background: on ? "var(--ui-accent, var(--c-elevated))" : "var(--c-input)",
-                  color: on ? "#fff" : "var(--c-t2)", borderColor: on ? "transparent" : "var(--c-bd2)" }}>{t.label}</button>
+                style={{ ...chip, maxWidth: "none", fontWeight: 700, background: on ? "var(--ui-accent, var(--c-elevated))" : "var(--c-input)",
+                  color: on ? "#0b0d12" : "var(--c-t2)", borderColor: on ? "transparent" : "var(--c-bd2)" }}>{t.label}</button>
             );
           })}
         </div>
@@ -512,7 +521,7 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
         {[{ v: "music", l: "配乐" }, { v: "dubbing", l: "配音" }, { v: "sfx", l: "音效" }].map((t) => {
           const on = t.v === cat;
           return <button key={t.v} onClick={(e) => { e.stopPropagation(); set({ audioCategory: t.v }); }}
-            style={{ ...chip, maxWidth: "none", background: on ? "var(--ui-accent, var(--c-elevated))" : "var(--c-input)", color: on ? "#fff" : "var(--c-t2)", borderColor: on ? "transparent" : "var(--c-bd2)" }}>{t.l}</button>;
+            style={{ ...chip, maxWidth: "none", fontWeight: 700, background: on ? "var(--ui-accent, var(--c-elevated))" : "var(--c-input)", color: on ? "#0b0d12" : "var(--c-t2)", borderColor: on ? "transparent" : "var(--c-bd2)" }}>{t.l}</button>;
         })}
       </div>
 
