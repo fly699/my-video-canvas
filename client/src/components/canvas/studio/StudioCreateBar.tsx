@@ -68,17 +68,19 @@ export function StudioCreateBar() {
     const vp = reactFlow.getViewport();
     const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
     const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
-    const st = useCanvasStore.getState();
+    const store = useCanvasStore.getState();
     let node;
     try {
-      node = st.addNode("image_gen", { x: cx - 150, y: cy - 110 });
+      node = store.addNode("image_gen", { x: cx - 150, y: cy - 110 });
     } catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
-    st.updateNodeData(node.id, {
+    store.updateNodeData(node.id, {
       prompt: text, model: mdl, aspectRatio: ratio,
       ...(refUrl ? refPatch([makeRefImage(refUrl, "upload")]) : {}),
     });
-    st.setNodes(st.nodes.map((n) => ({ ...n, selected: n.id === node!.id })));
-    if (run && text) { st.requestRun(null, [node.id]); toast.success(refUrl ? "已创建图生图并开始生成" : "已创建并开始生成", { duration: 1200 }); }
+    // Select the new node using FRESH state — addNode/updateNodeData replaced the nodes
+    // array, so the captured `store.nodes` is stale and would wipe the just-added node.
+    useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
+    if (run && text) { store.requestRun(null, [node.id]); toast.success(refUrl ? "已创建图生图并开始生成" : "已创建并开始生成", { duration: 1200 }); }
     else { toast.success("已在画布中心创建图像节点（可继续配置）", { duration: 1400 }); }
     if (text) {
       const item: HistItem = { prompt: text, model: mdl, ratio, refUrl: refUrl || undefined, t: Date.now() };
