@@ -32,6 +32,7 @@ function imageUrlsFromAssetDrag(dt: DataTransfer): string[] {
 export function StudioCreateBar() {
   const { uiStyle } = useUIStyle();
   const anySelected = useCanvasStore((s) => s.nodes.some((n) => n.selected));
+  const isEmptyCanvas = useCanvasStore((s) => s.nodes.length === 0);
   const reactFlow = useReactFlow();
   const { resolve } = useNodeDefaultModels();
   const [prompt, setPrompt] = useState("");
@@ -106,6 +107,12 @@ export function StudioCreateBar() {
         background: "color-mix(in oklch, var(--c-elevated) 94%, transparent)", backdropFilter: "blur(20px)",
         border: `1px solid ${dragOver ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, boxShadow: "var(--c-node-shadow-hover)" }}
     >
+      {isEmptyCanvas && !showHist && (
+        <div className="nodrag" style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, right: 0, textAlign: "center",
+          fontSize: 12, color: "var(--c-t3)", pointerEvents: "none" }}>
+          画布是空的 —— 输入提示词生成第一张，或用顶部「添加」放置节点
+        </div>
+      )}
       {showHist && history.length > 0 && (
         <div className="nodrag" onClick={(e) => e.stopPropagation()}
           style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, right: 0, maxHeight: 260, overflowY: "auto",
