@@ -21,7 +21,7 @@ const GENERATIVE_TYPES = new Set<NodeType>([
   "image_gen", "storyboard", "video_task", "script",
 ]);
 
-const RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
+export const RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
 
 // Liblib-style visual aspect-ratio picker: each option is a little proportion-shaped
 // rectangle + label, so the framing is read at a glance (vs a plain dropdown).
@@ -29,7 +29,7 @@ const RATIO_BOX: Record<string, [number, number]> = {
   "16:9": [18, 10], "9:16": [10, 18], "1:1": [14, 14], "4:3": [17, 13],
   "3:4": [13, 17], "21:9": [20, 9], "4:5": [12, 15], "2:3": [12, 18], "3:2": [18, 12],
 };
-function RatioPicker({ value, options, onChange }: { value: string; options: readonly string[]; onChange: (v: string) => void }) {
+export function RatioPicker({ value, options, onChange }: { value: string; options: readonly string[]; onChange: (v: string) => void }) {
   return (
     <div className="nodrag" style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
       {options.map((r) => {
