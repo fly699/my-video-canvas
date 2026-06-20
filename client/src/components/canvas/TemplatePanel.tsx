@@ -909,9 +909,11 @@ const QUICK_ICONS = ["Film", "Star", "Bookmark", "Briefcase", "Target", "Flame",
 function SaveDialog({
   onSave,
   onCancel,
+  hint,
 }: {
   onSave: (name: string, icon: string) => void;
   onCancel: () => void;
+  hint?: string;
 }) {
   const [name, setName] = useState("我的模板");
   const [icon, setIcon] = useState("Film");
@@ -934,6 +936,7 @@ function SaveDialog({
         <p className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>
           保存为模板
         </p>
+        {hint && <p className="text-xs" style={{ color: "var(--c-t4)", marginTop: -8 }}>{hint}</p>}
 
         {/* Emoji picker */}
         <div className="flex flex-col gap-2">
@@ -1012,6 +1015,8 @@ interface Props {
 
 export function TemplatePanel({ onClose, centerX, centerY }: Props) {
   const { addNode, onConnect, updateNodeData } = useCanvasStore();
+  // 选中节点数：>0 时「保存」存的是选中子图（而非整个画布）。
+  const selectedCount = useCanvasStore((s) => s.nodes.reduce((c, n) => c + (n.selected ? 1 : 0), 0));
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryId>("all");
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
@@ -1102,9 +1107,16 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
 
   const handleSaveCanvas = useCallback((name: string, icon: string) => {
     const { nodes, edges } = useCanvasStore.getState();
+    // 子图另存：若有选中节点（≥1），只存这部分子图（节点 + 其内部连线，丢弃跨边界连线）；
+    // 否则退回保存整个画布。让用户把一段工作流（连线 + 参数偏好）框选后存成可复用模板。
+    const selected = nodes.filter((n) => n.selected);
+    const useSel = selected.length > 0;
+    const srcNodes = useSel ? selected : nodes;
+    const idSet = new Set(srcNodes.map((n) => n.id));
+    const srcEdges = useSel ? edges.filter((e) => idSet.has(e.source) && idSet.has(e.target)) : edges;
     const template = canvasToTemplate(
-      nodes.map((n) => ({ id: n.id, type: n.data.nodeType as string, position: n.position, data: n.data.payload as Record<string, unknown> })),
-      edges.map((e) => ({ source: e.source, target: e.target })),
+      srcNodes.map((n) => ({ id: n.id, type: n.data.nodeType as string, position: n.position, data: n.data.payload as Record<string, unknown> })),
+      srcEdges.map((e) => ({ source: e.source, target: e.target })),
       name,
       icon,
     );
@@ -1144,6 +1156,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
           <SaveDialog
             onSave={handleSaveCanvas}
             onCancel={() => setShowSaveDialog(false)}
+            hint={selectedCount > 0 ? `保存选中的 ${selectedCount} 个节点（子图，含内部连线与参数）` : "保存整个画布的所有节点与连线"}
           />
         )}
 
@@ -1330,10 +1343,10 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
                   el.style.borderColor = "var(--c-bd3)";
                   el.style.color = "var(--c-t3)";
                 }}
-                title="将当前画布保存为模板"
+                title={selectedCount > 0 ? `将选中的 ${selectedCount} 个节点（子图）保存为模板` : "将当前画布保存为模板"}
               >
                 <BookmarkPlus className="w-3.5 h-3.5" />
-                保存画布
+                {selectedCount > 0 ? `保存选中(${selectedCount})` : "保存画布"}
               </button>
 
               {/* Close */}
