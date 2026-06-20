@@ -233,10 +233,10 @@ export const BaseNode = memo(function BaseNode({
     return arr.join("\n");
   });
   const openLightbox = () => {
-    if (resultVideoUrl) { useLightbox.getState().open([resultVideoUrl], 0, "video", title); return; }
+    if (resultVideoUrl) { useLightbox.getState().open([resultVideoUrl], 0, "video", title, id); return; }
     if (!resultImageUrl) return;
     const list = heroImageList ? heroImageList.split("\n") : [resultImageUrl];
-    useLightbox.getState().open(list, Math.max(0, list.indexOf(resultImageUrl)), "image", title);
+    useLightbox.getState().open(list, Math.max(0, list.indexOf(resultImageUrl)), "image", title, id);
   };
   // A previewable node that has a result and is NOT being edited (not selected,
   // not pinned) renders collapsed: only the title bar + warning/error/progress +

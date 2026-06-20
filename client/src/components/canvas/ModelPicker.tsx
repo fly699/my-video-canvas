@@ -87,6 +87,12 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
           cursor: disabled ? "not-allowed" : "pointer",
         }}
       >
+        {current && (
+          <span aria-hidden style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            background: platformBadge(current.group).bg, color: platformBadge(current.group).fg, fontSize: 9, fontWeight: 800 }}>
+            {(current.family || current.label).trim().slice(0, 1).toUpperCase()}
+          </span>
+        )}
         <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {current?.label ?? value ?? "选择模型"}
         </span>
@@ -175,6 +181,10 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
                         textAlign: "left",
                       }}
                     >
+                      <span aria-hidden style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                        background: platformBadge(group).bg, color: platformBadge(group).fg, fontSize: 10.5, fontWeight: 800 }}>
+                        {(o.family || o.label).trim().slice(0, 1).toUpperCase()}
+                      </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ fontSize: 11.5, color: selected ? "var(--c-t1)" : "var(--c-t2)", fontWeight: selected ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
