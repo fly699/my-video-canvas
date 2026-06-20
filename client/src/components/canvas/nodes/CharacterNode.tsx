@@ -18,6 +18,7 @@ import {
   DEFAULT_PERSON_TEMPLATE,
   DEFAULT_SCENE_TEMPLATE,
 } from "../../../lib/characterPrompt";
+import { getGridPreset, buildGridPrompt } from "../../../../../shared/grid";
 import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterConsistencyPanel";
 import { CharacterRecognitionPanel } from "../CharacterRecognitionPanel";
 import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterRecognition";
@@ -171,6 +172,44 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     const imgs = characterReferenceImages(payload).slice(0, 9);
     if (imgs.length === 0) { toast.error("请先上传或连接参考图"); return; }
     recognizeMut.mutate({ imageUrls: imgs, characterKind: kind, model: recognizeModel });
+  };
+
+  // 一键多视角：用角色描述（+已有参考图作身份）生成三视图大图 → 切成 front/side/back，
+  // 写入 referenceImageUrl（正面）+ additionalImageUrls（侧/背），强化跨镜一致性。
+  const [multiAngleBusy, setMultiAngleBusy] = useState(false);
+  const maGenMut = trpc.imageGen.generate.useMutation();
+  const maSliceMut = trpc.imageGrid.slice.useMutation();
+  const handleMultiAngle = async () => {
+    if (multiAngleBusy) return;
+    const preset = getGridPreset("turnaround")!;
+    const subject = charPromptText.trim() || [payload.name, payload.appearance, payload.outfit, payload.role].filter(Boolean).join(", ");
+    if (!subject) { toast.error("请先填写角色外貌 / 服装等描述"); return; }
+    setMultiAngleBusy(true);
+    try {
+      const gen = await maGenMut.mutateAsync({
+        prompt: buildGridPrompt(subject, preset),
+        ...(payload.referenceImageUrl?.trim() ? { referenceImageUrl: payload.referenceImageUrl.trim() } : {}),
+        aspectRatio: preset.sheetAspect,
+        poyoAspectRatio: preset.sheetAspect,
+        reveAspectRatio: preset.sheetAspect,
+        projectId: data.projectId,
+      });
+      const gridUrl = gen.urls?.[0] || gen.url || "";
+      if (!gridUrl) { toast.error("三视图生成失败：未返回图像"); setMultiAngleBusy(false); return; }
+      const sliced = await maSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, projectId: data.projectId });
+      if (sliced.urls.length < 1) { toast.error("切分失败：未产生子图"); setMultiAngleBusy(false); return; }
+      const [front, ...rest] = sliced.urls;
+      updateNodeData(id, {
+        referenceImageUrl: front,
+        referenceStorageKey: undefined,
+        additionalImageUrls: rest.slice(0, MAX_ADDITIONAL_IMAGES),
+      });
+      toast.success(`已生成多视角参考（${sliced.urls.length} 张：正面/侧面/背面）`);
+    } catch (err) {
+      toast.error("多视角生成失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setMultiAngleBusy(false);
+    }
   };
 
   const utils = trpc.useUtils();
@@ -533,6 +572,18 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             className="hidden"
             onChange={handleImageUpload}
           />
+          {kind === "person" && (
+            <button
+              onClick={handleMultiAngle}
+              disabled={multiAngleBusy}
+              className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] font-medium transition-all"
+              style={{ marginTop: 6, background: accentA(0.10), border: `1px solid ${accentA(0.32)}`, color: accent, cursor: multiAngleBusy ? "not-allowed" : "pointer" }}
+              title="用角色描述（+已有参考图）生成正面/侧面/背面三视图，写入主参考图与备用视角"
+            >
+              {multiAngleBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Sparkles style={{ width: 11, height: 11 }} />}
+              {multiAngleBusy ? "生成多视角中…" : "一键多视角（三视图参考）"}
+            </button>
+          )}
         </div>
 
         {/* ── 人物 (Person) fields ── */}

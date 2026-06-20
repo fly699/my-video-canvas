@@ -3,7 +3,7 @@ import { useReactFlow } from "@xyflow/react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { X, Grid2x2, Loader2, Sparkles, Scissors } from "lucide-react";
+import { X, Grid2x2, Loader2, Sparkles, Scissors, Clapperboard } from "lucide-react";
 import { GRID_PRESETS, getGridPreset, gridCellCount, buildGridPrompt } from "../../../../shared/grid";
 
 const ACCENT = "oklch(0.65 0.20 160)"; // storyboard 绿
@@ -23,10 +23,12 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
   const reactFlow = useReactFlow();
 
   const [presetId, setPresetId] = useState(GRID_PRESETS[0].id);
-  const [mode, setMode] = useState<"generate" | "existing">("generate");
+  const [mode, setMode] = useState<"generate" | "existing" | "video">("generate");
   const [subject, setSubject] = useState("");
   const [model, setModel] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [frameCount, setFrameCount] = useState(9);
   const [phase, setPhase] = useState<"idle" | "generating" | "slicing">("idle");
 
   const preset = getGridPreset(presetId) ?? GRID_PRESETS[0];
@@ -34,6 +36,7 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
 
   const genMutation = trpc.imageGen.generate.useMutation();
   const sliceMutation = trpc.imageGrid.slice.useMutation();
+  const fromVideoMutation = trpc.imageGrid.fromVideo.useMutation();
 
   const busy = phase !== "idle";
 
@@ -46,6 +49,24 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
   const handleRun = async () => {
     if (busy) return;
     try {
+      // ── Video → storyboard: extract N evenly-spaced frames, one per node ──
+      if (mode === "video") {
+        const vurl = videoUrl.trim();
+        if (!vurl) { toast.error("请填写视频 URL"); return; }
+        setPhase("slicing");
+        const r = await fromVideoMutation.mutateAsync({ videoUrl: vurl, count: frameCount, projectId });
+        if (!r.frames.length) { toast.error("抽帧失败：未产生关键帧"); setPhase("idle"); return; }
+        const cols = Math.min(frameCount, 6);
+        const rows = Math.ceil(r.frames.length / cols);
+        const ids = addStoryboardGridNodes(r.frames.map((f) => f.url), {
+          rows, cols, sourcePosition: centerPos(), titlePrefix: "分镜",
+        });
+        toast.success(`已从视频生成 ${ids.length} 个分镜`);
+        setPhase("idle");
+        onClose();
+        return;
+      }
+
       let gridUrl = imageUrl.trim();
       if (mode === "generate") {
         if (!subject.trim()) { toast.error("请填写主题/场景描述"); return; }
@@ -116,8 +137,8 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
           </button>
         </div>
 
-        {/* Preset */}
-        <div>
+        {/* Preset (grid modes only) */}
+        {mode !== "video" && <div>
           <label style={labelStyle}>网格类型</label>
           <div className="grid gap-1.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
             {GRID_PRESETS.map((p) => {
@@ -137,13 +158,13 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
               );
             })}
           </div>
-        </div>
+        </div>}
 
         {/* Source mode */}
         <div>
-          <label style={labelStyle}>网格图来源</label>
+          <label style={labelStyle}>来源</label>
           <div className="flex gap-1.5">
-            {([["generate", "AI 生成", Sparkles], ["existing", "已有网格图", Scissors]] as const).map(([val, lbl, Icon]) => {
+            {([["generate", "AI 生成", Sparkles], ["existing", "已有网格图", Scissors], ["video", "视频转分镜", Clapperboard]] as const).map(([val, lbl, Icon]) => {
               const active = mode === val;
               return (
                 <button key={val} onClick={() => setMode(val)} disabled={busy}
@@ -156,7 +177,7 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
           </div>
         </div>
 
-        {mode === "generate" ? (
+        {mode === "generate" && (
           <>
             <div>
               <label style={labelStyle}>主题 / 场景描述</label>
@@ -171,7 +192,8 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
               </select>
             </div>
           </>
-        ) : (
+        )}
+        {mode === "existing" && (
           <div>
             <label style={labelStyle}>网格图 URL</label>
             <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={busy} placeholder="https://..." style={inputStyle} />
@@ -180,12 +202,31 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
             </p>
           </div>
         )}
+        {mode === "video" && (
+          <>
+            <div>
+              <label style={labelStyle}>视频 URL</label>
+              <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} disabled={busy} placeholder="https://...mp4" style={inputStyle} />
+            </div>
+            <div>
+              <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>抽帧数量（分镜数）</label>
+                <span style={{ fontSize: 11, color: "var(--c-t3)" }}>{frameCount}</span>
+              </div>
+              <input type="range" min={3} max={24} step={1} value={frameCount} disabled={busy}
+                onChange={(e) => setFrameCount(Number(e.target.value))} style={{ width: "100%", accentColor: ACCENT }} />
+              <p style={{ fontSize: 9.5, color: "var(--c-t4)", margin: "5px 0 0", lineHeight: 1.5 }}>
+                按时间等距抽 {frameCount} 帧，每帧落成一个分镜关键帧（可再「AI 扩写提示词」补镜头描述）。
+              </p>
+            </div>
+          </>
+        )}
 
         <button onClick={handleRun} disabled={busy}
           className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-[13px] font-semibold"
           style={{ background: busy ? "var(--c-input)" : accentA(0.16), border: `1px solid ${accentA(0.5)}`, color: busy ? "var(--c-t4)" : ACCENT, cursor: busy ? "not-allowed" : "pointer" }}>
           {busy ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <Grid2x2 style={{ width: 14, height: 14 }} />}
-          {phase === "generating" ? "生成网格图中…" : phase === "slicing" ? "切分并生成分镜中…" : `生成 ${cells} 个分镜`}
+          {phase === "generating" ? "生成网格图中…" : phase === "slicing" ? (mode === "video" ? "抽帧并生成分镜中…" : "切分并生成分镜中…") : (mode === "video" ? `从视频生成 ${frameCount} 个分镜` : `生成 ${cells} 个分镜`)}
         </button>
         <p style={{ fontSize: 9.5, color: "var(--c-t4)", margin: 0, lineHeight: 1.5 }}>
           生成后每格落成一个分镜节点（带关键帧图，可在镜头表批量生视频/配音/装配成片）。

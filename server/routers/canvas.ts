@@ -50,6 +50,7 @@ import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { generateImage } from "../_core/imageGeneration";
 import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL } from "../../shared/imageEdit";
 import { sliceGridImage } from "../_core/imageGrid";
+import { extractStoryboardFrames } from "../_core/videoStoryboard";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
@@ -2940,6 +2941,20 @@ export const imageGridRouter = router({
       guardUrl(input.imageUrl);
       const result = await sliceGridImage(input.imageUrl, input.rows, input.cols);
       return { urls: result.urls, rows: result.rows, cols: result.cols };
+    }),
+
+  // 视频→分镜反解：抽 N 张等距关键帧（本地 ffmpeg，仅项目门控 + SSRF 守卫）。
+  fromVideo: protectedProcedure
+    .input(z.object({
+      videoUrl: mediaUrlSchema,
+      count: z.number().int().min(1).max(24),
+      projectId: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.videoUrl);
+      const result = await extractStoryboardFrames(input.videoUrl, input.count);
+      return { frames: result.frames, duration: result.duration };
     }),
 });
 
