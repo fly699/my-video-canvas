@@ -33,6 +33,7 @@ import {
   getUserById,
   getOrCreateAssistantUserId,
   ASSISTANT_NAME,
+  clearConversationMessages,
 } from "../db";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
@@ -376,6 +377,20 @@ export const chatRouter = router({
       });
       if (aiMsg && broadcaster) broadcaster(conv.id, rowToWire(aiMsg));
       return aiMsg ? rowToWire(aiMsg) : null;
+    }),
+
+  // 「新对话」：清空当前用户与 AI 助手私聊的全部历史（保留会话本身）。切换人设后历史
+  // 清空 → 新模板从零开始，彻底摆脱旧角色惯性。仅限本人 ↔ AI 助手的 DM。
+  clearAssistant: protectedProcedure
+    .input(z.object({ conversationId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const aiId = await getOrCreateAssistantUserId();
+      const conv = await getConversationById(input.conversationId);
+      if (!conv || conv.type !== "dm") throw new TRPCError({ code: "NOT_FOUND" });
+      if (conv.dmKey !== dmKeyFor(ctx.user.id, aiId)) throw new TRPCError({ code: "FORBIDDEN", message: "非 AI 助手会话" });
+      await clearConversationMessages(conv.id);
+      if (eventBroadcaster) eventBroadcaster(conv.id, "conversation:cleared", { conversationId: conv.id });
+      return { success: true };
     }),
 
   inviteToRoom: protectedProcedure

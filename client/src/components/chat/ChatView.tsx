@@ -78,6 +78,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
   const [chatTemplate, setChatTemplate] = useState<string>(() => localStorage.getItem("chat:aiTemplate") || "");
   const effSystemPrompt = ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.prompt;
   const sendToAssistantMut = trpc.chat.sendToAssistant.useMutation();
+  const clearAssistantMut = trpc.chat.clearAssistant.useMutation();
   const uploadFileMut = trpc.chat.uploadFile.useMutation();
   const pickChatModel = (id: string) => { setChatModel(id); localStorage.setItem("chat:aiModel", id); };
   const pickChatTemplate = (id: string) => {
@@ -224,6 +225,21 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
               title="复制整段对话"
               style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}
             ><Copy size={13} /> 复制全部</button>
+          )}
+          {/* AI 助手「新对话」：清空共享历史 → 换人设后从零开始，彻底摆脱旧角色惯性 */}
+          {isAI && (
+            <button
+              onClick={() => {
+                if (clearAssistantMut.isPending) return;
+                if (!confirm("清空与 AI 助手的全部对话历史，开启新对话？（用于切换人设后彻底重来）")) return;
+                clearAssistantMut.mutate({ conversationId: activeConv!.id }, {
+                  onSuccess: () => toast.success("已清空，开启新对话", { duration: 1400 }),
+                  onError: (e) => toast.error(e.message),
+                });
+              }}
+              title="新对话（清空 AI 助手历史，换人设后从零开始）"
+              style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}
+            ><Sparkles size={13} /> 新对话</button>
           )}
           {/* AI 助手会话：不是真人/群聊，隐藏 文件/中转站/删除/模式切换等无关按钮 */}
           {!isAI && <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={13} /> 文件</button>}
