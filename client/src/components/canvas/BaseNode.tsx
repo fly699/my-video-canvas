@@ -481,7 +481,7 @@ export const BaseNode = memo(function BaseNode({
           the EXACT existing handlers (same onRun reference the title-bar run uses,
           and the self-contained duplicateNode store action), so it cannot diverge
           from or break existing behavior. */}
-      {usesStudioFloating && (storeSelected || pinned) && (
+      {usesStudioFloating && (storeSelected || pinned) && (onRun || resultVideoUrl || resultImageUrl) && (
         <NodeToolbar nodeId={id} isVisible position={Position.Top} offset={10}>
           <div
             className="nodrag flex items-center gap-1"
