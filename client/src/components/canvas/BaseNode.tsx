@@ -2,7 +2,7 @@ import { memo, useState, useRef, useCallback, useEffect } from "react";
 import { Handle, Position, NodeResizer, NodeToolbar } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS } from "../../lib/connectionRules";
-import type { NodeType } from "../../../../shared/types";
+import type { NodeType, ImageEditOp } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
 import { useConnectState } from "../../hooks/useConnectingStore";
@@ -18,6 +18,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2,
+  Scissors, Sun, Crop, Expand,
 } from "lucide-react";
 import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -238,6 +239,30 @@ export const BaseNode = memo(function BaseNode({
     const list = heroImageList ? heroImageList.split("\n") : [resultImageUrl];
     useLightbox.getState().open(list, Math.max(0, list.indexOf(resultImageUrl)), "image", title, id);
   };
+
+  // Liblib-style quick AI-edit: spawn an image_edit node preset to `operation`, with this
+  // node's result image as its source (set directly + wired by an edge), then select it.
+  const spawnImageEdit = (operation: ImageEditOp, label: string) => {
+    if (!resultImageUrl) return;
+    const st = useCanvasStore.getState();
+    const self = st.nodes.find((n) => n.id === id);
+    if (!self) return;
+    const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
+    let node;
+    try { node = st.addNode("image_edit", { x: self.position.x + w + 60, y: self.position.y }); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
+    st.updateNodeData(node.id, { operation, sourceImageUrl: resultImageUrl });
+    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
+    // select the new node from FRESH state (addNode/updateNodeData replaced the array)
+    useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
+    toast.success(`已创建「${label}」编辑节点（已连源图，点运行生成）`, { duration: 1800 });
+  };
+  const QUICK_EDITS: { op: ImageEditOp; label: string; Icon: typeof Scissors }[] = [
+    { op: "remove_bg", label: "去背景", Icon: Scissors },
+    { op: "outpaint", label: "扩图", Icon: Expand },
+    { op: "relight", label: "重打光", Icon: Sun },
+    { op: "reframe", label: "改比例", Icon: Crop },
+  ];
   // A previewable node that has a result and is NOT being edited (not selected,
   // not pinned) renders collapsed: only the title bar + warning/error/progress +
   // the hero preview. In that state drop the min-height floor so the node shrinks
@@ -475,6 +500,23 @@ export const BaseNode = memo(function BaseNode({
               >
                 <Download size={13} />
               </button>
+            )}
+            {/* Liblib-style quick AI-edit actions — only for nodes with an image result.
+                Each spawns a connected image_edit node preset to that operation. */}
+            {resultImageUrl && nodeType !== "image_edit" && (
+              <>
+                <div style={{ width: 1, height: 16, background: "var(--c-bd2)", margin: "0 1px" }} />
+                {QUICK_EDITS.map(({ op, label, Icon }) => (
+                  <button key={op}
+                    onClick={(e) => { e.stopPropagation(); spawnImageEdit(op, label); }}
+                    title={`${label}（生成连好源图的图像编辑节点）`}
+                    className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                    style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                  >
+                    <Icon size={12} /> {label}
+                  </button>
+                ))}
+              </>
             )}
           </div>
         </NodeToolbar>
