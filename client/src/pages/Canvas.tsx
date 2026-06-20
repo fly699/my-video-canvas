@@ -2799,6 +2799,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => setShowNodePicker(!showNodePicker)}
                   className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
                   style={{
@@ -2820,7 +2821,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  data-tb-sec
                   onClick={() => setShowGridStoryboard(true)}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ color: "oklch(0.65 0.20 160)" }}
@@ -2881,7 +2881,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  data-tb-sec
                   onClick={() => reactFlow.fitView({ padding: 0.15, duration: 400 })}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ color: "var(--c-t3)" }}
@@ -2934,7 +2933,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  data-tb-sec
                   onClick={() => setRegionZoomActive((v) => !v)}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={regionZoomActive
