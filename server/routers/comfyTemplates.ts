@@ -132,6 +132,9 @@ export const comfyTemplatesRouter = router({
       if (Array.isArray(payload.serverUrls)) {
         for (const u of payload.serverUrls) if (typeof u === "string") templateUrls.add(u);
       }
+      // 也纳入「自定义服务器地址」customBaseUrl —— 之前只扫 serverUrls，导致写在
+      // customBaseUrl 里的失效服务器永远检测不到、清不掉。
+      if (typeof payload.customBaseUrl === "string" && payload.customBaseUrl.trim()) templateUrls.add(payload.customBaseUrl.trim());
     }
     const candidates = Array.from(new Set([...globalUrls, ...Array.from(templateUrls)]));
     const scanByUrl = new Map<string, { online: boolean; models: Set<string> }>();
@@ -154,12 +157,15 @@ export const comfyTemplatesRouter = router({
     for (const t of templates) {
       const payload = (t.payload ?? {}) as Record<string, unknown>;
       const serverUrls = Array.isArray(payload.serverUrls) ? (payload.serverUrls as unknown[]).filter((x): x is string => typeof x === "string") : [];
+      const customBaseUrl = typeof payload.customBaseUrl === "string" ? payload.customBaseUrl.trim() : "";
+      // 检测范围 = serverUrls ∪ customBaseUrl（去重）。
+      const allServers = customBaseUrl && !serverUrls.includes(customBaseUrl) ? [...serverUrls, customBaseUrl] : serverUrls;
       const refs = extractTemplateModelRefs({ payload });
       const required = requiredModelsFor(refs, onlineAll);
-      const failed = serverFailures(serverUrls, required, scanByUrl);
-      const additions = qualifyingServers(refs, onlineGlobalServers).filter((u) => !serverUrls.includes(u));
+      const failed = serverFailures(allServers, required, scanByUrl);
+      const additions = qualifyingServers(refs, onlineGlobalServers).filter((u) => !allServers.includes(u));
       if (failed.length || additions.length) {
-        result.push({ id: t.id, label: t.label, serverCount: serverUrls.length, failed, additions });
+        result.push({ id: t.id, label: t.label, serverCount: allServers.length, failed, additions });
       }
     }
     // 失效的「全局服务器」——这些需从全局注册表移除，否则只清模板列表它们仍会反复出现。
@@ -195,10 +201,16 @@ export const comfyTemplatesRouter = router({
         const current = Array.isArray(payload.serverUrls) ? (payload.serverUrls as unknown[]).filter((x): x is string => typeof x === "string") : [];
         const removeSet = new Set(item.remove);
         const next = Array.from(new Set([...current.filter((u) => !removeSet.has(u)), ...item.add]));
-        if (next.length === current.length && next.every((u, i) => u === current[i])) continue;
-        await db.updateComfyNodeTemplate(item.templateId, { payload: sanitizeComfyPayload({ ...payload, serverUrls: next }) });
+        // 若失效服务器写在 customBaseUrl 里，被勾选移除则一并清空该字段。
+        const curCustom = typeof payload.customBaseUrl === "string" ? payload.customBaseUrl.trim() : "";
+        const customCleared = curCustom !== "" && removeSet.has(curCustom);
+        const noServerChange = next.length === current.length && next.every((u, i) => u === current[i]);
+        if (noServerChange && !customCleared) continue;
+        const newPayload: Record<string, unknown> = { ...payload, serverUrls: next };
+        if (customCleared) newPayload.customBaseUrl = "";
+        await db.updateComfyNodeTemplate(item.templateId, { payload: sanitizeComfyPayload(newPayload) });
         updated++;
-        removed += current.filter((u) => removeSet.has(u)).length;
+        removed += current.filter((u) => removeSet.has(u)).length + (customCleared ? 1 : 0);
         added += item.add.filter((u) => !current.includes(u)).length;
       }
       return { updated, removed, added, removedGlobal };
