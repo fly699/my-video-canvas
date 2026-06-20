@@ -985,6 +985,10 @@
   transform: translateY(-1px);
 }
 
+/* Collapsed floating toolbar: hide the less-used tools (marked data-tb-sec); the
+   essentials (add / zoom / run / skin) stay. Toggled from the left chevron. */
+[data-toolbar-collapsed="true"] [data-tb-sec] { display: none !important; }
+
 /* Studio quick-run: a hover-only run button on each runnable node, so you can re-run
    without selecting/expanding it. Hidden by default; revealed when hovering the node
    card (and only while it isn't the selected node — the selected node already has the
