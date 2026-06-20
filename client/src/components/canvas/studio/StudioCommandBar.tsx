@@ -125,9 +125,9 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
           style={{ width: "100%", fontSize: 13.5, padding: "10px 78px 10px 12px", borderRadius: 11, background: "var(--c-input)",
             border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", lineHeight: 1.55, resize: "vertical", minHeight: 58 }} />
         <div className="nodrag" style={{ position: "absolute", top: 7, right: 8, display: "flex", gap: 5 }}>
-          <button onClick={(e) => { e.stopPropagation(); void doEnhance("expand"); }} disabled={!!enhancing} title="AI 扩写提示词"
+          <button className="studio-chip" onClick={(e) => { e.stopPropagation(); void doEnhance("expand"); }} disabled={!!enhancing} title="AI 扩写提示词"
             style={enhanceBtn}>{enhancing === "expand" ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}</button>
-          <button onClick={(e) => { e.stopPropagation(); void doEnhance("translate_en"); }} disabled={!!enhancing} title="翻译为英文"
+          <button className="studio-chip" onClick={(e) => { e.stopPropagation(); void doEnhance("translate_en"); }} disabled={!!enhancing} title="翻译为英文"
             style={enhanceBtn}>{enhancing === "translate_en" ? <Loader2 size={13} className="animate-spin" /> : <Languages size={13} />}</button>
         </div>
       </div>
@@ -145,7 +145,7 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
 
         {/* aspect — compact dropdown */}
         {showAspect && (
-          <select className="nodrag" title="画面比例" value={typeof payload.aspectRatio === "string" ? payload.aspectRatio : "16:9"}
+          <select className="nodrag studio-chip" title="画面比例" value={typeof payload.aspectRatio === "string" ? payload.aspectRatio : "16:9"}
             onChange={(e) => set({ aspectRatio: e.target.value })} style={chip}>
             {RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
@@ -157,7 +157,7 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
             const opts = paramOptions(def);
             const cur = (payload[def.key] as string | undefined) ?? def.default ?? opts[0]?.value ?? "";
             return (
-              <select key={def.key} className="nodrag" title={def.label} value={cur} onChange={(e) => set({ [def.key]: e.target.value })} style={chip}>
+              <select key={def.key} className="nodrag studio-chip" title={def.label} value={cur} onChange={(e) => set({ [def.key]: e.target.value })} style={chip}>
                 {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             );
@@ -165,13 +165,13 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
           if (def.type === "number") {
             const cur = (payload[def.key] as number | undefined) ?? def.default ?? def.min ?? 1;
             return (
-              <input key={def.key} type="number" className="nodrag" title={def.label} value={cur} min={def.min} max={def.max} step={def.step ?? 1}
+              <input key={def.key} type="number" className="nodrag studio-chip" title={def.label} value={cur} min={def.min} max={def.max} step={def.step ?? 1}
                 onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) set({ [def.key]: n }); }} style={{ ...chip, width: 72, maxWidth: 72 }} />
             );
           }
           const cur = (payload[def.key] as boolean | undefined) ?? def.default ?? false;
           return (
-            <label key={def.key} className="nodrag" title={def.label} style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+            <label key={def.key} className="nodrag studio-chip" title={def.label} style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
               <input type="checkbox" checked={cur} onChange={(e) => set({ [def.key]: e.target.checked })} />
               <span style={{ fontSize: 11.5, color: "var(--c-t2)" }}>{def.label}</span>
             </label>
@@ -183,7 +183,7 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
           const curRaw = videoParams[def.key] ?? def.default;
           if (def.type === "select") {
             return (
-              <select key={def.key} className="nodrag" title={def.label} value={String(curRaw ?? "")}
+              <select key={def.key} className="nodrag studio-chip" title={def.label} value={String(curRaw ?? "")}
                 onChange={(e) => { const raw = e.target.value; const num = Number(raw); setVideoParam(def.key, raw === "" || Number.isNaN(num) ? raw : num); }} style={chip}>
                 {def.options.map((o) => <option key={String(o.value)} value={String(o.value)}>{o.label}</option>)}
               </select>
@@ -192,14 +192,14 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
           if (def.type === "number" || def.type === "range") {
             const cur = typeof curRaw === "number" ? curRaw : (def.default ?? def.min);
             return (
-              <input key={def.key} type="number" className="nodrag" title={def.label + (def.type === "range" && def.unit ? `（${def.unit}）` : "")}
+              <input key={def.key} type="number" className="nodrag studio-chip" title={def.label + (def.type === "range" && def.unit ? `（${def.unit}）` : "")}
                 value={cur} min={def.min} max={def.max} step={def.step}
                 onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) setVideoParam(def.key, n); }} style={{ ...chip, width: 76, maxWidth: 76 }} />
             );
           }
           const cur = typeof curRaw === "boolean" ? curRaw : (def.default ?? false);
           return (
-            <label key={def.key} className="nodrag" title={def.label} style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+            <label key={def.key} className="nodrag studio-chip" title={def.label} style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
               <input type="checkbox" checked={cur} onChange={(e) => setVideoParam(def.key, e.target.checked)} />
               <span style={{ fontSize: 11.5, color: "var(--c-t2)" }}>{def.label}</span>
             </label>
@@ -212,17 +212,7 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
         {/* right group: cost (⚡) + send/generate (↑) — pushed to the far right */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9 }}>
           {costLabel && <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ui-amber, var(--c-t2))", whiteSpace: "nowrap" }}>⚡ {costLabel}</span>}
-          {onRun && (
-            <button onClick={(e) => { e.stopPropagation(); if (canRun && !running) onRun(); }} disabled={!canRun || running}
-              title={running ? "生成中…" : hasResult ? "重新生成" : "生成"}
-              style={{ width: 34, height: 34, borderRadius: "50%", border: "none", flexShrink: 0,
-                background: canRun && !running ? "#fff" : "var(--c-surface)",
-                color: canRun && !running ? "#111" : "var(--c-t4)",
-                cursor: canRun && !running ? "pointer" : "not-allowed",
-                display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {running ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={16} />}
-            </button>
-          )}
+          <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult} verb="生成" />
         </div>
       </div>
 
@@ -398,7 +388,7 @@ function PromptBox({ nodeId, field, placeholder, enhance }: { nodeId: string; fi
   );
 }
 
-function SendButton({ onRun, canRun = true, running = false, hasResult = false }: { onRun?: () => void; canRun?: boolean; running?: boolean; hasResult?: boolean }) {
+function SendButton({ onRun, canRun = true, running = false, hasResult = false, verb = "运行" }: { onRun?: () => void; canRun?: boolean; running?: boolean; hasResult?: boolean; verb?: string }) {
   if (!onRun) return null;
   // Three explicit visual states: run (white, ready) / running (accent-tinted with a
   // pulsing ring → reads as "working", not disabled) / off (muted, can't run).
@@ -406,7 +396,7 @@ function SendButton({ onRun, canRun = true, running = false, hasResult = false }
   return (
     <button className="studio-send" data-state={state}
       onClick={(e) => { e.stopPropagation(); if (canRun && !running) onRun(); }} disabled={!canRun || running}
-      title={running ? "运行中…" : hasResult ? "重新运行" : "运行"}
+      title={running ? `${verb}中…` : hasResult ? `重新${verb}` : verb}
       style={{ width: 34, height: 34, borderRadius: "50%", border: "none", flexShrink: 0,
         background: state === "run" ? "#fff" : state === "running" ? "color-mix(in oklab, var(--ui-accent) 22%, var(--c-surface))" : "var(--c-surface)",
         color: state === "run" ? "#111" : state === "running" ? "var(--ui-accent)" : "var(--c-t4)",
@@ -480,7 +470,7 @@ type AudioModelOpt = { value: string; label: string; group?: string };
 function audioModelSelect(value: string, opts: readonly AudioModelOpt[], onChange: (v: string) => void, title: string) {
   const groups = Array.from(new Set(opts.map((o) => o.group ?? "")));
   return (
-    <select className="nodrag" title={title} value={value} onChange={(e) => onChange(e.target.value)} style={{ ...chip, maxWidth: 190 }}>
+    <select className="nodrag studio-chip" title={title} value={value} onChange={(e) => onChange(e.target.value)} style={{ ...chip, maxWidth: 190 }}>
       {groups.map((g) => (
         <optgroup key={g || "_"} label={g || "模型"}>
           {opts.filter((o) => (o.group ?? "") === g).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -532,7 +522,7 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
           <>
             {audioModelSelect(musicModel, MUSIC_MODELS, (v) => set({ musicModel: v }), "音乐模型")}
             {!isMiniMax && (
-              <select className="nodrag" title="风格" value={typeof payload.musicStyle === "string" ? payload.musicStyle : ""}
+              <select className="nodrag studio-chip" title="风格" value={typeof payload.musicStyle === "string" ? payload.musicStyle : ""}
                 onChange={(e) => set({ musicStyle: e.target.value || undefined })} style={chip}>
                 <option value="">风格（不限）</option>
                 {MUSIC_STYLES_ZH.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -545,7 +535,7 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
           <>
             {audioModelSelect(ttsModel, DUBBING_MODELS, onTtsModelChange, "配音模型")}
             {voices.length > 0 && (
-              <select className="nodrag" title="发音人" value={ttsVoice} onChange={(e) => set({ ttsVoice: e.target.value })} style={{ ...chip, maxWidth: 180 }}>
+              <select className="nodrag studio-chip" title="发音人" value={ttsVoice} onChange={(e) => set({ ttsVoice: e.target.value })} style={{ ...chip, maxWidth: 180 }}>
                 {voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
               </select>
             )}
