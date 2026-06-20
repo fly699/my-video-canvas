@@ -405,7 +405,7 @@ function EditorWorkspace({ id }: { id: number }) {
                   { key: "Del / Backspace", desc: "删除选中片段" },
                   { key: "Shift + Del", desc: "波纹删除（关闭缺口）" },
                   { key: "S", desc: "在播放头处分割" },
-                  { key: "M", desc: "合并相邻同源片段（分割的逆操作）" },
+                  { key: "M", desc: "合并相邻同源片段（多选可一次合并连续多段）" },
                   { key: "拖片段两端", desc: "裁切入/出点" },
                   { key: "Shift + S", desc: "全轨分割（切所有轨道）" },
                   { key: "Cmd/Ctrl + D", desc: "原地复制片段" },

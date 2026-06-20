@@ -510,8 +510,20 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
       brightness: payload.brightness, contrast: payload.contrast, saturation: payload.saturation,
       aspect: payload.aspect, muteOriginal: payload.muteOriginal, originalVolume: payload.originalVolume,
     };
+    // 并排布局：放到本节点右侧；若该位置已被其它节点占用，则向下顺延到空位，避免叠在一起。
     const w = (self.style?.width as number | undefined) ?? 360;
-    const newNode = st.addNode("clip", { x: self.position.x + w + 48, y: self.position.y });
+    const h = (self.style?.height as number | undefined) ?? 360;
+    const GAP = 48;
+    const tx = self.position.x + w + GAP;
+    const rectsOverlap = (y: number) => st.nodes.some((n) => {
+      if (n.id === id) return false;
+      const nx = n.position.x, ny = n.position.y;
+      const nw = (n.style?.width as number | undefined) ?? 340, nh = (n.style?.height as number | undefined) ?? 360;
+      return tx < nx + nw && tx + w > nx && y < ny + nh && y + h > ny;
+    });
+    let ty = self.position.y;
+    for (let guard = 0; guard < 50 && rectsOverlap(ty); guard++) ty += h + 40;
+    const newNode = st.addNode("clip", { x: tx, y: ty });
     st.updateNodeData(newNode.id, carry);
     if (srcEdge) st.onConnect({ source: srcEdge.source, target: newNode.id, sourceHandle: srcEdge.sourceHandle ?? null, targetHandle: "video-in" });
     update("endTime", at); // 本段截到分割点

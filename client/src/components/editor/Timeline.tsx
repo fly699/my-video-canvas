@@ -29,13 +29,29 @@ export function Timeline() {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const selCount = useEditorStore((s) => s.selectedClipIds.length);
   const canMergeSel = useEditorStore((s) => {
-    const id = s.selectedClipId; if (!id || !s.doc) return false;
+    if (!s.doc) return false;
+    const ids = s.selectedClipIds;
+    if (ids.length >= 2) {
+      // 多选：选区内同轨存在「连续同源」的相邻对即可合并
+      const sset = new Set(ids);
+      for (const tr of s.doc.tracks) {
+        const sel = tr.clips.filter((c) => sset.has(c.id)).sort((a, b) => a.start - b.start);
+        for (let i = 1; i < sel.length; i++) if (canMergeClips(sel[i - 1], sel[i])) return true;
+      }
+      return false;
+    }
+    const id = s.selectedClipId; if (!id) return false;
     for (const tr of s.doc.tracks) {
       const a = tr.clips.find((c) => c.id === id);
       if (a) { const b = rightNeighbour(tr, a); return !!b && canMergeClips(a, b); }
     }
     return false;
   });
+  const doMerge = useCallback(() => {
+    const st = useEditorStore.getState();
+    if (st.selectedClipIds.length >= 2) st.mergeSelectedClips();
+    else if (st.selectedClipId) st.mergeClipWithNext(st.selectedClipId);
+  }, []);
   const [band, setBand] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -75,7 +91,7 @@ export function Timeline() {
       else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); multi ? st.removeSelected() : st.removeClip(sel); }
       else if ((e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); multi ? st.copySelected() : st.copyClip(sel); }
       else if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitClip(sel, st.playhead); }
-      else if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.mergeClipWithNext(sel); }
+      else if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); multi ? st.mergeSelectedClips() : st.mergeClipWithNext(sel); }
       else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); multi ? st.duplicateSelected() : st.duplicateClip(sel); }
     };
     window.addEventListener("keydown", onKey);
@@ -318,8 +334,8 @@ export function Timeline() {
           title="在播放头处分割选中片段 (S)"
           style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selectedClipId ? EC.t2 : EC.t4, opacity: selectedClipId ? 1 : 0.5, cursor: selectedClipId ? "pointer" : "not-allowed" }}><SplitSquareHorizontal size={13} /><span style={{ fontSize: 11 }}>分割</span></button>
         <button disabled={!canMergeSel}
-          onClick={() => { if (selectedClipId && canMergeSel) useEditorStore.getState().mergeClipWithNext(selectedClipId); }}
-          title={canMergeSel ? "把选中片段与右侧相邻、同源连续的片段拼回一段 (M)" : "合并：需选中一个与右侧相邻、同源连续的片段（split 的逆操作）"}
+          onClick={() => { if (canMergeSel) doMerge(); }}
+          title={canMergeSel ? "合并相邻同源片段为一段（多选则把选区内连续多段一次合并）(M)" : "合并：选中相邻、同源连续的片段（单选=与右侧相邻段；多选=选区内连续多段）"}
           style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: canMergeSel ? EC.t2 : EC.t4, opacity: canMergeSel ? 1 : 0.5, cursor: canMergeSel ? "pointer" : "not-allowed" }}><Combine size={13} /><span style={{ fontSize: 11 }}>合并</span></button>
         <button disabled={selCount === 0}
           onClick={() => { const st = useEditorStore.getState(); if (selCount > 1) st.removeSelected(); else if (selectedClipId) st.removeClip(selectedClipId); }}
@@ -495,7 +511,7 @@ export function Timeline() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderTop: `1px solid ${EC.border}`, fontSize: 10, color: EC.t4, flexShrink: 0 }}>
-        <Scissors size={11} /> 拖动移动/换轨 · Shift/Ctrl 点击多选 · 空白拖拽框选 · Ctrl+A 全选 · ,/. 逐帧微移 · 拖两端 裁切 · Del 删除 · Shift+Del 波纹删除 · S 分割 · M 合并相邻 · Shift+S 全轨分割 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 复制 · 空格 播放/暂停
+        <Scissors size={11} /> 拖动移动/换轨 · Shift/Ctrl 点击多选 · 空白拖拽框选 · Ctrl+A 全选 · ,/. 逐帧微移 · 拖两端 裁切 · Del 删除 · Shift+Del 波纹删除 · S 分割 · M 合并(多选可连续多段) · Shift+S 全轨分割 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 复制 · 空格 播放/暂停
       </div>
 
       {menu && (() => {

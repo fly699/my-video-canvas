@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canMergeClips, mergeClips, rightNeighbour } from "../components/editor/editorStore";
+import { canMergeClips, mergeClips, rightNeighbour, mergeContiguousRun } from "../components/editor/editorStore";
 import type { Clip, Track } from "@shared/editorTypes";
 
 // Minimal clip factory mirroring a video source split into [0,2]+[2,5] on the timeline.
@@ -46,6 +46,36 @@ describe("mergeClips（拼回一段）", () => {
     const m = mergeClips(a, b);
     // a: t=0,2 ; b rebased +2: t=2(dup→drop),5 → 合并后 0,2,5
     expect(m.keyframes?.map((k) => k.t)).toEqual([0, 2, 5]);
+  });
+});
+
+describe("mergeContiguousRun（多段连续合并）", () => {
+  // 一段被切成 4 块：[0,2][2,4][4,6][6,9]
+  const four = [
+    clip({ id: "a", start: 0, trimIn: 0, trimOut: 2 }),
+    clip({ id: "b", start: 2, trimIn: 2, trimOut: 4 }),
+    clip({ id: "c", start: 4, trimIn: 4, trimOut: 6 }),
+    clip({ id: "d", start: 6, trimIn: 6, trimOut: 9 }),
+  ];
+  it("连续 4 段折叠成 1 段，保留首段起点、延到末段出点", () => {
+    const out = mergeContiguousRun(four);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("a");
+    expect(out[0].trimIn).toBe(0);
+    expect(out[0].trimOut).toBe(9);
+  });
+  it("中间断开 → 折叠成两段（run + 独立段）", () => {
+    const broken = [
+      four[0], four[1],                              // [0,2][2,4] 连续
+      clip({ id: "x", start: 5, trimIn: 4, trimOut: 7 }), // 时间有间隙 → 断开
+    ];
+    const out = mergeContiguousRun(broken);
+    expect(out.map((c) => c.id)).toEqual(["a", "x"]);
+    expect(out[0].trimOut).toBe(4);
+  });
+  it("单段 / 空 原样返回", () => {
+    expect(mergeContiguousRun([four[0]]).map((c) => c.id)).toEqual(["a"]);
+    expect(mergeContiguousRun([])).toEqual([]);
   });
 });
 
