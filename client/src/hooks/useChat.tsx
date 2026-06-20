@@ -41,6 +41,9 @@ interface ChatContextValue {
   sendFile: (file: File, opts?: { encrypt?: boolean }) => Promise<void>;
   emitTyping: () => void;
   loadingMessages: boolean;
+  /** Force-reload the active conversation's messages from the server (authoritative,
+   *  no socket dependency). Used by AI 助手「新对话」after clearing history. */
+  reloadActiveMessages: () => void;
   /** Admin-configured single-file size limit (MB). */
   maxFileMb: number;
   /** Whether the admin allows serverless (E2E) mode. */
@@ -537,6 +540,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     openDm, createGroupWith,
     messages, presence, typingUsers,
     connected, sendText, sendFile, emitTyping, loadingMessages,
+    reloadActiveMessages: () => { if (activeIdRef.current) void reloadMessages(activeIdRef.current); },
     maxFileMb, serverlessAllowed, e2eAvailable: E2E_AVAILABLE,
   };
   return <ChatContext.Provider value={value}>{children}<Lightbox /></ChatContext.Provider>;
