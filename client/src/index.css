@@ -937,10 +937,15 @@
    in the studio accent. Scoped to studio so the pro skin is untouched. */
 :root[data-ui="studio"] .studio-chip {
   transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  /* Let chips shrink inside a narrow node's command bar instead of overflowing the
+     card — flex items need min-width:0 to go below their content/preferred width. */
+  min-width: 0;
 }
 :root[data-ui="studio"] .studio-chip:hover {
   border-color: var(--c-bd3);
-  background-color: var(--c-elevated);
+  /* one elevation step above BOTH the recessed input chips and the elevated
+     enhance/refImage buttons, so every control shows a visible hover. */
+  background-color: var(--c-overlay);
 }
 :root[data-ui="studio"] .studio-chip:focus-within,
 :root[data-ui="studio"] select.studio-chip:focus,

@@ -281,7 +281,7 @@ function StudioRefImages({ nodeId, payload }: { nodeId: string; payload: Record<
       {refImages.images.length > 4 && (
         <span style={{ fontSize: 11, color: "var(--c-t3)", fontWeight: 700, flexShrink: 0 }}>+{refImages.images.length - 4}</span>
       )}
-      <button onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }} disabled={uploading} title="添加参考图（可多张）"
+      <button className="studio-chip" onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }} disabled={uploading} title="添加参考图（可多张）"
         style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "none" }}>
         {uploading ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={14} />}
         <span style={{ fontSize: 11.5 }}>参考图</span>
@@ -384,9 +384,9 @@ function PromptBox({ nodeId, field, placeholder, enhance }: { nodeId: string; fi
           border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", lineHeight: 1.55, resize: "vertical", minHeight: 58 }} />
       {enhance && (
         <div className="nodrag" style={{ position: "absolute", top: 7, right: 8, display: "flex", gap: 5 }}>
-          <button onClick={(e) => { e.stopPropagation(); void doEnhance("expand"); }} disabled={!!enhancing} title="AI 扩写" style={enhanceBtn}>
+          <button className="studio-chip" onClick={(e) => { e.stopPropagation(); void doEnhance("expand"); }} disabled={!!enhancing} title="AI 扩写" style={enhanceBtn}>
             {enhancing === "expand" ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}</button>
-          <button onClick={(e) => { e.stopPropagation(); void doEnhance("translate_en"); }} disabled={!!enhancing} title="翻译为英文" style={enhanceBtn}>
+          <button className="studio-chip" onClick={(e) => { e.stopPropagation(); void doEnhance("translate_en"); }} disabled={!!enhancing} title="翻译为英文" style={enhanceBtn}>
             {enhancing === "translate_en" ? <Loader2 size={13} className="animate-spin" /> : <Languages size={13} />}</button>
         </div>
       )}
