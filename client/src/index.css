@@ -985,6 +985,21 @@
   transform: translateY(-1px);
 }
 
+/* Studio quick-run: a hover-only run button on each runnable node, so you can re-run
+   without selecting/expanding it. Hidden by default; revealed when hovering the node
+   card (and only while it isn't the selected node — the selected node already has the
+   floating toolbar). */
+:root[data-ui="studio"] .studio-quickrun {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 130ms ease, transform 130ms ease;
+}
+:root[data-ui="studio"] .react-flow__node:not(.selected):hover .studio-quickrun {
+  opacity: 1;
+  pointer-events: auto;
+}
+:root[data-ui="studio"] .studio-quickrun:not(:disabled):hover { transform: translateY(-1px); }
+
 /* ── Button active state ────────────────────────────────────────────────────── */
 button:active:not(:disabled) {
   transform: scale(0.97);
