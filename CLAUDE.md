@@ -202,6 +202,35 @@ cd /tmp && node my_test.js 2>&1
 
 ---
 
+## 实时通信 / 公网隧道 / 聊天 血泪教训（2026-06，务必先读！）
+
+为「画布内 AI 助手换模板没用 / 回答不显示 / 一直连接中」反复折腾了一长串，根因往往**不在你以为的地方**。下次碰到聊天/协作/隧道相关问题，先按这里排查，别再重蹈覆辙：
+
+1. **公网隧道下 socket「始终连接中」= 隧道回环服务器没挂 Socket.IO（最大的坑！）**
+   隧道（`server/_core/tunnel.ts`）把流量转发到**一台专用 127.0.0.1 回环服务器**（`server/_core/index.ts` 里 `createServer(app).listen(tunnelPort)`），但 `io = new SocketIOServer(server)` **只挂在主服务器上**。于是经隧道进来的 WebSocket 升级请求落到这台没有 io 的回环服务器上无人处理 → socket 永远握不上手 → 聊天头「连接中」、**实时消息/在线/广播事件全丢**。
+   → **修复：`io.attach(tunnelServer)` 把 Socket.IO 也挂到隧道回环服务器**（io 可同时附着多台 HTTP 服务器，沿用 path=/api/socket、cors）。启动日志出现 `[Tunnel] internal origin … (socket.io attached)` 即生效。**任何新增的、要走隧道的监听服务器都必须同样 attach。** cloudflared 快速隧道原生支持 WS，无需额外配置。
+   验证：起服务后用 `socket.io-client` 同时连主端口与回环端口，两者都应 `CONNECTED via websocket`。
+
+2. **「回答不显示，必须刷新」「换模板/新对话点了界面不动」= 只靠 socket 广播刷 UI**
+   AI 回复、`conversation:cleared` 等都靠 socket 广播回灌 UI。socket 一断（见第 1 条），界面就不更新，刷新才有（刷新会从服务器重新拉）。
+   → **凡是改了服务器数据又要立刻反映到 UI 的操作，除了广播，必须有「从服务器权威重载」兜底**（`useChat.reloadActiveMessages` → `chat.getMessages`），不要单押 socket。
+
+3. **缩放窗里的原生 `<select>` 点击会失效（Chromium 已知坑）**
+   画布悬浮聊天窗用 `transform: scale()` 整窗缩放，缩放下原生 `<select>` 弹层会错位/点错项 → 用户「换模板点不动」，一直停在持久化的旧值。
+   → **任何处于 `transform: scale` 容器里的下拉，别用原生 `<select>`，改自绘 in-DOM 下拉**（见 `ChatView` 的 `MiniSelect`）。
+
+4. **共享长对话里换人设没用 = 历史角色惯性压过新 systemPrompt**
+   「AI 助手」是一条共享长对话，历史里堆着旧角色的回复，真实 LLM 会顺着历史已确立的人设走，光换 systemPrompt 压不住（自建 Qwen 等尤甚）。而「AI 对话节点」用各自独立干净的历史，故节点没问题。
+   → 选模板时把人设包成「最高优先级、必须覆盖历史角色」的强指令；并提供「新对话」清空历史彻底重来。
+
+5. **方法论教训（别再犯）：**
+   - **「代码里对、在你那不行」十有八九是没重启服务端 / 浏览器跑着旧包**：服务端改动（.ts）**必须重启 node 进程**才生效，光更新前端没用；让用户强刷（Ctrl+Shift+R）。本轮一半时间耗在这上面。
+   - **纯程序化测试（dispatch change 事件）会绕过真实交互的坑**（如缩放下原生 select 点击失效），断定「逻辑没问题」≠「用户点得动」。需要时用真实点击/真机复现。
+   - **同类功能在 A 处正常、B 处不正常时，先找两处的运行时差异**（独立历史 vs 共享历史、有无 transform 缩放、走不走隧道），别只盯着「代码一样」。
+   - 聊天/隧道这类涉及 socket 的，**优先怀疑 socket 没连上**（看头部「连接中」状态、看 `socket.io attached` 日志）。
+
+---
+
 ## 第 13 轮更新说明（2026-05-23）
 
 **提交**：`cccdc2b` — `fix: add IP format validation and use fresh timestamp for whitelist cache TTL`
