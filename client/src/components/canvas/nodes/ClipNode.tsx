@@ -530,6 +530,42 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     toast.success("已在播放头分割为两段");
   }, [activeVideoUrl, currentTime, startTime, endTime, duration, id, payload, update]);
 
+  // 按镜号链批量分割：上游为「已装配的成片」（含镜界 segStarts）时，按每个镜界切成 N 段，
+  // 各落成一个剪辑节点（带入/出点、连到同一成片源、横排在本节点下方），原节点保留作全片参考。
+  const handleSplitByShots = useCallback(() => {
+    if (!activeVideoUrl) { toast.error("请先连接视频源"); return; }
+    if (shotMarkers.length < 2) { toast.error("需上游为「已装配的成片」（含镜界）才能按镜号分割"); return; }
+    const st = useCanvasStore.getState();
+    const self = st.nodes.find((n) => n.id === id);
+    if (!self) return;
+    const srcEdge = st.edges.find((e) => e.target === id && e.targetHandle === "video-in");
+    const total = (duration && Number.isFinite(duration) && duration > 0)
+      ? duration
+      : shotMarkers[shotMarkers.length - 1].time + 5;
+    const starts = shotMarkers.map((m) => m.time).sort((a, b) => a - b);
+    const segs = starts
+      .map((t, i) => ({ start: t, end: i < starts.length - 1 ? starts[i + 1] : total, label: shotMarkers[i]?.label ?? `镜${i + 1}` }))
+      .filter((seg) => seg.end - seg.start > 0.05);
+    if (segs.length === 0) { toast.error("镜界数据异常，无法分割"); return; }
+    const w = (self.style?.width as number | undefined) ?? 360;
+    const h = (self.style?.height as number | undefined) ?? 360;
+    const baseX = self.position.x;
+    const baseY = self.position.y + h + 80;
+    const carryBase = {
+      inputVideoUrl: activeVideoUrl, sourceDuration: total,
+      speed: payload.speed, audioVolume: payload.audioVolume,
+      reverse: payload.reverse, rotate: payload.rotate, flipH: payload.flipH, flipV: payload.flipV,
+      brightness: payload.brightness, contrast: payload.contrast, saturation: payload.saturation,
+      aspect: payload.aspect, muteOriginal: payload.muteOriginal, originalVolume: payload.originalVolume,
+    };
+    segs.forEach((seg, i) => {
+      const node = st.addNode("clip", { x: baseX + i * (w + 40), y: baseY });
+      st.updateNodeData(node.id, { ...carryBase, startTime: seg.start, endTime: seg.end } as Partial<ClipNodeData>);
+      if (srcEdge) st.onConnect({ source: srcEdge.source, target: node.id, sourceHandle: srcEdge.sourceHandle ?? null, targetHandle: "video-in" });
+    });
+    toast.success(`已按镜号分割为 ${segs.length} 段剪辑`);
+  }, [activeVideoUrl, shotMarkers, duration, id, payload]);
+
   // When source video loads, capture duration and init trim points
   const handleVideoMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
     const dur = (e.target as HTMLVideoElement).duration;
@@ -892,6 +928,18 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                 >
                   <Scissors style={{ width: 12, height: 12 }} /> 在播放头分割为两段
                 </button>
+
+                {/* 按镜号链批量分割（仅当上游成片带镜界时）：一键切成 N 段剪辑节点 */}
+                {shotMarkers.length >= 2 && (
+                  <button
+                    onClick={handleSplitByShots}
+                    className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                    style={{ background: accentA(0.10), border: `1px solid ${accentA(0.30)}`, color: accent, cursor: "pointer" }}
+                    title="按成片的镜界（镜号链）一次切成多段，每段生成一个剪辑节点（横排在本节点下方）"
+                  >
+                    <Scissors style={{ width: 12, height: 12 }} /> 按镜号批量分割为 {shotMarkers.length} 段
+                  </button>
+                )}
 
                 {/* Clip info */}
                 <div
