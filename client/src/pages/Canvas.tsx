@@ -109,7 +109,6 @@ import {
   Trash2,
   RotateCcw,
   BookmarkPlus,
-  Palette,
   ListVideo,
   HelpCircle,
   Clapperboard,
@@ -537,7 +536,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     "ui:canvas:chat-open:v1", false, { validate: validateBool, crossTab: false },
   );
   const [showArcPicker, setShowArcPicker] = useState(false);
-  const { mode: canvasMode, setMode: setCanvasMode } = useCanvasMode();
+  const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const themeIsDark = THEMES.find((t) => t.id === theme)?.dark ?? true;
   const isLight = !themeIsDark || canvasMode === "creative";
@@ -3031,46 +3030,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">连线指引</TooltipContent>
             </Tooltip>
 
-            {/* Canvas mode toggle: Professional ↔ Creative */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setCanvasMode(canvasMode === "creative" ? "professional" : "creative")}
-                  className="h-7 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-all"
-                  style={{
-                    background: canvasMode === "creative"
-                      ? "oklch(0.68 0.22 285 / 0.12)"
-                      : "transparent",
-                    border: canvasMode === "creative"
-                      ? "1px solid oklch(0.68 0.22 285 / 0.35)"
-                      : "1px solid transparent",
-                    color: canvasMode === "creative"
-                      ? "oklch(0.68 0.22 285)"
-                      : "var(--c-t3)",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (canvasMode !== "creative") {
-                      (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
-                      (e.currentTarget as HTMLElement).style.color = "var(--c-t1)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (canvasMode !== "creative") {
-                      (e.currentTarget as HTMLElement).style.background = "transparent";
-                      (e.currentTarget as HTMLElement).style.color = "var(--c-t3)";
-                    }
-                  }}
-                >
-                  <Palette className="w-3.5 h-3.5" />
-                  <span data-toolbar-label>{canvasMode === "creative" ? "创意" : "专业"}</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">
-                {canvasMode === "creative"
-                  ? "当前：创意模式（LibTV 风格）· 点击切换专业模式"
-                  : "切换到创意模式（白色画布 · 媒体优先）"}
-              </TooltipContent>
-            </Tooltip>
+            {/* Canvas mode (专业/创意) now lives in the unified UIStyleSwitcher below. */}
 
             {/* 节点默认模型设置 */}
             <NodeDefaultModelsButton orient={toolbarOrient} />
