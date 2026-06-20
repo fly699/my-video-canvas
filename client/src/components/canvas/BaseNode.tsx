@@ -433,7 +433,7 @@ export const BaseNode = memo(function BaseNode({
                 onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
                 disabled={!canRun || nodeRunning}
                 title={nodeRunning ? "生成中…" : (hasResult ? "重新生成" : "运行")}
-                className="flex items-center justify-center w-7 h-7 rounded-lg"
+                className="studio-toolbtn flex items-center justify-center w-7 h-7 rounded-lg"
                 style={{
                   background: !canRun || nodeRunning ? "var(--c-surface)" : `${config.color}22`,
                   color: !canRun || nodeRunning ? "var(--c-t4)" : config.color,
@@ -455,7 +455,7 @@ export const BaseNode = memo(function BaseNode({
                   else void downloadMedia(resultImageUrl, `${title || "image"}.png`, "image");
                 }}
                 title="下载结果"
-                className="flex items-center justify-center w-7 h-7 rounded-lg"
+                className="studio-toolbtn flex items-center justify-center w-7 h-7 rounded-lg"
                 style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
               >
                 <Download size={13} />

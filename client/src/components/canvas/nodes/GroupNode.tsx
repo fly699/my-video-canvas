@@ -55,7 +55,7 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
               <button
                 onClick={(e) => { e.stopPropagation(); requestRun(null, payload.childIds ?? []); }}
                 title="整组执行（运行组内全部节点）"
-                className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
+                className="studio-toolbtn flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
                 style={{ background: `${color.accent}22`, color: color.accent, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
               >
                 <Play size={12} /> 整组执行
@@ -64,7 +64,7 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
             <button
               onClick={(e) => { e.stopPropagation(); ungroup(id); }}
               title="解组（保留组内节点，移除分组框）"
-              className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
+              className="studio-toolbtn flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
               style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
             >
               <Ungroup size={12} /> 解组
