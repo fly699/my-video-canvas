@@ -49,6 +49,7 @@ import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
 import { Lightbox } from "../components/canvas/studio/Lightbox";
+import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
 import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
@@ -2613,6 +2614,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* Studio fullscreen media viewer (opened from a node hero) */}
           <Lightbox />
+          {/* Studio multi-select action bar (≥2 nodes selected) */}
+          <MultiSelectBar />
 
           <ConnectionHintsPanel
             visible={showConnectionHints}

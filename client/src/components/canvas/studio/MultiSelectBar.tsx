@@ -1,0 +1,82 @@
+import { Play, Combine, Download, X } from "lucide-react";
+import { toast } from "sonner";
+import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
+import { getNodeImageOutput } from "../../../lib/canvasPassthrough";
+import { downloadMedia } from "../../../lib/download";
+
+// Studio-only floating action bar shown when ≥2 nodes are selected: run-all / group /
+// download-all / clear. Additive & presentation-layer — every action reuses an existing
+// store action (requestRun / groupSelected / setNodes) so it can't diverge from normal use.
+
+const VIDEO_OUT_TYPES = new Set(["clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "overlay", "video_task", "comfyui_video", "comfyui_workflow", "lip_sync", "avatar"]);
+const isVideoUrl = (u: string) => /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(u);
+
+function nodeMedia(nodeType: string, payload: Record<string, unknown>): { url: string; type: "image" | "video" } | null {
+  const v = (payload.resultVideoUrl ?? payload.videoUrl) as unknown;
+  if (typeof v === "string" && v) return { url: v, type: "video" };
+  const out = payload.outputUrl as unknown;
+  if (typeof out === "string" && out) {
+    return { url: out, type: isVideoUrl(out) || VIDEO_OUT_TYPES.has(nodeType) ? "video" : "image" };
+  }
+  const img = getNodeImageOutput(nodeType, payload as never);
+  return img ? { url: img, type: "image" } : null;
+}
+
+export function MultiSelectBar() {
+  const { uiStyle } = useUIStyle();
+  // Re-render only when the selected (non-group) set changes — cheap stable key.
+  const selectedKey = useCanvasStore((s) => s.nodes.filter((n) => n.selected && n.data.nodeType !== "group").map((n) => n.id).join(","));
+  const ids = selectedKey ? selectedKey.split(",") : [];
+  if (uiStyle !== "studio" || ids.length < 2) return null;
+
+  const runAll = () => { useCanvasStore.getState().requestRun(null, ids); toast.success(`运行所选 ${ids.length} 个节点`, { duration: 1200 }); };
+  const group = () => { const gid = useCanvasStore.getState().groupSelected(ids); if (gid) toast.success(`已组合 ${ids.length} 个节点`, { duration: 1200 }); };
+  const clear = () => { const st = useCanvasStore.getState(); st.setNodes(st.nodes.map((n) => (n.selected ? { ...n, selected: false } : n))); };
+  const downloadAll = () => {
+    const st = useCanvasStore.getState();
+    const sel = new Set(ids);
+    let k = 0;
+    for (const n of st.nodes) {
+      if (!sel.has(n.id)) continue;
+      const m = nodeMedia(n.data.nodeType, n.data.payload as Record<string, unknown>);
+      if (!m) continue;
+      const ext = m.type === "video" ? "mp4" : "png";
+      void downloadMedia(m.url, `${n.data.title || n.data.nodeType}.${ext}`, m.type);
+      k++;
+    }
+    toast[k > 0 ? "success" : "info"](k > 0 ? `开始下载 ${k} 个结果` : "所选节点暂无可下载的结果");
+  };
+
+  return (
+    <div
+      className="nodrag"
+      style={{ position: "fixed", bottom: 84, left: "50%", transform: "translateX(-50%)", zIndex: 45,
+        display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 14,
+        background: "color-mix(in oklch, var(--c-elevated) 92%, transparent)", backdropFilter: "blur(18px)",
+        border: "1px solid var(--c-bd2)", boxShadow: "var(--c-node-shadow-hover)" }}
+    >
+      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t2)", padding: "0 6px" }}>{ids.length} 个已选</span>
+      <span style={{ width: 1, height: 18, background: "var(--c-bd2)" }} />
+      <BarBtn onClick={runAll} icon={<Play size={13} />} label="运行全部" primary />
+      <BarBtn onClick={group} icon={<Combine size={13} />} label="成组" />
+      <BarBtn onClick={downloadAll} icon={<Download size={13} />} label="下载全部" />
+      <BarBtn onClick={clear} icon={<X size={13} />} label="取消" />
+    </div>
+  );
+}
+
+function BarBtn({ onClick, icon, label, primary }: { onClick: () => void; icon: React.ReactNode; label: string; primary?: boolean }) {
+  return (
+    <button
+      className="studio-toolbtn"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: "0 11px", borderRadius: 9,
+        border: primary ? "none" : "1px solid var(--c-bd2)", cursor: "pointer", fontSize: 12, fontWeight: 600,
+        background: primary ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)",
+        color: primary ? "#0b0d12" : "var(--c-t2)" }}
+    >
+      {icon}{label}
+    </button>
+  );
+}
