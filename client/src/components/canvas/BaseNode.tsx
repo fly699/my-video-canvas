@@ -398,7 +398,9 @@ export const BaseNode = memo(function BaseNode({
         border: borderStyle,
         boxShadow: shadowStyle,
         minWidth: (isCreative || isStudio) ? Math.round(minWidth * 1.25) : minWidth,
-        minHeight: (isCollapsedPreview || studioFloated) ? 0 : minHeight,
+        // Studio floating nodes have no inline body, so drop the min-height floor too —
+        // selected → floating panel below; deselected → a compact title(+hero) card.
+        minHeight: (isCollapsedPreview || usesStudioFloating) ? 0 : minHeight,
         width: "100%",
         height: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
@@ -960,7 +962,11 @@ export const BaseNode = memo(function BaseNode({
       {/* Studio (selected): the body is relocated to a panel attached BELOW the node,
           rendered OUTSIDE this overflow:hidden wrapper (see below) so it isn't clipped
           and lives in the node's transformed space (scales with canvas zoom). */}
-      {studioFloated ? null : (
+      {/* Studio: a floating-capable node NEVER renders its body inline — selected/pinned
+          shows it in the floating panel (below), deselected stays a compact card (title +
+          hero). This keeps idle studio nodes small (no giant inline body when unselected).
+          Pro/creative + pro-body nodes (ai_chat) render the body inline as before. */}
+      {usesStudioFloating ? null : (
         <NodeSelectedContext.Provider value={expandSelected}>
           <div className="node-body-wrap">
             {/* When the node height is capped, make this wrapper a flex column so a
