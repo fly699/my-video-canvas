@@ -16,7 +16,7 @@ export function ServerCleanupDialog({ onClose }: { onClose: () => void }) {
   const scanMut = trpc.comfyTemplates.scanServerLists.useMutation();
   const applyMut = trpc.comfyTemplates.applyServerChanges.useMutation({
     onSuccess: (r) => {
-      toast.success(`已清理 ${r.removed} 台失效、补入 ${r.added} 台（共更新 ${r.updated} 个模板）`);
+      toast.success(`已清理 ${r.removed} 台失效、补入 ${r.added} 台（共更新 ${r.updated} 个模板）${r.removedGlobal ? `，并从全局移除 ${r.removedGlobal} 台` : ""}`);
       utils.comfyTemplates.list.invalidate();
       onClose();
     },
@@ -30,11 +30,16 @@ export function ServerCleanupDialog({ onClose }: { onClose: () => void }) {
 
   const data = scanMut.data;
   const templates = useMemo(() => data?.templates ?? [], [data]);
+  // 失效的「全局服务器」——需从全局注册表移除（否则只清模板，全局表里还在、反复出现）。
+  const offlineGlobals = useMemo(() => data?.offlineGlobalServers ?? [], [data]);
 
-  // 默认勾选：每个模板的全部失效服务器（key = `${id}|${url}`）。
+  // 默认勾选：每个模板的全部失效服务器（key = `${id}|${url}`）+ 全部失效全局服务器（`__global|url`）。
   const allFailedKeys = useMemo(
-    () => templates.flatMap((t) => t.failed.map((f) => `${t.id}|${f.url}`)),
-    [templates],
+    () => [
+      ...templates.flatMap((t) => t.failed.map((f) => `${t.id}|${f.url}`)),
+      ...offlineGlobals.map((u) => `__global|${u}`),
+    ],
+    [templates, offlineGlobals],
   );
   const [checked, setChecked] = useState<Set<string> | null>(null);
   // 首次拿到扫描结果时初始化为「全选失效项」。
@@ -51,8 +56,9 @@ export function ServerCleanupDialog({ onClose }: { onClose: () => void }) {
       remove: t.failed.filter((f) => sel.has(`${t.id}|${f.url}`)).map((f) => f.url),
       add: t.additions,
     })).filter((i) => i.remove.length || i.add.length);
-    if (items.length === 0) { onClose(); return; }
-    applyMut.mutate({ items });
+    const removeGlobal = offlineGlobals.filter((u) => sel.has(`__global|${u}`));
+    if (items.length === 0 && removeGlobal.length === 0) { onClose(); return; }
+    applyMut.mutate({ items, removeGlobal });
   };
 
   const totalAdditions = templates.reduce((n, t) => n + t.additions.length, 0);
@@ -88,12 +94,28 @@ export function ServerCleanupDialog({ onClose }: { onClose: () => void }) {
           <div style={{ padding: "34px 20px", textAlign: "center", fontSize: 12.5, color: "var(--c-danger, #e5484d)" }}>
             扫描失败：{scanMut.error?.message}
           </div>
-        ) : templates.length === 0 ? (
+        ) : templates.length === 0 && offlineGlobals.length === 0 ? (
           <div style={{ padding: "34px 20px", textAlign: "center", fontSize: 12.5, color: "var(--c-t3)" }}>
             没有失效服务器，也没有可补入的服务器，所有模板的服务器列表都是最新的。
           </div>
         ) : (
           <>
+            {/* 失效的全局服务器（从全局注册表移除）*/}
+            {offlineGlobals.length > 0 && (
+              <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--c-bd2)", background: "var(--c-elevated)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>失效的全局服务器（将从全局注册表移除）</div>
+                {offlineGlobals.map((u) => {
+                  const key = `__global|${u}`;
+                  return (
+                    <button key={key} onClick={() => toggle(key)} className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "5px 4px", background: "none", border: "none", cursor: "pointer", color: "var(--c-t2)" }}>
+                      {sel.has(key) ? <CheckSquare style={{ width: 15, height: 15, color: accent, flexShrink: 0 }} /> : <Square style={{ width: 15, height: 15, flexShrink: 0 }} />}
+                      <WifiOff style={{ width: 13, height: 13, color: "#e5484d", flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {/* 全选条 */}
             {allFailedKeys.length > 0 && (
               <button onClick={toggleAll} className="nodrag" style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 18px", background: "var(--c-elevated)", border: "none", borderBottom: "1px solid var(--c-bd2)", cursor: "pointer", color: "var(--c-t2)", fontSize: 12.5, fontWeight: 700, width: "100%", textAlign: "left" }}>

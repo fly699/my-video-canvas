@@ -162,7 +162,9 @@ export const comfyTemplatesRouter = router({
         result.push({ id: t.id, label: t.label, serverCount: serverUrls.length, failed, additions });
       }
     }
-    return { onlineServers, offlineServers, templates: result };
+    // 失效的「全局服务器」——这些需从全局注册表移除，否则只清模板列表它们仍会反复出现。
+    const offlineGlobalServers = globalUrls.filter((u) => !scanByUrl.get(u)?.online);
+    return { onlineServers, offlineServers, offlineGlobalServers, templates: result };
   }),
 
   // 应用对话框中用户确认的「清理失效 + 补入」：对每个模板 next = 去掉 remove、并入 add（去重）。仅管理员。
@@ -173,10 +175,18 @@ export const comfyTemplatesRouter = router({
         remove: z.array(z.string()).default([]),
         add: z.array(z.string()).default([]),
       })).max(2000),
+      // 同时从「全局服务器注册表」移除这些失效服务器（否则只清模板、全局表里还在）。
+      removeGlobal: z.array(z.string()).default([]),
     }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "仅管理员可执行" });
-      let updated = 0, removed = 0, added = 0;
+      let updated = 0, removed = 0, added = 0, removedGlobal = 0;
+      if (input.removeGlobal.length > 0) {
+        const cur = await db.getComfyGlobalServers();
+        const rm = new Set(input.removeGlobal);
+        const next = cur.filter((u) => !rm.has(u));
+        if (next.length !== cur.length) { await db.setComfyGlobalServers(next); removedGlobal = cur.length - next.length; }
+      }
       for (const item of input.items) {
         if (!item.remove.length && !item.add.length) continue;
         const existing = await db.getComfyNodeTemplate(item.templateId);
@@ -191,7 +201,7 @@ export const comfyTemplatesRouter = router({
         removed += current.filter((u) => removeSet.has(u)).length;
         added += item.add.filter((u) => !current.includes(u)).length;
       }
-      return { updated, removed, added };
+      return { updated, removed, added, removedGlobal };
     }),
 
   // ── Template-library functional analysis (for the agent) ───────────────────
