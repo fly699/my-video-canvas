@@ -21,6 +21,7 @@ import { imageModelRequiresRef } from "@/lib/models";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { PromptDock } from "../PromptDock";
+import { RefHeroPreview } from "../RefHeroPreview";
 import { IMAGE_MODELS } from "@/lib/models";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
@@ -397,6 +398,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           )}
         </div>
       );
+    }
+    // 无关键帧结果但有参考图 → 收缩时显示参考图（否则工作室收缩只剩标题栏、参考图看不见）。
+    if (effectiveRefUrl) {
+      return <RefHeroPreview url={effectiveRefUrl} />;
     }
     // Text-only description is an INPUT, not a generated result — only surface it
     // as a creative-mode preview card. In other modes returning it as hero would
