@@ -73,6 +73,22 @@ export function mergeClips(a: Clip, b: Clip): Clip {
   return { ...a, trimOut: b.trimOut, keyframes: keyframes.length ? keyframes : undefined };
 }
 
+/** Fold a run of clips (sorted by start): merge each contiguous, same-source
+ *  neighbour into the running accumulator; a non-contiguous break starts a new
+ *  clip. Returns 1+ clips. Pure → unit-tested. */
+export function mergeContiguousRun(sorted: Clip[]): Clip[] {
+  if (sorted.length <= 1) return sorted.slice();
+  const out: Clip[] = [];
+  let acc = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    const next = sorted[i];
+    if (canMergeClips(acc, next)) acc = mergeClips(acc, next);
+    else { out.push(acc); acc = next; }
+  }
+  out.push(acc);
+  return out;
+}
+
 function findClip(doc: EditorDoc, clipId: string): { trackIdx: number; clipIdx: number } | null {
   for (let ti = 0; ti < doc.tracks.length; ti++) {
     const ci = doc.tracks[ti].clips.findIndex((c) => c.id === clipId);
@@ -150,6 +166,7 @@ export interface EditorStore {
   copySelected: () => void;
   moveSelectedTo: (primaryClipId: string, newPrimaryStart: number) => void;
   nudgeSelected: (dx: number) => void;    // shift selection by ±dx seconds (clamped at 0)
+  mergeSelectedClips: () => void;         // 合并选区里每条轨道上「连续同源」的多段为一段（多段连续合并）
   closeGapsSelected: () => void;          // pack selected clips end-to-end per track
   alignSelectedStartTo: (time: number) => void; // shift selection so its earliest clip starts at `time`
   updateSelected: (patch: Partial<Clip>) => void; // apply a patch to every selected clip (nested effects/transform merged)
@@ -341,6 +358,30 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ...t, clips: t.clips.flatMap((x) => x.id === a.id ? [merged] : x.id === b.id ? [] : [x]),
     });
     return withHistory(s, { ...s.doc, tracks }, selPatch([merged.id]));
+  }),
+
+  // Multi-segment merge: on each track, fold the SELECTED clips' contiguous,
+  // same-source runs into single clips (e.g. select 4 pieces split from one
+  // source → one clip). Non-contiguous selections are left as separate clips.
+  mergeSelectedClips: () => set((s) => {
+    if (!s.doc) return s;
+    const selSet = new Set(s.selectedClipIds);
+    if (selSet.size < 2) return s;
+    let changed = false;
+    const newSel: string[] = [];
+    const tracks = s.doc.tracks.map((t) => {
+      const sel = t.clips.filter((c) => selSet.has(c.id)).sort((a, b) => a.start - b.start);
+      if (sel.length < 2) { sel.forEach((c) => newSel.push(c.id)); return t; }
+      const merged = mergeContiguousRun(sel);
+      merged.forEach((c) => newSel.push(c.id));
+      if (merged.length === sel.length) return t; // nothing folded on this track
+      changed = true;
+      const others = t.clips.filter((c) => !selSet.has(c.id));
+      const clips = [...others, ...merged].sort((a, b) => a.start - b.start);
+      return { ...t, clips };
+    });
+    if (!changed) return s;
+    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel));
   }),
 
   // Copy a clip and drop the copy right after the original on the same track.
