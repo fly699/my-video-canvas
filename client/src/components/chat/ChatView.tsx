@@ -162,6 +162,9 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
           kieTempKey: localStorage.getItem("kie:tempKey") || undefined, attachmentIds,
           systemPrompt: effSystemPrompt,
         });
+        // 兜底：发完直接从服务器权威重载，确保「用户消息 + AI 回复」立刻显示，不必等
+        // socket 广播（隧道/弱网下广播可能丢，否则就出现「回答不显示、刷新才有」）。
+        reloadActiveMessages();
       } catch (e) { toast.error(e instanceof Error ? e.message : "AI 回复失败"); setText(content); setStaged(files); }
       finally { setBusy(false); }
       return;
