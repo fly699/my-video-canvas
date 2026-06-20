@@ -1238,6 +1238,17 @@ button:active:not(:disabled) {
   display: block;
   object-fit: contain;
 }
+/* Studio: collapsed media nodes have no inline body, so a wide/short image would
+   collapse to a 1-line sliver ("看不全"). Give the collapsed hero a min-height
+   floor and center the (contained, fully-visible) image inside, so wide images
+   read as a proper preview tile (Liblib-style uniform cards) instead of a strip. */
+:root[data-ui="studio"] [data-has-hero="true"][data-selected="false"] .node-hero-media {
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-canvas);
+}
 
 /* Node body: transition for smooth collapse/expand */
 .node-body-wrap {

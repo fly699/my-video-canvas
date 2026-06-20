@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { X, FileText, ChevronUp, ChevronDown } from "lucide-react";
+import { useNodeId } from "@xyflow/react";
+import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { useUIStyle } from "../../contexts/UIStyleContext";
 
 interface Props {
   open: boolean;
@@ -34,6 +37,19 @@ export function PromptDock({
   onHoverChange, onPin,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
+  // 工作室皮肤下，选中/钉住的非 ai_chat 节点会在顶部浮出操作工具条（NodeToolbar，
+  // offset 10、约 40 高），与本「最终提示词」窗争抢节点上方空间，导致提示词被遮盖。
+  // → 当该工具条会出现时，把本窗再向上让位，避免被覆盖。仅多算一个常量高度，不依赖
+  // 工具条实际渲染时机（toolbar 自身固定在节点上沿，dock 在其之上即可）。
+  const nodeId = useNodeId();
+  const { uiStyle } = useUIStyle();
+  const reserveForToolbar = useCanvasStore((s) => {
+    if (uiStyle !== "studio") return 0;
+    const n = nodeId ? s.nodes.find((x) => x.id === nodeId) : undefined;
+    if (!n || n.data.nodeType === "ai_chat") return 0;
+    const sel = !!n.selected || Boolean((n.data.payload as Record<string, unknown> | undefined)?.pinned);
+    return sel ? 48 : 0;
+  });
   if (!open) return null;
   const hasText = !!text.trim();
   const hasNeg = !!negText?.trim();
@@ -42,7 +58,7 @@ export function PromptDock({
     <div
       className="nodrag nowheel"
       style={{
-        position: "absolute", bottom: "calc(100% + 8px)", left: 0, right: 0,
+        position: "absolute", bottom: `calc(100% + ${8 + reserveForToolbar}px)`, left: 0, right: 0,
         display: "flex", flexDirection: "column",
         borderRadius: 12, border: `1px solid ${expanded ? accent : "var(--c-bd2)"}`,
         background: "color-mix(in oklch, var(--c-base) 94%, transparent)",
