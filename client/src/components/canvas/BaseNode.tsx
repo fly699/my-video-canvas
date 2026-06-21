@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
-import { Handle, Position, NodeResizer, NodeToolbar } from "@xyflow/react";
+import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
@@ -353,6 +353,17 @@ export const BaseNode = memo(function BaseNode({
   // the hero preview. In that state drop the min-height floor so the node shrinks
   // to fit the preview's natural aspect ratio instead of leaving empty space.
   const isCollapsedPreview = hasHero && !expandSelected;
+
+  // The studio skin collapses/expands the node body (height changes a lot) and floats
+  // the params panel on select. Handles are positioned by percentage (top:25/28/50/75%),
+  // so when the node height changes, their real positions move — but React Flow caches
+  // each handle's offset (handleBounds) at measure time. Without a re-measure those
+  // bounds go stale and the handles become un-connectable / edges attach at the wrong
+  // spot. Force React Flow to re-read handle positions whenever the layout state flips.
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, isStudio, studioFloated, isCollapsedPreview, expandSelected, storeSelected, pinned, hasHero, updateNodeInternals]);
 
   // Whole-node height cap (e.g. Agent's long output): clamp the node to 3× its
   // width and let the node's own internal scroll area absorb the overflow. A
