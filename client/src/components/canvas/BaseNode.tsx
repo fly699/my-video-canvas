@@ -1,7 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
 import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
-import { CONNECTION_HINTS, getCompatibleTargets } from "../../lib/connectionRules";
+import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
@@ -338,7 +338,8 @@ export const BaseNode = memo(function BaseNode({
     let node;
     try { node = st.addNode(type, { x: self.position.x + w + 60, y: self.position.y }); }
     catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
-    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
+    // clip 无 `input` 桩，下游若是剪辑需连到 video-in（源是本节点的视频结果）；defaultTargetHandle 统一分流。
+    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: defaultTargetHandle(type, nodeType) });
     useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
     toast.success(`已创建「${label}」节点（已连源视频，可直接处理）`, { duration: 1800 });
   };
@@ -521,7 +522,7 @@ export const BaseNode = memo(function BaseNode({
         minWidth: (isCreative || isStudio) ? Math.round(minWidth * 1.25) : minWidth,
         // Studio floating nodes have no inline body, so drop the min-height floor too —
         // selected → floating panel below; deselected → a compact title(+hero) card.
-        minHeight: (isCollapsedPreview || usesStudioFloating) ? 0 : minHeight,
+        minHeight: (isCollapsedPreview || studioFloated) ? 0 : minHeight,
         width: "100%",
         height: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
@@ -1142,7 +1143,11 @@ export const BaseNode = memo(function BaseNode({
           shows it in the floating panel (below), deselected stays a compact card (title +
           hero). This keeps idle studio nodes small (no giant inline body when unselected).
           Pro/creative + pro-body nodes (ai_chat) render the body inline as before. */}
-      {usesStudioFloating ? null : (
+      {/* Studio: 只有「选中（命令栏浮出）」时才不内联 body——参数交给下方浮动面板。
+          未选中时像专业版一样内联渲染 body，使剪辑等「预览在 body 里、又无结果英雄区」
+          的节点在静止态也常显预览（此前 studio 一律不内联 → 未选中只剩光秃标题栏）。
+          有结果英雄区的节点(has-hero)未选中仍由「媒体优先折叠」CSS 收成英雄区，不受影响。 */}
+      {studioFloated ? null : (
         <NodeSelectedContext.Provider value={expandSelected}>
           <div className="node-body-wrap">
             {/* When the node height is capped, make this wrapper a flex column so a

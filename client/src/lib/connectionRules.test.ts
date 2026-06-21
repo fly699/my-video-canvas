@@ -1,5 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { isConnectionValid, getCompatibleTargets, getCompatibleSources } from "./connectionRules";
+import { isConnectionValid, getCompatibleTargets, getCompatibleSources, defaultTargetHandle } from "./connectionRules";
+
+describe("defaultTargetHandle", () => {
+  it("剪辑(clip)无 input 桩：视频/素材源默认连 video-in", () => {
+    expect(defaultTargetHandle("clip", "video_task")).toBe("video-in");
+    expect(defaultTargetHandle("clip", "asset")).toBe("video-in");
+    expect(defaultTargetHandle("clip", "comfyui_video")).toBe("video-in");
+    expect(defaultTargetHandle("clip")).toBe("video-in"); // 源未知也走 video-in
+  });
+  it("剪辑(clip)：音频源连 audio-in", () => {
+    expect(defaultTargetHandle("clip", "audio")).toBe("audio-in");
+  });
+  it("其它目标类型一律沿用 input", () => {
+    expect(defaultTargetHandle("video_task", "image_gen")).toBe("input");
+    expect(defaultTargetHandle("merge", "clip")).toBe("input");
+    expect(defaultTargetHandle(undefined)).toBe("input");
+  });
+});
 
 describe("isConnectionValid", () => {
   it("allows comfy nodes to chain with the SAME comfy type (串并联)", () => {
