@@ -744,6 +744,33 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   return (
     <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable showHandles={false}
       onHeaderHoverChange={docks.onHeaderHoverChange}
+      extraHandles={
+        <>
+          {/* Input handles — square = target/receives */}
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="video-in"
+            style={{ ...handleStyle(accent, handlesActive, "square", connectState.target), top: "35%", left: -7 }}
+            title="视频输入 ← 连接视频任务或素材"
+          />
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="audio-in"
+            style={{ ...handleStyle("oklch(0.68 0.20 340)", handlesActive, "square", connectState.target), top: "65%", left: -7 }}
+            title="音频输入 ← 连接音频节点"
+          />
+          {/* Output handle — circle = source/sends */}
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="clip-out"
+            style={{ ...handleStyle(accent, handlesActive, "circle", connectState.source), right: -7 }}
+            title="剪辑输出 → 连接素材节点保存"
+          />
+        </>
+      }
       leftDock={
         <ReferenceImageStrip
           images={audioItems}
@@ -762,30 +789,6 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
           onPin={docks.pinRef}
         />
       }>
-      {/* Input handles — square = target/receives */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="video-in"
-        style={{ ...handleStyle(accent, handlesActive, "square", connectState.target), top: "35%", left: -7 }}
-        title="视频输入 ← 连接视频任务或素材"
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="audio-in"
-        style={{ ...handleStyle("oklch(0.68 0.20 340)", handlesActive, "square", connectState.target), top: "65%", left: -7 }}
-        title="音频输入 ← 连接音频节点"
-      />
-      {/* Output handle — circle = source/sends */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="clip-out"
-        style={{ ...handleStyle(accent, handlesActive, "circle", connectState.source), right: -7 }}
-        title="剪辑输出 → 连接素材节点保存"
-      />
-
       <div className="flex flex-col gap-3 p-3.5 h-full">
 
         {/* No source state */}

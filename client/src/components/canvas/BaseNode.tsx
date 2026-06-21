@@ -48,6 +48,9 @@ interface BaseNodeProps {
   heroMedia?: React.ReactNode;
   /** 左侧吸附浮层（如参考图预览条带）。渲染在折叠 body 之外，故节点收缩后仍常驻可见。 */
   leftDock?: React.ReactNode;
+  /** 自定义连接桩（用于多桩节点如剪辑）。渲染在折叠 body 之外，与 BaseNode 自带桩同层，
+   *  故工作室收缩态 body 折叠后仍可见。配 showHandles={false} 使用（替代默认桩）。 */
+  extraHandles?: React.ReactNode;
   /** 标题栏常驻"运行/重新生成"按钮的处理器；提供则渲染按钮（覆盖所有主题/模式）。 */
   onRun?: () => void;
   /** 是否允许运行（默认 true）；false 时按钮禁用置灰。 */
@@ -88,7 +91,7 @@ export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
-  heroMedia, leftDock, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
+  heroMedia, leftDock, extraHandles, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
   onHeaderHoverChange,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
@@ -214,25 +217,56 @@ export const BaseNode = memo(function BaseNode({
   // genuinely non-duplicate "top toolbar" action this app supports — the LibLib
   // AI ops like 打光/全景 don't exist here, so we don't fake them). Stable string
   // selectors so the subscription never churns.
+  // Result media URL detection is PER NODE TYPE: different nodes persist their result
+  // in different payload fields (imageUrl / resultVideoUrl / outputUrl / outputUrls / url).
+  // The studio toolbar (download + quick actions) keys off these, so every result-bearing
+  // type must be mapped or the node shows only "重新生成". `outputUrl` is ambiguous —
+  // it's an image for image_edit but a video for clip/merge/subtitle/overlay/…，故按类型分流。
   const resultVideoUrl = useCanvasStore((s) => {
     const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
-    if (typeof p?.videoUrl === "string" && p.videoUrl) return p.videoUrl as string;
-    // video_task / comfyui_video store their result in `resultVideoUrl` (newline-joined
-    // for multi-clip). Without this the studio toolbar's download + 视频快捷动作
-    // (剪辑/字幕/智能剪辑/合并) never appear on video nodes.
-    if (typeof p?.resultVideoUrl === "string" && p.resultVideoUrl) {
-      return (p.resultVideoUrl as string).split("\n")[0].trim();
+    if (!p) return "";
+    const first = (v: unknown): string => (typeof v === "string" && v ? v.split("\n")[0].trim() : "");
+    switch (nodeType) {
+      case "video_task":
+      case "comfyui_video":
+        return first(p.resultVideoUrl);
+      case "clip":
+      case "merge":
+      case "subtitle":
+      case "subtitle_motion":
+      case "overlay":
+      case "smart_cut":
+        return first(p.outputUrl);
+      case "comfyui_workflow":
+        return p.outputType === "video" && Array.isArray(p.outputUrls)
+          ? (((p.outputUrls as unknown[]).find((u): u is string => typeof u === "string")) ?? "")
+          : "";
+      case "asset":
+        return p.type === "video" ? first(p.url) : "";
+      default:
+        return first(p.videoUrl);
     }
-    return "";
   });
   const resultImageUrl = useCanvasStore((s) => {
-    const n = s.nodes.find((n) => n.id === id);
-    const p = n?.data.payload as Record<string, unknown> | undefined;
-    if (typeof p?.imageUrl === "string") return p.imageUrl as string;
-    // image-output nodes that store their result in `outputUrl` (e.g. image_edit) —
-    // narrowly matched so video nodes (whose outputUrl is a video) aren't misread.
-    if (n?.data.nodeType === "image_edit" && typeof p?.outputUrl === "string") return p.outputUrl as string;
-    return "";
+    const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
+    if (!p) return "";
+    const str = (v: unknown): string => (typeof v === "string" ? v : "");
+    switch (nodeType) {
+      case "image_gen":
+      case "comfyui_image":
+      case "storyboard":
+        return str(p.imageUrl);
+      case "image_edit":
+        return str(p.outputUrl);
+      case "comfyui_workflow":
+        return p.outputType !== "video" && Array.isArray(p.outputUrls)
+          ? (((p.outputUrls as unknown[]).find((u): u is string => typeof u === "string")) ?? "")
+          : "";
+      case "asset":
+        return p.type === "image" ? str(p.url) : "";
+      default:
+        return str(p.imageUrl);
+    }
   });
   // All result images of this node (image_gen batch → imageUrls) for lightbox ←/→ paging.
   const heroImageList = useCanvasStore((s) => {
@@ -1224,6 +1258,11 @@ export const BaseNode = memo(function BaseNode({
           </>
         );
       })()}
+
+      {/* Custom handles for multi-handle nodes (e.g. clip) — rendered here, OUTSIDE the
+          collapsible body, so they survive the studio skin's collapsed (body max-height:0)
+          state. Nodes pass these via `extraHandles` together with showHandles={false}. */}
+      {extraHandles}
     </div>
   );
 });
