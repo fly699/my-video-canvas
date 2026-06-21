@@ -183,7 +183,10 @@ export function ReferenceImageStrip({
     <div
       className="nodrag nowheel"
       style={{
-        position: "absolute", right: "calc(100% + 8px)", top: 0, width: 92, maxHeight: "100%",
+        // maxHeight 以视口为准、不绑定节点高度：工作室皮肤收缩态的节点缩成一根矮条
+        // （minHeight:0），若用 100% 会把 dock 压到矮条高度、参考图被裁成一条线；
+        // 经典皮肤节点本来就高，改成视口上限后表现不变。
+        position: "absolute", right: "calc(100% + 8px)", top: 0, width: 92, maxHeight: "min(70vh, 560px)",
         display: "flex", flexDirection: "column", gap: 6, padding: 8,
         borderRadius: 12,
         // 拖拽中整框高亮，提示「拖到框内任意处即可添加」（无需独立拖拽区）
