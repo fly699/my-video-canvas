@@ -18,7 +18,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2,
-  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video,
 } from "lucide-react";
 import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -216,7 +216,14 @@ export const BaseNode = memo(function BaseNode({
   // selectors so the subscription never churns.
   const resultVideoUrl = useCanvasStore((s) => {
     const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
-    return typeof p?.videoUrl === "string" ? (p.videoUrl as string) : "";
+    if (typeof p?.videoUrl === "string" && p.videoUrl) return p.videoUrl as string;
+    // video_task / comfyui_video store their result in `resultVideoUrl` (newline-joined
+    // for multi-clip). Without this the studio toolbar's download + 视频快捷动作
+    // (剪辑/字幕/智能剪辑/合并) never appear on video nodes.
+    if (typeof p?.resultVideoUrl === "string" && p.resultVideoUrl) {
+      return (p.resultVideoUrl as string).split("\n")[0].trim();
+    }
+    return "";
   });
   const resultImageUrl = useCanvasStore((s) => {
     const n = s.nodes.find((n) => n.id === id);
@@ -263,6 +270,25 @@ export const BaseNode = memo(function BaseNode({
     { op: "relight", label: "重打光", Icon: Sun },
     { op: "reframe", label: "改比例", Icon: Crop },
   ];
+
+  // Liblib-style 图生视频: spawn a connected downstream video_task using this node's
+  // image result as the i2v first frame (set referenceImageUrl directly + wire by edge),
+  // then select it. Only offered for image-result nodes whose type can wire into a
+  // video_task (image_gen / image_edit / comfyui_image / asset …).
+  const spawnVideoFromImage = () => {
+    if (!resultImageUrl) return;
+    const st = useCanvasStore.getState();
+    const self = st.nodes.find((n) => n.id === id);
+    if (!self) return;
+    const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
+    let node;
+    try { node = st.addNode("video_task", { x: self.position.x + w + 60, y: self.position.y }); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
+    st.updateNodeData(node.id, { referenceImageUrl: resultImageUrl });
+    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
+    useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
+    toast.success("已创建「图生视频」节点（已连源图作首帧，配置后运行生成）", { duration: 1800 });
+  };
 
   // Liblib-style quick video actions: spawn a connected downstream video node
   // (剪辑/字幕/智能剪辑/合并). The new node auto-detects this node's result video
@@ -541,6 +567,21 @@ export const BaseNode = memo(function BaseNode({
                     <Icon size={12} /> {label}
                   </button>
                 ))}
+              </>
+            )}
+            {/* Liblib-style 图生视频 — image-result nodes that can wire into a video task.
+                One click spawns a connected video_task using this image as the i2v first frame. */}
+            {resultImageUrl && getCompatibleTargets(nodeType).includes("video_task") && (
+              <>
+                <div style={{ width: 1, height: 16, background: "var(--c-bd2)", margin: "0 1px" }} />
+                <button
+                  onClick={(e) => { e.stopPropagation(); spawnVideoFromImage(); }}
+                  title="图生视频（用本图作首帧，生成连好源图的视频任务节点）"
+                  className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                  style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                >
+                  <Video size={12} /> 生成视频
+                </button>
               </>
             )}
             {/* Liblib-style quick VIDEO actions — only for nodes with a video result.
