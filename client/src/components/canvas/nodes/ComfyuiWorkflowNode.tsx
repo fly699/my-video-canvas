@@ -722,6 +722,15 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       headerTooltip={summary.ok ? annotationDetail : undefined}
       hideTypeBadge
       onHeaderHoverChange={docks.onHeaderHoverChange}
+      extraHandles={
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="ref-image-in"
+          style={{ ...handleStyle("oklch(0.7 0.18 145)", handlesActive, "square", connectState.target), top: "28%", left: -7 }}
+          title="参考图输入"
+        />
+      }
       headerRight={cornerText ? (
         <span
           title={annotationDetail || cornerText}
@@ -770,18 +779,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
           onComplete={applyWizardResult}
         />
       )}
-      {/* ref-image-in (top:28%): feed an upstream image into the first blank image
-          param. The generic input/output dots are provided by BaseNode (id="input"
-          at 50% left / id="output" at 50% right) — we no longer render duplicate
-          "in"/"out" handles here (they overlapped the defaults and were unused). */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="ref-image-in"
-        style={{ ...handleStyle("oklch(0.7 0.18 145)", handlesActive, "square", connectState.target), top: "28%", left: -7 }}
-        title="参考图输入"
-      />
-
+      {/* ref-image-in (top:28%) and the generic input/output dots are rendered via
+          BaseNode (extraHandles / default handles) — outside the collapsible body so
+          they survive the studio skin's collapsed state. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "2px 0" }}>
 
         {/* Config area — collapses when the node is deselected (results stay

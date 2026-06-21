@@ -528,6 +528,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
+      extraHandles={
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="image-out"
+          style={{ ...handleStyle(accent, handlesActive, "circle", connectState.source), top: "75%", right: -7 }}
+          title="图像输出 → 连接到视频任务参考图"
+        />
+      }
       leftDock={
         <>
           <ReferenceImageStrip
@@ -1266,20 +1275,6 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
         </div>{/* end input collapse wrapper */}
       </div>
-
-      {/* Image-specific output handle — kept separate from BaseNode's default
-          `output` (at top:50%) so the two right-side dots don't visually collide.
-          Position at top:75% mirrors the asymmetric layout used by VideoTaskNode's
-          ref-image-in (top:25%). Legacy edges with sourceHandle="image-out" remain
-          functional, plus useCanvasStore's onConnect auto-fill for image_gen →
-          video_task still finds this handle. */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="image-out"
-        style={{ ...handleStyle(accent, handlesActive, "circle", connectState.source), top: "75%", right: -7 }}
-        title="图像输出 → 连接到视频任务参考图"
-      />
 
       {/* Lightbox */}
       {lightboxIndex !== null && (() => {

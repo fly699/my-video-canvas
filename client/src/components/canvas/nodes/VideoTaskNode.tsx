@@ -1324,6 +1324,15 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       onRun={handleSubmit} running={createTaskMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim()} hasResult={payload.status === "succeeded"}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
+      extraHandles={
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="ref-image-in"
+          style={{ ...handleStyle("oklch(0.68 0.22 285)", handlesActive, "square", connectState.target), top: "25%", left: -7 }}
+          title="参考图输入 ← 连接图像生成节点"
+        />
+      }
       leftDock={
         <>
           <ReferenceImageStrip
@@ -2267,14 +2276,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         </div>{/* end input collapse wrapper */}
       </div>
 
-      {/* Input handle — target/square = receives image from ImageGenNode */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="ref-image-in"
-        style={{ ...handleStyle("oklch(0.68 0.22 285)", handlesActive, "square", connectState.target), top: "25%", left: -7 }}
-        title="参考图输入 ← 连接图像生成节点"
-      />
       {pickerOpen && (
         <CinematographyPicker
           provider={payload.provider}

@@ -343,6 +343,15 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       headerTooltip={modelTip || undefined}
       hideTypeBadge
       onHeaderHoverChange={docks.onHeaderHoverChange}
+      extraHandles={
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="ref-image-in"
+          style={{ ...handleStyle("oklch(0.68 0.22 285)", handlesActive, "square", connectState.target), top: "28%", left: -7 }}
+          title="参考图输入"
+        />
+      }
       leftDock={
         <>
           {refStrip.strip}
@@ -1019,18 +1028,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         </div>{/* end input collapse wrapper */}
       </div>
 
-      {/* Input handle — receives reference image. Distinct purple, separated from
-          the generic input (BaseNode default at 50%), sized/ringed for visibility. */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="ref-image-in"
-        style={{ ...handleStyle("oklch(0.68 0.22 285)", handlesActive, "square", connectState.target), top: "28%", left: -7 }}
-        title="参考图输入"
-      />
-
-      {/* Output handle — provided by BaseNode default (id="output" on Position.Right);
-          no custom handle to avoid overlapping with the default. */}
+      {/* Input handle (ref-image-in) and output handle are rendered via BaseNode's
+          extraHandles / default handles — outside the collapsible body so they
+          survive the studio skin's collapsed state. */}
     </BaseNode>
   );
 });
