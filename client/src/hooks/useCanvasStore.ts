@@ -282,21 +282,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   onConnect: (connection) => {
     set((state) => {
-      // 防重复连线：本画布中同一对节点之间只需要一条连线（多源汇入用「来自不同源的多条边」，
-      // 从不需要同一对节点多条）。ReactFlow 的 addEdge 只按「源+目标+两端句柄」去重，落点没
-      // 精确命中句柄时 targetHandle 不同会绕过去重，产生重叠的重复边（表现为「连一根线却出现
-      // 多个序号、实际多条线」）。这里按「源+目标」彻底去重。
-      if (connection.source && connection.target &&
-          state.edges.some((e) => e.source === connection.source && e.target === connection.target)) {
-        return {};
-      }
       // Pre-populate so the video node is ready immediately if an image was generated before connecting
       let updatedNodes = state.nodes;
       let conn = connection;
+      let srcImageUrl: string | undefined;
+      let targetNode: CanvasNode | undefined;
       if (conn.source && conn.target) {
         const sourceNode = state.nodes.find((n) => n.id === conn.source);
-        const targetNode = state.nodes.find((n) => n.id === conn.target);
-        const srcImageUrl = resolveNodeOutputImageUrl(sourceNode);
+        targetNode = state.nodes.find((n) => n.id === conn.target);
+        srcImageUrl = resolveNodeOutputImageUrl(sourceNode);
         // 连线落点容错：视频/图像等节点左侧有两个 target 句柄——参考图句柄 `ref-image-in`
         // (top:25%) 与 BaseNode 默认 `input` 句柄(top:50%)。用户把「图像/分镜 → 视频」的
         // 参考图线拖到节点中部时，ReactFlow 常吸附到更近的 `input`，可参考图边仅以
@@ -304,6 +298,21 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         // effectiveTargetHandle 把这类「图像源→参考图目标」的边统一规正到 ref-image-in；
         // 文本/提示词等无图源不受影响，仍按原句柄(input)连接。
         conn = { ...conn, targetHandle: effectiveTargetHandle(conn.targetHandle, sourceNode, targetNode) ?? null };
+      }
+      // 防重复连线：按「源 + 目标 + 规正后的目标句柄」去重。同一对节点之间允许多条边，
+      // 当且仅当它们汇入真正不同的输入口（如剪辑节点的 video-in 与 audio-in 是两个独立输入，
+      // 视频源→video-in 与音频源→audio-in 必须能并存）。
+      // 「一次拖拽因落点不精确产生多条重叠重复边」的老 bug 仍被拦：那类含糊落点（图像源→参考图）
+      // 已被上面的 effectiveTargetHandle 统一规正到同一句柄，故第二条仍判为重复而拦下。
+      // 必须在 effectiveTargetHandle 规正之后再比较——旧逻辑只按「源+目标」去重，会把汇入
+      // clip 第二个输入口的合法边误判为重复并静默丢弃（圆点高亮却连不上，仅 clip 这类多输入节点中招）。
+      if (conn.source && conn.target &&
+          state.edges.some((e) =>
+            e.source === conn.source && e.target === conn.target &&
+            (e.targetHandle ?? null) === (conn.targetHandle ?? null))) {
+        return {};
+      }
+      if (conn.source && conn.target) {
         // A `ref-image-in` target handle uniquely identifies a reference-image
         // wire regardless of which source dot was dragged from. Source/target
         // coverage (which source types expose an output image, which targets
