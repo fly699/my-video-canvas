@@ -564,6 +564,15 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       headerTooltip={modelTip || undefined}
       hideTypeBadge
       onHeaderHoverChange={docks.onHeaderHoverChange}
+      extraHandles={
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="ref-image-in"
+          style={{ ...handleStyle("oklch(0.72 0.20 330)", handlesActive, "square", connectState.target), top: "28%", left: -7 }}
+          title="参考图输入（img2img 使用）"
+        />
+      }
       leftDock={
         <>
           {refStrip.strip}
@@ -1769,17 +1778,6 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
 
         </div>{/* end input collapse wrapper */}
       </div>
-
-      {/* Input handle — receives reference image. Distinct pink, sits clearly above
-          the generic input (BaseNode default at 50%) and is sized/ringed to read
-          well even when the node is collapsed. */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="ref-image-in"
-        style={{ ...handleStyle("oklch(0.72 0.20 330)", handlesActive, "square", connectState.target), top: "28%", left: -7 }}
-        title="参考图输入（img2img 使用）"
-      />
 
       {/* Output handle — provided by BaseNode default (id="output" on Position.Right);
           no custom handle to avoid overlapping with the default. Downstream nodes
