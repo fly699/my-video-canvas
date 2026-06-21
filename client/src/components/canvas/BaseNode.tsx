@@ -522,7 +522,7 @@ export const BaseNode = memo(function BaseNode({
         minWidth: (isCreative || isStudio) ? Math.round(minWidth * 1.25) : minWidth,
         // Studio floating nodes have no inline body, so drop the min-height floor too —
         // selected → floating panel below; deselected → a compact title(+hero) card.
-        minHeight: (isCollapsedPreview || usesStudioFloating) ? 0 : minHeight,
+        minHeight: (isCollapsedPreview || studioFloated) ? 0 : minHeight,
         width: "100%",
         height: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
@@ -1143,7 +1143,11 @@ export const BaseNode = memo(function BaseNode({
           shows it in the floating panel (below), deselected stays a compact card (title +
           hero). This keeps idle studio nodes small (no giant inline body when unselected).
           Pro/creative + pro-body nodes (ai_chat) render the body inline as before. */}
-      {usesStudioFloating ? null : (
+      {/* Studio: 只有「选中（命令栏浮出）」时才不内联 body——参数交给下方浮动面板。
+          未选中时像专业版一样内联渲染 body，使剪辑等「预览在 body 里、又无结果英雄区」
+          的节点在静止态也常显预览（此前 studio 一律不内联 → 未选中只剩光秃标题栏）。
+          有结果英雄区的节点(has-hero)未选中仍由「媒体优先折叠」CSS 收成英雄区，不受影响。 */}
+      {studioFloated ? null : (
         <NodeSelectedContext.Provider value={expandSelected}>
           <div className="node-body-wrap">
             {/* When the node height is capped, make this wrapper a flex column so a
