@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { X, Search, Zap, BookmarkPlus, Trash2, ArrowLeft, Check, Clapperboard, Lightbulb, Sparkles, LayoutGrid, Film, Play, Video, Scale, Megaphone, Mic, ShoppingBag, Bot, Rocket, FolderOpen, Star, Bookmark, Briefcase, Target, Flame, Sun, Palette, Layers, Trophy, Grid2x2, Smartphone, Scissors, AudioLines, Clock, type LucideIcon } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { usePersistentState } from "../../hooks/usePersistentState";
+import { defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, NodeData } from "../../../../shared/types";
 
 const TEMPLATE_ICONS: Record<string, LucideIcon> = {
@@ -1086,7 +1087,7 @@ export function TemplatePanel({ onClose, centerX, centerY }: Props) {
           const srcType = template.nodes[edgeSpec.fromIndex]?.type;
           const tgtType = template.nodes[edgeSpec.toIndex]?.type;
           const sourceHandle = srcType === "clip" ? "clip-out" : "output";
-          const targetHandle = tgtType === "clip" ? "video-in" : "input";
+          const targetHandle = defaultTargetHandle(tgtType, srcType);
           onConnect({ source: src.id, target: tgt.id, sourceHandle, targetHandle });
         }
       }

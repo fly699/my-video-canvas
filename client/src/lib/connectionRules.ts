@@ -87,6 +87,20 @@ export function isConnectionValid(
   return targets != null && targets.includes(targetType);
 }
 
+// 自动建边/自动连线（拖到空白处建节点、快捷创建下游节点、模板库放置等）时，目标节点
+// 的默认「输入桩」id。绝大多数节点用 BaseNode 自带的单一 `input` 桩；唯独剪辑(clip)节点
+// 用 showHandles={false} 自绘了两个独立输入 `video-in` / `audio-in`，并无 `input` 桩。
+// 若自动连线沿用硬编码的 "input"，边会落到 clip 上不存在的桩 → ReactFlow 找不到该桩、
+// 边无法渲染（表现为「创建了节点却没有连线」，而拖到其它节点正常）。这里按源类型分流：
+// 音频源 → audio-in，其余（视频/素材等）→ video-in。其它目标类型一律沿用 `input`。
+export function defaultTargetHandle(
+  targetType: NodeType | undefined,
+  sourceType?: NodeType | null,
+): string {
+  if (targetType === "clip") return sourceType === "audio" ? "audio-in" : "video-in";
+  return "input";
+}
+
 export const CONNECTION_HINTS: Record<
   NodeType,
   { label: string; outgoing: string; incoming: string }

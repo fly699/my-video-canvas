@@ -1,7 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
 import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
-import { CONNECTION_HINTS, getCompatibleTargets } from "../../lib/connectionRules";
+import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
@@ -338,7 +338,8 @@ export const BaseNode = memo(function BaseNode({
     let node;
     try { node = st.addNode(type, { x: self.position.x + w + 60, y: self.position.y }); }
     catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
-    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
+    // clip 无 `input` 桩，下游若是剪辑需连到 video-in（源是本节点的视频结果）；defaultTargetHandle 统一分流。
+    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: defaultTargetHandle(type, nodeType) });
     useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
     toast.success(`已创建「${label}」节点（已连源视频，可直接处理）`, { duration: 1800 });
   };

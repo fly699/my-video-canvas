@@ -52,7 +52,7 @@ import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
 import { ModelQuickSwitch, MODEL_SWITCH_FIELD } from "../components/canvas/studio/ModelQuickSwitch";
-import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS } from "../lib/connectionRules";
+import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS, defaultTargetHandle } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
 import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
 import { SaveComfyTemplateDialog } from "../components/canvas/SaveComfyTemplateDialog";
@@ -895,7 +895,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
     ]);
     const nodeTypeById = new Map(dbNodes.map((n) => [n.id, n.type as string]));
     const flowEdges: CanvasEdge[] = dbEdges.map((e) => {
-      let targetHandle = e.targetPort ?? "input";
+      // clip 无 `input` 桩，缺省端口时按目标类型推默认输入桩（clip→video-in/audio-in），
+      // 否则历史里缺端口的剪辑入边会落到不存在的 `input` 桩、加载后不可见。
+      let targetHandle = e.targetPort ?? defaultTargetHandle(
+        nodeTypeById.get(e.targetNodeId) as NodeType | undefined,
+        nodeTypeById.get(e.sourceNodeId) as NodeType | undefined,
+      );
       let sourceHandle = e.sourcePort ?? "output";
       if (targetHandle === "input" && LEGACY_VERTICAL_NODES.has(nodeTypeById.get(e.targetNodeId) ?? "")) {
         targetHandle = "top";
@@ -910,10 +915,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
         label: e.label ?? undefined,
       };
     });
-    // 清理历史重复边：同一对「源→目标」只保留第一条（修复此前可能积累的重叠重复连线）。
+    // 清理历史重复边：同一「源→目标→目标桩」只保留第一条（修复此前可能积累的重叠重复连线）。
+    // 必须带上 targetHandle——剪辑节点的 video-in / audio-in 是两个独立输入，同源的
+    // 视频边与音频边合法共存，按「源→目标」去重会把其中一条误删（加载后丢线）。
     const seenPair = new Set<string>();
     const dedupedEdges = flowEdges.filter((e) => {
-      const k = `${e.source}->${e.target}`;
+      const k = `${e.source}->${e.target}->${e.targetHandle ?? ""}`;
       if (seenPair.has(k)) return false;
       seenPair.add(k);
       return true;
@@ -1316,8 +1323,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
       emitCollabEvent("node:add", newNode);
       // 从「连线放置」打开的：把新模板节点按拖出方向连到源节点。
       if (fromConnect) {
+        const srcType = useCanvasStore.getState().nodes.find((n) => n.id === fromConnect.fromId)?.data.nodeType ?? null;
         const conn: Connection = fromConnect.fromHandleType === "source"
-          ? { source: fromConnect.fromId, sourceHandle: fromConnect.fromHandle ?? "output", target: newNode.id, targetHandle: "input" }
+          ? { source: fromConnect.fromId, sourceHandle: fromConnect.fromHandle ?? "output", target: newNode.id, targetHandle: defaultTargetHandle(type, srcType) }
           : { source: newNode.id, sourceHandle: "output", target: fromConnect.fromId, targetHandle: fromConnect.fromHandle ?? "input" };
         const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));
         onConnect(conn);
@@ -1465,8 +1473,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setConnectMenu(null);
     if (!newNode) return;
     emitCollabEvent("node:add", newNode);
+    const srcType = useCanvasStore.getState().nodes.find((n) => n.id === connectMenu.fromId)?.data.nodeType ?? null;
     const conn: Connection = connectMenu.fromHandleType === "source"
-      ? { source: connectMenu.fromId, sourceHandle: connectMenu.fromHandle ?? "output", target: newNode.id, targetHandle: "input" }
+      ? { source: connectMenu.fromId, sourceHandle: connectMenu.fromHandle ?? "output", target: newNode.id, targetHandle: defaultTargetHandle(type, srcType) }
       : { source: newNode.id, sourceHandle: "output", target: connectMenu.fromId, targetHandle: connectMenu.fromHandle ?? "input" };
     const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));
     onConnect(conn);
