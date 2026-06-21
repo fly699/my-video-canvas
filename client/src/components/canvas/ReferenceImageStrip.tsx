@@ -228,7 +228,7 @@ export function ReferenceImageStrip({
                 onDragStart={canDrag ? (e) => { e.dataTransfer.setData("application/x-ref-reorder", img.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
                 title={(img.kind === "audio" || img.kind === "video") ? (img.name ? `${img.label ?? (img.kind === "video" ? "视频" : "音频")} · ${img.name}` : (img.label ?? (img.kind === "video" ? "视频" : "音频"))) : img.label}
                 className="relative group rounded-lg overflow-hidden"
-                style={{ ...(img.kind === "audio" || img.kind === "video" ? { height: 72 } : { minHeight: 44 }), border: `1px solid var(--c-bd2)`, background: "var(--c-canvas)", cursor: canDrag ? "grab" : "default" }}
+                style={{ ...(img.kind === "audio" || img.kind === "video" ? { height: 72 } : { aspectRatio: "1 / 1" }), border: `1px solid var(--c-bd2)`, background: "var(--c-canvas)", cursor: canDrag ? "grab" : "default" }}
               >
                 {img.kind === "audio" ? (
                   <AudioWaveTile url={img.url} name={img.name} accent={accent} />
@@ -241,7 +241,7 @@ export function ReferenceImageStrip({
                       alt={img.label ?? `ref-${i + 1}`}
                       className="w-full"
                       draggable={false}
-                      style={{ display: "block", width: "100%", height: "auto", objectFit: "contain", cursor: "zoom-in" }}
+                      style={{ display: "block", width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in" }}
                       onClick={() => onZoom(i)}
                     />
                     {/* zoom on hover (images only) */}
