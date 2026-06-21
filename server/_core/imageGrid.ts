@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import { execFileAsync, downloadToTemp } from "./videoEditor";
 import { storagePut } from "../storage";
 
@@ -42,31 +42,38 @@ export async function sliceGridImage(
     throw new Error("非法的网格行列数");
   }
   const inputPath = await downloadToTemp(imageUrl, "png");
-  const { width, height } = await probeImageSize(inputPath);
-  const cellW = Math.floor(width / cols);
-  const cellH = Math.floor(height / rows);
-  if (cellW < 8 || cellH < 8) throw new Error("图像太小，无法按该网格切分");
+  try {
+    const { width, height } = await probeImageSize(inputPath);
+    const cellW = Math.floor(width / cols);
+    const cellH = Math.floor(height / rows);
+    if (cellW < 8 || cellH < 8) throw new Error("图像太小，无法按该网格切分");
 
-  const urls: string[] = [];
-  const keys: string[] = [];
-  const stamp = Date.now();
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = c * cellW;
-      const y = r * cellH;
-      const outPath = `${inputPath}.cell_${r}_${c}.png`;
-      await execFileAsync("ffmpeg", [
-        "-i", inputPath,
-        "-vf", `crop=${cellW}:${cellH}:${x}:${y}`,
-        "-frames:v", "1",
-        "-y", outPath,
-      ]);
-      const buf = await readFile(outPath);
-      const key = `grid-cells/${stamp}-${r}_${c}.png`;
-      const { url } = await storagePut(key, buf, "image/png");
-      urls.push(url);
-      keys.push(key);
+    const urls: string[] = [];
+    const keys: string[] = [];
+    const stamp = Date.now();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = c * cellW;
+        const y = r * cellH;
+        const outPath = `${inputPath}.cell_${r}_${c}.png`;
+        await execFileAsync("ffmpeg", [
+          "-i", inputPath,
+          "-vf", `crop=${cellW}:${cellH}:${x}:${y}`,
+          "-frames:v", "1",
+          "-y", outPath,
+        ]);
+        const buf = await readFile(outPath);
+        // 切片读入内存后立即删除，避免临时目录累积（最多 64 片）。
+        await unlink(outPath).catch(() => undefined);
+        const key = `grid-cells/${stamp}-${r}_${c}.png`;
+        const { url } = await storagePut(key, buf, "image/png");
+        urls.push(url);
+        keys.push(key);
+      }
     }
+    return { urls, keys, rows, cols };
+  } finally {
+    // 下载的原图临时文件兜底清理（与 videoStoryboard 同范式）。
+    await unlink(inputPath).catch(() => undefined);
   }
-  return { urls, keys, rows, cols };
 }

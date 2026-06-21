@@ -48,7 +48,7 @@ import { getSelfHostedConfig } from "../_core/selfHostedLlm";
 import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { generateImage } from "../_core/imageGeneration";
-import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL } from "../../shared/imageEdit";
+import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL, getImageEditOp } from "../../shared/imageEdit";
 import { sliceGridImage } from "../_core/imageGrid";
 import { extractStoryboardFrames } from "../_core/videoStoryboard";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
@@ -2885,11 +2885,17 @@ export const imageEditRouter = router({
           images.push({ url: input.maskUrl });
           instruction += " The second provided image is a mask: its white area marks the exact region to edit; leave the rest untouched.";
         }
+        // 目标画幅(扩图/改比例)此前只拼进指令文本，模型多半不真正改比例。改为同时按
+        // 结构化参数下发：size 覆盖 poyo(aspect_ratio)/kie(options.size)，reveAspectRatio
+        // 覆盖 Higgsfield(Reve/Seedream/Flux Pro)。仅 needsAspect 的操作传，其余操作保持
+        // 源图画幅不变。与 imageGen 路由「size + reveAspectRatio 双写」口径一致。
+        const wantsAspect = !!input.aspectRatio && (getImageEditOp(input.operation)?.needsAspect ?? false);
         try {
           const result = await generateImage({
             prompt: instruction,
             model,
             originalImages: images,
+            ...(wantsAspect ? { size: input.aspectRatio, reveAspectRatio: input.aspectRatio } : {}),
             ...(kieApiKey ? { kieApiKey } : {}),
           });
           const url = result.url ?? result.urls?.[0];

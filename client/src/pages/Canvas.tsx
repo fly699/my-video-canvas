@@ -69,9 +69,8 @@ import { useCanvasMode } from "../contexts/CanvasModeContext";
 import { useTheme, THEMES } from "../contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { useIsMobile } from "@/hooks/useMobile";
 import { toast } from "sonner";
-import type { NodeType, CollaboratorCursor, NodeData, GroupNodeData } from "../../../shared/types";
+import type { NodeType, NodeData, GroupNodeData } from "../../../shared/types";
 import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS, type NodeConfig } from "../lib/nodeConfig";
 import { sortNodeConfigsForPalette } from "../lib/nodeOrder";
 import { io, type Socket } from "socket.io-client";
@@ -89,7 +88,6 @@ import {
   Image,
   Loader2,
   Pencil,
-  Check,
   X,
   FileText,
   LayoutGrid,
@@ -131,74 +129,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
-
-// ── Tool button ───────────────────────────────────────────────────────────────
-function ToolBtn({
-  icon: Icon,
-  label,
-  active,
-  accent,
-  onClick,
-  kbd,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  active?: boolean;
-  accent?: string;
-  onClick: () => void;
-  kbd?: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          onClick={onClick}
-          className="relative w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150"
-          style={{
-            background: active
-              ? accent
-                ? `${accent}22`
-                : "oklch(0.68 0.22 285 / 0.15)"
-              : "transparent",
-            border: active
-              ? `1px solid ${accent ?? "oklch(0.68 0.22 285 / 0.4)"}`
-              : "1px solid transparent",
-            color: active
-              ? (accent ?? "oklch(0.68 0.22 285)")
-              : "var(--c-t3)",
-          }}
-          onMouseEnter={(e) => {
-            if (!active) {
-              (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
-              (e.currentTarget as HTMLElement).style.color = "var(--c-t1)";
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!active) {
-              (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "var(--c-t3)";
-            }
-          }}
-        >
-          <Icon className="w-4 h-4" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="right" className="text-xs">
-        <span>{label}</span>
-        {kbd && (
-          <kbd className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">
-            {kbd}
-          </kbd>
-        )}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-// ── Divider ───────────────────────────────────────────────────────────────────
-function ToolDivider() {
-  return <div className="w-5 h-px mx-auto my-1" style={{ background: "var(--c-bd1)" }} />;
-}
 
 // ── Snapshot panel ────────────────────────────────────────────────────────────
 function SnapshotPanel({
@@ -311,36 +241,6 @@ function SnapshotPanel({
   );
 }
 
-// ── Mobile tool button ────────────────────────────────────────────────────────
-function MobileToolBtn({
-  icon: Icon, label, onClick, active, accent, color,
-}: {
-  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-  label: string; onClick: () => void; active?: boolean; accent?: string; color?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={label}
-      style={{
-        width: 36, height: 36, borderRadius: 10,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        background: active ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
-        border: active ? "1px solid oklch(0.68 0.22 285 / 0.35)" : "1px solid transparent",
-        color: active ? "oklch(0.68 0.22 285)" : (color ?? "var(--c-t3)"),
-        transition: "all 120ms ease",
-        flexShrink: 0,
-      }}
-    >
-      <Icon className="w-4 h-4" style={color && !active ? { color } : undefined} />
-    </button>
-  );
-}
-
-function MobileToolDivider() {
-  return <div style={{ width: 1, height: 20, background: "var(--c-bd2)", flexShrink: 0 }} />;
-}
-
 // ── Canvas inner ──────────────────────────────────────────────────────────────
 // The DB columns a node persists to. Used both to build the upsert payload and to
 // compute a per-node signature for diff-based saving (only write nodes that this
@@ -383,7 +283,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showChangePw, setShowChangePw] = useState(false);
   const [, navigate] = useLocation();
   const reactFlow = useReactFlow();
-  const isMobile = useIsMobile();
 
   // ── 框选放大区域：开启后在画布上拖出一个矩形，松手即把该区域放大铺满全屏 ──
   // 纯交互、一次性动作（不持久化）。Esc 取消；矩形过小忽略。
@@ -3113,7 +3012,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* 预算管控（画布预估消耗 vs 余额） */}
             <BudgetButton orient={toolbarOrient} />
 
-            {/* UI style skin switcher (pro / studio) */}
+            {/* UI style switcher (专业 / 创意 / 工作室) */}
             <UIStyleSwitcher />
 
             {/* Theme switcher (foldable) */}
