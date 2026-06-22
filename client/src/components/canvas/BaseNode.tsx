@@ -189,8 +189,6 @@ export const BaseNode = memo(function BaseNode({
   const { theme } = useTheme();
   const { uiStyle } = useUIStyle();
   const isStudio = uiStyle === "studio";
-  // Studio: when selected, the param body floats below the node, so the node card
-  // itself shrinks to a compact media/title header (minHeight collapsed).
   const isCreative = canvasMode === "creative";
   const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || isCreative;
   const hasHero = heroMedia != null;
@@ -356,7 +354,7 @@ export const BaseNode = memo(function BaseNode({
   const isCollapsedPreview = hasHero && !expandSelected;
 
   // The studio skin collapses/expands the node body (height changes a lot) and floats
-  // the params panel on select. Handles are positioned by percentage (top:25/28/50/75%),
+  // the params panel on select. Handles are positioned by percentage (top/left %，各节点不一),
   // so when the node height changes, their real positions move — but React Flow caches
   // each handle's offset (handleBounds) at measure time. Without a re-measure those
   // bounds go stale and the handles become un-connectable / edges attach at the wrong
@@ -1139,10 +1137,6 @@ export const BaseNode = memo(function BaseNode({
       {/* Studio (selected): the body is relocated to a panel attached BELOW the node,
           rendered OUTSIDE this overflow:hidden wrapper (see below) so it isn't clipped
           and lives in the node's transformed space (scales with canvas zoom). */}
-      {/* Studio: a floating-capable node NEVER renders its body inline — selected/pinned
-          shows it in the floating panel (below), deselected stays a compact card (title +
-          hero). This keeps idle studio nodes small (no giant inline body when unselected).
-          Pro/creative + pro-body nodes (ai_chat) render the body inline as before. */}
       {/* Studio: 只有「选中（命令栏浮出）」时才不内联 body——参数交给下方浮动面板。
           未选中时像专业版一样内联渲染 body，使剪辑等「预览在 body 里、又无结果英雄区」
           的节点在静止态也常显预览（此前 studio 一律不内联 → 未选中只剩光秃标题栏）。

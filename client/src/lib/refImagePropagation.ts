@@ -33,7 +33,7 @@ export function isRefImageTarget(nodeType: string): boolean {
 // (resolveNodeOutputImageUrl), so a video asset / video workflow output is never
 // mis-routed onto the reference-image handle.
 const REF_SOURCE_TYPES = new Set([
-  "image_gen", "comfyui_image", "storyboard", "pose_control", "post_process",
+  "image_gen", "comfyui_image", "storyboard", "pose_control", "post_process", "image_edit",
 ]);
 
 /** Whether a node type can act as a reference-image source (may not have an image yet). */
@@ -87,6 +87,10 @@ export function resolveNodeOutputImageUrl(node: CanvasNode | undefined): string 
     case "pose_control":
       return str(p.outputImageUrl) ?? str(p.outputUrl);
     case "post_process":
+      return str(p.outputUrl);
+    case "image_edit":
+      // 图像编辑结果是一张图(p.outputUrl)，可作下游 video_task/comfyui_video 的参考图首帧
+      // （与 BaseNode.resultImageUrl 的 image_edit 分支同字段口径）。
       return str(p.outputUrl);
     case "asset":
       // An uploaded/imported IMAGE asset is a valid reference source (asset →
