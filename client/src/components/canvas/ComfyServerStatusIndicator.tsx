@@ -134,7 +134,14 @@ export function ComfyServerStatusIndicator() {
       if (typeof p.customBaseUrl === "string" && offSet.has((p.customBaseUrl as string).trim())) patch.customBaseUrl = "";
       if (Object.keys(patch).length) { cs.updateNodeData(n.id, patch); nodeCount++; }
     }
-    toast.success(`已清理 ${offline.length} 台失效服务器（全局 + ${nodeCount} 个画布节点）`);
+    // 文案须如实反映作用域：非 admin 无权清服务端全局注册表(line 120 门控)，仅清了浏览器
+    // 本地列表 + 画布节点。此前无条件写「全局」会误导非 admin「已清全局」，刷新后失效服务器
+    // 又出现 → 困惑「为什么清不掉」。
+    toast.success(
+      isAdmin
+        ? `已清理 ${offline.length} 台失效服务器（全局注册表 + ${nodeCount} 个画布节点）`
+        : `已清理 ${offline.length} 台失效服务器（本地列表 + ${nodeCount} 个画布节点）；全局注册表需管理员清理`
+    );
   };
 
   // Persist the open state too, so the floating panel reliably survives a reload

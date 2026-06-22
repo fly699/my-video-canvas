@@ -194,9 +194,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       utils.chat.listConversations.invalidate();
       utils.chat.listJoinableRooms.invalidate();
     });
-    // AI 助手「新对话」：历史被清空 → 所有会话清空本地消息列表。
+    // AI 助手「新对话」：历史被清空 → 所有会话清空本地消息列表，并刷新会话列表
+    // （否则侧边栏「最后一条消息预览」会残留旧内容，与 conversation:deleted 对齐）。
     socket.on("conversation:cleared", (p: { conversationId: number }) => {
       if (p.conversationId === activeIdRef.current) setMessages([]);
+      utils.chat.listConversations.invalidate();
     });
     socket.on("conversation:mode-changed", () => {
       utils.chat.listConversations.invalidate();

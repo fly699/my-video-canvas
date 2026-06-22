@@ -96,8 +96,10 @@ export function isConnectionValid(
 export function defaultTargetHandle(
   targetType: NodeType | undefined,
   sourceType?: NodeType | null,
+  sourceIsAudio?: boolean,
 ): string {
-  if (targetType === "clip") return sourceType === "audio" ? "audio-in" : "video-in";
+  // 音频源(audio 节点，或经 sourceIsAudio 判定的音频 asset)→ clip 的 audio-in；其余 → video-in。
+  if (targetType === "clip") return (sourceType === "audio" || sourceIsAudio) ? "audio-in" : "video-in";
   return "input";
 }
 
