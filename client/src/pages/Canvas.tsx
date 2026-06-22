@@ -3013,7 +3013,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <BudgetButton orient={toolbarOrient} />
 
             {/* UI style switcher (专业 / 创意 / 工作室) */}
-            <UIStyleSwitcher />
+            <UIStyleSwitcher orient={toolbarOrient} />
 
             {/* Theme switcher (foldable) */}
             <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><ThemeSwitcher /></span>
