@@ -14,6 +14,7 @@ import type { NodeType, NodeData, CollaboratorCursor, GroupNodeData } from "../.
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { getNodeConfig } from "../lib/nodeConfig";
 import { resolveNodeOutputImageUrl, isRefImageTarget, effectiveTargetHandle } from "../lib/refImagePropagation";
+import { defaultTargetHandle } from "../lib/connectionRules";
 
 export interface CanvasNode extends Node {
   data: {
@@ -1005,15 +1006,22 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         selected: false,
       });
     }
+    const typeByNewId = new Map(newNodes.map((n) => [n.id, n.data.nodeType]));
     const newEdges: CanvasEdge[] = [];
     for (const se of srcEdges) {
       const source = se.source && idMap.get(se.source);
       const target = se.target && idMap.get(se.target);
       if (!source || !target) continue; // dangling — drop
+      // 缺句柄的导入边：仅对 clip（无 `input` 桩）按目标类型补 video-in/audio-in，否则
+      // 落空不渲染；其余目标维持原样（undefined，交 ReactFlow 匹配单一 input 桩），不改动
+      // 既有行为。与 onConnect/加载/模板/智能体统一走 defaultTargetHandle（单一真源）。
+      const tgtType = typeByNewId.get(target);
+      const targetHandle = se.targetHandle
+        ?? (tgtType === "clip" ? defaultTargetHandle(tgtType, typeByNewId.get(source)) : undefined);
       newEdges.push({
         id: nanoid(), source, target,
         sourceHandle: se.sourceHandle ?? undefined,
-        targetHandle: se.targetHandle ?? undefined,
+        targetHandle: targetHandle ?? undefined,
         label: typeof se.label === "string" ? se.label : undefined,
       } as CanvasEdge);
     }

@@ -51,6 +51,31 @@ describe("applyAgentOperations scene grouping", () => {
   });
 });
 
+describe("applyAgentOperations connect → clip 句柄（剪辑无 input 桩，缺省须落 video-in/audio-in）", () => {
+  it("智能体连「视频任务→剪辑」缺省 targetHandle 时落到 video-in（而非不存在的 input）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "video_task", tempId: "v" },
+      { op: "create", nodeType: "clip", tempId: "c" },
+      { op: "connect", sourceRef: "v", targetRef: "c" },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const edges = useCanvasStore.getState().edges;
+    expect(edges).toHaveLength(1);
+    expect(edges[0].targetHandle).toBe("video-in");
+  });
+  it("智能体连「音频→剪辑」缺省 targetHandle 时落到 audio-in", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "audio", tempId: "a" },
+      { op: "create", nodeType: "clip", tempId: "c" },
+      { op: "connect", sourceRef: "a", targetRef: "c" },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const edges = useCanvasStore.getState().edges;
+    expect(edges).toHaveLength(1);
+    expect(edges[0].targetHandle).toBe("audio-in");
+  });
+});
+
 describe("applyAgentOperations storyboard promptText backstop", () => {
   it("fills blank promptText from description on create (实测 bug：提示词框空置)", () => {
     const ops: AgentOperation[] = [

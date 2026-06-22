@@ -802,12 +802,20 @@ function CanvasInner({ projectId }: { projectId: number }) {
       "merge", "subtitle", "subtitle_motion", "pose_control", "smart_cut",
     ]);
     const nodeTypeById = new Map(dbNodes.map((n) => [n.id, n.type as string]));
+    const nodeDataById = new Map(dbNodes.map((n) => [n.id, (n.data as Record<string, unknown>) ?? {}]));
     const flowEdges: CanvasEdge[] = dbEdges.map((e) => {
       // clip 无 `input` 桩，缺省端口时按目标类型推默认输入桩（clip→video-in/audio-in），
       // 否则历史里缺端口的剪辑入边会落到不存在的 `input` 桩、加载后不可见。
+      // 音频源判定与连线期一致（复用 isAudioAssetSource），使「音频 asset→clip」缺端口的
+      // 历史边也落到 audio-in，而非 video-in（加载与连线/保存口径对称）。
+      const srcType = nodeTypeById.get(e.sourceNodeId) as NodeType | undefined;
+      const srcIsAudio = isAudioAssetSource(
+        { data: { nodeType: srcType, payload: nodeDataById.get(e.sourceNodeId) ?? {} } } as unknown as CanvasNode,
+      );
       let targetHandle = e.targetPort ?? defaultTargetHandle(
         nodeTypeById.get(e.targetNodeId) as NodeType | undefined,
-        nodeTypeById.get(e.sourceNodeId) as NodeType | undefined,
+        srcType,
+        srcIsAudio,
       );
       let sourceHandle = e.sourcePort ?? "output";
       if (targetHandle === "input" && LEGACY_VERTICAL_NODES.has(nodeTypeById.get(e.targetNodeId) ?? "")) {
