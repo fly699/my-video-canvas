@@ -239,6 +239,11 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     onSuccess: () => { setLocalMessages([]); toast.success("对话已清除"); },
     onError: (err) => toast.error("清除失败：" + err.message),
   });
+  // Server-side document parser (PDF/Word/PPT/Excel → text). Binary office docs
+  // can't be read in-browser, so they're sent here and the returned text is
+  // inlined as the attachment's textContent (works for the text-only self-hosted
+  // Qwen as well as the cloud models).
+  const parseDocMutation = trpc.aiChat.parseDocument.useMutation();
 
   const pushToDownstream = useCallback((content: string) => {
     const { nodes: currentNodes, edges: currentEdges, batchUpdateNodeData } = useCanvasStore.getState();
@@ -463,6 +468,18 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             filename: file.name,
           });
           additions.push({ type: "image", url, mimeType: file.type, name: file.name });
+        } else if (
+          /\.(pdf|docx|pptx|xlsx)$/i.test(file.name) ||
+          /officedocument|application\/pdf/.test(file.type)
+        ) {
+          // Binary office docs (PDF/Word/PPT/Excel) — unreadable in the browser.
+          // Parse to text server-side, then inline as textContent (capped to the
+          // server's 50K attachment limit).
+          const base64 = await fileToBase64(file);
+          const mimeType = file.type || "application/octet-stream";
+          const { text } = await parseDocMutation.mutateAsync({ base64, mimeType, filename: file.name });
+          const textContent = text.length > 50_000 ? text.slice(0, 50_000) + "\n…（文档过长，已截断）" : text;
+          additions.push({ type: "file", url: "", mimeType, name: file.name, textContent });
         } else if (
           file.type.startsWith("text/") ||
           /\.(md|txt|json|csv|tsv|log)$/i.test(file.name) ||
@@ -926,7 +943,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             type="file"
             ref={fileInputRef}
             multiple
-            accept="image/*,text/*,.md,.txt,.json,.csv,.tsv,.log"
+            accept="image/*,text/*,.md,.txt,.json,.csv,.tsv,.log,.pdf,.docx,.pptx,.xlsx"
             style={{ display: "none" }}
             onChange={(e) => {
               if (e.target.files) {
