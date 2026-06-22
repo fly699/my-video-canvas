@@ -45,6 +45,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { getCachedDisabledModels } from "../_core/modelToggles";
 import { getSelfHostedConfig } from "../_core/selfHostedLlm";
+import { parseDocumentToText, isParsableDocument } from "../_core/documentParse";
 import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { generateImage } from "../_core/imageGeneration";
@@ -1144,6 +1145,29 @@ export const aiChatRouter = router({
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await clearChatMessages(input.nodeId, input.projectId);
       return { success: true };
+    }),
+
+  // Parse an office document (PDF / Word / PPT / Excel / …) to plain text on the
+  // server. The browser can't read binary office formats, and the self-hosted
+  // Qwen vLLM endpoint is text-only (it can't ingest a document the way the cloud
+  // gateways can) — so the AI-chat node sends the raw bytes here and inlines the
+  // returned text as the attachment's `textContent`. Pure-JS, fully offline.
+  parseDocument: protectedProcedure
+    .input(z.object({
+      base64: z.string().max(24_000_000), // ~18MB once decoded (client caps file at 10MB)
+      mimeType: z.string().max(128),
+      filename: z.string().max(255),
+    }))
+    .mutation(async ({ input }) => {
+      if (!isParsableDocument(input.filename, input.mimeType)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `不支持解析的文档类型：${input.filename}` });
+      }
+      const bytes = Buffer.from(input.base64, "base64");
+      if (bytes.byteLength === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "文件内容为空" });
+      if (bytes.byteLength > 16 * 1024 * 1024) throw new TRPCError({ code: "BAD_REQUEST", message: "文档超过 16MB，无法解析" });
+      const text = await parseDocumentToText(new Uint8Array(bytes), { filename: input.filename, mimeType: input.mimeType });
+      if (!text.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "未能从该文档提取到文本（可能是扫描件或纯图片文档）" });
+      return { text, chars: text.length };
     }),
 });
 

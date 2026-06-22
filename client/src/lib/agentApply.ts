@@ -1,6 +1,6 @@
 import { useCanvasStore, aspectToComfyWH } from "../hooks/useCanvasStore";
 import { NODE_CONFIGS } from "./nodeConfig";
-import { isConnectionValid } from "./connectionRules";
+import { isConnectionValid, defaultTargetHandle } from "./connectionRules";
 import { charDisplayName, libraryOverlayByName, type CharacterImportMode } from "./characterConditioning";
 import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding, CharacterNodeData, CharacterKind } from "../../../shared/types";
 
@@ -257,7 +257,10 @@ export function applyAgentOperations(
           if (st && tt && !isConnectionValid(st, tt)) { fail(index, op, `不允许的连接：${st} → ${tt}`); return; }
           const edgeKey = `${source} ${target}`;
           const isNewEdge = !edgeKeys.has(edgeKey);
-          store.onConnect({ source, target, sourceHandle: op.sourceHandle ?? "output", targetHandle: op.targetHandle ?? "input" });
+          // clip 无 `input` 桩——LLM 通常省略 targetHandle，缺省时按目标类型推默认输入桩
+          // （clip→video-in；音频源→audio-in），否则边落到不存在的桩、剪辑入边不渲染。
+          // 与手动/模板/自动连线统一走 defaultTargetHandle（单一真源）。
+          store.onConnect({ source, target, sourceHandle: op.sourceHandle ?? "output", targetHandle: op.targetHandle ?? defaultTargetHandle(tt, st) });
           op.status = "applied";
           // Only count + flag-for-rerun when an edge was actually added; a duplicate
           // (source→target already wired) is a no-op in the store, so counting it

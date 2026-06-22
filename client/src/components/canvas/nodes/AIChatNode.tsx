@@ -72,6 +72,8 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
   const disabledModels = useDisabledModels();
   const _selfHosted = useSelfHostedLlmModels();
   const CHAT_LIST = _selfHosted.length ? [..._selfHosted.filter((x) => !CHAT_MODELS.some((m) => m.id === x.id)), ...CHAT_MODELS] : CHAT_MODELS;
+  // 文档解析「仅自建模型透明拦截」：office 文档只在选中自建模型时才解析内联（云端模型保持原样拒绝）。
+  const isSelfHostedModel = _selfHosted.some((m) => m.id === model);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -239,6 +241,11 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     onSuccess: () => { setLocalMessages([]); toast.success("对话已清除"); },
     onError: (err) => toast.error("清除失败：" + err.message),
   });
+  // Server-side document parser (PDF/Word/PPT/Excel → text). Binary office docs
+  // can't be read in-browser, so when a self-hosted (text-only) model is selected
+  // they're sent here and the returned text is inlined as the attachment's
+  // textContent. Gated to self-hosted models — see attachFiles.
+  const parseDocMutation = trpc.aiChat.parseDocument.useMutation();
 
   const pushToDownstream = useCallback((content: string) => {
     const { nodes: currentNodes, edges: currentEdges, batchUpdateNodeData } = useCanvasStore.getState();
@@ -464,6 +471,25 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
           });
           additions.push({ type: "image", url, mimeType: file.type, name: file.name });
         } else if (
+          /\.(pdf|docx|pptx|xlsx)$/i.test(file.name) ||
+          /officedocument|application\/pdf/.test(file.type)
+        ) {
+          // Binary office docs (PDF/Word/PPT/Excel) — unreadable in the browser.
+          // Gated to self-hosted models only (透明拦截): the text-only Qwen vLLM
+          // can't ingest documents, so we parse them to text server-side. Cloud
+          // models keep the prior behaviour (rejected here).
+          if (!isSelfHostedModel) {
+            toast.error(`${file.name}：文档解析仅在使用自建模型时支持，请先切换到自建模型`);
+            continue;
+          }
+          // Parse to text server-side, then inline as textContent (capped to the
+          // server's 50K attachment limit).
+          const base64 = await fileToBase64(file);
+          const mimeType = file.type || "application/octet-stream";
+          const { text } = await parseDocMutation.mutateAsync({ base64, mimeType, filename: file.name });
+          const textContent = text.length > 50_000 ? text.slice(0, 50_000) + "\n…（文档过长，已截断）" : text;
+          additions.push({ type: "file", url: "", mimeType, name: file.name, textContent });
+        } else if (
           file.type.startsWith("text/") ||
           /\.(md|txt|json|csv|tsv|log)$/i.test(file.name) ||
           !file.type // browser unknown — try as text
@@ -487,7 +513,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
     } finally {
       setIsUploadingAttachment(false);
     }
-  }, [pendingAttachments.length, uploadMutation]);
+  }, [pendingAttachments.length, uploadMutation, parseDocMutation, isSelfHostedModel]);
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items);
@@ -926,7 +952,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
             type="file"
             ref={fileInputRef}
             multiple
-            accept="image/*,text/*,.md,.txt,.json,.csv,.tsv,.log"
+            accept="image/*,text/*,.md,.txt,.json,.csv,.tsv,.log,.pdf,.docx,.pptx,.xlsx"
             style={{ display: "none" }}
             onChange={(e) => {
               if (e.target.files) {

@@ -39,6 +39,8 @@ import { assertLLMAllowed } from "../_core/whitelist";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
 import { isKieLLMModel } from "../_core/kieLLM";
+import { isSelfHostedLlmModel } from "../_core/selfHostedLlm";
+import { parseDocumentToText, isParsableDocument } from "../_core/documentParse";
 import type { ChatWireMessage, ChatFileRef } from "../../shared/types";
 import type { ConversationMessage } from "../../drizzle/schema";
 
@@ -74,6 +76,45 @@ async function chatImageUrlForLLM(url: string): Promise<string | null> {
     catch (err) { console.warn("[chatAssistant] resolveToAbsoluteUrl failed:", err instanceof Error ? err.message : err); return null; }
   }
   return null;
+}
+
+/** Read a stored attachment's raw bytes for server-side document parsing. Handles
+ *  data: URLs (no storage configured / dev), /manus-storage/ proxy paths (resolved
+ *  to an absolute URL then fetched), and absolute http(s). Returns null on any
+ *  failure / unusable scheme so the caller falls back to the lightweight note. */
+async function chatAttachmentBytes(url: string): Promise<Uint8Array | null> {
+  if (!url || url.startsWith("blob:")) return null;
+  if (url.startsWith("data:")) {
+    const comma = url.indexOf(",");
+    if (comma < 0) return null;
+    try { return new Uint8Array(Buffer.from(url.slice(comma + 1), "base64")); } catch { return null; }
+  }
+  let abs = url;
+  if (url.startsWith("/manus-storage/")) {
+    try { abs = await resolveToAbsoluteUrl(url); } catch { return null; }
+  } else if (!/^https?:\/\//i.test(url)) {
+    return null;
+  }
+  try {
+    const resp = await fetch(abs, { signal: AbortSignal.timeout(15_000) });
+    if (!resp.ok) return null;
+    return new Uint8Array(await resp.arrayBuffer());
+  } catch { return null; }
+}
+
+/** Parse a single non-image attachment to inline text for the LLM, capped. Returns
+ *  null when it isn't a parsable doc, is too big, or yields no text — caller then
+ *  falls back to the `[附件：name]` note. */
+async function chatDocTextForLLM(att: ChatFileRef): Promise<string | null> {
+  if (!isParsableDocument(att.name, att.mimeType)) return null;
+  if (att.size > 16 * 1024 * 1024) return null; // mirror parseDocument endpoint ceiling
+  const bytes = await chatAttachmentBytes(att.url);
+  if (!bytes || bytes.byteLength === 0) return null;
+  try {
+    const text = await parseDocumentToText(bytes, { filename: att.name, mimeType: att.mimeType });
+    const trimmed = text.trim();
+    return trimmed ? trimmed.slice(0, 50_000) : null;
+  } catch { return null; }
 }
 
 function dmKeyFor(a: number, b: number): string {
@@ -333,6 +374,10 @@ export const chatRouter = router({
       // 2) 取最近历史构造对话上下文（AI 的消息=assistant，其余=user），上限 20 条。
       //    用户消息若带图片附件，拼成多模态 content（image_url），让视觉模型能「看到」参考图；
       //    非图片附件附一行说明。文本/普通模型会忽略图片部分，不影响。
+      // 文档解析「仅自建模型透明拦截」：选中自建 Qwen（纯文本）时，把当前这条消息附带的
+      // office 文档（PDF/Word/PPT/Excel）解析成文本内联，让模型能读到内容；云端模型保持原样
+      // 只附 [附件：名]。只解析最新这条消息（userMsg）的附件，避免每轮重复拉取/解析历史文档。
+      const selfHosted = isSelfHostedLlmModel(input.model);
       const history = (await getConversationMessages(conv.id, { limit: 20 })).slice().reverse();
       const histMsgs = await Promise.all(history.map(async (m) => {
         const role = (m.senderId === aiId ? "assistant" : "user") as "assistant" | "user";
@@ -340,8 +385,17 @@ export const chatRouter = router({
         if (role === "user" && atts && atts.length > 0) {
           const imgs = atts.filter((a) => a.kind === "image" || a.mimeType.startsWith("image/"));
           const resolved = (await Promise.all(imgs.map((a) => chatImageUrlForLLM(a.url)))).filter((u): u is string => !!u);
-          const otherNote = atts.filter((a) => !(a.kind === "image" || a.mimeType.startsWith("image/")))
-            .map((a) => `[附件：${a.name}]`).join(" ");
+          const others = atts.filter((a) => !(a.kind === "image" || a.mimeType.startsWith("image/")));
+          let otherNote: string;
+          if (selfHosted && m.id === userMsg.id && others.length > 0) {
+            const parts = await Promise.all(others.map(async (a) => {
+              const docText = await chatDocTextForLLM(a);
+              return docText ? `【文档：${a.name}】\n${docText}` : `[附件：${a.name}]`;
+            }));
+            otherNote = parts.join("\n\n");
+          } else {
+            otherNote = others.map((a) => `[附件：${a.name}]`).join(" ");
+          }
           const text = [m.content, otherNote].filter(Boolean).join("\n") || "请分析附带的图片。";
           if (resolved.length > 0) {
             return { role, content: [{ type: "text" as const, text }, ...resolved.map((url) => ({ type: "image_url" as const, image_url: { url } }))] };
