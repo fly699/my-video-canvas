@@ -10,6 +10,10 @@ describe("defaultTargetHandle", () => {
   });
   it("剪辑(clip)：音频源连 audio-in", () => {
     expect(defaultTargetHandle("clip", "audio")).toBe("audio-in");
+    // 音频 asset（sourceType==="asset" 但 sourceIsAudio=true）也应落到 audio-in
+    expect(defaultTargetHandle("clip", "asset", true)).toBe("audio-in");
+    // 图像/视频 asset（sourceIsAudio=false）仍落 video-in
+    expect(defaultTargetHandle("clip", "asset", false)).toBe("video-in");
   });
   it("其它目标类型一律沿用 input", () => {
     expect(defaultTargetHandle("video_task", "image_gen")).toBe("input");

@@ -14,7 +14,7 @@ const OPTIONS: { id: Mode; label: string; title: string }[] = [
   { id: "studio", label: "工作室", title: "工作室（影院深色 · 命令栏 · 媒体优先）" },
 ];
 
-export function UIStyleSwitcher() {
+export function UIStyleSwitcher({ orient = "h" }: { orient?: "h" | "v" }) {
   const { uiStyle, setUIStyle } = useUIStyle();
   const { mode, setMode } = useCanvasMode();
 
@@ -26,13 +26,16 @@ export function UIStyleSwitcher() {
     else { setUIStyle("pro"); setMode("professional"); }
   };
 
+  const vertical = orient === "v";
   return (
     <div
       data-ui-switch
       title="界面模式"
       style={{
         display: "flex",
-        alignItems: "center",
+        // 竖排工具栏：三个中文按钮纵向堆叠并撑满栏宽，避免横排溢出工具栏（此前固定 row）。
+        flexDirection: vertical ? "column" : "row",
+        alignItems: vertical ? "stretch" : "center",
         gap: 2,
         background: "var(--c-input)",
         border: "1px solid var(--c-bd2)",
@@ -57,6 +60,7 @@ export function UIStyleSwitcher() {
               lineHeight: 1,
               padding: "5px 9px",
               borderRadius: 6,
+              textAlign: "center",
               // Active = solid accent pill + white text (high contrast on any theme);
               // inactive = the theme's secondary text token.
               background: active ? "oklch(0.62 0.22 285)" : "transparent",

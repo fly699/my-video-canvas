@@ -130,6 +130,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
 
+// 音频素材源判定：自动连线到 clip 时，音频 asset 应落到 audio-in（audio 节点已由
+// defaultTargetHandle 的 sourceType==="audio" 覆盖，这里补"音频 asset"这一句柄路由缺口，
+// 与 ClipNode 的 audio-in 接收口径一致：asset 且 type==="audio" 或 mimeType 以 audio/ 开头）。
+function isAudioAssetSource(node: CanvasNode | undefined): boolean {
+  if (!node || node.data.nodeType !== "asset") return false;
+  const p = node.data.payload as Record<string, unknown>;
+  return p.type === "audio" || (typeof p.mimeType === "string" && (p.mimeType as string).startsWith("audio/"));
+}
+
 // ── Snapshot panel ────────────────────────────────────────────────────────────
 function SnapshotPanel({
   projectId, onSave, onRestore, onDelete, onClose,
@@ -1222,9 +1231,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
       emitCollabEvent("node:add", newNode);
       // 从「连线放置」打开的：把新模板节点按拖出方向连到源节点。
       if (fromConnect) {
-        const srcType = useCanvasStore.getState().nodes.find((n) => n.id === fromConnect.fromId)?.data.nodeType ?? null;
+        const srcNode = useCanvasStore.getState().nodes.find((n) => n.id === fromConnect.fromId);
+        const srcType = srcNode?.data.nodeType ?? null;
         const conn: Connection = fromConnect.fromHandleType === "source"
-          ? { source: fromConnect.fromId, sourceHandle: fromConnect.fromHandle ?? "output", target: newNode.id, targetHandle: defaultTargetHandle(type, srcType) }
+          ? { source: fromConnect.fromId, sourceHandle: fromConnect.fromHandle ?? "output", target: newNode.id, targetHandle: defaultTargetHandle(type, srcType, isAudioAssetSource(srcNode)) }
           : { source: newNode.id, sourceHandle: "output", target: fromConnect.fromId, targetHandle: fromConnect.fromHandle ?? "input" };
         const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));
         onConnect(conn);
@@ -1372,9 +1382,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setConnectMenu(null);
     if (!newNode) return;
     emitCollabEvent("node:add", newNode);
-    const srcType = useCanvasStore.getState().nodes.find((n) => n.id === connectMenu.fromId)?.data.nodeType ?? null;
+    const srcNode = useCanvasStore.getState().nodes.find((n) => n.id === connectMenu.fromId);
+    const srcType = srcNode?.data.nodeType ?? null;
     const conn: Connection = connectMenu.fromHandleType === "source"
-      ? { source: connectMenu.fromId, sourceHandle: connectMenu.fromHandle ?? "output", target: newNode.id, targetHandle: defaultTargetHandle(type, srcType) }
+      ? { source: connectMenu.fromId, sourceHandle: connectMenu.fromHandle ?? "output", target: newNode.id, targetHandle: defaultTargetHandle(type, srcType, isAudioAssetSource(srcNode)) }
       : { source: newNode.id, sourceHandle: "output", target: connectMenu.fromId, targetHandle: connectMenu.fromHandle ?? "input" };
     const prevIds = new Set(useCanvasStore.getState().edges.map((e) => e.id));
     onConnect(conn);
@@ -3013,7 +3024,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <BudgetButton orient={toolbarOrient} />
 
             {/* UI style switcher (专业 / 创意 / 工作室) */}
-            <UIStyleSwitcher />
+            <UIStyleSwitcher orient={toolbarOrient} />
 
             {/* Theme switcher (foldable) */}
             <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><ThemeSwitcher /></span>
