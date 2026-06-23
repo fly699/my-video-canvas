@@ -275,6 +275,13 @@ const VEO_LITE_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "720p",
     options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
 ];
+// veo3.1-quality 不支持 reference 生成模式(docs/poyo-video-api.md:70)，只做首尾帧/图生；
+// 故不暴露 generation_type 控件，由服务端按图数自动判定(2 图=frame)，避免发非法 reference。
+const VEO_QUALITY_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 8, options: [{ value: 8, label: "8 秒（固定）" }] },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: VEO_RES_4K },
+];
 // Kling 2.1 (I2V): duration 5/10
 const KLING21_PARAMS: ParamDef[] = [
   { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
@@ -585,7 +592,7 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
       options: [{ value: "720p", label: "720p" }, { value: "1024p", label: "1024p" }, { value: "1080p", label: "1080p" }] },
   ],
   poyo_veo_fast: VEO_PARAMS,
-  poyo_veo_quality: VEO_PARAMS,
+  poyo_veo_quality: VEO_QUALITY_PARAMS,
   poyo_veo_lite: VEO_LITE_PARAMS,
   poyo_kling21_std: KLING21_PARAMS,
   poyo_kling21_pro: KLING21_PARAMS,

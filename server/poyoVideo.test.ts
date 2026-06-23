@@ -236,3 +236,22 @@ describe("submitPoyoVideo explicit referenceMode (character SUBJECT references)"
     expect("reference_image_urls" in ref.input).toBe(false);
   });
 });
+
+describe("submitPoyoVideo Veo 3.1 档位约束（docs:64-71）", () => {
+  it("veo3.1-lite 纯文生：附参考图也不发任何图字段（lite 不支持 image_urls）", async () => {
+    const b = await submitWithRefs("poyo_veo_lite", [A]);
+    expect(b.model).toBe("veo3.1-lite");
+    expect("image_urls" in b.input).toBe(false);
+    expect("reference_image_url" in b.input).toBe(false);
+    expect("reference_image_urls" in b.input).toBe(false);
+  });
+  it("veo3.1-quality 丢弃非法的 generation_type:reference（quality 不支持 reference）", async () => {
+    const b = await submit("poyo_veo_quality", { generation_type: "reference", resolution: "1080p" });
+    expect(b.model).toBe("veo3.1-quality");
+    expect("generation_type" in b.input).toBe(false);
+  });
+  it("veo3.1-fast 仍可显式 frame，且保留 reference 能力", async () => {
+    const b = await submit("poyo_veo_fast", { generation_type: "frame" });
+    expect(b.input.generation_type).toBe("frame");
+  });
+});

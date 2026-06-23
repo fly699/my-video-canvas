@@ -118,10 +118,14 @@ const VIDEO_PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
 const SINGLE_START_IMAGE_MODELS = new Set<string>([
   "kling-2.1/standard", "kling-2.1/pro", "kling-2.5-turbo-pro", "hailuo-2.3",
 ]);
+// veo3.1-lite 是纯文生视频模型：不支持 image_urls 也不支持 generation_type
+// (docs/poyo-video-api.md:70)。给它发任何参考图字段都会 400，故整条参考链路对它跳过。
+const TEXT_ONLY_MODELS = new Set<string>(["veo3.1-lite"]);
+
 const SINGLE_IMAGE_URLS_MODELS = new Set<string>([
   "wan2.7-image-to-video", "wan2.2-image-to-video-fast", "wan2.6-image-to-video",
   "sora-2-official", "sora-2-pro-official",
-  "veo3.1-fast", "veo3.1-quality", "veo3.1-lite",
+  "veo3.1-fast", "veo3.1-quality",
   // Seedance-2：单张手动参考图按「首帧」走 image_urls（与 2 图的首尾帧路径一致、
   // 文档合法）。此前落到通用单数 reference_image_url —— seedance-2 没有这个字段
   // （docs/poyo-video-api.md §六：模式只有 image_urls 首尾帧 / reference_image_urls
@@ -263,15 +267,18 @@ export async function submitPoyoVideo(opts: {
   // (subject) mode because the images are character identities, not start/end frames —
   // route the images to reference_image_urls (reference mode) instead of image_urls.
   const inReferenceMode = refVideos.length > 0 || refAudios.length > 0 || opts.referenceMode === "reference";
-  if (inReferenceMode && refSpec?.referenceImages && resolvedRefs.length > 0) {
-    input.reference_image_urls = resolvedRefs.slice(0, refSpec.referenceImages);
-  } else if (resolvedRefs.length === 1) {
-    applySingleImage(input, model, resolvedRefs[0]);
-  } else if (resolvedRefs.length > 1) {
-    applyMultiImage(input, model, resolvedRefs);
+  // 纯文生模型(veo3.1-lite)：跳过所有参考图/视频/音频字段，否则 Poyo 400。
+  if (!TEXT_ONLY_MODELS.has(model)) {
+    if (inReferenceMode && refSpec?.referenceImages && resolvedRefs.length > 0) {
+      input.reference_image_urls = resolvedRefs.slice(0, refSpec.referenceImages);
+    } else if (resolvedRefs.length === 1) {
+      applySingleImage(input, model, resolvedRefs[0]);
+    } else if (resolvedRefs.length > 1) {
+      applyMultiImage(input, model, resolvedRefs);
+    }
+    if (refVideos.length > 0) input.reference_video_urls = refVideos;
+    if (refAudios.length > 0) input.reference_audio_urls = refAudios;
   }
-  if (refVideos.length > 0) input.reference_video_urls = refVideos;
-  if (refAudios.length > 0) input.reference_audio_urls = refAudios;
 
   // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),
   // coercing numeric/boolean fields. Models not in the table send just prompt +
@@ -300,6 +307,10 @@ export async function submitPoyoVideo(opts: {
   }
   // Fixed-duration models (Veo 3.1) always send their canonical duration.
   if (model in FIXED_DURATION) input.duration = FIXED_DURATION[model];
+  // veo3.1-quality 不支持 reference 模式(docs/poyo-video-api.md:70)——客户端已不再
+  // 提供该选项，但旧节点 params 里可能残留 generation_type:"reference"，会被 Poyo 400。
+  // 兜底丢弃，让上游按图数自动判定(quality 上限 2 图=frame)。
+  if (model === "veo3.1-quality" && input.generation_type === "reference") delete input.generation_type;
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",
