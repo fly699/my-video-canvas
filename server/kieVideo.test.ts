@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { KIE_VIDEO_SPECS, isKieVideoProvider, listKieVideoProviders } from "./_core/kieVideo";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { KIE_VIDEO_SPECS, isKieVideoProvider, listKieVideoProviders, submitKieVideo } from "./_core/kieVideo";
 import { VIDEO_PROVIDERS } from "../shared/types";
 
 describe("kie video specs", () => {
@@ -113,5 +113,42 @@ describe("parseKieJobStatus — 音频字段（TTS/SFX 共用）", () => {
   it("response.audio_url / audioUrl 提取", () => {
     expect(parseKieJobStatus({ state: "success", response: { audio_url: "https://x/v.mp3" } }).resultVideoUrls).toEqual(["https://x/v.mp3"]);
     expect(parseKieJobStatus({ successFlag: 1, response: { audioUrl: "https://x/a.mp3" } }).resultVideoUrls).toEqual(["https://x/a.mp3"]);
+  });
+});
+
+// 提交体回归：Seedance 多模态参考图必须只走 reference_image_urls，绝不与 first_frame_url
+// 同传——否则 kie 返回 422 "The reference image ..."（docs/kie-api.md：首帧/首尾帧/多模态
+// 参考是三个互斥场景，不能同时使用）。用绝对 http URL，使 resolveToAbsoluteUrl 成为 no-op。
+describe("submitKieVideo — Seedance 参考图走多模态字段（互斥修复回归）", () => {
+  let captured: { model?: string; input?: Record<string, unknown> } | null = null;
+  const origFetch = global.fetch;
+  beforeEach(() => {
+    captured = null;
+    global.fetch = vi.fn(async (_url: unknown, init: { body: string }) => {
+      captured = JSON.parse(init.body);
+      return { ok: true, json: async () => ({ code: 200, data: { taskId: "task_1" } }) } as unknown as Response;
+    }) as unknown as typeof fetch;
+  });
+  afterEach(() => { global.fetch = origFetch; });
+
+  it("kie_seedance2_fast：参考图 → reference_image_urls，且不含 first_frame_url", async () => {
+    const r = await submitKieVideo({
+      provider: "kie_seedance2_fast", prompt: "根据九宫格参考图生成动画短片", apiKey: "k",
+      referenceImageUrls: ["https://cdn.example.com/grid.png"],
+      params: { resolution: "480p", aspect_ratio: "16:9", duration: 5, generate_audio: true },
+    });
+    expect(r.externalTaskId).toBe("task_1");
+    expect(captured?.model).toBe("bytedance/seedance-2-fast");
+    expect(captured?.input?.reference_image_urls).toEqual(["https://cdn.example.com/grid.png"]);
+    expect(captured?.input?.first_frame_url).toBeUndefined();
+  });
+
+  it("非多模态图生视频（kling 2.5 turbo i2v）仍用其 ref.key=image_url，且不发 reference_image_urls", async () => {
+    await submitKieVideo({
+      provider: "kie_kling25turbo_i2v", prompt: "p", apiKey: "k",
+      referenceImageUrls: ["https://cdn.example.com/a.png"],
+    });
+    expect(captured?.input?.image_url).toBe("https://cdn.example.com/a.png");
+    expect(captured?.input?.reference_image_urls).toBeUndefined();
   });
 });

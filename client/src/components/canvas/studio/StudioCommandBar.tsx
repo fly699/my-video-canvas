@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { trpc } from "@/lib/trpc";
@@ -11,7 +12,7 @@ import { MUSIC_MODELS, DUBBING_MODELS, SFX_MODELS, MUSIC_STYLES_ZH, voicesForMod
 import { IMAGE_MODEL_PARAMS, paramOptions } from "../../../lib/paramDefs";
 import { estimateImageCost, estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
-import { ArrowUp, Loader2, ImagePlus, Languages, Sparkles, X } from "lucide-react";
+import { ArrowUp, Loader2, ImagePlus, Languages, Sparkles, X, ChevronDown } from "lucide-react";
 import type { NodeType, VideoProvider } from "../../../../../shared/types";
 
 // The 4 "generative" nodes keep a bespoke bar (model pickers + image/video param
@@ -76,6 +77,95 @@ const chip: React.CSSProperties = {
   background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)",
   outline: "none", cursor: "pointer", maxWidth: 170,
 };
+
+// Self-drawn dropdown for the studio command bar. The bar lives inside a React
+// Flow node, whose viewport carries a `transform: scale()` (canvas zoom) — and a
+// native <select>'s popup layer isn't transformed, so it mis-positions / clicks the
+// wrong row under zoom (see CLAUDE.md lesson #3). The node param panel also has
+// `overflow:auto`, which would clip an in-DOM menu. So the menu is portalled to
+// document.body with fixed coords from the trigger's rect: unaffected by zoom (always
+// rendered at 100% — crisp at any zoom) and never clipped. Closes on outside click,
+// scroll, resize, or canvas wheel (pan/zoom) so it can't linger out of place.
+type StudioOpt = { value: string; label: string; group?: string };
+function StudioSelect({ value, options, onChange, title, maxWidth = 170, placeholder }: {
+  value: string; options: StudioOpt[]; onChange: (v: string) => void;
+  title?: string; maxWidth?: number; placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; minWidth: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      const t = e.target as Node | null;
+      if (t && (btnRef.current?.contains(t) || menuRef.current?.contains(t))) return; // ignore inside trigger/menu (incl. scroll within menu)
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("wheel", close, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("wheel", close, true);
+    };
+  }, [open]);
+
+  const cur = options.find((o) => o.value === value);
+  // Preserve declaration order while grouping (optgroup-style headers).
+  const groups: { label: string; opts: StudioOpt[] }[] = [];
+  for (const o of options) {
+    const g = o.group ?? "";
+    let grp = groups.find((x) => x.label === g);
+    if (!grp) { grp = { label: g, opts: [] }; groups.push(grp); }
+    grp.opts.push(o);
+  }
+  const showHeaders = groups.some((g) => g.label !== "");
+
+  const toggle = () => {
+    if (open) { setOpen(false); return; }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const below = window.innerHeight - r.bottom;
+    const openUp = below < 300 && r.top > below;
+    setPos({ left: r.left, minWidth: r.width, ...(openUp ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+    setOpen(true);
+  };
+
+  return (
+    <div className="nodrag" style={{ display: "inline-block" }}>
+      <button ref={btnRef} type="button" title={title} onClick={(e) => { e.stopPropagation(); toggle(); }}
+        style={{ ...chip, display: "inline-flex", alignItems: "center", justifyContent: "space-between", gap: 5, maxWidth }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur?.label ?? placeholder ?? ""}</span>
+        <ChevronDown size={12} style={{ flexShrink: 0, opacity: 0.55 }} />
+      </button>
+      {open && pos && createPortal(
+        <div ref={menuRef} className="nowheel" style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom,
+          minWidth: Math.max(pos.minWidth, 150), maxWidth: 340, maxHeight: 300, overflowY: "auto", zIndex: 9999,
+          background: "var(--c-elevated, #1b1b1f)", border: "1px solid var(--c-bd1, var(--c-bd2))", borderRadius: 9,
+          boxShadow: "0 10px 30px rgba(0,0,0,0.45)", padding: 4 }}>
+          {groups.map((g, gi) => (
+            <div key={gi}>
+              {showHeaders && <div style={{ fontSize: 10, color: "var(--c-t4)", padding: "5px 8px 2px", fontWeight: 600 }}>{g.label || "模型"}</div>}
+              {g.opts.map((o) => (
+                <button key={o.value} type="button" title={o.label} onClick={(e) => { e.stopPropagation(); onChange(o.value); setOpen(false); }}
+                  style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 9px", borderRadius: 6, fontSize: 12, lineHeight: 1.45,
+                    background: o.value === value ? "color-mix(in oklab, var(--ui-accent) 16%, transparent)" : "transparent",
+                    color: o.value === value ? "var(--c-t1)" : "var(--c-t2)", border: "none", cursor: "pointer", fontWeight: o.value === value ? 700 : 500 }}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>, document.body)
+      }
+    </div>
+  );
+}
 
 // Inline AI prompt-tool button (扩写 / 翻译), pinned to the prompt's top-right.
 const enhanceBtn: React.CSSProperties = {
@@ -201,9 +291,9 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
             const opts = paramOptions(def);
             const cur = (payload[def.key] as string | undefined) ?? def.default ?? opts[0]?.value ?? "";
             return (
-              <select key={def.key} className="nodrag studio-chip" title={def.label} value={cur} onChange={(e) => set({ [def.key]: e.target.value })} style={chip}>
-                {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <StudioSelect key={def.key} title={def.label} value={String(cur)}
+                options={opts.map((o) => ({ value: String(o.value), label: o.label }))}
+                onChange={(v) => set({ [def.key]: v })} />
             );
           }
           if (def.type === "number") {
@@ -231,10 +321,9 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
           const curRaw = videoParams[def.key] ?? def.default;
           if (def.type === "select") {
             return (
-              <select key={def.key} className="nodrag studio-chip" title={def.label} value={String(curRaw ?? "")}
-                onChange={(e) => { const raw = e.target.value; const num = Number(raw); setVideoParam(def.key, raw === "" || Number.isNaN(num) ? raw : num); }} style={chip}>
-                {def.options.map((o) => <option key={String(o.value)} value={String(o.value)}>{o.label}</option>)}
-              </select>
+              <StudioSelect key={def.key} title={def.label} value={String(curRaw ?? "")}
+                options={def.options.map((o) => ({ value: String(o.value), label: o.label }))}
+                onChange={(raw) => { const num = Number(raw); setVideoParam(def.key, raw === "" || Number.isNaN(num) ? raw : num); }} />
             );
           }
           if (def.type === "number" || def.type === "range") {
@@ -374,10 +463,9 @@ function renderCtrl(c: Ctrl, payload: Record<string, unknown>, set: (p: Record<s
     const opts = optList(c.options);
     const cur = (payload[c.key] as string | number | undefined) ?? c.default ?? opts[0]?.value ?? "";
     return (
-      <select key={c.key} className="nodrag studio-chip" title={c.label} value={String(cur)}
-        onChange={(e) => { const v = e.target.value; set({ [c.key]: c.numeric ? Number(v) : v }); }} style={chip}>
-        {opts.map((o) => <option key={String(o.value)} value={String(o.value)}>{o.label}</option>)}
-      </select>
+      <StudioSelect key={c.key} title={c.label} value={String(cur)}
+        options={opts.map((o) => ({ value: String(o.value), label: o.label }))}
+        onChange={(v) => set({ [c.key]: c.numeric ? Number(v) : v })} />
     );
   }
   if (c.type === "number") {
@@ -521,15 +609,10 @@ function SimpleBar({ nodeId, onRun, canRun = true, running = false, hasResult = 
 // all fields are payload-safe (the node reads payload fresh). ───────────────────
 type AudioModelOpt = { value: string; label: string; group?: string };
 function audioModelSelect(value: string, opts: readonly AudioModelOpt[], onChange: (v: string) => void, title: string) {
-  const groups = Array.from(new Set(opts.map((o) => o.group ?? "")));
   return (
-    <select className="nodrag studio-chip" title={title} value={value} onChange={(e) => onChange(e.target.value)} style={{ ...chip, maxWidth: 190 }}>
-      {groups.map((g) => (
-        <optgroup key={g || "_"} label={g || "模型"}>
-          {opts.filter((o) => (o.group ?? "") === g).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </optgroup>
-      ))}
-    </select>
+    <StudioSelect title={title} value={value} maxWidth={190}
+      options={opts.map((o) => ({ value: o.value, label: o.label, group: o.group }))}
+      onChange={onChange} />
   );
 }
 
@@ -575,11 +658,9 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
           <>
             {audioModelSelect(musicModel, MUSIC_MODELS, (v) => set({ musicModel: v }), "音乐模型")}
             {!isMiniMax && (
-              <select className="nodrag studio-chip" title="风格" value={typeof payload.musicStyle === "string" ? payload.musicStyle : ""}
-                onChange={(e) => set({ musicStyle: e.target.value || undefined })} style={chip}>
-                <option value="">风格（不限）</option>
-                {MUSIC_STYLES_ZH.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <StudioSelect title="风格" value={typeof payload.musicStyle === "string" ? payload.musicStyle : ""}
+                options={[{ value: "", label: "风格（不限）" }, ...MUSIC_STYLES_ZH.map((s) => ({ value: s, label: s }))]}
+                onChange={(v) => set({ musicStyle: v || undefined })} />
             )}
             {renderCtrl({ key: "musicInstrumental", type: "toggle", label: "纯器乐" }, payload, set)}
           </>
@@ -588,9 +669,9 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
           <>
             {audioModelSelect(ttsModel, DUBBING_MODELS, onTtsModelChange, "配音模型")}
             {voices.length > 0 && (
-              <select className="nodrag studio-chip" title="发音人" value={ttsVoice} onChange={(e) => set({ ttsVoice: e.target.value })} style={{ ...chip, maxWidth: 180 }}>
-                {voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-              </select>
+              <StudioSelect title="发音人" value={ttsVoice} maxWidth={180}
+                options={voices.map((v) => ({ value: v.value, label: v.label }))}
+                onChange={(v) => set({ ttsVoice: v })} />
             )}
             {isOpenAITts && renderCtrl({ key: "ttsSpeed", type: "number", label: "语速", min: 0.5, max: 2, step: 0.1, default: 1, width: 84 }, payload, set)}
           </>

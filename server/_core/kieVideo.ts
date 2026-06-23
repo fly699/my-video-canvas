@@ -188,12 +188,13 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
   // ── ByteDance Seedance 2 (multimodal; t2v + first-frame / reference refs) ──
   kie_seedance2: {
     wire: "bytedance/seedance-2", endpoint: "jobs", label: "Seedance 2.0", family: "Seedance",
+    // 注意：seedance-2 的官方 input schema 没有 seed 字段（docs/kie-api.md），
+    // 故不发 seed，免得日后被严格校验拒绝。
     params: [
       { key: "resolution", type: "str", def: "720p" },
       { key: "aspect_ratio", type: "str", def: "16:9" },
       { key: "duration", type: "num", def: 5 },
       { key: "generate_audio", type: "bool", def: true },
-      { key: "seed", type: "num" },
     ],
     ref: { key: "first_frame_url", array: false },
     multiModal: true,
@@ -201,12 +202,12 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
   },
   kie_seedance2_fast: {
     wire: "bytedance/seedance-2-fast", endpoint: "jobs", label: "Seedance 2.0 Fast", family: "Seedance",
+    // 同上：seedance-2-fast 无 seed 字段。
     params: [
       { key: "resolution", type: "str", def: "720p" },
       { key: "aspect_ratio", type: "str", def: "16:9" },
       { key: "duration", type: "num", def: 5 },
       { key: "generate_audio", type: "bool", def: true },
-      { key: "seed", type: "num" },
     ],
     ref: { key: "first_frame_url", array: false },
     multiModal: true,
@@ -503,15 +504,20 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
   } else {
     // Unified jobs: params nested under `input`.
     const input: Record<string, unknown> = { prompt: opts.prompt, ...bag };
-    if (hasRef && spec.ref) input[spec.ref.key] = refValue;
-    // Seedance multimodal: first_frame_url carries refs[0] (above); also pass the
-    // full reference image/video/audio lists when present (docs/kie-api.md).
     if (spec.multiModal) {
+      // ByteDance Seedance：「首帧图生视频」「首尾帧图生视频」「多模态参考生视频」是
+      // 三个互斥场景，不能同时使用（docs/kie-api.md Note: three mutually exclusive
+      // scenarios, cannot be used simultaneously）。此前同时塞 first_frame_url 与
+      // reference_image_urls（且为同一张图）→ kie 提交返回 422 "The reference image ..."。
+      // 节点的「参考图」语义是风格/主体参考，故统一走多模态 reference_image_urls，
+      // 绝不再设 first_frame_url（如需"以该图为首帧"，可在提示词里说明，符合官方建议）。
       if (refs.length > 0) input.reference_image_urls = refs;
       const vids = (opts.referenceVideoUrls ?? []).filter(Boolean);
       const auds = (opts.referenceAudioUrls ?? []).filter(Boolean);
       if (vids.length) input.reference_video_urls = vids;
       if (auds.length) input.reference_audio_urls = auds;
+    } else if (hasRef && spec.ref) {
+      input[spec.ref.key] = refValue;
     }
     // Source-video input (motion-control / Wan Animate) — required.
     if (spec.videoRef) {
