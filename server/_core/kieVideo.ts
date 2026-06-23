@@ -188,12 +188,13 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
   // ── ByteDance Seedance 2 (multimodal; t2v + first-frame / reference refs) ──
   kie_seedance2: {
     wire: "bytedance/seedance-2", endpoint: "jobs", label: "Seedance 2.0", family: "Seedance",
+    // 注意：seedance-2 的官方 input schema 没有 seed 字段（docs/kie-api.md），
+    // 故不发 seed，免得日后被严格校验拒绝。
     params: [
       { key: "resolution", type: "str", def: "720p" },
       { key: "aspect_ratio", type: "str", def: "16:9" },
       { key: "duration", type: "num", def: 5 },
       { key: "generate_audio", type: "bool", def: true },
-      { key: "seed", type: "num" },
     ],
     ref: { key: "first_frame_url", array: false },
     multiModal: true,
@@ -201,12 +202,12 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
   },
   kie_seedance2_fast: {
     wire: "bytedance/seedance-2-fast", endpoint: "jobs", label: "Seedance 2.0 Fast", family: "Seedance",
+    // 同上：seedance-2-fast 无 seed 字段。
     params: [
       { key: "resolution", type: "str", def: "720p" },
       { key: "aspect_ratio", type: "str", def: "16:9" },
       { key: "duration", type: "num", def: 5 },
       { key: "generate_audio", type: "bool", def: true },
-      { key: "seed", type: "num" },
     ],
     ref: { key: "first_frame_url", array: false },
     multiModal: true,

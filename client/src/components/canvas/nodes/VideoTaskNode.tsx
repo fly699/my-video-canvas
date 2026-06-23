@@ -421,12 +421,12 @@ const KIE_HAILUO23_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "768P", options: KIE_RES_HAILUO },
   { type: "select", key: "duration", label: "时长（秒）", default: 6, options: DUR_6_10 },
 ];
+// seedance-2 官方 input schema 无 seed 字段（docs/kie-api.md），故不提供随机种子控件。
 const KIE_SEEDANCE2_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_SEEDANCE },
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: KIE_AR_SEEDANCE },
   { type: "range", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s" },
   { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: true },
-  seedDef,
 ];
 // ── kie 视频 第二批扩充的参数控件 ──
 const KIE_RES_WAN22 = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }];

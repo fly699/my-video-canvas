@@ -122,6 +122,12 @@ const SINGLE_IMAGE_URLS_MODELS = new Set<string>([
   "wan2.7-image-to-video", "wan2.2-image-to-video-fast", "wan2.6-image-to-video",
   "sora-2-official", "sora-2-pro-official",
   "veo3.1-fast", "veo3.1-quality", "veo3.1-lite",
+  // Seedance-2：单张手动参考图按「首帧」走 image_urls（与 2 图的首尾帧路径一致、
+  // 文档合法）。此前落到通用单数 reference_image_url —— seedance-2 没有这个字段
+  // （docs/poyo-video-api.md §六：模式只有 image_urls 首尾帧 / reference_image_urls
+  // 多模态参考，二者互斥），结果单图被悄悄丢弃。reference（主体）模式仍由上游
+  // 的 referenceMode="reference" 分支走 reference_image_urls，不受影响。
+  "seedance-2", "seedance-2-fast",
 ]);
 
 function applySingleImage(input: Record<string, unknown>, model: string, url: string): void {

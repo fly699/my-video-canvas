@@ -78,6 +78,13 @@ describe("submitPoyoVideo single-image mapping (unchanged)", () => {
     expect((await submitWithRefs("poyo_sora2_official", [A])).input.image_urls).toEqual([A]);
     expect((await submitWithRefs("poyo_veo_fast", [A])).input.image_urls).toEqual([A]);
   });
+  it("seedance 单图 → image_urls[0]（首帧，与 2 图首尾帧一致；不再落非法的单数 reference_image_url）", async () => {
+    const b = await submitWithRefs("poyo_seedance", [A]);
+    expect(b.model).toBe("seedance-2");
+    expect(b.input.image_urls).toEqual([A]);
+    expect("reference_image_url" in b.input).toBe(false);
+    expect((await submitWithRefs("poyo_seedance2_fast", [A])).input.image_urls).toEqual([A]);
+  });
   it("everything else → reference_image_url", async () => {
     expect((await submitWithRefs("poyo_grok_video", [A])).input.reference_image_url).toBe(A);
   });
