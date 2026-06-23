@@ -503,15 +503,20 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
   } else {
     // Unified jobs: params nested under `input`.
     const input: Record<string, unknown> = { prompt: opts.prompt, ...bag };
-    if (hasRef && spec.ref) input[spec.ref.key] = refValue;
-    // Seedance multimodal: first_frame_url carries refs[0] (above); also pass the
-    // full reference image/video/audio lists when present (docs/kie-api.md).
     if (spec.multiModal) {
+      // ByteDance Seedance：「首帧图生视频」「首尾帧图生视频」「多模态参考生视频」是
+      // 三个互斥场景，不能同时使用（docs/kie-api.md Note: three mutually exclusive
+      // scenarios, cannot be used simultaneously）。此前同时塞 first_frame_url 与
+      // reference_image_urls（且为同一张图）→ kie 提交返回 422 "The reference image ..."。
+      // 节点的「参考图」语义是风格/主体参考，故统一走多模态 reference_image_urls，
+      // 绝不再设 first_frame_url（如需"以该图为首帧"，可在提示词里说明，符合官方建议）。
       if (refs.length > 0) input.reference_image_urls = refs;
       const vids = (opts.referenceVideoUrls ?? []).filter(Boolean);
       const auds = (opts.referenceAudioUrls ?? []).filter(Boolean);
       if (vids.length) input.reference_video_urls = vids;
       if (auds.length) input.reference_audio_urls = auds;
+    } else if (hasRef && spec.ref) {
+      input[spec.ref.key] = refValue;
     }
     // Source-video input (motion-control / Wan Animate) — required.
     if (spec.videoRef) {
