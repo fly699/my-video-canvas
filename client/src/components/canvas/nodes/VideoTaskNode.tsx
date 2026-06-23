@@ -372,8 +372,10 @@ const KIE_AR_SEEDANCE = [
   { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" }, { value: "4:3", label: "4:3 标准" },
   { value: "1:1", label: "1:1 方形" }, { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" },
 ];
+// Veo 端点请求体字段是 aspect_ratio（下划线，docs/kie-api.md veo quickstart）；
+// 与服务端 spec 一致，否则比例参数会落到服务端 allow-list 之外被丢弃。
 const KIE_VEO_PARAMS: ParamDef[] = [
-  { type: "select", key: "aspectRatio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
 ];
 const KIE_KLING26_T2V_PARAMS: ParamDef[] = [
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
