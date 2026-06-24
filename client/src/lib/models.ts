@@ -152,6 +152,8 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "poyo_nano_banana",     label: "Nano Banana",     desc: "预算 · 写实",        group: "Poyo", family: "Nano",     provider: "Poyo", cost: 5,  caps: ["T2I", "I2I"] },
   { value: "poyo_nano_banana_2",   label: "Nano Banana 2",   desc: "快速 · 4K",          group: "Poyo", family: "Nano",     provider: "Poyo", costNote: "5-12 cr/张", caps: ["T2I", "I2I", "4K"] },
   { value: "poyo_nano_banana_pro", label: "Nano Banana Pro", desc: "文字/图表 · 4K",     group: "Poyo", family: "Nano",     provider: "Poyo", costNote: "18-35 cr/张", caps: ["T2I", "编辑", "4K", "14图参考"] },
+  { value: "poyo_nano_banana_2_new",      label: "Nano Banana 2 New",  desc: "Gemini 3.1 · 2K/4K",  group: "Poyo", family: "Nano", provider: "Poyo", costNote: "按分辨率(模型页)", caps: ["T2I", "I2I", "编辑", "4K", "14图参考"] },
+  { value: "poyo_nano_banana_2_official", label: "Nano Banana 2 官方版", desc: "Gemini 3.1 · 0.5K-4K", group: "Poyo", family: "Nano", provider: "Poyo", costNote: "按分辨率(模型页)", caps: ["T2I", "I2I", "编辑", "4K", "14图参考"] },
 
   // --- Poyo · GPT Image (OpenAI) ---
   { value: "poyo_gpt_4o_image", label: "GPT-4o Image",  desc: "GPT-4o · 蒙版编辑",  group: "Poyo", family: "GPT", provider: "Poyo", costNote: "4 cr/张", caps: ["T2I", "I2I", "蒙版"] },
