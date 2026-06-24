@@ -32,6 +32,10 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   poyo_kling25_turbo: 2, // start + end frame
   poyo_kling30_std: 2,   // start + end frame
   poyo_kling30_pro: 2,
+  poyo_kling16_std: 2,
+  poyo_kling16_pro: 2,
+  poyo_kling30turbo_std: 2,
+  poyo_kling30turbo_pro: 2,
   poyo_kling30_4k: 2,
   // Wan
   poyo_wan25_t2v: 0,
@@ -47,6 +51,9 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   poyo_hailuo23: 1,
   // others
   poyo_happy_horse: 9,   // reference mode (1-9)
+  poyo_happy_horse_11: 9,
+  kie_seedance2_mini: 9,
+  kie_happyhorse11_r2v: 9,
   poyo_grok_video: 1,
   poyo_runway45: 1,
   // Sora — single guide image at most

@@ -56,6 +56,7 @@ const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   // kie 第二批 i2v（需起始帧/参考图）
   "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_i2v", "kie_wan22_i2v", "kie_wan27_i2v",
   "kie_hailuo02_pro_i2v", "kie_grok_i2v", "kie_happyhorse_i2v",
+  "kie_kling_v3turbo_i2v", "kie_happyhorse11_r2v",
   // kie 第三批（图 + 视频/音频，至少需要图片）
   "kie_kling26_motion", "kie_kling30_motion", "kie_kling_avatar_std", "kie_kling_avatar_pro",
   "kie_wan_animate_move", "kie_wan_animate_replace",
@@ -208,6 +209,7 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   // kie: Kling 2.5 Turbo + Wan 2.5 document negative_prompt.
   "kie_kling25turbo_t2v", "kie_kling25turbo_i2v", "kie_wan25_t2v", "kie_wan25_i2v",
   "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_t2v", "kie_kling21_master_i2v",
+  "kie_kling_v3turbo_t2v", "kie_kling_v3turbo_i2v",
 ]);
 
 /** The exact payload patch applied when the video provider/model changes: switch
@@ -308,6 +310,11 @@ const KLING30_PARAMS: ParamDef[] = [
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
   { type: "toggle", key: "sound", label: "原生音频", default: false },
   seedDef,
+];
+// Kling 1.6（增量新模型）：宽高比 + 时长（参数沿用 poyo kling 族）
+const KLING16_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
 ];
 // Wan 2.7
 const WAN_RES = [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
@@ -625,6 +632,10 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_kling30_std: KLING30_PARAMS,
   poyo_kling30_pro: KLING30_PARAMS,
   poyo_kling30_4k: KLING30_PARAMS,
+  poyo_kling16_std: KLING16_PARAMS,
+  poyo_kling16_pro: KLING16_PARAMS,
+  poyo_kling30turbo_std: KLING30_PARAMS,
+  poyo_kling30turbo_pro: KLING30_PARAMS,
   poyo_wan27_t2v: WAN27_T2V_PARAMS,
   poyo_wan27_i2v: WAN27_I2V_PARAMS,
   poyo_wan27_ref: WAN27_REF_PARAMS,
@@ -649,6 +660,7 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_hailuo02_pro: HAILUO02_PRO_PARAMS,
   poyo_hailuo23: HAILUO23_PARAMS,
   poyo_happy_horse: HAPPY_HORSE_PARAMS,
+  poyo_happy_horse_11: HAPPY_HORSE_PARAMS,
   poyo_grok_video: GROK_PARAMS,
   // ── kie.ai video ──
   kie_veo31_quality: KIE_VEO_PARAMS,
@@ -666,6 +678,9 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_hailuo23_std: KIE_HAILUO23_PARAMS,
   kie_seedance2: KIE_SEEDANCE2_PARAMS,
   kie_seedance2_fast: KIE_SEEDANCE2_PARAMS,
+  kie_seedance2_mini: KIE_SEEDANCE2_PARAMS,
+  kie_kling_v3turbo_t2v: KIE_KLING_MASTER_T2V_PARAMS,
+  kie_kling_v3turbo_i2v: KIE_KLING21_PARAMS,
   // ── kie 视频 第二批 ──
   kie_kling21_std: KIE_KLING21_PARAMS,
   kie_kling21_pro: KIE_KLING21_PARAMS,
@@ -682,6 +697,8 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_grok_i2v: KIE_GROK_I2V_PARAMS,
   kie_happyhorse_t2v: KIE_HAPPYHORSE_PARAMS,
   kie_happyhorse_i2v: KIE_HAPPYHORSE_PARAMS,
+  kie_happyhorse11_t2v: KIE_HAPPYHORSE_PARAMS,
+  kie_happyhorse11_r2v: KIE_HAPPYHORSE_PARAMS,
   kie_kling26_motion: KIE_KLING26_MOTION_PARAMS,
   kie_kling30_motion: KIE_KLING30_MOTION_PARAMS,
   kie_kling_avatar_std: [],

@@ -35,6 +35,11 @@ export const POYO_PROVIDER_MAP: Record<string, string> = {
   poyo_kling25_turbo: "kling-2.5-turbo-pro",
   poyo_kling30_std:   "kling-3.0/standard",
   poyo_kling30_pro:   "kling-3.0/pro",
+  // 增量新模型（docs/incremental-models JSON）
+  poyo_kling16_std:        "kling-1.6/standard",
+  poyo_kling16_pro:        "kling-1.6/pro",
+  poyo_kling30turbo_std:   "kling-3.0-turbo/standard",
+  poyo_kling30turbo_pro:   "kling-3.0-turbo/pro",
   poyo_kling30_4k:    "kling-3.0/4K",
   // Wan
   poyo_wan27_t2v:      "wan2.7-text-to-video",
@@ -52,6 +57,7 @@ export const POYO_PROVIDER_MAP: Record<string, string> = {
   poyo_hailuo23:     "hailuo-2.3",
   // others
   poyo_happy_horse: "happy-horse",
+  poyo_happy_horse_11: "happy-horse-1.1",
   poyo_grok_video:  "grok-imagine",
 };
 
@@ -77,6 +83,11 @@ const VIDEO_PARAM_KEYS: Record<string, string[]> = {
   "kling-2.5-turbo-pro": ["aspect_ratio", "duration"],
   "kling-3.0/standard": ["aspect_ratio", "duration", "sound", "seed"],
   "kling-3.0/pro":      ["aspect_ratio", "duration", "sound", "seed"],
+  "kling-1.6/standard": ["aspect_ratio", "duration"],
+  "kling-1.6/pro":      ["aspect_ratio", "duration"],
+  "kling-3.0-turbo/standard": ["aspect_ratio", "duration", "sound", "seed"],
+  "kling-3.0-turbo/pro":      ["aspect_ratio", "duration", "sound", "seed"],
+  "happy-horse-1.1":   ["resolution", "aspect_ratio", "duration", "seed"],
   "kling-3.0/4K":       ["aspect_ratio", "duration", "sound", "seed"],
   "kling-o3/standard":  ["aspect_ratio", "duration", "sound", "seed"],
   "kling-o3/pro":       ["aspect_ratio", "duration", "sound", "seed"],
@@ -117,6 +128,8 @@ const VIDEO_PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
   "kling-2.6": { sound: false },
   "kling-3.0/standard": { sound: false },
   "kling-3.0/pro": { sound: false },
+  "kling-3.0-turbo/standard": { sound: false },
+  "kling-3.0-turbo/pro": { sound: false },
   "kling-3.0/4K": { sound: false },
   "kling-o3/standard": { sound: false },
   "kling-o3/pro": { sound: false },
@@ -180,6 +193,11 @@ const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
   "kling-2.5-turbo-pro":  { startEnd: true },
   "kling-3.0/standard":   { imageUrls: 2 },
   "kling-3.0/pro":        { imageUrls: 2 },
+  "kling-1.6/standard":   { imageUrls: 2 },
+  "kling-1.6/pro":        { imageUrls: 2 },
+  "kling-3.0-turbo/standard": { imageUrls: 2 },
+  "kling-3.0-turbo/pro":      { imageUrls: 2 },
+  "happy-horse-1.1":      { imageUrls: 1, referenceImages: 9 },
   "kling-3.0/4K":         { imageUrls: 2 },
   "kling-o3/standard": { imageUrls: 2, referenceImages: 4 },
   "kling-o3/pro":      { imageUrls: 2, referenceImages: 4 },

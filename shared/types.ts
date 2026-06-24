@@ -64,6 +64,10 @@ export const VIDEO_PROVIDERS = [
   "poyo_kling30_std",
   "poyo_kling30_pro",
   "poyo_kling30_4k",
+  "poyo_kling16_std",
+  "poyo_kling16_pro",
+  "poyo_kling30turbo_std",
+  "poyo_kling30turbo_pro",
   // Wan
   "poyo_wan27_t2v",
   "poyo_wan27_i2v",
@@ -80,6 +84,7 @@ export const VIDEO_PROVIDERS = [
   "poyo_hailuo23",
   // others
   "poyo_happy_horse",
+  "poyo_happy_horse_11",
   "poyo_grok_video",
   // ── kie.ai video (additive; routed via server/_core/kieVideo.ts, NOT Poyo) ──
   "kie_veo31_quality",
@@ -104,6 +109,7 @@ export const VIDEO_PROVIDERS = [
   "kie_hailuo02_std", "kie_hailuo02_pro_t2v", "kie_hailuo02_pro_i2v",
   "kie_grok_t2v", "kie_grok_i2v",
   "kie_happyhorse_t2v", "kie_happyhorse_i2v",
+  "kie_seedance2_mini", "kie_kling_v3turbo_t2v", "kie_kling_v3turbo_i2v", "kie_happyhorse11_t2v", "kie_happyhorse11_r2v",
   // ── kie 视频 第三批：特殊输入（动作控制 / 数字人 / 替身）──
   "kie_kling26_motion", "kie_kling30_motion",
   "kie_kling_avatar_std", "kie_kling_avatar_pro",

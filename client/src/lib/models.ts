@@ -58,6 +58,7 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   { id: "kie_claude_sonnet_46", label: "Claude Sonnet 4.6（kie）", short: "Sonnet", family: "Claude", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入170/出855" },
   { id: "kie_claude_sonnet_45", label: "Claude Sonnet 4.5（kie）", short: "Son45",  family: "Claude", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入170/出855" },
   { id: "kie_claude_haiku_45",  label: "Claude Haiku 4.5（kie）",  short: "Haiku",  family: "Claude", tag: "kie·快",   provider: "Kie", color: "oklch(0.68 0.18 55)",  costTier: "低", costNote: "入55/出285" },
+  { id: "kie_claude_fable_5",   label: "Claude Fable 5（kie）",    short: "Fable",  family: "Claude", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入800/出4000" },
   { id: "kie_gemini_3_pro",     label: "Gemini 3 Pro（kie）",      short: "G3Pro",  family: "Gemini", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "中", vision: true, costNote: "入100/出700" },
   { id: "kie_gemini_3_flash",   label: "Gemini 3 Flash（kie）",    short: "G3Flash",family: "Gemini", tag: "kie·快",   provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "低", vision: true, costNote: "入30/出180" },
   { id: "kie_gpt_5_5",          label: "GPT 5.5（kie）",           short: "GPT5.5", family: "GPT",    tag: "kie·旗舰", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", vision: true, costNote: "入280/出1680" },
@@ -247,6 +248,8 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "kie_kling30",             label: "Kling 3.0",           group: "Kie", family: "Kling",    costLabel: "std 14-20/pro 18-27/4K 67 点·秒",      caps: ["T2V", "首尾帧", "音频", "4K"] },
   { value: "kie_kling25turbo_t2v",    label: "Kling 2.5 Turbo 文生", group: "Kie", family: "Kling",   costLabel: "5s 42/10s 84 点",              caps: ["T2V", "5/10s"] },
   { value: "kie_kling25turbo_i2v",    label: "Kling 2.5 Turbo 图生", group: "Kie", family: "Kling",   costLabel: "5s 42/10s 84 点",              caps: ["I2V", "5/10s"] },
+  { value: "kie_kling_v3turbo_t2v",   label: "Kling V3 Turbo 文生", group: "Kie", family: "Kling",   costLabel: "模型页",                       caps: ["T2V", "5/10s"] },
+  { value: "kie_kling_v3turbo_i2v",   label: "Kling V3 Turbo 图生", group: "Kie", family: "Kling",   costLabel: "模型页",                       caps: ["I2V", "5/10s"] },
   { value: "kie_wan25_t2v",           label: "Wan 2.5 文生视频",    group: "Kie", family: "Wan",      costLabel: "5s 60-100/10s 120-200 点",     caps: ["T2V", "720p/1080p"] },
   { value: "kie_wan25_i2v",           label: "Wan 2.5 图生视频",    group: "Kie", family: "Wan",      costLabel: "5s 60-100/10s 120-200 点",     caps: ["I2V", "720p/1080p"] },
   { value: "kie_wan26_t2v",           label: "Wan 2.6 文生视频",    group: "Kie", family: "Wan",      costLabel: "5/10/15s 70-315 点",           caps: ["T2V", "5/10/15s"] },
@@ -255,6 +258,7 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "kie_hailuo23_std",        label: "Hailuo 2.3 标准",     group: "Kie", family: "Hailuo",   costLabel: "6s 30-50/10s 50 点",           caps: ["I2V", "768P/1080P"] },
   { value: "kie_seedance2",           label: "Seedance 2.0",        group: "Kie", family: "Seedance", costLabel: "19-102 点·秒",                 caps: ["T2V", "首帧", "音频"] },
   { value: "kie_seedance2_fast",      label: "Seedance 2.0 Fast",   group: "Kie", family: "Seedance", costLabel: "15.5-33 点·秒",                caps: ["T2V", "首帧", "音频"] },
+  { value: "kie_seedance2_mini",      label: "Seedance 2.0 Mini",   group: "Kie", family: "Seedance", costLabel: "480p 9.5/720p 20.5 点·秒",     caps: ["T2V", "多模态", "音频"] },
   // ── kie 视频 第二批扩充 ──
   { value: "kie_kling21_std",         label: "Kling 2.1 标准",      group: "Kie", family: "Kling",    costLabel: "标准 5s 25/10s 50 点",  caps: ["I2V", "5/10s"] },
   { value: "kie_kling21_pro",         label: "Kling 2.1 专业",      group: "Kie", family: "Kling",    costLabel: "专业 5s 50/10s 100 点", caps: ["I2V", "首尾帧"] },
@@ -271,6 +275,8 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "kie_grok_i2v",            label: "Grok Imagine 图生",   group: "Kie", family: "Grok",     costLabel: "480p 1.6/720p 3 点·秒",  caps: ["I2V", "6-30s"] },
   { value: "kie_happyhorse_t2v",      label: "HappyHorse 文生视频", group: "Kie", family: "HappyHorse", costLabel: "720p 28/1080p 48 点·秒", caps: ["T2V", "1080p"] },
   { value: "kie_happyhorse_i2v",      label: "HappyHorse 图生视频", group: "Kie", family: "HappyHorse", costLabel: "720p 28/1080p 48 点·秒", caps: ["I2V", "1080p"] },
+  { value: "kie_happyhorse11_t2v",    label: "HappyHorse 1.1 文生", group: "Kie", family: "HappyHorse", costLabel: "720p 33/1080p 44 点·秒", caps: ["T2V", "1080p"] },
+  { value: "kie_happyhorse11_r2v",    label: "HappyHorse 1.1 参考生", group: "Kie", family: "HappyHorse", costLabel: "720p 33/1080p 44 点·秒", caps: ["参考生", "多模态", "1080p"] },
   // ── kie 视频 第三批：特殊输入（图+视频 / 图+音频）──
   { value: "kie_kling26_motion",      label: "Kling 2.6 动作控制",  group: "Kie", family: "Kling",      costLabel: "720p 11/1080p 18 点·秒",  caps: ["图+源视频", "动作迁移"] },
   { value: "kie_kling30_motion",      label: "Kling 3.0 动作控制",  group: "Kie", family: "Kling",      costLabel: "720p 20/1080p 27 点·秒",  caps: ["图+源视频", "动作迁移"] },
@@ -302,6 +308,10 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "poyo_kling30_std",        label: "Kling 3.0 Standard",  group: "Poyo", family: "Kling",    costLabel: "720p 27/1080p 39 cr/s",      caps: ["T2V", "I2V", "音频", "多镜头"] },
   { value: "poyo_kling30_pro",        label: "Kling 3.0 Pro",       group: "Poyo", family: "Kling",    costLabel: "720p 39/1080p 49 cr/s",      caps: ["T2V", "I2V", "2K", "音频"] },
   { value: "poyo_kling30_4k",         label: "Kling 3.0 4K",        group: "Poyo", family: "Kling",    costLabel: "50 cr/s",     caps: ["4K", "音频", "多镜头"] },
+  { value: "poyo_kling16_std",        label: "Kling 1.6 标准",      group: "Poyo", family: "Kling",    costLabel: "9 cr/s",      caps: ["T2V", "I2V", "参考"] },
+  { value: "poyo_kling16_pro",        label: "Kling 1.6 专业",      group: "Poyo", family: "Kling",    costLabel: "15 cr/s",     caps: ["T2V", "I2V", "参考"] },
+  { value: "poyo_kling30turbo_std",   label: "Kling 3.0 Turbo 标准", group: "Poyo", family: "Kling",   costLabel: "720p 17 cr/s",  caps: ["T2V", "I2V", "多镜头"] },
+  { value: "poyo_kling30turbo_pro",   label: "Kling 3.0 Turbo 专业", group: "Poyo", family: "Kling",   costLabel: "1080p 22 cr/s", caps: ["T2V", "I2V", "多镜头"] },
   { value: "poyo_kling_o3_std",       label: "Kling O3 Standard",   group: "Poyo", family: "Kling",    costLabel: "10-13 cr/s",  caps: ["T2V", "I2V", "参考"] },
   { value: "poyo_kling_o3_pro",       label: "Kling O3 Pro",        group: "Poyo", family: "Kling",    costLabel: "13-16 cr/s",  caps: ["T2V", "I2V", "参考"] },
   { value: "poyo_kling_o3_4k",        label: "Kling O3 4K",         group: "Poyo", family: "Kling",    costLabel: "50 cr/s",     caps: ["4K", "参考"] },
@@ -324,6 +334,7 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "poyo_hailuo23",           label: "Hailuo 2.3",          group: "Poyo", family: "Hailuo",   costLabel: "768p 35-70/1080p 60 cr/次",      caps: ["T2V", "+首帧", "1080p"] },
   // ── others ──
   { value: "poyo_happy_horse",        label: "Happy Horse",         group: "Poyo", family: "其他",     costLabel: "720p 16/1080p 32 cr/s",      caps: ["四工作流", "1080p"] },
+  { value: "poyo_happy_horse_11",     label: "Happy Horse 1.1",     group: "Poyo", family: "其他",     costLabel: "720p 22/1080p 28 cr/s",      caps: ["T2V", "I2V", "参考生", "1080p"] },
   { value: "poyo_grok_video",         label: "Grok Imagine",        group: "Poyo", family: "其他",     costLabel: "6s 30/10s 40 cr/次",      caps: ["T2V", "I2V", "6/10s"] },
   { value: "poyo_runway45",           label: "Runway Gen 4.5",      group: "Poyo", family: "Runway",   costLabel: "5s 75/10s 150 cr/次",      caps: ["T2V", "+1图", "5/10s"] },
   // ── Higgsfield (公共 API 仅 DoP 3 档；其余 Kling/Seedance/Veo 在私有后端) ──

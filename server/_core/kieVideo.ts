@@ -216,6 +216,19 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     multiModal: true,
     creditNote: "480p 15.5 / 720p 33 点·秒（无视频输入）",
   },
+  // 增量新模型（docs/incremental-models JSON；参数沿用 seedance-2-fast 同族，wire/计价按 JSON）
+  kie_seedance2_mini: {
+    wire: "bytedance/seedance-2-mini", endpoint: "jobs", label: "Seedance 2.0 Mini", family: "Seedance",
+    params: [
+      { key: "resolution", type: "str", def: "720p" },
+      { key: "aspect_ratio", type: "str", def: "16:9" },
+      { key: "duration", type: "num", def: 5 },
+      { key: "generate_audio", type: "bool", def: true },
+    ],
+    ref: { key: "first_frame_url", array: false },
+    multiModal: true,
+    creditNote: "480p 9.5 / 720p 20.5 点·秒（有视频更低：480p 6 / 720p 12.5）",
+  },
   // ── 第二批扩充（均走 jobs/createTask，参数对照 docs/kie-api.md）──
   kie_kling21_std: {
     wire: "kling/v2-1-standard", endpoint: "jobs", label: "Kling 2.1 标准 图生视频", family: "Kling",
@@ -348,6 +361,30 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ],
     ref: { key: "reference_image", array: true, required: true },
     creditNote: "720p 28 / 1080p 48 点·秒",
+  },
+  // 增量新模型（docs/incremental-models JSON）：wire/计价按 JSON，参数沿用同族
+  kie_kling_v3turbo_t2v: {
+    wire: "kling/v3-turbo-text-to-video", endpoint: "jobs", label: "Kling V3 Turbo 文生视频", family: "Kling",
+    params: [{ key: "duration", type: "str", def: "5" }, { key: "aspect_ratio", type: "str", def: "16:9" }, { key: "cfg_scale", type: "num" }],
+    negPrompt: true,
+    creditNote: "模型页",
+  },
+  kie_kling_v3turbo_i2v: {
+    wire: "kling/v3-turbo-image-to-video", endpoint: "jobs", label: "Kling V3 Turbo 图生视频", family: "Kling",
+    params: [{ key: "duration", type: "str", def: "5" }, { key: "cfg_scale", type: "num" }],
+    ref: { key: "image_url", array: false, required: true }, negPrompt: true,
+    creditNote: "模型页",
+  },
+  kie_happyhorse11_t2v: {
+    wire: "happyhorse-1-1/text-to-video", endpoint: "jobs", label: "HappyHorse 1.1 文生视频", family: "HappyHorse",
+    params: [{ key: "resolution", type: "str", def: "1080p" }, { key: "aspect_ratio", type: "str", def: "16:9" }, { key: "duration", type: "num", def: 5 }, { key: "seed", type: "num" }],
+    creditNote: "720p 33 / 1080p 44 点·秒",
+  },
+  kie_happyhorse11_r2v: {
+    wire: "happyhorse-1-1/reference-to-video", endpoint: "jobs", label: "HappyHorse 1.1 参考生视频", family: "HappyHorse",
+    params: [{ key: "resolution", type: "str", def: "1080p" }, { key: "aspect_ratio", type: "str", def: "16:9" }, { key: "duration", type: "num", def: 5 }, { key: "seed", type: "num" }],
+    ref: { key: "reference_image", array: true, required: true },
+    creditNote: "720p 33 / 1080p 44 点·秒",
   },
   // ── 第三批：特殊输入（动作控制 / 数字人 / 替身）──
   kie_kling26_motion: {

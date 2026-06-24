@@ -51,6 +51,10 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   poyo_kling26:       (p) => cr((on(p, "sound") ? 24 : 13) * num(p, "duration", 5)),
   poyo_kling30_std:   (p) => cr((str(p, "resolution", "720p") === "1080p" ? 39 : 27) * num(p, "duration", 5)),
   poyo_kling30_pro:   (p) => cr((str(p, "resolution", "720p") === "1080p" ? 49 : 39) * num(p, "duration", 5)),
+  poyo_kling16_std:      (p) => cr(9 * num(p, "duration", 5)),
+  poyo_kling16_pro:      (p) => cr(15 * num(p, "duration", 5)),
+  poyo_kling30turbo_std: (p) => cr(17 * num(p, "duration", 5)), // 720p
+  poyo_kling30turbo_pro: (p) => cr(22 * num(p, "duration", 5)), // 1080p
   poyo_kling30_4k:    (p) => cr(50 * num(p, "duration", 5)),
   poyo_kling_o3_std:  (p) => cr((on(p, "sound") ? 13 : 10) * num(p, "duration", 5)),
   poyo_kling_o3_pro:  (p) => cr((on(p, "sound") ? 16 : 13) * num(p, "duration", 5)),
@@ -69,6 +73,7 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   poyo_hailuo02_pro: () => cr(65),
   poyo_hailuo23:     (p) => cr(str(p, "resolution", "768p") === "1080p" ? 60 : (num(p, "duration", 6) === 6 ? 35 : 70), true),
   poyo_happy_horse:  (p) => cr((str(p, "resolution", "1080p") === "1080p" ? 32 : 16) * num(p, "duration", 5)),
+  poyo_happy_horse_11: (p) => cr((str(p, "resolution", "720p") === "1080p" ? 28 : 22) * num(p, "duration", 5)),
   poyo_grok_video:   (p) => cr(num(p, "duration", 6) <= 6 ? 30 : 40),
   poyo_runway45:     (p) => cr(15 * num(p, "duration", 5)),
   // ── kie（点）──
@@ -93,6 +98,7 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   // Seedance 2：kieVideo.ts 权威单价为「点·秒」（每秒）× 时长，无音频附加（label 上限即 1080p）。
   kie_seedance2:      (p) => pt(({ "480p": 19, "720p": 41, "1080p": 102 }[str(p, "resolution", "720p")] ?? 41) * num(p, "duration", 5), true),
   kie_seedance2_fast: (p) => pt(({ "480p": 15.5, "720p": 33 }[str(p, "resolution", "720p")] ?? 33) * num(p, "duration", 5), true),
+  kie_seedance2_mini: (p) => pt(({ "480p": 9.5, "720p": 20.5 }[str(p, "resolution", "720p")] ?? 20.5) * num(p, "duration", 5), true),
   // Kling 2.1：价格表 标准 5s25/10s50（5/s）· 专业 5s50/10s100（10/s）。
   kie_kling21_std: (p) => pt(5 * num(p, "duration", 5)),
   kie_kling21_pro: (p) => pt(10 * num(p, "duration", 5)),
@@ -114,6 +120,8 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   // HappyHorse：价格表 720p 28 / 1080p 48 点·秒。
   kie_happyhorse_t2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 48 : 28) * num(p, "duration", 5)),
   kie_happyhorse_i2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 48 : 28) * num(p, "duration", 5)),
+  kie_happyhorse11_t2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 44 : 33) * num(p, "duration", 5)),
+  kie_happyhorse11_r2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 44 : 33) * num(p, "duration", 5)),
   // 动作控制：价格表 2.6→720p 11/1080p 18 · 3.0→720p 20/1080p 27 点·秒；时长随源视频，按 5s 估。
   kie_kling26_motion: (p) => pt((str(p, "mode", "720p") === "1080p" ? 18 : 11) * 5, true),
   kie_kling30_motion: (p) => pt((str(p, "mode", "720p") === "1080p" ? 27 : 20) * 5, true),
