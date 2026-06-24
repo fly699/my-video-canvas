@@ -178,6 +178,29 @@ describe("submitKieVideo — Seedance 参考图走多模态字段（互斥修复
     expect(captured?.input?.reference_image).toEqual(["https://cdn.example.com/c1.png", "https://cdn.example.com/c2.png"]);
   });
 
+  it("OmniHuman：image_url + audio_url 必填，选中的 mask_url 数组下发（指定说话主体）", async () => {
+    await submitKieVideo({
+      provider: "kie_omnihuman15", prompt: "说话", apiKey: "k",
+      referenceImageUrls: ["https://cdn.example.com/portrait.png"],
+      referenceAudioUrls: ["https://cdn.example.com/voice.mp3"],
+      maskUrls: ["https://cdn.example.com/m1.png", "https://cdn.example.com/m2.png"],
+      params: { output_resolution: "1080" },
+    });
+    expect(captured?.model).toBe("omnihuman-1-5");
+    expect(captured?.input?.image_url).toBe("https://cdn.example.com/portrait.png");
+    expect(captured?.input?.audio_url).toBe("https://cdn.example.com/voice.mp3");
+    expect(captured?.input?.mask_url).toEqual(["https://cdn.example.com/m1.png", "https://cdn.example.com/m2.png"]);
+  });
+
+  it("OmniHuman：未选主体则不发 mask_url", async () => {
+    await submitKieVideo({
+      provider: "kie_omnihuman15", prompt: "说话", apiKey: "k",
+      referenceImageUrls: ["https://cdn.example.com/p.png"],
+      referenceAudioUrls: ["https://cdn.example.com/a.mp3"],
+    });
+    expect("mask_url" in (captured?.input ?? {})).toBe(false);
+  });
+
   it("Veo：aspect_ratio 平铺到 body 顶层（snake_case，文档请求体字段）", async () => {
     await submitKieVideo({
       provider: "kie_veo31_fast", prompt: "p", apiKey: "k",

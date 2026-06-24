@@ -48,6 +48,9 @@ export interface KieVideoSpec {
   /** Driving-audio input field (Kling Avatar talking-head). Filled from the
    *  node's connected audio upstream (referenceAudioUrls[0]). */
   audioRef?: { key: string };
+  /** Optional subject-mask input field (OmniHuman): array of mask image URLs that
+   *  designate which subject(s) in the portrait should speak (from Subject Detection). */
+  maskKey?: { key: string; max: number };
   /** Authoritative credit note shown in the node UI (from the pricing table). */
   creditNote: string;
 }
@@ -409,6 +412,7 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ],
     ref: { key: "image_url", array: false, required: true },
     audioRef: { key: "audio_url" },
+    maskKey: { key: "mask_url", max: 5 },
     creditNote: "27 点·秒（对口型）",
   },
   // Volcengine 视频对口型（源视频 + 目标人声）：video_url + audio_url + mode 必填
@@ -533,6 +537,8 @@ export interface KieVideoSubmitOptions {
   /** Multimodal references (Seedance only). */
   referenceVideoUrls?: string[];
   referenceAudioUrls?: string[];
+  /** Subject masks (OmniHuman): designate which subject(s) speak. From Subject Detection. */
+  maskUrls?: string[];
   /** Negative prompt (Kling Turbo / Wan 2.5 only — ignored by other models). */
   negativePrompt?: string;
   params?: Record<string, unknown>;
@@ -627,6 +633,11 @@ export async function submitKieVideo(opts: KieVideoSubmitOptions): Promise<{ ext
       const auds = (opts.referenceAudioUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u);
       if (auds.length === 0) throw new Error(`${spec.label} 需要音频，请连线一个音频节点`);
       input[spec.audioRef.key] = auds[0];
+    }
+    // Subject masks (OmniHuman) — optional: which subject(s) in the portrait should speak.
+    if (spec.maskKey) {
+      const masks = (opts.maskUrls ?? []).map((u) => u?.trim()).filter((u): u is string => !!u).slice(0, spec.maskKey.max);
+      if (masks.length > 0) input[spec.maskKey.key] = masks;
     }
     url = `${KIE_BASE_URL}/api/v1/jobs/createTask`;
     body = { model: spec.wire, input };
@@ -793,4 +804,42 @@ function extractKieVideoUrls(d: Record<string, unknown>): string[] {
     } catch { /* ignore */ }
   }
   return [];
+}
+
+/**
+ * OmniHuman「指定说话主体」辅助：对肖像图跑 subject-detection，返回每个被检测主体的
+ * 蒙版图 URL（最多 5 个）。用户从中勾选哪个主体说话，作为 omnihuman 的 mask_url 传入。
+ * 提交 + 轮询都在此完成（检测很快，整体几秒内返回）。
+ */
+export async function detectOmnihumanSubjects(imageUrl: string, apiKey: string): Promise<{ masks: string[] }> {
+  const absUrl = await resolveToAbsoluteUrl(imageUrl);
+  const res = await fetch(`${KIE_BASE_URL}/api/v1/jobs/createTask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: "omnihuman-1-5/subject-detection", input: { image_url: absUrl } }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`主体检测提交失败 (${res.status}): ${t.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { code?: number; msg?: string; data?: { taskId?: string } };
+  if (data.code !== 200 || !data.data?.taskId) {
+    throw new Error(`主体检测返回错误 (code ${data.code}): ${data.msg ?? ""}`);
+  }
+  const taskId = data.data.taskId;
+  // 轮询 recordInfo（最多 ~40s）。检测产出是蒙版图，URL 提取与视频同口径（parseKieJobStatus）。
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const r = await fetch(`${KIE_BASE_URL}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
+    }).catch(() => null);
+    if (!r || !r.ok) continue;
+    const b = (await r.json().catch(() => null)) as { data?: Record<string, unknown> } | null;
+    if (!b?.data) continue;
+    const st = parseKieJobStatus(b.data, "omnihuman-subject-detection", taskId);
+    if (st.status === "finished") return { masks: st.resultVideoUrls ?? [] };
+    if (st.status === "failed") throw new Error(st.errorMessage || "主体检测失败");
+  }
+  throw new Error("主体检测超时，请重试");
 }
