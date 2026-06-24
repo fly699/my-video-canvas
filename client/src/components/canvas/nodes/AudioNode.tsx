@@ -738,6 +738,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     const prompt = unmentionText(payload.sfxPrompt, useCanvasStore.getState().nodes).trim();
     if (!prompt || sfxMutation.isPending) return;
     sfxMutation.mutate({
+      // 目前 SFX 仅 kie_elevenlabs_sfx 一个模型，服务端枚举亦只接受它 → 用字面量。
+      // 注：扩展 SFX_MODELS 时，需同步放开服务端枚举并改为读 payload.sfxModel。
       model: "kie_elevenlabs_sfx",
       prompt: prompt.slice(0, 5000),
       duration: payload.sfxDuration != null ? Math.min(22, Math.max(0.5, payload.sfxDuration)) : undefined,
