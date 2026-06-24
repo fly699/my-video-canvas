@@ -42,6 +42,10 @@ describe("isConnectionValid", () => {
     expect(isConnectionValid("video_task", "video_task")).toBe(false);
   });
 
+  it("音频可连入视频任务（数字人/对口型的驱动音频，OmniHuman/Volcengine/Kling Avatar）", () => {
+    expect(isConnectionValid("audio", "video_task")).toBe(true);
+  });
+
   it("图像源不能连剪辑(clip)：clip 只裁切视频", () => {
     // 纯图像产出节点 → clip 无效（运行时取不到视频）。
     expect(isConnectionValid("image_gen", "clip")).toBe(false);

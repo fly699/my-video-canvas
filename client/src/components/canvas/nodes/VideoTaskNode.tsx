@@ -874,9 +874,22 @@ const labelStyle: React.CSSProperties = {
 };
 
 // OmniHuman「指定说话主体」：对肖像参考图跑主体检测，展示各主体蒙版，勾选谁说话 → payload.maskUrls。
-function OmnihumanSubjectPicker({ imageUrl, selected, onChange, disabled }: {
-  imageUrl?: string; selected: string[]; onChange: (masks: string[]) => void; disabled?: boolean;
+// 肖像图与提交时(composeSubmissionContext)同口径解析：手动上传 > 手填/推送 referenceImageUrl
+// > 连线上游图像 > 连线/@提及角色参考图 > @提及图像。订阅 edges/nodes，连线一变即重算。
+function OmnihumanSubjectPicker({ nodeId, prompt, referenceImageUrl, manualRefUrl, selected, onChange, disabled }: {
+  nodeId: string; prompt?: string; referenceImageUrl?: string; manualRefUrl?: string;
+  selected: string[]; onChange: (masks: string[]) => void; disabled?: boolean;
 }) {
+  const edges = useCanvasStore((s) => s.edges);
+  const nodes = useCanvasStore((s) => s.nodes);
+  const imageUrl = useMemo(() => {
+    return manualRefUrl
+      || referenceImageUrl?.trim()
+      || detectUpstreamImageUrl(nodeId, edges, nodes)
+      || effectiveCharacterRefImages(nodeId, prompt ?? "", edges, nodes).find((u) => !!u?.trim())
+      || effectiveSceneRefImages(nodeId, prompt ?? "", edges, nodes).find((u) => !!u?.trim())
+      || mentionedMediaUrls(prompt, "image", nodes)[0];
+  }, [nodeId, prompt, referenceImageUrl, manualRefUrl, edges, nodes]);
   const [masks, setMasks] = useState<string[]>([]);
   const detect = trpc.videoTasks.detectOmnihumanSubjects.useMutation({
     onSuccess: (r) => { setMasks(r.masks); if (!r.masks.length) toast.info("未检测到可单独指定的主体（图中可能仅一个主体）"); },
@@ -2000,7 +2013,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {/* ── OmniHuman 指定说话主体（仅数字人模型） ── */}
         {payload.provider === "kie_omnihuman15" && (
           <OmnihumanSubjectPicker
-            imageUrl={payload.referenceImageUrl?.trim() || refImages.images[0]?.url}
+            nodeId={id}
+            prompt={payload.prompt}
+            referenceImageUrl={payload.referenceImageUrl}
+            manualRefUrl={refImages.images[0]?.url}
             selected={(payload.maskUrls as string[] | undefined) ?? []}
             onChange={(masks) => handleChange("maskUrls", masks.length ? masks : undefined)}
             disabled={isLocked}

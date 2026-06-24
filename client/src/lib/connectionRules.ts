@@ -20,7 +20,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // audio → comfyui_workflow: 作为自定义工作流的音频参数来源（VHS_LoadAudioUpload 等）。
   // audio → merge：合并节点自动把连入的音频节点用作整片背景音乐（MergeNode 的
   // detectedBgMusicUrl），智能体「整体配乐连入 merge」与手动拖线都走这条。
-  audio: ["clip", "audio", "comfyui_workflow", "merge"],
+  // audio → video_task：数字人/视频对口型（OmniHuman、Volcengine、Kling Avatar）的
+  // 驱动音频——连线音频节点作为 audio_url。模型不支持音频时该连接被 collectRefMedia 忽略。
+  audio: ["clip", "audio", "comfyui_workflow", "merge", "video_task"],
   asset: ["image_gen", "image_edit", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
   ai_chat: ["script", "storyboard", "prompt"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
