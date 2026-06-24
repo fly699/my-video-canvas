@@ -54,6 +54,9 @@ export const VIDEO_PROVIDERS = [
   "poyo_veo_fast",
   "poyo_veo_lite",
   "poyo_veo_quality",
+  "poyo_veo_fast_official",
+  "poyo_veo_lite_official",
+  "poyo_veo_quality_official",
   // Kling
   "poyo_kling21_std",
   "poyo_kling21_pro",

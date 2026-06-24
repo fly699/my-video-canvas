@@ -19,6 +19,9 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   poyo_veo_fast: 3,
   poyo_veo_quality: 2,
   poyo_veo_lite: 0,
+  poyo_veo_fast_official: 3,
+  poyo_veo_quality_official: 3,  // 官方版 quality 支持 reference(3 图)
+  poyo_veo_lite_official: 2,     // 最多 2 图(首尾帧)，无 reference
   // Kling
   poyo_kling26: 1,
   poyo_kling_o3_std: 4,

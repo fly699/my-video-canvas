@@ -276,6 +276,24 @@ const VEO_QUALITY_PARAMS: ParamDef[] = [
   { type: "select", key: "duration", label: "时长（秒）", default: 8, options: [{ value: 8, label: "8 秒（固定）" }] },
   { type: "select", key: "resolution", label: "分辨率", default: "720p", options: VEO_RES_4K },
 ];
+// Veo 3.1 官方版（docs/poyo-video-api.md:74-85）：可变时长 4/6/8s + sound；fast/quality 支持
+// reference(3 图)，lite-official 最多 2 图、不支持 reference 与 4k。
+const VEO_OFFICIAL_DUR = [{ value: 4, label: "4 秒" }, { value: 6, label: "6 秒" }, { value: 8, label: "8 秒" }];
+const VEO_OFFICIAL_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: VEO_RES_4K },
+  { type: "select", key: "generation_type", label: "生成模式", default: "reference",
+    options: [{ value: "reference", label: "参考图风格" }, { value: "frame", label: "首尾帧" }] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 8, options: VEO_OFFICIAL_DUR },
+  { type: "toggle", key: "sound", label: "生成音频", default: true },
+];
+const VEO_OFFICIAL_LITE_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 8, options: VEO_OFFICIAL_DUR },
+  { type: "toggle", key: "sound", label: "生成音频", default: true },
+];
 // Kling 2.1 (I2V): duration 5/10
 const KLING21_PARAMS: ParamDef[] = [
   { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
@@ -594,6 +612,9 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_veo_fast: VEO_PARAMS,
   poyo_veo_quality: VEO_QUALITY_PARAMS,
   poyo_veo_lite: VEO_LITE_PARAMS,
+  poyo_veo_fast_official: VEO_OFFICIAL_PARAMS,
+  poyo_veo_quality_official: VEO_OFFICIAL_PARAMS,
+  poyo_veo_lite_official: VEO_OFFICIAL_LITE_PARAMS,
   poyo_kling21_std: KLING21_PARAMS,
   poyo_kling21_pro: KLING21_PARAMS,
   poyo_kling25_turbo: KLING25_PARAMS,

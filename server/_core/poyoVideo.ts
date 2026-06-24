@@ -25,6 +25,10 @@ export const POYO_PROVIDER_MAP: Record<string, string> = {
   poyo_veo_fast:    "veo3.1-fast",
   poyo_veo_lite:    "veo3.1-lite",
   poyo_veo_quality: "veo3.1-quality",
+  // Veo 3.1 官方版：可变时长 4/6/8s + sound 控制（非官方版固定 8s）。
+  poyo_veo_fast_official:    "veo3.1-fast-official",
+  poyo_veo_lite_official:    "veo3.1-lite-official",
+  poyo_veo_quality_official: "veo3.1-quality-official",
   // Kling
   poyo_kling21_std:   "kling-2.1/standard",
   poyo_kling21_pro:   "kling-2.1/pro",
@@ -63,6 +67,10 @@ const VIDEO_PARAM_KEYS: Record<string, string[]> = {
   "veo3.1-fast":    ["aspect_ratio", "resolution", "generation_type", "duration"],
   "veo3.1-lite":    ["aspect_ratio", "resolution", "duration"],
   "veo3.1-quality": ["aspect_ratio", "resolution", "generation_type", "duration"],
+  // 官方版：duration 4/6/8 可变、含 sound；lite-official 无 generation_type、不支持 reference。
+  "veo3.1-fast-official":    ["aspect_ratio", "resolution", "generation_type", "duration", "sound"],
+  "veo3.1-lite-official":    ["aspect_ratio", "resolution", "duration", "sound"],
+  "veo3.1-quality-official": ["aspect_ratio", "resolution", "generation_type", "duration", "sound"],
   "kling-2.6":          ["aspect_ratio", "duration", "sound"],
   "kling-2.1/standard": ["duration"],
   "kling-2.1/pro":      ["duration"],
@@ -133,6 +141,7 @@ const SINGLE_IMAGE_URLS_MODELS = new Set<string>([
   "wan2.7-image-to-video", "wan2.2-image-to-video-fast", "wan2.6-image-to-video",
   "sora-2-official", "sora-2-pro-official",
   "veo3.1-fast", "veo3.1-quality",
+  "veo3.1-fast-official", "veo3.1-lite-official", "veo3.1-quality-official",
   // Seedance-2：单张手动参考图按「首帧」走 image_urls（与 2 图的首尾帧路径一致、
   // 文档合法）。此前落到通用单数 reference_image_url —— seedance-2 没有这个字段
   // （docs/poyo-video-api.md §六：模式只有 image_urls 首尾帧 / reference_image_urls
@@ -163,6 +172,10 @@ const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
   "seedance-2-fast": { imageUrls: 2, referenceImages: 9, referenceVideos: 3, referenceAudios: 3 },
   "veo3.1-fast":     { imageUrls: 3, veoGenType: true },
   "veo3.1-quality":  { imageUrls: 2, veoGenType: true }, // frame only, no reference
+  // 官方版：fast/quality 支持 reference(3 图)；lite-official 最多 2 图、frame only、无 reference。
+  "veo3.1-fast-official":    { imageUrls: 3, veoGenType: true },
+  "veo3.1-quality-official": { imageUrls: 3, veoGenType: true },
+  "veo3.1-lite-official":    { imageUrls: 2 },
   "kling-2.1/pro":        { startEnd: true },
   "kling-2.5-turbo-pro":  { startEnd: true },
   "kling-3.0/standard":   { imageUrls: 2 },

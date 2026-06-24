@@ -287,6 +287,9 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "poyo_veo_fast",           label: "Veo 3.1 Fast",        group: "Poyo", family: "Veo",      costLabel: "模型页",      caps: ["T2V", "I2V", "8s", "4K"] },
   { value: "poyo_veo_quality",        label: "Veo 3.1 Quality",     group: "Poyo", family: "Veo",      costLabel: "模型页",      caps: ["T2V", "I2V", "8s", "4K"] },
   { value: "poyo_veo_lite",           label: "Veo 3.1 Lite",        group: "Poyo", family: "Veo",      costLabel: "模型页(低)",  caps: ["T2V", "8s"] },
+  { value: "poyo_veo_fast_official",    label: "Veo 3.1 Fast 官方",   group: "Poyo", family: "Veo", costLabel: "按秒×分辨率±音频(模型页)", caps: ["T2V", "I2V", "4/6/8s", "4K", "音频"] },
+  { value: "poyo_veo_quality_official", label: "Veo 3.1 Quality 官方", group: "Poyo", family: "Veo", costLabel: "按秒×分辨率±音频(模型页)", caps: ["T2V", "I2V", "参考生", "4/6/8s", "4K", "音频"] },
+  { value: "poyo_veo_lite_official",    label: "Veo 3.1 Lite 官方",   group: "Poyo", family: "Veo", costLabel: "按秒×分辨率(模型页·低)", caps: ["T2V", "I2V", "4/6/8s", "音频"] },
   // ── Kling ──
   { value: "poyo_kling21_std",        label: "Kling 2.1 Standard",  group: "Poyo", family: "Kling",    costLabel: "5s 30/10s 60 cr/次",      caps: ["I2V", "5/10s"] },
   { value: "poyo_kling21_pro",        label: "Kling 2.1 Pro",       group: "Poyo", family: "Kling",    costLabel: "5s 55/10s 110 cr/次",      caps: ["I2V", "首尾帧"] },
