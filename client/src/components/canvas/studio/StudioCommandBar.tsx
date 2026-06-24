@@ -784,7 +784,7 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
   smart_cut: {
     controls: [
       { key: "aggressiveness", type: "select", label: "力度", options: [{ value: "low", label: "保守" }, { value: "medium", label: "适中" }, { value: "high", label: "激进" }] },
-      { key: "targetDuration", type: "number", label: "目标时长(秒)", min: 0, max: 600, step: 1, width: 100 },
+      { key: "targetDuration", type: "number", label: "目标时长(秒,≥5)", min: 5, max: 3600, step: 1, width: 100 },
     ],
   },
   clip: {

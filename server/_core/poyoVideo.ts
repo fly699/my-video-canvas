@@ -327,6 +327,10 @@ export async function submitPoyoVideo(opts: {
     if (refAudios.length > 0) input.reference_audio_urls = refAudios;
     // omni-flash V2V：源视频走专属 video_urls(≤1)，不是 reference_video_urls。
     if (model === "omni-flash" && resolvedVideoRefs.length > 0) input.video_urls = resolvedVideoRefs.slice(0, 1);
+    // omni-flash 的 image_urls 仅允许 0/1/3 张（schema）；连了 2 张时降级为 1 张，避免 422。
+    if (model === "omni-flash" && Array.isArray(input.image_urls) && input.image_urls.length === 2) {
+      input.image_urls = input.image_urls.slice(0, 1);
+    }
   }
 
   // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),

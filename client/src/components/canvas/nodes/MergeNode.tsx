@@ -574,7 +574,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
               <label className="nodrag" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--c-t3)" }}>
                 字幕字号
                 <input type="number" min={12} max={48} step={1} value={payload.subFontSize ?? 24}
-                  onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) update({ subFontSize: n }); }}
+                  onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) update({ subFontSize: Math.max(12, Math.min(48, n)) }); }}
                   style={{ width: 56, fontSize: 11, padding: "2px 5px", borderRadius: 5, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t1)" }} />
               </label>
             )}

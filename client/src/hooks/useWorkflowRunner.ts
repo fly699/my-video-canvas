@@ -500,6 +500,8 @@ export function useWorkflowRunner() {
             referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
             referenceVideoUrls: refMedia.videoRefs,
             referenceAudioUrls: refMedia.audioRefs,
+            // OmniHuman 指定说话主体（与逐节点按钮同口径）。
+            maskUrls: Array.isArray(p.maskUrls) && p.maskUrls.length ? (p.maskUrls as string[]) : undefined,
             referenceMode,
             params: (p.params as Record<string, unknown>) || {},
           });
@@ -702,7 +704,7 @@ export function useWorkflowRunner() {
           const result = await smartCutMutation.mutateAsync({
             inputUrl,
             aggressiveness: (p.aggressiveness as "low" | "medium" | "high") || undefined,
-            targetDuration: typeof p.targetDuration === "number" ? p.targetDuration : undefined,
+            targetDuration: typeof p.targetDuration === "number" && p.targetDuration >= 5 ? Math.min(3600, p.targetDuration) : undefined,
           });
           useCanvasStore.getState().updateNodeData(nodeId, {
             outputUrl: result.url,
