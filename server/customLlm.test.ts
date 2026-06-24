@@ -41,4 +41,11 @@ describe("自定义 LLM 模型注册表", () => {
     expect(resolveCustomModelName(spec, null)).toBe(spec.defaultModel);
     expect(resolveCustomModelName(spec, undefined)).toBe(spec.defaultModel);
   });
+
+  it("忽略不含数字的非法模型名（误填产品名 ChatGPT/Claude）→ 回退默认，防直连端点 404", () => {
+    expect(resolveCustomModelName(CUSTOM_LLM_MODELS.custom_openai, "ChatGPT")).toBe("gpt-4o");
+    expect(resolveCustomModelName(CUSTOM_LLM_MODELS.custom_claude, "Claude")).toBe("claude-sonnet-4-5");
+    // 含数字的合法 ID 仍保留
+    expect(resolveCustomModelName(CUSTOM_LLM_MODELS.custom_claude, "claude-opus-4-1")).toBe("claude-opus-4-1");
+  });
 });

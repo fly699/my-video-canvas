@@ -14,7 +14,10 @@ type Slot = {
   keyLS: string;
   modelLS: string;
   placeholder: string;
-  modelPlaceholder: string;
+  /** 默认底层模型 ID（留空时服务端用此默认）。 */
+  defaultModel: string;
+  /** 常用模型 ID 预设（下拉选项），避免误填「ChatGPT」这类产品名。 */
+  presets: string[];
   manageUrl: string;
 };
 
@@ -24,7 +27,8 @@ const SLOTS: Slot[] = [
     keyLS: "custom:openaiKey",
     modelLS: "custom:openaiModel",
     placeholder: "粘贴 OpenAI API key（sk-…）",
-    modelPlaceholder: "底层模型名（默认 gpt-4o）",
+    defaultModel: "gpt-4o",
+    presets: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3", "o4-mini"],
     manageUrl: "https://platform.openai.com/api-keys",
   },
   {
@@ -32,17 +36,29 @@ const SLOTS: Slot[] = [
     keyLS: "custom:anthropicKey",
     modelLS: "custom:anthropicModel",
     placeholder: "粘贴 Anthropic API key（sk-ant-…）",
-    modelPlaceholder: "底层模型名（默认 claude-sonnet-4-5）",
+    defaultModel: "claude-sonnet-4-5",
+    presets: ["claude-sonnet-4-5", "claude-opus-4-1", "claude-3-7-sonnet-latest", "claude-3-5-haiku-latest"],
     manageUrl: "https://console.anthropic.com/settings/keys",
   },
 ];
+
+const CUSTOM_OPT = "__custom__"; // 下拉里「自定义…」选项值
 
 const readLS = (k: string) => (typeof localStorage !== "undefined" ? localStorage.getItem(k) ?? "" : "");
 
 function SlotEditor({ slot }: { slot: Slot }) {
   const [savedKey, setSavedKey] = useState<string>(() => readLS(slot.keyLS));
-  const [model, setModel] = useState<string>(() => readLS(slot.modelLS));
   const [draftKey, setDraftKey] = useState("");
+  // 模型选择：保存的值若在预设里则下拉选中它，否则视为「自定义」并把值放进文本框。
+  // 自愈：清掉明显非法的旧值（产品名如「ChatGPT」「Claude」——真实模型 ID 一定含数字），
+  // 否则会被当作 model 发去官方端点直接 404（曾经的 `The model 'ChatGPT' does not exist`）。
+  const initialModel = (() => {
+    const v = readLS(slot.modelLS);
+    if (v && !/\d/.test(v)) { try { localStorage.removeItem(slot.modelLS); } catch { /* ignore */ } return ""; }
+    return v;
+  })();
+  const [model, setModel] = useState<string>(initialModel);
+  const [isCustom, setIsCustom] = useState<boolean>(!!initialModel && !slot.presets.includes(initialModel));
 
   const applyKey = () => {
     const v = draftKey.trim();
@@ -55,11 +71,19 @@ function SlotEditor({ slot }: { slot: Slot }) {
     localStorage.removeItem(slot.keyLS);
     setSavedKey("");
   };
+  // 空 = 用服务端默认（slot.defaultModel）；非空写入 localStorage 经请求头透传。
   const saveModel = (v: string) => {
     setModel(v);
     if (v.trim()) localStorage.setItem(slot.modelLS, v.trim());
     else localStorage.removeItem(slot.modelLS);
   };
+  const onSelectChange = (v: string) => {
+    if (v === CUSTOM_OPT) { setIsCustom(true); return; }
+    setIsCustom(false);
+    saveModel(v === slot.defaultModel ? "" : v); // 选默认值就清空（回退服务端默认）
+  };
+  // 下拉当前选中值：自定义态固定显示自定义项；否则用已存模型，未存则默认值。
+  const selectValue = isCustom ? CUSTOM_OPT : (model || slot.defaultModel);
 
   return (
     <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--c-elevated)" }}>
@@ -91,17 +115,30 @@ function SlotEditor({ slot }: { slot: Slot }) {
         </div>
       )}
       <div className="flex items-center gap-2">
-        <input
-          type="text"
-          placeholder={slot.modelPlaceholder}
-          value={model}
-          onChange={(e) => saveModel(e.target.value)}
-          style={{ flex: 1, padding: "5px 9px", fontSize: 11.5, background: "var(--c-input, var(--c-surface))", color: "var(--c-t2)", border: "1px solid var(--c-bd2)", borderRadius: 8, outline: "none" }}
-        />
+        <select
+          value={selectValue}
+          onChange={(e) => onSelectChange(e.target.value)}
+          title="底层模型 ID（直连官方端点用的真实 model 名）"
+          style={{ flex: 1, padding: "5px 9px", fontSize: 11.5, background: "var(--c-input, var(--c-surface))", color: "var(--c-t2)", border: "1px solid var(--c-bd2)", borderRadius: 8, outline: "none", cursor: "pointer" }}
+        >
+          {slot.presets.map((p) => (
+            <option key={p} value={p}>{p}{p === slot.defaultModel ? "（默认）" : ""}</option>
+          ))}
+          <option value={CUSTOM_OPT}>自定义…</option>
+        </select>
         <a href={slot.manageUrl} target="_blank" rel="noopener noreferrer" title="获取 / 管理密钥" className="flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: ACCENT.replace(")", " / 0.12)"), border: `1px solid ${ACCENT.replace(")", " / 0.3)")}`, color: ACCENT }}>
           <ExternalLink className="w-3 h-3" />
         </a>
       </div>
+      {isCustom && (
+        <input
+          type="text"
+          placeholder="填官方文档的准确模型 ID（如 gpt-4o-mini / claude-…-20250929）"
+          value={model}
+          onChange={(e) => saveModel(e.target.value)}
+          style={{ width: "100%", marginTop: 6, padding: "5px 9px", fontSize: 11.5, background: "var(--c-input, var(--c-surface))", color: "var(--c-t2)", border: "1px solid var(--c-bd2)", borderRadius: 8, outline: "none" }}
+        />
+      )}
     </div>
   );
 }
