@@ -42,6 +42,18 @@ describe("isConnectionValid", () => {
     expect(isConnectionValid("video_task", "video_task")).toBe(false);
   });
 
+  it("图像源不能连剪辑(clip)：clip 只裁切视频", () => {
+    // 纯图像产出节点 → clip 无效（运行时取不到视频）。
+    expect(isConnectionValid("image_gen", "clip")).toBe(false);
+    expect(isConnectionValid("image_edit", "clip")).toBe(false);
+    expect(isConnectionValid("comfyui_image", "clip")).toBe(false);
+    // 能产出视频的源 → clip 仍有效。
+    expect(isConnectionValid("video_task", "clip")).toBe(true);
+    expect(isConnectionValid("asset", "clip")).toBe(true);
+    expect(isConnectionValid("comfyui_video", "clip")).toBe(true);
+    expect(isConnectionValid("comfyui_workflow", "clip")).toBe(true);
+  });
+
   it("respects matrix direction (rejects unlisted target)", () => {
     expect(isConnectionValid("clip", "comfyui_image")).toBe(false);
     expect(isConnectionValid("audio", "image_gen")).toBe(false);

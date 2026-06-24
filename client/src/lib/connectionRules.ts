@@ -9,9 +9,12 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   // image_gen → storyboard：精修工位回链——分镜「送精修」后图像节点连回分镜，
   // 出图仅作为「关键帧候选」供分镜显式点「采用此图」，无任何自动写入。
-  image_gen: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
+  // 注：image_gen/image_edit/comfyui_image 产出的是「图像」，不能连 clip（剪辑只裁切视频，
+  // 图像连进去运行时取不到视频→「未找到视频输入」）。clip 的视频源由 asset(视频)/video_task/
+  // comfyui_video/comfyui_workflow(video) 提供。
+  image_gen: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
   // image_edit 输出仍是一张图：可作 i2v 首帧、存素材、当角色/参考图、回链分镜关键帧、或再串一次编辑。
-  image_edit: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
+  image_edit: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   // audio → audio: 把一段音频作为本地 VoxCPM 配音的参考音色喂给下游音频节点。
   // audio → comfyui_workflow: 作为自定义工作流的音频参数来源（VHS_LoadAudioUpload 等）。
@@ -44,7 +47,7 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // VIDEO_SOURCE_TYPES 已认 merge 为视频源）。此前 merge 仅允许 → asset/clip，导致
   // 「合并 → 合并」串联与智能体建线判定失败。
   merge: ["asset", "clip", "merge"],
-  comfyui_image: ["video_task", "asset", "clip", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
+  comfyui_image: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
   comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "image_gen", "image_edit", "comfyui_workflow", "comfyui_image", "comfyui_video"],
   note: [],

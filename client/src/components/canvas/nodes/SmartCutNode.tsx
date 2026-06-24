@@ -157,6 +157,15 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
           </div>
         </div>
 
+        {/* 目标时长（可选）：此前仅命令栏可设，专业版 body 缺控件 → 脱离命令栏无法在节点上改。 */}
+        <div>
+          <label style={labelStyle}>目标时长（秒，可选）</label>
+          <input type="number" min={0} step={1} className="nodrag" placeholder="留空=自动判定"
+            value={typeof payload.targetDuration === "number" ? payload.targetDuration : ""}
+            onChange={(e) => { const v = e.target.value; update({ targetDuration: v === "" ? undefined : Math.max(0, Number(v) || 0) }); }}
+            style={fieldStyle} />
+        </div>
+
         {/* Output stats */}
         {payload.status === "done" && payload.outputDuration != null && (
           <div className="flex items-center gap-3 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.06), border: `1px solid ${accentA(0.25)}` }}>
