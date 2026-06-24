@@ -70,7 +70,7 @@ import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
 import { resolveKieKey } from "../_core/kie";
 import { isKieImageModel } from "../_core/kieImage";
-import { isKieVideoProvider, submitKieVideo } from "../_core/kieVideo";
+import { isKieVideoProvider, submitKieVideo, detectOmnihumanSubjects } from "../_core/kieVideo";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { isKieLLMModel } from "../_core/kieLLM";
 import { isKieTTS, submitAndPollKieTTS } from "../_core/kieTTS";
@@ -623,6 +623,8 @@ export const videoTasksRouter = router({
         // Multi-modal references (Seedance-2 / Wan-2.7 reference mode).
         referenceVideoUrls: z.array(z.string()).max(3).optional(),
         referenceAudioUrls: z.array(z.string()).max(3).optional(),
+        // OmniHuman 主体蒙版：指定肖像中哪个主体说话（来自 Subject Detection）。
+        maskUrls: z.array(z.string()).max(5).optional(),
         // "reference" = the reference images are character SUBJECTS (identity), so
         // route them to reference_image_urls (multi-reference) rather than首尾帧.
         referenceMode: z.enum(["reference", "frame"]).optional(),
@@ -784,6 +786,7 @@ export const videoTasksRouter = router({
               referenceImageUrls: refList,
               referenceVideoUrls: refVideos.length ? refVideos : undefined,
               referenceAudioUrls: refAudios.length ? refAudios : undefined,
+              maskUrls: input.maskUrls?.length ? input.maskUrls : undefined,
               negativePrompt: input.negativePrompt,
               params: input.params as Record<string, unknown>,
             });
@@ -835,6 +838,18 @@ export const videoTasksRouter = router({
       // happen given the enum validator) and no submit attempt was made.
       // Task is now `processing` with no externalTaskId; poller will skip it.
       return { ...task, status: "processing" as const };
+    }),
+
+  // OmniHuman「指定说话主体」：对肖像图跑主体检测，返回各主体蒙版图 URL（≤5）。
+  // 客户端据此让用户勾选哪个主体说话，写入 payload.mask_url 后随生成一并提交。
+  detectOmnihumanSubjects: protectedProcedure
+    .input(z.object({
+      imageUrl: z.string().min(1).max(2048),
+      kieTempKey: z.string().max(256).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { key } = await resolveKieKey(ctx, input.kieTempKey);
+      return await detectOmnihumanSubjects(input.imageUrl, key);
     }),
 
   poll: protectedProcedure

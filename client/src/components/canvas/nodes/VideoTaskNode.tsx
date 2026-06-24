@@ -873,6 +873,47 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 5,
 };
 
+// OmniHuman「指定说话主体」：对肖像参考图跑主体检测，展示各主体蒙版，勾选谁说话 → payload.maskUrls。
+function OmnihumanSubjectPicker({ imageUrl, selected, onChange, disabled }: {
+  imageUrl?: string; selected: string[]; onChange: (masks: string[]) => void; disabled?: boolean;
+}) {
+  const [masks, setMasks] = useState<string[]>([]);
+  const detect = trpc.videoTasks.detectOmnihumanSubjects.useMutation({
+    onSuccess: (r) => { setMasks(r.masks); if (!r.masks.length) toast.info("未检测到可单独指定的主体（图中可能仅一个主体）"); },
+    onError: (e) => toast.error("主体检测失败：" + e.message),
+  });
+  const toggle = (url: string) => onChange(selected.includes(url) ? selected.filter((u) => u !== url) : [...selected, url].slice(0, 5));
+  return (
+    <div className="rounded-xl" style={{ border: "1px solid var(--c-bd2)", padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--c-t2)" }}>指定说话主体（可选）</span>
+        <button className="nodrag" disabled={disabled || !imageUrl || detect.isPending}
+          onClick={() => imageUrl && detect.mutate({ imageUrl, kieTempKey: localStorage.getItem("kie:tempKey") || undefined })}
+          style={{ fontSize: 11, padding: "3px 9px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t1)", cursor: imageUrl && !detect.isPending ? "pointer" : "not-allowed", opacity: imageUrl ? 1 : 0.5 }}>
+          {detect.isPending ? "检测中…" : "检测主体"}
+        </button>
+      </div>
+      {!imageUrl && <span style={{ fontSize: 10, color: "var(--c-t4)" }}>先设置肖像参考图，再检测主体</span>}
+      {masks.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {masks.map((url, i) => {
+            const on = selected.includes(url);
+            return (
+              <button key={url} className="nodrag" onClick={() => toggle(url)} title={`主体 ${i + 1}`}
+                style={{ position: "relative", width: 48, height: 48, borderRadius: 8, overflow: "hidden", padding: 0, cursor: "pointer",
+                  border: `2px solid ${on ? "oklch(0.72 0.20 25)" : "var(--c-bd2)"}` }}>
+                <img src={url} alt={`主体${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                {on && <span style={{ position: "absolute", top: 0, right: 2, fontSize: 12, color: "#fff", textShadow: "0 0 3px #000" }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {selected.length > 0 && <span style={{ fontSize: 10, color: "var(--c-t3)" }}>已选 {selected.length} 个主体说话（不选 = 默认全部）</span>}
+    </div>
+  );
+}
+
 export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }: Props) {
   const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
   const connectState = useConnectState(id, "video_task");
@@ -1146,6 +1187,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       referenceImageUrls: buildRefUrls(payload.provider, finalRefImage),
       referenceVideoUrls: refMedia.videoRefs,
       referenceAudioUrls: refMedia.audioRefs,
+      // OmniHuman 指定说话主体的蒙版（用户在节点上勾选）。
+      maskUrls: Array.isArray(payload.maskUrls) && payload.maskUrls.length ? (payload.maskUrls as string[]) : undefined,
       referenceMode: refModeForSubmit(),
       params: withParamDefaults(payload.provider, payload.params),
       // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
@@ -1953,6 +1996,16 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </div>
           <input ref={refFileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void uploadRefFiles(files, refImages.images.length); }} />
         </div>
+
+        {/* ── OmniHuman 指定说话主体（仅数字人模型） ── */}
+        {payload.provider === "kie_omnihuman15" && (
+          <OmnihumanSubjectPicker
+            imageUrl={payload.referenceImageUrl?.trim() || refImages.images[0]?.url}
+            selected={(payload.maskUrls as string[] | undefined) ?? []}
+            onChange={(masks) => handleChange("maskUrls", masks.length ? masks : undefined)}
+            disabled={isLocked}
+          />
+        )}
 
         {/* ── Dynamic model-specific params ── */}
         {paramDefs.length > 0 && (

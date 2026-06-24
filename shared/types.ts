@@ -337,6 +337,8 @@ export interface VideoTaskNodeData {
    *  via `resultVideoUrl ?? outputUrl ?? url` — see getNodeVideoUrl in useWorkflowRunner.ts
    *  for the full rationale. Do NOT rename without migrating the poller + persisted payloads. */
   resultVideoUrl?: string;
+  /** OmniHuman 指定说话主体：选中的主体蒙版图 URL（来自 Subject Detection，≤5）。 */
+  maskUrls?: string[];
   errorMessage?: string;
   progress?: number;
   params?: Record<string, unknown>;
