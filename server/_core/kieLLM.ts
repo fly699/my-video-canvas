@@ -37,6 +37,9 @@ export const KIE_LLM_MODELS: Record<string, KieLLMSpec> = {
   kie_claude_sonnet_46: { model: "claude-sonnet-4-6", path: "/claude/v1/messages", format: "claude", label: "Claude Sonnet 4.6（kie）", provider: "Claude", creditNote: "入 170 / 出 855 点·百万tokens" },
   kie_claude_sonnet_45: { model: "claude-sonnet-4-5", path: "/claude/v1/messages", format: "claude", label: "Claude Sonnet 4.5（kie）", provider: "Claude", creditNote: "入 170 / 出 855 点·百万tokens" },
   kie_claude_haiku_45:  { model: "claude-haiku-4-5", path: "/claude/v1/messages", format: "claude", label: "Claude Haiku 4.5（kie）", provider: "Claude", creditNote: "入 55 / 出 285 点·百万tokens" },
+  // Claude Fable 5：wire id 含官方笔误「cluade」(docs/incremental-models JSON model_id=claude/cluade-fable-5)，
+  // body model 取去市场前缀后的字面值；计价 入 800 / 出 4000 点·百万tokens（同 JSON pricing_rows）。
+  kie_claude_fable_5:   { model: "cluade-fable-5", path: "/claude/v1/messages", format: "claude", label: "Claude Fable 5（kie）", provider: "Claude", creditNote: "入 800 / 出 4000 点·百万tokens" },
   // Gemini (OpenAI chat/completions, model in path)
   kie_gemini_3_pro:     { model: "gemini-3-pro", path: "/gemini-3-pro/v1/chat/completions", format: "openai-chat", label: "Gemini 3 Pro（kie）", provider: "Gemini", creditNote: "入 100 / 出 700 点·百万tokens" },
   kie_gemini_3_flash:   { model: "gemini-3-flash", path: "/gemini-3-flash/v1/chat/completions", format: "openai-chat", label: "Gemini 3 Flash（kie）", provider: "Gemini", creditNote: "入 30 / 出 180 点·百万tokens" },

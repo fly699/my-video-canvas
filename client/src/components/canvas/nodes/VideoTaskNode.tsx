@@ -54,10 +54,13 @@ const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   "poyo_kling21_std", "poyo_kling21_pro",
   "poyo_wan27_i2v", "poyo_wan22_i2v_fast",
   // kie 第二批 i2v（需起始帧/参考图）
-  "kie_kling21_std", "kie_kling21_pro", "kie_wan22_i2v", "kie_wan27_i2v",
+  "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_i2v", "kie_wan22_i2v", "kie_wan27_i2v",
   "kie_hailuo02_pro_i2v", "kie_grok_i2v", "kie_happyhorse_i2v",
+  "kie_kling_v3turbo_i2v", "kie_happyhorse11_r2v", "kie_happyhorse11_i2v",
   // kie 第三批（图 + 视频/音频，至少需要图片）
   "kie_kling26_motion", "kie_kling30_motion", "kie_kling_avatar_std", "kie_kling_avatar_pro",
+  "kie_omnihuman15",  // 数字人：图 + 驱动音频
+
   "kie_wan_animate_move", "kie_wan_animate_replace",
 ]);
 
@@ -207,7 +210,7 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   "poyo_kling21_std", "poyo_kling21_pro", "poyo_kling25_turbo",
   // kie: Kling 2.5 Turbo + Wan 2.5 document negative_prompt.
   "kie_kling25turbo_t2v", "kie_kling25turbo_i2v", "kie_wan25_t2v", "kie_wan25_i2v",
-  "kie_kling21_std", "kie_kling21_pro",
+  "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_t2v", "kie_kling21_master_i2v",
 ]);
 
 /** The exact payload patch applied when the video provider/model changes: switch
@@ -276,6 +279,24 @@ const VEO_QUALITY_PARAMS: ParamDef[] = [
   { type: "select", key: "duration", label: "时长（秒）", default: 8, options: [{ value: 8, label: "8 秒（固定）" }] },
   { type: "select", key: "resolution", label: "分辨率", default: "720p", options: VEO_RES_4K },
 ];
+// Veo 3.1 官方版（docs/poyo-video-api.md:74-85）：可变时长 4/6/8s + sound；fast/quality 支持
+// reference(3 图)，lite-official 最多 2 图、不支持 reference 与 4k。
+const VEO_OFFICIAL_DUR = [{ value: 4, label: "4 秒" }, { value: 6, label: "6 秒" }, { value: 8, label: "8 秒" }];
+const VEO_OFFICIAL_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: VEO_RES_4K },
+  { type: "select", key: "generation_type", label: "生成模式", default: "reference",
+    options: [{ value: "reference", label: "参考图风格" }, { value: "frame", label: "首尾帧" }] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 8, options: VEO_OFFICIAL_DUR },
+  { type: "toggle", key: "sound", label: "生成音频", default: true },
+];
+const VEO_OFFICIAL_LITE_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 8, options: VEO_OFFICIAL_DUR },
+  { type: "toggle", key: "sound", label: "生成音频", default: true },
+];
 // Kling 2.1 (I2V): duration 5/10
 const KLING21_PARAMS: ParamDef[] = [
   { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
@@ -290,6 +311,17 @@ const KLING30_PARAMS: ParamDef[] = [
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
   { type: "toggle", key: "sound", label: "原生音频", default: false },
   seedDef,
+];
+// Kling 1.6（增量新模型）：宽高比 + 时长（参数沿用 poyo kling 族）
+const KLING16_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+];
+// Omni Flash（增量；resolution 720p/1080p/4k，duration 4/6/8/10，aspect 16:9/9:16）
+const OMNI_FLASH_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: VEO_RES_4K },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }] },
+  { type: "select", key: "duration", label: "时长（秒，连源视频时忽略）", default: 6, options: [{ value: 4, label: "4 秒" }, { value: 6, label: "6 秒" }, { value: 8, label: "8 秒" }, { value: 10, label: "10 秒" }] },
 ];
 // Wan 2.7
 const WAN_RES = [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
@@ -374,6 +406,8 @@ const GROK_PARAMS: ParamDef[] = [
 const KIE_RES_WAN = [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
 const KIE_RES_HAILUO = [{ value: "768P", label: "768P" }, { value: "1080P", label: "1080P" }];
 const KIE_RES_SEEDANCE = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
+// fast/mini 仅 480p/720p（无 1080p；schema 严格）
+const KIE_RES_SEEDANCE_FAST = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }];
 const KIE_DUR_5_10_15 = [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }, { value: 15, label: "15 秒" }];
 const KIE_AR_SEEDANCE = [
   { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" }, { value: "4:3", label: "4:3 标准" },
@@ -437,6 +471,13 @@ const KIE_SEEDANCE2_PARAMS: ParamDef[] = [
   { type: "range", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s" },
   { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: true },
 ];
+// seedance-2-fast / -mini：分辨率仅 480p/720p（schema 严格，无 1080p）
+const KIE_SEEDANCE2_FAST_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_SEEDANCE_FAST },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: KIE_AR_SEEDANCE },
+  { type: "range", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: true },
+];
 // ── kie 视频 第二批扩充的参数控件 ──
 const KIE_RES_WAN22 = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }];
 const RES_GROK = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }];
@@ -446,6 +487,42 @@ const AR_5 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "
 const cfgDef: ParamDef = { type: "range", key: "cfg_scale", label: "灵活度 cfg", min: 0, max: 1, step: 0.1, default: 0.5 };
 const KIE_KLING21_PARAMS: ParamDef[] = [
   { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 }, cfgDef,
+];
+const KIE_KLING_MASTER_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 }, cfgDef,
+];
+// Kling V3 Turbo（增量；参数严格按 with-params 文档：无 cfg/negative_prompt，带 resolution）
+const KIE_KLING_V3TURBO_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_WAN },
+];
+const KIE_KLING_V3TURBO_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_WAN },
+];
+// HappyHorse 1.1（增量；文档无 seed 字段）
+const KIE_HAPPYHORSE11_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_5 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+];
+// HappyHorse 1.1 图生视频：无 aspect_ratio（schema 严格）
+const KIE_HAPPYHORSE11_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+];
+// OmniHuman 1.5 数字人（output_resolution 枚举 "720"/"1080"，非 720p）
+const KIE_OMNIHUMAN_PARAMS: ParamDef[] = [
+  { type: "select", key: "output_resolution", label: "分辨率", default: "1080", options: [{ value: "720", label: "720P" }, { value: "1080", label: "1080P" }] },
+  { type: "toggle", key: "pe_fast_mode", label: "快速模式（降质提速）", default: false },
+];
+// Volcengine 视频对口型（mode 必填 lite/basic）
+const KIE_VOLCENGINE_PARAMS: ParamDef[] = [
+  { type: "select", key: "mode", label: "模式", default: "lite", options: [{ value: "lite", label: "Lite（单人正面·快）" }, { value: "basic", label: "Basic（复杂场景）" }] },
+  { type: "toggle", key: "separate_vocal", label: "人声分离去噪", default: false },
+  { type: "toggle", key: "open_scenedet", label: "场景分割/说话人识别（Basic）", default: false },
 ];
 const KIE_WAN22_T2V_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_WAN22 },
@@ -594,12 +671,19 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_veo_fast: VEO_PARAMS,
   poyo_veo_quality: VEO_QUALITY_PARAMS,
   poyo_veo_lite: VEO_LITE_PARAMS,
+  poyo_veo_fast_official: VEO_OFFICIAL_PARAMS,
+  poyo_veo_quality_official: VEO_OFFICIAL_PARAMS,
+  poyo_veo_lite_official: VEO_OFFICIAL_LITE_PARAMS,
   poyo_kling21_std: KLING21_PARAMS,
   poyo_kling21_pro: KLING21_PARAMS,
   poyo_kling25_turbo: KLING25_PARAMS,
   poyo_kling30_std: KLING30_PARAMS,
   poyo_kling30_pro: KLING30_PARAMS,
   poyo_kling30_4k: KLING30_PARAMS,
+  poyo_kling16_std: KLING16_PARAMS,
+  poyo_kling16_pro: KLING16_PARAMS,
+  poyo_kling30turbo_std: KLING16_PARAMS,
+  poyo_kling30turbo_pro: KLING16_PARAMS,
   poyo_wan27_t2v: WAN27_T2V_PARAMS,
   poyo_wan27_i2v: WAN27_I2V_PARAMS,
   poyo_wan27_ref: WAN27_REF_PARAMS,
@@ -624,6 +708,8 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_hailuo02_pro: HAILUO02_PRO_PARAMS,
   poyo_hailuo23: HAILUO23_PARAMS,
   poyo_happy_horse: HAPPY_HORSE_PARAMS,
+  poyo_happy_horse_11: HAPPY_HORSE_PARAMS,
+  poyo_omni_flash: OMNI_FLASH_PARAMS,
   poyo_grok_video: GROK_PARAMS,
   // ── kie.ai video ──
   kie_veo31_quality: KIE_VEO_PARAMS,
@@ -640,10 +726,15 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_hailuo23_pro: KIE_HAILUO23_PARAMS,
   kie_hailuo23_std: KIE_HAILUO23_PARAMS,
   kie_seedance2: KIE_SEEDANCE2_PARAMS,
-  kie_seedance2_fast: KIE_SEEDANCE2_PARAMS,
+  kie_seedance2_fast: KIE_SEEDANCE2_FAST_PARAMS,
+  kie_seedance2_mini: KIE_SEEDANCE2_FAST_PARAMS,
+  kie_kling_v3turbo_t2v: KIE_KLING_V3TURBO_T2V_PARAMS,
+  kie_kling_v3turbo_i2v: KIE_KLING_V3TURBO_I2V_PARAMS,
   // ── kie 视频 第二批 ──
   kie_kling21_std: KIE_KLING21_PARAMS,
   kie_kling21_pro: KIE_KLING21_PARAMS,
+  kie_kling21_master_t2v: KIE_KLING_MASTER_T2V_PARAMS,
+  kie_kling21_master_i2v: KIE_KLING21_PARAMS,
   kie_wan22_t2v: KIE_WAN22_T2V_PARAMS,
   kie_wan22_i2v: KIE_WAN22_I2V_PARAMS,
   kie_wan27_t2v: KIE_WAN27_T2V_PARAMS,
@@ -655,6 +746,11 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_grok_i2v: KIE_GROK_I2V_PARAMS,
   kie_happyhorse_t2v: KIE_HAPPYHORSE_PARAMS,
   kie_happyhorse_i2v: KIE_HAPPYHORSE_PARAMS,
+  kie_happyhorse11_t2v: KIE_HAPPYHORSE11_PARAMS,
+  kie_happyhorse11_r2v: KIE_HAPPYHORSE11_PARAMS,
+  kie_happyhorse11_i2v: KIE_HAPPYHORSE11_I2V_PARAMS,
+  kie_omnihuman15: KIE_OMNIHUMAN_PARAMS,
+  kie_volcengine_lipsync: KIE_VOLCENGINE_PARAMS,
   kie_kling26_motion: KIE_KLING26_MOTION_PARAMS,
   kie_kling30_motion: KIE_KLING30_MOTION_PARAMS,
   kie_kling_avatar_std: [],

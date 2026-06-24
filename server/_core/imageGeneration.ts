@@ -81,6 +81,9 @@ export const POYO_IMAGE_SPECS: Record<string, PoyoImageSpec> = {
   poyo_nano_banana:     { wire: "nano-banana",     edit: "nano-banana-edit" },
   poyo_nano_banana_2:   { wire: "nano-banana-2",   edit: "nano-banana-2-edit" },
   poyo_nano_banana_pro: { wire: "nano-banana-pro", edit: "nano-banana-pro-edit", sizeMode: "size", resolution: true, outputFormat: true },
+  // Nano Banana 2 New（Gemini 3.1 Flash Image Preview）：2K/4K，最多 14 张参考图，含 official 变体。
+  poyo_nano_banana_2_new:      { wire: "nano-banana-2-new",      edit: "nano-banana-2-new-edit",      sizeMode: "size", resolution: true, outputFormat: true },
+  poyo_nano_banana_2_official: { wire: "nano-banana-2-official", edit: "nano-banana-2-official-edit", sizeMode: "size", resolution: true, outputFormat: true },
   // GPT Image (OpenAI)
   poyo_gpt_4o_image: { wire: "gpt-4o-image",  edit: "gpt-4o-image-edit" },
   poyo_gpt_image_15: { wire: "gpt-image-1.5", edit: "gpt-image-1.5-edit", quality: true },

@@ -273,3 +273,19 @@ cd /tmp && node my_test.js 2>&1
 5. **时间轴增强** — `client/src/components/editor/Timeline.tsx`
    - 「适应窗口」按钮：一键缩放 `pxPerSec` 使整条时间轴完整显示（实测 3s 片段 180px→792px 铺满可视区）。
    - 含关键帧的片段在轨道上按关键帧时间显示菱形标记，关键帧动画在时间轴上可见可定位。
+
+---
+
+## 模型文档与新模型增量（务必先读）
+
+**官方参数文档**：`docs/kie-api.md`（kie 全模型 OpenAPI）、`docs/poyo-*-api.md`（Poyo 视频/图像/音乐/LLM/通用）。
+**官方计价文档**：`docs/kie-pricing.md`、`docs/poyo-credits-pricing.md`。
+
+**新模型增量清单（含完整 input schema，权威）**：
+`docs/incremental-models/2026-06-incremental-new-models-with-params.json`
+— 每个模型含 **wire id / 端点 / 计价 / `input_schema`（字段名·类型·enum·default·required）**。
+（无参数版 `…-new-models.json` 仅留作对照，勿据此填参数。）
+**接入/核对新模型时：wire、端点、计价、以及全部 input 字段一律严格按 with-params 文档的
+`input_schema`；禁止凭同族猜参数 —— 曾因猜测把 v3-turbo 误加 cfg_scale/negative_prompt、
+happyhorse-1.1 误加 seed、kling-3.0-turbo 误加 sound/seed，均与 schema 不符已修正。
+计价文档明确无数字的 costLabel 标「模型页」，禁止硬编。**

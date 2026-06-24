@@ -47,6 +47,8 @@ export const IMAGE_MODEL_PARAMS: Record<string, ParamDef[]> = {
   poyo_nano_banana: [],
   poyo_nano_banana_2: [],
   poyo_nano_banana_pro: [sizeDef(ASPECT_AUTO, "auto"), resDef(RES_124, "1K"), fmtDef(FMT_PNG_JPG)],
+  poyo_nano_banana_2_new:      [sizeDef(ASPECT_AUTO, "auto"), resDef(RES_24, "2K"), fmtDef(FMT_PNG_JPG)],
+  poyo_nano_banana_2_official: [sizeDef(ASPECT_AUTO, "auto"), resDef(RES_124, "1K"), fmtDef(FMT_PNG_JPG)],
   // GPT Image
   poyo_gpt_4o_image: [],
   poyo_gpt_image_15: [qualityDef],

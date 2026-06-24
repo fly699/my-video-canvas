@@ -19,6 +19,9 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   poyo_veo_fast: 3,
   poyo_veo_quality: 2,
   poyo_veo_lite: 0,
+  poyo_veo_fast_official: 3,
+  poyo_veo_quality_official: 3,  // 官方版 quality 支持 reference(3 图)
+  poyo_veo_lite_official: 2,     // 最多 2 图(首尾帧)，无 reference
   // Kling
   poyo_kling26: 1,
   poyo_kling_o3_std: 4,
@@ -29,6 +32,10 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   poyo_kling25_turbo: 2, // start + end frame
   poyo_kling30_std: 2,   // start + end frame
   poyo_kling30_pro: 2,
+  poyo_kling16_std: 2,
+  poyo_kling16_pro: 2,
+  poyo_kling30turbo_std: 2,
+  poyo_kling30turbo_pro: 2,
   poyo_kling30_4k: 2,
   // Wan
   poyo_wan25_t2v: 0,
@@ -44,6 +51,12 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   poyo_hailuo23: 1,
   // others
   poyo_happy_horse: 9,   // reference mode (1-9)
+  poyo_happy_horse_11: 9,
+  poyo_omni_flash: 3,    // image_urls 0/1/3
+  kie_seedance2_mini: 9,
+  kie_happyhorse11_r2v: 9,
+  kie_omnihuman15: 1,        // 数字人：单张肖像图
+  kie_volcengine_lipsync: 0, // 视频对口型：无图，仅源视频+音频
   poyo_grok_video: 1,
   poyo_runway45: 1,
   // Sora — single guide image at most

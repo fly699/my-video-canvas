@@ -25,12 +25,21 @@ export const POYO_PROVIDER_MAP: Record<string, string> = {
   poyo_veo_fast:    "veo3.1-fast",
   poyo_veo_lite:    "veo3.1-lite",
   poyo_veo_quality: "veo3.1-quality",
+  // Veo 3.1 官方版：可变时长 4/6/8s + sound 控制（非官方版固定 8s）。
+  poyo_veo_fast_official:    "veo3.1-fast-official",
+  poyo_veo_lite_official:    "veo3.1-lite-official",
+  poyo_veo_quality_official: "veo3.1-quality-official",
   // Kling
   poyo_kling21_std:   "kling-2.1/standard",
   poyo_kling21_pro:   "kling-2.1/pro",
   poyo_kling25_turbo: "kling-2.5-turbo-pro",
   poyo_kling30_std:   "kling-3.0/standard",
   poyo_kling30_pro:   "kling-3.0/pro",
+  // 增量新模型（docs/incremental-models JSON）
+  poyo_kling16_std:        "kling-1.6/standard",
+  poyo_kling16_pro:        "kling-1.6/pro",
+  poyo_kling30turbo_std:   "kling-3.0-turbo/standard",
+  poyo_kling30turbo_pro:   "kling-3.0-turbo/pro",
   poyo_kling30_4k:    "kling-3.0/4K",
   // Wan
   poyo_wan27_t2v:      "wan2.7-text-to-video",
@@ -48,6 +57,8 @@ export const POYO_PROVIDER_MAP: Record<string, string> = {
   poyo_hailuo23:     "hailuo-2.3",
   // others
   poyo_happy_horse: "happy-horse",
+  poyo_happy_horse_11: "happy-horse-1.1",
+  poyo_omni_flash: "omni-flash",
   poyo_grok_video:  "grok-imagine",
 };
 
@@ -63,12 +74,23 @@ const VIDEO_PARAM_KEYS: Record<string, string[]> = {
   "veo3.1-fast":    ["aspect_ratio", "resolution", "generation_type", "duration"],
   "veo3.1-lite":    ["aspect_ratio", "resolution", "duration"],
   "veo3.1-quality": ["aspect_ratio", "resolution", "generation_type", "duration"],
+  // 官方版：duration 4/6/8 可变、含 sound；lite-official 无 generation_type、不支持 reference。
+  "veo3.1-fast-official":    ["aspect_ratio", "resolution", "generation_type", "duration", "sound"],
+  "veo3.1-lite-official":    ["aspect_ratio", "resolution", "duration", "sound"],
+  "veo3.1-quality-official": ["aspect_ratio", "resolution", "generation_type", "duration", "sound"],
   "kling-2.6":          ["aspect_ratio", "duration", "sound"],
   "kling-2.1/standard": ["duration"],
   "kling-2.1/pro":      ["duration"],
   "kling-2.5-turbo-pro": ["aspect_ratio", "duration"],
   "kling-3.0/standard": ["aspect_ratio", "duration", "sound", "seed"],
   "kling-3.0/pro":      ["aspect_ratio", "duration", "sound", "seed"],
+  "kling-1.6/standard": ["aspect_ratio", "duration"],
+  "kling-1.6/pro":      ["aspect_ratio", "duration"],
+  "kling-3.0-turbo/standard": ["aspect_ratio", "duration"],
+  "kling-3.0-turbo/pro":      ["aspect_ratio", "duration"],
+  "happy-horse-1.1":   ["resolution", "aspect_ratio", "duration", "seed"],
+  // omni-flash：T2V/I2V(image_urls 0/1/3) + V2V(video_urls≤1)；提供视频时省略 duration
+  "omni-flash":        ["resolution", "aspect_ratio", "duration"],
   "kling-3.0/4K":       ["aspect_ratio", "duration", "sound", "seed"],
   "kling-o3/standard":  ["aspect_ratio", "duration", "sound", "seed"],
   "kling-o3/pro":       ["aspect_ratio", "duration", "sound", "seed"],
@@ -133,6 +155,7 @@ const SINGLE_IMAGE_URLS_MODELS = new Set<string>([
   "wan2.7-image-to-video", "wan2.2-image-to-video-fast", "wan2.6-image-to-video",
   "sora-2-official", "sora-2-pro-official",
   "veo3.1-fast", "veo3.1-quality",
+  "veo3.1-fast-official", "veo3.1-lite-official", "veo3.1-quality-official",
   // Seedance-2：单张手动参考图按「首帧」走 image_urls（与 2 图的首尾帧路径一致、
   // 文档合法）。此前落到通用单数 reference_image_url —— seedance-2 没有这个字段
   // （docs/poyo-video-api.md §六：模式只有 image_urls 首尾帧 / reference_image_urls
@@ -163,10 +186,20 @@ const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
   "seedance-2-fast": { imageUrls: 2, referenceImages: 9, referenceVideos: 3, referenceAudios: 3 },
   "veo3.1-fast":     { imageUrls: 3, veoGenType: true },
   "veo3.1-quality":  { imageUrls: 2, veoGenType: true }, // frame only, no reference
+  // 官方版：fast/quality 支持 reference(3 图)；lite-official 最多 2 图、frame only、无 reference。
+  "veo3.1-fast-official":    { imageUrls: 3, veoGenType: true },
+  "veo3.1-quality-official": { imageUrls: 3, veoGenType: true },
+  "veo3.1-lite-official":    { imageUrls: 2 },
   "kling-2.1/pro":        { startEnd: true },
   "kling-2.5-turbo-pro":  { startEnd: true },
   "kling-3.0/standard":   { imageUrls: 2 },
   "kling-3.0/pro":        { imageUrls: 2 },
+  "kling-1.6/standard":   { imageUrls: 2 },
+  "kling-1.6/pro":        { imageUrls: 2 },
+  "kling-3.0-turbo/standard": { imageUrls: 2 },
+  "kling-3.0-turbo/pro":      { imageUrls: 2 },
+  "happy-horse-1.1":      { imageUrls: 1, referenceImages: 9 },
+  "omni-flash":           { imageUrls: 3 },
   "kling-3.0/4K":         { imageUrls: 2 },
   "kling-o3/standard": { imageUrls: 2, referenceImages: 4 },
   "kling-o3/pro":      { imageUrls: 2, referenceImages: 4 },
@@ -292,6 +325,8 @@ export async function submitPoyoVideo(opts: {
     }
     if (refVideos.length > 0) input.reference_video_urls = refVideos;
     if (refAudios.length > 0) input.reference_audio_urls = refAudios;
+    // omni-flash V2V：源视频走专属 video_urls(≤1)，不是 reference_video_urls。
+    if (model === "omni-flash" && resolvedVideoRefs.length > 0) input.video_urls = resolvedVideoRefs.slice(0, 1);
   }
 
   // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),
@@ -325,6 +360,8 @@ export async function submitPoyoVideo(opts: {
   // 提供该选项，但旧节点 params 里可能残留 generation_type:"reference"，会被 Poyo 400。
   // 兜底丢弃，让上游按图数自动判定(quality 上限 2 图=frame)。
   if (model === "veo3.1-quality" && input.generation_type === "reference") delete input.generation_type;
+  // omni-flash：提供源视频(V2V)时省略 duration（schema 要求）。
+  if (model === "omni-flash" && Array.isArray(input.video_urls) && input.video_urls.length > 0) delete input.duration;
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",
