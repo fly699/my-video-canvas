@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { detectUpstreamPrompt, detectUpstreamImages } from "../../../lib/comfyWorkflowParams";
-import { deriveCharacterConditioning, connectedCharacterRefImages, connectedCharacters } from "../../../lib/characterConditioning";
+import { deriveCharacterConditioning, effectiveCharacterRefImages, effectiveCharacters } from "../../../lib/characterConditioning";
 import type { CharacterNodeData, ComfyuiIPAdapter, ComfyuiLoraEntry } from "../../../../../shared/types";
 
 interface AutoFillPayload {
@@ -49,7 +49,9 @@ export function useComfyUpstreamAutoFill(
       // views in alongside upstream images. comfyui_image uses IPAdapter (below),
       // so we don't duplicate the character into its img2img references.
       const upstream = detectUpstreamImages(id, edges, nodes);
-      const charRefs = characterConditioning ? [] : connectedCharacterRefImages(id, edges, nodes);
+      // @提及感知：@角色（未连线）的参考图也要并入，与下方 IPAdapter/LoRA 及提示词
+      // 文字注入(effectiveCharacters)同口径，避免「文字进了 prompt 但锁脸/LoRA 不生效」。
+      const charRefs = characterConditioning ? [] : effectiveCharacterRefImages(id, payload.prompt ?? "", edges, nodes);
       const imgs = Array.from(new Set([...upstream, ...charRefs]));
       if (imgs.length > 0) {
         patch.referenceImageUrl = imgs[0];
@@ -63,7 +65,7 @@ export function useComfyUpstreamAutoFill(
     // character LoRA only (comfyui_video, which has no IPAdapter path).
     // Fill-only-when-blank, so user edits and the no-op once-filled guard hold.
     if (characterConditioning || characterLora) {
-      const charPayload = upstreamCharacter(id, edges, nodes);
+      const charPayload = upstreamCharacter(id, payload.prompt ?? "", edges, nodes);
       if (charPayload) {
         const cond = deriveCharacterConditioning(charPayload, { ipadapter: payload.ipadapter, loras: payload.loras });
         if (characterConditioning && cond.ipadapter) patch.ipadapter = cond.ipadapter;
@@ -76,14 +78,16 @@ export function useComfyUpstreamAutoFill(
   }, [id, edges, nodes, payload.prompt, payload.negPrompt, payload.referenceImageUrl, characterConditioning, characterLora]);
 }
 
-/** The PRIMARY connected upstream `character` payload — the topmost by canvas
- *  position, matching the prompt-text injection order so the IPAdapter face and the
- *  injected identity text refer to the same character. */
+/** The PRIMARY upstream `character` payload — connected OR @-mentioned, topmost by
+ *  canvas position, matching the prompt-text injection order so the IPAdapter face and
+ *  the injected identity text refer to the same character. */
 function upstreamCharacter(
   id: string,
+  prompt: string,
   edges: { source: string; target: string }[],
   nodes: { id: string; data: { nodeType: string; payload?: unknown }; position?: { x: number; y: number } }[],
 ): CharacterNodeData | undefined {
-  // First PERSON character (scenes carry no identity/IPAdapter).
-  return connectedCharacters(id, edges, nodes).find((c) => (c.characterKind ?? "person") !== "scene");
+  // First PERSON character (scenes carry no identity/IPAdapter). effectiveCharacters
+  // unifies connected + @提及, same as the prompt-text injection path.
+  return effectiveCharacters(id, prompt, edges, nodes).find((c) => (c.characterKind ?? "person") !== "scene");
 }
