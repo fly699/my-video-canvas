@@ -362,29 +362,62 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ref: { key: "reference_image", array: true, required: true },
     creditNote: "720p 28 / 1080p 48 点·秒",
   },
-  // 增量新模型（docs/incremental-models JSON）：wire/计价按 JSON，参数沿用同族
+  // 增量新模型（docs/incremental-models with-params；参数严格按该文档 input schema）
   kie_kling_v3turbo_t2v: {
     wire: "kling/v3-turbo-text-to-video", endpoint: "jobs", label: "Kling V3 Turbo 文生视频", family: "Kling",
-    params: [{ key: "duration", type: "str", def: "5" }, { key: "aspect_ratio", type: "str", def: "16:9" }, { key: "cfg_scale", type: "num" }],
-    negPrompt: true,
+    params: [
+      { key: "duration", type: "str", def: "5" },
+      { key: "aspect_ratio", type: "str", def: "16:9" },
+      { key: "resolution", type: "str", def: "720p" },
+    ],
     creditNote: "模型页",
   },
   kie_kling_v3turbo_i2v: {
     wire: "kling/v3-turbo-image-to-video", endpoint: "jobs", label: "Kling V3 Turbo 图生视频", family: "Kling",
-    params: [{ key: "duration", type: "str", def: "5" }, { key: "cfg_scale", type: "num" }],
-    ref: { key: "image_url", array: false, required: true }, negPrompt: true,
+    params: [
+      { key: "duration", type: "str", def: "5" },
+      { key: "resolution", type: "str", def: "720p" },
+    ],
+    ref: { key: "image_urls", array: true, required: true },
     creditNote: "模型页",
   },
   kie_happyhorse11_t2v: {
     wire: "happyhorse-1-1/text-to-video", endpoint: "jobs", label: "HappyHorse 1.1 文生视频", family: "HappyHorse",
-    params: [{ key: "resolution", type: "str", def: "1080p" }, { key: "aspect_ratio", type: "str", def: "16:9" }, { key: "duration", type: "num", def: 5 }, { key: "seed", type: "num" }],
+    params: [{ key: "resolution", type: "str", def: "1080p" }, { key: "aspect_ratio", type: "str", def: "16:9" }, { key: "duration", type: "num", def: 5 }],
     creditNote: "720p 33 / 1080p 44 点·秒",
   },
   kie_happyhorse11_r2v: {
     wire: "happyhorse-1-1/reference-to-video", endpoint: "jobs", label: "HappyHorse 1.1 参考生视频", family: "HappyHorse",
-    params: [{ key: "resolution", type: "str", def: "1080p" }, { key: "aspect_ratio", type: "str", def: "16:9" }, { key: "duration", type: "num", def: 5 }, { key: "seed", type: "num" }],
+    params: [{ key: "resolution", type: "str", def: "1080p" }, { key: "aspect_ratio", type: "str", def: "16:9" }, { key: "duration", type: "num", def: 5 }],
     ref: { key: "reference_image", array: true, required: true },
     creditNote: "720p 33 / 1080p 44 点·秒",
+  },
+  // OmniHuman 1.5 数字人（音频驱动肖像）：image_url + audio_url 必填（schema 严格按 with-params 文档）
+  kie_omnihuman15: {
+    wire: "omnihuman-1-5", endpoint: "jobs", label: "OmniHuman 1.5 数字人", family: "OmniHuman",
+    params: [
+      { key: "output_resolution", type: "str", def: "1080" }, // 文档枚举为 "720"/"1080"（非 720p）
+      { key: "pe_fast_mode", type: "bool" },
+      { key: "seed", type: "num" },
+    ],
+    ref: { key: "image_url", array: false, required: true },
+    audioRef: { key: "audio_url" },
+    creditNote: "27 点·秒（对口型）",
+  },
+  // Volcengine 视频对口型（源视频 + 目标人声）：video_url + audio_url + mode 必填
+  kie_volcengine_lipsync: {
+    wire: "volcengine/video-to-video-lip-sync", endpoint: "jobs", label: "Volcengine 视频对口型", family: "Volcengine",
+    params: [
+      { key: "mode", type: "str", def: "lite" }, // lite/basic
+      { key: "separate_vocal", type: "bool" },
+      { key: "open_scenedet", type: "bool" },
+      { key: "align_audio", type: "bool", def: true },
+      { key: "align_audio_reverse", type: "bool" },
+      { key: "templ_start_seconds", type: "num" },
+    ],
+    videoRef: { key: "video_url", array: false },
+    audioRef: { key: "audio_url" },
+    creditNote: "8 点·秒（对口型）",
   },
   // ── 第三批：特殊输入（动作控制 / 数字人 / 替身）──
   kie_kling26_motion: {

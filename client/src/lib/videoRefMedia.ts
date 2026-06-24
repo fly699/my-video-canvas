@@ -9,14 +9,18 @@ export const SUPPORTS_REF_VIDEO = new Set<string>([
   "poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast", "kie_seedance2_mini",
   // Wan 2.7 参考生：可用参考视频做多模态参考
   "poyo_wan27_ref",
+  "poyo_omni_flash",  // V2V：源视频
+
   // 动作控制 / Animate / 放大 / Aleph：需连线源视频
   "kie_kling26_motion", "kie_kling30_motion", "kie_wan_animate_move", "kie_wan_animate_replace",
   "kie_topaz_upscale", "kie_runway_aleph",
+  "kie_volcengine_lipsync",  // 视频对口型：源视频
 ]);
 export const SUPPORTS_REF_AUDIO = new Set<string>([
   "poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast", "kie_seedance2_mini",
-  // 数字人：需连线音频
+  // 数字人 / 对口型：需连线音频
   "kie_kling_avatar_std", "kie_kling_avatar_pro",
+  "kie_omnihuman15", "kie_volcengine_lipsync",
 ]);
 
 // 取更严的 character 系列签名（position 要求 {x,y}），它同时满足较松的

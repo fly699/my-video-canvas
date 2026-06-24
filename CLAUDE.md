@@ -281,9 +281,11 @@ cd /tmp && node my_test.js 2>&1
 **官方参数文档**：`docs/kie-api.md`（kie 全模型 OpenAPI）、`docs/poyo-*-api.md`（Poyo 视频/图像/音乐/LLM/通用）。
 **官方计价文档**：`docs/kie-pricing.md`、`docs/poyo-credits-pricing.md`。
 
-**新模型增量清单**：`docs/incremental-models/2026-06-incremental-new-models.json`
-— 含新模型的 **wire id / 提交端点 / 计价**（kie v3-turbo、seedance-2-mini、happyhorse-1.1、
-omnihuman-1.5、volcengine 对口型、claude/cluade-fable-5；poyo kling-1.6、kling-3.0-turbo、
-happy-horse-1.1、omni-flash）。**接入新模型时：wire/端点/计价严格以此清单与上述计价文档为准；
-input 参数若该 JSON 未含 schema，则沿用代码中同族已验证模型的参数（其本身源自官方 api 文档）。
-计价文档明确无数字的，costLabel 标「模型页」，禁止硬编。**
+**新模型增量清单（含完整 input schema，权威）**：
+`docs/incremental-models/2026-06-incremental-new-models-with-params.json`
+— 每个模型含 **wire id / 端点 / 计价 / `input_schema`（字段名·类型·enum·default·required）**。
+（无参数版 `…-new-models.json` 仅留作对照，勿据此填参数。）
+**接入/核对新模型时：wire、端点、计价、以及全部 input 字段一律严格按 with-params 文档的
+`input_schema`；禁止凭同族猜参数 —— 曾因猜测把 v3-turbo 误加 cfg_scale/negative_prompt、
+happyhorse-1.1 误加 seed、kling-3.0-turbo 误加 sound/seed，均与 schema 不符已修正。
+计价文档明确无数字的 costLabel 标「模型页」，禁止硬编。**

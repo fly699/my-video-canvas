@@ -277,6 +277,8 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "kie_happyhorse_i2v",      label: "HappyHorse 图生视频", group: "Kie", family: "HappyHorse", costLabel: "720p 28/1080p 48 点·秒", caps: ["I2V", "1080p"] },
   { value: "kie_happyhorse11_t2v",    label: "HappyHorse 1.1 文生", group: "Kie", family: "HappyHorse", costLabel: "720p 33/1080p 44 点·秒", caps: ["T2V", "1080p"] },
   { value: "kie_happyhorse11_r2v",    label: "HappyHorse 1.1 参考生", group: "Kie", family: "HappyHorse", costLabel: "720p 33/1080p 44 点·秒", caps: ["参考生", "多模态", "1080p"] },
+  { value: "kie_omnihuman15",         label: "OmniHuman 1.5 数字人", group: "Kie", family: "数字人", costLabel: "27 点·秒", caps: ["数字人", "图+音频", "对口型"] },
+  { value: "kie_volcengine_lipsync",  label: "Volcengine 视频对口型", group: "Kie", family: "数字人", costLabel: "8 点·秒", caps: ["对口型", "视频+音频"] },
   // ── kie 视频 第三批：特殊输入（图+视频 / 图+音频）──
   { value: "kie_kling26_motion",      label: "Kling 2.6 动作控制",  group: "Kie", family: "Kling",      costLabel: "720p 11/1080p 18 点·秒",  caps: ["图+源视频", "动作迁移"] },
   { value: "kie_kling30_motion",      label: "Kling 3.0 动作控制",  group: "Kie", family: "Kling",      costLabel: "720p 20/1080p 27 点·秒",  caps: ["图+源视频", "动作迁移"] },
@@ -335,6 +337,7 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   // ── others ──
   { value: "poyo_happy_horse",        label: "Happy Horse",         group: "Poyo", family: "其他",     costLabel: "720p 16/1080p 32 cr/s",      caps: ["四工作流", "1080p"] },
   { value: "poyo_happy_horse_11",     label: "Happy Horse 1.1",     group: "Poyo", family: "其他",     costLabel: "720p 22/1080p 28 cr/s",      caps: ["T2V", "I2V", "参考生", "1080p"] },
+  { value: "poyo_omni_flash",         label: "Omni Flash",          group: "Poyo", family: "其他",     costLabel: "120-450 cr/次（按分辨率/时长）", caps: ["T2V", "I2V", "V2V", "三图融合", "4K"] },
   { value: "poyo_grok_video",         label: "Grok Imagine",        group: "Poyo", family: "其他",     costLabel: "6s 30/10s 40 cr/次",      caps: ["T2V", "I2V", "6/10s"] },
   { value: "poyo_runway45",           label: "Runway Gen 4.5",      group: "Poyo", family: "Runway",   costLabel: "5s 75/10s 150 cr/次",      caps: ["T2V", "+1图", "5/10s"] },
   // ── Higgsfield (公共 API 仅 DoP 3 档；其余 Kling/Seedance/Veo 在私有后端) ──

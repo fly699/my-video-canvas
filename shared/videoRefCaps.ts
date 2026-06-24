@@ -52,8 +52,11 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   // others
   poyo_happy_horse: 9,   // reference mode (1-9)
   poyo_happy_horse_11: 9,
+  poyo_omni_flash: 3,    // image_urls 0/1/3
   kie_seedance2_mini: 9,
   kie_happyhorse11_r2v: 9,
+  kie_omnihuman15: 1,        // 数字人：单张肖像图
+  kie_volcengine_lipsync: 0, // 视频对口型：无图，仅源视频+音频
   poyo_grok_video: 1,
   poyo_runway45: 1,
   // Sora — single guide image at most

@@ -58,6 +58,7 @@ export const POYO_PROVIDER_MAP: Record<string, string> = {
   // others
   poyo_happy_horse: "happy-horse",
   poyo_happy_horse_11: "happy-horse-1.1",
+  poyo_omni_flash: "omni-flash",
   poyo_grok_video:  "grok-imagine",
 };
 
@@ -85,9 +86,11 @@ const VIDEO_PARAM_KEYS: Record<string, string[]> = {
   "kling-3.0/pro":      ["aspect_ratio", "duration", "sound", "seed"],
   "kling-1.6/standard": ["aspect_ratio", "duration"],
   "kling-1.6/pro":      ["aspect_ratio", "duration"],
-  "kling-3.0-turbo/standard": ["aspect_ratio", "duration", "sound", "seed"],
-  "kling-3.0-turbo/pro":      ["aspect_ratio", "duration", "sound", "seed"],
+  "kling-3.0-turbo/standard": ["aspect_ratio", "duration"],
+  "kling-3.0-turbo/pro":      ["aspect_ratio", "duration"],
   "happy-horse-1.1":   ["resolution", "aspect_ratio", "duration", "seed"],
+  // omni-flash：T2V/I2V(image_urls 0/1/3) + V2V(video_urls≤1)；提供视频时省略 duration
+  "omni-flash":        ["resolution", "aspect_ratio", "duration"],
   "kling-3.0/4K":       ["aspect_ratio", "duration", "sound", "seed"],
   "kling-o3/standard":  ["aspect_ratio", "duration", "sound", "seed"],
   "kling-o3/pro":       ["aspect_ratio", "duration", "sound", "seed"],
@@ -128,8 +131,6 @@ const VIDEO_PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
   "kling-2.6": { sound: false },
   "kling-3.0/standard": { sound: false },
   "kling-3.0/pro": { sound: false },
-  "kling-3.0-turbo/standard": { sound: false },
-  "kling-3.0-turbo/pro": { sound: false },
   "kling-3.0/4K": { sound: false },
   "kling-o3/standard": { sound: false },
   "kling-o3/pro": { sound: false },
@@ -198,6 +199,7 @@ const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
   "kling-3.0-turbo/standard": { imageUrls: 2 },
   "kling-3.0-turbo/pro":      { imageUrls: 2 },
   "happy-horse-1.1":      { imageUrls: 1, referenceImages: 9 },
+  "omni-flash":           { imageUrls: 3 },
   "kling-3.0/4K":         { imageUrls: 2 },
   "kling-o3/standard": { imageUrls: 2, referenceImages: 4 },
   "kling-o3/pro":      { imageUrls: 2, referenceImages: 4 },
@@ -323,6 +325,8 @@ export async function submitPoyoVideo(opts: {
     }
     if (refVideos.length > 0) input.reference_video_urls = refVideos;
     if (refAudios.length > 0) input.reference_audio_urls = refAudios;
+    // omni-flash V2V：源视频走专属 video_urls(≤1)，不是 reference_video_urls。
+    if (model === "omni-flash" && resolvedVideoRefs.length > 0) input.video_urls = resolvedVideoRefs.slice(0, 1);
   }
 
   // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),
@@ -356,6 +360,8 @@ export async function submitPoyoVideo(opts: {
   // 提供该选项，但旧节点 params 里可能残留 generation_type:"reference"，会被 Poyo 400。
   // 兜底丢弃，让上游按图数自动判定(quality 上限 2 图=frame)。
   if (model === "veo3.1-quality" && input.generation_type === "reference") delete input.generation_type;
+  // omni-flash：提供源视频(V2V)时省略 duration（schema 要求）。
+  if (model === "omni-flash" && Array.isArray(input.video_urls) && input.video_urls.length > 0) delete input.duration;
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",
