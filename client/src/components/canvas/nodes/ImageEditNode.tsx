@@ -114,8 +114,11 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
     if (backend === "comfyui") {
       const ckpt = payload.ckpt?.trim();
       if (!ckpt) { toast.error("ComfyUI 后端需填写 checkpoint 模型名"); return; }
+      // 需蒙版的操作(局部重绘/擦除)在 comfyui 后端必须有蒙版，否则 comfyTemplateForOp
+      // 会退回 img2img 整图重绘、静默丢失「局部/擦除」语义。按 opSpec.needsMask 拦截
+      // （原来的 template==="inpaint" 守卫永不为真——无蒙版时 template 已是 img2img）。
+      if (opSpec.needsMask && !payload.maskUrl?.trim()) { toast.error(`「${opSpec.label}」请先涂抹蒙版`); return; }
       const template = comfyTemplateForOp(operation, !!payload.maskUrl?.trim());
-      if (template === "inpaint" && !payload.maskUrl?.trim()) { toast.error("局部重绘/擦除请先涂抹蒙版"); return; }
       // Compose the edit instruction client-side (same builder the cloud route uses server-side).
       const instruction = buildImageEditInstruction(operation, prompt, opSpec.needsAspect ? payload.aspectRatio : undefined).slice(0, 2000);
       update({ status: "processing", errorMessage: undefined });

@@ -10,7 +10,7 @@ import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, effectiveCharacterVideoRefs, effectiveCharacterAudioRefs } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
-import { detectUpstreamPrompt, listUpstreamVideoSources, listUpstreamAudioSources, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
+import { detectUpstreamPrompt, detectUpstreamImageUrl, listUpstreamVideoSources, listUpstreamAudioSources, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { SUPPORTS_REF_VIDEO, SUPPORTS_REF_AUDIO, collectVideoRefMedia } from "../../../lib/videoRefMedia";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -1092,7 +1092,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         connectedEffectPrompts(id, allEdges, allNodes),
         4000,
       ),
-      referenceImageUrl: payload.referenceImageUrl?.trim() || charRefFallback,
+      // 参考图优先级（与「运行全部」runner 的 autoDetectInputImage 同口径）：
+      // 手动/推送 payload.referenceImageUrl > 直连上游图像节点(拉取兜底，i2v 首帧) > 角色/@图像。
+      // 拉取兜底保证「image_gen 直连 ref-image-in 但推送未及时写入」时逐节点按钮也能取到首帧。
+      referenceImageUrl: payload.referenceImageUrl?.trim() || detectUpstreamImageUrl(id, allEdges, allNodes) || charRefFallback,
     };
   }, [id, payload.prompt, payload.referenceImageUrl]);
 
