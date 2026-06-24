@@ -20,7 +20,7 @@ export type LLMModelMeta = {
   short: string;       // compact chip label
   family: "Gemini" | "Claude" | "GPT" | "Qwen";
   tag: string;
-  provider: "Forge" | "Poyo" | "Kie" | "SelfHosted"; // upstream API the model is served by
+  provider: "Forge" | "Poyo" | "Kie" | "SelfHosted" | "Custom"; // upstream API the model is served by
   color: string;
   costTier: "低" | "中" | "高";
   /** 点数标注（kie 模型用真实价格，单位：点/百万tokens，入/出）。docs/kie-pricing.md。
@@ -73,6 +73,11 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   { id: "kie_gpt_52_codex",     label: "GPT 5.2 Codex（kie）",     short: "Cdx52",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
   { id: "kie_gpt_53_codex",     label: "GPT 5.3 Codex（kie）",     short: "Cdx53",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
   { id: "kie_gpt_54_codex",     label: "GPT 5.4 Codex（kie）",     short: "Cdx54",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
+  // ── 自定义模型（用户自带 API Key，直连 OpenAI / Anthropic 官方端点）──
+  // 密钥与底层模型名「前端工具栏录入 > 后端 env」解析；前端经请求头 x-openai-key /
+  // x-anthropic-key（+ x-*-model）随所有 LLM 请求透传（main.tsx）。server/_core/customLlm.ts。
+  { id: "custom_openai",        label: "ChatGPT（自定义密钥）",    short: "GPT·自", family: "GPT",    tag: "自带key", provider: "Custom", color: "oklch(0.62 0.16 240)", costTier: "中", vision: true },
+  { id: "custom_claude",        label: "Claude（自定义密钥）",     short: "Cl·自",  family: "Claude", tag: "自带key", provider: "Custom", color: "oklch(0.68 0.18 280)", costTier: "高", vision: true },
 ] as const;
 
 // Legacy export name — AIChatNode and scriptCreationTemplates reference CHAT_MODELS.
@@ -126,7 +131,7 @@ export function imageModelRequiresRef(value?: string): boolean {
 // 便于一眼区分。脚本/对话节点的 Forge/Poyo 绿/蓝即源于此。
 const PLATFORM_HUE: Record<string, number> = {
   Poyo: 240, Manus: 160, Forge: 160, Higgsfield: 310, Kie: 200,
-  Suno: 285, MiniMax: 30, OpenAI: 150, Local: 95, Dev: 20, SelfHosted: 200,
+  Suno: 285, MiniMax: 30, OpenAI: 150, Local: 95, Dev: 20, SelfHosted: 200, Custom: 320,
 };
 export function platformBadge(name: string): { bg: string; fg: string } {
   const h = PLATFORM_HUE[name] ?? 265;
@@ -139,7 +144,8 @@ export function platformBadge(name: string): { bg: string; fg: string } {
 // 注意：SelfHosted 未登记时会落到默认值 4、被埋在长长的 kie 列表最底（用户配了却"看不到"），
 // 故必须显式置顶（-1），与各 picker「self-hosted 数组前插」的本意一致。
 const GROUP_ORDER: Record<string, number> = {
-  SelfHosted: -1, Manus: 0, Forge: 0, Kie: 1, Poyo: 2, Higgsfield: 3, Dev: 8,
+  // 自定义模型（用户自带 key）置于自建之后、内置之前——既显眼又不抢自建基建的头位。
+  SelfHosted: -1, Custom: -0.5, Manus: 0, Forge: 0, Kie: 1, Poyo: 2, Higgsfield: 3, Dev: 8,
 };
 export function modelGroupOrder(group: string): number {
   return GROUP_ORDER[group] ?? 4;

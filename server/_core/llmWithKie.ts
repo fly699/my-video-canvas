@@ -1,5 +1,6 @@
 import { invokeLLM, type InvokeParams, type InvokeResult } from "./llm";
 import { isKieLLMModel } from "./kieLLM";
+import { isCustomLLMModel, CUSTOM_LLM_MODELS } from "./customLlm";
 import { resolveKieKey } from "./kie";
 import { assertLLMAllowed } from "./whitelist";
 import type { TrpcContext } from "./context";
@@ -20,6 +21,17 @@ export async function invokeLLMWithKie(ctx: TrpcContext, params: InvokeParams, t
   if (params.kieApiKey === undefined && isKieLLMModel(params.model)) {
     const r = await resolveKieKey(ctx, tempKey ?? null); // throwing：含三种 key 优先级 + 各自权限门控
     return invokeLLM({ ...params, kieApiKey: r.key });
+  }
+  // 自定义模型（custom_openai / custom_claude）：从请求头解析「前端录入」的密钥与底层模型名。
+  // 权限门控与 kie 同理——用户自带 key（前端录入）= 自费，放行；回退后端 env（平台 key）则需过
+  // LLM 白名单门控（防非白名单用户白嫖平台配置的 OpenAI/Anthropic key）。
+  if (params.customApiKey === undefined && isCustomLLMModel(params.model)) {
+    const spec = CUSTOM_LLM_MODELS[params.model!];
+    const h = ctx.req?.headers ?? {};
+    const headerKey = typeof h[spec.keyHeader] === "string" ? (h[spec.keyHeader] as string).trim() : "";
+    const headerModel = typeof h[spec.modelHeader] === "string" ? (h[spec.modelHeader] as string).trim() : "";
+    if (!headerKey) await assertLLMAllowed(ctx, params.model); // 无自带 key → 用 env 平台 key，须门控
+    return invokeLLM({ ...params, customApiKey: headerKey || undefined, customModel: headerModel || undefined });
   }
   // 非 kie 模型走平台自有 env key——invokeLLM 只校验 env key 是否存在，不做用户白名单。
   // 故必须在此补 LLM 白名单门控，否则非白名单用户只要传一个非 kie 模型 id，即可绕过管理员

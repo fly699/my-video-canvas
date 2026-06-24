@@ -1171,14 +1171,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     if (createTaskMutation.isPending) return;
     if (payload.status === "processing") return;
     if (!payload.prompt?.trim()) { toast.error("请填写提示词"); return; }
-    if (REQUIRES_REFERENCE_IMAGE.has(payload.provider) && !payload.referenceImageUrl?.trim()) {
+    // 解析最终参考图（含连线角色/场景参考图、上游图像节点兜底）后再校验——
+    // 否则「连了角色节点但没手填 referenceImageUrl」会被误判为缺参考图（数字人/图生视频常见）。
+    const { prompt: finalPrompt, referenceImageUrl: finalRefImage } = composeSubmissionContext();
+    if (REQUIRES_REFERENCE_IMAGE.has(payload.provider) && !finalRefImage?.trim()) {
       toast.error("该模型需要参考图 URL"); return;
     }
     // Veo 3.1 首帧约束模式需要参考图
-    if (payload.provider === "poyo_veo" && payload.params?.generation_type === "frame" && !payload.referenceImageUrl?.trim()) {
+    if (payload.provider === "poyo_veo" && payload.params?.generation_type === "frame" && !finalRefImage?.trim()) {
       toast.error("Veo 3.1 首帧约束模式需要提供参考图 URL"); return;
     }
-    if (payload.referenceImageUrl && !isSafeMediaUrl(payload.referenceImageUrl)) {
+    if (finalRefImage && !isSafeMediaUrl(finalRefImage)) {
       toast.error("参考图 URL 仅支持 http(s) 或相对路径"); return;
     }
     // If parallel mode was closed while requests were in-flight, the counter may
@@ -1187,8 +1190,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     // Fire-and-forget — first submit prompts the user to allow notifications
     // so the completion alert can reach them on backgrounded tabs.
     void ensureNotificationPermission();
-
-    const { prompt: finalPrompt, referenceImageUrl: finalRefImage } = composeSubmissionContext();
 
     const refMedia = collectRefMedia(payload.provider);
     const submit = () => createTaskMutation.mutate({
@@ -1727,16 +1728,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                 onClick={() => {
                   if (createTaskMutation.isPending) return;
                   if (!(payload.prompt?.trim())) { toast.error("请先填写提示词"); return; }
-                  // Block submit if any selected parallel provider requires a reference image but none is set
-                  if (!payload.referenceImageUrl?.trim() && parallelProviders.some((p) => REQUIRES_REFERENCE_IMAGE.has(p))) {
-                    toast.error("已选择的图生视频模型需要参考图 URL"); return;
-                  }
                   // Compose ONCE so all parallel providers see the same
                   // character-augmented prompt. Previously this branch sent
                   // payload.prompt verbatim, silently skipping connected
                   // character nodes — parallel mode produced different prompts
                   // than single mode for the same node configuration.
                   const submission = composeSubmissionContext();
+                  // Block submit if any selected parallel provider requires a reference image
+                  // but none is resolvable. Check the COMPOSED image (含连线角色/上游图像兜底),
+                  // not just payload.referenceImageUrl——否则连了角色却被误判缺图。
+                  if (!submission.referenceImageUrl?.trim() && parallelProviders.some((p) => REQUIRES_REFERENCE_IMAGE.has(p))) {
+                    toast.error("已选择的图生视频模型需要参考图 URL"); return;
+                  }
                   // Representative provider for the reachability warning: pick any
                   // URL-only (poyo_/hf_) provider so the guard fires if ANY of the
                   // parallel targets can't fetch the reference image.

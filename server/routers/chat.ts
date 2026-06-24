@@ -39,6 +39,7 @@ import { assertLLMAllowed } from "../_core/whitelist";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
 import { isKieLLMModel } from "../_core/kieLLM";
+import { isCustomLLMModel } from "../_core/customLlm";
 import { isSelfHostedLlmModel } from "../_core/selfHostedLlm";
 import { parseDocumentToText, isParsableDocument } from "../_core/documentParse";
 import type { ChatWireMessage, ChatFileRef } from "../../shared/types";
@@ -350,8 +351,9 @@ export const chatRouter = router({
       if (await isChatBanned(ctx.user.id, conv.id)) throw new TRPCError({ code: "FORBIDDEN", message: "你已被封禁" });
       if (!input.content.trim() && !input.attachmentIds?.length) throw new TRPCError({ code: "BAD_REQUEST", message: "请输入内容或附件" });
 
-      // 权限门控：kie 模型走自有 key 体系（resolveKieKey 内含权限校验）；其余 LLM 受白名单/LLM 门控。
-      if (!isKieLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
+      // 权限门控：kie 模型走自有 key 体系（resolveKieKey 内含权限校验）；自定义模型走自带 key 体系
+      // （invokeLLMWithKie 内：自带 key 放行 / env 兜底门控）；其余 LLM 受白名单/LLM 门控。
+      if (!isKieLLMModel(input.model) && !isCustomLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
 
       // 0) 解析本会话内的附件（仅限当前用户上传到本会话的，杜绝越权引用他人附件）
       let attachments: ChatFileRef[] | null = null;

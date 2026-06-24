@@ -73,6 +73,7 @@ import { isKieImageModel } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo, detectOmnihumanSubjects } from "../_core/kieVideo";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { isKieLLMModel } from "../_core/kieLLM";
+import { isCustomLLMModel } from "../_core/customLlm";
 import { isKieTTS, submitAndPollKieTTS } from "../_core/kieTTS";
 import { submitAndPollKieSFX, KIE_SFX_MODEL } from "../_core/kieSFX";
 import { encryptKieKey, decryptKieKey } from "../_core/kieCrypto";
@@ -1029,12 +1030,13 @@ export const aiChatRouter = router({
       // kie chat models authenticate with their own key (temp > assigned > house)
       // and bypass the LLM whitelist; everything else keeps the LLM gate.
       // 实际的 key 解析与权限门控在下方 invokeLLMWithKie 内统一进行（与所有其它 LLM 入口一致）。
-      if (!isKieLLMModel(input.model)) {
+      if (!isKieLLMModel(input.model) && !isCustomLLMModel(input.model)) {
         // Gate on whitelist before access check so banned users get a uniform
         // "not whitelisted" error rather than a project FORBIDDEN; this also
         // closes the gap that let an editor invoke the LLM without any
         // platform-side limit (all other AI mutations call assertWhitelisted).
         // LLM-scoped gate: respects the admin "open LLM" bypass.
+        // 自定义模型同 kie：自带 key 体系，门控收敛到 invokeLLMWithKie（自带 key 放行 / env 兜底门控）。
         await assertLLMAllowed(ctx, input.model);
       }
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
