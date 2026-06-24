@@ -1523,6 +1523,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         {parallelMode && (
           <div className="flex flex-col gap-2 flex-shrink-0">
             <p style={{ fontSize: 10, color: "var(--c-t4)" }}>选择最多 3 个模型并行生成对比：</p>
+            {/* 并行模式各 provider 参数互不相同，统一用各自默认参数（不沿用上方调过的 params）。 */}
+            <p style={{ fontSize: 9.5, color: "var(--c-t4)", opacity: 0.85 }}>注：并行模式使用各模型的默认参数（不套用上方手动调整的时长/分辨率等）。</p>
             <div className="flex flex-col gap-1">
               {PROVIDERS.filter(p => p.value !== "mock").map((p) => {
                 const checked = parallelProviders.includes(p.value);

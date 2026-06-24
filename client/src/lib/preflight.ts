@@ -33,8 +33,10 @@ export interface PFEdge {
 }
 
 // Node types that consume upstream output and are useless without an input edge.
+// 注：video_task 不在此列——它既可图生(需上游图)也可纯文生(t2v，仅需提示词)，单独判定，
+// 否则一个有提示词、无连线的 t2v 节点会被误报「缺少输入」error。
 const CONSUMER_TYPES: NodeType[] = [
-  "video_task", "merge", "subtitle", "overlay", "clip", "smart_cut", "subtitle_motion",
+  "merge", "subtitle", "overlay", "clip", "smart_cut", "subtitle_motion",
 ];
 
 // Minimal "must be filled" fields per type. Deliberately conservative to avoid
@@ -107,6 +109,10 @@ export function runPreflight(nodes: PFNode[], edges: PFEdge[]): PreflightResult 
     // 2) 缺输入：消费型节点没有上游输入，无法生成。
     else if (CONSUMER_TYPES.includes(t) && inDeg === 0) {
       issues.push({ severity: "error", nodeId: n.id, nodeTitle: n.data.title, message: `「${n.data.title}」缺少输入连接（${t} 需要上游内容才能运行）` });
+    }
+    // 2b) 视频任务：图生(上游/参考图)或文生(提示词)二者皆无 → 无法生成。
+    else if (t === "video_task" && inDeg === 0 && isBlank(p.prompt) && isBlank(p.referenceImageUrl)) {
+      issues.push({ severity: "error", nodeId: n.id, nodeTitle: n.data.title, message: `「${n.data.title}」缺少提示词或输入（视频任务需文字描述或上游图像才能生成）` });
     }
     // 3) 缺参：关键字段为空。
     for (const req of REQUIRED_FIELDS[t] ?? []) {

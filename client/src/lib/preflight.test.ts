@@ -29,12 +29,23 @@ describe("runPreflight", () => {
   });
 
   it("flags consumer node missing input as error", () => {
-    // v (video_task) has an outgoing edge (not orphan) but no incoming → must error.
-    const nodes = [node("v", "video_task"), node("m", "merge")];
-    const r = runPreflight(nodes, [{ source: "v", target: "m" }]);
-    const err = r.issues.find((i) => i.nodeId === "v");
+    // m (merge) has an incoming-less... 用 clip 作纯消费型示例：无输入必 error。
+    const nodes = [node("c", "clip"), node("m", "merge")];
+    const r = runPreflight(nodes, [{ source: "c", target: "m" }]);
+    const err = r.issues.find((i) => i.nodeId === "c");
     expect(err?.severity).toBe("error");
     expect(err?.message).toContain("缺少输入");
+  });
+
+  it("空 video_task（无提示词无输入）报错；有提示词的 t2v 不报错", () => {
+    // 无提示词、无输入 → error。
+    const empty = [node("v", "video_task"), node("m", "merge")];
+    const r1 = runPreflight(empty, [{ source: "v", target: "m" }]);
+    expect(r1.issues.find((i) => i.nodeId === "v")?.severity).toBe("error");
+    // 有提示词、无输入(纯文生 t2v) → 不应有该节点的 error。
+    const t2v = [node("v", "video_task", { prompt: "一只猫在跳舞" }), node("m", "merge")];
+    const r2 = runPreflight(t2v, [{ source: "v", target: "m" }]);
+    expect(r2.issues.find((i) => i.nodeId === "v" && i.severity === "error")).toBeUndefined();
   });
 
   it("flags missing required field", () => {
