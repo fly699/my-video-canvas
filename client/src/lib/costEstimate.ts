@@ -96,6 +96,8 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   // Kling 2.1：价格表 标准 5s25/10s50（5/s）· 专业 5s50/10s100（10/s）。
   kie_kling21_std: (p) => pt(5 * num(p, "duration", 5)),
   kie_kling21_pro: (p) => pt(10 * num(p, "duration", 5)),
+  kie_kling21_master_t2v: (p) => pt(32 * num(p, "duration", 5)), // 5s 160 / 10s 320
+  kie_kling21_master_i2v: (p) => pt(32 * num(p, "duration", 5)),
   // Wan 2.2 turbo：价格表按整条计（5s 固定）480p 40 / 720p 80 点。
   kie_wan22_t2v: (p) => pt(str(p, "resolution", "720p") === "480p" ? 40 : 80),
   kie_wan22_i2v: (p) => pt(str(p, "resolution", "720p") === "480p" ? 40 : 80),

@@ -229,6 +229,19 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ref: { key: "image_url", array: false, required: true }, negPrompt: true,
     creditNote: "专业 5s 50 / 10s 100 点·条",
   },
+  // Kling 2.1 Master（旗舰画质档，docs/kie-api.md kling/v2-1-master-*；计价 kie-pricing.md:580-586）
+  kie_kling21_master_t2v: {
+    wire: "kling/v2-1-master-text-to-video", endpoint: "jobs", label: "Kling 2.1 Master 文生视频", family: "Kling",
+    params: [{ key: "duration", type: "str", def: "5" }, { key: "aspect_ratio", type: "str", def: "16:9" }, { key: "cfg_scale", type: "num" }],
+    negPrompt: true,
+    creditNote: "5s 160 / 10s 320 点·条",
+  },
+  kie_kling21_master_i2v: {
+    wire: "kling/v2-1-master-image-to-video", endpoint: "jobs", label: "Kling 2.1 Master 图生视频", family: "Kling",
+    params: [{ key: "duration", type: "str", def: "5" }, { key: "cfg_scale", type: "num" }],
+    ref: { key: "image_url", array: false, required: true }, negPrompt: true,
+    creditNote: "5s 160 / 10s 320 点·条",
+  },
   kie_wan22_t2v: {
     wire: "wan/2-2-a14b-text-to-video-turbo", endpoint: "jobs", label: "Wan 2.2 文生视频(快)", family: "Wan",
     params: [

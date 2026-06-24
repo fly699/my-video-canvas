@@ -54,7 +54,7 @@ const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   "poyo_kling21_std", "poyo_kling21_pro",
   "poyo_wan27_i2v", "poyo_wan22_i2v_fast",
   // kie 第二批 i2v（需起始帧/参考图）
-  "kie_kling21_std", "kie_kling21_pro", "kie_wan22_i2v", "kie_wan27_i2v",
+  "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_i2v", "kie_wan22_i2v", "kie_wan27_i2v",
   "kie_hailuo02_pro_i2v", "kie_grok_i2v", "kie_happyhorse_i2v",
   // kie 第三批（图 + 视频/音频，至少需要图片）
   "kie_kling26_motion", "kie_kling30_motion", "kie_kling_avatar_std", "kie_kling_avatar_pro",
@@ -207,7 +207,7 @@ const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   "poyo_kling21_std", "poyo_kling21_pro", "poyo_kling25_turbo",
   // kie: Kling 2.5 Turbo + Wan 2.5 document negative_prompt.
   "kie_kling25turbo_t2v", "kie_kling25turbo_i2v", "kie_wan25_t2v", "kie_wan25_i2v",
-  "kie_kling21_std", "kie_kling21_pro",
+  "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_t2v", "kie_kling21_master_i2v",
 ]);
 
 /** The exact payload patch applied when the video provider/model changes: switch
@@ -465,6 +465,10 @@ const cfgDef: ParamDef = { type: "range", key: "cfg_scale", label: "灵活度 cf
 const KIE_KLING21_PARAMS: ParamDef[] = [
   { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 }, cfgDef,
 ];
+const KIE_KLING_MASTER_T2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 }, cfgDef,
+];
 const KIE_WAN22_T2V_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_WAN22 },
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_2 },
@@ -665,6 +669,8 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   // ── kie 视频 第二批 ──
   kie_kling21_std: KIE_KLING21_PARAMS,
   kie_kling21_pro: KIE_KLING21_PARAMS,
+  kie_kling21_master_t2v: KIE_KLING_MASTER_T2V_PARAMS,
+  kie_kling21_master_i2v: KIE_KLING21_PARAMS,
   kie_wan22_t2v: KIE_WAN22_T2V_PARAMS,
   kie_wan22_i2v: KIE_WAN22_I2V_PARAMS,
   kie_wan27_t2v: KIE_WAN27_T2V_PARAMS,

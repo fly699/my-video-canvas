@@ -201,6 +201,8 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "kie_gpt_image_15",      label: "GPT Image 1.5",      desc: "最佳文字 · logo",   group: "Kie", family: "GPT Image",   provider: "Kie", costNote: "4 点/张", caps: ["T2I"] },
   { value: "kie_gpt_image_15_edit", label: "GPT Image 1.5 编辑", desc: "图生图 · 需参考图",  group: "Kie", family: "GPT Image",   provider: "Kie", costNote: "4 点/张", caps: ["I2I", "编辑"], requiresRef: true },
   { value: "kie_imagen4",           label: "Imagen 4",           desc: "Google · 通用",     group: "Kie", family: "Imagen",      provider: "Kie", costNote: "4-12 点/张", caps: ["T2I"] },
+  { value: "kie_imagen4_fast",      label: "Imagen 4 Fast",      desc: "Google · 快",       group: "Kie", family: "Imagen",      provider: "Kie", costNote: "4 点/张",  caps: ["T2I"] },
+  { value: "kie_imagen4_ultra",     label: "Imagen 4 Ultra",     desc: "Google · 超清",     group: "Kie", family: "Imagen",      provider: "Kie", costNote: "12 点/张", caps: ["T2I"] },
   { value: "kie_z_image",           label: "Z-Image",            desc: "超快 · 风格化",     group: "Kie", family: "Z-Image",     provider: "Kie", costNote: "0.8 点/张", caps: ["T2I"] },
   { value: "kie_grok_image",        label: "Grok Image",         desc: "xAI · 高对比",      group: "Kie", family: "Grok",        provider: "Kie", costNote: "≈1 点/张", caps: ["T2I"] },
   // ── kie 第二批扩充 ──
@@ -256,6 +258,8 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   // ── kie 视频 第二批扩充 ──
   { value: "kie_kling21_std",         label: "Kling 2.1 标准",      group: "Kie", family: "Kling",    costLabel: "标准 5s 25/10s 50 点",  caps: ["I2V", "5/10s"] },
   { value: "kie_kling21_pro",         label: "Kling 2.1 专业",      group: "Kie", family: "Kling",    costLabel: "专业 5s 50/10s 100 点", caps: ["I2V", "首尾帧"] },
+  { value: "kie_kling21_master_t2v",  label: "Kling 2.1 Master 文生", group: "Kie", family: "Kling",  costLabel: "5s 160/10s 320 点",     caps: ["T2V", "5/10s", "旗舰"] },
+  { value: "kie_kling21_master_i2v",  label: "Kling 2.1 Master 图生", group: "Kie", family: "Kling",  costLabel: "5s 160/10s 320 点",     caps: ["I2V", "5/10s", "旗舰"] },
   { value: "kie_wan22_t2v",           label: "Wan 2.2 文生(快)",    group: "Kie", family: "Wan",      costLabel: "480p 40/720p 80 点", caps: ["T2V", "720p"] },
   { value: "kie_wan22_i2v",           label: "Wan 2.2 图生(快)",    group: "Kie", family: "Wan",      costLabel: "480p 40/720p 80 点", caps: ["I2V", "720p"] },
   { value: "kie_wan27_t2v",           label: "Wan 2.7 文生视频",    group: "Kie", family: "Wan",      costLabel: "720p 16/1080p 24 点·秒", caps: ["T2V", "1080p"] },

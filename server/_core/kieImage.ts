@@ -67,6 +67,9 @@ export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   kie_flux2_pro:        { id: "flux-2/pro-text-to-image", label: "Flux-2 Pro", family: "Flux-2", aspect: "aspect_ratio", aspects: A_FLUX, fixed: { resolution: "1K" } },
   kie_gpt_image_15:     { id: "gpt-image/1.5-text-to-image", label: "GPT Image 1.5", family: "GPT Image", aspect: "aspect_ratio", aspects: A_GPT, fixed: { quality: "medium" } },
   kie_imagen4:          { id: "google/imagen4", label: "Imagen 4", family: "Imagen", aspect: "aspect_ratio", aspects: A_IMAGEN },
+  // Imagen 4 快/超清两档（docs/kie-api.md google/imagen4-fast|ultra；计价 kie-pricing.md:791-792）
+  kie_imagen4_fast:     { id: "google/imagen4-fast", label: "Imagen 4 Fast", family: "Imagen", aspect: "aspect_ratio", aspects: A_IMAGEN },
+  kie_imagen4_ultra:    { id: "google/imagen4-ultra", label: "Imagen 4 Ultra", family: "Imagen", aspect: "aspect_ratio", aspects: A_IMAGEN },
   kie_z_image:          { id: "z-image", label: "Z-Image", family: "Z-Image", aspect: "aspect_ratio", aspects: A_Z },
   kie_grok_image:       { id: "grok-imagine/text-to-image", label: "Grok Image", family: "Grok", aspect: "aspect_ratio", aspects: A_GROK },
   // image-to-image / edit (require reference image — note the field name differs!)

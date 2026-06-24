@@ -98,7 +98,7 @@ export const VIDEO_PROVIDERS = [
   "kie_seedance2",
   "kie_seedance2_fast",
   // ── kie 视频 第二批扩充 ──
-  "kie_kling21_std", "kie_kling21_pro",
+  "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_t2v", "kie_kling21_master_i2v",
   "kie_wan22_t2v", "kie_wan22_i2v",
   "kie_wan27_t2v", "kie_wan27_i2v",
   "kie_hailuo02_std", "kie_hailuo02_pro_t2v", "kie_hailuo02_pro_i2v",
@@ -422,7 +422,7 @@ export type ImageGenModel =
   | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro"
   // kie.ai (unified jobs API) — text-to-image
   | "kie_nano_banana" | "kie_nano_banana_pro" | "kie_seedream_v4" | "kie_seedream_45"
-  | "kie_flux2_pro" | "kie_gpt_image_15" | "kie_imagen4" | "kie_z_image" | "kie_grok_image"
+  | "kie_flux2_pro" | "kie_gpt_image_15" | "kie_imagen4" | "kie_imagen4_fast" | "kie_imagen4_ultra" | "kie_z_image" | "kie_grok_image"
   // kie.ai — image-to-image / edit (require reference image)
   | "kie_nano_banana_edit" | "kie_seedream_v4_edit" | "kie_flux2_pro_i2i" | "kie_gpt_image_15_edit"
   // kie.ai — 第二批扩充
@@ -444,7 +444,7 @@ export const IMAGE_GEN_MODELS = [
   "poyo_z_image", "poyo_grok_image",
   "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro",
   "kie_nano_banana", "kie_nano_banana_pro", "kie_seedream_v4", "kie_seedream_45",
-  "kie_flux2_pro", "kie_gpt_image_15", "kie_imagen4", "kie_z_image", "kie_grok_image",
+  "kie_flux2_pro", "kie_gpt_image_15", "kie_imagen4", "kie_imagen4_fast", "kie_imagen4_ultra", "kie_z_image", "kie_grok_image",
   "kie_nano_banana_edit", "kie_seedream_v4_edit", "kie_flux2_pro_i2i", "kie_gpt_image_15_edit",
   "kie_nano_banana_2", "kie_flux2_flex", "kie_flux2_flex_i2i",
   "kie_gpt_image_2", "kie_gpt_image_2_i2i", "kie_seedream_5lite", "kie_seedream_5lite_i2i",
