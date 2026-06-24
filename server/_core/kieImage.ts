@@ -105,6 +105,16 @@ const SEEDREAM_SIZE: Record<string, string> = {
   "4:3": "landscape_4_3", "3:4": "portrait_4_3", "3:2": "landscape_3_2",
   "2:3": "portrait_3_2", "21:9": "landscape_21_9",
 };
+// Ideogram V3 / Qwen text-to-image / Qwen image-edit 的 image_size 枚举只有 6 个基础
+// 令牌（无 *_3_2 / *_21_9，docs/kie-api.md ideogram-v3 / qwen-text-to-image /
+// qwen-image-edit）。用户选 3:2/2:3/21:9 时不能发 landscape_3_2 等（会 422），就近
+// 映射到合法令牌——既不报错也不删用户的比例选项（功能不减）。
+const REDUCED_IMAGE_SIZE: Record<string, string> = {
+  "1:1": "square_hd", "16:9": "landscape_16_9", "9:16": "portrait_16_9",
+  "4:3": "landscape_4_3", "3:4": "portrait_4_3",
+  "3:2": "landscape_4_3", "2:3": "portrait_4_3", "21:9": "landscape_16_9",
+};
+const REDUCED_SIZE_MODELS = new Set(["kie_ideogram_v3", "kie_qwen_image", "kie_qwen_image_edit"]);
 
 export function isKieImageModel(model?: string): boolean {
   return !!model && model in KIE_IMAGE_MODELS;
@@ -161,7 +171,10 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
     // 统一 jobs：参数嵌在 input 内（既有逻辑，零回归）。
     const input: Record<string, unknown> = { prompt: options.prompt };
     if (spec.outFmt) input.output_format = "png";
-    if (spec.aspect === "image_size") input.image_size = (aspect && SEEDREAM_SIZE[aspect]) || "square_hd";
+    if (spec.aspect === "image_size") {
+      const sizeTable = REDUCED_SIZE_MODELS.has(options.model ?? "") ? REDUCED_IMAGE_SIZE : SEEDREAM_SIZE;
+      input.image_size = (aspect && sizeTable[aspect]) || "square_hd";
+    }
     else if (spec.aspect === "image_size_raw") input.image_size = clampAspect("1:1");
     else input.aspect_ratio = clampAspect("1:1");
     if (spec.fixed) for (const [k, v] of Object.entries(spec.fixed)) input[k] = v;

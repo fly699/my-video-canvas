@@ -93,12 +93,15 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
     });
     body = { model: spec.model, system: system || undefined, messages: msgs, max_tokens: maxTokens, stream: false };
   } else if (spec.format === "responses") {
-    // OpenAI Responses API: `input` items with input_text / input_image / output_text.
+    // kie Responses API：请求侧 InputContentItem 的 type 枚举只有 input_text /
+    // input_image / input_file（docs/kie-api.md，无 output_text）——assistant 历史
+    // 文本若发 output_text 会被判非法，故所有角色的文本一律用 input_text；角色由
+    // role 字段区分。
     const input = opts.messages.map((m) => {
       const isAssistant = m.role === "assistant";
       const text = partsToText(m.content);
       const content: unknown[] = [];
-      if (text) content.push({ type: isAssistant ? "output_text" : "input_text", text });
+      if (text) content.push({ type: "input_text", text });
       for (const u of partsImages(m.content)) content.push({ type: "input_image", image_url: u });
       return { role: m.role === "system" ? "system" : (isAssistant ? "assistant" : "user"), content };
     });

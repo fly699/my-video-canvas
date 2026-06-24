@@ -55,15 +55,18 @@ export interface KieVideoSpec {
 // provider (kie_*) → spec. Keys map 1:1 to wire model ids in the docs.
 export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
   // ── Veo 3.1 (dedicated endpoint; dual-mode t2v/i2v via optional imageUrls) ──
+  // Veo /api/v1/veo/generate 的请求体字段是 aspect_ratio(下划线，见 docs/kie-api.md
+  // 的 Node/Python/cURL 三处 quickstart)；此前用驼峰 aspectRatio → 被上游忽略、比例
+  // 永远回退默认 16:9。参考图字段 imageUrls 仍为驼峰(文档示例如此)，勿改。
   kie_veo31_quality: {
     wire: "veo3", endpoint: "veo", label: "Veo 3.1 Quality", family: "Veo",
-    params: [{ key: "aspectRatio", type: "str", def: "16:9" }],
+    params: [{ key: "aspect_ratio", type: "str", def: "16:9" }],
     ref: { key: "imageUrls", array: true, top: true },
     creditNote: "Quality：720p 250 / 1080p 255 / 4K 380 点·条(8s)",
   },
   kie_veo31_fast: {
     wire: "veo3_fast", endpoint: "veo", label: "Veo 3.1 Fast", family: "Veo",
-    params: [{ key: "aspectRatio", type: "str", def: "16:9" }],
+    params: [{ key: "aspect_ratio", type: "str", def: "16:9" }],
     ref: { key: "imageUrls", array: true, top: true },
     creditNote: "Fast：720p 60 / 1080p 65 / 4K 180 点·条(8s)",
   },
@@ -318,15 +321,19 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ],
     creditNote: "720p 28 / 1080p 48 点·秒",
   },
+  // HappyHorse 的「图生」其实是多模态参考生视频 happyhorse/reference-to-video：
+  // reference_image 为 1-9 张数组，prompt 里用 character1/character2… 引用各图
+  // (docs/kie-api.md §138)。此前误用不存在的 happyhorse/image-to-video + 单数
+  // image_url（§137 是报错占位页，无 schema）→ 提交必 400/422。
   kie_happyhorse_i2v: {
-    wire: "happyhorse/image-to-video", endpoint: "jobs", label: "HappyHorse 图生视频", family: "HappyHorse",
+    wire: "happyhorse/reference-to-video", endpoint: "jobs", label: "HappyHorse 参考生视频", family: "HappyHorse",
     params: [
       { key: "resolution", type: "str", def: "1080p" },
       { key: "aspect_ratio", type: "str", def: "16:9" },
       { key: "duration", type: "num", def: 5 },
       { key: "seed", type: "num" },
     ],
-    ref: { key: "image_url", array: false, required: true },
+    ref: { key: "reference_image", array: true, required: true },
     creditNote: "720p 28 / 1080p 48 点·秒",
   },
   // ── 第三批：特殊输入（动作控制 / 数字人 / 替身）──

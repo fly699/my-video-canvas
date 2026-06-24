@@ -64,6 +64,11 @@ type PoyoImageSpec = {
   wire: string;
   edit?: string;       // -edit variant wire name (when image_urls present)
   editOnly?: boolean;  // model is edit-only (image_urls required)
+  /** Unified T2I/I2I models with NO separate -edit wire: the SAME wire auto-switches
+   *  to image-to-image when image_urls is present (docs/poyo-image-api.md §八/速查表:
+   *  z-image / grok-imagine-image=1 张, wan-2.7-image(-pro)=4 张). Value = image_urls
+   *  cap. Without this, the reference图 was silently dropped → 图生图能力丢失。 */
+  unifiedRef?: number;
   sizeMode?: "size" | "aspect_ratio" | false;
   resolution?: boolean;
   quality?: boolean;     // low/medium/high
@@ -71,7 +76,7 @@ type PoyoImageSpec = {
   outputFormat?: boolean;
 };
 
-const POYO_IMAGE_SPECS: Record<string, PoyoImageSpec> = {
+export const POYO_IMAGE_SPECS: Record<string, PoyoImageSpec> = {
   // Nano Banana (Google)
   poyo_nano_banana:     { wire: "nano-banana",     edit: "nano-banana-edit" },
   poyo_nano_banana_2:   { wire: "nano-banana-2",   edit: "nano-banana-2-edit" },
@@ -90,26 +95,26 @@ const POYO_IMAGE_SPECS: Record<string, PoyoImageSpec> = {
   // 4.5 / 5.0-lite: resolution preset is a `size` value (no separate resolution field).
   poyo_seedream:        { wire: "seedream-4.5",      edit: "seedream-4.5-edit",      sizeMode: "size" },
   poyo_seedream_5_lite: { wire: "seedream-5.0-lite", edit: "seedream-5.0-lite-edit", sizeMode: "size" },
-  // Wan (Alibaba) — unified model, auto-edit when image_urls present (no -edit suffix)
-  poyo_wan_image:     { wire: "wan-2.7-image",     sizeMode: "size", n: true },
-  poyo_wan_image_pro: { wire: "wan-2.7-image-pro", sizeMode: "size", n: true },
+  // Wan (Alibaba) — unified model, auto-edit when image_urls present (no -edit suffix; ≤4 ref)
+  poyo_wan_image:     { wire: "wan-2.7-image",     sizeMode: "size", n: true, unifiedRef: 4 },
+  poyo_wan_image_pro: { wire: "wan-2.7-image-pro", sizeMode: "size", n: true, unifiedRef: 4 },
   // Kling (Kuaishou)
   poyo_kling_o1_image: { wire: "kling-o1-image-edit", editOnly: true, sizeMode: "size", resolution: true, n: true, outputFormat: true },
   poyo_kling_o3_image: { wire: "kling-o3-image", edit: "kling-o3-image-edit", sizeMode: "size", resolution: true, n: true, outputFormat: true },
-  // Others — unified models, auto-edit when image_urls present
-  poyo_z_image:    { wire: "z-image",            sizeMode: "size" },
-  poyo_grok_image: { wire: "grok-imagine-image", sizeMode: "size" },
+  // Others — unified models, auto-edit when image_urls present (1 ref image each)
+  poyo_z_image:    { wire: "z-image",            sizeMode: "size", unifiedRef: 1 },
+  poyo_grok_image: { wire: "grok-imagine-image", sizeMode: "size", unifiedRef: 1 },
   // Legacy aliases (kept so old payloads keep routing)
   "gpt-image-2":  { wire: "gpt-image-2", sizeMode: "size", resolution: true, quality: true },
   "seedream-4.5": { wire: "seedream-4.5", sizeMode: "size" },
   "flux-2-pro":   { wire: "flux-2-pro", sizeMode: "aspect_ratio" },
   "flux-2-flex":  { wire: "flux-2-flex", sizeMode: "aspect_ratio" },
-  "wan-2.7-image":      { wire: "wan-2.7-image", sizeMode: "size", n: true },
-  "grok-imagine-image": { wire: "grok-imagine-image", sizeMode: "size" },
+  "wan-2.7-image":      { wire: "wan-2.7-image", sizeMode: "size", n: true, unifiedRef: 4 },
+  "grok-imagine-image": { wire: "grok-imagine-image", sizeMode: "size", unifiedRef: 1 },
 };
 
 // Build the Poyo `input` payload for a model spec from the generic options.
-async function buildPoyoImageInput(spec: PoyoImageSpec, options: GenerateImageOptions): Promise<{ model: string; input: Record<string, unknown> }> {
+export async function buildPoyoImageInput(spec: PoyoImageSpec, options: GenerateImageOptions): Promise<{ model: string; input: Record<string, unknown> }> {
   const input: Record<string, unknown> = { prompt: options.prompt };
 
   // Resolve reference image(s) → absolute URLs Poyo can fetch (our internal
@@ -129,16 +134,17 @@ async function buildPoyoImageInput(spec: PoyoImageSpec, options: GenerateImageOp
   if (spec.n && options.n) input.n = options.n;
   if (spec.outputFormat && options.outputFormat) input.output_format = options.outputFormat;
 
-  // Only attach reference images when the model can actually consume them (it's an
-  // edit/reference model — `editOnly`, or it has an `edit` variant we switch to via
-  // `isEdit`). Plain text-to-image models (z-image / wan-image / grok-image) have no
-  // edit variant; sending `image_urls` there makes Poyo reject the request, so we
-  // drop the reference instead (e.g. a connected character on a non-reference model).
+  // Attach reference images where the model can consume them:
+  //  - Edit-variant models (`editOnly` or `isEdit` switched to the -edit wire) →
+  //    image_urls + legacy reference_image_url。
+  //  - Unified T2I/I2I models (z-image / grok-imagine-image / wan-2.7-image(-pro))
+  //    自动编辑：同一 wire 接收 image_urls 即转图生图，按文档上限截断（docs §八/速查表）。
+  //    此前这些被当成"纯文生"直接丢弃参考图 → 图生图多模态能力丢失，现按文档恢复。
   if (hasRefs && isEdit) {
-    // Edit/unified models read reference images from `image_urls`.
     input.image_urls = refUrls;
-    // Legacy single-ref field kept for models that historically used it.
-    input.reference_image_url = refUrls[0];
+    input.reference_image_url = refUrls[0]; // legacy single-ref field for edit wires
+  } else if (hasRefs && spec.unifiedRef) {
+    input.image_urls = refUrls.slice(0, spec.unifiedRef);
   }
 
   const model = isEdit && spec.edit ? spec.edit : spec.wire;

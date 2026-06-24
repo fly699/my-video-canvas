@@ -35,6 +35,7 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   poyo_wan25_i2v: 1,
   poyo_wan27_t2v: 0,
   poyo_wan27_i2v: 2,     // [0]start [1]end
+  poyo_wan27_ref: 4,     // 参考生：多模态参考图 ≤4（reference_image_urls）
   poyo_wan22_t2v_fast: 0,
   poyo_wan22_i2v_fast: 2,
   // Hailuo

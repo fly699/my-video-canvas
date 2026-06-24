@@ -68,6 +68,22 @@ describe("kie video specs", () => {
     expect(map.get("kie_kling26_t2v")?.needsRef).toBe(false);
     expect(map.get("kie_seedance2")?.needsRef).toBe(false);
   });
+
+  it("Veo 比例参数用 aspect_ratio（下划线，文档请求体字段；驼峰会被忽略）", () => {
+    for (const k of ["kie_veo31_quality", "kie_veo31_fast"]) {
+      const keys = KIE_VIDEO_SPECS[k].params.map((p) => p.key);
+      expect(keys, `${k} 应含 aspect_ratio`).toContain("aspect_ratio");
+      expect(keys, `${k} 不应再有驼峰 aspectRatio`).not.toContain("aspectRatio");
+    }
+    // Runway / Aleph 是各自专属端点，确属驼峰 aspectRatio，不受影响。
+    expect(KIE_VIDEO_SPECS.kie_runway45.params.map((p) => p.key)).toContain("aspectRatio");
+  });
+
+  it("HappyHorse 参考生：wire=reference-to-video，reference_image 为必填数组（多模态 1-9 图）", () => {
+    const s = KIE_VIDEO_SPECS.kie_happyhorse_i2v;
+    expect(s.wire).toBe("happyhorse/reference-to-video");
+    expect(s.ref).toMatchObject({ key: "reference_image", array: true, required: true });
+  });
 });
 
 import { parseKieJobStatus } from "./_core/kieVideo";
@@ -150,5 +166,25 @@ describe("submitKieVideo — Seedance 参考图走多模态字段（互斥修复
     });
     expect(captured?.input?.image_url).toBe("https://cdn.example.com/a.png");
     expect(captured?.input?.reference_image_urls).toBeUndefined();
+  });
+
+  it("HappyHorse 参考生：wire=reference-to-video，reference_image 以数组下发（多图主体引用）", async () => {
+    await submitKieVideo({
+      provider: "kie_happyhorse_i2v", prompt: "character1 与 character2 同框", apiKey: "k",
+      referenceImageUrls: ["https://cdn.example.com/c1.png", "https://cdn.example.com/c2.png"],
+      params: { resolution: "1080p", aspect_ratio: "16:9", duration: 5 },
+    });
+    expect(captured?.model).toBe("happyhorse/reference-to-video");
+    expect(captured?.input?.reference_image).toEqual(["https://cdn.example.com/c1.png", "https://cdn.example.com/c2.png"]);
+  });
+
+  it("Veo：aspect_ratio 平铺到 body 顶层（snake_case，文档请求体字段）", async () => {
+    await submitKieVideo({
+      provider: "kie_veo31_fast", prompt: "p", apiKey: "k",
+      params: { aspect_ratio: "9:16" },
+    });
+    expect(captured?.model).toBe("veo3_fast");
+    expect((captured as Record<string, unknown>)?.aspect_ratio).toBe("9:16");
+    expect((captured as Record<string, unknown>)?.aspectRatio).toBeUndefined();
   });
 });

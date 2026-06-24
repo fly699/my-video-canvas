@@ -757,6 +757,8 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
       { key: "bgMusicUrl", type: "text", label: "背景音乐 URL", placeholder: "背景音乐 URL（可选）", width: 160 },
       { key: "bgMusicVolume", type: "number", label: "配乐音量", min: 0, max: 1, step: 0.1, default: 0.3, width: 84 },
       { key: "burnShotSubtitles", type: "toggle", label: "烧录分镜字幕" },
+      // 字幕字号：此前 MergeNode 读 payload.subFontSize 烧录字幕，但无任何控件可设 → 永远落服务端默认。
+      { key: "subFontSize", type: "number", label: "字幕字号", min: 12, max: 48, step: 1, default: 24, width: 84, when: (p) => !!p.burnShotSubtitles },
     ],
   },
   subtitle: {

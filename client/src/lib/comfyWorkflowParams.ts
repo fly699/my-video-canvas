@@ -11,7 +11,10 @@ import { compareUpstreamNodes } from "./inputOrder";
 type MiniNode = { id: string; data: { nodeType: string; payload?: unknown; title?: string }; position?: { y?: number } };
 type MiniEdge = { source: string; target: string };
 
-const IMAGE_SOURCE_TYPES = new Set(["image_gen", "comfyui_image", "storyboard", "comfyui_workflow", "asset"]);
+// 图源类型：含「推送式」会写下游参考图的 image_edit / pose_control（其结果图在
+// outputUrl/outputImageUrl），使拉取式回溯与推送式覆盖的源集合对齐，避免连了图像
+// 编辑/构图控制却在参考图拉取时认不出来。post_process 产出的是文本提示词，非图，故不含。
+const IMAGE_SOURCE_TYPES = new Set(["image_gen", "comfyui_image", "storyboard", "comfyui_workflow", "asset", "image_edit", "pose_control"]);
 
 /** Pick a node's image-output URL regardless of which field/type it uses. */
 function getNodeImageUrl(nodeType: string, payload: Record<string, unknown>): string | undefined {
@@ -23,7 +26,7 @@ function getNodeImageUrl(nodeType: string, payload: Record<string, unknown>): st
   // comfyui_workflow stores its result in outputUrl, but only treat it as an
   // image when the run produced images (not a video).
   if (nodeType === "comfyui_workflow" && payload.outputType === "video") return undefined;
-  return (payload.imageUrl ?? payload.outputUrl) as string | undefined;
+  return (payload.imageUrl ?? payload.outputImageUrl ?? payload.outputUrl) as string | undefined;
 }
 
 /** Auto-detect the first image URL from nodes connected into targetId. */
@@ -134,10 +137,13 @@ export function listUpstreamAudioSources(targetId: string, edges: MiniEdge[], no
   return out;
 }
 
-// ── Video params — 与 audio 完全对称（视频任务输出 / comfy 视频 / 素材[视频]）─────
-const VIDEO_SOURCE_TYPES = new Set(["video_task", "comfyui_video", "asset"]);
+// ── Video params ─────────────────────────────────────────────────────────────
+// 视频源类型：必须与 useWorkflowRunner.ts / MergeNode.tsx 的 VIDEO_SOURCE_TYPES 一致
+// （三处同集合，否则某类视频源在「参考视频收集」处被静默漏掉）。含应用内合成产出节点
+// clip/merge/overlay/subtitle/subtitle_motion/smart_cut 及 comfyui_workflow(video)。
+const VIDEO_SOURCE_TYPES = new Set(["video_task", "comfyui_video", "asset", "clip", "merge", "overlay", "subtitle", "subtitle_motion", "smart_cut", "comfyui_workflow"]);
 
-/** Pick a node's video-output URL（video_task / comfyui_video / 素材[视频]）。 */
+/** Pick a node's video-output URL（含所有合成类视频节点的 outputUrl）。 */
 function getNodeVideoUrl(nodeType: string, payload: Record<string, unknown>): string | undefined {
   if (nodeType === "asset") {
     const mt = payload.mimeType as string | undefined;
@@ -145,11 +151,12 @@ function getNodeVideoUrl(nodeType: string, payload: Record<string, unknown>): st
     if ((mt && !mt.startsWith("video/")) || (t && t !== "video")) return undefined;
     return payload.url as string | undefined;
   }
-  if (nodeType === "video_task" || nodeType === "comfyui_video") {
-    const u = (payload.resultVideoUrl ?? payload.outputUrl ?? payload.url) as string | undefined;
-    return typeof u === "string" && u.trim() ? u : undefined;
-  }
-  return undefined;
+  // comfyui_workflow 只有产出视频时才算视频源（与 getNodeImageUrl 的 kind 守卫对称）。
+  if (nodeType === "comfyui_workflow" && payload.outputType !== "video") return undefined;
+  // video_task / comfyui_video 用 resultVideoUrl；clip/merge/overlay/subtitle*/smart_cut/
+  // comfyui_workflow 用 outputUrl —— 统一回退链覆盖。
+  const u = (payload.resultVideoUrl ?? payload.outputUrl ?? payload.url) as string | undefined;
+  return typeof u === "string" && u.trim() ? u : undefined;
 }
 
 export interface UpstreamVideoSource { id: string; title: string; url: string }

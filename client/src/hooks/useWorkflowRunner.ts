@@ -10,6 +10,7 @@ import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../lib/characterPrompt";
+import { collectVideoRefMedia } from "../lib/videoRefMedia";
 
 export type NodeRunPhase = "pending" | "running" | "done" | "failed" | "skipped";
 
@@ -484,6 +485,12 @@ export function useWorkflowRunner() {
             ? (providerValue as VideoProvider)
             : "poyo_seedance";
 
+          // 多模态参考视频/音频 + reference 模式：与逐节点「生成」按钮(collectRefMedia/
+          // refModeForSubmit)同口径，否则「运行全部」会丢掉连线的参考视频/音频与 reference
+          // 模式，多模态模型(Seedance-2/Wan-2.7 等)静默退化、却照常扣费。
+          const refMedia = collectVideoRefMedia(nodeId, rawPrompt, provider, edges, useCanvasStore.getState().nodes);
+          // 角色/场景参考图存在（即无手动/上游首帧图）→ 这些是主体参考，走 reference 模式。
+          const referenceMode = charRefs.length > 0 ? ("reference" as const) : undefined;
           const task = await videoTaskMutation.mutateAsync({
             projectId: node.data.projectId,
             nodeId,
@@ -491,6 +498,9 @@ export function useWorkflowRunner() {
             prompt: ci.prompt || "cinematic video",
             referenceImageUrl: primaryRef || charRefs[0] || undefined,
             referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
+            referenceVideoUrls: refMedia.videoRefs,
+            referenceAudioUrls: refMedia.audioRefs,
+            referenceMode,
             params: (p.params as Record<string, unknown>) || {},
           });
           useCanvasStore
@@ -519,6 +529,21 @@ export function useWorkflowRunner() {
           }
           // Fall back to edge-connected audio node when inputAudioUrl is not stored in payload
           const audioUrl = (p.inputAudioUrl as string) || detectBgMusicUrl(nodeId, es, ns) || undefined;
+          // 与逐节点「剪辑」按钮同口径：批量运行也带上旋转/翻转/裁切比例/淡入淡出/调色/
+          // 响度标准化/分辨率·帧率等高级设置，否则「运行全部」会把它们全丢成默认。
+          const clipEdit: Record<string, unknown> = {
+            reverse: p.reverse || undefined, rotate: p.rotate || undefined,
+            flipH: p.flipH || undefined, flipV: p.flipV || undefined,
+            brightness: p.brightness ?? undefined, contrast: p.contrast ?? undefined, saturation: p.saturation ?? undefined,
+            aspect: p.aspect && p.aspect !== "original" ? p.aspect : undefined,
+            fadeIn: p.fadeIn || undefined, fadeOut: p.fadeOut || undefined,
+            muteOriginal: p.muteOriginal || undefined, originalVolume: p.originalVolume ?? undefined,
+            originalIsVoice: p.originalIsVoice || undefined, denoiseAudio: p.denoiseAudio || undefined,
+          };
+          const hasClipEdit = Object.values(clipEdit).some((v) => v !== undefined);
+          const clipOut = p.output as { resolution?: "source" | "720p" | "1080p" | "4k"; fps?: number; format?: "mp4" | "webm"; upscale?: 2 | 4 | 6; fpsInterpolate?: boolean } | undefined;
+          const clipOutput = clipOut && ((clipOut.resolution && clipOut.resolution !== "source") || clipOut.fps || (clipOut.format && clipOut.format !== "mp4"))
+            ? clipOut : undefined;
           const result = await clipMutation.mutateAsync({
             inputUrl,
             startTime,
@@ -526,6 +551,11 @@ export function useWorkflowRunner() {
             speed: typeof p.speed === "number" && Math.abs(p.speed - 1.0) > 0.01 ? p.speed : undefined,
             audioUrl,
             audioVolume: typeof p.audioVolume === "number" ? p.audioVolume : undefined,
+            colorPreset: typeof p.colorPreset === "string" && p.colorPreset !== "none" ? p.colorPreset as "cinematic" : undefined,
+            loudnorm: (p.loudnorm as boolean) || undefined,
+            ducking: (p.ducking as boolean) || undefined,
+            ...(hasClipEdit ? { edit: clipEdit } : {}),
+            ...(clipOutput ? { output: clipOutput } : {}),
           });
           useCanvasStore.getState().updateNodeData(nodeId, {
             outputUrl: result.url,
@@ -546,10 +576,19 @@ export function useWorkflowRunner() {
             failed.push(nodeId);
             return "fail";
           }
+          // 与逐节点「合并」按钮同口径：若已「按镜头表装配」(有 segTransitions)，批量运行
+          // 也带上逐切点转场 + 逐段配音/音效，否则成片退化成「全局单转场、无配音」。
+          const segTransitions = p.segTransitions as string[] | undefined;
+          const aligned = !!segTransitions;
           const result = await mergeMutation.mutateAsync({
             inputUrls,
             transition: (p.transition as "none" | "fade" | "dissolve") || undefined,
             transitionDuration: typeof p.transitionDuration === "number" ? p.transitionDuration : undefined,
+            ...(aligned ? {
+              transitions: segTransitions.slice(0, inputUrls.length - 1) as ("none" | "fade" | "dissolve")[],
+              voiceUrls: (p.voiceUrls as string[] | undefined)?.slice(0, inputUrls.length),
+              sfxUrls: (p.sfxUrls as string[] | undefined)?.slice(0, inputUrls.length),
+            } : {}),
             bgMusicUrl: (p.bgMusicUrl as string) || detectBgMusicUrl(nodeId, es, ns) || undefined,
             bgMusicVolume: typeof p.bgMusicVolume === "number" ? p.bgMusicVolume : undefined,
           });

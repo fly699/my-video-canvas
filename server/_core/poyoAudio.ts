@@ -181,7 +181,9 @@ export async function submitAndPollPoyoMusic(
 
   // ── MiniMax Music 2.6 — standard status endpoint ──
   if (opts.model === "minimax-music-2.6") {
-    const input: Record<string, unknown> = { prompt: opts.prompt };
+    // docs/poyo-music-api.md：prompt 必填且 10-2000 字符。超 2000 会被上游 400，
+    // 故截断到 2000（下限 10 由用户输入保证，过短时上游会提示）。
+    const input: Record<string, unknown> = { prompt: opts.prompt.slice(0, 2000) };
     // Docs require at least one of lyrics / is_instrumental / lyrics_optimizer.
     if (opts.lyrics) {
       input.lyrics = opts.lyrics.slice(0, 3500);
