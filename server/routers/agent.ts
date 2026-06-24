@@ -3,6 +3,7 @@ import { FACTORY_DEFAULT_MODELS } from "../../shared/nodeDefaultModels";
 import { router, protectedProcedure } from "../_core/trpc";
 import { assertProjectAccess } from "../_core/permissions";
 import { assertLLMAllowed } from "../_core/whitelist";
+import { isCustomLLMModel } from "../_core/customLlm";
 import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { catalogText, sanitizeOperationDetailed, templateKnowledgeText } from "../_core/agentCatalog";
@@ -44,7 +45,8 @@ export const agentRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      await assertLLMAllowed(ctx, input.model);
+      // 自定义模型走自带 key 体系：门控收敛到 invokeLLMWithKie（自带 key 放行 / env 兜底门控）。
+      if (!isCustomLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
 
       const model = input.model ?? FACTORY_DEFAULT_MODELS.llm;
 
@@ -287,7 +289,7 @@ ${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.pre
     )
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      await assertLLMAllowed(ctx, input.model);
+      if (!isCustomLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
       const model = input.model ?? FACTORY_DEFAULT_MODELS.llm;
       const system = `你是短视频分镜编剧。根据给定的视频类型与主题，输出恰好 ${input.shots} 个镜头的中文画面描述。要求：每条 15-40 字，具体可拍（画面主体 / 动作 / 环境 / 镜头语言），按叙事顺序连贯推进，不要编号前缀。严格只输出一个 JSON 字符串数组，例如 ["镜头1描述","镜头2描述"]，不要 markdown、不要任何多余文字。`;
       const user = `视频类型：${input.recipeName}\n主题：${input.topic?.trim() || "（未指定，请自拟一个吸引人的主题）"}${input.style?.trim() ? `\n风格：${input.style.trim()}` : ""}\n镜头数：${input.shots}`;

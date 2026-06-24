@@ -27,6 +27,7 @@ import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels"
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
 import { KieBalanceDashboard } from "../components/KieBalanceDashboard";
+import { CustomLlmKeyDashboard } from "../components/CustomLlmKeyDashboard";
 import { RunStatusBar } from "../components/canvas/RunStatusBar";
 import { CustomNode } from "../components/canvas/CustomNode";
 import { ComfyServerStatusIndicator } from "../components/canvas/ComfyServerStatusIndicator";
@@ -1738,6 +1739,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         <PoyoBalanceDashboard />
         <KieBalanceDashboard />
+        <CustomLlmKeyDashboard />
 
         <div className="flex-1" />
 

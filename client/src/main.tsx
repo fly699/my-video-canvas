@@ -58,10 +58,23 @@ const trpcClient = trpc.createClient({
       transformer: superjson,
       // 全局透传用户的 kie 临时 key（工具栏填写的，存 localStorage）。这样所有用到 kie 的
       // 后端入口（不只 AI 对话）都能用「临时 > 分配 > 公用」的优先级，无需每个接口单独传。
+      // 同理透传「自定义模型」的自带 key 与底层模型名（custom_openai / custom_claude）：
+      // 前端工具栏录入存 localStorage，经请求头到达 invokeLLMWithKie（前端 key 优先，否则回退后端 env）。
       headers() {
-        let t = "";
-        try { t = localStorage.getItem("kie:tempKey") || ""; } catch { /* SSR/无 localStorage */ }
-        return t ? { "x-kie-temp-key": t } : {};
+        const h: Record<string, string> = {};
+        try {
+          const t = localStorage.getItem("kie:tempKey") || "";
+          if (t) h["x-kie-temp-key"] = t;
+          const ok = localStorage.getItem("custom:openaiKey") || "";
+          if (ok) h["x-openai-key"] = ok;
+          const om = localStorage.getItem("custom:openaiModel") || "";
+          if (om) h["x-openai-model"] = om;
+          const ck = localStorage.getItem("custom:anthropicKey") || "";
+          if (ck) h["x-anthropic-key"] = ck;
+          const cm = localStorage.getItem("custom:anthropicModel") || "";
+          if (cm) h["x-anthropic-model"] = cm;
+        } catch { /* SSR/无 localStorage */ }
+        return h;
       },
       fetch(input, init) {
         return globalThis.fetch(input, {

@@ -1,5 +1,6 @@
 import { ENV } from "./env";
 import { isKieLLMModel, invokeKieLLM, type OAMessage } from "./kieLLM";
+import { isCustomLLMModel, invokeCustomLLM, CUSTOM_LLM_MODELS } from "./customLlm";
 import { isSelfHostedLlmModel, getSelfHostedConfig } from "./selfHostedLlm";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
@@ -72,6 +73,11 @@ export type InvokeParams = {
   /** kie.ai 自有对话模型（kie_*）用的密钥；由调用方按「临时>分配>公用」解析后传入。
    *  缺省时回退公用 key（KIE_API_KEY）。非 kie 模型忽略此字段。 */
   kieApiKey?: string;
+  /** 自定义模型（custom_openai / custom_claude）的前端录入密钥；缺省回退后端 env。
+   *  由 invokeLLMWithKie 从请求头解析后传入。非自定义模型忽略。 */
+  customApiKey?: string;
+  /** 自定义模型的底层模型名覆盖（前端录入）；缺省回退 env 覆盖，再回退默认。 */
+  customModel?: string;
 };
 
 export type ToolCall = {
@@ -313,6 +319,9 @@ export const AVAILABLE_MODELS = [
   { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", tag: "智能" },
   { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  tag: "快速" },
   { id: "gpt-5.2",                    label: "GPT-5.2",           tag: "强力" },
+  // 自定义模型（用户自带 key，直连官方端点）。
+  { id: "custom_openai",              label: "ChatGPT（自定义密钥）", tag: "自定义" },
+  { id: "custom_claude",              label: "Claude（自定义密钥）",  tag: "自定义" },
 ] as const;
 
 export const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
@@ -432,6 +441,27 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     });
     return {
       id: `kie-${Date.now()}`,
+      created: Math.floor(Date.now() / 1000),
+      model: resolvedModel,
+      choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+    };
+  }
+
+  // 自定义模型（custom_openai / custom_claude）：直连官方端点，用「前端录入 > 后端 env」密钥。
+  // 密钥与底层模型名由 invokeLLMWithKie 从请求头解析后注入；这里仅做 env 兜底与调用。
+  if (isCustomLLMModel(resolvedModel)) {
+    const spec = CUSTOM_LLM_MODELS[resolvedModel];
+    const apiKey = params.customApiKey?.trim() || spec.envKey().trim();
+    if (!apiKey) throw new Error(`${spec.label} 需要 API Key——请在工具栏录入，或在后端设置环境变量`);
+    const { text } = await invokeCustomLLM({
+      model: resolvedModel,
+      messages: messages as unknown as OAMessage[],
+      apiKey,
+      maxTokens: params.maxTokens ?? params.max_tokens,
+      modelName: params.customModel?.trim() || spec.envModel().trim() || undefined,
+    });
+    return {
+      id: `custom-${Date.now()}`,
       created: Math.floor(Date.now() / 1000),
       model: resolvedModel,
       choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],

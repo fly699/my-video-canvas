@@ -59,6 +59,11 @@ export const ENV = {
   higgsfieldApiKey: process.env.HIGGSFIELD_API_KEY ?? "",
   higgsfieldApiSecret: process.env.HIGGSFIELD_API_SECRET ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+  // 「自定义模型」后端密钥（可选）：用户也可在前端录入自己的 key（请求头 x-openai-key /
+  // x-anthropic-key），前端优先；都没有则该自定义模型不可用。可选地用 *_MODEL 覆盖默认底层模型名。
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  customOpenaiModel: process.env.OPENAI_MODEL ?? "",
+  customAnthropicModel: process.env.ANTHROPIC_MODEL ?? "",
   comfyuiBaseUrl: process.env.COMFYUI_BASE_URL ?? "",
   // Official ComfyUI cloud (cloud.comfy.org). Opt-in per node via the node's
   // 本地/云端 toggle, and only usable by admins / whitelisted users. The base URL
