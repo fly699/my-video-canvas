@@ -122,6 +122,7 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   kie_happyhorse_i2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 48 : 28) * num(p, "duration", 5)),
   kie_happyhorse11_t2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 44 : 33) * num(p, "duration", 5)),
   kie_happyhorse11_r2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 44 : 33) * num(p, "duration", 5)),
+  kie_happyhorse11_i2v: (p) => pt((str(p, "resolution", "1080p") === "1080p" ? 44 : 33) * num(p, "duration", 5)),
   // 动作控制：价格表 2.6→720p 11/1080p 18 · 3.0→720p 20/1080p 27 点·秒；时长随源视频，按 5s 估。
   kie_kling26_motion: (p) => pt((str(p, "mode", "720p") === "1080p" ? 18 : 11) * 5, true),
   kie_kling30_motion: (p) => pt((str(p, "mode", "720p") === "1080p" ? 27 : 20) * 5, true),

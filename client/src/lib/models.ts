@@ -277,6 +277,7 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "kie_happyhorse_i2v",      label: "HappyHorse 图生视频", group: "Kie", family: "HappyHorse", costLabel: "720p 28/1080p 48 点·秒", caps: ["I2V", "1080p"] },
   { value: "kie_happyhorse11_t2v",    label: "HappyHorse 1.1 文生", group: "Kie", family: "HappyHorse", costLabel: "720p 33/1080p 44 点·秒", caps: ["T2V", "1080p"] },
   { value: "kie_happyhorse11_r2v",    label: "HappyHorse 1.1 参考生", group: "Kie", family: "HappyHorse", costLabel: "720p 33/1080p 44 点·秒", caps: ["参考生", "多模态", "1080p"] },
+  { value: "kie_happyhorse11_i2v",    label: "HappyHorse 1.1 图生", group: "Kie", family: "HappyHorse", costLabel: "720p 33/1080p 44 点·秒", caps: ["I2V", "1080p"] },
   { value: "kie_omnihuman15",         label: "OmniHuman 1.5 数字人", group: "Kie", family: "数字人", costLabel: "27 点·秒", caps: ["数字人", "图+音频", "对口型"] },
   { value: "kie_volcengine_lipsync",  label: "Volcengine 视频对口型", group: "Kie", family: "数字人", costLabel: "8 点·秒", caps: ["对口型", "视频+音频"] },
   // ── kie 视频 第三批：特殊输入（图+视频 / 图+音频）──

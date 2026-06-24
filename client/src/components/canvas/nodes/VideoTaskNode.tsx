@@ -56,7 +56,7 @@ const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   // kie 第二批 i2v（需起始帧/参考图）
   "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_i2v", "kie_wan22_i2v", "kie_wan27_i2v",
   "kie_hailuo02_pro_i2v", "kie_grok_i2v", "kie_happyhorse_i2v",
-  "kie_kling_v3turbo_i2v", "kie_happyhorse11_r2v",
+  "kie_kling_v3turbo_i2v", "kie_happyhorse11_r2v", "kie_happyhorse11_i2v",
   // kie 第三批（图 + 视频/音频，至少需要图片）
   "kie_kling26_motion", "kie_kling30_motion", "kie_kling_avatar_std", "kie_kling_avatar_pro",
   "kie_omnihuman15",  // 数字人：图 + 驱动音频
@@ -406,6 +406,8 @@ const GROK_PARAMS: ParamDef[] = [
 const KIE_RES_WAN = [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
 const KIE_RES_HAILUO = [{ value: "768P", label: "768P" }, { value: "1080P", label: "1080P" }];
 const KIE_RES_SEEDANCE = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }];
+// fast/mini 仅 480p/720p（无 1080p；schema 严格）
+const KIE_RES_SEEDANCE_FAST = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }];
 const KIE_DUR_5_10_15 = [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }, { value: 15, label: "15 秒" }];
 const KIE_AR_SEEDANCE = [
   { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" }, { value: "4:3", label: "4:3 标准" },
@@ -469,6 +471,13 @@ const KIE_SEEDANCE2_PARAMS: ParamDef[] = [
   { type: "range", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s" },
   { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: true },
 ];
+// seedance-2-fast / -mini：分辨率仅 480p/720p（schema 严格，无 1080p）
+const KIE_SEEDANCE2_FAST_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_SEEDANCE_FAST },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: KIE_AR_SEEDANCE },
+  { type: "range", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: true },
+];
 // ── kie 视频 第二批扩充的参数控件 ──
 const KIE_RES_WAN22 = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }];
 const RES_GROK = [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }];
@@ -497,6 +506,11 @@ const KIE_KLING_V3TURBO_I2V_PARAMS: ParamDef[] = [
 const KIE_HAPPYHORSE11_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_5 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+];
+// HappyHorse 1.1 图生视频：无 aspect_ratio（schema 严格）
+const KIE_HAPPYHORSE11_I2V_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
 ];
 // OmniHuman 1.5 数字人（output_resolution 枚举 "720"/"1080"，非 720p）
@@ -712,8 +726,8 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_hailuo23_pro: KIE_HAILUO23_PARAMS,
   kie_hailuo23_std: KIE_HAILUO23_PARAMS,
   kie_seedance2: KIE_SEEDANCE2_PARAMS,
-  kie_seedance2_fast: KIE_SEEDANCE2_PARAMS,
-  kie_seedance2_mini: KIE_SEEDANCE2_PARAMS,
+  kie_seedance2_fast: KIE_SEEDANCE2_FAST_PARAMS,
+  kie_seedance2_mini: KIE_SEEDANCE2_FAST_PARAMS,
   kie_kling_v3turbo_t2v: KIE_KLING_V3TURBO_T2V_PARAMS,
   kie_kling_v3turbo_i2v: KIE_KLING_V3TURBO_I2V_PARAMS,
   // ── kie 视频 第二批 ──
@@ -734,6 +748,7 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_happyhorse_i2v: KIE_HAPPYHORSE_PARAMS,
   kie_happyhorse11_t2v: KIE_HAPPYHORSE11_PARAMS,
   kie_happyhorse11_r2v: KIE_HAPPYHORSE11_PARAMS,
+  kie_happyhorse11_i2v: KIE_HAPPYHORSE11_I2V_PARAMS,
   kie_omnihuman15: KIE_OMNIHUMAN_PARAMS,
   kie_volcengine_lipsync: KIE_VOLCENGINE_PARAMS,
   kie_kling26_motion: KIE_KLING26_MOTION_PARAMS,

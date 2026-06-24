@@ -392,6 +392,13 @@ export const KIE_VIDEO_SPECS: Record<string, KieVideoSpec> = {
     ref: { key: "reference_image", array: true, required: true },
     creditNote: "720p 33 / 1080p 44 点·秒",
   },
+  kie_happyhorse11_i2v: {
+    // image-to-video：image_urls 数组必填，无 aspect_ratio（schema 严格）
+    wire: "happyhorse-1-1/image-to-video", endpoint: "jobs", label: "HappyHorse 1.1 图生视频", family: "HappyHorse",
+    params: [{ key: "resolution", type: "str", def: "1080p" }, { key: "duration", type: "num", def: 5 }],
+    ref: { key: "image_urls", array: true, required: true },
+    creditNote: "720p 33 / 1080p 44 点·秒",
+  },
   // OmniHuman 1.5 数字人（音频驱动肖像）：image_url + audio_url 必填（schema 严格按 with-params 文档）
   kie_omnihuman15: {
     wire: "omnihuman-1-5", endpoint: "jobs", label: "OmniHuman 1.5 数字人", family: "OmniHuman",
