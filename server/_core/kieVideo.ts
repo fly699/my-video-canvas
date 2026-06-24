@@ -837,9 +837,44 @@ export async function detectOmnihumanSubjects(imageUrl: string, apiKey: string):
     if (!r || !r.ok) continue;
     const b = (await r.json().catch(() => null)) as { data?: Record<string, unknown> } | null;
     if (!b?.data) continue;
-    const st = parseKieJobStatus(b.data, "omnihuman-subject-detection", taskId);
-    if (st.status === "finished") return { masks: st.resultVideoUrls ?? [] };
-    if (st.status === "failed") throw new Error(st.errorMessage || "主体检测失败");
+    const d = b.data;
+    const flag = d.successFlag;
+    const state = String(d.state ?? d.status ?? d.taskStatus ?? "").toLowerCase();
+    const isSuccess = flag === 1 || flag === "1" || ["success", "succeeded", "completed", "finished", "done"].includes(state);
+    const isFailed = flag === 2 || flag === 3 || flag === "2" || flag === "3" || ["fail", "failed", "error"].includes(state);
+    if (isSuccess) {
+      // 检测产出是「蒙版图」，字段名上游未在 request schema 给出 → 递归收集响应里所有图片 URL，
+      // 避免因字段名是 masks/images/mask_urls 等而被视频专用的 extractKieVideoUrls 漏掉、误判失败。
+      const masks = collectImageUrlsDeep(d.response ?? d);
+      if (masks.length) return { masks };
+      // 成功但没解析到任何 URL → 把原始字段名打到日志便于排查，返回空（前端提示"未检测到主体"）。
+      console.warn(`[omnihuman subject-detection] success but no mask URL; keys: ${Object.keys(d).join(",")}; response: ${JSON.stringify(d.response ?? null).slice(0, 400)}`);
+      return { masks: [] };
+    }
+    if (isFailed) {
+      const errMsg = [d.errorMessage, d.failMsg, d.error, d.message, d.msg].find((v) => typeof v === "string" && (v as string).trim());
+      throw new Error((typeof errMsg === "string" ? errMsg : "") || "主体检测失败");
+    }
   }
   throw new Error("主体检测超时，请重试");
+}
+
+/** 从任意嵌套对象/数组里递归收集所有「图片 URL」字符串（http(s) 且像图片或 kie 文件域）。去重保序。 */
+function collectImageUrlsDeep(v: unknown, out: string[] = [], seen = new Set<string>()): string[] {
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (/^https?:\/\//i.test(s) && (/\.(png|jpe?g|webp|bmp|tiff?)(?:$|\?)/i.test(s) || /aiquickdraw|kie|file\./i.test(s)) && !seen.has(s)) {
+      seen.add(s); out.push(s);
+    }
+  } else if (Array.isArray(v)) {
+    for (const x of v) collectImageUrlsDeep(x, out, seen);
+  } else if (v && typeof v === "object") {
+    // 字符串化的 JSON（kie 常见 resultJson）也尝试解析
+    for (const x of Object.values(v as Record<string, unknown>)) {
+      if (typeof x === "string" && /^[[{].*[\]}]$/.test(x.trim())) {
+        try { collectImageUrlsDeep(JSON.parse(x), out, seen); } catch { collectImageUrlsDeep(x, out, seen); }
+      } else collectImageUrlsDeep(x, out, seen);
+    }
+  }
+  return out;
 }

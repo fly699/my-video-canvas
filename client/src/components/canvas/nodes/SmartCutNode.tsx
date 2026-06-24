@@ -100,7 +100,8 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
       projectId: data.projectId,
       nodeId: id,
       aggressiveness: payload.aggressiveness ?? "medium",
-      targetDuration: payload.targetDuration,
+      // 服务端要求 5-3600；<5 视为「自动判定」不下发，避免被 zod 拒。
+      targetDuration: typeof payload.targetDuration === "number" && payload.targetDuration >= 5 ? Math.min(3600, payload.targetDuration) : undefined,
       shotBoundaries: shotBoundariesFor(videoUrl),
     });
   };
@@ -159,10 +160,11 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
 
         {/* 目标时长（可选）：此前仅命令栏可设，专业版 body 缺控件 → 脱离命令栏无法在节点上改。 */}
         <div>
-          <label style={labelStyle}>目标时长（秒，可选）</label>
-          <input type="number" min={0} step={1} className="nodrag" placeholder="留空=自动判定"
+          <label style={labelStyle}>目标时长（秒，≥5，可选）</label>
+          {/* 服务端 zod 要求 5-3600；<5 视为「留空=自动判定」，避免 0/1-4 直接被服务端拒。 */}
+          <input type="number" min={5} max={3600} step={1} className="nodrag" placeholder="留空=自动判定（≥5）"
             value={typeof payload.targetDuration === "number" ? payload.targetDuration : ""}
-            onChange={(e) => { const v = e.target.value; update({ targetDuration: v === "" ? undefined : Math.max(0, Number(v) || 0) }); }}
+            onChange={(e) => { const n = Number(e.target.value); update({ targetDuration: Number.isFinite(n) && n >= 5 ? Math.min(3600, n) : undefined }); }}
             style={fieldStyle} />
         </div>
 

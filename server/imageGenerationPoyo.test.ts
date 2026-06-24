@@ -1,5 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { buildPoyoImageInput, POYO_IMAGE_SPECS } from "./_core/imageGeneration";
+import { IMAGE_GEN_MODELS } from "../shared/types";
+
+// 回归：每个 poyo_* 图像 provider 都必须在 IMAGE_GEN_MODELS 枚举里——否则
+// imageGenRouter.generate 的 z.enum(IMAGE_GEN_MODELS) 会拒绝它，生成必失败。
+// （legacy 字符串别名如 "gpt-image-2" 不在枚举内，故仅校验 poyo_ 前缀键。）
+describe("POYO_IMAGE_SPECS ⊆ IMAGE_GEN_MODELS（前后端枚举同步）", () => {
+  it("每个 poyo_ 图像 provider 都在 IMAGE_GEN_MODELS 枚举里", () => {
+    const enumSet = new Set<string>(IMAGE_GEN_MODELS as readonly string[]);
+    for (const key of Object.keys(POYO_IMAGE_SPECS)) {
+      if (!key.startsWith("poyo_")) continue;
+      expect(enumSet.has(key), `${key} 不在 IMAGE_GEN_MODELS`).toBe(true);
+    }
+  });
+});
 
 // 用绝对 http URL，使 resolveToAbsoluteUrl 原样返回（no-op），便于断言字段映射。
 const A = "https://cdn.example.com/a.png";
