@@ -71,25 +71,29 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
 
   // Auto-detect inputVideoUrl from connected video-output nodes only (not image/asset nodes)
   const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
-  const autoDetectedVideoUrls = (() => {
-    const urls: string[] = [];
+  // 已连接的视频源（带标题，供 PiP 显式选择主/画中画，消除「靠连线顺序定主次」的歧义）。
+  const connectedVideos = (() => {
+    const list: { url: string; title: string }[] = [];
     for (const edge of edges.filter((e) => e.target === id)) {
       const src = nodes.find((n) => n.id === edge.source);
       if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
       // getNodeVideoOutput skips a comfyui_workflow that produced an IMAGE and a
       // non-video asset — so we never feed an image/audio URL into the overlay.
       const url = getNodeVideoOutput(src.data.nodeType, src.data.payload as Record<string, unknown>);
-      if (url && !urls.includes(url)) urls.push(url);
+      if (url && !list.some((v) => v.url === url)) list.push({ url, title: src.data.title || src.id });
     }
-    return urls;
+    return list;
   })();
+  const autoDetectedVideoUrls = connectedVideos.map((v) => v.url);
   const autoDetectedVideoUrl = autoDetectedVideoUrls[0];
   // PiP mode needs a SECOND video — auto-fill it from the second distinct connected
   // video so wiring two videos "just works" without hand-typing the pip URL.
   const autoDetectedPipUrl = autoDetectedVideoUrls[1];
 
-  const effectiveInputUrl = payload.inputVideoUrl ?? autoDetectedVideoUrl;
   const effectivePipUrl = payload.pipVideoUrl?.trim() || autoDetectedPipUrl;
+  // 主视频：手填优先；否则取第一路「不是画中画」的连线视频（用户显式选了某路作画中画时，
+  // 主视频自动落到另一路，避免主/画中画指向同一视频）。
+  const effectiveInputUrl = payload.inputVideoUrl ?? (autoDetectedVideoUrls.find((u) => u !== effectivePipUrl) ?? autoDetectedVideoUrl);
 
   const handleProcess = () => {
     if (overlayMutation.isPending || payload.status === "processing") return;
@@ -250,6 +254,26 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
         {/* PiP mode fields */}
         {mode === "pip" && (
           <>
+            {/* 显式指定哪路连线视频作画中画（≥2 路时消除「靠顺序定主次」歧义；选「自动」用第 2 路）。 */}
+            {connectedVideos.length >= 2 && (
+              <div className="flex-shrink-0">
+                <label style={labelStyle}>画中画来源</label>
+                <select
+                  value={payload.pipVideoUrl?.trim() && connectedVideos.some((v) => v.url === payload.pipVideoUrl) ? payload.pipVideoUrl : ""}
+                  onChange={(e) => handleChange("pipVideoUrl", e.target.value || undefined)}
+                  disabled={isProcessing}
+                  className="nodrag"
+                  style={{ ...fieldStyle, cursor: "pointer", opacity: isProcessing ? 0.5 : 1 }}
+                  onFocus={onFocusMid}
+                  onBlur={onBlurDefault}
+                >
+                  <option value="">自动（第 2 路连线）</option>
+                  {connectedVideos.map((v, i) => (
+                    <option key={v.url} value={v.url}>{`第 ${i + 1} 路：${v.title}`}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex-shrink-0">
               <label style={labelStyle}>画中画视频 URL *</label>
               <input
