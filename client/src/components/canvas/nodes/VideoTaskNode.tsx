@@ -11,6 +11,7 @@ import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, effectiveCharacterVideoRefs, effectiveCharacterAudioRefs } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { detectUpstreamPrompt, listUpstreamVideoSources, listUpstreamAudioSources, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
+import { SUPPORTS_REF_VIDEO, SUPPORTS_REF_AUDIO, collectVideoRefMedia } from "../../../lib/videoRefMedia";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
@@ -225,15 +226,6 @@ export function videoProviderChangePatch(newProvider: VideoProvider) {
 // videos / audios on the SAME wire model. Only Seedance-2 qualifies — Wan 2.7's
 // reference mode is a separate wire model not yet mapped. Collected from connected
 // upstream `asset` nodes (video / audio) → reference_video_urls / reference_audio_urls.
-const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast",
-  // Wan 2.7 参考生：可用参考视频做多模态参考
-  "poyo_wan27_ref",
-  // 动作控制 / Animate / 放大 / Aleph：需连线源视频
-  "kie_kling26_motion", "kie_kling30_motion", "kie_wan_animate_move", "kie_wan_animate_replace",
-  "kie_topaz_upscale", "kie_runway_aleph"]);
-const SUPPORTS_REF_AUDIO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast",
-  // 数字人：需连线音频
-  "kie_kling_avatar_std", "kie_kling_avatar_pro"]);
 
 // ── Reusable param sets for the expanded model catalog ──
 const AR_3 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }];
@@ -1144,24 +1136,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // ALL participating sources — upstream 来源（video_task/comfyui_video/audio/asset 视频音频）
   // + 角色携带（@视频/@音频 或连线角色），de-duped。镜像吸附栏「参与本节点工作」的口径。
   const collectRefMedia = useCallback((provider: string): { videoRefs?: string[]; audioRefs?: string[] } => {
-    const wantsVideo = SUPPORTS_REF_VIDEO.has(provider), wantsAudio = SUPPORTS_REF_AUDIO.has(provider);
-    if (!wantsVideo && !wantsAudio) return {};
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
-    const prompt = payload.prompt ?? "";
-    const pushUniq = (arr: string[], seen: Set<string>, u?: string) => { const v = u?.trim(); if (v && !seen.has(v)) { seen.add(v); arr.push(v); } };
-    const vids: string[] = [], auds: string[] = [];
-    const vSeen = new Set<string>(), aSeen = new Set<string>();
-    if (wantsVideo) {
-      for (const v of listUpstreamVideoSources(id, allEdges, allNodes)) pushUniq(vids, vSeen, v.url);
-      for (const u of effectiveCharacterVideoRefs(id, prompt, allEdges, allNodes)) pushUniq(vids, vSeen, u);
-      for (const u of mentionedMediaUrls(prompt, "video", allNodes)) pushUniq(vids, vSeen, u); // @视频名 独立节点
-    }
-    if (wantsAudio) {
-      for (const a of listUpstreamAudioSources(id, allEdges, allNodes)) pushUniq(auds, aSeen, a.url);
-      for (const u of effectiveCharacterAudioRefs(id, prompt, allEdges, allNodes)) pushUniq(auds, aSeen, u);
-      for (const u of mentionedMediaUrls(prompt, "audio", allNodes)) pushUniq(auds, aSeen, u); // @音频名 独立节点
-    }
-    return { videoRefs: vids.length ? vids.slice(0, 3) : undefined, audioRefs: auds.length ? auds.slice(0, 3) : undefined };
+    return collectVideoRefMedia(id, payload.prompt, provider, allEdges, allNodes);
   }, [id, payload.prompt]);
 
   // [CHARGED] / [CHARGED?] are server-side markers that indicate the upstream
