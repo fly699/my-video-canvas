@@ -301,6 +301,7 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "poyo_wan25_i2v",          label: "Wan 2.6 图生视频",    group: "Poyo", family: "Wan",      costLabel: "5s 80/1080p 120 cr/次",      caps: ["I2V", "多镜头"] },
   { value: "poyo_wan27_t2v",          label: "Wan 2.7 文生视频",    group: "Poyo", family: "Wan",      costLabel: "720p 12/1080p 18 cr/s", caps: ["T2V", "音频"] },
   { value: "poyo_wan27_i2v",          label: "Wan 2.7 图生视频",    group: "Poyo", family: "Wan",      costLabel: "720p 12/1080p 18 cr/s", caps: ["I2V", "首尾帧"] },
+  { value: "poyo_wan27_ref",          label: "Wan 2.7 参考生视频",  group: "Poyo", family: "Wan",      costLabel: "720p 12/1080p 18 cr/s", caps: ["参考生", "多模态", "图/视频参考"] },
   { value: "poyo_wan22_t2v_fast",     label: "Wan 2.2 文生(快)",    group: "Poyo", family: "Wan",      costLabel: "480p 6/720p 12 cr",      caps: ["T2V", "720p"] },
   { value: "poyo_wan22_i2v_fast",     label: "Wan 2.2 图生(快)",    group: "Poyo", family: "Wan",      costLabel: "480p 6/720p 12 cr",      caps: ["I2V", "720p"] },
   // ── Seedance ──

@@ -59,6 +59,7 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   poyo_wan25_i2v: (p) => cr((str(p, "resolution", "720p") === "1080p" ? 120 : 80) * (num(p, "duration", 5) / 5) * (on(p, "multi_shots") ? 3 : 1), true),
   poyo_wan27_t2v: (p) => cr((str(p, "resolution", "720p") === "1080p" ? 18 : 12) * num(p, "duration", 5)),
   poyo_wan27_i2v: (p) => cr((str(p, "resolution", "720p") === "1080p" ? 18 : 12) * num(p, "duration", 5)),
+  poyo_wan27_ref: (p) => cr((str(p, "resolution", "720p") === "1080p" ? 18 : 12) * num(p, "duration", 5)),
   poyo_wan22_t2v_fast: (p) => cr(str(p, "resolution", "720p") === "480p" ? 6 : 12),
   poyo_wan22_i2v_fast: (p) => cr(str(p, "resolution", "720p") === "480p" ? 6 : 12),
   poyo_seedance1_pro:  (p) => cr((str(p, "resolution", "720p") === "1080p" ? 43 : 21) * (num(p, "duration", 5) / 5)),

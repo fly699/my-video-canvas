@@ -237,6 +237,44 @@ describe("submitPoyoVideo explicit referenceMode (character SUBJECT references)"
   });
 });
 
+describe("submitPoyoVideo Wan 2.7 参考生视频（多模态参考，docs:166）", () => {
+  const V = "https://cdn.example.com/ref.mp4";
+  async function submitRef(opts: { images?: string[]; videos?: string[] }) {
+    const { submitPoyoVideo } = await import("./_core/poyoVideo");
+    await submitPoyoVideo({
+      provider: "poyo_wan27_ref", prompt: "hi", params: { resolution: "720p", duration: 5 },
+      referenceImageUrl: opts.images?.[0],
+      referenceImageUrls: opts.images && opts.images.length > 1 ? opts.images : undefined,
+      referenceVideoUrls: opts.videos,
+    });
+    return lastBody!;
+  }
+
+  it("参考图 → reference_image_urls（多模态参考，不走首尾帧 image_urls）", async () => {
+    const b = await submitRef({ images: [A, B] });
+    expect(b.model).toBe("wan2.7-reference-to-video");
+    expect(b.input.reference_image_urls).toEqual([A, B]);
+    expect("image_urls" in b.input).toBe(false);
+  });
+
+  it("参考图截断到 4 张", async () => {
+    const D = "https://cdn.example.com/d.png", E = "https://cdn.example.com/e.png";
+    const b = await submitRef({ images: [A, B, C, D, E] });
+    expect(b.input.reference_image_urls).toEqual([A, B, C, D]);
+  });
+
+  it("仅参考视频也可（reference_video_urls）", async () => {
+    const b = await submitRef({ videos: [V] });
+    expect(b.input.reference_video_urls).toEqual([V]);
+  });
+
+  it("既无参考图也无参考视频 → 抛错（docs:166 至少一种）", async () => {
+    const { submitPoyoVideo } = await import("./_core/poyoVideo");
+    await expect(submitPoyoVideo({ provider: "poyo_wan27_ref", prompt: "hi", params: {} }))
+      .rejects.toThrow(/参考/);
+  });
+});
+
 describe("submitPoyoVideo Veo 3.1 档位约束（docs:64-71）", () => {
   it("veo3.1-lite 纯文生：附参考图也不发任何图字段（lite 不支持 image_urls）", async () => {
     const b = await submitWithRefs("poyo_veo_lite", [A]);

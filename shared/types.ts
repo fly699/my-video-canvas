@@ -64,6 +64,7 @@ export const VIDEO_PROVIDERS = [
   // Wan
   "poyo_wan27_t2v",
   "poyo_wan27_i2v",
+  "poyo_wan27_ref",
   "poyo_wan22_t2v_fast",
   "poyo_wan22_i2v_fast",
   // Seedance

@@ -226,6 +226,8 @@ export function videoProviderChangePatch(newProvider: VideoProvider) {
 // reference mode is a separate wire model not yet mapped. Collected from connected
 // upstream `asset` nodes (video / audio) → reference_video_urls / reference_audio_urls.
 const SUPPORTS_REF_VIDEO = new Set<string>(["poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast",
+  // Wan 2.7 参考生：可用参考视频做多模态参考
+  "poyo_wan27_ref",
   // 动作控制 / Animate / 放大 / Aleph：需连线源视频
   "kie_kling26_motion", "kie_kling30_motion", "kie_wan_animate_move", "kie_wan_animate_replace",
   "kie_topaz_upscale", "kie_runway_aleph"]);
@@ -311,6 +313,12 @@ const WAN27_I2V_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "720p", options: WAN_RES },
   { type: "range", key: "duration", label: "时长（秒）", min: 2, max: 15, step: 1, default: 5, unit: "s" },
   { type: "toggle", key: "multi_shots", label: "多镜头模式", default: false },
+  seedDef,
+];
+// Wan 2.7 参考生视频：reference_image_urls + reference_video_urls 多模态参考，duration 2-10
+const WAN27_REF_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p", options: WAN_RES },
+  { type: "range", key: "duration", label: "时长（秒）", min: 2, max: 10, step: 1, default: 5, unit: "s" },
   seedDef,
 ];
 const WAN22_FAST_PARAMS: ParamDef[] = [
@@ -602,6 +610,7 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_kling30_4k: KLING30_PARAMS,
   poyo_wan27_t2v: WAN27_T2V_PARAMS,
   poyo_wan27_i2v: WAN27_I2V_PARAMS,
+  poyo_wan27_ref: WAN27_REF_PARAMS,
   poyo_wan22_t2v_fast: WAN22_FAST_PARAMS,
   poyo_wan22_i2v_fast: WAN22_I2V_FAST_PARAMS,
   poyo_seedance1_pro: SEEDANCE1_PARAMS,

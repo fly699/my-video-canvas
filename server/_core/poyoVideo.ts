@@ -35,6 +35,7 @@ export const POYO_PROVIDER_MAP: Record<string, string> = {
   // Wan
   poyo_wan27_t2v:      "wan2.7-text-to-video",
   poyo_wan27_i2v:      "wan2.7-image-to-video",
+  poyo_wan27_ref:      "wan2.7-reference-to-video",
   poyo_wan22_t2v_fast: "wan2.2-text-to-video-fast",
   poyo_wan22_i2v_fast: "wan2.2-image-to-video-fast",
   // Seedance
@@ -76,6 +77,8 @@ const VIDEO_PARAM_KEYS: Record<string, string[]> = {
   "wan2.6-image-to-video": ["resolution", "duration", "multi_shots"],
   "wan2.7-text-to-video":  ["resolution", "aspect_ratio", "duration", "seed"],
   "wan2.7-image-to-video": ["resolution", "duration", "multi_shots", "seed"],
+  // 参考生视频：prompt + reference_image_urls/reference_video_urls 至少一种，duration 2-10
+  "wan2.7-reference-to-video": ["resolution", "duration", "seed"],
   "wan2.2-text-to-video-fast": ["aspect_ratio", "resolution", "seed"],
   "wan2.2-image-to-video-fast": ["resolution", "seed"],
   "hailuo-02":     ["resolution", "duration"],
@@ -122,6 +125,10 @@ const SINGLE_START_IMAGE_MODELS = new Set<string>([
 // (docs/poyo-video-api.md:70)。给它发任何参考图字段都会 400，故整条参考链路对它跳过。
 const TEXT_ONLY_MODELS = new Set<string>(["veo3.1-lite"]);
 
+// 专属「参考生视频」wire：参考图永远走 reference_image_urls（多模态参考），不当首尾帧；
+// 且必须至少提供一张参考图或一个参考视频，否则 Poyo 400（docs/poyo-video-api.md:166）。
+const REFERENCE_ONLY_MODELS = new Set<string>(["wan2.7-reference-to-video"]);
+
 const SINGLE_IMAGE_URLS_MODELS = new Set<string>([
   "wan2.7-image-to-video", "wan2.2-image-to-video-fast", "wan2.6-image-to-video",
   "sora-2-official", "sora-2-pro-official",
@@ -165,8 +172,11 @@ const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
   "kling-o3/pro":      { imageUrls: 2, referenceImages: 4 },
   "kling-o3/4K":       { imageUrls: 2, referenceImages: 4 },
   // Wan 2.7 t2v/i2v do NOT accept reference_*_urls — the multi-modal "参考生" path
-  // is a SEPARATE wire model (`wan2.7-reference-to-video`), not yet mapped here.
+  // is the SEPARATE wire model `wan2.7-reference-to-video` below.
   "wan2.7-image-to-video":      { imageUrls: 2 },
+  // Wan 2.7 参考生视频：reference_image_urls(≤4) + reference_video_urls(≤3) 多模态参考，
+  // 永远走 reference 模式（见 REFERENCE_ONLY_MODELS），不走首尾帧 image_urls。
+  "wan2.7-reference-to-video":  { referenceImages: 4, referenceVideos: 3 },
   "wan2.2-image-to-video-fast": { imageUrls: 2 },
   "happy-horse":     { imageUrls: 1, referenceImages: 9 },
 };
@@ -266,7 +276,11 @@ export async function submitPoyoVideo(opts: {
   // reference video/audio is present — OR the caller explicitly asked for reference
   // (subject) mode because the images are character identities, not start/end frames —
   // route the images to reference_image_urls (reference mode) instead of image_urls.
-  const inReferenceMode = refVideos.length > 0 || refAudios.length > 0 || opts.referenceMode === "reference";
+  const inReferenceMode = REFERENCE_ONLY_MODELS.has(model) || refVideos.length > 0 || refAudios.length > 0 || opts.referenceMode === "reference";
+  // 专属参考生 wire：必须至少有一张参考图或一个参考视频。
+  if (REFERENCE_ONLY_MODELS.has(model) && resolvedRefs.length === 0 && refVideos.length === 0) {
+    throw new Error("参考生视频需要至少一张参考图或一个参考视频，请连接/上传参考素材");
+  }
   // 纯文生模型(veo3.1-lite)：跳过所有参考图/视频/音频字段，否则 Poyo 400。
   if (!TEXT_ONLY_MODELS.has(model)) {
     if (inReferenceMode && refSpec?.referenceImages && resolvedRefs.length > 0) {
