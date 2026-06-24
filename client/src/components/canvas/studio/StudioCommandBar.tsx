@@ -12,7 +12,8 @@ import { MUSIC_MODELS, DUBBING_MODELS, SFX_MODELS, MUSIC_STYLES_ZH, voicesForMod
 import { IMAGE_MODEL_PARAMS, paramOptions } from "../../../lib/paramDefs";
 import { estimateImageCost, estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
-import { ArrowUp, Loader2, ImagePlus, Languages, Sparkles, X, ChevronDown } from "lucide-react";
+import { ArrowUp, Loader2, ImagePlus, Languages, Sparkles, X, ChevronDown, Play, Pause, Volume2 } from "lucide-react";
+import { mediaFetchUrl } from "@/lib/download";
 import type { NodeType, VideoProvider } from "../../../../../shared/types";
 
 // The 4 "generative" nodes keep a bespoke bar (model pickers + image/video param
@@ -616,6 +617,39 @@ function audioModelSelect(value: string, opts: readonly AudioModelOpt[], onChang
   );
 }
 
+// Studio skin has no "hero" media area for audio (no visual), and the floating
+// command bar replaces the node body — so without this the generated clip has NO
+// play button in studio mode (user had to 展开全部参数 to reach the body player).
+// A compact inline player keyed off payload.url restores 试听 in the command bar.
+function AudioResultPlayer({ url, name, duration }: { url: string; name?: string; duration?: number }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const fmt = (s?: number) => (s != null ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "--:--");
+  const [dur, setDur] = useState(duration);
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const a = audioRef.current;
+    if (!a) return;
+    if (!a.paused) { a.pause(); setPlaying(false); }
+    else a.play().then(() => setPlaying(true)).catch(() => toast.error("播放失败"));
+  };
+  return (
+    <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 10px", borderRadius: 10, background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
+      <Volume2 style={{ width: 14, height: 14, color: "var(--c-t3)", flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p className="truncate" style={{ fontSize: 11.5, color: "var(--c-t2)" }}>{name ?? "音频"}</p>
+        <p style={{ fontSize: 10, color: "var(--c-t4)" }}>{fmt(dur)}</p>
+      </div>
+      <button onClick={toggle} title={playing ? "暂停" : "试听"}
+        style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer", background: "var(--ui-accent, var(--c-elevated))", border: "none", color: "#0b0d12" }}>
+        {playing ? <Pause style={{ width: 12, height: 12 }} /> : <Play style={{ width: 12, height: 12 }} />}
+      </button>
+      <audio ref={audioRef} src={mediaFetchUrl(url)} onEnded={() => setPlaying(false)} onEmptied={() => setPlaying(false)}
+        onLoadedMetadata={(e) => setDur((e.target as HTMLAudioElement).duration)} style={{ display: "none" }} />
+    </div>
+  );
+}
+
 function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = false }: Props) {
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId));
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
@@ -641,8 +675,17 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
     set({ ttsModel: v, ...(keep ? {} : { ttsVoice: nv[0]?.value }) });
   };
 
+  const resultUrl = typeof payload.url === "string" ? payload.url : undefined;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+      {resultUrl && (
+        <AudioResultPlayer
+          url={resultUrl}
+          name={typeof payload.name === "string" ? payload.name : undefined}
+          duration={typeof payload.duration === "number" ? payload.duration : undefined}
+        />
+      )}
       <div className="nodrag" style={{ display: "flex", gap: 6 }}>
         {[{ v: "music", l: "配乐" }, { v: "dubbing", l: "配音" }, { v: "sfx", l: "音效" }].map((t) => {
           const on = t.v === cat;
