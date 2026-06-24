@@ -90,7 +90,9 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
 
   // 统一吸附窗：左侧参考构图（单张）+ 顶部「最终提示词」（本地图像描述）。无按钮：悬停标题栏
   // 1 秒临时展开，点击吸附窗钉住。
-  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim(), hasPrompt: !!payload.prompt?.trim() }, { prompt: payload.prompt ?? "", ref: payload.referenceImageUrl ?? "" });
+  // hasRef 纳入上游自动探测的 sourceImageUrl（运行时 refUrl = referenceImageUrl || sourceImageUrl）：
+  // 仅连线未手填 URL 时吸附窗也能显示参考图。
+  const docks = useNodeDocks(id, { hasRef: !!(payload.referenceImageUrl?.trim() || sourceImageUrl), hasPrompt: !!payload.prompt?.trim() }, { prompt: payload.prompt ?? "", ref: payload.referenceImageUrl || sourceImageUrl || "" });
   const refStrip = useSimpleRefStrip(id, payload, "single", { accent, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
 
   return (
