@@ -69,9 +69,17 @@ const partsImages = (c: string | ContentPart[]): string[] =>
 
 export interface CustomLLMResult { text: string }
 
-/** 解析底层模型名：前端请求头 > env 覆盖 > 默认。 */
+// 看起来像「真实模型 ID」吗——OpenAI/Anthropic 的 model 名一定含数字（gpt-4o /
+// claude-sonnet-4-5 / o3 …）。用来挡掉用户误填的产品名（ChatGPT/Claude），否则直接发去
+// 官方端点会 404（`The model 'ChatGPT' does not exist`）。
+function looksLikeModelId(v?: string): boolean {
+  return !!v && /\d/.test(v);
+}
+
+/** 解析底层模型名：前端请求头 > env 覆盖 > 默认；忽略明显非法（不含数字）的值，回退默认。 */
 export function resolveCustomModelName(spec: CustomLLMSpec, headerModel?: string | null): string {
-  return headerModel?.trim() || spec.envModel().trim() || spec.defaultModel;
+  const wanted = headerModel?.trim() || spec.envModel().trim();
+  return looksLikeModelId(wanted) ? wanted : spec.defaultModel;
 }
 
 /** 直连官方端点调用自定义模型。apiKey 已由调用方按「前端 > env」解析。 */
@@ -81,7 +89,8 @@ export async function invokeCustomLLM(opts: {
   const spec = CUSTOM_LLM_MODELS[opts.model];
   if (!spec) throw new Error(`未知自定义 LLM 模型：${opts.model}`);
   const maxTokens = opts.maxTokens ?? 4096;
-  const modelName = opts.modelName?.trim() || spec.defaultModel;
+  // 忽略不含数字的非法模型名（产品名误填）——挡掉直连端点的 404。
+  const modelName = looksLikeModelId(opts.modelName?.trim()) ? opts.modelName!.trim() : spec.defaultModel;
 
   let headers: Record<string, string>;
   let body: Record<string, unknown>;
