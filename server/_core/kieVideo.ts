@@ -695,7 +695,7 @@ export async function checkKieVideoStatus(provider: string, externalTaskId: stri
       return u ? { status: "finished", resultVideoUrls: [u] }
         : { status: "failed", errorMessage: "[CHARGED] Runway 已生成但未返回 URL（积分已扣，请勿重试）" };
     }
-    if (st === "fail" || st === "failed") return { status: "failed", errorMessage: b.data?.failMsg ?? "生成失败" };
+    if (st === "fail" || st === "failed") return { status: "failed", errorMessage: friendlyKieVideoError(b.data?.failMsg ?? "生成失败") };
     return { status: "processing" }; // wait / queueing / generating
   }
 
@@ -719,7 +719,7 @@ export async function checkKieVideoStatus(provider: string, externalTaskId: stri
         : { status: "failed", errorMessage: "[CHARGED] Aleph 已生成但未返回 URL（积分已扣，请勿重试）" };
     }
     if (d.errorMessage || (typeof d.errorCode === "number" && d.errorCode !== 0)) {
-      return { status: "failed", errorMessage: d.errorMessage ?? "生成失败" };
+      return { status: "failed", errorMessage: friendlyKieVideoError(d.errorMessage ?? "生成失败") };
     }
     return { status: "processing" };
   }
@@ -748,6 +748,18 @@ export async function checkKieVideoStatus(provider: string, externalTaskId: stri
  * seedance-2 / grok-imagine 实测会用 state="success" 而非 successFlag=1）。对「成功/
  * 失败/URL」三类信号都做多形态兼容，避免新模型已完成却被误判进行中而永远卡住。
  */
+// kie 失败原文常是机翻/简短英文，用户看不懂（最典型：内容风控「Resource exists risk.」=
+// 「资源存在风险」）。把已知的风控/审核类原文翻成清晰中文并给处置建议，附原文便于排查。
+export function friendlyKieVideoError(raw: string): string {
+  const m = (raw || "").trim();
+  if (!m) return "生成失败";
+  const low = m.toLowerCase();
+  if (/resource exists risk|内容风险|资源存在风险|sensitive|risk control|风控|涉嫌|违规|moderation|policy/.test(low) || /risk/.test(low)) {
+    return `输入素材被 kie 内容风控判定为存在风险（常见于真人肖像/敏感或受版权保护内容），已被拒绝生成。请更换参考图或驱动音频后重试。（原文：${m}）`;
+  }
+  return m;
+}
+
 export function parseKieJobStatus(d: Record<string, unknown>, provider = "", taskId = ""): KieVideoStatus {
   const flag = d.successFlag;
   const state = String(d.state ?? d.status ?? d.taskStatus ?? "").toLowerCase();
@@ -769,7 +781,8 @@ export function parseKieJobStatus(d: Record<string, unknown>, provider = "", tas
       .find((v) => typeof v === "string" && (v as string).trim());
     const errCode = d.errorCode ?? d.failCode ?? d.code;
     console.warn(`[kie] ${provider} task ${taskId} FAILED; code=${String(errCode)}; data: ${JSON.stringify(d).slice(0, 400)}`);
-    return { status: "failed", errorMessage: (typeof errMsg === "string" ? errMsg : "") || `生成失败${errCode != null ? `（code ${errCode}）` : ""}` };
+    const baseMsg = (typeof errMsg === "string" ? errMsg : "") || `生成失败${errCode != null ? `（code ${errCode}）` : ""}`;
+    return { status: "failed", errorMessage: friendlyKieVideoError(baseMsg) };
   }
   return { status: "processing" };
 }

@@ -123,6 +123,16 @@ describe("parseKieJobStatus — 多形态兼容（seedance-2 / grok 卡死修复
     expect(parseKieJobStatus({ successFlag: 2, errorMessage: "boom" }).status).toBe("failed");
     expect(parseKieJobStatus({ state: "failed" }).status).toBe("failed");
   });
+  it("内容风控原文（Resource exists risk）翻成中文提示并保留原文", () => {
+    const r = parseKieJobStatus({ successFlag: 2, errorMessage: "Resource exists risk." });
+    expect(r.status).toBe("failed");
+    expect(r.errorMessage).toContain("内容风控");
+    expect(r.errorMessage).toContain("更换参考图");
+    expect(r.errorMessage).toContain("Resource exists risk."); // 附原文便于排查
+  });
+  it("普通失败原文原样透出（非风控不加戏）", () => {
+    expect(parseKieJobStatus({ successFlag: 2, errorMessage: "boom" }).errorMessage).toBe("boom");
+  });
 });
 
 describe("parseKieJobStatus — 音频字段（TTS/SFX 共用）", () => {
