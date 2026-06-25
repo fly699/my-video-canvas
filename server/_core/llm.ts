@@ -1,7 +1,7 @@
 import { ENV } from "./env";
 import { isKieLLMModel, invokeKieLLM, type OAMessage } from "./kieLLM";
 import { isCustomLLMModel, invokeCustomLLM, CUSTOM_LLM_MODELS } from "./customLlm";
-import { isSelfHostedLlmModel, getSelfHostedConfig } from "./selfHostedLlm";
+import { isSelfHostedLlmModel, getSelfHostedConfig, selfHostedChatUrl } from "./selfHostedLlm";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -236,7 +236,7 @@ const isSelfHostedModel = isSelfHostedLlmModel;
 const resolveApiUrl = (model?: string) => {
   // Self-hosted OpenAI-compatible endpoint — only for its OWN model ids, so it never
   // redirects Forge/Poyo/kie models. Takes priority over everything else.
-  if (isSelfHostedModel(model)) return `${getSelfHostedConfig().url.replace(/\/$/, "")}/v1/chat/completions`;
+  if (isSelfHostedModel(model)) return selfHostedChatUrl(getSelfHostedConfig().url);
   // Poyo-routed models (GPT-*, Poyo Claude) → Poyo API when key is available
   if (ENV.poyoApiKey && routesToPoyo(model)) return "https://api.poyo.ai/v1/chat/completions";
   // Other models (Gemini, Claude Sonnet 4.6 / Haiku, etc.) → Forge/Manus API

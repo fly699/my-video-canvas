@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { NodeTextArea } from "../NodeTextInput";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
+import { useAllLlmModels } from "../../../lib/useSelfHostedModels";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { PROVIDER_PICKER_OPTIONS, videoProviderChangePatch, PROVIDER_PARAMS, withParamDefaults } from "../nodes/VideoTaskNode";
 import { MUSIC_MODELS, DUBBING_MODELS, SFX_MODELS, MUSIC_STYLES_ZH, voicesForModel } from "../nodes/AudioNode";
@@ -203,6 +204,10 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
   const { resolve } = useNodeDefaultModels();
   const enhanceMutation = trpc.aiEnhance.enhance.useMutation();
   const [enhancing, setEnhancing] = useState<null | "expand" | "translate_en">(null);
+  // 校验脚本 LLM 模型时要把动态自建/Open WebUI 模型也算合法，否则选了自建模型后
+  // value 守卫把它当非法 → 显示回退默认（与 ScriptNode 同口径）。
+  const allLlmModels = useAllLlmModels(LLM_MODELS);
+  const isKnownLlm = (mid: unknown) => allLlmModels.some((m) => m.id === mid);
   if (!node) return null;
 
   const nodeType = node.data.nodeType;
@@ -218,7 +223,7 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
   // AI 提示词增强（扩写 / 翻译为英文）—— 复用通用 aiEnhance.enhance（model 可选，
   // 后端 invokeLLMWithKie 在运行时统一做权限/计费门控，皮肤层不触碰）。脚本节点带自
   // 己的 LLM 模型，其余用服务端默认。
-  const enhanceModel = nodeType === "script" && LLM_MODELS.some((m) => m.id === payload.aiLlmModel)
+  const enhanceModel = nodeType === "script" && isKnownLlm(payload.aiLlmModel)
     ? (payload.aiLlmModel as string) : undefined;
   const doEnhance = async (mode: "expand" | "translate_en") => {
     if (enhancing) return;
@@ -274,7 +279,7 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
       <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
         {/* model */}
         {nodeType === "script" ? (
-          <LLMModelPicker value={(LLM_MODELS.some((m) => m.id === payload.aiLlmModel) ? payload.aiLlmModel : resolve("script", "llm")) as LLMModelId} onChange={(v) => set({ aiLlmModel: v })} />
+          <LLMModelPicker value={(isKnownLlm(payload.aiLlmModel) ? payload.aiLlmModel : resolve("script", "llm")) as LLMModelId} onChange={(v) => set({ aiLlmModel: v })} />
         ) : nodeType === "video_task" ? (
           <ModelPicker value={str("provider")} onChange={(v) => set(videoProviderChangePatch(v as VideoProvider))} options={PROVIDER_PICKER_OPTIONS} minWidth={140} />
         ) : (
@@ -551,6 +556,8 @@ function SendButton({ onRun, canRun = true, running = false, hasResult = false, 
 function SimpleBar({ nodeId, onRun, canRun = true, running = false, hasResult = false, form }: Props & { form: Form }) {
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId));
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  // 自建/Open WebUI 模型也算合法（同 GenerativeBar），否则选了自建模型后回退默认。
+  const allLlmModels = useAllLlmModels(LLM_MODELS);
   if (!node) return null;
   const payload = node.data.payload as Record<string, unknown>;
   const set = (patch: Record<string, unknown>) => updateNodeData(nodeId, patch);
@@ -583,7 +590,7 @@ function SimpleBar({ nodeId, onRun, canRun = true, running = false, hasResult = 
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
           {form.llm && (
             <LLMModelPicker
-              value={(LLM_MODELS.some((m) => m.id === payload[form.llm!]) ? payload[form.llm!] : LLM_MODELS[0]?.id) as LLMModelId}
+              value={(allLlmModels.some((m) => m.id === payload[form.llm!]) ? payload[form.llm!] : LLM_MODELS[0]?.id) as LLMModelId}
               onChange={(v) => set({ [form.llm!]: v })} />
           )}
           {controls.map((c) => renderCtrl(c, payload, set))}

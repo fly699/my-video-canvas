@@ -12,6 +12,7 @@ import {
   Route, ClipboardCheck, Film, History, AlertTriangle, Mic,
 } from "lucide-react";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
+import { useAllLlmModels } from "@/lib/useSelfHostedModels";
 import { ScriptDevFlowPanel, ScriptCoveragePanel } from "../ScriptSidePanels";
 import { ScriptHistoryPanel } from "../ScriptHistoryPanel";
 import { ScriptCastPanel } from "../ScriptCastPanel";
@@ -149,8 +150,12 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   const { resolve } = useNodeDefaultModels();
   const payload = data.payload;
 
-  // LLM model — persisted to payload; validate against known IDs to handle stale/removed model IDs
-  const _validLlmModel = LLM_MODELS.some((m) => m.id === payload.aiLlmModel) ? (payload.aiLlmModel as LLMModelId) : (resolve("script", "llm") as LLMModelId);
+  // LLM model — persisted to payload; validate against known IDs to handle stale/removed model IDs.
+  // 必须把「动态自建/Open WebUI 模型」一并算作合法，否则选了自建模型后节点重渲染（收缩/展开）
+  // 会判其非法 → 回退默认（曾经的「收缩后回退至默认模型」bug）。
+  const allLlmModels = useAllLlmModels(LLM_MODELS);
+  const isKnownLlmModel = useCallback((mid: unknown) => allLlmModels.some((m) => m.id === mid), [allLlmModels]);
+  const _validLlmModel = isKnownLlmModel(payload.aiLlmModel) ? (payload.aiLlmModel as LLMModelId) : (resolve("script", "llm") as LLMModelId);
   const [llmModel, setLlmModel] = useState<LLMModelId>(_validLlmModel);
   const handleLlmModelChange = useCallback((m: LLMModelId) => {
     setLlmModel(m);
@@ -324,10 +329,10 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   }, [payload.aiSceneCount]);
   useEffect(() => {
     if (payload.aiLlmModel !== undefined) {
-      const isValid = LLM_MODELS.some((m) => m.id === payload.aiLlmModel);
-      setLlmModel(isValid ? (payload.aiLlmModel as LLMModelId) : "claude-sonnet-4-6");
+      // 自建/Open WebUI 模型也算合法（见 isKnownLlmModel 注释），不再被重置回默认。
+      setLlmModel(isKnownLlmModel(payload.aiLlmModel) ? (payload.aiLlmModel as LLMModelId) : "claude-sonnet-4-6");
     }
-  }, [payload.aiLlmModel]);
+  }, [payload.aiLlmModel, isKnownLlmModel]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
