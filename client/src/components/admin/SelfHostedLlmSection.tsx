@@ -81,8 +81,8 @@ export function SelfHostedLlmSection() {
       )}
 
       {/* 字段 */}
-      <label style={{ fontSize: 11, color: "var(--c-t3)" }}>服务器地址（base，自动去掉 /v1/chat/completions）<span style={{ color: "oklch(0.7 0.16 25)" }}> *必填</span>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://172.16.0.10:8000" className="nodrag" style={{ ...box, marginTop: 4 }} />
+      <label style={{ fontSize: 11, color: "var(--c-t3)" }}>服务器地址（base 自动补 /v1/chat/completions；已含 chat/completions 则原样用，如 Open WebUI）<span style={{ color: "oklch(0.7 0.16 25)" }}> *必填</span>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://172.16.0.10:8000  或  http://host:3000/api/chat/completions" className="nodrag" style={{ ...box, marginTop: 4 }} />
       </label>
       <label style={{ fontSize: 11, color: "var(--c-t3)" }}>API Key（无鉴权可留空）
         <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="（vLLM 默认无鉴权 → 留空）" className="nodrag" style={{ ...box, marginTop: 4 }} />
