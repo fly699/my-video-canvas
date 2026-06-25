@@ -72,6 +72,19 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
       </button>
 
       {open && btnRect && createPortal(
+        (() => {
+        // 按上下可用空间自动翻转 + 钳制在视口内。此前固定向上弹出且无钳制，按钮靠近屏幕
+        // 顶部时下拉顶部（含「第一个模型」）会被推出视口外、点不到（工作室命令栏浮在节点
+        // 下方时尤其易触发）。
+        const GAP = 6, MIN_H = 160, MAX_H = 420;
+        const spaceBelow = window.innerHeight - btnRect.bottom - GAP;
+        const spaceAbove = btnRect.top - GAP;
+        const openDown = spaceBelow >= spaceAbove;
+        const maxH = Math.max(MIN_H, Math.min(MAX_H, (openDown ? spaceBelow : spaceAbove) - 4));
+        const vpos = openDown
+          ? { top: btnRect.bottom + GAP }
+          : { bottom: window.innerHeight - btnRect.top + GAP };
+        return (
         <>
           {/* Backdrop to close on outside click — skip if mousedown target is the toggle button itself */}
           <div
@@ -86,14 +99,14 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
             style={{
               position: "fixed",
               zIndex: 99981,
-              bottom: window.innerHeight - btnRect.top + 6,
+              ...vpos,
               // 钳制左缘：窄触发器下拉更宽时不溢出视口右缘。
               left: Math.max(8, Math.min(btnRect.left, window.innerWidth - 244 - 8)),
               background: "var(--c-base)",
               border: "1px solid var(--c-bd2)",
               boxShadow: "0 8px 32px oklch(0 0 0 / 0.6)",
               minWidth: 244,
-              maxHeight: "min(60vh, 420px)",
+              maxHeight: maxH,
               overflowY: "auto",
             }}
           >
@@ -177,7 +190,9 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
               );
             })}
           </div>
-        </>,
+        </>
+        );
+        })(),
         document.body
       )}
     </>
