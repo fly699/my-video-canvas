@@ -29,6 +29,11 @@ describe("parseCurlLlm", () => {
     expect(parseCurlLlm(`curl http://h/v1/chat/completions -H "Authorization: Bearer $API_KEY" -d '{"model":"m"}'`).apiKey).toBeUndefined();
   });
 
+  it("Open WebUI 的 /api/chat/completions 端点：保留完整路径（不退化成 base）", () => {
+    const curl = `curl http://172.16.0.20:3000/api/chat/completions -H 'Authorization: Bearer sk-owui-xyz' -d '{"model":"qwen2.5:72b"}'`;
+    expect(parseCurlLlm(curl)).toEqual({ url: "http://172.16.0.20:3000/api/chat/completions", model: "qwen2.5:72b", apiKey: "sk-owui-xyz" });
+  });
+
   it("空输入 → 空结果", () => {
     expect(parseCurlLlm("")).toEqual({});
   });

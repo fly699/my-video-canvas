@@ -22,6 +22,19 @@ describe("invokeLLM — 自建端点路由", () => {
     expect(JSON.parse(init.body).model).toBe("Qwen3.6-35B-A3B-FP8"); // 原样透传模型名给 vLLM
   });
 
+  it("Open WebUI 端点（URL 已含 /api/chat/completions）→ 原样使用，不强补 /v1", async () => {
+    process.env.SELF_HOSTED_LLM_URL = "http://172.16.0.20:3000/api/chat/completions";
+    process.env.SELF_HOSTED_LLM_KEY = "sk-owui";
+    process.env.SELF_HOSTED_LLM_MODELS = "qwen2.5:72b";
+    vi.resetModules();
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: "hi" } }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { invokeLLM } = await import("./_core/llm");
+    await invokeLLM({ model: "qwen2.5:72b", messages: [{ role: "user", content: "hi" }] });
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://172.16.0.20:3000/api/chat/completions"); // 不被改成 /api/v1/chat/completions
+    expect((fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers.authorization).toBe("Bearer sk-owui");
+  });
+
   it("只对自建 URL 启用时生效；非自建模型不受影响（仍走 Forge）", async () => {
     process.env.SELF_HOSTED_LLM_URL = "http://172.16.0.10:8000";
     process.env.SELF_HOSTED_LLM_MODELS = "Qwen3.6-35B-A3B-FP8";

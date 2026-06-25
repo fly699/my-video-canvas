@@ -43,3 +43,12 @@ export function isSelfHostedLlmModel(model?: string): boolean {
   const c = getSelfHostedConfig();
   return !!c.url.trim() && c.models.some((m) => m.id === model);
 }
+
+/** 自建 LLM 的 chat/completions 端点：URL 已含 `chat/completions`（如 Open WebUI 的
+ *  `/api/chat/completions`，或用户直接粘了完整端点）就原样用；否则按 OpenAI 惯例补
+ *  `/v1/chat/completions`（vLLM / Ollama / LM Studio 的默认形态，保持既有行为不变）。 */
+export function selfHostedChatUrl(rawUrl: string): string {
+  const u = (rawUrl ?? "").trim().replace(/\/+$/, "");
+  if (!u) return u;
+  return /\/chat\/completions$/i.test(u) ? u : `${u}/v1/chat/completions`;
+}

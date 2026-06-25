@@ -54,8 +54,12 @@ export function SelfHostedLlmSection() {
         <Server className="w-4 h-4" style={{ color: "oklch(0.70 0.16 200)" }} /> 自建 LLM（OpenAI 兼容端点）
       </div>
       <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6, margin: 0 }}>
-        vLLM / Ollama / LM Studio 等。粘贴官方示例 curl 一键解析地址 + 模型 + 密钥；保存后该模型出现在全站选择器，
+        vLLM / Ollama / LM Studio / Open WebUI 等。粘贴官方示例 curl 一键解析地址 + 模型 + 密钥；保存后该模型出现在全站选择器，
         门控与 ComfyUI 自建一致（走「ComfyUI 免白名单」开关，零云成本）。地址支持内网（仅服务器访问）。
+        <br />
+        地址智能识别：填基础地址（如 <code>http://内网IP:8000</code>）会自动补 <code>/v1/chat/completions</code>；
+        若已含 <code>chat/completions</code>（如 Open WebUI 的 <code>http://内网IP:3000/api/chat/completions</code>）则原样使用。
+        Open WebUI 的密钥在其「设置 › 账户」生成。
       </p>
 
       {/* curl 粘贴 */}
