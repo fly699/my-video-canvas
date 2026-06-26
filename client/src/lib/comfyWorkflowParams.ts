@@ -497,11 +497,23 @@ export function fillWorkflowPromptParams(
   return next;
 }
 
-/** 按目标宽高比覆盖工作流里所有「空 latent」节点（EmptyLatentImage / EmptySD3LatentImage /
- *  EmptyHunyuanLatentVideo / EmptyWanLatentVideo …）的 width/height。**保留每个 latent 节点
- *  原有的像素面积**、只改比例并对齐到 /64，从而不破坏模型原生分辨率量级（如 SDXL 1024² →
- *  16:9 约 1344×768、视频 832×480 → 16:9 约 832×468）。纯函数：无法解析 / 比例非法 / 无可改
- *  latent 时原样返回。 */
+// 「分辨率定义型」节点：带字面 width/height、真正决定输出画幅的节点。比例覆盖只动这些——
+// 1) 各种空 latent（EmptyLatentImage / EmptySD3LatentImage / EmptyHunyuanLatentVideo /
+//    EmptyWanLatentVideo …，文/图生），2) 显式定义输出分辨率的缩放节点（KJNodes 的
+//    ImageResizeKJv2/KJ、Essentials 的 ImageResize+、核心 ImageScale 等——img2video 工作流
+//    的画幅就来自这里，没有空 latent）。其它同样带 width/height 的节点（裁剪偏移/采样器等）
+//    不在此列，避免误改。
+function isResolutionDefiningNode(classType: string | undefined): boolean {
+  const ct = classType ?? "";
+  if (/Empty.*Latent/.test(ct)) return true;
+  return /^(ImageResizeKJv2|ImageResizeKJ|ImageResize\+|ImageResize|ImageScale|ConstrainImage\+?)$/.test(ct);
+}
+
+/** 按目标宽高比覆盖工作流里所有「分辨率定义型」节点（空 latent + 输出分辨率缩放节点）的
+ *  width/height。**保留每个节点原有的像素面积**、只改比例并对齐到 /64，从而不破坏模型原生
+ *  分辨率量级（如 SDXL 1024² → 16:9 约 1344×768、视频 832×480 → 16:9 约 832×468；img2video
+ *  的 ImageResizeKJv2 480×832 → 16:9 约 832×448）。纯函数：无法解析 / 比例非法 / 无可改节点
+ *  时原样返回。 */
 export function applyAspectToWorkflow(workflowJson: string, aspect: string | undefined): { json: string; patched: number } {
   const m = /^(\d+):(\d+)$/.exec((aspect ?? "").trim());
   if (!m) return { json: workflowJson, patched: 0 };
@@ -515,7 +527,7 @@ export function applyAspectToWorkflow(workflowJson: string, aspect: string | und
   for (const node of Object.values(wf)) {
     if (!node || typeof node !== "object") continue;
     const nd = node as { class_type?: string; inputs?: Record<string, unknown> };
-    if (!/Empty.*Latent/.test(nd.class_type ?? "") || !nd.inputs) continue;
+    if (!isResolutionDefiningNode(nd.class_type) || !nd.inputs) continue;
     const w = nd.inputs.width, h = nd.inputs.height;
     if (typeof w !== "number" || typeof h !== "number" || w <= 0 || h <= 0) continue;
     const area = w * h;
