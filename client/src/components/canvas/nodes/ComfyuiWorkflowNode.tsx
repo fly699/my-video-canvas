@@ -1398,10 +1398,21 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               );
             })()}
 
-            {/* Dynamic param form — capped height with internal scroll to keep the node compact */}
-            {(payload.paramBindings ?? []).length > 0 && (
+            {/* Dynamic param form — capped height with internal scroll to keep the node compact.
+                时长类参数（帧数 length / 帧率 fps / frame_rate / duration）稳定置顶，便于直接设
+                视频时长，无需在长参数列表里翻找。仅改显示顺序，不动 payload.paramBindings 的持久
+                化顺序（图片/提示词/音频解析仍按原绑定，不受影响）。 */}
+            {(payload.paramBindings ?? []).length > 0 && (() => {
+              const isDurationParam = (b: { fieldPath?: string; label?: string }) => {
+                const f = (b.fieldPath ?? "").split(".").pop()?.toLowerCase() ?? "";
+                return /^(length|num_frames|num_frame|frames|frame_count|video_frames|frame_rate|fps|duration)$/.test(f)
+                  || /时长|帧数|帧率|fps/i.test(b.label ?? "");
+              };
+              const bindings = payload.paramBindings ?? [];
+              const orderedBindings = [...bindings.filter(isDurationParam), ...bindings.filter((b) => !isDurationParam(b))];
+              return (
               <div className="nowheel nodrag" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", overflowX: "hidden" }}>
-                {(payload.paramBindings ?? []).map((b) => {
+                {orderedBindings.map((b) => {
                   const key = `${b.nodeId}.${b.fieldPath}`;
                   const value = payload.paramValues?.[key] ?? b.defaultValue ?? "";
                   return (
@@ -1537,7 +1548,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                   );
                 })}
               </div>
-            )}
+              );
+            })()}
 
             {/* Advanced: output type */}
             <div style={{ marginTop: 10 }}>
