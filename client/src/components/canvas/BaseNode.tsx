@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
-import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals } from "@xyflow/react";
+import { Handle, Position, NodeResizer, useUpdateNodeInternals } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
@@ -552,17 +552,25 @@ export const BaseNode = memo(function BaseNode({
           and the self-contained duplicateNode store action), so it cannot diverge
           from or break existing behavior. */}
       {usesStudioFloating && (storeSelected || pinned) && (onRun || resultVideoUrl || resultImageUrl) && (
-        <NodeToolbar nodeId={id} isVisible position={Position.Top} offset={10}>
-          <div
-            className="nodrag flex items-center gap-1"
-            style={{
-              background: "var(--c-elevated)",
-              border: "1px solid var(--c-bd2)",
-              borderRadius: 11,
-              padding: "5px 7px",
-              boxShadow: "var(--c-node-shadow-hover)",
-            }}
-          >
+        // 绝对定位于节点根（锚在节点上方、水平居中），而非 ReactFlow NodeToolbar——
+        // NodeToolbar 渲染在屏幕坐标、不随画布 zoom 缩放，与下方「绝对定位、随缩放」的参数
+        // 面板不一致（顶部工具栏不跟着节点缩放）。改为节点内绝对定位即随节点一起缩放。
+        <div
+          className="nodrag flex items-center gap-1"
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 10px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 21,
+            whiteSpace: "nowrap",
+            background: "var(--c-elevated)",
+            border: "1px solid var(--c-bd2)",
+            borderRadius: 11,
+            padding: "5px 7px",
+            boxShadow: "var(--c-node-shadow-hover)",
+          }}
+        >
             {onRun && (
               <button
                 onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
@@ -652,7 +660,6 @@ export const BaseNode = memo(function BaseNode({
               );
             })()}
           </div>
-        </NodeToolbar>
       )}
 
       {/* Studio: hover quick actions — re-run (+ download when there's a result) without
