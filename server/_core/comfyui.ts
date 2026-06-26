@@ -1460,7 +1460,7 @@ export async function generateComfyVideo(rawBaseUrl: string, options: GenerateCo
 // ── Workflow analysis ─────────────────────────────────────────────────────────
 
 // Known node types that mark video outputs
-const VIDEO_OUTPUT_CLASS_TYPES = new Set(["VHS_VideoCombine", "SaveAnimatedWEBP", "SaveAnimatedPNG"]);
+const VIDEO_OUTPUT_CLASS_TYPES = new Set(["VHS_VideoCombine", "SaveAnimatedWEBP", "SaveAnimatedPNG", "SaveVideo", "SaveWEBM"]);
 // Known node types that mark image outputs
 const IMAGE_OUTPUT_CLASS_TYPES = new Set(["SaveImage", "PreviewImage"]);
 
