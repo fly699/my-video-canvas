@@ -441,7 +441,7 @@ type Opt = string | { value: string; label: string };
 type CtrlBase = { when?: (p: Record<string, unknown>) => boolean };
 type Ctrl =
   | (CtrlBase & { key: string; type: "select"; label: string; options: Opt[]; numeric?: boolean; default?: string | number })
-  | (CtrlBase & { key: string; type: "ratio"; label: string; options: readonly string[]; default?: string })
+  | (CtrlBase & { key: string; type: "ratio"; label: string; options: readonly string[]; default?: string; alsoSet?: Record<string, unknown> })
   | (CtrlBase & { key: string; type: "number"; label: string; min?: number; max?: number; step?: number; default?: number; width?: number })
   | (CtrlBase & { key: string; type: "toggle"; label: string; default?: boolean })
   | (CtrlBase & { key: string; type: "text"; label: string; placeholder?: string; width?: number });
@@ -463,7 +463,9 @@ const optList = (opts: Opt[]) => opts.map((o) => (typeof o === "string" ? { valu
 function renderCtrl(c: Ctrl, payload: Record<string, unknown>, set: (p: Record<string, unknown>) => void) {
   if (c.type === "ratio") {
     const cur = (payload[c.key] as string | undefined) ?? c.default ?? c.options[0] ?? "";
-    return <RatioPicker key={c.key} value={cur} options={c.options} onChange={(v) => set({ [c.key]: v })} />;
+    // alsoSet：选比例时联动写入其它字段（如自定义工作流的 overrideRatioSize=true——否则
+    // 提交时比例覆盖不触发、比例设置无效）。
+    return <RatioPicker key={c.key} value={cur} options={c.options} onChange={(v) => set({ [c.key]: v, ...(c.alsoSet ?? {}) })} />;
   }
   if (c.type === "select") {
     const opts = optList(c.options);
@@ -874,7 +876,10 @@ const SIMPLE_FORMS: Partial<Record<NodeType, Form>> = {
   },
   comfyui_workflow: {
     controls: [
-      { key: "aspectRatio", type: "ratio", label: "比例", options: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "4:5"] },
+      // 选比例即联动开启 overrideRatioSize，否则提交时比例覆盖不生效（曾经的「比例设置无效」）。
+      // 「按比例覆盖」开关可手动关掉以回到工作流原尺寸。
+      { key: "aspectRatio", type: "ratio", label: "比例", options: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "4:5"], alsoSet: { overrideRatioSize: true } },
+      { key: "overrideRatioSize", type: "toggle", label: "按比例覆盖尺寸" },
       { key: "preferUpstreamPrompt", type: "toggle", label: "上游提示词优先", default: true },
       { key: "randomizeSeed", type: "toggle", label: "随机种子", default: true },
       { key: "useCloudComfy", type: "toggle", label: "云端运行" },

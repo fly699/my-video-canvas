@@ -46,6 +46,27 @@ describe("applyAspectToWorkflow", () => {
     expect(width).toBe(1024);
     expect(height).toBe(1024);
   });
+
+  it("img2video 缩放节点（ImageResizeKJv2 480×832，无空 latent）也按比例覆盖", () => {
+    // Wan2.1/InfiniteTalk 类工作流：分辨率来自 ImageResizeKJv2，不存在 Empty*Latent。
+    const json = JSON.stringify({
+      "340": { class_type: "ImageResizeKJv2", inputs: { width: 480, height: 832, keep_proportion: "crop", divisible_by: 16, image: ["284", 0] } },
+      "333": { class_type: "WanVideoSampler", inputs: { steps: 4 } },
+    });
+    const r = applyAspectToWorkflow(json, "16:9");
+    expect(r.patched).toBe(1);
+    const n = JSON.parse(r.json)["340"].inputs as { width: number; height: number };
+    expect(n.width / n.height).toBeGreaterThan(1.6); // 竖屏 → 横屏 16:9 邻域
+    expect(n.width).toBeGreaterThan(n.height);
+    expect(n.width % 64).toBe(0);
+    expect(n.height % 64).toBe(0);
+  });
+
+  it("裁剪类节点（带 width/height 但非分辨率定义）不被误改", () => {
+    // ImageCrop 的 width/height 是裁剪区域，不应被比例覆盖动到。
+    const json = JSON.stringify({ "9": { class_type: "ImageCrop", inputs: { width: 256, height: 256, x: 0, y: 0 } } });
+    expect(applyAspectToWorkflow(json, "16:9").patched).toBe(0);
+  });
 });
 
 describe("parseAspectRatioFromText", () => {
