@@ -69,3 +69,28 @@ describe("analyzeWorkflow — object_info authoritative param extraction", () =>
     expect(p.min).toBe(0);
   });
 });
+
+describe("analyzeWorkflow — 视频输出节点识别", () => {
+  it("新版核心 SaveVideo（CreateVideo→SaveVideo，Wan/InfiniteTalk 等）识别为视频输出", async () => {
+    const wf = JSON.stringify({
+      "1": { class_type: "WanVideoSampler", inputs: { steps: 4 } },
+      "2": { class_type: "WanVideoDecode", inputs: { samples: ["1", 0] } },
+      "3": { class_type: "CreateVideo", inputs: { fps: 25, images: ["2", 0] } },
+      "4": { class_type: "SaveVideo", inputs: { filename_prefix: "video/ComfyUI", video: ["3", 0] } },
+    });
+    const a = await analyzeWorkflow(wf); // 无 baseUrl 也应识别输出类型
+    expect(a.outputType).toBe("video");
+    expect(a.outputNodeIds).toContain("4");
+    expect(a.outputNodes.find((n) => n.id === "4")).toMatchObject({ classType: "SaveVideo", isVideo: true });
+  });
+
+  it("SaveWEBM 同样识别为视频输出", async () => {
+    const wf = JSON.stringify({
+      "1": { class_type: "KSampler", inputs: {} },
+      "2": { class_type: "SaveWEBM", inputs: { images: ["1", 0] } },
+    });
+    const a = await analyzeWorkflow(wf);
+    expect(a.outputType).toBe("video");
+    expect(a.outputNodes.find((n) => n.id === "2")).toMatchObject({ classType: "SaveWEBM", isVideo: true });
+  });
+});
