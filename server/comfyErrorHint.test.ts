@@ -120,3 +120,28 @@ describe("comfyErrorHint missing_node_type", () => {
     expect(h).toContain("ComfyUI-Manager");
   });
 });
+
+import { formatSubmitError } from "./_core/comfyui";
+
+describe("formatSubmitError — /prompt 400 校验错误解析", () => {
+  it("LoadImage 图片不存在（value_not_in_list）→ 节点类型 + 中文处置建议", () => {
+    const body = JSON.stringify({
+      error: { type: "prompt_outputs_failed_validation", message: "Prompt outputs failed validation" },
+      node_errors: {
+        "10": {
+          class_type: "LoadImage",
+          errors: [{ type: "value_not_in_list", message: "Value not in list", details: "image: 'ComfyUI_00362_.png' not in []" }],
+        },
+      },
+    });
+    const out = formatSubmitError(body);
+    expect(out).toContain("节点 #10（LoadImage）");
+    expect(out).toContain("ComfyUI_00362_.png");
+    expect(out).toContain("上传"); // 处置建议：必须上传/连接图片
+    expect(out).not.toContain("node_errors"); // 不再是截断的原始 JSON
+  });
+
+  it("非 JSON 体回退原文（截断）", () => {
+    expect(formatSubmitError("Internal Server Error xyz")).toContain("Internal Server Error xyz");
+  });
+});
