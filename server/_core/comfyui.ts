@@ -388,7 +388,7 @@ async function submitWorkflow(baseUrl: string, workflow: unknown, signal?: Abort
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`ComfyUI 提交工作流失败 (${res.status}): ${text.slice(0, 500)}${comfyErrorHint(text)}`);
+    throw new Error(`ComfyUI 提交工作流失败 (${res.status}): ${formatSubmitError(text)}`);
   }
   const data = (await res.json()) as PromptSubmitResponse;
   if (!data.prompt_id) throw new Error("ComfyUI 未返回 prompt_id");
@@ -515,19 +515,42 @@ function formatExecError(d: Record<string, unknown>): string {
   return tb.length > 0 ? `${base}\n↳ ${tb[tb.length - 1].slice(0, 240)}` : base;
 }
 
-/** Format a validation node_errors map: { "4": { errors: [{ message, details }] } }. */
+// 常见 ComfyUI 校验错误类型 → 中文处置建议。
+const NODE_ERR_TYPE_HINT: Record<string, string> = {
+  value_not_in_list: "该值不在这台 ComfyUI 的可选项里——对应模型/LoRA/VAE 文件未安装，或图片未上传到该服务器（图生视频/首尾帧工作流的「加载图像」必须先上传或连接一张图）",
+  required_input_missing: "缺少必填输入——请连接上游或填写该输入",
+  invalid_image: "图片文件在该 ComfyUI 服务器上不存在——请为该「加载图像」节点上传或连接图片",
+  invalid_prompt: "工作流结构非法（节点连线/输出缺失）",
+};
+
+/** Format a validation node_errors map:
+ *  { "10": { class_type, errors: [{ type, message, details }] } }. */
 function formatNodeErrors(nodeErrors: Record<string, unknown>): string | null {
   const parts: string[] = [];
   for (const [nodeId, v] of Object.entries(nodeErrors)) {
-    const errs = (v as { errors?: Array<{ message?: string; details?: string }> })?.errors;
-    if (Array.isArray(errs)) {
-      for (const e of errs) {
-        const msg = [e.message, e.details].filter(Boolean).join(": ");
-        if (msg) parts.push(`节点 #${nodeId}: ${msg}`);
-      }
+    const obj = v as { class_type?: string; errors?: Array<{ type?: string; message?: string; details?: string }> };
+    const errs = obj?.errors;
+    if (!Array.isArray(errs)) continue;
+    const label = obj.class_type ? `节点 #${nodeId}（${obj.class_type}）` : `节点 #${nodeId}`;
+    for (const e of errs) {
+      const msg = [e.message, e.details].filter(Boolean).join(": ");
+      const hint = e.type && NODE_ERR_TYPE_HINT[e.type] ? `——${NODE_ERR_TYPE_HINT[e.type]}` : "";
+      const body = msg || e.type || "校验失败";
+      parts.push(`${label}: ${body}${hint}`);
     }
   }
   return parts.length > 0 ? parts.join("；") : null;
+}
+
+/** 提交 /prompt 返回 400 时，把校验错误体（{error, node_errors}）解析成可读中文，
+ *  而非截断的原始 JSON。无法解析时回退原文 + 通用提示。 */
+export function formatSubmitError(rawBody: string): string {
+  try {
+    const j = JSON.parse(rawBody) as { error?: { message?: string }; node_errors?: Record<string, unknown> };
+    const ne = j.node_errors && typeof j.node_errors === "object" ? formatNodeErrors(j.node_errors) : null;
+    if (ne) return `${j.error?.message ? j.error.message + " — " : ""}${ne}`;
+  } catch { /* 非 JSON：回退原文 */ }
+  return `${rawBody.slice(0, 500)}${comfyErrorHint(rawBody)}`;
 }
 
 /**
