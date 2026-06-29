@@ -154,6 +154,12 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const patchActor = useCallback((id: string, p: Partial<DirectorActor>) => {
     setScene((s) => ({ ...s, actors: s.actors.map((a) => (a.id === id ? { ...a, ...p } : a)) }));
   }, []);
+  // 全部人物统一缩放（匹配全景/场景尺度时一键放大所有人物 + 群组）。
+  const scaleAllActors = useCallback((v: number) => setScene((s) => ({
+    ...s,
+    actors: s.actors.map((a) => ({ ...a, scale: v })),
+    groups: (s.groups ?? []).map((g) => ({ ...g, scale: v })),
+  })), []);
   // 改动当前机位：同时写「镜像 camera（渲染/截图直接读）」与命名机位列表里的激活项。
   const patchCam = useCallback((p: Partial<DirectorCamera>) => {
     setScene((s) => {
@@ -621,8 +627,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <Xyz v={selectedGroup.position} onChange={(position) => patchGroup(selectedGroup.id, { position })} />
               <div style={sub}>整组旋转(°)</div>
               <Xyz v={selectedGroup.rotation} min={-180} max={180} step={1} fixed={0} onChange={(rotation) => patchGroup(selectedGroup.id, { rotation })} />
-              <div style={sub}>统一缩放</div>
-              <DragNumber label="比例" value={selectedGroup.scale} step={0.02} onChange={(v) => patchGroup(selectedGroup.id, { scale: Math.max(0.2, Math.min(3, v)) })} />
+              <div style={sub}>整组统一缩放</div>
+              <Slider label="比例" value={selectedGroup.scale} min={0.1} max={30} step={0.1} fixed={1} onChange={(v) => patchGroup(selectedGroup.id, { scale: v })} />
               <div style={sub}>组配色</div>
               <input type="color" value={selectedGroup.color} onChange={(e) => { const color = e.target.value; patchGroup(selectedGroup.id, { color }); setScene((s) => ({ ...s, actors: s.actors.map((a) => (a.groupId === selectedGroup.id ? { ...a, color } : a)) })); }} style={{ width: "100%", height: 28, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
               <div className="flex gap-1" style={{ marginTop: 10 }}>
@@ -658,8 +664,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   <Xyz v={selected.position} onChange={(position) => patchActor(selected.id, { position })} />
                   <div style={sub}>旋转(°)</div>
                   <Xyz v={selected.rotation} min={-180} max={180} step={1} fixed={0} onChange={(rotation) => patchActor(selected.id, { rotation })} />
-                  <div style={sub}>缩放</div>
-                  <DragNumber label="比例" value={selected.scale} step={0.02} onChange={(v) => patchActor(selected.id, { scale: Math.max(0.2, Math.min(3, v)) })} />
+                  <div style={sub}>缩放（放大以匹配全景场景）</div>
+                  <Slider label="比例" value={selected.scale} min={0.1} max={30} step={0.1} fixed={1} onChange={(v) => patchActor(selected.id, { scale: v })} />
                   <div style={sub}>颜色</div>
                   <input type="color" value={selected.color} onChange={(e) => patchActor(selected.id, { color: e.target.value })} style={{ width: "100%", height: 28, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
                 </>
@@ -691,9 +697,18 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               )}
             </div>
           ) : (
-            <div style={{ ...panel, color: "var(--c-t4)", fontSize: 12 }}>
-              点选左侧图层或画面中的人偶/机位进行编辑。<br /><br />
-              工作流：摆好站位与机位 → 「截图 → 参考图」→ 连到生图/视频节点，提示词里强调「人物站位与参考图一致」。
+            <div style={panel}>
+              <div style={ttl}>场景</div>
+              {scene.actors.length > 0 && (
+                <>
+                  <div style={sub}>全部人物缩放（匹配全景尺度）</div>
+                  <Slider label="比例" value={scene.actors[0]?.scale ?? 1} min={0.1} max={30} step={0.1} fixed={1} onChange={scaleAllActors} />
+                </>
+              )}
+              <p style={{ ...hint, marginTop: 10 }}>
+                点选左侧图层或画面中的人偶/机位进行编辑；选中独立人偶后可用画面左上「移动/旋转/缩放」手柄直接拖。<br /><br />
+                工作流：摆好站位与机位 → 「截图 → 参考图」→ 连到生图/视频节点，提示词强调「人物站位与参考图一致」。
+              </p>
             </div>
           )}
           <button onClick={resetCamera} style={{ ...headBtn(), justifyContent: "center" }}>
