@@ -199,9 +199,12 @@ svg text{font-family:inherit}
 
 <div class="card"><h3>它解决什么问题</h3><div class="muted">让用户把<b>自己的 ComfyUI 算力（本地/内网/私有 GPU）</b>无缝接入云端创作画布——既保留本地模型完全自由度（任意 checkpoint / LoRA / ControlNet / IPAdapter / 自定义工作流），又获得在线协作便捷；数据与计算全程留在自有环境，<b>零外发、零依赖第三方算力账号</b>。同时支持官方云端 ComfyUI 一键弹性扩容。</div>
 <div class="grid3" style="margin-top:14px">
-<div class="kpi"><div class="v" style="color:#7c3aed">2732</div><div class="l">核心引擎行数 comfyui.ts</div></div>
-<div class="kpi"><div class="v" style="color:#16a34a">3</div><div class="l">专用节点类型</div></div>
-<div class="kpi"><div class="v" style="color:#0891b2">10+</div><div class="l">相关数据库表</div></div></div></div>
+<div class="kpi"><div class="v" style="color:#7c3aed">3</div><div class="l">专用节点类型</div><div class="s">comfyui_image / video / workflow</div></div>
+<div class="kpi"><div class="v" style="color:#16a34a">8</div><div class="l">内置预调试工作流模板</div><div class="s">图像 3(txt2img/img2img/inpaint) + 视频 5(AnimateDiff/SVD/Wan T2V·I2V/LTX)</div></div>
+<div class="kpi"><div class="v" style="color:#0891b2">∞</div><div class="l">全局模板库(用户已调试工作流入库)</div><div class="s">任意工作流存为模板·全局共享·AI 能力分析·跨项目复用</div></div>
+<div class="kpi"><div class="v" style="color:#9333ea">2732</div><div class="l">核心引擎行数 comfyui.ts</div></div>
+<div class="kpi"><div class="v" style="color:#b45309">10+</div><div class="l">相关数据库表</div></div></div>
+<div class="muted" style="margin-top:10px"><b>模板节点说明：</b>除 3 个节点类型外，平台内置 <b style="color:#16a34a">8 个已调试好的工作流模板</b>（即开即用，参数化暴露）；更可把团队<b>自己调试通的任意 ComfyUI 工作流存入「全局模板库」</b>（含完整参数与提示词、AI 自动标注能力标签供智能体规划选用），数量不限、全局共享、跨项目复用——这才是「已调试好的模板节点」的真正规模。</div></div>
 <div class="card"><h3>三类节点能力对比</h3><table>
 <tr><th>节点</th><th>定位</th><th>关键能力</th></tr>
 <tr><td><b>comfyui_image</b></td><td>快速图像模板</td><td>txt2img/img2img/inpaint；多 LoRA 链、ControlNet(+预处理器)、IPAdapter 多图、架构适配(sd/flux/sd3/qwen)、运行后清显存</td></tr>
