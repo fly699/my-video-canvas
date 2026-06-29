@@ -13,6 +13,7 @@ import {
 import type { NodeType, NodeData, CollaboratorCursor, GroupNodeData } from "../../../shared/types";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { getNodeConfig } from "../lib/nodeConfig";
+import { makeDefaultDirectorScene } from "../lib/directorScene";
 import { resolveNodeOutputImageUrl, isRefImageTarget, effectiveTargetHandle } from "../lib/refImagePropagation";
 import { defaultTargetHandle } from "../lib/connectionRules";
 
@@ -1173,6 +1174,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { workflowTemplate: "txt2img", prompt: "", ckpt: "", steps: 20, cfg: 7, seed: -1, width: 512, height: 512, status: "idle" };
     case "comfyui_video":
       return { workflowTemplate: "animatediff", prompt: "", ckpt: "", steps: 20, cfg: 7, seed: -1, frames: 16, fps: 8, status: "idle" };
+    case "director":
+      return { scene: makeDefaultDirectorScene(), status: "idle" } as NodeData;
     case "agent":
       return { messages: [], status: "idle" };
     default:
