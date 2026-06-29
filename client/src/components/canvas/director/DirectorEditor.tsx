@@ -160,7 +160,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
   // Canvas 初始机位（只在挂载时取一次，之后由 OrbitControls 拥有位置，避免受控 prop 与拖拽打架）。
-  const initCam = useMemo(() => ({ fov: scene.camera.fov, position: scene.camera.position as Vec3, near: 0.1, far: 200 }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // far 必须大于全景天空盒最大半径(60×球半径上限8=480)，否则球的远半球会被远裁剪面切掉、
+  // 露出背景色形成「黑芯」。给到 2000 既覆盖全景球，也覆盖放大场景里被拉远的机位。
+  const initCam = useMemo(() => ({ fov: scene.camera.fov, position: scene.camera.position as Vec3, near: 0.1, far: 2000 }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 持久化：关闭时把场景写回节点（不丢编辑）。
   useEffect(() => () => { updateNodeData(nodeId, { scene: sceneRef.current, aspectRatio: sceneRef.current.aspectRatio }, true); }, [nodeId, updateNodeData]);
@@ -546,7 +548,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }}>全景对齐</div>
               <div style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, marginBottom: 2 }}>背景为 360° 天空盒（恒环绕）。用「场景缩放/升降」把人物对到全景地面与尺度。</div>
               <Slider label="背景转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
-              <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={Math.max(6, sceneS * 4)} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
+              <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={8} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
               {/* 场景缩放/升降：缩放与上下移动「人物场景」以贴合全景的尺度与地面线（LibTV 场景缩放） */}
               <Slider label="人物缩放" value={scene.sceneScale ?? 1} min={0.2} max={30} step={0.1} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
               <Slider label="人物升降" value={scene.sceneOffsetY ?? 0} min={-6 * sceneS} max={6 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetY: v })} />
