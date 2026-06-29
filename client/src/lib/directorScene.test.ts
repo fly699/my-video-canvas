@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   aspectRatioValue, makeActor, makeDefaultDirectorScene, mannequinModel, nextActorName, MANNEQUIN_MODELS,
-  makeCrowd, bakeGroupTransform,
+  makeCrowd, bakeGroupTransform, ensureCameras, nextCameraName,
 } from "./directorScene";
 import type { DirectorActor } from "../../../shared/types";
 
@@ -61,6 +61,27 @@ describe("directorScene helpers", () => {
     expect(baked.position[0]).toBeCloseTo(10 + actors[0].position[0] * 2, 4);
     expect(baked.position[2]).toBeCloseTo(5 + actors[0].position[2] * 2, 4);
     expect(baked.scale).toBe(actors[0].scale * 2);
+  });
+
+  it("ensureCameras：旧单机位场景迁移出一个命名「机位1」", () => {
+    const legacy = { ...makeDefaultDirectorScene(), cameras: undefined, activeCameraId: undefined };
+    const cams = ensureCameras(legacy);
+    expect(cams).toHaveLength(1);
+    expect(cams[0].name).toBe("机位1");
+    expect(cams[0].id).toBeTruthy();
+    expect(cams[0].fov).toBe(legacy.camera.fov);
+  });
+
+  it("nextCameraName 顺延机位N，避开已用名", () => {
+    expect(nextCameraName([{ name: "机位1" } as never])).toBe("机位2");
+    expect(nextCameraName([{ name: "机位1" } as never, { name: "机位2" } as never])).toBe("机位3");
+  });
+
+  it("默认场景含命名机位列表 + activeCameraId", () => {
+    const s = makeDefaultDirectorScene();
+    expect(s.cameras).toHaveLength(1);
+    expect(s.activeCameraId).toBe(s.cameras![0].id);
+    expect(s.camera).toBe(s.cameras![0]); // 镜像同一对象
   });
 
   it("makeDefaultDirectorScene：1 个角色 + 32° 机位 + 16:9 + 显示地面", () => {
