@@ -34,7 +34,7 @@ export function ShotPreview({ scene }: { scene: DirectorScene }) {
     <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 5, width: w, borderRadius: 10, overflow: "hidden", border: "1px solid var(--c-bd2)", boxShadow: "0 8px 28px oklch(0 0 0 / 0.6)", background: "#07090e" }}>
       <div style={{ height: h, position: "relative" }}>
         <Canvas dpr={[1, 1.5]} gl={{ antialias: true }} style={{ width: "100%", height: "100%" }}
-          camera={{ position: scene.camera.position, fov: scene.camera.fov }}>
+          camera={{ position: scene.camera.position, fov: scene.camera.fov, near: 0.1, far: 2000 }}>
           <color attach="background" args={[scene.background || (scene.panoramaUrl ? "#060608" : "#1a1d24")]} />
           <LockCam cam={scene.camera} />
           {scene.panoramaUrl && !scene.background && (
