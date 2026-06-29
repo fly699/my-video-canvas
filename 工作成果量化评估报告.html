@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 视频画布 · 工作成果量化评估报告</title>
+<style>
+:root{--bg:#08080a;--panel:#101015;--panel2:#15151c;--bd:#23232e;--t1:#f0f0f5;--t2:#b8b8c6;--t3:#85859a;--t4:#5a5a6e;
+--ac:#a06bff;--ac2:#6b8bff;--g:#37d6a6;--y:#ffb020;--r:#ff6b7a;--cy:#5ad1e6;--pk:#ff6fa5;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--t1);font-family:-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 80px}
+.hero{background:radial-gradient(1200px 500px at 50% -100px,rgba(160,107,255,.22),transparent),linear-gradient(180deg,#0c0c12,#08080a);
+border-bottom:1px solid var(--bd);padding:64px 22px 40px;text-align:center}
+.hero h1{font-size:38px;font-weight:850;letter-spacing:-1px;background:linear-gradient(90deg,#fff,#c9b8ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .sub{color:var(--t2);margin-top:10px;font-size:15px}
+.hero .tag{display:inline-block;margin-top:16px;padding:5px 14px;border:1px solid var(--ac);border-radius:99px;color:#d9c9ff;font-size:12px;font-weight:600;background:rgba(160,107,255,.1)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:34px 0}
+.kpi{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--bd);border-radius:16px;padding:18px 16px;position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;left:0;top:0;width:100%;height:3px;background:var(--ac)}
+.kpi .v{font-size:30px;font-weight:850;letter-spacing:-1px}
+.kpi .l{color:var(--t3);font-size:12px;margin-top:3px}
+.kpi .s{color:var(--t4);font-size:10.5px;margin-top:6px}
+.kpi.g::before{background:var(--g)} .kpi.y::before{background:var(--y)} .kpi.b::before{background:var(--ac2)}
+.kpi.cy::before{background:var(--cy)} .kpi.pk::before{background:var(--pk)} .kpi.r::before{background:var(--r)}
+section{margin-top:54px}
+h2{font-size:23px;font-weight:800;letter-spacing:-.5px;display:flex;align-items:center;gap:10px;margin-bottom:6px}
+h2 .n{font-size:13px;color:#0b0d12;background:var(--ac);width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;font-weight:800}
+.lead{color:var(--t2);font-size:14px;margin-bottom:20px;max-width:880px}
+.card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--bd);border-radius:16px;padding:22px;margin-bottom:18px}
+.card h3{font-size:15px;font-weight:700;margin-bottom:14px;color:var(--t1)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--bd)}
+th{color:var(--t3);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
+td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;font-size:12px;color:var(--t2)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.note{font-size:12px;color:var(--t4);background:rgba(255,255,255,.02);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-top:14px}
+.tl{position:relative;padding-left:26px}
+.tl::before{content:'';position:absolute;left:7px;top:4px;bottom:4px;width:2px;background:linear-gradient(180deg,var(--ac),var(--ac2))}
+.tl .it{position:relative;margin-bottom:20px}
+.tl .it::before{content:'';position:absolute;left:-23px;top:5px;width:12px;height:12px;border-radius:50%;background:var(--ac);box-shadow:0 0 0 4px rgba(160,107,255,.18)}
+.tl .d{font-size:12px;color:var(--ac);font-weight:700}
+.tl .h{font-weight:700;font-size:15px;margin:2px 0 3px}
+.tl .p{color:var(--t2);font-size:13px}
+.feat-l{list-style:none}
+.feat-l li{padding:13px 0;border-bottom:1px solid var(--bd);display:flex;gap:14px;align-items:flex-start}
+.feat-l li:last-child{border-bottom:0}
+.feat-l .ico{flex-shrink:0;width:36px;height:36px;border-radius:10px;background:rgba(160,107,255,.14);display:flex;align-items:center;justify-content:center;font-size:18px}
+.feat-l .ft{font-weight:700;font-size:14.5px} .feat-l .fd{color:var(--t2);font-size:13px;margin-top:2px}
+.badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:99px;background:rgba(55,214,166,.16);color:#7ef0c8;margin-left:8px}
+.badge.new{background:rgba(160,107,255,.18);color:#d9c9ff}
+.comfy{background:linear-gradient(180deg,#12101a,#0e0c14);border:1px solid #2a2440}
+.coef{font-size:46px;font-weight:850;background:linear-gradient(90deg,var(--g),var(--cy));-webkit-background-clip:text;background-clip:text;color:transparent;letter-spacing:-1px}
+.bigrow{display:flex;flex-wrap:wrap;gap:30px;align-items:center}
+.foot{margin-top:60px;padding-top:24px;border-top:1px solid var(--bd);color:var(--t4);font-size:12px;text-align:center}
+.chip{display:inline-block;font-size:11px;color:var(--t3);border:1px solid var(--bd);border-radius:99px;padding:3px 10px;margin:3px 4px 0 0}
+svg text{font-family:inherit}
+.roadmap li{padding:11px 0;border-bottom:1px solid var(--bd)}
+.roadmap li:last-child{border:0}
+</style></head>
+<body>
+<div class="hero">
+  <div class="tag">▎数据驱动 · 有据可查 · 全量统计</div>
+  <h1>AI 视频画布 — 工作成果量化评估报告</h1>
+  <div class="sub">项目周期 2026-05-19 → 2026-06-29（42 个自然日 · 32 个活跃工作日）<br>
+  基于 Git 全量提交历史、Claude Code 会话转录、代码库实测，多维度交叉统计</div>
+</div>
+<div class="wrap">
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">1044</div><div class="l">总提交数（全分支去重）</div><div class="s">含 222 个 PR 合并</div></div>
+    <div class="kpi g"><div class="v">287.5k</div><div class="l">当前代码库总行数</div><div class="s">不漏算任一 tracked 文件</div></div>
+    <div class="kpi b"><div class="v">672.3k</div><div class="l">累计新增行（含迭代）</div><div class="s">删除 41.0k 行</div></div>
+    <div class="kpi y"><div class="v">443</div><div class="l">功能/修复提交（feat+fix）</div><div class="s">feat 443 · fix 451</div></div>
+    <div class="kpi cy"><div class="v">1.21B</div><div class="l">累计消耗 Token</div><div class="s">8094 个 AI 回合</div></div>
+    <div class="kpi pk"><div class="v">196</div><div class="l">用户对话轮次</div><div class="s">141 次子代理调用</div></div>
+    <div class="kpi r"><div class="v">≈186×</div><div class="l">常规工程工作量系数</div><div class="s">折合 ≈21 人年</div></div>
+    <div class="kpi"><div class="v">1100</div><div class="l">自动化测试项</div><div class="s">134 个测试文件全绿</div></div>
+  </div>
+
+  <div class="note">📐 <b>数据口径与方法论</b>：① 提交/代码量来自 <code>git log --all</code>（全分支按 hash 去重，2026-05-19~2026-06-29）；
+  当前代码库行数来自 <code>git ls-files</code> 实测全部 728 个 tracked 文件。② Token/对话/额度来自本机 Claude Code 会话转录（JSONL，含 usage），
+  覆盖 2026-06-11~2026-06-29 区间的可得会话（更早期会话转录因云端环境为临时容器不在本机，故 Token 为该区间下限）。
+  ③「工作时段外」定义：非周一~周五、或不在 08:30–17:00、或法定节假日（端午 6/19–6/21）。④ 常规工程折算为基于 LoC 的<i>示意性</i>估算，详见对应章节假设。</div>
+
+  <!-- 1 时间线 -->
+  <section><h2><span class="n">1</span>项目阶段时间线</h2>
+  <div class="lead">从 0 到 1 的完整 AI 影视创作平台：奠基 → 多模型接入 → 自建算力 → 协作与运维 → 3D 导演台。</div>
+  <div class="card"><div class="tl">
+    <div class="it"><div class="d">2026-05-19 ~ 05-24 · 奠基期</div><div class="h">v1.0 核心交付 + UI 全面重做</div><div class="p">节点式画布、脚本/分镜/提示词/图像/视频节点骨架；对标 Runway/Linear 的纯黑极简 UI；React 19 兼容化、TypeScript 0 error、首批 Vitest。本周 58 个 feat。</div></div>
+    <div class="it"><div class="d">2026-05-25 ~ 05-31 · 模型与体系扩张</div><div class="h">多模型接入 + 计价体系 + 节点能力深化</div><div class="p">KIE / Poyo 全模型族（图像/视频/音乐/LLM）、计价文档与目录、角色一致性、智能体配方。本周 111 个 feat（峰值）。</div></div>
+    <div class="it"><div class="d">2026-06-09 ~ 06-15 · 自建算力与剪辑</div><div class="h">ComfyUI 自建服务器 + 内置剪辑器</div><div class="p">接入用户自建 ComfyUI 实例（出图/出视频/工作流节点）、ffmpeg 导出滤镜、综合时间轴剪辑器、九宫格分镜。</div></div>
+    <div class="it"><div class="d">2026-06-16 ~ 06-22 · 协作 / 运维 / 安全</div><div class="h">公网隧道 + 白名单门控 + 多轮安全审查 + 实时协作</div><div class="p">内置 cloudflared 隧道、隧道级白名单、注册邮箱验证、系统一键更新/重启、13+ 轮安全审查修复。本周 150 个 feat（峰值）。</div></div>
+    <div class="it"><div class="d">2026-06-23 ~ 06-29 · 3D 导演台</div><div class="h">3D 精准构图导演台（对标 LibTV）</div><div class="p">全屏 3D 编辑器、真人骨骼姿势、五种景别、360° 全景天空盒、多机位宫格、机位实时预览、截图即参考图。</div></div>
+  </div></div></section>
+
+  <!-- 2 提交活动 -->
+  <section><h2><span class="n">2</span>提交活动 · 日 / 周 / 月</h2>
+  <div class="lead">每日提交柱状图按「工作时段内（紫）/ 工作时段外（黄）」着色；可直观看出大量投入发生在夜间、周末与节假日。</div>
+  <div class="card"><h3>每日提交数（着色区分工作时段内外）</h3><div id="c_daily"></div>
+    <div class="legend"><span><i style="background:var(--ac)"></i>工作时段内（工作日 08:30–17:00）</span><span><i style="background:var(--y)"></i>工作时段外（夜间/清晨/周末/节假日）</span></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>每周提交 & 新功能(feat)</h3><div id="c_week"></div>
+      <div class="legend"><span><i style="background:var(--ac2)"></i>提交数</span><span><i style="background:var(--g)"></i>新功能 feat</span></div></div>
+    <div class="card"><h3>月度对比</h3><div id="c_month"></div>
+      <div class="legend"><span><i style="background:var(--ac)"></i>提交</span><span><i style="background:var(--g)"></i>feat</span><span><i style="background:var(--cy)"></i>PR</span></div></div>
+  </div></section>
+
+  <!-- 3 工时分布 -->
+  <section><h2><span class="n">3</span>工时分布 · 投入强度</h2>
+  <div class="lead">按小时与星期统计提交时刻，量化「非常规工时」投入。</div>
+  <div class="grid2">
+    <div class="card"><h3>24 小时提交分布（红线=工作时段边界 8:30 / 17:00）</h3><div id="c_hour"></div></div>
+    <div class="card"><h3>星期分布（周六/周日为非工作日）</h3><div id="c_wd"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>工作时段内 vs 时段外</h3><div id="c_offpie" style="display:flex;justify-content:center"></div>
+      <div class="legend" style="justify-content:center"><span><i style="background:var(--ac)"></i>时段内 360</span><span><i style="background:var(--y)"></i>时段外 684</span></div></div>
+    <div class="card"><h3>「工作时段外」提交细分</h3><div id="c_offbar"></div>
+      <table style="margin-top:10px"><tr><td>🌙 深夜(22:00–次日5:00前)</td><td class="num">162</td></tr>
+      <tr><td>🌆 晚间(17:00–22:00)</td><td class="num">52</td></tr>
+      <tr><td>🌅 清晨(5:00–8:30)</td><td class="num">105</td></tr>
+      <tr><td>🛌 周末(周六/周日)</td><td class="num">252</td></tr>
+      <tr><td>🎏 节假日(端午)</td><td class="num">113</td></tr></table></div>
+  </div>
+  <div class="note">⏱ 全部 1044 个提交中，<b>684（65%）发生在常规工作时段之外</b>，其中节假日 113、周末 252、深夜 162。投入强度远超常规 9-to-5。</div>
+  </section>
+
+  <!-- 4 代码量与模块 -->
+  <section><h2><span class="n">4</span>代码量 · 模块分布（ComfyUI 高亮）</h2>
+  <div class="lead">累计净增长曲线、各模块改动量；「ComfyUI 自建服务器」单独高亮——它是本项目最具工程含量的子系统之一。</div>
+  <div class="card"><h3>累计新增行数（净增长）</h3><div id="c_cum"></div></div>
+  <div class="grid2">
+    <div class="card"><h3>模块改动量（新增行）· ComfyUI 高亮</h3><div id="c_area"></div></div>
+    <div class="card"><h3>文件类型行数构成</h3><div id="c_ftype"></div></div>
+  </div>
+  <div class="note">📦 当前代码库 <b>287.5k 行</b>（728 个 tracked 文件，不漏算任一行）：纯代码(ts/tsx/js/css/sql/html) ≈ 141.3k 行、文档(md) 84.4k 行、数据/配置(json/yaml) 50.4k 行、3D 模型(glb) 9565 行。</div>
+  </section>
+
+  <!-- 5 功能数量 -->
+  <section><h2><span class="n">5</span>功能产出 · 按时间统计</h2>
+  <div class="lead">按提交类型与时间统计「做了多少功能」。新功能(feat) 共 <b>443</b> 个、修复(fix) 451 个。</div>
+  <div class="grid2">
+    <div class="card"><h3>提交类型构成</h3><div id="c_type"></div></div>
+    <div class="card"><h3>新功能(feat) 周度产出</h3><div id="c_featweek"></div></div>
+  </div></section>
+
+  <!-- 6 Token / 对话 / 额度 -->
+  <section><h2><span class="n">6</span>AI 引擎 · Token / 对话 / 额度消耗</h2>
+  <div class="lead">驱动本项目的 Claude Code 智能体引擎消耗量化。<b>累计 1.21B token</b>，其中缓存读取占绝大头（长程会话上下文复用）。</div>
+  <div class="grid3">
+    <div class="kpi cy"><div class="v">2.21M</div><div class="l">输出 Token（生成）</div></div>
+    <div class="kpi b"><div class="v">2.71M</div><div class="l">输入 Token（新鲜）</div></div>
+    <div class="kpi"><div class="v">50.22M</div><div class="l">缓存写入 Token</div></div>
+    <div class="kpi g"><div class="v">1.15B</div><div class="l">缓存读取 Token</div></div>
+    <div class="kpi y"><div class="v">8094</div><div class="l">AI 回合数</div></div>
+    <div class="kpi pk"><div class="v">$2,879</div><div class="l">估算费用(USD)*</div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>每日 Token 消耗（输出+输入+缓存写）</h3><div id="c_tokday"></div></div>
+    <div class="card"><h3>Token 构成</h3><div id="c_tokpie" style="display:flex;justify-content:center"></div>
+      <div class="legend" style="justify-content:center"><span><i style="background:var(--g)"></i>缓存读</span><span><i style="background:var(--ac)"></i>缓存写</span><span><i style="background:var(--ac2)"></i>输入</span><span><i style="background:var(--cy)"></i>输出</span></div></div>
+  </div>
+  <div class="card"><h3>每会话/子代理（额度）Token 用量 Top（按输出排序）</h3>
+    <table><tr><th>会话/代理</th><th>类型</th><th>AI回合</th><th>输出</th><th>输入</th><th>缓存读</th></tr>
+    <tr><td>d0d8f637-dd7…</td><td>主会话</td><td class=num>1882</td><td class=num>2.10M</td><td class=num>384.4k</td><td class=num>816.18M</td></tr><tr><td>agent-a7cf79…</td><td>子代理</td><td class=num>99</td><td class=num>4.3k</td><td class=num>534</td><td class=num>5.00M</td></tr><tr><td>agent-a6c8d4…</td><td>子代理</td><td class=num>127</td><td class=num>3.9k</td><td class=num>67.8k</td><td class=num>7.05M</td></tr><tr><td>agent-ada86b…</td><td>子代理</td><td class=num>14</td><td class=num>3.8k</td><td class=num>28.9k</td><td class=num>397.7k</td></tr><tr><td>agent-a81d46…</td><td>子代理</td><td class=num>113</td><td class=num>3.4k</td><td class=num>7.4k</td><td class=num>6.30M</td></tr><tr><td>agent-add84c…</td><td>子代理</td><td class=num>53</td><td class=num>3.1k</td><td class=num>57.9k</td><td class=num>4.23M</td></tr><tr><td>agent-aa729a…</td><td>子代理</td><td class=num>93</td><td class=num>2.7k</td><td class=num>3.9k</td><td class=num>4.26M</td></tr><tr><td>agent-a2df53…</td><td>子代理</td><td class=num>35</td><td class=num>2.5k</td><td class=num>13.8k</td><td class=num>1.13M</td></tr><tr><td>agent-a677f3…</td><td>子代理</td><td class=num>41</td><td class=num>2.5k</td><td class=num>11.5k</td><td class=num>1.97M</td></tr><tr><td>agent-a104a5…</td><td>子代理</td><td class=num>50</td><td class=num>2.4k</td><td class=num>10.1k</td><td class=num>4.13M</td></tr><tr><td>agent-ab70af…</td><td>子代理</td><td class=num>115</td><td class=num>2.4k</td><td class=num>18.0k</td><td class=num>8.82M</td></tr><tr><td>agent-a95424…</td><td>子代理</td><td class=num>87</td><td class=num>2.3k</td><td class=num>50.6k</td><td class=num>4.45M</td></tr>
+    </table></div>
+  <div class="note">* 费用为基于 Opus 公开标准单价的<i>示意性</i>估算（输入 $15 / 输出 $75 / 缓存写 $18.75 / 缓存读 $1.5 每百万 token），实际以订阅计费为准。模型：Opus 4.8 主推理 5305 次 + Haiku 4.5 辅助 2789 次。</div>
+  </section>
+
+  <!-- 7 常规工程折算 -->
+  <section><h2><span class="n">7</span>折合常规软件工程工作量 · 实时系数</h2>
+  <div class="lead">把交付成果按行业常规生产率折算为「需要多少人/多少时间」，得出 AI 协作相对常规工程的<b>工作量实时系数</b>。</div>
+  <div class="card"><div class="bigrow">
+    <div><div class="coef">≈ 186×</div><div style="color:var(--t3);font-size:13px;margin-top:4px">常规工程工作量系数（行业典型 30 LoC/人日）</div></div>
+    <div style="flex:1;min-width:260px;color:var(--t2);font-size:13.5px">
+    以纯代码净交付 <b>141.3k 行</b>计：按行业典型 30 LoC/人日 折算需 <b>4709 人日 ≈ 21.4 人年</b>；
+    而实际仅用 <b>42 个自然日</b>完成 → 相当于把约 <b>21 人年</b>的常规工作量压缩进 <b>1.4 个月</b>，
+    即并行 <b>186 名</b>常规工程师的等效产出。</div>
+  </div>
+  <table style="margin-top:18px">
+    <tr><th>折算方法 / 生产率基准</th><th>需要人日</th><th>≈ 人年</th><th>相对 42 天的系数</th></tr>
+    <tr><td>LoC 基准 · 复杂/严谨工程（15 行/人日）</td><td class=num>9,418</td><td class=num>42.8</td><td class=num>≈ 372×</td></tr><tr><td>LoC 基准 · 行业典型（30 行/人日）</td><td class=num>4,709</td><td class=num>21.4</td><td class=num>≈ 186×</td></tr><tr><td>LoC 基准 · 高产出（50 行/人日）</td><td class=num>2,825</td><td class=num>12.8</td><td class=num>≈ 112×</td></tr>
+    <tr><td>COCOMO 基本(organic)：2.4·KLOC^1.05</td><td class="num">9,554</td><td class="num">36.2</td><td class="num">≈ 314×</td></tr>
+  </table>
+  <div class="note">📊 估算说明：LoC 折算法采用业界常用「单人有效产出 15–50 行/人日（含设计、调试、测试、评审、沟通等全部开销）」区间；COCOMO 为经典软件成本模型（organic 型，KLOC=141，理论工期 25 个月）。
+  以上为<i>数量级示意</i>，旨在直观表达工作量级别——AI 生成代码与手写代码性质不同，不应据此精确计薪。无论取哪种口径，本项目的等效常规工作量都在 <b>13–36 人年</b>量级，实时加速系数在 <b>111×–372×</b> 之间。</div>
+  </section>
+
+  <!-- 8 功能成果分层汇报 -->
+  <section><h2><span class="n">8</span>功能成果 · 分层递进汇报</h2>
+  <div class="lead">参照产品首页「核心功能」介绍，逐层展开已交付能力（含首页尚未收录的 <b>3D 导演台</b> 等新功能）。</div>
+  
+<div class="card"><h3>层级 1 · 创作起点 —— 把想法结构化</h3>
+<ul class="feat-l">
+<li><div class="ico">📝</div><div><div class="ft">脚本 / 分镜 / 提示词节点</div><div class="fd">Logline → 梗概 → 节拍表 → 剧本 → 分镜的逐步向导；分镜表统管镜号、景别（远/全/中/近/特写）、灯光调色、相机焦段光圈、反向词，自动翻译为下游生成约束。</div></div></li>
+<li><div class="ico">🎭</div><div><div class="ft">全局角色库 · 一致性<span class="badge">GA</span></div><div class="fd">多视角参考图 + LoRA 绑定 + 音色 casting + 一致性种子锁定；<code>@角色名</code> 一键引用，跨 ComfyUI/云端所有生成节点贯穿同一身份，LLM 校验人设一致。</div></div></li>
+</ul></div>
+
+<div class="card"><h3>层级 2 · AI 生成引擎 —— 全模态、全厂商覆盖</h3>
+<div class="grid3" style="margin-bottom:8px">
+<div class="kpi b"><div class="v">24+</div><div class="l">图像模型</div><div class="s">Nano Banana Pro / GPT Image / Flux 2 / Seedream / Kling / Z-Image / Soul·Reve</div></div>
+<div class="kpi cy"><div class="v">37+</div><div class="l">视频模型</div><div class="s">Sora 2 / Veo 3.1 / Kling 2.1~3.0 / Wan / Seedance / Hailuo / Runway / DoP</div></div>
+<div class="kpi pk"><div class="v">30+</div><div class="l">LLM 模型族</div><div class="s">Claude 4.x / Gemini 3 / GPT-5.x / Qwen / 自带 key</div></div>
+</div>
+<ul class="feat-l">
+<li><div class="ico">🖼️</div><div><div class="ft">图像生成</div><div class="fd">文生图 / 图生图 / 蒙版编辑 / 多参考（Nano 14 张）/ 2K·4K；对齐 Poyo 全量目录。</div></div></li>
+<li><div class="ico">🎬</div><div><div class="ft">视频生成</div><div class="fd">文生 / 图生 / 首尾帧 / 多镜头 / 动作控制 / 音频驱动数字人 / 4K 输出。</div></div></li>
+<li><div class="ico">🔊</div><div><div class="ft">音频 · 多角色配音</div><div class="fd">Suno·MiniMax 配乐、ElevenLabs·OpenAI·本地 VoxCPM 配音；脚本「角色名：台词」自动分音色拼接成镜级音频。</div></div></li>
+</ul></div>
+
+<div class="card"><h3>层级 3 · 智能体编排 —— 一句话生成整条工作流</h3>
+<ul class="feat-l">
+<li><div class="ico">🤖</div><div><div class="ft">Agent 自动建图<span class="badge">BETA</span></div><div class="fd">输入 logline → LLM 规划 create/connect/update/delete 操作建图；增量编辑、可撤销；幻觉字段白名单过滤；自动应用/自动运行。</div></div></li>
+<li><div class="ico">🧩</div><div><div class="ft">ImageFirst 流水线 + 配方</div><div class="fd">默认「先生图再图生视频」提升一致性；分镜→批量关键帧→批量生视频→批量配音→合并的成片流水线；多智能体共享画布各管各、归属彩标隔离。</div></div></li>
+</ul></div>
+
+<div class="card"><h3>层级 4 · 剪辑与合成 —— 节点即剪辑台</h3>
+<ul class="feat-l">
+<li><div class="ico">✂️</div><div><div class="ft">内置综合剪辑器<span class="badge">GA</span></div><div class="fd">多片段时间轴、单遍 ffmpeg 导出高素质成片、转场/特效/变速/倒放、富文本字幕、AI 配乐配音、撤销重做 + 自动保存。</div></div></li>
+<li><div class="ico">🎚️</div><div><div class="ft">剪辑节点 · 专业升级</div><div class="fd">帧级精确入出点、多音轨混音（音量/延迟/淡入淡出/独奏/语音闪避）、响度标准化 + 降噪、调色预设、旋转翻转、输出分辨率·帧率·格式。</div></div></li>
+<li><div class="ico">🎞️</div><div><div class="ft">合并 / 字幕 / 动态字幕 / 智能剪辑</div><div class="fd">按镜头表自动装配 + 转场配音对位；Whisper 转录字幕、卡拉OK 逐词高亮、AI 场景/静默自动粗剪。</div></div></li>
+</ul></div>
+
+<div class="card comfy"><h3>层级 5 · ★ 3D 导演台 —— 首页尚未收录的旗舰新功能<span class="badge new">本期重点</span></h3>
+<div class="fd" style="color:var(--t2);margin-bottom:10px">对标 LibTV 3D 导演台：在 3D 空间精准摆位与运镜，「截图即参考图」喂给下游生成，解决 AI 构图/站位不可控的痛点。</div>
+<div class="grid3">
+<div class="chip">全屏 3D 编辑器</div><div class="chip">真人骨骼姿势 · 12 预设</div><div class="chip">体型框架（男/女/高挑/壮硕/儿童/二头身）</div>
+<div class="chip">五种景别一键（远→特写）</div><div class="chip">360° 全景天空盒</div><div class="chip">人物缩放/升降对齐全景</div>
+<div class="chip">多机位 + 宫格批量渲染</div><div class="chip">机位实时预览小窗</div><div class="chip">移动/旋转/缩放手柄</div>
+<div class="chip">FOV/景深控制</div><div class="chip">导演视角 / 机位视角</div><div class="chip">截图即参考图 → 下游</div>
+</div></div>
+
+<div class="card"><h3>层级 6 · 协作 / 运维 / 安全 —— 可交付的工程底座</h3>
+<ul class="feat-l">
+<li><div class="ico">🌐</div><div><div class="ft">公网隧道（cloudflared）+ 实时协作</div><div class="fd">一键内网转公网、地址邮件通知、SMTP 共用；Socket.IO 多人秒同步（隧道回环也 attach io）。</div></div></li>
+<li><div class="ico">🛡️</div><div><div class="ft">白名单门控 + 注册邮箱验证 + 13+ 轮安全审查</div><div class="fd">IP/用户白名单、ComfyUI/LLM 分级 bypass、6 位验证码注册；白名单缓存竞态、IP 格式校验、OAuth state 等多轮加固。</div></div></li>
+<li><div class="ico">⚙️</div><div><div class="ft">分级权限 + 系统一键更新/重启 + 审计</div><div class="fd">L1~L4 四级权限；git pull→install→db:push→build 一键更新；全操作审计日志、ComfyUI 调用日志、模型开关管控。</div></div></li>
+</ul></div>
+
+<div class="card"><h3>层级 7 · 认证 / 部署 / 技术栈</h3>
+<div class="fd" style="color:var(--t2)">React 19 + tRPC v11 + Express + MySQL(drizzle) + Socket.IO + MinIO/S3 + ffmpeg；OAuth + 邮箱密码(scrypt) + dev bypass；Windows/Docker/裸机一键部署 + 自动迁移。
+<b>33 种画布节点</b> · <b>20+ 数据库表</b> · <b>134 个测试文件 / 1100 项测试全绿</b>。</div></div>
+
+  </section>
+
+  <!-- 9 ComfyUI 专章 -->
+  <section><h2><span class="n">9</span>★ 重点 · ComfyUI 自建服务器</h2>
+  <div class="lead">本项目最具工程含量的子系统：让用户把<b>自己的 ComfyUI 算力</b>无缝接入云端创作工作流，兼得「本地模型自由度」与「在线协作便捷性」。改动量 38.2k 行 / 315 次文件改动。</div>
+  
+<div class="card comfy"><h3>它解决什么问题</h3>
+<div class="fd" style="color:var(--t2)">让用户把<b>自己的 ComfyUI 算力（本地/内网/私有）</b>无缝接入云端创作工作流——既保留本地模型的完全自由度（任意 checkpoint / LoRA / ControlNet / IPAdapter / 自定义工作流），又获得在线协作的便捷；同时支持官方云端 ComfyUI（cloud.comfy.org）一键切换。</div>
+<div class="grid3" style="margin-top:14px">
+<div class="kpi"><div class="v">2732</div><div class="l">核心引擎行数 comfyui.ts</div></div>
+<div class="kpi g"><div class="v">3</div><div class="l">专用节点类型</div></div>
+<div class="kpi cy"><div class="v">10+</div><div class="l">相关数据库表</div></div>
+</div></div>
+
+<div class="card"><h3>整体架构（前端节点 → 服务端 → 用户自建/云端 ComfyUI）</h3>
+<pre style="font-size:11px;color:var(--t2);overflow-x:auto;line-height:1.45;background:#0b0b10;border:1px solid var(--bd);border-radius:10px;padding:14px">前端 Canvas 节点   comfyui_image · comfyui_video · comfyui_workflow
+      │  Socket.IO 进度中继（采样预览 / 进度条 / 队列深度）
+服务端核心 comfyui.ts   URL 规范化&amp;校验 · 工作流构建&amp;执行 · 模板替换
+      │  submit(/prompt) → poll(/history) → ws(/ws) → 下载 → 重存 MinIO/S3
+      ├──────────────┐
+本地 ComfyUI(自建)     官方云端 ComfyUI(API Key 鉴权)</pre></div>
+
+<div class="card"><h3>三类节点能力对比</h3>
+<table>
+<tr><th>节点</th><th>定位</th><th>关键能力</th></tr>
+<tr><td><b>comfyui_image</b></td><td>快速图像模板</td><td>txt2img/img2img/inpaint；多 LoRA 链、ControlNet(+预处理器)、IPAdapter 多图、架构适配(sd/flux/sd3/qwen)、运行后清显存</td></tr>
+<tr><td><b>comfyui_video</b></td><td>快速视频模板</td><td>AnimateDiff/SVD/Wan T2V·I2V/LTX；帧数·帧率控时长、首帧参考、角色 LoRA</td></tr>
+<tr><td><b>comfyui_workflow</b></td><td>自定义工作流</td><td>上传任意工作流 JSON、参数绑定(nodeId.fieldPath→label)、图像/音频源映射、按比例覆盖尺寸、本地↔云切换、模板库复用</td></tr>
+</table></div>
+
+<div class="card"><h3>任务执行与回传链路（稳健性设计）</h3>
+<ul class="feat-l">
+<li><div class="ico">🔁</div><div><div class="ft">轮询 + WebSocket 实时进度</div><div class="fd">/history 3 秒轮询（图 ~5min / 视频 ~10min 上限）+ 连续网络错误熔断；/ws 解析<b>二进制采样预览帧</b>点对点回传，进度条/队列深度实时刷新。</div></div></li>
+<li><div class="ico">📥</div><div><div class="ft">流式下载防 OOM + 产物硬锁自有存储</div><div class="fd">Content-Length 预检 + 流式累计超限即 <code>reader.cancel()</code>（图 30MB/视频 200MB）；产物一律重传 MinIO/S3，绝不直接返回 ComfyUI 的 URL。</div></div></li>
+<li><div class="ico">💾</div><div><div class="ft">缓存恢复</div><div class="fd">固定种子重复运行、ComfyUI 不回灌本次 history 时，回查近 64 条历史找目标输出节点产物，用户无感总能拿到结果。</div></div></li>
+</ul></div>
+
+<div class="card"><h3>★ 经典 / 优秀工程亮点</h3>
+<ul class="feat-l">
+<li><div class="ico">🧬</div><div><div class="ft">GGUF 加载器动态转换</div><div class="fd">检测到 .gguf 文件名时自动把 CLIPLoader→CLIPLoaderGGUF、UNETLoader→UnetLoaderGGUF 并剔除不兼容参数，用户完全无感。</div></div></li>
+<li><div class="ico">🩺</div><div><div class="ft">错误三层回溯 + 中文化诊断</div><div class="fd">从 execution_error/node_errors/traceback 三层提取真因；按维度数(3584=Qwen/4096=T5/2048=SDXL)推荐架构、按字段名提示正确模型目录、缺节点自动推荐 ComfyUI-Manager 插件——给的是可操作中文，不是原始报错。</div></div></li>
+<li><div class="ico">🔀</div><div><div class="ft">UI→API 工作流自动转换</div><div class="fd">拖 PNG/JSON 导入即用：解析 links、追踪 Reroute、PrimitiveNode 作 widget 值、虚拟节点剔除、一次性聚合所有错误。</div></div></li>
+<li><div class="ico">📊</div><div><div class="ft">多地址轮询压测 + per-server 分桶 + GPU 监控</div><div class="fd">worker 池 round-robin 派发多台服务器、每秒时间序列采样、AbortController 立即停止；Crystools WebSocket 被动订阅物理 GPU 利用率/显存/温度。</div></div></li>
+<li><div class="ico">🔒</div><div><div class="ft">SSRF 防护 + 凭证保护</div><div class="fd">明确拒绝云元数据端点(IMDS)、拒绝 URL 内用户名密码、API Key 走 Header；模板 payload 净化（剔除运行时字段与超大 base64）。</div></div></li>
+</ul></div>
+
+<div class="card"><h3>相关数据库表</h3>
+<div class="fd" style="color:var(--t3)">
+<span class="chip">comfy_node_templates 模板库</span><span class="chip">comfy_template_analysis 智能体分析缓存</span><span class="chip">comfy_settings 服务器注册</span>
+<span class="chip">comfyUsageLogs 调用审计</span><span class="chip">comfy_stress_history/templates 压测</span><span class="chip">comfyOpsServers/Scripts/Records 运维(SSH)</span></div></div>
+
+  </section>
+
+  <!-- 10 路线图 -->
+  <section><h2><span class="n">10</span>未来路线图 · 预规划</h2>
+  <div class="lead">基于当前能力与 LibTV 等标杆，规划下一阶段功能。</div>
+  
+<div class="grid2">
+<div class="card"><h3>近期 · 导演台深化</h3>
+<ul class="roadmap feat-l">
+<li><div class="ico">🧭</div><div><div class="ft">场景平移 X/Z</div><div class="fd">在房间里前后左右整体挪动人物场景，配合全景更自由对位。</div></div></li>
+<li><div class="ico">📸</div><div><div class="ft">12 视角批量截图（文档模块22）</div><div class="fd">一键生成 12 个标准角度参考图，供镜头规划。</div></div></li>
+<li><div class="ico">👥</div><div><div class="ft">更大群众阵列 + LOD</div><div class="fd">向 20×20=400 群众靠拢，配合轻量化渲染保性能。</div></div></li>
+<li><div class="ico">🦴</div><div><div class="ft">BVH/FBX 动作导入 + 真人女性模型</div><div class="fd">导入动捕动作；引入独立女性网格替代缩放近似。</div></div></li>
+</ul></div>
+<div class="card"><h3>中期 · 生成与协作</h3>
+<ul class="roadmap feat-l">
+<li><div class="ico">💋</div><div><div class="ft">唇形同步 / 数字人 / 声音克隆 转 GA</div><div class="fd">lip_sync、avatar、voice_clone 从 Coming Soon 落地。</div></div></li>
+<li><div class="ico">🎛️</div><div><div class="ft">更多 ControlNet 预处理器与工作流模板</div><div class="fd">扩充 ComfyUI 模板库与智能体可用模板。</div></div></li>
+<li><div class="ico">🤝</div><div><div class="ft">协作增强</div><div class="fd">多人光标、评论、版本分支与回滚。</div></div></li>
+<li><div class="ico">📱</div><div><div class="ft">移动端适配</div><div class="fd">画布与预览的触屏/小屏体验。</div></div></li>
+</ul></div>
+</div>
+
+  </section>
+
+  <div class="foot">
+    本报告由 Claude Code 基于项目 Git 历史与会话转录自动统计生成 · 数据截至 2026-06-29<br>
+    口径透明、有据可查：所有数字均可由 <code>git log</code> / <code>git ls-files</code> / 会话 JSONL 复核。
+  </div>
+</div>
+
+<script>
+const D = {"stats": {"totals": {"commits": 1044, "pr": 256, "merge": 1, "add": 672260, "dele": 40996, "off": 684, "weekend": 365, "nighthours": 0, "filechanges": 5560}, "span": {"first": "2026-05-19", "last": "2026-06-29", "days": 32}, "perday": {"2026-05-19": {"commits": 2, "pr": 0, "merge": 0, "add": 29669, "dele": 293, "off": 2, "weekend": 0, "authors": 1}, "2026-05-20": {"commits": 12, "pr": 0, "merge": 0, "add": 6197, "dele": 1914, "off": 4, "weekend": 0, "authors": 2}, "2026-05-21": {"commits": 55, "pr": 1, "merge": 0, "add": 15991, "dele": 2750, "off": 22, "weekend": 0, "authors": 3}, "2026-05-22": {"commits": 47, "pr": 0, "merge": 0, "add": 7370, "dele": 1983, "off": 25, "weekend": 0, "authors": 2}, "2026-05-23": {"commits": 63, "pr": 0, "merge": 0, "add": 7829, "dele": 2503, "off": 63, "weekend": 63, "authors": 3}, "2026-05-24": {"commits": 78, "pr": 2, "merge": 0, "add": 14759, "dele": 2492, "off": 78, "weekend": 78, "authors": 3}, "2026-05-25": {"commits": 30, "pr": 1, "merge": 0, "add": 8258, "dele": 1055, "off": 19, "weekend": 0, "authors": 3}, "2026-05-26": {"commits": 38, "pr": 0, "merge": 0, "add": 7266, "dele": 967, "off": 26, "weekend": 0, "authors": 2}, "2026-05-27": {"commits": 31, "pr": 10, "merge": 0, "add": 27462, "dele": 10453, "off": 21, "weekend": 0, "authors": 3}, "2026-05-28": {"commits": 27, "pr": 0, "merge": 0, "add": 13861, "dele": 1073, "off": 18, "weekend": 0, "authors": 2}, "2026-05-29": {"commits": 45, "pr": 2, "merge": 0, "add": 9715, "dele": 5185, "off": 17, "weekend": 0, "authors": 2}, "2026-05-30": {"commits": 45, "pr": 16, "merge": 0, "add": 5231, "dele": 506, "off": 45, "weekend": 45, "authors": 2}, "2026-05-31": {"commits": 39, "pr": 1, "merge": 0, "add": 5923, "dele": 703, "off": 39, "weekend": 39, "authors": 2}, "2026-06-09": {"commits": 47, "pr": 19, "merge": 1, "add": 443910, "dele": 1493, "off": 24, "weekend": 0, "authors": 2}, "2026-06-10": {"commits": 36, "pr": 24, "merge": 0, "add": 10058, "dele": 845, "off": 14, "weekend": 0, "authors": 2}, "2026-06-11": {"commits": 55, "pr": 27, "merge": 0, "add": 5883, "dele": 1113, "off": 28, "weekend": 0, "authors": 2}, "2026-06-12": {"commits": 9, "pr": 9, "merge": 0, "add": 2389, "dele": 479, "off": 0, "weekend": 0, "authors": 1}, "2026-06-13": {"commits": 10, "pr": 10, "merge": 0, "add": 3334, "dele": 58, "off": 10, "weekend": 10, "authors": 1}, "2026-06-14": {"commits": 17, "pr": 17, "merge": 0, "add": 1264, "dele": 102, "off": 17, "weekend": 17, "authors": 1}, "2026-06-15": {"commits": 29, "pr": 29, "merge": 0, "add": 4547, "dele": 440, "off": 14, "weekend": 0, "authors": 1}, "2026-06-16": {"commits": 56, "pr": 40, "merge": 0, "add": 3782, "dele": 483, "off": 23, "weekend": 0, "authors": 2}, "2026-06-17": {"commits": 18, "pr": 0, "merge": 0, "add": 868, "dele": 59, "off": 6, "weekend": 0, "authors": 1}, "2026-06-18": {"commits": 64, "pr": 2, "merge": 0, "add": 4346, "dele": 1164, "off": 18, "weekend": 0, "authors": 2}, "2026-06-19": {"commits": 30, "pr": 0, "merge": 0, "add": 3191, "dele": 319, "off": 30, "weekend": 30, "authors": 1}, "2026-06-20": {"commits": 74, "pr": 0, "merge": 0, "add": 4485, "dele": 763, "off": 74, "weekend": 74, "authors": 1}, "2026-06-21": {"commits": 9, "pr": 8, "merge": 0, "add": 260, "dele": 113, "off": 9, "weekend": 9, "authors": 2}, "2026-06-22": {"commits": 4, "pr": 4, "merge": 0, "add": 848, "dele": 168, "off": 1, "weekend": 0, "authors": 1}, "2026-06-23": {"commits": 1, "pr": 1, "merge": 0, "add": 174, "dele": 37, "off": 0, "weekend": 0, "authors": 1}, "2026-06-24": {"commits": 14, "pr": 9, "merge": 0, "add": 16953, "dele": 196, "off": 4, "weekend": 0, "authors": 2}, "2026-06-25": {"commits": 6, "pr": 2, "merge": 0, "add": 226, "dele": 50, "off": 3, "weekend": 0, "authors": 2}, "2026-06-26": {"commits": 10, "pr": 4, "merge": 0, "add": 444, "dele": 71, "off": 5, "weekend": 0, "authors": 2}, "2026-06-29": {"commits": 43, "pr": 18, "merge": 0, "add": 5767, "dele": 1166, "off": 25, "weekend": 0, "authors": 2}}, "perweek": {"2026-W21": {"commits": 257, "add": 81815, "dele": 11935, "pr": 3}, "2026-W22": {"commits": 255, "add": 77716, "dele": 19942, "pr": 30}, "2026-W24": {"commits": 174, "add": 466838, "dele": 4090, "pr": 106}, "2026-W25": {"commits": 280, "add": 21479, "dele": 3341, "pr": 79}, "2026-W26": {"commits": 35, "add": 18645, "dele": 522, "pr": 20}, "2026-W27": {"commits": 43, "add": 5767, "dele": 1166, "pr": 18}}, "permonth": {"2026-05": {"commits": 512, "add": 159531, "dele": 31877, "pr": 33, "merge": 0}, "2026-06": {"commits": 532, "add": 512729, "dele": 9119, "pr": 223, "merge": 1}}, "hourhist": [34, 47, 48, 56, 74, 39, 39, 33, 60, 68, 71, 67, 66, 38, 48, 47, 68, 47, 27, 26, 13, 7, 7, 14], "wdhist": [106, 144, 111, 207, 141, 192, 143], "authors": {"Claude": {"commits": 729, "add": 317414, "dele": 20129}, "fly699": {"commits": 266, "add": 297351, "dele": 8479}, "Manus": {"commits": 49, "add": 57495, "dele": 12388}}, "area": {"文档(docs)": {"add": 179580, "dele": 877, "changes": 40}, "画布/节点(canvas)": {"add": 118009, "dele": 15633, "changes": 1397}, "数据库迁移(drizzle)": {"add": 76890, "dele": 1311, "changes": 380}, "其他": {"add": 45293, "dele": 407, "changes": 183}, "前端逻辑(lib)": {"add": 36834, "dele": 5993, "changes": 572}, "服务端核心(_core)": {"add": 40023, "dele": 2301, "changes": 675}, "ComfyUI 自建服务器": {"add": 38240, "dele": 1229, "changes": 315}, "前端组件": {"add": 36710, "dele": 2680, "changes": 438}, "前端页面": {"add": 33541, "dele": 3787, "changes": 320}, "前端其他": {"add": 22673, "dele": 3196, "changes": 369}, "服务端 API(routers)": {"add": 19733, "dele": 2063, "changes": 375}, "服务端其他": {"add": 19376, "dele": 1357, "changes": 320}, "共享类型(shared)": {"add": 5300, "dele": 161, "changes": 172}, "测试": {"add": 58, "dele": 1, "changes": 4}}, "ftype": {"tsx": {"add": 212752, "dele": 23977, "changes": 2373}, "md": {"add": 170241, "dele": 888, "changes": 77}, "ts": {"add": 151645, "dele": 13659, "changes": 2534}, "json": {"add": 86920, "dele": 1184, "changes": 152}, "yaml": {"add": 30643, "dele": 137, "changes": 14}, "css": {"add": 5055, "dele": 687, "changes": 58}, "sql": {"add": 3010, "dele": 49, "changes": 200}, "其他": {"add": 2505, "dele": 119, "changes": 13}, "js": {"add": 2481, "dele": 0, "changes": 6}, "bat": {"add": 1992, "dele": 40, "changes": 37}, "ps1": {"add": 1842, "dele": 124, "changes": 12}, "html": {"add": 1689, "dele": 50, "changes": 19}, "mjs": {"add": 437, "dele": 0, "changes": 5}, "gitignore": {"add": 372, "dele": 0, "changes": 8}, "svg": {"add": 266, "dele": 72, "changes": 11}, "webmanifest": {"add": 113, "dele": 2, "changes": 8}, "prettierignore": {"add": 105, "dele": 0, "changes": 3}, "patch": {"add": 84, "dele": 0, "changes": 3}, "prettierrc": {"add": 45, "dele": 0, "changes": 3}, "dockerignore": {"add": 32, "dele": 0, "changes": 2}, "txt": {"add": 22, "dele": 8, "changes": 4}, "gitattributes": {"add": 9, "dele": 0, "changes": 3}, "glb": {"add": 0, "dele": 0, "changes": 4}, "gitkeep": {"add": 0, "dele": 0, "changes": 9}, "deb": {"add": 0, "dele": 0, "changes": 2}}, "offbuckets": {"early": 105, "evening": 52, "night": 162, "weekend": 252, "holiday": 113}, "prcount": 256}, "tok": {"tot": {"inp": 2713138, "out": 2214041, "cc": 50223233, "cr": 1153701456}, "grand": 1208851868, "cost_usd": 2878.99, "n_user": 196, "n_asst": 8094, "n_tool": 4755, "n_subagents": 141, "span": {"first": "2026-06-11T01:43:43.236Z", "last": "2026-06-29T11:27:52.481Z"}, "perday": {"2026-06-11": {"inp": 143043, "out": 17637, "cc": 4227376, "cr": 50239186, "asst": 1018, "user": 0}, "2026-06-12": {"inp": 1, "out": 1, "cc": 1051, "cr": 87295, "asst": 1, "user": 0}, "2026-06-13": {"inp": 126306, "out": 13912, "cc": 2352767, "cr": 22803419, "asst": 426, "user": 0}, "2026-06-14": {"inp": 91967, "out": 5753, "cc": 2433361, "cr": 17867112, "asst": 401, "user": 0}, "2026-06-15": {"inp": 21605, "out": 714, "cc": 205182, "cr": 2548413, "asst": 75, "user": 0}, "2026-06-16": {"inp": 443586, "out": 27618, "cc": 7550963, "cr": 67277323, "asst": 1259, "user": 0}, "2026-06-17": {"inp": 408560, "out": 5165, "cc": 4364883, "cr": 38614394, "asst": 621, "user": 0}, "2026-06-18": {"inp": 20273, "out": 1883, "cc": 1372251, "cr": 10825055, "asst": 215, "user": 0}, "2026-06-19": {"inp": 158140, "out": 496, "cc": 1472454, "cr": 1856791, "asst": 67, "user": 0}, "2026-06-20": {"inp": 640, "out": 1093, "cc": 590293, "cr": 8409207, "asst": 140, "user": 0}, "2026-06-21": {"inp": 120813, "out": 7738, "cc": 1243198, "cr": 19513392, "asst": 377, "user": 0}, "2026-06-22": {"inp": 82541, "out": 6211, "cc": 1369410, "cr": 15649356, "asst": 281, "user": 0}, "2026-06-23": {"inp": 172318, "out": 12298, "cc": 1662707, "cr": 31525300, "asst": 406, "user": 0}, "2026-06-24": {"inp": 591972, "out": 180627, "cc": 6585008, "cr": 83506532, "asst": 1082, "user": 9}, "2026-06-25": {"inp": 3759, "out": 150414, "cc": 2397141, "cr": 49177631, "asst": 174, "user": 12}, "2026-06-26": {"inp": 21908, "out": 225408, "cc": 4640977, "cr": 91376391, "asst": 226, "user": 11}, "2026-06-29": {"inp": 305706, "out": 1557073, "cc": 7754211, "cr": 642424659, "asst": 1325, "user": 20}}, "models": {"claude-opus-4-8": 5305, "claude-haiku-4-5-20251001": 2789}, "sessions": 141, "persess_top": [{"id": "d0d8f637-dd7", "inp": 384388, "out": 2104332, "cc": 14920629, "cr": 816183213, "asst": 1882, "kind": "main"}, {"id": "agent-a7cf79", "inp": 534, "out": 4323, "cc": 559848, "cr": 4998150, "asst": 99, "kind": "subagent"}, {"id": "agent-a6c8d4", "inp": 67825, "out": 3933, "cc": 423068, "cr": 7053879, "asst": 127, "kind": "subagent"}, {"id": "agent-ada86b", "inp": 28880, "out": 3797, "cc": 153097, "cr": 397667, "asst": 14, "kind": "subagent"}, {"id": "agent-a81d46", "inp": 7383, "out": 3404, "cc": 704573, "cr": 6302244, "asst": 113, "kind": "subagent"}, {"id": "agent-add84c", "inp": 57920, "out": 3053, "cc": 498745, "cr": 4232599, "asst": 53, "kind": "subagent"}, {"id": "agent-aa729a", "inp": 3907, "out": 2690, "cc": 579064, "cr": 4262540, "asst": 93, "kind": "subagent"}, {"id": "agent-a2df53", "inp": 13762, "out": 2511, "cc": 104235, "cr": 1134675, "asst": 35, "kind": "subagent"}, {"id": "agent-a677f3", "inp": 11505, "out": 2470, "cc": 159628, "cr": 1973351, "asst": 41, "kind": "subagent"}, {"id": "agent-a104a5", "inp": 10146, "out": 2436, "cc": 174936, "cr": 4126457, "asst": 50, "kind": "subagent"}, {"id": "agent-ab70af", "inp": 18048, "out": 2410, "cc": 231887, "cr": 8822460, "asst": 115, "kind": "subagent"}, {"id": "agent-a95424", "inp": 50564, "out": 2252, "cc": 665278, "cr": 4449146, "asst": 87, "kind": "subagent"}, {"id": "agent-a4aa80", "inp": 14401, "out": 2206, "cc": 388414, "cr": 3867409, "asst": 53, "kind": "subagent"}, {"id": "agent-ade6d3", "inp": 18260, "out": 2011, "cc": 280091, "cr": 3084483, "asst": 55, "kind": "subagent"}, {"id": "agent-a7f9df", "inp": 17957, "out": 1801, "cc": 403835, "cr": 3833908, "asst": 41, "kind": "subagent"}]}, "feat": {"bytype": {"修复": 451, "新功能": 443, "文档": 41, "其他": 31, "里程碑(早期)": 30, "杂务/构建": 26, "回退": 9, "重构": 7, "优化": 3, "测试": 2, "合并": 1}, "feat_total": 443, "feat_perday": {"2026-05-20": 3, "2026-05-21": 16, "2026-05-22": 11, "2026-05-23": 16, "2026-05-24": 12, "2026-05-25": 13, "2026-05-26": 8, "2026-05-27": 16, "2026-05-28": 9, "2026-05-29": 23, "2026-05-30": 23, "2026-05-31": 19, "2026-06-09": 23, "2026-06-10": 21, "2026-06-11": 17, "2026-06-12": 1, "2026-06-13": 9, "2026-06-14": 16, "2026-06-15": 14, "2026-06-16": 22, "2026-06-17": 1, "2026-06-18": 48, "2026-06-19": 21, "2026-06-20": 43, "2026-06-21": 1, "2026-06-22": 1, "2026-06-24": 4, "2026-06-25": 1, "2026-06-26": 3, "2026-06-29": 28}, "feat_perweek": {"2026-W21": 58, "2026-W22": 111, "2026-W24": 87, "2026-W25": 150, "2026-W26": 9, "2026-W27": 28}, "feat_permonth": {"2026-05": 169, "2026-06": 274}, "type_permonth": {"2026-05": {"文档": 19, "修复": 238, "新功能": 169, "重构": 6, "杂务/构建": 24, "回退": 6, "其他": 20, "里程碑(早期)": 30}, "2026-06": {"修复": 213, "新功能": 274, "其他": 11, "回退": 3, "文档": 22, "杂务/构建": 2, "重构": 1, "优化": 3, "测试": 2, "合并": 1}}}, "derived": {"TOTAL_TRACKED_LINES": 287509, "PURE_CODE": 141263, "DOCS_MD": 84432, "CHURN_ADD": 672260, "CHURN_DEL": 40996, "CAL_DAYS": 42, "ACTIVE_DAYS": 32, "COMMITS": 1044, "PR": 222, "MERGES": 73, "FEAT": 443, "TESTS": 1100, "SPAN_FIRST": "2026-05-19", "SPAN_LAST": "2026-06-29"}};
+// ---- minimal SVG chart engine ----
+const NS='http://www.w3.org/2000/svg';
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+function svg(w,h){const s=el('svg',{viewBox:`0 0 ${w} ${h}`,width:'100%',height:h});return s;}
+function txt(s,x,y,o={}){const t=el('text',{x,y,fill:o.fill||'#85859a','font-size':o.fs||11,'text-anchor':o.a||'start'});t.textContent=s;if(o.w)t.setAttribute('font-weight',o.w);return t;}
+function mount(id,s){document.getElementById(id).appendChild(s);}
+
+function barChart(id,labels,series,opt={}){
+  const W=opt.w||540,H=opt.h||220,pl=38,pr=10,pt=14,pb=opt.pb||34;
+  const s=svg(W,H);const n=labels.length;const iw=W-pl-pr,ih=H-pt-pb;
+  let max=opt.max||Math.max(1,...series.flatMap(se=>se.data));
+  for(let g=0;g<=4;g++){const y=pt+ih-ih*g/4;s.appendChild(el('line',{x1:pl,y1:y,x2:W-pr,y2:y,stroke:'#23232e','stroke-width':1}));s.appendChild(txt(opt.fmt?opt.fmt(max*g/4):Math.round(max*g/4),pl-5,y+3,{a:'end',fs:9.5}));}
+  const bw=iw/n;const k=series.length;const gap=bw*0.18;const innerw=(bw-gap*2);const sw=opt.stack?innerw:innerw/k;
+  labels.forEach((lb,i)=>{
+    let acc=0;
+    series.forEach((se,j)=>{
+      const v=se.data[i]||0;const bh=ih*v/max;
+      const x=pl+bw*i+gap+(opt.stack?0:sw*j);
+      const y=opt.stack?(pt+ih-bh-acc):(pt+ih-bh);
+      if(bh>0)s.appendChild(el('rect',{x,y,width:Math.max(1,sw-1),height:bh,fill:se.color,rx:opt.stack?0:2}));
+      if(opt.stack)acc+=bh;
+    });
+    if(n<=14||i%Math.ceil(n/14)===0)s.appendChild(txt(lb,pl+bw*i+bw/2,H-12,{a:'middle',fs:9.5}));
+  });
+  if(opt.hlines)opt.hlines.forEach(h=>{const x=pl+iw*h.at;s.appendChild(el('line',{x1:x,y1:pt,x2:x,y2:pt+ih,stroke:h.c||'#ff6b7a','stroke-width':1.4,'stroke-dasharray':'4 3'}));});
+  mount(id,s);
+}
+function lineArea(id,labels,data,opt={}){
+  const W=opt.w||540,H=opt.h||220,pl=46,pr=10,pt=14,pb=30;
+  const s=svg(W,H);const n=labels.length;const iw=W-pl-pr,ih=H-pt-pb;const max=Math.max(1,...data);
+  for(let g=0;g<=4;g++){const y=pt+ih-ih*g/4;s.appendChild(el('line',{x1:pl,y1:y,x2:W-pr,y2:y,stroke:'#23232e'}));s.appendChild(txt(opt.fmt?opt.fmt(max*g/4):Math.round(max*g/4),pl-5,y+3,{a:'end',fs:9.5}));}
+  let pts=data.map((v,i)=>[pl+iw*i/(n-1),pt+ih-ih*v/max]);
+  let d='M'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L');
+  let area=d+` L${pts[n-1][0]},${pt+ih} L${pts[0][0]},${pt+ih} Z`;
+  const grad=el('linearGradient',{id:id+'g',x1:0,y1:0,x2:0,y2:1});grad.appendChild(el('stop',{offset:'0%','stop-color':opt.color||'#a06bff','stop-opacity':.45}));grad.appendChild(el('stop',{offset:'100%','stop-color':opt.color||'#a06bff','stop-opacity':0}));s.appendChild(grad);
+  s.appendChild(el('path',{d:area,fill:`url(#${id}g)`}));
+  s.appendChild(el('path',{d,fill:'none',stroke:opt.color||'#a06bff','stroke-width':2}));
+  labels.forEach((lb,i)=>{if(i%Math.ceil(n/8)===0)s.appendChild(txt(lb,pl+iw*i/(n-1),H-10,{a:'middle',fs:9.5}));});
+  mount(id,s);
+}
+function pie(id,parts,opt={}){
+  const R=opt.r||70,cx=R+6,cy=R+6,s=svg((R+6)*2,(R+6)*2);
+  let tot=parts.reduce((a,p)=>a+p.v,0),ang=-Math.PI/2;
+  parts.forEach(p=>{const a2=ang+2*Math.PI*p.v/tot;const x1=cx+R*Math.cos(ang),y1=cy+R*Math.sin(ang),x2=cx+R*Math.cos(a2),y2=cy+R*Math.sin(a2);const large=(a2-ang)>Math.PI?1:0;s.appendChild(el('path',{d:`M${cx},${cy} L${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2} Z`,fill:p.color,stroke:'#08080a','stroke-width':1.5}));ang=a2;});
+  s.appendChild(el('circle',{cx,cy,r:R*0.55,fill:'#101015'}));
+  mount(id,s);
+}
+function hbar(id,rows,opt={}){
+  const W=opt.w||540,rh=26,pt=6,pl=opt.pl||130,pr=46;const H=pt*2+rows.length*rh;
+  const s=svg(W,H);const max=Math.max(1,...rows.map(r=>r.v));
+  rows.forEach((r,i)=>{const y=pt+i*rh;const bw=(W-pl-pr)*r.v/max;
+    s.appendChild(txt(r.label,pl-8,y+rh/2+3,{a:'end',fs:11.5,fill:r.hl?'#d9c9ff':'#b8b8c6',w:r.hl?700:400}));
+    s.appendChild(el('rect',{x:pl,y:y+4,width:Math.max(2,bw),height:rh-12,fill:r.color||(r.hl?'#a06bff':'#3a3a4a'),rx:4}));
+    s.appendChild(txt(opt.fmt?opt.fmt(r.v):r.v,pl+bw+6,y+rh/2+3,{fs:10.5,fill:'#85859a'}));
+  });
+  mount(id,s);
+}
+const kf=v=>v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'k':Math.round(v);
+
+// ---- build charts ----
+const pd=D.stats.perday, days=Object.keys(pd);
+barChart('c_daily',days.map(d=>d.slice(5)),
+  [{data:days.map(d=>pd[d].commits-pd[d].off),color:'#a06bff'},{data:days.map(d=>pd[d].off),color:'#ffb020'}],
+  {stack:true,w:1080,h:240});
+const pw=D.stats.perweek,wk=Object.keys(pw),fw=D.feat.feat_perweek;
+barChart('c_week',wk.map(w=>w.replace('2026-','')),
+  [{data:wk.map(w=>pw[w].commits),color:'#6b8bff'},{data:wk.map(w=>fw[w]||0),color:'#37d6a6'}],{});
+const pm=D.stats.permonth,mo=Object.keys(pm),fm=D.feat.feat_permonth;
+barChart('c_month',mo,[{data:mo.map(m=>pm[m].commits),color:'#a06bff'},{data:mo.map(m=>fm[m]||0),color:'#37d6a6'},{data:mo.map(m=>pm[m].pr),color:'#5ad1e6'}],{});
+barChart('c_hour',[...Array(24).keys()].map(h=>h),[{data:D.stats.hourhist,color:'#a06bff'}],{hlines:[{at:8.5/24},{at:17/24}]});
+barChart('c_wd',['一','二','三','四','五','六','日'],[{data:D.stats.wdhist.map((v,i)=>i<5?v:0),color:'#a06bff'},{data:D.stats.wdhist.map((v,i)=>i>=5?v:0),color:'#ffb020'}],{stack:true});
+pie('c_offpie',[{v:360,color:'#a06bff'},{v:684,color:'#ffb020'}]);
+const ob=D.stats.offbuckets;
+hbar('c_offbar',[{label:'深夜',v:ob.night,color:'#6b5bff'},{label:'晚间',v:ob.evening,color:'#8b6bff'},{label:'清晨',v:ob.early,color:'#5ad1e6'},{label:'周末',v:ob.weekend,color:'#ffb020'},{label:'节假日',v:ob.holiday,color:'#ff6b7a'}],{pl:60});
+// cumulative
+let cum=0;const cumd=days.map(d=>{cum+=pd[d].add;return cum;});
+lineArea('c_cum',days.map(d=>d.slice(5)),cumd,{color:'#37d6a6',w:1080,fmt:kf});
+// area
+const ar=D.stats.area;const arRows=Object.keys(ar).map(k=>({label:k,v:ar[k].add,hl:k.indexOf('ComfyUI')>=0})).sort((a,b)=>b.v-a.v).slice(0,9);
+hbar('c_area',arRows,{fmt:kf,pl:160});
+const ft=D.stats.ftype;const ftRows=[['tsx',73261],['ts',61384],['md',84432],['json',39895],['sql',1241],['css',1553],['html',2997],['glb',9565]].map(([k,v])=>({label:'.'+k,v})).sort((a,b)=>b.v-a.v);
+hbar('c_ftype',ftRows,{fmt:kf,pl:70});
+// types
+const bt=D.feat.bytype;const btRows=Object.keys(bt).map(k=>({label:k,v:bt[k],hl:k==='新功能'}));
+hbar('c_type',btRows,{pl:90});
+const ffw=D.feat.feat_perweek,ffk=Object.keys(ffw);
+barChart('c_featweek',ffk.map(w=>w.replace('2026-','')),[{data:ffk.map(w=>ffw[w]),color:'#37d6a6'}],{});
+// tokens
+const tpd=D.tok.perday,td=Object.keys(tpd);
+barChart('c_tokday',td.map(d=>d.slice(5)),[{data:td.map(d=>tpd[d].out),color:'#5ad1e6'},{data:td.map(d=>tpd[d].inp),color:'#6b8bff'},{data:td.map(d=>tpd[d].cc),color:'#a06bff'}],{stack:true,fmt:kf});
+const tt=D.tok.tot;
+pie('c_tokpie',[{v:tt.cr,color:'#37d6a6'},{v:tt.cc,color:'#a06bff'},{v:tt.inp,color:'#6b8bff'},{v:tt.out,color:'#5ad1e6'}]);
+</script>
+</body></html>
