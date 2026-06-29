@@ -68,18 +68,21 @@ function Slider({ label, value, min, max, step = 1, fixed = 0, onChange }: {
   const span = max - min;
   const zeroPct = span > 0 ? ((0 - min) / span) * 100 : 50;
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  const reset = () => onChange(clamp(0)); // 双击重置为 0（模块6）
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ width: 38, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>{label}</span>
+      <span onDoubleClick={reset} title="双击重置为 0" style={{ width: 38, fontSize: 11, color: "var(--c-t3)", flexShrink: 0, cursor: "pointer", userSelect: "none" }}>{label}</span>
       <div style={{ position: "relative", flex: 1, height: 18, display: "flex", alignItems: "center" }}>
         {min < 0 && max > 0 && (
           <span style={{ position: "absolute", left: `${zeroPct}%`, top: 2, bottom: 2, width: 1, background: "var(--c-bd2)", pointerEvents: "none" }} />
         )}
         <input type="range" min={min} max={max} step={step} value={value}
+          onDoubleClick={reset}
           onChange={(e) => onChange(Number(e.target.value))}
           style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))", cursor: "pointer", margin: 0 }} />
       </div>
       <input type="number" value={Number(value.toFixed(fixed))} min={min} max={max} step={step}
+        onDoubleClick={reset}
         onChange={(e) => onChange(clamp(Number(e.target.value) || 0))}
         style={{ width: 46, padding: "2px 4px", fontSize: 10.5, textAlign: "right", fontVariantNumeric: "tabular-nums", background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none" }} />
     </div>
@@ -91,10 +94,11 @@ type OrbitImpl = { target: THREE.Vector3; update: () => void; object: THREE.Came
 export interface CaptureHandle { gl: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.Camera; orbit: OrbitImpl; }
 
 // ── 相机机架：初始 target、响应式 FOV、释放时回写机位、把渲染上下文暴露给截图/重置 ──
-function CameraRig({ cam, onCommit, bind }: {
+function CameraRig({ cam, onCommit, bind, locked }: {
   cam: { position: Vec3; target: Vec3; fov: number };
   onCommit: (pos: Vec3, target: Vec3) => void;
   bind: (h: CaptureHandle) => void;
+  locked: boolean; // true=机位视角（锁定到该机位的精确取景，禁止轨道）；false=导演视角（自由环绕）
 }) {
   const { gl, scene, camera } = useThree();
   const orbit = useRef<OrbitImpl>(null);
@@ -111,12 +115,21 @@ function CameraRig({ cam, onCommit, bind }: {
     (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
   }, [camera, cam.fov]);
 
+  // 机位视角：把相机精确拨到该机位的位置/注视点（所见即截图所得）；导演视角不动，保留自由环绕。
+  useEffect(() => {
+    if (!locked || !orbit.current) return;
+    camera.position.set(...cam.position);
+    orbit.current.target.set(...cam.target);
+    orbit.current.update();
+  }, [locked, camera, cam.position, cam.target]);
+
   useEffect(() => { bind({ gl, scene, camera, orbit: orbit.current }); }, [gl, scene, camera, bind]);
 
   return (
     <OrbitControls
       ref={orbit as never}
       makeDefault
+      enabled={!locked}
       onEnd={() => { if (orbit.current) onCommit(camera.position.toArray() as Vec3, orbit.current.target.toArray() as Vec3); }}
     />
   );
@@ -136,6 +149,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const [camSelected, setCamSelected] = useState(false);
   const [actorTab, setActorTab] = useState<"transform" | "pose">("transform");
   const [gizmoMode, setGizmoMode] = useState<"translate" | "rotate" | "scale">("translate");
+  // 导演视角(自由环绕，整体布局) / 机位视角(锁定到当前机位的精确取景，预览最终构图)（模块2）
+  const [viewMode, setViewMode] = useState<"director" | "camera">("director");
   const [gizmoTarget, setGizmoTarget] = useState<THREE.Object3D | null>(null);
   const selectActor = useCallback((id: string) => { setSelectedId(id); setSelectedGroupId(null); setCamSelected(false); }, []);
   const selectGroup = useCallback((id: string) => { setSelectedGroupId(id); setSelectedId(null); setCamSelected(false); }, []);
@@ -310,7 +325,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     if (!actorId) { patchCam({ lookAtActorId: undefined }); return; }
     const a = scene.actors.find((x) => x.id === actorId); if (!a) return;
     const wp = actorWorldPos(a);
-    const target: Vec3 = [wp[0], wp[1] + 1.0, wp[2]];
+    const S = scene.sceneScale ?? 1; // 注视点在「场景缩放」后的世界坐标里
+    const target: Vec3 = [wp[0] * S, wp[1] * S + 1.0 * S, wp[2] * S];
     const cap = captureRef.current; if (cap?.orbit) { cap.orbit.target.set(...target); cap.orbit.update(); }
     patchCam({ target, lookAtActorId: actorId });
   }, [scene.actors, scene.groups, patchCam]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -322,13 +338,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const subj = scene.actors.find((a) => a.id === cam.lookAtActorId)
       ?? scene.actors.find((a) => !a.groupId) ?? scene.actors[0];
     const base = subj ? actorWorldPos(subj) : ([0, 0, 0] as Vec3);
-    const target: Vec3 = [base[0], base[1] + shot.aimY, base[2]];
+    const S = scene.sceneScale ?? 1; // 主体经「场景缩放」后，注视高度与机距按比例放大
+    const target: Vec3 = [base[0] * S, base[1] * S + shot.aimY * S, base[2] * S];
     const T = new THREE.Vector3(...target);
     const dir = new THREE.Vector3(...cam.position).sub(new THREE.Vector3(...cam.target));
     if (dir.lengthSq() < 1e-6) dir.set(0, 0.15, 1);
     if (dir.y < 0.05) dir.y = 0.12; // 不要俯冲到地面以下
     dir.normalize();
-    const np = T.clone().addScaledVector(dir, shot.dist);
+    const np = T.clone().addScaledVector(dir, shot.dist * S);
     const position: Vec3 = [np.x, np.y, np.z];
     const next: DirectorCamera = { ...cam, position, target, fov: shot.fov };
     patchCam({ position, target, fov: shot.fov });
@@ -421,6 +438,13 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         <span style={{ fontWeight: 800, fontSize: 14, color: "var(--c-t1)" }}>🎬 导演台</span>
         <span style={{ fontSize: 11, color: "var(--c-t4)" }}>3D 精准构图 · 截图即参考图</span>
         <div className="flex-1" />
+        {/* 导演视角 / 机位视角 切换（模块2）：自由布局 vs 锁定预览最终取景 */}
+        <div className="flex items-center" style={{ padding: 3, borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", marginRight: 4 }}>
+          {([["director", "导演视角"], ["camera", "机位视角"]] as const).map(([m, lbl]) => (
+            <button key={m} onClick={() => setViewMode(m)} title={m === "director" ? "自由环绕，用于整体布局" : "锁定当前机位，预览最终构图（所见即截图）"}
+              style={{ fontSize: 11, fontWeight: viewMode === m ? 700 : 500, padding: "3px 9px", borderRadius: 7, border: "none", cursor: "pointer", background: viewMode === m ? "var(--ui-accent, var(--c-accent))" : "transparent", color: viewMode === m ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
+          ))}
+        </div>
         {/* 多机位宫格 */}
         <div style={{ position: "relative" }}>
           <button onClick={() => setGridMenu((v) => !v)} disabled={!!gridBusy} style={{ ...headBtn(), opacity: gridBusy ? 0.7 : 1 }}>
@@ -513,6 +537,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <Slider label="旋转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
               <Slider label="升降" value={scene.panoramaY ?? 0} min={-4} max={4} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaY: v })} />
               <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={6} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
+              {/* 场景缩放：独立缩放「人物场景」相对全景空间的大小（LibTV 场景缩放，文档默认300%） */}
+              <Slider label="场景" value={scene.sceneScale ?? 1} min={0.2} max={8} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
             </div>
           )}
           <div style={{ width: frame.w, height: frame.h, position: "relative", boxShadow: "0 0 0 1px var(--c-bd2), 0 8px 40px oklch(0 0 0 / 0.6)" }}>
@@ -542,6 +568,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {scene.background !== "#000000" && (
                 <ContactShadows position={[0, 0.01, 0]} scale={24} resolution={1024} blur={2.6} far={5} opacity={0.5} color="#000000" />
               )}
+              {/* 场景缩放：把整个「人物场景」(角色+群组) 包一层统一缩放，相对全景空间整体放大/缩小，
+                  使人物与全景尺度匹配（LibTV 场景缩放）。绕原点缩放，脚底 y=0 不变、仍站地面。 */}
+              <group scale={scene.sceneScale ?? 1}>
               {/* 群组成员：包在群组变换父级里（成员 position 为组内局部坐标），每个成员再包一层
                   变换 group（actor 变换）。 */}
               {groups.map((g) => (
@@ -565,6 +594,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   </group>
                 );
               })}
+              </group>
               {/* 拖拽手柄：选中独立人偶时可在画面里直接移动/旋转/缩放 */}
               {selected && !selected.groupId && gizmoTarget && (
                 <TransformControls
@@ -579,7 +609,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   }}
                 />
               )}
-              <CameraRig cam={scene.camera} onCommit={onCommitCam} bind={bindCapture} />
+              <CameraRig cam={scene.camera} onCommit={onCommitCam} bind={bindCapture} locked={viewMode === "camera"} />
             </Canvas>
             {/* 取景安全框（三分线） */}
             <div className="nodrag" style={{ position: "absolute", inset: 0, pointerEvents: "none", borderRadius: 4 }}>

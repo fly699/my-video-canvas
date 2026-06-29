@@ -558,7 +558,8 @@ export interface DirectorScene {
   panoramaUrl?: string;  // P5：720° 全景背景
   panoramaYaw?: number;   // 全景旋转(度)：转动背景朝向，默认 0
   panoramaY?: number;     // 全景升降(米)：上下移动全景球，使其地面与人物脚底对齐，默认 0
-  panoramaScale?: number; // 全景缩放(倍)：放大/缩小全景球，匹配人物与场景尺度，默认 1（LibTV 模块16「场景缩放」）
+  panoramaScale?: number; // 全景球半径(倍)：放大/缩小全景球，影响背景透视与距离感，默认 1
+  sceneScale?: number;    // 场景缩放(倍)：整体缩放「人物场景」相对全景空间的大小，使人物与全景尺度匹配，默认 1（LibTV 模块16/23「场景缩放」，文档默认 300%）
   groundVisible: boolean;
   labelsVisible: boolean;
 }
