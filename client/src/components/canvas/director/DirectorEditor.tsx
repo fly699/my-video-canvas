@@ -608,14 +608,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 style={{ width: "100%", padding: "4px 6px", fontSize: 11.5, fontWeight: 600, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6, marginBottom: 8 }} />
               <DragNumber label="FOV" value={scene.camera.fov} step={0.5} fixed={1} suffix="°" onChange={(v) => patchCam({ fov: Math.max(8, Math.min(120, v)) })} />
               <div style={sub}>位置</div>
-              <Xyz v={scene.camera.position} min={-20} max={20} onChange={(position) => patchCam({ position })} />
+              <Xyz v={scene.camera.position} min={-20} max={20} onChange={(position) => { patchCam({ position }); moveLiveCamera({ ...scene.camera, position }); }} />
               <div style={sub}>注视目标</div>
               <select value={scene.camera.lookAtActorId ?? ""} onChange={(e) => lookAtActor(e.target.value || undefined)}
                 style={{ width: "100%", padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6, marginBottom: 6 }}>
                 <option value="">手动坐标</option>
                 {scene.actors.map((a) => <option key={a.id} value={a.id}>对准 {a.name}</option>)}
               </select>
-              <Xyz v={scene.camera.target} onChange={(target) => patchCam({ target, lookAtActorId: undefined })} />
+              <Xyz v={scene.camera.target} onChange={(target) => { patchCam({ target, lookAtActorId: undefined }); moveLiveCamera({ ...scene.camera, target }); }} />
               <p style={hint}>在画面里拖拽即转动当前机位；松手自动记录。多机位便于一套场景出多个分镜角度。</p>
             </div>
           ) : selectedGroup ? (
