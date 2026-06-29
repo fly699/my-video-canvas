@@ -8,7 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { DirectorScene, DirectorActor, Vec3 } from "../../../../../shared/types";
 import {
-  MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene,
+  MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform,
 } from "../../../lib/directorScene";
 import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset } from "../../../lib/directorPose";
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
@@ -104,8 +104,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   });
   const [scene, setScene] = useState<DirectorScene>(() => initialScene ?? makeDefaultDirectorScene());
   const [selectedId, setSelectedId] = useState<string | null>(scene.actors[0]?.id ?? null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [camSelected, setCamSelected] = useState(false);
   const [actorTab, setActorTab] = useState<"transform" | "pose">("transform");
+  const selectActor = useCallback((id: string) => { setSelectedId(id); setSelectedGroupId(null); setCamSelected(false); }, []);
+  const selectGroup = useCallback((id: string) => { setSelectedGroupId(id); setSelectedId(null); setCamSelected(false); }, []);
   const [saving, setSaving] = useState(false);
   const captureRef = useRef<CaptureHandle | null>(null);
   const sceneRef = useRef(scene);
@@ -135,6 +138,32 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const removeActor = (id: string) => {
     setScene((s) => ({ ...s, actors: s.actors.filter((a) => a.id !== id) }));
     setSelectedId((cur) => (cur === id ? null : cur));
+  };
+
+  // ── 群众群组 ──
+  const groups = scene.groups ?? [];
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
+  const patchGroup = useCallback((id: string, p: Partial<NonNullable<DirectorScene["groups"]>[number]>) => {
+    setScene((s) => ({ ...s, groups: (s.groups ?? []).map((g) => (g.id === id ? { ...g, ...p } : g)) }));
+  }, []);
+  const addCrowd = (rows: number, cols: number) => {
+    setScene((s) => {
+      const { group, actors } = makeCrowd(rows, cols, s.actors);
+      setSelectedGroupId(group.id); setSelectedId(null); setCamSelected(false);
+      return { ...s, groups: [...(s.groups ?? []), group], actors: [...s.actors, ...actors] };
+    });
+  };
+  const ungroupGroup = (gid: string) => {
+    setScene((s) => {
+      const g = (s.groups ?? []).find((x) => x.id === gid); if (!g) return s;
+      const actors = s.actors.map((a) => (a.groupId === gid ? bakeGroupTransform(g, a) : a));
+      return { ...s, actors, groups: (s.groups ?? []).filter((x) => x.id !== gid) };
+    });
+    setSelectedGroupId((cur) => (cur === gid ? null : cur));
+  };
+  const deleteGroup = (gid: string) => {
+    setScene((s) => ({ ...s, actors: s.actors.filter((a) => a.groupId !== gid), groups: (s.groups ?? []).filter((x) => x.id !== gid) }));
+    setSelectedGroupId((cur) => (cur === gid ? null : cur));
   };
 
   const uploadMut = trpc.upload.uploadImage.useMutation();
@@ -271,10 +300,29 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         {/* 左：图层列表 */}
         <div className="flex flex-col gap-2 p-3" style={{ width: 220, borderRight: "1px solid var(--c-bd2)", overflowY: "auto" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>场景图层</div>
-          <button onClick={() => setCamSelected(true)} style={{ ...rowBtn(camSelected) }}>📷 机位（{scene.camera.fov.toFixed(0)}°）</button>
-          {scene.actors.map((a) => (
+          <button onClick={() => { setCamSelected(true); setSelectedId(null); setSelectedGroupId(null); }} style={{ ...rowBtn(camSelected) }}>📷 机位（{scene.camera.fov.toFixed(0)}°）</button>
+          {/* 群众群组（可展开成员、解组/删除） */}
+          {groups.map((g) => (
+            <div key={g.id}>
+              <div className="flex items-center gap-1">
+                <button onClick={() => selectGroup(g.id)} style={{ ...rowBtn(g.id === selectedGroupId), flex: 1 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 2, background: g.color, display: "inline-block", marginRight: 7 }} />
+                  {g.name}
+                </button>
+                <button onClick={() => ungroupGroup(g.id)} title="解组" style={{ ...iconBtn, fontSize: 9 }}>解</button>
+                <button onClick={() => deleteGroup(g.id)} title="删除整组" style={{ ...iconBtn }}><Trash2 size={12} /></button>
+              </div>
+              {scene.actors.filter((a) => a.groupId === g.id).map((a) => (
+                <button key={a.id} onClick={() => selectActor(a.id)} style={{ ...rowBtn(a.id === selectedId), marginLeft: 14, marginTop: 2, fontSize: 11, padding: "4px 8px" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: a.color, display: "inline-block", marginRight: 6 }} />{a.name}
+                </button>
+              ))}
+            </div>
+          ))}
+          {/* 独立人偶 */}
+          {scene.actors.filter((a) => !a.groupId).map((a) => (
             <div key={a.id} className="flex items-center gap-1">
-              <button onClick={() => { setSelectedId(a.id); setCamSelected(false); }} style={{ ...rowBtn(!camSelected && a.id === selectedId), flex: 1 }}>
+              <button onClick={() => selectActor(a.id)} style={{ ...rowBtn(!camSelected && a.id === selectedId), flex: 1 }}>
                 <span style={{ width: 9, height: 9, borderRadius: "50%", background: a.color, display: "inline-block", marginRight: 7 }} />
                 {a.name}
               </button>
@@ -285,6 +333,12 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           <div className="flex flex-wrap gap-1">
             {MANNEQUIN_MODELS.map((m) => (
               <button key={m.key} onClick={() => addActor(m.key)} style={{ ...chip }}><Plus size={11} /> {m.label}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginTop: 6 }}>添加群众（批量）</div>
+          <div className="flex flex-wrap gap-1">
+            {([[2, 3], [3, 3], [3, 4], [4, 5]] as const).map(([r, c]) => (
+              <button key={`${r}x${c}`} onClick={() => addCrowd(r, c)} style={{ ...chip }}><Plus size={11} /> {c}×{r}</button>
             ))}
           </div>
         </div>
@@ -298,7 +352,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               camera={initCam}
               gl={{ preserveDrawingBuffer: true, antialias: true }}
               style={{ width: "100%", height: "100%", borderRadius: 4 }}
-              onPointerMissed={() => { setSelectedId(null); }}
+              onPointerMissed={() => { setSelectedId(null); setSelectedGroupId(null); }}
             >
               <color attach="background" args={[scene.background || "#1a1d24"]} />
               <ambientLight intensity={0.7} />
@@ -307,9 +361,17 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {scene.groundVisible && (
                 <Grid args={[40, 40]} cellSize={0.5} cellThickness={0.6} sectionSize={2} sectionThickness={1} infiniteGrid fadeDistance={26} cellColor="#2a2f3a" sectionColor="#3a4150" position={[0, 0, 0]} />
               )}
-              {scene.actors.map((a) => (
-                <Mannequin key={a.id} actor={a} selected={!camSelected && a.id === selectedId}
-                  onSelect={() => { setSelectedId(a.id); setCamSelected(false); }} />
+              {/* 群组成员：包在群组变换父级里（成员 position 为组内局部坐标） */}
+              {groups.map((g) => (
+                <group key={g.id} position={g.position} rotation={[g.rotation[0] * Math.PI / 180, g.rotation[1] * Math.PI / 180, g.rotation[2] * Math.PI / 180]} scale={g.scale}>
+                  {scene.actors.filter((a) => a.groupId === g.id).map((a) => (
+                    <Mannequin key={a.id} actor={a} selected={a.id === selectedId || g.id === selectedGroupId} onSelect={() => selectActor(a.id)} />
+                  ))}
+                </group>
+              ))}
+              {/* 独立人偶 */}
+              {scene.actors.filter((a) => !a.groupId).map((a) => (
+                <Mannequin key={a.id} actor={a} selected={!camSelected && a.id === selectedId} onSelect={() => selectActor(a.id)} />
               ))}
               <CameraRig cam={scene.camera} onCommit={onCommitCam} bind={bindCapture} />
             </Canvas>
@@ -328,7 +390,13 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <button key={r} onClick={() => patchScene({ aspectRatio: r })} style={{ ...chip, fontWeight: scene.aspectRatio === r ? 700 : 500, background: scene.aspectRatio === r ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: scene.aspectRatio === r ? "#0b0d12" : "var(--c-t3)" }}>{r}</button>
             ))}
             <span style={{ width: 1, height: 16, background: "var(--c-bd2)" }} />
-            <button onClick={() => patchScene({ groundVisible: !scene.groundVisible })} title="地面" style={{ ...iconBtn }}>{scene.groundVisible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+            <button onClick={() => patchScene({ groundVisible: !scene.groundVisible })} title="显示/隐藏地面" style={{ ...iconBtn, color: scene.groundVisible ? "var(--c-t3)" : "var(--c-t4)" }}>{scene.groundVisible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+            {/* 黑底分离：纯黑背景 + 只留彩色人偶，导出仅控站位的参考图，避免全景/复杂背景畸变污染 AI（文档模块19）。 */}
+            <button
+              onClick={() => patchScene({ background: scene.background === "#000000" ? "" : "#000000", ...(scene.background === "#000000" ? {} : { groundVisible: false }) })}
+              title="黑底分离：纯黑背景只控人物站位（防背景畸变，背景交给 AI 自由生成）"
+              style={{ ...chip, fontWeight: scene.background === "#000000" ? 700 : 500, background: scene.background === "#000000" ? "#000" : "var(--c-surface)", color: scene.background === "#000000" ? "#fff" : "var(--c-t3)", border: `1px solid ${scene.background === "#000000" ? "#fff5" : "var(--c-bd2)"}` }}
+            >黑底</button>
           </div>
         </div>
 
@@ -343,6 +411,25 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <div style={sub}>注视点</div>
               <Xyz v={scene.camera.target} onChange={(target) => patchCam({ target })} />
               <p style={hint}>提示：在画面里拖拽即可转动机位；松手自动记录。</p>
+            </div>
+          ) : selectedGroup ? (
+            <div style={panel}>
+              <input value={selectedGroup.name} onChange={(e) => patchGroup(selectedGroup.id, { name: e.target.value })}
+                style={{ ...ttl, width: "100%", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "4px 6px" }} />
+              <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginBottom: 6 }}>{selectedGroup.cols}×{selectedGroup.rows} = {selectedGroup.rows * selectedGroup.cols} 个成员（整组变换）</div>
+              <div style={sub}>整组位置</div>
+              <Xyz v={selectedGroup.position} onChange={(position) => patchGroup(selectedGroup.id, { position })} />
+              <div style={sub}>整组旋转(°)</div>
+              <Xyz v={selectedGroup.rotation} step={1} fixed={0} onChange={(rotation) => patchGroup(selectedGroup.id, { rotation })} />
+              <div style={sub}>统一缩放</div>
+              <DragNumber label="比例" value={selectedGroup.scale} step={0.02} onChange={(v) => patchGroup(selectedGroup.id, { scale: Math.max(0.2, Math.min(3, v)) })} />
+              <div style={sub}>组配色</div>
+              <input type="color" value={selectedGroup.color} onChange={(e) => { const color = e.target.value; patchGroup(selectedGroup.id, { color }); setScene((s) => ({ ...s, actors: s.actors.map((a) => (a.groupId === selectedGroup.id ? { ...a, color } : a)) })); }} style={{ width: "100%", height: 28, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
+              <div className="flex gap-1" style={{ marginTop: 10 }}>
+                <button onClick={() => ungroupGroup(selectedGroup.id)} style={{ ...chip, flex: 1, justifyContent: "center" }}>解组</button>
+                <button onClick={() => deleteGroup(selectedGroup.id)} style={{ ...chip, flex: 1, justifyContent: "center", color: "oklch(0.65 0.2 25)" }}>删除整组</button>
+              </div>
+              <p style={hint}>解组后每个成员可独立调姿势/位置。点开左侧成员可单独选中。</p>
             </div>
           ) : selected ? (
             <div style={panel}>

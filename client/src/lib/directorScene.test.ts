@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   aspectRatioValue, makeActor, makeDefaultDirectorScene, mannequinModel, nextActorName, MANNEQUIN_MODELS,
+  makeCrowd, bakeGroupTransform,
 } from "./directorScene";
 import type { DirectorActor } from "../../../shared/types";
 
@@ -37,6 +38,29 @@ describe("directorScene helpers", () => {
     expect(b.name).toBe("角色B");
     expect(b.id).not.toBe(a.id);
     expect(b.color).not.toBe(a.color); // 调色板递进
+  });
+
+  it("makeCrowd：rows×cols 个成员，居中网格，统一 groupId 与配色", () => {
+    const { group, actors } = makeCrowd(3, 4, []);
+    expect(group.rows).toBe(3);
+    expect(group.cols).toBe(4);
+    expect(group.name).toBe("群众 (4x3)");
+    expect(actors).toHaveLength(12);
+    expect(actors.every((a) => a.groupId === group.id)).toBe(true);
+    // 网格关于原点对称：x 偏移之和≈0
+    const sumX = actors.reduce((s, a) => s + a.position[0], 0);
+    expect(Math.abs(sumX)).toBeLessThan(1e-9);
+  });
+
+  it("bakeGroupTransform：解组把组变换烘焙进成员世界坐标（平移+缩放+绕Y）", () => {
+    const { group, actors } = makeCrowd(1, 2, []);
+    const g = { ...group, position: [10, 0, 5] as [number, number, number], scale: 2, rotation: [0, 0, 0] as [number, number, number] };
+    const baked = bakeGroupTransform(g, actors[0]);
+    expect(baked.groupId).toBeUndefined();
+    // 局部 x = -0.425（2 列居中），×scale2 ×… + 平移 10
+    expect(baked.position[0]).toBeCloseTo(10 + actors[0].position[0] * 2, 4);
+    expect(baked.position[2]).toBeCloseTo(5 + actors[0].position[2] * 2, 4);
+    expect(baked.scale).toBe(actors[0].scale * 2);
   });
 
   it("makeDefaultDirectorScene：1 个角色 + 32° 机位 + 16:9 + 显示地面", () => {

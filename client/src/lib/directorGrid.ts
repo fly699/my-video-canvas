@@ -32,10 +32,20 @@ const THREE_VIEW: GridAngle[] = [
   { az: 0, el: 0, dist: 1.0 }, { az: 90, el: 0, dist: 1.0 }, { az: 45, el: 4, dist: 1.0 },
 ];
 
+// 1×3：产品三视图——正面 / 侧面 / 顶视（俯拍）。
+const PRODUCT_VIEW: GridAngle[] = [
+  { az: 0, el: 0, dist: 1.05 }, { az: 90, el: 0, dist: 1.05 }, { az: 0, el: 82, dist: 1.1 },
+];
+
+// 2×4：环绕八向——每 45° 一机位，水平一圈。
+const ORBIT8: GridAngle[] = [0, 45, 90, 135, 180, 225, 270, 315].map((az) => ({ az, el: 4, dist: 1.0 }));
+
 export const GRID_PRESETS: GridPreset[] = [
   { key: "nine", label: "多机位九宫格", rows: 3, cols: 3, angles: NINE },
   { key: "four", label: "剧情推进四宫格", rows: 2, cols: 2, angles: FOUR },
   { key: "threeview", label: "角色三视图", rows: 1, cols: 3, angles: THREE_VIEW },
+  { key: "product", label: "产品三视图", rows: 1, cols: 3, angles: PRODUCT_VIEW },
+  { key: "orbit8", label: "环绕八向", rows: 2, cols: 4, angles: ORBIT8 },
   { key: "twentyfive", label: "25 宫格", rows: 5, cols: 5, angles: TWENTYFIVE },
 ];
 
