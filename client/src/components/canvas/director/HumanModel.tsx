@@ -62,8 +62,18 @@ function HumanInner({ actor }: { actor: DirectorActor }) {
         mesh.castShadow = true;
       }
     });
+    // 盆骨塑形：内置网格为「细腰宽臀」女性轮廓。按 hip 因子收窄盆骨+并拢双腿 → 男性轮廓。
+    // 做法：缩 Hips 的 X（连同盆骨皮肤、双腿位置与腿围一起收窄），仅对 Spine 反缩回去，
+    // 使躯干/头/手臂宽度不变（避免上身级联畸变）；双腿随之变细并拢，呈男性下身。
+    const hip = mannequinModel(actor.model).hip;
+    if (hip !== 1) {
+      const get = (n: string) => root.getObjectByName("mixamorig" + n) as Object3D | undefined;
+      const hips = get("Hips"), spine = get("Spine");
+      if (hips) hips.scale.set(hip, 1, hip);
+      if (spine) spine.scale.set(1 / hip, 1, 1 / hip);
+    }
     return root;
-  }, [scene, actor.color]);
+  }, [scene, actor.color, actor.model]);
 
   // 归一化到「目标身高 × 体宽」、脚底贴地、水平居中（在绑定姿势下量一次）。
   // 必须先 updateMatrixWorld(true)：Mixamo Armature 自带 0.01 缩放，未刷新世界矩阵则
