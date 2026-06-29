@@ -8,6 +8,8 @@ const ALLOWED_MIME_TYPES = [
   "image/jpeg", "image/png", "image/webp", "image/gif",
   "video/mp4", "video/webm", "video/quicktime", "video/avi", "video/x-matroska",
   "audio/mpeg", "audio/wav", "audio/ogg", "audio/aac", "audio/flac", "audio/mp4", "audio/x-wav",
+  // 3D 模型（导演台本地模型导入）：GLB/GLTF。浏览器对 .glb 常给 application/octet-stream。
+  "model/gltf-binary", "model/gltf+json", "application/octet-stream",
 ] as const;
 
 const uploadInput = z.object({

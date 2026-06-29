@@ -522,6 +522,7 @@ export interface DirectorActor {
   color: string;        // 十六进制；用于「彩色人偶替换」「黑底分离」等参考技法
   pose?: Record<string, number>; // P2：关节角度(度)
   groupId?: string;     // P4：所属群众群组 id；置位时 position 为「组内局部坐标」
+  glbUrl?: string;      // P-GLB：本地导入的 3D 模型 URL；置位时用 GLB 渲染（不再是参数化人偶，无姿势）
 }
 
 // P4：群众群组——一组人偶的统一变换父级（位置/旋转/缩放整体作用于成员）。
