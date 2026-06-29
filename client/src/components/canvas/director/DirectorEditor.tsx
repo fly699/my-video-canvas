@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid } from "@react-three/drei";
 import * as THREE from "three";
@@ -14,6 +14,7 @@ import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset } from "../../../lib/direct
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
 import { Mannequin } from "./Mannequin";
 import { GlbModel } from "./GlbModel";
+import { PanoramaSphere } from "./Panorama";
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
   const r = new FileReader();
@@ -191,6 +192,21 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     } catch (err) {
       toast.error("模型导入失败：" + (err instanceof Error ? err.message : String(err)));
     } finally { setGlbBusy(false); }
+  };
+
+  // 全景背景：上传一张等距全景图作 360° 背景（角色融入真实场景）。
+  const panoInputRef = useRef<HTMLInputElement>(null);
+  const [panoBusy, setPanoBusy] = useState(false);
+  const onPanoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file || !file.type.startsWith("image/")) { if (file) toast.error("请选择全景图片"); return; }
+    setPanoBusy(true);
+    try {
+      const r = await uploadMut.mutateAsync({ base64: await blobToBase64(file), mimeType: file.type, filename: file.name });
+      patchScene({ panoramaUrl: r.url, groundVisible: false });
+      toast.success("已设为全景背景");
+    } catch (err) { toast.error("全景上传失败：" + (err instanceof Error ? err.message : String(err))); }
+    finally { setPanoBusy(false); }
   };
 
   const onCommitCam = useCallback((position: Vec3, target: Vec3) => patchCam({ position, target }), [patchCam]);
@@ -384,6 +400,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               onPointerMissed={() => { setSelectedId(null); setSelectedGroupId(null); }}
             >
               <color attach="background" args={[scene.background || "#1a1d24"]} />
+              {scene.panoramaUrl && !scene.background && (
+                <Suspense fallback={null}><PanoramaSphere url={scene.panoramaUrl} /></Suspense>
+              )}
               <ambientLight intensity={0.7} />
               <directionalLight position={[4, 8, 5]} intensity={1.1} castShadow shadow-mapSize={[1024, 1024]} />
               <directionalLight position={[-5, 4, -3]} intensity={0.4} />
@@ -430,6 +449,15 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               title="黑底分离：纯黑背景只控人物站位（防背景畸变，背景交给 AI 自由生成）"
               style={{ ...chip, fontWeight: scene.background === "#000000" ? 700 : 500, background: scene.background === "#000000" ? "#000" : "var(--c-surface)", color: scene.background === "#000000" ? "#fff" : "var(--c-t3)", border: `1px solid ${scene.background === "#000000" ? "#fff5" : "var(--c-bd2)"}` }}
             >黑底</button>
+            {/* 720° 全景背景：上传等距全景图作 360° 背景；已设则可清除（文档模块15-16） */}
+            {scene.panoramaUrl ? (
+              <button onClick={() => patchScene({ panoramaUrl: undefined })} title="清除全景背景" style={{ ...chip, background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12", fontWeight: 700 }}>全景 ×</button>
+            ) : (
+              <button onClick={() => panoInputRef.current?.click()} disabled={panoBusy} title="上传等距全景图作 360° 背景（可用任意图像模型生成全景图）" style={{ ...chip, opacity: panoBusy ? 0.6 : 1 }}>
+                {panoBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 全景
+              </button>
+            )}
+            <input ref={panoInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPanoFile} />
           </div>
         </div>
 
