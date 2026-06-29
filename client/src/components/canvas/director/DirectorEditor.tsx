@@ -328,7 +328,13 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <button key={r} onClick={() => patchScene({ aspectRatio: r })} style={{ ...chip, fontWeight: scene.aspectRatio === r ? 700 : 500, background: scene.aspectRatio === r ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: scene.aspectRatio === r ? "#0b0d12" : "var(--c-t3)" }}>{r}</button>
             ))}
             <span style={{ width: 1, height: 16, background: "var(--c-bd2)" }} />
-            <button onClick={() => patchScene({ groundVisible: !scene.groundVisible })} title="地面" style={{ ...iconBtn }}>{scene.groundVisible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+            <button onClick={() => patchScene({ groundVisible: !scene.groundVisible })} title="显示/隐藏地面" style={{ ...iconBtn, color: scene.groundVisible ? "var(--c-t3)" : "var(--c-t4)" }}>{scene.groundVisible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+            {/* 黑底分离：纯黑背景 + 只留彩色人偶，导出仅控站位的参考图，避免全景/复杂背景畸变污染 AI（文档模块19）。 */}
+            <button
+              onClick={() => patchScene({ background: scene.background === "#000000" ? "" : "#000000", ...(scene.background === "#000000" ? {} : { groundVisible: false }) })}
+              title="黑底分离：纯黑背景只控人物站位（防背景畸变，背景交给 AI 自由生成）"
+              style={{ ...chip, fontWeight: scene.background === "#000000" ? 700 : 500, background: scene.background === "#000000" ? "#000" : "var(--c-surface)", color: scene.background === "#000000" ? "#fff" : "var(--c-t3)", border: `1px solid ${scene.background === "#000000" ? "#fff5" : "var(--c-bd2)"}` }}
+            >黑底</button>
           </div>
         </div>
 
