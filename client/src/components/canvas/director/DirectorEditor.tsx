@@ -410,6 +410,15 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
 
   const ar = aspectRatioValue(scene.aspectRatio);
 
+  // 自适应位置范围：滑杆 min/max 随「场景缩放 / 该对象自身缩放 / 当前已有坐标」自动放大，
+  // 使放大场景/人物后仍能把对象拖到足够远（解决「位置调节范围太小、不能自适应缩放」）。
+  const sceneS = scene.sceneScale ?? 1;
+  const reachFor = useCallback((vec: Vec3, ownScale = 1) => {
+    const need = Math.max(20, sceneS * 20, ownScale * 6, ...vec.map((n) => Math.abs(n) * 1.3));
+    // 取整到 10 的倍数，滑杆刻度好看
+    return Math.ceil(need / 10) * 10;
+  }, [sceneS]);
+
   // 取景容器：在中央区按画幅比例取最大内接矩形，使 R3F 画布即为最终取景。
   const stageRef = useRef<HTMLDivElement>(null);
   const [frame, setFrame] = useState<{ w: number; h: number }>({ w: 960, h: 540 });
@@ -535,10 +544,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             <div style={{ position: "absolute", bottom: 60, left: 12, zIndex: 5, width: 210, padding: 10, borderRadius: 12, background: "color-mix(in oklch, var(--c-elevated) 92%, transparent)", border: "1px solid var(--c-bd2)", backdropFilter: "blur(12px)", display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }}>全景对齐</div>
               <Slider label="旋转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
-              <Slider label="升降" value={scene.panoramaY ?? 0} min={-4} max={4} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaY: v })} />
-              <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={6} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
+              <Slider label="升降" value={scene.panoramaY ?? 0} min={-4 * sceneS} max={4 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaY: v })} />
+              <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={Math.max(6, sceneS * 4)} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
               {/* 场景缩放：独立缩放「人物场景」相对全景空间的大小（LibTV 场景缩放，文档默认300%） */}
-              <Slider label="场景" value={scene.sceneScale ?? 1} min={0.2} max={8} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
+              <Slider label="场景" value={scene.sceneScale ?? 1} min={0.2} max={30} step={0.1} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
             </div>
           )}
           <div style={{ width: frame.w, height: frame.h, position: "relative", boxShadow: "0 0 0 1px var(--c-bd2), 0 8px 40px oklch(0 0 0 / 0.6)" }}>
@@ -670,14 +679,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 ))}
               </div>
               <div style={sub}>位置</div>
-              <Xyz v={scene.camera.position} min={-20} max={20} onChange={(position) => { patchCam({ position }); moveLiveCamera({ ...scene.camera, position }); }} />
+              <Xyz v={scene.camera.position} min={-reachFor(scene.camera.position)} max={reachFor(scene.camera.position)} onChange={(position) => { patchCam({ position }); moveLiveCamera({ ...scene.camera, position }); }} />
               <div style={sub}>注视目标</div>
               <select value={scene.camera.lookAtActorId ?? ""} onChange={(e) => lookAtActor(e.target.value || undefined)}
                 style={{ width: "100%", padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6, marginBottom: 6 }}>
                 <option value="">手动坐标</option>
                 {scene.actors.map((a) => <option key={a.id} value={a.id}>对准 {a.name}</option>)}
               </select>
-              <Xyz v={scene.camera.target} onChange={(target) => { patchCam({ target, lookAtActorId: undefined }); moveLiveCamera({ ...scene.camera, target }); }} />
+              <Xyz v={scene.camera.target} min={-reachFor(scene.camera.target)} max={reachFor(scene.camera.target)} onChange={(target) => { patchCam({ target, lookAtActorId: undefined }); moveLiveCamera({ ...scene.camera, target }); }} />
               <p style={hint}>在画面里拖拽即转动当前机位；松手自动记录。多机位便于一套场景出多个分镜角度。</p>
             </div>
           ) : selectedGroup ? (
@@ -686,7 +695,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 style={{ ...ttl, width: "100%", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "4px 6px" }} />
               <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginBottom: 6 }}>{selectedGroup.cols}×{selectedGroup.rows} = {selectedGroup.rows * selectedGroup.cols} 个成员（整组变换）</div>
               <div style={sub}>整组位置</div>
-              <Xyz v={selectedGroup.position} onChange={(position) => patchGroup(selectedGroup.id, { position })} />
+              <Xyz v={selectedGroup.position} min={-reachFor(selectedGroup.position, selectedGroup.scale)} max={reachFor(selectedGroup.position, selectedGroup.scale)} onChange={(position) => patchGroup(selectedGroup.id, { position })} />
               <div style={sub}>整组旋转(°)</div>
               <Xyz v={selectedGroup.rotation} min={-180} max={180} step={1} fixed={0} onChange={(rotation) => patchGroup(selectedGroup.id, { rotation })} />
               <div style={sub}>整组统一缩放</div>
@@ -723,7 +732,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                     </label>
                   )}
                   <div style={sub}>位置</div>
-                  <Xyz v={selected.position} onChange={(position) => patchActor(selected.id, { position })} />
+                  <Xyz v={selected.position} min={-reachFor(selected.position, selected.scale)} max={reachFor(selected.position, selected.scale)} onChange={(position) => patchActor(selected.id, { position })} />
                   <div style={sub}>旋转(°)</div>
                   <Xyz v={selected.rotation} min={-180} max={180} step={1} fixed={0} onChange={(rotation) => patchActor(selected.id, { rotation })} />
                   <div style={sub}>缩放（放大以匹配全景场景）</div>
