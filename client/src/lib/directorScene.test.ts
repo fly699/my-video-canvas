@@ -84,10 +84,10 @@ describe("directorScene helpers", () => {
     expect(s.camera).toBe(s.cameras![0]); // 镜像同一对象
   });
 
-  it("makeDefaultDirectorScene：1 个角色 + 32° 机位 + 16:9 + 显示地面", () => {
+  it("makeDefaultDirectorScene：1 个角色 + 50° 机位 + 16:9 + 显示地面", () => {
     const s = makeDefaultDirectorScene();
     expect(s.actors).toHaveLength(1);
-    expect(s.camera.fov).toBe(32);
+    expect(s.camera.fov).toBe(50);
     expect(s.aspectRatio).toBe("16:9");
     expect(s.groundVisible).toBe(true);
     expect(s.camera.position).toHaveLength(3);

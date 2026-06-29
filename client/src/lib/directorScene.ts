@@ -11,12 +11,14 @@ export interface MannequinModel {
   color: string;    // 默认配色
 }
 
+// 体型框架（统一真人网格 + 非等比缩放区分）：height=站高(米)，build=体宽系数。
+// 女性更瘦小、壮硕更宽、儿童更矮小，使「同一 Xbot 网格」也能协调地区分性别/体型。
 export const MANNEQUIN_MODELS: MannequinModel[] = [
-  { key: "male",   label: "男性",   height: 1.80, build: 1.0,  color: "#4aa3ff" },
-  { key: "female", label: "女性",   height: 1.66, build: 0.9,  color: "#ff6fa5" },
-  { key: "tall",   label: "高挑",   height: 1.92, build: 0.92, color: "#37d6a6" },
-  { key: "burly",  label: "壮硕",   height: 1.82, build: 1.22, color: "#ffb020" },
-  { key: "child",  label: "儿童",   height: 1.20, build: 0.85, color: "#c08bff" },
+  { key: "male",   label: "男性",   height: 1.80, build: 1.05, color: "#4aa3ff" },
+  { key: "female", label: "女性",   height: 1.64, build: 0.82, color: "#ff6fa5" },
+  { key: "tall",   label: "高挑",   height: 1.92, build: 0.90, color: "#37d6a6" },
+  { key: "burly",  label: "壮硕",   height: 1.84, build: 1.28, color: "#ffb020" },
+  { key: "child",  label: "儿童",   height: 1.18, build: 0.80, color: "#c08bff" },
 ];
 
 export function mannequinModel(key: string): MannequinModel {
@@ -139,7 +141,8 @@ export function nextCameraName(cams: DirectorCamera[]): string {
 
 export function makeDefaultDirectorScene(): DirectorScene {
   const actors = [makeActor("male", [])];
-  const cam: DirectorCamera = { id: "cam1", name: "机位1", position: [0, 1.5, 4.2], target: [0, 1.0, 0], fov: 32 };
+  // FOV 默认 50°（自然视角，对齐 LibTV）；32° 长焦会把人物「放大」显得过大。
+  const cam: DirectorCamera = { id: "cam1", name: "机位1", position: [0, 1.5, 4.2], target: [0, 1.0, 0], fov: 50 };
   return {
     actors,
     camera: cam,
