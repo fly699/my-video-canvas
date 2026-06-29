@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown } from "lucide-react";
+import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { DirectorScene, DirectorActor, Vec3 } from "../../../../../shared/types";
@@ -13,6 +13,8 @@ import {
 import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset } from "../../../lib/directorPose";
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
 import { Mannequin } from "./Mannequin";
+import { GlbModel } from "./GlbModel";
+import { PanoramaSphere } from "./Panorama";
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
   const r = new FileReader();
@@ -167,6 +169,45 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   };
 
   const uploadMut = trpc.upload.uploadImage.useMutation();
+
+  // 导入本地 GLB 模型：上传 → 新建一个以 GLB 渲染的角色（无姿势，仅摆放）。
+  const glbInputRef = useRef<HTMLInputElement>(null);
+  const [glbBusy, setGlbBusy] = useState(false);
+  const onGlbFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    if (!/\.glb$/i.test(file.name)) { toast.error("当前支持 .glb 格式（.obj/.fbx 请先转 .glb）"); return; }
+    if (file.size > 64 * 1024 * 1024) { toast.error("模型文件不能超过 64MB"); return; }
+    setGlbBusy(true);
+    try {
+      const base64 = await blobToBase64(file);
+      const r = await uploadMut.mutateAsync({ base64, mimeType: "model/gltf-binary", filename: file.name });
+      setScene((s) => {
+        const a = makeActor("male", s.actors, [s.actors.length * 0.6 - 0.3, 0, 0]);
+        a.glbUrl = r.url; a.name = file.name.replace(/\.glb$/i, "").slice(0, 16) || a.name;
+        setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
+        return { ...s, actors: [...s.actors, a] };
+      });
+      toast.success("已导入模型");
+    } catch (err) {
+      toast.error("模型导入失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally { setGlbBusy(false); }
+  };
+
+  // 全景背景：上传一张等距全景图作 360° 背景（角色融入真实场景）。
+  const panoInputRef = useRef<HTMLInputElement>(null);
+  const [panoBusy, setPanoBusy] = useState(false);
+  const onPanoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file || !file.type.startsWith("image/")) { if (file) toast.error("请选择全景图片"); return; }
+    setPanoBusy(true);
+    try {
+      const r = await uploadMut.mutateAsync({ base64: await blobToBase64(file), mimeType: file.type, filename: file.name });
+      patchScene({ panoramaUrl: r.url, groundVisible: false });
+      toast.success("已设为全景背景");
+    } catch (err) { toast.error("全景上传失败：" + (err instanceof Error ? err.message : String(err))); }
+    finally { setPanoBusy(false); }
+  };
 
   const onCommitCam = useCallback((position: Vec3, target: Vec3) => patchCam({ position, target }), [patchCam]);
   const bindCapture = useCallback((h: CaptureHandle) => { captureRef.current = h; }, []);
@@ -341,6 +382,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <button key={`${r}x${c}`} onClick={() => addCrowd(r, c)} style={{ ...chip }}><Plus size={11} /> {c}×{r}</button>
             ))}
           </div>
+          <button onClick={() => glbInputRef.current?.click()} disabled={glbBusy} style={{ ...chip, justifyContent: "center", marginTop: 6, opacity: glbBusy ? 0.6 : 1 }}>
+            {glbBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 导入 3D 模型（.glb）
+          </button>
+          <input ref={glbInputRef} type="file" accept=".glb,model/gltf-binary" style={{ display: "none" }} onChange={onGlbFile} />
         </div>
 
         {/* 中：3D 取景区 */}
@@ -355,6 +400,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               onPointerMissed={() => { setSelectedId(null); setSelectedGroupId(null); }}
             >
               <color attach="background" args={[scene.background || "#1a1d24"]} />
+              {scene.panoramaUrl && !scene.background && (
+                <Suspense fallback={null}><PanoramaSphere url={scene.panoramaUrl} /></Suspense>
+              )}
               <ambientLight intensity={0.7} />
               <directionalLight position={[4, 8, 5]} intensity={1.1} castShadow shadow-mapSize={[1024, 1024]} />
               <directionalLight position={[-5, 4, -3]} intensity={0.4} />
@@ -365,13 +413,17 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {groups.map((g) => (
                 <group key={g.id} position={g.position} rotation={[g.rotation[0] * Math.PI / 180, g.rotation[1] * Math.PI / 180, g.rotation[2] * Math.PI / 180]} scale={g.scale}>
                   {scene.actors.filter((a) => a.groupId === g.id).map((a) => (
-                    <Mannequin key={a.id} actor={a} selected={a.id === selectedId || g.id === selectedGroupId} onSelect={() => selectActor(a.id)} />
+                    a.glbUrl
+                      ? <GlbModel key={a.id} actor={a} selected={a.id === selectedId || g.id === selectedGroupId} onSelect={() => selectActor(a.id)} />
+                      : <Mannequin key={a.id} actor={a} selected={a.id === selectedId || g.id === selectedGroupId} onSelect={() => selectActor(a.id)} />
                   ))}
                 </group>
               ))}
-              {/* 独立人偶 */}
+              {/* 独立人偶 / 导入模型 */}
               {scene.actors.filter((a) => !a.groupId).map((a) => (
-                <Mannequin key={a.id} actor={a} selected={!camSelected && a.id === selectedId} onSelect={() => selectActor(a.id)} />
+                a.glbUrl
+                  ? <GlbModel key={a.id} actor={a} selected={!camSelected && a.id === selectedId} onSelect={() => selectActor(a.id)} />
+                  : <Mannequin key={a.id} actor={a} selected={!camSelected && a.id === selectedId} onSelect={() => selectActor(a.id)} />
               ))}
               <CameraRig cam={scene.camera} onCommit={onCommitCam} bind={bindCapture} />
             </Canvas>
@@ -397,6 +449,15 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               title="黑底分离：纯黑背景只控人物站位（防背景畸变，背景交给 AI 自由生成）"
               style={{ ...chip, fontWeight: scene.background === "#000000" ? 700 : 500, background: scene.background === "#000000" ? "#000" : "var(--c-surface)", color: scene.background === "#000000" ? "#fff" : "var(--c-t3)", border: `1px solid ${scene.background === "#000000" ? "#fff5" : "var(--c-bd2)"}` }}
             >黑底</button>
+            {/* 720° 全景背景：上传等距全景图作 360° 背景；已设则可清除（文档模块15-16） */}
+            {scene.panoramaUrl ? (
+              <button onClick={() => patchScene({ panoramaUrl: undefined })} title="清除全景背景" style={{ ...chip, background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12", fontWeight: 700 }}>全景 ×</button>
+            ) : (
+              <button onClick={() => panoInputRef.current?.click()} disabled={panoBusy} title="上传等距全景图作 360° 背景（可用任意图像模型生成全景图）" style={{ ...chip, opacity: panoBusy ? 0.6 : 1 }}>
+                {panoBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 全景
+              </button>
+            )}
+            <input ref={panoInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPanoFile} />
           </div>
         </div>
 
@@ -433,23 +494,27 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             </div>
           ) : selected ? (
             <div style={panel}>
-              <div style={ttl}>{selected.name}</div>
-              {/* 变换 / 姿势 标签页 */}
-              <div className="flex gap-1" style={{ marginBottom: 10 }}>
-                {([["transform", "变换"], ["pose", "姿势"]] as const).map(([k, lbl]) => (
-                  <button key={k} onClick={() => setActorTab(k)} style={{ ...chip, flex: 1, justifyContent: "center", fontWeight: actorTab === k ? 700 : 500, background: actorTab === k ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: actorTab === k ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
-                ))}
-              </div>
+              <div style={ttl}>{selected.name}{selected.glbUrl ? "（导入模型）" : ""}</div>
+              {/* 变换 / 姿势 标签页（GLB 导入模型无参数化姿势，仅摆放） */}
+              {!selected.glbUrl && (
+                <div className="flex gap-1" style={{ marginBottom: 10 }}>
+                  {([["transform", "变换"], ["pose", "姿势"]] as const).map(([k, lbl]) => (
+                    <button key={k} onClick={() => setActorTab(k)} style={{ ...chip, flex: 1, justifyContent: "center", fontWeight: actorTab === k ? 700 : 500, background: actorTab === k ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: actorTab === k ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
+                  ))}
+                </div>
+              )}
 
-              {actorTab === "transform" ? (
+              {(selected.glbUrl || actorTab === "transform") ? (
                 <>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--c-t3)", marginBottom: 8 }}>
-                    体型
-                    <select value={selected.model} onChange={(e) => patchActor(selected.id, { model: e.target.value })}
-                      style={{ width: "100%", marginTop: 4, padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6 }}>
-                      {MANNEQUIN_MODELS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-                    </select>
-                  </label>
+                  {!selected.glbUrl && (
+                    <label style={{ display: "block", fontSize: 11, color: "var(--c-t3)", marginBottom: 8 }}>
+                      体型
+                      <select value={selected.model} onChange={(e) => patchActor(selected.id, { model: e.target.value })}
+                        style={{ width: "100%", marginTop: 4, padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6 }}>
+                        {MANNEQUIN_MODELS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      </select>
+                    </label>
+                  )}
                   <div style={sub}>位置</div>
                   <Xyz v={selected.position} onChange={(position) => patchActor(selected.id, { position })} />
                   <div style={sub}>旋转(°)</div>
