@@ -41,20 +41,21 @@ export const ALL_JOINT_KEYS = JOINT_GROUPS.flatMap((g) => g.joints.map((j) => j.
 
 export type Pose = Record<string, number>;
 
-// 动作预设（部分关节，未列出的归零）。值为「大概姿势」，对称处尽量对称以降低观感风险。
+// 动作预设（部分关节，未列出的归零）。约定：前举/抬腿 正值=向前，屈肘 正值=前屈，
+// 屈膝 正值=后屈；外展(armOut) 正值=向外抬起。摆个大概即可，AI 会脑补细节。
 export const POSE_PRESETS: { key: string; label: string; pose: Pose }[] = [
   { key: "stand",   label: "站立", pose: {} },
   { key: "tpose",   label: "T 型", pose: { armLOut: 78, armROut: 78 } },
-  { key: "handsup", label: "举手", pose: { armLForward: -160, armROut: 12, armLOut: 6, armRForward: -160 } },
-  { key: "walk",    label: "行走", pose: { legLForward: 22, legRForward: -22, kneeL: 12, kneeR: 18, armLForward: -22, armRForward: 22, elbowL: 28, elbowR: 28 } },
-  { key: "run",     label: "跑步", pose: { torsoForward: 18, legLForward: 48, legRForward: -32, kneeL: 28, kneeR: 70, armLForward: -55, armRForward: 50, elbowL: 85, elbowR: 85 } },
-  { key: "sit",     label: "坐姿", pose: { legLForward: 90, legRForward: 90, kneeL: 92, kneeR: 92 } },
-  { key: "crouch",  label: "蹲下", pose: { torsoForward: 22, legLForward: 78, legRForward: 78, kneeL: 115, kneeR: 115 } },
+  { key: "handsup", label: "举手", pose: { armLOut: 160, armROut: 160 } },
+  { key: "walk",    label: "行走", pose: { legLForward: 22, legRForward: -22, kneeR: 16, armLForward: -22, armRForward: 22, elbowL: 22, elbowR: 22 } },
+  { key: "run",     label: "跑步", pose: { torsoForward: 18, legLForward: 45, legRForward: -30, kneeL: 25, kneeR: 65, armLForward: -50, armRForward: 50, elbowL: 80, elbowR: 80 } },
+  { key: "sit",     label: "坐姿", pose: { legLForward: 90, legRForward: 90, kneeL: 90, kneeR: 90 } },
+  { key: "crouch",  label: "蹲下", pose: { torsoForward: 20, legLForward: 75, legRForward: 75, kneeL: 115, kneeR: 115 } },
   { key: "kneel",   label: "单膝跪", pose: { legLForward: 60, kneeL: 120, legRForward: 80, kneeR: 95, torsoForward: 8 } },
-  { key: "fight",   label: "格斗", pose: { torsoForward: 10, torsoTwist: 18, armLForward: -42, elbowL: 95, armRForward: -65, elbowR: 110, legLForward: 16, legRForward: -16, kneeL: 22, kneeR: 22 } },
-  { key: "think",   label: "思考", pose: { headNod: 8, armRForward: -70, elbowR: 130, armROut: 6, armLOut: -6 } },
-  { key: "wave",    label: "招手", pose: { armRForward: -120, elbowR: 40, armROut: 20 } },
-  { key: "phone",   label: "看手机", pose: { headNod: 22, armLForward: -55, elbowL: 95, armRForward: -55, elbowR: 95 } },
+  { key: "fight",   label: "格斗", pose: { torsoForward: 10, torsoTwist: 18, armLForward: 42, elbowL: 95, armRForward: 60, elbowR: 110, legLForward: 16, legRForward: -16, kneeL: 22, kneeR: 22 } },
+  { key: "think",   label: "思考", pose: { headNod: 8, armRForward: 65, elbowR: 125, armROut: 6 } },
+  { key: "wave",    label: "招手", pose: { armROut: 135, elbowR: 45 } },
+  { key: "phone",   label: "看手机", pose: { headNod: 22, armLForward: 55, elbowL: 95, armRForward: 55, elbowR: 95 } },
 ];
 
 export function applyPosePreset(presetKey: string): Pose {
