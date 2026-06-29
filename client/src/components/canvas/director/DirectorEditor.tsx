@@ -13,7 +13,7 @@ import {
 } from "../../../lib/directorScene";
 import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset } from "../../../lib/directorPose";
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
-import { Mannequin } from "./Mannequin";
+import { HumanModel } from "./HumanModel";
 import { GlbModel } from "./GlbModel";
 import { PanoramaSphere } from "./Panorama";
 
@@ -173,15 +173,6 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const addActor = (model: string) => {
     setScene((s) => {
       const a = makeActor(model, s.actors, [s.actors.length * 0.6 - 0.3, 0, 0]);
-      setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
-      return { ...s, actors: [...s.actors, a] };
-    });
-  };
-  // 内置「真人（高精度）」模型：CesiumMan 网格染成 actor.color（纯色人偶，AI 识别度高）。
-  const addRealHuman = () => {
-    setScene((s) => {
-      const a = makeActor("male", s.actors, [s.actors.length * 0.6 - 0.3, 0, 0]);
-      a.glbUrl = "/models/cesiumman.glb"; a.tint = true; a.name = `真人${s.actors.length + 1}`;
       setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
       return { ...s, actors: [...s.actors, a] };
     });
@@ -469,7 +460,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <button onClick={() => removeActor(a.id)} title="删除" style={{ ...iconBtn }}><Trash2 size={12} /></button>
             </div>
           ))}
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginTop: 8 }}>添加人偶</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginTop: 8 }}>添加人物（真人模型）</div>
           <div className="flex flex-wrap gap-1">
             {MANNEQUIN_MODELS.map((m) => (
               <button key={m.key} onClick={() => addActor(m.key)} style={{ ...chip }}><Plus size={11} /> {m.label}</button>
@@ -481,10 +472,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <button key={`${r}x${c}`} onClick={() => addCrowd(r, c)} style={{ ...chip }}><Plus size={11} /> {c}×{r}</button>
             ))}
           </div>
-          <button onClick={addRealHuman} style={{ ...chip, justifyContent: "center", marginTop: 6, fontWeight: 700, background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12" }}>
-            <Plus size={11} /> 真人（高精度模型）
-          </button>
-          <button onClick={() => glbInputRef.current?.click()} disabled={glbBusy} style={{ ...chip, justifyContent: "center", marginTop: 4, opacity: glbBusy ? 0.6 : 1 }}>
+          <button onClick={() => glbInputRef.current?.click()} disabled={glbBusy} style={{ ...chip, justifyContent: "center", marginTop: 6, opacity: glbBusy ? 0.6 : 1 }}>
             {glbBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 导入 3D 模型（.glb）
           </button>
           <input ref={glbInputRef} type="file" accept=".glb,model/gltf-binary" style={{ display: "none" }} onChange={onGlbFile} />
@@ -524,7 +512,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   {scene.actors.filter((a) => a.groupId === g.id).map((a) => (
                     <group key={a.id} position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
                       onPointerDown={(e) => { e.stopPropagation(); selectActor(a.id); }}>
-                      {a.glbUrl ? <GlbModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} /> : <Mannequin actor={a} selected={a.id === selectedId || g.id === selectedGroupId} />}
+                      {a.glbUrl ? <GlbModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} /> : <HumanModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} />}
                     </group>
                   ))}
                 </group>
@@ -536,7 +524,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   <group key={a.id} ref={sel ? ((el) => setGizmoTarget(el)) : undefined}
                     position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
                     onPointerDown={(e) => { e.stopPropagation(); selectActor(a.id); }}>
-                    {a.glbUrl ? <GlbModel actor={a} selected={sel} /> : <Mannequin actor={a} selected={sel} />}
+                    {a.glbUrl ? <GlbModel actor={a} selected={sel} /> : <HumanModel actor={a} selected={sel} />}
                   </group>
                 );
               })}

@@ -1,4 +1,7 @@
-cesiumman.glb — "Cesium Man" by Cesium / AGI
-Source: Khronos glTF-Sample-Assets
-License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
-Used as the built-in 「真人（高精度）」 mannequin in the 导演台 feature.
+导演台内置 3D 人物模型来源与许可：
+
+xbot.glb — Mixamo "Y Bot" (Adobe Mixamo). 默认人物模型（染色为纯色人偶 + Mixamo 骨骼摆姿势）。
+  来源: three.js examples (examples/models/gltf/Xbot.glb). Mixamo 许可允许在作品中使用其角色/动画。
+
+cesiumman.glb — "Cesium Man" by Cesium / AGI. (备用) CC BY 4.0.
+  来源: Khronos glTF-Sample-Assets.
