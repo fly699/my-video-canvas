@@ -315,6 +315,26 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     patchCam({ target, lookAtActorId: actorId });
   }, [scene.actors, scene.groups, patchCam]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 景别预设（LibTV 模块28「五种景别」）：保持当前机位方位角，按景别设定 FOV + 与主体距离 +
+  // 注视高度，一键在 远景/全景/中景/近景/特写 间切换，配合多机位实现叙事镜头序列。
+  const applyShot = useCallback((shot: { fov: number; dist: number; aimY: number }) => {
+    const cam = scene.camera;
+    const subj = scene.actors.find((a) => a.id === cam.lookAtActorId)
+      ?? scene.actors.find((a) => !a.groupId) ?? scene.actors[0];
+    const base = subj ? actorWorldPos(subj) : ([0, 0, 0] as Vec3);
+    const target: Vec3 = [base[0], base[1] + shot.aimY, base[2]];
+    const T = new THREE.Vector3(...target);
+    const dir = new THREE.Vector3(...cam.position).sub(new THREE.Vector3(...cam.target));
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0.15, 1);
+    if (dir.y < 0.05) dir.y = 0.12; // 不要俯冲到地面以下
+    dir.normalize();
+    const np = T.clone().addScaledVector(dir, shot.dist);
+    const position: Vec3 = [np.x, np.y, np.z];
+    const next: DirectorCamera = { ...cam, position, target, fov: shot.fov };
+    patchCam({ position, target, fov: shot.fov });
+    moveLiveCamera(next);
+  }, [scene.actors, scene.camera, patchCam, moveLiveCamera]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 截图：用当前机位渲染一帧 → toBlob → 上传 → 写入节点 imageUrl（参考图）。
   const shoot = async () => {
     const cap = captureRef.current;
@@ -492,7 +512,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }}>全景对齐</div>
               <Slider label="旋转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
               <Slider label="升降" value={scene.panoramaY ?? 0} min={-4} max={4} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaY: v })} />
-              <Slider label="缩放" value={scene.panoramaScale ?? 1} min={0.2} max={6} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
+              <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={6} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
             </div>
           )}
           <div style={{ width: frame.w, height: frame.h, position: "relative", boxShadow: "0 0 0 1px var(--c-bd2), 0 8px 40px oklch(0 0 0 / 0.6)" }}>
@@ -504,7 +524,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               style={{ width: "100%", height: "100%", borderRadius: 4 }}
               onPointerMissed={() => { setSelectedId(null); setSelectedGroupId(null); }}
             >
-              <color attach="background" args={[scene.background || "#1a1d24"]} />
+              {/* 天空颜色：默认深空黑 #060608（对齐 LibTV 模块16），全景未覆盖处即此色 */}
+              <color attach="background" args={[scene.background || (scene.panoramaUrl ? "#060608" : "#1a1d24")]} />
               {scene.panoramaUrl && !scene.background && (
                 <Suspense fallback={null}>
                   <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} y={scene.panoramaY ?? 0} scale={scene.panoramaScale ?? 1} />
@@ -611,6 +632,13 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <input value={scene.camera.name ?? "机位"} onChange={(e) => patchCam({ name: e.target.value })}
                 style={{ width: "100%", padding: "4px 6px", fontSize: 11.5, fontWeight: 600, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6, marginBottom: 8 }} />
               <DragNumber label="FOV" value={scene.camera.fov} step={0.5} fixed={1} suffix="°" onChange={(v) => patchCam({ fov: Math.max(8, Math.min(120, v)) })} />
+              {/* 景别预设（模块28 五种景别）：一键设定 FOV+距离，远→特写逐步推进 */}
+              <div style={sub}>景别</div>
+              <div className="flex flex-wrap gap-1">
+                {SHOTS.map((sh) => (
+                  <button key={sh.label} onClick={() => applyShot(sh)} title={`${sh.label} · FOV ${sh.fov}°`} style={{ ...chip }}>{sh.label}</button>
+                ))}
+              </div>
               <div style={sub}>位置</div>
               <Xyz v={scene.camera.position} min={-20} max={20} onChange={(position) => { patchCam({ position }); moveLiveCamera({ ...scene.camera, position }); }} />
               <div style={sub}>注视目标</div>
@@ -723,6 +751,16 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     </div>
   );
 }
+
+// 五种景别预设（LibTV 模块28）：fov=视野角度、dist=机位到主体距离(米)、aimY=注视高度(米)。
+// 远→特写 FOV 渐小、距离渐近、注视点由全身中部上移到面部，逐步推进情绪。
+const SHOTS = [
+  { label: "远景", fov: 66, dist: 9.0, aimY: 0.95 },
+  { label: "全景", fov: 54, dist: 4.5, aimY: 0.95 },
+  { label: "中景", fov: 47, dist: 2.6, aimY: 1.12 },
+  { label: "近景", fov: 40, dist: 1.55, aimY: 1.45 },
+  { label: "特写", fov: 30, dist: 0.95, aimY: 1.55 },
+] as const;
 
 // ── 小样式/子组件 ─────────────────────────────────────────────────────────────
 const ttl: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: "var(--c-t1)", marginBottom: 8 };
