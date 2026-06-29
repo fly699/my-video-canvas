@@ -13,33 +13,41 @@ const D = Math.PI / 180;
 
 const MODEL_URL = "/models/xbot.glb";
 
-// 关节角度(度) → mixamorig 骨骼旋转。约定：默认手臂自然下垂(A 型)，外展(armOut)增大→抬向水平；
-// 前举(forward)→前后摆；屈肘/屈膝→弯曲。轴向按 Mixamo 习惯设定，可按反馈逐条校正。
+// 关节角度(度) → Mixamo 骨骼旋转。
+// 注意：本 GLB 导出时把骨名里的冒号去掉了，真实骨名是 `mixamorigHips`（无冒号），
+// 此前用 `mixamorig:Hips` 取骨一律取不到 → 所有姿势失效。轴向均经真机(GLTFLoader)逐条实测：
+//   绑定姿势为 T 字（双臂水平外伸 ±X，正面 +Z）。
+//   左臂抬垂 z=(armOut-75)°，右臂 z=(75-armOut)°（默认 armOut=0 → 双臂自然下垂）；
+//   前举：左 -y / 右 +y；屈肘：左 -y / 右 +y；
+//   抬腿 -x；屈膝 +x；腿外展 左 +z / 右 -z；躯干前倾 +x、转体 y、侧倾 z；头点头 +x、转头 y。
 function applyPose(root: Object3D, pose: Record<string, number>) {
   const v = (k: string) => (pose[k] ?? 0) * D;
   const set = (bone: string, x = 0, y = 0, z = 0) => {
-    const b = root.getObjectByName("mixamorig:" + bone);
+    const b = root.getObjectByName("mixamorig" + bone);
     if (b) b.rotation.set(x, y, z);
   };
-  // 躯干（分摊到 Spine/Spine1/Spine2）
+  // 躯干（分摊到 Spine/Spine1/Spine2，自然分布弯曲）
   set("Spine", v("torsoForward") * 0.4, v("torsoTwist") * 0.5, v("torsoSide") * 0.4);
   set("Spine1", v("torsoForward") * 0.35, v("torsoTwist") * 0.3, v("torsoSide") * 0.3);
   set("Spine2", v("torsoForward") * 0.25, v("torsoTwist") * 0.2, v("torsoSide") * 0.2);
-  // 头颈
+  // 头颈（颈分担一部分，更自然）
   set("Neck", v("headNod") * 0.35, v("headTurn") * 0.4, v("headTilt") * 0.35);
   set("Head", v("headNod") * 0.65, v("headTurn") * 0.6, v("headTilt") * 0.65);
-  // 手臂：z 控制抬/垂（默认下垂 ≈ (75-armOut)°），x 控制前后摆；前臂(elbow)弯曲
-  const armDownL = (75 - (pose.armLOut ?? 0)) * D;
-  const armDownR = (75 - (pose.armROut ?? 0)) * D;
-  set("LeftArm", -v("armLForward"), 0, armDownL);
-  set("RightArm", -v("armRForward"), 0, -armDownR);
-  set("LeftForeArm", 0, 0, v("elbowL"));
-  set("RightForeArm", 0, 0, -v("elbowR"));
-  // 腿：x 前后抬腿，z 外展；小腿(knee)弯曲（后屈为正）
-  set("LeftUpLeg", v("legLForward"), 0, v("legLOut"));
-  set("RightUpLeg", v("legRForward"), 0, -v("legROut"));
-  set("LeftLeg", -v("kneeL"), 0, 0);
-  set("RightLeg", -v("kneeR"), 0, 0);
+  // 手臂：z 抬/垂（外展 0=下垂、75=水平、160=过头），y 前后摆，前臂(elbow) y 前屈
+  const elevL = ((pose.armLOut ?? 0) - 75) * D;
+  const elevR = (75 - (pose.armROut ?? 0)) * D;
+  set("LeftArm", 0, -v("armLForward"), elevL);
+  set("RightArm", 0, v("armRForward"), elevR);
+  set("LeftForeArm", 0, -v("elbowL"), 0);
+  set("RightForeArm", 0, v("elbowR"), 0);
+  // 腿：x 抬腿(-x=前)，z 外展；小腿(knee) +x=屈膝
+  set("LeftUpLeg", -v("legLForward"), 0, v("legLOut"));
+  set("RightUpLeg", -v("legRForward"), 0, -v("legROut"));
+  set("LeftLeg", v("kneeL"), 0, 0);
+  set("RightLeg", v("kneeR"), 0, 0);
+  // 踝部回正，使脚底尽量水平贴地（抵消大腿/小腿在 x 上的累计倾角）
+  set("LeftFoot", v("legLForward") - v("kneeL"), 0, 0);
+  set("RightFoot", v("legRForward") - v("kneeR"), 0, 0);
 }
 
 function HumanInner({ actor }: { actor: DirectorActor }) {
@@ -57,20 +65,26 @@ function HumanInner({ actor }: { actor: DirectorActor }) {
     return root;
   }, [scene, actor.color]);
 
-  // 归一化到 ~1.8m × 体型缩放、脚底贴地、水平居中（在绑定姿势下量一次）。
+  // 归一化到「目标身高 × 体宽」、脚底贴地、水平居中（在绑定姿势下量一次）。
+  // 必须先 updateMatrixWorld(true)：Mixamo Armature 自带 0.01 缩放，未刷新世界矩阵则
+  // Box3 量出的尺寸不可靠，缩放会算错（此前「人物比例太大」的根因之一）。
+  // 性别/体型框架：身高(sy) 取模型 height，体宽(sxz) = sy × build，使男/女/高挑/壮硕/儿童
+  // 在「同一真人网格」上以协调比例区分（女性更瘦小、壮硕更宽、儿童更矮）。
   const fit = useMemo(() => {
+    obj.updateMatrixWorld(true);
     const box = new Box3().setFromObject(obj);
     const size = new Vector3(); box.getSize(size);
     const center = new Vector3(); box.getCenter(center);
-    const h = mannequinModel(actor.model).height;
-    const s = size.y > 1e-4 ? h / size.y : 1;
-    return { s, px: -center.x * s, py: -box.min.y * s, pz: -center.z * s };
+    const m = mannequinModel(actor.model);
+    const sy = size.y > 1e-4 ? m.height / size.y : 1;
+    const sxz = sy * m.build;
+    return { sx: sxz, sy, px: -center.x * sxz, py: -box.min.y * sy, pz: -center.z * sxz };
   }, [obj, actor.model]);
 
   useLayoutEffect(() => { applyPose(obj, actor.pose ?? {}); }, [obj, actor.pose]);
 
   return (
-    <group position={[fit.px, fit.py, fit.pz]} scale={fit.s}>
+    <group position={[fit.px, fit.py, fit.pz]} scale={[fit.sx, fit.sy, fit.sx]}>
       <primitive object={obj} />
     </group>
   );

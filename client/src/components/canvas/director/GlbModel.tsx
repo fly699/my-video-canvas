@@ -11,6 +11,8 @@ function GlbInner({ actor }: { actor: DirectorActor }) {
   const obj = useMemo(() => {
     const root = scene.clone(true);
     // 归一化：缩放到 ~1.8m 高、底部落到 y=0、水平居中。
+    // 先刷新世界矩阵：部分 GLB 的 Armature/根节点自带缩放，未刷新则 Box3 量错、缩放失真。
+    root.updateMatrixWorld(true);
     const box = new Box3().setFromObject(root);
     const size = new Vector3(); box.getSize(size);
     const center = new Vector3(); box.getCenter(center);
