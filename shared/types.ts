@@ -557,9 +557,10 @@ export interface DirectorScene {
   background: string;    // 背景色(十六进制)；"" 表示默认深灰；后续支持全景图 url
   panoramaUrl?: string;  // P5：720° 全景背景
   panoramaYaw?: number;   // 全景旋转(度)：转动背景朝向，默认 0
-  panoramaY?: number;     // 全景升降(米)：上下移动全景球，使其地面与人物脚底对齐，默认 0
+  panoramaY?: number;     // 已弃用（旧版全景球升降；改天空盒后不再移动球，保留字段以兼容旧场景）
   panoramaScale?: number; // 全景球半径(倍)：放大/缩小全景球，影响背景透视与距离感，默认 1
   sceneScale?: number;    // 场景缩放(倍)：整体缩放「人物场景」相对全景空间的大小，使人物与全景尺度匹配，默认 1（LibTV 模块16/23「场景缩放」，文档默认 300%）
+  sceneOffsetY?: number;  // 场景升降(米)：整体上下移动「人物场景」，使人物脚底落到全景画面里的地面线，默认 0
   groundVisible: boolean;
   labelsVisible: boolean;
 }
