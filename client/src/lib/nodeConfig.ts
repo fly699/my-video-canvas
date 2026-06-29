@@ -2,13 +2,13 @@ import type { NodeType } from "../../../shared/types";
 import {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard,
 };
 
 export interface NodeConfig {
@@ -135,6 +135,16 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.70 0.17 145 / 0.4)",
     defaultWidth: 320,
     defaultTitle: "图像编辑",
+  },
+  director: {
+    type: "director",
+    label: "导演台",
+    icon: "Clapperboard",
+    color: "oklch(0.72 0.18 300)",
+    bgColor: "oklch(0.72 0.18 300 / 0.08)",
+    borderColor: "oklch(0.72 0.18 300 / 0.4)",
+    defaultWidth: 340,
+    defaultTitle: "导演台",
   },
   group: {
     type: "group",

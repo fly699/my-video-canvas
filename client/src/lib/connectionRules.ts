@@ -15,6 +15,8 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   image_gen: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
   // image_edit 输出仍是一张图：可作 i2v 首帧、存素材、当角色/参考图、回链分镜关键帧、或再串一次编辑。
   image_edit: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
+  // 导演台输出 3D 渲染截图（同图像产出）：作构图参考图喂给生图/视频/编辑/角色/ComfyUI/分镜关键帧。
+  director: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
   video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
   // audio → audio: 把一段音频作为本地 VoxCPM 配音的参考音色喂给下游音频节点。
   // audio → comfyui_workflow: 作为自定义工作流的音频参数来源（VHS_LoadAudioUpload 等）。
@@ -136,6 +138,11 @@ export const CONNECTION_HINTS: Record<
     label: "图像生成",
     outgoing: "→ 视频任务 / 素材 / 剪辑 / 角色 / 图像生成（参考图）/ 分镜(关键帧候选)",
     incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成 / ComfyUI 图像 / ComfyUI 自定义（参考图）",
+  },
+  director: {
+    label: "导演台",
+    outgoing: "→ 视频任务 / 图像生成 / 图像编辑 / 角色 / ComfyUI（3D 构图参考图）/ 分镜",
+    incoming: "← 无（双击进 3D 编辑器布局，截图即产出）",
   },
   video_task: {
     label: "视频任务",

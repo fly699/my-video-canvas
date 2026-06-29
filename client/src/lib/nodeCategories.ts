@@ -15,7 +15,7 @@ export interface NodeCategory {
 export const NODE_CATEGORIES: NodeCategory[] = [
   { id: "ai", label: "AI 编排", types: ["agent"] },
   { id: "create", label: "创作 / 脚本", types: ["script", "storyboard", "prompt", "character", "ai_chat"] },
-  { id: "image", label: "图像生成", types: ["image_gen", "image_edit", "pose_control"] },
+  { id: "image", label: "图像生成", types: ["image_gen", "image_edit", "pose_control", "director"] },
   { id: "video", label: "视频生成", types: ["video_task"] },
   { id: "comfyui", label: "ComfyUI", types: ["comfyui_image", "comfyui_video", "comfyui_workflow"] },
   { id: "audio", label: "音频 / 配音", types: ["audio", "voice_clone", "lip_sync", "avatar"] },

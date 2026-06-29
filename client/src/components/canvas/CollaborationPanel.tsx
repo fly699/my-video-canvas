@@ -291,7 +291,7 @@ export function CollaborationPanel({ projectId, currentUserRole, publicReadAcces
   );
 }
 
-function SectionHeader({ icon: Icon, title }: { icon: React.ElementType; title: string }) {
+function SectionHeader({ icon: Icon, title }: { icon: React.ComponentType<{ style?: React.CSSProperties; className?: string }>; title: string }) {
   return (
     <div className="flex items-center gap-1.5 mb-2">
       <Icon style={{ width: 12, height: 12, color: "var(--c-t3)" }} />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { useParams, useLocation } from "wouter";
 import {
   ReactFlow,
@@ -49,6 +49,8 @@ import { PresentationMode } from "../components/canvas/PresentationMode";
 import { FilmstripPanel } from "../components/canvas/FilmstripPanel";
 import { TimelinePanel } from "../components/canvas/TimelinePanel";
 import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
+// 导演台 3D 编辑器懒加载——three/R3F 体积大，仅在打开时才拉取，不拖累主包。
+const DirectorEditor = lazy(() => import("../components/canvas/director/DirectorEditor").then((m) => ({ default: m.DirectorEditor })));
 import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
@@ -406,6 +408,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showCollaboratorPanel, setShowCollaboratorPanel] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [showGridStoryboard, setShowGridStoryboard] = useState(false);
+  // 导演台：节点双击/「打开导演台」经 panelRequest("director-editor") 触发，开全屏 3D 编辑器。
+  const [directorNodeId, setDirectorNodeId] = useState<string | null>(null);
+  const directorPanelReq = useCanvasStore((s) => (s.panelRequest?.panel === "director-editor" ? s.panelRequest : null));
+  useEffect(() => { if (directorPanelReq) setDirectorNodeId(directorPanelReq.nodeId); }, [directorPanelReq?.token]); // eslint-disable-line react-hooks/exhaustive-deps
   const [nodePickerSearch, setNodePickerSearch] = useState("");
   // 最近添加的节点类型（置顶快速访问），localStorage 持久化、跨会话保留。
   const [recentNodeTypes, setRecentNodeTypes] = usePersistentState<string[]>(
@@ -3051,6 +3057,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
           {/* Grid storyboard starter modal */}
           {showGridStoryboard && (
             <GridStoryboardModal projectId={projectId} onClose={() => setShowGridStoryboard(false)} />
+          )}
+          {directorNodeId && (
+            <Suspense fallback={<div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: "#0b0d12" }}><span style={{ color: "var(--c-t3)", fontSize: 13 }}>正在加载 3D 导演台…</span></div>}>
+              <DirectorEditor nodeId={directorNodeId} projectId={projectId} onClose={() => setDirectorNodeId(null)} />
+            </Suspense>
           )}
 
           {/* Timeline panel */}

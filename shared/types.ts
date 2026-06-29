@@ -27,6 +27,7 @@ export type NodeType =
   | "comfyui_video"
   | "comfyui_workflow"
   | "image_edit"
+  | "director"
   | "agent";
 
 export const VIDEO_PROVIDERS = [
@@ -503,6 +504,49 @@ export interface ImageGenNodeData {
   imageUrlSource?: string;
   imageUrlSources?: string[];
   imageUrlSourceAt?: number; // ms epoch when generated (for TTL heuristics)
+}
+
+// ── 3D 导演台（Director's Desk）─────────────────────────────────────────────
+// 可视化 3D 空间精准摆角色站位/机位，渲染截图作为生图/视频的构图参考图。场景以
+// 纯数据形式持久化进节点 payload（无外部资源，人偶为参数化图元）。
+export type Vec3 = [number, number, number];
+
+/** 单个角色（参数化人偶）。pose 为各命名关节的角度(度)，P1 留空（默认姿势）。 */
+export interface DirectorActor {
+  id: string;
+  name: string;
+  model: string;        // 预置体型 key：male / female / tall / child …
+  position: Vec3;
+  rotation: Vec3;       // 欧拉角(度)
+  scale: number;
+  color: string;        // 十六进制；用于「彩色人偶替换」「黑底分离」等参考技法
+  pose?: Record<string, number>; // P2：关节角度(度)
+}
+
+export interface DirectorCamera {
+  position: Vec3;
+  target: Vec3;         // 注视点
+  fov: number;          // 视野角度(度)，默认 32
+}
+
+export interface DirectorScene {
+  actors: DirectorActor[];
+  camera: DirectorCamera;
+  aspectRatio: string;  // 画幅，如 "16:9"
+  background: string;    // 背景色(十六进制)；"" 表示默认深灰；后续支持全景图 url
+  panoramaUrl?: string;  // P5：720° 全景背景
+  groundVisible: boolean;
+  labelsVisible: boolean;
+}
+
+export interface DirectorNodeData {
+  scene?: DirectorScene;     // 3D 场景（编辑器读写、随节点持久化）
+  imageUrl?: string;          // 渲染截图（本节点的图像产出，供下游作参考图）
+  imageStorageKey?: string;
+  prompt?: string;            // 可选：场景文字描述/备注
+  aspectRatio?: string;       // 与 scene.aspectRatio 同步，便于卡片展示
+  status?: "idle" | "processing" | "done" | "failed";
+  errorMessage?: string;
 }
 
 export interface NoteNodeData {
@@ -1230,6 +1274,7 @@ export type NodeData =
   | ComfyuiVideoNodeData
   | ComfyuiWorkflowNodeData
   | ImageEditNodeData
+  | DirectorNodeData
   | AgentNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
