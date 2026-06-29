@@ -58,8 +58,8 @@ export const POSE_PRESETS: { key: string; label: string; pose: Pose }[] = [
   { key: "fight",   label: "格斗", pose: { torsoForward: 8, torsoTwist: 14, armLForward: 60, armLOut: 52, elbowL: 128, armRForward: 52, armROut: 58, elbowR: 138, legLForward: 16, legRForward: -12, kneeL: 22, kneeR: 18 } },
   { key: "think",   label: "思考", pose: { headNod: 8, armRForward: 65, elbowR: 125, armROut: 6 } },
   { key: "wave",    label: "招手", pose: { armROut: 135, elbowR: 45 } },
-  // 看手机：双手并拢于胸前下方(不交叉)、低头看。配少量 armOut 让手在身前并拢而非交叉过中线。
-  { key: "phone",   label: "看手机", pose: { headNod: 30, armLForward: 34, armLOut: 12, elbowL: 104, armRForward: 34, armROut: 12, elbowR: 104 } },
+  // 看手机：单手(右手)持机抬到身前胸口高度看，左手自然垂于身侧——手机是单手拿，不是平板。
+  { key: "phone",   label: "看手机", pose: { headNod: 28, armRForward: 40, armROut: 16, elbowR: 105 } },
 ];
 
 export function applyPosePreset(presetKey: string): Pose {
