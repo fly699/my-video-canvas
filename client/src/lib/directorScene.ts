@@ -10,18 +10,20 @@ export interface MannequinModel {
   build: number;     // 整体体宽系数（瘦 0.85 ~ 壮 1.25）
   hip: number;       // 盆骨宽系数（<1 收窄盆骨+并腿=男性向；=1 保留宽臀=女性向）
   shoulder: number;  // 肩宽系数（>1 加宽肩/胸=男性 V 字；<1 收窄=女性向）
+  head?: number;     // 头部缩放（>1 大头=二头身/Q版；默认 1）
   color: string;     // 默认配色
 }
 
 // 体型框架：内置网格本身偏「女性化」（细腰宽臀窄肩）。用 hip 收窄盆骨 + shoulder 加宽肩胸
 // 即可塑出男性 V 字轮廓——男性 hip=0.56/shoulder=1.30（窄臀宽肩）、女性 hip=1.0/shoulder=0.95
-// （宽臀窄肩）。height 区分身高，build 微调整体宽窄。叠加使同一网格也能协调区分性别/体型。
+// （宽臀窄肩）。height 区分身高，build 微调整体宽窄，head 放大头部出二头身/Q版。
 export const MANNEQUIN_MODELS: MannequinModel[] = [
   { key: "male",   label: "男性",   height: 1.80, build: 1.00, hip: 0.56, shoulder: 1.30, color: "#4aa3ff" },
   { key: "female", label: "女性",   height: 1.63, build: 0.86, hip: 1.00, shoulder: 0.95, color: "#ff6fa5" },
   { key: "tall",   label: "高挑",   height: 1.92, build: 0.90, hip: 0.64, shoulder: 1.18, color: "#37d6a6" },
   { key: "burly",  label: "壮硕",   height: 1.84, build: 1.14, hip: 0.70, shoulder: 1.38, color: "#ffb020" },
   { key: "child",  label: "儿童",   height: 1.18, build: 0.84, hip: 0.88, shoulder: 1.00, color: "#c08bff" },
+  { key: "chibi",  label: "二头身", height: 1.20, build: 1.10, hip: 0.84, shoulder: 1.05, head: 3.1, color: "#5ad1e6" },
 ];
 
 export function mannequinModel(key: string): MannequinModel {

@@ -79,6 +79,11 @@ function HumanInner({ actor }: { actor: DirectorActor }) {
       if (spine2) spine2.scale.set(m.shoulder, 1, 1);
       if (neck) neck.scale.set(1 / m.shoulder, 1, 1);
     }
+    //   ③ 头部：放大 Head 骨出二头身/Q版（在颈部之上对头单独缩放）。
+    if (m.head && m.head !== 1) {
+      const head = get("Head");
+      if (head) head.scale.setScalar(m.head);
+    }
     return root;
   }, [scene, actor.color, actor.model]);
 
