@@ -541,12 +541,17 @@ export interface DirectorCamera {
   position: Vec3;
   target: Vec3;         // 注视点
   fov: number;          // 视野角度(度)，默认 32
+  id?: string;          // 多机位：机位 id（命名机位列表用；单机位 legacy 无此字段）
+  name?: string;        // 机位名（如「机位1」）
+  lookAtActorId?: string; // 注视目标 = 指定角色（置位时 target 跟随该角色位置）
 }
 
 export interface DirectorScene {
   actors: DirectorActor[];
   groups?: DirectorGroup[]; // P4：群众群组
-  camera: DirectorCamera;
+  camera: DirectorCamera;   // 当前生效机位（始终镜像 cameras 里的激活项，供渲染/截图直接读）
+  cameras?: DirectorCamera[]; // 模块3：命名机位列表（含 id/name）；空表示沿用单机位 camera
+  activeCameraId?: string;
   aspectRatio: string;  // 画幅，如 "16:9"
   background: string;    // 背景色(十六进制)；"" 表示默认深灰；后续支持全景图 url
   panoramaUrl?: string;  // P5：720° 全景背景

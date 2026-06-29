@@ -1,4 +1,4 @@
-import type { DirectorScene, DirectorActor, DirectorGroup, Vec3 } from "../../../shared/types";
+import type { DirectorScene, DirectorActor, DirectorGroup, DirectorCamera, Vec3 } from "../../../shared/types";
 
 // 导演台场景的默认值、预置体型、画幅与机位预设。纯数据 + 工厂，供 store/节点/编辑器共用。
 
@@ -122,11 +122,29 @@ export function bakeGroupTransform(group: DirectorGroup, member: DirectorActor):
   };
 }
 
+// ── 模块3：多命名机位 ─────────────────────────────────────────────────────────
+let _cseq = 0;
+export function newCameraId(): string { _cseq += 1; return `c${_cseq}_${Math.round(performance.now())}`; }
+
+/** 取场景的命名机位列表；空时从单机位 camera 迁移出一个「机位1」。 */
+export function ensureCameras(scene: DirectorScene): DirectorCamera[] {
+  if (scene.cameras && scene.cameras.length) return scene.cameras;
+  return [{ ...scene.camera, id: scene.camera.id ?? "cam1", name: scene.camera.name ?? "机位1" }];
+}
+
+export function nextCameraName(cams: DirectorCamera[]): string {
+  for (let i = 1; i <= cams.length + 1; i++) { const n = `机位${i}`; if (!cams.some((c) => c.name === n)) return n; }
+  return `机位${cams.length + 1}`;
+}
+
 export function makeDefaultDirectorScene(): DirectorScene {
   const actors = [makeActor("male", [])];
+  const cam: DirectorCamera = { id: "cam1", name: "机位1", position: [0, 1.5, 4.2], target: [0, 1.0, 0], fov: 32 };
   return {
     actors,
-    camera: { position: [0, 1.5, 4.2], target: [0, 1.0, 0], fov: 32 },
+    camera: cam,
+    cameras: [cam],
+    activeCameraId: "cam1",
     aspectRatio: "16:9",
     background: "",
     groundVisible: true,

@@ -6,9 +6,10 @@ import { toast } from "sonner";
 import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
-import type { DirectorScene, DirectorActor, Vec3 } from "../../../../../shared/types";
+import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../../../../shared/types";
 import {
   MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform,
+  ensureCameras, newCameraId, nextCameraName,
 } from "../../../lib/directorScene";
 import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset } from "../../../lib/directorPose";
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
@@ -126,8 +127,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const patchActor = useCallback((id: string, p: Partial<DirectorActor>) => {
     setScene((s) => ({ ...s, actors: s.actors.map((a) => (a.id === id ? { ...a, ...p } : a)) }));
   }, []);
-  const patchCam = useCallback((p: Partial<DirectorScene["camera"]>) => {
-    setScene((s) => ({ ...s, camera: { ...s.camera, ...p } }));
+  // 改动当前机位：同时写「镜像 camera（渲染/截图直接读）」与命名机位列表里的激活项。
+  const patchCam = useCallback((p: Partial<DirectorCamera>) => {
+    setScene((s) => {
+      const cams = ensureCameras(s);
+      const activeId = s.activeCameraId ?? cams[0].id!;
+      const merged = { ...(cams.find((c) => c.id === activeId) ?? cams[0]), ...p };
+      return { ...s, camera: merged, cameras: cams.map((c) => (c.id === activeId ? merged : c)), activeCameraId: activeId };
+    });
   }, []);
 
   const addActor = (model: string) => {
@@ -224,6 +231,56 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     }
     patchCam(dft);
   }, [patchCam]);
+
+  // ── 多命名机位 ──
+  const cameras = ensureCameras(scene);
+  const activeCameraId = scene.activeCameraId ?? cameras[0].id!;
+  // imperatively 把 live 相机拨到某机位（切换/对准时复用）。
+  const moveLiveCamera = useCallback((c: DirectorCamera) => {
+    const cap = captureRef.current; if (!cap) return;
+    cap.camera.position.set(...c.position);
+    (cap.camera as THREE.PerspectiveCamera).fov = c.fov;
+    (cap.camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+    if (cap.orbit) { cap.orbit.target.set(...c.target); cap.orbit.update(); }
+  }, []);
+  const switchCamera = useCallback((id: string) => {
+    const c = cameras.find((x) => x.id === id) ?? cameras[0];
+    moveLiveCamera(c);
+    setScene((s) => ({ ...s, camera: c, cameras: ensureCameras(s), activeCameraId: id }));
+  }, [cameras, moveLiveCamera]);
+  const addCamera = useCallback(() => {
+    setScene((s) => {
+      const cams = ensureCameras(s);
+      const nc: DirectorCamera = { ...s.camera, id: newCameraId(), name: nextCameraName(cams), lookAtActorId: undefined };
+      return { ...s, cameras: [...cams, nc], camera: nc, activeCameraId: nc.id };
+    });
+  }, []);
+  const deleteCamera = useCallback((id: string) => {
+    setScene((s) => {
+      const cams = ensureCameras(s);
+      if (cams.length <= 1) return s; // 至少保留一个
+      const rest = cams.filter((c) => c.id !== id);
+      const next = rest[0];
+      return { ...s, cameras: rest, camera: next, activeCameraId: next.id };
+    });
+  }, []);
+  // 注视目标=指定角色：把当前机位 target 对准该角色（约胸高），并记下 lookAtActorId。
+  const actorWorldPos = (a: DirectorActor): Vec3 => {
+    if (!a.groupId) return a.position;
+    const g = (scene.groups ?? []).find((x) => x.id === a.groupId);
+    if (!g) return a.position;
+    const ry = (g.rotation[1] ?? 0) * Math.PI / 180, s = g.scale;
+    const lx = a.position[0] * s, lz = a.position[2] * s;
+    return [g.position[0] + lx * Math.cos(ry) + lz * Math.sin(ry), g.position[1] + a.position[1] * s, g.position[2] - lx * Math.sin(ry) + lz * Math.cos(ry)];
+  };
+  const lookAtActor = useCallback((actorId: string | undefined) => {
+    if (!actorId) { patchCam({ lookAtActorId: undefined }); return; }
+    const a = scene.actors.find((x) => x.id === actorId); if (!a) return;
+    const wp = actorWorldPos(a);
+    const target: Vec3 = [wp[0], wp[1] + 1.0, wp[2]];
+    const cap = captureRef.current; if (cap?.orbit) { cap.orbit.target.set(...target); cap.orbit.update(); }
+    patchCam({ target, lookAtActorId: actorId });
+  }, [scene.actors, scene.groups, patchCam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 截图：用当前机位渲染一帧 → toBlob → 上传 → 写入节点 imageUrl（参考图）。
   const shoot = async () => {
@@ -466,12 +523,28 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           {camSelected ? (
             <div style={panel}>
               <div style={ttl}>机位参数</div>
+              {/* 切换机位 + 添加/删除 */}
+              <div className="flex items-center gap-1" style={{ marginBottom: 8 }}>
+                <select value={activeCameraId} onChange={(e) => switchCamera(e.target.value)}
+                  style={{ flex: 1, padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6 }}>
+                  {cameras.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <button onClick={addCamera} title="新增机位（快照当前视角）" style={{ ...iconBtn }}><Plus size={12} /></button>
+                <button onClick={() => deleteCamera(activeCameraId)} title="删除当前机位" disabled={cameras.length <= 1} style={{ ...iconBtn, opacity: cameras.length <= 1 ? 0.4 : 1 }}><Trash2 size={12} /></button>
+              </div>
+              <input value={scene.camera.name ?? "机位"} onChange={(e) => patchCam({ name: e.target.value })}
+                style={{ width: "100%", padding: "4px 6px", fontSize: 11.5, fontWeight: 600, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6, marginBottom: 8 }} />
               <DragNumber label="FOV" value={scene.camera.fov} step={0.5} fixed={1} suffix="°" onChange={(v) => patchCam({ fov: Math.max(8, Math.min(120, v)) })} />
               <div style={sub}>位置</div>
               <Xyz v={scene.camera.position} onChange={(position) => patchCam({ position })} />
-              <div style={sub}>注视点</div>
-              <Xyz v={scene.camera.target} onChange={(target) => patchCam({ target })} />
-              <p style={hint}>提示：在画面里拖拽即可转动机位；松手自动记录。</p>
+              <div style={sub}>注视目标</div>
+              <select value={scene.camera.lookAtActorId ?? ""} onChange={(e) => lookAtActor(e.target.value || undefined)}
+                style={{ width: "100%", padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6, marginBottom: 6 }}>
+                <option value="">手动坐标</option>
+                {scene.actors.map((a) => <option key={a.id} value={a.id}>对准 {a.name}</option>)}
+              </select>
+              <Xyz v={scene.camera.target} onChange={(target) => patchCam({ target, lookAtActorId: undefined })} />
+              <p style={hint}>在画面里拖拽即转动当前机位；松手自动记录。多机位便于一套场景出多个分镜角度。</p>
             </div>
           ) : selectedGroup ? (
             <div style={panel}>
