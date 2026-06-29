@@ -3,7 +3,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2 } from "lucide-react";
+import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { DirectorScene, DirectorActor, Vec3 } from "../../../../../shared/types";
@@ -11,7 +11,17 @@ import {
   MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene,
 } from "../../../lib/directorScene";
 import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset } from "../../../lib/directorPose";
+import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
 import { Mannequin } from "./Mannequin";
+
+const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res((r.result as string).split(",")[1]);
+  r.onerror = () => rej(new Error("读取失败"));
+  r.readAsDataURL(blob);
+});
+const canvasToBlob = (gl: THREE.WebGLRenderer): Promise<Blob | null> =>
+  new Promise((res) => gl.domElement.toBlob((b) => res(b), "image/png"));
 
 // 全屏 3D 导演台编辑器（P1）：摆放/选中人偶（数值精确 + Alt 微调）、控制机位(FOV)、
 // 画幅取景框、截图→上传作为本节点的参考图。双视角/姿势/宫格/全景见后续期次。
@@ -86,6 +96,8 @@ function CameraRig({ cam, onCommit, bind }: {
 
 export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string; projectId: number; onClose: () => void }) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const addGridNodes = useCanvasStore((s) => s.addStoryboardGridNodes);
+  const nodePos = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId)?.position);
   const initialScene = useCanvasStore((s) => {
     const n = s.nodes.find((x) => x.id === nodeId);
     return (n?.data.payload as { scene?: DirectorScene })?.scene;
@@ -150,20 +162,53 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     setSaving(true);
     try {
       cap.gl.render(cap.scene, cap.camera);
-      const blob: Blob | null = await new Promise((res) => cap.gl.domElement.toBlob((b) => res(b), "image/png"));
+      const blob = await canvasToBlob(cap.gl);
       if (!blob) throw new Error("渲染截图失败");
-      const base64: string = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res((r.result as string).split(",")[1]);
-        r.onerror = () => rej(new Error("读取失败"));
-        r.readAsDataURL(blob);
-      });
+      const base64 = await blobToBase64(blob);
       const result = await uploadMut.mutateAsync({ base64, mimeType: "image/png", filename: "director-3d.png" });
       updateNodeData(nodeId, { scene: sceneRef.current, imageUrl: result.url, imageStorageKey: result.storageKey, aspectRatio: scene.aspectRatio, status: "done" });
       toast.success("已截图并输出为参考图");
     } catch (e) {
       toast.error("截图失败：" + (e instanceof Error ? e.message : String(e)));
     } finally { setSaving(false); }
+  };
+
+  // 多机位宫格：绕注视点按预设角度渲染多张 → 落成连好线的分镜节点网格（确定性、免抽卡）。
+  const [gridBusy, setGridBusy] = useState<string | null>(null);
+  const [gridMenu, setGridMenu] = useState(false);
+  const renderGrid = async (preset: GridPreset) => {
+    const cap = captureRef.current;
+    setGridMenu(false);
+    if (!cap || gridBusy || !nodePos) return;
+    setGridBusy(preset.label);
+    const cam = cap.camera as THREE.PerspectiveCamera;
+    const savePos = cam.position.clone();
+    const target = sceneRef.current.camera.target;
+    const tVec = new THREE.Vector3(...target);
+    try {
+      const urls: string[] = [];
+      for (let i = 0; i < preset.angles.length; i++) {
+        const pos = gridCameraPosition(savePos.toArray() as Vec3, target, preset.angles[i]);
+        cam.position.set(...pos); cam.lookAt(tVec); cam.updateMatrixWorld();
+        cap.gl.render(cap.scene, cam);
+        const blob = await canvasToBlob(cap.gl);
+        if (!blob) continue;
+        const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/png", filename: `dir-grid-${preset.key}-${i}.png` });
+        urls.push(r.url);
+        setGridBusy(`${preset.label} ${i + 1}/${preset.angles.length}`);
+      }
+      // 还原机位
+      cam.position.copy(savePos); cam.lookAt(tVec);
+      if (cap.orbit) { cap.orbit.target.set(...target); cap.orbit.update(); }
+      if (urls.length) {
+        updateNodeData(nodeId, { scene: sceneRef.current }, true);
+        addGridNodes(urls, { rows: preset.rows, cols: preset.cols, sourcePosition: nodePos, sourceNodeId: nodeId, titlePrefix: "机位", aspectRatio: sceneRef.current.aspectRatio });
+        toast.success(`已生成 ${urls.length} 个机位分镜节点`);
+        onClose();
+      }
+    } catch (e) {
+      toast.error("多机位生成失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally { setGridBusy(null); }
   };
 
   const ar = aspectRatioValue(scene.aspectRatio);
@@ -196,6 +241,26 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         <span style={{ fontWeight: 800, fontSize: 14, color: "var(--c-t1)" }}>🎬 导演台</span>
         <span style={{ fontSize: 11, color: "var(--c-t4)" }}>3D 精准构图 · 截图即参考图</span>
         <div className="flex-1" />
+        {/* 多机位宫格 */}
+        <div style={{ position: "relative" }}>
+          <button onClick={() => setGridMenu((v) => !v)} disabled={!!gridBusy} style={{ ...headBtn(), opacity: gridBusy ? 0.7 : 1 }}>
+            {gridBusy ? <Loader2 size={14} className="animate-spin" /> : <Grid3x3 size={14} />} {gridBusy ?? "多机位宫格"} {!gridBusy && <ChevronDown size={12} />}
+          </button>
+          {gridMenu && !gridBusy && (
+            <>
+              <div style={{ position: "fixed", inset: 0, zIndex: 1 }} onClick={() => setGridMenu(false)} />
+              <div style={{ position: "absolute", top: 38, right: 0, zIndex: 2, minWidth: 200, background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 10, boxShadow: "0 8px 32px oklch(0 0 0 / 0.6)", padding: 6 }}>
+                {GRID_PRESETS.map((p) => (
+                  <button key={p.key} onClick={() => renderGrid(p)} style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "7px 10px", fontSize: 12, color: "var(--c-t2)", background: "none", border: "none", borderRadius: 7, cursor: "pointer", textAlign: "left" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--c-surface)")} onMouseLeave={(e) => (e.currentTarget.style.background = "none")}>
+                    <span>{p.label}</span><span style={{ fontSize: 10, color: "var(--c-t4)" }}>{p.rows}×{p.cols}</span>
+                  </button>
+                ))}
+                <div style={{ fontSize: 10, color: "var(--c-t4)", padding: "4px 10px 2px", lineHeight: 1.4 }}>绕场景多机位渲染 → 落成连好线的分镜节点</div>
+              </div>
+            </>
+          )}
+        </div>
         <button onClick={shoot} disabled={saving} style={{ ...headBtn(true), opacity: saving ? 0.6 : 1 }}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />} {saving ? "输出中…" : "截图 → 参考图"}
         </button>
