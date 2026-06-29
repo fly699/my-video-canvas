@@ -8,10 +8,11 @@ import { mannequinModel } from "../../../lib/directorScene";
 // 颜色取自 actor.color（彩色人偶/黑底分离参考技法），选中时发光 + 地面环高亮。
 const D = Math.PI / 180;
 
-export function Mannequin({ actor, selected, onSelect }: {
+// 仅渲染人偶「本体」（不含 actor 位置/旋转/缩放——由编辑器外层 group / 拖拽手柄统一负责，
+// 这样选中项可挂 TransformControls 拖拽）。
+export function Mannequin({ actor, selected }: {
   actor: DirectorActor;
   selected: boolean;
-  onSelect: (e: { stopPropagation: () => void }) => void;
 }) {
   const m = mannequinModel(actor.model);
   const H = m.height;          // 站高(米)
@@ -19,6 +20,10 @@ export function Mannequin({ actor, selected, onSelect }: {
   const pose = actor.pose ?? {};
   const P = (k: string) => (pose[k] ?? 0) * D;        // 正值=直觉方向
   const Pn = (k: string) => -(pose[k] ?? 0) * D;      // 前后向关节取负，让正值=向前
+  // 整体升降（蹲/坐/跪用，rootY 为身高比例，负=下沉，让脚落到地面）。
+  const rootDrop = (pose.rootY ?? 0) * H;
+  // 踝部反向旋转，使脚底始终水平贴地：抵消「大腿(-legForward) + 膝(+knee)」的累计 X 倾角。
+  const footRotX = (lf: string, kn: string) => ((pose[lf] ?? 0) - (pose[kn] ?? 0)) * D;
 
   const yk = useMemo(() => ({
     hip: 0.50 * H, knee: 0.27 * H, ankle: 0.05 * H,
@@ -56,12 +61,7 @@ export function Mannequin({ actor, selected, onSelect }: {
   );
 
   return (
-    <group
-      position={actor.position}
-      rotation={[actor.rotation[0] * D, actor.rotation[1] * D, actor.rotation[2] * D]}
-      scale={actor.scale}
-      onPointerDown={(e) => { e.stopPropagation(); onSelect(e); }}
-    >
+    <group position={[0, rootDrop, 0]}>
       {/* 髋部球 + 躯干 + 头 */}
       <group position={[0, yk.hip, 0]} rotation={[P("torsoForward"), P("torsoTwist"), P("torsoSide")]}>
         {/* 骨盆（宽） */}
@@ -154,9 +154,12 @@ export function Mannequin({ actor, selected, onSelect }: {
         <Limb len={thigh} r={0.062 * B} joint={0.072 * B} />
         <group position={[0, -thigh, 0]} rotation={[P("kneeL"), 0, 0]}>
           <Limb len={shin} r={0.05 * B} joint={0.058 * B} />
-          <mesh position={[0, -shin - 0.01 * H, 0.045 * H]} castShadow>
-            <boxGeometry args={[0.085 * B, 0.055 * H, 0.17 * H]} />{mat()}
-          </mesh>
+          {/* 踝：反向旋转使脚底水平贴地 */}
+          <group position={[0, -shin, 0]} rotation={[footRotX("legLForward", "kneeL"), 0, 0]}>
+            <mesh position={[0, -0.01 * H, 0.045 * H]} castShadow>
+              <boxGeometry args={[0.085 * B, 0.055 * H, 0.17 * H]} />{mat()}
+            </mesh>
+          </group>
         </group>
       </group>
       {/* 右腿 */}
@@ -164,9 +167,11 @@ export function Mannequin({ actor, selected, onSelect }: {
         <Limb len={thigh} r={0.062 * B} joint={0.072 * B} />
         <group position={[0, -thigh, 0]} rotation={[P("kneeR"), 0, 0]}>
           <Limb len={shin} r={0.05 * B} joint={0.058 * B} />
-          <mesh position={[0, -shin - 0.01 * H, 0.045 * H]} castShadow>
-            <boxGeometry args={[0.085 * B, 0.055 * H, 0.17 * H]} />{mat()}
-          </mesh>
+          <group position={[0, -shin, 0]} rotation={[footRotX("legRForward", "kneeR"), 0, 0]}>
+            <mesh position={[0, -0.01 * H, 0.045 * H]} castShadow>
+              <boxGeometry args={[0.085 * B, 0.055 * H, 0.17 * H]} />{mat()}
+            </mesh>
+          </group>
         </group>
       </group>
 

@@ -49,9 +49,10 @@ export const POSE_PRESETS: { key: string; label: string; pose: Pose }[] = [
   { key: "handsup", label: "举手", pose: { armLOut: 160, armROut: 160 } },
   { key: "walk",    label: "行走", pose: { legLForward: 22, legRForward: -22, kneeR: 16, armLForward: -22, armRForward: 22, elbowL: 22, elbowR: 22 } },
   { key: "run",     label: "跑步", pose: { torsoForward: 18, legLForward: 45, legRForward: -30, kneeL: 25, kneeR: 65, armLForward: -50, armRForward: 50, elbowL: 80, elbowR: 80 } },
-  { key: "sit",     label: "坐姿", pose: { legLForward: 90, legRForward: 90, kneeL: 90, kneeR: 90 } },
-  { key: "crouch",  label: "蹲下", pose: { torsoForward: 20, legLForward: 75, legRForward: 75, kneeL: 115, kneeR: 115 } },
-  { key: "kneel",   label: "单膝跪", pose: { legLForward: 60, kneeL: 120, legRForward: 80, kneeR: 95, torsoForward: 8 } },
+  // 低姿势附带 rootY（身高比例，负=整体下沉），配合踝部自动贴地，使脚落到地面而非悬空。
+  { key: "sit",     label: "坐姿", pose: { legLForward: 88, legRForward: 88, kneeL: 92, kneeR: 92, rootY: -0.27 } },
+  { key: "crouch",  label: "蹲下", pose: { torsoForward: 22, legLForward: 95, legRForward: 95, kneeL: 135, kneeR: 135, rootY: -0.34 } },
+  { key: "kneel",   label: "单膝跪", pose: { legLForward: 95, kneeL: 135, legRForward: 80, kneeR: 95, torsoForward: 8, rootY: -0.28 } },
   { key: "fight",   label: "格斗", pose: { torsoForward: 10, torsoTwist: 18, armLForward: 42, elbowL: 95, armRForward: 60, elbowR: 110, legLForward: 16, legRForward: -16, kneeL: 22, kneeR: 22 } },
   { key: "think",   label: "思考", pose: { headNod: 8, armRForward: 65, elbowR: 125, armROut: 6 } },
   { key: "wave",    label: "招手", pose: { armROut: 135, elbowR: 45 } },
@@ -64,5 +65,6 @@ export function applyPosePreset(presetKey: string): Pose {
   // 归一化：未列关节显式置 0，避免叠加上一个预设的残留角度。
   const pose: Pose = {};
   for (const k of ALL_JOINT_KEYS) pose[k] = p.pose[k] ?? 0;
+  pose.rootY = p.pose.rootY ?? 0; // 整体升降（非关节，单独保留）
   return pose;
 }
