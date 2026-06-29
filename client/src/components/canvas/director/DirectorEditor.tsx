@@ -16,6 +16,7 @@ import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/
 import { HumanModel } from "./HumanModel";
 import { GlbModel } from "./GlbModel";
 import { PanoramaSphere } from "./Panorama";
+import { ShotPreview } from "./ShotPreview";
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
   const r = new FileReader();
@@ -325,8 +326,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     if (!actorId) { patchCam({ lookAtActorId: undefined }); return; }
     const a = scene.actors.find((x) => x.id === actorId); if (!a) return;
     const wp = actorWorldPos(a);
-    const S = scene.sceneScale ?? 1; // 注视点在「场景缩放」后的世界坐标里
-    const target: Vec3 = [wp[0] * S, wp[1] * S + 1.0 * S, wp[2] * S];
+    const S = scene.sceneScale ?? 1, oy = scene.sceneOffsetY ?? 0; // 注视点在「场景缩放+升降」后的世界坐标里
+    const target: Vec3 = [wp[0] * S, oy + wp[1] * S + 1.0 * S, wp[2] * S];
     const cap = captureRef.current; if (cap?.orbit) { cap.orbit.target.set(...target); cap.orbit.update(); }
     patchCam({ target, lookAtActorId: actorId });
   }, [scene.actors, scene.groups, patchCam]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -338,8 +339,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const subj = scene.actors.find((a) => a.id === cam.lookAtActorId)
       ?? scene.actors.find((a) => !a.groupId) ?? scene.actors[0];
     const base = subj ? actorWorldPos(subj) : ([0, 0, 0] as Vec3);
-    const S = scene.sceneScale ?? 1; // 主体经「场景缩放」后，注视高度与机距按比例放大
-    const target: Vec3 = [base[0] * S, base[1] * S + shot.aimY * S, base[2] * S];
+    const S = scene.sceneScale ?? 1, oy = scene.sceneOffsetY ?? 0; // 主体经「场景缩放+升降」后，注视高度与机距按比例放大
+    const target: Vec3 = [base[0] * S, oy + base[1] * S + shot.aimY * S, base[2] * S];
     const T = new THREE.Vector3(...target);
     const dir = new THREE.Vector3(...cam.position).sub(new THREE.Vector3(...cam.target));
     if (dir.lengthSq() < 1e-6) dir.set(0, 0.15, 1);
@@ -543,13 +544,16 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           {scene.panoramaUrl && !scene.background && (
             <div style={{ position: "absolute", bottom: 60, left: 12, zIndex: 5, width: 210, padding: 10, borderRadius: 12, background: "color-mix(in oklch, var(--c-elevated) 92%, transparent)", border: "1px solid var(--c-bd2)", backdropFilter: "blur(12px)", display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }}>全景对齐</div>
-              <Slider label="旋转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
-              <Slider label="升降" value={scene.panoramaY ?? 0} min={-4 * sceneS} max={4 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaY: v })} />
+              <div style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, marginBottom: 2 }}>背景为 360° 天空盒（恒环绕）。用「场景缩放/升降」把人物对到全景地面与尺度。</div>
+              <Slider label="背景转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
               <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={Math.max(6, sceneS * 4)} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
-              {/* 场景缩放：独立缩放「人物场景」相对全景空间的大小（LibTV 场景缩放，文档默认300%） */}
-              <Slider label="场景" value={scene.sceneScale ?? 1} min={0.2} max={30} step={0.1} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
+              {/* 场景缩放/升降：缩放与上下移动「人物场景」以贴合全景的尺度与地面线（LibTV 场景缩放） */}
+              <Slider label="人物缩放" value={scene.sceneScale ?? 1} min={0.2} max={30} step={0.1} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
+              <Slider label="人物升降" value={scene.sceneOffsetY ?? 0} min={-6 * sceneS} max={6 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetY: v })} />
             </div>
           )}
+          {/* 机位画面实时预览小窗（模块3/25）：导演视角自由布局时，右下角实时显示当前机位取景 */}
+          {viewMode === "director" && <ShotPreview scene={scene} />}
           <div style={{ width: frame.w, height: frame.h, position: "relative", boxShadow: "0 0 0 1px var(--c-bd2), 0 8px 40px oklch(0 0 0 / 0.6)" }}>
             <Canvas
               shadows
@@ -563,7 +567,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <color attach="background" args={[scene.background || (scene.panoramaUrl ? "#060608" : "#1a1d24")]} />
               {scene.panoramaUrl && !scene.background && (
                 <Suspense fallback={null}>
-                  <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} y={scene.panoramaY ?? 0} scale={scene.panoramaScale ?? 1} />
+                  <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} scale={scene.panoramaScale ?? 1} />
                 </Suspense>
               )}
               <ambientLight intensity={0.7} />
@@ -575,11 +579,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {/* 接触阴影：始终在 y=0 给人物落一层柔和投影，让角色「站在地面上」——
                   尤其全景模式(隐藏网格)下，否则人物会显得悬浮空中。纯黑分离模式下不渲染（看不到且干扰）。 */}
               {scene.background !== "#000000" && (
-                <ContactShadows position={[0, 0.01, 0]} scale={24} resolution={1024} blur={2.6} far={5} opacity={0.5} color="#000000" />
+                <ContactShadows position={[0, (scene.sceneOffsetY ?? 0) + 0.01, 0]} scale={24} resolution={1024} blur={2.6} far={5} opacity={0.5} color="#000000" />
               )}
-              {/* 场景缩放：把整个「人物场景」(角色+群组) 包一层统一缩放，相对全景空间整体放大/缩小，
-                  使人物与全景尺度匹配（LibTV 场景缩放）。绕原点缩放，脚底 y=0 不变、仍站地面。 */}
-              <group scale={scene.sceneScale ?? 1}>
+              {/* 场景缩放 + 升降：把整个「人物场景」(角色+群组) 包一层统一缩放与上下平移，相对全景
+                  空间整体放大/缩小、升降，使人物与全景尺度/地面线匹配（LibTV 场景缩放）。 */}
+              <group position={[0, scene.sceneOffsetY ?? 0, 0]} scale={scene.sceneScale ?? 1}>
               {/* 群组成员：包在群组变换父级里（成员 position 为组内局部坐标），每个成员再包一层
                   变换 group（actor 变换）。 */}
               {groups.map((g) => (
