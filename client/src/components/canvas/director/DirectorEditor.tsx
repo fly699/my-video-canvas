@@ -325,7 +325,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     if (!actorId) { patchCam({ lookAtActorId: undefined }); return; }
     const a = scene.actors.find((x) => x.id === actorId); if (!a) return;
     const wp = actorWorldPos(a);
-    const target: Vec3 = [wp[0], wp[1] + 1.0, wp[2]];
+    const S = scene.sceneScale ?? 1; // 注视点在「场景缩放」后的世界坐标里
+    const target: Vec3 = [wp[0] * S, wp[1] * S + 1.0 * S, wp[2] * S];
     const cap = captureRef.current; if (cap?.orbit) { cap.orbit.target.set(...target); cap.orbit.update(); }
     patchCam({ target, lookAtActorId: actorId });
   }, [scene.actors, scene.groups, patchCam]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -337,13 +338,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const subj = scene.actors.find((a) => a.id === cam.lookAtActorId)
       ?? scene.actors.find((a) => !a.groupId) ?? scene.actors[0];
     const base = subj ? actorWorldPos(subj) : ([0, 0, 0] as Vec3);
-    const target: Vec3 = [base[0], base[1] + shot.aimY, base[2]];
+    const S = scene.sceneScale ?? 1; // 主体经「场景缩放」后，注视高度与机距按比例放大
+    const target: Vec3 = [base[0] * S, base[1] * S + shot.aimY * S, base[2] * S];
     const T = new THREE.Vector3(...target);
     const dir = new THREE.Vector3(...cam.position).sub(new THREE.Vector3(...cam.target));
     if (dir.lengthSq() < 1e-6) dir.set(0, 0.15, 1);
     if (dir.y < 0.05) dir.y = 0.12; // 不要俯冲到地面以下
     dir.normalize();
-    const np = T.clone().addScaledVector(dir, shot.dist);
+    const np = T.clone().addScaledVector(dir, shot.dist * S);
     const position: Vec3 = [np.x, np.y, np.z];
     const next: DirectorCamera = { ...cam, position, target, fov: shot.fov };
     patchCam({ position, target, fov: shot.fov });
@@ -535,6 +537,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <Slider label="旋转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
               <Slider label="升降" value={scene.panoramaY ?? 0} min={-4} max={4} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaY: v })} />
               <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={6} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
+              {/* 场景缩放：独立缩放「人物场景」相对全景空间的大小（LibTV 场景缩放，文档默认300%） */}
+              <Slider label="场景" value={scene.sceneScale ?? 1} min={0.2} max={8} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
             </div>
           )}
           <div style={{ width: frame.w, height: frame.h, position: "relative", boxShadow: "0 0 0 1px var(--c-bd2), 0 8px 40px oklch(0 0 0 / 0.6)" }}>
@@ -564,6 +568,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {scene.background !== "#000000" && (
                 <ContactShadows position={[0, 0.01, 0]} scale={24} resolution={1024} blur={2.6} far={5} opacity={0.5} color="#000000" />
               )}
+              {/* 场景缩放：把整个「人物场景」(角色+群组) 包一层统一缩放，相对全景空间整体放大/缩小，
+                  使人物与全景尺度匹配（LibTV 场景缩放）。绕原点缩放，脚底 y=0 不变、仍站地面。 */}
+              <group scale={scene.sceneScale ?? 1}>
               {/* 群组成员：包在群组变换父级里（成员 position 为组内局部坐标），每个成员再包一层
                   变换 group（actor 变换）。 */}
               {groups.map((g) => (
@@ -587,6 +594,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   </group>
                 );
               })}
+              </group>
               {/* 拖拽手柄：选中独立人偶时可在画面里直接移动/旋转/缩放 */}
               {selected && !selected.groupId && gizmoTarget && (
                 <TransformControls
