@@ -1,4 +1,4 @@
-import type { DirectorScene, DirectorActor, Vec3 } from "../../../shared/types";
+import type { DirectorScene, DirectorActor, DirectorGroup, Vec3 } from "../../../shared/types";
 
 // 导演台场景的默认值、预置体型、画幅与机位预设。纯数据 + 工厂，供 store/节点/编辑器共用。
 
@@ -63,6 +63,62 @@ export function makeActor(model: string, existing: DirectorActor[], position?: V
     rotation: [0, 0, 0],
     scale: 1,
     color: nextActorColor(existing.length),
+  };
+}
+
+// ── P4：群众群组 ──────────────────────────────────────────────────────────────
+let _gseq = 0;
+function groupId(): string { _gseq += 1; return `g${_gseq}_${Math.round(performance.now())}`; }
+
+const CROWD_SPACING = 0.85; // 成员间距(米)
+
+/** 新建一个 rows×cols 群众群组 + 其成员（成员 position 为组内局部网格坐标，groupId 指向组）。 */
+export function makeCrowd(rows: number, cols: number, existing: DirectorActor[], center?: Vec3): { group: DirectorGroup; actors: DirectorActor[] } {
+  const gid = groupId();
+  const color = nextActorColor((existing.length || 0));
+  const group: DirectorGroup = {
+    id: gid,
+    name: `群众 (${cols}x${rows})`,
+    rows, cols,
+    position: center ?? [0, 0, -3],
+    rotation: [0, 0, 0],
+    scale: 1,
+    color,
+  };
+  const actors: DirectorActor[] = [];
+  let n = existing.length;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const lx = (c - (cols - 1) / 2) * CROWD_SPACING;
+      const lz = (r - (rows - 1) / 2) * CROWD_SPACING;
+      actors.push({
+        id: actorId(), name: nextActorName([...existing, ...actors]),
+        model: n % 2 === 0 ? "male" : "female",
+        position: [lx, 0, lz], rotation: [0, 0, 0], scale: 1, color, groupId: gid,
+      });
+      n += 1;
+    }
+  }
+  return { group, actors };
+}
+
+/** 解组：把群组变换烘焙进各成员的世界坐标（绕 Y 旋转 + 缩放 + 平移），清除 groupId。 */
+export function bakeGroupTransform(group: DirectorGroup, member: DirectorActor): DirectorActor {
+  const [gx, gy, gz] = group.position;
+  const ry = (group.rotation[1] ?? 0) * Math.PI / 180;
+  const s = group.scale;
+  const [lx, , lz] = member.position;
+  const sx = lx * s, sz = lz * s;
+  // 绕 Y 旋转局部偏移（群众通常只整体转向）
+  const wx = gx + sx * Math.cos(ry) + sz * Math.sin(ry);
+  const wz = gz - sx * Math.sin(ry) + sz * Math.cos(ry);
+  const wy = gy + member.position[1] * s;
+  return {
+    ...member,
+    groupId: undefined,
+    position: [wx, wy, wz],
+    rotation: [member.rotation[0], (member.rotation[1] ?? 0) + (group.rotation[1] ?? 0), member.rotation[2]],
+    scale: member.scale * s,
   };
 }
 

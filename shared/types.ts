@@ -521,6 +521,19 @@ export interface DirectorActor {
   scale: number;
   color: string;        // 十六进制；用于「彩色人偶替换」「黑底分离」等参考技法
   pose?: Record<string, number>; // P2：关节角度(度)
+  groupId?: string;     // P4：所属群众群组 id；置位时 position 为「组内局部坐标」
+}
+
+// P4：群众群组——一组人偶的统一变换父级（位置/旋转/缩放整体作用于成员）。
+export interface DirectorGroup {
+  id: string;
+  name: string;         // 如「群众 (3x4)」
+  rows: number;
+  cols: number;
+  position: Vec3;
+  rotation: Vec3;       // 欧拉角(度)
+  scale: number;        // 统一缩放
+  color: string;        // 组配色（成员默认同色，便于黑底分离区分组）
 }
 
 export interface DirectorCamera {
@@ -531,6 +544,7 @@ export interface DirectorCamera {
 
 export interface DirectorScene {
   actors: DirectorActor[];
+  groups?: DirectorGroup[]; // P4：群众群组
   camera: DirectorCamera;
   aspectRatio: string;  // 画幅，如 "16:9"
   background: string;    // 背景色(十六进制)；"" 表示默认深灰；后续支持全景图 url
