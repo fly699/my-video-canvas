@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Grid } from "@react-three/drei";
+import { OrbitControls, Grid, TransformControls } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
 import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload } from "lucide-react";
@@ -61,31 +61,27 @@ function DragNumber({ value, onChange, step = 0.05, label, fixed = 2, suffix }: 
   );
 }
 
-// LibTV 风格关节滑条：标签 + 横向滑轨（中点 0 刻度）+ 实时数值。
-function Slider({ label, value, min, max, onChange }: {
-  label: string; value: number; min: number; max: number; onChange: (v: number) => void;
+// LibTV 风格滑条：标签 + 横向滑轨（含 0 中点刻度）+ 实时数值框。用于关节/位置/旋转/缩放等。
+function Slider({ label, value, min, max, step = 1, fixed = 0, onChange }: {
+  label: string; value: number; min: number; max: number; step?: number; fixed?: number; onChange: (v: number) => void;
 }) {
   const span = max - min;
-  const zeroPct = span > 0 ? ((0 - min) / span) * 100 : 50; // 0 度刻度位置
+  const zeroPct = span > 0 ? ((0 - min) / span) * 100 : 50;
+  const clamp = (v: number) => Math.max(min, Math.min(max, v));
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span style={{ width: 38, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>{label}</span>
       <div style={{ position: "relative", flex: 1, height: 18, display: "flex", alignItems: "center" }}>
         {min < 0 && max > 0 && (
-          <span style={{ position: "absolute", left: `${zeroPct}%`, top: 2, bottom: 2, width: 1, background: "var(--c-bd3, var(--c-bd2))", pointerEvents: "none" }} />
+          <span style={{ position: "absolute", left: `${zeroPct}%`, top: 2, bottom: 2, width: 1, background: "var(--c-bd2)", pointerEvents: "none" }} />
         )}
-        <input
-          type="range" min={min} max={max} step={1} value={Math.round(value)}
+        <input type="range" min={min} max={max} step={step} value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="director-slider"
-          style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))", cursor: "pointer", margin: 0 }}
-        />
+          style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))", cursor: "pointer", margin: 0 }} />
       </div>
-      <input
-        type="number" value={Math.round(value)} min={min} max={max}
-        onChange={(e) => onChange(Math.max(min, Math.min(max, Number(e.target.value) || 0)))}
-        style={{ width: 44, padding: "2px 4px", fontSize: 10.5, textAlign: "right", fontVariantNumeric: "tabular-nums", background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none" }}
-      />
+      <input type="number" value={Number(value.toFixed(fixed))} min={min} max={max} step={step}
+        onChange={(e) => onChange(clamp(Number(e.target.value) || 0))}
+        style={{ width: 46, padding: "2px 4px", fontSize: 10.5, textAlign: "right", fontVariantNumeric: "tabular-nums", background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none" }} />
     </div>
   );
 }
@@ -139,6 +135,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [camSelected, setCamSelected] = useState(false);
   const [actorTab, setActorTab] = useState<"transform" | "pose">("transform");
+  const [gizmoMode, setGizmoMode] = useState<"translate" | "rotate" | "scale">("translate");
+  const [gizmoTarget, setGizmoTarget] = useState<THREE.Object3D | null>(null);
   const selectActor = useCallback((id: string) => { setSelectedId(id); setSelectedGroupId(null); setCamSelected(false); }, []);
   const selectGroup = useCallback((id: string) => { setSelectedGroupId(id); setSelectedId(null); setCamSelected(false); }, []);
   const [saving, setSaving] = useState(false);
@@ -169,7 +167,16 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const addActor = (model: string) => {
     setScene((s) => {
       const a = makeActor(model, s.actors, [s.actors.length * 0.6 - 0.3, 0, 0]);
-      setSelectedId(a.id); setCamSelected(false);
+      setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
+      return { ...s, actors: [...s.actors, a] };
+    });
+  };
+  // 内置「真人（高精度）」模型：CesiumMan 网格染成 actor.color（纯色人偶，AI 识别度高）。
+  const addRealHuman = () => {
+    setScene((s) => {
+      const a = makeActor("male", s.actors, [s.actors.length * 0.6 - 0.3, 0, 0]);
+      a.glbUrl = "/models/cesiumman.glb"; a.tint = true; a.name = `真人${s.actors.length + 1}`;
+      setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
       return { ...s, actors: [...s.actors, a] };
     });
   };
@@ -468,7 +475,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <button key={`${r}x${c}`} onClick={() => addCrowd(r, c)} style={{ ...chip }}><Plus size={11} /> {c}×{r}</button>
             ))}
           </div>
-          <button onClick={() => glbInputRef.current?.click()} disabled={glbBusy} style={{ ...chip, justifyContent: "center", marginTop: 6, opacity: glbBusy ? 0.6 : 1 }}>
+          <button onClick={addRealHuman} style={{ ...chip, justifyContent: "center", marginTop: 6, fontWeight: 700, background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12" }}>
+            <Plus size={11} /> 真人（高精度模型）
+          </button>
+          <button onClick={() => glbInputRef.current?.click()} disabled={glbBusy} style={{ ...chip, justifyContent: "center", marginTop: 4, opacity: glbBusy ? 0.6 : 1 }}>
             {glbBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 导入 3D 模型（.glb）
           </button>
           <input ref={glbInputRef} type="file" accept=".glb,model/gltf-binary" style={{ display: "none" }} onChange={onGlbFile} />
@@ -476,6 +486,12 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
 
         {/* 中：3D 取景区 */}
         <div ref={stageRef} className="flex-1 flex items-center justify-center" style={{ minWidth: 0, background: "#07090e", position: "relative" }}>
+          {/* 拖拽手柄模式（选中独立人偶时在画面里直接拖动） */}
+          <div style={{ position: "absolute", top: 12, left: 12, zIndex: 5, display: "flex", gap: 4, padding: 4, borderRadius: 10, background: "color-mix(in oklch, var(--c-elevated) 90%, transparent)", border: "1px solid var(--c-bd2)", backdropFilter: "blur(10px)" }}>
+            {([["translate", "移动"], ["rotate", "旋转"], ["scale", "缩放"]] as const).map(([mode, lbl]) => (
+              <button key={mode} onClick={() => setGizmoMode(mode)} style={{ ...chip, fontWeight: gizmoMode === mode ? 700 : 500, background: gizmoMode === mode ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: gizmoMode === mode ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
+            ))}
+          </div>
           <div style={{ width: frame.w, height: frame.h, position: "relative", boxShadow: "0 0 0 1px var(--c-bd2), 0 8px 40px oklch(0 0 0 / 0.6)" }}>
             <Canvas
               shadows
@@ -495,22 +511,43 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {scene.groundVisible && (
                 <Grid args={[40, 40]} cellSize={0.5} cellThickness={0.6} sectionSize={2} sectionThickness={1} infiniteGrid fadeDistance={26} cellColor="#2a2f3a" sectionColor="#3a4150" position={[0, 0, 0]} />
               )}
-              {/* 群组成员：包在群组变换父级里（成员 position 为组内局部坐标） */}
+              {/* 群组成员：包在群组变换父级里（成员 position 为组内局部坐标），每个成员再包一层
+                  变换 group（actor 变换）。 */}
               {groups.map((g) => (
                 <group key={g.id} position={g.position} rotation={[g.rotation[0] * Math.PI / 180, g.rotation[1] * Math.PI / 180, g.rotation[2] * Math.PI / 180]} scale={g.scale}>
                   {scene.actors.filter((a) => a.groupId === g.id).map((a) => (
-                    a.glbUrl
-                      ? <GlbModel key={a.id} actor={a} selected={a.id === selectedId || g.id === selectedGroupId} onSelect={() => selectActor(a.id)} />
-                      : <Mannequin key={a.id} actor={a} selected={a.id === selectedId || g.id === selectedGroupId} onSelect={() => selectActor(a.id)} />
+                    <group key={a.id} position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
+                      onPointerDown={(e) => { e.stopPropagation(); selectActor(a.id); }}>
+                      {a.glbUrl ? <GlbModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} /> : <Mannequin actor={a} selected={a.id === selectedId || g.id === selectedGroupId} />}
+                    </group>
                   ))}
                 </group>
               ))}
-              {/* 独立人偶 / 导入模型 */}
-              {scene.actors.filter((a) => !a.groupId).map((a) => (
-                a.glbUrl
-                  ? <GlbModel key={a.id} actor={a} selected={!camSelected && a.id === selectedId} onSelect={() => selectActor(a.id)} />
-                  : <Mannequin key={a.id} actor={a} selected={!camSelected && a.id === selectedId} onSelect={() => selectActor(a.id)} />
-              ))}
+              {/* 独立人偶 / 导入模型：选中项挂 ref 供拖拽手柄 */}
+              {scene.actors.filter((a) => !a.groupId).map((a) => {
+                const sel = !camSelected && a.id === selectedId;
+                return (
+                  <group key={a.id} ref={sel ? ((el) => setGizmoTarget(el)) : undefined}
+                    position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
+                    onPointerDown={(e) => { e.stopPropagation(); selectActor(a.id); }}>
+                    {a.glbUrl ? <GlbModel actor={a} selected={sel} /> : <Mannequin actor={a} selected={sel} />}
+                  </group>
+                );
+              })}
+              {/* 拖拽手柄：选中独立人偶时可在画面里直接移动/旋转/缩放 */}
+              {selected && !selected.groupId && gizmoTarget && (
+                <TransformControls
+                  object={gizmoTarget} mode={gizmoMode} size={0.8}
+                  onMouseUp={() => {
+                    const o = gizmoTarget;
+                    patchActor(selected.id, {
+                      position: o.position.toArray() as Vec3,
+                      rotation: [o.rotation.x * 180 / Math.PI, o.rotation.y * 180 / Math.PI, o.rotation.z * 180 / Math.PI] as Vec3,
+                      scale: Number(((o.scale.x + o.scale.y + o.scale.z) / 3).toFixed(3)),
+                    });
+                  }}
+                />
+              )}
               <CameraRig cam={scene.camera} onCommit={onCommitCam} bind={bindCapture} />
             </Canvas>
             {/* 取景安全框（三分线） */}
@@ -565,7 +602,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 style={{ width: "100%", padding: "4px 6px", fontSize: 11.5, fontWeight: 600, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6, marginBottom: 8 }} />
               <DragNumber label="FOV" value={scene.camera.fov} step={0.5} fixed={1} suffix="°" onChange={(v) => patchCam({ fov: Math.max(8, Math.min(120, v)) })} />
               <div style={sub}>位置</div>
-              <Xyz v={scene.camera.position} onChange={(position) => patchCam({ position })} />
+              <Xyz v={scene.camera.position} min={-20} max={20} onChange={(position) => patchCam({ position })} />
               <div style={sub}>注视目标</div>
               <select value={scene.camera.lookAtActorId ?? ""} onChange={(e) => lookAtActor(e.target.value || undefined)}
                 style={{ width: "100%", padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6, marginBottom: 6 }}>
@@ -583,7 +620,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <div style={sub}>整组位置</div>
               <Xyz v={selectedGroup.position} onChange={(position) => patchGroup(selectedGroup.id, { position })} />
               <div style={sub}>整组旋转(°)</div>
-              <Xyz v={selectedGroup.rotation} step={1} fixed={0} onChange={(rotation) => patchGroup(selectedGroup.id, { rotation })} />
+              <Xyz v={selectedGroup.rotation} min={-180} max={180} step={1} fixed={0} onChange={(rotation) => patchGroup(selectedGroup.id, { rotation })} />
               <div style={sub}>统一缩放</div>
               <DragNumber label="比例" value={selectedGroup.scale} step={0.02} onChange={(v) => patchGroup(selectedGroup.id, { scale: Math.max(0.2, Math.min(3, v)) })} />
               <div style={sub}>组配色</div>
@@ -620,7 +657,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   <div style={sub}>位置</div>
                   <Xyz v={selected.position} onChange={(position) => patchActor(selected.id, { position })} />
                   <div style={sub}>旋转(°)</div>
-                  <Xyz v={selected.rotation} step={1} fixed={0} onChange={(rotation) => patchActor(selected.id, { rotation })} />
+                  <Xyz v={selected.rotation} min={-180} max={180} step={1} fixed={0} onChange={(rotation) => patchActor(selected.id, { rotation })} />
                   <div style={sub}>缩放</div>
                   <DragNumber label="比例" value={selected.scale} step={0.02} onChange={(v) => patchActor(selected.id, { scale: Math.max(0.2, Math.min(3, v)) })} />
                   <div style={sub}>颜色</div>
@@ -634,6 +671,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                       <button key={p.key} onClick={() => patchActor(selected.id, { pose: applyPosePreset(p.key) })} style={{ ...chip, fontSize: 10.5 }}>{p.label}</button>
                     ))}
                   </div>
+                  <div style={sub}>整体升降（脚贴地微调）</div>
+                  <Slider label="升降" value={(selected.pose?.rootY ?? 0) * 100} min={-50} max={20} step={1} fixed={0}
+                    onChange={(v) => patchActor(selected.id, { pose: { ...(selected.pose ?? {}), rootY: v / 100 } })} />
                   {JOINT_GROUPS.map((g) => (
                     <div key={g.group}>
                       <div style={sub}>{g.group}</div>
@@ -674,11 +714,14 @@ const iconBtn: React.CSSProperties = { display: "inline-flex", alignItems: "cent
 function rowBtn(active: boolean): React.CSSProperties {
   return { display: "flex", alignItems: "center", textAlign: "left", fontSize: 12, padding: "6px 9px", borderRadius: 8, cursor: "pointer", border: `1px solid ${active ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, background: active ? "color-mix(in oklch, var(--ui-accent, var(--c-accent)) 16%, transparent)" : "var(--c-surface)", color: "var(--c-t2)", width: "100%" };
 }
-function Xyz({ v, onChange, step = 0.05, fixed = 2 }: { v: Vec3; onChange: (v: Vec3) => void; step?: number; fixed?: number }) {
+// 三轴滑条（位置/旋转/注视点）。min/max/step 默认按「位置(米)」，旋转传 -180..180。
+function Xyz({ v, onChange, min = -8, max = 8, step = 0.05, fixed = 2 }: {
+  v: Vec3; onChange: (v: Vec3) => void; min?: number; max?: number; step?: number; fixed?: number;
+}) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col" style={{ gap: 5 }}>
       {(["X", "Y", "Z"] as const).map((ax, i) => (
-        <DragNumber key={ax} label={ax} value={v[i]} step={step} fixed={fixed}
+        <Slider key={ax} label={ax} value={v[i]} min={min} max={max} step={step} fixed={fixed}
           onChange={(nv) => { const c = [...v] as Vec3; c[i] = nv; onChange(c); }} />
       ))}
     </div>

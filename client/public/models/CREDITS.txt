@@ -1,0 +1,4 @@
+cesiumman.glb — "Cesium Man" by Cesium / AGI
+Source: Khronos glTF-Sample-Assets
+License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+Used as the built-in 「真人（高精度）」 mannequin in the 导演台 feature.
