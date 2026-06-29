@@ -1,8 +1,9 @@
-import { Play, Combine, Download, X } from "lucide-react";
+import { Play, Combine, Download, X, Clapperboard } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { getNodeImageOutput } from "../../../lib/canvasPassthrough";
+import { planAutoAssemble } from "../../../lib/autoAssemble";
 import { downloadMedia } from "../../../lib/download";
 
 // Studio-only floating action bar shown when ≥2 nodes are selected: run-all / group /
@@ -31,6 +32,29 @@ export function MultiSelectBar() {
   if (uiStyle !== "studio" || ids.length < 2) return null;
 
   const runAll = () => { useCanvasStore.getState().requestRun(null, ids); toast.success(`运行所选 ${ids.length} 个节点`, { duration: 1200 }); };
+  // 一键自动成片：把选中的多段已完成视频自动建一个合并节点、连好线（+ 选中的配乐音频）、
+  // 设默认转场并运行。排序与配乐识别交给 MergeNode。
+  const autoAssemble = () => {
+    const st = useCanvasStore.getState();
+    const sel = st.nodes.filter((n) => ids.includes(n.id));
+    const plan = planAutoAssemble(sel.map((n) => ({ id: n.id, data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })));
+    if (plan.videoNodeIds.length < 2) { toast.error("请至少选中 2 段「已完成」的视频再自动成片"); return; }
+    const vidNodes = sel.filter((n) => plan.videoNodeIds.includes(n.id));
+    const maxX = Math.max(...vidNodes.map((n) => n.position.x));
+    const avgY = vidNodes.reduce((s, n) => s + n.position.y, 0) / vidNodes.length;
+    const merge = st.addNode("merge", { x: maxX + 440, y: Math.round(avgY) });
+    for (const vid of plan.videoNodeIds) {
+      st.onConnect({ source: vid, target: merge.id, sourceHandle: null, targetHandle: "input" });
+    }
+    if (plan.audioNodeId) {
+      st.onConnect({ source: plan.audioNodeId, target: merge.id, sourceHandle: null, targetHandle: "input" });
+    }
+    st.updateNodeData(merge.id, { transition: "fade", transitionDuration: 0.5 });
+    // 选中新合并节点、取消其它，便于用户立刻看到/调整。
+    st.setNodes(st.nodes.map((n) => (n.selected !== (n.id === merge.id) ? { ...n, selected: n.id === merge.id } : n)));
+    st.requestRun(null, [merge.id]);
+    toast.success(`自动成片：装配 ${plan.videoNodeIds.length} 段${plan.audioNodeId ? " + 配乐" : ""} · 淡入淡出转场，开始合成…`, { duration: 3000 });
+  };
   const group = () => { const gid = useCanvasStore.getState().groupSelected(ids); if (gid) toast.success(`已组合 ${ids.length} 个节点`, { duration: 1200 }); };
   const clear = () => { const st = useCanvasStore.getState(); st.setNodes(st.nodes.map((n) => (n.selected ? { ...n, selected: false } : n))); };
   const downloadAll = () => {
@@ -59,6 +83,7 @@ export function MultiSelectBar() {
       <span style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t2)", padding: "0 6px" }}>{ids.length} 个已选</span>
       <span style={{ width: 1, height: 18, background: "var(--c-bd2)" }} />
       <BarBtn onClick={runAll} icon={<Play size={13} />} label="运行全部" primary />
+      <BarBtn onClick={autoAssemble} icon={<Clapperboard size={13} />} label="自动成片" />
       <BarBtn onClick={group} icon={<Combine size={13} />} label="成组" />
       <BarBtn onClick={downloadAll} icon={<Download size={13} />} label="下载全部" />
       <BarBtn onClick={clear} icon={<X size={13} />} label="取消" />
