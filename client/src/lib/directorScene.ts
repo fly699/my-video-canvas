@@ -2,25 +2,26 @@ import type { DirectorScene, DirectorActor, DirectorGroup, DirectorCamera, Vec3 
 
 // 导演台场景的默认值、预置体型、画幅与机位预设。纯数据 + 工厂，供 store/节点/编辑器共用。
 
-/** 预置人偶体型：在「同一真人网格」上用身高/体宽/盆骨宽塑形区分性别体型。 */
+/** 预置人偶体型：在「同一真人网格」上用身高/体宽/盆骨宽/肩宽塑形区分性别体型。 */
 export interface MannequinModel {
   key: string;
   label: string;
-  height: number;   // 站高(米)
-  build: number;    // 整体体宽系数（瘦 0.85 ~ 壮 1.25）
-  hip: number;      // 盆骨宽系数（<1 收窄盆骨+并腿=男性向；=1 保留宽臀=女性向）
-  color: string;    // 默认配色
+  height: number;    // 站高(米)
+  build: number;     // 整体体宽系数（瘦 0.85 ~ 壮 1.25）
+  hip: number;       // 盆骨宽系数（<1 收窄盆骨+并腿=男性向；=1 保留宽臀=女性向）
+  shoulder: number;  // 肩宽系数（>1 加宽肩/胸=男性 V 字；<1 收窄=女性向）
+  color: string;     // 默认配色
 }
 
-// 体型框架：内置网格本身偏「女性化」（细腰宽臀）。用 hip 因子收窄盆骨即可塑出男性轮廓——
-// 男性 hip=0.74（窄臀并腿）、女性 hip=1.0（保留宽臀）、儿童近直筒。height 区分身高，
-// build 微调整体宽窄。三者叠加，使同一网格也能协调区分性别/体型。
+// 体型框架：内置网格本身偏「女性化」（细腰宽臀窄肩）。用 hip 收窄盆骨 + shoulder 加宽肩胸
+// 即可塑出男性 V 字轮廓——男性 hip=0.56/shoulder=1.30（窄臀宽肩）、女性 hip=1.0/shoulder=0.95
+// （宽臀窄肩）。height 区分身高，build 微调整体宽窄。叠加使同一网格也能协调区分性别/体型。
 export const MANNEQUIN_MODELS: MannequinModel[] = [
-  { key: "male",   label: "男性",   height: 1.80, build: 1.00, hip: 0.66, color: "#4aa3ff" },
-  { key: "female", label: "女性",   height: 1.63, build: 0.86, hip: 1.00, color: "#ff6fa5" },
-  { key: "tall",   label: "高挑",   height: 1.92, build: 0.90, hip: 0.70, color: "#37d6a6" },
-  { key: "burly",  label: "壮硕",   height: 1.84, build: 1.14, hip: 0.74, color: "#ffb020" },
-  { key: "child",  label: "儿童",   height: 1.18, build: 0.84, hip: 0.86, color: "#c08bff" },
+  { key: "male",   label: "男性",   height: 1.80, build: 1.00, hip: 0.56, shoulder: 1.30, color: "#4aa3ff" },
+  { key: "female", label: "女性",   height: 1.63, build: 0.86, hip: 1.00, shoulder: 0.95, color: "#ff6fa5" },
+  { key: "tall",   label: "高挑",   height: 1.92, build: 0.90, hip: 0.64, shoulder: 1.18, color: "#37d6a6" },
+  { key: "burly",  label: "壮硕",   height: 1.84, build: 1.14, hip: 0.70, shoulder: 1.38, color: "#ffb020" },
+  { key: "child",  label: "儿童",   height: 1.18, build: 0.84, hip: 0.88, shoulder: 1.00, color: "#c08bff" },
 ];
 
 export function mannequinModel(key: string): MannequinModel {

@@ -62,15 +62,22 @@ function HumanInner({ actor }: { actor: DirectorActor }) {
         mesh.castShadow = true;
       }
     });
-    // 盆骨塑形：内置网格为「细腰宽臀」女性轮廓。按 hip 因子收窄盆骨+并拢双腿 → 男性轮廓。
-    // 做法：缩 Hips 的 X（连同盆骨皮肤、双腿位置与腿围一起收窄），仅对 Spine 反缩回去，
-    // 使躯干/头/手臂宽度不变（避免上身级联畸变）；双腿随之变细并拢，呈男性下身。
-    const hip = mannequinModel(actor.model).hip;
-    if (hip !== 1) {
-      const get = (n: string) => root.getObjectByName("mixamorig" + n) as Object3D | undefined;
+    // 体型塑形：内置网格为「细腰宽臀窄肩」女性轮廓。
+    //   ① 盆骨：缩 Hips 的 X/Z（连同盆骨皮肤、双腿位置与腿围一起收窄并拢），仅对 Spine 反缩
+    //      回去，使上身宽度不变（避免级联畸变）；双腿随之变细并拢，呈男性窄臀下身。
+    //   ② 肩胸：放宽 Spine2 的 X（胸廓变宽、双肩外移=V 字），仅对 Neck 反缩回去，使头颈不被
+    //      横向拉宽（避免大头畸变）。手臂随肩略宽，符合男性体型。
+    const m = mannequinModel(actor.model);
+    const get = (n: string) => root.getObjectByName("mixamorig" + n) as Object3D | undefined;
+    if (m.hip !== 1) {
       const hips = get("Hips"), spine = get("Spine");
-      if (hips) hips.scale.set(hip, 1, hip);
-      if (spine) spine.scale.set(1 / hip, 1, 1 / hip);
+      if (hips) hips.scale.set(m.hip, 1, m.hip);
+      if (spine) spine.scale.set(1 / m.hip, 1, 1 / m.hip);
+    }
+    if (m.shoulder !== 1) {
+      const spine2 = get("Spine2"), neck = get("Neck");
+      if (spine2) spine2.scale.set(m.shoulder, 1, 1);
+      if (neck) neck.scale.set(1 / m.shoulder, 1, 1);
     }
     return root;
   }, [scene, actor.color, actor.model]);

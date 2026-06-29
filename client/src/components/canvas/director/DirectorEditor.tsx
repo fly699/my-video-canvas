@@ -486,6 +486,15 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <button key={mode} onClick={() => setGizmoMode(mode)} style={{ ...chip, fontWeight: gizmoMode === mode ? 700 : 500, background: gizmoMode === mode ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: gizmoMode === mode ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
             ))}
           </div>
+          {/* 全景对齐：仅在已设全景时显示。升降/缩放使全景地面与人物脚底对齐（LibTV 模块16） */}
+          {scene.panoramaUrl && !scene.background && (
+            <div style={{ position: "absolute", bottom: 60, left: 12, zIndex: 5, width: 210, padding: 10, borderRadius: 12, background: "color-mix(in oklch, var(--c-elevated) 92%, transparent)", border: "1px solid var(--c-bd2)", backdropFilter: "blur(12px)", display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }}>全景对齐</div>
+              <Slider label="旋转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
+              <Slider label="升降" value={scene.panoramaY ?? 0} min={-4} max={4} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaY: v })} />
+              <Slider label="缩放" value={scene.panoramaScale ?? 1} min={0.2} max={6} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
+            </div>
+          )}
           <div style={{ width: frame.w, height: frame.h, position: "relative", boxShadow: "0 0 0 1px var(--c-bd2), 0 8px 40px oklch(0 0 0 / 0.6)" }}>
             <Canvas
               shadows
@@ -497,7 +506,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             >
               <color attach="background" args={[scene.background || "#1a1d24"]} />
               {scene.panoramaUrl && !scene.background && (
-                <Suspense fallback={null}><PanoramaSphere url={scene.panoramaUrl} /></Suspense>
+                <Suspense fallback={null}>
+                  <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} y={scene.panoramaY ?? 0} scale={scene.panoramaScale ?? 1} />
+                </Suspense>
               )}
               <ambientLight intensity={0.7} />
               <directionalLight position={[4, 8, 5]} intensity={1.1} castShadow shadow-mapSize={[1024, 1024]} />

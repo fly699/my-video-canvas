@@ -556,6 +556,9 @@ export interface DirectorScene {
   aspectRatio: string;  // 画幅，如 "16:9"
   background: string;    // 背景色(十六进制)；"" 表示默认深灰；后续支持全景图 url
   panoramaUrl?: string;  // P5：720° 全景背景
+  panoramaYaw?: number;   // 全景旋转(度)：转动背景朝向，默认 0
+  panoramaY?: number;     // 全景升降(米)：上下移动全景球，使其地面与人物脚底对齐，默认 0
+  panoramaScale?: number; // 全景缩放(倍)：放大/缩小全景球，匹配人物与场景尺度，默认 1（LibTV 模块16「场景缩放」）
   groundVisible: boolean;
   labelsVisible: boolean;
 }
