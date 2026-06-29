@@ -10,6 +10,7 @@ import type { DirectorScene, DirectorActor, Vec3 } from "../../../../../shared/t
 import {
   MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene,
 } from "../../../lib/directorScene";
+import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset } from "../../../lib/directorPose";
 import { Mannequin } from "./Mannequin";
 
 // 全屏 3D 导演台编辑器（P1）：摆放/选中人偶（数值精确 + Alt 微调）、控制机位(FOV)、
@@ -92,6 +93,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const [scene, setScene] = useState<DirectorScene>(() => initialScene ?? makeDefaultDirectorScene());
   const [selectedId, setSelectedId] = useState<string | null>(scene.actors[0]?.id ?? null);
   const [camSelected, setCamSelected] = useState(false);
+  const [actorTab, setActorTab] = useState<"transform" | "pose">("transform");
   const [saving, setSaving] = useState(false);
   const captureRef = useRef<CaptureHandle | null>(null);
   const sceneRef = useRef(scene);
@@ -280,22 +282,54 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           ) : selected ? (
             <div style={panel}>
               <div style={ttl}>{selected.name}</div>
-              <label style={{ display: "block", fontSize: 11, color: "var(--c-t3)", marginBottom: 8 }}>
-                体型
-                <select value={selected.model} onChange={(e) => patchActor(selected.id, { model: e.target.value })}
-                  style={{ width: "100%", marginTop: 4, padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6 }}>
-                  {MANNEQUIN_MODELS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-                </select>
-              </label>
-              <div style={sub}>位置</div>
-              <Xyz v={selected.position} onChange={(position) => patchActor(selected.id, { position })} />
-              <div style={sub}>旋转(°)</div>
-              <Xyz v={selected.rotation} step={1} fixed={0} onChange={(rotation) => patchActor(selected.id, { rotation })} />
-              <div style={sub}>缩放</div>
-              <DragNumber label="比例" value={selected.scale} step={0.02} onChange={(v) => patchActor(selected.id, { scale: Math.max(0.2, Math.min(3, v)) })} />
-              <div style={sub}>颜色</div>
-              <input type="color" value={selected.color} onChange={(e) => patchActor(selected.id, { color: e.target.value })} style={{ width: "100%", height: 28, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
-              <p style={hint}>姿势/骨骼调节将在下一期加入；当前可用「摆站位 + 朝向」即可让 AI 还原构图。</p>
+              {/* 变换 / 姿势 标签页 */}
+              <div className="flex gap-1" style={{ marginBottom: 10 }}>
+                {([["transform", "变换"], ["pose", "姿势"]] as const).map(([k, lbl]) => (
+                  <button key={k} onClick={() => setActorTab(k)} style={{ ...chip, flex: 1, justifyContent: "center", fontWeight: actorTab === k ? 700 : 500, background: actorTab === k ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: actorTab === k ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
+                ))}
+              </div>
+
+              {actorTab === "transform" ? (
+                <>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--c-t3)", marginBottom: 8 }}>
+                    体型
+                    <select value={selected.model} onChange={(e) => patchActor(selected.id, { model: e.target.value })}
+                      style={{ width: "100%", marginTop: 4, padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6 }}>
+                      {MANNEQUIN_MODELS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                  </label>
+                  <div style={sub}>位置</div>
+                  <Xyz v={selected.position} onChange={(position) => patchActor(selected.id, { position })} />
+                  <div style={sub}>旋转(°)</div>
+                  <Xyz v={selected.rotation} step={1} fixed={0} onChange={(rotation) => patchActor(selected.id, { rotation })} />
+                  <div style={sub}>缩放</div>
+                  <DragNumber label="比例" value={selected.scale} step={0.02} onChange={(v) => patchActor(selected.id, { scale: Math.max(0.2, Math.min(3, v)) })} />
+                  <div style={sub}>颜色</div>
+                  <input type="color" value={selected.color} onChange={(e) => patchActor(selected.id, { color: e.target.value })} style={{ width: "100%", height: 28, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
+                </>
+              ) : (
+                <>
+                  <div style={sub}>动作预设</div>
+                  <div className="flex flex-wrap gap-1">
+                    {POSE_PRESETS.map((p) => (
+                      <button key={p.key} onClick={() => patchActor(selected.id, { pose: applyPosePreset(p.key) })} style={{ ...chip, fontSize: 10.5 }}>{p.label}</button>
+                    ))}
+                  </div>
+                  {JOINT_GROUPS.map((g) => (
+                    <div key={g.group}>
+                      <div style={sub}>{g.group}</div>
+                      <div className="flex flex-col gap-1">
+                        {g.joints.map((j) => (
+                          <DragNumber key={j.key} label={j.label} value={selected.pose?.[j.key] ?? 0} step={1} fixed={0} suffix="°"
+                            onChange={(v) => patchActor(selected.id, { pose: { ...(selected.pose ?? {}), [j.key]: Math.max(j.min, Math.min(j.max, Math.round(v))) } })} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={() => patchActor(selected.id, { pose: {} })} style={{ ...chip, justifyContent: "center", marginTop: 8 }}>清空姿势（归零）</button>
+                  <p style={hint}>摆个大概即可——AI 会脑补动作细节。提示词强调「人物姿态与参考图一致」。</p>
+                </>
+              )}
             </div>
           ) : (
             <div style={{ ...panel, color: "var(--c-t4)", fontSize: 12 }}>
