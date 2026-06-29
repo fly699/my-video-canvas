@@ -61,6 +61,35 @@ function DragNumber({ value, onChange, step = 0.05, label, fixed = 2, suffix }: 
   );
 }
 
+// LibTV 风格关节滑条：标签 + 横向滑轨（中点 0 刻度）+ 实时数值。
+function Slider({ label, value, min, max, onChange }: {
+  label: string; value: number; min: number; max: number; onChange: (v: number) => void;
+}) {
+  const span = max - min;
+  const zeroPct = span > 0 ? ((0 - min) / span) * 100 : 50; // 0 度刻度位置
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ width: 38, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>{label}</span>
+      <div style={{ position: "relative", flex: 1, height: 18, display: "flex", alignItems: "center" }}>
+        {min < 0 && max > 0 && (
+          <span style={{ position: "absolute", left: `${zeroPct}%`, top: 2, bottom: 2, width: 1, background: "var(--c-bd3, var(--c-bd2))", pointerEvents: "none" }} />
+        )}
+        <input
+          type="range" min={min} max={max} step={1} value={Math.round(value)}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="director-slider"
+          style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))", cursor: "pointer", margin: 0 }}
+        />
+      </div>
+      <input
+        type="number" value={Math.round(value)} min={min} max={max}
+        onChange={(e) => onChange(Math.max(min, Math.min(max, Number(e.target.value) || 0)))}
+        style={{ width: 44, padding: "2px 4px", fontSize: 10.5, textAlign: "right", fontVariantNumeric: "tabular-nums", background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none" }}
+      />
+    </div>
+  );
+}
+
 // drei OrbitControls 实例（含 target / update）。
 type OrbitImpl = { target: THREE.Vector3; update: () => void; object: THREE.Camera } | null;
 export interface CaptureHandle { gl: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.Camera; orbit: OrbitImpl; }
@@ -608,10 +637,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   {JOINT_GROUPS.map((g) => (
                     <div key={g.group}>
                       <div style={sub}>{g.group}</div>
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col" style={{ gap: 5 }}>
                         {g.joints.map((j) => (
-                          <DragNumber key={j.key} label={j.label} value={selected.pose?.[j.key] ?? 0} step={1} fixed={0} suffix="°"
-                            onChange={(v) => patchActor(selected.id, { pose: { ...(selected.pose ?? {}), [j.key]: Math.max(j.min, Math.min(j.max, Math.round(v))) } })} />
+                          <Slider key={j.key} label={j.label} value={selected.pose?.[j.key] ?? 0} min={j.min} max={j.max}
+                            onChange={(v) => patchActor(selected.id, { pose: { ...(selected.pose ?? {}), [j.key]: v } })} />
                         ))}
                       </div>
                     </div>
