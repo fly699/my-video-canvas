@@ -8,10 +8,10 @@ import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../../../../shared/types";
 import {
-  MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform,
+  MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers,
   ensureCameras, newCameraId, nextCameraName,
 } from "../../../lib/directorScene";
-import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset } from "../../../lib/directorPose";
+import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset, mirrorPose } from "../../../lib/directorPose";
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
 import { HumanModel } from "./HumanModel";
 import { GlbModel } from "./GlbModel";
@@ -234,6 +234,15 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const deleteGroup = (gid: string) => {
     setScene((s) => ({ ...s, actors: s.actors.filter((a) => a.groupId !== gid), groups: (s.groups ?? []).filter((x) => x.id !== gid) }));
     setSelectedGroupId((cur) => (cur === gid ? null : cur));
+  };
+  const duplicateGroup = (gid: string) => {
+    setScene((s) => {
+      const g = (s.groups ?? []).find((x) => x.id === gid); if (!g) return s;
+      const members = s.actors.filter((a) => a.groupId === gid);
+      const { group: ng, actors: na } = cloneGroupWithMembers(g, members, s.actors);
+      setSelectedGroupId(ng.id); setSelectedId(null); setCamSelected(false);
+      return { ...s, groups: [...(s.groups ?? []), ng], actors: [...s.actors, ...na] };
+    });
   };
 
   const uploadMut = trpc.upload.uploadImage.useMutation();
@@ -545,7 +554,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginTop: 6 }}>添加群众（批量）</div>
           <div className="flex flex-wrap gap-1">
-            {([[2, 3], [3, 3], [3, 4], [4, 5]] as const).map(([r, c]) => (
+            {([[2, 3], [3, 3], [3, 4], [4, 5], [5, 6], [6, 8]] as const).map(([r, c]) => (
               <button key={`${r}x${c}`} onClick={() => addCrowd(r, c)} style={{ ...chip }}><Plus size={11} /> {c}×{r}</button>
             ))}
           </div>
@@ -732,6 +741,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <div style={sub}>组配色</div>
               <input type="color" value={selectedGroup.color} onChange={(e) => { const color = e.target.value; patchGroup(selectedGroup.id, { color }); setScene((s) => ({ ...s, actors: s.actors.map((a) => (a.groupId === selectedGroup.id ? { ...a, color } : a)) })); }} style={{ width: "100%", height: 28, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
               <div className="flex gap-1" style={{ marginTop: 10 }}>
+                <button onClick={() => duplicateGroup(selectedGroup.id)} style={{ ...chip, flex: 1, justifyContent: "center" }} title="连同成员体型/姿势复制整组"><Copy size={12} /> 复制整组</button>
                 <button onClick={() => ungroupGroup(selectedGroup.id)} style={{ ...chip, flex: 1, justifyContent: "center" }}>解组</button>
                 <button onClick={() => deleteGroup(selectedGroup.id)} style={{ ...chip, flex: 1, justifyContent: "center", color: "oklch(0.65 0.2 25)" }}>删除整组</button>
               </div>
@@ -792,7 +802,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                       </div>
                     </div>
                   ))}
-                  <button onClick={() => patchActor(selected.id, { pose: {} })} style={{ ...chip, justifyContent: "center", marginTop: 8 }}>清空姿势（归零）</button>
+                  <div className="flex gap-1" style={{ marginTop: 8 }}>
+                    <button onClick={() => patchActor(selected.id, { pose: mirrorPose(selected.pose ?? {}) })} style={{ ...chip, justifyContent: "center", flex: 1 }} title="左右镜像当前姿势">⇄ 镜像左右</button>
+                    <button onClick={() => patchActor(selected.id, { pose: {} })} style={{ ...chip, justifyContent: "center", flex: 1 }}>清空姿势（归零）</button>
+                  </div>
                   <p style={hint}>摆个大概即可——AI 会脑补动作细节。提示词强调「人物姿态与参考图一致」。</p>
                 </>
               )}

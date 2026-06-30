@@ -73,3 +73,17 @@ export function applyPosePreset(presetKey: string): Pose {
   pose.rootY = p.pose.rootY ?? 0; // 整体升降（非关节，单独保留）
   return pose;
 }
+
+// 姿势左右镜像：交换左右肢体关节、对带符号的扭转/侧倾/转头/歪头取反。
+const MIRROR_SWAP: [string, string][] = [
+  ["armLForward", "armRForward"], ["armLOut", "armROut"], ["elbowL", "elbowR"],
+  ["legLForward", "legRForward"], ["legLOut", "legROut"], ["kneeL", "kneeR"],
+];
+const MIRROR_NEG = ["torsoTwist", "torsoSide", "headTurn", "headTilt"];
+export function mirrorPose(pose: Pose): Pose {
+  const out: Pose = { ...pose };
+  for (const [a, b] of MIRROR_SWAP) { out[a] = pose[b] ?? 0; out[b] = pose[a] ?? 0; }
+  for (const k of MIRROR_NEG) out[k] = -(pose[k] ?? 0);
+  out.rootY = pose.rootY ?? 0;
+  return out;
+}
