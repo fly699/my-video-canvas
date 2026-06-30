@@ -8,7 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../../../../shared/types";
 import {
-  MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers,
+  MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers, respaceCrowdMembers, CROWD_SPACING,
   ensureCameras, newCameraId, nextCameraName,
 } from "../../../lib/directorScene";
 import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset, mirrorPose } from "../../../lib/directorPose";
@@ -242,6 +242,20 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       const { group: ng, actors: na } = cloneGroupWithMembers(g, members, s.actors);
       setSelectedGroupId(ng.id); setSelectedId(null); setCamSelected(false);
       return { ...s, groups: [...(s.groups ?? []), ng], actors: [...s.actors, ...na] };
+    });
+  };
+  // 调整群组成员间距（模块08）：重排成员组内局部坐标，保留各自姿势/体型/朝向。
+  const setGroupSpacing = (gid: string, spacing: number) => {
+    setScene((s) => {
+      const g = (s.groups ?? []).find((x) => x.id === gid); if (!g) return s;
+      const members = s.actors.filter((a) => a.groupId === gid);
+      const respaced = respaceCrowdMembers(g, members, spacing);
+      const byId = new Map(respaced.map((m) => [m.id, m]));
+      return {
+        ...s,
+        groups: (s.groups ?? []).map((x) => (x.id === gid ? { ...x, spacing } : x)),
+        actors: s.actors.map((a) => byId.get(a.id) ?? a),
+      };
     });
   };
 
@@ -738,6 +752,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <Xyz v={selectedGroup.rotation} min={-180} max={180} step={1} fixed={0} onChange={(rotation) => patchGroup(selectedGroup.id, { rotation })} />
               <div style={sub}>整组统一缩放</div>
               <Slider label="比例" value={selectedGroup.scale} min={0.1} max={30} step={0.1} fixed={1} onChange={(v) => patchGroup(selectedGroup.id, { scale: v })} />
+              <div style={sub}>成员间距(米)</div>
+              <Slider label="间距" value={selectedGroup.spacing ?? CROWD_SPACING} min={0.4} max={3} step={0.05} fixed={2} onChange={(v) => setGroupSpacing(selectedGroup.id, v)} />
               <div style={sub}>组配色</div>
               <input type="color" value={selectedGroup.color} onChange={(e) => { const color = e.target.value; patchGroup(selectedGroup.id, { color }); setScene((s) => ({ ...s, actors: s.actors.map((a) => (a.groupId === selectedGroup.id ? { ...a, color } : a)) })); }} style={{ width: "100%", height: 28, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
               <div className="flex gap-1" style={{ marginTop: 10 }}>

@@ -536,6 +536,7 @@ export interface DirectorGroup {
   rotation: Vec3;       // 欧拉角(度)
   scale: number;        // 统一缩放
   color: string;        // 组配色（成员默认同色，便于黑底分离区分组）
+  spacing?: number;     // 成员行列间距(米)，默认 0.85（LibTV 模块08「间距设置」）
 }
 
 export interface DirectorCamera {
