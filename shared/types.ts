@@ -561,6 +561,8 @@ export interface DirectorScene {
   panoramaScale?: number; // 全景球半径(倍)：放大/缩小全景球，影响背景透视与距离感，默认 1
   sceneScale?: number;    // 场景缩放(倍)：整体缩放「人物场景」相对全景空间的大小，使人物与全景尺度匹配，默认 1（LibTV 模块16/23「场景缩放」，文档默认 300%）
   sceneOffsetY?: number;  // 场景升降(米)：整体上下移动「人物场景」，使人物脚底落到全景画面里的地面线，默认 0
+  sceneOffsetX?: number;  // 场景平移X(米)：整体左右移动「人物场景」，在全景房间里左右挪位，默认 0
+  sceneOffsetZ?: number;  // 场景平移Z(米)：整体前后移动「人物场景」，在全景房间里前后挪位，默认 0
   groundVisible: boolean;
   labelsVisible: boolean;
 }

@@ -3,7 +3,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid, TransformControls, ContactShadows } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload } from "lucide-react";
+import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../../../../shared/types";
@@ -199,6 +199,16 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     setScene((s) => ({ ...s, actors: s.actors.filter((a) => a.id !== id) }));
     setSelectedId((cur) => (cur === id ? null : cur));
   };
+  // 复制角色：连同体型/姿势/旋转/缩放/导入模型一起复制一份，落在右侧偏移处（便于快速摆同款）。
+  const duplicateActor = (id: string) => {
+    setScene((s) => {
+      const src = s.actors.find((a) => a.id === id); if (!src) return s;
+      const base = makeActor(src.model, s.actors, [src.position[0] + 0.6, src.position[1], src.position[2]]);
+      const copy: DirectorActor = { ...base, rotation: [...src.rotation] as Vec3, scale: src.scale, pose: src.pose ? { ...src.pose } : undefined, glbUrl: src.glbUrl, tint: src.tint };
+      setSelectedId(copy.id); setSelectedGroupId(null); setCamSelected(false);
+      return { ...s, actors: [...s.actors, copy] };
+    });
+  };
 
   // ── 群众群组 ──
   const groups = scene.groups ?? [];
@@ -328,8 +338,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     if (!actorId) { patchCam({ lookAtActorId: undefined }); return; }
     const a = scene.actors.find((x) => x.id === actorId); if (!a) return;
     const wp = actorWorldPos(a);
-    const S = scene.sceneScale ?? 1, oy = scene.sceneOffsetY ?? 0; // 注视点在「场景缩放+升降」后的世界坐标里
-    const target: Vec3 = [wp[0] * S, oy + wp[1] * S + 1.0 * S, wp[2] * S];
+    const S = scene.sceneScale ?? 1, oy = scene.sceneOffsetY ?? 0, ox = scene.sceneOffsetX ?? 0, oz = scene.sceneOffsetZ ?? 0; // 注视点在「场景缩放+平移」后的世界坐标里
+    const target: Vec3 = [ox + wp[0] * S, oy + wp[1] * S + 1.0 * S, oz + wp[2] * S];
     const cap = captureRef.current; if (cap?.orbit) { cap.orbit.target.set(...target); cap.orbit.update(); }
     patchCam({ target, lookAtActorId: actorId });
   }, [scene.actors, scene.groups, patchCam]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -341,8 +351,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const subj = scene.actors.find((a) => a.id === cam.lookAtActorId)
       ?? scene.actors.find((a) => !a.groupId) ?? scene.actors[0];
     const base = subj ? actorWorldPos(subj) : ([0, 0, 0] as Vec3);
-    const S = scene.sceneScale ?? 1, oy = scene.sceneOffsetY ?? 0; // 主体经「场景缩放+升降」后，注视高度与机距按比例放大
-    const target: Vec3 = [base[0] * S, oy + base[1] * S + shot.aimY * S, base[2] * S];
+    const S = scene.sceneScale ?? 1, oy = scene.sceneOffsetY ?? 0, ox = scene.sceneOffsetX ?? 0, oz = scene.sceneOffsetZ ?? 0; // 主体经「场景缩放+平移」后，注视点按比例放大并平移
+    const target: Vec3 = [ox + base[0] * S, oy + base[1] * S + shot.aimY * S, oz + base[2] * S];
     const T = new THREE.Vector3(...target);
     const dir = new THREE.Vector3(...cam.position).sub(new THREE.Vector3(...cam.target));
     if (dir.lengthSq() < 1e-6) dir.set(0, 0.15, 1);
@@ -513,6 +523,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 <span style={{ width: 9, height: 9, borderRadius: "50%", background: a.color, display: "inline-block", marginRight: 7 }} />
                 {a.name}
               </button>
+              <button onClick={() => duplicateActor(a.id)} title="复制角色（含体型/姿势/缩放）" style={{ ...iconBtn }}><Copy size={12} /></button>
               <button onClick={() => removeActor(a.id)} title="删除" style={{ ...iconBtn }}><Trash2 size={12} /></button>
             </div>
           ))}
@@ -552,6 +563,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {/* 场景缩放/升降：缩放与上下移动「人物场景」以贴合全景的尺度与地面线（LibTV 场景缩放） */}
               <Slider label="人物缩放" value={scene.sceneScale ?? 1} min={0.2} max={30} step={0.1} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
               <Slider label="人物升降" value={scene.sceneOffsetY ?? 0} min={-6 * sceneS} max={6 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetY: v })} />
+              <Slider label="平移X" value={scene.sceneOffsetX ?? 0} min={-8 * sceneS} max={8 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetX: v })} />
+              <Slider label="平移Z" value={scene.sceneOffsetZ ?? 0} min={-8 * sceneS} max={8 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetZ: v })} />
             </div>
           )}
           {/* 机位画面实时预览小窗（模块3/25）：导演视角自由布局时，右下角实时显示当前机位取景 */}
@@ -581,11 +594,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {/* 接触阴影：始终在 y=0 给人物落一层柔和投影，让角色「站在地面上」——
                   尤其全景模式(隐藏网格)下，否则人物会显得悬浮空中。纯黑分离模式下不渲染（看不到且干扰）。 */}
               {scene.background !== "#000000" && (
-                <ContactShadows position={[0, (scene.sceneOffsetY ?? 0) + 0.01, 0]} scale={24} resolution={1024} blur={2.6} far={5} opacity={0.5} color="#000000" />
+                <ContactShadows position={[scene.sceneOffsetX ?? 0, (scene.sceneOffsetY ?? 0) + 0.01, scene.sceneOffsetZ ?? 0]} scale={24} resolution={1024} blur={2.6} far={5} opacity={0.5} color="#000000" />
               )}
               {/* 场景缩放 + 升降：把整个「人物场景」(角色+群组) 包一层统一缩放与上下平移，相对全景
                   空间整体放大/缩小、升降，使人物与全景尺度/地面线匹配（LibTV 场景缩放）。 */}
-              <group position={[0, scene.sceneOffsetY ?? 0, 0]} scale={scene.sceneScale ?? 1}>
+              <group position={[scene.sceneOffsetX ?? 0, scene.sceneOffsetY ?? 0, scene.sceneOffsetZ ?? 0]} scale={scene.sceneScale ?? 1}>
               {/* 群组成员：包在群组变换父级里（成员 position 为组内局部坐标），每个成员再包一层
                   变换 group（actor 变换）。 */}
               {groups.map((g) => (
