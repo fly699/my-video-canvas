@@ -77,7 +77,12 @@ export function makeActor(model: string, existing: DirectorActor[], position?: V
 let _gseq = 0;
 function groupId(): string { _gseq += 1; return `g${_gseq}_${Math.round(performance.now())}`; }
 
-const CROWD_SPACING = 0.85; // 成员间距(米)
+export const CROWD_SPACING = 0.85; // 成员默认间距(米)
+
+/** 行列网格里第 r 行第 c 列成员的组内局部坐标（按间距居中铺开）。 */
+function crowdLocalPos(r: number, c: number, rows: number, cols: number, spacing: number): Vec3 {
+  return [(c - (cols - 1) / 2) * spacing, 0, (r - (rows - 1) / 2) * spacing];
+}
 
 /** 新建一个 rows×cols 群众群组 + 其成员（成员 position 为组内局部网格坐标，groupId 指向组）。 */
 export function makeCrowd(rows: number, cols: number, existing: DirectorActor[], center?: Vec3): { group: DirectorGroup; actors: DirectorActor[] } {
@@ -91,22 +96,30 @@ export function makeCrowd(rows: number, cols: number, existing: DirectorActor[],
     rotation: [0, 0, 0],
     scale: 1,
     color,
+    spacing: CROWD_SPACING,
   };
   const actors: DirectorActor[] = [];
   let n = existing.length;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const lx = (c - (cols - 1) / 2) * CROWD_SPACING;
-      const lz = (r - (rows - 1) / 2) * CROWD_SPACING;
       actors.push({
         id: actorId(), name: nextActorName([...existing, ...actors]),
         model: n % 2 === 0 ? "male" : "female",
-        position: [lx, 0, lz], rotation: [0, 0, 0], scale: 1, color, groupId: gid,
+        position: crowdLocalPos(r, c, rows, cols, CROWD_SPACING), rotation: [0, 0, 0], scale: 1, color, groupId: gid,
       });
       n += 1;
     }
   }
   return { group, actors };
+}
+
+/** 调整群组间距：按组的 rows×cols 行优先顺序，重排各成员的组内局部坐标（保留个体姿势/体型/朝向）。 */
+export function respaceCrowdMembers(group: DirectorGroup, members: DirectorActor[], spacing: number): DirectorActor[] {
+  const { rows, cols } = group;
+  return members.map((m, i) => {
+    const r = Math.floor(i / cols), c = i % cols;
+    return r < rows ? { ...m, position: crowdLocalPos(r, c, rows, cols, spacing) } : m;
+  });
 }
 
 /** 复制整组：连同各成员（含自定义体型/姿势/局部位置）一起复制一份，新组右移 1.5m、新 id/名。 */

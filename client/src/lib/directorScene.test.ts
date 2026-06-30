@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   aspectRatioValue, makeActor, makeDefaultDirectorScene, mannequinModel, nextActorName, MANNEQUIN_MODELS,
-  makeCrowd, bakeGroupTransform, ensureCameras, nextCameraName,
+  makeCrowd, bakeGroupTransform, ensureCameras, nextCameraName, respaceCrowdMembers, cloneGroupWithMembers, CROWD_SPACING,
 } from "./directorScene";
 import type { DirectorActor } from "../../../shared/types";
 
@@ -50,6 +50,44 @@ describe("directorScene helpers", () => {
     // 网格关于原点对称：x 偏移之和≈0
     const sumX = actors.reduce((s, a) => s + a.position[0], 0);
     expect(Math.abs(sumX)).toBeLessThan(1e-9);
+  });
+
+  it("makeCrowd 默认间距 = CROWD_SPACING，相邻成员列间距精确", () => {
+    const { group, actors } = makeCrowd(1, 3, []);
+    expect(group.spacing).toBe(CROWD_SPACING);
+    // 1×3：x = -spacing, 0, +spacing
+    expect(actors[1].position[0] - actors[0].position[0]).toBeCloseTo(CROWD_SPACING, 6);
+    expect(actors[2].position[0] - actors[1].position[0]).toBeCloseTo(CROWD_SPACING, 6);
+  });
+
+  it("respaceCrowdMembers：改间距重排局部坐标，保留个体姿势/体型/朝向", () => {
+    const { group, actors } = makeCrowd(2, 3, []);
+    const tagged = actors.map((a, i) => ({ ...a, pose: { headNod: i }, model: i % 3 === 0 ? "burly" : a.model }));
+    const respaced = respaceCrowdMembers(group, tagged, 1.5);
+    // 列间距变为 1.5
+    expect(respaced[1].position[0] - respaced[0].position[0]).toBeCloseTo(1.5, 6);
+    // 行间距变为 1.5（第二行第一个 index=3）
+    expect(respaced[3].position[2] - respaced[0].position[2]).toBeCloseTo(1.5, 6);
+    // 居中：x 偏移之和≈0
+    expect(Math.abs(respaced.reduce((s, a) => s + a.position[0], 0))).toBeLessThan(1e-9);
+    // 个体属性保留
+    expect(respaced[2].pose).toEqual({ headNod: 2 });
+    expect(respaced[3].model).toBe("burly");
+    expect(respaced.every((a) => a.groupId === group.id)).toBe(true);
+  });
+
+  it("cloneGroupWithMembers：整组复制连成员体型/姿势/局部坐标，新 id/名/右移", () => {
+    const { group, actors } = makeCrowd(1, 2, []);
+    const withPose = actors.map((a) => ({ ...a, pose: { armROut: 90 } }));
+    const { group: ng, actors: na } = cloneGroupWithMembers(group, withPose, withPose);
+    expect(ng.id).not.toBe(group.id);
+    expect(ng.name).toBe(`${group.name} 副本`);
+    expect(ng.position[0]).toBeCloseTo(group.position[0] + 1.5, 6);
+    expect(na).toHaveLength(2);
+    expect(na.every((a) => a.groupId === ng.id)).toBe(true);
+    expect(na[0].id).not.toBe(withPose[0].id);
+    expect(na[0].pose).toEqual({ armROut: 90 });
+    expect(na[0].position).toEqual(withPose[0].position); // 局部坐标保留
   });
 
   it("bakeGroupTransform：解组把组变换烘焙进成员世界坐标（平移+缩放+绕Y）", () => {
