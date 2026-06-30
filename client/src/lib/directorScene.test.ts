@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   aspectRatioValue, makeActor, makeDefaultDirectorScene, mannequinModel, nextActorName, MANNEQUIN_MODELS,
-  makeCrowd, bakeGroupTransform, ensureCameras, nextCameraName, respaceCrowdMembers, cloneGroupWithMembers, CROWD_SPACING,
+  makeCrowd, bakeGroupTransform, ensureCameras, nextCameraName, respaceCrowdMembers, cloneGroupWithMembers, makeGroupFromActors, CROWD_SPACING,
 } from "./directorScene";
 import type { DirectorActor } from "../../../shared/types";
 
@@ -88,6 +88,37 @@ describe("directorScene helpers", () => {
     expect(na[0].id).not.toBe(withPose[0].id);
     expect(na[0].pose).toEqual({ armROut: 90 });
     expect(na[0].position).toEqual(withPose[0].position); // 局部坐标保留
+  });
+
+  it("makeGroupFromActors：任意角色手动编组，组心=水平质心，成员局部=世界−质心，标记 manual", () => {
+    const a = makeActor("male", []); a.position = [2, 0, 0];
+    const b = makeActor("female", [a]); b.position = [-2, 0, 4];
+    const { group, actors } = makeGroupFromActors([a, b]);
+    expect(group.manual).toBe(true);
+    expect(group.name).toBe("编组 (2)");
+    // 质心 = ((2-2)/2, , (0+4)/2) = (0, , 2)
+    expect(group.position[0]).toBeCloseTo(0, 6);
+    expect(group.position[2]).toBeCloseTo(2, 6);
+    expect(actors.every((m) => m.groupId === group.id)).toBe(true);
+    // 局部坐标 = 世界 − 质心；组变换(组心) + 局部 还原回世界
+    expect(group.position[0] + actors[0].position[0]).toBeCloseTo(2, 6);
+    expect(group.position[2] + actors[0].position[2]).toBeCloseTo(0, 6);
+    expect(group.position[2] + actors[1].position[2]).toBeCloseTo(4, 6);
+    // 保留 Y 高度与个体属性
+    expect(actors[0].position[1]).toBe(0);
+    expect(actors[0].model).toBe("male");
+  });
+
+  it("makeGroupFromActors → bakeGroupTransform 往返还原世界坐标（编组再解组不漂移）", () => {
+    const a = makeActor("male", []); a.position = [3, 0, -1];
+    const b = makeActor("female", [a]); b.position = [1, 0, 5];
+    const { group, actors } = makeGroupFromActors([a, b]);
+    const baked = actors.map((m) => bakeGroupTransform(group, m));
+    expect(baked[0].position[0]).toBeCloseTo(3, 6);
+    expect(baked[0].position[2]).toBeCloseTo(-1, 6);
+    expect(baked[1].position[0]).toBeCloseTo(1, 6);
+    expect(baked[1].position[2]).toBeCloseTo(5, 6);
+    expect(baked[0].groupId).toBeUndefined();
   });
 
   it("bakeGroupTransform：解组把组变换烘焙进成员世界坐标（平移+缩放+绕Y）", () => {

@@ -537,6 +537,7 @@ export interface DirectorGroup {
   scale: number;        // 统一缩放
   color: string;        // 组配色（成员默认同色，便于黑底分离区分组）
   spacing?: number;     // 成员行列间距(米)，默认 0.85（LibTV 模块08「间距设置」）
+  manual?: boolean;     // true=任意角色手动编组（成员保留各自局部坐标，非行列网格，无间距重排）
 }
 
 export interface DirectorCamera {
