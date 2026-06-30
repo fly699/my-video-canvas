@@ -56,6 +56,19 @@ section{padding:74px 0;position:relative}
 .hstat .lab{font-size:12.5px;color:var(--t2);margin-top:8px;font-weight:600}
 @media(max-width:760px){.hero-stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:460px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+/* 截图占位框：导入时把 div.shot 整体替换为 <img src="你的截图.png"> 即可 */
+.shot{position:relative;border:1.6px dashed var(--bd2);border-radius:16px;background:linear-gradient(135deg,var(--card),var(--bg2));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;text-align:center;aspect-ratio:16/9;overflow:hidden;transition:.25s}
+.shot:hover{border-color:var(--violet);box-shadow:0 0 0 1px rgba(168,85,247,.28)}
+.shot::after{content:"";position:absolute;inset:0;background:var(--grad);opacity:.045;pointer-events:none}
+.shot .ph-ic{font-size:34px;opacity:.7}
+.shot .ph-t{font-size:14px;font-weight:800;color:var(--t1)}
+.shot .ph-s{font-size:11.5px;color:var(--t4)}
+.shot img{width:100%;height:100%;object-fit:cover;display:block}
+.shot-cap{font-size:12.5px;color:var(--t2);margin-top:9px;text-align:center;font-weight:600}
+.shotgrid{display:grid;gap:16px;margin-top:8px}
+.shotgrid.g2{grid-template-columns:1fr 1fr}
+.shotgrid.g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:860px){.shotgrid.g2,.shotgrid.g3{grid-template-columns:1fr}}
 .arch{display:flex;flex-direction:column;gap:14px}
 .layer{background:linear-gradient(135deg,var(--card),var(--bg2));border:1px solid var(--bd);border-radius:18px;padding:20px 22px;position:relative;transition:.3s}
 .layer:hover{border-color:var(--bd2);transform:translateX(6px)}
@@ -241,6 +254,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
       <a href="#overview" class="active">概览</a>
       <a href="#arch">系统架构</a>
       <a href="#canvas">画布编排</a>
+      <a href="#director">3D 导演台</a>
       <a href="#models">AI 模型</a>
       <a href="#comfy">ComfyUI 算力</a>
       <a href="#updates">最近更新</a>
@@ -265,7 +279,7 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
       <span class="badge">🗄️ MySQL · Drizzle ORM</span>
       <span class="badge">🔐 OAuth + 邮箱密码双认证</span>
       <span class="badge">🛡️ 13 轮安全审查 · 纵深防护</span>
-      <span class="badge">🧪 600+ 自动化测试守护</span>
+      <span class="badge">🧪 1100+ 自动化测试守护</span>
     </div>
     <div class="confid">🔒 KingTai 金泰智算 出品 · 内部资料 · 身份水印溯源保护</div>
   </div>
@@ -277,6 +291,18 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     <div class="hstat"><div class="num" data-n="28">0</div><div class="lab">类操作审计</div></div>
   </div>
 </header>
+
+<!-- 产品总览截图（导入位）：把下面 div.shot 替换为 <img src="总览截图.png"> -->
+<section class="wrap" style="padding-top:0">
+  <div class="reveal">
+    <div class="shot" style="aspect-ratio:21/9">
+      <span class="ph-ic">🖼️</span>
+      <span class="ph-t">截图位 · 产品总览（画布主界面）</span>
+      <span class="ph-s">建议 21:9 宽幅 · 在此导入截图（替换本占位框为 &lt;img&gt;）</span>
+    </div>
+    <div class="shot-cap">AI 视频画布 · 节点式创作主界面总览</div>
+  </div>
+</section>
 
 <!-- ARCH -->
 <section id="arch" class="wrap">
@@ -342,6 +368,40 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     <div class="card"><div class="ic ic-blue">🔗</div><h4>智能连线编排</h4><p>连接矩阵校验合法连接，拖拽时高亮可连接桩点；同一对节点自动去重，杜绝悬空重复边。</p></div>
     <div class="card"><div class="ic ic-amber">🎯</div><h4>节点搜索与定位</h4><p>Ctrl+K 搜索现有节点，点选后可靠定位并高亮，大型工作流秒级跳转。</p></div>
     <div class="card"><div class="ic ic-violet">💾</div><h4>节点模板库</h4><p>任意节点参数存为模板，一键套用、JSON 导入导出，沉淀团队最佳实践。</p></div>
+  </div>
+</section>
+
+<!-- DIRECTOR · 3D 导演台（旗舰新功能） -->
+<section id="director" class="wrap">
+  <div class="reveal"><div class="sec-tag">🎬 旗舰新功能 · 重点</div>
+  <h2 class="sec-h">3D 导演台，<span class="g">精准构图 · 截图即参考图</span></h2>
+  <p class="sec-sub">在浏览器内的全屏 3D 空间里精准摆放角色与机位、调姿势景别、套全景，一键「截图 → 参考图」喂给下游图像/视频生成——把 AI 构图、人物站位、运镜从「抽卡」变成「可控」。对标并对齐业界 3D 导演台方案，深度融入本平台工作流。</p></div>
+  <div class="grid g3 reveal">
+    <div class="spot"><div class="k">🧍</div><h4><span class="g">真人骨骼姿势 · 体型框架</span></h4><p>内置真人模型，12 套动作预设（站/坐/走/跑/格斗/看手机/单膝跪…）+ 关节滑杆精调；男/女/高挑/壮硕/儿童/二头身体型一键切换。</p><ul><li>站位/朝向/缩放数值精确，Alt 微调</li><li>多角色 + 群众批量阵列</li><li>支持导入自有 .glb 模型</li></ul></div>
+    <div class="spot"><div class="k">🎥</div><h4><span class="g">电影级机位 · 五种景别</span></h4><p>FOV / 位置 / 注视目标可调，远景→特写一键切换；多命名机位 + 宫格批量出图；导演视角自由布局，机位视角所见即截图。</p><ul><li>机位实时预览小窗</li><li>多机位宫格 → 分镜节点</li><li>移动/旋转/缩放拖拽手柄</li></ul></div>
+    <div class="spot"><div class="k">🌐</div><h4><span class="g">360° 全景天空盒 · 融入实景</span></h4><p>上传等距全景图作背景，相机转动背景同步环绕；人物缩放/升降一键对齐全景地面与尺度，角色「站进」真实场景。</p><ul><li>背景旋转 / 球半径 / 人物对齐</li><li>黑底分离：仅控站位防背景污染</li><li>截图即参考图 → 图像/视频节点</li></ul></div>
+  </div>
+  <!-- 导演台截图（导入位）：把每个 div.shot 整体替换为 <img src="你的截图.png" alt="..."> -->
+  <div class="shotgrid g2 reveal" style="margin-top:24px">
+    <figure style="margin:0">
+      <div class="shot"><span class="ph-ic">🎬</span><span class="ph-t">截图位 · 导演台总览</span><span class="ph-s">建议 16:9 · 在此导入截图（替换本框为 &lt;img&gt;）</span></div>
+      <figcaption class="shot-cap">全屏 3D 导演台 · 角色 + 机位 + 取景框</figcaption>
+    </figure>
+    <figure style="margin:0">
+      <div class="shot"><span class="ph-ic">🧍</span><span class="ph-t">截图位 · 姿势与体型</span><span class="ph-s">建议 16:9 · 在此导入截图</span></div>
+      <figcaption class="shot-cap">骨骼姿势滑杆 + 体型 / 景别面板</figcaption>
+    </figure>
+    <figure style="margin:0">
+      <div class="shot"><span class="ph-ic">🎞️</span><span class="ph-t">截图位 · 五种景别 / 多机位宫格</span><span class="ph-s">建议 16:9 · 在此导入截图</span></div>
+      <figcaption class="shot-cap">远→特写景别切换 · 宫格批量出分镜</figcaption>
+    </figure>
+    <figure style="margin:0">
+      <div class="shot"><span class="ph-ic">🌐</span><span class="ph-t">截图位 · 360° 全景融入</span><span class="ph-s">建议 16:9 · 在此导入截图</span></div>
+      <figcaption class="shot-cap">全景天空盒 + 人物对齐 · 截图即参考图</figcaption>
+    </figure>
+  </div>
+  <div class="chips reveal" style="margin-top:20px;display:flex;flex-wrap:wrap;gap:8px">
+    <span class="chip">全屏 3D 编辑器</span><span class="chip">真人骨骼姿势 12 预设</span><span class="chip">体型框架（男/女/高挑/壮硕/儿童/二头身）</span><span class="chip">五种景别一键</span><span class="chip">360° 全景天空盒</span><span class="chip">人物缩放/升降对齐</span><span class="chip">多机位 + 宫格批量</span><span class="chip">机位实时预览</span><span class="chip">导演 / 机位视角</span><span class="chip">截图即参考图 → 下游</span>
   </div>
 </section>
 
@@ -414,6 +474,9 @@ footer .tech span{font-size:12px;color:var(--t2);background:var(--card);border:1
     <div class="card"><div class="ic ic-blue">🚀</div><h4>画布效率操作</h4><p>全局运行状态条点击直达失败节点；Ctrl+C/V 复制整条镜头链（含内部连线）；一键整理自动排版 + 网格吸附；吸附窗内容变更自动弹出。</p></div>
     <div class="card"><div class="ic ic-pink">🎲</div><h4>角色一致性种子</h4><p>同一随机种子一键钉到该角色全部镜头——相同种子 + 相同参考图，跨镜头一致性最大化；随角色入库跨项目复用。</p></div>
     <div class="card"><div class="ic ic-cyan">🔍</div><h4>智能体透明规划</h4><p>自动插入的静帧节点明示标注、可在规划设置关闭；运行自愈逐轮提示进度、同因熔断防空转；超出项目预算自动暂停。</p></div>
+    <div class="card" style="border-color:var(--bd2)"><div class="ic ic-pink">🎬</div><h4>★ 3D 导演台（重点）</h4><p>全屏 3D 空间精准摆角色与机位、调真人姿势/景别、套 360° 全景，「截图即参考图」喂下游生成——构图/站位/运镜从抽卡变可控。<a href="#director" style="color:var(--cyan)">查看详情 ↗</a></p></div>
+    <div class="card"><div class="ic ic-green">🧠</div><h4>自建大语言模型 · 剧本智能体</h4><p>管理后台可接入 OpenAI 兼容自建模型（默认 Qwen3.6-35B），与云端同台混用；剧本创作与智能体可指定跑自有 LLM，最敏感创意文本不出域。</p></div>
+    <div class="card"><div class="ic ic-violet">🧩</div><h4>ComfyUI 模板 AI 能力分析</h4><p>团队已调试工作流存入全局模板库后，自动结构化「体检」出能力标签 + 一句话功能 + 时长，供智能体规划时精准选用、时长感知拆镜。</p></div>
   </div>
 </section>
 

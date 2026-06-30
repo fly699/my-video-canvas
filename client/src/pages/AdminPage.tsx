@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, type LucideIcon } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, type LucideIcon } from "lucide-react";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 import { ComfyOpsPanel } from "@/components/admin/ComfyOpsPanel";
 import { AuroraBackground } from "@/components/AuroraBackground";
@@ -16,7 +16,7 @@ import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOr
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "tunnel" | "auth";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "tunnel" | "auth" | "report" | "intro";
 
 // 标签页定义：[key, 中文标签, 图标]
 const TAB_DEFS: [Tab, string, LucideIcon][] = [
@@ -35,6 +35,8 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["assets", "素材库(全用户)", ImageIcon],
   ["downloads", "下载审批", DownloadCloud],
   ["system", "系统更新", RotateCw],
+  ["report", "工作成果报告", FileBarChart2],
+  ["intro", "项目功能汇报", FileText],
 ];
 
 // 管理员级别 → 可执行的「写操作」最低级别（与服务端 levelProcedure 一致）：
@@ -245,6 +247,8 @@ export default function AdminPage() {
           {activeTab === "downloads" && <DownloadsAdminPanel />}
           {activeTab === "system" && <SystemUpdatePanel />}
           {activeTab === "tunnel" && <LevelGate need={3}><TunnelPanel /></LevelGate>}
+          {activeTab === "report" && <ReportFrame src="/work-report.html" title="工作成果量化评估报告" desc="基于 Git 全量历史与会话转录的多维度量化评估（提交/工时/代码量/Token/工作量系数 + 立项初衷与对比表）" />}
+          {activeTab === "intro" && <ReportFrame src="/project-report.html" title="项目功能汇报" desc="平台全功能图文汇报（含「界面实录」真实截图：系统架构 / AI 模型矩阵 / ComfyUI 算力 / 3D 导演台 / 安全防护 / 私有定制）" />}
         </div>
       </div>
     </div>
@@ -1446,6 +1450,26 @@ function btnSecondary(disabled: boolean): React.CSSProperties {
     color: "oklch(0.78 0.18 285)",
     cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1,
   };
+}
+
+// 内嵌报告页：把自包含的静态汇报 HTML 以 iframe 形式嵌入后台「单独页面」。
+function ReportFrame({ src, title, desc }: { src: string; title: string; desc: string }) {
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 17, fontWeight: 800 }}>{title}</h2>
+          <p style={{ fontSize: 12.5, color: "rgba(255,255,255,0.5)", marginTop: 4, maxWidth: 760, lineHeight: 1.6 }}>{desc}</p>
+        </div>
+        <a href={src} target="_blank" rel="noopener noreferrer"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "inherit" }}>
+          <ExternalLink style={{ width: 14, height: 14 }} /> 在新标签打开
+        </a>
+      </div>
+      <iframe src={src} title={title}
+        style={{ width: "100%", height: "calc(100vh - 232px)", minHeight: 560, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, background: "#fff", display: "block" }} />
+    </div>
+  );
 }
 
 function WhitelistPanel() {

@@ -1,0 +1,296 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 视频画布 · 立项初衷与工作成果量化评估报告</title><style>
+:root{--bg:#f4f5f8;--panel:#ffffff;--panel2:#fbfbfd;--bd:#e4e6ec;--bd2:#eceef3;--t1:#161922;--t2:#41475a;--t3:#717892;--t4:#9aa0b4;
+--ac:#7c3aed;--g:#16a34a;--b:#2563eb;--cy:#0891b2;--am:#b45309;--pk:#c026d3;--r:#dc2626;--ts:#0d9488;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--t1);font-family:-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 80px}
+.hero{background:linear-gradient(180deg,#ffffff,#f4f5f8);border-bottom:1px solid var(--bd);padding:54px 22px 30px;text-align:center}
+.hero .tag{display:inline-block;margin-bottom:14px;padding:6px 16px;border:1px solid #d9ccf5;border-radius:99px;color:#6d28d9;font-size:12.5px;font-weight:700;background:#f3eefe}
+.hero h1{font-size:36px;font-weight:850;letter-spacing:-1px;color:#13151c}
+.hero .pos{font-size:15px;font-weight:700;color:#6d28d9;margin-top:12px}
+.hero .sub{color:var(--t3);margin-top:8px;font-size:13.5px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:13px;margin:30px 0}
+.kpi{background:var(--panel);border:1px solid var(--bd);border-radius:14px;padding:16px 15px;box-shadow:0 1px 3px rgba(20,22,40,.04);position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--kc,var(--ac))}
+.kpi .v{font-size:28px;font-weight:850;letter-spacing:-.5px;color:var(--kc,var(--ac));font-variant-numeric:tabular-nums}
+.kpi .l{color:var(--t2);font-size:12px;margin-top:3px;font-weight:600}
+.kpi .s{color:var(--t4);font-size:10.5px;margin-top:5px}
+section{margin-top:48px}
+h2{font-size:22px;font-weight:800;letter-spacing:-.4px;display:flex;align-items:center;gap:10px;margin-bottom:5px;color:#13151c}
+h2 .n{font-size:13px;color:#fff;background:var(--ac);min-width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;font-weight:800;padding:0 6px}
+h2.big .n{background:linear-gradient(135deg,#7c3aed,#2563eb)}
+.lead{color:var(--t2);font-size:13.5px;margin-bottom:18px;max-width:920px}
+.card{background:var(--panel);border:1px solid var(--bd);border-radius:14px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(20,22,40,.04)}
+.card h3{font-size:15px;font-weight:750;margin-bottom:13px;color:#1a1d28}
+.muted{color:var(--t2);font-size:13px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}
+@media(max-width:860px){.grid2,.grid3{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--bd2)}
+th{color:var(--t3);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:var(--panel2)}
+td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:11px;font-size:12px;color:var(--t2)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.note{font-size:12px;color:var(--t3);background:#f7f8fb;border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-top:14px;line-height:1.7}
+.chip{display:inline-block;font-size:11.5px;color:var(--t2);border:1px solid var(--bd);border-radius:7px;padding:3px 9px;margin:3px 4px 0 0;background:var(--panel2)}
+/* 立项初衷 维度卡 */
+.dim{background:var(--panel);border:1px solid var(--bd);border-left:4px solid var(--dc);border-radius:12px;padding:16px 18px;margin-bottom:13px;box-shadow:0 1px 3px rgba(20,22,40,.04)}
+.dim-h{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.dim-ic{font-size:20px} .dim-no{font-size:12px;font-weight:800;color:#fff;background:var(--dc);border-radius:6px;padding:2px 7px}
+.dim-t{font-size:16px;font-weight:800;color:#15171f}
+.dim-why{font-size:13.5px;color:var(--t2);margin-bottom:9px} .dim-why b{color:var(--dc)}
+.dim-impl>b{font-size:12px;color:var(--g)}
+.chips{margin-top:5px}
+.dim .chip{border-color:color-mix(in oklab,var(--dc) 35%,var(--bd));color:#3a3f52;background:color-mix(in oklab,var(--dc) 7%,#fff)}
+/* 防护层 / 模块 */
+.dlgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}@media(max-width:860px){.dlgrid{grid-template-columns:1fr}}
+.dl{border:1px solid var(--bd);border-left:4px solid var(--dc);border-radius:10px;padding:11px 13px;background:var(--panel2)}
+.dl-t{font-weight:750;font-size:13.5px;color:#1a1d28} .dl-d{font-size:12px;color:var(--t3);margin-top:2px}
+.mod{border:1px solid var(--bd);border-radius:11px;padding:14px 15px;margin-bottom:11px;background:var(--panel)}
+.mod-h{display:flex;align-items:center;gap:9px} .mod-ic{font-size:18px} .mod-t{font-weight:800;font-size:14.5px;color:#17191f}
+.mod-n{margin-left:auto;font-size:10.5px;font-weight:700;color:#6d28d9;background:#f1ecfd;border-radius:99px;padding:2px 9px}
+.mod-d{font-size:12.5px;color:var(--t2);margin-top:6px}
+.feat-l{list-style:none} .feat-l li{padding:11px 0;border-bottom:1px solid var(--bd2);display:flex;gap:12px;align-items:flex-start} .feat-l li:last-child{border:0}
+.feat-l .ico{flex-shrink:0;width:32px;height:32px;border-radius:9px;background:#f1ecfd;display:flex;align-items:center;justify-content:center;font-size:17px}
+.feat-l .ft{font-weight:750;font-size:14px;color:#1a1d28}
+.tl{position:relative;padding-left:24px} .tl::before{content:'';position:absolute;left:6px;top:4px;bottom:4px;width:2px;background:linear-gradient(180deg,#7c3aed,#2563eb)}
+.tl .it{position:relative;margin-bottom:17px} .tl .it::before{content:'';position:absolute;left:-22px;top:5px;width:11px;height:11px;border-radius:50%;background:#7c3aed;box-shadow:0 0 0 3px #ece6fb}
+.tl .d{font-size:12px;color:#6d28d9;font-weight:800} .tl .h{font-weight:750;font-size:14.5px;margin:1px 0 2px;color:#15171f} .tl .p{color:var(--t2);font-size:13px}
+.coef{font-size:42px;font-weight:850;color:var(--g);letter-spacing:-1px}
+.cmp{font-size:12.8px} .cmp th{padding:11px 13px;font-size:11.5px;background:#f3f4f8;color:#41475a}
+.cmp td{padding:11px 13px;border-bottom:1px solid var(--bd2);vertical-align:top}
+.cmp tr:last-child td{border-bottom:0}
+.cmp .cmp-d{font-weight:750;color:#1a1d28} .cmp .cmp-d span{margin-right:6px}
+.cmp .cmp-o{background:#fdf3f3;color:#7a2e2e} .cmp .cmp-o .x{color:#dc2626;font-weight:800;margin-right:6px}
+.cmp .cmp-n{background:#f0faf4;color:#1c4a32} .cmp .cmp-n .v{color:#16a34a;font-weight:800;margin-right:6px}
+.rl{list-style:none} .rl li{padding:9px 0;border-bottom:1px solid var(--bd2);font-size:13px;color:var(--t2)} .rl li:last-child{border:0} .rl b{color:#1a1d28}
+.foot{margin-top:54px;padding-top:22px;border-top:1px solid var(--bd);color:var(--t4);font-size:12px;text-align:center}
+svg text{font-family:inherit}
+</style></head><body>
+<div class="hero">
+<div class="tag">🔒 企业级 · 私有化部署 · 全栈自主可控 · 数据不出域</div>
+<h1>AI 视频画布 — 立项初衷与工作成果量化评估报告</h1>
+<div class="pos">为专业影视/营销创作团队打造的「数据自主 · 算力自有 · 全链路可控」私有化创作中枢</div>
+<div class="sub">项目周期 2026-05-19 → 2026-06-29（42 自然日 / 34 活跃日）· 时间均为北京时间(UTC+8) · 基于 Git 全量历史 + 会话转录 + 代码库实测</div>
+</div>
+<div class="wrap">
+<div class="kpis">
+<div class="kpi" style="--kc:var(--ac)"><div class="v">1045</div><div class="l">总提交（全分支去重）</div><div class="s">含 222 个 PR</div></div>
+<div class="kpi" style="--kc:var(--g)"><div class="v">287.5k</div><div class="l">当前代码库总行数</div><div class="s">728 个 tracked 文件全计</div></div>
+<div class="kpi" style="--kc:var(--b)"><div class="v">672.7k</div><div class="l">累计新增行(含迭代)</div><div class="s">删除 41.0k</div></div>
+<div class="kpi" style="--kc:var(--am)"><div class="v">443</div><div class="l">新功能 feat 提交</div><div class="s">修复 fix 451</div></div>
+<div class="kpi" style="--kc:var(--cy)"><div class="v">1.24B</div><div class="l">累计消耗 Token</div><div class="s">8252 个 AI 回合</div></div>
+<div class="kpi" style="--kc:var(--pk)"><div class="v">200</div><div class="l">用户对话轮次</div><div class="s">143 次子代理</div></div>
+<div class="kpi" style="--kc:var(--r)"><div class="v">≈186×</div><div class="l">常规工程工作量系数</div><div class="s">折合 ≈21 人年</div></div>
+<div class="kpi" style="--kc:var(--ts)"><div class="v">1100</div><div class="l">自动化测试项</div><div class="s">134 文件全绿</div></div>
+</div>
+
+<section><h2 class="big"><span class="n">★</span>立项初衷 · 为什么要建这个项目</h2>
+<div class="lead">不是又一个通用 AI 工具，而是面向影视工作室、以<b>「生产资料私有化 + 全链路可控」</b>为根本诉求的定制创作中枢。下面从十个维度，逐条说明<b>设计初衷</b>与对应的<b>具体实现</b>（均已落地于代码）。</div>
+<div class="dim" style="--dc:#7c3aed"><div class="dim-h"><span class="dim-ic">🏠</span><span class="dim-no">01</span><span class="dim-t">数据主权 · 数据不出域</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 影视与商业素材是工作室的核心资产，绝不能存在第三方平台、绝不能随生成外发——必须满足版权归属、商业保密与合规要求。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">自托管 MySQL + MinIO/S3</span><span class="chip">产物永久硬锁自有存储 assertMinioOnlyWrite</span><span class="chip">第三方产出(14天临时URL)自动转存自有</span><span class="chip">多存储后端 MinIO/S3/Forge 可选</span><span class="chip">剧本/创意文本可跑自建 LLM(Qwen)·不出域</span><span class="chip">同源去重 + 不可达回退</span></div></div></div><div class="dim" style="--dc:#dc2626"><div class="dim-h"><span class="dim-ic">🛡️</span><span class="dim-no">02</span><span class="dim-t">产出物防泄露 · 八重纵深防护</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 珍贵创作产出与商业数据，从存储、传输、访问到分享层层设防，让越权与盗链无门可入、敏感操作全程可追责。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">下载鉴权网关(登录态+所有权/项目角色校验)</span><span class="chip">S3 预签名短时链接(防长期暴露)</span><span class="chip">媒体代理隔离(隐藏真实存储地址防盗链)</span><span class="chip">强制服务端中继</span><span class="chip">限时分享 + 防暴力破解 + 仅所有者可公开</span><span class="chip">所有者/编辑者/只读者 分级权限</span></div></div></div><div class="dim" style="--dc:#0891b2"><div class="dim-h"><span class="dim-ic">💧</span><span class="dim-no">03</span><span class="dim-t">身份水印溯源 · 泄露可追责</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 即使内容被下载或截屏录屏，也要能溯源到具体的人、形成威慑——这是「人」的防线，补足技术防线之外的最后一环。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">下载身份水印(邮箱/ID+时间戳烧录进图/视频)</span><span class="chip">页面级身份水印(全站淡叠加，防截图录屏)</span><span class="chip">开发者工具阻断(防源码/接口/资源被扒)</span><span class="chip">敏感操作(下载/删除/分享/密钥)全留痕</span></div></div></div><div class="dim" style="--dc:#ea580c"><div class="dim-h"><span class="dim-ic">⚡</span><span class="dim-no">04</span><span class="dim-t">算力自有 · 开闭互补（核心壁垒）</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 不被云算力账号绑架，让算力与数据全程留在自有环境；私有 GPU 的无限定制 + 闭源旗舰的开箱即用，形成难以复制的能力壁垒。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">原生深度对接自建 ComfyUI / 私有 GPU 集群</span><span class="chip">多服务器负载均衡 · 任务轮询打散</span><span class="chip">显存智能释放 freeVramAfterRun</span><span class="chip">本地×官方云 弹性互补 · 成本动态平衡</span><span class="chip">接口监测与连接健康自动早退容错</span><span class="chip">管理员多服务器并发压力测试</span></div></div></div><div class="dim" style="--dc:#16a34a"><div class="dim-h"><span class="dim-ic">✨</span><span class="dim-no">05</span><span class="dim-t">模型统一聚合 · 开闭同台</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 把 6 大服务商、150+ 模型汇于一处，统一接口、统一密钥、统一计价——创作者无需关心后端差异，且杜绝参数错误、价格透明。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">kie.ai / Poyo / Manus Forge / Higgsfield / ComfyUI 聚合</span><span class="chip">图像 54 · 视频 75 · 对话 26 + 音频多类</span><span class="chip">自建 OpenAI 兼容 LLM(默认 Qwen3.6-35B)接入·与云端同台混用</span><span class="chip">逐字段对照官方文档接入防参数错误</span><span class="chip">价格按官方计价透明标注</span><span class="chip">管理后台按节点分组模型使能开关</span></div></div></div><div class="dim" style="--dc:#9333ea"><div class="dim-h"><span class="dim-ic">🔑</span><span class="dim-no">06</span><span class="dim-t">密钥 · 额度 · 成本治理</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 多租户场景下，必须做到额度隔离、成本可控可对账、防越权白嫖——谁用谁的额度、花了多少，都要算得明白。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">三级密钥优先级：临时(用户)>分配(管理员)>公用(平台)</span><span class="chip">密钥 AES-256-GCM 加密落库 · 永不明文</span><span class="chip">公用 key 白名单门控防越权白嫖</span><span class="chip">多租户额度隔离 · 互不挤占</span><span class="chip">实时点数预估 + 预算管控面板(超限自动暂停)</span><span class="chip">kie/Poyo 余额实时查询 + 消费趋势快照</span></div></div></div><div class="dim" style="--dc:#2563eb"><div class="dim-h"><span class="dim-ic">👁️</span><span class="dim-no">07</span><span class="dim-t">完备权限 · 全链路审计</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 工作室需要清楚地控制「谁能用、用哪些、做了什么」，并让每一步敏感操作可回溯、可追责、可对账。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">OAuth + 邮箱密码(scrypt 加盐) 双认证</span><span class="chip">管理员 L1~L4 四级权限分权</span><span class="chip">协作 所有者/编辑者/只读者 三级</span><span class="chip">28 类操作全链路审计日志</span><span class="chip">预估点数随成败写入审计可对账</span><span class="chip">操作/ComfyUI 日志一键导出 CSV</span></div></div></div><div class="dim" style="--dc:#0d9488"><div class="dim-h"><span class="dim-ic">🖧</span><span class="dim-no">08</span><span class="dim-t">局域网 / 内网协作 · 端到端加密</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 工作室常处于内网、离线或物理隔离环境，团队需要在不依赖公网的局域网内也能实时共创与沟通；且沟通内容隐私，服务端不可读。这正是选择「自托管 + 内网优先」而非公有 SaaS 的根本原因。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">局域网/内网聊天与房间(离线环境可协同)</span><span class="chip">实时多人协作 · 节点秒级同步 · 协作者光标可见</span><span class="chip">私聊 DM + 群聊房间(项目级群组)</span><span class="chip">端到端加密(公钥发布+客户端加密，服务端不可读)</span><span class="chip">公网隧道 cloudflared 按需暴露 + 隧道级白名单门控</span><span class="chip">Socket.IO 同时挂主/隧道回环服务器保实时不丢</span></div></div></div><div class="dim" style="--dc:#c026d3"><div class="dim-h"><span class="dim-ic">🗄️</span><span class="dim-no">09</span><span class="dim-t">素材自主管理 · 永不丢失</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 团队创作资产要统一沉淀、跨项目复用、可追溯来源、误删可恢复——素材是反复使用的生产资料，不能散落、不能丢。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">跨项目个人/团队素材仓库</span><span class="chip">生成资产自动入库(来源/模型/项目可追溯)</span><span class="chip">批量上传自动识别图/音/视</span><span class="chip">软删除可恢复 + 管理员硬删除</span><span class="chip">素材回填(扫描画布把漏库产物补录，幂等)</span><span class="chip">项目自动封面 + 仓库素材统计看板</span></div></div></div><div class="dim" style="--dc:#b45309"><div class="dim-h"><span class="dim-ic">🏢</span><span class="dim-no">10</span><span class="dim-t">私有定制 · 平滑运维</span></div>
+<div class="dim-why"><b>设计初衷 ·</b> 这不是通用 SaaS，而是为工作室量身定制、可按行业裁剪、品牌自主、可平滑升级的私有化创作底座。</div><div class="dim-impl"><b>已落地实现 ·</b><div class="chips"><span class="chip">品牌 LOGO/图标/加载页/品牌位全可替换</span><span class="chip">功能模块按业务裁剪</span><span class="chip">节点化架构按行业(影视/电商/营销/教育)扩展</span><span class="chip">管理后台一键系统更新 + 自动数据库迁移</span><span class="chip">迁移经真实数据库幂等验证</span><span class="chip">Windows / Docker / 裸机 一键部署</span></div></div></div>
+<div class="card"><h3>产出物防泄露 · 八重纵深防护体系</h3>
+<div class="muted" style="margin-bottom:12px">从存储、传输、访问到分享层层设防——让珍贵创作产出与商业数据，可控、可信、可追溯，绝不流失。</div>
+<div class="dlgrid"><div class="dl" style="--dc:#7c3aed"><div class="dl-t">🏠 存储层</div><div class="dl-d">自有 MinIO/S3 · 数据不出域</div></div><div class="dl" style="--dc:#2563eb"><div class="dl-t">🚪 访问层</div><div class="dl-d">下载鉴权网关 + 所有权校验</div></div><div class="dl" style="--dc:#0891b2"><div class="dl-t">⏳ 传输层</div><div class="dl-d">预签名短链 + 媒体代理 + 强制中继</div></div><div class="dl" style="--dc:#0d9488"><div class="dl-t">💧 水印层</div><div class="dl-d">下载身份水印 + 页面水印 · 泄露可溯源</div></div><div class="dl" style="--dc:#16a34a"><div class="dl-t">🚫 防扒层</div><div class="dl-d">开发者工具阻断 · 防源码/接口窃取</div></div><div class="dl" style="--dc:#b45309"><div class="dl-t">🔗 分享层</div><div class="dl-d">限时链接 + 防暴力 + 仅所有者可公开</div></div><div class="dl" style="--dc:#ea580c"><div class="dl-t">👁️ 权限层</div><div class="dl-d">所有者/编辑者/只读者 分级</div></div><div class="dl" style="--dc:#dc2626"><div class="dl-t">♻️ 托管层</div><div class="dl-d">第三方产出自动转存 · 杜绝外链留存</div></div><div class="dl" style="--dc:#9333ea"><div class="dl-t">📋 审计层</div><div class="dl-d">28 类操作全程留痕可追责</div></div><div class="dl" style="--dc:#c026d3"><div class="dl-t">🔒 密钥层</div><div class="dl-d">AES-256-GCM 加密 + 白名单门控</div></div></div></div>
+<div class="note">🌳 <b>一句话</b>：版权归己 · 内容不外发可溯源 · 算力自有开闭互补 · 模型统一聚合 · 额度密钥精细治理 · 权限审计完备 · 内网/局域网可离线协同且端到端加密 · 私有定制可平滑运维——<b>每一条诉求都对应真实代码实现，而非愿景</b>。</div>
+</section>
+
+<section><h2 class="big"><span class="n">⇄</span>改造前 vs 改造后 · 全方位对比</h2>
+<div class="lead">原工作流：<b style="color:#dc2626">多个闭源平台混用 + 手动调 ComfyUI</b>，账号分散、产出物在平台、额度无法统一、无水印无审计、内容易外泄、工作流复杂、无并行调度、存储无留痕……以下逐项对照本项目如何<b style="color:#16a34a">系统性解决</b>，并额外增补主流聚合能力与 LibTV 式 3D 导演台。</div>
+<div class="card" style="padding:0;overflow:hidden"><table class="cmp"><tr><th style="width:14%">维度</th><th style="width:40%">改造前 · 闭源平台混用 + 手搭 ComfyUI</th><th style="width:46%">本项目 · 私有化创作中枢</th></tr><tr><td class="cmp-d"><span>🧩</span>平台与账号</td><td class="cmp-o"><span class="x">✗</span>多个闭源平台混用 + 手动调 ComfyUI 工作流；多个平台账号分散，无法统一管理</td><td class="cmp-n"><span class="v">✓</span>一块画布聚合 6 服务商 150+ 模型 + 自建 ComfyUI；统一入口、统一密钥、统一切换</td></tr><tr><td class="cmp-d"><span>🏠</span>产出物归属·版权</td><td class="cmp-o"><span class="x">✗</span>产出物留在第三方平台，安全与版权无保障、随时可能被平台留存或下架</td><td class="cmp-n"><span class="v">✓</span>数据不出域：产物永久硬锁自有 MinIO/S3，第三方临时URL自动转存，版权与资产归己</td></tr><tr><td class="cmp-d"><span>🧠</span>剧本/创意文本主权</td><td class="cmp-o"><span class="x">✗</span>剧本、人设、节拍表等最敏感创意文本全走公有云 LLM，逐字外发第三方、留存不可控</td><td class="cmp-n"><span class="v">✓</span>可指定剧本创作与智能体跑自建 LLM(默认 Qwen3.6-35B)，文本全程不出域；专业管线 Logline→节拍表→剧本→分镜 + 六维审查 + 分集大纲</td></tr><tr><td class="cmp-d"><span>🚪</span>下载控制</td><td class="cmp-o"><span class="x">✗</span>无法控制谁能下载、无授权机制，裸链随意转发</td><td class="cmp-n"><span class="v">✓</span>下载鉴权网关 + 预签名短时链 + 强制服务端中继 + 媒体代理隐藏地址 + 下载额度授权</td></tr><tr><td class="cmp-d"><span>🔑</span>额度·成本分配</td><td class="cmp-o"><span class="x">✗</span>各平台额度分散，无法统一分配、无法按人隔离、易越权白嫖</td><td class="cmp-n"><span class="v">✓</span>三级密钥(临时>分配>公用) + 多租户额度隔离 + 公用key白名单门控 + 预算管控面板 + 实时点数预估</td></tr><tr><td class="cmp-d"><span>💧</span>防外发·数字水印</td><td class="cmp-o"><span class="x">✗</span>无授权、无数字水印，内容外泄无从追责</td><td class="cmp-n"><span class="v">✓</span>下载身份水印(邮箱/ID+时间戳烧录) + 页面级身份水印 + 开发者工具阻断防扒</td></tr><tr><td class="cmp-d"><span>📋</span>审计·追溯</td><td class="cmp-o"><span class="x">✗</span>没有审计日志，谁做了什么完全无法追溯</td><td class="cmp-n"><span class="v">✓</span>28 类操作全链路审计 + 敏感操作(下载/删除/分享/密钥)留痕 + 一键导出 CSV 对账</td></tr><tr><td class="cmp-d"><span>⚖️</span>员工生成管控·法律风险</td><td class="cmp-o"><span class="x">✗</span>无法控制员工用哪些模型生成什么，存在合规与法律风险</td><td class="cmp-n"><span class="v">✓</span>白名单门控 + 模型使能开关 + 权限分级 + 预算闸门(超限自动暂停)，谁用什么可控可追责</td></tr><tr><td class="cmp-d"><span>🖧</span>内网防泄露(通讯软件)</td><td class="cmp-o"><span class="x">✗</span>内网登微信等通讯软件传文件，内容无法防流出、脱离掌控</td><td class="cmp-n"><span class="v">✓</span>内置局域网/内网即时通讯 + 端到端加密(服务端不可读) + 数据不出域，团队沟通留在自有环境</td></tr><tr><td class="cmp-d"><span>⚙️</span>ComfyUI 工作流</td><td class="cmp-o"><span class="x">✗</span>工作流未模块化、使用复杂，每次手动搭、易出错</td><td class="cmp-n"><span class="v">✓</span>工作流模板化入全局库 + 参数绑定暴露 + 导入向导(真实节点预检) + AI 能力分析供智能体选用</td></tr><tr><td class="cmp-d"><span>⚖️</span>服务器并行调度</td><td class="cmp-o"><span class="x">✗</span>单机手动跑，无法做多服务器并行调度/负载均衡</td><td class="cmp-n"><span class="v">✓</span>多服务器负载均衡 + 任务轮询打散 + 显存智能释放 + 接口健康监测 + 管理员并发压测</td></tr><tr><td class="cmp-d"><span>🗄️</span>数据存储·防非法删除</td><td class="cmp-o"><span class="x">✗</span>存储无留痕、无法限制非法删除，误删/恶意删无从恢复与追责</td><td class="cmp-n"><span class="v">✓</span>生成自动入库可追溯 + 软删除可恢复 + 仅管理员硬删除 + 删除写入审计留痕</td></tr><tr><td class="cmp-d"><span>✨</span>创作能力广度</td><td class="cmp-o"><span class="x">✗</span>仅零散使用各平台单点功能，无编排、无成片闭环</td><td class="cmp-n"><span class="v">✓</span>主流聚合 + 智能体对话建图 + 创作向导专业管线 + 内置剪辑器一站成片</td></tr><tr><td class="cmp-d"><span>🎥</span>3D 精准构图</td><td class="cmp-o"><span class="x">✗</span>无——AI 构图/站位全靠抽卡，不可控</td><td class="cmp-n"><span class="v">✓</span>★ LibTV 式 3D 导演台：3D 精准摆位运镜，截图即参考图喂下游，构图可控</td></tr></table></div>
+<div class="note">✅ 上表 14 个维度的<b style="color:#16a34a">「本项目」列均为已落地功能</b>（详见前文「立项初衷」各维度证据与后文「13 大模块」「ComfyUI 专章」）；<b style="color:#dc2626">「改造前」列</b>为典型闭源平台混用工作流的固有痛点。</div>
+</section>
+
+<section><h2><span class="n">1</span>项目阶段时间线</h2>
+<div class="card"><div class="tl">
+<div class="it"><div class="d">2026-05-19 ~ 05-24 · 奠基期</div><div class="h">v1.0 核心交付 + UI 全面重做</div><div class="p">节点式画布骨架；对标 Runway/Linear 的界面；React 19 兼容化、TypeScript 0 error、首批测试。本周 58 个 feat。</div></div>
+<div class="it"><div class="d">2026-05-25 ~ 05-31 · 模型与体系扩张</div><div class="h">多服务商 150+ 模型 + 计价体系 + 角色一致性</div><div class="p">kie/Poyo/Higgsfield 全模型族、三级密钥、智能体配方。本周 111 个 feat（峰值）。</div></div>
+<div class="it"><div class="d">2026-06-09 ~ 06-15 · 自建算力与剪辑</div><div class="h">ComfyUI 自建服务器深度集成 + 内置剪辑器</div><div class="p">出图/出视频/工作流节点、负载均衡、显存释放、ffmpeg 导出、九宫格分镜。</div></div>
+<div class="it"><div class="d">2026-06-16 ~ 06-22 · 安全 / 协作 / 运维</div><div class="h">八重防护 + 水印溯源 + 端到端加密协作 + 隧道门控</div><div class="p">下载鉴权、身份水印、内网/局域网即时通讯、白名单、13+ 轮安全审查。本周 150 个 feat（峰值）。</div></div>
+<div class="it"><div class="d">2026-06-23 ~ 06-29 · 3D 导演台</div><div class="h">3D 精准构图导演台（对标 LibTV）</div><div class="p">全屏 3D 编辑器、真人骨骼姿势、五种景别、360° 全景天空盒、多机位、机位实时预览、截图即参考图。</div></div>
+</div></div></section>
+
+<section><h2><span class="n">2</span>提交活动 · 日 / 周 / 月（北京时间）</h2>
+<div class="lead">每日提交按「<span style="color:#7c3aed;font-weight:700">工作时段内</span> / <span style="color:#ea580c;font-weight:700">工作时段外</span>」着色——大量投入发生在夜间、周末与节假日。</div>
+<div class="card"><h3>每日提交数</h3><div id="c_daily"></div>
+<div class="legend"><span><i style="background:#7c3aed"></i>工作时段内(工作日 08:30–17:00)</span><span><i style="background:#ea580c"></i>工作时段外(夜间/清晨/周末/节假日)</span></div></div>
+<div class="grid2">
+<div class="card"><h3>每周提交 & 新功能(feat)</h3><div id="c_week"></div><div class="legend"><span><i style="background:#2563eb"></i>提交</span><span><i style="background:#16a34a"></i>feat</span></div></div>
+<div class="card"><h3>月度对比</h3><div id="c_month"></div><div class="legend"><span><i style="background:#7c3aed"></i>提交</span><span><i style="background:#16a34a"></i>feat</span><span><i style="background:#0891b2"></i>PR</span></div></div></div></section>
+
+<section><h2><span class="n">3</span>工时分布 · 投入强度（北京时间）</h2>
+<div class="grid2">
+<div class="card"><h3>24 小时提交分布（红线=8:30 / 17:00 工作时段边界）</h3><div id="c_hour"></div></div>
+<div class="card"><h3>星期分布（<span style="color:#ea580c">周六/周日为非工作日</span>）</h3><div id="c_wd"></div></div></div>
+<div class="grid2">
+<div class="card"><h3>工作时段内 vs 时段外</h3><div id="c_offpie" style="display:flex;justify-content:center"></div>
+<div class="legend" style="justify-content:center"><span><i style="background:#7c3aed"></i>时段内 376</span><span><i style="background:#ea580c"></i>时段外 669</span></div></div>
+<div class="card"><h3>「工作时段外」提交细分</h3>
+<table>
+<tr><td>🌙 深夜(22:00–次日5:00前)</td><td class="num" style="color:#7c3aed">138</td></tr>
+<tr><td>🌆 晚间(17:00–22:00)</td><td class="num" style="color:#9333ea">160</td></tr>
+<tr><td>🌅 清晨(5:00–8:30)</td><td class="num" style="color:#0891b2">22</td></tr>
+<tr><td>🛌 周末(周六/周日)</td><td class="num" style="color:#ea580c">229</td></tr>
+<tr><td>🎏 节假日(端午)</td><td class="num" style="color:#dc2626">120</td></tr></table></div></div>
+<div class="note">⏱ 全部 1045 个提交中，<b style="color:#dc2626">669（64%）发生在常规工作时段之外</b>（北京时间口径）：节假日 120、周末 229、深夜 138、晚间 160。投入强度远超常规 9-to-5。</div></section>
+
+<section><h2><span class="n">4</span>代码量 · 模块分布（ComfyUI 高亮）</h2>
+<div class="card"><h3>累计新增行数（净增长）</h3><div id="c_cum"></div></div>
+<div class="grid2">
+<div class="card"><h3>模块改动量（新增行）· <span style="color:#7c3aed">ComfyUI 高亮</span></h3><div id="c_area"></div></div>
+<div class="card"><h3>文件类型行数构成</h3><div id="c_ftype"></div></div></div>
+<div class="note">📦 当前代码库 <b style="color:#16a34a">287.5k 行</b>（728 文件，不漏算任一行）：纯代码 ≈ <span style="color:#2563eb;font-weight:700">141.3k</span>、文档 md <span style="color:#9333ea;font-weight:700">84.4k</span>、数据/配置 <span style="color:#b45309;font-weight:700">50.4k</span>、3D 模型 glb 9565。</div></section>
+
+<section><h2><span class="n">5</span>功能产出 · 按时间统计</h2>
+<div class="lead">新功能(feat) 共 <b style="color:#16a34a">443</b> 个、修复(fix) <b style="color:#2563eb">451</b> 个。</div>
+<div class="grid2">
+<div class="card"><h3>提交类型构成</h3><div id="c_type"></div></div>
+<div class="card"><h3>新功能(feat) 周度产出</h3><div id="c_featweek"></div></div></div></section>
+
+<section><h2><span class="n">6</span>AI 引擎 · Token / 对话 / 额度消耗</h2>
+<div class="lead">驱动本项目的 Claude Code 智能体引擎消耗：<b style="color:#0891b2">累计 1.24B token</b>，缓存读取占绝大头（长程会话上下文复用）。</div>
+<div class="grid3">
+<div class="kpi" style="--kc:var(--cy)"><div class="v">2.34M</div><div class="l">输出 Token(生成)</div></div>
+<div class="kpi" style="--kc:var(--b)"><div class="v">2.82M</div><div class="l">输入 Token(新鲜)</div></div>
+<div class="kpi" style="--kc:var(--ac)"><div class="v">51.09M</div><div class="l">缓存写入 Token</div></div>
+<div class="kpi" style="--kc:var(--g)"><div class="v">1.19B</div><div class="l">缓存读取 Token</div></div>
+<div class="kpi" style="--kc:var(--am)"><div class="v">8252</div><div class="l">AI 回合数</div></div>
+<div class="kpi" style="--kc:var(--pk)"><div class="v">$2,956</div><div class="l">估算费用(USD)*</div></div></div>
+<div class="grid2">
+<div class="card"><h3>每日 Token 消耗</h3><div id="c_tokday"></div></div>
+<div class="card"><h3>Token 构成</h3><div id="c_tokpie" style="display:flex;justify-content:center"></div>
+<div class="legend" style="justify-content:center"><span><i style="background:#16a34a"></i>缓存读</span><span><i style="background:#7c3aed"></i>缓存写</span><span><i style="background:#2563eb"></i>输入</span><span><i style="background:#0891b2"></i>输出</span></div></div></div>
+<div class="card"><h3>每会话/子代理（额度）Token 用量 Top</h3>
+<table><tr><th>会话/代理</th><th>类型</th><th>AI回合</th><th>输出</th><th>输入</th><th>缓存读</th></tr>
+<tr><td>d0d8f637-dd7…</td><td>主会话</td><td class=num style='color:#b45309'>1929</td><td class=num style='color:#0891b2'>2.23M</td><td class=num style='color:#2563eb'>486.8k</td><td class=num style='color:#16a34a'>843.12M</td></tr><tr><td>agent-a7cf79…</td><td>子代理</td><td class=num style='color:#b45309'>99</td><td class=num style='color:#0891b2'>4.3k</td><td class=num style='color:#2563eb'>534</td><td class=num style='color:#16a34a'>5.00M</td></tr><tr><td>agent-a6c8d4…</td><td>子代理</td><td class=num style='color:#b45309'>127</td><td class=num style='color:#0891b2'>3.9k</td><td class=num style='color:#2563eb'>67.8k</td><td class=num style='color:#16a34a'>7.05M</td></tr><tr><td>agent-ada86b…</td><td>子代理</td><td class=num style='color:#b45309'>14</td><td class=num style='color:#0891b2'>3.8k</td><td class=num style='color:#2563eb'>28.9k</td><td class=num style='color:#16a34a'>397.7k</td></tr><tr><td>agent-a81d46…</td><td>子代理</td><td class=num style='color:#b45309'>113</td><td class=num style='color:#0891b2'>3.4k</td><td class=num style='color:#2563eb'>7.4k</td><td class=num style='color:#16a34a'>6.30M</td></tr><tr><td>agent-add84c…</td><td>子代理</td><td class=num style='color:#b45309'>53</td><td class=num style='color:#0891b2'>3.1k</td><td class=num style='color:#2563eb'>57.9k</td><td class=num style='color:#16a34a'>4.23M</td></tr><tr><td>agent-aa729a…</td><td>子代理</td><td class=num style='color:#b45309'>93</td><td class=num style='color:#0891b2'>2.7k</td><td class=num style='color:#2563eb'>3.9k</td><td class=num style='color:#16a34a'>4.26M</td></tr><tr><td>agent-a2df53…</td><td>子代理</td><td class=num style='color:#b45309'>35</td><td class=num style='color:#0891b2'>2.5k</td><td class=num style='color:#2563eb'>13.8k</td><td class=num style='color:#16a34a'>1.13M</td></tr><tr><td>agent-a677f3…</td><td>子代理</td><td class=num style='color:#b45309'>41</td><td class=num style='color:#0891b2'>2.5k</td><td class=num style='color:#2563eb'>11.5k</td><td class=num style='color:#16a34a'>1.97M</td></tr><tr><td>agent-a104a5…</td><td>子代理</td><td class=num style='color:#b45309'>50</td><td class=num style='color:#0891b2'>2.4k</td><td class=num style='color:#2563eb'>10.1k</td><td class=num style='color:#16a34a'>4.13M</td></tr><tr><td>agent-ab70af…</td><td>子代理</td><td class=num style='color:#b45309'>115</td><td class=num style='color:#0891b2'>2.4k</td><td class=num style='color:#2563eb'>18.0k</td><td class=num style='color:#16a34a'>8.82M</td></tr><tr><td>agent-a95424…</td><td>子代理</td><td class=num style='color:#b45309'>87</td><td class=num style='color:#0891b2'>2.3k</td><td class=num style='color:#2563eb'>50.6k</td><td class=num style='color:#16a34a'>4.45M</td></tr>
+</table></div>
+<div class="note">* 费用为基于 Opus 公开标准单价的<i>示意性</i>估算（输入 $15 / 输出 $75 / 缓存写 $18.75 / 缓存读 $1.5 每百万 token）。模型：Opus 4.8 主推理 5352 次 + Haiku 4.5 辅助 2900 次。</div></section>
+
+<section><h2><span class="n">7</span>折合常规软件工程工作量 · 实时系数</h2>
+<div class="card"><div style="display:flex;flex-wrap:wrap;gap:28px;align-items:center">
+<div><div class="coef">≈ 186×</div><div style="color:var(--t3);font-size:13px">常规工程工作量系数（行业典型 30 LoC/人日）</div></div>
+<div style="flex:1;min-width:260px;color:var(--t2);font-size:13.5px">以纯代码净交付 <b style="color:#2563eb">141.3k 行</b>计：按 30 LoC/人日折算需 <b style="color:#16a34a">4709 人日 ≈ 21.4 人年</b>；而实际仅用 <b style="color:#dc2626">42 个自然日</b>完成——相当于把约 <b>21 人年</b>常规工作量压缩进 <b>1.4 个月</b>。</div></div>
+<table style="margin-top:16px"><tr><th>折算方法 / 生产率基准</th><th>需要人日</th><th>≈ 人年</th><th>相对 42 天系数</th></tr>
+<tr><td>LoC · 复杂/严谨工程（15 行/人日）</td><td class=num style='color:#2563eb'>9,418</td><td class=num style='color:#16a34a'>42.8</td><td class=num style='color:#dc2626'>≈ 372×</td></tr><tr><td>LoC · 行业典型（30 行/人日）</td><td class=num style='color:#2563eb'>4,709</td><td class=num style='color:#16a34a'>21.4</td><td class=num style='color:#dc2626'>≈ 186×</td></tr><tr><td>LoC · 高产出（50 行/人日）</td><td class=num style='color:#2563eb'>2,825</td><td class=num style='color:#16a34a'>12.8</td><td class=num style='color:#dc2626'>≈ 112×</td></tr>
+<tr><td>COCOMO 基本(organic)：2.4·KLOC^1.05</td><td class="num" style="color:#2563eb">9,554</td><td class="num" style="color:#16a34a">36.2</td><td class="num" style="color:#dc2626">≈ 314×</td></tr></table>
+<div class="note">📊 LoC 折算采用业界常用「单人有效产出 15–50 行/人日(含设计/调试/测试/评审/沟通全部开销)」；COCOMO 为经典成本模型(organic，KLOC=141，理论工期 25 个月)。为<i>数量级示意</i>——等效常规工作量在 <b>13–36 人年</b>量级，实时系数 <b>111×–314×</b>。</div></section>
+
+<section><h2><span class="n">8</span>功能成果 · 13 大模块全景</h2>
+<div class="lead">参照项目简介页，13 大核心模块、合计百余项细分功能逐一展开（含首页旗舰新功能 <b>3D 导演台</b>）。</div>
+<div class="mod"><div class="mod-h"><span class="mod-ic">🎨</span><span class="mod-t">可视化画布编排</span><span class="mod-n">11 项</span></div><div class="mod-d">27 类节点连接矩阵校验、拉线松手建节点、@提及引用、一键同步模型参数、分组容器、Ctrl+K 搜索定位、节点模板库、撤销重做、导入导出画布</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">🧍</span><span class="mod-t">角色 / 场景库</span><span class="mod-n">8 项</span></div><div class="mod-d">人物&场景双类型、全局库跨项目复用、最多 8 张多角度参考图、音/视频参考驱动数字人、看图识人、角色一致性注入(IPAdapter/LoRA)、一致性种子</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">⚡</span><span class="mod-t">快捷提示词库</span><span class="mod-n">7 项</span></div><div class="mod-d">服务端同步、「/」快捷唤出、10 槽位、分类二级菜单、多分类专业预设、内联增删改、JSON 导入导出</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">🤖</span><span class="mod-t">智能体(Agent)编排</span><span class="mod-n">7 项</span></div><div class="mod-d">对话生成工作流、时长感知拆镜、场景分组规划、角色一致性自动连线、ComfyUI 模板智能匹配、运行自愈、规划透明+预算闸门</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">✂️</span><span class="mod-t">专业剪辑器 / 时间轴</span><span class="mod-n">8 项</span></div><div class="mod-d">多轨时间轴、剪辑快捷键、关键帧动画、适应窗口、裁剪/变速/调色、字幕/动态字幕、叠加/智能剪辑、合并成片</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">⚡</span><span class="mod-t">ComfyUI 自建算力深度集成</span><span class="mod-n">10 项 ★核心壁垒</span></div><div class="mod-d">自建服务器对接、接口监测健康、多服务器负载均衡、显存智能释放、本地×云弹性、开源×闭源互补、任意自定义工作流、导入向导、模板库+AI分析、压力测试</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">🔐</span><span class="mod-t">密钥·计费·额度治理</span><span class="mod-n">12 项</span></div><div class="mod-d">三级密钥优先级、管理员密钥分配、多租户额度隔离、公用key白名单、AES-256-GCM加密、独立功能开关、余额实时查询、消费趋势、下载/分享额度授权、实时点数预估、预算管控面板、模型使能开关</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">🛡️</span><span class="mod-t">数据安全·水印溯源·防泄露</span><span class="mod-n">12 项 ★强化</span></div><div class="mod-d">数据不出域、下载鉴权网关、预签名短链、媒体代理隔离、限时分享防暴力、分级协作权限、产出物自主托管、下载身份水印、页面级水印、开发者工具阻断、强制中继仅自有存储、敏感操作留痕</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">🗄️</span><span class="mod-t">存储与媒体资源管理</span><span class="mod-n">8 项</span></div><div class="mod-d">跨项目个人仓库、生成资产自动入库、批量上传、软删除可恢复、管理员硬删除、多存储后端、持久化开关、去重与回退</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">📜</span><span class="mod-t">全链路日志审计</span><span class="mod-n">7 项</span></div><div class="mod-d">28 类操作审计、系统日志后台、生成记录可追溯、预估点数入日志、日志一键导出 CSV、敏感操作记录、日志清理</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">👥</span><span class="mod-t">用户与团队管理</span><span class="mod-n">7 项</span></div><div class="mod-d">双认证体系、角色体系、用户运维(冻结/改密/删除)、用户检索、团队协作治理、白名单授权、密钥分配</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">🗨️</span><span class="mod-t">团队协作与即时沟通</span><span class="mod-n">9 项 ★新增</span></div><div class="mod-d">实时多人协作、分级协作角色、私聊DM、群聊房间、端到端加密、文件附件、已读回执+表情、画布内聊天窗、局域网内网沟通</div></div><div class="mod"><div class="mod-h"><span class="mod-ic">💬</span><span class="mod-t">AI 内容工具与创作体验</span><span class="mod-n">11 项</span></div><div class="mod-d">多模态AI对话、创作向导专业管线、短剧分集大纲、剧本工具、翻译/方言本地化、提示词分析提取、效果注入、演示模式、新手引导、任务完成通知、项目封面看板</div></div>
+<div class="card comfy"><div class="mod-h"><span class="mod-ic">🎥</span><span class="mod-t">★ 3D 导演台</span><span class="mod-n">本期旗舰 · 首页未收录</span></div>
+<div class="mod-d">对标 LibTV：3D 空间精准摆位运镜，「截图即参考图」喂给下游生成。<br>
+<span class="chip">全屏 3D 编辑器</span><span class="chip">真人骨骼姿势 12 预设</span><span class="chip">体型框架(男/女/高挑/壮硕/儿童/二头身)</span><span class="chip">五种景别一键</span><span class="chip">360° 全景天空盒</span><span class="chip">人物缩放/升降对齐</span><span class="chip">多机位 + 宫格批量</span><span class="chip">机位实时预览</span><span class="chip">导演/机位视角</span><span class="chip">截图即参考图</span></div></div>
+<div class="card" style="border-left:4px solid #0d9488"><div class="mod-h"><span class="mod-ic">🧠</span><span class="mod-t">★ 自建大语言模型 · 剧本产出智能体</span><span class="mod-n">数据不出域延伸到文本</span></div>
+<div class="mod-d"><b style="color:#0d9488">自建 LLM 接入</b>：管理后台配置 OpenAI 兼容自建模型（默认 <code>Qwen3.6-35B-A3B-FP8</code>），URL/Key/模型可配、热更新；与云端 Claude/GPT/Gemini <b>同台混用</b>，可指定让剧本创作与智能体规划<b>跑在自有 LLM 上</b>。<br>
+<b style="color:#0d9488">剧本产出专业管线</b>：Logline → 梗概 → 节拍表 → 剧本 → 分镜；<b>节拍表 + 角色档案作硬约束</b>(行业 Story Bible)——剧本逐拍展开、逐镜标注所属拍点 beatRef、按拍点时长占比分配镜头时长；剧本生成后一键转<b>六维专业审查</b>闭环；<b>短剧分集大纲</b>(4–100 集，每集含钩子/剧情/cliffhanger)；翻译 + 粤语/四川话/东北话等方言本地化朗读改写。<br>
+<b style="color:#0d9488">意义</b>：最敏感的剧本/创意文本也能<b>全程跑在自有 LLM、不出域</b>——把「数据不出域」从素材产物延伸到文本与创意层，真正全栈自主可控。</div></div>
+</section>
+
+<section><h2><span class="n">9</span>★ 重点 · ComfyUI 自建服务器（核心壁垒）</h2>
+<div class="lead">最具工程含量的子系统：把<b>自有 ComfyUI 算力</b>无缝接入云端工作流。改动量 38.2k 行 / 315 次文件改动。</div>
+
+<div class="card"><h3>它解决什么问题</h3><div class="muted">让用户把<b>自己的 ComfyUI 算力（本地/内网/私有 GPU）</b>无缝接入云端创作画布——既保留本地模型完全自由度（任意 checkpoint / LoRA / ControlNet / IPAdapter / 自定义工作流），又获得在线协作便捷；数据与计算全程留在自有环境，<b>零外发、零依赖第三方算力账号</b>。同时支持官方云端 ComfyUI 一键弹性扩容。</div>
+<div class="grid3" style="margin-top:14px">
+<div class="kpi"><div class="v" style="color:#7c3aed">3</div><div class="l">专用节点类型</div><div class="s">comfyui_image / video / workflow</div></div>
+<div class="kpi"><div class="v" style="color:#16a34a">8</div><div class="l">内置预调试工作流模板</div><div class="s">图像 3(txt2img/img2img/inpaint) + 视频 5(AnimateDiff/SVD/Wan T2V·I2V/LTX)</div></div>
+<div class="kpi"><div class="v" style="color:#0891b2">∞</div><div class="l">全局模板库(用户已调试工作流入库)</div><div class="s">任意工作流存为模板·全局共享·AI 能力分析·跨项目复用</div></div>
+<div class="kpi"><div class="v" style="color:#9333ea">2732</div><div class="l">核心引擎行数 comfyui.ts</div></div>
+<div class="kpi"><div class="v" style="color:#b45309">10+</div><div class="l">相关数据库表</div></div></div>
+<div class="muted" style="margin-top:10px"><b>模板节点说明：</b>除 3 个节点类型外，平台内置 <b style="color:#16a34a">8 个已调试好的工作流模板</b>（即开即用，参数化暴露）；更可把团队<b>自己调试通的任意 ComfyUI 工作流存入「全局模板库」</b>（含完整参数与提示词、AI 自动标注能力标签供智能体规划选用），数量不限、全局共享、跨项目复用——这才是「已调试好的模板节点」的真正规模。</div></div>
+<div class="card"><h3>三类节点能力对比</h3><table>
+<tr><th>节点</th><th>定位</th><th>关键能力</th></tr>
+<tr><td><b>comfyui_image</b></td><td>快速图像模板</td><td>txt2img/img2img/inpaint；多 LoRA 链、ControlNet(+预处理器)、IPAdapter 多图、架构适配(sd/flux/sd3/qwen)、运行后清显存</td></tr>
+<tr><td><b>comfyui_video</b></td><td>快速视频模板</td><td>AnimateDiff/SVD/Wan T2V·I2V/LTX；帧数·帧率控时长、首帧参考、角色 LoRA</td></tr>
+<tr><td><b>comfyui_workflow</b></td><td>自定义工作流</td><td>上传任意工作流 JSON、参数绑定、图像/音频源映射、按比例覆盖尺寸、本地↔云切换、模板库复用</td></tr></table></div>
+<div class="card"><h3>★ 全局模板库 · AI 能力分析机制（让智能体「看得懂」每个工作流）</h3>
+<div class="muted" style="margin-bottom:12px">用户把调试好的工作流存入全局库后，平台自动给它做一次「体检」，沉淀成结构化能力画像（缓存于 <code>comfy_template_analysis</code> 表），供智能体规划时精准选用——这是「自建工作流模板化」真正发挥价值的关键一环。</div>
+<table style="margin-bottom:12px">
+<tr><th>环节</th><th>做什么</th></tr>
+<tr><td><b>① 触发</b></td><td>模板新增/更新即删旧分析触发重算；<code>mapLimit</code> 有界并发批量分析，不打爆 LLM 网关</td></tr>
+<tr><td><b>② 结构化解析</b></td><td><b>离线</b>(无需连服务器)解析 workflowJson → 输出类型(image/video/mixed)、可编辑参数、视频帧数/帧率</td></tr>
+<tr><td><b>③ 启发式标签</b></td><td>不依赖 LLM、<b>永不为空</b>：有图像输入→图生图/图生视频；字段含 lora/controlnet/ipadapter/upscale/inpaint → 自动打 <span class="chip">LoRA</span><span class="chip">ControlNet</span><span class="chip">IPAdapter</span><span class="chip">放大</span><span class="chip">局部重绘</span> 标签</td></tr>
+<tr><td><b>④ LLM 功能总结</b></td><td>把模板名/参数/工作流 JSON(截断)喂 LLM，严格输出 <code>{functionSummary, capabilities}</code>；与启发式标签<b>合并去重</b>(≤12)，LLM 失败则回退启发式——稳健不空转</td></tr>
+<tr><td><b>⑤ 时长感知</b></td><td>视频模板算出每镜时长 <code>shotSeconds = maxFrames/fps</code>(工作流推导→节点payload→内置默认)，供智能体拆镜</td></tr>
+<tr><td><b>⑥ 智能体消费</b></td><td>规划时把每模板的 <b>[能力标签] + 一句话功能 + 时长</b>喂给 LLM，<b>按输出类型与能力标签精准选用最贴合模板</b>(模块「ComfyUI 模板智能匹配」)，并据时长做时长感知拆镜</td></tr>
+</table>
+<div class="muted">沉淀字段：<span class="chip">functionSummary 一句话功能</span><span class="chip">capabilities[] 能力标签</span><span class="chip">outputType 图/视/混合</span><span class="chip">maxFrames / fps / shotSeconds</span> —— 团队的「私有工作流」由此从一段不可读的 JSON，变成智能体可理解、可自动调度的能力资产。</div></div>
+<div class="card"><h3>★ 经典 / 优秀工程亮点</h3><ul class="feat-l">
+<li><span class="ico">🔁</span><div><div class="ft">轮询 + WebSocket 实时进度</div><div class="muted">/history 3 秒轮询(图~5min/视频~10min 上限)+连续错误熔断；/ws 解析<b>二进制采样预览帧</b>点对点回传。</div></div></li>
+<li><span class="ico">📥</span><div><div class="ft">流式下载防 OOM + 产物硬锁自有存储</div><div class="muted">Content-Length 预检 + 流式累计超限即 cancel(图30MB/视频200MB)；产物一律重传 MinIO/S3，绝不返回 ComfyUI 原始 URL。</div></div></li>
+<li><span class="ico">🧬</span><div><div class="ft">GGUF 加载器动态转换</div><div class="muted">检测 .gguf 自动把 CLIPLoader→GGUF、UNETLoader→GGUF 并剔除不兼容参数，用户无感。</div></div></li>
+<li><span class="ico">🩺</span><div><div class="ft">错误三层回溯 + 中文化诊断</div><div class="muted">从 execution_error/node_errors/traceback 提取真因；按维度数(3584=Qwen/4096=T5/2048=SDXL)推荐架构、缺节点推荐插件——给可操作中文。</div></div></li>
+<li><span class="ico">🔀</span><div><div class="ft">UI→API 工作流自动转换 + 参数绑定自动上游填充</div><div class="muted">拖 PNG/JSON 即用：解析 links、追踪 Reroute、虚拟节点剔除、一次性聚合错误；URL 自动上传为本地文件名。</div></div></li>
+<li><span class="ico">📊</span><div><div class="ft">多地址轮询压测 + per-server 分桶 + Crystools GPU 监控</div><div class="muted">worker 池 round-robin、每秒时间序列采样、AbortController 立即停止；WebSocket 被动订阅物理 GPU 利用率/显存/温度。</div></div></li>
+<li><span class="ico">🔒</span><div><div class="ft">SSRF 防护 + 凭证保护</div><div class="muted">拒绝云元数据端点(IMDS)、拒绝 URL 内用户名密码、API Key 走 Header；模板 payload 净化。</div></div></li>
+</ul></div></section>
+
+<section><h2><span class="n">10</span>未来路线图 · 预规划</h2>
+<div class="grid2">
+<div class="card"><h3>近期 · 3D 导演台深化</h3><ul class="rl">
+<li><b>场景平移 X/Z</b> —— 在房间里前后左右整体挪动人物场景，配合全景更自由对位。</li>
+<li><b>12 视角批量截图</b> —— 一键生成 12 个标准角度参考图，供镜头规划。</li>
+<li><b>更大群众阵列 + LOD</b> —— 向 20×20 群众靠拢，配合轻量化渲染保性能。</li>
+<li><b>BVH/FBX 动作导入 + 真人女性模型</b> —— 导入动捕动作；独立女性网格替代缩放近似。</li></ul></div>
+<div class="card"><h3>中期 · 生成与协作</h3><ul class="rl">
+<li><b>唇形同步 / 数字人 / 声音克隆 转 GA</b> —— 从 Coming Soon 落地。</li>
+<li><b>更多 ControlNet 预处理器与工作流模板</b> —— 扩充模板库与智能体可用模板。</li>
+<li><b>协作增强</b> —— 评论、版本分支与回滚。</li>
+<li><b>移动端适配</b> —— 画布与预览的触屏/小屏体验。</li></ul></div></div></section>
+
+<div class="foot">本报告由 Claude Code 基于项目 Git 历史与会话转录自动统计生成 · 数据截至 2026-06-29（北京时间）<br>
+口径透明、有据可查：所有数字均可由 git log / git ls-files / 会话 JSONL 复核 · © KingTai 金泰智算 · 内部资料请勿外传</div>
+</div>
+<script>
+const D={"stats": {"totals": {"commits": 1045, "pr": 256, "merge": 1, "add": 672684, "dele": 40996, "off": 669, "weekend": 349, "nighthours": 0, "filechanges": 5561}, "span": {"first": "2026-05-19", "last": "2026-06-29", "days": 34}, "perday": {"2026-05-19": {"commits": 2, "pr": 0, "merge": 0, "add": 29669, "dele": 293, "off": 0, "weekend": 0, "authors": 1}, "2026-05-20": {"commits": 11, "pr": 0, "merge": 0, "add": 6085, "dele": 1912, "off": 5, "weekend": 0, "authors": 2}, "2026-05-21": {"commits": 46, "pr": 1, "merge": 0, "add": 12165, "dele": 2380, "off": 29, "weekend": 0, "authors": 3}, "2026-05-22": {"commits": 49, "pr": 0, "merge": 0, "add": 10725, "dele": 2158, "off": 30, "weekend": 0, "authors": 2}, "2026-05-23": {"commits": 41, "pr": 0, "merge": 0, "add": 6704, "dele": 2474, "off": 41, "weekend": 41, "authors": 2}, "2026-05-24": {"commits": 82, "pr": 2, "merge": 0, "add": 11511, "dele": 2352, "off": 82, "weekend": 82, "authors": 3}, "2026-05-25": {"commits": 55, "pr": 1, "merge": 0, "add": 12256, "dele": 1421, "off": 36, "weekend": 0, "authors": 3}, "2026-05-26": {"commits": 37, "pr": 0, "merge": 0, "add": 6587, "dele": 909, "off": 13, "weekend": 0, "authors": 2}, "2026-05-27": {"commits": 33, "pr": 10, "merge": 0, "add": 29099, "dele": 10511, "off": 2, "weekend": 0, "authors": 3}, "2026-05-28": {"commits": 27, "pr": 0, "merge": 0, "add": 13861, "dele": 1073, "off": 7, "weekend": 0, "authors": 2}, "2026-05-29": {"commits": 45, "pr": 2, "merge": 0, "add": 9715, "dele": 5185, "off": 21, "weekend": 0, "authors": 2}, "2026-05-30": {"commits": 45, "pr": 16, "merge": 0, "add": 5231, "dele": 506, "off": 45, "weekend": 45, "authors": 2}, "2026-05-31": {"commits": 33, "pr": 1, "merge": 0, "add": 4276, "dele": 682, "off": 33, "weekend": 33, "authors": 2}, "2026-06-01": {"commits": 6, "pr": 0, "merge": 0, "add": 1647, "dele": 21, "off": 6, "weekend": 0, "authors": 1}, "2026-06-09": {"commits": 47, "pr": 19, "merge": 1, "add": 443910, "dele": 1493, "off": 35, "weekend": 0, "authors": 2}, "2026-06-10": {"commits": 28, "pr": 24, "merge": 0, "add": 9796, "dele": 813, "off": 18, "weekend": 0, "authors": 2}, "2026-06-11": {"commits": 63, "pr": 27, "merge": 0, "add": 6145, "dele": 1145, "off": 25, "weekend": 0, "authors": 2}, "2026-06-12": {"commits": 9, "pr": 9, "merge": 0, "add": 2389, "dele": 479, "off": 0, "weekend": 0, "authors": 1}, "2026-06-13": {"commits": 10, "pr": 10, "merge": 0, "add": 3334, "dele": 58, "off": 10, "weekend": 10, "authors": 1}, "2026-06-14": {"commits": 17, "pr": 17, "merge": 0, "add": 1264, "dele": 102, "off": 17, "weekend": 17, "authors": 1}, "2026-06-15": {"commits": 29, "pr": 29, "merge": 0, "add": 4547, "dele": 440, "off": 14, "weekend": 0, "authors": 1}, "2026-06-16": {"commits": 40, "pr": 40, "merge": 0, "add": 3033, "dele": 370, "off": 8, "weekend": 0, "authors": 1}, "2026-06-17": {"commits": 34, "pr": 0, "merge": 0, "add": 1617, "dele": 172, "off": 25, "weekend": 0, "authors": 1}, "2026-06-18": {"commits": 57, "pr": 2, "merge": 0, "add": 3825, "dele": 463, "off": 36, "weekend": 0, "authors": 2}, "2026-06-19": {"commits": 37, "pr": 0, "merge": 0, "add": 3712, "dele": 1020, "off": 37, "weekend": 37, "authors": 1}, "2026-06-20": {"commits": 61, "pr": 0, "merge": 0, "add": 4133, "dele": 707, "off": 61, "weekend": 61, "authors": 1}, "2026-06-21": {"commits": 22, "pr": 8, "merge": 0, "add": 612, "dele": 169, "off": 22, "weekend": 22, "authors": 2}, "2026-06-22": {"commits": 4, "pr": 4, "merge": 0, "add": 848, "dele": 168, "off": 1, "weekend": 0, "authors": 1}, "2026-06-23": {"commits": 1, "pr": 1, "merge": 0, "add": 174, "dele": 37, "off": 0, "weekend": 0, "authors": 1}, "2026-06-24": {"commits": 14, "pr": 9, "merge": 0, "add": 16953, "dele": 196, "off": 8, "weekend": 0, "authors": 2}, "2026-06-25": {"commits": 6, "pr": 2, "merge": 0, "add": 226, "dele": 50, "off": 0, "weekend": 0, "authors": 2}, "2026-06-26": {"commits": 9, "pr": 4, "merge": 0, "add": 330, "dele": 70, "off": 0, "weekend": 0, "authors": 2}, "2026-06-27": {"commits": 1, "pr": 0, "merge": 0, "add": 114, "dele": 1, "off": 1, "weekend": 1, "authors": 1}, "2026-06-29": {"commits": 44, "pr": 18, "merge": 0, "add": 6191, "dele": 1166, "off": 1, "weekend": 0, "authors": 2}}, "perweek": {"2026-W21": {"commits": 231, "add": 76859, "dele": 11569, "pr": 3}, "2026-W22": {"commits": 275, "add": 81025, "dele": 20287, "pr": 30}, "2026-W23": {"commits": 6, "add": 1647, "dele": 21, "pr": 0}, "2026-W24": {"commits": 174, "add": 466838, "dele": 4090, "pr": 106}, "2026-W25": {"commits": 280, "add": 21479, "dele": 3341, "pr": 79}, "2026-W26": {"commits": 35, "add": 18645, "dele": 522, "pr": 20}, "2026-W27": {"commits": 44, "add": 6191, "dele": 1166, "pr": 18}}, "permonth": {"2026-05": {"commits": 506, "add": 157884, "dele": 31856, "pr": 33, "merge": 0}, "2026-06": {"commits": 539, "add": 514800, "dele": 9140, "pr": 223, "merge": 1}}, "hourhist": [48, 32, 20, 29, 12, 1, 2, 12, 41, 61, 72, 74, 106, 51, 45, 52, 73, 69, 54, 47, 35, 32, 47, 30], "wdhist": [138, 127, 120, 199, 149, 158, 154], "authors": {"Claude": {"commits": 730, "add": 317838, "dele": 20129}, "fly699": {"commits": 266, "add": 297351, "dele": 8479}, "Manus": {"commits": 49, "add": 57495, "dele": 12388}}, "area": {"文档(docs)": {"add": 179580, "dele": 877, "changes": 40}, "画布/节点(canvas)": {"add": 118009, "dele": 15633, "changes": 1397}, "数据库迁移(drizzle)": {"add": 76890, "dele": 1311, "changes": 380}, "其他": {"add": 45717, "dele": 407, "changes": 184}, "前端逻辑(lib)": {"add": 36834, "dele": 5993, "changes": 572}, "服务端核心(_core)": {"add": 40023, "dele": 2301, "changes": 675}, "ComfyUI 自建服务器": {"add": 38240, "dele": 1229, "changes": 315}, "前端组件": {"add": 36710, "dele": 2680, "changes": 438}, "前端页面": {"add": 33541, "dele": 3787, "changes": 320}, "前端其他": {"add": 22673, "dele": 3196, "changes": 369}, "服务端 API(routers)": {"add": 19733, "dele": 2063, "changes": 375}, "服务端其他": {"add": 19376, "dele": 1357, "changes": 320}, "共享类型(shared)": {"add": 5300, "dele": 161, "changes": 172}, "测试": {"add": 58, "dele": 1, "changes": 4}}, "ftype": {"tsx": {"add": 212752, "dele": 23977, "changes": 2373}, "md": {"add": 170241, "dele": 888, "changes": 77}, "ts": {"add": 151645, "dele": 13659, "changes": 2534}, "json": {"add": 86920, "dele": 1184, "changes": 152}, "yaml": {"add": 30643, "dele": 137, "changes": 14}, "css": {"add": 5055, "dele": 687, "changes": 58}, "sql": {"add": 3010, "dele": 49, "changes": 200}, "其他": {"add": 2929, "dele": 119, "changes": 14}, "js": {"add": 2481, "dele": 0, "changes": 6}, "bat": {"add": 1992, "dele": 40, "changes": 37}, "ps1": {"add": 1842, "dele": 124, "changes": 12}, "html": {"add": 1689, "dele": 50, "changes": 19}, "mjs": {"add": 437, "dele": 0, "changes": 5}, "gitignore": {"add": 372, "dele": 0, "changes": 8}, "svg": {"add": 266, "dele": 72, "changes": 11}, "webmanifest": {"add": 113, "dele": 2, "changes": 8}, "prettierignore": {"add": 105, "dele": 0, "changes": 3}, "patch": {"add": 84, "dele": 0, "changes": 3}, "prettierrc": {"add": 45, "dele": 0, "changes": 3}, "dockerignore": {"add": 32, "dele": 0, "changes": 2}, "txt": {"add": 22, "dele": 8, "changes": 4}, "gitattributes": {"add": 9, "dele": 0, "changes": 3}, "glb": {"add": 0, "dele": 0, "changes": 4}, "gitkeep": {"add": 0, "dele": 0, "changes": 9}, "deb": {"add": 0, "dele": 0, "changes": 2}}, "offbuckets": {"early": 22, "evening": 160, "night": 138, "weekend": 229, "holiday": 120}, "prcount": 256}, "tok": {"tot": {"inp": 2816146, "out": 2343006, "cc": 51087967, "cr": 1186686850}, "grand": 1242933969, "cost_usd": 2955.9, "n_user": 200, "n_asst": 8252, "n_tool": 4854, "n_subagents": 143, "span": {"first": "2026-06-11T09:43:43+08:00", "last": "2026-06-29T20:06:13+08:00"}, "perday": {"2026-06-11": {"inp": 140092, "out": 15815, "cc": 3553524, "cr": 41990534, "asst": 855, "user": 0}, "2026-06-12": {"inp": 2952, "out": 1823, "cc": 674903, "cr": 8335947, "asst": 164, "user": 0}, "2026-06-13": {"inp": 126306, "out": 13912, "cc": 2352767, "cr": 22803419, "asst": 426, "user": 0}, "2026-06-14": {"inp": 30978, "out": 3903, "cc": 1561235, "cr": 10439667, "asst": 232, "user": 0}, "2026-06-15": {"inp": 82594, "out": 2564, "cc": 1077308, "cr": 9975858, "asst": 244, "user": 0}, "2026-06-16": {"inp": 23331, "out": 12548, "cc": 2197294, "cr": 27045623, "asst": 585, "user": 0}, "2026-06-17": {"inp": 828815, "out": 20235, "cc": 9718552, "cr": 78846094, "asst": 1295, "user": 0}, "2026-06-18": {"inp": 20273, "out": 1883, "cc": 1372251, "cr": 10825055, "asst": 215, "user": 0}, "2026-06-19": {"inp": 158140, "out": 496, "cc": 1472454, "cr": 1856791, "asst": 67, "user": 0}, "2026-06-20": {"inp": 640, "out": 1093, "cc": 590293, "cr": 8409207, "asst": 140, "user": 0}, "2026-06-22": {"inp": 203354, "out": 13949, "cc": 2612608, "cr": 35162748, "asst": 658, "user": 0}, "2026-06-23": {"inp": 172318, "out": 12298, "cc": 1662707, "cr": 31525300, "asst": 406, "user": 0}, "2026-06-24": {"inp": 591972, "out": 180627, "cc": 6585008, "cr": 83506532, "asst": 1082, "user": 9}, "2026-06-25": {"inp": 3759, "out": 150414, "cc": 2397141, "cr": 49177631, "asst": 174, "user": 12}, "2026-06-26": {"inp": 19503, "out": 158073, "cc": 3164300, "cr": 64993715, "asst": 168, "user": 10}, "2026-06-27": {"inp": 2405, "out": 67335, "cc": 1476677, "cr": 26382676, "asst": 58, "user": 1}, "2026-06-29": {"inp": 408714, "out": 1686038, "cc": 8618945, "cr": 675410053, "asst": 1483, "user": 22}}, "models": {"claude-opus-4-8": 5352, "claude-haiku-4-5-20251001": 2900}, "sessions": 143, "persess_top": [{"id": "d0d8f637-dd7", "inp": 486756, "out": 2233170, "cc": 15096216, "cr": 843121483, "asst": 1929, "kind": "main"}, {"id": "agent-a7cf79", "inp": 534, "out": 4323, "cc": 559848, "cr": 4998150, "asst": 99, "kind": "subagent"}, {"id": "agent-a6c8d4", "inp": 67825, "out": 3933, "cc": 423068, "cr": 7053879, "asst": 127, "kind": "subagent"}, {"id": "agent-ada86b", "inp": 28880, "out": 3797, "cc": 153097, "cr": 397667, "asst": 14, "kind": "subagent"}, {"id": "agent-a81d46", "inp": 7383, "out": 3404, "cc": 704573, "cr": 6302244, "asst": 113, "kind": "subagent"}, {"id": "agent-add84c", "inp": 57920, "out": 3053, "cc": 498745, "cr": 4232599, "asst": 53, "kind": "subagent"}, {"id": "agent-aa729a", "inp": 3907, "out": 2690, "cc": 579064, "cr": 4262540, "asst": 93, "kind": "subagent"}, {"id": "agent-a2df53", "inp": 13762, "out": 2511, "cc": 104235, "cr": 1134675, "asst": 35, "kind": "subagent"}, {"id": "agent-a677f3", "inp": 11505, "out": 2470, "cc": 159628, "cr": 1973351, "asst": 41, "kind": "subagent"}, {"id": "agent-a104a5", "inp": 10146, "out": 2436, "cc": 174936, "cr": 4126457, "asst": 50, "kind": "subagent"}, {"id": "agent-ab70af", "inp": 18048, "out": 2410, "cc": 231887, "cr": 8822460, "asst": 115, "kind": "subagent"}, {"id": "agent-a95424", "inp": 50564, "out": 2252, "cc": 665278, "cr": 4449146, "asst": 87, "kind": "subagent"}, {"id": "agent-a4aa80", "inp": 14401, "out": 2206, "cc": 388414, "cr": 3867409, "asst": 53, "kind": "subagent"}, {"id": "agent-ade6d3", "inp": 18260, "out": 2011, "cc": 280091, "cr": 3084483, "asst": 55, "kind": "subagent"}, {"id": "agent-a7f9df", "inp": 17957, "out": 1801, "cc": 403835, "cr": 3833908, "asst": 41, "kind": "subagent"}]}, "feat": {"bytype": {"修复": 451, "新功能": 443, "文档": 41, "其他": 31, "里程碑(早期)": 30, "杂务/构建": 26, "回退": 9, "重构": 7, "优化": 3, "测试": 2, "合并": 1}, "feat_total": 443, "feat_perday": {"2026-05-20": 3, "2026-05-21": 16, "2026-05-22": 11, "2026-05-23": 16, "2026-05-24": 12, "2026-05-25": 13, "2026-05-26": 8, "2026-05-27": 16, "2026-05-28": 9, "2026-05-29": 23, "2026-05-30": 23, "2026-05-31": 19, "2026-06-09": 23, "2026-06-10": 21, "2026-06-11": 17, "2026-06-12": 1, "2026-06-13": 9, "2026-06-14": 16, "2026-06-15": 14, "2026-06-16": 22, "2026-06-17": 1, "2026-06-18": 48, "2026-06-19": 21, "2026-06-20": 43, "2026-06-21": 1, "2026-06-22": 1, "2026-06-24": 4, "2026-06-25": 1, "2026-06-26": 3, "2026-06-29": 28}, "feat_perweek": {"2026-W21": 58, "2026-W22": 111, "2026-W24": 87, "2026-W25": 150, "2026-W26": 9, "2026-W27": 28}, "feat_permonth": {"2026-05": 169, "2026-06": 274}, "type_permonth": {"2026-05": {"文档": 19, "修复": 238, "新功能": 169, "重构": 6, "杂务/构建": 24, "回退": 6, "其他": 20, "里程碑(早期)": 30}, "2026-06": {"修复": 213, "新功能": 274, "其他": 11, "回退": 3, "文档": 22, "杂务/构建": 2, "重构": 1, "优化": 3, "测试": 2, "合并": 1}}}};
+const NS='http://www.w3.org/2000/svg',GRID='#e7e9ef',AXT='#717892';
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+function svg(w,h){return el('svg',{viewBox:`0 0 ${w} ${h}`,width:'100%',height:h});}
+function txt(s,x,y,o={}){const t=el('text',{x,y,fill:o.fill||AXT,'font-size':o.fs||11,'text-anchor':o.a||'start'});t.textContent=s;if(o.w)t.setAttribute('font-weight',o.w);return t;}
+function mount(id,s){const e=document.getElementById(id);if(e)e.appendChild(s);}
+const kf=v=>v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'k':Math.round(v);
+function barChart(id,labels,series,opt={}){const W=opt.w||540,H=opt.h||220,pl=40,pr=10,pt=14,pb=opt.pb||32;const s=svg(W,H);const n=labels.length;const iw=W-pl-pr,ih=H-pt-pb;
+let max=opt.max||Math.max(1,...series.flatMap(se=>se.data));
+for(let g=0;g<=4;g++){const y=pt+ih-ih*g/4;s.appendChild(el('line',{x1:pl,y1:y,x2:W-pr,y2:y,stroke:GRID}));s.appendChild(txt(opt.fmt?opt.fmt(max*g/4):Math.round(max*g/4),pl-5,y+3,{a:'end',fs:9.5}));}
+const bw=iw/n,k=series.length,gap=bw*0.18,innerw=bw-gap*2,sw=opt.stack?innerw:innerw/k;
+labels.forEach((lb,i)=>{let acc=0;series.forEach((se,j)=>{const v=se.data[i]||0,bh=ih*v/max,x=pl+bw*i+gap+(opt.stack?0:sw*j),y=opt.stack?(pt+ih-bh-acc):(pt+ih-bh);if(bh>0)s.appendChild(el('rect',{x,y,width:Math.max(1,sw-1),height:bh,fill:se.color,rx:opt.stack?0:2}));if(opt.stack)acc+=bh;});if(n<=14||i%Math.ceil(n/14)===0)s.appendChild(txt(lb,pl+bw*i+bw/2,H-11,{a:'middle',fs:9.5}));});
+if(opt.hlines)opt.hlines.forEach(h=>{const x=pl+iw*h.at;s.appendChild(el('line',{x1:x,y1:pt,x2:x,y2:pt+ih,stroke:'#dc2626','stroke-width':1.3,'stroke-dasharray':'4 3'}));});mount(id,s);}
+function lineArea(id,labels,data,opt={}){const W=opt.w||540,H=opt.h||220,pl=48,pr=10,pt=14,pb=28;const s=svg(W,H);const n=labels.length,iw=W-pl-pr,ih=H-pt-pb,max=Math.max(1,...data);
+for(let g=0;g<=4;g++){const y=pt+ih-ih*g/4;s.appendChild(el('line',{x1:pl,y1:y,x2:W-pr,y2:y,stroke:GRID}));s.appendChild(txt(opt.fmt?opt.fmt(max*g/4):Math.round(max*g/4),pl-5,y+3,{a:'end',fs:9.5}));}
+let pts=data.map((v,i)=>[pl+iw*i/(n-1),pt+ih-ih*v/max]),d='M'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L'),area=d+` L${pts[n-1][0]},${pt+ih} L${pts[0][0]},${pt+ih} Z`;
+const grad=el('linearGradient',{id:id+'g',x1:0,y1:0,x2:0,y2:1});grad.appendChild(el('stop',{offset:'0%','stop-color':opt.color||'#16a34a','stop-opacity':.28}));grad.appendChild(el('stop',{offset:'100%','stop-color':opt.color||'#16a34a','stop-opacity':0}));s.appendChild(grad);
+s.appendChild(el('path',{d:area,fill:`url(#${id}g)`}));s.appendChild(el('path',{d,fill:'none',stroke:opt.color||'#16a34a','stroke-width':2}));
+labels.forEach((lb,i)=>{if(i%Math.ceil(n/8)===0)s.appendChild(txt(lb,pl+iw*i/(n-1),H-9,{a:'middle',fs:9.5}));});mount(id,s);}
+function pie(id,parts){const R=68,cx=R+5,cy=R+5,s=svg((R+5)*2,(R+5)*2);let tot=parts.reduce((a,p)=>a+p.v,0),ang=-Math.PI/2;
+parts.forEach(p=>{const a2=ang+2*Math.PI*p.v/tot,x1=cx+R*Math.cos(ang),y1=cy+R*Math.sin(ang),x2=cx+R*Math.cos(a2),y2=cy+R*Math.sin(a2),large=(a2-ang)>Math.PI?1:0;s.appendChild(el('path',{d:`M${cx},${cy} L${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2} Z`,fill:p.color,stroke:'#fff','stroke-width':1.5}));ang=a2;});
+s.appendChild(el('circle',{cx,cy,r:R*0.56,fill:'#fff'}));mount(id,s);}
+function hbar(id,rows,opt={}){const W=opt.w||540,rh=25,pt=6,pl=opt.pl||130,pr=46,H=pt*2+rows.length*rh,s=svg(W,H),max=Math.max(1,...rows.map(r=>r.v));
+rows.forEach((r,i)=>{const y=pt+i*rh,bw=(W-pl-pr)*r.v/max;s.appendChild(txt(r.label,pl-8,y+rh/2+3,{a:'end',fs:11.5,fill:r.hl?'#6d28d9':'#41475a',w:r.hl?700:400}));s.appendChild(el('rect',{x:pl,y:y+4,width:Math.max(2,bw),height:rh-12,fill:r.color||(r.hl?'#7c3aed':'#c7cbd6'),rx:4}));s.appendChild(txt(opt.fmt?opt.fmt(r.v):r.v,pl+bw+6,y+rh/2+3,{fs:10.5,fill:'#717892'}));});mount(id,s);}
+const pd=D.stats.perday,days=Object.keys(pd);
+barChart('c_daily',days.map(d=>d.slice(5)),[{data:days.map(d=>pd[d].commits-pd[d].off),color:'#7c3aed'},{data:days.map(d=>pd[d].off),color:'#ea580c'}],{stack:true,w:1080,h:240});
+const pw=D.stats.perweek,wk=Object.keys(pw),fw=D.feat.feat_perweek;
+barChart('c_week',wk.map(w=>w.replace('2026-','')),[{data:wk.map(w=>pw[w].commits),color:'#2563eb'},{data:wk.map(w=>fw[w]||0),color:'#16a34a'}],{});
+const pm=D.stats.permonth,mo=Object.keys(pm),fm=D.feat.feat_permonth;
+barChart('c_month',mo,[{data:mo.map(m=>pm[m].commits),color:'#7c3aed'},{data:mo.map(m=>fm[m]||0),color:'#16a34a'},{data:mo.map(m=>pm[m].pr),color:'#0891b2'}],{});
+barChart('c_hour',[...Array(24).keys()],[{data:D.stats.hourhist,color:'#7c3aed'}],{hlines:[{at:8.5/24},{at:17/24}]});
+barChart('c_wd',['一','二','三','四','五','六','日'],[{data:D.stats.wdhist.map((v,i)=>i<5?v:0),color:'#7c3aed'},{data:D.stats.wdhist.map((v,i)=>i>=5?v:0),color:'#ea580c'}],{stack:true});
+pie('c_offpie',[{v:376,color:'#7c3aed'},{v:669,color:'#ea580c'}]);
+let cum=0;const cumd=days.map(d=>{cum+=pd[d].add;return cum;});lineArea('c_cum',days.map(d=>d.slice(5)),cumd,{color:'#16a34a',w:1080,fmt:kf});
+const ar=D.stats.area;hbar('c_area',Object.keys(ar).map(k=>({label:k,v:ar[k].add,hl:k.indexOf('ComfyUI')>=0})).sort((a,b)=>b.v-a.v).slice(0,9),{fmt:kf,pl:160});
+hbar('c_ftype',[['tsx',73261],['ts',61384],['md',84432],['json',39895],['sql',1241],['css',1553],['html',2997],['glb',9565]].map(([k,v])=>({label:'.'+k,v})).sort((a,b)=>b.v-a.v),{fmt:kf,pl:70});
+const bt=D.feat.bytype;hbar('c_type',Object.keys(bt).map(k=>({label:k,v:bt[k],hl:k==='新功能'})),{pl:90});
+const ffw=D.feat.feat_perweek,ffk=Object.keys(ffw);barChart('c_featweek',ffk.map(w=>w.replace('2026-','')),[{data:ffk.map(w=>ffw[w]),color:'#16a34a'}],{});
+const tpd=D.tok.perday,td=Object.keys(tpd);barChart('c_tokday',td.map(d=>d.slice(5)),[{data:td.map(d=>tpd[d].out),color:'#0891b2'},{data:td.map(d=>tpd[d].inp),color:'#2563eb'},{data:td.map(d=>tpd[d].cc),color:'#7c3aed'}],{stack:true,fmt:kf});
+const tt=D.tok.tot;pie('c_tokpie',[{v:tt.cr,color:'#16a34a'},{v:tt.cc,color:'#7c3aed'},{v:tt.inp,color:'#2563eb'},{v:tt.out,color:'#0891b2'}]);
+</script></body></html>
