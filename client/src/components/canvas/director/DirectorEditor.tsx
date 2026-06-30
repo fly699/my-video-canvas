@@ -95,15 +95,22 @@ type OrbitImpl = { target: THREE.Vector3; update: () => void; object: THREE.Came
 export interface CaptureHandle { gl: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.Camera; orbit: OrbitImpl; }
 
 // ── 相机机架：初始 target、响应式 FOV、释放时回写机位、把渲染上下文暴露给截图/重置 ──
-function CameraRig({ cam, onCommit, bind, locked }: {
+function CameraRig({ cam, onCommit, bind, locked, grab }: {
   cam: { position: Vec3; target: Vec3; fov: number };
   onCommit: (pos: Vec3, target: Vec3) => void;
   bind: (h: CaptureHandle) => void;
   locked: boolean; // true=机位视角（锁定到该机位的精确取景，禁止轨道）；false=导演视角（自由环绕）
+  grab: boolean;   // true=抓背景拖（反转水平拖拽方向，像 360 看图器）；false=绕主体转（标准 3D 环绕）
 }) {
   const { gl, scene, camera } = useThree();
   const orbit = useRef<OrbitImpl>(null);
   const inited = useRef(false);
+
+  // 拖拽手感：仅反转水平方向（three-stdlib OrbitControls 的 reverseHorizontalOrbit），不动俯仰。
+  useEffect(() => {
+    const o = orbit.current as unknown as { reverseHorizontalOrbit?: boolean } | null;
+    if (o) o.reverseHorizontalOrbit = grab;
+  }, [grab]);
 
   useEffect(() => { // 初始 target（位置/FOV 由 Canvas camera 初值 + 下方 FOV effect 负责）
     if (inited.current || !orbit.current) return;
@@ -155,6 +162,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const [gizmoMode, setGizmoMode] = useState<"translate" | "rotate" | "scale">("translate");
   // 导演视角(自由环绕，整体布局) / 机位视角(锁定到当前机位的精确取景，预览最终构图)（模块2）
   const [viewMode, setViewMode] = useState<"director" | "camera">("director");
+  // 拖拽手感：orbit=绕主体转(标准3D)；grab=抓背景拖(反转水平，像360看图器)。记忆到 localStorage。
+  const [dragMode, setDragMode] = useState<"orbit" | "grab">(() => {
+    try { return localStorage.getItem("director:dragMode") === "grab" ? "grab" : "orbit"; } catch { return "orbit"; }
+  });
+  useEffect(() => { try { localStorage.setItem("director:dragMode", dragMode); } catch { /* ignore */ } }, [dragMode]);
   const [gizmoTarget, setGizmoTarget] = useState<THREE.Object3D | null>(null);
   // 多选（用于「任意角色手动编组」，模块10）：Shift/Ctrl 点击独立角色加入多选集。
   const [multiSel, setMultiSel] = useState<Set<string>>(() => new Set());
@@ -569,6 +581,13 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               style={{ fontSize: 11, fontWeight: viewMode === m ? 700 : 500, padding: "3px 9px", borderRadius: 7, border: "none", cursor: "pointer", background: viewMode === m ? "var(--ui-accent, var(--c-accent))" : "transparent", color: viewMode === m ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
           ))}
         </div>
+        {/* 拖拽手感切换：绕主体转(标准3D) / 抓背景拖(360看图器，反转水平方向) */}
+        <div className="flex items-center" style={{ padding: 3, borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", marginRight: 4 }}>
+          {([["orbit", "绕主体转"], ["grab", "抓背景拖"]] as const).map(([m, lbl]) => (
+            <button key={m} onClick={() => setDragMode(m)} title={m === "orbit" ? "标准 3D 环绕：向右拖=绕主体转，背景往左滚" : "360 看图器手感：向右拖=抓住背景往右拖（仅反转水平，不影响上下）"}
+              style={{ fontSize: 11, fontWeight: dragMode === m ? 700 : 500, padding: "3px 9px", borderRadius: 7, border: "none", cursor: "pointer", background: dragMode === m ? "var(--ui-accent, var(--c-accent))" : "transparent", color: dragMode === m ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
+          ))}
+        </div>
         {/* 多机位宫格 */}
         <div style={{ position: "relative" }}>
           <button onClick={() => setGridMenu((v) => !v)} disabled={!!gridBusy} style={{ ...headBtn(), opacity: gridBusy ? 0.7 : 1 }}>
@@ -752,7 +771,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   }}
                 />
               )}
-              <CameraRig cam={scene.camera} onCommit={onCommitCam} bind={bindCapture} locked={viewMode === "camera"} />
+              <CameraRig cam={scene.camera} onCommit={onCommitCam} bind={bindCapture} locked={viewMode === "camera"} grab={dragMode === "grab"} />
             </Canvas>
             {/* 取景安全框（三分线） */}
             <div className="nodrag" style={{ position: "absolute", inset: 0, pointerEvents: "none", borderRadius: 4 }}>
