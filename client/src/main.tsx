@@ -1,3 +1,8 @@
+import { installDomTranslationGuard } from "@/lib/domTranslationGuard";
+// 首要：在任何 React 渲染前装上「浏览器翻译」DOM 守卫，防止翻译插件改写 DOM 导致
+// removeChild/insertBefore 报错、整页白屏（详见该模块注释）。
+installDomTranslationGuard();
+
 import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
