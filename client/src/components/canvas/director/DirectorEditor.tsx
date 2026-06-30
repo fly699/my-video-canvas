@@ -3,7 +3,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid, TransformControls, ContactShadows } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload } from "lucide-react";
+import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../../../../shared/types";
@@ -198,6 +198,16 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const removeActor = (id: string) => {
     setScene((s) => ({ ...s, actors: s.actors.filter((a) => a.id !== id) }));
     setSelectedId((cur) => (cur === id ? null : cur));
+  };
+  // 复制角色：连同体型/姿势/旋转/缩放/导入模型一起复制一份，落在右侧偏移处（便于快速摆同款）。
+  const duplicateActor = (id: string) => {
+    setScene((s) => {
+      const src = s.actors.find((a) => a.id === id); if (!src) return s;
+      const base = makeActor(src.model, s.actors, [src.position[0] + 0.6, src.position[1], src.position[2]]);
+      const copy: DirectorActor = { ...base, rotation: [...src.rotation] as Vec3, scale: src.scale, pose: src.pose ? { ...src.pose } : undefined, glbUrl: src.glbUrl, tint: src.tint };
+      setSelectedId(copy.id); setSelectedGroupId(null); setCamSelected(false);
+      return { ...s, actors: [...s.actors, copy] };
+    });
   };
 
   // ── 群众群组 ──
@@ -513,6 +523,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 <span style={{ width: 9, height: 9, borderRadius: "50%", background: a.color, display: "inline-block", marginRight: 7 }} />
                 {a.name}
               </button>
+              <button onClick={() => duplicateActor(a.id)} title="复制角色（含体型/姿势/缩放）" style={{ ...iconBtn }}><Copy size={12} /></button>
               <button onClick={() => removeActor(a.id)} title="删除" style={{ ...iconBtn }}><Trash2 size={12} /></button>
             </div>
           ))}

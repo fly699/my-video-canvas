@@ -40,12 +40,16 @@ const PRODUCT_VIEW: GridAngle[] = [
 // 2×4：环绕八向——每 45° 一机位，水平一圈。
 const ORBIT8: GridAngle[] = [0, 45, 90, 135, 180, 225, 270, 315].map((az) => ({ az, el: 4, dist: 1.0 }));
 
+// 3×4：12 大视角——每 30° 一机位、水平一圈，覆盖全方位（对标文档「12 大视角截图」）。
+const TWELVE: GridAngle[] = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((az) => ({ az, el: 6, dist: 1.0 }));
+
 export const GRID_PRESETS: GridPreset[] = [
   { key: "nine", label: "多机位九宫格", rows: 3, cols: 3, angles: NINE },
   { key: "four", label: "剧情推进四宫格", rows: 2, cols: 2, angles: FOUR },
   { key: "threeview", label: "角色三视图", rows: 1, cols: 3, angles: THREE_VIEW },
   { key: "product", label: "产品三视图", rows: 1, cols: 3, angles: PRODUCT_VIEW },
   { key: "orbit8", label: "环绕八向", rows: 2, cols: 4, angles: ORBIT8 },
+  { key: "twelve", label: "12 大视角(每30°)", rows: 3, cols: 4, angles: TWELVE },
   { key: "twentyfive", label: "25 宫格", rows: 5, cols: 5, angles: TWENTYFIVE },
 ];
 
