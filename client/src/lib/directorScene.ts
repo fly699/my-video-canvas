@@ -109,6 +109,18 @@ export function makeCrowd(rows: number, cols: number, existing: DirectorActor[],
   return { group, actors };
 }
 
+/** 复制整组：连同各成员（含自定义体型/姿势/局部位置）一起复制一份，新组右移 1.5m、新 id/名。 */
+export function cloneGroupWithMembers(group: DirectorGroup, members: DirectorActor[], allActors: DirectorActor[]): { group: DirectorGroup; actors: DirectorActor[] } {
+  const ng: DirectorGroup = { ...group, id: groupId(), name: `${group.name} 副本`, position: [group.position[0] + 1.5, group.position[1], group.position[2]] };
+  const existing = [...allActors];
+  const actors = members.map((m) => {
+    const copy: DirectorActor = { ...m, id: actorId(), name: nextActorName(existing), groupId: ng.id, position: [...m.position] as Vec3, rotation: [...m.rotation] as Vec3, pose: m.pose ? { ...m.pose } : undefined };
+    existing.push(copy);
+    return copy;
+  });
+  return { group: ng, actors };
+}
+
 /** 解组：把群组变换烘焙进各成员的世界坐标（绕 Y 旋转 + 缩放 + 平移），清除 groupId。 */
 export function bakeGroupTransform(group: DirectorGroup, member: DirectorActor): DirectorActor {
   const [gx, gy, gz] = group.position;
