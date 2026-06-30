@@ -632,8 +632,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           {scene.panoramaUrl && !scene.background && (
             <div style={{ position: "absolute", bottom: 60, left: 12, zIndex: 5, width: 210, padding: 10, borderRadius: 12, background: "color-mix(in oklch, var(--c-elevated) 92%, transparent)", border: "1px solid var(--c-bd2)", backdropFilter: "blur(12px)", display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }}>全景对齐</div>
-              <div style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, marginBottom: 2 }}>背景为 360° 天空盒（恒环绕）。用「场景缩放/升降」把人物对到全景地面与尺度。</div>
+              <div style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, marginBottom: 2 }}>背景为 360° 天空盒（恒环绕）。地平线歪斜→用「俯仰/翻滚」扳平到与网格地面平行；再用「场景缩放/升降」把人物对到全景地面与尺度。</div>
               <Slider label="背景转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
+              <Slider label="俯仰" value={scene.panoramaPitch ?? 0} min={-45} max={45} step={0.5} fixed={1} onChange={(v) => patchScene({ panoramaPitch: v })} />
+              <Slider label="翻滚" value={scene.panoramaRoll ?? 0} min={-45} max={45} step={0.5} fixed={1} onChange={(v) => patchScene({ panoramaRoll: v })} />
               <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={8} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
               {/* 场景缩放/升降：缩放与上下移动「人物场景」以贴合全景的尺度与地面线（LibTV 场景缩放） */}
               <Slider label="人物缩放" value={scene.sceneScale ?? 1} min={0.2} max={30} step={0.1} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
@@ -657,7 +659,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <color attach="background" args={[scene.background || (scene.panoramaUrl ? "#060608" : "#1a1d24")]} />
               {scene.panoramaUrl && !scene.background && (
                 <Suspense fallback={null}>
-                  <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} scale={scene.panoramaScale ?? 1} />
+                  <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} pitch={scene.panoramaPitch ?? 0} roll={scene.panoramaRoll ?? 0} scale={scene.panoramaScale ?? 1} />
                 </Suspense>
               )}
               <ambientLight intensity={0.7} />

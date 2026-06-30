@@ -41,7 +41,7 @@ export function ShotPreview({ scene }: { scene: DirectorScene }) {
           <LockCam cam={scene.camera} />
           {scene.panoramaUrl && !scene.background && (
             <Suspense fallback={null}>
-              <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} scale={scene.panoramaScale ?? 1} />
+              <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} pitch={scene.panoramaPitch ?? 0} roll={scene.panoramaRoll ?? 0} scale={scene.panoramaScale ?? 1} />
             </Suspense>
           )}
           <ambientLight intensity={0.7} />

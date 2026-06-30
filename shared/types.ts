@@ -558,7 +558,9 @@ export interface DirectorScene {
   aspectRatio: string;  // 画幅，如 "16:9"
   background: string;    // 背景色(十六进制)；"" 表示默认深灰；后续支持全景图 url
   panoramaUrl?: string;  // P5：720° 全景背景
-  panoramaYaw?: number;   // 全景旋转(度)：转动背景朝向，默认 0
+  panoramaYaw?: number;   // 全景旋转(度)：转动背景朝向(绕Y/方位角)，默认 0
+  panoramaPitch?: number; // 全景俯仰校正(度，绕X)：抬/压全景地平线，校正拍摄时镜头俯仰，使全景地面与网格地面平行，默认 0
+  panoramaRoll?: number;  // 全景翻滚校正(度，绕Z)：左右扳平歪斜的全景地平线，校正镜头侧倾，默认 0
   panoramaY?: number;     // 已弃用（旧版全景球升降；改天空盒后不再移动球，保留字段以兼容旧场景）
   panoramaScale?: number; // 全景球半径(倍)：放大/缩小全景球，影响背景透视与距离感，默认 1
   sceneScale?: number;    // 场景缩放(倍)：整体缩放「人物场景」相对全景空间的大小，使人物与全景尺度匹配，默认 1（LibTV 模块16/23「场景缩放」，文档默认 300%）
