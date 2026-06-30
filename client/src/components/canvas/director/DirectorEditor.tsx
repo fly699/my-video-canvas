@@ -131,6 +131,9 @@ function CameraRig({ cam, onCommit, bind, locked }: {
       ref={orbit as never}
       makeDefault
       enabled={!locked}
+      // 夹住俯仰极角：禁止越过头顶/钻到地面以下，避免相机翻转导致「地平线来回乱晃、上下颠倒」。
+      minPolarAngle={0.12}
+      maxPolarAngle={Math.PI * 0.92}
       onEnd={() => { if (orbit.current) onCommit(camera.position.toArray() as Vec3, orbit.current.target.toArray() as Vec3); }}
     />
   );
@@ -350,6 +353,27 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     moveLiveCamera(c);
     setScene((s) => ({ ...s, camera: c, cameras: ensureCameras(s), activeCameraId: id }));
   }, [cameras, moveLiveCamera]);
+
+  // ── 全景合成：相机锚定模型 ───────────────────────────────────────────────────
+  // 角色保持真实尺寸站在 y=0 地面；全景地平线恒在「相机视高」那条线上。于是：
+  //  · 相机视高 ↑/↓ 决定地平线压在角色身上的高度（脚始终贴地，不靠平移角色）。
+  //  · 机位距离 远/近 决定角色在画面里的大小（透视正确，不靠缩放角色）。
+  // 这样「脚贴全景地面」与「比例对应」都成立，且缩放/升降不再各自为政破坏构图。
+  const camHeight = scene.camera.position[1];
+  const camDist = Math.hypot(scene.camera.position[0] - scene.camera.target[0], scene.camera.position[2] - scene.camera.target[2]);
+  const setCamHeight = useCallback((h: number) => {
+    const cam = sceneRef.current.camera;
+    const position: Vec3 = [cam.position[0], h, cam.position[2]];
+    patchCam({ position }); moveLiveCamera({ ...cam, position });
+  }, [patchCam, moveLiveCamera]);
+  const setCamDistance = useCallback((d: number) => {
+    const cam = sceneRef.current.camera;
+    const tx = cam.target[0], tz = cam.target[2];
+    let dx = cam.position[0] - tx, dz = cam.position[2] - tz;
+    let hd = Math.hypot(dx, dz); if (hd < 1e-4) { dx = 0; dz = 1; hd = 1; }
+    const position: Vec3 = [tx + (dx / hd) * d, cam.position[1], tz + (dz / hd) * d];
+    patchCam({ position }); moveLiveCamera({ ...cam, position });
+  }, [patchCam, moveLiveCamera]);
   const addCamera = useCallback(() => {
     setScene((s) => {
       const cams = ensureCameras(s);
@@ -632,14 +656,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           {scene.panoramaUrl && !scene.background && (
             <div style={{ position: "absolute", bottom: 60, left: 12, zIndex: 5, width: 210, padding: 10, borderRadius: 12, background: "color-mix(in oklch, var(--c-elevated) 92%, transparent)", border: "1px solid var(--c-bd2)", backdropFilter: "blur(12px)", display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }}>全景对齐</div>
-              <div style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, marginBottom: 2 }}>背景为 360° 天空盒（恒环绕）。地平线歪斜→用「俯仰/翻滚」扳平到与网格地面平行；再用「场景缩放/升降」把人物对到全景地面与尺度。</div>
+              <div style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, marginBottom: 2 }}>人物保持真实身高站在地面。① 地平线歪→「俯仰/翻滚」扳平；② 「相机视高」把地平线压到合适高度（脚自动贴地）；③ 「机位距离」决定人物大小（越近越大）。</div>
               <Slider label="背景转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
               <Slider label="俯仰" value={scene.panoramaPitch ?? 0} min={-45} max={45} step={0.5} fixed={1} onChange={(v) => patchScene({ panoramaPitch: v })} />
               <Slider label="翻滚" value={scene.panoramaRoll ?? 0} min={-45} max={45} step={0.5} fixed={1} onChange={(v) => patchScene({ panoramaRoll: v })} />
               <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={8} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
-              {/* 场景缩放/升降：缩放与上下移动「人物场景」以贴合全景的尺度与地面线（LibTV 场景缩放） */}
-              <Slider label="人物缩放" value={scene.sceneScale ?? 1} min={0.2} max={30} step={0.1} fixed={2} onChange={(v) => patchScene({ sceneScale: v })} />
-              <Slider label="人物升降" value={scene.sceneOffsetY ?? 0} min={-6 * sceneS} max={6 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetY: v })} />
+              {/* 相机锚定：视高决定地平线压在人物哪个高度(脚恒贴地)、距离决定人物大小(透视正确) */}
+              <Slider label="相机视高" value={camHeight} min={0.1} max={4} step={0.02} fixed={2} onChange={setCamHeight} />
+              <Slider label="机位距离" value={camDist} min={0.8} max={20} step={0.05} fixed={2} onChange={setCamDistance} />
               <Slider label="平移X" value={scene.sceneOffsetX ?? 0} min={-8 * sceneS} max={8 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetX: v })} />
               <Slider label="平移Z" value={scene.sceneOffsetZ ?? 0} min={-8 * sceneS} max={8 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetZ: v })} />
             </div>
