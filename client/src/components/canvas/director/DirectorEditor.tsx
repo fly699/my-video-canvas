@@ -374,6 +374,17 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const position: Vec3 = [tx + (dx / hd) * d, cam.position[1], tz + (dz / hd) * d];
     patchCam({ position }); moveLiveCamera({ ...cam, position });
   }, [patchCam, moveLiveCamera]);
+  // 「落到地面」：纯天空盒全景没有真实地面深度，无法对任意照片完美自适应；这里把人物脚底落到
+  // 当前机位画面「下方约 0.42×纵向FOV」处——即画面下半近地面位置，作为不悬空的合理默认，
+  // 再由「垂直贴地」滑杆微调到照片里的具体地面。高视角俯瞰图尤其需要往下落。
+  const dropToGround = useCallback(() => {
+    const cam = sceneRef.current.camera;
+    const camH = cam.position[1];
+    const d = Math.hypot(cam.position[0] - cam.target[0], cam.position[2] - cam.target[2]) || 4;
+    const beta = (cam.fov * 0.42) * Math.PI / 180;
+    const oy = camH - d * Math.tan(beta);
+    patchScene({ sceneOffsetY: Number(oy.toFixed(2)) });
+  }, [patchScene]);
   const addCamera = useCallback(() => {
     setScene((s) => {
       const cams = ensureCameras(s);
@@ -656,14 +667,17 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           {scene.panoramaUrl && !scene.background && (
             <div style={{ position: "absolute", bottom: 60, left: 12, zIndex: 5, width: 210, padding: 10, borderRadius: 12, background: "color-mix(in oklch, var(--c-elevated) 92%, transparent)", border: "1px solid var(--c-bd2)", backdropFilter: "blur(12px)", display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }}>全景对齐</div>
-              <div style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, marginBottom: 2 }}>人物保持真实身高站在地面。① 地平线歪→「俯仰/翻滚」扳平；② 「相机视高」把地平线压到合适高度（脚自动贴地）；③ 「机位距离」决定人物大小（越近越大）。</div>
+              <div style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, marginBottom: 2 }}>人物真实身高站在地面。① 地平线歪→「俯仰/翻滚」扳平；②「机位距离」定大小；③ 人物悬空→点「落到地面」或拖「垂直贴地」把脚对到照片地面（俯瞰图需往下落）。</div>
+              <button onClick={dropToGround} style={{ ...chip, justifyContent: "center", color: "var(--ui-accent, var(--c-accent))", fontWeight: 700 }} title="把人物脚底落到画面下方地面（纯全景无深度，落好后用「垂直贴地」微调）">⤓ 人物落到地面</button>
               <Slider label="背景转" value={scene.panoramaYaw ?? 0} min={0} max={360} step={1} onChange={(v) => patchScene({ panoramaYaw: v })} />
               <Slider label="俯仰" value={scene.panoramaPitch ?? 0} min={-45} max={45} step={0.5} fixed={1} onChange={(v) => patchScene({ panoramaPitch: v })} />
               <Slider label="翻滚" value={scene.panoramaRoll ?? 0} min={-45} max={45} step={0.5} fixed={1} onChange={(v) => patchScene({ panoramaRoll: v })} />
               <Slider label="球半径" value={scene.panoramaScale ?? 1} min={0.2} max={8} step={0.05} fixed={2} onChange={(v) => patchScene({ panoramaScale: v })} />
-              {/* 相机锚定：视高决定地平线压在人物哪个高度(脚恒贴地)、距离决定人物大小(透视正确) */}
+              {/* 相机锚定：视高决定地平线高度、距离决定人物大小(透视正确) */}
               <Slider label="相机视高" value={camHeight} min={0.1} max={4} step={0.02} fixed={2} onChange={setCamHeight} />
               <Slider label="机位距离" value={camDist} min={0.8} max={20} step={0.05} fixed={2} onChange={setCamDistance} />
+              {/* 垂直贴地：纯全景无真实地面深度，留此手动把脚对到照片地面（俯瞰图往下、仰视往上） */}
+              <Slider label="垂直贴地" value={scene.sceneOffsetY ?? 0} min={-20} max={8} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetY: v })} />
               <Slider label="平移X" value={scene.sceneOffsetX ?? 0} min={-8 * sceneS} max={8 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetX: v })} />
               <Slider label="平移Z" value={scene.sceneOffsetZ ?? 0} min={-8 * sceneS} max={8 * sceneS} step={0.05} fixed={2} onChange={(v) => patchScene({ sceneOffsetZ: v })} />
             </div>
