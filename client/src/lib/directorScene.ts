@@ -122,6 +122,27 @@ export function respaceCrowdMembers(group: DirectorGroup, members: DirectorActor
   });
 }
 
+/** 任意角色手动编组（LibTV 模块10「编组 Ctrl+G」）：把若干独立角色合成一个组——
+ *  组心取成员世界坐标的水平质心，各成员局部坐标 = 世界坐标 − 组心（保留 Y 高度），
+ *  manual=true 标记为手动组（不走行列网格/间距重排）。 */
+export function makeGroupFromActors(members: DirectorActor[]): { group: DirectorGroup; actors: DirectorActor[] } {
+  const gid = groupId();
+  const n = Math.max(1, members.length);
+  const cx = members.reduce((s, m) => s + m.position[0], 0) / n;
+  const cz = members.reduce((s, m) => s + m.position[2], 0) / n;
+  const color = members[0]?.color ?? nextActorColor(0);
+  const group: DirectorGroup = {
+    id: gid, name: `编组 (${members.length})`,
+    rows: 1, cols: members.length,
+    position: [cx, 0, cz], rotation: [0, 0, 0], scale: 1, color, manual: true,
+  };
+  const actors = members.map((m) => ({
+    ...m, groupId: gid,
+    position: [m.position[0] - cx, m.position[1], m.position[2] - cz] as Vec3,
+  }));
+  return { group, actors };
+}
+
 /** 复制整组：连同各成员（含自定义体型/姿势/局部位置）一起复制一份，新组右移 1.5m、新 id/名。 */
 export function cloneGroupWithMembers(group: DirectorGroup, members: DirectorActor[], allActors: DirectorActor[]): { group: DirectorGroup; actors: DirectorActor[] } {
   const ng: DirectorGroup = { ...group, id: groupId(), name: `${group.name} 副本`, position: [group.position[0] + 1.5, group.position[1], group.position[2]] };

@@ -8,10 +8,10 @@ import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../../../../shared/types";
 import {
-  MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers, respaceCrowdMembers, CROWD_SPACING,
+  MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers, respaceCrowdMembers, makeGroupFromActors, CROWD_SPACING,
   ensureCameras, newCameraId, nextCameraName,
 } from "../../../lib/directorScene";
-import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset, mirrorPose } from "../../../lib/directorPose";
+import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset, mirrorPose, type Pose } from "../../../lib/directorPose";
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
 import { HumanModel } from "./HumanModel";
 import { GlbModel } from "./GlbModel";
@@ -153,8 +153,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   // 导演视角(自由环绕，整体布局) / 机位视角(锁定到当前机位的精确取景，预览最终构图)（模块2）
   const [viewMode, setViewMode] = useState<"director" | "camera">("director");
   const [gizmoTarget, setGizmoTarget] = useState<THREE.Object3D | null>(null);
-  const selectActor = useCallback((id: string) => { setSelectedId(id); setSelectedGroupId(null); setCamSelected(false); }, []);
-  const selectGroup = useCallback((id: string) => { setSelectedGroupId(id); setSelectedId(null); setCamSelected(false); }, []);
+  // 多选（用于「任意角色手动编组」，模块10）：Shift/Ctrl 点击独立角色加入多选集。
+  const [multiSel, setMultiSel] = useState<Set<string>>(() => new Set());
+  const selectActor = useCallback((id: string) => { setSelectedId(id); setSelectedGroupId(null); setCamSelected(false); setMultiSel(new Set()); }, []);
+  const toggleMultiActor = useCallback((id: string) => {
+    setMultiSel((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelectedId(id); setSelectedGroupId(null); setCamSelected(false);
+  }, []);
+  const selectGroup = useCallback((id: string) => { setSelectedGroupId(id); setSelectedId(null); setCamSelected(false); setMultiSel(new Set()); }, []);
   const [saving, setSaving] = useState(false);
   const captureRef = useRef<CaptureHandle | null>(null);
   const sceneRef = useRef(scene);
@@ -244,6 +250,18 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       return { ...s, groups: [...(s.groups ?? []), ng], actors: [...s.actors, ...na] };
     });
   };
+  // 任意角色手动编组（模块10，Ctrl+G）：把多选的独立角色合成一个手动组（保留各自世界位置）。
+  const groupSelectedActors = useCallback(() => {
+    setScene((s) => {
+      const ids = multiSelRef.current;
+      const members = s.actors.filter((a) => ids.has(a.id) && !a.groupId);
+      if (members.length < 2) return s;
+      const { group, actors: grouped } = makeGroupFromActors(members);
+      const byId = new Map(grouped.map((m) => [m.id, m]));
+      setSelectedGroupId(group.id); setSelectedId(null); setCamSelected(false); setMultiSel(new Set());
+      return { ...s, groups: [...(s.groups ?? []), group], actors: s.actors.map((a) => byId.get(a.id) ?? a) };
+    });
+  }, [setScene]); // eslint-disable-line react-hooks/exhaustive-deps
   // 调整群组成员间距（模块08）：重排成员组内局部坐标，保留各自姿势/体型/朝向。
   const setGroupSpacing = (gid: string, spacing: number) => {
     setScene((s) => {
@@ -479,6 +497,22 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const ro = new ResizeObserver(fit); ro.observe(el); return () => ro.disconnect();
   }, [ar]);
 
+  // 动作预设悬停预览（模块05）：悬停时临时套用预设，移开恢复原姿势，点击才正式应用。
+  const poseHoverBackup = useRef<Pose | null>(null);
+  useEffect(() => { poseHoverBackup.current = null; }, [selectedId]); // 切换角色时丢弃未落地的预览备份
+  // Ctrl/Cmd+G 把多选的独立角色一键编组（模块10）。
+  const multiSelRef = useRef(multiSel);
+  multiSelRef.current = multiSel;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "g" || e.key === "G")) {
+        if (multiSelRef.current.size >= 2) { e.preventDefault(); groupSelectedActors(); }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [groupSelectedActors]);
+
   const panel: React.CSSProperties = { background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 12, padding: 12 };
   const headBtn = (active?: boolean): React.CSSProperties => ({
     display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 9,
@@ -552,14 +586,22 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           {/* 独立人偶 */}
           {scene.actors.filter((a) => !a.groupId).map((a) => (
             <div key={a.id} className="flex items-center gap-1">
-              <button onClick={() => selectActor(a.id)} style={{ ...rowBtn(!camSelected && a.id === selectedId), flex: 1 }}>
+              <button
+                onClick={(e) => (e.shiftKey || e.ctrlKey || e.metaKey) ? toggleMultiActor(a.id) : selectActor(a.id)}
+                title="点击选中；Shift/Ctrl 点击多选以编组"
+                style={{ ...rowBtn(!camSelected && a.id === selectedId), flex: 1, boxShadow: multiSel.has(a.id) ? "inset 0 0 0 1.5px var(--ui-accent, var(--c-accent))" : undefined }}>
                 <span style={{ width: 9, height: 9, borderRadius: "50%", background: a.color, display: "inline-block", marginRight: 7 }} />
-                {a.name}
+                {a.name}{multiSel.has(a.id) ? " ✓" : ""}
               </button>
               <button onClick={() => duplicateActor(a.id)} title="复制角色（含体型/姿势/缩放）" style={{ ...iconBtn }}><Copy size={12} /></button>
               <button onClick={() => removeActor(a.id)} title="删除" style={{ ...iconBtn }}><Trash2 size={12} /></button>
             </div>
           ))}
+          {multiSel.size >= 2 && (
+            <button onClick={groupSelectedActors} style={{ ...chip, justifyContent: "center", color: "var(--ui-accent, var(--c-accent))" }} title="把所选独立角色合并为一个手动编组（Ctrl+G）">
+              <Grid3x3 size={12} /> 编组所选 ({multiSel.size}) · Ctrl+G
+            </button>
+          )}
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginTop: 8 }}>添加人物（真人模型）</div>
           <div className="flex flex-wrap gap-1">
             {MANNEQUIN_MODELS.map((m) => (
@@ -745,15 +787,21 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             <div style={panel}>
               <input value={selectedGroup.name} onChange={(e) => patchGroup(selectedGroup.id, { name: e.target.value })}
                 style={{ ...ttl, width: "100%", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "4px 6px" }} />
-              <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginBottom: 6 }}>{selectedGroup.cols}×{selectedGroup.rows} = {selectedGroup.rows * selectedGroup.cols} 个成员（整组变换）</div>
+              <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginBottom: 6 }}>
+                {selectedGroup.manual
+                  ? `${scene.actors.filter((a) => a.groupId === selectedGroup.id).length} 个成员 · 手动编组（整组变换）`
+                  : `${selectedGroup.cols}×${selectedGroup.rows} = ${selectedGroup.rows * selectedGroup.cols} 个成员（整组变换）`}
+              </div>
               <div style={sub}>整组位置</div>
               <Xyz v={selectedGroup.position} min={-reachFor(selectedGroup.position, selectedGroup.scale)} max={reachFor(selectedGroup.position, selectedGroup.scale)} onChange={(position) => patchGroup(selectedGroup.id, { position })} />
               <div style={sub}>整组旋转(°)</div>
               <Xyz v={selectedGroup.rotation} min={-180} max={180} step={1} fixed={0} onChange={(rotation) => patchGroup(selectedGroup.id, { rotation })} />
               <div style={sub}>整组统一缩放</div>
               <Slider label="比例" value={selectedGroup.scale} min={0.1} max={30} step={0.1} fixed={1} onChange={(v) => patchGroup(selectedGroup.id, { scale: v })} />
-              <div style={sub}>成员间距(米)</div>
-              <Slider label="间距" value={selectedGroup.spacing ?? CROWD_SPACING} min={0.4} max={3} step={0.05} fixed={2} onChange={(v) => setGroupSpacing(selectedGroup.id, v)} />
+              {!selectedGroup.manual && <>
+                <div style={sub}>成员间距(米)</div>
+                <Slider label="间距" value={selectedGroup.spacing ?? CROWD_SPACING} min={0.4} max={3} step={0.05} fixed={2} onChange={(v) => setGroupSpacing(selectedGroup.id, v)} />
+              </>}
               <div style={sub}>组配色</div>
               <input type="color" value={selectedGroup.color} onChange={(e) => { const color = e.target.value; patchGroup(selectedGroup.id, { color }); setScene((s) => ({ ...s, actors: s.actors.map((a) => (a.groupId === selectedGroup.id ? { ...a, color } : a)) })); }} style={{ width: "100%", height: 28, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
               <div className="flex gap-1" style={{ marginTop: 10 }}>
@@ -798,10 +846,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 </>
               ) : (
                 <>
-                  <div style={sub}>动作预设</div>
+                  <div style={sub}>动作预设<span style={{ color: "var(--c-t4)", fontWeight: 400 }}> · 悬停预览，点击应用</span></div>
                   <div className="flex flex-wrap gap-1">
                     {POSE_PRESETS.map((p) => (
-                      <button key={p.key} onClick={() => patchActor(selected.id, { pose: applyPosePreset(p.key) })} style={{ ...chip, fontSize: 10.5 }}>{p.label}</button>
+                      <button key={p.key}
+                        onMouseEnter={() => { if (poseHoverBackup.current === null) poseHoverBackup.current = selected.pose ?? {}; patchActor(selected.id, { pose: applyPosePreset(p.key) }); }}
+                        onMouseLeave={() => { if (poseHoverBackup.current !== null) { patchActor(selected.id, { pose: poseHoverBackup.current }); poseHoverBackup.current = null; } }}
+                        onClick={() => { poseHoverBackup.current = null; patchActor(selected.id, { pose: applyPosePreset(p.key) }); }}
+                        style={{ ...chip, fontSize: 10.5 }}>{p.label}</button>
                     ))}
                   </div>
                   <div style={sub}>整体升降（脚贴地微调）</div>
