@@ -365,6 +365,16 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     moveLiveCamera(next);
   }, [scene.actors, scene.camera, patchCam, moveLiveCamera]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 面向机位：把选中角色绕 Y 旋转，使其正面(+Z)朝向当前机位——肖像/对话快速摆位。
+  const faceCameraActor = (id: string) => {
+    const a = scene.actors.find((x) => x.id === id); if (!a) return;
+    const S = scene.sceneScale ?? 1, ox = scene.sceneOffsetX ?? 0, oz = scene.sceneOffsetZ ?? 0;
+    const wp = actorWorldPos(a);
+    const ax = ox + wp[0] * S, az = oz + wp[2] * S;
+    const yaw = Math.atan2(scene.camera.position[0] - ax, scene.camera.position[2] - az) * 180 / Math.PI;
+    patchActor(id, { rotation: [a.rotation[0], Number(yaw.toFixed(1)), a.rotation[2]] as Vec3 });
+  };
+
   // 截图：用当前机位渲染一帧 → toBlob → 上传 → 写入节点 imageUrl（参考图）。
   const shoot = async () => {
     const cap = captureRef.current;
@@ -754,6 +764,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   <Xyz v={selected.position} min={-reachFor(selected.position, selected.scale)} max={reachFor(selected.position, selected.scale)} onChange={(position) => patchActor(selected.id, { position })} />
                   <div style={sub}>旋转(°)</div>
                   <Xyz v={selected.rotation} min={-180} max={180} step={1} fixed={0} onChange={(rotation) => patchActor(selected.id, { rotation })} />
+                  <button onClick={() => faceCameraActor(selected.id)} title="把角色转向当前机位" style={{ ...chip, justifyContent: "center", width: "100%", marginTop: 4 }}><Camera size={11} /> 面向机位</button>
                   <div style={sub}>缩放（放大以匹配全景场景）</div>
                   <Slider label="比例" value={selected.scale} min={0.1} max={30} step={0.1} fixed={1} onChange={(v) => patchActor(selected.id, { scale: v })} />
                   <div style={sub}>颜色</div>
