@@ -248,7 +248,7 @@ export default function AdminPage() {
           {activeTab === "system" && <SystemUpdatePanel />}
           {activeTab === "tunnel" && <LevelGate need={3}><TunnelPanel /></LevelGate>}
           {activeTab === "report" && <ReportFrame src="/work-report.html" title="工作成果量化评估报告" desc="基于 Git 全量历史与会话转录的多维度量化评估（提交/工时/代码量/Token/工作量系数 + 立项初衷与对比表）" />}
-          {activeTab === "intro" && <ReportFrame src="/platform-intro.html" title="项目功能汇报" desc="平台全功能图文汇报（系统架构 / AI 模型矩阵 / ComfyUI 算力 / 3D 导演台 / 安全防护 / 私有定制）" />}
+          {activeTab === "intro" && <ReportFrame src="/project-report.html" title="项目功能汇报" desc="平台全功能图文汇报（含「界面实录」真实截图：系统架构 / AI 模型矩阵 / ComfyUI 算力 / 3D 导演台 / 安全防护 / 私有定制）" />}
         </div>
       </div>
     </div>
