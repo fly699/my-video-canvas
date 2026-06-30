@@ -28,6 +28,8 @@ export function ShotPreview({ scene }: { scene: DirectorScene }) {
   const w = 224, h = Math.max(80, Math.round(w / ar));
   const S = scene.sceneScale ?? 1;
   const oy = scene.sceneOffsetY ?? 0;
+  const ox = scene.sceneOffsetX ?? 0;
+  const oz = scene.sceneOffsetZ ?? 0;
   const groups = scene.groups ?? [];
   const deg = Math.PI / 180;
   return (
@@ -49,9 +51,9 @@ export function ShotPreview({ scene }: { scene: DirectorScene }) {
             <Grid args={[40, 40]} cellSize={0.5} cellThickness={0.6} sectionSize={2} sectionThickness={1} infiniteGrid fadeDistance={26} cellColor="#2a2f3a" sectionColor="#3a4150" />
           )}
           {scene.background !== "#000000" && (
-            <ContactShadows position={[0, oy + 0.01, 0]} scale={24} resolution={512} blur={2.6} far={5} opacity={0.5} color="#000000" />
+            <ContactShadows position={[ox, oy + 0.01, oz]} scale={24} resolution={512} blur={2.6} far={5} opacity={0.5} color="#000000" />
           )}
-          <group position={[0, oy, 0]} scale={S}>
+          <group position={[ox, oy, oz]} scale={S}>
             {groups.map((g) => (
               <group key={g.id} position={g.position} rotation={[g.rotation[0] * deg, g.rotation[1] * deg, g.rotation[2] * deg]} scale={g.scale}>
                 {scene.actors.filter((a) => a.groupId === g.id).map((a) => (
