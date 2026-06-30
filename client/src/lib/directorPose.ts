@@ -49,11 +49,13 @@ export const POSE_PRESETS: { key: string; label: string; pose: Pose }[] = [
   { key: "tpose",   label: "T 型", pose: { armLOut: 78, armROut: 78 } },
   { key: "handsup", label: "举手", pose: { armLOut: 160, armROut: 160 } },
   { key: "walk",    label: "行走", pose: { legLForward: 22, legRForward: -22, kneeR: 16, armLForward: -22, armRForward: 22, elbowL: 22, elbowR: 22 } },
-  { key: "run",     label: "跑步", pose: { torsoForward: 18, legLForward: 45, legRForward: -30, kneeL: 25, kneeR: 65, armLForward: -50, armRForward: 50, elbowL: 80, elbowR: 80 } },
+  // 跑步：左腿前/右腿后，配对侧手臂(右前/左后)、肘弯近身——对侧摆臂才自然。
+  { key: "run",     label: "跑步", pose: { torsoForward: 18, legLForward: 45, legRForward: -30, kneeL: 25, kneeR: 65, armRForward: 42, armROut: 10, elbowR: 95, armLForward: -38, armLOut: 10, elbowL: 95 } },
   // 低姿势附带 rootY（身高比例，负=整体下沉），配合踝部自动贴地，使脚落到地面而非悬空。
   { key: "sit",     label: "坐姿", pose: { legLForward: 88, legRForward: 88, kneeL: 92, kneeR: 92, rootY: -0.24 } },
   { key: "crouch",  label: "蹲下", pose: { torsoForward: 22, legLForward: 95, legRForward: 95, kneeL: 135, kneeR: 135, rootY: -0.34 } },
-  { key: "kneel",   label: "单膝跪", pose: { legLForward: 95, kneeL: 135, legRForward: 80, kneeR: 95, torsoForward: 8, rootY: -0.22 } },
+  // 单膝跪：右腿前脚掌planted(thigh前90/膝90 小腿竖直)、左腿膝着地(thigh下垂/膝128 小腿后折)、整体下沉使膝触地。
+  { key: "kneel",   label: "单膝跪", pose: { legRForward: 92, kneeR: 92, legLForward: -2, kneeL: 128, torsoForward: 6, rootY: -0.27 } },
   // 格斗：双拳举到下巴前护架(不交叉)、错步微蹲。需配 armOut 抬高上臂，否则拳会垂到胸前并交叉。
   { key: "fight",   label: "格斗", pose: { torsoForward: 8, torsoTwist: 14, armLForward: 60, armLOut: 52, elbowL: 128, armRForward: 52, armROut: 58, elbowR: 138, legLForward: 16, legRForward: -12, kneeL: 22, kneeR: 18 } },
   { key: "think",   label: "思考", pose: { headNod: 8, armRForward: 65, elbowR: 125, armROut: 6 } },
