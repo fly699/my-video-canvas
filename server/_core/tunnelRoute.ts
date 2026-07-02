@@ -1,8 +1,32 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 import { isIP } from "net";
+import { networkInterfaces } from "os";
 
 const pexec = promisify(exec);
+
+/** 本机所有网卡的非内部（排除回环）IP。用于「出口专线绑定」防呆：edge-bind 必须是本机某网卡地址，
+ *  否则 cloudflared 绑定出网会报 "The requested address is not valid in its context" 而整个隧道起不来。 */
+export function localInterfaceIps(): { v4: string[]; v6: string[] } {
+  const nets = networkInterfaces();
+  const v4 = new Set<string>(), v6 = new Set<string>();
+  for (const name of Object.keys(nets)) {
+    for (const ni of nets[name] ?? []) {
+      if (ni.internal) continue;
+      const fam = String(ni.family); // Node 18/22 为 "IPv4"/"IPv6"；个别版本为 4/6
+      if (fam === "IPv4" || fam === "4") v4.add(ni.address);
+      else if (fam === "IPv6" || fam === "6") v6.add(ni.address.split("%")[0]);
+    }
+  }
+  return { v4: Array.from(v4), v6: Array.from(v6) };
+}
+
+/** 给定 IP 是否为本机某网卡地址（IPv6 忽略 %zone 与大小写）。 */
+export function isLocalInterfaceIp(ip: string): boolean {
+  const { v4, v6 } = localInterfaceIps();
+  const norm = ip.split("%")[0].toLowerCase();
+  return v4.includes(ip) || v6.some((a) => a.toLowerCase() === norm);
+}
 
 /**
  * 专线路由：让「命名隧道」真正走指定上行专线。
