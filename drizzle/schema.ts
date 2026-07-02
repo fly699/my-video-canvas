@@ -759,6 +759,8 @@ export const tunnelSettings = mysqlTable("tunnel_settings", {
   // true=app 自起 cloudflared；false=管理员已有公网入口，仅按 Host 门控、不起进程。
   runCloudflared: boolean("runCloudflared").notNull().default(true),
   token: text("token"),               // cloudflared 命名隧道 token（可空 → 快速隧道）。绝不回传前端。
+  // true=即便存了命名隧道 Token 也临时改走「快速隧道」；切回命名隧道无需重新粘贴 Token。默认 false。
+  preferQuick: boolean("preferQuick").notNull().default(false),
   publicUrl: text("publicUrl"),        // 公网地址（快速隧道自动解析；命名隧道管理员填）
   // 出口专线绑定：服务器多条上行（专线）时，填某条线路本机网卡的源 IP，cloudflared 出到
   // Cloudflare 边缘的连接就绑定到该 IP（--edge-bind-address），从而走指定那条专线。空=系统默认路由。

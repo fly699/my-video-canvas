@@ -103,7 +103,9 @@ export async function startTunnel(): Promise<void> {
   const bin = await resolveCloudflaredPath();
   if (!bin) { status = { running: false, publicUrl: "", error: "未检测到 cloudflared，请在「公网隧道」页点「下载 cloudflared」，或改用「我已有公网入口」模式" }; return; }
   if (!tunnelPort) { status = { running: false, publicUrl: "", error: "隧道内部回环监听未就绪，请稍后重试" }; return; }
-  const named = cfg.token.trim().length > 0;
+  // 命名隧道 = 存了 Token 且未选「临时改走快速隧道」。preferQuick 让 Token 保留着也能跑快速隧道，
+  // 切回命名隧道无需重新粘贴 Token。
+  const named = cfg.token.trim().length > 0 && !cfg.preferQuick;
   // Quick tunnel forwards to our dedicated loopback listener (plain HTTP → no 502 from
   // self-signed TLS). Named tunnel's origin is configured in the CF dashboard — point it
   // at http://localhost:<this port> (shown in the admin UI).
