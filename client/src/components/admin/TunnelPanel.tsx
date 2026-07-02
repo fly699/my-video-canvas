@@ -91,6 +91,22 @@ export function TunnelPanel() {
     catch (e) { toast.error("保存失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
   };
 
+  // 速率/流量格式化（bps=字节/秒 → bit 速率；字节 → 人类可读）
+  const fmtRate = (bps: number) => {
+    const bits = (bps || 0) * 8;
+    if (bits >= 1e9) return (bits / 1e9).toFixed(2) + " Gbps";
+    if (bits >= 1e6) return (bits / 1e6).toFixed(2) + " Mbps";
+    if (bits >= 1e3) return (bits / 1e3).toFixed(1) + " Kbps";
+    return Math.round(bits) + " bps";
+  };
+  const fmtBytes = (b: number) => {
+    b = b || 0;
+    if (b >= 1e9) return (b / 1e9).toFixed(2) + " GB";
+    if (b >= 1e6) return (b / 1e6).toFixed(1) + " MB";
+    if (b >= 1e3) return (b / 1e3).toFixed(0) + " KB";
+    return b + " B";
+  };
+
   const box: React.CSSProperties = { fontSize: 12, padding: "7px 9px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", width: "100%" };
   const card: React.CSSProperties = { border: "1px solid var(--c-bd2)", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12 };
 
@@ -118,6 +134,18 @@ export function TunnelPanel() {
         </div>
         {q.data?.publicUrl && (
           <div style={{ fontSize: 12, color: "var(--c-t2)" }}>公网地址：<a href={q.data.publicUrl} target="_blank" rel="noreferrer" style={{ color: "oklch(0.7 0.14 200)", textDecoration: "none" }}>{q.data.publicUrl} <ExternalLink className="inline w-3 h-3" /></a></div>
+        )}
+        {/* 用户经隧道的实时网速（被动统计回环监听器上的真实流量；每 5s 随本页刷新，服务端每秒采样）。
+            ↓=用户下行（服务器发出）、↑=用户上行（服务器收到）；因 cloudflared 多路复用，为全体用户合计值。 */}
+        {q.data?.throughput && (
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", fontSize: 11.5, color: "var(--c-t2)", padding: "8px 10px", borderRadius: 8, background: "var(--c-bd1)" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 600, color: "var(--c-t3)" }}><Wifi className="w-3.5 h-3.5" /> 用户经隧道实时网速</span>
+            <span>↓ <b style={{ color: "oklch(0.72 0.16 150)" }}>{fmtRate(q.data.throughput.downBps)}</b></span>
+            <span>↑ <b style={{ color: "oklch(0.7 0.14 200)" }}>{fmtRate(q.data.throughput.upBps)}</b></span>
+            <span style={{ color: "var(--c-t3)" }}>· {q.data.throughput.connections} 连接</span>
+            <span style={{ color: "var(--c-t4)" }}>· 累计 ↓{fmtBytes(q.data.throughput.totalDown)} ↑{fmtBytes(q.data.throughput.totalUp)}</span>
+            <span style={{ color: "var(--c-t4)" }}>· 峰值 ↓{fmtRate(q.data.throughput.peakDownBps)} ↑{fmtRate(q.data.throughput.peakUpBps)}</span>
+          </div>
         )}
         {q.data?.log && q.data.log.trim() && (
           <details style={{ fontSize: 11 }}>
