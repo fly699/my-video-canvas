@@ -22,7 +22,8 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
   );
   const [pinned, setPinned] = usePersistentState<boolean>("ui:chat-window:pinned:v1", false,
     { validate: (p) => (typeof p === "boolean" ? p : null) });
-  const [sidebar, setSidebar] = useState(true);
+  // 默认不弹会话栏——直接进「AI 助手」房间（useChat 自动选中）。点顶部会话栏按钮可展开切换。
+  const [sidebar, setSidebar] = useState(false);
   const [members, setMembers] = useState(false);
   const dragRef = useRef<{ mx: number; my: number; x: number; y: number } | null>(null);
   const rezRef = useRef<{ mx: number; my: number; w: number; h: number } | null>(null);

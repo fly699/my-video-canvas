@@ -111,6 +111,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const activeConv = useMemo(() => conversations.find((c) => c.id === activeId) ?? null, [conversations, activeId]);
   const didAutoSelectRef = useRef(false);
+  const creatingAssistantRef = useRef(false);
+  // 默认房间 = 内建「AI 助手」私聊。取其用户 id 以在会话列表里认出该 DM；无则创建。
+  const assistantQuery = trpc.chat.assistantUserId.useQuery(undefined, { staleTime: 60 * 60_000, refetchOnWindowFocus: false });
+  const assistantId = assistantQuery.data?.userId ?? null;
+  const openAssistantMut = trpc.chat.openAssistant.useMutation();
 
   // ── identity key bootstrap ────────────────────────────────────────────────
   useEffect(() => {
@@ -380,15 +385,32 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [reloadMessages]);
 
   // ── 首次进入默认选中大厅 ───────────────────────────────────────────────────
+  // 默认直接进「AI 助手」房间：① 已有 AI 助手私聊 → 选中；② 无则创建后选中；
+  // ③ 拿不到 AI 助手（未启用/出错）→ 回退大厅。仅自动选一次；用户手动选过则不干预。
+  const assistantSettled = assistantQuery.isSuccess || assistantQuery.isError;
   useEffect(() => {
     if (didAutoSelectRef.current) return;
-    if (activeIdRef.current !== null) return; // 用户已手动选择
-    if (conversations.length === 0) return; // 会话尚未加载
+    if (activeIdRef.current !== null) return;   // 用户已手动选择
+    if (!assistantSettled) return;              // 等 AI 助手 id 查询结束，避免过早回退大厅
+    if (convQuery.isLoading) return;            // 会话列表仍在加载
+
+    if (assistantId != null) {
+      const ai = conversations.find((c) => c.type === "dm" && c.peer?.id === assistantId);
+      if (ai) { didAutoSelectRef.current = true; selectConversation(ai.id); return; }
+      if (!creatingAssistantRef.current) {      // 无 AI 助手会话 → 创建后进（只触发一次）
+        creatingAssistantRef.current = true;
+        didAutoSelectRef.current = true;
+        openAssistantMut.mutateAsync()
+          .then(async (r) => { await utils.chat.listConversations.refetch(); selectConversation(r.id); })
+          .catch(() => { didAutoSelectRef.current = false; creatingAssistantRef.current = false; });
+        return;
+      }
+      return;
+    }
+    // 回退：大厅
     const lobby = conversations.find((c) => c.type === "lobby");
-    if (!lobby) return; // 大厅未启用
-    didAutoSelectRef.current = true;
-    selectConversation(lobby.id);
-  }, [conversations, selectConversation]);
+    if (lobby) { didAutoSelectRef.current = true; selectConversation(lobby.id); }
+  }, [conversations, assistantId, assistantSettled, convQuery.isLoading, selectConversation, openAssistantMut, utils]);
 
   // ── sending ───────────────────────────────────────────────────────────────
   const sendText = useCallback(async (text: string) => {
