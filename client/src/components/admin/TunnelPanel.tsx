@@ -173,6 +173,18 @@ export function TunnelPanel() {
             <label style={{ fontSize: 11, color: "var(--c-t3)" }}>命名隧道 Token（可选，{q.data?.hasToken ? "已配置，留空保持不变" : "未配置"}）
               <input value={token} onChange={(e) => setToken(e.target.value)} placeholder={q.data?.hasToken ? "••••••（留空保持不变）" : "粘贴 cloudflared tunnel token"} className="nodrag" style={{ ...box, marginTop: 4 }} />
             </label>
+            {q.data?.hasToken && (
+              <button
+                onClick={async () => {
+                  if (!window.confirm("清除命名隧道 Token，切回快速隧道（*.trycloudflare.com，重启会变网址）？停用再启用后生效。")) return;
+                  try { await configMut.mutateAsync({ token: "" }); setToken(""); await utils.admin.tunnel.get.invalidate(); toast.success("已清除 Token，切回快速隧道（停用再启用生效）"); }
+                  catch (e) { toast.error("清除失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
+                }}
+                disabled={configMut.isPending}
+                className="nodrag"
+                style={{ alignSelf: "flex-start", fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}
+              >清除 Token（切回快速隧道）</button>
+            )}
           </>
         ) : (
           <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6, margin: 0 }}>
