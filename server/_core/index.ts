@@ -501,6 +501,29 @@ async function startServer() {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
+  // 稳定绑定隧道回环监听（cloudflared 的回源目标）。优先固定端口；被上个实例短暂占用（重启常见）
+  // 时【等释放、重试同一端口】以保持回源端口不漂移（命名隧道的 Cloudflare 回源写死此端口）；
+  // 带 error 处理，保证 setTunnelOrigin 一定执行、回源端口不会静默变 0。io 在成功后再 attach，
+  // 避免把 socket 挂到绑定失败的服务器上。
+  const bindTunnelLoopback = (preferred: number, sameTriesLeft = 15): void => {
+    const srv = createServer(app);
+    srv.once("error", (e: NodeJS.ErrnoException) => {
+      try { srv.close(); } catch { /* ignore */ }
+      if (e.code === "EADDRINUSE" && sameTriesLeft > 0) {
+        setTimeout(() => bindTunnelLoopback(preferred, sameTriesLeft - 1), 1000); // 等上个实例释放，重试同一端口
+      } else {
+        console.warn(`[Tunnel] 回源端口 ${preferred} 绑定失败(${e.code})，退到下一个空闲端口——若用命名隧道，请把 Cloudflare Public Hostname 的回源端口同步改掉`);
+        void findAvailablePort(preferred + 1).then((np) => bindTunnelLoopback(np, 0)).catch((err) => console.warn("[Tunnel] internal listener failed:", err));
+      }
+    });
+    srv.listen(preferred, "127.0.0.1", () => {
+      io.attach(srv); // 关键：Socket.IO 挂到隧道回环服务器，否则经隧道进来的 WS 无人处理→聊天「连接中」
+      setTunnelOrigin(preferred);
+      console.log(`[Tunnel] internal origin on http://127.0.0.1:${preferred} (socket.io attached)`);
+      void initTunnel(); // 隧道监听就绪后再拉起 cloudflared + 预热门控缓存
+    });
+  };
+
   server.listen(port, async () => {
     const proto = isHttps ? "https" : "http";
     console.log(`Server running on ${proto}://localhost:${port}/`);
@@ -508,19 +531,12 @@ async function startServer() {
     // Dedicated 127.0.0.1 loopback listener that cloudflared forwards to (plain HTTP →
     // no self-signed-TLS 502). Any request arriving on THIS port is unambiguously tunnel
     // traffic, so the access gate identifies it by socket.localPort — no header guessing.
-    try {
-      const tunnelPort = await findAvailablePort(port + 1);
-      const tunnelServer = createServer(app);
-      // 关键：把 Socket.IO 也挂到这台隧道回环服务器上。否则经公网隧道进来的 WebSocket
-      // 升级请求落在这台没有 io 的服务器上无人处理 → 聊天/协作 socket 永远「连接中」。
-      // io 可同时附着多台 HTTP 服务器，沿用同一份配置（path /api/socket、cors 等）。
-      io.attach(tunnelServer);
-      tunnelServer.listen(tunnelPort, "127.0.0.1", () => {
-        setTunnelOrigin(tunnelPort);
-        console.log(`[Tunnel] internal origin on http://127.0.0.1:${tunnelPort} (socket.io attached)`);
-        void initTunnel(); // 隧道监听就绪后再拉起 cloudflared + 预热门控缓存
-      });
-    } catch (e) { console.warn("[Tunnel] internal listener failed:", e); }
+    // 回源端口必须【稳定】：Cloudflare 命名隧道的 Public Hostname 把回源写死为 localhost:<此端口>，
+    // 端口一漂移，命名隧道就回源失败（快速隧道用实时 --url 不受影响，故只有命名隧道坏）。
+    // 因此：优先固定端口（TUNNEL_ORIGIN_PORT 或 主端口+1），被上个实例短暂占用（重启常见）时【等它
+    // 释放、重试同一端口】而不是跳走；带 error 处理，保证 setTunnelOrigin 一定被调用，不会静默变 0。
+    const preferredTunnelPort = parseInt(process.env.TUNNEL_ORIGIN_PORT || String(port + 1));
+    bindTunnelLoopback(preferredTunnelPort);
   });
 
   // When HTTPS is on, run a tiny HTTP listener that 301-redirects to HTTPS so
