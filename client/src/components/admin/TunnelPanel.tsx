@@ -198,7 +198,7 @@ export function TunnelPanel() {
         {runCf && (
           <label style={{ fontSize: 11, color: "var(--c-t3)" }}>出口专线绑定（多条上行专线时用；填某条线路本机网卡的源 IP）
             <input value={edgeBind} onChange={(e) => setEdgeBind(e.target.value)} placeholder="如 203.0.113.8（留空=系统默认路由）" className="nodrag" style={{ ...box, marginTop: 4 }} />
-            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>隧道到 Cloudflare 的出站连接绑定到该 IP，即只让隧道走这条专线；把<b>另一条专线设为服务器默认路由</b>，则其余出站（模型/存储等）全走另一条。改后需停用再启用隧道生效。</div>
+            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>填该专线本机网卡的源 IP：启用隧道时 app 会<b>自动探测该网卡的默认网关</b>，并把 Cloudflare 边缘网段（198.41.192.0/24、198.41.200.0/24）路由到该网关，让<b>隧道走这条专线</b>、其余出站走系统默认路由（另一条）。需<b>本服务以管理员运行</b>；成功/失败（及需手动执行的命令）见下方「查看 cloudflared 日志」。改后停用再启用生效。</div>
           </label>
         )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "child_process";
 import { isIP } from "net";
+import { applyTunnelRoutes, removeTunnelRoutes } from "./tunnelRoute";
 import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./tunnelGate";
 import { getTunnelSettings, setTunnelSettings } from "../db";
 import { resolveCloudflaredPath } from "./cloudflaredBin";
@@ -25,6 +26,7 @@ async function notifyNewUrl(url: string): Promise<void> {
 let proc: ChildProcess | null = null;
 let status: { running: boolean; publicUrl: string; error: string | null } = { running: false, publicUrl: "", error: null };
 let logBuf = "";
+let routedIp: string | null = null; // 已为哪个专线源 IP 加了 CF 边缘路由（停用时据此删除）
 
 // Dedicated loopback port cloudflared forwards to. A request whose socket.localPort
 // equals this is UNAMBIGUOUSLY tunnel traffic (no header guessing). Plain HTTP on
@@ -96,6 +98,13 @@ export async function startTunnel(): Promise<void> {
   };
   proc.stdout?.on("data", onData);
   proc.stderr?.on("data", onData);
+  // 出口专线：命名隧道不吃 --edge-bind-address，改用 OS 路由把 CF 边缘网段导向该专线网关（自动探测），
+  // 让「隧道→边缘」的流量走这条专线；其余出站仍走默认路由。app 自己执行（需以管理员运行；失败会在
+  // 日志里给出手动命令）。启用时加、停用时删。
+  if (bindIp && isIP(bindIp)) {
+    routedIp = bindIp;
+    void applyTunnelRoutes(bindIp).then((r) => { logBuf = (logBuf + "\n" + r.log + "\n").slice(-8000); });
+  }
   proc.on("exit", (code) => {
     const hint = code ? tunnelErrorHint(logBuf) : "";
     status = { running: false, publicUrl: status.publicUrl, error: code ? `cloudflared 已退出 (code ${code})${hint ? "：" + hint : ""}` : null };
@@ -107,6 +116,7 @@ export async function startTunnel(): Promise<void> {
 export function stopTunnel(): void {
   if (proc) { try { proc.kill("SIGTERM"); } catch { /* ignore */ } proc = null; }
   status = { running: false, publicUrl: status.publicUrl, error: null };
+  if (routedIp) { const ip = routedIp; routedIp = null; void removeTunnelRoutes(ip).then((log) => { logBuf = (logBuf + "\n" + log + "\n").slice(-8000); }); }
 }
 
 /** Apply the admin's enable/disable: persist + start or stop the process + refresh gate. */
