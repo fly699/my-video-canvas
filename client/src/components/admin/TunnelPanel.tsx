@@ -105,6 +105,12 @@ export function TunnelPanel() {
         {q.data?.publicUrl && (
           <div style={{ fontSize: 12, color: "var(--c-t2)" }}>公网地址：<a href={q.data.publicUrl} target="_blank" rel="noreferrer" style={{ color: "oklch(0.7 0.14 200)", textDecoration: "none" }}>{q.data.publicUrl} <ExternalLink className="inline w-3 h-3" /></a></div>
         )}
+        {q.data?.log && q.data.log.trim() && (
+          <details style={{ fontSize: 11 }}>
+            <summary style={{ cursor: "pointer", color: "var(--c-t3)", userSelect: "none" }}>查看 cloudflared 日志（排错用）</summary>
+            <pre style={{ marginTop: 6, maxHeight: 220, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 8, padding: 8, color: "var(--c-t2)", fontSize: 10.5, lineHeight: 1.5 }}>{q.data.log}</pre>
+          </details>
+        )}
       </div>
 
       {/* 配置：模式 + cloudflared 状态 + token/域名 */}
