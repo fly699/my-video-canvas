@@ -22,6 +22,15 @@ export function TunnelPanel() {
   const [checkRes, setCheckRes] = useState<CheckResult | null>(null);
   const [showGuide, setShowGuide] = useState(false);
 
+  // 专线路由（让命名隧道走指定专线）
+  const detectGwMut = trpc.admin.tunnel.detectRouteGateway.useMutation();
+  const applyRoutesMut = trpc.admin.tunnel.applyRoutes.useMutation();
+  const removeRoutesMut = trpc.admin.tunnel.removeRoutes.useMutation();
+  const routeStatusMut = trpc.admin.tunnel.routeStatus.useMutation();
+  const [routeGw, setRouteGw] = useState("");        // 专线网关（自动探测预填，可手改）
+  const [routeLog, setRouteLog] = useState("");       // 路由操作结果回显
+  const routeBusy = detectGwMut.isPending || applyRoutesMut.isPending || removeRoutesMut.isPending || routeStatusMut.isPending;
+
   const [token, setToken] = useState("");
   const [publicUrl, setPublicUrl] = useState("");
   const [runCf, setRunCf] = useState(true);
@@ -195,12 +204,41 @@ export function TunnelPanel() {
         <label style={{ fontSize: 11, color: "var(--c-t3)" }}>{runCf ? "公网地址（命名隧道必填；快速隧道留空自动获取）" : "公网地址（你的外网访问域名，必填）"}
           <input value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} placeholder="video.example.com 或 https://video.example.com" className="nodrag" style={{ ...box, marginTop: 4 }} />
         </label>
-        {runCf && (
+        {runCf && (<>
           <label style={{ fontSize: 11, color: "var(--c-t3)" }}>出口专线绑定（多条上行专线时用；填某条线路本机网卡的源 IP）
-            <input value={edgeBind} onChange={(e) => setEdgeBind(e.target.value)} placeholder="如 203.0.113.8（留空=系统默认路由）" className="nodrag" style={{ ...box, marginTop: 4 }} />
-            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>隧道到 Cloudflare 的出站连接绑定到该 IP，即只让隧道走这条专线；把<b>另一条专线设为服务器默认路由</b>，则其余出站（模型/存储等）全走另一条。改后需停用再启用隧道生效。</div>
+            <input value={edgeBind} onChange={(e) => setEdgeBind(e.target.value)} placeholder="如 192.168.12.24（留空=系统默认路由）" className="nodrag" style={{ ...box, marginTop: 4 }} />
+            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>填该专线本机网卡的源 IP。<b>快速隧道</b>靠它即可走该专线；<b>命名隧道</b>（token）cloudflared 不吃此绑定，需用下方「专线路由」把流量导到该专线（改后停用再启用生效）。</div>
           </label>
-        )}
+
+          {/* 专线路由：命名隧道走指定专线的唯一可行办法——把 CF 边缘网段路由到专线网关（OS 路由层）。 */}
+          <div style={{ border: "1px solid var(--c-bd2)", borderRadius: 10, padding: 10, background: "var(--c-base)", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t2)" }}>专线路由（让命名隧道走这条专线）</div>
+            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5 }}>
+              命名隧道不应用「出口专线绑定」，只能在系统路由层选线：把 Cloudflare 边缘网段（198.41.192.0/24、198.41.200.0/24 等，自适应）路由到<b>专线网关</b>，其余出站仍走默认路由。<b>需本服务以管理员运行</b>；若无权限，下方会给出可手动执行的命令。只动这几段、绝不碰默认路由。
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <input value={routeGw} onChange={(e) => setRouteGw(e.target.value)} placeholder="专线网关 IP（留空=自动探测）" className="nodrag" style={{ ...box, flex: "1 1 160px", marginTop: 0 }} />
+              <button disabled={routeBusy} onClick={async () => {
+                const r = await detectGwMut.mutateAsync().catch((e) => ({ gateway: null, error: String(e) }));
+                if (r.gateway) { setRouteGw(r.gateway); setRouteLog(`探测到专线网关：${r.gateway}`); }
+                else setRouteLog(("error" in r && r.error) ? r.error : "未探测到网关，请在「出口专线绑定」填源 IP 或手动填网关");
+              }} className="nodrag" style={{ fontSize: 11, padding: "6px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>自动探测网关</button>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button disabled={routeBusy} onClick={async () => {
+                try { const r = await applyRoutesMut.mutateAsync({ gateway: routeGw.trim() || undefined }); setRouteLog(r.log); if (r.gateway && !routeGw.trim()) setRouteGw(r.gateway); (r.ok ? toast.success : toast.error)(r.ok ? "已应用专线路由" : "部分/全部路由未生效，见下方结果"); }
+                catch (e) { setRouteLog(String(e)); toast.error("应用失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
+              }} className="nodrag flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 7, border: "1px solid oklch(0.68 0.22 285 / 0.4)", background: "oklch(0.68 0.22 285 / 0.14)", color: "oklch(0.78 0.16 285)", cursor: "pointer" }}>
+                {applyRoutesMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} 应用专线路由
+              </button>
+              <button disabled={routeBusy} onClick={async () => { const r = await removeRoutesMut.mutateAsync().catch((e) => ({ log: String(e) })); setRouteLog(r.log); toast.success("已移除专线路由"); }} className="nodrag" style={{ fontSize: 11, padding: "6px 12px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>移除路由</button>
+              <button disabled={routeBusy} onClick={async () => { const r = await routeStatusMut.mutateAsync().catch((e) => ({ log: String(e) })); setRouteLog(r.log); }} className="nodrag" style={{ fontSize: 11, padding: "6px 12px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>检测路由状态</button>
+            </div>
+            {routeLog && (
+              <pre style={{ margin: 0, maxHeight: 200, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 8, padding: 8, color: "var(--c-t2)", fontSize: 10.5, lineHeight: 1.5 }}>{routeLog}</pre>
+            )}
+          </div>
+        </>)}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <button onClick={saveConfig} disabled={configMut.isPending} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11.5, fontWeight: 600, background: "var(--c-bd1)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
             {configMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 保存配置
