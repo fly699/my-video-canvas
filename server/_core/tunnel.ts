@@ -35,6 +35,21 @@ export function getTunnelListenerPort(): number { return tunnelPort; }
 
 export function getTunnelRuntimeStatus() { return { running: status.running, publicUrl: status.publicUrl, error: status.error }; }
 
+/** 组装 cloudflared 启动参数。
+ *  Quick tunnel 转发到本机专用回环监听（纯 HTTP → 避免自签 TLS 502）；Named tunnel 的回源在 CF
+ *  面板配到 http://localhost:<回环端口>。
+ *  出口专线绑定 --edge-bind-address 是 `tunnel` 命令层的**全局**参数，必须放在子命令 `run` 之前
+ *  ——否则命名隧道会把它落到 `run` 后面被拒/忽略，导致「一绑就连不上」（快速隧道因无子命令而侥幸可用）。
+ *  绑定后 cloudflared 到 Cloudflare 边缘的出站源 IP 固定为该地址，从而走指定专线（还需 OS 路由把该
+ *  源/边缘网段导向对应线路的网关）。仅接受合法 IP。 */
+export function buildCloudflaredArgs(named: boolean, token: string, tunnelPort: number, edgeBindAddress: string): string[] {
+  const bindIp = (edgeBindAddress ?? "").trim();
+  const edge = bindIp && isIP(bindIp) ? ["--edge-bind-address", bindIp] : [];
+  return named
+    ? ["tunnel", ...edge, "run", "--token", token.trim()]
+    : ["tunnel", ...edge, "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`];
+}
+
 export async function startTunnel(): Promise<void> {
   if (proc) return;
   const cfg = await getTunnelSettings();
@@ -43,15 +58,7 @@ export async function startTunnel(): Promise<void> {
   if (!bin) { status = { running: false, publicUrl: "", error: "未检测到 cloudflared，请在「公网隧道」页点「下载 cloudflared」，或改用「我已有公网入口」模式" }; return; }
   if (!tunnelPort) { status = { running: false, publicUrl: "", error: "隧道内部回环监听未就绪，请稍后重试" }; return; }
   const named = cfg.token.trim().length > 0;
-  // Quick tunnel forwards to our dedicated loopback listener (plain HTTP → no 502 from
-  // self-signed TLS). Named tunnel's origin is configured in the CF dashboard — point it
-  // at http://localhost:<this port> (shown in the admin UI).
-  const args = named ? ["tunnel", "run", "--token", cfg.token.trim()]
-                     : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`];
-  // 出口专线绑定：把 cloudflared 到 Cloudflare 边缘的出站连接绑定到指定线路的源 IP，
-  // 于是隧道走该专线；服务器其余出站由系统默认路由（另一条专线）承载。仅接受合法 IP。
-  const bindIp = (cfg.edgeBindAddress ?? "").trim();
-  if (bindIp && isIP(bindIp)) args.push("--edge-bind-address", bindIp);
+  const args = buildCloudflaredArgs(named, cfg.token.trim(), tunnelPort, cfg.edgeBindAddress ?? "");
   try {
     proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
   } catch {
