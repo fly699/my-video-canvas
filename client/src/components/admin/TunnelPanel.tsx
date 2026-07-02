@@ -11,6 +11,7 @@ export function TunnelPanel() {
   const q = trpc.admin.tunnel.get.useQuery(undefined, { refetchInterval: 5000 });
   const cf = trpc.admin.tunnel.cloudflared.useQuery(undefined, { refetchInterval: 3000 });
   const localIps = trpc.admin.tunnel.localSourceIps.useQuery(); // 本机可用源 IP（供「出口专线绑定」点选防呆）
+  const egress = trpc.admin.tunnel.egress.useQuery(undefined, { refetchInterval: 15000 }); // 隧道出站走哪张网卡/源 IP
   const enableMut = trpc.admin.tunnel.setEnabled.useMutation();
   const configMut = trpc.admin.tunnel.setConfig.useMutation();
   const wlMut = trpc.admin.tunnel.setWhitelist.useMutation();
@@ -155,6 +156,22 @@ export function TunnelPanel() {
             <span style={{ color: "var(--c-t3)" }}>· {q.data.throughput.connections} 连接</span>
             <span style={{ color: "var(--c-t4)" }}>· 累计 ↓{fmtBytes(q.data.throughput.totalDown)} ↑{fmtBytes(q.data.throughput.totalUp)}</span>
             <span style={{ color: "var(--c-t4)" }}>· 峰值 ↓{fmtRate(q.data.throughput.peakDownBps)} ↑{fmtRate(q.data.throughput.peakUpBps)}</span>
+          </div>
+        )}
+        {/* 隧道出站实际走哪张网卡/源 IP：快速隧道靠 edge-bind 绑定；其余按内核选路（专线路由如实反映）。 */}
+        {egress.data && (
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", fontSize: 11.5, color: "var(--c-t2)", padding: "8px 10px", borderRadius: 8, background: "var(--c-bd1)" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 600, color: "var(--c-t3)" }}><Globe className="w-3.5 h-3.5" /> 隧道出站线路</span>
+            {egress.data.sourceIp ? (
+              <>
+                <span>网卡 <b style={{ color: "var(--c-t1)", fontFamily: "monospace" }}>{egress.data.iface ?? "?"}</b></span>
+                <span>· 源 IP <b style={{ color: "oklch(0.7 0.14 200)", fontFamily: "monospace" }}>{egress.data.sourceIp}</b></span>
+                <span style={{ color: "var(--c-t4)" }}>· {egress.data.via === "bind" ? "edge-bind 绑定" : "内核选路"}（探测目的 {egress.data.dest}）</span>
+              </>
+            ) : (
+              <span style={{ color: "var(--c-t4)" }}>{egress.data.detail}</span>
+            )}
+            <button type="button" disabled={egress.isFetching} onClick={() => egress.refetch()} className="nodrag" style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}>{egress.isFetching ? "检测中…" : "重新检测"}</button>
           </div>
         )}
         {q.data?.log && q.data.log.trim() && (

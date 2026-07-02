@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands, localInterfaceIps, isLocalInterfaceIp } from "./_core/tunnelRoute";
+import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo } from "./_core/tunnelRoute";
 
 describe("tunnelRoute · 边缘网段与命令生成", () => {
   it("内置 CF 边缘 = cloudflared 实际连接的两段", () => {
@@ -43,6 +43,18 @@ describe("tunnelRoute · 边缘网段与命令生成", () => {
 
   it("isLocalInterfaceIp：非本机地址（TEST-NET RFC5737）返回 false", () => {
     expect(isLocalInterfaceIp("192.0.2.111")).toBe(false); // 保留测试网段，绝不会是本机网卡地址
+  });
+
+  it("tunnelEgressInfo：快速隧道+绑定 → 源 IP 即绑定 IP，dest 取日志边缘 IP", async () => {
+    const r = await tunnelEgressInfo("203.0.113.9", true, "conn ip=198.41.200.5 loc=sea");
+    expect(r.via).toBe("bind");
+    expect(r.sourceIp).toBe("203.0.113.9");
+    expect(r.dest).toBe("198.41.200.5");
+  });
+
+  it("tunnelEgressInfo：无日志时 dest 用内置代表边缘 IP", async () => {
+    const r = await tunnelEgressInfo("203.0.113.9", true, "");
+    expect(r.dest).toBe("198.41.192.227");
   });
 
   it("manualRouteCommands：每段一条、含网关、不含默认路由", () => {
