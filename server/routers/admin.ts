@@ -8,7 +8,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput } from "../_core/tunnel";
-import { detectGatewayForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus } from "../_core/tunnelRoute";
+import { detectGatewayForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp } from "../_core/tunnelRoute";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
 import { tunnelHostFromUrl } from "../_core/tunnelGate";
 import { sendTunnelUrlEmail } from "../_core/tunnelEmail";
@@ -513,6 +513,13 @@ export const adminRouter = router({
       if (input.edgeBindAddress !== undefined) {
         const ip = input.edgeBindAddress.trim();
         if (ip && isIP(ip) === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "出口专线绑定应填合法的本机源 IP（IPv4/IPv6），留空=系统默认路由" });
+        // 防呆：edge-bind 必须是本机某网卡地址，否则 cloudflared 绑定出网会报 "address not valid in its
+        // context" 而整个隧道起不来（笔误最常见）。校验不过就明确列出本机可用 IP 让用户改。
+        if (ip && !isLocalInterfaceIp(ip)) {
+          const { v4, v6 } = localInterfaceIps();
+          const avail = [...v4, ...v6].join("、") || "（未检测到网卡地址）";
+          throw new TRPCError({ code: "BAD_REQUEST", message: `${ip} 不是本机任何网卡的地址，cloudflared 无法绑定它出网（会报 "address not valid in its context" 导致隧道起不来）。本机可用源 IP：${avail}。填其中一个，或留空用默认线路。` });
+        }
         patch.edgeBindAddress = ip;
         // 把「出口专线绑定」清空 = 关闭专线：自动移除已为命名隧道加的 CF 边缘专线路由，回退默认线路。
         const prev = ((await db.getTunnelSettings()).edgeBindAddress ?? "").trim();
@@ -547,6 +554,8 @@ export const adminRouter = router({
         return { reachable: false as const, error: (e as Error).message.slice(0, 140) + "（DNS 未生效 / 隧道未运行 / 网络不通？）" };
       }
     }),
+    // 本机各网卡可用源 IP（供「出口专线绑定」选择/防呆，避免填错导致隧道起不来）。
+    localSourceIps: adminProcedure.query(() => localInterfaceIps()),
     // ── 专线路由：让命名隧道走指定专线（cloudflared 绑定对 token 隧道无效，只能走 OS 路由）──
     // 探测「出口专线绑定」源 IP 所属网卡的默认网关（供 UI 预填，用户可改）。
     detectRouteGateway: adminProcedure.mutation(async () => {

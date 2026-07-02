@@ -93,7 +93,12 @@ export function tunnelErrorHint(log: string): string {
   const KW = /(err|error|fail|failed|unknown flag|invalid|refused|no such|not found|cannot|unable|bind|permission|denied)/i;
   const hits = lines.filter((l) => KW.test(l)).slice(-3);
   const pick = (hits.length ? hits : lines.slice(-3)).join(" ⏎ ");
-  return pick.slice(-500);
+  const base = pick.slice(-500);
+  // 针对最常见的「出口专线绑定填了非本机网卡 IP」给一句人话提示（现已在保存时防呆，此为兜底）。
+  if (/invalid edge-bind-address|not valid in its context/i.test(log)) {
+    return base + " ⏎ 提示：出口专线绑定填的 IP 不是本机网卡地址，请改填本机某网卡源 IP，或清空改用默认线路。";
+  }
+  return base;
 }
 
 export async function startTunnel(): Promise<void> {

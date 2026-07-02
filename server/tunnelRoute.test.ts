@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands } from "./_core/tunnelRoute";
+import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands, localInterfaceIps, isLocalInterfaceIp } from "./_core/tunnelRoute";
 
 describe("tunnelRoute · 边缘网段与命令生成", () => {
   it("内置 CF 边缘 = cloudflared 实际连接的两段", () => {
@@ -31,6 +31,18 @@ describe("tunnelRoute · 边缘网段与命令生成", () => {
   it("logHasIpv6Edge：识别 IPv6 边缘连接", () => {
     expect(logHasIpv6Edge("ip=2606:4700:a0::1 location=sea")).toBe(true);
     expect(logHasIpv6Edge("ip=198.41.200.43 location=sea")).toBe(false);
+  });
+
+  it("localInterfaceIps：返回 v4/v6 数组且排除回环", () => {
+    const { v4, v6 } = localInterfaceIps();
+    expect(Array.isArray(v4)).toBe(true);
+    expect(Array.isArray(v6)).toBe(true);
+    expect(v4).not.toContain("127.0.0.1"); // 内部/回环已排除
+    expect(v6).not.toContain("::1");
+  });
+
+  it("isLocalInterfaceIp：非本机地址（TEST-NET RFC5737）返回 false", () => {
+    expect(isLocalInterfaceIp("192.0.2.111")).toBe(false); // 保留测试网段，绝不会是本机网卡地址
   });
 
   it("manualRouteCommands：每段一条、含网关、不含默认路由", () => {

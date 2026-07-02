@@ -10,6 +10,7 @@ export function TunnelPanel() {
   const utils = trpc.useUtils();
   const q = trpc.admin.tunnel.get.useQuery(undefined, { refetchInterval: 5000 });
   const cf = trpc.admin.tunnel.cloudflared.useQuery(undefined, { refetchInterval: 3000 });
+  const localIps = trpc.admin.tunnel.localSourceIps.useQuery(); // 本机可用源 IP（供「出口专线绑定」点选防呆）
   const enableMut = trpc.admin.tunnel.setEnabled.useMutation();
   const configMut = trpc.admin.tunnel.setConfig.useMutation();
   const wlMut = trpc.admin.tunnel.setWhitelist.useMutation();
@@ -270,7 +271,17 @@ export function TunnelPanel() {
         {runCf && (<>
           <label style={{ fontSize: 11, color: "var(--c-t3)" }}>出口专线绑定（多条上行专线时用；填某条线路本机网卡的源 IP）
             <input value={edgeBind} onChange={(e) => setEdgeBind(e.target.value)} placeholder="如 192.168.12.24（留空=系统默认路由）" className="nodrag" style={{ ...box, marginTop: 4 }} />
-            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>填该专线本机网卡的源 IP。<b>快速隧道</b>靠它即可走该专线；<b>命名隧道</b>（token）cloudflared 不吃此绑定，需用下方「专线路由」把流量导到该专线（改后停用再启用生效）。<b>关闭专线</b>：清空本框保存 → 自动移除专线路由回退默认线路；停用隧道也会自动回退。</div>
+            {/* 本机可用源 IP 点选：避免手敲填错导致 cloudflared 报 "address not valid in its context" 隧道起不来。 */}
+            {(() => { const ips = [...(localIps.data?.v4 ?? []), ...(localIps.data?.v6 ?? [])]; return ips.length ? (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 5 }}>
+                <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>本机可用源 IP：</span>
+                {ips.map((ip) => (
+                  <button key={ip} type="button" onClick={() => setEdgeBind(ip)} className="nodrag" style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 6, cursor: "pointer",
+                    background: edgeBind.trim() === ip ? "oklch(0.70 0.16 200 / 0.18)" : "var(--c-bd1)", border: `1px solid ${edgeBind.trim() === ip ? "oklch(0.70 0.16 200 / 0.5)" : "var(--c-bd2)"}`, color: edgeBind.trim() === ip ? "oklch(0.7 0.14 200)" : "var(--c-t3)", fontFamily: "monospace" }}>{ip}</button>
+                ))}
+              </div>
+            ) : null; })()}
+            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>填该专线本机网卡的源 IP（点上方标签即可，别手敲填错——填了非本机地址会导致隧道起不来）。<b>快速隧道</b>靠它即可走该专线；<b>命名隧道</b>（token）cloudflared 不吃此绑定，需用下方「专线路由」把流量导到该专线（改后停用再启用生效）。<b>关闭专线</b>：清空本框保存 → 自动移除专线路由回退默认线路；停用隧道也会自动回退。</div>
           </label>
 
           {/* 专线路由：命名隧道走指定专线的唯一可行办法——把 CF 边缘网段路由到专线网关（OS 路由层）。 */}
