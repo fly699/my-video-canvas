@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "child_process";
+import { isIP } from "net";
 import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./tunnelGate";
 import { getTunnelSettings, setTunnelSettings } from "../db";
 import { resolveCloudflaredPath } from "./cloudflaredBin";
@@ -47,6 +48,10 @@ export async function startTunnel(): Promise<void> {
   // at http://localhost:<this port> (shown in the admin UI).
   const args = named ? ["tunnel", "run", "--token", cfg.token.trim()]
                      : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`];
+  // 出口专线绑定：把 cloudflared 到 Cloudflare 边缘的出站连接绑定到指定线路的源 IP，
+  // 于是隧道走该专线；服务器其余出站由系统默认路由（另一条专线）承载。仅接受合法 IP。
+  const bindIp = (cfg.edgeBindAddress ?? "").trim();
+  if (bindIp && isIP(bindIp)) args.push("--edge-bind-address", bindIp);
   try {
     proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
   } catch {
