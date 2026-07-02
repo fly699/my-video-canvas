@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveMaxTokens, resolveModelId } from "./_core/llm";
+import { resolveMaxTokens, resolveModelId, chooseMaxTokens, SELF_HOSTED_DEFAULT_MAX_TOKENS, SELF_HOSTED_MIN_MAX_TOKENS, CLOUD_DEFAULT_MAX_TOKENS } from "./_core/llm";
 
 // Regression: Gemini 3 Flash Preview (served via Forge) rejects an over-large
 // max_tokens (the script generator asks for 8000), which 400'd the request and
@@ -25,6 +25,34 @@ describe("resolveMaxTokens", () => {
 
   it("passes through when model is undefined", () => {
     expect(resolveMaxTokens(undefined, 8000)).toBe(8000);
+  });
+});
+
+// Regression: 自建 vLLM 推理模型（Qwen3）的 <think> 思维链吃掉 max_tokens 预算，默认 4096
+// 会让可见答案过短/被截断。自建模型给更高默认 + 8192 下限。
+describe("chooseMaxTokens（自建模型预算）", () => {
+  it("自建模型不传预算 → 用更高默认", () => {
+    expect(chooseMaxTokens(true)).toBe(SELF_HOSTED_DEFAULT_MAX_TOKENS);
+    expect(SELF_HOSTED_DEFAULT_MAX_TOKENS).toBeGreaterThanOrEqual(16384);
+  });
+
+  it("云端模型不传预算 → 4096", () => {
+    expect(chooseMaxTokens(false)).toBe(CLOUD_DEFAULT_MAX_TOKENS);
+    expect(chooseMaxTokens(false)).toBe(4096);
+  });
+
+  it("自建模型：偏小的显式预算被抬到 8192 下限（思维链保底）", () => {
+    expect(chooseMaxTokens(true, 4096)).toBe(SELF_HOSTED_MIN_MAX_TOKENS);
+    expect(chooseMaxTokens(true, 1000)).toBe(8192);
+  });
+
+  it("自建模型：更大的显式预算原样保留", () => {
+    expect(chooseMaxTokens(true, 32000)).toBe(32000);
+  });
+
+  it("云端模型：显式预算原样保留（不加下限）", () => {
+    expect(chooseMaxTokens(false, 1000)).toBe(1000);
+    expect(chooseMaxTokens(false, 8000)).toBe(8000);
   });
 });
 
