@@ -17,17 +17,24 @@ interface UIStyleContextType {
   setUIStyle: (s: UIStyle) => void;
 }
 
+// 画布默认风格：工作室（影院深色 · 命令栏 · 媒体优先）。只有用户「显式切换过」才尊重其选择，
+// 否则一律用该默认——这样改默认能同时覆盖新用户与从未主动选过的老用户，而不会顶掉主动选了
+// 专业/创意的人（他们切换时会打上 explicit 标记）。
+const DEFAULT_UI_STYLE: UIStyle = "studio";
+const EXPLICIT_KEY = "avc:ui-style-explicit";
+
 const UIStyleContext = createContext<UIStyleContextType>({
-  uiStyle: "pro",
+  uiStyle: DEFAULT_UI_STYLE,
   setUIStyle: () => {},
 });
 
 function readStoredUIStyle(): UIStyle {
   try {
+    if (localStorage.getItem(EXPLICIT_KEY) !== "1") return DEFAULT_UI_STYLE; // 未显式选过 → 用默认
     const stored = localStorage.getItem("avc:ui-style");
-    return stored === "studio" || stored === "simple" || stored === "pro" ? stored : "pro";
+    return stored === "studio" || stored === "simple" || stored === "pro" ? stored : DEFAULT_UI_STYLE;
   } catch {
-    return "pro";
+    return DEFAULT_UI_STYLE;
   }
 }
 
@@ -39,8 +46,14 @@ export function UIStyleProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem("avc:ui-style", uiStyle); } catch { /* restricted environment */ }
   }, [uiStyle]);
 
+  // 任何一次「设置」都视为用户显式选择（来自切换器点击或服务端偏好回灌），打标记后此后尊重之。
+  const setUIStyle = (s: UIStyle) => {
+    try { localStorage.setItem(EXPLICIT_KEY, "1"); } catch { /* restricted */ }
+    setUIStyleState(s);
+  };
+
   return (
-    <UIStyleContext.Provider value={{ uiStyle, setUIStyle: setUIStyleState }}>
+    <UIStyleContext.Provider value={{ uiStyle, setUIStyle }}>
       {children}
     </UIStyleContext.Provider>
   );
