@@ -35,6 +35,18 @@ export function getTunnelListenerPort(): number { return tunnelPort; }
 
 export function getTunnelRuntimeStatus() { return { running: status.running, publicUrl: status.publicUrl, error: status.error }; }
 
+/** cloudflared 最近日志尾部（供管理面板排错）。 */
+export function getTunnelLog(): string { return logBuf.slice(-4000); }
+
+/** 从 cloudflared 日志里挑出最能说明退出原因的几行（错误/失败/未知参数…）；没有则取末尾几行。 */
+export function tunnelErrorHint(log: string): string {
+  const lines = log.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const KW = /(err|error|fail|failed|unknown flag|invalid|refused|no such|not found|cannot|unable|bind|permission|denied)/i;
+  const hits = lines.filter((l) => KW.test(l)).slice(-3);
+  const pick = (hits.length ? hits : lines.slice(-3)).join(" ⏎ ");
+  return pick.slice(-500);
+}
+
 /** 组装 cloudflared 启动参数。
  *  Quick tunnel 转发到本机专用回环监听（纯 HTTP → 避免自签 TLS 502）；Named tunnel 的回源在 CF
  *  面板配到 http://localhost:<回环端口>。
@@ -60,7 +72,9 @@ export async function startTunnel(): Promise<void> {
   const named = cfg.token.trim().length > 0;
   const args = buildCloudflaredArgs(named, cfg.token.trim(), tunnelPort, cfg.edgeBindAddress ?? "");
   try {
-    proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    // windowsHide：Windows 上不弹出 cloudflared 的控制台黑窗（否则用户很容易误手关掉窗口，
+    // 连带把隧道进程杀掉）。stdout/stderr 仍通过管道进 logBuf，日志照收不误。
+    proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
   } catch {
     status = { running: false, publicUrl: "", error: "无法启动 cloudflared" };
     return;
@@ -76,7 +90,11 @@ export async function startTunnel(): Promise<void> {
   };
   proc.stdout?.on("data", onData);
   proc.stderr?.on("data", onData);
-  proc.on("exit", (code) => { status = { running: false, publicUrl: status.publicUrl, error: code ? `cloudflared 已退出 (code ${code})` : null }; proc = null; void reloadTunnelGate(); });
+  proc.on("exit", (code) => {
+    const hint = code ? tunnelErrorHint(logBuf) : "";
+    status = { running: false, publicUrl: status.publicUrl, error: code ? `cloudflared 已退出 (code ${code})${hint ? "：" + hint : ""}` : null };
+    proc = null; void reloadTunnelGate();
+  });
   proc.on("error", (e) => { status = { running: false, publicUrl: "", error: "cloudflared 启动失败：" + e.message }; proc = null; });
 }
 
