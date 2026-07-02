@@ -1119,7 +1119,7 @@ export default function Home() {
               onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "oklch(0.68 0.22 285 / 0.35)"; el.style.background = "color-mix(in oklch, oklch(0.68 0.22 285 / 0.12) 60%, transparent)"; el.style.color = "oklch(0.78 0.16 285)"; }}
             >
               <MessageCircle className="w-3.5 h-3.5" />
-              聊天
+              AI助手
             </a>
             {user.role === "admin" && (
               <a
