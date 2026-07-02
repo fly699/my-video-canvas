@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Globe, Save, Loader2, Power, ExternalLink, ShieldCheck, DownloadCloud, CheckCircle2, AlertTriangle, Wifi, BookOpen, ChevronDown, XCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -43,16 +43,20 @@ export function TunnelPanel() {
   const [ips, setIps] = useState<string>("");
   const [em, setEm] = useState({ to: "", host: "", port: 587, user: "", pass: "", secure: false, from: "" });
 
+  // 仅在首次加载时用服务器值初始化表单。绝不在后续每 5s 轮询时回写——否则 q.data 里持续变化的
+  // 字段（实时网速 throughput、cloudflared 日志、快速隧道自动解析的 publicUrl…）会让本 effect 反复
+  // 触发，把用户正在「公网地址」等输入框里敲的内容冲掉（曾导致「公网地址栏填入被清空」的 bug）。
+  const inited = useRef(false);
   useEffect(() => {
-    if (q.data) {
-      setPublicUrl(q.data.publicUrl ?? "");
-      setRunCf(q.data.runCloudflared ?? true);
-      setPreferQuick(q.data.preferQuick ?? false);
-      setEdgeBind(q.data.edgeBindAddress ?? "");
-      setUsers((q.data.whitelistUsers ?? []).join(", "));
-      setIps((q.data.whitelistIps ?? []).join(", "));
-      const e = q.data.email; if (e) setEm({ to: e.to, host: e.host, port: e.port, user: e.user, pass: "", secure: e.secure, from: e.from });
-    }
+    if (!q.data || inited.current) return;
+    inited.current = true;
+    setPublicUrl(q.data.publicUrl ?? "");
+    setRunCf(q.data.runCloudflared ?? true);
+    setPreferQuick(q.data.preferQuick ?? false);
+    setEdgeBind(q.data.edgeBindAddress ?? "");
+    setUsers((q.data.whitelistUsers ?? []).join(", "));
+    setIps((q.data.whitelistIps ?? []).join(", "));
+    const e = q.data.email; if (e) setEm({ to: e.to, host: e.host, port: e.port, user: e.user, pass: "", secure: e.secure, from: e.from });
   }, [q.data]);
 
   const saveEmail = async () => {
