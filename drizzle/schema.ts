@@ -725,6 +725,10 @@ export const storageSettings = mysqlTable("storageSettings", {
   // batch grant). Admin-controlled from the Storage settings page. Off by
   // default → behavior identical to before (non-breaking).
   downloadAuthEnabled: boolean("downloadAuthEnabled").notNull().default(false),
+  // 下载门控免受级别：adminLevel >= 此值的用户免门控，低于此值的用户受门控（需授权）。
+  // 默认 1 —— 即所有管理员(adminLevel>=1)免、普通成员(adminLevel=0)受控，与原行为一致。
+  // 调高可让低级管理员也受控（如设 3，则 L1/L2 也需授权）。
+  downloadAuthBypassLevel: int("downloadAuthBypassLevel").notNull().default(1),
   // Anti-leech: when true, the storage proxy NEVER 307-redirects to the raw
   // presigned S3/MinIO URL — it always streams the object through this server, so
   // the real storage link is never exposed in the browser's network panel. Off by

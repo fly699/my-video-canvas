@@ -120,7 +120,7 @@ export function isDupEntryError(e: unknown): boolean {
 
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
-const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
+const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
 const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig } = { disabledModels: [] };
 const devAuthSettings = { emailVerificationEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
@@ -1411,7 +1411,7 @@ export async function getWhitelistEntries() {
 
 // ── Storage persistence settings ────────────────────────────────────────────
 
-export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean; devtoolsBlockEnabled: boolean }> {
+export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; downloadAuthBypassLevel: number; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean; devtoolsBlockEnabled: boolean }> {
   const db = await getDb();
   if (!db) return {
     persistAudio: devStorageSettings.persistAudio,
@@ -1422,6 +1422,7 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     minioOnly: devStorageSettings.minioOnly,
     preferUpstreamRefSource: devStorageSettings.preferUpstreamRefSource,
     downloadAuthEnabled: devStorageSettings.downloadAuthEnabled,
+    downloadAuthBypassLevel: devStorageSettings.downloadAuthBypassLevel,
     forceStorageRelay: devStorageSettings.forceStorageRelay,
     watermarkEnabled: devStorageSettings.watermarkEnabled,
     downloadWatermarkEnabled: devStorageSettings.downloadWatermarkEnabled,
@@ -1438,6 +1439,7 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     minioOnly: row?.minioOnly ?? true,
     preferUpstreamRefSource: row?.preferUpstreamRefSource ?? false,
     downloadAuthEnabled: row?.downloadAuthEnabled ?? false,
+    downloadAuthBypassLevel: row?.downloadAuthBypassLevel ?? 1,
     forceStorageRelay: row?.forceStorageRelay ?? false,
     watermarkEnabled: row?.watermarkEnabled ?? false,
     downloadWatermarkEnabled: row?.downloadWatermarkEnabled ?? false,
@@ -1445,7 +1447,7 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
   };
 }
 
-export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number; poyoUploadFallback?: boolean; minioOnly?: boolean; preferUpstreamRefSource?: boolean; downloadAuthEnabled?: boolean; forceStorageRelay?: boolean; watermarkEnabled?: boolean; downloadWatermarkEnabled?: boolean; devtoolsBlockEnabled?: boolean }): Promise<void> {
+export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number; poyoUploadFallback?: boolean; minioOnly?: boolean; preferUpstreamRefSource?: boolean; downloadAuthEnabled?: boolean; downloadAuthBypassLevel?: number; forceStorageRelay?: boolean; watermarkEnabled?: boolean; downloadWatermarkEnabled?: boolean; devtoolsBlockEnabled?: boolean }): Promise<void> {
   const db = await getDb();
   if (!db) {
     if (patch.persistAudio !== undefined) devStorageSettings.persistAudio = patch.persistAudio;
@@ -1456,6 +1458,7 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
     if (patch.minioOnly !== undefined) devStorageSettings.minioOnly = patch.minioOnly;
     if (patch.preferUpstreamRefSource !== undefined) devStorageSettings.preferUpstreamRefSource = patch.preferUpstreamRefSource;
     if (patch.downloadAuthEnabled !== undefined) devStorageSettings.downloadAuthEnabled = patch.downloadAuthEnabled;
+    if (patch.downloadAuthBypassLevel !== undefined) devStorageSettings.downloadAuthBypassLevel = patch.downloadAuthBypassLevel;
     if (patch.forceStorageRelay !== undefined) devStorageSettings.forceStorageRelay = patch.forceStorageRelay;
     if (patch.watermarkEnabled !== undefined) devStorageSettings.watermarkEnabled = patch.watermarkEnabled;
     if (patch.downloadWatermarkEnabled !== undefined) devStorageSettings.downloadWatermarkEnabled = patch.downloadWatermarkEnabled;
@@ -1471,6 +1474,7 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
   if (patch.minioOnly !== undefined) set.minioOnly = patch.minioOnly;
   if (patch.preferUpstreamRefSource !== undefined) set.preferUpstreamRefSource = patch.preferUpstreamRefSource;
   if (patch.downloadAuthEnabled !== undefined) set.downloadAuthEnabled = patch.downloadAuthEnabled;
+  if (patch.downloadAuthBypassLevel !== undefined) set.downloadAuthBypassLevel = patch.downloadAuthBypassLevel;
   if (patch.forceStorageRelay !== undefined) set.forceStorageRelay = patch.forceStorageRelay;
   if (patch.watermarkEnabled !== undefined) set.watermarkEnabled = patch.watermarkEnabled;
   if (patch.downloadWatermarkEnabled !== undefined) set.downloadWatermarkEnabled = patch.downloadWatermarkEnabled;

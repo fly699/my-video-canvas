@@ -314,6 +314,9 @@ export const adminRouter = router({
         preferUpstreamRefSource: z.boolean().optional(),
         // Strict download authorization master switch.
         downloadAuthEnabled: z.boolean().optional(),
+        // 免受下载门控的最低管理级别（adminLevel>=此值免门控）：1=仅普通成员受控(默认)，
+        // 调高则低级管理员也受控；5=所有人（含最高管理员）都受控。
+        downloadAuthBypassLevel: z.number().int().min(1).max(5).optional(),
         // Anti-leech: always stream through (never expose raw presigned URL).
         forceStorageRelay: z.boolean().optional(),
         // Anti-leech: page-level identity watermark for traceability.
@@ -329,6 +332,7 @@ export const adminRouter = router({
           input.persistImage === undefined && input.presignTtlSec === undefined &&
           input.poyoUploadFallback === undefined && input.minioOnly === undefined &&
           input.preferUpstreamRefSource === undefined && input.downloadAuthEnabled === undefined &&
+          input.downloadAuthBypassLevel === undefined &&
           input.forceStorageRelay === undefined && input.watermarkEnabled === undefined &&
           input.downloadWatermarkEnabled === undefined && input.devtoolsBlockEnabled === undefined
         ) {

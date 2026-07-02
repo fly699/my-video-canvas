@@ -553,7 +553,7 @@ function StoragePanel() {
 
   const STORAGE_KEYS = [
     "persistAudio", "persistVideo", "persistImage", "presignTtlSec", "poyoUploadFallback",
-    "minioOnly", "preferUpstreamRefSource", "downloadAuthEnabled", "forceStorageRelay",
+    "minioOnly", "preferUpstreamRefSource", "downloadAuthEnabled", "downloadAuthBypassLevel", "forceStorageRelay",
     "watermarkEnabled", "downloadWatermarkEnabled", "devtoolsBlockEnabled",
   ] as const;
 
@@ -844,6 +844,26 @@ function StoragePanel() {
             statusOn="已开启（非管理员须持授权才能下载）"
             statusOff="已关闭（任何人都可下载，行为不变）"
           />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-base)", opacity: settings.downloadAuthEnabled ? 1 : 0.55 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--c-t1)" }}>受门控的级别范围</div>
+              <div style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.5, marginTop: 2 }}>
+                管理级别 ≥ 所选值的用户免门控，低于此值的用户受门控（需授权）。仅在「严格下载授权」开启时生效。
+              </div>
+            </div>
+            <select
+              value={settings.downloadAuthBypassLevel ?? 1}
+              disabled={setMut.isPending || !settings.downloadAuthEnabled}
+              onChange={(e) => setMut.mutate({ downloadAuthBypassLevel: Number(e.target.value) })}
+              style={{ flexShrink: 0, padding: "6px 8px", fontSize: 12, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 7, cursor: "pointer" }}
+            >
+              <option value={1}>仅普通成员受控（默认）</option>
+              <option value={2}>普通成员 + L1 管理员受控</option>
+              <option value={3}>普通成员 + L1/L2 受控</option>
+              <option value={4}>普通成员 + L1/L2/L3 受控</option>
+              <option value={5}>所有人（含最高管理员）受控</option>
+            </select>
+          </div>
           <ToggleRow
             label="防盗链：始终服务器中转，不暴露真实存储链接"
             description={
