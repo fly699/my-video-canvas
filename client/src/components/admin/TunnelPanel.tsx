@@ -76,7 +76,12 @@ export function TunnelPanel() {
     catch (e) { toast.error("操作失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
   };
   const saveConfig = async () => {
-    try { await configMut.mutateAsync({ token: token.trim() || undefined, publicUrl: publicUrl.trim(), runCloudflared: runCf, edgeBindAddress: edgeBind.trim() }); setToken(""); await utils.admin.tunnel.get.invalidate(); toast.success("已保存隧道配置（重新启用后生效）"); }
+    try {
+      const r = await configMut.mutateAsync({ token: token.trim() || undefined, publicUrl: publicUrl.trim(), runCloudflared: runCf, edgeBindAddress: edgeBind.trim() });
+      setToken(""); await utils.admin.tunnel.get.invalidate();
+      if (r.routeReverted) { if (r.routeLog) setRouteLog(r.routeLog); toast.success("已保存；已关闭专线并移除专线路由，回退默认线路"); }
+      else toast.success("已保存隧道配置（重新启用后生效）");
+    }
     catch (e) { toast.error("保存失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
   };
   const saveWl = async () => {
@@ -207,14 +212,14 @@ export function TunnelPanel() {
         {runCf && (<>
           <label style={{ fontSize: 11, color: "var(--c-t3)" }}>出口专线绑定（多条上行专线时用；填某条线路本机网卡的源 IP）
             <input value={edgeBind} onChange={(e) => setEdgeBind(e.target.value)} placeholder="如 192.168.12.24（留空=系统默认路由）" className="nodrag" style={{ ...box, marginTop: 4 }} />
-            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>填该专线本机网卡的源 IP。<b>快速隧道</b>靠它即可走该专线；<b>命名隧道</b>（token）cloudflared 不吃此绑定，需用下方「专线路由」把流量导到该专线（改后停用再启用生效）。</div>
+            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>填该专线本机网卡的源 IP。<b>快速隧道</b>靠它即可走该专线；<b>命名隧道</b>（token）cloudflared 不吃此绑定，需用下方「专线路由」把流量导到该专线（改后停用再启用生效）。<b>关闭专线</b>：清空本框保存 → 自动移除专线路由回退默认线路；停用隧道也会自动回退。</div>
           </label>
 
           {/* 专线路由：命名隧道走指定专线的唯一可行办法——把 CF 边缘网段路由到专线网关（OS 路由层）。 */}
           <div style={{ border: "1px solid var(--c-bd2)", borderRadius: 10, padding: 10, background: "var(--c-base)", display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t2)" }}>专线路由（让命名隧道走这条专线）</div>
             <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5 }}>
-              命名隧道不应用「出口专线绑定」，只能在系统路由层选线：把 Cloudflare 边缘网段（198.41.192.0/24、198.41.200.0/24 等，自适应）路由到<b>专线网关</b>，其余出站仍走默认路由。<b>需本服务以管理员运行</b>；若无权限，下方会给出可手动执行的命令。只动这几段、绝不碰默认路由。
+              命名隧道不应用「出口专线绑定」，只能在系统路由层选线：把 Cloudflare 边缘网段（198.41.192.0/24、198.41.200.0/24 等，自适应）路由到<b>专线网关</b>，其余出站仍走默认路由。<b>需本服务以管理员运行</b>；若无权限，下方会给出可手动执行的命令。只动这几段、绝不碰默认路由。<b>关闭专线</b>：点「移除路由」手动回退，或停用隧道/清空上方「出口专线绑定」自动回退。
             </div>
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <input value={routeGw} onChange={(e) => setRouteGw(e.target.value)} placeholder="专线网关 IP（留空=自动探测）" className="nodrag" style={{ ...box, flex: "1 1 160px", marginTop: 0 }} />
@@ -231,7 +236,7 @@ export function TunnelPanel() {
               }} className="nodrag flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 7, border: "1px solid oklch(0.68 0.22 285 / 0.4)", background: "oklch(0.68 0.22 285 / 0.14)", color: "oklch(0.78 0.16 285)", cursor: "pointer" }}>
                 {applyRoutesMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} 应用专线路由
               </button>
-              <button disabled={routeBusy} onClick={async () => { const r = await removeRoutesMut.mutateAsync().catch((e) => ({ log: String(e) })); setRouteLog(r.log); toast.success("已移除专线路由"); }} className="nodrag" style={{ fontSize: 11, padding: "6px 12px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>移除路由</button>
+              <button disabled={routeBusy} onClick={async () => { const r = await removeRoutesMut.mutateAsync().catch((e) => ({ log: String(e) })); setRouteLog(r.log); toast.success("已移除专线路由，回退默认线路"); }} className="nodrag" style={{ fontSize: 11, padding: "6px 12px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>移除路由（关闭专线）</button>
               <button disabled={routeBusy} onClick={async () => { const r = await routeStatusMut.mutateAsync().catch((e) => ({ log: String(e) })); setRouteLog(r.log); }} className="nodrag" style={{ fontSize: 11, padding: "6px 12px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>检测路由状态</button>
             </div>
             {routeLog && (

@@ -4,6 +4,7 @@ import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./
 import { getTunnelSettings, setTunnelSettings } from "../db";
 import { resolveCloudflaredPath } from "./cloudflaredBin";
 import { sendTunnelUrlEmail } from "./tunnelEmail";
+import { removeTunnelRoutes } from "./tunnelRoute";
 
 // Email the new public URL once per distinct URL (quick tunnels change on restart).
 let lastEmailedUrl = "";
@@ -93,6 +94,19 @@ export async function startTunnel(): Promise<void> {
 export function stopTunnel(): void {
   if (proc) { try { proc.kill("SIGTERM"); } catch { /* ignore */ } proc = null; }
   status = { running: false, publicUrl: status.publicUrl, error: null };
+  // 自动回退到非专线：隧道关闭后，若曾配置「出口专线绑定」，一并移除为命名隧道加的 CF 边缘专线路由，
+  // 让出站恢复系统默认线路（best-effort、幂等；从未加过路由则为无害空操作）。
+  void autoRevertProLineRoutes();
+}
+
+/** 隧道停用时自动移除专线路由（关闭专线 → 回退默认线路）。仅在曾配置「出口专线绑定」时才动路由。 */
+async function autoRevertProLineRoutes(): Promise<void> {
+  try {
+    const cfg = await getTunnelSettings();
+    if (!(cfg.edgeBindAddress ?? "").trim()) return; // 从未用专线 → 不碰路由表
+    const r = await removeTunnelRoutes(getTunnelLog());
+    logBuf = (logBuf + "\n[自动回退] " + r.log).slice(-8000);
+  } catch (e) { console.warn("[Tunnel] 自动移除专线路由失败:", (e as Error).message); }
 }
 
 /** Apply the admin's enable/disable: persist + start or stop the process + refresh gate. */

@@ -507,14 +507,20 @@ export const adminRouter = router({
         if (u && !/^https?:\/\//i.test(u) && !/^[a-z0-9.-]+$/i.test(u)) throw new TRPCError({ code: "BAD_REQUEST", message: "公网地址应为域名或 http(s) URL" });
         patch.publicUrl = u;
       }
+      let clearedProLine = false;
       if (input.edgeBindAddress !== undefined) {
         const ip = input.edgeBindAddress.trim();
         if (ip && isIP(ip) === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "出口专线绑定应填合法的本机源 IP（IPv4/IPv6），留空=系统默认路由" });
         patch.edgeBindAddress = ip;
+        // 把「出口专线绑定」清空 = 关闭专线：自动移除已为命名隧道加的 CF 边缘专线路由，回退默认线路。
+        const prev = ((await db.getTunnelSettings()).edgeBindAddress ?? "").trim();
+        if (!ip && prev) clearedProLine = true;
       }
       await db.setTunnelSettings(patch);
+      let routeRevert: { ok: boolean; log: string } | undefined;
+      if (clearedProLine) routeRevert = await removeTunnelRoutes(getTunnelLog());
       await reloadTunnelGate();
-      return { success: true };
+      return { success: true, routeReverted: !!routeRevert, routeLog: routeRevert?.log };
     }),
     // cloudflared 二进制状态（是否已装/可自动下载/下载进度）
     cloudflared: adminProcedure.query(() => cloudflaredInfo()),
