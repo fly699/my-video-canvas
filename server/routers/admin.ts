@@ -8,7 +8,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput } from "../_core/tunnel";
-import { detectGatewayForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp } from "../_core/tunnelRoute";
+import { detectGatewayForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo } from "../_core/tunnelRoute";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
 import { tunnelHostFromUrl } from "../_core/tunnelGate";
 import { sendTunnelUrlEmail } from "../_core/tunnelEmail";
@@ -556,6 +556,12 @@ export const adminRouter = router({
     }),
     // 本机各网卡可用源 IP（供「出口专线绑定」选择/防呆，避免填错导致隧道起不来）。
     localSourceIps: adminProcedure.query(() => localInterfaceIps()),
+    // 隧道出站实际走哪张网卡 / 哪个源 IP（快速隧道靠 edge-bind 绑定；其余按内核选路，专线路由如实反映）。
+    egress: adminProcedure.query(async () => {
+      const s = await db.getTunnelSettings();
+      const named = s.token.trim().length > 0 && !s.preferQuick;
+      return tunnelEgressInfo((s.edgeBindAddress ?? "").trim(), !named, getTunnelLog());
+    }),
     // ── 专线路由：让命名隧道走指定专线（cloudflared 绑定对 token 隧道无效，只能走 OS 路由）──
     // 探测「出口专线绑定」源 IP 所属网卡的默认网关（供 UI 预填，用户可改）。
     detectRouteGateway: adminProcedure.mutation(async () => {

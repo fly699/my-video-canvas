@@ -58,6 +58,59 @@ function isSafeIpv4Net(net: string): boolean {
   return isIP(net) === 4 && net !== "0.0.0.0";
 }
 
+/** 从 cloudflared 日志里取第一个它实际连的边缘 IP（v4/v6 皆可）。没有则 null。 */
+function firstEdgeIpFromLog(log: string): string | null {
+  const re = /\bip=([0-9a-fA-F:.]+)\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(log || "")) !== null) { if (isIP(m[1])) return m[1]; }
+  return null;
+}
+
+/** 某个 IP 属于本机哪块网卡（名字）。找不到返回 null（IPv6 忽略 %zone 与大小写）。 */
+function ifaceForIp(ip: string): string | null {
+  const nets = networkInterfaces();
+  const norm = ip.split("%")[0].toLowerCase();
+  for (const name of Object.keys(nets)) {
+    for (const ni of nets[name] ?? []) {
+      if (!ni.internal && ni.address.split("%")[0].toLowerCase() === norm) return name;
+    }
+  }
+  return null;
+}
+
+export interface EgressInfo {
+  sourceIp: string | null;   // 隧道出站实际所用源 IP
+  iface: string | null;      // 对应网卡名
+  via: "bind" | "route" | "unknown"; // bind=靠 edge-bind 绑定；route=内核选路结果
+  dest: string;              // 探测用的 CF 边缘目的 IP
+  detail: string;
+}
+
+/** 判定「隧道流量实际从哪张网卡/哪个源 IP 出去」。
+ *  - 快速隧道且绑定了 edge-bind：cloudflared 把出站源绑到该 IP（bind 覆盖选路）→ 源 IP 即绑定 IP。
+ *  - 其余（命名隧道 / 未绑定的快速隧道）：问内核去 CF 边缘该走哪块网卡、哪个源 IP；
+ *    命名隧道 + 专线路由也据此如实反映（我们加的路由会被内核选中）。 */
+export async function tunnelEgressInfo(edgeBindIp: string, isQuick: boolean, log = ""): Promise<EgressInfo> {
+  const dest = firstEdgeIpFromLog(log) ?? "198.41.192.227"; // 优先用日志里真实边缘 IP，否则内置代表 IP
+  if (isQuick && edgeBindIp && isIP(edgeBindIp)) {
+    return { sourceIp: edgeBindIp, iface: ifaceForIp(edgeBindIp), via: "bind", dest, detail: "快速隧道 --edge-bind-address 绑定" };
+  }
+  try {
+    if (process.platform === "win32") {
+      const ps = `$ErrorActionPreference='Stop'; $r=Find-NetRoute -RemoteIPAddress '${dest}' | Select-Object -First 1; $n=(Get-NetAdapter -InterfaceIndex $r.InterfaceIndex -ErrorAction SilentlyContinue).Name; Write-Output ($r.IPAddress + '|' + $n)`;
+      const { stdout } = await pexec(`powershell -NoProfile -NonInteractive -Command "${ps}"`, { timeout: 15000, windowsHide: true, encoding: "utf8" });
+      const [src, name] = stdout.trim().split("|");
+      return { sourceIp: isIP(src) ? src : null, iface: name || null, via: "route", dest, detail: "内核选路（Find-NetRoute）" };
+    }
+    const { stdout } = await pexec(`ip route get ${dest}`, { timeout: 10000, encoding: "utf8" });
+    const src = stdout.match(/\bsrc\s+([0-9a-fA-F:.]+)/)?.[1] ?? "";
+    const dev = stdout.match(/\bdev\s+(\S+)/)?.[1] ?? null;
+    return { sourceIp: isIP(src) ? src : null, iface: dev, via: "route", dest, detail: "内核选路（ip route get）" };
+  } catch (e) {
+    return { sourceIp: null, iface: null, via: "unknown", dest, detail: "探测失败：" + (e as Error).message.slice(0, 120) };
+  }
+}
+
 /** 从 cloudflared 日志里解析它实际连接的边缘 IPv4，收敛为 /24 网段，与内置网段合并去重。
  *  这样即便 Cloudflare 用了内置两段以外的边缘，也能被覆盖到（自适应）。 */
 export function edgeCidrsFromLog(log: string): Cidr[] {
