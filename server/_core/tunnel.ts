@@ -71,10 +71,16 @@ export async function startTunnel(): Promise<void> {
   if (!tunnelPort) { status = { running: false, publicUrl: "", error: "隧道内部回环监听未就绪，请稍后重试" }; return; }
   const named = cfg.token.trim().length > 0;
   const args = buildCloudflaredArgs(named, cfg.token.trim(), tunnelPort, cfg.edgeBindAddress ?? "");
+  // 出口专线绑定「双保险」：cloudflared 的旗标几乎都能用环境变量设置，且环境变量对进程全局生效、
+  // 命名/快速隧道都吃、与命令行参数位置无关。之前「快速隧道能绑、命名隧道不吃」大概率是 --edge-bind-address
+  // 参数在 run 子命令层级上没被命名隧道读取；改用 TUNNEL_EDGE_BIND_ADDRESS 环境变量即可绕开位置问题。
+  // 参数仍保留（快速隧道已验证有效），二者叠加，哪个生效都行。
+  const bindIp = (cfg.edgeBindAddress ?? "").trim();
+  const env = bindIp && isIP(bindIp) ? { ...process.env, TUNNEL_EDGE_BIND_ADDRESS: bindIp } : process.env;
   try {
     // windowsHide：Windows 上不弹出 cloudflared 的控制台黑窗（否则用户很容易误手关掉窗口，
     // 连带把隧道进程杀掉）。stdout/stderr 仍通过管道进 logBuf，日志照收不误。
-    proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env });
   } catch {
     status = { running: false, publicUrl: "", error: "无法启动 cloudflared" };
     return;
