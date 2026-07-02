@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "child_process";
-import { isIP } from "net";
+import { isIP, type Socket } from "net";
 import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./tunnelGate";
 import { getTunnelSettings, setTunnelSettings } from "../db";
 import { resolveCloudflaredPath } from "./cloudflaredBin";
@@ -33,6 +33,54 @@ let logBuf = "";
 let tunnelPort = 0;
 export function setTunnelOrigin(port: number): void { tunnelPort = port; }
 export function getTunnelListenerPort(): number { return tunnelPort; }
+
+// ── 隧道实时吞吐计量（被动，零额外流量）──
+// 所有经隧道进来的用户流量都只经过回环监听器（index.ts 的 tunnelServer）。在其每条 socket 上读
+// Node 自动维护的 bytesRead/bytesWritten 求增量，即得真实用户经隧道的实时速率。注意方向：
+// 服务器 bytesWritten = 发给 cloudflared = 用户【下行】；bytesRead = 收自 cloudflared = 用户【上行】。
+const liveSockets = new Set<Socket>();
+let closedDown = 0, closedUp = 0;              // 已关闭 socket 累计的字节（避免关闭即丢失）
+let lastTotalDown = 0, lastTotalUp = 0, lastSampleAt = 0;
+let downBps = 0, upBps = 0, peakDownBps = 0, peakUpBps = 0;
+let sampler: NodeJS.Timeout | null = null;
+
+function currentTotals(): { down: number; up: number } {
+  let down = closedDown, up = closedUp;
+  liveSockets.forEach((s) => { down += s.bytesWritten; up += s.bytesRead; });
+  return { down, up };
+}
+
+function sampleThroughput(): void {
+  const now = Date.now();
+  const { down, up } = currentTotals();
+  if (lastSampleAt) {
+    const dt = (now - lastSampleAt) / 1000;
+    if (dt > 0) {
+      downBps = Math.max(0, (down - lastTotalDown) / dt);
+      upBps = Math.max(0, (up - lastTotalUp) / dt);
+      if (downBps > peakDownBps) peakDownBps = downBps;
+      if (upBps > peakUpBps) peakUpBps = upBps;
+    }
+  }
+  lastSampleAt = now; lastTotalDown = down; lastTotalUp = up;
+}
+
+/** 注册一条经隧道回环监听器进来的连接（index.ts 在 tunnelServer 的 'connection' 事件上调用）。 */
+export function trackTunnelSocket(sock: Socket): void {
+  liveSockets.add(sock);
+  sock.once("close", () => { closedDown += sock.bytesWritten; closedUp += sock.bytesRead; liveSockets.delete(sock); });
+  if (!sampler) {
+    const t = currentTotals(); lastTotalDown = t.down; lastTotalUp = t.up; lastSampleAt = Date.now();
+    sampler = setInterval(sampleThroughput, 1000);
+    sampler.unref?.(); // 别让计量定时器拖住进程退出
+  }
+}
+
+/** 隧道实时吞吐快照（供管理面板显示「用户经隧道的实时网速」）。bps=字节/秒。 */
+export function getTunnelThroughput(): { downBps: number; upBps: number; connections: number; totalDown: number; totalUp: number; peakDownBps: number; peakUpBps: number } {
+  const { down, up } = currentTotals();
+  return { downBps, upBps, connections: liveSockets.size, totalDown: down, totalUp: up, peakDownBps, peakUpBps };
+}
 
 export function getTunnelRuntimeStatus() { return { running: status.running, publicUrl: status.publicUrl, error: status.error }; }
 

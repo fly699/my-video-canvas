@@ -7,7 +7,7 @@ import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
-import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog } from "../_core/tunnel";
+import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput } from "../_core/tunnel";
 import { detectGatewayForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus } from "../_core/tunnelRoute";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
 import { tunnelHostFromUrl } from "../_core/tunnelGate";
@@ -473,6 +473,7 @@ export const adminRouter = router({
       // 绝不回传 token 明文，只给「是否已配置」。
       const e = s.emailNotify;
       return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, originPort: getTunnelListenerPort(), whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps, edgeBindAddress: s.edgeBindAddress, log: getTunnelLog(),
+        throughput: getTunnelThroughput(), // 用户经隧道的实时吞吐（被动统计）
         email: { to: e.to, host: e.host, port: e.port, user: e.user, secure: e.secure, from: e.from, hasPass: !!e.pass } }; // 不回传 pass 明文
     }),
     setEmailNotify: managerProc.input(z.object({
