@@ -10,6 +10,8 @@ import { verifyUploadToken } from "./uploadToken";
 import { authorizeDownload } from "./downloadAuth";
 import { isRequestAuthenticated, resolveRequestUser } from "./context";
 import { isForceStorageRelayEnabled, isDownloadWatermarkEnabled } from "./storageConfig";
+import { isTunnelRequest } from "./tunnelGate";
+import { getTunnelListenerPort, getTunnelGate } from "./tunnel";
 import { serveWatermarkedDownload, watermarkKindFromName, extFromName, buildDownloadWatermarkLabel } from "./downloadWatermark";
 
 /**
@@ -90,12 +92,17 @@ export function registerStorageProxy(app: Express) {
     }
 
     try {
+      // 经隧道进来的请求：绝不下发预签名直链。否则若配了 S3_PUBLIC_ENDPOINT / Forge，
+      // 外部访客会被 307 甩到公网存储直连下载，绕过 app 鉴权、隧道白名单与下载门控（且直链
+      // 可转发）。强制走下方 app 中转，让所有门控照常生效。局域网仍走快速 307 直链。
+      const viaTunnel = isTunnelRequest(req.socket?.localPort, getTunnelListenerPort(), req.headers, getTunnelGate().host);
+
       // When the storage host is publicly reachable (Forge, or S3/MinIO behind a
       // public endpoint), 307-redirect the browser straight to the signed URL —
       // cheapest path, no app-server bandwidth. Unless the admin enabled
-      // "force relay" (anti-leech): then we always stream through below so the raw
-      // presigned URL is never exposed in the browser's network panel.
-      if (canBrowserReachStorageDirectly() && !(await isForceStorageRelayEnabled())) {
+      // "force relay" (anti-leech), or the request came via the tunnel: then we
+      // always stream through below so the raw presigned URL is never exposed.
+      if (canBrowserReachStorageDirectly() && !viaTunnel && !(await isForceStorageRelayEnabled())) {
         const url = await storagePresignGet(key);
         if (!url) {
           res.status(502).send("Empty signed URL from backend");
