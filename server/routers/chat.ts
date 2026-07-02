@@ -64,6 +64,19 @@ function kindFromMime(mime: string): "image" | "video" | "file" {
   return "file";
 }
 
+// 展示用文件名：保留中文等 Unicode（此前的 ASCII 过滤会把「报告.pdf」变成「__.pdf」），
+// 仅取最后一段、去掉控制字符与路径分隔符，限长。用于入库/回显/下载名。
+export function displayFileName(raw: string): string {
+  const base = String(raw ?? "").replace(/\\/g, "/").split("/").pop() ?? "";
+  const cleaned = Array.from(base).filter((c) => c.charCodeAt(0) >= 0x20).join("");
+  return cleaned.trim().slice(0, 200) || "file";
+}
+// 存储键用文件名：仅 ASCII 安全字符（对象存储 key 稳妥、避免签名/编码问题），限长。
+// 展示名与真实中文由 DB 的 name 字段承载，与此 key 解耦。
+export function storageKeyName(raw: string): string {
+  return (path.basename(String(raw ?? "")).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120)) || "file";
+}
+
 /** Turn a stored attachment URL into one the LLM gateway can fetch (absolute http(s)
  *  or data:). Relative /manus-storage/ paths are resolved to an absolute URL. Returns
  *  null for unusable schemes (blob:) so the caller drops them. Mirrors canvas aiChat. */
@@ -575,9 +588,10 @@ export const chatRouter = router({
       const buffer = Buffer.from(input.base64, "base64");
       if (buffer.length > maxBytes) throw new TRPCError({ code: "BAD_REQUEST", message: `文件超过 ${settings?.maxFileMb ?? 5000}MB 上限` });
 
-      const safeName = path.basename(input.filename).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "file";
+      const keyName = storageKeyName(input.filename);
+      const displayName = displayFileName(input.filename);
       const date = new Date().toISOString().slice(0, 10);
-      const key = `chat/${conv.id}/${date}/${crypto.randomUUID()}-${safeName}`;
+      const key = `chat/${conv.id}/${date}/${crypto.randomUUID()}-${keyName}`;
       let url: string;
       let storageKey: string;
       if (isStorageConfigured()) {
@@ -590,7 +604,7 @@ export const chatRouter = router({
       }
       const att = await insertChatAttachment({
         conversationId: conv.id, uploaderId: ctx.user.id, storageKey, url,
-        name: safeName, mimeType: input.mimeType, size: buffer.length, kind: kindFromMime(input.mimeType),
+        name: displayName, mimeType: input.mimeType, size: buffer.length, kind: kindFromMime(input.mimeType),
       });
       if (!att) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       return { attachmentId: att.id, url: att.url, name: att.name, mimeType: att.mimeType, size: att.size, kind: att.kind };
@@ -615,9 +629,10 @@ export const chatRouter = router({
       const maxBytes = (settings?.maxFileMb ?? 5000) * 1024 * 1024;
       if (input.size > maxBytes) throw new TRPCError({ code: "BAD_REQUEST", message: `文件超过 ${settings?.maxFileMb ?? 5000}MB 上限` });
 
-      const safeName = path.basename(input.filename).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "file";
+      const keyName = storageKeyName(input.filename);
+      const displayName = displayFileName(input.filename);
       const date = new Date().toISOString().slice(0, 10);
-      const relKey = `chat/${conv.id}/${date}/${crypto.randomUUID()}-${safeName}`;
+      const relKey = `chat/${conv.id}/${date}/${crypto.randomUUID()}-${keyName}`;
       // Storage configured but the browser can't reach the host directly (typical
       // internal MinIO, no S3_PUBLIC_ENDPOINT) → stream the upload THROUGH this
       // server, mirroring the download proxy. No public endpoint or base64 cap.
@@ -631,7 +646,7 @@ export const chatRouter = router({
         return {
           mode: "proxy" as const,
           uploadUrl: `/manus-storage-upload?token=${encodeURIComponent(token)}`,
-          key, url: `/manus-storage/${key}`, name: safeName, kind: kindFromMime(input.mimeType),
+          key, url: `/manus-storage/${key}`, name: displayName, kind: kindFromMime(input.mimeType),
         };
       }
       // No storage at all → base64 through tRPC (bounded by the 50MB body limit;
@@ -649,7 +664,7 @@ export const chatRouter = router({
       // 「仅允许 MinIO/S3」开关：未配 MinIO/S3 时拒绝直传，不回退 Forge 存储。
       await assertObjectStorageWritable();
       const { uploadUrl, key, url } = await storagePresignPut(relKey, input.mimeType);
-      return { mode: "presigned" as const, uploadUrl, key, url, name: safeName, kind: kindFromMime(input.mimeType) };
+      return { mode: "presigned" as const, uploadUrl, key, url, name: displayName, kind: kindFromMime(input.mimeType) };
     }),
 
   // Register an attachment AFTER a successful presigned PUT.
@@ -670,7 +685,7 @@ export const chatRouter = router({
       if (!input.key.startsWith(`chat/${conv.id}/`)) throw new TRPCError({ code: "BAD_REQUEST", message: "非法的存储 key" });
       const att = await insertChatAttachment({
         conversationId: conv.id, uploaderId: ctx.user.id, storageKey: input.key, url: input.url,
-        name: input.name, mimeType: input.mimeType, size: input.size, kind: kindFromMime(input.mimeType),
+        name: displayFileName(input.name), mimeType: input.mimeType, size: input.size, kind: kindFromMime(input.mimeType),
       });
       if (!att) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       return { attachmentId: att.id, url: att.url, name: att.name, mimeType: att.mimeType, size: att.size, kind: att.kind };
