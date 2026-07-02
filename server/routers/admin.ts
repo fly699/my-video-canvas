@@ -8,6 +8,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog } from "../_core/tunnel";
+import { detectGatewayForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus } from "../_core/tunnelRoute";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
 import { tunnelHostFromUrl } from "../_core/tunnelGate";
 import { sendTunnelUrlEmail } from "../_core/tunnelEmail";
@@ -536,6 +537,25 @@ export const adminRouter = router({
         return { reachable: false as const, error: (e as Error).message.slice(0, 140) + "（DNS 未生效 / 隧道未运行 / 网络不通？）" };
       }
     }),
+    // ── 专线路由：让命名隧道走指定专线（cloudflared 绑定对 token 隧道无效，只能走 OS 路由）──
+    // 探测「出口专线绑定」源 IP 所属网卡的默认网关（供 UI 预填，用户可改）。
+    detectRouteGateway: adminProcedure.mutation(async () => {
+      const s = await db.getTunnelSettings();
+      const ip = (s.edgeBindAddress ?? "").trim();
+      if (!isIP(ip)) return { gateway: null as string | null, sourceIp: ip, error: "请先在「出口专线绑定」填该专线本机网卡的源 IP" };
+      return { gateway: await detectGatewayForSource(ip), sourceIp: ip };
+    }),
+    // 应用专线路由：把 CF 边缘网段路由到专线网关（gateway 空则自动探测）。需本服务以管理员运行。
+    applyRoutes: managerProc.input(z.object({ gateway: z.string().max(64).optional() })).mutation(async ({ input }) => {
+      const s = await db.getTunnelSettings();
+      const ip = (s.edgeBindAddress ?? "").trim();
+      const gw = (input.gateway ?? "").trim();
+      if (!isIP(ip) && !isIP(gw)) throw new TRPCError({ code: "BAD_REQUEST", message: "请先填「出口专线绑定」源 IP，或直接填专线网关" });
+      const r = await applyTunnelRoutes(ip, isIP(gw) ? gw : undefined, getTunnelLog());
+      return r;
+    }),
+    removeRoutes: managerProc.mutation(async () => removeTunnelRoutes(getTunnelLog())),
+    routeStatus: adminProcedure.mutation(async () => tunnelRouteStatus(getTunnelLog())),
     setWhitelist: managerProc.input(z.object({
       whitelistUsers: z.array(z.number().int()).max(2000),
       whitelistIps: z.array(z.string().max(64)).max(2000),
