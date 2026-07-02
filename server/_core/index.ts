@@ -508,16 +508,12 @@ async function startServer() {
     // Dedicated 127.0.0.1 loopback listener that cloudflared forwards to (plain HTTP →
     // no self-signed-TLS 502). Any request arriving on THIS port is unambiguously tunnel
     // traffic, so the access gate identifies it by socket.localPort — no header guessing.
-    // 回源端口可用 TUNNEL_ORIGIN_PORT 显式钉死（命名隧道推荐，避免漂移）；否则取主端口+1 起的
-    // 第一个空闲口。listen 带 error 处理：绑定失败不静默（记日志），不影响主服务。
     try {
-      const preferred = parseInt(process.env.TUNNEL_ORIGIN_PORT || String(port + 1));
-      const tunnelPort = await findAvailablePort(preferred);
+      const tunnelPort = await findAvailablePort(port + 1);
       const tunnelServer = createServer(app);
       // 关键：把 Socket.IO 也挂到这台隧道回环服务器上。否则经公网隧道进来的 WebSocket
       // 升级请求落在这台没有 io 的服务器上无人处理 → 聊天/协作 socket 永远「连接中」。
       io.attach(tunnelServer);
-      tunnelServer.on("error", (e) => console.warn("[Tunnel] internal listener error:", (e as Error).message));
       tunnelServer.listen(tunnelPort, "127.0.0.1", () => {
         setTunnelOrigin(tunnelPort);
         console.log(`[Tunnel] internal origin on http://127.0.0.1:${tunnelPort} (socket.io attached)`);
