@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isIP } from "net";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, levelProcedure, router } from "../_core/trpc";
 import * as db from "../db";
@@ -466,7 +467,7 @@ export const adminRouter = router({
       const rt = getTunnelRuntimeStatus();
       // 绝不回传 token 明文，只给「是否已配置」。
       const e = s.emailNotify;
-      return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, originPort: getTunnelListenerPort(), whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps,
+      return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, originPort: getTunnelListenerPort(), whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps, edgeBindAddress: s.edgeBindAddress,
         email: { to: e.to, host: e.host, port: e.port, user: e.user, secure: e.secure, from: e.from, hasPass: !!e.pass } }; // 不回传 pass 明文
     }),
     setEmailNotify: managerProc.input(z.object({
@@ -492,14 +493,19 @@ export const adminRouter = router({
       await applyTunnelEnabled(input.enabled);
       return { success: true };
     }),
-    setConfig: managerProc.input(z.object({ token: z.string().max(4096).optional(), publicUrl: z.string().max(512).optional(), runCloudflared: z.boolean().optional() })).mutation(async ({ input }) => {
-      const patch: { token?: string; publicUrl?: string; runCloudflared?: boolean } = {};
+    setConfig: managerProc.input(z.object({ token: z.string().max(4096).optional(), publicUrl: z.string().max(512).optional(), runCloudflared: z.boolean().optional(), edgeBindAddress: z.string().max(64).optional() })).mutation(async ({ input }) => {
+      const patch: { token?: string; publicUrl?: string; runCloudflared?: boolean; edgeBindAddress?: string } = {};
       if (input.runCloudflared !== undefined) patch.runCloudflared = input.runCloudflared;
       if (input.token !== undefined) patch.token = input.token.trim();
       if (input.publicUrl !== undefined) {
         const u = input.publicUrl.trim();
         if (u && !/^https?:\/\//i.test(u) && !/^[a-z0-9.-]+$/i.test(u)) throw new TRPCError({ code: "BAD_REQUEST", message: "公网地址应为域名或 http(s) URL" });
         patch.publicUrl = u;
+      }
+      if (input.edgeBindAddress !== undefined) {
+        const ip = input.edgeBindAddress.trim();
+        if (ip && isIP(ip) === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "出口专线绑定应填合法的本机源 IP（IPv4/IPv6），留空=系统默认路由" });
+        patch.edgeBindAddress = ip;
       }
       await db.setTunnelSettings(patch);
       await reloadTunnelGate();

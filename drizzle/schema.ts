@@ -756,6 +756,9 @@ export const tunnelSettings = mysqlTable("tunnel_settings", {
   runCloudflared: boolean("runCloudflared").notNull().default(true),
   token: text("token"),               // cloudflared 命名隧道 token（可空 → 快速隧道）。绝不回传前端。
   publicUrl: text("publicUrl"),        // 公网地址（快速隧道自动解析；命名隧道管理员填）
+  // 出口专线绑定：服务器多条上行（专线）时，填某条线路本机网卡的源 IP，cloudflared 出到
+  // Cloudflare 边缘的连接就绑定到该 IP（--edge-bind-address），从而走指定那条专线。空=系统默认路由。
+  edgeBindAddress: text("edgeBindAddress"),
   whitelistUsers: json("whitelistUsers").$type<number[]>(),
   whitelistIps: json("whitelistIps").$type<string[]>(),
   // 新网址自动发邮件的 SMTP 配置 + 收件人。pass 敏感，绝不回传前端。

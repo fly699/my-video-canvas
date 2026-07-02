@@ -25,6 +25,7 @@ export function TunnelPanel() {
   const [token, setToken] = useState("");
   const [publicUrl, setPublicUrl] = useState("");
   const [runCf, setRunCf] = useState(true);
+  const [edgeBind, setEdgeBind] = useState("");
   const [users, setUsers] = useState<string>("");   // 逗号分隔的用户 id
   const [ips, setIps] = useState<string>("");
   const [em, setEm] = useState({ to: "", host: "", port: 587, user: "", pass: "", secure: false, from: "" });
@@ -33,6 +34,7 @@ export function TunnelPanel() {
     if (q.data) {
       setPublicUrl(q.data.publicUrl ?? "");
       setRunCf(q.data.runCloudflared ?? true);
+      setEdgeBind(q.data.edgeBindAddress ?? "");
       setUsers((q.data.whitelistUsers ?? []).join(", "));
       setIps((q.data.whitelistIps ?? []).join(", "));
       const e = q.data.email; if (e) setEm({ to: e.to, host: e.host, port: e.port, user: e.user, pass: "", secure: e.secure, from: e.from });
@@ -65,7 +67,7 @@ export function TunnelPanel() {
     catch (e) { toast.error("操作失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
   };
   const saveConfig = async () => {
-    try { await configMut.mutateAsync({ token: token.trim() || undefined, publicUrl: publicUrl.trim(), runCloudflared: runCf }); setToken(""); await utils.admin.tunnel.get.invalidate(); toast.success("已保存隧道配置（重新启用后生效）"); }
+    try { await configMut.mutateAsync({ token: token.trim() || undefined, publicUrl: publicUrl.trim(), runCloudflared: runCf, edgeBindAddress: edgeBind.trim() }); setToken(""); await utils.admin.tunnel.get.invalidate(); toast.success("已保存隧道配置（重新启用后生效）"); }
     catch (e) { toast.error("保存失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
   };
   const saveWl = async () => {
@@ -175,6 +177,12 @@ export function TunnelPanel() {
         <label style={{ fontSize: 11, color: "var(--c-t3)" }}>{runCf ? "公网地址（命名隧道必填；快速隧道留空自动获取）" : "公网地址（你的外网访问域名，必填）"}
           <input value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} placeholder="video.example.com 或 https://video.example.com" className="nodrag" style={{ ...box, marginTop: 4 }} />
         </label>
+        {runCf && (
+          <label style={{ fontSize: 11, color: "var(--c-t3)" }}>出口专线绑定（多条上行专线时用；填某条线路本机网卡的源 IP）
+            <input value={edgeBind} onChange={(e) => setEdgeBind(e.target.value)} placeholder="如 203.0.113.8（留空=系统默认路由）" className="nodrag" style={{ ...box, marginTop: 4 }} />
+            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>隧道到 Cloudflare 的出站连接绑定到该 IP，即只让隧道走这条专线；把<b>另一条专线设为服务器默认路由</b>，则其余出站（模型/存储等）全走另一条。改后需停用再启用隧道生效。</div>
+          </label>
+        )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <button onClick={saveConfig} disabled={configMut.isPending} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11.5, fontWeight: 600, background: "var(--c-bd1)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
             {configMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 保存配置

@@ -456,6 +456,13 @@
       "when": 1782600000000,
       "tag": "0064_email_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "5",
+      "when": 1782700000000,
+      "tag": "0065_tunnel_edge_bind",
+      "breakpoints": true
     }
   ]
 }
