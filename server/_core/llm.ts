@@ -361,6 +361,19 @@ export function resolveMaxTokens(model: string | undefined, requested: number): 
   return ceiling ? Math.min(requested, ceiling) : requested;
 }
 
+// 自建（vLLM/Ollama 等）推理模型（Qwen3、DeepSeek-R1、QwQ…）会先输出一大段 <think> 思维链，
+// 随后被 stripReasoning 删掉——但思维 token 照样计入 max_tokens。默认 4096 会被思维吃掉大半，
+// 导致可见答案过短甚至从中间被截断。本地推理无 API 成本，故给自建模型更高默认 + 下限保底。
+export const SELF_HOSTED_DEFAULT_MAX_TOKENS = 16384;
+export const SELF_HOSTED_MIN_MAX_TOKENS = 8192;
+export const CLOUD_DEFAULT_MAX_TOKENS = 4096;
+/** 选择送给下游的 max_tokens（在按模型上限 resolveMaxTokens 收敛之前）。 */
+export function chooseMaxTokens(selfHosted: boolean, requested?: number): number {
+  let v = requested ?? (selfHosted ? SELF_HOSTED_DEFAULT_MAX_TOKENS : CLOUD_DEFAULT_MAX_TOKENS);
+  if (selfHosted) v = Math.max(v, SELF_HOSTED_MIN_MAX_TOKENS);
+  return v;
+}
+
 /** Reasoning models (Qwen3, DeepSeek-R1, QwQ…) emit their chain-of-thought as a
  *  <think>…</think> block at the START of the message content. Strip it so the raw
  *  reasoning never leaks into the answer — this caused ai_chat replies to show the
@@ -487,7 +500,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = resolveMaxTokens(resolvedModel, params.maxTokens ?? params.max_tokens ?? 4096);
+  // 自建推理模型（vLLM Qwen3 等）思维链会吃掉预算 → 给更高默认/下限，避免可见答案被截断。
+  const effectiveMax = chooseMaxTokens(isSelfHostedModel(model), params.maxTokens ?? params.max_tokens);
+  payload.max_tokens = resolveMaxTokens(resolvedModel, effectiveMax);
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
