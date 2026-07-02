@@ -470,6 +470,13 @@
       "when": 1782800000000,
       "tag": "0066_download_auth_bypass_level",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "5",
+      "when": 1782900000000,
+      "tag": "0067_tunnel_prefer_quick",
+      "breakpoints": true
     }
   ]
 }

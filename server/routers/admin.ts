@@ -472,7 +472,7 @@ export const adminRouter = router({
       const rt = getTunnelRuntimeStatus();
       // 绝不回传 token 明文，只给「是否已配置」。
       const e = s.emailNotify;
-      return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, originPort: getTunnelListenerPort(), whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps, edgeBindAddress: s.edgeBindAddress, log: getTunnelLog(),
+      return { enabled: s.enabled, runCloudflared: s.runCloudflared, hasToken: !!s.token.trim(), preferQuick: s.preferQuick, publicUrl: rt.publicUrl || s.publicUrl, running: rt.running, error: rt.error, originPort: getTunnelListenerPort(), whitelistUsers: s.whitelistUsers, whitelistIps: s.whitelistIps, edgeBindAddress: s.edgeBindAddress, log: getTunnelLog(),
         throughput: getTunnelThroughput(), // 用户经隧道的实时吞吐（被动统计）
         email: { to: e.to, host: e.host, port: e.port, user: e.user, secure: e.secure, from: e.from, hasPass: !!e.pass } }; // 不回传 pass 明文
     }),
@@ -499,9 +499,10 @@ export const adminRouter = router({
       await applyTunnelEnabled(input.enabled);
       return { success: true };
     }),
-    setConfig: managerProc.input(z.object({ token: z.string().max(4096).optional(), publicUrl: z.string().max(512).optional(), runCloudflared: z.boolean().optional(), edgeBindAddress: z.string().max(64).optional() })).mutation(async ({ input }) => {
-      const patch: { token?: string; publicUrl?: string; runCloudflared?: boolean; edgeBindAddress?: string } = {};
+    setConfig: managerProc.input(z.object({ token: z.string().max(4096).optional(), publicUrl: z.string().max(512).optional(), runCloudflared: z.boolean().optional(), preferQuick: z.boolean().optional(), edgeBindAddress: z.string().max(64).optional() })).mutation(async ({ input }) => {
+      const patch: { token?: string; publicUrl?: string; runCloudflared?: boolean; preferQuick?: boolean; edgeBindAddress?: string } = {};
       if (input.runCloudflared !== undefined) patch.runCloudflared = input.runCloudflared;
+      if (input.preferQuick !== undefined) patch.preferQuick = input.preferQuick;
       if (input.token !== undefined) patch.token = input.token.trim();
       if (input.publicUrl !== undefined) {
         const u = input.publicUrl.trim();
@@ -523,6 +524,8 @@ export const adminRouter = router({
       await reloadTunnelGate();
       return { success: true, routeReverted: !!routeRevert, routeLog: routeRevert?.log };
     }),
+    // 显示已保存的命名隧道 Token 明文（供管理员查看/复制）。仅显式触发返回，绝不随 get 常规回传。
+    revealToken: managerProc.mutation(async () => ({ token: (await db.getTunnelSettings()).token })),
     // cloudflared 二进制状态（是否已装/可自动下载/下载进度）
     cloudflared: adminProcedure.query(() => cloudflaredInfo()),
     downloadCloudflared: managerProc.mutation(async () => {

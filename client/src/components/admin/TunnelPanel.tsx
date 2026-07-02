@@ -31,9 +31,13 @@ export function TunnelPanel() {
   const [routeLog, setRouteLog] = useState("");       // 路由操作结果回显
   const routeBusy = detectGwMut.isPending || applyRoutesMut.isPending || removeRoutesMut.isPending || routeStatusMut.isPending;
 
+  const revealTokenMut = trpc.admin.tunnel.revealToken.useMutation();
+  const [revealedToken, setRevealedToken] = useState<string | null>(null);
+
   const [token, setToken] = useState("");
   const [publicUrl, setPublicUrl] = useState("");
   const [runCf, setRunCf] = useState(true);
+  const [preferQuick, setPreferQuick] = useState(false);
   const [edgeBind, setEdgeBind] = useState("");
   const [users, setUsers] = useState<string>("");   // 逗号分隔的用户 id
   const [ips, setIps] = useState<string>("");
@@ -43,6 +47,7 @@ export function TunnelPanel() {
     if (q.data) {
       setPublicUrl(q.data.publicUrl ?? "");
       setRunCf(q.data.runCloudflared ?? true);
+      setPreferQuick(q.data.preferQuick ?? false);
       setEdgeBind(q.data.edgeBindAddress ?? "");
       setUsers((q.data.whitelistUsers ?? []).join(", "));
       setIps((q.data.whitelistIps ?? []).join(", "));
@@ -77,7 +82,7 @@ export function TunnelPanel() {
   };
   const saveConfig = async () => {
     try {
-      const r = await configMut.mutateAsync({ token: token.trim() || undefined, publicUrl: publicUrl.trim(), runCloudflared: runCf, edgeBindAddress: edgeBind.trim() });
+      const r = await configMut.mutateAsync({ token: token.trim() || undefined, publicUrl: publicUrl.trim(), runCloudflared: runCf, preferQuick, edgeBindAddress: edgeBind.trim() });
       setToken(""); await utils.admin.tunnel.get.invalidate();
       if (r.routeReverted) { if (r.routeLog) setRouteLog(r.routeLog); toast.success("已保存；已关闭专线并移除专线路由，回退默认线路"); }
       else toast.success("已保存隧道配置（重新启用后生效）");
@@ -206,26 +211,47 @@ export function TunnelPanel() {
                 </>
               )}
             </div>
+            {/* 隧道类型二选一：快速 / 命名。切到快速不会删除已存 Token（保留，切回免重新粘贴）。 */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "var(--c-t3)" }}>隧道类型</span>
+              {([[true, "快速隧道（免账号）"], [false, "命名隧道（Token·固定域名）"]] as const).map(([v, label]) => (
+                <button key={String(v)} onClick={() => setPreferQuick(v)} className="nodrag px-3 py-1.5 rounded-lg" style={{ fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                  background: preferQuick === v ? "oklch(0.70 0.16 200 / 0.16)" : "var(--c-bd1)", border: `1px solid ${preferQuick === v ? "oklch(0.70 0.16 200 / 0.5)" : "var(--c-bd2)"}`, color: preferQuick === v ? "oklch(0.7 0.14 200)" : "var(--c-t3)" }}>{label}</button>
+              ))}
+            </div>
             <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6, margin: 0 }}>
-              留空 Token = <b>快速隧道</b>（免账号，自动 *.trycloudflare.com，重启会变）。填 Cloudflare <b>命名隧道 Token</b> = 固定自有域名（更稳），此时在下面填你在 Cloudflare 配置的公网域名。
+              <b>快速隧道</b>：免账号、自动 *.trycloudflare.com、重启换网址。<b>命名隧道</b>：用你在 Cloudflare 的固定自有域名（更稳），需填下方 Token 并在下面填公网域名。
+              切到快速隧道<b>不会删除已保存的 Token</b>，切回命名隧道无需重新粘贴。（改后<b>停用再启用</b>生效）
             </p>
-            {token.trim() && q.data?.originPort ? (
-              <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5 }}>命名隧道请在 Cloudflare 面板把该隧道的回源(Service)设为 <code>http://localhost:{q.data.originPort}</code></div>
-            ) : null}
-            <label style={{ fontSize: 11, color: "var(--c-t3)" }}>命名隧道 Token（可选，{q.data?.hasToken ? "已配置，留空保持不变" : "未配置"}）
-              <input value={token} onChange={(e) => setToken(e.target.value)} placeholder={q.data?.hasToken ? "••••••（留空保持不变）" : "粘贴 cloudflared tunnel token"} className="nodrag" style={{ ...box, marginTop: 4 }} />
-            </label>
+            {!preferQuick && (<>
+              {q.data?.hasToken && q.data?.originPort ? (
+                <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5 }}>命名隧道请在 Cloudflare 面板把该隧道的回源(Service)设为 <code>http://localhost:{q.data.originPort}</code></div>
+              ) : null}
+              <label style={{ fontSize: 11, color: "var(--c-t3)" }}>命名隧道 Token（{q.data?.hasToken ? "已配置，留空保持不变" : "未配置，请粘贴"}）
+                <input value={token} onChange={(e) => setToken(e.target.value)} placeholder={q.data?.hasToken ? "••••••（留空保持不变）" : "粘贴 cloudflared tunnel token"} className="nodrag" style={{ ...box, marginTop: 4 }} />
+              </label>
+            </>)}
             {q.data?.hasToken && (
-              <button
-                onClick={async () => {
-                  if (!window.confirm("清除命名隧道 Token，切回快速隧道（*.trycloudflare.com，重启会变网址）？停用再启用后生效。")) return;
-                  try { await configMut.mutateAsync({ token: "" }); setToken(""); await utils.admin.tunnel.get.invalidate(); toast.success("已清除 Token，切回快速隧道（停用再启用生效）"); }
-                  catch (e) { toast.error("清除失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
-                }}
-                disabled={configMut.isPending}
-                className="nodrag"
-                style={{ alignSelf: "flex-start", fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}
-              >清除 Token（切回快速隧道）</button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <button disabled={revealTokenMut.isPending} onClick={async () => {
+                  try { const r = await revealTokenMut.mutateAsync(); setRevealedToken(r.token || "(空)"); }
+                  catch (e) { toast.error("读取失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
+                }} className="nodrag" style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>
+                  {revealTokenMut.isPending ? "读取中…" : "显示已保存 Token"}
+                </button>
+                <button onClick={async () => {
+                  if (!window.confirm("彻底删除已保存的命名隧道 Token？删除后切回命名隧道需重新粘贴。（只想临时用快速隧道无需删除，上方切「快速隧道」即可）")) return;
+                  try { await configMut.mutateAsync({ token: "" }); setToken(""); setRevealedToken(null); await utils.admin.tunnel.get.invalidate(); toast.success("已删除已保存 Token"); }
+                  catch (e) { toast.error("删除失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140)); }
+                }} disabled={configMut.isPending} className="nodrag" style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>删除已保存 Token</button>
+              </div>
+            )}
+            {revealedToken !== null && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <input readOnly value={revealedToken} onFocus={(e) => e.currentTarget.select()} className="nodrag" style={{ ...box, flex: "1 1 240px", fontFamily: "monospace" }} />
+                <button onClick={() => { navigator.clipboard?.writeText(revealedToken).then(() => toast.success("已复制 Token")).catch(() => {}); }} className="nodrag" style={{ fontSize: 11, padding: "6px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>复制</button>
+                <button onClick={() => setRevealedToken(null)} className="nodrag" style={{ fontSize: 11, padding: "6px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}>隐藏</button>
+              </div>
             )}
           </>
         ) : (
