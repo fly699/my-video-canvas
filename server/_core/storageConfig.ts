@@ -13,7 +13,7 @@
 import * as db from "../db";
 import { isS3Configured } from "../storage";
 
-type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean; devtoolsBlockEnabled: boolean };
+type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; downloadAuthBypassLevel: number; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean; devtoolsBlockEnabled: boolean };
 
 let _cached: Cached | null = null;
 let _expiresAt = 0;
@@ -45,7 +45,7 @@ export async function getCachedStorageSettings(): Promise<Cached> {
       // that DB outages can't silently bypass the admin's explicit "off"
       // intent and burn S3 quota.
       if (_cached) return _cached;
-      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: false, preferUpstreamRefSource: false, downloadAuthEnabled: false, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false };
+      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: false, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false };
     } finally {
       _inflight = null;
     }
@@ -85,6 +85,11 @@ export async function isPoyoUploadFallbackEnabled(): Promise<boolean> {
 /** Admin-controlled master switch for strict download authorization. */
 export async function isDownloadAuthEnabled(): Promise<boolean> {
   return (await getCachedStorageSettings()).downloadAuthEnabled;
+}
+
+/** 免受下载门控的最低管理级别：adminLevel >= 此值免门控，低于此值受控。默认 1。 */
+export async function getDownloadAuthBypassLevel(): Promise<number> {
+  return (await getCachedStorageSettings()).downloadAuthBypassLevel;
 }
 
 /** Anti-leech: when on, the storage proxy always streams through this server and

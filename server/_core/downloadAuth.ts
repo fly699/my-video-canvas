@@ -2,12 +2,22 @@ import type { Request, Response } from "express";
 import { resolveRequestUser } from "./context";
 import { toInternalStoragePath } from "../storage";
 import { writeAuditLog } from "./auditLog";
-import { isDownloadAuthEnabled } from "./storageConfig";
+import { isDownloadAuthEnabled, getDownloadAuthBypassLevel } from "./storageConfig";
 import * as db from "../db";
 
 /** Strip the `/manus-storage/` prefix (+ any query) to get the bare storage key. */
 function keyFromInternalPath(p: string): string {
   return p.replace(/^\/manus-storage\//, "").split("?")[0];
+}
+
+/** 取用户的管理级别（adminLevel 为准；缺失时按 role 兜底：admin→1，其余→0）。 */
+export function userAdminLevel(user: { adminLevel?: number | null; role?: string }): number {
+  return user.adminLevel ?? (user.role === "admin" ? 1 : 0);
+}
+
+/** 是否因管理级别而免受下载门控：adminLevel >= 免受阈值即放行。 */
+export function isLevelExemptFromDownloadGate(adminLevel: number, bypassLevel: number): boolean {
+  return adminLevel >= bypassLevel;
 }
 
 /**
@@ -46,7 +56,9 @@ export async function authorizeDownload(
     res.status(401).json({ error: "请先登录后再下载", code: "DOWNLOAD_AUTH_REQUIRED" });
     return false;
   }
-  if (user.role === "admin") return true; // admins always bypass
+  // 免门控级别可配（默认 1 = 所有管理员免、普通成员受控）。adminLevel >= 阈值即放行。
+  const bypassLevel = await getDownloadAuthBypassLevel();
+  if (isLevelExemptFromDownloadGate(userAdminLevel(user), bypassLevel)) return true;
 
   const storageKey = resolveDownloadKey(opts);
   const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
