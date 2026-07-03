@@ -233,7 +233,19 @@ export function TunnelPanel() {
             {/* cloudflared 安装状态 + 一键下载 */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, flexWrap: "wrap", padding: "8px 10px", borderRadius: 8, background: "var(--c-bd1)" }}>
               {cf.data?.installed ? (
-                <span style={{ display: "flex", alignItems: "center", gap: 5, color: "oklch(0.72 0.16 150)" }}><CheckCircle2 className="w-3.5 h-3.5" /> cloudflared 已就绪{cf.data.source === "downloaded" ? "（应用内置）" : "（系统 PATH）"}</span>
+                <>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5, color: "oklch(0.72 0.16 150)" }}><CheckCircle2 className="w-3.5 h-3.5" /> cloudflared 已就绪{cf.data.source === "downloaded" ? "（应用内置）" : "（系统 PATH）"}</span>
+                  {cf.data.source === "downloaded" && cf.data.canAutoDownload && (
+                    <button onClick={async () => {
+                      if (running || enabled) { toast.error("请先「关闭隧道」再更新（运行中无法覆盖二进制）"); return; }
+                      if (!window.confirm("下载最新版 cloudflared 覆盖应用内置的？（会拉 GitHub 最新版；需已关闭隧道）")) return;
+                      await download();
+                    }} disabled={cf.data?.downloading} className="nodrag flex items-center gap-1 px-2.5 py-1 rounded-md" style={{ fontSize: 11, fontWeight: 600, cursor: cf.data?.downloading ? "default" : "pointer", background: "oklch(0.70 0.16 200 / 0.16)", border: "1px solid oklch(0.70 0.16 200 / 0.4)", color: "oklch(0.7 0.14 200)" }}>
+                      {cf.data?.downloading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 下载中…</> : <><DownloadCloud className="w-3.5 h-3.5" /> 更新到最新</>}
+                    </button>
+                  )}
+                  {cf.data?.error && <span style={{ color: "oklch(0.7 0.16 25)" }}>· {cf.data.error}</span>}
+                </>
               ) : (
                 <>
                   <span style={{ display: "flex", alignItems: "center", gap: 5, color: "oklch(0.72 0.15 60)" }}><AlertTriangle className="w-3.5 h-3.5" /> 未检测到 cloudflared（{cf.data?.platform}）</span>
