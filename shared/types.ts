@@ -896,6 +896,7 @@ export interface SubtitleMotionNodeData {
   inputVideoUrl?: string;
   entries?: SubtitleEntry[];
   language?: string;
+  transcribeModel?: string; // 转录模型（whisper-1 / gpt-4o-transcribe / gpt-4o-mini-transcribe），与字幕节点一致
   motionStyle?: SubtitleMotionStyle;
   fontSize?: number;
   fontColor?: string;

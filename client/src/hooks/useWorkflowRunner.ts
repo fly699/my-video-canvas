@@ -729,6 +729,7 @@ export function useWorkflowRunner() {
             const transcribeResult = await subtitleMotionTranscribeMutation.mutateAsync({
               audioUrl: videoUrl,
               language: (p.language as string) || undefined,
+              model: (p.transcribeModel as string) || resolveActiveNodeModel("subtitle_motion", "transcribe"),
             });
             entries = transcribeResult.entries;
             useCanvasStore.getState().updateNodeData(nodeId, { entries }, true);
