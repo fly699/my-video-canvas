@@ -1,4 +1,6 @@
 import { spawn, execFile, type ChildProcess } from "child_process";
+import { mkdirSync, writeFileSync } from "fs";
+import path from "path";
 import { isIP, type Socket } from "net";
 import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./tunnelGate";
 import { getTunnelSettings, setTunnelSettings } from "../db";
@@ -110,13 +112,27 @@ export function tunnelErrorHint(log: string): string {
  *  `tunnel --url … --edge-bind-address` 即此层级、实测生效）。命名隧道必须把它放在 `run` **之前**——
  *  实测本版 cloudflared 的 `run` 子命令**不认**放在其后的该 flag，会打印 usage 直接退出（回源 530）。
  *  IP 必须是本机某网卡地址（admin.setConfig 的 isLocalInterfaceIp 已校验）。 */
-export function buildTunnelArgs(opts: { named: boolean; token: string; tunnelPort: number; bindIp: string }): string[] {
-  const { named, token, tunnelPort, bindIp } = opts;
+export function buildTunnelArgs(opts: { named: boolean; token: string; tunnelPort: number; bindIp: string; configPath?: string }): string[] {
+  const { named, token, tunnelPort, bindIp, configPath } = opts;
   const ip = (bindIp ?? "").trim();
   const bind = ip && isIP(ip) ? ["--edge-bind-address", ip] : [];
+  // 命名隧道额外用 config 文件传 edge-bind：CLI 上的 run 忽略、但 config 文件是另一条读取路径，官方文档
+  // 称 config 里也支持该项，故双管齐下（config 必须在 run 之前、tunnel 级）。
+  const cfg = named && configPath ? ["--config", configPath] : [];
   return named
-    ? ["tunnel", ...bind, "run", "--token", token.trim()]                                   // edge-bind 放在 run 之前
+    ? ["tunnel", ...cfg, ...bind, "run", "--token", token.trim()]                           // config/edge-bind 放在 run 之前
     : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`, ...bind];
+}
+
+/** 为命名隧道写一个只含 edge-bind 的 config 文件，返回其路径（写失败返回 undefined）。 */
+function writeEdgeBindConfig(bindIp: string): string | undefined {
+  try {
+    const dir = path.join(process.cwd(), ".cloudflared");
+    mkdirSync(dir, { recursive: true });
+    const p = path.join(dir, "avc-edgebind.yml");
+    writeFileSync(p, `edge-bind-address: ${bindIp}\n`, "utf8");
+    return p;
+  } catch { return undefined; }
 }
 
 /** 杀掉遗留的 cloudflared 进程。应用每次重启（node 进程重启）都会把上一个 cloudflared 子进程留成
@@ -157,7 +173,8 @@ export async function startTunnel(): Promise<void> {
     try { const r = await applyTunnelRoutes(bindIp, undefined, ""); autoRouteLog = "[自动专线路由] " + r.log + "\n"; }
     catch (e) { autoRouteLog = "[自动专线路由] 失败：" + (e as Error).message + "\n"; }
   }
-  const args = buildTunnelArgs({ named, token: cfg.token, tunnelPort, bindIp });
+  const configPath = (named && bindIp && isIP(bindIp)) ? writeEdgeBindConfig(bindIp) : undefined;
+  const args = buildTunnelArgs({ named, token: cfg.token, tunnelPort, bindIp, configPath });
   try {
     // windowsHide：Windows 上不弹出 cloudflared 的控制台黑窗（否则用户很容易误手关掉窗口，
     // 连带把隧道进程杀掉）。stdout/stderr 仍通过管道进 logBuf，日志照收不误。
