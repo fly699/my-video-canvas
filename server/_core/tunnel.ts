@@ -4,7 +4,7 @@ import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./
 import { getTunnelSettings, setTunnelSettings } from "../db";
 import { resolveCloudflaredPath } from "./cloudflaredBin";
 import { sendTunnelUrlEmail } from "./tunnelEmail";
-import { applyTunnelRoutes, removeTunnelRoutes } from "./tunnelRoute";
+import { removeTunnelRoutes } from "./tunnelRoute";
 
 // Email the new public URL once per distinct URL (quick tunnels change on restart).
 let lastEmailedUrl = "";
@@ -106,15 +106,17 @@ export function tunnelErrorHint(log: string): string {
 /** 构造 cloudflared 启动参数（纯函数，便于单测/防回归）。
  *  - 快速隧道：`tunnel --no-autoupdate --url http://localhost:<port>`，回源到本机回环监听。
  *  - 命名隧道：`tunnel run --token <TOKEN>`，回源在 Cloudflare 面板配置。
- *  关键：**`--edge-bind-address` 只对快速隧道传**。命名隧道的 `tunnel run` 子命令**不认**此 flag
- *  （会打印 usage 直接退出 → 隧道起不来、回源 530），且它对命名隧道本就不生效——命名隧道走专线
- *  要用「专线路由」（OS 路由层）。所以命名隧道绝不传此参数。 */
+ *  出口专线绑定 `--edge-bind-address <IP>`：**快速隧道与命名隧道都传**——Cloudflare 官方文档明确
+ *  `cloudflared tunnel run --token <TOKEN> --edge-bind-address <IP>` 支持此 flag，把 cloudflared 到边缘的
+ *  出站源 IP 绑到该本机网卡 IP，从而走那条线（与临时隧道同一机制，实测临时隧道即此方式生效）。
+ *  IP 必须是本机某网卡地址（由 admin.setConfig 的 isLocalInterfaceIp 校验，杜绝早期「填错非本机 IP →
+ *  address not valid → 打印 usage 退出」的翻车）。 */
 export function buildTunnelArgs(opts: { named: boolean; token: string; tunnelPort: number; bindIp: string }): string[] {
   const { named, token, tunnelPort, bindIp } = opts;
   const args = named ? ["tunnel", "run", "--token", token.trim()]
                      : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`];
   const ip = (bindIp ?? "").trim();
-  if (!named && ip && isIP(ip)) args.push("--edge-bind-address", ip);
+  if (ip && isIP(ip)) args.push("--edge-bind-address", ip);
   return args;
 }
 
@@ -129,15 +131,8 @@ export async function startTunnel(): Promise<void> {
   // 切回命名隧道无需重新粘贴 Token。
   const named = cfg.token.trim().length > 0 && !cfg.preferQuick;
   const bindIp = (cfg.edgeBindAddress ?? "").trim();
-  // 命名隧道走专线：cloudflared 不吃 edge-bind，只能靠 OS 路由选线。**启动前**就把 CF 边缘段路由钉到
-  // 「出口专线绑定」源 IP 对应的那块网卡——必须在 cloudflared 连接前就位，否则已建立的 QUIC 连接不会
-  // 随后加的路由迁移（这正是「路由已配、CF 仍显示默认线」的根因）；且停用时会自动移除路由，故每次启动
-  // 都要重新应用。需管理员权限；失败记入日志，不阻断启动。
-  let autoRouteLog = "";
-  if (named && bindIp && isIP(bindIp)) {
-    try { const r = await applyTunnelRoutes(bindIp, undefined, ""); autoRouteLog = "[自动专线路由] " + r.log + "\n"; }
-    catch (e) { autoRouteLog = "[自动专线路由] 失败：" + (e as Error).message + "\n"; }
-  }
+  // 出口专线：命名隧道与快速隧道都靠 `--edge-bind-address` 绑源 IP 走该线（见 buildTunnelArgs）。无需
+  // OS 路由，无需管理员——这也是临时隧道一直好使的原因。「专线路由」按钮仅作个别 cloudflared 版本的兜底。
   const args = buildTunnelArgs({ named, token: cfg.token, tunnelPort, bindIp });
   try {
     // windowsHide：Windows 上不弹出 cloudflared 的控制台黑窗（否则用户很容易误手关掉窗口，
@@ -148,7 +143,7 @@ export async function startTunnel(): Promise<void> {
     return;
   }
   status = { running: true, publicUrl: named ? cfg.publicUrl : "", error: null };
-  logBuf = autoRouteLog;
+  logBuf = "";
   const onData = (d: Buffer) => {
     logBuf = (logBuf + d.toString()).slice(-8000);
     if (!named) {
