@@ -13,7 +13,7 @@ export function TunnelPanel() {
   const localIps = trpc.admin.tunnel.localSourceIps.useQuery(); // 本机可用源 IP（供「出口专线绑定」点选防呆）
   const egress = trpc.admin.tunnel.egress.useQuery(undefined, { refetchInterval: 15000 }); // 隧道出站走哪张网卡/源 IP
   const egressPubMut = trpc.admin.tunnel.egressPublicIp.useMutation(); // 实测公网出口 IP（与 CF 对齐）
-  const [pubIp, setPubIp] = useState<{ sourceIp: string | null; publicIp: string | null; defaultLinePublicIp: string | null } | null>(null);
+  const [pubIp, setPubIp] = useState<{ sourceIp: string | null; iface: string | null; publicIp: string | null; viaLine: boolean; note: string; defaultLinePublicIp: string | null } | null>(null);
   const enableMut = trpc.admin.tunnel.setEnabled.useMutation();
   const configMut = trpc.admin.tunnel.setConfig.useMutation();
   const wlMut = trpc.admin.tunnel.setWhitelist.useMutation();
@@ -179,9 +179,9 @@ export function TunnelPanel() {
             }} className="nodrag" style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}>{egressPubMut.isPending ? "实测中…" : "测公网出口 IP"}</button>
             {pubIp && (
               <span style={{ color: "var(--c-t4)" }}>
-                · 公网出口 <b style={{ color: "oklch(0.72 0.16 150)", fontFamily: "monospace" }}>{pubIp.publicIp ?? "?"}</b>
-                {pubIp.defaultLinePublicIp && pubIp.defaultLinePublicIp !== pubIp.publicIp ? <>（默认线路 <span style={{ fontFamily: "monospace" }}>{pubIp.defaultLinePublicIp}</span>）</> : null}
-                <span style={{ color: "var(--c-t4)" }}>— 应与 CF 连接器一致</span>
+                · 专线线路{pubIp.iface ? `（${pubIp.iface}）` : ""}公网出口 <b style={{ color: pubIp.viaLine ? "oklch(0.72 0.16 150)" : "oklch(0.72 0.15 60)", fontFamily: "monospace" }}>{pubIp.publicIp ?? "?"}</b>
+                {pubIp.defaultLinePublicIp ? <>· 默认线路 <span style={{ fontFamily: "monospace" }}>{pubIp.defaultLinePublicIp}</span></> : null}
+                <span style={{ color: "var(--c-t4)" }}> — {pubIp.viaLine ? "经该网卡实测，应与 CF 连接器一致" : pubIp.note}</span>
               </span>
             )}
           </div>

@@ -8,7 +8,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput } from "../_core/tunnel";
-import { detectGatewayForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, fetchPublicEgressIp } from "../_core/tunnelRoute";
+import { detectGatewayForSource, detectLineForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, fetchPublicEgressIp, fetchLinePublicEgressIp } from "../_core/tunnelRoute";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
 import { tunnelHostFromUrl } from "../_core/tunnelGate";
 import { sendTunnelUrlEmail } from "../_core/tunnelEmail";
@@ -562,16 +562,17 @@ export const adminRouter = router({
       const named = s.token.trim().length > 0 && !s.preferQuick;
       return tunnelEgressInfo((s.edgeBindAddress ?? "").trim(), !named, getTunnelLog());
     }),
-    // 实测公网出口 IP（与 CF 连接器面板对齐）：本线路（绑隧道出站源 IP）+ 默认线路（不绑），一眼看清走哪条。
+    // 实测公网出口 IP（与 CF 连接器面板对齐）。所选专线线路：临时把 trace 目标 /32 钉到「出口专线绑定」
+    // 源 IP 对应的网卡实测（绑源 IP 在 Windows 不改出口网卡，故必须临时路由才能测准）；默认线路：不绑直测。
     egressPublicIp: adminProcedure.mutation(async () => {
       const s = await db.getTunnelSettings();
-      const named = s.token.trim().length > 0 && !s.preferQuick;
-      const e = await tunnelEgressInfo((s.edgeBindAddress ?? "").trim(), !named, getTunnelLog());
-      const [lineIp, defaultIp] = await Promise.all([
-        e.sourceIp ? fetchPublicEgressIp(e.sourceIp) : Promise.resolve(null),
+      const bind = (s.edgeBindAddress ?? "").trim();
+      const line = isIP(bind) ? await detectLineForSource(bind) : { ifIndex: null, ifName: null, gateway: null };
+      const [lineRes, defaultIp] = await Promise.all([
+        (isIP(bind) && line.gateway) ? fetchLinePublicEgressIp(line) : Promise.resolve({ ip: null as string | null, viaLine: false, note: "未设「出口专线绑定」，无法测专线线路" }),
         fetchPublicEgressIp(undefined),
       ]);
-      return { sourceIp: e.sourceIp, iface: e.iface, publicIp: lineIp, defaultLinePublicIp: defaultIp };
+      return { sourceIp: bind || null, iface: line.ifName, publicIp: lineRes.ip, viaLine: lineRes.viaLine, note: lineRes.note, defaultLinePublicIp: defaultIp };
     }),
     // ── 专线路由：让命名隧道走指定专线（cloudflared 绑定对 token 隧道无效，只能走 OS 路由）──
     // 探测「出口专线绑定」源 IP 所属网卡的默认网关（供 UI 预填，用户可改）。

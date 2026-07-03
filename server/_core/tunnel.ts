@@ -4,7 +4,7 @@ import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./
 import { getTunnelSettings, setTunnelSettings } from "../db";
 import { resolveCloudflaredPath } from "./cloudflaredBin";
 import { sendTunnelUrlEmail } from "./tunnelEmail";
-import { removeTunnelRoutes } from "./tunnelRoute";
+import { applyTunnelRoutes, removeTunnelRoutes } from "./tunnelRoute";
 
 // Email the new public URL once per distinct URL (quick tunnels change on restart).
 let lastEmailedUrl = "";
@@ -126,7 +126,17 @@ export async function startTunnel(): Promise<void> {
   // 命名隧道 = 存了 Token 且未选「临时改走快速隧道」。preferQuick 让 Token 保留着也能跑快速隧道，
   // 切回命名隧道无需重新粘贴 Token。
   const named = cfg.token.trim().length > 0 && !cfg.preferQuick;
-  const args = buildTunnelArgs({ named, token: cfg.token, tunnelPort, bindIp: cfg.edgeBindAddress ?? "" });
+  const bindIp = (cfg.edgeBindAddress ?? "").trim();
+  // 命名隧道走专线：cloudflared 不吃 edge-bind，只能靠 OS 路由选线。**启动前**就把 CF 边缘段路由钉到
+  // 「出口专线绑定」源 IP 对应的那块网卡——必须在 cloudflared 连接前就位，否则已建立的 QUIC 连接不会
+  // 随后加的路由迁移（这正是「路由已配、CF 仍显示默认线」的根因）；且停用时会自动移除路由，故每次启动
+  // 都要重新应用。需管理员权限；失败记入日志，不阻断启动。
+  let autoRouteLog = "";
+  if (named && bindIp && isIP(bindIp)) {
+    try { const r = await applyTunnelRoutes(bindIp, undefined, ""); autoRouteLog = "[自动专线路由] " + r.log + "\n"; }
+    catch (e) { autoRouteLog = "[自动专线路由] 失败：" + (e as Error).message + "\n"; }
+  }
+  const args = buildTunnelArgs({ named, token: cfg.token, tunnelPort, bindIp });
   try {
     // windowsHide：Windows 上不弹出 cloudflared 的控制台黑窗（否则用户很容易误手关掉窗口，
     // 连带把隧道进程杀掉）。stdout/stderr 仍通过管道进 logBuf，日志照收不误。
@@ -136,7 +146,7 @@ export async function startTunnel(): Promise<void> {
     return;
   }
   status = { running: true, publicUrl: named ? cfg.publicUrl : "", error: null };
-  logBuf = "";
+  logBuf = autoRouteLog;
   const onData = (d: Buffer) => {
     logBuf = (logBuf + d.toString()).slice(-8000);
     if (!named) {
