@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo } from "./_core/tunnelRoute";
+import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, parseTraceIp } from "./_core/tunnelRoute";
 
 describe("tunnelRoute · 边缘网段与命令生成", () => {
   it("内置 CF 边缘 = cloudflared 实际连接的两段", () => {
@@ -55,6 +55,14 @@ describe("tunnelRoute · 边缘网段与命令生成", () => {
   it("tunnelEgressInfo：无日志时 dest 用内置代表边缘 IP", async () => {
     const r = await tunnelEgressInfo("203.0.113.9", true, "");
     expect(r.dest).toBe("198.41.192.227");
+  });
+
+  it("parseTraceIp：从 CF trace 响应取公网出口 IP", () => {
+    const body = "fl=123\nh=www.cloudflare.com\nip=203.0.113.7\nts=1.0\nvisit_scheme=https";
+    expect(parseTraceIp(body)).toBe("203.0.113.7");
+    expect(parseTraceIp("ip=2606:4700::1\n")).toBe("2606:4700::1");
+    expect(parseTraceIp("no ip here")).toBeNull();
+    expect(parseTraceIp("ip=not-an-ip")).toBeNull();
   });
 
   it("manualRouteCommands：每段一条、含网关、不含默认路由", () => {

@@ -2,8 +2,34 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { isIP } from "net";
 import { networkInterfaces } from "os";
+import { get as httpsGet } from "https";
 
 const pexec = promisify(exec);
+
+/** 解析 Cloudflare `/cdn-cgi/trace` 响应里的 `ip=` 行（即 Cloudflare 看到的本机公网出口 IP）。纯函数、便于单测。 */
+export function parseTraceIp(body: string): string | null {
+  const m = /(?:^|\n)\s*ip=([0-9a-fA-F:.]+)/.exec(body || "");
+  return m && isIP(m[1]) ? m[1] : null;
+}
+
+/** 实测某条线路的「公网出口 IP」：绑定该线路本机源 IP 去访问 Cloudflare trace，返回 CF 看到的公网 IP
+ *  （与 CF 连接器面板显示的源 IP 对齐）。localAddress 为空 = 走系统默认路由那条线。失败/超时返回 null。 */
+export function fetchPublicEgressIp(localAddress?: string, timeoutMs = 8000): Promise<string | null> {
+  return new Promise((resolve) => {
+    const opts: Record<string, unknown> = { hostname: "www.cloudflare.com", path: "/cdn-cgi/trace", timeout: timeoutMs, headers: { "user-agent": "avc-egress-check" } };
+    if (localAddress && isIP(localAddress)) opts.localAddress = localAddress;
+    let done = false;
+    const finish = (v: string | null) => { if (!done) { done = true; resolve(v); } };
+    const req = httpsGet(opts, (res) => {
+      let body = "";
+      res.on("data", (c: Buffer) => { body += c.toString(); if (body.length > 8192) req.destroy(); });
+      res.on("end", () => finish(parseTraceIp(body)));
+      res.on("error", () => finish(null));
+    });
+    req.on("error", () => finish(null));
+    req.on("timeout", () => { req.destroy(); finish(null); });
+  });
+}
 
 /** 本机所有网卡的非内部（排除回环）IP。用于「出口专线绑定」防呆：edge-bind 必须是本机某网卡地址，
  *  否则 cloudflared 绑定出网会报 "The requested address is not valid in its context" 而整个隧道起不来。 */
