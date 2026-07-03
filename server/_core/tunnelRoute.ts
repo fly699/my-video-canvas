@@ -312,20 +312,28 @@ export async function removeTunnelRoutes(extraLog = ""): Promise<{ ok: boolean; 
   return { ok, log: lines.join("\n"), manual };
 }
 
-/** 检测当前这些 CF 网段是否已被路由到某网关（用于面板「检测路由状态」）。 */
+/** 检测当前这些 CF 网段是否已被路由、以及**实际走哪块网卡/网关**（用于面板「检测路由状态」）。
+ *  Windows 用 Get-NetRoute（干净结构化：网关+网卡名+度量），不再用 `route print`——后者会先打印一大段
+ *  「接口列表」且中文控制台乱码，截取开头会误把接口列表当成路由的网卡显示（曾导致「已配→Intel」的假象）。
+ *  有重复路由（多条线各一条）时会逐条列出，一眼看清是否被别的网卡抢了。 */
 export async function tunnelRouteStatus(extraLog = ""): Promise<{ log: string; active: boolean }> {
   const cidrs = edgeCidrsFromLog(extraLog);
-  const lines = ["[路由] 当前 CF 边缘网段路由状态："];
+  const lines = ["[路由] 当前 CF 边缘网段路由状态（实际网卡/网关）："];
   let active = false;
   for (const r of cidrs) {
-    const cmd = process.platform === "win32" ? `route print ${r.net}` : `ip route show ${r.prefix}`;
     try {
-      const { stdout } = await pexec(cmd, { timeout: 10000, windowsHide: true, encoding: "utf8" });
-      const hit = process.platform === "win32"
-        ? new RegExp(`${r.net.replace(/\./g, "\\.")}\\s`).test(stdout)
-        : stdout.trim().length > 0;
-      if (hit) { active = true; lines.push(`${r.prefix}: 已配 → ${stdout.trim().replace(/\s*\r?\n\s*/g, " ").slice(0, 200)}`); }
-      else lines.push(`${r.prefix}: 未配（走默认路由）`);
+      if (process.platform === "win32") {
+        const ps = `$ErrorActionPreference='SilentlyContinue'; $rs=Get-NetRoute -DestinationPrefix '${r.prefix}'; if(-not $rs){ 'none' } else { $rs | ForEach-Object { $n=(Get-NetAdapter -InterfaceIndex $_.InterfaceIndex).Name; Write-Output ('via ' + $_.NextHop + ' dev ' + $n + ' metric ' + $_.RouteMetric) } }`;
+        const { stdout } = await pexec(`powershell -NoProfile -NonInteractive -Command "${ps}"`, { timeout: 12000, windowsHide: true, encoding: "utf8" });
+        const out = stdout.trim();
+        if (!out || out === "none") lines.push(`${r.prefix}: 未配（走默认路由）`);
+        else { active = true; lines.push(`${r.prefix}: 已配 → ${out.replace(/\s*\r?\n\s*/g, " ｜ ")}`); }
+      } else {
+        const { stdout } = await pexec(`ip route show ${r.prefix}`, { timeout: 10000, encoding: "utf8" });
+        const out = stdout.trim();
+        if (out) { active = true; lines.push(`${r.prefix}: 已配 → ${out.replace(/\s*\r?\n\s*/g, " ｜ ")}`); }
+        else lines.push(`${r.prefix}: 未配（走默认路由）`);
+      }
     } catch (e) { lines.push(`${r.prefix}: 查询失败 ${(e as Error).message.slice(0, 80)}`); }
   }
   return { log: lines.join("\n"), active };
