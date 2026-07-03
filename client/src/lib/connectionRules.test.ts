@@ -39,7 +39,14 @@ describe("isConnectionValid", () => {
   it("still blocks same-type pairs the matrix does not list (e.g. prompt→prompt)", () => {
     expect(isConnectionValid("prompt", "prompt")).toBe(false);
     expect(isConnectionValid("storyboard", "storyboard")).toBe(false);
-    expect(isConnectionValid("video_task", "video_task")).toBe(false);
+    expect(isConnectionValid("image_gen", "image_gen")).toBe(true); // 出图→出图（img2img 再生）本就允许
+  });
+
+  it("允许 video_task → video_task（V2V/上采样/Aleph/对口型：生成视频作另一视频任务的源视频参考）", () => {
+    // 运行时 collectVideoRefMedia/listUpstreamVideoSources 认 video_task 为视频源；不支持 ref-video
+    // 的 provider 会忽略该连接（无害）。这是有意保留的同类自链。
+    expect(isConnectionValid("video_task", "video_task")).toBe(true);
+    expect(getCompatibleTargets("video_task")).toContain("video_task");
   });
 
   it("音频可连入视频任务（数字人/对口型的驱动音频，OmniHuman/Volcengine/Kling Avatar）", () => {
@@ -110,5 +117,52 @@ describe("isConnectionValid", () => {
     // video producers must NOT feed a character image reference
     expect(isConnectionValid("video_task", "character")).toBe(false);
     expect(isConnectionValid("comfyui_video", "character")).toBe(false);
+  });
+
+  it("视频任务「可连入」矩阵须覆盖全部视频源类型（V2V/上采样/Aleph/对口型的源视频参考，防漂移）", () => {
+    // 与 useWorkflowRunner/videoRefMedia 的 VIDEO_SOURCE_TYPES 对齐——任一缺失都会让该视频源
+    // 无法拖线连入视频任务作源视频（此前只允许 asset/comfyui_workflow → video_task）。
+    const VIDEO_SOURCES = [
+      "video_task", "clip", "merge", "overlay", "asset",
+      "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow",
+    ] as const;
+    for (const src of VIDEO_SOURCES) {
+      expect(isConnectionValid(src, "video_task"), `${src}→video_task 应允许`).toBe(true);
+      expect(getCompatibleSources("video_task"), `video_task 可连入来源应含 ${src}`).toContain(src);
+    }
+  });
+
+  it("图像产出节点 → ComfyUI 图像（img2img/参考图）：image_gen/image_edit/director/pose_control 均可", () => {
+    for (const src of ["image_gen", "image_edit", "director", "pose_control"] as const) {
+      expect(isConnectionValid(src, "comfyui_image"), `${src}→comfyui_image 应允许`).toBe(true);
+      expect(getCompatibleSources("comfyui_image")).toContain(src);
+    }
+  });
+
+  it("构图控制(pose_control)可作 ControlNet/参考图源连入 ComfyUI 与视频节点", () => {
+    // propagateControlMap 明确把姿态图推给下游 comfyui_image 的 ControlNet；运行时也认它为图源。
+    for (const tgt of ["comfyui_image", "comfyui_video", "comfyui_workflow", "video_task"] as const) {
+      expect(isConnectionValid("pose_control", tgt), `pose_control→${tgt} 应允许`).toBe(true);
+    }
+  });
+
+  it("视频后处理节点互为源/消费者：任一后处理输出可再喂给其它后处理（不自链）", () => {
+    const PROCS = ["clip", "overlay", "subtitle", "subtitle_motion", "smart_cut", "merge"] as const;
+    for (const a of PROCS) {
+      for (const b of PROCS) {
+        // merge 允许自链（合并链）；其余同类不自链。
+        const expected = a === b ? a === "merge" : true;
+        expect(isConnectionValid(a, b), `${a}→${b} 期望 ${expected}`).toBe(expected);
+      }
+    }
+    // 典型此前失败的真实链路
+    expect(isConnectionValid("overlay", "subtitle")).toBe(true);
+    expect(isConnectionValid("merge", "subtitle")).toBe(true);
+    expect(isConnectionValid("smart_cut", "merge")).toBe(true);
+  });
+
+  it("分镜关键帧可进图像编辑；素材(视频)可连叠加", () => {
+    expect(isConnectionValid("storyboard", "image_edit")).toBe(true);
+    expect(isConnectionValid("asset", "overlay")).toBe(true);
   });
 });

@@ -4,7 +4,8 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // script → note：专业审查（Coverage）报告一键存为便签节点留档。
   script: ["storyboard", "prompt", "ai_chat", "character", "note"],
   // storyboard → audio：分镜的「对白/旁白」字段自动喂给下游音频节点作配音文案。
-  storyboard: ["image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
+  // storyboard → image_edit：分镜生成的关键帧可再进图像编辑精修（image_edit 走 getNodeImageOutput 认 storyboard 的 imageUrl）。
+  storyboard: ["image_gen", "image_edit", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
   prompt: ["image_gen", "video_task", "storyboard", "script", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   // image_gen → storyboard：精修工位回链——分镜「送精修」后图像节点连回分镜，
@@ -12,12 +13,17 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // 注：image_gen/image_edit/comfyui_image 产出的是「图像」，不能连 clip（剪辑只裁切视频，
   // 图像连进去运行时取不到视频→「未找到视频输入」）。clip 的视频源由 asset(视频)/video_task/
   // comfyui_video/comfyui_workflow(video) 提供。
-  image_gen: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
+  // image_gen → comfyui_image：出图可作 ComfyUI 图像的 img2img/参考图（detectUpstreamImages 的
+  // IMAGE_SOURCE_TYPES 含 image_gen）；此前缺失导致「图像生成 → ComfyUI 图像」拖线弹不出该目标。
+  image_gen: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
   // image_edit 输出仍是一张图：可作 i2v 首帧、存素材、当角色/参考图、回链分镜关键帧、或再串一次编辑。
-  image_edit: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
+  image_edit: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
   // 导演台输出 3D 渲染截图（同图像产出）：作构图参考图喂给生图/视频/编辑/角色/ComfyUI/分镜关键帧。
-  director: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_video", "comfyui_workflow", "storyboard"],
-  video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
+  director: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
+  // video_task → video_task：生成的视频可作另一视频任务的「源视频」参考——V2V/运动控制/
+  // 上采样/Aleph/对口型等 provider 会经 collectVideoRefMedia 取上游视频（不支持的 provider 自动忽略，
+  // 拖线无害）。这是唯一保留的同类自链（其它同类如 prompt/storyboard 仍禁止）。
+  video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
   // audio → audio: 把一段音频作为本地 VoxCPM 配音的参考音色喂给下游音频节点。
   // audio → comfyui_workflow: 作为自定义工作流的音频参数来源（VHS_LoadAudioUpload 等）。
   // audio → merge：合并节点自动把连入的音频节点用作整片背景音乐（MergeNode 的
@@ -25,21 +31,25 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // audio → video_task：数字人/视频对口型（OmniHuman、Volcengine、Kling Avatar）的
   // 驱动音频——连线音频节点作为 audio_url。模型不支持音频时该连接被 collectRefMedia 忽略。
   audio: ["clip", "audio", "comfyui_workflow", "merge", "video_task"],
-  asset: ["image_gen", "image_edit", "video_task", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
+  asset: ["image_gen", "image_edit", "video_task", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
   ai_chat: ["script", "storyboard", "prompt"],
-  clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut"],
+  clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
   post_process: ["video_task", "image_gen", "asset"],
-  // overlay → merge：叠加合成后的视频是一路视频源，可直接连入合并节点参与成片
-  // （MergeNode 的 VIDEO_SOURCE_TYPES 已认 overlay 为视频源）。此前 overlay 仅允许
-  // → asset，导致「叠加 → 合并」拖线与智能体建线判定失败。
-  overlay: ["asset", "merge"],
-  // subtitle / subtitle_motion → merge：字幕节点输出的「已挂字幕视频」可直接连入
-  // 合并节点参与成片（MergeNode 的 VIDEO_SOURCE_TYPES 已认这两类为视频源）。配方
-  // 「视频→字幕→合并」链路与手动拖线都走这条；此前缺失导致 字幕→合并 连线判定失败。
-  subtitle: ["asset", "merge"],
-  subtitle_motion: ["asset", "merge"],
-  smart_cut: ["asset", "merge"],
-  pose_control: ["image_gen", "image_edit", "asset"],
+  // 视频后处理节点（overlay/subtitle/subtitle_motion/smart_cut/clip/merge）互为视频源与视频消费者
+  // （六者都在 VIDEO_SOURCE_TYPES，且各自经 autoDetectInputVideo/collectInputVideoUrls 取上游视频）。
+  // 故任一后处理节点的输出都可再喂给其它任一后处理节点（叠加后加字幕、字幕后智能剪辑、合并后加动态
+  // 字幕…），另可存素材(asset)与作 video_task 的 V2V 源。此前它们只允许 → asset/merge，导致「叠加→
+  // 字幕」「合并→字幕」「智能剪辑→合并」等真实链路拖线/智能体建线判定失败（各节点不自链）。
+  overlay: ["asset", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
+  subtitle: ["asset", "clip", "overlay", "merge", "subtitle_motion", "smart_cut", "video_task"],
+  subtitle_motion: ["asset", "clip", "overlay", "merge", "subtitle", "smart_cut", "video_task"],
+  smart_cut: ["asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "video_task"],
+  // pose_control → comfyui_image/comfyui_workflow：构图/姿态图作 ControlNet 引导图
+  // （propagateControlMap 明确把姿态图推给下游 comfyui_image 的 ControlNet；comfyui_workflow 经
+  // resolveWorkflowImageParams 收其图为图像参数）。→ video_task/comfyui_video：作首帧/参考图
+  // （autoDetectInputImage 认 pose_control 为图源）。此前只允许 → image_gen/image_edit/asset，
+  // 导致 pose_control 无法拖线到任何 ComfyUI/视频节点（与运行时实际消费不符）。
+  pose_control: ["image_gen", "image_edit", "asset", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   // voice_clone / lip_sync / avatar are "即将上线" placeholders (no payload logic,
   // handles disabled) — keep them out of the matrix so we don't advertise
   // connections that can't actually be made. Restore their edges (see git
@@ -50,10 +60,13 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // merge → merge：合并链——把若干子序列各自合并后再汇入一个总合并节点（MergeNode 的
   // VIDEO_SOURCE_TYPES 已认 merge 为视频源）。此前 merge 仅允许 → asset/clip，导致
   // 「合并 → 合并」串联与智能体建线判定失败。
-  merge: ["asset", "clip", "merge"],
+  // merge → clip/overlay/subtitle/subtitle_motion/smart_cut：合并成片后仍可继续后处理（整片加字幕/
+  // 叠加水印/裁段/智能剪辑），merge 输出是视频源；→ merge 合并链；→ video_task 作 V2V 源；→ asset 存档。
+  merge: ["asset", "clip", "merge", "overlay", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
   comfyui_image: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard"],
-  comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "comfyui_image", "comfyui_video", "comfyui_workflow"],
-  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "image_gen", "image_edit", "comfyui_workflow", "comfyui_image", "comfyui_video"],
+  comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "comfyui_image", "comfyui_video", "comfyui_workflow", "video_task"],
+  // comfyui_workflow → pose_control：自定义工作流出的图可再抽姿态/构图（pose_control 认其为图源）。
+  comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "image_gen", "image_edit", "comfyui_workflow", "comfyui_image", "comfyui_video", "pose_control"],
   note: [],
   group: [],
   // The agent (Copilot) orchestrates by CREATING nodes via chat, not via edges —
@@ -87,9 +100,10 @@ export function isConnectionValid(
   if (sourceType === null || targetType === null) return true;
   if (NOTE_TYPES.includes(sourceType) || NOTE_TYPES.includes(targetType)) return true;
   // The matrix is authoritative — it already omits same-type pairs that must not
-  // self-chain (e.g. prompt→prompt) and explicitly lists the ones that should
-  // (comfy 图像/视频/自定义 串并联). Self-loops on the *same node* are blocked
-  // separately in Canvas's isValidConnection (source === target).
+  // self-chain (e.g. prompt→prompt, storyboard→storyboard) and explicitly lists the
+  // ones that should (comfy 图像/视频/自定义 串并联; video_task→video_task 作 V2V/上采样源).
+  // Self-loops on the *same node* are blocked separately in Canvas's
+  // isValidConnection (source === target).
   const targets = CONNECTION_MATRIX[sourceType];
   return targets != null && targets.includes(targetType);
 }
@@ -121,8 +135,8 @@ export const CONNECTION_HINTS: Record<
   },
   storyboard: {
     label: "分镜",
-    outgoing: "→ 图像生成 / 视频任务 / 提示词 / 音频(对白配音)",
-    incoming: "← 脚本 / 提示词 / 角色 / AI对话 / 图像生成(精修回填)",
+    outgoing: "→ 图像生成 / 图像编辑 / 视频任务 / 提示词 / 音频(对白配音)",
+    incoming: "← 脚本 / 提示词 / 角色 / AI对话 / 图像生成·编辑·导演台·ComfyUI图像(关键帧回填)",
   },
   prompt: {
     label: "提示词",
@@ -136,18 +150,18 @@ export const CONNECTION_HINTS: Record<
   },
   image_gen: {
     label: "图像生成",
-    outgoing: "→ 视频任务 / 素材 / 剪辑 / 角色 / 图像生成（参考图）/ 分镜(关键帧候选)",
-    incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成 / ComfyUI 图像 / ComfyUI 自定义（参考图）",
+    outgoing: "→ 视频任务 / 图像编辑 / 构图控制 / 角色 / 图像生成·ComfyUI图像/视频/自定义（参考图）/ 分镜(关键帧候选) / 素材",
+    incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像编辑 / 导演台 / 构图控制 / 图像生成 / ComfyUI 图像·自定义（参考图）",
   },
   director: {
     label: "导演台",
-    outgoing: "→ 视频任务 / 图像生成 / 图像编辑 / 角色 / ComfyUI（3D 构图参考图）/ 分镜",
+    outgoing: "→ 视频任务 / 图像生成 / 图像编辑 / 角色 / 构图控制 / ComfyUI图像/视频/自定义（3D 构图参考图）/ 分镜",
     incoming: "← 无（双击进 3D 编辑器布局，截图即产出）",
   },
   video_task: {
     label: "视频任务",
-    outgoing: "→ 剪辑 / 素材 / 叠加 / 合并 / 字幕 / 动态字幕 / 智能剪辑",
-    incoming: "← 图像生成 / 分镜 / 提示词",
+    outgoing: "→ 剪辑 / 素材 / 叠加 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 视频任务(V2V源)",
+    incoming: "← 图像/分镜/构图/导演台(首帧参考) · 视频源(V2V/上采样/对口型参考) · 音频(数字人驱动)",
   },
   audio: {
     label: "音频",
@@ -156,8 +170,8 @@ export const CONNECTION_HINTS: Record<
   },
   asset: {
     label: "素材",
-    outgoing: "→ 图像生成 / 视频任务 / 剪辑 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 构图控制 / 角色 / 音频（参考音色）",
-    incoming: "← 图像生成 / 视频任务 / 剪辑 / 叠加 / 字幕 / 动态字幕 / 智能剪辑 / 合并",
+    outgoing: "→ 图像生成/编辑 / 视频任务 / 剪辑 / 叠加 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 构图控制 / 角色 / 音频（参考音色）/ ComfyUI",
+    incoming: "← 图像生成/编辑 / 视频任务 / 剪辑 / 叠加 / 字幕 / 动态字幕 / 智能剪辑 / 合并 / 构图控制 / 音频 / ComfyUI（存档）",
   },
   ai_chat: {
     label: "AI对话",
@@ -166,8 +180,8 @@ export const CONNECTION_HINTS: Record<
   },
   clip: {
     label: "剪辑",
-    outgoing: "→ 素材（保存）",
-    incoming: "← 视频任务 / 音频 / 素材",
+    outgoing: "→ 素材 / 叠加 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 视频任务(V2V源)",
+    incoming: "← 视频任务 / 音频 / 素材 / 叠加 / 字幕 / 动态字幕 / 智能剪辑 / 合并 / ComfyUI视频·自定义",
   },
   note: {
     label: "便签",
@@ -181,8 +195,8 @@ export const CONNECTION_HINTS: Record<
   },
   image_edit: {
     label: "图像编辑",
-    outgoing: "→ 视频任务（i2v 首帧）/ 素材 / 角色 / 图像生成（参考图）/ 分镜（关键帧）/ 图像编辑（再串）",
-    incoming: "← 图像生成 / ComfyUI 图像·自定义 / 素材 / 构图控制",
+    outgoing: "→ 视频任务（i2v 首帧）/ 素材 / 角色 / 构图控制 / 图像生成·ComfyUI图像/视频/自定义（参考图）/ 分镜（关键帧）/ 图像编辑（再串）",
+    incoming: "← 图像生成 / 分镜 / 导演台 / 构图控制 / ComfyUI 图像·自定义 / 素材",
   },
   group: {
     label: "分组",
@@ -191,33 +205,33 @@ export const CONNECTION_HINTS: Record<
   },
   merge: {
     label: "合并",
-    outgoing: "→ 素材（保存）/ 合并（合并链）",
+    outgoing: "→ 素材 / 剪辑 / 合并（合并链）/ 叠加 / 字幕 / 动态字幕 / 智能剪辑 / 视频任务(V2V源)",
     incoming: "← 视频任务 / 剪辑 / 叠加 / 字幕 / 动态字幕 / 智能剪辑 / 合并 / ComfyUI 视频·自定义 / 素材 / 音频（整片配乐）",
   },
   subtitle: {
     label: "字幕",
-    outgoing: "→ 素材（保存）/ 合并（成片）",
-    incoming: "← 剪辑 / 视频任务 / 素材",
+    outgoing: "→ 素材 / 剪辑 / 叠加 / 合并 / 动态字幕 / 智能剪辑 / 视频任务(V2V源)",
+    incoming: "← 剪辑 / 视频任务 / 素材 / 叠加 / 动态字幕 / 智能剪辑 / 合并 / ComfyUI视频·自定义",
   },
   overlay: {
     label: "视频叠加",
-    outgoing: "→ 素材（保存）/ 合并（成片）",
-    incoming: "← 剪辑 / 视频任务 / 素材",
+    outgoing: "→ 素材 / 剪辑 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 视频任务(V2V源)",
+    incoming: "← 剪辑 / 视频任务 / 素材 / 字幕 / 动态字幕 / 智能剪辑 / 合并 / ComfyUI视频·自定义",
   },
   subtitle_motion: {
     label: "动态字幕",
-    outgoing: "→ 素材（保存）/ 合并（成片）",
-    incoming: "← 剪辑 / 视频任务 / 素材",
+    outgoing: "→ 素材 / 剪辑 / 叠加 / 合并 / 字幕 / 智能剪辑 / 视频任务(V2V源)",
+    incoming: "← 剪辑 / 视频任务 / 素材 / 叠加 / 字幕 / 智能剪辑 / 合并 / ComfyUI视频·自定义",
   },
   smart_cut: {
     label: "智能剪辑",
-    outgoing: "→ 素材 / 合并",
-    incoming: "← 视频任务 / 剪辑 / 素材",
+    outgoing: "→ 素材 / 剪辑 / 叠加 / 合并 / 字幕 / 动态字幕 / 视频任务(V2V源)",
+    incoming: "← 视频任务 / 剪辑 / 素材 / 叠加 / 字幕 / 动态字幕 / 合并 / ComfyUI视频·自定义",
   },
   pose_control: {
     label: "构图控制",
-    outgoing: "→ 图像生成 / 素材",
-    incoming: "← 图像生成 / 素材",
+    outgoing: "→ 图像生成 / 图像编辑 / 素材 / 视频任务(首帧) / ComfyUI图像/视频/自定义(ControlNet引导图)",
+    incoming: "← 图像生成 / 图像编辑 / 导演台 / 素材 / ComfyUI图像·自定义",
   },
   voice_clone: {
     label: "声音克隆",
@@ -236,18 +250,18 @@ export const CONNECTION_HINTS: Record<
   },
   comfyui_image: {
     label: "ComfyUI 图像",
-    outgoing: "→ 视频任务 / 素材 / 剪辑 / 构图控制 / ComfyUI 视频 / 角色",
-    incoming: "← 分镜 / 提示词 / 角色 / 素材",
+    outgoing: "→ 视频任务 / 素材 / 构图控制 / 图像生成/编辑 / 分镜 / 角色 / ComfyUI图像·视频·自定义",
+    incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成·编辑 / 导演台 / 构图控制(ControlNet) / ComfyUI视频·自定义",
   },
   comfyui_video: {
     label: "ComfyUI 视频",
-    outgoing: "→ 剪辑 / 素材 / 叠加 / 合并 / 字幕 / 动态字幕 / 智能剪辑",
-    incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成 / ComfyUI 图像",
+    outgoing: "→ 剪辑 / 素材 / 叠加 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 视频任务(V2V源) / ComfyUI图像·视频·自定义",
+    incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成·编辑 / 导演台 / 构图控制 / ComfyUI 图像·自定义",
   },
   comfyui_workflow: {
     label: "ComfyUI 自定义",
-    outgoing: "→ 视频任务 / 素材 / 剪辑 / 叠加 / 合并 / 字幕 / 角色",
-    incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成",
+    outgoing: "→ 视频任务 / 素材 / 剪辑 / 叠加 / 合并 / 字幕 / 动态字幕 / 智能剪辑 / 角色 / 图像生成·编辑 / 构图控制 / ComfyUI图像·视频·自定义",
+    incoming: "← 分镜 / 提示词 / 角色 / 素材 / 图像生成·编辑 / 导演台 / 构图控制 / 音频 / ComfyUI图像·视频·自定义",
   },
   agent: {
     label: "智能体",
