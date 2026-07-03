@@ -29,6 +29,7 @@ import { ComfyuiWorkflowNode } from "./nodes/ComfyuiWorkflowNode";
 import { ImageEditNode } from "./nodes/ImageEditNode";
 import { DirectorNode } from "./nodes/DirectorNode";
 import { AgentNode } from "./nodes/AgentNode";
+import { SuperAgentNode } from "./nodes/SuperAgentNode";
 import type { NodeType } from "../../../../shared/types";
 
 interface CustomNodeData {
@@ -111,6 +112,8 @@ export const CustomNode = memo(function CustomNode(props: NodeProps) {
       return <DirectorNode {...(props as unknown as AnyNodeProps)} />;
     case "agent":
       return <AgentNode {...(props as unknown as AnyNodeProps)} />;
+    case "super_agent":
+      return <SuperAgentNode {...(props as unknown as AnyNodeProps)} />;
     default:
       return null;
   }

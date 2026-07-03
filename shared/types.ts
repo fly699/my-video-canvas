@@ -28,7 +28,8 @@ export type NodeType =
   | "comfyui_workflow"
   | "image_edit"
   | "director"
-  | "agent";
+  | "agent"
+  | "super_agent";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -1261,6 +1262,24 @@ export interface AgentNodeData {
   errorMessage?: string;
 }
 
+/** 超级智能体 · Phase 1（工程智能体）——ComfyUI 工作流自动编写/调试节点。 */
+export interface SuperAgentNodeData {
+  /** 自然语言任务（如「做一个 Flux + LoRA 的高清出图工作流并调通」）。 */
+  task?: string;
+  /** 目标 ComfyUI 服务器（留空用服务端 COMFYUI_BASE_URL）。 */
+  baseUrl?: string;
+  /** 规划用 LLM 模型。 */
+  model?: string;
+  status?: "idle" | "running" | "success" | "failed" | "exhausted";
+  /** 流式活动日志（socket 回灌，非持久）。 */
+  log?: { type: string; iteration: number; message: string }[];
+  /** 调通后的 workflow JSON（可一键写回 comfyui_workflow 节点）。 */
+  resultWorkflowJson?: string;
+  /** 调通后的结构分析（参数绑定/输出节点/输出类型）。 */
+  resultAnalysis?: { paramBindings?: unknown[]; outputNodeIds?: string[]; outputType?: string };
+  errorMessage?: string;
+}
+
 export interface AgentPlanPrefs {
   /** 先生图再图生视频（而非直接文生视频）。 */
   imageFirst?: boolean;
@@ -1308,7 +1327,8 @@ export type NodeData =
   | ComfyuiWorkflowNodeData
   | ImageEditNodeData
   | DirectorNodeData
-  | AgentNodeData;
+  | AgentNodeData
+  | SuperAgentNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 

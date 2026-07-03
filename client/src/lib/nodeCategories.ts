@@ -14,7 +14,7 @@ export interface NodeCategory {
 
 export const NODE_CATEGORIES: NodeCategory[] = [
   { id: "director", label: "导演台 · NEW", types: ["director"] },
-  { id: "ai", label: "AI 编排", types: ["agent"] },
+  { id: "ai", label: "AI 编排", types: ["agent", "super_agent"] },
   { id: "create", label: "创作 / 脚本", types: ["script", "storyboard", "prompt", "character", "ai_chat"] },
   { id: "image", label: "图像生成", types: ["image_gen", "image_edit", "pose_control"] },
   { id: "video", label: "视频生成", types: ["video_task"] },

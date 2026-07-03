@@ -1072,6 +1072,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
         useCanvasStore.getState().updateNodeData(event.nodeId, { queueRemaining: event.queueRemaining }, true);
       }
     });
+    // 工程智能体（super_agent）活动日志：把服务端 emit 的事件追加到目标节点的 log（transient）。
+    socket.on("superagent:event", (msg: { nodeId: string | null; event: { type: string; iteration: number; message: string } }) => {
+      if (!msg?.nodeId) return;
+      const node = useCanvasStore.getState().nodes.find((n) => n.id === msg.nodeId);
+      if (!node) return;
+      const prev = ((node.data.payload as { log?: { type: string; iteration: number; message: string }[] }).log) ?? [];
+      const next = [...prev, { type: msg.event.type, iteration: msg.event.iteration, message: msg.event.message }].slice(-200);
+      useCanvasStore.getState().updateNodeData(msg.nodeId, { log: next }, true);
+    });
     socketRef.current = socket;
     return () => { socket.emit("leave-project", { projectId }); socket.disconnect(); bcRef.current?.close(); bcRef.current = null; };
   }, [isAuthenticated, user, projectId]);
