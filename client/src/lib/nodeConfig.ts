@@ -313,6 +313,17 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     // a fixed height that clips run output. Restored from a brief fixed-height pass.
     defaultTitle: "智能体 Copilot",
   },
+  super_agent: {
+    type: "super_agent",
+    label: "工程智能体",
+    icon: "Boxes",
+    color: "oklch(0.68 0.19 200)",
+    bgColor: "oklch(0.68 0.19 200 / 0.08)",
+    borderColor: "oklch(0.68 0.19 200 / 0.4)",
+    defaultWidth: 420,
+    // content-driven height（活动日志随迭代增长）。
+    defaultTitle: "工程智能体 · ComfyUI",
+  },
 };
 
 export const NODE_TYPE_LIST = Object.values(NODE_CONFIGS);

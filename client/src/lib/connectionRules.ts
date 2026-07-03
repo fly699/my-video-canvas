@@ -72,6 +72,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // The agent (Copilot) orchestrates by CREATING nodes via chat, not via edges —
   // it has no connection handles, so no outgoing graph connections.
   agent: [],
+  // 工程智能体同理：通过对话/任务在服务端跑 ComfyUI 工具环，产物一键写回其它节点，
+  // 自身不参与连线，无连接桩。
+  super_agent: [],
 };
 
 export const NOTE_TYPES: NodeType[] = ["note"];
@@ -267,5 +270,10 @@ export const CONNECTION_HINTS: Record<
     label: "智能体",
     outgoing: "通过对话直接在画布生成节点（不经连线）",
     incoming: "对话式描述需求，自动编排工作流",
+  },
+  super_agent: {
+    label: "工程智能体",
+    outgoing: "自动编写并真机调通 ComfyUI 工作流，产物一键写回 comfyui_workflow 节点（不经连线）",
+    incoming: "输入工程任务，服务端跑「写→校验→运行→读错→修」闭环",
   },
 };

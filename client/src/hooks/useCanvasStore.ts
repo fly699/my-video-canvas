@@ -1178,6 +1178,8 @@ function getDefaultPayload(type: NodeType): NodeData {
       return { scene: makeDefaultDirectorScene(), status: "idle" } as NodeData;
     case "agent":
       return { messages: [], status: "idle" };
+    case "super_agent":
+      return { task: "", status: "idle", log: [] };
     default:
       return {} as NodeData;
   }
