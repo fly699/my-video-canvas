@@ -4,7 +4,7 @@ import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./
 import { getTunnelSettings, setTunnelSettings } from "../db";
 import { resolveCloudflaredPath } from "./cloudflaredBin";
 import { sendTunnelUrlEmail } from "./tunnelEmail";
-import { removeTunnelRoutes } from "./tunnelRoute";
+import { applyTunnelRoutes, removeTunnelRoutes } from "./tunnelRoute";
 
 // Email the new public URL once per distinct URL (quick tunnels change on restart).
 let lastEmailedUrl = "";
@@ -130,8 +130,16 @@ export async function startTunnel(): Promise<void> {
   // 切回命名隧道无需重新粘贴 Token。
   const named = cfg.token.trim().length > 0 && !cfg.preferQuick;
   const bindIp = (cfg.edgeBindAddress ?? "").trim();
-  // 出口专线：命名隧道与快速隧道都靠 `--edge-bind-address` 绑源 IP 走该线（见 buildTunnelArgs）。无需
-  // OS 路由，无需管理员——这也是临时隧道一直好使的原因。「专线路由」按钮仅作个别 cloudflared 版本的兜底。
+  // 出口专线走线，两种隧道机制不同：
+  //  - 快速隧道：`--edge-bind-address` 绑源 IP（buildTunnelArgs 已带上），无需管理员，实测生效。
+  //  - 命名隧道：实测本版 cloudflared 的 `run` 路径**接受但不应用** edge-bind（连得上但不绑），故命名隧道
+  //    只能靠 OS 路由——把 CF 边缘段钉到「出口专线绑定」源 IP 的网卡。**启动前**就位（cloudflared 一连
+  //    就走对线，已建连不会随后加的路由迁移）。需管理员；非管理员则失败记入日志、不阻断启动。
+  let autoRouteLog = "";
+  if (named && bindIp && isIP(bindIp)) {
+    try { const r = await applyTunnelRoutes(bindIp, undefined, ""); autoRouteLog = "[自动专线路由] " + r.log + "\n"; }
+    catch (e) { autoRouteLog = "[自动专线路由] 失败：" + (e as Error).message + "\n"; }
+  }
   const args = buildTunnelArgs({ named, token: cfg.token, tunnelPort, bindIp });
   try {
     // windowsHide：Windows 上不弹出 cloudflared 的控制台黑窗（否则用户很容易误手关掉窗口，
@@ -142,7 +150,7 @@ export async function startTunnel(): Promise<void> {
     return;
   }
   status = { running: true, publicUrl: named ? cfg.publicUrl : "", error: null };
-  logBuf = "";
+  logBuf = autoRouteLog;
   const onData = (d: Buffer) => {
     logBuf = (logBuf + d.toString()).slice(-8000);
     if (!named) {
