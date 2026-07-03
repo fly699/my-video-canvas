@@ -97,26 +97,27 @@
      Tuned 2026-05-26: stronger layer separation, deeper borders & muted text
      for AA visibility on white. */
   :root[data-theme="light"] {
-    /* 柔和低眩光：无纯白大面板（最亮 0.992），边框更淡、文字由近黑改深岩灰，
-       画布与卡片对比收窄、阴影更轻——整体不刺眼但仍清晰可读。 */
-    --c-canvas:   oklch(0.940 0.004 255);   /* 柔和浅灰底，不发白刺眼 */
-    --c-base:     oklch(0.985 0.003 255);   /* 面板/头部：柔白，非纯白 */
-    --c-surface:  oklch(0.962 0.004 255);   /* 温和米白 */
-    --c-elevated: oklch(0.992 0.002 255);   /* 近白、略抬升 */
-    --c-overlay:  oklch(0.948 0.004 255);   /* 与 base 区分 */
-    --c-input:    oklch(0.955 0.004 255);   /* 输入框轻微内凹 */
-    --c-bd1:      oklch(0.892 0.005 255);   /* 柔和分隔线 */
-    --c-bd2:      oklch(0.840 0.006 255);   /* 节点边框，清晰但不抢眼 */
-    --c-bd3:      oklch(0.752 0.007 255);   /* 强边框，柔化 */
-    --c-t1:       oklch(0.205 0.013 255);   /* 深岩灰，替代刺眼近黑 */
-    --c-t2:       oklch(0.350 0.010 255);   /* 正文 */
-    --c-t3:       oklch(0.470 0.008 255);   /* 标签，白底可读 */
-    --c-t4:       oklch(0.585 0.006 255);   /* 提示，仍清晰 */
-    --c-node-bg:  oklch(0.990 0.002 255);   /* 柔白卡片，对灰底温和浮起 */
-    --c-node-shadow-rest:     0 1px 3px oklch(0 0 0 / 0.07), 0 3px 14px oklch(0 0 0 / 0.05);
-    --c-node-shadow-hover:    0 4px 18px oklch(0 0 0 / 0.10), 0 1px 5px oklch(0 0 0 / 0.07);
-    --c-node-shadow-selected: 0 8px 30px oklch(0 0 0 / 0.13), 0 2px 10px oklch(0 0 0 / 0.09);
-    --c-node-shadow-run:      0 8px 24px oklch(0 0 0 / 0.12);
+    /* 降眩光（2026-07 调暗一档）：面板/卡片不再用近纯白（原 base 0.985 / elevated 0.992 /
+       node 0.990 太刺眼），整体压到柔和暖灰纸感（最亮 0.972），底色更沉，层次靠对比而非亮度，
+       并带极淡暖调（hue 250）让暗一档后不显灰死。文字对比未降、依旧清晰可读。 */
+    --c-canvas:   oklch(0.908 0.005 250);   /* 更沉的浅灰底，进一步压眩光 */
+    --c-base:     oklch(0.958 0.004 250);   /* 面板/头部：柔和暖白，非纯白 */
+    --c-surface:  oklch(0.936 0.005 250);   /* 温和米灰 */
+    --c-elevated: oklch(0.972 0.003 250);   /* 略抬升，仍不刺眼 */
+    --c-overlay:  oklch(0.922 0.005 250);   /* 与 base 区分 */
+    --c-input:    oklch(0.930 0.005 250);   /* 输入框轻微内凹 */
+    --c-bd1:      oklch(0.874 0.006 250);   /* 柔和分隔线 */
+    --c-bd2:      oklch(0.822 0.007 250);   /* 节点边框，清晰但不抢眼 */
+    --c-bd3:      oklch(0.735 0.008 250);   /* 强边框，柔化 */
+    --c-t1:       oklch(0.205 0.013 250);   /* 深岩灰，替代刺眼近黑 */
+    --c-t2:       oklch(0.348 0.010 250);   /* 正文 */
+    --c-t3:       oklch(0.465 0.008 250);   /* 标签，灰底可读 */
+    --c-t4:       oklch(0.575 0.006 250);   /* 提示，仍清晰 */
+    --c-node-bg:  oklch(0.968 0.003 250);   /* 柔白卡片，对灰底温和浮起 */
+    --c-node-shadow-rest:     0 1px 3px oklch(0 0 0 / 0.08), 0 3px 14px oklch(0 0 0 / 0.06);
+    --c-node-shadow-hover:    0 4px 18px oklch(0 0 0 / 0.11), 0 1px 5px oklch(0 0 0 / 0.08);
+    --c-node-shadow-selected: 0 8px 30px oklch(0 0 0 / 0.14), 0 2px 10px oklch(0 0 0 / 0.10);
+    --c-node-shadow-run:      0 8px 24px oklch(0 0 0 / 0.13);
     color-scheme: light;
   }
 
