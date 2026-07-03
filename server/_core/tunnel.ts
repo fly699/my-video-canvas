@@ -104,20 +104,19 @@ export function tunnelErrorHint(log: string): string {
 }
 
 /** 构造 cloudflared 启动参数（纯函数，便于单测/防回归）。
- *  - 快速隧道：`tunnel --no-autoupdate --url http://localhost:<port>`，回源到本机回环监听。
- *  - 命名隧道：`tunnel run --token <TOKEN>`，回源在 Cloudflare 面板配置。
- *  出口专线绑定 `--edge-bind-address <IP>`：**快速隧道与命名隧道都传**——Cloudflare 官方文档明确
- *  `cloudflared tunnel run --token <TOKEN> --edge-bind-address <IP>` 支持此 flag，把 cloudflared 到边缘的
- *  出站源 IP 绑到该本机网卡 IP，从而走那条线（与临时隧道同一机制，实测临时隧道即此方式生效）。
- *  IP 必须是本机某网卡地址（由 admin.setConfig 的 isLocalInterfaceIp 校验，杜绝早期「填错非本机 IP →
- *  address not valid → 打印 usage 退出」的翻车）。 */
+ *  - 快速隧道：`tunnel --no-autoupdate --url http://localhost:<port> [--edge-bind-address <IP>]`。
+ *  - 命名隧道：`tunnel [--edge-bind-address <IP>] run --token <TOKEN>`。
+ *  出口专线绑定 `--edge-bind-address <IP>` 是 **`cloudflared tunnel` 子命令级**的 flag（临时隧道
+ *  `tunnel --url … --edge-bind-address` 即此层级、实测生效）。命名隧道必须把它放在 `run` **之前**——
+ *  实测本版 cloudflared 的 `run` 子命令**不认**放在其后的该 flag，会打印 usage 直接退出（回源 530）。
+ *  IP 必须是本机某网卡地址（admin.setConfig 的 isLocalInterfaceIp 已校验）。 */
 export function buildTunnelArgs(opts: { named: boolean; token: string; tunnelPort: number; bindIp: string }): string[] {
   const { named, token, tunnelPort, bindIp } = opts;
-  const args = named ? ["tunnel", "run", "--token", token.trim()]
-                     : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`];
   const ip = (bindIp ?? "").trim();
-  if (ip && isIP(ip)) args.push("--edge-bind-address", ip);
-  return args;
+  const bind = ip && isIP(ip) ? ["--edge-bind-address", ip] : [];
+  return named
+    ? ["tunnel", ...bind, "run", "--token", token.trim()]                                   // edge-bind 放在 run 之前
+    : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`, ...bind];
 }
 
 export async function startTunnel(): Promise<void> {

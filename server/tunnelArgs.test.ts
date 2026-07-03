@@ -1,17 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { tunnelErrorHint, buildTunnelArgs } from "./_core/tunnel";
 
-describe("buildTunnelArgs（命名隧道与快速隧道都传 --edge-bind-address，绑源 IP 走该专线）", () => {
-  it("命名隧道 + 合法 edge-bind：传该 flag（官方支持 tunnel run --token … --edge-bind-address）", () => {
+describe("buildTunnelArgs（edge-bind 是 tunnel 级 flag：命名隧道放 run 之前，快速隧道放末尾）", () => {
+  it("命名隧道 + 合法 edge-bind：放在 run 之前（本版 run 不认放其后的该 flag → usage 退出 530）", () => {
     const args = buildTunnelArgs({ named: true, token: "TOK", tunnelPort: 3001, bindIp: "192.168.12.24" });
-    expect(args).toEqual(["tunnel", "run", "--token", "TOK", "--edge-bind-address", "192.168.12.24"]);
+    expect(args).toEqual(["tunnel", "--edge-bind-address", "192.168.12.24", "run", "--token", "TOK"]);
   });
-  it("快速隧道 + 合法 edge-bind：传该 flag", () => {
+  it("快速隧道 + 合法 edge-bind：末尾传该 flag", () => {
     const args = buildTunnelArgs({ named: false, token: "", tunnelPort: 3001, bindIp: "192.168.12.24" });
     expect(args).toEqual(["tunnel", "--no-autoupdate", "--url", "http://localhost:3001", "--edge-bind-address", "192.168.12.24"]);
   });
   it("空/非法 edge-bind：两种隧道都不传该 flag", () => {
-    expect(buildTunnelArgs({ named: true, token: "TOK", tunnelPort: 3001, bindIp: "" })).not.toContain("--edge-bind-address");
+    expect(buildTunnelArgs({ named: true, token: "TOK", tunnelPort: 3001, bindIp: "" })).toEqual(["tunnel", "run", "--token", "TOK"]);
     expect(buildTunnelArgs({ named: false, token: "", tunnelPort: 3001, bindIp: "not-an-ip" })).not.toContain("--edge-bind-address");
   });
 });
