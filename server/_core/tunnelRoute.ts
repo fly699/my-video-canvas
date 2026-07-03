@@ -3,8 +3,10 @@ import { promisify } from "util";
 import { isIP } from "net";
 import { networkInterfaces } from "os";
 import { get as httpsGet } from "https";
+import { lookup as dnsLookup } from "dns";
 
 const pexec = promisify(exec);
+const dnsLookup4 = promisify(dnsLookup);
 
 /** 解析 Cloudflare `/cdn-cgi/trace` 响应里的 `ip=` 行（即 Cloudflare 看到的本机公网出口 IP）。纯函数、便于单测。 */
 export function parseTraceIp(body: string): string | null {
@@ -29,6 +31,43 @@ export function fetchPublicEgressIp(localAddress?: string, timeoutMs = 8000): Pr
     req.on("error", () => finish(null));
     req.on("timeout", () => { req.destroy(); finish(null); });
   });
+}
+
+/** 直连指定 IP 访问 Cloudflare trace（SNI/Host 仍为 www.cloudflare.com），返回该连接的公网出口 IP。 */
+function fetchTraceViaIp(connectIp: string, timeoutMs = 8000): Promise<string | null> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: string | null) => { if (!done) { done = true; resolve(v); } };
+    const req = httpsGet({ hostname: connectIp, servername: "www.cloudflare.com", path: "/cdn-cgi/trace", timeout: timeoutMs, headers: { host: "www.cloudflare.com", "user-agent": "avc-egress-check" } }, (res) => {
+      let body = "";
+      res.on("data", (c: Buffer) => { body += c.toString(); if (body.length > 8192) req.destroy(); });
+      res.on("end", () => finish(parseTraceIp(body)));
+      res.on("error", () => finish(null));
+    });
+    req.on("error", () => finish(null));
+    req.on("timeout", () => { req.destroy(); finish(null); });
+  });
+}
+
+/** 实测「某条线路」NAT 后的公网出口 IP（与 CF 连接器面板对齐）：临时把 trace 目标 IP 的 /32 路由钉到
+ *  该线路网卡 → 直连访问 CF trace → 立即删除临时路由（try/finally 必清）。
+ *  为何要临时 /32 路由：绑源 IP 在 Windows 不改出口网卡；而我们给隧道加的路由只覆盖 CF 边缘那两段、
+ *  不含 www.cloudflare.com，所以直接测会走默认线路、量不到目标线路的公网 IP。加不上（非管理员）则回退默认线路并标注。
+ *  这条 /32 只针对「一个 CF 网站 IP」、秒级存在、用完即删，不影响其它流量。 */
+export async function fetchLinePublicEgressIp(line: RouteLine & { gateway: string | null }): Promise<{ ip: string | null; viaLine: boolean; note: string }> {
+  let targetIp = "";
+  try { const r = await dnsLookup4("www.cloudflare.com", { family: 4 }); targetIp = (r as { address: string }).address; } catch { /* fall through */ }
+  if (isIP(targetIp) !== 4 || isIP(line.gateway ?? "") !== 4) {
+    return { ip: await fetchPublicEgressIp(undefined), viaLine: false, note: "无法确定线路网关/解析失败，显示为默认线路" };
+  }
+  const temp: Cidr = { net: targetIp, mask: "255.255.255.255", prefix: `${targetIp}/32` };
+  const add = await runRoute("add", temp, line.gateway as string, { ifIndex: line.ifIndex, ifName: line.ifName });
+  try {
+    const ip = await fetchTraceViaIp(targetIp);
+    return { ip, viaLine: add.ok, note: add.ok ? "经所选专线网卡实测" : "未能加临时路由（需管理员），显示为默认线路" };
+  } finally {
+    if (add.ok) { try { await runRoute("del", temp, "", NO_LINE); } catch { /* best-effort 清理 */ } }
+  }
 }
 
 /** 本机所有网卡的非内部（排除回环）IP。用于「出口专线绑定」防呆：edge-bind 必须是本机某网卡地址，
