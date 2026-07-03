@@ -41,6 +41,7 @@ import { promptLibraryRouter } from "./routers/promptLibrary";
 import { userPrefsRouter } from "./routers/userPrefs";
 import { agentRouter } from "./routers/agent";
 import { comfyOpsRouter } from "./routers/comfyOps";
+import { superAgentRouter } from "./routers/superAgent";
 
 export const appRouter = router({
   system: systemRouter,
@@ -80,6 +81,7 @@ export const appRouter = router({
   avatar: avatarRouter,
   comfyui: comfyuiRouter,
   agent: agentRouter,
+  superAgent: superAgentRouter,
   comfyStress: comfyStressRouter,
   comfyOps: comfyOpsRouter,
   config: configRouter,
