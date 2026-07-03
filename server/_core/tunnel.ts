@@ -33,6 +33,8 @@ let logBuf = "";
 let tunnelPort = 0;
 export function setTunnelOrigin(port: number): void { tunnelPort = port; }
 export function getTunnelListenerPort(): number { return tunnelPort; }
+/** cloudflared 子进程 PID（供「一键诊断」查它实际在用哪块网卡/源 IP）。未运行返回 null。 */
+export function getTunnelPid(): number | null { return proc?.pid ?? null; }
 
 // ── 隧道实时吞吐计量（被动，零额外流量）──
 // 所有经隧道进来的用户流量都只经过回环监听器（index.ts 的 tunnelServer）。在其每条 socket 上读

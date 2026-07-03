@@ -7,8 +7,8 @@ import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
-import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput } from "../_core/tunnel";
-import { detectGatewayForSource, detectLineForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, fetchPublicEgressIp, fetchLinePublicEgressIp } from "../_core/tunnelRoute";
+import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput, getTunnelPid } from "../_core/tunnel";
+import { detectGatewayForSource, detectLineForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, fetchPublicEgressIp, fetchLinePublicEgressIp, tunnelDiagnose } from "../_core/tunnelRoute";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
 import { tunnelHostFromUrl } from "../_core/tunnelGate";
 import { sendTunnelUrlEmail } from "../_core/tunnelEmail";
@@ -593,6 +593,11 @@ export const adminRouter = router({
     }),
     removeRoutes: managerProc.mutation(async () => removeTunnelRoutes(getTunnelLog())),
     routeStatus: adminProcedure.mutation(async () => tunnelRouteStatus(getTunnelLog())),
+    // 一键诊断走线：查管理员权限 + cloudflared 实际在用的源 IP（地面真相）+ 路由明细，直接给结论。
+    diagnose: adminProcedure.mutation(async () => {
+      const s = await db.getTunnelSettings();
+      return tunnelDiagnose(getTunnelPid(), (s.edgeBindAddress ?? "").trim(), getTunnelLog());
+    }),
     setWhitelist: managerProc.input(z.object({
       whitelistUsers: z.array(z.number().int()).max(2000),
       whitelistIps: z.array(z.string().max(64)).max(2000),

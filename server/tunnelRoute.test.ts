@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands, manualRemoveCommands, routeCommand, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, parseTraceIp } from "./_core/tunnelRoute";
+import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands, manualRemoveCommands, routeCommand, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, parseTraceIp, tunnelDiagnoseVerdict } from "./_core/tunnelRoute";
 
 describe("tunnelRoute · 边缘网段与命令生成", () => {
   it("内置 CF 边缘 = cloudflared 实际连接的两段", () => {
@@ -72,6 +72,14 @@ describe("tunnelRoute · 边缘网段与命令生成", () => {
       .toBe("ip route replace 198.41.192.0/24 via 192.168.12.1 dev wlan0");
     expect(routeCommand("win32", "del", r, "", { ifIndex: 12, ifName: "WLAN" })).toBe("route delete 198.41.192.0");
     expect(routeCommand("linux", "del", r, "", { ifIndex: null, ifName: "wlan0" })).toBe("ip route del 198.41.192.0/24");
+  });
+
+  it("tunnelDiagnoseVerdict：以 cloudflared 实际在用的源 IP 为地面真相判定", () => {
+    expect(tunnelDiagnoseVerdict(false, "192.168.12.24", [])).toContain("非管理员");
+    expect(tunnelDiagnoseVerdict(true, "", [])).toContain("未设");
+    expect(tunnelDiagnoseVerdict(true, "192.168.12.24", [])).toContain("未取到");
+    expect(tunnelDiagnoseVerdict(true, "192.168.12.24", ["192.168.12.24"])).toContain("走线正确");
+    expect(tunnelDiagnoseVerdict(true, "192.168.12.24", ["10.0.0.5"])).toContain("不是你选的");
   });
 
   it("manualRemoveCommands：每段一条删除命令", () => {

@@ -31,9 +31,10 @@ export function TunnelPanel() {
   const applyRoutesMut = trpc.admin.tunnel.applyRoutes.useMutation();
   const removeRoutesMut = trpc.admin.tunnel.removeRoutes.useMutation();
   const routeStatusMut = trpc.admin.tunnel.routeStatus.useMutation();
+  const diagnoseMut = trpc.admin.tunnel.diagnose.useMutation();
   const [routeGw, setRouteGw] = useState("");        // 专线网关（自动探测预填，可手改）
   const [routeLog, setRouteLog] = useState("");       // 路由操作结果回显
-  const routeBusy = detectGwMut.isPending || applyRoutesMut.isPending || removeRoutesMut.isPending || routeStatusMut.isPending;
+  const routeBusy = detectGwMut.isPending || applyRoutesMut.isPending || removeRoutesMut.isPending || routeStatusMut.isPending || diagnoseMut.isPending;
 
   const revealTokenMut = trpc.admin.tunnel.revealToken.useMutation();
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
@@ -336,6 +337,10 @@ export function TunnelPanel() {
               </button>
               <button disabled={routeBusy} onClick={async () => { const r = await removeRoutesMut.mutateAsync().catch((e) => ({ log: String(e), ok: false })); setRouteLog(r.log); (("ok" in r ? r.ok : false) ? toast.success : toast.error)(("ok" in r ? r.ok : false) ? "已移除专线路由，回退默认线路" : "移除未完全成功，见下方手动命令"); }} className="nodrag" style={{ fontSize: 11, padding: "6px 12px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>移除路由（关闭专线）</button>
               <button disabled={routeBusy} onClick={async () => { const r = await routeStatusMut.mutateAsync().catch((e) => ({ log: String(e) })); setRouteLog(r.log); }} className="nodrag" style={{ fontSize: 11, padding: "6px 12px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>检测路由状态</button>
+              <button disabled={routeBusy} onClick={async () => {
+                try { const r = await diagnoseMut.mutateAsync(); setRouteLog(r.report); (r.verdict.startsWith("✅") ? toast.success : toast.error)(r.verdict.slice(0, 120)); }
+                catch (e) { setRouteLog(String(e)); toast.error("诊断失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 120)); }
+              }} className="nodrag flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 7, border: "1px solid oklch(0.70 0.16 60 / 0.4)", background: "oklch(0.70 0.16 60 / 0.14)", color: "oklch(0.75 0.15 60)", cursor: "pointer" }}>{diagnoseMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} 一键诊断走线</button>
             </div>
             {routeLog && (
               <pre style={{ margin: 0, maxHeight: 200, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 8, padding: 8, color: "var(--c-t2)", fontSize: 10.5, lineHeight: 1.5 }}>{routeLog}</pre>
