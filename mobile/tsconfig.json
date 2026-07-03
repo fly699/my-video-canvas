@@ -3,10 +3,15 @@
   "compilerOptions": {
     "strict": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "baseUrl": "..",
     "paths": {
-      "@shared/*": ["../shared/*"]
+      "@shared/*": ["./shared/*"],
+      "server/*": ["./server/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "../server/routers.ts"]
+  "include": ["**/*.ts", "**/*.tsx"]
 }

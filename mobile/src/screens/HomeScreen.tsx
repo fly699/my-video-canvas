@@ -7,7 +7,8 @@ import { getBaseUrlSync } from "../lib/config";
 export function HomeScreen() {
   const { signOut } = useAuth();
   // 这个受保护查询能成功返回，就证明 Bearer 鉴权端到端打通了（同时是「作品浏览」v1 的起点）。
-  const q = trpc.canvas.list.useQuery(undefined, { retry: 1 });
+  // 注意：画布/作品路由在 appRouter 里挂为 `projects`（文件名是 canvas.ts，但挂载键是 projects）。
+  const q = trpc.projects.list.useQuery(undefined, { retry: 1 });
 
   const projects = [
     ...(q.data?.owned ?? []).map((p) => ({ ...p, _mine: true })),

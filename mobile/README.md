@@ -31,15 +31,18 @@ npm start
 > 本仓库的自动化环境跑不了安卓模拟器，所以本骨架的**运行验收需在你本机完成**（`npx expo run:android`）。
 > 代码按 tRPC v11 + react-query v5 + Expo SDK 52 写好，类型复用自 `../server/routers`。
 
-## 关于「与后端共享类型」
+## 关于「与后端共享类型」（已打通，`npm run typecheck` 全绿）
 
-`src/lib/trpc.ts` 用 `import type { AppRouter } from "../../../server/routers"` 复用后端路由类型（type-only，
-不打包服务端代码）。`tsconfig.json` 里：
-- `paths` 映射了 `@shared/*`（服务端类型链会用到）；
-- `skipLibCheck: true` 避免服务端深层依赖类型报错。
+`src/lib/trpc.ts` 用 `import type { AppRouter } from "../../../server/routers"` 复用后端路由类型。
+`tsconfig.json` 关键设置（与根仓库对齐，才能正确解析服务端源码）：
+- `baseUrl: ".."` + `paths` 映射 `@shared/*`、`server/*`（服务端用 baseUrl 裸导入 `server/xxx`）；
+- `module: ESNext` + `moduleResolution: bundler`（否则服务端动态 import 报错）；
+- `skipLibCheck: true`。
+- 需 `@types/node`（服务端用 `process`/`Buffer` 等）。
 
-若 `npm run typecheck` 因 monorepo 依赖解析报错，最简单的办法是让 mobile 复用**根仓库的 `node_modules`**
-里那些服务端类型依赖（drizzle-orm 等）——它们已装在根目录；Node 解析会向上找到。必要时把根依赖装好即可。
+装好依赖后 `npm run typecheck` 应全绿——它会连服务端路由类型一起校验，**移动端调用的每个 tRPC
+接口名/入参/返回字段都对着真实后端类型检查**（例如：画布/作品路由挂载键是 `projects`，不是 `canvas`）。
+服务端类型依赖（drizzle-orm 等）从根仓库 `node_modules` 向上解析。
 
 ## 下一步（M1 续 / M2）
 
