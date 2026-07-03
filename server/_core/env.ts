@@ -26,7 +26,7 @@ export const ENV = {
   // e.g. SELF_HOSTED_LLM_URL=http://172.16.0.10:8000
   selfHostedLlmUrl: process.env.SELF_HOSTED_LLM_URL ?? "",
   selfHostedLlmKey: process.env.SELF_HOSTED_LLM_KEY ?? "",
-  selfHostedLlmModels: (process.env.SELF_HOSTED_LLM_MODELS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  selfHostedLlmModels: (process.env.SELF_HOSTED_LLM_MODELS ?? "").split(",").map((s: string) => s.trim()).filter(Boolean),
   // Self-hosted S3-compatible storage (MinIO / Cloudflare R2 / AWS S3).
   // When S3_ENDPOINT + S3_BUCKET + keys are set, this takes precedence over Forge.
   // For MinIO set S3_ENDPOINT=http://127.0.0.1:9000 and S3_FORCE_PATH_STYLE=true.

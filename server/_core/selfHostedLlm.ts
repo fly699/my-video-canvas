@@ -11,7 +11,7 @@ export const DEFAULT_SELF_HOSTED_MODELS = ["Qwen3.6-35B-A3B-FP8"];
 function envConfig(): SelfHostedLlmConfig {
   if (!ENV.selfHostedLlmUrl.trim()) return { url: "", apiKey: "", models: [] };
   const ids = ENV.selfHostedLlmModels.length ? ENV.selfHostedLlmModels : DEFAULT_SELF_HOSTED_MODELS;
-  return { url: ENV.selfHostedLlmUrl, apiKey: ENV.selfHostedLlmKey, models: ids.map((id) => ({ id, label: id })) };
+  return { url: ENV.selfHostedLlmUrl, apiKey: ENV.selfHostedLlmKey, models: ids.map((id: string) => ({ id, label: id })) };
 }
 
 let cache: SelfHostedLlmConfig | null = null;
