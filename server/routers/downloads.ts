@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure, adminProcedure, levelProcedure, router } from "../_core/trpc";
+import { protectedProcedure, levelProcedure, router } from "../_core/trpc";
 
-// 下载审批属「运营」级日常操作：查看员(L1)只读，批准/授权/撤销需运营(L2+)。
-const operatorProc = levelProcedure(2);
+// 下载审批整体限「管理员 L3+」（查看+审批/授权/撤销都是）：查看员 L1、运营 L2 均无权。
+// 注意：普通用户自己申请/查看自己授权的 config/checkAccess/request/myGrants 仍是 protectedProcedure。
+const managerProc = levelProcedure(3);
 import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
 import { toInternalStoragePath } from "../storage";
@@ -82,7 +83,7 @@ export const downloadsRouter = router({
 
 // ── Admin: review requests, grant, revoke ─────────────────────────────────────
 export const adminDownloadsRouter = router({
-  list: adminProcedure
+  list: managerProc
     .input(z.object({ status: z.enum(["pending", "active", "revoked", "denied"]).optional(), limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional() }).optional())
     .query(async ({ input }) => {
       const grants = await db.listDownloadGrants(input ?? {});
@@ -106,7 +107,7 @@ export const adminDownloadsRouter = router({
       }));
     }),
 
-  decide: operatorProc
+  decide: managerProc
     .input(z.object({
       grantId: z.number(), approve: z.boolean(), note: z.string().max(500).optional(),
       // Validity, in priority order: `permanent` (no expiry) > `expiresAt` (epoch ms,
@@ -132,7 +133,7 @@ export const adminDownloadsRouter = router({
     }),
 
   // Admin-initiated batch grant: per file (assetId/storageKey) or per project.
-  grant: operatorProc
+  grant: managerProc
     .input(z.object({
       userId: z.number(),
       scope: z.enum(["asset", "project"]),
@@ -156,7 +157,7 @@ export const adminDownloadsRouter = router({
   // Resolve a target user (by email) AND list every project they can access —
   // owned + projects they collaborate on — so the proactive-grant form can show a
   // checklist instead of asking for a project id.
-  userProjects: adminProcedure
+  userProjects: managerProc
     .input(z.object({ email: z.string().max(200) }))
     .query(async ({ input }) => {
       const email = input.email.trim();
@@ -175,9 +176,9 @@ export const adminDownloadsRouter = router({
     }),
 
   // Cheap count of un-handled requests — drives the global admin badge.
-  pendingCount: adminProcedure.query(async () => (await db.listDownloadGrants({ status: "pending", limit: 500 })).length),
+  pendingCount: managerProc.query(async () => (await db.listDownloadGrants({ status: "pending", limit: 500 })).length),
 
-  revoke: operatorProc
+  revoke: managerProc
     .input(z.object({ grantId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       await db.revokeDownloadGrant(input.grantId, ctx.user.id);

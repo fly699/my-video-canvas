@@ -67,12 +67,21 @@ const ACTION_COLORS: Record<string, string> = {
   subtitle_transcribe: "oklch(0.65 0.18 60)",
 };
 
+// 「白名单管理」「下载审批」限管理员 L3+（查看员 L1、运营 L2 均无权，含查看）。
+const L3_ONLY_TABS = new Set<Tab>(["whitelist", "downloads"]);
+
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
+  const myLevel = user?.adminLevel ?? 0;
   // Initial tab comes from ?tab= so deep links (e.g. a download-approval "查看")
   // land on the right sub-page instead of the default.
   const [activeTab, setActiveTab] = useState<Tab>(() => adminTabFromUrl() as Tab);
   const [, navigate] = useLocation();
+
+  // 低于 L3 的管理员若（经深链/事件）落到受限标签，跳回一个安全默认页，避免看到无权面板。
+  useEffect(() => {
+    if (myLevel < 3 && L3_ONLY_TABS.has(activeTab)) setActiveTab("logs");
+  }, [myLevel, activeTab]);
 
   // Switch tab when a deep-link event fires while this page is already mounted
   // (a query-only URL change doesn't remount the page).
@@ -180,7 +189,7 @@ export default function AdminPage() {
 
         {/* Tabs — 胶囊式（带图标） */}
         <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px", animationDelay: "60ms" }}>
-          {TAB_DEFS.map(([tab, label, Icon]) => {
+          {TAB_DEFS.filter(([tab]) => myLevel >= 3 || !L3_ONLY_TABS.has(tab)).map(([tab, label, Icon]) => {
             const active = activeTab === tab;
             return (
               <button

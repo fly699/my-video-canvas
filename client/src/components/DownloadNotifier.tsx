@@ -27,18 +27,19 @@ interface Notice {
  */
 export function DownloadNotifier() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  // 下载审批限管理员 L3+，故通知/待办计数也仅 L3+ 拉取（否则运营 L2 会 403）。
+  const canApprove = user?.role === "admin" && (user?.adminLevel ?? 0) >= 3;
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [hours, setHours] = useState(1);
   const decideMut = trpc.admin.downloads.decide.useMutation();
   const pendingQ = trpc.admin.downloads.pendingCount.useQuery(undefined, {
-    enabled: isAdmin, refetchInterval: 20000, refetchOnWindowFocus: true,
+    enabled: canApprove, refetchInterval: 20000, refetchOnWindowFocus: true,
   });
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!canApprove) return;
     const socket: Socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true });
     socket.on("download:request", (n: Notice) => {
       setNotices((prev) => (prev.some((p) => p.grantId === n.grantId) ? prev : [n, ...prev].slice(0, 5)));
@@ -46,12 +47,12 @@ export function DownloadNotifier() {
       void utils.admin.downloads.list.invalidate();
     });
     return () => { socket.disconnect(); };
-  }, [isAdmin, utils]);
+  }, [canApprove, utils]);
 
   const dismiss = (grantId: number) => setNotices((prev) => prev.filter((p) => p.grantId !== grantId));
   const refreshCounts = () => { void utils.admin.downloads.pendingCount.invalidate(); void utils.admin.downloads.list.invalidate(); };
 
-  if (!isAdmin) return null;
+  if (!canApprove) return null;
   const pending = pendingQ.data ?? 0;
 
   return (

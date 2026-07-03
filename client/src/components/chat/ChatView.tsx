@@ -528,7 +528,7 @@ function Bubble({ msg, mine }: { msg: ChatWireMessage; mine: boolean }) {
   );
 }
 
-/** Inline approve control inside a "下载审批" channel message (admins only). */
+/** Inline approve control inside a "下载审批" channel message（限管理员 L3+，与后端一致）。 */
 function DownloadApproveInline({ grantId }: { grantId: number }) {
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -536,7 +536,7 @@ function DownloadApproveInline({ grantId }: { grantId: number }) {
   const [hours, setHours] = useState(1);
   const [done, setDone] = useState<"approved" | "denied" | null>(null);
   const decideMut = trpc.admin.downloads.decide.useMutation();
-  if (user?.role !== "admin") return null;
+  if (user?.role !== "admin" || (user?.adminLevel ?? 0) < 3) return null;
   if (done) return <div style={{ marginTop: 8, fontSize: 12, color: done === "approved" ? "oklch(0.7 0.16 155)" : "oklch(0.7 0.16 25)" }}>{done === "approved" ? `已授权（${hours}h）` : "已拒绝"}</div>;
   const after = (r: "approved" | "denied") => { setDone(r); void utils.admin.downloads.pendingCount.invalidate(); void utils.admin.downloads.list.invalidate(); };
   return (

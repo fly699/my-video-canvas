@@ -148,6 +148,9 @@ export const adminRouter = router({
   }),
 
   whitelist: router({
+    // 「白名单管理」限管理员 L3+：条目查看/增删（listEntries/addEntry/removeEntry）与开关（setEnabled/
+    // setComfyuiBypass/setLlmBypass/setKieEnabled）都是 managerProc。getSettings 只回 4 个功能布尔标志
+    // （非敏感的白名单条目），且被 KiePanel 等跨面板只读引用，故保持 adminProcedure 可读。
     getSettings: adminProcedure.query(async () => {
       const settings = await db.getWhitelistSettings();
       return { enabled: settings?.enabled ?? false, comfyuiBypass: settings?.comfyuiBypass ?? false, llmBypass: settings?.llmBypass ?? false, kieEnabled: settings?.kieEnabled ?? false };
@@ -185,11 +188,11 @@ export const adminRouter = router({
         return { success: true };
       }),
 
-    listEntries: adminProcedure.query(async () => {
+    listEntries: managerProc.query(async () => {
       return db.getWhitelistEntries();
     }),
 
-    addEntry: operatorProc
+    addEntry: managerProc
       .input(z.object({
         type: z.enum(["ip", "user"]),
         value: z.string().min(1).max(320),
@@ -207,7 +210,7 @@ export const adminRouter = router({
         return { success: true };
       }),
 
-    removeEntry: operatorProc
+    removeEntry: managerProc
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => {
         const deleted = await db.removeWhitelistEntry(input.id);
