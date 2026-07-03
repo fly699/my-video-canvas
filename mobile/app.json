@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "AI Video Canvas",
+    "slug": "avc-mobile",
+    "scheme": "avc",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "android": {
+      "package": "store.fordhev.avc",
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "store.fordhev.avc"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        { "photosPermission": "允许访问相册以上传素材", "cameraPermission": "允许使用相机拍摄素材" }
+      ]
+    ]
+  }
+}
