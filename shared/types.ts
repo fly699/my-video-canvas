@@ -1262,8 +1262,10 @@ export interface AgentNodeData {
   errorMessage?: string;
 }
 
-/** 超级智能体 · Phase 1（工程智能体）——ComfyUI 工作流自动编写/调试节点。 */
+/** 超级智能体（工程智能体）节点。Phase 1：ComfyUI 工作流自动编写/调试；Phase 2：代码任务。 */
 export interface SuperAgentNodeData {
+  /** 模式：comfy=ComfyUI 工作流工具环（默认）；code=无头 Claude Code 编码任务（需服务端开启）。 */
+  mode?: "comfy" | "code";
   /** 自然语言任务（如「做一个 Flux + LoRA 的高清出图工作流并调通」）。 */
   task?: string;
   /** 目标 ComfyUI 服务器（留空用服务端 COMFYUI_BASE_URL）。 */
@@ -1277,6 +1279,10 @@ export interface SuperAgentNodeData {
   resultWorkflowJson?: string;
   /** 调通后的结构分析（参数绑定/输出节点/输出类型）。 */
   resultAnalysis?: { paramBindings?: unknown[]; outputNodeIds?: string[]; outputType?: string };
+  /** code 模式：任务最终文本结果。 */
+  codeResult?: string;
+  /** code 模式：被 commandPolicy 拦截而中止的危险命令。 */
+  blockedCommand?: string;
   errorMessage?: string;
 }
 
