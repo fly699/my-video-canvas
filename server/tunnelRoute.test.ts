@@ -6,16 +6,20 @@ describe("tunnelRoute · 边缘网段与命令生成", () => {
     expect(CF_EDGE_ROUTES.map((r) => r.prefix)).toEqual(["198.41.192.0/24", "198.41.200.0/24"]);
   });
 
-  it("edgeCidrsFromLog：从日志解析实际边缘 IP、收敛为 /24、与内置合并去重", () => {
+  it("edgeCidrsFromLog：只纳入 CF 边缘块(198.41.192.0/20)内的 IP；块外/局域网一律忽略（只针对隧道）", () => {
     const log = [
       "Registered tunnel connection ip=198.41.200.43 location=sea07",
       "Registered tunnel connection ip=198.41.192.227 location=sea01",
-      "Registered tunnel connection ip=198.41.210.9 location=xxx", // 内置外的新段 → 应被覆盖
+      "Registered tunnel connection ip=198.41.196.9 location=sea02",  // 块内 → 自适应纳入
+      "Registered tunnel connection ip=198.41.210.9 location=xxx",    // 块外 → 忽略
+      "some noise ip=192.168.12.5",                                    // 局域网 → 绝不纳入
     ].join("\n");
-    const prefixes = edgeCidrsFromLog(log).map((c) => c.prefix).sort();
+    const prefixes = edgeCidrsFromLog(log).map((c) => c.prefix);
     expect(prefixes).toContain("198.41.192.0/24");
     expect(prefixes).toContain("198.41.200.0/24");
-    expect(prefixes).toContain("198.41.210.0/24"); // 自适应到日志里的新段
+    expect(prefixes).toContain("198.41.196.0/24");     // 块内自适应
+    expect(prefixes).not.toContain("198.41.210.0/24"); // 块外忽略
+    expect(prefixes).not.toContain("192.168.12.0/24"); // 局域网绝不误伤
   });
 
   it("edgeCidrsFromLog：空日志 → 只有内置两段", () => {

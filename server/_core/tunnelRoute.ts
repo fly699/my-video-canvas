@@ -84,6 +84,15 @@ function isSafeIpv4Net(net: string): boolean {
   return isIP(net) === 4 && net !== "0.0.0.0";
 }
 
+/** 是否落在 Cloudflare 隧道边缘块 198.41.192.0/20（含 198.41.192.0/24 与 198.41.200.0/24）。
+ *  只把此块内的边缘 IP 纳入路由——确保「应用路由只针对隧道、绝不误伤局域网/其它流量」：
+ *  即便 cloudflared 日志里混进任何非 CF 的 IP，也不会被拿去加路由。 */
+function inCloudflareEdgeBlock(ip: string): boolean {
+  if (isIP(ip) !== 4) return false;
+  const p = ip.split(".").map(Number);
+  return p[0] === 198 && p[1] === 41 && p[2] >= 192 && p[2] <= 207;
+}
+
 /** 从 cloudflared 日志里取第一个它实际连的边缘 IP（v4/v6 皆可）。没有则 null。 */
 function firstEdgeIpFromLog(log: string): string | null {
   const re = /\bip=([0-9a-fA-F:.]+)\b/g;
@@ -147,6 +156,7 @@ export function edgeCidrsFromLog(log: string): Cidr[] {
   while ((m = re.exec(log || "")) !== null) {
     const ip = m[1];
     if (isIP(ip) !== 4) continue;
+    if (!inCloudflareEdgeBlock(ip)) continue; // 只针对隧道：块外 IP（含局域网）一律忽略，绝不误伤其它流量
     const p = ip.split(".");
     const net = `${p[0]}.${p[1]}.${p[2]}.0`;
     if (!isSafeIpv4Net(net)) continue;
