@@ -3,15 +3,17 @@
 React Native (Expo) 客户端。**复用后端 tRPC 路由类型**，用 **Bearer 令牌**鉴权（服务端 M0 已支持，
 见根仓库 `server/_core/sdk.ts` / `emailAuth.ts`）。
 
-## M1 已完成（本骨架）
+## M1 已完成
 
 - 工程骨架（Expo SDK 52 · TS · 新架构）。
 - **登录（Bearer 端到端）**：邮箱密码 → `POST /api/auth/login`（带 `X-Auth-Mode: token`）→ 拿会话令牌 →
   存 `expo-secure-store` → tRPC 客户端注入 `Authorization: Bearer`。
-- **作品浏览起点**：登录后 `HomeScreen` 调 `trpc.canvas.list`（受保护查询）拉「我的作品」——它能成功
-  返回，就证明鉴权端到端打通。
-- 服务器地址可在登录页修改（默认 `https://avc.fordhev.store`，也可填局域网 `http://192.168.x.x:3000`）。
-- 预置 `socket.io-client`（`src/lib/socket.ts`，`/chat` 命名空间 + `auth.token`）供后续聊天用。
+- **作品浏览**（`HomeScreen`）：`trpc.canvas.list` 拉「我的作品/共享给我」，下拉刷新。
+- **AI 助手聊天**（`ChatScreen`）：`openAssistant` / `getMessages` / `sendToAssistant` + socket `/chat`
+  实时（`chat:join` / `chat:message:new`），收到即从服务器权威重载。
+- **上传素材**（`UploadScreen`）：`expo-image-picker` 拍照/相册 → `upload.uploadImage`（base64）→ 预览。
+- 底部三 tab（`Main`，不引 react-navigation）。
+- 服务器地址可在登录页改（默认 `https://avc.fordhev.store`，也可填局域网 `http://192.168.x.x:3000`）。
 
 ## 运行（在你本机，需要 Node + Android Studio/SDK）
 
