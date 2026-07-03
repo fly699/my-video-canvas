@@ -113,7 +113,8 @@ export type AuditAction =
   | "ops:install_node"
   | "ops:ai_generate"
   | "ops:trust_toggle"
-  | "superagent_comfy_build";
+  | "superagent_comfy_build"
+  | "superagent_code_task";
 
 export interface AuditOpts {
   ctx?: TrpcContext;
