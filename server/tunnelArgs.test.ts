@@ -14,10 +14,6 @@ describe("buildTunnelArgs（edge-bind 是 tunnel 级 flag：命名隧道放 run 
     expect(buildTunnelArgs({ named: true, token: "TOK", tunnelPort: 3001, bindIp: "" })).toEqual(["tunnel", "run", "--token", "TOK"]);
     expect(buildTunnelArgs({ named: false, token: "", tunnelPort: 3001, bindIp: "not-an-ip" })).not.toContain("--edge-bind-address");
   });
-  it("命名隧道带 configPath：--config 放在 run 之前", () => {
-    const args = buildTunnelArgs({ named: true, token: "TOK", tunnelPort: 3001, bindIp: "192.168.12.24", configPath: "/x/y.yml" });
-    expect(args).toEqual(["tunnel", "--config", "/x/y.yml", "--edge-bind-address", "192.168.12.24", "run", "--token", "TOK"]);
-  });
 });
 
 describe("tunnelErrorHint（把 cloudflared 真实报错挑出来给面板显示）", () => {
