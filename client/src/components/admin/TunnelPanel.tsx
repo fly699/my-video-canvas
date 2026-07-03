@@ -311,7 +311,7 @@ export function TunnelPanel() {
                 ))}
               </div>
             ) : null; })()}
-            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>填该专线本机网卡的源 IP（点上方标签即可，别手敲填错——填了非本机地址会导致隧道起不来）。<b>快速隧道</b>靠它即可走该专线；<b>命名隧道</b>（token）cloudflared 不吃此绑定，需用下方「专线路由」把流量导到该专线（改后停用再启用生效）。<b>关闭专线</b>：清空本框保存 → 自动移除专线路由回退默认线路；停用隧道也会自动回退。</div>
+            <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5, marginTop: 3 }}>填该专线本机网卡的源 IP（点上方标签即可，别手敲填错——填了非本机地址会导致隧道起不来）。<b>快速隧道和命名隧道都靠它走该专线</b>：cloudflared 用 <code>--edge-bind-address</code> 把出站源绑到该 IP（官方支持 <code>tunnel run --token … --edge-bind-address</code>），改后<b>停用再启用</b>生效，无需管理员、无需下方专线路由。下方「专线路由」仅作个别 cloudflared 版本不认此参数时的兜底。<b>关闭专线</b>：清空本框保存即回退默认线路。</div>
           </label>
 
           {/* 专线路由：命名隧道走指定专线的唯一可行办法——把 CF 边缘网段路由到专线网关（OS 路由层）。 */}
