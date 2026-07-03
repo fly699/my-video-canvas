@@ -10,6 +10,13 @@ import { sendVerificationEmail, generateVerifyCode, VERIFY_CODE_TTL_MS } from ".
 
 const scryptAsync = promisify(scrypt);
 
+/** 客户端是否显式要求把会话令牌放进响应体（原生/移动端用 `X-Auth-Mode: token` 或 body `tokenInBody:true`）。
+ *  Web 不传 → 令牌只走 HttpOnly Cookie、不落入可被 JS 读取的响应体，保持 XSS 防护。纯函数、便于单测。 */
+export function clientWantsToken(authModeHeader: unknown, bodyFlag: unknown): boolean {
+  const h = Array.isArray(authModeHeader) ? authModeHeader[0] : authModeHeader;
+  return (typeof h === "string" && h.trim().toLowerCase() === "token") || bodyFlag === true;
+}
+
 // Simple in-memory rate limiter: max attempts per window per IP
 const _rateBuckets = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX = 10;        // max attempts
@@ -137,7 +144,8 @@ export function registerEmailAuthRoutes(app: Express) {
         detail: { method: "email_register" },
       });
 
-      res.json({ success: true });
+      const tok = clientWantsToken(req.headers["x-auth-mode"], (req.body as { tokenInBody?: unknown })?.tokenInBody) ? { token: sessionToken } : {};
+      res.json({ success: true, ...tok });
     } catch (err) {
       console.error("[EmailAuth] Register error", err);
       res.status(500).json({ error: "注册失败，请稍后重试" });
@@ -196,7 +204,8 @@ export function registerEmailAuthRoutes(app: Express) {
         detail: { method: "email_login" },
       });
 
-      res.json({ success: true });
+      const tok = clientWantsToken(req.headers["x-auth-mode"], (req.body as { tokenInBody?: unknown })?.tokenInBody) ? { token: sessionToken } : {};
+      res.json({ success: true, ...tok });
     } catch (err) {
       console.error("[EmailAuth] Login error", err);
       res.status(500).json({ error: "登录失败，请稍后重试" });
@@ -227,7 +236,8 @@ export function registerEmailAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
       writeAuditLog({ ip, userId: user.id, userEmail: user.email ?? null, userName: user.name ?? null, action: "login_email", detail: { method: "email_verify" } });
-      res.json({ success: true });
+      const tok = clientWantsToken(req.headers["x-auth-mode"], (req.body as { tokenInBody?: unknown })?.tokenInBody) ? { token: sessionToken } : {};
+      res.json({ success: true, ...tok });
     } catch (err) {
       console.error("[EmailAuth] Verify error", err);
       res.status(500).json({ error: "验证失败，请稍后重试" });

@@ -18,6 +18,16 @@ import type {
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
 
+/** 从 Authorization 头里取 Bearer 令牌（供原生/移动客户端用同一 JWT 会话令牌鉴权，替代 HttpOnly Cookie）。
+ *  纯函数、便于单测。大小写不敏感的 "Bearer "，容忍首尾空白；取不到返回 undefined。 */
+export function bearerFromAuthHeader(h: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(h) ? h[0] : h;
+  if (typeof raw !== "string") return undefined;
+  const m = /^Bearer\s+(.+)$/i.exec(raw.trim());
+  const tok = m?.[1]?.trim();
+  return tok ? tok : undefined;
+}
+
 export type SessionPayload = {
   openId: string;
   appId: string;
@@ -273,17 +283,19 @@ class SDKServer {
   }
 
   async authenticateRequest(req: Request): Promise<AuthenticatedUser> {
-    // Regular authentication flow
+    // Regular authentication flow. Web 用 HttpOnly Cookie；原生/移动端无法用 Cookie，改用
+    // Authorization: Bearer <同一 JWT 会话令牌>。两者是同一个令牌，走同一个 verifySession
+    // （同签名、同 appId 守卫、同过期），Bearer 只是换了传输通道，不改变任何安全校验。
     const cookies = this.parseCookies(req.headers.cookie);
-    const sessionCookie = cookies.get(COOKIE_NAME);
-    const session = await this.verifySession(sessionCookie);
+    const sessionToken = cookies.get(COOKIE_NAME) ?? bearerFromAuthHeader(req.headers.authorization);
+    const session = await this.verifySession(sessionToken);
 
     if (!session) {
-      throw ForbiddenError("Invalid session cookie");
+      throw ForbiddenError("Invalid session");
     }
 
     if (session.openId.startsWith(CRON_OPEN_ID_PREFIX)) {
-      const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
+      const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
       const taskUid = userInfo.taskUid ?? null;
       if (!taskUid) {
         throw ForbiddenError("Cron session missing task_uid");
@@ -298,7 +310,7 @@ class SDKServer {
     // If user not in DB, sync from OAuth server automatically
     if (!user) {
       try {
-        const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
+        const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
         await db.upsertUser({
           openId: userInfo.openId,
           name: userInfo.name || null,
