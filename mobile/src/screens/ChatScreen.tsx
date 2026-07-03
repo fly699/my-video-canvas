@@ -1,8 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import type { Socket } from "socket.io-client";
+import type { ChatFileRef } from "@shared/types";
 import { trpc } from "../lib/trpc";
 import { connectChatSocket } from "../lib/socket";
+import { getBaseUrlSync } from "../lib/config";
+
+const absUrl = (u: string) => (/^https?:\/\/|^data:/i.test(u) ? u : `${getBaseUrlSync()}${u.startsWith("/") ? "" : "/"}${u}`);
 
 export function ChatScreen() {
   const [convId, setConvId] = useState<number | null>(null);
@@ -13,6 +18,8 @@ export function ChatScreen() {
 
   const openAssistant = trpc.chat.openAssistant.useMutation();
   const send = trpc.chat.sendToAssistant.useMutation();
+  const uploadFile = trpc.chat.uploadFile.useMutation();
+  const [sendingImg, setSendingImg] = useState(false);
   const msgs = trpc.chat.getMessages.useQuery(
     { conversationId: convId!, limit: 60 },
     { enabled: convId != null, refetchOnWindowFocus: false },
@@ -55,6 +62,34 @@ export function ChatScreen() {
     } catch { setText(content); }
   };
 
+  // 发图：相册选图 → 上传得 attachmentId → 带附件发给 AI 助手（文字框内容作图注，可空）。
+  const onSendImage = async () => {
+    if (convId == null || sendingImg) return;
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { Alert.alert("需要权限", "请允许访问相册"); return; }
+      const res = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.7, mediaTypes: ImagePicker.MediaTypeOptions.Images });
+      if (res.canceled) return;
+      const asset = res.assets[0];
+      if (!asset?.base64) return;
+      setSendingImg(true);
+      const up = await uploadFile.mutateAsync({
+        conversationId: convId,
+        base64: asset.base64,
+        mimeType: asset.mimeType || "image/jpeg",
+        filename: asset.fileName || `photo-${Date.now()}.jpg`,
+      });
+      const caption = text.trim();
+      setText("");
+      await send.mutateAsync({ conversationId: convId, content: caption, attachmentIds: [up.attachmentId] });
+      await msgs.refetch();
+    } catch (e) {
+      Alert.alert("发图失败", (e as Error).message.slice(0, 160));
+    } finally {
+      setSendingImg(false);
+    }
+  };
+
   if (convId == null) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#0b0b0f" }}>
@@ -73,15 +108,22 @@ export function ChatScreen() {
         contentContainerStyle={{ padding: 16, gap: 10 }}
         renderItem={({ item }) => {
           const mine = item.senderId !== assistantId;
+          const imgs = ((item.attachments ?? []) as ChatFileRef[]).filter((a: ChatFileRef) => a.kind === "image");
           return (
-            <View style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "82%", backgroundColor: mine ? "#3b82f6" : "#17171d", borderColor: "#2a2a33", borderWidth: mine ? 0 : 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9 }}>
-              <Text style={{ color: mine ? "#fff" : "#e6e6ea", fontSize: 15, lineHeight: 21 }}>{item.content}</Text>
+            <View style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "82%", backgroundColor: mine ? "#3b82f6" : "#17171d", borderColor: "#2a2a33", borderWidth: mine ? 0 : 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9, gap: 8 }}>
+              {imgs.map((a: ChatFileRef, i: number) => (
+                <Image key={i} source={{ uri: absUrl(a.url) }} style={{ width: 200, height: 200, borderRadius: 8, backgroundColor: "#0b0b0f" }} resizeMode="cover" />
+              ))}
+              {item.content ? <Text style={{ color: mine ? "#fff" : "#e6e6ea", fontSize: 15, lineHeight: 21 }}>{item.content}</Text> : null}
             </View>
           );
         }}
         ListEmptyComponent={msgs.isLoading ? <ActivityIndicator color="#6ea8fe" style={{ marginTop: 40 }} /> : <Text style={{ color: "#55555f", textAlign: "center", marginTop: 40 }}>和 AI 助手说点什么吧</Text>}
       />
       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 12, borderTopColor: "#1c1c22", borderTopWidth: 1 }}>
+        <Pressable onPress={onSendImage} disabled={sendingImg} style={{ backgroundColor: "#17171d", borderColor: "#2a2a33", borderWidth: 1, borderRadius: 20, paddingHorizontal: 13, paddingVertical: 11 }}>
+          {sendingImg ? <ActivityIndicator color="#6ea8fe" size="small" /> : <Text style={{ color: "#8b8b95", fontSize: 16 }}>＋</Text>}
+        </Pressable>
         <TextInput
           value={text}
           onChangeText={setText}
