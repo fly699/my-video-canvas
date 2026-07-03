@@ -1,0 +1,242 @@
+// 超级智能体 · Phase 1 —— ComfyUI 工作流「自动编写 → 校验 → 运行 → 读错 → 修正」闭环引擎。
+//
+// 设计要点：
+// - 纯逻辑、依赖注入。LLM 与 ComfyUI 能力都以接口注入（AgentLLM / ComfyAgentTools），
+//   引擎本身不 import 任何网络/服务端模块，因此可在离线单测里用假实现完整跑通闭环。
+// - 不涉及任何 shell / 子进程 / 沙箱：真正的实现（PR2 的 router 适配层）用现有的
+//   comfyui.ts 过程（/object_info、validateWorkflow、executeCustomWorkflow、analyzeWorkflow）
+//   兑现这些工具，全程 HTTP + LLM，故与操作系统无关（Windows 直接跑）。
+// - 每步 emit 事件用于 socket 流式活动日志。
+
+/** ComfyUI 服务器上可用的资源清单——喂给 LLM 系统提示，避免它编出不存在的 checkpoint/采样器。 */
+export interface ComfyResourceList {
+  checkpoints: string[];
+  loras: string[];
+  vaes: string[];
+  samplers: string[];
+  schedulers: string[];
+  /** 已安装的节点 class_type 列表（来自 /object_info 的键）。 */
+  nodeClasses: string[];
+}
+
+/** 引擎依赖的 ComfyUI 能力（由 router 用 comfyui.ts 兑现；单测里用假实现）。 */
+export interface ComfyAgentTools {
+  /** 拉取目标服务器的可用资源（checkpoint/lora/采样器/节点类）。 */
+  listResources(): Promise<ComfyResourceList>;
+  /** 校验一份 API 格式 workflowJson（不真正生成），返回错误列表。 */
+  validate(workflowJson: string): Promise<{ ok: boolean; errors: string[] }>;
+  /** 真机运行一份 workflowJson，返回产物或错误。 */
+  execute(workflowJson: string): Promise<{
+    ok: boolean;
+    error?: string;
+    images?: string[];
+    videos?: string[];
+    outputType?: "image" | "video";
+  }>;
+  /** 结构分析：抽取可编辑参数绑定 / 输出节点 / 输出类型（用于写回画布节点）。 */
+  analyze(workflowJson: string): Promise<{
+    paramBindings: unknown[];
+    outputNodeIds: string[];
+    outputType: string;
+  }>;
+}
+
+/** LLM 接口：给一组消息、拿一段文本（引擎从中解析出一个 JSON action）。 */
+export interface AgentLLM {
+  complete(messages: AgentMessage[]): Promise<string>;
+}
+
+export interface AgentMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export type AgentEventType =
+  | "resources" // 已拉到资源清单
+  | "action" // LLM 选定的动作
+  | "tool_result" // 某个工具的返回
+  | "error" // 本轮出错（非致命，喂回继续）
+  | "done"; // 结束（成功/失败/耗尽）
+
+export interface AgentEvent {
+  type: AgentEventType;
+  iteration: number;
+  /** 面向用户的中文一句话（活动日志用）。 */
+  message: string;
+  data?: unknown;
+}
+
+export type AgentStatus = "success" | "failed" | "exhausted";
+
+export interface ComfyAgentResult {
+  status: AgentStatus;
+  /** 最终（或最后一版）workflowJson。 */
+  workflowJson?: string;
+  analysis?: { paramBindings: unknown[]; outputNodeIds: string[]; outputType: string };
+  images?: string[];
+  videos?: string[];
+  outputType?: "image" | "video";
+  iterations: number;
+  /** 完整事件日志（也逐条 emit 过）。 */
+  log: AgentEvent[];
+}
+
+export interface RunComfyAgentOptions {
+  /** 用户的自然语言任务（如「做一个 Flux + LoRA 的高清出图工作流并调通」）。 */
+  task: string;
+  tools: ComfyAgentTools;
+  llm: AgentLLM;
+  /** 最大迭代轮数（每轮一次 LLM 调用）。默认 8。 */
+  maxIterations?: number;
+  /** 流式事件回调（socket 用）。 */
+  emit?: (e: AgentEvent) => void;
+  /** 喂回给 LLM 的工具结果字符串上限，防对话膨胀。默认 4000。 */
+  maxFeedbackChars?: number;
+}
+
+/** LLM 每轮必须返回的单个 JSON 动作。 */
+interface AgentAction {
+  action: "author" | "validate" | "execute" | "finish" | "give_up";
+  /** author / finish 时提供完整 API 格式 workflow 图。 */
+  workflowJson?: string;
+  /** 简短理由（进日志）。 */
+  reasoning?: string;
+}
+
+const ACTION_HINT =
+  '你必须只返回一个 JSON 对象，形如 {"action":"author|validate|execute|finish|give_up","workflowJson":"...","reasoning":"..."}。' +
+  "author/finish 时 workflowJson 必须是完整的 ComfyUI **API 格式** 图（形如 {\"节点id\":{\"class_type\":...,\"inputs\":{...}}}）。";
+
+/** 构建系统提示（纯函数，便于单测）。 */
+export function buildSystemPrompt(task: string, res: ComfyResourceList): string {
+  const cap = (arr: string[], n: number) => (arr.length > n ? arr.slice(0, n).concat(`…(+${arr.length - n})`) : arr);
+  return [
+    "你是资深 ComfyUI 工作流工程师。目标：产出一份能在给定服务器上真机跑通的 **API 格式** workflow 图，并通过校验与运行验证。",
+    `任务：${task}`,
+    "",
+    "该服务器上的可用资源（务必只用这些，切勿编造不存在的名字）：",
+    `- checkpoints: ${cap(res.checkpoints, 40).join(", ") || "（无）"}`,
+    `- loras: ${cap(res.loras, 40).join(", ") || "（无）"}`,
+    `- vaes: ${cap(res.vaes, 20).join(", ") || "（无）"}`,
+    `- samplers: ${cap(res.samplers, 40).join(", ") || "（无）"}`,
+    `- schedulers: ${cap(res.schedulers, 20).join(", ") || "（无）"}`,
+    `- 已安装节点类: ${cap(res.nodeClasses, 120).join(", ") || "（未知）"}`,
+    "",
+    "工作流程：先 author 产出第一版（系统会自动帮你 validate 并把错误喂回）→ 按错误反复修正 →",
+    "自信可用时 execute 真机运行 → 若运行报错，读错误修正后再 execute → 成功后 finish。无法完成才 give_up。",
+    ACTION_HINT,
+  ].join("\n");
+}
+
+/** 从 LLM 文本里稳健地抽出第一个 JSON 动作对象；失败返回 null。 */
+export function extractAction(text: string): AgentAction | null {
+  if (!text) return null;
+  // 优先剥去 ```json ``` 围栏
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
+  const candidates: string[] = [];
+  if (fenced) candidates.push(fenced[1]);
+  // 再取从第一个 { 到最后一个 } 的最大块
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+  if (first !== -1 && last > first) candidates.push(text.slice(first, last + 1));
+  for (const c of candidates) {
+    try {
+      const obj = JSON.parse(c) as AgentAction;
+      if (obj && typeof obj.action === "string" &&
+          ["author", "validate", "execute", "finish", "give_up"].includes(obj.action)) {
+        return obj;
+      }
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+/**
+ * 跑一次 ComfyUI 工作流工程闭环。返回最终结果与完整事件日志。
+ * 纯编排：所有副作用都经注入的 tools / llm，因此可被完整单测。
+ */
+export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAgentResult> {
+  const maxIterations = opts.maxIterations ?? 8;
+  const cap = opts.maxFeedbackChars ?? 4000;
+  const log: AgentEvent[] = [];
+  const emit = (e: AgentEvent) => { log.push(e); opts.emit?.(e); };
+  const clip = (s: string) => (s.length > cap ? s.slice(0, cap) + "…（已截断）" : s);
+
+  // 0. 拉资源清单，进系统提示。
+  const resources = await opts.tools.listResources();
+  emit({ type: "resources", iteration: 0, message: `已获取服务器资源：${resources.checkpoints.length} checkpoints / ${resources.loras.length} loras / ${resources.nodeClasses.length} 节点类`, data: resources });
+
+  const messages: AgentMessage[] = [
+    { role: "system", content: buildSystemPrompt(opts.task, resources) },
+    { role: "user", content: "开始。请先 author 产出第一版 workflowJson。" },
+  ];
+
+  let current: string | undefined;
+
+  for (let iter = 1; iter <= maxIterations; iter++) {
+    const raw = await opts.llm.complete(messages);
+    messages.push({ role: "assistant", content: raw });
+    const action = extractAction(raw);
+
+    if (!action) {
+      emit({ type: "error", iteration: iter, message: "LLM 未返回合法 JSON 动作，已提示重试" });
+      messages.push({ role: "user", content: `上一条不是合法的单个 JSON 动作。${ACTION_HINT}` });
+      continue;
+    }
+
+    emit({ type: "action", iteration: iter, message: `第 ${iter} 轮：${action.action}${action.reasoning ? " — " + action.reasoning : ""}`, data: { action: action.action, reasoning: action.reasoning } });
+
+    if (action.action === "give_up") {
+      emit({ type: "done", iteration: iter, message: `智能体放弃：${action.reasoning ?? "未说明原因"}` });
+      return { status: "failed", workflowJson: current, iterations: iter, log };
+    }
+
+    if (action.action === "author") {
+      if (!action.workflowJson) {
+        messages.push({ role: "user", content: "author 必须附带完整的 workflowJson。" });
+        continue;
+      }
+      current = action.workflowJson;
+      const v = await opts.tools.validate(current);
+      emit({ type: "tool_result", iteration: iter, message: v.ok ? "校验通过" : `校验发现 ${v.errors.length} 处问题`, data: { tool: "validate", ok: v.ok, errors: v.errors } });
+      messages.push({ role: "user", content: v.ok ? "validate: 通过。可以 execute 真机运行。" : `validate: 失败：\n${clip(v.errors.join("\n"))}\n请修正后重新 author。` });
+      continue;
+    }
+
+    if (action.action === "validate") {
+      if (!current) { messages.push({ role: "user", content: "还没有 workflow，请先 author。" }); continue; }
+      const v = await opts.tools.validate(current);
+      emit({ type: "tool_result", iteration: iter, message: v.ok ? "校验通过" : `校验发现 ${v.errors.length} 处问题`, data: { tool: "validate", ok: v.ok, errors: v.errors } });
+      messages.push({ role: "user", content: v.ok ? "validate: 通过。" : `validate: 失败：\n${clip(v.errors.join("\n"))}` });
+      continue;
+    }
+
+    if (action.action === "execute" || action.action === "finish") {
+      const finalJson = action.action === "finish" ? (action.workflowJson || current) : current;
+      if (!finalJson) { messages.push({ role: "user", content: `${action.action} 前还没有 workflow，请先 author。` }); continue; }
+      current = finalJson;
+      // finish 前先跑一次校验，未过则不接受、继续修。
+      if (action.action === "finish") {
+        const v = await opts.tools.validate(current);
+        if (!v.ok) {
+          emit({ type: "tool_result", iteration: iter, message: `finish 前校验未过（${v.errors.length} 处）`, data: { tool: "validate", ok: false, errors: v.errors } });
+          messages.push({ role: "user", content: `finish 被拒：校验未过：\n${clip(v.errors.join("\n"))}\n请继续修正。` });
+          continue;
+        }
+      }
+      const r = await opts.tools.execute(current);
+      emit({ type: "tool_result", iteration: iter, message: r.ok ? "真机运行成功" : `运行失败：${clip(r.error ?? "未知错误")}`, data: { tool: "execute", ok: r.ok, error: r.error } });
+      if (r.ok) {
+        let analysis: ComfyAgentResult["analysis"];
+        try { analysis = await opts.tools.analyze(current); } catch { /* 分析失败不阻断成功 */ }
+        emit({ type: "done", iteration: iter, message: "工作流已调通 ✅" });
+        return { status: "success", workflowJson: current, analysis, images: r.images, videos: r.videos, outputType: r.outputType, iterations: iter, log };
+      }
+      messages.push({ role: "user", content: `execute 失败：${clip(r.error ?? "未知错误")}\n请修正 workflowJson 后再 execute。` });
+      continue;
+    }
+  }
+
+  emit({ type: "done", iteration: maxIterations, message: `已达最大轮数（${maxIterations}），未调通，返回最后一版工作流` });
+  return { status: "exhausted", workflowJson: current, iterations: maxIterations, log };
+}
