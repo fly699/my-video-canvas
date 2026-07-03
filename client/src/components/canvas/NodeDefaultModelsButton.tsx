@@ -154,7 +154,7 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
             />
           </div>
           <div style={{ marginBottom: 12, opacity: readOnly ? 0.6 : 1, pointerEvents: readOnly ? "none" : "auto" }}>
-            <div style={labelStyle}>字幕转录模型（语音识别 STT · 字幕节点）</div>
+            <div style={labelStyle}>字幕转录模型（语音识别 STT · 字幕 / 动态字幕节点）</div>
             <select
               value={catTranscribe}
               onChange={(e) => setCategory("transcribe", e.target.value)}

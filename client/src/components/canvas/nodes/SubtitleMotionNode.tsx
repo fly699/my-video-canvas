@@ -8,6 +8,9 @@ import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
+import { TRANSCRIBE_MODELS } from "@/lib/models";
+import { useDisabledModels } from "@/lib/useDisabledModels";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { Clapperboard, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
 import { buildShotSubtitles } from "@/lib/shotSubtitles";
 import { NodeInput } from "../NodeTextInput";
@@ -67,6 +70,11 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
 
   const update = useCallback((patch: Partial<SubtitleMotionNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
+  const { resolve } = useNodeDefaultModels();
+  const disabledModels = useDisabledModels();
+  // 转录模型：节点显式选 > 「节点默认模型」里 subtitle_motion.transcribe 的默认 > 出厂 whisper-1（与字幕节点一致）。
+  const transcribeModel = payload.transcribeModel || resolve("subtitle_motion", "transcribe");
+
   const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
 
   const findSourceVideoUrl = (): string | undefined => {
@@ -103,7 +111,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
     if (!videoUrl) { toast.error("请先连接视频节点或填写视频 URL"); return; }
     update({ status: "transcribing" });
-    transcribeMutation.mutate({ audioUrl: videoUrl, language: payload.language || undefined });
+    transcribeMutation.mutate({ audioUrl: videoUrl, language: payload.language || undefined, model: transcribeModel });
   };
 
   // 上游「已装配并完成合并」的成片 → 镜头表对白 + 各段精确起点直接生成字幕（同 SubtitleNode）。
@@ -227,6 +235,18 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
               <label style={labelStyle}>语言（留空自动检测）</label>
               <input className="nodrag" placeholder="zh / en / auto" value={payload.language ?? ""}
                 onChange={(e) => update({ language: e.target.value })} style={{ ...fieldStyle, width: 120 }} />
+            </div>
+
+            {/* 转录模型下拉（与字幕节点一致；OpenAI 兼容 STT，具体可用取决于已配置的转录后端）*/}
+            <div>
+              <label style={labelStyle}>转录模型</label>
+              <select className="nodrag" value={transcribeModel}
+                onChange={(e) => update({ transcribeModel: e.target.value })}
+                style={{ ...fieldStyle, cursor: "pointer" }}>
+                {TRANSCRIBE_MODELS.filter((m) => !disabledModels.has(m.value) || m.value === transcribeModel).map((m) => (
+                  <option key={m.value} value={m.value}>{m.label} · {m.desc}</option>
+                ))}
+              </select>
             </div>
 
             <button onClick={handleTranscribe} disabled={isTranscribing || isBurning}

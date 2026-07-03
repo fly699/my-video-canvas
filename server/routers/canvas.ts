@@ -3110,12 +3110,12 @@ export const subtitleRouter = router({
 // ── Motion Subtitles ──────────────────────────────────────────────────────────
 export const subtitleMotionRouter = router({
   transcribe: protectedProcedure
-    .input(z.object({ audioUrl: mediaUrlSchema, language: z.string().optional() }))
+    .input(z.object({ audioUrl: mediaUrlSchema, language: z.string().optional(), model: z.string().max(64).optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertWhitelisted(ctx);
       guardUrl(input.audioUrl);
       return dedupe("subtitleMotion.transcribe", ctx.user.id, input, async () => {
-        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language });
+        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language, model: input.model });
         if ("error" in result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
         const entries: SubtitleEntry[] = result.segments.map((s) => ({ start: s.start, end: s.end, text: s.text.trim() }));
         return { entries, fullText: result.text, language: result.language };
