@@ -13,8 +13,11 @@ type MiniEdge = { source: string; target: string };
 
 // 图源类型：含「推送式」会写下游参考图的 image_edit / pose_control（其结果图在
 // outputUrl/outputImageUrl），使拉取式回溯与推送式覆盖的源集合对齐，避免连了图像
-// 编辑/构图控制却在参考图拉取时认不出来。post_process 产出的是文本提示词，非图，故不含。
-const IMAGE_SOURCE_TYPES = new Set(["image_gen", "comfyui_image", "storyboard", "comfyui_workflow", "asset", "image_edit", "pose_control"]);
+// 编辑/构图控制却在参考图拉取时认不出来。director（3D 渲染截图存 imageUrl）同为图源——
+// 连接矩阵允许 director → ComfyUI 图像/视频/自定义 与角色，故这里必须认它，否则
+// detectUpstreamImages 拉不到 director 的截图、参考图/角色图不会被填充。
+// post_process 产出的是文本提示词，非图，故不含。
+const IMAGE_SOURCE_TYPES = new Set(["image_gen", "comfyui_image", "storyboard", "comfyui_workflow", "asset", "image_edit", "pose_control", "director"]);
 
 /** Pick a node's image-output URL regardless of which field/type it uses. */
 function getNodeImageUrl(nodeType: string, payload: Record<string, unknown>): string | undefined {

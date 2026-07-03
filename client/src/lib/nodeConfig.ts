@@ -2,13 +2,13 @@ import type { NodeType } from "../../../shared/types";
 import {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard, Workflow,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard, Workflow,
 };
 
 export interface NodeConfig {

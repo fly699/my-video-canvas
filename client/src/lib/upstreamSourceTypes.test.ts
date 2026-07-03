@@ -31,12 +31,15 @@ describe("listUpstreamVideoSources — 含合成类视频源（与 runner VIDEO_
   });
 });
 
-describe("detectUpstreamImages — 含 image_edit / pose_control（与推送式源集合对齐）", () => {
+describe("detectUpstreamImages — 含 image_edit / pose_control / director（与推送式源集合对齐）", () => {
   it("识别 image_edit / pose_control 的 outputUrl/outputImageUrl 作图源", () => {
     const nodes = [
       node("e", "image_edit", { outputUrl: "edit.png" }),
       node("p", "pose_control", { outputImageUrl: "pose.png" }),
     ];
     expect(detectUpstreamImages("t", [edge("e"), edge("p")], nodes)).toEqual(["edit.png", "pose.png"]);
+  });
+  it("识别 director 的 3D 截图(imageUrl)作图源（连接矩阵允许 director → ComfyUI/角色，收集处须认它）", () => {
+    expect(detectUpstreamImages("t", [edge("d")], [node("d", "director", { imageUrl: "3d.png" })])).toEqual(["3d.png"]);
   });
 });
