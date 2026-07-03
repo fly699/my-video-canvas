@@ -390,9 +390,32 @@ export async function tunnelDiagnose(pid: number | null, edgeBindIp: string, log
       cfSources = Array.from(ips);
     }
   } catch { /* 取不到 */ }
-  lines.push(`• cloudflared(pid ${pid ?? "?"}) 实际在用的本机源 IP：${cfSources.length ? cfSources.join("、") : "(未取到)"}`);
+  lines.push(`• 本应用管控的 cloudflared：pid ${pid ?? "(未在跑)"}${cfSources.length ? "，实际在用源 IP " + cfSources.join("、") : ""}`);
+  // 全系统扫描所有 cloudflared 进程/服务：揪出「应用管不到的独立实例/服务」——CF 显示的很可能是它
+  //（它独立于应用、常一直挂默认线；服务级的还看不见于普通「进程」标签页、被杀会自动重启）。
+  let strayProcs: string[] = []; let svcs: string[] = [];
+  try {
+    if (win) {
+      const psProc = `Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'cloudflared.exe' } | ForEach-Object { 'PID ' + $_.ProcessId + ' | ' + $_.CommandLine }`;
+      const { stdout } = await pexec(`powershell -NoProfile -NonInteractive -Command "${psProc}"`, { timeout: 15000, windowsHide: true, encoding: "utf8" });
+      const all = stdout.split(/\r?\n/).map((s) => s.trim().replace(/--token\s+\S+/gi, "--token ***")).filter(Boolean);
+      strayProcs = all.filter((l) => pid == null || !new RegExp(`^PID ${pid}\\b`).test(l));
+      lines.push(`• 全系统 cloudflared.exe 进程（共 ${all.length}）：` + (all.length ? "\n    " + all.join("\n    ") : "(无)"));
+      const psSvc = `Get-CimInstance Win32_Service | Where-Object { $_.Name -like '*cloudflared*' } | ForEach-Object { $_.Name + ' | ' + $_.State + ' | ' + $_.PathName }`;
+      const { stdout: sv } = await pexec(`powershell -NoProfile -NonInteractive -Command "${psSvc}"`, { timeout: 15000, windowsHide: true, encoding: "utf8" });
+      svcs = sv.split(/\r?\n/).map((s) => s.trim().replace(/--token\s+\S+/gi, "--token ***")).filter(Boolean);
+      lines.push(`• cloudflared 服务：` + (svcs.length ? "\n    " + svcs.join("\n    ") : "(无)"));
+    } else {
+      const { stdout } = await pexec(`ps -eo pid,args 2>/dev/null | grep -w cloudflared | grep -v grep || true`, { timeout: 8000, encoding: "utf8" });
+      const all = stdout.split(/\r?\n/).map((s) => s.trim().replace(/--token\s+\S+/gi, "--token ***")).filter(Boolean);
+      lines.push(`• 全系统 cloudflared 进程（共 ${all.length}）：` + (all.length ? "\n    " + all.join("\n    ") : "(无)"));
+      strayProcs = all.filter((l) => pid == null || !new RegExp(`^${pid}\\b`).test(l));
+    }
+  } catch { /* 忽略 */ }
   try { const rs = await tunnelRouteStatus(log); lines.push(rs.log); } catch { /* 忽略 */ }
-  const verdict = tunnelDiagnoseVerdict(adminOk, edgeBindIp, cfSources);
+  let verdict = tunnelDiagnoseVerdict(adminOk, edgeBindIp, cfSources);
+  if (svcs.length) verdict = `⚠️ 检测到 cloudflared 服务（独立于本应用、常挂默认线、杀了会自动重启）——CF 显示的极可能是它。请用管理员执行 cloudflared service uninstall（或 sc delete 服务名），再重启本应用。` + " ｜ " + verdict;
+  else if (strayProcs.length) verdict = `⚠️ 检测到 ${strayProcs.length} 个非本应用管控的 cloudflared 进程（孤儿/独立实例）——CF 显示的可能是它。请结束它们后重启隧道。` + " ｜ " + verdict;
   lines.push("——", "结论：" + verdict);
   return { adminOk, cfSources, report: lines.join("\n"), verdict };
 }
