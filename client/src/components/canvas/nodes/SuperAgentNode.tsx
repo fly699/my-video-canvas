@@ -50,8 +50,13 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const payload = data.payload;
   const update = useCallback((patch: Partial<SuperAgentNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
+  const mode = payload.mode ?? "comfy";
   const buildMut = trpc.superAgent.buildComfyWorkflow.useMutation();
-  const running = payload.status === "running" || buildMut.isPending;
+  const codeMut = trpc.superAgent.runCodeTask.useMutation();
+  // code 模式可用性（L3+ 才有权查询；查询失败/无权 → 视为不可用）。
+  const codeStatus = trpc.superAgent.codeStatus.useQuery(undefined, { enabled: mode === "code", retry: false });
+  const codeEnabled = codeStatus.data?.enabled === true;
+  const running = payload.status === "running" || buildMut.isPending || codeMut.isPending;
 
   // 活动日志自动滚到底。
   const logRef = useRef<HTMLDivElement>(null);
@@ -85,6 +90,25 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     );
   }, [running, payload.task, payload.baseUrl, data.projectId, id, buildMut, update]);
 
+  const handleRunCode = useCallback(() => {
+    if (running) return;
+    const task = (payload.task ?? "").trim();
+    if (!task) { toast.error("请先描述代码任务"); return; }
+    update({ status: "running", log: [], codeResult: undefined, blockedCommand: undefined, errorMessage: undefined });
+    codeMut.mutate(
+      { projectId: data.projectId, nodeId: id, task },
+      {
+        onSuccess: (res) => {
+          update({ status: res.status === "success" ? "success" : "failed", codeResult: res.result, blockedCommand: res.blockedCommand, log: res.log.map((e) => ({ type: e.type, iteration: 0, message: e.message })) });
+          if (res.status === "success") toast.success("代码任务完成");
+          else if (res.status === "aborted") toast.error("已拦截危险命令并中止：" + (res.blockedCommand ?? ""));
+          else toast.error("代码任务失败");
+        },
+        onError: (e) => { update({ status: "failed", errorMessage: e.message }); toast.error("运行失败：" + e.message); },
+      },
+    );
+  }, [running, payload.task, data.projectId, id, codeMut, update]);
+
   // 把调通（或最后一版）的 workflowJson 写回一个新的 comfyui_workflow 画布节点。
   const handleApply = useCallback(() => {
     if (!payload.resultWorkflowJson) return;
@@ -108,41 +132,63 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   return (
     <BaseNode id={id} selected={selected} nodeType="super_agent" title={data.title} minHeight={320} resizable showHandles={false} capNodeHeight>
       <div className="flex flex-col gap-2.5" style={{ padding: "2px 2px 4px" }}>
+        {/* 模式切换 */}
+        <div className="nodrag flex" style={{ gap: 4, background: "var(--c-surface)", padding: 3, borderRadius: 9, border: `1px solid ${BORDER}` }}>
+          {([["comfy", "ComfyUI 工作流"], ["code", "代码任务"]] as const).map(([m, label]) => (
+            <button key={m} disabled={running} onClick={() => update({ mode: m })}
+              className="flex-1 py-1.5 rounded-md text-xs font-medium transition-all"
+              style={{ background: mode === m ? accentA(0.18) : "transparent", color: mode === m ? accent : "var(--c-t3)", border: `1px solid ${mode === m ? accentA(0.45) : "transparent"}`, cursor: running ? "not-allowed" : "pointer" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.5 }}>
-          描述工程任务，服务端自动「写 ComfyUI 工作流 → 校验 → 真机运行 → 读错 → 修正」直到调通，全程无需你手写 JSON。
+          {mode === "comfy"
+            ? "描述工程任务，服务端自动「写 ComfyUI 工作流 → 校验 → 真机运行 → 读错 → 修正」直到调通，全程无需你手写 JSON。"
+            : "描述代码任务，服务端在一次性隔离工作区跑无头 Claude Code；危险命令由 commandPolicy 拦截。需超管 L4 + 服务端开启。"}
         </div>
 
         <div>
-          <label style={labelStyle}>工程任务</label>
+          <label style={labelStyle}>{mode === "comfy" ? "工程任务" : "代码任务"}</label>
           <textarea
             className="nodrag" rows={3} disabled={running}
-            placeholder="例：做一个 SDXL 文生图工作流，1024×1024，带一个细节 LoRA，并调通"
+            placeholder={mode === "comfy" ? "例：做一个 SDXL 文生图工作流，1024×1024，带一个细节 LoRA，并调通" : "例：读取工作区里的 err.log，定位报错根因并写一份修复说明"}
             value={payload.task ?? ""} onChange={(e) => update({ task: e.target.value })}
             style={{ ...fieldStyle, resize: "vertical" }}
           />
         </div>
 
-        <div>
-          <label style={labelStyle}>目标 ComfyUI 服务器（留空用服务端默认）</label>
-          <input
-            className="nodrag" disabled={running} placeholder="http://127.0.0.1:8188"
-            value={payload.baseUrl ?? ""} onChange={(e) => update({ baseUrl: e.target.value })}
-            style={fieldStyle}
-          />
-        </div>
+        {mode === "comfy" && (
+          <div>
+            <label style={labelStyle}>目标 ComfyUI 服务器（留空用服务端默认）</label>
+            <input
+              className="nodrag" disabled={running} placeholder="http://127.0.0.1:8188"
+              value={payload.baseUrl ?? ""} onChange={(e) => update({ baseUrl: e.target.value })}
+              style={fieldStyle}
+            />
+          </div>
+        )}
+
+        {mode === "code" && !codeEnabled && !codeStatus.isLoading && (
+          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.7 0.16 60 / 0.08)", border: "1px solid oklch(0.7 0.16 60 / 0.3)", fontSize: 11, color: "oklch(0.62 0.14 60)" }}>
+            代码任务未启用。需服务端设置 <code>SUPER_AGENT_CODE_ENABLED=1</code>（放行 shell 再加 <code>SUPER_AGENT_CODE_ALLOW_BASH=1</code>），且当前用户为超级管理员 L4。
+          </div>
+        )}
 
         <button
-          onClick={handleRun} disabled={running}
+          onClick={mode === "comfy" ? handleRun : handleRunCode}
+          disabled={running || (mode === "code" && !codeEnabled)}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
-            background: running ? "var(--c-surface)" : accentA(0.14),
-            border: `1px solid ${running ? BORDER : accentA(0.5)}`,
-            color: running ? "var(--c-t4)" : accent,
-            cursor: running ? "not-allowed" : "pointer",
+            background: running || (mode === "code" && !codeEnabled) ? "var(--c-surface)" : accentA(0.14),
+            border: `1px solid ${running || (mode === "code" && !codeEnabled) ? BORDER : accentA(0.5)}`,
+            color: running || (mode === "code" && !codeEnabled) ? "var(--c-t4)" : accent,
+            cursor: running || (mode === "code" && !codeEnabled) ? "not-allowed" : "pointer",
           }}
         >
           {running ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Play style={{ width: 13, height: 13 }} />}
-          {running ? "工程智能体运行中…" : "运行工程智能体"}
+          {running ? "工程智能体运行中…" : mode === "comfy" ? "运行工程智能体" : "运行代码任务"}
         </button>
 
         {/* 活动日志（socket 流式回灌） */}
@@ -192,6 +238,19 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
           <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: "1px solid oklch(0.62 0.2 25 / 0.3)" }}>
             <XCircle style={{ width: 13, height: 13, color: "oklch(0.62 0.2 25)", flexShrink: 0, marginTop: 1 }} />
             <span style={{ fontSize: 11.5, color: "oklch(0.62 0.2 25)" }}>{payload.errorMessage}</span>
+          </div>
+        )}
+
+        {/* code 模式：被拦截的危险命令 */}
+        {payload.blockedCommand && (
+          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: "1px solid oklch(0.62 0.2 25 / 0.3)", fontSize: 11.5, color: "oklch(0.62 0.2 25)" }}>
+            已拦截危险命令并中止：<code style={{ wordBreak: "break-all" }}>{payload.blockedCommand}</code>
+          </div>
+        )}
+        {/* code 模式：任务结果文本 */}
+        {mode === "code" && payload.status === "success" && payload.codeResult && (
+          <div className="nowheel px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.65 0.2 155 / 0.08)", border: "1px solid oklch(0.65 0.2 155 / 0.3)", fontSize: 11.5, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 180, overflowY: "auto" }}>
+            {payload.codeResult}
           </div>
         )}
 
