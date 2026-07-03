@@ -20,6 +20,10 @@
       [
         "expo-image-picker",
         { "photosPermission": "允许访问相册以上传素材", "cameraPermission": "允许使用相机拍摄素材" }
+      ],
+      [
+        "expo-build-properties",
+        { "android": { "kotlinVersion": "1.9.25" } }
       ]
     ]
   }
