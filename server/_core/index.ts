@@ -174,6 +174,17 @@ async function startServer() {
     lastSignedIn: new Date(),
   };
 
+  // 从 socket 构造带鉴权信息的请求：原生/移动客户端无 Cookie，用 handshake.auth.token 传 JWT →
+  // 注入成 Authorization: Bearer，交给 sdk.authenticateRequest 统一校验（与 HTTP 端同一套逻辑）。
+  const socketAuthReq = (socket: { request: unknown; handshake?: { auth?: unknown } }) => {
+    const req = socket.request as { headers?: Record<string, unknown> };
+    const token = (socket.handshake?.auth as { token?: unknown } | undefined)?.token;
+    if (typeof token === "string" && token) {
+      return { ...req, headers: { ...(req.headers ?? {}), authorization: `Bearer ${token}` } };
+    }
+    return req;
+  };
+
   io.use(async (socket, next) => {
     try {
       if (isDevBypass) {
@@ -183,7 +194,7 @@ async function startServer() {
       // socket.request is a Node IncomingMessage; sdk.authenticateRequest only
       // touches the cookie header, so the shape matches Express's Request enough.
       const user = await sdk.authenticateRequest(
-        socket.request as unknown as Parameters<typeof sdk.authenticateRequest>[0],
+        socketAuthReq(socket) as unknown as Parameters<typeof sdk.authenticateRequest>[0],
       );
       (socket.data as { user: User }).user = user;
       next();
@@ -388,7 +399,7 @@ async function startServer() {
         return next();
       }
       const user = await sdk.authenticateRequest(
-        socket.request as unknown as Parameters<typeof sdk.authenticateRequest>[0],
+        socketAuthReq(socket) as unknown as Parameters<typeof sdk.authenticateRequest>[0],
       );
       (socket.data as { user: User }).user = user;
       next();
