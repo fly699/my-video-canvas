@@ -319,6 +319,11 @@ export async function applyTunnelRoutes(sourceIp: string, gatewayOverride?: stri
   const line: RouteLine = { ifIndex: l.ifIndex, ifName: l.ifName };
   const ifaceLabel = l.ifName ?? (l.ifIndex != null ? `IF ${l.ifIndex}` : "未知网卡");
   const gw = (gatewayOverride && isIP(gatewayOverride) === 4) ? gatewayOverride : (l.gateway ?? "");
+  // 网关不同段告警：用户手填的网关若与该网卡实际网关不同（多为填错、且不在网卡子网内），路由会「已配
+  // 但不通」（黑洞回退默认线）。这是最隐蔽的坑——路由状态看着 dev 对，实际发不出去。
+  const gwWarn = (gatewayOverride && isIP(gatewayOverride) === 4 && l.gateway && gatewayOverride !== l.gateway)
+    ? `⚠️ 你填的网关 ${gatewayOverride} 与该网卡（${ifaceLabel}）实际网关 ${l.gateway} 不一致。若它不在该网卡子网内，路由会「已配但不通」、流量回退默认线。建议清空「专线网关 IP」框用自动探测（会用 ${l.gateway}）。`
+    : "";
   if (isIP(gw) !== 4) {
     return {
       ok: false, gateway: null, iface: l.ifName, cidrs: cidrs.map((c) => c.prefix), needsElevation: false, ipv6Warn,
@@ -327,6 +332,7 @@ export async function applyTunnelRoutes(sourceIp: string, gatewayOverride?: stri
     };
   }
   const lines = [`[路由] 所选专线：源 IP ${sourceIp || "(未填)"} → 网卡 ${ifaceLabel} → 网关 ${gw}；把 ${cidrs.length} 个 CF 边缘网段钉到该网卡：`];
+  if (gwWarn) lines.push(gwWarn);
   let allOk = true;
   for (const r of cidrs) { const { ok, line: ln } = await runRoute("add", r, gw, line); lines.push(ln); if (!ok) allOk = false; }
   const needsElevation = lines.some((x) => /elevation|拒绝访问|access is denied|requires elevation/i.test(x));
@@ -349,6 +355,46 @@ export async function removeTunnelRoutes(extraLog = ""): Promise<{ ok: boolean; 
   const manual = manualRemoveCommands(cidrs);
   if (!ok || needsElevation) lines.push(`（移除失败${needsElevation ? "：本服务未以管理员运行" : ""}。请用管理员 CMD/PowerShell 执行：）\n${manual}`);
   return { ok, log: lines.join("\n"), manual };
+}
+
+/** 「一键诊断走线」的结论（纯函数、便于单测）。核心判据：cloudflared 进程**实际在用的本机源 IP**
+ *  是否等于用户选的专线源 IP。 */
+export function tunnelDiagnoseVerdict(adminOk: boolean, edgeBindIp: string, cfSources: string[]): string {
+  if (!adminOk) return "❌ 本服务非管理员运行——无法自动改路由（这是首要问题）。请以管理员重启应用，或用管理员手动加路由。";
+  if (!edgeBindIp) return "未设「出口专线绑定」，无法判断目标专线。请先在上方选专线源 IP。";
+  if (cfSources.length === 0) return "未取到 cloudflared 实时连接源（可能刚重连或权限不足）。请看下方路由明细，并「停用→启用」隧道后再诊断一次。";
+  if (cfSources.includes(edgeBindIp)) return `✅ cloudflared 实际正用你选的专线源 IP（${edgeBindIp}），走线正确。若 CF 面板仍显示旧 IP，多为其缓存/旧连接，稍候或重启隧道即会刷新。`;
+  return `⚠️ cloudflared 实际在用 ${cfSources.join("、")}，不是你选的 ${edgeBindIp}。说明隧道没走专线——请「停用隧道，等约 10 秒确认 cloudflared 退出，再启用」让它按现有路由重连；若重启后仍不对，多是路由网关/度量或有重复路由（见下方明细）。`;
+}
+
+/** 一键诊断隧道走线：查管理员权限、cloudflared 实际在用的本机源 IP（地面真相）、CF 路由明细，给结论。只读，不改任何东西。 */
+export async function tunnelDiagnose(pid: number | null, edgeBindIp: string, log: string): Promise<{ adminOk: boolean; cfSources: string[]; report: string; verdict: string }> {
+  const win = process.platform === "win32";
+  const lines: string[] = ["[诊断] 隧道走线："];
+  let adminOk = false; let cfSources: string[] = [];
+  try {
+    if (win) { const { stdout } = await pexec(`powershell -NoProfile -NonInteractive -Command "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole('Administrator')"`, { timeout: 10000, windowsHide: true, encoding: "utf8" }); adminOk = /true/i.test(stdout); }
+    else { const { stdout } = await pexec("id -u", { timeout: 5000, encoding: "utf8" }); adminOk = stdout.trim() === "0"; }
+  } catch { /* 未知 */ }
+  lines.push(`• 管理员运行：${adminOk ? "是" : "否 ← 无法自动改路由"}`);
+  lines.push(`• 出口专线绑定（你选的专线）：${edgeBindIp || "(未设)"}`);
+  try {
+    if (pid && win) {
+      const ps = `Get-NetUDPEndpoint -OwningProcess ${pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LocalAddress -Unique`;
+      const { stdout } = await pexec(`powershell -NoProfile -NonInteractive -Command "${ps}"`, { timeout: 12000, windowsHide: true, encoding: "utf8" });
+      cfSources = stdout.split(/\r?\n/).map((s) => s.trim()).filter((s) => isIP(s) === 4 && s !== "0.0.0.0" && !s.startsWith("127."));
+    } else if (pid && !win) {
+      const { stdout } = await pexec(`ss -unpH 2>/dev/null | grep -w pid=${pid} || true`, { timeout: 8000, encoding: "utf8" });
+      const ips = new Set<string>();
+      for (const m of Array.from(stdout.matchAll(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+\b/g))) if (isIP(m[1]) === 4 && !m[1].startsWith("127.")) ips.add(m[1]);
+      cfSources = Array.from(ips);
+    }
+  } catch { /* 取不到 */ }
+  lines.push(`• cloudflared(pid ${pid ?? "?"}) 实际在用的本机源 IP：${cfSources.length ? cfSources.join("、") : "(未取到)"}`);
+  try { const rs = await tunnelRouteStatus(log); lines.push(rs.log); } catch { /* 忽略 */ }
+  const verdict = tunnelDiagnoseVerdict(adminOk, edgeBindIp, cfSources);
+  lines.push("——", "结论：" + verdict);
+  return { adminOk, cfSources, report: lines.join("\n"), verdict };
 }
 
 /** 检测当前这些 CF 网段是否已被路由、以及**实际走哪块网卡/网关**（用于面板「检测路由状态」）。
