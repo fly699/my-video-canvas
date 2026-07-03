@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, execFile, type ChildProcess } from "child_process";
 import { isIP, type Socket } from "net";
 import { parseQuickTunnelUrl, tunnelHostFromUrl, type TunnelWhitelist } from "./tunnelGate";
 import { getTunnelSettings, setTunnelSettings } from "../db";
@@ -119,8 +119,25 @@ export function buildTunnelArgs(opts: { named: boolean; token: string; tunnelPor
     : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`, ...bind];
 }
 
+/** 杀掉遗留的 cloudflared 进程。应用每次重启（node 进程重启）都会把上一个 cloudflared 子进程留成
+ *  **孤儿**——它仍用旧连接（旧线路，多为默认线 Intel）挂着同一个 token。于是 CF 连接器里堆出一大堆
+ *  连接器，且旧孤儿一直在 Intel 上：无论我们怎么改路由/绑定，CF 显示的都是那个孤儿的源 IP，与新进程无关
+ *  （这正是「路由已改、CF 仍显示默认线」的真凶）。故启动新 cloudflared 前先清干净，保证 CF 只看到我们
+ *  这一个受路由/绑定管控的连接器。本应用独占管理内置 cloudflared，直接按进程名清理。 */
+function killStrayCloudflared(): Promise<void> {
+  return new Promise((resolve) => {
+    const win = process.platform === "win32";
+    const cmd = win ? "taskkill" : "pkill";
+    const args = win ? ["/F", "/IM", "cloudflared.exe"] : ["-x", "cloudflared"];
+    try { execFile(cmd, args, { windowsHide: true, timeout: 8000 }, () => resolve()); }
+    catch { resolve(); }
+  });
+}
+
 export async function startTunnel(): Promise<void> {
   if (proc) return;
+  // 先清理上次残留的 cloudflared 孤儿进程，避免 CF 连接器里出现多个、旧的挂在默认线导致「改了没用」。
+  await killStrayCloudflared();
   const cfg = await getTunnelSettings();
   if (!cfg.runCloudflared) { status = { running: false, publicUrl: cfg.publicUrl, error: null }; return; } // 纯门控模式：不起进程
   const bin = await resolveCloudflaredPath();
@@ -193,8 +210,23 @@ export async function applyTunnelEnabled(enabled: boolean): Promise<void> {
   await reloadTunnelGate();
 }
 
+let cleanupHooked = false;
+/** 应用退出时杀掉自己的 cloudflared 子进程，避免留成孤儿（否则重启后 CF 连接器里越堆越多、旧的挂默认线）。 */
+function hookProcessCleanup(): void {
+  if (cleanupHooked) return;
+  cleanupHooked = true;
+  const killChild = () => { if (proc) { try { proc.kill("SIGKILL"); } catch { /* ignore */ } proc = null; } };
+  process.once("exit", killChild);
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+    process.once(sig, () => { killChild(); process.exit(0); });
+  }
+}
+
 /** Start at boot if it was left enabled. */
 export async function initTunnel(): Promise<void> {
+  hookProcessCleanup();
+  // 开机先清一次遗留的 cloudflared 孤儿（上次异常退出可能留下），再按需拉起，保证只有一个连接器。
+  await killStrayCloudflared();
   try { const cfg = await getTunnelSettings(); if (cfg.enabled) await startTunnel(); await reloadTunnelGate(); } catch { /* non-fatal */ }
 }
 
