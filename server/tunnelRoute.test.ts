@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, parseTraceIp } from "./_core/tunnelRoute";
+import { CF_EDGE_ROUTES, edgeCidrsFromLog, logHasIpv6Edge, manualRouteCommands, manualRemoveCommands, routeCommand, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, parseTraceIp } from "./_core/tunnelRoute";
 
 describe("tunnelRoute · 边缘网段与命令生成", () => {
   it("内置 CF 边缘 = cloudflared 实际连接的两段", () => {
@@ -55,6 +55,26 @@ describe("tunnelRoute · 边缘网段与命令生成", () => {
   it("tunnelEgressInfo：无日志时 dest 用内置代表边缘 IP", async () => {
     const r = await tunnelEgressInfo("203.0.113.9", true, "");
     expect(r.dest).toBe("198.41.192.227");
+  });
+
+  it("routeCommand：把路由钉到所选专线网卡（Windows IF / Linux dev）+ metric 1", () => {
+    const r = { net: "198.41.192.0", mask: "255.255.255.0", prefix: "198.41.192.0/24" };
+    expect(routeCommand("win32", "add", r, "192.168.12.1", { ifIndex: 12, ifName: "WLAN" }))
+      .toBe("route add 198.41.192.0 mask 255.255.255.0 192.168.12.1 metric 1 IF 12");
+    expect(routeCommand("win32", "add", r, "192.168.12.1", { ifIndex: 12, ifName: "WLAN" }, true)).toContain("route -p add");
+    expect(routeCommand("win32", "add", r, "192.168.12.1", { ifIndex: null, ifName: null }))
+      .toBe("route add 198.41.192.0 mask 255.255.255.0 192.168.12.1 metric 1"); // 无接口号则不带 IF
+    expect(routeCommand("linux", "add", r, "192.168.12.1", { ifIndex: null, ifName: "wlan0" }))
+      .toBe("ip route replace 198.41.192.0/24 via 192.168.12.1 dev wlan0");
+    expect(routeCommand("win32", "del", r, "", { ifIndex: 12, ifName: "WLAN" })).toBe("route delete 198.41.192.0");
+    expect(routeCommand("linux", "del", r, "", { ifIndex: null, ifName: "wlan0" })).toBe("ip route del 198.41.192.0/24");
+  });
+
+  it("manualRemoveCommands：每段一条删除命令", () => {
+    const cmds = manualRemoveCommands();
+    expect(cmds.split(/\r?\n/).filter(Boolean).length).toBe(2);
+    expect(cmds).toContain("198.41.192.0");
+    expect(cmds).toContain("198.41.200.0");
   });
 
   it("parseTraceIp：从 CF trace 响应取公网出口 IP", () => {
