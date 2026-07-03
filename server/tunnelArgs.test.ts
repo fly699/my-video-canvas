@@ -1,5 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { tunnelErrorHint } from "./_core/tunnel";
+import { tunnelErrorHint, buildTunnelArgs } from "./_core/tunnel";
+
+describe("buildTunnelArgs（命名隧道绝不传 --edge-bind-address，否则 run 子命令打印 usage 退出→530）", () => {
+  it("命名隧道：即便填了 edge-bind 也不传该 flag", () => {
+    const args = buildTunnelArgs({ named: true, token: "TOK", tunnelPort: 3001, bindIp: "192.168.12.24" });
+    expect(args).toEqual(["tunnel", "run", "--token", "TOK"]);
+    expect(args).not.toContain("--edge-bind-address");
+  });
+  it("快速隧道 + 合法 edge-bind：传该 flag", () => {
+    const args = buildTunnelArgs({ named: false, token: "", tunnelPort: 3001, bindIp: "192.168.12.24" });
+    expect(args).toEqual(["tunnel", "--no-autoupdate", "--url", "http://localhost:3001", "--edge-bind-address", "192.168.12.24"]);
+  });
+  it("快速隧道 + 空/非法 edge-bind：不传该 flag", () => {
+    expect(buildTunnelArgs({ named: false, token: "", tunnelPort: 3001, bindIp: "" })).not.toContain("--edge-bind-address");
+    expect(buildTunnelArgs({ named: false, token: "", tunnelPort: 3001, bindIp: "not-an-ip" })).not.toContain("--edge-bind-address");
+  });
+});
 
 describe("tunnelErrorHint（把 cloudflared 真实报错挑出来给面板显示）", () => {
   it("优先挑含错误关键词的行", () => {

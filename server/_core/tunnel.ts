@@ -101,6 +101,21 @@ export function tunnelErrorHint(log: string): string {
   return base;
 }
 
+/** 构造 cloudflared 启动参数（纯函数，便于单测/防回归）。
+ *  - 快速隧道：`tunnel --no-autoupdate --url http://localhost:<port>`，回源到本机回环监听。
+ *  - 命名隧道：`tunnel run --token <TOKEN>`，回源在 Cloudflare 面板配置。
+ *  关键：**`--edge-bind-address` 只对快速隧道传**。命名隧道的 `tunnel run` 子命令**不认**此 flag
+ *  （会打印 usage 直接退出 → 隧道起不来、回源 530），且它对命名隧道本就不生效——命名隧道走专线
+ *  要用「专线路由」（OS 路由层）。所以命名隧道绝不传此参数。 */
+export function buildTunnelArgs(opts: { named: boolean; token: string; tunnelPort: number; bindIp: string }): string[] {
+  const { named, token, tunnelPort, bindIp } = opts;
+  const args = named ? ["tunnel", "run", "--token", token.trim()]
+                     : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`];
+  const ip = (bindIp ?? "").trim();
+  if (!named && ip && isIP(ip)) args.push("--edge-bind-address", ip);
+  return args;
+}
+
 export async function startTunnel(): Promise<void> {
   if (proc) return;
   const cfg = await getTunnelSettings();
@@ -111,14 +126,7 @@ export async function startTunnel(): Promise<void> {
   // 命名隧道 = 存了 Token 且未选「临时改走快速隧道」。preferQuick 让 Token 保留着也能跑快速隧道，
   // 切回命名隧道无需重新粘贴 Token。
   const named = cfg.token.trim().length > 0 && !cfg.preferQuick;
-  // Quick tunnel forwards to our dedicated loopback listener (plain HTTP → no 502 from
-  // self-signed TLS). Named tunnel's origin is configured in the CF dashboard — point it
-  // at http://localhost:<this port> (shown in the admin UI).
-  const args = named ? ["tunnel", "run", "--token", cfg.token.trim()]
-                     : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${tunnelPort}`];
-  // 出口专线绑定：把 cloudflared 到 Cloudflare 边缘的出站源 IP 绑定到指定线路的源 IP。仅接受合法 IP。
-  const bindIp = (cfg.edgeBindAddress ?? "").trim();
-  if (bindIp && isIP(bindIp)) args.push("--edge-bind-address", bindIp);
+  const args = buildTunnelArgs({ named, token: cfg.token, tunnelPort, bindIp: cfg.edgeBindAddress ?? "" });
   try {
     // windowsHide：Windows 上不弹出 cloudflared 的控制台黑窗（否则用户很容易误手关掉窗口，
     // 连带把隧道进程杀掉）。stdout/stderr 仍通过管道进 logBuf，日志照收不误。
