@@ -121,7 +121,9 @@ export function ComfyServerStatusIndicator() {
     for (const u of offline) removeLocal(u);
     // 2) 画布内所有 ComfyUI 节点
     const cs = useCanvasStore.getState();
-    const COMFY = new Set(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
+    // 含工程智能体(super_agent)：它也带 serverUrls/customBaseUrl（ComfyUI 工作流模式），
+    // 全画布失效服务器清理须覆盖它。
+    const COMFY = new Set(["comfyui_image", "comfyui_video", "comfyui_workflow", "super_agent"]);
     let nodeCount = 0;
     for (const n of cs.nodes) {
       if (!COMFY.has(n.data.nodeType)) continue;
