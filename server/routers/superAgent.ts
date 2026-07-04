@@ -9,7 +9,7 @@ import { assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog } from "../_core/auditLog";
 import { ENV } from "../_core/env";
 import { runComfyAgent, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
-import { createComfyTools, createAgentLLM, pickReferenceWorkflows } from "../_core/superAgent/comfyAdapters";
+import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferenceCandidates } from "../_core/superAgent/comfyAdapters";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
@@ -112,16 +112,24 @@ export const superAgentRouter = router({
       const tools = { ...createComfyTools({ baseUrl, projectId: input.projectId, nodeId: input.nodeId }), ...installTools };
       const llm = createAgentLLM(ctx, input.model); // LLM 白名单/密钥门控在 invokeLLMWithKie 内部强制
 
-      // 从零编写时，检索共享模板库里「已在真实 ComfyUI 保存/调通」的相似工作流当参考范例（安全语料、可滚雪球）。
+      // 从零编写时，检索参考范例：优先本项目画布上已有的 comfyui_workflow 节点（你自己刚跑通的图），
+      // 再加共享模板库里「已在真实 ComfyUI 保存/调通」的相似工作流。安全语料、可滚雪球。
       // 续接（seedWorkflowJson）已有基底，不再注入以省上下文。
       let referenceExamples: { label: string; workflowJson: string }[] = [];
       if (!input.seedWorkflowJson) {
         try {
-          const rows = await db.listComfyNodeTemplates();
-          const cands = rows
+          const canvasCands = (await db.getNodesByProject(input.projectId).catch(() => []))
+            .filter((n) => n.type === "comfyui_workflow")
+            .map((n) => {
+              const d = (n.data ?? {}) as Record<string, unknown>;
+              return { label: n.title || String(d.templateLabel ?? "") || "画布工作流", note: (String(d.templateLabel ?? "") || undefined), workflowJson: String(d.workflowJson ?? "") };
+            });
+          const tplCands = (await db.listComfyNodeTemplates().catch(() => []))
             .filter((r) => r.nodeType === "comfyui_workflow")
             .map((r) => ({ label: r.label, note: r.note ?? undefined, workflowJson: String((r.payload as Record<string, unknown> | null)?.workflowJson ?? "") }));
-          referenceExamples = pickReferenceWorkflows(input.task, cands, 2);
+          // 画布优先（同分时保序），去重同一份 workflowJson。
+          const all = dedupeReferenceCandidates([...canvasCands, ...tplCands]);
+          referenceExamples = pickReferenceWorkflows(input.task, all, 2);
         } catch { /* 检索失败不阻断 */ }
       }
 

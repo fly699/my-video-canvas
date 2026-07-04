@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatValidationErrors, formatInputField, formatNodeSchemas, collectErrorNodeClasses, suggestMissingLinks, pickReferenceWorkflows, tokenizeForMatch } from "./_core/superAgent/comfyAdapters";
+import { formatValidationErrors, formatInputField, formatNodeSchemas, collectErrorNodeClasses, suggestMissingLinks, pickReferenceWorkflows, tokenizeForMatch, dedupeReferenceCandidates } from "./_core/superAgent/comfyAdapters";
 import type { WorkflowValidationResult } from "./_core/comfyui";
 
 const base: WorkflowValidationResult = {
@@ -67,6 +67,18 @@ describe("tokenizeForMatch", () => {
     expect(t.has("高清")).toBe(true);
     expect(t.has("清出")).toBe(true);
     expect(t.has("出图")).toBe(true);
+  });
+});
+
+describe("dedupeReferenceCandidates", () => {
+  it("按顺序去重同一 workflowJson（保留最先出现的）、丢空图", () => {
+    const out = dedupeReferenceCandidates([
+      { label: "画布图A", workflowJson: '{"1":{}}' },
+      { label: "模板图A", workflowJson: '{"1":{}}' }, // 与画布图A 同图 → 丢
+      { label: "空", workflowJson: "  " },              // 空 → 丢
+      { label: "图B", workflowJson: '{"2":{}}' },
+    ]);
+    expect(out.map((c) => c.label)).toEqual(["画布图A", "图B"]);
   });
 });
 
