@@ -1905,13 +1905,16 @@ export function validateWorkflowWithInfo(
         invalidEnums.push({ nodeId, classType: ct, field, current: val, options: spec.options.slice(0, 500) });
       }
     }
-    // 2) 必填 widget 输入缺失（连线类输入 spec.kind==="other"，运行时媒体也不计）
+    // 2) 必填输入缺失——widget 与连线型（MODEL/LATENT/CONDITIONING…，spec.kind==="other"）都算：
+    // ComfyUI 提交时对两者同样报 "Required input is missing"，只在这里跳过连线型会让「必填连线
+    // 没接」这一最常见错误静默通过校验、到真机执行才以服务器错误暴露（工程智能体的定向连线建议
+    // suggestMissingLinks 也依赖这里报出连线型缺失）。运行时媒体输入仍不计。
     const req = info[ct].input?.required ?? {};
     for (const field of Object.keys(req)) {
       if (field in inputs) continue;
       if (isRuntimeMediaField(info, ct, field)) continue;
       const spec = readInputSpec(info, ct, field);
-      if (spec && spec.kind !== "other") {
+      if (spec) {
         missingRequired.push({ nodeId, classType: ct, field, options: spec.kind === "enum" ? spec.options?.slice(0, 500) : undefined });
       }
     }

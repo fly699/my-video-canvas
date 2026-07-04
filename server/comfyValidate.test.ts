@@ -83,6 +83,12 @@ describe("validateWorkflowWithInfo", () => {
     expect(r.missingRequired).toHaveLength(0);
     expect(r.ok).toBe(true);
   });
+  it("必填「连线型」输入缺失（如 KSampler 没接 model）→ missingRequired（回归：曾被静默跳过）", () => {
+    const wf: any = { "3": { class_type: "KSampler", inputs: { sampler_name: "euler", scheduler: "normal", seed: 1, steps: 20, cfg: 8, denoise: 1, positive: ["6", 0], negative: ["6", 0], latent_image: ["5", 0] } } };
+    const r = validateWorkflowWithInfo(wf, INFO, true);
+    expect(r.missingRequired.some((m) => m.field === "model" && m.classType === "KSampler")).toBe(true);
+    expect(r.ok).toBe(false);
+  });
   it("无 object_info → 不报错但 ok=false（无法预检）", () => {
     const wf: any = { "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "随便.ckpt" } } };
     const r = validateWorkflowWithInfo(wf, {}, false);
