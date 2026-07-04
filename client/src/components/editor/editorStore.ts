@@ -541,7 +541,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       if (ti !== loc.trackIdx) return t;
       const clips = t.clips
         .filter((c) => c.id !== clipId)
-        .map((c) => (c.start >= removed.start ? { ...c, start: Math.max(0, c.start - dur) } : c));
+        // 与 rippleDeleteSelected 的严格 `>` 一致：只左移「起点严格晚于被删片段」的幸存者；
+        // 同起点的（罕见的叠放）不动——它并不在被删片段之后。
+        .map((c) => (c.start > removed.start ? { ...c, start: Math.max(0, c.start - dur) } : c));
       return { ...t, clips };
     });
     return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)));
