@@ -4,8 +4,10 @@ import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Boxes, Loader2, Play, CheckCircle2, XCircle, ArrowRightCircle, Square, Server } from "lucide-react";
+import { Boxes, Loader2, Play, CheckCircle2, XCircle, ArrowRightCircle, Square, Server, Cpu } from "lucide-react";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
+import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import type { SuperAgentNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 
 interface Props {
@@ -52,6 +54,10 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const update = useCallback((patch: Partial<SuperAgentNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
   const mode = payload.mode ?? "comfy";
+  // ComfyUI 模式规划用 LLM：节点显式选 > 「节点默认模型」resolve > 出厂默认（kie_claude_opus_47），
+  // 与其它节点一致（此前未传 model 时会落到 DEFAULT_MODEL=claude-sonnet-4-5，故对齐）。
+  const { resolve } = useNodeDefaultModels();
+  const llmModel = (payload.model || resolve("super_agent", "llm")) as LLMModelId;
   const buildMut = trpc.superAgent.buildComfyWorkflow.useMutation();
   const codeMut = trpc.superAgent.runCodeTask.useMutation();
   // code 模式可用性（L3+ 才有权查询；查询失败/无权 → 视为不可用）。
@@ -93,7 +99,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     // 清空上一轮日志/结果，进入运行态（日志由 Canvas 的 socket 处理器回灌 payload.log）。
     update({ status: "running", log: [], resultWorkflowJson: undefined, resultAnalysis: undefined, errorMessage: undefined });
     buildMut.mutate(
-      { projectId: data.projectId, nodeId: id, task, customBaseUrl: payload.customBaseUrl?.trim() || undefined },
+      { projectId: data.projectId, nodeId: id, task, customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel },
       {
         onSuccess: (res) => {
           update({
@@ -110,7 +116,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         onError: (e) => { update({ status: "failed", errorMessage: e.message }); toast.error("运行失败：" + e.message); },
       },
     );
-  }, [running, payload.task, payload.customBaseUrl, data.projectId, id, buildMut, update]);
+  }, [running, payload.task, payload.customBaseUrl, llmModel, data.projectId, id, buildMut, update]);
 
   const handleRunCode = useCallback(() => {
     if (running) return;
@@ -200,6 +206,16 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
               borderDefault={BORDER}
               fieldBase={fieldStyle}
             />
+          </div>
+        )}
+
+        {mode === "comfy" && (
+          <div>
+            <label style={labelStyle}>
+              <Cpu size={9} style={{ display: "inline", marginRight: 3 }} />
+              规划模型（默认 kie Claude Opus 4.7）
+            </label>
+            <LLMModelPicker value={llmModel} onChange={(v) => update({ model: v })} disabled={running} />
           </div>
         )}
 
