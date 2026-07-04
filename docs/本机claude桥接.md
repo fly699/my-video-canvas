@@ -50,6 +50,24 @@ CLAUDE_LOCAL_BRIDGE_KEY=<你自己编的任意字符串，如 my-local-claude-8f
 
 保存后，全站模型选择器里就会出现「**本机 Claude（订阅）**」，在任意 AI 对话/规划节点选它即可。门控与 ComfyUI 自建一致（走「ComfyUI 免白名单」开关）。
 
+## 切换模型
+
+「一键填入」现在会登记 3 个条目,在**画布模型选择器里选哪个就用哪个**:
+
+| 选择器条目 | 实际模型 |
+|---|---|
+| 本机 Claude(订阅默认) | 不传 `--model`,用订阅默认 |
+| 本机 Claude · Sonnet | `claude --model sonnet` |
+| 本机 Claude · Opus(需 Max) | `claude --model opus` |
+
+规则:模型 id 里 `claude-local:` 冒号后面的部分会被透传给 `claude --model`。想加别的,在后台「模型」列表手动加条目即可,例如:
+
+- `claude-local:haiku` → Haiku(最快最省额度)
+- `claude-local:sonnet[1m]` → Sonnet 1M 上下文(需订阅支持)
+- `claude-local:claude-sonnet-4-5-20250929` → 锁定完整模型 id
+
+> **订阅档位限制**:Pro 档只能用 Sonnet;**Opus 需 Max 档**——Pro 选 Opus 会直接报错(报错会浮出到节点)。切换模型不需要重启服务,后台保存即生效。
+
 ## 注意事项
 
 - **额度与限流**：所有走这条路的调用共用你这个订阅账号的用量上限，撞上限会被限流（不扣钱，但会卡）。当多用户高频后端使用时尤其容易顶到上限。

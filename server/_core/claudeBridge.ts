@@ -60,10 +60,24 @@ export function isClaudeBridgeEnabled(): boolean { return !!process.env.CLAUDE_L
 /** 桥接鉴权 key（后台自建 LLM 的 API Key 需与之一致）。 */
 export function claudeBridgeKey(): string { return process.env.CLAUDE_LOCAL_BRIDGE_KEY?.trim() || ""; }
 
-/** 跑一次无头 claude 拿纯文本回复。不传 --model：用订阅默认模型；env 继承 CLAUDE_CODE_OAUTH_TOKEN。 */
-export function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: number }): Promise<{ text: string; isError: boolean }> {
+/** 从请求的 model 串解析要传给 `claude --model` 的值。约定：
+ *  - "claude-local"（或空）→ null：不传 --model，用订阅默认模型；
+ *  - "claude-local:sonnet" / "claude-local:opus" 等 → 取冒号后缀；
+ *  - 其它值原样透传（可直接登记 "sonnet"/"opus"/"haiku" 或完整模型 id）。
+ *  严格白名单字符（字母数字 . _ - [ ]），防止拼进命令行的注入/乱串。纯函数。 */
+export function bridgeModelArg(model: unknown): string | null {
+  if (typeof model !== "string") return null;
+  let m = model.trim();
+  if (m.toLowerCase().startsWith("claude-local")) m = m.slice("claude-local".length).replace(/^:/, "");
+  if (!m) return null;
+  if (m.length > 64 || !/^[A-Za-z0-9._[\]-]+$/.test(m)) return null; // 非法串宁可回退默认模型
+  return m;
+}
+
+/** 跑一次无头 claude 拿纯文本回复。model 为 null 时不传 --model（订阅默认）；env 继承 CLAUDE_CODE_OAUTH_TOKEN。 */
+export function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null }): Promise<{ text: string; isError: boolean }> {
   const prompt = messagesToPrompt(opts.messages);
-  const { cmd, args, shell } = resolveClaudeSpawn(resolveClaudeBin(), ["-p", "--output-format", "json"]);
+  const { cmd, args, shell } = resolveClaudeSpawn(resolveClaudeBin(), ["-p", "--output-format", "json", ...(opts.model ? ["--model", opts.model] : [])]);
   return new Promise((resolve) => {
     let out = "", err = "", done = false, spawnErr: string | null = null;
     const child = spawn(cmd, args, { cwd: tmpdir(), env: process.env, stdio: ["pipe", "pipe", "pipe"], shell });
@@ -96,7 +110,7 @@ export function registerClaudeBridge(app: Express): void {
     const messages = Array.isArray(req.body?.messages) ? (req.body.messages as OAMessage[]) : [];
     if (!messages.length) return res.status(400).json({ error: { message: "messages 为空" } });
     try {
-      const { text, isError } = await runClaudeText({ messages, timeoutMs: 110_000 });
+      const { text, isError } = await runClaudeText({ messages, timeoutMs: 110_000, model: bridgeModelArg(req.body?.model) });
       if (isError) return res.status(502).json({ error: { message: "本机 claude 返回错误：" + (text || "").slice(0, 600) } });
       res.json({
         id: `claude-local-${Date.now()}`,
