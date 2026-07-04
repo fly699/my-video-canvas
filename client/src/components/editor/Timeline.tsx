@@ -283,7 +283,12 @@ export function Timeline() {
         const ns = Math.min(Math.max(0, sec), rightEdge - 0.05);
         store.trimClip(d.clipId, { start: ns, trimIn: 0, trimOut: rightEdge - ns });
       } else {
-        const newTrimIn = Math.max(0, d.orig.trimIn + deltaSec * d.orig.speed);
+        // 右缘固定，只从左侧裁进/扩展；夹住左缘不越过右缘（与上面图片分支同款守卫，否则快速拖动越过
+        // 右缘会让片段瞬移到右侧、脱离原位）。
+        const rightEdge = d.orig.start + d.orig.dur;
+        const clampedSec = Math.min(Math.max(0, sec), rightEdge - 0.05);
+        const clampedDelta = clampedSec - d.orig.start;
+        const newTrimIn = Math.max(0, d.orig.trimIn + clampedDelta * d.orig.speed);
         const applied = newTrimIn - d.orig.trimIn;
         store.trimClip(d.clipId, { trimIn: newTrimIn, start: Math.max(0, d.orig.start + applied / d.orig.speed) });
       }

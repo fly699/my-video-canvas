@@ -180,6 +180,14 @@ export function transformAt(clip: Clip, tIntoClip: number): ClipTransform {
   return base;
 }
 
+/** Map a timeline time to the clip's SOURCE media time (seconds), for seeking the
+ *  preview <video>/<audio>. Accounts for trimIn/trimOut, speed and reverse (倒放：
+ *  时间轴前进对应源时间从 trimOut 往回走). Pure. */
+export function sourceTimeAt(clip: Clip, playhead: number): number {
+  const off = (playhead - clip.start) * (clip.speed ?? 1);
+  return clip.reverse ? clip.trimOut - off : clip.trimIn + off;
+}
+
 export interface Track {
   id: string;
   type: TrackType;

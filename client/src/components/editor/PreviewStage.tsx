@@ -6,7 +6,7 @@ import { usePersistentState } from "@/hooks/usePersistentState";
 import { computeSafeRect } from "@/lib/safeZone";
 import { shapeToDataUrl } from "@shared/shapeSvg";
 import type { Clip, ClipTransform, EditorDoc, FitMode } from "@shared/editorTypes";
-import { transformAt, applyEase } from "@shared/editorTypes";
+import { transformAt, applyEase, sourceTimeAt } from "@shared/editorTypes";
 
 /** Reduce W:H to a tidy ratio label (e.g. 1920×1080 → "16:9"). */
 function ratioLabel(w: number, h: number): string {
@@ -198,6 +198,9 @@ export function PreviewStage() {
   const playhead = useEditorStore((s) => s.playhead);
   const playing = useEditorStore((s) => s.playing);
   const duration = useEditorStore((s) => s.duration());
+  // 采样用时刻：播放头正好停在片尾（=duration，如播放自然结束/按 End/步进到底）时，回退一丁点，
+  // 否则半开区间 activeAt(t<end) 判无片段激活 → 预览闪成空白占位。仅在末端生效，其余原样。
+  const sampleT = duration > 0 && playhead >= duration ? Math.max(0, duration - 1e-3) : playhead;
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const setPlaying = useEditorStore((s) => s.setPlaying);
@@ -268,13 +271,15 @@ export function PreviewStage() {
   useEffect(() => {
     if (!doc) return;
     const active = new Set<string>();
-    for (const { clip, muted, trackVolume } of activeAt(doc, playhead)) {
+    for (const { clip, muted, trackVolume } of activeAt(doc, sampleT)) {
       if (clip.kind !== "video" && clip.kind !== "audio") continue;
       active.add(clip.id);
       const el = mediaRefs.current.get(clip.id);
       if (!el) continue;
-      const localSrc = clip.trimIn + (playhead - clip.start) * (clip.speed ?? 1);
-      if (Math.abs(el.currentTime - localSrc) > 0.25) el.currentTime = localSrc;
+      const localSrc = sourceTimeAt(clip, sampleT); // 含倒放（reverse）：暂停/scrub 定位到正确源帧
+      // 暂停/scrub/逐帧步进时用极小阈值精确对齐显示帧；仅实时播放时留 0.25s 容差避免反复 seek 抖动。
+      // 旧代码一律 0.25s → 暂停下小于 8 帧的步进/拖动根本不刷新 <video> 画面。
+      if (Math.abs(el.currentTime - localSrc) > (playing ? 0.25 : 0.001)) el.currentTime = localSrc;
       el.playbackRate = clip.speed ?? 1;
       // 预览音量 = 片段音量 × 轨道音量（HTML media 上限 1；导出可超过 1）。
       el.volume = muted ? 0 : Math.max(0, Math.min(1, (clip.volume ?? 1) * trackVolume));
@@ -282,7 +287,7 @@ export function PreviewStage() {
       if (!playing && !el.paused) el.pause();
     }
     mediaRefs.current.forEach((el, id) => { if (!active.has(id) && !el.paused) el.pause(); });
-  }, [doc, playhead, playing]);
+  }, [doc, sampleT, playing]);
 
   const stageSize = () => { const r = stageRef.current?.getBoundingClientRect(); return { w: r?.width ?? 1, h: r?.height ?? 1, left: r?.left ?? 0, top: r?.top ?? 0 }; };
 
@@ -386,7 +391,7 @@ export function PreviewStage() {
   }, [safeZone, setSafeRect, setSafeZone, onSafeMove, endSafeDrag]);
 
   if (!doc) return null;
-  const visible = activeAt(doc, playhead);
+  const visible = activeAt(doc, sampleT);
   const aspect = doc.width / doc.height;
   // 整片首尾淡入淡出的黑场不透明度（预览与导出一致）
   const masterFadeOpacity = (() => {
