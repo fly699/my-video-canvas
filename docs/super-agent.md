@@ -17,7 +17,7 @@
 
 - 服务端跑「describe_nodes 查节点 schema → author → validate → execute → 读错 → 修正」闭环（`server/_core/superAgent/comfyAgent.ts`），工具由现有 `comfyui.ts` 过程兑现。
 - **describe_nodes（关键能力）**：动手写图前，LLM 可查目标服务器上任意节点类的**精确输入/输出 schema**（字段名·类型·枚举合法值·默认值），从 `/object_info` 抽取（`comfyAdapters.ts` 的 `formatNodeSchemas`）。这样它不再凭记忆猜节点输入——冷门/自定义节点也能正确接线，大幅减少「校验挂/做不了」。节点类名清单只作目录（上限放宽到 400），具体字段一律靠查。
-- **参考范例检索（滚雪球）**：从零编写时，自动从共享模板库（`comfyui_workflow` 类型、用户已在真实 ComfyUI 保存/调通的工作流）里按任务关键词检索最相似的 1–2 个，作为「参考范例」并入提示，让 LLM 借鉴真实可跑的节点组织/连线（`comfyAdapters.ts` 的 `pickReferenceWorkflows`，中英混排匹配；续接模式已有基底则不注入）。用户存进库的工作流越多，智能体越强。
+- **参考范例检索（滚雪球）**：从零编写时，自动检索最相似的 1–2 个「已在真实 ComfyUI 调通」的工作流当参考并入提示，让 LLM 借鉴真实可跑的节点组织/连线。语料来源：**① 本项目画布上已有的 `comfyui_workflow` 节点（你自己刚跑通的图，优先）② 共享模板库**（`comfyAdapters.ts` 的 `pickReferenceWorkflows`，中英混排匹配、去重；续接模式已有基底则不注入）。你跑通/存下的工作流越多，智能体越强。
 - 连续对话：可多轮微调，基于上一版调通的 workflow 增量修改，并可一键同步到 comfyui_workflow 节点重新生成。
 - 需 LLM 可用（kie 等，经 `invokeLLMWithKie` 门控）+ 一台可达的 ComfyUI 服务器。
 - 审计动作：`superagent_comfy_build`。

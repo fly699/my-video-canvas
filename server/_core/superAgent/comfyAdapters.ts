@@ -84,6 +84,19 @@ export function pickReferenceWorkflows(
   }));
 }
 
+/** 合并多来源参考候选：按传入顺序去重（同一 workflowJson 只留最先出现的）、丢掉空图。纯函数。 */
+export function dedupeReferenceCandidates(cands: { label: string; note?: string; workflowJson: string }[]): { label: string; note?: string; workflowJson: string }[] {
+  const seen = new Set<string>();
+  const out: { label: string; note?: string; workflowJson: string }[] = [];
+  for (const c of cands) {
+    const k = (c.workflowJson || "").trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(c);
+  }
+  return out;
+}
+
 /** 某输入项 [typeSpec, opts?] 若为「连线型」（既非枚举也非 INT/FLOAT/STRING/BOOLEAN 值型），返回其
  *  需要的输出类型字符串（如 MODEL/LATENT/CONDITIONING）；值型/枚举型返回 null（应填值而非连线）。 */
 function connectionTypeOf(spec: unknown): string | null {
