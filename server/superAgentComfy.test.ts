@@ -69,6 +69,14 @@ describe("buildSystemPrompt", () => {
     expect(p).toContain("sd_xl_base_1.0.safetensors");
     expect(p).toContain("euler");
   });
+  it("有参考范例时把范例并入提示（label + workflowJson）", () => {
+    const p = buildSystemPrompt("出图", RES, false, false, false, [{ label: "SDXL 高清出图", workflowJson: '{"3":{"class_type":"KSampler"}}' }]);
+    expect(p).toContain("参考范例");
+    expect(p).toContain("SDXL 高清出图");
+    expect(p).toContain("KSampler");
+    // 无范例则不出现该段
+    expect(buildSystemPrompt("出图", RES)).not.toContain("参考范例");
+  });
   it("canDescribe 时引导先查 schema 再写；未开启则不提", () => {
     const on = buildSystemPrompt("出图", RES, false, false, true);
     expect(on).toContain("describe_nodes");

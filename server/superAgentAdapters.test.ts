@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatValidationErrors, formatInputField, formatNodeSchemas, collectErrorNodeClasses, suggestMissingLinks } from "./_core/superAgent/comfyAdapters";
+import { formatValidationErrors, formatInputField, formatNodeSchemas, collectErrorNodeClasses, suggestMissingLinks, pickReferenceWorkflows, tokenizeForMatch } from "./_core/superAgent/comfyAdapters";
 import type { WorkflowValidationResult } from "./_core/comfyui";
 
 const base: WorkflowValidationResult = {
@@ -57,6 +57,43 @@ describe("collectErrorNodeClasses", () => {
   });
   it("全通过 → 空", () => {
     expect(collectErrorNodeClasses(base)).toEqual([]);
+  });
+});
+
+describe("tokenizeForMatch", () => {
+  it("拉丁词（≥2）+ 中文 2-gram", () => {
+    const t = tokenizeForMatch("SDXL 高清出图");
+    expect(t.has("sdxl")).toBe(true);
+    expect(t.has("高清")).toBe(true);
+    expect(t.has("清出")).toBe(true);
+    expect(t.has("出图")).toBe(true);
+  });
+});
+
+describe("pickReferenceWorkflows", () => {
+  const CANDS = [
+    { label: "SDXL 高清出图", note: "文生图基础", workflowJson: '{"3":{"class_type":"KSampler"}}' },
+    { label: "图生视频 AnimateDiff", note: "img2video", workflowJson: '{"10":{"class_type":"VideoLinearCFG"}}' },
+    { label: "无关的音频转录", workflowJson: '{"1":{"class_type":"Whisper"}}' },
+    { label: "空模板", workflowJson: "" },
+  ];
+  it("按 label/note 关键词重合度选最相关的，跳过空 workflowJson", () => {
+    const out = pickReferenceWorkflows("做一个 SDXL 高清文生图工作流", CANDS, 2);
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    expect(out[0].label).toBe("SDXL 高清出图");
+    expect(out.some((e) => e.label === "空模板")).toBe(false);
+    expect(out.some((e) => e.label === "无关的音频转录")).toBe(false);
+  });
+  it("视频任务优先命中视频范例", () => {
+    const out = pickReferenceWorkflows("图生视频 AnimateDiff 动画", CANDS, 1);
+    expect(out[0].label).toBe("图生视频 AnimateDiff");
+  });
+  it("无关键词重合 → 空；超长 workflowJson 截断", () => {
+    expect(pickReferenceWorkflows("完全不相关的主题 xyzzy", CANDS, 2)).toEqual([]);
+    const big = [{ label: "SDXL", workflowJson: "x".repeat(5000) }];
+    const out = pickReferenceWorkflows("SDXL 出图", big, 1, 100);
+    expect(out[0].workflowJson.length).toBeLessThan(200);
+    expect(out[0].workflowJson).toContain("已截断");
   });
 });
 
