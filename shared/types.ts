@@ -1270,6 +1270,8 @@ export interface SuperAgentNodeData {
   task?: string;
   /** 目标 ComfyUI 服务器（留空用服务端 COMFYUI_BASE_URL）。 */
   baseUrl?: string;
+  /** 已保存的 ComfyUI 服务器地址列表（与其它 ComfyUI 节点一致）。 */
+  serverUrls?: string[];
   /** 规划用 LLM 模型。 */
   model?: string;
   status?: "idle" | "running" | "success" | "failed" | "exhausted" | "aborted";
