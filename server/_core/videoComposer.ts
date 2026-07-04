@@ -104,8 +104,11 @@ export function segmentZoomPanChain(tf: ClipTransform | undefined, kfs: Transfor
   const pxExpr = buildKeyframeExpr(keyframePoints(kfs, "x", 0, (v) => v * w));
   const pyExpr = buildKeyframeExpr(keyframePoints(kfs, "y", 0, (v) => v * h));
   const z = zExpr ?? Number(Math.max(1, tf?.scale ?? 1).toFixed(4)).toString();
-  const px = pxExpr ?? "0";
-  const py = pyExpr ?? "0";
+  // 无 x/y 关键帧时，回退到静态平移 tf.x/tf.y（像素）——而非丢成 0。否则「clip 已设静态平移
+  // + 再加缩放/旋转动画」时平移被清零、主体在预览与导出间跳变（与 z 回退 tf.scale 对称）。
+  // 下面 crop 的 clip((iw-w)/2-px,0,iw-w) 恰好复刻静态路径 (maxFrac-tf.x)*w 的钳位，无需另夹。
+  const px = pxExpr ?? String(Math.round((tf?.x ?? 0) * w));
+  const py = pyExpr ?? String(Math.round((tf?.y ?? 0) * h));
   // scale eval=frame supports the `t` (timestamp) variable → per-frame zoom.
   // crop's x/y are ALWAYS evaluated per-frame (no eval option on the crop filter —
   // adding `:eval=frame` errors with "Option not found"), so the pan animates too.
@@ -651,10 +654,12 @@ export function buildFilterGraph(
     oc.push("format=rgba");
     if (o.flipH) oc.push("hflip");
     if (o.flipV) oc.push("vflip");
-    const maskF = maskAlphaFilter(o.mask);
-    if (maskF) oc.push(maskF); // 形状蒙版：裁成矩形/椭圆（含羽化/反转），作用于 alpha
+    // 顺序要紧：chromakey 直接【覆写】alpha 平面（非绿像素置 255），而形状蒙版的 geq 是把
+    // 当前 alpha 【乘上】mask。故必须先抠像、再乘蒙版——反过来会被 chromakey 覆盖掉，蒙版失效。
     const ckf = chromaKeyFilter(o.chromaKey);
-    if (ckf) oc.push(ckf); // 绿幕抠像：把指定颜色变透明，再合成
+    if (ckf) oc.push(ckf); // 绿幕抠像：把指定颜色变透明（覆写 alpha）
+    const maskF = maskAlphaFilter(o.mask);
+    if (maskF) oc.push(maskF); // 形状蒙版：裁成矩形/椭圆（含羽化/反转），按 p(X,Y)*mask 乘到 alpha 上
     // 透明度：有 opacity 关键帧时逐帧改 alpha。colorchannelmixer 的 aa 不吃表达式，故改用 geq
     // 改写 alpha 平面；geq 的时间变量是大写 T（小写 t 无效），且此处在位移 setpts 之前=clip-local。
     // 静态情形保持原 colorchannelmixer（零回归）。
