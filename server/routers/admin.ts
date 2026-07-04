@@ -38,6 +38,7 @@ const AUDIT_ACTIONS = [
   "image_gen", "video_gen",
   "audio_music", "audio_dubbing",
   "subtitle_transcribe",
+  "superagent_comfy_build", "superagent_code_task",
   "logs_cleared",
 ] as const;
 

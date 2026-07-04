@@ -53,6 +53,8 @@ const ACTION_LABELS: Record<string, string> = {
   audio_music: "音乐生成",
   audio_dubbing: "配音生成",
   subtitle_transcribe: "语音转录",
+  superagent_comfy_build: "工程智能体·工作流",
+  superagent_code_task: "工程智能体·代码任务",
   poyo_stage: "Poyo 暂存",
   kie_gen: "kie 生成",
 };
@@ -65,6 +67,8 @@ const ACTION_COLORS: Record<string, string> = {
   audio_music: "oklch(0.65 0.2 140)",
   audio_dubbing: "oklch(0.65 0.2 160)",
   subtitle_transcribe: "oklch(0.65 0.18 60)",
+  superagent_comfy_build: "oklch(0.68 0.19 200)",
+  superagent_code_task: "oklch(0.66 0.2 285)",
 };
 
 // 「白名单管理」「下载审批」限管理员 L3+（查看员 L1、运营 L2 均无权，含查看）。
@@ -1713,7 +1717,7 @@ function WhitelistPanel() {
 
 // ── Logs Panel ────────────────────────────────────────────────────────────────
 
-type AuditAction = "login_email" | "login_oauth" | "image_gen" | "video_gen" | "audio_music" | "audio_dubbing" | "subtitle_transcribe" | "kie_gen";
+type AuditAction = "login_email" | "login_oauth" | "image_gen" | "video_gen" | "audio_music" | "audio_dubbing" | "subtitle_transcribe" | "superagent_comfy_build" | "superagent_code_task" | "kie_gen";
 
 function LogsPanel() {
   const canClear = (useAuth().user?.adminLevel ?? 0) >= 2; // 清空日志=运营 L2+
