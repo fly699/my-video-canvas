@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   aspectRatioValue, makeActor, makeDefaultDirectorScene, mannequinModel, nextActorName, MANNEQUIN_MODELS,
   makeCrowd, bakeGroupTransform, ensureCameras, nextCameraName, respaceCrowdMembers, cloneGroupWithMembers, makeGroupFromActors, CROWD_SPACING,
+  actorWorldPosition, shotAimTarget, faceCameraYaw,
 } from "./directorScene";
-import type { DirectorActor } from "../../../shared/types";
+import type { DirectorActor, DirectorGroup } from "../../../shared/types";
 
 describe("directorScene helpers", () => {
   it("aspectRatioValue 解析常见画幅（含小数 2.35:1），非法回退 16:9", () => {
@@ -160,5 +161,42 @@ describe("directorScene helpers", () => {
     expect(s.aspectRatio).toBe("16:9");
     expect(s.groundVisible).toBe(true);
     expect(s.camera.position).toHaveLength(3);
+  });
+});
+
+describe("取景/朝向几何（注视/景别/面向机位）", () => {
+  const actor = (over: Partial<DirectorActor>): DirectorActor => ({ id: "a", name: "A", model: "male", position: [0, 0, 0], rotation: [0, 0, 0], scale: 1, color: "#fff", ...over });
+
+  describe("actorWorldPosition", () => {
+    it("独立角色 = 自身 position", () => {
+      expect(actorWorldPosition(actor({ position: [2, 0, -1] }), [])).toEqual([2, 0, -1]);
+    });
+    it("组内成员：叠加群组 90° Y 旋转 + 平移", () => {
+      const g: DirectorGroup = { id: "g", name: "g", rows: 1, cols: 1, position: [5, 0, 0], rotation: [0, 90, 0], scale: 1, color: "#fff" };
+      const a = actor({ groupId: "g", position: [1, 0, 0] }); // 局部 +X
+      const w = actorWorldPosition(a, [g]);
+      // 绕 Y 90°：局部 +X → 世界 +X*cos90 - ... 按约定 x'=x cos + z sin, z'=-x sin + z cos → (0,0,-1)，+群心(5,0,0)
+      expect(w[0]).toBeCloseTo(5, 4);
+      expect(w[2]).toBeCloseTo(-1, 4);
+    });
+  });
+
+  describe("shotAimTarget", () => {
+    it("场景缩放+平移作用于脚点，胸高偏移再 × 角色缩放", () => {
+      const t = shotAimTarget([0, 0, 0], { sceneScale: 2, offsetX: 1, offsetY: -3, offsetZ: 0.5, actorScale: 5, aimY: 1.0 });
+      expect(t).toEqual([1, -3 + 1.0 * 2 * 5, 0.5]); // y = oy + 0 + aimY*S*actorScale = -3+10 = 7
+    });
+    it("默认（无缩放/偏移/角色缩放）退化为脚点上方 aimY", () => {
+      expect(shotAimTarget([2, 0, -1], { aimY: 1.2 })).toEqual([2, 1.2, -1]);
+    });
+  });
+
+  describe("faceCameraYaw", () => {
+    it("独立角色：正对 +Z 方向的机位 → yaw 0", () => {
+      expect(faceCameraYaw(0, 0, 0, 4, 0)).toBeCloseTo(0, 4);
+    });
+    it("组内成员：扣除群组 90° yaw（渲染会叠加），机位在 +Z → 局部 yaw = -90", () => {
+      expect(faceCameraYaw(0, 0, 0, 4, 90)).toBeCloseTo(-90, 4);
+    });
   });
 });

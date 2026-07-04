@@ -9,7 +9,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../../../../shared/types";
 import {
   MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers, respaceCrowdMembers, makeGroupFromActors, CROWD_SPACING,
-  ensureCameras, newCameraId, nextCameraName,
+  ensureCameras, newCameraId, nextCameraName, actorWorldPosition, shotAimTarget, faceCameraYaw,
 } from "../../../lib/directorScene";
 import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset, mirrorPose, type Pose } from "../../../lib/directorPose";
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
@@ -138,6 +138,9 @@ function CameraRig({ cam, onCommit, bind, locked, grab }: {
       ref={orbit as never}
       makeDefault
       enabled={!locked}
+      // 关阻尼惯性：drei 默认 enableDamping，松手后相机还会滑行几帧，而 onEnd 在松手瞬间就提交，
+      // 导致存下的机位落后于视觉最终位置（甩得越快偏差越大），破坏「所见即截图所得」。关掉即一致。
+      enableDamping={false}
       // 夹住俯仰极角：禁止越过头顶/钻到地面以下，避免相机翻转导致「地平线来回乱晃、上下颠倒」。
       minPolarAngle={0.12}
       maxPolarAngle={Math.PI * 0.92}
@@ -414,52 +417,51 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     });
   }, []);
   // 注视目标=指定角色：把当前机位 target 对准该角色（约胸高），并记下 lookAtActorId。
-  const actorWorldPos = (a: DirectorActor): Vec3 => {
-    if (!a.groupId) return a.position;
-    const g = (scene.groups ?? []).find((x) => x.id === a.groupId);
-    if (!g) return a.position;
-    const ry = (g.rotation[1] ?? 0) * Math.PI / 180, s = g.scale;
-    const lx = a.position[0] * s, lz = a.position[2] * s;
-    return [g.position[0] + lx * Math.cos(ry) + lz * Math.sin(ry), g.position[1] + a.position[1] * s, g.position[2] - lx * Math.sin(ry) + lz * Math.cos(ry)];
-  };
+  // 全部读 sceneRef.current（永远新鲜）：调完「垂直贴地/场景缩放/平移」后 scene.actors 引用不变，
+  // 若靠 useCallback 依赖会锁住旧偏移，取景高度整体算错（人物掉出框）——与 dropToGround 同款做法。
   const lookAtActor = useCallback((actorId: string | undefined) => {
     if (!actorId) { patchCam({ lookAtActorId: undefined }); return; }
-    const a = scene.actors.find((x) => x.id === actorId); if (!a) return;
-    const wp = actorWorldPos(a);
-    const S = scene.sceneScale ?? 1, oy = scene.sceneOffsetY ?? 0, ox = scene.sceneOffsetX ?? 0, oz = scene.sceneOffsetZ ?? 0; // 注视点在「场景缩放+平移」后的世界坐标里
-    const target: Vec3 = [ox + wp[0] * S, oy + wp[1] * S + 1.0 * S, oz + wp[2] * S];
+    const scn = sceneRef.current;
+    const a = scn.actors.find((x) => x.id === actorId); if (!a) return;
+    const base = actorWorldPosition(a, scn.groups);
+    const target = shotAimTarget(base, { sceneScale: scn.sceneScale, offsetX: scn.sceneOffsetX, offsetY: scn.sceneOffsetY, offsetZ: scn.sceneOffsetZ, actorScale: a.scale, aimY: 1.0 });
     const cap = captureRef.current; if (cap?.orbit) { cap.orbit.target.set(...target); cap.orbit.update(); }
     patchCam({ target, lookAtActorId: actorId });
-  }, [scene.actors, scene.groups, patchCam]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patchCam]);
 
   // 景别预设（LibTV 模块28「五种景别」）：保持当前机位方位角，按景别设定 FOV + 与主体距离 +
   // 注视高度，一键在 远景/全景/中景/近景/特写 间切换，配合多机位实现叙事镜头序列。
   const applyShot = useCallback((shot: { fov: number; dist: number; aimY: number }) => {
-    const cam = scene.camera;
-    const subj = scene.actors.find((a) => a.id === cam.lookAtActorId)
-      ?? scene.actors.find((a) => !a.groupId) ?? scene.actors[0];
-    const base = subj ? actorWorldPos(subj) : ([0, 0, 0] as Vec3);
-    const S = scene.sceneScale ?? 1, oy = scene.sceneOffsetY ?? 0, ox = scene.sceneOffsetX ?? 0, oz = scene.sceneOffsetZ ?? 0; // 主体经「场景缩放+平移」后，注视点按比例放大并平移
-    const target: Vec3 = [ox + base[0] * S, oy + base[1] * S + shot.aimY * S, oz + base[2] * S];
+    const scn = sceneRef.current;
+    const cam = scn.camera;
+    const subj = scn.actors.find((a) => a.id === cam.lookAtActorId)
+      ?? scn.actors.find((a) => !a.groupId) ?? scn.actors[0];
+    const base = subj ? actorWorldPosition(subj, scn.groups) : ([0, 0, 0] as Vec3);
+    const as = subj?.scale ?? 1;
+    const target = shotAimTarget(base, { sceneScale: scn.sceneScale, offsetX: scn.sceneOffsetX, offsetY: scn.sceneOffsetY, offsetZ: scn.sceneOffsetZ, actorScale: as, aimY: shot.aimY });
     const T = new THREE.Vector3(...target);
     const dir = new THREE.Vector3(...cam.position).sub(new THREE.Vector3(...cam.target));
     if (dir.lengthSq() < 1e-6) dir.set(0, 0.15, 1);
     if (dir.y < 0.05) dir.y = 0.12; // 不要俯冲到地面以下
     dir.normalize();
-    const np = T.clone().addScaledVector(dir, shot.dist * S);
+    // 与主体的距离也按「场景缩放 × 角色自身缩放」放大，否则放大过的角色景别距离过近、构图错。
+    const np = T.clone().addScaledVector(dir, shot.dist * (scn.sceneScale ?? 1) * as);
     const position: Vec3 = [np.x, np.y, np.z];
     const next: DirectorCamera = { ...cam, position, target, fov: shot.fov };
     patchCam({ position, target, fov: shot.fov });
     moveLiveCamera(next);
-  }, [scene.actors, scene.camera, patchCam, moveLiveCamera]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patchCam, moveLiveCamera]);
 
   // 面向机位：把选中角色绕 Y 旋转，使其正面(+Z)朝向当前机位——肖像/对话快速摆位。
   const faceCameraActor = (id: string) => {
-    const a = scene.actors.find((x) => x.id === id); if (!a) return;
-    const S = scene.sceneScale ?? 1, ox = scene.sceneOffsetX ?? 0, oz = scene.sceneOffsetZ ?? 0;
-    const wp = actorWorldPos(a);
+    const scn = sceneRef.current;
+    const a = scn.actors.find((x) => x.id === id); if (!a) return;
+    const S = scn.sceneScale ?? 1, ox = scn.sceneOffsetX ?? 0, oz = scn.sceneOffsetZ ?? 0;
+    const wp = actorWorldPosition(a, scn.groups);
     const ax = ox + wp[0] * S, az = oz + wp[2] * S;
-    const yaw = Math.atan2(scene.camera.position[0] - ax, scene.camera.position[2] - az) * 180 / Math.PI;
+    // 组内成员：扣除所属群组的 Y 旋转（渲染时会叠加），否则偏掉一个群组转角。
+    const g = a.groupId ? (scn.groups ?? []).find((x) => x.id === a.groupId) : undefined;
+    const yaw = faceCameraYaw(ax, az, scn.camera.position[0], scn.camera.position[2], g?.rotation[1] ?? 0);
     patchActor(id, { rotation: [a.rotation[0], Number(yaw.toFixed(1)), a.rotation[2]] as Vec3 });
   };
 
