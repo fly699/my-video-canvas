@@ -2359,7 +2359,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
                         <div className="mt-2.5 mb-0.5" style={{ height: 1, background: "var(--c-bd1)" }} />
                       </div>
                     )}
-                    <div className="grid grid-cols-4 gap-1.5">{showWizardTile && wizardTile}{list.map(renderTile)}</div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {q
+                        ? <>{showWizardTile && wizardTile}{list.map(renderTile)}</>
+                        // 无搜索时把首个节点（工程智能体，HEAD_ORDER 置顶）排在最前面，
+                        // 甚至先于「导入工作流」快捷入口。
+                        : (() => { const [first, ...rest] = list; return <>{first && renderTile(first)}{showWizardTile && wizardTile}{rest.map(renderTile)}</>; })()}
+                    </div>
                   </>
                 );
               })()}

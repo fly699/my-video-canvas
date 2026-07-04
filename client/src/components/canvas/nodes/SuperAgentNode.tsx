@@ -1,10 +1,11 @@
-import { memo, useCallback, useRef, useEffect } from "react";
+import { memo, useCallback, useRef, useEffect, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Boxes, Loader2, Play, CheckCircle2, XCircle, ArrowRightCircle, Square } from "lucide-react";
+import { Boxes, Loader2, Play, CheckCircle2, XCircle, ArrowRightCircle, Square, Server } from "lucide-react";
+import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import type { SuperAgentNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 
 interface Props {
@@ -57,6 +58,19 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const codeStatus = trpc.superAgent.codeStatus.useQuery(undefined, { enabled: mode === "code", retry: false });
   const codeEnabled = codeStatus.data?.enabled === true;
   const running = payload.status === "running" || buildMut.isPending || codeMut.isPending;
+
+  // ComfyUI 服务器测试/拉取（与其它 ComfyUI 节点一致）：探 fetchModels 验证可达 + 报模型数。
+  const utils = trpc.useUtils();
+  const [testingServer, setTestingServer] = useState(false);
+  const handleTestServer = useCallback(async () => {
+    setTestingServer(true);
+    try {
+      const r = await utils.comfyui.fetchModels.fetch({ customBaseUrl: payload.baseUrl?.trim() || undefined });
+      toast.success(`连接成功 — checkpoint ${r.ckpts.length} · LoRA ${r.loras.length} · 采样器 ${r.samplers.length}`);
+    } catch (e) {
+      toast.error("连接失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 120));
+    } finally { setTestingServer(false); }
+  }, [utils, payload.baseUrl]);
 
   const cancelMut = trpc.superAgent.cancel.useMutation();
   const handleCancel = useCallback(() => {
@@ -169,11 +183,22 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
 
         {mode === "comfy" && (
           <div>
-            <label style={labelStyle}>目标 ComfyUI 服务器（留空用服务端默认）</label>
-            <input
-              className="nodrag" disabled={running} placeholder="http://127.0.0.1:8188"
-              value={payload.baseUrl ?? ""} onChange={(e) => update({ baseUrl: e.target.value })}
-              style={fieldStyle}
+            <label style={labelStyle}>
+              <Server size={9} style={{ display: "inline", marginRight: 3 }} />
+              ComfyUI 服务器（留空用全局默认 · 可保存/切换/测试）
+            </label>
+            <ComfyServerUrlField
+              id={id}
+              value={payload.baseUrl ?? ""}
+              onChange={(v) => update({ baseUrl: v })}
+              serverUrls={payload.serverUrls ?? []}
+              onChangeServerUrls={(next) => update({ serverUrls: next })}
+              isFetching={testingServer}
+              onRefresh={handleTestServer}
+              accent={accent}
+              borderAccent={accentA(0.5)}
+              borderDefault={BORDER}
+              fieldBase={fieldStyle}
             />
           </div>
         )}
