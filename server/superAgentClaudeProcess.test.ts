@@ -4,6 +4,7 @@ import {
   isBashAllowed,
   resolveClaudeBin,
   resolvePermissionWiring,
+  resolveClaudeSpawn,
   streamClaudeCode,
 } from "./_core/superAgent/claudeProcess";
 
@@ -67,6 +68,27 @@ describe("双钥 + 执行前审批 权限接线", () => {
     const cfg = JSON.parse(p.mcpConfig!);
     expect(cfg.mcpServers.policy.command).toBe("node");
     expect(cfg.mcpServers.policy.args).toEqual(["/app/permissionMcpServer.js"]);
+  });
+});
+
+describe("resolveClaudeSpawn（Windows .cmd 坑）", () => {
+  const A = ["-p", "--output-format", "stream-json"];
+  it("非 Windows：原样 spawn，不走 shell", () => {
+    expect(resolveClaudeSpawn("/opt/node22/bin/claude", A, { platform: "linux" })).toEqual({ cmd: "/opt/node22/bin/claude", args: A, shell: false });
+  });
+  it("Windows + .cmd + 找得到 cli.js：改用 node 跑底层 cli.js，免 shell、参数原样", () => {
+    const r = resolveClaudeSpawn("C:\\Users\\K\\AppData\\Roaming\\npm\\claude.cmd", A, { platform: "win32", exists: () => true });
+    expect(r.cmd).toBe(process.execPath);
+    expect(r.shell).toBe(false);
+    expect(r.args[0]).toContain("cli.js");
+    expect(r.args.slice(1)).toEqual(A);
+  });
+  it("Windows + .cmd + 找不到 cli.js：兜底走 shell", () => {
+    const r = resolveClaudeSpawn("C:\\x\\claude.cmd", A, { platform: "win32", exists: () => false });
+    expect(r).toEqual({ cmd: "C:\\x\\claude.cmd", args: A, shell: true });
+  });
+  it("Windows + .exe：原样 spawn 不走 shell", () => {
+    expect(resolveClaudeSpawn("C:\\x\\claude.exe", A, { platform: "win32", exists: () => true })).toEqual({ cmd: "C:\\x\\claude.exe", args: A, shell: false });
   });
 });
 
