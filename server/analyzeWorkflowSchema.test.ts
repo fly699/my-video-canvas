@@ -94,3 +94,43 @@ describe("analyzeWorkflow — 视频输出节点识别", () => {
     expect(a.outputNodes.find((n) => n.id === "2")).toMatchObject({ classType: "SaveWEBM", isVideo: true });
   });
 });
+
+describe("analyzeWorkflow — 中央守卫（连线不当参数 / 幻影字段 / null 节点）", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const stub = (info: unknown) => vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+    String(url).includes("/object_info")
+      ? ({ ok: true, json: async () => info } as unknown as Response)
+      : ({ ok: false, json: async () => ({}) } as unknown as Response)));
+
+  it("连线输入不暴露为可编辑参数（Qwen prompt 被上游节点接线 → 跳过，写回会断线）", async () => {
+    const wf = JSON.stringify({
+      "19": { class_type: "PrimitiveString", inputs: { value: "上游提示词" } },
+      "20": { class_type: "TextEncodeQwenImageEditPlus", inputs: { prompt: ["19", 0] } },
+      "9": { class_type: "SaveImage", inputs: { images: ["20", 0] } },
+    });
+    const a = await analyzeWorkflow(wf); // 无 baseUrl 也应生效（纯结构判断）
+    expect(a.detectedParams.some((p) => p.nodeId === "20" && p.fieldPath === "inputs.prompt")).toBe(false);
+  });
+
+  it("KSamplerAdvanced 不再绑出幻影 seed/denoise，真字段 noise_seed 由通用扫描补上", async () => {
+    stub({
+      KSamplerAdvanced: { input: { required: { noise_seed: ["INT", { default: 0 }], steps: ["INT", { default: 20 }] } } },
+    });
+    const wf = JSON.stringify({
+      "3": { class_type: "KSamplerAdvanced", inputs: { noise_seed: 7, steps: 25 } },
+      "9": { class_type: "SaveImage", inputs: { images: ["3", 0] } },
+    });
+    const a = await analyzeWorkflow(wf, "http://localhost:8188");
+    const fields = a.detectedParams.filter((p) => p.nodeId === "3").map((p) => p.fieldPath);
+    expect(fields).not.toContain("inputs.seed");     // 幻影（节点无此字段、schema 也查无）
+    expect(fields).not.toContain("inputs.denoise");  // 幻影
+    expect(fields).toContain("inputs.noise_seed");   // 真字段由通用扫描补上
+    // 「随机种子」只出现一次（此前幻影 seed 与真 noise_seed 同名并存）
+    expect(a.detectedParams.filter((p) => p.nodeId === "3" && p.label.includes("随机种子"))).toHaveLength(1);
+  });
+
+  it("值为 null 的节点不再抛 TypeError（合法 JSON，需优雅跳过）", async () => {
+    const wf = JSON.stringify({ "1": null, "9": { class_type: "SaveImage", inputs: { images: ["2", 0] } } });
+    await expect(analyzeWorkflow(wf)).resolves.toBeTruthy();
+  });
+});
