@@ -66,7 +66,7 @@ export interface AgentEvent {
   data?: unknown;
 }
 
-export type AgentStatus = "success" | "failed" | "exhausted";
+export type AgentStatus = "success" | "failed" | "exhausted" | "aborted";
 
 export interface ComfyAgentResult {
   status: AgentStatus;
@@ -92,6 +92,8 @@ export interface RunComfyAgentOptions {
   emit?: (e: AgentEvent) => void;
   /** 喂回给 LLM 的工具结果字符串上限，防对话膨胀。默认 4000。 */
   maxFeedbackChars?: number;
+  /** 取消信号：置位后在下一轮开头终止并返回 aborted。 */
+  signal?: { aborted: boolean };
 }
 
 /** LLM 每轮必须返回的单个 JSON 动作。 */
@@ -174,6 +176,10 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
   let current: string | undefined;
 
   for (let iter = 1; iter <= maxIterations; iter++) {
+    if (opts.signal?.aborted) {
+      emit({ type: "done", iteration: iter, message: "已取消" });
+      return { status: "aborted", workflowJson: current, iterations: iter - 1, log };
+    }
     const raw = await opts.llm.complete(messages);
     messages.push({ role: "assistant", content: raw });
     const action = extractAction(raw);

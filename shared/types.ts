@@ -1272,7 +1272,7 @@ export interface SuperAgentNodeData {
   baseUrl?: string;
   /** 规划用 LLM 模型。 */
   model?: string;
-  status?: "idle" | "running" | "success" | "failed" | "exhausted";
+  status?: "idle" | "running" | "success" | "failed" | "exhausted" | "aborted";
   /** 流式活动日志（socket 回灌，非持久）。 */
   log?: { type: string; iteration: number; message: string }[];
   /** 调通后的 workflow JSON（可一键写回 comfyui_workflow 节点）。 */

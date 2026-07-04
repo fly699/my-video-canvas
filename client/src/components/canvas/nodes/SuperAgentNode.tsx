@@ -4,7 +4,7 @@ import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Boxes, Loader2, Play, CheckCircle2, XCircle, ArrowRightCircle } from "lucide-react";
+import { Boxes, Loader2, Play, CheckCircle2, XCircle, ArrowRightCircle, Square } from "lucide-react";
 import type { SuperAgentNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 
 interface Props {
@@ -57,6 +57,14 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const codeStatus = trpc.superAgent.codeStatus.useQuery(undefined, { enabled: mode === "code", retry: false });
   const codeEnabled = codeStatus.data?.enabled === true;
   const running = payload.status === "running" || buildMut.isPending || codeMut.isPending;
+
+  const cancelMut = trpc.superAgent.cancel.useMutation();
+  const handleCancel = useCallback(() => {
+    cancelMut.mutate({ projectId: data.projectId, nodeId: id }, {
+      onSuccess: (r) => { toast[r.cancelled ? "success" : "info"](r.cancelled ? "已请求停止…" : "没有正在运行的任务"); },
+      onError: (e) => toast.error("停止失败：" + e.message),
+    });
+  }, [cancelMut, data.projectId, id]);
 
   // 活动日志自动滚到底。
   const logRef = useRef<HTMLDivElement>(null);
@@ -190,6 +198,16 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
           {running ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Play style={{ width: 13, height: 13 }} />}
           {running ? "工程智能体运行中…" : mode === "comfy" ? "运行工程智能体" : "运行代码任务"}
         </button>
+
+        {running && (
+          <button
+            onClick={handleCancel} disabled={cancelMut.isPending}
+            className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{ background: "oklch(0.62 0.2 25 / 0.10)", border: "1px solid oklch(0.62 0.2 25 / 0.4)", color: "oklch(0.62 0.2 25)", cursor: "pointer" }}
+          >
+            <Square style={{ width: 12, height: 12 }} /> 停止
+          </button>
+        )}
 
         {/* 活动日志（socket 流式回灌） */}
         {log.length > 0 && (
