@@ -39,6 +39,10 @@ export const superAgentRouter = router({
         customBaseUrl: z.string().max(512).optional(),
         model: z.string().max(64).optional(),
         maxIterations: z.number().int().min(1).max(16).optional(),
+        /** 连续对话：上一版调通的 workflowJson，本轮在其基础上改。 */
+        seedWorkflowJson: z.string().max(200_000).optional(),
+        /** 连续对话：先前若干轮的精简历史。 */
+        history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(8000) })).max(20).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -65,6 +69,8 @@ export const superAgentRouter = router({
           maxIterations: input.maxIterations ?? 8,
           emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
           signal,
+          seedWorkflowJson: input.seedWorkflowJson,
+          history: input.history,
         });
       } finally {
         runningJobs.delete(key);

@@ -94,6 +94,10 @@ export interface RunComfyAgentOptions {
   maxFeedbackChars?: number;
   /** 取消信号：置位后在下一轮开头终止并返回 aborted。 */
   signal?: { aborted: boolean };
+  /** 连续对话：上一版已调通的 workflowJson，本轮在其基础上按 task 修改（非从零重写）。 */
+  seedWorkflowJson?: string;
+  /** 连续对话：先前若干轮的精简历史（用户指令 + 结果摘要），供 LLM 理解上下文。 */
+  history?: AgentMessage[];
 }
 
 /** LLM 每轮必须返回的单个 JSON 动作。 */
@@ -109,12 +113,14 @@ const ACTION_HINT =
   '你必须只返回一个 JSON 对象，形如 {"action":"author|validate|execute|finish|give_up","workflowJson":"...","reasoning":"..."}。' +
   "author/finish 时 workflowJson 必须是完整的 ComfyUI **API 格式** 图（形如 {\"节点id\":{\"class_type\":...,\"inputs\":{...}}}）。";
 
-/** 构建系统提示（纯函数，便于单测）。 */
-export function buildSystemPrompt(task: string, res: ComfyResourceList): string {
+/** 构建系统提示（纯函数，便于单测）。continuing=true 时为「在已有工作流上按新指令继续修改」的多轮场景。 */
+export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false): string {
   const cap = (arr: string[], n: number) => (arr.length > n ? arr.slice(0, n).concat(`…(+${arr.length - n})`) : arr);
   return [
     "你是资深 ComfyUI 工作流工程师。目标：产出一份能在给定服务器上真机跑通的 **API 格式** workflow 图，并通过校验与运行验证。",
-    `任务：${task}`,
+    continuing
+      ? `这是一段多轮对话。已有一版调通的工作流（见下方消息），请在其基础上按用户新指令修改，切勿从零重写、保留无关部分。本轮指令：${task}`
+      : `任务：${task}`,
     "",
     "该服务器上的可用资源（务必只用这些，切勿编造不存在的名字）：",
     `- checkpoints: ${cap(res.checkpoints, 40).join(", ") || "（无）"}`,
@@ -124,7 +130,7 @@ export function buildSystemPrompt(task: string, res: ComfyResourceList): string 
     `- schedulers: ${cap(res.schedulers, 20).join(", ") || "（无）"}`,
     `- 已安装节点类: ${cap(res.nodeClasses, 120).join(", ") || "（未知）"}`,
     "",
-    "工作流程：先 author 产出第一版（系统会自动帮你 validate 并把错误喂回）→ 按错误反复修正 →",
+    "工作流程：author 产出/修改工作流（系统会自动帮你 validate 并把错误喂回）→ 按错误反复修正 →",
     "自信可用时 execute 真机运行 → 若运行报错，读错误修正后再 execute → 成功后 finish。无法完成才 give_up。",
     ACTION_HINT,
   ].join("\n");
@@ -168,12 +174,18 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
   const resources = await opts.tools.listResources();
   emit({ type: "resources", iteration: 0, message: `已获取服务器资源：${resources.checkpoints.length} checkpoints / ${resources.loras.length} loras / ${resources.nodeClasses.length} 节点类`, data: resources });
 
-  const messages: AgentMessage[] = [
-    { role: "system", content: buildSystemPrompt(opts.task, resources) },
-    { role: "user", content: "开始。请先 author 产出第一版 workflowJson。" },
-  ];
+  const continuing = !!opts.seedWorkflowJson;
+  const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing) }];
+  // 连续对话：并入先前若干轮精简历史。
+  for (const h of opts.history ?? []) messages.push(h);
 
   let current: string | undefined;
+  if (continuing) {
+    current = opts.seedWorkflowJson;
+    messages.push({ role: "user", content: `当前已有一版调通的工作流（如下）。请在其基础上按本轮指令「${opts.task}」修改，author 出完整的新版 workflowJson：\n${clip(opts.seedWorkflowJson!)}` });
+  } else {
+    messages.push({ role: "user", content: "开始。请先 author 产出第一版 workflowJson。" });
+  }
 
   for (let iter = 1; iter <= maxIterations; iter++) {
     if (opts.signal?.aborted) {

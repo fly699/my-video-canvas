@@ -175,6 +175,28 @@ describe("runComfyAgent — 闭环编排", () => {
     expect(r.workflowJson).toContain("x");
   });
 
+  it("连续对话：seedWorkflowJson + history 注入初始消息，在上一版基础上改", async () => {
+    const seenMsgs: { role: string; content: string }[][] = [];
+    const r = await runComfyAgent({
+      task: "把分辨率改成 1024x1024",
+      tools: fakeTools(),
+      llm: scriptedLLM(
+        [`{"action":"author","workflowJson":${JSON.stringify(WF("v2"))}}`, `{"action":"execute"}`],
+        (msgs) => { seenMsgs.push(msgs.map((m) => ({ role: m.role, content: m.content }))); },
+      ),
+      seedWorkflowJson: WF("v1"),
+      history: [{ role: "user", content: "先做个 SDXL 出图" }, { role: "assistant", content: "已调通 v1" }],
+    });
+    expect(r.status).toBe("success");
+    const first = seenMsgs[0];
+    // 系统提示应进入「多轮/在已有工作流上修改」模式
+    expect(first[0].content).toContain("多轮对话");
+    // 历史被并入
+    expect(first.some((m) => m.content.includes("先做个 SDXL 出图"))).toBe(true);
+    // 种子工作流被作为「当前工作流」喂入
+    expect(first.some((m) => m.content.includes("v1") && m.content.includes("在其基础上"))).toBe(true);
+  });
+
   it("signal 置位 → 下一轮开头终止，返回 aborted", async () => {
     const signal = { aborted: false };
     let calls = 0;
