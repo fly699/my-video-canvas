@@ -146,6 +146,20 @@ describe("enforceImageFirstComfy", () => {
     expect(out.some((o) => o.op === "connect" && o.sourceRef === "p1" && o.targetRef === "vcw1")).toBe(false);
   });
 
+  it("carries the video cw's aspectRatio + overrideRatioSize onto the spliced image cw", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "prompt", tempId: "p1", payload: { positivePrompt: "猫" } },
+      { op: "create", nodeType: "comfyui_workflow", tempId: "vcw1", payload: { templateId: 20, prompt: "猫", negPrompt: "模糊", aspectRatio: "9:16", overrideRatioSize: true } },
+      { op: "connect", sourceRef: "p1", targetRef: "vcw1" },
+    ];
+    const img = cw(enforceImageFirstComfy(ops, IMG, VID, 10)).find((o) => (o.payload as { templateId?: number }).templateId === 10)!;
+    const p = img.payload as Record<string, unknown>;
+    expect(p.prompt).toBe("猫");
+    expect(p.negPrompt).toBe("模糊");
+    expect(p.aspectRatio).toBe("9:16");        // 比例带到首帧，避免变形
+    expect(p.overrideRatioSize).toBe(true);    // 配套开关一并搬运
+  });
+
   it("leaves a video cw already fed by an image cw untouched", () => {
     const ops: AgentOperation[] = [
       { op: "create", nodeType: "comfyui_workflow", tempId: "icw1", payload: { templateId: 10 } },

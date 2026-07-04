@@ -278,6 +278,13 @@ export function sanitizeOperationDetailed(
         if (ALL_SPEC_FIELDS.has(k)) payload[k] = v;
       }
     }
+    // 与 create 对称地拦幻觉 templateId：update 若把 comfyui_workflow 节点重指到一个不存在的
+    // 模板，会把已有工位改成跑不通的空壳（templateId 只属于 comfyui_workflow，出现即校验）。
+    // 只剥掉这个非法字段、保留同批其它合法改动（改 prompt/比例等），比整条丢弃更贴合意图。
+    if (payload.templateId != null && opts.validTemplateIds) {
+      const tid = Number(payload.templateId);
+      if (!(Number.isInteger(tid) && opts.validTemplateIds.has(tid))) delete payload.templateId;
+    }
     return { op: { op: "update", targetRef, title: str(o.title), payload, note: noteStr(o.note) } };
   }
   // delete
