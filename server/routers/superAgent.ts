@@ -21,6 +21,10 @@ import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/su
 const managerProc = levelProcedure(3);
 const superProc = levelProcedure(4); // 代码任务=任意执行级能力，限超级管理员
 
+// 运行中任务的取消登记表：key=`${projectId}:${nodeId}` → 取消函数（comfy=置 abort 位；code=杀进程）。
+const runningJobs = new Map<string, () => void>();
+const jobKey = (projectId: number, nodeId: string | undefined) => `${projectId}:${nodeId ?? ""}`;
+
 export const superAgentRouter = router({
   // 自然语言任务 → 自动编写并真机调通一份 ComfyUI API 格式工作流。
   // 活动日志经 socket "superagent:event" 流式推给项目房间；本 mutation 结束时返回最终产物。
@@ -49,13 +53,22 @@ export const superAgentRouter = router({
       const tools = createComfyTools({ baseUrl, projectId: input.projectId, nodeId: input.nodeId });
       const llm = createAgentLLM(ctx, input.model); // LLM 白名单/密钥门控在 invokeLLMWithKie 内部强制
 
-      const result = await runComfyAgent({
-        task: input.task,
-        tools,
-        llm,
-        maxIterations: input.maxIterations ?? 8,
-        emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
-      });
+      const signal = { aborted: false };
+      const key = jobKey(input.projectId, input.nodeId);
+      runningJobs.set(key, () => { signal.aborted = true; });
+      let result;
+      try {
+        result = await runComfyAgent({
+          task: input.task,
+          tools,
+          llm,
+          maxIterations: input.maxIterations ?? 8,
+          emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
+          signal,
+        });
+      } finally {
+        runningJobs.delete(key);
+      }
 
       writeAuditLog({
         ctx,
@@ -105,6 +118,7 @@ export const superAgentRouter = router({
       // 一次性临时工作区。
       const workspace = mkdtempSync(join(tmpdir(), "superagent-code-"));
       const emit = (e: { type: string; message: string; data?: unknown }) => emitSuperAgentEvent(input.projectId, input.nodeId, e);
+      const key = jobKey(input.projectId, input.nodeId);
       try {
         const handle = streamClaudeCode({
           task: input.task,
@@ -117,6 +131,7 @@ export const superAgentRouter = router({
             maxBudgetUsd: input.maxBudgetUsd ?? 2,
           }),
         });
+        runningJobs.set(key, () => handle.kill()); // 取消=杀进程
 
         const result = await runCodeAgent({ lines: handle.lines, emit, onAbort: () => handle.kill() });
         handle.kill();
@@ -138,8 +153,20 @@ export const superAgentRouter = router({
           log: result.events.map((e) => ({ type: e.type, message: e.message })),
         };
       } finally {
+        runningJobs.delete(key);
         // 清理一次性工作区（best-effort）。
         try { rmSync(workspace, { recursive: true, force: true }); } catch { /* ignore */ }
       }
+    }),
+
+  // 取消某节点上正在运行的任务（comfy=下一轮终止；code=杀进程）。L3+ 即可取消。
+  cancel: managerProc
+    .input(z.object({ projectId: z.number(), nodeId: z.string().max(64) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      const cancelFn = runningJobs.get(jobKey(input.projectId, input.nodeId));
+      if (!cancelFn) return { cancelled: false as const };
+      cancelFn();
+      return { cancelled: true as const };
     }),
 });

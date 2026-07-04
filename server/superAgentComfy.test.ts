@@ -175,6 +175,22 @@ describe("runComfyAgent — 闭环编排", () => {
     expect(r.workflowJson).toContain("x");
   });
 
+  it("signal 置位 → 下一轮开头终止，返回 aborted", async () => {
+    const signal = { aborted: false };
+    let calls = 0;
+    const r = await runComfyAgent({
+      task: "出图",
+      tools: fakeTools({ validate: async () => ({ ok: false, errors: ["再来一轮"] }) }),
+      llm: {
+        async complete() { calls++; signal.aborted = true; return `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`; },
+      },
+      signal,
+    });
+    expect(r.status).toBe("aborted");
+    expect(calls).toBe(1); // 第二轮开头即终止
+    expect(r.log.some((e) => e.type === "done" && e.message.includes("取消"))).toBe(true);
+  });
+
   it("LLM 返回非法 JSON → 提示重试、不崩溃", async () => {
     let calls = 0;
     const r = await runComfyAgent({
