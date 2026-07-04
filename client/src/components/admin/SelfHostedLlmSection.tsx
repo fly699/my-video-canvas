@@ -27,8 +27,15 @@ export function SelfHostedLlmSection() {
   // CLAUDE_LOCAL_BRIDGE_KEY 一致的值——一键只填地址与模型，key 留给你手动粘贴。
   const applyClaudeLocal = () => {
     setUrl(`${window.location.origin}/api/claude-bridge`);
-    setModels((prev) => prev.some((m) => m.id === "claude-local") ? prev : [...prev, { id: "claude-local", label: "本机 Claude（订阅）" }]);
-    toast.success("已填入本机 Claude 地址与模型，请把 API Key 填成与服务端 CLAUDE_LOCAL_BRIDGE_KEY 一致的值再保存");
+    // 模型切换约定：id 冒号后缀会被桥接透传给 `claude --model`（sonnet/opus/haiku 或完整模型 id）；
+    // 无后缀 = 订阅默认模型。Sonnet 各档订阅都可用；Opus 需 Max 档订阅（Pro 选了会报错）。
+    const CLAUDE_LOCAL_MODELS: Model[] = [
+      { id: "claude-local", label: "本机 Claude（订阅默认）" },
+      { id: "claude-local:sonnet", label: "本机 Claude · Sonnet" },
+      { id: "claude-local:opus", label: "本机 Claude · Opus（需 Max）" },
+    ];
+    setModels((prev) => [...prev, ...CLAUDE_LOCAL_MODELS.filter((m) => !prev.some((p) => p.id === m.id))]);
+    toast.success("已填入本机 Claude 地址与 3 个模型（默认/Sonnet/Opus），请把 API Key 填成与服务端 CLAUDE_LOCAL_BRIDGE_KEY 一致的值再保存");
   };
 
   const applyCurl = () => {
@@ -80,7 +87,7 @@ export function SelfHostedLlmSection() {
           用你的 <strong>Claude 订阅（Pro/Max）</strong>额度跑画布里的 AI 对话/规划，<strong>不按 token 计费</strong>。原理：服务端把请求转成本机一次 <code>claude -p</code>。三步：
           <br />1) 服务器装 Claude Code：<code>npm i -g @anthropic-ai/claude-code</code>，再 <code>claude setup-token</code> 登录订阅，把拿到的 token 设为服务端环境变量 <code>CLAUDE_CODE_OAUTH_TOKEN</code>（<strong>切勿</strong>同时设 ANTHROPIC_API_KEY，否则变按量计费）。
           <br />2) 服务端再设一个自定义口令环境变量 <code>CLAUDE_LOCAL_BRIDGE_KEY</code>（任意字符串，用于鉴权；不设=桥接不启用）。重启服务。
-          <br />3) 点下面「一键填入」→ 把下方 <strong>API Key</strong> 填成与 <code>CLAUDE_LOCAL_BRIDGE_KEY</code> 完全一致的值 → 保存。之后画布模型选择器里会出现「本机 Claude（订阅）」。
+          <br />3) 点下面「一键填入」→ 把下方 <strong>API Key</strong> 填成与 <code>CLAUDE_LOCAL_BRIDGE_KEY</code> 完全一致的值 → 保存。之后画布模型选择器里会出现「本机 Claude」的 <strong>订阅默认 / Sonnet / Opus</strong> 三个条目，选哪个就用哪个模型（Opus 需 Max 档订阅；也可手动加 <code>claude-local:haiku</code> 或 <code>claude-local:完整模型id</code> 条目）。
           <br /><span style={{ color: "var(--c-t4)" }}>注：额度受订阅用量上限约束、会被限流；订阅计费本为交互式使用，用作后端批量属灰色地带。公网隧道部署时地址请改成内网 <code>http://127.0.0.1:内部端口/api/claude-bridge</code>。</span>
         </p>
         <button onClick={applyClaudeLocal} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg self-start"

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { contentToText, messagesToPrompt, parseClaudeJsonResult } from "./_core/claudeBridge";
+import { contentToText, messagesToPrompt, parseClaudeJsonResult, bridgeModelArg } from "./_core/claudeBridge";
 
 describe("contentToText", () => {
   it("字符串原样；分段数组拼接 text；其它为空", () => {
@@ -41,5 +41,27 @@ describe("parseClaudeJsonResult", () => {
   });
   it("空输出 → isError", () => {
     expect(parseClaudeJsonResult("   ")).toEqual({ text: "", isError: true });
+  });
+});
+
+describe("bridgeModelArg（模型切换解析）", () => {
+  it("claude-local（默认条目）→ null 不传 --model", () => {
+    expect(bridgeModelArg("claude-local")).toBeNull();
+    expect(bridgeModelArg("")).toBeNull();
+    expect(bridgeModelArg(undefined)).toBeNull();
+  });
+  it("claude-local:sonnet / :opus → 取后缀", () => {
+    expect(bridgeModelArg("claude-local:sonnet")).toBe("sonnet");
+    expect(bridgeModelArg("claude-local:opus")).toBe("opus");
+  });
+  it("直接登记别名/完整 id → 原样透传（含 [1m] 形态）", () => {
+    expect(bridgeModelArg("haiku")).toBe("haiku");
+    expect(bridgeModelArg("claude-sonnet-4-5-20250929")).toBe("claude-sonnet-4-5-20250929");
+    expect(bridgeModelArg("sonnet[1m]")).toBe("sonnet[1m]");
+  });
+  it("非法字符/超长 → null 回退默认（防命令行注入）", () => {
+    expect(bridgeModelArg("sonnet; rm -rf /")).toBeNull();
+    expect(bridgeModelArg("a b")).toBeNull();
+    expect(bridgeModelArg("x".repeat(80))).toBeNull();
   });
 });

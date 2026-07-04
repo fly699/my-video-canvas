@@ -12,6 +12,7 @@ import { registerClaudeBridge } from "./_core/claudeBridge";
 const ORIG = { key: process.env.CLAUDE_LOCAL_BRIDGE_KEY, bin: process.env.CLAUDE_BIN };
 let dir: string;
 let fakeClaude: string;
+let echoClaude: string;
 let server: Server;
 let base: string;
 
@@ -21,6 +22,10 @@ beforeAll(async () => {
   // 假 claude：吞掉 stdin，打印 --output-format json 形状的结果。
   writeFileSync(fakeClaude, "#!/bin/sh\ncat > /dev/null\necho '{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"你好，我是本机 Claude\",\"is_error\":false}'\n");
   chmodSync(fakeClaude, 0o755);
+  // 回显参数的假 claude：用于断言 --model 是否被透传。
+  echoClaude = join(dir, "claude-echo");
+  writeFileSync(echoClaude, "#!/bin/sh\ncat > /dev/null\necho \"{\\\"type\\\":\\\"result\\\",\\\"subtype\\\":\\\"success\\\",\\\"result\\\":\\\"ARGS:$*\\\",\\\"is_error\\\":false}\"\n");
+  chmodSync(echoClaude, 0o755);
 
   const app = express();
   app.use(express.json());
@@ -67,5 +72,18 @@ describe("本机 Claude 桥接（集成）", () => {
     process.env.CLAUDE_LOCAL_BRIDGE_KEY = "secret";
     const r = await post({ authorization: "Bearer secret" }, { messages: [] });
     expect(r.status).toBe(400);
+  });
+});
+
+describe("模型切换透传（--model）", () => {
+  it("claude-local:sonnet → 传 --model sonnet；claude-local → 不传", async () => {
+    process.env.CLAUDE_LOCAL_BRIDGE_KEY = "secret";
+    process.env.CLAUDE_BIN = echoClaude;
+    const r1 = await post({ authorization: "Bearer secret" }, { model: "claude-local:sonnet", messages: [{ role: "user", content: "hi" }] });
+    const j1 = await r1.json();
+    expect(j1.choices[0].message.content).toContain("--model sonnet");
+    const r2 = await post({ authorization: "Bearer secret" }, { model: "claude-local", messages: [{ role: "user", content: "hi" }] });
+    const j2 = await r2.json();
+    expect(j2.choices[0].message.content).not.toContain("--model");
   });
 });
