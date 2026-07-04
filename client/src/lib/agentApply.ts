@@ -273,6 +273,10 @@ export function applyAgentOperations(
         } else if (op.op === "update") {
           const target = resolve(op.targetRef);
           if (!target) { fail(index, op, `要更新的节点未找到（${op.targetRef}）`); return; }
+          // 与 connect 一致：ref 必须解析到真实节点。resolve 对未知 ref 会原样返回字符串（非空 →
+          // 上面的检查通不掉），若不校验 liveIds，幻觉/已删 id 会被 updateNodeData 静默空转，却仍
+          // 记为成功 → 自愈循环（按 failures 重试）永远不重试这条本该失败的改动。
+          if (!liveIds.has(target)) { fail(index, op, `要更新的节点不存在（${op.targetRef}）`); return; }
           if (op.title) store.updateNodeTitle(target, op.title);
           if (op.payload && Object.keys(op.payload).length) {
             // Guard: an update must not inject a templateId for a node whose template
@@ -301,7 +305,11 @@ export function applyAgentOperations(
         } else if (op.op === "delete") {
           const target = resolve(op.targetRef);
           if (!target) { fail(index, op, `要删除的节点未找到（${op.targetRef}）`); return; }
+          if (!liveIds.has(target)) { fail(index, op, `要删除的节点不存在（${op.targetRef}）`); return; }
           store.deleteNode(target);
+          // 删后同步 live 集合：否则同一批里「先删 X、再 connect 到 X」会因 liveIds 仍含 X 而通过
+          // 校验、建出一条指向已删节点的悬空边（正是 connect 守卫想拦的）。
+          liveIds.delete(target); typeById.delete(target);
           op.status = "applied";
           res.deleted++;
         }

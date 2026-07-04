@@ -349,3 +349,31 @@ describe("buildGraphSummary 关键字段补齐（增量编辑可见）", () => {
     expect(byId.get(ch.id)).toMatchObject({ name: "阿明", role: "逃犯", appearance: "黑衣" });
   });
 });
+
+describe("applyAgentOperations 校验一致性：update/delete 也要求 ref 落到真实节点（回归）", () => {
+  it("update 指向幻觉/已删 id → 记为失败、不算 updated（自愈循环才会重试）", () => {
+    const res = applyAgentOperations([{ op: "update", targetRef: "ghost-99", payload: { prompt: "x" } }], { x: 0, y: 0 });
+    expect(res.updated).toBe(0);
+    expect(res.failures.length).toBe(1);
+    expect(res.failures[0].op).toBe("update");
+  });
+  it("delete 指向幻觉/已删 id → 记为失败、不算 deleted", () => {
+    const res = applyAgentOperations([{ op: "delete", targetRef: "ghost-99" }], { x: 0, y: 0 });
+    expect(res.deleted).toBe(0);
+    expect(res.failures.length).toBe(1);
+  });
+  it("同批「先删 X、再 connect A→X」→ connect 失败、不建悬空边", () => {
+    const store = useCanvasStore.getState();
+    const x = store.addNode("video_task", { x: 0, y: 0 });   // 被删目标
+    const a = store.addNode("image_gen", { x: 0, y: 100 });  // image→video 本是合法连接
+    const res = applyAgentOperations([
+      { op: "delete", targetRef: x.id },
+      { op: "connect", sourceRef: a.id, targetRef: x.id },
+    ], { x: 0, y: 0 });
+    expect(res.deleted).toBe(1);
+    expect(res.connected).toBe(0);
+    expect(res.failures.some((f) => f.op === "connect")).toBe(true);
+    // 没有指向已删节点的悬空边
+    expect(useCanvasStore.getState().edges.some((e) => e.target === x.id)).toBe(false);
+  });
+});
