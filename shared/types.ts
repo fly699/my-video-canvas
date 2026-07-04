@@ -1276,6 +1276,14 @@ export interface SuperAgentNodeData {
   /** 规划用 LLM 模型。 */
   model?: string;
   status?: "idle" | "running" | "success" | "failed" | "exhausted" | "aborted";
+  /** ComfyUI 模式连续对话记录（用户指令 + 智能体每轮结果摘要）。 */
+  conversation?: { role: "user" | "agent"; text: string; workflowJson?: string; status?: string }[];
+  /** 聊天输入框当前文本（持久化，防误删）。 */
+  input?: string;
+  /** 已写回/链接的 comfyui_workflow 节点 id：后续调参同步到它并可一键重新生成。 */
+  appliedNodeId?: string;
+  /** 设置区（服务器/模型）是否展开（有对话后默认收起，减少干扰）。 */
+  settingsOpen?: boolean;
   /** 流式活动日志（socket 回灌，非持久）。 */
   log?: { type: string; iteration: number; message: string }[];
   /** 调通后的 workflow JSON（可一键写回 comfyui_workflow 节点）。 */
