@@ -4,7 +4,7 @@ import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Boxes, Loader2, Play, CheckCircle2, XCircle, ArrowRightCircle, Square, Server, Cpu } from "lucide-react";
+import { Boxes, Loader2, Play, XCircle, ArrowRightCircle, Square, Server, Cpu, Send, RefreshCw, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
@@ -24,6 +24,8 @@ interface Props {
 const accent = "oklch(0.68 0.19 200)";
 const accentA = (a: number) => `oklch(0.68 0.19 200 / ${a})`;
 const BORDER = "var(--c-bd2)";
+const GREEN = "oklch(0.62 0.2 155)";
+const RED = "oklch(0.62 0.2 25)";
 
 const labelStyle: React.CSSProperties = {
   fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em",
@@ -35,15 +37,21 @@ const fieldStyle: React.CSSProperties = {
   color: "var(--c-t1)", outline: "none", lineHeight: 1.5,
 };
 
-/** 事件类型 → 活动日志前缀色。 */
 function logColor(type: string): string {
   switch (type) {
     case "error": return "oklch(0.7 0.18 25)";
-    case "done": return "oklch(0.65 0.2 155)";
+    case "done": return GREEN;
     case "action": return "oklch(0.72 0.16 285)";
     case "tool_result": return "var(--c-t2)";
     default: return "var(--c-t3)";
   }
+}
+
+type Turn = NonNullable<SuperAgentNodeData["conversation"]>[number];
+
+/** 从对话记录提取给引擎的精简历史（末尾若干轮）。 */
+function buildHistory(conv: Turn[]): { role: "user" | "assistant"; content: string }[] {
+  return conv.slice(-6).map((t) => ({ role: t.role === "user" ? "user" as const : "assistant" as const, content: t.text.slice(0, 1000) }));
 }
 
 export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data }: Props) {
@@ -54,18 +62,15 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const update = useCallback((patch: Partial<SuperAgentNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
   const mode = payload.mode ?? "comfy";
-  // ComfyUI 模式规划用 LLM：节点显式选 > 「节点默认模型」resolve > 出厂默认（kie_claude_opus_47），
-  // 与其它节点一致（此前未传 model 时会落到 DEFAULT_MODEL=claude-sonnet-4-5，故对齐）。
   const { resolve } = useNodeDefaultModels();
   const llmModel = (payload.model || resolve("super_agent", "llm")) as LLMModelId;
   const buildMut = trpc.superAgent.buildComfyWorkflow.useMutation();
   const codeMut = trpc.superAgent.runCodeTask.useMutation();
-  // code 模式可用性（L3+ 才有权查询；查询失败/无权 → 视为不可用）。
+  const cancelMut = trpc.superAgent.cancel.useMutation();
   const codeStatus = trpc.superAgent.codeStatus.useQuery(undefined, { enabled: mode === "code", retry: false });
   const codeEnabled = codeStatus.data?.enabled === true;
   const running = payload.status === "running" || buildMut.isPending || codeMut.isPending;
 
-  // ComfyUI 服务器测试/拉取（与其它 ComfyUI 节点一致）：探 fetchModels 验证可达 + 报模型数。
   const utils = trpc.useUtils();
   const [testingServer, setTestingServer] = useState(false);
   const handleTestServer = useCallback(async () => {
@@ -78,7 +83,6 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     } finally { setTestingServer(false); }
   }, [utils, payload.customBaseUrl]);
 
-  const cancelMut = trpc.superAgent.cancel.useMutation();
   const handleCancel = useCallback(() => {
     cancelMut.mutate({ projectId: data.projectId, nodeId: id }, {
       onSuccess: (r) => { toast[r.cancelled ? "success" : "info"](r.cancelled ? "已请求停止…" : "没有正在运行的任务"); },
@@ -86,38 +90,73 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     });
   }, [cancelMut, data.projectId, id]);
 
-  // 活动日志自动滚到底。
-  const logRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [payload.log?.length]);
+  // 同步当前工作流到「已链接的 comfyui_workflow 节点」；无则新建并链接。regenerate=true 则触发其重新生成。
+  const syncToNode = useCallback((wf: string, analysis: SuperAgentNodeData["resultAnalysis"], regenerate: boolean) => {
+    const st = useCanvasStore.getState();
+    const patch: Record<string, unknown> = {
+      workflowJson: wf,
+      paramBindings: (analysis?.paramBindings ?? []) as WorkflowParamBinding[],
+      outputNodeIds: analysis?.outputNodeIds ?? [],
+      outputType: analysis?.outputType === "video" ? "video" : "image",
+      templateLabel: "工程智能体生成",
+      ...(payload.customBaseUrl?.trim() ? { customBaseUrl: payload.customBaseUrl.trim() } : {}),
+    };
+    let targetId = payload.appliedNodeId && st.nodes.some((n) => n.id === payload.appliedNodeId) ? payload.appliedNodeId : null;
+    const isNew = !targetId;
+    if (!targetId) {
+      const pos = st.nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+      const node = addNode("comfyui_workflow", { x: pos.x + 460, y: pos.y });
+      targetId = node.id;
+      update({ appliedNodeId: targetId });
+    }
+    updateNodeData(targetId, patch);
+    if (regenerate) { st.requestRun(null, [targetId]); }
+    return { targetId, isNew };
+  }, [payload.appliedNodeId, payload.customBaseUrl, id, addNode, updateNodeData, update]);
 
-  const handleRun = useCallback(() => {
+  // 手动点「同步(并重新生成)」按钮。
+  const applyLatest = useCallback((regenerate: boolean) => {
+    if (!payload.resultWorkflowJson) return;
+    const { isNew } = syncToNode(payload.resultWorkflowJson, payload.resultAnalysis, regenerate);
+    toast.success(isNew ? "已写回为 ComfyUI 节点" : "已同步到已链接节点");
+    if (regenerate) toast.info("已触发该节点重新生成");
+    else if (isNew) setTimeout(() => reactFlow.fitView({ padding: 0.25, duration: 400 }), 60);
+  }, [payload.resultWorkflowJson, payload.resultAnalysis, syncToNode, reactFlow]);
+
+  // ── ComfyUI 模式：连续对话发送 ──
+  const handleSend = useCallback(() => {
     if (running) return;
-    const task = (payload.task ?? "").trim();
-    if (!task) { toast.error("请先描述工程任务"); return; }
-    // 清空上一轮日志/结果，进入运行态（日志由 Canvas 的 socket 处理器回灌 payload.log）。
-    update({ status: "running", log: [], resultWorkflowJson: undefined, resultAnalysis: undefined, errorMessage: undefined });
+    const instruction = (payload.input ?? "").trim();
+    if (!instruction) { toast.error("请输入指令"); return; }
+    const priorConv = payload.conversation ?? [];
+    const isFollowup = !!payload.resultWorkflowJson && priorConv.length > 0;
+    const conv: Turn[] = [...priorConv, { role: "user", text: instruction }];
+    update({ conversation: conv, input: "", status: "running", log: [], errorMessage: undefined });
     buildMut.mutate(
-      { projectId: data.projectId, nodeId: id, task, customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel },
+      {
+        projectId: data.projectId, nodeId: id, task: instruction,
+        customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
+        ...(isFollowup ? { seedWorkflowJson: payload.resultWorkflowJson, history: buildHistory(priorConv) } : {}),
+      },
       {
         onSuccess: (res) => {
-          update({
-            status: res.status,
-            resultWorkflowJson: res.workflowJson,
-            resultAnalysis: res.analysis,
-            // socket 若漏事件，用返回的完整日志兜底。
-            log: res.log,
-          });
-          if (res.status === "success") toast.success(`工作流已调通（${res.iterations} 轮）`);
-          else if (res.status === "exhausted") toast.warning(`已达最大轮数未调通（${res.iterations} 轮），保留最后一版`);
-          else toast.error("未能调通工作流");
+          const summary = res.status === "success" ? `✅ 已调通（${res.iterations} 轮）`
+            : res.status === "exhausted" ? `⚠️ ${res.iterations} 轮未完全调通，保留最后一版`
+            : res.status === "aborted" ? "⏹ 已取消" : "❌ 未能调通";
+          const agentTurn: Turn = { role: "agent", text: summary, workflowJson: res.workflowJson, status: res.status };
+          update({ conversation: [...conv, agentTurn], status: res.status, resultWorkflowJson: res.workflowJson, resultAnalysis: res.analysis, log: res.log });
+          // 已链接节点：调通后自动把新工作流同步过去（不自动跑，重新生成一键触发）。
+          if (res.status === "success" && res.workflowJson && payload.appliedNodeId) {
+            const st = useCanvasStore.getState();
+            if (st.nodes.some((n) => n.id === payload.appliedNodeId)) { syncToNode(res.workflowJson, res.analysis, false); toast.success("已同步到链接节点，可点「重新生成」"); }
+          }
         },
-        onError: (e) => { update({ status: "failed", errorMessage: e.message }); toast.error("运行失败：" + e.message); },
+        onError: (e) => { update({ status: "failed", errorMessage: e.message, conversation: [...conv, { role: "agent", text: "❌ " + e.message, status: "failed" }] }); toast.error("运行失败：" + e.message); },
       },
     );
-  }, [running, payload.task, payload.customBaseUrl, llmModel, data.projectId, id, buildMut, update]);
+  }, [running, payload.input, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.appliedNodeId, llmModel, data.projectId, id, buildMut, update, syncToNode]);
 
+  // ── 代码任务模式 ──
   const handleRunCode = useCallback(() => {
     if (running) return;
     const task = (payload.task ?? "").trim();
@@ -137,29 +176,19 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     );
   }, [running, payload.task, data.projectId, id, codeMut, update]);
 
-  // 把调通（或最后一版）的 workflowJson 写回一个新的 comfyui_workflow 画布节点。
-  const handleApply = useCallback(() => {
-    if (!payload.resultWorkflowJson) return;
-    const pos = useCanvasStore.getState().nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
-    const node = addNode("comfyui_workflow", { x: pos.x + 460, y: pos.y });
-    const a = payload.resultAnalysis;
-    updateNodeData(node.id, {
-      workflowJson: payload.resultWorkflowJson,
-      paramBindings: (a?.paramBindings ?? []) as WorkflowParamBinding[],
-      outputNodeIds: a?.outputNodeIds ?? [],
-      outputType: (a?.outputType === "video" ? "video" : "image"),
-      templateLabel: "工程智能体生成",
-      ...(payload.customBaseUrl?.trim() ? { customBaseUrl: payload.customBaseUrl.trim() } : {}),
-    });
-    toast.success("已写回为 ComfyUI 自定义节点，可直接运行");
-    setTimeout(() => reactFlow.fitView({ padding: 0.25, duration: 400 }), 60);
-  }, [payload.resultWorkflowJson, payload.resultAnalysis, payload.customBaseUrl, id, addNode, updateNodeData, reactFlow]);
-
   const log = payload.log ?? [];
+  const conversation = payload.conversation ?? [];
+  const settingsOpen = payload.settingsOpen ?? conversation.length === 0;
+  const hasResult = (payload.status === "success" || payload.status === "exhausted") && !!payload.resultWorkflowJson;
+  const linked = !!payload.appliedNodeId;
+
+  // 对话/日志自动滚到底。
+  const feedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [conversation.length, log.length]);
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="super_agent" title={data.title} minHeight={320} resizable showHandles={false} capNodeHeight>
-      <div className="flex flex-col gap-2.5" style={{ padding: "2px 2px 4px" }}>
+    <BaseNode id={id} selected={selected} nodeType="super_agent" title={data.title} minHeight={340} resizable showHandles={false} capNodeHeight>
+      <div className="flex flex-col gap-2" style={{ padding: "2px 2px 4px" }}>
         {/* 模式切换 */}
         <div className="nodrag flex" style={{ gap: 4, background: "var(--c-surface)", padding: 3, borderRadius: 9, border: `1px solid ${BORDER}` }}>
           {([["comfy", "ComfyUI 工作流"], ["code", "代码任务"]] as const).map(([m, label]) => (
@@ -171,150 +200,160 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
           ))}
         </div>
 
-        <div style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.5 }}>
-          {mode === "comfy"
-            ? "描述工程任务，服务端自动「写 ComfyUI 工作流 → 校验 → 真机运行 → 读错 → 修正」直到调通，全程无需你手写 JSON。"
-            : "描述代码任务，服务端在一次性隔离工作区跑无头 Claude Code；危险命令由 commandPolicy 拦截。需超管 L4 + 服务端开启。"}
-        </div>
-
-        <div>
-          <label style={labelStyle}>{mode === "comfy" ? "工程任务" : "代码任务"}</label>
-          <textarea
-            className="nodrag" rows={3} disabled={running}
-            placeholder={mode === "comfy" ? "例：做一个 SDXL 文生图工作流，1024×1024，带一个细节 LoRA，并调通" : "例：读取工作区里的 err.log，定位报错根因并写一份修复说明"}
-            value={payload.task ?? ""} onChange={(e) => update({ task: e.target.value })}
-            style={{ ...fieldStyle, resize: "vertical" }}
-          />
-        </div>
-
+        {/* ═══════════ ComfyUI 工作流（连续对话） ═══════════ */}
         {mode === "comfy" && (
-          <div>
-            <label style={labelStyle}>
-              <Server size={9} style={{ display: "inline", marginRight: 3 }} />
-              ComfyUI 服务器（留空用全局默认 · 可保存/切换/测试）
-            </label>
-            <ComfyServerUrlField
-              id={id}
-              value={payload.customBaseUrl ?? ""}
-              onChange={(v) => update({ customBaseUrl: v })}
-              serverUrls={payload.serverUrls ?? []}
-              onChangeServerUrls={(next) => update({ serverUrls: next })}
-              isFetching={testingServer}
-              onRefresh={handleTestServer}
-              accent={accent}
-              borderAccent={accentA(0.5)}
-              borderDefault={BORDER}
-              fieldBase={fieldStyle}
-            />
-          </div>
-        )}
-
-        {mode === "comfy" && (
-          <div>
-            <label style={labelStyle}>
-              <Cpu size={9} style={{ display: "inline", marginRight: 3 }} />
-              规划模型（默认 kie Claude Opus 4.7）
-            </label>
-            <LLMModelPicker value={llmModel} onChange={(v) => update({ model: v })} disabled={running} />
-          </div>
-        )}
-
-        {mode === "code" && !codeEnabled && !codeStatus.isLoading && (
-          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.7 0.16 60 / 0.08)", border: "1px solid oklch(0.7 0.16 60 / 0.3)", fontSize: 11, color: "oklch(0.62 0.14 60)" }}>
-            代码任务未启用。需服务端设置 <code>SUPER_AGENT_CODE_ENABLED=1</code>（放行 shell 再加 <code>SUPER_AGENT_CODE_ALLOW_BASH=1</code>），且当前用户为超级管理员 L4。
-          </div>
-        )}
-
-        <button
-          onClick={mode === "comfy" ? handleRun : handleRunCode}
-          disabled={running || (mode === "code" && !codeEnabled)}
-          className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
-          style={{
-            background: running || (mode === "code" && !codeEnabled) ? "var(--c-surface)" : accentA(0.14),
-            border: `1px solid ${running || (mode === "code" && !codeEnabled) ? BORDER : accentA(0.5)}`,
-            color: running || (mode === "code" && !codeEnabled) ? "var(--c-t4)" : accent,
-            cursor: running || (mode === "code" && !codeEnabled) ? "not-allowed" : "pointer",
-          }}
-        >
-          {running ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Play style={{ width: 13, height: 13 }} />}
-          {running ? "工程智能体运行中…" : mode === "comfy" ? "运行工程智能体" : "运行代码任务"}
-        </button>
-
-        {running && (
-          <button
-            onClick={handleCancel} disabled={cancelMut.isPending}
-            className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{ background: "oklch(0.62 0.2 25 / 0.10)", border: "1px solid oklch(0.62 0.2 25 / 0.4)", color: "oklch(0.62 0.2 25)", cursor: "pointer" }}
-          >
-            <Square style={{ width: 12, height: 12 }} /> 停止
-          </button>
-        )}
-
-        {/* 活动日志（socket 流式回灌） */}
-        {log.length > 0 && (
-          <div
-            ref={logRef}
-            className="nowheel"
-            style={{
-              maxHeight: 200, overflowY: "auto", background: "var(--c-canvas)",
-              border: `1px solid ${BORDER}`, borderRadius: 8, padding: "7px 9px",
-              fontSize: 11, lineHeight: 1.6, fontFamily: "ui-monospace, monospace",
-            }}
-          >
-            {log.map((e, i) => (
-              <div key={i} style={{ color: logColor(e.type), whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                {e.iteration > 0 ? `[${e.iteration}] ` : ""}{e.message}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* 结果 + 写回 */}
-        {payload.status === "success" && payload.resultWorkflowJson && (
-          <div className="flex flex-col gap-2 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.65 0.2 155 / 0.08)", border: "1px solid oklch(0.65 0.2 155 / 0.35)" }}>
-            <div className="flex items-center gap-1.5" style={{ fontSize: 12, color: "oklch(0.6 0.18 155)", fontWeight: 600 }}>
-              <CheckCircle2 style={{ width: 14, height: 14 }} /> 工作流已调通
+          <>
+            {/* 折叠式设置：服务器 + 规划模型 */}
+            <div style={{ border: `1px solid ${BORDER}`, borderRadius: 9, overflow: "hidden" }}>
+              <button onClick={() => update({ settingsOpen: !settingsOpen })}
+                className="nodrag flex items-center gap-1.5 w-full" style={{ padding: "6px 9px", background: "var(--c-surface)", border: "none", cursor: "pointer", fontSize: 11, color: "var(--c-t2)", fontWeight: 600 }}>
+                <Settings2 style={{ width: 12, height: 12 }} /> 服务器 / 规划模型
+                {settingsOpen ? <ChevronUp style={{ width: 12, height: 12, marginLeft: "auto" }} /> : <ChevronDown style={{ width: 12, height: 12, marginLeft: "auto" }} />}
+              </button>
+              {settingsOpen && (
+                <div className="flex flex-col gap-2.5" style={{ padding: "9px" }}>
+                  <div>
+                    <label style={labelStyle}><Server size={9} style={{ display: "inline", marginRight: 3 }} />ComfyUI 服务器（留空用全局默认）</label>
+                    <ComfyServerUrlField id={id} value={payload.customBaseUrl ?? ""} onChange={(v) => update({ customBaseUrl: v })}
+                      serverUrls={payload.serverUrls ?? []} onChangeServerUrls={(next) => update({ serverUrls: next })}
+                      isFetching={testingServer} onRefresh={handleTestServer}
+                      accent={accent} borderAccent={accentA(0.5)} borderDefault={BORDER} fieldBase={fieldStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}><Cpu size={9} style={{ display: "inline", marginRight: 3 }} />规划模型（默认 kie Claude Opus 4.7）</label>
+                    <LLMModelPicker value={llmModel} onChange={(v) => update({ model: v })} disabled={running} />
+                  </div>
+                </div>
+              )}
             </div>
-            <button
-              onClick={handleApply}
-              className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-xs font-medium"
-              style={{ background: accentA(0.14), border: `1px solid ${accentA(0.5)}`, color: accent, cursor: "pointer" }}
-            >
-              <ArrowRightCircle style={{ width: 13, height: 13 }} /> 写回为 ComfyUI 自定义节点
-            </button>
-          </div>
-        )}
-        {payload.status === "exhausted" && payload.resultWorkflowJson && (
-          <button
-            onClick={handleApply}
-            className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-xs font-medium"
-            style={{ background: "var(--c-surface)", border: `1px solid ${BORDER}`, color: "var(--c-t2)", cursor: "pointer" }}
-          >
-            <ArrowRightCircle style={{ width: 13, height: 13 }} /> 未完全调通 · 仍写回最后一版
-          </button>
-        )}
-        {payload.status === "failed" && payload.errorMessage && (
-          <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: "1px solid oklch(0.62 0.2 25 / 0.3)" }}>
-            <XCircle style={{ width: 13, height: 13, color: "oklch(0.62 0.2 25)", flexShrink: 0, marginTop: 1 }} />
-            <span style={{ fontSize: 11.5, color: "oklch(0.62 0.2 25)" }}>{payload.errorMessage}</span>
-          </div>
+
+            {/* 链接状态 */}
+            {linked && (
+              <div className="flex items-center gap-1" style={{ fontSize: 10.5, color: accent }}>
+                <ArrowRightCircle style={{ width: 11, height: 11 }} /> 已链接一个 ComfyUI 节点：调通后自动同步，可一键重新生成
+              </div>
+            )}
+
+            {/* 对话 + 活动日志 */}
+            {(conversation.length > 0 || log.length > 0) && (
+              <div ref={feedRef} className="nowheel flex flex-col gap-1.5" style={{ maxHeight: 240, overflowY: "auto", background: "var(--c-canvas)", border: `1px solid ${BORDER}`, borderRadius: 8, padding: "8px" }}>
+                {conversation.map((t, i) => (
+                  t.role === "user" ? (
+                    <div key={i} style={{ alignSelf: "flex-end", maxWidth: "88%", background: accentA(0.16), border: `1px solid ${accentA(0.4)}`, borderRadius: "9px 9px 2px 9px", padding: "5px 9px", fontSize: 11.5, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{t.text}</div>
+                  ) : (
+                    <div key={i} style={{ alignSelf: "flex-start", maxWidth: "92%", fontSize: 11.5, color: t.status === "success" ? GREEN : t.status === "failed" ? RED : "var(--c-t2)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{t.text}</div>
+                  )
+                ))}
+                {/* 运行中的实时活动日志 */}
+                {running && log.length > 0 && (
+                  <div style={{ borderTop: conversation.length ? `1px dashed ${BORDER}` : "none", paddingTop: conversation.length ? 6 : 0, marginTop: 2, fontFamily: "ui-monospace, monospace", fontSize: 10.5, lineHeight: 1.55 }}>
+                    {log.slice(-40).map((e, i) => (
+                      <div key={i} style={{ color: logColor(e.type), whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{e.iteration > 0 ? `[${e.iteration}] ` : ""}{e.message}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 结果 → 同步 / 重新生成 */}
+            {hasResult && !running && (
+              <div className="flex flex-col gap-1.5">
+                <button onClick={() => applyLatest(true)}
+                  className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold"
+                  style={{ background: accentA(0.16), border: `1px solid ${accentA(0.5)}`, color: accent, cursor: "pointer" }}>
+                  <RefreshCw style={{ width: 13, height: 13 }} /> {linked ? "同步到节点并重新生成" : "写回为 ComfyUI 节点并生成"}
+                </button>
+                <button onClick={() => applyLatest(false)}
+                  className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-[11px]"
+                  style={{ background: "var(--c-surface)", border: `1px solid ${BORDER}`, color: "var(--c-t3)", cursor: "pointer" }}>
+                  <ArrowRightCircle style={{ width: 12, height: 12 }} /> {linked ? "仅同步（不生成）" : "仅写回（不生成）"}
+                </button>
+              </div>
+            )}
+
+            {/* 停止 */}
+            {running && (
+              <button onClick={handleCancel} disabled={cancelMut.isPending}
+                className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium"
+                style={{ background: "oklch(0.62 0.2 25 / 0.10)", border: `1px solid ${RED}`, color: RED, cursor: "pointer" }}>
+                <Square style={{ width: 12, height: 12 }} /> 停止
+              </button>
+            )}
+
+            {/* 聊天输入 */}
+            <div className="nodrag flex items-end gap-1.5">
+              <textarea
+                className="nodrag" rows={2} disabled={running}
+                placeholder={conversation.length === 0 ? "描述要做的工作流，例：SDXL 文生图 1024×1024 带细节 LoRA" : "继续调整，例：改成 9:16 / 加个高清放大 / 换个 checkpoint"}
+                value={payload.input ?? ""} onChange={(e) => update({ input: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                style={{ ...fieldStyle, resize: "vertical", flex: 1 }}
+              />
+              <button onClick={handleSend} disabled={running}
+                className="nodrag flex items-center justify-center rounded-lg" style={{ width: 38, height: 38, flexShrink: 0, background: running ? "var(--c-surface)" : accentA(0.16), border: `1px solid ${running ? BORDER : accentA(0.5)}`, color: running ? "var(--c-t4)" : accent, cursor: running ? "not-allowed" : "pointer" }}
+                title="发送（Enter 发送，Shift+Enter 换行）">
+                {running ? <Loader2 style={{ width: 15, height: 15 }} className="animate-spin" /> : <Send style={{ width: 15, height: 15 }} />}
+              </button>
+            </div>
+          </>
         )}
 
-        {/* code 模式：被拦截的危险命令 */}
-        {payload.blockedCommand && (
-          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: "1px solid oklch(0.62 0.2 25 / 0.3)", fontSize: 11.5, color: "oklch(0.62 0.2 25)" }}>
-            已拦截危险命令并中止：<code style={{ wordBreak: "break-all" }}>{payload.blockedCommand}</code>
-          </div>
-        )}
-        {/* code 模式：任务结果文本 */}
-        {mode === "code" && payload.status === "success" && payload.codeResult && (
-          <div className="nowheel px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.65 0.2 155 / 0.08)", border: "1px solid oklch(0.65 0.2 155 / 0.3)", fontSize: 11.5, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 180, overflowY: "auto" }}>
-            {payload.codeResult}
-          </div>
+        {/* ═══════════ 代码任务 ═══════════ */}
+        {mode === "code" && (
+          <>
+            <div style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.5 }}>
+              描述代码任务，服务端在一次性隔离工作区跑无头 Claude Code；危险命令由 commandPolicy 拦截。需超管 L4 + 服务端开启。
+            </div>
+            <div>
+              <label style={labelStyle}>代码任务</label>
+              <textarea className="nodrag" rows={3} disabled={running}
+                placeholder="例：读取工作区里的 err.log，定位报错根因并写一份修复说明"
+                value={payload.task ?? ""} onChange={(e) => update({ task: e.target.value })} style={{ ...fieldStyle, resize: "vertical" }} />
+            </div>
+            {!codeEnabled && !codeStatus.isLoading && (
+              <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.7 0.16 60 / 0.08)", border: "1px solid oklch(0.7 0.16 60 / 0.3)", fontSize: 11, color: "oklch(0.62 0.14 60)" }}>
+                代码任务未启用。需服务端设置 <code>SUPER_AGENT_CODE_ENABLED=1</code>（放行 shell 再加 <code>SUPER_AGENT_CODE_ALLOW_BASH=1</code>），且当前用户为超级管理员 L4。
+              </div>
+            )}
+            <button onClick={handleRunCode} disabled={running || !codeEnabled}
+              className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold"
+              style={{ background: running || !codeEnabled ? "var(--c-surface)" : accentA(0.14), border: `1px solid ${running || !codeEnabled ? BORDER : accentA(0.5)}`, color: running || !codeEnabled ? "var(--c-t4)" : accent, cursor: running || !codeEnabled ? "not-allowed" : "pointer" }}>
+              {running ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Play style={{ width: 13, height: 13 }} />}
+              {running ? "运行中…" : "运行代码任务"}
+            </button>
+            {running && (
+              <button onClick={handleCancel} disabled={cancelMut.isPending}
+                className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium"
+                style={{ background: "oklch(0.62 0.2 25 / 0.10)", border: `1px solid ${RED}`, color: RED, cursor: "pointer" }}>
+                <Square style={{ width: 12, height: 12 }} /> 停止
+              </button>
+            )}
+            {log.length > 0 && (
+              <div ref={feedRef} className="nowheel" style={{ maxHeight: 200, overflowY: "auto", background: "var(--c-canvas)", border: `1px solid ${BORDER}`, borderRadius: 8, padding: "7px 9px", fontSize: 11, lineHeight: 1.6, fontFamily: "ui-monospace, monospace" }}>
+                {log.map((e, i) => (<div key={i} style={{ color: logColor(e.type), whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{e.message}</div>))}
+              </div>
+            )}
+            {payload.blockedCommand && (
+              <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}`, fontSize: 11.5, color: RED }}>
+                已拦截危险命令并中止：<code style={{ wordBreak: "break-all" }}>{payload.blockedCommand}</code>
+              </div>
+            )}
+            {payload.status === "success" && payload.codeResult && (
+              <div className="nowheel px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.65 0.2 155 / 0.08)", border: `1px solid ${GREEN}`, fontSize: 11.5, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 180, overflowY: "auto" }}>
+                {payload.codeResult}
+              </div>
+            )}
+            {payload.status === "failed" && payload.errorMessage && (
+              <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}` }}>
+                <XCircle style={{ width: 13, height: 13, color: RED, flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 11.5, color: RED }}>{payload.errorMessage}</span>
+              </div>
+            )}
+          </>
         )}
 
         <div className="flex items-center gap-1" style={{ fontSize: 10, color: "var(--c-t4)" }}>
-          <Boxes style={{ width: 11, height: 11 }} /> 需管理员 L3+ · 仅本地自建 ComfyUI（Phase 1）
+          <Boxes style={{ width: 11, height: 11 }} /> 需管理员 L3+ · 仅本地自建 ComfyUI
         </div>
       </div>
     </BaseNode>
