@@ -29,10 +29,18 @@
 
 ```bash
 npm install -g @anthropic-ai/claude-code      # 或原生安装器
-# 服务端无头认证（择一，免浏览器登录）：
-export ANTHROPIC_API_KEY="sk-ant-..."          # Console 按量 key
-# 或： export CLAUDE_CODE_OAUTH_TOKEN="$(claude setup-token)"   # 订阅长效 token
 ```
+
+**认证（择一，免浏览器登录）：**
+
+- **订阅（Pro/Max）—— 推荐**：走订阅额度，**不按 token 另收费**（受订阅用量上限约束）。
+  在一台能开浏览器、且登录了该订阅账号的机器上跑一次 `claude setup-token`，拿到长效 token
+  （约一年有效），设成服务器环境变量 `CLAUDE_CODE_OAUTH_TOKEN=<token>`。**不要**同时设
+  `ANTHROPIC_API_KEY`（否则 API key 优先 → 变按量计费）。token 与账号绑定，在哪台机生成都能用。
+- **API Key —— 按量计费**：console.anthropic.com 新建，设 `ANTHROPIC_API_KEY=sk-ant-...`。
+  与订阅无关，按输入/输出 token 单独扣费。
+
+> 走订阅意味着：所有能用「代码任务」的 L4 管理员消耗的都是**你这个订阅账号**的额度，撞上限会被限流。
 
 CLI 路径非默认时用 `CLAUDE_BIN` 指定（如 Windows：`CLAUDE_BIN=C:\...\claude.cmd`）。
 
@@ -50,13 +58,22 @@ CLI 路径非默认时用 `CLAUDE_BIN` 指定（如 Windows：`CLAUDE_BIN=C:\...
 
 放行 shell 后，默认靠「事后监控」（危险命令跑了立即杀进程止损）。要升级为**执行前拦截**（危险命令根本不跑），配置权限审批 MCP：
 
-| 环境变量 | 值 |
-|---|---|
-| `SUPER_AGENT_PERMISSION_CMD` | 启动权限 MCP 服务器的命令，如 `node` |
-| `SUPER_AGENT_PERMISSION_ARGS` | JSON 数组参数，指向已构建的 `permissionMcpServer`，如 `["/app/dist/server/_core/superAgent/permissionMcpServer.js"]` |
+**a) 先产出权限 MCP 服务器（零依赖单文件）。** 已并入 `npm run build`；也可单独：
+```bash
+npm run build:superagent-mcp      # 产出 dist/permissionMcpServer.cjs（约 7KB，无外部依赖）
+```
 
-配置后，每条命令在执行前经 `commandPolicy` 审批（危险即拒、不执行）。
-> 注：`--permission-prompt-tool` 的 claude↔MCP wire 契约官方尚未文档化，本实现按推断对齐、MCP 服务器本身已验证；未确认前，事后监控仍作兜底。
+**b) 设两个环境变量**（`node` 直接跑那个单文件，cwd 无关、跨平台稳）：
+
+| 环境变量 | 值（示例，路径换成你的绝对路径）|
+|---|---|
+| `SUPER_AGENT_PERMISSION_CMD` | `node` |
+| `SUPER_AGENT_PERMISSION_ARGS` | `["/绝对路径/dist/permissionMcpServer.cjs"]` （Windows：`["D:\\\\路径\\\\dist\\\\permissionMcpServer.cjs"]`）|
+
+配置后，claude 每次工具执行前调该 MCP，命令经 `commandPolicy` 审批（危险即拒、不执行）。
+> 注：`--permission-prompt-tool` 的 claude↔MCP wire 契约官方尚未文档化，本实现按推断对齐；
+> **MCP 服务器本身已真机验证**（canned JSON-RPC：安全→allow、`rm -rf`→deny），但 claude 侧是否
+> 如期调用需你真机确认——未确认前，档位 B 的事后监控仍作兜底。
 
 ### 安全分层（代码任务）
 
