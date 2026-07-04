@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Plus, X, Activity, MonitorDown, Eraser } from "lucide-react";
+import { RefreshCw, Plus, X, Activity, MonitorDown, Eraser, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useComfyServersStore } from "../../../hooks/useComfyServersStore";
@@ -136,6 +136,9 @@ export function ComfyServerUrlField({
     toast.success(`已清理 ${offline.length} 台失效服务器`);
   }, [cleanPending, statusQuery.isFetching, statusQuery.data, statusByUrl, serverUrls, onChangeServerUrls, removeGlobalServer]);
 
+  // 已存地址列表默认折叠（多台时很占地方）；点计数展开。
+  const [chipsOpen, setChipsOpen] = useState(false);
+
   return (
     <>
       <div className="flex items-center gap-1.5">
@@ -220,7 +223,18 @@ export function ComfyServerUrlField({
         );
       })()}
       {allServers.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-1.5">
+        <div className="mt-1.5">
+          <button
+            onClick={() => setChipsOpen((v) => !v)}
+            className="nodrag flex items-center gap-1"
+            style={{ fontSize: 10, color: "var(--c-t3)", background: "none", border: "none", cursor: "pointer", padding: "1px 0" }}
+            title={chipsOpen ? "收起已存地址" : "展开已存地址"}
+          >
+            {chipsOpen ? <ChevronDown style={{ width: 10, height: 10 }} /> : <ChevronRight style={{ width: 10, height: 10 }} />}
+            已保存 {allServers.length} 个服务器地址
+          </button>
+          {chipsOpen && (
+        <div className="flex flex-wrap gap-1.5 mt-1">
           {allServers.map((u) => {
             const active = value.trim() === u;
             const s = probe ? statusByUrl.get(u) : undefined;
@@ -235,6 +249,8 @@ export function ComfyServerUrlField({
               </span>
             );
           })}
+        </div>
+          )}
         </div>
       )}
     </>
