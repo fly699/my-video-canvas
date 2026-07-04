@@ -68,6 +68,26 @@ CLAUDE_LOCAL_BRIDGE_KEY=<你自己编的任意字符串，如 my-local-claude-8f
 
 > **订阅档位限制**:Pro 档只能用 Sonnet;**Opus 需 Max 档**——Pro 选 Opus 会直接报错(报错会浮出到节点)。切换模型不需要重启服务,后台保存即生效。
 
+## 再接 GPT(ChatGPT 订阅)——同一个桥接、零新增配置
+
+GPT 侧的订阅等价物是 OpenAI **Codex CLI**(可用 ChatGPT Plus/Pro 订阅登录,不按 token 计费)。桥接**与 Claude 共用同一地址、同一 Key**,按模型前缀分流(`gpt-local*` → codex,其余 → claude),所以不需要任何新的环境变量。
+
+### 步骤
+
+1. **服务器装 Codex CLI**:`npm i -g @openai/codex`(路径特殊时可设 `CODEX_BIN` 指向完整路径)。
+2. **订阅登录**:在**能开浏览器**的机器上跑 `codex`,选「**Sign in with ChatGPT**」登录订阅账号;登录凭证会存到该机的 `~/.codex/auth.json`。
+3. **把凭证放到服务器**:将 `~/.codex/auth.json` 拷到服务器同路径(Windows:`C:\Users\你\.codex\auth.json`)。该文件等同密码,注意保管。
+4. **后台**:模型管理 › 自建 LLM → 点「**一键填入本机 GPT(ChatGPT 订阅)**」→ 保存(地址/Key 与 Claude 完全共用,已配过就不用动)。
+
+之后画布模型选择器会出现「本机 GPT(订阅默认)」「本机 GPT · Codex」。模型 id 规则同 Claude:`gpt-local` = 订阅默认;`gpt-local:模型名` 透传给 `codex -m`(如 `gpt-local:gpt-5.3-codex`;有效模型名随 OpenAI 更新,以 `codex -m` 接受的为准)。
+
+### GPT 侧注意
+
+- **切勿在服务器设 `CODEX_API_KEY` / `OPENAI_API_KEY`**——凭证优先级是 `CODEX_API_KEY > auth.json(订阅) > OPENAI_API_KEY`,设了就绕过订阅变按量计费。
+- 桥接以 `codex exec --sandbox read-only` 跑(禁写文件系统),纯文本进出,与 Claude 侧同等安全。
+- 额度受 ChatGPT 订阅用量上限约束,同样会被限流;合规注意事项与 Claude 侧相同。
+- 排错:节点报「无法启动 codex」→ CLI 没装或 `CODEX_BIN` 不对;报「无输出/退出码非 0」→ 多半是凭证没放好,在服务器命令行手测 `codex exec --skip-git-repo-check "你好"`。
+
 ## 注意事项
 
 - **额度与限流**：所有走这条路的调用共用你这个订阅账号的用量上限，撞上限会被限流（不扣钱，但会卡）。当多用户高频后端使用时尤其容易顶到上限。
