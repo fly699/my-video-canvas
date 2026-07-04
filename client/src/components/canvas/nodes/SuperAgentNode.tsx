@@ -4,7 +4,7 @@ import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Boxes, Loader2, ArrowRightCircle, Square, Server, Cpu, Send, RefreshCw, Settings2, ChevronDown, ChevronUp } from "lucide-react";
+import { Boxes, Loader2, XCircle, ArrowRightCircle, Square, Server, Cpu, Send, RefreshCw, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { NodeTextArea } from "../NodeTextInput";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
@@ -71,6 +71,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const cancelMut = trpc.superAgent.cancel.useMutation();
   const codeStatus = trpc.superAgent.codeStatus.useQuery(undefined, { enabled: mode === "code", retry: false });
   const codeEnabled = codeStatus.data?.enabled === true;
+  const bashAllowed = codeStatus.data?.bashAllowed === true;
   const running = payload.status === "running" || buildMut.isPending || codeMut.isPending;
 
   const utils = trpc.useUtils();
@@ -351,6 +352,20 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
               <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.7 0.16 60 / 0.08)", border: "1px solid oklch(0.7 0.16 60 / 0.3)", fontSize: 11, color: "oklch(0.62 0.14 60)" }}>
                 代码任务未启用。需服务端设置 <code>SUPER_AGENT_CODE_ENABLED=1</code>（放行 shell 再加 <code>SUPER_AGENT_CODE_ALLOW_BASH=1</code>），且当前用户为超级管理员 L4。
               </div>
+            )}
+            {/* 安全边界：一眼可见有没有放行 Shell（决定它能不能碰这台机器上的真实文件） */}
+            {codeEnabled && (
+              bashAllowed ? (
+                <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}`, fontSize: 10.5, color: RED, lineHeight: 1.5 }}>
+                  <XCircle style={{ width: 12, height: 12, flexShrink: 0, marginTop: 1 }} />
+                  <span>已放行 Shell：可在本机以服务账号权限跑命令，<b>能读写工作区以外的文件</b>（危险命令仍被 commandPolicy 拦截）。只想安全用请让运维去掉 <code>SUPER_AGENT_CODE_ALLOW_BASH</code>。</span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.65 0.2 155 / 0.08)", border: `1px solid ${GREEN}`, fontSize: 10.5, color: "var(--c-t2)", lineHeight: 1.5 }}>
+                  <Boxes style={{ width: 12, height: 12, flexShrink: 0, marginTop: 1, color: GREEN }} />
+                  <span><b style={{ color: GREEN }}>只读沙箱</b>：仅在一次性隔离工作区读写，<b>碰不到你的项目/服务器代码</b>（未放行 Shell）。</span>
+                </div>
+              )
             )}
 
             {/* 连续对话状态 + 新对话 */}
