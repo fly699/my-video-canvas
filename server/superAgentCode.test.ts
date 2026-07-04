@@ -37,6 +37,11 @@ describe("buildClaudeArgs", () => {
     expect(a).toContain("--strict-mcp-config");
     expect(a[a.indexOf("--max-budget-usd") + 1]).toBe("2");
   });
+
+  it("permission-prompt-tool 拼接（执行前审批）", () => {
+    const a = buildClaudeArgs({ permissionPromptTool: "mcp__policy__approve_tool_use" });
+    expect(a[a.indexOf("--permission-prompt-tool") + 1]).toBe("mcp__policy__approve_tool_use");
+  });
 });
 
 describe("parseStreamLine", () => {

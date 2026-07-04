@@ -6,6 +6,7 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { ClaudeArgsOptions, ClaudePermissionMode } from "./codeAgent";
+import { PERMISSION_TOOL_NAME } from "./permissionMcpServer";
 
 /** 是否启用 Phase 2 代码智能体（默认关闭）。 */
 export function isCodeAgentEnabled(): boolean {
@@ -22,22 +23,38 @@ export function resolveClaudeBin(): string {
   return process.env.CLAUDE_BIN?.trim() || "claude";
 }
 
+/** 一次运行的完整权限接线（工具白名单 + 权限模式 + 可选的执行前审批 MCP）。 */
+export type PermissionWiring = Pick<ClaudeArgsOptions, "allowedTools" | "disallowedTools" | "permissionMode" | "mcpConfig" | "strictMcp" | "permissionPromptTool">;
+
 /**
- * 解析本次运行的工具策略。
- * - 未额外放行 Bash：allowedTools=Read/Edit/Write，permission-mode=acceptEdits（自动批准
- *   文件编辑，无 shell）。
- * - 放行 Bash：加入 "Bash"（预授权，运行时由 runCodeAgent 的 commandPolicy 监控 + 危险即杀），
- *   并显式 disallow 一批高危 shape 作纵深防御。
+ * 解析本次运行的完整权限接线。
+ * - 未放行 Bash：Read/Edit/Write（无 shell），acceptEdits。
+ * - 放行 Bash 且配置了执行前审批 MCP（env SUPER_AGENT_PERMISSION_CMD）：不预授 Bash，改用
+ *   permission-mode=default + --permission-prompt-tool，让每条命令在**执行前**经 commandPolicy
+ *   MCP 审批（危险即拒、根本不跑）。这是比事后监控更强的拦截；命令仍受 codeAgent 事后监控兜底。
+ * - 放行 Bash 但未配置审批 MCP：预授 Bash + acceptEdits（仅靠事后监控止损，弱一档）。
  */
-export function resolveToolPolicy(): { allowedTools: string[]; disallowedTools: string[]; permissionMode: ClaudePermissionMode } {
-  if (isBashAllowed()) {
+export function resolvePermissionWiring(): PermissionWiring {
+  if (!isBashAllowed()) {
+    return { allowedTools: ["Read", "Edit", "Write"], disallowedTools: [], permissionMode: "acceptEdits" };
+  }
+  const highRisk = ["Bash(rm *)", "Bash(sudo *)", "Bash(shutdown *)", "Bash(reboot *)", "Bash(mkfs *)", "Bash(dd *)"];
+  const cmd = process.env.SUPER_AGENT_PERMISSION_CMD?.trim();
+  if (cmd) {
+    let argv: string[] = [];
+    try { const p = JSON.parse(process.env.SUPER_AGENT_PERMISSION_ARGS || "[]"); if (Array.isArray(p)) argv = p.map(String); } catch { /* 用空参数 */ }
+    const mcpConfig = JSON.stringify({ mcpServers: { policy: { type: "stdio", command: cmd, args: argv } } });
     return {
-      allowedTools: ["Read", "Edit", "Write", "Bash"],
-      disallowedTools: ["Bash(rm *)", "Bash(sudo *)", "Bash(shutdown *)", "Bash(reboot *)", "Bash(mkfs *)", "Bash(dd *)"],
-      permissionMode: "acceptEdits",
+      // 不预授 Bash：让未被 allow 规则覆盖的 Bash 落到执行前审批工具。
+      allowedTools: ["Read", "Edit", "Write"],
+      disallowedTools: highRisk,
+      permissionMode: "default",
+      mcpConfig,
+      strictMcp: true,
+      permissionPromptTool: `mcp__policy__${PERMISSION_TOOL_NAME}`,
     };
   }
-  return { allowedTools: ["Read", "Edit", "Write"], disallowedTools: [], permissionMode: "acceptEdits" };
+  return { allowedTools: ["Read", "Edit", "Write", "Bash"], disallowedTools: highRisk, permissionMode: "acceptEdits" };
 }
 
 export interface StreamClaudeOptions {
@@ -45,8 +62,8 @@ export interface StreamClaudeOptions {
   task: string;
   /** 工作目录（专用 scratch）。 */
   cwd: string;
-  /** buildClaudeArgs 的额外项（模型/预算/mcp/add-dir 等）。 */
-  argsBuilder: (base: Pick<ClaudeArgsOptions, "allowedTools" | "disallowedTools" | "permissionMode">) => string[];
+  /** buildClaudeArgs 的额外项（模型/预算/add-dir 等）；base 为已解析的权限接线。 */
+  argsBuilder: (base: PermissionWiring) => string[];
   /** 硬超时（ms），到点杀进程。 */
   timeoutMs: number;
 }
@@ -69,7 +86,7 @@ export function streamClaudeCode(opts: StreamClaudeOptions): StreamClaudeHandle 
   if (!isCodeAgentEnabled()) {
     throw new Error("代码智能体未启用：请在服务端设置 SUPER_AGENT_CODE_ENABLED=1");
   }
-  const policy = resolveToolPolicy();
+  const policy = resolvePermissionWiring();
   const args = opts.argsBuilder(policy);
   const child = spawn(resolveClaudeBin(), args, {
     cwd: opts.cwd,

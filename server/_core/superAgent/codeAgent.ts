@@ -31,6 +31,8 @@ export interface ClaudeArgsOptions {
   mcpConfig?: string;
   /** 仅用 --mcp-config 指定的 MCP，忽略其它来源。 */
   strictMcp?: boolean;
+  /** 执行前审批工具（形如 mcp__policy__approve_tool_use）——每次工具执行前先问它。 */
+  permissionPromptTool?: string;
   /** 成本封顶（美元）——单任务硬上限。 */
   maxBudgetUsd?: number;
 }
@@ -50,6 +52,7 @@ export function buildClaudeArgs(opts: ClaudeArgsOptions): string[] {
     args.push("--mcp-config", opts.mcpConfig);
     if (opts.strictMcp) args.push("--strict-mcp-config");
   }
+  if (opts.permissionPromptTool) args.push("--permission-prompt-tool", opts.permissionPromptTool);
   if (opts.maxBudgetUsd != null) args.push("--max-budget-usd", String(opts.maxBudgetUsd));
   return args;
 }

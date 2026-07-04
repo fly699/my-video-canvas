@@ -3,7 +3,7 @@ import {
   isCodeAgentEnabled,
   isBashAllowed,
   resolveClaudeBin,
-  resolveToolPolicy,
+  resolvePermissionWiring,
   streamClaudeCode,
 } from "./_core/superAgent/claudeProcess";
 
@@ -12,6 +12,8 @@ afterEach(() => {
   process.env.SUPER_AGENT_CODE_ENABLED = ORIG.SUPER_AGENT_CODE_ENABLED;
   process.env.SUPER_AGENT_CODE_ALLOW_BASH = ORIG.SUPER_AGENT_CODE_ALLOW_BASH;
   process.env.CLAUDE_BIN = ORIG.CLAUDE_BIN;
+  process.env.SUPER_AGENT_PERMISSION_CMD = ORIG.SUPER_AGENT_PERMISSION_CMD;
+  process.env.SUPER_AGENT_PERMISSION_ARGS = ORIG.SUPER_AGENT_PERMISSION_ARGS;
 });
 
 describe("代码智能体 env 门控", () => {
@@ -35,20 +37,36 @@ describe("代码智能体 env 门控", () => {
   });
 });
 
-describe("双钥工具策略", () => {
-  it("未放行 Bash：只 Read/Edit/Write，无 Bash", () => {
+describe("双钥 + 执行前审批 权限接线", () => {
+  it("未放行 Bash：只 Read/Edit/Write，无 Bash，无审批 MCP", () => {
     delete process.env.SUPER_AGENT_CODE_ALLOW_BASH;
-    const p = resolveToolPolicy();
+    const p = resolvePermissionWiring();
     expect(p.allowedTools).toEqual(["Read", "Edit", "Write"]);
     expect(p.allowedTools).not.toContain("Bash");
     expect(p.permissionMode).toBe("acceptEdits");
+    expect(p.permissionPromptTool).toBeUndefined();
   });
-  it("放行 Bash：加入 Bash 且显式 disallow 高危 shape", () => {
+  it("放行 Bash 但未配审批 MCP：预授 Bash + 高危 disallow（靠事后监控）", () => {
     process.env.SUPER_AGENT_CODE_ALLOW_BASH = "1";
-    const p = resolveToolPolicy();
+    delete process.env.SUPER_AGENT_PERMISSION_CMD;
+    const p = resolvePermissionWiring();
     expect(p.allowedTools).toContain("Bash");
     expect(p.disallowedTools).toContain("Bash(rm *)");
-    expect(p.disallowedTools).toContain("Bash(sudo *)");
+    expect(p.permissionMode).toBe("acceptEdits");
+    expect(p.permissionPromptTool).toBeUndefined();
+  });
+  it("放行 Bash + 配审批 MCP：不预授 Bash，default 模式 + prompt-tool + strict mcpConfig", () => {
+    process.env.SUPER_AGENT_CODE_ALLOW_BASH = "1";
+    process.env.SUPER_AGENT_PERMISSION_CMD = "node";
+    process.env.SUPER_AGENT_PERMISSION_ARGS = JSON.stringify(["/app/permissionMcpServer.js"]);
+    const p = resolvePermissionWiring();
+    expect(p.allowedTools).not.toContain("Bash"); // 不预授 → 落到审批工具
+    expect(p.permissionMode).toBe("default");
+    expect(p.strictMcp).toBe(true);
+    expect(p.permissionPromptTool).toBe("mcp__policy__approve_tool_use");
+    const cfg = JSON.parse(p.mcpConfig!);
+    expect(cfg.mcpServers.policy.command).toBe("node");
+    expect(cfg.mcpServers.policy.args).toEqual(["/app/permissionMcpServer.js"]);
   });
 });
 
