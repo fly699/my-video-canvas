@@ -183,6 +183,48 @@ describe("runComfyAgent — 闭环编排", () => {
     expect(r.log.some((e) => e.type === "tool_result" && (e.data as { tool: string }).tool === "describe_nodes")).toBe(true);
   });
 
+  it("校验失败自动补涉事节点 schema：无需 LLM 主动 describe，错误+规格一起喂回并修正成功", async () => {
+    let describeCalls = 0;
+    let firstValidate = true;
+    const seen: string[] = [];
+    const r = await runComfyAgent({
+      task: "出图",
+      tools: fakeTools({
+        describeNodes: async (names) => { describeCalls++; return `【${names[0]}】 必填: seed: INT=0`; },
+        validate: async () => {
+          if (firstValidate) { firstValidate = false; return { ok: false, errors: ["必填输入缺失：节点 3(KSampler).seed"], errorNodeClasses: ["KSampler"] }; }
+          return { ok: true, errors: [] };
+        },
+      }),
+      llm: scriptedLLM(
+        [`{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`,
+         `{"action":"author","workflowJson":${JSON.stringify(WF("v2"))}}`, `{"action":"execute"}`],
+        (msgs) => seen.push(msgs[msgs.length - 1].content),
+      ),
+    });
+    expect(r.status).toBe("success");
+    expect(describeCalls).toBe(1); // 校验失败时自动查了一次
+    expect(seen.some((c) => c.includes("涉事节点的精确输入规格") && c.includes("KSampler"))).toBe(true);
+    expect(r.log.some((e) => e.type === "tool_result" && (e.data as { auto?: boolean }).auto === true)).toBe(true);
+  });
+
+  it("校验失败但无 describeNodes 工具：只喂错误、不崩溃", async () => {
+    let firstValidate = true;
+    const r = await runComfyAgent({
+      task: "出图",
+      tools: fakeTools({
+        validate: async () => {
+          if (firstValidate) { firstValidate = false; return { ok: false, errors: ["某错误"], errorNodeClasses: ["KSampler"] }; }
+          return { ok: true, errors: [] };
+        },
+      }),
+      llm: scriptedLLM([
+        `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`,
+        `{"action":"author","workflowJson":${JSON.stringify(WF("v2"))}}`, `{"action":"execute"}`]),
+    });
+    expect(r.status).toBe("success");
+  });
+
   it("describe_nodes：无工具 → 提示直接 author、不崩溃", async () => {
     const seen: string[] = [];
     const r = await runComfyAgent({

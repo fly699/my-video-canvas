@@ -23,8 +23,9 @@ export interface ComfyResourceList {
 export interface ComfyAgentTools {
   /** 拉取目标服务器的可用资源（checkpoint/lora/采样器/节点类）。 */
   listResources(): Promise<ComfyResourceList>;
-  /** 校验一份 API 格式 workflowJson（不真正生成），返回错误列表。 */
-  validate(workflowJson: string): Promise<{ ok: boolean; errors: string[] }>;
+  /** 校验一份 API 格式 workflowJson（不真正生成），返回错误列表；errorNodeClasses=错误涉及的节点类名
+   *  （供引擎自动补它们的精确 schema 喂回，定向修错）。 */
+  validate(workflowJson: string): Promise<{ ok: boolean; errors: string[]; errorNodeClasses?: string[] }>;
   /** 真机运行一份 workflowJson，返回产物或错误。 */
   execute(workflowJson: string): Promise<{
     ok: boolean;
@@ -204,6 +205,17 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
   const emit = (e: AgentEvent) => { log.push(e); opts.emit?.(e); };
   const clip = (s: string) => (s.length > cap ? s.slice(0, cap) + "…（已截断）" : s);
 
+  // 校验失败时，自动把「涉事节点」的精确 schema 连同错误一起喂回（不等 LLM 自己 describe_nodes），
+  // 让它定向对照修字段——④「更聪明的修错」。无 describeNodes 或无涉事节点则返回空串。
+  const autoSchema = async (iter: number, classes: string[] | undefined): Promise<string> => {
+    if (!opts.tools.describeNodes || !classes?.length) return "";
+    const uniq = Array.from(new Set(classes)).slice(0, 12);
+    let s: string;
+    try { s = await opts.tools.describeNodes(uniq); } catch { return ""; }
+    emit({ type: "tool_result", iteration: iter, message: `已自动附带 ${uniq.length} 个涉事节点的输入规格`, data: { tool: "describe_nodes", auto: true, nodeClasses: uniq } });
+    return `\n\n涉事节点的精确输入规格（务必对照，字段名/枚举/类型严格一致）：\n${clip(s)}`;
+  };
+
   // 0. 拉资源清单，进系统提示。
   const resources = await opts.tools.listResources();
   emit({ type: "resources", iteration: 0, message: `已获取服务器资源：${resources.checkpoints.length} checkpoints / ${resources.loras.length} loras / ${resources.nodeClasses.length} 节点类`, data: resources });
@@ -281,7 +293,8 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
       current = action.workflowJson;
       const v = await opts.tools.validate(current);
       emit({ type: "tool_result", iteration: iter, message: v.ok ? "校验通过" : `校验发现 ${v.errors.length} 处问题`, data: { tool: "validate", ok: v.ok, errors: v.errors } });
-      messages.push({ role: "user", content: v.ok ? "validate: 通过。可以 execute 真机运行。" : `validate: 失败：\n${clip(v.errors.join("\n"))}\n请修正后重新 author。` });
+      if (v.ok) { messages.push({ role: "user", content: "validate: 通过。可以 execute 真机运行。" }); }
+      else { messages.push({ role: "user", content: `validate: 失败：\n${clip(v.errors.join("\n"))}${await autoSchema(iter, v.errorNodeClasses)}\n请对照上面的字段规格修正后重新 author。` }); }
       continue;
     }
 
@@ -289,7 +302,7 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
       if (!current) { messages.push({ role: "user", content: "还没有 workflow，请先 author。" }); continue; }
       const v = await opts.tools.validate(current);
       emit({ type: "tool_result", iteration: iter, message: v.ok ? "校验通过" : `校验发现 ${v.errors.length} 处问题`, data: { tool: "validate", ok: v.ok, errors: v.errors } });
-      messages.push({ role: "user", content: v.ok ? "validate: 通过。" : `validate: 失败：\n${clip(v.errors.join("\n"))}` });
+      messages.push({ role: "user", content: v.ok ? "validate: 通过。" : `validate: 失败：\n${clip(v.errors.join("\n"))}${await autoSchema(iter, v.errorNodeClasses)}` });
       continue;
     }
 
@@ -302,7 +315,7 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
         const v = await opts.tools.validate(current);
         if (!v.ok) {
           emit({ type: "tool_result", iteration: iter, message: `finish 前校验未过（${v.errors.length} 处）`, data: { tool: "validate", ok: false, errors: v.errors } });
-          messages.push({ role: "user", content: `finish 被拒：校验未过：\n${clip(v.errors.join("\n"))}\n请继续修正。` });
+          messages.push({ role: "user", content: `finish 被拒：校验未过：\n${clip(v.errors.join("\n"))}${await autoSchema(iter, v.errorNodeClasses)}\n请继续修正。` });
           continue;
         }
       }

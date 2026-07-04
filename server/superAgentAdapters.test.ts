@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatValidationErrors, formatInputField, formatNodeSchemas } from "./_core/superAgent/comfyAdapters";
+import { formatValidationErrors, formatInputField, formatNodeSchemas, collectErrorNodeClasses } from "./_core/superAgent/comfyAdapters";
 import type { WorkflowValidationResult } from "./_core/comfyui";
 
 const base: WorkflowValidationResult = {
@@ -37,6 +37,26 @@ describe("formatValidationErrors", () => {
     expect(out.some((l) => l.includes("合法值示例") && l.includes("sd_xl_base_1.0.safetensors"))).toBe(true);
     expect(out.some((l) => l.includes("必填输入缺失") && l.includes("seed"))).toBe(true);
     expect(out.some((l) => l.includes("悬空连线") && l.includes("SaveImage"))).toBe(true);
+  });
+});
+
+describe("collectErrorNodeClasses", () => {
+  it("汇总缺节点名 + 各类问题的 classType（去重）", () => {
+    const out = collectErrorNodeClasses({
+      ...base,
+      ok: false,
+      missingNodes: ["FooCustomNode"],
+      invalidEnums: [{ nodeId: "4", classType: "CheckpointLoaderSimple", field: "ckpt_name" }],
+      missingRequired: [{ nodeId: "3", classType: "KSampler", field: "seed" }, { nodeId: "5", classType: "KSampler", field: "steps" }],
+      danglingLinks: [{ nodeId: "9", classType: "SaveImage", field: "images" }],
+    });
+    expect(out).toContain("FooCustomNode");
+    expect(out).toContain("CheckpointLoaderSimple");
+    expect(out).toContain("SaveImage");
+    expect(out.filter((c) => c === "KSampler").length).toBe(1); // 去重
+  });
+  it("全通过 → 空", () => {
+    expect(collectErrorNodeClasses(base)).toEqual([]);
   });
 });
 

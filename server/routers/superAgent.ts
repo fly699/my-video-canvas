@@ -121,7 +121,7 @@ export const superAgentRouter = router({
           task: input.task,
           tools,
           llm,
-          maxIterations: input.maxIterations ?? 8,
+          maxIterations: input.maxIterations ?? 12,
           emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
           signal,
           seedWorkflowJson: input.seedWorkflowJson,
