@@ -30,7 +30,9 @@ import { agentBadge } from "../../lib/agentOwnership";
 
 // Nodes that keep their full PRO body in the studio skin (no floating command bar,
 // no top toolbar, no compact panel). Their UX isn't a parameter form.
-const STUDIO_PRO_BODY_TYPES = new Set<NodeType>(["ai_chat"]);
+// super_agent（工程智能体）同理——它是「任务输入 + 流式活动日志 + 结果 + 写回」的交互面板，
+// 不是参数表单；不加入这里会在工作室模式被折叠成「空标题卡 + 参数浮层下方」，上方窗口空着。
+const STUDIO_PRO_BODY_TYPES = new Set<NodeType>(["ai_chat", "super_agent"]);
 
 interface BaseNodeProps {
   id: string;
