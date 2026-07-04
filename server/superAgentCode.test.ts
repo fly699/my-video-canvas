@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildClaudeArgs, parseStreamLine, runCodeAgent, frameCodeTask, CODE_SANDBOX_PREAMBLE } from "./_core/superAgent/codeAgent";
+import { buildClaudeArgs, parseStreamLine, runCodeAgent, frameCodeTask, CODE_SANDBOX_PREAMBLE, shouldKeepWorkspace } from "./_core/superAgent/codeAgent";
 import type { CommandRisk } from "./_core/ops/commandPolicy";
 
 // 便捷：把假 stream-json 行数组变成 AsyncIterable。
@@ -59,6 +59,21 @@ describe("frameCodeTask（沙箱前导）", () => {
   });
   it("续接：不重复前导，原样透传", () => {
     expect(frameCodeTask("接着改", true)).toBe("接着改");
+  });
+});
+
+describe("shouldKeepWorkspace（续接工作区生命周期）", () => {
+  it("新建：成功（有会话、无 spawnError）才保留", () => {
+    expect(shouldKeepWorkspace({ hasSession: true, resuming: false, spawnError: false })).toBe(true);
+    expect(shouldKeepWorkspace({ hasSession: false, resuming: false, spawnError: false })).toBe(false);
+    expect(shouldKeepWorkspace({ hasSession: true, resuming: false, spawnError: true })).toBe(false);
+  });
+  it("续接：只要有会话 id 就保留——即使本轮 spawnError 也不删（不毁掉整段连续对话）", () => {
+    expect(shouldKeepWorkspace({ hasSession: true, resuming: true, spawnError: true })).toBe(true);
+    expect(shouldKeepWorkspace({ hasSession: true, resuming: true, spawnError: false })).toBe(true);
+  });
+  it("无会话 id → 一律不保留（避免留目录却无人持有的泄漏）", () => {
+    expect(shouldKeepWorkspace({ hasSession: false, resuming: true, spawnError: false })).toBe(false);
   });
 });
 

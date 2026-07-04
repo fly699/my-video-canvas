@@ -30,6 +30,16 @@ export function frameCodeTask(task: string, resuming: boolean): string {
   return resuming ? task : `${CODE_SANDBOX_PREAMBLE}\n\n--- 用户任务 ---\n${task}`;
 }
 
+/**
+ * 本次运行后是否保留工作区（供下一轮 --resume 续接）。纯函数，便于单测。
+ * - 续接的工作区：只要拿到会话 id 就保留——即使本轮失败也不能删（否则一次失败毁掉整段连续对话）。
+ * - 新建的工作区：仅在「拿到会话 id 且未 spawn 失败」时保留；否则本次一次性用完即删。
+ * 恒等于「有会话 id 才可能保留」，因此保留时一定能写进会话登记表，不会出现留了目录却无人持有的泄漏。
+ */
+export function shouldKeepWorkspace(opts: { hasSession: boolean; resuming: boolean; spawnError: boolean }): boolean {
+  return opts.hasSession && (opts.resuming || !opts.spawnError);
+}
+
 // ── 参数构建 ─────────────────────────────────────────────────────────────────
 
 export type ClaudePermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions";
