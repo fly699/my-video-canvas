@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Server, ClipboardPaste, Plus, Trash2, Save, Loader2 } from "lucide-react";
+import { Server, ClipboardPaste, Plus, Trash2, Save, Loader2, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { parseCurlLlm } from "@/lib/parseCurlLlm";
 
@@ -21,6 +21,15 @@ export function SelfHostedLlmSection() {
   useEffect(() => {
     if (q.data) { setUrl(q.data.url ?? ""); setApiKey(q.data.apiKey ?? ""); setModels(q.data.models ?? []); }
   }, [q.data]);
+
+  // 「本机 Claude（订阅）」一键接入：把服务器地址/模型填成本机桥接的默认值。地址用当前站点 origin +
+  // /api/claude-bridge（服务端会自动补 /v1/chat/completions）。API Key 需管理员填成与服务端环境变量
+  // CLAUDE_LOCAL_BRIDGE_KEY 一致的值——一键只填地址与模型，key 留给你手动粘贴。
+  const applyClaudeLocal = () => {
+    setUrl(`${window.location.origin}/api/claude-bridge`);
+    setModels((prev) => prev.some((m) => m.id === "claude-local") ? prev : [...prev, { id: "claude-local", label: "本机 Claude（订阅）" }]);
+    toast.success("已填入本机 Claude 地址与模型，请把 API Key 填成与服务端 CLAUDE_LOCAL_BRIDGE_KEY 一致的值再保存");
+  };
 
   const applyCurl = () => {
     const p = parseCurlLlm(curl);
@@ -61,6 +70,24 @@ export function SelfHostedLlmSection() {
         若已含 <code>chat/completions</code>（如 Open WebUI 的 <code>http://内网IP:3000/api/chat/completions</code>）则原样使用。
         Open WebUI 的密钥在其「设置 › 账户」生成。
       </p>
+
+      {/* 本机 Claude（订阅）一键接入 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 10, background: "oklch(0.68 0.19 285 / 0.08)", border: "1px solid oklch(0.68 0.19 285 / 0.3)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "oklch(0.72 0.16 285)" }}>
+          <Sparkles className="w-4 h-4" /> 本机 Claude（订阅）接入
+        </div>
+        <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.7, margin: 0 }}>
+          用你的 <strong>Claude 订阅（Pro/Max）</strong>额度跑画布里的 AI 对话/规划，<strong>不按 token 计费</strong>。原理：服务端把请求转成本机一次 <code>claude -p</code>。三步：
+          <br />1) 服务器装 Claude Code：<code>npm i -g @anthropic-ai/claude-code</code>，再 <code>claude setup-token</code> 登录订阅，把拿到的 token 设为服务端环境变量 <code>CLAUDE_CODE_OAUTH_TOKEN</code>（<strong>切勿</strong>同时设 ANTHROPIC_API_KEY，否则变按量计费）。
+          <br />2) 服务端再设一个自定义口令环境变量 <code>CLAUDE_LOCAL_BRIDGE_KEY</code>（任意字符串，用于鉴权；不设=桥接不启用）。重启服务。
+          <br />3) 点下面「一键填入」→ 把下方 <strong>API Key</strong> 填成与 <code>CLAUDE_LOCAL_BRIDGE_KEY</code> 完全一致的值 → 保存。之后画布模型选择器里会出现「本机 Claude（订阅）」。
+          <br /><span style={{ color: "var(--c-t4)" }}>注：额度受订阅用量上限约束、会被限流；订阅计费本为交互式使用，用作后端批量属灰色地带。公网隧道部署时地址请改成内网 <code>http://127.0.0.1:内部端口/api/claude-bridge</code>。</span>
+        </p>
+        <button onClick={applyClaudeLocal} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg self-start"
+          style={{ fontSize: 11.5, fontWeight: 600, background: "oklch(0.68 0.19 285 / 0.16)", border: "1px solid oklch(0.68 0.19 285 / 0.45)", color: "oklch(0.72 0.16 285)", cursor: "pointer" }}>
+          <Sparkles className="w-3.5 h-3.5" /> 一键填入本机 Claude 地址与模型
+        </button>
+      </div>
 
       {/* curl 粘贴 */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

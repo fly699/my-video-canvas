@@ -12,6 +12,7 @@ import { registerStorageProxy, registerStorageUploadProxy } from "./storageProxy
 import { registerFileRelay } from "./fileRelay";
 import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
+import { registerClaudeBridge } from "./claudeBridge";
 import { appRouter } from "../routers";
 import { createContext, resolveRequestUser } from "./context";
 import { getTunnelGate, initTunnel, setTunnelOrigin, getTunnelListenerPort, trackTunnelSocket } from "./tunnel";
@@ -120,6 +121,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerVideoProxy(app);
   registerImageProxy(app);
+  registerClaudeBridge(app); // 本机 Claude（订阅）OpenAI 兼容桥接（默认关，设 CLAUDE_LOCAL_BRIDGE_KEY 才开）
   registerOAuthRoutes(app);
   registerEmailAuthRoutes(app);
   registerGoogleAuthRoutes(app);
