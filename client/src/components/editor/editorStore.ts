@@ -27,6 +27,20 @@ export function splitKeyframesAt(
   return { left: left.length ? left : undefined, right: right.length ? right : undefined };
 }
 
+// Re-base a clip's keyframes when its LEFT edge is trimmed by `shift` timeline
+// seconds (shift>0 = trimmed inward from the head; shift<0 = extended leftward).
+// Keyframe `t` is clip-start-relative, so the whole set moves by `-shift`; content
+// trimmed away (t<shift) is dropped — identical to splitClip's right half. Pure.
+export function rebaseKeyframesForLeftTrim(
+  kfs: TransformKeyframe[] | undefined,
+  shift: number,
+): TransformKeyframe[] | undefined {
+  if (!kfs?.length) return kfs;
+  if (Math.abs(shift) < 1e-6) return kfs;
+  if (shift > 0) return splitKeyframesAt(kfs, shift).right; // 头部裁进：丢裁掉段、其余重基准（含边界）
+  return kfs.map((k) => ({ ...k, t: k.t - shift })); // 向左扩展：整体右移，全部保留
+}
+
 // ── Merge (join adjacent, the inverse of split) ─────────────────────────────────
 // Tolerance for "adjacent on timeline" / "contiguous in source". Slightly above
 // splitClip's 0.05 edge threshold so a just-split pair always re-joins cleanly.
@@ -362,7 +376,15 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         const trimIn = patch.trimIn != null ? Math.max(0, patch.trimIn) : c.trimIn;
         const trimOut = patch.trimOut != null ? Math.max(trimIn + 0.05, patch.trimOut) : Math.max(trimIn + 0.05, c.trimOut);
         const start = patch.start != null ? Math.max(0, patch.start) : c.start;
-        return { ...c, trimIn, trimOut, start };
+        // 左裁（start 与 trimIn 同时变，从片段头部裁掉/补回内容）时，关键帧必须按新起点重基准——
+        // 关键帧 t 是「相对片段起点的时间轴秒」，起点前移后原 t 全部指向了错误时刻（且裁掉部分的
+        // 关键帧要丢弃）。与 splitClip 右半、sliceEditorDoc 的左切重基准同理。纯移动（只改 start）
+        // 不走 trimClip，故这里以「start 与 trimIn 同时存在」判定为左裁。
+        let keyframes = c.keyframes;
+        if (keyframes?.length && patch.start != null && patch.trimIn != null) {
+          keyframes = rebaseKeyframesForLeftTrim(keyframes, start - c.start);
+        }
+        return { ...c, trimIn, trimOut, start, keyframes };
       }),
     });
     return withHistory(s, { ...s.doc, tracks });
@@ -808,7 +830,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (!s.doc || s.doc.tracks.length <= 1) return s;
     const tracks = s.doc.tracks.filter((t) => t.id !== trackId);
     const goneIds = new Set(s.doc.tracks.find((t) => t.id === trackId)?.clips.map((c) => c.id));
-    return withHistory(s, { ...s.doc, tracks }, { selectedClipId: goneIds.has(s.selectedClipId ?? "") ? null : s.selectedClipId });
+    // 经 selPatch 把删掉轨道里的片段从 selectedClipIds（选择的真源）里剔除，并同步 primary——
+    // 否则残留悬空 id、且存活的选中片段失去 primary，后续 updateSelected/rippleDelete 会作用于脏状态。
+    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((id) => !goneIds.has(id))));
   }),
 
   setCanvas: (width, height, fps) => set((s) => {
