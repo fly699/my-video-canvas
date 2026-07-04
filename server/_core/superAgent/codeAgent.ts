@@ -12,6 +12,24 @@
 //     监控 + 及时止损」；真正的「执行前拦截」需 --permission-prompt-tool（下一 PR，接 commandPolicy MCP）。
 import { classifyCommand, type CommandRisk } from "../ops/commandPolicy";
 
+// ── 沙箱前导（防止 claude 误以为能碰用户真实项目） ────────────────────────────
+
+/**
+ * 每段新会话首轮任务前置的运行环境说明：明确「一次性隔离工作区、严禁越界访问用户项目」。
+ * 解决用户困惑「它是不是能改我服务器代码」——claude 之前会凭空问「是不是 C:\…\my-video-canvas」，
+ * 那是它在猜（默认无 Bash 时它的文件工具根本够不到那里）。前导把边界讲死，行为上也约束它别越界。
+ */
+export const CODE_SANDBOX_PREAMBLE =
+  "[运行环境] 你运行在一个一次性隔离的临时工作区（沙箱）。请严格只在当前工作目录内读写文件，" +
+  "不要访问、读取或修改工作区以外的任何文件或用户项目（例如 C:\\Users\\… 下的任何工程都不属于你的范围）。" +
+  "默认情况下你的文件工具也只能触及本工作区。若任务需要某些文件，请让用户把内容提供到工作区，你在工作区内处理；" +
+  "不要询问或假设你能直接打开/修改用户的某个项目。";
+
+/** 首轮任务前置沙箱前导；续接（--resume）时不再重复（claude 已有上下文）。纯函数，便于单测。 */
+export function frameCodeTask(task: string, resuming: boolean): string {
+  return resuming ? task : `${CODE_SANDBOX_PREAMBLE}\n\n--- 用户任务 ---\n${task}`;
+}
+
 // ── 参数构建 ─────────────────────────────────────────────────────────────────
 
 export type ClaudePermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions";

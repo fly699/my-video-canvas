@@ -11,7 +11,7 @@ import { ENV } from "../_core/env";
 import { runComfyAgent, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
 import { createComfyTools, createAgentLLM } from "../_core/superAgent/comfyAdapters";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
-import { buildClaudeArgs, runCodeAgent } from "../_core/superAgent/codeAgent";
+import { buildClaudeArgs, runCodeAgent, frameCodeTask } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
 import { installModel, installCustomNode, isValidDownloadUrl, isValidModelFilename, isValidGitUrl, MODEL_DIRS, type ModelDir } from "../_core/ops/modelOps";
 import * as db from "../db";
@@ -196,7 +196,7 @@ export const superAgentRouter = router({
       let keepWorkspace = false;
       try {
         const handle = streamClaudeCode({
-          task: input.task,
+          task: frameCodeTask(input.task, resuming), // 首轮前置沙箱边界说明；续接不重复
           cwd: workspace,
           timeoutMs: (input.timeoutSec ?? 300) * 1000,
           argsBuilder: (policy) => buildClaudeArgs({

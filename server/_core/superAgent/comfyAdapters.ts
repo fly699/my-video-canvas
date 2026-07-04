@@ -41,6 +41,52 @@ export function collectErrorNodeClasses(r: WorkflowValidationResult): string[] {
   return Array.from(set);
 }
 
+/** 某输入项 [typeSpec, opts?] 若为「连线型」（既非枚举也非 INT/FLOAT/STRING/BOOLEAN 值型），返回其
+ *  需要的输出类型字符串（如 MODEL/LATENT/CONDITIONING）；值型/枚举型返回 null（应填值而非连线）。 */
+function connectionTypeOf(spec: unknown): string | null {
+  const typeSpec = Array.isArray(spec) ? spec[0] : spec;
+  if (Array.isArray(typeSpec)) return null; // 枚举
+  const t = String(typeSpec ?? "");
+  if (!t || ["INT", "FLOAT", "STRING", "BOOLEAN", "NUMBER"].includes(t.toUpperCase())) return null;
+  return t;
+}
+
+/**
+ * 针对「必填连线输入缺失」，在当前图里按输出类型找出可连的生产节点，给 LLM 定向连线建议
+ * （ComfyUI 最常见的错就是必填连线没接）。纯函数，便于单测。
+ * - workflowJson：API 格式图（{id:{class_type,inputs}}）。info：/object_info。missing：校验的 missingRequired。
+ * - 只对「连线型」必填输入给建议；值型/枚举型交给 schema 提示（④）。
+ */
+export function suggestMissingLinks(workflowJson: string, info: Record<string, unknown> | null, missing: WorkflowValidationIssue[]): string[] {
+  if (!info || !missing.length) return [];
+  let graph: Record<string, { class_type?: string }>;
+  try { graph = JSON.parse(workflowJson) as Record<string, { class_type?: string }>; } catch { return []; }
+  const nodeEntry = (cls: string) => info[cls] as { input?: { required?: Record<string, unknown> }; output?: unknown[] } | undefined;
+  // 预建：输出类型 → 该图中能产出它的候选 [nodeId, class, 输出序号]。
+  const producers: { id: string; cls: string; idx: number }[] = [];
+  for (const [id, node] of Object.entries(graph)) {
+    const cls = node?.class_type;
+    if (!cls) continue;
+    const outs = (nodeEntry(cls)?.output ?? []) as unknown[];
+    outs.forEach((o, idx) => producers.push({ id, cls, idx: idx })); // 保留全部输出端口，按类型过滤在下面做
+  }
+  const outTypeAt = (cls: string, idx: number): string => String(((nodeEntry(cls)?.output ?? [])[idx]) ?? "");
+  const hints: string[] = [];
+  for (const m of missing.slice(0, 8)) {
+    const spec = nodeEntry(m.classType)?.input?.required?.[m.field];
+    const need = connectionTypeOf(spec);
+    if (!need) continue; // 值型/枚举型不给连线建议
+    const cands = producers
+      .filter((p) => p.id !== m.nodeId && outTypeAt(p.cls, p.idx) === need)
+      .slice(0, 4)
+      .map((p) => `[${p.id}(${p.cls}) 的第${p.idx}号输出]`);
+    if (cands.length) {
+      hints.push(`💡 连线建议：节点 ${m.nodeId}(${m.classType}).${m.field} 需接 ${need} 连线 —— 可用 ${cands.join("、")}；即在该节点 inputs.${m.field} 填 ["生产节点id", 输出序号]。`);
+    }
+  }
+  return hints;
+}
+
 /** 拉取 /object_info 全量（每个节点类的输入/输出 schema）。best-effort，失败返回 null。 */
 async function fetchObjectInfo(baseUrl: string): Promise<Record<string, unknown> | null> {
   try {
@@ -127,7 +173,10 @@ export function createComfyTools(opts: ComfyToolsAdapterOptions): ComfyAgentTool
     async validate(workflowJson) {
       try {
         const r = await validateWorkflow(workflowJson, baseUrl);
-        return { ok: r.ok, errors: formatValidationErrors(r), errorNodeClasses: collectErrorNodeClasses(r) };
+        const errors = formatValidationErrors(r);
+        // 缺必填连线时，用 /object_info 在当前图里按输出类型找可连节点，给定向连线建议。
+        const hints = r.ok ? [] : suggestMissingLinks(workflowJson, await objectInfo().catch(() => null), r.missingRequired);
+        return { ok: r.ok, errors: [...errors, ...hints], errorNodeClasses: collectErrorNodeClasses(r) };
       } catch (e) {
         // JSON 解析失败等 → 当作一条校验错误喂回，让 LLM 修正。
         return { ok: false, errors: [e instanceof Error ? e.message : String(e)] };
