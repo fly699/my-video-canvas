@@ -205,6 +205,25 @@ export function extractAction(text: string): AgentAction | null {
 }
 
 /**
+ * 从「真机运行报错」里找出被点名的节点类：报错串若提到某节点 id（数字边界匹配，避免 3 命中 13）
+ * 或某节点的 class_type，就把该节点的 class_type 收进来——用于失败时自动补它们的精确 schema。
+ * 纯函数（只 JSON.parse + 串扫），便于单测。
+ */
+export function nodeClassesMentioned(errorText: string, workflowJson: string | undefined): string[] {
+  if (!errorText || !workflowJson) return [];
+  let graph: Record<string, { class_type?: string }>;
+  try { graph = JSON.parse(workflowJson) as Record<string, { class_type?: string }>; } catch { return []; }
+  const found = new Set<string>();
+  for (const [id, node] of Object.entries(graph)) {
+    const cls = node?.class_type;
+    if (!cls) continue;
+    const idHit = new RegExp(`(^|[^0-9])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^0-9]|$)`).test(errorText);
+    if (idHit || errorText.includes(cls)) found.add(cls);
+  }
+  return Array.from(found);
+}
+
+/**
  * 跑一次 ComfyUI 工作流工程闭环。返回最终结果与完整事件日志。
  * 纯编排：所有副作用都经注入的 tools / llm，因此可被完整单测。
  */
@@ -337,7 +356,7 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
         emit({ type: "done", iteration: iter, message: "工作流已调通 ✅" });
         return { status: "success", workflowJson: current, analysis, images: r.images, videos: r.videos, outputType: r.outputType, iterations: iter, log };
       }
-      messages.push({ role: "user", content: `execute 失败：${clip(r.error ?? "未知错误")}\n请修正 workflowJson 后再 execute。` });
+      messages.push({ role: "user", content: `execute 失败：${clip(r.error ?? "未知错误")}${await autoSchema(iter, nodeClassesMentioned(r.error ?? "", current))}\n请修正 workflowJson 后再 execute。` });
       continue;
     }
   }

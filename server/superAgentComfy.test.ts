@@ -3,6 +3,7 @@ import {
   runComfyAgent,
   extractAction,
   buildSystemPrompt,
+  nodeClassesMentioned,
   type ComfyAgentTools,
   type AgentLLM,
   type ComfyResourceList,
@@ -59,6 +60,22 @@ describe("extractAction", () => {
     expect(extractAction("完全没有 json")).toBeNull();
     expect(extractAction('{"foo":1}')).toBeNull();
     expect(extractAction('{"action":"delete"}')).toBeNull(); // 未知动作
+  });
+});
+
+describe("nodeClassesMentioned", () => {
+  const WF = JSON.stringify({ "3": { class_type: "KSampler" }, "13": { class_type: "VAEDecode" }, "4": { class_type: "CheckpointLoaderSimple" } });
+  it("报错点名 class_type → 返回该类", () => {
+    expect(nodeClassesMentioned("Error in KSampler: bad sampler", WF)).toEqual(["KSampler"]);
+  });
+  it("报错点名节点 id（数字边界，3 不命中 13）", () => {
+    expect(nodeClassesMentioned("prompt_outputs failed at node 3:", WF)).toEqual(["KSampler"]);
+    expect(nodeClassesMentioned("failed at node 13", WF)).toEqual(["VAEDecode"]); // 不把 3 也带出来
+  });
+  it("无点名 / 非法 JSON / 空 → 空数组", () => {
+    expect(nodeClassesMentioned("some generic error", WF)).toEqual([]);
+    expect(nodeClassesMentioned("KSampler", "not json")).toEqual([]);
+    expect(nodeClassesMentioned("", WF)).toEqual([]);
   });
 });
 
@@ -231,6 +248,29 @@ describe("runComfyAgent — 闭环编排", () => {
         `{"action":"author","workflowJson":${JSON.stringify(WF("v2"))}}`, `{"action":"execute"}`]),
     });
     expect(r.status).toBe("success");
+  });
+
+  it("execute 真机失败：报错点名的节点自动补 schema，再修正后成功", async () => {
+    let describedWith: string[] | null = null;
+    let firstExec = true;
+    const r = await runComfyAgent({
+      task: "出图",
+      tools: fakeTools({
+        describeNodes: async (names) => { describedWith = names; return `【${names[0]}】 必填: seed: INT=0`; },
+        execute: async () => {
+          if (firstExec) { firstExec = false; return { ok: false, error: "Error while executing KSampler: value out of range" }; }
+          return { ok: true, images: ["http://x/o.png"], outputType: "image" };
+        },
+      }),
+      llm: scriptedLLM([
+        `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`,
+        `{"action":"execute"}`,
+        `{"action":"author","workflowJson":${JSON.stringify(WF("v2"))}}`,
+        `{"action":"execute"}`,
+      ]),
+    });
+    expect(r.status).toBe("success");
+    expect(describedWith).toEqual(["KSampler"]); // execute 报错点名 KSampler → 自动查其 schema
   });
 
   it("describe_nodes：无工具 → 提示直接 author、不崩溃", async () => {
