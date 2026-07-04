@@ -190,6 +190,40 @@ export function nextCameraName(cams: DirectorCamera[]): string {
   return `机位${cams.length + 1}`;
 }
 
+// ── 取景/朝向几何（纯函数，供编辑器的注视/景别/面向机位复用，便于单测） ──────────────
+
+/** 角色的世界坐标：独立角色即其 position；组内成员则叠加所属群组的 Y 旋转+缩放+平移
+ *  （与渲染的嵌套 group、bakeGroupTransform 同一约定）。 */
+export function actorWorldPosition(a: DirectorActor, groups: DirectorGroup[] | undefined): Vec3 {
+  if (!a.groupId) return a.position;
+  const g = (groups ?? []).find((x) => x.id === a.groupId);
+  if (!g) return a.position;
+  const ry = (g.rotation[1] ?? 0) * Math.PI / 180, s = g.scale;
+  const lx = a.position[0] * s, lz = a.position[2] * s;
+  return [g.position[0] + lx * Math.cos(ry) + lz * Math.sin(ry), g.position[1] + a.position[1] * s, g.position[2] - lx * Math.sin(ry) + lz * Math.cos(ry)];
+}
+
+/** 注视点世界坐标：主体脚点 base 经「场景缩放 S + 平移 offset」，胸高偏移 aimY 再按「场景缩放 ×
+ *  角色自身缩放」放大——否则放大过的角色（比例滑杆可到 30×）会被对准脚踝、头部出框。 */
+export function shotAimTarget(
+  base: Vec3,
+  o: { sceneScale?: number; offsetX?: number; offsetY?: number; offsetZ?: number; actorScale?: number; aimY: number },
+): Vec3 {
+  const S = o.sceneScale ?? 1, as = o.actorScale ?? 1;
+  return [
+    (o.offsetX ?? 0) + base[0] * S,
+    (o.offsetY ?? 0) + base[1] * S + o.aimY * S * as,
+    (o.offsetZ ?? 0) + base[2] * S,
+  ];
+}
+
+/** 「面向机位」要写入的角色局部 yaw(度)：使其世界朝向机位。扣除所属群组的 Y 旋转——渲染时
+ *  成员朝向 = 群组 yaw + 成员 yaw，不扣的话组内成员会偏掉整整一个群组转角。 */
+export function faceCameraYaw(worldX: number, worldZ: number, camX: number, camZ: number, groupYawDeg = 0): number {
+  const world = Math.atan2(camX - worldX, camZ - worldZ) * 180 / Math.PI;
+  return world - groupYawDeg;
+}
+
 export function makeDefaultDirectorScene(): DirectorScene {
   const actors = [makeActor("male", [])];
   // FOV 默认 50°（自然视角，对齐 LibTV）；32° 长焦会把人物「放大」显得过大。
