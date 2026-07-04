@@ -5,8 +5,33 @@
 // 否则只放行 Read/Edit/Write（claude 只能在工作区读写文件，不能跑任意 shell）。
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ClaudeArgsOptions, ClaudePermissionMode } from "./codeAgent";
 import { PERMISSION_TOOL_NAME } from "./permissionMcpServer";
+
+/**
+ * 解析实际 spawn 的命令/参数，解决 Windows spawn `.cmd` 的坑：
+ * Node 18.20/20.12+ 出于安全，spawn `.cmd`/`.bat` 不走 shell 会直接报 EINVAL。
+ * 而走 shell 又会破坏含空格/引号的复杂参数（--disallowedTools、--mcp-config JSON）。
+ * 最稳的办法：Windows 下 CLAUDE_BIN 是 `.cmd`（npm 全局装的 shim）时，直接用 node 跑它背后的
+ * cli.js（node 是 .exe，spawn 免 shell、参数原样传）。找不到 cli.js 才兜底走 shell。
+ * 纯函数（注入 platform/exists），便于单测。
+ */
+export function resolveClaudeSpawn(
+  bin: string,
+  args: string[],
+  opts: { platform?: NodeJS.Platform; exists?: (p: string) => boolean } = {},
+): { cmd: string; args: string[]; shell: boolean } {
+  const platform = opts.platform ?? process.platform;
+  const exists = opts.exists ?? existsSync;
+  if (platform === "win32" && /\.(cmd|bat)$/i.test(bin)) {
+    const cli = join(dirname(bin), "node_modules", "@anthropic-ai", "claude-code", "cli.js");
+    if (exists(cli)) return { cmd: process.execPath, args: [cli, ...args], shell: false };
+    return { cmd: bin, args, shell: true }; // 兜底：可能有参数转义问题，但至少能起
+  }
+  return { cmd: bin, args, shell: false };
+}
 
 /** 是否启用 Phase 2 代码智能体（默认关闭）。 */
 export function isCodeAgentEnabled(): boolean {
@@ -87,11 +112,13 @@ export function streamClaudeCode(opts: StreamClaudeOptions): StreamClaudeHandle 
     throw new Error("代码智能体未启用：请在服务端设置 SUPER_AGENT_CODE_ENABLED=1");
   }
   const policy = resolvePermissionWiring();
-  const args = opts.argsBuilder(policy);
-  const child = spawn(resolveClaudeBin(), args, {
+  const builtArgs = opts.argsBuilder(policy);
+  const { cmd, args, shell } = resolveClaudeSpawn(resolveClaudeBin(), builtArgs);
+  const child = spawn(cmd, args, {
     cwd: opts.cwd,
     env: process.env, // 继承 ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN 等（由运维配置）
     stdio: ["pipe", "pipe", "pipe"],
+    shell,
   });
 
   let timedOut = false;
