@@ -65,12 +65,12 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const handleTestServer = useCallback(async () => {
     setTestingServer(true);
     try {
-      const r = await utils.comfyui.fetchModels.fetch({ customBaseUrl: payload.baseUrl?.trim() || undefined });
+      const r = await utils.comfyui.fetchModels.fetch({ customBaseUrl: payload.customBaseUrl?.trim() || undefined });
       toast.success(`连接成功 — checkpoint ${r.ckpts.length} · LoRA ${r.loras.length} · 采样器 ${r.samplers.length}`);
     } catch (e) {
       toast.error("连接失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 120));
     } finally { setTestingServer(false); }
-  }, [utils, payload.baseUrl]);
+  }, [utils, payload.customBaseUrl]);
 
   const cancelMut = trpc.superAgent.cancel.useMutation();
   const handleCancel = useCallback(() => {
@@ -93,7 +93,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     // 清空上一轮日志/结果，进入运行态（日志由 Canvas 的 socket 处理器回灌 payload.log）。
     update({ status: "running", log: [], resultWorkflowJson: undefined, resultAnalysis: undefined, errorMessage: undefined });
     buildMut.mutate(
-      { projectId: data.projectId, nodeId: id, task, baseUrl: payload.baseUrl?.trim() || undefined },
+      { projectId: data.projectId, nodeId: id, task, customBaseUrl: payload.customBaseUrl?.trim() || undefined },
       {
         onSuccess: (res) => {
           update({
@@ -110,7 +110,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         onError: (e) => { update({ status: "failed", errorMessage: e.message }); toast.error("运行失败：" + e.message); },
       },
     );
-  }, [running, payload.task, payload.baseUrl, data.projectId, id, buildMut, update]);
+  }, [running, payload.task, payload.customBaseUrl, data.projectId, id, buildMut, update]);
 
   const handleRunCode = useCallback(() => {
     if (running) return;
@@ -143,11 +143,11 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
       outputNodeIds: a?.outputNodeIds ?? [],
       outputType: (a?.outputType === "video" ? "video" : "image"),
       templateLabel: "工程智能体生成",
-      ...(payload.baseUrl?.trim() ? { customBaseUrl: payload.baseUrl.trim() } : {}),
+      ...(payload.customBaseUrl?.trim() ? { customBaseUrl: payload.customBaseUrl.trim() } : {}),
     });
     toast.success("已写回为 ComfyUI 自定义节点，可直接运行");
     setTimeout(() => reactFlow.fitView({ padding: 0.25, duration: 400 }), 60);
-  }, [payload.resultWorkflowJson, payload.resultAnalysis, payload.baseUrl, id, addNode, updateNodeData, reactFlow]);
+  }, [payload.resultWorkflowJson, payload.resultAnalysis, payload.customBaseUrl, id, addNode, updateNodeData, reactFlow]);
 
   const log = payload.log ?? [];
 
@@ -189,8 +189,8 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
             </label>
             <ComfyServerUrlField
               id={id}
-              value={payload.baseUrl ?? ""}
-              onChange={(v) => update({ baseUrl: v })}
+              value={payload.customBaseUrl ?? ""}
+              onChange={(v) => update({ customBaseUrl: v })}
               serverUrls={payload.serverUrls ?? []}
               onChangeServerUrls={(next) => update({ serverUrls: next })}
               isFetching={testingServer}

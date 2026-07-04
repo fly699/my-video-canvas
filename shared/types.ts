@@ -1268,8 +1268,9 @@ export interface SuperAgentNodeData {
   mode?: "comfy" | "code";
   /** 自然语言任务（如「做一个 Flux + LoRA 的高清出图工作流并调通」）。 */
   task?: string;
-  /** 目标 ComfyUI 服务器（留空用服务端 COMFYUI_BASE_URL）。 */
-  baseUrl?: string;
+  /** 目标 ComfyUI 服务器（留空用服务端 COMFYUI_BASE_URL）。字段名与其它 ComfyUI 节点一致
+   *  （customBaseUrl），以便服务器状态/清理/删减等全画布工具统一覆盖本节点。 */
+  customBaseUrl?: string;
   /** 已保存的 ComfyUI 服务器地址列表（与其它 ComfyUI 节点一致）。 */
   serverUrls?: string[];
   /** 规划用 LLM 模型。 */

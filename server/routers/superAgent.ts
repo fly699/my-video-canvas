@@ -36,7 +36,7 @@ export const superAgentRouter = router({
         nodeId: z.string().max(64).optional(),
         task: z.string().min(1).max(2000),
         /** 目标 ComfyUI 服务器（留空用服务端 COMFYUI_BASE_URL）。Phase 1 仅本地自建。 */
-        baseUrl: z.string().max(512).optional(),
+        customBaseUrl: z.string().max(512).optional(),
         model: z.string().max(64).optional(),
         maxIterations: z.number().int().min(1).max(16).optional(),
       }),
@@ -45,7 +45,7 @@ export const superAgentRouter = router({
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await assertComfyuiAllowed(ctx);
 
-      const baseUrl = input.baseUrl?.trim() || ENV.comfyuiBaseUrl;
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
       if (!baseUrl) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点里填写目标服务器或服务端设置 COMFYUI_BASE_URL" });
       }
