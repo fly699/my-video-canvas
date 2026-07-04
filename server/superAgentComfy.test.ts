@@ -153,6 +153,59 @@ describe("runComfyAgent — 闭环编排", () => {
     expect(r.workflowJson).toContain("good");
   });
 
+  it("系统提示按 canInstall 切换安装说明", () => {
+    expect(buildSystemPrompt("出图", RES, false, true)).toContain("install_model");
+    expect(buildSystemPrompt("出图", RES, false, false)).toContain("未开放下载安装");
+  });
+
+  it("install_model：有安装工具 → 调用、把结果喂回、继续；缺模型装完后 execute 成功", async () => {
+    let installed: { url: string; dir: string; filename: string } | null = null;
+    const r = await runComfyAgent({
+      task: "用某缺失的 checkpoint 出图",
+      tools: fakeTools({
+        installModel: async (spec) => { installed = spec; return { ok: true, message: "downloaded 2.1GB" }; },
+      }),
+      llm: scriptedLLM([
+        `{"action":"install_model","modelUrl":"https://civitai.com/x.safetensors","modelDir":"checkpoints","modelFilename":"x.safetensors"}`,
+        `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`,
+        `{"action":"execute"}`,
+      ]),
+    });
+    expect(r.status).toBe("success");
+    expect(installed).toEqual({ url: "https://civitai.com/x.safetensors", dir: "checkpoints", filename: "x.safetensors" });
+    expect(r.log.some((e) => e.type === "tool_result" && (e.data as { tool: string }).tool === "install_model")).toBe(true);
+  });
+
+  it("install_model：无安装工具 → 提示未开放、不崩溃", async () => {
+    const seen: string[] = [];
+    const r = await runComfyAgent({
+      task: "出图",
+      tools: fakeTools(), // 无 installModel
+      llm: scriptedLLM(
+        [`{"action":"install_model","modelUrl":"https://x/x.safetensors","modelDir":"checkpoints","modelFilename":"x.safetensors"}`,
+         `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`, `{"action":"execute"}`],
+        (msgs) => seen.push(msgs[msgs.length - 1].content),
+      ),
+    });
+    expect(r.status).toBe("success");
+    expect(seen.some((c) => c.includes("未开放下载安装"))).toBe(true);
+  });
+
+  it("install_node：有工具 → 调用并继续", async () => {
+    let git: string | null = null;
+    const r = await runComfyAgent({
+      task: "用某自定义节点",
+      tools: fakeTools({ installNode: async (u) => { git = u; return { ok: true, message: "cloned" }; } }),
+      llm: scriptedLLM([
+        `{"action":"install_node","nodeGitUrl":"https://github.com/a/b"}`,
+        `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`,
+        `{"action":"execute"}`,
+      ]),
+    });
+    expect(r.status).toBe("success");
+    expect(git).toBe("https://github.com/a/b");
+  });
+
   it("give_up → failed", async () => {
     const r = await runComfyAgent({
       task: "不可能的任务",

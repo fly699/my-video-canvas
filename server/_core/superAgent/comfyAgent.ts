@@ -39,6 +39,11 @@ export interface ComfyAgentTools {
     outputNodeIds: string[];
     outputType: string;
   }>;
+  /** 可选：下载安装缺失模型（checkpoint/LoRA/VAE…）。仅当宿主提供（已注册 ops 服务器 + 权限 +
+   *  开关）时可用；不提供则智能体无安装能力，只能用现有资源。参数经宿主侧安全校验。 */
+  installModel?(spec: { url: string; dir: string; filename: string }): Promise<{ ok: boolean; message: string }>;
+  /** 可选：下载安装缺失自定义节点（git 仓库）。同上，需宿主提供。 */
+  installNode?(gitUrl: string): Promise<{ ok: boolean; message: string }>;
 }
 
 /** LLM 接口：给一组消息、拿一段文本（引擎从中解析出一个 JSON action）。 */
@@ -102,19 +107,27 @@ export interface RunComfyAgentOptions {
 
 /** LLM 每轮必须返回的单个 JSON 动作。 */
 interface AgentAction {
-  action: "author" | "validate" | "execute" | "finish" | "give_up";
+  action: "author" | "validate" | "execute" | "finish" | "give_up" | "install_model" | "install_node";
   /** author / finish 时提供完整 API 格式 workflow 图。 */
   workflowJson?: string;
   /** 简短理由（进日志）。 */
   reasoning?: string;
+  /** install_model：下载直链 / 目标子目录（checkpoints/loras/vae…）/ 文件名。 */
+  modelUrl?: string;
+  modelDir?: string;
+  modelFilename?: string;
+  /** install_node：自定义节点 git 仓库 URL。 */
+  nodeGitUrl?: string;
 }
+
+const VALID_ACTIONS = ["author", "validate", "execute", "finish", "give_up", "install_model", "install_node"];
 
 const ACTION_HINT =
   '你必须只返回一个 JSON 对象，形如 {"action":"author|validate|execute|finish|give_up","workflowJson":"...","reasoning":"..."}。' +
   "author/finish 时 workflowJson 必须是完整的 ComfyUI **API 格式** 图（形如 {\"节点id\":{\"class_type\":...,\"inputs\":{...}}}）。";
 
-/** 构建系统提示（纯函数，便于单测）。continuing=true 时为「在已有工作流上按新指令继续修改」的多轮场景。 */
-export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false): string {
+/** 构建系统提示（纯函数，便于单测）。continuing=多轮修改；canInstall=宿主开放了下载安装能力。 */
+export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false, canInstall = false): string {
   const cap = (arr: string[], n: number) => (arr.length > n ? arr.slice(0, n).concat(`…(+${arr.length - n})`) : arr);
   return [
     "你是资深 ComfyUI 工作流工程师。目标：产出一份能在给定服务器上真机跑通的 **API 格式** workflow 图，并通过校验与运行验证。",
@@ -132,6 +145,12 @@ export function buildSystemPrompt(task: string, res: ComfyResourceList, continui
     "",
     "工作流程：author 产出/修改工作流（系统会自动帮你 validate 并把错误喂回）→ 按错误反复修正 →",
     "自信可用时 execute 真机运行 → 若运行报错，读错误修正后再 execute → 成功后 finish。无法完成才 give_up。",
+    ...(canInstall
+      ? [
+          "缺模型/节点时可下载安装（已开放）：install_model（附 modelUrl 直链 + modelDir 子目录如 checkpoints/loras/vae + modelFilename）；" +
+            "install_node（附 nodeGitUrl 自定义节点 git 仓库）。装完会告知结果，再重试。参数会经安全校验，非法则拒绝。",
+        ]
+      : ["若服务器缺所需 checkpoint/LoRA/节点，只能改用现有资源或 give_up（本会话未开放下载安装）。"]),
     ACTION_HINT,
   ].join("\n");
 }
@@ -150,8 +169,7 @@ export function extractAction(text: string): AgentAction | null {
   for (const c of candidates) {
     try {
       const obj = JSON.parse(c) as AgentAction;
-      if (obj && typeof obj.action === "string" &&
-          ["author", "validate", "execute", "finish", "give_up"].includes(obj.action)) {
+      if (obj && typeof obj.action === "string" && VALID_ACTIONS.includes(obj.action)) {
         return obj;
       }
     } catch { /* try next */ }
@@ -175,7 +193,8 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
   emit({ type: "resources", iteration: 0, message: `已获取服务器资源：${resources.checkpoints.length} checkpoints / ${resources.loras.length} loras / ${resources.nodeClasses.length} 节点类`, data: resources });
 
   const continuing = !!opts.seedWorkflowJson;
-  const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing) }];
+  const canInstall = !!(opts.tools.installModel || opts.tools.installNode);
+  const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing, canInstall) }];
   // 连续对话：并入先前若干轮精简历史。
   for (const h of opts.history ?? []) messages.push(h);
 
@@ -207,6 +226,24 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
     if (action.action === "give_up") {
       emit({ type: "done", iteration: iter, message: `智能体放弃：${action.reasoning ?? "未说明原因"}` });
       return { status: "failed", workflowJson: current, iterations: iter, log };
+    }
+
+    if (action.action === "install_model") {
+      if (!opts.tools.installModel) { messages.push({ role: "user", content: "本会话未开放下载安装能力，请改用现有资源或 give_up。" }); continue; }
+      if (!action.modelUrl || !action.modelDir || !action.modelFilename) { messages.push({ role: "user", content: "install_model 需附 modelUrl + modelDir + modelFilename。" }); continue; }
+      const r = await opts.tools.installModel({ url: action.modelUrl, dir: action.modelDir, filename: action.modelFilename });
+      emit({ type: "tool_result", iteration: iter, message: r.ok ? `已安装模型 ${action.modelFilename}` : `安装模型失败：${clip(r.message)}`, data: { tool: "install_model", ok: r.ok } });
+      messages.push({ role: "user", content: `install_model: ${r.ok ? "成功" : "失败"}。${clip(r.message)}` });
+      continue;
+    }
+
+    if (action.action === "install_node") {
+      if (!opts.tools.installNode) { messages.push({ role: "user", content: "本会话未开放下载安装能力，请改用现有资源或 give_up。" }); continue; }
+      if (!action.nodeGitUrl) { messages.push({ role: "user", content: "install_node 需附 nodeGitUrl。" }); continue; }
+      const r = await opts.tools.installNode(action.nodeGitUrl);
+      emit({ type: "tool_result", iteration: iter, message: r.ok ? "已安装自定义节点" : `安装节点失败：${clip(r.message)}`, data: { tool: "install_node", ok: r.ok } });
+      messages.push({ role: "user", content: `install_node: ${r.ok ? "成功" : "失败"}。${clip(r.message)}` });
+      continue;
     }
 
     if (action.action === "author") {

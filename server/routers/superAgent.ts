@@ -8,11 +8,45 @@ import { assertProjectAccess } from "../_core/permissions";
 import { assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog } from "../_core/auditLog";
 import { ENV } from "../_core/env";
-import { runComfyAgent } from "../_core/superAgent/comfyAgent";
+import { runComfyAgent, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
 import { createComfyTools, createAgentLLM } from "../_core/superAgent/comfyAdapters";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
+import { installModel, installCustomNode, isValidDownloadUrl, isValidModelFilename, isValidGitUrl, MODEL_DIRS, type ModelDir } from "../_core/ops/modelOps";
+import * as db from "../db";
+import type { TrpcContext } from "../_core/context";
+
+const norm = (u: string) => u.replace(/\/+$/, "").trim();
+
+/**
+ * 下载模型/节点框架（默认关闭，inert）：仅当 env SUPER_AGENT_AUTO_INSTALL=1 且当前用户 L3+ 且
+ * 目标 ComfyUI 地址匹配到一台「已在运维台注册（有 SSH）且启用」的 ops 服务器时，才把 installModel/
+ * installNode 工具交给引擎。否则返回空对象——引擎无安装能力，只能用现有资源。安装经 modelOps 的
+ * 字符集+单引号注入防护 + 这里的 URL/文件名/目录白名单校验。
+ */
+async function resolveInstallTools(ctx: TrpcContext, baseUrl: string): Promise<Pick<ComfyAgentTools, "installModel" | "installNode">> {
+  if (process.env.SUPER_AGENT_AUTO_INSTALL !== "1") return {};
+  if ((ctx.user?.adminLevel ?? 0) < 3) return {};
+  const servers = await db.listOpsServers().catch(() => []);
+  const match = servers.find((s) => s.enabled && s.comfyBaseUrl && norm(s.comfyBaseUrl) === norm(baseUrl));
+  if (!match) return {};
+  const sid = match.id;
+  return {
+    installModel: async ({ url, dir, filename }) => {
+      if (!isValidDownloadUrl(url)) return { ok: false, message: "下载 URL 未通过安全校验" };
+      if (!isValidModelFilename(filename)) return { ok: false, message: "文件名未通过校验（需 .safetensors/.ckpt 等）" };
+      if (!(MODEL_DIRS as readonly string[]).includes(dir)) return { ok: false, message: `目标子目录非法（允许：${MODEL_DIRS.join("/")}）` };
+      try { const r = await installModel(sid, url, dir as ModelDir, filename); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
+      catch (e) { return { ok: false, message: e instanceof Error ? e.message : String(e) }; }
+    },
+    installNode: async (gitUrl) => {
+      if (!isValidGitUrl(gitUrl)) return { ok: false, message: "git 仓库 URL 未通过校验" };
+      try { const r = await installCustomNode(sid, gitUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
+      catch (e) { return { ok: false, message: e instanceof Error ? e.message : String(e) }; }
+    },
+  };
+}
 
 // 超级智能体 · Phase 1（工程智能体的 ComfyUI 底座）。
 // 权限：管理员 L3+（powerful + 花 LLM/GPU），且项目编辑者。LLM 白名单门控由
@@ -54,7 +88,8 @@ export const superAgentRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点里填写目标服务器或服务端设置 COMFYUI_BASE_URL" });
       }
 
-      const tools = createComfyTools({ baseUrl, projectId: input.projectId, nodeId: input.nodeId });
+      const installTools = await resolveInstallTools(ctx, baseUrl); // 默认空（框架 inert）；满足前提才开放
+      const tools = { ...createComfyTools({ baseUrl, projectId: input.projectId, nodeId: input.nodeId }), ...installTools };
       const llm = createAgentLLM(ctx, input.model); // LLM 白名单/密钥门控在 invokeLLMWithKie 内部强制
 
       const signal = { aborted: false };
