@@ -49,6 +49,18 @@ describe("removeTrack：从 selectedClipIds 剔除删掉轨道的片段（回归
   });
 });
 
+describe("rippleDeleteClip：同起点幸存者不左移（与多选波纹删除一致）", () => {
+  it("只左移「起点严格晚于被删片段」的幸存者；同起点的不动", () => {
+    const a = st().addClip("v1", { kind: "image", start: 2, trimIn: 0, trimOut: 2 }); // [2,4] dur=2
+    const b = st().addClip("v1", { kind: "image", start: 2, trimIn: 0, trimOut: 3 }); // 同起点
+    const c = st().addClip("v1", { kind: "image", start: 5, trimIn: 0, trimOut: 3 }); // 严格靠后
+    st().rippleDeleteClip(a);
+    const clips = clipsOf("v1");
+    expect(clips.find((x) => x.id === b)!.start).toBe(2);  // 同起点不动
+    expect(clips.find((x) => x.id === c)!.start).toBe(3);  // 5 - dur(2) = 3
+  });
+});
+
 describe("sourceTimeAt：时间轴时间 → 源媒体时间（含倒放）", () => {
   it("正放：trimIn + 偏移×速度", () => {
     expect(sourceTimeAt(mk({ start: 0, trimIn: 1, trimOut: 10, speed: 2 }), 3)).toBe(7); // 1 + 3*2

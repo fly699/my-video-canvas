@@ -312,7 +312,9 @@ export function Timeline() {
   const fitToWindow = useCallback(() => {
     const el = scrollRef.current; if (!el) return;
     const avail = el.clientWidth - LABEL_W - 24; // minus labels + a little breathing room
-    const sec = Math.max(duration + 2, 5);
+    // 对齐实际渲染的轨道宽度 contentSec（= max(duration+5, 20)），这样「适应窗口」后整条时间轴
+    // 真的完整可见、不再残留横向滚动（旧的按 duration+2 缩放，轨道比它更宽 → 仍要滚）。
+    const sec = Math.max(duration + 5, 20);
     if (avail > 0) setPxPerSec(Math.min(400, Math.max(8, avail / sec)));
   }, [duration, setPxPerSec]);
 
@@ -430,7 +432,7 @@ export function Timeline() {
             <div onPointerDown={beginScrub} style={{ height: RULER_H, position: "relative", borderBottom: `1px solid ${EC.border}`, cursor: "col-resize", userSelect: "none", touchAction: "none" }}>
               {ticks.map((t) => (
                 <div key={t} style={{ position: "absolute", left: t * pxPerSec, top: 0, height: "100%", borderLeft: `1px solid ${EC.border}`, pointerEvents: "none" }}>
-                  <span style={{ fontSize: 9, color: EC.t4, marginLeft: 3 }}>{fmtTime(t).slice(0, 5)}</span>
+                  <span style={{ fontSize: 9, color: EC.t4, marginLeft: 3 }}>{fmtTime(t).split(".")[0]}</span>
                 </div>
               ))}
             </div>
