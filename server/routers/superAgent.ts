@@ -11,7 +11,7 @@ import { ENV } from "../_core/env";
 import { runComfyAgent, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
 import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferenceCandidates } from "../_core/superAgent/comfyAdapters";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
-import { buildClaudeArgs, runCodeAgent, frameCodeTask } from "../_core/superAgent/codeAgent";
+import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
 import { installModel, installCustomNode, isValidDownloadUrl, isValidModelFilename, isValidGitUrl, MODEL_DIRS, type ModelDir } from "../_core/ops/modelOps";
 import * as db from "../db";
@@ -237,11 +237,12 @@ export const superAgentRouter = router({
         const stderr = handle.stderr();
         const spawnError = handle.spawnError();
 
-        // 拿到会话 id（或沿用上轮）→ 保留工作区，供下一轮 --resume 续接。
+        // 拿到会话 id（新的或沿用上轮）→ 保留工作区并刷新使用时间，供下一轮 --resume 续接。
+        // 续接工作区即使本轮失败也保留（否则一次失败毁掉整段连续对话）；新建工作区仅成功时保留。
         const newSessionId = result.sessionId ?? resumeSessionId;
-        if (newSessionId && !spawnError) {
+        keepWorkspace = shouldKeepWorkspace({ hasSession: !!newSessionId, resuming, spawnError: !!spawnError });
+        if (keepWorkspace && newSessionId) {
           codeSessions.set(key, { dir: workspace, sessionId: newSessionId, lastUsed: Date.now() });
-          keepWorkspace = true;
         }
 
         // 失败/无结果时，把 claude 的 stderr / spawn 错误作为诊断信息浮出（认证失败、
