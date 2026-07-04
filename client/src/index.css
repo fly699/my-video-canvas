@@ -1365,6 +1365,16 @@ button:active:not(:disabled) {
   border-top-color: var(--c-bd2) !important;
 }
 
+/* 横排工具栏：按钮多时不再溢出到屏幕外把末尾挤没——限制不超过视口宽度，超出则内部横向滚动，
+   保证任何按钮都够得着；同时隐藏滚动条保持外观干净。竖排不受影响。 */
+.canvas-bottombar[data-bar-orient="h"] {
+  max-width: calc(100vw - 16px);
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none; /* Firefox */
+}
+.canvas-bottombar[data-bar-orient="h"]::-webkit-scrollbar { display: none; }
+
 /* Toolbar vertical layout: flip dividers (1×18 → 18×1) and HIDE button labels so the
    vertical bar stays narrow (icon-only) instead of being as wide as the longest label. */
 .canvas-bottombar[data-bar-orient="v"] > div[style*="height: 18px"][style*="width: 1px"] {
