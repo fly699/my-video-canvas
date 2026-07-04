@@ -66,3 +66,22 @@ describe("injectLoraChain", () => {
     expect(injectLoraChain(g, [{ name: "hero", strengthModel: 0.8 }])).toEqual(g);
   });
 });
+
+describe("injectLoraChain — LTXV 形态（checkpoint 的 CLIP 输出无人消费）", () => {
+  // LTXV：文本编码走独立 CLIPLoader("2")，CheckpointLoaderSimple("1") 的 CLIP 槽无人用（常为 None）。
+  const ltxvGraph = () => ({
+    "1": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "ltxv.safetensors" } },
+    "2": { class_type: "CLIPLoader", inputs: { clip_name: "t5xxl_fp16.safetensors", type: "ltxv" } },
+    "6": { class_type: "CLIPTextEncode", inputs: { text: "pos", clip: ["2", 0] } },
+    "4": { class_type: "KSampler", inputs: { seed: 1, model: ["1", 0], positive: ["6", 0], latent_image: ["5", 0] } },
+    "9": { class_type: "VAEDecode", inputs: { samples: ["4", 0], vae: ["1", 2] } },
+  });
+  it("改用 LoraLoaderModelOnly（不把 clip 接到无人用/可能为 None 的 checkpoint CLIP 上）", () => {
+    const out = injectLoraChain(ltxvGraph() as any, [{ name: "hero.safetensors", strengthModel: 0.8 }]);
+    expect(out["char_lora_0"].class_type).toBe("LoraLoaderModelOnly");
+    expect(out["char_lora_0"].inputs.clip).toBeUndefined();          // 不接 clip
+    expect(out["char_lora_0"].inputs.model).toEqual(["1", 0]);
+    expect(out["4"].inputs.model).toEqual(["char_lora_0", 0]);       // MODEL 消费者重连到链尾
+    expect(out["9"].inputs.vae).toEqual(["1", 2]);                   // VAE 槽不动
+  });
+});

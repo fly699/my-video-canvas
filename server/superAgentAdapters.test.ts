@@ -9,6 +9,7 @@ const base: WorkflowValidationResult = {
   invalidEnums: [],
   missingRequired: [],
   danglingLinks: [],
+  malformedNodes: [],
   ok: true,
 };
 

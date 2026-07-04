@@ -24,6 +24,10 @@ export function formatValidationErrors(r: WorkflowValidationResult): string[] {
   if (!r.objectInfoAvailable) {
     out.push("无法连接目标服务器 /object_info：跳过枚举/节点存在性预检，仅做结构检查（悬空连线仍会检出）。");
   }
+  // 结构性缺陷（LLM 生成图常见）：缺 class_type 的节点、空图。不写出来的话 ok=false 却零错误行，
+  // 智能体拿到「validate: 失败：」空反馈无从修起。
+  for (const id of r.malformedNodes ?? []) out.push(`节点 ${id} 缺少 class_type（每个节点必须形如 {"class_type":"...","inputs":{...}}）`);
+  if (r.nodeCount === 0) out.push("工作流为空（没有任何合法节点）——请 author 产出完整的 API 格式图。");
   for (const n of r.missingNodes) out.push(`缺少节点类型（自定义节点未安装）：${n}`);
   for (const e of r.invalidEnums) out.push(`取值非法（该名字在服务器不存在）：${issue(e)}`);
   for (const e of r.missingRequired) out.push(`必填输入缺失（既没连线也没值）：${issue(e)}`);

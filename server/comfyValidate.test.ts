@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateWorkflowWithInfo } from "../server/_core/comfyui";
+import { validateWorkflowWithInfo, samePromptGraph } from "../server/_core/comfyui";
 
 // 模拟目标服务器的 /object_info：装了 KSampler / CheckpointLoaderSimple / CLIPTextEncode，
 // 但只有有限的 ckpt / sampler 列表；故意不装 FooCustomNode。
@@ -83,6 +83,27 @@ describe("validateWorkflowWithInfo", () => {
     expect(r.missingRequired).toHaveLength(0);
     expect(r.ok).toBe(true);
   });
+  it("必填「连线型」输入缺失（如 KSampler 没接 model）→ missingRequired（回归：曾被静默跳过）", () => {
+    const wf: any = { "3": { class_type: "KSampler", inputs: { sampler_name: "euler", scheduler: "normal", seed: 1, steps: 20, cfg: 8, denoise: 1, positive: ["6", 0], negative: ["6", 0], latent_image: ["5", 0] } } };
+    const r = validateWorkflowWithInfo(wf, INFO, true);
+    expect(r.missingRequired.some((m) => m.field === "model" && m.classType === "KSampler")).toBe(true);
+    expect(r.ok).toBe(false);
+  });
+  it("缺 class_type 的节点 → malformedNodes + ok=false（回归：曾被静默跳过、空图 ok=true）", () => {
+    const r1 = validateWorkflowWithInfo({ "1": { inputs: { text: "hi" } } } as any, INFO, true);
+    expect(r1.malformedNodes).toEqual(["1"]);
+    expect(r1.ok).toBe(false);
+    // 空图：ComfyUI 报 "Prompt has no outputs"，预检也必须 fail
+    const r2 = validateWorkflowWithInfo({} as any, INFO, true);
+    expect(r2.nodeCount).toBe(0);
+    expect(r2.ok).toBe(false);
+  });
+  it("数字节点 id 的悬空连线也检出（[99,0]，有些导出器/LLM 不写字符串）", () => {
+    const wf: any = { "3": { class_type: "KSampler", inputs: { sampler_name: "euler", scheduler: "normal", seed: 1, steps: 20, cfg: 8, denoise: 1, model: [4, 0], positive: ["6", 0], negative: ["6", 0], latent_image: [99, 0] } }, "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "sd_xl_base_1.0.safetensors" } }, "6": { class_type: "CLIPTextEncode", inputs: { text: "x", clip: ["4", 1] } } };
+    const r = validateWorkflowWithInfo(wf, INFO, true);
+    expect(r.danglingLinks.some((d) => d.current === "99")).toBe(true); // [99,0] 无节点 → 悬空
+    expect(r.danglingLinks.some((d) => d.current === "4")).toBe(false); // [4,0] 指向存在的 "4" → 放行
+  });
   it("无 object_info → 不报错但 ok=false（无法预检）", () => {
     const wf: any = { "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "随便.ckpt" } } };
     const r = validateWorkflowWithInfo(wf, {}, false);
@@ -90,5 +111,17 @@ describe("validateWorkflowWithInfo", () => {
     expect(r.ok).toBe(false);
     expect(r.invalidEnums).toHaveLength(0);
     expect(r.nodeCount).toBe(1);
+  });
+});
+
+describe("samePromptGraph（缓存恢复回查的安全闸）", () => {
+  it("同一张图（键序不同）→ true；不同图/非对象 → false", () => {
+    const a = { "3": { class_type: "KSampler", inputs: { seed: 1, model: ["4", 0] } }, "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "x" } } };
+    const b = { "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "x" } }, "3": { class_type: "KSampler", inputs: { model: ["4", 0], seed: 1 } } };
+    expect(samePromptGraph(a, b)).toBe(true);
+    expect(samePromptGraph(a, { ...b, "9": { class_type: "SaveImage", inputs: {} } })).toBe(false); // 多一个节点
+    expect(samePromptGraph(a, { ...a, "3": { class_type: "KSampler", inputs: { seed: 2, model: ["4", 0] } } })).toBe(false); // 种子不同
+    expect(samePromptGraph(undefined, a)).toBe(false);
+    expect(samePromptGraph(a, null)).toBe(false);
   });
 });

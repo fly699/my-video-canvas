@@ -161,7 +161,7 @@ export async function clearComfyQueue(rawBaseUrl: string): Promise<void> {
 const ANIMATEDIFF_TEMPLATE = {
   "3": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["12", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0] } },
   "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "__ckpt__" } },
-  "5": { class_type: "EmptyLatentImage", inputs: { width: 512, height: 512, batch_size: "__frames__" } },
+  "5": { class_type: "EmptyLatentImage", inputs: { width: "__width__", height: "__height__", batch_size: "__frames__" } },
   "6": { class_type: "CLIPTextEncode", inputs: { text: "__prompt__", clip: ["4", 1] } },
   "7": { class_type: "CLIPTextEncode", inputs: { text: "__negPrompt__", clip: ["4", 1] } },
   "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
@@ -173,7 +173,7 @@ const SVD_TEMPLATE = {
   "3": { class_type: "KSampler", inputs: { seed: "__seed__", steps: "__steps__", cfg: "__cfg__", sampler_name: "__sampler__", scheduler: "__scheduler__", denoise: "__denoise__", model: ["15", 0], positive: ["12", 0], negative: ["12", 1], latent_image: ["12", 2] } },
   "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["15", 2] } },
   "11": { class_type: "LoadImage", inputs: { image: "__refImageName__" } },
-  "12": { class_type: "SVD_img2vid_Conditioning", inputs: { width: 1024, height: 576, video_frames: "__frames__", motion_bucket_id: 127, fps: "__fps__", augmentation_level: 0, clip_vision: ["15", 1], init_image: ["11", 0], vae: ["15", 2] } },
+  "12": { class_type: "SVD_img2vid_Conditioning", inputs: { width: "__width__", height: "__height__", video_frames: "__frames__", motion_bucket_id: 127, fps: "__fps__", augmentation_level: 0, clip_vision: ["15", 1], init_image: ["11", 0], vae: ["15", 2] } },
   "13": { class_type: "VHS_VideoCombine", inputs: { frame_rate: "__fps__", loop_count: 0, filename_prefix: "comfyui_svd", format: "video/h264-mp4", pingpong: false, save_output: true, images: ["8", 0] } },
   "15": { class_type: "ImageOnlyCheckpointLoader", inputs: { ckpt_name: "__ckpt__" } },
 };
@@ -308,6 +308,9 @@ interface PromptSubmitResponse {
 }
 
 interface HistoryEntry {
+  /** ComfyUI 历史条目自带的原始提交：[number, prompt_id, promptGraph, extra, outputsToExecute]。
+   *  缓存恢复回查时用 prompt[2] 与本次提交的图深度比对，防止把别的工作流/别人的产物当成本次输出。 */
+  prompt?: unknown[];
   status?: { completed?: boolean; status_str?: string; messages?: unknown[] };
   outputs?: Record<
     string,
@@ -709,7 +712,7 @@ async function uploadImageToComfy(baseUrl: string, sourceUrl: string, apiKey?: s
   const { buf, contentType } = await fetchWithSizeLimit(fetchUrl, MAX_REF_IMAGE_BYTES, 60_000, "下载参考图");
   const ct = contentType ?? "image/png";
   const ext = ct.includes("jpeg") ? "jpg" : ct.includes("webp") ? "webp" : "png";
-  const filename = `comfy_input_${Date.now()}.${ext}`;
+  const filename = `comfy_input_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
   const form = new FormData();
   const blob = new Blob([new Uint8Array(buf)], { type: ct });
@@ -751,7 +754,7 @@ async function uploadAudioToComfy(baseUrl: string, sourceUrl: string, apiKey?: s
     : ct.includes("flac") ? "flac"
     : sourceUrl.toLowerCase().match(/\.(wav|m4a|aac|ogg|flac|mp3)(?:\?|$)/)?.[1]
     || "mp3";
-  const filename = `comfy_input_audio_${Date.now()}.${ext}`;
+  const filename = `comfy_input_audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
   const form = new FormData();
   const blob = new Blob([new Uint8Array(buf)], { type: ct });
@@ -1348,7 +1351,13 @@ export function injectLoraChain(
   const ckptId = Object.keys(wf).find((id) => wf[id].class_type === "CheckpointLoaderSimple");
   const loraIds = new Set<string>();
 
-  if (ckptId) {
+  // checkpoint 的 CLIP 输出必须真有消费者才走「model+clip 完整链」：LTXV 这类图的文本编码走
+  // 独立 CLIPLoader，CheckpointLoaderSimple 的 CLIP 槽无人用（且常为 None）——此时接
+  // LoraLoader(clip=None) 在旧版 ComfyUI 直接报错（本文件 comfyErrorHint 甚至有专属提示语）。
+  // 无消费者 → 落到下方「仅模型链」（LoraLoaderModelOnly），与 AnimateDiff 等常规图零差别。
+  const ckptClipConsumed = !!ckptId && Object.values(wf).some((node) =>
+    Object.values(node.inputs).some((v) => Array.isArray(v) && v[0] === ckptId && v[1] === 1));
+  if (ckptId && ckptClipConsumed) {
     // model + clip chain
     let modelRef: [string, number] = [ckptId, 0];
     let clipRef: [string, number] = [ckptId, 1];
@@ -1368,8 +1377,8 @@ export function injectLoraChain(
     return wf;
   }
 
-  // model-only loaders (Wan UNet / SVD image-only checkpoint)
-  const loaderId = Object.keys(wf).find((id) => MODEL_ONLY_LOADERS.has(wf[id].class_type));
+  // model-only loaders (Wan UNet / SVD image-only checkpoint / CLIP 输出无人用的 checkpoint)
+  const loaderId = ckptId ?? Object.keys(wf).find((id) => MODEL_ONLY_LOADERS.has(wf[id].class_type));
   if (!loaderId) return wf; // unsupported template → no-op
   let modelRef: [string, number] = [loaderId, 0];
   loras.forEach((l, i) => {
@@ -1412,6 +1421,10 @@ export async function generateComfyVideo(rawBaseUrl: string, options: GenerateCo
     ? { clip: "umt5_xxl_fp8_e4m3fn_scaled.safetensors", vae: "wan_2.1_vae.safetensors", clipVision: "clip_vision_h.safetensors", frames: 81, fps: 16, width: 832, height: 480, cfg: 6, scheduler: "simple" }
     : tpl === "ltxv"
     ? { clip: "t5xxl_fp16.safetensors", vae: "", clipVision: "", frames: 97, fps: 25, width: 768, height: 512, cfg: 3, scheduler: "normal" }
+    // AnimateDiff/SVD 的宽高此前被模板硬编码、用户传值被静默忽略（Wan/LTXV 用占位符，证明是
+    // 遗漏非设计）——现已模板化，这里按各自原硬编码值兜底：SVD 1024×576、AnimateDiff 512×512。
+    : tpl === "svd"
+    ? { clip: "", vae: options.vae ?? "", clipVision: "", frames: options.frames ?? 16, fps: options.fps ?? 8, width: options.width ?? 1024, height: options.height ?? 576, cfg: options.cfg ?? 7, scheduler: options.scheduler }
     : { clip: "", vae: options.vae ?? "", clipVision: "", frames: options.frames ?? 16, fps: options.fps ?? 8, width: options.width ?? 512, height: options.height ?? 512, cfg: options.cfg ?? 7, scheduler: options.scheduler };
 
   const workflow = applyTemplate(TEMPLATES[tpl], {
@@ -1580,7 +1593,7 @@ export async function analyzeWorkflow(
     "KSampler", "KSamplerAdvanced", "CFGGuider", "DualCFGGuider", "SamplerCustom",
   ]);
   for (const [, n] of Object.entries(workflow)) {
-    if (typeof n !== "object" || !n.class_type) continue;
+    if (!n || typeof n !== "object" || !n.class_type) continue; // null 也是 typeof "object"，不守卫会抛 TypeError
     if (NEG_INPUT_SAMPLERS.has(n.class_type as string)) {
       const inp = (n.inputs ?? {}) as Record<string, unknown>;
       const negRef = inp.negative;
@@ -1596,7 +1609,7 @@ export async function analyzeWorkflow(
   }
 
   for (const [nodeId, node] of Object.entries(workflow)) {
-    if (typeof node !== "object" || !node.class_type) continue;
+    if (!node || typeof node !== "object" || !node.class_type) continue;
     const ct = node.class_type;
     const inputs = node.inputs ?? {};
 
@@ -1771,10 +1784,31 @@ export async function analyzeWorkflow(
     strength: "强度", weight: "权重",
   };
   const MAX_PARAMS = 80;
+  // 中央守卫（对所有专用分支统一生效）：
+  // 1) 连线输入不得暴露为可编辑字面量——CLIPTextEncode 分支早有此守卫并注明「写回会静默切断
+  //    上游连线」，但 Qwen 编辑指令/KSampler/LoadImage/音频/各加载器等兄弟分支漏加，导致
+  //    defaultValue 是 [nodeId,slot] 数组、用户一改（或自动填充）即断线。此处按「工作流当前值
+  //    是数组」统一过滤（通用扫描本就跳过数组，不受影响）。
+  // 2) 幻影参数——分支对「节点上不存在的字段」也硬绑默认值（如 KSamplerAdvanced 被按 KSampler
+  //    绑出 seed/denoise，真实字段是 noise_seed 且无 denoise），改了没效果还与通用扫描补出的
+  //    真参数同名并存。有 /object_info 时按 schema 剔除「字段缺失且查无此字段」的绑定；
+  //    真字段（如 noise_seed）由下方通用扫描以正确名字补上。
+  const hasInfoSchema = Object.keys(info).length > 0;
+  const filteredParams = detectedParams.filter((p) => {
+    const n = workflow[p.nodeId];
+    if (!n || typeof n !== "object") return false;
+    const field = p.fieldPath.replace(/^inputs\./, "");
+    const cur = ((n.inputs ?? {}) as Record<string, unknown>)[field];
+    if (Array.isArray(cur)) return false; // 连线输入
+    if (cur === undefined && hasInfoSchema && !readInputSpec(info, n.class_type as string, field)) return false; // 幻影字段
+    return true;
+  });
+  detectedParams.length = 0;
+  detectedParams.push(...filteredParams);
   const bound = new Set(detectedParams.map((p) => `${p.nodeId}|${p.fieldPath}`));
   for (const [nodeId, node] of Object.entries(workflow)) {
     if (detectedParams.length >= MAX_PARAMS) break;
-    if (typeof node !== "object" || !node.class_type) continue;
+    if (!node || typeof node !== "object" || !node.class_type) continue;
     const nodeInputs = (node.inputs ?? {}) as Record<string, unknown>;
     const title = node._meta?.title?.trim();
     for (const [field, val] of Object.entries(nodeInputs)) {
@@ -1839,7 +1873,10 @@ export interface WorkflowValidationResult {
   /** 连线 [nodeId, slot] 指向了图中不存在的节点（悬空引用）。纯结构检查，不依赖
    *  object_info——这类图运行时必报「node not found」，但旧版预检会放过。 */
   danglingLinks: WorkflowValidationIssue[];
-  /** objectInfoAvailable 且无任何问题 = 预检通过，可放心导入。 */
+  /** 缺失/非法 class_type 的节点 id（LLM 生成图的常见缺陷）。纯结构检查——ComfyUI 提交必拒，
+   *  旧版预检却静默跳过这类节点、空图甚至直接 ok=true。 */
+  malformedNodes: string[];
+  /** objectInfoAvailable 且图非空且无任何问题 = 预检通过，可放心导入。 */
   ok: boolean;
 }
 
@@ -1872,16 +1909,19 @@ export function validateWorkflowWithInfo(
   const invalidEnums: WorkflowValidationIssue[] = [];
   const missingRequired: WorkflowValidationIssue[] = [];
   const danglingLinks: WorkflowValidationIssue[] = [];
+  const malformedNodes: string[] = [];
   // Pure-structure pass (no object_info needed): every `[nodeId, slot]` link must
   // point at a node that exists in the graph. A dangling edge runs fine through the
   // old validator but ComfyUI rejects it at submit time — surface it up front.
+  // 链接首元素兼容数字 id（有些导出器/LLM 写 [7,0] 而非 ["7",0]——analyzeWorkflow 同款处理），
+  // 只按字符串判会把数字悬空引用整个放过。
   const presentIds = new Set(Object.keys(workflow));
   for (const [nodeId, node] of Object.entries(workflow)) {
     if (!node || typeof node !== "object") continue;
     const ct = typeof node.class_type === "string" ? node.class_type : "?";
     const inputs = (node.inputs ?? {}) as Record<string, unknown>;
     for (const [field, val] of Object.entries(inputs)) {
-      if (Array.isArray(val) && val.length === 2 && typeof val[0] === "string" && typeof val[1] === "number" && !presentIds.has(val[0])) {
+      if (Array.isArray(val) && val.length === 2 && (typeof val[0] === "string" || typeof val[0] === "number") && typeof val[1] === "number" && !presentIds.has(String(val[0]))) {
         danglingLinks.push({ nodeId, classType: ct, field, current: String(val[0]) });
       }
     }
@@ -1890,7 +1930,8 @@ export function validateWorkflowWithInfo(
   for (const [nodeId, node] of Object.entries(workflow)) {
     if (!node || typeof node !== "object") continue;
     const ct = node.class_type;
-    if (typeof ct !== "string") continue;
+    // 节点缺 class_type：ComfyUI 提交必拒（missing class_type）——旧版静默跳过导致整图 ok=true。
+    if (typeof ct !== "string") { malformedNodes.push(nodeId); continue; }
     nodeCount++;
     if (!objectInfoAvailable) continue; // 没有 object_info，无法核对该节点
     if (!info[ct]) { missingNodes.add(ct); continue; } // 节点类型在服务器上不存在
@@ -1905,19 +1946,23 @@ export function validateWorkflowWithInfo(
         invalidEnums.push({ nodeId, classType: ct, field, current: val, options: spec.options.slice(0, 500) });
       }
     }
-    // 2) 必填 widget 输入缺失（连线类输入 spec.kind==="other"，运行时媒体也不计）
+    // 2) 必填输入缺失——widget 与连线型（MODEL/LATENT/CONDITIONING…，spec.kind==="other"）都算：
+    // ComfyUI 提交时对两者同样报 "Required input is missing"，只在这里跳过连线型会让「必填连线
+    // 没接」这一最常见错误静默通过校验、到真机执行才以服务器错误暴露（工程智能体的定向连线建议
+    // suggestMissingLinks 也依赖这里报出连线型缺失）。运行时媒体输入仍不计。
     const req = info[ct].input?.required ?? {};
     for (const field of Object.keys(req)) {
       if (field in inputs) continue;
       if (isRuntimeMediaField(info, ct, field)) continue;
       const spec = readInputSpec(info, ct, field);
-      if (spec && spec.kind !== "other") {
+      if (spec) {
         missingRequired.push({ nodeId, classType: ct, field, options: spec.kind === "enum" ? spec.options?.slice(0, 500) : undefined });
       }
     }
   }
-  const ok = objectInfoAvailable && missingNodes.size === 0 && invalidEnums.length === 0 && missingRequired.length === 0 && danglingLinks.length === 0;
-  return { objectInfoAvailable, nodeCount, missingNodes: Array.from(missingNodes).sort(), invalidEnums, missingRequired, danglingLinks, ok };
+  // 空图（没有任何合法节点）ComfyUI 报 "Prompt has no outputs"——ok 必须为 false。
+  const ok = objectInfoAvailable && nodeCount > 0 && malformedNodes.length === 0 && missingNodes.size === 0 && invalidEnums.length === 0 && missingRequired.length === 0 && danglingLinks.length === 0;
+  return { objectInfoAvailable, nodeCount, missingNodes: Array.from(missingNodes).sort(), invalidEnums, missingRequired, danglingLinks, malformedNodes, ok };
 }
 
 /** 解析工作流 + best-effort 拉 /object_info，再核对。供 tRPC comfyui.validateWorkflow 调用。 */
@@ -2085,7 +2130,9 @@ export async function executeCustomWorkflow(
 
   // 缓存恢复：ComfyUI 不会把「被缓存、未重新执行」的输出节点结果放进本次 prompt 的
   // 历史里（固定种子的工作流重复运行时常见）。本次没采到媒体 → 回查近期历史，取目标
-  // 输出节点最近一次真正产出的媒体（固定种子下即为同一确定性结果）。
+  // 输出节点最近一次真正产出的媒体。安全闸：只认「prompt 图与本次提交深度相等」的历史
+  // 条目——否则共享服务器上别人的工作流只要输出节点 id 撞车（默认模板几乎都是 "9"），
+  // 或本次 outputNodeIds 为空，都会把不相干的旧产物当成本次输出返回。
   if (imageUrls.length === 0 && videoUrls.length === 0) {
     try {
       const hres = await fetch(`${baseUrl}/history?max_items=64`, { signal: AbortSignal.timeout(10_000), ...(apiKey ? { headers: comfyAuthHeaders(apiKey) } : {}) });
@@ -2093,6 +2140,7 @@ export async function executeCustomWorkflow(
         const all = (await hres.json()) as Record<string, HistoryEntry>;
         const entries = Object.values(all); // 插入顺序≈时间顺序，新的在后
         for (let k = entries.length - 1; k >= 0 && imageUrls.length === 0 && videoUrls.length === 0; k--) {
+          if (!samePromptGraph(entries[k]?.prompt?.[2], workflow)) continue; // 只认同一张图
           await collectInto(entries[k]?.outputs, true, imageUrls, videoUrls);
         }
       }
@@ -2116,6 +2164,23 @@ export async function executeCustomWorkflow(
 
 const COMFY_VIDEO_EXT = /\.(mp4|webm|mkv|mov|avi|gif|webp)$/i;
 const COMFY_AUDIO_EXT = /\.(mp3|wav|flac|m4a|aac|ogg)$/i;
+
+/** 键序无关的稳定序列化（图深度比对用）。纯函数。 */
+function stableStringify(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  if (v && typeof v === "object") {
+    return `{${Object.keys(v as object).sort().map((k) => `${JSON.stringify(k)}:${stableStringify((v as Record<string, unknown>)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v) ?? "null";
+}
+
+/** 两个 ComfyUI prompt 图是否同一份（键序无关深比对）。缓存恢复回查的安全闸：
+ *  「固定种子下即为同一确定性结果」只在同一张图上成立——仅按输出节点 id 匹配会把
+ *  共享服务器上别人的工作流（节点 id 撞车是常态，默认模板几乎都是 "9"）的产物当成本次输出。 */
+export function samePromptGraph(a: unknown, b: unknown): boolean {
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  return stableStringify(a) === stableStringify(b);
+}
 
 // ── Shot continuity: control-map extraction ──────────────────────────────────
 /** Extract a ControlNet control map (depth/pose/canny…) from a source image on the
@@ -2252,7 +2317,7 @@ async function uploadImageToCloud(baseUrl: string, sourceUrl: string, apiKey: st
   const ct = contentType ?? "image/png";
   const ext = ct.includes("jpeg") ? "jpg" : ct.includes("webp") ? "webp" : "png";
   const form = new FormData();
-  form.append("image", new Blob([new Uint8Array(buf)], { type: ct }), `comfy_input_${Date.now()}.${ext}`);
+  form.append("image", new Blob([new Uint8Array(buf)], { type: ct }), `comfy_input_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`);
   form.append("overwrite", "true");
   const upRes = await fetch(`${baseUrl}/api/upload/image`, { method: "POST", body: form, headers: { "X-API-Key": apiKey }, signal: AbortSignal.timeout(60_000) });
   if (!upRes.ok) { const t = await upRes.text().catch(() => ""); throw new Error(`上传参考图到云端失败 (${upRes.status}): ${t.slice(0, 200)}`); }
@@ -2271,7 +2336,7 @@ async function uploadAudioToCloud(baseUrl: string, sourceUrl: string, apiKey: st
   const ct = contentType ?? "audio/mpeg";
   const ext = ct.includes("wav") ? "wav" : (ct.includes("mp4") || ct.includes("m4a") || ct.includes("aac")) ? "m4a" : ct.includes("ogg") ? "ogg" : ct.includes("flac") ? "flac" : "mp3";
   const form = new FormData();
-  form.append("image", new Blob([new Uint8Array(buf)], { type: ct }), `comfy_input_audio_${Date.now()}.${ext}`);
+  form.append("image", new Blob([new Uint8Array(buf)], { type: ct }), `comfy_input_audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`);
   form.append("overwrite", "true");
   const upRes = await fetch(`${baseUrl}/api/upload/image`, { method: "POST", body: form, headers: { "X-API-Key": apiKey }, signal: AbortSignal.timeout(120_000) });
   if (!upRes.ok) { const t = await upRes.text().catch(() => ""); throw new Error(`上传音频到云端失败 (${upRes.status}): ${t.slice(0, 200)}`); }
@@ -2329,27 +2394,31 @@ export async function executeCloudWorkflow(
   const detail = await cloudPoll(baseUrl, promptId, apiKey, POLL_MAX_ATTEMPTS_VIDEO);
 
   const targetNodeIds = new Set(options.outputNodeIds ?? []);
-  const useAll = targetNodeIds.size === 0;
   const imageUrls: string[] = [];
   const videoUrls: string[] = [];
-  for (const [nodeId, nodeOutput] of Object.entries(detail.outputs ?? {})) {
-    if (!useAll && !targetNodeIds.has(nodeId)) continue;
-    for (const v of nodeOutput.gifs ?? []) {
-      const ext = v.filename.split(".").pop() || "mp4";
-      const s = await cloudDownloadAndStore(baseUrl, v.filename, v.subfolder, v.type, apiKey, ext, "video/mp4");
-      videoUrls.push(s.url);
-    }
-    for (const img of nodeOutput.images ?? []) {
-      if (/\.(mp4|webm|gif|webp)$/i.test(img.filename)) {
-        const ext = img.filename.split(".").pop() || "mp4";
-        const s = await cloudDownloadAndStore(baseUrl, img.filename, img.subfolder, img.type, apiKey, ext, "video/mp4");
-        videoUrls.push(s.url);
-      } else {
-        const s = await cloudDownloadAndStore(baseUrl, img.filename, img.subfolder, img.type, apiKey, "png", "image/png");
-        imageUrls.push(s.url);
+  // 与本地 collectInto 对齐的通用收集（此前云端只读 gifs/images 两键）：
+  // - 新式节点（SaveVideo 等）产物在 `videos` 等键下 → 旧逻辑「本地成功、云端却报无输出」；
+  // - 视频扩展名用 COMFY_VIDEO_EXT（旧正则漏 mkv/mov/avi → .mov 被当 png 图片存储）；
+  // - subfolder/type 缺省补 ""/"output"（否则 URLSearchParams 串成字面量 "undefined"）；
+  // - 补「选中输出节点无产出 → 全量重扫」兜底（防 outputNodeIds 选错/漏选，与本地一致）。
+  const cloudCollect = async (onlyTargets: boolean) => {
+    for (const [nodeId, nodeOutput] of Object.entries(detail.outputs ?? {})) {
+      if (onlyTargets && targetNodeIds.size > 0 && !targetNodeIds.has(nodeId)) continue;
+      for (const [outKey, arr] of Object.entries(nodeOutput as Record<string, unknown>)) {
+        if (!Array.isArray(arr)) continue;
+        for (const it of arr as Array<{ filename?: string; subfolder?: string; type?: string }>) {
+          if (!it || typeof it.filename !== "string" || !it.filename) continue;
+          if (COMFY_AUDIO_EXT.test(it.filename)) continue; // 不把纯音频当成图/视频输出
+          const isVideo = outKey === "gifs" || outKey === "videos" || COMFY_VIDEO_EXT.test(it.filename);
+          const ext = it.filename.split(".").pop() || (isVideo ? "mp4" : "png");
+          const s = await cloudDownloadAndStore(baseUrl, it.filename, it.subfolder ?? "", it.type ?? "output", apiKey, ext, isVideo ? "video/mp4" : "image/png");
+          (isVideo ? videoUrls : imageUrls).push(s.url);
+        }
       }
     }
-  }
+  };
+  await cloudCollect(true);
+  if (imageUrls.length === 0 && videoUrls.length === 0 && targetNodeIds.size > 0) await cloudCollect(false);
 
   const resolvedOutputType = options.outputType === "video" ? "video"
     : options.outputType === "image" ? "image"
