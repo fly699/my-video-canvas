@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildClaudeArgs, parseStreamLine, runCodeAgent } from "./_core/superAgent/codeAgent";
+import { buildClaudeArgs, parseStreamLine, runCodeAgent, frameCodeTask, CODE_SANDBOX_PREAMBLE } from "./_core/superAgent/codeAgent";
 import type { CommandRisk } from "./_core/ops/commandPolicy";
 
 // 便捷：把假 stream-json 行数组变成 AsyncIterable。
@@ -47,6 +47,18 @@ describe("buildClaudeArgs", () => {
     const a = buildClaudeArgs({ resumeSessionId: "sess-123" });
     expect(a[a.indexOf("--resume") + 1]).toBe("sess-123");
     expect(buildClaudeArgs({})).not.toContain("--resume");
+  });
+});
+
+describe("frameCodeTask（沙箱前导）", () => {
+  it("首轮：前置沙箱边界说明 + 原任务", () => {
+    const out = frameCodeTask("读 err.log 定位报错", false);
+    expect(out).toContain(CODE_SANDBOX_PREAMBLE);
+    expect(out).toContain("一次性隔离的临时工作区");
+    expect(out).toContain("读 err.log 定位报错");
+  });
+  it("续接：不重复前导，原样透传", () => {
+    expect(frameCodeTask("接着改", true)).toBe("接着改");
   });
 });
 

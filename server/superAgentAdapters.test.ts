@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatValidationErrors, formatInputField, formatNodeSchemas, collectErrorNodeClasses } from "./_core/superAgent/comfyAdapters";
+import { formatValidationErrors, formatInputField, formatNodeSchemas, collectErrorNodeClasses, suggestMissingLinks } from "./_core/superAgent/comfyAdapters";
 import type { WorkflowValidationResult } from "./_core/comfyui";
 
 const base: WorkflowValidationResult = {
@@ -57,6 +57,43 @@ describe("collectErrorNodeClasses", () => {
   });
   it("全通过 → 空", () => {
     expect(collectErrorNodeClasses(base)).toEqual([]);
+  });
+});
+
+describe("suggestMissingLinks", () => {
+  const INFO = {
+    KSampler: { input: { required: { model: ["MODEL"], latent_image: ["LATENT"], seed: ["INT", { default: 0 }], sampler_name: [["euler"]] } }, output: ["LATENT"] },
+    CheckpointLoaderSimple: { input: { required: {} }, output: ["MODEL", "CLIP", "VAE"] },
+    EmptyLatentImage: { input: { required: {} }, output: ["LATENT"] },
+  };
+  const WF = JSON.stringify({
+    "3": { class_type: "KSampler", inputs: {} },
+    "4": { class_type: "CheckpointLoaderSimple", inputs: {} },
+    "5": { class_type: "EmptyLatentImage", inputs: {} },
+  });
+  it("缺 MODEL 连线 → 建议接 CheckpointLoaderSimple 的第0号输出", () => {
+    const out = suggestMissingLinks(WF, INFO, [{ nodeId: "3", classType: "KSampler", field: "model" }]);
+    expect(out.length).toBe(1);
+    expect(out[0]).toContain("KSampler).model 需接 MODEL 连线");
+    expect(out[0]).toContain("[4(CheckpointLoaderSimple) 的第0号输出]");
+  });
+  it("缺 LATENT 连线 → 建议 EmptyLatentImage（第0号输出，KSampler 自身排除）", () => {
+    const out = suggestMissingLinks(WF, INFO, [{ nodeId: "3", classType: "KSampler", field: "latent_image" }]);
+    expect(out[0]).toContain("需接 LATENT 连线");
+    expect(out[0]).toContain("5(EmptyLatentImage)");
+    expect(out[0]).not.toContain("[3(KSampler)"); // 不把自己列为候选生产节点
+  });
+  it("值型/枚举型必填缺失 → 不给连线建议（交给 schema 提示）", () => {
+    expect(suggestMissingLinks(WF, INFO, [{ nodeId: "3", classType: "KSampler", field: "seed" }])).toEqual([]);
+    expect(suggestMissingLinks(WF, INFO, [{ nodeId: "3", classType: "KSampler", field: "sampler_name" }])).toEqual([]);
+  });
+  it("图里没有可产出该类型的节点 → 无建议", () => {
+    const wf2 = JSON.stringify({ "3": { class_type: "KSampler", inputs: {} } });
+    expect(suggestMissingLinks(wf2, INFO, [{ nodeId: "3", classType: "KSampler", field: "model" }])).toEqual([]);
+  });
+  it("object_info 缺失 / 非法 JSON → 空数组不崩", () => {
+    expect(suggestMissingLinks(WF, null, [{ nodeId: "3", classType: "KSampler", field: "model" }])).toEqual([]);
+    expect(suggestMissingLinks("not json", INFO, [{ nodeId: "3", classType: "KSampler", field: "model" }])).toEqual([]);
   });
 });
 
