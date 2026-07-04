@@ -1,10 +1,14 @@
 import { describe, it, expect, afterEach } from "vitest";
+import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   isCodeAgentEnabled,
   isBashAllowed,
   resolveClaudeBin,
   resolvePermissionWiring,
   resolveClaudeSpawn,
+  maybeMaterializeMcpConfig,
   streamClaudeCode,
 } from "./_core/superAgent/claudeProcess";
 
@@ -89,6 +93,29 @@ describe("resolveClaudeSpawn（Windows .cmd 坑）", () => {
   });
   it("Windows + .exe：原样 spawn 不走 shell", () => {
     expect(resolveClaudeSpawn("C:\\x\\claude.exe", A, { platform: "win32", exists: () => true })).toEqual({ cmd: "C:\\x\\claude.exe", args: A, shell: false });
+  });
+});
+
+describe("maybeMaterializeMcpConfig（内联 JSON 落地成文件）", () => {
+  it("内联 JSON → 写成工作区里的 .json 文件，mcpConfig 改为该路径", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mcp-test-"));
+    try {
+      const inline = JSON.stringify({ mcpServers: { policy: { type: "stdio", command: "node", args: ["/app/x.cjs"] } } });
+      const out = maybeMaterializeMcpConfig({ allowedTools: ["Read"], disallowedTools: [], permissionMode: "default", mcpConfig: inline, strictMcp: true }, dir);
+      expect(out.mcpConfig).toBe(join(dir, "superagent-mcp.json"));
+      expect(existsSync(out.mcpConfig!)).toBe(true);
+      expect(JSON.parse(readFileSync(out.mcpConfig!, "utf8"))).toEqual(JSON.parse(inline));
+      expect(out.strictMcp).toBe(true); // 其它字段原样
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  it("无 mcpConfig / 已是文件路径（非 { 开头）→ 原样返回不落地", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mcp-test-"));
+    try {
+      expect(maybeMaterializeMcpConfig({ allowedTools: ["Read"], disallowedTools: [], permissionMode: "acceptEdits" }, dir).mcpConfig).toBeUndefined();
+      const withPath = maybeMaterializeMcpConfig({ allowedTools: ["Read"], disallowedTools: [], permissionMode: "default", mcpConfig: "/tmp/existing.json" }, dir);
+      expect(withPath.mcpConfig).toBe("/tmp/existing.json");
+      expect(existsSync(join(dir, "superagent-mcp.json"))).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 

@@ -5,7 +5,7 @@
 // 否则只放行 Read/Edit/Write（claude 只能在工作区读写文件，不能跑任意 shell）。
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ClaudeArgsOptions, ClaudePermissionMode } from "./codeAgent";
 import { PERMISSION_TOOL_NAME } from "./permissionMcpServer";
@@ -82,6 +82,25 @@ export function resolvePermissionWiring(): PermissionWiring {
   return { allowedTools: ["Read", "Edit", "Write", "Bash"], disallowedTools: highRisk, permissionMode: "acceptEdits" };
 }
 
+/**
+ * 把内联 MCP JSON 落地成工作区里的一个 .json 文件，改用文件路径传给 --mcp-config。
+ * 为什么：某些 claude 版本的 --mcp-config 只认「文件路径」，把内联 JSON 当成路径去找 →
+ * 报 `Invalid MCP configuration: MCP config file not found: <cwd>\{mcpServers:...}`（实测 Windows）；
+ * 且经 shell 兜底时大段 JSON 的引号会被剥掉进一步损坏。文件路径无引号/花括号/空格，跨平台稳。
+ * 幂等：非内联（不以 { 开头）或写盘失败时原样返回，不影响 Linux 既有行为。
+ */
+export function maybeMaterializeMcpConfig(policy: PermissionWiring, cwd: string): PermissionWiring {
+  const cfg = policy.mcpConfig?.trim();
+  if (!cfg || !cfg.startsWith("{")) return policy;
+  try {
+    const path = join(cwd, "superagent-mcp.json");
+    writeFileSync(path, cfg, "utf8");
+    return { ...policy, mcpConfig: path };
+  } catch {
+    return policy; // 落地失败：退回内联（至少不比现状差）
+  }
+}
+
 export interface StreamClaudeOptions {
   /** 任务提示词（走 stdin）。 */
   task: string;
@@ -115,7 +134,7 @@ export function streamClaudeCode(opts: StreamClaudeOptions): StreamClaudeHandle 
   if (!isCodeAgentEnabled()) {
     throw new Error("代码智能体未启用：请在服务端设置 SUPER_AGENT_CODE_ENABLED=1");
   }
-  const policy = resolvePermissionWiring();
+  const policy = maybeMaterializeMcpConfig(resolvePermissionWiring(), opts.cwd);
   const builtArgs = opts.argsBuilder(policy);
   const { cmd, args, shell } = resolveClaudeSpawn(resolveClaudeBin(), builtArgs);
   const child = spawn(cmd, args, {

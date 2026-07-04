@@ -35,6 +35,8 @@ export interface ClaudeArgsOptions {
   permissionPromptTool?: string;
   /** 成本封顶（美元）——单任务硬上限。 */
   maxBudgetUsd?: number;
+  /** 连续对话：续接已有 claude 会话（--resume），claude 保留上轮完整上下文与工作区文件。 */
+  resumeSessionId?: string;
 }
 
 /**
@@ -54,6 +56,7 @@ export function buildClaudeArgs(opts: ClaudeArgsOptions): string[] {
   }
   if (opts.permissionPromptTool) args.push("--permission-prompt-tool", opts.permissionPromptTool);
   if (opts.maxBudgetUsd != null) args.push("--max-budget-usd", String(opts.maxBudgetUsd));
+  if (opts.resumeSessionId) args.push("--resume", opts.resumeSessionId);
   return args;
 }
 
@@ -169,6 +172,8 @@ export interface RunCodeAgentResult {
   result?: string;
   costUsd?: number;
   numTurns?: number;
+  /** claude 会话 id（用于下一轮 --resume 续接连续对话）。 */
+  sessionId?: string;
   events: CodeRunEvent[];
 }
 
@@ -191,9 +196,11 @@ export async function runCodeAgent(opts: RunCodeAgentOptions): Promise<RunCodeAg
   const events: CodeRunEvent[] = [];
   const emit = (e: CodeRunEvent) => { events.push(e); opts.emit?.(e); };
   let final: CodeAgentEvent | undefined;
+  let sessionId: string | undefined;
 
   for await (const line of opts.lines) {
     for (const evt of parseStreamLine(line)) {
+      if (evt.sessionId) sessionId = evt.sessionId; // init/result 均带，用于下一轮 --resume
       if (evt.kind === "text" && evt.text) {
         emit({ type: "text", message: evt.text });
       } else if (evt.kind === "tool_use") {
@@ -220,6 +227,7 @@ export async function runCodeAgent(opts: RunCodeAgentOptions): Promise<RunCodeAg
     result: final?.result,
     costUsd: final?.costUsd,
     numTurns: final?.numTurns,
+    sessionId: final?.sessionId ?? sessionId,
     events,
   };
 }

@@ -1292,6 +1292,10 @@ export interface SuperAgentNodeData {
   resultAnalysis?: { paramBindings?: unknown[]; outputNodeIds?: string[]; outputType?: string };
   /** code 模式：任务最终文本结果。 */
   codeResult?: string;
+  /** code 模式连续对话记录（用户任务 + 智能体每轮结果/失败摘要）。 */
+  codeConversation?: { role: "user" | "agent"; text: string; status?: string }[];
+  /** code 模式：claude 会话 id，下一轮据此 --resume 续接（claude 保留完整上下文与工作区文件）。 */
+  codeSessionId?: string;
   /** code 模式：被 commandPolicy 拦截而中止的危险命令。 */
   blockedCommand?: string;
   errorMessage?: string;

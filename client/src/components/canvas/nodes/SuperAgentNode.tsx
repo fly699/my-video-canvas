@@ -4,7 +4,7 @@ import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Boxes, Loader2, Play, XCircle, ArrowRightCircle, Square, Server, Cpu, Send, RefreshCw, Settings2, ChevronDown, ChevronUp } from "lucide-react";
+import { Boxes, Loader2, ArrowRightCircle, Square, Server, Cpu, Send, RefreshCw, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { NodeTextArea } from "../NodeTextInput";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
@@ -78,6 +78,9 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   // 聊天输入用本地 state（IME 安全：不逐键写 store，避免中文拼音输入被打断/乱蹦）。
   const [inputText, setInputText] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [codeInputText, setCodeInputText] = useState("");
+  const codeInputRef = useRef<HTMLTextAreaElement>(null);
+  const resetCodeMut = trpc.superAgent.resetCodeSession.useMutation();
   const handleTestServer = useCallback(async () => {
     setTestingServer(true);
     try {
@@ -164,36 +167,63 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     );
   }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.appliedNodeId, llmModel, data.projectId, id, buildMut, update, syncToNode]);
 
-  // ── 代码任务模式 ──
+  // ── 代码任务模式（连续对话：claude --resume 续接同一会话，保留上下文与工作区文件）──
   const handleRunCode = useCallback(() => {
     if (running) return;
-    const task = (payload.task ?? "").trim();
+    const task = (codeInputRef.current?.value ?? codeInputText).trim();
     if (!task) { toast.error("请先描述代码任务"); return; }
-    update({ status: "running", log: [], codeResult: undefined, blockedCommand: undefined, errorMessage: undefined });
+    const priorConv = payload.codeConversation ?? [];
+    const resume = priorConv.length > 0 && !!payload.codeSessionId;
+    const conv: Turn[] = [...priorConv, { role: "user", text: task }];
+    setCodeInputText("");
+    const el = codeInputRef.current as (HTMLTextAreaElement & { commitValue?: (v: string) => void }) | null;
+    el?.commitValue?.("");
+    update({ codeConversation: conv, status: "running", log: [], codeResult: undefined, blockedCommand: undefined, errorMessage: undefined });
     codeMut.mutate(
-      { projectId: data.projectId, nodeId: id, task },
+      { projectId: data.projectId, nodeId: id, task, resume },
       {
         onSuccess: (res) => {
           const isOk = res.status === "success";
-          update({ status: isOk ? "success" : "failed", codeResult: isOk ? res.result : undefined, blockedCommand: res.blockedCommand, errorMessage: isOk ? undefined : (res.diagnostic ?? res.result ?? (res.status === "aborted" ? "已拦截危险命令并中止" : "代码任务失败，无输出")), log: res.log.map((e) => ({ type: e.type, iteration: 0, message: e.message })) });
+          const text = isOk ? (res.result ?? "完成")
+            : res.status === "aborted" ? ("⛔ 已拦截危险命令并中止：" + (res.blockedCommand ?? ""))
+            : ("❌ " + (res.diagnostic ?? res.result ?? "代码任务失败，无输出"));
+          update({
+            status: isOk ? "success" : "failed",
+            codeConversation: [...conv, { role: "agent", text, status: res.status }],
+            codeSessionId: res.sessionId ?? payload.codeSessionId,
+            codeResult: isOk ? res.result : undefined,
+            blockedCommand: res.blockedCommand,
+            errorMessage: isOk ? undefined : (res.diagnostic ?? res.result ?? (res.status === "aborted" ? "已拦截危险命令并中止" : "代码任务失败，无输出")),
+            log: res.log.map((e) => ({ type: e.type, iteration: 0, message: e.message })),
+          });
           if (isOk) toast.success("代码任务完成");
           else if (res.status === "aborted") toast.error("已拦截危险命令并中止：" + (res.blockedCommand ?? ""));
           else toast.error("代码任务失败：" + (res.diagnostic?.slice(0, 100) ?? "见节点内详情"));
         },
-        onError: (e) => { update({ status: "failed", errorMessage: e.message }); toast.error("运行失败：" + e.message); },
+        onError: (e) => { update({ status: "failed", errorMessage: e.message, codeConversation: [...conv, { role: "agent", text: "❌ " + e.message, status: "failed" }] }); toast.error("运行失败：" + e.message); },
       },
     );
-  }, [running, payload.task, data.projectId, id, codeMut, update]);
+  }, [running, codeInputText, payload.codeConversation, payload.codeSessionId, data.projectId, id, codeMut, update]);
+
+  // 新对话：清掉服务端持久工作区 + 前端对话/会话。
+  const handleResetCode = useCallback(() => {
+    if (running) return;
+    resetCodeMut.mutate({ projectId: data.projectId, nodeId: id });
+    update({ codeConversation: [], codeSessionId: undefined, codeResult: undefined, blockedCommand: undefined, errorMessage: undefined, status: "idle", log: [] });
+    toast.success("已开始新对话");
+  }, [running, resetCodeMut, data.projectId, id, update]);
 
   const log = payload.log ?? [];
   const conversation = payload.conversation ?? [];
+  const codeConversation = payload.codeConversation ?? [];
   const settingsOpen = payload.settingsOpen ?? conversation.length === 0;
   const hasResult = (payload.status === "success" || payload.status === "exhausted") && !!payload.resultWorkflowJson;
   const linked = !!payload.appliedNodeId;
+  const codeContinuing = codeConversation.length > 0 && !!payload.codeSessionId;
 
   // 对话/日志自动滚到底。
   const feedRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [conversation.length, log.length]);
+  useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [conversation.length, codeConversation.length, log.length]);
 
   return (
     <BaseNode id={id} selected={selected} nodeType="super_agent" title={data.title} minHeight={340} resizable showHandles={false} capNodeHeight>
@@ -311,29 +341,56 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
           </>
         )}
 
-        {/* ═══════════ 代码任务 ═══════════ */}
+        {/* ═══════════ 代码任务（连续对话） ═══════════ */}
         {mode === "code" && (
           <>
             <div style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.5 }}>
-              描述代码任务，服务端在一次性隔离工作区跑无头 Claude Code；危险命令由 commandPolicy 拦截。需超管 L4 + 服务端开启。
-            </div>
-            <div>
-              <label style={labelStyle}>代码任务</label>
-              <NodeTextArea className="nodrag" rows={3} disabled={running} noMention noSlash
-                placeholder="例：读取工作区里的 err.log，定位报错根因并写一份修复说明"
-                value={payload.task ?? ""} onValueChange={(v) => update({ task: v })} style={{ ...fieldStyle, resize: "vertical" }} />
+              服务端在隔离工作区跑无头 Claude Code，可连续对话（记得上下文与工作区文件）；危险命令由 commandPolicy 拦截。需超管 L4 + 服务端开启。
             </div>
             {!codeEnabled && !codeStatus.isLoading && (
               <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.7 0.16 60 / 0.08)", border: "1px solid oklch(0.7 0.16 60 / 0.3)", fontSize: 11, color: "oklch(0.62 0.14 60)" }}>
                 代码任务未启用。需服务端设置 <code>SUPER_AGENT_CODE_ENABLED=1</code>（放行 shell 再加 <code>SUPER_AGENT_CODE_ALLOW_BASH=1</code>），且当前用户为超级管理员 L4。
               </div>
             )}
-            <button onClick={handleRunCode} disabled={running || !codeEnabled}
-              className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold"
-              style={{ background: running || !codeEnabled ? "var(--c-surface)" : accentA(0.14), border: `1px solid ${running || !codeEnabled ? BORDER : accentA(0.5)}`, color: running || !codeEnabled ? "var(--c-t4)" : accent, cursor: running || !codeEnabled ? "not-allowed" : "pointer" }}>
-              {running ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Play style={{ width: 13, height: 13 }} />}
-              {running ? "运行中…" : "运行代码任务"}
-            </button>
+
+            {/* 连续对话状态 + 新对话 */}
+            {codeContinuing && (
+              <div className="flex items-center gap-1.5" style={{ fontSize: 10.5, color: accent }}>
+                <ArrowRightCircle style={{ width: 11, height: 11 }} /> 连续对话中，claude 记得上下文与工作区文件
+                <button onClick={handleResetCode} disabled={running} title="清空会话与工作区，从头开始"
+                  className="nodrag" style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: "var(--c-t3)", background: "var(--c-surface)", border: `1px solid ${BORDER}`, borderRadius: 6, padding: "1px 7px", cursor: running ? "not-allowed" : "pointer" }}>
+                  <RefreshCw style={{ width: 9, height: 9 }} /> 新对话
+                </button>
+              </div>
+            )}
+
+            {/* 对话 + 活动日志 */}
+            {(codeConversation.length > 0 || (running && log.length > 0)) && (
+              <div ref={feedRef} className="nowheel flex flex-col gap-1.5" style={{ maxHeight: 260, overflowY: "auto", background: "var(--c-canvas)", border: `1px solid ${BORDER}`, borderRadius: 8, padding: "8px" }}>
+                {codeConversation.map((t, i) => (
+                  t.role === "user" ? (
+                    <div key={i} style={{ alignSelf: "flex-end", maxWidth: "88%", background: accentA(0.16), border: `1px solid ${accentA(0.4)}`, borderRadius: "9px 9px 2px 9px", padding: "5px 9px", fontSize: 11.5, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{t.text}</div>
+                  ) : (
+                    <div key={i} style={{ alignSelf: "flex-start", maxWidth: "94%", fontSize: 11.5, color: t.status === "success" ? "var(--c-t1)" : RED, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: t.status === "success" ? undefined : "ui-monospace, monospace", lineHeight: 1.5 }}>{t.text}</div>
+                  )
+                ))}
+                {running && log.length > 0 && (
+                  <div style={{ borderTop: codeConversation.length ? `1px dashed ${BORDER}` : "none", paddingTop: codeConversation.length ? 6 : 0, marginTop: 2, fontFamily: "ui-monospace, monospace", fontSize: 10.5, lineHeight: 1.55 }}>
+                    {log.slice(-40).map((e, i) => (
+                      <div key={i} style={{ color: logColor(e.type), whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{e.message}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {payload.blockedCommand && (
+              <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}`, fontSize: 11.5, color: RED }}>
+                已拦截危险命令并中止：<code style={{ wordBreak: "break-all" }}>{payload.blockedCommand}</code>
+              </div>
+            )}
+
+            {/* 停止 */}
             {running && (
               <button onClick={handleCancel} disabled={cancelMut.isPending}
                 className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium"
@@ -341,29 +398,23 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                 <Square style={{ width: 12, height: 12 }} /> 停止
               </button>
             )}
-            {log.length > 0 && (
-              <div ref={feedRef} className="nowheel" style={{ maxHeight: 200, overflowY: "auto", background: "var(--c-canvas)", border: `1px solid ${BORDER}`, borderRadius: 8, padding: "7px 9px", fontSize: 11, lineHeight: 1.6, fontFamily: "ui-monospace, monospace" }}>
-                {log.map((e, i) => (<div key={i} style={{ color: logColor(e.type), whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{e.message}</div>))}
-              </div>
-            )}
-            {payload.blockedCommand && (
-              <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}`, fontSize: 11.5, color: RED }}>
-                已拦截危险命令并中止：<code style={{ wordBreak: "break-all" }}>{payload.blockedCommand}</code>
-              </div>
-            )}
-            {payload.status === "success" && payload.codeResult && (
-              <div className="nowheel px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.65 0.2 155 / 0.08)", border: `1px solid ${GREEN}`, fontSize: 11.5, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 180, overflowY: "auto" }}>
-                {payload.codeResult}
-              </div>
-            )}
-            {payload.status === "failed" && payload.errorMessage && (
-              <div className="nowheel px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}`, maxHeight: 200, overflowY: "auto" }}>
-                <div className="flex items-center gap-1.5" style={{ fontSize: 11.5, color: RED, fontWeight: 600, marginBottom: 4 }}>
-                  <XCircle style={{ width: 13, height: 13, flexShrink: 0 }} /> 失败原因
-                </div>
-                <div style={{ fontSize: 11, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "ui-monospace, monospace", lineHeight: 1.5 }}>{payload.errorMessage}</div>
-              </div>
-            )}
+
+            {/* 聊天输入 */}
+            <div className="nodrag flex items-end gap-1.5">
+              <NodeTextArea
+                ref={codeInputRef} noMention noSlash
+                className="nodrag" rows={2} disabled={running || !codeEnabled}
+                placeholder={codeConversation.length === 0 ? "描述代码任务，例：读取工作区里的 err.log，定位报错根因并写修复说明" : "继续追问或让它接着改，例：把修复也应用上并跑一遍测试"}
+                value={codeInputText} onValueChange={setCodeInputText}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleRunCode(); } }}
+                style={{ ...fieldStyle, resize: "vertical", flex: 1 }}
+              />
+              <button onClick={handleRunCode} disabled={running || !codeEnabled}
+                className="nodrag flex items-center justify-center rounded-lg" style={{ width: 38, height: 38, flexShrink: 0, background: running || !codeEnabled ? "var(--c-surface)" : accentA(0.16), border: `1px solid ${running || !codeEnabled ? BORDER : accentA(0.5)}`, color: running || !codeEnabled ? "var(--c-t4)" : accent, cursor: running || !codeEnabled ? "not-allowed" : "pointer" }}
+                title="运行（Enter 发送，Shift+Enter 换行）">
+                {running ? <Loader2 style={{ width: 15, height: 15 }} className="animate-spin" /> : <Send style={{ width: 15, height: 15 }} />}
+              </button>
+            </div>
           </>
         )}
 

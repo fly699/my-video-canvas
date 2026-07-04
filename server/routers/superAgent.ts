@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { router, levelProcedure } from "../_core/trpc";
@@ -58,6 +58,26 @@ const superProc = levelProcedure(4); // 代码任务=任意执行级能力，限
 // 运行中任务的取消登记表：key=`${projectId}:${nodeId}` → 取消函数（comfy=置 abort 位；code=杀进程）。
 const runningJobs = new Map<string, () => void>();
 const jobKey = (projectId: number, nodeId: string | undefined) => `${projectId}:${nodeId ?? ""}`;
+
+// 代码任务「连续对话」的会话登记表：key=jobKey → { 持久工作区目录, claude 会话 id, 最后使用时刻 }。
+// 续接（--resume）需要 cwd 保持一致（claude 按 cwd 归档会话、上轮写的文件也在此），故工作区
+// 跨轮持久，不再每轮删。清理：新开会话时删旧、显式「新对话」删、以及每次运行前扫掉 60 分钟空闲的。
+// 仍与真实仓库隔离（独立临时目录 + 仅 --add-dir 该目录），只是「一次性」放宽为「一次会话」。
+interface CodeSession { dir: string; sessionId?: string; lastUsed: number }
+const codeSessions = new Map<string, CodeSession>();
+const CODE_SESSION_TTL_MS = 60 * 60 * 1000;
+
+function sweepStaleCodeSessions() {
+  const cutoff = Date.now() - CODE_SESSION_TTL_MS;
+  codeSessions.forEach((s, k) => {
+    if (s.lastUsed < cutoff) { try { rmSync(s.dir, { recursive: true, force: true }); } catch { /* ignore */ } codeSessions.delete(k); }
+  });
+}
+
+function disposeCodeSession(key: string) {
+  const s = codeSessions.get(key);
+  if (s) { try { rmSync(s.dir, { recursive: true, force: true }); } catch { /* ignore */ } codeSessions.delete(key); }
+}
 
 export const superAgentRouter = router({
   // 自然语言任务 → 自动编写并真机调通一份 ComfyUI API 格式工作流。
@@ -148,6 +168,8 @@ export const superAgentRouter = router({
         maxBudgetUsd: z.number().min(0.1).max(20).optional(),
         /** 硬超时（秒），30–900，默认 300。 */
         timeoutSec: z.number().int().min(30).max(900).optional(),
+        /** 连续对话：续接本节点上一轮的 claude 会话（复用工作区 + --resume），claude 保留完整上下文与文件。 */
+        resume: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -156,10 +178,22 @@ export const superAgentRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "代码智能体未启用：请在服务端设置 SUPER_AGENT_CODE_ENABLED=1（并按需 SUPER_AGENT_CODE_ALLOW_BASH=1 放行 shell）" });
       }
 
-      // 一次性临时工作区。
-      const workspace = mkdtempSync(join(tmpdir(), "superagent-code-"));
-      const emit = (e: { type: string; message: string; data?: unknown }) => emitSuperAgentEvent(input.projectId, input.nodeId, e);
+      sweepStaleCodeSessions();
       const key = jobKey(input.projectId, input.nodeId);
+      // 续接：复用本节点持久工作区 + 上轮会话 id；否则开一次新会话（先删旧工作区）。
+      const prior = codeSessions.get(key);
+      const resuming = input.resume === true && !!prior && existsSync(prior.dir);
+      let resumeSessionId: string | undefined;
+      let workspace: string;
+      if (resuming && prior) {
+        workspace = prior.dir;
+        resumeSessionId = prior.sessionId;
+      } else {
+        if (prior) disposeCodeSession(key); // 新会话：清掉上一段
+        workspace = mkdtempSync(join(tmpdir(), "superagent-code-"));
+      }
+      const emit = (e: { type: string; message: string; data?: unknown }) => emitSuperAgentEvent(input.projectId, input.nodeId, e);
+      let keepWorkspace = false;
       try {
         const handle = streamClaudeCode({
           task: input.task,
@@ -170,6 +204,7 @@ export const superAgentRouter = router({
             addDirs: [workspace],
             model: input.model,
             maxBudgetUsd: input.maxBudgetUsd ?? 2,
+            resumeSessionId,
           }),
         });
         runningJobs.set(key, () => handle.kill()); // 取消=杀进程
@@ -179,6 +214,13 @@ export const superAgentRouter = router({
         const proc = await handle.done;
         const stderr = handle.stderr();
         const spawnError = handle.spawnError();
+
+        // 拿到会话 id（或沿用上轮）→ 保留工作区，供下一轮 --resume 续接。
+        const newSessionId = result.sessionId ?? resumeSessionId;
+        if (newSessionId && !spawnError) {
+          codeSessions.set(key, { dir: workspace, sessionId: newSessionId, lastUsed: Date.now() });
+          keepWorkspace = true;
+        }
 
         // 失败/无结果时，把 claude 的 stderr / spawn 错误作为诊断信息浮出（认证失败、
         // 找不到 claude、Windows .cmd 坑、模型报错等真正原因大多在这里）。
@@ -203,13 +245,23 @@ export const superAgentRouter = router({
           numTurns: result.numTurns,
           timedOut: proc.timedOut,
           diagnostic: diag,
+          sessionId: newSessionId, // 供前端保存，下一轮传 resume:true 续接
           log: result.events.map((e) => ({ type: e.type, message: e.message })),
         };
       } finally {
         runningJobs.delete(key);
-        // 清理一次性工作区（best-effort）。
-        try { rmSync(workspace, { recursive: true, force: true }); } catch { /* ignore */ }
+        // 保留工作区供续接（会话登记表持有）；否则删掉这次一次性工作区。
+        if (!keepWorkspace) { try { rmSync(workspace, { recursive: true, force: true }); } catch { /* ignore */ } }
       }
+    }),
+
+  // 结束代码任务的连续对话：删掉该节点的持久工作区并清登记（前端「新对话」按钮）。
+  resetCodeSession: superProc
+    .input(z.object({ projectId: z.number(), nodeId: z.string().max(64) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      disposeCodeSession(jobKey(input.projectId, input.nodeId));
+      return { ok: true as const };
     }),
 
   // 取消某节点上正在运行的任务（comfy=下一轮终止；code=杀进程）。L3+ 即可取消。
