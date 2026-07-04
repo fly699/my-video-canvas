@@ -83,6 +83,28 @@ describe("agentCatalog.sanitizeOperation", () => {
       { comfyOnly: true, validTemplateIds },
     )).toBeNull();
   });
+
+  it("update 也拦幻觉 templateId：非法值被剥掉、合法值与其它字段保留（与 create 对称）", () => {
+    const validTemplateIds = new Set<number>([7]);
+    // 幻觉 templateId=999 被剥掉，但同批合法字段（prompt）保留
+    const bad = sanitizeOperation(
+      { op: "update", targetRef: "cw1", payload: { templateId: 999, prompt: "改了提示词" } },
+      { validTemplateIds },
+    );
+    expect(bad).not.toBeNull();
+    const bp = bad!.payload as Record<string, unknown>;
+    expect(bp.templateId).toBeUndefined();     // 非法模板被拦
+    expect(bp.prompt).toBe("改了提示词");        // 合法改动保留
+    // 合法 templateId=7 → 保留（正常换模板）
+    const good = sanitizeOperation(
+      { op: "update", targetRef: "cw1", payload: { templateId: 7 } },
+      { validTemplateIds },
+    );
+    expect((good!.payload as Record<string, unknown>).templateId).toBe(7);
+    // 未提供 validTemplateIds 时不校验（保持原有宽松行为）
+    const nogate = sanitizeOperation({ op: "update", targetRef: "cw1", payload: { templateId: 999 } });
+    expect((nogate!.payload as Record<string, unknown>).templateId).toBe(999);
+  });
 });
 
 describe("agentCatalog.sanitizeOperationDetailed", () => {

@@ -129,6 +129,10 @@ export function enforceImageFirstComfy(
           const imgPayload: Record<string, unknown> = { templateId: defaultImageTplId };
           if (typeof vPayload.prompt === "string" && vPayload.prompt) imgPayload.prompt = vPayload.prompt;
           if (typeof vPayload.negPrompt === "string" && vPayload.negPrompt) imgPayload.negPrompt = vPayload.negPrompt;
+          // 比例也带过去（与普通变体对齐）：否则首帧按出图模板默认尺寸生成，喂给 9:16 视频就变形。
+          // aspectRatio 需配合 overrideRatioSize 才生效，故两者一并搬运。
+          if (typeof vPayload.aspectRatio === "string" && vPayload.aspectRatio) imgPayload.aspectRatio = vPayload.aspectRatio;
+          if (vPayload.overrideRatioSize != null) imgPayload.overrideRatioSize = vPayload.overrideRatioSize;
           result.push({ op: "create", nodeType: "comfyui_workflow", tempId: imgRef, title: "出图", payload: imgPayload, sceneGroup: vCreate?.sceneGroup, note: "生图→生视频：自动插入出图工作流作为视频首帧" });
           result.push({ op: "connect", sourceRef: imgRef, targetRef: o.targetRef, note: "生图→生视频" }); // 出图→视频 仅一次
         }
