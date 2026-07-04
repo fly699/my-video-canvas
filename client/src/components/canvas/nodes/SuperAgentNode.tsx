@@ -167,10 +167,11 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
       { projectId: data.projectId, nodeId: id, task },
       {
         onSuccess: (res) => {
-          update({ status: res.status === "success" ? "success" : "failed", codeResult: res.result, blockedCommand: res.blockedCommand, log: res.log.map((e) => ({ type: e.type, iteration: 0, message: e.message })) });
-          if (res.status === "success") toast.success("代码任务完成");
+          const isOk = res.status === "success";
+          update({ status: isOk ? "success" : "failed", codeResult: isOk ? res.result : undefined, blockedCommand: res.blockedCommand, errorMessage: isOk ? undefined : (res.diagnostic ?? res.result ?? (res.status === "aborted" ? "已拦截危险命令并中止" : "代码任务失败，无输出")), log: res.log.map((e) => ({ type: e.type, iteration: 0, message: e.message })) });
+          if (isOk) toast.success("代码任务完成");
           else if (res.status === "aborted") toast.error("已拦截危险命令并中止：" + (res.blockedCommand ?? ""));
-          else toast.error("代码任务失败");
+          else toast.error("代码任务失败：" + (res.diagnostic?.slice(0, 100) ?? "见节点内详情"));
         },
         onError: (e) => { update({ status: "failed", errorMessage: e.message }); toast.error("运行失败：" + e.message); },
       },
@@ -348,9 +349,11 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
               </div>
             )}
             {payload.status === "failed" && payload.errorMessage && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}` }}>
-                <XCircle style={{ width: 13, height: 13, color: RED, flexShrink: 0, marginTop: 1 }} />
-                <span style={{ fontSize: 11.5, color: RED }}>{payload.errorMessage}</span>
+              <div className="nowheel px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}`, maxHeight: 200, overflowY: "auto" }}>
+                <div className="flex items-center gap-1.5" style={{ fontSize: 11.5, color: RED, fontWeight: 600, marginBottom: 4 }}>
+                  <XCircle style={{ width: 13, height: 13, flexShrink: 0 }} /> 失败原因
+                </div>
+                <div style={{ fontSize: 11, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "ui-monospace, monospace", lineHeight: 1.5 }}>{payload.errorMessage}</div>
               </div>
             )}
           </>

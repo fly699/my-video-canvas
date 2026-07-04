@@ -177,20 +177,32 @@ export const superAgentRouter = router({
         const result = await runCodeAgent({ lines: handle.lines, emit, onAbort: () => handle.kill() });
         handle.kill();
         const proc = await handle.done;
+        const stderr = handle.stderr();
+        const spawnError = handle.spawnError();
+
+        // 失败/无结果时，把 claude 的 stderr / spawn 错误作为诊断信息浮出（认证失败、
+        // 找不到 claude、Windows .cmd 坑、模型报错等真正原因大多在这里）。
+        const failed = result.status === "failed" || result.status === "aborted";
+        const diag = spawnError
+          ? `无法启动 claude（${spawnError}）——检查 CLAUDE_BIN 是否指向 claude.cmd、Windows spawn 修复是否已更新重启。`
+          : (failed && !result.result && stderr.trim()) ? stderr.trim().slice(-1500)
+          : (failed && !result.result && proc.exitCode) ? `claude 退出码 ${proc.exitCode}${proc.timedOut ? "（超时）" : ""}，无输出。可能是认证未生效——在服务器命令行手测 \`claude -p "hi"\`。`
+          : undefined;
 
         writeAuditLog({
           ctx,
           action: "superagent_code_task",
-          detail: { projectId: input.projectId, task: input.task.slice(0, 200), status: result.status, blockedCommand: result.blockedCommand ?? null, costUsd: result.costUsd ?? null, numTurns: result.numTurns ?? null, exitCode: proc.exitCode, timedOut: proc.timedOut },
+          detail: { projectId: input.projectId, task: input.task.slice(0, 200), status: result.status, blockedCommand: result.blockedCommand ?? null, costUsd: result.costUsd ?? null, numTurns: result.numTurns ?? null, exitCode: proc.exitCode, timedOut: proc.timedOut, spawnError, stderrTail: stderr.slice(-800) || null },
         });
 
         return {
           status: result.status,
-          result: result.result,
+          result: result.result ?? diag,
           blockedCommand: result.blockedCommand,
           costUsd: result.costUsd,
           numTurns: result.numTurns,
           timedOut: proc.timedOut,
+          diagnostic: diag,
           log: result.events.map((e) => ({ type: e.type, message: e.message })),
         };
       } finally {

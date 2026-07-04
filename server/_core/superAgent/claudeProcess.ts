@@ -100,6 +100,10 @@ export interface StreamClaudeHandle {
   kill: () => void;
   /** 进程结束（正常/被杀/超时）。 */
   done: Promise<{ exitCode: number | null; timedOut: boolean }>;
+  /** 捕获的 stderr 尾部（认证失败/模型报错/spawn 错等真正原因常在这里）。 */
+  stderr: () => string;
+  /** spawn 直接失败（如 ENOENT/EINVAL：找不到 claude / Windows .cmd 坑）时的错误信息。 */
+  spawnError: () => string | null;
 }
 
 /**
@@ -124,20 +128,27 @@ export function streamClaudeCode(opts: StreamClaudeOptions): StreamClaudeHandle 
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, opts.timeoutMs);
 
-  // 提示词走 stdin 后关闭。
-  child.stdin.write(opts.task);
-  child.stdin.end();
+  // 捕获 stderr（真正的失败原因常在这里）+ spawn 直接错误（ENOENT/EINVAL）。
+  const errChunks: string[] = [];
+  let errLen = 0;
+  child.stderr?.on("data", (d: Buffer | string) => { const s = String(d); errChunks.push(s); errLen += s.length; while (errLen > 8000 && errChunks.length > 1) { errLen -= errChunks.shift()!.length; } });
+  let spawnErr: string | null = null;
+
+  // 提示词走 stdin 后关闭（stdin 可能已因 spawn 失败而不可写）。
+  try { child.stdin?.write(opts.task); child.stdin?.end(); } catch { /* stdin 不可用 */ }
 
   const rl = createInterface({ input: child.stdout });
 
   const done = new Promise<{ exitCode: number | null; timedOut: boolean }>((resolve) => {
     child.on("close", (code) => { clearTimeout(timer); resolve({ exitCode: code, timedOut }); });
-    child.on("error", () => { clearTimeout(timer); resolve({ exitCode: null, timedOut }); });
+    child.on("error", (e) => { clearTimeout(timer); spawnErr = e instanceof Error ? e.message : String(e); resolve({ exitCode: null, timedOut }); });
   });
 
   return {
     lines: rl,
     kill: () => { try { child.kill("SIGKILL"); } catch { /* already gone */ } },
     done,
+    stderr: () => errChunks.join("").slice(-4000),
+    spawnError: () => spawnErr,
   };
 }
