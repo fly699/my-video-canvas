@@ -6,7 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Boxes, Loader2, Play, XCircle, ArrowRightCircle, Square, Server, Cpu, Send, RefreshCw, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
-import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import type { SuperAgentNodeData, WorkflowParamBinding } from "../../../../../shared/types";
 
@@ -64,6 +64,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const mode = payload.mode ?? "comfy";
   const { resolve } = useNodeDefaultModels();
   const llmModel = (payload.model || resolve("super_agent", "llm")) as LLMModelId;
+  const modelShort = LLM_MODELS.find((m) => m.id === llmModel)?.short ?? "默认";
   const buildMut = trpc.superAgent.buildComfyWorkflow.useMutation();
   const codeMut = trpc.superAgent.runCodeTask.useMutation();
   const cancelMut = trpc.superAgent.cancel.useMutation();
@@ -206,8 +207,11 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
             {/* 折叠式设置：服务器 + 规划模型 */}
             <div style={{ border: `1px solid ${BORDER}`, borderRadius: 9, overflow: "hidden" }}>
               <button onClick={() => update({ settingsOpen: !settingsOpen })}
+                title="展开设置服务器地址与规划模型"
                 className="nodrag flex items-center gap-1.5 w-full" style={{ padding: "6px 9px", background: "var(--c-surface)", border: "none", cursor: "pointer", fontSize: 11, color: "var(--c-t2)", fontWeight: 600 }}>
                 <Settings2 style={{ width: 12, height: 12 }} /> 服务器 / 规划模型
+                {/* 折叠时也显示当前模型，一眼可见、方便找去哪切换 */}
+                {!settingsOpen && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, marginLeft: 6, fontSize: 10, fontWeight: 500, color: accent, background: accentA(0.12), border: `1px solid ${accentA(0.35)}`, borderRadius: 6, padding: "1px 6px" }}><Cpu style={{ width: 9, height: 9 }} />{modelShort}</span>}
                 {settingsOpen ? <ChevronUp style={{ width: 12, height: 12, marginLeft: "auto" }} /> : <ChevronDown style={{ width: 12, height: 12, marginLeft: "auto" }} />}
               </button>
               {settingsOpen && (
