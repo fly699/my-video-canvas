@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Boxes, Loader2, Play, XCircle, ArrowRightCircle, Square, Server, Cpu, Send, RefreshCw, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
+import { NodeTextArea } from "../NodeTextInput";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import type { SuperAgentNodeData, WorkflowParamBinding } from "../../../../../shared/types";
@@ -74,6 +75,9 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
 
   const utils = trpc.useUtils();
   const [testingServer, setTestingServer] = useState(false);
+  // 聊天输入用本地 state（IME 安全：不逐键写 store，避免中文拼音输入被打断/乱蹦）。
+  const [inputText, setInputText] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const handleTestServer = useCallback(async () => {
     setTestingServer(true);
     try {
@@ -127,12 +131,15 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   // ── ComfyUI 模式：连续对话发送 ──
   const handleSend = useCallback(() => {
     if (running) return;
-    const instruction = (payload.input ?? "").trim();
+    const instruction = (inputRef.current?.value ?? inputText).trim();
     if (!instruction) { toast.error("请输入指令"); return; }
     const priorConv = payload.conversation ?? [];
     const isFollowup = !!payload.resultWorkflowJson && priorConv.length > 0;
     const conv: Turn[] = [...priorConv, { role: "user", text: instruction }];
-    update({ conversation: conv, input: "", status: "running", log: [], errorMessage: undefined });
+    setInputText("");
+    const el = inputRef.current as (HTMLTextAreaElement & { commitValue?: (v: string) => void }) | null;
+    el?.commitValue?.(""); // 聚焦时也即时清空（NodeTextArea 聚焦中不采纳外部 value）
+    update({ conversation: conv, status: "running", log: [], errorMessage: undefined });
     buildMut.mutate(
       {
         projectId: data.projectId, nodeId: id, task: instruction,
@@ -155,7 +162,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         onError: (e) => { update({ status: "failed", errorMessage: e.message, conversation: [...conv, { role: "agent", text: "❌ " + e.message, status: "failed" }] }); toast.error("运行失败：" + e.message); },
       },
     );
-  }, [running, payload.input, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.appliedNodeId, llmModel, data.projectId, id, buildMut, update, syncToNode]);
+  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.appliedNodeId, llmModel, data.projectId, id, buildMut, update, syncToNode]);
 
   // ── 代码任务模式 ──
   const handleRunCode = useCallback(() => {
@@ -167,10 +174,11 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
       { projectId: data.projectId, nodeId: id, task },
       {
         onSuccess: (res) => {
-          update({ status: res.status === "success" ? "success" : "failed", codeResult: res.result, blockedCommand: res.blockedCommand, log: res.log.map((e) => ({ type: e.type, iteration: 0, message: e.message })) });
-          if (res.status === "success") toast.success("代码任务完成");
+          const isOk = res.status === "success";
+          update({ status: isOk ? "success" : "failed", codeResult: isOk ? res.result : undefined, blockedCommand: res.blockedCommand, errorMessage: isOk ? undefined : (res.diagnostic ?? res.result ?? (res.status === "aborted" ? "已拦截危险命令并中止" : "代码任务失败，无输出")), log: res.log.map((e) => ({ type: e.type, iteration: 0, message: e.message })) });
+          if (isOk) toast.success("代码任务完成");
           else if (res.status === "aborted") toast.error("已拦截危险命令并中止：" + (res.blockedCommand ?? ""));
-          else toast.error("代码任务失败");
+          else toast.error("代码任务失败：" + (res.diagnostic?.slice(0, 100) ?? "见节点内详情"));
         },
         onError: (e) => { update({ status: "failed", errorMessage: e.message }); toast.error("运行失败：" + e.message); },
       },
@@ -286,11 +294,12 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
 
             {/* 聊天输入 */}
             <div className="nodrag flex items-end gap-1.5">
-              <textarea
+              <NodeTextArea
+                ref={inputRef} noMention noSlash
                 className="nodrag" rows={2} disabled={running}
                 placeholder={conversation.length === 0 ? "描述要做的工作流，例：SDXL 文生图 1024×1024 带细节 LoRA" : "继续调整，例：改成 9:16 / 加个高清放大 / 换个 checkpoint"}
-                value={payload.input ?? ""} onChange={(e) => update({ input: e.target.value })}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                value={inputText} onValueChange={setInputText}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); } }}
                 style={{ ...fieldStyle, resize: "vertical", flex: 1 }}
               />
               <button onClick={handleSend} disabled={running}
@@ -310,9 +319,9 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
             </div>
             <div>
               <label style={labelStyle}>代码任务</label>
-              <textarea className="nodrag" rows={3} disabled={running}
+              <NodeTextArea className="nodrag" rows={3} disabled={running} noMention noSlash
                 placeholder="例：读取工作区里的 err.log，定位报错根因并写一份修复说明"
-                value={payload.task ?? ""} onChange={(e) => update({ task: e.target.value })} style={{ ...fieldStyle, resize: "vertical" }} />
+                value={payload.task ?? ""} onValueChange={(v) => update({ task: v })} style={{ ...fieldStyle, resize: "vertical" }} />
             </div>
             {!codeEnabled && !codeStatus.isLoading && (
               <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.7 0.16 60 / 0.08)", border: "1px solid oklch(0.7 0.16 60 / 0.3)", fontSize: 11, color: "oklch(0.62 0.14 60)" }}>
@@ -348,9 +357,11 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
               </div>
             )}
             {payload.status === "failed" && payload.errorMessage && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}` }}>
-                <XCircle style={{ width: 13, height: 13, color: RED, flexShrink: 0, marginTop: 1 }} />
-                <span style={{ fontSize: 11.5, color: RED }}>{payload.errorMessage}</span>
+              <div className="nowheel px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.2 25 / 0.08)", border: `1px solid ${RED}`, maxHeight: 200, overflowY: "auto" }}>
+                <div className="flex items-center gap-1.5" style={{ fontSize: 11.5, color: RED, fontWeight: 600, marginBottom: 4 }}>
+                  <XCircle style={{ width: 13, height: 13, flexShrink: 0 }} /> 失败原因
+                </div>
+                <div style={{ fontSize: 11, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "ui-monospace, monospace", lineHeight: 1.5 }}>{payload.errorMessage}</div>
               </div>
             )}
           </>
