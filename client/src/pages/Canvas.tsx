@@ -2894,43 +2894,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* Divider */}
             <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
 
-            {/* Run workflow button (hidden for viewers — running consumes paid credits) */}
-            {!isReadOnly && <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => handleRunRequest(null, runSelectedOnly ? selectedRunnableIds : undefined)}
-                  disabled={runState.running || nodes.length === 0}
-                  className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
-                  style={{
-                    background: runState.running
-                      ? "oklch(0.72 0.22 142 / 0.12)"
-                      : "oklch(0.72 0.22 142 / 0.15)",
-                    border: `1px solid oklch(0.72 0.22 142 / ${runState.running ? "0.5" : "0.35"})`,
-                    color: runState.running ? "oklch(0.75 0.20 142)" : "oklch(0.72 0.22 142)",
-                    cursor: runState.running || nodes.length === 0 ? "not-allowed" : "pointer",
-                    opacity: nodes.length === 0 ? 0.5 : 1,
-                  }}
-                >
-                  {runState.running ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span data-toolbar-label>运行中 {runState.completedIds.length + runState.failedIds.length}/{runState.runnableCount || nodes.length}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3 h-3" />
-                      <span data-toolbar-label>{runSelectedOnly ? `运行选中 (${selectedRunnableIds.length})` : "运行"}</span>
-                    </>
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">
-                {runSelectedOnly ? `仅运行框选的 ${selectedRunnableIds.length} 个节点` : "运行工作流"} <kbd className="ml-1 px-1 py-0.5 rounded text-[10px] bg-background/15 border border-background/25 font-mono">Shift+R</kbd>
-              </TooltipContent>
-            </Tooltip>}
-
-            {/* Divider (only when run button shown) */}
-            {!isReadOnly && <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />}
+            {/* 运行工作流按钮已从工具栏移除（应用户要求精简）。运行入口仍在：Shift+R 快捷键、
+                每个节点标题栏的「运行/重新生成」、悬停节点的快速运行、以及框选后的「运行全部」。 */}
 
             {/* Shortcut help button */}
             <div className="relative" data-tb-sec>
