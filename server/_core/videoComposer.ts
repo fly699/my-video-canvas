@@ -776,6 +776,22 @@ export function collectVideoSegments(doc: EditorDoc): Clip[] {
   return clips.sort((a, b) => a.start - b.start);
 }
 
+/** 基轨播放规划：按 start 排序的基轨片段，检测「首片前的前导空隙」与「片段间空隙」并插入 gap 标记。
+ *  为什么必须：导出把基轨片段首尾相接（忽略各自 start），而叠加/音频/字幕都用绝对时间轴定位——
+ *  基轨一旦有前导偏移或中间空隙，其后的叠加/音频/字幕就整体错位，且导出与「预览把空隙显示为黑」不一致。
+ *  在空隙处插入黑场片段即可让基轨保持绝对对齐。连续基轨（常见情形）不产生任何 gap，输出不变。纯函数。 */
+export function planBaseSegments(clips: Clip[], gapEps = 0.05): Array<{ clip: Clip } | { gap: number }> {
+  const out: Array<{ clip: Clip } | { gap: number }> = [];
+  let cursor = 0;
+  for (const c of clips) { // 假定已按 start 升序（collectVideoSegments 已排序）
+    const gap = c.start - cursor;
+    if (gap > gapEps) out.push({ gap });
+    out.push({ clip: c });
+    cursor = Math.max(cursor, c.start + clipVisibleDuration(c));
+  }
+  return out;
+}
+
 /** Overlay-track clips composited on top of the base, in time order. */
 export function collectOverlayClips(doc: EditorDoc): Clip[] {
   const clips: Clip[] = [];
@@ -895,9 +911,23 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
   let done = 0;
 
   try {
-    // Main (base) clips first — input order must match the filter graph.
+    // 输出尺寸/帧率（偶数维度——奇数会让 yuv420p 失败）。黑场空隙用它生成 lavfi 输入，故提前算。
+    const even = (n: number) => Math.max(2, Math.round(n) - (Math.round(n) % 2));
+    const W = even(opts.width ?? doc.width);
+    const H = even(opts.height ?? doc.height);
+    const fps = Math.max(1, Math.min(120, Math.round(opts.fps ?? doc.fps)));
+    // 基轨空隙 → 黑场片段（lavfi 生成，无音频=concat 补静音），保持与叠加/音频/字幕的绝对时间对齐。
+    const pushBlackGap = (dur: number) => {
+      inputArgs.push("-f", "lavfi", "-t", dur.toFixed(3), "-i", `color=c=black:s=${W}x${H}:r=${fps}`);
+      segs.push({ isImage: false, hasAudio: false, trimIn: 0, trimOut: dur, speed: 1 });
+    };
+
+    // Main (base) clips first — input order must match the filter graph. 前导/片段间空隙插黑场。
     let skippedNoVideo = 0;
-    for (const c of clips) {
+    let hasRealBaseSegment = false; // 黑场空隙不算——全是黑场（所有片段无画面）时仍要报错
+    for (const entry of planBaseSegments(clips)) {
+      if ("gap" in entry) { pushBlackGap(entry.gap); continue; }
+      const c = entry.clip;
       if (!c.assetUrl) throw new Error("片段缺少素材地址");
       const isImage = c.kind === "image";
       const p = await downloadToTemp(c.assetUrl, isImage ? "img" : "mp4");
@@ -910,10 +940,11 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
         // video stream (e.g. an audio file dropped onto the video track, or a
         // corrupt source) would make the filter graph reference a non-existent
         // [i:v] pad → empty video output → libx264 "Could not open encoder
-        // before EOF" / code -22. Skip such clips here so the render survives.
+        // before EOF" / code -22. 用等长黑场占位（而非丢弃塌陷），保持其后内容对齐。
         const probe = await probeStreams(p);
         if (!probe.hasVideo) {
           skippedNoVideo++;
+          pushBlackGap(clipVisibleDuration(c));
           report(2 + Math.round((++done) / total * 28), "下载素材");
           continue;
         }
@@ -923,6 +954,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       const trimOut = isImage ? Math.max(0.05, c.trimOut - c.trimIn) : c.trimOut;
       const seg: Segment = { isImage, hasAudio, trimIn, trimOut, speed: c.speed ?? 1, volume: effVolume(c), effects: c.effects, transition: c.transitionIn, fit: c.fit, reverse: c.reverse, transform: c.transform, keyframes: c.keyframes, fadeIn: c.fadeIn, fadeOut: c.fadeOut, fadeCurve: c.fadeCurve, flipH: c.flipH, flipV: c.flipV };
       segs.push(seg);
+      hasRealBaseSegment = true;
       if (isImage) inputArgs.push("-loop", "1", "-t", segmentDuration(seg).toFixed(3), "-i", p);
       else inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
@@ -930,19 +962,13 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
 
     // Every base clip turned out to have no usable video stream — bail with a
     // clear, actionable message instead of letting ffmpeg fail opaquely.
-    if (segs.length === 0) {
+    if (!hasRealBaseSegment) {
       throw new Error(
         skippedNoVideo > 0
           ? `视频轨道上的 ${skippedNoVideo} 个片段都不包含视频画面（可能是把音频文件拖到了视频轨道，或源文件损坏）。请将纯音频素材放到音频轨道，或移除这些片段后重试。`
           : "时间轴没有可渲染的视频/图片片段",
       );
     }
-
-    // 输出尺寸/帧率（偶数维度——奇数会让 yuv420p 失败）。形状光栅化按此分辨率以保清晰。
-    const even = (n: number) => Math.max(2, Math.round(n) - (Math.round(n) % 2));
-    const W = even(opts.width ?? doc.width);
-    const H = even(opts.height ?? doc.height);
-    const fps = Math.max(1, Math.min(120, Math.round(opts.fps ?? doc.fps)));
 
     // Overlay clips next (composited on top).
     for (const c of overlayClips) {

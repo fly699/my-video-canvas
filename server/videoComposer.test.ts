@@ -1,8 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentZoomPanChain, chromaKeyFilter, segmentDuration, collectVideoSegments, buildEditorASS, hwVideoArgs, type Segment, type AudioInput, type TextInput, type OverlayInput } from "./_core/videoComposer";
+import { buildFilterGraph, buildKeyframeExpr, segmentTransformChain, segmentZoomPanChain, chromaKeyFilter, segmentDuration, collectVideoSegments, planBaseSegments, buildEditorASS, hwVideoArgs, type Segment, type AudioInput, type TextInput, type OverlayInput } from "./_core/videoComposer";
 import { emptyEditorDoc, applyEase, transformAt, type Clip } from "@shared/editorTypes";
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
+
+describe("planBaseSegments（基轨空隙插黑场，保持与叠加/音频/字幕绝对对齐）", () => {
+  const clip = (start: number, dur: number): Clip => ({ id: `c${start}`, kind: "video", start, trimIn: 0, trimOut: dur, speed: 1 } as Clip);
+  it("连续基轨（含从 0 起）→ 无 gap，全是片段", () => {
+    expect(planBaseSegments([clip(0, 2), clip(2, 2)]).map((e) => "gap" in e ? "gap" : "clip")).toEqual(["clip", "clip"]);
+  });
+  it("前导偏移 → 首部插 gap", () => {
+    const plan = planBaseSegments([clip(1, 2)]);
+    expect(plan.length).toBe(2);
+    expect((plan[0] as { gap: number }).gap).toBeCloseTo(1, 5);
+  });
+  it("片段间空隙 → 中间插 gap", () => {
+    const plan = planBaseSegments([clip(0, 2), clip(3, 2)]); // 0..2, 空 1s, 3..5
+    expect(plan.map((e) => "gap" in e ? "gap" : "clip")).toEqual(["clip", "gap", "clip"]);
+    expect((plan[1] as { gap: number }).gap).toBeCloseTo(1, 5);
+  });
+  it("重叠/极小空隙 → 不插 gap", () => {
+    expect(planBaseSegments([clip(0, 2), clip(1.9, 2)]).every((e) => "clip" in e)).toBe(true);
+  });
+});
 
 describe("导出滤镜回归（真机 ffmpeg 6.1.1 已验）", () => {
   it("Ken-Burns 动画路径保留静态平移 tf.x/tf.y（不再清零）", () => {
