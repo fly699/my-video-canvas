@@ -42,6 +42,12 @@ describe("buildClaudeArgs", () => {
     const a = buildClaudeArgs({ permissionPromptTool: "mcp__policy__approve_tool_use" });
     expect(a[a.indexOf("--permission-prompt-tool") + 1]).toBe("mcp__policy__approve_tool_use");
   });
+
+  it("resumeSessionId → --resume 续接会话；缺省不加", () => {
+    const a = buildClaudeArgs({ resumeSessionId: "sess-123" });
+    expect(a[a.indexOf("--resume") + 1]).toBe("sess-123");
+    expect(buildClaudeArgs({})).not.toContain("--resume");
+  });
 });
 
 describe("parseStreamLine", () => {
@@ -139,5 +145,19 @@ describe("runCodeAgent", () => {
   it("无 result 事件（进程异常结束）→ failed", async () => {
     const r = await runCodeAgent({ lines: asLines([J({ type: "system", subtype: "init" })]) });
     expect(r.status).toBe("failed");
+  });
+
+  it("捕获 sessionId（用于下一轮 --resume）：优先 result，回退 init", async () => {
+    const r1 = await runCodeAgent({ lines: asLines([
+      J({ type: "system", subtype: "init", session_id: "sess-init" }),
+      J({ type: "result", subtype: "success", result: "ok", session_id: "sess-final" }),
+    ]) });
+    expect(r1.sessionId).toBe("sess-final");
+    // 只有 init 带 id（result 无 session_id）→ 回退到 init 的
+    const r2 = await runCodeAgent({ lines: asLines([
+      J({ type: "system", subtype: "init", session_id: "sess-init" }),
+      J({ type: "result", subtype: "success", result: "ok" }),
+    ]) });
+    expect(r2.sessionId).toBe("sess-init");
   });
 });

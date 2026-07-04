@@ -69,6 +69,13 @@ describe("buildSystemPrompt", () => {
     expect(p).toContain("sd_xl_base_1.0.safetensors");
     expect(p).toContain("euler");
   });
+  it("canDescribe 时引导先查 schema 再写；未开启则不提", () => {
+    const on = buildSystemPrompt("出图", RES, false, false, true);
+    expect(on).toContain("describe_nodes");
+    expect(on).toContain("严禁凭记忆猜字段名");
+    const off = buildSystemPrompt("出图", RES, false, false, false);
+    expect(off).not.toContain("describe_nodes 查");
+  });
 });
 
 describe("runComfyAgent — 闭环编排", () => {
@@ -156,6 +163,39 @@ describe("runComfyAgent — 闭环编排", () => {
   it("系统提示按 canInstall 切换安装说明", () => {
     expect(buildSystemPrompt("出图", RES, false, true)).toContain("install_model");
     expect(buildSystemPrompt("出图", RES, false, false)).toContain("未开放下载安装");
+  });
+
+  it("describe_nodes：有工具 → 调用、把 schema 喂回、再 author/execute 成功", async () => {
+    let queried: string[] | null = null;
+    const seen: string[] = [];
+    const r = await runComfyAgent({
+      task: "出图",
+      tools: fakeTools({ describeNodes: async (names) => { queried = names; return "【KSampler】 输出: LATENT\n  必填: seed: INT=0"; } }),
+      llm: scriptedLLM(
+        [`{"action":"describe_nodes","nodeClasses":["KSampler","CLIPTextEncode"]}`,
+         `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`, `{"action":"execute"}`],
+        (msgs) => seen.push(msgs[msgs.length - 1].content),
+      ),
+    });
+    expect(r.status).toBe("success");
+    expect(queried).toEqual(["KSampler", "CLIPTextEncode"]);
+    expect(seen.some((c) => c.includes("严格按此写字段名") && c.includes("KSampler"))).toBe(true);
+    expect(r.log.some((e) => e.type === "tool_result" && (e.data as { tool: string }).tool === "describe_nodes")).toBe(true);
+  });
+
+  it("describe_nodes：无工具 → 提示直接 author、不崩溃", async () => {
+    const seen: string[] = [];
+    const r = await runComfyAgent({
+      task: "出图",
+      tools: fakeTools(), // 无 describeNodes
+      llm: scriptedLLM(
+        [`{"action":"describe_nodes","nodeClasses":["KSampler"]}`,
+         `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`, `{"action":"execute"}`],
+        (msgs) => seen.push(msgs[msgs.length - 1].content),
+      ),
+    });
+    expect(r.status).toBe("success");
+    expect(seen.some((c) => c.includes("不支持 describe_nodes"))).toBe(true);
   });
 
   it("install_model：有安装工具 → 调用、把结果喂回、继续；缺模型装完后 execute 成功", async () => {

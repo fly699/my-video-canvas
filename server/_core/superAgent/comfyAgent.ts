@@ -39,6 +39,9 @@ export interface ComfyAgentTools {
     outputNodeIds: string[];
     outputType: string;
   }>;
+  /** 查询若干节点类的精确输入/输出 schema（字段名·类型·枚举·默认），供 LLM 写图前对齐、
+   *  不再靠记忆猜。返回一段人类可读文本（每个节点一块）。可选：老适配器不实现则引擎自动禁用。 */
+  describeNodes?(classNames: string[]): Promise<string>;
   /** 可选：下载安装缺失模型（checkpoint/LoRA/VAE…）。仅当宿主提供（已注册 ops 服务器 + 权限 +
    *  开关）时可用；不提供则智能体无安装能力，只能用现有资源。参数经宿主侧安全校验。 */
   installModel?(spec: { url: string; dir: string; filename: string }): Promise<{ ok: boolean; message: string }>;
@@ -107,7 +110,7 @@ export interface RunComfyAgentOptions {
 
 /** LLM 每轮必须返回的单个 JSON 动作。 */
 interface AgentAction {
-  action: "author" | "validate" | "execute" | "finish" | "give_up" | "install_model" | "install_node";
+  action: "author" | "validate" | "execute" | "finish" | "give_up" | "install_model" | "install_node" | "describe_nodes";
   /** author / finish 时提供完整 API 格式 workflow 图。 */
   workflowJson?: string;
   /** 简短理由（进日志）。 */
@@ -118,17 +121,22 @@ interface AgentAction {
   modelFilename?: string;
   /** install_node：自定义节点 git 仓库 URL。 */
   nodeGitUrl?: string;
+  /** describe_nodes：要查精确输入/输出 schema 的节点类名列表。 */
+  nodeClasses?: string[];
 }
 
-const VALID_ACTIONS = ["author", "validate", "execute", "finish", "give_up", "install_model", "install_node"];
+const VALID_ACTIONS = ["author", "validate", "execute", "finish", "give_up", "install_model", "install_node", "describe_nodes"];
 
 const ACTION_HINT =
-  '你必须只返回一个 JSON 对象，形如 {"action":"author|validate|execute|finish|give_up","workflowJson":"...","reasoning":"..."}。' +
+  '你必须只返回一个 JSON 对象，形如 {"action":"describe_nodes|author|validate|execute|finish|give_up","workflowJson":"...","reasoning":"..."}。' +
   "author/finish 时 workflowJson 必须是完整的 ComfyUI **API 格式** 图（形如 {\"节点id\":{\"class_type\":...,\"inputs\":{...}}}）。";
 
-/** 构建系统提示（纯函数，便于单测）。continuing=多轮修改；canInstall=宿主开放了下载安装能力。 */
-export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false, canInstall = false): string {
+/** 构建系统提示（纯函数，便于单测）。continuing=多轮修改；canInstall=宿主开放了下载安装能力；
+ *  canDescribe=可用 describe_nodes 查节点精确 schema。 */
+export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false, canInstall = false, canDescribe = false): string {
   const cap = (arr: string[], n: number) => (arr.length > n ? arr.slice(0, n).concat(`…(+${arr.length - n})`) : arr);
+  // 有 describe_nodes 时节点类名只作「目录」，可放宽展示上限（真正的字段规格靠查）。
+  const nodeCap = canDescribe ? 400 : 120;
   return [
     "你是资深 ComfyUI 工作流工程师。目标：产出一份能在给定服务器上真机跑通的 **API 格式** workflow 图，并通过校验与运行验证。",
     continuing
@@ -141,9 +149,17 @@ export function buildSystemPrompt(task: string, res: ComfyResourceList, continui
     `- vaes: ${cap(res.vaes, 20).join(", ") || "（无）"}`,
     `- samplers: ${cap(res.samplers, 40).join(", ") || "（无）"}`,
     `- schedulers: ${cap(res.schedulers, 20).join(", ") || "（无）"}`,
-    `- 已安装节点类: ${cap(res.nodeClasses, 120).join(", ") || "（未知）"}`,
+    `- 已安装节点类（仅名字目录${canDescribe ? "，具体输入字段用 describe_nodes 查" : ""}）: ${cap(res.nodeClasses, nodeCap).join(", ") || "（未知）"}`,
     "",
-    "工作流程：author 产出/修改工作流（系统会自动帮你 validate 并把错误喂回）→ 按错误反复修正 →",
+    ...(canDescribe
+      ? [
+          "**重要：动手写图前，先用 describe_nodes 查清你打算用的每个节点的精确输入/输出规格**（附 nodeClasses 数组，" +
+            "如 {\"action\":\"describe_nodes\",\"nodeClasses\":[\"KSampler\",\"CLIPTextEncode\"]}）。它会返回每个节点的必填/可选输入字段名、类型、" +
+            "枚举合法值与默认值，以及输出端口。**严禁凭记忆猜字段名**——字段名/大小写/枚举值必须与查到的完全一致，否则校验必挂。",
+          "",
+        ]
+      : []),
+    "工作流程：" + (canDescribe ? "describe_nodes 查清节点规格 → " : "") + "author 产出/修改工作流（系统会自动帮你 validate 并把错误喂回）→ 按错误反复修正 →",
     "自信可用时 execute 真机运行 → 若运行报错，读错误修正后再 execute → 成功后 finish。无法完成才 give_up。",
     ...(canInstall
       ? [
@@ -194,7 +210,8 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
 
   const continuing = !!opts.seedWorkflowJson;
   const canInstall = !!(opts.tools.installModel || opts.tools.installNode);
-  const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing, canInstall) }];
+  const canDescribe = !!opts.tools.describeNodes;
+  const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing, canInstall, canDescribe) }];
   // 连续对话：并入先前若干轮精简历史。
   for (const h of opts.history ?? []) messages.push(h);
 
@@ -226,6 +243,16 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
     if (action.action === "give_up") {
       emit({ type: "done", iteration: iter, message: `智能体放弃：${action.reasoning ?? "未说明原因"}` });
       return { status: "failed", workflowJson: current, iterations: iter, log };
+    }
+
+    if (action.action === "describe_nodes") {
+      if (!opts.tools.describeNodes) { messages.push({ role: "user", content: "本会话不支持 describe_nodes，请直接 author（字段不确定就先写常见字段，靠 validate 报错修正）。" }); continue; }
+      const names = (action.nodeClasses ?? []).map(String).filter(Boolean).slice(0, 30);
+      if (!names.length) { messages.push({ role: "user", content: "describe_nodes 需附 nodeClasses（要查的节点类名数组）。" }); continue; }
+      const desc = await opts.tools.describeNodes(names);
+      emit({ type: "tool_result", iteration: iter, message: `已查询 ${names.length} 个节点的输入规格`, data: { tool: "describe_nodes", nodeClasses: names } });
+      messages.push({ role: "user", content: `describe_nodes 结果（严格按此写字段名/枚举/类型）：\n${clip(desc)}` });
+      continue;
     }
 
     if (action.action === "install_model") {
