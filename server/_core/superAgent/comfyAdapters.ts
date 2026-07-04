@@ -31,6 +31,16 @@ export function formatValidationErrors(r: WorkflowValidationResult): string[] {
   return out;
 }
 
+/** 从校验结果里收集「错误涉及的节点类名」（缺节点名 + 各类问题的 classType），供引擎自动补 schema。纯函数。 */
+export function collectErrorNodeClasses(r: WorkflowValidationResult): string[] {
+  const set = new Set<string>();
+  for (const n of r.missingNodes) set.add(n);
+  for (const e of r.invalidEnums) if (e.classType) set.add(e.classType);
+  for (const e of r.missingRequired) if (e.classType) set.add(e.classType);
+  for (const e of r.danglingLinks) if (e.classType) set.add(e.classType);
+  return Array.from(set);
+}
+
 /** 拉取 /object_info 全量（每个节点类的输入/输出 schema）。best-effort，失败返回 null。 */
 async function fetchObjectInfo(baseUrl: string): Promise<Record<string, unknown> | null> {
   try {
@@ -117,7 +127,7 @@ export function createComfyTools(opts: ComfyToolsAdapterOptions): ComfyAgentTool
     async validate(workflowJson) {
       try {
         const r = await validateWorkflow(workflowJson, baseUrl);
-        return { ok: r.ok, errors: formatValidationErrors(r) };
+        return { ok: r.ok, errors: formatValidationErrors(r), errorNodeClasses: collectErrorNodeClasses(r) };
       } catch (e) {
         // JSON 解析失败等 → 当作一条校验错误喂回，让 LLM 修正。
         return { ok: false, errors: [e instanceof Error ? e.message : String(e)] };
