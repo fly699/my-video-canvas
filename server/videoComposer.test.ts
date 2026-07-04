@@ -4,6 +4,29 @@ import { emptyEditorDoc, applyEase, transformAt, type Clip } from "@shared/edito
 
 const OPTS = { width: 1920, height: 1080, fps: 30 };
 
+describe("导出滤镜回归（真机 ffmpeg 6.1.1 已验）", () => {
+  it("Ken-Burns 动画路径保留静态平移 tf.x/tf.y（不再清零）", () => {
+    // 静态平移 x=0.25 + 缩放动画(2→3)：pan 应回退到 tf.x*w，而非 0
+    const chain = segmentZoomPanChain({ scale: 2, x: 0.25 } as any, [{ t: 0, scale: 2 }, { t: 2, scale: 3 }] as any, 400, 400).join(",");
+    expect(chain).toContain("-(100)");   // (0.25*400) 平移生效
+    expect(chain).not.toContain("-(0),0,iw-400"); // 不再是清零的 crop x
+    // 无平移时仍为 0（不回归）
+    const noPan = segmentZoomPanChain({ scale: 2 } as any, [{ t: 0, scale: 2 }, { t: 2, scale: 3 }] as any, 400, 400).join(",");
+    expect(noPan).toContain("-(0)");
+  });
+
+  it("叠加层同时有绿幕+形状蒙版时，chromakey 先于蒙版 geq（否则蒙版被覆盖失效）", () => {
+    const ov: OverlayInput = {
+      isImage: false, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2,
+      chromaKey: { color: "#00ff00" }, mask: { type: "rect", x: 0.5, y: 0, w: 0.5, h: 1 },
+    };
+    const g = buildFilterGraph([{ isImage: false, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1 }], OPTS, [ov]).filterComplex;
+    const iCk = g.indexOf("chromakey="), iMask = g.indexOf("a='p(X,Y)*(");
+    expect(iCk).toBeGreaterThanOrEqual(0);
+    expect(iMask).toBeGreaterThan(iCk); // 蒙版 geq 在 chromakey 之后
+  });
+});
+
 describe("buildFilterGraph (single-pass composer)", () => {
   it("normalizes + concatenates a video + image segment in one graph", () => {
     const segs: Segment[] = [
