@@ -9,7 +9,7 @@ import { assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog } from "../_core/auditLog";
 import { ENV } from "../_core/env";
 import { runComfyAgent, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
-import { createComfyTools, createAgentLLM } from "../_core/superAgent/comfyAdapters";
+import { createComfyTools, createAgentLLM, pickReferenceWorkflows } from "../_core/superAgent/comfyAdapters";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
@@ -112,6 +112,19 @@ export const superAgentRouter = router({
       const tools = { ...createComfyTools({ baseUrl, projectId: input.projectId, nodeId: input.nodeId }), ...installTools };
       const llm = createAgentLLM(ctx, input.model); // LLM 白名单/密钥门控在 invokeLLMWithKie 内部强制
 
+      // 从零编写时，检索共享模板库里「已在真实 ComfyUI 保存/调通」的相似工作流当参考范例（安全语料、可滚雪球）。
+      // 续接（seedWorkflowJson）已有基底，不再注入以省上下文。
+      let referenceExamples: { label: string; workflowJson: string }[] = [];
+      if (!input.seedWorkflowJson) {
+        try {
+          const rows = await db.listComfyNodeTemplates();
+          const cands = rows
+            .filter((r) => r.nodeType === "comfyui_workflow")
+            .map((r) => ({ label: r.label, note: r.note ?? undefined, workflowJson: String((r.payload as Record<string, unknown> | null)?.workflowJson ?? "") }));
+          referenceExamples = pickReferenceWorkflows(input.task, cands, 2);
+        } catch { /* 检索失败不阻断 */ }
+      }
+
       const signal = { aborted: false };
       const key = jobKey(input.projectId, input.nodeId);
       runningJobs.set(key, () => { signal.aborted = true; });
@@ -126,6 +139,7 @@ export const superAgentRouter = router({
           signal,
           seedWorkflowJson: input.seedWorkflowJson,
           history: input.history,
+          referenceExamples,
         });
       } finally {
         runningJobs.delete(key);

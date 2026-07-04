@@ -41,6 +41,49 @@ export function collectErrorNodeClasses(r: WorkflowValidationResult): string[] {
   return Array.from(set);
 }
 
+/** 关键词切分：拉丁词（≥2）+ 中文 2-gram，用于中英混排的相似度匹配。纯函数。 */
+export function tokenizeForMatch(s: string): Set<string> {
+  const out = new Set<string>();
+  const lower = (s || "").toLowerCase();
+  for (const w of lower.match(/[a-z0-9]{2,}/g) ?? []) out.add(w);
+  for (const run of lower.match(/[一-鿿]+/g) ?? []) {
+    if (run.length === 1) { out.add(run); continue; }
+    for (let i = 0; i < run.length - 1; i++) out.add(run.slice(i, i + 2));
+  }
+  return out;
+}
+
+/**
+ * 从候选模板里挑与任务最相关的若干个参考工作流（按 label+note 与任务的关键词重合度打分）。
+ * 语料来自「用户已在真实 ComfyUI 保存/调通」的共享模板库——安全、可滚雪球。纯函数，便于单测。
+ * 返回裁剪后的 { label, workflowJson }（超长的 workflowJson 截断，避免撑爆上下文）。
+ */
+export function pickReferenceWorkflows(
+  task: string,
+  candidates: { label: string; note?: string; workflowJson: string }[],
+  n = 2,
+  maxJsonLen = 2600,
+): { label: string; workflowJson: string }[] {
+  const taskTokens = tokenizeForMatch(task);
+  if (!taskTokens.size) return [];
+  const scored = candidates
+    .filter((c) => typeof c.workflowJson === "string" && c.workflowJson.trim().length > 0)
+    .map((c) => {
+      const ct = tokenizeForMatch(`${c.label} ${c.note ?? ""}`);
+      let score = 0, strong = false; // strong=命中拉丁词（模型/技术名如 sdxl/flux/animatediff，高信号）
+      ct.forEach((t) => { if (taskTokens.has(t)) { score++; if (/^[a-z0-9]{3,}$/.test(t)) strong = true; } });
+      return { c, score, strong };
+    })
+    // 单个中文 2-gram 巧合（如「关的」）不算数：要么命中强信号拉丁词，要么至少 2 处重合。
+    .filter((x) => x.strong || x.score >= 2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n);
+  return scored.map((x) => ({
+    label: x.c.label,
+    workflowJson: x.c.workflowJson.length > maxJsonLen ? x.c.workflowJson.slice(0, maxJsonLen) + "…（已截断）" : x.c.workflowJson,
+  }));
+}
+
 /** 某输入项 [typeSpec, opts?] 若为「连线型」（既非枚举也非 INT/FLOAT/STRING/BOOLEAN 值型），返回其
  *  需要的输出类型字符串（如 MODEL/LATENT/CONDITIONING）；值型/枚举型返回 null（应填值而非连线）。 */
 function connectionTypeOf(spec: unknown): string | null {

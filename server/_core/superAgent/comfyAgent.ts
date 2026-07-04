@@ -107,6 +107,8 @@ export interface RunComfyAgentOptions {
   seedWorkflowJson?: string;
   /** 连续对话：先前若干轮的精简历史（用户指令 + 结果摘要），供 LLM 理解上下文。 */
   history?: AgentMessage[];
+  /** 参考范例：同库里「已在真实 ComfyUI 调通/保存」的相似工作流，供 LLM 借鉴结构/连线（已裁剪）。 */
+  referenceExamples?: { label: string; workflowJson: string }[];
 }
 
 /** LLM 每轮必须返回的单个 JSON 动作。 */
@@ -134,7 +136,7 @@ const ACTION_HINT =
 
 /** 构建系统提示（纯函数，便于单测）。continuing=多轮修改；canInstall=宿主开放了下载安装能力；
  *  canDescribe=可用 describe_nodes 查节点精确 schema。 */
-export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false, canInstall = false, canDescribe = false): string {
+export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false, canInstall = false, canDescribe = false, examples: { label: string; workflowJson: string }[] = []): string {
   const cap = (arr: string[], n: number) => (arr.length > n ? arr.slice(0, n).concat(`…(+${arr.length - n})`) : arr);
   // 有 describe_nodes 时节点类名只作「目录」，可放宽展示上限（真正的字段规格靠查）。
   const nodeCap = canDescribe ? 400 : 120;
@@ -157,6 +159,14 @@ export function buildSystemPrompt(task: string, res: ComfyResourceList, continui
           "**重要：动手写图前，先用 describe_nodes 查清你打算用的每个节点的精确输入/输出规格**（附 nodeClasses 数组，" +
             "如 {\"action\":\"describe_nodes\",\"nodeClasses\":[\"KSampler\",\"CLIPTextEncode\"]}）。它会返回每个节点的必填/可选输入字段名、类型、" +
             "枚举合法值与默认值，以及输出端口。**严禁凭记忆猜字段名**——字段名/大小写/枚举值必须与查到的完全一致，否则校验必挂。",
+          "",
+        ]
+      : []),
+    ...(examples.length
+      ? [
+          "参考范例（同库里已在真实 ComfyUI 调通/保存的相似工作流，可借鉴其节点组织/连线/参数写法；" +
+            "但务必按上面本服务器的实际资源与节点 schema 调整，切勿照抄不存在的模型/节点名）：",
+          ...examples.map((e) => `【范例：${e.label}】\n${e.workflowJson}`),
           "",
         ]
       : []),
@@ -223,7 +233,7 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
   const continuing = !!opts.seedWorkflowJson;
   const canInstall = !!(opts.tools.installModel || opts.tools.installNode);
   const canDescribe = !!opts.tools.describeNodes;
-  const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing, canInstall, canDescribe) }];
+  const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing, canInstall, canDescribe, opts.referenceExamples ?? []) }];
   // 连续对话：并入先前若干轮精简历史。
   for (const h of opts.history ?? []) messages.push(h);
 
