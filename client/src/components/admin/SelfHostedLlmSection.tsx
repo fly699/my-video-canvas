@@ -38,6 +38,18 @@ export function SelfHostedLlmSection() {
     toast.success("已填入本机 Claude 地址与 3 个模型（默认/Sonnet/Opus），请把 API Key 填成与服务端 CLAUDE_LOCAL_BRIDGE_KEY 一致的值再保存");
   };
 
+  // 「本机 GPT（ChatGPT 订阅）」一键接入：与 Claude 共用同一桥接地址与 Key，按模型前缀分流。
+  // 只需服务器装 @openai/codex 并放好订阅登录凭证（~/.codex/auth.json），加模型条目即可。
+  const applyGptLocal = () => {
+    setUrl(`${window.location.origin}/api/claude-bridge`);
+    const GPT_LOCAL_MODELS: Model[] = [
+      { id: "gpt-local", label: "本机 GPT（订阅默认）" },
+      { id: "gpt-local:gpt-5.3-codex", label: "本机 GPT · Codex" },
+    ];
+    setModels((prev) => [...prev, ...GPT_LOCAL_MODELS.filter((m) => !prev.some((p) => p.id === m.id))]);
+    toast.success("已填入本机 GPT 模型条目（与 Claude 同地址同 Key）——确认服务器已装 @openai/codex 并放好 ~/.codex/auth.json");
+  };
+
   const applyCurl = () => {
     const p = parseCurlLlm(curl);
     if (!p.url && !p.model) { toast.error("没从 curl 里解析出地址或模型，请检查粘贴内容"); return; }
@@ -90,10 +102,23 @@ export function SelfHostedLlmSection() {
           <br />3) 点下面「一键填入」→ 把下方 <strong>API Key</strong> 填成与 <code>CLAUDE_LOCAL_BRIDGE_KEY</code> 完全一致的值 → 保存。之后画布模型选择器里会出现「本机 Claude」的 <strong>订阅默认 / Sonnet / Opus</strong> 三个条目，选哪个就用哪个模型（Opus 需 Max 档订阅；也可手动加 <code>claude-local:haiku</code> 或 <code>claude-local:完整模型id</code> 条目）。
           <br /><span style={{ color: "var(--c-t4)" }}>注：额度受订阅用量上限约束、会被限流；订阅计费本为交互式使用，用作后端批量属灰色地带。公网隧道部署时地址请改成内网 <code>http://127.0.0.1:内部端口/api/claude-bridge</code>。</span>
         </p>
-        <button onClick={applyClaudeLocal} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg self-start"
-          style={{ fontSize: 11.5, fontWeight: 600, background: "oklch(0.68 0.19 285 / 0.16)", border: "1px solid oklch(0.68 0.19 285 / 0.45)", color: "oklch(0.72 0.16 285)", cursor: "pointer" }}>
-          <Sparkles className="w-3.5 h-3.5" /> 一键填入本机 Claude 地址与模型
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={applyClaudeLocal} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+            style={{ fontSize: 11.5, fontWeight: 600, background: "oklch(0.68 0.19 285 / 0.16)", border: "1px solid oklch(0.68 0.19 285 / 0.45)", color: "oklch(0.72 0.16 285)", cursor: "pointer" }}>
+            <Sparkles className="w-3.5 h-3.5" /> 一键填入本机 Claude
+          </button>
+          <button onClick={applyGptLocal} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+            style={{ fontSize: 11.5, fontWeight: 600, background: "oklch(0.70 0.15 160 / 0.16)", border: "1px solid oklch(0.70 0.15 160 / 0.45)", color: "oklch(0.70 0.13 160)", cursor: "pointer" }}>
+            <Sparkles className="w-3.5 h-3.5" /> 一键填入本机 GPT（ChatGPT 订阅）
+          </button>
+        </div>
+        <p style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.7, margin: 0 }}>
+          <strong>GPT（ChatGPT Plus/Pro 订阅）接入</strong>：与 Claude 共用同一地址同一 Key（按模型前缀分流），零新增环境变量。
+          服务器 <code>npm i -g @openai/codex</code> → 在能开浏览器的机器跑 <code>codex</code> 选「Sign in with ChatGPT」登录 →
+          把该机 <code>~/.codex/auth.json</code> 拷到服务器同路径（Windows：<code>C:\Users\你\.codex\auth.json</code>）→ 点上面按钮加模型条目 → 保存。
+          模型 id 规则同 Claude：<code>gpt-local</code>=订阅默认，<code>gpt-local:模型名</code> 透传给 <code>codex -m</code>。
+          <strong>切勿</strong>在服务器设 <code>CODEX_API_KEY</code>/<code>OPENAI_API_KEY</code>，否则绕过订阅变按量计费。
+        </p>
       </div>
 
       {/* curl 粘贴 */}

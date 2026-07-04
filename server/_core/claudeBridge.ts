@@ -9,6 +9,7 @@ import type { Express, Request, Response } from "express";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { resolveClaudeSpawn, resolveClaudeBin } from "./superAgent/claudeProcess";
+import { isGptLocalModel, codexModelArg, runCodexText } from "./codexBridge";
 
 type OAContent = string | Array<string | { type?: string; text?: string }>;
 export interface OAMessage { role?: string; content?: OAContent }
@@ -110,8 +111,14 @@ export function registerClaudeBridge(app: Express): void {
     const messages = Array.isArray(req.body?.messages) ? (req.body.messages as OAMessage[]) : [];
     if (!messages.length) return res.status(400).json({ error: { message: "messages 为空" } });
     try {
-      const { text, isError } = await runClaudeText({ messages, timeoutMs: 110_000, model: bridgeModelArg(req.body?.model) });
-      if (isError) return res.status(502).json({ error: { message: "本机 claude 返回错误：" + (text || "").slice(0, 600) } });
+      // 同一端点、同一 Key，按模型前缀分流："gpt-local*" → OpenAI Codex CLI（ChatGPT 订阅）；
+      // 其余（claude-local* 等）→ Claude Code CLI（Claude 订阅）。后台自建 LLM 只有一个地址位，
+      // 两家共用可零新增配置。
+      const gpt = isGptLocalModel(req.body?.model);
+      const { text, isError } = gpt
+        ? await runCodexText({ messages, timeoutMs: 110_000, model: codexModelArg(req.body?.model) })
+        : await runClaudeText({ messages, timeoutMs: 110_000, model: bridgeModelArg(req.body?.model) });
+      if (isError) return res.status(502).json({ error: { message: `本机 ${gpt ? "codex" : "claude"} 返回错误：` + (text || "").slice(0, 600) } });
       res.json({
         id: `claude-local-${Date.now()}`,
         object: "chat.completion",

@@ -87,3 +87,27 @@ describe("模型切换透传（--model）", () => {
     expect(j2.choices[0].message.content).not.toContain("--model");
   });
 });
+
+describe("GPT（codex）分流：同端点同 Key，按模型前缀走 codex exec", () => {
+  it("gpt-local:foo → codex 收到 exec/--sandbox read-only/-m foo；回复来自 codex stdout", async () => {
+    process.env.CLAUDE_LOCAL_BRIDGE_KEY = "secret";
+    // 假 codex：吞 stdin，把参数回显为纯文本（codex 无 --json 时 stdout 即最终回答）
+    const fakeCodex = join(dir, "codex-echo");
+    writeFileSync(fakeCodex, "#!/bin/sh\ncat > /dev/null\necho \"CODEX-ARGS:$*\"\n");
+    chmodSync(fakeCodex, 0o755);
+    process.env.CODEX_BIN = fakeCodex;
+    try {
+      const r = await post({ authorization: "Bearer secret" }, { model: "gpt-local:foo", messages: [{ role: "user", content: "hi" }] });
+      expect(r.status).toBe(200);
+      const j = await r.json();
+      const c = j.choices[0].message.content as string;
+      expect(c).toContain("exec");
+      expect(c).toContain("--sandbox read-only");
+      expect(c).toContain("-m foo");
+      // 默认条目不传 -m
+      const r2 = await post({ authorization: "Bearer secret" }, { model: "gpt-local", messages: [{ role: "user", content: "hi" }] });
+      const c2 = (await r2.json()).choices[0].message.content as string;
+      expect(c2).not.toContain("-m ");
+    } finally { delete process.env.CODEX_BIN; }
+  });
+});
