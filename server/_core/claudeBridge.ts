@@ -61,6 +61,20 @@ export function isClaudeBridgeEnabled(): boolean { return !!process.env.CLAUDE_L
 /** 桥接鉴权 key（后台自建 LLM 的 API Key 需与之一致）。 */
 export function claudeBridgeKey(): string { return process.env.CLAUDE_LOCAL_BRIDGE_KEY?.trim() || ""; }
 
+// ── 桥接自调用回环重写 ─────────────────────────────────────────────────────────
+// 后台「一键填入」用的是管理员浏览器地址栏的 origin；公网隧道部署时那是公网域名——服务器调
+// 自己的桥接却绕出公网再回来：撞 Cloudflare 100s 超时/502、TLS/网关各种失败（真实翻车：CF 502
+// HTML 整页糊进聊天）。桥接本来就在本进程里，凡地址含 /api/claude-bridge 一律强制改走本机回环。
+let _selfHttpPort: number | null = null;
+/** index.ts 启动后登记本机可用的【纯 HTTP】回环端口（隧道回环端口优先；主端口为 http 时也可）。 */
+export function setBridgeSelfHttpPort(port: number): void { _selfHttpPort = port; }
+/** 自建 LLM 地址指向本应用桥接路径时 → 重写为 http://127.0.0.1:端口/...（未登记端口则原样返回）。纯函数式。 */
+export function rewriteBridgeSelfUrl(url: string): string {
+  if (!url || !/\/api\/claude-bridge/i.test(url)) return url;
+  if (_selfHttpPort == null) return url;
+  return `http://127.0.0.1:${_selfHttpPort}/api/claude-bridge/v1/chat/completions`;
+}
+
 /** 从请求的 model 串解析要传给 `claude --model` 的值。约定：
  *  - "claude-local"（或空）→ null：不传 --model，用订阅默认模型；
  *  - "claude-local:sonnet" / "claude-local:opus" 等 → 取冒号后缀；
