@@ -112,3 +112,64 @@ DATABASE_URL="mysql://..." OAUTH_SERVER_URL="..." pnpm start
 
 > 视频剪辑器导出的成片只写入 MinIO/S3，并按用户前缀 `u/{userId}/editor/...`
 > 归档、登记进素材库；下载受「严格下载授权」开关约束。
+
+---
+
+## 近期新增的服务端功能与配置（2026-06/07，均为可选、默认关闭）
+
+> **通用原则**
+> - 环境变量统一写进项目根目录 **`.env`**（`update.bat`/「系统更新」/Windows 服务都会读它）。
+> - **改了 `.env` 或服务端代码必须重启 Node 才生效**：跑「系统更新」/`update.bat` 会自动重启；只改 `.env` 没更新代码时，手动重启服务（`net stop AVC-App && net start AVC-App` 或 `pm2 restart`）。
+> - 前端改动部署后，浏览器需**强刷（Ctrl+Shift+R）**。
+> - 下面提到的 CLI（Claude Code / Codex）都是系统级软件：**「系统更新」和 `deploy.ps1` 都不会安装它们**，需手动 `npm i -g` 一次。
+
+### A. 工程智能体 ·「代码任务」（无头 Claude Code，默认完全关闭）
+
+| 变量 | 作用 |
+|---|---|
+| `SUPER_AGENT_CODE_ENABLED=1` | 第一把钥匙：允许起 claude 进程 |
+| `SUPER_AGENT_CODE_ALLOW_BASH=1` | 第二把钥匙：放行 shell（不设=只能读写隔离工作区，最安全） |
+| `SUPER_AGENT_PERMISSION_CMD=node`<br>`SUPER_AGENT_PERMISSION_ARGS=["<项目绝对路径>/dist/permissionMcpServer.cjs"]` | 执行前命令审批（危险命令根本不跑）。Windows 路径用 `\\` 转义 |
+| `CLAUDE_CODE_OAUTH_TOKEN` | 订阅授权（`claude setup-token` 所得；**勿同时设 `ANTHROPIC_API_KEY`**，否则变按量计费） |
+| `CLAUDE_BIN` | CLI 不在 PATH 时的绝对路径（Windows 一般 `C:\Users\你\AppData\Roaming\npm\claude.cmd`） |
+
+前置：`npm i -g @anthropic-ai/claude-code`；`dist/permissionMcpServer.cjs` 由 `pnpm build` 自动产出。
+逐步勾选清单见 **`docs/phase2-启用清单.md`**，原理与安全边界见 **`docs/super-agent.md`**（含「只读沙箱 vs 放行 Shell」能不能碰真实文件的说明）。
+
+### B. ComfyUI 缺模型/节点自动下载（工程智能体自愈，默认关闭）
+
+| 变量 | 作用 |
+|---|---|
+| `SUPER_AGENT_AUTO_INSTALL=1` | 开放 install_model / install_node 工具 |
+
+另需：目标 ComfyUI 地址已在**运维台注册（带 SSH）且启用**，且操作者为 L3+。不满足任一条件则工具不开放（框架 inert）。
+
+### C. 本机 Claude（订阅）桥接——用 Claude 订阅额度跑画布 AI（默认关闭）
+
+| 变量 | 作用 |
+|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | 订阅授权（与 A 共用，配一次两处生效） |
+| `CLAUDE_LOCAL_BRIDGE_KEY` | 桥接口令：**设了才启用**，且后台「自建 LLM」的 API Key 必须与之一致（防公网白嫖） |
+| `CLAUDE_BIN` | 同 A，可共用 |
+
+后台配置：管理后台 → 模型管理 › 自建 LLM → 「一键填入本机 Claude」→ API Key 粘同口令 → 保存。
+模型切换：选择器里的 `claude-local:sonnet` / `:opus`（需 Max 档）等条目即切换。
+**公网隧道部署**：后台「服务器地址」要改成内网回环 `http://127.0.0.1:<内部端口>/api/claude-bridge`。
+完整说明与排错表：**`docs/本机claude桥接.md`**。
+
+### D. 本机 GPT（ChatGPT 订阅）——与 C 同端点同 Key，零新增变量
+
+前置三步：
+1. 服务器 `npm i -g @openai/codex`（路径特殊时设 `CODEX_BIN`）；
+2. 在能开浏览器的机器跑 `codex` → 「Sign in with ChatGPT」登录订阅；
+3. 把该机 `~/.codex/auth.json` 拷到服务器同路径（Windows：`C:\Users\你\.codex\auth.json`；等同密码，注意保管）。
+
+后台点「一键填入本机 GPT（ChatGPT 订阅）」加模型条目即可（`gpt-local` / `gpt-local:模型名`）。
+凭证优先级 `CODEX_API_KEY > auth.json(订阅) > OPENAI_API_KEY`：**千万别设 `CODEX_API_KEY`**（会绕过订阅）；
+`OPENAI_API_KEY`（配音 TTS 在用）**可以共存**——只要 auth.json 在，codex 优先走订阅；但若 auth.json 没放好，
+codex 会静默落到 `OPENAI_API_KEY` 按量计费，务必放好凭证再用 `gpt-local` 条目。
+
+### E. Docker 部署使用 A/C/D 的额外说明
+
+镜像默认**不含** Claude Code / Codex CLI 与订阅凭证。需在镜像里补装 CLI（`npm i -g @anthropic-ai/claude-code @openai/codex`），
+并把宿主机的 `~/.claude`（如使用）与 `~/.codex/auth.json` 挂载/复制进容器对应的 HOME 路径，env 经 `-e` 注入。裸机/Windows 服务方式无此额外步骤。

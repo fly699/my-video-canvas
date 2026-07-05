@@ -46,7 +46,10 @@ SUPER_AGENT_PERMISSION_ARGS=["你的项目绝对路径/dist/permissionMcpServer.
 # 可选：CLI 不在 PATH 时
 # CLAUDE_BIN=claude 的绝对路径
 ```
-- [ ] 五个变量已设到 Node 服务读取的环境（系统环境变量 / 服务配置 / .env）
+- [ ] 五个变量已设到 Node 服务读取的环境——**推荐写进项目根目录 `.env`**（`update.bat`/「系统更新」/Windows 服务都读它）
+
+> 💡 `CLAUDE_CODE_OAUTH_TOKEN` 与 `CLAUDE_BIN` 和「本机 Claude（订阅）桥接」（`docs/本机claude桥接.md`）
+> **完全共用**——配一次，代码任务与画布 AI 对话两处同时生效。桥接另需 `CLAUDE_LOCAL_BRIDGE_KEY`。
 
 ### 5) 权限 + 重启
 - [ ] 管理后台把你的账号设为**超级管理员 L4**

@@ -102,7 +102,13 @@ Available pre-defined system envs:
 - `BUILT_IN_FORGE_API_KEY`: Bearer token used by Manus built-in apis (server-side)
 - `VITE_FRONTEND_FORGE_API_KEY`: Bearer token for frontend access to Manus built-in apis
 - `VITE_FRONTEND_FORGE_API_URL`: Manus built-in apis URL for frontend
-- `OPENAI_API_KEY`: OpenAI API key for TTS (text-to-speech) feature on the AudioNode dubbing tab. Get one at https://platform.openai.com/api-keys. Without this, dubbing requests will fail with "OPENAI_API_KEY 未配置"; music generation and other features are unaffected.
+- `OPENAI_API_KEY`: OpenAI API key for TTS (text-to-speech) feature on the AudioNode dubbing tab. Get one at https://platform.openai.com/api-keys. Without this, dubbing requests will fail with "OPENAI_API_KEY 未配置"; music generation and other features are unaffected. (与本机 GPT 订阅桥接可共存：codex 有 auth.json 时优先走订阅。)
+
+近期新增（均可选、默认关闭，操作细节见 `DEPLOY.md`「近期新增的服务端功能与配置」）：
+- `SUPER_AGENT_CODE_ENABLED` / `SUPER_AGENT_CODE_ALLOW_BASH` / `SUPER_AGENT_PERMISSION_CMD` / `SUPER_AGENT_PERMISSION_ARGS`: 工程智能体「代码任务」双钥 + 执行前命令审批（清单：`docs/phase2-启用清单.md`）。
+- `SUPER_AGENT_AUTO_INSTALL`: ComfyUI 缺模型/节点自动下载（需运维台注册 SSH 服务器 + L3+）。
+- `CLAUDE_CODE_OAUTH_TOKEN` / `CLAUDE_LOCAL_BRIDGE_KEY` / `CLAUDE_BIN`: 本机 Claude（订阅）桥接——用订阅额度跑画布 AI（`docs/本机claude桥接.md`）。勿同时设 `ANTHROPIC_API_KEY`（会变按量计费）。
+- `CODEX_BIN`: 本机 GPT（ChatGPT 订阅）桥接的 Codex CLI 路径。凭证走 `~/.codex/auth.json`，与 Claude 桥接同端点同 Key、零新增变量；**勿设 `CODEX_API_KEY`**（会绕过订阅）。
 
 Do not edit these directly in code or commit `.env` files.
 The envs above are system envs, when use env in website code, refer `server/_core/env.ts` for available list.
