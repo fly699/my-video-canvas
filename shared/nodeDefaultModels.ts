@@ -32,6 +32,10 @@ export interface NodeDefaultModelsConfig {
   perSlot?: Record<string, string>;
 }
 
+/** 管理员配置的「系统级默认模型」（按槽位）。存于 model_toggle_settings.systemDefaultModels。
+ *  作用于所有项目：解析优先级里排在「项目配置」之下、「出厂默认」之上。 */
+export type SystemDefaultModels = Partial<Record<ModelSlot, string>>;
+
 /** 「节点类型 + 槽位」→ 覆盖表的 key。 */
 export function slotKey(nodeType: NodeType, slot: ModelSlot): string {
   return `${nodeType}.${slot}`;
@@ -39,24 +43,45 @@ export function slotKey(nodeType: NodeType, slot: ModelSlot): string {
 
 /**
  * 解析某节点某槽位应使用的默认模型。
+ * 优先级（高→低）：项目 perSlot > 项目 category > 系统默认(管理员) > 出厂默认。
  * 节点新建/未显式选择模型时调用；已有 payload.model 优先于本结果（在调用处用 ?? 串接）。
  */
 export function resolveNodeModel(
   config: NodeDefaultModelsConfig | null | undefined,
   nodeType: NodeType,
   slot: ModelSlot,
+  system?: SystemDefaultModels | null,
 ): string {
   const exact = config?.perSlot?.[slotKey(nodeType, slot)];
   if (exact) return exact;
   const byCategory = config?.categories?.[slot];
   if (byCategory) return byCategory;
+  const bySystem = system?.[slot];
+  if (bySystem) return bySystem;
   return FACTORY_DEFAULT_MODELS[slot];
 }
 
-/** 解析「类别级」默认（不针对具体节点类型）：用于服务端兜底、以及无 nodeType 上下文处。 */
+/** 解析「类别级」默认（不针对具体节点类型）：用于服务端兜底、以及无 nodeType 上下文处。
+ *  优先级：项目 category > 系统默认(管理员) > 出厂默认。 */
 export function resolveCategoryModel(
   config: NodeDefaultModelsConfig | null | undefined,
   slot: ModelSlot,
+  system?: SystemDefaultModels | null,
 ): string {
-  return config?.categories?.[slot] ?? FACTORY_DEFAULT_MODELS[slot];
+  return config?.categories?.[slot] ?? system?.[slot] ?? FACTORY_DEFAULT_MODELS[slot];
+}
+
+/** 归一化任意来源的系统默认配置（丢弃非法 slot / 非字符串值）。纯函数。
+ *  容错 MariaDB 把 JSON 列返回成字符串的情况（MySQL 8 返回已解析对象）。 */
+export function normalizeSystemDefaultModels(v: unknown): SystemDefaultModels {
+  let o: unknown = v;
+  if (typeof v === "string") { try { o = JSON.parse(v); } catch { o = {}; } }
+  const out: SystemDefaultModels = {};
+  if (o && typeof o === "object") {
+    for (const slot of ["llm", "image", "video", "transcribe"] as ModelSlot[]) {
+      const val = (o as Record<string, unknown>)[slot];
+      if (typeof val === "string" && val.trim()) out[slot] = val.trim();
+    }
+  }
+  return out;
 }

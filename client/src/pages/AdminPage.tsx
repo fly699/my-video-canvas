@@ -12,6 +12,7 @@ import { downloadTextFile } from "@/lib/download";
 import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 import { SelfHostedLlmSection } from "@/components/admin/SelfHostedLlmSection";
+import { SystemDefaultModelsSection } from "@/components/admin/SystemDefaultModelsSection";
 import { TunnelPanel } from "@/components/admin/TunnelPanel";
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
@@ -1157,6 +1158,9 @@ function ModelsPanel() {
         修改即时保存、对所有用户生效（约 30 秒内）。当前已启用 <strong style={{ color: "var(--c-t1)" }}>{enabledCount}</strong> / {allValues.length} 个模型。
         {query.isLoading && <span style={{ color: "var(--c-t3)" }}>（加载中…）</span>}
       </div>
+
+      {/* 系统默认模型（按槽位指定全站默认，作用于项目配置与出厂默认之间） */}
+      <SystemDefaultModelsSection />
 
       {/* 自建 LLM 配置（粘贴 curl 登记 OpenAI 兼容端点） */}
       <SelfHostedLlmSection />

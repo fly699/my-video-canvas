@@ -104,6 +104,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
+import { normalizeSystemDefaultModels } from "../shared/nodeDefaultModels";
 
 /** True for a MySQL duplicate-key violation (ER_DUP_ENTRY / errno 1062), raised when
  *  an INSERT hits a UNIQUE index — used to turn unique-constraint races into
@@ -121,7 +122,7 @@ export function isDupEntryError(e: unknown): boolean {
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
-const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig } = { disabledModels: [] };
+const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; systemDefaultModels?: Record<string, string> } = { disabledModels: [] };
 const devAuthSettings = { emailVerificationEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
@@ -1580,6 +1581,22 @@ export async function setSelfHostedLlmConfig(cfg: SelfHostedLlmConfig): Promise<
   if (!db) { devModelToggleSettings.selfHostedLlm = selfHostedLlm; return; }
   await db.insert(modelToggleSettings).values({ id: 1, selfHostedLlm })
     .onDuplicateKeyUpdate({ set: { selfHostedLlm } });
+}
+
+/** 管理员配置的「系统默认模型」（按槽位 llm/image/video/transcribe）。单行 id=1 的 JSON 列。 */
+export async function getSystemDefaultModels(): Promise<Record<string, string>> {
+  const db = await getDb();
+  if (!db) return normalizeSystemDefaultModels(devModelToggleSettings.systemDefaultModels);
+  const rows = await db.select().from(modelToggleSettings).limit(1);
+  return normalizeSystemDefaultModels(rows[0]?.systemDefaultModels);
+}
+
+export async function setSystemDefaultModels(cfg: Record<string, string>): Promise<void> {
+  const systemDefaultModels = normalizeSystemDefaultModels(cfg);
+  const db = await getDb();
+  if (!db) { devModelToggleSettings.systemDefaultModels = systemDefaultModels; return; }
+  await db.insert(modelToggleSettings).values({ id: 1, systemDefaultModels })
+    .onDuplicateKeyUpdate({ set: { systemDefaultModels } });
 }
 
 // ── Public tunnel (cloudflared) settings + its separate access whitelist ──
