@@ -6,6 +6,7 @@ import * as db from "../db";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
+import { invalidateSystemDefaultModelsCache } from "../_core/systemDefaultModels";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { bridgeLocalUrl } from "../_core/claudeBridge";
 import { buildConfigChecklist } from "../_core/configChecklist";
@@ -469,6 +470,26 @@ export const adminRouter = router({
         if (url && !/^https?:\/\//i.test(url)) throw new TRPCError({ code: "BAD_REQUEST", message: "地址必须以 http:// 或 https:// 开头" });
         await db.setSelfHostedLlmConfig({ url, apiKey: input.apiKey, models: input.models });
         await reloadSelfHostedConfig(); // 立即热更新路由/门控缓存
+        return { success: true };
+      }),
+    // ── 系统默认模型（admin）：按槽位 llm/image/video/transcribe，作用于所有项目 ──
+    getSystemDefaults: adminProcedure.query(async () => db.getSystemDefaultModels()),
+    setSystemDefaults: managerProc
+      .input(z.object({
+        llm: z.string().max(120).optional(),
+        image: z.string().max(120).optional(),
+        video: z.string().max(120).optional(),
+        transcribe: z.string().max(120).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        // 空串/未填 = 该槽位不设系统默认（回退出厂默认）；只落非空项。
+        const cfg: Record<string, string> = {};
+        for (const slot of ["llm", "image", "video", "transcribe"] as const) {
+          const v = input[slot]?.trim();
+          if (v) cfg[slot] = v;
+        }
+        await db.setSystemDefaultModels(cfg);
+        invalidateSystemDefaultModelsCache();
         return { success: true };
       }),
   }),

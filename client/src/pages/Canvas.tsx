@@ -21,6 +21,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useWorkflowRunner, RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
 import { WorkflowRunProvider } from "../contexts/WorkflowRunContext";
 import { NodeDefaultModelsProvider } from "../contexts/NodeDefaultModelsContext";
+import { useSystemDefaultModels } from "../lib/useSystemDefaultModels";
 import { NodeDefaultModelsButton } from "../components/canvas/NodeDefaultModelsButton";
 import { BudgetButton } from "../components/canvas/BudgetButton";
 import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels";
@@ -715,6 +716,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // 项目级「节点默认模型」配置 + 持久化。新建节点据此取默认模型；工具栏弹层可改。
   const defaultModelsConfig =
     (project as { defaultModels?: NodeDefaultModelsConfig | null } | undefined)?.defaultModels ?? null;
+  // 管理员「系统默认模型」：作用于项目配置与出厂默认之间（详见 NodeDefaultModelsProvider）。
+  const systemDefaultModels = useSystemDefaultModels();
   const handleDefaultModelsChange = useCallback(
     (next: NodeDefaultModelsConfig) => {
       // 乐观更新：先写入 query 缓存让节点解析即时生效，再持久化到项目。
@@ -1662,7 +1665,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }
 
   return (
-   <NodeDefaultModelsProvider config={defaultModelsConfig} onChange={handleDefaultModelsChange} readOnly={isReadOnly}>
+   <NodeDefaultModelsProvider config={defaultModelsConfig} systemDefaults={systemDefaultModels} onChange={handleDefaultModelsChange} readOnly={isReadOnly}>
     <div className="w-screen h-screen flex flex-col overflow-hidden" style={{ background: "var(--c-canvas)" }}>
 
       {/* ══ Top Bar ══════════════════════════════════════════════════════════ */}

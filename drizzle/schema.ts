@@ -780,6 +780,9 @@ export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   disabledModels: json("disabledModels").$type<string[]>(),
   // 管理员后台配置的自建 OpenAI 兼容 LLM（替代 env）：{ url, apiKey, models:[{id,label}] }。
   selfHostedLlm: json("selfHostedLlm").$type<SelfHostedLlmConfig>(),
+  // 管理员配置的「系统级默认模型」（按槽位 llm/image/video/transcribe），作用于所有项目：
+  // 解析优先级排在项目级配置之下、出厂默认之上。{ llm?, image?, video?, transcribe? }。
+  systemDefaultModels: json("systemDefaultModels").$type<Record<string, string>>(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

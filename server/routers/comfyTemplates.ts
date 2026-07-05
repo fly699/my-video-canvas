@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FACTORY_DEFAULT_MODELS } from "../../shared/nodeDefaultModels";
+import { getSystemDefaultModel } from "../_core/systemDefaultModels";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
@@ -246,7 +246,7 @@ export const comfyTemplatesRouter = router({
     .input(z.object({ model: z.string().max(64).optional(), full: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertLLMAllowed(ctx, input.model);
-      const model = input.model ?? FACTORY_DEFAULT_MODELS.llm;
+      const model = input.model ?? await getSystemDefaultModel("llm");
       return runLibraryAnalysis(ctx, model, { full: input.full });
     }),
 });

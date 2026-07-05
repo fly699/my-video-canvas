@@ -8,6 +8,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { CHAT_MODELS } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
+import { useSystemDefaultModels } from "@/lib/useSystemDefaultModels";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES } from "@/lib/aiAssistantTemplates";
 import { goToAdminTab } from "@/lib/adminNav";
@@ -74,7 +75,11 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const _chatPool = _selfHostedChat.length ? [..._selfHostedChat.filter((x) => !CHAT_MODELS.some((m) => m.id === x.id)), ...CHAT_MODELS] : CHAT_MODELS;
   const chatModels = _chatPool.filter((m) => !m.hidden && !disabledModels.has("chat:" + m.id));
   const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem("chat:aiModel") || "");
-  const effModel = chatModels.find((m) => m.id === chatModel)?.id ?? chatModels[0]?.id;
+  // 默认模型：用户显式选过的优先；否则用管理员「系统默认」的 LLM（若可用且未被停用）；再否则列表第一个。
+  const sysDefaultLlm = useSystemDefaultModels().llm;
+  const effModel = chatModels.find((m) => m.id === chatModel)?.id
+    ?? chatModels.find((m) => m.id === sysDefaultLlm)?.id
+    ?? chatModels[0]?.id;
   // AI 助手「模板」人设：复用 ai_chat 节点的同一套模板（ALL_AI_TEMPLATES）。存模板 id，
   // 发送时解析为其 prompt 作为 systemPrompt 传给后端，覆盖默认助手人设。空 = 默认助手。
   const [chatTemplate, setChatTemplate] = useState<string>(() => localStorage.getItem("chat:aiTemplate") || "");
