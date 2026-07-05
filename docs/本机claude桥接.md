@@ -30,7 +30,7 @@ CLAUDE_CODE_OAUTH_TOKEN=<setup-token 拿到的值>
 ```
 
 > ⚠️ **切勿同时设 `ANTHROPIC_API_KEY`**——一旦设了，Claude 会优先用 API Key → 变成按 token 计费，订阅就白搭了。
-> CLI 不在 PATH 时用 `CLAUDE_BIN` 指定完整路径（Windows 一般 `C:\Users\你\AppData\Roaming\npm\claude.cmd`）。
+> Windows 标准 npm 全局路径（`C:\Users\你\AppData\Roaming\npm\claude.cmd`）**新版会自动探测，免设 `CLAUDE_BIN`**；装在别处才需要设完整路径。
 
 ### 第 2 步：设一个桥接口令（= 开启开关）
 
@@ -76,7 +76,7 @@ GPT 侧的订阅等价物是 OpenAI **Codex CLI**(可用 ChatGPT Plus/Pro 订阅
 
 ### 步骤
 
-1. **服务器装 Codex CLI**:`npm i -g @openai/codex`(路径特殊时可设 `CODEX_BIN` 指向完整路径)。
+1. **服务器装 Codex CLI**:`npm i -g @openai/codex`,**装完重启本服务**(新装的 CLI 要重启后才可见)。Windows 标准路径自动探测、免设 `CODEX_BIN`;装在别处才设完整路径。
 2. **订阅登录**:在**能开浏览器**的机器上跑 `codex`,选「**Sign in with ChatGPT**」登录订阅账号;登录凭证会存到该机的 `~/.codex/auth.json`。
 3. **把凭证放到服务器**:将 `~/.codex/auth.json` 拷到服务器同路径(Windows:`C:\Users\你\.codex\auth.json`)。该文件等同密码,注意保管。
 4. **后台**:模型管理 › 自建 LLM → 点「**一键填入本机 GPT(ChatGPT 订阅)**」→ 保存(地址/Key 与 Claude 完全共用,已配过就不用动)。
@@ -91,7 +91,7 @@ GPT 侧的订阅等价物是 OpenAI **Codex CLI**(可用 ChatGPT Plus/Pro 订阅
     但反过来,**若 auth.json 没放好**,codex 会静默落到 `OPENAI_API_KEY` 按量计费——放好凭证再用 `gpt-local` 条目。
 - 桥接以 `codex exec --sandbox read-only` 跑(禁写文件系统),纯文本进出,与 Claude 侧同等安全。
 - 额度受 ChatGPT 订阅用量上限约束,同样会被限流;合规注意事项与 Claude 侧相同。
-- 排错:节点报「无法启动 codex」→ CLI 没装或 `CODEX_BIN` 不对;报「无输出/退出码非 0」→ 多半是凭证没放好,在服务器命令行手测 `codex exec --skip-git-repo-check "你好"`。
+- 排错:节点报「无法启动 codex(ENOENT)」→ ①没装:`npm i -g @openai/codex` 后**重启服务**;②装了但在非标准路径:设 `CODEX_BIN`;报「无输出/退出码非 0」→ 多半是凭证没放好,在服务器命令行手测 `codex exec --skip-git-repo-check "你好"`。
 
 ## 注意事项
 

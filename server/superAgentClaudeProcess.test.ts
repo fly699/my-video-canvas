@@ -126,3 +126,18 @@ describe("streamClaudeCode 门控", () => {
       .toThrow(/未启用/);
   });
 });
+
+describe("resolveClaudeSpawn — Windows 裸名自动探测 %APPDATA%\\npm", () => {
+  it("裸 claude + 探到 claude.cmd → 免配置解析（进而 node 直跑 cli.js）", () => {
+    const r = resolveClaudeSpawn("claude", ["-p"], {
+      platform: "win32", appData: "C:\\Users\\K\\AppData\\Roaming",
+      exists: (p) => p.endsWith("claude.cmd") || p.endsWith("cli.js"),
+    });
+    expect(r.cmd).toBe(process.execPath);
+    expect(r.args[0]).toContain("cli.js");
+  });
+  it("裸 claude + 探不到 → 原样", () => {
+    expect(resolveClaudeSpawn("claude", ["-p"], { platform: "win32", appData: "C:\\x", exists: () => false }))
+      .toEqual({ cmd: "claude", args: ["-p"], shell: false });
+  });
+});

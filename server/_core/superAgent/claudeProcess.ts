@@ -21,10 +21,17 @@ import { PERMISSION_TOOL_NAME } from "./permissionMcpServer";
 export function resolveClaudeSpawn(
   bin: string,
   args: string[],
-  opts: { platform?: NodeJS.Platform; exists?: (p: string) => boolean } = {},
+  opts: { platform?: NodeJS.Platform; exists?: (p: string) => boolean; appData?: string } = {},
 ): { cmd: string; args: string[]; shell: boolean } {
   const platform = opts.platform ?? process.platform;
   const exists = opts.exists ?? existsSync;
+  // Windows 裸名自动探测：spawn 无 shell 只认 .exe，裸 "claude" 必 ENOENT（npm 全局装的是
+  // claude.cmd）。未设 CLAUDE_BIN 时自动探 %APPDATA%\npm\claude.cmd——标准安装免配置。
+  if (platform === "win32" && !/[\\/]/.test(bin) && !/\.(cmd|bat|exe)$/i.test(bin)) {
+    const appData = opts.appData ?? process.env.APPDATA ?? "";
+    const probe = appData ? join(appData, "npm", `${bin}.cmd`) : "";
+    if (probe && exists(probe)) bin = probe;
+  }
   if (platform === "win32" && /\.(cmd|bat)$/i.test(bin)) {
     const cli = join(dirname(bin), "node_modules", "@anthropic-ai", "claude-code", "cli.js");
     if (exists(cli)) return { cmd: process.execPath, args: [cli, ...args], shell: false };

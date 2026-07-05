@@ -34,3 +34,22 @@ describe("resolveCodexSpawn（Windows .cmd 坑，同 claude 方案）", () => {
     expect(resolveCodexSpawn("C:\\x\\codex.cmd", A, { platform: "win32", exists: () => false }).shell).toBe(true);
   });
 });
+
+describe("resolveCodexSpawn — Windows 裸名自动探测 %APPDATA%\\npm", () => {
+  it("裸 codex + 探到 codex.cmd → 免配置解析（进而 node 直跑 codex.js）", () => {
+    const appData = "C:\\Users\\K\\AppData\\Roaming";
+    const r = resolveCodexSpawn("codex", ["exec", "-"], {
+      platform: "win32", appData,
+      exists: (p) => p.endsWith("codex.cmd") || p.endsWith("codex.js"),
+    });
+    expect(r.cmd).toBe(process.execPath);
+    expect(r.args[0]).toContain("codex.js");
+  });
+  it("裸 codex + 探不到 → 原样（ENOENT 由错误提示接手）", () => {
+    const r = resolveCodexSpawn("codex", ["exec"], { platform: "win32", appData: "C:\\x", exists: () => false });
+    expect(r).toEqual({ cmd: "codex", args: ["exec"], shell: false });
+  });
+  it("非 Windows 不探测", () => {
+    expect(resolveCodexSpawn("codex", ["exec"], { platform: "linux", exists: () => true }).cmd).toBe("codex");
+  });
+});
