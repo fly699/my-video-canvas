@@ -10,11 +10,12 @@
 //  - 凭证优先级 CODEX_API_KEY > ~/.codex/auth.json(ChatGPT 登录) > OPENAI_API_KEY——
 //    服务器上【不要】设前后两个 env，否则绕过订阅变按量计费。
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { OAMessage } from "./claudeBridge";
 import { messagesToPrompt } from "./claudeBridge";
+import { collectImageUrls, collectFileUrls, resolveImages, docTextFromFileUrls, imageExt } from "./bridgeAttachments";
 
 /** 请求的 model 是否该走 GPT/codex 分支（"gpt-local" 或 "gpt-local:xxx"）。 */
 export function isGptLocalModel(model: unknown): boolean {
@@ -71,10 +72,28 @@ export function pickCodexErrorDetail(stdout: string, stderr: string, code: numbe
   return `codex 退出码 ${code ?? "?"}，无输出。检查订阅登录：把有浏览器机器上登录后的 ~/.codex/auth.json 拷到服务器同路径。`;
 }
 
-/** 跑一次无头 codex 拿纯文本回复。stdout 即回答；exit 非 0 或空输出记为错误（stderr 只抽错误行）。 */
-export function runCodexText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null }): Promise<{ text: string; isError: boolean }> {
-  const prompt = messagesToPrompt(opts.messages);
-  const baseArgs = ["exec", "--skip-git-repo-check", "--sandbox", "read-only", ...(opts.model ? ["-m", opts.model] : []), "-"];
+/** 跑一次无头 codex 拿回复。stdout 即回答；exit 非 0 或空输出记为错误（stderr 只抽错误行）。
+ *  图片附件落成临时文件用 `codex exec -i <文件>` 传入（用完删）；文档解析成文本追加进提示词。 */
+export async function runCodexText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null }): Promise<{ text: string; isError: boolean }> {
+  let prompt = messagesToPrompt(opts.messages);
+  const docText = await docTextFromFileUrls(collectFileUrls(opts.messages));
+  if (docText) prompt = [prompt, docText].filter(Boolean).join("\n\n");
+  const images = await resolveImages(collectImageUrls(opts.messages));
+
+  // 图片落临时目录（codex 只接受文件路径），拼成重复的 -i 参数；结束后整目录删除。
+  let imgDir: string | null = null;
+  const imageArgs: string[] = [];
+  if (images.length) {
+    imgDir = mkdtempSync(join(tmpdir(), "codex-img-"));
+    images.forEach((img, i) => {
+      const p = join(imgDir!, `img${i}.${imageExt(img.mediaType)}`);
+      writeFileSync(p, Buffer.from(img.base64, "base64"));
+      imageArgs.push("-i", p);
+    });
+  }
+  const cleanup = () => { if (imgDir) { try { rmSync(imgDir, { recursive: true, force: true }); } catch { /* 已删 */ } imgDir = null; } };
+
+  const baseArgs = ["exec", "--skip-git-repo-check", "--sandbox", "read-only", ...(opts.model ? ["-m", opts.model] : []), ...imageArgs, "-"];
   const { cmd, args, shell } = resolveCodexSpawn(resolveCodexBin(), baseArgs);
   return new Promise((resolve) => {
     let out = "", err = "", done = false, spawnErr: string | null = null;
@@ -84,7 +103,7 @@ export function runCodexText(opts: { messages: OAMessage[]; timeoutMs: number; m
     child.stderr?.on("data", (d) => { err += String(d); });
     try { child.stdin?.write(prompt); child.stdin?.end(); } catch { /* stdin 不可用 */ }
     const finish = (code?: number | null) => {
-      if (done) return; done = true; clearTimeout(timer);
+      if (done) return; done = true; clearTimeout(timer); cleanup();
       if (spawnErr) return resolve({ text: `无法启动 codex：${spawnErr}。请在服务器上 npm i -g @openai/codex 并【重启本服务】（新装的 CLI 要重启后才可见）；若装在非默认位置，设 CODEX_BIN=codex.cmd 的完整路径（Windows 标准路径 C:\\Users\\你\\AppData\\Roaming\\npm\\codex.cmd 会自动探测，无需配置）。`, isError: true });
       const text = out.trim();
       if (!text || (typeof code === "number" && code !== 0)) {
