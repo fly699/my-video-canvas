@@ -61,6 +61,12 @@ rem ---- 3) load .env so drizzle (db:push) and pm2 see the vars ----
 rem      NOTE: write values WITHOUT surrounding quotes in .env.
 if exist "%ROOT%\.env" (
   for /f "usebackq eol=# tokens=1,* delims==" %%a in ("%ROOT%\.env") do set "%%a=%%b"
+) else (
+  echo.
+  echo [!] WARNING: no .env found at %ROOT%\.env
+  echo     Copy .env.example to .env and fill it in ^(at least DATABASE_URL / JWT_SECRET / OWNER_EMAIL^),
+  echo     or run deploy\deploy.bat for a fresh one-click deploy.
+  echo.
 )
 rem strip accidental surrounding quotes from DATABASE_URL (drizzle reads it raw)
 if defined DATABASE_URL set "DATABASE_URL=%DATABASE_URL:"=%"

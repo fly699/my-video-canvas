@@ -238,23 +238,45 @@ if (Test-Path $envPath) {
 
     $content = @"
 # === ai-video-canvas 本地部署配置（由 deploy.ps1 生成）===
+# 完整变量清单与说明见项目根目录 .env.example；部署后到 管理后台 →「配置体检」逐项核对。
 NODE_ENV=production
 PORT=$Port
 DATABASE_URL=mysql://root:$DbPassword@localhost:3306/$DbName
 JWT_SECRET=$jwt
 OWNER_EMAIL=$OwnerEmail
 
-# ---------- 可选项（按需启用）----------
-# OAUTH_SERVER_URL=
-# VITE_APP_ID=
-# OPENAI_API_KEY=
-# HIGGSFIELD_API_KEY=
-# HIGGSFIELD_API_SECRET=
+# ---------- 对象存储（成片/素材落盘，强烈建议配置）----------
+# 跑 deploy\setup-minio.bat 一键自建 MinIO（会自动把下列 S3_* 写进本文件）
+# S3_ENDPOINT=http://127.0.0.1:9000
+# S3_BUCKET=avc-chat
+# S3_ACCESS_KEY=
+# S3_SECRET_KEY=
+# S3_REGION=us-east-1
+# S3_FORCE_PATH_STYLE=true
+
+# ---------- AI 平台密钥（按需，不设=对应模型不可用）----------
+# KIE_API_KEY=
+# KIE_KEY_SECRET=          # 要用后台 kie 子密钥分发功能才需要（随机 32+ 字符）
 # POYO_API_KEY=
+# OPENAI_API_KEY=          # 配音 TTS 与「自定义 OpenAI 模型」共用
+# HIGGSFIELD_API_KEY=
+# HIGGSFIELD_API_SECRET=   # 与上面 KEY 必须成对
 # COMFYUI_BASE_URL=
 # ComfyUI 官方云端（cloud.comfy.org）：在 platform.comfy.org 生成 API Key（需 Creator/Pro 套餐）
 # COMFYUI_CLOUD_API_KEY=
 # COMFYUI_CLOUD_BASE_URL=https://cloud.comfy.org
+# SSH_KEY_SECRET=          # 要在运维中心加 SSH 服务器才需要（随机 32+ 字符）
+
+# ---------- 登录认证（可选）----------
+# OAUTH_SERVER_URL=
+# VITE_APP_ID=
+# GOOGLE_CLIENT_ID=        # 与 SECRET 两个都设才启用 Google 登录
+# GOOGLE_CLIENT_SECRET=
+
+# ---------- 本机 Claude/GPT 订阅桥接（可选，详见 docs\本机claude桥接.md）----------
+# CLAUDE_LOCAL_BRIDGE_KEY= # 设了才启用；后台自建 LLM 的 API Key 必须填相同值
+# CLAUDE_CODE_OAUTH_TOKEN= # claude setup-token 所得；设了它就【不要】再设 ANTHROPIC_API_KEY
+# 注意：切勿设 CODEX_API_KEY（会绕过 ChatGPT 订阅按量计费）
 "@
     # 用无 BOM 的 UTF-8 写入，避免首行键名被 BOM 污染
     [System.IO.File]::WriteAllText($envPath, $content, (New-Object System.Text.UTF8Encoding($false)))
@@ -321,6 +343,12 @@ Write-Host "  局域网访问: http://${lanIp}:$Port   （同一网络的手机/
 Write-Host "  管理员账号: 用 .env 中 OWNER_EMAIL 的邮箱注册即为管理员" -ForegroundColor Green
 Write-Host "  停止服务:   在本窗口按 Ctrl+C" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "  下一步（可选，按需配置）：" -ForegroundColor Cyan
+Write-Host "   1. 对象存储：双击 deploy\setup-minio.bat 一键自建 MinIO（否则成片/素材无处存）" -ForegroundColor Cyan
+Write-Host "   2. AI 密钥：编辑项目根目录 .env（完整说明见 .env.example），填 KIE/POYO/OPENAI 等" -ForegroundColor Cyan
+Write-Host "   3. 改完 .env 后重启服务生效" -ForegroundColor Cyan
+Write-Host "   4. 登录后到【管理后台 →『配置体检』】逐项核对配置是否就位、缺什么补什么" -ForegroundColor Cyan
 Write-Host ""
 
 pnpm start
