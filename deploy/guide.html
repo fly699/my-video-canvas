@@ -223,6 +223,7 @@ OWNER_EMAIL=你的邮箱@example.com</code></pre>
           <tr><td><code>OWNER_EMAIL</code></td><td>用此邮箱注册的账号自动成为管理员</td></tr>
           <tr><td><code>PORT</code></td><td>监听端口，默认 3000（被占用会自动顺延）</td></tr>
         </table>
+        <div class="note">🧩 <b>可选功能的环境变量</b>（默认全关，不配不影响部署）：工程智能体「代码任务」（<code>SUPER_AGENT_CODE_ENABLED</code> 等，见 <code>docs/phase2-启用清单.md</code>）、本机 Claude/GPT <b>订阅桥接</b>——用 Claude 或 ChatGPT 订阅额度跑画布 AI（<code>CLAUDE_CODE_OAUTH_TOKEN</code> / <code>CLAUDE_LOCAL_BRIDGE_KEY</code> 等，见 <code>docs/本机claude桥接.md</code>）、ComfyUI 缺模型自动下载（<code>SUPER_AGENT_AUTO_INSTALL</code>）。汇总表在 <code>DEPLOY.md</code>「近期新增的服务端功能与配置」。<b>改 .env 后要重启服务</b>（跑一次 update.bat 也会自动重启）。</div>
       </div></div>
     </div>
 

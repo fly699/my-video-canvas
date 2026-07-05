@@ -117,7 +117,7 @@ export function SelfHostedLlmSection() {
           服务器 <code>npm i -g @openai/codex</code> → 在能开浏览器的机器跑 <code>codex</code> 选「Sign in with ChatGPT」登录 →
           把该机 <code>~/.codex/auth.json</code> 拷到服务器同路径（Windows：<code>C:\Users\你\.codex\auth.json</code>）→ 点上面按钮加模型条目 → 保存。
           模型 id 规则同 Claude：<code>gpt-local</code>=订阅默认，<code>gpt-local:模型名</code> 透传给 <code>codex -m</code>。
-          <strong>切勿</strong>在服务器设 <code>CODEX_API_KEY</code>/<code>OPENAI_API_KEY</code>，否则绕过订阅变按量计费。
+          <strong>切勿</strong>设 <code>CODEX_API_KEY</code>（会绕过订阅变按量计费）；<code>OPENAI_API_KEY</code>（配音 TTS 在用）可共存——auth.json 在时 codex 优先走订阅，但 auth.json 没放好会静默落到它按量计费。
         </p>
       </div>
 

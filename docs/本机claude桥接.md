@@ -38,7 +38,9 @@ CLAUDE_CODE_OAUTH_TOKEN=<setup-token 拿到的值>
 CLAUDE_LOCAL_BRIDGE_KEY=<你自己编的任意字符串，如 my-local-claude-8f3a>
 ```
 
-这个口令**同时起两个作用**：设了才启用桥接（不设 = 桥接返回 404 未启用）；且每个请求必须带对它才放行（防止公网下被白嫖订阅）。**设完重启服务**。
+这个口令**同时起两个作用**：设了才启用桥接（不设 = 桥接返回 404 未启用）；且每个请求必须带对它才放行（防止公网下被白嫖订阅）。
+
+> 两个变量都**写进项目根目录 `.env`**（`update.bat`/「系统更新」/Windows 服务都读它），**设完重启服务**（跑一次 `update.bat` 也会自动重启）。
 
 ### 第 3 步：后台一键接入
 
@@ -83,7 +85,10 @@ GPT 侧的订阅等价物是 OpenAI **Codex CLI**(可用 ChatGPT Plus/Pro 订阅
 
 ### GPT 侧注意
 
-- **切勿在服务器设 `CODEX_API_KEY` / `OPENAI_API_KEY`**——凭证优先级是 `CODEX_API_KEY > auth.json(订阅) > OPENAI_API_KEY`,设了就绕过订阅变按量计费。
+- 凭证优先级:`CODEX_API_KEY > auth.json(订阅) > OPENAI_API_KEY`。
+  - **千万别设 `CODEX_API_KEY`**——它排在订阅前面,设了就绕过订阅变按量计费。
+  - `OPENAI_API_KEY` **可以设**(本项目配音 TTS 就在用它):只要 auth.json 在,codex 优先走订阅、不碰它。
+    但反过来,**若 auth.json 没放好**,codex 会静默落到 `OPENAI_API_KEY` 按量计费——放好凭证再用 `gpt-local` 条目。
 - 桥接以 `codex exec --sandbox read-only` 跑(禁写文件系统),纯文本进出,与 Claude 侧同等安全。
 - 额度受 ChatGPT 订阅用量上限约束,同样会被限流;合规注意事项与 Claude 侧相同。
 - 排错:节点报「无法启动 codex」→ CLI 没装或 `CODEX_BIN` 不对;报「无输出/退出码非 0」→ 多半是凭证没放好,在服务器命令行手测 `codex exec --skip-git-repo-check "你好"`。
