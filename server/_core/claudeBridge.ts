@@ -68,6 +68,11 @@ export function claudeBridgeKey(): string { return process.env.CLAUDE_LOCAL_BRID
 let _selfHttpPort: number | null = null;
 /** index.ts 启动后登记本机可用的【纯 HTTP】回环端口（隧道回环端口优先；主端口为 http 时也可）。 */
 export function setBridgeSelfHttpPort(port: number): void { _selfHttpPort = port; }
+/** 后台「一键填入」应显示的推荐地址：直接给本机回环端口（公网隧道下填公网域名虽也能通——
+ *  服务端会强制重写——但界面显示公网地址让人误以为要绕公网）。端口未登记时返回 null，前端兜底页面 origin。 */
+export function bridgeLocalUrl(): string | null {
+  return _selfHttpPort == null ? null : `http://127.0.0.1:${_selfHttpPort}/api/claude-bridge`;
+}
 /** 自建 LLM 地址指向本应用桥接路径时 → 重写为 http://127.0.0.1:端口/...（未登记端口则原样返回）。纯函数式。 */
 export function rewriteBridgeSelfUrl(url: string): string {
   if (!url || !/\/api\/claude-bridge/i.test(url)) return url;

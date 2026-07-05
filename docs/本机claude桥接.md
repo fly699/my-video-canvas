@@ -81,7 +81,9 @@ GPT 侧的订阅等价物是 OpenAI **Codex CLI**(可用 ChatGPT Plus/Pro 订阅
 3. **把凭证放到服务器**:将 `~/.codex/auth.json` 拷到服务器同路径(Windows:`C:\Users\你\.codex\auth.json`)。该文件等同密码,注意保管。
 4. **后台**:模型管理 › 自建 LLM → 点「**一键填入本机 GPT(ChatGPT 订阅)**」→ 保存(地址/Key 与 Claude 完全共用,已配过就不用动)。
 
-之后画布模型选择器会出现「本机 GPT(订阅默认)」「本机 GPT · Codex」。模型 id 规则同 Claude:`gpt-local` = 订阅默认;`gpt-local:模型名` 透传给 `codex -m`(如 `gpt-local:gpt-5.3-codex`;有效模型名随 OpenAI 更新,以 `codex -m` 接受的为准)。
+之后画布模型选择器会出现「本机 GPT(订阅默认)」。模型 id 规则同 Claude:`gpt-local` = 订阅默认;`gpt-local:模型名` 透传给 `codex -m`。
+
+> **想固定具体模型?先真机验证再加条目。** 有效模型名随 OpenAI 版本/账号变动(一键填入不预置具体名,就是因为预置的名字在别的账号/版本上会报「未找到模型元数据」)。步骤:在服务器命令行跑 `codex exec --skip-git-repo-check -m 模型名 "hi"`,能正常回答 → 后台「模型」列表手动加 `gpt-local:该模型名` 条目;报「未找到模型元数据 / model not found」→ 换名字。
 
 ### GPT 侧注意
 
@@ -91,13 +93,13 @@ GPT 侧的订阅等价物是 OpenAI **Codex CLI**(可用 ChatGPT Plus/Pro 订阅
     但反过来,**若 auth.json 没放好**,codex 会静默落到 `OPENAI_API_KEY` 按量计费——放好凭证再用 `gpt-local` 条目。
 - 桥接以 `codex exec --sandbox read-only` 跑(禁写文件系统),纯文本进出,与 Claude 侧同等安全。
 - 额度受 ChatGPT 订阅用量上限约束,同样会被限流;合规注意事项与 Claude 侧相同。
-- 排错:节点报「无法启动 codex(ENOENT)」→ ①没装:`npm i -g @openai/codex` 后**重启服务**;②装了但在非标准路径:设 `CODEX_BIN`;报「无输出/退出码非 0」→ 多半是凭证没放好,在服务器命令行手测 `codex exec --skip-git-repo-check "你好"`。
+- 排错:节点报「无法启动 codex(ENOENT)」→ ①没装:`npm i -g @openai/codex` 后**重启服务**;②装了但在非标准路径:设 `CODEX_BIN`;报「无输出/退出码非 0」→ 多半是凭证没放好,在服务器命令行手测 `codex exec --skip-git-repo-check "你好"`;报「**未找到"某模型"的模型元数据**/model not found + 4xx」→ 该条目的模型名在你的 codex 版本/账号不可用,把后台该 `gpt-local:模型名` 条目删掉或改成真机验证过的名字(`gpt-local` 默认条目不受影响)。
 
 ## 注意事项
 
 - **额度与限流**：所有走这条路的调用共用你这个订阅账号的用量上限，撞上限会被限流（不扣钱，但会卡）。当多用户高频后端使用时尤其容易顶到上限。
 - **合规**：订阅计费本为**交互式使用**（Claude Code / 桌面 app）设计，拿来当 app 后端批量调用属灰色地带；要正规程序化调用，官方路子是 API Key（按量计费）。
-- **公网隧道部署**：新版服务端会**自动识别**「地址指向本应用桥接」并强制改走本机回环——即使一键填入的是公网域名也能通（老版本填公网域名会绕出公网被 Cloudflare 卡 502/超时）。仍推荐把「服务器地址」填成 `http://127.0.0.1:<内部端口>/api/claude-bridge` 图个直观。
+- **公网隧道部署**：新版「一键填入」会**直接填本机回环地址** `http://127.0.0.1:<内部端口>/api/claude-bridge`（端口由服务端上报，无需自己查）；即使手填了公网域名，服务端也会**自动识别**「地址指向本应用桥接」并强制改走本机回环（老版本填公网域名会绕出公网被 Cloudflare 卡 502/超时）。
 - **默认模型**：桥接不指定 `--model`，用订阅的默认模型。
 - **部署生效**：改了服务端 env 必须**重启 node 进程**；改了后台自建 LLM 配置即时生效（无需重启）。
 

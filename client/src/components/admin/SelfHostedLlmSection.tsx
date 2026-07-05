@@ -22,11 +22,16 @@ export function SelfHostedLlmSection() {
     if (q.data) { setUrl(q.data.url ?? ""); setApiKey(q.data.apiKey ?? ""); setModels(q.data.models ?? []); }
   }, [q.data]);
 
-  // 「本机 Claude（订阅）」一键接入：把服务器地址/模型填成本机桥接的默认值。地址用当前站点 origin +
-  // /api/claude-bridge（服务端会自动补 /v1/chat/completions）。API Key 需管理员填成与服务端环境变量
-  // CLAUDE_LOCAL_BRIDGE_KEY 一致的值——一键只填地址与模型，key 留给你手动粘贴。
+  // 一键填入的桥接地址：优先用服务端上报的真实回环地址（http://127.0.0.1:内部端口/api/claude-bridge），
+  // 公网隧道下不再把公网域名填进去（老写法虽也能通——服务端会强制重写回环——但显示公网地址误导人）。
+  // 服务端未上报（老服务端/启动早期）才兜底页面 origin。
+  const bridgeUrl = () => q.data?.bridgeLocalUrl || `${window.location.origin}/api/claude-bridge`;
+
+  // 「本机 Claude（订阅）」一键接入：把服务器地址/模型填成本机桥接的默认值（服务端会自动补
+  // /v1/chat/completions）。API Key 需管理员填成与服务端环境变量 CLAUDE_LOCAL_BRIDGE_KEY
+  // 一致的值——一键只填地址与模型，key 留给你手动粘贴。
   const applyClaudeLocal = () => {
-    setUrl(`${window.location.origin}/api/claude-bridge`);
+    setUrl(bridgeUrl());
     // 模型切换约定：id 冒号后缀会被桥接透传给 `claude --model`（sonnet/opus/haiku 或完整模型 id）；
     // 无后缀 = 订阅默认模型。Sonnet 各档订阅都可用；Opus 需 Max 档订阅（Pro 选了会报错）。
     const CLAUDE_LOCAL_MODELS: Model[] = [
@@ -41,10 +46,12 @@ export function SelfHostedLlmSection() {
   // 「本机 GPT（ChatGPT 订阅）」一键接入：与 Claude 共用同一桥接地址与 Key，按模型前缀分流。
   // 只需服务器装 @openai/codex 并放好订阅登录凭证（~/.codex/auth.json），加模型条目即可。
   const applyGptLocal = () => {
-    setUrl(`${window.location.origin}/api/claude-bridge`);
+    setUrl(bridgeUrl());
+    // 只预置「订阅默认」一条：具体模型名随 codex 版本/账号变动（真机翻车：预置的 gpt-5.3-codex
+    // 在用户账号报「未找到模型元数据」+4xx）。想固定模型：先在服务器验证
+    // `codex exec --skip-git-repo-check -m 模型名 "hi"` 能通，再手动加 `gpt-local:模型名` 条目。
     const GPT_LOCAL_MODELS: Model[] = [
       { id: "gpt-local", label: "本机 GPT（订阅默认）" },
-      { id: "gpt-local:gpt-5.3-codex", label: "本机 GPT · Codex" },
     ];
     setModels((prev) => [...prev, ...GPT_LOCAL_MODELS.filter((m) => !prev.some((p) => p.id === m.id))]);
     toast.success("已填入本机 GPT 模型条目（与 Claude 同地址同 Key）——确认服务器已装 @openai/codex 并放好 ~/.codex/auth.json");
@@ -100,7 +107,7 @@ export function SelfHostedLlmSection() {
           <br />1) 服务器装 Claude Code：<code>npm i -g @anthropic-ai/claude-code</code>，再 <code>claude setup-token</code> 登录订阅，把拿到的 token 设为服务端环境变量 <code>CLAUDE_CODE_OAUTH_TOKEN</code>（<strong>切勿</strong>同时设 ANTHROPIC_API_KEY，否则变按量计费）。
           <br />2) 服务端再设一个自定义口令环境变量 <code>CLAUDE_LOCAL_BRIDGE_KEY</code>（任意字符串，用于鉴权；不设=桥接不启用）。重启服务。
           <br />3) 点下面「一键填入」→ 把下方 <strong>API Key</strong> 填成与 <code>CLAUDE_LOCAL_BRIDGE_KEY</code> 完全一致的值 → 保存。之后画布模型选择器里会出现「本机 Claude」的 <strong>订阅默认 / Sonnet / Opus</strong> 三个条目，选哪个就用哪个模型（Opus 需 Max 档订阅；也可手动加 <code>claude-local:haiku</code> 或 <code>claude-local:完整模型id</code> 条目）。
-          <br /><span style={{ color: "var(--c-t4)" }}>注：额度受订阅用量上限约束、会被限流；订阅计费本为交互式使用，用作后端批量属灰色地带。公网隧道部署时地址请改成内网 <code>http://127.0.0.1:内部端口/api/claude-bridge</code>。</span>
+          <br /><span style={{ color: "var(--c-t4)" }}>注：额度受订阅用量上限约束、会被限流；订阅计费本为交互式使用，用作后端批量属灰色地带。「一键填入」会自动使用本机回环地址 <code>http://127.0.0.1:内部端口/api/claude-bridge</code>（公网隧道部署也不绕公网）。</span>
         </p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={applyClaudeLocal} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
@@ -116,7 +123,9 @@ export function SelfHostedLlmSection() {
           <strong>GPT（ChatGPT Plus/Pro 订阅）接入</strong>：与 Claude 共用同一地址同一 Key（按模型前缀分流），零新增环境变量。
           服务器 <code>npm i -g @openai/codex</code> → 在能开浏览器的机器跑 <code>codex</code> 选「Sign in with ChatGPT」登录 →
           把该机 <code>~/.codex/auth.json</code> 拷到服务器同路径（Windows：<code>C:\Users\你\.codex\auth.json</code>）→ 点上面按钮加模型条目 → 保存。
-          模型 id 规则同 Claude：<code>gpt-local</code>=订阅默认，<code>gpt-local:模型名</code> 透传给 <code>codex -m</code>。
+          模型 id 规则同 Claude：<code>gpt-local</code>=订阅默认；想固定具体模型，<strong>先在服务器验证</strong>
+          <code>codex exec --skip-git-repo-check -m 模型名 &quot;hi&quot;</code> 能通，再手动加 <code>gpt-local:模型名</code> 条目
+          （无效模型名会报「未找到模型元数据」+ 4xx，有效名随 OpenAI 版本/账号变动，故不预置）。
           <strong>切勿</strong>设 <code>CODEX_API_KEY</code>（会绕过订阅变按量计费）；<code>OPENAI_API_KEY</code>（配音 TTS 在用）可共存——auth.json 在时 codex 优先走订阅，但 auth.json 没放好会静默落到它按量计费。
         </p>
       </div>
