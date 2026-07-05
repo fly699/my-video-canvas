@@ -42,6 +42,26 @@ export default function ChatPage() {
     return () => window.removeEventListener("beforeinstallprompt", onBIP);
   }, []);
 
+  // 移动端真实可视高度：100vh/100dvh 在部分手机浏览器（尤其地址栏在底部的 Chrome）仍会把
+  // 浏览器 UI 算进去，底部输入框被顶出视口而「消失」。用 visualViewport.height 精确绑定根容器
+  // 高度（地址栏收展、软键盘弹起都实时跟随），彻底不依赖 dvh 支持度。
+  const [viewportH, setViewportH] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const apply = () => setViewportH(Math.round(vv ? vv.height : window.innerHeight));
+    apply();
+    vv?.addEventListener("resize", apply);
+    vv?.addEventListener("scroll", apply);
+    window.addEventListener("resize", apply);
+    window.addEventListener("orientationchange", apply);
+    return () => {
+      vv?.removeEventListener("resize", apply);
+      vv?.removeEventListener("scroll", apply);
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("orientationchange", apply);
+    };
+  }, []);
+
   function openCompact() {
     window.open("/chat", "avc-chat", "width=460,height=780,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
   }
@@ -55,7 +75,7 @@ export default function ChatPage() {
 
   return (
     <ChatProvider>
-      <div className={light ? "chat-root chat-light" : "chat-root"} style={{ display: "flex", flexDirection: "column", background: C.bg, color: C.t1, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
+      <div className={light ? "chat-root chat-light" : "chat-root"} style={{ height: viewportH != null ? `${viewportH}px` : undefined, display: "flex", flexDirection: "column", overflow: "hidden", background: C.bg, color: C.t1, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
         {/* glow header */}
         <header style={{
           position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between",
