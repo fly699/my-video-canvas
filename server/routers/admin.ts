@@ -8,6 +8,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { bridgeLocalUrl } from "../_core/claudeBridge";
+import { buildConfigChecklist } from "../_core/configChecklist";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput, getTunnelPid } from "../_core/tunnel";
 import { detectGatewayForSource, detectLineForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, fetchPublicEgressIp, fetchLinePublicEgressIp, tunnelDiagnose } from "../_core/tunnelRoute";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
@@ -844,5 +845,10 @@ export const adminRouter = router({
       writeAuditLog({ ctx, action: "system_restart", detail: {} });
       return restartServer();
     }),
+  }),
+
+  // ── 配置体检：汇总 .env / 数据库 / CLI·凭证三处的部署配置成一张核对清单（只回状态，无密钥值）──
+  config: router({
+    checklist: adminProcedure.query(async () => buildConfigChecklist()),
   }),
 });

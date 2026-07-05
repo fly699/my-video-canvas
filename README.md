@@ -91,6 +91,9 @@ Files in `client/public` are available at the root of your site—reference them
 
 ## Environment Variables
 
+> **完整变量清单、必需性与说明见项目根目录 [`.env.example`](.env.example)**（新部署复制为 `.env` 逐项填写）。
+> 部署后到【管理后台 →「配置体检」】逐项核对配置是否就位、缺什么补什么（含 ffmpeg/CLI/凭证探测）。
+
 Available pre-defined system envs:
 - `DATABASE_URL`: MySQL/TiDB connection string
 - `JWT_SECRET`: Session cookie signing secret

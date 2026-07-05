@@ -103,6 +103,26 @@ DATABASE_URL="mysql://..." OAUTH_SERVER_URL="..." pnpm start
 
 ---
 
+## 配置总览与「配置体检」（新部署必看）
+
+**全部环境变量的完整清单、必需性、默认行为，见项目根目录 [`.env.example`](.env.example)**——
+新部署时复制它为 `.env` 逐项填写即可（`copy .env.example .env`）。一键部署（`deploy.bat`）
+会自动生成一份含随机 `JWT_SECRET` 的 `.env`，其余可选项均以注释形式列出、按需取消注释填值。
+
+> **改动 `.env` 后必须重启服务才生效**：`net stop AVC-App && net start AVC-App`，或 `pm2 restart avc`；
+> 跑一次「系统更新」/`update.bat` 会自动重启。前端改动后浏览器强刷（Ctrl+Shift+R）。
+
+配置分散在三处，`.env.example` 顶部有说明：
+- **`.env` 环境变量**：核心（DB/JWT/OWNER）、对象存储 `S3_*`、各 AI 平台密钥、订阅桥接、工程智能体。
+- **管理后台页面（存数据库）**：SMTP 邮件（注册认证页签）、公网隧道 token（公网隧道页签）、
+  kie 子密钥分发（kie.ai 密钥页签）、自建 LLM 地址/Key/模型（模型管理›自建 LLM）、存储持久化开关。
+- **服务器上的 CLI 与凭证文件**：`ffmpeg`、`claude`/`codex` CLI、`~/.codex/auth.json` 订阅凭证。
+
+**部署后务必到【管理后台 →「配置体检」页签】逐项核对**：它把上述三处配置汇总成一张清单，
+标出「已配置 / 需注意 / 缺失 / 未启用」并给出修复指引（含「桥接 Key 不一致会 401」
+「同时设 `ANTHROPIC_API_KEY` 会顶掉订阅计费」「`ffmpeg` 没装导出全挂」等常见坑的检测），
+还能一键复制/下载 `.env.example` 模板。只显示配置状态，**不显示任何密钥明文**。
+
 ## 端口与环境变量
 
 - `PORT`：服务监听端口（默认 `3000`）。
@@ -112,6 +132,7 @@ DATABASE_URL="mysql://..." OAUTH_SERVER_URL="..." pnpm start
 
 > 视频剪辑器导出的成片只写入 MinIO/S3，并按用户前缀 `u/{userId}/editor/...`
 > 归档、登记进素材库；下载受「严格下载授权」开关约束。
+> **完整变量清单见 [`.env.example`](.env.example)，本节仅列最常改的几个。**
 
 ---
 

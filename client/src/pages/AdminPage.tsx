@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, type LucideIcon } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, type LucideIcon } from "lucide-react";
+import { ConfigChecklistPanel } from "@/components/admin/ConfigChecklistPanel";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 import { ComfyOpsPanel } from "@/components/admin/ComfyOpsPanel";
 import { AuroraBackground } from "@/components/AuroraBackground";
@@ -16,7 +17,7 @@ import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOr
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "tunnel" | "auth" | "report" | "intro";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
 
 // 标签页定义：[key, 中文标签, 图标]
 const TAB_DEFS: [Tab, string, LucideIcon][] = [
@@ -35,6 +36,7 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["assets", "素材库(全用户)", ImageIcon],
   ["downloads", "下载审批", DownloadCloud],
   ["system", "系统更新", RotateCw],
+  ["config", "配置体检", ClipboardCheck],
   ["report", "工作成果报告", FileBarChart2],
   ["intro", "项目功能汇报", FileText],
 ];
@@ -259,6 +261,7 @@ export default function AdminPage() {
           {activeTab === "assets" && <AssetsAdminPanel />}
           {activeTab === "downloads" && <DownloadsAdminPanel />}
           {activeTab === "system" && <SystemUpdatePanel />}
+          {activeTab === "config" && <LevelGate need={3}><ConfigChecklistPanel /></LevelGate>}
           {activeTab === "tunnel" && <LevelGate need={3}><TunnelPanel /></LevelGate>}
           {activeTab === "report" && <ReportFrame src="/work-report.html" title="工作成果量化评估报告" desc="基于 Git 全量历史与会话转录的多维度量化评估（提交/工时/代码量/Token/工作量系数 + 立项初衷与对比表）" />}
           {activeTab === "intro" && <ReportFrame src="/project-report.html" title="项目功能汇报" desc="平台全功能图文汇报（含「界面实录」真实截图：系统架构 / AI 模型矩阵 / ComfyUI 算力 / 3D 导演台 / 安全防护 / 私有定制）" />}
