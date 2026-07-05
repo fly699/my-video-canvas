@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { resolveClaudeSpawn, resolveClaudeBin } from "./superAgent/claudeProcess";
 import { isGptLocalModel, codexModelArg, runCodexText } from "./codexBridge";
+import { collectImageUrls, collectFileUrls, resolveImages, docTextFromFileUrls, buildClaudeStreamJsonInput, parseClaudeStreamJsonResult } from "./bridgeAttachments";
 
 type OAContent = string | Array<string | { type?: string; text?: string }>;
 export interface OAMessage { role?: string; content?: OAContent }
@@ -94,26 +95,56 @@ export function bridgeModelArg(model: unknown): string | null {
   return m;
 }
 
-/** 跑一次无头 claude 拿纯文本回复。model 为 null 时不传 --model（订阅默认）；env 继承 CLAUDE_CODE_OAUTH_TOKEN。 */
-export function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null }): Promise<{ text: string; isError: boolean }> {
-  const prompt = messagesToPrompt(opts.messages);
-  const { cmd, args, shell } = resolveClaudeSpawn(resolveClaudeBin(), ["-p", "--output-format", "json", ...(opts.model ? ["--model", opts.model] : [])]);
+/** 起一次 claude 子进程、把 stdin 写进去、收集 stdout/stderr，用 parse 解析结果。内部复用。 */
+function spawnClaudeCollect(
+  extraArgs: string[], stdin: string, timeoutMs: number,
+  parse: (out: string, err: string) => { text: string; isError: boolean },
+): Promise<{ text: string; isError: boolean }> {
+  const { cmd, args, shell } = resolveClaudeSpawn(resolveClaudeBin(), extraArgs);
   return new Promise((resolve) => {
     let out = "", err = "", done = false, spawnErr: string | null = null;
     const child = spawn(cmd, args, { cwd: tmpdir(), env: process.env, stdio: ["pipe", "pipe", "pipe"], shell });
-    const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } }, opts.timeoutMs);
+    const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } }, timeoutMs);
     child.stdout?.on("data", (d) => { out += String(d); });
     child.stderr?.on("data", (d) => { err += String(d); });
-    try { child.stdin?.write(prompt); child.stdin?.end(); } catch { /* stdin 不可用 */ }
+    try { child.stdin?.write(stdin); child.stdin?.end(); } catch { /* stdin 不可用 */ }
     const finish = () => {
       if (done) return; done = true; clearTimeout(timer);
       if (spawnErr) return resolve({ text: `无法启动 claude：${spawnErr}（检查 CLAUDE_BIN、是否已 npm i -g @anthropic-ai/claude-code）`, isError: true });
-      const parsed = parseClaudeJsonResult(out);
-      if ((!parsed.text || parsed.isError) && err.trim()) return resolve({ text: parsed.text || err.trim().slice(-800), isError: true });
-      resolve(parsed);
+      resolve(parse(out, err));
     };
     child.on("error", (e) => { spawnErr = e instanceof Error ? e.message : String(e); finish(); });
     child.on("close", finish);
+  });
+}
+
+/** 跑一次无头 claude 拿回复。model 为 null 时不传 --model（订阅默认）；env 继承 CLAUDE_CODE_OAUTH_TOKEN。
+ *  纯文本走 `--output-format json`（快）；检测到图片附件时改走 `--input-format stream-json`
+ *  内联 base64 图片块（真机实测可用，无需给工具、不落磁盘）；文档一律解析成文本追加进提示词。 */
+export async function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null }): Promise<{ text: string; isError: boolean }> {
+  let prompt = messagesToPrompt(opts.messages);
+  const docText = await docTextFromFileUrls(collectFileUrls(opts.messages));
+  if (docText) prompt = [prompt, docText].filter(Boolean).join("\n\n");
+  const images = await resolveImages(collectImageUrls(opts.messages));
+  const modelArgs = opts.model ? ["--model", opts.model] : [];
+
+  if (images.length) {
+    // 图片路径：stream-json 输入必须配 stream-json 输出（CLI 强制），末尾 result 行取答案。
+    const input = buildClaudeStreamJsonInput(prompt, images);
+    const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", ...modelArgs];
+    const r = await spawnClaudeCollect(args, input, opts.timeoutMs, (out, err) => {
+      const parsed = parseClaudeStreamJsonResult(out);
+      if ((!parsed.text || parsed.isError) && err.trim()) return { text: parsed.text || err.trim().slice(-800), isError: true };
+      return parsed;
+    });
+    return r;
+  }
+
+  // 纯文本（或仅文档）路径：沿用原来的单条 JSON 输出，快且稳。
+  return spawnClaudeCollect(["-p", "--output-format", "json", ...modelArgs], prompt, opts.timeoutMs, (out, err) => {
+    const parsed = parseClaudeJsonResult(out);
+    if ((!parsed.text || parsed.isError) && err.trim()) return { text: parsed.text || err.trim().slice(-800), isError: true };
+    return parsed;
   });
 }
 

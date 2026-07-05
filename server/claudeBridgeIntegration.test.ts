@@ -88,6 +88,57 @@ describe("模型切换透传（--model）", () => {
   });
 });
 
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+describe("图片附件：Claude 走 stream-json，codex 走 -i", () => {
+  it("带 image_url → claude 用 --input-format stream-json；回复取自 result 行", async () => {
+    process.env.CLAUDE_LOCAL_BRIDGE_KEY = "secret";
+    // 假 claude（图片路径）：把参数回显进一条 stream-json result 行（桥接此路径按 stream-json 解析）
+    const streamEcho = join(dir, "claude-stream-echo");
+    writeFileSync(streamEcho, "#!/bin/sh\ncat > /dev/null\necho \"{\\\"type\\\":\\\"result\\\",\\\"subtype\\\":\\\"success\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"ARGS:$*\\\"}\"\n");
+    chmodSync(streamEcho, 0o755);
+    process.env.CLAUDE_BIN = streamEcho;
+    const r = await post({ authorization: "Bearer secret" }, {
+      model: "claude-local",
+      messages: [{ role: "user", content: [
+        { type: "text", text: "什么颜色" },
+        { type: "image_url", image_url: { url: `data:image/png;base64,${PNG}` } },
+      ]}],
+    });
+    expect(r.status).toBe(200);
+    const c = (await r.json()).choices[0].message.content as string;
+    expect(c).toContain("--input-format stream-json");
+    expect(c).toContain("--output-format stream-json");
+  });
+
+  it("纯文本仍走快路径（--output-format json，不带 stream-json）", async () => {
+    process.env.CLAUDE_LOCAL_BRIDGE_KEY = "secret";
+    process.env.CLAUDE_BIN = echoClaude;
+    const r = await post({ authorization: "Bearer secret" }, { model: "claude-local", messages: [{ role: "user", content: "你好" }] });
+    const c = (await r.json()).choices[0].message.content as string;
+    expect(c).not.toContain("stream-json");
+  });
+
+  it("带 image_url → codex 收到 -i <文件>", async () => {
+    process.env.CLAUDE_LOCAL_BRIDGE_KEY = "secret";
+    const codexEcho = join(dir, "codex-img-echo");
+    writeFileSync(codexEcho, "#!/bin/sh\ncat > /dev/null\necho \"CODEX-ARGS:$*\"\n");
+    chmodSync(codexEcho, 0o755);
+    process.env.CODEX_BIN = codexEcho;
+    try {
+      const r = await post({ authorization: "Bearer secret" }, {
+        model: "gpt-local",
+        messages: [{ role: "user", content: [
+          { type: "text", text: "什么颜色" },
+          { type: "image_url", image_url: { url: `data:image/png;base64,${PNG}` } },
+        ]}],
+      });
+      const c = (await r.json()).choices[0].message.content as string;
+      expect(c).toContain("-i ");
+    } finally { delete process.env.CODEX_BIN; }
+  });
+});
+
 describe("GPT（codex）分流：同端点同 Key，按模型前缀走 codex exec", () => {
   it("gpt-local:foo → codex 收到 exec/--sandbox read-only/-m foo；回复来自 codex stdout", async () => {
     process.env.CLAUDE_LOCAL_BRIDGE_KEY = "secret";
