@@ -19,8 +19,9 @@ export default function ChatPage() {
   const [canInstall, setCanInstall] = useState(false);
   // 专有浅色主题：仅作用于聊天页（含 Chrome 应用），通过 .chat-light 包裹隔离，
   // 不影响画布主题。持久化在独立的 localStorage key。
+  // 聊天页默认浅色主题：未显式切换过（localStorage 无键）→ 浅色；用户切过则沿用其选择（"1" 浅/"0" 深）。
   const [light, setLight] = useState(() => {
-    try { return localStorage.getItem("avc:chat-light") === "1"; } catch { return false; }
+    try { const v = localStorage.getItem("avc:chat-light"); return v === null ? true : v === "1"; } catch { return true; }
   });
   useEffect(() => {
     try { localStorage.setItem("avc:chat-light", light ? "1" : "0"); } catch { /* quota */ }

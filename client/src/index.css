@@ -849,6 +849,7 @@
   .blg-orbit, .blg-orbit-rev, .blg-spin-slow, .blg-pulse, .blg-blink,
   .text-gradient-animated,
   .btn-shine::after,
+  .ai-assistant-cta, .ai-assistant-cta::before, .ai-assistant-cta .ai-cta-icon,
   .lift-card { animation: none !important; transition: none !important; }
   /* 入场动画禁用时必须同时强制可见，否则元素卡在初始 opacity:0 */
   .animate-fade-up { animation: none !important; opacity: 1 !important; }
@@ -911,6 +912,47 @@
 /* ── Workflow run pulse ring ─────────────────────────────────────────────────── */
 .node-run-pulse {
   animation: avc-run-ring 1.2s cubic-bezier(0.66, 0, 0, 1) infinite;
+}
+
+/* ── 首页「AI 助手」入口 CTA ──────────────────────────────────────────────────
+   平台旗舰入口，做成动感渐变胶囊 + 呼吸光晕 + 掠光，明显区别于旁边的描边按钮以抓眼球。 */
+@keyframes avc-ai-glow {
+  0%, 100% { box-shadow: 0 2px 12px oklch(0.62 0.22 300 / 0.35), 0 0 0 0 oklch(0.66 0.22 300 / 0); }
+  50%      { box-shadow: 0 4px 20px oklch(0.62 0.22 300 / 0.55), 0 0 0 4px oklch(0.66 0.22 300 / 0.18); }
+}
+.ai-assistant-cta {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  border: 1px solid oklch(0.75 0.18 300 / 0.55);
+  background: linear-gradient(100deg,
+    oklch(0.62 0.22 285), oklch(0.60 0.24 322), oklch(0.66 0.20 262), oklch(0.62 0.22 285));
+  background-size: 220% 100%;
+  animation: avc-gradient-pan 6s linear infinite alternate, avc-ai-glow 2.6s ease-in-out infinite;
+  transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+}
+/* 周期性掠光 */
+.ai-assistant-cta::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; left: -70%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, oklch(1 0 0 / 0.42), transparent);
+  transform: skewX(-18deg);
+  animation: avc-shine 4s ease-in-out infinite;
+  pointer-events: none;
+}
+.ai-assistant-cta > * { position: relative; z-index: 1; }
+.ai-assistant-cta:hover {
+  transform: translateY(-1px) scale(1.04);
+  filter: saturate(1.15);
+  box-shadow: 0 8px 26px oklch(0.62 0.22 300 / 0.6);
+}
+/* 图标轻微脉动，进一步引导视线 */
+.ai-assistant-cta .ai-cta-icon { animation: avc-ai-icon-pulse 2.6s ease-in-out infinite; }
+@keyframes avc-ai-icon-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.18); }
 }
 
 /* ── Canvas vignette overlay ─────────────────────────────────────────────────── */
