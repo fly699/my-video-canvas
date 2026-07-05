@@ -131,7 +131,7 @@ DATABASE_URL="mysql://..." OAUTH_SERVER_URL="..." pnpm start
 | `SUPER_AGENT_CODE_ALLOW_BASH=1` | 第二把钥匙：放行 shell（不设=只能读写隔离工作区，最安全） |
 | `SUPER_AGENT_PERMISSION_CMD=node`<br>`SUPER_AGENT_PERMISSION_ARGS=["<项目绝对路径>/dist/permissionMcpServer.cjs"]` | 执行前命令审批（危险命令根本不跑）。Windows 路径用 `\\` 转义 |
 | `CLAUDE_CODE_OAUTH_TOKEN` | 订阅授权（`claude setup-token` 所得；**勿同时设 `ANTHROPIC_API_KEY`**，否则变按量计费） |
-| `CLAUDE_BIN` | CLI 不在 PATH 时的绝对路径（Windows 一般 `C:\Users\你\AppData\Roaming\npm\claude.cmd`） |
+| `CLAUDE_BIN` | 仅当 CLI 装在非标准位置才需要（Windows 标准 npm 全局路径会**自动探测**，免配置） |
 
 前置：`npm i -g @anthropic-ai/claude-code`；`dist/permissionMcpServer.cjs` 由 `pnpm build` 自动产出。
 逐步勾选清单见 **`docs/phase2-启用清单.md`**，原理与安全边界见 **`docs/super-agent.md`**（含「只读沙箱 vs 放行 Shell」能不能碰真实文件的说明）。
@@ -160,7 +160,7 @@ DATABASE_URL="mysql://..." OAUTH_SERVER_URL="..." pnpm start
 ### D. 本机 GPT（ChatGPT 订阅）——与 C 同端点同 Key，零新增变量
 
 前置三步：
-1. 服务器 `npm i -g @openai/codex`（路径特殊时设 `CODEX_BIN`）；
+1. 服务器 `npm i -g @openai/codex`，**装完重启服务**（Windows 标准路径自动探测，免设 `CODEX_BIN`）；
 2. 在能开浏览器的机器跑 `codex` → 「Sign in with ChatGPT」登录订阅；
 3. 把该机 `~/.codex/auth.json` 拷到服务器同路径（Windows：`C:\Users\你\.codex\auth.json`；等同密码，注意保管）。
 

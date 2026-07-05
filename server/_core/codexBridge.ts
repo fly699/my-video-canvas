@@ -40,10 +40,17 @@ export function resolveCodexBin(): string { return process.env.CODEX_BIN?.trim()
 export function resolveCodexSpawn(
   bin: string,
   args: string[],
-  opts: { platform?: NodeJS.Platform; exists?: (p: string) => boolean } = {},
+  opts: { platform?: NodeJS.Platform; exists?: (p: string) => boolean; appData?: string } = {},
 ): { cmd: string; args: string[]; shell: boolean } {
   const platform = opts.platform ?? process.platform;
   const exists = opts.exists ?? existsSync;
+  // Windows 裸名自动探测：spawn 无 shell 只认 .exe，裸 "codex" 必 ENOENT（npm 全局装的是
+  // codex.cmd）。用户没设 CODEX_BIN 时自动探 %APPDATA%\npm\codex.cmd——省掉一整个配置项。
+  if (platform === "win32" && !/[\\/]/.test(bin) && !/\.(cmd|bat|exe)$/i.test(bin)) {
+    const appData = opts.appData ?? process.env.APPDATA ?? "";
+    const probe = appData ? join(appData, "npm", `${bin}.cmd`) : "";
+    if (probe && exists(probe)) bin = probe;
+  }
   if (platform === "win32" && /\.(cmd|bat)$/i.test(bin)) {
     const js = join(dirname(bin), "node_modules", "@openai", "codex", "bin", "codex.js");
     if (exists(js)) return { cmd: process.execPath, args: [js, ...args], shell: false };
@@ -66,7 +73,7 @@ export function runCodexText(opts: { messages: OAMessage[]; timeoutMs: number; m
     try { child.stdin?.write(prompt); child.stdin?.end(); } catch { /* stdin 不可用 */ }
     const finish = (code?: number | null) => {
       if (done) return; done = true; clearTimeout(timer);
-      if (spawnErr) return resolve({ text: `无法启动 codex：${spawnErr}（检查 CODEX_BIN、是否已 npm i -g @openai/codex）`, isError: true });
+      if (spawnErr) return resolve({ text: `无法启动 codex：${spawnErr}。请在服务器上 npm i -g @openai/codex 并【重启本服务】（新装的 CLI 要重启后才可见）；若装在非默认位置，设 CODEX_BIN=codex.cmd 的完整路径（Windows 标准路径 C:\\Users\\你\\AppData\\Roaming\\npm\\codex.cmd 会自动探测，无需配置）。`, isError: true });
       const text = out.trim();
       if (!text || (typeof code === "number" && code !== 0)) {
         return resolve({ text: text || err.trim().slice(-800) || `codex 退出码 ${code ?? "?"}，无输出。检查订阅登录：把有浏览器机器上登录后的 ~/.codex/auth.json 拷到服务器同路径。`, isError: true });
