@@ -55,7 +55,7 @@ export default function ChatPage() {
 
   return (
     <ChatProvider>
-      <div className={light ? "chat-light" : undefined} style={{ height: "100vh", display: "flex", flexDirection: "column", background: C.bg, color: C.t1, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
+      <div className={light ? "chat-root chat-light" : "chat-root"} style={{ display: "flex", flexDirection: "column", background: C.bg, color: C.t1, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
         {/* glow header */}
         <header style={{
           position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between",

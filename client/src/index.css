@@ -473,6 +473,15 @@
     color-scheme: light;
   }
 
+  /* ── Chat page root height ────────────────────────────────────────────────
+     移动端 100vh 会把浏览器地址栏那块也算进去（尤其地址栏在底部的 Chrome），
+     导致底部输入框被顶到视口外「消失」。用 100dvh（动态视口高度，排除浏览器 UI）
+     修复；先写 100vh 作老浏览器兜底，支持 dvh 的浏览器用后者覆盖。 */
+  .chat-root {
+    height: 100vh;
+    height: 100dvh;
+  }
+
   /* ── Chat app dedicated light theme ───────────────────────────────────────
      Scoped to the .chat-light wrapper (applied on the /chat page root) so the
      Chrome app can toggle a soft light theme WITHOUT touching the global
