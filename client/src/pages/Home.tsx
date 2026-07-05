@@ -1107,18 +1107,10 @@ export default function Home() {
           <div className="flex items-center gap-2.5">
             <a
               href="/chat"
-              className="group inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150"
-              style={{
-                color: "oklch(0.78 0.16 285)",
-                border: "1px solid oklch(0.68 0.22 285 / 0.35)",
-                background: "color-mix(in oklch, oklch(0.68 0.22 285 / 0.12) 60%, transparent)",
-                backdropFilter: "blur(10px)",
-                WebkitBackdropFilter: "blur(10px)",
-              }}
-              onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "oklch(0.68 0.22 285 / 0.6)"; el.style.background = "oklch(0.68 0.22 285 / 0.20)"; el.style.color = "oklch(0.86 0.12 285)"; }}
-              onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "oklch(0.68 0.22 285 / 0.35)"; el.style.background = "color-mix(in oklch, oklch(0.68 0.22 285 / 0.12) 60%, transparent)"; el.style.color = "oklch(0.78 0.16 285)"; }}
+              title="AI 助手 · 团队聊天"
+              className="ai-assistant-cta group inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold"
             >
-              <MessageCircle className="w-3.5 h-3.5" />
+              <Sparkles className="ai-cta-icon w-3.5 h-3.5" />
               AI助手
             </a>
             {user.role === "admin" && (
