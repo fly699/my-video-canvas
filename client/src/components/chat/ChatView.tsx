@@ -363,7 +363,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
       )}
 
       {/* input */}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: narrow ? "8px 10px calc(12px + env(safe-area-inset-bottom))" : "8px 16px 14px", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: narrow ? "8px 10px calc(12px + env(safe-area-inset-bottom, 0px))" : "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         <button onClick={() => fileRef.current?.click()} title={isAI ? "添加附件（图片可作参考图，需视觉模型）" : `添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
         {!isAI && <button onClick={() => screenshot()} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>}
