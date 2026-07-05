@@ -76,12 +76,18 @@ export default function ChatPage() {
             <button onClick={() => setLight((v) => !v)} title={light ? "切换到深色" : "切换到浅色"} style={{ ...iconBtn, ...(light ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
               {light ? <Moon size={18} /> : <Sun size={18} />}
             </button>
-            <button onClick={openCompact} title="在精简小窗中打开" style={{ ...ghostBtn, height: 34, padding: narrow ? "0" : "0 12px", width: narrow ? 34 : undefined, fontSize: 13 }}>
-              <ExternalLink size={15} />{!narrow && " 精简窗口"}
-            </button>
-            <button onClick={install} title="安装为桌面应用" style={{ ...ghostBtn, height: 34, padding: narrow ? "0" : "0 12px", width: narrow ? 34 : undefined, fontSize: 13, ...(canInstall ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
-              <Download size={15} />{!narrow && " 安装应用"}
-            </button>
+            {/* 精简小窗是桌面弹窗，手机上无意义 → 移动端隐藏 */}
+            {!narrow && (
+              <button onClick={openCompact} title="在精简小窗中打开" style={{ ...ghostBtn, height: 34, padding: "0 12px", fontSize: 13 }}>
+                <ExternalLink size={15} /> 精简窗口
+              </button>
+            )}
+            {/* 安装为应用：移动端仅当浏览器确实可安装时才显示，否则藏起来省空间 */}
+            {(!narrow || canInstall) && (
+              <button onClick={install} title="安装为桌面应用" style={{ ...ghostBtn, height: 34, padding: narrow ? "0" : "0 12px", width: narrow ? 34 : undefined, fontSize: 13, ...(canInstall ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
+                <Download size={15} />{!narrow && " 安装应用"}
+              </button>
+            )}
             <button onClick={() => setMembersOpen((v) => !v)} title="成员/在线" style={{ ...iconBtn, ...(membersOpen ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
               <Users size={18} />
             </button>
@@ -94,7 +100,7 @@ export default function ChatPage() {
             ? <Drawer side="left" onClose={() => setSidebarOpen(false)}><ConversationList /></Drawer>
             : <ConversationList />)}
 
-          <ChatView membersOpen={membersOpen} />
+          <ChatView membersOpen={membersOpen} narrow={narrow} />
 
           {membersOpen && (narrow
             ? <Drawer side="right" onClose={() => setMembersOpen(false)}><MembersPanel /></Drawer>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, ChevronDown } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, ChevronDown, Server } from "lucide-react";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
@@ -25,9 +25,11 @@ const fileToBase64 = (f: File): Promise<string> => new Promise((resolve, reject)
   r.readAsDataURL(f);
 });
 
-export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
+export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: boolean; narrow?: boolean }) {
   const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, e2eAvailable, myUserId, deleteRoom, leaveRoom, reloadActiveMessages } = useChat();
   const [text, setText] = useState("");
+  // 移动端：ComfyUI 服务器监控条（GVM）对手机聊天用户是噪音——默认收起，需要时点开。
+  const [statusOpen, setStatusOpen] = useState(false);
   const [staged, setStaged] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -205,9 +207,9 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
          onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
          onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}>
       {/* header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-        <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 11 }}>
-          <span style={{ width: 38, height: 38, borderRadius: 11, background: avatarGrad(activeConv.type === "dm" ? `u${activeConv.peer?.id}` : `c${activeConv.id}`), color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}>{initials(title)}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: narrow ? "9px 12px" : "12px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: narrow ? 8 : 11 }}>
+          <span style={{ width: narrow ? 32 : 38, height: narrow ? 32 : 38, borderRadius: narrow ? 9 : 11, fontSize: narrow ? 13 : 14, background: avatarGrad(activeConv.type === "dm" ? `u${activeConv.peer?.id}` : `c${activeConv.id}`), color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}>{initials(title)}</span>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 7 }}>
               {title}{activeConv.isPrivate && <Lock size={13} style={{ color: C.t3 }} />}
@@ -218,7 +220,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: narrow ? 4 : 6, flexShrink: 0 }}>
           {/* 复制整段对话（含发言人标注）到剪贴板 */}
           {messages.length > 0 && (
             <button
@@ -231,8 +233,8 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
                 navigator.clipboard.writeText(text).then(() => toast.success("已复制整段对话", { duration: 1400 }));
               }}
               title="复制整段对话"
-              style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}
-            ><Copy size={13} /> 复制全部</button>
+              style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}
+            ><Copy size={13} />{!narrow && " 复制全部"}</button>
           )}
           {/* AI 助手「新对话」：清空共享历史 → 换人设后从零开始，彻底摆脱旧角色惯性 */}
           {isAI && (
@@ -251,31 +253,42 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
                 });
               }}
               title="新对话（清空 AI 助手历史，换人设后从零开始）"
-              style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}
-            ><Sparkles size={13} /> 新对话</button>
+              style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}
+            ><Sparkles size={13} />{!narrow && " 新对话"}</button>
           )}
           {/* AI 助手会话：不是真人/群聊，隐藏 文件/中转站/删除/模式切换等无关按钮 */}
-          {!isAI && <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={13} /> 文件</button>}
-          {!isAI && <button onClick={() => window.open("/relay", "_blank", "noopener")} title="局域网大文件中转站（几十 GB 大文件传输，支持断点续传）" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><HardDriveUpload size={13} /> 中转站</button>}
+          {!isAI && <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={13} />{!narrow && " 文件"}</button>}
+          {!isAI && !narrow && <button onClick={() => window.open("/relay", "_blank", "noopener")} title="局域网大文件中转站（几十 GB 大文件传输，支持断点续传）" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><HardDriveUpload size={13} /> 中转站</button>}
           {activeConv.type === "group" && (isOwner
-            ? <button onClick={onDelete} title="删除群聊（群主）" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={13} /> 删除</button>
-            : <button onClick={onLeave} title="退出群聊" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><LogOut size={13} /> 退出</button>
+            ? <button onClick={onDelete} title="删除群聊（群主）" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={13} />{!narrow && " 删除"}</button>
+            : <button onClick={onLeave} title="退出群聊" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><LogOut size={13} />{!narrow && " 退出"}</button>
           )}
           {activeConv.type === "dm" && !isAI && (
-            <button onClick={onDeleteDm} title="删除该私聊" style={{ ...pill, border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={13} /> 删除</button>
+            <button onClick={onDeleteDm} title="删除该私聊" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={13} />{!narrow && " 删除"}</button>
           )}
           {activeConv.type !== "lobby" && !isAI && (
-            <button onClick={toggleMode} title={activeConv.mode === "serverless" ? "当前端到端加密，点击切回服务器模式" : "当前服务器模式，点击切换端到端加密"} style={{ ...pill, border: `1px solid ${activeConv.mode === "serverless" ? C.accent : C.borderStrong}`, background: activeConv.mode === "serverless" ? C.accentSoft : "var(--c-elevated, rgba(128,128,128,0.10))", color: activeConv.mode === "serverless" ? C.accent : C.t1 }}>
-              {activeConv.mode === "serverless" ? <><ShieldCheck size={13} /> 加密</> : <>服务器</>}
+            <button onClick={toggleMode} title={activeConv.mode === "serverless" ? "当前端到端加密，点击切回服务器模式" : "当前服务器模式，点击切换端到端加密"} style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${activeConv.mode === "serverless" ? C.accent : C.borderStrong}`, background: activeConv.mode === "serverless" ? C.accentSoft : "var(--c-elevated, rgba(128,128,128,0.10))", color: activeConv.mode === "serverless" ? C.accent : C.t1 }}>
+              {activeConv.mode === "serverless" ? <><ShieldCheck size={13} />{!narrow && " 加密"}</> : <>服务器</>}
             </button>
           )}
         </div>
       </div>
 
-      {/* 服务器状态指示 —— 单独一行显示 */}
-      <div style={{ display: "flex", alignItems: "center", padding: "6px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-        <ComfyServerStatusIndicator />
-      </div>
+      {/* 服务器状态指示（ComfyUI GVM 监控）—— 桌面常驻一行；移动端默认收起（对手机聊天是噪音），点开才显示 */}
+      {narrow ? (
+        <div style={{ borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <button onClick={() => setStatusOpen((v) => !v)} title="ComfyUI 服务器状态"
+            style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "5px 12px", background: "none", border: "none", color: C.t3, fontSize: 11.5, cursor: "pointer" }}>
+            <Server size={12} /> 服务器状态
+            <ChevronDown size={12} style={{ marginLeft: "auto", transition: "transform 150ms", transform: statusOpen ? "rotate(180deg)" : "none" }} />
+          </button>
+          {statusOpen && <div style={{ display: "flex", alignItems: "center", padding: "2px 12px 7px", overflowX: "auto" }}><ComfyServerStatusIndicator /></div>}
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", padding: "6px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <ComfyServerStatusIndicator />
+        </div>
+      )}
 
       {/* 端到端加密模式警示 */}
       {activeConv.mode === "serverless" && (
@@ -288,10 +301,10 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       )}
 
       {/* messages */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: narrow ? "12px 10px" : "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
         {loadingMessages && <div style={{ alignSelf: "center", color: C.t3, fontSize: 13 }}>加载中…</div>}
         {!loadingMessages && messages.length === 0 && <div style={{ alignSelf: "center", color: C.t4, fontSize: 13 }}>还没有消息，发送第一条吧</div>}
-        {messages.map((m) => <Bubble key={`${m.id}-${m.createdAt}`} msg={m} mine={m.senderId === -1 || m.senderId === myUserId} />)}
+        {messages.map((m) => <Bubble key={`${m.id}-${m.createdAt}`} msg={m} mine={m.senderId === -1 || m.senderId === myUserId} narrow={narrow} />)}
         {typingUsers.length > 0 && <div style={{ fontSize: 12, color: C.t3 }}>{typingUsers.join("、")} 正在输入…</div>}
         {isAI && sendToAssistantMut.isPending && (
           <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: C.accent }}>
@@ -302,7 +315,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
 
       {/* AI 模型选择（仅 AI 助手会话） */}
       {isAI ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 16px 0", fontSize: 11.5, color: C.t3, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: narrow ? 6 : 8, padding: narrow ? "6px 10px 0" : "6px 16px 0", fontSize: 11.5, color: C.t3, flexWrap: "wrap" }}>
           <Sparkles size={13} style={{ color: C.accent }} />
           <span>AI 模型</span>
           {chatModels.length === 0 ? (
@@ -332,7 +345,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
             ]}
             onChange={pickChatTemplate}
           />
-          <span style={{ color: C.t4 }}>· 与 AI 助手的对话内容会经服务器处理</span>
+          {!narrow && <span style={{ color: C.t4 }}>· 与 AI 助手的对话内容会经服务器处理</span>}
         </div>
       ) : (
         /* limit hint */
@@ -350,7 +363,7 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
       )}
 
       {/* input */}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 16px 14px", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: narrow ? "8px 10px calc(12px + env(safe-area-inset-bottom))" : "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         <button onClick={() => fileRef.current?.click()} title={isAI ? "添加附件（图片可作参考图，需视觉模型）" : `添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
         {!isAI && <button onClick={() => screenshot()} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>}
@@ -367,7 +380,9 @@ export function ChatView({ membersOpen: _m }: { membersOpen?: boolean }) {
               .filter((f): f is File => !!f);
             if (files.length > 0) { e.preventDefault(); addFiles(files); }
           }}
-          placeholder={isAI ? "向 AI 助手提问，Enter 发送、Shift+Enter 换行" : "Enter 发送，Shift+Enter 换行，可拖拽或粘贴文件到此"} rows={1}
+          placeholder={narrow
+            ? (isAI ? "向 AI 助手提问…" : "发送消息…")
+            : (isAI ? "向 AI 助手提问，Enter 发送、Shift+Enter 换行" : "Enter 发送，Shift+Enter 换行，可拖拽或粘贴文件到此")} rows={1}
           style={{ flex: 1, resize: "none", maxHeight: 140, padding: "10px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
         <button onClick={() => doSend()} disabled={busy || sendToAssistantMut.isPending || (!text.trim() && staged.length === 0)} title="发送"
           style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || sendToAssistantMut.isPending || (!text.trim() && staged.length === 0) ? 0.5 : 1 }}>
@@ -493,7 +508,7 @@ function MiniSelect({ value, placeholder, groups, onChange, maxWidth, title }: {
   );
 }
 
-function Bubble({ msg, mine }: { msg: ChatWireMessage; mine: boolean }) {
+function Bubble({ msg, mine, narrow }: { msg: ChatWireMessage; mine: boolean; narrow?: boolean }) {
   // Download-request messages carry a leading [#DLREQ:<grantId>] marker → strip
   // it from display and render an inline approve control (admins only).
   const dl = msg.content.match(/^\[#DLREQ:(\d+)\]\n?/);
@@ -501,7 +516,7 @@ function Bubble({ msg, mine }: { msg: ChatWireMessage; mine: boolean }) {
   return (
     <div className="group/msg" style={{ display: "flex", gap: 9, alignItems: "flex-start", flexDirection: mine ? "row-reverse" : "row" }}>
       <span style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, background: avatarGrad(`u${msg.senderId}`), color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{initials(msg.senderName || "我")}</span>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start", gap: 3, maxWidth: "72%" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start", gap: 3, maxWidth: narrow ? "86%" : "72%" }}>
         {!mine && <span style={{ fontSize: 11, color: C.t3, paddingLeft: 2 }}>{msg.senderName}</span>}
         <div style={{ padding: "9px 13px", borderRadius: 14, fontSize: 14, lineHeight: 1.55, wordBreak: "break-word",
           background: mine ? C.accentSoft : C.surfaceFlat, color: C.t1,
@@ -568,4 +583,6 @@ function Attachment({ a, mine }: { a: ChatFileRef; mine: boolean }) {
 }
 
 const pill: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "4px 8px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 };
+// 移动端：动作按钮压成纯图标方块（隐藏文字，省横向空间、保证触控尺寸）。
+const pillIcon: React.CSSProperties = { width: 32, height: 32, padding: 0, justifyContent: "center", borderRadius: 9 };
 const iconBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 11, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, cursor: "pointer", flexShrink: 0 };
