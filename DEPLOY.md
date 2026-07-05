@@ -154,7 +154,7 @@ DATABASE_URL="mysql://..." OAUTH_SERVER_URL="..." pnpm start
 
 后台配置：管理后台 → 模型管理 › 自建 LLM → 「一键填入本机 Claude」→ API Key 粘同口令 → 保存。
 模型切换：选择器里的 `claude-local:sonnet` / `:opus`（需 Max 档）等条目即切换。
-**公网隧道部署**：后台「服务器地址」要改成内网回环 `http://127.0.0.1:<内部端口>/api/claude-bridge`。
+**公网隧道部署**：服务端会自动把「指向本应用桥接」的地址改走本机回环（填公网域名也能通）；推荐仍填 `http://127.0.0.1:<内部端口>/api/claude-bridge`。
 完整说明与排错表：**`docs/本机claude桥接.md`**。
 
 ### D. 本机 GPT（ChatGPT 订阅）——与 C 同端点同 Key，零新增变量

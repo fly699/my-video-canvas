@@ -2,6 +2,7 @@ import { ENV } from "./env";
 import { isKieLLMModel, invokeKieLLM, type OAMessage } from "./kieLLM";
 import { isCustomLLMModel, invokeCustomLLM, CUSTOM_LLM_MODELS } from "./customLlm";
 import { isSelfHostedLlmModel, getSelfHostedConfig, selfHostedChatUrl } from "./selfHostedLlm";
+import { rewriteBridgeSelfUrl } from "./claudeBridge";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -236,7 +237,10 @@ const isSelfHostedModel = isSelfHostedLlmModel;
 const resolveApiUrl = (model?: string) => {
   // Self-hosted OpenAI-compatible endpoint — only for its OWN model ids, so it never
   // redirects Forge/Poyo/kie models. Takes priority over everything else.
-  if (isSelfHostedModel(model)) return selfHostedChatUrl(getSelfHostedConfig().url);
+  // 指向本应用桥接（本机 Claude/GPT 订阅）的地址强制改走本机回环——防「填了公网域名，服务器调
+  // 自己还绕出公网再回来」被隧道/Cloudflare 卡死（真实翻车：CF 502 HTML 整页糊进聊天）。
+  // rewriteBridgeSelfUrl 对非桥接地址是恒等变换，普通自建 vLLM/Ollama 不受影响。
+  if (isSelfHostedModel(model)) return rewriteBridgeSelfUrl(selfHostedChatUrl(getSelfHostedConfig().url));
   // Poyo-routed models (GPT-*, Poyo Claude) → Poyo API when key is available
   if (ENV.poyoApiKey && routesToPoyo(model)) return "https://api.poyo.ai/v1/chat/completions";
   // Other models (Gemini, Claude Sonnet 4.6 / Haiku, etc.) → Forge/Manus API
@@ -414,12 +418,18 @@ const retryBackoffMs = (attempt: number) => 700 * 2 ** attempt + Math.floor(Math
 
 // Pull the human-readable message out of the gateway's JSON error envelope
 // ({"error":{"message":"…"}}) so the UI shows that instead of a raw JSON blob.
-function friendlyLLMError(status: number, statusText: string, body: string): string {
+export function friendlyLLMError(status: number, statusText: string, body: string): string {
   let detail = body;
   try {
     const j = JSON.parse(body) as { error?: { message?: string }; message?: string };
     detail = j?.error?.message ?? j?.message ?? body;
   } catch { /* not JSON — keep raw */ }
+  // 上游是 HTML 错误页（Cloudflare/nginx 等网关）时，别把整页 HTML 糊进聊天——给一句可行动的话。
+  if (/^\s*(<!doctype\s+html|<html)/i.test(detail)) {
+    detail = `上游返回了 HTML 错误页（网关/反代 ${status}）。常见原因：自建 LLM「服务器地址」填错或经了公网反代——` +
+      `若在用「本机 Claude/GPT 订阅桥接」，地址应为 http://127.0.0.1:<端口>/api/claude-bridge（新版服务端已自动改走回环，更新后重试即可）。`;
+  }
+  if (detail.length > 500) detail = detail.slice(0, 500) + "…（已截断）";
   return `LLM invoke failed: ${status} ${statusText} – ${detail}`;
 }
 

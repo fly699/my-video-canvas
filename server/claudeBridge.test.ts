@@ -65,3 +65,17 @@ describe("bridgeModelArg（模型切换解析）", () => {
     expect(bridgeModelArg("x".repeat(80))).toBeNull();
   });
 });
+
+describe("rewriteBridgeSelfUrl（桥接自调用强制回环）", () => {
+  it("非桥接地址恒等；未登记端口原样；登记后公网域名被改写为 127.0.0.1", async () => {
+    const { rewriteBridgeSelfUrl, setBridgeSelfHttpPort } = await import("./_core/claudeBridge");
+    expect(rewriteBridgeSelfUrl("http://172.16.0.10:8000/v1/chat/completions")).toBe("http://172.16.0.10:8000/v1/chat/completions");
+    const pub = "https://avc.example.com/api/claude-bridge/v1/chat/completions";
+    // 未登记端口 → 原样（如测试环境/极早期启动）
+    expect(rewriteBridgeSelfUrl(pub)).toBe(pub);
+    setBridgeSelfHttpPort(3456);
+    expect(rewriteBridgeSelfUrl(pub)).toBe("http://127.0.0.1:3456/api/claude-bridge/v1/chat/completions");
+    // 基础地址形态（未带 /v1/chat/completions）同样命中
+    expect(rewriteBridgeSelfUrl("https://avc.example.com/api/claude-bridge")).toBe("http://127.0.0.1:3456/api/claude-bridge/v1/chat/completions");
+  });
+});

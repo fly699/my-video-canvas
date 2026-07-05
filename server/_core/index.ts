@@ -12,7 +12,7 @@ import { registerStorageProxy, registerStorageUploadProxy } from "./storageProxy
 import { registerFileRelay } from "./fileRelay";
 import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
-import { registerClaudeBridge } from "./claudeBridge";
+import { registerClaudeBridge, setBridgeSelfHttpPort } from "./claudeBridge";
 import { appRouter } from "../routers";
 import { createContext, resolveRequestUser } from "./context";
 import { getTunnelGate, initTunnel, setTunnelOrigin, getTunnelListenerPort, trackTunnelSocket } from "./tunnel";
@@ -97,6 +97,12 @@ async function startServer() {
     if (!g.enabled) return next();
     if (!isTunnelRequest(req.socket?.localPort, getTunnelListenerPort(), req.headers, g.host)) return next();   // not via our tunnel
     if (isTunnelExemptPath(req.path)) return next();                  // auth + static SPA
+    // 本机自调用放行：真隧道流量必经 Cloudflare 边缘、必带 cf-connecting-ip；来自 127.0.0.1 且
+    // 【没有】该头的请求只能是本进程/本机发起（如本机 Claude/GPT 桥接的回环自调用），不是公网访客。
+    // 能直连本机端口的人本就在信任边界内（主端口同样敞开），此放行不扩大攻击面。
+    const remoteAddr = req.socket?.remoteAddress ?? "";
+    const isLoopback = remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
+    if (isLoopback && !req.headers["cf-connecting-ip"]) return next();
     // Real public visitor IP for the IP-whitelist: cloudflared/Cloudflare passes it in
     // cf-connecting-ip (req.ip would be the localhost origin hop).
     const cfIp = (Array.isArray(req.headers["cf-connecting-ip"]) ? req.headers["cf-connecting-ip"][0] : req.headers["cf-connecting-ip"]) as string | undefined;
@@ -520,6 +526,9 @@ async function startServer() {
     const proto = isHttps ? "https" : "http";
     console.log(`Server running on ${proto}://localhost:${port}/`);
     if (isHttps) console.log(`[HTTPS] self-signed cert active — LAN clients can trust it via ${proto}://<本机IP>:${port}/cert.crt`);
+    // 本机 Claude/GPT 桥接自调用回环：主端口是纯 HTTP 时即可用（自建 LLM 地址填成公网域名也会被
+    // 强制改走 127.0.0.1，防隧道/CF 卡死）。HTTPS 模式下等隧道回环端口（纯 HTTP）起来后覆盖登记。
+    if (!isHttps) setBridgeSelfHttpPort(port);
     // Dedicated 127.0.0.1 loopback listener that cloudflared forwards to (plain HTTP →
     // no self-signed-TLS 502). Any request arriving on THIS port is unambiguously tunnel
     // traffic, so the access gate identifies it by socket.localPort — no header guessing.
@@ -533,6 +542,9 @@ async function startServer() {
       tunnelServer.on("connection", (sock) => trackTunnelSocket(sock));
       tunnelServer.listen(tunnelPort, "127.0.0.1", () => {
         setTunnelOrigin(tunnelPort);
+        // HTTPS 部署没有纯 HTTP 主端口 → 桥接自调用改走这台纯 HTTP 隧道回环（门控对「本机来源
+        // 且无 cf-connecting-ip 头」的请求放行，见 tunnel gate）。HTTP 主端口存在时保持用主端口。
+        if (isHttps) setBridgeSelfHttpPort(tunnelPort);
         console.log(`[Tunnel] internal origin on http://127.0.0.1:${tunnelPort} (socket.io attached)`);
         void initTunnel(); // 隧道监听就绪后再拉起 cloudflared + 预热门控缓存
       });
