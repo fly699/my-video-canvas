@@ -78,4 +78,9 @@ describe("rewriteBridgeSelfUrl（桥接自调用强制回环）", () => {
     // 基础地址形态（未带 /v1/chat/completions）同样命中
     expect(rewriteBridgeSelfUrl("https://avc.example.com/api/claude-bridge")).toBe("http://127.0.0.1:3456/api/claude-bridge/v1/chat/completions");
   });
+  it("bridgeLocalUrl：登记端口后给出后台「一键填入」用的回环基础地址", async () => {
+    const { bridgeLocalUrl, setBridgeSelfHttpPort } = await import("./_core/claudeBridge");
+    setBridgeSelfHttpPort(3456);
+    expect(bridgeLocalUrl()).toBe("http://127.0.0.1:3456/api/claude-bridge");
+  });
 });

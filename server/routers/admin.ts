@@ -7,6 +7,7 @@ import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
+import { bridgeLocalUrl } from "../_core/claudeBridge";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput, getTunnelPid } from "../_core/tunnel";
 import { detectGatewayForSource, detectLineForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, fetchPublicEgressIp, fetchLinePublicEgressIp, tunnelDiagnose } from "../_core/tunnelRoute";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
@@ -452,7 +453,9 @@ export const adminRouter = router({
         return { success: true };
       }),
     // ── 自建 OpenAI 兼容 LLM 配置（admin） ──
-    getSelfHostedLlm: adminProcedure.query(async () => db.getSelfHostedLlmConfig()),
+    // bridgeLocalUrl：本机桥接的真实回环地址（127.0.0.1:内部端口），供前端「一键填入」直接用，
+    // 避免填成公网隧道域名（功能上服务端会强制重写回环，但显示公网地址误导人）。
+    getSelfHostedLlm: adminProcedure.query(async () => ({ ...(await db.getSelfHostedLlmConfig()), bridgeLocalUrl: bridgeLocalUrl() })),
     setSelfHostedLlm: managerProc
       .input(z.object({
         url: z.string().trim().max(2048),

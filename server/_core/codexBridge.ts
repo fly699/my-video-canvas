@@ -59,7 +59,19 @@ export function resolveCodexSpawn(
   return { cmd: bin, args, shell: false };
 }
 
-/** 跑一次无头 codex 拿纯文本回复。stdout 即回答；exit 非 0 或空输出记为错误（附 stderr 尾部）。 */
+/** 从 codex 的 stderr 里抽「真正的错误行」。codex exec 会把整段会话记录（含我们发的提示词转写）
+ *  打到 stderr——直接取尾部 800 字会把对话回显当错误糊给用户（真机翻车）。只挑含错误特征的行。纯函数。 */
+export function pickCodexErrorDetail(stdout: string, stderr: string, code: number | null | undefined): string {
+  const out = (stdout ?? "").trim();
+  if (out) return out; // stdout 有内容优先（部分版本把错误答案也打 stdout）
+  const lines = (stderr ?? "").trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const hits = lines.filter((l) => /error|错误|警告|warning|invalid|not found|未找到|unauthorized|denied|quota|exceed|stream|401|403|404|429|5\d\d/i.test(l));
+  if (hits.length) return hits.slice(-6).join("\n").slice(0, 600);
+  if (lines.length) return lines.slice(-3).join("\n").slice(0, 400);
+  return `codex 退出码 ${code ?? "?"}，无输出。检查订阅登录：把有浏览器机器上登录后的 ~/.codex/auth.json 拷到服务器同路径。`;
+}
+
+/** 跑一次无头 codex 拿纯文本回复。stdout 即回答；exit 非 0 或空输出记为错误（stderr 只抽错误行）。 */
 export function runCodexText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null }): Promise<{ text: string; isError: boolean }> {
   const prompt = messagesToPrompt(opts.messages);
   const baseArgs = ["exec", "--skip-git-repo-check", "--sandbox", "read-only", ...(opts.model ? ["-m", opts.model] : []), "-"];
@@ -76,7 +88,7 @@ export function runCodexText(opts: { messages: OAMessage[]; timeoutMs: number; m
       if (spawnErr) return resolve({ text: `无法启动 codex：${spawnErr}。请在服务器上 npm i -g @openai/codex 并【重启本服务】（新装的 CLI 要重启后才可见）；若装在非默认位置，设 CODEX_BIN=codex.cmd 的完整路径（Windows 标准路径 C:\\Users\\你\\AppData\\Roaming\\npm\\codex.cmd 会自动探测，无需配置）。`, isError: true });
       const text = out.trim();
       if (!text || (typeof code === "number" && code !== 0)) {
-        return resolve({ text: text || err.trim().slice(-800) || `codex 退出码 ${code ?? "?"}，无输出。检查订阅登录：把有浏览器机器上登录后的 ~/.codex/auth.json 拷到服务器同路径。`, isError: true });
+        return resolve({ text: pickCodexErrorDetail(out, err, code), isError: true });
       }
       resolve({ text, isError: false });
     };
