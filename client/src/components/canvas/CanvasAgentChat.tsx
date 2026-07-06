@@ -29,6 +29,51 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [model, setModel] = useState<LLMModelId>(() =>
     (localStorage.getItem("avc:canvasAgent:model") as LLMModelId) || (resolveActiveNodeModel("agent", "llm") as LLMModelId));
   const scrollRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // 可拖拽 + 可缩放（位置/尺寸持久化）。pos 为 null 时首帧落在右下角。
+  const DEFAULT_SIZE = { w: 380, h: 520 };
+  const [size, setSize] = useState<{ w: number; h: number }>(() => {
+    try { const s = localStorage.getItem("avc:canvasAgent:size"); if (s) return JSON.parse(s); } catch { /* ignore */ }
+    return DEFAULT_SIZE;
+  });
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(() => {
+    try { const s = localStorage.getItem("avc:canvasAgent:pos"); if (s) return JSON.parse(s); } catch { /* ignore */ }
+    return null;
+  });
+  useEffect(() => { try { localStorage.setItem("avc:canvasAgent:size", JSON.stringify(size)); } catch { /* quota */ } }, [size]);
+  useEffect(() => { if (pos) { try { localStorage.setItem("avc:canvasAgent:pos", JSON.stringify(pos)); } catch { /* quota */ } } }, [pos]);
+
+  const left = pos ? pos.left : Math.max(8, window.innerWidth - size.w - 16);
+  const top = pos ? pos.top : Math.max(8, window.innerHeight - size.h - 16);
+
+  // 拖标题栏移动窗口（避开标题栏里的按钮/下拉）。
+  const startDrag = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button, input, [role='listbox'], .nodrag-handle-skip")) return;
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY, il = left, it = top;
+    const onMove = (mv: MouseEvent) => {
+      setPos({
+        left: Math.max(0, Math.min(window.innerWidth - 120, il + mv.clientX - sx)),
+        top: Math.max(0, Math.min(window.innerHeight - 40, it + mv.clientY - sy)),
+      });
+    };
+    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+  };
+  // 右下角把手缩放。
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const sx = e.clientX, sy = e.clientY, iw = size.w, ih = size.h;
+    const onMove = (mv: MouseEvent) => {
+      setSize({
+        w: Math.max(300, Math.min(window.innerWidth - 16, iw + mv.clientX - sx)),
+        h: Math.max(360, Math.min(window.innerHeight - 16, ih + mv.clientY - sy)),
+      });
+    };
+    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+  };
 
   useEffect(() => { try { localStorage.setItem(`avc:canvasAgent:${projectId}`, JSON.stringify(turns.slice(-40))); } catch { /* quota */ } }, [turns, projectId]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:model", model); } catch { /* quota */ } }, [model]);
@@ -66,14 +111,14 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   }
 
   const panel = (
-    <div className="nodrag nowheel" style={{
-      position: "fixed", right: 16, bottom: 16, width: 380, maxWidth: "calc(100vw - 32px)", height: 520, maxHeight: "calc(100vh - 90px)",
+    <div ref={panelRef} className="nodrag nowheel" style={{
+      position: "fixed", left, top, width: size.w, height: size.h,
       display: "flex", flexDirection: "column", background: "var(--c-base)", border: `1px solid ${accent}`, borderRadius: 14,
       boxShadow: "0 18px 50px rgba(0,0,0,0.45)", zIndex: 50, overflow: "hidden",
     }}
-      onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-      {/* header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+      onClick={(e) => e.stopPropagation()}>
+      {/* header（拖动手柄） */}
+      <div onMouseDown={startDrag} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0, cursor: "move" }}>
         <Sparkles className="w-4 h-4" style={{ color: accent }} />
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--c-t1)" }}>画布助手</span>
         <span style={{ fontSize: 10, color: "var(--c-t4)" }}>边聊边改画布</span>
@@ -128,6 +173,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           {chat.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         </button>
       </div>
+
+      {/* 右下角缩放把手 */}
+      <div onMouseDown={startResize} title="拖动缩放" style={{
+        position: "absolute", right: 0, bottom: 0, width: 16, height: 16, cursor: "nwse-resize", zIndex: 2,
+        background: "linear-gradient(135deg, transparent 50%, var(--c-bd3) 50%, var(--c-bd3) 60%, transparent 60%, transparent 72%, var(--c-bd3) 72%, var(--c-bd3) 82%, transparent 82%)",
+      }} />
     </div>
   );
   return createPortal(panel, document.body);

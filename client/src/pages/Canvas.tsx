@@ -29,6 +29,8 @@ import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { CanvasAgentChat } from "../components/canvas/CanvasAgentChat";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useTopbarNarrow } from "../hooks/useTopbarNarrow";
+import { useStudioCreateBarCollapsed, setStudioCreateBarCollapsed } from "../hooks/useStudioCreateBar";
+import { useUIStyle } from "../contexts/UIStyleContext";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
 import { KieBalanceDashboard } from "../components/KieBalanceDashboard";
 import { CustomLlmKeyDashboard } from "../components/CustomLlmKeyDashboard";
@@ -729,6 +731,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const systemDefaultModels = useSystemDefaultModels();
   // 顶栏窄屏信号：给余额/模型块在窄屏收起文字标签，腾横向空间。
   const topbarNarrow = useTopbarNarrow();
+  // 「快速创作栏」折叠状态（底部工具栏那枚按钮控制 StudioCreateBar 展开/收起）。
+  const { uiStyle } = useUIStyle();
+  const [createBarCollapsed] = useStudioCreateBarCollapsed();
   const handleDefaultModelsChange = useCallback(
     (next: NodeDefaultModelsConfig) => {
       // 乐观更新：先写入 query 缓存让节点解析即时生效，再持久化到项目。
@@ -2628,6 +2633,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">网格分镜起稿（九宫格/三视图…）</TooltipContent>
+            </Tooltip>}
+
+            {/* 快速创作栏 开关（工作室模式）——从浮动胶囊改为并入底部工具栏，与其它按钮同尺寸 */}
+            {uiStyle === "studio" && !isReadOnly && <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setStudioCreateBarCollapsed(!createBarCollapsed)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: createBarCollapsed ? "var(--c-t3)" : "oklch(0.70 0.20 310)", background: createBarCollapsed ? "transparent" : "oklch(0.70 0.20 310 / 0.14)" }}
+                  onMouseEnter={(e) => { if (createBarCollapsed) { (e.currentTarget as HTMLElement).style.background = "oklch(0.70 0.20 310 / 0.14)"; (e.currentTarget as HTMLElement).style.color = "oklch(0.70 0.20 310)"; } }}
+                  onMouseLeave={(e) => { if (createBarCollapsed) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; } }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">快速创作栏（开/关）</TooltipContent>
             </Tooltip>}
 
             {/* Divider (only when add button is shown) */}
