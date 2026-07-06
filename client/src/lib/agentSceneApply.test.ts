@@ -128,6 +128,10 @@ describe("applyAgentOperations touchedIds（自愈收窄重跑范围）", () => 
     const created = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "prompt")!;
     expect(new Set(r.touchedIds)).toEqual(new Set([created.id, existing.id]));
     expect(r.touchedIds.length).toBe(2); // existing.id 不重复
+    // createdIds 只含【新建】节点——绝不含被 update/connect 的既有节点（existing）。
+    // 「撤销新建」按钮据此删除，若误含 existing 会物理删掉用户原有节点（数据丢失）。
+    expect(r.createdIds).toEqual([created.id]);
+    expect(r.createdIds).not.toContain(existing.id);
   });
 });
 
