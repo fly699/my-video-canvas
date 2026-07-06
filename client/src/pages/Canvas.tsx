@@ -27,6 +27,8 @@ import { BudgetButton } from "../components/canvas/BudgetButton";
 import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { CanvasAgentChat } from "../components/canvas/CanvasAgentChat";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { useTopbarNarrow } from "../hooks/useTopbarNarrow";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
 import { KieBalanceDashboard } from "../components/KieBalanceDashboard";
 import { CustomLlmKeyDashboard } from "../components/CustomLlmKeyDashboard";
@@ -120,6 +122,7 @@ import {
   Spline,
   MessageSquare,
   Sparkles,
+  MoreHorizontal,
   MonitorUp,
   Boxes,
   MoveHorizontal,
@@ -724,6 +727,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
     (project as { defaultModels?: NodeDefaultModelsConfig | null } | undefined)?.defaultModels ?? null;
   // 管理员「系统默认模型」：作用于项目配置与出厂默认之间（详见 NodeDefaultModelsProvider）。
   const systemDefaultModels = useSystemDefaultModels();
+  // 顶栏窄屏信号：给余额/模型块在窄屏收起文字标签，腾横向空间。
+  const topbarNarrow = useTopbarNarrow();
   const handleDefaultModelsChange = useCallback(
     (next: NodeDefaultModelsConfig) => {
       // 乐观更新：先写入 query 缓存让节点解析即时生效，再持久化到项目。
@@ -1676,7 +1681,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
       {/* ══ Top Bar ══════════════════════════════════════════════════════════ */}
       <header
-        className="canvas-topbar h-11 flex items-center px-3 gap-2 flex-shrink-0 z-20"
+        className={`canvas-topbar h-11 flex items-center flex-shrink-0 z-20 ${topbarNarrow ? "px-2 gap-1" : "px-3 gap-2"}`}
         style={{
           background: "color-mix(in oklch, var(--c-base) 45%, transparent)",
           backdropFilter: "blur(20px) saturate(1.4)",
@@ -1692,11 +1697,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <ChevronLeft className="w-4 h-4" />
         </button>
 
-        {/* Logo + Project name */}
+        {/* Logo + Project name（窄屏隐 logo 腾横向空间） */}
         <div className="flex items-center gap-2 mr-2">
-          <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center flex-shrink-0">
-            <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
-          </div>
+          {!topbarNarrow && (
+            <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center flex-shrink-0">
+              <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
+            </div>
+          )}
 
           {renamingProject ? (
             <div className="flex items-center gap-1">
@@ -1733,7 +1740,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               className="group/title flex items-center gap-1 cursor-pointer"
               onClick={() => { setRenameValue(project?.name ?? ""); setRenamingProject(true); }}
             >
-              <span className="text-sm font-medium truncate max-w-[160px]" style={{ color: "var(--c-t1)" }}>
+              <span className="text-sm font-medium truncate" style={{ color: "var(--c-t1)", maxWidth: topbarNarrow ? 96 : 160 }}>
                 {project?.name ?? "画布"}
               </span>
               <Pencil
@@ -1762,8 +1769,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
         <PoyoStorageStatusChip className="flex-shrink-0" />
 
         <PoyoBalanceDashboard />
-        <KieBalanceDashboard />
-        <CustomLlmKeyDashboard />
+        <KieBalanceDashboard compact={topbarNarrow} />
+        <CustomLlmKeyDashboard compact={topbarNarrow} />
 
         <div className="flex-1" />
 
@@ -1791,22 +1798,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* ComfyUI server status (GPU/VRAM/RAM/queue + config panel) — main window only */}
           {!isPopout && <ComfyServerStatusIndicator />}
-
-          {/* Open the project in a second window (multi-monitor: independent
-              viewport, live-synced via BroadcastChannel). Hidden inside a popout. */}
-          {!isPopout && (
-            <button
-              className="topbar-btn"
-              title="在新窗口打开（副屏，独立视口·实时同步）"
-              onClick={() => {
-                const url = new URL(window.location.href);
-                url.searchParams.set("popout", "1");
-                window.open(url.toString(), "_blank", "noopener,width=1280,height=860");
-              }}
-            >
-              <MonitorUp className="w-3.5 h-3.5" />
-            </button>
-          )}
 
           {/* Chat (floating in-canvas window) — hidden in popout (second-monitor) windows */}
           {!isPopout && (
@@ -1841,34 +1832,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">画布助手（对话式改画布）</TooltipContent>
           </Tooltip>
           )}
-
-          {/* Help guide */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowHelp((v) => !v)}
-                className="topbar-btn"
-                data-active={showHelp ? "true" : undefined}
-                style={showHelp ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">操作指南</TooltipContent>
-          </Tooltip>
-
-          {/* Presentation mode */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowPresentation(true)}
-                className="topbar-btn"
-              >
-                <Play className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">演示模式</TooltipContent>
-          </Tooltip>
 
           {/* Templates */}
           <Tooltip>
@@ -1932,36 +1895,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">素材库</TooltipContent>
           </Tooltip>
 
-          {/* Character library */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowCharLib(!showCharLib)}
-                className="topbar-btn"
-                data-active={showCharLib ? "true" : undefined}
-                style={showCharLib ? { background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)" } : undefined}
-              >
-                <Users className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">角色库</TooltipContent>
-          </Tooltip>
-
-          {/* Prompt library */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowPromptLib(!showPromptLib)}
-                className="topbar-btn"
-                data-active={showPromptLib ? "true" : undefined}
-                style={showPromptLib ? { background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)" } : undefined}
-              >
-                <BookText className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">提示词库（/ 唤出）</TooltipContent>
-          </Tooltip>
-
           {/* Video editor (jump to the timeline editor) */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1974,82 +1907,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">视频剪辑器</TooltipContent>
-          </Tooltip>
-
-          {/* Stats sidebar toggle — main window only */}
-          {!isPopout && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowStatsSidebar((v) => !v)}
-                className="topbar-btn"
-                data-active={showStatsSidebar ? "true" : undefined}
-                style={showStatsSidebar ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
-              >
-                <BarChart2 className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">画布统计</TooltipContent>
-          </Tooltip>
-          )}
-
-          {/* Filmstrip toggle */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowFilmstrip((v) => !v)}
-                className="topbar-btn"
-                data-active={showFilmstrip ? "true" : undefined}
-                style={showFilmstrip ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
-              >
-                <Film className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">胶片条</TooltipContent>
-          </Tooltip>
-
-          {/* Timeline toggle */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowTimeline((v) => !v)}
-                className="topbar-btn"
-                data-active={showTimeline ? "true" : undefined}
-                style={showTimeline ? { background: "oklch(0.62 0.20 25 / 0.12)", border: "1px solid oklch(0.62 0.20 25 / 0.3)", color: "oklch(0.65 0.18 30)" } : undefined}
-              >
-                <ListVideo className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">时间轴预览</TooltipContent>
-          </Tooltip>
-
-          {/* Narrative arc picker */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowArcPicker(true)}
-                className="topbar-btn"
-                style={{ color: "oklch(0.72 0.18 45)" }}
-              >
-                <Spline className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">叙事弧线编排器</TooltipContent>
-          </Tooltip>
-
-          {/* ── Version history ── */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowSnapshots((v) => !v)}
-                className="topbar-btn"
-                data-active={showSnapshots ? "true" : undefined}
-                style={showSnapshots ? { background: "oklch(0.68 0.22 45 / 0.12)", border: "1px solid oklch(0.68 0.22 45 / 0.3)", color: "oklch(0.72 0.18 45)" } : undefined}
-              >
-                <History className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">版本历史</TooltipContent>
           </Tooltip>
 
           {/* ── Separator: View panels | Edit actions ── */}
@@ -2106,62 +1963,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </TooltipContent>
           </Tooltip>
 
-          {/* Save As (duplicate into a new project) */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleSaveAs}
-                className="topbar-btn"
-                disabled={saveAsMutation.isPending}
-              >
-                {saveAsMutation.isPending
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <CopyPlus className="w-3.5 h-3.5" />}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">另存为新项目</TooltipContent>
-          </Tooltip>
-
-          {/* Export Images */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleExportImages}
-                className="topbar-btn"
-              >
-                <Image className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">导出所有图像</TooltipContent>
-          </Tooltip>
-
-          {/* Export JSON */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleExport}
-                className="topbar-btn"
-              >
-                <Download className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">导出 JSON</TooltipContent>
-          </Tooltip>
-
-          {/* Import JSON */}
-          {!isReadOnly && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => importInputRef.current?.click()}
-                  className="topbar-btn"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs">导入 JSON（合并到当前画布）</TooltipContent>
-            </Tooltip>
-          )}
           <input
             ref={importInputRef}
             type="file"
@@ -2237,31 +2038,51 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* Divider */}
           <div className="w-px h-4 mx-1" style={{ background: "var(--c-bd2)" }} />
-          {/* 修改密码 */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button onClick={() => setShowChangePw(true)} className="topbar-btn">
-                <KeyRound className="w-3.5 h-3.5" />
+
+          {/* 更多 ⋯ —— 低频功能收进下拉，给顶栏腾横向空间 */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="topbar-btn" title="更多">
+                <MoreHorizontal className="w-3.5 h-3.5" />
               </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">修改密码</TooltipContent>
-          </Tooltip>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              {!isPopout && (
+                <DropdownMenuItem onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("popout", "1");
+                  window.open(url.toString(), "_blank", "noopener,width=1280,height=860");
+                }}><MonitorUp className="w-3.5 h-3.5 mr-2" /> 副屏打开</DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => setShowHelp((v) => !v)}><HelpCircle className="w-3.5 h-3.5 mr-2" /> 操作指南</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowPresentation(true)}><Play className="w-3.5 h-3.5 mr-2" /> 演示模式</DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>库</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setShowCharLib((v) => !v)}><Users className="w-3.5 h-3.5 mr-2" /> 角色库</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowPromptLib((v) => !v)}><BookText className="w-3.5 h-3.5 mr-2" /> 提示词库</DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>视图 / 面板</DropdownMenuLabel>
+              {!isPopout && <DropdownMenuItem onClick={() => setShowStatsSidebar((v) => !v)}><BarChart2 className="w-3.5 h-3.5 mr-2" /> 画布统计</DropdownMenuItem>}
+              <DropdownMenuItem onClick={() => setShowFilmstrip((v) => !v)}><Film className="w-3.5 h-3.5 mr-2" /> 胶片条</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowTimeline((v) => !v)}><ListVideo className="w-3.5 h-3.5 mr-2" /> 时间轴预览</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowArcPicker(true)}><Spline className="w-3.5 h-3.5 mr-2" /> 叙事弧线编排</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowSnapshots((v) => !v)}><History className="w-3.5 h-3.5 mr-2" /> 版本历史</DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>导入 / 导出</DropdownMenuLabel>
+              <DropdownMenuItem onClick={handleSaveAs} disabled={saveAsMutation.isPending}><CopyPlus className="w-3.5 h-3.5 mr-2" /> 另存为新项目</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportImages}><Image className="w-3.5 h-3.5 mr-2" /> 导出所有图像</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExport}><Download className="w-3.5 h-3.5 mr-2" /> 导出 JSON</DropdownMenuItem>
+              {!isReadOnly && <DropdownMenuItem onClick={() => importInputRef.current?.click()}><Upload className="w-3.5 h-3.5 mr-2" /> 导入 JSON</DropdownMenuItem>}
+
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowChangePw(true)}><KeyRound className="w-3.5 h-3.5 mr-2" /> 修改密码</DropdownMenuItem>
+              <DropdownMenuItem onClick={async () => { await logout(); navigate("/"); }} className="text-red-400 focus:text-red-400"><LogOut className="w-3.5 h-3.5 mr-2" /> 退出登录</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <ChangePasswordDialog open={showChangePw} onClose={() => setShowChangePw(false)} />
-          {/* Logout */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={async () => {
-                  await logout();
-                  navigate("/");
-                }}
-                className="topbar-btn topbar-btn--danger"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">退出登录</TooltipContent>
-          </Tooltip>
         </div>
       </header>
 

@@ -9,7 +9,7 @@ const fmt = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigit
 
 const SOURCE_TEXT: Record<string, string> = { temp: "临时 key", assigned: "分配 key", house: "公用 key" };
 
-export function KieBalanceDashboard() {
+export function KieBalanceDashboard({ compact }: { compact?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
@@ -72,7 +72,7 @@ export function KieBalanceDashboard() {
         onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = "transparent"; }}
       >
         <Sparkles className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
-        <span style={{ fontVariantNumeric: "tabular-nums" }}>kie {label}</span>
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>{compact ? label : `kie ${label}`}</span>
         {configured && source && source !== "house" && (
           <span style={{ fontSize: 9, padding: "0 4px", borderRadius: 4, background: `${ACCENT.replace(")", " / 0.15)")}`, lineHeight: "14px" }}>
             {source === "temp" ? "临时" : "分配"}

@@ -143,7 +143,7 @@ function SlotEditor({ slot }: { slot: Slot }) {
   );
 }
 
-export function CustomLlmKeyDashboard() {
+export function CustomLlmKeyDashboard({ compact }: { compact?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
@@ -172,7 +172,7 @@ export function CustomLlmKeyDashboard() {
         onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = "transparent"; }}
       >
         <KeyRound className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
-        <span>自定义模型</span>
+        {!compact && <span>自定义模型</span>}
         {anyConfigured && (
           <span style={{ fontSize: 9, padding: "0 4px", borderRadius: 4, background: ACCENT.replace(")", " / 0.15)"), lineHeight: "14px" }}>已配</span>
         )}

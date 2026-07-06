@@ -24,18 +24,6 @@ function usedPct(total?: number, free?: number): number | null {
   return Math.max(0, Math.min(100, Math.round(((total - free) / total) * 100)));
 }
 
-function MiniBar({ label, pct, title }: { label: string; pct: number | null; title: string }) {
-  const h = pct == null ? 0 : Math.max(6, pct);
-  return (
-    <div title={title} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-      <div style={{ position: "relative", width: 3.5, height: 12, borderRadius: 2, background: "var(--c-bd1)", overflow: "hidden" }}>
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${h}%`, background: loadColor(pct), transition: "height 400ms ease, background 300ms ease" }} />
-      </div>
-      <span style={{ fontSize: 6.5, lineHeight: 1, color: "var(--c-t4)", fontWeight: 700 }}>{label}</span>
-    </div>
-  );
-}
-
 function PanelBar({ label, pct, used, total }: { label: string; pct: number | null; used: string; total?: string }) {
   // 已用值随负载着色（绿→琥珀→红）；总量保持暗色，一眼区分。
   return (
@@ -52,26 +40,6 @@ function PanelBar({ label, pct, used, total }: { label: string; pct: number | nu
   );
 }
 
-/** One compact per-server group shown inline in the topbar: dot + G/V/M bars.
- *  `compact` collapses it to just the online dot + GPU (G) bar, hiding 显存/内存. */
-function ServerChip({ s, compact }: { s: ComfyServerStatus; compact?: boolean }) {
-  const vram = usedPct(s.vramTotalMB, s.vramFreeMB);
-  const ram = usedPct(s.ramTotalMB, s.ramFreeMB);
-  const queue = (s.queueRunning ?? 0) + (s.queuePending ?? 0);
-  const host = (() => { try { return new URL(s.baseUrl).host; } catch { return s.baseUrl; } })();
-  const dot = s.online ? (vram != null && vram >= 90 ? "oklch(0.75 0.16 80)" : "oklch(0.72 0.18 155)") : "oklch(0.63 0.23 25)";
-  return (
-    <div className="flex items-center gap-1" style={{ flexShrink: 0 }} title={`${host}${s.online ? "" : "（离线）"}`}>
-      <span className="rounded-full" style={{ width: 5, height: 5, background: dot, flexShrink: 0 }} />
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 1.5 }}>
-        <MiniBar label="G" pct={s.gpuUtilization ?? null} title={`${host} GPU 计算 ${s.gpuUtilization != null ? s.gpuUtilization + "%" : "需Crystools"}`} />
-        {!compact && <MiniBar label="V" pct={vram} title={`${host} 显存 ${vram ?? "—"}%`} />}
-        {!compact && <MiniBar label="M" pct={ram} title={`${host} 内存 ${ram ?? "—"}%`} />}
-      </div>
-      {queue > 0 && <span style={{ fontSize: 9, fontWeight: 700, color: "var(--c-t3)" }}>{queue}</span>}
-    </div>
-  );
-}
 
 export function ComfyServerStatusIndicator() {
   const { user } = useAuth();
@@ -151,7 +119,6 @@ export function ComfyServerStatusIndicator() {
   const [open, setOpen] = usePersistentState<boolean>("ui:comfyStatus:open:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
   // Compact inline indicator: collapse each server chip to just the online dot +
   // GPU bar, hiding 显存/内存 to keep the toolbar narrow. Persisted across reloads.
-  const [compact, setCompact] = usePersistentState<boolean>("ui:comfyStatus:compact:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
   // 弹出面板的精简模式：隐藏每个服务器卡的「选卡」栏与底部操作按钮区，
   // 只留地址/设备/三条指标，监控密度更高。持久化。
   const [panelCompact, setPanelCompact] = usePersistentState<boolean>("ui:comfyStatus:panelCompact:v1", false, { validate: (v) => (typeof v === "boolean" ? v : null), crossTab: false });
@@ -316,22 +283,13 @@ export function ComfyServerStatusIndicator() {
   return (
     <>
       <div className="flex items-center" style={{ gap: 2, flexShrink: 0 }}>
-      {/* 折叠开关移到左侧：折叠后每台服务器只显示在线灯 + GPU，隐藏显存/内存 */}
-      {statuses.length > 0 && (
-        <button
-          onClick={() => setCompact((v) => !v)}
-          title={compact ? "展开：显示显存/内存指示" : "折叠：仅显示在线灯 + GPU"}
-          className="topbar-btn"
-          style={{ width: 20, height: 20, flexShrink: 0 }}
-        >
-          {compact ? <ChevronsLeftRight className="w-3 h-3" /> : <ChevronsRightLeft className="w-3 h-3" />}
-        </button>
-      )}
+      {/* 顶栏只留一枚汇总徽章（在线数 + 队列），点开在浮层面板里看每台服务器的完整 GVM 柱子/操作，
+          省掉一整排小柱子占的横向空间。 */}
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
         data-active={visible ? "true" : "false"}
-        title="ComfyUI 服务器状态（点击配置）"
+        title="ComfyUI 服务器状态（点击展开详情/配置）"
         className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-xs transition-all"
         style={{
           background: visible ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
@@ -345,14 +303,11 @@ export function ComfyServerStatusIndicator() {
         {statuses.length === 0 ? (
           <span style={{ fontSize: 10, color: "var(--c-t4)" }}>配置</span>
         ) : (
-          <div className="flex items-center" style={{ gap: 6, flexWrap: "nowrap" }}>
-            {statuses.map((s, i) => (
-              <div key={s.baseUrl} className="flex items-center" style={{ gap: 6, flexShrink: 0 }}>
-                {i > 0 && <span style={{ width: 1, height: 14, background: "var(--c-bd1)" }} />}
-                <ServerChip s={s} compact={compact} />
-              </div>
-            ))}
-          </div>
+          <span className="flex items-center" style={{ gap: 5 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: onlineCount > 0 ? "oklch(0.72 0.18 155)" : "var(--c-t4)" }} />
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>{onlineCount}/{statuses.length}</span>
+            {totalQueue > 0 && <span style={{ color: "oklch(0.75 0.16 80)", fontVariantNumeric: "tabular-nums" }}>· {totalQueue} 队列</span>}
+          </span>
         )}
       </button>
       </div>
