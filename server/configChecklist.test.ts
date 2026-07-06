@@ -18,7 +18,7 @@ function base(): ChecklistInput {
       higgsKey: true, higgsSecret: true, comfyBase: true, comfyCloudKey: true,
       sshSecret: true, googleId: false, googleSecret: false,
     },
-    bridge: { keySet: false, keyValue: "", claudeTokenSet: false, codexApiKeySet: false },
+    bridge: { keySet: false, keyValue: "", claudeTokenSet: false, codexApiKeySet: false, skillsOn: false, mcpConfigRaw: "", mcpConfigOk: false, mcpServerNames: [] },
     superAgent: { enabled: false, allowBash: false, permissionCmdSet: false, autoInstall: false },
     probes: { ffmpeg: true, claudeCli: false, codexCli: false, codexAuthJson: false },
     dbConf: {
@@ -89,7 +89,7 @@ describe("evaluateChecklist — 订阅桥接", () => {
   it("桥接开启但后台 Key 与服务端不一致 → warn（会 401）", () => {
     const items = evaluateChecklist({
       ...base(),
-      bridge: { keySet: true, keyValue: "secret-A", claudeTokenSet: true, codexApiKeySet: false },
+      bridge: { ...base().bridge, keySet: true, keyValue: "secret-A", claudeTokenSet: true },
       dbConf: { ...base().dbConf, selfHosted: { url: "https://x/api/claude-bridge", apiKey: "secret-B", modelIds: ["claude-local"] } },
     });
     expect(find(items, "bridge.selfHosted")!.status).toBe("warn");
@@ -98,7 +98,7 @@ describe("evaluateChecklist — 订阅桥接", () => {
     const items = evaluateChecklist({
       ...base(),
       probes: { ...base().probes, claudeCli: true },
-      bridge: { keySet: true, keyValue: "same", claudeTokenSet: true, codexApiKeySet: false },
+      bridge: { ...base().bridge, keySet: true, keyValue: "same", claudeTokenSet: true },
       dbConf: { ...base().dbConf, selfHosted: { url: "http://127.0.0.1:3000/api/claude-bridge", apiKey: "same", modelIds: ["claude-local"] } },
     });
     expect(find(items, "bridge.selfHosted")!.status).toBe("ok");
@@ -108,7 +108,7 @@ describe("evaluateChecklist — 订阅桥接", () => {
       ...base(),
       keys: { ...base().keys, anthropic: true },
       probes: { ...base().probes, claudeCli: true },
-      bridge: { keySet: true, keyValue: "k", claudeTokenSet: true, codexApiKeySet: false },
+      bridge: { ...base().bridge, keySet: true, keyValue: "k", claudeTokenSet: true },
       dbConf: { ...base().dbConf, selfHosted: { url: "http://x/api/claude-bridge", apiKey: "k", modelIds: ["claude-local"] } },
     });
     expect(find(items, "bridge.conflict")!.status).toBe("warn");
@@ -117,12 +117,42 @@ describe("evaluateChecklist — 订阅桥接", () => {
     const items = evaluateChecklist({
       ...base(),
       probes: { ...base().probes, codexCli: false, codexAuthJson: false },
-      bridge: { keySet: true, keyValue: "k", claudeTokenSet: false, codexApiKeySet: true },
+      bridge: { ...base().bridge, keySet: true, keyValue: "k", codexApiKeySet: true },
       dbConf: { ...base().dbConf, selfHosted: { url: "http://x/api/claude-bridge", apiKey: "k", modelIds: ["gpt-local"] } },
     });
     expect(find(items, "bridge.codexCli")!.status).toBe("warn");
     expect(find(items, "bridge.codexAuth")!.status).toBe("warn");
     expect(find(items, "bridge.codexApiKey")!.status).toBe("warn");
+  });
+  it("桥接开启 + 未开技能/MCP → 单条 off 提示，无风险行", () => {
+    const items = evaluateChecklist({
+      ...base(),
+      probes: { ...base().probes, claudeCli: true },
+      bridge: { ...base().bridge, keySet: true, keyValue: "k", claudeTokenSet: true },
+      dbConf: { ...base().dbConf, selfHosted: { url: "http://x/api/claude-bridge", apiKey: "k", modelIds: ["claude-local"] } },
+    });
+    expect(find(items, "bridge.agentic")!.status).toBe("off");
+    expect(find(items, "bridge.agenticRisk")).toBeUndefined();
+  });
+  it("开了技能 + 合法 MCP → skills ok / mcp ok / 安全提示 warn", () => {
+    const items = evaluateChecklist({
+      ...base(),
+      probes: { ...base().probes, claudeCli: true },
+      bridge: { ...base().bridge, keySet: true, keyValue: "k", claudeTokenSet: true, skillsOn: true, mcpConfigRaw: "/cfg.json", mcpConfigOk: true, mcpServerNames: ["fetch"] },
+      dbConf: { ...base().dbConf, selfHosted: { url: "http://x/api/claude-bridge", apiKey: "k", modelIds: ["claude-local"] } },
+    });
+    expect(find(items, "bridge.skills")!.status).toBe("ok");
+    expect(find(items, "bridge.mcp")!.status).toBe("ok");
+    expect(find(items, "bridge.agenticRisk")!.status).toBe("warn");
+  });
+  it("MCP 配置读不到/解析失败 → mcp warn", () => {
+    const items = evaluateChecklist({
+      ...base(),
+      probes: { ...base().probes, claudeCli: true },
+      bridge: { ...base().bridge, keySet: true, keyValue: "k", claudeTokenSet: true, mcpConfigRaw: "/bad.json", mcpConfigOk: false, mcpServerNames: [] },
+      dbConf: { ...base().dbConf, selfHosted: { url: "http://x/api/claude-bridge", apiKey: "k", modelIds: ["claude-local"] } },
+    });
+    expect(find(items, "bridge.mcp")!.status).toBe("warn");
   });
 });
 

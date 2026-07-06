@@ -7,7 +7,9 @@
 // 工具、不 --add-dir、cwd 为临时目录，比代码任务安全得多。
 import type { Express, Request, Response } from "express";
 import { spawn } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { resolveClaudeSpawn, resolveClaudeBin } from "./superAgent/claudeProcess";
 import { isGptLocalModel, codexModelArg, runCodexText } from "./codexBridge";
 import { collectImageUrls, collectFileUrls, resolveImages, docTextFromFileUrls, buildClaudeStreamJsonInput, parseClaudeStreamJsonResult } from "./bridgeAttachments";
@@ -95,6 +97,66 @@ export function bridgeModelArg(model: unknown): string | null {
   return m;
 }
 
+// ── 桥接「技能 / MCP」增强（默认关闭，纯文本安全不变）───────────────────────────
+// 桥接本是纯文本问答。设了下面任一 env 才进入「带工具」模式，让订阅 Claude 能调技能 / MCP：
+//   - CLAUDE_BRIDGE_SKILLS=1          → 放行 Skill 工具（技能放服务器 ~/.claude/skills，无头会自动发现）
+//   - CLAUDE_BRIDGE_MCP_CONFIG=<...>  → 挂载 MCP（文件路径或内联 JSON）+ 放行其 mcp__<服务名> 工具
+// 一并放行只读工具（Read/Glob/Grep/WebSearch/WebFetch）供技能/MCP 流程使用；**不含 Bash/Write/Edit**
+// （桥接不写文件、不跑 shell）。权限模式默认 default：仅放行的工具可用，其余无头下一律拒。
+// 可用 CLAUDE_BRIDGE_ALLOWED_TOOLS / CLAUDE_BRIDGE_PERMISSION_MODE 覆盖默认。
+// ⚠️ 安全：这会让「可能公网可达、只有一把 bridge key」的聊天口获得工具/MCP 能力；MCP 服务器由管理员
+// 自选、其工具被预授权（不再逐次审批）。仅在内网/受信任部署开启，别接高危 MCP（可写文件系统/跑命令）。
+
+/** 从 MCP 配置（内联 JSON 或读入的文本）取服务器名列表。纯函数（解析失败→[]）。 */
+export function mcpServerNames(configText: string): string[] {
+  try {
+    const o = JSON.parse(configText) as { mcpServers?: Record<string, unknown> };
+    return o?.mcpServers && typeof o.mcpServers === "object" ? Object.keys(o.mcpServers) : [];
+  } catch { return []; }
+}
+
+/** 构建桥接增强参数。纯函数（所有输入显式传入，便于单测）。
+ *  mcpConfigArg：传给 --mcp-config 的值（文件路径，内联已 materialize）；null=不挂 MCP。 */
+export function buildBridgeAgenticArgs(opts: {
+  mcpConfigArg: string | null; serverNames: string[]; skills: boolean;
+  allowedOverride?: string; permissionMode?: string;
+}): string[] {
+  if (!opts.mcpConfigArg && !opts.skills) return []; // 纯文本模式：零增强
+  const tools = new Set(["Read", "Glob", "Grep", "WebSearch", "WebFetch"]);
+  if (opts.skills) tools.add("Skill");
+  for (const n of opts.serverNames) tools.add(`mcp__${n}`);
+  const args: string[] = [];
+  if (opts.mcpConfigArg) args.push("--mcp-config", opts.mcpConfigArg, "--strict-mcp-config");
+  args.push("--allowedTools", opts.allowedOverride?.trim() || Array.from(tools).join(","));
+  args.push("--permission-mode", opts.permissionMode?.trim() || "default");
+  return args;
+}
+
+/** 读 env → 桥接增强参数（内联 MCP JSON 落临时文件；文件路径读出取服务器名）。空数组=纯文本。 */
+export function resolveBridgeAgenticArgs(): string[] {
+  const rawMcp = process.env.CLAUDE_BRIDGE_MCP_CONFIG?.trim();
+  const skills = process.env.CLAUDE_BRIDGE_SKILLS === "1";
+  if (!rawMcp && !skills) return [];
+  let mcpConfigArg: string | null = null;
+  let serverNames: string[] = [];
+  if (rawMcp) {
+    if (rawMcp.startsWith("{")) {
+      // 内联 JSON → 落临时文件（部分 claude 版本 --mcp-config 只认路径）
+      serverNames = mcpServerNames(rawMcp);
+      try { const p = join(tmpdir(), `bridge-mcp-${process.pid}.json`); writeFileSync(p, rawMcp); mcpConfigArg = p; }
+      catch { mcpConfigArg = rawMcp; }
+    } else {
+      mcpConfigArg = rawMcp; // 文件路径
+      try { serverNames = mcpServerNames(readFileSync(rawMcp, "utf8")); } catch { serverNames = []; }
+    }
+  }
+  return buildBridgeAgenticArgs({
+    mcpConfigArg, serverNames, skills,
+    allowedOverride: process.env.CLAUDE_BRIDGE_ALLOWED_TOOLS,
+    permissionMode: process.env.CLAUDE_BRIDGE_PERMISSION_MODE,
+  });
+}
+
 /** 起一次 claude 子进程、把 stdin 写进去、收集 stdout/stderr，用 parse 解析结果。内部复用。 */
 function spawnClaudeCollect(
   extraArgs: string[], stdin: string, timeoutMs: number,
@@ -127,11 +189,13 @@ export async function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: nu
   if (docText) prompt = [prompt, docText].filter(Boolean).join("\n\n");
   const images = await resolveImages(collectImageUrls(opts.messages));
   const modelArgs = opts.model ? ["--model", opts.model] : [];
+  // 技能/MCP 增强（默认空数组 = 纯文本，行为不变）。两条路径都带上。
+  const agentic = resolveBridgeAgenticArgs();
 
   if (images.length) {
     // 图片路径：stream-json 输入必须配 stream-json 输出（CLI 强制），末尾 result 行取答案。
     const input = buildClaudeStreamJsonInput(prompt, images);
-    const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", ...modelArgs];
+    const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", ...modelArgs, ...agentic];
     const r = await spawnClaudeCollect(args, input, opts.timeoutMs, (out, err) => {
       const parsed = parseClaudeStreamJsonResult(out);
       if ((!parsed.text || parsed.isError) && err.trim()) return { text: parsed.text || err.trim().slice(-800), isError: true };
@@ -141,7 +205,7 @@ export async function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: nu
   }
 
   // 纯文本（或仅文档）路径：沿用原来的单条 JSON 输出，快且稳。
-  return spawnClaudeCollect(["-p", "--output-format", "json", ...modelArgs], prompt, opts.timeoutMs, (out, err) => {
+  return spawnClaudeCollect(["-p", "--output-format", "json", ...modelArgs, ...agentic], prompt, opts.timeoutMs, (out, err) => {
     const parsed = parseClaudeJsonResult(out);
     if ((!parsed.text || parsed.isError) && err.trim()) return { text: parsed.text || err.trim().slice(-800), isError: true };
     return parsed;

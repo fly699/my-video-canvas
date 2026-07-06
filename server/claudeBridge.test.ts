@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { contentToText, messagesToPrompt, parseClaudeJsonResult, bridgeModelArg } from "./_core/claudeBridge";
+import { contentToText, messagesToPrompt, parseClaudeJsonResult, bridgeModelArg, mcpServerNames, buildBridgeAgenticArgs } from "./_core/claudeBridge";
 
 describe("contentToText", () => {
   it("字符串原样；分段数组拼接 text；其它为空", () => {
@@ -82,5 +82,45 @@ describe("rewriteBridgeSelfUrl（桥接自调用强制回环）", () => {
     const { bridgeLocalUrl, setBridgeSelfHttpPort } = await import("./_core/claudeBridge");
     setBridgeSelfHttpPort(3456);
     expect(bridgeLocalUrl()).toBe("http://127.0.0.1:3456/api/claude-bridge");
+  });
+});
+
+describe("mcpServerNames（从 MCP 配置取服务器名）", () => {
+  it("取 mcpServers 的 key", () => {
+    expect(mcpServerNames('{"mcpServers":{"fs":{},"web":{}}}')).toEqual(["fs", "web"]);
+  });
+  it("无 mcpServers / 非法 JSON → []", () => {
+    expect(mcpServerNames('{"x":1}')).toEqual([]);
+    expect(mcpServerNames("not json")).toEqual([]);
+  });
+});
+
+describe("buildBridgeAgenticArgs（桥接技能/MCP 增强参数）", () => {
+  it("都没开 → 空数组（纯文本模式，行为不变）", () => {
+    expect(buildBridgeAgenticArgs({ mcpConfigArg: null, serverNames: [], skills: false })).toEqual([]);
+  });
+  it("只开技能 → 放行 Skill + 只读工具 + default 权限，不挂 MCP", () => {
+    const a = buildBridgeAgenticArgs({ mcpConfigArg: null, serverNames: [], skills: true });
+    expect(a).not.toContain("--mcp-config");
+    const allowed = a[a.indexOf("--allowedTools") + 1];
+    expect(allowed).toContain("Skill");
+    expect(allowed).toContain("Read");
+    expect(allowed).not.toContain("Bash");
+    expect(a).toContain("--permission-mode");
+    expect(a[a.indexOf("--permission-mode") + 1]).toBe("default");
+  });
+  it("开 MCP → 挂 --mcp-config + strict，放行各服务器 mcp__<名>", () => {
+    const a = buildBridgeAgenticArgs({ mcpConfigArg: "/cfg.json", serverNames: ["fs", "web"], skills: false });
+    expect(a).toContain("--mcp-config");
+    expect(a[a.indexOf("--mcp-config") + 1]).toBe("/cfg.json");
+    expect(a).toContain("--strict-mcp-config");
+    const allowed = a[a.indexOf("--allowedTools") + 1];
+    expect(allowed).toContain("mcp__fs");
+    expect(allowed).toContain("mcp__web");
+  });
+  it("允许覆盖工具白名单与权限模式", () => {
+    const a = buildBridgeAgenticArgs({ mcpConfigArg: null, serverNames: [], skills: true, allowedOverride: "Skill,Read", permissionMode: "acceptEdits" });
+    expect(a[a.indexOf("--allowedTools") + 1]).toBe("Skill,Read");
+    expect(a[a.indexOf("--permission-mode") + 1]).toBe("acceptEdits");
   });
 });

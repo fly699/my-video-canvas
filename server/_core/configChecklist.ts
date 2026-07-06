@@ -10,6 +10,7 @@ import { ENV } from "./env";
 import * as db from "../db";
 import { resolveClaudeBin, resolveClaudeSpawn } from "./superAgent/claudeProcess";
 import { resolveCodexBin, resolveCodexSpawn } from "./codexBridge";
+import { mcpServerNames } from "./claudeBridge";
 
 export type CheckStatus = "ok" | "warn" | "missing" | "off";
 export interface CheckItem {
@@ -39,7 +40,8 @@ export interface ChecklistInput {
     higgsKey: boolean; higgsSecret: boolean; comfyBase: boolean; comfyCloudKey: boolean;
     sshSecret: boolean; googleId: boolean; googleSecret: boolean;
   };
-  bridge: { keySet: boolean; keyValue: string; claudeTokenSet: boolean; codexApiKeySet: boolean };
+  bridge: { keySet: boolean; keyValue: string; claudeTokenSet: boolean; codexApiKeySet: boolean;
+    skillsOn: boolean; mcpConfigRaw: string; mcpConfigOk: boolean; mcpServerNames: string[] };
   superAgent: { enabled: boolean; allowBash: boolean; permissionCmdSet: boolean; autoInstall: boolean };
   probes: { ffmpeg: boolean; claudeCli: boolean; codexCli: boolean; codexAuthJson: boolean };
   dbConf: {
@@ -160,6 +162,18 @@ export function evaluateChecklist(s: ChecklistInput): CheckItem[] {
     if (s.bridge.codexApiKeySet) {
       add({ id: "bridge.codexApiKey", group: "订阅桥接", label: "CODEX_API_KEY 风险", status: "warn", detail: "设了 CODEX_API_KEY——它优先级高于 ChatGPT 订阅凭证，等于绕过订阅按量计费", fix: "从 .env / 系统环境变量删掉 CODEX_API_KEY" });
     }
+    // 桥接「技能 / MCP」增强（默认关闭）
+    if (!s.bridge.skillsOn && !s.bridge.mcpConfigRaw) {
+      add({ id: "bridge.agentic", group: "订阅桥接", label: "技能 / MCP 增强", status: "off", detail: "未启用（桥接为纯文本问答，最安全）。要让订阅 Claude 调技能/MCP：设 CLAUDE_BRIDGE_SKILLS=1 或 CLAUDE_BRIDGE_MCP_CONFIG，详见 docs/本机claude桥接.md" });
+    } else {
+      add({ id: "bridge.skills", group: "订阅桥接", label: "桥接技能（Skill）", status: s.bridge.skillsOn ? "ok" : "off", detail: s.bridge.skillsOn ? "已放行 Skill 工具——技能放服务器 ~/.claude/skills/<名>/SKILL.md 即自动可用" : "未放行（可选：CLAUDE_BRIDGE_SKILLS=1）" });
+      if (s.bridge.mcpConfigRaw) {
+        add(s.bridge.mcpConfigOk
+          ? { id: "bridge.mcp", group: "订阅桥接", label: "桥接 MCP", status: "ok", detail: `已挂载 ${s.bridge.mcpServerNames.length} 个 MCP 服务器（${s.bridge.mcpServerNames.join("、") || "—"}）` }
+          : { id: "bridge.mcp", group: "订阅桥接", label: "桥接 MCP", status: "warn", detail: "CLAUDE_BRIDGE_MCP_CONFIG 指向的配置读不到或解析不出 mcpServers——桥接会因 --strict-mcp-config 报错", fix: "检查该文件路径存在且是合法 JSON（含 mcpServers 对象）；内联 JSON 需以 { 开头" });
+      }
+      add({ id: "bridge.agenticRisk", group: "订阅桥接", label: "技能/MCP 安全提示", status: "warn", detail: "桥接已获工具/MCP 能力：这个可能公网可达、只有一把 key 的聊天口不再是纯文本。建议仅内网/受信任部署开启，别接可写文件系统/跑命令的高危 MCP", fix: "如非必要请删掉 CLAUDE_BRIDGE_SKILLS / CLAUDE_BRIDGE_MCP_CONFIG 回到纯文本；重型智能体走「代码任务」通道" });
+    }
   }
 
   // ── 工程智能体 ──
@@ -222,6 +236,16 @@ export async function buildConfigChecklist(): Promise<{ items: CheckItem[]; envE
     safe(db.getSelfHostedLlmConfig(), { url: "", apiKey: "", models: [] } as Awaited<ReturnType<typeof db.getSelfHostedLlmConfig>>),
   ]);
 
+  // 桥接 MCP 配置状态：内联 JSON（{ 开头）就地解析；文件路径读出解析。取服务器名 + 是否合法。
+  const bridgeMcp = ((): { raw: string; ok: boolean; names: string[] } => {
+    const raw = process.env.CLAUDE_BRIDGE_MCP_CONFIG?.trim() || "";
+    if (!raw) return { raw: "", ok: false, names: [] };
+    let text = raw;
+    if (!raw.startsWith("{")) { try { text = readFileSync(raw, "utf8"); } catch { return { raw, ok: false, names: [] }; } }
+    const names = mcpServerNames(text);
+    return { raw, ok: names.length > 0, names };
+  })();
+
   const input: ChecklistInput = {
     isProduction: ENV.isProduction,
     devBypass: !ENV.isProduction && !ENV.databaseUrl && !ENV.oAuthServerUrl,
@@ -244,6 +268,10 @@ export async function buildConfigChecklist(): Promise<{ items: CheckItem[]; envE
       keyValue: process.env.CLAUDE_LOCAL_BRIDGE_KEY?.trim() || "",
       claudeTokenSet: !!process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
       codexApiKeySet: !!process.env.CODEX_API_KEY?.trim(),
+      skillsOn: process.env.CLAUDE_BRIDGE_SKILLS === "1",
+      mcpConfigRaw: bridgeMcp.raw,
+      mcpConfigOk: bridgeMcp.ok,
+      mcpServerNames: bridgeMcp.names,
     },
     superAgent: {
       enabled: process.env.SUPER_AGENT_CODE_ENABLED === "1",
