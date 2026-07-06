@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, ChevronDown, Server } from "lucide-react";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { CHAT_MODELS } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { useSystemDefaultModels } from "@/lib/useSystemDefaultModels";
+import { useBridgeSkills } from "@/lib/useBridgeSkills";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES } from "@/lib/aiAssistantTemplates";
 import { goToAdminTab } from "@/lib/adminNav";
@@ -80,6 +81,25 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const effModel = chatModels.find((m) => m.id === chatModel)?.id
     ?? chatModels.find((m) => m.id === sysDefaultLlm)?.id
     ?? chatModels[0]?.id;
+
+  // 「/ 唤起技能」：仅本机 Claude 桥接模型（技能是 Claude 能力）且服务端放行了 Skill 时启用。
+  // 输入以 / 开头且后面是技能名片段（无空白）时，弹出可选技能列表。
+  const isClaudeLocalModel = !!effModel && effModel.toLowerCase().startsWith("claude-local");
+  const bridgeSkills = useBridgeSkills(isAI && isClaudeLocalModel);
+  const [skillHi, setSkillHi] = useState(0);
+  const [skillDismiss, setSkillDismiss] = useState("");
+  const slashFrag = /^\/([^\s/]*)$/.exec(text)?.[1];
+  const skillMatches = useMemo(() => {
+    if (slashFrag === undefined) return [];
+    const q = slashFrag.toLowerCase();
+    return bridgeSkills.skills
+      .filter((s) => !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [slashFrag, bridgeSkills.skills]);
+  const showSkillPicker = isAI && isClaudeLocalModel && bridgeSkills.enabled
+    && slashFrag !== undefined && text !== skillDismiss && skillMatches.length > 0;
+  useEffect(() => { setSkillHi(0); }, [slashFrag]);
+  const pickSkill = (name: string) => { setText(`用 ${name} 技能：`); setSkillDismiss(""); };
   // AI 助手「模板」人设：复用 ai_chat 节点的同一套模板（ALL_AI_TEMPLATES）。存模板 id，
   // 发送时解析为其 prompt 作为 systemPrompt 传给后端，覆盖默认助手人设。空 = 默认助手。
   const [chatTemplate, setChatTemplate] = useState<string>(() => localStorage.getItem("chat:aiTemplate") || "");
@@ -350,6 +370,9 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
             ]}
             onChange={pickChatTemplate}
           />
+          {isClaudeLocalModel && bridgeSkills.enabled && bridgeSkills.skills.length > 0 && (
+            <span style={{ color: C.accent }}>· 输入 <strong>/</strong> 选技能</span>
+          )}
           {!narrow && <span style={{ color: C.t4 }}>· 与 AI 助手的对话内容会经服务器处理</span>}
         </div>
       ) : (
@@ -367,13 +390,42 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
         </div>
       )}
 
+      {/* 「/ 唤起技能」面板：输入以 / 开头时浮在输入框上方 */}
+      {showSkillPicker && (
+        <div style={{ position: "relative", padding: narrow ? "0 10px" : "0 16px", flexShrink: 0 }}>
+          <div className="nowheel" style={{ position: "absolute", bottom: 4, left: narrow ? 10 : 16, right: narrow ? 10 : 16, maxHeight: 260, overflowY: "auto",
+            background: "var(--c-elevated, #1b1b1f)", border: `1px solid ${C.borderStrong}`, borderRadius: 10, boxShadow: "0 12px 34px rgba(0,0,0,0.45)", zIndex: 40, padding: 5 }}>
+            <div style={{ fontSize: 10.5, color: C.t4, padding: "3px 8px 5px" }}>技能 · ↑↓ 选择 · Enter 确认 · Esc 关闭</div>
+            {skillMatches.map((s, i) => (
+              <button key={s.name} type="button"
+                onMouseEnter={() => setSkillHi(i)}
+                onClick={() => pickSkill(s.name)}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 9px", borderRadius: 7, border: "none", cursor: "pointer",
+                  background: i === skillHi ? C.accentSoft : "transparent", color: C.t1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: i === skillHi ? C.accent : C.t1 }}>/{s.name}</div>
+                {s.description && <div style={{ fontSize: 11, color: C.t3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.description}</div>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* input */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: narrow ? "8px 10px calc(12px + env(safe-area-inset-bottom, 0px))" : "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         <button onClick={() => fileRef.current?.click()} title={isAI ? "添加附件（图片可作参考图，需视觉模型）" : `添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
         {!isAI && <button onClick={() => screenshot()} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>}
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); } }}
+          onKeyDown={(e) => {
+            // 技能面板开着时，方向键/Enter/Esc/Tab 归面板用，不触发发送。
+            if (showSkillPicker) {
+              if (e.key === "ArrowDown") { e.preventDefault(); setSkillHi((i) => (i + 1) % skillMatches.length); return; }
+              if (e.key === "ArrowUp") { e.preventDefault(); setSkillHi((i) => (i - 1 + skillMatches.length) % skillMatches.length); return; }
+              if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickSkill(skillMatches[skillHi].name); return; }
+              if (e.key === "Escape") { e.preventDefault(); setSkillDismiss(text); return; }
+            }
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); }
+          }}
           onPaste={(e) => {
             // Support pasting files of any type (screenshots, images, docs…). The
             // clipboard exposes them via items (type "file") — pull out the Files
