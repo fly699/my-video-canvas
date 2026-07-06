@@ -41,6 +41,10 @@ export interface KieImageSpec {
   /** 可由用户选择的 resolution 档位（如 GPT Image 2 的 1K/2K/4K，逐档计价）。
    *  options.resolution 合法时覆盖 fixed.resolution；首项/fixed 值为默认。 */
   resOptions?: readonly string[];
+  /** 该模型 input schema 支持 `negative_prompt`（docs/kie-api.md：仅 Imagen4 家族 /
+   *  Ideogram V3 / Qwen 系列）。置 true 才把节点的负向词发进 input.negative_prompt；
+   *  其余 kie 图像模型文档无此字段，发了也会被忽略，故按文档只对支持者发送。 */
+  negPrompt?: boolean;
 }
 // Common enum sets (docs/kie-api.md). First entry = default.
 const A_NANO = ["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9", "auto"] as const;
@@ -66,10 +70,10 @@ export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   kie_seedream_45:      { id: "seedream/4.5-text-to-image", label: "Seedream 4.5", family: "Seedream", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
   kie_flux2_pro:        { id: "flux-2/pro-text-to-image", label: "Flux-2 Pro", family: "Flux-2", aspect: "aspect_ratio", aspects: A_FLUX, fixed: { resolution: "1K" } },
   kie_gpt_image_15:     { id: "gpt-image/1.5-text-to-image", label: "GPT Image 1.5", family: "GPT Image", aspect: "aspect_ratio", aspects: A_GPT, fixed: { quality: "medium" } },
-  kie_imagen4:          { id: "google/imagen4", label: "Imagen 4", family: "Imagen", aspect: "aspect_ratio", aspects: A_IMAGEN },
+  kie_imagen4:          { id: "google/imagen4", label: "Imagen 4", family: "Imagen", aspect: "aspect_ratio", aspects: A_IMAGEN, negPrompt: true },
   // Imagen 4 快/超清两档（docs/kie-api.md google/imagen4-fast|ultra；计价 kie-pricing.md:791-792）
-  kie_imagen4_fast:     { id: "google/imagen4-fast", label: "Imagen 4 Fast", family: "Imagen", aspect: "aspect_ratio", aspects: A_IMAGEN },
-  kie_imagen4_ultra:    { id: "google/imagen4-ultra", label: "Imagen 4 Ultra", family: "Imagen", aspect: "aspect_ratio", aspects: A_IMAGEN },
+  kie_imagen4_fast:     { id: "google/imagen4-fast", label: "Imagen 4 Fast", family: "Imagen", aspect: "aspect_ratio", aspects: A_IMAGEN, negPrompt: true },
+  kie_imagen4_ultra:    { id: "google/imagen4-ultra", label: "Imagen 4 Ultra", family: "Imagen", aspect: "aspect_ratio", aspects: A_IMAGEN, negPrompt: true },
   kie_z_image:          { id: "z-image", label: "Z-Image", family: "Z-Image", aspect: "aspect_ratio", aspects: A_Z },
   kie_grok_image:       { id: "grok-imagine/text-to-image", label: "Grok Image", family: "Grok", aspect: "aspect_ratio", aspects: A_GROK },
   // image-to-image / edit (require reference image — note the field name differs!)
@@ -87,11 +91,11 @@ export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   kie_seedream_5lite_i2i: { id: "seedream/5-lite-image-to-image", label: "Seedream 5.0 Lite 编辑", family: "Seedream", ref: "image_urls", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
   kie_wan27_image:     { id: "wan/2-7-image", label: "Wan 2.7 Image", family: "Wan", aspect: "aspect_ratio", aspects: A_WAN27, fixed: { resolution: "1K" } },
   kie_wan27_image_pro: { id: "wan/2-7-image-pro", label: "Wan 2.7 Image Pro", family: "Wan", aspect: "aspect_ratio", aspects: A_WAN27, fixed: { resolution: "1K" } },
-  kie_ideogram_v3:     { id: "ideogram/v3-text-to-image", label: "Ideogram V3", family: "Ideogram", aspect: "image_size" },
-  kie_qwen_image:      { id: "qwen/text-to-image", label: "Qwen Image", family: "Qwen", aspect: "image_size" },
+  kie_ideogram_v3:     { id: "ideogram/v3-text-to-image", label: "Ideogram V3", family: "Ideogram", aspect: "image_size", negPrompt: true },
+  kie_qwen_image:      { id: "qwen/text-to-image", label: "Qwen Image", family: "Qwen", aspect: "image_size", negPrompt: true },
   // ── 特殊端点批：Qwen 图生图/编辑（参考图字段是单数 image_url；Qwen2 用 image_size 放 aspect 值）──
-  kie_qwen_image_i2i:  { id: "qwen/image-to-image", label: "Qwen Image 图生图", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size" },
-  kie_qwen_image_edit: { id: "qwen/image-edit", label: "Qwen Image 编辑", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size" },
+  kie_qwen_image_i2i:  { id: "qwen/image-to-image", label: "Qwen Image 图生图", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size", negPrompt: true },
+  kie_qwen_image_edit: { id: "qwen/image-edit", label: "Qwen Image 编辑", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size", negPrompt: true },
   kie_qwen2_image_edit:{ id: "qwen2/image-edit", label: "Qwen2 Image 编辑", family: "Qwen", ref: "image_url", refSingle: true, aspect: "image_size_raw", aspects: A_QWEN2 },
   // ── 专属端点批：Flux Kontext（/flux/kontext）+ OpenAI 4o Image（/gpt4o-image）──
   // ref 在这两个端点下为「可选」（有图即编辑），不抛缺图错误（仅 jobs 端点的编辑模型必填）。
@@ -121,6 +125,13 @@ const REDUCED_SIZE_MODELS = new Set(["kie_ideogram_v3", "kie_qwen_image", "kie_q
 
 export function isKieImageModel(model?: string): boolean {
   return !!model && model in KIE_IMAGE_MODELS;
+}
+
+/** 该 kie 图像模型的 input schema 是否支持 negative_prompt（Imagen4 家族 / Ideogram V3 /
+ *  Qwen 系列）。router 据此决定：支持者「干净 prompt + 单独传负向」，否则退回把负向词塞进
+ *  prompt 当「Avoid: …」后缀（因 API 无该字段）。 */
+export function kieImageSupportsNegative(model?: string): boolean {
+  return !!model && KIE_IMAGE_MODELS[model]?.negPrompt === true;
 }
 
 const POLL_INTERVAL_MS = 3000;
@@ -185,6 +196,8 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
     if (spec.resOptions && options.resolution && spec.resOptions.includes(options.resolution)) {
       input.resolution = options.resolution;
     }
+    // 负向提示词：仅对文档明确支持的模型发送（Imagen4 家族 / Ideogram V3 / Qwen 系列）。
+    if (spec.negPrompt && options.negativePrompt?.trim()) input.negative_prompt = options.negativePrompt.trim();
     if (spec.ref) { // jobs 端点下 ref 存在 = 编辑模型，必填
       if (refs.length === 0) throw new Error(`${spec.label} 需要参考图，请先连接或上传参考图`);
       input[spec.ref] = spec.refSingle ? refs[0] : refs;
