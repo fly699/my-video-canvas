@@ -123,4 +123,11 @@ describe("buildBridgeAgenticArgs（桥接技能/MCP 增强参数）", () => {
     expect(a[a.indexOf("--allowedTools") + 1]).toBe("Skill,Read");
     expect(a[a.indexOf("--permission-mode") + 1]).toBe("acceptEdits");
   });
+  it("strict=false → 不加 --strict-mcp-config（供 OAuth 型 MCP 合并 claude 自带配置，如 Higgsfield）", () => {
+    const on = buildBridgeAgenticArgs({ mcpConfigArg: "/cfg.json", serverNames: ["hf"], skills: false });
+    expect(on).toContain("--strict-mcp-config");
+    const off = buildBridgeAgenticArgs({ mcpConfigArg: "/cfg.json", serverNames: ["hf"], skills: false, strict: false });
+    expect(off).toContain("--mcp-config");
+    expect(off).not.toContain("--strict-mcp-config");
+  });
 });

@@ -136,6 +136,37 @@ MCP 配置文件示例（`mcp.json`）：
 > ⚠️ **安全**：开启后，这个「可能公网可达、只有一把 bridge key」的聊天口就获得了工具/MCP 能力；MCP 服务器由你自选、其工具被**预授权（不再逐次审批）**。**建议仅在内网/受信任部署开启，别接高危 MCP**（能写文件系统 / 跑命令的）。要「读写文件 + 执行前逐条审批」的重型智能体，仍走工程智能体「代码任务」通道（`docs/phase2-启用清单.md`）。
 > **GPT（codex）侧**：codex 的 MCP 在其自身 `~/.codex/config.toml` 的 `mcp_servers` 配置，与本桥接 env 无关。
 
+### 接入 Higgsfield（MCP / 官方技能）
+
+Higgsfield 有三种形态，按需求选：
+
+**① 最简：直接用内置 Higgsfield 生成节点**——`.env` 设 `HIGGSFIELD_API_KEY` / `HIGGSFIELD_API_SECRET`，Higgsfield 模型即出现在画布图像/视频节点里，无需 MCP/技能。
+
+**② 让「本机 Claude」聊天调 Higgsfield 的 30+ 模型 → 接它的 MCP（无需 shell）**
+Higgsfield MCP 是 HTTP 端点 `https://mcp.higgsfield.ai/mcp`，**用 OAuth 授权（不用 API key）**。OAuth 凭证由 claude 自己管，桥接要**关掉 strict** 才能合并进来：
+
+1. 在服务器上（用运行本服务的**同一账号 / 同一 `CLAUDE_CONFIG_DIR`**）跑一次交互式登录，把 Higgsfield 加进 claude 并完成浏览器 OAuth：
+   ```bash
+   claude mcp add --transport http higgsfield https://mcp.higgsfield.ai/mcp
+   ```
+   登录后凭证存进 `~/.claude`（或 `CLAUDE_CONFIG_DIR`），无头 `claude -p` 会复用。
+2. `.env`：
+   ```
+   CLAUDE_BRIDGE_MCP_STRICT=0                 # 允许桥接合并 claude 自带的 MCP（含 Higgsfield OAuth）
+   CLAUDE_BRIDGE_ALLOWED_TOOLS=Read,Glob,Grep,WebSearch,WebFetch,Skill,mcp__higgsfield
+   ```
+   （strict=0 时桥接不知道服务器名，故手动把 `mcp__higgsfield` 加进放行工具集。）
+3. 重启服务。之后对话里说「用 Higgsfield 生成一段…」即可。
+
+**③ 用官方技能包（含运镜 / Soul ID 等工作流）→ 走「代码任务」通道**
+官方技能（`higgsfield-ai/skills`）**底层 shell 调 Higgsfield CLI**，而桥接不放行 Bash、跑不动。要完整用得走工程智能体「代码任务」通道（现已放行 `Skill` 工具）：
+1. 开启代码任务通道（含第二把钥匙放行 Bash）：见 `docs/phase2-启用清单.md`；
+2. 服务器上装技能 + CLI 并登录（技能装到 `~/.claude/skills` 或 `CLAUDE_CONFIG_DIR/skills`，需与服务账号一致）：
+   ```bash
+   npx skills add higgsfield-ai/skills     # 装技能（顺带装 Higgsfield CLI），按提示完成登录
+   ```
+3. 用画布的 **SuperAgent（代码任务）节点**，让它「用 higgsfield-generate 技能生成…」。CLI 命令会经执行前审批。
+
 ## 注意事项
 
 - **额度与限流**：所有走这条路的调用共用你这个订阅账号的用量上限，撞上限会被限流（不扣钱，但会卡）。当多用户高频后端使用时尤其容易顶到上限。

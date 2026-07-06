@@ -120,13 +120,16 @@ export function mcpServerNames(configText: string): string[] {
 export function buildBridgeAgenticArgs(opts: {
   mcpConfigArg: string | null; serverNames: string[]; skills: boolean;
   allowedOverride?: string; permissionMode?: string;
+  /** 是否加 --strict-mcp-config（只认本配置、忽略 claude 自带 ~/.claude/mcp.json）。默认 true。
+   *  OAuth 型 MCP（如 Higgsfield，靠 `claude mcp add` 存凭证在 claude 配置里）需设 false 才能合并进来。 */
+  strict?: boolean;
 }): string[] {
   if (!opts.mcpConfigArg && !opts.skills) return []; // 纯文本模式：零增强
   const tools = new Set(["Read", "Glob", "Grep", "WebSearch", "WebFetch"]);
   if (opts.skills) tools.add("Skill");
   for (const n of opts.serverNames) tools.add(`mcp__${n}`);
   const args: string[] = [];
-  if (opts.mcpConfigArg) args.push("--mcp-config", opts.mcpConfigArg, "--strict-mcp-config");
+  if (opts.mcpConfigArg) { args.push("--mcp-config", opts.mcpConfigArg); if (opts.strict !== false) args.push("--strict-mcp-config"); }
   args.push("--allowedTools", opts.allowedOverride?.trim() || Array.from(tools).join(","));
   args.push("--permission-mode", opts.permissionMode?.trim() || "default");
   return args;
@@ -154,6 +157,7 @@ export function resolveBridgeAgenticArgs(): string[] {
     mcpConfigArg, serverNames, skills,
     allowedOverride: process.env.CLAUDE_BRIDGE_ALLOWED_TOOLS,
     permissionMode: process.env.CLAUDE_BRIDGE_PERMISSION_MODE,
+    strict: process.env.CLAUDE_BRIDGE_MCP_STRICT !== "0",
   });
 }
 

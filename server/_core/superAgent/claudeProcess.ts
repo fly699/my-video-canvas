@@ -67,8 +67,11 @@ export type PermissionWiring = Pick<ClaudeArgsOptions, "allowedTools" | "disallo
  * - 放行 Bash 但未配置审批 MCP：预授 Bash + acceptEdits（仅靠事后监控止损，弱一档）。
  */
 export function resolvePermissionWiring(): PermissionWiring {
+  // Skill 工具始终放行：技能（如 Higgsfield 官方技能）本体只是加载指令，真正动作仍走已受限的
+  // Bash/文件工具（+执行前审批），放行「调用技能」本身无额外风险。技能放服务器 ~/.claude/skills
+  // （或 CLAUDE_CONFIG_DIR/skills），无头模式自动发现。CLI 型技能还需第二把钥匙放行 Bash。
   if (!isBashAllowed()) {
-    return { allowedTools: ["Read", "Edit", "Write"], disallowedTools: [], permissionMode: "acceptEdits" };
+    return { allowedTools: ["Read", "Edit", "Write", "Skill"], disallowedTools: [], permissionMode: "acceptEdits" };
   }
   const highRisk = ["Bash(rm *)", "Bash(sudo *)", "Bash(shutdown *)", "Bash(reboot *)", "Bash(mkfs *)", "Bash(dd *)"];
   const cmd = process.env.SUPER_AGENT_PERMISSION_CMD?.trim();
@@ -78,7 +81,7 @@ export function resolvePermissionWiring(): PermissionWiring {
     const mcpConfig = JSON.stringify({ mcpServers: { policy: { type: "stdio", command: cmd, args: argv } } });
     return {
       // 不预授 Bash：让未被 allow 规则覆盖的 Bash 落到执行前审批工具。
-      allowedTools: ["Read", "Edit", "Write"],
+      allowedTools: ["Read", "Edit", "Write", "Skill"],
       disallowedTools: highRisk,
       permissionMode: "default",
       mcpConfig,
@@ -86,7 +89,7 @@ export function resolvePermissionWiring(): PermissionWiring {
       permissionPromptTool: `mcp__policy__${PERMISSION_TOOL_NAME}`,
     };
   }
-  return { allowedTools: ["Read", "Edit", "Write", "Bash"], disallowedTools: highRisk, permissionMode: "acceptEdits" };
+  return { allowedTools: ["Read", "Edit", "Write", "Bash", "Skill"], disallowedTools: highRisk, permissionMode: "acceptEdits" };
 }
 
 /**
