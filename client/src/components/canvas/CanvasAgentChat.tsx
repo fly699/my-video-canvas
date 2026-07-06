@@ -16,7 +16,7 @@ import type { AgentOperation } from "../../../../shared/types";
  *  （agent.chat 规划 + buildGraphSummary 看实时画布 + applyAgentOperations 落地）。
  *  已对齐聊天助手：模板人设、@角色 引用、/ 调技能（本机 Claude 桥接，MCP 亦自动可用）、撤销本次改动。
  *  结构性操作自动落地且不花钱；「运行/生成」仍需在节点上点运行（防误烧额度）。 */
-type Turn = { role: "user" | "assistant"; content: string; applied?: string; failed?: string; error?: boolean; touchedIds?: string[]; undone?: boolean };
+type Turn = { role: "user" | "assistant"; content: string; applied?: string; failed?: string; error?: boolean; createdIds?: string[]; undone?: boolean };
 
 const accent = "oklch(0.70 0.20 310)";
 const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
@@ -137,11 +137,15 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     return [c && `新建 ${c}`, l && `连线 ${l}`, u && `改 ${u}`, d && `删 ${d}`].filter(Boolean).join(" · ");
   };
 
+  // 撤销 = 只删除本轮 AI【新建】的节点（createdIds），绝不删被 update/connect 的用户既有
+  // 节点（否则会误删用户原有内容）。删新建节点会连带清掉本轮新建的边。被 update 的既有
+  // 节点内容如需回退，用全局 Ctrl+Z（整批 applyAgentOperations 是单步撤销）。
   const undoTurn = (idx: number) => {
     const t = turns[idx];
-    if (!t?.touchedIds?.length) return;
+    if (!t?.createdIds?.length) return;
     const st = useCanvasStore.getState();
-    t.touchedIds.forEach((id) => st.deleteNode(id));
+    const live = new Set(st.nodes.map((n) => n.id));
+    t.createdIds.filter((id) => live.has(id)).forEach((id) => st.deleteNode(id));
     setTurns((p) => p.map((x, i) => (i === idx ? { ...x, undone: true } : x)));
   };
 
@@ -162,15 +166,15 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
       const r = await chat.mutateAsync({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments });
       const ops = (r.operations ?? []) as AgentOperation[];
-      let applied = "", failed = "", touchedIds: string[] = [];
+      let applied = "", failed = "", createdIds: string[] = [];
       if (ops.length) {
         const anchor = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2 - 120, y: window.innerHeight / 2 - 120 });
         const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
         const res = applyAgentOperations(ops, anchor, { templates, ownerAgentId: "canvas-agent-chat" });
-        applied = opsSummary(ops); touchedIds = res.touchedIds ?? [];
+        applied = opsSummary(ops); createdIds = res.createdIds ?? [];
         if (res.failures.length) failed = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
       }
-      setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed: failed || undefined, touchedIds: touchedIds.length ? touchedIds : undefined }]);
+      setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed: failed || undefined, createdIds: createdIds.length ? createdIds : undefined }]);
     } catch (e) {
       setTurns((p) => [...p, { role: "assistant", content: e instanceof Error ? e.message : "调用失败", error: true }]);
     }
@@ -229,13 +233,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             {t.applied && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, color: accent, paddingLeft: 2 }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Plus size={10} /><Link2 size={10} /><Pencil size={10} /> 已应用：{t.applied}</span>
-                {t.touchedIds?.length && !t.undone && (
-                  <button onClick={() => undoTurn(i)} title="撤销本次 AI 改动（可再 Ctrl+Z 恢复）"
+                {t.createdIds?.length && !t.undone && (
+                  <button onClick={() => undoTurn(i)} title={`移除本次 AI 新建的 ${t.createdIds.length} 个节点（被修改的既有节点不受影响，可再 Ctrl+Z 整体回退）`}
                     style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>
-                    <CornerUpLeft size={10} /> 撤销
+                    <CornerUpLeft size={10} /> 撤销新建
                   </button>
                 )}
-                {t.undone && <span style={{ color: "var(--c-t4)" }}>· 已撤销</span>}
+                {t.undone && <span style={{ color: "var(--c-t4)" }}>· 已撤销新建</span>}
               </div>
             )}
             {t.failed && (

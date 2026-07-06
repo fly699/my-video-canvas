@@ -39,8 +39,12 @@ export interface ApplyResult {
   failures: { index: number; op: string; reason: string }[];
   /** 本批操作实际触及的真实节点 id（create 的新节点 / update 目标 / connect 的下游
    *  target）。自愈闭环用它把重跑范围收窄到「失败节点+本次修复涉及节点」，避免
-   *  全量重跑已成功节点烧钱。 */
+   *  全量重跑已成功节点烧钱。⚠️ 含被 update/connect 的【已有】节点——绝不能拿它做
+   *  「撤销=删除」，会误删用户原有节点；删除撤销只能用 createdIds。 */
   touchedIds: string[];
+  /** 本批【新建】的节点 id（仅 create）。可安全用于「撤销本次改动=删除新建节点」——
+   *  只删本轮 AI 建的节点，不碰被 update/connect 的用户既有节点。 */
+  createdIds: string[];
 }
 
 const COMFY_NODE_TYPES = new Set<string>(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
@@ -104,7 +108,7 @@ export function applyAgentOperations(
   // would create a dangling edge, and an illegal pairing would bypass the rules.
   const liveIds = new Set(store.nodes.map((n) => n.id));
   const typeById = new Map<string, NodeType>(store.nodes.map((n) => [n.id, n.data.nodeType as NodeType]));
-  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, failures: [], touchedIds: [] };
+  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, failures: [], touchedIds: [], createdIds: [] };
   const fail = (index: number, op: AgentOperation, reason: string) => {
     op.status = "failed"; op.error = reason;
     res.failures.push({ index, op: op.op, reason });
@@ -205,6 +209,7 @@ export function applyAgentOperations(
           };
           const node = store.addNode(op.nodeType as NodeType, pos);
           res.touchedIds.push(node.id);
+          res.createdIds.push(node.id);
           if (op.tempId) idMap.set(op.tempId, node.id);
           liveIds.add(node.id);
           typeById.set(node.id, op.nodeType as NodeType);
@@ -321,6 +326,7 @@ export function applyAgentOperations(
     for (const box of sceneBoxes) store.addGroupBox(box, box.title);
   });
   res.touchedIds = Array.from(new Set(res.touchedIds));
+  res.createdIds = Array.from(new Set(res.createdIds));
   return res;
 }
 
