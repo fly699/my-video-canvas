@@ -145,11 +145,16 @@ Higgsfield 有三种形态，按需求选：
 **② 让「本机 Claude」聊天调 Higgsfield 的 30+ 模型 → 接它的 MCP（无需 shell）**
 Higgsfield MCP 是 HTTP 端点 `https://mcp.higgsfield.ai/mcp`，**用 OAuth 授权（不用 API key）**。OAuth 凭证由 claude 自己管，桥接要**关掉 strict** 才能合并进来：
 
-1. 在服务器上（用运行本服务的**同一账号 / 同一 `CLAUDE_CONFIG_DIR`**）跑一次交互式登录，把 Higgsfield 加进 claude 并完成浏览器 OAuth：
+1. 在服务器上（用运行本服务的**同一账号 / 同一 `CLAUDE_CONFIG_DIR`**）注册并登录 Higgsfield。
+   **注意**：`add` 只登记、**不会弹授权**；授权要单独跑 `login`。且必须带 `--scope user`（默认
+   `local` 只对当前目录生效，桥接看不到）：
    ```bash
-   claude mcp add --transport http higgsfield https://mcp.higgsfield.ai/mcp
+   claude mcp add --transport http --scope user higgsfield https://mcp.higgsfield.ai/mcp
+   claude mcp login higgsfield     # 这一步才弹浏览器做 OAuth
+   claude mcp list                 # 应显示 higgsfield 已连接/已授权
    ```
    登录后凭证存进 `~/.claude`（或 `CLAUDE_CONFIG_DIR`），无头 `claude -p` 会复用。
+   （若之前误用默认 local scope 加过，先 `claude mcp remove higgsfield` 再按上面重加。）
 2. `.env`：
    ```
    CLAUDE_BRIDGE_MCP_STRICT=0                 # 允许桥接合并 claude 自带的 MCP（含 Higgsfield OAuth）
