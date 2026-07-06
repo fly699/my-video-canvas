@@ -17,6 +17,7 @@
 |---|---|---|
 | #723 | 🔴 撤销误删既有节点（高危·数据丢失） | 撤销按钮据 `touchedIds`（含被 update/connect 的既有节点）无差别 deleteNode，会物理删除用户原有节点。改为只删本轮新建的 `createdIds` + 回归测试。 |
 | #724 | 🔴 模板选单被面板裁切 | MiniSelect 菜单固定向上展开、被面板 overflow:hidden 裁。改为 portal 到 body + 按空间自动上/下展开。 |
+| #727 | 🔴 S3 kie 图像负向词未用原生参数 | kie Imagen4 家族 / Ideogram V3 / Qwen 系列（共 7 个）API 支持原生 `negative_prompt`，但走的是「Avoid: …」prompt 后缀弱效果。改为对这 7 个模型发原生 `negative_prompt`（`KieImageSpec.negPrompt` + `generateImageKie` 发送 + router 干净 prompt/单独传负向）+ 回归测试。 |
 
 ---
 
@@ -27,25 +28,27 @@
 > 依据：`docs/poyo-image-api.md`（17 图像模型全文）、`docs/poyo-video-api.md`（31 视频模型全文）、
 > `docs/kie-api.md`（逐 operationId 的 input schema）、`docs/incremental-models/…with-params.json`。
 
-**🔴 S3 — 图像负向提示词处理错误：一部分 kie 模型「API 支持却被代码丢弃」，其余「API 不支持却仍显示反向框」**
+**🔴 S3 — 图像负向提示词：7 个 kie 模型 API 支持原生 negative，却只走了「Avoid: …」prompt 后缀（弱效果）→ 已升级为原生（#727）**
+
+> 更正：早前草稿说非 HF 模型「静默丢弃 / 框无效」并不准确。实际上 router 对**所有非 HF 模型**把负向词
+> 拼成 `Avoid: {负向词}` 追加进 prompt（`canvas.ts:1277`）——是**弱但有效**的 prompt 级负向，并非丢弃。
+> 真正的问题：其中 7 个 kie 模型 API 本就支持**原生** `negative_prompt`，用弱后缀属浪费其能力。
 
 图像负向提示词（negative_prompt）逐后端 / 逐模型核查结果：
 
-| 后端 · 模型（应用 id） | 官方 API 是否支持 negative | 代码是否发送 | UI 是否显示反向框 | 结论 |
-|---|:---:|:---:|:---:|---|
-| Higgsfield：hf_soul_standard / hf_reve / hf_seedream_v4 / hf_flux_pro | ✅ 支持 | ✅ 发送（`imageGeneration.ts:312`） | 显示 | **正确** |
-| kie：kie_imagen4 / kie_imagen4_fast / kie_imagen4_ultra | ✅ 支持（`kie-api.md` `google/imagen4[-fast/-ultra]` 的 `input.negative_prompt`，maxLength 5000） | ❌ **不发**（`kieImage.ts` 无 negative） | 显示 | **🔴 真丢参**——API 支持却没传 |
-| kie：kie_ideogram_v3 | ✅ 支持（`ideogram/v3-text-to-image`） | ❌ 不发 | 显示 | **🔴 真丢参** |
-| kie：kie_qwen_image / kie_qwen_image_i2i / kie_qwen_image_edit | ✅ 支持（`qwen/text-to-image`·`image-to-image`·`image-edit`） | ❌ 不发 | 显示 | **🔴 真丢参** |
-| kie：nano-banana(±pro/2) / seedream(v4·4.5·5lite) / flux-2(pro·flex) / gpt-image(1.5·2) / z-image / grok / wan-2.7-image | ❌ 不支持（schema 未列 negative_prompt） | ❌ 不发 | 显示 | 🟠 UI 误导（框无效） |
-| Poyo：全部 17 个图像模型（nano-banana / gpt-image / flux / seedream / wan / kling / z-image / grok 家族） | ❌ 不支持（`poyo-image-api.md` 全文无 negative_prompt） | ❌ 不发（`buildPoyoImageInput` 不含该字段） | 显示 | 🟠 UI 误导 |
-| Forge：manus_forge | ❌ 不支持（私有 API，仅 `prompt`+`original_images`） | ❌ 不发 | 显示 | 🟠 UI 误导 |
+| 后端 · 模型（应用 id） | 官方 API 原生支持 negative | 修复前处理 | 修复后（#727） |
+|---|:---:|---|---|
+| Higgsfield：hf_soul_standard / hf_reve / hf_seedream_v4 / hf_flux_pro | ✅ | 原生参数（`imageGeneration.ts:312`），干净 prompt | 不变（本就正确） |
+| kie：kie_imagen4 / _fast / _ultra | ✅（`kie-api.md` `google/imagen4[-fast/-ultra]` 的 `input.negative_prompt`，maxLength 5000） | 「Avoid: …」prompt 后缀（弱） | **原生 `input.negative_prompt`** |
+| kie：kie_ideogram_v3 | ✅（`ideogram/v3-text-to-image`） | 「Avoid: …」后缀 | **原生** |
+| kie：kie_qwen_image / _i2i / _edit | ✅（`qwen/text-to-image`·`image-to-image`·`image-edit`） | 「Avoid: …」后缀 | **原生** |
+| kie：nano-banana(±pro/2) / seedream(v4·4.5·5lite) / flux-2(pro·flex) / gpt-image(1.5·2) / z-image / grok / wan-2.7-image | ❌（schema 未列） | 「Avoid: …」后缀（弱，仍有效） | 不变（API 无原生字段，保留弱后缀） |
+| Poyo：全部 17 个图像模型 | ❌（`poyo-image-api.md` 全文无） | 「Avoid: …」后缀 | 不变 |
+| Forge：manus_forge | ❌（私有 API，仅 `prompt`+`original_images`） | 「Avoid: …」后缀 | 不变 |
 
-- 根因一（真丢参）：`generateImageKie`（`kieImage.ts:173-194`）构造 `input` 时无 negative 分支；`GenerateImageOptions.negativePrompt` 仅在 `imageGeneration.ts:312` 的 Higgsfield 分支被消费。
-- 根因二（UI 误导）：`ImageGenNode.tsx:829` **无条件**渲染「反向提示词」框、无 per-model 门控（对比视频节点做了门控，见下）。
-- 建议修法（两步，待批）：
-  1. 给 `KieImageSpec` 加 `negPrompt?: boolean`（仿 `kieVideo.ts` 的 `spec.negPrompt`），对 Imagen4 家族 / Ideogram V3 / Qwen 三系置 true，`generateImageKie` 里 `if (spec.negPrompt && options.negativePrompt?.trim()) input.negative_prompt = …` —— 恢复被丢的、API 明确支持的负向能力。
-  2. image_gen 反向框按模型支持度显隐（仿 `VideoTaskNode` 的 `SUPPORTS_NEGATIVE_PROMPT`），对 Poyo / Forge / 无支持的 kie 模型不显示死框。
+- 修复（#727）：`KieImageSpec` 加 `negPrompt`（仿 `kieVideo.ts` 的 `spec.negPrompt`），对上述 7 个模型置 true；`generateImageKie` `if (spec.negPrompt && …) input.negative_prompt = …`；router（`canvas.ts:1268-1285`）用 `negSeparate = isHfModel || kieImageSupportsNegative(model)` 决定「干净 prompt + 单独传负向」 vs 「Avoid: 后缀」。
+- **UI 不改**：反向框对所有模型都保留——非原生模型仍走弱后缀（有效），隐藏反而会移除该能力。
+- 回归测试：`server/kieImage.test.ts` 断言 `negPrompt` 恰好覆盖这 7 个模型。
 
 **✅ 对照：视频负向提示词——实现正确（应作为图像侧的范本）**
 - 官方支持 negative 的视频模型：Poyo `kling-2.1` / `kling-2.5-turbo-pro` / `wan2.5-text-to-video` / `wan2.5-image-to-video`（`poyo-video-api.md:95/101/185/190`）；kie `kling-1.6`、`kling-v2-1-master`、`kling-v2-5-turbo`、`wan-2.5/2.7` 等（`kie-api.md`）。
@@ -122,8 +125,8 @@
 
 ## 建议处理优先级（按「确定性 × 收益 ÷ 成本」排序）
 
-1. **S3 第一步：kie Imagen4 家族 / Ideogram V3 / Qwen 三系补发 negative_prompt** — 文档已坐实这 7 个图像模型 API 支持负向、代码却丢弃；改动小（`KieImageSpec` 加一个 `negPrompt` 标志 + 一行发送），纯功能增益、零回归风险。**最优先。**
-2. **S3 第二步 + D1：反向框按模型能力显隐 / comfyui 无 negative 绑定给提示** — 消除 Poyo/Forge/无支持 kie 模型的「死框」误导；中等改动，需逐模型标注支持度（可直接复用本报告矩阵）。
+1. ~~**S3：kie Imagen4/Ideogram/Qwen 补发原生 negative_prompt**~~ ✅ **已完成（#727）**——7 个模型从「Avoid: 后缀」升级为原生参数，纯功能增益、零回归；反向框 UI 不变（非原生模型保留弱后缀）。
+2. **D1：comfyui 无 negative 绑定时给提示**（而非静默）——小改动，独立于 S3。
 3. **S1/S2**（运行全部 vs 单节点分歧）— 影响「所见即所得」最大，但需较大重构（让 runner 复用逐节点组装器）+ 真机验证。
 4. **D7/S5**（参考图静默忽略）— 需先逐行复核 `arch==="sd"` 守卫与 IPAdapter 模型缺省的真实影响面。
 5. 其余安全面多为 by-design，建议知悉；如需收紧 customBaseUrl（D2）可加「仅允许已注册 globalServers / 可选内网黑名单」开关。

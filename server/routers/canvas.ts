@@ -70,7 +70,7 @@ import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
 import { resolveKieKey } from "../_core/kie";
-import { isKieImageModel } from "../_core/kieImage";
+import { isKieImageModel, kieImageSupportsNegative } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo, detectOmnihumanSubjects } from "../_core/kieVideo";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { isKieLLMModel } from "../_core/kieLLM";
@@ -1266,10 +1266,13 @@ export const imageGenRouter = router({
       // 失败也要计入管理员日志（带预估点数 + success:false），随后原样抛出。
       return dedupe("imageGen", ctx.user.id, input, async () => {
       const isHfModel = input.model?.startsWith("hf_");
+      // 原生支持 negative_prompt 的图像模型：Higgsfield 全系 + kie 的 Imagen4 家族 /
+      // Ideogram V3 / Qwen 系列（docs 对照，见 kieImage.ts negPrompt）。这些走「干净 prompt +
+      // 单独传 negativePrompt」；其余模型（Poyo / Forge / 无 negative 的 kie）API 无该字段，
+      // 退回把负向词塞进 prompt 当「Avoid: …」后缀（聊胜于无）。
+      const negSeparate = !!isHfModel || kieImageSupportsNegative(input.model);
 
-      // For Higgsfield models, keep prompt clean and pass negativePrompt separately.
-      // For other models, embed negative prompt as "Avoid: ..." suffix.
-      const fullPrompt = isHfModel
+      const fullPrompt = negSeparate
         ? [input.style ? `Style: ${input.style}.` : "", input.prompt].filter(Boolean).join(" ")
         : [
             input.style ? `Style: ${input.style}.` : "",
@@ -1282,7 +1285,7 @@ export const imageGenRouter = router({
       const result = await generateImage({
         prompt: fullPrompt,
         model: input.model,
-        ...(isHfModel && input.negativePrompt ? { negativePrompt: input.negativePrompt } : {}),
+        ...(negSeparate && input.negativePrompt ? { negativePrompt: input.negativePrompt } : {}),
         ...(allRefUrls.length
           ? { originalImages: allRefUrls.map((url) => ({ url, mimeType: "image/jpeg" })) }
           : {}),

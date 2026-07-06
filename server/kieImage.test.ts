@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { KIE_IMAGE_MODELS, isKieImageModel } from "./_core/kieImage";
+import { KIE_IMAGE_MODELS, isKieImageModel, kieImageSupportsNegative } from "./_core/kieImage";
 import { IMAGE_GEN_MODELS } from "../shared/types";
 
 describe("kie image model map", () => {
@@ -58,6 +58,25 @@ describe("kie image model map", () => {
     expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.aspect).toBe("image_size_raw"); // size 字段
     // 4o size 仅 1:1 / 3:2 / 2:3（不含 16:9）。
     expect(KIE_IMAGE_MODELS.kie_gpt_4o_image.aspects).not.toContain("16:9");
+  });
+
+  it("negPrompt 标志恰好覆盖文档支持 negative_prompt 的图像模型（Imagen4 家族/Ideogram V3/Qwen 系列）", () => {
+    // 依据 docs/kie-api.md：仅这些图像模型的 input schema 含 negative_prompt。
+    const expectedNeg = new Set([
+      "kie_imagen4", "kie_imagen4_fast", "kie_imagen4_ultra",
+      "kie_ideogram_v3", "kie_qwen_image", "kie_qwen_image_i2i", "kie_qwen_image_edit",
+    ]);
+    const actualNeg = new Set(
+      Object.entries(KIE_IMAGE_MODELS).filter(([, s]) => s.negPrompt).map(([k]) => k),
+    );
+    expect(actualNeg).toEqual(expectedNeg);
+    // helper 与标志一致；不支持者（nano-banana/seedream/gpt-image-2/grok…）为 false。
+    expect(kieImageSupportsNegative("kie_imagen4")).toBe(true);
+    expect(kieImageSupportsNegative("kie_qwen_image_edit")).toBe(true);
+    expect(kieImageSupportsNegative("kie_nano_banana")).toBe(false);
+    expect(kieImageSupportsNegative("kie_gpt_image_2")).toBe(false);
+    expect(kieImageSupportsNegative("poyo_seedream_4")).toBe(false);
+    expect(kieImageSupportsNegative(undefined)).toBe(false);
   });
 
   it("有额外必填参数的模型带 fixed 默认（Seedream4.5/GPT quality、Flux resolution）", () => {
