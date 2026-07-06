@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
-import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus } from "lucide-react";
+import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
@@ -21,6 +21,16 @@ type Turn = { role: "user" | "assistant"; content: string; applied?: string; fai
 const accent = "oklch(0.70 0.20 310)";
 const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
+const MAX_ATTACHMENTS = 4;
+const MAX_ATTACH_MB = 10;
+/** 读成完整 data: URI（含前缀），供 agent.chat 的 image_url/file_url 直接使用。 */
+const fileToDataUri = (f: File): Promise<string> => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result as string);
+  r.onerror = () => reject(r.error ?? new Error("读取文件失败"));
+  r.readAsDataURL(f);
+});
+
 export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onClose: () => void }) {
   const reactFlow = useReactFlow();
   const chat = trpc.agent.chat.useMutation();
@@ -32,6 +42,21 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     try { const s = localStorage.getItem(`avc:canvasAgent:${projectId}`); return s ? JSON.parse(s) : []; } catch { return []; }
   });
   const [input, setInput] = useState("");
+  const [staged, setStaged] = useState<File[]>([]);
+  const [attachErr, setAttachErr] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const addFiles = (files: File[]) => {
+    if (!files.length) return;
+    setAttachErr("");
+    const tooBig = files.find((f) => f.size > MAX_ATTACH_MB * 1024 * 1024);
+    if (tooBig) { setAttachErr(`「${tooBig.name}」超过 ${MAX_ATTACH_MB}MB，请压缩后再传`); return; }
+    setStaged((prev) => {
+      const room = MAX_ATTACHMENTS - prev.length;
+      if (room <= 0) { setAttachErr(`最多附 ${MAX_ATTACHMENTS} 个文件`); return prev; }
+      if (files.length > room) setAttachErr(`最多附 ${MAX_ATTACHMENTS} 个文件，已取前 ${room} 个`);
+      return [...prev, ...files.slice(0, room)];
+    });
+  };
   const [model, setModel] = useState<LLMModelId>(() =>
     (localStorage.getItem("avc:canvasAgent:model") as LLMModelId) || (resolveActiveNodeModel("agent", "llm") as LLMModelId));
   const [template, setTemplate] = useState<string>(() => localStorage.getItem("avc:canvasAgent:template") || BLANK_TEMPLATE_ID);
@@ -121,16 +146,21 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   };
 
   async function send() {
-    const msg = input.trim();
+    const files = staged;
+    const msg = input.trim() || (files.length ? "请参考附件规划画布。" : "");
     if (!msg || chat.isPending) return;
-    setInput("");
+    setInput(""); setStaged([]); setAttachErr("");
     const history = turns.slice(-10).map((t) => ({ role: t.role, content: t.content }));
-    setTurns((p) => [...p, { role: "user", content: msg }]);
+    const attachLabel = files.length ? `　📎 ${files.map((f) => f.name).join("、")}` : "";
+    setTurns((p) => [...p, { role: "user", content: msg + attachLabel }]);
     try {
+      const attachments = files.length
+        ? await Promise.all(files.map(async (f) => ({ url: await fileToDataUri(f), mimeType: f.type || "application/octet-stream", name: f.name })))
+        : undefined;
       const focus = selectedNodeIds.filter(Boolean);
       const summary = buildGraphSummary("", focus.length ? { focusNodeIds: focus } : {});
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
-      const r = await chat.mutateAsync({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true });
+      const r = await chat.mutateAsync({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments });
       const ops = (r.operations ?? []) as AgentOperation[];
       let applied = "", failed = "", touchedIds: string[] = [];
       if (ops.length) {
@@ -236,9 +266,36 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         </div>
       )}
 
+      {/* 暂存附件芯片 */}
+      {(staged.length > 0 || attachErr) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 10px 4px", flexShrink: 0 }}>
+          {staged.map((f, i) => {
+            const isImg = f.type.startsWith("image/");
+            const Icon = isImg ? ImageIcon : FileText;
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 6px 3px 7px", borderRadius: 8, border: `1px solid ${accent}`, background: accentSoft, maxWidth: 170 }}>
+                <Icon size={13} style={{ color: accent, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`${f.name} · ${(f.size / 1024 / 1024).toFixed(1)}MB`}>{f.name}</span>
+                <button onClick={() => setStaged((p) => p.filter((_, j) => j !== i))} title="移除" style={{ width: 16, height: 16, borderRadius: 4, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><X size={11} /></button>
+              </div>
+            );
+          })}
+          {attachErr && <span style={{ fontSize: 10.5, color: "oklch(0.72 0.16 60)", alignSelf: "center" }}>{attachErr}</span>}
+        </div>
+      )}
+
       {/* input */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 10px 10px", borderTop: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+        <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx" style={{ display: "none" }}
+          onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); if (fileInputRef.current) fileInputRef.current.value = ""; }} />
+        <button onClick={() => fileInputRef.current?.click()} disabled={chat.isPending} title="附参考图 / 文档（据图规划画面·风格·角色）"
+          style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: staged.length ? accent : "var(--c-t3)", cursor: chat.isPending ? "not-allowed" : "pointer", flexShrink: 0 }}>
+          <Paperclip size={16} />
+        </button>
         <textarea value={input} onChange={(e) => setInput(e.target.value)}
+          onPaste={(e) => { const fs = Array.from(e.clipboardData.files); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
+          onDrop={(e) => { const fs = Array.from(e.dataTransfer.files); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
           onKeyDown={(e) => {
             if (showPicker) {
               if (e.key === "ArrowDown") { e.preventDefault(); setPickHi((i) => (i + 1) % pickItems.length); return; }
@@ -248,10 +305,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             }
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
           }}
-          placeholder="指挥画布，Enter 发送；@ 引用角色、/ 调技能" rows={1}
+          placeholder="指挥画布，Enter 发送；@ 角色、/ 技能、📎 附参考图" rows={1}
           style={{ flex: 1, resize: "none", maxHeight: 120, padding: "9px 11px", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t1)", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
-        <button onClick={() => void send()} disabled={chat.isPending || !input.trim()} title="发送"
-          style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${accent}`, background: accentSoft, color: accent, cursor: chat.isPending || !input.trim() ? "not-allowed" : "pointer", opacity: chat.isPending || !input.trim() ? 0.5 : 1, flexShrink: 0 }}>
+        <button onClick={() => void send()} disabled={chat.isPending || (!input.trim() && staged.length === 0)} title="发送"
+          style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${accent}`, background: accentSoft, color: accent, cursor: chat.isPending || (!input.trim() && !staged.length) ? "not-allowed" : "pointer", opacity: chat.isPending || (!input.trim() && !staged.length) ? 0.5 : 1, flexShrink: 0 }}>
           {chat.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         </button>
       </div>
