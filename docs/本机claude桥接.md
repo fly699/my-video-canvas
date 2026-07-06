@@ -110,6 +110,32 @@ GPT 侧的订阅等价物是 OpenAI **Codex CLI**(可用 ChatGPT Plus/Pro 订阅
 - **视觉能力取决于订阅模型本身**：Claude 选到带视觉的模型（Sonnet/Opus 系）才能看图；codex 默认模型支持看图。选到纯文本模型时图片会被模型忽略（不报错）。
 - 服务端会把画布里的图片（`/manus-storage/...` 或 data URL）自动取出、编码后喂给 CLI，无需你手动处理。
 
+## 让桥接用上「技能 / MCP」（可选，默认关闭）
+
+桥接默认是**纯文本问答**（不给任何工具，最安全）。若你要让本机订阅 Claude 在画布对话里**调用技能（Skills）或 MCP 服务器**，设下面的 env 开启（写进项目根 `.env`，**重启服务**生效）。不设 = 保持纯文本、行为不变。
+
+| 变量 | 作用 |
+|---|---|
+| `CLAUDE_BRIDGE_SKILLS=1` | 放行 `Skill` 工具。技能放到服务器的 `~/.claude/skills/<名>/SKILL.md`（无头模式会自动发现），对话里让它「用某某技能」即可。 |
+| `CLAUDE_BRIDGE_MCP_CONFIG=<路径或内联JSON>` | 挂载 MCP 服务器。给**文件路径**（推荐，如 `/etc/avc/mcp.json`）或**内联 JSON**；桥接会 `--mcp-config` 加载并放行其 `mcp__<服务名>` 工具。 |
+| `CLAUDE_BRIDGE_ALLOWED_TOOLS`（可选） | 覆盖默认放行工具集。默认：`Read,Glob,Grep,WebSearch,WebFetch`（+ `Skill`、+ 各 MCP 服务器工具）。**默认不含 `Bash`/`Write`/`Edit`**——桥接不写文件、不跑 shell。 |
+| `CLAUDE_BRIDGE_PERMISSION_MODE`（可选） | 权限模式，默认 `default`（仅放行的工具可用，其余无头下一律拒，最稳）。 |
+
+MCP 配置文件示例（`mcp.json`）：
+
+```json
+{ "mcpServers": {
+  "fetch": { "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-fetch"] },
+  "mydb":  { "type": "http", "url": "http://内网IP:8080/mcp" }
+} }
+```
+
+> **技能已在本机用订阅实测跑通**（放一个测试技能 → 对话里让它用 → 确实按技能指令回复）。MCP 走同一套
+> `--mcp-config` 机制，配好上面的文件即生效。
+
+> ⚠️ **安全**：开启后，这个「可能公网可达、只有一把 bridge key」的聊天口就获得了工具/MCP 能力；MCP 服务器由你自选、其工具被**预授权（不再逐次审批）**。**建议仅在内网/受信任部署开启，别接高危 MCP**（能写文件系统 / 跑命令的）。要「读写文件 + 执行前逐条审批」的重型智能体，仍走工程智能体「代码任务」通道（`docs/phase2-启用清单.md`）。
+> **GPT（codex）侧**：codex 的 MCP 在其自身 `~/.codex/config.toml` 的 `mcp_servers` 配置，与本桥接 env 无关。
+
 ## 注意事项
 
 - **额度与限流**：所有走这条路的调用共用你这个订阅账号的用量上限，撞上限会被限流（不扣钱，但会卡）。当多用户高频后端使用时尤其容易顶到上限。
