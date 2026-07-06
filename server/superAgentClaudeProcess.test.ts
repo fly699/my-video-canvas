@@ -43,10 +43,10 @@ describe("代码智能体 env 门控", () => {
 });
 
 describe("双钥 + 执行前审批 权限接线", () => {
-  it("未放行 Bash：只 Read/Edit/Write，无 Bash，无审批 MCP", () => {
+  it("未放行 Bash：只 Read/Edit/Write/Skill，无 Bash，无审批 MCP", () => {
     delete process.env.SUPER_AGENT_CODE_ALLOW_BASH;
     const p = resolvePermissionWiring();
-    expect(p.allowedTools).toEqual(["Read", "Edit", "Write"]);
+    expect(p.allowedTools).toEqual(["Read", "Edit", "Write", "Skill"]);
     expect(p.allowedTools).not.toContain("Bash");
     expect(p.permissionMode).toBe("acceptEdits");
     expect(p.permissionPromptTool).toBeUndefined();
@@ -66,6 +66,7 @@ describe("双钥 + 执行前审批 权限接线", () => {
     process.env.SUPER_AGENT_PERMISSION_ARGS = JSON.stringify(["/app/permissionMcpServer.js"]);
     const p = resolvePermissionWiring();
     expect(p.allowedTools).not.toContain("Bash"); // 不预授 → 落到审批工具
+    expect(p.allowedTools).toContain("Skill"); // 技能始终放行（Higgsfield 等 CLI 型技能靠 Bash 审批）
     expect(p.permissionMode).toBe("default");
     expect(p.strictMcp).toBe(true);
     expect(p.permissionPromptTool).toBe("mcp__policy__approve_tool_use");
