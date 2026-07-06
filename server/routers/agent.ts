@@ -34,6 +34,8 @@ export const agentRouter = router({
         comfyOnly: z.boolean().optional(),
         /** Pre-rendered 用户偏好/约束 block from the agent node's 规划设置 dialog. */
         prefs: z.string().max(2000).optional(),
+        /** 画布助手「模板」人设/风格（选中的 AI 模板 prompt）——引导构思风格，但不得破坏 JSON 输出。 */
+        persona: z.string().max(1500).optional(),
         /** 生图→生视频偏好：开启后服务端确定性地把 文本→视频 改写为 文本→图像→视频。 */
         imageFirst: z.boolean().optional(),
         /** 用户在「模板选择」里指定的 comfyui_workflow 模板（留空=自动选择）。 */
@@ -161,7 +163,7 @@ export const agentRouter = router({
 ${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}
 
 # 当前画布
-${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}
+${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}
 
 # 输出要求
 严格只输出一个 JSON 对象（不要 markdown 代码块、不要任何多余文字），结构如下：
@@ -189,6 +191,7 @@ ${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.pre
 - 运行自愈（精准修复）：画布摘要里 status=failed 的节点会带 error 字段（失败原因），修复必须针对 error 文本的根因，禁止与根因无关的乱改。原则：最小化操作——优先 update 单个缺失/错误字段或补一条 connect，绝不删除重建节点（会丢用户已生成的结果与连线）。常见错误对照：提示词为空/缺参 → update 补该字段；缺上游输入 → connect 补连线；引用的模板/模型不存在 → update 换成目录或模板知识里真实存在的；「未配置 ComfyUI 服务器地址」→ 若摘要中其他节点有 customBaseUrl 可复用则 update 补上，否则属于环境问题；环境/外部问题（服务器离线、余额不足、网络错误、密钥未配置等）→ 无法用画布操作修复，不要动参数，在 reply 中说明原因与用户需要手动做的步骤。每项修复在 reply 里一句话交代「哪个节点、什么原因、改了什么」；确实无法修复的明确说修不了，不要假装修好。
 - 增量编辑（修改现有画布时，重要）：优先对已有节点发 update，禁止删除重建或另建重复链路；update 的 payload 只放确实要改的字段，绝不回写没改的字段——画布摘要里的长文本以「…」截断，原样抄回会损坏用户原文；需要"基于原文改写"时必须输出完整的新文本，不能以截断值凑数；批量修改（如"所有镜头加雨天氛围"）对每个目标节点各发一个 update。
 - 若用户只是提问、或当前无需改动画布，operations 给空数组 []，把回答写进 reply。
+- 工具/技能（若可用）：如果运行环境提供了技能（Skill）或 MCP 工具，你可以在构思阶段调用它们来提升规划质量（如查资料、按某技能的方法论组织镜头/文案）；但最终回复仍必须只输出上面规定的 JSON（reply+operations），绝不能把工具的中间输出、日志或非 JSON 内容混进最终回复。
 - 规划可解释：reply 开头用 1-2 句讲清方案结构与关键选择（如「60s÷5s/镜=12 镜、3 个场景，图像用模板 X、视频用模板 Y——因为它支持首帧引导」）；每个 create/update/delete 操作都填 note（≤20 字的理由，如「开场全景定调」「补缺失的提示词」），connect 的 note 可省略。用户要能不点开任何节点就看懂这个计划做什么、为什么。
 - 你只负责把工作流搭好并填好参数；是否触发生成由用户在画布上确认。`;
 

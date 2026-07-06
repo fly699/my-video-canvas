@@ -974,3 +974,9 @@ export const AI_TEMPLATE_CATEGORIES: AITemplateCategory[] = [
 
 /** Flat list for backward compatibility with the existing template lookup. */
 export const ALL_AI_TEMPLATES: AITemplate[] = AI_TEMPLATE_CATEGORIES.flatMap((c) => c.templates);
+
+// 「空模板（无人设）」：置顶选项，选中即明确「不设任何人设/角色/风格」，让模型作为通用助手直接回答，
+// 区别于走后端兜底人设的「默认助手」。聊天助手与画布助手共用此常量。
+export const BLANK_TEMPLATE_ID = "__blank__";
+export const BLANK_TEMPLATE_LABEL = "空模板（无人设）";
+export const NO_PERSONA_PROMPT = "本会话不设任何人设 / 角色 / 风格。作为通用 AI 助手，直接、如实、简洁地回答用户，不要扮演任何特定角色，也不要套用某种固定风格。";

@@ -10,8 +10,9 @@ import { CHAT_MODELS } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { useSystemDefaultModels } from "@/lib/useSystemDefaultModels";
 import { useBridgeSkills } from "@/lib/useBridgeSkills";
+import { MiniSelect } from "@/components/ui/MiniSelect";
 import { useDisabledModels } from "@/lib/useDisabledModels";
-import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES } from "@/lib/aiAssistantTemplates";
+import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, BLANK_TEMPLATE_LABEL, NO_PERSONA_PROMPT } from "@/lib/aiAssistantTemplates";
 import { goToAdminTab } from "@/lib/adminNav";
 import type { ChatWireMessage, ChatFileRef } from "@shared/types";
 import { toast } from "sonner";
@@ -103,7 +104,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   // AI 助手「模板」人设：复用 ai_chat 节点的同一套模板（ALL_AI_TEMPLATES）。存模板 id，
   // 发送时解析为其 prompt 作为 systemPrompt 传给后端，覆盖默认助手人设。空 = 默认助手。
   const [chatTemplate, setChatTemplate] = useState<string>(() => localStorage.getItem("chat:aiTemplate") || "");
-  const effSystemPrompt = ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.prompt;
+  const effSystemPrompt = chatTemplate === BLANK_TEMPLATE_ID ? NO_PERSONA_PROMPT : ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.prompt;
   const sendToAssistantMut = trpc.chat.sendToAssistant.useMutation();
   const clearAssistantMut = trpc.chat.clearAssistant.useMutation();
   const uploadFileMut = trpc.chat.uploadFile.useMutation();
@@ -111,7 +112,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const pickChatTemplate = (id: string) => {
     setChatTemplate(id);
     localStorage.setItem("chat:aiTemplate", id);
-    const name = id ? (ALL_AI_TEMPLATES.find((t) => t.id === id)?.label ?? id) : "默认助手";
+    const name = id === BLANK_TEMPLATE_ID ? BLANK_TEMPLATE_LABEL : id ? (ALL_AI_TEMPLATES.find((t) => t.id === id)?.label ?? id) : "默认助手";
     // 已有历史时，旧角色可能因对话惯性残留——提示用「新对话」彻底切换。
     if (id && isAI && messages.length > 0) {
       toast.success(`已切换模板：${name}。若 AI 仍沿用旧角色，点右上角「新对话」清空历史即可彻底切换`, { duration: 4000 });
@@ -350,6 +351,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
               value={effModel ?? ""}
               placeholder="模型"
               maxWidth={200}
+              accent={C.accent} accentSoft={C.accentSoft}
               groups={[{ options: chatModels.map((m) => ({ value: m.id, label: m.label })) }]}
               onChange={pickChatModel}
             />
@@ -363,9 +365,10 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
             value={chatTemplate}
             placeholder="默认助手"
             maxWidth={190}
-            title={effSystemPrompt ? ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.blurb : "默认助手人设"}
+            accent={C.accent} accentSoft={C.accentSoft}
+            title={chatTemplate === BLANK_TEMPLATE_ID ? "无任何人设，通用助手直接回答" : effSystemPrompt ? ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.blurb : "默认助手人设"}
             groups={[
-              { options: [{ value: "", label: "默认助手" }] },
+              { options: [{ value: BLANK_TEMPLATE_ID, label: BLANK_TEMPLATE_LABEL, title: "不设任何人设/角色/风格" }, { value: "", label: "默认助手" }] },
               ...AI_TEMPLATE_CATEGORIES.map((cat) => ({ label: cat.label, options: cat.templates.map((t) => ({ value: t.id, label: t.label, title: t.blurb })) })),
             ]}
             onChange={pickChatTemplate}
@@ -516,51 +519,6 @@ function StagedChip({ file, onRemove }: { file: File; onRemove: () => void }) {
         <div style={{ fontSize: 11, color: C.t3 }}>{(file.size / 1024 / 1024).toFixed(1)}MB</div>
       </div>
       <button onClick={onRemove} title="移除" style={{ marginLeft: "auto", width: 22, height: 22, borderRadius: 6, border: "none", background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><X size={13} /></button>
-    </div>
-  );
-}
-
-// Custom dropdown (replaces native <select>). The chat window is rendered inside a
-// CSS `transform: scale()` in the canvas, under which native <select> popups
-// mis-hit-test in Chromium — so we draw the menu as an in-DOM absolutely-positioned
-// element that scales correctly with the window.
-interface MiniGroup { label?: string; options: { value: string; label: string; title?: string }[] }
-function MiniSelect({ value, placeholder, groups, onChange, maxWidth, title }: {
-  value: string; placeholder: string; groups: MiniGroup[]; onChange: (v: string) => void; maxWidth?: number; title?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [open]);
-  const cur = groups.flatMap((g) => g.options).find((o) => o.value === value);
-  return (
-    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
-      <button type="button" title={title} onClick={() => setOpen((o) => !o)}
-        style={{ padding: "3px 8px", borderRadius: 7, fontSize: 12, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1, outline: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, maxWidth }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur?.label ?? placeholder}</span>
-        <ChevronDown size={11} style={{ flexShrink: 0, opacity: 0.6 }} />
-      </button>
-      {open && (
-        <div className="nowheel" style={{ position: "absolute", bottom: "calc(100% + 4px)", left: 0, minWidth: 170, maxHeight: 300, overflowY: "auto",
-          background: "var(--c-elevated, #1b1b1f)", border: `1px solid ${C.borderStrong}`, borderRadius: 9, boxShadow: "0 10px 30px rgba(0,0,0,0.45)", zIndex: 60, padding: 4 }}>
-          {groups.map((g, gi) => (
-            <div key={gi}>
-              {g.label && <div style={{ fontSize: 10, color: C.t4, padding: "5px 8px 2px", fontWeight: 600 }}>{g.label}</div>}
-              {g.options.map((o) => (
-                <button key={o.value} type="button" title={o.title} onClick={() => { onChange(o.value); setOpen(false); }}
-                  style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 9px", borderRadius: 6, fontSize: 12, lineHeight: 1.4,
-                    background: o.value === value ? C.accentSoft : "transparent", color: o.value === value ? C.accent : C.t1, border: "none", cursor: "pointer" }}>
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
