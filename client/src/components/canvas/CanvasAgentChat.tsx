@@ -121,7 +121,6 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       <div onMouseDown={startDrag} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0, cursor: "move" }}>
         <Sparkles className="w-4 h-4" style={{ color: accent }} />
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--c-t1)" }}>画布助手</span>
-        <span style={{ fontSize: 10, color: "var(--c-t4)" }}>边聊边改画布</span>
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 150 }}><LLMModelPicker value={model} onChange={setModel} disabled={chat.isPending} /></div>
         <button onClick={onClose} title="关闭" style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer" }}><X size={14} /></button>
