@@ -1900,6 +1900,21 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipContent side="bottom" className="text-xs">素材库</TooltipContent>
           </Tooltip>
 
+          {/* Character library（常驻） */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowCharLib((v) => !v)}
+                className="topbar-btn"
+                data-active={showCharLib ? "true" : undefined}
+                style={showCharLib ? { background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)" } : undefined}
+              >
+                <Users className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">角色库</TooltipContent>
+          </Tooltip>
+
           {/* Video editor (jump to the timeline editor) */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -2064,7 +2079,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
               <DropdownMenuSeparator />
               <DropdownMenuLabel>库</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setShowCharLib((v) => !v)}><Users className="w-3.5 h-3.5 mr-2" /> 角色库</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowPromptLib((v) => !v)}><BookText className="w-3.5 h-3.5 mr-2" /> 提示词库</DropdownMenuItem>
 
               <DropdownMenuSeparator />
