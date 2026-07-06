@@ -1297,6 +1297,13 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                       上游反向 → 「{negTarget}」：{detected.negative.slice(0, 40)}
                     </div>
                   )}
+                  {/* 上游有反向词但本工作流无「反向」参数槽——不静默丢弃，明确告知不会生效
+                      （常见于 Flux CFG=1 等无 negative 输入的工作流）。 */}
+                  {detected.negative && !negTarget && (
+                    <div style={{ fontSize: 10.5, color: "oklch(0.72 0.17 65)", marginTop: 2, lineHeight: 1.4 }} title={detected.negative}>
+                      上游有反向提示词，但本工作流未识别到「反向」参数槽（可能该工作流本就不含负向输入，如 Flux CFG=1），该反向词不会生效。如工作流确有负向文本节点，请点「参数绑定」→「编辑」把它的角色设为「反向」。
+                    </div>
+                  )}
                   {ambiguous && (
                     <div style={{ fontSize: 10.5, color: "oklch(0.72 0.17 65)", marginTop: 2 }}>
                       本工作流有多个文本参数但未设角色，正/反向是按名称猜的，可能对错位置。请点「参数绑定」→「编辑」，给每个文本参数显式选「正向 / 反向」。
