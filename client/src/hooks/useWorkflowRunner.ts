@@ -11,6 +11,9 @@ import { handleWhitelistError } from "./useWhitelistBlocked";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../lib/characterPrompt";
 import { collectVideoRefMedia } from "../lib/videoRefMedia";
+import { RUNNABLE_TYPES } from "../lib/runnableTypes";
+// 与逐节点「生成」按钮同口径：负向词按 provider 能力白名单发送 + 参数套 ParamDef 默认值。
+import { withParamDefaults, SUPPORTS_NEGATIVE_PROMPT } from "../components/canvas/nodes/VideoTaskNode";
 
 export type NodeRunPhase = "pending" | "running" | "done" | "failed" | "skipped";
 
@@ -49,12 +52,9 @@ export interface WorkflowRunState {
   nodeStates: Record<string, NodeRunStatus>;
 }
 
-export const RUNNABLE_TYPES: NodeType[] = [
-  "storyboard", "prompt", "image_gen", "video_task",
-  "clip", "merge", "subtitle", "overlay",
-  "subtitle_motion", "smart_cut",
-  "comfyui_image", "comfyui_video", "comfyui_workflow",
-];
+// RUNNABLE_TYPES 已移到纯模块 lib/runnableTypes（避免 preflight 等纯逻辑为它 import 本 hook、
+// 进而把 VideoTaskNode 等重组件拉进测试环境）；re-export 保持既有 `from useWorkflowRunner` 路径不变。
+export { RUNNABLE_TYPES };
 
 const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
 
@@ -503,7 +503,12 @@ export function useWorkflowRunner() {
             // OmniHuman 指定说话主体（与逐节点按钮同口径）。
             maskUrls: Array.isArray(p.maskUrls) && p.maskUrls.length ? (p.maskUrls as string[]) : undefined,
             referenceMode,
-            params: (p.params as Record<string, unknown>) || {},
+            // 与逐节点按钮同口径（此前 runner 两处丢参、可致缺参被上游拒却已扣费）：
+            //  ① 负向词按 provider 能力白名单发送（VideoTaskNode.tsx:1199 同源）；
+            //  ② params 套 ParamDef 默认值，补齐 Seedance/Kling 等的 resolution/aspect_ratio/sound
+            //     等必填字段（未展开过参数的节点否则会 prompt-only 提交被拒）。
+            negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? (p.negativePrompt as string | undefined) : undefined,
+            params: withParamDefaults(provider, (p.params as Record<string, unknown> | undefined)),
           });
           useCanvasStore
             .getState()

@@ -19,6 +19,7 @@
 | #724 | 🔴 模板选单被面板裁切 | MiniSelect 菜单固定向上展开、被面板 overflow:hidden 裁。改为 portal 到 body + 按空间自动上/下展开。 |
 | #727 | 🔴 S3 kie 图像负向词未用原生参数 | kie Imagen4 家族 / Ideogram V3 / Qwen 系列（共 7 个）API 支持原生 `negative_prompt`，但走的是「Avoid: …」prompt 后缀弱效果。改为对这 7 个模型发原生 `negative_prompt`（`KieImageSpec.negPrompt` + `generateImageKie` 发送 + router 干净 prompt/单独传负向）+ 回归测试。 |
 | #728 | 🟠 D1 comfyui 负向词无槽静默丢 + 🟠 S4 种子传播写错字段 | D1：ComfyuiWorkflowNode 在「上游有反向词但工作流无 negative 参数槽」时明确提示不生效（原本只字不提）。S4：ImageGenNode 种子传播到 video_task 改写 `payload.params.seed`（视频节点实际读取处），此前写顶层 `payload.seed` 永远读不到。 |
+| #729 | 🟠 S1（阶段 1）「运行全部」video_task 丢负向词/不套参数默认 | useWorkflowRunner 的 video_task 分支补齐与逐节点同口径：`negativePrompt`（按 `SUPPORTS_NEGATIVE_PROMPT` 白名单）+ `params: withParamDefaults(provider, …)`（补 Seedance/Kling 等 resolution/aspect_ratio/sound 必填默认，避免 prompt-only 提交被上游拒却已扣费）。附带把 `RUNNABLE_TYPES` 抽到纯模块 `lib/runnableTypes`（preflight 不再为它 import 整个 runner 而拉进重组件）。S1 的 effect/@媒体（S10 同源）留待阶段 3。 |
 
 ---
 
@@ -128,7 +129,10 @@
 
 1. ~~**S3：kie Imagen4/Ideogram/Qwen 补发原生 negative_prompt**~~ ✅ **已完成（#727）**——7 个模型从「Avoid: 后缀」升级为原生参数，纯功能增益、零回归；反向框 UI 不变（非原生模型保留弱后缀）。
 2. ~~**D1：comfyui 无 negative 槽时给提示** + **S4：种子传播写对字段**~~ ✅ **已完成（#728）**。
-3. **S1/S2**（运行全部 vs 单节点分歧）— 影响「所见即所得」最大，但需较大重构（让 runner 复用逐节点组装器）+ 真机验证。
+3. **S1/S2**（运行全部 vs 单节点分歧）— 影响「所见即所得」最大。分三阶段推进：
+   - ✅ **阶段 1（#729）**：video_task 补 `negativePrompt` + `withParamDefaults`（S1 止血）。
+   - ⬜ **阶段 2**：runner 的 storyboard 分支改调导出纯函数 `buildStoryboardGenInput`/`applyStoryboardGenResult`（一次消除 storyboard 的比例/kie/效果/镜头表差异）。
+   - ⬜ **阶段 3**：抽 `buildImageGenInput` 纯函数，ImageGenNode 与 runner 同调（消除 image_gen 的模型白名单/比例/效果/@媒体差异 + video 侧 effect/@媒体 S10）。
 4. **D7/S5**（参考图静默忽略）— 需先逐行复核 `arch==="sd"` 守卫与 IPAdapter 模型缺省的真实影响面。
 5. 其余安全面多为 by-design，建议知悉；如需收紧 customBaseUrl（D2）可加「仅允许已注册 globalServers / 可选内网黑名单」开关。
 

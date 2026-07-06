@@ -1,5 +1,5 @@
 import type { NodeType } from "../../../shared/types";
-import { RUNNABLE_TYPES } from "../hooks/useWorkflowRunner";
+import { RUNNABLE_TYPES } from "./runnableTypes";
 import { estimateNodesBudget, type BudgetEstimate } from "./agentBudget";
 
 // 运行前体检（pre-flight）— a pure, side-effect-free scan of the canvas graph that

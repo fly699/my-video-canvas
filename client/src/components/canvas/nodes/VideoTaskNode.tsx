@@ -202,7 +202,7 @@ const KLING_O3_PARAMS: ParamDef[] = [
   { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 },
 ];
 
-const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
+export const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   // negative_prompt is documented (docs/poyo-video-api.md) for Kling 2.1 /
   // 2.5-turbo-pro / Wan 2.5; NOT for Seedance — so seedance models are excluded.
   "poyo_seedance",
