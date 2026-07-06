@@ -45,6 +45,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { getCachedDisabledModels } from "../_core/modelToggles";
 import { getCachedSystemDefaultModels, getSystemDefaultModel } from "../_core/systemDefaultModels";
+import { listBridgeSkills } from "../_core/bridgeSkills";
 import { getSelfHostedConfig } from "../_core/selfHostedLlm";
 import { parseDocumentToText, isParsableDocument } from "../_core/documentParse";
 import { extractTextContent } from "../_core/llm";
@@ -3916,6 +3917,13 @@ export const configRouter = router({
   // 排在项目级配置之下、出厂默认之上。空 = 各槽位用出厂默认。
   systemDefaultModels: protectedProcedure.query(async () => {
     return { systemDefaultModels: await getCachedSystemDefaultModels() };
+  }),
+
+  // 本机 Claude 桥接可用的技能清单（供聊天框「/ 唤起技能」）。enabled=是否放行了 Skill。
+  // 只回 name/description，不回技能正文。
+  bridgeSkills: protectedProcedure.query(async () => {
+    const { enabled, skills } = listBridgeSkills();
+    return { enabled, skills };
   }),
 
   // 管理员配置的自建 LLM 模型清单（仅 id/label，绝不含 apiKey）——所有登录用户可读，
