@@ -26,6 +26,7 @@ import { NodeDefaultModelsButton } from "../components/canvas/NodeDefaultModelsB
 import { BudgetButton } from "../components/canvas/BudgetButton";
 import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
+import { CanvasAgentChat } from "../components/canvas/CanvasAgentChat";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
 import { KieBalanceDashboard } from "../components/KieBalanceDashboard";
 import { CustomLlmKeyDashboard } from "../components/CustomLlmKeyDashboard";
@@ -118,6 +119,7 @@ import {
   Clapperboard,
   Spline,
   MessageSquare,
+  Sparkles,
   MonitorUp,
   Boxes,
   MoveHorizontal,
@@ -464,6 +466,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // position/size/scale/pin already persist inside CanvasChatWindow).
   const [chatOpen, setChatOpen] = usePersistentState<boolean>(
     "ui:canvas:chat-open:v1", false, { validate: validateBool, crossTab: false },
+  );
+  // 画布助手（对话式操作画布）浮层开关。
+  const [agentChatOpen, setAgentChatOpen] = usePersistentState<boolean>(
+    "ui:canvas:agentchat-open:v1", false, { validate: validateBool, crossTab: false },
   );
   const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode } = useCanvasMode();
@@ -1816,6 +1822,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">聊天（悬浮窗）</TooltipContent>
+          </Tooltip>
+          )}
+
+          {/* 画布助手（对话式操作画布：让 AI 直接建/连/改节点） */}
+          {!isPopout && !isReadOnly && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setAgentChatOpen((v) => !v)}
+                className="topbar-btn"
+                data-active={agentChatOpen ? "true" : undefined}
+                style={agentChatOpen ? { background: "oklch(0.70 0.20 310 / 0.12)", border: "1px solid oklch(0.70 0.20 310 / 0.3)", color: "oklch(0.70 0.20 310)" } : undefined}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">画布助手（对话式改画布）</TooltipContent>
           </Tooltip>
           )}
 
@@ -3642,6 +3665,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       })()}
 
       {!isPopout && chatOpen && <CanvasChatWindow onClose={() => setChatOpen(false)} />}
+      {!isPopout && !isReadOnly && agentChatOpen && <CanvasAgentChat projectId={projectId} onClose={() => setAgentChatOpen(false)} />}
     </div>
    </NodeDefaultModelsProvider>
   );
