@@ -4,7 +4,7 @@ import { router, protectedProcedure } from "../_core/trpc";
 import { assertProjectAccess } from "../_core/permissions";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { isCustomLLMModel } from "../_core/customLlm";
-import { extractTextContent } from "../_core/llm";
+import { extractTextContent, type Message, type MessageContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { catalogText, sanitizeOperationDetailed, templateKnowledgeText } from "../_core/agentCatalog";
 import { enforceImageFirst, enforceImageFirstComfy } from "../_core/imageFirst";
@@ -43,6 +43,18 @@ export const agentRouter = router({
         videoTemplateId: z.number().optional(),
         /** 让智能体「知道」角色库：系统提示里列出已有角色/场景名，要求按原名复用。默认开启。 */
         includeCharacterLibrary: z.boolean().optional(),
+        /** 参考附件（图/文档）：url 为 data: URI 或 http(s)。图片走 image_url、文档走 file_url，
+         *  由底层 invokeLLM/桥接统一喂给多模态模型；纯文本模型仅能读文档文本、忽略图。 */
+        attachments: z
+          .array(
+            z.object({
+              url: z.string().min(1).max(14_000_000),
+              mimeType: z.string().max(120).optional(),
+              name: z.string().max(300).optional(),
+            }),
+          )
+          .max(4)
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -157,13 +169,23 @@ export const agentRouter = router({
           }`
         : "";
 
+      // 参考附件：图片走 image_url、其余（文档等）走 file_url，一起拼进 user 消息的多模态 content。
+      const attachments = input.attachments ?? [];
+      const isImageAtt = (a: { url: string; mimeType?: string }) =>
+        (a.mimeType ?? "").toLowerCase().startsWith("image/") || /^data:image\//i.test(a.url);
+      const imageAtts = attachments.filter(isImageAtt);
+      const docAtts = attachments.filter((a) => !isImageAtt(a));
+      const attachmentHint = attachments.length
+        ? `\n\n# 用户附带的参考附件（重要）\n${[imageAtts.length ? `${imageAtts.length} 张参考图` : "", docAtts.length ? `${docAtts.length} 份参考文档` : ""].filter(Boolean).join("、")}已随本条消息提供。请据此规划画面风格/构图/角色外观/分镜与文案。注意：你无法把二进制图片直接写进节点，只能据图产出对应的提示词、参数与节点结构（如据参考图写 promptText/appearance）；若用户要把某张图当作某节点的输入素材，提示他用「素材节点」上传后连线。`
+        : "";
+
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
 
 # 可用节点目录（只能使用下面列出的节点类型与字段，禁止编造任何不存在的节点或字段）
 ${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}
 
 # 当前画布
-${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}
+${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}
 
 # 输出要求
 严格只输出一个 JSON 对象（不要 markdown 代码块、不要任何多余文字），结构如下：
@@ -195,10 +217,17 @@ ${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.pre
 - 规划可解释：reply 开头用 1-2 句讲清方案结构与关键选择（如「60s÷5s/镜=12 镜、3 个场景，图像用模板 X、视频用模板 Y——因为它支持首帧引导」）；每个 create/update/delete 操作都填 note（≤20 字的理由，如「开场全景定调」「补缺失的提示词」），connect 的 note 可省略。用户要能不点开任何节点就看懂这个计划做什么、为什么。
 - 你只负责把工作流搭好并填好参数；是否触发生成由用户在画布上确认。`;
 
-      const messages = [
-        { role: "system" as const, content: system },
-        ...(input.history ?? []).map((m) => ({ role: m.role, content: m.content })),
-        { role: "user" as const, content: input.message },
+      const userContent: MessageContent[] | string = attachments.length
+        ? [
+            { type: "text", text: input.message },
+            ...imageAtts.map((a) => ({ type: "image_url" as const, image_url: { url: a.url } })),
+            ...docAtts.map((a) => ({ type: "file_url" as const, file_url: { url: a.url } })),
+          ]
+        : input.message;
+      const messages: Message[] = [
+        { role: "system", content: system },
+        ...(input.history ?? []).map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+        { role: "user", content: userContent },
       ];
 
       // A full multi-shot plan (script + N storyboards + connects + merge) is a
