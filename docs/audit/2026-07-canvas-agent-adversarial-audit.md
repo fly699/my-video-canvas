@@ -18,6 +18,7 @@
 | #723 | 🔴 撤销误删既有节点（高危·数据丢失） | 撤销按钮据 `touchedIds`（含被 update/connect 的既有节点）无差别 deleteNode，会物理删除用户原有节点。改为只删本轮新建的 `createdIds` + 回归测试。 |
 | #724 | 🔴 模板选单被面板裁切 | MiniSelect 菜单固定向上展开、被面板 overflow:hidden 裁。改为 portal 到 body + 按空间自动上/下展开。 |
 | #727 | 🔴 S3 kie 图像负向词未用原生参数 | kie Imagen4 家族 / Ideogram V3 / Qwen 系列（共 7 个）API 支持原生 `negative_prompt`，但走的是「Avoid: …」prompt 后缀弱效果。改为对这 7 个模型发原生 `negative_prompt`（`KieImageSpec.negPrompt` + `generateImageKie` 发送 + router 干净 prompt/单独传负向）+ 回归测试。 |
+| #728 | 🟠 D1 comfyui 负向词无槽静默丢 + 🟠 S4 种子传播写错字段 | D1：ComfyuiWorkflowNode 在「上游有反向词但工作流无 negative 参数槽」时明确提示不生效（原本只字不提）。S4：ImageGenNode 种子传播到 video_task 改写 `payload.params.seed`（视频节点实际读取处），此前写顶层 `payload.seed` 永远读不到。 |
 
 ---
 
@@ -126,7 +127,7 @@
 ## 建议处理优先级（按「确定性 × 收益 ÷ 成本」排序）
 
 1. ~~**S3：kie Imagen4/Ideogram/Qwen 补发原生 negative_prompt**~~ ✅ **已完成（#727）**——7 个模型从「Avoid: 后缀」升级为原生参数，纯功能增益、零回归；反向框 UI 不变（非原生模型保留弱后缀）。
-2. **D1：comfyui 无 negative 绑定时给提示**（而非静默）——小改动，独立于 S3。
+2. ~~**D1：comfyui 无 negative 槽时给提示** + **S4：种子传播写对字段**~~ ✅ **已完成（#728）**。
 3. **S1/S2**（运行全部 vs 单节点分歧）— 影响「所见即所得」最大，但需较大重构（让 runner 复用逐节点组装器）+ 真机验证。
 4. **D7/S5**（参考图静默忽略）— 需先逐行复核 `arch==="sd"` 守卫与 IPAdapter 模型缺省的真实影响面。
 5. 其余安全面多为 by-design，建议知悉；如需收紧 customBaseUrl（D2）可加「仅允许已注册 globalServers / 可选内网黑名单」开关。

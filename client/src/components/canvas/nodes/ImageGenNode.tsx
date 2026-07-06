@@ -20,7 +20,7 @@ import { openNodeImage } from "../NodeImageLightbox";
 import { PromptDock } from "../PromptDock";
 import { RefHeroPreview } from "../RefHeroPreview";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
-import type { ImageGenNodeData, ImageGenModel } from "../../../../../shared/types";
+import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle } from "lucide-react";
@@ -263,11 +263,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     const { nodes: allNodes, edges: allEdges, batchUpdateNodeData } = useCanvasStore.getState();
     const updates = allEdges
       .filter(e => e.source === id)
-      .flatMap(edge => {
+      .flatMap<{ id: string; payload: Partial<NodeData> }>(edge => {
         const target = allNodes.find(n => n.id === edge.target);
         if (!target) return [];
         const nt = target.data.nodeType;
         if (nt !== "storyboard" && nt !== "image_gen" && nt !== "video_task") return [];
+        // video_task 的种子存在 payload.params.seed（ParamDef），不是顶层 payload.seed——
+        // 顶层写入视频节点永远读不到（曾致「传播成功」但实际未生效）。按目标类型写对字段，
+        // 并保留该节点其余 params。
+        if (nt === "video_task") {
+          const params = ((target.data.payload as { params?: Record<string, unknown> }).params) ?? {};
+          if (params.seed === payload.seed) return [];
+          return [{ id: edge.target, payload: { params: { ...params, seed: payload.seed } } }];
+        }
         // Skip targets that already hold the same seed — avoid store churn
         // and misleading "propagated to N nodes" toasts when nothing changed
         const currentSeed = (target.data.payload as { seed?: number }).seed;
