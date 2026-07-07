@@ -167,6 +167,9 @@ export function applyAgentOperations(
       try {
         if (op.op === "create") {
           if (!op.nodeType) { fail(index, op, "缺少 nodeType"); return; }
+          // 未知节点类型（服务端 sanitize 漏网 / 非官方客户端）——友好拦截，避免 store.addNode
+          // 读 NODE_CONFIGS[未知].defaultTitle 抛「Cannot read properties of undefined」内部错误。
+          if (!(op.nodeType in NODE_CONFIGS)) { fail(index, op, `未知节点类型：${op.nodeType}`); return; }
           // comfyui_workflow with a templateId → materialize from the library.
           let payload = op.payload as Record<string, unknown> | undefined;
           if (op.nodeType === "comfyui_workflow" && payload?.templateId != null) {

@@ -62,6 +62,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [template, setTemplate] = useState<string>(() => localStorage.getItem("avc:canvasAgent:template") || BLANK_TEMPLATE_ID);
   const scrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const isClaudeLocal = !!model && model.toLowerCase().startsWith("claude-local");
   const bridgeSkills = useBridgeSkills(isClaudeLocal);
@@ -157,6 +158,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     const history = turns.slice(-10).map((t) => ({ role: t.role, content: t.content }));
     const attachLabel = files.length ? `　📎 ${files.map((f) => f.name).join("、")}` : "";
     setTurns((p) => [...p, { role: "user", content: msg + attachLabel }]);
+    // 软取消：本机 Claude 大计划可能等 1~5 分钟——给用户「取消」按钮立刻拿回控制（请求可能仍在
+    // 后台完成，结果按 aborted 丢弃），避免全程干等。
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const attachments = files.length
         ? await Promise.all(files.map(async (f) => ({ url: await fileToDataUri(f), mimeType: f.type || "application/octet-stream", name: f.name })))
@@ -164,21 +169,38 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const focus = selectedNodeIds.filter(Boolean);
       const summary = buildGraphSummary("", focus.length ? { focusNodeIds: focus } : {});
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
-      const r = await chat.mutateAsync({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments });
+      const r = await Promise.race([
+        chat.mutateAsync({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments }),
+        new Promise<never>((_, rej) => controller.signal.addEventListener("abort", () => rej(new DOMException("已取消", "AbortError")))),
+      ]);
+      if (controller.signal.aborted) return; // 已取消，丢弃迟到结果
       const ops = (r.operations ?? []) as AgentOperation[];
-      let applied = "", failed = "", createdIds: string[] = [];
+      // 服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）——此前画布助手完全不展示，
+      // 用户只见「operations 静默变少」。合并进「未应用」提示，与客户端 apply 失败一并可见。
+      const droppedMsg = (r.droppedCount ?? 0) > 0 ? `服务端忽略 ${r.droppedCount} 项：${(r.dropped ?? []).slice(0, 3).join("；")}` : "";
+      let applied = "", applyFailMsg = "", createdIds: string[] = [];
       if (ops.length) {
         const anchor = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2 - 120, y: window.innerHeight / 2 - 120 });
         const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
         const res = applyAgentOperations(ops, anchor, { templates, ownerAgentId: "canvas-agent-chat" });
         applied = opsSummary(ops); createdIds = res.createdIds ?? [];
-        if (res.failures.length) failed = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
+        if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
       }
-      setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed: failed || undefined, createdIds: createdIds.length ? createdIds : undefined }]);
+      const failed = [droppedMsg, applyFailMsg].filter(Boolean).join(" · ") || undefined;
+      setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);
     } catch (e) {
+      if (controller.signal.aborted || (e instanceof Error && e.name === "AbortError")) {
+        setTurns((p) => [...p, { role: "assistant", content: "已取消本次规划（请求可能仍在后台完成，结果已忽略）。", error: true }]);
+        return;
+      }
       setTurns((p) => [...p, { role: "assistant", content: e instanceof Error ? e.message : "调用失败", error: true }]);
+    } finally {
+      abortRef.current = null;
     }
   }
+
+  // 取消进行中的规划：中止等待 + reset mutation 释放 isPending（真请求可能仍在后台，结果被丢弃）。
+  const cancelSend = () => { abortRef.current?.abort(); chat.reset(); };
 
   const templateGroups = [
     { options: [{ value: BLANK_TEMPLATE_ID, label: BLANK_TEMPLATE_LABEL, title: "不设任何人设/风格" }] },
@@ -249,7 +271,16 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             )}
           </div>
         ))}
-        {chat.isPending && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: accent }}><Loader2 size={13} className="animate-spin" /> 正在规划并修改画布…</div>}
+        {chat.isPending && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: accent }}>
+            <Loader2 size={13} className="animate-spin" /> 正在规划并修改画布…
+            <span style={{ color: "var(--c-t4)", fontSize: 11 }}>（本机模型大计划可能较久）</span>
+            <button onClick={cancelSend} title="取消本次规划"
+              style={{ marginLeft: "auto", fontSize: 11, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "2px 8px", cursor: "pointer" }}>
+              取消
+            </button>
+          </div>
+        )}
       </div>
 
       {/* @角色 / 技能 选择面板 */}

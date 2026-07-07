@@ -12,6 +12,26 @@ import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import * as db from "../db";
 import type { AgentOperation } from "../../shared/types";
 
+/** 从模型文本里稳健抽出所有【顶层配平】的 { … } 对象——括号配平扫描，跳过字符串内的 {}/引号，
+ *  避免贪婪 /\{[\s\S]*\}/ 把技能说明/散文里的花括号一起吃进来。返回按出现顺序的候选串。 */
+export function extractJsonObjects(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{") { if (depth === 0) start = i; depth++; }
+    else if (c === "}") { if (depth > 0 && --depth === 0 && start >= 0) { out.push(s.slice(start, i + 1)); start = -1; } }
+  }
+  return out;
+}
+
 // ── Agent (Copilot) router ────────────────────────────────────────────────────
 // `chat` is the agent's "planning brain": it turns a natural-language request +
 // the current graph into a set of canvas operations (create/connect/update/
@@ -247,11 +267,16 @@ ${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.pre
       // Strip an accidental ```json fence (belt-and-suspenders; json_object mode
       // shouldn't add one) before matching the outermost { … } object.
       const cleaned = text.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      // 括号配平抽取所有顶层对象，优先取含 "operations" 的那个（技能/散文里的 { 不会污染），
+      // 再退而取含 "reply" 的、最后取最末一个完整对象。替代原贪婪 /\{[\s\S]*\}/。
+      const candidates = extractJsonObjects(cleaned);
+      const jsonStr = candidates.find((c) => /"operations"\s*:/.test(c))
+        ?? candidates.find((c) => /"reply"\s*:/.test(c))
+        ?? candidates[candidates.length - 1];
       let parsedOk = false;
-      if (jsonMatch) {
+      if (jsonStr) {
         try {
-          const parsed = JSON.parse(jsonMatch[0]) as { reply?: unknown; operations?: unknown; plan?: unknown };
+          const parsed = JSON.parse(jsonStr) as { reply?: unknown; operations?: unknown; plan?: unknown };
           parsedOk = true;
           reply = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : "已规划完成。";
           if (Array.isArray(parsed.operations)) {
