@@ -5,7 +5,9 @@ import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
 import { EDITOR_DOC_VERSION, emptyEditorDoc, sliceEditorDoc, editorDocDuration, type EditorDoc } from "@shared/editorTypes";
 import { composeTimeline } from "../_core/videoComposer";
-import { execFileAsync } from "../_core/videoEditor";
+import { execFileAsync, downloadToTemp } from "../_core/videoEditor";
+import { looksLikeAVContainer, readHead } from "../_core/voiceTranscription";
+import { promises as fsp } from "node:fs";
 import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs } from "../_core/editorRenderJobs";
 import { assertProjectAccess } from "../_core/permissions";
 import { assertWhitelisted } from "../_core/whitelist";
@@ -189,13 +191,21 @@ export const editorRouter = router({
       return { success: true };
     }),
 
-  // 探测素材原始信息（像素/编码/帧率/时长/码率/比例）——用 ffprobe 读 URL 头部。
+  // 探测素材原始信息（像素/编码/帧率/时长/码率/比例）。
+  // SSRF 加固：**绝不**把用户 URL 直接喂 ffprobe —— ffprobe 会连内网/云元数据、还跟随
+  // DASH/HLS 子清单（真机 strace 实测直连 169.254.169.254）。改为与抽音轨同款：先 downloadToTemp
+  // （SSRF 守卫 + 302 复检）落成本地文件 → magic 门排除清单/非 A/V → ffprobe 本地文件并加
+  // -protocol_whitelist file,crypto,data（彻底无出网）。任何失败都回落 empty（与原行为一致）。
   probeMedia: protectedProcedure
     .input(z.object({ url: z.string().max(2048) }))
     .query(async ({ input }) => {
       const empty = { width: null, height: null, codec: null, pixFmt: null, fps: null, duration: null, bitrate: null, container: null } as const;
+      let srcTemp: string | null = null;
       try {
-        const { stdout } = await execFileAsync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,codec_name,r_frame_rate,pix_fmt", "-show_entries", "format=duration,bit_rate,format_name", "-of", "json", input.url], { timeoutMs: 20000 });
+        srcTemp = await downloadToTemp(input.url, "probe");
+        const header = await readHead(srcTemp, 512);
+        if (!looksLikeAVContainer(header)) return empty; // 清单/未知：不喂 ffprobe，防子清单外连
+        const { stdout } = await execFileAsync("ffprobe", ["-v", "error", "-protocol_whitelist", "file,crypto,data", "-select_streams", "v:0", "-show_entries", "stream=width,height,codec_name,r_frame_rate,pix_fmt", "-show_entries", "format=duration,bit_rate,format_name", "-of", "json", srcTemp], { timeoutMs: 20000 });
         const j = JSON.parse(stdout) as { streams?: Record<string, unknown>[]; format?: Record<string, unknown> };
         const s = j.streams?.[0] ?? {}; const f = j.format ?? {};
         const [n, d] = String(s.r_frame_rate ?? "0/1").split("/").map(Number);
@@ -210,6 +220,7 @@ export const editorRouter = router({
           container: typeof f.format_name === "string" ? f.format_name : null,
         };
       } catch { return empty; }
+      finally { if (srcTemp) fsp.unlink(srcTemp).catch(() => { /* best-effort */ }); }
     }),
 
   // AI 生成 SVG：自然语言描述 → LLM 产出一段 <svg>，用于「添加形状/SVG」叠加。

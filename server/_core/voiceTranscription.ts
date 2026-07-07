@@ -257,7 +257,7 @@ function getFileExtension(mimeType: string): string {
 const TR_OK_EXT = new Set(['flac', 'mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'ogg', 'opus', 'wav', 'webm']);
 
 /** 读文件头 n 字节（用于容器 magic 嗅探），不整文件入内存。 */
-async function readHead(path: string, n: number): Promise<Buffer> {
+export async function readHead(path: string, n: number): Promise<Buffer> {
   const fh = await fs.open(path, "r");
   try {
     const buf = Buffer.alloc(n);
