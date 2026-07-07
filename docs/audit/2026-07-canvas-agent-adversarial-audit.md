@@ -20,6 +20,7 @@
 | #727 | 🔴 S3 kie 图像负向词未用原生参数 | kie Imagen4 家族 / Ideogram V3 / Qwen 系列（共 7 个）API 支持原生 `negative_prompt`，但走的是「Avoid: …」prompt 后缀弱效果。改为对这 7 个模型发原生 `negative_prompt`（`KieImageSpec.negPrompt` + `generateImageKie` 发送 + router 干净 prompt/单独传负向）+ 回归测试。 |
 | #728 | 🟠 D1 comfyui 负向词无槽静默丢 + 🟠 S4 种子传播写错字段 | D1：ComfyuiWorkflowNode 在「上游有反向词但工作流无 negative 参数槽」时明确提示不生效（原本只字不提）。S4：ImageGenNode 种子传播到 video_task 改写 `payload.params.seed`（视频节点实际读取处），此前写顶层 `payload.seed` 永远读不到。 |
 | #729 | 🟠 S1（阶段 1）「运行全部」video_task 丢负向词/不套参数默认 | useWorkflowRunner 的 video_task 分支补齐与逐节点同口径：`negativePrompt`（按 `SUPPORTS_NEGATIVE_PROMPT` 白名单）+ `params: withParamDefaults(provider, …)`（补 Seedance/Kling 等 resolution/aspect_ratio/sound 必填默认，避免 prompt-only 提交被上游拒却已扣费）。附带把 `RUNNABLE_TYPES` 抽到纯模块 `lib/runnableTypes`（preflight 不再为它 import 整个 runner 而拉进重组件）。S1 的 effect/@媒体（S10 同源）留待阶段 3。 |
+| #730 | 🟠 S2（阶段 2）「运行全部」storyboard 简化重实现丢参 + poyo_seedance 负向白名单 | runner 的 storyboard 分支从 image_gen 合并分支拆出，改调逐节点同款纯函数 `buildStoryboardGenInput`/`applyStoryboardGenResult`（一次补齐此前丢的 kie 块 kieTempKey/aspectRatio/imageResolution、分模型 sizing、比例、效果注入、@图像、手动多参考、镜头表 cineClause、色调 style=colorTone，以及写回的 imageUrlSource/At）。护栏：projectId 补传、kieTempKey 读 localStorage、updateNodeData 包 skipHistory。顺带修 `SUPPORTS_NEGATIVE_PROMPT` 误含 `poyo_seedance`（wire seedance-2 无 negative_prompt，与其自身注释矛盾）。image_gen 仍走旧路径（阶段 3）。 |
 
 ---
 
@@ -131,8 +132,15 @@
 2. ~~**D1：comfyui 无 negative 槽时给提示** + **S4：种子传播写对字段**~~ ✅ **已完成（#728）**。
 3. **S1/S2**（运行全部 vs 单节点分歧）— 影响「所见即所得」最大。分三阶段推进：
    - ✅ **阶段 1（#729）**：video_task 补 `negativePrompt` + `withParamDefaults`（S1 止血）。
-   - ⬜ **阶段 2**：runner 的 storyboard 分支改调导出纯函数 `buildStoryboardGenInput`/`applyStoryboardGenResult`（一次消除 storyboard 的比例/kie/效果/镜头表差异）。
+   - ✅ **阶段 2（#730）**：runner 的 storyboard 分支改调纯函数 `buildStoryboardGenInput`/`applyStoryboardGenResult`（消除 storyboard 的比例/kie/效果/镜头表/色调差异）。
    - ⬜ **阶段 3**：抽 `buildImageGenInput` 纯函数，ImageGenNode 与 runner 同调（消除 image_gen 的模型白名单/比例/效果/@媒体差异 + video 侧 effect/@媒体 S10）。
+
+### 文档核对额外发现（既有，影响两条路径；除 poyo_seedance 外均仅留档，2026-07-07）
+- **S1[高]** Poyo flux-2(pro/flex) 发 `aspect_ratio`，但 `docs/poyo-image-api.md` 全篇只有 `size` → 疑似统一比例对 flux-2 静默失效（`imageGeneration.ts:92-93` `sizeMode:"aspect_ratio"`）；代码注释称保留 aspect_ratio 为「避免回归此前可用路径」。**需装 Poyo key 真机验证后再改**，勿盲改。
+- **S2[中]** kie GPT Image 2 `auto/1:1` + `2K/4K` 组合会 422（`kie-api.md:27246`）；`clampAspect` 空值回落 auto 但 resolution 原样透传（`kieImage.ts:192-198`）。仅显式选高分辨率时触发，默认 1K 不触发。
+- **S3[低]** flux_pro 的 `fluxGuidanceScale/fluxSeed/fluxNumImages` 组装后全链路未转发（HF v2 端点刻意不认），但 `fluxNumImages` 仍抬高 storyboard 张数/费用预估（`storyboardGen.ts:156-159`）。
+- **S4[低]** kie Qwen 系列 `negative_prompt` 官方 maxLength=500（Imagen/Ideogram 是 5000，`kie-api.md:31917`），超长 422；`kieImage.ts:200` 未按模型夹取长度。
+- ✅ **poyo_seedance 负向白名单（#730 顺带修）**：`SUPPORTS_NEGATIVE_PROMPT` 误含 `poyo_seedance`（wire `seedance-2`，Poyo 文档与 `PROVIDER_ALLOWED_PARAMS` 均无 negative_prompt），已移除。
 4. **D7/S5**（参考图静默忽略）— 需先逐行复核 `arch==="sd"` 守卫与 IPAdapter 模型缺省的真实影响面。
 5. 其余安全面多为 by-design，建议知悉；如需收紧 customBaseUrl（D2）可加「仅允许已注册 globalServers / 可选内网黑名单」开关。
 
