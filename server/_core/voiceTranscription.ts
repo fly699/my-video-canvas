@@ -26,8 +26,8 @@
  * ```
  */
 import { ENV } from "./env";
-import { resolveToAbsoluteUrl, toInternalStoragePath, isOwnStorageUrl } from "../storage";
-import { assertPublicUrl } from "./ssrfGuard";
+import { promises as fs } from "node:fs";
+import { downloadToTemp, execFileAsync } from "./videoEditor";
 
 export type TranscribeOptions = {
   audioUrl: string; // URL to the audio file (e.g., S3 URL)
@@ -107,73 +107,53 @@ export async function transcribeAudio(
       };
     }
 
-    // Step 2: Download audio from URL.
-    // Our own /manus-storage/ proxy URL (relative OR absolute same-origin) is
-    // trusted internal storage — resolve it to a fetchable presigned URL and
-    // skip the SSRF guard (host discarded, only our key is used). Everything
-    // else is guarded against SSRF to private/local network addresses.
-    let audioUrl = options.audioUrl;
-    const internal = toInternalStoragePath(audioUrl);
-    if (internal) {
-      audioUrl = await resolveToAbsoluteUrl(internal);
-    } else if (!isOwnStorageUrl(audioUrl)) {
-      try {
-        // Strong shared guard (covers integer/hex IPv4 the old regex missed).
-        assertPublicUrl(audioUrl);
-      } catch {
-        return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Could not parse URL" };
-      }
-    }
-    const wasExternal = !internal && !isOwnStorageUrl(options.audioUrl);
-    let audioBuffer: Buffer;
-    let mimeType: string;
+    // Step 2: 抽音轨（与 video-use 一致：先 ffmpeg 从视频/音频提取纯音频，再转写）。
+    // 归一到 16kHz 单声道 mp3 —— 既满足转写端点的格式白名单（原来把整段视频丢给 Groq，
+    // 它按扩展名严格校验直接 400），又把长视频体积压到极小。downloadToTemp 内含 SSRF 防护
+    // 与我方存储解析（含 302 重定向复检）。ffmpeg 缺失/源无音轨/解码失败时回退：直接送
+    // 原文件（用修正后的合法扩展名）。
+    let payload: { buffer: Buffer; filename: string; mime: string } | null = null;
+    let srcTemp: string | null = null;
+    let audioTemp: string | null = null;
     try {
-      const response = await fetch(audioUrl);
-      // SSRF: re-validate post-redirect URL — internal responses transcribed back
-      // to the user are a direct exfiltration channel.
-      if (wasExternal && response.url) {
-        try { assertPublicUrl(response.url); }
-        catch { return { error: "Invalid audio URL", code: "INVALID_FORMAT" as const, details: "Redirect to private host blocked" }; }
+      try {
+        srcTemp = await downloadToTemp(options.audioUrl, "src");
+      } catch (dlErr) {
+        return { error: "Failed to fetch audio file", code: "SERVICE_ERROR", details: dlErr instanceof Error ? dlErr.message.slice(0, 200) : "download failed" };
       }
-      if (!response.ok) {
-        return {
-          error: "Failed to download audio file",
-          code: "INVALID_FORMAT",
-          details: `HTTP ${response.status}: ${response.statusText}`
-        };
+      audioTemp = `${srcTemp}.mp3`;
+      try {
+        await execFileAsync("ffmpeg", ["-y", "-i", srcTemp, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", "-f", "mp3", audioTemp], { timeoutMs: 180000 });
+        const audioBuf = await fs.readFile(audioTemp);
+        if (!audioBuf.length) throw new Error("提取到空音频（源可能无音轨）");
+        const sizeMB = audioBuf.length / (1024 * 1024);
+        if (sizeMB > 24) {
+          return { error: "Audio too long for transcription", code: "FILE_TOO_LARGE", details: `提取音频 ${sizeMB.toFixed(1)}MB 超过转写上限，请剪短或分段后再试` };
+        }
+        payload = { buffer: audioBuf, filename: "audio.mp3", mime: "audio/mpeg" };
+      } catch (ffErr) {
+        // 回退：ffmpeg 缺失/源无音轨/解码失败 → 直接送原文件（修正为合法扩展名）
+        const raw = await fs.readFile(srcTemp);
+        if (raw.length / (1024 * 1024) > 16) {
+          return { error: "Audio file exceeds maximum size limit", code: "FILE_TOO_LARGE", details: `无法提取音频（${ffErr instanceof Error ? ffErr.message.slice(0, 80) : "ffmpeg 失败"}），且原文件 > 16MB` };
+        }
+        payload = { buffer: raw, filename: `audio.${resolveTranscribeExt(options.audioUrl, "")}`, mime: "application/octet-stream" };
       }
-      
-      audioBuffer = Buffer.from(await response.arrayBuffer());
-      mimeType = response.headers.get('content-type') || 'audio/mpeg';
-      
-      // Check file size (16MB limit)
-      const sizeMB = audioBuffer.length / (1024 * 1024);
-      if (sizeMB > 16) {
-        return {
-          error: "Audio file exceeds maximum size limit",
-          code: "FILE_TOO_LARGE",
-          details: `File size is ${sizeMB.toFixed(2)}MB, maximum allowed is 16MB`
-        };
-      }
-    } catch (error) {
-      return {
-        error: "Failed to fetch audio file",
-        code: "SERVICE_ERROR",
-        details: error instanceof Error ? error.message : "Unknown error"
-      };
+    } finally {
+      if (srcTemp) fs.unlink(srcTemp).catch(() => { /* best-effort cleanup */ });
+      if (audioTemp) fs.unlink(audioTemp).catch(() => { /* best-effort cleanup */ });
     }
+    if (!payload) return { error: "Failed to prepare audio", code: "SERVICE_ERROR", details: "no payload" };
 
-    // Step 3: Create FormData for multipart upload to Whisper API
+    // Step 3: Create FormData for multipart upload to the transcription API.
     const formData = new FormData();
-    
-    // Create a Blob from the buffer and append to form
-    const filename = `audio.${getFileExtension(mimeType)}`;
-    const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
-    formData.append("file", audioBlob, filename);
-    
-    // 模型选择：TRANSCRIBE_MODEL 覆盖优先（非 OpenAI 端点如 Groq=whisper-large-v3 名字不同）；
-    // 否则词级时间戳强制 whisper-1（OpenAI 官方 gpt-4o-transcribe 不保证返回 words[]）。
-    const model = ENV.transcribeModel.trim() || (options.wordTimestamps ? "whisper-1" : (options.model || "whisper-1"));
+    const audioBlob = new Blob([new Uint8Array(payload.buffer)], { type: payload.mime });
+    formData.append("file", audioBlob, payload.filename);
+
+    // 模型优先级：**节点显式选择 > TRANSCRIBE_MODEL（部署默认）> whisper-1**。
+    // 节点保留自选模型的自由；仅当节点未指定时才用部署默认（如指向 Groq 的 whisper-large-v3），
+    // 都没有则回落官方 whisper-1（词级时间戳的稳妥选择）。
+    const model = (options.model?.trim() || ENV.transcribeModel.trim() || "whisper-1");
     formData.append("model", model);
     formData.append("response_format", "verbose_json");
     if (options.wordTimestamps) {
@@ -246,17 +226,28 @@ export async function transcribeAudio(
  */
 function getFileExtension(mimeType: string): string {
   const mimeToExt: Record<string, string> = {
-    'audio/webm': 'webm',
-    'audio/mp3': 'mp3',
-    'audio/mpeg': 'mp3',
-    'audio/wav': 'wav',
-    'audio/wave': 'wav',
-    'audio/ogg': 'ogg',
-    'audio/m4a': 'm4a',
-    'audio/mp4': 'm4a',
+    'audio/webm': 'webm', 'audio/mp3': 'mp3', 'audio/mpeg': 'mp3',
+    'audio/wav': 'wav', 'audio/wave': 'wav', 'audio/ogg': 'ogg',
+    'audio/m4a': 'm4a', 'audio/mp4': 'm4a', 'audio/flac': 'flac', 'audio/x-m4a': 'm4a',
+    // 视频容器（回退直送时用）：Groq/OpenAI 白名单里的都可原样送。
+    'video/mp4': 'mp4', 'video/webm': 'webm', 'video/mpeg': 'mpeg', 'video/quicktime': 'mp4',
   };
-  
-  return mimeToExt[mimeType] || 'audio';
+  // content-type 可能带 "; codecs=…"，取分号前主类型再小写。
+  return mimeToExt[mimeType.split(';')[0].trim().toLowerCase()] || 'mp4';
+}
+
+// 转写端点（尤其 Groq）按扩展名严格校验；这是它们接受的集合。
+const TR_OK_EXT = new Set(['flac', 'mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'ogg', 'opus', 'wav', 'webm']);
+
+/** 回退直送原文件时，推断一个合法扩展名：优先 URL 路径后缀，其次 content-type，兜底 mp4。 */
+function resolveTranscribeExt(url: string, mimeType: string): string {
+  try {
+    const p = new URL(url, "http://x").pathname;
+    const m = /\.([a-z0-9]{2,5})$/i.exec(p);
+    if (m) { const e = m[1].toLowerCase(); if (TR_OK_EXT.has(e)) return e; if (e === "mov") return "mp4"; }
+  } catch { /* relative/opaque URL */ }
+  const e2 = getFileExtension(mimeType);
+  return TR_OK_EXT.has(e2) ? e2 : "mp4";
 }
 
 /**
