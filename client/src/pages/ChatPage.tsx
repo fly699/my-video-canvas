@@ -7,6 +7,9 @@ import { ConversationList } from "@/components/chat/ConversationList";
 import { ChatView } from "@/components/chat/ChatView";
 import { MembersPanel } from "@/components/chat/MembersPanel";
 import { C, iconBtn, ghostBtn } from "@/components/chat/chatTheme";
+import { GuidedTour, type TourController } from "@/components/canvas/GuidedTour";
+import { CHAT_TOUR_STEPS, CHAT_TOUR_DONE_KEY } from "@/lib/chatGuideSteps";
+import type { TourStep } from "@/lib/guideSteps";
 
 interface BIPEvent extends Event { prompt: () => void; userChoice: Promise<{ outcome: string }> }
 
@@ -63,6 +66,29 @@ export default function ChatPage() {
     };
   }, []);
 
+  // ── 首次进入引导（复用画布 GuidedTour + 外部 controller）──
+  const [guideActive, setGuideActive] = useState(false);
+  const [guideStep, setGuideStep] = useState(0);
+  useEffect(() => {
+    let done = false;
+    try { done = localStorage.getItem(CHAT_TOUR_DONE_KEY) === "1"; } catch { /* ignore */ }
+    if (done) return;
+    // 稍等布局稳定 + 给 beforeinstallprompt 一点时间（安装按钮才可能就位）再启动。
+    const t = setTimeout(() => setGuideActive(true), 1200);
+    return () => clearTimeout(t);
+  }, []);
+  const markGuideDone = () => { try { localStorage.setItem(CHAT_TOUR_DONE_KEY, "1"); } catch { /* quota */ } };
+  const guideController: TourController = {
+    active: guideActive,
+    stepIndex: guideStep,
+    next: () => { if (guideStep >= CHAT_TOUR_STEPS.length - 1) { markGuideDone(); setGuideActive(false); setGuideStep(0); } else setGuideStep((i) => i + 1); },
+    prev: () => setGuideStep((i) => Math.max(0, i - 1)),
+    goTo: (i) => setGuideStep(Math.max(0, Math.min(i, CHAT_TOUR_STEPS.length - 1))),
+    stop: (d) => { if (d) markGuideDone(); setGuideActive(false); setGuideStep(0); },
+  };
+  // 到「切换房间」步时把会话栏展开，让用户看到房间列表本体。
+  const onGuideStep = (step: TourStep | null) => { if (step?.id === "chat-rooms") setSidebarOpen(true); };
+
   function openCompact() {
     window.open("/chat", "avc-chat", "width=460,height=780,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
   }
@@ -84,8 +110,8 @@ export default function ChatPage() {
           background: C.bg2,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button onClick={() => navigate("/")} title="返回" style={iconBtn}><ArrowLeft size={18} /></button>
-            <button onClick={() => setSidebarOpen((v) => !v)} title={sidebarOpen ? "折叠会话栏" : "展开会话栏"} style={iconBtn}>
+            <button data-tour="chat-back" onClick={() => navigate("/")} title="返回" style={iconBtn}><ArrowLeft size={18} /></button>
+            <button data-tour="chat-rooms-toggle" onClick={() => setSidebarOpen((v) => !v)} title={sidebarOpen ? "折叠会话栏" : "展开会话栏"} style={iconBtn}>
               {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
             </button>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -105,7 +131,7 @@ export default function ChatPage() {
             )}
             {/* 安装为应用：移动端仅当浏览器确实可安装时才显示，否则藏起来省空间 */}
             {(!narrow || canInstall) && (
-              <button onClick={install} title="安装为桌面应用" style={{ ...ghostBtn, height: 34, padding: narrow ? "0" : "0 12px", width: narrow ? 34 : undefined, fontSize: 13, ...(canInstall ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
+              <button data-tour="chat-install" onClick={install} title="安装为桌面应用" style={{ ...ghostBtn, height: 34, padding: narrow ? "0" : "0 12px", width: narrow ? 34 : undefined, fontSize: 13, ...(canInstall ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
                 <Download size={15} />{!narrow && " 安装应用"}
               </button>
             )}
@@ -127,6 +153,7 @@ export default function ChatPage() {
             ? <Drawer side="right" onClose={() => setMembersOpen(false)}><MembersPanel /></Drawer>
             : <MembersPanel />)}
         </div>
+        <GuidedTour steps={CHAT_TOUR_STEPS} controller={guideController} onStep={onGuideStep} />
       </div>
     </ChatProvider>
   );

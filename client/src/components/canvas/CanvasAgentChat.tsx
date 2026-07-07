@@ -106,7 +106,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   });
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:size", JSON.stringify(size)); } catch { /* quota */ } }, [size]);
   useEffect(() => { if (pos) { try { localStorage.setItem("avc:canvasAgent:pos", JSON.stringify(pos)); } catch { /* quota */ } } }, [pos]);
-  const left = pos ? pos.left : Math.max(8, window.innerWidth - size.w - 16);
+  // 初始位置也钳制在视口内（窄屏下 380px 面板若不钳制会右侧溢出被裁）。
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const effW = Math.min(size.w, vw - 16);
+  const left = pos ? Math.max(8, Math.min(pos.left, vw - effW - 8)) : Math.max(8, vw - effW - 16);
   const top = pos ? pos.top : Math.max(8, window.innerHeight - size.h - 16);
 
   // ── 收起为悬浮小球（点关闭=收起，非真关闭；小球右键才可关闭）──
@@ -298,7 +301,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
 
   const panel = (
     <div ref={panelRef} className="nodrag nowheel" style={{
-      position: "fixed", left, top, width: size.w, height: size.h,
+      position: "fixed", left, top, width: effW, height: size.h,
       display: "flex", flexDirection: "column", background: "var(--c-base)", border: `1px solid ${accent}`, borderRadius: 14,
       boxShadow: "0 18px 50px rgba(0,0,0,0.45)", zIndex: 50, overflow: "hidden",
     }} onClick={(e) => e.stopPropagation()}>
