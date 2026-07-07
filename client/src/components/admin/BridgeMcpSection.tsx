@@ -78,6 +78,24 @@ export function BridgeMcpSection() {
         ⚠️ 这会把工具/MCP 能力开放给桥接口，请仅在内网/受信任部署开启，别接可写文件系统/跑命令的高危 MCP。</span>
       </p>
 
+      {/* 本地离线三步法（推荐）：装一次 → 改成本地命令 → 填文件路径 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 10, background: "oklch(0.70 0.15 160 / 0.08)", border: "1px solid oklch(0.70 0.15 160 / 0.3)" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "oklch(0.70 0.13 160)" }}>接 ComfyUI MCP · 本地离线三步法（推荐，装一次后不再联网）</div>
+        <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.8, margin: 0 }}>
+          <strong>1) 服务器装一次</strong>（仅这步联网）：<code>npm i -g comfyui-mcp</code>。装完落本机全局，之后离线秒起（只连内网 ComfyUI，不碰外网）。
+          <br /><strong>2) 写好一个 mcp.json</strong>（如 <code>{"C:\\avc\\mcp.json"}</code>），每台 ComfyUI 一条，启动方式用本地命令 <code>cmd /c comfyui-mcp</code>（别用 <code>npx -y</code>，那样每次联网）：
+        </p>
+        <pre style={{ fontSize: 10.5, fontFamily: "monospace", margin: 0, padding: "8px 10px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", overflowX: "auto", lineHeight: 1.5 }}>{`{
+  "mcpServers": {
+    "comfyui-a":      { "command": "cmd", "args": ["/c", "comfyui-mcp"], "env": { "COMFYUI_URL": "http://172.16.0.10:8188" } },
+    "comfyui-b-8188": { "command": "cmd", "args": ["/c", "comfyui-mcp"], "env": { "COMFYUI_URL": "http://172.16.0.8:8188" } }
+  }
+}`}</pre>
+        <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.8, margin: 0 }}>
+          <strong>3) 下面框里只填这个文件的绝对路径</strong>（如 <code>{"C:\\avc\\mcp.json"}</code>）→ 保存。不用把整段 JSON 贴进来，填路径即可（会自动读出服务器名放行 <code>mcp__*</code>）。多台就在 mcp.json 里加行、IP/端口按实际改；只要一台就删掉多余的行。
+        </p>
+      </div>
+
       {/* MCP 配置 */}
       <label style={{ fontSize: 11, color: "var(--c-t3)" }}>MCP 配置（<code>{"{mcpServers:{...}}"}</code> JSON，或服务器上配置文件的绝对路径；留空=不挂 MCP）
         <textarea value={mcpConfig} onChange={(e) => setMcpConfig(e.target.value)} rows={6}
