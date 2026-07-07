@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
-import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText } from "lucide-react";
+import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
@@ -21,6 +21,13 @@ type Turn = { role: "user" | "assistant"; content: string; applied?: string; fai
 
 const accent = "oklch(0.70 0.20 310)";
 const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
+
+// 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect）。
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean };
+const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false };
+const QP_ASPECTS = ["", "16:9", "9:16", "1:1", "4:3"];
+const QP_STYLES = ["电影感", "赛博朋克", "写实", "动漫", "水彩插画", "3D 渲染", "复古胶片", "极简", "梦幻唯美"];
+const QP_DURATIONS: { v: number; label: string }[] = [{ v: 0, label: "不限" }, { v: 15, label: "15s" }, { v: 30, label: "30s" }, { v: 60, label: "60s" }];
 
 const MAX_ATTACHMENTS = 4;
 const MAX_ATTACH_MB = 10;
@@ -87,6 +94,24 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [model, setModel] = useState<LLMModelId>(() =>
     (localStorage.getItem("avc:canvasAgent:model") as LLMModelId) || (resolveActiveNodeModel("agent", "llm") as LLMModelId));
   const [template, setTemplate] = useState<string>(() => localStorage.getItem("avc:canvasAgent:template") || BLANK_TEMPLATE_ID);
+  // 快速设置（比例/风格/时长/生图先行/配乐/字幕）——注入助手规划。
+  const [quickPrefs, setQuickPrefs] = useState<QuickPrefs>(() => {
+    try { const s = localStorage.getItem("avc:canvasAgent:prefs"); if (s) return { ...QP_DEFAULT, ...JSON.parse(s) }; } catch { /* ignore */ }
+    return QP_DEFAULT;
+  });
+  const [showQuick, setShowQuick] = useState(false);
+  const setQP = (patch: Partial<QuickPrefs>) => setQuickPrefs((p) => ({ ...p, ...patch }));
+  const qpActiveCount = (quickPrefs.aspect ? 1 : 0) + (quickPrefs.style ? 1 : 0) + (quickPrefs.durationSec ? 1 : 0) + (quickPrefs.imageFirst ? 1 : 0) + (quickPrefs.addMusic ? 1 : 0) + (quickPrefs.addSubtitle ? 1 : 0);
+  const buildQuickPrefsText = (): string | undefined => {
+    const lines: string[] = [];
+    if (quickPrefs.imageFirst) lines.push("- 【强制·先生图再生视频】每个视频镜头先建 image_gen 图像节点（把镜头画面描述作为它的 prompt），再建 video_task 视频节点并连接 image_gen → video_task 作首帧，严禁 storyboard/prompt/script 直连 video_task 做文生视频。");
+    if (quickPrefs.addMusic) lines.push("- 自动添加 audio 配乐节点并连入 merge 合并节点。");
+    if (quickPrefs.addSubtitle) lines.push("- 自动添加 subtitle 字幕节点（接在视频/合并之后）。");
+    if (quickPrefs.aspect) lines.push(`- 画面比例统一为 ${quickPrefs.aspect}。`);
+    if (quickPrefs.style.trim()) lines.push(`- 整体视觉风格：${quickPrefs.style.trim()}。`);
+    if (quickPrefs.durationSec > 0) lines.push(`- 目标总时长约 ${quickPrefs.durationSec} 秒，据此规划镜头数与每镜时长。`);
+    return lines.length ? lines.join("\n") : undefined;
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -197,6 +222,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   }, [turns, projectId]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:model", model); } catch { /* quota */ } }, [model]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:template", template); } catch { /* quota */ } }, [template]);
+  useEffect(() => { try { localStorage.setItem("avc:canvasAgent:prefs", JSON.stringify(quickPrefs)); } catch { /* quota */ } }, [quickPrefs]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [turns, chat.isPending]);
 
   // ── @角色 / 技能 触发面板（输入末尾 @片段 或 /片段 时浮出可选列表）──
@@ -266,7 +292,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const summary = buildGraphSummary("", focus.length ? { focusNodeIds: focus } : {});
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
       const r = await Promise.race([
-        chat.mutateAsync({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments }),
+        chat.mutateAsync({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined }),
         new Promise<never>((_, rej) => controller.signal.addEventListener("abort", () => rej(new DOMException("已取消", "AbortError")))),
       ]);
       if (controller.signal.aborted) return; // 已取消，丢弃迟到结果
@@ -278,7 +304,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       if (ops.length) {
         const anchor = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2 - 120, y: window.innerHeight / 2 - 120 });
         const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
-        const res = applyAgentOperations(ops, anchor, { templates, ownerAgentId: "canvas-agent-chat" });
+        const res = applyAgentOperations(ops, anchor, { templates, ownerAgentId: "canvas-agent-chat", aspect: quickPrefs.aspect || undefined });
         applied = opsSummary(ops); createdIds = res.createdIds ?? [];
         if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
       }
@@ -334,10 +360,46 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <BookOpen size={13} style={{ color: accent }} /><span>模板</span>
         <MiniSelect value={template} placeholder="空模板" maxWidth={180} accent={accent} accentSoft={accentSoft}
           title="给规划设定风格/人设；空模板=无人设" groups={templateGroups} onChange={setTemplate} />
+        <button onClick={() => setShowQuick((v) => !v)} title="快速设置：画面比例 / 风格 / 时长 / 生图先行 / 配乐字幕——注入助手规划"
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+            border: `1px solid ${showQuick || qpActiveCount ? accent : "var(--c-bd2)"}`, background: showQuick || qpActiveCount ? accentSoft : "var(--c-surface)", color: showQuick || qpActiveCount ? accent : "var(--c-t3)" }}>
+          <SlidersHorizontal size={11} /> 快速设置{qpActiveCount > 0 ? ` · ${qpActiveCount}` : ""}
+        </button>
         {focusCount > 0 && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: accent }}><Focus size={11} /> 已聚焦 {focusCount} 个选中节点</span>}
         {isClaudeLocal && bridgeSkills.enabled && bridgeSkills.skills.length > 0 && <span style={{ color: "var(--c-t4)" }}>· 输入 <strong style={{ color: accent }}>/</strong> 选技能</span>}
         {(charsQuery.data?.length ?? 0) > 0 && <span style={{ color: "var(--c-t4)" }}>· <strong style={{ color: accent }}>@</strong> 引用角色</span>}
       </div>
+
+      {/* 快速设置面板：偏好注入助手规划（agent.chat 的 prefs 约束 + 落地 aspect），持久化 */}
+      {showQuick && (() => {
+        const chip = (on: boolean): React.CSSProperties => ({ padding: "3px 9px", fontSize: 11, borderRadius: 7, cursor: "pointer",
+          border: `1px solid ${on ? accent : "var(--c-bd2)"}`, background: on ? accentSoft : "var(--c-surface)", color: on ? accent : "var(--c-t3)" });
+        return (
+          <div className="nowheel" style={{ padding: "8px 12px 10px", borderBottom: "1px solid var(--c-bd2)", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }}>比例</span>
+              {QP_ASPECTS.map((a) => <button key={a || "auto"} onClick={() => setQP({ aspect: a })} style={chip(quickPrefs.aspect === a)}>{a || "默认"}</button>)}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>风格</span>
+              <input list="qp-styles" value={quickPrefs.style} onChange={(e) => setQP({ style: e.target.value })} placeholder="如：电影感 / 赛博朋克（可选）"
+                style={{ flex: 1, minWidth: 0, padding: "5px 9px", fontSize: 11.5, borderRadius: 8, background: "var(--c-input, var(--c-surface))", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+              <datalist id="qp-styles">{QP_STYLES.map((s) => <option key={s} value={s} />)}</datalist>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }}>时长</span>
+              {QP_DURATIONS.map((d) => <button key={d.v} onClick={() => setQP({ durationSec: d.v })} style={chip(quickPrefs.durationSec === d.v)}>{d.label}</button>)}
+            </div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
+              {([["imageFirst", "生图 → 再生视频"], ["addMusic", "自动配乐"], ["addSubtitle", "自动字幕"]] as const).map(([k, label]) => (
+                <label key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
+                  <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 10 }}>
