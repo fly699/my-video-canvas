@@ -105,7 +105,7 @@ export function Lightbox() {
         {(() => {
           const mediaMaxH = multi ? "72vh" : "86vh";
           return asVideo
-            ? <video src={url} controls autoPlay style={{ maxWidth: "92vw", maxHeight: mediaMaxH, borderRadius: 12, boxShadow: "0 20px 60px oklch(0 0 0 / 0.6)" }} />
+            ? <video src={url} controls autoPlay controlsList="nodownload noremoteplayback" disablePictureInPicture onContextMenu={(e) => e.preventDefault()} style={{ maxWidth: "92vw", maxHeight: mediaMaxH, borderRadius: 12, boxShadow: "0 20px 60px oklch(0 0 0 / 0.6)" }} />
             : <img src={url} alt={title || "预览"} style={{ maxWidth: "92vw", maxHeight: mediaMaxH, objectFit: "contain", borderRadius: 12, boxShadow: "0 20px 60px oklch(0 0 0 / 0.6)" }} />;
         })()}
         {multi && <div style={{ fontSize: 12, color: "oklch(0.85 0 0)", fontWeight: 600 }}>{index + 1} / {urls.length}</div>}

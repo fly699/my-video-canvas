@@ -1902,7 +1902,7 @@ function AudioParamField({
         )}
       </div>
       {isUrl && value && (
-        <audio src={value} controls preload="none" style={{ width: "100%", height: 30 }} />
+        <audio src={value} controls controlsList="nodownload" preload="none" style={{ width: "100%", height: 30 }} />
       )}
       <input
         ref={fileRef}
