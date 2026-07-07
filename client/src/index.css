@@ -492,6 +492,7 @@
     --c-surface:  oklch(0.975 0.004 255);   /* soft off-white panel bg */
     --c-elevated: oklch(1.000 0.000 0);     /* pure white cards */
     --c-overlay:  oklch(0.945 0.006 255);   /* hover overlay */
+    --c-input:    oklch(0.955 0.005 255);   /* recessed input bg（新建会话对话框输入框，浅色下不再全黑）*/
     --c-bd1:      oklch(0.920 0.004 255);   /* subtle divider */
     --c-bd2:      oklch(0.880 0.005 255);   /* visible soft divider */
     --c-bd3:      oklch(0.780 0.007 255);   /* stronger border */

@@ -33,11 +33,16 @@ export default function ChatPage() {
     try { localStorage.setItem("avc:chat-light", light ? "1" : "0"); } catch { /* quota */ }
   }, [light]);
 
+  // 仅在「宽→窄」跨断点时收起侧栏/成员栏；否则移动端点输入框弹软键盘会触发 window.resize
+  // （innerWidth 不变、innerHeight 变），旧逻辑每次都 setSidebarOpen(false) → 把渲染在侧栏内的
+  // 「新建会话」对话框一起卸载（表现为「一点输入框对话框就消失」）。用 ref 记录上一次的窄屏态。
+  const prevNarrowRef = useRef(narrow);
   useEffect(() => {
     const onResize = () => {
       const n = window.innerWidth < 760;
+      if (n && !prevNarrowRef.current) { setSidebarOpen(false); setMembersOpen(false); }
+      prevNarrowRef.current = n;
       setNarrow(n);
-      if (n) { setSidebarOpen(false); setMembersOpen(false); }
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -186,7 +191,7 @@ export default function ChatPage() {
         <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
           {/* sidebar: inline when wide, overlay drawer when narrow */}
           {sidebarOpen && (narrow
-            ? <Drawer side="left" onClose={() => setSidebarOpen(false)}><ConversationList /></Drawer>
+            ? <Drawer side="left" onClose={() => setSidebarOpen(false)}><ConversationList onSelect={() => setSidebarOpen(false)} /></Drawer>
             : <ConversationList />)}
 
           <ChatView membersOpen={membersOpen} narrow={narrow} />
