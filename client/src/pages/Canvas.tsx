@@ -68,6 +68,7 @@ import { SaveComfyTemplateDialog } from "../components/canvas/SaveComfyTemplateD
 import { downloadMedia, downloadTextFile } from "@/lib/download";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
 import { GuidedTour } from "../components/canvas/GuidedTour";
+import { NotifySettingsDialog } from "../components/canvas/NotifySettingsDialog";
 import { useGuideStore } from "../hooks/useGuideStore";
 import type { TourStep } from "../lib/guideSteps";
 import { HelpPanel } from "../components/canvas/HelpPanel";
@@ -138,6 +139,7 @@ import {
   Magnet,
   Wand2,
   Compass,
+  Bell,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -484,6 +486,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // 程序化打开对应面板（面板多为条件渲染，不先打开就无从高亮）。
   const startGuide = useGuideStore((s) => s.start);
   const guideOpenedRef = useRef<TourStep["openPanel"]>(null);
+  const [showNotifySettings, setShowNotifySettings] = useState(false);
   const setGuidePanel = useCallback((p: TourStep["openPanel"], open: boolean) => {
     switch (p) {
       case "nodePicker": setShowNodePicker(open); break;
@@ -2112,6 +2115,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               )}
               <DropdownMenuItem onClick={() => setShowHelp((v) => !v)}><HelpCircle className="w-3.5 h-3.5 mr-2" /> 操作指南</DropdownMenuItem>
               <DropdownMenuItem onClick={() => startGuide(0)}><Compass className="w-3.5 h-3.5 mr-2" /> 新手导览</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowNotifySettings(true)}><Bell className="w-3.5 h-3.5 mr-2" /> 产物推送设置</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowPresentation(true)}><Play className="w-3.5 h-3.5 mr-2" /> 演示模式</DropdownMenuItem>
 
               <DropdownMenuSeparator />
@@ -2139,6 +2143,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </DropdownMenuContent>
           </DropdownMenu>
           <ChangePasswordDialog open={showChangePw} onClose={() => setShowChangePw(false)} />
+          <NotifySettingsDialog open={showNotifySettings} onClose={() => setShowNotifySettings(false)} />
         </div>
       </header>
 

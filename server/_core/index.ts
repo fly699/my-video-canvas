@@ -37,7 +37,9 @@ import {
   registerChatBroadcaster,
   registerChatEventBroadcaster,
   registerChatUserBroadcaster,
+  postAssetToNotifyRoom,
 } from "../routers/chat";
+import { registerAssetNotifier } from "../db";
 import type { ChatWireMessage, ChatRelayPayload, ChatPresenceUser } from "../../shared/types";
 import { collabBus } from "./collabBus";
 
@@ -496,6 +498,8 @@ async function startServer() {
   registerChatUserBroadcaster((userId: number, event: string, payload: unknown) => {
     chatNs.to(`chat:user:${userId}`).emit(event, payload);
   });
+  // 生成产物 → 自动推送到用户「我的产物通知」房 + 外部 webhook（fire-and-forget）。
+  registerAssetNotifier((a) => { void postAssetToNotifyRoom(a); });
 
   // ── ComfyUI progress relay ────────────────────────────────────────────────
   setComfySocketIO(io);

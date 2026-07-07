@@ -463,6 +463,23 @@ export const canvasAgentSessions = mysqlTable("canvas_agent_sessions", {
 
 export type CanvasAgentSession = typeof canvasAgentSessions.$inferSelect;
 
+// 用户个人「产物推送」webhook 配置：每用户一行。产物生成完成时按此配置向外部推送
+// （Bark / Server酱 / Telegram / Slack / Discord / 通用 JSON）。url 由用户提供，
+// 服务端 POST 前经 SSRF 守卫（禁私网/环回/元数据地址）。
+export const notifyWebhooks = mysqlTable("notify_webhooks", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  kind: varchar("kind", { length: 32 }).notNull().default("generic"),
+  url: text("url"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  userUniq: uniqueIndex("notify_webhooks_user_uniq").on(t.userId),
+}));
+
+export type NotifyWebhook = typeof notifyWebhooks.$inferSelect;
+export type InsertNotifyWebhook = typeof notifyWebhooks.$inferInsert;
+
 // ── LAN Chat ──────────────────────────────────────────────────────────────────
 // Anonymous nickname-only group chat. Users behind the same NAT gateway
 // (same outbound public IP as seen by this server) auto-share a "network

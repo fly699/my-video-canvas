@@ -10,6 +10,7 @@ import {
   videoTasks,
   chatMessages,
   canvasAgentSessions,
+  notifyWebhooks,
   type CanvasAgentTurn,
   whitelistSettings,
   comfySettings,
@@ -904,6 +905,17 @@ export async function recordGeneratedAsset(a: {
       model: a.model ?? null,
       nodeId: a.nodeId ?? null,
     } as InsertAsset);
+    // 新产物入库成功（非重复）→ 触发通知推送（站内通知房 + 外部 webhook）。
+    // 仅「生成」类推送；上传/外部导入不打扰。fire-and-forget，失败绝不影响入库。
+    if ((a.source ?? "generated") === "generated" && assetNotifier) {
+      try {
+        assetNotifier({
+          userId: a.userId, projectId: a.projectId ?? null, type: a.type,
+          url: a.url, name: displayName, mimeType: a.mimeType ?? null,
+          provider: a.provider ?? null, model: a.model ?? null,
+        });
+      } catch { /* 通知非关键 */ }
+    }
   } catch (err) {
     // The (userId, storageKey) unique index (migration 0059) rejects a concurrent
     // duplicate record of the same generation — exactly the no-dup outcome we want,
@@ -2343,6 +2355,45 @@ export async function getOrCreateDownloadChannel(): Promise<ChatConversation> {
   const existing = await getConversationByDmKey("system:download-approval");
   if (existing) return existing;
   return createConversation({ type: "group", mode: "server", title: "下载审批", dmKey: "system:download-approval", createdBy: null });
+}
+
+// 每用户专属「我的产物」通知房：server 模式（明文，机器人可推），dmKey 去重。
+// 用户 + AI 助手 bot 为成员。生成产物自动推到这里，用户不进画布即可实时收/历史查。
+export async function getOrCreateUserNotifyRoom(userId: number): Promise<ChatConversation> {
+  const key = `system:notify:${userId}`;
+  const existing = await getConversationByDmKey(key);
+  if (existing) { await addChatMember(existing.id, userId, "owner"); return existing; }
+  const room = await createConversation({ type: "group", mode: "server", title: "我的产物通知", dmKey: key, createdBy: null });
+  await addChatMember(room.id, userId, "owner");
+  try { await addChatMember(room.id, await getOrCreateAssistantUserId(), "member"); } catch { /* bot 成员非关键 */ }
+  return room;
+}
+
+// ── 产物生成通知钩子（由 index.ts 注册，避免 db.ts ↔ chat.ts 循环依赖）──
+export interface RecordedAssetInfo {
+  userId: number; projectId?: number | null;
+  type: "image" | "video" | "audio" | "other";
+  url: string; name: string; mimeType?: string | null;
+  provider?: string | null; model?: string | null;
+}
+let assetNotifier: ((a: RecordedAssetInfo) => void) | null = null;
+export function registerAssetNotifier(fn: (a: RecordedAssetInfo) => void): void { assetNotifier = fn; }
+
+// ── 用户产物推送 webhook 配置（每用户一行）──
+export interface NotifyWebhookConfig { enabled: boolean; kind: string; url: string | null }
+const _devWebhooks = new Map<number, NotifyWebhookConfig>(); // dev（无库）内存存储
+export async function getUserWebhook(userId: number): Promise<NotifyWebhookConfig | null> {
+  const db = await getDb();
+  if (!db) return _devWebhooks.get(userId) ?? null;
+  const rows = await db.select().from(notifyWebhooks).where(eq(notifyWebhooks.userId, userId)).limit(1);
+  const r = rows[0];
+  return r ? { enabled: r.enabled, kind: r.kind, url: r.url ?? null } : null;
+}
+export async function setUserWebhook(userId: number, cfg: NotifyWebhookConfig): Promise<void> {
+  const db = await getDb();
+  if (!db) { _devWebhooks.set(userId, cfg); return; }
+  await db.insert(notifyWebhooks).values({ userId, enabled: cfg.enabled, kind: cfg.kind, url: cfg.url })
+    .onDuplicateKeyUpdate({ set: { enabled: cfg.enabled, kind: cfg.kind, url: cfg.url } });
 }
 
 export async function createConversation(data: InsertChatConversation): Promise<ChatConversation> {
