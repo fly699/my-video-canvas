@@ -205,6 +205,8 @@ export interface EditorStore {
   _lastMutateTs: number;
 
   load: (doc: EditorDoc) => void;
+  /** Replace the whole doc but keep it undoable (AI 智能剪辑：用户可一键撤销回原时间轴). */
+  applyDoc: (doc: EditorDoc) => void;
   markClean: () => void;
   undo: () => void;
   redo: () => void;
@@ -309,6 +311,12 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   _lastMutateTs: 0,
 
   load: (doc) => set({ doc, dirty: false, selectedClipId: null, selectedClipIds: [], playhead: 0, playing: false, past: [], future: [], _lastMutateTs: 0, inPoint: null, outPoint: null }),
+  applyDoc: (doc) => set((s) => {
+    if (!s.doc) return { doc, dirty: true, selectedClipId: null, selectedClipIds: [] };
+    // push current doc to history (break coalescing) so 撤销 restores the prior timeline
+    const past = [...s.past, s.doc].slice(-HISTORY_CAP);
+    return { doc, past, future: [], dirty: true, _lastMutateTs: 0, selectedClipId: null, selectedClipIds: [], playhead: 0 };
+  }),
   markClean: () => set({ dirty: false }),
 
   undo: () => set((s) => {
