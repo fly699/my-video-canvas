@@ -249,7 +249,10 @@ export const editorRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const tr = await transcribeAudio({ audioUrl: input.assetUrl, wordTimestamps: !!input.subtitles });
-      if ("error" in tr) throw new TRPCError({ code: "BAD_REQUEST", message: "转写失败：" + tr.error });
+      if ("error" in tr) {
+        console.warn("[aiCut] 转写失败", tr.code, tr.error, tr.details);
+        throw new TRPCError({ code: "BAD_REQUEST", message: `转写失败：${tr.error}${tr.details ? `（${String(tr.details).slice(0, 240)}）` : ""}` });
+      }
       const segments = tr.segments ?? [];
       if (!segments.length) throw new TRPCError({ code: "BAD_REQUEST", message: "未识别到语音内容，无法智能剪辑" });
       const words = (tr.words ?? []).map((w) => ({ word: w.word, start: w.start, end: w.end }));

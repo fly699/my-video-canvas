@@ -207,10 +207,11 @@ export async function transcribeAudio(
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
+      let host = baseUrl; try { host = new URL(baseUrl).host; } catch { /* keep */ }
       return {
         error: "Transcription service request failed",
         code: "TRANSCRIPTION_FAILED",
-        details: `${response.status} ${response.statusText}${errorText ? `: ${errorText}` : ""}`
+        details: `[${host}] ${response.status} ${response.statusText}${errorText ? `: ${errorText.slice(0, 300)}` : ""}`
       };
     }
 
