@@ -4,7 +4,7 @@ import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { toast } from "sonner";
 import type { NodeType, WorkflowParamBinding, StoryboardNodeData, ImageGenNodeData, NodeData } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
-import { detectUpstreamImageUrl, detectUpstreamStoryboardDuration, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamStoryboardDuration, resolveComfyFramesFromDuration, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
 import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputImageUrl, propagateRefImage } from "../lib/refImagePropagation";
 // 与逐节点 StoryboardNode「生成」按钮同一套组装/写回纯函数——让「运行全部」的分镜生图口径一致
 // （此前 runner 用简化的 injectCharacters 手拼，丢了 kie 块/分模型 sizing/比例/效果/@图像/多参考/镜头表/色调）。
@@ -932,7 +932,9 @@ export function useWorkflowRunner() {
             steps: typeof p.steps === "number" ? p.steps : 20,
             cfg: typeof p.cfg === "number" ? p.cfg : 7,
             seed: typeof p.seed === "number" ? p.seed : -1,
-            frames: typeof p.frames === "number" ? p.frames : 16,
+            // comfyui 视频时长=frames/fps。连了分镜且 frames 仍是模板默认时，按分镜时长换算 frames
+            // （clamp 防跑飞；帧数受本地模型训练长度约束）；用户手调过则尊重。
+            frames: resolveComfyFramesFromDuration(nodeId, edges, useCanvasStore.getState().nodes, typeof p.frames === "number" ? p.frames : undefined, typeof p.fps === "number" ? p.fps : 8) ?? 16,
             fps: typeof p.fps === "number" ? p.fps : 8,
             width: typeof p.width === "number" ? p.width : undefined,
             height: typeof p.height === "number" ? p.height : undefined,
