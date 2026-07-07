@@ -488,8 +488,11 @@
      canvas theme. CSS custom properties cascade, so all chat children that read
      --c-* pick these up. */
   .chat-light {
+    --c-base:     oklch(1.000 0.000 0);     /* white — card/base bg (portaled overlays: 新手引导卡) */
     --c-surface:  oklch(0.975 0.004 255);   /* soft off-white panel bg */
     --c-elevated: oklch(1.000 0.000 0);     /* pure white cards */
+    --c-overlay:  oklch(0.945 0.006 255);   /* hover overlay */
+    --c-bd1:      oklch(0.920 0.004 255);   /* subtle divider */
     --c-bd2:      oklch(0.880 0.005 255);   /* visible soft divider */
     --c-bd3:      oklch(0.780 0.007 255);   /* stronger border */
     --c-t1:       oklch(0.180 0.012 255);   /* near-black text */

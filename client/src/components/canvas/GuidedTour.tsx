@@ -109,13 +109,16 @@ export interface TourController {
 }
 
 export function GuidedTour({
-  onStep, steps: stepsProp, controller,
+  onStep, steps: stepsProp, controller, themeClass,
 }: {
   onStep?: (step: TourStep | null) => void;
   /** 步骤数据；缺省用画布的 GUIDE_STEPS。 */
   steps?: TourStep[];
   /** 外部状态控制器；缺省用全局 useGuideStore（画布）。 */
   controller?: TourController;
+  /** 主题类（如聊天页的 "chat-light"）——挂到 portal 根，使卡片继承该主题的 --c-* 变量，
+   *  否则 portal 到 body 会拿全局（画布）主题、在浅色聊天页显得配色不搭。 */
+  themeClass?: string;
 }) {
   // Hooks 必须无条件调用；controller 存在时忽略 store 的值。
   const storeActive = useGuideStore((s) => s.active);
@@ -204,7 +207,7 @@ export function GuidedTour({
   const accent = "oklch(0.68 0.22 285)";
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 10000, pointerEvents: "none" }}>
+    <div className={themeClass} style={{ position: "fixed", inset: 0, zIndex: 10000, pointerEvents: "none" }}>
       <style>{`
         @keyframes avc-tour-card-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
         @keyframes avc-tour-pulse { 0% { opacity: 0.9; transform: scale(1); } 70% { opacity: 0; transform: scale(1.12); } 100% { opacity: 0; transform: scale(1.12); } }
