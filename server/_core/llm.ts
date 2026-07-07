@@ -529,6 +529,15 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   const body = JSON.stringify(payload);
   const authHeader = `Bearer ${getApiKey(resolvedModel)}`;
 
+  // 自建/本机桥接（claude-local 等）经子进程生成，大计划（画布助手加角色+模板）慢——用更长的
+  // per-attempt 超时（默认 300s，可 LLM_SELF_HOSTED_TIMEOUT_MS 覆盖）。须 > 桥接子进程超时
+  // （默认 280s），让桥接干净报错先于 fetch abort。云端模型保持 120s。
+  const selfHosted = isSelfHostedModel(model);
+  const perAttemptTimeoutMs = selfHosted
+    ? (Number.isFinite(Number(process.env.LLM_SELF_HOSTED_TIMEOUT_MS)) && Number(process.env.LLM_SELF_HOSTED_TIMEOUT_MS) >= 30_000
+        ? Number(process.env.LLM_SELF_HOSTED_TIMEOUT_MS) : 300_000)
+    : 120_000;
+
   let lastError: unknown;
   for (let attempt = 0; attempt <= LLM_MAX_RETRIES; attempt++) {
     let response: Response;
@@ -537,11 +546,17 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
         method: "POST",
         headers: { "content-type": "application/json", authorization: authHeader },
         body,
-        signal: AbortSignal.timeout(120_000), // fresh per attempt
+        signal: AbortSignal.timeout(perAttemptTimeoutMs), // fresh per attempt
       });
     } catch (e) {
       // Network error / timeout → transient; retry unless out of attempts.
       lastError = e;
+      // 自建/桥接的超时是「生成太慢」而非瞬时网络抖动——重试只会再跑一遍慢生成、白等 2~3 倍时间，
+      // 直接抛出，让用户尽快看到结果（并可调高 CLAUDE_BRIDGE_TIMEOUT_MS/LLM_SELF_HOSTED_TIMEOUT_MS）。
+      const isTimeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+      if (selfHosted && isTimeout) {
+        throw new Error(`本机模型生成超时（${Math.round(perAttemptTimeoutMs / 1000)}s）。复杂请求（如画布助手同时加角色+模板）生成较慢；可在服务器环境变量调高 CLAUDE_BRIDGE_TIMEOUT_MS 与 LLM_SELF_HOSTED_TIMEOUT_MS 后重试，或减少一次性规划的镜头/角色数量。`);
+      }
       if (attempt < LLM_MAX_RETRIES) { await sleep(retryBackoffMs(attempt)); continue; }
       throw e;
     }

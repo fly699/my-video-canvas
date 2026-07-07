@@ -11,7 +11,8 @@ import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, effectiveCharacterVideoRefs, effectiveCharacterAudioRefs } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { composeCharacterEffectPrompt } from "../../../lib/promptCompose";
-import { detectUpstreamPrompt, detectUpstreamImageUrl, listUpstreamVideoSources, listUpstreamAudioSources, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
+import { clampDurationForProvider } from "../../../lib/storyboardGen";
+import { detectUpstreamPrompt, detectUpstreamImageUrl, detectUpstreamStoryboardDuration, listUpstreamVideoSources, listUpstreamAudioSources, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { SUPPORTS_REF_VIDEO, SUPPORTS_REF_AUDIO, collectVideoRefMedia } from "../../../lib/videoRefMedia";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -1194,6 +1195,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     void ensureNotificationPermission();
 
     const refMedia = collectRefMedia(payload.provider);
+    // 时长继承（修「分镜都 6 秒」）：自身 params.duration 优先；否则继承上游直连分镜的 duration；
+    // 再按 provider 档位夹取。否则 withParamDefaults 落 provider 默认（如 kie_grok_i2v=6s），
+    // 无视上游分镜设的时长。与「运行全部」runner / ShotListPanel 批量同口径。
+    const { nodes: dNodes, edges: dEdges } = useCanvasStore.getState();
+    const ownDur = (payload.params as { duration?: number } | undefined)?.duration;
+    const wantDur = typeof ownDur === "number" ? ownDur : detectUpstreamStoryboardDuration(id, dEdges, dNodes);
+    const clampedDur = clampDurationForProvider(PROVIDER_PARAMS[payload.provider], wantDur);
+    const submitParams = withParamDefaults(payload.provider, clampedDur != null ? { ...(payload.params ?? {}), duration: clampedDur } : payload.params);
     const submit = () => createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
       provider: payload.provider, prompt: finalPrompt,
@@ -1206,9 +1215,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       // OmniHuman 指定说话主体的蒙版（用户在节点上勾选）。
       maskUrls: Array.isArray(payload.maskUrls) && payload.maskUrls.length ? (payload.maskUrls as string[]) : undefined,
       referenceMode: refModeForSubmit(),
-      params: withParamDefaults(payload.provider, payload.params),
+      params: submitParams,
       // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
-      estimatedCost: costEstimateLabel(estimateVideoCost(payload.provider, withParamDefaults(payload.provider, payload.params))) || undefined,
+      estimatedCost: costEstimateLabel(estimateVideoCost(payload.provider, submitParams)) || undefined,
       // kie video models auth via their own key (temp > assigned > house).
       ...(payload.provider.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
     });
