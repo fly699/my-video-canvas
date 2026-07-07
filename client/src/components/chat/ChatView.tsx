@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, Server } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, Server, Mic } from "lucide-react";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
@@ -34,6 +34,21 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   // 移动端：ComfyUI 服务器监控条（GVM）对手机聊天用户是噪音——默认收起，需要时点开。
   const [staged, setStaged] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  // ── 语音消息录制（MediaRecorder → 音频文件 → 走 sendFile 发送）──
+  const [recording, setRecording] = useState(false);
+  const [recSec, setRecSec] = useState(0);
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<BlobPart[]>([]);
+  const recStreamRef = useRef<MediaStream | null>(null);
+  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recSecRef = useRef(0);
+  const recCancelRef = useRef(false);
+  useEffect(() => () => {
+    // 卸载时清理录音（关麦克风、停计时器），避免离开聊天后麦克风仍占用。
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
+    (recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
+    try { mediaRecRef.current?.stop(); } catch { /* ignore */ }
+  }, []);
   const [dragOver, setDragOver] = useState(false);
   const [askEncrypt, setAskEncrypt] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
@@ -210,6 +225,57 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
     } catch (e) { toast.error(e instanceof Error ? e.message : "发送失败"); }
     finally { setBusy(false); }
   }
+
+  // ── 语音消息 ──
+  function pickRecMime(): string {
+    const cands = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+    for (const m of cands) { try { if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(m)) return m; } catch { /* ignore */ } }
+    return "";
+  }
+  async function startRec() {
+    if (recording) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { toast.error("当前浏览器不支持录音"); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recStreamRef.current = stream;
+      const mime = pickRecMime();
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      recChunksRef.current = [];
+      recCancelRef.current = false;
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) recChunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        (recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
+        recStreamRef.current = null;
+        if (recTimerRef.current) { clearInterval(recTimerRef.current); recTimerRef.current = null; }
+        setRecording(false);
+        const secs = recSecRef.current;
+        recSecRef.current = 0; setRecSec(0);
+        const chunks = recChunksRef.current; recChunksRef.current = [];
+        if (recCancelRef.current) return;
+        const type = rec.mimeType || mime || "audio/webm";
+        const blob = new Blob(chunks, { type });
+        if (blob.size < 800 || secs < 1) { toast.info("录音太短，已取消"); return; }
+        const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+        const file = new File([blob], `语音-${Date.now()}.${ext}`, { type });
+        void sendFile(file, activeConv!.mode === "serverless" ? { encrypt: true } : undefined);
+      };
+      mediaRecRef.current = rec;
+      rec.start();
+      setRecording(true);
+      recSecRef.current = 0; setRecSec(0);
+      recTimerRef.current = setInterval(() => {
+        recSecRef.current += 1; setRecSec(recSecRef.current);
+        if (recSecRef.current >= 300) stopRec(true); // 5 分钟上限自动发送
+      }, 1000);
+    } catch {
+      toast.error("无法录音：请在浏览器授予麦克风权限");
+    }
+  }
+  function stopRec(send: boolean) {
+    recCancelRef.current = !send;
+    try { mediaRecRef.current?.stop(); } catch { /* ignore */ }
+  }
+  const fmtSec = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   async function toggleMode() {
     if (activeConv!.type === "lobby") { toast.error("大厅模式不可更改"); return; }
@@ -405,8 +471,19 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
       {/* input */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: narrow ? "8px 10px calc(12px + env(safe-area-inset-bottom, 0px))" : "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
+        {recording ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", borderRadius: 12, border: `1px solid ${C.accent}`, background: C.accentSoft }}>
+            <button onClick={() => stopRec(false)} title="取消录音" style={iconBtn}><X size={18} /></button>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.accent, fontWeight: 600, fontSize: 14 }}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#ef4444" }} /> 录音中 {fmtSec(recSec)}
+            </span>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => stopRec(true)} title="发送语音" style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}` }}><Send size={18} /></button>
+          </div>
+        ) : (<>
         <button onClick={() => fileRef.current?.click()} title={isAI ? "添加附件（图片可作参考图，需视觉模型）" : `添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
         {!isAI && <button onClick={() => screenshot()} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>}
+        {!isAI && <button onClick={() => void startRec()} title="录制语音消息" style={iconBtn}><Mic size={18} /></button>}
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => {
             // 技能面板开着时，方向键/Enter/Esc/Tab 归面板用，不触发发送。
@@ -437,6 +514,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
           style={{ ...iconBtn, width: 40, height: 40, background: C.accentSoft, color: C.accent, border: `1px solid ${C.accent}`, opacity: busy || sendToAssistantMut.isPending || (!text.trim() && staged.length === 0) ? 0.5 : 1 }}>
           <Send size={18} />
         </button>
+        </>)}
       </div>
 
       {/* Screenshot annotate editor (portal) */}
