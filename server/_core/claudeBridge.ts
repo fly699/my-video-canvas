@@ -61,6 +61,13 @@ export function parseClaudeJsonResult(stdout: string): { text: string; isError: 
 
 /** 桥接是否启用（= 是否设了 CLAUDE_LOCAL_BRIDGE_KEY）。 */
 export function isClaudeBridgeEnabled(): boolean { return !!process.env.CLAUDE_LOCAL_BRIDGE_KEY?.trim(); }
+
+/** 桥接子进程（claude -p / codex exec）生成超时（毫秒）。默认 280s，可用 CLAUDE_BRIDGE_TIMEOUT_MS
+ *  覆盖（下限 30s）。大计划（画布助手加角色+模板）生成慢，110s 不够会被 SIGKILL。 */
+export function bridgeTimeoutMs(): number {
+  const n = Number(process.env.CLAUDE_BRIDGE_TIMEOUT_MS);
+  return Number.isFinite(n) && n >= 30_000 ? n : 280_000;
+}
 /** 桥接鉴权 key（后台自建 LLM 的 API Key 需与之一致）。 */
 export function claudeBridgeKey(): string { return process.env.CLAUDE_LOCAL_BRIDGE_KEY?.trim() || ""; }
 
@@ -233,9 +240,13 @@ export function registerClaudeBridge(app: Express): void {
       // 其余（claude-local* 等）→ Claude Code CLI（Claude 订阅）。后台自建 LLM 只有一个地址位，
       // 两家共用可零新增配置。
       const gpt = isGptLocalModel(req.body?.model);
+      // 子进程生成超时：默认 280s（原 110s 对「画布助手加角色+模板」这类大计划不够，claude -p
+      // 会被 SIGKILL、外层 fetch 随后 abort → 用户见「aborted due to timeout」）。可用
+      // CLAUDE_BRIDGE_TIMEOUT_MS 覆盖；须 < llm.ts 自建 fetch 超时（默认 300s），让桥接干净报错先出。
+      const bridgeMs = bridgeTimeoutMs();
       const { text, isError } = gpt
-        ? await runCodexText({ messages, timeoutMs: 110_000, model: codexModelArg(req.body?.model) })
-        : await runClaudeText({ messages, timeoutMs: 110_000, model: bridgeModelArg(req.body?.model) });
+        ? await runCodexText({ messages, timeoutMs: bridgeMs, model: codexModelArg(req.body?.model) })
+        : await runClaudeText({ messages, timeoutMs: bridgeMs, model: bridgeModelArg(req.body?.model) });
       if (isError) return res.status(502).json({ error: { message: `本机 ${gpt ? "codex" : "claude"} 返回错误：` + (text || "").slice(0, 600) } });
       res.json({
         id: `claude-local-${Date.now()}`,
