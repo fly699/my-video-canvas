@@ -114,6 +114,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     fields: [
       { name: "prompt", type: "string", desc: "视频提示词" },
       { name: "negativePrompt", type: "string", desc: "反向提示词" },
+      { name: "duration", type: "number", desc: "单镜时长（秒）；会写入所选视频模型的时长参数并按其档位夹取。连了分镜时也会自动继承分镜的 duration，故通常无需显式设" },
     ],
   },
   {
