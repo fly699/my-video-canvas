@@ -27,7 +27,7 @@ export interface AgentNodeSpec {
 export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
   {
     type: "script", label: "脚本", purpose: "影片剧本/梗概的创作与编辑",
-    connectsTo: ["storyboard", "prompt", "ai_chat", "character"],
+    connectsTo: ["storyboard", "prompt", "ai_chat"],
     fields: [
       { name: "synopsis", type: "string", desc: "故事梗概（一句话或一段）" },
       { name: "logline", type: "string", desc: "一句话故事（25-35 字：主角+冲突+赌注）" },
@@ -41,7 +41,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
   },
   {
     type: "character", label: "角色/场景", purpose: "可复用的角色（人物）或场景设定，连到分镜/生成节点以保持跨镜一致（脸/服装/特征）",
-    connectsTo: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video"],
+    connectsTo: ["storyboard", "image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow"],
     fields: [
       { name: "characterKind", type: "string", desc: "person（人物）或 scene（场景）" },
       { name: "name", type: "string", desc: "角色姓名（人物）" },

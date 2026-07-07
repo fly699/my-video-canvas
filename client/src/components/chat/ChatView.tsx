@@ -43,12 +43,23 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recSecRef = useRef(0);
   const recCancelRef = useRef(false);
+  const recStartingRef = useRef(false);      // B-3：同步守卫，防 await 期间双击起双流
+  const recConvIdRef = useRef<number | null>(null); // B-1：录音起始会话 id 快照
   useEffect(() => () => {
     // 卸载时清理录音（关麦克风、停计时器），避免离开聊天后麦克风仍占用。
     if (recTimerRef.current) clearInterval(recTimerRef.current);
     (recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
     try { mediaRecRef.current?.stop(); } catch { /* ignore */ }
   }, []);
+  // B-1：录音中切换会话 → 立即取消录音（onstop 里 startConvId 守卫也会兜底不误发）。
+  useEffect(() => {
+    if (recording && recConvIdRef.current != null && activeConv?.id !== recConvIdRef.current) {
+      recCancelRef.current = true;
+      try { mediaRecRef.current?.stop(); } catch { /* ignore */ }
+    }
+    // 仅在会话 id 变化时判断
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConv?.id]);
   const [dragOver, setDragOver] = useState(false);
   const [askEncrypt, setAskEncrypt] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
@@ -233,11 +244,16 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
     return "";
   }
   async function startRec() {
-    if (recording) return;
+    // B-3：recording 是 state，getUserMedia await 期间还是 false，双击会起两条流。
+    // 用同步 ref + 现存实例双重守卫。
+    if (recording || recStartingRef.current || mediaRecRef.current || recStreamRef.current) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { toast.error("当前浏览器不支持录音"); return; }
+    recStartingRef.current = true;
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recStreamRef.current = stream;
+      recConvIdRef.current = activeConv?.id ?? null; // B-1：快照录音起始会话
       const mime = pickRecMime();
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       recChunksRef.current = [];
@@ -246,12 +262,16 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
       rec.onstop = () => {
         (recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
         recStreamRef.current = null;
+        mediaRecRef.current = null; // 释放实例，否则并发守卫会挡住下一次录音
         if (recTimerRef.current) { clearInterval(recTimerRef.current); recTimerRef.current = null; }
         setRecording(false);
         const secs = recSecRef.current;
         recSecRef.current = 0; setRecSec(0);
+        const startConvId = recConvIdRef.current; recConvIdRef.current = null;
         const chunks = recChunksRef.current; recChunksRef.current = [];
         if (recCancelRef.current) return;
+        // B-1：若录音期间切走了会话，绝不把语音发到「当前」的另一个会话（可能是另一群人 / 明文）。
+        if (startConvId != null && activeConv?.id !== startConvId) { toast.info("已切换会话，语音未发送"); return; }
         const type = rec.mimeType || mime || "audio/webm";
         const blob = new Blob(chunks, { type });
         if (blob.size < 800 || secs < 1) { toast.info("录音太短，已取消"); return; }
@@ -268,7 +288,13 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
         if (recSecRef.current >= 300) stopRec(true); // 5 分钟上限自动发送
       }, 1000);
     } catch {
+      // B-2：MediaRecorder 构造/start 抛错等路径必须关掉已拿到的麦克风流，否则麦克风常亮。
+      (stream?.getTracks() ?? recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
+      recStreamRef.current = null;
+      mediaRecRef.current = null;
       toast.error("无法录音：请在浏览器授予麦克风权限");
+    } finally {
+      recStartingRef.current = false;
     }
   }
   function stopRec(send: boolean) {

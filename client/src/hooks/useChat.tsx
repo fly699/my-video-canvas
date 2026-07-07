@@ -506,8 +506,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       };
       await appendLocalHistory(frame.conversationId, wire);
       if (frame.conversationId === activeIdRef.current) setMessages((prev) => [...prev, wire]);
+      // E2E 会话收到的文件/语音也要提醒（与 server 模式一致；此前遗漏）。
+      notifyIncoming({ conversationId: frame.conversationId, senderId: frame.senderId, senderName: frame.senderName, hasMedia: true });
     }
-  }, [conversations, getConversationKey]);
+  }, [conversations, getConversationKey, notifyIncoming]);
 
   // ── message loading on conversation switch ────────────────────────────────
   const reloadMessages = useCallback(async (convId: number) => {
