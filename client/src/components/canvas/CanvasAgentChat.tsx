@@ -109,6 +109,48 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const left = pos ? pos.left : Math.max(8, window.innerWidth - size.w - 16);
   const top = pos ? pos.top : Math.max(8, window.innerHeight - size.h - 16);
 
+  // ── 收起为悬浮小球（点关闭=收起，非真关闭；小球右键才可关闭）──
+  const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem("avc:canvasAgent:collapsed") === "1");
+  useEffect(() => { try { localStorage.setItem("avc:canvasAgent:collapsed", collapsed ? "1" : "0"); } catch { /* quota */ } }, [collapsed]);
+  const BALL = 58; // 小球直径
+  const [ballPos, setBallPos] = useState<{ left: number; top: number } | null>(() => {
+    try { const s = localStorage.getItem("avc:canvasAgent:ballpos"); if (s) return JSON.parse(s); } catch { /* ignore */ }
+    return null;
+  });
+  useEffect(() => { if (ballPos) { try { localStorage.setItem("avc:canvasAgent:ballpos", JSON.stringify(ballPos)); } catch { /* quota */ } } }, [ballPos]);
+  const ballLeft = ballPos ? ballPos.left : 16; // 默认左下角
+  const ballTop = ballPos ? ballPos.top : Math.max(8, (window.visualViewport?.height ?? window.innerHeight) - BALL - 16);
+  const [ballMenu, setBallMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!ballMenu) return;
+    const close = () => setBallMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", close);
+    return () => { window.removeEventListener("click", close); window.removeEventListener("keydown", close); };
+  }, [ballMenu]);
+  // 拖拽小球；位移过小视为点击 → 展开面板。仅左键触发拖拽（右键留给菜单）。
+  const startBallDrag = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY, il = ballLeft, it = ballTop;
+    let moved = false;
+    const onMove = (mv: MouseEvent) => {
+      if (!moved && Math.hypot(mv.clientX - sx, mv.clientY - sy) < 4) return;
+      moved = true;
+      setBallPos({
+        left: Math.max(0, Math.min(window.innerWidth - BALL, il + mv.clientX - sx)),
+        top: Math.max(0, Math.min(window.innerHeight - BALL, it + mv.clientY - sy)),
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (!moved) setCollapsed(false); // 点击（未拖动）→ 展开
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   const startDrag = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button, input, textarea, [role='listbox']")) return;
     e.preventDefault();
@@ -271,7 +313,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           title="新对话（清空当前画布助手对话）" disabled={chat.isPending}
           style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: chat.isPending ? "default" : "pointer" }}
         ><Plus size={14} /></button>
-        <button onClick={onClose} title="关闭" style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer" }}><X size={14} /></button>
+        <button onClick={() => setCollapsed(true)} title="收起为悬浮球（右键小球可关闭）" style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer" }}><X size={14} /></button>
       </div>
 
       {/* 工具行：模板 + 聚焦/技能提示 */}
@@ -406,5 +448,80 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       }} />
     </div>
   );
-  return createPortal(panel, document.body);
+
+  // ── 收起态：炫酷动态悬浮小球（可拖拽；点击展开；右键弹菜单可关闭）──
+  const ball = (
+    <>
+      <style>{`
+        @keyframes avc-ball-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        @keyframes avc-ball-glow { 0%,100% { box-shadow: 0 6px 22px oklch(0.70 0.20 310 / 0.5), 0 0 0 1px oklch(0.70 0.20 310 / 0.4); } 50% { box-shadow: 0 10px 32px oklch(0.70 0.20 310 / 0.75), 0 0 0 1px oklch(0.70 0.20 310 / 0.55); } }
+        @keyframes avc-ball-ring { 0% { opacity: 0.7; transform: scale(1); } 70% { opacity: 0; transform: scale(1.5); } 100% { opacity: 0; transform: scale(1.5); } }
+        @keyframes avc-ball-spin { to { transform: rotate(360deg); } }
+      `}</style>
+      <div
+        role="button"
+        title="画布助手（点击展开 · 拖动移位 · 右键关闭）"
+        onMouseDown={startBallDrag}
+        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setBallMenu({ x: e.clientX, y: e.clientY }); }}
+        style={{
+          position: "fixed", left: ballLeft, top: ballTop, width: BALL, height: BALL, zIndex: 50,
+          borderRadius: "50%", cursor: "grab", userSelect: "none",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "radial-gradient(circle at 32% 28%, oklch(0.80 0.16 310), oklch(0.62 0.22 300) 55%, oklch(0.52 0.20 285))",
+          animation: "avc-ball-float 3.2s ease-in-out infinite, avc-ball-glow 2.6s ease-in-out infinite",
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.filter = "brightness(1.08)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.filter = "none"; }}
+      >
+        {/* 旋转光泽环 */}
+        <div style={{
+          position: "absolute", inset: 3, borderRadius: "50%", pointerEvents: "none",
+          background: "conic-gradient(from 0deg, transparent, oklch(0.95 0.05 310 / 0.55), transparent 40%)",
+          animation: "avc-ball-spin 4s linear infinite", opacity: 0.7,
+        }} />
+        {/* 忙碌/常态脉冲环 */}
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: "50%", pointerEvents: "none",
+          border: "2px solid oklch(0.80 0.16 310)",
+          animation: `avc-ball-ring ${chat.isPending ? "1.1s" : "2.2s"} ease-out infinite`,
+        }} />
+        {chat.isPending
+          ? <Loader2 size={22} className="animate-spin" style={{ color: "white", position: "relative", zIndex: 1 }} />
+          : <Sparkles size={24} style={{ color: "white", position: "relative", zIndex: 1, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />}
+      </div>
+      {ballMenu && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{
+            position: "fixed",
+            left: Math.min(ballMenu.x, window.innerWidth - 160),
+            top: Math.min(ballMenu.y, window.innerHeight - 88),
+            zIndex: 51, minWidth: 148, padding: 5,
+            background: "var(--c-elevated, #1b1b1f)", border: "1px solid var(--c-bd3)", borderRadius: 10,
+            boxShadow: "0 12px 34px rgba(0,0,0,0.45)",
+          }}
+        >
+          <button
+            onClick={() => { setBallMenu(null); setCollapsed(false); }}
+            style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 9px", borderRadius: 7, border: "none", background: "transparent", color: "var(--c-t1)", cursor: "pointer", fontSize: 12.5 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = accentSoft; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+          >
+            <Sparkles size={14} style={{ color: accent }} /> 展开助手
+          </button>
+          <button
+            onClick={() => { setBallMenu(null); setCollapsed(false); onClose(); }}
+            style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 9px", borderRadius: 7, border: "none", background: "transparent", color: "oklch(0.72 0.18 25)", cursor: "pointer", fontSize: 12.5 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.65 0.22 25 / 0.14)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+          >
+            <X size={14} /> 关闭助手
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  return createPortal(collapsed ? ball : panel, document.body);
 }
