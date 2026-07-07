@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, ChevronDown, Server } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, Server } from "lucide-react";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
@@ -32,7 +32,6 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, e2eAvailable, myUserId, deleteRoom, leaveRoom, reloadActiveMessages } = useChat();
   const [text, setText] = useState("");
   // 移动端：ComfyUI 服务器监控条（GVM）对手机聊天用户是噪音——默认收起，需要时点开。
-  const [statusOpen, setStatusOpen] = useState(false);
   const [staged, setStaged] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -300,21 +299,11 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
         </div>
       </div>
 
-      {/* 服务器状态指示（ComfyUI GVM 监控）—— 桌面常驻一行；移动端默认收起（对手机聊天是噪音），点开才显示 */}
-      {narrow ? (
-        <div style={{ borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-          <button onClick={() => setStatusOpen((v) => !v)} title="ComfyUI 服务器状态"
-            style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "5px 12px", background: "none", border: "none", color: C.t3, fontSize: 11.5, cursor: "pointer" }}>
-            <Server size={12} /> 服务器状态
-            <ChevronDown size={12} style={{ marginLeft: "auto", transition: "transform 150ms", transform: statusOpen ? "rotate(180deg)" : "none" }} />
-          </button>
-          {statusOpen && <div style={{ display: "flex", alignItems: "center", padding: "2px 12px 7px", overflowX: "auto" }}><ComfyServerStatusIndicator /></div>}
-        </div>
-      ) : (
-        <div style={{ display: "flex", alignItems: "center", padding: "6px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-          <ComfyServerStatusIndicator />
-        </div>
-      )}
+      {/* 服务器状态指示（ComfyUI GVM 监控）—— 一行直接显示状态，桌面/移动端一致，不折叠 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: narrow ? "5px 12px" : "6px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0, overflowX: "auto" }}>
+        <Server size={12} style={{ color: C.t3, flexShrink: 0 }} />
+        <ComfyServerStatusIndicator />
+      </div>
 
       {/* 端到端加密模式警示 */}
       {activeConv.mode === "serverless" && (
@@ -587,9 +576,26 @@ function DownloadApproveInline({ grantId }: { grantId: number }) {
 }
 
 function Attachment({ a, mine }: { a: ChatFileRef; mine: boolean }) {
-  if (a.kind === "image") return <img src={a.url} alt={a.name} onClick={() => openLightbox(a.url)} style={{ maxWidth: 240, maxHeight: 240, borderRadius: 10, marginTop: 6, display: "block", cursor: "zoom-in" }} />;
-  if (a.kind === "video") return <video src={a.url} controls style={{ maxWidth: 280, borderRadius: 10, marginTop: 6, display: "block" }} />;
-  if (a.mimeType.startsWith("audio/")) return <audio src={a.url} controls style={{ marginTop: 6, width: 240 }} />;
+  // 下载门控：图片禁长按/右键/拖拽另存（点击走应用内放大预览，预览里下载受门控）；
+  // 视频/音频去掉原生控件的「下载」项、禁右键，与画布媒体保护一致。
+  if (a.kind === "image") return (
+    <img
+      src={a.url} alt={a.name} draggable={false}
+      onClick={() => openLightbox(a.url)}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{ maxWidth: 240, maxHeight: 240, borderRadius: 10, marginTop: 6, display: "block", cursor: "zoom-in", WebkitTouchCallout: "none", userSelect: "none" }}
+    />
+  );
+  if (a.kind === "video") return (
+    <video
+      src={a.url} controls controlsList="nodownload noremoteplayback" disablePictureInPicture
+      onContextMenu={(e) => e.preventDefault()}
+      style={{ maxWidth: 280, borderRadius: 10, marginTop: 6, display: "block" }}
+    />
+  );
+  if (a.mimeType.startsWith("audio/")) return (
+    <audio src={a.url} controls controlsList="nodownload" onContextMenu={(e) => e.preventDefault()} style={{ marginTop: 6, width: 240 }} />
+  );
   return (
     <a href={a.url} download={a.name} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 6, color: C.accent2, textDecoration: "underline", fontSize: 13 }}>
       <Paperclip size={13} /> {a.name} ({Math.round(a.size / 1024)} KB)

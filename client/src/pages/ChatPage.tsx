@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, PanelLeftClose, PanelLeft, Users, ExternalLink, Download, Sun, Moon } from "lucide-react";
+import { ArrowLeft, PanelLeftClose, PanelLeft, Users, ExternalLink, Download, Sun, Moon, Bell, BellOff } from "lucide-react";
 import { toast } from "sonner";
 import { ChatProvider } from "@/hooks/useChat";
 import { ConversationList } from "@/components/chat/ConversationList";
@@ -12,6 +12,8 @@ import { CHAT_TOUR_STEPS, CHAT_TOUR_DONE_KEY } from "@/lib/chatGuideSteps";
 import type { TourStep } from "@/lib/guideSteps";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LogIn, Loader2 } from "lucide-react";
+import { CHAT_MUTED_KEY } from "@/hooks/useChat";
+import { ensureNotificationPermission } from "@/lib/notify";
 
 interface BIPEvent extends Event { prompt: () => void; userChoice: Promise<{ outcome: string }> }
 
@@ -29,6 +31,16 @@ export default function ChatPage() {
   const [light, setLight] = useState(() => {
     try { const v = localStorage.getItem("avc:chat-light"); return v === null ? true : v === "1"; } catch { return true; }
   });
+  // 新消息提醒静音开关（横幅 + 声音 + 桌面通知），持久化。默认开启（不静音）。
+  const [muted, setMuted] = useState(() => { try { return localStorage.getItem(CHAT_MUTED_KEY) === "1"; } catch { return false; } });
+  function toggleMuted() {
+    setMuted((v) => {
+      const next = !v;
+      try { localStorage.setItem(CHAT_MUTED_KEY, next ? "1" : "0"); } catch { /* quota */ }
+      if (!next) void ensureNotificationPermission(); // 取消静音时顺手申请桌面通知权限
+      return next;
+    });
+  }
   useEffect(() => {
     try { localStorage.setItem("avc:chat-light", light ? "1" : "0"); } catch { /* quota */ }
   }, [light]);
@@ -168,6 +180,9 @@ export default function ChatPage() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={toggleMuted} title={muted ? "新消息提醒：已静音（点击开启）" : "新消息提醒：开启（点击静音）"} style={{ ...iconBtn, ...(muted ? { color: "var(--c-t4)" } : { border: `1px solid ${C.accent}`, color: C.accent }) }}>
+              {muted ? <BellOff size={18} /> : <Bell size={18} />}
+            </button>
             <button onClick={() => setLight((v) => !v)} title={light ? "切换到深色" : "切换到浅色"} style={{ ...iconBtn, ...(light ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
               {light ? <Moon size={18} /> : <Sun size={18} />}
             </button>
