@@ -860,6 +860,7 @@ export function useWorkflowRunner() {
             batchSize: typeof p.batchSize === "number" ? p.batchSize : 1,
             referenceImageUrl: refUrl,
             maskUrl,
+            freeVramAfterRun: p.freeVramAfterRun === true, // 与逐节点对齐：批量此前丢了「完成后清显存」
           });
           // Guard against the node having been deleted while the long-running
           // mutation was in flight — writing back would resurrect a ghost node.
@@ -944,6 +945,11 @@ export function useWorkflowRunner() {
             vae: (p.vae as string) || undefined,
             batchSize: typeof p.batchSize === "number" ? p.batchSize : 1,
             referenceImageUrl: refUrl,
+            // 与逐节点「运行」按钮对齐：批量运行此前丢了角色 LoRA 与「完成后清显存」开关。
+            loras: Array.isArray(p.loras) && (p.loras as { name?: string }[]).length > 0
+              ? (p.loras as { name: string; strengthModel: number; strengthClip?: number }[]).filter((l) => l.name?.trim())
+              : undefined,
+            freeVramAfterRun: p.freeVramAfterRun === true,
           });
           // Guard against the node having been deleted during the long mutation.
           if (!useCanvasStore.getState().nodes.some((n) => n.id === nodeId)) {

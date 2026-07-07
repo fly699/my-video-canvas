@@ -316,8 +316,10 @@ export function resolveAudioParamsWithMap(
     if (!isParamAtDefault(next[key], b)) continue; // 用户已填的值不覆盖
     const mappedId = sourceMap[key];
     if (mappedId) {
+      // 用户已显式指定来源：找到就填；找不到（来源断连）留空，**绝不**退回自动填错音频。
       const s = sources.find((x) => x.id === mappedId);
-      if (s) { next[key] = s.url; continue; }
+      if (s) next[key] = s.url;
+      continue;
     }
     if (ai < autoUrls.length) next[key] = autoUrls[ai++];
   }
@@ -344,8 +346,10 @@ export function resolveImageParamsWithMap(
     if (!isParamAtDefault(next[key], b)) continue; // genuine user edit → keep
     const mappedId = sourceMap[key];
     if (mappedId) {
+      // 用户已显式指定来源：找到就填；找不到（来源断连）留空，**绝不**退回自动填错图。
       const s = sources.find((x) => x.id === mappedId);
-      if (s) { next[key] = s.url; continue; }
+      if (s) next[key] = s.url;
+      continue;
     }
     if (ai < autoUrls.length) next[key] = autoUrls[ai++];
   }
@@ -518,8 +522,16 @@ export function fillWorkflowLoraParam(
 /** The workflow's positive-prompt param key (`nodeId.fieldPath`), or null. Same
  *  resolution as fillWorkflowPromptParams' posB — exported so callers can AUGMENT
  *  the effective positive (e.g. prepend character identity) without replacing it. */
+/** ComfyUI 的枚举/选择类字段（采样器/调度器/各种 *_name 模型选择）。当工作流「分析」时服务器
+ *  不可达（无 object_info），这些字段会被误判成 text 类型——绝不能把提示词注入进去（会把
+ *  sampler_name 改成一段提示词 → ComfyUI 直接报非法采样器）。识别提示词目标时一律排除它们。 */
+function isSelectorFieldPath(fieldPath: string): boolean {
+  return /_name$/i.test(fieldPath) || /(^|\.)(sampler|scheduler|ckpt|vae|model|control_net|lora|clip|unet|style_model|upscale_model|gpu|device|weight_dtype|precision)$/i.test(fieldPath);
+}
+
 export function positivePromptParamKey(bindings: WorkflowParamBinding[] | undefined): string | null {
-  const texts = (bindings ?? []).filter((b) => b.type === "text");
+  // 只在「真正的文本内容字段」里找正向词槽——排除被误判为 text 的采样器/模型选择字段。
+  const texts = (bindings ?? []).filter((b) => b.type === "text" && !isSelectorFieldPath(b.fieldPath));
   const isNeg = (b: WorkflowParamBinding) => b.role === "negative" || (!b.role && /负|negative/i.test(b.label));
   const posB = texts.find((b) => b.role === "positive")
     ?? texts.find((b) => !b.role && /提示词|prompt/i.test(b.label) && !isNeg(b))
@@ -537,7 +549,8 @@ export function fillWorkflowPromptParams(
   opts?: { force?: boolean },
 ): Record<string, unknown> {
   if (!prompts.positive && !prompts.negative) return paramValues;
-  const texts = (bindings ?? []).filter((b) => b.type === "text");
+  // 排除被误判为 text 的采样器/模型选择字段，避免把提示词灌进 sampler_name 等（见 isSelectorFieldPath）。
+  const texts = (bindings ?? []).filter((b) => b.type === "text" && !isSelectorFieldPath(b.fieldPath));
   const isNeg = (b: WorkflowParamBinding) => b.role === "negative" || (!b.role && /负|negative/i.test(b.label));
   // Prefer explicit roles; fall back to the label heuristic.
   const posB = texts.find((b) => b.role === "positive")
