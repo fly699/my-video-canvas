@@ -98,7 +98,17 @@ export default function ChatPage() {
   }
   async function install() {
     const e = installEvt.current;
-    if (!e) { toast.info("无法安装：请用普通（非无痕）Chrome 窗口、HTTPS 且证书已受信任（地址栏显示🔒）打开；满足后点地址栏右侧的「安装」图标即可。"); return; }
+    if (!e) {
+      // 浏览器未触发原生安装事件：按平台给手动安装指引。
+      const ua = navigator.userAgent;
+      const isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && "ontouchend" in document);
+      if (isIOS) {
+        toast.info("iPhone / iPad 安装：用 Safari 打开本页 → 点底部「分享」按钮 → 选「添加到主屏幕」。", { duration: 7000 });
+      } else {
+        toast.info("安装到主屏 / 桌面：用 Chrome（非无痕）以 HTTPS 打开（地址栏显示🔒）→ 安卓点右上角菜单「安装应用 / 添加到主屏幕」，电脑点地址栏右侧「安装」图标。", { duration: 7000 });
+      }
+      return;
+    }
     e.prompt();
     await e.userChoice.catch(() => {});
     installEvt.current = null; setCanInstall(false);
@@ -162,12 +172,11 @@ export default function ChatPage() {
                 <ExternalLink size={15} /> 精简窗口
               </button>
             )}
-            {/* 安装为应用：移动端仅当浏览器确实可安装时才显示，否则藏起来省空间 */}
-            {(!narrow || canInstall) && (
-              <button data-tour="chat-install" onClick={install} title="安装为桌面应用" style={{ ...ghostBtn, height: 34, padding: narrow ? "0" : "0 12px", width: narrow ? 34 : undefined, fontSize: 13, ...(canInstall ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
-                <Download size={15} />{!narrow && " 安装应用"}
-              </button>
-            )}
+            {/* 安装为应用：始终显示（含移动端），让用户随时能安装到主屏/桌面。可安装时高亮描边；
+                浏览器暂不支持安装时点击给出对应平台的手动安装指引（见 install()）。 */}
+            <button data-tour="chat-install" onClick={install} title="安装为应用（手机加到主屏 / 桌面独立窗口）" style={{ ...ghostBtn, height: 34, padding: narrow ? "0" : "0 12px", width: narrow ? 34 : undefined, fontSize: 13, ...(canInstall ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
+              <Download size={15} />{!narrow && " 安装应用"}
+            </button>
             <button onClick={() => setMembersOpen((v) => !v)} title="成员/在线" style={{ ...iconBtn, ...(membersOpen ? { border: `1px solid ${C.accent}`, color: C.accent } : {}) }}>
               <Users size={18} />
             </button>
@@ -186,7 +195,7 @@ export default function ChatPage() {
             ? <Drawer side="right" onClose={() => setMembersOpen(false)}><MembersPanel /></Drawer>
             : <MembersPanel />)}
         </div>
-        <GuidedTour steps={CHAT_TOUR_STEPS} controller={guideController} onStep={onGuideStep} />
+        <GuidedTour steps={CHAT_TOUR_STEPS} controller={guideController} onStep={onGuideStep} themeClass={light ? "chat-light" : undefined} />
       </div>
     </ChatProvider>
   );
