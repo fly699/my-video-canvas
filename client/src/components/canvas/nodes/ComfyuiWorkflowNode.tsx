@@ -229,7 +229,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     let wf: Record<string, unknown> | null = null;
     try { wf = JSON.parse(payload.workflowJson) as Record<string, unknown>; } catch { return [] as string[]; }
     if (!wf || typeof wf !== "object") return [] as string[];
-    return Array.from(new Set(bindings.filter((b) => !(b.nodeId in wf!)).map((b) => b.nodeId)));
+    // 失效 = 节点已不在 JSON，**或** 该 id 被复用成了别的 class_type（分析时记录了 classType）——
+    // 后者若不拦，参数会被注入到一个「幻影字段」上静默丢失（finding4）。
+    return Array.from(new Set(bindings.filter((b) => {
+      const nd = wf![b.nodeId] as { class_type?: unknown } | undefined;
+      return !nd || (b.classType != null && nd.class_type !== b.classType);
+    }).map((b) => b.nodeId)));
   }, [payload.paramBindings, payload.workflowJson]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -435,10 +440,13 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       try { wfNodes = JSON.parse(workflowJson) as Record<string, unknown>; } catch { wfNodes = null; }
       if (wfNodes && typeof wfNodes === "object") {
         const missing = Array.from(new Set(
-          bindings.filter((b) => !(b.nodeId in wfNodes!)).map((b) => b.nodeId),
+          bindings.filter((b) => {
+            const nd = wfNodes![b.nodeId] as { class_type?: unknown } | undefined;
+            return !nd || (b.classType != null && nd.class_type !== b.classType); // 缺失 或 id 被复用成别的类型
+          }).map((b) => b.nodeId),
         ));
         if (missing.length > 0) {
-          toast.error(`参数绑定已与当前 Workflow 不同步（缺失节点 ${missing.join("、")}），提示词/参数可能无法生效。请点「分析参数」重新分析后再运行。`);
+          toast.error(`参数绑定已与当前 Workflow 不同步（节点 ${missing.join("、")} 缺失或类型已变），提示词/参数可能无法生效。请点「分析参数」重新分析后再运行。`);
           return;
         }
       }
