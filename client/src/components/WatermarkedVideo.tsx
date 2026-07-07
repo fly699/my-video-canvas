@@ -37,15 +37,17 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
     return () => window.removeEventListener("keydown", onKey);
   }, [big]);
 
-  // 水印开启时禁用原生 <video> 全屏（原生全屏不渲染 DOM 子节点，水印盖不上）——统一走应用内放大预览。
-  const controlsList = wm ? [props.controlsList, "nofullscreen"].filter(Boolean).join(" ") : props.controlsList;
+  // 始终去掉原生控件的「下载 / 远程投放」项（移动端 Chrome 的 ⋮ 菜单里也不再有下载）；
+  // 水印开启时再额外禁用原生全屏（原生全屏不渲染 DOM 子节点，水印盖不上）——统一走应用内放大预览。
+  const controlsList = [props.controlsList, "nodownload", "noremoteplayback", wm ? "nofullscreen" : ""].filter(Boolean).join(" ");
+  const noMenu = (e: React.MouseEvent<HTMLVideoElement>) => { if (props.onContextMenu) props.onContextMenu(e); else e.preventDefault(); };
 
   return (
     <div
       className="wm-video-wrap"
       style={{ position: "relative", display: block ? "block" : "inline-block", width: block ? "100%" : undefined, lineHeight: 0 }}
     >
-      <video {...props} loop={loop} controlsList={controlsList} />
+      <video {...props} loop={loop} controlsList={controlsList} disablePictureInPicture onContextMenu={noMenu} />
       <button
         type="button"
         onClick={() => setLoop((v) => !v)}
@@ -73,6 +75,8 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
             autoPlay
             loop={loop}
             controlsList={controlsList}
+            disablePictureInPicture
+            onContextMenu={(e) => e.preventDefault()}
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: "96vw", maxHeight: "92vh", background: "#000", borderRadius: 8 }}
           />

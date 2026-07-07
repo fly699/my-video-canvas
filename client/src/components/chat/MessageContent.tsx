@@ -59,9 +59,9 @@ export function MessageContent({ content }: { content: string }) {
       {embeds.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
           {embeds.map((e, i) => {
-            if (e.kind === "image") return <img key={i} src={e.value} alt="" onClick={() => openLightbox(e.value)} style={{ ...embedImg, cursor: "zoom-in" }} />;
-            if (e.kind === "video") return <video key={i} src={e.value} controls style={embedMedia} />;
-            if (e.kind === "audio") return <audio key={i} src={e.value} controls style={{ width: 260, marginTop: 6 }} />;
+            if (e.kind === "image") return <img key={i} src={e.value} alt="" draggable={false} onClick={() => openLightbox(e.value)} onContextMenu={(ev) => ev.preventDefault()} style={{ ...embedImg, cursor: "zoom-in", WebkitTouchCallout: "none", userSelect: "none" }} />;
+            if (e.kind === "video") return <video key={i} src={e.value} controls controlsList="nodownload noremoteplayback" disablePictureInPicture onContextMenu={(ev) => ev.preventDefault()} style={embedMedia} />;
+            if (e.kind === "audio") return <audio key={i} src={e.value} controls controlsList="nodownload" style={{ width: 260, marginTop: 6 }} />;
             return <iframe key={i} src={`https://www.youtube.com/embed/${e.value}`} title="YouTube"
               allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
               allowFullScreen style={{ ...embedMedia, aspectRatio: "16/9", border: "none" }} />;
