@@ -37,6 +37,21 @@ export function detectUpstreamImageUrl(targetId: string, edges: MiniEdge[], node
   return detectUpstreamImages(targetId, edges, nodes)[0];
 }
 
+/** 上游直连分镜的目标时长（秒）。video_task 提交时若自身未设 duration，则继承上游分镜时长，
+ *  否则会落到 provider 默认（如 kie_grok_i2v=6s），无视用户/智能体在分镜里设的时长（「分镜都 6 秒」）。
+ *  与 ShotListPanel 批量生视频口径一致。取第一个直连的 storyboard 的正数 duration。 */
+export function detectUpstreamStoryboardDuration(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): number | undefined {
+  for (const e of edges) {
+    if (e.target !== targetId) continue;
+    const src = nodes.find((n) => n.id === e.source);
+    if (src?.data.nodeType === "storyboard") {
+      const d = (src.data.payload as { duration?: number } | undefined)?.duration;
+      if (typeof d === "number" && d > 0) return d;
+    }
+  }
+  return undefined;
+}
+
 /** All upstream image URLs feeding targetId (edge order, de-duplicated). Used to
  *  fill MULTIPLE blank image params (multi-reference workflows: IPAdapter / multi
  *  LoadImage / fusion). */

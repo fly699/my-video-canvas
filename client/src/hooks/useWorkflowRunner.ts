@@ -4,11 +4,11 @@ import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { toast } from "sonner";
 import type { NodeType, WorkflowParamBinding, StoryboardNodeData, ImageGenNodeData, NodeData } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
-import { detectUpstreamImageUrl, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamStoryboardDuration, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
 import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputImageUrl, propagateRefImage } from "../lib/refImagePropagation";
 // 与逐节点 StoryboardNode「生成」按钮同一套组装/写回纯函数——让「运行全部」的分镜生图口径一致
 // （此前 runner 用简化的 injectCharacters 手拼，丢了 kie 块/分模型 sizing/比例/效果/@图像/多参考/镜头表/色调）。
-import { buildStoryboardGenInput, applyStoryboardGenResult } from "../lib/storyboardGen";
+import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../lib/storyboardGen";
 import { buildImageGenInput } from "../lib/imageGenBuild";
 import { composeCharacterEffectPrompt } from "../lib/promptCompose";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
@@ -18,7 +18,7 @@ import { mergeCharactersIntoPrompt } from "../lib/characterPrompt";
 import { collectVideoRefMedia } from "../lib/videoRefMedia";
 import { RUNNABLE_TYPES } from "../lib/runnableTypes";
 // 与逐节点「生成」按钮同口径：负向词按 provider 能力白名单发送 + 参数套 ParamDef 默认值。
-import { withParamDefaults, SUPPORTS_NEGATIVE_PROMPT } from "../components/canvas/nodes/VideoTaskNode";
+import { withParamDefaults, SUPPORTS_NEGATIVE_PROMPT, PROVIDER_PARAMS } from "../components/canvas/nodes/VideoTaskNode";
 
 export type NodeRunPhase = "pending" | "running" | "done" | "failed" | "skipped";
 
@@ -500,6 +500,15 @@ export function useWorkflowRunner() {
           const refMedia = collectVideoRefMedia(nodeId, rawPrompt, provider, edges, useCanvasStore.getState().nodes);
           // 角色/场景参考图存在（即无手动/上游首帧图）→ 这些是主体参考，走 reference 模式。
           const referenceMode = charRefs.length > 0 ? ("reference" as const) : undefined;
+          // 时长继承（修「分镜都 6 秒」）：节点自身 params.duration 优先；否则继承上游直连分镜的
+          // duration；再按 provider 档位夹取。否则 withParamDefaults 会落 provider 默认（如
+          // kie_grok_i2v=6），无视分镜里设的时长。与 ShotListPanel 批量生视频同口径。
+          const ownParams = (p.params as Record<string, unknown> | undefined) ?? {};
+          const wantDur = typeof ownParams.duration === "number"
+            ? (ownParams.duration as number)
+            : detectUpstreamStoryboardDuration(nodeId, edges, useCanvasStore.getState().nodes);
+          const clampedDur = clampDurationForProvider(PROVIDER_PARAMS[provider], wantDur);
+          const mergedParams = clampedDur != null ? { ...ownParams, duration: clampedDur } : ownParams;
           const task = await videoTaskMutation.mutateAsync({
             projectId: node.data.projectId,
             nodeId,
@@ -517,7 +526,7 @@ export function useWorkflowRunner() {
             //  ② params 套 ParamDef 默认值，补齐 Seedance/Kling 等的 resolution/aspect_ratio/sound
             //     等必填字段（未展开过参数的节点否则会 prompt-only 提交被拒）。
             negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? (p.negativePrompt as string | undefined) : undefined,
-            params: withParamDefaults(provider, (p.params as Record<string, unknown> | undefined)),
+            params: withParamDefaults(provider, mergedParams),
           });
           useCanvasStore
             .getState()
