@@ -205,7 +205,8 @@ const KLING_O3_PARAMS: ParamDef[] = [
 export const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   // negative_prompt is documented (docs/poyo-video-api.md) for Kling 2.1 /
   // 2.5-turbo-pro / Wan 2.5; NOT for Seedance — so seedance models are excluded.
-  "poyo_seedance",
+  // （poyo_seedance→wire seedance-2，其文档与 PROVIDER_ALLOWED_PARAMS 均无 negative_prompt，
+  //  故不列入——此前误含 poyo_seedance 与本注释自相矛盾，会向 Poyo 发它不认的 negative_prompt。）
   "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k",
   "poyo_kling21_std", "poyo_kling21_pro", "poyo_kling25_turbo",
   // kie: Kling 2.5 Turbo + Wan 2.5 document negative_prompt.

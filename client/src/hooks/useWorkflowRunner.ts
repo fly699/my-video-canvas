@@ -2,10 +2,13 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { toast } from "sonner";
-import type { NodeType, WorkflowParamBinding } from "../../../shared/types";
+import type { NodeType, WorkflowParamBinding, StoryboardNodeData, NodeData } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
-import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputImageUrl } from "../lib/refImagePropagation";
+import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputImageUrl, propagateRefImage } from "../lib/refImagePropagation";
+// 与逐节点 StoryboardNode「生成」按钮同一套组装/写回纯函数——让「运行全部」的分镜生图口径一致
+// （此前 runner 用简化的 injectCharacters 手拼，丢了 kie 块/分模型 sizing/比例/效果/@图像/多参考/镜头表/色调）。
+import { buildStoryboardGenInput, applyStoryboardGenResult } from "../lib/storyboardGen";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
@@ -404,10 +407,34 @@ export function useWorkflowRunner() {
           completed.push(nodeId);
           return "ok";
 
-        // ── Image generation (storyboard / image_gen) ───────────────────────
-        } else if (nodeType === "storyboard" || nodeType === "image_gen") {
+        // ── Storyboard 生图：复用逐节点 StoryboardNode 的纯函数（组装 + 写回 + 传播），
+        //    与「生成」按钮完全同口径（kie 块/分模型 sizing/比例/效果/@图像/多参考/镜头表/色调）。──
+        } else if (nodeType === "storyboard") {
+          const built = buildStoryboardGenInput({
+            id: nodeId,
+            payload: p as unknown as StoryboardNodeData,
+            nodes: useCanvasStore.getState().nodes,
+            edges,
+            kieTempKey: localStorage.getItem("kie:tempKey"),
+          });
+          if (built.blocked) { failed.push(nodeId); return "fail"; }
+          const result = await imageGenMutation.mutateAsync({
+            // built.input 不含 projectId（逐节点也不传）——运行全部需补上以保留项目归属/access 校验。
+            ...(built.input as Parameters<typeof imageGenMutation.mutateAsync>[0]),
+            projectId: node.data.projectId,
+          });
+          applyStoryboardGenResult(nodeId, result, {
+            getNodes: () => useCanvasStore.getState().nodes,
+            // skipHistory=true：与 runner 其它写回一致，批量运行不污染 undo 历史。
+            updateNodeData: (nid, pl) => useCanvasStore.getState().updateNodeData(nid, pl as Partial<NodeData>, true),
+            propagateRefImage,
+          });
+          completed.push(nodeId);
+          return "ok";
+
+        // ── Image generation (image_gen) ─────────────────────────────────────
+        } else if (nodeType === "image_gen") {
           const rawPrompt =
-            (p.promptText as string) ||
             (p.positivePrompt as string) ||
             (p.prompt as string) ||
             "";
@@ -439,18 +466,10 @@ export function useWorkflowRunner() {
           });
           const bestUrl = result.url ?? result.urls?.[0];
           if (!bestUrl) throw new Error("图像生成未返回 URL");
-          if (nodeType === "storyboard") {
-            // StoryboardNodeData uses imageHistory (not imageUrls)
-            const existingHistory = ((useCanvasStore.getState().nodes.find(n => n.id === nodeId)?.data.payload) as Record<string, unknown> | undefined)?.imageHistory as string[] | undefined ?? [];
-            const newUrls = result.urls?.length ? result.urls : [bestUrl];
-            const newHistory = [...newUrls, ...existingHistory].filter(Boolean).slice(0, 12);
-            useCanvasStore.getState().updateNodeData(nodeId, { imageUrl: bestUrl, imageHistory: newHistory }, true);
-          } else {
-            useCanvasStore.getState().updateNodeData(nodeId, {
-              imageUrl: bestUrl,
-              ...(result.urls?.length ? { imageUrls: result.urls } : {}),
-            }, true);
-          }
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            imageUrl: bestUrl,
+            ...(result.urls?.length ? { imageUrls: result.urls } : {}),
+          }, true);
 
           // Propagate image URL to connected reference-image targets
           const { edges: currentEdges, nodes: currentNodes } = useCanvasStore.getState();
