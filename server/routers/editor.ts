@@ -8,6 +8,7 @@ import { composeTimeline } from "../_core/videoComposer";
 import { execFileAsync } from "../_core/videoEditor";
 import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs } from "../_core/editorRenderJobs";
 import { assertProjectAccess } from "../_core/permissions";
+import { assertWhitelisted } from "../_core/whitelist";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
 import { transcribeAudio } from "../_core/voiceTranscription";
@@ -248,6 +249,8 @@ export const editorRouter = router({
       kieTempKey: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // 白名单门控：与画布字幕/智能剪辑节点一致（aiCut 又转写又调 LLM，成本更高，必须门控）。
+      await assertWhitelisted(ctx);
       const tr = await transcribeAudio({ audioUrl: input.assetUrl, wordTimestamps: !!input.subtitles });
       if ("error" in tr) {
         console.warn("[aiCut] 转写失败", tr.code, tr.error, tr.details);
