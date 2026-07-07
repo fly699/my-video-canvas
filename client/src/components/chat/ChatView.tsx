@@ -46,13 +46,15 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const recStartingRef = useRef(false);      // B-3：同步守卫，防 await 期间双击起双流
   const recConvIdRef = useRef<number | null>(null); // B-1：录音起始会话 id 快照
   const recStartMsRef = useRef(0);           // 计时按开始时间戳算，避免 setInterval 被节流/丢帧时不走字
+  const curConvIdRef = useRef<number | null>(null); // 实时当前会话 id（供 onstop 闭包读「当前」而非冻结值）
   useEffect(() => () => {
     // 卸载时清理录音（关麦克风、停计时器），避免离开聊天后麦克风仍占用。
     if (recTimerRef.current) clearInterval(recTimerRef.current);
     (recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
     try { mediaRecRef.current?.stop(); } catch { /* ignore */ }
   }, []);
-  // B-1：录音中切换会话 → 立即取消录音（onstop 里 startConvId 守卫也会兜底不误发）。
+  curConvIdRef.current = activeConv?.id ?? null; // 每次 render 同步「当前」会话 id，供 onstop 闭包读取
+  // B-1：录音中切换会话 → 立即取消录音；onstop 再用 curConvIdRef（当前会话）与起始会话比对兜底。
   useEffect(() => {
     if (recording && recConvIdRef.current != null && activeConv?.id !== recConvIdRef.current) {
       recCancelRef.current = true;
@@ -273,13 +275,16 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
         const chunks = recChunksRef.current; recChunksRef.current = [];
         if (recCancelRef.current) return;
         // B-1：若录音期间切走了会话，绝不把语音发到「当前」的另一个会话（可能是另一群人 / 明文）。
-        if (startConvId != null && activeConv?.id !== startConvId) { toast.info("已切换会话，语音未发送"); return; }
+        // 读 curConvIdRef（实时当前会话），而非 onstop 闭包里被冻结的 activeConv——否则此守卫恒 false。
+        if (startConvId != null && curConvIdRef.current !== startConvId) { toast.info("已切换会话，语音未发送"); return; }
         const type = rec.mimeType || mime || "audio/webm";
         const blob = new Blob(chunks, { type });
         if (blob.size < 800 || secs < 1) { toast.info("录音太短，已取消"); return; }
         const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
         const file = new File([blob], `语音-${Date.now()}.${ext}`, { type });
-        void sendFile(file, activeConv!.mode === "serverless" ? { encrypt: true } : undefined);
+        // 不读 onstop 闭包里冻结的 activeConv：sendFile 内部按「当前会话」的 mode 自行判定，
+        // serverless 缺省即加密（encrypt !== false），server 模式忽略此项——无明文泄露风险。
+        void sendFile(file);
       };
       mediaRecRef.current = rec;
       rec.start();
