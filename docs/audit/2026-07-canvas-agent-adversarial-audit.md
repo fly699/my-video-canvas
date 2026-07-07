@@ -21,6 +21,7 @@
 | #728 | 🟠 D1 comfyui 负向词无槽静默丢 + 🟠 S4 种子传播写错字段 | D1：ComfyuiWorkflowNode 在「上游有反向词但工作流无 negative 参数槽」时明确提示不生效（原本只字不提）。S4：ImageGenNode 种子传播到 video_task 改写 `payload.params.seed`（视频节点实际读取处），此前写顶层 `payload.seed` 永远读不到。 |
 | #729 | 🟠 S1（阶段 1）「运行全部」video_task 丢负向词/不套参数默认 | useWorkflowRunner 的 video_task 分支补齐与逐节点同口径：`negativePrompt`（按 `SUPPORTS_NEGATIVE_PROMPT` 白名单）+ `params: withParamDefaults(provider, …)`（补 Seedance/Kling 等 resolution/aspect_ratio/sound 必填默认，避免 prompt-only 提交被上游拒却已扣费）。附带把 `RUNNABLE_TYPES` 抽到纯模块 `lib/runnableTypes`（preflight 不再为它 import 整个 runner 而拉进重组件）。S1 的 effect/@媒体（S10 同源）留待阶段 3。 |
 | #730 | 🟠 S2（阶段 2）「运行全部」storyboard 简化重实现丢参 + poyo_seedance 负向白名单 | runner 的 storyboard 分支从 image_gen 合并分支拆出，改调逐节点同款纯函数 `buildStoryboardGenInput`/`applyStoryboardGenResult`（一次补齐此前丢的 kie 块 kieTempKey/aspectRatio/imageResolution、分模型 sizing、比例、效果注入、@图像、手动多参考、镜头表 cineClause、色调 style=colorTone，以及写回的 imageUrlSource/At）。护栏：projectId 补传、kieTempKey 读 localStorage、updateNodeData 包 skipHistory。顺带修 `SUPPORTS_NEGATIVE_PROMPT` 误含 `poyo_seedance`（wire seedance-2 无 negative_prompt，与其自身注释矛盾）。image_gen 仍走旧路径（阶段 3）。 |
+| #731 | 🟠 S2（阶段 3a）「运行全部」image_gen 用 11 模型白名单 + 简化重实现丢参 | 抽 `buildImageGenInput` 纯函数（`client/src/lib/imageGenBuild.ts`，逐行镜像 ImageGenNode.handleGenerate，含其与 storyboard 的差异：参考图解析、prompt 无 maxLen、无 cineClause、style=payload.style、各模型块判断用原始 payload.model 而 model 字段用兜底 defaultModel），ImageGenNode 与 runner 的 image_gen 分支同调。消除 runner 此前把 kie/多数 poyo 模型置默认模型出图（扣费不符）及丢 sizing/比例/效果/@图像/多参考。11 项锁定测试保 buildImageGenInput 输出正确、防两侧漂移；清理 ImageGenNode 死代码（MAX_SEED/SOUL_QUALITIES 等）。 |
 
 ---
 
@@ -133,7 +134,8 @@
 3. **S1/S2**（运行全部 vs 单节点分歧）— 影响「所见即所得」最大。分三阶段推进：
    - ✅ **阶段 1（#729）**：video_task 补 `negativePrompt` + `withParamDefaults`（S1 止血）。
    - ✅ **阶段 2（#730）**：runner 的 storyboard 分支改调纯函数 `buildStoryboardGenInput`/`applyStoryboardGenResult`（消除 storyboard 的比例/kie/效果/镜头表/色调差异）。
-   - ⬜ **阶段 3**：抽 `buildImageGenInput` 纯函数，ImageGenNode 与 runner 同调（消除 image_gen 的模型白名单/比例/效果/@媒体差异 + video 侧 effect/@媒体 S10）。
+   - ✅ **阶段 3a（#731）**：抽 `buildImageGenInput` 纯函数（`lib/imageGenBuild.ts`，逐行镜像 handleGenerate + 11 项锁定测试），ImageGenNode 与 runner 的 image_gen 分支同调——消除 runner 此前的 11 模型白名单（把 kie/多数 poyo 置默认模型出图、扣费不符）及丢 sizing/比例/效果/@图像/多参考。
+   - ⬜ **阶段 3b**：video_task 的 effect 注入/@媒体（S10 同源）——runner 仍用简化 `injectCharacters`，未做 `connectedEffectPrompts`/@媒体 strip。较小，单独处理。
 
 ### 文档核对额外发现（既有，影响两条路径；除 poyo_seedance 外均仅留档，2026-07-07）
 - **S1[高]** Poyo flux-2(pro/flex) 发 `aspect_ratio`，但 `docs/poyo-image-api.md` 全篇只有 `size` → 疑似统一比例对 flux-2 静默失效（`imageGeneration.ts:92-93` `sizeMode:"aspect_ratio"`）；代码注释称保留 aspect_ratio 为「避免回归此前可用路径」。**需装 Poyo key 真机验证后再改**，勿盲改。
