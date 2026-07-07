@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   X, Sparkles, Layers, Wand2, Video, Boxes, Bot, Users, ScrollText, Activity,
   Shield, ArrowRight, MessageCircle, Music, Wallet, Clapperboard, Bookmark,
-  Palette, Upload, User, AtSign, Calculator, Copy, BookOpen, Route, ShieldCheck, Zap,
+  Palette, Upload, User, AtSign, Calculator, Copy, BookOpen, Route, ShieldCheck, Zap, Compass,
 } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import { getNodeConfig } from "../../lib/nodeConfig";
@@ -40,12 +40,18 @@ function NodePill({ label, color }: { label: string; color: string }) {
   );
 }
 
-function WelcomeModal({ onClose }: { onClose: () => void }) {
+function WelcomeModal({ onClose, onStartTour }: { onClose: () => void; onStartTour?: () => void }) {
   const [dontShow, setDontShow] = useState(false);
 
   function handleDismiss() {
     if (dontShow) localStorage.setItem(STORAGE_KEY, "1");
     onClose();
+  }
+
+  function handleStartTour() {
+    if (dontShow) localStorage.setItem(STORAGE_KEY, "1");
+    onClose();
+    onStartTour?.();
   }
 
   // 9 大核心工具（2 列布局，呼应图1）
@@ -404,11 +410,11 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
             >
-              查看新功能
+              直接开始
               <ArrowRight size={12} />
             </button>
             <button
-              onClick={handleDismiss}
+              onClick={handleStartTour}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
                 padding: "8px 18px", borderRadius: 8,
@@ -420,8 +426,8 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
                 boxShadow: "0 0 0 1px oklch(0.68 0.22 285 / 0.4), 0 4px 16px oklch(0.68 0.22 285 / 0.3)",
               }}
             >
-              <Sparkles size={13} />
-              开始创作
+              <Compass size={13} />
+              开始新手导览
             </button>
           </div>
         </div>
@@ -804,7 +810,7 @@ export function ConnectionHintsPanel({
   );
 }
 
-export function BeginnerGuide({ onShowPanel }: { onShowPanel?: () => void }) {
+export function BeginnerGuide({ onStartTour }: { onShowPanel?: () => void; onStartTour?: () => void }) {
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
@@ -816,7 +822,7 @@ export function BeginnerGuide({ onShowPanel }: { onShowPanel?: () => void }) {
 
   if (!showModal) return null;
 
-  return <WelcomeModal onClose={() => setShowModal(false)} />;
+  return <WelcomeModal onClose={() => setShowModal(false)} onStartTour={onStartTour} />;
 }
 
 export { WelcomeModal };

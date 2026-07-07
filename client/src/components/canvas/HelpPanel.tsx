@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X, ChevronRight, BookOpen, Search, Copy, Check, Plus, ArrowLeft } from "lucide-react";
+import { X, ChevronRight, BookOpen, Search, Copy, Check, Plus, ArrowLeft, Compass } from "lucide-react";
 import type { NodeType } from "../../../../shared/types";
 import {
   HELP_SECTIONS,
@@ -498,9 +498,10 @@ interface HelpPanelProps {
   onClose: () => void;
   activeNodeType?: NodeType | null;
   onAddNode?: (nodeType: NodeType) => void;
+  onStartTour?: () => void;
 }
 
-export function HelpPanel({ open, onClose, activeNodeType, onAddNode }: HelpPanelProps) {
+export function HelpPanel({ open, onClose, activeNodeType, onAddNode, onStartTour }: HelpPanelProps) {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -593,6 +594,18 @@ export function HelpPanel({ open, onClose, activeNodeType, onAddNode }: HelpPane
             <span className="text-sm font-semibold flex-1" style={{ color: "var(--c-t1)" }}>
               操作指南
             </span>
+            {onStartTour && (
+              <button
+                onClick={() => { onClose(); onStartTour(); }}
+                className="inline-flex items-center gap-1 h-6 px-2 rounded text-[11px] font-medium transition-all"
+                style={{ color: "oklch(0.72 0.18 285)", background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.22 285 / 0.2)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "oklch(0.68 0.22 285 / 0.12)"; }}
+                title="分步高亮界面，带你认全主要功能"
+              >
+                <Compass style={{ width: 12, height: 12 }} /> 新手导览
+              </button>
+            )}
             <button
               onClick={onClose}
               className="w-6 h-6 rounded flex items-center justify-center transition-all"
