@@ -45,6 +45,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const recCancelRef = useRef(false);
   const recStartingRef = useRef(false);      // B-3：同步守卫，防 await 期间双击起双流
   const recConvIdRef = useRef<number | null>(null); // B-1：录音起始会话 id 快照
+  const recStartMsRef = useRef(0);           // 计时按开始时间戳算，避免 setInterval 被节流/丢帧时不走字
   useEffect(() => () => {
     // 卸载时清理录音（关麦克风、停计时器），避免离开聊天后麦克风仍占用。
     if (recTimerRef.current) clearInterval(recTimerRef.current);
@@ -127,8 +128,9 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   useEffect(() => { setSkillHi(0); }, [slashFrag]);
   const pickSkill = (name: string) => { setText(`用 ${name} 技能：`); setSkillDismiss(""); };
   // AI 助手「模板」人设：复用 ai_chat 节点的同一套模板（ALL_AI_TEMPLATES）。存模板 id，
-  // 发送时解析为其 prompt 作为 systemPrompt 传给后端，覆盖默认助手人设。空 = 默认助手。
-  const [chatTemplate, setChatTemplate] = useState<string>(() => localStorage.getItem("chat:aiTemplate") || "");
+  // 发送时解析为其 prompt 作为 systemPrompt 传给后端。默认「空模板」（无人设）；?? 只在从未选过
+  // 时生效——老用户显式选过的「默认助手」("" 空串) 仍保留。
+  const [chatTemplate, setChatTemplate] = useState<string>(() => localStorage.getItem("chat:aiTemplate") ?? BLANK_TEMPLATE_ID);
   const effSystemPrompt = chatTemplate === BLANK_TEMPLATE_ID ? NO_PERSONA_PROMPT : ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.prompt;
   const sendToAssistantMut = trpc.chat.sendToAssistant.useMutation();
   const clearAssistantMut = trpc.chat.clearAssistant.useMutation();
@@ -282,11 +284,14 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
       mediaRecRef.current = rec;
       rec.start();
       setRecording(true);
+      recStartMsRef.current = Date.now();
       recSecRef.current = 0; setRecSec(0);
       recTimerRef.current = setInterval(() => {
-        recSecRef.current += 1; setRecSec(recSecRef.current);
-        if (recSecRef.current >= 300) stopRec(true); // 5 分钟上限自动发送
-      }, 1000);
+        // 按真实经过时间计算，节流/丢帧也不会「不走字」或偏慢。
+        const sec = Math.max(0, Math.floor((Date.now() - recStartMsRef.current) / 1000));
+        recSecRef.current = sec; setRecSec(sec);
+        if (sec >= 300) stopRec(true); // 5 分钟上限自动发送
+      }, 500);
     } catch {
       // B-2：MediaRecorder 构造/start 抛错等路径必须关掉已拿到的麦克风流，否则麦克风常亮。
       (stream?.getTracks() ?? recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
