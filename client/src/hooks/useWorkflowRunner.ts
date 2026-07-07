@@ -2,13 +2,14 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { toast } from "sonner";
-import type { NodeType, WorkflowParamBinding, StoryboardNodeData, NodeData } from "../../../shared/types";
+import type { NodeType, WorkflowParamBinding, StoryboardNodeData, ImageGenNodeData, NodeData } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
 import { detectUpstreamImageUrl, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
 import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputImageUrl, propagateRefImage } from "../lib/refImagePropagation";
 // 与逐节点 StoryboardNode「生成」按钮同一套组装/写回纯函数——让「运行全部」的分镜生图口径一致
 // （此前 runner 用简化的 injectCharacters 手拼，丢了 kie 块/分模型 sizing/比例/效果/@图像/多参考/镜头表/色调）。
 import { buildStoryboardGenInput, applyStoryboardGenResult } from "../lib/storyboardGen";
+import { buildImageGenInput } from "../lib/imageGenBuild";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
@@ -432,36 +433,21 @@ export function useWorkflowRunner() {
           completed.push(nodeId);
           return "ok";
 
-        // ── Image generation (image_gen) ─────────────────────────────────────
+        // ── Image generation (image_gen)：与逐节点 ImageGenNode「生成」按钮同一套纯函数
+        //    buildImageGenInput（此前 runner 用简化 injectCharacters + 11 模型白名单，把 kie/多数
+        //    poyo 模型置默认模型出图、扣费不符，并丢 sizing/比例/效果/@图像/多参考）。──
         } else if (nodeType === "image_gen") {
-          const rawPrompt =
-            (p.positivePrompt as string) ||
-            (p.prompt as string) ||
-            "";
-          if (!rawPrompt.trim()) {
-            failed.push(nodeId);
-            return "fail";
-          }
-          // 注入连线 + @角色（描述合并入 prompt；无手动参考图时用角色参考图锁身份）。
-          const ci = injectCharacters(nodeId, rawPrompt, 2000);
-          const manualRef = ((p.referenceImageUrl as string) || "").trim();
-          const charRefs = manualRef ? [] : [...ci.personRefs, ...ci.sceneRefs].slice(0, 8);
-
-          const VALID_IMAGE_MODELS = new Set([
-            "manus_forge", "poyo_flux", "poyo_sdxl",
-            "poyo_gpt_image", "poyo_seedream", "poyo_grok_image", "poyo_wan_image",
-            "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro",
-          ]);
-          const rawModel = (p.imageModel as string) || (p.model as string) || "";
+          const built = buildImageGenInput({
+            id: nodeId,
+            payload: p as unknown as ImageGenNodeData,
+            nodes: useCanvasStore.getState().nodes,
+            edges,
+            defaultModel: resolveActiveNodeModel("image_gen", "image"),
+            kieTempKey: localStorage.getItem("kie:tempKey"),
+          });
+          if (built.blocked) { failed.push(nodeId); return "fail"; }
           const result = await imageGenMutation.mutateAsync({
-            prompt: ci.prompt,
-            negativePrompt: (p.negativePrompt as string) || undefined,
-            style: (p.style as string) || undefined,
-            model: (VALID_IMAGE_MODELS.has(rawModel) ? rawModel : undefined) as Parameters<typeof imageGenMutation.mutateAsync>[0]["model"],
-            seed: typeof p.seed === "number" ? p.seed : undefined,
-            batchSize: ([1, 4] as number[]).includes(p.batchSize as number) ? (p.batchSize as 1 | 4) : undefined,
-            referenceImageUrl: manualRef || charRefs[0] || undefined,
-            referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
+            ...(built.input as Parameters<typeof imageGenMutation.mutateAsync>[0]),
             projectId: node.data.projectId,
           });
           const bestUrl = result.url ?? result.urls?.[0];

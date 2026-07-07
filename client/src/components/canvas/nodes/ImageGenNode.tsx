@@ -11,9 +11,10 @@ import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { HideWhenStudioFloating } from "../../../contexts/StudioFloatingContext";
 import { refUrls } from "../../../lib/referenceImages";
-import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
+import { buildImageGenInput } from "../../../lib/imageGenBuild";
+import { effectiveCharacters, stripCharacterMentions } from "../../../lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
-import { detectUpstreamPrompt, detectUpstreamImagesExpanded, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
+import { detectUpstreamPrompt, detectUpstreamImagesExpanded, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
@@ -34,7 +35,7 @@ import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel, KIE_IMAGE_RES_COST } from "@/lib/costEstimate";
 import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
-import { IMAGE_MODEL_PARAMS, resolveImageParam, resolvePoyoImageSize } from "@/lib/paramDefs";
+import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import { NodeTextArea } from "../NodeTextInput";
 
 interface Props {
@@ -104,9 +105,6 @@ const FLUX_PRO_ASPECT_RATIOS = REVE_ASPECT_RATIOS;
 // v2 endpoints expect resolution as "1K" / "2K" / "4K", NOT "720p"/"1080p".
 // Soul Standard (v1) is the only model that uses the px-based "720p"/"1080p".
 const REVE_RESOLUTIONS = ["1K", "2K", "4K"] as const;
-const SOUL_QUALITIES = ["720p", "1080p"] as const;
-
-const MAX_SEED = 2147483647;
 
 export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: Props) {
   const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
@@ -294,114 +292,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (genMutation.isPending) return;
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
-    const isReveOrSeedream = payload.model === "hf_reve" || payload.model === "hf_seedream_v4" || payload.model === "hf_flux_pro";
-    const reveAspectAllowed: readonly string[] = payload.model === "hf_flux_pro" ? FLUX_PRO_ASPECT_RATIOS : REVE_ASPECT_RATIOS;
-    const reveAspect = reveAspectAllowed.includes(payload.reveAspectRatio ?? "") ? payload.reveAspectRatio : undefined;
-    const fluxNum = ([1, 2, 3, 4] as number[]).includes(payload.fluxNumImages as number) ? (payload.fluxNumImages as 1 | 2 | 3 | 4) : undefined;
-    const soulQuality = (SOUL_QUALITIES as readonly string[]).includes(payload.soulQuality ?? "") ? payload.soulQuality : undefined;
-    const reveResolution = (REVE_RESOLUTIONS as readonly string[]).includes(payload.reveResolution ?? "") ? payload.reveResolution : undefined;
-    const widthAndHeight = (SOUL_SIZES as readonly string[]).includes(payload.widthAndHeight ?? "") ? payload.widthAndHeight : undefined;
-    const validSeed = (s: number | undefined) =>
-      typeof s === "number" && Number.isInteger(s) && s >= 0 && s <= MAX_SEED ? s : undefined;
-    const validGuidance = (g: number | undefined) =>
-      typeof g === "number" && Number.isFinite(g) && g >= 1 && g <= 20 ? g : undefined;
-    // 通用尺寸字段尚未写入 ImageGenNodeData 类型（由后端 Zod 接收）。以 tRPC
-    // 输入类型作为视图，使枚举字段（imageResolution / imageOutputFormat 等）
-    // 与 mutation 入参精确对齐，无需在前端硬抄枚举。
-    type GenInput = Parameters<typeof genMutation.mutate>[0];
-    const generic = payload as unknown as Pick<
-      GenInput,
-      "imageSize" | "imageResolution" | "imageN" | "imageOutputFormat" | "poyoAspectRatio"
-    >;
-    // Identity lock: when no reference image is manually attached, fall back to ALL
-    // views of any connected Character node (multi-reference → image_urls server-side).
-    const manualRefs = refUrls(payload);
+    // 组装逻辑抽到纯函数 buildImageGenInput（与「运行全部」runner 同一事实源，防两侧漂移）。
     const { edges: gedges, nodes: gnodes } = useCanvasStore.getState();
-    // 角色 = 连线 + prompt 里的「@角色」提及，两者等价生效。
-    const connChars = effectiveCharacters(id, payload.prompt, gedges, gnodes);
-    // Person identity refs first, then SCENE backdrop refs (location/style context for
-    // edit/reference models) — scene images never go through IPAdapter face-lock.
-    const charRefs = manualRefs.length === 0
-      ? [...effectiveCharacterRefImages(id, payload.prompt, gedges, gnodes), ...effectiveSceneRefImages(id, payload.prompt, gedges, gnodes)]
-      : [];
-    // Cap to the server's referenceImageUrls limit (z.array().max(8)). Multiple
-    // connected characters × multi-view can exceed 8, which would otherwise be
-    // rejected as BAD_REQUEST before any image is generated.
-    // @图像名 直接引用的独立图像节点 → 作为显式参考图并入（去重；用户主动 @ 即视为参考）。
-    const atImageRefs = mentionedMediaUrls(payload.prompt, "image", gnodes);
-    const effectiveRefs = Array.from(new Set([...(manualRefs.length ? manualRefs : charRefs), ...atImageRefs])).slice(0, 8);
-    // Augment with any connected post_process「效果注入」effect prompts (after the
-    // character merge), so a wired post_process node actually affects the image.
-    // Strip the literal「@名字」from the base prompt — the character is injected structurally.
-    const finalPrompt = appendEffectPrompts(
-      mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.prompt, gnodes), gnodes), connChars),
-      connectedEffectPrompts(id, gedges, gnodes),
-    );
+    const built = buildImageGenInput({
+      id, payload, nodes: gnodes, edges: gedges,
+      defaultModel: resolve("image_gen", "image"),
+      kieTempKey: localStorage.getItem("kie:tempKey"),
+    });
+    if (built.blocked) { toast.error(built.blocked); return; }
     const submit = () => genMutation.mutate({
-      prompt: finalPrompt,
-      negativePrompt: payload.negativePrompt,
-      style: payload.style,
-      referenceImageUrl: payload.referenceImageUrl ?? charRefs[0],
-      referenceImageUrls: effectiveRefs.length ? effectiveRefs : undefined,
-      // Default model comes from the project-level config (toolbar) → factory
-      // default (kie GPT Image 2). Must match what the picker displays for an
-      // unset node so the backend routes to the same model.
-      model: payload.model || (resolve("image_gen", "image") as ImageGenModel),
-      // Poyo image model params —— 对任意 poyo_ 开头模型转发通用参数字段。
-      // 通用尺寸字段（imageSize / imageResolution / imageN / imageOutputFormat）
-      // 与旧 poyoAspectRatio 由 ParamControls/旧节点写入，后端 Zod 校验枚举；前端
-      // payload 类型尚未声明这些键，统一经 generic 视图读取后由后端二次校验。
-      ...(payload.model?.startsWith("poyo_") ? {
-        // Resolve each param to payload value OR the ParamDef default — the
-        // controls only display defaults, so an untouched node would otherwise
-        // omit fields some models require (e.g. z-image text-to-image size).
-        // 统一比例（写进 generic.poyoAspectRatio）在模型接受时升级为 imageSize，否则模型默认。
-        imageSize: resolvePoyoImageSize(payload.model, generic.imageSize, generic.poyoAspectRatio) as GenInput["imageSize"],
-        imageResolution: resolveImageParam(payload.model, "imageResolution", generic.imageResolution) as GenInput["imageResolution"],
-        imageN: resolveImageParam(payload.model, "imageN", generic.imageN) as GenInput["imageN"],
-        imageOutputFormat: resolveImageParam(payload.model, "imageOutputFormat", generic.imageOutputFormat) as GenInput["imageOutputFormat"],
-        poyoQuality: resolveImageParam(payload.model, "poyoQuality", payload.poyoQuality) as GenInput["poyoQuality"],
-        // 兼容旧节点：旧 payload 用 poyoAspectRatio，后端 size 取 imageSize ?? poyoAspectRatio
-        poyoAspectRatio: generic.poyoAspectRatio,
-      } : {}),
-      // Soul Standard specific params
-      ...(payload.model === "hf_soul_standard" ? {
-        widthAndHeight,
-        quality: soulQuality,
-        batchSize: ([1, 4] as number[]).includes(payload.batchSize as number) ? (payload.batchSize as 1 | 4) : undefined,
-        seed: validSeed(payload.seed),
-        enhancePrompt: payload.enhancePrompt,
-      } : {}),
-      // Reve / Seedream v4 / Flux Pro aspect ratio + resolution.
-      // 三个 v2 端点共用 { aspect_ratio, resolution } 扁平 schema（服务端注释同），
-      // 此前 resolution 只发给 hf_reve——seedream/flux 用户选的分辨率被静默忽略。
-      ...(isReveOrSeedream ? {
-        reveAspectRatio: reveAspect,
-        reveResolution,
-      } : {}),
-      // Flux Pro Kontext extra params
-      ...(payload.model === "hf_flux_pro" ? {
-        fluxGuidanceScale: validGuidance(payload.fluxGuidanceScale),
-        fluxSeed: validSeed(payload.fluxSeed),
-        fluxNumImages: fluxNum,
-      } : {}),
-      // kie.ai models: send the user's temporary key (if any) so the server can
-      // resolve temp > assigned > house, AND the chosen aspect ratio (the generic
-      // 比例 selector writes payload.aspectRatio — the server clamps it to each
-      // kie model's allowed enum). Without this kie returns 422 "aspect_ratio
-      // cannot be empty".
-      ...(payload.model?.startsWith("kie_") ? {
-        kieTempKey: localStorage.getItem("kie:tempKey") || undefined,
-        aspectRatio: payload.aspectRatio || undefined,
-        // 分辨率档（如 GPT Image 2 1K/2K/4K，逐档计价；服务端按模型 resOptions 夹取。
-        // zod 侧复用 poyo 的 imageResolution 枚举，kie 档位是其子集）
-        imageResolution: (payload.imageResolution || undefined) as "1K" | "2K" | "4K" | undefined,
-      } : {}),
-      // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
-      estimatedCost: genCostLabel || undefined,
+      ...(built.input as Parameters<typeof genMutation.mutate>[0]),
       projectId: data.projectId,
     });
-    guard({ model: payload.model ?? resolve("image_gen", "image"), refImageUrl: payload.referenceImageUrl ?? charRefs[0] }, submit);
+    guard({ model: payload.model ?? resolve("image_gen", "image"), refImageUrl: built.refUrl }, submit);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
