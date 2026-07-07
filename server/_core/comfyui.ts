@@ -14,6 +14,7 @@ import { assertSafeUrl } from "./videoEditor";
 import { isCloudMetadataHost } from "./ssrfGuard";
 import { ensureCrystoolsMonitor, getCrystoolsReading, getCrystoolsGpus } from "./comfyMonitor";
 import { convertUiWorkflowToApiPrompt } from "./comfyWorkflowConvert";
+import { withPriorities } from "./workflowAiAnalyze";
 import { buildControlMapWorkflow, CONTROL_MAP_PREPROCESSORS } from "./controlMapWorkflow";
 
 export { CONTROL_MAP_PREPROCESSORS };
@@ -1569,6 +1570,9 @@ export async function analyzeWorkflow(
     "ConditioningCombine", "ConditioningConcat", "ConditioningSetMask",
     "ConditioningSetTimestepRange", "ConditioningSetArea", "ConditioningSetAreaPercentage",
     "ConditioningZeroOut", "ConditioningAverage",
+    // 常见的会「透传/包裹」条件的中间节点——负向条件常经这些流向采样器，不认就会把负向词误判为正向。
+    "ConditioningMultiply", "ConditioningSubtract", "ConditioningSetAreaStrength",
+    "ControlNetApply", "ControlNetApplyAdvanced", "ControlNetApplySD3", "ControlNetInpaintingAliMamaApply",
   ]);
   const negativeClipNodeIds = new Set<string>();
   const positiveClipNodeIds = new Set<string>();
@@ -1591,6 +1595,8 @@ export async function analyzeWorkflow(
   //   SamplerCustom                — direct positive/negative on the sampler itself
   const NEG_INPUT_SAMPLERS = new Set([
     "KSampler", "KSamplerAdvanced", "CFGGuider", "DualCFGGuider", "SamplerCustom",
+    // Efficiency-nodes 的采样器同样暴露 negative 输入；不认会让负向词无法绑定/正负颠倒。
+    "KSampler (Efficient)", "KSampler Adv. (Efficient)", "KSamplerSDXL (Eff.)",
   ]);
   for (const [, n] of Object.entries(workflow)) {
     if (!n || typeof n !== "object" || !n.class_type) continue; // null 也是 typeof "object"，不守卫会抛 TypeError
@@ -1843,7 +1849,13 @@ export async function analyzeWorkflow(
   const videoCapabilities = hasVideo && frames && detectedFps
     ? { maxFrames: frames, fps: detectedFps }
     : undefined;
-  return { detectedParams, outputNodeIds, outputNodes, outputType, videoCapabilities };
+  // 补每个绑定的 class_type（供「节点 id 被复用成别的类型」的运行时守卫校验）+ 主次 priority
+  // （即便不开 AI 辅助，参数列表也主次分明——正/负提示词、尺寸、主模型、步数/CFG/种子排前）。
+  const detectedParamsFinal = withPriorities(detectedParams.map((b) => {
+    const ct = (workflow as Record<string, { class_type?: unknown } | undefined>)[b.nodeId]?.class_type;
+    return typeof ct === "string" ? { ...b, classType: ct } : b;
+  }));
+  return { detectedParams: detectedParamsFinal, outputNodeIds, outputNodes, outputType, videoCapabilities };
 }
 
 // ── Pre-flight validation against a target server's /object_info ───────────────

@@ -2,9 +2,10 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { toast } from "sonner";
-import type { NodeType, WorkflowParamBinding, StoryboardNodeData, ImageGenNodeData, NodeData } from "../../../shared/types";
+import type { NodeType, WorkflowParamBinding, StoryboardNodeData, ImageGenNodeData, NodeData, ComfyuiWorkflowNodeData } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
-import { detectUpstreamImageUrl, detectUpstreamStoryboardDuration, resolveComfyFramesFromDuration, resolveWorkflowImageParams, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamStoryboardDuration, resolveComfyFramesFromDuration, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
+import { buildWorkflowRunInput } from "../lib/workflowRunInput";
 import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputImageUrl, propagateRefImage } from "../lib/refImagePropagation";
 // 与逐节点 StoryboardNode「生成」按钮同一套组装/写回纯函数——让「运行全部」的分镜生图口径一致
 // （此前 runner 用简化的 injectCharacters 手拼，丢了 kie 块/分模型 sizing/比例/效果/@图像/多参考/镜头表/色调）。
@@ -860,6 +861,7 @@ export function useWorkflowRunner() {
             batchSize: typeof p.batchSize === "number" ? p.batchSize : 1,
             referenceImageUrl: refUrl,
             maskUrl,
+            freeVramAfterRun: p.freeVramAfterRun === true, // 与逐节点对齐：批量此前丢了「完成后清显存」
           });
           // Guard against the node having been deleted while the long-running
           // mutation was in flight — writing back would resurrect a ghost node.
@@ -944,6 +946,11 @@ export function useWorkflowRunner() {
             vae: (p.vae as string) || undefined,
             batchSize: typeof p.batchSize === "number" ? p.batchSize : 1,
             referenceImageUrl: refUrl,
+            // 与逐节点「运行」按钮对齐：批量运行此前丢了角色 LoRA 与「完成后清显存」开关。
+            loras: Array.isArray(p.loras) && (p.loras as { name?: string }[]).length > 0
+              ? (p.loras as { name: string; strengthModel: number; strengthClip?: number }[]).filter((l) => l.name?.trim())
+              : undefined,
+            freeVramAfterRun: p.freeVramAfterRun === true,
           });
           // Guard against the node having been deleted during the long mutation.
           if (!useCanvasStore.getState().nodes.some((n) => n.id === nodeId)) {
@@ -960,37 +967,28 @@ export function useWorkflowRunner() {
 
         // ── ComfyUI Custom Workflow ───────────────────────────────────────────
         } else if (nodeType === "comfyui_workflow") {
-          const workflowJson = (p.workflowJson as string) || "";
-          if (!workflowJson.trim()) {
+          const workflowJson0 = (p.workflowJson as string) || "";
+          if (!workflowJson0.trim()) {
             toast.error(`节点 "${node.data.title}"：请先粘贴 Workflow JSON`);
             failed.push(nodeId);
             return "fail";
           }
-          // Pull an upstream image into blank image params (mirrors the video
-          // pull model above), then tell the server which keys are images so it
-          // uploads the URL to ComfyUI.
+          // 与逐节点「运行」按钮完全一致：上游提示词 / 角色(身份文本+参考图+LoRA) / 多参考图 /
+          // 比例覆盖 / 种子随机化，全部经共享的 buildWorkflowRunInput 注入。此前「运行全部/框选」
+          // 只发单图+音频，导致大量参数静默丢失（Gap A）。
           const { nodes: preNodes, edges: preEdges } = useCanvasStore.getState();
-          const upstreamImg = detectUpstreamImageUrl(nodeId, preEdges, preNodes);
-          const { paramValues, imageParamKeys } = resolveWorkflowImageParams(
-            p.paramBindings as WorkflowParamBinding[] | undefined,
-            (p.paramValues as Record<string, unknown>) || {},
-            upstreamImg,
-          );
-          // 音频参数：上游音频来源映射 + 自动填充（服务端运行时上传到 ComfyUI）。
-          const audioRes = resolveAudioParamsWithMap(
-            p.paramBindings as WorkflowParamBinding[] | undefined,
-            paramValues,
-            listUpstreamAudioSources(nodeId, preEdges, preNodes),
-            (p.audioSourceMap as Record<string, string>) || {},
-          );
+          const built = buildWorkflowRunInput(nodeId, p as unknown as ComfyuiWorkflowNodeData, preNodes, preEdges);
+          if (Object.keys(built.seedPatch).length > 0) {
+            useCanvasStore.getState().updateNodeData(nodeId, { paramValues: { ...((p.paramValues as Record<string, unknown>) ?? {}), ...built.seedPatch } }, true);
+          }
           const result = await comfyuiWorkflowMutation.mutateAsync({
             nodeId,
             projectId: node.data.projectId,
             customBaseUrl: ((p.customBaseUrl as string) || "").trim() || undefined,
-            workflowJson,
-            paramValues: audioRes.paramValues,
-            imageParamKeys: imageParamKeys.length > 0 ? imageParamKeys : undefined,
-            audioParamKeys: audioRes.audioParamKeys.length > 0 ? audioRes.audioParamKeys : undefined,
+            workflowJson: built.workflowJson,
+            paramValues: built.paramValues,
+            imageParamKeys: built.imageParamKeys.length > 0 ? built.imageParamKeys : undefined,
+            audioParamKeys: built.audioParamKeys.length > 0 ? built.audioParamKeys : undefined,
             outputNodeIds: (p.outputNodeIds as string[]) || undefined,
             outputType: ((p.outputType as string) || "auto") as "image" | "video" | "auto",
           });

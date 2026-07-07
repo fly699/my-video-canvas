@@ -347,7 +347,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     //    so two members can't each mint a divergent key. Non-minters wait for the key.
     const detail = await utils.chat.getConversation.fetch({ conversationId: convId });
     const memberIds = detail.members.map((m) => m.userId);
-    const minter = detail.createdBy ?? (memberIds.length ? Math.min(...memberIds) : null);
+    // 铸造者 = 建群者，但**仅当其仍在群内**；否则退到最小 userId——否则建群者退群后
+    // minter 恒指向一个不会上线铸密钥的前成员，剩余成员全 [无法解密] 死锁（finding6）。
+    const minter = (detail.createdBy != null && memberIds.includes(detail.createdBy))
+      ? detail.createdBy
+      : (memberIds.length ? Math.min(...memberIds) : null);
     if (myUserId != null && minter === myUserId) {
       const roomKey = await generateRoomKey();
       await persistRoomKey(convId, roomKey);

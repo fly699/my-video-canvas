@@ -472,10 +472,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [chatOpen, setChatOpen] = usePersistentState<boolean>(
     "ui:canvas:chat-open:v1", false, { validate: validateBool, crossTab: false },
   );
-  // 画布助手（对话式操作画布）浮层开关。
-  const [agentChatOpen, setAgentChatOpen] = usePersistentState<boolean>(
-    "ui:canvas:agentchat-open:v1", false, { validate: validateBool, crossTab: false },
-  );
+  // 画布助手（对话式操作画布）浮层开关。默认打开，且**每次进入画布都自动打开**（不持久化关闭态）——
+  // 本次会话内关掉即隐藏，重新打开画布/项目会再次弹出。历史对话已落库，重开不丢上下文。
+  const [agentChatOpen, setAgentChatOpen] = useState<boolean>(true);
   const [showArcPicker, setShowArcPicker] = useState(false);
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();

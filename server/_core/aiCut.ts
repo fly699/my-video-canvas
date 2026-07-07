@@ -23,14 +23,12 @@ export interface AiCutOptions {
 
 const VALID_GRADES = new Set(["subtle", "neutral_punch", "warm_cinematic", "none"]);
 
-/** 从 LLM 文本里抠出剪辑方案 JSON（容错：找第一个含 "keep" 的平衡花括号对）。失败返回 null。 */
+/** 从 LLM 文本里抠出剪辑方案 JSON。容错：扫描所有平衡花括号对、逐个 JSON.parse，取**第一个
+ *  真正 `keep` 为数组**的对象——绝不被字符串里的 `"keep"` 字面量或 `{"keep":"yes"}` 之类诱饵骗走
+ *  （否则模型先输出一句含 "keep" 的解释/候选就会让整个合法方案被判无效）。失败返回 null。 */
 export function parseAiCutPlan(text: string): AiCutPlan | null {
-  const raw = extractJsonObject(text);
-  if (!raw) return null;
-  let o: unknown;
-  try { o = JSON.parse(raw); } catch { return null; }
-  if (!o || typeof o !== "object") return null;
-  const rec = o as Record<string, unknown>;
+  const rec = extractPlanObject(text);
+  if (!rec) return null;
   const keepIn = Array.isArray(rec.keep) ? rec.keep : null;
   if (!keepIn) return null;
   const keep: CutRange[] = [];
@@ -44,9 +42,10 @@ export function parseAiCutPlan(text: string): AiCutPlan | null {
   return { keep, grade };
 }
 
-/** 扫描第一个平衡花括号对（跳过字符串内的括号），优先返回含 "keep" 字段的对象。 */
-function extractJsonObject(text: string): string | null {
-  let best: string | null = null;
+/** 扫描文本里所有平衡花括号对（跳过字符串内的括号），逐个 JSON.parse，返回**第一个 `keep` 为
+ *  数组**的对象。都不满足时，退回第一个能解析的对象（供上层判定 keep 缺失→null）。 */
+function extractPlanObject(text: string): Record<string, unknown> | null {
+  let firstParsed: Record<string, unknown> | null = null;
   for (let i = 0; i < text.length; i++) {
     if (text[i] !== "{") continue;
     let depth = 0, inStr = false, esc = false;
@@ -58,10 +57,24 @@ function extractJsonObject(text: string): string | null {
         else if (ch === '"') inStr = false;
       } else if (ch === '"') inStr = true;
       else if (ch === "{") depth++;
-      else if (ch === "}") { depth--; if (depth === 0) { const cand = text.slice(i, j + 1); if (cand.includes('"keep"')) return cand; if (!best) best = cand; i = j; break; } }
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          try {
+            const o = JSON.parse(text.slice(i, j + 1)) as unknown;
+            if (o && typeof o === "object") {
+              const rec = o as Record<string, unknown>;
+              if (Array.isArray(rec.keep)) return rec;   // 命中真正的方案对象
+              if (!firstParsed) firstParsed = rec;
+            }
+          } catch { /* 该对象非法（可能是更大对象的片段）——继续从下一个 { 扫 */ }
+          i = j; // 从该对象末尾之后继续
+          break;
+        }
+      }
     }
   }
-  return best;
+  return firstParsed;
 }
 
 /** 清洗保留区间：夹到 [0,duration]、去零/负长、按 start 排序、合并重叠/相邻(<0.02s)。 */

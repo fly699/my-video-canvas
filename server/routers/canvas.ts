@@ -50,6 +50,8 @@ import { getSelfHostedConfig } from "../_core/selfHostedLlm";
 import { parseDocumentToText, isParsableDocument } from "../_core/documentParse";
 import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
+import { isClaudeBridgeEnabled } from "../_core/claudeBridge";
+import { mergeAiBindings, parseAiBindings, nodeClassMap } from "../_core/workflowAiAnalyze";
 import { generateImage } from "../_core/imageGeneration";
 import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL, getImageEditOp } from "../../shared/imageEdit";
 import { sliceGridImage } from "../_core/imageGrid";
@@ -3607,6 +3609,45 @@ export const comfyuiRouter = router({
         return await analyzeWorkflow(input.workflowJson, baseUrl);
       } catch (err) {
         throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) });
+      }
+    }),
+
+  // 「AI 辅助分析导入」：先跑启发式分析拿基线，再让本机 Claude（claude-local + 已放行的 ComfyUI
+  // MCP）纠正参数类型/角色、判主次，合并回基线。桥接未配 / AI 失败 → 回退启发式（含主次排序），
+  // 绝不比不开 AI 更差。策略 C：AI 只纠 type/role/priority，绑定本身沿用启发式，稳。
+  analyzeWorkflowAI: protectedProcedure
+    .input(z.object({
+      customBaseUrl: z.string().max(2048).optional(),
+      workflowJson: z.string().max(500_000),
+      model: z.string().max(64).optional(),
+      kieTempKey: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertComfyuiAllowed(ctx);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl || undefined;
+      let base: Awaited<ReturnType<typeof analyzeWorkflow>>;
+      try { base = await analyzeWorkflow(input.workflowJson, baseUrl); }
+      catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) }); }
+
+      const model = input.model?.trim() || "claude-local";
+      const isLocal = model.startsWith("claude-local") || model.startsWith("gpt-local");
+      if (!isClaudeBridgeEnabled() || !isLocal) {
+        return { ...base, aiUsed: false, aiNote: "未启用本机 Claude 桥接，已用启发式分析（含主次排序）" };
+      }
+      try {
+        const classMap = nodeClassMap(input.workflowJson);
+        const sys = "你是 ComfyUI 工作流参数分析助手。给你「节点id→class_type」映射与一份初步参数绑定。"
+          + "若有 comfyui MCP 工具，请用它查各 class_type 的真实输入 schema(object_info) 来纠正类型/角色。"
+          + '输出严格 JSON：{"bindings":[{"nodeId","fieldPath","type":"text|number|select|image|audio|boolean","role":"positive|negative|reference|control|mask"(可选),"priority":1或2,"label":"中文短名"(可选)}]}。'
+          + "规则：sampler_name/scheduler/ckpt_name/*_name 等是 select 不是 text；正负 CLIP 顺采样器 negative 输入回溯判断、别只看字段名；priority=1 是主参数(正/负提示词、宽高、主模型、steps、cfg、seed)，其余=2。"
+          + "只返回你有把握纠正/排序的绑定，其余省略(沿用初步值)。禁止输出任何解释或 Markdown 代码围栏。";
+        const user = `节点类型映射:\n${JSON.stringify(classMap).slice(0, 12000)}\n\n初步绑定:\n${JSON.stringify(base.detectedParams).slice(0, 20000)}`;
+        const res = await invokeLLMWithKie(ctx, { messages: [{ role: "system", content: sys }, { role: "user", content: user }], model, maxTokens: 4000 }, input.kieTempKey ?? null);
+        const aiBindings = parseAiBindings(extractTextContent(res));
+        if (!aiBindings.length) return { ...base, aiUsed: false, aiNote: "AI 未返回可用结果，已用启发式分析" };
+        return { ...base, detectedParams: mergeAiBindings(base.detectedParams, aiBindings), aiUsed: true, aiNote: `AI 已纠正/排序 ${aiBindings.length} 项参数` };
+      } catch (err) {
+        return { ...base, aiUsed: false, aiNote: "AI 分析失败，已回退启发式：" + (err instanceof Error ? err.message.slice(0, 80) : "") };
       }
     }),
 

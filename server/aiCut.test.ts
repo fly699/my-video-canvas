@@ -19,6 +19,12 @@ describe("parseAiCutPlan（从 LLM 文本抠剪辑方案）", () => {
     expect(parseAiCutPlan("no json here")).toBeNull();
     expect(parseAiCutPlan('{"foo":1}')).toBeNull();
   });
+  it("诱饵：前面的 {\"action\":\"keep\"} / {\"keep\":\"yes\"} 不劫持——仍抠到真正的 keep 数组（finding5）", () => {
+    expect(parseAiCutPlan('Decision: {"action":"keep"}\nPlan: {"keep":[{"start":1,"end":5}]}')!.keep).toEqual([{ start: 1, end: 5 }]);
+    expect(parseAiCutPlan('{"keep":"yes"} {"keep":[{"start":2,"end":3}]}')!.keep).toEqual([{ start: 2, end: 3 }]);
+    // 真正的方案在解释性 JSON 之后
+    expect(parseAiCutPlan('{"note":"I will keep the good parts"} then {"keep":[{"start":0,"end":4}],"grade":"subtle"}')!.grade).toBe("subtle");
+  });
 });
 
 describe("sanitizeRanges（夹取/排序/合并）", () => {
