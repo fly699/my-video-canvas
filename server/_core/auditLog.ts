@@ -90,6 +90,7 @@ export type AuditAction =
   | "editor:create"
   | "editor:delete"
   | "editor:export"
+  | "editor:aiCut"
   | "poyo_stage"
   | "kie_key_add"
   | "kie_key_toggle"
