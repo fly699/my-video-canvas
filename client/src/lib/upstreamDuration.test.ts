@@ -1,8 +1,31 @@
 import { describe, it, expect } from "vitest";
-import { detectUpstreamStoryboardDuration } from "./comfyWorkflowParams";
+import { detectUpstreamStoryboardDuration, resolveComfyFramesFromDuration } from "./comfyWorkflowParams";
 import { clampDurationForProvider } from "./storyboardGen";
 
 const N = (id: string, nodeType: string, payload: unknown) => ({ id, data: { nodeType, payload } });
+
+describe("resolveComfyFramesFromDuration（comfyui 视频按分镜时长换算 frames，保守版）", () => {
+  const sb = (d: number) => [N("sb", "storyboard", { duration: d }), N("v", "comfyui_video", {})];
+  const e = [{ source: "sb", target: "v" }];
+  it("连分镜 + frames 未设 → 按 时长×fps 换算", () => {
+    expect(resolveComfyFramesFromDuration("v", e, sb(5), undefined, 8)).toBe(40); // 5×8
+    expect(resolveComfyFramesFromDuration("v", e, sb(10), undefined, 16)).toBe(160);
+  });
+  it("frames 仍是模板预设默认(16/25/81/97) → 覆盖", () => {
+    expect(resolveComfyFramesFromDuration("v", e, sb(5), 16, 8)).toBe(40);   // animatediff 默认 16
+    expect(resolveComfyFramesFromDuration("v", e, sb(3), 81, 16)).toBe(48);  // wan 默认 81
+  });
+  it("用户手调过帧数(非预设默认) → 尊重，不覆盖", () => {
+    expect(resolveComfyFramesFromDuration("v", e, sb(20), 48, 8)).toBe(48);
+  });
+  it("无上游分镜 → 返回原值(不动)", () => {
+    expect(resolveComfyFramesFromDuration("v", [], [N("v", "comfyui_video", {})], 16, 8)).toBe(16);
+    expect(resolveComfyFramesFromDuration("v", [], [N("v", "comfyui_video", {})], undefined, 8)).toBeUndefined();
+  });
+  it("clamp 防跑飞：超长时长夹到 300 帧上限", () => {
+    expect(resolveComfyFramesFromDuration("v", e, sb(100), undefined, 16)).toBe(300); // 100×16=1600 → 300
+  });
+});
 
 describe("detectUpstreamStoryboardDuration（修「分镜都 6 秒」：video_task 继承上游分镜时长）", () => {
   it("直连上游分镜有正数 duration → 返回它", () => {

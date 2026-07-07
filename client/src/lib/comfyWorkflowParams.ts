@@ -37,6 +37,21 @@ export function detectUpstreamImageUrl(targetId: string, edges: MiniEdge[], node
   return detectUpstreamImages(targetId, edges, nodes)[0];
 }
 
+// comfyui_video 各模板的预设帧数（ComfyuiVideoNode presets）——判定「仍是模板默认、非用户手调」。
+const COMFY_TEMPLATE_DEFAULT_FRAMES = new Set([16, 25, 81, 97]);
+/** comfyui_video 按上游分镜时长换算 frames（= round(时长×fps)）。仅当 frames 未设或仍是模板预设
+ *  默认（非用户手调）时才覆盖；无上游分镜时长则返回原 ownFrames。clamp 到 [1,300] 防跑飞/OOM
+ *  （帧数受本地模型训练长度约束，超出可能失败——保守上限）。 */
+export function resolveComfyFramesFromDuration(
+  targetId: string, edges: MiniEdge[], nodes: MiniNode[], ownFrames: number | undefined, fps: number,
+): number | undefined {
+  const dur = detectUpstreamStoryboardDuration(targetId, edges, nodes);
+  if (dur == null) return ownFrames; // 无上游分镜时长 → 不动
+  const isTemplateDefault = ownFrames == null || COMFY_TEMPLATE_DEFAULT_FRAMES.has(ownFrames);
+  if (!isTemplateDefault) return ownFrames; // 用户手调过帧数 → 尊重
+  return Math.max(1, Math.min(300, Math.round(dur * (fps > 0 ? fps : 8))));
+}
+
 /** 上游直连分镜的目标时长（秒）。video_task 提交时若自身未设 duration，则继承上游分镜时长，
  *  否则会落到 provider 默认（如 kie_grok_i2v=6s），无视用户/智能体在分镜里设的时长（「分镜都 6 秒」）。
  *  与 ShotListPanel 批量生视频口径一致。取第一个直连的 storyboard 的正数 duration。 */

@@ -10,7 +10,7 @@ import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { effectiveCharacters, effectiveCharacterRefImages, stripCharacterMentions } from "../../../lib/characterConditioning";
-import { mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
+import { mentionedMediaUrls, stripMediaMentions, resolveComfyFramesFromDuration } from "../../../lib/comfyWorkflowParams";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -262,7 +262,8 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
       steps: payload.steps ?? 20,
       cfg: payload.cfg ?? 7,
       seed: typeof payload.seed === "number" ? payload.seed : -1,
-      frames: payload.frames ?? 16,
+      // 连了分镜且 frames 仍是模板默认时，按分镜时长换算 frames（时长=frames/fps；clamp 防跑飞）。
+      frames: resolveComfyFramesFromDuration(id, gedges, gnodes, payload.frames, payload.fps ?? 8) ?? 16,
       fps: payload.fps ?? 8,
       width: payload.width || undefined,
       height: payload.height || undefined,
