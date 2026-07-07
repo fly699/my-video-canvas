@@ -171,8 +171,10 @@ export async function transcribeAudio(
     const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
     formData.append("file", audioBlob, filename);
     
-    // 词级时间戳仅 whisper-1 保证返回 words[]——请求词级时强制该模型（gpt-4o-transcribe 不保证）。
-    formData.append("model", options.wordTimestamps ? "whisper-1" : (options.model || "whisper-1"));
+    // 模型选择：TRANSCRIBE_MODEL 覆盖优先（非 OpenAI 端点如 Groq=whisper-large-v3 名字不同）；
+    // 否则词级时间戳强制 whisper-1（OpenAI 官方 gpt-4o-transcribe 不保证返回 words[]）。
+    const model = ENV.transcribeModel.trim() || (options.wordTimestamps ? "whisper-1" : (options.model || "whisper-1"));
+    formData.append("model", model);
     formData.append("response_format", "verbose_json");
     if (options.wordTimestamps) {
       // OpenAI 数组参数按重复字段追加；同时要 word 与 segment（保留段级便于分句/静音判断）。

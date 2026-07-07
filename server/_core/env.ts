@@ -22,6 +22,10 @@ export const ENV = {
   // 未设则按 Forge → OpenAI 官方(OPENAI_API_KEY) 回退，见 voiceTranscription.resolveTranscribeEndpoint。
   transcribeApiUrl: process.env.TRANSCRIBE_API_URL ?? "",
   transcribeApiKey: process.env.TRANSCRIBE_API_KEY ?? "",
+  // 转写模型 id 覆盖（可选）：非 OpenAI 端点的模型名常不同（Groq=whisper-large-v3、
+  // 自建=各异）。设了就用它（含词级时间戳时也用它，须为支持 word 粒度的 whisper 系）；
+  // 未设则默认 whisper-1（OpenAI 官方）。
+  transcribeModel: process.env.TRANSCRIBE_MODEL ?? "",
   // Self-hosted OpenAI-compatible LLM endpoint (vLLM / Ollama / LM Studio / TGI …).
   // Routes ONLY the model ids in SELF_HOSTED_LLM_MODELS (comma list; defaults to the
   // built-in self-hosted entries) to `${URL}/v1/chat/completions`, so it coexists with
