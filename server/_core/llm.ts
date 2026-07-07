@@ -2,7 +2,7 @@ import { ENV } from "./env";
 import { isKieLLMModel, invokeKieLLM, type OAMessage } from "./kieLLM";
 import { isCustomLLMModel, invokeCustomLLM, CUSTOM_LLM_MODELS } from "./customLlm";
 import { isSelfHostedLlmModel, getSelfHostedConfig, selfHostedChatUrl } from "./selfHostedLlm";
-import { rewriteBridgeSelfUrl } from "./claudeBridge";
+import { rewriteBridgeSelfUrl, isClaudeBridgeEnabled, bridgeLocalUrl, claudeBridgeKey, isBridgeModel } from "./claudeBridge";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -235,6 +235,13 @@ const routesToPoyo = (model?: string) => isGptModel(model) || (!!model && POYO_M
 const isSelfHostedModel = isSelfHostedLlmModel;
 
 const resolveApiUrl = (model?: string) => {
+  // 桥接专属模型（claude-local*/gpt-local*）在桥接启用时【无条件】直连本机桥接回环，与「自建 LLM」
+  // 的 URL/模型列表解耦。否则：管理员没把 claude-local 加进自建模型列表、或自建 URL 指向真 vLLM 时，
+  // claude-local 会 isSelfHostedModel=false → 回退云端网关 → 404「The model claude-local does not exist」。
+  if (isBridgeModel(model) && isClaudeBridgeEnabled()) {
+    const u = bridgeLocalUrl();
+    if (u) return selfHostedChatUrl(u);
+  }
   // Self-hosted OpenAI-compatible endpoint — only for its OWN model ids, so it never
   // redirects Forge/Poyo/kie models. Takes priority over everything else.
   // 指向本应用桥接（本机 Claude/GPT 订阅）的地址强制改走本机回环——防「填了公网域名，服务器调
@@ -252,6 +259,8 @@ const resolveApiUrl = (model?: string) => {
 };
 
 const getApiKey = (model?: string) => {
+  // 桥接专属模型（与 resolveApiUrl 同口径）：用桥接鉴权 key。
+  if (isBridgeModel(model) && isClaudeBridgeEnabled()) return claudeBridgeKey() || "sk-local-noauth";
   // Self-hosted endpoint: its own key (may be empty for no-auth vLLM/Ollama; send a
   // placeholder so the Authorization header is well-formed and ignored by the server).
   if (isSelfHostedModel(model)) return getSelfHostedConfig().apiKey || "sk-local-noauth";
@@ -511,7 +520,10 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   }
 
   // 自建推理模型（vLLM Qwen3 等）思维链会吃掉预算 → 给更高默认/下限，避免可见答案被截断。
-  const effectiveMax = chooseMaxTokens(isSelfHostedModel(model), params.maxTokens ?? params.max_tokens);
+  // 桥接模型（claude-local*/gpt-local*）与自建 vLLM 同属「本机」——maxTokens 下限、超时、不重试
+  // 一并按自建口径处理（否则 claude-local 未登记进自建列表时，这些逻辑对它全部失效 = 审计 R3）。
+  const selfHostedLike = isSelfHostedModel(model) || (isBridgeModel(model) && isClaudeBridgeEnabled());
+  const effectiveMax = chooseMaxTokens(selfHostedLike, params.maxTokens ?? params.max_tokens);
   payload.max_tokens = resolveMaxTokens(resolvedModel, effectiveMax);
 
   const normalizedResponseFormat = normalizeResponseFormat({
@@ -532,7 +544,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   // 自建/本机桥接（claude-local 等）经子进程生成，大计划（画布助手加角色+模板）慢——用更长的
   // per-attempt 超时（默认 300s，可 LLM_SELF_HOSTED_TIMEOUT_MS 覆盖）。须 > 桥接子进程超时
   // （默认 280s），让桥接干净报错先于 fetch abort。云端模型保持 120s。
-  const selfHosted = isSelfHostedModel(model);
+  const selfHosted = selfHostedLike;
   const perAttemptTimeoutMs = selfHosted
     ? (Number.isFinite(Number(process.env.LLM_SELF_HOSTED_TIMEOUT_MS)) && Number(process.env.LLM_SELF_HOSTED_TIMEOUT_MS) >= 30_000
         ? Number(process.env.LLM_SELF_HOSTED_TIMEOUT_MS) : 300_000)

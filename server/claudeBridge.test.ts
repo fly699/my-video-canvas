@@ -1,5 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { contentToText, messagesToPrompt, parseClaudeJsonResult, bridgeModelArg, mcpServerNames, buildBridgeAgenticArgs } from "./_core/claudeBridge";
+import { contentToText, messagesToPrompt, parseClaudeJsonResult, bridgeModelArg, mcpServerNames, buildBridgeAgenticArgs, isBridgeModel, isClaudeLocalModel } from "./_core/claudeBridge";
+
+describe("isBridgeModel（桥接专属模型识别——决定是否直连本机桥接，修 claude-local 被当自建打去 vLLM 的 404）", () => {
+  it("claude-local 及变体 → true", () => {
+    expect(isClaudeLocalModel("claude-local")).toBe(true);
+    expect(isBridgeModel("claude-local")).toBe(true);
+    expect(isBridgeModel("claude-local:sonnet")).toBe(true);
+    expect(isBridgeModel("claude-local:opus")).toBe(true);
+    expect(isBridgeModel("CLAUDE-LOCAL")).toBe(true);
+  });
+  it("gpt-local 及变体 → true", () => {
+    expect(isBridgeModel("gpt-local")).toBe(true);
+    expect(isBridgeModel("gpt-local:5")).toBe(true);
+  });
+  it("真自建 vLLM / 云端模型 → false（仍走各自路由）", () => {
+    expect(isBridgeModel("Qwen3.6-27B")).toBe(false);
+    expect(isBridgeModel("kie_claude_opus_47")).toBe(false);
+    expect(isBridgeModel("gemini-3-flash")).toBe(false);
+    expect(isBridgeModel(undefined)).toBe(false);
+    expect(isBridgeModel("")).toBe(false);
+  });
+});
 
 describe("contentToText", () => {
   it("字符串原样；分段数组拼接 text；其它为空", () => {
