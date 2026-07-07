@@ -121,21 +121,38 @@ export async function transcribeAudio(
       } catch (dlErr) {
         return { error: "Failed to fetch audio file", code: "SERVICE_ERROR", details: dlErr instanceof Error ? dlErr.message.slice(0, 200) : "download failed" };
       }
-      audioTemp = `${srcTemp}.mp3`;
-      try {
-        await execFileAsync("ffmpeg", ["-y", "-i", srcTemp, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", "-f", "mp3", audioTemp], { timeoutMs: 180000 });
-        const audioBuf = await fs.readFile(audioTemp);
-        if (!audioBuf.length) throw new Error("提取到空音频（源可能无音轨）");
-        const sizeMB = audioBuf.length / (1024 * 1024);
-        if (sizeMB > 24) {
-          return { error: "Audio too long for transcription", code: "FILE_TOO_LARGE", details: `提取音频 ${sizeMB.toFixed(1)}MB 超过转写上限，请剪短或分段后再试` };
+      // 安全门（防 LFI/SSRF）：源文件是用户可控内容。**绝不能**先把它交给 ffmpeg/ffprobe 去
+      // 自动探测容器——DASH/HLS 等「清单型」子解复用器会去抓 manifest 里引用的外部 URL
+      // （内网 http、云元数据 169.254.169.254、file://），且**无视 -protocol_whitelist**（真机
+      // strace/nc 实测确有外连），连 ffprobe 探测这一步都会触发。故改为 **Node 侧 magic 字节
+      // 白名单**：只有识别为二进制 A/V 容器的文件才交给 ffmpeg 抽音轨；文本清单(m3u8/MPD/
+      // ffconcat)与未知内容一律不碰 ffmpeg，直接原样直送转写端点（清单在第三方端点会被判非法
+      // 音频而拒，无本机 SSRF）。`-protocol_whitelist` 仍保留作纵深防御（挡顶层远程输入）。
+      const header = await readHead(srcTemp, 512);
+      if (looksLikeAVContainer(header)) {
+        audioTemp = `${srcTemp}.mp3`;
+        try {
+          await execFileAsync("ffmpeg", ["-y", "-protocol_whitelist", "file,crypto,data", "-i", srcTemp, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", "-f", "mp3", audioTemp], { timeoutMs: 180000 });
+          const audioBuf = await fs.readFile(audioTemp);
+          if (!audioBuf.length) throw new Error("提取到空音频（源可能无音轨）");
+          const sizeMB = audioBuf.length / (1024 * 1024);
+          if (sizeMB > 24) {
+            return { error: "Audio too long for transcription", code: "FILE_TOO_LARGE", details: `提取音频 ${sizeMB.toFixed(1)}MB 超过转写上限，请剪短或分段后再试` };
+          }
+          payload = { buffer: audioBuf, filename: "audio.mp3", mime: "audio/mpeg" };
+        } catch (ffErr) {
+          // 回退：ffmpeg 缺失/源无音轨/解码失败 → 直接送原文件（修正为合法扩展名）
+          const raw = await fs.readFile(srcTemp);
+          if (raw.length / (1024 * 1024) > 16) {
+            return { error: "Audio file exceeds maximum size limit", code: "FILE_TOO_LARGE", details: `无法提取音频（${ffErr instanceof Error ? ffErr.message.slice(0, 80) : "ffmpeg 失败"}），且原文件 > 16MB` };
+          }
+          payload = { buffer: raw, filename: `audio.${resolveTranscribeExt(options.audioUrl, "")}`, mime: "application/octet-stream" };
         }
-        payload = { buffer: audioBuf, filename: "audio.mp3", mime: "audio/mpeg" };
-      } catch (ffErr) {
-        // 回退：ffmpeg 缺失/源无音轨/解码失败 → 直接送原文件（修正为合法扩展名）
+      } else {
+        // 非已知二进制 A/V 容器（可能是清单/未知）：绝不喂 ffmpeg（防子解复用器外连），直接直送。
         const raw = await fs.readFile(srcTemp);
         if (raw.length / (1024 * 1024) > 16) {
-          return { error: "Audio file exceeds maximum size limit", code: "FILE_TOO_LARGE", details: `无法提取音频（${ffErr instanceof Error ? ffErr.message.slice(0, 80) : "ffmpeg 失败"}），且原文件 > 16MB` };
+          return { error: "Audio file exceeds maximum size limit", code: "FILE_TOO_LARGE", details: "非常规音频容器且 > 16MB" };
         }
         payload = { buffer: raw, filename: `audio.${resolveTranscribeExt(options.audioUrl, "")}`, mime: "application/octet-stream" };
       }
@@ -238,6 +255,41 @@ function getFileExtension(mimeType: string): string {
 
 // 转写端点（尤其 Groq）按扩展名严格校验；这是它们接受的集合。
 const TR_OK_EXT = new Set(['flac', 'mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'ogg', 'opus', 'wav', 'webm']);
+
+/** 读文件头 n 字节（用于容器 magic 嗅探），不整文件入内存。 */
+export async function readHead(path: string, n: number): Promise<Buffer> {
+  const fh = await fs.open(path, "r");
+  try {
+    const buf = Buffer.alloc(n);
+    const { bytesRead } = await fh.read(buf, 0, n, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    await fh.close();
+  }
+}
+
+/** 二进制 A/V 容器 magic 白名单：只有命中的文件才交给 ffmpeg 抽音轨。文本清单(m3u8/MPD/
+ *  ffconcat/SDP)与未知内容一律不命中——从而**永不**把清单交给 ffmpeg/ffprobe 的 DASH/HLS 子
+ *  解复用器（它们无视 -protocol_whitelist、会抓 manifest 里的内网/元数据 URL，真机已复现）。
+ *  命中的这些容器解复用器都不会自动拉取外部资源（mov 的外部 dref 默认 enable_drefs=false）。 */
+export function looksLikeAVContainer(b: Buffer): boolean {
+  if (b.length < 12) return false;
+  const at = (o: number, s: string) => b.toString("latin1", o, o + s.length) === s;
+  const box = b.toString("latin1", 4, 8);
+  if (["ftyp", "moov", "mdat", "free", "skip", "wide", "pnot", "uuid"].includes(box)) return true; // ISO-BMFF: mp4/mov/m4a/3gp
+  if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return true; // Matroska / WebM (EBML)
+  if (at(0, "RIFF")) return true;   // wav / avi
+  if (at(0, "OggS")) return true;   // ogg / opus / vorbis
+  if (at(0, "fLaC")) return true;   // flac
+  if (at(0, "ID3")) return true;    // mp3（带 ID3 标签）
+  if (b[0] === 0xff && (b[1] & 0xe0) === 0xe0) return true; // mp3 / AAC(ADTS) 帧同步
+  if (at(0, "#!AMR")) return true;  // amr（注意：与 m3u8 的 #EXTM3U 不撞）
+  if (at(0, "FORM")) return true;   // aiff
+  if (b[0] === 0x30 && b[1] === 0x26 && b[2] === 0xb2 && b[3] === 0x75) return true; // ASF / WMA / WMV
+  if (b[0] === 0x00 && b[1] === 0x00 && b[2] === 0x01 && (b[3] === 0xba || b[3] === 0xb3)) return true; // MPEG-PS / ES
+  if (b.length >= 189 && b[0] === 0x47 && b[188] === 0x47) return true; // MPEG-TS 同步字节
+  return false;
+}
 
 /** 回退直送原文件时，推断一个合法扩展名：优先 URL 路径后缀，其次 content-type，兜底 mp4。 */
 function resolveTranscribeExt(url: string, mimeType: string): string {
