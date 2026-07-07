@@ -78,6 +78,26 @@ describe("isConnectionValid", () => {
     expect(getCompatibleSources("pose_control")).toContain("storyboard");
   });
 
+  it("删除的死边：脚本/提示词/角色/AI对话 之间无效消费的连线一律拒绝", () => {
+    // ScriptNode 不读上游 → prompt/ai_chat → script 无效。
+    expect(isConnectionValid("prompt", "script")).toBe(false);
+    expect(isConnectionValid("ai_chat", "script")).toBe(false);
+    // CharacterNode 只吃图源 → script → character 无效（脚本是文本）。
+    expect(isConnectionValid("script", "character")).toBe(false);
+    // PromptNode 只读 detectUpstreamPrompt（不含 character）→ character → prompt 无效（用 @角色）。
+    expect(isConnectionValid("character", "prompt")).toBe(false);
+    // 反查：script 无可接收源；prompt 只接收 脚本/分镜/AI对话。
+    expect(getCompatibleSources("script")).toEqual([]);
+    expect(getCompatibleSources("prompt").sort()).toEqual(["ai_chat", "script", "storyboard"]);
+  });
+
+  it("保留的有效文本流：脚本→分镜/提示词/AI对话仍有效", () => {
+    expect(isConnectionValid("script", "storyboard")).toBe(true);
+    expect(isConnectionValid("script", "prompt")).toBe(true);
+    expect(isConnectionValid("script", "ai_chat")).toBe(true);
+    expect(isConnectionValid("prompt", "storyboard")).toBe(true);
+  });
+
   it("respects matrix direction (rejects unlisted target)", () => {
     expect(isConnectionValid("clip", "comfyui_image")).toBe(false);
     expect(isConnectionValid("audio", "image_gen")).toBe(false);

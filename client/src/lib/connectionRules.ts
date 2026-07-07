@@ -2,15 +2,21 @@ import type { NodeType } from "../../../shared/types";
 
 export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // script → note：专业审查（Coverage）报告一键存为便签节点留档。
-  script: ["storyboard", "prompt", "ai_chat", "character", "note"],
+  // 注：曾有 script → character，但 CharacterNode 只消费图源（detectUpstreamImagesExpanded），
+  // 不读任何脚本文本——连了无效，已删（角色人设走角色节点自身编辑 / 向导，不从脚本文本生成）。
+  script: ["storyboard", "prompt", "ai_chat", "note"],
   // storyboard → audio：分镜的「对白/旁白」字段自动喂给下游音频节点作配音文案。
   // storyboard → image_edit：分镜生成的关键帧可再进图像编辑精修（image_edit 走 getNodeImageOutput 认 storyboard 的 imageUrl）。
   // storyboard → character/pose_control：分镜关键帧是合法图源，character 经 detectUpstreamImagesExpanded
   // （IMAGE_SOURCE_TYPES 含 storyboard）取其图作参考图、pose_control 经 getNodeImageOutput 取其图抽姿态/构图，
   // 与 image_gen/image_edit/director 等其它图源一视同仁（此前被矩阵单独拒收，属不对称缺口）。
   storyboard: ["image_gen", "image_edit", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio", "character", "pose_control"],
-  prompt: ["image_gen", "video_task", "storyboard", "script", "comfyui_image", "comfyui_video", "comfyui_workflow"],
-  character: ["storyboard", "image_gen", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  // 注：曾有 prompt → script，但 ScriptNode 不读任何上游（正文走自身编辑 / 向导 / AI 生成）——
+  // 连了无效，已删。prompt 的有效去向是生图 / 视频 / 分镜 / ComfyUI。
+  prompt: ["image_gen", "video_task", "storyboard", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  // 注：曾有 character → prompt，但 PromptNode 只读 detectUpstreamPrompt（不含 character）——
+  // 连了无效，已删。要在提示词里引用角色身份，用提示词框内的 @角色 引用（无需连线）。
+  character: ["storyboard", "image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow"],
   // image_gen → storyboard：精修工位回链——分镜「送精修」后图像节点连回分镜，
   // 出图仅作为「关键帧候选」供分镜显式点「采用此图」，无任何自动写入。
   // 注：image_gen/image_edit/comfyui_image 产出的是「图像」，不能连 clip（剪辑只裁切视频，
@@ -35,7 +41,8 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // 驱动音频——连线音频节点作为 audio_url。模型不支持音频时该连接被 collectRefMedia 忽略。
   audio: ["clip", "audio", "comfyui_workflow", "merge", "video_task"],
   asset: ["image_gen", "image_edit", "video_task", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio"],
-  ai_chat: ["script", "storyboard", "prompt"],
+  // 注：曾有 ai_chat → script，但 ScriptNode 不读任何上游——连了无效，已删。
+  ai_chat: ["storyboard", "prompt"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
   post_process: ["video_task", "image_gen", "asset"],
   // 视频后处理节点（overlay/subtitle/subtitle_motion/smart_cut/clip/merge）互为视频源与视频消费者
@@ -143,8 +150,8 @@ export const CONNECTION_HINTS: Record<
 > = {
   script: {
     label: "脚本",
-    outgoing: "→ 分镜 / 提示词 / AI对话 / 角色 / 便签(审查报告)",
-    incoming: "← AI对话 / 提示词",
+    outgoing: "→ 分镜 / 提示词 / AI对话 / 便签(审查报告)",
+    incoming: "← 无（脚本自成起点：向导 / AI 生成正文）",
   },
   storyboard: {
     label: "分镜",
@@ -153,13 +160,13 @@ export const CONNECTION_HINTS: Record<
   },
   prompt: {
     label: "提示词",
-    outgoing: "→ 图像生成 / 视频任务 / 分镜 / 脚本",
-    incoming: "← 脚本 / 分镜 / 角色 / AI对话",
+    outgoing: "→ 图像生成 / 视频任务 / 分镜",
+    incoming: "← 脚本 / 分镜 / AI对话",
   },
   character: {
     label: "角色/场景",
-    outgoing: "→ 分镜 / 图像生成 / 视频任务 / 提示词",
-    incoming: "← 脚本 / 素材 / 图像生成·编辑 / 分镜(关键帧) / 导演台 / ComfyUI 图像·自定义（参考图）",
+    outgoing: "→ 分镜 / 图像生成 / 视频任务 / ComfyUI 图像·视频·自定义（参考图）",
+    incoming: "← 素材 / 图像生成·编辑 / 分镜(关键帧) / 导演台 / ComfyUI 图像·自定义（参考图）",
   },
   image_gen: {
     label: "图像生成",
@@ -188,7 +195,7 @@ export const CONNECTION_HINTS: Record<
   },
   ai_chat: {
     label: "AI对话",
-    outgoing: "→ 脚本 / 分镜 / 提示词",
+    outgoing: "→ 分镜 / 提示词",
     incoming: "← 脚本",
   },
   clip: {
