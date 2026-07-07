@@ -500,13 +500,16 @@ export function useWorkflowRunner() {
           const refMedia = collectVideoRefMedia(nodeId, rawPrompt, provider, edges, useCanvasStore.getState().nodes);
           // 角色/场景参考图存在（即无手动/上游首帧图）→ 这些是主体参考，走 reference 模式。
           const referenceMode = charRefs.length > 0 ? ("reference" as const) : undefined;
-          // 时长继承（修「分镜都 6 秒」）：节点自身 params.duration 优先；否则继承上游直连分镜的
-          // duration；再按 provider 档位夹取。否则 withParamDefaults 会落 provider 默认（如
-          // kie_grok_i2v=6），无视分镜里设的时长。与 ShotListPanel 批量生视频同口径。
+          // 时长传递（修「分镜设 20 却出 6 秒」）：上游直连分镜的 duration【优先覆盖】节点上"未设 /
+          // 仍是 provider 默认"的时长——用户在分镜层设的意图为准；仅当用户在节点上【显式设了非默认】
+          // 时长时才尊重节点自身。否则 withParamDefaults 会落 provider 默认（如 kie_grok_i2v=6），
+          // 把分镜里设的 20 挡掉。再按 provider 档位夹取（grok 支持 6~30，故 20 原样通过）。
           const ownParams = (p.params as Record<string, unknown> | undefined) ?? {};
-          const wantDur = typeof ownParams.duration === "number"
-            ? (ownParams.duration as number)
-            : detectUpstreamStoryboardDuration(nodeId, edges, useCanvasStore.getState().nodes);
+          const durDef = PROVIDER_PARAMS[provider]?.find((d) => d.key === "duration");
+          const provDurDefault = typeof durDef?.default === "number" ? durDef.default : undefined;
+          const ownDur = typeof ownParams.duration === "number" ? (ownParams.duration as number) : undefined;
+          const upDur = detectUpstreamStoryboardDuration(nodeId, edges, useCanvasStore.getState().nodes);
+          const wantDur = (ownDur == null || ownDur === provDurDefault) ? (upDur ?? ownDur) : ownDur;
           const clampedDur = clampDurationForProvider(PROVIDER_PARAMS[provider], wantDur);
           const mergedParams = clampedDur != null ? { ...ownParams, duration: clampedDur } : ownParams;
           const task = await videoTaskMutation.mutateAsync({

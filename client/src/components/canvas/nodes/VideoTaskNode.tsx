@@ -1195,12 +1195,15 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     void ensureNotificationPermission();
 
     const refMedia = collectRefMedia(payload.provider);
-    // 时长继承（修「分镜都 6 秒」）：自身 params.duration 优先；否则继承上游直连分镜的 duration；
-    // 再按 provider 档位夹取。否则 withParamDefaults 落 provider 默认（如 kie_grok_i2v=6s），
-    // 无视上游分镜设的时长。与「运行全部」runner / ShotListPanel 批量同口径。
+    // 时长传递（修「分镜设 20 却出 6 秒」）：上游直连分镜的 duration【优先覆盖】节点上"未设 /
+    // 仍是 provider 默认"的时长；仅当用户在节点上【显式设了非默认】时长才尊重节点自身。再按
+    // provider 档位夹取（grok 支持 6~30）。与「运行全部」runner / ShotListPanel 批量同口径。
     const { nodes: dNodes, edges: dEdges } = useCanvasStore.getState();
+    const durDef = PROVIDER_PARAMS[payload.provider]?.find((d) => d.key === "duration");
+    const provDurDefault = typeof durDef?.default === "number" ? durDef.default : undefined;
     const ownDur = (payload.params as { duration?: number } | undefined)?.duration;
-    const wantDur = typeof ownDur === "number" ? ownDur : detectUpstreamStoryboardDuration(id, dEdges, dNodes);
+    const upDur = detectUpstreamStoryboardDuration(id, dEdges, dNodes);
+    const wantDur = (typeof ownDur !== "number" || ownDur === provDurDefault) ? (upDur ?? ownDur) : ownDur;
     const clampedDur = clampDurationForProvider(PROVIDER_PARAMS[payload.provider], wantDur);
     const submitParams = withParamDefaults(payload.provider, clampedDur != null ? { ...(payload.params ?? {}), duration: clampedDur } : payload.params);
     const submit = () => createTaskMutation.mutate({

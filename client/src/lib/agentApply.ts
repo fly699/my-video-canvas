@@ -238,6 +238,12 @@ export function applyAgentOperations(
             for (const [k, v] of Object.entries(af)) if (cur[k] === undefined || cur[k] === "") add[k] = v;
             if (Object.keys(add).length) payload = { ...(payload ?? {}), ...add };
           }
+          // video_task 的 duration 在智能体目录是【顶层字段】，但节点实际读 payload.params.duration
+          // ——落地时映射进 params，让智能体设的时长真正生效（连了分镜则由提交时的上游继承兜底）。
+          if (op.nodeType === "video_task" && payload && typeof (payload as { duration?: unknown }).duration === "number") {
+            const { duration, ...rest } = payload as Record<string, unknown> & { duration: number };
+            payload = { ...rest, params: { ...((rest.params as Record<string, unknown>) ?? {}), duration } };
+          }
           // Stamp ownership (multi-agent) + scene membership (so a Character can
           // "应用到本场景所有镜头"). Both stored in payload like `createdBy`.
           const ownedPayload = {
