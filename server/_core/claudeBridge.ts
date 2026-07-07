@@ -145,10 +145,18 @@ export function buildBridgeAgenticArgs(opts: {
   const tools = new Set(["Read", "Glob", "Grep", "WebSearch", "WebFetch"]);
   if (opts.skills) tools.add("Skill");
   for (const n of opts.serverNames) tools.add(`mcp__${n}`);
+  // 安全护栏：桥接口可能公网可达、只有一把 CLAUDE_LOCAL_BRIDGE_KEY，绝不能通过 allowedTools 覆盖
+  // 放行写文件/跑 shell 的工具（否则 key 泄露=RCE）。无条件从覆盖里剔除高危工具；permissionMode
+  // 收成白名单，禁 bypassPermissions（它会绕过一切工具审批）。
+  const DANGEROUS = new Set(["bash", "write", "edit", "multiedit", "notebookedit"]);
+  const allowed = opts.allowedOverride?.trim()
+    ? opts.allowedOverride.split(",").map((s) => s.trim()).filter((s) => s && !DANGEROUS.has(s.toLowerCase())).join(",")
+    : "";
   const args: string[] = [];
   if (opts.mcpConfigArg) { args.push("--mcp-config", opts.mcpConfigArg); if (opts.strict !== false) args.push("--strict-mcp-config"); }
-  args.push("--allowedTools", opts.allowedOverride?.trim() || Array.from(tools).join(","));
-  args.push("--permission-mode", opts.permissionMode?.trim() || "default");
+  args.push("--allowedTools", allowed || Array.from(tools).join(","));
+  const pm = (opts.permissionMode?.trim() || "default").toLowerCase();
+  args.push("--permission-mode", pm === "plan" ? "plan" : "default"); // 仅 default/plan；bypassPermissions/acceptEdits 等一律降为 default
   return args;
 }
 

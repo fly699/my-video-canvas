@@ -746,9 +746,14 @@ export const chatRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       if (!(await isChatMember(input.conversationId, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN", message: "非会话成员" });
-      // Only accept bundles addressed to actual members of this conversation.
       const members = new Set((await listChatMembers(input.conversationId)).map((m) => m.userId));
-      const bundles = input.bundles.filter((b) => members.has(b.memberUserId));
+      // 指定铸造者（建群者仍在群 → createdBy，否则最小 userId）可批量写全员（分发密钥）；其余成员
+      // 只能写「自己那份」。否则任一成员可给受害者塞垃圾密钥包、覆盖其合法密钥令其永久 [无法解密]
+      //（定向 DoS / 会话破坏，finding3）。目标须为真实成员。
+      const conv = await getConversationById(input.conversationId);
+      const minter = (conv?.createdBy != null && members.has(conv.createdBy)) ? conv.createdBy : (members.size ? Math.min(...Array.from(members)) : null);
+      const isMinter = ctx.user.id === minter;
+      const bundles = input.bundles.filter((b) => members.has(b.memberUserId) && (isMinter || b.memberUserId === ctx.user.id));
       await putChatRoomKeyBundles(input.conversationId, input.senderPublicKeyJwk, bundles);
       return { success: true, stored: bundles.length };
     }),
