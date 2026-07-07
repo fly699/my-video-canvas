@@ -35,7 +35,9 @@ export type TranscribeOptions = {
   prompt?: string; // Optional: custom prompt for the transcription
   model?: string; // 转录模型（OpenAI 兼容：whisper-1 / gpt-4o-transcribe / gpt-4o-mini-transcribe）；缺省 whisper-1
   /** 需要【词级】时间戳（AI 智能剪辑按词边界切、逐词字幕的硬前提）。开启则请求
-   *  timestamp_granularities[]=word（仅 whisper-1 保证返回 words[]，故强制 whisper-1）。 */
+   *  timestamp_granularities[]=word + verbose_json。**须搭配支持 word 粒度的 whisper 系模型**
+   *  （whisper-1 / Groq whisper-large-v3）；若 model / TRANSCRIBE_MODEL 指向 gpt-4o-transcribe
+   *  等不支持 word 粒度的模型，words[] 会为空（逐词字幕退化为段级），故这些场景请勿设非 whisper 模型。 */
   wordTimestamps?: boolean;
 };
 
