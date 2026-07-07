@@ -6,8 +6,10 @@ import { trpc } from "@/lib/trpc";
 import { NewConversationDialog } from "./NewConversationDialog";
 import { C, avatarGrad, initials } from "./chatTheme";
 
-export function ConversationList() {
+export function ConversationList({ onSelect }: { onSelect?: () => void } = {}) {
   const { conversations, joinableRooms, activeId, selectConversation, joinRoom } = useChat();
+  // 选中会话后回调（移动端用来自动收起房间抽屉）。
+  const pick = (id: number) => { selectConversation(id); onSelect?.(); };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [q, setQ] = useState("");
   const utils = trpc.useUtils();
@@ -18,11 +20,11 @@ export function ConversationList() {
 
   async function openAI() {
     const existing = conversations.find(isAssistantConv);
-    if (existing) { selectConversation(existing.id); return; }
+    if (existing) { pick(existing.id); return; }
     try {
       const r = await openAssistantMut.mutateAsync();
       await utils.chat.listConversations.refetch();
-      selectConversation(r.id);
+      pick(r.id);
     } catch (e) { toast.error(e instanceof Error ? e.message : "打开 AI 助手失败"); }
   }
 
@@ -43,7 +45,7 @@ export function ConversationList() {
       if (entered == null) return;
       password = entered;
     }
-    try { await joinRoom(r.id, password); }
+    try { await joinRoom(r.id, password); onSelect?.(); }
     catch (e) { toast.error(e instanceof Error ? e.message : "加入失败"); }
   }
 
@@ -81,15 +83,15 @@ export function ConversationList() {
           </span>
         </button>
         <Section title="大厅" icon={<Globe size={12} />}>
-          {lobby.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} onClick={() => selectConversation(c.id)} />)}
+          {lobby.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} onClick={() => pick(c.id)} />)}
         </Section>
         <Section title="群聊" icon={<Users size={12} />}>
           {groups.length === 0 && <Empty text="暂无群聊" />}
-          {groups.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} onClick={() => selectConversation(c.id)} />)}
+          {groups.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} onClick={() => pick(c.id)} />)}
         </Section>
         <Section title="私聊" icon={<MessageSquare size={12} />}>
           {dms.length === 0 && <Empty text="暂无私聊" />}
-          {dms.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} onClick={() => selectConversation(c.id)} />)}
+          {dms.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} onClick={() => pick(c.id)} />)}
         </Section>
         {joinableRooms.length > 0 && (
           <Section title="可加入的房间" icon={<LogIn size={12} />}>

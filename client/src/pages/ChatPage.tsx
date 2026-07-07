@@ -191,7 +191,7 @@ export default function ChatPage() {
         <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
           {/* sidebar: inline when wide, overlay drawer when narrow */}
           {sidebarOpen && (narrow
-            ? <Drawer side="left" onClose={() => setSidebarOpen(false)}><ConversationList /></Drawer>
+            ? <Drawer side="left" onClose={() => setSidebarOpen(false)}><ConversationList onSelect={() => setSidebarOpen(false)} /></Drawer>
             : <ConversationList />)}
 
           <ChatView membersOpen={membersOpen} narrow={narrow} />
