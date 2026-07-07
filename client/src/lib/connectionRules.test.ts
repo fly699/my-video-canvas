@@ -23,17 +23,21 @@ describe("defaultTargetHandle", () => {
 });
 
 describe("isConnectionValid", () => {
-  it("allows comfy nodes to chain with the SAME comfy type (串并联)", () => {
-    expect(isConnectionValid("comfyui_image", "comfyui_image")).toBe(true);
-    expect(isConnectionValid("comfyui_video", "comfyui_video")).toBe(true);
-    expect(isConnectionValid("comfyui_workflow", "comfyui_workflow")).toBe(true);
+  it("allows img-producing comfy nodes to self-chain, but NOT comfyui_video", () => {
+    expect(isConnectionValid("comfyui_image", "comfyui_image")).toBe(true); // img2img 再生
+    expect(isConnectionValid("comfyui_workflow", "comfyui_workflow")).toBe(true); // 图串联
+    // comfyui_video 产出视频，下游 comfy 只吃图/无视频输入槽 → 视频自链无处落地（死边，已删）。
+    expect(isConnectionValid("comfyui_video", "comfyui_video")).toBe(false);
   });
 
-  it("allows comfy nodes to interconnect across types", () => {
+  it("allows IMG-source comfy nodes to feed other comfy types, but rejects VIDEO→comfy (dead)", () => {
+    // 图源 → i2v / 工作流：数据能被 detectUpstreamImages / 工作流图像参数消费。
     expect(isConnectionValid("comfyui_image", "comfyui_video")).toBe(true);
     expect(isConnectionValid("comfyui_image", "comfyui_workflow")).toBe(true);
-    expect(isConnectionValid("comfyui_video", "comfyui_workflow")).toBe(true);
     expect(isConnectionValid("comfyui_workflow", "comfyui_image")).toBe(true);
+    // comfyui_video 产视频，comfy 节点无法消费（IMAGE_SOURCE_TYPES 不含它、工作流无 video 槽）→ 全为死边。
+    expect(isConnectionValid("comfyui_video", "comfyui_image")).toBe(false);
+    expect(isConnectionValid("comfyui_video", "comfyui_workflow")).toBe(false);
   });
 
   it("still blocks same-type pairs the matrix does not list (e.g. prompt→prompt)", () => {
@@ -63,6 +67,15 @@ describe("isConnectionValid", () => {
     expect(isConnectionValid("asset", "clip")).toBe(true);
     expect(isConnectionValid("comfyui_video", "clip")).toBe(true);
     expect(isConnectionValid("comfyui_workflow", "clip")).toBe(true);
+  });
+
+  it("分镜关键帧可作图源连入角色与构图控制（与其它图源一视同仁）", () => {
+    // storyboard.imageUrl 是合法图源：character 经 detectUpstreamImagesExpanded、pose_control 经
+    // getNodeImageOutput 都能取其图。此前被矩阵单独拒收，属不对称缺口，已放开。
+    expect(isConnectionValid("storyboard", "character")).toBe(true);
+    expect(isConnectionValid("storyboard", "pose_control")).toBe(true);
+    expect(getCompatibleSources("character")).toContain("storyboard");
+    expect(getCompatibleSources("pose_control")).toContain("storyboard");
   });
 
   it("respects matrix direction (rejects unlisted target)", () => {
