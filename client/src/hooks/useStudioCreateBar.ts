@@ -4,7 +4,9 @@ import { useEffect, useReducer } from "react";
 // （折叠时创作栏不渲染、由底栏那枚按钮控制展开），并持久化。
 const KEY = "avc:studio-createbar-collapsed";
 const listeners = new Set<() => void>();
-let collapsed = ((): boolean => { try { return localStorage.getItem(KEY) === "1"; } catch { return false; } })();
+// 默认折叠（关闭）：首次进入不弹出快速创作栏，需要时点底栏「快速创作」按钮展开。
+// 老用户若显式展开过（存 "0"）仍保持展开。
+let collapsed = ((): boolean => { try { const v = localStorage.getItem(KEY); return v === null ? true : v === "1"; } catch { return true; } })();
 
 export function setStudioCreateBarCollapsed(v: boolean): void {
   if (collapsed === v) return;

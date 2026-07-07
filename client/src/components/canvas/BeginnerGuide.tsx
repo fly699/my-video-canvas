@@ -41,7 +41,8 @@ function NodePill({ label, color }: { label: string; color: string }) {
 }
 
 function WelcomeModal({ onClose, onStartTour }: { onClose: () => void; onStartTour?: () => void }) {
-  const [dontShow, setDontShow] = useState(false);
+  // 默认勾选「不再显示」——欢迎页只在首次进入自动弹一次，之后不再打扰（用户可取消勾选以每次都看）。
+  const [dontShow, setDontShow] = useState(true);
 
   function handleDismiss() {
     if (dontShow) localStorage.setItem(STORAGE_KEY, "1");
@@ -390,16 +391,17 @@ function WelcomeModal({ onClose, onStartTour }: { onClose: () => void; onStartTo
         >
           <label
             style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              fontSize: 12, color: "var(--c-t3)", cursor: "pointer",
-              userSelect: "none",
+              display: "inline-flex", alignItems: "center", gap: 7,
+              fontSize: 12.5, color: "var(--c-t2)", cursor: "pointer",
+              userSelect: "none", padding: "5px 10px", borderRadius: 8,
+              border: "1px solid var(--c-bd2)", background: "var(--c-surface)",
             }}
           >
             <input
               type="checkbox"
               checked={dontShow}
               onChange={(e) => setDontShow(e.target.checked)}
-              style={{ cursor: "pointer", accentColor: "oklch(0.68 0.22 285)" }}
+              style={{ cursor: "pointer", accentColor: "oklch(0.68 0.22 285)", width: 15, height: 15 }}
             />
             不再显示此欢迎页
           </label>

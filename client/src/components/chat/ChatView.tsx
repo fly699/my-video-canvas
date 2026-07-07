@@ -43,12 +43,26 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recSecRef = useRef(0);
   const recCancelRef = useRef(false);
+  const recStartingRef = useRef(false);      // B-3：同步守卫，防 await 期间双击起双流
+  const recConvIdRef = useRef<number | null>(null); // B-1：录音起始会话 id 快照
+  const recStartMsRef = useRef(0);           // 计时按开始时间戳算，避免 setInterval 被节流/丢帧时不走字
+  const curConvIdRef = useRef<number | null>(null); // 实时当前会话 id（供 onstop 闭包读「当前」而非冻结值）
   useEffect(() => () => {
     // 卸载时清理录音（关麦克风、停计时器），避免离开聊天后麦克风仍占用。
     if (recTimerRef.current) clearInterval(recTimerRef.current);
     (recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
     try { mediaRecRef.current?.stop(); } catch { /* ignore */ }
   }, []);
+  curConvIdRef.current = activeConv?.id ?? null; // 每次 render 同步「当前」会话 id，供 onstop 闭包读取
+  // B-1：录音中切换会话 → 立即取消录音；onstop 再用 curConvIdRef（当前会话）与起始会话比对兜底。
+  useEffect(() => {
+    if (recording && recConvIdRef.current != null && activeConv?.id !== recConvIdRef.current) {
+      recCancelRef.current = true;
+      try { mediaRecRef.current?.stop(); } catch { /* ignore */ }
+    }
+    // 仅在会话 id 变化时判断
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConv?.id]);
   const [dragOver, setDragOver] = useState(false);
   const [askEncrypt, setAskEncrypt] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
@@ -116,8 +130,9 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   useEffect(() => { setSkillHi(0); }, [slashFrag]);
   const pickSkill = (name: string) => { setText(`用 ${name} 技能：`); setSkillDismiss(""); };
   // AI 助手「模板」人设：复用 ai_chat 节点的同一套模板（ALL_AI_TEMPLATES）。存模板 id，
-  // 发送时解析为其 prompt 作为 systemPrompt 传给后端，覆盖默认助手人设。空 = 默认助手。
-  const [chatTemplate, setChatTemplate] = useState<string>(() => localStorage.getItem("chat:aiTemplate") || "");
+  // 发送时解析为其 prompt 作为 systemPrompt 传给后端。默认「空模板」（无人设）；?? 只在从未选过
+  // 时生效——老用户显式选过的「默认助手」("" 空串) 仍保留。
+  const [chatTemplate, setChatTemplate] = useState<string>(() => localStorage.getItem("chat:aiTemplate") ?? BLANK_TEMPLATE_ID);
   const effSystemPrompt = chatTemplate === BLANK_TEMPLATE_ID ? NO_PERSONA_PROMPT : ALL_AI_TEMPLATES.find((t) => t.id === chatTemplate)?.prompt;
   const sendToAssistantMut = trpc.chat.sendToAssistant.useMutation();
   const clearAssistantMut = trpc.chat.clearAssistant.useMutation();
@@ -233,11 +248,16 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
     return "";
   }
   async function startRec() {
-    if (recording) return;
+    // B-3：recording 是 state，getUserMedia await 期间还是 false，双击会起两条流。
+    // 用同步 ref + 现存实例双重守卫。
+    if (recording || recStartingRef.current || mediaRecRef.current || recStreamRef.current) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { toast.error("当前浏览器不支持录音"); return; }
+    recStartingRef.current = true;
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recStreamRef.current = stream;
+      recConvIdRef.current = activeConv?.id ?? null; // B-1：快照录音起始会话
       const mime = pickRecMime();
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       recChunksRef.current = [];
@@ -246,29 +266,45 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
       rec.onstop = () => {
         (recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
         recStreamRef.current = null;
+        mediaRecRef.current = null; // 释放实例，否则并发守卫会挡住下一次录音
         if (recTimerRef.current) { clearInterval(recTimerRef.current); recTimerRef.current = null; }
         setRecording(false);
         const secs = recSecRef.current;
         recSecRef.current = 0; setRecSec(0);
+        const startConvId = recConvIdRef.current; recConvIdRef.current = null;
         const chunks = recChunksRef.current; recChunksRef.current = [];
         if (recCancelRef.current) return;
+        // B-1：若录音期间切走了会话，绝不把语音发到「当前」的另一个会话（可能是另一群人 / 明文）。
+        // 读 curConvIdRef（实时当前会话），而非 onstop 闭包里被冻结的 activeConv——否则此守卫恒 false。
+        if (startConvId != null && curConvIdRef.current !== startConvId) { toast.info("已切换会话，语音未发送"); return; }
         const type = rec.mimeType || mime || "audio/webm";
         const blob = new Blob(chunks, { type });
         if (blob.size < 800 || secs < 1) { toast.info("录音太短，已取消"); return; }
         const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
         const file = new File([blob], `语音-${Date.now()}.${ext}`, { type });
-        void sendFile(file, activeConv!.mode === "serverless" ? { encrypt: true } : undefined);
+        // 不读 onstop 闭包里冻结的 activeConv：sendFile 内部按「当前会话」的 mode 自行判定，
+        // serverless 缺省即加密（encrypt !== false），server 模式忽略此项——无明文泄露风险。
+        void sendFile(file);
       };
       mediaRecRef.current = rec;
       rec.start();
       setRecording(true);
+      recStartMsRef.current = Date.now();
       recSecRef.current = 0; setRecSec(0);
       recTimerRef.current = setInterval(() => {
-        recSecRef.current += 1; setRecSec(recSecRef.current);
-        if (recSecRef.current >= 300) stopRec(true); // 5 分钟上限自动发送
-      }, 1000);
+        // 按真实经过时间计算，节流/丢帧也不会「不走字」或偏慢。
+        const sec = Math.max(0, Math.floor((Date.now() - recStartMsRef.current) / 1000));
+        recSecRef.current = sec; setRecSec(sec);
+        if (sec >= 300) stopRec(true); // 5 分钟上限自动发送
+      }, 500);
     } catch {
+      // B-2：MediaRecorder 构造/start 抛错等路径必须关掉已拿到的麦克风流，否则麦克风常亮。
+      (stream?.getTracks() ?? recStreamRef.current?.getTracks() ?? []).forEach((t) => t.stop());
+      recStreamRef.current = null;
+      mediaRecRef.current = null;
       toast.error("无法录音：请在浏览器授予麦克风权限");
+    } finally {
+      recStartingRef.current = false;
     }
   }
   function stopRec(send: boolean) {
