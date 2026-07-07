@@ -672,6 +672,8 @@ const chatMembersMap = new Map<number, ChatMember>();
 const chatMsgMap = new Map<number, ConversationMessage>();
 const chatAttachMap = new Map<number, ChatAttachment>();
 const chatKeysMap = new Map<number, unknown>(); // userId -> publicKeyJwk
+// `${conversationId}:${memberUserId}` -> { senderPubJwk, wrappedKey } (serverless group room keys)
+const chatRoomKeysMap = new Map<string, { senderPubJwk: unknown; wrappedKey: { ciphertext: string; iv: string } }>();
 const chatBansMap = new Map<number, ChatBan>();
 let chatNextConvId = 1;
 let chatNextMemberId = 1;
@@ -853,6 +855,14 @@ export function devGetUserPublicKeys(userIds: number[]): { userId: number; publi
   return userIds
     .filter((id) => chatKeysMap.has(id))
     .map((id) => ({ userId: id, publicKeyJwk: chatKeysMap.get(id) }));
+}
+
+export function devPutRoomKeyBundles(conversationId: number, senderPubJwk: unknown, bundles: { memberUserId: number; wrappedKey: { ciphertext: string; iv: string } }[]): void {
+  for (const b of bundles) chatRoomKeysMap.set(`${conversationId}:${b.memberUserId}`, { senderPubJwk, wrappedKey: b.wrappedKey });
+}
+
+export function devGetRoomKeyBundle(conversationId: number, memberUserId: number): { senderPubJwk: unknown; wrappedKey: { ciphertext: string; iv: string } } | null {
+  return chatRoomKeysMap.get(`${conversationId}:${memberUserId}`) ?? null;
 }
 
 export function devAddBan(data: InsertChatBan): ChatBan {

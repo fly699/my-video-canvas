@@ -50,6 +50,15 @@ export async function savePrivateKeyJwk(jwk: JsonWebKey): Promise<void> {
   await idbSet(STORE_KEYS, "identityPrivateJwk", jwk);
 }
 
+// ── serverless group room keys (persisted so a refresh doesn't lose the key and
+//    force a divergent re-mint). Stored as base64 raw AES key, per conversation. ──
+export async function loadRoomKey(conversationId: number): Promise<string | undefined> {
+  return idbGet<string>(STORE_KEYS, `roomKey:${conversationId}`);
+}
+export async function saveRoomKey(conversationId: number, rawB64: string): Promise<void> {
+  await idbSet(STORE_KEYS, `roomKey:${conversationId}`, rawB64);
+}
+
 // ── serverless local message history (per conversation) ─────────────────────
 const HISTORY_CAP = 500;
 
@@ -62,4 +71,10 @@ export async function appendLocalHistory(conversationId: number, msg: ChatWireMe
   if (cur.some((m) => m.id === msg.id)) return;
   const next = [...cur, msg].slice(-HISTORY_CAP);
   await idbSet(STORE_HISTORY, String(conversationId), next);
+}
+
+/** Overwrite the whole local history for a conversation (used to rewrite messages that
+ *  were re-decrypted once the room key finally arrived). */
+export async function saveLocalHistory(conversationId: number, msgs: ChatWireMessage[]): Promise<void> {
+  await idbSet(STORE_HISTORY, String(conversationId), msgs.slice(-HISTORY_CAP));
 }

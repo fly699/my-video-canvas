@@ -24,6 +24,10 @@ function cssFilter(c: Clip): string {
     if (e.contrast != null) parts.push(`contrast(${e.contrast})`);
     if (e.saturation != null) parts.push(`saturate(${e.saturation})`);
     switch (e.filter) {
+      // video-use 移植预设的 CSS 近似（导出以后端 ffmpeg colorChain 为准）
+      case "warm_cinematic": parts.push("sepia(0.14) contrast(1.12) saturate(0.9) brightness(0.99)"); break;
+      case "neutral_punch": parts.push("contrast(1.09) saturate(1.02)"); break;
+      case "subtle": parts.push("contrast(1.03) saturate(0.98)"); break;
       case "vintage": parts.push("sepia(0.5) contrast(0.95) saturate(0.9)"); break;
       case "cool": parts.push("hue-rotate(-15deg) saturate(1.1)"); break;
       case "warm": parts.push("sepia(0.25) saturate(1.2)"); break;

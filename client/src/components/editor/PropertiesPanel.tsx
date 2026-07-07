@@ -33,7 +33,7 @@ const FONTS: [string, string][] = [
   ["", "默认"], ["Microsoft YaHei", "微软雅黑"], ["SimHei", "黑体"], ["SimSun", "宋体"],
   ["KaiTi", "楷体"], ["FangSong", "仿宋"], ["Arial", "Arial"], ["Times New Roman", "Times"],
 ];
-const FILTERS: [string, string][] = [["", "无"], ["cinematic", "电影感"], ["teal_orange", "青橙大片"], ["gold", "金色暖阳"], ["moody", "暗调电影"], ["cyberpunk", "赛博朋克"], ["vivid", "鲜艳"], ["faded", "褪色胶片"], ["vintage", "复古"], ["sepia", "棕褐"], ["warm", "暖色"], ["cool", "冷色"], ["noir", "黑白高反差"], ["bw", "黑白"]];
+const FILTERS: [string, string][] = [["", "无"], ["warm_cinematic", "暖调成片"], ["neutral_punch", "中性增强"], ["subtle", "轻微修正"], ["cinematic", "电影感"], ["teal_orange", "青橙大片"], ["gold", "金色暖阳"], ["moody", "暗调电影"], ["cyberpunk", "赛博朋克"], ["vivid", "鲜艳"], ["faded", "褪色胶片"], ["vintage", "复古"], ["sepia", "棕褐"], ["warm", "暖色"], ["cool", "冷色"], ["noir", "黑白高反差"], ["bw", "黑白"]];
 const TRANSITIONS: [string, string][] = [
   ["none", "无"],
   ["fade", "淡入淡出"], ["fadeblack", "淡入黑场"], ["fadewhite", "淡入白场"],

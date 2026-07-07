@@ -10,6 +10,9 @@ import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs 
 import { assertProjectAccess } from "../_core/permissions";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
+import { transcribeAudio } from "../_core/voiceTranscription";
+import { getSystemDefaultModel } from "../_core/systemDefaultModels";
+import { buildAiCutDoc, parseAiCutPlan, aiCutStats } from "../_core/aiCut";
 
 // ── EDL validation ────────────────────────────────────────────────────────────
 // Kept tolerant: unknown effect/transition keys are allowed through so the
@@ -224,6 +227,54 @@ export const editorRouter = router({
         .replace(/\son\w+="[^"]*"/gi, "").replace(/(href|xlink:href)\s*=\s*"(?!#)[^"]*"/gi, "");
       if (!/<svg[\s\S]*<\/svg>/i.test(svg)) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 SVG，请换个描述再试" });
       return { svg: svg.slice(0, 20000) };
+    }),
+
+  // AI 智能剪辑（移植 browser-use/video-use，MIT）：转写视频 → LLM 判定保留区间 + 调色档 →
+  // 生成一份新 EditorDoc（按区间切片 + 30ms 淡入淡出 + 可选逐词字幕）。返回 doc 供前端载入。
+  // 用「本机 claude」出方案：把 model 传成 "claude-local" 即自动走桥接（不按 token 计费）。
+  aiCut: protectedProcedure
+    .input(z.object({
+      assetUrl: z.string().min(1).max(2048),
+      assetId: z.number().optional(),
+      durationSec: z.number().min(0.1).max(36000),
+      width: z.number().int().min(16).max(7680),
+      height: z.number().int().min(16).max(7680),
+      fps: z.number().int().min(1).max(120),
+      aggressiveness: z.enum(["low", "medium", "high"]).optional(),
+      targetSec: z.number().min(1).max(36000).optional(),
+      grade: z.enum(["subtle", "neutral_punch", "warm_cinematic", "none"]).optional(),
+      subtitles: z.boolean().optional(),
+      model: z.string().max(64).optional(),
+      kieTempKey: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const tr = await transcribeAudio({ audioUrl: input.assetUrl, wordTimestamps: !!input.subtitles });
+      if ("error" in tr) throw new TRPCError({ code: "BAD_REQUEST", message: "转写失败：" + tr.error });
+      const segments = tr.segments ?? [];
+      if (!segments.length) throw new TRPCError({ code: "BAD_REQUEST", message: "未识别到语音内容，无法智能剪辑" });
+      const words = (tr.words ?? []).map((w) => ({ word: w.word, start: w.start, end: w.end }));
+
+      const aggr = input.aggressiveness ?? "medium";
+      const lines = segments.map((s) => `[${s.start.toFixed(2)}-${s.end.toFixed(2)}]${s.no_speech_prob > 0.6 ? "(疑似静音)" : ""} ${s.text.trim()}`).join("\n");
+      const sys = "你是专业视频剪辑师。下面是一段视频的逐段转写（含时间戳，单位秒）。判断哪些区间应【保留】，"
+        + `删除口头禅/重复/长停顿/跑题/疑似静音，产出紧凑连贯的成片。剪辑激进度=${aggr}（low 少删、high 多删）。`
+        + (input.targetSec ? `目标成片时长约 ${input.targetSec} 秒。` : "")
+        + '\n只输出一个 JSON：{"keep":[{"start":秒,"end":秒}],"grade":"none|subtle|neutral_punch|warm_cinematic"}。'
+        + "keep 按时间升序、区间不重叠、落在视频时长内；grade 为可选整体调色档（不确定用 none）。禁止输出任何解释或 Markdown 代码围栏。";
+      const res = await invokeLLMWithKie(ctx, {
+        messages: [{ role: "system", content: sys }, { role: "user", content: lines.slice(0, 24000) }],
+        model: input.model ?? await getSystemDefaultModel("llm"), maxTokens: 2000,
+      }, input.kieTempKey ?? null);
+
+      const plan = parseAiCutPlan(extractTextContent(res));
+      if (!plan || !plan.keep.length) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未产出有效剪辑方案，请重试或调整激进度" });
+      const doc = buildAiCutDoc(
+        { assetId: input.assetId, assetUrl: input.assetUrl, width: input.width, height: input.height, fps: input.fps, durationSec: input.durationSec },
+        plan, words, { grade: input.grade, subtitles: input.subtitles },
+      );
+      if (!doc.tracks.find((t) => t.type === "video")!.clips.length) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "剪辑结果为空（保留区间无效），请重试" });
+      writeAuditLog({ ctx, action: "editor:aiCut", detail: { clips: doc.tracks[0].clips.length, subtitles: !!input.subtitles } });
+      return { doc, stats: aiCutStats(doc, input.durationSec) };
     }),
 
   // Soft-delete (hidden from the user; row kept).

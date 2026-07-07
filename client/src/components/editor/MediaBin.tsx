@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square } from "lucide-react";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square, Scissors } from "lucide-react";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
 import { MusicGen } from "./MusicGen";
 import { EC } from "./theme";
@@ -35,8 +35,41 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
   const assets = (listQuery.data ?? []).filter((a) => a.type !== "other");
 
   const addClip = useEditorStore((s) => s.addClip);
+  const applyDoc = useEditorStore((s) => s.applyDoc);
   const transcribeMut = trpc.subtitle.transcribe.useMutation();
+  const aiCutMut = trpc.editor.aiCut.useMutation();
+  const [aiCutting, setAiCutting] = useState(false);
+  const [aiAggr, setAiAggr] = useState<"low" | "medium" | "high">("medium");
+  const [aiSubs, setAiSubs] = useState(true);
   const srtRef = useRef<HTMLInputElement>(null);
+
+  // AI 智能剪辑（video-use 移植）：转写时间轴上第一个视频 → LLM 判定保留区间 →
+  // 用返回的新 EditorDoc 整档替换（可撤销）。字幕/激进度可选。
+  async function aiSmartCut() {
+    const doc = useEditorStore.getState().doc;
+    if (!doc) return;
+    let src: { assetId?: number; assetUrl?: string } | undefined;
+    for (const t of doc.tracks) for (const c of t.clips) if (c.kind === "video" && c.assetUrl) { src = c; break; }
+    if (!src?.assetUrl) { toast.error("先在时间轴添加一个视频片段再智能剪辑"); return; }
+    const abs = new URL(src.assetUrl, location.origin).href;
+    setAiCutting(true);
+    toast.info("正在转写并智能剪辑…较长视频需数十秒");
+    try {
+      const durationSec = await probeMediaDuration(abs, "video");
+      const r = await aiCutMut.mutateAsync({
+        assetUrl: abs, assetId: src.assetId, durationSec: Math.max(0.5, durationSec),
+        width: doc.width, height: doc.height, fps: doc.fps,
+        aggressiveness: aiAggr, subtitles: aiSubs,
+      });
+      applyDoc(r.doc);
+      const s = r.stats;
+      toast.success(`已智能剪辑：保留 ${s.keptSec}s、删除 ${s.removedSec}s，共 ${s.clips} 段${s.subtitles ? `、${s.subtitles} 条字幕` : ""}（可撤销）`);
+    } catch (e) {
+      toast.error("智能剪辑失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setAiCutting(false);
+    }
+  }
 
   // AI auto-subtitle: transcribe the first video/audio clip with Whisper and lay
   // the result onto the text track as timed text clips.
@@ -191,6 +224,23 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
           }}
           style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: EC.t2, cursor: "pointer" }}
         ><Square size={13} /> 添加形状 / SVG</button>
+        {/* AI 智能剪辑：转写 → LLM 去口头禅/停顿 → 整档替换（可撤销）。附激进度 + 逐词字幕开关。 */}
+        <button
+          disabled={aiCutting}
+          onClick={aiSmartCut}
+          style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0", fontSize: 12, fontWeight: 600, borderRadius: 7, border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent, cursor: aiCutting ? "default" : "pointer" }}
+        ><Scissors size={13} /> {aiCutting ? "智能剪辑中…" : "AI 智能剪辑"}</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: 11, color: EC.t3 }}>
+          <span>力度</span>
+          {(["low", "medium", "high"] as const).map((lv) => (
+            <button key={lv} onClick={() => setAiAggr(lv)} disabled={aiCutting}
+              style={{ flex: 1, padding: "3px 0", borderRadius: 6, fontSize: 11, cursor: "pointer", border: `1px solid ${aiAggr === lv ? EC.accent : EC.border}`, background: aiAggr === lv ? EC.accentSoft : "transparent", color: aiAggr === lv ? EC.accent : EC.t3 }}
+            >{lv === "low" ? "轻" : lv === "medium" ? "中" : "狠"}</button>
+          ))}
+          <label style={{ display: "flex", alignItems: "center", gap: 3, cursor: "pointer", whiteSpace: "nowrap" }}>
+            <input type="checkbox" checked={aiSubs} onChange={(e) => setAiSubs(e.target.checked)} disabled={aiCutting} /> 字幕
+          </label>
+        </div>
         <button
           disabled={transcribeMut.isPending}
           onClick={autoSubtitle}

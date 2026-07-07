@@ -475,6 +475,15 @@ function colorChain(e?: ClipEffects): string[] {
     case "cyberpunk": out.push("colorbalance=rs=0.05:bs=0.12:rh=0.05:bh=0.10", "eq=saturation=1.30:contrast=1.05"); break;
     case "moody": out.push("colorbalance=rs=-0.06:bs=0.06", "eq=contrast=1.10:brightness=-0.05:saturation=0.90"); break;
     case "gold": out.push("colorbalance=rm=0.12:gm=0.06:bm=-0.10", "eq=saturation=1.10"); break;
+    // ── video-use 移植（MIT，见 THIRD_PARTY_NOTICES.md）：三档「成片级」调色预设 ──
+    // 数值与 browser-use/video-use helpers/grade.py 的 PRESETS 逐字一致（per-clip 生效）。
+    case "subtle": out.push("eq=contrast=1.03:saturation=0.98"); break;
+    case "neutral_punch": out.push("eq=contrast=1.06:saturation=1.0", "curves=master='0/0 0.25/0.23 0.75/0.77 1/1'"); break;
+    case "warm_cinematic": out.push(
+      "eq=contrast=1.12:brightness=-0.02:saturation=0.88",
+      "colorbalance=rs=0.02:gs=0.0:bs=-0.03:rm=0.04:gm=0.01:bm=-0.02:rh=0.08:gh=0.02:bh=-0.05",
+      "curves=master='0/0 0.25/0.22 0.75/0.78 1/1'",
+    ); break;
   }
   // 画质质感：暗角 / 锐化（独立于上面的调色预设，叠加其后）。0/缺省时完全跳过 → 零回归。
   if (e.vignette != null && e.vignette > 0) {
