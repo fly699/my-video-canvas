@@ -775,11 +775,16 @@ export const tunnelSettings = mysqlTable("tunnel_settings", {
 export type TunnelEmailNotify = { to: string; host: string; port: number; user: string; pass: string; secure: boolean; from: string };
 
 export type SelfHostedLlmConfig = { url: string; apiKey: string; models: { id: string; label: string }[] };
+// 管理员后台配置的「本机 Claude 桥接」MCP/技能增强（替代 CLAUDE_BRIDGE_* 环境变量）。
+// mcpConfig：{mcpServers:{...}} 的原始 JSON 文本，或服务器上一个配置文件的绝对路径。
+export type BridgeMcpConfig = { mcpConfig: string; skills: boolean; strict: boolean; permissionMode: string; allowedTools: string };
 export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   id: int("id").primaryKey(),
   disabledModels: json("disabledModels").$type<string[]>(),
   // 管理员后台配置的自建 OpenAI 兼容 LLM（替代 env）：{ url, apiKey, models:[{id,label}] }。
   selfHostedLlm: json("selfHostedLlm").$type<SelfHostedLlmConfig>(),
+  // 管理员后台配置的桥接 MCP/技能增强（替代 CLAUDE_BRIDGE_* env）：{ mcpConfig, skills, strict, permissionMode, allowedTools }。
+  bridgeMcp: json("bridgeMcp").$type<BridgeMcpConfig>(),
   // 管理员配置的「系统级默认模型」（按槽位 llm/image/video/transcribe），作用于所有项目：
   // 解析优先级排在项目级配置之下、出厂默认之上。{ llm?, image?, video?, transcribe? }。
   systemDefaultModels: json("systemDefaultModels").$type<Record<string, string>>(),

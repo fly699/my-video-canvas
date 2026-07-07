@@ -20,6 +20,7 @@ import {
   tunnelSettings,
   authSettings,
   type SelfHostedLlmConfig,
+  type BridgeMcpConfig,
   auditLogs,
   comfyUsageLogs,
   poyoBalanceSnapshots,
@@ -122,7 +123,7 @@ export function isDupEntryError(e: unknown): boolean {
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
-const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; systemDefaultModels?: Record<string, string> } = { disabledModels: [] };
+const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; systemDefaultModels?: Record<string, string> } = { disabledModels: [] };
 const devAuthSettings = { emailVerificationEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
@@ -1581,6 +1582,37 @@ export async function setSelfHostedLlmConfig(cfg: SelfHostedLlmConfig): Promise<
   if (!db) { devModelToggleSettings.selfHostedLlm = selfHostedLlm; return; }
   await db.insert(modelToggleSettings).values({ id: 1, selfHostedLlm })
     .onDuplicateKeyUpdate({ set: { selfHostedLlm } });
+}
+
+export function normalizeBridgeMcp(v: unknown): BridgeMcpConfig {
+  // JSON column: MySQL 8 returns a parsed object, MariaDB returns a string — accept both.
+  let o: Record<string, unknown> = {};
+  if (typeof v === "string") { try { o = JSON.parse(v) as Record<string, unknown>; } catch { o = {}; } }
+  else if (v && typeof v === "object") o = v as Record<string, unknown>;
+  return {
+    mcpConfig: typeof o.mcpConfig === "string" ? o.mcpConfig : "",
+    skills: o.skills === true,
+    // strict 缺省为 true（默认 --strict-mcp-config，与 env `!== "0"` 语义一致）。
+    strict: o.strict === false ? false : true,
+    permissionMode: typeof o.permissionMode === "string" ? o.permissionMode : "",
+    allowedTools: typeof o.allowedTools === "string" ? o.allowedTools : "",
+  };
+}
+
+/** 管理员配置的桥接 MCP/技能增强（替代 CLAUDE_BRIDGE_* env）。单行 id=1 的 JSON 列。 */
+export async function getBridgeMcpConfig(): Promise<BridgeMcpConfig> {
+  const db = await getDb();
+  if (!db) return normalizeBridgeMcp(devModelToggleSettings.bridgeMcp);
+  const rows = await db.select().from(modelToggleSettings).limit(1);
+  return normalizeBridgeMcp(rows[0]?.bridgeMcp);
+}
+
+export async function setBridgeMcpConfig(cfg: BridgeMcpConfig): Promise<void> {
+  const bridgeMcp = normalizeBridgeMcp(cfg);
+  const db = await getDb();
+  if (!db) { devModelToggleSettings.bridgeMcp = bridgeMcp; return; }
+  await db.insert(modelToggleSettings).values({ id: 1, bridgeMcp })
+    .onDuplicateKeyUpdate({ set: { bridgeMcp } });
 }
 
 /** 管理员配置的「系统默认模型」（按槽位 llm/image/video/transcribe）。单行 id=1 的 JSON 列。 */

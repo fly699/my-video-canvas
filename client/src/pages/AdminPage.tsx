@@ -12,6 +12,7 @@ import { downloadTextFile } from "@/lib/download";
 import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 import { SelfHostedLlmSection } from "@/components/admin/SelfHostedLlmSection";
+import { BridgeMcpSection } from "@/components/admin/BridgeMcpSection";
 import { SystemDefaultModelsSection } from "@/components/admin/SystemDefaultModelsSection";
 import { TunnelPanel } from "@/components/admin/TunnelPanel";
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
@@ -1164,6 +1165,9 @@ function ModelsPanel() {
 
       {/* 自建 LLM 配置（粘贴 curl 登记 OpenAI 兼容端点） */}
       <SelfHostedLlmSection />
+
+      {/* 桥接 MCP 配置（贴 mcpServers JSON → 保存即生效，让本机 Claude 桥接能调 ComfyUI 等 MCP） */}
+      <BridgeMcpSection />
 
       {categories.map((cat) => {
         // 该分类下按来源平台分组（Kie 排在 Poyo 之前），便于整组开关。

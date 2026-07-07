@@ -8,6 +8,7 @@ import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { invalidateSystemDefaultModelsCache } from "../_core/systemDefaultModels";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
+import { reloadBridgeMcpConfig } from "../_core/bridgeMcp";
 import { bridgeLocalUrl } from "../_core/claudeBridge";
 import { buildConfigChecklist } from "../_core/configChecklist";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput, getTunnelPid } from "../_core/tunnel";
@@ -470,6 +471,30 @@ export const adminRouter = router({
         if (url && !/^https?:\/\//i.test(url)) throw new TRPCError({ code: "BAD_REQUEST", message: "地址必须以 http:// 或 https:// 开头" });
         await db.setSelfHostedLlmConfig({ url, apiKey: input.apiKey, models: input.models });
         await reloadSelfHostedConfig(); // 立即热更新路由/门控缓存
+        return { success: true };
+      }),
+    // ── 桥接 MCP/技能配置（admin）：替代 CLAUDE_BRIDGE_* env，界面贴 JSON 保存即生效（无需重启） ──
+    getBridgeMcp: adminProcedure.query(async () => db.getBridgeMcpConfig()),
+    setBridgeMcp: managerProc
+      .input(z.object({
+        mcpConfig: z.string().max(20000).default(""),
+        skills: z.boolean().default(false),
+        strict: z.boolean().default(true),
+        permissionMode: z.string().trim().max(40).default(""),
+        allowedTools: z.string().trim().max(2000).default(""),
+      }))
+      .mutation(async ({ input }) => {
+        const mcpConfig = input.mcpConfig.trim();
+        // 内联 JSON（以 { 开头）必须合法且含 mcpServers 对象——否则每次桥接请求都会静默解析失败、丢掉 MCP。
+        // 文件路径形式（非 { 开头）不在此校验（服务器上是否存在由运行时读取时兜底）。
+        if (mcpConfig.startsWith("{")) {
+          let parsed: unknown;
+          try { parsed = JSON.parse(mcpConfig); } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "MCP 配置不是合法 JSON" }); }
+          const servers = (parsed as { mcpServers?: unknown } | null)?.mcpServers;
+          if (!servers || typeof servers !== "object") throw new TRPCError({ code: "BAD_REQUEST", message: "MCP 配置缺少 mcpServers 对象" });
+        }
+        await db.setBridgeMcpConfig({ mcpConfig, skills: input.skills, strict: input.strict, permissionMode: input.permissionMode, allowedTools: input.allowedTools });
+        await reloadBridgeMcpConfig(); // 立即热更新桥接增强参数缓存
         return { success: true };
       }),
     // ── 系统默认模型（admin）：按槽位 llm/image/video/transcribe，作用于所有项目 ──
