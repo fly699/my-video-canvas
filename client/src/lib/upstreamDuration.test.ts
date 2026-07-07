@@ -6,23 +6,32 @@ const N = (id: string, nodeType: string, payload: unknown) => ({ id, data: { nod
 
 describe("detectUpstreamAspectRatio（comfyui_workflow 图生视频：用上游输入图比例覆盖工作流画幅）", () => {
   const e = [{ source: "s", target: "w" }];
-  it("上游图像源有 aspectRatio → 返回它", () => {
-    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { aspectRatio: "9:16" }), N("w", "comfyui_workflow", {})])).toBe("9:16");
-    expect(detectUpstreamAspectRatio("w", e, [N("s", "image_gen", { aspectRatio: "16:9" }), N("w", "comfyui_workflow", {})])).toBe("16:9");
+  const IMG = "http://x/a.png"; // 只认真的贡献了输入图的上游源（imageUrl 有值）
+  it("上游图像源有 aspectRatio（且有图）→ 返回它", () => {
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { imageUrl: IMG, aspectRatio: "9:16" }), N("w", "comfyui_workflow", {})])).toBe("9:16");
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "image_gen", { imageUrl: IMG, aspectRatio: "16:9" }), N("w", "comfyui_workflow", {})])).toBe("16:9");
+  });
+  it("按模型族三读比例字段：Reve/Seedream/Flux→reveAspectRatio、Poyo→poyoAspectRatio、Soul→widthAndHeight", () => {
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "image_gen", { imageUrl: IMG, reveAspectRatio: "3:2" }), N("w", "comfyui_workflow", {})])).toBe("3:2");
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "image_gen", { imageUrl: IMG, poyoAspectRatio: "21:9" }), N("w", "comfyui_workflow", {})])).toBe("21:9");
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "image_gen", { imageUrl: IMG, widthAndHeight: "1024*1536" }), N("w", "comfyui_workflow", {})])).toBe("1024:1536");
   });
   it("无 aspectRatio 但有 width/height → 返回 W:H", () => {
-    expect(detectUpstreamAspectRatio("w", e, [N("s", "comfyui_image", { width: 1080, height: 1920 }), N("w", "comfyui_workflow", {})])).toBe("1080:1920");
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "comfyui_image", { imageUrl: IMG, width: 1080, height: 1920 }), N("w", "comfyui_workflow", {})])).toBe("1080:1920");
   });
   it("全角/带空格比例归一化", () => {
-    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { aspectRatio: "9：16" }), N("w", "comfyui_workflow", {})])).toBe("9:16");
-    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { aspectRatio: " 16 : 9 " }), N("w", "comfyui_workflow", {})])).toBe("16:9");
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { imageUrl: IMG, aspectRatio: "9：16" }), N("w", "comfyui_workflow", {})])).toBe("9:16");
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { imageUrl: IMG, aspectRatio: " 16 : 9 " }), N("w", "comfyui_workflow", {})])).toBe("16:9");
+  });
+  it("源有比例但还没出图（无 url）→ 不算，避免拿到没喂进去的比例", () => {
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { aspectRatio: "9:16" }), N("w", "comfyui_workflow", {})])).toBeUndefined();
   });
   it("非图像源（prompt）不参与 → undefined", () => {
     expect(detectUpstreamAspectRatio("w", [{ source: "p", target: "w" }], [N("p", "prompt", { aspectRatio: "1:1" }), N("w", "comfyui_workflow", {})])).toBeUndefined();
   });
   it("无上游 / 无比例信号 → undefined", () => {
     expect(detectUpstreamAspectRatio("w", [], [N("w", "comfyui_workflow", {})])).toBeUndefined();
-    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", {}), N("w", "comfyui_workflow", {})])).toBeUndefined();
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { imageUrl: IMG }), N("w", "comfyui_workflow", {})])).toBeUndefined();
   });
 });
 

@@ -505,10 +505,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       // 用户已手动设置 width/height 参数值时仍以参数值为准；比例无法解析 / 无可改 latent 时原样提交。
       const effPosForRatio = posPromptKey && typeof effectiveParamValues[posPromptKey] === "string"
         ? (effectiveParamValues[posPromptKey] as string) : "";
+      // 第三级「上游输入图比例」回退**仅限图生视频（outputType==="video"）**：否则会误伤文生图
+      // 工作流——接一张参考图(IPAdapter/风格参考)就把原生方形 latent 重塑成参考图比例。
       const effectiveAspect = payload.overrideRatioSize
         ? payload.aspectRatio
         : (parseAspectRatioFromText(effPosForRatio || mentionText || upstreamPrompt.positive)
-          || detectUpstreamAspectRatio(id, edges, nodes));
+          || (payload.outputType === "video" ? detectUpstreamAspectRatio(id, edges, nodes) : undefined));
       const runWorkflowJson = effectiveAspect
         ? applyAspectToWorkflow(workflowJson, effectiveAspect).json
         : workflowJson;

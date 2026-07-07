@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
 import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText } from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
@@ -49,6 +50,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 服务端持久化：跨设备/清缓存后对话仍在（替代原来仅 localStorage）。
   const historyQuery = trpc.agent.getHistory.useQuery({ projectId }, { staleTime: Infinity, refetchOnWindowFocus: false });
   const saveHistoryMut = trpc.agent.saveHistory.useMutation();
+  const utils = trpc.useUtils();
   const hydratedRef = useRef(false);
   const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
   const charsQuery = trpc.characterLibrary.list.useQuery(undefined, { staleTime: 30_000 });
@@ -57,6 +59,15 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [turns, setTurns] = useState<Turn[]>(() => {
     try { const s = localStorage.getItem(`avc:canvasAgent:${projectId}`); return s ? JSON.parse(s) : []; } catch { return []; }
   });
+  // 挂载时的 turns 快照——用于判断 DB hydrate 到达前用户是否已操作（避免用陈旧 DB 覆盖进行中的对话）。
+  const mountTurnsRef = useRef<string | null>(null);
+  if (mountTurnsRef.current === null) mountTurnsRef.current = JSON.stringify(turns);
+  // 存库 = 写 DB + 同步 react-query 缓存（否则 staleTime:Infinity 下重开面板会命中旧快照、把新消息覆盖回退）。
+  const persistTurns = (t: Turn[]) => {
+    const clean = sanitizeTurnsForSave(t);
+    utils.agent.getHistory.setData({ projectId }, { turns: clean as Turn[] });
+    saveHistoryMut.mutate({ projectId, turns: clean }, { onError: (err) => toast.error("画布助手对话保存失败：" + (err.message || "网络错误")) });
+  };
   const [input, setInput] = useState("");
   const [staged, setStaged] = useState<File[]>([]);
   const [attachErr, setAttachErr] = useState("");
@@ -115,19 +126,22 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   };
 
   useEffect(() => { try { localStorage.setItem(`avc:canvasAgent:${projectId}`, JSON.stringify(turns.slice(-40))); } catch { /* quota */ } }, [turns, projectId]);
-  // 挂载时以 DB 为跨设备真相 hydrate（DB 空则把本地历史迁移进库）；只做一次，避免刷新覆盖进行中的对话。
+  // 挂载时以 DB 为跨设备真相 hydrate（只做一次）。关键：**若用户在 DB 返回前已操作**（turns 变了），
+  // 绝不覆盖进行中的对话——否则慢加载抢发、或 5 分钟内关-开面板命中陈旧缓存，都会把新消息覆盖丢失。
   useEffect(() => {
     if (hydratedRef.current || !historyQuery.data) return;
     hydratedRef.current = true;
     const dbTurns = (historyQuery.data.turns as Turn[]) ?? [];
-    if (dbTurns.length) setTurns(dbTurns);
-    else if (turns.length) saveHistoryMut.mutate({ projectId, turns: sanitizeTurnsForSave(turns) });
+    const localChanged = JSON.stringify(turns) !== mountTurnsRef.current;
+    if (localChanged) { if (turns.length) persistTurns(turns); return; } // 保护进行中的对话，改存本地
+    if (dbTurns.length) setTurns(dbTurns);        // 本地自挂载未动 → DB 为跨设备真相
+    else if (turns.length) persistTurns(turns);   // DB 空但本地有 → 迁移进库
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyQuery.data]);
-  // hydrate 之后：对话变更防抖 800ms 回写数据库（覆盖式，含撤销所需的 createdIds/undone）。
+  // hydrate 之后：对话变更防抖 800ms 回写（写库 + 同步缓存，含撤销所需的 createdIds/undone）。
   useEffect(() => {
     if (!hydratedRef.current) return;
-    const id = setTimeout(() => saveHistoryMut.mutate({ projectId, turns: sanitizeTurnsForSave(turns) }), 800);
+    const id = setTimeout(() => persistTurns(turns), 800);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turns, projectId]);
@@ -253,7 +267,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 150 }}><LLMModelPicker value={model} onChange={setModel} disabled={chat.isPending} /></div>
         <button
-          onClick={() => { if (turns.length && !window.confirm("清空当前画布助手对话？")) return; setTurns([]); saveHistoryMut.mutate({ projectId, turns: [] }); }}
+          onClick={() => { if (turns.length && !window.confirm("清空当前画布助手对话？")) return; setTurns([]); persistTurns([]); }}
           title="新对话（清空当前画布助手对话）" disabled={chat.isPending}
           style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: chat.isPending ? "default" : "pointer" }}
         ><Plus size={14} /></button>

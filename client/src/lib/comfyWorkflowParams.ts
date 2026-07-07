@@ -76,14 +76,25 @@ export function detectUpstreamAspectRatio(targetId: string, edges: MiniEdge[], n
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const incoming = edges.map((e, i) => ({ e, i })).filter(({ e }) => e.target === targetId);
   incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  const normRatio = (v: unknown): string | undefined => {
+    if (typeof v !== "string") return undefined;
+    const t = v.trim().replace("：", ":").replace(/\s+/g, "");
+    return /^\d+:\d+$/.test(t) ? t : undefined;
+  };
   for (const { e } of incoming) {
     const src = byId.get(e.source);
     if (!src || !IMAGE_SOURCE_TYPES.has(src.data.nodeType)) continue;
     const p = (src.data.payload ?? {}) as Record<string, unknown>;
-    const ar = p.aspectRatio;
-    if (typeof ar === "string" && /^\d+\s*[:：]\s*\d+$/.test(ar.trim())) return ar.trim().replace("：", ":").replace(/\s+/g, "");
+    // 只认「真的贡献了输入图」的上游源（有 image url）——否则会拿一个还没出图/无关节点的比例。
+    if (!getNodeImageUrl(src.data.nodeType, p)) continue;
+    // 比例字段按模型族三读：kie→aspectRatio、poyo→poyoAspectRatio、reve/seedream/flux→reveAspectRatio
+    // （与 agentSceneApply 的「三写」对齐；手动在这些模型 UI 选比例只写单字段，故读侧必须都认）。
+    const ar = normRatio(p.aspectRatio) ?? normRatio(p.reveAspectRatio) ?? normRatio(p.poyoAspectRatio);
+    if (ar) return ar;
+    // Soul 等把宽高存成 "1024*1024"/"1024x1024" 字符串。
+    if (typeof p.widthAndHeight === "string") { const m = /(\d+)\s*[*x×:：]\s*(\d+)/.exec(p.widthAndHeight); if (m) return `${m[1]}:${m[2]}`; }
     const w = p.width, h = p.height;
-    if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) return `${Math.round(w)}:${Math.round(h)}`;
+    if (typeof w === "number" && typeof h === "number" && Math.round(w) > 0 && Math.round(h) > 0) return `${Math.round(w)}:${Math.round(h)}`;
   }
   return undefined;
 }
