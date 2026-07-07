@@ -175,17 +175,33 @@ function spawnClaudeCollect(
 ): Promise<{ text: string; isError: boolean }> {
   const { cmd, args, shell } = resolveClaudeSpawn(resolveClaudeBin(), extraArgs);
   return new Promise((resolve) => {
-    let out = "", err = "", done = false, spawnErr: string | null = null;
-    const child = spawn(cmd, args, { cwd: tmpdir(), env: process.env, stdio: ["pipe", "pipe", "pipe"], shell });
-    const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } }, timeoutMs);
+    let out = "", err = "", done = false, spawnErr: string | null = null, killed = false;
+    // detached（仅 POSIX）让子进程成为进程组组长——超时时可整组 SIGKILL，连带 claude 起的
+    // 技能/MCP 孙进程；否则只杀直接子进程、孙进程仍持有 stdio 管道致 'close' 不触发、Promise 卡死。
+    const child = spawn(cmd, args, { cwd: tmpdir(), env: process.env, stdio: ["pipe", "pipe", "pipe"], shell, detached: process.platform !== "win32" });
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+    const finish = () => {
+      if (done) return; done = true; clearTimeout(timer); if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (spawnErr) return resolve({ text: `无法启动 claude：${spawnErr}（检查 CLAUDE_BIN、是否已 npm i -g @anthropic-ai/claude-code）`, isError: true });
+      // 超时被中止 → 明确报错（不再把半截 stdout 当正常回复，掩盖真超时）。
+      if (killed) return resolve({ text: `本机模型生成超时被中止（>${Math.round(timeoutMs / 1000)}s）。复杂请求（画布助手加角色+模板）较慢，可调高 CLAUDE_BRIDGE_TIMEOUT_MS 或减少一次性规划的镜头/角色数量。` + (err ? `\n${err.slice(0, 300)}` : ""), isError: true });
+      resolve(parse(out, err));
+    };
+    const killTree = () => {
+      try {
+        if (process.platform === "win32") { spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"]); }
+        else if (child.pid) { process.kill(-child.pid, "SIGKILL"); }
+      } catch { try { child.kill("SIGKILL"); } catch { /* gone */ } }
+    };
+    const timer = setTimeout(() => {
+      killed = true; killTree();
+      // 兜底：整组 kill 后若 'close' 仍未触发（孙进程管道未释放），5s 后强制收敛 Promise，
+      // 不再让上层 fetch 一直挂到自建 300s abort（这才是「桥接超时形同虚设」的根因）。
+      fallbackTimer = setTimeout(finish, 5000);
+    }, timeoutMs);
     child.stdout?.on("data", (d) => { out += String(d); });
     child.stderr?.on("data", (d) => { err += String(d); });
     try { child.stdin?.write(stdin); child.stdin?.end(); } catch { /* stdin 不可用 */ }
-    const finish = () => {
-      if (done) return; done = true; clearTimeout(timer);
-      if (spawnErr) return resolve({ text: `无法启动 claude：${spawnErr}（检查 CLAUDE_BIN、是否已 npm i -g @anthropic-ai/claude-code）`, isError: true });
-      resolve(parse(out, err));
-    };
     child.on("error", (e) => { spawnErr = e instanceof Error ? e.message : String(e); finish(); });
     child.on("close", finish);
   });
