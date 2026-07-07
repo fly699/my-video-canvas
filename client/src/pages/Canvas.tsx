@@ -29,6 +29,7 @@ import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { CanvasAgentChat } from "../components/canvas/CanvasAgentChat";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useTopbarNarrow } from "../hooks/useTopbarNarrow";
+import { useIsMobile } from "../hooks/useMobile";
 import { useStudioCreateBarCollapsed, setStudioCreateBarCollapsed } from "../hooks/useStudioCreateBar";
 import { useUIStyle } from "../contexts/UIStyleContext";
 import { PoyoBalanceDashboard } from "../components/PoyoBalanceDashboard";
@@ -765,6 +766,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const systemDefaultModels = useSystemDefaultModels();
   // 顶栏窄屏信号：给余额/模型块在窄屏收起文字标签，腾横向空间。
   const topbarNarrow = useTopbarNarrow();
+  // 移动端（触屏窄屏）判断：仅用于开启单指平移等触屏友好行为，绝不改动桌面端逻辑。
+  const isMobile = useIsMobile();
   // 「快速创作栏」折叠状态（底部工具栏那枚按钮控制 StudioCreateBar 展开/收起）。
   const { uiStyle } = useUIStyle();
   const [createBarCollapsed] = useStudioCreateBarCollapsed();
@@ -1897,6 +1900,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => setShowNodeLib(!showNodeLib)}
                 className="topbar-btn"
+                data-tour="node-lib"
                 data-active={showNodeLib ? "true" : undefined}
                 style={showNodeLib ? { background: "oklch(0.65 0.20 140 / 0.12)", border: "1px solid oklch(0.65 0.20 140 / 0.3)", color: "oklch(0.65 0.20 140)" } : undefined}
               >
@@ -2161,7 +2165,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
               border: "1px solid var(--c-bd2)",
               boxShadow: "0 20px 80px oklch(0 0 0 / 0.40), 0 4px 16px oklch(0 0 0 / 0.20), 0 0 0 1px var(--c-bd2)",
               backdropFilter: "blur(32px)",
-              width: 520,
+              width: "min(520px, calc(100vw - 24px))",
+              maxWidth: "calc(100vw - 24px)",
             }}
           >
             <div
@@ -2388,8 +2393,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edgesFocusable={!isReadOnly}
             elementsSelectable
             selectionMode={SelectionMode.Partial}
-            selectionOnDrag
-            panOnDrag={[1, 2]}
+            selectionOnDrag={!isMobile}
+            panOnDrag={isMobile ? true : [1, 2]}
             panOnScroll
             panOnScrollMode={PanOnScrollMode.Free}
             zoomOnScroll={false}

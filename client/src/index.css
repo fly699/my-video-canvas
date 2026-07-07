@@ -1254,6 +1254,20 @@ button:active:not(:disabled) {
   cursor: grabbing !important;
 }
 
+/* 移动端触屏：画布内的手势（单指平移 / 双指缩放）由 react-flow 自行处理，
+   浏览器不应再把它当成页面滚动 / 下拉刷新（否则平移会与页面滚动打架、误触发刷新）。
+   touch-action:none 交给 react-flow；overscroll:none 阻断滚动链。仅影响触屏，桌面无感。 */
+@media (max-width: 767px) {
+  .react-flow__pane,
+  .react-flow__renderer,
+  .react-flow__viewport {
+    touch-action: none;
+  }
+  .react-flow {
+    overscroll-behavior: none;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CREATIVE MODE — LibTV-inspired media-first canvas layout
    ═══════════════════════════════════════════════════════════════════════════ */

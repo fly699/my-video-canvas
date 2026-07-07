@@ -563,7 +563,7 @@ export function HelpPanel({ open, onClose, activeNodeType, onAddNode, onStartTou
     <div
       className="fixed top-0 right-0 h-full z-40 flex flex-col"
       style={{
-        width: 340,
+        width: "min(340px, 100vw)",
         background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
         backdropFilter: "blur(28px)",
         borderLeft: "1px solid var(--c-bd2)",

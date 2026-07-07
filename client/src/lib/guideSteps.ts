@@ -177,6 +177,18 @@ export const GUIDE_STEPS: TourStep[] = [
     openPanel: "nodePicker",
   },
   {
+    id: "comfy-templates",
+    chapter: "ComfyUI 集成",
+    icon: "📦",
+    title: "ComfyUI 工作流 / 节点模板库",
+    body: [
+      "右键任意 ComfyUI 节点，把它的全部参数（含提示词 / 工作流）存为共享模板，全员可复用。",
+      "打开顶栏「节点模板库」：按外框颜色分类、可搜索 / 注释 / 重命名，点击即在画布快速新建带参节点。",
+    ],
+    target: '[data-tour="node-lib"]',
+    placement: "bottom",
+  },
+  {
     id: "assets",
     chapter: "素材库",
     icon: "📎",
@@ -217,12 +229,25 @@ export const GUIDE_STEPS: TourStep[] = [
     id: "collab",
     chapter: "协作与聊天",
     icon: "💬",
-    title: "多人实时协作 · 团队聊天",
+    title: "团队聊天 · 聊天 AI 助手 · 协作",
     body: [
       "多用户同时编辑，节点变更秒同步，协作者光标可见、他人节点按创建者显示专属颜色。",
-      "顶栏聊天支持大厅 / 群聊 / 端到端加密私聊，还能装成桌面应用。",
+      "顶栏聊天支持大厅 / 群聊 / 端到端加密私聊，还能装成移动端 / 桌面应用。",
+      "聊天里还内置「AI 助手」——直接和 AI 对话写脚本、润色、答疑，与画布节点共用同一套人设模板。",
     ],
     target: '[data-tour="chat"]',
+    placement: "bottom",
+  },
+  {
+    id: "asset-push",
+    chapter: "产物推送",
+    icon: "🔔",
+    title: "产物自动推送，不进画布也能收",
+    body: [
+      "你生成的每个产物（图 / 视频 / 音频 / ComfyUI）都会自动推送到聊天里的「我的产物通知」房——不进画布也能实时收、历史随时查。",
+      "点「更多 → 产物推送设置」还能配 Bark / Server酱 / Telegram 等外部推送，关着页面 / 在手机上离线也能收到。",
+    ],
+    target: '[data-tour="more"]',
     placement: "bottom",
   },
   {

@@ -106,7 +106,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   });
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:size", JSON.stringify(size)); } catch { /* quota */ } }, [size]);
   useEffect(() => { if (pos) { try { localStorage.setItem("avc:canvasAgent:pos", JSON.stringify(pos)); } catch { /* quota */ } } }, [pos]);
-  const left = pos ? pos.left : Math.max(8, window.innerWidth - size.w - 16);
+  // 初始位置也钳制在视口内（窄屏下 380px 面板若不钳制会右侧溢出被裁）。
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const effW = Math.min(size.w, vw - 16);
+  const left = pos ? Math.max(8, Math.min(pos.left, vw - effW - 8)) : Math.max(8, vw - effW - 16);
   const top = pos ? pos.top : Math.max(8, window.innerHeight - size.h - 16);
 
   // ── 收起为悬浮小球（点关闭=收起，非真关闭；小球右键才可关闭）──
@@ -128,13 +131,16 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     window.addEventListener("keydown", close);
     return () => { window.removeEventListener("click", close); window.removeEventListener("keydown", close); };
   }, [ballMenu]);
-  // 拖拽小球；位移过小视为点击 → 展开面板。仅左键触发拖拽（右键留给菜单）。
-  const startBallDrag = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
+  // 拖拽小球；位移过小视为点击 → 展开面板。用 Pointer 事件统一鼠标 + 触屏（移动端也能拖），
+  // setPointerCapture 让 move/up 始终落到小球本身。鼠标仅左键触发（右键留给菜单）。
+  const startBallDrag = (e: React.PointerEvent) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    try { el.setPointerCapture(e.pointerId); } catch { /* older browsers */ }
     const sx = e.clientX, sy = e.clientY, il = ballLeft, it = ballTop;
     let moved = false;
-    const onMove = (mv: MouseEvent) => {
+    const onMove = (mv: PointerEvent) => {
       if (!moved && Math.hypot(mv.clientX - sx, mv.clientY - sy) < 4) return;
       moved = true;
       setBallPos({
@@ -143,12 +149,14 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       });
     };
     const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      if (!moved) setCollapsed(false); // 点击（未拖动）→ 展开
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      if (!moved) setCollapsed(false); // 点击/轻触（未拖动）→ 展开
     };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
   };
 
   const startDrag = (e: React.MouseEvent) => {
@@ -298,7 +306,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
 
   const panel = (
     <div ref={panelRef} className="nodrag nowheel" style={{
-      position: "fixed", left, top, width: size.w, height: size.h,
+      position: "fixed", left, top, width: effW, height: size.h,
       display: "flex", flexDirection: "column", background: "var(--c-base)", border: `1px solid ${accent}`, borderRadius: 14,
       boxShadow: "0 18px 50px rgba(0,0,0,0.45)", zIndex: 50, overflow: "hidden",
     }} onClick={(e) => e.stopPropagation()}>
@@ -461,11 +469,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       <div
         role="button"
         title="画布助手（点击展开 · 拖动移位 · 右键关闭）"
-        onMouseDown={startBallDrag}
+        onPointerDown={startBallDrag}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setBallMenu({ x: e.clientX, y: e.clientY }); }}
         style={{
           position: "fixed", left: ballLeft, top: ballTop, width: BALL, height: BALL, zIndex: 50,
-          borderRadius: "50%", cursor: "grab", userSelect: "none",
+          borderRadius: "50%", cursor: "grab", userSelect: "none", touchAction: "none",
           display: "flex", alignItems: "center", justifyContent: "center",
           background: "radial-gradient(circle at 32% 28%, oklch(0.80 0.16 310), oklch(0.62 0.22 300) 55%, oklch(0.52 0.20 285))",
           animation: "avc-ball-float 3.2s ease-in-out infinite, avc-ball-glow 2.6s ease-in-out infinite",

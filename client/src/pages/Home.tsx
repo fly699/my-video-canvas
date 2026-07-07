@@ -40,6 +40,7 @@ import {
   ScrollText,
   Search,
   ArrowDownUp,
+  Bell,
 } from "lucide-react";
 
 // ── Project card ─────────────────────────────────────────────────────────────
@@ -986,6 +987,24 @@ export default function Home() {
                     icon: Sparkles, color: "oklch(0.72 0.16 200)",
                     title: "本机 Claude / GPT 桥接",
                     desc: "用你的 Claude / ChatGPT 订阅额度跑画布 AI，不按 token 计费；后台贴 MCP 配置即可让本机 Claude 调 ComfyUI 等工具集，转写可指 OpenAI / Groq / 自建 whisper",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: MessageCircle, color: "oklch(0.70 0.18 285)",
+                    title: "聊天 AI 助手",
+                    desc: "团队聊天里直接与 AI 助手对话——写脚本、润色、答疑，与画布节点共用 30+ 人设模板；大厅/群聊/端到端加密私聊，可装为移动端应用",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Bell, color: "oklch(0.72 0.18 60)",
+                    title: "产物推送通知",
+                    desc: "生成的图/视频/音频/ComfyUI 产物自动推到聊天「我的产物通知」房，不进画布也能实时收+历史查；还可配 Bark/Server酱/Telegram 等外部推送，关页面/离线也能收",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Bookmark, color: "oklch(0.65 0.20 140)",
+                    title: "ComfyUI 工作流 / 节点模板库",
+                    desc: "右键任意 ComfyUI 节点把全部参数（含提示词/工作流）存为共享模板，全员可调用；按外框颜色分类、可搜索/注释/重命名，点击即在画布快速新建带参节点",
                     badge: "NEW",
                   },
                 ].map((f, i) => (

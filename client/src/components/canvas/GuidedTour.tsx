@@ -97,15 +97,43 @@ function KeyCap({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function GuidedTour({ onStep }: { onStep?: (step: TourStep | null) => void }) {
-  const active = useGuideStore((s) => s.active);
-  const stepIndex = useGuideStore((s) => s.stepIndex);
-  const next = useGuideStore((s) => s.next);
-  const prev = useGuideStore((s) => s.prev);
-  const goTo = useGuideStore((s) => s.goTo);
-  const stop = useGuideStore((s) => s.stop);
+/** 外部控制器：不走全局 useGuideStore 时（如聊天页），由调用方注入状态与动作，
+ *  即可复用同一套 spotlight 视觉。 */
+export interface TourController {
+  active: boolean;
+  stepIndex: number;
+  next: () => void;
+  prev: () => void;
+  goTo: (i: number) => void;
+  stop: (done?: boolean) => void;
+}
 
-  const step: TourStep | undefined = active ? GUIDE_STEPS[stepIndex] : undefined;
+export function GuidedTour({
+  onStep, steps: stepsProp, controller,
+}: {
+  onStep?: (step: TourStep | null) => void;
+  /** 步骤数据；缺省用画布的 GUIDE_STEPS。 */
+  steps?: TourStep[];
+  /** 外部状态控制器；缺省用全局 useGuideStore（画布）。 */
+  controller?: TourController;
+}) {
+  // Hooks 必须无条件调用；controller 存在时忽略 store 的值。
+  const storeActive = useGuideStore((s) => s.active);
+  const storeStepIndex = useGuideStore((s) => s.stepIndex);
+  const storeNext = useGuideStore((s) => s.next);
+  const storePrev = useGuideStore((s) => s.prev);
+  const storeGoTo = useGuideStore((s) => s.goTo);
+  const storeStop = useGuideStore((s) => s.stop);
+
+  const steps = stepsProp ?? GUIDE_STEPS;
+  const active = controller ? controller.active : storeActive;
+  const stepIndex = controller ? controller.stepIndex : storeStepIndex;
+  const next = controller ? controller.next : storeNext;
+  const prev = controller ? controller.prev : storePrev;
+  const goTo = controller ? controller.goTo : storeGoTo;
+  const stop = controller ? controller.stop : storeStop;
+
+  const step: TourStep | undefined = active ? steps[stepIndex] : undefined;
   const [rect, setRect] = useState<Rect | null>(null);
   const [vp, setVp] = useState({ w: typeof window !== "undefined" ? window.innerWidth : 1280, h: typeof window !== "undefined" ? window.innerHeight : 800 });
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -166,7 +194,7 @@ export function GuidedTour({ onStep }: { onStep?: (step: TourStep | null) => voi
 
   if (!active || !step) return null;
 
-  const total = GUIDE_STEPS.length;
+  const total = steps.length;
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const pos = placeCard(rect, CARD_W, cardH, vp.w, vp.h, step.placement);
@@ -329,7 +357,7 @@ export function GuidedTour({ onStep }: { onStep?: (step: TourStep | null) => voi
 
         {/* 进度点 */}
         <div style={{ display: "flex", justifyContent: "center", gap: 5, padding: "0 18px 10px" }}>
-          {GUIDE_STEPS.map((s, i) => (
+          {steps.map((s, i) => (
             <button
               key={s.id}
               onClick={() => goTo(i)}
