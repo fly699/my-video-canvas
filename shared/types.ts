@@ -1138,6 +1138,11 @@ export interface WorkflowParamBinding {
   min?: number;
   max?: number;
   step?: number;
+  /** 该绑定的节点 class_type（分析时记录，供「id 被复用成别的节点」的守卫校验）。 */
+  classType?: string;
+  /** 主次优先级：1=主参数（提示词/尺寸/主模型/steps/cfg/seed），2=次要。缺省按 2 处理。
+   *  由 AI 辅助分析或启发式赋值，前端据此把主参数排在前、次要参数折叠。 */
+  priority?: number;
 }
 
 export interface ComfyuiWorkflowNodeData {
