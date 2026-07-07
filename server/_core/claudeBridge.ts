@@ -62,6 +62,15 @@ export function parseClaudeJsonResult(stdout: string): { text: string; isError: 
 /** 桥接是否启用（= 是否设了 CLAUDE_LOCAL_BRIDGE_KEY）。 */
 export function isClaudeBridgeEnabled(): boolean { return !!process.env.CLAUDE_LOCAL_BRIDGE_KEY?.trim(); }
 
+/** 桥接专属模型 id：claude-local*（Claude 订阅）/ gpt-local*（ChatGPT 订阅）。这些 id 是桥接
+ *  保留串，不该与通用「自建 LLM」的模型列表耦合——路由/鉴权应直接指向本机桥接。 */
+export function isClaudeLocalModel(model?: unknown): boolean {
+  return typeof model === "string" && model.trim().toLowerCase().startsWith("claude-local");
+}
+export function isBridgeModel(model?: unknown): boolean {
+  return isClaudeLocalModel(model) || isGptLocalModel(model);
+}
+
 /** 桥接子进程（claude -p / codex exec）生成超时（毫秒）。默认 280s，可用 CLAUDE_BRIDGE_TIMEOUT_MS
  *  覆盖（下限 30s）。大计划（画布助手加角色+模板）生成慢，110s 不够会被 SIGKILL。 */
 export function bridgeTimeoutMs(): number {
