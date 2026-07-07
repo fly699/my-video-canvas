@@ -10,6 +10,7 @@ import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, effectiveCharacterVideoRefs, effectiveCharacterAudioRefs } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
+import { composeCharacterEffectPrompt } from "../../../lib/promptCompose";
 import { detectUpstreamPrompt, detectUpstreamImageUrl, listUpstreamVideoSources, listUpstreamAudioSources, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
 import { SUPPORTS_REF_VIDEO, SUPPORTS_REF_AUDIO, collectVideoRefMedia } from "../../../lib/videoRefMedia";
 import { trpc } from "@/lib/trpc";
@@ -1237,15 +1238,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     const charRefFallback = chars.find((c) => (c.characterKind ?? "person") !== "scene" && c.referenceImageUrl?.trim())?.referenceImageUrl
       ?? mentionedMediaUrls(payload.prompt, "image", allNodes)[0];
     return {
-      // Cap to the server's prompt limit (z.string().max(4000)); the base prompt is
-      // preserved and only the injected character text is trimmed to fit — otherwise
-      // many/long character profiles could push it over 4000 → BAD_REQUEST. Also append
-      // any connected post_process「效果注入」effect prompts so a wired post_process works.
-      prompt: appendEffectPrompts(
-        mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.prompt, allNodes), allNodes), chars, 4000),
-        connectedEffectPrompts(id, allEdges, allNodes),
-        4000,
-      ),
+      // prompt 组装（剥@角色/@媒体 → 注入角色 → 追加效果，cap 4000）抽到共享纯函数
+      // composeCharacterEffectPrompt——与「运行全部」runner 的 video_task 分支同一事实源。
+      prompt: composeCharacterEffectPrompt(id, payload.prompt ?? "", allNodes, allEdges, 4000),
       // 参考图优先级（与「运行全部」runner 的 autoDetectInputImage 同口径）：
       // 手动/推送 payload.referenceImageUrl > 直连上游图像节点(拉取兜底，i2v 首帧) > 角色/@图像。
       // 拉取兜底保证「image_gen 直连 ref-image-in 但推送未及时写入」时逐节点按钮也能取到首帧。
