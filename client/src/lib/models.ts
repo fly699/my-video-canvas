@@ -131,7 +131,7 @@ export function imageModelRequiresRef(value?: string): boolean {
 // 便于一眼区分。脚本/对话节点的 Forge/Poyo 绿/蓝即源于此。
 const PLATFORM_HUE: Record<string, number> = {
   Poyo: 240, Manus: 160, Forge: 160, Higgsfield: 310, Kie: 200,
-  Suno: 285, MiniMax: 30, OpenAI: 150, Local: 95, Dev: 20, SelfHosted: 200, Custom: 320,
+  Suno: 285, MiniMax: 30, OpenAI: 150, Local: 95, Dev: 20, SelfHosted: 200, Custom: 320, Groq: 25,
 };
 export function platformBadge(name: string): { bg: string; fg: string } {
   const h = PLATFORM_HUE[name] ?? 265;
@@ -145,7 +145,7 @@ export function platformBadge(name: string): { bg: string; fg: string } {
 // 故必须显式置顶（-1），与各 picker「self-hosted 数组前插」的本意一致。
 const GROUP_ORDER: Record<string, number> = {
   // 自定义模型（用户自带 key）置于自建之后、内置之前——既显眼又不抢自建基建的头位。
-  SelfHosted: -1, Custom: -0.5, Manus: 0, Forge: 0, Kie: 1, Poyo: 2, Higgsfield: 3, Dev: 8,
+  SelfHosted: -1, Groq: -0.8, Custom: -0.5, Manus: 0, Forge: 0, Kie: 1, Poyo: 2, Higgsfield: 3, Dev: 8,
 };
 export function modelGroupOrder(group: string): number {
   return GROUP_ORDER[group] ?? 4;
@@ -361,12 +361,16 @@ export type TranscribeModelMeta = {
   value: string;
   label: string;
   desc: string;
-  group: "Forge";
-  provider: "Forge";
+  group: "Forge" | "Groq" | "SelfHosted";
+  provider: "Forge" | "Groq" | "SelfHosted";
   costNote: string;
 };
 export const TRANSCRIBE_MODELS: readonly TranscribeModelMeta[] = [
   { value: "whisper-1",              label: "Whisper v1",          desc: "默认 · 稳定",  group: "Forge", provider: "Forge", costNote: "内置" },
   { value: "gpt-4o-transcribe",      label: "GPT-4o Transcribe",   desc: "更准",         group: "Forge", provider: "Forge", costNote: "内置" },
   { value: "gpt-4o-mini-transcribe", label: "GPT-4o mini Transcribe", desc: "更快 / 更省", group: "Forge", provider: "Forge", costNote: "内置" },
+  // Groq / 自建 whisper：需把转写端点指过去（TRANSCRIBE_API_URL/KEY，见部署文档）。模型名与
+  // OpenAI 不同，故单列——选它前确认端点已切到 Groq 或本机 whisper，否则会报「模型不存在」。
+  { value: "whisper-large-v3",       label: "Whisper large-v3",     desc: "Groq/自建 · 词级", group: "Groq", provider: "Groq", costNote: "按端点" },
+  { value: "whisper-large-v3-turbo", label: "Whisper large-v3 turbo", desc: "Groq/自建 · 更快", group: "Groq", provider: "Groq", costNote: "按端点" },
 ] as const;
