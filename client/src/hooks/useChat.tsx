@@ -7,9 +7,9 @@ import type {
 import {
   generateIdentityKeyPair, importPrivateKeyJwk, exportPrivateKeyJwk,
   deriveSharedKey, generateRoomKey, encryptText, decryptText,
-  wrapRoomKeyForMember, unwrapRoomKey, type Encrypted,
+  wrapRoomKeyForMember, unwrapRoomKey, roomKeyToB64, roomKeyFromB64, type Encrypted,
 } from "@/lib/chatCrypto";
-import { loadPrivateKeyJwk, savePrivateKeyJwk, loadLocalHistory, appendLocalHistory } from "@/lib/chatKeyStore";
+import { loadPrivateKeyJwk, savePrivateKeyJwk, loadLocalHistory, appendLocalHistory, loadRoomKey, saveRoomKey, saveLocalHistory } from "@/lib/chatKeyStore";
 import { Lightbox } from "@/components/chat/chatLightbox";
 
 export interface ConversationSummary {
@@ -68,6 +68,11 @@ export const useChat = () => {
 
 const CHUNK = 256 * 1024; // 256KB per chunk (under the 8MB socket buffer)
 
+// Local-only augmentation: a message we couldn't decrypt yet keeps its ciphertext so it
+// can be re-decrypted once the room key finally arrives (never sent to the server).
+type StoredChatMsg = ChatWireMessage & { _enc?: { ciphertext: string; iv: string } };
+const DECRYPT_FAIL = "[无法解密]";
+
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const utils = trpc.useUtils();
   const convQuery = trpc.chat.listConversations.useQuery(undefined, { refetchOnWindowFocus: false });
@@ -96,6 +101,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const socketRef = useRef<Socket | null>(null);
   const privateKeyRef = useRef<CryptoKey | null>(null);
+  // my identity public key (JWK) — stored so I can wrap room keys and stamp senderPubJwk.
+  const publicKeyRef = useRef<JsonWebKey | null>(null);
   // per-conversation symmetric key cache for serverless mode
   const convKeyRef = useRef<Map<number, CryptoKey>>(new Map());
   const activeIdRef = useRef<number | null>(null);
@@ -108,6 +115,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const createUploadUrlMut = trpc.chat.createUploadUrl.useMutation();
   const confirmUploadMut = trpc.chat.confirmUpload.useMutation();
   const publishKeyMut = trpc.chat.publishPublicKey.useMutation();
+  const putRoomKeyBundlesMut = trpc.chat.putRoomKeyBundles.useMutation();
 
   const activeConv = useMemo(() => conversations.find((c) => c.id === activeId) ?? null, [conversations, activeId]);
   const didAutoSelectRef = useRef(false);
@@ -140,6 +148,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           pubJwk = idk.publicKeyJwk;
           jwk = privJwk;
         }
+        publicKeyRef.current = pubJwk;
         await publishKeyMut.mutateAsync({ publicKeyJwk: pubJwk as Record<string, unknown> });
       } catch (e) {
         console.warn("[chat] identity key bootstrap failed", e);
@@ -220,6 +229,66 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // ── conversation key derivation (serverless) ──────────────────────────────
+  // Cache a room key in memory AND IndexedDB so a refresh never loses it (which would
+  // otherwise force a divergent re-mint → the "[无法解密]" bug).
+  const persistRoomKey = useCallback(async (convId: number, key: CryptoKey) => {
+    convKeyRef.current.set(convId, key);
+    try { await saveRoomKey(convId, await roomKeyToB64(key)); } catch { /* IndexedDB best-effort */ }
+  }, []);
+
+  // Re-decrypt any messages that were stored as "[无法解密]" once the correct key arrives.
+  const reDecryptConversation = useCallback(async (convId: number, key: CryptoKey) => {
+    const hist = (await loadLocalHistory(convId)) as StoredChatMsg[];
+    let changed = false;
+    const next = await Promise.all(hist.map(async (m) => {
+      if (m.content !== DECRYPT_FAIL || !m._enc) return m;
+      try {
+        const text = await decryptText(key, m._enc);
+        changed = true;
+        const { _enc, ...rest } = m; void _enc;
+        return { ...rest, content: text } as StoredChatMsg;
+      } catch { return m; }
+    }));
+    if (!changed) return;
+    await saveLocalHistory(convId, next as ChatWireMessage[]);
+    if (convId === activeIdRef.current) setMessages(next.map(({ _enc, ...r }) => { void _enc; return r as ChatWireMessage; }));
+  }, []);
+
+  // Wrap the room key for every member's published public key and upload the ciphertext
+  // bundles to the server (server can't read them). Lets refreshing / offline / new
+  // members converge on the same key instead of minting a divergent one.
+  const distributeRoomKey = useCallback(async (convId: number, key: CryptoKey) => {
+    if (!privateKeyRef.current || !publicKeyRef.current) return;
+    try {
+      const detail = await utils.chat.getConversation.fetch({ conversationId: convId });
+      const memberIds = detail.members.map((m) => m.userId).filter((uid) => uid !== myUserId);
+      if (!memberIds.length) return;
+      const pubKeys = await utils.chat.getPublicKeys.fetch({ userIds: memberIds });
+      const bundles: { memberUserId: number; wrappedKey: Encrypted }[] = [];
+      for (const pk of pubKeys) {
+        try {
+          const wrapping = await deriveSharedKey(privateKeyRef.current, pk.publicKeyJwk as JsonWebKey);
+          bundles.push({ memberUserId: pk.userId, wrappedKey: await wrapRoomKeyForMember(key, wrapping) });
+        } catch { /* skip member whose key we can't wrap for */ }
+      }
+      if (bundles.length) await putRoomKeyBundlesMut.mutateAsync({ conversationId: convId, senderPublicKeyJwk: publicKeyRef.current as Record<string, unknown>, bundles });
+    } catch { /* best-effort distribution */ }
+  }, [utils, myUserId, putRoomKeyBundlesMut]);
+
+  // Try to pull my wrapped room key from the server bundle. Returns the key or null.
+  const tryServerBundle = useCallback(async (convId: number): Promise<CryptoKey | null> => {
+    if (!privateKeyRef.current) return null;
+    try {
+      const bundle = await utils.chat.getRoomKeyBundle.fetch({ conversationId: convId });
+      if (!bundle) return null;
+      const wrapping = await deriveSharedKey(privateKeyRef.current, bundle.senderPubJwk as JsonWebKey);
+      const k = await unwrapRoomKey(bundle.wrappedKey as Encrypted, wrapping);
+      await persistRoomKey(convId, k);
+      void reDecryptConversation(convId, k);
+      return k;
+    } catch { return null; }
+  }, [utils, persistRoomKey, reDecryptConversation]);
+
   const getConversationKey = useCallback(async (convId: number, type: string): Promise<CryptoKey | null> => {
     const cached = convKeyRef.current.get(convId);
     if (cached) return cached;
@@ -245,40 +314,71 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
 
-    // group: request the room key from peers; if none respond shortly, mint one.
+    // group: converge on ONE room key. Priority ladder (never blindly mint):
+    // 1) IndexedDB (survives refresh)
+    const savedB64 = await loadRoomKey(convId);
+    if (savedB64) {
+      try {
+        const k = await roomKeyFromB64(savedB64);
+        convKeyRef.current.set(convId, k);
+        void reDecryptConversation(convId, k);
+        return k;
+      } catch { /* corrupt — fall through */ }
+    }
+    // 2) server-hosted wrapped bundle (created by whoever minted; survives offline/refresh/new-device)
+    const fromServer = await tryServerBundle(convId);
+    if (fromServer) return fromServer;
+    // 3) ask live peers over socket; retry a few times, re-checking the server bundle each round
     const socket = socketRef.current;
-    if (!socket) return null;
-    socket.emit("chat:relay", {
-      conversationId: convId, kind: "key-request", ciphertext: "", iv: "",
-      clientMsgId: crypto.randomUUID(), senderId: 0, senderName: "",
-    } as ChatRelayPayload);
-    // wait briefly for a key-bundle response
-    await new Promise((r) => setTimeout(r, 800));
-    const afterWait = convKeyRef.current.get(convId);
-    if (afterWait) return afterWait;
-    // mint a fresh room key (first member in)
-    const roomKey = await generateRoomKey();
-    convKeyRef.current.set(convId, roomKey);
-    return roomKey;
-  }, [utils]);
+    if (socket) {
+      for (let i = 0; i < 3; i++) {
+        socket.emit("chat:relay", {
+          conversationId: convId, kind: "key-request", ciphertext: "", iv: "",
+          clientMsgId: crypto.randomUUID(), senderId: 0, senderName: "",
+        } as ChatRelayPayload);
+        await new Promise((r) => setTimeout(r, 700));
+        const got = convKeyRef.current.get(convId);
+        if (got) return got;
+        const late = await tryServerBundle(convId);
+        if (late) return late;
+      }
+    }
+    // 4) mint — but ONLY the designated minter (conversation creator, else lowest userId),
+    //    so two members can't each mint a divergent key. Non-minters wait for the key.
+    const detail = await utils.chat.getConversation.fetch({ conversationId: convId });
+    const memberIds = detail.members.map((m) => m.userId);
+    const minter = detail.createdBy ?? (memberIds.length ? Math.min(...memberIds) : null);
+    if (myUserId != null && minter === myUserId) {
+      const roomKey = await generateRoomKey();
+      await persistRoomKey(convId, roomKey);
+      void distributeRoomKey(convId, roomKey); // publish wrapped bundles for everyone
+      return roomKey;
+    }
+    return null; // not the minter and no key yet → wait for the minter to come online
+  }, [utils, myUserId, persistRoomKey, reDecryptConversation, tryServerBundle, distributeRoomKey]);
 
-  // distribute room key to a requesting member
+  // answer a key-request: wrap the room key for the requester and both relay it live AND
+  // persist a server bundle (so it survives me going offline).
   const answerKeyRequest = useCallback(async (convId: number, requesterId: number) => {
-    const key = convKeyRef.current.get(convId);
-    if (!key || !privateKeyRef.current) return;
-    const socket = socketRef.current;
-    if (!socket) return;
+    if (!requesterId || !privateKeyRef.current || !publicKeyRef.current) return;
+    let key = convKeyRef.current.get(convId);
+    if (!key) { // not in memory — try IndexedDB before giving up
+      const b64 = await loadRoomKey(convId);
+      if (b64) { try { key = await roomKeyFromB64(b64); convKeyRef.current.set(convId, key); } catch { /* corrupt */ } }
+    }
+    if (!key) return;
     const keys = await utils.chat.getPublicKeys.fetch({ userIds: [requesterId] });
     const reqKey = keys[0];
     if (!reqKey) return;
     const wrapping = await deriveSharedKey(privateKeyRef.current, reqKey.publicKeyJwk as JsonWebKey);
     const wrapped = await wrapRoomKeyForMember(key, wrapping);
-    socket.emit("chat:relay", {
+    socketRef.current?.emit("chat:relay", {
       conversationId: convId, kind: "key-bundle", target: requesterId,
       ciphertext: wrapped.ciphertext, iv: wrapped.iv,
       clientMsgId: crypto.randomUUID(), senderId: 0, senderName: "",
     } as ChatRelayPayload);
-  }, [utils]);
+    try { await putRoomKeyBundlesMut.mutateAsync({ conversationId: convId, senderPublicKeyJwk: publicKeyRef.current as Record<string, unknown>, bundles: [{ memberUserId: requesterId, wrappedKey: wrapped }] }); } catch { /* live relay still delivered */ }
+  }, [utils, putRoomKeyBundlesMut]);
 
   const handleRelay = useCallback(async (payload: ChatRelayPayload) => {
     if (payload.kind === "key-request") {
@@ -287,6 +387,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
     if (payload.kind === "key-bundle") {
       // only consume if addressed to me — derive wrapping key from sender pub
+      if (payload.target != null && payload.target !== myUserId) return;
       if (!privateKeyRef.current) return;
       try {
         const keys = await utils.chat.getPublicKeys.fetch({ userIds: [payload.senderId] });
@@ -294,17 +395,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         if (!sk) return;
         const wrapping = await deriveSharedKey(privateKeyRef.current, sk.publicKeyJwk as JsonWebKey);
         const roomKey = await unwrapRoomKey({ ciphertext: payload.ciphertext, iv: payload.iv }, wrapping);
-        convKeyRef.current.set(payload.conversationId, roomKey);
+        await persistRoomKey(payload.conversationId, roomKey);
+        void reDecryptConversation(payload.conversationId, roomKey); // fix any earlier "[无法解密]"
       } catch { /* not for me / wrong key */ }
       return;
     }
     // message
     const conv = conversations.find((c) => c.id === payload.conversationId);
     const key = await getConversationKey(payload.conversationId, conv?.type ?? "group");
-    if (!key) return;
-    let text = "[无法解密]";
-    try { text = await decryptText(key, { ciphertext: payload.ciphertext, iv: payload.iv }); } catch { /* keep placeholder */ }
-    const wire: ChatWireMessage = {
+    let text = DECRYPT_FAIL;
+    if (key) { try { text = await decryptText(key, { ciphertext: payload.ciphertext, iv: payload.iv }); } catch { /* keep placeholder */ } }
+    const wire: StoredChatMsg = {
       id: Date.now() + Math.floor(Math.random() * 1000),
       conversationId: payload.conversationId,
       senderId: payload.senderId,
@@ -312,12 +413,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       content: text,
       attachments: payload.fileMeta ? [payload.fileMeta] : null,
       createdAt: new Date().toISOString(),
+      // Retain ciphertext locally when we couldn't decrypt, so it can be re-decrypted
+      // once the room key arrives (never uploaded to the server).
+      ...(text === DECRYPT_FAIL ? { _enc: { ciphertext: payload.ciphertext, iv: payload.iv } } : {}),
     };
     await appendLocalHistory(payload.conversationId, wire);
     if (payload.conversationId === activeIdRef.current) {
-      setMessages((prev) => [...prev, wire]);
+      const { _enc, ...display } = wire; void _enc;
+      setMessages((prev) => [...prev, display as ChatWireMessage]);
     }
-  }, [conversations, getConversationKey, answerKeyRequest, utils]);
+  }, [conversations, getConversationKey, answerKeyRequest, utils, myUserId, persistRoomKey, reDecryptConversation]);
 
   const handleFileChunk = useCallback(async (frame: { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: ChatFileRef; encrypted?: boolean; senderId: number; senderName?: string }) => {
     const conv = conversations.find((c) => c.id === frame.conversationId);

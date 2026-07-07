@@ -27,6 +27,8 @@ import {
   listConversationAttachments,
   upsertUserPublicKey,
   getUserPublicKeys,
+  putChatRoomKeyBundles,
+  getChatRoomKeyBundle,
   isChatBanned,
   getChatSettings,
   searchUsersForChat,
@@ -728,4 +730,33 @@ export const chatRouter = router({
   getPublicKeys: protectedProcedure
     .input(z.object({ userIds: z.array(z.number()).max(200) }))
     .query(async ({ input }) => getUserPublicKeys(input.userIds)),
+
+  // ── serverless group room-key bundles (E2E: server stores ciphertext only) ──
+  // The key-holder wraps the room key for each member's published public key and
+  // uploads the ciphertext bundles here so refreshing / offline / new members converge
+  // instead of minting divergent keys. Server/admin cannot decrypt these.
+  putRoomKeyBundles: protectedProcedure
+    .input(z.object({
+      conversationId: z.number(),
+      senderPublicKeyJwk: z.record(z.string(), z.unknown()),
+      bundles: z.array(z.object({
+        memberUserId: z.number(),
+        wrappedKey: z.object({ ciphertext: z.string().max(20000), iv: z.string().max(1000) }),
+      })).max(200),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!(await isChatMember(input.conversationId, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN", message: "非会话成员" });
+      // Only accept bundles addressed to actual members of this conversation.
+      const members = new Set((await listChatMembers(input.conversationId)).map((m) => m.userId));
+      const bundles = input.bundles.filter((b) => members.has(b.memberUserId));
+      await putChatRoomKeyBundles(input.conversationId, input.senderPublicKeyJwk, bundles);
+      return { success: true, stored: bundles.length };
+    }),
+
+  getRoomKeyBundle: protectedProcedure
+    .input(z.object({ conversationId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      if (!(await isChatMember(input.conversationId, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN", message: "非会话成员" });
+      return getChatRoomKeyBundle(input.conversationId, ctx.user.id);
+    }),
 });

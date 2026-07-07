@@ -71,6 +71,14 @@ export async function importRawKey(raw: ArrayBuffer): Promise<CryptoKey> {
   return subtle.importKey("raw", raw, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
 }
 
+/** Base64 (de)serialize a room key for IndexedDB persistence. */
+export async function roomKeyToB64(key: CryptoKey): Promise<string> {
+  return bufToB64(await exportRawKey(key));
+}
+export async function roomKeyFromB64(b64: string): Promise<CryptoKey> {
+  return importRawKey(b64ToBuf(b64));
+}
+
 export type Encrypted = { ciphertext: string; iv: string };
 
 export async function encryptText(key: CryptoKey, plaintext: string): Promise<Encrypted> {
