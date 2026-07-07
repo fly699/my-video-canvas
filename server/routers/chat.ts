@@ -34,9 +34,14 @@ import {
   searchUsersForChat,
   getUserById,
   getOrCreateAssistantUserId,
+  getOrCreateUserNotifyRoom,
+  getUserWebhook,
+  setUserWebhook,
   ASSISTANT_NAME,
   clearConversationMessages,
 } from "../db";
+import type { RecordedAssetInfo } from "../db";
+import { dispatchAssetWebhook, assertPublicHttpUrl, WEBHOOK_KINDS, type WebhookKind } from "../_core/notifyWebhook";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
@@ -176,6 +181,35 @@ export async function postDownloadRequestToChannel(notice: {
 let userBroadcaster: ((userId: number, event: string, payload: unknown) => void) | null = null;
 export function registerChatUserBroadcaster(fn: (userId: number, event: string, payload: unknown) => void): void {
   userBroadcaster = fn;
+}
+
+/** 把一条新生成的产物推进用户「我的产物通知」房（server 模式，带媒体附件），并触发外部
+ *  webhook。由 db.recordGeneratedAsset 经 registerAssetNotifier 注册后回调，全生成类型覆盖。
+ *  best-effort：任何失败都不得影响产物入库。 */
+export async function postAssetToNotifyRoom(a: RecordedAssetInfo): Promise<void> {
+  try {
+    if (!a.url) return;
+    const room = await getOrCreateUserNotifyRoom(a.userId);
+    const kind: ChatFileRef["kind"] = a.type === "image" ? "image" : a.type === "video" ? "video" : "file";
+    const mime = a.mimeType || (a.type === "image" ? "image/*" : a.type === "video" ? "video/mp4" : a.type === "audio" ? "audio/mpeg" : "application/octet-stream");
+    const att: ChatFileRef = { name: displayFileName(a.name), mimeType: mime, size: 0, url: a.url, kind };
+    const emoji = a.type === "image" ? "🖼️" : a.type === "video" ? "🎬" : a.type === "audio" ? "🎵" : "📦";
+    const label = a.type === "image" ? "图像" : a.type === "video" ? "视频" : a.type === "audio" ? "音频" : "产物";
+    const content = `${emoji} 新${label}已生成${a.model ? `（${a.model}）` : ""}`;
+    const botId = await getOrCreateAssistantUserId();
+    const msg = await insertConversationMessage({
+      conversationId: room.id, senderId: botId, senderName: ASSISTANT_NAME, content, attachments: [att],
+    });
+    if (msg && broadcaster) broadcaster(room.id, rowToWire(msg));
+    // 定向提醒用户个人房（前端可弹桌面通知 / 未读角标），即使当前没在看该房。
+    if (userBroadcaster) userBroadcaster(a.userId, "asset:new", { roomId: room.id, type: a.type, url: a.url, name: att.name });
+  } catch (err) {
+    console.warn("[postAssetToNotifyRoom] non-fatal:", err instanceof Error ? err.message : err);
+  }
+  // 外部 webhook（Bark/Server酱/Telegram/自定义）——独立 try，与站内推送互不影响。
+  try { await dispatchAssetWebhook(a); } catch (err) {
+    console.warn("[dispatchAssetWebhook] non-fatal:", err instanceof Error ? err.message : err);
+  }
 }
 
 
@@ -763,5 +797,28 @@ export const chatRouter = router({
     .query(async ({ ctx, input }) => {
       if (!(await isChatMember(input.conversationId, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN", message: "非会话成员" });
       return getChatRoomKeyBundle(input.conversationId, ctx.user.id);
+    }),
+
+  // ── 个人产物推送 webhook 配置 ──
+  getNotifyWebhook: protectedProcedure.query(async ({ ctx }) => {
+    const cfg = await getUserWebhook(ctx.user.id);
+    return cfg ?? { enabled: false, kind: "generic", url: null };
+  }),
+  setNotifyWebhook: protectedProcedure
+    .input(z.object({
+      enabled: z.boolean(),
+      kind: z.enum(WEBHOOK_KINDS as [WebhookKind, ...WebhookKind[]]),
+      url: z.string().trim().max(2048).nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const url = input.url && input.url.length ? input.url : null;
+      // 启用时校验 URL 合法且为公网可达 http(s)（复用 SSRF 守卫，避免存入内网地址）。
+      if (input.enabled) {
+        if (!url) throw new TRPCError({ code: "BAD_REQUEST", message: "启用推送需填写 webhook 地址" });
+        try { await assertPublicHttpUrl(url); }
+        catch (e) { throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof Error ? e.message : "webhook 地址不可用" }); }
+      }
+      await setUserWebhook(ctx.user.id, { enabled: input.enabled, kind: input.kind, url });
+      return { success: true };
     }),
 });
