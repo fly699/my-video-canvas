@@ -10,6 +10,7 @@ import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputI
 // （此前 runner 用简化的 injectCharacters 手拼，丢了 kie 块/分模型 sizing/比例/效果/@图像/多参考/镜头表/色调）。
 import { buildStoryboardGenInput, applyStoryboardGenResult } from "../lib/storyboardGen";
 import { buildImageGenInput } from "../lib/imageGenBuild";
+import { composeCharacterEffectPrompt } from "../lib/promptCompose";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
@@ -475,8 +476,11 @@ export function useWorkflowRunner() {
             failed.push(nodeId);
             return "fail";
           }
-          // 注入连线 + @角色（描述合并入 prompt；无手动参考图时用角色参考图作主体参考）。
+          // 角色参考图仍用 injectCharacters 收集；prompt 走共享组装 composeCharacterEffectPrompt
+          //（含「剥@媒体字面量 + 后处理效果注入」，与逐节点 composeSubmissionContext 完全同口径——
+          // 此前 runner 只做角色注入、丢了 @媒体 strip 与效果注入，S10）。
           const ci = injectCharacters(nodeId, rawPrompt, 4000);
+          const finalPrompt = composeCharacterEffectPrompt(nodeId, rawPrompt, useCanvasStore.getState().nodes, edges, 4000);
           const manualRef = ((p.referenceImageUrl as string) || "").trim();
           // 无手动参考图时，自动从上游连接的图像节点（分镜/图像/asset 等）取参考图，
           // 使「分镜 → 视频」连线在运行时即可作 i2v（无需手动「传送」/特定 handle）。
@@ -500,7 +504,7 @@ export function useWorkflowRunner() {
             projectId: node.data.projectId,
             nodeId,
             provider,
-            prompt: ci.prompt || "cinematic video",
+            prompt: finalPrompt || "cinematic video",
             referenceImageUrl: primaryRef || charRefs[0] || undefined,
             referenceImageUrls: charRefs.length > 1 ? charRefs : undefined,
             referenceVideoUrls: refMedia.videoRefs,
