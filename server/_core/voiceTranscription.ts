@@ -122,8 +122,21 @@ export async function transcribeAudio(
         return { error: "Failed to fetch audio file", code: "SERVICE_ERROR", details: dlErr instanceof Error ? dlErr.message.slice(0, 200) : "download failed" };
       }
       audioTemp = `${srcTemp}.mp3`;
+      // 安全门（防 LFI/SSRF）：源文件是用户可控内容，ffmpeg 会按内容自动探测容器。恶意的
+      // m3u8/concat 等「清单/拼接型」容器会引用外部资源（file:///etc/passwd、内网 http），
+      // 被 ffmpeg 拉取后混进"音频"回传给用户 = 读取型 LFI/SSRF。两道防线：
+      //  (1) ffprobe 探容器格式，拒绝清单/引用型容器；
+      //  (2) 所有 ffmpeg/ffprobe 调用都加 -protocol_whitelist file,crypto,data —— 只允许读本地
+      //      输入文件与 data URI，彻底封掉 http/https/tcp/rtmp 等远程协议（内网/元数据 SSRF）。
       try {
-        await execFileAsync("ffmpeg", ["-y", "-i", srcTemp, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", "-f", "mp3", audioTemp], { timeoutMs: 180000 });
+        const { stdout } = await execFileAsync("ffprobe", ["-v", "error", "-protocol_whitelist", "file,crypto,data", "-show_entries", "format=format_name", "-of", "default=nk=1:nw=1", srcTemp], { timeoutMs: 20000 });
+        const fmt = stdout.trim().toLowerCase();
+        if (/hls|applehttp|concat|image2|m3u8|sdp|rtp|rtsp|mms|ffconcat/.test(fmt)) {
+          return { error: "Unsupported media container", code: "INVALID_FORMAT", details: `拒绝清单/引用型容器（${fmt || "unknown"}）` };
+        }
+      } catch { /* ffprobe 不可用/无法识别：交给下面带 protocol 白名单的 ffmpeg 兜底（远程协议仍被封） */ }
+      try {
+        await execFileAsync("ffmpeg", ["-y", "-protocol_whitelist", "file,crypto,data", "-i", srcTemp, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", "-f", "mp3", audioTemp], { timeoutMs: 180000 });
         const audioBuf = await fs.readFile(audioTemp);
         if (!audioBuf.length) throw new Error("提取到空音频（源可能无音轨）");
         const sizeMB = audioBuf.length / (1024 * 1024);
