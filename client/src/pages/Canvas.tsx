@@ -2633,6 +2633,34 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">添加节点</TooltipContent>
             </Tooltip>}
 
+            {/* Run workflow — 悬浮工具条主操作（不标 data-tb-sec，折叠时仍保留）。选择感知同 Shift+R：
+                框选多个=仅运行选中；选 1 个=从该节点运行；不选=运行全部。 */}
+            {!isReadOnly && <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  disabled={runState.running}
+                  onClick={() => {
+                    if (runStateRunningRef.current) return;
+                    const selIds = nodes.filter((n) => n.selected && RUNNABLE_TYPES.includes(n.data.nodeType as NodeType)).map((n) => n.id);
+                    if (selIds.length >= 2) handleRunRequest(null, selIds);
+                    else handleRunRequest(nodes.find((n) => n.selected)?.id ?? null);
+                  }}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
+                  style={{
+                    background: "oklch(0.72 0.22 142 / 0.15)",
+                    border: "1px solid oklch(0.72 0.22 142 / 0.35)",
+                    color: "oklch(0.75 0.18 142)",
+                    opacity: runState.running ? 0.55 : 1,
+                    cursor: runState.running ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span data-toolbar-label>运行</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">运行工作流（框选多个=仅运行选中；选 1 个=从该节点运行；不选=运行全部）· 快捷键 Shift+R</TooltipContent>
+            </Tooltip>}
+
             {/* Grid storyboard starter (hidden for viewers) */}
             {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
@@ -2782,7 +2810,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* Divider */}
             <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
 
-            {/* 运行工作流按钮已从工具栏移除（应用户要求精简）。运行入口仍在：Shift+R 快捷键、
+            {/* 运行入口：悬浮工具条「运行」按钮（见上，选择感知）、Shift+R 快捷键、
                 每个节点标题栏的「运行/重新生成」、悬停节点的快速运行、以及框选后的「运行全部」。 */}
 
             {/* Shortcut help button */}
