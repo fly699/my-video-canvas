@@ -18,6 +18,10 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // 转写端点覆盖（可选）：任意 OpenAI 兼容的 /v1/audio/transcriptions 服务（自建 whisper 等）。
+  // 未设则按 Forge → OpenAI 官方(OPENAI_API_KEY) 回退，见 voiceTranscription.resolveTranscribeEndpoint。
+  transcribeApiUrl: process.env.TRANSCRIBE_API_URL ?? "",
+  transcribeApiKey: process.env.TRANSCRIBE_API_KEY ?? "",
   // Self-hosted OpenAI-compatible LLM endpoint (vLLM / Ollama / LM Studio / TGI …).
   // Routes ONLY the model ids in SELF_HOSTED_LLM_MODELS (comma list; defaults to the
   // built-in self-hosted entries) to `${URL}/v1/chat/completions`, so it coexists with

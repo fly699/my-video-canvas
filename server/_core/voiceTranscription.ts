@@ -81,23 +81,29 @@ export type TranscriptionError = {
  * @param options - Audio data and metadata
  * @returns Transcription result or error
  */
+/** 解析转写端点（OpenAI 兼容 /v1/audio/transcriptions）。优先级：
+ *  1) TRANSCRIBE_API_URL + TRANSCRIBE_API_KEY（显式覆盖，可指自建 whisper）
+ *  2) 内置 Forge（BUILT_IN_FORGE_API_URL + KEY）
+ *  3) OpenAI 官方（OPENAI_API_KEY；用户常已为 TTS 配音设了它）
+ *  三者皆无 → null（调用方回退「未配置」错误）。 */
+export function resolveTranscribeEndpoint(): { baseUrl: string; apiKey: string } | null {
+  if (ENV.transcribeApiUrl && ENV.transcribeApiKey) return { baseUrl: ENV.transcribeApiUrl, apiKey: ENV.transcribeApiKey };
+  if (ENV.forgeApiUrl && ENV.forgeApiKey) return { baseUrl: ENV.forgeApiUrl, apiKey: ENV.forgeApiKey };
+  if (ENV.openaiApiKey) return { baseUrl: "https://api.openai.com", apiKey: ENV.openaiApiKey };
+  return null;
+}
+
 export async function transcribeAudio(
   options: TranscribeOptions
 ): Promise<TranscriptionResponse | TranscriptionError> {
   try {
-    // Step 1: Validate environment configuration
-    if (!ENV.forgeApiUrl) {
+    // Step 1: Resolve the transcription endpoint (Forge / OpenAI / explicit override).
+    const endpoint = resolveTranscribeEndpoint();
+    if (!endpoint) {
       return {
         error: "Voice transcription service is not configured",
         code: "SERVICE_ERROR",
-        details: "BUILT_IN_FORGE_API_URL is not set"
-      };
-    }
-    if (!ENV.forgeApiKey) {
-      return {
-        error: "Voice transcription service authentication is missing",
-        code: "SERVICE_ERROR",
-        details: "BUILT_IN_FORGE_API_KEY is not set"
+        details: "请设置以下之一：OPENAI_API_KEY（走 OpenAI 官方 whisper-1）、BUILT_IN_FORGE_API_URL+BUILT_IN_FORGE_API_KEY、或 TRANSCRIBE_API_URL+TRANSCRIBE_API_KEY（自建 OpenAI 兼容转写端点）",
       };
     }
 
@@ -186,20 +192,14 @@ export async function transcribeAudio(
       formData.append("language", options.language);
     }
 
-    // Step 4: Call the transcription service
-    const baseUrl = ENV.forgeApiUrl.endsWith("/")
-      ? ENV.forgeApiUrl
-      : `${ENV.forgeApiUrl}/`;
-    
-    const fullUrl = new URL(
-      "v1/audio/transcriptions",
-      baseUrl
-    ).toString();
+    // Step 4: Call the transcription service (resolved endpoint from Step 1)
+    const baseUrl = endpoint.baseUrl.endsWith("/") ? endpoint.baseUrl : `${endpoint.baseUrl}/`;
+    const fullUrl = new URL("v1/audio/transcriptions", baseUrl).toString();
 
     const response = await fetch(fullUrl, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${ENV.forgeApiKey}`,
+        authorization: `Bearer ${endpoint.apiKey}`,
         "Accept-Encoding": "identity",
       },
       body: formData,
