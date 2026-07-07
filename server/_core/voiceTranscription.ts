@@ -34,7 +34,13 @@ export type TranscribeOptions = {
   language?: string; // Optional: specify language code (e.g., "en", "es", "zh")
   prompt?: string; // Optional: custom prompt for the transcription
   model?: string; // 转录模型（OpenAI 兼容：whisper-1 / gpt-4o-transcribe / gpt-4o-mini-transcribe）；缺省 whisper-1
+  /** 需要【词级】时间戳（AI 智能剪辑按词边界切、逐词字幕的硬前提）。开启则请求
+   *  timestamp_granularities[]=word（仅 whisper-1 保证返回 words[]，故强制 whisper-1）。 */
+  wordTimestamps?: boolean;
 };
+
+/** 词级时间戳条目（whisper-1 + timestamp_granularities=word 时返回于顶层 words[]）。 */
+export type WhisperWord = { word: string; start: number; end: number };
 
 // Native Whisper API segment format
 export type WhisperSegment = {
@@ -57,6 +63,8 @@ export type WhisperResponse = {
   duration: number;
   text: string;
   segments: WhisperSegment[];
+  /** 词级时间戳（仅 wordTimestamps=true 且模型返回时存在）。 */
+  words?: WhisperWord[];
 };
 
 export type TranscriptionResponse = WhisperResponse; // Return native Whisper API response directly
@@ -157,9 +165,15 @@ export async function transcribeAudio(
     const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
     formData.append("file", audioBlob, filename);
     
-    formData.append("model", options.model || "whisper-1");
+    // 词级时间戳仅 whisper-1 保证返回 words[]——请求词级时强制该模型（gpt-4o-transcribe 不保证）。
+    formData.append("model", options.wordTimestamps ? "whisper-1" : (options.model || "whisper-1"));
     formData.append("response_format", "verbose_json");
-    
+    if (options.wordTimestamps) {
+      // OpenAI 数组参数按重复字段追加；同时要 word 与 segment（保留段级便于分句/静音判断）。
+      formData.append("timestamp_granularities[]", "word");
+      formData.append("timestamp_granularities[]", "segment");
+    }
+
     // Add prompt - use custom prompt if provided, otherwise generate based on language
     const prompt = options.prompt || (
       options.language 
