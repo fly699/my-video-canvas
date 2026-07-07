@@ -1359,6 +1359,41 @@ NODE_ENV=production` },
       { type: "tip", text: "可以在不同节点中设置不同的 customBaseUrl，同时运行的任务会分别发送到对应的 GPU 实例，实现并行生成。" },
     ],
   },
+  {
+    id: "canvas-agent-chat",
+    title: "画布助手（对话式改画布）",
+    emoji: "🪄",
+    content: [
+      { type: "p", text: "画布右下角的浮层助手：用自然语言让 AI 直接在画布上建/连/改节点，复用智能体同一套引擎。每次进入画布默认打开，历史对话落库、跨设备与清缓存都不丢。" },
+      { type: "h3", text: "能力" },
+      { type: "kv", rows: [
+        ["@角色 / @场景 / @媒体", "在指令里引用画布上已有的节点"],
+        ["/ 唤起技能", "选「本机 Claude（桥接）」模型时可调 MCP 技能 / 工具"],
+        ["模板人设", "顶部切换助手的角色模板（如导演、分镜师）"],
+        ["撤销本次改动", "一键回退这一轮 AI 对画布做的建/改"],
+        ["新对话", "标题栏清空当前对话（历史另存，随时可重开）"],
+      ]},
+      { type: "tip", text: "结构性操作（建节点/连线/改参数）自动落地且不花钱；「运行/生成」仍需在节点上点运行，避免误烧额度。" },
+    ],
+  },
+  {
+    id: "claude-bridge",
+    title: "本机 Claude / GPT 桥接（订阅额度跑 AI）",
+    emoji: "🔌",
+    content: [
+      { type: "p", text: "用你自己的 Claude（Pro/Max）或 ChatGPT 订阅额度跑画布里的 AI 对话/规划，不按 token 计费。原理：服务端把请求转成本机一次 claude -p / codex 调用。" },
+      { type: "h3", text: "接入（管理员）" },
+      { type: "steps", items: [
+        "服务器装 Claude Code 并 claude setup-token 登录订阅，设环境变量 CLAUDE_CODE_OAUTH_TOKEN（切勿同设 ANTHROPIC_API_KEY，否则变按量计费）",
+        "再设一个自定义口令 CLAUDE_LOCAL_BRIDGE_KEY 用于鉴权，重启服务",
+        "后台「模型管理 › 自建 LLM」一键填入本机 Claude 地址与模型，API Key 填成与 CLAUDE_LOCAL_BRIDGE_KEY 一致",
+        "选画布模型「本机 Claude（订阅）」即用你的订阅额度",
+      ]},
+      { type: "h3", text: "桥接 MCP 配置（让本机 Claude 用工具）" },
+      { type: "p", text: "后台「桥接 MCP 配置」贴一段 {mcpServers:{…}} JSON（或服务器上配置文件的绝对路径），保存即生效、无需重启。之后本机 Claude 可调 ComfyUI 等 MCP 工具集（用于画布助手 / 工作流 AI 辅助分析）。" },
+      { type: "warn", text: "桥接口可能公网可达且只有一把 key，仅在内网/受信任部署开启；系统已硬性禁止桥接放行 Bash/Write 等高危工具。" },
+    ],
+  },
 ];
 
 export function getHelpSectionById(id: string): HelpSection | undefined {

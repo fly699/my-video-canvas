@@ -239,19 +239,23 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   // Re-decrypt any messages that were stored as "[无法解密]" once the correct key arrives.
   const reDecryptConversation = useCallback(async (convId: number, key: CryptoKey) => {
     const hist = (await loadLocalHistory(convId)) as StoredChatMsg[];
-    let changed = false;
-    const next = await Promise.all(hist.map(async (m) => {
-      if (m.content !== DECRYPT_FAIL || !m._enc) return m;
-      try {
-        const text = await decryptText(key, m._enc);
-        changed = true;
-        const { _enc, ...rest } = m; void _enc;
-        return { ...rest, content: text } as StoredChatMsg;
-      } catch { return m; }
+    // 只解密「[无法解密]」的行，得到 id → 明文 的补丁；解密期间不整覆盖历史。
+    const patches = new Map<number, string>();
+    await Promise.all(hist.map(async (m) => {
+      if (m.content !== DECRYPT_FAIL || !m._enc) return;
+      try { patches.set(m.id, await decryptText(key, m._enc)); } catch { /* keep placeholder */ }
     }));
-    if (!changed) return;
-    await saveLocalHistory(convId, next as ChatWireMessage[]);
-    if (convId === activeIdRef.current) setMessages(next.map(({ _enc, ...r }) => { void _enc; return r as ChatWireMessage; }));
+    if (!patches.size) return;
+    // 重新读「当前」历史再按 id 合并 —— 避免用陈旧快照整覆盖，丢掉解密这段时间里并发到达的新消息（finding4）。
+    const current = (await loadLocalHistory(convId)) as StoredChatMsg[];
+    const merged = current.map((m) => {
+      const text = patches.get(m.id);
+      if (text == null) return m;
+      const { _enc, ...rest } = m; void _enc; // 解密成功 → 去掉暂存密文
+      return { ...rest, content: text } as StoredChatMsg;
+    });
+    await saveLocalHistory(convId, merged as ChatWireMessage[]);
+    if (convId === activeIdRef.current) setMessages(merged.map(({ _enc, ...r }) => { void _enc; return r as ChatWireMessage; }));
   }, []);
 
   // Wrap the room key for every member's published public key and upload the ciphertext

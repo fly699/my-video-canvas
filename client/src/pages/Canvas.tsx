@@ -67,6 +67,9 @@ import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extra
 import { SaveComfyTemplateDialog } from "../components/canvas/SaveComfyTemplateDialog";
 import { downloadMedia, downloadTextFile } from "@/lib/download";
 import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/BeginnerGuide";
+import { GuidedTour } from "../components/canvas/GuidedTour";
+import { useGuideStore } from "../hooks/useGuideStore";
+import type { TourStep } from "../lib/guideSteps";
 import { HelpPanel } from "../components/canvas/HelpPanel";
 import { CollaborationPanel } from "../components/canvas/CollaborationPanel";
 import { NarrativeArcPicker } from "../components/canvas/NarrativeArcPicker";
@@ -134,6 +137,7 @@ import {
   Network,
   Magnet,
   Wand2,
+  Compass,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -476,6 +480,34 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // 本次会话内关掉即隐藏，重新打开画布/项目会再次弹出。历史对话已落库，重开不丢上下文。
   const [agentChatOpen, setAgentChatOpen] = useState<boolean>(true);
   const [showArcPicker, setShowArcPicker] = useState(false);
+  // 交互式新手导览：start 供「更多 → 新手导览」与欢迎弹窗触发；每步 openPanel 由 handleGuideStep
+  // 程序化打开对应面板（面板多为条件渲染，不先打开就无从高亮）。
+  const startGuide = useGuideStore((s) => s.start);
+  const guideOpenedRef = useRef<TourStep["openPanel"]>(null);
+  const setGuidePanel = useCallback((p: TourStep["openPanel"], open: boolean) => {
+    switch (p) {
+      case "nodePicker": setShowNodePicker(open); break;
+      case "connectionHints": setShowConnectionHints(open); break;
+      case "assets": setShowAssets(open); break;
+      case "charLib": setShowCharLib(open); break;
+      case "agentChat": setAgentChatOpen(open); break;
+      case "shortcuts": setShowShortcuts(open); break;
+    }
+  }, [setShowNodePicker, setShowConnectionHints, setShowAssets, setShowCharLib, setAgentChatOpen, setShowShortcuts]);
+  // 导览每进入一步：先收起上一步导览打开的面板（agentChat 恢复为默认打开态），再打开本步目标面板。
+  // 只收拾「导览自己打开的」面板，不动用户手动开的其它面板。
+  const handleGuideStep = useCallback((step: TourStep | null) => {
+    const want = step?.openPanel ?? null;
+    const cur = guideOpenedRef.current;
+    if (cur && cur !== want) {
+      setGuidePanel(cur, cur === "agentChat");
+      guideOpenedRef.current = null;
+    }
+    if (want && guideOpenedRef.current !== want) {
+      setGuidePanel(want, true);
+      guideOpenedRef.current = want;
+    }
+  }, [setGuidePanel]);
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const themeIsDark = THEMES.find((t) => t.id === theme)?.dark ?? true;
@@ -1810,6 +1842,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => setChatOpen((v) => !v)}
                 className="topbar-btn"
+                data-tour="chat"
                 data-active={chatOpen ? "true" : undefined}
                 style={chatOpen ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
@@ -1827,6 +1860,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => setAgentChatOpen((v) => !v)}
                 className="topbar-btn"
+                data-tour="agent"
                 data-active={agentChatOpen ? "true" : undefined}
                 style={agentChatOpen ? { background: "oklch(0.70 0.20 310 / 0.12)", border: "1px solid oklch(0.70 0.20 310 / 0.3)", color: "oklch(0.70 0.20 310)" } : undefined}
               >
@@ -1890,6 +1924,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => setShowAssets(!showAssets)}
                 className="topbar-btn"
+                data-tour="assets"
                 data-active={showAssets ? "true" : undefined}
                 style={showAssets ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
@@ -1905,6 +1940,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => setShowCharLib((v) => !v)}
                 className="topbar-btn"
+                data-tour="charlib"
                 data-active={showCharLib ? "true" : undefined}
                 style={showCharLib ? { background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)" } : undefined}
               >
@@ -1920,6 +1956,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <button
                 onClick={() => navigate("/editor")}
                 className="topbar-btn"
+                data-tour="editor"
                 style={{ background: "oklch(0.65 0.19 310 / 0.12)", border: "1px solid oklch(0.65 0.19 310 / 0.32)", color: "oklch(0.7 0.19 310)" }}
               >
                 <Clapperboard className="w-3.5 h-3.5" />
@@ -2061,7 +2098,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           {/* 更多 ⋯ —— 低频功能收进下拉，给顶栏腾横向空间 */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="topbar-btn" title="更多">
+              <button className="topbar-btn" data-tour="more" title="更多">
                 <MoreHorizontal className="w-3.5 h-3.5" />
               </button>
             </DropdownMenuTrigger>
@@ -2074,6 +2111,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 }}><MonitorUp className="w-3.5 h-3.5 mr-2" /> 副屏打开</DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => setShowHelp((v) => !v)}><HelpCircle className="w-3.5 h-3.5 mr-2" /> 操作指南</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => startGuide(0)}><Compass className="w-3.5 h-3.5 mr-2" /> 新手导览</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowPresentation(true)}><Play className="w-3.5 h-3.5 mr-2" /> 演示模式</DropdownMenuItem>
 
               <DropdownMenuSeparator />
@@ -2493,12 +2531,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onClose={() => setShowConnectionHints(false)}
           />
           <WorkflowStatusPanel runState={runState} onReset={resetWorkflowRun} />
-          <BeginnerGuide />
+          <BeginnerGuide onStartTour={() => startGuide(0)} />
+          <GuidedTour onStep={handleGuideStep} />
           <HelpPanel
             open={showHelp}
             onClose={() => setShowHelp(false)}
             activeNodeType={nodes.find((n) => n.selected)?.data.nodeType ?? null}
             onAddNode={(nodeType) => { addNodeAtCenter(nodeType); setShowHelp(false); }}
+            onStartTour={() => startGuide(0)}
           />
           {showArcPicker && (
             <NarrativeArcPicker onClose={() => setShowArcPicker(false)} />
@@ -2615,6 +2655,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipTrigger asChild>
                 <button
                   data-tb-sec
+                  data-tour="add-node"
                   onClick={() => setShowNodePicker(!showNodePicker)}
                   className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all"
                   style={{
@@ -2637,6 +2678,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tour="run"
                   disabled={runState.running}
                   onClick={() => {
                     if (runStateRunningRef.current) return;
@@ -2817,6 +2859,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    data-tour="shortcuts"
                     onClick={() => setShowShortcuts((v) => !v)}
                     className="w-8 h-8 rounded-xl flex items-center justify-center transition-all text-xs font-bold"
                     style={{
@@ -2903,6 +2946,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipTrigger asChild>
                 <button
                   data-tb-sec
+                  data-tour="conn-hints"
                   onClick={() => setShowConnectionHints(h => !h)}
                   style={{
                     width: 32, height: 32, borderRadius: 10,
@@ -2926,13 +2970,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <NodeDefaultModelsButton orient={toolbarOrient} />
 
             {/* 预算管控（画布预估消耗 vs 余额） */}
-            <BudgetButton orient={toolbarOrient} />
+            <span data-tour="budget" style={{ display: "inline-flex", alignItems: "center" }}><BudgetButton orient={toolbarOrient} /></span>
 
             {/* UI style switcher (专业 / 创意 / 工作室) */}
             <UIStyleSwitcher orient={toolbarOrient} />
 
             {/* Theme switcher (foldable) */}
-            <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><ThemeSwitcher /></span>
+            <span data-tb-sec data-tour="theme" style={{ display: "inline-flex", alignItems: "center" }}><ThemeSwitcher /></span>
 
             {/* Canvas background picker (foldable) */}
             <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><CanvasBgPicker value={canvasBg} onChange={setCanvasBg} /></span>
