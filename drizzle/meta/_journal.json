@@ -505,6 +505,13 @@
       "when": 1783300000000,
       "tag": "0071_chat_room_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "5",
+      "when": 1783400000000,
+      "tag": "0072_canvas_agent_sessions",
+      "breakpoints": true
     }
   ]
 }

@@ -31,9 +31,25 @@ const fileToDataUri = (f: File): Promise<string> => new Promise((resolve, reject
   r.readAsDataURL(f);
 });
 
+/** 存库前裁剪到 saveHistory 的 zod 约束内（content≤20000、applied/failed≤4000、createdIds≤200×64），
+ *  只保留最近 80 轮，避免超长回复被后端校验拒绝。 */
+const sanitizeTurnsForSave = (ts: Turn[]) => ts.slice(-80).map((t) => ({
+  role: t.role,
+  content: t.content.slice(0, 20000),
+  ...(t.applied ? { applied: t.applied.slice(0, 4000) } : {}),
+  ...(t.failed ? { failed: t.failed.slice(0, 4000) } : {}),
+  ...(t.error ? { error: true } : {}),
+  ...(t.createdIds ? { createdIds: t.createdIds.slice(0, 200).map((x) => x.slice(0, 64)) } : {}),
+  ...(t.undone ? { undone: true } : {}),
+}));
+
 export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onClose: () => void }) {
   const reactFlow = useReactFlow();
   const chat = trpc.agent.chat.useMutation();
+  // 服务端持久化：跨设备/清缓存后对话仍在（替代原来仅 localStorage）。
+  const historyQuery = trpc.agent.getHistory.useQuery({ projectId }, { staleTime: Infinity, refetchOnWindowFocus: false });
+  const saveHistoryMut = trpc.agent.saveHistory.useMutation();
+  const hydratedRef = useRef(false);
   const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
   const charsQuery = trpc.characterLibrary.list.useQuery(undefined, { staleTime: 30_000 });
   const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
@@ -99,6 +115,22 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   };
 
   useEffect(() => { try { localStorage.setItem(`avc:canvasAgent:${projectId}`, JSON.stringify(turns.slice(-40))); } catch { /* quota */ } }, [turns, projectId]);
+  // 挂载时以 DB 为跨设备真相 hydrate（DB 空则把本地历史迁移进库）；只做一次，避免刷新覆盖进行中的对话。
+  useEffect(() => {
+    if (hydratedRef.current || !historyQuery.data) return;
+    hydratedRef.current = true;
+    const dbTurns = (historyQuery.data.turns as Turn[]) ?? [];
+    if (dbTurns.length) setTurns(dbTurns);
+    else if (turns.length) saveHistoryMut.mutate({ projectId, turns: sanitizeTurnsForSave(turns) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyQuery.data]);
+  // hydrate 之后：对话变更防抖 800ms 回写数据库（覆盖式，含撤销所需的 createdIds/undone）。
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    const id = setTimeout(() => saveHistoryMut.mutate({ projectId, turns: sanitizeTurnsForSave(turns) }), 800);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turns, projectId]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:model", model); } catch { /* quota */ } }, [model]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:template", template); } catch { /* quota */ } }, [template]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [turns, chat.isPending]);
@@ -220,6 +252,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--c-t1)" }}>画布助手</span>
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 150 }}><LLMModelPicker value={model} onChange={setModel} disabled={chat.isPending} /></div>
+        <button
+          onClick={() => { if (turns.length && !window.confirm("清空当前画布助手对话？")) return; setTurns([]); saveHistoryMut.mutate({ projectId, turns: [] }); }}
+          title="新对话（清空当前画布助手对话）" disabled={chat.isPending}
+          style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: chat.isPending ? "default" : "pointer" }}
+        ><Plus size={14} /></button>
         <button onClick={onClose} title="关闭" style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer" }}><X size={14} /></button>
       </div>
 

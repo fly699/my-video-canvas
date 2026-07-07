@@ -447,6 +447,22 @@ export const chatMessages = mysqlTable("chat_messages", {
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
 
+/** 浮动「画布助手」的对话上下文（持久化，替代原来只存 localStorage/仅当前浏览器）。
+ *  按 (projectId, userId) 一行：turns 是客户端拥有的整段对话（含 applied/createdIds/undone
+ *  等应用后状态），随「新对话/清空」整体覆盖。个人助手草稿，故按 userId 隔离、协作者不共享。 */
+export type CanvasAgentTurn = { role: "user" | "assistant"; content: string; applied?: string; failed?: string; error?: boolean; createdIds?: string[]; undone?: boolean };
+export const canvasAgentSessions = mysqlTable("canvas_agent_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  userId: int("userId").notNull(),
+  turns: json("turns").$type<CanvasAgentTurn[]>(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  projUserUniq: uniqueIndex("canvas_agent_sessions_proj_user_uniq").on(t.projectId, t.userId),
+}));
+
+export type CanvasAgentSession = typeof canvasAgentSessions.$inferSelect;
+
 // ── LAN Chat ──────────────────────────────────────────────────────────────────
 // Anonymous nickname-only group chat. Users behind the same NAT gateway
 // (same outbound public IP as seen by this server) auto-share a "network
