@@ -10,11 +10,14 @@ import { C, iconBtn, ghostBtn } from "@/components/chat/chatTheme";
 import { GuidedTour, type TourController } from "@/components/canvas/GuidedTour";
 import { CHAT_TOUR_STEPS, CHAT_TOUR_DONE_KEY } from "@/lib/chatGuideSteps";
 import type { TourStep } from "@/lib/guideSteps";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { LogIn, Loader2 } from "lucide-react";
 
 interface BIPEvent extends Event { prompt: () => void; userChoice: Promise<{ outcome: string }> }
 
 export default function ChatPage() {
   const [, navigate] = useLocation();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [narrow, setNarrow] = useState(typeof window !== "undefined" && window.innerWidth < 760);
   const [sidebarOpen, setSidebarOpen] = useState(typeof window === "undefined" || window.innerWidth >= 760);
   const [membersOpen, setMembersOpen] = useState(typeof window === "undefined" || window.innerWidth >= 1024);
@@ -70,13 +73,14 @@ export default function ChatPage() {
   const [guideActive, setGuideActive] = useState(false);
   const [guideStep, setGuideStep] = useState(0);
   useEffect(() => {
+    if (!isAuthenticated) return; // 引导必须在登录后才启动
     let done = false;
     try { done = localStorage.getItem(CHAT_TOUR_DONE_KEY) === "1"; } catch { /* ignore */ }
     if (done) return;
     // 稍等布局稳定 + 给 beforeinstallprompt 一点时间（安装按钮才可能就位）再启动。
     const t = setTimeout(() => setGuideActive(true), 1200);
     return () => clearTimeout(t);
-  }, []);
+  }, [isAuthenticated]);
   const markGuideDone = () => { try { localStorage.setItem(CHAT_TOUR_DONE_KEY, "1"); } catch { /* quota */ } };
   const guideController: TourController = {
     active: guideActive,
@@ -98,6 +102,35 @@ export default function ChatPage() {
     e.prompt();
     await e.userChoice.catch(() => {});
     installEvt.current = null; setCanInstall(false);
+  }
+
+  // 未登录：不进入聊天（其 tRPC 调用会 401），弹出项目统一登录弹窗，引导登录后再回聊天。
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <div className={light ? "chat-root chat-light" : "chat-root"} style={{ height: viewportH != null ? `${viewportH}px` : "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, color: C.t1, fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif", padding: 16 }}>
+        <div style={{ position: "absolute", inset: 0, backdropFilter: "blur(2px)", background: "rgba(0,0,0,0.35)" }} />
+        <div style={{ position: "relative", width: 360, maxWidth: "100%", background: C.bg2, border: `1px solid ${C.border}`, borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.35)", padding: 24, textAlign: "center" }}>
+          <img src="/chat-icon.svg" width={44} height={44} alt="" style={{ borderRadius: 10, margin: "0 auto 12px" }} />
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.accent, marginBottom: 6 }}>聊天工作室</div>
+          <div style={{ fontSize: 13, lineHeight: 1.7, color: C.t2, marginBottom: 18 }}>登录后即可进入团队聊天、与 AI 助手对话，并接收画布产物推送。</div>
+          <button
+            onClick={() => navigate(`/login?next=${encodeURIComponent("/chat")}`)}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", height: 42, borderRadius: 10, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#fff", background: C.accent }}
+          >
+            <LogIn size={16} /> 登录 / 注册
+          </button>
+          <button onClick={() => navigate("/")} style={{ marginTop: 10, background: "none", border: "none", color: C.t3, fontSize: 12.5, cursor: "pointer" }}>返回首页</button>
+        </div>
+      </div>
+    );
+  }
+  // 登录态加载中：先给一个占位，避免闪现聊天界面或登录弹窗。
+  if (authLoading) {
+    return (
+      <div className={light ? "chat-root chat-light" : "chat-root"} style={{ height: viewportH != null ? `${viewportH}px` : "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, color: C.t3 }}>
+        <Loader2 size={22} className="animate-spin" />
+      </div>
+    );
   }
 
   return (
