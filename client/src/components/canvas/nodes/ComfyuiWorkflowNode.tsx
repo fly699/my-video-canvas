@@ -11,7 +11,7 @@ import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImag
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding, ReferenceImage } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { safeHref } from "@/lib/safeUrl";
-import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources, applyAspectToWorkflow, parseAspectRatioFromText } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources, applyAspectToWorkflow, parseAspectRatioFromText, detectUpstreamAspectRatio } from "@/lib/comfyWorkflowParams";
 import { effectiveCharacters, connectedCharacterLora, effectiveCharacterRefImages, stripCharacterMentions } from "@/lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
@@ -500,14 +500,17 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         update({ paramValues: { ...(payload.paramValues ?? {}), ...seedPatch } }, true);
       }
       // 按比例覆盖工作流尺寸（保留像素面积、/64 对齐）：① 用户显式「按比例覆盖」→ 用
-      // payload.aspectRatio；② 否则尝试从生效提示词里解析画面比例（如 "16:9"），让节点
-      // 响应提示词中写的比例。用户已手动设置 width/height 参数值时仍以参数值为准（覆盖
-      // 工作流 latent），故不会冲掉显式选择。比例无法解析 / 无可改 latent 时原样提交。
+      // payload.aspectRatio；② 否则从生效提示词里解析画面比例（如 "16:9"）；③ 提示词没写则
+      // **回退到上游输入图的比例**（图生视频关键：把 9:16 的图喂进模板不再出工作流默认 16:9）。
+      // 用户已手动设置 width/height 参数值时仍以参数值为准；比例无法解析 / 无可改 latent 时原样提交。
       const effPosForRatio = posPromptKey && typeof effectiveParamValues[posPromptKey] === "string"
         ? (effectiveParamValues[posPromptKey] as string) : "";
+      // 第三级「上游输入图比例」回退**仅限图生视频（outputType==="video"）**：否则会误伤文生图
+      // 工作流——接一张参考图(IPAdapter/风格参考)就把原生方形 latent 重塑成参考图比例。
       const effectiveAspect = payload.overrideRatioSize
         ? payload.aspectRatio
-        : parseAspectRatioFromText(effPosForRatio || mentionText || upstreamPrompt.positive);
+        : (parseAspectRatioFromText(effPosForRatio || mentionText || upstreamPrompt.positive)
+          || (payload.outputType === "video" ? detectUpstreamAspectRatio(id, edges, nodes) : undefined));
       const runWorkflowJson = effectiveAspect
         ? applyAspectToWorkflow(workflowJson, effectiveAspect).json
         : workflowJson;

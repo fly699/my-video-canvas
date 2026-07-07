@@ -355,6 +355,15 @@ export function devClearChatMessages(nodeId: string, projectId: number) {
   toRemove.forEach((i) => chatMessagesArr.splice(i, 1));
 }
 
+// ── 画布助手会话（dev 内存兜底，键 `${projectId}:${userId}`） ──
+const canvasAgentSessionsMap = new Map<string, import("../../drizzle/schema").CanvasAgentTurn[]>();
+export function devGetCanvasAgentSession(projectId: number, userId: number): import("../../drizzle/schema").CanvasAgentTurn[] {
+  return canvasAgentSessionsMap.get(`${projectId}:${userId}`) ?? [];
+}
+export function devSetCanvasAgentSession(projectId: number, userId: number, turns: import("../../drizzle/schema").CanvasAgentTurn[]): void {
+  canvasAgentSessionsMap.set(`${projectId}:${userId}`, turns);
+}
+
 // ── User ──────────────────────────────────────────────────────────────────────
 export function devGetUserByOpenId(_openId: string): User | undefined {
   return undefined;

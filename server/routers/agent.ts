@@ -365,4 +365,34 @@ ${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.pre
       }
       return { shots };
     }),
+
+  // ── 画布助手对话持久化（按 projectId + 当前用户）──
+  // 读：viewer 权限即可（个人助手历史，按 userId 隔离）。
+  getHistory: protectedProcedure
+    .input(z.object({ projectId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
+      return { turns: await db.getCanvasAgentSession(input.projectId, ctx.user.id) };
+    }),
+
+  // 写：整段覆盖（含「新对话/清空」= 传空数组）。editor 权限。turns 结构校验从宽（客户端拥有
+  // applied/createdIds/undone 等应用后状态），只强约束 role/content 与体量上限。
+  saveHistory: protectedProcedure
+    .input(z.object({
+      projectId: z.number(),
+      turns: z.array(z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(20000),
+        applied: z.string().max(4000).optional(),
+        failed: z.string().max(4000).optional(),
+        error: z.boolean().optional(),
+        createdIds: z.array(z.string().max(64)).max(200).optional(),
+        undone: z.boolean().optional(),
+      })).max(200),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      await db.setCanvasAgentSession(input.projectId, ctx.user.id, input.turns);
+      return { success: true };
+    }),
 });

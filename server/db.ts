@@ -9,6 +9,8 @@ import {
   assets,
   videoTasks,
   chatMessages,
+  canvasAgentSessions,
+  type CanvasAgentTurn,
   whitelistSettings,
   comfySettings,
   whitelistEntries,
@@ -1292,6 +1294,30 @@ export async function clearChatMessages(nodeId: string, projectId: number) {
   await db
     .delete(chatMessages)
     .where(and(eq(chatMessages.nodeId, nodeId), eq(chatMessages.projectId, projectId)));
+}
+
+// ── 画布助手会话（持久化 turns，按 projectId+userId 一行） ──
+function normalizeAgentTurns(v: unknown): CanvasAgentTurn[] {
+  const arr = typeof v === "string" ? (() => { try { return JSON.parse(v); } catch { return []; } })() : v;
+  if (!Array.isArray(arr)) return [];
+  return arr.filter((t): t is CanvasAgentTurn => !!t && typeof t === "object" && typeof (t as { content?: unknown }).content === "string"
+    && ((t as { role?: unknown }).role === "user" || (t as { role?: unknown }).role === "assistant"));
+}
+
+export async function getCanvasAgentSession(projectId: number, userId: number): Promise<CanvasAgentTurn[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetCanvasAgentSession(projectId, userId) : [];
+  const rows = await db.select().from(canvasAgentSessions)
+    .where(and(eq(canvasAgentSessions.projectId, projectId), eq(canvasAgentSessions.userId, userId))).limit(1);
+  return normalizeAgentTurns(rows[0]?.turns);
+}
+
+export async function setCanvasAgentSession(projectId: number, userId: number, turns: CanvasAgentTurn[]): Promise<void> {
+  const clean = normalizeAgentTurns(turns).slice(-80); // 服务端也封顶，防超大 payload
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devSetCanvasAgentSession(projectId, userId, clean); return; }
+  await db.insert(canvasAgentSessions).values({ projectId, userId, turns: clean })
+    .onDuplicateKeyUpdate({ set: { turns: clean, updatedAt: new Date() } });
 }
 
 // ── Whitelist ─────────────────────────────────────────────────────────────────
