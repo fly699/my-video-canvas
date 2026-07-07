@@ -85,7 +85,8 @@ export function BridgeMcpSection() {
           <strong>1) 服务器装一次</strong>（仅这步联网）：<code>npm i -g comfyui-mcp</code>。装完落本机全局，之后离线秒起（只连内网 ComfyUI，不碰外网）。
           <br /><strong>2) 写好一个 mcp.json</strong>（如 <code>{"C:\\avc\\mcp.json"}</code>），每台 ComfyUI 一条，启动方式用本地命令 <code>cmd /c comfyui-mcp</code>（别用 <code>npx -y</code>，那样每次联网）：
         </p>
-        <pre style={{ fontSize: 10.5, fontFamily: "monospace", margin: 0, padding: "8px 10px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", overflowX: "auto", lineHeight: 1.5 }}>{`{
+        <div style={{ fontSize: 10.5, color: "oklch(0.70 0.13 160)", fontWeight: 600 }}>📄 mcp.json 示例内容（只读 · 放到服务器文件里，别填到本页输入框）</div>
+        <pre style={{ fontSize: 10.5, fontFamily: "monospace", margin: 0, padding: "8px 10px", borderRadius: 8, background: "oklch(0.70 0.15 160 / 0.06)", border: "1px dashed oklch(0.70 0.15 160 / 0.4)", color: "var(--c-t2)", overflowX: "auto", lineHeight: 1.5, userSelect: "text" }}>{`{
   "mcpServers": {
     "comfyui-a":      { "command": "cmd", "args": ["/c", "comfyui-mcp"], "env": { "COMFYUI_URL": "http://172.16.0.10:8188" } },
     "comfyui-b-8188": { "command": "cmd", "args": ["/c", "comfyui-mcp"], "env": { "COMFYUI_URL": "http://172.16.0.8:8188" } }
@@ -96,10 +97,10 @@ export function BridgeMcpSection() {
         </p>
       </div>
 
-      {/* MCP 配置 */}
-      <label style={{ fontSize: 11, color: "var(--c-t3)" }}>MCP 配置（<code>{"{mcpServers:{...}}"}</code> JSON，或服务器上配置文件的绝对路径；留空=不挂 MCP）
+      {/* MCP 配置 —— 唯一的输入框 */}
+      <label style={{ fontSize: 11, color: "var(--c-t2)", fontWeight: 700 }}>✏️ 在此输入 —— MCP 配置（填 <code>{"C:\\avc\\mcp.json"}</code> 这样的文件路径，或直接贴 <code>{"{mcpServers:{...}}"}</code> JSON；留空=不挂 MCP）
         <textarea value={mcpConfig} onChange={(e) => setMcpConfig(e.target.value)} rows={6}
-          placeholder={`{\n  "mcpServers": {\n    "comfyui-a": {\n      "command": "npx",\n      "args": ["-y", "comfyui-mcp"],\n      "env": { "COMFYUI_URL": "http://172.16.0.10:8188" }\n    }\n  }\n}`}
+          placeholder={`C:\\avc\\mcp.json\n\n（或直接把整段 {"mcpServers":{...}} JSON 贴在这里）`}
           className="nodrag" style={{ ...box, marginTop: 4, fontFamily: "monospace", resize: "vertical" }} />
       </label>
 
