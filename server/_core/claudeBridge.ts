@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { resolveClaudeSpawn, resolveClaudeBin } from "./superAgent/claudeProcess";
 import { isGptLocalModel, codexModelArg, runCodexText } from "./codexBridge";
 import { collectImageUrls, collectFileUrls, resolveImages, docTextFromFileUrls, buildClaudeStreamJsonInput, parseClaudeStreamJsonResult } from "./bridgeAttachments";
+import { getBridgeMcpConfig } from "./bridgeMcp";
 
 type OAContent = string | Array<string | { type?: string; text?: string }>;
 export interface OAMessage { role?: string; content?: OAContent }
@@ -151,10 +152,11 @@ export function buildBridgeAgenticArgs(opts: {
   return args;
 }
 
-/** 读 env → 桥接增强参数（内联 MCP JSON 落临时文件；文件路径读出取服务器名）。空数组=纯文本。 */
+/** 读配置（DB 快照优先、env 兜底）→ 桥接增强参数（内联 MCP JSON 落临时文件；文件路径读出取服务器名）。空数组=纯文本。 */
 export function resolveBridgeAgenticArgs(): string[] {
-  const rawMcp = process.env.CLAUDE_BRIDGE_MCP_CONFIG?.trim();
-  const skills = process.env.CLAUDE_BRIDGE_SKILLS === "1";
+  const cfg = getBridgeMcpConfig(); // 管理后台 DB 配置（同步快照，30s TTL 后台刷新）；无则回退 CLAUDE_BRIDGE_* env
+  const rawMcp = cfg.mcpConfig.trim();
+  const skills = cfg.skills;
   if (!rawMcp && !skills) return [];
   let mcpConfigArg: string | null = null;
   let serverNames: string[] = [];
@@ -171,9 +173,9 @@ export function resolveBridgeAgenticArgs(): string[] {
   }
   return buildBridgeAgenticArgs({
     mcpConfigArg, serverNames, skills,
-    allowedOverride: process.env.CLAUDE_BRIDGE_ALLOWED_TOOLS,
-    permissionMode: process.env.CLAUDE_BRIDGE_PERMISSION_MODE,
-    strict: process.env.CLAUDE_BRIDGE_MCP_STRICT !== "0",
+    allowedOverride: cfg.allowedTools,
+    permissionMode: cfg.permissionMode,
+    strict: cfg.strict,
   });
 }
 
