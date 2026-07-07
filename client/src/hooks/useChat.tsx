@@ -10,6 +10,14 @@ import {
   wrapRoomKeyForMember, unwrapRoomKey, roomKeyToB64, roomKeyFromB64, type Encrypted,
 } from "@/lib/chatCrypto";
 import { loadPrivateKeyJwk, savePrivateKeyJwk, loadLocalHistory, appendLocalHistory, loadRoomKey, saveRoomKey, saveLocalHistory } from "@/lib/chatKeyStore";
+import { playMessageSound, showCompletionNotification, ensureNotificationPermission } from "@/lib/notify";
+import { toast } from "sonner";
+
+/** 聊天静音开关（横幅 + 声音 + 桌面通知）。持久化在 localStorage，头部铃铛按钮切换。 */
+export const CHAT_MUTED_KEY = "avc:chat-muted";
+function isChatMuted(): boolean {
+  try { return localStorage.getItem(CHAT_MUTED_KEY) === "1"; } catch { return false; }
+}
 import { Lightbox } from "@/components/chat/chatLightbox";
 
 export interface ConversationSummary {
@@ -106,6 +114,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   // per-conversation symmetric key cache for serverless mode
   const convKeyRef = useRef<Map<number, CryptoKey>>(new Map());
   const activeIdRef = useRef<number | null>(null);
+  const myUserIdRef = useRef<number | null>(null);
+  const convTitleRef = useRef<Map<number, string>>(new Map());
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // serverless inbound file reassembly
   const fileBufs = useRef<Map<string, { chunks: Uint8Array[]; meta: ChatFileRef }>>(new Map());
@@ -118,6 +128,32 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const putRoomKeyBundlesMut = trpc.chat.putRoomKeyBundles.useMutation();
 
   const activeConv = useMemo(() => conversations.find((c) => c.id === activeId) ?? null, [conversations, activeId]);
+  // 供 socket 闭包（依赖 []）读取最新的「我的 id」与「会话标题」，用于新消息通知判断/文案。
+  useEffect(() => { myUserIdRef.current = myUserId; }, [myUserId]);
+  useEffect(() => {
+    const m = convTitleRef.current;
+    for (const c of conversations) m.set(c.id, c.type === "dm" ? (c.peer?.name ?? "私聊") : c.type === "lobby" ? "大厅" : (c.title ?? "群聊"));
+  }, [conversations]);
+  // 新消息提醒：别人发的、且（不在当前会话 或 窗口未聚焦）→ 声音 + 横幅 + 后台桌面通知。
+  const notifyIncoming = useCallback((msg: { conversationId: number; senderId: number; senderName?: string | null; content?: string; hasMedia?: boolean }) => {
+    if (isChatMuted()) return;
+    const mine = myUserIdRef.current != null && msg.senderId === myUserIdRef.current;
+    if (mine || msg.senderId === -1) return; // 自己发的/本地回显不提醒
+    const isActive = msg.conversationId === activeIdRef.current;
+    const focused = typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus();
+    if (isActive && focused) return; // 正看着这个会话且聚焦 → 不打扰
+    const who = msg.senderName || "新消息";
+    const room = convTitleRef.current.get(msg.conversationId);
+    const preview = msg.hasMedia ? "[媒体]" : (msg.content?.replace(/^\[#DLREQ:\d+\]\n?/, "📥 ").slice(0, 60) || "[新消息]");
+    playMessageSound();
+    if (focused) {
+      // 前台但不在该会话：应用内横幅
+      toast(`${who}${room ? ` · ${room}` : ""}`, { description: preview, duration: 4000 });
+    } else {
+      // 后台：系统桌面通知（无权限时静默）
+      showCompletionNotification({ title: `${who}${room ? ` · ${room}` : ""}`, body: preview, tag: `chat-${msg.conversationId}` });
+    }
+  }, []);
   const didAutoSelectRef = useRef(false);
   const creatingAssistantRef = useRef(false);
   // 默认房间 = 内建「AI 助手」私聊。取其用户 id 以在会话列表里认出该 DM；无则创建。
@@ -186,6 +222,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
       }
       utils.chat.listConversations.invalidate();
+      notifyIncoming({ conversationId: msg.conversationId, senderId: msg.senderId, senderName: msg.senderName, content: msg.content, hasMedia: !!(msg.attachments && msg.attachments.length) });
     });
 
     socket.on("chat:presence", (p: { conversationId: number; online: ChatPresenceUser[] }) => {
@@ -430,7 +467,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const { _enc, ...display } = wire; void _enc;
       setMessages((prev) => [...prev, display as ChatWireMessage]);
     }
-  }, [conversations, getConversationKey, answerKeyRequest, utils, myUserId, persistRoomKey, reDecryptConversation]);
+    notifyIncoming({ conversationId: payload.conversationId, senderId: payload.senderId, senderName: payload.senderName, content: text, hasMedia: !!payload.fileMeta });
+  }, [conversations, getConversationKey, answerKeyRequest, utils, myUserId, persistRoomKey, reDecryptConversation, notifyIncoming]);
 
   const handleFileChunk = useCallback(async (frame: { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: ChatFileRef; encrypted?: boolean; senderId: number; senderName?: string }) => {
     const conv = conversations.find((c) => c.id === frame.conversationId);
@@ -529,6 +567,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const sendText = useCallback(async (text: string) => {
     const id = activeIdRef.current;
     if (!id || !text.trim()) return;
+    // 首次发送即请求桌面通知权限（自然的用户手势），后续后台也能收系统提醒；被拒无碍（仍有声音+横幅）。
+    if (!isChatMuted()) void ensureNotificationPermission();
     const conv = conversations.find((c) => c.id === id);
     if (conv?.mode === "serverless") {
       const key = await getConversationKey(id, conv.type);

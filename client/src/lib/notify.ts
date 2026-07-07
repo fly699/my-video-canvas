@@ -56,3 +56,37 @@ export function showCompletionNotification(opts: {
     // Some browsers throw if the page was launched without a user gesture
   }
 }
+
+// ── Notification sound (self-contained WebAudio beep — no asset needed) ──────
+let _audioCtx: AudioContext | null = null;
+let _lastBeep = 0;
+/** 播放一声轻提示音（两段短促上行音，类似 IM 到达音）。自带节流，避免消息刷屏时爆音。
+ *  依赖用户此前的交互解锁 AudioContext；被浏览器 autoplay 策略拦截时静默失败。 */
+export function playMessageSound(): void {
+  if (typeof window === "undefined") return;
+  const now = Date.now();
+  if (now - _lastBeep < 1500) return; // 1.5s 内不重复响
+  _lastBeep = now;
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    if (!_audioCtx) _audioCtx = new Ctx();
+    const ctx = _audioCtx;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    const t0 = ctx.currentTime;
+    const notes = [880, 1174.7]; // A5 → D6，轻快
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const start = t0 + i * 0.12;
+      const dur = 0.13;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.12, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(start); osc.stop(start + dur);
+    });
+  } catch { /* autoplay blocked / no audio — 静默 */ }
+}
