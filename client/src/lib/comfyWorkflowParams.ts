@@ -67,6 +67,27 @@ export function detectUpstreamStoryboardDuration(targetId: string, edges: MiniEd
   return undefined;
 }
 
+/** 上游直连图像源的画面比例（"W:H"）。供 comfyui_workflow「图生视频」在比例覆盖未手动开启、
+ *  且提示词里没写比例时，用**输入图的比例**覆盖工作流原生画幅——否则把 9:16 的图喂进模板仍出
+ *  工作流默认（如 16:9），比例对不上。取第一个能解析出比例的直连上游图像节点：优先
+ *  payload.aspectRatio（storyboard/image_gen 等），其次 payload.width/height（comfyui_image/video）。
+ *  纯函数；无上游或无法解析 → undefined。 */
+export function detectUpstreamAspectRatio(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): string | undefined {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = edges.map((e, i) => ({ e, i })).filter(({ e }) => e.target === targetId);
+  incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  for (const { e } of incoming) {
+    const src = byId.get(e.source);
+    if (!src || !IMAGE_SOURCE_TYPES.has(src.data.nodeType)) continue;
+    const p = (src.data.payload ?? {}) as Record<string, unknown>;
+    const ar = p.aspectRatio;
+    if (typeof ar === "string" && /^\d+\s*[:：]\s*\d+$/.test(ar.trim())) return ar.trim().replace("：", ":").replace(/\s+/g, "");
+    const w = p.width, h = p.height;
+    if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) return `${Math.round(w)}:${Math.round(h)}`;
+  }
+  return undefined;
+}
+
 /** All upstream image URLs feeding targetId (edge order, de-duplicated). Used to
  *  fill MULTIPLE blank image params (multi-reference workflows: IPAdapter / multi
  *  LoadImage / fusion). */

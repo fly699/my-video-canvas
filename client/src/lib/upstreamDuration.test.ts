@@ -1,8 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { detectUpstreamStoryboardDuration, resolveComfyFramesFromDuration } from "./comfyWorkflowParams";
+import { detectUpstreamStoryboardDuration, resolveComfyFramesFromDuration, detectUpstreamAspectRatio } from "./comfyWorkflowParams";
 import { clampDurationForProvider } from "./storyboardGen";
 
 const N = (id: string, nodeType: string, payload: unknown) => ({ id, data: { nodeType, payload } });
+
+describe("detectUpstreamAspectRatio（comfyui_workflow 图生视频：用上游输入图比例覆盖工作流画幅）", () => {
+  const e = [{ source: "s", target: "w" }];
+  it("上游图像源有 aspectRatio → 返回它", () => {
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { aspectRatio: "9:16" }), N("w", "comfyui_workflow", {})])).toBe("9:16");
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "image_gen", { aspectRatio: "16:9" }), N("w", "comfyui_workflow", {})])).toBe("16:9");
+  });
+  it("无 aspectRatio 但有 width/height → 返回 W:H", () => {
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "comfyui_image", { width: 1080, height: 1920 }), N("w", "comfyui_workflow", {})])).toBe("1080:1920");
+  });
+  it("全角/带空格比例归一化", () => {
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { aspectRatio: "9：16" }), N("w", "comfyui_workflow", {})])).toBe("9:16");
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { aspectRatio: " 16 : 9 " }), N("w", "comfyui_workflow", {})])).toBe("16:9");
+  });
+  it("非图像源（prompt）不参与 → undefined", () => {
+    expect(detectUpstreamAspectRatio("w", [{ source: "p", target: "w" }], [N("p", "prompt", { aspectRatio: "1:1" }), N("w", "comfyui_workflow", {})])).toBeUndefined();
+  });
+  it("无上游 / 无比例信号 → undefined", () => {
+    expect(detectUpstreamAspectRatio("w", [], [N("w", "comfyui_workflow", {})])).toBeUndefined();
+    expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", {}), N("w", "comfyui_workflow", {})])).toBeUndefined();
+  });
+});
 
 describe("resolveComfyFramesFromDuration（comfyui 视频按分镜时长换算 frames，保守版）", () => {
   const sb = (d: number) => [N("sb", "storyboard", { duration: d }), N("v", "comfyui_video", {})];
