@@ -970,6 +970,24 @@ export default function Home() {
                     desc: "全局运行状态条点击直达失败节点；Ctrl+C/V 复制整条镜头链（含连线）；一键整理自动排版 + 网格吸附；吸附窗变更自动弹出",
                     badge: "NEW",
                   },
+                  {
+                    icon: Bot, color: "oklch(0.70 0.18 250)",
+                    title: "画布助手 · 对话改画布",
+                    desc: "浮层里一句话让 AI 直接在画布建/连/改节点，支持 @角色引用、/ 唤起技能、一键撤销本次改动；每次进画布默认打开，对话上下文落库跨设备不丢",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Wand2, color: "oklch(0.68 0.19 285)",
+                    title: "ComfyUI 工作流 · AI 辅助分析导入",
+                    desc: "粘贴任意 ComfyUI 工作流，AI 辅助分析用本机 Claude + ComfyUI MCP 查真实节点 schema，自动纠正参数类型/正负、按主次排序；不开 AI 也有启发式主次分明",
+                    badge: "NEW",
+                  },
+                  {
+                    icon: Sparkles, color: "oklch(0.72 0.16 200)",
+                    title: "本机 Claude / GPT 桥接",
+                    desc: "用你的 Claude / ChatGPT 订阅额度跑画布 AI，不按 token 计费；后台贴 MCP 配置即可让本机 Claude 调 ComfyUI 等工具集，转写可指 OpenAI / Groq / 自建 whisper",
+                    badge: "NEW",
+                  },
                 ].map((f, i) => (
                   <div
                     key={f.title}
@@ -1042,6 +1060,11 @@ export default function Home() {
                     title: "智能字幕配音",
                     nodes: ["音频", "智能剪辑", "字幕转录", "动态字幕", "叠加"],
                     desc: "Whisper 语音转录 + AI 删减冗余 + 卡拉OK 风格动态字幕",
+                  },
+                  {
+                    title: "AI 智能剪辑成片（/editor）",
+                    nodes: ["导入视频", "AI 智能剪辑", "调色预设", "逐词字幕", "导出"],
+                    desc: "独立剪辑器里一键：词级转录 → AI 去口头禅/停顿 → 30ms 淡入淡出 + 成片调色 + 逐词字幕",
                   },
                 ].map((w) => (
                   <div

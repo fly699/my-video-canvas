@@ -450,12 +450,12 @@ function nodeTypeHue(nodeType: NodeType): number {
 
 const TOC_GROUPS = [
   { label: "画布基础", ids: ["canvas-basics", "workflow-runner", "connection-rules"] },
-  { label: "界面与协作", ids: ["ui-panels", "themes-appearance", "collaboration", "lan-chat"] },
+  { label: "界面与协作", ids: ["ui-panels", "themes-appearance", "canvas-agent-chat", "collaboration", "lan-chat"] },
   { label: "内容创作节点", ids: ["node-script", "node-storyboard", "node-prompt", "node-image-gen", "node-asset", "node-note", "node-character", "node-group"] },
   { label: "AI 生成节点", ids: ["node-video-task", "node-ai-chat", "node-audio", "node-voice-clone", "node-lip-sync", "node-avatar"] },
   { label: "视频处理节点", ids: ["node-clip", "node-merge", "node-subtitle", "node-overlay", "node-subtitle-motion", "node-smart-cut", "node-post-process", "node-pose-control"] },
   { label: "ComfyUI 集成", ids: ["node-comfyui-image", "node-comfyui-video", "node-comfyui-workflow", "comfyui-setup", "comfyui-params-reference", "comfyui-workflow-advanced", "comfyui-troubleshoot"] },
-  { label: "系统配置", ids: ["server-env-config", "admin-guide", "api-interface-config"] },
+  { label: "系统配置", ids: ["server-env-config", "admin-guide", "api-interface-config", "claude-bridge"] },
   { label: "进阶指南", ids: ["workflow-examples"] },
 ];
 

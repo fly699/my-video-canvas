@@ -141,6 +141,15 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
     { Icon: Zap, color: "oklch(0.72 0.18 60)",
       title: "画布效率操作", desc: "顶栏全局运行状态条（生成中/排队/失败一目了然，点失败直接跳到出错节点）；框选后 Ctrl+C/V 复制整条镜头链（含内部连线）；「一键整理」按连线方向自动排版 + 网格吸附；吸附窗在提示词/参考元素变更时自动弹出 2 秒",
       badge: "NEW" },
+    { Icon: Bot, color: "oklch(0.70 0.18 250)",
+      title: "画布助手 · 对话改画布", desc: "右下角浮层里一句话让 AI 直接在画布建/连/改节点（复用智能体同一套引擎），支持 @角色 引用、/ 唤起技能、一键撤销本次改动；每次进入画布默认打开，对话上下文落库、跨设备/清缓存不丢",
+      badge: "NEW" },
+    { Icon: Wand2, color: "oklch(0.68 0.19 285)",
+      title: "ComfyUI 工作流 · AI 辅助分析导入", desc: "粘贴任意 ComfyUI 工作流 JSON，勾选「AI 辅助分析」用本机 Claude + ComfyUI MCP 查真实节点 schema，自动纠正参数类型/正负、按主次排序（提示词/尺寸/主模型/步数排前）；不开 AI 也有启发式主次分明，失败自动回退",
+      badge: "NEW" },
+    { Icon: Sparkles, color: "oklch(0.72 0.16 200)",
+      title: "本机 Claude / GPT 桥接", desc: "用你的 Claude / ChatGPT 订阅额度跑画布 AI，不按 token 计费；后台「桥接 MCP 配置」贴一段 JSON 即可让本机 Claude 调 ComfyUI 等 MCP 工具集；转写（AI 剪辑/字幕）可指 OpenAI / Groq 免费额度 / 自建 whisper",
+      badge: "NEW" },
   ];
 
   return (
