@@ -263,6 +263,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   }, [payload.workflowJson, payload.paramBindings]);
 
   const analyzeMutation = trpc.comfyui.analyzeWorkflow.useMutation();
+  const analyzeAiMutation = trpc.comfyui.analyzeWorkflowAI.useMutation();
+  // 「AI 辅助分析」：勾选后分析走本机 Claude + ComfyUI MCP 纠正参数类型/角色、判主次（需桥接已配）。
+  const [aiAssist, setAiAssist] = useState(false);
 
   // Local vs official cloud (cloud.comfy.org). The cloud toggle is only usable by
   // admins / whitelisted users (and only when the server has it configured).
@@ -328,10 +331,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     }
     update({ workflowJson: trimmed, status: "idle", errorMessage: undefined });
     try {
-      const result = await analyzeMutation.mutateAsync({
-        customBaseUrl: payload.customBaseUrl?.trim() || undefined,
-        workflowJson: trimmed,
-      });
+      if (aiAssist) toast.info("AI 辅助分析中（本机 Claude + ComfyUI MCP）…较慢请稍候");
+      const result = aiAssist
+        ? await analyzeAiMutation.mutateAsync({ customBaseUrl: payload.customBaseUrl?.trim() || undefined, workflowJson: trimmed, model: "claude-local" })
+        : await analyzeMutation.mutateAsync({ customBaseUrl: payload.customBaseUrl?.trim() || undefined, workflowJson: trimmed });
       const bindings = result.detectedParams;
       setLocalBindings(bindings);
       update({
@@ -343,11 +346,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         paramValues: {},
       });
       setPhase("binding");
-      toast.success(`检测到 ${bindings.length} 个参数`);
+      const note = (result as { aiNote?: string }).aiNote;
+      toast.success(`检测到 ${bindings.length} 个参数` + (aiAssist && note ? ` · ${note}` : ""));
     } catch (err) {
       toast.error("分析失败：" + (err instanceof Error ? err.message : String(err)));
     }
-  }, [analyzeMutation, payload.customBaseUrl, update]);
+  }, [analyzeMutation, analyzeAiMutation, aiAssist, payload.customBaseUrl, update]);
 
   // ── File import (drag/drop or picker): .json (API or UI graph) and ComfyUI .png
   //    (embedded workflow). API JSON → existing analyze flow; UI graph → server
@@ -916,6 +920,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               <Wand2 size={14} /> 导入向导（推荐 · 导入前预检，一次跑通）
             </button>
             <div style={{ fontSize: 10, color: "var(--c-t4)", marginBottom: 8, textAlign: "center" }}>—— 或手动导入 ——</div>
+
+            {/* AI 辅助分析：勾选后手动导入的「分析」走本机 Claude + ComfyUI MCP，纠正参数类型/角色、判主次。 */}
+            <label className="nodrag" style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 10.5, lineHeight: 1.5, color: "var(--c-t3)", marginBottom: 8, cursor: "pointer", padding: "6px 8px", borderRadius: 7, background: aiAssist ? `${accent}14` : "var(--c-input)", border: `1px solid ${aiAssist ? accent : "var(--c-bd2)"}` }}>
+              <input type="checkbox" checked={aiAssist} onChange={(e) => setAiAssist(e.target.checked)} style={{ marginTop: 1 }} />
+              <span><strong style={{ color: aiAssist ? accent : "var(--c-t2)" }}>🤖 AI 辅助分析</strong>（本机 Claude + ComfyUI MCP 查真实节点 schema，纠正参数类型/正负、按主次排序）。需已配「桥接 MCP 配置」；较慢，失败自动回退启发式。</span>
+            </label>
 
             {/* Import from file (.json / ComfyUI .png) */}
             <div
