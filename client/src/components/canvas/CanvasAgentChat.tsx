@@ -317,8 +317,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 150 }}><LLMModelPicker value={model} onChange={setModel} disabled={chat.isPending} /></div>
         <button
-          onClick={() => { if (turns.length && !window.confirm("清空当前画布助手对话？")) return; setTurns([]); persistTurns([]); }}
-          title="新对话（清空当前画布助手对话）" disabled={chat.isPending}
+          onClick={() => {
+            if (!turns.length) { toast.info("当前已是新对话（暂无历史可清空）"); return; }
+            if (!window.confirm("清空当前画布助手对话，开始新对话？")) return;
+            setTurns([]); persistTurns([]);
+            toast.success("已开始新对话");
+          }}
+          title="新对话（清空当前画布助手对话，开启一段全新对话）" disabled={chat.isPending}
           style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: chat.isPending ? "default" : "pointer" }}
         ><Plus size={14} /></button>
         <button onClick={() => setCollapsed(true)} title="收起为悬浮球（右键小球可关闭）" style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer" }}><X size={14} /></button>
