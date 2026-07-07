@@ -56,6 +56,7 @@ import {
   conversationMessages,
   chatAttachments,
   chatUserKeys,
+  chatRoomKeys,
   chatBans,
   chatSettings,
   type ChatConversation,
@@ -2506,6 +2507,32 @@ export async function getUserPublicKeys(userIds: number[]): Promise<{ userId: nu
   if (!db) return DEV_MODE ? dev.devGetUserPublicKeys(userIds) : [];
   const rows = await db.select().from(chatUserKeys).where(inArray(chatUserKeys.userId, userIds));
   return rows.map((r) => ({ userId: r.userId, publicKeyJwk: r.publicKeyJwk }));
+}
+
+export type WrappedRoomKey = { ciphertext: string; iv: string };
+export type RoomKeyBundle = { senderPubJwk: unknown; wrappedKey: WrappedRoomKey };
+
+/** Store per-member wrapped room keys (serverless group E2E). Server keeps ciphertext only. */
+export async function putChatRoomKeyBundles(
+  conversationId: number, senderPubJwk: unknown, bundles: { memberUserId: number; wrappedKey: WrappedRoomKey }[],
+): Promise<void> {
+  if (!bundles.length) return;
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) dev.devPutRoomKeyBundles(conversationId, senderPubJwk, bundles); return; }
+  for (const b of bundles) {
+    await db.insert(chatRoomKeys).values({ conversationId, memberUserId: b.memberUserId, senderPubJwk, wrappedKey: b.wrappedKey })
+      .onDuplicateKeyUpdate({ set: { senderPubJwk, wrappedKey: b.wrappedKey, updatedAt: new Date() } });
+  }
+}
+
+/** Fetch a member's wrapped room key for a conversation, or null. */
+export async function getChatRoomKeyBundle(conversationId: number, memberUserId: number): Promise<RoomKeyBundle | null> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devGetRoomKeyBundle(conversationId, memberUserId) : null;
+  const rows = await db.select().from(chatRoomKeys)
+    .where(and(eq(chatRoomKeys.conversationId, conversationId), eq(chatRoomKeys.memberUserId, memberUserId))).limit(1);
+  const r = rows[0];
+  return r ? { senderPubJwk: r.senderPubJwk, wrappedKey: r.wrappedKey as WrappedRoomKey } : null;
 }
 
 export async function addChatBan(data: InsertChatBan): Promise<ChatBan | null> {

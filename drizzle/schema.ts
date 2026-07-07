@@ -645,6 +645,25 @@ export const chatUserKeys = mysqlTable("chat_user_keys", {
 export type ChatUserKey = typeof chatUserKeys.$inferSelect;
 export type InsertChatUserKey = typeof chatUserKeys.$inferInsert;
 
+// Serverless group room keys, wrapped per-member so the server only ever stores ciphertext.
+// One row per (conversation, member): the room AES key encrypted to that member via an
+// ECDH-derived wrapping key. `senderPubJwk` is the wrapper's public key snapshot so the
+// recipient can derive the SAME shared key (deriveSharedKey(myPriv, senderPubJwk)) even if
+// the wrapper's identity key later rotates. The server/admin cannot decrypt these.
+export const chatRoomKeys = mysqlTable("chat_room_keys", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  memberUserId: int("memberUserId").notNull(),
+  senderPubJwk: json("senderPubJwk").notNull(),
+  wrappedKey: json("wrappedKey").notNull(), // { ciphertext, iv } (base64)
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  convMemberUniq: uniqueIndex("chat_room_keys_conv_member_uniq").on(t.conversationId, t.memberUserId),
+}));
+
+export type ChatRoomKey = typeof chatRoomKeys.$inferSelect;
+export type InsertChatRoomKey = typeof chatRoomKeys.$inferInsert;
+
 export const chatBans = mysqlTable("chat_bans", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),

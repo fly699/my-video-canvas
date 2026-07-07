@@ -498,6 +498,13 @@
       "when": 1783200000000,
       "tag": "0070_bridge_mcp",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "5",
+      "when": 1783300000000,
+      "tag": "0071_chat_room_keys",
+      "breakpoints": true
     }
   ]
 }
