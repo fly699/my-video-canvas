@@ -60,8 +60,10 @@ import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
 const DirectorEditor = lazy(() => import("../components/canvas/director/DirectorEditor").then((m) => ({ default: m.DirectorEditor })));
 import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
+import { AlignToolbar } from "../components/canvas/AlignToolbar";
 import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
 import { setBoxSelecting } from "../hooks/useBoxSelecting";
+import { useEdgeInsert } from "../hooks/useEdgeInsert";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
 import { ModelQuickSwitch, MODEL_SWITCH_FIELD } from "../components/canvas/studio/ModelQuickSwitch";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS, defaultTargetHandle } from "../lib/connectionRules";
@@ -109,6 +111,7 @@ import {
   LayoutGrid,
   BarChart2,
   Maximize2,
+  LocateFixed,
   Scan,
   Play,
   LogOut,
@@ -540,6 +543,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
   // 拉线松手落在空白处时，在鼠标位置弹出的「建节点并连线」小菜单（仅列可连接类型）。
   const [connectMenu, setConnectMenu] = useState<{ x: number; y: number; types: NodeType[]; fromId: string; fromHandleType: "source" | "target"; fromHandle: string | null } | null>(null);
+  const [connectSearch, setConnectSearch] = useState(""); // ◆7 建节点菜单搜索词
+  useEffect(() => { if (!connectMenu) setConnectSearch(""); }, [connectMenu]);
   const [connectDragType, setConnectDragType] = useState<NodeType | null>(null); // 弹窗内拖拽排序中的项
   // 建节点菜单的「节点类型自定义排序」——服务端持久化（user_prefs.connectMenuOrder），跨设备保留。
   const [connectOrder, setConnectOrder] = useState<string[]>([]);
@@ -1208,15 +1213,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (gp.collapsed) cids.forEach((c) => collapsedHiddenIds.add(c));
       if (n.selected) cids.forEach((c) => highlightIds.add(c));
     }
-    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0) {
+    // ◆6 锁定：payload.locked 的节点不可拖、不可删（draggable/deletable=false）。
+    const anyLocked = nodes.some((n) => (n.data.payload as { locked?: boolean } | undefined)?.locked);
+    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0 && !anyLocked) {
       return { displayNodes: nodes, displayEdges: edges };
     }
     const dNodes = nodes.map((n) => {
       const hide = collapsedHiddenIds.has(n.id);
       const hl = highlightIds.has(n.id) && !hide;
-      if (!hide && !hl) return n;
+      const locked = !!(n.data.payload as { locked?: boolean } | undefined)?.locked;
+      if (!hide && !hl && !locked) return n;
       return {
         ...n,
+        ...(locked ? { draggable: false, deletable: false } : {}),
         hidden: hide || n.hidden,
         className: hl ? `${n.className ?? ""} group-member-highlight`.trim() : n.className,
       };
@@ -1241,8 +1250,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
       t.closest(".react-flow__minimap") ||
       t.closest("button, input, textarea, [contenteditable='true']")
     ) return;
-    handleCanvasContextMenu(e);
-  }, [handleCanvasContextMenu]);
+    // ◆7 双击空白 → 直接打开节点选择器(可搜索、回车加首个匹配),而非弹右键菜单。
+    if (isReadOnly) return;
+    setShowNodePicker(true);
+  }, [isReadOnly, setShowNodePicker]);
 
   // When the canvas right-click menu is pinned, the user can add several nodes
   // in a row from the same anchor — without a per-add offset they all stack at
@@ -1267,6 +1278,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [contextMenu, addNode, emitCollabEvent]);
 
   const addNodeAtCenter = useCallback((type: NodeType) => {
+    // ◆1 若处于「线上插入」意图：把节点插进那条边的中点（断开旧边、接两条新边），而非画布中心新建。
+    const pendingEdge = useEdgeInsert.getState().edgeId;
+    if (pendingEdge) {
+      try {
+        useCanvasStore.getState().insertNodeOnEdge(pendingEdge, type);
+        setRecentNodeTypes((prev) => [type, ...prev.filter((t) => t !== type)].slice(0, 8));
+      } catch (err) { toast.error(err instanceof Error ? err.message : "插入节点失败"); }
+      useEdgeInsert.getState().clear();
+      setShowNodePicker(false);
+      return;
+    }
     const vp = reactFlow.getViewport();
     const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
     const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
@@ -1279,6 +1301,20 @@ function CanvasInner({ projectId }: { projectId: number }) {
     }
     setShowNodePicker(false);
   }, [addNode, reactFlow, emitCollabEvent, setRecentNodeTypes]);
+
+  // ◆1 边工具条点 ⊕ → 打开节点选择器（选完由 addNodeAtCenter 走插入分支）。
+  const edgeInsertId = useEdgeInsert((s) => s.edgeId);
+  useEffect(() => { if (edgeInsertId) setShowNodePicker(true); }, [edgeInsertId]);
+
+  // ◆9 触屏长按节点 → 打开节点右键菜单(BaseNode 派发 avc:node-longpress)。
+  useEffect(() => {
+    const onLP = (e: Event) => {
+      const d = (e as CustomEvent).detail as { nodeId: string; x: number; y: number } | undefined;
+      if (d) setContextMenu({ x: d.x, y: d.y, type: "node", nodeId: d.nodeId });
+    };
+    window.addEventListener("avc:node-longpress", onLP);
+    return () => window.removeEventListener("avc:node-longpress", onLP);
+  }, []);
 
   // 一键：在画布中心新建 ComfyUI 自定义节点，并自动打开「导入向导」（_openWizard 瞬态标志）。
   const addComfyWorkflowWithWizard = useCallback(() => {
@@ -1448,6 +1484,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
     const fromHandle = connectionState.fromHandle?.id ?? null;
     setConnectingFromType(null);
     useConnectingStore.getState().end();
+    // ◆8 落在某节点上但连接非法(isValid=false) → 给出原因，不再静默失败。
+    if (connectionState.toNode && connectionState.isValid === false && fromType) {
+      const tn = useCanvasStore.getState().nodes.find((n) => n.id === connectionState.toNode!.id);
+      if (tn && tn.id !== fromId) {
+        toast.error(`「${getNodeConfig(fromType)?.label ?? fromType}」不能连到「${getNodeConfig(tn.data.nodeType)?.label ?? tn.data.nodeType}」：类型不兼容`, { duration: 2200 });
+      }
+    }
     // 仅在「未连到任何节点」（落在空白）时弹建节点菜单；落在节点上＝原行为（onConnect 已处理）。
     if (isReadOnly || !fromType || !fromId || !fromHandleType || connectionState.toNode) return;
     // 候选 = 该桩点「现有方向」可连接的节点类型（连接矩阵已排除不可连接者，列表里不会出现）。
@@ -1552,7 +1595,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         if (wasDirty) toast.success("已保存");
       }
       if (e.key === "Escape") {
-        setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); setShowShortcuts(false); setShowGridStoryboard(false);
+        setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); useEdgeInsert.getState().clear(); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); setShowShortcuts(false); setShowGridStoryboard(false);
         // 取消节点选中（与快捷键面板「Esc 取消选中」对齐）。用 reactFlow.setNodes 才能让
         // ReactFlow 内部选中态正确同步（直接改 store 的 node.selected 不取消选中）。
         if (!isEditing) reactFlow.setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)));
@@ -1593,6 +1636,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "t") {
         e.preventDefault();
         setShowTemplates((v) => !v);
+      }
+
+      // ◆3 F — 缩放到选中/框选内容(无选中则适应全部);Figma/n8n 常见。
+      if (!isEditing && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        const sel = useCanvasStore.getState().nodes.filter((n) => n.selected);
+        if (sel.length > 0) reactFlow.fitView({ nodes: sel.map((n) => ({ id: n.id })), padding: 0.3, duration: 400, maxZoom: 1.6 });
+        else reactFlow.fitView({ padding: 0.2, duration: 400 });
       }
 
       // Duplicate selected node: Cmd+D / Ctrl+D (skip when typing in an input)
@@ -2297,7 +2348,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           onContextMenu={handleCanvasContextMenu}
           onDoubleClick={handleCanvasDoubleClick}
           onMouseMove={handleMouseMove}
-          onClick={() => { setShowNodePicker(false); }}
+          onClick={() => { setShowNodePicker(false); useEdgeInsert.getState().clear(); }}
         >
           {/* Studio skin: the selected node's params float BELOW the node (handled in
               BaseNode via NodeToolbar), so the right-side inspector is no longer mounted. */}
@@ -2371,6 +2422,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
               onConnect(connection);
               const newEdge = useCanvasStore.getState().edges.find((e) => !prevIds.has(e.id));
               if (newEdge) emitCollabEvent("edge:add", newEdge);
+            }}
+            edgesReconnectable={!isReadOnly}
+            onReconnect={(oldEdge, newConnection) => {
+              useCanvasStore.getState().reconnectEdge(oldEdge as CanvasEdge, newConnection);
             }}
             onNodeContextMenu={handleNodeContextMenu as Parameters<typeof ReactFlow>[0]["onNodeContextMenu"]}
             onNodesDelete={(deleted) => deleted.forEach((n) => {
@@ -2536,10 +2591,38 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <Lightbox />
           {/* Studio multi-select action bar (≥2 nodes selected) */}
           <MultiSelectBar />
+          {/* ◆2 对齐/分布工具条(≥2 选中，所有皮肤) */}
+          <AlignToolbar />
           {/* 操作小贴士（右下角，定时/情境弹出，可自动消失，右键不再显示） */}
           <CanvasTips />
           {/* Studio global creation bar (nothing selected → quick prompt → 生成) */}
           <StudioCreateBar />
+          {/* ◆10 非 studio 皮肤的空画布空态 CTA（studio 由 StudioCreateBar 负责） */}
+          {uiStyle !== "studio" && !isReadOnly && nodes.filter((n) => n.data.nodeType !== "group").length === 0 && (
+            <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-55%)", zIndex: 6,
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 14, pointerEvents: "none", textAlign: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
+                background: "var(--c-surface)", border: "1.5px dashed var(--c-bd3)", color: "var(--c-t3)" }}>
+                <Plus className="w-7 h-7" />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--c-t2)" }}>画布是空的</div>
+                <div style={{ fontSize: 12.5, color: "var(--c-t4)", marginTop: 4 }}>添加节点开始创作，或导入一个工作流。双击空白也能快速添加。</div>
+              </div>
+              <div style={{ display: "flex", gap: 10, pointerEvents: "auto" }}>
+                <button onClick={() => setShowNodePicker(true)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                    background: "var(--color-brand, oklch(0.62 0.2 285))", color: "#fff", border: "none", cursor: "pointer" }}>
+                  <Plus className="w-4 h-4" /> 添加第一个节点
+                </button>
+                <button onClick={addComfyWorkflowWithWizard}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                    background: "var(--c-surface)", color: "var(--c-t2)", border: "1px solid var(--c-bd2)", cursor: "pointer" }}>
+                  <LayoutGrid className="w-4 h-4" /> 导入工作流
+                </button>
+              </div>
+            </div>
+          )}
           {/* Studio ⌘K model quick-switch (a generative node is selected) */}
           {modelSwitch && <ModelQuickSwitch nodeId={modelSwitch.nodeId} nodeType={modelSwitch.nodeType} onClose={() => setModelSwitch(null)} />}
 
@@ -2809,7 +2892,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   <Maximize2 className="w-3.5 h-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">适应视图</TooltipContent>
+              <TooltipContent side="top" className="text-xs">适应视图 · 选中时按 F 缩放到选中</TooltipContent>
+            </Tooltip>
+
+            {/* ◆3 回到原点：把视口拉回世界原点(0,0) */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => reactFlow.setCenter(0, 0, { zoom: 1, duration: 400 })}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                >
+                  <LocateFixed className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">回到原点</TooltipContent>
             </Tooltip>
 
             {/* 一键整理：按连线方向分层排布自由节点 */}
@@ -3404,6 +3503,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onTogglePin={contextMenu.nodeId ? () => {
               updateNodeData(contextMenu.nodeId!, { pinned: !ctxPinned });
             } : undefined}
+            nodeLocked={Boolean((ctxNode?.data.payload as { locked?: boolean } | undefined)?.locked)}
+            onToggleLock={contextMenu.nodeId ? () => {
+              const wasLocked = Boolean((ctxNode?.data.payload as { locked?: boolean } | undefined)?.locked);
+              updateNodeData(contextMenu.nodeId!, { locked: !wasLocked });
+            } : undefined}
             // Collapse: clear pinned + deselect the node so it returns to its
             // compact preview-only height.
             onCollapse={contextMenu.nodeId ? () => {
@@ -3437,7 +3541,26 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <span>{connectMenu.fromHandleType === "source" ? "连接到新节点…" : "从新节点连入…"}</span>
               <span style={{ marginLeft: "auto", opacity: 0.7 }}><GripVertical style={{ width: 9, height: 9, display: "inline" }} /> 拖动排序</span>
             </div>
-            {connectMenu.types.map((t) => {
+            {/* ◆7 搜索框：类型多时可搜;回车加首个匹配 */}
+            {connectMenu.types.length > 6 && (
+              <input autoFocus value={connectSearch}
+                onChange={(e) => setConnectSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const q = connectSearch.trim().toLowerCase();
+                    const first = connectMenu.types.find((t) => t !== "comfyui_workflow" && (getNodeConfig(t)?.label ?? t).toLowerCase().includes(q));
+                    if (first) handlePickConnectType(first);
+                  } else if (e.key === "Escape") { setConnectMenu(null); }
+                }}
+                placeholder="搜索节点类型…"
+                style={{ width: "calc(100% - 8px)", margin: "0 4px 4px", boxSizing: "border-box", padding: "6px 8px", fontSize: 12,
+                  borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+            )}
+            {(() => {
+              const q = connectSearch.trim().toLowerCase();
+              const shown = q ? connectMenu.types.filter((t) => (getNodeConfig(t)?.label ?? CONNECTION_HINTS[t]?.label ?? t).toLowerCase().includes(q)) : connectMenu.types;
+              if (shown.length === 0) return <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "8px 10px" }}>无匹配</div>;
+              return shown.map((t) => {
               const cfg = getNodeConfig(t);
               // ComfyUI 自定义节点 → 改为「节点模板库」：点击打开模板库二级列表，选模板后在落点
               // 建节点并连边（替代直接建空白工作流节点）。
@@ -3493,7 +3616,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   </button>
                 </div>
               );
-            })}
+            });
+            })()}
           </div>
         </>
       )}

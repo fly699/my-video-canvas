@@ -5,16 +5,17 @@ import type { NodeConfig } from "./nodeConfig";
 // else preserves NODE_CONFIGS order. Stable sort keeps the original sequence for
 // non-pinned entries.
 //
-// Order: 工程智能体(super_agent) first (most prominent), then 智能体(agent), then the 3
-// ComfyUI nodes, then the rest (script, storyboard, …) in NODE_CONFIGS order.
+// Order: 工程智能体(super_agent) first (most prominent), then 智能体(agent), then 导演台(director),
+// then the 3 ComfyUI nodes, then the rest (script, storyboard, …) in NODE_CONFIGS order.
 // NB: super_agent is defined last in NODE_CONFIGS, so without pinning it fell to the very
 // end of the palette (after the coming-soon placeholders) and was easy to miss.
 const HEAD_ORDER: Record<string, number> = {
   super_agent: 0,
   agent: 1,
-  comfyui_image: 2,
-  comfyui_video: 3,
-  comfyui_workflow: 4,
+  director: 2,   // 导演台前移至智能体后面
+  comfyui_image: 3,
+  comfyui_video: 4,
+  comfyui_workflow: 5,
 };
 
 export function sortNodeConfigsForPalette(list: NodeConfig[]): NodeConfig[] {

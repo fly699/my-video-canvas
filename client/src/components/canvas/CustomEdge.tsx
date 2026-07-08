@@ -8,7 +8,8 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useUIStyle } from "../../contexts/UIStyleContext";
 import { getNodeConfig } from "../../lib/nodeConfig";
-import { Check, X, Trash2 } from "lucide-react";
+import { Check, X, Trash2, Plus } from "lucide-react";
+import { useEdgeInsert } from "../../hooks/useEdgeInsert";
 
 function arrowPoints(tx: number, ty: number, pos: Position, sz: number, hw: number): string {
   if (pos === Position.Left)  return `${tx+sz},${ty-hw} ${tx+sz},${ty+hw} ${tx},${ty}`;
@@ -58,6 +59,13 @@ export const CustomEdge = memo(function CustomEdge({
   // (参考图1/2, merge clip order …) is visible right on the connection.
   const hoveredNodeId = useHoverStore(s => s.nodeId);
   const allEdges = useCanvasStore(s => s.edges);
+  // ◆11 聚焦模式：有节点被选中时，只有与其相连的边保持高亮，其余淡出，减少大图连线噪音。
+  const focusState = useCanvasStore((s) => {
+    let anySel = false;
+    for (const n of s.nodes) { if (n.selected) { anySel = true; if (n.id === source || n.id === target) return "on"; } }
+    return anySel ? "dim" : "none";
+  });
+  const dimmed = focusState === "dim";
   let orderBadge: { x: number; y: number; n: number } | null = null;
   if (hoveredNodeId && (hoveredNodeId === target || hoveredNodeId === source)) {
     const side = hoveredNodeId === target ? "in" : "out";
@@ -216,15 +224,15 @@ export const CustomEdge = memo(function CustomEdge({
                   : typeColor
                     ? `drop-shadow(0 0 4px ${typeColor}77)`
                     : undefined,
-          transition: "stroke 300ms ease, stroke-width 140ms ease, filter 300ms ease",
+          transition: "stroke 300ms ease, stroke-width 140ms ease, filter 300ms ease, opacity 160ms ease",
           pointerEvents: "none",
+          opacity: dimmed ? 0.16 : 1,       // ◆11 聚焦淡出
         }}
       />
 
-      {/* Flowing particles — always visible, indicating data direction.
-          Three layers per particle: outer soft halo (largest, faintest),
-          inner glow halo (medium), and bright core. */}
-      {Array.from({ length: PARTICLE_COUNT }, (_, i) => {
+      {/* ◆11 流动粒子——只在「运行中」出现(静态时安静),且聚焦淡出的边不画粒子。
+          三层/粒子:外柔光晕、内光晕、亮核。 */}
+      {(running || sourceRunning || sourceCompleted || sourceFailed) && !dimmed && Array.from({ length: PARTICLE_COUNT }, (_, i) => {
         const beginOffset = -((i / PARTICLE_COUNT) * durSeconds);
         return (
           <g key={i}>
@@ -266,7 +274,8 @@ export const CustomEdge = memo(function CustomEdge({
       <polygon
         points={arrowPoints(targetX, targetY, targetPosition, isCreative ? 10 : 13, isCreative ? 5.5 : 7.5)}
         fill={strokeColor}
-        opacity={isCreative ? 0.9 : 1.0}
+        opacity={dimmed ? 0.16 : (isCreative ? 0.9 : 1.0)}
+        style={{ transition: "opacity 160ms ease" }}
         pointerEvents="none"
       />
 
@@ -393,6 +402,17 @@ export const CustomEdge = memo(function CustomEdge({
                   + 标签
                 </button>
               )}
+              <div style={{ width: 1, height: 10, background: "var(--c-bd3)", margin: "0 2px" }} />
+              {/* ◆1 线上插入节点：点 ⊕ 打开节点选择器，选完把节点插进这条边中点 */}
+              <button
+                onClick={(e) => { e.stopPropagation(); useEdgeInsert.getState().requestInsert(id); }}
+                style={{ color: "var(--c-t4)", background: "transparent", border: "none", cursor: "pointer", padding: 2, lineHeight: 0, borderRadius: 4, transition: "color 120ms ease" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.19 285)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+                title="在此处插入节点"
+              >
+                <Plus style={{ width: 11, height: 11 }} />
+              </button>
               <div style={{ width: 1, height: 10, background: "var(--c-bd3)", margin: "0 2px" }} />
               <button
                 onClick={handleDelete}

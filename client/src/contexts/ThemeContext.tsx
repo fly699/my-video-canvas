@@ -30,8 +30,8 @@ export const THEMES: ThemeMeta[] = [
   { id: "sage",     label: "鼠尾草", canvas: "oklch(0.930 0.018 150)", surface: "oklch(0.798 0.024 150)", dark: false },
   { id: "sand",     label: "暖砂", canvas: "oklch(0.928 0.022 70)",  surface: "oklch(0.795 0.028 66)",  dark: false },
   { id: "warm",     label: "暖白", canvas: "oklch(0.948 0.020 85)",  surface: "oklch(0.835 0.022 78)",  dark: false },
-  { id: "mint",     label: "薄荷", canvas: "oklch(0.928 0.036 165)", surface: "oklch(0.815 0.046 165)", dark: false },
-  { id: "lavender", label: "薰衣草", canvas: "oklch(0.925 0.032 295)", surface: "oklch(0.810 0.044 295)", dark: false },
+  { id: "mint",     label: "薄荷", canvas: "oklch(0.925 0.030 165)", surface: "oklch(0.800 0.026 165)", dark: false },
+  { id: "lavender", label: "薰衣草", canvas: "oklch(0.926 0.028 295)", surface: "oklch(0.800 0.024 295)", dark: false },
   { id: "paper",    label: "经典", canvas: "oklch(0.928 0.006 80)",  surface: "oklch(0.792 0.008 80)",  dark: false },
 ];
 
