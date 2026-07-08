@@ -65,3 +65,15 @@ export function getRenderJob(id: string, userId: number): RenderJob | undefined 
   const j = jobs.get(id);
   return j && j.userId === userId ? j : undefined;
 }
+
+/** 该用户该编辑会话「最新的、非失败」渲染任务——供离开剪辑器再回来时恢复进度/成片（#90）。
+ *  返回 running（继续显示进度）或 done（直接展示成片下载）；error 不自动恢复（用户可重导）。 */
+export function getActiveRenderJobForSession(userId: number, sessionId: number): RenderJob | undefined {
+  sweep();
+  let best: RenderJob | undefined;
+  for (const j of Array.from(jobs.values())) {
+    if (j.userId !== userId || j.sessionId !== sessionId || j.status === "error") continue;
+    if (!best || j.createdAt > best.createdAt) best = j;
+  }
+  return best;
+}

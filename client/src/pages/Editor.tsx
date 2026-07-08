@@ -284,6 +284,16 @@ function EditorWorkspace({ id }: { id: number }) {
   }, [statusQuery.isError, statusQuery.data, statusQuery.errorUpdatedAt, jobId]);
   /** 手动停止跟踪导出（卡住时的恢复出口）——复位本地进度态，后台任务可能仍在渲染。 */
   const dismissExport = () => { setJobId(null); setExportPct(0); setExportStage(""); pollFailRef.current = 0; toast("已停止跟踪导出", { description: "后台可能仍在渲染；如需可重新导出。" }); };
+  // #90 进入剪辑器时恢复该会话进行中/刚完成的导出（此前 jobId 为组件本地态，离开再回来即丢失跟踪）。
+  const activeExportQ = trpc.editor.activeExport.useQuery({ id }, { refetchOnWindowFocus: false, staleTime: 0 });
+  const restoredExportRef = useRef(false);
+  useEffect(() => {
+    const d = activeExportQ.data;
+    if (!d || restoredExportRef.current || jobId || exportUrl) return;
+    restoredExportRef.current = true; // 只自动恢复一次，避免覆盖用户随后的新导出/关闭
+    if (d.status === "running") { setJobId(d.jobId); setExportPct(d.progress); setExportStage(d.stage); toast.info("正在恢复进行中的导出…", { duration: 2000 }); }
+    else if (d.status === "done" && d.url) { setExportUrl(d.url); }
+  }, [activeExportQ.data, jobId, exportUrl]);
   const exporting = exportMut.isPending || !!jobId;
 
   // Kick off an export, translating the resolution preset into output dims that
