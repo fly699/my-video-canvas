@@ -2342,10 +2342,15 @@ function ChatMessageSearchPanel() {
   const [convId, setConvId] = useState("");
   const [userId, setUserId] = useState("");
   const [submitted, setSubmitted] = useState<{ keyword?: string; conversationId?: number; userId?: number } | null>(null);
+  const [page, setPage] = useState(0);
+  const PAGE = 50;
   const q = trpc.admin.chat.searchMessages.useQuery(
-    { ...submitted, limit: 50, offset: 0 },
+    { ...submitted, limit: PAGE, offset: page * PAGE },
     { enabled: submitted !== null },
   );
+  const runSearch = () => { setPage(0); setSubmitted({ keyword: keyword || undefined, conversationId: convId ? Number(convId) : undefined, userId: userId ? Number(userId) : undefined }); };
+  const rowCount = q.data?.rows.length ?? 0;
+  const hasMore = rowCount === PAGE; // 满页 → 可能还有下一页
   return (
     <div style={chatCard}>
       <h3 style={chatCardTitle}>消息检索（仅服务器模式可见明文）</h3>
@@ -2353,9 +2358,19 @@ function ChatMessageSearchPanel() {
         <input placeholder="关键词" value={keyword} onChange={(e) => setKeyword(e.target.value)} style={chatInput} />
         <input placeholder="会话ID" value={convId} onChange={(e) => setConvId(e.target.value)} style={{ ...chatInput, width: 100 }} />
         <input placeholder="用户ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ ...chatInput, width: 100 }} />
-        <button onClick={() => setSubmitted({ keyword: keyword || undefined, conversationId: convId ? Number(convId) : undefined, userId: userId ? Number(userId) : undefined })} style={chatPrimarySm}>搜索</button>
+        <button onClick={runSearch} disabled={q.isFetching} style={{ ...chatPrimarySm, opacity: q.isFetching ? 0.6 : 1 }}>{q.isFetching ? "搜索中…" : "搜索"}</button>
       </div>
+      {q.isFetching && submitted && <p style={chatDim}>搜索中…</p>}
       {q.data?.encrypted && <p style={chatDim}>🔒 该会话为端到端加密，服务器无内容，仅可见元数据。</p>}
+      {q.data && !q.data.encrypted && rowCount > 0 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, fontSize: 11.5, color: "var(--c-t3)" }}>
+          <span>第 {page + 1} 页 · 本页 {rowCount} 条{hasMore ? "（可能有更多）" : ""}</span>
+          <span style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0 || q.isFetching} style={paginBtn}>‹ 上一页</button>
+            <button onClick={() => setPage((p) => p + 1)} disabled={!hasMore || q.isFetching} style={paginBtn}>下一页 ›</button>
+          </span>
+        </div>
+      )}
       {q.data && !q.data.encrypted && (
         <table style={chatTable}>
           <thead><tr><ChatTh>时间</ChatTh><ChatTh>会话</ChatTh><ChatTh>发送者</ChatTh><ChatTh>内容</ChatTh></tr></thead>
