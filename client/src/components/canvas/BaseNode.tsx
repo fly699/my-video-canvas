@@ -485,6 +485,7 @@ export const BaseNode = memo(function BaseNode({
 
   // Entry animation
   const [entered, setEntered] = useState(false);
+  const [errExpanded, setErrExpanded] = useState(false); // #R4-6 失败横幅点击展开完整错误
   useEffect(() => { const t = setTimeout(() => setEntered(true), 20); return () => clearTimeout(t); }, []);
 
   // 仅在"单击节点后 3 秒内"显示标题栏操作按钮；编辑名称进行中保持显示。
@@ -1213,13 +1214,31 @@ export const BaseNode = memo(function BaseNode({
           lives inside the body). */}
       {!genBusy && !nodeRunning && genError && (
         <div
-          title={genError}
-          style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px", flexShrink: 0, background: "oklch(0.62 0.20 25 / 0.12)", borderBottom: "1px solid var(--c-bd1)" }}
+          className="nodrag"
+          role="button" tabIndex={0} aria-label={`生成失败：${genError}`}
+          onClick={(e) => { e.stopPropagation(); setErrExpanded((v) => !v); }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setErrExpanded((v) => !v); } }}
+          title={errExpanded ? "点击收起" : "点击展开完整错误"}
+          style={{ display: "flex", alignItems: errExpanded ? "flex-start" : "center", gap: 5, padding: "4px 10px", flexShrink: 0, cursor: "pointer", background: "oklch(0.62 0.20 25 / 0.12)", borderBottom: "1px solid var(--c-bd1)" }}
         >
-          <AlertTriangle size={11} style={{ color: "oklch(0.62 0.20 25)", flexShrink: 0 }} />
-          <span style={{ fontSize: 9.5, fontWeight: 600, color: "oklch(0.62 0.20 25)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <AlertTriangle size={11} style={{ color: "oklch(0.62 0.20 25)", flexShrink: 0, marginTop: errExpanded ? 2 : 0 }} />
+          <span style={errExpanded
+            ? { fontSize: 9.5, fontWeight: 600, color: "oklch(0.62 0.20 25)", flex: 1, minWidth: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.55 }
+            : { fontSize: 9.5, fontWeight: 600, color: "oklch(0.62 0.20 25)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {genError}
           </span>
+          {errExpanded ? (
+            <button
+              className="nodrag"
+              onClick={(e) => { e.stopPropagation(); try { void navigator.clipboard?.writeText(genError); toast.success("已复制错误信息", { duration: 1200 }); } catch { /* ignore */ } }}
+              title="复制完整错误"
+              style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 5, border: "1px solid oklch(0.62 0.20 25 / 0.4)", background: "transparent", color: "oklch(0.62 0.20 25)", cursor: "pointer" }}
+            >
+              <Copy size={9} /> 复制
+            </button>
+          ) : (
+            <ChevronDown size={11} style={{ color: "oklch(0.62 0.20 25)", flexShrink: 0, opacity: 0.7 }} />
+          )}
         </div>
       )}
 
