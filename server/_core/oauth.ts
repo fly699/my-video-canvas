@@ -77,8 +77,15 @@ export function registerOAuthRoutes(app: Express) {
 
       // 注册审批：新建的 OAuth 用户 + 开关开启 + 非管理员/站长 → 置 approved=false、不签发 session，
       // 跳到待审批提示。已存在的老用户不受影响（登录照常）。
-      const authSettings = await db.getAuthSettings().catch(() => null);
-      const pendingApproval = !existed && !!authSettings?.registrationApprovalEnabled && dbUser?.role !== "admin";
+      let pendingApproval = false;
+      try {
+        const s = await db.getAuthSettings();
+        pendingApproval = !existed && s.registrationApprovalEnabled && dbUser?.role !== "admin";
+      } catch {
+        // 读设置失败：对新建用户 fail-closed（当作待审批，不签发 session），与 context gate 同向，
+        // 避免 DB 抖动时新用户被永久放行（approved 保持默认 true 再也拦不住）。
+        pendingApproval = !existed && dbUser?.role !== "admin";
+      }
       if (pendingApproval && dbUser) {
         await db.setUserApproved(dbUser.id, false).catch(() => { /* non-fatal */ });
         writeAuditLog({

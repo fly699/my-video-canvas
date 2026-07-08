@@ -5,6 +5,7 @@ import { promisify } from "util";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
+import { applyAuthGates } from "./context";
 import { writeAuditLog } from "./auditLog";
 import { sendVerificationEmail, generateVerifyCode, VERIFY_CODE_TTL_MS } from "./verificationEmail";
 
@@ -114,8 +115,9 @@ export function registerEmailAuthRoutes(app: Express) {
       // （即便同时开启邮箱验证，也先把 approved 置 false；验证通过后 verify-email 仍会拦审批。）
       const isAdminUser = (await db.getUserByOpenId(openId))?.role === "admin";
       const pendingApproval = authSettings.registrationApprovalEnabled && !isAdminUser;
-      if (pendingApproval && newUserId) {
-        await db.setUserApproved(newUserId, false);
+      if (pendingApproval) {
+        // 按 openId 置位，不依赖二次读回的 newUserId（读失败也不会漏标 → 不会绕过审批）。
+        await db.setUserApprovedByOpenId(openId, false);
       }
       if (authSettings.emailVerificationEnabled) {
         const code = generateVerifyCode();
@@ -306,10 +308,10 @@ export function registerEmailAuthRoutes(app: Express) {
     const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
     if (!checkRateLimit(ip)) { res.status(429).json({ error: "请求过于频繁，请稍后再试" }); return; }
     try {
+      // 经统一 gate（冻结 + 待审批），与其它入口一致——被驳回/冻结但持会话者不能改密。
       let user;
-      try { user = await sdk.authenticateRequest(req); } catch { user = null; }
-      if (!user) { res.status(401).json({ error: "未登录" }); return; }
-      if (user.disabled) { res.status(403).json({ error: "账号已被冻结" }); return; }
+      try { user = await applyAuthGates(await sdk.authenticateRequest(req)); } catch { user = null; }
+      if (!user) { res.status(401).json({ error: "未登录或账号不可用" }); return; }
       const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
       if (!user.passwordHash) { res.status(400).json({ error: "当前账号非邮箱密码登录，无法修改密码" }); return; }
       // Match the register policy (8) — was 6, weaker than account creation.

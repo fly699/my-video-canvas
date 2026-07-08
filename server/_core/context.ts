@@ -18,6 +18,16 @@ async function passesApproval(user: User | null): Promise<User | null> {
   return user;
 }
 
+/**
+ * 鉴权统一 gate：把 sdk.authenticateRequest 拿到的原始 user 过一遍「冻结 + 待审批」拦截，
+ * 返回放行的 user 或 null。HTTP(context/resolveRequestUser) 与 Socket.IO 两条鉴权路径都必须
+ * 经此函数，避免任一路径漏检（此前 socket 直接采信原始 user，绕过冻结/审批 gate）。
+ */
+export async function applyAuthGates(user: User | null): Promise<User | null> {
+  if (!user || user.disabled) return null;
+  return passesApproval(user);
+}
+
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
@@ -66,7 +76,7 @@ export async function resolveRequestUser(req: CreateExpressContextOptions["req"]
   if (isDevBypass) return DEV_USER;
   try {
     const u = await sdk.authenticateRequest(req);
-    return passesApproval(u?.disabled ? null : u); // 冻结/待审批用户视为未登录
+    return applyAuthGates(u); // 冻结/待审批用户视为未登录
   } catch {
     return null;
   }
@@ -92,8 +102,7 @@ export async function createContext(
   } else {
     try {
       user = await sdk.authenticateRequest(opts.req);
-      if (user?.disabled) user = null; // 冻结用户视为未登录，立即失去 API 访问
-      user = await passesApproval(user); // 待审批用户视为未登录（管理员豁免、开关关闭即恢复）
+      user = await applyAuthGates(user); // 冻结/待审批用户视为未登录（管理员豁免、开关关闭即恢复）
     } catch (error) {
       // Authentication is optional for public procedures.
       user = null;

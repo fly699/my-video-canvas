@@ -14,7 +14,7 @@ import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
 import { registerClaudeBridge, setBridgeSelfHttpPort } from "./claudeBridge";
 import { appRouter } from "../routers";
-import { createContext, resolveRequestUser } from "./context";
+import { createContext, resolveRequestUser, applyAuthGates } from "./context";
 import { getTunnelGate, initTunnel, setTunnelOrigin, getTunnelListenerPort, trackTunnelSocket } from "./tunnel";
 import { isTunnelRequest, isTunnelExemptPath, isTunnelAllowed } from "./tunnelGate";
 import { serveStatic, setupVite } from "./vite";
@@ -205,9 +205,13 @@ async function startServer() {
       }
       // socket.request is a Node IncomingMessage; sdk.authenticateRequest only
       // touches the cookie header, so the shape matches Express's Request enough.
-      const user = await sdk.authenticateRequest(
+      const raw = await sdk.authenticateRequest(
         socketAuthReq(socket) as unknown as Parameters<typeof sdk.authenticateRequest>[0],
       );
+      // 与 HTTP 侧同一套「冻结 + 待审批」gate——否则被冻结/驳回但仍持会话的用户能从 socket
+      // 这条独立鉴权路径绕过限制，继续用实时协作/聊天。
+      const user = await applyAuthGates(raw);
+      if (!user) { next(new Error("unauthenticated")); return; }
       (socket.data as { user: User }).user = user;
       next();
     } catch {
@@ -410,9 +414,13 @@ async function startServer() {
         (socket.data as { user: User }).user = u;
         return next();
       }
-      const user = await sdk.authenticateRequest(
+      const raw = await sdk.authenticateRequest(
         socketAuthReq(socket) as unknown as Parameters<typeof sdk.authenticateRequest>[0],
       );
+      // 与 HTTP 侧同一套「冻结 + 待审批」gate——否则被冻结/驳回但仍持会话的用户能从 socket
+      // 这条独立鉴权路径绕过限制，继续用实时协作/聊天。
+      const user = await applyAuthGates(raw);
+      if (!user) { next(new Error("unauthenticated")); return; }
       (socket.data as { user: User }).user = user;
       next();
     } catch {

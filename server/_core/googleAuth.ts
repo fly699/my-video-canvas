@@ -174,8 +174,14 @@ export function registerGoogleAuthRoutes(app: Express) {
       const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
 
       // 注册审批：新建的 Google 用户 + 开关开启 + 非管理员 → 待审批，不签发 session。
-      const authSettings = await db.getAuthSettings().catch(() => null);
-      const pendingApproval = !existed && !!authSettings?.registrationApprovalEnabled && dbUser?.role !== "admin";
+      let pendingApproval = false;
+      try {
+        const s = await db.getAuthSettings();
+        pendingApproval = !existed && s.registrationApprovalEnabled && dbUser?.role !== "admin";
+      } catch {
+        // 读设置失败：对新建用户 fail-closed（当作待审批，不签发 session），与 context gate 同向。
+        pendingApproval = !existed && dbUser?.role !== "admin";
+      }
       if (pendingApproval && dbUser) {
         await db.setUserApproved(dbUser.id, false).catch(() => { /* non-fatal */ });
         writeAuditLog({

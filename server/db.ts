@@ -311,6 +311,13 @@ export async function setUserApproved(id: number, approved: boolean): Promise<vo
   await db.update(users).set({ approved }).where(eq(users.id, id));
 }
 
+/** 按 openId 置审批状态——注册时用（不依赖 upsert 后二次读回主键，避免读失败漏标 approved=false）。 */
+export async function setUserApprovedByOpenId(openId: string, approved: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ approved }).where(eq(users.openId, openId));
+}
+
 /** 设置某用户的管理员级别（0=普通用户·1=查看员·2=运营·3=管理员·4=超管）。
  *  同步 role：level>=1 → 'admin'，否则 'user'。 */
 export async function setUserAdminLevel(id: number, level: number): Promise<void> {
