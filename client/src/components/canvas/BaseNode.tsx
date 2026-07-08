@@ -898,20 +898,46 @@ export const BaseNode = memo(function BaseNode({
           </div>
         )}
 
-        {/* Pinned indicator — small pin icon shown when the user explicitly
-            kept this node's input panel expanded via the right-click menu. */}
-        {pinned && (
-          <span
-            title="已固定（右键菜单可取消）"
-            style={{
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              width: 18, height: 18, borderRadius: 4,
-              background: "oklch(0.68 0.22 285 / 0.15)",
-              color: "oklch(0.78 0.16 285)",
-              border: "1px solid oklch(0.68 0.22 285 / 0.35)",
-              flexShrink: 0,
-            }}
-          >
+        {/* ◆4 标题栏常驻「折叠三角 + 图钉」——让「折叠/固定」一眼可见可点，不必再进右键菜单。
+            仅对 studio 浮层节点显示。三角:展开态点击折叠(取消固定+取消选中)、折叠态点击展开(选中即浮起)。 */}
+        {usesStudioFloating && (
+          <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const st = useCanvasStore.getState();
+                if (studioFloated || pinned) { st.updateNodeData(id, { pinned: false }); st.setNodes(st.nodes.map((n) => n.id === id ? { ...n, selected: false } : n)); }
+                else { st.setNodes(st.nodes.map((n) => ({ ...n, selected: n.id === id }))); }
+              }}
+              title={(studioFloated || pinned) ? "折叠节点" : "展开节点"}
+              className="nodrag flex-shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded"
+              style={{ background: "transparent", color: "var(--c-t4)", border: "1px solid transparent", cursor: "pointer" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+            >
+              {(studioFloated || pinned) ? <ChevronDown size={12} /> : <ChevronUp size={12} style={{ transform: "rotate(90deg)" }} />}
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().updateNodeData(id, { pinned: !pinned }); }}
+              title={pinned ? "取消固定（恢复自动折叠）" : "固定显示（始终展开）"}
+              className="nodrag flex-shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded"
+              style={{
+                background: pinned ? "oklch(0.68 0.22 285 / 0.15)" : "transparent",
+                color: pinned ? "oklch(0.78 0.16 285)" : "var(--c-t4)",
+                border: pinned ? "1px solid oklch(0.68 0.22 285 / 0.35)" : "1px solid transparent", cursor: "pointer",
+              }}
+              onMouseEnter={(e) => { if (!pinned) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; } }}
+              onMouseLeave={(e) => { if (!pinned) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; } }}
+            >
+              <Pin size={10} />
+            </button>
+          </>
+        )}
+        {/* 非 studio 皮肤:保留原被动固定指示 */}
+        {!usesStudioFloating && pinned && (
+          <span title="已固定（右键菜单可取消）"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 4,
+              background: "oklch(0.68 0.22 285 / 0.15)", color: "oklch(0.78 0.16 285)", border: "1px solid oklch(0.68 0.22 285 / 0.35)", flexShrink: 0 }}>
             <Pin size={10} />
           </span>
         )}
