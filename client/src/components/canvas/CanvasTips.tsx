@@ -2,29 +2,37 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
 import { createPortal } from "react-dom";
 import { Command, Layers, SlidersHorizontal, Clapperboard, ImagePlus, Search, Sparkles, Maximize2, MessageSquareText, BookOpen } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { useUIStyle } from "../../contexts/UIStyleContext";
 
 // 操作小贴士：右下角极简动感卡片，定时轮播 + 情境触发（新增节点 / 进入多选），
 // 自动消失，右键=这条不再显示。纯表现层，pointer-events 仅落在卡片本身，不干扰画布。
-interface Tip { id: string; icon: ReactNode; title: string; body: string }
+// studio:true 的贴士描述的是工作室专属 UI（命令栏/批量参数/搜索下拉等），仅在 studio 皮肤展示，
+// 否则在 pro/simple 皮肤会提示根本不存在的功能。cmdk/ball/guide 跨皮肤通用。
+interface Tip { id: string; icon: ReactNode; title: string; body: string; studio?: boolean }
 const TIPS: Tip[] = [
   { id: "cmdk", icon: <Command size={15} />, title: "命令面板 ⌘K", body: "搜索节点后回车进入命令层：定位 / 运行 / 改比例 / 复制 / 删除，键盘全程可达。" },
-  { id: "node", icon: <Sparkles size={15} />, title: "选中即可创作", body: "选中生成节点，下方命令栏可直接改模型、比例、参考图并一键生成。" },
-  { id: "multi", icon: <Layers size={15} />, title: "多选批量操作", body: "选中 2 个以上节点，底部工具条「批量参数」可统一比例、批量运行。" },
-  { id: "assemble", icon: <Clapperboard size={15} />, title: "一键自动成片", body: "选中多段已完成视频（可加配乐），底部「自动成片」自动连线合并并加转场。" },
-  { id: "ref", icon: <ImagePlus size={15} />, title: "参考图更方便", body: "命令栏「参考图」可上传或把画布图片直接拖进来，支持多张。" },
-  { id: "search", icon: <Search size={15} />, title: "长列表可搜索", body: "参数下拉超过 8 项会自动出现搜索框，输入关键词即刻筛选（↑↓ 选择、Enter 确认）。" },
-  { id: "expand", icon: <SlidersHorizontal size={15} />, title: "记住展开偏好", body: "命令栏「展开全部参数」切换一次即记住，后续选中的节点自动沿用。" },
+  { id: "node", studio: true, icon: <Sparkles size={15} />, title: "选中即可创作", body: "选中生成节点，下方命令栏可直接改模型、比例、参考图并一键生成。" },
+  { id: "multi", studio: true, icon: <Layers size={15} />, title: "多选批量操作", body: "选中 2 个以上节点，底部工具条「批量参数」可统一比例、批量运行。" },
+  { id: "assemble", studio: true, icon: <Clapperboard size={15} />, title: "一键自动成片", body: "选中多段已完成视频（可加配乐），底部「自动成片」自动连线合并并加转场。" },
+  { id: "ref", studio: true, icon: <ImagePlus size={15} />, title: "参考图更方便", body: "命令栏「参考图」点击上传，支持多张；也可把画布素材拖到节点上作参考。" },
+  { id: "search", studio: true, icon: <Search size={15} />, title: "长列表可搜索", body: "参数下拉超过 8 项会自动出现搜索框，输入关键词即刻筛选（↑↓ 选择、Enter 确认）。" },
+  { id: "expand", studio: true, icon: <SlidersHorizontal size={15} />, title: "记住展开偏好", body: "命令栏「展开全部参数」切换一次即记住，后续选中的节点自动沿用。" },
   { id: "ball", icon: <Maximize2 size={15} />, title: "助手收成悬浮球", body: "画布助手点关闭会收成左下角悬浮球：拖动移位、点击展开、右键才真正关闭。" },
-  { id: "neg", icon: <MessageSquareText size={15} />, title: "反向提示词", body: "图像 / 视频节点命令栏底部可填反向提示词，排除不想要的元素。" },
+  { id: "neg", studio: true, icon: <MessageSquareText size={15} />, title: "反向提示词", body: "图像 / 视频节点命令栏底部可填反向提示词，排除不想要的元素。" },
   { id: "guide", icon: <BookOpen size={15} />, title: "随时回看导览", body: "顶栏「更多 → 操作指南」可重新打开交互式新手导览。" },
 ];
 const DKEY = "avc:tips:dismissed:v1";
 const OFFKEY = "avc:tips:off:v1";
+// 供「更多菜单」重新开启小贴士用：清除关闭/忽略记录。
+export function resetCanvasTips(): void {
+  try { localStorage.removeItem(OFFKEY); localStorage.removeItem(DKEY); } catch { /* ignore */ }
+}
 function loadDismissed(): Set<string> {
   try { const a = JSON.parse(localStorage.getItem(DKEY) || "[]"); return new Set(Array.isArray(a) ? a : []); } catch { return new Set(); }
 }
 
 export function CanvasTips() {
+  const { uiStyle } = useUIStyle();
   const nodeCount = useCanvasStore((s) => s.nodes.length);
   const multi = useCanvasStore((s) => { let c = 0; for (const n of s.nodes) { if (n.selected) { c++; if (c >= 2) return true; } } return false; });
 
@@ -34,20 +42,28 @@ export function CanvasTips() {
   const offRef = useRef(false);
   const lastRef = useRef(0);
   const hideTimer = useRef<number | undefined>(undefined);
+  const leaveTimer = useRef<number | undefined>(undefined);
   const idxRef = useRef(0);
   const prevCount = useRef(nodeCount);
   const prevMulti = useRef(false);
+  // 当前皮肤下允许展示的贴士：非 studio 皮肤过滤掉 studio 专属条目（否则提示不存在的功能）。
+  const isStudio = uiStyle === "studio";
+  const isStudioRef = useRef(isStudio);
+  isStudioRef.current = isStudio;
+  const allowed = (t: Tip) => (!t.studio || isStudioRef.current) && !dismissedRef.current.has(t.id);
 
   useEffect(() => { try { offRef.current = localStorage.getItem(OFFKEY) === "1"; } catch { /* ignore */ } }, []);
 
   const hide = useCallback(() => {
     setLeaving(true);
-    window.setTimeout(() => { setTip(null); setLeaving(false); }, 260);
+    window.clearTimeout(leaveTimer.current);
+    leaveTimer.current = window.setTimeout(() => { setTip(null); setLeaving(false); }, 260);
   }, []);
 
   const show = useCallback((t: Tip | null, force = false) => {
     if (!t || offRef.current) return;
     if (dismissedRef.current.has(t.id)) return;
+    if (t.studio && !isStudioRef.current) return; // 非 studio 皮肤不展示 studio 专属贴士
     if (typeof window !== "undefined" && window.innerWidth < 640) return; // 窄屏/移动端不打扰
     const now = Date.now();
     if (!force && now - lastRef.current < 12000) return; // 冷却，避免刷屏
@@ -62,7 +78,7 @@ export function CanvasTips() {
   useEffect(() => {
     const pick = () => {
       if (offRef.current) return;
-      const avail = TIPS.filter((t) => !dismissedRef.current.has(t.id));
+      const avail = TIPS.filter(allowed);
       if (!avail.length) return;
       show(avail[idxRef.current % avail.length]);
       idxRef.current++;
@@ -82,7 +98,7 @@ export function CanvasTips() {
     prevMulti.current = multi;
   }, [multi, show]);
 
-  useEffect(() => () => window.clearTimeout(hideTimer.current), []);
+  useEffect(() => () => { window.clearTimeout(hideTimer.current); window.clearTimeout(leaveTimer.current); }, []);
 
   if (!tip) return null;
 
@@ -108,6 +124,7 @@ export function CanvasTips() {
         @media (prefers-reduced-motion: reduce) { .avc-tip-card, .avc-tip-bar { animation: none !important; } }
       `}</style>
       <div
+        key={tip.id}
         className="avc-tip-card nodrag"
         onContextMenu={dismissForever}
         onClick={hide}

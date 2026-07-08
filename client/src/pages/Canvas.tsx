@@ -60,7 +60,7 @@ import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
 const DirectorEditor = lazy(() => import("../components/canvas/director/DirectorEditor").then((m) => ({ default: m.DirectorEditor })));
 import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
-import { CanvasTips } from "../components/canvas/CanvasTips";
+import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
 import { ModelQuickSwitch, MODEL_SWITCH_FIELD } from "../components/canvas/studio/ModelQuickSwitch";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS, defaultTargetHandle } from "../lib/connectionRules";
@@ -126,6 +126,7 @@ import {
   BookmarkPlus,
   ListVideo,
   HelpCircle,
+  Lightbulb,
   Clapperboard,
   Spline,
   MessageSquare,
@@ -2120,6 +2121,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               )}
               <DropdownMenuItem onClick={() => setShowHelp((v) => !v)}><HelpCircle className="w-3.5 h-3.5 mr-2" /> 操作指南</DropdownMenuItem>
               <DropdownMenuItem onClick={() => startGuide(0)}><Compass className="w-3.5 h-3.5 mr-2" /> 新手导览</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { resetCanvasTips(); toast.success("已重新开启操作小贴士"); }}><Lightbulb className="w-3.5 h-3.5 mr-2" /> 重新开启小贴士</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowNotifySettings(true)}><Bell className="w-3.5 h-3.5 mr-2" /> 产物推送设置</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowPresentation(true)}><Play className="w-3.5 h-3.5 mr-2" /> 演示模式</DropdownMenuItem>
 
