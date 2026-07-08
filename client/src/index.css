@@ -1362,12 +1362,24 @@ button:active:not(:disabled) {
 }
 :root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media img,
 :root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media video {
-  width: 100%;
+  /* 预览按产物真实比例自适应，绝不给固定框加黑边(letterbox)：元素本身收敛到
+     (100% 宽 × 460px 高) 内并保持宽高比 → 竖版=窄高、横版=满宽，四周只余卡片
+     底色而非黑边。此前 width:100%+max-height:300+object-fit:contain 会把竖版
+     产物压进满宽矮框、两侧填黑（视频节点选中时的 pillarbox bug）。 */
+  max-width: 100%;
+  max-height: 460px;
+  width: auto;
   height: auto;
   aspect-ratio: auto;
   display: block;
-  object-fit: contain;
-  max-height: 300px;
+  margin: 0 auto;
+}
+/* WatermarkedVideo 把 <video> 包在 .wm-video-wrap 里；选中态让包裹层收成视频实宽
+   并居中，避免包裹层仍占满宽导致循环/全屏按钮偏到黑边上。 */
+:root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media .wm-video-wrap {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
 }
 /* Studio: when selected, inset the hero into a rounded media block with a hairline
    ring so the result reads as a framed preview (media-first card), not a flush band. */

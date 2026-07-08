@@ -140,7 +140,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // ── 收起为悬浮小球（点关闭=收起，非真关闭；小球右键才可关闭）──
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem("avc:canvasAgent:collapsed") === "1");
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:collapsed", collapsed ? "1" : "0"); } catch { /* quota */ } }, [collapsed]);
-  const BALL = 58; // 小球直径
+  const BALL = 42; // 小球直径（更小巧，减少对画布的遮挡）
   const [ballPos, setBallPos] = useState<{ left: number; top: number } | null>(() => {
     try { const s = localStorage.getItem("avc:canvasAgent:ballpos"); if (s) return JSON.parse(s); } catch { /* ignore */ }
     return null;
@@ -561,8 +561,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           animation: `avc-ball-ring ${chat.isPending ? "1.1s" : "2.2s"} ease-out infinite`,
         }} />
         {chat.isPending
-          ? <Loader2 size={22} className="animate-spin" style={{ color: "white", position: "relative", zIndex: 1 }} />
-          : <Sparkles size={24} style={{ color: "white", position: "relative", zIndex: 1, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />}
+          ? <Loader2 size={17} className="animate-spin" style={{ color: "white", position: "relative", zIndex: 1 }} />
+          : <Sparkles size={18} style={{ color: "white", position: "relative", zIndex: 1, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />}
       </div>
       {ballMenu && (
         <div
