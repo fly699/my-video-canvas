@@ -12,6 +12,9 @@ interface WhitelistSettingsCache {
 
 let _cachedSettings: WhitelistSettingsCache | null = null;
 let _cacheExpiry = 0;
+// 「上次成功读到」的设置——只在 DB 读成功时更新，cache 失效(invalidateWhitelistCache)不清它。
+// 供 DB 出错时 stale-while-error 使用，避免成本门控在 DB 抖动期 fail-open 放行全体。
+let _lastGoodSettings: WhitelistSettingsCache | null = null;
 // Incremented on every invalidation so in-flight DB reads don't overwrite with stale data.
 let _cacheGeneration = 0;
 
@@ -39,6 +42,7 @@ async function getWhitelistSettingsCached(): Promise<WhitelistSettingsCache> {
       llmBypass: settings?.llmBypass ?? false,
       kieEnabled: settings?.kieEnabled ?? false,
     };
+    _lastGoodSettings = value; // 记录最近一次成功读，供 DB 出错时兜底
     // Only write cache if no invalidation happened while awaiting.
     if (_cacheGeneration === gen) {
       _cachedSettings = value;
@@ -55,13 +59,19 @@ async function getWhitelistSettingsCached(): Promise<WhitelistSettingsCache> {
       llmBypass: fresh?.llmBypass ?? false,
       kieEnabled: fresh?.kieEnabled ?? false,
     };
+    _lastGoodSettings = freshValue; // 记录最近一次成功读
     if (_cacheGeneration === postInvalidationGen) {
       _cachedSettings = freshValue;
       _cacheExpiry = Date.now() + 30_000;
     }
     return freshValue;
   } catch (err) {
-    console.error("[Whitelist] DB error in getWhitelistSettingsCached, treating as disabled:", err);
+    // Fail-open 修复：此前 DB 出错一律返回 DISABLED，使成本门控在 DB 抖动期对全体失效
+    // （非白名单用户可白嫖付费生成）。改为 stale-while-error——继续沿用「上次成功」的设置，
+    // 抖动期保持门控状态不变；仅在从未成功缓存过（冷启动且 DB 不可用，此时全站本就不可用）
+    // 才降级为 DISABLED。短 TTL(5s) 让 DB 恢复后尽快重读。
+    const lastGood = _lastGoodSettings ?? priorCached ?? DISABLED;
+    console.error("[Whitelist] DB error in getWhitelistSettingsCached; serving last-known settings (enabled=%s):", lastGood.enabled, err);
     // Write the 5-second error-throttle only when:
     //   1. latestGen matches _cacheGeneration (no further invalidation since our last snapshot)
     //   2. _cachedSettings === priorCached (no concurrent sibling changed the cached value)
@@ -70,10 +80,10 @@ async function getWhitelistSettingsCached(): Promise<WhitelistSettingsCache> {
     // fresh 30-second expiry — without the expiry check we'd overwrite it with 5 s.
     const latestGen = postInvalidationGen ?? gen;
     if (_cacheGeneration === latestGen && _cachedSettings === priorCached && _cacheExpiry === priorExpiry) {
-      _cachedSettings = DISABLED;
+      _cachedSettings = lastGood;
       _cacheExpiry = Date.now() + 5_000;
     }
-    return DISABLED;
+    return lastGood;
   }
 }
 
