@@ -4,6 +4,7 @@ import { BaseNode } from "../BaseNode";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
@@ -64,7 +65,7 @@ const TRANSITIONS: { value: MergeTransition; label: string }[] = [
 ];
 
 export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) {
-  const { updateNodeData, nodes, edges } = useCanvasStore();
+  const { updateNodeData, nodes, edges } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, nodes: s.nodes, edges: s.edges })));
   const payload = data.payload;
   const [showBgMusic, setShowBgMusic] = useState(false);
 

@@ -4,6 +4,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { safeHref } from "@/lib/safeUrl";
 import { ZoomableImage } from "../ZoomableImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { getNodeImageOutput } from "@/lib/canvasPassthrough";
 import type { PoseControlNodeData } from "../../../../../shared/types";
@@ -43,7 +44,7 @@ const fieldStyle: React.CSSProperties = {
 };
 
 export const PoseControlNode = memo(function PoseControlNode({ id, selected, data }: Props) {
-  const { updateNodeData, nodes, edges } = useCanvasStore();
+  const { updateNodeData, nodes, edges } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, nodes: s.nodes, edges: s.edges })));
   const payload = data.payload;
 
   const update = useCallback((patch: Partial<PoseControlNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);

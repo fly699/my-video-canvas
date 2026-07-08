@@ -4,6 +4,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { safeHref } from "@/lib/safeUrl";
 import { ZoomableImage } from "../ZoomableImage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { getNodeImageOutput } from "@/lib/canvasPassthrough";
 import type { ImageEditNodeData, ImageEditOp } from "../../../../../shared/types";
@@ -58,7 +59,7 @@ const fieldStyle: React.CSSProperties = {
 const ASPECTS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"];
 
 export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }: Props) {
-  const { updateNodeData, nodes, edges } = useCanvasStore();
+  const { updateNodeData, nodes, edges } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, nodes: s.nodes, edges: s.edges })));
   const payload = data.payload;
   const update = useCallback((patch: Partial<ImageEditNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 

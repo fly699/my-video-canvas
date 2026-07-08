@@ -26,7 +26,7 @@ const accentColor = "oklch(0.65 0.18 60)";
 
 export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) {
   const payload = data.payload;
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const [uploading, setUploading] = useState(false);
   const [videoPreview, setVideoPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);

@@ -399,7 +399,7 @@ function GenerateBtn({
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   // 上游分镜的「对白/旁白」→ 配音文案（只填空：本节点 ttsText 为空时才自动填入，
   // 与「上游提示词只填空」同口径，不覆盖用户已写内容）。多个上游分镜按镜号顺序拼接。

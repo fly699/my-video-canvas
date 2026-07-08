@@ -411,7 +411,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   const connectState = useConnectState(id, "clip");
   const videoInState = useClipHandleState(id, "video-in"); // 按拖拽源类型分辨：音频源只让 audio-in 亮绿
   const audioInState = useClipHandleState(id, "audio-in");
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const reactFlow = useReactFlow();
   const payload = data.payload;
 

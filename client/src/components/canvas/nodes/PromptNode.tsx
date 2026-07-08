@@ -41,7 +41,7 @@ const monoStyle: React.CSSProperties = {
 
 
 export const PromptNode = memo(function PromptNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const { resolve } = useNodeDefaultModels();
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";

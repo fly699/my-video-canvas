@@ -78,7 +78,7 @@ const onFocus = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
 export const StoryboardNode = memo(function StoryboardNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const { resolve } = useNodeDefaultModels();
   // Detect connected CharacterNodes that have their own referenceImageUrl
   const connectedCharRefUrl = useCanvasStore((s) => {

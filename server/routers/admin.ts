@@ -42,6 +42,18 @@ const operatorProc = levelProcedure(2);
 const managerProc = levelProcedure(3);
 const superProc = levelProcedure(4);
 
+/** 越权守卫：禁止对「同级或更高级别的管理员」执行重置密码/删除/冻结/审批等操作——
+ *  否则低级管理员可重置更高级管理员的密码进而接管其账户（提权）。目标为普通用户(level 0)
+ *  时始终放行。仅比较目标级别与调用者级别，不改变各接口原有的最低级别门控。 */
+async function assertOutranksTarget(ctx: { user: { adminLevel?: number | null } }, targetUserId: number): Promise<void> {
+  const target = await db.getUserById(targetUserId).catch(() => undefined);
+  const targetLevel = target && target.role === "admin" ? (target.adminLevel ?? 0) : 0;
+  const myLevel = ctx.user.adminLevel ?? 0;
+  if (targetLevel >= myLevel) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "无权操作同级或更高级别的管理员账户" });
+  }
+}
+
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
   "image_gen", "video_gen",
@@ -919,6 +931,7 @@ export const adminRouter = router({
     resetPassword: managerProc
       .input(z.object({ userId: z.number().int().positive(), newPassword: z.string().min(6).max(200) }))
       .mutation(async ({ ctx, input }) => {
+        await assertOutranksTarget(ctx, input.userId);
         await db.adminSetUserPassword(input.userId, await hashPassword(input.newPassword));
         writeAuditLog({ ctx, action: "user_reset_password", detail: { userId: input.userId } });
         return { success: true };
@@ -927,6 +940,7 @@ export const adminRouter = router({
       .input(z.object({ userId: z.number().int().positive(), disabled: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
         if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能冻结自己" });
+        await assertOutranksTarget(ctx, input.userId);
         await db.setUserDisabled(input.userId, input.disabled);
         writeAuditLog({ ctx, action: "user_set_disabled", detail: { userId: input.userId, disabled: input.disabled } });
         return { success: true };
@@ -935,6 +949,7 @@ export const adminRouter = router({
     setApproved: operatorProc
       .input(z.object({ userId: z.number().int().positive(), approved: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
+        await assertOutranksTarget(ctx, input.userId);
         await db.setUserApproved(input.userId, input.approved);
         writeAuditLog({ ctx, action: "user_set_approved", detail: { userId: input.userId, approved: input.approved } });
         return { success: true };
@@ -943,6 +958,7 @@ export const adminRouter = router({
       .input(z.object({ userId: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
         if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能删除自己" });
+        await assertOutranksTarget(ctx, input.userId);
         await db.deleteUserById(input.userId);
         writeAuditLog({ ctx, action: "user_delete", detail: { userId: input.userId } });
         return { success: true };
