@@ -78,6 +78,18 @@ export function BridgeMcpSection() {
         ⚠️ 这会把工具/MCP 能力开放给桥接口，请仅在内网/受信任部署开启，别接可写文件系统/跑命令的高危 MCP。</span>
       </p>
 
+      {/* 醒目提示：两个最常见踩坑 —— 覆盖 .env、OAuth MCP 需在 allowedTools 手动放行 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 10, background: "oklch(0.75 0.15 60 / 0.10)", border: "1px solid oklch(0.75 0.15 60 / 0.35)" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "oklch(0.72 0.15 60)" }}>⚠️ 两个必看要点（照此填，别再改 .env）</div>
+        <p style={{ fontSize: 11, color: "var(--c-t2)", lineHeight: 1.8, margin: 0 }}>
+          <strong>1. 本页配置优先、覆盖 <code>.env</code>：</strong>只要这里存了配置，<code>.env</code> 里的 <code>CLAUDE_BRIDGE_*</code> 就<strong>被忽略</strong>——改 <code>.env</code> 不生效，一切以本页为准。
+          <br />
+          <strong>2. 同时用 OAuth 型 MCP（如 higgsfield）+ 本地 MCP（如 comfyui）时：</strong>
+          ① 下面「严格模式」<strong>关闭</strong>（否则忽略 claude 自带的 OAuth 配置，higgsfield 就没了）；
+          ② 一旦「严格模式」关了并依赖 OAuth 的 higgsfield，它<strong>不在上面这份配置里</strong>，不会被自动放行——必须在下面「高级 › allowedTools」里<strong>手动</strong>把 <code>mcp__higgsfield</code> 连同每个 <code>mcp__comfyui-*</code> 都列全（allowedTools 一旦填写就<strong>只放行你列的这些</strong>，漏了就没工具）。
+        </p>
+      </div>
+
       {/* 本地离线三步法（推荐）：装一次 → 改成本地命令 → 填文件路径 */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 10, background: "oklch(0.70 0.15 160 / 0.08)", border: "1px solid oklch(0.70 0.15 160 / 0.3)" }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: "oklch(0.70 0.13 160)" }}>接 ComfyUI MCP · 本地离线三步法（推荐，装一次后不再联网）</div>
@@ -121,7 +133,7 @@ export function BridgeMcpSection() {
 
       {/* 开关 */}
       {toggleRow(skills, setSkills, "启用技能（Skill 工具）", "对应 CLAUDE_BRIDGE_SKILLS=1，放行 Skill 工具让桥接能跑技能。")}
-      {toggleRow(strict, setStrict, "严格模式（--strict-mcp-config）", "默认开：只认上面这份配置。若用 OAuth 型 MCP（靠 claude mcp add 存凭证在自带配置里），需关闭本项才能合并进来。")}
+      {toggleRow(strict, setStrict, "严格模式（--strict-mcp-config）", "默认开：只认上面这份配置、忽略 claude 自带（~/.claude）里的 MCP。用 OAuth 型 MCP（如 higgsfield，靠 claude mcp add/login 把凭证存在 claude 自带配置里）时必须【关闭】才能合并进来；关闭后记得在下面 allowedTools 手动放行它的 mcp__<名>。")}
 
       {/* 高级项（折叠） */}
       <button onClick={() => setShowAdvanced((v) => !v)} className="nodrag flex items-center gap-1 self-start"
@@ -133,8 +145,13 @@ export function BridgeMcpSection() {
           <label style={{ fontSize: 11, color: "var(--c-t3)" }}>权限模式 permissionMode（留空=default）
             <input value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)} placeholder="default" className="nodrag" style={{ ...box, marginTop: 4 }} />
           </label>
-          <label style={{ fontSize: 11, color: "var(--c-t3)" }}>allowedTools 覆盖（逗号分隔；留空=默认只读工具集 Read/Glob/Grep/WebSearch/WebFetch + Skill + 各 mcp__*）
-            <input value={allowedTools} onChange={(e) => setAllowedTools(e.target.value)} placeholder="留空即用默认" className="nodrag" style={{ ...box, marginTop: 4 }} />
+          <label style={{ fontSize: 11, color: "var(--c-t3)" }}>allowedTools 覆盖（逗号分隔）
+            <span style={{ display: "block", fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.7, marginTop: 2 }}>
+              留空 = 自动放行「只读工具集 + Skill + 上面配置里每个 mcp__*」。<strong>一旦填写就完全替换默认</strong>，只放行你列的这些。
+              关了严格模式、要用 OAuth 的 higgsfield 时，它不在上面配置里、不会被自动放行 → 必须在此把它连同所有本地 MCP 一起列全。
+              例：<code style={{ wordBreak: "break-all" }}>mcp__higgsfield,mcp__comfyui-a,mcp__comfyui-a-8189,…,mcp__comfyui-b-8191</code>
+            </span>
+            <input value={allowedTools} onChange={(e) => setAllowedTools(e.target.value)} placeholder="留空=自动放行；填了就要列全（含 mcp__higgsfield + 每个 mcp__comfyui-*）" className="nodrag" style={{ ...box, marginTop: 4 }} />
           </label>
         </div>
       )}
