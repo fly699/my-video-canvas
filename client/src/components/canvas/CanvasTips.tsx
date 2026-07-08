@@ -137,9 +137,6 @@ export function CanvasTips() {
           animation: `${leaving ? "avc-tip-out 0.24s ease forwards" : "avc-tip-in 0.34s cubic-bezier(0.16,1,0.3,1)"}`,
         }}
       >
-        {/* accent 左条 */}
-        <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
-          background: "linear-gradient(180deg, oklch(0.80 0.16 310), oklch(0.62 0.22 300))" }} />
         {/* 图标片 */}
         <span style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center",
           color: "#fff", background: "radial-gradient(circle at 32% 28%, oklch(0.80 0.16 310), oklch(0.60 0.22 298))",
