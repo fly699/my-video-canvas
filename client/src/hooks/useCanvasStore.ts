@@ -87,6 +87,19 @@ const CLONE_RUNTIME_FIELDS = [
   "status", "messages", "url", "storageKey", "outputUrl", "outputDuration",
 ];
 
+// ── 协作广播钩子（由 Canvas.tsx 注册；避免 store ↔ socket 直接耦合）──────────────
+// updateNodeData/updateNodeTitle 的**本地**改动经此回调广播给协作者（node:update / node:title）。
+// 防回声：远端改动经 applyRemoteMutation 走 setNodes 直改，不经 updateNodeData，故不会二次广播。
+type NodeMutationBroadcast =
+  | { kind: "update"; id: string; patch: Record<string, unknown> }
+  | { kind: "title"; id: string; title: string };
+let _nodeMutationBroadcaster: ((m: NodeMutationBroadcast) => void) | null = null;
+export function registerNodeMutationBroadcaster(fn: ((m: NodeMutationBroadcast) => void) | null): void {
+  _nodeMutationBroadcaster = fn;
+}
+// 运行态/生成态字段属每用户本地进度，绝不广播（否则协作者互相污染进度/结果）。pinned 为本地 UI 偏好。
+const NON_BROADCAST_FIELDS = new Set<string>([...CLONE_RUNTIME_FIELDS, "pinned"]);
+
 // Generation node types that support A/B 变体 (fresh seed per clone).
 export const VARIANT_TYPES: NodeType[] = [
   "image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow",
@@ -636,6 +649,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ),
       isDirty: true,
     }));
+    // 广播配置类改动给协作者（剥离运行态/生成态字段；空补丁不发）。远端 apply 走 setNodes 不到这。
+    if (_nodeMutationBroadcaster) {
+      const cfg: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(payload)) if (!NON_BROADCAST_FIELDS.has(k)) cfg[k] = v;
+      if (Object.keys(cfg).length) _nodeMutationBroadcaster({ kind: "update", id, patch: cfg });
+    }
   },
 
   batchUpdateNodeData: (updates) => {
@@ -866,6 +885,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ),
       isDirty: true,
     }));
+    if (_nodeMutationBroadcaster) _nodeMutationBroadcaster({ kind: "title", id, title });
   },
 
   deleteNode: (id) => {

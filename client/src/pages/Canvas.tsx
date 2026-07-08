@@ -12,7 +12,7 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCanvasStore, aspectToComfyWH, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
+import { useCanvasStore, registerNodeMutationBroadcaster, aspectToComfyWH, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../hooks/useComfyPreviewStore";
 import { useConnectingStore } from "../hooks/useConnectingStore";
 import { useGlobalPeekStore } from "../hooks/useGlobalPeekStore";
@@ -1092,6 +1092,35 @@ function CanvasInner({ projectId }: { projectId: number }) {
     });
   }, [user, projectId]);
 
+  // 协作实时同步：把本地的节点配置/标题改动广播给协作者（#85）。updateNodeData/updateNodeTitle
+  // 经 store 的注册钩子回调到这里；按节点节流(400ms)合并补丁，减少高频输入(如逐字打提示词)的洪泛。
+  // 远端改动经 applyRemoteMutation 的 setNodes 落地、不经 updateNodeData，故不会回声成环。
+  useEffect(() => {
+    const pending = new Map<string, { patch: Record<string, unknown>; title?: string }>();
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    const flush = (id: string) => {
+      const acc = pending.get(id); pending.delete(id);
+      const t = timers.get(id); if (t) clearTimeout(t); timers.delete(id);
+      if (!acc) return;
+      if (acc.patch && Object.keys(acc.patch).length) emitCollabEvent("node:update", { id, patch: acc.patch });
+      if (acc.title !== undefined) emitCollabEvent("node:title", { id, title: acc.title });
+    };
+    registerNodeMutationBroadcaster((m) => {
+      const acc = pending.get(m.id) ?? { patch: {} };
+      if (m.kind === "update") acc.patch = { ...acc.patch, ...m.patch };
+      else acc.title = m.title;
+      pending.set(m.id, acc);
+      const prev = timers.get(m.id); if (prev) clearTimeout(prev);
+      timers.set(m.id, setTimeout(() => flush(m.id), 400));
+    });
+    return () => {
+      // 卸载前把未发的补丁 flush 掉，避免最后一次编辑丢广播；再注销钩子。
+      for (const id of Array.from(pending.keys())) flush(id);
+      for (const t of Array.from(timers.values())) clearTimeout(t);
+      registerNodeMutationBroadcaster(null);
+    };
+  }, [emitCollabEvent]);
+
   // #11 协作编辑锁：当本地用户「聚焦」到单个节点时广播「正在编辑 nodeId」，供其他人在该
   // 节点角标显示头像 + 柔性锁；选中 0 个或多个节点则广播释放（null）。仅在单选目标变化时发。
   const lastEditingRef = useRef<string | null>(null);
@@ -1152,6 +1181,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const p = event.payload as { id: string; patch: Record<string, unknown> };
         store.setNodes(store.nodes.map((n) =>
           n.id === p.id ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...p.patch } } } : n
+        ) as CanvasNode[]);
+        syncBaseline(p.id);
+      } else if (event.type === "node:title") {
+        const p = event.payload as { id: string; title: string };
+        store.setNodes(store.nodes.map((n) =>
+          n.id === p.id ? { ...n, data: { ...n.data, title: p.title } } : n
         ) as CanvasNode[]);
         syncBaseline(p.id);
       } else if (event.type === "edge:add") {
