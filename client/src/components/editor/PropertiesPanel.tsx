@@ -6,6 +6,7 @@ import { EC, probeMediaDuration } from "./theme";
 import { useEditorStore } from "./editorStore";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import type { Clip } from "@shared/editorTypes";
+import { transformAt } from "@shared/editorTypes";
 import { SHAPE_ICONS, iconSvg } from "@shared/shapeIcons";
 import { LLMModelPicker, type LLMModelId } from "@/components/canvas/LLMModelPicker";
 import { LLM_MODELS } from "@/lib/models";
@@ -75,6 +76,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const playhead = useEditorStore((s) => s.playhead);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
+  const setKeyframeField = useEditorStore((s) => s.setKeyframeField);
   const removeKeyframe = useEditorStore((s) => s.removeKeyframe);
   const clearKeyframes = useEditorStore((s) => s.clearKeyframes);
   const selectedClipIds = useEditorStore((s) => s.selectedClipIds);
@@ -209,10 +211,17 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const isVisual = c.kind === "video" || c.kind === "image" || c.kind === "text";
   const isMedia = c.kind === "video" || c.kind === "audio";
   const eff = c.effects ?? {};
-  const tf = c.transform ?? {};
+  // 有关键帧时，渲染只看关键帧插值（transformAt），base transform 被忽略。故属性面板也须以「当前
+  // 播放头处的插值姿态」为准显示滑块值，并把滑块改动写进播放头处的关键帧（#88）——否则改 base 无效。
+  const hasKf = (c.keyframes?.length ?? 0) > 0;
+  const kfLocalT = Math.max(0, +(playhead - c.start).toFixed(3));
+  const tf = hasKf ? transformAt(c, kfLocalT) : (c.transform ?? {});
 
   const setEff = (k: keyof NonNullable<Clip["effects"]>, v: number | string | undefined) => update(c.id, { effects: { ...eff, [k]: v } });
-  const setTf = (k: keyof NonNullable<Clip["transform"]>, v: number) => update(c.id, { transform: { ...tf, [k]: v } });
+  const setTf = (k: "x" | "y" | "scale" | "opacity" | "rotation", v: number) => {
+    if (hasKf) setKeyframeField(c.id, kfLocalT, k, v); // 写播放头关键帧（无则以当前姿态新建再改）
+    else update(c.id, { transform: { ...(c.transform ?? {}), [k]: v } });
+  };
   const txt = c.text;
   const setText = (patch: Partial<NonNullable<Clip["text"]>>) => update(c.id, { text: { ...txt, content: txt?.content ?? "", ...patch } });
   const setShape = (patch: Partial<NonNullable<Clip["shape"]>>) => update(c.id, { shape: { type: "rect", ...(c.shape ?? {}), ...patch } as NonNullable<Clip["shape"]> });

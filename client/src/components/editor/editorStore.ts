@@ -219,6 +219,7 @@ export interface EditorStore {
   removeClip: (clipId: string) => void;
   // transform keyframes (animation)
   addKeyframe: (clipId: string, t: number) => void;
+  setKeyframeField: (clipId: string, t: number, field: "x" | "y" | "scale" | "opacity" | "rotation", value: number) => void;
   removeKeyframe: (clipId: string, t: number) => void;
   clearKeyframes: (clipId: string) => void;
   splitClip: (clipId: string, atTime: number) => void;
@@ -609,6 +610,30 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ...tk, clips: tk.clips.map((x) => x.id === clipId ? { ...x, keyframes } : x),
     });
     return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // 有关键帧时，属性滑块/预览拖拽应写入**播放头处的关键帧**（无则以当前插值姿态为底新建一帧再改），
+  // 而非 base transform——否则 transformAt 只按关键帧插值、base 改动被静默忽略（#88）。
+  setKeyframeField: (clipId, t, field, value) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    const at = Math.max(0, t);
+    const kfs = c.keyframes ?? [];
+    const existing = kfs.find((k) => Math.abs(k.t - at) <= 0.05);
+    let keyframes: TransformKeyframe[];
+    if (existing) {
+      keyframes = kfs.map((k) => (k === existing ? { ...k, [field]: value } : k));
+    } else {
+      const pose = transformAt(c, at);
+      const kf: TransformKeyframe = { t: at, x: pose.x ?? 0, y: pose.y ?? 0, scale: pose.scale ?? 1, opacity: pose.opacity ?? 1, rotation: pose.rotation ?? 0, [field]: value };
+      keyframes = [...kfs, kf].sort((a, b) => a.t - b.t);
+    }
+    const tracks = s.doc.tracks.map((tk, ti) => ti !== loc.trackIdx ? tk : {
+      ...tk, clips: tk.clips.map((x) => x.id === clipId ? { ...x, keyframes } : x),
+    });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 滑块/拖拽连续手势，合并成一步
   }),
 
   removeKeyframe: (clipId, t) => set((s) => {

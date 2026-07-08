@@ -63,3 +63,29 @@ describe("editor keyframe store ops", () => {
     }
   });
 });
+
+describe("setKeyframeField (#88 有关键帧时写入播放头处的关键帧)", () => {
+  const st = () => useEditorStore.getState();
+  const clip = () => st().doc!.tracks.find((t) => t.id === "v1")!.clips.find((c) => c.id === "c1")!;
+  beforeEach(() => {
+    const doc = emptyEditorDoc(1920, 1080, 30);
+    doc.tracks.find((t) => t.id === "v1")!.clips.push({
+      id: "c1", kind: "image", start: 0, trimIn: 0, trimOut: 4,
+      keyframes: [{ t: 0, x: 0, scale: 1 }, { t: 2, x: 1, scale: 2 }],
+    });
+    st().load(doc);
+  });
+  it("命中已存在关键帧则改其字段", () => {
+    st().setKeyframeField("c1", 0, "x", 0.5);
+    expect(clip().keyframes!.find((k) => k.t === 0)!.x).toBe(0.5);
+    expect(clip().keyframes!.length).toBe(2); // 不新增
+  });
+  it("播放头不在关键帧上则以当前插值姿态为底新建一帧再改", () => {
+    st().setKeyframeField("c1", 1, "scale", 3); // t=1 无关键帧
+    const kf = clip().keyframes!.find((k) => Math.abs(k.t - 1) < 0.06)!;
+    expect(kf).toBeTruthy();
+    expect(kf.scale).toBe(3);            // 显式设的
+    expect(kf.x).toBeCloseTo(0.5, 5);    // 插值姿态：t=1 在 x:0→1 之间 = 0.5
+    expect(clip().keyframes!.length).toBe(3);
+  });
+});
