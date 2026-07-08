@@ -295,50 +295,66 @@
   /* Strongly differentiated from light (neutral) and warm (yellow):
      hue 165 (green-cyan), higher chroma than the other light themes to make
      the green tint obvious. Text picks up a complementary cool dark green. */
+  /* 素雅化(2026-07)：原薄荷彩度过高(canvas 0.05)、且沿用全局亮紫强调色 → 绿底配紫显「花」。
+     降到 sky/sage 同档的低彩度、软化近黑文字、改用协调的柔和青绿强调色，保持薄荷清爽但不刺眼。 */
   :root[data-theme="mint"] {
-    --c-canvas:   oklch(0.908 0.050 165);   /* fresh seafoam canvas — softened for eye comfort */
-    --c-base:     oklch(0.990 0.020 165);   /* pale mint panels */
-    --c-surface:  oklch(0.946 0.034 165);   /* perceptibly tinted */
-    --c-elevated: oklch(0.990 0.020 165);
-    --c-overlay:  oklch(0.920 0.040 165);
-    --c-input:    oklch(0.922 0.036 165);
-    --c-bd1:      oklch(0.842 0.038 165);
-    --c-bd2:      oklch(0.755 0.044 165);
-    --c-bd3:      oklch(0.620 0.052 165);
-    --c-t1:       oklch(0.155 0.040 175);   /* deep cool green-near-black */
-    --c-t2:       oklch(0.305 0.034 175);
-    --c-t3:       oklch(0.455 0.026 175);
-    --c-t4:       oklch(0.575 0.018 175);
-    --c-node-bg:  oklch(1.000 0.000 0);     /* white cards stand out on mint */
-    --c-node-shadow-rest:     0 1px 3px oklch(0.20 0.05 165 / 0.10), 0 3px 14px oklch(0.20 0.05 165 / 0.07);
-    --c-node-shadow-hover:    0 4px 18px oklch(0.20 0.05 165 / 0.14), 0 1px 5px oklch(0.20 0.05 165 / 0.10);
-    --c-node-shadow-selected: 0 8px 30px oklch(0.20 0.05 165 / 0.18), 0 2px 10px oklch(0.20 0.05 165 / 0.12);
-    --c-node-shadow-run:      0 8px 24px oklch(0.20 0.05 165 / 0.16);
+    --c-canvas:   oklch(0.925 0.030 165);   /* soft mint canvas, low-glare */
+    --c-base:     oklch(0.990 0.012 165);   /* near-white mint panels */
+    --c-surface:  oklch(0.958 0.019 165);
+    --c-elevated: oklch(0.996 0.006 165);
+    --c-overlay:  oklch(0.916 0.022 165);
+    --c-input:    oklch(0.930 0.020 165);
+    --c-bd1:      oklch(0.862 0.015 165);
+    --c-bd2:      oklch(0.782 0.019 165);
+    --c-bd3:      oklch(0.660 0.024 165);
+    --c-t1:       oklch(0.268 0.023 168);   /* soft green-gray, not harsh near-black */
+    --c-t2:       oklch(0.398 0.019 168);
+    --c-t3:       oklch(0.508 0.015 168);
+    --c-t4:       oklch(0.608 0.011 168);
+    --c-node-bg:  oklch(0.997 0.004 165);   /* white cards on mint */
+    --c-node-shadow-rest:     0 1px 3px oklch(0.26 0.04 165 / 0.10), 0 3px 14px oklch(0.26 0.04 165 / 0.08);
+    --c-node-shadow-hover:    0 4px 18px oklch(0.26 0.04 165 / 0.14), 0 1px 5px oklch(0.26 0.04 165 / 0.10);
+    --c-node-shadow-selected: 0 8px 30px oklch(0.26 0.06 165 / 0.18), 0 2px 10px oklch(0.26 0.06 165 / 0.12);
+    --c-node-shadow-run:      0 8px 24px oklch(0.26 0.06 165 / 0.16);
+    /* 柔和青绿强调色(替换全局亮紫，与绿底协调) */
+    --color-brand:      oklch(0.56 0.10 178);
+    --color-brand-dim:  oklch(0.48 0.09 178);
+    --color-brand-glow: oklch(0.56 0.10 178 / 0.22);
+    --color-primary:    oklch(0.56 0.10 178);
+    --color-ring:       oklch(0.56 0.10 178);
     color-scheme: light;
   }
 
   /* ── Lavender — soft lilac light, calm / creative ────────────────────────── */
   /* Hue 295 (violet) — completes the light-theme palette: light = neutral,
      warm = yellow, mint = green-cyan, lavender = purple. */
+  /* 素雅化(2026-07)：原薰衣草彩度过高(canvas 0.048) + 近黑高彩文字偏刺眼。降到 sky/sage 同档、
+     软化文字，并用协调的柔和薰衣草紫强调色(替换全局更亮的品牌紫)，保持紫调但更沉静。 */
   :root[data-theme="lavender"] {
-    --c-canvas:   oklch(0.908 0.048 295);   /* dusty lilac canvas — softened for eye comfort */
-    --c-base:     oklch(0.990 0.019 295);   /* pale lavender panels */
-    --c-surface:  oklch(0.944 0.032 295);
-    --c-elevated: oklch(0.990 0.019 295);
-    --c-overlay:  oklch(0.920 0.038 295);
-    --c-input:    oklch(0.922 0.036 295);
-    --c-bd1:      oklch(0.840 0.038 295);
-    --c-bd2:      oklch(0.752 0.044 295);
-    --c-bd3:      oklch(0.620 0.050 295);
-    --c-t1:       oklch(0.155 0.038 295);   /* deep violet-near-black */
-    --c-t2:       oklch(0.305 0.032 295);
-    --c-t3:       oklch(0.455 0.026 295);
-    --c-t4:       oklch(0.575 0.018 295);
-    --c-node-bg:  oklch(1.000 0.000 0);     /* white cards stand out on lavender */
-    --c-node-shadow-rest:     0 1px 3px oklch(0.22 0.05 295 / 0.11), 0 3px 14px oklch(0.22 0.05 295 / 0.08);
-    --c-node-shadow-hover:    0 4px 18px oklch(0.22 0.05 295 / 0.15), 0 1px 5px oklch(0.22 0.05 295 / 0.10);
-    --c-node-shadow-selected: 0 8px 30px oklch(0.22 0.05 295 / 0.19), 0 2px 10px oklch(0.22 0.05 295 / 0.13);
-    --c-node-shadow-run:      0 8px 24px oklch(0.22 0.05 295 / 0.17);
+    --c-canvas:   oklch(0.926 0.028 295);   /* soft lilac canvas, low-glare */
+    --c-base:     oklch(0.990 0.012 295);   /* near-white lavender panels */
+    --c-surface:  oklch(0.958 0.018 295);
+    --c-elevated: oklch(0.996 0.006 295);
+    --c-overlay:  oklch(0.918 0.022 295);
+    --c-input:    oklch(0.930 0.020 295);
+    --c-bd1:      oklch(0.860 0.015 295);
+    --c-bd2:      oklch(0.780 0.019 295);
+    --c-bd3:      oklch(0.660 0.024 295);
+    --c-t1:       oklch(0.270 0.021 292);   /* soft violet-gray, not harsh near-black */
+    --c-t2:       oklch(0.400 0.017 292);
+    --c-t3:       oklch(0.510 0.014 292);
+    --c-t4:       oklch(0.610 0.010 292);
+    --c-node-bg:  oklch(0.997 0.004 295);   /* white cards on lavender */
+    --c-node-shadow-rest:     0 1px 3px oklch(0.28 0.04 295 / 0.11), 0 3px 14px oklch(0.28 0.04 295 / 0.08);
+    --c-node-shadow-hover:    0 4px 18px oklch(0.28 0.04 295 / 0.15), 0 1px 5px oklch(0.28 0.04 295 / 0.10);
+    --c-node-shadow-selected: 0 8px 30px oklch(0.28 0.06 295 / 0.19), 0 2px 10px oklch(0.28 0.06 295 / 0.13);
+    --c-node-shadow-run:      0 8px 24px oklch(0.28 0.06 295 / 0.17);
+    /* 柔和薰衣草强调色(比全局品牌紫更沉，与紫底协调) */
+    --color-brand:      oklch(0.56 0.12 295);
+    --color-brand-dim:  oklch(0.48 0.11 295);
+    --color-brand-glow: oklch(0.56 0.12 295 / 0.22);
+    --color-primary:    oklch(0.56 0.12 295);
+    --color-ring:       oklch(0.56 0.12 295);
     color-scheme: light;
   }
 
