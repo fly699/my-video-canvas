@@ -74,6 +74,14 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const bashAllowed = codeStatus.data?.bashAllowed === true;
   const running = payload.status === "running" || buildMut.isPending || codeMut.isPending;
 
+  // 刷新/切项目后，持久化的 "running" 没有对应的在飞 mutation（刷新即丢），否则节点会被永久
+  // 锁死（输入/发送/模式/重置全禁用、无恢复路径）。挂载时若见遗留 running 复位为 aborted，
+  // 让节点重新可用。与 ComfyUI 节点的挂载自愈同理。
+  useEffect(() => {
+    if (payload.status === "running") update({ status: "aborted" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const utils = trpc.useUtils();
   const [testingServer, setTestingServer] = useState(false);
   // 聊天输入用本地 state（IME 安全：不逐键写 store，避免中文拼音输入被打断/乱蹦）。

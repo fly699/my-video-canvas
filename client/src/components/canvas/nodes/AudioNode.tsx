@@ -401,6 +401,12 @@ function GenerateBtn({
 export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  // 生成中刷新/切项目后，在飞 mutation 随组件卸载丢失，但持久化的 "processing" 会让标题栏
+  // 常驻「生成中」进度条永久残留、与实际不符。挂载时复位遗留 processing（与 ComfyUI 节点同理）。
+  useEffect(() => {
+    if (payload.status === "processing") updateNodeData(id, { status: "failed", errorMessage: "生成已中断（页面刷新或连接断开），请重新生成。" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // 上游分镜的「对白/旁白」→ 配音文案（只填空：本节点 ttsText 为空时才自动填入，
   // 与「上游提示词只填空」同口径，不覆盖用户已写内容）。多个上游分镜按镜号顺序拼接。
   const upstreamDialogue = useCanvasStore((st) => {
