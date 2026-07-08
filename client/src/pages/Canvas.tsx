@@ -1197,6 +1197,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // Counter for stacking-offset on repeated adds from the same pinned menu;
   // declared before the right-click handler so it can be reset on each open.
   const addOffsetRef = useRef(0);
+  // #R4-2 触屏长按空白画布 → 打开「放置节点」上下文菜单（节点长按已由 BaseNode 处理）。
+  const paneLongPressTimerRef = useRef<number | undefined>(undefined);
+  const paneLongPressStartRef = useRef<{ x: number; y: number } | null>(null);
   const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -2403,6 +2406,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
           onDoubleClick={handleCanvasDoubleClick}
           onMouseMove={handleMouseMove}
           onClick={() => { setShowNodePicker(false); useEdgeInsert.getState().clear(); }}
+          // 用 capture 相位：ReactFlow 的 pane 会吞掉 touchstart 冒泡（用于平移），冒泡相位收不到，
+          // capture 在祖先先于 pane 触发，故长按可靠。仅空白画布长按（节点/桩自身已有长按）。
+          onTouchStartCapture={(e) => {
+            if (isReadOnly || e.touches.length !== 1) return;
+            const tgt = e.target as HTMLElement;
+            if (tgt.closest(".react-flow__node") || tgt.closest(".react-flow__handle") || tgt.closest("button, input, textarea, select, a")) return;
+            const t = e.touches[0];
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const cx = t.clientX, cy = t.clientY;
+            paneLongPressStartRef.current = { x: cx, y: cy };
+            window.clearTimeout(paneLongPressTimerRef.current);
+            paneLongPressTimerRef.current = window.setTimeout(() => {
+              addOffsetRef.current = 0;
+              setContextMenu({ x: cx, y: cy, type: "canvas", canvasPos: { x: (cx - rect.left - viewport.x) / viewport.zoom, y: (cy - rect.top - viewport.y) / viewport.zoom } });
+            }, 500);
+          }}
+          onTouchMoveCapture={(e) => {
+            const t = e.touches[0], s = paneLongPressStartRef.current;
+            if (t && s && Math.hypot(t.clientX - s.x, t.clientY - s.y) > 12) window.clearTimeout(paneLongPressTimerRef.current);
+          }}
+          onTouchEndCapture={() => window.clearTimeout(paneLongPressTimerRef.current)}
         >
           {/* Studio skin: the selected node's params float BELOW the node (handled in
               BaseNode via NodeToolbar), so the right-side inspector is no longer mounted. */}

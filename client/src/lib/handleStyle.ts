@@ -21,6 +21,11 @@ export type HandleConnect = "valid" | "invalid" | "muted" | undefined;
 
 const VALID_GREEN = "oklch(0.74 0.18 150)";
 
+// 触屏(粗指针)无 hover：静止态桩若仍是 scale(0.6)/opacity .55 近乎隐形，用户看不出从哪拉线。
+// 粗指针下把「静止态」桩放大、几近全不透明（只影响 resting，不动 valid/invalid/muted/active），
+// 配合 ::before inset:-10px 命中区一起提升可发现性。模块加载时判定一次（运行时切换指针罕见）。
+const COARSE_POINTER = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+
 export function handleStyle(color: string, active: boolean, shape: HandleShape = "circle", connect?: HandleConnect): CSSProperties {
   const base: CSSProperties = {
     width: 15,
@@ -53,11 +58,11 @@ export function handleStyle(color: string, active: boolean, shape: HandleShape =
           boxShadow: `0 0 0 4px color-mix(in oklch, ${color} 22%, transparent)`,
         }
       : {
-          background: "transparent",
+          background: COARSE_POINTER ? color : "transparent",
           borderColor: color,
-          opacity: 0.55,
-          transform: "scale(0.6)",
-          boxShadow: "none",
+          opacity: COARSE_POINTER ? 0.92 : 0.55,
+          transform: COARSE_POINTER ? "scale(1.02)" : "scale(0.6)",
+          boxShadow: COARSE_POINTER ? `0 0 0 3px color-mix(in oklch, ${color} 16%, transparent)` : "none",
         }),
   };
 }
