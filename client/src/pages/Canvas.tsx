@@ -610,6 +610,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const runSelectedOnly = selectedRunnableIds.length >= 2;
 
+  // 协作撤销提示：undo 用整张本地快照替换当前图，多人协同时会连带回退协作者的并发改动。
+  // 有协作者在线时首次撤销给一条一次性警示（不阻断），之后照常静默撤销。
+  const collabUndoWarnedRef = useRef(false);
+  const handleUndo = useCallback(() => {
+    if (useCanvasStore.getState().collaborators.size > 0 && !collabUndoWarnedRef.current) {
+      collabUndoWarnedRef.current = true;
+      toast.warning("撤销会影响整张协作画布", { description: "当前有协作者在线，撤销可能一并回退他人的并发改动。", duration: 5000 });
+    }
+    undo();
+    toast.info("已撤销", { duration: 1200 });
+  }, [undo]);
+
   // Route store-level run requests (e.g. the agent's auto-run) through the normal
   // run-confirm dialog so generation still gets one explicit user confirmation.
   const runRequest = useCanvasStore((s) => s.runRequest);
@@ -1726,8 +1738,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       // Undo: Cmd+Z / Ctrl+Z
       if (!isEditing && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "z") {
         e.preventDefault();
-        undo();
-        toast.info("已撤销", { duration: 1200 });
+        handleUndo();
       }
       // Redo: Cmd+Shift+Z or Ctrl+Y
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "z") {
@@ -1743,7 +1754,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveCanvas, undo, redo, runWorkflow, nodes, handleRunRequest, reactFlow]);
+  }, [saveCanvas, handleUndo, redo, runWorkflow, nodes, handleRunRequest, reactFlow]);
 
   const collaboratorList = Array.from(collaborators.values());
 
@@ -2040,7 +2051,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => { undo(); toast.info("已撤销", { duration: 1200 }); }}
+                onClick={handleUndo}
                 disabled={past.length === 0 || isReadOnly}
                 className="topbar-btn"
                 title={isReadOnly ? "只读模式下不可编辑" : undefined}
