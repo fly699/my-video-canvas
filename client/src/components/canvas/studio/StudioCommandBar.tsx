@@ -100,6 +100,10 @@ function StudioSelect({ value, options, onChange, title, maxWidth = 170, placeho
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; minWidth: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // ★6：长列表加搜索 + 键盘导航（选项 > 8 时启用）。
+  const [query, setQuery] = useState("");
+  const [hi, setHi] = useState(0);
+  const searchable = options.length > 8;
 
   useEffect(() => {
     if (!open) return;
@@ -121,9 +125,12 @@ function StudioSelect({ value, options, onChange, title, maxWidth = 170, placeho
   }, [open]);
 
   const cur = options.find((o) => o.value === value);
+  // ★6：按搜索词过滤（保持声明顺序），fopts 是扁平的可见项，供键盘 ↑↓/Enter 用。
+  const q = query.trim().toLowerCase();
+  const fopts = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
   // Preserve declaration order while grouping (optgroup-style headers).
   const groups: { label: string; opts: StudioOpt[] }[] = [];
-  for (const o of options) {
+  for (const o of fopts) {
     const g = o.group ?? "";
     let grp = groups.find((x) => x.label === g);
     if (!grp) { grp = { label: g, opts: [] }; groups.push(grp); }
@@ -138,7 +145,14 @@ function StudioSelect({ value, options, onChange, title, maxWidth = 170, placeho
     const below = window.innerHeight - r.bottom;
     const openUp = below < 300 && r.top > below;
     setPos({ left: r.left, minWidth: r.width, ...(openUp ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+    setQuery(""); setHi(Math.max(0, options.findIndex((o) => o.value === value)));
     setOpen(true);
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setHi((i) => Math.min(fopts.length - 1, i + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((i) => Math.max(0, i - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); const o = fopts[hi]; if (o) { onChange(o.value); setOpen(false); } }
+    else if (e.key === "Escape") { e.preventDefault(); setOpen(false); }
   };
 
   return (
@@ -149,21 +163,31 @@ function StudioSelect({ value, options, onChange, title, maxWidth = 170, placeho
         <ChevronDown size={12} style={{ flexShrink: 0, opacity: 0.55 }} />
       </button>
       {open && pos && createPortal(
-        <div ref={menuRef} className="nowheel" style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom,
-          minWidth: Math.max(pos.minWidth, 150), maxWidth: 340, maxHeight: 300, overflowY: "auto", zIndex: 9999,
+        <div ref={menuRef} className="nowheel" onKeyDown={onKey} style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom,
+          minWidth: Math.max(pos.minWidth, 150), maxWidth: 340, maxHeight: 320, overflowY: "auto", zIndex: 9999,
           background: "var(--c-elevated, #1b1b1f)", border: "1px solid var(--c-bd1, var(--c-bd2))", borderRadius: 9,
           boxShadow: "0 10px 30px rgba(0,0,0,0.45)", padding: 4 }}>
+          {searchable && (
+            <input autoFocus value={query} onChange={(e) => { setQuery(e.target.value); setHi(0); }} onKeyDown={onKey}
+              onClick={(e) => e.stopPropagation()} placeholder="搜索…（↑↓ 选择 · Enter 确认）"
+              style={{ width: "100%", boxSizing: "border-box", padding: "6px 9px", marginBottom: 4, fontSize: 12, borderRadius: 6,
+                background: "var(--c-input, var(--c-surface))", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+          )}
+          {fopts.length === 0 && <div style={{ fontSize: 12, color: "var(--c-t4)", padding: "8px 9px" }}>无匹配</div>}
           {groups.map((g, gi) => (
             <div key={gi}>
               {showHeaders && <div style={{ fontSize: 10, color: "var(--c-t4)", padding: "5px 8px 2px", fontWeight: 600 }}>{g.label || "模型"}</div>}
-              {g.opts.map((o) => (
-                <button key={o.value} type="button" title={o.label} onClick={(e) => { e.stopPropagation(); onChange(o.value); setOpen(false); }}
+              {g.opts.map((o) => {
+                const isHi = fopts[hi]?.value === o.value;
+                return (
+                <button key={o.value} type="button" title={o.label} onMouseEnter={() => setHi(fopts.indexOf(o))} onClick={(e) => { e.stopPropagation(); onChange(o.value); setOpen(false); }}
                   style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 9px", borderRadius: 6, fontSize: 12, lineHeight: 1.45,
-                    background: o.value === value ? "color-mix(in oklab, var(--ui-accent) 16%, transparent)" : "transparent",
+                    background: o.value === value ? "color-mix(in oklab, var(--ui-accent) 16%, transparent)" : isHi ? "var(--c-surface)" : "transparent",
                     color: o.value === value ? "var(--c-t1)" : "var(--c-t2)", border: "none", cursor: "pointer", fontWeight: o.value === value ? 700 : 500 }}>
                   {o.label}
                 </button>
-              ))}
+                );
+              })}
             </div>
           ))}
         </div>, document.body)
