@@ -1092,6 +1092,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
     });
   }, [user, projectId]);
 
+  // 把一次批量操作（复制/粘贴/组合/变体/导入）新增的节点与边广播给协作者（#86）——此前这些操作
+  // 只改本地 store、不 emit，协作者要保存刷新才见。传入操作前的 id 集合，操作后 diff 出新增项，
+  // 逐个 emit node:add / edge:add（与手动建节点一致）。防回声同 #85：远端 apply 走 setNodes 不回传。
+  const snapshotGraphIds = useCallback((): { n: Set<string>; e: Set<string> } => {
+    const st = useCanvasStore.getState();
+    return { n: new Set(st.nodes.map((x) => x.id)), e: new Set(st.edges.map((x) => x.id)) };
+  }, []);
+  const emitGraphAdditions = useCallback((before: { n: Set<string>; e: Set<string> }) => {
+    const st = useCanvasStore.getState();
+    for (const nd of st.nodes) if (!before.n.has(nd.id)) emitCollabEvent("node:add", nd);
+    for (const ed of st.edges) if (!before.e.has(ed.id)) emitCollabEvent("edge:add", ed);
+  }, [emitCollabEvent]);
+
   // 协作实时同步：把本地的节点配置/标题改动广播给协作者（#85）。updateNodeData/updateNodeTitle
   // 经 store 的注册钩子回调到这里；按节点节流(400ms)合并补丁，减少高频输入(如逐字打提示词)的洪泛。
   // 远端改动经 applyRemoteMutation 的 setNodes 落地、不经 updateNodeData，故不会回声成环。
@@ -1106,6 +1119,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (acc.title !== undefined) emitCollabEvent("node:title", { id, title: acc.title });
     };
     registerNodeMutationBroadcaster((m) => {
+      if (m.kind === "add") { // 变体等新增节点/边：立即广播，不进节流
+        for (const nd of m.nodes) emitCollabEvent("node:add", nd);
+        for (const ed of m.edges) emitCollabEvent("edge:add", ed);
+        return;
+      }
       const acc = pending.get(m.id) ?? { patch: {} };
       if (m.kind === "update") acc.patch = { ...acc.patch, ...m.patch };
       else acc.title = m.title;
@@ -1650,8 +1668,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
         toast.error("文件格式不符：未找到可导入的节点");
         return;
       }
+      const before = snapshotGraphIds();
       const r = importGraph(graph);
       if (r.nodes === 0) { toast.error("未导入任何节点（类型不识别或格式不符）"); return; }
+      emitGraphAdditions(before); // 广播导入的节点/边给协作者
       toast.success(`已导入 ${r.nodes} 个节点 · ${r.edges} 条连接`);
       setTimeout(() => reactFlow.fitView({ padding: 0.2, duration: 400 }), 80);
     } catch (e) {
@@ -1762,10 +1782,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const inGroups = new Set(groupSel.flatMap(g => (g.data.payload as GroupNodeData).childIds ?? []));
         const loose = selected.filter(n => n.data.nodeType !== "group" && !inGroups.has(n.id));
         if (selected.length > 0) {
+          const before = snapshotGraphIds();
           store.runBatch(() => {
             groupSel.forEach(g => store.duplicateGroup(g.id));
             loose.forEach(n => store.duplicateNode(n.id));
           });
+          emitGraphAdditions(before); // 广播复制出的新节点/边给协作者
           const parts: string[] = [];
           if (groupSel.length > 0) parts.push(`${groupSel.length} 个群组（含成员）`);
           if (loose.length > 0) parts.push(`${loose.length} 个节点`);
@@ -1794,7 +1816,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const store = useCanvasStore.getState();
         pasteCountRef.current += 1;
         const off = 50 + 40 * pasteCountRef.current;
+        const before = snapshotGraphIds();
         const newIds = store.cloneSubgraph(clipboardRef.current, { x: off, y: off });
+        emitGraphAdditions(before); // 广播粘贴出的子图给协作者
         if (newIds.length > 0) toast.success(`已粘贴 ${newIds.length} 个节点`, { duration: 1200 });
       }
 
@@ -1808,7 +1832,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           if (groups.length > 0) toast.success(`已解组 ${groups.length} 个群组`, { duration: 1200 });
         } else {
           const ids = store.nodes.filter((n) => n.selected && n.data.nodeType !== "group").map((n) => n.id);
-          if (ids.length >= 2) { const gid = store.groupSelected(ids); if (gid) toast.success(`已组合 ${ids.length} 个节点为群组`, { duration: 1200 }); }
+          if (ids.length >= 2) { const before = snapshotGraphIds(); const gid = store.groupSelected(ids); if (gid) { emitGraphAdditions(before); toast.success(`已组合 ${ids.length} 个节点为群组`, { duration: 1200 }); } }
           else toast.info("请先框选至少 2 个节点再组合", { duration: 1500 });
         }
       }
@@ -3622,10 +3646,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
               deleteNodeMutation.mutate({ id: nid, projectId });
               emitCollabEvent("node:delete", { id: nid });
             } : undefined}
-            onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
+            onDuplicateNode={contextMenu.nodeId ? () => { const before = snapshotGraphIds(); duplicateNode(contextMenu.nodeId!); emitGraphAdditions(before); } : undefined}
             onGroup={selectedGroupableIds.length >= 2 ? () => {
+              const before = snapshotGraphIds();
               const gid = useCanvasStore.getState().groupSelected(selectedGroupableIds);
-              if (gid) toast.success(`已组合 ${selectedGroupableIds.length} 个节点为群组`);
+              if (gid) { emitGraphAdditions(before); toast.success(`已组合 ${selectedGroupableIds.length} 个节点为群组`); }
             } : undefined}
             onUngroup={ctxNodeType === "group" ? () => {
               const gid = contextMenu.nodeId!;
@@ -3644,8 +3669,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
               }
             } : undefined}
             onDuplicateGroup={ctxNodeType === "group" ? () => {
+              const before = snapshotGraphIds();
               const gid = useCanvasStore.getState().duplicateGroup(contextMenu.nodeId!);
               if (gid) {
+                emitGraphAdditions(before);
                 const cnt = (((useCanvasStore.getState().nodes.find((n) => n.id === gid)?.data.payload) as GroupNodeData | undefined)?.childIds ?? []).length;
                 toast.success(`已复制群组及 ${cnt} 个成员`);
               }

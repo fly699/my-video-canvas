@@ -92,7 +92,8 @@ const CLONE_RUNTIME_FIELDS = [
 // 防回声：远端改动经 applyRemoteMutation 走 setNodes 直改，不经 updateNodeData，故不会二次广播。
 type NodeMutationBroadcast =
   | { kind: "update"; id: string; patch: Record<string, unknown> }
-  | { kind: "title"; id: string; title: string };
+  | { kind: "title"; id: string; title: string }
+  | { kind: "add"; nodes: CanvasNode[]; edges: CanvasEdge[] };
 let _nodeMutationBroadcaster: ((m: NodeMutationBroadcast) => void) | null = null;
 export function registerNodeMutationBroadcaster(fn: ((m: NodeMutationBroadcast) => void) | null): void {
   _nodeMutationBroadcaster = fn;
@@ -1063,6 +1064,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       edges: [...s.edges, ...newEdges],
       isDirty: true,
     }));
+    // 广播变体新节点/边给协作者（createVariants 由 BaseNode 调用、不经 Canvas 的批量 diff 广播）。
+    if (_nodeMutationBroadcaster && newNodes.length) _nodeMutationBroadcaster({ kind: "add", nodes: newNodes, edges: newEdges });
     return newNodes.length;
   },
 
