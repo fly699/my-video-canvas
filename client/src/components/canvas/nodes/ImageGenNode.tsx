@@ -18,6 +18,7 @@ import { detectUpstreamPrompt, detectUpstreamImagesExpanded, stripMediaMentions 
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
+import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 import { PromptDock } from "../PromptDock";
 import { RefHeroPreview } from "../RefHeroPreview";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
@@ -288,8 +289,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     }
   }, [id, payload.seed]);
 
+  // 批量「运行全部」进行中：runner 用它自己的 mutation 实例跑本节点，本节点 genMutation.isPending
+  // 却为 false，导致手动「运行」可对同一节点再发一次 → 双扣费/占卡。批量运行中禁用手动运行。
+  const batchRunning = useWorkflowRunState().running;
+
   const handleGenerate = () => {
     if (genMutation.isPending) return;
+    if (batchRunning) { toast.error("批量运行进行中，请等待完成后再单独运行"); return; }
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
     // 组装逻辑抽到纯函数 buildImageGenInput（与「运行全部」runner 同一事实源，防两侧漂移）。
@@ -1180,7 +1186,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         {/* Generate button */}
         <button
           onClick={handleGenerate}
-          disabled={genMutation.isPending || !payload.prompt?.trim()}
+          disabled={genMutation.isPending || batchRunning || !payload.prompt?.trim()}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
             background: genMutation.isPending || !payload.prompt?.trim()

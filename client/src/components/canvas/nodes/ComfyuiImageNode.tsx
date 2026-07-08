@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
+import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
@@ -313,8 +314,13 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     propagateRefImage(id, url);
   }, [id, updateNodeData]);
 
+  // 批量「运行全部」进行中：runner 用独立 mutation 实例跑本节点，genMutation.isPending 为 false，
+  // 手动「运行」会对同一节点再发一次 → 双扣费/占卡。批量运行中禁用手动运行。
+  const batchRunning = useWorkflowRunState().running;
+
   const handleGenerate = () => {
     if (genMutation.isPending) return;
+    if (batchRunning) { toast.error("批量运行进行中，请等待完成后再单独运行"); return; }
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
     if (!payload.ckpt?.trim()) { toast.error("请先填写 Checkpoint 名称"); return; }
@@ -543,7 +549,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       >
         <button
           onClick={handleGenerate}
-          disabled={genMutation.isPending}
+          disabled={genMutation.isPending || batchRunning}
           className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
           style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
         >
@@ -1738,7 +1744,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         {/* ── Generate button ── */}
         <button
           onClick={handleGenerate}
-          disabled={genMutation.isPending || !payload.prompt?.trim() || !payload.ckpt?.trim()}
+          disabled={genMutation.isPending || batchRunning || !payload.prompt?.trim() || !payload.ckpt?.trim()}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
             background: genMutation.isPending || !payload.prompt?.trim() || !payload.ckpt?.trim()
