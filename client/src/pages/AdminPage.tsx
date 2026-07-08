@@ -316,10 +316,18 @@ function UsersPanel() {
   const utils = trpc.useUtils();
   const { user: me } = useAuth();
   const { data: users, isLoading } = trpc.admin.users.list.useQuery();
-  // 实时在线状态：轮询在线用户 id（socket 引用计数），叠加到用户表。
-  const { data: onlineIds } = trpc.admin.users.onlineIds.useQuery(undefined, { refetchInterval: 15000, refetchOnWindowFocus: true });
-  const onlineSet = new Set(onlineIds ?? []);
-  const onlineCount = (users ?? []).filter((u) => onlineSet.has(u.id)).length;
+  // 实时在线状态 + 今日在线时长：轮询 presence 统计，叠加到用户表。
+  const { data: onlineStats } = trpc.admin.users.onlineStats.useQuery(undefined, { refetchInterval: 15000, refetchOnWindowFocus: true });
+  const statMap = new Map((onlineStats ?? []).map((s) => [s.userId, s]));
+  const onlineSet = new Set((onlineStats ?? []).filter((s) => s.online).map((s) => s.userId));
+  const onlineCount = onlineSet.size;
+  const fmtDur = (sec: number): string => {
+    if (sec < 60) return `${sec}秒`;
+    const m = Math.floor(sec / 60);
+    if (m < 60) return `${m}分`;
+    const h = Math.floor(m / 60);
+    return `${h}时${m % 60}分`;
+  };
   const resetMut = trpc.admin.users.resetPassword.useMutation({
     onSuccess: () => toast.success("密码已重置"),
     onError: (e) => toast.error("重置失败：" + e.message),
@@ -394,7 +402,7 @@ function UsersPanel() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr>
-                <th style={thStyle}>ID</th><th style={thStyle}>在线</th><th style={thStyle}>名称 / 邮箱</th><th style={thStyle}>登录方式</th>
+                <th style={thStyle}>ID</th><th style={thStyle}>在线 · 今日时长</th><th style={thStyle}>名称 / 邮箱</th><th style={thStyle}>登录方式</th>
                 <th style={thStyle}>管理员级别</th><th style={thStyle}>状态</th><th style={thStyle}>最近登录</th><th style={thStyle}>操作</th>
               </tr>
             </thead>
@@ -406,15 +414,26 @@ function UsersPanel() {
                   <tr key={u.id} style={{ borderTop: "1px solid var(--c-bd2)", opacity: u.disabled ? 0.6 : 1 }}>
                     <td style={tdStyle}>{u.id}</td>
                     <td style={tdStyle}>
-                      {onlineSet.has(u.id) ? (
-                        <span title="在线" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "oklch(0.6 0.18 155)" }}>
-                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "oklch(0.7 0.18 155)", boxShadow: "0 0 0 3px oklch(0.7 0.18 155 / 0.25)" }} />在线
-                        </span>
-                      ) : (
-                        <span title="离线" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--c-t4)" }}>
-                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-t4)", opacity: 0.5 }} />离线
-                        </span>
-                      )}
+                      {(() => {
+                        const on = onlineSet.has(u.id);
+                        const dur = statMap.get(u.id)?.todaySeconds ?? 0;
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            {on ? (
+                              <span title="在线" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "oklch(0.6 0.18 155)" }}>
+                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "oklch(0.7 0.18 155)", boxShadow: "0 0 0 3px oklch(0.7 0.18 155 / 0.25)" }} />在线
+                              </span>
+                            ) : (
+                              <span title="离线" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--c-t4)" }}>
+                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-t4)", opacity: 0.5 }} />离线
+                              </span>
+                            )}
+                            <span title="今日累计在线时长" style={{ fontSize: 10.5, color: "var(--c-t4)", fontVariantNumeric: "tabular-nums" }}>
+                              今日 {dur > 0 ? fmtDur(dur) : "—"}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td style={tdStyle}>
                       <div style={{ fontWeight: 600 }}>{u.name || "—"}</div>
