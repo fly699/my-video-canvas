@@ -292,6 +292,7 @@ export interface AudioInput {
   trimIn: number;
   trimOut: number;
   speed: number;
+  reverse?: boolean;   // 倒放：音频逆序（与预览 sourceTimeAt 一致；主轨音频已有 areverse，此处对齐独立音轨）
   start: number;       // timeline position (seconds)
   volume: number;
   fadeIn: number;
@@ -566,10 +567,14 @@ export function buildFilterGraph(
     // feeding a concat (hard cut) output into a later xfade alongside a fresh
     // segment then fails with "timebase ... do not match" → "Failed to
     // configure output pad". settb keeps all combine inputs on 1/fps.
-    // 片段不透明度（主轨）：与预览一致 = 在 RGB 上朝黑乘 op。仅 op<1 时插入此滤镜，
-    // op=1（绝大多数片段）链路保持原样、无任何额外转换 → 对常规导出零影响、零质量损失。
+    // 片段不透明度（主轨）：与预览一致 = 在 RGB 上朝黑乘 op。有 opacity 关键帧时逐帧乘（geq 时变，
+    // 大写 T=clip-local 时基，与 transformAt 一致），否则静态用 colorchannelmixer。op=1 且无关键帧
+    // （绝大多数片段）链路保持原样、无任何额外转换 → 对常规导出零影响、零质量损失。
+    const opKfExpr = buildKeyframeExpr(keyframePoints(s.keyframes, "opacity", 0, (v) => Math.max(0, Math.min(1, v))));
     const op = s.transform?.opacity ?? 1;
-    const opChain = op < 0.999 ? [`colorchannelmixer=rr=${op.toFixed(3)}:gg=${op.toFixed(3)}:bb=${op.toFixed(3)}`] : [];
+    const opChain = opKfExpr != null
+      ? [`format=rgb24`, `geq=r='r(X,Y)*clip(${opKfExpr.replace(/\bt\b/g, "T")},0,1)':g='g(X,Y)*clip(${opKfExpr.replace(/\bt\b/g, "T")},0,1)':b='b(X,Y)*clip(${opKfExpr.replace(/\bt\b/g, "T")},0,1)'`]
+      : op < 0.999 ? [`colorchannelmixer=rr=${op.toFixed(3)}:gg=${op.toFixed(3)}:bb=${op.toFixed(3)}`] : [];
     const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), ...opChain, "format=yuv420p", ...videoFadeFilters(s.fadeIn, s.fadeOut, dur), `settb=1/${fps}`];
 
     if (s.fit === "blur") {
@@ -682,10 +687,12 @@ export function buildFilterGraph(
     // 旋转：有 rotation 关键帧时逐帧旋转。坑：rotate 的 a 本应逐帧求值，但 c=none（透明填充）
     // 会禁用逐帧（实测 6.1.1：c=none 下 a 冻结在首帧）；必须用 c=black@0（透明黑）才能既保透明角
     // 又动画，ow=iw:oh=ih 固定输出尺寸（绕开下游缩放的 config_props 尺寸锁，且中心对齐预览）。
-    // 静态情形保持原 c=none:ow=rotw/roth（零回归）。
+    // 静态旋转同样固定输出尺寸 ow=iw:oh=ih：原 ow=rotw/roth 会把 bbox 撑大，而 overlay 按左上角
+    // 锚定合成 → PiP 整体向右下漂移 (rotw-iw)/2；预览是绕中心 CSS 旋转、不改布局盒。与动画路径统一，
+    // 静态旋转 c=none 无 eval 冻结问题（常量角）。
     const rotExpr = buildKeyframeExpr(keyframePoints(o.keyframes, "rotation", 0, (v) => v * Math.PI / 180));
     if (rotExpr != null) oc.push(`rotate=a='${rotExpr}':c=black@0:ow=iw:oh=ih`);
-    else if (o.transform?.rotation) oc.push(`rotate=${(o.transform.rotation * Math.PI / 180).toFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)`);
+    else if (o.transform?.rotation) oc.push(`rotate=${(o.transform.rotation * Math.PI / 180).toFixed(5)}:c=none:ow=iw:oh=ih`);
     // alpha fade in/out while the overlay's PTS is still clip-local (0..duration)
     oc.push(...videoFadeFilters(o.fadeIn, o.fadeOut, o.duration, true));
     // 动画缩放放到所有像素滤镜之后、位移 setpts 之前（见上方说明：尺寸安全顺序）
@@ -732,10 +739,9 @@ export function buildFilterGraph(
     audioClips.forEach((a, k) => {
       const inIdx = segs.length + overlays.length + k;
       const dur = Math.max(0.05, (a.trimOut - a.trimIn) / (a.speed || 1));
-      const ac: string[] = [
-        `atrim=start=${a.trimIn.toFixed(3)}:end=${a.trimOut.toFixed(3)}`,
-        "asetpts=PTS-STARTPTS",
-      ];
+      const ac: string[] = [`atrim=start=${a.trimIn.toFixed(3)}:end=${a.trimOut.toFixed(3)}`];
+      if (a.reverse) ac.push("areverse");   // 倒放：音频逆序（在 atrim 后、重置 PTS 前）
+      ac.push("asetpts=PTS-STARTPTS");
       if (a.denoise) ac.push("afftdn=nr=20:nf=-30"); // 降噪：对原始音频做 FFT 降噪（实测噪声带降约 12dB）
       if (Math.abs(a.speed - 1) > 0.001) ac.push(...buildAtempoFilters(a.speed));
       if (Math.abs(a.volume - 1) > 0.001) ac.push(`volume=${a.volume.toFixed(3)}`);
@@ -1024,7 +1030,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       if (!c.assetUrl) continue;
       const p = await downloadToTemp(c.assetUrl, "m4a");
       tmpFiles.push(p);
-      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: effVolume(c), fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, fadeCurve: c.fadeCurve, ducking: c.ducking, denoise: c.denoise });
+      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, reverse: c.reverse, start: c.start, volume: effVolume(c), fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, fadeCurve: c.fadeCurve, ducking: c.ducking, denoise: c.denoise });
       inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }

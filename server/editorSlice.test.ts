@@ -50,6 +50,20 @@ describe("sliceEditorDoc (export range)", () => {
     expect(c.trimIn).toBe(0 + 1 * 2); // 1 timeline-sec × speed 2 = 2 source-secs
   });
 
+  it("maps a reverse clip's boundary cut to the swapped source side", () => {
+    // reverse video [2,10] (trimIn 1, trimOut 9, speed 1). slice [5,10] cuts 3s off the
+    // LEFT of the timeline — but for reverse, the timeline-left maps to the source's
+    // trimOut side (sourceTimeAt = trimOut-off), so trimOut shrinks, trimIn stays.
+    const d = emptyEditorDoc(1920, 1080, 30);
+    d.tracks[0].clips.push({ id: "rv", kind: "video", start: 2, trimIn: 1, trimOut: 9, reverse: true, assetUrl: "x" } as never);
+    const out = sliceEditorDoc(d, 5, 10);
+    const c = v1(out)[0];
+    expect(c.start).toBe(0);
+    expect(c.trimIn).toBe(1);   // left edge unchanged (was the source's trimOut side)
+    expect(c.trimOut).toBe(6);  // 9 - 3s leftTrim → source high bound moves down
+    expect(c.reverse).toBe(true);
+  });
+
   it("clamps a negative or inverted range", () => {
     const d = docWith([{ id: "a", kind: "image", start: 0, trimIn: 0, trimOut: 5 }]);
     const out = sliceEditorDoc(d, 9, 2); // inverted → [2,9]

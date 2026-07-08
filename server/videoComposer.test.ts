@@ -242,8 +242,28 @@ describe("buildFilterGraph (single-pass composer)", () => {
     const overlays: OverlayInput[] = [{ isImage: true, trimIn: 0, trimOut: 2, speed: 1, start: 0, duration: 2, transform: { x: 0.1, y: 0.1, scale: 0.3, opacity: 0.5, rotation: 30 } }];
     const chain = buildFilterGraph(segs, OPTS, overlays).filterComplex.split(";").find((l) => l.includes("[ov0]"))!;
     expect(chain).toContain("colorchannelmixer=aa=0.500"); // static opacity unchanged
-    expect(chain).toContain("c=none:ow=rotw(iw):oh=roth(ih)"); // static rotation unchanged
+    // static rotation now fixes the output size (ow=iw:oh=ih) like the animated path so the
+    // PiP anchor doesn't drift — the old expand-box form (rotw/roth) shifted it bottom-right.
+    expect(chain).toContain("c=none:ow=iw:oh=ih");
+    expect(chain).not.toContain("rotw(iw)");
     expect(chain).not.toContain("geq=");
+  });
+
+  it("base-track opacity keyframes animate via geq (was ignored, held static in export)", () => {
+    const segs: Segment[] = [{ isImage: true, hasAudio: false, trimIn: 0, trimOut: 2, speed: 1, fit: "cover",
+      keyframes: [{ t: 0, opacity: 0 }, { t: 2, opacity: 1 }] }];
+    const chain = buildFilterGraph(segs, OPTS, []).filterComplex.split(";").find((l) => l.includes("[v0]"))!;
+    expect(chain).toContain("format=rgb24");
+    expect(chain).toMatch(/geq=r='r\(X,Y\)\*clip\(/); // per-frame RGB multiply toward black
+    expect(chain).toContain("lt(T,"); // uppercase T time var inside geq
+    expect(chain).not.toContain("colorchannelmixer=rr"); // not the static form
+  });
+
+  it("audio-track clips honour reverse with areverse (mirrors the base-track path)", () => {
+    const segs: Segment[] = [{ isImage: false, hasAudio: true, trimIn: 0, trimOut: 5, speed: 1 }];
+    const audioClips: AudioInput[] = [{ trimIn: 0, trimOut: 4, speed: 1, reverse: true, start: 0, volume: 1, fadeIn: 0, fadeOut: 0 }];
+    const g = buildFilterGraph(segs, OPTS, [], { audioClips }).filterComplex;
+    expect(g).toMatch(/atrim=start=0\.000:end=4\.000,areverse,asetpts/);
   });
 
   it("mixes audio-track clips with delay/volume/fades + the ass filter for text", () => {
