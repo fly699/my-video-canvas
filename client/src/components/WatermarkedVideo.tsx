@@ -1,6 +1,6 @@
-import { useEffect, useState, type VideoHTMLAttributes } from "react";
+import { useEffect, useRef, useState, type VideoHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, Repeat, X } from "lucide-react";
+import { Maximize2, Repeat, X, ChevronLeft, ChevronRight, Gauge } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 
@@ -28,6 +28,20 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
   const wm = !!user && !!data?.watermarkEnabled;
   const [loop, setLoop] = useState(false);
   const [big, setBig] = useState(false);
+  // 逐帧 / 倍速：作用于原生 <video>，不引入新的 <video> 元素——nodownload / 禁右键 / 水印全部沿用。
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const SPEEDS = [1, 1.5, 2, 0.5];
+  const [speed, setSpeed] = useState(1);
+  const FRAME = 1 / 30; // 无法从元素取真实帧率，按 30fps 估一帧步进
+  useEffect(() => { if (videoRef.current) videoRef.current.playbackRate = speed; }, [speed]);
+  const cycleSpeed = () => setSpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length] ?? 1);
+  const stepFrame = (dir: 1 | -1) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.pause();
+    const dur = Number.isFinite(v.duration) ? v.duration : Infinity;
+    v.currentTime = Math.max(0, Math.min(dur, v.currentTime + dir * FRAME));
+  };
 
   // 关闭放大预览：Esc。
   useEffect(() => {
@@ -47,7 +61,8 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
       className="wm-video-wrap"
       style={{ position: "relative", display: block ? "block" : "inline-block", width: block ? "100%" : undefined, lineHeight: 0 }}
     >
-      <video {...props} loop={loop} controlsList={controlsList} disablePictureInPicture onContextMenu={noMenu} />
+      <video ref={videoRef} {...props} loop={loop} controlsList={controlsList} disablePictureInPicture onContextMenu={noMenu}
+        onLoadedMetadata={(e) => { e.currentTarget.playbackRate = speed; props.onLoadedMetadata?.(e); }} />
       <button
         type="button"
         onClick={() => setLoop((v) => !v)}
@@ -58,6 +73,18 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
       >
         <Repeat style={{ width: 14, height: 14 }} />
       </button>
+      {/* 逐帧步进 + 倍速（hover 显示，位于循环钮右侧）。nodrag 防止触发画布拖拽。 */}
+      <div className="wm-vctrl-row nodrag">
+        <button type="button" className="wm-vctrl" title="上一帧" aria-label="上一帧" onClick={() => stepFrame(-1)}>
+          <ChevronLeft style={{ width: 14, height: 14 }} />
+        </button>
+        <button type="button" className="wm-vctrl" title="下一帧" aria-label="下一帧" onClick={() => stepFrame(1)}>
+          <ChevronRight style={{ width: 14, height: 14 }} />
+        </button>
+        <button type="button" className="wm-vctrl" data-wide title={`播放速度 ${speed}×（点击切换）`} aria-label="播放速度" onClick={cycleSpeed}>
+          <Gauge style={{ width: 12, height: 12 }} /> {speed}×
+        </button>
+      </div>
       {wm && (
         <button type="button" onClick={() => setBig(true)} title="放大预览（含水印）" aria-label="放大预览" className="wm-fs-btn nodrag">
           <Maximize2 style={{ width: 16, height: 16 }} />
