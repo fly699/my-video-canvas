@@ -23,7 +23,7 @@ import { Lightbox } from "@/components/chat/chatLightbox";
 export interface ConversationSummary {
   id: number; type: string; mode: string; title: string | null;
   isPrivate: boolean; memberCount: number; lastMessage: ChatWireMessage | null;
-  unread: number; peer?: { id: number; name: string | null };
+  unread: number; peer?: { id: number; name: string | null }; isBroadcast?: boolean;
 }
 
 export interface JoinableRoom { id: number; title: string | null; isPrivate: boolean; mode: string }
@@ -240,6 +240,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     });
 
     socket.on("conversation:created", () => { utils.chat.listConversations.invalidate(); utils.chat.listJoinableRooms.invalidate(); });
+    // 管理员广播：定向到个人房，弹通知 + 刷新会话列表以显示「系统公告」房。senderId=-2=系统。
+    socket.on("system:announce", (p: { roomId: number; title: string; body: string }) => {
+      notifyIncoming({ conversationId: p.roomId, senderId: -2, senderName: "📢 系统公告", content: p.title });
+      utils.chat.listConversations.invalidate();
+    });
     socket.on("conversation:deleted", (p: { conversationId: number }) => {
       if (p.conversationId === activeIdRef.current) { activeIdRef.current = null; setActiveId(null); setMessages([]); }
       utils.chat.listConversations.invalidate();

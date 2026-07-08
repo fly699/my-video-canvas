@@ -35,6 +35,9 @@ import {
   getUserById,
   getOrCreateAssistantUserId,
   getOrCreateUserNotifyRoom,
+  getOrCreateSystemAnnounceRoom,
+  getOrCreateBroadcastChannel,
+  listAllUsers,
   getUserWebhook,
   setUserWebhook,
   ASSISTANT_NAME,
@@ -212,6 +215,68 @@ export async function postAssetToNotifyRoom(a: RecordedAssetInfo): Promise<void>
   }
 }
 
+/** 广播收件人目标：全体 / 指定用户 / 指定房间群组（取其成员）。可任意组合，最终取并集。 */
+export type BroadcastTargets = { all?: boolean; userIds?: number[]; conversationIds?: number[] };
+
+/**
+ * 解析广播收件人为去重后的 userId 列表：全体用户 ∪ 指定用户 ∪ 指定房间/群组的全部成员。
+ * AI 助手 bot 自身从结果中剔除（不给机器人发公告）。
+ */
+export async function resolveBroadcastRecipientIds(targets: BroadcastTargets): Promise<number[]> {
+  const ids = new Set<number>();
+  if (targets.all) {
+    const users = await listAllUsers();
+    for (const u of users) ids.add(u.id);
+  }
+  if (targets.userIds) for (const id of targets.userIds) if (Number.isInteger(id) && id > 0) ids.add(id);
+  if (targets.conversationIds) {
+    for (const cid of targets.conversationIds) {
+      try {
+        const members = await listChatMembers(cid);
+        for (const m of members) if (m.userId > 0) ids.add(m.userId);
+      } catch { /* 单房间成员查询失败不阻断其余 */ }
+    }
+  }
+  try { ids.delete(await getOrCreateAssistantUserId()); } catch { /* 无 bot id 时忽略 */ }
+  return Array.from(ids);
+}
+
+/**
+ * 管理员广播：把一条公告下发到**指定收件人**（全体/成员/房间群组，取并集去重）各自的「系统公告」
+ * 房（持久化、可历史回查），并定向推到各自的个人房 `chat:user:{id}`（前端弹声音/桌面/横幅/红点，
+ * 画布上聊天窗关着也能收到）。同时在共享「广播频道」留一份存档，便于管理员查看历史广播与覆盖范围。
+ */
+export async function broadcastSystemAnnouncement(
+  title: string, body: string, targets: BroadcastTargets = { all: true },
+): Promise<{ delivered: number; total: number }> {
+  const recipientIds = await resolveBroadcastRecipientIds(targets);
+  const botId = await getOrCreateAssistantUserId();
+  const content = `📢 ${title}\n\n${body}`.trim();
+  let delivered = 0;
+  for (const uid of recipientIds) {
+    try {
+      const room = await getOrCreateSystemAnnounceRoom(uid);
+      const msg = await insertConversationMessage({ conversationId: room.id, senderId: botId, senderName: "系统公告", content });
+      if (msg && broadcaster) broadcaster(room.id, rowToWire(msg)); // 已进该房的客户端实时收
+      // 个人房定向：保证通知一定送达（个人房 socket 恒加入），并让已打开的聊天列表刷新出「系统公告」房。
+      if (userBroadcaster) {
+        userBroadcaster(uid, "system:announce", { roomId: room.id, title, body });
+        userBroadcaster(uid, "conversation:created", {});
+      }
+      delivered++;
+    } catch { /* 单用户失败不阻断其余 */ }
+  }
+  // 在共享「广播频道」留档：管理员可回看历史广播 + 本次覆盖范围。存档失败不影响广播结果。
+  try {
+    const channel = await getOrCreateBroadcastChannel();
+    const scope = targets.all ? "全体用户" : `${recipientIds.length} 位收件人`;
+    const record = `📢 ${title}\n\n${body}\n\n—— 已下发至 ${scope}（成功 ${delivered}/${recipientIds.length}）`.trim();
+    const msg = await insertConversationMessage({ conversationId: channel.id, senderId: botId, senderName: "广播", content: record });
+    if (msg && broadcaster) broadcaster(channel.id, rowToWire(msg));
+  } catch { /* 存档失败忽略 */ }
+  return { delivered, total: recipientIds.length };
+}
+
 
 export const chatRouter = router({
   // ── conversations ─────────────────────────────────────────────────────────
@@ -219,15 +284,16 @@ export const chatRouter = router({
     const settings = await getChatSettings().catch(() => null);
     // Ensure the global lobby exists (in dev/no-migration setups it is created lazily).
     if (!settings || settings.lobbyEnabled) { try { await getOrCreateLobby(); } catch { /* non-fatal */ } }
-    // Admins auto-join the "下载审批" channel so it shows in their chat list.
+    // Admins auto-join the "下载审批" + "广播频道" so they show in the chat list.
     if (ctx.user.role === "admin") {
       try { const ch = await getOrCreateDownloadChannel(); if (!(await isChatMember(ch.id, ctx.user.id))) await addChatMember(ch.id, ctx.user.id, "member"); } catch { /* non-fatal */ }
+      try { const bc = await getOrCreateBroadcastChannel(); if (!(await isChatMember(bc.id, ctx.user.id))) await addChatMember(bc.id, ctx.user.id, "member"); } catch { /* non-fatal */ }
     }
     const convs = await listConversationsForUser(ctx.user.id);
     const out = [] as Array<{
       id: number; type: string; mode: string; title: string | null;
       isPrivate: boolean; memberCount: number; lastMessage: ChatWireMessage | null;
-      unread: number; peer?: { id: number; name: string | null };
+      unread: number; peer?: { id: number; name: string | null }; isBroadcast?: boolean;
     }>;
     for (const c of convs) {
       if (c.type === "lobby" && settings && !settings.lobbyEnabled) continue;
@@ -249,6 +315,7 @@ export const chatRouter = router({
         id: c.id, type: c.type, mode: c.mode, title: c.title,
         isPrivate: !!c.passwordHash, memberCount: members.length,
         lastMessage, unread, peer,
+        isBroadcast: (c.dmKey ?? "") === "system:broadcast",
       });
     }
     return out;

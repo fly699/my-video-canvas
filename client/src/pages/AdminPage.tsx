@@ -16,6 +16,7 @@ import { SelfHostedLlmSection } from "@/components/admin/SelfHostedLlmSection";
 import { BridgeMcpSection } from "@/components/admin/BridgeMcpSection";
 import { SystemDefaultModelsSection } from "@/components/admin/SystemDefaultModelsSection";
 import { TunnelPanel } from "@/components/admin/TunnelPanel";
+import { BroadcastComposer } from "@/components/chat/BroadcastComposer";
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 
@@ -1422,6 +1423,8 @@ function ModelsPanel() {
 function SystemUpdatePanel() {
   const utils = trpc.useUtils();
   const versionQuery = trpc.admin.update.version.useQuery(undefined, { refetchOnWindowFocus: false });
+  // 运行进程版本 vs 磁盘 HEAD：stale=磁盘已更新但进程没重启，需重启才生效（自愈加固）。
+  const rvdQuery = trpc.admin.update.runningVsDisk.useQuery(undefined, { refetchOnWindowFocus: true, refetchInterval: 60_000 });
   const statusQuery = trpc.admin.update.status.useQuery(undefined, {
     refetchOnWindowFocus: false,
     // 更新进行中时每 1.5s 轮询进度，否则停止轮询
@@ -1501,6 +1504,19 @@ function SystemUpdatePanel() {
                 </span>
               ) : "版本信息不可用（可能不是 git 部署）"}
             </div>
+
+            {/* 陈旧态告警：磁盘已比运行进程新（之前拉了代码没重启）→ 提示重启才生效 */}
+            {rvdQuery.data?.stale && (
+              <div style={{ marginTop: 10, display: "flex", alignItems: "flex-start", gap: 8, padding: "9px 12px", borderRadius: 8, fontSize: 12.5, lineHeight: 1.55, background: "oklch(0.70 0.16 60 / 0.10)", border: "1px solid oklch(0.70 0.16 60 / 0.35)", color: "oklch(0.80 0.15 60)" }}>
+                <RotateCw style={{ width: 14, height: 14, flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  磁盘代码已更新，但<b>运行中的进程仍是旧版</b>——之前拉取后未重启。
+                  运行 <code style={{ background: "var(--c-surface)", padding: "0 5px", borderRadius: 4 }}>{rvdQuery.data.running.slice(0, 7)}</code> ·
+                  磁盘 <code style={{ background: "var(--c-surface)", padding: "0 5px", borderRadius: 4 }}>{rvdQuery.data.disk.slice(0, 7)}</code>。
+                  点「重启服务」或「立即更新」即可加载新版本。
+                </span>
+              </div>
+            )}
 
             {/* 操作按钮 */}
             {!canEdit && (
@@ -2258,10 +2274,30 @@ function ComfyUsageLogsPanel() {
 function ChatAdminPanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <ChatBroadcastPanel />
       <ChatSettingsPanel />
       <ChatConversationsPanel />
       <ChatMessageSearchPanel />
       <ChatBansPanel />
+    </div>
+  );
+}
+
+// 管理员广播：整合进聊天的「广播频道」。此处提供后台入口——打开广播编辑器（多选收件人：
+// 全体 / 用户 / 房间群组），下发到各自「系统公告」房 + 触发通知（声音/桌面/横幅/红点，画布上也能收）。
+function ChatBroadcastPanel() {
+  const [open, setOpen] = useState(false);
+  const canBroadcast = useMyLevel() >= 3; // 广播 = 管理员(L3+)
+  return (
+    <div style={chatCard}>
+      <h3 style={chatCardTitle}>📢 广播频道</h3>
+      <p style={{ ...chatDim, margin: "0 0 10px" }}>广播已整合进聊天——管理员在聊天里有一个专属「广播频道」，也可从这里发起。可复选接收对象（<b>全体用户 / 指定成员 / 房间群组</b>），下发到各自的「系统公告」聊天房并实时提醒（声音 / 桌面通知 / 横幅 / 未读红点），用户在画布上聊天窗关着也能收到，历史可在广播频道回查。</p>
+      <LevelGate need={3} label="广播需「管理员」(L3) 及以上权限">
+        <button onClick={() => setOpen(true)} disabled={!canBroadcast} style={{ ...chatPrimarySm, opacity: canBroadcast ? 1 : 0.5 }}>
+          发起广播…
+        </button>
+      </LevelGate>
+      {open && <BroadcastComposer onClose={() => setOpen(false)} />}
     </div>
   );
 }

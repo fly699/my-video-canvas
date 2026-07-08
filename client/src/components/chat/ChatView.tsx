@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, Server, Mic } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, Server, Mic, Radio } from "lucide-react";
+import { BroadcastComposer } from "./BroadcastComposer";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
 import { useChat, SERVERLESS_ENCRYPT_PROMPT_BYTES } from "@/hooks/useChat";
@@ -66,6 +67,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const [dragOver, setDragOver] = useState(false);
   const [askEncrypt, setAskEncrypt] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [showBroadcast, setShowBroadcast] = useState(false);
   // Screenshots → annotate → stage as an attachment. Both capture via
   // getDisplayMedia (so they work cross-screen / cross-window — the browser
   // requires its share-screen picker once):
@@ -99,6 +101,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   // ── 内建 AI 助手对话 ────────────────────────────────────────────────────────
   const aiQuery = trpc.chat.assistantUserId.useQuery(undefined, { staleTime: 60 * 60_000, refetchOnWindowFocus: false });
   const isAI = !!activeConv && activeConv.type === "dm" && aiQuery.data?.userId != null && activeConv.peer?.id === aiQuery.data.userId;
+  const isBroadcast = !!activeConv?.isBroadcast; // 管理员共享「广播频道」——头部显示「发起广播」，隐藏无关操作
   const disabledModels = useDisabledModels();
   // 聊天 AI 可选模型：受「模型管理 · 聊天」分组开关过滤（独立于 LLM 节点的开关，键加 "chat:" 前缀）。
   const _selfHostedChat = useSelfHostedLlmModels();
@@ -383,17 +386,21 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
               style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}
             ><Sparkles size={13} />{!narrow && " 新对话"}</button>
           )}
+          {/* 广播频道：管理员专属，头部主操作是「发起广播」（多选收件人） */}
+          {isBroadcast && (
+            <button onClick={() => setShowBroadcast(true)} title="发起广播（可复选收件人：全体 / 成员 / 房间群组）" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.accent}`, background: C.accentSoft, color: C.accent, fontWeight: 600 }}><Radio size={13} />{!narrow && " 发起广播"}</button>
+          )}
           {/* AI 助手会话：不是真人/群聊，隐藏 文件/中转站/删除/模式切换等无关按钮 */}
-          {!isAI && <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={13} />{!narrow && " 文件"}</button>}
-          {!isAI && !narrow && <button onClick={() => window.open("/relay", "_blank", "noopener")} title="局域网大文件中转站（几十 GB 大文件传输，支持断点续传）" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><HardDriveUpload size={13} /> 中转站</button>}
-          {activeConv.type === "group" && (isOwner
+          {!isAI && !isBroadcast && <button onClick={() => setShowFiles(true)} title="文件" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><FolderOpen size={13} />{!narrow && " 文件"}</button>}
+          {!isAI && !isBroadcast && !narrow && <button onClick={() => window.open("/relay", "_blank", "noopener")} title="局域网大文件中转站（几十 GB 大文件传输，支持断点续传）" style={{ ...pill, border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><HardDriveUpload size={13} /> 中转站</button>}
+          {activeConv.type === "group" && !isBroadcast && (isOwner
             ? <button onClick={onDelete} title="删除群聊（群主）" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={13} />{!narrow && " 删除"}</button>
             : <button onClick={onLeave} title="退出群聊" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}><LogOut size={13} />{!narrow && " 退出"}</button>
           )}
           {activeConv.type === "dm" && !isAI && (
             <button onClick={onDeleteDm} title="删除该私聊" style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid rgba(239,68,68,0.3)`, background: C.dangerSoft, color: C.danger }}><Trash2 size={13} />{!narrow && " 删除"}</button>
           )}
-          {activeConv.type !== "lobby" && !isAI && (
+          {activeConv.type !== "lobby" && !isAI && !isBroadcast && (
             <button onClick={toggleMode} title={activeConv.mode === "serverless" ? "当前端到端加密，点击切回服务器模式" : "当前服务器模式，点击切换端到端加密"} style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${activeConv.mode === "serverless" ? C.accent : C.borderStrong}`, background: activeConv.mode === "serverless" ? C.accentSoft : "var(--c-elevated, rgba(128,128,128,0.10))", color: activeConv.mode === "serverless" ? C.accent : C.t1 }}>
               {activeConv.mode === "serverless" ? <><ShieldCheck size={13} />{!narrow && " 加密"}</> : <>服务器</>}
             </button>
@@ -504,7 +511,16 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
         </div>
       )}
 
-      {/* input */}
+      {/* 广播频道：普通消息不会广播，底部改为醒目的「发起广播」CTA（多选收件人） */}
+      {isBroadcast ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: narrow ? "10px 12px calc(14px + env(safe-area-inset-bottom, 0px))" : "12px 16px 16px", flexShrink: 0, borderTop: `1px solid ${C.border}` }}>
+          <button onClick={() => setShowBroadcast(true)} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "11px 16px", borderRadius: 11, border: `1px solid ${C.accent}`, background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+            <Radio size={16} /> 发起广播
+          </button>
+          <span style={{ fontSize: 11, color: C.t4, textAlign: "center" }}>可复选接收对象：全体用户 / 指定成员 / 房间群组 · 下发到各自「系统公告」房并实时提醒</span>
+        </div>
+      ) : (
+      /* input */
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: narrow ? "8px 10px calc(12px + env(safe-area-inset-bottom, 0px))" : "8px 16px 14px", flexShrink: 0 }}>
         <input ref={fileRef} type="file" hidden multiple onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         {recording ? (
@@ -552,6 +568,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
         </button>
         </>)}
       </div>
+      )}
 
       {/* Screenshot annotate editor (portal) */}
       {cropSrc && <CropSelectOverlay imageUrl={cropSrc} onCancel={() => setCropSrc(null)} onSelect={(url) => { setCropSrc(null); setShotUrl(url); }} />}
@@ -577,6 +594,9 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
           </div>
         </div>
       )}
+
+      {/* 广播编辑器（管理员发起广播，多选收件人） */}
+      {showBroadcast && <BroadcastComposer onClose={() => setShowBroadcast(false)} />}
 
       {/* files history */}
       {showFiles && (

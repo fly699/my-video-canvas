@@ -32,7 +32,7 @@ import { setSuperAgentSocketIO } from "./superAgent/socket";
 import { setDownloadSocketIO, ADMIN_ROOM } from "./downloadNotify";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
-import { getProjectAccess, isChatMember } from "../db";
+import { getProjectAccess, isChatMember, listConversationsForUser } from "../db";
 import type { User } from "../../drizzle/schema";
 import {
   registerChatBroadcaster,
@@ -458,6 +458,16 @@ async function startServer() {
       if (!m) { m = new Map(); chatPresence.set(conversationId, m); }
       m.set(user.id, user.name ?? `用户${user.id}`);
       chatNs.to(`chat:conv:${conversationId}`).emit("chat:presence", { conversationId, online: presenceList(conversationId) });
+    });
+
+    // 静默订阅「用户的全部会话房间」——只为在后台接收 chat:message:new 做通知，不设 presence
+    // （不同于 chat:join，不把用户标记为在线，避免画布端后台监听污染各房间的在线状态）。
+    // 用于画布常驻通知监听器：聊天窗关着时也能收到新消息声音/桌面/横幅提醒。
+    socket.on("chat:subscribe-all", async () => {
+      try {
+        const convs = await listConversationsForUser(user.id);
+        for (const c of convs) socket.join(`chat:conv:${c.id}`);
+      } catch { /* ignore */ }
     });
 
     socket.on("chat:leave", ({ conversationId }: { conversationId: number }) => {
