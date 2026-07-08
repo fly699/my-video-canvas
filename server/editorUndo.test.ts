@@ -55,6 +55,26 @@ describe("editor undo/redo", () => {
     }
   });
 
+  it("#89 破坏性操作(删除)不与紧邻的连续编辑(滑块)合并成同一撤销步", () => {
+    let now = 1000;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const id = st().addClip("v1", { kind: "video", start: 0, trimIn: 0, trimOut: 3 });
+      now = 5000; st().updateClip(id, { volume: 0.5 }); // 距上次>450ms → 独立步（音量微调）
+      const afterSlider = st().past.length;
+      now = 5100; st().removeClip(id);                  // <450ms，但删除是破坏性操作 → 仍独立步
+      expect(st().past.length).toBe(afterSlider + 1);   // 不与滑块合并
+      expect(st().doc!.tracks.find((t) => t.id === "v1")!.clips.length).toBe(0);
+
+      st().undo(); // 只回退删除 → 片段回来，音量仍是 0.5（未被一并回退）
+      const clips = st().doc!.tracks.find((t) => t.id === "v1")!.clips;
+      expect(clips.length).toBe(1);
+      expect(clips[0].volume).toBe(0.5);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("drops a stale selection after undo removes the clip", () => {
     const id = st().addClip("v1", { kind: "image", start: 0, trimIn: 0, trimOut: 3 });
     expect(st().selectedClipId).toBe(id);

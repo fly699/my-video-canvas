@@ -288,11 +288,15 @@ export interface EditorStore {
 
 /** Build a state patch that applies `nextDoc` and records the prior doc on the
  *  undo stack (coalescing rapid bursts). `s.doc` must be non-null. */
-function withHistory(s: EditorStore, nextDoc: EditorDoc, extra: Partial<EditorStore> = {}): Partial<EditorStore> {
+// 默认按时间窗与上一步合并（连续手势：拖动/裁剪/滑块/新增+就位等）。**破坏性/结构性操作**
+// （删除/分割/合并）显式传 coalescable=false：它们各自成独立撤销步，且把时间窗「毒化」
+// (_lastMutateTs=0)，使紧邻的连续手势也不会向它合并——修复「先拖滑块、紧接着删除片段，一次
+// 撤销把两者一起回退」（#89）。这样保留「加片段后立刻拖动就位=一步撤销」的既有体验。
+function withHistory(s: EditorStore, nextDoc: EditorDoc, extra: Partial<EditorStore> = {}, coalescable = true): Partial<EditorStore> {
   const now = Date.now();
-  const coalesce = now - s._lastMutateTs < COALESCE_MS;
+  const coalesce = coalescable && now - s._lastMutateTs < COALESCE_MS;
   const past = coalesce ? s.past : [...s.past, s.doc as EditorDoc].slice(-HISTORY_CAP);
-  return { doc: nextDoc, past, future: [], dirty: true, _lastMutateTs: now, ...extra };
+  return { doc: nextDoc, past, future: [], dirty: true, _lastMutateTs: coalescable ? now : 0, ...extra };
 }
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
@@ -370,7 +374,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       if (t.id === targetTrackId) clips = [...clips, { ...clip, start }];
       return { ...t, clips };
     });
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 拖动为连续手势，合并成一步撤销
   }),
 
   trimClip: (clipId, patch) => set((s) => {
@@ -395,7 +399,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         return { ...c, trimIn, trimOut, start, keyframes };
       }),
     });
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 裁剪为连续手势
   }),
 
   updateClip: (clipId, patch) => set((s) => {
@@ -406,13 +410,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ...t,
       clips: t.clips.map((c) => c.id === clipId ? { ...c, ...patch } : c),
     });
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 滑块/属性微调为连续手势
   }),
 
   removeClip: (clipId) => set((s) => {
     if (!s.doc) return s;
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => c.id !== clipId) }));
-    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)));
+    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)), false); // 删除为离散步
   }),
 
   // Cut a clip in two at the given timeline time (only if the time is inside it).
@@ -432,7 +436,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
       ...t, clips: t.clips.flatMap((x) => x.id === clipId ? [left, right] : [x]),
     });
-    return withHistory(s, { ...s.doc, tracks }, selPatch([right.id]));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([right.id]), false); // 分割为离散步
   }),
 
   // Join the clip with its same-source, contiguous right neighbour (inverse of
@@ -450,7 +454,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
       ...t, clips: t.clips.flatMap((x) => x.id === a.id ? [merged] : x.id === b.id ? [] : [x]),
     });
-    return withHistory(s, { ...s.doc, tracks }, selPatch([merged.id]));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([merged.id]), false); // 合并为离散步
   }),
 
   // Multi-segment merge: on each track, fold the SELECTED clips' contiguous,
@@ -474,7 +478,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return { ...t, clips };
     });
     if (!changed) return s;
-    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel));
+    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel), false); // 合并为离散步
   }),
 
   // Ripple-merge: like mergeSelectedClips but source-contiguity is gap-tolerant
@@ -497,7 +501,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return { ...t, clips: res.clips };
     });
     if (!changed) return s;
-    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel));
+    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel), false); // 波纹合并为离散步
   }),
 
   // Copy a clip and drop the copy right after the original on the same track.
@@ -534,7 +538,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return { ...t, clips };
     });
     if (!changed) return s;
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, false); // 全轨分割为离散步
   }),
 
   // Delete a clip AND pull every later clip on the same track left by its
@@ -554,7 +558,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         .map((c) => (c.start > removed.start ? { ...c, start: Math.max(0, c.start - dur) } : c));
       return { ...t, clips };
     });
-    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)));
+    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)), false); // 波纹删除为离散步
   }),
 
   // Snapshot a single clip into the clipboard (deep clone so later edits to the
@@ -659,7 +663,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (!s.doc || s.selectedClipIds.length === 0) return s;
     const kill = new Set(s.selectedClipIds);
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => !kill.has(c.id)) }));
-    return withHistory(s, { ...s.doc, tracks }, selPatch([]));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([]), false); // 删除所选为离散步
   }),
 
   // Ripple-delete the whole selection: on each affected track, remove the selected
@@ -677,7 +681,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       });
       return { ...t, clips };
     });
-    return withHistory(s, { ...s.doc, tracks }, selPatch([]));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([]), false); // 波纹删除所选为离散步
   }),
 
   // Duplicate each selected clip in place (offset after itself on its own track);
@@ -731,7 +735,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t) => ({
       ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + dx) } : c)),
     }));
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 多选整体拖动为连续手势
   }),
 
   // Apply a partial patch to every selected clip in one history step. `effects`
@@ -747,7 +751,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return next;
     };
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.map((c) => (sel.has(c.id) ? apply(c) : c)) }));
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 多选批量属性微调（滑块）为连续手势
   }),
 
   // Nudge the whole selection by ±dx seconds, clamped so the earliest clip
@@ -764,7 +768,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t) => ({
       ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + d) } : c)),
     }));
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 逐帧微移（连续按键）合并为一步
   }),
 
   // 紧排：on each track, pack the SELECTED clips end-to-end (in time order),
