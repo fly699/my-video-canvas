@@ -2273,10 +2273,46 @@ function ComfyUsageLogsPanel() {
 function ChatAdminPanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <ChatBroadcastPanel />
       <ChatSettingsPanel />
       <ChatConversationsPanel />
       <ChatMessageSearchPanel />
       <ChatBansPanel />
+    </div>
+  );
+}
+
+// 管理员广播：把公告下发给全体用户的「系统公告」房 + 触发通知（声音/桌面/横幅/红点，画布上也能收）。
+function ChatBroadcastPanel() {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const canBroadcast = useMyLevel() >= 3; // 广播 = 管理员(L3+)
+  const mu = trpc.admin.chat.broadcast.useMutation({
+    onSuccess: (r) => { toast.success(`已广播给 ${r.delivered} / ${r.total} 位用户`); setTitle(""); setBody(""); },
+    onError: (e) => toast.error("广播失败：" + e.message),
+  });
+  const send = () => {
+    if (!title.trim() || !body.trim()) { toast.error("请填写标题和正文"); return; }
+    if (!confirm(`确认向【全体用户】广播这条公告？\n\n标题：${title.trim()}`)) return;
+    mu.mutate({ title: title.trim(), body: body.trim() });
+  };
+  return (
+    <div style={chatCard}>
+      <h3 style={chatCardTitle}>📢 全员广播</h3>
+      <p style={{ ...chatDim, margin: "0 0 10px" }}>下发到每位用户的「系统公告」聊天房并实时提醒（声音 / 桌面通知 / 横幅 / 未读红点）——用户在画布上聊天窗关着也能收到。可在聊天里历史回查。</p>
+      <LevelGate need={3} label="全员广播需「管理员」(L3) 及以上权限">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="公告标题（如：系统将于今晚 22:00 维护）" maxLength={120} style={chatInput} />
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="公告正文…" maxLength={2000} rows={3}
+            style={{ ...chatInput, resize: "vertical", fontFamily: "inherit" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={send} disabled={mu.isPending || !canBroadcast || !title.trim() || !body.trim()} style={{ ...chatPrimarySm, opacity: (mu.isPending || !canBroadcast || !title.trim() || !body.trim()) ? 0.5 : 1 }}>
+              {mu.isPending ? "广播中…" : "向全体用户广播"}
+            </button>
+            <span style={{ fontSize: 11, color: "var(--c-t4)" }}>{title.length}/120 · {body.length}/2000</span>
+          </div>
+        </div>
+      </LevelGate>
     </div>
   );
 }

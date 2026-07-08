@@ -2386,6 +2386,18 @@ export async function getOrCreateUserNotifyRoom(userId: number): Promise<ChatCon
   return room;
 }
 
+// 每用户专属「系统公告」房：管理员广播下发到这里（server 模式明文、机器人可推），
+// dmKey 去重、createdBy=null（系统房，不对外可加入）。与「我的产物通知」同构，语义分开。
+export async function getOrCreateSystemAnnounceRoom(userId: number): Promise<ChatConversation> {
+  const key = `system:announce:${userId}`;
+  const existing = await getConversationByDmKey(key);
+  if (existing) { await addChatMember(existing.id, userId, "owner"); return existing; }
+  const room = await createConversation({ type: "group", mode: "server", title: "系统公告", dmKey: key, createdBy: null });
+  await addChatMember(room.id, userId, "owner");
+  try { await addChatMember(room.id, await getOrCreateAssistantUserId(), "member"); } catch { /* bot 成员非关键 */ }
+  return room;
+}
+
 // ── 产物生成通知钩子（由 index.ts 注册，避免 db.ts ↔ chat.ts 循环依赖）──
 export interface RecordedAssetInfo {
   userId: number; projectId?: number | null;

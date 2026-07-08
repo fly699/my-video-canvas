@@ -54,6 +54,10 @@ export function CanvasChatNotifier({ onNewMessage }: { onNewMessage: () => void 
     // 端到端消息经 chat:relay 转发，画布通知器无会话密钥，用通用预览。
     socket.on("chat:relay", (m: IncomingLike) => notify(m, "[加密消息]"));
     socket.on("chat:file-chunk", (m: IncomingLike) => notify(m, "[媒体]"));
+    // 管理员广播：定向到个人房（恒加入），保证一定收到。senderId=-2 系统，绕过自己过滤。
+    socket.on("system:announce", (p: { roomId: number; title: string; body: string }) => {
+      notify({ conversationId: p.roomId, senderId: -2, senderName: `📢 系统公告` }, (p.title || "系统公告").slice(0, 60));
+    });
 
     return () => { socket.disconnect(); };
   }, [user]);

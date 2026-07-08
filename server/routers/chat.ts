@@ -35,6 +35,8 @@ import {
   getUserById,
   getOrCreateAssistantUserId,
   getOrCreateUserNotifyRoom,
+  getOrCreateSystemAnnounceRoom,
+  listAllUsers,
   getUserWebhook,
   setUserWebhook,
   ASSISTANT_NAME,
@@ -210,6 +212,31 @@ export async function postAssetToNotifyRoom(a: RecordedAssetInfo): Promise<void>
   try { await dispatchAssetWebhook(a); } catch (err) {
     console.warn("[dispatchAssetWebhook] non-fatal:", err instanceof Error ? err.message : err);
   }
+}
+
+/**
+ * 管理员广播：把一条公告下发到**每个用户**的「系统公告」房（持久化、可历史回查），并定向
+ * 推到各自的个人房 `chat:user:{id}`（前端弹声音/桌面/横幅/红点，画布上聊天窗关着也能收到）。
+ */
+export async function broadcastSystemAnnouncement(title: string, body: string): Promise<{ delivered: number; total: number }> {
+  const users = await listAllUsers();
+  const botId = await getOrCreateAssistantUserId();
+  const content = `📢 ${title}\n\n${body}`.trim();
+  let delivered = 0;
+  for (const u of users) {
+    try {
+      const room = await getOrCreateSystemAnnounceRoom(u.id);
+      const msg = await insertConversationMessage({ conversationId: room.id, senderId: botId, senderName: "系统公告", content });
+      if (msg && broadcaster) broadcaster(room.id, rowToWire(msg)); // 已进该房的客户端实时收
+      // 个人房定向：保证通知一定送达（个人房 socket 恒加入），并让已打开的聊天列表刷新出「系统公告」房。
+      if (userBroadcaster) {
+        userBroadcaster(u.id, "system:announce", { roomId: room.id, title, body });
+        userBroadcaster(u.id, "conversation:created", {});
+      }
+      delivered++;
+    } catch { /* 单用户失败不阻断其余 */ }
+  }
+  return { delivered, total: users.length };
 }
 
 

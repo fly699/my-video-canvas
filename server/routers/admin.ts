@@ -27,6 +27,7 @@ import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate, resta
 import { hashPassword } from "../_core/emailAuth";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { writeAuditLog } from "../_core/auditLog";
+import { broadcastSystemAnnouncement } from "./chat";
 import { adminDownloadsRouter } from "./downloads";
 import { encryptKieKey, kieKeyHash, kieKeyLast4, isKieCryptoConfigured } from "../_core/kieCrypto";
 import { fetchKieCredit } from "../_core/kie";
@@ -701,6 +702,14 @@ export const adminRouter = router({
   // serverless (E2E) conversations expose metadata only — the server never
   // had their content.
   chat: router({
+    // 管理员广播：把公告下发到每个用户的「系统公告」房 + 触发通知（声音/桌面/横幅/红点）。
+    broadcast: managerProc
+      .input(z.object({ title: z.string().trim().min(1).max(120), body: z.string().trim().min(1).max(2000) }))
+      .mutation(async ({ input, ctx }) => {
+        const res = await broadcastSystemAnnouncement(input.title, input.body);
+        writeAuditLog({ ctx, action: "chat_broadcast", detail: { title: input.title, delivered: res.delivered, total: res.total } });
+        return res;
+      }),
     listConversations: adminProcedure
       .input(z.object({
         type: z.enum(["lobby", "group", "dm"]).optional(),
