@@ -130,7 +130,9 @@ function ProjectCard({
   return (
     <div
       className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
+      role="button" tabIndex={0} aria-label={`打开项目「${project.name || "未命名项目"}」`}
       onClick={() => !menuOpen && !renaming && onOpen()}
+      onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !menuOpen && !renaming) { e.preventDefault(); onOpen(); } }}
       style={{
         borderColor: "var(--c-bd1)",
         background: "var(--c-surface)",
@@ -329,7 +331,9 @@ function LibraryEntryCard({ covers, count, onOpen }: { covers: string[]; count: 
   return (
     <div
       className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
+      role="button" tabIndex={0} aria-label="打开素材库"
       onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       style={{
         borderColor: `${accent.replace(")", " / 0.35)")}`,
         background: "var(--c-surface)",
@@ -419,7 +423,9 @@ function EditorEntryCard({ onOpen, isAuthenticated }: { onOpen: () => void; isAu
   return (
     <div
       className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
+      role="button" tabIndex={0} aria-label="打开视频剪辑器"
       onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       style={{
         borderColor: `${accent.replace(")", " / 0.35)")}`,
         background: "var(--c-surface)",

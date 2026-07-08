@@ -101,7 +101,9 @@ function EditorGallery() {
           </div>
         )}
         {sessions.map((s) => (
-          <div key={s.id} style={card} onClick={() => navigate(`/editor/${s.id}`)}>
+          <div key={s.id} style={card} role="button" tabIndex={0} aria-label={`打开剪辑「${s.name}」`}
+            onClick={() => navigate(`/editor/${s.id}`)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/editor/${s.id}`); } }}>
             <div style={{ height: 124, background: "var(--c-elevated, #1a1a20)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
               {s.thumbnailUrl
                 ? (/\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(s.thumbnailUrl)
