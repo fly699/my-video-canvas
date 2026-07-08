@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from "react";
 import { type ParamDef, paramOptions } from "@/lib/paramDefs";
 
 interface Props {
@@ -30,6 +31,49 @@ const fieldStyle: React.CSSProperties = {
   outline: "none",
 };
 
+// 带钳制的数字输入：编辑期间保留草稿字符串，失焦/回车才解析→按 step 归一→钳到
+// [min,max] 再提交（裸 input 只判 isFinite，不钳制，max=8 手打 999 会照写入）。
+// 声明了 min&max 的连续量额外渲染滑块。
+function NumberField({ value, min, max, step, disabled, onCommit }: {
+  value: number; min?: number; max?: number; step?: number; disabled?: boolean; onCommit: (n: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const focusedRef = useRef(false);
+  useEffect(() => { if (!focusedRef.current) setDraft(String(value)); }, [value]);
+  const clamp = (n: number) => {
+    let v = n;
+    if (typeof step === "number" && step > 0 && typeof min === "number") v = min + Math.round((v - min) / step) * step;
+    if (typeof min === "number") v = Math.max(min, v);
+    if (typeof max === "number") v = Math.min(max, v);
+    return Math.round(v * 1e6) / 1e6;
+  };
+  const commit = (raw: string) => {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) { setDraft(String(value)); return; }
+    const v = clamp(n);
+    setDraft(String(v));
+    if (v !== value) onCommit(v);
+  };
+  const hasRange = typeof min === "number" && typeof max === "number";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {hasRange && (
+        <input type="range" className="nodrag" min={min} max={max} step={step ?? 1} value={value} disabled={disabled}
+          onChange={(e) => { const v = clamp(Number(e.target.value)); if (v !== value) onCommit(v); }}
+          style={{ flex: 1, accentColor: "var(--ui-accent, oklch(0.68 0.2 285))", cursor: disabled ? "not-allowed" : "pointer" }} />
+      )}
+      <input
+        type="number" className="nodrag" value={draft} min={min} max={max} step={step ?? 1} disabled={disabled}
+        onFocus={() => { focusedRef.current = true; }}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { focusedRef.current = false; commit(draft); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { commit(draft); (e.target as HTMLInputElement).blur(); } }}
+        style={{ ...fieldStyle, width: hasRange ? 62 : "100%", flexShrink: 0 }}
+      />
+    </div>
+  );
+}
+
 // Schema-driven param renderer shared by image (and later video) nodes.
 export function ParamControls({ defs, values, onChange, disabled }: Props) {
   if (defs.length === 0) return null;
@@ -61,20 +105,8 @@ export function ParamControls({ defs, values, onChange, disabled }: Props) {
           return (
             <div key={def.key}>
               <label style={labelStyle}>{def.label}</label>
-              <input
-                type="number"
-                className="nodrag"
-                value={cur}
-                min={def.min}
-                max={def.max}
-                step={def.step ?? 1}
-                disabled={disabled}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n)) onChange(def.key, n);
-                }}
-                style={fieldStyle}
-              />
+              <NumberField value={cur} min={def.min} max={def.max} step={def.step ?? 1} disabled={disabled}
+                onCommit={(n) => onChange(def.key, n)} />
             </div>
           );
         }

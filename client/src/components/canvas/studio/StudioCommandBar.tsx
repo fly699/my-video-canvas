@@ -11,7 +11,7 @@ import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { PROVIDER_PICKER_OPTIONS, videoProviderChangePatch, PROVIDER_PARAMS, withParamDefaults } from "../nodes/VideoTaskNode";
 import { MUSIC_MODELS, DUBBING_MODELS, SFX_MODELS, MUSIC_STYLES_ZH, voicesForModel } from "../nodes/AudioNode";
 import { IMAGE_MODEL_PARAMS, paramOptions } from "../../../lib/paramDefs";
-import { estimateImageCost, estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
+import { estimateImageCost, estimateVideoCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, type CostEstimate } from "../../../lib/costEstimate";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { ArrowUp, Loader2, ImagePlus, Languages, Sparkles, X, ChevronDown, Play, Pause, Volume2 } from "lucide-react";
 import { mediaFetchUrl } from "@/lib/download";
@@ -72,6 +72,49 @@ function SegNumber({ label, value, min, max, onChange }: { label: string; value:
               background: on ? "color-mix(in oklab, var(--ui-accent) 15%, var(--c-input))" : "var(--c-input)" }}>{i}</button>
         );
       })}
+    </div>
+  );
+}
+
+// 带钳制的数字输入 chip：修复裸 <input type=number> 不做 min/max 钳制的问题
+// （max=8 手打 999 也会写入）。编辑期间保留草稿字符串（否则边打边钳制会导致
+// 「min=10 时打不出 1→10」），失焦 / 回车才解析→按 step 归一→钳到 [min,max] 再提交。
+// 声明了 min 且 max 的连续量额外渲染一条紧凑滑块，滑块本身天然受 min/max 约束。
+function NumberChip({ label, value, min, max, step, unit, slider, width, onCommit }: {
+  label: string; value: number; min?: number; max?: number; step?: number; unit?: string;
+  slider?: boolean; width?: number; onCommit: (n: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const focusedRef = useRef(false);
+  useEffect(() => { if (!focusedRef.current) setDraft(String(value)); }, [value]);
+  const clamp = (n: number) => {
+    let v = n;
+    if (typeof step === "number" && step > 0 && typeof min === "number") v = min + Math.round((v - min) / step) * step;
+    if (typeof min === "number") v = Math.max(min, v);
+    if (typeof max === "number") v = Math.min(max, v);
+    return Math.round(v * 1e6) / 1e6; // 消去浮点毛刺
+  };
+  const commit = (raw: string) => {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) { setDraft(String(value)); return; }
+    const v = clamp(n);
+    setDraft(String(v));
+    if (v !== value) onCommit(v);
+  };
+  const hasRange = typeof min === "number" && typeof max === "number";
+  return (
+    <div className="nodrag" title={label + (unit ? `（${unit}）` : "")} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      {slider && hasRange && (
+        <input type="range" className="nodrag" min={min} max={max} step={step ?? 1} value={value}
+          onChange={(e) => { const v = clamp(Number(e.target.value)); if (v !== value) onCommit(v); }}
+          style={{ width: 68, accentColor: "var(--ui-accent, oklch(0.68 0.2 285))", cursor: "pointer" }} />
+      )}
+      <input type="number" className="nodrag studio-chip" title={label} value={draft} min={min} max={max} step={step ?? 1}
+        onFocus={() => { focusedRef.current = true; }}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { focusedRef.current = false; commit(draft); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { commit(draft); (e.target as HTMLInputElement).blur(); } }}
+        style={{ ...chip, width: width ?? (slider ? 52 : 72), maxWidth: width ?? (slider ? 52 : 72) }} />
     </div>
   );
 }
@@ -341,8 +384,8 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
               return <SegNumber key={def.key} label={def.label} value={cur} min={def.min ?? 1} max={def.max} onChange={(n) => set({ [def.key]: n })} />;
             }
             return (
-              <input key={def.key} type="number" className="nodrag studio-chip" title={def.label} value={cur} min={def.min} max={def.max} step={def.step ?? 1}
-                onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) set({ [def.key]: n }); }} style={{ ...chip, width: 72, maxWidth: 72 }} />
+              <NumberChip key={def.key} label={def.label} value={cur} min={def.min} max={def.max} step={def.step ?? 1}
+                onCommit={(n) => set({ [def.key]: n })} />
             );
           }
           const cur = (payload[def.key] as boolean | undefined) ?? def.default ?? false;
@@ -365,11 +408,12 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
             );
           }
           if (def.type === "number" || def.type === "range") {
-            const cur = typeof curRaw === "number" ? curRaw : (def.default ?? def.min);
+            const cur = typeof curRaw === "number" ? curRaw : (def.default ?? def.min ?? 0);
             return (
-              <input key={def.key} type="number" className="nodrag studio-chip" title={def.label + (def.type === "range" && def.unit ? `（${def.unit}）` : "")}
-                value={cur} min={def.min} max={def.max} step={def.step}
-                onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) setVideoParam(def.key, n); }} style={{ ...chip, width: 76, maxWidth: 76 }} />
+              <NumberChip key={def.key} label={def.label} value={cur} min={def.min} max={def.max} step={def.step}
+                unit={def.type === "range" ? def.unit : undefined}
+                slider={def.type === "range" && typeof def.min === "number" && typeof def.max === "number"}
+                onCommit={(n) => setVideoParam(def.key, n)} />
             );
           }
           const cur = typeof curRaw === "boolean" ? curRaw : (def.default ?? false);
@@ -515,9 +559,9 @@ function renderCtrl(c: Ctrl, payload: Record<string, unknown>, set: (p: Record<s
   if (c.type === "number") {
     const cur = (payload[c.key] as number | undefined) ?? c.default ?? c.min ?? 0;
     return (
-      <input key={c.key} type="number" className="nodrag studio-chip" title={c.label} value={cur} min={c.min} max={c.max} step={c.step ?? 1}
-        onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) set({ [c.key]: n }); }}
-        style={{ ...chip, width: c.width ?? 76, maxWidth: c.width ?? 76 }} />
+      <NumberChip key={c.key} label={c.label} value={cur} min={c.min} max={c.max} step={c.step ?? 1} width={c.width}
+        slider={typeof c.min === "number" && typeof c.max === "number"}
+        onCommit={(n) => set({ [c.key]: n })} />
     );
   }
   if (c.type === "text") {
@@ -734,6 +778,14 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
 
   const resultUrl = typeof payload.url === "string" ? payload.url : undefined;
 
+  // 与图/视频命令栏一致：音频节点也在送出钮左侧显示 ⚡ 预估消耗（配乐/配音/音效各自计价）。
+  const audioCost: CostEstimate =
+    cat === "music" ? estimateMusicCost(musicModel)
+    : cat === "dubbing" ? estimateTtsCost(ttsModel, String(payload.ttsText ?? "").length)
+    : cat === "sfx" ? { credits: 0.24 * Math.max(0.5, Number(payload.sfxDuration ?? 5) || 5), unit: "点", approx: true } // kie ElevenLabs SFX 0.24 点/秒
+    : null;
+  const audioCostLabel = audioCost ? costEstimateLabel(audioCost) : "";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
       {resultUrl && (
@@ -786,6 +838,7 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
         )}
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
+          {audioCostLabel && <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ui-amber, var(--c-t2))", whiteSpace: "nowrap" }}>⚡ {audioCostLabel}</span>}
           <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult}
             reason={!canRun ? "请先填写内容" : undefined} />
         </div>

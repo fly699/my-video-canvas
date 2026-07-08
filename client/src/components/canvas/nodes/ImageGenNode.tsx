@@ -535,9 +535,20 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               {payload.imageUrls!.map((url, idx) => {
                 const isSelected = url === payload.imageUrl;
                 return (
-                  <button
+                  // 结果图可拖出：写 text/uri-list + text/plain，让参考图条/其它节点(读同一 MIME)直接接住。
+                  // 用 div[role=button] 而非 <button>，以便在内部嵌套逐图操作按钮（button 不可嵌套 button）。
+                  <div
                     key={idx}
+                    role="button"
+                    tabIndex={0}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/uri-list", url);
+                      e.dataTransfer.setData("text/plain", url);
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
                     onClick={() => setLightboxIndex(idx)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLightboxIndex(idx); } }}
                     className="nodrag relative rounded-lg overflow-hidden group"
                     style={{
                       aspectRatio: "1/1",
@@ -546,7 +557,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                       borderColor: isSelected ? accent : "transparent",
                       background: "var(--c-canvas)",
                       padding: 0,
-                      cursor: "pointer",
+                      cursor: "grab",
                       transition: "border-color 150ms ease, opacity 150ms ease",
                       opacity: isSelected ? 1 : 0.72,
                     }}
@@ -568,14 +579,32 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                         <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
                       </div>
                     )}
-                    {/* Hover overlay */}
+                    {/* Hover overlay：放大 / 下载此图 / 设为封面（逐图操作），拖动可拖到参考图条或其它节点 */}
                     <div
-                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5"
                       style={{ background: "oklch(0 0 0 / 0.45)" }}
                     >
-                      <ZoomIn style={{ width: 16, height: 16, color: "var(--c-t1)" }} />
+                      <div className="rounded-md flex items-center justify-center" title="放大预览" style={{ width: 24, height: 24, background: "oklch(0 0 0 / 0.5)" }}>
+                        <ZoomIn style={{ width: 14, height: 14, color: "#fff" }} />
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDownloadImage(url); }}
+                        className="nodrag rounded-md flex items-center justify-center"
+                        title="下载此图" style={{ width: 24, height: 24, background: "oklch(0 0 0 / 0.5)", border: "none", cursor: "pointer" }}
+                      >
+                        <Download style={{ width: 13, height: 13, color: "#fff" }} />
+                      </button>
+                      {!isSelected && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleSelectImage(url); }}
+                          className="nodrag rounded-md flex items-center justify-center"
+                          title="设为封面（选为此节点输出）" style={{ width: 24, height: 24, background: "oklch(0 0 0 / 0.5)", border: "none", cursor: "pointer" }}
+                        >
+                          <Check style={{ width: 14, height: 14, color: "#fff" }} />
+                        </button>
+                      )}
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

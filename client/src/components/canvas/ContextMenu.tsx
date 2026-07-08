@@ -45,6 +45,13 @@ interface ContextMenuProps {
   onDuplicateGroup?: () => void;
 }
 
+// 菜单项右侧的快捷键提示片：与顶栏 tooltip 的 kbd 保持一致，让用户在右键菜单里也能学到键位。
+const kbdChip: React.CSSProperties = {
+  marginLeft: "auto", flexShrink: 0, fontSize: 10, lineHeight: 1.4, fontFamily: "ui-monospace, SFMono-Regular, monospace",
+  color: "var(--c-t4)", background: "var(--c-bd1)", border: "1px solid var(--c-bd2)", borderRadius: 5, padding: "1px 5px",
+};
+const Kbd = ({ children }: { children: React.ReactNode }) => <span style={kbdChip}>{children}</span>;
+
 export function ContextMenu({
   x, y, type, nodeId, nodePinned, nodeLocked,
   onClose, onAddNode, onOpenNodeLibrary, onDeleteNode, onDuplicateNode, onRunWorkflow,
@@ -577,6 +584,7 @@ export function ContextMenu({
               >
                 <Group className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
                 组合为群组
+                <Kbd>⌘G</Kbd>
               </button>
             )}
             {onUngroup && (
@@ -593,6 +601,7 @@ export function ContextMenu({
               >
                 <Ungroup className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
                 解组（保留成员）
+                <Kbd>⌘⇧G</Kbd>
               </button>
             )}
             {onDuplicateGroup && (
@@ -645,6 +654,7 @@ export function ContextMenu({
               >
                 <Play className="w-3.5 h-3.5" />
                 从此节点运行工作流
+                <Kbd>⇧R</Kbd>
               </button>
             )}
             {onRunWorkflow && (onTogglePin || onCollapse) && (
@@ -717,6 +727,7 @@ export function ContextMenu({
               >
                 <Copy className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
                 复制节点
+                <Kbd>⌘D</Kbd>
               </button>
             )}
             {onSaveToLibrary && (
@@ -854,6 +865,7 @@ export function ContextMenu({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 删除节点
+                <Kbd>⌫</Kbd>
               </button>
             )}
           </div>

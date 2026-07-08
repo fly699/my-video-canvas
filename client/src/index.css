@@ -870,7 +870,14 @@
   .text-gradient-animated,
   .btn-shine::after,
   .ai-assistant-cta, .ai-assistant-cta::before, .ai-assistant-cta .ai-cta-icon,
-  .lift-card { animation: none !important; transition: none !important; }
+  .lift-card,
+  /* 画布内持续动效：节点运行脉冲环、连线流动虚线、发送脉冲、以及所有 Tailwind 旋转加载图标 */
+  .node-run-pulse,
+  .studio-send[data-state="running"],
+  .animate-spin,
+  .react-flow__edge-path { animation: none !important; transition: none !important; }
+  /* 连线流动是靠 stroke-dashoffset 动画表现的，动画停掉后把虚线也抹平成实线，避免残留断点 */
+  .react-flow__edge-path { stroke-dasharray: none !important; stroke-dashoffset: 0 !important; }
   /* 入场动画禁用时必须同时强制可见，否则元素卡在初始 opacity:0 */
   .animate-fade-up { animation: none !important; opacity: 1 !important; }
 }
@@ -1637,6 +1644,40 @@ button:active:not(:disabled) {
   background: oklch(0.68 0.20 285 / 0.85);
   border-color: oklch(0.78 0.16 285);
 }
+
+/* 逐帧 / 倍速控件行：循环钮右侧，hover 显示 */
+.wm-vctrl-row {
+  position: absolute;
+  top: 8px;
+  left: 44px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.wm-video-wrap:hover .wm-vctrl-row,
+.wm-video-wrap:fullscreen .wm-vctrl-row { opacity: 1; }
+.wm-vctrl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.wm-vctrl[data-wide] { min-width: 46px; }
+.wm-vctrl:hover { background: rgba(0, 0, 0, 0.7); }
 
 /* 时间轴轨道音量滑块：细轨 + 小圆钮（默认的原生滑块圆钮过大） */
 input.tl-vol {

@@ -103,6 +103,9 @@ interface CanvasStore {
   edges: CanvasEdge[];
   selectedNodeIds: string[];
   collaborators: Map<number, CollaboratorCursor>;
+  // 协作「谁在编辑哪个节点」：nodeId → 编辑者信息。用于在节点角标显示协作者头像 + 柔性锁，
+  // 提示「他人正在编辑此节点」，避免两人同改同一节点参数静默互相覆盖。每个用户同一时刻只占一个节点。
+  peerEditing: Map<string, { userId: number; userName: string; color: string }>;
   projectId: number | null;
   isDirty: boolean;
 
@@ -217,6 +220,9 @@ interface CanvasStore {
   setSelectedNodeIds: (ids: string[]) => void;
   setCollaborator: (cursor: CollaboratorCursor) => void;
   removeCollaborator: (userId: number) => void;
+  // 设置某协作者当前编辑的节点（nodeId=null 表示其离开编辑）；同一用户切换节点会先清掉旧占位。
+  setPeerEditing: (userId: number, userName: string, color: string, nodeId: string | null) => void;
+  clearPeerEditingFor: (userId: number) => void;
   markClean: () => void;
   markDirty: () => void;
   clearDeletedNodeIds: (ids: string[]) => void;
@@ -240,6 +246,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   edges: [],
   selectedNodeIds: [],
   collaborators: new Map(),
+  peerEditing: new Map(),
   projectId: null,
   currentUserId: null,
   isDirty: false,
@@ -1091,11 +1098,34 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     });
   },
 
+  setPeerEditing: (userId, userName, color, nodeId) => {
+    set((state) => {
+      const next = new Map(state.peerEditing);
+      Array.from(next.entries()).forEach(([nid, v]) => { if (v.userId === userId) next.delete(nid); }); // 该用户先释放旧节点
+      if (nodeId) next.set(nodeId, { userId, userName, color });
+      return { peerEditing: next };
+    });
+  },
+
+  clearPeerEditingFor: (userId) => {
+    set((state) => {
+      const entries = Array.from(state.peerEditing.entries());
+      if (!entries.some(([, v]) => v.userId === userId)) return {} as Partial<CanvasStore>;
+      const next = new Map(state.peerEditing);
+      entries.forEach(([nid, v]) => { if (v.userId === userId) next.delete(nid); });
+      return { peerEditing: next };
+    });
+  },
+
   removeCollaborator: (userId) => {
     set((state) => {
       const next = new Map(state.collaborators);
       next.delete(userId);
-      return { collaborators: next };
+      // 协作者离线时一并清掉其编辑占位，避免柔性锁残留。
+      const pe = new Map(state.peerEditing);
+      let peChanged = false;
+      Array.from(pe.entries()).forEach(([nid, v]) => { if (v.userId === userId) { pe.delete(nid); peChanged = true; } });
+      return peChanged ? { collaborators: next, peerEditing: pe } : { collaborators: next };
     });
   },
 
@@ -1133,7 +1163,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   markDirty: () => set({ isDirty: true }),
   clearDeletedNodeIds: (ids) => set((state) => ({ deletedNodeIds: state.deletedNodeIds.filter((x) => !ids.includes(x)) })),
   resetCanvas: () =>
-    set({ nodes: [], edges: [], selectedNodeIds: [], collaborators: new Map(), isDirty: false, deletedNodeIds: [], past: [], future: [] }),
+    set({ nodes: [], edges: [], selectedNodeIds: [], collaborators: new Map(), peerEditing: new Map(), isDirty: false, deletedNodeIds: [], past: [], future: [] }),
 
   undo: () => {
     const { past, nodes, edges, future } = get();
