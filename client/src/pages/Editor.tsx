@@ -86,7 +86,13 @@ function EditorGallery() {
       </header>
 
       <div style={{ padding: 20, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
-        {listQuery.isLoading && <div style={{ color: "var(--c-t3)", fontSize: 13 }}>加载中…</div>}
+        {listQuery.isLoading && Array.from({ length: 8 }).map((_, i) => (
+          <div key={`sk-${i}`} style={card} aria-hidden="true">
+            <div className="animate-pulse" style={{ height: 124, background: "var(--c-elevated, #1a1a20)", borderRadius: 8 }} />
+            <div className="animate-pulse" style={{ height: 12, width: "70%", background: "var(--c-elevated, #1a1a20)", borderRadius: 4, marginTop: 10 }} />
+            <div className="animate-pulse" style={{ height: 10, width: "45%", background: "var(--c-elevated, #1a1a20)", borderRadius: 4, marginTop: 8 }} />
+          </div>
+        ))}
         {!listQuery.isLoading && sessions.length === 0 && (
           <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "60px 0", color: "var(--c-t3)" }}>
             <Film size={40} style={{ opacity: 0.4, marginBottom: 12 }} />
@@ -165,6 +171,7 @@ function EditorWorkspace({ id }: { id: number }) {
   const canUndo = useEditorStore((s) => s.past.length > 0);
   const canRedo = useEditorStore((s) => s.future.length > 0);
   const loadedFor = useRef<number | null>(null);
+  const skipTitleSaveRef = useRef(false); // Esc 取消改名时跳过随后 blur 的保存
 
   // Workspace keyboard shortcuts (all ignored while typing in a field):
   //   Ctrl/⌘+Z 撤销 · Ctrl/⌘+Shift+Z / Ctrl+Y 重做
@@ -175,7 +182,7 @@ function EditorWorkspace({ id }: { id: number }) {
       if (t.closest("input, textarea, [contenteditable='true'], select")) return;
       // ? 开关快捷键速查浮层（Shift+/ 产生 "?"）；Esc 关闭。与画布速查面板对齐。
       if (e.key === "?") { e.preventDefault(); setShowShortcuts((v) => !v); return; }
-      if (e.key === "Escape") { setShowShortcuts(false); return; }
+      if (e.key === "Escape") { setShowShortcuts(false); setExportMenu(false); return; } // Esc 统一关闭临时浮层
       const st = useEditorStore.getState();
       if (e.ctrlKey || e.metaKey) {
         const k = e.key.toLowerCase();
@@ -341,11 +348,24 @@ function EditorWorkspace({ id }: { id: number }) {
         <Clapperboard size={18} style={{ color: ACCENT }} />
         <input
           value={displayName}
+          title="点击编辑名称（Enter 保存 · Esc 取消）"
+          aria-label="剪辑名称"
           onChange={(e) => setName(e.target.value)}
-          onBlur={() => { if (name !== null && name !== session.name) saveMut.mutate({ id, name }); }}
-          style={{ fontSize: 14, fontWeight: 600, background: "transparent", border: "1px solid transparent", borderRadius: 6, padding: "4px 8px", color: "var(--c-t1)", outline: "none", width: 200 }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-bd2)"; e.currentTarget.style.background = "var(--c-elevated, #1a1a20)"; }}
+          onMouseEnter={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = "var(--c-bd1)"; }}
+          onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = "transparent"; }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.background = "transparent";
+            if (skipTitleSaveRef.current) { skipTitleSaveRef.current = false; return; } // Esc 取消
+            if (name !== null && name !== session.name) saveMut.mutate({ id, name });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }        // 提交（走 onBlur 保存）
+            else if (e.key === "Escape") { e.preventDefault(); skipTitleSaveRef.current = true; setName(session.name); e.currentTarget.blur(); } // 还原
+          }}
+          style={{ fontSize: 14, fontWeight: 600, background: "transparent", border: "1px solid transparent", borderRadius: 6, padding: "4px 8px", color: "var(--c-t1)", outline: "none", width: 200, cursor: "text", transition: "border-color 140ms ease, background 140ms ease" }}
         />
-        <span style={{ fontSize: 11, color: "var(--c-t4)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <span role="status" aria-live="polite" style={{ fontSize: 11, color: "var(--c-t4)", display: "inline-flex", alignItems: "center", gap: 4 }}>
           {saveState === "saving" ? <><Loader2 size={11} className="animate-spin" /> 保存中</> : saveState === "saved" ? <><Check size={11} /> 已保存</> : null}
         </span>
         <div style={{ flex: 1 }} />
@@ -510,6 +530,12 @@ function EditorWorkspace({ id }: { id: number }) {
             </>
           )}
         </div>
+        {/* 读屏播报导出进度（sr-only，不占视觉空间） */}
+        {exporting && (
+          <span role="status" aria-live="polite" style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 }}>
+            {exportStage || "导出中"} {exportPct > 0 ? `${exportPct}%` : ""}
+          </span>
+        )}
         <button
           disabled={exporting}
           onClick={startExport}
