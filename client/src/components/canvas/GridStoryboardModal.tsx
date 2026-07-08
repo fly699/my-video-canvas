@@ -44,9 +44,11 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
   const subjectRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     const t = setTimeout(() => subjectRef.current?.focus(), 40); // 打开即聚焦主题描述
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); safeClose(); } };
-    window.addEventListener("keydown", onKey);
-    return () => { clearTimeout(t); window.removeEventListener("keydown", onKey); };
+    // capture 相位：确保 Esc 在焦点位于弹窗输入框内时也能关闭（画布全局 keydown 在 isEditing 时会提前返回，
+    // 冒泡相位会被其抢先/干扰，capture 先于元素级处理触发，最稳妥）。
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); safeClose(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => { clearTimeout(t); window.removeEventListener("keydown", onKey, true); };
   }, [busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const centerPos = () => {
@@ -132,7 +134,9 @@ export function GridStoryboardModal({ projectId, onClose }: { projectId: number;
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.45)" }} onClick={safeClose}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.45)" }}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); safeClose(); } }}
+      onClick={safeClose}>
       <div className="flex flex-col gap-3.5" onClick={(e) => e.stopPropagation()}
         style={{ width: 440, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto", background: "var(--c-surface)", border: `1px solid ${accentA(0.35)}`, borderRadius: 14, padding: 18, boxShadow: "0 20px 60px oklch(0 0 0 / 0.4)" }}>
 
