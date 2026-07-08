@@ -870,7 +870,14 @@
   .text-gradient-animated,
   .btn-shine::after,
   .ai-assistant-cta, .ai-assistant-cta::before, .ai-assistant-cta .ai-cta-icon,
-  .lift-card { animation: none !important; transition: none !important; }
+  .lift-card,
+  /* 画布内持续动效：节点运行脉冲环、连线流动虚线、发送脉冲、以及所有 Tailwind 旋转加载图标 */
+  .node-run-pulse,
+  .studio-send[data-state="running"],
+  .animate-spin,
+  .react-flow__edge-path { animation: none !important; transition: none !important; }
+  /* 连线流动是靠 stroke-dashoffset 动画表现的，动画停掉后把虚线也抹平成实线，避免残留断点 */
+  .react-flow__edge-path { stroke-dasharray: none !important; stroke-dashoffset: 0 !important; }
   /* 入场动画禁用时必须同时强制可见，否则元素卡在初始 opacity:0 */
   .animate-fade-up { animation: none !important; opacity: 1 !important; }
 }

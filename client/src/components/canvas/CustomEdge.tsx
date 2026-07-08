@@ -10,6 +10,7 @@ import { useUIStyle } from "../../contexts/UIStyleContext";
 import { getNodeConfig } from "../../lib/nodeConfig";
 import { Check, X, Trash2, Plus } from "lucide-react";
 import { useEdgeInsert } from "../../hooks/useEdgeInsert";
+import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 
 function arrowPoints(tx: number, ty: number, pos: Position, sz: number, hw: number): string {
   if (pos === Position.Left)  return `${tx+sz},${ty-hw} ${tx+sz},${ty+hw} ${tx},${ty}`;
@@ -49,6 +50,7 @@ export const CustomEdge = memo(function CustomEdge({
   selected, label,
 }: EdgeProps) {
   const { running, completedIds, currentNodeId, failedIds } = useWorkflowRunState();
+  const reducedMotion = usePrefersReducedMotion(); // 减少动态时不渲染 SVG SMIL 流动粒子
   const sourceRunning = running && currentNodeId === source;
   const sourceCompleted = completedIds.includes(source ?? "");
   const sourceFailed = failedIds.includes(source ?? "");
@@ -232,7 +234,7 @@ export const CustomEdge = memo(function CustomEdge({
 
       {/* ◆11 流动粒子——只在「运行中」出现(静态时安静),且聚焦淡出的边不画粒子。
           三层/粒子:外柔光晕、内光晕、亮核。 */}
-      {(running || sourceRunning || sourceCompleted || sourceFailed) && !dimmed && Array.from({ length: PARTICLE_COUNT }, (_, i) => {
+      {(running || sourceRunning || sourceCompleted || sourceFailed) && !dimmed && !reducedMotion && Array.from({ length: PARTICLE_COUNT }, (_, i) => {
         const beginOffset = -((i / PARTICLE_COUNT) * durSeconds);
         return (
           <g key={i}>
