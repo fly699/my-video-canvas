@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
+import { randomBytes } from "node:crypto";
 
 /**
  * 内置「局域网大文件中转站」——把本应用当作内网里机器对机器搬运几十 GB 大文件的
@@ -237,11 +238,18 @@ export function registerFileRelay(app: Express): void {
     if (!checkToken(req, res)) return;
     const rel = pickRel(req);
     if (!rel) { res.status(400).json({ error: "非法文件名/路径" }); return; }
+    // 本上传是「整文件覆盖写」，不支持偏移续传。若客户端带 Content-Range（如 curl -C - 续传），
+    // 直接写尾部字节当整文件会静默产出损坏/截断文件却回 ok:true——一律拒绝，避免数据损坏。
+    if (req.headers["content-range"]) {
+      res.status(400).json({ error: "上传不支持断点续传（Content-Range），请重新完整上传" });
+      return;
+    }
     ensureDir();
     const finalPath = fullOf(rel);
     if (!finalPath) { res.status(400).json({ error: "非法路径" }); return; }
     fs.mkdirSync(path.dirname(finalPath), { recursive: true });
-    const tmpPath = `${finalPath}.${Date.now()}.part`;
+    // tmp 名加入 pid + 随机串，避免并发上传同名文件在同一毫秒下 tmpPath 碰撞、字节交错损坏。
+    const tmpPath = `${finalPath}.${process.pid}.${randomBytes(6).toString("hex")}.part`;
     const max = relayMaxBytes();
     const ws = fs.createWriteStream(tmpPath);
     let bytes = 0;
@@ -282,15 +290,20 @@ export function registerFileRelay(app: Express): void {
         res.end();
         return;
       }
+      // 客户端中断（续传/网络抖动很常见）时销毁源读流，否则 FD/读流泄漏、大文件高频中断下耗尽 FD。
+      const rs = range
+        ? fs.createReadStream(full, { start: range.start, end: range.end })
+        : fs.createReadStream(full);
+      res.on("close", () => rs.destroy());
+      rs.on("error", () => { if (!res.headersSent) res.status(500).end(); else res.destroy(); });
       if (range) {
         res.status(206);
         res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${st.size}`);
         res.setHeader("Content-Length", String(range.end - range.start + 1));
-        fs.createReadStream(full, { start: range.start, end: range.end }).pipe(res);
       } else {
         res.setHeader("Content-Length", String(st.size));
-        fs.createReadStream(full).pipe(res);
       }
+      rs.pipe(res);
     });
   });
 
