@@ -1,5 +1,7 @@
 import dns from "node:dns/promises";
 import net from "node:net";
+import http from "node:http";
+import https from "node:https";
 import { getUserWebhook, type RecordedAssetInfo } from "../db";
 import { resolveToAbsoluteUrl } from "../storage";
 
@@ -65,6 +67,63 @@ export async function assertPublicHttpUrl(raw: string): Promise<URL> {
   return u;
 }
 
+/** 解析目标域名并返回**全部通过 SSRF 校验**的 IP（IP 字面量则直接校验后返回自身）。
+ *  任一地址落在禁段、或无解析结果即抛错。返回的 IP 供 securePost 固定连接目标，杜绝
+ *  「校验用一次解析、fetch 再解析一次」之间被短 TTL 域名切到内网/元数据 IP 的 DNS 重绑定。 */
+export async function resolveValidatedIps(u: URL): Promise<string[]> {
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  if (net.isIP(host)) {
+    if (isBlockedIp(host)) throw new Error("webhook 不允许指向私网/环回/元数据地址");
+    return [host];
+  }
+  let addrs: { address: string }[];
+  try { addrs = await dns.lookup(host, { all: true }); } catch { throw new Error("webhook 域名解析失败"); }
+  if (!addrs.length) throw new Error("webhook 域名无解析结果");
+  for (const a of addrs) if (isBlockedIp(a.address)) throw new Error("webhook 域名解析到了私网/环回/元数据地址");
+  return addrs.map((a) => a.address);
+}
+
+/** 向已校验的 webhook 目标发 POST：把 socket 连接**固定**到预先校验过的 IP（自定义 lookup，
+ *  不再二次解析主机名），同时保留主机名作 TLS SNI / cert 校验；连接期再判一次禁段做纵深防御。
+ *  不自动跟随重定向（原生 http.request 默认不跟随，等价于旧 redirect:"error"）。 */
+function securePost(u: URL, ips: string[], init: RequestInit, timeoutMs = 8000): Promise<{ ok: boolean; status: number }> {
+  return new Promise((resolve, reject) => {
+    const host = u.hostname.replace(/^\[|\]$/g, "");
+    const pinnedIp = ips[0];
+    if (!pinnedIp || isBlockedIp(pinnedIp)) { reject(new Error("webhook 目标无合法出网 IP")); return; }
+    const mod = u.protocol === "https:" ? https : http;
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries((init.headers as Record<string, string>) ?? {})) headers[k] = v;
+    const body = typeof init.body === "string" ? init.body : undefined;
+    if (body != null) headers["content-length"] = String(Buffer.byteLength(body));
+    // 自定义 lookup：只返回预先校验过的 IP，连接期再判一次禁段（防被绕过）。
+    const lookup = (_hostname: string, _opts: unknown, cb: (err: Error | null, address: string, family: number) => void): void => {
+      if (isBlockedIp(pinnedIp)) { cb(new Error("webhook 目标解析到私网/环回/元数据地址"), "", 0); return; }
+      cb(null, pinnedIp, (net.isIP(pinnedIp) || 4));
+    };
+    const req = mod.request({
+      protocol: u.protocol,
+      hostname: host,
+      port: u.port ? Number(u.port) : (u.protocol === "https:" ? 443 : 80),
+      path: (u.pathname || "/") + (u.search || ""),
+      method: "POST",
+      headers,
+      servername: u.protocol === "https:" ? host : undefined, // TLS SNI = 主机名，证书按主机名校验
+      lookup: lookup as unknown as net.LookupFunction,
+      timeout: timeoutMs,
+    }, (res) => {
+      const status = res.statusCode ?? 0;
+      res.on("data", () => { /* drain，释放连接 */ });
+      res.on("end", () => resolve({ ok: status >= 200 && status < 300, status }));
+      res.on("error", reject);
+    });
+    req.on("timeout", () => req.destroy(new Error("webhook 请求超时")));
+    req.on("error", reject);
+    if (body != null) req.write(body);
+    req.end();
+  });
+}
+
 /** 把产物信息渲染成 title/body（body 含可点击的产物绝对链接）。 */
 function renderMessage(a: RecordedAssetInfo, absUrl: string): { title: string; body: string } {
   const emoji = a.type === "image" ? "🖼️" : a.type === "video" ? "🎬" : a.type === "audio" ? "🎵" : "📦";
@@ -94,18 +153,13 @@ function buildRequest(kind: string, cfgUrl: string, a: RecordedAssetInfo, absUrl
 export async function dispatchAssetWebhook(a: RecordedAssetInfo): Promise<void> {
   const cfg = await getUserWebhook(a.userId);
   if (!cfg || !cfg.enabled || !cfg.url) return;
-  const target = await assertPublicHttpUrl(cfg.url); // 抛错即拒发
+  const target = await assertPublicHttpUrl(cfg.url); // URL/DNS 级校验，抛错即拒发
+  const ips = await resolveValidatedIps(target);     // 取已校验 IP，下面固定连接到它（防重绑定）
   // 产物绝对链接（相对 /manus-storage 需解析成外部可访问的绝对 URL）
   let absUrl = a.url;
   try { if (!/^https?:\/\//i.test(a.url) && !a.url.startsWith("data:")) absUrl = await resolveToAbsoluteUrl(a.url); } catch { /* 用原值 */ }
   const { init } = buildRequest(cfg.kind, target.toString(), a, absUrl);
-  const resp = await fetch(target.toString(), {
-    ...init,
-    redirect: "error",                          // 禁跟随重定向（防绕过 SSRF 守卫跳内网）
-    signal: AbortSignal.timeout(8000),
-  });
-  // 读掉少量响应以释放连接；不关心内容。
-  if (resp.body) { try { await resp.text(); } catch { /* ignore */ } }
+  const resp = await securePost(target, ips, init, 8000);
   if (!resp.ok) console.warn(`[notifyWebhook] ${cfg.kind} 返回 ${resp.status}`);
 }
 
@@ -115,9 +169,9 @@ export async function sendTestWebhook(userId: number): Promise<void> {
   if (!cfg || !cfg.enabled) throw new Error("外部推送未启用");
   if (!cfg.url) throw new Error("未填写 Webhook URL");
   const target = await assertPublicHttpUrl(cfg.url); // SSRF 守卫，抛错即拒发
+  const ips = await resolveValidatedIps(target);     // 固定连接到已校验 IP（防重绑定）
   const testAsset: RecordedAssetInfo = { userId, type: "image", name: "配置测试推送（收到即表示 Webhook 可用）", url: "https://ai-video-canvas.example/webhook-check", model: null };
   const { init } = buildRequest(cfg.kind, target.toString(), testAsset, testAsset.url);
-  const resp = await fetch(target.toString(), { ...init, redirect: "error", signal: AbortSignal.timeout(8000) });
-  if (resp.body) { try { await resp.text(); } catch { /* ignore */ } }
+  const resp = await securePost(target, ips, init, 8000);
   if (!resp.ok) throw new Error(`目标返回 HTTP ${resp.status}`);
 }
