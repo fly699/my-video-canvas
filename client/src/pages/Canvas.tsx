@@ -26,6 +26,7 @@ import { NodeDefaultModelsButton } from "../components/canvas/NodeDefaultModelsB
 import { BudgetButton } from "../components/canvas/BudgetButton";
 import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
+import { CanvasChatNotifier } from "../components/canvas/CanvasChatNotifier";
 import { CanvasAgentChat } from "../components/canvas/CanvasAgentChat";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useTopbarNarrow } from "../hooks/useTopbarNarrow";
@@ -487,6 +488,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [chatOpen, setChatOpen] = usePersistentState<boolean>(
     "ui:canvas:chat-open:v1", false, { validate: validateBool, crossTab: false },
   );
+  // 聊天窗关着时的未读计数（画布常驻通知监听器累加，顶栏聊天按钮显红点）；打开聊天窗即清零。
+  const [chatUnread, setChatUnread] = useState(0);
+  useEffect(() => { if (chatOpen) setChatUnread(0); }, [chatOpen]);
   // 画布助手（对话式操作画布）浮层开关。默认打开，且**每次进入画布都自动打开**（不持久化关闭态）——
   // 本次会话内关掉即隐藏，重新打开画布/项目会再次弹出。历史对话已落库，重开不丢上下文。
   const [agentChatOpen, setAgentChatOpen] = useState<boolean>(true);
@@ -1963,9 +1967,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 className="topbar-btn"
                 data-tour="chat"
                 data-active={chatOpen ? "true" : undefined}
-                style={chatOpen ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
+                style={{ position: "relative", ...(chatOpen ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : {}) }}
               >
                 <MessageSquare className="w-3.5 h-3.5" />
+                {/* 未读红点：聊天窗关着时收到新消息 → 提示 */}
+                {!chatOpen && chatUnread > 0 && (
+                  <span style={{ position: "absolute", top: -3, right: -3, minWidth: 15, height: 15, padding: "0 4px", borderRadius: 999, background: "oklch(0.62 0.22 25)", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 0 2px var(--c-base)" }}>
+                    {chatUnread > 99 ? "99+" : chatUnread}
+                  </span>
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">聊天（悬浮窗）</TooltipContent>
@@ -3870,6 +3880,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
       })()}
 
       {!isPopout && chatOpen && <CanvasChatWindow onClose={() => setChatOpen(false)} />}
+      {/* 聊天窗关闭时的常驻通知监听器：收新消息给声音/桌面/横幅提醒 + 顶栏红点（窗打开时由 ChatProvider 负责） */}
+      {!isPopout && !chatOpen && isAuthenticated && <CanvasChatNotifier onNewMessage={() => setChatUnread((n) => n + 1)} />}
       {!isPopout && !isReadOnly && agentChatOpen && <CanvasAgentChat projectId={projectId} onClose={() => setAgentChatOpen(false)} />}
     </div>
    </NodeDefaultModelsProvider>
