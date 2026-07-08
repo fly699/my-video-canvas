@@ -134,6 +134,10 @@ interface CanvasStore {
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
+  /** ◆1 线上插入节点：断开 edgeId，在其中点新建 type 节点并把 源→新、新→目标 接好。 */
+  insertNodeOnEdge: (edgeId: string, type: NodeType) => void;
+  /** ◆1 端点重连：把 oldEdge 换成 newConnection（拖动连线端点改接目标/源）。 */
+  reconnectEdge: (oldEdge: CanvasEdge, newConnection: Connection) => void;
   addNode: (type: NodeType, position: { x: number; y: number }) => CanvasNode;
   /** Add a sized `group` "scene" container box behind other nodes (zIndex -1).
    *  Used by the agent apply layer to wrap a scene's shots. */
@@ -338,6 +342,47 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           { ...conn, id: nanoid(), type: "custom", animated: false },
           state.edges
         ) as CanvasEdge[],
+        isDirty: true,
+      };
+    });
+  },
+
+  // ◆1 线上插入节点：断开 edgeId，在其中点新建 type 节点，把 源→新、新→目标 接好。
+  insertNodeOnEdge: (edgeId, type) => {
+    const state = get();
+    const edge = state.edges.find((e) => e.id === edgeId);
+    if (!edge) return;
+    const src = state.nodes.find((n) => n.id === edge.source);
+    const tgt = state.nodes.find((n) => n.id === edge.target);
+    if (!src || !tgt) return;
+    // 中点，略向左上偏移让节点大致落在连线上（节点宽约 240）。
+    const mx = Math.round((src.position.x + tgt.position.x) / 2) - 110;
+    const my = Math.round((src.position.y + tgt.position.y) / 2) - 30;
+    const newNode = get().addNode(type, { x: mx, y: my });
+    set((s) => ({
+      ...pushHistory(s),
+      edges: [
+        ...s.edges.filter((e) => e.id !== edgeId),
+        { id: nanoid(), type: "custom", animated: false, source: edge.source, sourceHandle: edge.sourceHandle ?? null, target: newNode.id, targetHandle: null } as CanvasEdge,
+        { id: nanoid(), type: "custom", animated: false, source: newNode.id, sourceHandle: null, target: edge.target, targetHandle: edge.targetHandle ?? null } as CanvasEdge,
+      ],
+      isDirty: true,
+    }));
+  },
+
+  // ◆1 端点重连：把 oldEdge 换接到 newConnection（拖动连线端点改接源/目标）。去重、非法则忽略。
+  reconnectEdge: (oldEdge, newConnection) => {
+    set((s) => {
+      if (!newConnection.source || !newConnection.target) return {};
+      const dupe = s.edges.some((e) => e.id !== oldEdge.id
+        && e.source === newConnection.source && e.target === newConnection.target
+        && (e.targetHandle ?? null) === (newConnection.targetHandle ?? null));
+      if (dupe) return {};
+      return {
+        ...pushHistory(s),
+        edges: s.edges.map((e) => e.id === oldEdge.id
+          ? { ...e, source: newConnection.source!, sourceHandle: newConnection.sourceHandle ?? null, target: newConnection.target!, targetHandle: newConnection.targetHandle ?? null }
+          : e),
         isDirty: true,
       };
     });

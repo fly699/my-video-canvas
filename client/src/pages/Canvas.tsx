@@ -62,6 +62,7 @@ import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
 import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
 import { setBoxSelecting } from "../hooks/useBoxSelecting";
+import { useEdgeInsert } from "../hooks/useEdgeInsert";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
 import { ModelQuickSwitch, MODEL_SWITCH_FIELD } from "../components/canvas/studio/ModelQuickSwitch";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS, defaultTargetHandle } from "../lib/connectionRules";
@@ -1267,6 +1268,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [contextMenu, addNode, emitCollabEvent]);
 
   const addNodeAtCenter = useCallback((type: NodeType) => {
+    // ◆1 若处于「线上插入」意图：把节点插进那条边的中点（断开旧边、接两条新边），而非画布中心新建。
+    const pendingEdge = useEdgeInsert.getState().edgeId;
+    if (pendingEdge) {
+      try {
+        useCanvasStore.getState().insertNodeOnEdge(pendingEdge, type);
+        setRecentNodeTypes((prev) => [type, ...prev.filter((t) => t !== type)].slice(0, 8));
+      } catch (err) { toast.error(err instanceof Error ? err.message : "插入节点失败"); }
+      useEdgeInsert.getState().clear();
+      setShowNodePicker(false);
+      return;
+    }
     const vp = reactFlow.getViewport();
     const cx = (window.innerWidth / 2 - vp.x) / vp.zoom;
     const cy = (window.innerHeight / 2 - vp.y) / vp.zoom;
@@ -1279,6 +1291,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
     }
     setShowNodePicker(false);
   }, [addNode, reactFlow, emitCollabEvent, setRecentNodeTypes]);
+
+  // ◆1 边工具条点 ⊕ → 打开节点选择器（选完由 addNodeAtCenter 走插入分支）。
+  const edgeInsertId = useEdgeInsert((s) => s.edgeId);
+  useEffect(() => { if (edgeInsertId) setShowNodePicker(true); }, [edgeInsertId]);
 
   // 一键：在画布中心新建 ComfyUI 自定义节点，并自动打开「导入向导」（_openWizard 瞬态标志）。
   const addComfyWorkflowWithWizard = useCallback(() => {
@@ -1552,7 +1568,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
         if (wasDirty) toast.success("已保存");
       }
       if (e.key === "Escape") {
-        setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); setShowShortcuts(false); setShowGridStoryboard(false);
+        setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); useEdgeInsert.getState().clear(); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); setShowShortcuts(false); setShowGridStoryboard(false);
         // 取消节点选中（与快捷键面板「Esc 取消选中」对齐）。用 reactFlow.setNodes 才能让
         // ReactFlow 内部选中态正确同步（直接改 store 的 node.selected 不取消选中）。
         if (!isEditing) reactFlow.setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)));
@@ -2297,7 +2313,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           onContextMenu={handleCanvasContextMenu}
           onDoubleClick={handleCanvasDoubleClick}
           onMouseMove={handleMouseMove}
-          onClick={() => { setShowNodePicker(false); }}
+          onClick={() => { setShowNodePicker(false); useEdgeInsert.getState().clear(); }}
         >
           {/* Studio skin: the selected node's params float BELOW the node (handled in
               BaseNode via NodeToolbar), so the right-side inspector is no longer mounted. */}
@@ -2371,6 +2387,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
               onConnect(connection);
               const newEdge = useCanvasStore.getState().edges.find((e) => !prevIds.has(e.id));
               if (newEdge) emitCollabEvent("edge:add", newEdge);
+            }}
+            edgesReconnectable={!isReadOnly}
+            onReconnect={(oldEdge, newConnection) => {
+              useCanvasStore.getState().reconnectEdge(oldEdge as CanvasEdge, newConnection);
             }}
             onNodeContextMenu={handleNodeContextMenu as Parameters<typeof ReactFlow>[0]["onNodeContextMenu"]}
             onNodesDelete={(deleted) => deleted.forEach((n) => {

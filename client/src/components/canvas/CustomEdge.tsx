@@ -8,7 +8,8 @@ import { useWorkflowRunState } from "../../contexts/WorkflowRunContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { useUIStyle } from "../../contexts/UIStyleContext";
 import { getNodeConfig } from "../../lib/nodeConfig";
-import { Check, X, Trash2 } from "lucide-react";
+import { Check, X, Trash2, Plus } from "lucide-react";
+import { useEdgeInsert } from "../../hooks/useEdgeInsert";
 
 function arrowPoints(tx: number, ty: number, pos: Position, sz: number, hw: number): string {
   if (pos === Position.Left)  return `${tx+sz},${ty-hw} ${tx+sz},${ty+hw} ${tx},${ty}`;
@@ -393,6 +394,17 @@ export const CustomEdge = memo(function CustomEdge({
                   + 标签
                 </button>
               )}
+              <div style={{ width: 1, height: 10, background: "var(--c-bd3)", margin: "0 2px" }} />
+              {/* ◆1 线上插入节点：点 ⊕ 打开节点选择器，选完把节点插进这条边中点 */}
+              <button
+                onClick={(e) => { e.stopPropagation(); useEdgeInsert.getState().requestInsert(id); }}
+                style={{ color: "var(--c-t4)", background: "transparent", border: "none", cursor: "pointer", padding: 2, lineHeight: 0, borderRadius: 4, transition: "color 120ms ease" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.19 285)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+                title="在此处插入节点"
+              >
+                <Plus style={{ width: 11, height: 11 }} />
+              </button>
               <div style={{ width: 1, height: 10, background: "var(--c-bd3)", margin: "0 2px" }} />
               <button
                 onClick={handleDelete}
