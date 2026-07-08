@@ -32,6 +32,7 @@ import {
   getVideoTasksByProject,
   createVideoTask,
   updateVideoTask,
+  completeVideoTaskIfProcessing,
   claimVideoTaskForSubmit,
   getVideoTask,
   findInFlightVideoTask,
@@ -891,8 +892,7 @@ export const videoTasksRouter = router({
                 // the UI block one-click resubmit so the user isn't tricked
                 // into re-paying for our parser miss.
                 const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在上游生成完成，但本系统未识别 URL（积分已扣，请勿重试；联系管理员查看 Poyo 控制台）" };
-                await updateVideoTask(task.id, update);
-                auditVideoTaskResult(task, false, update.errorMessage);
+                if (await completeVideoTaskIfProcessing(task.id, update)) auditVideoTaskResult(task, false, update.errorMessage);
                 return { ...task, ...update };
               }
               // CRITICAL: same persistence step as the background poller —
@@ -904,18 +904,19 @@ export const videoTasksRouter = router({
               const persistedList = await persistVideosOrFallback(urls, task.provider);
               const persisted = persistedList.join("\n");
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, true);
-              for (const u of persistedList) {
-                await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: u, name: task.provider });
+              // CAS：仅首个把 processing→succeeded 的调用方 record/audit，避免与后台 poller 双写重复素材。
+              if (await completeVideoTaskIfProcessing(task.id, update)) {
+                auditVideoTaskResult(task, true);
+                for (const u of persistedList) {
+                  await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: u, name: task.provider });
+                }
               }
               return { ...task, ...update };
             }
             if (upstream.status === "failed") {
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, false, update.errorMessage);
+              if (await completeVideoTaskIfProcessing(task.id, update)) auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
           } catch (err) {
@@ -938,24 +939,23 @@ export const videoTasksRouter = router({
               // Same persistence step as background poller (see comment above).
               const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, true);
-              await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: persisted, name: task.provider });
+              if (await completeVideoTaskIfProcessing(task.id, update)) {
+                auditVideoTaskResult(task, true);
+                await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: persisted, name: task.provider });
+              }
               return { ...task, ...update };
             }
             if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
               pollLastCheck.delete(task.externalTaskId);
               // Credits spent; [CHARGED] blocks UI from one-click resubmit.
               const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在 Higgsfield 生成完成，但本系统未识别 URL（积分已扣，请勿重试）" };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, false, update.errorMessage);
+              if (await completeVideoTaskIfProcessing(task.id, update)) auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
             if (upstream.status === "failed") {
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, false, update.errorMessage);
+              if (await completeVideoTaskIfProcessing(task.id, update)) auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
           } catch (err) {
