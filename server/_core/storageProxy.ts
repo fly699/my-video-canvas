@@ -9,6 +9,7 @@ import {
 import { verifyUploadToken } from "./uploadToken";
 import { authorizeDownload } from "./downloadAuth";
 import { isRequestAuthenticated, resolveRequestUser } from "./context";
+import { isChatMember } from "../db";
 import { isForceStorageRelayEnabled, isDownloadWatermarkEnabled } from "./storageConfig";
 import { isTunnelRequest } from "./tunnelGate";
 import { getTunnelListenerPort, getTunnelGate } from "./tunnel";
@@ -62,6 +63,21 @@ export function registerStorageProxy(app: Express) {
     if (!await isRequestAuthenticated(req)) {
       res.status(401).send("Unauthorized");
       return;
+    }
+
+    // 对象级授权（纵深防御）：聊天附件 key 形如 `chat/{convId}/...`，仅该会话成员可读——
+    // 否则任一登录用户拿到/猜到 key 即可跨会话读取私聊/私有群的附件原文（IDOR）。与
+    // chat.listFiles 的成员校验口径一致；大厅(lobby) isChatMember 恒真，公共附件不受影响。
+    // 其它前缀（u/{userId}/ 自有素材需兼顾协作者共享、generated-videos/ 全局）暂靠登录态 +
+    // key 随机不可枚举，待项目访问映射后再收敛（见 backlog #93）。
+    const chatKeyMatch = /^chat\/(\d+)\//.exec(key);
+    if (chatKeyMatch) {
+      const user = await resolveRequestUser(req);
+      const convId = Number(chatKeyMatch[1]);
+      if (!user || !Number.isFinite(convId) || !(await isChatMember(convId, user.id).catch(() => false))) {
+        res.status(403).send("Forbidden");
+        return;
+      }
     }
 
     // Strict download authorization (when enabled): a ?download=1 request for an
