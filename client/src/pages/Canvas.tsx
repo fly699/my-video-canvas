@@ -3147,6 +3147,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 <button
                   data-tb-sec
                   data-tour="conn-hints"
+                  aria-label="连线指引"
+                  aria-pressed={showConnectionHints}
                   onClick={() => setShowConnectionHints(h => !h)}
                   style={{
                     width: 32, height: 32, borderRadius: 10,
@@ -3158,7 +3160,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     transition: "all 150ms ease",
                   }}
                 >
-                  <span style={{ fontSize: 14 }}>🔗</span>
+                  <span style={{ fontSize: 14 }} aria-hidden="true">🔗</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">连线指引</TooltipContent>

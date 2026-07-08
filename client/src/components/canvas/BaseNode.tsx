@@ -554,6 +554,8 @@ export const BaseNode = memo(function BaseNode({
     <div
       ref={rootRef}
       className={`group/node relative${runStatus === "running" ? " node-run-pulse" : ""}`}
+      role="group"
+      aria-label={`${title || config?.label || nodeType} 节点${config?.label && title ? `（${config.label}）` : ""}${runStatus === "running" ? " · 生成中" : genError ? " · 失败" : ""}`}
       data-selected={(storeSelected || pinned) ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
       style={{

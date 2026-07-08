@@ -1268,10 +1268,16 @@ button:active:not(:disabled) {
   /* Prevent ReactFlow from adding its own focus ring */
   outline: none !important;
 }
-.react-flow__node:focus,
-.react-flow__node:focus-visible {
+/* 鼠标点击/选中态不显示焦点环（选中环由 BaseNode 内联样式画），但键盘 Tab 聚焦
+   (:focus-visible) 必须显示焦点环，否则键盘用户完全不知道焦点落在哪个节点。#R4-4 无障碍。 */
+.react-flow__node:focus {
   outline: none !important;
   box-shadow: none !important;
+}
+.react-flow__node:focus-visible {
+  outline: 2px solid var(--color-brand, oklch(0.68 0.22 285)) !important;
+  outline-offset: 3px !important;
+  border-radius: 14px;
 }
 .react-flow__node.selected > div {
   /* Selection ring handled by BaseNode inline styles */
