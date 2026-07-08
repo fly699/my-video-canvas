@@ -3,6 +3,7 @@ import { isIP } from "net";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, levelProcedure, router } from "../_core/trpc";
 import * as db from "../db";
+import { getOnlineUserIds } from "../_core/presence";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
@@ -833,6 +834,8 @@ export const adminRouter = router({
     list: adminProcedure.query(async () => {
       return db.listAllUsers();
     }),
+    // 实时在线用户 id 列表（socket 连接引用计数）。前端轮询叠加到用户表，显示在线状态。
+    onlineIds: adminProcedure.query(() => getOnlineUserIds()),
     resetPassword: managerProc
       .input(z.object({ userId: z.number().int().positive(), newPassword: z.string().min(6).max(200) }))
       .mutation(async ({ ctx, input }) => {

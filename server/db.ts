@@ -2520,7 +2520,11 @@ export async function listJoinableGroups(userId: number): Promise<ChatConversati
   const memberRows = await db.select({ conversationId: chatMembers.conversationId }).from(chatMembers).where(eq(chatMembers.userId, userId));
   const ids = new Set(memberRows.map((r) => r.conversationId));
   const groups = await db.select().from(chatConversations).where(eq(chatConversations.type, "group"));
-  return groups.filter((g) => !ids.has(g.id)).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  // 系统房（产物通知 system:notify:*、下载审批 system:download-approval）是私有单人/管理房，
+  // 绝不进「可加入」发现列表——否则任何人都能看到并自助加入他人的产物通知房，读到其全部产物 URL。
+  return groups
+    .filter((g) => !ids.has(g.id) && !(g.dmKey ?? "").startsWith("system:"))
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
 export async function updateLastRead(conversationId: number, userId: number, messageId: number): Promise<void> {
