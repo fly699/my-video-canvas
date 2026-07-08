@@ -546,7 +546,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // 拉线松手落在空白处时，在鼠标位置弹出的「建节点并连线」小菜单（仅列可连接类型）。
   const [connectMenu, setConnectMenu] = useState<{ x: number; y: number; types: NodeType[]; fromId: string; fromHandleType: "source" | "target"; fromHandle: string | null } | null>(null);
   const [connectSearch, setConnectSearch] = useState(""); // ◆7 建节点菜单搜索词
-  useEffect(() => { if (!connectMenu) setConnectSearch(""); }, [connectMenu]);
+  const [connectActiveIdx, setConnectActiveIdx] = useState(0); // #R4-7 键盘 ↑↓ 高亮项
+  useEffect(() => { if (!connectMenu) setConnectSearch(""); setConnectActiveIdx(0); }, [connectMenu]);
+  useEffect(() => { setConnectActiveIdx(0); }, [connectSearch]);
   const [connectDragType, setConnectDragType] = useState<NodeType | null>(null); // 弹窗内拖拽排序中的项
   // 建节点菜单的「节点类型自定义排序」——服务端持久化（user_prefs.connectMenuOrder），跨设备保留。
   const [connectOrder, setConnectOrder] = useState<string[]>([]);
@@ -3622,26 +3624,33 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <span>{connectMenu.fromHandleType === "source" ? "连接到新节点…" : "从新节点连入…"}</span>
               <span style={{ marginLeft: "auto", opacity: 0.7 }}><GripVertical style={{ width: 9, height: 9, display: "inline" }} /> 拖动排序</span>
             </div>
-            {/* ◆7 搜索框：类型多时可搜;回车加首个匹配 */}
-            {connectMenu.types.length > 6 && (
-              <input autoFocus value={connectSearch}
-                onChange={(e) => setConnectSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const q = connectSearch.trim().toLowerCase();
-                    const first = connectMenu.types.find((t) => t !== "comfyui_workflow" && (getNodeConfig(t)?.label ?? t).toLowerCase().includes(q));
-                    if (first) handlePickConnectType(first);
-                  } else if (e.key === "Escape") { setConnectMenu(null); }
-                }}
-                placeholder="搜索节点类型…"
-                style={{ width: "calc(100% - 8px)", margin: "0 4px 4px", boxSizing: "border-box", padding: "6px 8px", fontSize: 12,
-                  borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
-            )}
+            {/* #R4-7 搜索框常显 + ↑↓/Enter 键盘导航（与 ⌘K 面板对齐） */}
             {(() => {
               const q = connectSearch.trim().toLowerCase();
               const shown = q ? connectMenu.types.filter((t) => (getNodeConfig(t)?.label ?? CONNECTION_HINTS[t]?.label ?? t).toLowerCase().includes(q)) : connectMenu.types;
-              if (shown.length === 0) return <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "8px 10px" }}>无匹配</div>;
-              return shown.map((t) => {
+              const activeIdx = Math.max(0, Math.min(connectActiveIdx, shown.length - 1));
+              const pickType = (t: NodeType) => {
+                if (t === "comfyui_workflow") { setTplLibConnect({ x: connectMenu.x, y: connectMenu.y, fromId: connectMenu.fromId, fromHandleType: connectMenu.fromHandleType, fromHandle: connectMenu.fromHandle }); setConnectMenu(null); setShowNodeLib(true); }
+                else handlePickConnectType(t);
+              };
+              const onMenuKey = (e: React.KeyboardEvent) => {
+                if (e.key === "ArrowDown") { e.preventDefault(); setConnectActiveIdx((i) => Math.min(i + 1, shown.length - 1)); }
+                else if (e.key === "ArrowUp") { e.preventDefault(); setConnectActiveIdx((i) => Math.max(i - 1, 0)); }
+                else if (e.key === "Enter") { e.preventDefault(); const t = shown[activeIdx]; if (t) pickType(t); }
+                else if (e.key === "Escape") { setConnectMenu(null); }
+              };
+              return (
+                <>
+                  <input autoFocus value={connectSearch}
+                    onChange={(e) => setConnectSearch(e.target.value)}
+                    onKeyDown={onMenuKey}
+                    placeholder="搜索节点类型…（↑↓ 选择 · Enter 确认）"
+                    style={{ width: "calc(100% - 8px)", margin: "0 4px 4px", boxSizing: "border-box", padding: "6px 8px", fontSize: 12,
+                      borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+                  {shown.length === 0
+                    ? <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "8px 10px" }}>无匹配</div>
+                    : shown.map((t, idx) => {
+              const isActive = idx === activeIdx;
               const cfg = getNodeConfig(t);
               // ComfyUI 自定义节点 → 改为「节点模板库」：点击打开模板库二级列表，选模板后在落点
               // 建节点并连边（替代直接建空白工作流节点）。
@@ -3651,9 +3660,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
               if (isTplLib) {
                 return (
                   <div key={t} className="nodrag flex items-center gap-1 w-full"
+                    onMouseEnter={() => setConnectActiveIdx(idx)}
                     onDragOver={(e) => { if (connectDragType) e.preventDefault(); }}
                     onDrop={(e) => { e.preventDefault(); if (connectDragType) reorderConnectType(connectDragType, t); setConnectDragType(null); }}
-                    style={{ borderRadius: 7 }}>
+                    style={{ borderRadius: 7, background: isActive ? `${color}1f` : "transparent" }}>
                     <span draggable onDragStart={() => setConnectDragType(t)} onDragEnd={() => setConnectDragType(null)} title="拖动排序" className="flex-shrink-0 flex items-center" style={{ cursor: "grab", color: "var(--c-t4)", padding: "0 1px" }}><GripVertical style={{ width: 12, height: 12 }} /></span>
                     <button onClick={() => { setTplLibConnect({ x: connectMenu.x, y: connectMenu.y, fromId: connectMenu.fromId, fromHandleType: connectMenu.fromHandleType, fromHandle: connectMenu.fromHandle }); setConnectMenu(null); setShowNodeLib(true); }}
                       className="flex items-center gap-2 text-left" style={{ flex: 1, minWidth: 0, padding: "6px 6px", borderRadius: 7, cursor: "pointer", border: "none", background: "transparent", color: "var(--c-t1)", fontSize: 12 }}
@@ -3668,9 +3678,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 <div
                   key={t}
                   className="nodrag flex items-center gap-1 w-full"
+                  onMouseEnter={() => setConnectActiveIdx(idx)}
                   onDragOver={(e) => { if (connectDragType) e.preventDefault(); }}
                   onDrop={(e) => { e.preventDefault(); if (connectDragType) reorderConnectType(connectDragType, t); setConnectDragType(null); }}
-                  style={{ borderRadius: 7, background: connectDragType === t && connectDragType !== null ? `${color}14` : "transparent" }}
+                  style={{ borderRadius: 7, background: isActive ? `${color}1f` : (connectDragType === t && connectDragType !== null ? `${color}14` : "transparent") }}
                 >
                   {/* 拖拽手柄：按住重排（与单击建节点互不干扰） */}
                   <span
@@ -3697,7 +3708,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   </button>
                 </div>
               );
-            });
+            })}
+                </>
+              );
             })()}
           </div>
         </>
