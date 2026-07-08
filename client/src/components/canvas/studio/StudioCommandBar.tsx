@@ -11,7 +11,7 @@ import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { PROVIDER_PICKER_OPTIONS, videoProviderChangePatch, PROVIDER_PARAMS, withParamDefaults } from "../nodes/VideoTaskNode";
 import { MUSIC_MODELS, DUBBING_MODELS, SFX_MODELS, MUSIC_STYLES_ZH, voicesForModel } from "../nodes/AudioNode";
 import { IMAGE_MODEL_PARAMS, paramOptions } from "../../../lib/paramDefs";
-import { estimateImageCost, estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
+import { estimateImageCost, estimateVideoCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, type CostEstimate } from "../../../lib/costEstimate";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { ArrowUp, Loader2, ImagePlus, Languages, Sparkles, X, ChevronDown, Play, Pause, Volume2 } from "lucide-react";
 import { mediaFetchUrl } from "@/lib/download";
@@ -778,6 +778,14 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
 
   const resultUrl = typeof payload.url === "string" ? payload.url : undefined;
 
+  // 与图/视频命令栏一致：音频节点也在送出钮左侧显示 ⚡ 预估消耗（配乐/配音/音效各自计价）。
+  const audioCost: CostEstimate =
+    cat === "music" ? estimateMusicCost(musicModel)
+    : cat === "dubbing" ? estimateTtsCost(ttsModel, String(payload.ttsText ?? "").length)
+    : cat === "sfx" ? { credits: 0.24 * Math.max(0.5, Number(payload.sfxDuration ?? 5) || 5), unit: "点", approx: true } // kie ElevenLabs SFX 0.24 点/秒
+    : null;
+  const audioCostLabel = audioCost ? costEstimateLabel(audioCost) : "";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
       {resultUrl && (
@@ -830,6 +838,7 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
         )}
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
+          {audioCostLabel && <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ui-amber, var(--c-t2))", whiteSpace: "nowrap" }}>⚡ {audioCostLabel}</span>}
           <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult}
             reason={!canRun ? "请先填写内容" : undefined} />
         </div>
