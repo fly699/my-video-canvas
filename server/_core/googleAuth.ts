@@ -154,6 +154,7 @@ export function registerGoogleAuthRoutes(app: Express) {
       const email = email_verified === true ? rawEmail : null;
 
       const openId = `google:${sub}`;
+      const existed = await db.getUserByOpenId(openId).catch(() => undefined);
       await db.upsertUser({
         openId,
         name: name || (email ? email.split("@")[0] : null),
@@ -170,6 +171,21 @@ export function registerGoogleAuthRoutes(app: Express) {
         try { await db.claimPendingInvitations(email.toLowerCase(), dbUser.id); } catch { /* non-fatal */ }
       }
 
+      const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+
+      // 注册审批：新建的 Google 用户 + 开关开启 + 非管理员 → 待审批，不签发 session。
+      const authSettings = await db.getAuthSettings().catch(() => null);
+      const pendingApproval = !existed && !!authSettings?.registrationApprovalEnabled && dbUser?.role !== "admin";
+      if (pendingApproval && dbUser) {
+        await db.setUserApproved(dbUser.id, false).catch(() => { /* non-fatal */ });
+        writeAuditLog({
+          ip: clientIp, userId: dbUser.id, userEmail: email ?? null, userName: name ?? null,
+          action: "login_oauth", detail: { method: "google", pendingApproval: true },
+        });
+        res.redirect(302, "/login?approval=pending");
+        return;
+      }
+
       const sessionToken = await sdk.createSessionToken(openId, {
         name: name || "",
         expiresInMs: ONE_YEAR_MS,
@@ -177,7 +193,6 @@ export function registerGoogleAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
       writeAuditLog({
         ip: clientIp,
         userId: dbUser?.id ?? null,

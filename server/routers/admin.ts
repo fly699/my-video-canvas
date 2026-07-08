@@ -408,6 +408,7 @@ export const adminRouter = router({
     setSettings: managerProc
       .input(z.object({
         emailVerificationEnabled: z.boolean().optional(),
+        registrationApprovalEnabled: z.boolean().optional(),
         smtpHost: z.string().max(255).optional(),
         smtpPort: z.number().int().min(1).max(65535).optional(),
         smtpSecure: z.boolean().optional(),
@@ -845,6 +846,14 @@ export const adminRouter = router({
         if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能冻结自己" });
         await db.setUserDisabled(input.userId, input.disabled);
         writeAuditLog({ ctx, action: "user_set_disabled", detail: { userId: input.userId, disabled: input.disabled } });
+        return { success: true };
+      }),
+    // 批准 / 驳回一个待审批的注册用户（审批制）。批准 → approved=true 可登录；驳回 → 保持 false。
+    setApproved: operatorProc
+      .input(z.object({ userId: z.number().int().positive(), approved: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.setUserApproved(input.userId, input.approved);
+        writeAuditLog({ ctx, action: "user_set_approved", detail: { userId: input.userId, approved: input.approved } });
         return { success: true };
       }),
     delete: managerProc

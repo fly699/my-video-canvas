@@ -122,7 +122,7 @@ export default function LoginPage() {
         credentials: "include",
         body: JSON.stringify(body),
       });
-      const data = await res.json() as { success?: boolean; error?: string; needVerification?: boolean; emailSent?: boolean; warning?: string };
+      const data = await res.json() as { success?: boolean; error?: string; needVerification?: boolean; needApproval?: boolean; emailSent?: boolean; warning?: string };
       // Registration (or login of an unverified account) when verification is on:
       // switch to the code-entry step instead of erroring/redirecting.
       if (data.needVerification) {
@@ -132,6 +132,13 @@ export default function LoginPage() {
         setInfo(data.emailSent === false
           ? (data.warning ?? "验证码发送失败，请点击「重新发送」或联系管理员")
           : "验证码已发送至你的邮箱，请查收并填写");
+        return;
+      }
+      // 仅开启审批（无邮箱验证）：注册成功但需审批——不跳转，提示等待管理员批准。
+      if (data.needApproval && data.success) {
+        setError(null);
+        setMode("login");
+        setInfo("注册成功！账号需管理员审批通过后才能登录，请耐心等待审批。");
         return;
       }
       if (!res.ok || !data.success) { setError(data.error ?? "操作失败，请稍后重试"); return; }
@@ -178,6 +185,16 @@ export default function LoginPage() {
       setError("网络错误，请检查连接后重试");
     } finally { setLoading(false); }
   }
+
+  // 第三方登录首登遇到「注册审批」时，OAuth 回调会 302 回 /?approval=pending —— 显示等待审批提示。
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("approval") === "pending") {
+        setMode("login");
+        setInfo("登录成功，但账号需管理员审批通过后才能使用，请耐心等待审批。");
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // 下次自动登录：预填完成且开启时，自动提交一次。
   // 但「主动退出登录」后本次跳过（消费一次性标记），以便切换账号。

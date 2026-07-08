@@ -30,6 +30,10 @@ export const users = mysqlTable("users", {
   // 邮箱验证：默认 true（向后兼容——已有用户、以及「未启用验证」时一律视为已验证）。
   // 仅当管理员启用「注册邮箱验证」后，新邮箱注册才写入 false，验证通过后置回 true。
   emailVerified: boolean("emailVerified").notNull().default(true),
+  // 注册审批：默认 true（向后兼容——存量用户、以及「未启用审批」时一律视为已批准）。
+  // 仅当管理员启用「注册需审批」后，新注册用户才写入 false，管理员批准后置回 true；
+  // approved=false 且开关开启时，即使持有会话也在 context 层被判为未登录，无法访问任何 API。
+  approved: boolean("approved").notNull().default(true),
   // 6 位验证码 + 过期时间，仅在等待验证期间有值；验证成功或重发时更新/清空。
   verifyCode: varchar("verifyCode", { length: 16 }),
   verifyCodeExpiresAt: timestamp("verifyCodeExpiresAt"),
@@ -47,6 +51,8 @@ export type InsertUser = typeof users.$inferInsert;
 export const authSettings = mysqlTable("auth_settings", {
   id: int("id").autoincrement().primaryKey(),
   emailVerificationEnabled: boolean("emailVerificationEnabled").notNull().default(false),
+  // 注册需审批：开启后所有新注册用户须经管理员批准方可登录。默认关，兼容存量。
+  registrationApprovalEnabled: boolean("registrationApprovalEnabled").notNull().default(false),
   smtpHost: varchar("smtpHost", { length: 255 }).notNull().default(""),
   smtpPort: int("smtpPort").notNull().default(587),
   smtpSecure: boolean("smtpSecure").notNull().default(false),

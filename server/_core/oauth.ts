@@ -57,6 +57,9 @@ export function registerOAuthRoutes(app: Express) {
         return;
       }
 
+      // 是否首登建号（决定审批制是否适用于本次 OAuth 登录）。
+      const existed = await db.getUserByOpenId(userInfo.openId).catch(() => undefined);
+
       await db.upsertUser({
         openId: userInfo.openId,
         name: userInfo.name || null,
@@ -70,6 +73,22 @@ export function registerOAuthRoutes(app: Express) {
       let dbUser: Awaited<ReturnType<typeof db.getUserByOpenId>> = undefined;
       try { dbUser = await db.getUserByOpenId(userInfo.openId); } catch { /* non-fatal */ }
 
+      const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+
+      // 注册审批：新建的 OAuth 用户 + 开关开启 + 非管理员/站长 → 置 approved=false、不签发 session，
+      // 跳到待审批提示。已存在的老用户不受影响（登录照常）。
+      const authSettings = await db.getAuthSettings().catch(() => null);
+      const pendingApproval = !existed && !!authSettings?.registrationApprovalEnabled && dbUser?.role !== "admin";
+      if (pendingApproval && dbUser) {
+        await db.setUserApproved(dbUser.id, false).catch(() => { /* non-fatal */ });
+        writeAuditLog({
+          ip: clientIp, userId: dbUser.id, userEmail: userInfo.email ?? null, userName: userInfo.name ?? null,
+          action: "login_oauth", detail: { method: userInfo.loginMethod ?? userInfo.platform ?? "oauth", pendingApproval: true },
+        });
+        res.redirect(302, "/login?approval=pending");
+        return;
+      }
+
       const sessionToken = await sdk.createSessionToken(userInfo.openId, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,
@@ -78,7 +97,6 @@ export function registerOAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      const clientIp = req.ip ?? req.socket?.remoteAddress ?? "unknown";
       writeAuditLog({
         ip: clientIp,
         userId: dbUser?.id ?? null,

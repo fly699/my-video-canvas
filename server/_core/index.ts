@@ -178,6 +178,7 @@ async function startServer() {
     adminLevel: 4,
     disabled: false,
     emailVerified: true,
+    approved: true,
     verifyCode: null,
     verifyCodeExpiresAt: null,
     createdAt: new Date("2024-01-01"),
