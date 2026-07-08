@@ -621,18 +621,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const runSelectedOnly = selectedRunnableIds.length >= 2;
 
-  // 协作撤销提示：undo 用整张本地快照替换当前图，多人协同时会连带回退协作者的并发改动。
-  // 有协作者在线时首次撤销给一条一次性警示（不阻断），之后照常静默撤销。
-  const collabUndoWarnedRef = useRef(false);
-  const handleUndo = useCallback(() => {
-    if (useCanvasStore.getState().collaborators.size > 0 && !collabUndoWarnedRef.current) {
-      collabUndoWarnedRef.current = true;
-      toast.warning("撤销会影响整张协作画布", { description: "当前有协作者在线，撤销可能一并回退他人的并发改动。", duration: 5000 });
-    }
-    undo();
-    toast.info("已撤销", { duration: 1200 });
-  }, [undo]);
-
   // Route store-level run requests (e.g. the agent's auto-run) through the normal
   // run-confirm dialog so generation still gets one explicit user confirmation.
   const runRequest = useCanvasStore((s) => s.runRequest);
@@ -1104,6 +1092,48 @@ function CanvasInner({ projectId }: { projectId: number }) {
     for (const nd of st.nodes) if (!before.n.has(nd.id)) emitCollabEvent("node:add", nd);
     for (const ed of st.edges) if (!before.e.has(ed.id)) emitCollabEvent("edge:add", ed);
   }, [emitCollabEvent]);
+
+  // 撤销/重做把整图替换为历史快照——用全量 diff 广播给协作者（#87），否则本地回退后与协作者分叉。
+  // 新增/变化的节点用 node:add 整体替换（applyRemoteMutation 的 node:add 会 filter+add 覆盖），
+  // 消失的用 node:delete；边同理 add/delete。防回声同前：远端 apply 走 setNodes 不回传。
+  const snapshotGraphSigs = useCallback(() => {
+    const st = useCanvasStore.getState();
+    return {
+      nodes: new Map(st.nodes.map((n) => [n.id, nodeSig(n)])),
+      edges: new Map(st.edges.map((e) => [e.id, edgeSig(e)])),
+    };
+  }, []);
+  const emitGraphDiff = useCallback((before: { nodes: Map<string, string>; edges: Map<string, string> }) => {
+    const st = useCanvasStore.getState();
+    const afterNodeIds = new Set(st.nodes.map((n) => n.id));
+    for (const id of Array.from(before.nodes.keys())) if (!afterNodeIds.has(id)) emitCollabEvent("node:delete", { id });
+    for (const n of st.nodes) if (before.nodes.get(n.id) !== nodeSig(n)) emitCollabEvent("node:add", n);
+    const afterEdgeIds = new Set(st.edges.map((e) => e.id));
+    for (const id of Array.from(before.edges.keys())) if (!afterEdgeIds.has(id)) emitCollabEvent("edge:delete", { id });
+    for (const e of st.edges) if (!before.edges.has(e.id)) emitCollabEvent("edge:add", e);
+  }, [emitCollabEvent]);
+
+  // 协作撤销/重做：undo/redo 用整张本地快照替换当前图，多人协同时会连带回退协作者的并发改动。
+  // 有协作者在线时首次撤销给一条一次性警示（不阻断）；撤销/重做后用全量 diff 广播给协作者（#87）。
+  const collabUndoWarnedRef = useRef(false);
+  // 协作者全部离线时复位一次性警告，使下次有人在线撤销时能再次提醒（此前置 true 后永不复位）。
+  useEffect(() => { if (collaborators.size === 0) collabUndoWarnedRef.current = false; }, [collaborators.size]);
+  const handleUndo = useCallback(() => {
+    if (useCanvasStore.getState().collaborators.size > 0 && !collabUndoWarnedRef.current) {
+      collabUndoWarnedRef.current = true;
+      toast.warning("撤销会影响整张协作画布", { description: "当前有协作者在线，撤销可能一并回退他人的并发改动。", duration: 5000 });
+    }
+    const before = snapshotGraphSigs();
+    undo();
+    emitGraphDiff(before); // 把撤销结果广播给协作者，避免本地回退后与其分叉
+    toast.info("已撤销", { duration: 1200 });
+  }, [undo, collaborators, snapshotGraphSigs, emitGraphDiff]);
+  const handleRedo = useCallback(() => {
+    const before = snapshotGraphSigs();
+    redo();
+    emitGraphDiff(before);
+    toast.info("已重做", { duration: 1200 });
+  }, [redo, snapshotGraphSigs, emitGraphDiff]);
 
   // 协作实时同步：把本地的节点配置/标题改动广播给协作者（#85）。updateNodeData/updateNodeTitle
   // 经 store 的注册钩子回调到这里；按节点节流(400ms)合并补丁，减少高频输入(如逐字打提示词)的洪泛。
@@ -1855,18 +1885,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
       // Redo: Cmd+Shift+Z or Ctrl+Y
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "z") {
         e.preventDefault();
-        redo();
-        toast.info("已重做", { duration: 1200 });
+        handleRedo();
       }
       if (!isEditing && e.ctrlKey && !e.shiftKey && e.key === "y") {
         e.preventDefault();
-        redo();
-        toast.info("已重做", { duration: 1200 });
+        handleRedo();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveCanvas, handleUndo, redo, runWorkflow, nodes, handleRunRequest, reactFlow]);
+  }, [saveCanvas, handleUndo, handleRedo, runWorkflow, nodes, handleRunRequest, reactFlow]);
 
   const collaboratorList = Array.from(collaborators.values());
 
@@ -2201,7 +2229,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => { redo(); toast.info("已重做", { duration: 1200 }); }}
+                onClick={handleRedo}
                 disabled={future.length === 0 || isReadOnly}
                 className="topbar-btn"
                 title={isReadOnly ? "只读模式下不可编辑" : undefined}
