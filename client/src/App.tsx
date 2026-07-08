@@ -23,6 +23,7 @@ import { setDownloadGate } from "@/lib/download";
 import { DownloadNotifier } from "./components/DownloadNotifier";
 import { WatermarkOverlay } from "./components/WatermarkOverlay";
 import { DevtoolsDeterrent } from "./components/DevtoolsDeterrent";
+import { AppUpdateBanner } from "./components/AppUpdateBanner";
 
 function CanvasWithKey() {
   const params = useParams<{ projectId: string }>();
@@ -124,6 +125,7 @@ function App() {
             }}
           />
           <Router />
+          <AppUpdateBanner />
           <DownloadGateRegistrar />
           <DownloadNotifier />
           <WatermarkOverlay />
