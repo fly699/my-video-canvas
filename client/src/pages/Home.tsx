@@ -597,9 +597,41 @@ export default function Home() {
   });
 
   const deleteProject = trpc.projects.delete.useMutation({
-    onSuccess: () => { refetch(); toast.success("项目已删除"); },
-    onError: () => toast.error("删除失败"),
+    onSuccess: () => { refetch(); },
+    onError: () => { toast.error("删除失败"); refetch(); },
   });
+
+  // 删除项目 = 全站破坏性最强的操作（连带整块画布/全部节点消失）。改为「软删除 + 5 秒撤销」：
+  // 先乐观隐藏卡片并弹带「撤销」的 toast，5 秒内不撤销才真正提交服务端删除。避免误触且无法找回。
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<number>>(new Set());
+  const deleteTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const commitDelete = (id: number) => {
+    deleteTimersRef.current.delete(id);
+    deleteProject.mutate({ id });
+  };
+  const requestDeleteProject = (project: { id: number; name: string }) => {
+    setPendingDeleteIds((s) => new Set(s).add(project.id));
+    const t = setTimeout(() => commitDelete(project.id), 5000);
+    deleteTimersRef.current.set(project.id, t);
+    toast(`已删除「${project.name || "未命名项目"}」`, {
+      description: "5 秒内可撤销",
+      duration: 5000,
+      action: {
+        label: "撤销",
+        onClick: () => {
+          const timer = deleteTimersRef.current.get(project.id);
+          if (timer) clearTimeout(timer);
+          deleteTimersRef.current.delete(project.id);
+          setPendingDeleteIds((s) => { const n = new Set(s); n.delete(project.id); return n; });
+        },
+      },
+    });
+  };
+  // 卸载/离开前把仍在倒计时的删除立即提交，避免用户「删了又离开」却没删掉。
+  useEffect(() => () => {
+    deleteTimersRef.current.forEach((timer, id) => { clearTimeout(timer); deleteProject.mutate({ id }); });
+    deleteTimersRef.current.clear();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateProject = trpc.projects.update.useMutation({
     onSuccess: () => refetch(),
@@ -1325,12 +1357,12 @@ export default function Home() {
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                 {!query && <NewProjectCard onClick={handleCreate} />}
-                {filteredOwned.map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
+                {filteredOwned.filter((p: { id: number }) => !pendingDeleteIds.has(p.id)).map((project: { id: number; name: string; description?: string | null; updatedAt: Date; thumbnail?: string | null }) => (
                   <ProjectCard
                     key={project.id}
                     project={project}
                     onOpen={() => navigate(`/canvas/${project.id}`)}
-                    onDelete={() => deleteProject.mutate({ id: project.id })}
+                    onDelete={() => requestDeleteProject(project)}
                     onRename={(name) => updateProject.mutate({ id: project.id, name })}
                     onRefreshCover={() => refreshCover(project.id)}
                     refreshingCover={refreshingCover === project.id}
