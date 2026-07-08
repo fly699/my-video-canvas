@@ -60,6 +60,7 @@ import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
 const DirectorEditor = lazy(() => import("../components/canvas/director/DirectorEditor").then((m) => ({ default: m.DirectorEditor })));
 import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
+import { AlignToolbar } from "../components/canvas/AlignToolbar";
 import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
 import { setBoxSelecting } from "../hooks/useBoxSelecting";
 import { useEdgeInsert } from "../hooks/useEdgeInsert";
@@ -2556,6 +2557,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <Lightbox />
           {/* Studio multi-select action bar (≥2 nodes selected) */}
           <MultiSelectBar />
+          {/* ◆2 对齐/分布工具条(≥2 选中，所有皮肤) */}
+          <AlignToolbar />
           {/* 操作小贴士（右下角，定时/情境弹出，可自动消失，右键不再显示） */}
           <CanvasTips />
           {/* Studio global creation bar (nothing selected → quick prompt → 生成) */}
