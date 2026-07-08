@@ -175,6 +175,16 @@ function EditorWorkspace({ id }: { id: number }) {
   const canRedo = useEditorStore((s) => s.future.length > 0);
   const loadedFor = useRef<number | null>(null);
   const skipTitleSaveRef = useRef(false); // Esc 取消改名时跳过随后 blur 的保存
+  // 窄屏适配：三栏剪辑器在窄屏会拥挤，给一条可关闭的「建议宽屏使用」提示（不阻断）。
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 860px)");
+    const on = () => setIsNarrow(mq.matches);
+    on(); mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const [narrowHintDismissed, setNarrowHintDismissed] = usePersistentState<boolean>("avc:editor:narrowHint:v1", false);
 
   // Workspace keyboard shortcuts (all ignored while typing in a field):
   //   Ctrl/⌘+Z 撤销 · Ctrl/⌘+Shift+Z / Ctrl+Y 重做
@@ -346,7 +356,7 @@ function EditorWorkspace({ id }: { id: number }) {
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--c-canvas, #0c0c10)", color: "var(--c-t1)" }}>
-      <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+      <header style={{ display: "flex", alignItems: "center", gap: 12, rowGap: 8, flexWrap: "wrap", padding: "8px 16px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
         <button onClick={() => goBack(navigate, "/editor")} title="返回" style={iconBtn}><ArrowLeft size={18} /></button>
         <Clapperboard size={18} style={{ color: ACCENT }} />
         <input
@@ -547,6 +557,14 @@ function EditorWorkspace({ id }: { id: number }) {
           {exporting ? <><Loader2 size={15} className="animate-spin" /> {exportStage || "导出中"} {exportPct > 0 ? `${exportPct}%` : ""}</> : "导出成片"}
         </button>
       </header>
+
+      {/* 窄屏提示：剪辑器三栏在窄屏拥挤，给一条可关闭的建议（不阻断使用） */}
+      {isNarrow && !narrowHintDismissed && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 14px", fontSize: 12.5, color: "var(--c-t2)", background: "oklch(0.72 0.16 60 / 0.10)", borderBottom: "1px solid oklch(0.72 0.16 60 / 0.28)", flexShrink: 0 }}>
+          <span style={{ flex: 1, lineHeight: 1.5 }}>💡 视频剪辑器在较宽的屏幕（桌面）上体验最佳；当前窗口较窄，三栏面板可能拥挤。</span>
+          <button onClick={() => setNarrowHintDismissed(true)} style={{ ...iconBtn, width: "auto", padding: "2px 10px", fontSize: 12, flexShrink: 0 }}>知道了</button>
+        </div>
+      )}
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         <MediaBin width={leftW} />
