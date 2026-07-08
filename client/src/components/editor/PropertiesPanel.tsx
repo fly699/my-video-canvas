@@ -360,7 +360,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <input value={aiSvgPrompt} onChange={(e) => setAiSvgPrompt(e.target.value)} placeholder="如：一只卡通小猫 / 圆形进度环"
-                onKeyDown={(e) => { if (e.key === "Enter" && aiSvgPrompt.trim() && !aiSvgMut.isPending) { aiSvgMut.mutate({ prompt: aiSvgPrompt.trim(), model: svgModel }, { onSuccess: (r) => setShape({ svg: r.svg }), onError: (err) => toast.error("生成失败：" + err.message) }); } }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && aiSvgPrompt.trim() && !aiSvgMut.isPending) { aiSvgMut.mutate({ prompt: aiSvgPrompt.trim(), model: svgModel }, { onSuccess: (r) => setShape({ svg: r.svg }), onError: (err) => toast.error("生成失败：" + err.message) }); } }}
                 style={{ ...input, flex: 1 }} />
               <button disabled={aiSvgMut.isPending || !aiSvgPrompt.trim()}
                 onClick={() => aiSvgMut.mutate({ prompt: aiSvgPrompt.trim(), model: svgModel }, { onSuccess: (r) => setShape({ svg: r.svg }), onError: (err) => toast.error("生成失败：" + err.message) })}

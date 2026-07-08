@@ -7,6 +7,7 @@ import {
   type HelpSection,
   type HelpBlock,
 } from "../../lib/helpContent";
+import { copyText } from "@/lib/clipboard";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -37,10 +38,11 @@ function highlight(text: string, query: string): React.ReactNode {
 function CopyBtn({ text, label = "复制" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   const handle = useCallback(() => {
-    navigator.clipboard.writeText(text).then(() => {
+    void copyText(text).then((ok) => {
+      if (!ok) return; // HTTP/权限受限——静默失败
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    }).catch(() => { /* clipboard unavailable (HTTP / permission denied) — fail silently */ });
+    });
   }, [text]);
   return (
     <button

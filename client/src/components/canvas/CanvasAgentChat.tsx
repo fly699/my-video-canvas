@@ -508,7 +508,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); applyPick(pickItems[pickHi].name); return; }
               if (e.key === "Escape") { e.preventDefault(); setPickDismiss(input); return; }
             }
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); }
           }}
           placeholder="指挥画布，Enter 发送；@ 角色、/ 技能、📎 附参考图" rows={1}
           style={{ flex: 1, resize: "none", maxHeight: 120, padding: "9px 11px", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t1)", fontSize: 13, outline: "none", fontFamily: "inherit" }} />

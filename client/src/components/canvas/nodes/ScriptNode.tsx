@@ -5,6 +5,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ScriptNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { copyText, copyTextWithToast } from "@/lib/clipboard";
 import {
   Sparkles, Loader2, ChevronDown, Clapperboard,
   Minus, Plus, Copy, FileText, Check, Wand2, MessageSquare,
@@ -510,43 +511,13 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
     // never length-capped.
     const text = (payload.content ?? "").trim();
     if (!text) { toast.error("脚本内容为空"); return; }
-    const markCopied = () => {
+    // 走共享 copyText（安全上下文优先 + 纯 HTTP 下 execCommand 兜底），成功才标记已复制。
+    if (await copyText(text)) {
       setCopied(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
       toast.success(`已复制全部 ${text.length} 字`);
-    };
-    // Preferred path: async Clipboard API (requires a secure context — HTTPS or
-    // localhost). On plain-HTTP / LAN access it's undefined, so fall back below.
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        markCopied();
-        return;
-      } catch {
-        // fall through to legacy path
-      }
-    }
-    // Legacy fallback: a hidden <textarea> + execCommand('copy') works over
-    // plain HTTP, so the "复制" button reliably copies the whole script even on
-    // a LAN/HTTP deployment.
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.top = "0";
-      ta.style.left = "0";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      ta.setSelectionRange(0, text.length);
-      const ok = document.execCommand("copy");
-      document.body.removeChild(ta);
-      if (!ok) throw new Error("execCommand copy returned false");
-      markCopied();
-    } catch {
+    } else {
       toast.error("复制失败，请手动选中文字复制（提示：HTTP 访问下浏览器限制剪贴板，建议改用 HTTPS）");
     }
   }, [payload.content]);
@@ -1342,12 +1313,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                         {dialogueResult}
                       </pre>
                       <button
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(dialogueResult);
-                            toast.success("对白清单已复制到剪贴板");
-                          } catch { toast.error("复制失败"); }
-                        }}
+                        onClick={() => void copyTextWithToast(dialogueResult, "对白清单已复制到剪贴板")}
                         className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-md text-[10px] font-medium w-full transition-all"
                         style={{ background: ADV_ACCENT_A(0.08), border: `1px solid ${ADV_ACCENT_A(0.3)}`, color: ADV_ACCENT, cursor: "pointer" }}
                       >
@@ -1399,12 +1365,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                           <p style={{ fontSize: 9.5, color: "var(--c-t1)", lineHeight: 1.6, fontFamily: "monospace", marginBottom: 4 }}>{scene.prompt}</p>
                           {scene.negPrompt && <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5 }}>−{scene.negPrompt}</p>}
                           <button
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(scene.prompt);
-                                toast.success(`场景 ${scene.sceneIndex} 提示词已复制`);
-                              } catch { toast.error("复制失败"); }
-                            }}
+                            onClick={() => void copyTextWithToast(scene.prompt, `场景 ${scene.sceneIndex} 提示词已复制`)}
                             className="nodrag flex items-center gap-1 px-2 py-0.5 rounded text-[9px] mt-1"
                             style={{ background: ADV_ACCENT_A(0.08), border: `1px solid ${ADV_ACCENT_A(0.25)}`, color: ADV_ACCENT, cursor: "pointer" }}
                           >

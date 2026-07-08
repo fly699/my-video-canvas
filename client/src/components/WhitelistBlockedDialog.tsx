@@ -2,6 +2,7 @@ import { ShieldOff, Copy, Check } from "lucide-react";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useWhitelistBlocked } from "../hooks/useWhitelistBlocked";
+import { copyText } from "@/lib/clipboard";
 
 const RESTRICTED_FEATURES = [
   "图像生成（Storyboard / Prompt / Image Gen 节点）",
@@ -21,12 +22,11 @@ export function WhitelistBlockedDialog() {
   const userId = meQuery.data?.id;
   const userEmail = meQuery.data?.email;
 
-  const copyText = async (text: string, key: "id" | "ip") => {
-    try {
-      await navigator.clipboard.writeText(text);
+  const copyIdent = async (text: string, key: "id" | "ip") => {
+    if (await copyText(text)) {
       setCopied(key);
       setTimeout(() => setCopied(null), 2000);
-    } catch { /* ignore */ }
+    }
   };
 
   return (
@@ -124,7 +124,7 @@ export function WhitelistBlockedDialog() {
                 value={String(userId)}
                 extraLabel={userEmail ? `（${userEmail}）` : ""}
                 copied={copied === "id"}
-                onCopy={() => copyText(String(userId), "id")}
+                onCopy={() => copyIdent(String(userId), "id")}
               />
             </div>
           ) : null}

@@ -52,6 +52,12 @@ interface ChatContextValue {
   /** Force-reload the active conversation's messages from the server (authoritative,
    *  no socket dependency). Used by AI 助手「新对话」after clearing history. */
   reloadActiveMessages: () => void;
+  /** 加载当前会话更早的历史消息（server 模式分页；serverless 本地已全量，无需分页）。 */
+  loadEarlierMessages: () => Promise<void>;
+  /** 是否可能还有更早的消息（上次分页取满一页即认为还有）。 */
+  hasMoreMessages: boolean;
+  /** 正在加载更早消息。 */
+  loadingEarlier: boolean;
   /** Admin-configured single-file size limit (MB). */
   maxFileMb: number;
   /** Whether the admin allows serverless (E2E) mode. */
@@ -66,6 +72,8 @@ const E2E_AVAILABLE = typeof crypto !== "undefined" && !!crypto.subtle;
 
 /** Serverless files above this size prompt the user to optionally skip encryption for speed. */
 export const SERVERLESS_ENCRYPT_PROMPT_BYTES = 100 * 1024 * 1024;
+/** 聊天历史分页每页条数（server 模式）。 */
+const MESSAGE_PAGE = 50;
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 export const useChat = () => {
@@ -106,6 +114,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
   const privateKeyRef = useRef<CryptoKey | null>(null);
@@ -520,17 +530,42 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const reloadMessages = useCallback(async (convId: number) => {
     const conv = conversations.find((c) => c.id === convId);
     setLoadingMessages(true);
+    setHasMoreMessages(false);
     try {
       if (conv?.mode === "serverless") {
         const local = await loadLocalHistory(convId);
-        setMessages(local);
+        setMessages(local); // serverless 历史本地全量，无分页
       } else {
-        const rows = await utils.chat.getMessages.fetch({ conversationId: convId, limit: 50 });
+        const rows = await utils.chat.getMessages.fetch({ conversationId: convId, limit: MESSAGE_PAGE });
         setMessages(rows as ChatWireMessage[]);
+        setHasMoreMessages(rows.length >= MESSAGE_PAGE); // 取满一页 → 可能还有更早
       }
     } catch { setMessages([]); }
     finally { setLoadingMessages(false); }
   }, [conversations, utils]);
+
+  /** 加载更早历史：以当前最旧消息 id 为游标向前取一页，去重后前插；不改变滚动锚点由 UI 负责。 */
+  const loadEarlierMessages = useCallback(async () => {
+    const convId = activeIdRef.current;
+    if (convId == null || loadingEarlier || !hasMoreMessages) return;
+    const conv = conversations.find((c) => c.id === convId);
+    if (conv?.mode === "serverless") { setHasMoreMessages(false); return; } // 本地已全量
+    let oldestId: number | undefined;
+    setMessages((prev) => { oldestId = prev[0]?.id; return prev; });
+    if (oldestId == null) return;
+    setLoadingEarlier(true);
+    try {
+      const older = await utils.chat.getMessages.fetch({ conversationId: convId, beforeId: oldestId, limit: MESSAGE_PAGE });
+      if (activeIdRef.current !== convId) return; // 期间切换了会话 → 丢弃
+      setMessages((prev) => {
+        const known = new Set(prev.map((m) => m.id));
+        const fresh = (older as ChatWireMessage[]).filter((m) => !known.has(m.id));
+        return [...fresh, ...prev];
+      });
+      setHasMoreMessages(older.length >= MESSAGE_PAGE);
+    } catch { /* 加载失败：保留可重试状态 */ }
+    finally { setLoadingEarlier(false); }
+  }, [conversations, utils, loadingEarlier, hasMoreMessages]);
 
   const selectConversation = useCallback((id: number) => {
     const prev = activeIdRef.current;
@@ -725,6 +760,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     messages, presence, typingUsers,
     connected, sendText, sendFile, emitTyping, loadingMessages,
     reloadActiveMessages: () => { if (activeIdRef.current) void reloadMessages(activeIdRef.current); },
+    loadEarlierMessages, hasMoreMessages, loadingEarlier,
     maxFileMb, serverlessAllowed, e2eAvailable: E2E_AVAILABLE,
   };
   return <ChatContext.Provider value={value}>{children}<Lightbox /></ChatContext.Provider>;

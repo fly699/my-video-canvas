@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { copyTextWithToast } from "@/lib/clipboard";
 import { Users, Mail, Link2, X, Trash2, Copy, Globe, Lock, ChevronDown } from "lucide-react";
 
 type Role = "viewer" | "editor" | "admin";
@@ -236,12 +237,12 @@ export function CollaborationPanel({ projectId, currentUserRole, publicReadAcces
                     link={l}
                     onCopyLong={() => {
                       const url = `${window.location.origin}/invite/${l.token}`;
-                      navigator.clipboard.writeText(url).then(() => toast.success("完整链接已复制"));
+                      void copyTextWithToast(url, "完整链接已复制");
                     }}
                     onCopyShort={() => {
                       if (!l.shortCode) return;
                       const url = `${window.location.origin}/i/${l.shortCode}`;
-                      navigator.clipboard.writeText(url).then(() => toast.success("短链接已复制"));
+                      void copyTextWithToast(url, "短链接已复制");
                     }}
                     onRevoke={() => revokeLinkMu.mutate({ projectId, linkId: l.id })}
                   />
