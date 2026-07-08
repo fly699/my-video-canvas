@@ -61,6 +61,7 @@ const DirectorEditor = lazy(() => import("../components/canvas/director/Director
 import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
 import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
+import { setBoxSelecting } from "../hooks/useBoxSelecting";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
 import { ModelQuickSwitch, MODEL_SWITCH_FIELD } from "../components/canvas/studio/ModelQuickSwitch";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS, defaultTargetHandle } from "../lib/connectionRules";
@@ -2397,6 +2398,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             elementsSelectable
             selectionMode={SelectionMode.Partial}
             selectionOnDrag={!isMobile}
+            onSelectionStart={() => setBoxSelecting(true)}
+            onSelectionEnd={() => setBoxSelecting(false)}
             panOnDrag={isMobile ? true : [1, 2]}
             panOnScroll
             panOnScrollMode={PanOnScrollMode.Free}

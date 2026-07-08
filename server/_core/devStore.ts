@@ -784,7 +784,9 @@ export function devListJoinableGroups(userId: number): ChatConversation[] {
     Array.from(chatMembersMap.values()).filter((m) => m.userId === userId).map((m) => m.conversationId),
   );
   return Array.from(chatConvMap.values())
-    .filter((c) => c.type === "group" && !memberConvIds.has(c.id))
+    // 与生产 listJoinableGroups 一致：排除系统房（system: 前缀 或 createdBy=null 的官方/系统房），
+    // 不进发现列表。
+    .filter((c) => c.type === "group" && !memberConvIds.has(c.id) && !(c.dmKey ?? "").startsWith("system:") && c.createdBy != null)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 

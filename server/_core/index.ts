@@ -225,7 +225,10 @@ async function startServer() {
 
   io.on("connection", (socket) => {
     const user = (socket.data as { user: User }).user;
-    markOnline(user.id); // 全局在线计数（供管理后台）；disconnect 里 markOffline
+    // 全局在线计数（供管理后台）：markOnline 与离线回收原子配对——用 once("disconnect") 紧邻登记，
+    // 即使后续 setup 同步抛错也不会「计数了却永不 markOffline」造成假在线累积。
+    markOnline(user.id);
+    socket.once("disconnect", () => markOffline(user.id));
     let currentProjectId: number | null = null;
     // Cache the user's effective role per joined project so the high-frequency
     // node:move stream doesn't run a DB query per event. The cache is
@@ -377,7 +380,6 @@ async function startServer() {
     });
 
     socket.on("disconnect", () => {
-      markOffline(user.id);
       unsubscribeBus();
       closeSessionsForSocket(socket.id);
       if (currentProjectId !== null) {
@@ -438,7 +440,9 @@ async function startServer() {
 
   chatNs.on("connection", (socket) => {
     const user = (socket.data as { user: User }).user;
-    markOnline(user.id); // 全局在线计数（/chat 命名空间；disconnect 里 markOffline）
+    // 全局在线计数（/chat 命名空间）：与离线回收原子配对，见主命名空间同款注释。
+    markOnline(user.id);
+    socket.once("disconnect", () => markOffline(user.id));
     const joined = new Set<number>();
     // Personal room for new-DM / invite notifications.
     socket.join(`chat:user:${user.id}`);
