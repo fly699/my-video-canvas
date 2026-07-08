@@ -317,6 +317,12 @@ function UsersPanel() {
   const utils = trpc.useUtils();
   const { user: me } = useAuth();
   const { data: users, isLoading } = trpc.admin.users.list.useQuery();
+  // #R5-2 用户量大时需搜索 / 状态筛选 / 分页（与同页日志面板一致）。纯客户端过滤（列表已全量拉取）。
+  const [userSearch, setUserSearch] = useState("");
+  const [userFilter, setUserFilter] = useState<"all" | "pending" | "disabled" | "admin">("all");
+  const [userPage, setUserPage] = useState(0);
+  const USERS_PER_PAGE = 20;
+  useEffect(() => { setUserPage(0); }, [userSearch, userFilter]);
   // 实时在线状态 + 今日在线时长：轮询 presence 统计，叠加到用户表。
   const { data: onlineStats } = trpc.admin.users.onlineStats.useQuery(undefined, { refetchInterval: 15000, refetchOnWindowFocus: true });
   const statMap = new Map((onlineStats ?? []).map((s) => [s.userId, s]));
@@ -375,6 +381,20 @@ function UsersPanel() {
   };
   const pendingCount = (users ?? []).filter((u) => (u as { approved?: boolean }).approved === false).length;
 
+  // 搜索(姓名/邮箱/ID) + 状态筛选 + 分页。
+  const q = userSearch.trim().toLowerCase();
+  const filteredUsers = (users ?? []).filter((u) => {
+    if (userFilter === "pending" && (u as { approved?: boolean }).approved !== false) return false;
+    if (userFilter === "disabled" && !u.disabled) return false;
+    if (userFilter === "admin" && (u.adminLevel ?? 0) < 1) return false;
+    if (!q) return true;
+    return (u.name ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q) || String(u.id).includes(q) || (u.openId ?? "").toLowerCase().includes(q);
+  });
+  const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+  const clampedUserPage = Math.min(userPage, totalUserPages - 1);
+  const pagedUsers = filteredUsers.slice(clampedUserPage * USERS_PER_PAGE, (clampedUserPage + 1) * USERS_PER_PAGE);
+  const FILTERS: [typeof userFilter, string][] = [["all", "全部"], ["pending", "待审批"], ["disabled", "已冻结"], ["admin", "管理员"]];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={cardStyle}>
@@ -396,6 +416,29 @@ function UsersPanel() {
             : "「管理员级别」仅超级管理员可修改。"}
         </p>
       </div>
+      {/* 搜索 + 状态筛选 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <input
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          placeholder="搜索 姓名 / 邮箱 / ID…"
+          style={{ flex: "1 1 220px", minWidth: 160, fontSize: 12.5, padding: "7px 11px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}
+        />
+        <div style={{ display: "flex", gap: 5 }}>
+          {FILTERS.map(([v, lb]) => {
+            const on = userFilter === v;
+            const cnt = v === "all" ? (users?.length ?? 0) : v === "pending" ? pendingCount : v === "disabled" ? (users ?? []).filter((u) => u.disabled).length : (users ?? []).filter((u) => (u.adminLevel ?? 0) >= 1).length;
+            return (
+              <button key={v} onClick={() => setUserFilter(v)}
+                style={{ fontSize: 12, fontWeight: on ? 700 : 600, padding: "6px 11px", borderRadius: 8, cursor: "pointer",
+                  background: on ? "oklch(0.65 0.19 285 / 0.16)" : "var(--c-input)", border: `1px solid ${on ? "oklch(0.65 0.19 285 / 0.45)" : "var(--c-bd2)"}`, color: on ? "oklch(0.72 0.16 285)" : "var(--c-t3)" }}>
+                {lb} {cnt}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div style={{ ...cardStyle, padding: 0, overflowX: "auto" }}>
         {isLoading ? (
           <div style={{ padding: 16, fontSize: 12, color: "var(--c-t3)" }}>加载中…</div>
@@ -408,7 +451,7 @@ function UsersPanel() {
               </tr>
             </thead>
             <tbody>
-              {(users ?? []).map((u) => {
+              {pagedUsers.map((u) => {
                 const label = u.name || u.email || ("#" + u.id);
                 const isSelf = u.id === me?.id;
                 return (
@@ -485,11 +528,20 @@ function UsersPanel() {
                   </tr>
                 );
               })}
-              {(users?.length ?? 0) === 0 && <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "var(--c-t3)" }}>暂无用户</td></tr>}
+              {filteredUsers.length === 0 && <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "var(--c-t3)", padding: "20px 0" }}>{(users?.length ?? 0) === 0 ? "暂无用户" : "无匹配用户，试试调整搜索或筛选"}</td></tr>}
             </tbody>
           </table>
         )}
       </div>
+
+      {/* 分页 */}
+      {!isLoading && filteredUsers.length > USERS_PER_PAGE && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 12, color: "var(--c-t3)" }}>
+          <button onClick={() => setUserPage((p) => Math.max(0, p - 1))} disabled={clampedUserPage === 0} style={btnSecondary(clampedUserPage === 0)}>‹ 上一页</button>
+          <span>第 {clampedUserPage + 1} / {totalUserPages} 页 · 共 {filteredUsers.length} 人</span>
+          <button onClick={() => setUserPage((p) => Math.min(totalUserPages - 1, p + 1))} disabled={clampedUserPage >= totalUserPages - 1} style={btnSecondary(clampedUserPage >= totalUserPages - 1)}>下一页 ›</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -508,6 +560,10 @@ function AuthPanel() {
   const importTunnel = trpc.admin.auth.importFromTunnel.useMutation({
     onSuccess: (r) => { utils.admin.auth.getSettings.invalidate(); toast.success(r.hasPass ? "已读取公网隧道的 SMTP 配置（含密码）" : "已读取公网隧道的 SMTP 配置（隧道未设密码）"); },
     onError: (e) => toast.error(e.message),
+  });
+  const testEmail = trpc.admin.auth.testEmail.useMutation({
+    onSuccess: (r) => toast.success(`测试邮件已发送到 ${r.to}，请查收`),
+    onError: (e) => toast.error("测试邮件发送失败：" + e.message),
   });
   type AuthForm = { emailVerificationEnabled: boolean; registrationApprovalEnabled: boolean; smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpPass: string; smtpFrom: string; smtpPassSet: boolean };
   const [form, setForm] = useState<AuthForm | null>(null);
@@ -611,10 +667,18 @@ function AuthPanel() {
         <div style={{ fontSize: 12, color: "oklch(0.7 0.17 60)" }}>⚠ 已启用验证但未配置 SMTP，验证码将无法发送——请先填写 SMTP 服务器。</div>
       )}
 
-      <button onClick={onSave} disabled={save.isPending}
-        className="nodrag" style={{ alignSelf: "flex-start", padding: "9px 20px", borderRadius: 8, border: "none", background: "oklch(0.58 0.22 285 / 0.9)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: save.isPending ? "wait" : "pointer" }}>
-        {save.isPending ? "保存中…" : "保存设置"}
-      </button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button onClick={onSave} disabled={save.isPending}
+          className="nodrag" style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "oklch(0.58 0.22 285 / 0.9)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: save.isPending ? "wait" : "pointer" }}>
+          {save.isPending ? "保存中…" : "保存设置"}
+        </button>
+        {/* 发送测试邮件到当前管理员，验证 SMTP 是否可用（与存储连通性测试对齐） */}
+        <button onClick={() => testEmail.mutate()} disabled={testEmail.isPending || !form.smtpHost.trim()}
+          className="nodrag" title={!form.smtpHost.trim() ? "请先填写并保存 SMTP 服务器" : "发送一封测试邮件到当前管理员邮箱"}
+          style={{ padding: "9px 16px", borderRadius: 8, border: "1px solid var(--c-bd2)", background: "transparent", color: (testEmail.isPending || !form.smtpHost.trim()) ? "var(--c-t4)" : "var(--c-t2)", fontWeight: 600, fontSize: 13, cursor: (testEmail.isPending || !form.smtpHost.trim()) ? "not-allowed" : "pointer" }}>
+          {testEmail.isPending ? "发送中…" : "✉ 发送测试邮件"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -2278,10 +2342,15 @@ function ChatMessageSearchPanel() {
   const [convId, setConvId] = useState("");
   const [userId, setUserId] = useState("");
   const [submitted, setSubmitted] = useState<{ keyword?: string; conversationId?: number; userId?: number } | null>(null);
+  const [page, setPage] = useState(0);
+  const PAGE = 50;
   const q = trpc.admin.chat.searchMessages.useQuery(
-    { ...submitted, limit: 50, offset: 0 },
+    { ...submitted, limit: PAGE, offset: page * PAGE },
     { enabled: submitted !== null },
   );
+  const runSearch = () => { setPage(0); setSubmitted({ keyword: keyword || undefined, conversationId: convId ? Number(convId) : undefined, userId: userId ? Number(userId) : undefined }); };
+  const rowCount = q.data?.rows.length ?? 0;
+  const hasMore = rowCount === PAGE; // 满页 → 可能还有下一页
   return (
     <div style={chatCard}>
       <h3 style={chatCardTitle}>消息检索（仅服务器模式可见明文）</h3>
@@ -2289,9 +2358,19 @@ function ChatMessageSearchPanel() {
         <input placeholder="关键词" value={keyword} onChange={(e) => setKeyword(e.target.value)} style={chatInput} />
         <input placeholder="会话ID" value={convId} onChange={(e) => setConvId(e.target.value)} style={{ ...chatInput, width: 100 }} />
         <input placeholder="用户ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ ...chatInput, width: 100 }} />
-        <button onClick={() => setSubmitted({ keyword: keyword || undefined, conversationId: convId ? Number(convId) : undefined, userId: userId ? Number(userId) : undefined })} style={chatPrimarySm}>搜索</button>
+        <button onClick={runSearch} disabled={q.isFetching} style={{ ...chatPrimarySm, opacity: q.isFetching ? 0.6 : 1 }}>{q.isFetching ? "搜索中…" : "搜索"}</button>
       </div>
+      {q.isFetching && submitted && <p style={chatDim}>搜索中…</p>}
       {q.data?.encrypted && <p style={chatDim}>🔒 该会话为端到端加密，服务器无内容，仅可见元数据。</p>}
+      {q.data && !q.data.encrypted && rowCount > 0 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, fontSize: 11.5, color: "var(--c-t3)" }}>
+          <span>第 {page + 1} 页 · 本页 {rowCount} 条{hasMore ? "（可能有更多）" : ""}</span>
+          <span style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0 || q.isFetching} style={paginBtn}>‹ 上一页</button>
+            <button onClick={() => setPage((p) => p + 1)} disabled={!hasMore || q.isFetching} style={paginBtn}>下一页 ›</button>
+          </span>
+        </div>
+      )}
       {q.data && !q.data.encrypted && (
         <table style={chatTable}>
           <thead><tr><ChatTh>时间</ChatTh><ChatTh>会话</ChatTh><ChatTh>发送者</ChatTh><ChatTh>内容</ChatTh></tr></thead>
@@ -3087,6 +3166,14 @@ function AssetsAdminPanel() {
           );
         })}
       </div>
+      {/* #R5-8 空态：与本页其它面板一致的居中虚线框，替代此前的一片空白 */}
+      {!isFetching && list.length === 0 && (
+        <div style={{ textAlign: "center", padding: "32px 12px", border: "1px dashed var(--c-bd2)", borderRadius: 12, color: "var(--c-t3)" }}>
+          <ImageIcon style={{ width: 26, height: 26, opacity: 0.45, margin: "0 auto 8px" }} />
+          <div style={{ fontSize: 13 }}>暂无匹配素材</div>
+          <div style={{ fontSize: 11.5, color: "var(--c-t4)", marginTop: 3 }}>调整筛选条件，或等用户上传 / 生成</div>
+        </div>
+      )}
       {preview && <AdminAssetLightbox asset={preview} onClose={() => setPreview(null)} />}
     </div>
   );

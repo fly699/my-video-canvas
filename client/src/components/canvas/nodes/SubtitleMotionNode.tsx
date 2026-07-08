@@ -4,6 +4,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SubtitleMotionNodeData, SubtitleEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { confirmDialog } from "@/components/ui/dialogService";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -270,7 +271,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
                   <label style={{ ...labelStyle, marginBottom: 0 }}>字幕条目（{payload.entries!.length}条）</label>
-                  <button onClick={() => update({ entries: [] })} disabled={isTranscribing || isBurning}
+                  <button onClick={async () => { if (await confirmDialog({ title: `清空全部 ${payload.entries!.length} 条字幕？`, message: "此操作不可撤销。", danger: true })) update({ entries: [] }); }} disabled={isTranscribing || isBurning}
                     className="nodrag flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded"
                     style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: isTranscribing || isBurning ? "not-allowed" : "pointer", opacity: isTranscribing || isBurning ? 0.5 : 1 }}>
                     <X style={{ width: 8, height: 8 }} /> 清空
@@ -374,6 +375,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
 
             {/* Burn button */}
             <button onClick={handleBurn} disabled={isBurning || isTranscribing || !(payload.entries?.length)}
+              title={!(payload.entries?.length) ? "请先转录或手动添加字幕条目" : isTranscribing ? "转录进行中…" : isBurning ? "烧录进行中…" : undefined}
               className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
               style={{ background: isBurning || isTranscribing || !(payload.entries?.length) ? "var(--c-surface)" : accentA(0.15), border: `1px solid ${isBurning || isTranscribing || !(payload.entries?.length) ? BORDER_DEFAULT : accentA(0.5)}`, color: isBurning || isTranscribing || !(payload.entries?.length) ? "var(--c-t4)" : accent, cursor: isBurning || isTranscribing || !(payload.entries?.length) ? "not-allowed" : "pointer" }}>
               {isBurning ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Mic2 style={{ width: 12, height: 12 }} />}

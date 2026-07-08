@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { X, Search, Users, MessageSquare } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, Search, Users, MessageSquare, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useChat } from "@/hooks/useChat";
 import { toast } from "sonner";
@@ -18,6 +18,13 @@ export function NewConversationDialog({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState("");
   const searchQuery = trpc.chat.searchUsers.useQuery({ q }, { enabled: q.trim().length > 0 });
   const startDm = trpc.chat.startDm.useMutation();
+
+  // #R5-6 Esc 关闭（此前只支持点遮罩/X）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function onCreateRoom() {
     if (!title.trim()) return;
@@ -79,7 +86,10 @@ export function NewConversationDialog({ onClose }: { onClose: () => void }) {
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索用户名或邮箱" style={{ ...inputStyle, paddingLeft: 32 }} />
             </div>
             <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
-              {searchQuery.data?.length === 0 && q && <div style={{ fontSize: 13, color: "var(--c-t3)", padding: 8 }}>未找到用户</div>}
+              {q.trim() && searchQuery.isFetching && (
+                <div style={{ fontSize: 13, color: "var(--c-t3)", padding: 8, display: "inline-flex", alignItems: "center", gap: 6 }}><Loader2 size={13} className="animate-spin" /> 搜索中…</div>
+              )}
+              {!searchQuery.isFetching && searchQuery.data?.length === 0 && q && <div style={{ fontSize: 13, color: "var(--c-t3)", padding: 8 }}>未找到用户</div>}
               {searchQuery.data?.map((u) => (
                 <button key={u.id} onClick={() => onStartDm(u.id)} style={userRow}>
                   <span style={{ fontWeight: 500 }}>{u.name ?? `用户${u.id}`}</span>

@@ -4,6 +4,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SubtitleNodeData, SubtitleEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { confirmDialog } from "@/components/ui/dialogService";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -361,7 +362,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                 <div className="flex items-center justify-between">
                   <label style={{ ...labelStyle, marginBottom: 0 }}>字幕条目（{payload.entries!.length}条）</label>
                   <button
-                    onClick={() => update({ entries: [] })}
+                    onClick={async () => { if (await confirmDialog({ title: `清空全部 ${payload.entries!.length} 条字幕？`, message: "此操作不可撤销。", danger: true })) update({ entries: [] }); }}
                     className="nodrag flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded"
                     style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}
                   >
@@ -370,7 +371,9 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                   </button>
                 </div>
                 <div className="flex flex-col gap-1 max-h-48 overflow-y-auto nodrag">
-                  {payload.entries!.map((entry, i) => (
+                  {payload.entries!.map((entry, i) => {
+                    const badTime = entry.end <= entry.start; // #R6-7 结束需晚于开始，否则烧录时被静默剔除
+                    return (
                     <div
                       key={i}
                       className="flex items-start gap-1.5 p-2 rounded-lg"
@@ -389,10 +392,11 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                           value={entry.end.toFixed(2)}
                           onChange={(e) => handleUpdateEntry(i, { end: Number(e.target.value) })}
                           className="nodrag"
-                          style={{ ...fieldStyle, padding: "2px 6px", fontSize: 10, fontFamily: "monospace", width: "100%" }}
+                          title={badTime ? "结束时间需晚于开始时间，否则该条会被剔除" : undefined}
+                          style={{ ...fieldStyle, padding: "2px 6px", fontSize: 10, fontFamily: "monospace", width: "100%", ...(badTime ? { borderColor: "oklch(0.62 0.20 25)", color: "oklch(0.68 0.20 25)" } : {}) }}
                         />
-                        <span style={{ fontSize: 9, color: "var(--c-t4)", textAlign: "center" }}>
-                          {formatTime(entry.start)} → {formatTime(entry.end)}
+                        <span style={{ fontSize: 9, color: badTime ? "oklch(0.66 0.20 25)" : "var(--c-t4)", textAlign: "center" }}>
+                          {badTime ? "结束需晚于开始" : `${formatTime(entry.start)} → ${formatTime(entry.end)}`}
                         </span>
                       </div>
                       <input
@@ -410,7 +414,8 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                         <Trash2 style={{ width: 10, height: 10 }} />
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -525,6 +530,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
             <button
               onClick={handleBurnIn}
               disabled={isBurning || isTranscribing || !(payload.entries?.length)}
+              title={!(payload.entries?.length) ? "请先转录或手动添加字幕条目" : isTranscribing ? "转录进行中…" : isBurning ? "烧录进行中…" : undefined}
               className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
               style={{
                 background: isBurning || isTranscribing || !(payload.entries?.length) ? "var(--c-surface)" : accentA(0.15),

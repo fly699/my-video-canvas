@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play, Filter, ChevronDown, ChevronUp, Search } from "lucide-react";
 import { ImageLightbox } from "./ImageLightbox";
-import { uploadAssetFile } from "@/lib/assetUpload";
+import { uploadAssetFile, MAX_MB } from "@/lib/assetUpload";
+import { confirmDialog } from "@/components/ui/dialogService";
 import { downloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 
@@ -25,6 +26,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const { addNode, updateNodeData } = useCanvasStore();
   const reactFlow = useReactFlow();
   const [uploading, setUploading] = useState(false);
+  const [uploadProg, setUploadProg] = useState<{ idx: number; total: number; pct: number } | null>(null); // #R6-4 上传进度
   const [dragOver, setDragOver] = useState(false);
   const [scope, setScope] = useState<"project" | "all">("project");
   // 复选：空集合 = 全部。按类型 / 来源各自多选。
@@ -75,6 +77,11 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const deleteMutation = trpc.assets.delete.useMutation({
     onSuccess: () => { toast.success("素材已删除"); refetch(); },
   });
+  // #R6-3 批量删除走一次 deleteMany：一条 toast、一次刷新（此前 forEach 单删 → N 条 toast+N 次刷新）。
+  const deleteManyMutation = trpc.assets.deleteMany.useMutation({
+    onSuccess: (r) => { toast.success(`已删除 ${(r as { count?: number })?.count ?? selected.size} 个素材`); setSelected(new Set()); refetch(); },
+    onError: (e) => toast.error("删除失败：" + e.message),
+  });
 
   const importMutation = trpc.assets.importFromUrl.useMutation({
     onSuccess: () => { toast.success("已从链接导入"); refetch(); },
@@ -95,12 +102,13 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
       setUploading(true);
       (async () => {
         let ok = 0;
-        for (const f of list) {
-          try { if (await uploadAssetFile(utils.client, f, projectId)) ok++; } catch { /* per-file, keep going */ }
+        for (let i = 0; i < list.length; i++) {
+          setUploadProg({ idx: i + 1, total: list.length, pct: 0 });
+          try { if (await uploadAssetFile(utils.client, list[i], projectId, (pct) => setUploadProg({ idx: i + 1, total: list.length, pct }))) ok++; } catch { /* per-file, keep going */ }
         }
         if (ok > 0) { toast.success(list.length === 1 ? "素材上传成功" : `成功上传 ${ok} / ${list.length} 个素材`); refetch(); }
         else toast.error("上传失败");
-      })().finally(() => setUploading(false));
+      })().finally(() => { setUploading(false); setUploadProg(null); });
     },
     [projectId, utils, refetch]
   );
@@ -264,7 +272,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
-            title="点击、拖拽或粘贴上传（可多选）· 图片 / 视频 / 音频 · 最大 5000MB"
+            title={`点击、拖拽或粘贴上传（可多选）· 图片 / 视频 / 音频 · 最大 ${MAX_MB}MB`}
             className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 px-2 cursor-pointer transition-all flex-1 min-w-0"
             style={{
               border: `1.5px dashed ${dragOver ? "oklch(0.65 0.18 60 / 0.6)" : "var(--c-bd2)"}`,
@@ -277,8 +285,15 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
               <Upload className="w-3.5 h-3.5 flex-shrink-0" style={{ color: dragOver ? "oklch(0.65 0.18 60)" : "var(--c-t4)" }} />
             )}
             <span className="text-[11px] font-medium truncate" style={{ color: uploading ? "oklch(0.65 0.18 60)" : "var(--c-t3)" }}>
-              {uploading ? "上传中..." : "点击 / 拖拽 / 粘贴上传"}
+              {uploading
+                ? (uploadProg ? `上传中 ${uploadProg.total > 1 ? `${uploadProg.idx}/${uploadProg.total} · ` : ""}${uploadProg.pct}%` : "上传中...")
+                : "点击 / 拖拽 / 粘贴上传"}
             </span>
+            {uploading && uploadProg && (
+              <span className="flex-shrink-0" style={{ width: 44, height: 4, borderRadius: 2, background: "var(--c-bd1)", overflow: "hidden" }}>
+                <span style={{ display: "block", height: "100%", width: `${uploadProg.pct}%`, background: "oklch(0.65 0.18 60)", borderRadius: 2, transition: "width 120ms" }} />
+              </span>
+            )}
           </div>
           <button
             onClick={handleImportUrl}
@@ -494,10 +509,10 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             下载
           </button>
           <button
-            onClick={() => {
-              if (confirm(`确认删除选中的 ${selected.size} 个素材？`)) {
-                selectedAssets.forEach((a) => deleteMutation.mutate({ id: a.id }));
-                setSelected(new Set());
+            disabled={deleteManyMutation.isPending}
+            onClick={async () => {
+              if (await confirmDialog({ title: `删除选中的 ${selected.size} 个素材？`, message: "删除后将从素材库移除。", danger: true })) {
+                deleteManyMutation.mutate({ ids: selectedAssets.map((a) => a.id) });
               }
             }}
             className="text-[11px] px-2 py-1 rounded-md transition-all"

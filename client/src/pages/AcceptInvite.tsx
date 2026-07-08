@@ -21,6 +21,7 @@ export default function AcceptInvite() {
   const { isAuthenticated, loading } = useAuth();
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [errMsg, setErrMsg] = useState<string>("");
+  const [retryTick, setRetryTick] = useState(0); // #R5-7 重试：递增即重跑 accept（瞬时网络失败可救）
 
   const acceptLong = trpc.collaboration.acceptShareLink.useMutation();
   const acceptShort = trpc.collaboration.acceptShareLinkShort.useMutation();
@@ -50,7 +51,7 @@ export default function AcceptInvite() {
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, loading, tokenOrCode, isShort]);
+  }, [isAuthenticated, loading, tokenOrCode, isShort, retryTick]);
 
   return (
     <div className="w-screen h-screen flex flex-col items-center justify-center gap-4" style={{ background: "var(--c-base)" }}>
@@ -70,11 +71,18 @@ export default function AcceptInvite() {
         <>
           <XCircle className="w-8 h-8" style={{ color: "oklch(0.62 0.20 25)" }} />
           <p className="text-sm" style={{ color: "var(--c-t2)" }}>{errMsg}</p>
-          <button
-            onClick={() => navigate("/")}
-            className="mt-2 px-4 py-1.5 rounded-lg text-xs"
-            style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}
-          >返回首页</button>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={() => { setStatus("loading"); setErrMsg(""); setRetryTick((t) => t + 1); }}
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold"
+              style={{ background: "oklch(0.62 0.2 285)", border: "none", color: "#fff" }}
+            >↻ 重试</button>
+            <button
+              onClick={() => navigate("/")}
+              className="px-4 py-1.5 rounded-lg text-xs"
+              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}
+            >返回首页</button>
+          </div>
         </>
       )}
     </div>

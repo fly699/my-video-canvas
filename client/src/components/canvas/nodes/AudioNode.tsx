@@ -1408,7 +1408,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               <input type="checkbox" checked={payload.sfxLoop ?? false} onChange={(e) => update("sfxLoop", e.target.checked)} style={{ accentColor: accent, margin: 0 }} />
               无缝循环（氛围声）
             </label>
-            <GenerateBtn disabled={!payload.sfxPrompt?.trim() || sfxMutation.isPending} loading={sfxMutation.isPending} onClick={handleGenerateSFX} label="生成音效" />
+            <GenerateBtn disabled={!payload.sfxPrompt?.trim() || sfxMutation.isPending} loading={sfxMutation.isPending} onClick={handleGenerateSFX} label="生成音效"
+              costLabel={costEstimateLabel({ credits: 0.24 * Math.max(0.5, payload.sfxDuration ?? 5), unit: "点", approx: true })} />
           </>
         )}
 

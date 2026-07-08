@@ -128,6 +128,23 @@ export function isConnectionValid(
   return targets != null && targets.includes(targetType);
 }
 
+// 句柄级校验：剪辑(clip)有两个语义不同的输入桩 video-in / audio-in。只按节点类型校验会让
+// 音频源落到 video-in 也判「合法」（两桩同时亮绿、可落错），运行时才报「未找到视频输入」。
+// 这里按目标桩语义细分：audio-in 只收音频源；video-in 只收视频源(非音频)。其它目标/桩沿用 isConnectionValid。
+export function isHandleConnectionValid(
+  sourceType: NodeType | null,
+  targetType: NodeType | null,
+  targetHandle?: string | null,
+  sourceIsAudio?: boolean,
+): boolean {
+  if (!isConnectionValid(sourceType, targetType)) return false;
+  if (targetType === "clip" && (targetHandle === "audio-in" || targetHandle === "video-in")) {
+    const isAudioSrc = sourceType === "audio" || !!sourceIsAudio;
+    return targetHandle === "audio-in" ? isAudioSrc : !isAudioSrc;
+  }
+  return true;
+}
+
 // 自动建边/自动连线（拖到空白处建节点、快捷创建下游节点、模板库放置等）时，目标节点
 // 的默认「输入桩」id。绝大多数节点用 BaseNode 自带的单一 `input` 桩；唯独剪辑(clip)节点
 // 用 showHandles={false} 自绘了两个独立输入 `video-in` / `audio-in`，并无 `input` 桩。

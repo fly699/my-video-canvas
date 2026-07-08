@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { isConnectionValid, getCompatibleTargets, getCompatibleSources, defaultTargetHandle } from "./connectionRules";
+import { isConnectionValid, isHandleConnectionValid, getCompatibleTargets, getCompatibleSources, defaultTargetHandle } from "./connectionRules";
+import { computeClipHandleState } from "../hooks/useConnectingStore";
 
 describe("defaultTargetHandle", () => {
   it("剪辑(clip)无 input 桩：视频/素材源默认连 video-in", () => {
@@ -197,5 +198,43 @@ describe("isConnectionValid", () => {
   it("分镜关键帧可进图像编辑；素材(视频)可连叠加", () => {
     expect(isConnectionValid("storyboard", "image_edit")).toBe(true);
     expect(isConnectionValid("asset", "overlay")).toBe(true);
+  });
+});
+
+describe("isHandleConnectionValid — 剪辑 video-in / audio-in 句柄级校验", () => {
+  it("音频源只对 audio-in 合法，不得落 video-in", () => {
+    expect(isHandleConnectionValid("audio", "clip", "audio-in")).toBe(true);
+    expect(isHandleConnectionValid("audio", "clip", "video-in")).toBe(false);
+  });
+  it("视频源只对 video-in 合法，不得落 audio-in", () => {
+    expect(isHandleConnectionValid("video_task", "clip", "video-in")).toBe(true);
+    expect(isHandleConnectionValid("video_task", "clip", "audio-in")).toBe(false);
+  });
+  it("音频素材(sourceIsAudio) 对齐 audio-in", () => {
+    expect(isHandleConnectionValid("asset", "clip", "audio-in", true)).toBe(true);
+    expect(isHandleConnectionValid("asset", "clip", "video-in", true)).toBe(false);
+    // 视频素材(默认非音频)反过来
+    expect(isHandleConnectionValid("asset", "clip", "video-in", false)).toBe(true);
+    expect(isHandleConnectionValid("asset", "clip", "audio-in", false)).toBe(false);
+  });
+  it("非剪辑目标不受句柄细分影响（沿用类型校验）", () => {
+    expect(isHandleConnectionValid("prompt", "image_gen", "input")).toBe(true);
+    expect(isHandleConnectionValid("audio", "image_gen", "input")).toBe(false); // 类型本就不合法
+  });
+});
+
+describe("computeClipHandleState — 拖拽时剪辑两桩分辨高亮", () => {
+  const drag = (fromType: Parameters<typeof computeClipHandleState>[0]["fromType"], fromIsAudio = false) =>
+    ({ fromType, fromId: "src", fromHandleType: "source" as const, fromIsAudio });
+  it("拖音频源：audio-in=valid、video-in=muted", () => {
+    expect(computeClipHandleState(drag("audio"), "clip1", "audio-in")).toBe("valid");
+    expect(computeClipHandleState(drag("audio"), "clip1", "video-in")).toBe("muted");
+  });
+  it("拖视频源：video-in=valid、audio-in=muted", () => {
+    expect(computeClipHandleState(drag("video_task"), "clip1", "video-in")).toBe("valid");
+    expect(computeClipHandleState(drag("video_task"), "clip1", "audio-in")).toBe("muted");
+  });
+  it("拖不兼容源：invalid", () => {
+    expect(computeClipHandleState(drag("script"), "clip1", "video-in")).toBe("invalid");
   });
 });

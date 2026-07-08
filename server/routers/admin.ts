@@ -14,6 +14,7 @@ import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { reloadBridgeMcpConfig } from "../_core/bridgeMcp";
 import { bridgeLocalUrl } from "../_core/claudeBridge";
 import { buildConfigChecklist } from "../_core/configChecklist";
+import { sendTestEmail } from "../_core/verificationEmail";
 import { applyTunnelEnabled, getTunnelRuntimeStatus, reloadTunnelGate, getTunnelListenerPort, getTunnelLog, getTunnelThroughput, getTunnelPid } from "../_core/tunnel";
 import { detectGatewayForSource, detectLineForSource, applyTunnelRoutes, removeTunnelRoutes, tunnelRouteStatus, localInterfaceIps, isLocalInterfaceIp, tunnelEgressInfo, fetchPublicEgressIp, fetchLinePublicEgressIp, tunnelDiagnose } from "../_core/tunnelRoute";
 import { cloudflaredInfo, startCloudflaredDownload } from "../_core/cloudflaredBin";
@@ -428,6 +429,15 @@ export const adminRouter = router({
         await db.setAuthSettings(patch);
         return { success: true };
       }),
+    // 发送一封测试邮件到当前管理员的邮箱，验证 SMTP 配置是否可用（与存储连通性测试对齐）。
+    testEmail: managerProc.mutation(async ({ ctx }) => {
+      const to = ctx.user?.email?.trim();
+      if (!to) throw new TRPCError({ code: "BAD_REQUEST", message: "当前管理员账号没有邮箱，无法发送测试邮件" });
+      const s = await db.getAuthSettings();
+      const r = await sendTestEmail(s, to);
+      if (!r.ok) throw new TRPCError({ code: "BAD_REQUEST", message: r.error || "发送失败" });
+      return { success: true, to } as const;
+    }),
     // One-click: copy the SMTP account configured on the 公网隧道 page into the
     // auth settings (server-side, so the password is shared without ever leaving
     // the server). Lets both features reuse a single SMTP account.

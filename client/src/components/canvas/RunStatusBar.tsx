@@ -31,7 +31,9 @@ export function RunStatusBar({
   const item: React.CSSProperties = { display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600 };
   const pillBtn: React.CSSProperties = { ...item, cursor: "pointer", padding: "2px 8px", borderRadius: 6, lineHeight: 1 };
   return (
-    <div className="flex items-center gap-2.5 px-2.5 h-7 rounded-lg flex-shrink-0" style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd2)" }}>
+    <div role="status" aria-live={failed > 0 ? "assertive" : "polite"}
+      aria-label={`运行状态：${running} 生成中，${pending} 排队，${done} 完成，${failed} 失败`}
+      className="flex items-center gap-2.5 px-2.5 h-7 rounded-lg flex-shrink-0" style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd2)" }}>
       {runState.running && (
         <span style={{ ...item, color: "oklch(0.72 0.18 250)" }}>
           <Loader2 className="w-3 h-3 animate-spin" />{running} 生成中
