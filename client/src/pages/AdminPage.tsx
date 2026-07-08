@@ -561,6 +561,10 @@ function AuthPanel() {
     onSuccess: (r) => { utils.admin.auth.getSettings.invalidate(); toast.success(r.hasPass ? "已读取公网隧道的 SMTP 配置（含密码）" : "已读取公网隧道的 SMTP 配置（隧道未设密码）"); },
     onError: (e) => toast.error(e.message),
   });
+  const testEmail = trpc.admin.auth.testEmail.useMutation({
+    onSuccess: (r) => toast.success(`测试邮件已发送到 ${r.to}，请查收`),
+    onError: (e) => toast.error("测试邮件发送失败：" + e.message),
+  });
   type AuthForm = { emailVerificationEnabled: boolean; registrationApprovalEnabled: boolean; smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpPass: string; smtpFrom: string; smtpPassSet: boolean };
   const [form, setForm] = useState<AuthForm | null>(null);
   useEffect(() => {
@@ -663,10 +667,18 @@ function AuthPanel() {
         <div style={{ fontSize: 12, color: "oklch(0.7 0.17 60)" }}>⚠ 已启用验证但未配置 SMTP，验证码将无法发送——请先填写 SMTP 服务器。</div>
       )}
 
-      <button onClick={onSave} disabled={save.isPending}
-        className="nodrag" style={{ alignSelf: "flex-start", padding: "9px 20px", borderRadius: 8, border: "none", background: "oklch(0.58 0.22 285 / 0.9)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: save.isPending ? "wait" : "pointer" }}>
-        {save.isPending ? "保存中…" : "保存设置"}
-      </button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button onClick={onSave} disabled={save.isPending}
+          className="nodrag" style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "oklch(0.58 0.22 285 / 0.9)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: save.isPending ? "wait" : "pointer" }}>
+          {save.isPending ? "保存中…" : "保存设置"}
+        </button>
+        {/* 发送测试邮件到当前管理员，验证 SMTP 是否可用（与存储连通性测试对齐） */}
+        <button onClick={() => testEmail.mutate()} disabled={testEmail.isPending || !form.smtpHost.trim()}
+          className="nodrag" title={!form.smtpHost.trim() ? "请先填写并保存 SMTP 服务器" : "发送一封测试邮件到当前管理员邮箱"}
+          style={{ padding: "9px 16px", borderRadius: 8, border: "1px solid var(--c-bd2)", background: "transparent", color: (testEmail.isPending || !form.smtpHost.trim()) ? "var(--c-t4)" : "var(--c-t2)", fontWeight: 600, fontSize: 13, cursor: (testEmail.isPending || !form.smtpHost.trim()) ? "not-allowed" : "pointer" }}>
+          {testEmail.isPending ? "发送中…" : "✉ 发送测试邮件"}
+        </button>
+      </div>
     </div>
   );
 }

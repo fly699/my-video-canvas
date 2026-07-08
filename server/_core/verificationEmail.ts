@@ -35,3 +35,30 @@ export async function sendVerificationEmail(cfg: AuthSettings, to: string, code:
     return { ok: false, error: (e as Error).message.slice(0, 200) };
   }
 }
+
+/**
+ * 发送一封「配置测试」邮件，验证 SMTP 是否可用（与存储连通性测试对齐，「配置即验证」）。
+ * 复用与验证码邮件相同的 transport 配置。
+ */
+export async function sendTestEmail(cfg: AuthSettings, to: string): Promise<{ ok: boolean; error?: string }> {
+  if (!cfg.smtpHost.trim()) return { ok: false, error: "未配置 SMTP 服务器" };
+  if (!to.trim()) return { ok: false, error: "收件邮箱为空" };
+  try {
+    const transport = nodemailer.createTransport({
+      host: cfg.smtpHost.trim(),
+      port: cfg.smtpPort || 587,
+      secure: cfg.smtpSecure,
+      auth: cfg.smtpUser.trim() ? { user: cfg.smtpUser.trim(), pass: cfg.smtpPass } : undefined,
+    });
+    await transport.sendMail({
+      from: cfg.smtpFrom.trim() || cfg.smtpUser.trim() || "noreply@localhost",
+      to: to.trim(),
+      subject: "【AI 视频画布】SMTP 配置测试邮件",
+      text: "这是一封来自 AI 视频画布管理后台的 SMTP 配置测试邮件。收到即表示邮件发送配置可用。",
+      html: `<p>这是一封来自 <b>AI 视频画布</b> 管理后台的 <b>SMTP 配置测试邮件</b>。</p><p style="color:#16a34a">✓ 收到即表示邮件发送配置可用。</p>`,
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message.slice(0, 200) };
+  }
+}

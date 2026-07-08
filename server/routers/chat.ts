@@ -41,7 +41,7 @@ import {
   clearConversationMessages,
 } from "../db";
 import type { RecordedAssetInfo } from "../db";
-import { dispatchAssetWebhook, assertPublicHttpUrl, WEBHOOK_KINDS, type WebhookKind } from "../_core/notifyWebhook";
+import { dispatchAssetWebhook, assertPublicHttpUrl, sendTestWebhook, WEBHOOK_KINDS, type WebhookKind } from "../_core/notifyWebhook";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
@@ -824,4 +824,10 @@ export const chatRouter = router({
       await setUserWebhook(ctx.user.id, { enabled: input.enabled, kind: input.kind, url });
       return { success: true };
     }),
+  // 发送一条测试推送到当前配置的 webhook，验证是否可用（与 SMTP/存储测试对齐）。失败即抛错。
+  testNotifyWebhook: protectedProcedure.mutation(async ({ ctx }) => {
+    try { await sendTestWebhook(ctx.user.id); }
+    catch (e) { throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof Error ? e.message : "测试推送失败" }); }
+    return { success: true } as const;
+  }),
 });

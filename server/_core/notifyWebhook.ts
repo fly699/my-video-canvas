@@ -108,3 +108,16 @@ export async function dispatchAssetWebhook(a: RecordedAssetInfo): Promise<void> 
   if (resp.body) { try { await resp.text(); } catch { /* ignore */ } }
   if (!resp.ok) console.warn(`[notifyWebhook] ${cfg.kind} 返回 ${resp.status}`);
 }
+
+/** 发送一条「配置测试」推送，验证 webhook 是否可用（与 SMTP/存储测试对齐）。失败即抛错。 */
+export async function sendTestWebhook(userId: number): Promise<void> {
+  const cfg = await getUserWebhook(userId);
+  if (!cfg || !cfg.enabled) throw new Error("外部推送未启用");
+  if (!cfg.url) throw new Error("未填写 Webhook URL");
+  const target = await assertPublicHttpUrl(cfg.url); // SSRF 守卫，抛错即拒发
+  const testAsset: RecordedAssetInfo = { userId, type: "image", name: "配置测试推送（收到即表示 Webhook 可用）", url: "https://ai-video-canvas.example/webhook-check", model: null };
+  const { init } = buildRequest(cfg.kind, target.toString(), testAsset, testAsset.url);
+  const resp = await fetch(target.toString(), { ...init, redirect: "error", signal: AbortSignal.timeout(8000) });
+  if (resp.body) { try { await resp.text(); } catch { /* ignore */ } }
+  if (!resp.ok) throw new Error(`目标返回 HTTP ${resp.status}`);
+}

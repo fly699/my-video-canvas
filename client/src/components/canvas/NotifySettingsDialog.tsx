@@ -20,6 +20,10 @@ const KIND_OPTIONS: { value: string; label: string; hint: string }[] = [
 export function NotifySettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cfgQuery = trpc.chat.getNotifyWebhook.useQuery(undefined, { enabled: open, staleTime: 10_000 });
   const saveMut = trpc.chat.setNotifyWebhook.useMutation();
+  const testMut = trpc.chat.testNotifyWebhook.useMutation({
+    onSuccess: () => toast.success("测试推送已发送，请到你的推送渠道查收"),
+    onError: (e) => toast.error("测试推送失败：" + e.message),
+  });
   const utils = trpc.useUtils();
 
   const [enabled, setEnabled] = useState(false);
@@ -34,9 +38,17 @@ export function NotifySettingsDialog({ open, onClose }: { open: boolean; onClose
     }
   }, [open, cfgQuery.data]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const activeHint = KIND_OPTIONS.find((k) => k.value === kind)?.hint ?? "";
+  const urlMissing = enabled && !url.trim(); // #R5-5 启用但未填 URL：禁用保存 + 警告（服务端也会拒，这里 fail-fast）
 
   const save = async () => {
     try {
@@ -88,13 +100,26 @@ export function NotifySettingsDialog({ open, onClose }: { open: boolean; onClose
           <div style={{ fontSize: 11, color: "var(--c-t4)", lineHeight: 1.6, display: "flex", alignItems: "center", gap: 4 }}>
             <ExternalLink size={11} /> 仅支持公网 http(s) 地址；私网/内网/环回地址会被拒绝。
           </div>
+          {urlMissing && (
+            <div style={{ fontSize: 11.5, color: "oklch(0.7 0.17 60)", marginTop: 8 }}>⚠ 已启用推送但未填 URL，保存会被拒绝——请填写地址或关闭推送。</div>
+          )}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
-          <button onClick={onClose} style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>取消</button>
-          <button onClick={save} disabled={saveMut.isPending} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))", border: "none", color: "white", cursor: saveMut.isPending ? "default" : "pointer" }}>
-            {saveMut.isPending && <Loader2 size={13} className="animate-spin" />} 保存
-          </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
+          {/* 发送测试推送，验证 webhook 是否可用（需已启用并填了 URL） */}
+          {enabled && (
+            <button onClick={() => testMut.mutate()} disabled={testMut.isPending || urlMissing}
+              title={urlMissing ? "请先填写推送地址" : "向当前地址发送一条测试推送"}
+              style={{ padding: "8px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: "transparent", border: "1px solid var(--c-bd2)", color: (testMut.isPending || urlMissing) ? "var(--c-t4)" : "var(--c-t2)", cursor: (testMut.isPending || urlMissing) ? "not-allowed" : "pointer" }}>
+              {testMut.isPending ? "发送中…" : "🔔 发送测试推送"}
+            </button>
+          )}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <button onClick={onClose} style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>取消</button>
+            <button onClick={save} disabled={saveMut.isPending || urlMissing} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg, oklch(0.68 0.22 285), oklch(0.60 0.20 310))", border: "none", color: "white", opacity: urlMissing ? 0.5 : 1, cursor: (saveMut.isPending || urlMissing) ? "not-allowed" : "pointer" }}>
+              {saveMut.isPending && <Loader2 size={13} className="animate-spin" />} 保存
+            </button>
+          </div>
         </div>
       </div>
     </div>
