@@ -12,6 +12,7 @@ import { CanvasSettings } from "@/components/editor/CanvasSettings";
 import { downloadMedia } from "@/lib/download";
 import { estimateExportBytes, formatBytes } from "@shared/exportQuality";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { confirmDialog, promptDialog } from "@/components/ui/dialogService";
 
 // Draggable divider between editor panels. Reports incremental pixel deltas; the
 // parent applies them to the adjacent panel's size (persisted).
@@ -86,7 +87,13 @@ function EditorGallery() {
       </header>
 
       <div style={{ padding: 20, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
-        {listQuery.isLoading && <div style={{ color: "var(--c-t3)", fontSize: 13 }}>加载中…</div>}
+        {listQuery.isLoading && Array.from({ length: 8 }).map((_, i) => (
+          <div key={`sk-${i}`} style={card} aria-hidden="true">
+            <div className="animate-pulse" style={{ height: 124, background: "var(--c-elevated, #1a1a20)", borderRadius: 8 }} />
+            <div className="animate-pulse" style={{ height: 12, width: "70%", background: "var(--c-elevated, #1a1a20)", borderRadius: 4, marginTop: 10 }} />
+            <div className="animate-pulse" style={{ height: 10, width: "45%", background: "var(--c-elevated, #1a1a20)", borderRadius: 4, marginTop: 8 }} />
+          </div>
+        ))}
         {!listQuery.isLoading && sessions.length === 0 && (
           <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "60px 0", color: "var(--c-t3)" }}>
             <Film size={40} style={{ opacity: 0.4, marginBottom: 12 }} />
@@ -94,7 +101,9 @@ function EditorGallery() {
           </div>
         )}
         {sessions.map((s) => (
-          <div key={s.id} style={card} onClick={() => navigate(`/editor/${s.id}`)}>
+          <div key={s.id} style={card} role="button" tabIndex={0} aria-label={`打开剪辑「${s.name}」`}
+            onClick={() => navigate(`/editor/${s.id}`)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/editor/${s.id}`); } }}>
             <div style={{ height: 124, background: "var(--c-elevated, #1a1a20)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
               {s.thumbnailUrl
                 ? (/\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(s.thumbnailUrl)
@@ -106,7 +115,7 @@ function EditorGallery() {
               <span style={{ flex: 1, fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               <button
                 title="删除"
-                onClick={(e) => { e.stopPropagation(); if (confirm(`删除剪辑「${s.name}」？`)) deleteMut.mutate({ id: s.id }); }}
+                onClick={async (e) => { e.stopPropagation(); if (await confirmDialog({ title: `删除剪辑「${s.name}」？`, message: "此操作不可撤销。", danger: true })) deleteMut.mutate({ id: s.id }); }}
                 style={{ ...iconBtn, width: 26, height: 26 }}
               ><Trash2 size={14} /></button>
             </div>
@@ -138,12 +147,12 @@ function EditorWorkspace({ id }: { id: number }) {
     });
   };
   // 另存为副本：用当前文档新建一个剪辑会话并跳转过去。
-  const saveAs = () => {
+  const saveAs = async () => {
     const cur = useEditorStore.getState();
     const docNow = cur.doc;
     if (!docNow) return;
     const proposed = (displayName || "未命名剪辑") + " 副本";
-    const chosen = window.prompt("另存为新剪辑，请输入名称：", proposed);
+    const chosen = await promptDialog({ title: "另存为新剪辑", message: "请输入新剪辑的名称", defaultValue: proposed, confirmLabel: "另存为" });
     if (chosen === null) return; // 取消
     const finalName = chosen.trim() || proposed;
     saveAsMut.mutate(
@@ -165,6 +174,17 @@ function EditorWorkspace({ id }: { id: number }) {
   const canUndo = useEditorStore((s) => s.past.length > 0);
   const canRedo = useEditorStore((s) => s.future.length > 0);
   const loadedFor = useRef<number | null>(null);
+  const skipTitleSaveRef = useRef(false); // Esc 取消改名时跳过随后 blur 的保存
+  // 窄屏适配：三栏剪辑器在窄屏会拥挤，给一条可关闭的「建议宽屏使用」提示（不阻断）。
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 860px)");
+    const on = () => setIsNarrow(mq.matches);
+    on(); mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const [narrowHintDismissed, setNarrowHintDismissed] = usePersistentState<boolean>("avc:editor:narrowHint:v1", false);
 
   // Workspace keyboard shortcuts (all ignored while typing in a field):
   //   Ctrl/⌘+Z 撤销 · Ctrl/⌘+Shift+Z / Ctrl+Y 重做
@@ -175,7 +195,7 @@ function EditorWorkspace({ id }: { id: number }) {
       if (t.closest("input, textarea, [contenteditable='true'], select")) return;
       // ? 开关快捷键速查浮层（Shift+/ 产生 "?"）；Esc 关闭。与画布速查面板对齐。
       if (e.key === "?") { e.preventDefault(); setShowShortcuts((v) => !v); return; }
-      if (e.key === "Escape") { setShowShortcuts(false); return; }
+      if (e.key === "Escape") { setShowShortcuts(false); setExportMenu(false); return; } // Esc 统一关闭临时浮层
       const st = useEditorStore.getState();
       if (e.ctrlKey || e.metaKey) {
         const k = e.key.toLowerCase();
@@ -336,16 +356,29 @@ function EditorWorkspace({ id }: { id: number }) {
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--c-canvas, #0c0c10)", color: "var(--c-t1)" }}>
-      <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+      <header style={{ display: "flex", alignItems: "center", gap: 12, rowGap: 8, flexWrap: "wrap", padding: "8px 16px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
         <button onClick={() => goBack(navigate, "/editor")} title="返回" style={iconBtn}><ArrowLeft size={18} /></button>
         <Clapperboard size={18} style={{ color: ACCENT }} />
         <input
           value={displayName}
+          title="点击编辑名称（Enter 保存 · Esc 取消）"
+          aria-label="剪辑名称"
           onChange={(e) => setName(e.target.value)}
-          onBlur={() => { if (name !== null && name !== session.name) saveMut.mutate({ id, name }); }}
-          style={{ fontSize: 14, fontWeight: 600, background: "transparent", border: "1px solid transparent", borderRadius: 6, padding: "4px 8px", color: "var(--c-t1)", outline: "none", width: 200 }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = "var(--c-bd2)"; e.currentTarget.style.background = "var(--c-elevated, #1a1a20)"; }}
+          onMouseEnter={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = "var(--c-bd1)"; }}
+          onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = "transparent"; }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.background = "transparent";
+            if (skipTitleSaveRef.current) { skipTitleSaveRef.current = false; return; } // Esc 取消
+            if (name !== null && name !== session.name) saveMut.mutate({ id, name });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }        // 提交（走 onBlur 保存）
+            else if (e.key === "Escape") { e.preventDefault(); skipTitleSaveRef.current = true; setName(session.name); e.currentTarget.blur(); } // 还原
+          }}
+          style={{ fontSize: 14, fontWeight: 600, background: "transparent", border: "1px solid transparent", borderRadius: 6, padding: "4px 8px", color: "var(--c-t1)", outline: "none", width: 200, cursor: "text", transition: "border-color 140ms ease, background 140ms ease" }}
         />
-        <span style={{ fontSize: 11, color: "var(--c-t4)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <span role="status" aria-live="polite" style={{ fontSize: 11, color: "var(--c-t4)", display: "inline-flex", alignItems: "center", gap: 4 }}>
           {saveState === "saving" ? <><Loader2 size={11} className="animate-spin" /> 保存中</> : saveState === "saved" ? <><Check size={11} /> 已保存</> : null}
         </span>
         <div style={{ flex: 1 }} />
@@ -510,6 +543,12 @@ function EditorWorkspace({ id }: { id: number }) {
             </>
           )}
         </div>
+        {/* 读屏播报导出进度（sr-only，不占视觉空间） */}
+        {exporting && (
+          <span role="status" aria-live="polite" style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 }}>
+            {exportStage || "导出中"} {exportPct > 0 ? `${exportPct}%` : ""}
+          </span>
+        )}
         <button
           disabled={exporting}
           onClick={startExport}
@@ -518,6 +557,14 @@ function EditorWorkspace({ id }: { id: number }) {
           {exporting ? <><Loader2 size={15} className="animate-spin" /> {exportStage || "导出中"} {exportPct > 0 ? `${exportPct}%` : ""}</> : "导出成片"}
         </button>
       </header>
+
+      {/* 窄屏提示：剪辑器三栏在窄屏拥挤，给一条可关闭的建议（不阻断使用） */}
+      {isNarrow && !narrowHintDismissed && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 14px", fontSize: 12.5, color: "var(--c-t2)", background: "oklch(0.72 0.16 60 / 0.10)", borderBottom: "1px solid oklch(0.72 0.16 60 / 0.28)", flexShrink: 0 }}>
+          <span style={{ flex: 1, lineHeight: 1.5 }}>💡 视频剪辑器在较宽的屏幕（桌面）上体验最佳；当前窗口较窄，三栏面板可能拥挤。</span>
+          <button onClick={() => setNarrowHintDismissed(true)} style={{ ...iconBtn, width: "auto", padding: "2px 10px", fontSize: 12, flexShrink: 0 }}>知道了</button>
+        </div>
+      )}
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         <MediaBin width={leftW} />

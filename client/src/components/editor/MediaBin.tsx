@@ -158,7 +158,9 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
           (many assets) — collapsing thumbnails into thin strips. Pinning rows to
           content size keeps every thumbnail full-height and the list scrolls. */}
       <div style={{ flex: 1, overflowY: "auto", padding: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gridAutoRows: "max-content", gap: 6, alignContent: "start" }}>
-        {listQuery.isLoading && <div style={{ gridColumn: "1/-1", fontSize: 12, color: EC.t3 }}>加载中…</div>}
+        {listQuery.isLoading && Array.from({ length: 6 }).map((_, i) => (
+          <div key={`sk-${i}`} className="animate-pulse" aria-hidden="true" style={{ height: 92, borderRadius: 8, border: `1px solid ${EC.border}`, background: EC.elevated }} />
+        ))}
         {!listQuery.isLoading && assets.length === 0 && <div style={{ gridColumn: "1/-1", fontSize: 12, color: EC.t4, padding: "20px 0", textAlign: "center" }}>暂无素材<br/>可在素材库上传或生成</div>}
         {assets.map((a) => {
           const kind = kindFromAssetType(a.type) as "video" | "image" | "audio";

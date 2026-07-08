@@ -222,9 +222,32 @@ export default function ChatPage() {
 }
 
 function Drawer({ side, onClose, children }: { side: "left" | "right"; onClose: () => void; children: React.ReactNode }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  // 无障碍：Esc 关闭 · 打开时把焦点移入抽屉 · 关闭时归还焦点给触发按钮 · Tab 焦点陷在抽屉内。
+  useEffect(() => {
+    returnFocusRef.current = (document.activeElement as HTMLElement | null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+      if (e.key === "Tab" && panelRef.current) {
+        const f = panelRef.current.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (!f.length) { e.preventDefault(); panelRef.current.focus(); return; }
+        const first = f[0], last = f[f.length - 1], act = document.activeElement;
+        if (e.shiftKey && (act === first || !panelRef.current.contains(act))) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && act === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    const t = setTimeout(() => {
+      const p = panelRef.current;
+      if (!p) return;
+      (p.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') ?? p).focus();
+    }, 30);
+    return () => { window.removeEventListener("keydown", onKey); clearTimeout(t); returnFocusRef.current?.focus?.(); };
+  }, [onClose]);
   return (
     <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 40, display: "flex", justifyContent: side === "left" ? "flex-start" : "flex-end" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ height: "100%", boxShadow: "0 0 40px rgba(0,0,0,0.5)" }}>{children}</div>
+      <div ref={panelRef} role="dialog" aria-modal="true" tabIndex={-1} onClick={(e) => e.stopPropagation()} style={{ height: "100%", boxShadow: "0 0 40px rgba(0,0,0,0.5)", outline: "none" }}>{children}</div>
     </div>
   );
 }
