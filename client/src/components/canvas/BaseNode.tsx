@@ -209,6 +209,8 @@ export const BaseNode = memo(function BaseNode({
   // 触发本节点重渲染（而非每次缩放都重渲），越阈值后隐藏交互 body（保留缩略图英雄区，
   // 以便缩略图纵览仍成立），到重新放大时自动恢复。
   const lodFar = useStore((s) => s.transform[2] < 0.3);
+  // #11 协作编辑锁：他人正在编辑本节点时拿到其信息（多数节点恒为 undefined → 不触发重渲）。
+  const peerEdit = useCanvasStore((s) => s.peerEditing.get(id));
   // Some nodes keep their full PRO body even in the studio skin (no floating
   // command bar / panel) — their editing UX doesn't fit a compact bar (e.g. the
   // AI chat node is a live conversation, not a parameter form).
@@ -978,6 +980,16 @@ export const BaseNode = memo(function BaseNode({
             style={{ background: "oklch(0.70 0.16 65 / 0.15)", color: "oklch(0.72 0.16 65)", border: "1px solid oklch(0.70 0.16 65 / 0.35)", cursor: "pointer" }}>
             <Lock size={10} />
           </button>
+        )}
+
+        {/* #11 协作编辑徽标：他人正在编辑此节点 → 显示其头像(首字母)+柔性锁提示 */}
+        {peerEdit && (
+          <span
+            title={`${peerEdit.userName} 正在编辑此节点`}
+            className="nodrag flex-shrink-0 flex items-center justify-center"
+            style={{ width: 18, height: 18, borderRadius: 999, background: peerEdit.color, color: "#fff", fontSize: 10, fontWeight: 800, border: "1px solid oklch(1 0 0 / 0.45)" }}>
+            {(peerEdit.userName || "?").charAt(0).toUpperCase()}
+          </span>
         )}
 
         {/* 直传 — push current output to downstream inputs without running */}

@@ -1063,6 +1063,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
     });
   }, [user, projectId]);
 
+  // #11 协作编辑锁：当本地用户「聚焦」到单个节点时广播「正在编辑 nodeId」，供其他人在该
+  // 节点角标显示头像 + 柔性锁；选中 0 个或多个节点则广播释放（null）。仅在单选目标变化时发。
+  const lastEditingRef = useRef<string | null>(null);
+  useEffect(() => {
+    const sel = nodes.filter((n) => n.selected);
+    const editingId = sel.length === 1 ? sel[0].id : null;
+    if (editingId === lastEditingRef.current) return;
+    lastEditingRef.current = editingId;
+    emitCollabEvent("node:editing", { nodeId: editingId });
+  }, [nodes, emitCollabEvent]);
+
   useEffect(() => {
     if (!isAuthenticated || !user) return;
     const socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true });
@@ -1131,6 +1142,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
         return;
       }
       if (event.type === "user:leave") { removeCollaborator(event.userId); return; }
+      if (event.type === "node:editing") {
+        const p = event.payload as { nodeId: string | null };
+        useCanvasStore.getState().setPeerEditing(event.userId, event.userName, event.color, p?.nodeId ?? null);
+        return;
+      }
       applyRemoteMutation(event);
     });
 
