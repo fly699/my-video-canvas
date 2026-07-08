@@ -38,6 +38,7 @@ export function ImageLightbox({
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const imgWrapRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ mx: number; my: number; tx: number; ty: number } | null>(null);
 
   const resetZoom = useCallback(() => { setScale(1); setTx(0); setTy(0); }, []);
@@ -95,14 +96,24 @@ export function ImageLightbox({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
+  // 无障碍：打开时把焦点移入预览层（读屏聚焦 + 方向键/Esc 立即可用），关闭时归还焦点给触发元素。
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    const t = setTimeout(() => overlayRef.current?.focus(), 30);
+    return () => { clearTimeout(t); prev?.focus?.(); };
+  }, []);
+
   const handleDownload = () => {
     void downloadMedia(currentUrl, `generated-${currentIndex + 1}.png`, "image");
   };
 
   return createPortal(
     <div
+      ref={overlayRef}
+      role="dialog" aria-modal="true" aria-label={`图片预览（${currentIndex + 1} / ${images.length}）`}
+      tabIndex={-1}
       className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ background: "oklch(0 0 0 / 0.88)" }}
+      style={{ background: "oklch(0 0 0 / 0.88)", outline: "none" }}
       onClick={onClose}
       onContextMenu={(e) => e.preventDefault()}
     >

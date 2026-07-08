@@ -7,6 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AIChatNodeData, ChatAttachment, NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { copyTextWithToast } from "@/lib/clipboard";
 import { Send, Loader2, Trash2, Bot, User, Sparkles, ChevronDown, ArrowRight, Copy, BookOpen, Paperclip, ImageIcon, FileText, X, PictureInPicture2, ChevronsRight, GripHorizontal, Download, Layers, Slash } from "lucide-react";
 import { CHAT_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
 import { safeHref } from "@/lib/safeUrl";
@@ -424,7 +425,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape" && showSlashMenu) { setShowSlashMenu(false); return; }
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       // 命令菜单开着（键入 / 触发）→ Enter 选中首个命令，而不是直接发送。
       if (slashTyping && filteredSlash.length > 0) { e.preventDefault(); applySlashCommand(filteredSlash[0]); return; }
       e.preventDefault(); handleSend();
@@ -873,7 +874,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                     </div>
                     {msg.content && (
                       <button
-                        onClick={() => navigator.clipboard.writeText(msg.content).then(() => toast.success("已复制", { duration: 1200 }))}
+                        onClick={() => void copyTextWithToast(msg.content, "已复制", { duration: 1200 })}
                         className={`nodrag opacity-0 group-hover/msg:opacity-100 transition-opacity mt-1 flex items-center gap-1 text-[10px] ${msg.role === "user" ? "self-end" : "self-start"}`}
                         style={{ color: "var(--c-t4)" }}
                         title="复制本条消息"
@@ -1087,7 +1088,7 @@ export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props
                   .filter((m) => m.content)
                   .map((m) => `${m.role === "user" ? "用户" : "助手"}：${m.content}`)
                   .join("\n\n");
-                navigator.clipboard.writeText(text).then(() => toast.success("已复制整段对话", { duration: 1400 }));
+                void copyTextWithToast(text, "已复制整段对话", { duration: 1400 });
               }}
               className="nodrag w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
               title="复制整段对话"

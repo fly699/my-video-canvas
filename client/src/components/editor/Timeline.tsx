@@ -4,6 +4,7 @@ import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme
 import { useEditorStore, clipDuration, canMergeClips, canMergeSource, rightNeighbour } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
 import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import type { TrackType } from "@shared/editorTypes";
 
 const LABEL_W = 132;
@@ -67,7 +68,9 @@ export function Timeline() {
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragMode | null>(null);
   const [snapX, setSnapX] = useState<number | null>(null); // guide line (seconds) while snapping
-  const [snapOn, setSnapOn] = useState(true);
+  const [snapOn, setSnapOn] = usePersistentState<boolean>("ui:editor:snap:v1", true, { validate: (p) => (typeof p === "boolean" ? p : null) });
+  // 素材从媒体库拖到时间轴时的落点反馈：高亮目标轨 + 落点插入线（秒）。
+  const [dropLane, setDropLane] = useState<{ trackId: string; sec: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; clipId: string } | null>(null);
 
   const setPxPerSec = useEditorStore((s) => s.setPxPerSec);
@@ -320,6 +323,7 @@ export function Timeline() {
 
   const onDrop = useCallback(async (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
+    setDropLane(null);
     const raw = e.dataTransfer.getData(MEDIA_DND_MIME);
     if (!raw) return;
     let p: MediaDragPayload; try { p = JSON.parse(raw); } catch { return; }
@@ -329,6 +333,19 @@ export function Timeline() {
     if (p.kind === "video" || p.kind === "audio") dur = await probeMediaDuration(p.url, p.kind);
     useEditorStore.getState().addClip(trackId, { kind: p.kind, assetId: p.assetId, assetUrl: p.url, start, trimIn: 0, trimOut: dur });
   }, [pxPerSec]);
+
+  /** 拖动素材经过轨道：高亮该轨并把落点（吸附后的秒）记下画插入线。 */
+  const onLaneDragOver = useCallback((e: React.DragEvent, trackId: string, locked?: boolean) => {
+    if (locked) return;
+    // 仅对来自媒体库的拖拽做反馈（避免与片段/轨道重排拖拽混淆）。
+    if (!e.dataTransfer.types.includes(MEDIA_DND_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const raw = Math.max(0, (e.clientX - rect.left) / pxPerSec);
+    const { sec } = snap(raw);
+    setDropLane({ trackId, sec });
+  }, [pxPerSec, snap]);
 
   if (!doc) return null;
 
@@ -441,9 +458,14 @@ export function Timeline() {
             {doc.tracks.map((t) => (
               <div key={t.id} data-track-id={t.id}
                 onPointerDown={onLanePointerDown}
-                onDragOver={(e) => { if (t.locked) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+                onDragOver={(e) => onLaneDragOver(e, t.id, t.locked)}
+                onDragLeave={() => setDropLane((d) => (d?.trackId === t.id ? null : d))}
                 onDrop={(e) => { if (!t.locked) onDrop(e, t.id); }}
-                style={{ height: TRACK_H, position: "relative", borderBottom: `1px solid ${EC.border}`, background: t.locked ? "oklch(0.5 0 0 / 0.06)" : "var(--c-canvas, #0c0c10)", opacity: t.hidden ? 0.4 : 1 }}>
+                style={{ height: TRACK_H, position: "relative", borderBottom: `1px solid ${EC.border}`, background: dropLane?.trackId === t.id ? EC.accentSoft : t.locked ? "oklch(0.5 0 0 / 0.06)" : "var(--c-canvas, #0c0c10)", boxShadow: dropLane?.trackId === t.id ? `inset 0 0 0 1.5px ${EC.accent}` : "none", opacity: t.hidden ? 0.4 : 1, transition: "background .1s" }}>
+                {/* 素材落点插入线（拖入时显示） */}
+                {dropLane?.trackId === t.id && (
+                  <div style={{ position: "absolute", left: dropLane.sec * pxPerSec, top: 0, bottom: 0, width: 2, background: EC.accent, pointerEvents: "none", zIndex: 6, boxShadow: `0 0 4px ${EC.accent}` }} />
+                )}
                 {t.clips.map((c) => {
                   const left = c.start * pxPerSec;
                   const width = Math.max(8, clipDuration(c) * pxPerSec);

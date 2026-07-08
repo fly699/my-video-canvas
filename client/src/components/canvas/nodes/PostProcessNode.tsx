@@ -4,6 +4,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PostProcessNodeData } from "../../../../../shared/types";
 import { POST_PROCESS_CATEGORIES, buildEffectPrompt, getEffectById } from "../../../lib/postProcessOptions";
 import { toast } from "sonner";
+import { copyTextWithToast } from "@/lib/clipboard";
 import { Copy, ChevronDown, ChevronRight, X, Layers, Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight, Film, Wind, Circle, Zap, Flower2, PenLine, ScanLine, Maximize, Building2, Globe, Combine, Sparkles, Timer, Activity, TrendingUp, CloudFog, Lightbulb, Waves, Sunrise, Moon, Brush, Stars, Grid2x2, MessageSquare, Droplet, Box, Monitor, Thermometer, CircleDot, Blend, Wand2, RotateCcw, Image, type LucideIcon } from "lucide-react";
 
 const EFFECT_ICONS: Record<string, LucideIcon> = {
@@ -77,8 +78,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
 
   const copyPrompt = useCallback(() => {
     if (!generatedPrompt) { toast.error("尚未选择任何效果"); return; }
-    navigator.clipboard.writeText(generatedPrompt);
-    toast.success("效果提示词已复制到剪贴板");
+    void copyTextWithToast(generatedPrompt, "效果提示词已复制到剪贴板");
   }, [generatedPrompt]);
 
   const clearAll = useCallback(() => {

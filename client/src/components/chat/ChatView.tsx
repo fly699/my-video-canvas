@@ -18,6 +18,7 @@ import { goToAdminTab } from "@/lib/adminNav";
 import type { ChatWireMessage, ChatFileRef } from "@shared/types";
 import { toast } from "sonner";
 import { C, avatarGrad, initials } from "./chatTheme";
+import { copyTextWithToast } from "@/lib/clipboard";
 import { MessageContent } from "./MessageContent";
 import { openLightbox } from "./chatLightbox";
 
@@ -30,7 +31,7 @@ const fileToBase64 = (f: File): Promise<string> => new Promise((resolve, reject)
 });
 
 export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: boolean; narrow?: boolean }) {
-  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, e2eAvailable, myUserId, deleteRoom, leaveRoom, reloadActiveMessages } = useChat();
+  const { activeConv, messages, presence, typingUsers, sendText, sendFile, emitTyping, connected, loadingMessages, maxFileMb, serverlessAllowed, e2eAvailable, myUserId, deleteRoom, leaveRoom, reloadActiveMessages, loadEarlierMessages, hasMoreMessages, loadingEarlier } = useChat();
   const [text, setText] = useState("");
   // 移动端：ComfyUI 服务器监控条（GVM）对手机聊天用户是噪音——默认收起，需要时点开。
   const [staged, setStaged] = useState<File[]>([]);
@@ -153,7 +154,23 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
     }
   };
 
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
+  // 前插「更早消息」时不要自动滚到底（否则视口会跳走）；由 onLoadEarlier 用锚点恢复位置。
+  const prependingRef = useRef(false);
+  useEffect(() => { if (prependingRef.current) return; if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
+
+  // 加载更早消息并保持滚动锚点：记录加载前的 scrollHeight/scrollTop，前插后按高度差回补 scrollTop。
+  const onLoadEarlier = async () => {
+    const el = scrollRef.current;
+    const prevH = el?.scrollHeight ?? 0;
+    const prevTop = el?.scrollTop ?? 0;
+    prependingRef.current = true;
+    await loadEarlierMessages();
+    requestAnimationFrame(() => {
+      const el2 = scrollRef.current;
+      if (el2) el2.scrollTop = prevTop + (el2.scrollHeight - prevH);
+      prependingRef.current = false;
+    });
+  };
 
   // Document-level paste so Ctrl+V works even when the textarea isn't focused —
   // notably in a standalone PWA window where focus often sits on <body>. Skips
@@ -360,7 +377,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
                   .filter((m) => m.content)
                   .map((m) => `${m.name}：${m.content}`)
                   .join("\n\n");
-                navigator.clipboard.writeText(text).then(() => toast.success("已复制整段对话", { duration: 1400 }));
+                void copyTextWithToast(text, "已复制整段对话", { duration: 1400 });
               }}
               title="复制整段对话"
               style={{ ...pill, ...(narrow ? pillIcon : {}), border: `1px solid ${C.borderStrong}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t1 }}
@@ -427,6 +444,12 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
       {/* messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: narrow ? "12px 10px" : "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
         {loadingMessages && <div style={{ alignSelf: "center", color: C.t3, fontSize: 13 }}>加载中…</div>}
+        {!loadingMessages && hasMoreMessages && (
+          <button onClick={() => void onLoadEarlier()} disabled={loadingEarlier}
+            style={{ alignSelf: "center", padding: "5px 14px", borderRadius: 999, border: `1px solid ${C.border}`, background: "var(--c-elevated, rgba(128,128,128,0.10))", color: C.t2, fontSize: 12, cursor: loadingEarlier ? "default" : "pointer", opacity: loadingEarlier ? 0.6 : 1 }}>
+            {loadingEarlier ? "加载中…" : "加载更早消息"}
+          </button>
+        )}
         {!loadingMessages && messages.length === 0 && <div style={{ alignSelf: "center", color: C.t4, fontSize: 13 }}>还没有消息，发送第一条吧</div>}
         {messages.map((m) => <Bubble key={`${m.id}-${m.createdAt}`} msg={m} mine={m.senderId === -1 || m.senderId === myUserId} narrow={narrow} />)}
         {typingUsers.length > 0 && <div style={{ fontSize: 12, color: C.t3 }}>{typingUsers.join("、")} 正在输入…</div>}
@@ -545,7 +568,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
               if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickSkill(skillMatches[skillHi].name); return; }
               if (e.key === "Escape") { e.preventDefault(); setSkillDismiss(text); return; }
             }
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); }
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void doSend(); }
           }}
           onPaste={(e) => {
             // Support pasting files of any type (screenshots, images, docs…). The
@@ -667,7 +690,7 @@ function Bubble({ msg, mine, narrow }: { msg: ChatWireMessage; mine: boolean; na
           <span style={{ fontSize: 10, color: C.t4, padding: "0 2px" }}>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
           {displayContent.trim() && (
             <button
-              onClick={() => navigator.clipboard.writeText(displayContent).then(() => toast.success("已复制", { duration: 1200 }))}
+              onClick={() => void copyTextWithToast(displayContent, "已复制", { duration: 1200 })}
               className="opacity-0 group-hover/msg:opacity-100 transition-opacity"
               style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: C.t4, background: "none", border: "none", cursor: "pointer", padding: 0 }}
               title="复制本条消息"

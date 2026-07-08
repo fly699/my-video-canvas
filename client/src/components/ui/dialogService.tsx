@@ -8,7 +8,7 @@ import { createPortal } from "react-dom";
 // 需在应用根挂一个 <DialogHost/>（见 App.tsx）。
 
 type ConfirmOpts = { title: string; message?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean };
-type PromptOpts = { title: string; message?: string; defaultValue?: string; placeholder?: string; confirmLabel?: string; cancelLabel?: string };
+type PromptOpts = { title: string; message?: string; defaultValue?: string; placeholder?: string; confirmLabel?: string; cancelLabel?: string; mask?: boolean };
 
 type Req =
   | { kind: "confirm"; opts: ConfirmOpts; resolve: (v: boolean) => void }
@@ -76,6 +76,7 @@ export function DialogHost() {
           <input
             ref={inputRef}
             value={val}
+            type={req.opts.mask ? "password" : "text"}
             placeholder={req.opts.placeholder}
             onChange={(e) => setVal(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); accept(); } }}

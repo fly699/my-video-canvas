@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Hash, Lock, MessageSquare, Plus, Users, Globe, LogIn, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { promptDialog } from "@/components/ui/dialogService";
 import { useChat, type ConversationSummary, type JoinableRoom } from "@/hooks/useChat";
 import { trpc } from "@/lib/trpc";
 import { NewConversationDialog } from "./NewConversationDialog";
@@ -43,7 +44,7 @@ export function ConversationList({ onSelect }: { onSelect?: () => void } = {}) {
   async function handleJoin(r: JoinableRoom) {
     let password: string | undefined;
     if (r.isPrivate) {
-      const entered = window.prompt(`房间「${r.title ?? "群聊"}」需要密码：`);
+      const entered = await promptDialog({ title: `加入「${r.title ?? "群聊"}」`, message: "该房间为私密房间，请输入密码：", placeholder: "房间密码", mask: true, confirmLabel: "加入" });
       if (entered == null) return;
       password = entered;
     }

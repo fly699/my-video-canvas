@@ -224,11 +224,18 @@ export default function ChatPage() {
 function Drawer({ side, onClose, children }: { side: "left" | "right"; onClose: () => void; children: React.ReactNode }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  // onClose 每次父组件渲染都是新函数引用；用 ref 承接，避免把它放进下方 effect 的依赖。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   // 无障碍：Esc 关闭 · 打开时把焦点移入抽屉 · 关闭时归还焦点给触发按钮 · Tab 焦点陷在抽屉内。
+  // 关键：本 effect 只在挂载/卸载时跑一次（依赖数组为空）。此前依赖 [onClose]，而 onClose 是父级
+  // 内联箭头函数，socket 在线/输入中/新消息等事件让 ChatPage 高频重渲染 → onClose 引用每次都变 →
+  // effect 反复清理+重建：清理时把焦点还给触发按钮、30ms 后又抢焦点到搜索框，移动端表现为
+  // 「输入法框不停地闪」。改为空依赖后彻底消除这个抢焦点循环。
   useEffect(() => {
     returnFocusRef.current = (document.activeElement as HTMLElement | null);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+      if (e.key === "Escape") { e.preventDefault(); onCloseRef.current(); return; }
       if (e.key === "Tab" && panelRef.current) {
         const f = panelRef.current.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
         if (!f.length) { e.preventDefault(); panelRef.current.focus(); return; }
@@ -238,13 +245,11 @@ function Drawer({ side, onClose, children }: { side: "left" | "right"; onClose: 
       }
     };
     window.addEventListener("keydown", onKey);
-    const t = setTimeout(() => {
-      const p = panelRef.current;
-      if (!p) return;
-      (p.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') ?? p).focus();
-    }, 30);
+    // 把焦点移入抽屉容器本身（tabIndex=-1），而非首个可聚焦元素——若聚焦到搜索输入框会在移动端
+    // 直接弹出输入法键盘（用户只是想浏览房间）。焦点仍在抽屉内，Esc/Tab 陷阱照常工作。
+    const t = setTimeout(() => { panelRef.current?.focus(); }, 30);
     return () => { window.removeEventListener("keydown", onKey); clearTimeout(t); returnFocusRef.current?.focus?.(); };
-  }, [onClose]);
+  }, []);
   return (
     <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 40, display: "flex", justifyContent: side === "left" ? "flex-start" : "flex-end" }}>
       <div ref={panelRef} role="dialog" aria-modal="true" tabIndex={-1} onClick={(e) => e.stopPropagation()} style={{ height: "100%", boxShadow: "0 0 40px rgba(0,0,0,0.5)", outline: "none" }}>{children}</div>
