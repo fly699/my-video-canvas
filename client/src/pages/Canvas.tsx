@@ -111,6 +111,7 @@ import {
   LayoutGrid,
   BarChart2,
   Maximize2,
+  LocateFixed,
   Scan,
   Play,
   LogOut,
@@ -1612,6 +1613,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
         setShowTemplates((v) => !v);
       }
 
+      // ◆3 F — 缩放到选中/框选内容(无选中则适应全部);Figma/n8n 常见。
+      if (!isEditing && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        const sel = useCanvasStore.getState().nodes.filter((n) => n.selected);
+        if (sel.length > 0) reactFlow.fitView({ nodes: sel.map((n) => ({ id: n.id })), padding: 0.3, duration: 400, maxZoom: 1.6 });
+        else reactFlow.fitView({ padding: 0.2, duration: 400 });
+      }
+
       // Duplicate selected node: Cmd+D / Ctrl+D (skip when typing in an input)
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "d") {
         e.preventDefault();
@@ -2832,7 +2841,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   <Maximize2 className="w-3.5 h-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">适应视图</TooltipContent>
+              <TooltipContent side="top" className="text-xs">适应视图 · 选中时按 F 缩放到选中</TooltipContent>
+            </Tooltip>
+
+            {/* ◆3 回到原点：把视口拉回世界原点(0,0) */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => reactFlow.setCenter(0, 0, { zoom: 1, duration: 400 })}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                >
+                  <LocateFixed className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">回到原点</TooltipContent>
             </Tooltip>
 
             {/* 一键整理：按连线方向分层排布自由节点 */}
