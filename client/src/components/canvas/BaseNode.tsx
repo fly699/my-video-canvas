@@ -5,6 +5,7 @@ import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useStudioExpandAll } from "../../hooks/useStudioExpandAll";
+import { useBoxSelecting } from "../../hooks/useBoxSelecting";
 import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
 import { useConnectState } from "../../hooks/useConnectingStore";
 import { useHoverStore } from "../../hooks/useHoverStore";
@@ -205,7 +206,9 @@ export const BaseNode = memo(function BaseNode({
   // Studio: when selected, the node card stays compact (header + hero media if any)
   // and the params float in a wide, short panel attached BELOW it (LibLib layout).
   // ★3：多选（≥2）时非固定节点不再逐个弹命令栏——批量操作交给底部 MultiSelectBar，画布保持清爽。
-  const studioFloated = usesStudioFloating && (pinned || (storeSelected && !multiSelected));
+  // 框选拖拽进行中也不浮起——否则框内瞬时只覆盖 1 个节点时会被当单选而闪烁展开。
+  const boxSelecting = useBoxSelecting();
+  const studioFloated = usesStudioFloating && !boxSelecting && (pinned || (storeSelected && !multiSelected));
   // Every fresh selection starts COMPACT: reset the expand flag whenever the node
   // is no longer the floating/selected one, so re-clicking never reopens expanded.
   // ★4：不再每次取消 floating 就重置展开态——由全局偏好记忆（useStudioExpandAll）。
