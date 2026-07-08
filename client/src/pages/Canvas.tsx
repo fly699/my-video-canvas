@@ -60,6 +60,7 @@ import { GridStoryboardModal } from "../components/canvas/GridStoryboardModal";
 const DirectorEditor = lazy(() => import("../components/canvas/director/DirectorEditor").then((m) => ({ default: m.DirectorEditor })));
 import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
+import { CanvasTips } from "../components/canvas/CanvasTips";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
 import { ModelQuickSwitch, MODEL_SWITCH_FIELD } from "../components/canvas/studio/ModelQuickSwitch";
 import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS, defaultTargetHandle } from "../lib/connectionRules";
@@ -2530,6 +2531,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <Lightbox />
           {/* Studio multi-select action bar (≥2 nodes selected) */}
           <MultiSelectBar />
+          {/* 操作小贴士（右下角，定时/情境弹出，可自动消失，右键不再显示） */}
+          <CanvasTips />
           {/* Studio global creation bar (nothing selected → quick prompt → 生成) */}
           <StudioCreateBar />
           {/* Studio ⌘K model quick-switch (a generative node is selected) */}

@@ -1,10 +1,21 @@
-import { Play, Combine, Download, X, Clapperboard } from "lucide-react";
+import { useState } from "react";
+import { Play, Combine, Download, X, Clapperboard, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { getNodeImageOutput } from "../../../lib/canvasPassthrough";
 import { planAutoAssemble } from "../../../lib/autoAssemble";
 import { downloadMedia } from "../../../lib/download";
+import { RatioPicker, RATIOS } from "./StudioCommandBar";
+import { useStudioExpandAll } from "../../../hooks/useStudioExpandAll";
+
+// ★10：多选批量改参数——把「统一画面比例 / 展开全部参数」一次性应用到所有选中节点。
+// 不同节点的比例字段名不同，按类型映射；只写它真正支持的字段，避免污染无关 payload。
+const RATIO_FIELD: Record<string, string> = {
+  image_gen: "aspectRatio", storyboard: "aspectRatio", prompt: "aspectRatio",
+  comfyui_image: "aspectRatio", comfyui_workflow: "aspectRatio",
+};
+const CLIP_RATIOS = new Set(["9:16", "16:9", "1:1"]); // clip 节点的 aspect 仅支持这几种
 
 // Studio-only floating action bar shown when ≥2 nodes are selected: run-all / group /
 // download-all / clear. Additive & presentation-layer — every action reuses an existing
@@ -28,8 +39,32 @@ export function MultiSelectBar() {
   const { uiStyle } = useUIStyle();
   // Re-render only when the selected (non-group) set changes — cheap stable key.
   const selectedKey = useCanvasStore((s) => s.nodes.filter((n) => n.selected && n.data.nodeType !== "group").map((n) => n.id).join(","));
+  const [showParams, setShowParams] = useState(false);
+  const [expandAll, setExpandAll] = useStudioExpandAll();
   const ids = selectedKey ? selectedKey.split(",") : [];
   if (uiStyle !== "studio" || ids.length < 2) return null;
+
+  // ★10：把画面比例统一写入所有支持该字段的选中节点（clip 用 aspect 且仅限 9:16/16:9/1:1，
+  // comfyui_workflow 需联动 overrideRatioSize，否则比例覆盖不生效）。
+  const applyRatio = (ratio: string) => {
+    const st = useCanvasStore.getState();
+    const sel = new Set(ids);
+    const updates: { id: string; payload: Record<string, unknown> }[] = [];
+    for (const n of st.nodes) {
+      if (!sel.has(n.id)) continue;
+      const t = n.data.nodeType;
+      if (t === "clip") {
+        if (CLIP_RATIOS.has(ratio)) updates.push({ id: n.id, payload: { aspect: ratio } });
+      } else if (RATIO_FIELD[t]) {
+        const patch: Record<string, unknown> = { [RATIO_FIELD[t]]: ratio };
+        if (t === "comfyui_workflow") patch.overrideRatioSize = true;
+        updates.push({ id: n.id, payload: patch });
+      }
+    }
+    if (!updates.length) { toast.info("所选节点没有可统一比例的项"); return; }
+    st.batchUpdateNodeData(updates);
+    toast.success(`已将 ${updates.length} 个节点比例统一为 ${ratio}`, { duration: 1500 });
+  };
 
   const runAll = () => { useCanvasStore.getState().requestRun(null, ids); toast.success(`运行所选 ${ids.length} 个节点`, { duration: 1200 }); };
   // 一键自动成片：把选中的多段已完成视频自动建一个合并节点、连好线（+ 选中的配乐音频）、
@@ -84,22 +119,41 @@ export function MultiSelectBar() {
       <span style={{ width: 1, height: 18, background: "var(--c-bd2)" }} />
       <BarBtn onClick={runAll} icon={<Play size={13} />} label="运行全部" primary />
       <BarBtn onClick={autoAssemble} icon={<Clapperboard size={13} />} label="自动成片" />
+      <div style={{ position: "relative" }}>
+        <BarBtn onClick={() => setShowParams((v) => !v)} icon={<SlidersHorizontal size={13} />} label="批量参数" active={showParams} />
+        {showParams && (
+          <div className="nodrag" onClick={(e) => e.stopPropagation()}
+            style={{ position: "absolute", bottom: "calc(100% + 8px)", left: "50%", transform: "translateX(-50%)",
+              width: 232, padding: 12, borderRadius: 12, display: "flex", flexDirection: "column", gap: 12,
+              background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "var(--c-node-shadow-hover)" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginBottom: 7 }}>统一画面比例</div>
+              <RatioPicker value="" options={RATIOS} onChange={applyRatio} />
+              <p style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 6, lineHeight: 1.5 }}>应用到所有支持比例的选中节点</p>
+            </div>
+            <label className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "var(--c-t2)", fontWeight: 600 }}>
+              <input type="checkbox" checked={expandAll} onChange={(e) => setExpandAll(e.target.checked)} />
+              展开全部参数（所有节点）
+            </label>
+          </div>
+        )}
+      </div>
       <BarBtn onClick={group} icon={<Combine size={13} />} label="成组" />
       <BarBtn onClick={downloadAll} icon={<Download size={13} />} label="下载全部" />
-      <BarBtn onClick={clear} icon={<X size={13} />} label="取消" />
+      <BarBtn onClick={() => { setShowParams(false); clear(); }} icon={<X size={13} />} label="取消" />
     </div>
   );
 }
 
-function BarBtn({ onClick, icon, label, primary }: { onClick: () => void; icon: React.ReactNode; label: string; primary?: boolean }) {
+function BarBtn({ onClick, icon, label, primary, active }: { onClick: () => void; icon: React.ReactNode; label: string; primary?: boolean; active?: boolean }) {
   return (
     <button
       className="studio-toolbtn"
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: "0 11px", borderRadius: 9,
-        border: primary ? "none" : "1px solid var(--c-bd2)", cursor: "pointer", fontSize: 12, fontWeight: 600,
-        background: primary ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)",
-        color: primary ? "#0b0d12" : "var(--c-t2)" }}
+        border: primary ? "none" : `1px solid ${active ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, cursor: "pointer", fontSize: 12, fontWeight: 600,
+        background: primary ? "var(--ui-accent, var(--c-accent))" : active ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)",
+        color: primary ? "#0b0d12" : active ? "var(--c-t1)" : "var(--c-t2)" }}
     >
       {icon}{label}
     </button>

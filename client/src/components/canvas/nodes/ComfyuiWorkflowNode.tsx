@@ -710,7 +710,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const wfHero = (payload.status === "done" && payload.outputUrls && payload.outputUrls.length > 0) ? (
     payload.outputType === "video" ? (
       <div className="relative" style={{ width: "100%" }}>
-        <WatermarkedVideo block src={payload.outputUrls[0]} controls className="w-full" preload="metadata" style={{ display: "block", maxHeight: 240 }} />
+        <WatermarkedVideo block src={payload.outputUrls[0]} controls className="w-full" preload="metadata" style={{ display: "block" }} />
       </div>
     ) : (
       <div className="relative overflow-hidden" style={{ width: "100%" }}>

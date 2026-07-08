@@ -322,7 +322,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         controls
         className="w-full"
         preload="metadata"
-        style={{ display: "block", maxHeight: 240 }}
+        style={{ display: "block" }}
       />
       {videoStoredInMinio && (
         <div

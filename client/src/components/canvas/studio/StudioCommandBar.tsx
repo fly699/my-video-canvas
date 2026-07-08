@@ -23,6 +23,9 @@ import type { NodeType, VideoProvider } from "../../../../../shared/types";
 const GENERATIVE_TYPES = new Set<NodeType>([
   "image_gen", "storyboard", "video_task", "script",
 ]);
+// ★5：支持反向提示词的生成类型——命令栏里无条件给入口（不再靠当前值是否为串，否则新节点没入口）。
+// 脚本(script)是文本生成、无反向提示词，故不含。
+const NEG_PROMPT_TYPES = new Set<NodeType>(["image_gen", "storyboard", "video_task"]);
 
 export const RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
 
@@ -97,6 +100,10 @@ function StudioSelect({ value, options, onChange, title, maxWidth = 170, placeho
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; minWidth: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // ★6：长列表加搜索 + 键盘导航（选项 > 8 时启用）。
+  const [query, setQuery] = useState("");
+  const [hi, setHi] = useState(0);
+  const searchable = options.length > 8;
 
   useEffect(() => {
     if (!open) return;
@@ -118,9 +125,12 @@ function StudioSelect({ value, options, onChange, title, maxWidth = 170, placeho
   }, [open]);
 
   const cur = options.find((o) => o.value === value);
+  // ★6：按搜索词过滤（保持声明顺序），fopts 是扁平的可见项，供键盘 ↑↓/Enter 用。
+  const q = query.trim().toLowerCase();
+  const fopts = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
   // Preserve declaration order while grouping (optgroup-style headers).
   const groups: { label: string; opts: StudioOpt[] }[] = [];
-  for (const o of options) {
+  for (const o of fopts) {
     const g = o.group ?? "";
     let grp = groups.find((x) => x.label === g);
     if (!grp) { grp = { label: g, opts: [] }; groups.push(grp); }
@@ -135,32 +145,50 @@ function StudioSelect({ value, options, onChange, title, maxWidth = 170, placeho
     const below = window.innerHeight - r.bottom;
     const openUp = below < 300 && r.top > below;
     setPos({ left: r.left, minWidth: r.width, ...(openUp ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+    setQuery(""); setHi(Math.max(0, options.findIndex((o) => o.value === value)));
     setOpen(true);
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setHi((i) => Math.min(fopts.length - 1, i + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((i) => Math.max(0, i - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); const o = fopts[hi]; if (o) { onChange(o.value); setOpen(false); } }
+    else if (e.key === "Escape") { e.preventDefault(); setOpen(false); }
   };
 
   return (
     <div className="nodrag" style={{ display: "inline-block" }}>
-      <button ref={btnRef} type="button" title={title} onClick={(e) => { e.stopPropagation(); toggle(); }}
-        style={{ ...chip, display: "inline-flex", alignItems: "center", justifyContent: "space-between", gap: 5, maxWidth }}>
+      <button ref={btnRef} type="button" className="studio-chip" title={title} data-open={open ? "1" : undefined} onClick={(e) => { e.stopPropagation(); toggle(); }}
+        style={{ ...chip, display: "inline-flex", alignItems: "center", justifyContent: "space-between", gap: 5, maxWidth,
+          ...(open ? { borderColor: "var(--ui-accent)", boxShadow: "0 0 0 2px color-mix(in oklab, var(--ui-accent) 28%, transparent)" } : null) }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur?.label ?? placeholder ?? ""}</span>
         <ChevronDown size={12} style={{ flexShrink: 0, opacity: 0.55 }} />
       </button>
       {open && pos && createPortal(
-        <div ref={menuRef} className="nowheel" style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom,
-          minWidth: Math.max(pos.minWidth, 150), maxWidth: 340, maxHeight: 300, overflowY: "auto", zIndex: 9999,
+        <div ref={menuRef} className="nowheel" onKeyDown={onKey} style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom,
+          minWidth: Math.max(pos.minWidth, 150), maxWidth: 340, maxHeight: 320, overflowY: "auto", zIndex: 9999,
           background: "var(--c-elevated, #1b1b1f)", border: "1px solid var(--c-bd1, var(--c-bd2))", borderRadius: 9,
           boxShadow: "0 10px 30px rgba(0,0,0,0.45)", padding: 4 }}>
+          {searchable && (
+            <input autoFocus value={query} onChange={(e) => { setQuery(e.target.value); setHi(0); }} onKeyDown={onKey}
+              onClick={(e) => e.stopPropagation()} placeholder="搜索…（↑↓ 选择 · Enter 确认）"
+              style={{ width: "100%", boxSizing: "border-box", padding: "6px 9px", marginBottom: 4, fontSize: 12, borderRadius: 6,
+                background: "var(--c-input, var(--c-surface))", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+          )}
+          {fopts.length === 0 && <div style={{ fontSize: 12, color: "var(--c-t4)", padding: "8px 9px" }}>无匹配</div>}
           {groups.map((g, gi) => (
             <div key={gi}>
               {showHeaders && <div style={{ fontSize: 10, color: "var(--c-t4)", padding: "5px 8px 2px", fontWeight: 600 }}>{g.label || "模型"}</div>}
-              {g.opts.map((o) => (
-                <button key={o.value} type="button" title={o.label} onClick={(e) => { e.stopPropagation(); onChange(o.value); setOpen(false); }}
+              {g.opts.map((o) => {
+                const isHi = fopts[hi]?.value === o.value;
+                return (
+                <button key={o.value} type="button" title={o.label} onMouseEnter={() => setHi(fopts.indexOf(o))} onClick={(e) => { e.stopPropagation(); onChange(o.value); setOpen(false); }}
                   style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 9px", borderRadius: 6, fontSize: 12, lineHeight: 1.45,
-                    background: o.value === value ? "color-mix(in oklab, var(--ui-accent) 16%, transparent)" : "transparent",
+                    background: o.value === value ? "color-mix(in oklab, var(--ui-accent) 16%, transparent)" : isHi ? "var(--c-surface)" : "transparent",
                     color: o.value === value ? "var(--c-t1)" : "var(--c-t2)", border: "none", cursor: "pointer", fontWeight: o.value === value ? 700 : 500 }}>
                   {o.label}
                 </button>
-              ))}
+                );
+              })}
             </div>
           ))}
         </div>, document.body)
@@ -275,8 +303,10 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
         </div>
       </div>
 
-      {/* command bar — ONE horizontal row of compact inline controls */}
-      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+      {/* command bar — 参数区自成一块（内部换行），发送/费用组固定在整栏右下，
+          不会在参数换多行时被挤到中间（★8）。 */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 9, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
         {/* model */}
         {nodeType === "script" ? (
           <LLMModelPicker value={(isKnownLlm(payload.aiLlmModel) ? payload.aiLlmModel : resolve("script", "llm")) as LLMModelId} onChange={(v) => set({ aiLlmModel: v })} />
@@ -351,16 +381,18 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
 
         {/* reference images — compact thumbnails + upload, fills the middle of the row */}
         {showRefImages && <StudioRefImages nodeId={nodeId} payload={payload} />}
+        </div>
 
-        {/* right group: cost (⚡) + send/generate (↑) — pushed to the far right */}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9 }}>
+        {/* right group: cost (⚡) + send/generate (↑) — 固定右下、永不换行进参数流 */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
           {costLabel && <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ui-amber, var(--c-t2))", whiteSpace: "nowrap" }}>⚡ {costLabel}</span>}
-          <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult} verb="生成" />
+          <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult} verb="生成"
+            reason={!canRun ? (str(textField).trim() ? "请先完善必填参数" : nodeType === "script" ? "请先填写脚本主题" : "请先填写提示词") : undefined} />
         </div>
       </div>
 
       {/* negative prompt (compact, when supported) */}
-      {typeof payload.negativePrompt === "string" && (
+      {(NEG_PROMPT_TYPES.has(nodeType) || typeof payload.negativePrompt === "string") && (
         <NodeTextArea value={str("negativePrompt")} onValueChange={(v) => set({ negativePrompt: v })} rows={1} placeholder="反向提示词（可选）"
           style={{ width: "100%", fontSize: 12.5, padding: "8px 11px", borderRadius: 10, background: "var(--c-input)",
             border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", resize: "vertical", minHeight: 38 }} />
@@ -406,12 +438,14 @@ function StudioRefImages({ nodeId, payload }: { nodeId: string; payload: Record<
   return (
     <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 5 }}>
       {refImages.images.slice(0, 4).map((img) => (
-        <div key={img.id} style={{ position: "relative", width: 32, height: 32, borderRadius: 7, overflow: "hidden", border: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+        // ★9：缩略图放大到 38，移除键命中区 20×20（此前 14×14 太小、触屏难点中），
+        // 常驻半透明红底、hover 加深，一眼可见可点。
+        <div key={img.id} className="studio-ref-thumb" style={{ position: "relative", width: 38, height: 38, borderRadius: 8, overflow: "hidden", border: "1px solid var(--c-bd2)", flexShrink: 0 }}>
           <img src={img.url} alt="参考图" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           <button onClick={(e) => { e.stopPropagation(); refImages.removeId(img.id); }} title="移除参考图"
-            style={{ position: "absolute", top: 0, right: 0, width: 14, height: 14, border: "none", borderRadius: "0 0 0 5px",
-              background: "rgba(0,0,0,0.55)", color: "#fff", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <X size={9} />
+            style={{ position: "absolute", top: 0, right: 0, width: 20, height: 20, border: "none", borderRadius: "0 0 0 7px",
+              background: "rgba(200,40,40,0.72)", color: "#fff", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <X size={13} strokeWidth={2.5} />
           </button>
         </div>
       ))}
@@ -537,21 +571,30 @@ function PromptBox({ nodeId, field, placeholder, enhance }: { nodeId: string; fi
   );
 }
 
-function SendButton({ onRun, canRun = true, running = false, hasResult = false, verb = "运行" }: { onRun?: () => void; canRun?: boolean; running?: boolean; hasResult?: boolean; verb?: string }) {
+function SendButton({ onRun, canRun = true, running = false, hasResult = false, verb = "运行", reason }: { onRun?: () => void; canRun?: boolean; running?: boolean; hasResult?: boolean; verb?: string; reason?: string }) {
   if (!onRun) return null;
   // Three explicit visual states: run (white, ready) / running (accent-tinted with a
   // pulsing ring → reads as "working", not disabled) / off (muted, can't run).
   const state = running ? "running" : canRun ? "run" : "off";
+  // ★7：置灰(off)时把「为什么不能运行」说清楚——tooltip + 送钮左侧一条琥珀色小提示，
+  // 避免用户对着灰按钮一脸茫然（此前 off 态 title 仍是「生成」，毫无线索）。
+  const title = running ? `${verb}中…` : state === "off" && reason ? reason : hasResult ? `重新${verb}` : verb;
   return (
-    <button className="studio-send" data-state={state}
-      onClick={(e) => { e.stopPropagation(); if (canRun && !running) onRun(); }} disabled={!canRun || running}
-      title={running ? `${verb}中…` : hasResult ? `重新${verb}` : verb}
-      style={{ width: 34, height: 34, borderRadius: "50%", border: "none", flexShrink: 0,
-        background: state === "run" ? "#fff" : state === "running" ? "color-mix(in oklab, var(--ui-accent) 22%, var(--c-surface))" : "var(--c-surface)",
-        color: state === "run" ? "#111" : state === "running" ? "var(--ui-accent)" : "var(--c-t4)",
-        cursor: state === "run" ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      {running ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={16} />}
-    </button>
+    <>
+      {state === "off" && reason && (
+        <span className="nodrag" title={reason} style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ui-amber, var(--c-t3))",
+          maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reason}</span>
+      )}
+      <button className="studio-send" data-state={state}
+        onClick={(e) => { e.stopPropagation(); if (canRun && !running) onRun(); }} disabled={!canRun || running}
+        title={title}
+        style={{ width: 34, height: 34, borderRadius: "50%", border: "none", flexShrink: 0,
+          background: state === "run" ? "#fff" : state === "running" ? "color-mix(in oklab, var(--ui-accent) 22%, var(--c-surface))" : "var(--c-surface)",
+          color: state === "run" ? "#111" : state === "running" ? "var(--ui-accent)" : "var(--c-t4)",
+          cursor: state === "run" ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {running ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={16} />}
+      </button>
+    </>
   );
 }
 
@@ -589,17 +632,20 @@ function SimpleBar({ nodeId, onRun, canRun = true, running = false, hasResult = 
       {text && <PromptBox nodeId={nodeId} field={text.field} placeholder={text.placeholder} enhance={text.enhance} />}
 
       {(controls.length > 0 || form.llm || form.refImages || !form.noRun) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-          {form.llm && (
-            <LLMModelPicker
-              value={(allLlmModels.some((m) => m.id === payload[form.llm!]) ? payload[form.llm!] : LLM_MODELS[0]?.id) as LLMModelId}
-              onChange={(v) => set({ [form.llm!]: v })} />
-          )}
-          {controls.map((c) => renderCtrl(c, payload, set))}
-          {form.refImages && <StudioRefImages nodeId={nodeId} payload={payload} />}
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 9, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
+            {form.llm && (
+              <LLMModelPicker
+                value={(allLlmModels.some((m) => m.id === payload[form.llm!]) ? payload[form.llm!] : LLM_MODELS[0]?.id) as LLMModelId}
+                onChange={(v) => set({ [form.llm!]: v })} />
+            )}
+            {controls.map((c) => renderCtrl(c, payload, set))}
+            {form.refImages && <StudioRefImages nodeId={nodeId} payload={payload} />}
+          </div>
           {!form.noRun && (
-            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9 }}>
-              <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult} />
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
+              <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult}
+                reason={!canRun ? (text && !((payload[text.field] as string | undefined)?.trim()) ? "请先填写内容" : "请先完善必填参数") : undefined} />
             </div>
           )}
         </div>
@@ -705,7 +751,8 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
 
       <PromptBox nodeId={nodeId} field={textField} placeholder={placeholder} enhance={cat !== "dubbing"} />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 9, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
         {cat === "music" && (
           <>
             {audioModelSelect(musicModel, MUSIC_MODELS, (v) => set({ musicModel: v }), "音乐模型")}
@@ -735,8 +782,10 @@ function AudioBar({ nodeId, onRun, canRun = true, running = false, hasResult = f
             {renderCtrl({ key: "sfxLoop", type: "toggle", label: "无缝循环" }, payload, set)}
           </>
         )}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9 }}>
-          <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult} />
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
+          <SendButton onRun={onRun} canRun={canRun} running={running} hasResult={hasResult}
+            reason={!canRun ? "请先填写内容" : undefined} />
         </div>
       </div>
     </div>
