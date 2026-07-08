@@ -1305,7 +1305,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     // not for HTTP errors (403, 404) where opening a new tab is unhelpful
                     if (err instanceof TypeError && /^https?:\/\//i.test(zoomUrl)) {
                       toast.info("直接下载失败，将尝试在新标签页打开");
-                      window.open(zoomUrl, "_blank");
+                      window.open(zoomUrl, "_blank", "noopener,noreferrer");
                     } else {
                       toast.error("下载失败，图片无法访问");
                     }
