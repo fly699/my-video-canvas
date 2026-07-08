@@ -2597,6 +2597,32 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <CanvasTips />
           {/* Studio global creation bar (nothing selected → quick prompt → 生成) */}
           <StudioCreateBar />
+          {/* ◆10 非 studio 皮肤的空画布空态 CTA（studio 由 StudioCreateBar 负责） */}
+          {uiStyle !== "studio" && !isReadOnly && nodes.filter((n) => n.data.nodeType !== "group").length === 0 && (
+            <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-55%)", zIndex: 6,
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 14, pointerEvents: "none", textAlign: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
+                background: "var(--c-surface)", border: "1.5px dashed var(--c-bd3)", color: "var(--c-t3)" }}>
+                <Plus className="w-7 h-7" />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--c-t2)" }}>画布是空的</div>
+                <div style={{ fontSize: 12.5, color: "var(--c-t4)", marginTop: 4 }}>添加节点开始创作，或导入一个工作流。双击空白也能快速添加。</div>
+              </div>
+              <div style={{ display: "flex", gap: 10, pointerEvents: "auto" }}>
+                <button onClick={() => setShowNodePicker(true)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                    background: "var(--color-brand, oklch(0.62 0.2 285))", color: "#fff", border: "none", cursor: "pointer" }}>
+                  <Plus className="w-4 h-4" /> 添加第一个节点
+                </button>
+                <button onClick={addComfyWorkflowWithWizard}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                    background: "var(--c-surface)", color: "var(--c-t2)", border: "1px solid var(--c-bd2)", cursor: "pointer" }}>
+                  <LayoutGrid className="w-4 h-4" /> 导入工作流
+                </button>
+              </div>
+            </div>
+          )}
           {/* Studio ⌘K model quick-switch (a generative node is selected) */}
           {modelSwitch && <ModelQuickSwitch nodeId={modelSwitch.nodeId} nodeType={modelSwitch.nodeType} onClose={() => setModelSwitch(null)} />}
 
