@@ -317,6 +317,12 @@ function UsersPanel() {
   const utils = trpc.useUtils();
   const { user: me } = useAuth();
   const { data: users, isLoading } = trpc.admin.users.list.useQuery();
+  // #R5-2 用户量大时需搜索 / 状态筛选 / 分页（与同页日志面板一致）。纯客户端过滤（列表已全量拉取）。
+  const [userSearch, setUserSearch] = useState("");
+  const [userFilter, setUserFilter] = useState<"all" | "pending" | "disabled" | "admin">("all");
+  const [userPage, setUserPage] = useState(0);
+  const USERS_PER_PAGE = 20;
+  useEffect(() => { setUserPage(0); }, [userSearch, userFilter]);
   // 实时在线状态 + 今日在线时长：轮询 presence 统计，叠加到用户表。
   const { data: onlineStats } = trpc.admin.users.onlineStats.useQuery(undefined, { refetchInterval: 15000, refetchOnWindowFocus: true });
   const statMap = new Map((onlineStats ?? []).map((s) => [s.userId, s]));
@@ -375,6 +381,20 @@ function UsersPanel() {
   };
   const pendingCount = (users ?? []).filter((u) => (u as { approved?: boolean }).approved === false).length;
 
+  // 搜索(姓名/邮箱/ID) + 状态筛选 + 分页。
+  const q = userSearch.trim().toLowerCase();
+  const filteredUsers = (users ?? []).filter((u) => {
+    if (userFilter === "pending" && (u as { approved?: boolean }).approved !== false) return false;
+    if (userFilter === "disabled" && !u.disabled) return false;
+    if (userFilter === "admin" && (u.adminLevel ?? 0) < 1) return false;
+    if (!q) return true;
+    return (u.name ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q) || String(u.id).includes(q) || (u.openId ?? "").toLowerCase().includes(q);
+  });
+  const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+  const clampedUserPage = Math.min(userPage, totalUserPages - 1);
+  const pagedUsers = filteredUsers.slice(clampedUserPage * USERS_PER_PAGE, (clampedUserPage + 1) * USERS_PER_PAGE);
+  const FILTERS: [typeof userFilter, string][] = [["all", "全部"], ["pending", "待审批"], ["disabled", "已冻结"], ["admin", "管理员"]];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={cardStyle}>
@@ -396,6 +416,29 @@ function UsersPanel() {
             : "「管理员级别」仅超级管理员可修改。"}
         </p>
       </div>
+      {/* 搜索 + 状态筛选 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <input
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          placeholder="搜索 姓名 / 邮箱 / ID…"
+          style={{ flex: "1 1 220px", minWidth: 160, fontSize: 12.5, padding: "7px 11px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}
+        />
+        <div style={{ display: "flex", gap: 5 }}>
+          {FILTERS.map(([v, lb]) => {
+            const on = userFilter === v;
+            const cnt = v === "all" ? (users?.length ?? 0) : v === "pending" ? pendingCount : v === "disabled" ? (users ?? []).filter((u) => u.disabled).length : (users ?? []).filter((u) => (u.adminLevel ?? 0) >= 1).length;
+            return (
+              <button key={v} onClick={() => setUserFilter(v)}
+                style={{ fontSize: 12, fontWeight: on ? 700 : 600, padding: "6px 11px", borderRadius: 8, cursor: "pointer",
+                  background: on ? "oklch(0.65 0.19 285 / 0.16)" : "var(--c-input)", border: `1px solid ${on ? "oklch(0.65 0.19 285 / 0.45)" : "var(--c-bd2)"}`, color: on ? "oklch(0.72 0.16 285)" : "var(--c-t3)" }}>
+                {lb} {cnt}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div style={{ ...cardStyle, padding: 0, overflowX: "auto" }}>
         {isLoading ? (
           <div style={{ padding: 16, fontSize: 12, color: "var(--c-t3)" }}>加载中…</div>
@@ -408,7 +451,7 @@ function UsersPanel() {
               </tr>
             </thead>
             <tbody>
-              {(users ?? []).map((u) => {
+              {pagedUsers.map((u) => {
                 const label = u.name || u.email || ("#" + u.id);
                 const isSelf = u.id === me?.id;
                 return (
@@ -485,11 +528,20 @@ function UsersPanel() {
                   </tr>
                 );
               })}
-              {(users?.length ?? 0) === 0 && <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "var(--c-t3)" }}>暂无用户</td></tr>}
+              {filteredUsers.length === 0 && <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "var(--c-t3)", padding: "20px 0" }}>{(users?.length ?? 0) === 0 ? "暂无用户" : "无匹配用户，试试调整搜索或筛选"}</td></tr>}
             </tbody>
           </table>
         )}
       </div>
+
+      {/* 分页 */}
+      {!isLoading && filteredUsers.length > USERS_PER_PAGE && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 12, color: "var(--c-t3)" }}>
+          <button onClick={() => setUserPage((p) => Math.max(0, p - 1))} disabled={clampedUserPage === 0} style={btnSecondary(clampedUserPage === 0)}>‹ 上一页</button>
+          <span>第 {clampedUserPage + 1} / {totalUserPages} 页 · 共 {filteredUsers.length} 人</span>
+          <button onClick={() => setUserPage((p) => Math.min(totalUserPages - 1, p + 1))} disabled={clampedUserPage >= totalUserPages - 1} style={btnSecondary(clampedUserPage >= totalUserPages - 1)}>下一页 ›</button>
+        </div>
+      )}
     </div>
   );
 }
