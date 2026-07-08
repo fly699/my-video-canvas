@@ -127,6 +127,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const myUserIdRef = useRef<number | null>(null);
   const convTitleRef = useRef<Map<number, string>>(new Map());
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // socket 连接 effect 依赖数组为 []（只建一次连接），若直接引用 reloadMessages/handleRelay/
+  // handleFileChunk 会冻结成首帧闭包——那时 conversations 仍是 []，导致：重连后 serverless 会话
+  // 被误当 server 拉取而清空、DM 中继/文件用错「group」密钥派生 →「[无法解密]」。用 ref 承接最新
+  // 实例，socket 回调一律走 ref.current，始终拿到带最新 conversations 的版本。
+  const reloadMessagesRef = useRef<(convId: number) => Promise<void>>(async () => {});
+  const handleRelayRef = useRef<(p: ChatRelayPayload) => Promise<void>>(async () => {});
+  type FileChunkFrame = { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: ChatFileRef; encrypted?: boolean; senderId: number; senderName?: string };
+  const handleFileChunkRef = useRef<(f: FileChunkFrame) => Promise<void>>(async () => {});
   // serverless inbound file reassembly
   const fileBufs = useRef<Map<string, { chunks: Uint8Array[]; meta: ChatFileRef }>>(new Map());
 
@@ -222,7 +230,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const active = activeIdRef.current;
       if (active != null) {
         socket.emit("chat:join", { conversationId: active });
-        void reloadMessages(active); // resync messages missed while disconnected
+        void reloadMessagesRef.current(active); // resync（走 ref，避免首帧 conversations=[] 把 serverless 会话清空）
       }
     });
     socket.on("disconnect", () => setConnected(false));
@@ -268,12 +276,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     });
     socket.on("conversation:mode-changed", () => {
       utils.chat.listConversations.invalidate();
-      if (activeIdRef.current) void reloadMessages(activeIdRef.current);
+      if (activeIdRef.current) void reloadMessagesRef.current(activeIdRef.current);
     });
 
-    socket.on("chat:relay", (payload: ChatRelayPayload) => { void handleRelay(payload); });
+    socket.on("chat:relay", (payload: ChatRelayPayload) => { void handleRelayRef.current(payload); });
     socket.on("chat:file-chunk", (frame: { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: ChatFileRef; senderId: number; senderName?: string }) => {
-      void handleFileChunk(frame);
+      void handleFileChunkRef.current(frame);
     });
 
     return () => { socket.disconnect(); socketRef.current = null; };
@@ -484,6 +492,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
     notifyIncoming({ conversationId: payload.conversationId, senderId: payload.senderId, senderName: payload.senderName, content: text, hasMedia: !!payload.fileMeta });
   }, [conversations, getConversationKey, answerKeyRequest, utils, myUserId, persistRoomKey, reDecryptConversation, notifyIncoming]);
+  handleRelayRef.current = handleRelay;
 
   const handleFileChunk = useCallback(async (frame: { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: ChatFileRef; encrypted?: boolean; senderId: number; senderName?: string }) => {
     const conv = conversations.find((c) => c.id === frame.conversationId);
@@ -525,6 +534,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       notifyIncoming({ conversationId: frame.conversationId, senderId: frame.senderId, senderName: frame.senderName, hasMedia: true });
     }
   }, [conversations, getConversationKey, notifyIncoming]);
+  handleFileChunkRef.current = handleFileChunk;
 
   // ── message loading on conversation switch ────────────────────────────────
   const reloadMessages = useCallback(async (convId: number) => {
@@ -543,6 +553,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     } catch { setMessages([]); }
     finally { setLoadingMessages(false); }
   }, [conversations, utils]);
+  reloadMessagesRef.current = reloadMessages;
 
   /** 加载更早历史：以当前最旧消息 id 为游标向前取一页，去重后前插；不改变滚动锚点由 UI 负责。 */
   const loadEarlierMessages = useCallback(async () => {

@@ -48,7 +48,7 @@ export function NewConversationDialog({ onClose }: { onClose: () => void }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: 420, maxWidth: "90vw", background: "var(--c-surface, #1a1a22)", borderRadius: 14,
+        width: 420, maxWidth: "90vw", maxHeight: "90vh", overflowY: "auto", background: "var(--c-surface, #1a1a22)", borderRadius: 14,
         border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))", padding: 20, color: "var(--c-t1, #f0f0f4)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
