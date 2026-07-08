@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
-import { Handle, Position, NodeResizer, useUpdateNodeInternals } from "@xyflow/react";
+import { Handle, Position, NodeResizer, useUpdateNodeInternals, useStore } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
@@ -204,6 +204,11 @@ export const BaseNode = memo(function BaseNode({
   const isCreative = canvasMode === "creative";
   const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || isCreative;
   const hasHero = heroMedia != null;
+  // 节点 LOD：缩放很小时（<0.3）画布上一屏可挤下几十上百个节点，此时逐个渲染命令栏/
+  // 参数表/工具条纯属浪费。用 useStore 只取「是否低于阈值」的布尔——仅在跨越阈值时才
+  // 触发本节点重渲染（而非每次缩放都重渲），越阈值后隐藏交互 body（保留缩略图英雄区，
+  // 以便缩略图纵览仍成立），到重新放大时自动恢复。
+  const lodFar = useStore((s) => s.transform[2] < 0.3);
   // Some nodes keep their full PRO body even in the studio skin (no floating
   // command bar / panel) — their editing UX doesn't fit a compact bar (e.g. the
   // AI chat node is a live conversation, not a parameter form).
@@ -1238,7 +1243,7 @@ export const BaseNode = memo(function BaseNode({
           未选中时像专业版一样内联渲染 body，使剪辑等「预览在 body 里、又无结果英雄区」
           的节点在静止态也常显预览（此前 studio 一律不内联 → 未选中只剩光秃标题栏）。
           有结果英雄区的节点(has-hero)未选中仍由「媒体优先折叠」CSS 收成英雄区，不受影响。 */}
-      {studioFloated ? null : (
+      {(studioFloated || lodFar) ? null : (
         <NodeSelectedContext.Provider value={expandSelected}>
           <div className="node-body-wrap">
             {/* When the node height is capped, make this wrapper a flex column so a
