@@ -320,7 +320,7 @@ export default function LoginPage() {
             <button
               key={m}
               type="button"
-              onClick={() => { setMode(m); setError(null); }}
+              onClick={() => { setMode(m); setError(null); setInfo(null); }}
               style={{
                 flex: 1,
                 padding: "7px 0",
@@ -459,6 +459,24 @@ export default function LoginPage() {
                   ⚠️ 记住密码会把密码保存在本机浏览器（仅混淆、非加密）。请仅在私人电脑上使用。
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Info（注册待审批 / OAuth 待审批回跳 / 重发验证码等）——此前主表单从不渲染 info，
+              开启注册审批但未开邮箱验证时，注册成功回到登录表单是一片空白，用户误以为失败。 */}
+          {info && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: "8px",
+                background: "rgba(90,167,255,0.1)",
+                border: "1px solid rgba(90,167,255,0.28)",
+                color: "#7fb4ff",
+                fontSize: "13px",
+                lineHeight: 1.55,
+              }}
+            >
+              {info}
             </div>
           )}
 
