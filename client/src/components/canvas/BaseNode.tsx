@@ -19,7 +19,7 @@ import { useUIStyle } from "../../contexts/UIStyleContext";
 import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioCommandBar";
 import { useLightbox } from "./studio/Lightbox";
 import {
-  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2,
+  Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2, Lock,
   Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video,
 } from "lucide-react";
 import { downloadMedia } from "../../lib/download";
@@ -161,6 +161,11 @@ export const BaseNode = memo(function BaseNode({
   const pinned = useCanvasStore((s) => {
     const node = s.nodes.find((n) => n.id === id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
+  });
+  // ◆6 锁定：payload.locked。锁定节点不可拖/不可删(在 Canvas displayNodes 注入 draggable/deletable=false)。
+  const locked = useCanvasStore((s) => {
+    const node = s.nodes.find((n) => n.id === id);
+    return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.locked);
   });
   // 注意：多选时上游 CustomNode 已把 selected prop 压成 false（所有节点统一「框选不展开」），
   // 这里的 selected 即「单选展开」语义；选中描边用 store 真实选中态（storeSelected），
@@ -940,6 +945,16 @@ export const BaseNode = memo(function BaseNode({
               background: "oklch(0.68 0.22 285 / 0.15)", color: "oklch(0.78 0.16 285)", border: "1px solid oklch(0.68 0.22 285 / 0.35)", flexShrink: 0 }}>
             <Pin size={10} />
           </span>
+        )}
+        {/* ◆6 锁定徽标(所有皮肤):锁定时常驻,点击解锁 */}
+        {locked && (
+          <button
+            onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().updateNodeData(id, { locked: false }); }}
+            title="已锁定(不可拖/删) — 点击解锁"
+            className="nodrag flex-shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded"
+            style={{ background: "oklch(0.70 0.16 65 / 0.15)", color: "oklch(0.72 0.16 65)", border: "1px solid oklch(0.70 0.16 65 / 0.35)", cursor: "pointer" }}>
+            <Lock size={10} />
+          </button>
         )}
 
         {/* 直传 — push current output to downstream inputs without running */}

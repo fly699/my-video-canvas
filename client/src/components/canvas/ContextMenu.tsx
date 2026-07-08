@@ -5,7 +5,7 @@ import { sortNodeConfigsForPalette } from "../../lib/nodeOrder";
 import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
-  BookmarkPlus, Bookmark, Download, Upload, Boxes, Group, Ungroup, Pencil, GripVertical, Check, RotateCcw,
+  BookmarkPlus, Bookmark, Download, Upload, Boxes, Group, Ungroup, Pencil, GripVertical, Check, RotateCcw, Lock, Unlock,
 } from "lucide-react";
 import type { NodeTemplate } from "../../lib/nodeTemplates";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -25,6 +25,8 @@ interface ContextMenuProps {
   onRunWorkflow?: () => void;
   onTogglePin?: () => void;
   onCollapse?: () => void;
+  nodeLocked?: boolean;
+  onToggleLock?: () => void;
   // Per-node-type setting templates (localStorage). When provided, the node menu
   // shows 存为模板 + a list of saved templates to apply to this node.
   nodeTemplates?: NodeTemplate[];
@@ -44,9 +46,9 @@ interface ContextMenuProps {
 }
 
 export function ContextMenu({
-  x, y, type, nodeId, nodePinned,
+  x, y, type, nodeId, nodePinned, nodeLocked,
   onClose, onAddNode, onOpenNodeLibrary, onDeleteNode, onDuplicateNode, onRunWorkflow,
-  onTogglePin, onCollapse,
+  onTogglePin, onCollapse, onToggleLock,
   nodeTemplates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
   onExportTemplates, onImportTemplates, onSaveToLibrary,
   onGroup, onUngroup, onDeleteGroup, onDuplicateGroup,
@@ -682,6 +684,19 @@ export function ContextMenu({
               >
                 <ChevronUp className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
                 立即折叠
+              </button>
+            )}
+            {onToggleLock && (
+              <button
+                onClick={() => { onToggleLock(); onClose(); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 8px", fontSize: 12,
+                  cursor: "pointer", background: "transparent", border: "none", textAlign: "left",
+                  color: nodeLocked ? "oklch(0.72 0.16 65)" : "var(--c-t2)", borderRadius: 8, transition: "all 120ms ease" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                {nodeLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                {nodeLocked ? "解锁（恢复可拖/删）" : "锁定（不可拖/删）"}
               </button>
             )}
             {(onTogglePin || onCollapse) && (onDuplicateNode || onDeleteNode) && (

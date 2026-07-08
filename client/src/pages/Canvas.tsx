@@ -1211,15 +1211,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (gp.collapsed) cids.forEach((c) => collapsedHiddenIds.add(c));
       if (n.selected) cids.forEach((c) => highlightIds.add(c));
     }
-    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0) {
+    // ◆6 锁定：payload.locked 的节点不可拖、不可删（draggable/deletable=false）。
+    const anyLocked = nodes.some((n) => (n.data.payload as { locked?: boolean } | undefined)?.locked);
+    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0 && !anyLocked) {
       return { displayNodes: nodes, displayEdges: edges };
     }
     const dNodes = nodes.map((n) => {
       const hide = collapsedHiddenIds.has(n.id);
       const hl = highlightIds.has(n.id) && !hide;
-      if (!hide && !hl) return n;
+      const locked = !!(n.data.payload as { locked?: boolean } | undefined)?.locked;
+      if (!hide && !hl && !locked) return n;
       return {
         ...n,
+        ...(locked ? { draggable: false, deletable: false } : {}),
         hidden: hide || n.hidden,
         className: hl ? `${n.className ?? ""} group-member-highlight`.trim() : n.className,
       };
@@ -3451,6 +3455,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
             // even when the user clicks elsewhere on the canvas.
             onTogglePin={contextMenu.nodeId ? () => {
               updateNodeData(contextMenu.nodeId!, { pinned: !ctxPinned });
+            } : undefined}
+            nodeLocked={Boolean((ctxNode?.data.payload as { locked?: boolean } | undefined)?.locked)}
+            onToggleLock={contextMenu.nodeId ? () => {
+              const wasLocked = Boolean((ctxNode?.data.payload as { locked?: boolean } | undefined)?.locked);
+              updateNodeData(contextMenu.nodeId!, { locked: !wasLocked });
             } : undefined}
             // Collapse: clear pinned + deselect the node so it returns to its
             // compact preview-only height.
