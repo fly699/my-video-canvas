@@ -101,6 +101,7 @@ export type AuditAction =
   | "system_restart"
   | "user_reset_password"
   | "user_set_disabled"
+  | "user_set_approved"
   | "user_delete"
   | "admin_set_level"
   | "user_change_password"

@@ -2,6 +2,31 @@ import type { CreateExpressContextOptions } from "@trpc/server/adapters/express"
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
+import { getAuthSettings } from "../db";
+
+// 注册审批统一 gate：approved=false 且开关开启 → 视为未登录（即使持有合法会话也拿不到 API）。
+// 管理员/站长豁免，避免管理员把自己锁在门外。开关关闭后自动恢复（与冻结/邮箱验证同款语义）。
+// 读设置失败时对「待审批」用户 fail-closed（拦截），避免异常放行。
+async function passesApproval(user: User | null): Promise<User | null> {
+  if (!user) return null;
+  if (user.approved === false && user.role !== "admin") {
+    try {
+      const s = await getAuthSettings();
+      if (s.registrationApprovalEnabled) return null;
+    } catch { return null; }
+  }
+  return user;
+}
+
+/**
+ * 鉴权统一 gate：把 sdk.authenticateRequest 拿到的原始 user 过一遍「冻结 + 待审批」拦截，
+ * 返回放行的 user 或 null。HTTP(context/resolveRequestUser) 与 Socket.IO 两条鉴权路径都必须
+ * 经此函数，避免任一路径漏检（此前 socket 直接采信原始 user，绕过冻结/审批 gate）。
+ */
+export async function applyAuthGates(user: User | null): Promise<User | null> {
+  if (!user || user.disabled) return null;
+  return passesApproval(user);
+}
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -23,6 +48,7 @@ const DEV_USER: User = {
   adminLevel: 4,
   disabled: false,
   emailVerified: true,
+  approved: true,
   verifyCode: null,
   verifyCodeExpiresAt: null,
   createdAt: new Date("2024-01-01"),
@@ -38,12 +64,7 @@ const isDevBypass =
 /** Lightweight session check for raw Express routes (proxies, etc.). Returns true if authenticated. */
 export async function isRequestAuthenticated(req: CreateExpressContextOptions["req"]): Promise<boolean> {
   if (isDevBypass) return true;
-  try {
-    await sdk.authenticateRequest(req);
-    return true;
-  } catch {
-    return false;
-  }
+  return (await resolveRequestUser(req)) !== null;
 }
 
 /**
@@ -55,7 +76,7 @@ export async function resolveRequestUser(req: CreateExpressContextOptions["req"]
   if (isDevBypass) return DEV_USER;
   try {
     const u = await sdk.authenticateRequest(req);
-    return u?.disabled ? null : u; // 冻结用户视为未登录
+    return applyAuthGates(u); // 冻结/待审批用户视为未登录
   } catch {
     return null;
   }
@@ -81,7 +102,7 @@ export async function createContext(
   } else {
     try {
       user = await sdk.authenticateRequest(opts.req);
-      if (user?.disabled) user = null; // 冻结用户视为未登录，立即失去 API 访问
+      user = await applyAuthGates(user); // 冻结/待审批用户视为未登录（管理员豁免、开关关闭即恢复）
     } catch (error) {
       // Authentication is optional for public procedures.
       user = null;

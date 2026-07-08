@@ -149,10 +149,12 @@ function StudioSelect({ value, options, onChange, title, maxWidth = 170, placeho
     setOpen(true);
   };
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setHi((i) => Math.min(fopts.length - 1, i + 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((i) => Math.max(0, i - 1)); }
-    else if (e.key === "Enter") { e.preventDefault(); const o = fopts[hi]; if (o) { onChange(o.value); setOpen(false); } }
-    else if (e.key === "Escape") { e.preventDefault(); setOpen(false); }
+    // 搜索框与菜单容器都绑了 onKey：必须 stopPropagation，否则 input 上的 keydown
+    // 冒泡到菜单容器再触发一次 → ↑↓ 每次跳 2 项（★6 双触发 bug）。
+    if (e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); setHi((i) => Math.min(fopts.length - 1, i + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); setHi((i) => Math.max(0, i - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); const o = fopts[hi]; if (o) { onChange(o.value); setOpen(false); } }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); }
   };
 
   return (

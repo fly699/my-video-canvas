@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Play, Combine, Download, X, Clapperboard, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -13,7 +13,7 @@ import { useStudioExpandAll } from "../../../hooks/useStudioExpandAll";
 // 不同节点的比例字段名不同，按类型映射；只写它真正支持的字段，避免污染无关 payload。
 const RATIO_FIELD: Record<string, string> = {
   image_gen: "aspectRatio", storyboard: "aspectRatio", prompt: "aspectRatio",
-  comfyui_image: "aspectRatio", comfyui_workflow: "aspectRatio",
+  comfyui_workflow: "aspectRatio",
 };
 const CLIP_RATIOS = new Set(["9:16", "16:9", "1:1"]); // clip 节点的 aspect 仅支持这几种
 
@@ -41,6 +41,16 @@ export function MultiSelectBar() {
   const selectedKey = useCanvasStore((s) => s.nodes.filter((n) => n.selected && n.data.nodeType !== "group").map((n) => n.id).join(","));
   const [showParams, setShowParams] = useState(false);
   const [expandAll, setExpandAll] = useStudioExpandAll();
+  const paramsWrapRef = useRef<HTMLDivElement>(null);
+  // 弹层打开时，点弹层/触发钮之外即关闭（否则保持 ≥2 选中时点画布空白，弹层会残留遮挡）。
+  useEffect(() => {
+    if (!showParams) return;
+    const onDown = (e: MouseEvent) => {
+      if (paramsWrapRef.current && !paramsWrapRef.current.contains(e.target as Node)) setShowParams(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [showParams]);
   const ids = selectedKey ? selectedKey.split(",") : [];
   if (uiStyle !== "studio" || ids.length < 2) return null;
 
@@ -119,7 +129,7 @@ export function MultiSelectBar() {
       <span style={{ width: 1, height: 18, background: "var(--c-bd2)" }} />
       <BarBtn onClick={runAll} icon={<Play size={13} />} label="运行全部" primary />
       <BarBtn onClick={autoAssemble} icon={<Clapperboard size={13} />} label="自动成片" />
-      <div style={{ position: "relative" }}>
+      <div ref={paramsWrapRef} style={{ position: "relative" }}>
         <BarBtn onClick={() => setShowParams((v) => !v)} icon={<SlidersHorizontal size={13} />} label="批量参数" active={showParams} />
         {showParams && (
           <div className="nodrag" onClick={(e) => e.stopPropagation()}

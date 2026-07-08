@@ -140,7 +140,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // ── 收起为悬浮小球（点关闭=收起，非真关闭；小球右键才可关闭）──
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem("avc:canvasAgent:collapsed") === "1");
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:collapsed", collapsed ? "1" : "0"); } catch { /* quota */ } }, [collapsed]);
-  const BALL = 42; // 小球直径（更小巧，减少对画布的遮挡）
+  const BALL = 44; // 小球直径（比原 58 小巧，减少遮挡；≥44 满足移动端触摸目标）
   const [ballPos, setBallPos] = useState<{ left: number; top: number } | null>(() => {
     try { const s = localStorage.getItem("avc:canvasAgent:ballpos"); if (s) return JSON.parse(s); } catch { /* ignore */ }
     return null;
@@ -164,9 +164,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     const el = e.currentTarget as HTMLElement;
     try { el.setPointerCapture(e.pointerId); } catch { /* older browsers */ }
     const sx = e.clientX, sy = e.clientY, il = ballLeft, it = ballTop;
+    // 触屏轻点常有 5-10px 抖动，slop 放宽到 10 避免「想点却挪了球、面板没展开」；鼠标仍用 4。
+    const slop = e.pointerType === "touch" ? 10 : 4;
     let moved = false;
     const onMove = (mv: PointerEvent) => {
-      if (!moved && Math.hypot(mv.clientX - sx, mv.clientY - sy) < 4) return;
+      if (!moved && Math.hypot(mv.clientX - sx, mv.clientY - sy) < slop) return;
       moved = true;
       setBallPos({
         left: Math.max(0, Math.min(window.innerWidth - BALL, il + mv.clientX - sx)),

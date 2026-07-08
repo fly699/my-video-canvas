@@ -128,7 +128,7 @@ export function isDupEntryError(e: unknown): boolean {
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
 const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; systemDefaultModels?: Record<string, string> } = { disabledModels: [] };
-const devAuthSettings = { emailVerificationEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
+const devAuthSettings = { emailVerificationEnabled: false, registrationApprovalEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
 
@@ -291,6 +291,7 @@ export async function listAllUsers() {
   return db.select({
     id: users.id, openId: users.openId, name: users.name, email: users.email,
     loginMethod: users.loginMethod, role: users.role, adminLevel: users.adminLevel, disabled: users.disabled,
+    approved: users.approved,
     hasPassword: sql<boolean>`(${users.passwordHash} IS NOT NULL)`,
     createdAt: users.createdAt, lastSignedIn: users.lastSignedIn,
   }).from(users).orderBy(desc(users.lastSignedIn));
@@ -301,6 +302,20 @@ export async function setUserDisabled(id: number, disabled: boolean): Promise<vo
   const db = await getDb();
   if (!db) return;
   await db.update(users).set({ disabled }).where(eq(users.id, id));
+}
+
+/** 批准 / 驳回一个用户的注册（审批制）。批准即置 approved=true，可正常登录。 */
+export async function setUserApproved(id: number, approved: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ approved }).where(eq(users.id, id));
+}
+
+/** 按 openId 置审批状态——注册时用（不依赖 upsert 后二次读回主键，避免读失败漏标 approved=false）。 */
+export async function setUserApprovedByOpenId(openId: string, approved: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ approved }).where(eq(users.openId, openId));
 }
 
 /** 设置某用户的管理员级别（0=普通用户·1=查看员·2=运营·3=管理员·4=超管）。
@@ -1534,6 +1549,7 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
 // ── Auth settings (registration email-verification toggle + SMTP) ───────────
 export interface AuthSettings {
   emailVerificationEnabled: boolean;
+  registrationApprovalEnabled: boolean;
   smtpHost: string; smtpPort: number; smtpSecure: boolean;
   smtpUser: string; smtpPass: string; smtpFrom: string;
 }
@@ -1545,6 +1561,7 @@ export async function getAuthSettings(): Promise<AuthSettings> {
   const r = rows[0];
   return {
     emailVerificationEnabled: r?.emailVerificationEnabled ?? false,
+    registrationApprovalEnabled: r?.registrationApprovalEnabled ?? false,
     smtpHost: r?.smtpHost ?? "",
     smtpPort: r?.smtpPort ?? 587,
     smtpSecure: r?.smtpSecure ?? false,
@@ -1558,7 +1575,7 @@ export async function setAuthSettings(patch: Partial<AuthSettings>): Promise<voi
   const db = await getDb();
   if (!db) { Object.assign(devAuthSettings, patch); return; }
   const set: Record<string, boolean | number | string> = {};
-  for (const k of ["emailVerificationEnabled", "smtpHost", "smtpPort", "smtpSecure", "smtpUser", "smtpPass", "smtpFrom"] as const) {
+  for (const k of ["emailVerificationEnabled", "registrationApprovalEnabled", "smtpHost", "smtpPort", "smtpSecure", "smtpUser", "smtpPass", "smtpFrom"] as const) {
     if (patch[k] !== undefined) set[k] = patch[k]!;
   }
   if (Object.keys(set).length === 0) return;

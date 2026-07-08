@@ -17,9 +17,10 @@ interface Props {
 // 所有动作复用 store 现有 action，无数据模型分叉。
 const RATIO_FIELD: Record<string, string> = {
   image_gen: "aspectRatio", storyboard: "aspectRatio", prompt: "aspectRatio",
-  comfyui_image: "aspectRatio", comfyui_workflow: "aspectRatio",
+  comfyui_workflow: "aspectRatio",
 };
-const CLIP_RATIOS = new Set(["9:16", "16:9", "1:1"]);
+const CLIP_RATIOS = ["9:16", "16:9", "1:1"];
+const CLIP_RATIO_SET = new Set(CLIP_RATIOS);
 function ratioFieldFor(nodeType: string): string | null {
   if (nodeType === "clip") return "aspect";
   return RATIO_FIELD[nodeType] ?? null;
@@ -117,7 +118,7 @@ export function NodeSearch({ onClose }: Props) {
 
   const applyRatio = (ratio: string) => {
     if (!activeNode || !ratioField) return;
-    if (activeNode.data.nodeType === "clip" && !CLIP_RATIOS.has(ratio)) { toast.info("该节点不支持此比例"); return; }
+    if (activeNode.data.nodeType === "clip" && !CLIP_RATIO_SET.has(ratio)) { toast.info("该节点不支持此比例"); return; }
     const patch: Record<string, unknown> = { [ratioField]: ratio };
     if (activeNode.data.nodeType === "comfyui_workflow") patch.overrideRatioSize = true;
     useCanvasStore.getState().updateNodeData(activeNode.id, patch);
@@ -126,8 +127,8 @@ export function NodeSearch({ onClose }: Props) {
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") { if (activeId) backToSearch(); else onClose(); return; }
-    // 命令层：空查询时 ← / Backspace 返回搜索层。
-    if (activeId && (e.key === "ArrowLeft" || (e.key === "Backspace" && !query))) { e.preventDefault(); backToSearch(); return; }
+    // 命令层：空查询时 ← / Backspace 返回搜索层（有过滤词时 ← 留给输入框移动光标）。
+    if (activeId && !query && (e.key === "ArrowLeft" || e.key === "Backspace")) { e.preventDefault(); backToSearch(); return; }
     const len = activeId ? visCommands.length : filtered.length;
     if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex((i) => Math.min(i + 1, len - 1)); return; }
     if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex((i) => Math.max(i - 1, 0)); return; }
@@ -193,7 +194,7 @@ export function NodeSearch({ onClose }: Props) {
             {isStudio && ratioField && (
               <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--c-elevated)" }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t4)", marginBottom: 7 }}>画面比例</div>
-                <RatioPicker value={(() => { const v = (activeNode.data.payload as Record<string, unknown>)[ratioField]; return typeof v === "string" ? v : ""; })()} options={RATIOS} onChange={applyRatio} />
+                <RatioPicker value={(() => { const v = (activeNode.data.payload as Record<string, unknown>)[ratioField]; return typeof v === "string" ? v : ""; })()} options={activeNode.data.nodeType === "clip" ? CLIP_RATIOS : RATIOS} onChange={applyRatio} />
               </div>
             )}
             <div ref={listRef} className="max-h-72 overflow-y-auto py-1.5">

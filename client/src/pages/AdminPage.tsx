@@ -328,6 +328,10 @@ function UsersPanel() {
     onSuccess: () => { toast.success("用户已删除"); void utils.admin.users.list.invalidate(); },
     onError: (e) => toast.error("删除失败：" + e.message),
   });
+  const approveMut = trpc.admin.users.setApproved.useMutation({
+    onSuccess: (_r, v) => { toast.success(v.approved ? "已批准，该用户可登录" : "已驳回"); void utils.admin.users.list.invalidate(); },
+    onError: (e) => toast.error("操作失败：" + e.message),
+  });
   // 管理员分级：仅超级管理员(L4)可改他人级别。0=普通·1=查看员·2=运营·3=管理员·4=超管。
   const setLevelMut = trpc.admin.users.setLevel.useMutation({
     onSuccess: () => { toast.success("已更新管理员级别"); void utils.admin.users.list.invalidate(); },
@@ -352,11 +356,23 @@ function UsersPanel() {
     if (!confirm(`确定删除用户「${label}」？此操作不可恢复（仅删除用户账号，其拥有的项目数据不在此处级联清理）。`)) return;
     delMut.mutate({ userId: id });
   };
+  const onSetApproved = (id: number, approved: boolean, label: string) => {
+    if (!approved && !confirm(`确定驳回用户「${label}」的注册？该用户将无法登录（可稍后再批准）。`)) return;
+    approveMut.mutate({ userId: id, approved });
+  };
+  const pendingCount = (users ?? []).filter((u) => (u as { approved?: boolean }).approved === false).length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={cardStyle}>
-        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1)" }}>用户管理</h3>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1)" }}>用户管理</h3>
+          {pendingCount > 0 && (
+            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99, background: "oklch(0.7 0.17 60 / 0.16)", color: "oklch(0.68 0.17 60)" }}>
+              {pendingCount} 个待审批
+            </span>
+          )}
+        </div>
         <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2)", lineHeight: 1.5 }}>
           重置密码、冻结/解冻、删除用户。冻结的用户无法登录、现有会话立即失效。不能对自己冻结或删除。
           {isSuper
@@ -406,15 +422,23 @@ function UsersPanel() {
                       )}
                     </td>
                     <td style={tdStyle}>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
-                        background: u.disabled ? "oklch(0.62 0.2 25 / 0.15)" : "oklch(0.72 0.18 155 / 0.15)",
-                        color: u.disabled ? "oklch(0.65 0.2 25)" : "oklch(0.6 0.18 155)" }}>
-                        {u.disabled ? "已冻结" : "正常"}
-                      </span>
+                      {u.disabled ? (
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99, background: "oklch(0.62 0.2 25 / 0.15)", color: "oklch(0.65 0.2 25)" }}>已冻结</span>
+                      ) : u.approved === false ? (
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99, background: "oklch(0.7 0.17 60 / 0.16)", color: "oklch(0.68 0.17 60)" }}>待审批</span>
+                      ) : (
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99, background: "oklch(0.72 0.18 155 / 0.15)", color: "oklch(0.6 0.18 155)" }}>正常</span>
+                      )}
                     </td>
                     <td style={tdStyle}>{u.lastSignedIn ? new Date(u.lastSignedIn).toLocaleString() : "—"}</td>
                     <td style={tdStyle}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {u.approved === false && (
+                          <>
+                            <button onClick={() => onSetApproved(u.id, true, label)} disabled={!canFreeze} style={{ ...btnSecondary(!canFreeze), color: !canFreeze ? "var(--c-t4)" : "oklch(0.6 0.18 155)", borderColor: !canFreeze ? undefined : "oklch(0.6 0.18 155 / 0.4)" }} title={!canFreeze ? "需「运营」及以上权限" : "批准该用户，允许登录"}>批准</button>
+                            <button onClick={() => onSetApproved(u.id, false, label)} disabled={!canFreeze} style={btnSecondary(!canFreeze)} title={!canFreeze ? "需「运营」及以上权限" : "驳回该用户的注册"}>驳回</button>
+                          </>
+                        )}
                         <button onClick={() => onReset(u.id, label)} disabled={!u.hasPassword || !canManage} style={btnSecondary(!u.hasPassword || !canManage)} title={!canManage ? "需「管理员」及以上权限" : (u.hasPassword ? "重置该用户密码" : "非邮箱密码账号，无法重置密码")}>重置密码</button>
                         <button onClick={() => onToggleDisabled(u.id, !u.disabled, label)} disabled={isSelf || !canFreeze} style={btnSecondary(isSelf || !canFreeze)} title={!canFreeze ? "需「运营」及以上权限" : undefined}>{u.disabled ? "解冻" : "冻结"}</button>
                         <button onClick={() => onDelete(u.id, label)} disabled={isSelf || !canManage} style={{ ...btnSecondary(isSelf || !canManage), color: (isSelf || !canManage) ? "var(--c-t4)" : "oklch(0.65 0.2 25)" }} title={!canManage ? "需「管理员」及以上权限" : undefined}>删除</button>
@@ -447,12 +471,14 @@ function AuthPanel() {
     onSuccess: (r) => { utils.admin.auth.getSettings.invalidate(); toast.success(r.hasPass ? "已读取公网隧道的 SMTP 配置（含密码）" : "已读取公网隧道的 SMTP 配置（隧道未设密码）"); },
     onError: (e) => toast.error(e.message),
   });
-  type AuthForm = { emailVerificationEnabled: boolean; smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpPass: string; smtpFrom: string; smtpPassSet: boolean };
+  type AuthForm = { emailVerificationEnabled: boolean; registrationApprovalEnabled: boolean; smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpPass: string; smtpFrom: string; smtpPassSet: boolean };
   const [form, setForm] = useState<AuthForm | null>(null);
   useEffect(() => {
     if (!q.data) return;
     setForm({
-      emailVerificationEnabled: q.data.emailVerificationEnabled, smtpHost: q.data.smtpHost,
+      emailVerificationEnabled: q.data.emailVerificationEnabled,
+      registrationApprovalEnabled: (q.data as { registrationApprovalEnabled?: boolean }).registrationApprovalEnabled ?? false,
+      smtpHost: q.data.smtpHost,
       smtpPort: q.data.smtpPort, smtpSecure: q.data.smtpSecure, smtpUser: q.data.smtpUser,
       smtpPass: "", smtpFrom: q.data.smtpFrom, smtpPassSet: (q.data as { smtpPassSet?: boolean }).smtpPassSet ?? false,
     });
@@ -462,7 +488,8 @@ function AuthPanel() {
   const set = (patch: Partial<AuthForm>) => setForm((f) => f ? { ...f, ...patch } : f);
   const onSave = () => {
     const payload: Record<string, unknown> = {
-      emailVerificationEnabled: form.emailVerificationEnabled, smtpHost: form.smtpHost.trim(),
+      emailVerificationEnabled: form.emailVerificationEnabled, registrationApprovalEnabled: form.registrationApprovalEnabled,
+      smtpHost: form.smtpHost.trim(),
       smtpPort: form.smtpPort, smtpSecure: form.smtpSecure, smtpUser: form.smtpUser.trim(), smtpFrom: form.smtpFrom.trim(),
     };
     if (form.smtpPass) payload.smtpPass = form.smtpPass; // empty = leave unchanged
@@ -486,6 +513,20 @@ function AuthPanel() {
         className="nodrag flex items-center justify-between" style={{ ...field, cursor: "pointer", padding: "12px 14px" }}>
         <span style={{ fontWeight: 600, color: "var(--c-t1)" }}>启用注册邮箱验证</span>
         {form.emailVerificationEnabled ? <ToggleRight className="w-7 h-7" style={{ color: "oklch(0.7 0.18 145)" }} /> : <ToggleLeft className="w-7 h-7" style={{ color: "var(--c-t4)" }} />}
+      </button>
+
+      {/* 注册审批制度 */}
+      <div style={{ borderTop: "1px solid var(--c-bd2)", paddingTop: 16 }}>
+        <h2 className="text-base font-semibold" style={{ color: "var(--c-t1)" }}>注册需管理员审批</h2>
+        <p className="text-xs" style={{ color: "var(--c-t3)", marginTop: 4, lineHeight: 1.6 }}>
+          开启后，所有新注册用户（邮箱 / 第三方登录）默认为「待审批」，须管理员在「用户管理」中批准后方可登录；
+          待审批用户即使已登录也无法访问任何功能。管理员账号不受影响；关闭后自动恢复正常（不影响已批准的账号）。
+        </p>
+      </div>
+      <button onClick={() => set({ registrationApprovalEnabled: !form.registrationApprovalEnabled })}
+        className="nodrag flex items-center justify-between" style={{ ...field, cursor: "pointer", padding: "12px 14px" }}>
+        <span style={{ fontWeight: 600, color: "var(--c-t1)" }}>启用注册审批</span>
+        {form.registrationApprovalEnabled ? <ToggleRight className="w-7 h-7" style={{ color: "oklch(0.7 0.18 145)" }} /> : <ToggleLeft className="w-7 h-7" style={{ color: "var(--c-t4)" }} />}
       </button>
 
       {/* SMTP config */}
