@@ -37,6 +37,8 @@ export function ConversationList({ onSelect }: { onSelect?: () => void } = {}) {
   const groups = conversations.filter((c) => c.type === "group" && filt(c));
   // AI 助手 DM 单列在顶部专属入口，不混进普通「私聊」列表。
   const dms = conversations.filter((c) => c.type === "dm" && !isAssistantConv(c) && filt(c));
+  // #R5-9 可加入的房间也随搜索过滤（此前搜索时群聊/私聊被过滤、这块仍全量显示，不一致）。
+  const filteredJoinable = joinableRooms.filter((r) => !q.trim() || (r.title ?? "").toLowerCase().includes(q.toLowerCase()));
 
   async function handleJoin(r: JoinableRoom) {
     let password: string | undefined;
@@ -93,9 +95,9 @@ export function ConversationList({ onSelect }: { onSelect?: () => void } = {}) {
           {dms.length === 0 && <Empty text="暂无私聊" />}
           {dms.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} onClick={() => pick(c.id)} />)}
         </Section>
-        {joinableRooms.length > 0 && (
+        {filteredJoinable.length > 0 && (
           <Section title="可加入的房间" icon={<LogIn size={12} />}>
-            {joinableRooms.map((r) => (
+            {filteredJoinable.map((r) => (
               <button key={r.id} onClick={() => handleJoin(r)} style={rowBase}>
                 <Avatar seed={`g${r.id}`} label={r.title ?? "群"} icon={r.isPrivate ? <Lock size={14} /> : <Hash size={14} />} />
                 <span style={nameCol}>{r.title ?? "群聊"}</span>

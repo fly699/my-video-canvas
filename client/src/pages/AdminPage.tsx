@@ -3166,6 +3166,14 @@ function AssetsAdminPanel() {
           );
         })}
       </div>
+      {/* #R5-8 空态：与本页其它面板一致的居中虚线框，替代此前的一片空白 */}
+      {!isFetching && list.length === 0 && (
+        <div style={{ textAlign: "center", padding: "32px 12px", border: "1px dashed var(--c-bd2)", borderRadius: 12, color: "var(--c-t3)" }}>
+          <ImageIcon style={{ width: 26, height: 26, opacity: 0.45, margin: "0 auto 8px" }} />
+          <div style={{ fontSize: 13 }}>暂无匹配素材</div>
+          <div style={{ fontSize: 11.5, color: "var(--c-t4)", marginTop: 3 }}>调整筛选条件，或等用户上传 / 生成</div>
+        </div>
+      )}
       {preview && <AdminAssetLightbox asset={preview} onClose={() => setPreview(null)} />}
     </div>
   );
