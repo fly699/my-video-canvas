@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play, Filter, ChevronDown, ChevronUp, Search } from "lucide-react";
 import { ImageLightbox } from "./ImageLightbox";
-import { uploadAssetFile } from "@/lib/assetUpload";
+import { uploadAssetFile, MAX_MB } from "@/lib/assetUpload";
+import { confirmDialog } from "@/components/ui/dialogService";
 import { downloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 
@@ -74,6 +75,11 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const utils = trpc.useUtils();
   const deleteMutation = trpc.assets.delete.useMutation({
     onSuccess: () => { toast.success("素材已删除"); refetch(); },
+  });
+  // #R6-3 批量删除走一次 deleteMany：一条 toast、一次刷新（此前 forEach 单删 → N 条 toast+N 次刷新）。
+  const deleteManyMutation = trpc.assets.deleteMany.useMutation({
+    onSuccess: (r) => { toast.success(`已删除 ${(r as { count?: number })?.count ?? selected.size} 个素材`); setSelected(new Set()); refetch(); },
+    onError: (e) => toast.error("删除失败：" + e.message),
   });
 
   const importMutation = trpc.assets.importFromUrl.useMutation({
@@ -264,7 +270,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
-            title="点击、拖拽或粘贴上传（可多选）· 图片 / 视频 / 音频 · 最大 5000MB"
+            title={`点击、拖拽或粘贴上传（可多选）· 图片 / 视频 / 音频 · 最大 ${MAX_MB}MB`}
             className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 px-2 cursor-pointer transition-all flex-1 min-w-0"
             style={{
               border: `1.5px dashed ${dragOver ? "oklch(0.65 0.18 60 / 0.6)" : "var(--c-bd2)"}`,
@@ -494,10 +500,10 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             下载
           </button>
           <button
-            onClick={() => {
-              if (confirm(`确认删除选中的 ${selected.size} 个素材？`)) {
-                selectedAssets.forEach((a) => deleteMutation.mutate({ id: a.id }));
-                setSelected(new Set());
+            disabled={deleteManyMutation.isPending}
+            onClick={async () => {
+              if (await confirmDialog({ title: `删除选中的 ${selected.size} 个素材？`, message: "删除后将从素材库移除。", danger: true })) {
+                deleteManyMutation.mutate({ ids: selectedAssets.map((a) => a.id) });
               }
             }}
             className="text-[11px] px-2 py-1 rounded-md transition-all"

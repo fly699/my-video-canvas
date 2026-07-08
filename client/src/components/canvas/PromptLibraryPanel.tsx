@@ -26,7 +26,7 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
   const hit = (...ss: (string | undefined)[]) => !q || ss.some((s) => (s ?? "").toLowerCase().includes(q));
 
   const utils = trpc.useUtils();
-  const { data: items } = trpc.promptLibrary.list.useQuery(undefined, { refetchOnWindowFocus: true });
+  const { data: items, isLoading: promptsLoading } = trpc.promptLibrary.list.useQuery(undefined, { refetchOnWindowFocus: true });
   const refresh = () => utils.promptLibrary.list.invalidate();
   const createMut = trpc.promptLibrary.create.useMutation({ onSuccess: refresh, onError: (e) => toast.error("保存失败：" + e.message) });
   const updateMut = trpc.promptLibrary.update.useMutation({ onSuccess: refresh, onError: (e) => toast.error("更新失败：" + e.message) });
@@ -195,7 +195,12 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
               </div>
             )}
 
-            {list.length === 0 && <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "16px 8px" }}>还没有自定义提示词。<br />在文本框输入「/」可快速调出。</div>}
+            {promptsLoading && !items && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 2px" }}>
+                {[0, 1, 2].map((i) => <div key={i} className="animate-pulse" style={{ height: 32, borderRadius: 7, background: "var(--c-elevated)" }} />)}
+              </div>
+            )}
+            {!promptsLoading && list.length === 0 && <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "16px 8px" }}>还没有自定义提示词。<br />在文本框输入「/」可快速调出。</div>}
             {list.length > 0 && q && !list.some((it) => hit(it.label, it.text, it.category)) && <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "16px 8px" }}>没有匹配「{query}」的提示词</div>}
 
             {byCategory.map(([cat, all]) => [cat, all.filter((it) => hit(it.label, it.text, it.category))] as const)

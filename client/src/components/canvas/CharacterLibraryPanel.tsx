@@ -28,7 +28,7 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<"all" | "person" | "scene">("all");
 
-  const { data: items, refetch } = trpc.characterLibrary.list.useQuery(undefined, { refetchOnWindowFocus: true });
+  const { data: items, refetch, isLoading } = trpc.characterLibrary.list.useQuery(undefined, { refetchOnWindowFocus: true });
   const qq = query.trim().toLowerCase();
   const shownItems = (items ?? []).filter((it) => {
     const kind = it.characterKind === "scene" ? "scene" : "person";
@@ -141,7 +141,13 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         )}
-        {(!items || items.length === 0) && (
+        {/* 加载中显骨架，避免慢网/首帧误把「有数据的库」显示成空引导 */}
+        {isLoading && !items && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 2px" }}>
+            {[0, 1, 2].map((i) => <div key={i} className="animate-pulse" style={{ height: 44, borderRadius: 8, background: "var(--c-elevated)" }} />)}
+          </div>
+        )}
+        {!isLoading && (!items || items.length === 0) && (
           <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "24px 8px" }}>
             还没有保存的角色。<br />在角色节点点「保存到角色库」即可。
           </div>

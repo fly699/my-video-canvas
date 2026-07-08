@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { uploadAssetFile } from "@/lib/assetUpload";
+import { uploadAssetFile, MAX_MB } from "@/lib/assetUpload";
 import { downloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { useLocation } from "wouter";
@@ -468,7 +468,7 @@ export default function Library() {
             </div>
             <p className="text-xs" style={{ color: "var(--c-t4)" }}>
               <Upload className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
-              多选 / 拖拽 / 粘贴（Ctrl·⌘V）批量上传（图片 / 视频 / 音频 · 最大 500MB）
+              多选 / 拖拽 / 粘贴（Ctrl·⌘V）批量上传（图片 / 视频 / 音频 · 最大 {MAX_MB}MB）
             </p>
           </div>
 
