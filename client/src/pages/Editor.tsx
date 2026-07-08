@@ -12,6 +12,7 @@ import { CanvasSettings } from "@/components/editor/CanvasSettings";
 import { downloadMedia } from "@/lib/download";
 import { estimateExportBytes, formatBytes } from "@shared/exportQuality";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { confirmDialog, promptDialog } from "@/components/ui/dialogService";
 
 // Draggable divider between editor panels. Reports incremental pixel deltas; the
 // parent applies them to the adjacent panel's size (persisted).
@@ -112,7 +113,7 @@ function EditorGallery() {
               <span style={{ flex: 1, fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               <button
                 title="删除"
-                onClick={(e) => { e.stopPropagation(); if (confirm(`删除剪辑「${s.name}」？`)) deleteMut.mutate({ id: s.id }); }}
+                onClick={async (e) => { e.stopPropagation(); if (await confirmDialog({ title: `删除剪辑「${s.name}」？`, message: "此操作不可撤销。", danger: true })) deleteMut.mutate({ id: s.id }); }}
                 style={{ ...iconBtn, width: 26, height: 26 }}
               ><Trash2 size={14} /></button>
             </div>
@@ -144,12 +145,12 @@ function EditorWorkspace({ id }: { id: number }) {
     });
   };
   // 另存为副本：用当前文档新建一个剪辑会话并跳转过去。
-  const saveAs = () => {
+  const saveAs = async () => {
     const cur = useEditorStore.getState();
     const docNow = cur.doc;
     if (!docNow) return;
     const proposed = (displayName || "未命名剪辑") + " 副本";
-    const chosen = window.prompt("另存为新剪辑，请输入名称：", proposed);
+    const chosen = await promptDialog({ title: "另存为新剪辑", message: "请输入新剪辑的名称", defaultValue: proposed, confirmLabel: "另存为" });
     if (chosen === null) return; // 取消
     const finalName = chosen.trim() || proposed;
     saveAsMut.mutate(

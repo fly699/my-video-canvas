@@ -24,6 +24,7 @@ import { DownloadNotifier } from "./components/DownloadNotifier";
 import { WatermarkOverlay } from "./components/WatermarkOverlay";
 import { DevtoolsDeterrent } from "./components/DevtoolsDeterrent";
 import { AppUpdateBanner } from "./components/AppUpdateBanner";
+import { DialogHost } from "./components/ui/dialogService";
 
 function CanvasWithKey() {
   const params = useParams<{ projectId: string }>();
@@ -131,6 +132,7 @@ function App() {
           <WatermarkOverlay />
           <DevtoolsDeterrent />
           <WhitelistBlockedDialog />
+          <DialogHost />
         </TooltipProvider>
         </UIStyleProvider>
         </CanvasModeProvider>

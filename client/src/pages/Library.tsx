@@ -7,6 +7,7 @@ import { downloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
+import { confirmDialog, promptDialog } from "@/components/ui/dialogService";
 import {
   ArrowLeft,
   Upload,
@@ -329,8 +330,8 @@ export default function Library() {
     return () => document.removeEventListener("paste", onPaste);
   }, [processFiles]);
 
-  const handleImportUrl = () => {
-    const url = window.prompt("粘贴文件链接（http/https）导入到用户仓库")?.trim();
+  const handleImportUrl = async () => {
+    const url = (await promptDialog({ title: "从链接导入", message: "粘贴文件链接（http/https）导入到用户仓库", placeholder: "https://…", confirmLabel: "导入" }))?.trim();
     if (url) importMutation.mutate({ url });
   };
 
@@ -357,10 +358,10 @@ export default function Library() {
       return next;
     });
   };
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
-    if (!confirm(`确认删除选中的 ${ids.length} 个素材？`)) return;
+    if (!(await confirmDialog({ title: `删除选中的 ${ids.length} 个素材？`, message: "删除后将从仓库移除。", danger: true }))) return;
     deleteManyMutation.mutate({ ids });
   };
   const handleBulkDownload = () => {
@@ -586,7 +587,7 @@ export default function Library() {
                   <AssetCard
                     asset={a}
                     onPreview={() => setPreview(a)}
-                    onDelete={() => { if (confirm("确认删除此素材？")) deleteMutation.mutate({ id: a.id }); }}
+                    onDelete={async () => { if (await confirmDialog({ title: "删除此素材？", message: "删除后将从仓库移除。", danger: true })) deleteMutation.mutate({ id: a.id }); }}
                     selected={selected.has(a.id)}
                     selecting={selecting}
                     onToggleSelect={(e) => { e.stopPropagation(); toggleSelect(a.id); }}
