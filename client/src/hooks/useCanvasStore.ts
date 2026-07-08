@@ -232,6 +232,19 @@ interface CanvasStore {
 }
 
 /** Push current state to past stack and clear future */
+/** 从所有 group 节点的 childIds 中剔除被删除的成员 id，避免残留幽灵引用
+ *  （否则 group 头部「N 个节点」计数虚高、「整组执行」会请求已不存在的节点）。 */
+function pruneGroupChildren(nodes: CanvasNode[], removed: Set<string>): CanvasNode[] {
+  if (removed.size === 0) return nodes;
+  return nodes.map((n) => {
+    if (n.data.nodeType !== "group") return n;
+    const gp = n.data.payload as GroupNodeData;
+    const childIds = gp.childIds ?? [];
+    const filtered = childIds.filter((cid) => !removed.has(cid));
+    return filtered.length === childIds.length ? n : { ...n, data: { ...n.data, payload: { ...gp, childIds: filtered } } };
+  });
+}
+
 function pushHistory(state: CanvasStore): Partial<CanvasStore> {
   const snapshot: HistorySnapshot = {
     nodes: state.nodes,
@@ -276,7 +289,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const removedIds = changes.filter((c) => c.type === "remove").map((c) => (c as { id: string }).id);
     set((state) => ({
       ...(isStructural ? pushHistory(state) : {}),
-      nodes: applyNodeChanges(changes, state.nodes) as CanvasNode[],
+      nodes: pruneGroupChildren(applyNodeChanges(changes, state.nodes) as CanvasNode[], new Set(removedIds)),
       deletedNodeIds: removedIds.length ? [...state.deletedNodeIds, ...removedIds] : state.deletedNodeIds,
       isDirty: true,
     }));
@@ -858,7 +871,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   deleteNode: (id) => {
     set((state) => ({
       ...(get()._suppressHistory ? {} : pushHistory(state)),
-      nodes: state.nodes.filter((n) => n.id !== id),
+      nodes: pruneGroupChildren(state.nodes.filter((n) => n.id !== id), new Set([id])),
       edges: state.edges.filter((e) => e.source !== id && e.target !== id),
       deletedNodeIds: [...state.deletedNodeIds, id],
       isDirty: true,
@@ -888,16 +901,19 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     // The duplicate is authored by whoever clicked duplicate.
     const dupUid = get().currentUserId;
     if (dupUid != null) clonedPayload.createdBy = dupUid;
+    // 递增落位：统计已叠在目标位附近的节点数，逐个错开，避免连按 Ctrl+D 副本全部重叠在同一点。
+    const baseX = node.position.x + 40, baseY = node.position.y + 40;
+    const overlap = get().nodes.filter((n) => Math.abs(n.position.x - baseX) < 24 && Math.abs(n.position.y - baseY) < 24).length;
     const newNode: CanvasNode = {
       ...node,
       id: newId,
-      position: { x: node.position.x + 40, y: node.position.y + 40 },
+      position: { x: baseX + overlap * 32, y: baseY + overlap * 32 },
       data: { ...node.data, payload: clonedPayload as typeof node.data.payload },
-      selected: false,
+      selected: true, // 选中副本（并在下方取消原节点选中），使随后拖动操作的是副本而非原件
     };
     set((state) => ({
       ...(get()._suppressHistory ? {} : pushHistory(state)),
-      nodes: [...state.nodes, newNode],
+      nodes: [...state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)), newNode],
       isDirty: true,
     }));
   },

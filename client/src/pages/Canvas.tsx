@@ -297,6 +297,11 @@ function nodeUpsertFields(n: CanvasNode) {
 function nodeSig(n: CanvasNode): string {
   return JSON.stringify(nodeUpsertFields(n));
 }
+// 边的持久化字段签名，用于保存时做「增量 upsert + 删除对账」（此前边只全量 upsert、
+// 从不删除，导致经垃圾桶/插入节点/删组/撤销删掉的边刷新后复活）。
+function edgeSig(e: CanvasEdge): string {
+  return JSON.stringify([e.source, e.target, e.sourceHandle ?? "output", e.targetHandle ?? "input", typeof e.label === "string" ? e.label : ""]);
+}
 // Discards corrupted localStorage payloads for persisted boolean panel toggles.
 function validateBool(v: unknown): boolean | null {
   return typeof v === "boolean" ? v : null;
@@ -734,6 +739,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // Baseline of what each node looked like at last successful save/load (id → sig).
   // saveCanvas upserts only nodes whose sig changed and deletes ids that vanished.
   const savedNodeSigsRef = useRef<Map<string, string>>(new Map());
+  // 同理为边保存基线：仅 upsert 变化的边、删除已消失的边（对账）。
+  const savedEdgeSigsRef = useRef<Map<string, string>>(new Map());
 
   // ── Data loading ────────────────────────────────────────────────────────────
   const { data: project, isLoading: projectLoading, isError: projectError, error: projectErr, refetch: refetchProject, isFetching: projectFetching } = trpc.projects.get.useQuery(
@@ -937,6 +944,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
       return true;
     });
     setEdges(dedupedEdges);
+    // 播种保存基线：加载的边未改动则不再重复 upsert，也不会被误删。
+    savedEdgeSigsRef.current = new Map(dedupedEdges.map((e) => [e.id, edgeSig(e)]));
   }, [dbEdges, dbNodes]);
 
   // Restore the saved viewport ONCE on initial load. Previously this re-ran on
@@ -993,8 +1002,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
     // Data-loss safety valve: if the local node set is suspiciously empty while the
     // baseline had nodes, this is almost certainly a transient/incomplete snapshot
     // (load race, reset mid-flight), NOT a real "delete everything" — skip deletion
-    // so we never nuke the project's nodes from a bad snapshot.
-    if (toDelete.length > 0 && currentSigs.size === 0 && baseline.size > 0) {
+    // so we never nuke the project's nodes from a bad snapshot. 边删除也共用此守卫。
+    const suspiciousSnapshot = currentSigs.size === 0 && baseline.size > 0;
+    if (toDelete.length > 0 && suspiciousSnapshot) {
       console.warn("[save] skipping suspicious bulk delete (local nodes empty, baseline non-empty)");
       toDelete = [];
     }
@@ -1013,16 +1023,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
         toast.error("节点保存失败：" + (err instanceof Error ? err.message : String(err)));
       }
     }
-    // Edges + viewport persist regardless of node-save outcome.
+    // Edges + viewport persist regardless of node-save outcome. 与节点对称做「增量 upsert +
+    // 删除对账」：仅推送签名变化的边、删除本地已消失的边（修复删边刷新后复活）。
+    const currentEdgeSigs = new Map(edges.map((e) => [e.id, edgeSig(e)]));
+    let edgesOk = true;
     try {
-      for (const edge of edges) {
+      const edgeBaseline = savedEdgeSigsRef.current;
+      const edgesToUpsert = edges.filter((e) => edgeBaseline.get(e.id) !== currentEdgeSigs.get(e.id));
+      let edgesToDelete = Array.from(edgeBaseline.keys()).filter((id) => !currentEdgeSigs.has(id));
+      if (edgesToDelete.length > 0 && suspiciousSnapshot) edgesToDelete = []; // 同守卫：可疑快照不删
+      for (const id of edgesToDelete) {
+        try { await deleteEdgeMutation.mutateAsync({ id, projectId }); }
+        catch (e) { edgesOk = false; console.error("[save] delete edge failed:", id, e); }
+      }
+      for (const edge of edgesToUpsert) {
         await upsertEdge.mutateAsync({
           id: edge.id, projectId, sourceNodeId: edge.source, targetNodeId: edge.target,
           sourcePort: edge.sourceHandle ?? "output", targetPort: edge.targetHandle ?? "input",
           label: typeof edge.label === "string" ? edge.label : undefined,
         });
       }
-    } catch (e) { console.error("[save] edge upsert failed:", e); }
+    } catch (e) { edgesOk = false; console.error("[save] edge save failed:", e); }
     try {
       // A popout window keeps its viewport local (independent second-monitor view)
       // so it never clobbers the main window's shared, server-persisted viewport.
@@ -1030,11 +1051,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
       else await updateProject.mutateAsync({ id: projectId, viewportState: reactFlow.getViewport() });
     } catch (e) { console.error("[save] viewport save failed:", e); }
 
-    // Only advance the node baseline / mark clean when ALL node ops landed, so a
-    // failed node retries next save (but viewport/edges already persisted above).
-    if (nodesOk) { savedNodeSigsRef.current = currentSigs; markClean(); }
+    // Only advance a baseline when its ops landed, so failures retry next save.
+    // markClean 需节点与边都成功——否则删失败的边会被漏掉、不再重试。
+    if (nodesOk) savedNodeSigsRef.current = currentSigs;
+    if (edgesOk) savedEdgeSigsRef.current = currentEdgeSigs;
+    if (nodesOk && edgesOk) markClean();
     } finally { savingRef.current = false; }
-  }, [isReadOnly, isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation]);
+  }, [isReadOnly, isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation, deleteEdgeMutation]);
   saveCanvasRef.current = saveCanvas;
 
   useEffect(() => {

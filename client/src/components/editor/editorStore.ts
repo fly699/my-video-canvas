@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { EditorDoc, Clip, ClipKind, Track, TrackType, TransformKeyframe } from "@shared/editorTypes";
-import { editorDocDuration } from "@shared/editorTypes";
+import { editorDocDuration, transformAt } from "@shared/editorTypes";
 import { arrangeClips } from "@/lib/arrangeClips";
 
 /** Visible duration of a clip on the timeline (seconds), accounting for speed. */
@@ -587,16 +587,19 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return withHistory(s, { ...s.doc, tracks }, selPatch(newIds));
   }),
 
-  // Snapshot the clip's current (base) transform as a keyframe at time `t`
-  // (seconds from the clip start), replacing any keyframe at the same instant.
+  // Snapshot the clip's CURRENT pose (interpolated at `t`) as a keyframe at time `t`
+  // (seconds from clip start), replacing any keyframe at the same instant.
+  // 必须用 transformAt(当前插值姿态) 而非 base transform——否则在两个关键帧之间插入新帧时
+  // 捕获的是基础值（常为默认 0,0,1）而非当前画面姿态，动画会在该点突跳。无关键帧时 transformAt
+  // 返回 base，二者等价。
   addKeyframe: (clipId, t) => set((s) => {
     if (!s.doc) return s;
     const loc = findClip(s.doc, clipId);
     if (!loc) return s;
     const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
-    const tr = c.transform ?? {};
     const at = Math.max(0, t);
-    const kf: TransformKeyframe = { t: at, x: tr.x ?? 0, y: tr.y ?? 0, scale: tr.scale ?? 1, opacity: tr.opacity ?? 1, rotation: tr.rotation ?? 0 };
+    const pose = transformAt(c, at);
+    const kf: TransformKeyframe = { t: at, x: pose.x ?? 0, y: pose.y ?? 0, scale: pose.scale ?? 1, opacity: pose.opacity ?? 1, rotation: pose.rotation ?? 0 };
     const keyframes = [...(c.keyframes ?? []).filter((k) => Math.abs(k.t - at) > 0.02), kf].sort((a, b) => a.t - b.t);
     const tracks = s.doc.tracks.map((tk, ti) => ti !== loc.trackIdx ? tk : {
       ...tk, clips: tk.clips.map((x) => x.id === clipId ? { ...x, keyframes } : x),

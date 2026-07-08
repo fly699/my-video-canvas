@@ -270,6 +270,20 @@ function EditorWorkspace({ id }: { id: number }) {
     if (d.status === "done") { setJobId(null); setExportUrl(d.url); toast.success("成片已生成"); }
     if (d.status === "error") { setJobId(null); toast.error("渲染失败：" + (d.error ?? "")); }
   }, [statusQuery.data]);
+  // 轮询连续失败兜底：此前 exportStatus 无错误分支，网络/服务端持续报错时 jobId 永不清空 →
+  // 「导出中」永久卡死、导出/设置按钮永久禁用。连续失败 6 次（~6s）后放弃跟踪并复位。
+  const pollFailRef = useRef(0);
+  useEffect(() => {
+    if (!jobId) { pollFailRef.current = 0; return; }
+    if (statusQuery.isError) {
+      pollFailRef.current += 1;
+      if (pollFailRef.current >= 6) { setJobId(null); pollFailRef.current = 0; toast.error("导出状态查询持续失败，已停止跟踪（后台可能仍在渲染）"); }
+    } else if (statusQuery.data) {
+      pollFailRef.current = 0;
+    }
+  }, [statusQuery.isError, statusQuery.data, statusQuery.errorUpdatedAt, jobId]);
+  /** 手动停止跟踪导出（卡住时的恢复出口）——复位本地进度态，后台任务可能仍在渲染。 */
+  const dismissExport = () => { setJobId(null); setExportPct(0); setExportStage(""); pollFailRef.current = 0; toast("已停止跟踪导出", { description: "后台可能仍在渲染；如需可重新导出。" }); };
   const exporting = exportMut.isPending || !!jobId;
 
   // Kick off an export, translating the resolution preset into output dims that
@@ -556,6 +570,13 @@ function EditorWorkspace({ id }: { id: number }) {
         >
           {exporting ? <><Loader2 size={15} className="animate-spin" /> {exportStage || "导出中"} {exportPct > 0 ? `${exportPct}%` : ""}</> : "导出成片"}
         </button>
+        {/* 导出跟踪中给一个恢复出口：卡住/查询失败时可停止跟踪并复位（后台可能仍在渲染）。 */}
+        {!!jobId && (
+          <button onClick={dismissExport} title="停止跟踪导出（卡住时复位；后台可能仍在渲染）"
+            style={{ ...iconBtn, marginLeft: 6, color: "var(--c-t2)" }}>
+            <Trash2 size={15} />
+          </button>
+        )}
       </header>
 
       {/* 窄屏提示：剪辑器三栏在窄屏拥挤，给一条可关闭的建议（不阻断使用） */}

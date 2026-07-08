@@ -95,13 +95,17 @@ export function useMention(
     return false;
   }, [select, close]);
 
+  // 视口下方空间不足时向上翻，避免靠近屏幕底部的节点其下拉被裁切、看不到也选不了。
+  const MENTION_MENU_MAX = 240;
+  const flipUp = !!st.rect && typeof window !== "undefined" && st.rect.bottom + MENTION_MENU_MAX + 8 > window.innerHeight && st.rect.top > MENTION_MENU_MAX;
   const dropdown = st.open && st.rect ? createPortal(
     <div
       className="nodrag nowheel"
       onMouseDown={(e) => e.preventDefault()} // 防止输入框失焦
       style={{
-        position: "fixed", left: st.rect.left, top: st.rect.bottom + 4, zIndex: 100002,
-        minWidth: Math.max(180, st.rect.width), maxWidth: 320, maxHeight: 240, overflowY: "auto",
+        position: "fixed", left: st.rect.left, zIndex: 100002,
+        ...(flipUp ? { bottom: window.innerHeight - st.rect.top + 4 } : { top: st.rect.bottom + 4 }),
+        minWidth: Math.max(180, st.rect.width), maxWidth: 320, maxHeight: MENTION_MENU_MAX, overflowY: "auto",
         background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 10,
         boxShadow: "0 12px 36px oklch(0 0 0 / 0.45)", padding: 4,
       }}

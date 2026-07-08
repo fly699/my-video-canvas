@@ -91,7 +91,7 @@ export function Timeline() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, [contenteditable='true']")) return;
+      if (t.closest("input, textarea, select, [contenteditable='true']")) return;
       const st = useEditorStore.getState();
       // paste & 全轨分割 work without a current selection
       if ((e.key === "v" || e.key === "V") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.pasteClip(st.playhead); return; }
