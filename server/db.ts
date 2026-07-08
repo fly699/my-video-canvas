@@ -2522,8 +2522,9 @@ export async function listJoinableGroups(userId: number): Promise<ChatConversati
   const groups = await db.select().from(chatConversations).where(eq(chatConversations.type, "group"));
   // 系统房（产物通知 system:notify:*、下载审批 system:download-approval）是私有单人/管理房，
   // 绝不进「可加入」发现列表——否则任何人都能看到并自助加入他人的产物通知房，读到其全部产物 URL。
+  // 纵深守卫：除 system: 前缀外，凡 createdBy=null 的系统/官方房一并排除，防将来新增系统房漏加前缀。
   return groups
-    .filter((g) => !ids.has(g.id) && !(g.dmKey ?? "").startsWith("system:"))
+    .filter((g) => !ids.has(g.id) && !(g.dmKey ?? "").startsWith("system:") && g.createdBy != null)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
