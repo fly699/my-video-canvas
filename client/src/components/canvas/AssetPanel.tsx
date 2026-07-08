@@ -26,6 +26,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   const { addNode, updateNodeData } = useCanvasStore();
   const reactFlow = useReactFlow();
   const [uploading, setUploading] = useState(false);
+  const [uploadProg, setUploadProg] = useState<{ idx: number; total: number; pct: number } | null>(null); // #R6-4 上传进度
   const [dragOver, setDragOver] = useState(false);
   const [scope, setScope] = useState<"project" | "all">("project");
   // 复选：空集合 = 全部。按类型 / 来源各自多选。
@@ -101,12 +102,13 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
       setUploading(true);
       (async () => {
         let ok = 0;
-        for (const f of list) {
-          try { if (await uploadAssetFile(utils.client, f, projectId)) ok++; } catch { /* per-file, keep going */ }
+        for (let i = 0; i < list.length; i++) {
+          setUploadProg({ idx: i + 1, total: list.length, pct: 0 });
+          try { if (await uploadAssetFile(utils.client, list[i], projectId, (pct) => setUploadProg({ idx: i + 1, total: list.length, pct }))) ok++; } catch { /* per-file, keep going */ }
         }
         if (ok > 0) { toast.success(list.length === 1 ? "素材上传成功" : `成功上传 ${ok} / ${list.length} 个素材`); refetch(); }
         else toast.error("上传失败");
-      })().finally(() => setUploading(false));
+      })().finally(() => { setUploading(false); setUploadProg(null); });
     },
     [projectId, utils, refetch]
   );
@@ -283,8 +285,15 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
               <Upload className="w-3.5 h-3.5 flex-shrink-0" style={{ color: dragOver ? "oklch(0.65 0.18 60)" : "var(--c-t4)" }} />
             )}
             <span className="text-[11px] font-medium truncate" style={{ color: uploading ? "oklch(0.65 0.18 60)" : "var(--c-t3)" }}>
-              {uploading ? "上传中..." : "点击 / 拖拽 / 粘贴上传"}
+              {uploading
+                ? (uploadProg ? `上传中 ${uploadProg.total > 1 ? `${uploadProg.idx}/${uploadProg.total} · ` : ""}${uploadProg.pct}%` : "上传中...")
+                : "点击 / 拖拽 / 粘贴上传"}
             </span>
+            {uploading && uploadProg && (
+              <span className="flex-shrink-0" style={{ width: 44, height: 4, borderRadius: 2, background: "var(--c-bd1)", overflow: "hidden" }}>
+                <span style={{ display: "block", height: "100%", width: `${uploadProg.pct}%`, background: "oklch(0.65 0.18 60)", borderRadius: 2, transition: "width 120ms" }} />
+              </span>
+            )}
           </div>
           <button
             onClick={handleImportUrl}

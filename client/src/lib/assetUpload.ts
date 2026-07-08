@@ -34,7 +34,20 @@ function fileToBase64(file: File): Promise<string> {
  * configured; falls back to base64 through tRPC when no storage is set.
  * Surfaces its own error toast. Returns true on success.
  */
-export async function uploadAssetFile(client: TrpcClient, file: File, projectId?: number): Promise<boolean> {
+/** 预签名 PUT 用 XHR 上传，暴露真实进度（fetch 无上传进度事件）。 */
+function putWithProgress(url: string, file: File, mimeType: string, onProgress?: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", mimeType);
+    xhr.upload.onprogress = (e) => { if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => { (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(`上传到存储失败 (${xhr.status})`)); };
+    xhr.onerror = () => reject(new Error("上传到存储失败（网络错误）"));
+    xhr.send(file);
+  });
+}
+
+export async function uploadAssetFile(client: TrpcClient, file: File, projectId?: number, onProgress?: (pct: number) => void): Promise<boolean> {
   if (file.size > MAX_BYTES) { toast.error(`文件不能超过 ${MAX_MB}MB`); return false; }
   const mimeType = file.type || "application/octet-stream";
   const type = assetKindOf(mimeType);
@@ -47,11 +60,12 @@ export async function uploadAssetFile(client: TrpcClient, file: File, projectId?
         toast.error(`未配置对象存储时单文件上限约 36MB（当前 ${(file.size / 1024 / 1024).toFixed(0)}MB）。请让管理员配置对象存储（MinIO/S3）后即可直传大文件。`);
         return false;
       }
+      onProgress?.(0);
       const base64 = await fileToBase64(file);
       await client.assets.upload.mutate({ name: file.name, type, mimeType, size: file.size, base64, projectId });
+      onProgress?.(100);
     } else {
-      const put = await fetch(res.uploadUrl, { method: "PUT", headers: { "Content-Type": mimeType }, body: file });
-      if (!put.ok) throw new Error(`上传到存储失败 (${put.status})`);
+      await putWithProgress(res.uploadUrl, file, mimeType, onProgress);
       await client.assets.confirmUpload.mutate({ key: res.key, url: res.url, name: file.name, type, mimeType, size: file.size, projectId });
     }
     return true;
