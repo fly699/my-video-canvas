@@ -23,7 +23,7 @@ import { Lightbox } from "@/components/chat/chatLightbox";
 export interface ConversationSummary {
   id: number; type: string; mode: string; title: string | null;
   isPrivate: boolean; memberCount: number; lastMessage: ChatWireMessage | null;
-  unread: number; peer?: { id: number; name: string | null };
+  unread: number; peer?: { id: number; name: string | null }; isBroadcast?: boolean;
 }
 
 export interface JoinableRoom { id: number; title: string | null; isPrivate: boolean; mode: string }

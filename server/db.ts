@@ -2398,6 +2398,15 @@ export async function getOrCreateSystemAnnounceRoom(userId: number): Promise<Cha
   return room;
 }
 
+// 管理员共享「广播频道」：管理员在此撰写并查看历史广播（server 模式明文、机器人可推），
+// dmKey 去重、createdBy=null（系统房，不进「可加入」发现列表）。管理员在 listConversations
+// 里懒加入，普通用户永远不是成员，故不会看到该房。
+export async function getOrCreateBroadcastChannel(): Promise<ChatConversation> {
+  const existing = await getConversationByDmKey("system:broadcast");
+  if (existing) return existing;
+  return createConversation({ type: "group", mode: "server", title: "广播频道", dmKey: "system:broadcast", createdBy: null });
+}
+
 // ── 产物生成通知钩子（由 index.ts 注册，避免 db.ts ↔ chat.ts 循环依赖）──
 export interface RecordedAssetInfo {
   userId: number; projectId?: number | null;

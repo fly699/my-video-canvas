@@ -702,14 +702,51 @@ export const adminRouter = router({
   // serverless (E2E) conversations expose metadata only — the server never
   // had their content.
   chat: router({
-    // 管理员广播：把公告下发到每个用户的「系统公告」房 + 触发通知（声音/桌面/横幅/红点）。
+    // 管理员广播：把公告下发到所选收件人（全体/成员/房间群组，取并集去重）各自的「系统公告」
+    // 房 + 触发通知（声音/桌面/横幅/红点），并在共享「广播频道」留档。
     broadcast: managerProc
-      .input(z.object({ title: z.string().trim().min(1).max(120), body: z.string().trim().min(1).max(2000) }))
+      .input(z.object({
+        title: z.string().trim().min(1).max(120),
+        body: z.string().trim().min(1).max(2000),
+        targets: z.object({
+          all: z.boolean().optional(),
+          userIds: z.array(z.number().int().positive()).max(5000).optional(),
+          conversationIds: z.array(z.number().int().positive()).max(500).optional(),
+        }).optional(),
+      }))
       .mutation(async ({ input, ctx }) => {
-        const res = await broadcastSystemAnnouncement(input.title, input.body);
-        writeAuditLog({ ctx, action: "chat_broadcast", detail: { title: input.title, delivered: res.delivered, total: res.total } });
+        const targets = input.targets ?? { all: true };
+        const hasTarget = !!targets.all || (targets.userIds?.length ?? 0) > 0 || (targets.conversationIds?.length ?? 0) > 0;
+        if (!hasTarget) throw new TRPCError({ code: "BAD_REQUEST", message: "请至少选择一个接收对象" });
+        const res = await broadcastSystemAnnouncement(input.title, input.body, targets);
+        writeAuditLog({ ctx, action: "chat_broadcast", detail: { title: input.title, delivered: res.delivered, total: res.total, scope: targets.all ? "all" : "custom" } });
         return res;
       }),
+
+    // 广播编辑器的候选收件人：全体用户 + 可选房间/群组（含成员数），排除系统房。
+    broadcastTargets: managerProc.query(async () => {
+      const users = await db.listAllUsers();
+      const { rows } = await db.adminListConversations({ type: "group", limit: 200, offset: 0 });
+      const rooms = await Promise.all(
+        rows
+          .filter((c) => !(c.dmKey ?? "").startsWith("system:")) // 系统房（广播/公告/产物通知/下载审批）不作为目标
+          .map(async (c) => {
+            const members = await db.listChatMembers(c.id).catch(() => []);
+            return { id: c.id, title: c.title, memberCount: members.length };
+          }),
+      );
+      return {
+        users: users.map((u) => ({ id: u.id, name: u.name, email: u.email })),
+        rooms,
+      };
+    }),
+
+    // 确保共享「广播频道」存在，并把当前管理员加入为成员，返回其会话 id（供前端跳转/展示）。
+    ensureBroadcastChannel: managerProc.mutation(async ({ ctx }) => {
+      const ch = await db.getOrCreateBroadcastChannel();
+      if (!(await db.isChatMember(ch.id, ctx.user.id))) await db.addChatMember(ch.id, ctx.user.id, "member");
+      return { id: ch.id };
+    }),
     listConversations: adminProcedure
       .input(z.object({
         type: z.enum(["lobby", "group", "dm"]).optional(),
