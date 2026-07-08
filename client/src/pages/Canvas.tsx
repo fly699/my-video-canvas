@@ -66,7 +66,7 @@ import { setBoxSelecting } from "../hooks/useBoxSelecting";
 import { useEdgeInsert } from "../hooks/useEdgeInsert";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
 import { ModelQuickSwitch, MODEL_SWITCH_FIELD } from "../components/canvas/studio/ModelQuickSwitch";
-import { isConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS, defaultTargetHandle } from "../lib/connectionRules";
+import { isConnectionValid, isHandleConnectionValid, getCompatibleTargets, getCompatibleSources, CONNECTION_HINTS, defaultTargetHandle } from "../lib/connectionRules";
 import { listNodeTemplates, saveNodeTemplate, deleteNodeTemplate, exportNodeTemplatesJson, importNodeTemplatesJson } from "../lib/nodeTemplates";
 import { isComfyNodeType, suggestComfyTemplateName, describeComfyTemplate, extractComfyThumbnail, type ComfyNodeType } from "../lib/comfyNodeTemplates";
 import { SaveComfyTemplateDialog } from "../components/canvas/SaveComfyTemplateDialog";
@@ -730,7 +730,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const savedNodeSigsRef = useRef<Map<string, string>>(new Map());
 
   // ── Data loading ────────────────────────────────────────────────────────────
-  const { data: project, isLoading: projectLoading, isError: projectError } = trpc.projects.get.useQuery(
+  const { data: project, isLoading: projectLoading, isError: projectError, error: projectErr, refetch: refetchProject, isFetching: projectFetching } = trpc.projects.get.useQuery(
     { id: projectId }, { enabled: !!projectId && isAuthenticated, retry: false }
   );
   const effectiveRole = (project as { role?: "owner" | "viewer" | "editor" | "admin" } | undefined)?.role ?? "viewer";
@@ -1498,7 +1498,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
     const sourceNode = nodes.find(n => n.id === connection.source);
     const targetNode = nodes.find(n => n.id === connection.target);
     if (!sourceNode || !targetNode) return false;
-    return isConnectionValid(sourceNode.data.nodeType, targetNode.data.nodeType);
+    // 句柄级校验：音频源不得落到剪辑的 video-in、视频源不得落到 audio-in（此前两桩都判合法）。
+    const srcIsAudio = sourceNode.data.nodeType === "audio" ||
+      (sourceNode.data.nodeType === "asset" && (sourceNode.data.payload as { type?: string })?.type === "audio");
+    return isHandleConnectionValid(sourceNode.data.nodeType, targetNode.data.nodeType, connection.targetHandle, srcIsAudio);
   }, [nodes]);
 
   const handleConnectStart = useCallback((_: unknown, params: { nodeId: string | null; handleType: string | null }) => {
@@ -1506,8 +1509,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
       const node = nodes.find(n => n.id === params.nodeId);
       if (node) {
         setConnectingFromType(node.data.nodeType);
+        const isAudio = node.data.nodeType === "audio" ||
+          (node.data.nodeType === "asset" && (node.data.payload as { type?: string })?.type === "audio");
         // Drive valid-target handle highlighting across the canvas.
-        useConnectingStore.getState().begin(node.id, node.data.nodeType, params.handleType === "target" ? "target" : "source");
+        useConnectingStore.getState().begin(node.id, node.data.nodeType, params.handleType === "target" ? "target" : "source", isAudio);
       }
     }
   }, [nodes]);
@@ -1776,12 +1781,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   // ── Error / not found ────────────────────────────────────────────────────────
   if (projectError) {
+    // 区分「确实无权/不存在」(NOT_FOUND/FORBIDDEN/UNAUTHORIZED) 与「瞬时网络/服务端错误」。
+    // 后者此前也被笼统显示为「无权访问」且无重试入口 —— 现给「重试」(refetch)。
+    const code = (projectErr as { data?: { code?: string } } | null)?.data?.code;
+    const isAccessErr = code === "NOT_FOUND" || code === "FORBIDDEN" || code === "UNAUTHORIZED";
     return (
       <div className="w-screen h-screen flex flex-col items-center justify-center gap-4" style={{ background: "var(--c-canvas)" }}>
-        <p className="text-sm" style={{ color: "var(--c-t3)" }}>项目不存在或无权访问</p>
-        <button onClick={() => navigate("/")} className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--c-elevated)", color: "var(--c-t2)" }}>
-          返回主页
-        </button>
+        <div style={{ fontSize: 26 }}>{isAccessErr ? "🔒" : "📡"}</div>
+        <p className="text-sm" style={{ color: "var(--c-t3)" }}>
+          {isAccessErr ? "项目不存在或无权访问" : "加载失败：网络或服务器错误，请重试"}
+        </p>
+        <div className="flex items-center gap-2">
+          {!isAccessErr && (
+            <button onClick={() => refetchProject()} disabled={projectFetching}
+              className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "oklch(0.62 0.2 285)", color: "#fff", opacity: projectFetching ? 0.6 : 1 }}>
+              {projectFetching ? "重新加载中…" : "↻ 重试"}
+            </button>
+          )}
+          <button onClick={() => navigate("/")} className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--c-elevated)", color: "var(--c-t2)" }}>
+            返回主页
+          </button>
+        </div>
       </div>
     );
   }
@@ -3045,6 +3065,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
                       { key: "滚轮", desc: "上下平移" },
                       { key: "Shift + 滚轮", desc: "左右平移" },
                       { key: "拖拽空白处", desc: "平移画布" },
+                      { key: "F", desc: "缩放到选中（无选中=适应全部）" },
+                      { key: "右键 / 双击空白", desc: "上下文菜单 / 快速添加节点" },
                     ]},
                     { group: "节点操作", items: [
                       { key: "Delete / Backspace", desc: "删除选中节点" },
@@ -3064,6 +3086,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     ]},
                     { group: "其他", items: [
                       { key: "Cmd/Ctrl + K", desc: "搜索节点" },
+                      { key: "Cmd/Ctrl + T", desc: "打开模板面板" },
                       { key: "Cmd/Ctrl + S", desc: "保存画布" },
                       { key: "Alt + W", desc: "速览：临时展开全部节点的参考图 + 提示词窗（再按或 5 秒后恢复）" },
                       { key: "?", desc: "开关快捷键面板" },

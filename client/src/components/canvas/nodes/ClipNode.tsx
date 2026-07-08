@@ -5,7 +5,7 @@ import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { handleStyle } from "../../../lib/handleStyle";
-import { useConnectState } from "../../../hooks/useConnectingStore";
+import { useConnectState, useClipHandleState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { ClipNodeData } from "../../../../../shared/types";
@@ -409,6 +409,8 @@ function AudioTracksPanel({ sources, payload, setTrack }: {
 export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   const handlesActive = useHoverStore((s) => s.nodeId === id) || !!selected;
   const connectState = useConnectState(id, "clip");
+  const videoInState = useClipHandleState(id, "video-in"); // 按拖拽源类型分辨：音频源只让 audio-in 亮绿
+  const audioInState = useClipHandleState(id, "audio-in");
   const { updateNodeData } = useCanvasStore();
   const reactFlow = useReactFlow();
   const payload = data.payload;
@@ -751,14 +753,14 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
             type="target"
             position={Position.Left}
             id="video-in"
-            style={{ ...handleStyle(accent, handlesActive, "square", connectState.target), top: "35%", left: -7 }}
+            style={{ ...handleStyle(accent, handlesActive, "square", videoInState), top: "35%", left: -7 }}
             title="视频输入 ← 连接视频任务或素材"
           />
           <Handle
             type="target"
             position={Position.Left}
             id="audio-in"
-            style={{ ...handleStyle("oklch(0.68 0.20 340)", handlesActive, "square", connectState.target), top: "65%", left: -7 }}
+            style={{ ...handleStyle("oklch(0.68 0.20 340)", handlesActive, "square", audioInState), top: "65%", left: -7 }}
             title="音频输入 ← 连接音频节点"
           />
           {/* Output handle — circle = source/sends */}
