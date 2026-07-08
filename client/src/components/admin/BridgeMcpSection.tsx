@@ -17,6 +17,19 @@ export function BridgeMcpSection() {
   const [permissionMode, setPermissionMode] = useState("");
   const [allowedTools, setAllowedTools] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
+  const [inspectResult, setInspectResult] = useState<{ kind: string; servers: string[]; exists?: boolean; error?: string } | null>(null);
+
+  // 服务端按桥接同款逻辑解析 mcpConfig（读文件/解析 JSON），当场回报「文件存不存在 / 读出几个服务器」。
+  const runInspect = async () => {
+    setInspecting(true); setInspectResult(null);
+    try {
+      const r = await utils.admin.models.inspectBridgeMcp.fetch({ mcpConfig: mcpConfig.trim() });
+      setInspectResult(r);
+    } catch (e) {
+      setInspectResult({ kind: "error", servers: [], error: e instanceof Error ? e.message : String(e) });
+    } finally { setInspecting(false); }
+  };
 
   useEffect(() => {
     if (q.data) {
@@ -115,6 +128,31 @@ export function BridgeMcpSection() {
           placeholder={`C:\\avc\\mcp.json\n\n（或直接把整段 {"mcpServers":{...}} JSON 贴在这里）`}
           className="nodrag" style={{ ...box, marginTop: 4, fontFamily: "monospace", resize: "vertical" }} />
       </label>
+
+      {/* 测试读取：填了文件路径时页面无法在浏览器里读服务器文件，靠这个按钮让服务端读一遍回报结果 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <button onClick={runInspect} disabled={inspecting || !mcpConfig.trim()} className="nodrag flex items-center gap-1.5"
+          style={{ fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 8, cursor: inspecting ? "wait" : "pointer",
+            background: "oklch(0.68 0.19 285 / 0.14)", border: "1px solid oklch(0.68 0.19 285 / 0.4)", color: "oklch(0.72 0.16 285)" }}>
+          {inspecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />} 测试读取 / 解析（服务端）
+        </button>
+        <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>填文件路径时，用这个确认服务器上真读到了、解析出几个 MCP。</span>
+      </div>
+      {inspectResult && (
+        inspectResult.servers.length > 0 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 11, padding: "8px 10px", borderRadius: 8, background: "oklch(0.70 0.15 160 / 0.10)", border: "1px solid oklch(0.70 0.15 160 / 0.35)" }}>
+            <span style={{ fontWeight: 700, color: "oklch(0.70 0.13 160)" }}>✓ 读到 {inspectResult.servers.length} 个：</span>
+            {inspectResult.servers.map((n) => (
+              <span key={n} style={{ padding: "2px 8px", borderRadius: 999, background: "oklch(0.70 0.15 160 / 0.14)", border: "1px solid oklch(0.70 0.15 160 / 0.4)", color: "oklch(0.70 0.13 160)", fontFamily: "monospace" }}>mcp__{n}</span>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11.5, padding: "8px 10px", borderRadius: 8, background: "oklch(0.70 0.16 25 / 0.10)", border: "1px solid oklch(0.70 0.16 25 / 0.35)", color: "oklch(0.72 0.16 28)", lineHeight: 1.6 }}>
+            <span style={{ fontWeight: 700 }}>✗ 没读到任何 MCP 服务器。</span>{inspectResult.error ? " " + inspectResult.error : ""}
+            <br /><span style={{ color: "var(--c-t4)" }}>常见原因：文件路径写错 / 服务器上根本没有这个文件 / 文件里没有 mcpServers。可改为「直接把整段 JSON 贴进上面框」——那样最稳，页面会立刻显示解析结果。</span>
+          </div>
+        )
+      )}
 
       {/* 解析预览 / 错误 */}
       {preview.error && (

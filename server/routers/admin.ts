@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { isIP } from "net";
+import { readFileSync } from "fs";
 import { TRPCError } from "@trpc/server";
+import { mcpServerNames } from "../_core/claudeBridge";
 import { adminProcedure, levelProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { getOnlineUserIds, getPresenceStats } from "../_core/presence";
@@ -477,6 +479,26 @@ export const adminRouter = router({
       }),
     // ── 桥接 MCP/技能配置（admin）：替代 CLAUDE_BRIDGE_* env，界面贴 JSON 保存即生效（无需重启） ──
     getBridgeMcp: adminProcedure.query(async () => db.getBridgeMcpConfig()),
+    // 诊断：给定 mcpConfig（内联 JSON 或服务器文件路径），在服务端按桥接的同一套逻辑解析出服务器名，
+    // 让管理员当场看到「文件存不存在 / 读出几个 mcp 服务器」，免得填了路径静默失败还当黑盒。
+    inspectBridgeMcp: adminProcedure
+      .input(z.object({ mcpConfig: z.string().max(20000) }))
+      .query(async ({ input }) => {
+        const raw = input.mcpConfig.trim();
+        if (!raw) return { kind: "empty" as const, servers: [] as string[] };
+        if (raw.startsWith("{")) {
+          try { return { kind: "inline" as const, servers: mcpServerNames(raw) }; }
+          catch { return { kind: "inline" as const, servers: [], error: "内联 JSON 解析失败" }; }
+        }
+        // 文件路径：按桥接同款 readFileSync 读取，回报存在性与服务器名。
+        try {
+          const text = readFileSync(raw, "utf8");
+          const servers = mcpServerNames(text);
+          return { kind: "file" as const, servers, exists: true, ...(servers.length === 0 ? { error: "文件读到了，但没解析出任何 mcpServers 条目" } : {}) };
+        } catch (e) {
+          return { kind: "file" as const, servers: [], exists: false, error: "读不到该文件：" + (e instanceof Error ? e.message : String(e)).slice(0, 160) };
+        }
+      }),
     setBridgeMcp: managerProc
       .input(z.object({
         mcpConfig: z.string().max(20000).default(""),
