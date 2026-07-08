@@ -1474,6 +1474,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
     const fromHandle = connectionState.fromHandle?.id ?? null;
     setConnectingFromType(null);
     useConnectingStore.getState().end();
+    // ◆8 落在某节点上但连接非法(isValid=false) → 给出原因，不再静默失败。
+    if (connectionState.toNode && connectionState.isValid === false && fromType) {
+      const tn = useCanvasStore.getState().nodes.find((n) => n.id === connectionState.toNode!.id);
+      if (tn && tn.id !== fromId) {
+        toast.error(`「${getNodeConfig(fromType)?.label ?? fromType}」不能连到「${getNodeConfig(tn.data.nodeType)?.label ?? tn.data.nodeType}」：类型不兼容`, { duration: 2200 });
+      }
+    }
     // 仅在「未连到任何节点」（落在空白）时弹建节点菜单；落在节点上＝原行为（onConnect 已处理）。
     if (isReadOnly || !fromType || !fromId || !fromHandleType || connectionState.toNode) return;
     // 候选 = 该桩点「现有方向」可连接的节点类型（连接矩阵已排除不可连接者，列表里不会出现）。
