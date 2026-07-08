@@ -93,6 +93,16 @@ async function currentCommit(): Promise<string> {
   });
 }
 
+// 进程启动时的 commit（= 当前实际运行代码的版本，冻结不变）。用于识别「磁盘已更新但进程未重启」
+// 的陈旧态：此时 git pull 会报「Already up to date」，旧逻辑据此判定「无需重启」，但运行进程其实落后。
+const bootCommitPromise: Promise<string> = currentCommit();
+
+/** 运行进程版本(启动时冻结) vs 磁盘当前 HEAD。stale=true 表示磁盘已比运行进程新，需重启才生效。 */
+export async function getRunningVsDisk(): Promise<{ running: string; disk: string; stale: boolean }> {
+  const [running, disk] = await Promise.all([bootCommitPromise, currentCommit()]);
+  return { running, disk, stale: !!running && !!disk && running !== disk };
+}
+
 export function getUpdateStatus(): UpdateStatus {
   return { ...status, log: status.log.slice(-200) };
 }
@@ -279,7 +289,12 @@ export async function startUpdate(): Promise<{ started: boolean; reason?: string
       }
 
       status.afterCommit = await currentCommit();
-      if (status.afterCommit && status.afterCommit === status.beforeCommit) {
+      const running = await bootCommitPromise;
+      const noGitChange = !!status.afterCommit && status.afterCommit === status.beforeCommit;
+      const short = (c: string | null) => (c ? c.slice(0, 7) : "unknown");
+      // 只有「git 无新提交」且「运行进程 == 磁盘」才是真正的「已是最新」；否则(磁盘已比运行进程新)
+      // 说明之前拉了代码却没重启——继续重建并重启，让新代码真正生效，而非误报「无需重启」。
+      if (noGitChange && running && status.afterCommit === running) {
         status.step = "已是最新版本";
         status.state = "uptodate";
         status.finishedAt = Date.now();
@@ -287,7 +302,11 @@ export async function startUpdate(): Promise<{ started: boolean; reason?: string
         pushLog("已是最新版本，无需重启。");
         return;
       }
-      pushLog(`已更新到：${status.afterCommit || "unknown"}`);
+      if (noGitChange) {
+        pushLog(`git 已是最新，但运行中的进程仍是旧版（运行 ${short(running)} · 磁盘 ${short(status.afterCommit)}）——之前拉取后未重启。将重建并重启以真正生效。`);
+      } else {
+        pushLog(`已更新到：${short(status.afterCommit)}`);
+      }
 
       status.step = "安装依赖 (pnpm install)";
       if (await runStep("pnpm install") !== 0) throw new Error("pnpm install 失败");

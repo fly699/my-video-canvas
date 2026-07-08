@@ -1422,6 +1422,8 @@ function ModelsPanel() {
 function SystemUpdatePanel() {
   const utils = trpc.useUtils();
   const versionQuery = trpc.admin.update.version.useQuery(undefined, { refetchOnWindowFocus: false });
+  // 运行进程版本 vs 磁盘 HEAD：stale=磁盘已更新但进程没重启，需重启才生效（自愈加固）。
+  const rvdQuery = trpc.admin.update.runningVsDisk.useQuery(undefined, { refetchOnWindowFocus: true, refetchInterval: 60_000 });
   const statusQuery = trpc.admin.update.status.useQuery(undefined, {
     refetchOnWindowFocus: false,
     // 更新进行中时每 1.5s 轮询进度，否则停止轮询
@@ -1501,6 +1503,19 @@ function SystemUpdatePanel() {
                 </span>
               ) : "版本信息不可用（可能不是 git 部署）"}
             </div>
+
+            {/* 陈旧态告警：磁盘已比运行进程新（之前拉了代码没重启）→ 提示重启才生效 */}
+            {rvdQuery.data?.stale && (
+              <div style={{ marginTop: 10, display: "flex", alignItems: "flex-start", gap: 8, padding: "9px 12px", borderRadius: 8, fontSize: 12.5, lineHeight: 1.55, background: "oklch(0.70 0.16 60 / 0.10)", border: "1px solid oklch(0.70 0.16 60 / 0.35)", color: "oklch(0.80 0.15 60)" }}>
+                <RotateCw style={{ width: 14, height: 14, flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  磁盘代码已更新，但<b>运行中的进程仍是旧版</b>——之前拉取后未重启。
+                  运行 <code style={{ background: "var(--c-surface)", padding: "0 5px", borderRadius: 4 }}>{rvdQuery.data.running.slice(0, 7)}</code> ·
+                  磁盘 <code style={{ background: "var(--c-surface)", padding: "0 5px", borderRadius: 4 }}>{rvdQuery.data.disk.slice(0, 7)}</code>。
+                  点「重启服务」或「立即更新」即可加载新版本。
+                </span>
+              </div>
+            )}
 
             {/* 操作按钮 */}
             {!canEdit && (

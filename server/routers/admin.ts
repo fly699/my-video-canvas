@@ -23,7 +23,7 @@ import { sendTunnelUrlEmail } from "../_core/tunnelEmail";
 import { storagePut, storageBackend, isStorageConfigured, storageDeleteObject } from "../storage";
 import { ENV } from "../_core/env";
 import { randomBytes } from "crypto";
-import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate, restartServer } from "../_core/selfUpdate";
+import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate, restartServer, getRunningVsDisk } from "../_core/selfUpdate";
 import { hashPassword } from "../_core/emailAuth";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { writeAuditLog } from "../_core/auditLog";
@@ -917,6 +917,10 @@ export const adminRouter = router({
   update: router({
     version: adminProcedure.query(async () => {
       return getVersionInfo();
+    }),
+    // 运行进程版本 vs 磁盘 HEAD：stale=true 表示磁盘已更新但进程未重启，需重启才生效。
+    runningVsDisk: adminProcedure.query(async () => {
+      return getRunningVsDisk();
     }),
     // 红点提醒用：带 15 分钟缓存，频繁查询不会频繁 git fetch
     available: adminProcedure.query(async () => {
