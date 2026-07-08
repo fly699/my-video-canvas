@@ -329,6 +329,9 @@ export const chatRouter = router({
     .mutation(async ({ ctx, input }) => {
       const conv = await getConversationById(input.conversationId);
       if (!conv || conv.type !== "group") throw new TRPCError({ code: "NOT_FOUND" });
+      // 系统房（产物通知 / 下载审批）禁止自助加入——只能由房主通过邀请（inviteToRoom）拉人进入。
+      // 纵深防御：即使对方知道 roomId，也不能绕过发现列表过滤直接 join。
+      if ((conv.dmKey ?? "").startsWith("system:")) throw new TRPCError({ code: "FORBIDDEN", message: "该房间为私有房间，无法直接加入" });
       if (await isChatBanned(ctx.user.id, conv.id)) throw new TRPCError({ code: "FORBIDDEN", message: "你已被封禁" });
       if (conv.passwordHash) {
         const ok = input.password ? await verifyPassword(input.password, conv.passwordHash) : false;

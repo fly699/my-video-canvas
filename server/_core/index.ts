@@ -15,6 +15,7 @@ import { registerImageProxy } from "./imageProxy";
 import { registerClaudeBridge, setBridgeSelfHttpPort } from "./claudeBridge";
 import { appRouter } from "../routers";
 import { createContext, resolveRequestUser, applyAuthGates } from "./context";
+import { markOnline, markOffline } from "./presence";
 import { getTunnelGate, initTunnel, setTunnelOrigin, getTunnelListenerPort, trackTunnelSocket } from "./tunnel";
 import { isTunnelRequest, isTunnelExemptPath, isTunnelAllowed } from "./tunnelGate";
 import { serveStatic, setupVite } from "./vite";
@@ -224,6 +225,7 @@ async function startServer() {
 
   io.on("connection", (socket) => {
     const user = (socket.data as { user: User }).user;
+    markOnline(user.id); // 全局在线计数（供管理后台）；disconnect 里 markOffline
     let currentProjectId: number | null = null;
     // Cache the user's effective role per joined project so the high-frequency
     // node:move stream doesn't run a DB query per event. The cache is
@@ -375,6 +377,7 @@ async function startServer() {
     });
 
     socket.on("disconnect", () => {
+      markOffline(user.id);
       unsubscribeBus();
       closeSessionsForSocket(socket.id);
       if (currentProjectId !== null) {
@@ -435,6 +438,7 @@ async function startServer() {
 
   chatNs.on("connection", (socket) => {
     const user = (socket.data as { user: User }).user;
+    markOnline(user.id); // 全局在线计数（/chat 命名空间；disconnect 里 markOffline）
     const joined = new Set<number>();
     // Personal room for new-DM / invite notifications.
     socket.join(`chat:user:${user.id}`);
@@ -485,6 +489,7 @@ async function startServer() {
     });
 
     socket.on("disconnect", () => {
+      markOffline(user.id);
       for (const convId of Array.from(joined)) {
         const stillHere = Array.from(chatNs.sockets.values()).some(
           (s) => s.id !== socket.id && (s.data as { user?: User }).user?.id === user.id && s.rooms.has(`chat:conv:${convId}`),

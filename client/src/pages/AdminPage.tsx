@@ -316,6 +316,10 @@ function UsersPanel() {
   const utils = trpc.useUtils();
   const { user: me } = useAuth();
   const { data: users, isLoading } = trpc.admin.users.list.useQuery();
+  // 实时在线状态：轮询在线用户 id（socket 引用计数），叠加到用户表。
+  const { data: onlineIds } = trpc.admin.users.onlineIds.useQuery(undefined, { refetchInterval: 15000, refetchOnWindowFocus: true });
+  const onlineSet = new Set(onlineIds ?? []);
+  const onlineCount = (users ?? []).filter((u) => onlineSet.has(u.id)).length;
   const resetMut = trpc.admin.users.resetPassword.useMutation({
     onSuccess: () => toast.success("密码已重置"),
     onError: (e) => toast.error("重置失败：" + e.message),
@@ -367,6 +371,9 @@ function UsersPanel() {
       <div style={cardStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1)" }}>用户管理</h3>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: "oklch(0.6 0.18 155)", padding: "2px 9px", borderRadius: 99, background: "oklch(0.7 0.18 155 / 0.12)" }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "oklch(0.7 0.18 155)" }} />{onlineCount} 在线
+          </span>
           {pendingCount > 0 && (
             <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99, background: "oklch(0.7 0.17 60 / 0.16)", color: "oklch(0.68 0.17 60)" }}>
               {pendingCount} 个待审批
@@ -387,7 +394,7 @@ function UsersPanel() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr>
-                <th style={thStyle}>ID</th><th style={thStyle}>名称 / 邮箱</th><th style={thStyle}>登录方式</th>
+                <th style={thStyle}>ID</th><th style={thStyle}>在线</th><th style={thStyle}>名称 / 邮箱</th><th style={thStyle}>登录方式</th>
                 <th style={thStyle}>管理员级别</th><th style={thStyle}>状态</th><th style={thStyle}>最近登录</th><th style={thStyle}>操作</th>
               </tr>
             </thead>
@@ -398,6 +405,17 @@ function UsersPanel() {
                 return (
                   <tr key={u.id} style={{ borderTop: "1px solid var(--c-bd2)", opacity: u.disabled ? 0.6 : 1 }}>
                     <td style={tdStyle}>{u.id}</td>
+                    <td style={tdStyle}>
+                      {onlineSet.has(u.id) ? (
+                        <span title="在线" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "oklch(0.6 0.18 155)" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "oklch(0.7 0.18 155)", boxShadow: "0 0 0 3px oklch(0.7 0.18 155 / 0.25)" }} />在线
+                        </span>
+                      ) : (
+                        <span title="离线" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--c-t4)" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-t4)", opacity: 0.5 }} />离线
+                        </span>
+                      )}
+                    </td>
                     <td style={tdStyle}>
                       <div style={{ fontWeight: 600 }}>{u.name || "—"}</div>
                       <div style={{ fontSize: 11, color: "var(--c-t3)" }}>{u.email || u.openId}</div>
@@ -447,7 +465,7 @@ function UsersPanel() {
                   </tr>
                 );
               })}
-              {(users?.length ?? 0) === 0 && <tr><td colSpan={7} style={{ ...tdStyle, textAlign: "center", color: "var(--c-t3)" }}>暂无用户</td></tr>}
+              {(users?.length ?? 0) === 0 && <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "var(--c-t3)" }}>暂无用户</td></tr>}
             </tbody>
           </table>
         )}
