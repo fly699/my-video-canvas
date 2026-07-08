@@ -543,6 +543,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
   // 拉线松手落在空白处时，在鼠标位置弹出的「建节点并连线」小菜单（仅列可连接类型）。
   const [connectMenu, setConnectMenu] = useState<{ x: number; y: number; types: NodeType[]; fromId: string; fromHandleType: "source" | "target"; fromHandle: string | null } | null>(null);
+  const [connectSearch, setConnectSearch] = useState(""); // ◆7 建节点菜单搜索词
+  useEffect(() => { if (!connectMenu) setConnectSearch(""); }, [connectMenu]);
   const [connectDragType, setConnectDragType] = useState<NodeType | null>(null); // 弹窗内拖拽排序中的项
   // 建节点菜单的「节点类型自定义排序」——服务端持久化（user_prefs.connectMenuOrder），跨设备保留。
   const [connectOrder, setConnectOrder] = useState<string[]>([]);
@@ -1248,8 +1250,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
       t.closest(".react-flow__minimap") ||
       t.closest("button, input, textarea, [contenteditable='true']")
     ) return;
-    handleCanvasContextMenu(e);
-  }, [handleCanvasContextMenu]);
+    // ◆7 双击空白 → 直接打开节点选择器(可搜索、回车加首个匹配),而非弹右键菜单。
+    if (isReadOnly) return;
+    setShowNodePicker(true);
+  }, [isReadOnly, setShowNodePicker]);
 
   // When the canvas right-click menu is pinned, the user can add several nodes
   // in a row from the same anchor — without a per-add offset they all stack at
@@ -3494,7 +3498,26 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <span>{connectMenu.fromHandleType === "source" ? "连接到新节点…" : "从新节点连入…"}</span>
               <span style={{ marginLeft: "auto", opacity: 0.7 }}><GripVertical style={{ width: 9, height: 9, display: "inline" }} /> 拖动排序</span>
             </div>
-            {connectMenu.types.map((t) => {
+            {/* ◆7 搜索框：类型多时可搜;回车加首个匹配 */}
+            {connectMenu.types.length > 6 && (
+              <input autoFocus value={connectSearch}
+                onChange={(e) => setConnectSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const q = connectSearch.trim().toLowerCase();
+                    const first = connectMenu.types.find((t) => t !== "comfyui_workflow" && (getNodeConfig(t)?.label ?? t).toLowerCase().includes(q));
+                    if (first) handlePickConnectType(first);
+                  } else if (e.key === "Escape") { setConnectMenu(null); }
+                }}
+                placeholder="搜索节点类型…"
+                style={{ width: "calc(100% - 8px)", margin: "0 4px 4px", boxSizing: "border-box", padding: "6px 8px", fontSize: 12,
+                  borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+            )}
+            {(() => {
+              const q = connectSearch.trim().toLowerCase();
+              const shown = q ? connectMenu.types.filter((t) => (getNodeConfig(t)?.label ?? CONNECTION_HINTS[t]?.label ?? t).toLowerCase().includes(q)) : connectMenu.types;
+              if (shown.length === 0) return <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "8px 10px" }}>无匹配</div>;
+              return shown.map((t) => {
               const cfg = getNodeConfig(t);
               // ComfyUI 自定义节点 → 改为「节点模板库」：点击打开模板库二级列表，选模板后在落点
               // 建节点并连边（替代直接建空白工作流节点）。
@@ -3550,7 +3573,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   </button>
                 </div>
               );
-            })}
+            });
+            })()}
           </div>
         </>
       )}
