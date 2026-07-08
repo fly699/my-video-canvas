@@ -1306,6 +1306,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const edgeInsertId = useEdgeInsert((s) => s.edgeId);
   useEffect(() => { if (edgeInsertId) setShowNodePicker(true); }, [edgeInsertId]);
 
+  // ◆9 触屏长按节点 → 打开节点右键菜单(BaseNode 派发 avc:node-longpress)。
+  useEffect(() => {
+    const onLP = (e: Event) => {
+      const d = (e as CustomEvent).detail as { nodeId: string; x: number; y: number } | undefined;
+      if (d) setContextMenu({ x: d.x, y: d.y, type: "node", nodeId: d.nodeId });
+    };
+    window.addEventListener("avc:node-longpress", onLP);
+    return () => window.removeEventListener("avc:node-longpress", onLP);
+  }, []);
+
   // 一键：在画布中心新建 ComfyUI 自定义节点，并自动打开「导入向导」（_openWizard 瞬态标志）。
   const addComfyWorkflowWithWizard = useCallback(() => {
     const vp = reactFlow.getViewport();

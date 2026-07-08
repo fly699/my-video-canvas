@@ -405,6 +405,8 @@ export const BaseNode = memo(function BaseNode({
     return null;
   })();
 
+  const longPressTimerRef = useRef<number | undefined>(undefined);
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(title);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -569,6 +571,22 @@ export const BaseNode = memo(function BaseNode({
       onMouseEnter={() => { setIsHovered(true); useHoverStore.getState().setHovered(id); }}
       onMouseLeave={() => { setIsHovered(false); if (useHoverStore.getState().nodeId === id) useHoverStore.getState().setHovered(null); }}
       onClick={() => revealActions()}
+      onTouchStart={(e) => {
+        // ◆9 触屏长按 500ms → 派发事件让 Canvas 打开节点右键菜单(触屏无原生右键)。
+        const t = e.touches[0]; if (!t) return;
+        const sx = t.clientX, sy = t.clientY;
+        longPressStartRef.current = { x: sx, y: sy };
+        window.clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("avc:node-longpress", { detail: { nodeId: id, x: sx, y: sy } }));
+        }, 500);
+      }}
+      onTouchMove={(e) => {
+        const t = e.touches[0], s = longPressStartRef.current;
+        if (t && s && Math.hypot(t.clientX - s.x, t.clientY - s.y) > 12) window.clearTimeout(longPressTimerRef.current);
+      }}
+      onTouchEnd={() => window.clearTimeout(longPressTimerRef.current)}
+      onTouchCancel={() => window.clearTimeout(longPressTimerRef.current)}
       onDragOver={onAssetImageDrop ? (e) => {
         if (!e.dataTransfer.types.includes("application/x-asset-list")) return;
         e.preventDefault(); e.dataTransfer.dropEffect = "copy"; if (!assetDragOver) setAssetDragOver(true);
