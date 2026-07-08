@@ -1031,6 +1031,10 @@
   :root[data-ui="studio"] .studio-send[data-state="running"] { animation: none; }
 }
 
+/* Studio 参考图缩略图：hover 时放大移除键的可见度（★9），触屏常驻可点。 */
+:root[data-ui="studio"] .studio-ref-thumb > button { transition: background-color 120ms ease; }
+:root[data-ui="studio"] .studio-ref-thumb:hover > button { background: rgba(210,40,40,0.92); }
+
 /* Studio floating toolbars (node top toolbar + group toolbar): button hover lift —
    brighten + nudge so the icon/label buttons feel responsive like the command-bar chips. */
 :root[data-ui="studio"] .studio-toolbtn {
