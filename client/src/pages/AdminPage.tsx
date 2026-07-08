@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -2826,9 +2827,13 @@ function AdminAssetLightbox({ asset, onClose }: { asset: AdminAsset; onClose: ()
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
-  return (
+  // 必须 portal 到 body：素材面板外层 <div className="animate-fade-up"> 动画结束停在
+  // transform: translateY(0)，非 none 的 transform 会成为 position:fixed 的包含块，
+  // 导致本弹层的 inset:0 相对那个「很高的 300 项网格面板」而非视口，居中的卡片落到
+  // 视口下方数千 px 处、看不见（只剩模糊背景）。portal 到 body 即回归真正的视口固定。
+  return createPortal(
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "oklch(0 0 0 / 0.8)", backdropFilter: "blur(8px)" }}
+      style={{ position: "fixed", inset: 0, zIndex: 2147483300, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "oklch(0 0 0 / 0.8)", backdropFilter: "blur(8px)" }}
       onClick={onClose}
     >
       <div
@@ -2859,7 +2864,8 @@ function AdminAssetLightbox({ asset, onClose }: { asset: AdminAsset; onClose: ()
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

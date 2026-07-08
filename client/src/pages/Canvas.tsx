@@ -91,6 +91,8 @@ import { toast } from "sonner";
 import type { NodeType, NodeData, GroupNodeData } from "../../../shared/types";
 import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS, type NodeConfig } from "../lib/nodeConfig";
 import { sortNodeConfigsForPalette } from "../lib/nodeOrder";
+import { estimateCanvasBudget } from "../lib/costEstimate";
+import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { io, type Socket } from "socket.io-client";
 import {
   Film,
@@ -574,7 +576,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
   }, [connectOrder, setConnectOrderMut]);
 
   // Workflow runner
-  const { runState, runWorkflow, reset: resetWorkflowRun } = useWorkflowRunner();
+  const { runState, runWorkflow, reset: resetWorkflowRun, cancel: cancelWorkflowRun } = useWorkflowRunner();
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [pendingRunNodeId, setPendingRunNodeId] = useState<string | null>(null);
   // When set, the run is restricted to exactly these (box-selected) node ids.
@@ -583,6 +585,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const runConfirmOpenRef = useRef(false);
   const runStateRunningRef = useRef(false);
   runStateRunningRef.current = runState.running;
+  // 运行确认弹窗要显示「预计消耗 vs 余额」：仅在弹窗打开时拉取余额，避免常驻轮询。
+  const kieTempKey = typeof localStorage !== "undefined" ? localStorage.getItem("kie:tempKey") ?? "" : "";
+  const kieBalQ = trpc.kie.balance.useQuery(kieTempKey ? { tempKey: kieTempKey } : undefined, { enabled: showRunConfirm, retry: false, staleTime: 30_000 });
+  const poyoBalQ = trpc.poyo.balance.useQuery(undefined, { enabled: showRunConfirm, retry: false, staleTime: 30_000 });
   // 子图复制粘贴剪贴板：Ctrl+C 记下框选的节点 id（含展开的群组成员），Ctrl+V 克隆。
   const clipboardRef = useRef<string[]>([]);
   const pasteCountRef = useRef(0);
@@ -1858,8 +1864,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
           </div>
         )}
 
-        {/* 全局运行状态条（生成中/排队/完成/失败，点失败跳转）——仅运行中或有失败时显示 */}
-        <RunStatusBar runState={runState} />
+        {/* 全局运行状态条（生成中/排队/完成/失败，点失败跳转）——仅运行中或有失败时显示。
+            运行中可「停止」；失败态可「重试」失败项（走确认弹窗，与正常运行一致）。 */}
+        <RunStatusBar runState={runState} onCancel={cancelWorkflowRun} onRetryFailed={(ids) => useCanvasStore.getState().requestRun(null, ids)} />
 
         {/* Poyo 暂存/存储可达状态灯（顶部工具栏左侧；可达且未暂存时不显示） */}
         <PoyoStorageStatusChip className="flex-shrink-0" />
@@ -3642,6 +3649,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const scopeNodes = onlySet ? nodes.filter(n => onlySet.has(n.id)) : nodes;
         const aiNodes = scopeNodes.filter(n => RUNNABLE_TYPES.includes(n.data.nodeType as NodeType));
         const totalNodes = scopeNodes.length;
+        // 预估本次消耗（复用 BudgetButton 同源的精算函数，逐节点按当前模型/参数汇总）。
+        const budget = estimateCanvasBudget(
+          scopeNodes.map((n) => ({ data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })),
+          resolveActiveNodeModel as (nt: string, slot: "llm" | "image" | "video") => string,
+        );
+        const kieAmount = kieBalQ.data?.configured ? (kieBalQ.data.creditsAmount ?? null) : null;
+        const poyoAmount = poyoBalQ.data?.configured ? (poyoBalQ.data.creditsAmount ?? null) : null;
+        const overKie = kieAmount != null && budget.pt > kieAmount;
+        const overPoyo = poyoAmount != null && budget.cr > poyoAmount;
+        const fmtN = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
         const startLabel = onlySet
           ? `仅运行框选的 ${aiNodes.length} 个节点（不自动带上下游）`
           : pendingRunNodeId
@@ -3679,6 +3696,36 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   其中 <b style={{ color: "oklch(0.72 0.22 142)" }}>{aiNodes.length}</b> 个 AI 节点将调用大模型接口，消耗相应算力额度。
                 </div>
               </div>
+
+              {/* 预估消耗 vs 余额（复用 BudgetButton 同源精算） */}
+              {(budget.pt > 0 || budget.cr > 0 || budget.runnableCount > 0) && (
+                <div style={{
+                  background: "oklch(0.62 0.2 285 / 0.08)", border: "1px solid oklch(0.62 0.2 285 / 0.28)",
+                  borderRadius: 10, padding: "10px 13px", fontSize: 12.5, lineHeight: 1.7, color: "var(--c-text-2)",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ color: "var(--c-t3)" }}>本次预计消耗</span>
+                    {budget.pt > 0 && <b style={{ color: overKie ? "oklch(0.62 0.20 25)" : "oklch(0.78 0.16 285)" }}>≈ ⚡{fmtN(budget.pt)} 点</b>}
+                    {budget.pt > 0 && budget.cr > 0 && <span style={{ color: "var(--c-t4)" }}>·</span>}
+                    {budget.cr > 0 && <b style={{ color: overPoyo ? "oklch(0.62 0.20 25)" : "oklch(0.72 0.16 250)" }}>≈ {fmtN(budget.cr)} cr</b>}
+                    {budget.pt === 0 && budget.cr === 0 && <b style={{ color: "var(--c-t2)" }}>本地/免费</b>}
+                    {budget.approx && <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>（近似）</span>}
+                  </div>
+                  {(kieAmount != null || poyoAmount != null) && (
+                    <div style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 2 }}>
+                      余额 {kieAmount != null && `kie ${fmtN(kieAmount)} 点`}{kieAmount != null && poyoAmount != null && " · "}{poyoAmount != null && `Poyo ${fmtN(poyoAmount)} cr`}
+                    </div>
+                  )}
+                  {(overKie || overPoyo) && (
+                    <div style={{ marginTop: 5, color: "oklch(0.68 0.20 25)", fontWeight: 600 }}>
+                      ⚠️ 预估消耗已超当前余额，运行可能中途失败——请先充值或减少节点。
+                    </div>
+                  )}
+                  {budget.unknownCount > 0 && (
+                    <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 2 }}>{budget.unknownCount} 项未估价（未选模型/无固定价），实际以账单为准。</div>
+                  )}
+                </div>
+              )}
 
               {/* Warning */}
               <div style={{

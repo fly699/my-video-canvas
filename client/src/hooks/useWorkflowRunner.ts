@@ -252,6 +252,7 @@ export function useWorkflowRunner() {
   const runWorkflow = useCallback(async (startNodeId: string | null, opts?: { onlyIds?: string[] }) => {
     if (runningRef.current) return;
     runningRef.current = true;
+    abortRef.current = false; // 每轮开跑前复位「停止」标记，使 cancel() 可重复使用
     const { nodes, edges } = useCanvasStore.getState();
 
     // Determine which nodes are runnable
@@ -1087,5 +1088,16 @@ export function useWorkflowRunner() {
     });
   }, []);
 
-  return { runWorkflow, runState, reset };
+  // 用户主动停止：置 abortRef → 层循环在下一层前 break（正在进行的服务端请求无法真正撤回，
+  // 会继续完成，但不再派发后续节点）。同时收尾 running 态——否则 abort 分支跳过了末尾的
+  // setRunState(running:false)，状态条会一直卡在「生成中」。保留 completed/failed 明细。
+  const cancel = useCallback(() => {
+    if (!runningRef.current) return;
+    abortRef.current = true;
+    runningRef.current = false;
+    setRunState((s) => ({ ...s, running: false, currentNodeId: null }));
+    toast.info("已停止运行", { description: "不再派发后续节点；进行中的节点仍会完成" });
+  }, []);
+
+  return { runWorkflow, runState, reset, cancel };
 }
