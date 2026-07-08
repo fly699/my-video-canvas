@@ -4,6 +4,7 @@ import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { useStudioExpandAll } from "../../hooks/useStudioExpandAll";
 import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
 import { useConnectState } from "../../hooks/useConnectingStore";
 import { useHoverStore } from "../../hooks/useHoverStore";
@@ -164,6 +165,9 @@ export const BaseNode = memo(function BaseNode({
   // 这里的 selected 即「单选展开」语义；选中描边用 store 真实选中态（storeSelected），
   // 框选高亮不丢。
   const storeSelected = useCanvasStore((s) => !!s.nodes.find((n) => n.id === id)?.selected);
+  // ★3：是否多选（≥2 选中）。短路到 2 即返回布尔，避免每 BaseNode 全量 filter 的 O(n²)；
+  // 只在跨越「1↔多」阈值时才触发 re-render。多选时非固定节点不再各自弹命令栏。
+  const multiSelected = useCanvasStore((s) => { let c = 0; for (const n of s.nodes) { if (n.selected) { c++; if (c >= 2) return true; } } return false; });
   const expandSelected = !!selected || pinned;
   // Creator id (stamped into the payload at creation) → a per-collaborator color
   // dot in the title bar, matching the cursor / "在线协作者" colors. Only shown
@@ -200,10 +204,11 @@ export const BaseNode = memo(function BaseNode({
   const usesStudioFloating = isStudio && !STUDIO_PRO_BODY_TYPES.has(nodeType);
   // Studio: when selected, the node card stays compact (header + hero media if any)
   // and the params float in a wide, short panel attached BELOW it (LibLib layout).
-  const studioFloated = usesStudioFloating && (storeSelected || pinned);
+  // ★3：多选（≥2）时非固定节点不再逐个弹命令栏——批量操作交给底部 MultiSelectBar，画布保持清爽。
+  const studioFloated = usesStudioFloating && (pinned || (storeSelected && !multiSelected));
   // Every fresh selection starts COMPACT: reset the expand flag whenever the node
   // is no longer the floating/selected one, so re-clicking never reopens expanded.
-  useEffect(() => { if (!studioFloated) setStudioExpanded(false); }, [studioFloated]);
+  // ★4：不再每次取消 floating 就重置展开态——由全局偏好记忆（useStudioExpandAll）。
   // Measure whether the capped compact body overflows → only then show the fade +
   // 展开 affordance (short bodies have nothing to expand). Runs after layout each
   // render but bails when the value is unchanged, so no update loop.
@@ -415,11 +420,31 @@ export const BaseNode = memo(function BaseNode({
   // Studio: double-click the floating param panel to expand it from the compact
   // command bar into the FULL node body (every param). Single source of truth —
   // expanding just renders the same `children` the pro node uses, no duplication.
-  const [studioExpanded, setStudioExpanded] = useState(false);
+  // ★4：展开全部参数偏好全局记忆（展开一次后续选中默认沿用），替代原来每次重选强制 compact。
+  const [studioExpanded, setStudioExpanded] = useStudioExpandAll();
   // For non-command-bar nodes the compact view is the pro body capped to a short
   // height; only show the fade + 展开 affordance when it actually overflows.
   const compactBodyRef = useRef<HTMLDivElement>(null);
   const [bodyOverflows, setBodyOverflows] = useState(false);
+  // ★2 命令栏浮层：视口下方空间不足时向上翻转（否则底部节点的命令栏被推出屏幕）。
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [flipCmdBar, setFlipCmdBar] = useState(false);
+  useEffect(() => {
+    if (!studioFloated) { setFlipCmdBar(false); return; }
+    const measure = () => {
+      const el = rootRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const need = (studioExpanded ? 540 : 360) + 24;   // 估计浮层高度 + 间距
+      const spaceBelow = window.innerHeight - r.bottom;
+      const spaceAbove = r.top;
+      setFlipCmdBar(spaceBelow < need && spaceAbove > spaceBelow);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studioFloated, studioExpanded]);
 
   const handleTitleSave = useCallback(() => {
     if (titleCancelingRef.current) { titleCancelingRef.current = false; return; }
@@ -509,6 +534,7 @@ export const BaseNode = memo(function BaseNode({
 
   return (
     <div
+      ref={rootRef}
       className={`group/node relative${runStatus === "running" ? " node-run-pulse" : ""}`}
       data-selected={(storeSelected || pinned) ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
@@ -1175,11 +1201,12 @@ export const BaseNode = memo(function BaseNode({
             // double-click anywhere on the panel background toggles full params
             // (ignore dblclick that originates inside an input/control)
             if ((e.target as HTMLElement).closest("input,textarea,select,button")) return;
-            e.stopPropagation(); setStudioExpanded((v) => !v);
+            e.stopPropagation(); setStudioExpanded(!studioExpanded);
           }}
           style={{
             position: "absolute",
-            top: "calc(100% + 12px)",
+            // ★2：默认向下展开；视口下方空间不足 → 向上翻转（bottom 锚点），避免被推出屏幕。
+            ...(flipCmdBar ? { bottom: "calc(100% + 12px)" } : { top: "calc(100% + 12px)" }),
             // Align the panel outer edge with the node's SOLID highlight border outer
             // line (the 2px colored frame). width:100% on an absolute child resolves to
             // the padding box (2px inside that border), so pull out by the 2px border

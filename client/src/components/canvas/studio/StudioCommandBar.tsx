@@ -23,6 +23,9 @@ import type { NodeType, VideoProvider } from "../../../../../shared/types";
 const GENERATIVE_TYPES = new Set<NodeType>([
   "image_gen", "storyboard", "video_task", "script",
 ]);
+// ★5：支持反向提示词的生成类型——命令栏里无条件给入口（不再靠当前值是否为串，否则新节点没入口）。
+// 脚本(script)是文本生成、无反向提示词，故不含。
+const NEG_PROMPT_TYPES = new Set<NodeType>(["image_gen", "storyboard", "video_task"]);
 
 export const RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
 
@@ -360,7 +363,7 @@ function GenerativeBar({ nodeId, onRun, canRun = true, running = false, hasResul
       </div>
 
       {/* negative prompt (compact, when supported) */}
-      {typeof payload.negativePrompt === "string" && (
+      {(NEG_PROMPT_TYPES.has(nodeType) || typeof payload.negativePrompt === "string") && (
         <NodeTextArea value={str("negativePrompt")} onValueChange={(v) => set({ negativePrompt: v })} rows={1} placeholder="反向提示词（可选）"
           style={{ width: "100%", fontSize: 12.5, padding: "8px 11px", borderRadius: 10, background: "var(--c-input)",
             border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", resize: "vertical", minHeight: 38 }} />
