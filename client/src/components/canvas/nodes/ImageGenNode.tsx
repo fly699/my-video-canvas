@@ -19,6 +19,7 @@ import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effect
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
 import { Depth3DViewer } from "../Depth3DViewer";
+import { Model3DViewer } from "../Model3DViewer";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 import { PromptDock } from "../PromptDock";
 import { RefHeroPreview } from "../RefHeroPreview";
@@ -26,7 +27,7 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes } from "lucide-react";
 import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
@@ -138,6 +139,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [refZoom, setRefZoom] = useState<number | null>(null);
   // 3D 换视角：打开 Depth3DViewer 的源图；pendingGen3d = 截图已插为参考图、等 re-render 后触发生成。
   const [view3dSrc, setView3dSrc] = useState<string | null>(null);
+  // B 档「真3D」：把选中图交 Poyo Tripo3D 图生 .glb 网格，完整 360° 环绕后截图重绘。复用 pendingGen3d。
+  const [model3dSrc, setModel3dSrc] = useState<string | null>(null);
   const [pendingGen3d, setPendingGen3d] = useState(false);
   // Multi-reference-image list + left-docked expandable strip.
   const refImages = useReferenceImages(id, payload);
@@ -455,6 +458,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         >
           <Rotate3d className="w-3 h-3" />
           3D 换视角
+        </button>
+        <button
+          onClick={() => setModel3dSrc(payload.imageUrl!)}
+          title="图生真 3D 网格（Tripo3D），完整 360° 环绕后从新视角重绘"
+          className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+          style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
+        >
+          <Boxes className="w-3 h-3" />
+          真3D
         </button>
       </div>
     </div>
@@ -1287,6 +1299,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           onGenerate={(capturedUrl) => {
             refImages.insertUrls([capturedUrl], 0, "upload"); // 作首位结构参考图，且在参考图条可见
             setPendingGen3d(true); // 等 payload 反映后由 effect 触发生成
+          }}
+        />
+      )}
+
+      {/* B 档 真3D：图生 .glb 网格 → 完整 360° 环绕 → 截图插为首位参考图 → 触发再生成。 */}
+      {model3dSrc && (
+        <Model3DViewer
+          sourceImageUrl={model3dSrc}
+          onClose={() => setModel3dSrc(null)}
+          onGenerate={(capturedUrl) => {
+            refImages.insertUrls([capturedUrl], 0, "upload");
+            setPendingGen3d(true);
           }}
         />
       )}
