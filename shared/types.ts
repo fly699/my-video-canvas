@@ -29,7 +29,8 @@ export type NodeType =
   | "image_edit"
   | "director"
   | "agent"
-  | "super_agent";
+  | "super_agent"
+  | "compare";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -585,6 +586,13 @@ export interface DirectorNodeData {
 export interface NoteNodeData {
   content: string;
   color?: string;
+}
+
+/** 图片对比（滑块）节点：两路上游图 A/B，中间可拖滑块左右揭示，验证主体结构一致性。纯前端、无生成。 */
+export interface CompareNodeData {
+  slider?: number;  // 分隔线位置 0..1（缺省 0.5）
+  aUrl?: string;    // 显式覆盖左图（缺省取第 1 个上游图源）
+  bUrl?: string;    // 显式覆盖右图（缺省取第 2 个上游图源）
 }
 
 export type AudioCategory = "upload" | "music" | "dubbing" | "sfx";
@@ -1354,7 +1362,8 @@ export type NodeData =
   | ImageEditNodeData
   | DirectorNodeData
   | AgentNodeData
-  | SuperAgentNodeData;
+  | SuperAgentNodeData
+  | CompareNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 

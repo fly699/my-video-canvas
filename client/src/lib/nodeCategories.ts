@@ -21,7 +21,7 @@ export const NODE_CATEGORIES: NodeCategory[] = [
   { id: "comfyui", label: "ComfyUI", types: ["comfyui_image", "comfyui_video", "comfyui_workflow"] },
   { id: "audio", label: "音频 / 配音", types: ["audio", "voice_clone", "lip_sync", "avatar"] },
   { id: "edit", label: "剪辑 / 合成", types: ["clip", "merge", "smart_cut", "subtitle", "subtitle_motion", "overlay", "post_process"] },
-  { id: "util", label: "素材 / 工具", types: ["asset", "note", "group"] },
+  { id: "util", label: "素材 / 工具", types: ["asset", "note", "compare", "group"] },
 ];
 
 /** Category id for a node type (or "util" as a safe fallback). */

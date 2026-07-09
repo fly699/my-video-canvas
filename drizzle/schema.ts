@@ -166,6 +166,7 @@ export const canvasNodes = mysqlTable("canvas_nodes", {
     "director",
     "agent",
     "super_agent",
+    "compare",
   ]).notNull(),
   title: varchar("title", { length: 255 }),
   /** Node-type-specific data (content, promptText, imageUrl, etc.) */

@@ -30,6 +30,7 @@ import { ImageEditNode } from "./nodes/ImageEditNode";
 import { DirectorNode } from "./nodes/DirectorNode";
 import { AgentNode } from "./nodes/AgentNode";
 import { SuperAgentNode } from "./nodes/SuperAgentNode";
+import { CompareNode } from "./nodes/CompareNode";
 import type { NodeType } from "../../../../shared/types";
 
 interface CustomNodeData {
@@ -72,6 +73,8 @@ export const CustomNode = memo(function CustomNode(props: NodeProps) {
       return <AIChatNode {...(props as unknown as AnyNodeProps)} />;
     case "note":
       return <NoteNode {...(props as unknown as AnyNodeProps)} />;
+    case "compare":
+      return <CompareNode {...(props as unknown as AnyNodeProps)} />;
     case "audio":
       return <AudioNode {...(props as unknown as AnyNodeProps)} />;
     case "post_process":

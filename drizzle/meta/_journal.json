@@ -526,6 +526,13 @@
       "when": 1783600000000,
       "tag": "0074_registration_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "5",
+      "when": 1783700000000,
+      "tag": "0075_add_compare_node",
+      "breakpoints": true
     }
   ]
 }
