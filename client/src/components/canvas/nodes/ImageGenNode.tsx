@@ -21,6 +21,9 @@ import { openNodeImage } from "../NodeImageLightbox";
 import { Depth3DViewer } from "../Depth3DViewer";
 import { Model3DViewer } from "../Model3DViewer";
 import { confirmDialog } from "@/components/ui/dialogService";
+import { useResultHistoryCapture } from "../../../hooks/useResultHistoryCapture";
+import { ResultHistoryStrip } from "../ResultHistoryStrip";
+import type { ResultSnapshot } from "../../../../../shared/types";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 import { PromptDock } from "../PromptDock";
 import { RefHeroPreview } from "../RefHeroPreview";
@@ -341,6 +344,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingGen3d, uploading, payload.referenceImages, payload.referenceImageUrl]);
 
+  // #5 版本历史：采集用共享 hook；回滚把某条快照写回当前结果（进撤销栈，便于再撤销回来）。
+  useResultHistoryCapture(id, { current: payload.imageUrl, urls: payload.imageUrls, prompt: payload.prompt, history: payload.resultHistory });
+  const rollbackToSnapshot = useCallback((snap: ResultSnapshot) => {
+    updateNodeData(id, { imageUrl: snap.url, imageUrls: snap.urls ?? [snap.url] });
+  }, [id, updateNodeData]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
@@ -528,6 +537,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         </>
       }>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
+
+        {/* #5 版本历史：历次产出的结果快照，点击回滚（共享组件）。 */}
+        <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.imageUrl} accent={accent} onRollback={rollbackToSnapshot} />
 
         {/* ── Batch grid result ── (hidden inside the studio floating panel — the
             node card's hero preview already shows the result there → no duplicate) */}

@@ -30,9 +30,15 @@ import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
-  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle, Wand2,
+  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle, Wand2, Rotate3d, Boxes,
 } from "lucide-react";
 import { SyncConfigDialog } from "../SyncConfigDialog";
+import { Depth3DViewer } from "../Depth3DViewer";
+import { Model3DViewer } from "../Model3DViewer";
+import { confirmDialog } from "@/components/ui/dialogService";
+import { useResultHistoryCapture } from "../../../hooks/useResultHistoryCapture";
+import { ResultHistoryStrip } from "../ResultHistoryStrip";
+import type { ResultSnapshot } from "../../../../../shared/types";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
@@ -249,6 +255,11 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const [syncOpen, setSyncOpen] = useState(false);
   const [editingBindings, setEditingBindings] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  // 3D 换视角（与图像节点相同）：伪3D(深度位移) / 真3D(图生 Tripo3D 网格)，换视角截图 → 回灌
+  // 到工作流的**首个图像输入参数** → 重跑。pendingGen3d = 已写入参数、等 payload 反映后再跑。
+  const [view3dSrc, setView3dSrc] = useState<string | null>(null);
+  const [model3dSrc, setModel3dSrc] = useState<string | null>(null);
+  const [pendingGen3d, setPendingGen3d] = useState(false);
   const [localBindings, setLocalBindings] = useState<WorkflowParamBinding[]>(payload.paramBindings ?? []);
 
   const update = useCallback((patch: Partial<ComfyuiWorkflowNodeData>, silent = false) => {
@@ -574,6 +585,43 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     }
   }, [executeMutation, id, data.projectId, payload, update, batchRunning]);
 
+  // 3D 换视角：工作流的「首个图像输入参数」（type==="image" 的绑定）。有它才能把换视角截图
+  // 回灌重跑；纯文生工作流无图像输入 → 禁用真·重绘（仍可看/截图）。
+  const firstImageParamKey = useMemo(() => {
+    const b = (payload.paramBindings ?? []).find((x) => x.type === "image");
+    return b ? `${b.nodeId}.${b.fieldPath}` : null;
+  }, [payload.paramBindings]);
+  // 真3D 付费确认（同图像节点）。
+  const openTrue3d = useCallback(async (url: string) => {
+    if (!url) return;
+    const ok = await confirmDialog({
+      title: "生成真 3D 模型？",
+      message: "将调用 Tripo3D 把这张图生成为可 360° 环绕的 3D 网格。约消耗 30–60 credits，通常需 1–3 分钟。",
+      confirmLabel: "生成",
+    });
+    if (ok) setModel3dSrc(url);
+  }, []);
+  // 换视角截图 → 写入首个图像输入参数（非默认值→resolveImageParamsWithMap 视为用户编辑而保留）→ 重跑。
+  const on3dGenerate = useCallback((capturedUrl: string) => {
+    if (!firstImageParamKey) { toast.error("该工作流没有图像输入参数，无法回灌重绘（可先连一个图生图/ControlNet 工作流）"); return; }
+    update({ paramValues: { ...(payload.paramValues ?? {}), [firstImageParamKey]: capturedUrl } }, true);
+    setPendingGen3d(true);
+  }, [firstImageParamKey, payload.paramValues, update]);
+  // 参数写入后等 payload 反映到位再重跑（避免 handleRun 闭包读到旧 paramValues）。
+  useEffect(() => {
+    if (!pendingGen3d || payload.status === "processing") return;
+    setPendingGen3d(false);
+    void handleRun();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingGen3d, payload.status, payload.paramValues]);
+
+  // #5 版本历史（仅图像输出）：每产出新图存一条快照；回滚把某条写回 outputUrls。
+  const imgOutUrl = payload.outputType !== "video" ? payload.outputUrls?.[0] : undefined;
+  useResultHistoryCapture(id, { current: imgOutUrl, urls: payload.outputUrls, history: payload.resultHistory });
+  const rollbackToSnapshot = useCallback((snap: ResultSnapshot) => {
+    update({ outputUrls: snap.urls ?? [snap.url], outputUrl: snap.url });
+  }, [update]);
+
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -719,8 +767,27 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         <WatermarkedVideo block src={payload.outputUrls[0]} controls className="w-full" preload="metadata" style={{ display: "block" }} />
       </div>
     ) : (
-      <div className="relative overflow-hidden" style={{ width: "100%" }}>
+      <div className="group relative overflow-hidden" style={{ width: "100%" }}>
         <MediaImage src={payload.outputUrls[0]} alt="workflow-output" className="w-full" draggable={false} style={{ display: "block" }} />
+        {/* 3D 换视角入口（与图像节点相同）：hover 显示，截图回灌首个图像参数后重跑 */}
+        <div className="nodrag absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => { e.stopPropagation(); setView3dSrc(payload.outputUrls![0]); }}
+            title="把这张图虚拟化为伪 3D（深度位移），拖拽换视角后重绘"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium"
+            style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}
+          >
+            <Rotate3d style={{ width: 12, height: 12 }} /> 3D
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); void openTrue3d(payload.outputUrls![0]); }}
+            title="图生真 3D 网格（Tripo3D），完整 360° 环绕后从新视角重绘"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium"
+            style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}
+          >
+            <Boxes style={{ width: 12, height: 12 }} /> 真3D
+          </button>
+        </div>
       </div>
     )
   ) : paramImages[0]?.url ? (
@@ -1677,6 +1744,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 输出结果（{payload.outputUrls.length} 个）
               </label>
             )}
+            {/* #5 版本历史（仅图像输出）：历次产出快照，点击回滚 */}
+            {payload.outputType !== "video" && (
+              <div style={{ marginBottom: 8 }}>
+                <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.outputUrls[0]} accent={accent} onRollback={rollbackToSnapshot} />
+              </div>
+            )}
             {/* Video output */}
             {payload.outputType === "video" ? (
               <div>
@@ -1745,6 +1818,23 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
           currentIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onNavigate={(idx) => setLightboxIdx(idx)}
+        />
+      )}
+
+      {/* 3D 换视角（与图像节点相同）：伪3D 深度位移 / 真3D 图生网格 → 截图回灌首个图像参数 → 重跑 */}
+      {view3dSrc && (
+        <Depth3DViewer
+          sourceImageUrl={view3dSrc}
+          comfyBaseUrl={payload.customBaseUrl}
+          onClose={() => setView3dSrc(null)}
+          onGenerate={on3dGenerate}
+        />
+      )}
+      {model3dSrc && (
+        <Model3DViewer
+          sourceImageUrl={model3dSrc}
+          onClose={() => setModel3dSrc(null)}
+          onGenerate={on3dGenerate}
         />
       )}
     </BaseNode>
