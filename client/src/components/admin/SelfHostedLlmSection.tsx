@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Server, ClipboardPaste, Plus, Trash2, Save, Loader2, Sparkles } from "lucide-react";
+import { Server, ClipboardPaste, Plus, Trash2, Save, Loader2, Sparkles, ChevronUp, ChevronDown } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { parseCurlLlm } from "@/lib/parseCurlLlm";
 
@@ -73,6 +73,18 @@ export function SelfHostedLlmSection() {
     ];
     setModels((prev) => [...prev, ...GROK_LOCAL_MODELS.filter((m) => !prev.some((p) => p.id === m.id))]);
     toast.success("已填入本机 Grok 模型条目（与 Claude 同地址同 Key）——确认服务器已装官方 Grok Build CLI 并用 SuperGrok/X Premium+ 设备码登录，且勿设 XAI_API_KEY");
+  };
+
+  // 上移/下移一个模型：选择器里本机/自建模型的显示顺序 = 此数组顺序（useAllLlmModels 把自建
+  // 模型按此序放最前）。故这里能调顺序即等于调选择器里的排位。dir=-1 上移、+1 下移；越界忽略。
+  const moveModel = (i: number, dir: -1 | 1) => {
+    setModels((p) => {
+      const j = i + dir;
+      if (j < 0 || j >= p.length) return p;
+      const next = [...p];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
   };
 
   const applyCurl = () => {
@@ -189,14 +201,21 @@ export function SelfHostedLlmSection() {
 
       {/* 模型列表 */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ fontSize: 11, color: "var(--c-t3)" }}>模型（id 必须与服务器一致；label 是选择器里显示的名字）</div>
-        {models.map((m, i) => (
+        <div style={{ fontSize: 11, color: "var(--c-t3)" }}>模型（id 必须与服务器一致；label 是选择器里显示的名字）。<strong>上下箭头调整顺序</strong>——此处的先后即模型选择器里的排位（自建/本机模型排在内置模型之前）。</div>
+        {models.map((m, i) => {
+          const arrowBtn: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "center", width: 22, borderRadius: 6, background: "var(--c-bd1)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" };
+          return (
           <div key={i} style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <button onClick={() => moveModel(i, -1)} disabled={i === 0} title="上移" aria-label="上移" className="nodrag" style={{ ...arrowBtn, flex: 1, cursor: i === 0 ? "not-allowed" : "pointer", opacity: i === 0 ? 0.35 : 1 }}><ChevronUp className="w-3 h-3" /></button>
+              <button onClick={() => moveModel(i, 1)} disabled={i === models.length - 1} title="下移" aria-label="下移" className="nodrag" style={{ ...arrowBtn, flex: 1, cursor: i === models.length - 1 ? "not-allowed" : "pointer", opacity: i === models.length - 1 ? 0.35 : 1 }}><ChevronDown className="w-3 h-3" /></button>
+            </div>
             <input value={m.id} onChange={(e) => setModels((p) => p.map((x, j) => j === i ? { ...x, id: e.target.value } : x))} placeholder="模型 id，如 Qwen3.6-35B-A3B-FP8" className="nodrag" style={{ ...box, flex: 2 }} />
             <input value={m.label} onChange={(e) => setModels((p) => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="显示名（可选）" className="nodrag" style={{ ...box, flex: 1 }} />
-            <button onClick={() => setModels((p) => p.filter((_, j) => j !== i))} className="nodrag px-2 rounded-lg" style={{ background: "oklch(0.65 0.2 25 / 0.12)", border: "1px solid oklch(0.65 0.2 25 / 0.35)", color: "oklch(0.65 0.2 25)", cursor: "pointer" }}><Trash2 className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setModels((p) => p.filter((_, j) => j !== i))} title="删除" aria-label="删除" className="nodrag px-2 rounded-lg" style={{ background: "oklch(0.65 0.2 25 / 0.12)", border: "1px solid oklch(0.65 0.2 25 / 0.35)", color: "oklch(0.65 0.2 25)", cursor: "pointer" }}><Trash2 className="w-3.5 h-3.5" /></button>
           </div>
-        ))}
+          );
+        })}
         <button onClick={() => setModels((p) => [...p, { id: "", label: "" }])} className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg self-start" style={{ fontSize: 11, background: "var(--c-bd1)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}><Plus className="w-3 h-3" /> 加一个模型</button>
       </div>
 
