@@ -2,16 +2,20 @@
 // （CLAUDE_LOCAL_BRIDGE_KEY），按模型前缀分流——"grok-local*" 的请求转成服务器上跑一次官方
 // **Grok Build** CLI 的无头模式 `grok -p`（用订阅浏览器/设备码登录的 session，不按 API token 计费）。
 //
-// 官方文档查证（docs.x.ai/build/cli/headless-scripting，2026-07）：
-//  - `-p` = 无头：执行单条提示后退出（脚本/CI）；`-m/--model` 切模型；
-//  - `--no-auto-update` = 无头/CI 下跳过后台更新检查（官方明确要求带上）；
-//  - `--output-format json|streaming-json` 是「机器可读」输出；不带则打印回答文本（同 Claude Code/codex）。
+// 官方文档查证（Grok Build 官方文档 CLI: Headless & Scripting / CLI Reference，2026-07）：
+//  - `grok -p "<prompt>"` = 无头：执行单条提示后退出（脚本/CI），`-p` 取紧随其后的值作提示词；
+//  - `-m <model>` 切模型（TUI 内为 /model）；
+//  - `--no-auto-update` = 无头/CI 下跳过后台更新检查；
+//  - `--output-format json|streaming-json` 是「机器可读」输出；官方无头示例即 `grok -p "..." --output-format json`。
 //  - 鉴权优先级：model.api_key > model.env_key > **active session token（订阅登录）** > XAI_API_KEY。
 //    ⚠️ 服务器上【绝不要】设 XAI_API_KEY / GROK_API_KEY / GROK_CODE_XAI_API_KEY，否则绕过订阅变按量计费！
 //
-// 安全：Grok Build 是**编码 agent**（自带写文件/跑命令工具）。本桥接是纯文本问答，故：
+// 安全：Grok Build 是**编码 agent**（自带写文件/跑命令工具）。本桥接是纯文本问答，故三重隔离：
 //  - cwd 设成临时目录（非本仓库），任何文件操作都被隔离；
 //  - **不传 --always-approve** —— 无头下需审批的工具无法自动执行（=不写文件/不跑 shell）；
+//  - **GROK_SANDBOX 默认 read-only**（官方沙箱 profile：off/workspace/read-only/strict，
+//    见官方文档 Settings Reference / Security controls；Linux 用 Landlock、macOS 用 Seatbelt
+//    做内核级文件系统隔离）——即便某工具被批准也只读、不能写盘。用户可用 env GROK_SANDBOX 覆盖。
 //  - 需要微调时用 env GROK_BRIDGE_ARGS（空格分隔）追加/覆盖 flag。
 //  - 因本环境无 Grok Build CLI + 无订阅，**精确调用需在你服务器上先 `grok -p "hi"` 冒烟验证**
 //    （与 gpt-local 要求先验 `codex exec ... "hi"` 同理）。
@@ -20,8 +24,36 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { win32 as winPath } from "node:path";
 import type { OAMessage } from "./claudeBridge";
-import { messagesToPrompt, parseClaudeJsonResult } from "./claudeBridge";
+import { messagesToPrompt } from "./claudeBridge";
 import { collectFileUrls, docTextFromFileUrls } from "./bridgeAttachments";
+
+/** 解析 `grok -p --output-format json` 的输出，取回复文本与是否出错。
+ *  ⚠️ Grok Build 的 JSON 结构与 Claude Code 不同：回复在 `text` 字段（还带 stopReason/sessionId/
+ *  requestId/thought），而非 Claude 的 `result`——曾因误复用 parseClaudeJsonResult 取不到 text、
+ *  把整段 JSON 当错误抛出 502（用户真机复现）。此处专认 Grok 格式，且【只取 text、丢弃 thought
+ *  推理】。容错：整段/末尾 JSON/裸文本。纯函数。 */
+export function parseGrokJsonResult(stdout: string): { text: string; isError: boolean } {
+  const s = (stdout ?? "").trim();
+  if (!s) return { text: "", isError: true };
+  const tryParse = (str: string): Record<string, unknown> | null => { try { return JSON.parse(str) as Record<string, unknown>; } catch { return null; } };
+  let obj = tryParse(s);
+  if (!obj) {
+    const i = s.lastIndexOf("{"), j = s.lastIndexOf("}");
+    if (i !== -1 && j > i) obj = tryParse(s.slice(i, j + 1));
+  }
+  if (obj) {
+    // Grok Build 首选 text；兼容个别版本可能用 result/response/message。thought 是内部推理，绝不外发。
+    const text = typeof obj.text === "string" ? obj.text
+      : typeof obj.result === "string" ? obj.result
+      : typeof obj.response === "string" ? obj.response
+      : typeof obj.message === "string" ? obj.message : "";
+    const errStr = typeof obj.error === "string" ? obj.error : "";
+    const isError = obj.is_error === true || obj.isError === true || (!text && !!errStr);
+    if (text || errStr) return { text: text || errStr, isError };
+    return { text: "", isError: true }; // 是 JSON 但无已知文本字段 → 交由调用方走错误分支
+  }
+  return { text: s, isError: false }; // 非 JSON 裸文本：原样当回复兜底
+}
 
 /** 请求的 model 是否该走 Grok 分支（"grok-local" 或 "grok-local:xxx"）。 */
 export function isGrokLocalModel(model: unknown): boolean {
@@ -88,8 +120,8 @@ export async function runGrokText(opts: { messages: OAMessage[]; timeoutMs: numb
   // 参数对齐官方 headless 示例 `grok -p "..." --output-format json`（docs.x.ai/build/cli/headless-scripting）：
   //  - `-p`/`--single` 是【取紧随其后的值】作提示词（用户真机报错 "a value is required for
   //    '--single <PROMPT>'" 印证）——故提示词紧跟 -p、其余 flag 前置；
-  //  - `--output-format json`：官方推荐的「最干净的脚本集成」，且 Grok Build 是 Claude Code 克隆、
-  //    json 结构同款，故复用 claudeBridge 的 parseClaudeJsonResult 取 result（非 JSON 时回退原文）；
+  //  - `--output-format json`：官方推荐的「最干净的脚本集成」。注意 Grok 的 json 结构回复在 `text`
+  //    字段（非 Claude 的 result），故用本文件的 parseGrokJsonResult 解析（非 JSON 时回退原文）；
   //  - `--no-auto-update` 无头必带；不传 --always-approve（工具无法自动执行 = 安全）。
   const args = [
     "--no-auto-update", "--output-format", "json",
@@ -103,16 +135,18 @@ export async function runGrokText(opts: { messages: OAMessage[]; timeoutMs: numb
     let out = "", err = "", done = false, spawnErr: string | null = null, killed = false;
     // detached（仅 POSIX）：子进程成进程组组长，超时时整组 SIGKILL 连带孙进程；否则孙进程持 stdio 管道
     // 致 'close' 不触发、Promise 卡死（同 claude/codex 桥接）。
-    const child = spawn(bin, args, { cwd: tmpdir(), env: process.env, stdio: ["ignore", "pipe", "pipe"], shell: isCmd, detached: process.platform !== "win32" });
+    // GROK_SANDBOX 默认 read-only（官方沙箱 profile，只读隔离）；用户显式设了则尊重其值。
+    const env = { ...process.env, GROK_SANDBOX: process.env.GROK_SANDBOX?.trim() || "read-only" };
+    const child = spawn(bin, args, { cwd: tmpdir(), env, stdio: ["ignore", "pipe", "pipe"], shell: isCmd, detached: process.platform !== "win32" });
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (code?: number | null) => {
       if (done) return; done = true; clearTimeout(timer); if (fallbackTimer) clearTimeout(fallbackTimer);
-      if (spawnErr) return resolve({ text: `无法启动 grok：${spawnErr}。请在服务器上安装官方 Grok Build CLI（curl -fsSL https://x.ai/cli/install.sh | bash）并【重启本服务】；装在非默认位置则设 GROK_BIN=完整路径。`, isError: true });
+      if (spawnErr) return resolve({ text: `无法启动 grok：${spawnErr}。请在服务器上安装官方 Grok Build CLI（macOS/Linux：curl -fsSL https://x.ai/cli/install.sh | bash；Windows PowerShell：irm https://x.ai/cli/install.ps1 | iex）并【重启本服务】；装在非默认位置则设 GROK_BIN=完整路径。`, isError: true });
       if (killed) return resolve({ text: `本机 Grok 生成超时被中止（>${Math.round(opts.timeoutMs / 1000)}s）。复杂请求较慢，可调高 CLAUDE_BRIDGE_TIMEOUT_MS。` + (err ? `\n${err.slice(0, 300)}` : ""), isError: true });
-      // 退出码非 0 → 直接报错（stderr 抽错误行）。否则解析 --output-format json（同 Claude Code 结构，
-      // 取 result；非 JSON 时 parseClaudeJsonResult 回退把原文当回复）。解析空 → 报错。
+      // 退出码非 0 → 直接报错（stderr 抽错误行）。否则解析 --output-format json（Grok 回复在 text
+      // 字段；非 JSON 时 parseGrokJsonResult 回退把原文当回复）。解析空 → 报错。
       if (typeof code === "number" && code !== 0) return resolve({ text: pickGrokErrorDetail(out, err, code), isError: true });
-      const parsed = parseClaudeJsonResult(out);
+      const parsed = parseGrokJsonResult(out);
       if (!parsed.text.trim()) return resolve({ text: pickGrokErrorDetail(out, err, code), isError: true });
       resolve({ text: parsed.text, isError: parsed.isError });
     };
