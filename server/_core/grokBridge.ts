@@ -20,7 +20,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { win32 as winPath } from "node:path";
 import type { OAMessage } from "./claudeBridge";
-import { messagesToPrompt } from "./claudeBridge";
+import { messagesToPrompt, parseClaudeJsonResult } from "./claudeBridge";
 import { collectFileUrls, docTextFromFileUrls } from "./bridgeAttachments";
 
 /** 请求的 model 是否该走 Grok 分支（"grok-local" 或 "grok-local:xxx"）。 */
@@ -85,12 +85,14 @@ export async function runGrokText(opts: { messages: OAMessage[]; timeoutMs: numb
   const docText = await docTextFromFileUrls(collectFileUrls(opts.messages));
   if (docText) prompt = [prompt, docText].filter(Boolean).join("\n\n");
 
-  // 参数：`grok [--no-auto-update] [-m 模型] [<GROK_BRIDGE_ARGS>] -p <提示词>`。
-  // ⚠️ 真机实证（用户报错 "a value is required for '--single <PROMPT>'"）：Grok Build 的
-  // `-p`/`--single` 是【取紧随其后的值】作提示词，不是布尔标志——故提示词必须【紧跟 -p 之后】，
-  // 其余 flag 都放在 -p 之前。不带 --output-format → stdout 打印回答文本；不传 --always-approve（安全）。
+  // 参数对齐官方 headless 示例 `grok -p "..." --output-format json`（docs.x.ai/build/cli/headless-scripting）：
+  //  - `-p`/`--single` 是【取紧随其后的值】作提示词（用户真机报错 "a value is required for
+  //    '--single <PROMPT>'" 印证）——故提示词紧跟 -p、其余 flag 前置；
+  //  - `--output-format json`：官方推荐的「最干净的脚本集成」，且 Grok Build 是 Claude Code 克隆、
+  //    json 结构同款，故复用 claudeBridge 的 parseClaudeJsonResult 取 result（非 JSON 时回退原文）；
+  //  - `--no-auto-update` 无头必带；不传 --always-approve（工具无法自动执行 = 安全）。
   const args = [
-    "--no-auto-update",
+    "--no-auto-update", "--output-format", "json",
     ...(opts.model ? ["-m", opts.model] : []),
     ...extraGrokArgs(process.env.GROK_BRIDGE_ARGS),
     "-p", prompt,
@@ -107,9 +109,12 @@ export async function runGrokText(opts: { messages: OAMessage[]; timeoutMs: numb
       if (done) return; done = true; clearTimeout(timer); if (fallbackTimer) clearTimeout(fallbackTimer);
       if (spawnErr) return resolve({ text: `无法启动 grok：${spawnErr}。请在服务器上安装官方 Grok Build CLI（curl -fsSL https://x.ai/cli/install.sh | bash）并【重启本服务】；装在非默认位置则设 GROK_BIN=完整路径。`, isError: true });
       if (killed) return resolve({ text: `本机 Grok 生成超时被中止（>${Math.round(opts.timeoutMs / 1000)}s）。复杂请求较慢，可调高 CLAUDE_BRIDGE_TIMEOUT_MS。` + (err ? `\n${err.slice(0, 300)}` : ""), isError: true });
-      const text = out.trim();
-      if (!text || (typeof code === "number" && code !== 0)) return resolve({ text: pickGrokErrorDetail(out, err, code), isError: true });
-      resolve({ text, isError: false });
+      // 退出码非 0 → 直接报错（stderr 抽错误行）。否则解析 --output-format json（同 Claude Code 结构，
+      // 取 result；非 JSON 时 parseClaudeJsonResult 回退把原文当回复）。解析空 → 报错。
+      if (typeof code === "number" && code !== 0) return resolve({ text: pickGrokErrorDetail(out, err, code), isError: true });
+      const parsed = parseClaudeJsonResult(out);
+      if (!parsed.text.trim()) return resolve({ text: pickGrokErrorDetail(out, err, code), isError: true });
+      resolve({ text: parsed.text, isError: parsed.isError });
     };
     const killTree = () => {
       try {
