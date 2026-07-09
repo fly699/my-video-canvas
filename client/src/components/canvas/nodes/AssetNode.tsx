@@ -217,7 +217,7 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     }
     if (payload.url && payload.type === "video") {
       return (
-        <div className="relative nodrag" style={{ cursor: "zoom-in" }} onClick={() => setVideoPreview(true)} title="点击播放">
+        <div className="relative nodrag" style={{ cursor: "zoom-in" }} onClick={(e) => { e.stopPropagation(); setVideoPreview(true); }} title="点击播放">
           <video src={mediaFetchUrl(payload.url)} muted preload="metadata" style={{ width: "100%", maxHeight: 200, display: "block", objectFit: "cover" }} />
           {storedInMinio && (
             <div

@@ -35,6 +35,8 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
   const FRAME = 1 / 30; // 无法从元素取真实帧率，按 30fps 估一帧步进
   useEffect(() => { if (videoRef.current) videoRef.current.playbackRate = speed; }, [speed]);
   const cycleSpeed = () => setSpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length] ?? 1);
+  // 阻断指针按下冒泡到 React Flow 节点：这些叠加控件在收起态即可见，点击若冒泡会把节点选中→展开配置区。
+  const stopToNode = (e: { stopPropagation: () => void }) => e.stopPropagation();
   const stepFrame = (dir: 1 | -1) => {
     const v = videoRef.current;
     if (!v) return;
@@ -65,7 +67,8 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
         onLoadedMetadata={(e) => { e.currentTarget.playbackRate = speed; props.onLoadedMetadata?.(e); }} />
       <button
         type="button"
-        onClick={() => setLoop((v) => !v)}
+        onPointerDown={stopToNode}
+        onClick={(e) => { e.stopPropagation(); setLoop((v) => !v); }}
         title={loop ? "循环播放：开（点击关闭）" : "循环播放：关（点击开启）"}
         aria-label="循环播放"
         className="wm-loop-btn nodrag"
@@ -73,20 +76,21 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
       >
         <Repeat style={{ width: 14, height: 14 }} />
       </button>
-      {/* 逐帧步进 + 倍速（hover 显示，位于循环钮右侧）。nodrag 防止触发画布拖拽。 */}
-      <div className="wm-vctrl-row nodrag">
-        <button type="button" className="wm-vctrl" title="上一帧" aria-label="上一帧" onClick={() => stepFrame(-1)}>
+      {/* 逐帧步进 + 倍速（hover 显示，位于循环钮右侧）。nodrag 防止触发画布拖拽；
+          onPointerDown 阻断冒泡，避免点击这些叠加钮时把节点选中→展开配置区。 */}
+      <div className="wm-vctrl-row nodrag" onPointerDown={stopToNode}>
+        <button type="button" className="wm-vctrl" title="上一帧" aria-label="上一帧" onClick={(e) => { e.stopPropagation(); stepFrame(-1); }}>
           <ChevronLeft style={{ width: 14, height: 14 }} />
         </button>
-        <button type="button" className="wm-vctrl" title="下一帧" aria-label="下一帧" onClick={() => stepFrame(1)}>
+        <button type="button" className="wm-vctrl" title="下一帧" aria-label="下一帧" onClick={(e) => { e.stopPropagation(); stepFrame(1); }}>
           <ChevronRight style={{ width: 14, height: 14 }} />
         </button>
-        <button type="button" className="wm-vctrl" data-wide title={`播放速度 ${speed}×（点击切换）`} aria-label="播放速度" onClick={cycleSpeed}>
+        <button type="button" className="wm-vctrl" data-wide title={`播放速度 ${speed}×（点击切换）`} aria-label="播放速度" onClick={(e) => { e.stopPropagation(); cycleSpeed(); }}>
           <Gauge style={{ width: 12, height: 12 }} /> {speed}×
         </button>
       </div>
       {wm && (
-        <button type="button" onClick={() => setBig(true)} title="放大预览（含水印）" aria-label="放大预览" className="wm-fs-btn nodrag">
+        <button type="button" onPointerDown={stopToNode} onClick={(e) => { e.stopPropagation(); setBig(true); }} title="放大预览（含水印）" aria-label="放大预览" className="wm-fs-btn nodrag">
           <Maximize2 style={{ width: 16, height: 16 }} />
         </button>
       )}

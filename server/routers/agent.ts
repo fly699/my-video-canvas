@@ -44,7 +44,7 @@ export const agentRouter = router({
     .input(
       z.object({
         projectId: z.number(),
-        message: z.string().min(1).max(4000),
+        message: z.string().min(1).max(32000),
         history: z
           .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(8000) }))
           .max(20)
