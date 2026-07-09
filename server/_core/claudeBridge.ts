@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveClaudeSpawn, resolveClaudeBin } from "./superAgent/claudeProcess";
 import { isGptLocalModel, codexModelArg, runCodexText } from "./codexBridge";
+import { isGrokLocalModel, grokModelArg, runGrokText } from "./grokBridge";
 import { collectImageUrls, collectFileUrls, resolveImages, docTextFromFileUrls, buildClaudeStreamJsonInput, parseClaudeStreamJsonResult } from "./bridgeAttachments";
 import { getBridgeMcpConfig } from "./bridgeMcp";
 
@@ -69,7 +70,7 @@ export function isClaudeLocalModel(model?: unknown): boolean {
   return typeof model === "string" && model.trim().toLowerCase().startsWith("claude-local");
 }
 export function isBridgeModel(model?: unknown): boolean {
-  return isClaudeLocalModel(model) || isGptLocalModel(model);
+  return isClaudeLocalModel(model) || isGptLocalModel(model) || isGrokLocalModel(model);
 }
 
 /** 桥接子进程（claude -p / codex exec）生成超时（毫秒）。默认 280s，可用 CLAUDE_BRIDGE_TIMEOUT_MS
@@ -275,14 +276,17 @@ export function registerClaudeBridge(app: Express): void {
       // 其余（claude-local* 等）→ Claude Code CLI（Claude 订阅）。后台自建 LLM 只有一个地址位，
       // 两家共用可零新增配置。
       const gpt = isGptLocalModel(req.body?.model);
+      const grok = isGrokLocalModel(req.body?.model);
       // 子进程生成超时：默认 280s（原 110s 对「画布助手加角色+模板」这类大计划不够，claude -p
       // 会被 SIGKILL、外层 fetch 随后 abort → 用户见「aborted due to timeout」）。可用
       // CLAUDE_BRIDGE_TIMEOUT_MS 覆盖；须 < llm.ts 自建 fetch 超时（默认 300s），让桥接干净报错先出。
       const bridgeMs = bridgeTimeoutMs();
-      const { text, isError } = gpt
+      const { text, isError } = grok
+        ? await runGrokText({ messages, timeoutMs: bridgeMs, model: grokModelArg(req.body?.model) })
+        : gpt
         ? await runCodexText({ messages, timeoutMs: bridgeMs, model: codexModelArg(req.body?.model) })
         : await runClaudeText({ messages, timeoutMs: bridgeMs, model: bridgeModelArg(req.body?.model) });
-      if (isError) return res.status(502).json({ error: { message: `本机 ${gpt ? "codex" : "claude"} 返回错误：` + (text || "").slice(0, 600) } });
+      if (isError) return res.status(502).json({ error: { message: `本机 ${grok ? "grok" : gpt ? "codex" : "claude"} 返回错误：` + (text || "").slice(0, 600) } });
       res.json({
         id: `claude-local-${Date.now()}`,
         object: "chat.completion",

@@ -3657,7 +3657,7 @@ export const comfyuiRouter = router({
       catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) }); }
 
       const model = input.model?.trim() || "claude-local";
-      const isLocal = model.startsWith("claude-local") || model.startsWith("gpt-local");
+      const isLocal = model.startsWith("claude-local") || model.startsWith("gpt-local") || model.startsWith("grok-local");
       if (!isClaudeBridgeEnabled() || !isLocal) {
         return { ...base, aiUsed: false, aiNote: "未启用本机 Claude 桥接，已用启发式分析（含主次排序）" };
       }
