@@ -1080,6 +1080,9 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
 
     const outName = `compose-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const outPath = path.join(os.tmpdir(), outName);
+    // 立即登记待清理——与输入素材一致（拿到即 push）。若登记推迟到 ffmpeg 成功之后，渲染失败/超时
+    // 留下的成片临时文件（可能是 0 字节，也可能是超时被杀的大体积半成品）会漏删、长期填满 /tmp。
+    tmpFiles.push(outPath);
 
     const buildArgs = (vc: string[]) => [
       ...inputArgs,
@@ -1129,7 +1132,6 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     report(88, "上传成片");
 
     const outBuffer = await fs.readFile(outPath);
-    tmpFiles.push(outPath);
     await assertObjectStorageWritable();
     const namePart = sanitizeFilenamePrefix(opts.projectName || "成片") || "成片";
     const key = `u/${opts.userId}/editor/${namePart}-${Date.now()}.${ext}`;

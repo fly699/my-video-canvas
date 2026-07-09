@@ -62,20 +62,47 @@ function setRetentionDays(days: number): number {
   return n;
 }
 
-/** 删除超过保留期的文件（按 mtime 从旧到新顺序删），并清理变空的子目录。retention<=0 不删。 */
+/** 删除超过保留期的文件（按 mtime 从旧到新顺序删），并清理变空的子目录。retention<=0 不删。
+ *  另外总是回收陈旧的孤儿 .part（进程崩溃/被杀残留的上传分片）——walkRelay 有意跳过 .part，故它们
+ *  永不进保留期清理；用固定 24h 阈值（合法上传绝不会持续这么久，不会误删进行中的分片），与保留期无关。 */
 export function sweepExpiredRelayFiles(): { removed: number } {
+  let removed = sweepStalePartFiles(24 * 60 * 60 * 1000);
   const days = getRetentionDays();
-  if (days <= 0) return { removed: 0 };
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  const files = walkRelay().filter((f) => f.mtime < cutoff).sort((a, b) => a.mtime - b.mtime); // 旧→新
-  let removed = 0;
-  for (const f of files) {
-    const full = fullOf(f.name);
-    if (!full) continue;
-    try { fs.unlinkSync(full); removed++; pruneEmptyDirs(path.dirname(full)); } catch { /* skip */ }
+  if (days > 0) {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const files = walkRelay().filter((f) => f.mtime < cutoff).sort((a, b) => a.mtime - b.mtime); // 旧→新
+    for (const f of files) {
+      const full = fullOf(f.name);
+      if (!full) continue;
+      try { fs.unlinkSync(full); removed++; pruneEmptyDirs(path.dirname(full)); } catch { /* skip */ }
+    }
   }
-  if (removed > 0) console.log(`[relay] 自动清理：删除 ${removed} 个超过 ${days} 天的中转文件`);
+  if (removed > 0) console.log(`[relay] 自动清理：删除 ${removed} 个中转文件/残留分片`);
   return { removed };
+}
+
+/** 递归删除 mtime 早于 now-maxAgeMs 的 .part 孤儿分片，返回删除数。纯 IO，异常即跳过。 */
+function sweepStalePartFiles(maxAgeMs: number): number {
+  const root = ensureDir();
+  const cutoff = Date.now() - maxAgeMs;
+  let removed = 0;
+  const stack: string[] = [""];
+  while (stack.length) {
+    const rel = stack.pop() as string;
+    const abs = rel ? path.join(root, rel) : root;
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      const childRel = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) { stack.push(childRel); continue; }
+      if (!e.isFile() || !e.name.endsWith(".part")) continue;
+      try {
+        const full = path.join(root, childRel);
+        if (fs.statSync(full).mtimeMs < cutoff) { fs.unlinkSync(full); removed++; pruneEmptyDirs(path.dirname(full)); }
+      } catch { /* skip */ }
+    }
+  }
+  return removed;
 }
 
 /** 把外部传入的文件名收敛为安全的纯文件名（去目录、拒绝穿越）；非法返回 null。 */
