@@ -250,12 +250,17 @@ export function registerEmailAuthRoutes(app: Express) {
       const openId = `email:${email.toLowerCase()}`;
       const user = await db.getUserByOpenId(openId);
       if (!user) { res.status(400).json({ error: "验证失败，请重新注册" }); return; }
-      if (user.emailVerified === false) {
-        if (!user.verifyCode || !user.verifyCodeExpiresAt) { res.status(400).json({ error: "请先获取验证码" }); return; }
-        if (new Date(user.verifyCodeExpiresAt).getTime() < Date.now()) { res.status(400).json({ error: "验证码已过期，请重新获取" }); return; }
-        if (String(code).trim() !== user.verifyCode) { res.status(400).json({ error: "验证码错误" }); return; }
-        await db.setUserVerification(openId, { emailVerified: true, verifyCode: null, verifyCodeExpiresAt: null });
+      // 严禁把「已验证账号」当幂等登录处理——否则本接口等于一个不需要口令的登录端点：任何人 POST
+      // { email: 受害者邮箱, code: 任意值 } 都能拿到有效会话（含管理员）→ 账号接管。会话仅在「本次
+      // 确实校验通过了有效且未过期的验证码」时才签发；已验证账号一律引导走正常密码登录、绝不发会话。
+      if (user.emailVerified !== false) {
+        res.status(400).json({ error: "邮箱已验证，请直接使用密码登录", alreadyVerified: true });
+        return;
       }
+      if (!user.verifyCode || !user.verifyCodeExpiresAt) { res.status(400).json({ error: "请先获取验证码" }); return; }
+      if (new Date(user.verifyCodeExpiresAt).getTime() < Date.now()) { res.status(400).json({ error: "验证码已过期，请重新获取" }); return; }
+      if (String(code).trim() !== user.verifyCode) { res.status(400).json({ error: "验证码错误" }); return; }
+      await db.setUserVerification(openId, { emailVerified: true, verifyCode: null, verifyCodeExpiresAt: null });
       if (user.disabled) { res.status(403).json({ error: "账号已被冻结，请联系管理员" }); return; }
       // 邮箱已验证，但审批未通过仍不放行（管理员/站长豁免）。
       if (user.approved === false && user.role !== "admin") {
