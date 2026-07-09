@@ -85,14 +85,15 @@ export async function runGrokText(opts: { messages: OAMessage[]; timeoutMs: numb
   const docText = await docTextFromFileUrls(collectFileUrls(opts.messages));
   if (docText) prompt = [prompt, docText].filter(Boolean).join("\n\n");
 
-  // 参数：`grok -p [--no-auto-update] [-m 模型] [<GROK_BRIDGE_ARGS>] <提示词>`。
-  // -p 为布尔无头标志、提示词作末位 positional（同 Claude Code/codex 家族）；不带 --output-format
-  // → stdout 打印回答文本。不传 --always-approve（工具无法自动执行 = 安全）。
+  // 参数：`grok [--no-auto-update] [-m 模型] [<GROK_BRIDGE_ARGS>] -p <提示词>`。
+  // ⚠️ 真机实证（用户报错 "a value is required for '--single <PROMPT>'"）：Grok Build 的
+  // `-p`/`--single` 是【取紧随其后的值】作提示词，不是布尔标志——故提示词必须【紧跟 -p 之后】，
+  // 其余 flag 都放在 -p 之前。不带 --output-format → stdout 打印回答文本；不传 --always-approve（安全）。
   const args = [
-    "-p", "--no-auto-update",
+    "--no-auto-update",
     ...(opts.model ? ["-m", opts.model] : []),
     ...extraGrokArgs(process.env.GROK_BRIDGE_ARGS),
-    prompt,
+    "-p", prompt,
   ];
   const bin = resolveGrokBin();
   const isCmd = process.platform === "win32" && /\.(cmd|bat)$/i.test(bin);
