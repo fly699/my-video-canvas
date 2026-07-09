@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeControlMapUpdates, resolveNodeOutputImageUrl } from "./refImagePropagation";
+import { computeControlMapUpdates, resolveNodeOutputImageUrl, storedControlMap, controlnetForStoredMap } from "./refImagePropagation";
 import type { CanvasNode, CanvasEdge } from "../hooks/useCanvasStore";
 
 const node = (id: string, nodeType: string, payload: Record<string, unknown> = {}): CanvasNode =>
@@ -42,5 +42,33 @@ describe("computeControlMapUpdates", () => {
   it("returns nothing when there are no downstream comfyui_image nodes", () => {
     const nodes = [node("a", "comfyui_image"), node("b", "video_task")];
     expect(computeControlMapUpdates("a", "map.png", nodes, [edge("a", "b")])).toEqual([]);
+  });
+
+  it("writes structure-lock strength when provided, else preserves the downstream's own", () => {
+    const nodes = [node("a", "director"), node("b", "comfyui_image", { controlnet: { model: "cn", strength: 0.5 } })];
+    const withStrength = computeControlMapUpdates("a", "map.png", nodes, [edge("a", "b")], 0.9);
+    expect(withStrength[0].payload.controlnet.strength).toBe(0.9);
+    const without = computeControlMapUpdates("a", "map.png", nodes, [edge("a", "b")]);
+    expect(without[0].payload.controlnet.strength).toBe(0.5); // 未指定时保留下游原值
+  });
+});
+
+describe("storedControlMap / controlnetForStoredMap (③ 连线即注入)", () => {
+  it("reads a director's persisted control map, defaulting strength to 0.85", () => {
+    expect(storedControlMap(node("d", "director", { controlMap: { url: "u.png", kind: "pose", strength: 0.7 } })))
+      .toEqual({ url: "u.png", strength: 0.7 });
+    expect(storedControlMap(node("d", "director", { controlMap: { url: "u.png", kind: "pose" } })))
+      .toEqual({ url: "u.png", strength: 0.85 });
+  });
+  it("ignores non-director sources and empty/absent maps", () => {
+    expect(storedControlMap(node("d", "image_gen", { controlMap: { url: "u.png", kind: "pose", strength: 1 } }))).toBeUndefined();
+    expect(storedControlMap(node("d", "director", { controlMap: { url: "", kind: "pose", strength: 1 } }))).toBeUndefined();
+    expect(storedControlMap(node("d", "director", {}))).toBeUndefined();
+    expect(storedControlMap(undefined)).toBeUndefined();
+  });
+  it("builds a controlnet merging the target's model, overriding image/preprocessor/strength", () => {
+    const target = node("b", "comfyui_image", { controlnet: { model: "control_openpose", strength: 0.3, startPercent: 0.1 } });
+    expect(controlnetForStoredMap(target, { url: "pose.png", strength: 0.85 }))
+      .toMatchObject({ model: "control_openpose", startPercent: 0.1, imageUrl: "pose.png", preprocessor: "", strength: 0.85 });
   });
 });

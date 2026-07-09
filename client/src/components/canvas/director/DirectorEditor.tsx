@@ -3,10 +3,11 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid, TransformControls, ContactShadows } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy, Boxes } from "lucide-react";
+import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy, Boxes, PersonStanding } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateControlMap } from "../../../lib/refImagePropagation";
+import { drawOpenpose } from "../../../lib/directorOpenpose";
 
 // 渲控制图时用来隔离「只渲人物、避开网格/阴影/全景/gizmo」的 actors 组名。
 const ACTORS_GROUP = "__director_actors__";
@@ -184,6 +185,12 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   }, []);
   const selectGroup = useCallback((id: string) => { setSelectedGroupId(id); setSelectedId(null); setCamSelected(false); setMultiSel(new Set()); }, []);
   const [saving, setSaving] = useState(false);
+  // ③ 结构锁强度：注入下游 ControlNet 的 strength（0=不约束，1=强约束）。记忆到 localStorage。
+  const [ctrlStrength, setCtrlStrength] = useState<number>(() => {
+    const v = Number(typeof localStorage !== "undefined" ? localStorage.getItem("director:ctrlStrength") : "");
+    return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.85;
+  });
+  useEffect(() => { try { localStorage.setItem("director:ctrlStrength", String(ctrlStrength)); } catch { /* ignore */ } }, [ctrlStrength]);
   const captureRef = useRef<CaptureHandle | null>(null);
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
@@ -487,56 +494,82 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     } finally { setSaving(false); }
   };
 
-  // ① 控制图：用当前机位【只渲人物】重渲一张像素级精确的 depth / normal 图，直接注入下游 ComfyUI
+  // ①③ 控制图：用当前机位【只渲人物】重渲一张像素级精确的控制图，直接注入下游 ComfyUI
   //   ControlNet（比从 2D 图估计的控制图更准，把结构锁从「提示词祈祷」升级为像素级约束）。
-  const shootControlPass = async (kind: "depth" | "normal") => {
+  //   · depth / normal：override 材质渲染 3D 网格。
+  //   · pose（③）：取真实 Mixamo 骨架关节世界坐标投影，画标准 OpenPose 骨架图。
+  //   注入带「结构锁强度」，并把控制图持久化到节点（连线即自动重注入下游）。
+  const shootControlPass = async (kind: "depth" | "normal" | "pose") => {
     const cap = captureRef.current;
     if (!cap || saving) return;
     setSaving(true);
-    const scene = cap.scene;
-    const cam = cap.camera as THREE.PerspectiveCamera;
-    // 隐藏一切非人物：网格/接触阴影/全景/灯光/gizmo（顶层子节点里 name!==ACTORS_GROUP 者），
-    // 以及 actors 组内的选中环（ringGeometry）——否则会污染控制图。
-    const hidden: THREE.Object3D[] = [];
-    const hide = (o: THREE.Object3D) => { if (o.visible) { o.visible = false; hidden.push(o); } };
-    let actorsGroup: THREE.Object3D | undefined;
-    scene.children.forEach((o) => { if (o.name === ACTORS_GROUP) actorsGroup = o; else hide(o); });
-    actorsGroup?.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && (m.geometry as THREE.BufferGeometry)?.type === "RingGeometry") hide(o); });
-    const prevBg = scene.background;
-    const prevOverride = scene.overrideMaterial;
-    // depth：视空间线性深度、近=亮（与 MiDaS/ControlNet depth 约定一致），背景黑=最远。
-    // normal：MeshNormalMaterial 直接给标准法线 RGB，背景取「朝相机」的平面法线(128,128,255)。
-    let mat: THREE.Material;
-    if (kind === "depth") {
-      const camDist = cam.position.distanceTo(new THREE.Vector3(...sceneRef.current.camera.target));
-      const spread = Math.max(1, camDist * 0.6);
-      mat = new THREE.ShaderMaterial({
-        uniforms: { uNear: { value: Math.max(0.01, camDist - spread) }, uFar: { value: camDist + spread } },
-        vertexShader: "varying float vZ; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vZ = -mv.z; gl_Position = projectionMatrix*mv; }",
-        fragmentShader: "uniform float uNear; uniform float uFar; varying float vZ; void main(){ float d = clamp((vZ-uNear)/(uFar-uNear),0.0,1.0); gl_FragColor = vec4(vec3(1.0-d),1.0); }",
-        side: THREE.DoubleSide,
-      });
-      scene.background = new THREE.Color(0x000000);
-    } else {
-      mat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
-      scene.background = new THREE.Color(0x8080ff);
-    }
+    const strength = ctrlStrength;
+    const label = kind === "depth" ? "深度" : kind === "normal" ? "法线" : "骨架";
     try {
-      scene.overrideMaterial = mat;
-      cap.gl.render(scene, cam);
-      const blob = await canvasToBlob(cap.gl);
-      // 抓完立刻还原可见画面（在上传网络等待之前），避免视口停在控制图上。
-      scene.overrideMaterial = prevOverride;
-      scene.background = prevBg;
-      hidden.forEach((o) => { o.visible = true; });
-      mat.dispose();
+      let blob: Blob | null;
+      if (kind === "pose") {
+        // 骨架图：不渲染 3D，直接把每个人偶的骨架关节投影到 2D 画布画 OpenPose。
+        const w = cap.gl.domElement.width, h = cap.gl.domElement.height;
+        const c2d = document.createElement("canvas"); c2d.width = w; c2d.height = h;
+        const ctx = c2d.getContext("2d");
+        if (!ctx) throw new Error("2D 画布上下文不可用");
+        cap.scene.updateMatrixWorld(true);
+        cap.camera.updateMatrixWorld();
+        (cap.camera as THREE.PerspectiveCamera).updateProjectionMatrix?.();
+        let actorsGroup: THREE.Object3D | undefined;
+        cap.scene.children.forEach((o) => { if (o.name === ACTORS_GROUP) actorsGroup = o; });
+        const roots: THREE.Object3D[] = [];
+        actorsGroup?.traverse((o) => { if (o.name.startsWith("actor:")) roots.push(o); });
+        const drawn = drawOpenpose(ctx, roots, cap.camera, w, h);
+        if (!drawn) throw new Error("未找到可用的人物骨架（导入的 GLB 模型无骨架，请用内置人偶）");
+        blob = await new Promise<Blob | null>((res) => c2d.toBlob((b) => res(b), "image/png"));
+      } else {
+        const scene = cap.scene;
+        const cam = cap.camera as THREE.PerspectiveCamera;
+        // 隐藏一切非人物：网格/接触阴影/全景/灯光/gizmo（顶层 name!==ACTORS_GROUP 者），
+        // 以及 actors 组内的选中环（ringGeometry）——否则会污染控制图。
+        const hidden: THREE.Object3D[] = [];
+        const hide = (o: THREE.Object3D) => { if (o.visible) { o.visible = false; hidden.push(o); } };
+        let actorsGroup: THREE.Object3D | undefined;
+        scene.children.forEach((o) => { if (o.name === ACTORS_GROUP) actorsGroup = o; else hide(o); });
+        actorsGroup?.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && (m.geometry as THREE.BufferGeometry)?.type === "RingGeometry") hide(o); });
+        const prevBg = scene.background;
+        const prevOverride = scene.overrideMaterial;
+        // depth：视空间线性深度、近=亮（与 MiDaS/ControlNet depth 约定一致），背景黑=最远。
+        // normal：MeshNormalMaterial 直接给标准法线 RGB，背景取「朝相机」的平面法线(128,128,255)。
+        let mat: THREE.Material;
+        if (kind === "depth") {
+          const camDist = cam.position.distanceTo(new THREE.Vector3(...sceneRef.current.camera.target));
+          const spread = Math.max(1, camDist * 0.6);
+          mat = new THREE.ShaderMaterial({
+            uniforms: { uNear: { value: Math.max(0.01, camDist - spread) }, uFar: { value: camDist + spread } },
+            vertexShader: "varying float vZ; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vZ = -mv.z; gl_Position = projectionMatrix*mv; }",
+            fragmentShader: "uniform float uNear; uniform float uFar; varying float vZ; void main(){ float d = clamp((vZ-uNear)/(uFar-uNear),0.0,1.0); gl_FragColor = vec4(vec3(1.0-d),1.0); }",
+            side: THREE.DoubleSide,
+          });
+          scene.background = new THREE.Color(0x000000);
+        } else {
+          mat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+          scene.background = new THREE.Color(0x8080ff);
+        }
+        try {
+          scene.overrideMaterial = mat;
+          cap.gl.render(scene, cam);
+          blob = await canvasToBlob(cap.gl);
+        } finally {
+          // 无论渲染/抓帧成败，都在上传网络等待之前还原可见画面并释放材质，避免视口停在控制图上或泄漏 GPU 材质。
+          scene.overrideMaterial = prevOverride;
+          scene.background = prevBg;
+          hidden.forEach((o) => { o.visible = true; });
+          mat.dispose();
+        }
+      }
       if (!blob) throw new Error("渲染控制图失败");
       const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/png", filename: `director-${kind}.png` });
-      const n = propagateControlMap(nodeId, r.url);
-      const label = kind === "depth" ? "深度" : "法线";
-      toast.success(n > 0 ? `${label}控制图已注入 ${n} 个下游 ComfyUI 图像节点` : `已生成${label}控制图，但没有连接的下游 ComfyUI 图像节点`);
+      const n = propagateControlMap(nodeId, r.url, strength);
+      updateNodeData(nodeId, { controlMap: { url: r.url, kind, strength } });
+      toast.success(n > 0 ? `${label}控制图已注入 ${n} 个下游 ComfyUI 图像节点（结构强度 ${strength}）` : `已生成${label}控制图，暂无下游 ComfyUI 图像节点（连线后自动注入）`);
     } catch (e) {
-      scene.overrideMaterial = prevOverride; scene.background = prevBg; hidden.forEach((o) => { o.visible = true; });
       toast.error("控制图失败：" + (e instanceof Error ? e.message : String(e)));
     } finally { setSaving(false); }
   };
@@ -668,15 +701,28 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             </>
           )}
         </div>
-        {/* ① 控制图直出：当前机位只渲人物 → 像素级精确 depth/normal → 注入下游 ComfyUI ControlNet */}
-        <button onClick={() => shootControlPass("depth")} disabled={saving} title="当前视角只渲人物，输出像素级深度图注入下游 ComfyUI ControlNet（比 2D 估计更准）"
-          style={{ ...headBtn(false), opacity: saving ? 0.6 : 1 }}>
-          <Boxes size={14} /> 深度图
-        </button>
-        <button onClick={() => shootControlPass("normal")} disabled={saving} title="当前视角只渲人物，输出法线图注入下游 ComfyUI ControlNet"
-          style={{ ...headBtn(false), opacity: saving ? 0.6 : 1 }}>
-          <Boxes size={14} /> 法线图
-        </button>
+        {/* ①③ 结构锁：当前机位只渲人物 → 像素级 depth/normal/骨架 → 按强度注入下游 ComfyUI ControlNet */}
+        <div className="flex items-center" style={{ gap: 4, padding: "3px 6px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)" }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t4)" }}>结构锁</span>
+          <button onClick={() => shootControlPass("depth")} disabled={saving} title="只渲人物，输出像素级深度图注入下游 ComfyUI ControlNet（比 2D 估计更准）"
+            style={{ ...headBtn(false), height: 26, padding: "0 8px", opacity: saving ? 0.6 : 1 }}>
+            <Boxes size={13} /> 深度
+          </button>
+          <button onClick={() => shootControlPass("normal")} disabled={saving} title="只渲人物，输出法线图注入下游 ComfyUI ControlNet"
+            style={{ ...headBtn(false), height: 26, padding: "0 8px", opacity: saving ? 0.6 : 1 }}>
+            <Boxes size={13} /> 法线
+          </button>
+          <button onClick={() => shootControlPass("pose")} disabled={saving} title="取真实 3D 骨架关节，输出像素级精确 OpenPose 骨架图注入下游 ComfyUI ControlNet（姿态硬约束，远胜 2D 估计）"
+            style={{ ...headBtn(false), height: 26, padding: "0 8px", opacity: saving ? 0.6 : 1 }}>
+            <PersonStanding size={13} /> 骨架
+          </button>
+          <label title="注入下游 ControlNet 的结构约束强度（0=不约束，1=最强）" style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t4)" }}>
+            强度
+            <input type="number" min={0} max={1} step={0.05} value={ctrlStrength}
+              onChange={(e) => setCtrlStrength(Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
+              style={{ width: 44, padding: "2px 4px", fontSize: 10.5, textAlign: "right", background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none" }} />
+          </label>
+        </div>
         <button onClick={shoot} disabled={saving} style={{ ...headBtn(true), opacity: saving ? 0.6 : 1 }}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />} {saving ? "输出中…" : "截图 → 参考图"}
         </button>
@@ -807,7 +853,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {groups.map((g) => (
                 <group key={g.id} position={g.position} rotation={[g.rotation[0] * Math.PI / 180, g.rotation[1] * Math.PI / 180, g.rotation[2] * Math.PI / 180]} scale={g.scale}>
                   {scene.actors.filter((a) => a.groupId === g.id).map((a) => (
-                    <group key={a.id} position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
+                    <group key={a.id} name={`actor:${a.id}`} position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
                       onPointerDown={(e) => { e.stopPropagation(); selectActor(a.id); }}>
                       {a.glbUrl ? <GlbModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} /> : <HumanModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} />}
                     </group>
@@ -818,7 +864,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {scene.actors.filter((a) => !a.groupId).map((a) => {
                 const sel = !camSelected && a.id === selectedId;
                 return (
-                  <group key={a.id} ref={sel ? ((el) => setGizmoTarget(el)) : undefined}
+                  <group key={a.id} name={`actor:${a.id}`} ref={sel ? ((el) => setGizmoTarget(el)) : undefined}
                     position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
                     onPointerDown={(e) => { e.stopPropagation(); selectActor(a.id); }}>
                     {a.glbUrl ? <GlbModel actor={a} selected={sel} /> : <HumanModel actor={a} selected={sel} />}

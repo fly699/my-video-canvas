@@ -42,6 +42,14 @@ export const DirectorNode = memo(function DirectorNode({ id, selected, data }: P
           <Clapperboard style={{ width: 14, height: 14 }} /> 打开导演台（3D 构图）
         </button>
 
+        {payload.controlMap?.url && (
+          <div className="flex items-center gap-1.5" style={{ fontSize: 10.5, color: accent }} title="已输出结构控制图（连线到 ComfyUI 图像节点即自动注入 ControlNet）">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 7px", borderRadius: 6, background: accent.replace(")", " / 0.14)"), border: `1px solid ${accent.replace(")", " / 0.4)")}` }}>
+              🔒 结构锁 · {payload.controlMap.kind === "depth" ? "深度" : payload.controlMap.kind === "normal" ? "法线" : "骨架"} · 强度 {payload.controlMap.strength}
+            </span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between" style={{ fontSize: 11, color: "var(--c-t4)" }}>
           <span>{scene.actors.length} 个角色 · 画幅 {scene.aspectRatio} · {scene.camera.fov.toFixed(0)}°</span>
           {payload.imageUrl && (

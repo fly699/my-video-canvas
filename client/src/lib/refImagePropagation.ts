@@ -212,6 +212,7 @@ export function computeControlMapUpdates(
   mapUrl: string,
   nodes: CanvasNode[],
   edges: CanvasEdge[],
+  strength?: number,
 ): { id: string; payload: { controlnet: ComfyuiControlNet } }[] {
   const seen = new Set<string>();
   const out: { id: string; payload: { controlnet: ComfyuiControlNet } }[] = [];
@@ -221,17 +222,42 @@ export function computeControlMapUpdates(
     if (target?.data.nodeType !== "comfyui_image") continue;
     seen.add(e.target);
     const cur = ((target.data.payload as { controlnet?: Partial<ComfyuiControlNet> }).controlnet) ?? {};
-    const controlnet: ComfyuiControlNet = { ...cur, model: cur.model ?? "", imageUrl: mapUrl, preprocessor: "" };
+    // 结构锁强度：调用方给了就写入(硬约束句柄)；否则保留下游原有 strength。
+    const controlnet: ComfyuiControlNet = {
+      ...cur, model: cur.model ?? "", imageUrl: mapUrl, preprocessor: "",
+      ...(strength !== undefined ? { strength } : {}),
+    };
     out.push({ id: e.target, payload: { controlnet } });
   }
   return out;
 }
 
 /** Apply an extracted control map to downstream comfyui_image ControlNet guides. */
-export function propagateControlMap(sourceId: string, mapUrl: string): number {
+export function propagateControlMap(sourceId: string, mapUrl: string, strength?: number): number {
   if (!mapUrl) return 0;
   const { nodes, edges, batchUpdateNodeData } = useCanvasStore.getState();
-  const updates = computeControlMapUpdates(sourceId, mapUrl, nodes, edges);
+  const updates = computeControlMapUpdates(sourceId, mapUrl, nodes, edges, strength);
   if (updates.length > 0) batchUpdateNodeData(updates);
   return updates.length;
+}
+
+/**
+ * ③ 硬结构句柄：读取一个已持久化控制图的源节点（当前为 director）的 controlMap。
+ * 用于「连线即自动注入」——新连一个下游 comfyui_image 时，若源节点已存过控制图，
+ * 直接把它注入新连的 ControlNet（无需回导演台重拍）。
+ */
+export function storedControlMap(node: CanvasNode | undefined): { url: string; strength: number } | undefined {
+  if (!node || node.data.nodeType !== "director") return undefined;
+  const cm = (node.data.payload as { controlMap?: { url?: string; strength?: number } }).controlMap;
+  if (!cm || typeof cm.url !== "string" || !cm.url) return undefined;
+  return { url: cm.url, strength: typeof cm.strength === "number" ? cm.strength : 0.85 };
+}
+
+/** 单个下游 comfyui_image 目标应写入的 ControlNet（合并其原有 controlnet，仅覆盖 imageUrl/preprocessor/strength）。 */
+export function controlnetForStoredMap(
+  targetNode: CanvasNode,
+  map: { url: string; strength: number },
+): ComfyuiControlNet {
+  const cur = ((targetNode.data.payload as { controlnet?: Partial<ComfyuiControlNet> }).controlnet) ?? {};
+  return { ...cur, model: cur.model ?? "", imageUrl: map.url, preprocessor: "", strength: map.strength };
 }

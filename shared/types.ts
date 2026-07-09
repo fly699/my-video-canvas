@@ -579,6 +579,9 @@ export interface DirectorNodeData {
   imageStorageKey?: string;
   prompt?: string;            // 可选：场景文字描述/备注
   aspectRatio?: string;       // 与 scene.aspectRatio 同步，便于卡片展示
+  /** ③ 硬结构句柄：最近一次输出的控制图（深度/法线/骨架）+ 强度。持久化后连线即自动注入下游
+   *  ComfyUI 图像节点的 ControlNet（openpose/depth/normal），把「软参考图」升级为「硬结构约束」。 */
+  controlMap?: { url: string; kind: "depth" | "normal" | "pose"; strength: number };
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
 }
