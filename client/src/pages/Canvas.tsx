@@ -64,6 +64,7 @@ import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
 import { AlignToolbar } from "../components/canvas/AlignToolbar";
 import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
 import { setBoxSelecting } from "../hooks/useBoxSelecting";
+import { markGestureSelected, clearGestureSelected } from "../hooks/useNodeExpandGuard";
 import { useEdgeInsert } from "../hooks/useEdgeInsert";
 import { StudioCreateBar } from "../components/canvas/studio/StudioCreateBar";
 import { ModelQuickSwitch, MODEL_SWITCH_FIELD } from "../components/canvas/studio/ModelQuickSwitch";
@@ -1331,6 +1332,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   //    按相同位移实时跟随（绝对坐标 + 静默更新，与普通拖动一致不入历史）。 ──
   const groupDragRef = useRef<{ groupStart: { x: number; y: number }; children: { id: string; start: { x: number; y: number } }[] } | null>(null);
   const handleNodeDragStart = useCallback((_: React.MouseEvent, node: CanvasNode) => {
+    // 「拖拽不展开」：把被拖动(含随之移动的整个选区)的节点标记为手势选中——不展开配置区，
+    // 直到被真正点击。onNodeClick(仅无拖动时触发)会清除该标记。
+    const sel = useCanvasStore.getState().nodes.filter((n) => n.selected).map((n) => n.id);
+    markGestureSelected(sel.length ? sel : [node.id]);
     if (node.data.nodeType !== "group") { groupDragRef.current = null; return; }
     const childIds = ((node.data.payload as GroupNodeData).childIds) ?? [];
     const all = useCanvasStore.getState().nodes;
@@ -2654,7 +2659,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
             selectionMode={SelectionMode.Partial}
             selectionOnDrag={!isMobile}
             onSelectionStart={() => setBoxSelecting(true)}
-            onSelectionEnd={() => setBoxSelecting(false)}
+            onSelectionEnd={() => {
+              setBoxSelecting(false);
+              // 「框选不展开」：框选结束后把选中的节点标记为手势选中——即便最终只框到 1 个也不展开，
+              // 维持点击前收起的样子，直到被真正点击。
+              markGestureSelected(useCanvasStore.getState().nodes.filter((n) => n.selected).map((n) => n.id));
+            }}
+            onNodeClick={(_, node) => clearGestureSelected(node.id)}
+            onPaneClick={() => clearGestureSelected()}
             panOnDrag={isMobile ? true : [1, 2]}
             panOnScroll
             panOnScrollMode={PanOnScrollMode.Free}
