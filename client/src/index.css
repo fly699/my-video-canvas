@@ -1578,7 +1578,9 @@ button:active:not(:disabled) {
 }
 .wm-fs-btn {
   position: absolute;
-  bottom: 8px;
+  /* 右上角：避开底部原生 <video> 控制条（进度条/音量/⋮ 会截走右下角的点击，导致全屏钮点不到，
+     桌面与触屏皆然）。与左上角的循环钮对称，右上角本就空置。 */
+  top: 8px;
   right: 8px;
   z-index: 5;
   display: flex;
