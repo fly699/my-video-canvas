@@ -31,7 +31,9 @@ export function SelfHostedLlmSection() {
   // /v1/chat/completions）。API Key 需管理员填成与服务端环境变量 CLAUDE_LOCAL_BRIDGE_KEY
   // 一致的值——一键只填地址与模型，key 留给你手动粘贴。
   const applyClaudeLocal = () => {
-    setUrl(bridgeUrl());
+    // 地址只在【为空】时才填桥接回环——保留已有的自建 vLLM 地址（桥接模型 claude/gpt/grok-local
+    // 在 llm.ts 里无条件直连本机回环、与本地址解耦，故混用 vLLM + 桥接时绝不能冲掉 vLLM 地址）。
+    setUrl((prev) => (prev.trim() ? prev : bridgeUrl()));
     // 模型切换约定：id 冒号后缀会被桥接透传给 `claude --model`（sonnet/opus/haiku 或完整模型 id）；
     // 无后缀 = 订阅默认模型。Sonnet 各档订阅都可用；Opus 需 Max 档订阅（Pro 选了会报错）。
     const CLAUDE_LOCAL_MODELS: Model[] = [
@@ -40,13 +42,15 @@ export function SelfHostedLlmSection() {
       { id: "claude-local:opus", label: "本机 Claude · Opus（需 Max）" },
     ];
     setModels((prev) => [...prev, ...CLAUDE_LOCAL_MODELS.filter((m) => !prev.some((p) => p.id === m.id))]);
-    toast.success("已填入本机 Claude 地址与 3 个模型（默认/Sonnet/Opus），请把 API Key 填成与服务端 CLAUDE_LOCAL_BRIDGE_KEY 一致的值再保存");
+    toast.success("已填入本机 Claude 的 3 个模型（默认/Sonnet/Opus）。地址为空则填本机桥接回环、已填 vLLM 地址则保留（桥接模型与地址解耦）。请把 API Key 填成与服务端 CLAUDE_LOCAL_BRIDGE_KEY 一致的值再保存");
   };
 
   // 「本机 GPT（ChatGPT 订阅）」一键接入：与 Claude 共用同一桥接地址与 Key，按模型前缀分流。
   // 只需服务器装 @openai/codex 并放好订阅登录凭证（~/.codex/auth.json），加模型条目即可。
   const applyGptLocal = () => {
-    setUrl(bridgeUrl());
+    // 地址只在【为空】时才填桥接回环——保留已有的自建 vLLM 地址（桥接模型 claude/gpt/grok-local
+    // 在 llm.ts 里无条件直连本机回环、与本地址解耦，故混用 vLLM + 桥接时绝不能冲掉 vLLM 地址）。
+    setUrl((prev) => (prev.trim() ? prev : bridgeUrl()));
     // 只预置「订阅默认」一条：具体模型名随 codex 版本/账号变动（真机翻车：预置的 gpt-5.3-codex
     // 在用户账号报「未找到模型元数据」+4xx）。想固定模型：先在服务器验证
     // `codex exec --skip-git-repo-check -m 模型名 "hi"` 能通，再手动加 `gpt-local:模型名` 条目。
@@ -61,7 +65,9 @@ export function SelfHostedLlmSection() {
   // 只预置「订阅默认」一条：Grok Build 具体 model id 随版本/账号变动，想固定先在服务器验证
   // `grok -p -m 模型名 "hi"` 能通，再手动加 `grok-local:模型名`（如 grok-local:grok-4.5）。仅文本。
   const applyGrokLocal = () => {
-    setUrl(bridgeUrl());
+    // 地址只在【为空】时才填桥接回环——保留已有的自建 vLLM 地址（桥接模型 claude/gpt/grok-local
+    // 在 llm.ts 里无条件直连本机回环、与本地址解耦，故混用 vLLM + 桥接时绝不能冲掉 vLLM 地址）。
+    setUrl((prev) => (prev.trim() ? prev : bridgeUrl()));
     const GROK_LOCAL_MODELS: Model[] = [
       { id: "grok-local", label: "本机 Grok（订阅默认 · 仅文本）" },
     ];
