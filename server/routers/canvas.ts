@@ -791,7 +791,10 @@ export const videoTasksRouter = router({
               provider: input.provider,
               prompt: input.prompt,
               negativePrompt: input.negativePrompt,
-              referenceImageUrl: input.referenceImageUrl,
+              // 与 Poyo/kie 分支及 DB 落库(739)、后台轮询器一致取 refList[0]——否则客户端只传
+              // referenceImageUrls 数组(DoP 契约支持)时 input.referenceImageUrl 为 undefined，
+              // submitHiggsfieldVideo 直接抛「必须提供参考图」，任务被内联标 failed[CHARGED?] 无法重试。
+              referenceImageUrl: refList[0] ?? input.referenceImageUrl,
               params: input.params as Record<string, unknown>,
             });
             externalTaskId = result.externalTaskId;
