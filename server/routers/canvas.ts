@@ -43,6 +43,7 @@ import {
 } from "../db";
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl, toInternalStoragePath, storagePresignPut, isStorageConfigured, finalizeStorageKey } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
+import { safeUploadMime, SAFE_UPLOAD_MIME_MSG } from "../_core/uploadMime";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { getCachedDisabledModels } from "../_core/modelToggles";
 import { getCachedSystemDefaultModels, getSystemDefaultModel } from "../_core/systemDefaultModels";
@@ -436,7 +437,7 @@ export const assetsRouter = router({
   createUploadUrl: protectedProcedure
     .input(z.object({
       name: z.string().max(255),
-      mimeType: z.string().max(128),
+      mimeType: z.string().max(128).refine(safeUploadMime, SAFE_UPLOAD_MIME_MSG),
       size: z.number().int().min(1),
       projectId: z.number().optional(),
     }))

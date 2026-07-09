@@ -4,6 +4,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { getBridgeMcpConfig } from "./bridgeMcp";
 
 export interface BridgeSkill { name: string; description: string }
 
@@ -29,10 +30,12 @@ export function skillsDir(): string {
   return cfg ? join(cfg, "skills") : join(homedir(), ".claude", "skills");
 }
 
-/** 扫描技能目录，返回 { enabled, dir, skills }。enabled = 桥接是否放行了 Skill（CLAUDE_BRIDGE_SKILLS=1）。
+/** 扫描技能目录，返回 { enabled, dir, skills }。enabled = 桥接是否放行了 Skill。必须与真正的放行判定
+ *  同源——resolveBridgeAgenticArgs 走 getBridgeMcpConfig().skills（DB 优先、env 兜底），故这里也读它，
+ *  而非直接读 env；否则「后台 UI 开启技能」时前端技能入口不显示、与桥接实际能力不符。
  *  容错：目录不存在/读失败→空列表，绝不抛。上限 200 个防异常目录拖垮。 */
 export function listBridgeSkills(): { enabled: boolean; dir: string; skills: BridgeSkill[] } {
-  const enabled = process.env.CLAUDE_BRIDGE_SKILLS === "1";
+  const enabled = getBridgeMcpConfig().skills;
   const dir = skillsDir();
   const skills: BridgeSkill[] = [];
   try {

@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
 import { storagePut, storagePresignPut, isStorageConfigured, canBrowserReachStorageDirectly, assertObjectStorageWritable, finalizeStorageKey, resolveToAbsoluteUrl } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
+import { safeUploadMime, SAFE_UPLOAD_MIME_MSG } from "../_core/uploadMime";
 import { hashPassword, verifyPassword } from "../_core/scrypt";
 import {
   getOrCreateLobby,
@@ -725,7 +726,7 @@ export const chatRouter = router({
     .input(z.object({
       conversationId: z.number(),
       filename: z.string().max(255),
-      mimeType: z.string().max(128),
+      mimeType: z.string().max(128).refine(safeUploadMime, SAFE_UPLOAD_MIME_MSG),
       size: z.number().int().min(1),
     }))
     .mutation(async ({ ctx, input }) => {
