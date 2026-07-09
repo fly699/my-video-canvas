@@ -36,6 +36,9 @@ import { SyncConfigDialog } from "../SyncConfigDialog";
 import { Depth3DViewer } from "../Depth3DViewer";
 import { Model3DViewer } from "../Model3DViewer";
 import { confirmDialog } from "@/components/ui/dialogService";
+import { useResultHistoryCapture } from "../../../hooks/useResultHistoryCapture";
+import { ResultHistoryStrip } from "../ResultHistoryStrip";
+import type { ResultSnapshot } from "../../../../../shared/types";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 interface Props {
@@ -611,6 +614,13 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     void handleRun();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingGen3d, payload.status, payload.paramValues]);
+
+  // #5 版本历史（仅图像输出）：每产出新图存一条快照；回滚把某条写回 outputUrls。
+  const imgOutUrl = payload.outputType !== "video" ? payload.outputUrls?.[0] : undefined;
+  useResultHistoryCapture(id, { current: imgOutUrl, urls: payload.outputUrls, history: payload.resultHistory });
+  const rollbackToSnapshot = useCallback((snap: ResultSnapshot) => {
+    update({ outputUrls: snap.urls ?? [snap.url], outputUrl: snap.url });
+  }, [update]);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1733,6 +1743,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               <label style={{ ...labelStyle, marginBottom: 6 }}>
                 输出结果（{payload.outputUrls.length} 个）
               </label>
+            )}
+            {/* #5 版本历史（仅图像输出）：历次产出快照，点击回滚 */}
+            {payload.outputType !== "video" && (
+              <div style={{ marginBottom: 8 }}>
+                <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.outputUrls[0]} accent={accent} onRollback={rollbackToSnapshot} />
+              </div>
             )}
             {/* Video output */}
             {payload.outputType === "video" ? (

@@ -1086,6 +1086,8 @@ export interface ComfyuiImageNodeData {
   /** Collapsed hero preview mode when a batch produced multiple images:
    *  "grid" shows the whole grid (default), "single" shows only the selected image. */
   heroView?: "grid" | "single";
+  /** 生成版本历史（#5 一键回滚）：每产出一张新图追加一条快照，最新在前，封顶 12。 */
+  resultHistory?: ResultSnapshot[];
   progress?: number;
   queueRemaining?: number;  // ComfyUI server queue depth while waiting to start (transient)
   status?: "idle" | "processing" | "done" | "failed";
@@ -1214,6 +1216,8 @@ export interface ComfyuiWorkflowNodeData {
   outputType?: "image" | "video" | "auto";
   outputUrl?: string;
   outputUrls?: string[];
+  /** 生成版本历史（#5 一键回滚）：仅图像输出记录，每产出一张新图追加一条快照，封顶 12。 */
+  resultHistory?: ResultSnapshot[];
   progress?: number;
   queueRemaining?: number;  // ComfyUI server queue depth while waiting to start (transient)
   status?: "idle" | "processing" | "done" | "failed";

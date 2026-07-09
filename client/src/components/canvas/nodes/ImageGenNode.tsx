@@ -21,7 +21,8 @@ import { openNodeImage } from "../NodeImageLightbox";
 import { Depth3DViewer } from "../Depth3DViewer";
 import { Model3DViewer } from "../Model3DViewer";
 import { confirmDialog } from "@/components/ui/dialogService";
-import { pushResultSnapshot } from "@/lib/resultHistory";
+import { useResultHistoryCapture } from "../../../hooks/useResultHistoryCapture";
+import { ResultHistoryStrip } from "../ResultHistoryStrip";
 import type { ResultSnapshot } from "../../../../../shared/types";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 import { PromptDock } from "../PromptDock";
@@ -30,7 +31,7 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes, History } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes } from "lucide-react";
 import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
@@ -343,16 +344,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingGen3d, uploading, payload.referenceImages, payload.referenceImageUrl]);
 
-  // #5 版本历史：每产出一张新图就记进 resultHistory（回滚到旧快照时 url 已存在 → pushResultSnapshot
-  // 返回同引用，据引用相等跳过写入，防更新环）。silent=true：不进撤销栈、不广播（本地便利态）。
-  useEffect(() => {
-    const url = payload.imageUrl;
-    if (!url) return;
-    const next = pushResultSnapshot(payload.resultHistory, { url, urls: payload.imageUrls, prompt: payload.prompt, at: Date.now() });
-    if (next !== payload.resultHistory) updateNodeData(id, { resultHistory: next }, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload.imageUrl]);
-  // 回滚：把某条快照写回当前结果（进撤销栈，便于再撤销回来）。
+  // #5 版本历史：采集用共享 hook；回滚把某条快照写回当前结果（进撤销栈，便于再撤销回来）。
+  useResultHistoryCapture(id, { current: payload.imageUrl, urls: payload.imageUrls, prompt: payload.prompt, history: payload.resultHistory });
   const rollbackToSnapshot = useCallback((snap: ResultSnapshot) => {
     updateNodeData(id, { imageUrl: snap.url, imageUrls: snap.urls ?? [snap.url] });
   }, [id, updateNodeData]);
@@ -545,32 +538,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       }>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
-        {/* #5 版本历史：历次产出的结果快照，点击回滚（当前项高亮）。≥2 条才显示。 */}
-        {(payload.resultHistory?.length ?? 0) >= 2 && (
-          <div className="flex-shrink-0">
-            <div style={{ fontSize: 10, color: "var(--c-t4)", display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
-              <History style={{ width: 10, height: 10 }} /> 版本历史 · 点击回滚（{payload.resultHistory!.length}）
-            </div>
-            <div className="nowheel" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-              {payload.resultHistory!.map((snap, i) => {
-                const isCurrent = snap.url === payload.imageUrl;
-                return (
-                  <button
-                    key={snap.url}
-                    onClick={() => rollbackToSnapshot(snap)}
-                    title={snap.prompt ? `回滚到此版本\n${snap.prompt}` : "回滚到此版本"}
-                    className="nodrag relative flex-shrink-0 rounded-lg overflow-hidden"
-                    style={{ width: 56, height: 56, borderWidth: 2, borderStyle: "solid", borderColor: isCurrent ? accent : BORDER_DEFAULT, cursor: "pointer", opacity: isCurrent ? 1 : 0.82, background: "var(--c-canvas)" }}
-                  >
-                    <MediaImage src={snap.url} alt={`v${i + 1}`} className="w-full h-full object-cover" draggable={false} />
-                    <span style={{ position: "absolute", top: 2, left: 2, fontSize: 8, fontWeight: 700, lineHeight: "12px", padding: "0 4px", borderRadius: 4, background: "oklch(0 0 0 / 0.6)", color: "#fff" }}>{payload.resultHistory!.length - i}</span>
-                    {isCurrent && <span style={{ position: "absolute", bottom: 2, left: 2, fontSize: 8, fontWeight: 700, lineHeight: "12px", padding: "0 4px", borderRadius: 4, background: accent, color: "#fff" }}>当前</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* #5 版本历史：历次产出的结果快照，点击回滚（共享组件）。 */}
+        <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.imageUrl} accent={accent} onRollback={rollbackToSnapshot} />
 
         {/* ── Batch grid result ── (hidden inside the studio floating panel — the
             node card's hero preview already shows the result there → no duplicate) */}

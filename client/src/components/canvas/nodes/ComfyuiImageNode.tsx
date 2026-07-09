@@ -28,6 +28,9 @@ import { ImageLightbox } from "../ImageLightbox";
 import { MaskCanvas } from "./MaskCanvas";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { MediaImage } from "../MediaImage";
+import { useResultHistoryCapture } from "../../../hooks/useResultHistoryCapture";
+import { ResultHistoryStrip } from "../ResultHistoryStrip";
+import type { ResultSnapshot } from "../../../../../shared/types";
 import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
@@ -220,6 +223,12 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     (field: keyof ComfyuiImageNodeData, value: unknown) => updateNodeData(id, { [field]: value }),
     [id, updateNodeData]
   );
+
+  // #5 版本历史：每产出新图存一条快照；回滚把某条写回 imageUrl/imageUrls。
+  useResultHistoryCapture(id, { current: payload.imageUrl, urls: payload.imageUrls, prompt: payload.prompt, history: payload.resultHistory });
+  const rollbackToSnapshot = useCallback((snap: ResultSnapshot) => {
+    updateNodeData(id, { imageUrl: snap.url, imageUrls: snap.urls ?? [snap.url] });
+  }, [id, updateNodeData]);
 
   // Multi-LoRA: `loras` is the source of truth; fall back to the legacy single
   // `lora`/`loraStrength` for nodes saved before this feature existed.
@@ -607,6 +616,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
         onDrop={handleNodeDrop}
       >
+
+        {/* #5 版本历史：历次产出快照，点击回滚（共享组件） */}
+        <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.imageUrl} accent={accent} onRollback={rollbackToSnapshot} />
 
         {/* ── Result image(s) ── */}
         {payload.imageUrl ? (
