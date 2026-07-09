@@ -18,6 +18,7 @@ import { detectUpstreamPrompt, detectUpstreamImagesExpanded, stripMediaMentions 
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
+import { Depth3DViewer } from "../Depth3DViewer";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 import { PromptDock } from "../PromptDock";
 import { RefHeroPreview } from "../RefHeroPreview";
@@ -25,7 +26,7 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d } from "lucide-react";
 import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
@@ -135,6 +136,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [showSyncDlg, setShowSyncDlg] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [refZoom, setRefZoom] = useState<number | null>(null);
+  // 3D 换视角：打开 Depth3DViewer 的源图；pendingGen3d = 截图已插为参考图、等 re-render 后触发生成。
+  const [view3dSrc, setView3dSrc] = useState<string | null>(null);
+  const [pendingGen3d, setPendingGen3d] = useState(false);
   // Multi-reference-image list + left-docked expandable strip.
   const refImages = useReferenceImages(id, payload);
   // 上游图像（图像生成 / ComfyUI 图像·自定义 / 素材 / 分镜）自动作为参考图填充——
@@ -313,6 +317,16 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     guard({ model: payload.model ?? resolve("image_gen", "image"), refImageUrl: built.refUrl }, submit);
   };
 
+  // 3D 换视角截图已插为首位参考图后，等 payload.referenceImages re-render 反映到位再触发生成，
+  // 避免同 tick 调 handleGenerate 读到旧 payload（buildImageGenInput 读 prop）。
+  useEffect(() => {
+    if (!pendingGen3d) return;
+    if (uploading || genMutation.isPending) return;
+    setPendingGen3d(false);
+    handleGenerate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingGen3d, uploading, payload.referenceImages, payload.referenceImageUrl]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
@@ -422,7 +436,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         />
       )}
       <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
         style={{ background: "oklch(0 0 0 / 0.45)" }}
       >
         <button
@@ -432,6 +446,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         >
           <ZoomIn className="w-3 h-3" />
           放大
+        </button>
+        <button
+          onClick={() => setView3dSrc(payload.imageUrl!)}
+          title="把这张图虚拟化为 3D，拖拽换视角后重绘"
+          className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+          style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
+        >
+          <Rotate3d className="w-3 h-3" />
+          3D 换视角
         </button>
       </div>
     </div>
@@ -1245,6 +1268,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           currentIndex={Math.min(refZoom, refImages.images.length - 1)}
           onClose={() => setRefZoom(null)}
           onNavigate={(idx) => setRefZoom(idx)}
+        />
+      )}
+
+      {/* 3D 换视角：把选中图深度位移为伪 3D，拖拽换视角截图 → 插为首位参考图 → 触发再生成。 */}
+      {view3dSrc && (
+        <Depth3DViewer
+          sourceImageUrl={view3dSrc}
+          onClose={() => setView3dSrc(null)}
+          onGenerate={(capturedUrl) => {
+            refImages.insertUrls([capturedUrl], 0, "upload"); // 作首位结构参考图，且在参考图条可见
+            setPendingGen3d(true); // 等 payload 反映后由 effect 触发生成
+          }}
         />
       )}
 
