@@ -1031,6 +1031,7 @@ function AdditionalImagesSection({
                 />
                 <button
                   onClick={() => handleRemove(idx)}
+                  data-touch-show
                   className="opacity-0 group-hover/slot:opacity-100"
                   style={{
                     position: "absolute", top: 2, right: 2,
@@ -1137,7 +1138,7 @@ function MediaRefsSection({ kind, urls, onChange, accent }: {
                 {kind === "video"
                   ? <video src={url.startsWith("http") ? `/api/image-proxy?url=${encodeURIComponent(url)}` : url} muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onMouseEnter={(e) => void (e.currentTarget as HTMLVideoElement).play().catch(() => {})} onMouseLeave={(e) => (e.currentTarget as HTMLVideoElement).pause()} />
                   : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: accent }}><Music style={{ width: 16, height: 16 }} /></div>}
-                <button onClick={() => handleRemove(idx)} className="opacity-0 group-hover/slot:opacity-100" style={{ position: "absolute", top: 2, right: 2, width: 16, height: 16, padding: 0, borderRadius: "50%", background: "oklch(0 0 0 / 0.6)", border: "none", color: "white", cursor: "pointer", transition: "opacity 150ms ease", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <button onClick={() => handleRemove(idx)} data-touch-show className="opacity-0 group-hover/slot:opacity-100" style={{ position: "absolute", top: 2, right: 2, width: 16, height: 16, padding: 0, borderRadius: "50%", background: "oklch(0 0 0 / 0.6)", border: "none", color: "white", cursor: "pointer", transition: "opacity 150ms ease", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <X style={{ width: 9, height: 9 }} />
                 </button>
               </div>
