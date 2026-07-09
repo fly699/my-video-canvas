@@ -661,7 +661,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   });
 
   return (
-    <div className="fixed inset-0 z-[200] flex flex-col" style={{ background: "var(--c-bg, #0b0d12)" }}>
+    <div className="fixed inset-0 z-[200] flex flex-col" style={{ background: "var(--c-canvas)" }}>
       {/* 顶栏 */}
       <div className="flex items-center gap-2 px-4" style={{ height: 52, borderBottom: "1px solid var(--c-bd2)", background: "var(--c-elevated)" }}>
         <span style={{ fontWeight: 800, fontSize: 14, color: "var(--c-t1)" }}>🎬 导演台</span>
