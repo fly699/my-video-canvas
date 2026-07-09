@@ -144,7 +144,7 @@ describe("buildImageWorkflow architectures (DiT)", () => {
   it("new-arch ignores ControlNet/IPAdapter (classic-SD only)", () => {
     const w = buildImageWorkflow({
       ...base, ckpt: "flux1-dev.safetensors", arch: "flux", modelSource: "unet",
-      clip: { clipType: "flux", name1: "a", name2: "b" },
+      clip: { clipType: "flux", name1: "a", name2: "b" }, vae: "ae.sft", // unet 架构必须带 CLIP+VAE
       controlnet: { model: "cn", imageName: "x.png", strength: 1 },
       ipadapter: { model: "ip", imageName: "y.png" },
     });
