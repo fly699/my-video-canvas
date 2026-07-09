@@ -380,9 +380,15 @@ export function detectUpstreamPrompt(
   let positive: string | undefined;
   let negative: string | undefined;
   const str = _str;
-  for (const edge of edges) {
-    if (edge.target !== targetId) continue;
-    const src = nodes.find((n) => n.id === edge.source);
+  // 多个上游文本源时，取「第一个」必须与图/视频参考取值同一优先级（标题尾号→Y→连接序），否则
+  // 主提示词来源与同节点的参考图/视频来源不一致。此前是按 edge 插入序取首个。
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = edges
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => e.target === targetId)
+    .sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  for (const { e: edge } of incoming) {
+    const src = byId.get(edge.source);
     if (!src) continue;
     const p = (src.data.payload ?? {}) as Record<string, unknown>;
     let pos: string | undefined;
