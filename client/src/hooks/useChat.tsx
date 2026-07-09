@@ -360,22 +360,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     if (type === "dm") {
       const detail = await utils.chat.getConversation.fetch({ conversationId: convId });
-      const me = detail.members.find((m) => m.name); // any; we need peer
-      const myId = detail.members.length === 2 ? undefined : me?.userId;
-      void myId;
-      // peer = the member whose key we can fetch and we are not
-      const peers = detail.members;
-      const keys = await utils.chat.getPublicKeys.fetch({ userIds: peers.map((p) => p.userId) });
-      // derive with the first peer key that isn't ours — for a DM there are 2 members
+      const keys = await utils.chat.getPublicKeys.fetch({ userIds: detail.members.map((p) => p.userId) });
+      // derive with the PEER's key — must skip our own: deriveSharedKey(myPriv, myPub) is a valid
+      // ECDH self-pairing that does NOT throw, so without this guard we could derive ECDH(myPriv,myPub)
+      // (a key only we know) while the peer derives ECDH(peerPriv,myPub) → keys diverge → 永久「[无法解密]」。
+      // ECDH is symmetric so ECDH(myPriv,peerPub)==ECDH(peerPriv,myPub); order among peers doesn't matter.
       for (const k of keys) {
+        if (myUserId != null && k.userId === myUserId) continue; // never self-pair
         try {
           const shared = await deriveSharedKey(privateKeyRef.current, k.publicKeyJwk as JsonWebKey);
-          // store and return — both sides derive the same key regardless of order
           convKeyRef.current.set(convId, shared);
           return shared;
         } catch { /* try next */ }
       }
-      return null;
+      return null; // peer hasn't published a key yet → wait rather than mint a garbage key
     }
 
     // group: converge on ONE room key. Priority ladder (never blindly mint):
