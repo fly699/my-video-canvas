@@ -1137,7 +1137,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           {refImages.images.length > 0 && (
             <div className="nowheel" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
               {refImages.images.map((img, i) => (
-                <div key={img.id} className="relative rounded-lg overflow-hidden flex-shrink-0" style={{ width: 72, height: 72, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}>
+                <div key={img.id} className="group relative rounded-lg overflow-hidden flex-shrink-0" style={{ width: 72, height: 72, borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT, background: "var(--c-canvas)" }}>
                   <MediaImage
                     src={img.url}
                     alt={`ref-${i + 1}`}
@@ -1154,6 +1154,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                     style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}
                   >
                     <X style={{ width: 11, height: 11 }} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setView3dSrc(img.url); }}
+                    title="把这张参考图虚拟化为 3D，拖拽换视角后重绘"
+                    className="nodrag absolute bottom-1 right-1 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}
+                  >
+                    <Rotate3d style={{ width: 12, height: 12 }} />
                   </button>
                 </div>
               ))}
