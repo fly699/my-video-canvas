@@ -9,6 +9,29 @@ export function clipDuration(c: Clip): number {
   return Math.max(0.05, (c.trimOut - c.trimIn) / (c.speed ?? 1));
 }
 
+/** Source trim overrides when cutting a clip at `offset` timeline-seconds into it,
+ *  for the timeline-left and timeline-right halves. reverse(倒放)时时间轴左端对应源的
+ *  trimOut 侧（sourceTimeAt=trimOut-off），故改的 trim 端与正向相反——否则倒放片段分割/裁剪
+ *  取到源里镜像错位的另一段。与 sliceEditorDoc 的 reverse 处理同源。纯函数。 */
+export function clipSplitTrims(
+  c: Pick<Clip, "trimIn" | "trimOut" | "speed" | "reverse">, offset: number,
+): { left: Partial<Clip>; right: Partial<Clip> } {
+  const speed = c.speed ?? 1;
+  if (c.reverse) {
+    const cut = c.trimOut - offset * speed;
+    return { left: { trimIn: cut }, right: { trimOut: cut } };
+  }
+  const cut = c.trimIn + offset * speed;
+  return { left: { trimOut: cut }, right: { trimIn: cut } };
+}
+
+/** Source trim override for trimming a clip's RIGHT edge so its visible span becomes
+ *  `newDur` seconds (start fixed). reverse 时右缘对应源 trimIn 侧，改 trimIn、保留 trimOut。纯函数。 */
+export function trimRightSource(c: Pick<Clip, "trimIn" | "trimOut" | "speed" | "reverse">, newDur: number): Partial<Clip> {
+  const speed = c.speed ?? 1;
+  return c.reverse ? { trimIn: c.trimOut - newDur * speed } : { trimOut: c.trimIn + newDur * speed };
+}
+
 // Split a clip's keyframes at `offset` (timeline seconds from the clip's start).
 // Keyframe `t` is clip-start-relative timeline seconds (see transformAt /
 // addKeyframe: `playhead - clip.start`). The left half keeps its start, so kf
@@ -57,7 +80,9 @@ export function canMergeClips(a: Clip, b: Clip): boolean {
   if ((a.speed ?? 1) !== (b.speed ?? 1)) return false;
   if (!!a.reverse !== !!b.reverse) return false;
   if (Math.abs(b.start - (a.start + clipDuration(a))) > MERGE_EPS) return false; // adjacent on timeline
-  if (Math.abs(b.trimIn - a.trimOut) > MERGE_EPS) return false;                  // contiguous in source
+  // 源连续：正向时 b 的入点接 a 的出点；倒放时时间轴左端(a)对应源高端，故 a 的入点接 b 的出点。
+  const contiguous = a.reverse ? Math.abs(a.trimIn - b.trimOut) : Math.abs(b.trimIn - a.trimOut);
+  if (contiguous > MERGE_EPS) return false;
   return true;
 }
 
@@ -84,7 +109,9 @@ export function mergeClips(a: Clip, b: Clip): Clip {
     .map((k) => ({ ...k, t: k.t + durA }))
     .filter((k) => Math.abs(k.t - aMaxT) > 1e-4); // drop the boundary dup
   const keyframes = [...aKfs, ...bKfs];
-  return { ...a, trimOut: b.trimOut, keyframes: keyframes.length ? keyframes : undefined };
+  // 正向：把 a 的出点延伸到 b 的出点；倒放：把 a 的入点延伸到 b 的入点（保留各自的另一端）。
+  const trimPatch = a.reverse ? { trimIn: b.trimIn } : { trimOut: b.trimOut };
+  return { ...a, ...trimPatch, keyframes: keyframes.length ? keyframes : undefined };
 }
 
 /** Fold a run of clips (sorted by start): merge each contiguous, same-source
@@ -389,12 +416,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         const trimIn = patch.trimIn != null ? Math.max(0, patch.trimIn) : c.trimIn;
         const trimOut = patch.trimOut != null ? Math.max(trimIn + 0.05, patch.trimOut) : Math.max(trimIn + 0.05, c.trimOut);
         const start = patch.start != null ? Math.max(0, patch.start) : c.start;
-        // 左裁（start 与 trimIn 同时变，从片段头部裁掉/补回内容）时，关键帧必须按新起点重基准——
-        // 关键帧 t 是「相对片段起点的时间轴秒」，起点前移后原 t 全部指向了错误时刻（且裁掉部分的
-        // 关键帧要丢弃）。与 splitClip 右半、sliceEditorDoc 的左切重基准同理。纯移动（只改 start）
-        // 不走 trimClip，故这里以「start 与 trimIn 同时存在」判定为左裁。
+        // 左裁（start 变，从片段头部裁掉/补回内容）时，关键帧必须按新起点重基准——关键帧 t 是「相对
+        // 片段起点的时间轴秒」，起点前移后原 t 全部指向了错误时刻（且裁掉部分的关键帧要丢弃）。与
+        // splitClip 右半、sliceEditorDoc 的左切重基准同理。纯移动（只改 start）不走 trimClip，故 start
+        // 变化即判定为左裁。倒放片段左裁改 trimOut 而非 trimIn，但关键帧按 start 位移重基准与正反向无关，
+        // 故只看 start（原先额外要求 trimIn 存在会漏掉倒放左裁的关键帧重基准）。
         let keyframes = c.keyframes;
-        if (keyframes?.length && patch.start != null && patch.trimIn != null) {
+        if (keyframes?.length && patch.start != null) {
           keyframes = rebaseKeyframesForLeftTrim(keyframes, start - c.start);
         }
         return { ...c, trimIn, trimOut, start, keyframes };
@@ -426,14 +454,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const loc = findClip(s.doc, clipId);
     if (!loc) return s;
     const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
-    const speed = c.speed ?? 1;
     const dur = clipDuration(c);
     const offset = atTime - c.start;                 // seconds into the clip (timeline)
     if (offset <= 0.05 || offset >= dur - 0.05) return s; // too close to an edge
-    const cutSrc = c.trimIn + offset * speed; // source time at the cut
+    const { left: lp, right: rp } = clipSplitTrims(c, offset); // reverse-aware source split
     const { left: lkf, right: rkf } = splitKeyframesAt(c.keyframes, offset);
-    const left: Clip = { ...c, trimOut: cutSrc, keyframes: lkf };
-    const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc, keyframes: rkf };
+    const left: Clip = { ...c, ...lp, keyframes: lkf };
+    const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, ...rp, keyframes: rkf };
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
       ...t, clips: t.clips.flatMap((x) => x.id === clipId ? [left, right] : [x]),
     });
@@ -525,15 +552,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t) => {
       if (t.locked) return t;
       const clips = t.clips.flatMap((c) => {
-        const speed = c.speed ?? 1;
         const dur = clipDuration(c);
         const offset = atTime - c.start;
         if (offset <= 0.05 || offset >= dur - 0.05) return [c];
         changed = true;
-        const cutSrc = c.trimIn + offset * speed;
+        const { left: lp, right: rp } = clipSplitTrims(c, offset); // reverse-aware
         const { left: lkf, right: rkf } = splitKeyframesAt(c.keyframes, offset);
-        const left: Clip = { ...c, trimOut: cutSrc, keyframes: lkf };
-        const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc, keyframes: rkf };
+        const left: Clip = { ...c, ...lp, keyframes: lkf };
+        const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, ...rp, keyframes: rkf };
         return [left, right];
       });
       return { ...t, clips };
