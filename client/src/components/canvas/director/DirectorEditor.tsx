@@ -3,9 +3,13 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid, TransformControls, ContactShadows } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy } from "lucide-react";
+import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy, Boxes } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { propagateControlMap } from "../../../lib/refImagePropagation";
+
+// 渲控制图时用来隔离「只渲人物、避开网格/阴影/全景/gizmo」的 actors 组名。
+const ACTORS_GROUP = "__director_actors__";
 import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../../../../shared/types";
 import {
   MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers, respaceCrowdMembers, makeGroupFromActors, CROWD_SPACING,
@@ -483,6 +487,60 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     } finally { setSaving(false); }
   };
 
+  // ① 控制图：用当前机位【只渲人物】重渲一张像素级精确的 depth / normal 图，直接注入下游 ComfyUI
+  //   ControlNet（比从 2D 图估计的控制图更准，把结构锁从「提示词祈祷」升级为像素级约束）。
+  const shootControlPass = async (kind: "depth" | "normal") => {
+    const cap = captureRef.current;
+    if (!cap || saving) return;
+    setSaving(true);
+    const scene = cap.scene;
+    const cam = cap.camera as THREE.PerspectiveCamera;
+    // 隐藏一切非人物：网格/接触阴影/全景/灯光/gizmo（顶层子节点里 name!==ACTORS_GROUP 者），
+    // 以及 actors 组内的选中环（ringGeometry）——否则会污染控制图。
+    const hidden: THREE.Object3D[] = [];
+    const hide = (o: THREE.Object3D) => { if (o.visible) { o.visible = false; hidden.push(o); } };
+    let actorsGroup: THREE.Object3D | undefined;
+    scene.children.forEach((o) => { if (o.name === ACTORS_GROUP) actorsGroup = o; else hide(o); });
+    actorsGroup?.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && (m.geometry as THREE.BufferGeometry)?.type === "RingGeometry") hide(o); });
+    const prevBg = scene.background;
+    const prevOverride = scene.overrideMaterial;
+    // depth：视空间线性深度、近=亮（与 MiDaS/ControlNet depth 约定一致），背景黑=最远。
+    // normal：MeshNormalMaterial 直接给标准法线 RGB，背景取「朝相机」的平面法线(128,128,255)。
+    let mat: THREE.Material;
+    if (kind === "depth") {
+      const camDist = cam.position.distanceTo(new THREE.Vector3(...sceneRef.current.camera.target));
+      const spread = Math.max(1, camDist * 0.6);
+      mat = new THREE.ShaderMaterial({
+        uniforms: { uNear: { value: Math.max(0.01, camDist - spread) }, uFar: { value: camDist + spread } },
+        vertexShader: "varying float vZ; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vZ = -mv.z; gl_Position = projectionMatrix*mv; }",
+        fragmentShader: "uniform float uNear; uniform float uFar; varying float vZ; void main(){ float d = clamp((vZ-uNear)/(uFar-uNear),0.0,1.0); gl_FragColor = vec4(vec3(1.0-d),1.0); }",
+        side: THREE.DoubleSide,
+      });
+      scene.background = new THREE.Color(0x000000);
+    } else {
+      mat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+      scene.background = new THREE.Color(0x8080ff);
+    }
+    try {
+      scene.overrideMaterial = mat;
+      cap.gl.render(scene, cam);
+      const blob = await canvasToBlob(cap.gl);
+      // 抓完立刻还原可见画面（在上传网络等待之前），避免视口停在控制图上。
+      scene.overrideMaterial = prevOverride;
+      scene.background = prevBg;
+      hidden.forEach((o) => { o.visible = true; });
+      mat.dispose();
+      if (!blob) throw new Error("渲染控制图失败");
+      const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/png", filename: `director-${kind}.png` });
+      const n = propagateControlMap(nodeId, r.url);
+      const label = kind === "depth" ? "深度" : "法线";
+      toast.success(n > 0 ? `${label}控制图已注入 ${n} 个下游 ComfyUI 图像节点` : `已生成${label}控制图，但没有连接的下游 ComfyUI 图像节点`);
+    } catch (e) {
+      scene.overrideMaterial = prevOverride; scene.background = prevBg; hidden.forEach((o) => { o.visible = true; });
+      toast.error("控制图失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally { setSaving(false); }
+  };
+
   // 多机位宫格：绕注视点按预设角度渲染多张 → 落成连好线的分镜节点网格（确定性、免抽卡）。
   const [gridBusy, setGridBusy] = useState<string | null>(null);
   const [gridMenu, setGridMenu] = useState(false);
@@ -610,6 +668,15 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             </>
           )}
         </div>
+        {/* ① 控制图直出：当前机位只渲人物 → 像素级精确 depth/normal → 注入下游 ComfyUI ControlNet */}
+        <button onClick={() => shootControlPass("depth")} disabled={saving} title="当前视角只渲人物，输出像素级深度图注入下游 ComfyUI ControlNet（比 2D 估计更准）"
+          style={{ ...headBtn(false), opacity: saving ? 0.6 : 1 }}>
+          <Boxes size={14} /> 深度图
+        </button>
+        <button onClick={() => shootControlPass("normal")} disabled={saving} title="当前视角只渲人物，输出法线图注入下游 ComfyUI ControlNet"
+          style={{ ...headBtn(false), opacity: saving ? 0.6 : 1 }}>
+          <Boxes size={14} /> 法线图
+        </button>
         <button onClick={shoot} disabled={saving} style={{ ...headBtn(true), opacity: saving ? 0.6 : 1 }}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />} {saving ? "输出中…" : "截图 → 参考图"}
         </button>
@@ -734,7 +801,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               )}
               {/* 场景缩放 + 升降：把整个「人物场景」(角色+群组) 包一层统一缩放与上下平移，相对全景
                   空间整体放大/缩小、升降，使人物与全景尺度/地面线匹配（LibTV 场景缩放）。 */}
-              <group position={[scene.sceneOffsetX ?? 0, scene.sceneOffsetY ?? 0, scene.sceneOffsetZ ?? 0]} scale={scene.sceneScale ?? 1}>
+              <group name={ACTORS_GROUP} position={[scene.sceneOffsetX ?? 0, scene.sceneOffsetY ?? 0, scene.sceneOffsetZ ?? 0]} scale={scene.sceneScale ?? 1}>
               {/* 群组成员：包在群组变换父级里（成员 position 为组内局部坐标），每个成员再包一层
                   变换 group（actor 变换）。 */}
               {groups.map((g) => (
