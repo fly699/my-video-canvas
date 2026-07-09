@@ -89,8 +89,11 @@ export function Model3DViewer({ sourceImageUrl, onGenerate, onClose }: {
   useEffect(() => {
     const d = statusQ.data;
     if (!d) return;
-    if (d.status === "finished" && d.glbUrl) setGlbUrl(d.glbUrl);
-    else if (d.status === "failed") setErr(d.error || "图生 3D 失败");
+    if (d.status === "finished") {
+      // finished 但无 glb（未挑到模型文件）也要收敛为错误，否则 enabled 恒真会无限轮询。
+      if (d.glbUrl) setGlbUrl(d.glbUrl);
+      else setErr("生成已完成，但未返回可用的 3D 模型文件");
+    } else if (d.status === "failed") setErr(d.error || "图生 3D 失败");
   }, [statusQ.data]);
   const progress = statusQ.data?.progress ?? null;
 
