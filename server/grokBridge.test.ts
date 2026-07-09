@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isGrokLocalModel, grokModelArg, extraGrokArgs, pickGrokErrorDetail, resolveGrokBin } from "./_core/grokBridge";
+import { isGrokLocalModel, grokModelArg, extraGrokArgs, pickGrokErrorDetail, resolveGrokBin, parseGrokJsonResult } from "./_core/grokBridge";
 
 describe("isGrokLocalModel", () => {
   it("命中 grok-local / grok-local:xxx（大小写不敏感），其余不命中", () => {
@@ -63,6 +63,44 @@ describe("resolveGrokBin（Windows 自动探测默认安装路径，免手配 GR
       exists: (p) => p === "C:\\Users\\KingT\\.grok\\bin\\grok.exe",
     });
     expect(bin).toBe("C:\\Users\\KingT\\.grok\\bin\\grok.exe");
+  });
+});
+
+describe("parseGrokJsonResult（Grok Build 的 json 结构：回复在 text 字段，非 Claude 的 result）", () => {
+  it("真机样本：取 text 字段作回复，丢弃 thought 推理", () => {
+    const stdout = JSON.stringify({
+      text: "你好。我是通用 AI 助手，会直接、如实、简洁地回答问题。\n\n需要什么帮助，直接说就行。",
+      stopReason: "EndTurn",
+      sessionId: "019f4724-4b95-7773-a780-d361a0ba8af3",
+      requestId: "8c5de88a-445a-41b3-a57f-43393d96af35",
+      thought: "The user is greeting me with 你好 (Hello)...",
+    });
+    const r = parseGrokJsonResult(stdout);
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain("通用 AI 助手");
+    expect(r.text).not.toContain("greeting"); // thought 绝不外发
+  });
+  it("兼容 result / response / message 字段", () => {
+    expect(parseGrokJsonResult(JSON.stringify({ result: "答A" })).text).toBe("答A");
+    expect(parseGrokJsonResult(JSON.stringify({ response: "答B" })).text).toBe("答B");
+    expect(parseGrokJsonResult(JSON.stringify({ message: "答C" })).text).toBe("答C");
+  });
+  it("末尾夹带日志时仍能抽出末尾 JSON", () => {
+    const r = parseGrokJsonResult('[info] starting...\n{"text":"实际回答","stopReason":"EndTurn"}');
+    expect(r.text).toBe("实际回答");
+    expect(r.isError).toBe(false);
+  });
+  it("非 JSON 裸文本 → 原样当回复", () => {
+    expect(parseGrokJsonResult("直接就是纯文本回答")).toEqual({ text: "直接就是纯文本回答", isError: false });
+  });
+  it("空输出 / JSON 但无文本字段 → isError", () => {
+    expect(parseGrokJsonResult("").isError).toBe(true);
+    expect(parseGrokJsonResult(JSON.stringify({ stopReason: "EndTurn" })).isError).toBe(true);
+  });
+  it("error 字段 → 作错误文本返回", () => {
+    const r = parseGrokJsonResult(JSON.stringify({ error: "session expired" }));
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain("session expired");
   });
 });
 
