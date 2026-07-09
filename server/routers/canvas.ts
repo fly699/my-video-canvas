@@ -2817,7 +2817,9 @@ export const clipRouter = router({
         if ("error" in transcription) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `转录失败：${transcription.error}` });
         }
-        const segments = transcription.segments.map((s) => ({
+        const rawSegs = transcription.segments ?? [];
+        if (rawSegs.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "转写未返回时间戳段落，无法智能剪辑；请改用支持段级时间戳的模型（如 whisper-1）" });
+        const segments = rawSegs.map((s) => ({
           start: s.start, end: s.end, text: s.text.trim(),
           no_speech_prob: s.no_speech_prob ?? 0,
         }));
@@ -3079,7 +3081,11 @@ export const subtitleRouter = router({
         if ("error" in result) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
         }
-        const entries: SubtitleEntry[] = result.segments.map((s) => ({
+        // 有的模型（如 gpt-4o-transcribe）只回文本、不返回段级时间戳（segments 缺失），此前 .map 直接
+        // 崩 500。改为可读业务错误，引导换用支持时间戳的模型。
+        const segs = result.segments ?? [];
+        if (segs.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "该转写模型未返回时间戳段落，无法生成字幕；请改用支持段级时间戳的模型（如 whisper-1）" });
+        const entries: SubtitleEntry[] = segs.map((s) => ({
           start: s.start,
           end: s.end,
           text: s.text.trim(),
@@ -3138,7 +3144,9 @@ export const subtitleMotionRouter = router({
       return dedupe("subtitleMotion.transcribe", ctx.user.id, input, async () => {
         const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language, model: input.model });
         if ("error" in result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
-        const entries: SubtitleEntry[] = result.segments.map((s) => ({ start: s.start, end: s.end, text: s.text.trim() }));
+        const segs = result.segments ?? [];
+        if (segs.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "该转写模型未返回时间戳段落，无法生成字幕；请改用支持段级时间戳的模型（如 whisper-1）" });
+        const entries: SubtitleEntry[] = segs.map((s) => ({ start: s.start, end: s.end, text: s.text.trim() }));
         return { entries, fullText: result.text, language: result.language };
       });
     }),
