@@ -341,19 +341,25 @@ async function startServer() {
     socket.on("leave-project", (data: { projectId: number }) => {
       const room = `project:${data.projectId}`;
       socket.leave(room);
-      const lu = projectUsers.get(data.projectId);
-      lu?.delete(user.id);
-      if (lu && lu.size === 0) projectUsers.delete(data.projectId); // reclaim empty room
       projectRoles.delete(data.projectId);
-
-      socket.to(room).emit("collaboration-event", {
-        type: "user:leave",
-        userId: user.id,
-        userName: user.name ?? "",
-        color: "",
-        projectId: data.projectId,
-        payload: {},
-      });
+      // 同上：同用户多标签时，关掉一个标签不应把仍在场的自己从协作者列表移除。仅当无其它在场
+      // socket 时才删条目 + 广播离开（此 socket 已 leave 房间，故用 s.id!==socket.id 之外还要 has(room)）。
+      const stillHere = Array.from(io.of("/").sockets.values()).some(
+        (s) => s.id !== socket.id && (s.data as { user?: User }).user?.id === user.id && s.rooms.has(room),
+      );
+      if (!stillHere) {
+        const lu = projectUsers.get(data.projectId);
+        lu?.delete(user.id);
+        if (lu && lu.size === 0) projectUsers.delete(data.projectId); // reclaim empty room
+        socket.to(room).emit("collaboration-event", {
+          type: "user:leave",
+          userId: user.id,
+          userName: user.name ?? "",
+          color: "",
+          projectId: data.projectId,
+          payload: {},
+        });
+      }
     });
 
     socket.on("collaboration-event", (event: {
@@ -374,6 +380,7 @@ async function startServer() {
       // ephemeral events pass through without the role gate.
       const mutating = event.type === "node:move" || event.type === "node:add" ||
                        event.type === "node:delete" || event.type === "node:update" ||
+                       event.type === "node:title" ||
                        event.type === "edge:add" || event.type === "edge:delete";
       if (mutating && role === "viewer") return;
       socket.to(room).emit("collaboration-event", { ...event, userId: user.id });
@@ -384,17 +391,26 @@ async function startServer() {
       closeSessionsForSocket(socket.id);
       if (currentProjectId !== null) {
         const room = `project:${currentProjectId}`;
-        const du = projectUsers.get(currentProjectId);
-        du?.delete(user.id);
-        if (du && du.size === 0) projectUsers.delete(currentProjectId); // reclaim empty room
-        socket.to(room).emit("collaboration-event", {
-          type: "user:leave",
-          userId: user.id,
-          userName: user.name ?? "",
-          color: "",
-          projectId: currentProjectId,
-          payload: {},
-        });
+        // 断线重连竞态：短暂掉线后客户端会新建 socket 立刻 join-project（发 user:join）。若旧 socket
+        // 的延迟 disconnect 无条件发 user:leave，顺序可能变成 join→leave，peer 把该协作者误移除。
+        // 且 projectUsers 按 userId 去重（同用户多 socket 只一条），无脑 delete 会连带清掉仍在场的会话。
+        // 故仅当该用户在本房间确无其它在场 socket 时，才删条目并广播离开（与 chat:leave 的 stillHere 同理）。
+        const stillHere = Array.from(io.of("/").sockets.values()).some(
+          (s) => s.id !== socket.id && (s.data as { user?: User }).user?.id === user.id && s.rooms.has(room),
+        );
+        if (!stillHere) {
+          const du = projectUsers.get(currentProjectId);
+          du?.delete(user.id);
+          if (du && du.size === 0) projectUsers.delete(currentProjectId); // reclaim empty room
+          socket.to(room).emit("collaboration-event", {
+            type: "user:leave",
+            userId: user.id,
+            userName: user.name ?? "",
+            color: "",
+            projectId: currentProjectId,
+            payload: {},
+          });
+        }
       }
     });
   });
@@ -441,8 +457,10 @@ async function startServer() {
   chatNs.on("connection", (socket) => {
     const user = (socket.data as { user: User }).user;
     // 全局在线计数（/chat 命名空间）：与离线回收原子配对，见主命名空间同款注释。
+    // 注意：markOffline 只能在下面那唯一一处 disconnect 处理器里调用一次——presence 用引用计数，
+    // 此处若再 once("disconnect") 扣一次会对同一 socket 断开双扣 count，把仍在线的用户误判离线、
+    // 提前结算今日时长（曾因此回归）。故这里只 markOnline，扣减交给 505 行的 disconnect。
     markOnline(user.id);
-    socket.once("disconnect", () => markOffline(user.id));
     const joined = new Set<number>();
     // Personal room for new-DM / invite notifications.
     socket.join(`chat:user:${user.id}`);
