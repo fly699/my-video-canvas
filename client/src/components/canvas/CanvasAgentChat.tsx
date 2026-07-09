@@ -5,6 +5,7 @@ import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerU
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
+import { friendlyClientLLMError } from "@/lib/friendlyClientError";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
 import { LLMModelPicker, type LLMModelId } from "./LLMModelPicker";
 import { MiniSelect } from "@/components/ui/MiniSelect";
@@ -317,7 +318,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         setTurns((p) => [...p, { role: "assistant", content: "已取消本次规划（请求可能仍在后台完成，结果已忽略）。", error: true }]);
         return;
       }
-      setTurns((p) => [...p, { role: "assistant", content: e instanceof Error ? e.message : "调用失败", error: true }]);
+      setTurns((p) => [...p, { role: "assistant", content: friendlyClientLLMError(e), error: true }]);
     } finally {
       abortRef.current = null;
     }
