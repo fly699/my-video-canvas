@@ -7,6 +7,7 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useShallow } from "zustand/react/shallow";
 import { useStudioExpandAll } from "../../hooks/useStudioExpandAll";
 import { useBoxSelecting } from "../../hooks/useBoxSelecting";
+import { useNodeExpandable } from "../../hooks/useNodeExpandGuard";
 import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
 import { useConnectState } from "../../hooks/useConnectingStore";
 import { useHoverStore } from "../../hooks/useHoverStore";
@@ -179,7 +180,7 @@ export const BaseNode = memo(function BaseNode({
   // ★3：是否多选（≥2 选中）。短路到 2 即返回布尔，避免每 BaseNode 全量 filter 的 O(n²)；
   // 只在跨越「1↔多」阈值时才触发 re-render。多选时非固定节点不再各自弹命令栏。
   const multiSelected = useCanvasStore((s) => { let c = 0; for (const n of s.nodes) { if (n.selected) { c++; if (c >= 2) return true; } } return false; });
-  const expandSelected = !!selected || pinned;
+  // expandSelected 在下方 boxSelecting 之后计算（需叠加「拖拽/框选不展开」守卫）。
   // Creator id (stamped into the payload at creation) → a per-collaborator color
   // dot in the title bar, matching the cursor / "在线协作者" colors. Only shown
   // for OTHER collaborators' nodes (your own stay undotted — no solo noise).
@@ -225,7 +226,11 @@ export const BaseNode = memo(function BaseNode({
   // ★3：多选（≥2）时非固定节点不再逐个弹命令栏——批量操作交给底部 MultiSelectBar，画布保持清爽。
   // 框选拖拽进行中也不浮起——否则框内瞬时只覆盖 1 个节点时会被当单选而闪烁展开。
   const boxSelecting = useBoxSelecting();
-  const studioFloated = usesStudioFloating && !boxSelecting && (pinned || (storeSelected && !multiSelected));
+  // 「展开配置区必须真点击」：拖拽/框选选中的节点入抑制集(useNodeExpandable→false)，不展开；
+  // 框选进行中(boxSelecting)全程不展开；pinned 例外(用户显式钉住，恒展开)。真点击后清出抑制集。
+  const expandable = useNodeExpandable(id);
+  const expandSelected = pinned || (!!selected && !boxSelecting && expandable);
+  const studioFloated = usesStudioFloating && !boxSelecting && expandable && (pinned || (storeSelected && !multiSelected));
   // Every fresh selection starts COMPACT: reset the expand flag whenever the node
   // is no longer the floating/selected one, so re-clicking never reopens expanded.
   // ★4：不再每次取消 floating 就重置展开态——由全局偏好记忆（useStudioExpandAll）。

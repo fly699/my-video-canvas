@@ -14,7 +14,7 @@ import type { NodeType, NodeData, CollaboratorCursor, GroupNodeData } from "../.
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { getNodeConfig } from "../lib/nodeConfig";
 import { makeDefaultDirectorScene } from "../lib/directorScene";
-import { resolveNodeOutputImageUrl, isRefImageTarget, effectiveTargetHandle } from "../lib/refImagePropagation";
+import { resolveNodeOutputImageUrl, isRefImageTarget, effectiveTargetHandle, storedControlMap, controlnetForStoredMap } from "../lib/refImagePropagation";
 import { defaultTargetHandle } from "../lib/connectionRules";
 
 export interface CanvasNode extends Node {
@@ -327,8 +327,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       let conn = connection;
       let srcImageUrl: string | undefined;
       let targetNode: CanvasNode | undefined;
+      let sourceNode: CanvasNode | undefined;
       if (conn.source && conn.target) {
-        const sourceNode = state.nodes.find((n) => n.id === conn.source);
+        sourceNode = state.nodes.find((n) => n.id === conn.source);
         targetNode = state.nodes.find((n) => n.id === conn.target);
         srcImageUrl = resolveNodeOutputImageUrl(sourceNode);
         // 连线落点容错：视频/图像等节点左侧有两个 target 句柄——参考图句柄 `ref-image-in`
@@ -365,6 +366,16 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           updatedNodes = state.nodes.map((n) =>
             n.id === conn.target
               ? { ...n, data: { ...n.data, payload: { ...n.data.payload, referenceImageUrl: srcImageUrl } } }
+              : n
+          ) as CanvasNode[];
+        }
+        // ③ 硬结构句柄：新连 导演台 → comfyui_image 时，若导演台已存过控制图（深度/法线/骨架），
+        // 直接注入新连下游的 ControlNet，无需回导演台重拍——把持久化的结构锁「连线即生效」。
+        const map = storedControlMap(sourceNode);
+        if (map && targetNode?.data.nodeType === "comfyui_image") {
+          updatedNodes = updatedNodes.map((n) =>
+            n.id === conn.target
+              ? { ...n, data: { ...n.data, payload: { ...n.data.payload, controlnet: controlnetForStoredMap(n, map) } } }
               : n
           ) as CanvasNode[];
         }

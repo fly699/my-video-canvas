@@ -29,7 +29,8 @@ export type NodeType =
   | "image_edit"
   | "director"
   | "agent"
-  | "super_agent";
+  | "super_agent"
+  | "compare";
 
 export const VIDEO_PROVIDERS = [
   "mock",
@@ -578,6 +579,9 @@ export interface DirectorNodeData {
   imageStorageKey?: string;
   prompt?: string;            // 可选：场景文字描述/备注
   aspectRatio?: string;       // 与 scene.aspectRatio 同步，便于卡片展示
+  /** ③ 硬结构句柄：最近一次输出的控制图（深度/法线/骨架）+ 强度。持久化后连线即自动注入下游
+   *  ComfyUI 图像节点的 ControlNet（openpose/depth/normal），把「软参考图」升级为「硬结构约束」。 */
+  controlMap?: { url: string; kind: "depth" | "normal" | "pose"; strength: number };
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
 }
@@ -585,6 +589,13 @@ export interface DirectorNodeData {
 export interface NoteNodeData {
   content: string;
   color?: string;
+}
+
+/** 图片对比（滑块）节点：两路上游图 A/B，中间可拖滑块左右揭示，验证主体结构一致性。纯前端、无生成。 */
+export interface CompareNodeData {
+  slider?: number;  // 分隔线位置 0..1（缺省 0.5）
+  aUrl?: string;    // 显式覆盖左图（缺省取第 1 个上游图源）
+  bUrl?: string;    // 显式覆盖右图（缺省取第 2 个上游图源）
 }
 
 export type AudioCategory = "upload" | "music" | "dubbing" | "sfx";
@@ -1354,7 +1365,8 @@ export type NodeData =
   | ImageEditNodeData
   | DirectorNodeData
   | AgentNodeData
-  | SuperAgentNodeData;
+  | SuperAgentNodeData
+  | CompareNodeData;
 
 // ── Canvas Node ───────────────────────────────────────────────────────────────
 

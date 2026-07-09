@@ -2,13 +2,13 @@ import type { NodeType } from "../../../shared/types";
 import {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard, Workflow,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard, Workflow, Columns2,
 } from "lucide-react";
 
 export const NODE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   ScrollText, Film, Wand2, ImagePlus, Package, Video, Bot, StickyNote,
   AudioWaveform, SlidersHorizontal, Folder, UserRound, Scissors, Merge, Captions, Blend,
-  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard, Workflow,
+  Zap, Layers, Mic, Scan, PersonStanding, Boxes, Sparkles, Clapperboard, Workflow, Columns2,
 };
 
 export interface NodeConfig {
@@ -105,6 +105,16 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
     borderColor: "oklch(0.60 0.10 90 / 0.4)",
     defaultWidth: 260,
     defaultTitle: "便签",
+  },
+  compare: {
+    type: "compare",
+    label: "图片对比",
+    icon: "Columns2",
+    color: "oklch(0.70 0.15 210)",
+    bgColor: "oklch(0.70 0.15 210 / 0.08)",
+    borderColor: "oklch(0.70 0.15 210 / 0.4)",
+    defaultWidth: 320,
+    defaultTitle: "图片对比",
   },
   audio: {
     type: "audio",
