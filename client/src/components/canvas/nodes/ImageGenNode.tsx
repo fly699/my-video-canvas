@@ -463,7 +463,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         style={{ background: "oklch(0 0 0 / 0.45)" }}
       >
         <button
-          onClick={() => setLightboxIndex(0)}
+          onClick={(e) => { e.stopPropagation(); setLightboxIndex(0); }}
           className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
           style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
         >
@@ -471,7 +471,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           放大
         </button>
         <button
-          onClick={() => setView3dSrc(payload.imageUrl!)}
+          onClick={(e) => { e.stopPropagation(); setView3dSrc(payload.imageUrl!); }}
           title="把这张图虚拟化为 3D，拖拽换视角后重绘"
           className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
           style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
@@ -480,7 +480,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           3D 换视角
         </button>
         <button
-          onClick={() => openTrue3d(payload.imageUrl!)}
+          onClick={(e) => { e.stopPropagation(); openTrue3d(payload.imageUrl!); }}
           title="图生真 3D 网格（Tripo3D），完整 360° 环绕后从新视角重绘"
           className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
           style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
