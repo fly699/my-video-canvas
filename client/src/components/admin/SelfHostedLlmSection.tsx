@@ -57,6 +57,18 @@ export function SelfHostedLlmSection() {
     toast.success("已填入本机 GPT 模型条目（与 Claude 同地址同 Key）——确认服务器已装 @openai/codex 并放好 ~/.codex/auth.json");
   };
 
+  // 「本机 Grok（SuperGrok / X Premium+ 订阅）」一键接入：与 Claude/GPT 共用同一桥接地址与 Key，按前缀分流。
+  // 只预置「订阅默认」一条：Grok Build 具体 model id 随版本/账号变动，想固定先在服务器验证
+  // `grok -p -m 模型名 "hi"` 能通，再手动加 `grok-local:模型名`（如 grok-local:grok-4.5）。仅文本。
+  const applyGrokLocal = () => {
+    setUrl(bridgeUrl());
+    const GROK_LOCAL_MODELS: Model[] = [
+      { id: "grok-local", label: "本机 Grok（订阅默认 · 仅文本）" },
+    ];
+    setModels((prev) => [...prev, ...GROK_LOCAL_MODELS.filter((m) => !prev.some((p) => p.id === m.id))]);
+    toast.success("已填入本机 Grok 模型条目（与 Claude 同地址同 Key）——确认服务器已装官方 Grok Build CLI 并用 SuperGrok/X Premium+ 设备码登录，且勿设 XAI_API_KEY");
+  };
+
   const applyCurl = () => {
     const p = parseCurlLlm(curl);
     if (!p.url && !p.model) { toast.error("没从 curl 里解析出地址或模型，请检查粘贴内容"); return; }
@@ -118,6 +130,10 @@ export function SelfHostedLlmSection() {
             style={{ fontSize: 11.5, fontWeight: 600, background: "oklch(0.70 0.15 160 / 0.16)", border: "1px solid oklch(0.70 0.15 160 / 0.45)", color: "oklch(0.70 0.13 160)", cursor: "pointer" }}>
             <Sparkles className="w-3.5 h-3.5" /> 一键填入本机 GPT（ChatGPT 订阅）
           </button>
+          <button onClick={applyGrokLocal} className="nodrag flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+            style={{ fontSize: 11.5, fontWeight: 600, background: "oklch(0.62 0.02 260 / 0.16)", border: "1px solid oklch(0.62 0.02 260 / 0.45)", color: "var(--c-t2)", cursor: "pointer" }}>
+            <Sparkles className="w-3.5 h-3.5" /> 一键填入本机 Grok（SuperGrok 订阅）
+          </button>
         </div>
         <p style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.7, margin: 0 }}>
           <strong>GPT（ChatGPT Plus/Pro 订阅）接入</strong>：与 Claude 共用同一地址同一 Key（按模型前缀分流），零新增环境变量。
@@ -127,6 +143,15 @@ export function SelfHostedLlmSection() {
           <code>codex exec --skip-git-repo-check -m 模型名 &quot;hi&quot;</code> 能通，再手动加 <code>gpt-local:模型名</code> 条目
           （无效模型名会报「未找到模型元数据」+ 4xx，有效名随 OpenAI 版本/账号变动，故不预置）。
           <strong>切勿</strong>设 <code>CODEX_API_KEY</code>（会绕过订阅变按量计费）；<code>OPENAI_API_KEY</code>（配音 TTS 在用）可共存——auth.json 在时 codex 优先走订阅，但 auth.json 没放好会静默落到它按量计费。
+        </p>
+        <p style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.7, margin: 0 }}>
+          <strong>Grok（SuperGrok / X Premium+ 订阅）接入</strong>：用订阅额度跑 Grok 文本，<strong>仅文本</strong>（Grok Build 是编码 agent，
+          <strong>不含图片/视频</strong>——Grok Imagine 生图/视频只能走 API 付费）。与 Claude/GPT 共用同一地址同一 Key。
+          服务器装官方 Grok Build：<code>curl -fsSL https://x.ai/cli/install.sh | bash</code> → 在能开浏览器的机器跑 <code>grok</code> 用
+          <strong>SuperGrok/X Premium+ 账号</strong>设备码登录 → 把该机 <code>~/.grok</code> 会话拷到服务器同路径 → 点上面按钮加模型条目 → 保存。
+          模型 id：<code>grok-local</code>=订阅默认；想固定，<strong>先在服务器验证</strong> <code>grok -p -m grok-4.5 &quot;hi&quot;</code> 能通，再手动加 <code>grok-local:grok-4.5</code>。
+          <strong>切勿</strong>在服务器设 <code>XAI_API_KEY</code>/<code>GROK_API_KEY</code>/<code>GROK_CODE_XAI_API_KEY</code>（会绕过订阅变按量计费）。
+          输出异常时可设服务端 <code>GROK_BRIDGE_ARGS</code> 微调 CLI 参数。
         </p>
       </div>
 
