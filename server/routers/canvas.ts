@@ -605,12 +605,24 @@ export const assetsRouter = router({
 const pollLastCheck = new Map<string, number>();
 const POLL_THROTTLE_MS = 4_000;
 
+/** 剥离仅供服务端后台轮询器使用的内部 params 字段（`_` 前缀，尤其加密的 kie 凭据 `_kieKeyEnc`），
+ *  绝不能随 task 越过信任边界返回给客户端——否则同项目任一 viewer 都能读到他人/公用凭据的密文
+ *  （虽是 AES-GCM 密文、无 KIE_KEY_SECRET 不可解，仍属凭据材料越权外发）。客户端不读任何 `_` 字段。 */
+export function sanitizeTaskForClient<T>(task: T): T {
+  if (!task || typeof task !== "object") return task;
+  const p = (task as { params?: unknown }).params;
+  if (!p || typeof p !== "object") return task;
+  const cleaned: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(p as Record<string, unknown>)) if (!k.startsWith("_")) cleaned[k] = v;
+  return { ...(task as object), params: cleaned } as T;
+}
+
 export const videoTasksRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
-      return getVideoTasksByProject(input.projectId);
+      return (await getVideoTasksByProject(input.projectId)).map(sanitizeTaskForClient);
     }),
 
   create: protectedProcedure
@@ -731,7 +743,7 @@ export const videoTasksRouter = router({
           return { task: created, preexisting: false as const };
         },
       );
-      if (preexisting) return task;
+      if (preexisting) return sanitizeTaskForClient(task);
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
 
       // ── Submit to external provider ──────────────────────────────────────────
@@ -758,7 +770,7 @@ export const videoTasksRouter = router({
         // claim it, return the task as processing — the winner is responsible
         // for the upstream submit and the client should poll for its result.
         console.warn(`[videoTasks.create] task ${task.id} already claimed by another worker; deferring to it`);
-        return { ...task, status: "processing" as const };
+        return sanitizeTaskForClient({ ...task, status: "processing" as const });
       } else {
         try {
           if (isPoyoVideoProvider(input.provider)) {
@@ -834,15 +846,15 @@ export const videoTasksRouter = router({
       });
 
       if (externalTaskId) {
-        return { ...task, status: "processing" as const, externalTaskId };
+        return sanitizeTaskForClient({ ...task, status: "processing" as const, externalTaskId });
       }
       if (submitFailed) {
-        return { ...task, status: "failed" as const };
+        return sanitizeTaskForClient({ ...task, status: "failed" as const });
       }
       // Claim succeeded but no provider matched (unknown provider — shouldn't
       // happen given the enum validator) and no submit attempt was made.
       // Task is now `processing` with no externalTaskId; poller will skip it.
-      return { ...task, status: "processing" as const };
+      return sanitizeTaskForClient({ ...task, status: "processing" as const });
     }),
 
   // OmniHuman「指定说话主体」：对肖像图跑主体检测，返回各主体蒙版图 URL（≤5）。
@@ -860,12 +872,15 @@ export const videoTasksRouter = router({
   poll: protectedProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
-      const task = await getVideoTask(input.id);
-      if (!task) return null;
+      const raw = await getVideoTask(input.id);
+      if (!raw) return null;
       // Project-level access (editor+). Previously hard-checked task.userId,
       // which broke once any editor (not just owner) could create tasks —
       // the owner could see the task in the UI but couldn't poll it.
-      await assertProjectAccess(task.projectId, ctx.user.id, "editor");
+      await assertProjectAccess(raw.projectId, ctx.user.id, "editor");
+      // 从这里起用剥离了内部 `_` 字段（含加密凭据 _kieKeyEnc）的副本——poll 的所有返回分支都把 task
+      // 回给客户端，且轮询逻辑只读 status/externalTaskId/provider 等非内部字段，故整段用 sanitized 版安全。
+      const task = sanitizeTaskForClient(raw);
 
       // 同步上游状态会用平台公用 key（Poyo/Higgsfield）。非白名单用户/协作者不得借 poll 触达公用 key——
       // 此时跳过上游同步、直接返回当前状态（后台 poller 用平台凭证仍会推进），既守门控又不打断 UI。
