@@ -49,7 +49,9 @@ export function resolveComfyFramesFromDuration(
   if (dur == null) return ownFrames; // 无上游分镜时长 → 不动
   const isTemplateDefault = ownFrames == null || COMFY_TEMPLATE_DEFAULT_FRAMES.has(ownFrames);
   if (!isTemplateDefault) return ownFrames; // 用户手调过帧数 → 尊重
-  return Math.max(1, Math.min(300, Math.round(dur * (fps > 0 ? fps : 8))));
+  // 上限与服务端 generateVideo 的 zod frames.max(256) 一致——否则 fps=60、时长≥~4.3s 时算出的
+  // frames 落在 257–300 会被服务端直接校验拒绝（报「frames 超限」）而非平滑截断。
+  return Math.max(1, Math.min(256, Math.round(dur * (fps > 0 ? fps : 8))));
 }
 
 /** 上游直连分镜的目标时长（秒）。video_task 提交时若自身未设 duration，则继承上游分镜时长，
