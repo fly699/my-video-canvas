@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isGrokLocalModel, grokModelArg, extraGrokArgs, pickGrokErrorDetail } from "./_core/grokBridge";
+import { isGrokLocalModel, grokModelArg, extraGrokArgs, pickGrokErrorDetail, resolveGrokBin } from "./_core/grokBridge";
 
 describe("isGrokLocalModel", () => {
   it("命中 grok-local / grok-local:xxx（大小写不敏感），其余不命中", () => {
@@ -37,6 +37,32 @@ describe("extraGrokArgs", () => {
     expect(extraGrokArgs("  ")).toEqual([]);
     expect(extraGrokArgs("--output-format json")).toEqual(["--output-format", "json"]);
     expect(extraGrokArgs("  --a   --b c ")).toEqual(["--a", "--b", "c"]);
+  });
+});
+
+describe("resolveGrokBin（Windows 自动探测默认安装路径，免手配 GROK_BIN）", () => {
+  it("显式 GROK_BIN 最高优先，原样返回", () => {
+    expect(resolveGrokBin({ env: { GROK_BIN: "D:\\tools\\grok.exe" }, platform: "win32", exists: () => false })).toBe("D:\\tools\\grok.exe");
+  });
+  it("Windows + 默认安装位置命中 → 绝对路径", () => {
+    const bin = resolveGrokBin({
+      env: { USERPROFILE: "C:\\Users\\KingT" }, platform: "win32",
+      exists: (p) => p === "C:\\Users\\KingT\\.grok\\bin\\grok.exe",
+    });
+    expect(bin).toBe("C:\\Users\\KingT\\.grok\\bin\\grok.exe");
+  });
+  it("Windows + 默认位置不存在 → 回退裸名 grok（走 PATH）", () => {
+    expect(resolveGrokBin({ env: { USERPROFILE: "C:\\Users\\KingT" }, platform: "win32", exists: () => false })).toBe("grok");
+  });
+  it("非 Windows → 裸名 grok（不探测）", () => {
+    expect(resolveGrokBin({ env: { USERPROFILE: "/home/kingt" }, platform: "linux", exists: () => true })).toBe("grok");
+  });
+  it("Windows 无 USERPROFILE 时用 HOMEDRIVE+HOMEPATH 兜底", () => {
+    const bin = resolveGrokBin({
+      env: { HOMEDRIVE: "C:", HOMEPATH: "\\Users\\KingT" }, platform: "win32",
+      exists: (p) => p === "C:\\Users\\KingT\\.grok\\bin\\grok.exe",
+    });
+    expect(bin).toBe("C:\\Users\\KingT\\.grok\\bin\\grok.exe");
   });
 });
 
