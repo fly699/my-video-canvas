@@ -1213,14 +1213,14 @@ export const imageGenRouter = router({
     .input(
       z.object({
         prompt: z.string().min(1).max(8000), // bound to avoid unbounded payloads (char-injected prompts stay well under)
-        negativePrompt: z.string().optional(),
-        referenceImageUrl: z.string().optional(),
+        negativePrompt: z.string().max(4000).optional(), // 与 video.create 一致；防超大 payload
+        referenceImageUrl: z.string().max(2048).optional(),
         // Multi-angle reference images (first mirrors referenceImageUrl). Edit/
         // unified models read all of these via `image_urls`.
-        referenceImageUrls: z.array(z.string()).max(8).optional(),
-        style: z.string().optional(),
+        referenceImageUrls: z.array(z.string().max(2048)).max(8).optional(),
+        style: z.string().max(2000).optional(),
         model: z.enum(IMAGE_GEN_MODELS).optional(),
-        poyoAspectRatio: z.string().optional(),
+        poyoAspectRatio: z.string().max(32).optional(),
         // Generic aspect ratio (the 比例 selector) — used by kie image models,
         // clamped per-model server-side.
         aspectRatio: z.string().max(32).optional(),
@@ -1230,13 +1230,13 @@ export const imageGenRouter = router({
         imageResolution: z.enum(["0.5K", "1K", "2K", "3K", "4K"]).optional(),
         imageN: z.number().int().min(1).max(15).optional(),
         imageOutputFormat: z.enum(["png", "jpg", "jpeg", "webp"]).optional(),
-        widthAndHeight: z.string().optional(),
+        widthAndHeight: z.string().max(64).optional(),
         quality: z.enum(["720p", "1080p"]).optional(),
         batchSize: z.union([z.literal(1), z.literal(4)]).optional(),
         seed: z.number().int().optional(),
         enhancePrompt: z.boolean().optional(),
         // Reve specific params
-        reveAspectRatio: z.string().optional(),
+        reveAspectRatio: z.string().max(32).optional(),
         // v2 image endpoints (reve / seedream / flux-pro) use coarse K-tier
         // labels rather than px-based 720p/1080p (those are Soul-only).
         reveResolution: z.enum(["1K", "2K", "4K"]).optional(),
