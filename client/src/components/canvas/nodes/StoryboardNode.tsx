@@ -367,6 +367,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     const built = buildStoryboardGenInput({
       id, payload, nodes: allNodes, edges: allEdges,
       kieTempKey: localStorage.getItem("kie:tempKey"),
+      projectId: data.projectId, // 归属项目→入素材库（与 ImageGen/批量视频同口径，此前漏）
     });
     if (built.blocked) { toast.error(built.blocked); return; }
     const submit = () => {

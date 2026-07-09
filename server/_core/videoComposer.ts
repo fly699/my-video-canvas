@@ -1088,6 +1088,12 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       ...inputArgs,
       "-filter_complex", graph.filterComplex,
       "-map", graph.outV, "-map", graph.outA,
+      // 片长=画面长：独立音轨（如拖过片尾的背景音乐）经 amix(duration=longest) 会让 [outa] 长于视频，
+      // 无 -shortest 时容器时长取音频长度 → 画面在末尾冻结、且回报的 duration(=curDur) 与文件不符。
+      // -shortest 把输出裁到最短流=视频长度。安全前提：本图基轨每段都发等长音频（真声或 anullsrc 静音），
+      // 故 [outa] 恒 ≥ 视频长度，-shortest 只会裁音频尾、绝不会截断画面。真机 ffprobe 验证：无它音频 10s/
+      // 视频 3s 不一致，加它后统一为 3s。
+      "-shortest",
       ...vc,
       ...aCodec,
       ...containerArgs,

@@ -203,8 +203,8 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
 
   const genOne = async (r: ShotRow): Promise<"done" | "error"> => {
     if (imgComfyMode) return prepareComfyImageOne(r);
-    const { nodes, edges } = useCanvasStore.getState();
-    const b = buildStoryboardGenInput({ id: r.id, payload: r.payload, nodes, edges, kieTempKey: localStorage.getItem("kie:tempKey") });
+    const { nodes, edges, projectId } = useCanvasStore.getState();
+    const b = buildStoryboardGenInput({ id: r.id, payload: r.payload, nodes, edges, kieTempKey: localStorage.getItem("kie:tempKey"), projectId: projectId ?? undefined });
     if (b.blocked) return "error";
     try {
       const res = await utils.client.imageGen.generate.mutate(b.input as Parameters<typeof utils.client.imageGen.generate.mutate>[0]);
