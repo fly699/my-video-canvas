@@ -20,6 +20,7 @@ import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
 import { Depth3DViewer } from "../Depth3DViewer";
 import { Model3DViewer } from "../Model3DViewer";
+import { confirmDialog } from "@/components/ui/dialogService";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 import { PromptDock } from "../PromptDock";
 import { RefHeroPreview } from "../RefHeroPreview";
@@ -142,6 +143,16 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // B 档「真3D」：把选中图交 Poyo Tripo3D 图生 .glb 网格，完整 360° 环绕后截图重绘。复用 pendingGen3d。
   const [model3dSrc, setModel3dSrc] = useState<string | null>(null);
   const [pendingGen3d, setPendingGen3d] = useState(false);
+  // 图生 3D 是付费操作（Tripo3D 图生 30–60 credits、耗时 1–3 分钟），开窗前先确认费用。
+  const openTrue3d = useCallback(async (url: string) => {
+    if (!url) return;
+    const ok = await confirmDialog({
+      title: "生成真 3D 模型？",
+      message: "将调用 Tripo3D 把这张图生成为可 360° 环绕的 3D 网格。约消耗 30–60 credits，通常需 1–3 分钟。",
+      confirmLabel: "生成",
+    });
+    if (ok) setModel3dSrc(url);
+  }, []);
   // Multi-reference-image list + left-docked expandable strip.
   const refImages = useReferenceImages(id, payload);
   // 上游图像（图像生成 / ComfyUI 图像·自定义 / 素材 / 分镜）自动作为参考图填充——
@@ -460,7 +471,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           3D 换视角
         </button>
         <button
-          onClick={() => setModel3dSrc(payload.imageUrl!)}
+          onClick={() => openTrue3d(payload.imageUrl!)}
           title="图生真 3D 网格（Tripo3D），完整 360° 环绕后从新视角重绘"
           className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
           style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
@@ -1169,11 +1180,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); setView3dSrc(img.url); }}
-                    title="把这张参考图虚拟化为 3D，拖拽换视角后重绘"
+                    title="把这张参考图虚拟化为伪 3D（深度位移），拖拽换视角后重绘"
                     className="nodrag absolute bottom-1 right-1 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}
                   >
                     <Rotate3d style={{ width: 12, height: 12 }} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); void openTrue3d(img.url); }}
+                    title="图生真 3D 网格（Tripo3D），完整 360° 环绕后从新视角重绘"
+                    className="nodrag absolute bottom-1 left-1 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ background: "oklch(0 0 0 / 0.7)", color: "var(--c-t1)" }}
+                  >
+                    <Boxes style={{ width: 12, height: 12 }} />
                   </button>
                 </div>
               ))}
