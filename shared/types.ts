@@ -506,6 +506,17 @@ export interface ImageGenNodeData {
   imageUrlSource?: string;
   imageUrlSources?: string[];
   imageUrlSourceAt?: number; // ms epoch when generated (for TTL heuristics)
+  /** 生成版本历史（#5 一键回滚）：每产出一张新图追加一条快照，最新在前，最多 12 条。
+   *  回滚 = 把某条快照的 url(s) 写回当前 imageUrl/imageUrls，可来回翻看历次重绘结果。 */
+  resultHistory?: ResultSnapshot[];
+}
+
+/** 一次生成结果的快照（用于节点级「版本历史 + 回滚」）。 */
+export interface ResultSnapshot {
+  url: string;
+  urls?: string[];      // 批量结果的全部图（回滚时一并恢复）
+  prompt?: string;      // 产出时的提示词（hover 可看当时用的词）
+  at: number;           // ms epoch
 }
 
 // ── 3D 导演台（Director's Desk）─────────────────────────────────────────────
