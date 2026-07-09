@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 import { ComfyWorkflowImportWizard, type ImportWizardResult } from "../ComfyWorkflowImportWizard";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
@@ -426,7 +427,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     } finally { setImporting(false); }
   }, [handleAnalyze, toApiThenAnalyze]);
 
+  // 批量「运行全部」进行中：runner 用独立 mutation 实例跑本节点、并不写本节点 payload.status，
+  // 故 isProcessing 为 false、手动「运行」会对同一节点再发一次 → 双扣费/占卡。批量中禁用手动运行。
+  const batchRunning = useWorkflowRunState().running;
+
   const handleRun = useCallback(async () => {
+    if (batchRunning) { toast.error("批量运行进行中，请等待完成后再单独运行"); return; }
     const workflowJson = payload.workflowJson ?? "";
     if (!workflowJson.trim()) { toast.error("请先加载 Workflow JSON"); return; }
     // Guard against a stale binding map: if any param binding points at a node id
@@ -566,7 +572,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       update({ status: "failed", errorMessage: msg, progress: undefined }, true);
       toast.error("执行失败：" + msg.slice(0, 120));
     }
-  }, [executeMutation, id, data.projectId, payload, update]);
+  }, [executeMutation, id, data.projectId, payload, update, batchRunning]);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1648,7 +1654,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 color: isProcessing ? "var(--c-t3)" : "#fff", fontSize: 13, fontWeight: 700, fontFamily: "var(--font-sans)",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
               }}
-              disabled={isProcessing}
+              disabled={isProcessing || batchRunning}
               onClick={handleRun}
             >
               {isProcessing

@@ -96,21 +96,36 @@ export async function runCodexText(opts: { messages: OAMessage[]; timeoutMs: num
   const baseArgs = ["exec", "--skip-git-repo-check", "--sandbox", "read-only", ...(opts.model ? ["-m", opts.model] : []), ...imageArgs, "-"];
   const { cmd, args, shell } = resolveCodexSpawn(resolveCodexBin(), baseArgs);
   return new Promise((resolve) => {
-    let out = "", err = "", done = false, spawnErr: string | null = null;
-    const child = spawn(cmd, args, { cwd: tmpdir(), env: process.env, stdio: ["pipe", "pipe", "pipe"], shell });
-    const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } }, opts.timeoutMs);
-    child.stdout?.on("data", (d) => { out += String(d); });
-    child.stderr?.on("data", (d) => { err += String(d); });
-    try { child.stdin?.write(prompt); child.stdin?.end(); } catch { /* stdin 不可用 */ }
+    let out = "", err = "", done = false, spawnErr: string | null = null, killed = false;
+    // detached（仅 POSIX）让子进程成为进程组组长——超时时可整组 SIGKILL，连带 codex 起的孙进程；
+    // 否则只杀直接子进程、孙进程仍持有 stdio 管道致 'close' 不触发、Promise 卡死（桥接超时形同虚设）。
+    const child = spawn(cmd, args, { cwd: tmpdir(), env: process.env, stdio: ["pipe", "pipe", "pipe"], shell, detached: process.platform !== "win32" });
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (code?: number | null) => {
-      if (done) return; done = true; clearTimeout(timer); cleanup();
+      if (done) return; done = true; clearTimeout(timer); if (fallbackTimer) clearTimeout(fallbackTimer); cleanup();
       if (spawnErr) return resolve({ text: `无法启动 codex：${spawnErr}。请在服务器上 npm i -g @openai/codex 并【重启本服务】（新装的 CLI 要重启后才可见）；若装在非默认位置，设 CODEX_BIN=codex.cmd 的完整路径（Windows 标准路径 C:\\Users\\你\\AppData\\Roaming\\npm\\codex.cmd 会自动探测，无需配置）。`, isError: true });
+      // 超时被中止 → 明确报错，不再把半截 stdout 当正常回复掩盖真超时（与 claudeBridge 一致）。
+      if (killed) return resolve({ text: `本机模型生成超时被中止（>${Math.round(opts.timeoutMs / 1000)}s）。复杂请求较慢，可调高超时或减少一次性规划量。` + (err ? `\n${err.slice(0, 300)}` : ""), isError: true });
       const text = out.trim();
       if (!text || (typeof code === "number" && code !== 0)) {
         return resolve({ text: pickCodexErrorDetail(out, err, code), isError: true });
       }
       resolve({ text, isError: false });
     };
+    const killTree = () => {
+      try {
+        if (process.platform === "win32") { spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"]); }
+        else if (child.pid) { process.kill(-child.pid, "SIGKILL"); }
+      } catch { try { child.kill("SIGKILL"); } catch { /* gone */ } }
+    };
+    const timer = setTimeout(() => {
+      killed = true; killTree();
+      // 兜底：整组 kill 后若 'close' 仍未触发（孙进程管道未释放），5s 后强制收敛 Promise。
+      fallbackTimer = setTimeout(() => finish(null), 5000);
+    }, opts.timeoutMs);
+    child.stdout?.on("data", (d) => { out += String(d); });
+    child.stderr?.on("data", (d) => { err += String(d); });
+    try { child.stdin?.write(prompt); child.stdin?.end(); } catch { /* stdin 不可用 */ }
     child.on("error", (e) => { spawnErr = e instanceof Error ? e.message : String(e); finish(null); });
     child.on("close", (code) => finish(code));
   });

@@ -31,7 +31,7 @@ const accent = "oklch(0.65 0.18 190)";
 const accentA = (a: number) => `oklch(0.65 0.18 190 / ${a})`;
 
 export const PostProcessNode = memo(function PostProcessNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
 
   const selectedEffects: string[] = payload.selectedEffects ?? [];

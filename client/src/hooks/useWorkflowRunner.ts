@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
+import { compareUpstreamNodes } from "@/lib/inputOrder";
 import { toast } from "sonner";
 import type { NodeType, WorkflowParamBinding, StoryboardNodeData, ImageGenNodeData, NodeData, ComfyuiWorkflowNodeData } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
@@ -112,16 +113,30 @@ function autoDetectInputImage(
   return undefined;
 }
 
+/** 目标节点的上游源，按与逐节点按钮/参考图取值同一口径排序（标题尾号→Y→连接序）。
+ *  run-all 与逐节点按钮必须同序，否则 merge 段落顺序、转场/配音对位在两条路径下漂移。 */
+function sortedIncomingSources(
+  targetId: string,
+  edges: { source: string; target: string }[],
+  nodes: CanvasNode[],
+): CanvasNode[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  return edges
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => e.target === targetId)
+    .sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i))
+    .map(({ e }) => byId.get(e.source))
+    .filter((n): n is CanvasNode => !!n);
+}
+
 /** Auto-detect the first available video URL from nodes connected into targetId. */
 function autoDetectInputVideo(
   targetId: string,
   edges: { source: string; target: string }[],
   nodes: CanvasNode[],
 ): string | undefined {
-  for (const edge of edges) {
-    if (edge.target !== targetId) continue;
-    const src = nodes.find((n) => n.id === edge.source);
-    if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
+  for (const src of sortedIncomingSources(targetId, edges, nodes)) {
+    if (!VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
     const payload = src.data.payload as Record<string, unknown>;
     if (!isVideoAsset(src.data.nodeType, payload)) continue;
     const url = getNodeVideoUrl(payload);
@@ -159,10 +174,8 @@ function collectInputVideoUrls(
   nodes: CanvasNode[],
 ): string[] {
   const urls: string[] = [];
-  for (const edge of edges) {
-    if (edge.target !== targetId) continue;
-    const src = nodes.find((n) => n.id === edge.source);
-    if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
+  for (const src of sortedIncomingSources(targetId, edges, nodes)) {
+    if (!VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
     const payload = src.data.payload as Record<string, unknown>;
     if (!isVideoAsset(src.data.nodeType, payload)) continue;
     const url = getNodeVideoUrl(payload);
@@ -237,6 +250,7 @@ export function useWorkflowRunner() {
   const aiEnhanceMutation = trpc.aiEnhance.enhance.useMutation();
   const analyzeImageMutation = trpc.aiEnhance.analyzeImage.useMutation();
   const videoTaskMutation = trpc.videoTasks.create.useMutation();
+  const runnerUtils = trpc.useUtils();
   const clipMutation = trpc.clip.trimVideo.useMutation();
   const mergeMutation = trpc.merge.mergeVideos.useMutation();
   const subtitleTranscribeMutation = trpc.subtitle.transcribe.useMutation();
@@ -536,6 +550,41 @@ export function useWorkflowRunner() {
           useCanvasStore
             .getState()
             .updateNodeData(nodeId, { taskId: task.id, status: "processing" }, true);
+          // 关键：video_task 的结果 URL 由后台轮询器【异步】回填 payload.resultVideoUrl。若这里提交完就
+          // 返回 "ok"，同一次「运行全部」里紧邻下一层的 clip/merge/字幕等下游会立刻执行、此刻还读不到
+          // resultVideoUrl → 静默报「未找到视频输入」。故在此轮询到终态再返回，把结果写回 payload 供下游
+          // 同轮读取。语义与 VideoTaskNode 的 poll 消费者一致（succeeded/failed + resultVideoUrl）。
+          {
+            const POLL_MS = 5000, MAX_MS = 15 * 60_000, MAX_FAILS = 5;
+            const t0 = Date.now();
+            let fails = 0, resultUrl: string | undefined, terminalFail = false, failMsg = "";
+            while (Date.now() - t0 < MAX_MS) {
+              if (abortRef.current) return "fail";
+              await new Promise((r) => setTimeout(r, POLL_MS));
+              if (abortRef.current) return "fail";
+              try {
+                const polled = await runnerUtils.videoTasks.poll.fetch({ id: task.id });
+                fails = 0;
+                if (polled?.status === "succeeded") { resultUrl = polled.resultVideoUrl ?? undefined; break; }
+                if (polled?.status === "failed") { terminalFail = true; failMsg = polled.errorMessage ?? "视频生成失败"; break; }
+              } catch {
+                if (++fails >= MAX_FAILS) { terminalFail = true; failMsg = "轮询视频任务多次失败"; break; }
+              }
+            }
+            if (terminalFail) {
+              useCanvasStore.getState().updateNodeData(nodeId, { status: "failed", errorMessage: failMsg }, true);
+              toast.error(`节点 "${node.data.title}"：${failMsg}`);
+              failed.push(nodeId);
+              return "fail";
+            }
+            if (!resultUrl) {
+              // 未在窗口内出结果——任务仍在后台跑（节点自身的轮询会继续回填），本轮不派发下游。
+              toast(`节点 "${node.data.title}"：视频仍在生成，完成后请重跑下游`);
+              failed.push(nodeId);
+              return "fail";
+            }
+            useCanvasStore.getState().updateNodeData(nodeId, { resultVideoUrl: resultUrl, status: "succeeded" }, true);
+          }
           completed.push(nodeId);
           return "ok";
 

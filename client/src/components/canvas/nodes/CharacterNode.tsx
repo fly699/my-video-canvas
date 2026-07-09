@@ -80,7 +80,7 @@ const KINDS: { id: CharacterKind; label: string; icon: React.ReactNode }[] = [
 ];
 
 export const CharacterNode = memo(function CharacterNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
   // 左侧吸附参考图预览窗（与内嵌主图/备用视角网格并存、同源同步）。无按钮：悬停标题栏

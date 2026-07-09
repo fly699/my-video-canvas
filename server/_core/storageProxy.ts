@@ -9,6 +9,42 @@ import {
 import { verifyUploadToken } from "./uploadToken";
 import { authorizeDownload } from "./downloadAuth";
 import { isRequestAuthenticated, resolveRequestUser } from "./context";
+import { isChatMember, getAssetByStorageKey, getProjectAccess } from "../db";
+
+/**
+ * 存储对象读取的对象级授权（IDOR 收敛，#93）。返回 true 放行、false 拒绝。纯函数（依赖注入），便于单测。
+ * 策略（零回归）：
+ *  - 管理员放行（审核）。
+ *  - chat/{convId}/：仅该会话成员。
+ *  - u/{userId}/ 属主直接放行（覆盖其全部自有对象，含未入库的上传参考图）。
+ *  - u/{userId}/ 与 generated-videos/ 的**已入库产物**（assets 表可反查）：非属主时须对其所属项目有访问权，
+ *    否则拒绝——堵住「拿到/猜到 key 就跨用户读他人产物」。
+ *  - 其余（未入库 key / 其它前缀）保持放行，靠随机不可枚举 key 兜底，避免误伤上传/参考图（不断协作）。
+ */
+export async function authorizeStorageKeyRead(
+  key: string,
+  user: { id: number; role?: string | null } | null,
+  deps: {
+    isChatMember: (conversationId: number, userId: number) => Promise<boolean>;
+    getAssetByStorageKey: (k: string) => Promise<{ userId: number; projectId: number | null } | null>;
+    getProjectAccess: (projectId: number, userId: number) => Promise<unknown | null | undefined>;
+  },
+): Promise<boolean> {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  const chatM = /^chat\/(\d+)\//.exec(key);
+  if (chatM) return await deps.isChatMember(Number(chatM[1]), user.id).catch(() => false);
+  const uM = /^u\/(\d+)\//.exec(key);
+  if (uM || key.startsWith("generated-videos/")) {
+    if (uM && Number(uM[1]) === user.id) return true; // 属主
+    const asset = await deps.getAssetByStorageKey(key).catch(() => null);
+    if (!asset) return true; // 未入库（如上传参考图）→ 保持既有放行
+    if (asset.userId === user.id) return true; // 产物属主
+    if (asset.projectId != null && (await deps.getProjectAccess(asset.projectId, user.id).catch(() => null))) return true; // 项目协作者
+    return false; // 已入库产物、非属主、无项目访问权 → 拒绝
+  }
+  return true;
+}
 import { isForceStorageRelayEnabled, isDownloadWatermarkEnabled } from "./storageConfig";
 import { isTunnelRequest } from "./tunnelGate";
 import { getTunnelListenerPort, getTunnelGate } from "./tunnel";
@@ -62,6 +98,14 @@ export function registerStorageProxy(app: Express) {
     if (!await isRequestAuthenticated(req)) {
       res.status(401).send("Unauthorized");
       return;
+    }
+
+    // 对象级授权（IDOR 收敛，#93）：聊天附件按会话成员、u/{userId}/ 与 generated-videos/ 的已入库
+    // 产物按属主/项目访问权收敛；未入库 key 保持放行（随机不可枚举）。详见 authorizeStorageKeyRead。
+    {
+      const user = await resolveRequestUser(req);
+      const ok = await authorizeStorageKeyRead(key, user, { isChatMember, getAssetByStorageKey, getProjectAccess });
+      if (!ok) { res.status(403).send("Forbidden"); return; }
     }
 
     // Strict download authorization (when enabled): a ?download=1 request for an

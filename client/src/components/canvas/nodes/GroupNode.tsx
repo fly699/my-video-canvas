@@ -1,6 +1,7 @@
 import { memo, useState, useEffect } from "react";
 import { NodeResizer, NodeToolbar, Position } from "@xyflow/react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 import type { GroupNodeData } from "../../../../../shared/types";
 import { FolderOpen, FolderClosed, Maximize2, Play, Ungroup } from "lucide-react";
@@ -25,7 +26,7 @@ const GROUP_COLORS = [
 ];
 
 export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) {
-  const { updateNodeData, updateNodeTitle, fitGroupToMembers, toggleGroupCollapsed, ungroup, requestRun } = useCanvasStore();
+  const { updateNodeData, updateNodeTitle, fitGroupToMembers, toggleGroupCollapsed, ungroup, requestRun } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, updateNodeTitle: s.updateNodeTitle, fitGroupToMembers: s.fitGroupToMembers, toggleGroupCollapsed: s.toggleGroupCollapsed, ungroup: s.ungroup, requestRun: s.requestRun })));
   const { uiStyle } = useUIStyle();
   const isStudio = uiStyle === "studio";
   const payload = data.payload;

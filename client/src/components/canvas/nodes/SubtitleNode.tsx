@@ -2,6 +2,7 @@ import { memo, useState, useCallback } from "react";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import type { SubtitleNodeData, SubtitleEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { confirmDialog } from "@/components/ui/dialogService";
@@ -70,7 +71,7 @@ function formatTime(s: number): string {
 }
 
 export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: Props) {
-  const { updateNodeData, nodes, edges } = useCanvasStore();
+  const { updateNodeData, nodes, edges } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, nodes: s.nodes, edges: s.edges })));
   const { resolve } = useNodeDefaultModels();
   const disabledModels = useDisabledModels();
   const payload = data.payload;

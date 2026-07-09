@@ -2,6 +2,24 @@ import { describe, it, expect } from "vitest";
 import { buildShotSubtitles } from "./shotSubtitles";
 
 describe("buildShotSubtitles", () => {
+  it("never overlaps adjacent entries even with short lines (0.3s floor doesn't bleed into the next)", () => {
+    // One shot [0, 0.8] with 3 short lines → each wants ~0.266s (< the 0.3s floor). Flooring must not
+    // make a line's displayed end exceed the next line's start (overlap), nor cross the shot boundary.
+    const entries = buildShotSubtitles({
+      segStarts: [0],
+      segDialogues: ["甲：好\n乙：走\n丙：来"],
+      totalDuration: 0.8,
+    });
+    expect(entries.length).toBe(3);
+    for (let i = 1; i < entries.length; i++) {
+      expect(entries[i].start).toBeGreaterThanOrEqual(entries[i - 1].end - 1e-9); // no overlap
+    }
+    for (const e of entries) {
+      expect(e.end).toBeLessThanOrEqual(0.8 + 1e-9); // never crosses the shot/video boundary
+      expect(e.end).toBeGreaterThan(e.start);        // positive duration
+    }
+  });
+
   it("aligns one entry per dialogue line, strips role prefixes, uses segStarts/totalDuration", () => {
     const entries = buildShotSubtitles({
       segStarts: [0, 5],

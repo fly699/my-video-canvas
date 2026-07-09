@@ -2,6 +2,7 @@ import { memo, useCallback } from "react";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import type { OverlayNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -50,7 +51,7 @@ const labelStyle: React.CSSProperties = {
 const accentColor = "oklch(0.65 0.18 30)";
 
 export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Props) {
-  const { updateNodeData, edges, nodes } = useCanvasStore();
+  const { updateNodeData, edges, nodes } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, edges: s.edges, nodes: s.nodes })));
   const payload = data.payload;
 
   const overlayMutation = trpc.overlay.process.useMutation({

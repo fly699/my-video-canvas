@@ -53,7 +53,7 @@ export function ConversationList({ onSelect }: { onSelect?: () => void } = {}) {
   }
 
   return (
-    <aside style={{ width: 220, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: C.bg2, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <aside style={{ width: 220, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: C.bg2, display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div style={{ padding: "9px 10px", display: "flex", alignItems: "center", gap: 6, borderBottom: `1px solid ${C.border}` }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索会话…" style={{
           flex: 1, padding: "6px 10px", borderRadius: 8, fontSize: 12, outline: "none",

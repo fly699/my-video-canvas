@@ -1253,6 +1253,25 @@ export async function claimVideoTaskForSubmit(id: number): Promise<boolean> {
   return affected === 1;
 }
 
+/**
+ * Atomically transition a task from `processing` → terminal (succeeded/failed),
+ * returning true iff THIS caller won. 客户端 `videoTasks.poll` 与后台 `videoTaskPoller`
+ * 会各自处理同一任务的 processing→终态；无原子占用时二者可各 record 一次产物 → 重复素材行 +
+ * 重复审计。以「WHERE status='processing'」条件更新只让首个终态转移生效，赢家(affected=1)才
+ * record/audit，输家跳过。同时防「succeeded↔failed」终态互相覆盖。
+ */
+export async function completeVideoTaskIfProcessing(id: number, data: Partial<InsertVideoTask>): Promise<boolean> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devUpdateVideoTask(id, data); return true; } throw new Error("DB unavailable"); }
+  const result = await db
+    .update(videoTasks)
+    .set(data)
+    .where(and(eq(videoTasks.id, id), eq(videoTasks.status, "processing")));
+  const header = Array.isArray(result) ? result[0] : result;
+  const affected = (header as { affectedRows?: number })?.affectedRows ?? 0;
+  return affected === 1;
+}
+
 export async function deleteVideoTask(id: number) {
   const db = await getDb();
   if (!db) { if (DEV_MODE) { dev.devDeleteVideoTask(id); return; } throw new Error("DB unavailable"); }

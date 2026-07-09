@@ -147,7 +147,7 @@ const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 // ── Main component ────────────────────────────────────────────────────────────
 
 export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const { resolve } = useNodeDefaultModels();
   const payload = data.payload;
 

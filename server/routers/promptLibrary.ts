@@ -118,7 +118,12 @@ export const promptLibraryRouter = router({
       for (const it of input.items) {
         if (!mine.has(it.id)) continue;
         const patch: Record<string, unknown> = { sortOrder: it.sortOrder };
-        if (it.slot !== undefined) { patch.slot = it.slot; patch.slotKind = it.slot == null ? null : (it.slotKind ?? "prompt"); }
+        if (it.slot !== undefined) {
+          patch.slot = it.slot; patch.slotKind = it.slot == null ? null : (it.slotKind ?? "prompt");
+          // 维护「每槽位至多一条」不变量——与 create/update 一致。否则一次 reorder 可把两条设成同一槽位、
+          // 或占用批外条目已占的槽位，客户端 favoriteSlots 只取首个 → 另一条静默丢失。批内同槽位时后者胜。
+          await clearSlotOccupant(ctx.user.id, it.slot, it.id);
+        }
         await db.updatePromptLibrary(it.id, patch);
       }
       return { success: true };

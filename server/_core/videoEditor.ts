@@ -800,10 +800,15 @@ export interface BurnSubtitleOptions {
 }
 
 function formatSRTTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  const ms = Math.round((seconds % 1) * 1000);
+  // 先把总时长四舍五入到整毫秒再拆分——否则对 59.9997 这类值，分别 Math.round(小数*1000) 会得到
+  // ms=1000（四位、且不向秒/分/时进位），产出非法时间码 00:00:59,1000（应为 00:01:00,000）。
+  // 与 formatASSTime 的边界处理对齐，且能正确连锁进位。
+  const totalMs = Math.max(0, Math.round(seconds * 1000));
+  const ms = totalMs % 1000;
+  const totalSec = (totalMs - ms) / 1000;
+  const s = totalSec % 60;
+  const m = Math.floor(totalSec / 60) % 60;
+  const h = Math.floor(totalSec / 3600);
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
 }
 

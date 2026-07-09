@@ -251,8 +251,13 @@ export function sliceEditorDoc(doc: EditorDoc, start: number, end: number): Edit
       const rightTrim = cEnd - newEndTL;       // timeline secs cut from the right
       const speed = c.speed ?? 1;
       const durationBased = c.kind === "image" || c.kind === "text";
-      const newTrimIn = durationBased ? 0 : c.trimIn + leftTrim * speed;
-      const newTrimOut = durationBased ? Math.max(0.05, newEndTL - newStartTL) : c.trimOut - rightTrim * speed;
+      // reverse(倒放)时，时间轴左端映射到源的 trimOut 侧（sourceTimeAt: trimOut-off），
+      // 故切左边应减 trimOut、切右边应加 trimIn——与正向相反。交换 left/right 对 trim 的作用，
+      // 否则倒放片段做「导出选定范围」会取到源里镜像错位的另一段。
+      const inTrim = c.reverse ? rightTrim : leftTrim;
+      const outTrim = c.reverse ? leftTrim : rightTrim;
+      const newTrimIn = durationBased ? 0 : c.trimIn + inTrim * speed;
+      const newTrimOut = durationBased ? Math.max(0.05, newEndTL - newStartTL) : c.trimOut - outTrim * speed;
       // keyframes are clip-relative timeline seconds → shift by -leftTrim, drop those
       // that fall outside the surviving span.
       const newDurTL = newEndTL - newStartTL;

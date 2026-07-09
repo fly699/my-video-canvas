@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
+import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
 import { useHoverStore } from "../../../hooks/useHoverStore";
@@ -221,8 +222,13 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   const usesClip = tpl === "wan_t2v" || tpl === "wan_i2v" || tpl === "ltxv";
   const usesClipVision = isWanI2V;
 
+  // 批量「运行全部」进行中：runner 用独立 mutation 实例跑本节点，genMutation.isPending 为 false，
+  // 手动「运行」会对同一节点再发一次 → 双扣费/占卡。批量运行中禁用手动运行。
+  const batchRunning = useWorkflowRunState().running;
+
   const handleGenerate = () => {
     if (genMutation.isPending) return;
+    if (batchRunning) { toast.error("批量运行进行中，请等待完成后再单独运行"); return; }
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
     if (!payload.ckpt?.trim()) { toast.error("请先填写模型名称"); return; }
@@ -982,7 +988,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         {/* ── Action button ── */}
         <button
           onClick={handleGenerate}
-          disabled={genMutation.isPending || !payload.prompt?.trim() || !payload.ckpt?.trim() || payload.status === "processing"}
+          disabled={genMutation.isPending || batchRunning || !payload.prompt?.trim() || !payload.ckpt?.trim() || payload.status === "processing"}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
             background: genMutation.isPending || payload.status === "processing"

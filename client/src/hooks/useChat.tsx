@@ -28,6 +28,16 @@ export interface ConversationSummary {
 
 export interface JoinableRoom { id: number; title: string | null; isPrivate: boolean; mode: string }
 
+// Monotonic client-side message id for optimistic echoes and E2E-relayed messages (which
+// have no server row id). Bare Date.now()(+rand) collided when two were minted in the same
+// millisecond → appendLocalHistory dedupes by id and silently dropped one on the next reload.
+// Strictly-increasing + large (≫ any real DB id) avoids both collisions and server-id clashes.
+let _lastLocalMsgId = 0;
+function nextLocalMsgId(): number {
+  _lastLocalMsgId = Math.max(_lastLocalMsgId + 1, Date.now() * 1000);
+  return _lastLocalMsgId;
+}
+
 interface ChatContextValue {
   conversations: ConversationSummary[];
   refetchConversations: () => void;
@@ -127,8 +137,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const myUserIdRef = useRef<number | null>(null);
   const convTitleRef = useRef<Map<number, string>>(new Map());
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // socket 连接 effect 依赖数组为 []（只建一次连接），若直接引用 reloadMessages/handleRelay/
+  // handleFileChunk 会冻结成首帧闭包——那时 conversations 仍是 []，导致：重连后 serverless 会话
+  // 被误当 server 拉取而清空、DM 中继/文件用错「group」密钥派生 →「[无法解密]」。用 ref 承接最新
+  // 实例，socket 回调一律走 ref.current，始终拿到带最新 conversations 的版本。
+  const reloadMessagesRef = useRef<(convId: number) => Promise<void>>(async () => {});
+  const handleRelayRef = useRef<(p: ChatRelayPayload) => Promise<void>>(async () => {});
+  type FileChunkFrame = { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: ChatFileRef; encrypted?: boolean; senderId: number; senderName?: string };
+  const handleFileChunkRef = useRef<(f: FileChunkFrame) => Promise<void>>(async () => {});
   // serverless inbound file reassembly
-  const fileBufs = useRef<Map<string, { chunks: Uint8Array[]; meta: ChatFileRef }>>(new Map());
+  const fileBufs = useRef<Map<string, { chunks: Uint8Array[]; meta: ChatFileRef; received: Set<number>; total: number | null; done: boolean }>>(new Map());
 
   const sendMessageMut = trpc.chat.sendMessage.useMutation();
   const uploadFileMut = trpc.chat.uploadFile.useMutation();
@@ -222,7 +240,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const active = activeIdRef.current;
       if (active != null) {
         socket.emit("chat:join", { conversationId: active });
-        void reloadMessages(active); // resync messages missed while disconnected
+        void reloadMessagesRef.current(active); // resync（走 ref，避免首帧 conversations=[] 把 serverless 会话清空）
       }
     });
     socket.on("disconnect", () => setConnected(false));
@@ -268,12 +286,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     });
     socket.on("conversation:mode-changed", () => {
       utils.chat.listConversations.invalidate();
-      if (activeIdRef.current) void reloadMessages(activeIdRef.current);
+      if (activeIdRef.current) void reloadMessagesRef.current(activeIdRef.current);
     });
 
-    socket.on("chat:relay", (payload: ChatRelayPayload) => { void handleRelay(payload); });
+    socket.on("chat:relay", (payload: ChatRelayPayload) => { void handleRelayRef.current(payload); });
     socket.on("chat:file-chunk", (frame: { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: ChatFileRef; senderId: number; senderName?: string }) => {
-      void handleFileChunk(frame);
+      void handleFileChunkRef.current(frame);
     });
 
     return () => { socket.disconnect(); socketRef.current = null; };
@@ -352,22 +370,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     if (type === "dm") {
       const detail = await utils.chat.getConversation.fetch({ conversationId: convId });
-      const me = detail.members.find((m) => m.name); // any; we need peer
-      const myId = detail.members.length === 2 ? undefined : me?.userId;
-      void myId;
-      // peer = the member whose key we can fetch and we are not
-      const peers = detail.members;
-      const keys = await utils.chat.getPublicKeys.fetch({ userIds: peers.map((p) => p.userId) });
-      // derive with the first peer key that isn't ours — for a DM there are 2 members
+      const keys = await utils.chat.getPublicKeys.fetch({ userIds: detail.members.map((p) => p.userId) });
+      // derive with the PEER's key — must skip our own: deriveSharedKey(myPriv, myPub) is a valid
+      // ECDH self-pairing that does NOT throw, so without this guard we could derive ECDH(myPriv,myPub)
+      // (a key only we know) while the peer derives ECDH(peerPriv,myPub) → keys diverge → 永久「[无法解密]」。
+      // ECDH is symmetric so ECDH(myPriv,peerPub)==ECDH(peerPriv,myPub); order among peers doesn't matter.
       for (const k of keys) {
+        if (myUserId != null && k.userId === myUserId) continue; // never self-pair
         try {
           const shared = await deriveSharedKey(privateKeyRef.current, k.publicKeyJwk as JsonWebKey);
-          // store and return — both sides derive the same key regardless of order
           convKeyRef.current.set(convId, shared);
           return shared;
         } catch { /* try next */ }
       }
-      return null;
+      return null; // peer hasn't published a key yet → wait rather than mint a garbage key
     }
 
     // group: converge on ONE room key. Priority ladder (never blindly mint):
@@ -466,7 +482,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     let text = DECRYPT_FAIL;
     if (key) { try { text = await decryptText(key, { ciphertext: payload.ciphertext, iv: payload.iv }); } catch { /* keep placeholder */ } }
     const wire: StoredChatMsg = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: nextLocalMsgId(),
       conversationId: payload.conversationId,
       senderId: payload.senderId,
       senderName: payload.senderName,
@@ -484,6 +500,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
     notifyIncoming({ conversationId: payload.conversationId, senderId: payload.senderId, senderName: payload.senderName, content: text, hasMedia: !!payload.fileMeta });
   }, [conversations, getConversationKey, answerKeyRequest, utils, myUserId, persistRoomKey, reDecryptConversation, notifyIncoming]);
+  handleRelayRef.current = handleRelay;
 
   const handleFileChunk = useCallback(async (frame: { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: ChatFileRef; encrypted?: boolean; senderId: number; senderName?: string }) => {
     const conv = conversations.find((c) => c.id === frame.conversationId);
@@ -493,7 +510,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     let entry = fileBufs.current.get(frame.transferId);
     if (!entry) {
       if (!frame.meta) return;
-      entry = { chunks: [], meta: frame.meta };
+      entry = { chunks: [], meta: frame.meta, received: new Set(), total: null, done: false };
       fileBufs.current.set(frame.transferId, entry);
     }
     try {
@@ -507,24 +524,33 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       } else {
         entry.chunks[frame.seq] = raw; // plaintext fast path
       }
+      entry.received.add(frame.seq);
     } catch { return; }
-    if (frame.last) {
-      const blob = new Blob(entry.chunks as unknown as BlobPart[], { type: entry.meta.mimeType });
-      const url = URL.createObjectURL(blob);
-      fileBufs.current.delete(frame.transferId);
-      const wire: ChatWireMessage = {
-        id: Date.now() + Math.floor(Math.random() * 1000),
-        conversationId: frame.conversationId, senderId: frame.senderId,
-        senderName: frame.senderName ?? "",
-        content: "", attachments: [{ ...entry.meta, url }],
-        createdAt: new Date().toISOString(),
-      };
-      await appendLocalHistory(frame.conversationId, wire);
-      if (frame.conversationId === activeIdRef.current) setMessages((prev) => [...prev, wire]);
-      // E2E 会话收到的文件/语音也要提醒（与 server 模式一致；此前遗漏）。
-      notifyIncoming({ conversationId: frame.conversationId, senderId: frame.senderId, senderName: frame.senderName, hasMedia: true });
-    }
+    // Frames are dispatched fire-and-forget and decrypt concurrently, so the `last` frame can
+    // finish BEFORE an earlier chunk (whose seq-0 decrypt triggered the key fetch). Assembling on
+    // `last` alone could snapshot a chunks[] with undefined holes → corrupt file. Instead track the
+    // total (last frame's seq+1) and the set of received seqs, and assemble only once EVERY chunk is
+    // in — whichever frame completes the set wins (guarded by `done` so it runs exactly once).
+    if (frame.last) entry.total = frame.seq + 1;
+    if (entry.done || entry.total == null || entry.received.size < entry.total) return;
+    entry.done = true; // synchronous from here to the map delete → no re-entry race
+    const blob = new Blob(entry.chunks as unknown as BlobPart[], { type: entry.meta.mimeType });
+    const url = URL.createObjectURL(blob);
+    const meta = entry.meta;
+    fileBufs.current.delete(frame.transferId);
+    const wire: ChatWireMessage = {
+      id: nextLocalMsgId(),
+      conversationId: frame.conversationId, senderId: frame.senderId,
+      senderName: frame.senderName ?? "",
+      content: "", attachments: [{ ...meta, url }],
+      createdAt: new Date().toISOString(),
+    };
+    await appendLocalHistory(frame.conversationId, wire);
+    if (frame.conversationId === activeIdRef.current) setMessages((prev) => [...prev, wire]);
+    // E2E 会话收到的文件/语音也要提醒（与 server 模式一致；此前遗漏）。
+    notifyIncoming({ conversationId: frame.conversationId, senderId: frame.senderId, senderName: frame.senderName, hasMedia: true });
   }, [conversations, getConversationKey, notifyIncoming]);
+  handleFileChunkRef.current = handleFileChunk;
 
   // ── message loading on conversation switch ────────────────────────────────
   const reloadMessages = useCallback(async (convId: number) => {
@@ -543,6 +569,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     } catch { setMessages([]); }
     finally { setLoadingMessages(false); }
   }, [conversations, utils]);
+  reloadMessagesRef.current = reloadMessages;
 
   /** 加载更早历史：以当前最旧消息 id 为游标向前取一页，去重后前插；不改变滚动锚点由 UI 负责。 */
   const loadEarlierMessages = useCallback(async () => {
@@ -623,7 +650,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       socketRef.current?.emit("chat:relay", payload);
       // optimistic local echo
       const wire: ChatWireMessage = {
-        id: Date.now(), conversationId: id, senderId: -1, senderName: "我",
+        id: nextLocalMsgId(), conversationId: id, senderId: -1, senderName: "我",
         content: text, attachments: null, createdAt: new Date().toISOString(),
       };
       await appendLocalHistory(id, wire);
@@ -672,7 +699,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
       const localUrl = URL.createObjectURL(file);
       const wire: ChatWireMessage = {
-        id: Date.now(), conversationId: id, senderId: -1, senderName: "我",
+        id: nextLocalMsgId(), conversationId: id, senderId: -1, senderName: "我",
         content: "", attachments: [{ ...meta, url: localUrl }], createdAt: new Date().toISOString(),
       };
       await appendLocalHistory(id, wire);

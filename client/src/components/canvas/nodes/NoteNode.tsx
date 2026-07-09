@@ -35,7 +35,7 @@ function renderMarkdown(text: string): string {
 }
 
 export const NoteNode = memo(function NoteNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
 
   const handleChange = useCallback(

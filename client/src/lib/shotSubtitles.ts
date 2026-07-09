@@ -31,8 +31,11 @@ export function buildShotSubtitles(opts: {
     let t = start;
     for (let j = 0; j < lines.length; j++) {
       const w = Math.max(1, lines[j].text.length) / totalChars;
-      const end = j === lines.length - 1 ? start + span : t + span * w;
-      out.push({ start: round2(t), end: round2(Math.max(t + 0.3, end)), text: lines[j].text });
+      const rawEnd = j === lines.length - 1 ? start + span : t + span * w;
+      // 至少 0.3s；但不能越过本镜结束（否则侵入下一镜）。且下一行 start 必须用【抬升后】的 end 推进——
+      // 原来 t=rawEnd（未抬升），短行(span*w<0.3)时下一行 start < 上一行显示 end，两条字幕重叠约 0.25s。
+      const end = Math.min(segEnd, Math.max(t + 0.3, rawEnd));
+      out.push({ start: round2(t), end: round2(end), text: lines[j].text });
       t = end;
     }
   }

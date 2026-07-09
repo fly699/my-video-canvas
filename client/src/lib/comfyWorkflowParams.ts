@@ -49,7 +49,9 @@ export function resolveComfyFramesFromDuration(
   if (dur == null) return ownFrames; // 无上游分镜时长 → 不动
   const isTemplateDefault = ownFrames == null || COMFY_TEMPLATE_DEFAULT_FRAMES.has(ownFrames);
   if (!isTemplateDefault) return ownFrames; // 用户手调过帧数 → 尊重
-  return Math.max(1, Math.min(300, Math.round(dur * (fps > 0 ? fps : 8))));
+  // 上限与服务端 generateVideo 的 zod frames.max(256) 一致——否则 fps=60、时长≥~4.3s 时算出的
+  // frames 落在 257–300 会被服务端直接校验拒绝（报「frames 超限」）而非平滑截断。
+  return Math.max(1, Math.min(256, Math.round(dur * (fps > 0 ? fps : 8))));
 }
 
 /** 上游直连分镜的目标时长（秒）。video_task 提交时若自身未设 duration，则继承上游分镜时长，
@@ -378,9 +380,15 @@ export function detectUpstreamPrompt(
   let positive: string | undefined;
   let negative: string | undefined;
   const str = _str;
-  for (const edge of edges) {
-    if (edge.target !== targetId) continue;
-    const src = nodes.find((n) => n.id === edge.source);
+  // 多个上游文本源时，取「第一个」必须与图/视频参考取值同一优先级（标题尾号→Y→连接序），否则
+  // 主提示词来源与同节点的参考图/视频来源不一致。此前是按 edge 插入序取首个。
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = edges
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => e.target === targetId)
+    .sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  for (const { e: edge } of incoming) {
+    const src = byId.get(edge.source);
     if (!src) continue;
     const p = (src.data.payload ?? {}) as Record<string, unknown>;
     let pos: string | undefined;

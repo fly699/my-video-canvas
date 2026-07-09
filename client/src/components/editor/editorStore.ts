@@ -1,12 +1,35 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 import type { EditorDoc, Clip, ClipKind, Track, TrackType, TransformKeyframe } from "@shared/editorTypes";
-import { editorDocDuration } from "@shared/editorTypes";
+import { editorDocDuration, transformAt } from "@shared/editorTypes";
 import { arrangeClips } from "@/lib/arrangeClips";
 
 /** Visible duration of a clip on the timeline (seconds), accounting for speed. */
 export function clipDuration(c: Clip): number {
   return Math.max(0.05, (c.trimOut - c.trimIn) / (c.speed ?? 1));
+}
+
+/** Source trim overrides when cutting a clip at `offset` timeline-seconds into it,
+ *  for the timeline-left and timeline-right halves. reverse(倒放)时时间轴左端对应源的
+ *  trimOut 侧（sourceTimeAt=trimOut-off），故改的 trim 端与正向相反——否则倒放片段分割/裁剪
+ *  取到源里镜像错位的另一段。与 sliceEditorDoc 的 reverse 处理同源。纯函数。 */
+export function clipSplitTrims(
+  c: Pick<Clip, "trimIn" | "trimOut" | "speed" | "reverse">, offset: number,
+): { left: Partial<Clip>; right: Partial<Clip> } {
+  const speed = c.speed ?? 1;
+  if (c.reverse) {
+    const cut = c.trimOut - offset * speed;
+    return { left: { trimIn: cut }, right: { trimOut: cut } };
+  }
+  const cut = c.trimIn + offset * speed;
+  return { left: { trimOut: cut }, right: { trimIn: cut } };
+}
+
+/** Source trim override for trimming a clip's RIGHT edge so its visible span becomes
+ *  `newDur` seconds (start fixed). reverse 时右缘对应源 trimIn 侧，改 trimIn、保留 trimOut。纯函数。 */
+export function trimRightSource(c: Pick<Clip, "trimIn" | "trimOut" | "speed" | "reverse">, newDur: number): Partial<Clip> {
+  const speed = c.speed ?? 1;
+  return c.reverse ? { trimIn: c.trimOut - newDur * speed } : { trimOut: c.trimIn + newDur * speed };
 }
 
 // Split a clip's keyframes at `offset` (timeline seconds from the clip's start).
@@ -57,7 +80,9 @@ export function canMergeClips(a: Clip, b: Clip): boolean {
   if ((a.speed ?? 1) !== (b.speed ?? 1)) return false;
   if (!!a.reverse !== !!b.reverse) return false;
   if (Math.abs(b.start - (a.start + clipDuration(a))) > MERGE_EPS) return false; // adjacent on timeline
-  if (Math.abs(b.trimIn - a.trimOut) > MERGE_EPS) return false;                  // contiguous in source
+  // 源连续：正向时 b 的入点接 a 的出点；倒放时时间轴左端(a)对应源高端，故 a 的入点接 b 的出点。
+  const contiguous = a.reverse ? Math.abs(a.trimIn - b.trimOut) : Math.abs(b.trimIn - a.trimOut);
+  if (contiguous > MERGE_EPS) return false;
   return true;
 }
 
@@ -84,7 +109,9 @@ export function mergeClips(a: Clip, b: Clip): Clip {
     .map((k) => ({ ...k, t: k.t + durA }))
     .filter((k) => Math.abs(k.t - aMaxT) > 1e-4); // drop the boundary dup
   const keyframes = [...aKfs, ...bKfs];
-  return { ...a, trimOut: b.trimOut, keyframes: keyframes.length ? keyframes : undefined };
+  // 正向：把 a 的出点延伸到 b 的出点；倒放：把 a 的入点延伸到 b 的入点（保留各自的另一端）。
+  const trimPatch = a.reverse ? { trimIn: b.trimIn } : { trimOut: b.trimOut };
+  return { ...a, ...trimPatch, keyframes: keyframes.length ? keyframes : undefined };
 }
 
 /** Fold a run of clips (sorted by start): merge each contiguous, same-source
@@ -219,6 +246,7 @@ export interface EditorStore {
   removeClip: (clipId: string) => void;
   // transform keyframes (animation)
   addKeyframe: (clipId: string, t: number) => void;
+  setKeyframeField: (clipId: string, t: number, field: "x" | "y" | "scale" | "opacity" | "rotation", value: number) => void;
   removeKeyframe: (clipId: string, t: number) => void;
   clearKeyframes: (clipId: string) => void;
   splitClip: (clipId: string, atTime: number) => void;
@@ -288,11 +316,15 @@ export interface EditorStore {
 
 /** Build a state patch that applies `nextDoc` and records the prior doc on the
  *  undo stack (coalescing rapid bursts). `s.doc` must be non-null. */
-function withHistory(s: EditorStore, nextDoc: EditorDoc, extra: Partial<EditorStore> = {}): Partial<EditorStore> {
+// 默认按时间窗与上一步合并（连续手势：拖动/裁剪/滑块/新增+就位等）。**破坏性/结构性操作**
+// （删除/分割/合并）显式传 coalescable=false：它们各自成独立撤销步，且把时间窗「毒化」
+// (_lastMutateTs=0)，使紧邻的连续手势也不会向它合并——修复「先拖滑块、紧接着删除片段，一次
+// 撤销把两者一起回退」（#89）。这样保留「加片段后立刻拖动就位=一步撤销」的既有体验。
+function withHistory(s: EditorStore, nextDoc: EditorDoc, extra: Partial<EditorStore> = {}, coalescable = true): Partial<EditorStore> {
   const now = Date.now();
-  const coalesce = now - s._lastMutateTs < COALESCE_MS;
+  const coalesce = coalescable && now - s._lastMutateTs < COALESCE_MS;
   const past = coalesce ? s.past : [...s.past, s.doc as EditorDoc].slice(-HISTORY_CAP);
-  return { doc: nextDoc, past, future: [], dirty: true, _lastMutateTs: now, ...extra };
+  return { doc: nextDoc, past, future: [], dirty: true, _lastMutateTs: coalescable ? now : 0, ...extra };
 }
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
@@ -370,7 +402,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       if (t.id === targetTrackId) clips = [...clips, { ...clip, start }];
       return { ...t, clips };
     });
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 拖动为连续手势，合并成一步撤销
   }),
 
   trimClip: (clipId, patch) => set((s) => {
@@ -384,18 +416,19 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         const trimIn = patch.trimIn != null ? Math.max(0, patch.trimIn) : c.trimIn;
         const trimOut = patch.trimOut != null ? Math.max(trimIn + 0.05, patch.trimOut) : Math.max(trimIn + 0.05, c.trimOut);
         const start = patch.start != null ? Math.max(0, patch.start) : c.start;
-        // 左裁（start 与 trimIn 同时变，从片段头部裁掉/补回内容）时，关键帧必须按新起点重基准——
-        // 关键帧 t 是「相对片段起点的时间轴秒」，起点前移后原 t 全部指向了错误时刻（且裁掉部分的
-        // 关键帧要丢弃）。与 splitClip 右半、sliceEditorDoc 的左切重基准同理。纯移动（只改 start）
-        // 不走 trimClip，故这里以「start 与 trimIn 同时存在」判定为左裁。
+        // 左裁（start 变，从片段头部裁掉/补回内容）时，关键帧必须按新起点重基准——关键帧 t 是「相对
+        // 片段起点的时间轴秒」，起点前移后原 t 全部指向了错误时刻（且裁掉部分的关键帧要丢弃）。与
+        // splitClip 右半、sliceEditorDoc 的左切重基准同理。纯移动（只改 start）不走 trimClip，故 start
+        // 变化即判定为左裁。倒放片段左裁改 trimOut 而非 trimIn，但关键帧按 start 位移重基准与正反向无关，
+        // 故只看 start（原先额外要求 trimIn 存在会漏掉倒放左裁的关键帧重基准）。
         let keyframes = c.keyframes;
-        if (keyframes?.length && patch.start != null && patch.trimIn != null) {
+        if (keyframes?.length && patch.start != null) {
           keyframes = rebaseKeyframesForLeftTrim(keyframes, start - c.start);
         }
         return { ...c, trimIn, trimOut, start, keyframes };
       }),
     });
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 裁剪为连续手势
   }),
 
   updateClip: (clipId, patch) => set((s) => {
@@ -406,13 +439,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       ...t,
       clips: t.clips.map((c) => c.id === clipId ? { ...c, ...patch } : c),
     });
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 滑块/属性微调为连续手势
   }),
 
   removeClip: (clipId) => set((s) => {
     if (!s.doc) return s;
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => c.id !== clipId) }));
-    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)));
+    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)), false); // 删除为离散步
   }),
 
   // Cut a clip in two at the given timeline time (only if the time is inside it).
@@ -421,18 +454,17 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const loc = findClip(s.doc, clipId);
     if (!loc) return s;
     const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
-    const speed = c.speed ?? 1;
     const dur = clipDuration(c);
     const offset = atTime - c.start;                 // seconds into the clip (timeline)
     if (offset <= 0.05 || offset >= dur - 0.05) return s; // too close to an edge
-    const cutSrc = c.trimIn + offset * speed; // source time at the cut
+    const { left: lp, right: rp } = clipSplitTrims(c, offset); // reverse-aware source split
     const { left: lkf, right: rkf } = splitKeyframesAt(c.keyframes, offset);
-    const left: Clip = { ...c, trimOut: cutSrc, keyframes: lkf };
-    const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc, keyframes: rkf };
+    const left: Clip = { ...c, ...lp, keyframes: lkf };
+    const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, ...rp, keyframes: rkf };
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
       ...t, clips: t.clips.flatMap((x) => x.id === clipId ? [left, right] : [x]),
     });
-    return withHistory(s, { ...s.doc, tracks }, selPatch([right.id]));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([right.id]), false); // 分割为离散步
   }),
 
   // Join the clip with its same-source, contiguous right neighbour (inverse of
@@ -450,7 +482,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t, ti) => ti !== loc.trackIdx ? t : {
       ...t, clips: t.clips.flatMap((x) => x.id === a.id ? [merged] : x.id === b.id ? [] : [x]),
     });
-    return withHistory(s, { ...s.doc, tracks }, selPatch([merged.id]));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([merged.id]), false); // 合并为离散步
   }),
 
   // Multi-segment merge: on each track, fold the SELECTED clips' contiguous,
@@ -474,7 +506,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return { ...t, clips };
     });
     if (!changed) return s;
-    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel));
+    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel), false); // 合并为离散步
   }),
 
   // Ripple-merge: like mergeSelectedClips but source-contiguity is gap-tolerant
@@ -497,7 +529,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return { ...t, clips: res.clips };
     });
     if (!changed) return s;
-    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel));
+    return withHistory(s, { ...s.doc, tracks }, selPatch(newSel), false); // 波纹合并为离散步
   }),
 
   // Copy a clip and drop the copy right after the original on the same track.
@@ -520,21 +552,20 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t) => {
       if (t.locked) return t;
       const clips = t.clips.flatMap((c) => {
-        const speed = c.speed ?? 1;
         const dur = clipDuration(c);
         const offset = atTime - c.start;
         if (offset <= 0.05 || offset >= dur - 0.05) return [c];
         changed = true;
-        const cutSrc = c.trimIn + offset * speed;
+        const { left: lp, right: rp } = clipSplitTrims(c, offset); // reverse-aware
         const { left: lkf, right: rkf } = splitKeyframesAt(c.keyframes, offset);
-        const left: Clip = { ...c, trimOut: cutSrc, keyframes: lkf };
-        const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, trimIn: cutSrc, keyframes: rkf };
+        const left: Clip = { ...c, ...lp, keyframes: lkf };
+        const right: Clip = { ...c, id: `c_${nanoid(8)}`, start: atTime, ...rp, keyframes: rkf };
         return [left, right];
       });
       return { ...t, clips };
     });
     if (!changed) return s;
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, false); // 全轨分割为离散步
   }),
 
   // Delete a clip AND pull every later clip on the same track left by its
@@ -554,7 +585,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         .map((c) => (c.start > removed.start ? { ...c, start: Math.max(0, c.start - dur) } : c));
       return { ...t, clips };
     });
-    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)));
+    return withHistory(s, { ...s.doc, tracks }, selPatch(s.selectedClipIds.filter((x) => x !== clipId)), false); // 波纹删除为离散步
   }),
 
   // Snapshot a single clip into the clipboard (deep clone so later edits to the
@@ -587,21 +618,48 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     return withHistory(s, { ...s.doc, tracks }, selPatch(newIds));
   }),
 
-  // Snapshot the clip's current (base) transform as a keyframe at time `t`
-  // (seconds from the clip start), replacing any keyframe at the same instant.
+  // Snapshot the clip's CURRENT pose (interpolated at `t`) as a keyframe at time `t`
+  // (seconds from clip start), replacing any keyframe at the same instant.
+  // 必须用 transformAt(当前插值姿态) 而非 base transform——否则在两个关键帧之间插入新帧时
+  // 捕获的是基础值（常为默认 0,0,1）而非当前画面姿态，动画会在该点突跳。无关键帧时 transformAt
+  // 返回 base，二者等价。
   addKeyframe: (clipId, t) => set((s) => {
     if (!s.doc) return s;
     const loc = findClip(s.doc, clipId);
     if (!loc) return s;
     const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
-    const tr = c.transform ?? {};
     const at = Math.max(0, t);
-    const kf: TransformKeyframe = { t: at, x: tr.x ?? 0, y: tr.y ?? 0, scale: tr.scale ?? 1, opacity: tr.opacity ?? 1, rotation: tr.rotation ?? 0 };
+    const pose = transformAt(c, at);
+    const kf: TransformKeyframe = { t: at, x: pose.x ?? 0, y: pose.y ?? 0, scale: pose.scale ?? 1, opacity: pose.opacity ?? 1, rotation: pose.rotation ?? 0 };
     const keyframes = [...(c.keyframes ?? []).filter((k) => Math.abs(k.t - at) > 0.02), kf].sort((a, b) => a.t - b.t);
     const tracks = s.doc.tracks.map((tk, ti) => ti !== loc.trackIdx ? tk : {
       ...tk, clips: tk.clips.map((x) => x.id === clipId ? { ...x, keyframes } : x),
     });
     return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  // 有关键帧时，属性滑块/预览拖拽应写入**播放头处的关键帧**（无则以当前插值姿态为底新建一帧再改），
+  // 而非 base transform——否则 transformAt 只按关键帧插值、base 改动被静默忽略（#88）。
+  setKeyframeField: (clipId, t, field, value) => set((s) => {
+    if (!s.doc) return s;
+    const loc = findClip(s.doc, clipId);
+    if (!loc) return s;
+    const c = s.doc.tracks[loc.trackIdx].clips[loc.clipIdx];
+    const at = Math.max(0, t);
+    const kfs = c.keyframes ?? [];
+    const existing = kfs.find((k) => Math.abs(k.t - at) <= 0.05);
+    let keyframes: TransformKeyframe[];
+    if (existing) {
+      keyframes = kfs.map((k) => (k === existing ? { ...k, [field]: value } : k));
+    } else {
+      const pose = transformAt(c, at);
+      const kf: TransformKeyframe = { t: at, x: pose.x ?? 0, y: pose.y ?? 0, scale: pose.scale ?? 1, opacity: pose.opacity ?? 1, rotation: pose.rotation ?? 0, [field]: value };
+      keyframes = [...kfs, kf].sort((a, b) => a.t - b.t);
+    }
+    const tracks = s.doc.tracks.map((tk, ti) => ti !== loc.trackIdx ? tk : {
+      ...tk, clips: tk.clips.map((x) => x.id === clipId ? { ...x, keyframes } : x),
+    });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 滑块/拖拽连续手势，合并成一步
   }),
 
   removeKeyframe: (clipId, t) => set((s) => {
@@ -656,7 +714,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (!s.doc || s.selectedClipIds.length === 0) return s;
     const kill = new Set(s.selectedClipIds);
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => !kill.has(c.id)) }));
-    return withHistory(s, { ...s.doc, tracks }, selPatch([]));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([]), false); // 删除所选为离散步
   }),
 
   // Ripple-delete the whole selection: on each affected track, remove the selected
@@ -674,7 +732,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       });
       return { ...t, clips };
     });
-    return withHistory(s, { ...s.doc, tracks }, selPatch([]));
+    return withHistory(s, { ...s.doc, tracks }, selPatch([]), false); // 波纹删除所选为离散步
   }),
 
   // Duplicate each selected clip in place (offset after itself on its own track);
@@ -728,7 +786,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t) => ({
       ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + dx) } : c)),
     }));
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 多选整体拖动为连续手势
   }),
 
   // Apply a partial patch to every selected clip in one history step. `effects`
@@ -744,7 +802,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       return next;
     };
     const tracks = s.doc.tracks.map((t) => ({ ...t, clips: t.clips.map((c) => (sel.has(c.id) ? apply(c) : c)) }));
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 多选批量属性微调（滑块）为连续手势
   }),
 
   // Nudge the whole selection by ±dx seconds, clamped so the earliest clip
@@ -761,7 +819,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const tracks = s.doc.tracks.map((t) => ({
       ...t, clips: t.clips.map((c) => (sel.has(c.id) ? { ...c, start: Math.max(0, c.start + d) } : c)),
     }));
-    return withHistory(s, { ...s.doc, tracks });
+    return withHistory(s, { ...s.doc, tracks }, {}, true); // 逐帧微移（连续按键）合并为一步
   }),
 
   // 紧排：on each track, pack the SELECTED clips end-to-end (in time order),

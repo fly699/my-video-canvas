@@ -78,7 +78,7 @@ const onFocus = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.bo
 const onBlur  = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; };
 
 export const StoryboardNode = memo(function StoryboardNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const { resolve } = useNodeDefaultModels();
   // Detect connected CharacterNodes that have their own referenceImageUrl
   const connectedCharRefUrl = useCanvasStore((s) => {
@@ -367,6 +367,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     const built = buildStoryboardGenInput({
       id, payload, nodes: allNodes, edges: allEdges,
       kieTempKey: localStorage.getItem("kie:tempKey"),
+      projectId: data.projectId, // 归属项目→入素材库（与 ImageGen/批量视频同口径，此前漏）
     });
     if (built.blocked) { toast.error(built.blocked); return; }
     const submit = () => {
@@ -1305,7 +1306,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     // not for HTTP errors (403, 404) where opening a new tab is unhelpful
                     if (err instanceof TypeError && /^https?:\/\//i.test(zoomUrl)) {
                       toast.info("直接下载失败，将尝试在新标签页打开");
-                      window.open(zoomUrl, "_blank");
+                      window.open(zoomUrl, "_blank", "noopener,noreferrer");
                     } else {
                       toast.error("下载失败，图片无法访问");
                     }

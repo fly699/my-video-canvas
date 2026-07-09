@@ -78,6 +78,9 @@ export function buildStoryboardGenInput(args: {
   edges: MiniEdge[];
   /** kie 临时 key（组件侧传 localStorage 值；测试可注入）。 */
   kieTempKey?: string | null;
+  /** 归属项目 id——生成的关键帧据此入项目素材库、走 assertProjectAccess。与 ImageGen/视频/配音/音效
+   *  同口径；缺了会以 projectId=null 落库、脱离项目（曾漏）。 */
+  projectId?: number;
 }): StoryboardGenBuild {
   const { id, payload, nodes, edges } = args;
   // 兜底：分镜节点通常已把项目默认（kie GPT Image 2）写入 payload.imageModel；
@@ -163,6 +166,7 @@ export function buildStoryboardGenInput(args: {
     prompt: enhancedPrompt,
     negativePrompt: payload.negativePrompt,
     style: payload.colorTone,
+    projectId: args.projectId, // 归属项目（缺则服务端 recordGeneratedAsset 落 null，脱离素材库）
     referenceImageUrl: refUrl,
     referenceImageUrls: refs.length > 1 ? refs : undefined,
     model,

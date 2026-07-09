@@ -1,5 +1,5 @@
 import type { Server as SocketIOServer } from "socket.io";
-import { getPendingVideoTasks, updateVideoTask, claimVideoTaskForSubmit, recordGeneratedAsset } from "./db";
+import { getPendingVideoTasks, updateVideoTask, completeVideoTaskIfProcessing, claimVideoTaskForSubmit, recordGeneratedAsset } from "./db";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
 import { isKieVideoProvider, submitKieVideo, checkKieVideoStatus } from "./_core/kieVideo";
@@ -240,19 +240,21 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
 
           pollErrorCounts.delete(task.id);
           if (result.status !== "processing") {
-            await updateVideoTask(task.id, {
+            // CAS：仅首个把 processing→终态的调用方 record/audit，避免与客户端 poll 双写重复素材/审计。
+            const won = await completeVideoTaskIfProcessing(task.id, {
               status: result.status,
               resultVideoUrl: result.resultVideoUrl,
               errorMessage: result.errorMessage,
             });
-            auditVideoTaskResult(task, result.status === "succeeded", result.errorMessage);
+            if (won) {
+              auditVideoTaskResult(task, result.status === "succeeded", result.errorMessage);
 
-            // Index succeeded videos into the unified media library (dedupes with
-            // the client-driven poll path by storageKey).
-            if (result.status === "succeeded" && result.resultVideoUrl) {
-              const model = (task.params as { model?: string } | null)?.model ?? task.provider;
-              for (const u of result.resultVideoUrl.split("\n").filter(Boolean)) {
-                await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model, url: u, name: task.provider });
+              // Index succeeded videos into the unified media library.
+              if (result.status === "succeeded" && result.resultVideoUrl) {
+                const model = (task.params as { model?: string } | null)?.model ?? task.provider;
+                for (const u of result.resultVideoUrl.split("\n").filter(Boolean)) {
+                  await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model, url: u, name: task.provider });
+                }
               }
             }
 

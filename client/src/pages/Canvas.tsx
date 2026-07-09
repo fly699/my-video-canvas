@@ -12,7 +12,7 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCanvasStore, aspectToComfyWH, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
+import { useCanvasStore, registerNodeMutationBroadcaster, aspectToComfyWH, type CanvasNode, type CanvasEdge } from "../hooks/useCanvasStore";
 import { useComfyPreviewStore } from "../hooks/useComfyPreviewStore";
 import { useConnectingStore } from "../hooks/useConnectingStore";
 import { useGlobalPeekStore } from "../hooks/useGlobalPeekStore";
@@ -296,6 +296,11 @@ function nodeUpsertFields(n: CanvasNode) {
 }
 function nodeSig(n: CanvasNode): string {
   return JSON.stringify(nodeUpsertFields(n));
+}
+// 边的持久化字段签名，用于保存时做「增量 upsert + 删除对账」（此前边只全量 upsert、
+// 从不删除，导致经垃圾桶/插入节点/删组/撤销删掉的边刷新后复活）。
+function edgeSig(e: CanvasEdge): string {
+  return JSON.stringify([e.source, e.target, e.sourceHandle ?? "output", e.targetHandle ?? "input", typeof e.label === "string" ? e.label : ""]);
 }
 // Discards corrupted localStorage payloads for persisted boolean panel toggles.
 function validateBool(v: unknown): boolean | null {
@@ -616,18 +621,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
   );
   const runSelectedOnly = selectedRunnableIds.length >= 2;
 
-  // 协作撤销提示：undo 用整张本地快照替换当前图，多人协同时会连带回退协作者的并发改动。
-  // 有协作者在线时首次撤销给一条一次性警示（不阻断），之后照常静默撤销。
-  const collabUndoWarnedRef = useRef(false);
-  const handleUndo = useCallback(() => {
-    if (useCanvasStore.getState().collaborators.size > 0 && !collabUndoWarnedRef.current) {
-      collabUndoWarnedRef.current = true;
-      toast.warning("撤销会影响整张协作画布", { description: "当前有协作者在线，撤销可能一并回退他人的并发改动。", duration: 5000 });
-    }
-    undo();
-    toast.info("已撤销", { duration: 1200 });
-  }, [undo]);
-
   // Route store-level run requests (e.g. the agent's auto-run) through the normal
   // run-confirm dialog so generation still gets one explicit user confirmation.
   const runRequest = useCanvasStore((s) => s.runRequest);
@@ -734,6 +727,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // Baseline of what each node looked like at last successful save/load (id → sig).
   // saveCanvas upserts only nodes whose sig changed and deletes ids that vanished.
   const savedNodeSigsRef = useRef<Map<string, string>>(new Map());
+  // 同理为边保存基线：仅 upsert 变化的边、删除已消失的边（对账）。
+  const savedEdgeSigsRef = useRef<Map<string, string>>(new Map());
 
   // ── Data loading ────────────────────────────────────────────────────────────
   const { data: project, isLoading: projectLoading, isError: projectError, error: projectErr, refetch: refetchProject, isFetching: projectFetching } = trpc.projects.get.useQuery(
@@ -937,6 +932,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
       return true;
     });
     setEdges(dedupedEdges);
+    // 播种保存基线：加载的边未改动则不再重复 upsert，也不会被误删。
+    savedEdgeSigsRef.current = new Map(dedupedEdges.map((e) => [e.id, edgeSig(e)]));
   }, [dbEdges, dbNodes]);
 
   // Restore the saved viewport ONCE on initial load. Previously this re-ran on
@@ -993,8 +990,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
     // Data-loss safety valve: if the local node set is suspiciously empty while the
     // baseline had nodes, this is almost certainly a transient/incomplete snapshot
     // (load race, reset mid-flight), NOT a real "delete everything" — skip deletion
-    // so we never nuke the project's nodes from a bad snapshot.
-    if (toDelete.length > 0 && currentSigs.size === 0 && baseline.size > 0) {
+    // so we never nuke the project's nodes from a bad snapshot. 边删除也共用此守卫。
+    const suspiciousSnapshot = currentSigs.size === 0 && baseline.size > 0;
+    if (toDelete.length > 0 && suspiciousSnapshot) {
       console.warn("[save] skipping suspicious bulk delete (local nodes empty, baseline non-empty)");
       toDelete = [];
     }
@@ -1013,16 +1011,27 @@ function CanvasInner({ projectId }: { projectId: number }) {
         toast.error("节点保存失败：" + (err instanceof Error ? err.message : String(err)));
       }
     }
-    // Edges + viewport persist regardless of node-save outcome.
+    // Edges + viewport persist regardless of node-save outcome. 与节点对称做「增量 upsert +
+    // 删除对账」：仅推送签名变化的边、删除本地已消失的边（修复删边刷新后复活）。
+    const currentEdgeSigs = new Map(edges.map((e) => [e.id, edgeSig(e)]));
+    let edgesOk = true;
     try {
-      for (const edge of edges) {
+      const edgeBaseline = savedEdgeSigsRef.current;
+      const edgesToUpsert = edges.filter((e) => edgeBaseline.get(e.id) !== currentEdgeSigs.get(e.id));
+      let edgesToDelete = Array.from(edgeBaseline.keys()).filter((id) => !currentEdgeSigs.has(id));
+      if (edgesToDelete.length > 0 && suspiciousSnapshot) edgesToDelete = []; // 同守卫：可疑快照不删
+      for (const id of edgesToDelete) {
+        try { await deleteEdgeMutation.mutateAsync({ id, projectId }); }
+        catch (e) { edgesOk = false; console.error("[save] delete edge failed:", id, e); }
+      }
+      for (const edge of edgesToUpsert) {
         await upsertEdge.mutateAsync({
           id: edge.id, projectId, sourceNodeId: edge.source, targetNodeId: edge.target,
           sourcePort: edge.sourceHandle ?? "output", targetPort: edge.targetHandle ?? "input",
           label: typeof edge.label === "string" ? edge.label : undefined,
         });
       }
-    } catch (e) { console.error("[save] edge upsert failed:", e); }
+    } catch (e) { edgesOk = false; console.error("[save] edge save failed:", e); }
     try {
       // A popout window keeps its viewport local (independent second-monitor view)
       // so it never clobbers the main window's shared, server-persisted viewport.
@@ -1030,11 +1039,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
       else await updateProject.mutateAsync({ id: projectId, viewportState: reactFlow.getViewport() });
     } catch (e) { console.error("[save] viewport save failed:", e); }
 
-    // Only advance the node baseline / mark clean when ALL node ops landed, so a
-    // failed node retries next save (but viewport/edges already persisted above).
-    if (nodesOk) { savedNodeSigsRef.current = currentSigs; markClean(); }
+    // Only advance a baseline when its ops landed, so failures retry next save.
+    // markClean 需节点与边都成功——否则删失败的边会被漏掉、不再重试。
+    if (nodesOk) savedNodeSigsRef.current = currentSigs;
+    if (edgesOk) savedEdgeSigsRef.current = currentEdgeSigs;
+    if (nodesOk && edgesOk) markClean();
     } finally { savingRef.current = false; }
-  }, [isReadOnly, isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation]);
+  }, [isReadOnly, isDirty, nodes, edges, projectId, batchUpsertNodes, upsertEdge, updateProject, markClean, reactFlow, deleteNodeMutation, deleteEdgeMutation]);
   saveCanvasRef.current = saveCanvas;
 
   useEffect(() => {
@@ -1068,6 +1079,95 @@ function CanvasInner({ projectId }: { projectId: number }) {
       payload,
     });
   }, [user, projectId]);
+
+  // 把一次批量操作（复制/粘贴/组合/变体/导入）新增的节点与边广播给协作者（#86）——此前这些操作
+  // 只改本地 store、不 emit，协作者要保存刷新才见。传入操作前的 id 集合，操作后 diff 出新增项，
+  // 逐个 emit node:add / edge:add（与手动建节点一致）。防回声同 #85：远端 apply 走 setNodes 不回传。
+  const snapshotGraphIds = useCallback((): { n: Set<string>; e: Set<string> } => {
+    const st = useCanvasStore.getState();
+    return { n: new Set(st.nodes.map((x) => x.id)), e: new Set(st.edges.map((x) => x.id)) };
+  }, []);
+  const emitGraphAdditions = useCallback((before: { n: Set<string>; e: Set<string> }) => {
+    const st = useCanvasStore.getState();
+    for (const nd of st.nodes) if (!before.n.has(nd.id)) emitCollabEvent("node:add", nd);
+    for (const ed of st.edges) if (!before.e.has(ed.id)) emitCollabEvent("edge:add", ed);
+  }, [emitCollabEvent]);
+
+  // 撤销/重做把整图替换为历史快照——用全量 diff 广播给协作者（#87），否则本地回退后与协作者分叉。
+  // 新增/变化的节点用 node:add 整体替换（applyRemoteMutation 的 node:add 会 filter+add 覆盖），
+  // 消失的用 node:delete；边同理 add/delete。防回声同前：远端 apply 走 setNodes 不回传。
+  const snapshotGraphSigs = useCallback(() => {
+    const st = useCanvasStore.getState();
+    return {
+      nodes: new Map(st.nodes.map((n) => [n.id, nodeSig(n)])),
+      edges: new Map(st.edges.map((e) => [e.id, edgeSig(e)])),
+    };
+  }, []);
+  const emitGraphDiff = useCallback((before: { nodes: Map<string, string>; edges: Map<string, string> }) => {
+    const st = useCanvasStore.getState();
+    const afterNodeIds = new Set(st.nodes.map((n) => n.id));
+    for (const id of Array.from(before.nodes.keys())) if (!afterNodeIds.has(id)) emitCollabEvent("node:delete", { id });
+    for (const n of st.nodes) if (before.nodes.get(n.id) !== nodeSig(n)) emitCollabEvent("node:add", n);
+    const afterEdgeIds = new Set(st.edges.map((e) => e.id));
+    for (const id of Array.from(before.edges.keys())) if (!afterEdgeIds.has(id)) emitCollabEvent("edge:delete", { id });
+    for (const e of st.edges) if (!before.edges.has(e.id)) emitCollabEvent("edge:add", e);
+  }, [emitCollabEvent]);
+
+  // 协作撤销/重做：undo/redo 用整张本地快照替换当前图，多人协同时会连带回退协作者的并发改动。
+  // 有协作者在线时首次撤销给一条一次性警示（不阻断）；撤销/重做后用全量 diff 广播给协作者（#87）。
+  const collabUndoWarnedRef = useRef(false);
+  // 协作者全部离线时复位一次性警告，使下次有人在线撤销时能再次提醒（此前置 true 后永不复位）。
+  useEffect(() => { if (collaborators.size === 0) collabUndoWarnedRef.current = false; }, [collaborators.size]);
+  const handleUndo = useCallback(() => {
+    if (useCanvasStore.getState().collaborators.size > 0 && !collabUndoWarnedRef.current) {
+      collabUndoWarnedRef.current = true;
+      toast.warning("撤销会影响整张协作画布", { description: "当前有协作者在线，撤销可能一并回退他人的并发改动。", duration: 5000 });
+    }
+    const before = snapshotGraphSigs();
+    undo();
+    emitGraphDiff(before); // 把撤销结果广播给协作者，避免本地回退后与其分叉
+    toast.info("已撤销", { duration: 1200 });
+  }, [undo, collaborators, snapshotGraphSigs, emitGraphDiff]);
+  const handleRedo = useCallback(() => {
+    const before = snapshotGraphSigs();
+    redo();
+    emitGraphDiff(before);
+    toast.info("已重做", { duration: 1200 });
+  }, [redo, snapshotGraphSigs, emitGraphDiff]);
+
+  // 协作实时同步：把本地的节点配置/标题改动广播给协作者（#85）。updateNodeData/updateNodeTitle
+  // 经 store 的注册钩子回调到这里；按节点节流(400ms)合并补丁，减少高频输入(如逐字打提示词)的洪泛。
+  // 远端改动经 applyRemoteMutation 的 setNodes 落地、不经 updateNodeData，故不会回声成环。
+  useEffect(() => {
+    const pending = new Map<string, { patch: Record<string, unknown>; title?: string }>();
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    const flush = (id: string) => {
+      const acc = pending.get(id); pending.delete(id);
+      const t = timers.get(id); if (t) clearTimeout(t); timers.delete(id);
+      if (!acc) return;
+      if (acc.patch && Object.keys(acc.patch).length) emitCollabEvent("node:update", { id, patch: acc.patch });
+      if (acc.title !== undefined) emitCollabEvent("node:title", { id, title: acc.title });
+    };
+    registerNodeMutationBroadcaster((m) => {
+      if (m.kind === "add") { // 变体等新增节点/边：立即广播，不进节流
+        for (const nd of m.nodes) emitCollabEvent("node:add", nd);
+        for (const ed of m.edges) emitCollabEvent("edge:add", ed);
+        return;
+      }
+      const acc = pending.get(m.id) ?? { patch: {} };
+      if (m.kind === "update") acc.patch = { ...acc.patch, ...m.patch };
+      else acc.title = m.title;
+      pending.set(m.id, acc);
+      const prev = timers.get(m.id); if (prev) clearTimeout(prev);
+      timers.set(m.id, setTimeout(() => flush(m.id), 400));
+    });
+    return () => {
+      // 卸载前把未发的补丁 flush 掉，避免最后一次编辑丢广播；再注销钩子。
+      for (const id of Array.from(pending.keys())) flush(id);
+      for (const t of Array.from(timers.values())) clearTimeout(t);
+      registerNodeMutationBroadcaster(null);
+    };
+  }, [emitCollabEvent]);
 
   // #11 协作编辑锁：当本地用户「聚焦」到单个节点时广播「正在编辑 nodeId」，供其他人在该
   // 节点角标显示头像 + 柔性锁；选中 0 个或多个节点则广播释放（null）。仅在单选目标变化时发。
@@ -1129,6 +1229,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const p = event.payload as { id: string; patch: Record<string, unknown> };
         store.setNodes(store.nodes.map((n) =>
           n.id === p.id ? { ...n, data: { ...n.data, payload: { ...n.data.payload, ...p.patch } } } : n
+        ) as CanvasNode[]);
+        syncBaseline(p.id);
+      } else if (event.type === "node:title") {
+        const p = event.payload as { id: string; title: string };
+        store.setNodes(store.nodes.map((n) =>
+          n.id === p.id ? { ...n, data: { ...n.data, title: p.title } } : n
         ) as CanvasNode[]);
         syncBaseline(p.id);
       } else if (event.type === "edge:add") {
@@ -1592,8 +1698,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
         toast.error("文件格式不符：未找到可导入的节点");
         return;
       }
+      const before = snapshotGraphIds();
       const r = importGraph(graph);
       if (r.nodes === 0) { toast.error("未导入任何节点（类型不识别或格式不符）"); return; }
+      emitGraphAdditions(before); // 广播导入的节点/边给协作者
       toast.success(`已导入 ${r.nodes} 个节点 · ${r.edges} 条连接`);
       setTimeout(() => reactFlow.fitView({ padding: 0.2, duration: 400 }), 80);
     } catch (e) {
@@ -1704,10 +1812,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const inGroups = new Set(groupSel.flatMap(g => (g.data.payload as GroupNodeData).childIds ?? []));
         const loose = selected.filter(n => n.data.nodeType !== "group" && !inGroups.has(n.id));
         if (selected.length > 0) {
+          const before = snapshotGraphIds();
           store.runBatch(() => {
             groupSel.forEach(g => store.duplicateGroup(g.id));
             loose.forEach(n => store.duplicateNode(n.id));
           });
+          emitGraphAdditions(before); // 广播复制出的新节点/边给协作者
           const parts: string[] = [];
           if (groupSel.length > 0) parts.push(`${groupSel.length} 个群组（含成员）`);
           if (loose.length > 0) parts.push(`${loose.length} 个节点`);
@@ -1736,7 +1846,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const store = useCanvasStore.getState();
         pasteCountRef.current += 1;
         const off = 50 + 40 * pasteCountRef.current;
+        const before = snapshotGraphIds();
         const newIds = store.cloneSubgraph(clipboardRef.current, { x: off, y: off });
+        emitGraphAdditions(before); // 广播粘贴出的子图给协作者
         if (newIds.length > 0) toast.success(`已粘贴 ${newIds.length} 个节点`, { duration: 1200 });
       }
 
@@ -1750,7 +1862,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           if (groups.length > 0) toast.success(`已解组 ${groups.length} 个群组`, { duration: 1200 });
         } else {
           const ids = store.nodes.filter((n) => n.selected && n.data.nodeType !== "group").map((n) => n.id);
-          if (ids.length >= 2) { const gid = store.groupSelected(ids); if (gid) toast.success(`已组合 ${ids.length} 个节点为群组`, { duration: 1200 }); }
+          if (ids.length >= 2) { const before = snapshotGraphIds(); const gid = store.groupSelected(ids); if (gid) { emitGraphAdditions(before); toast.success(`已组合 ${ids.length} 个节点为群组`, { duration: 1200 }); } }
           else toast.info("请先框选至少 2 个节点再组合", { duration: 1500 });
         }
       }
@@ -1773,18 +1885,16 @@ function CanvasInner({ projectId }: { projectId: number }) {
       // Redo: Cmd+Shift+Z or Ctrl+Y
       if (!isEditing && (e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "z") {
         e.preventDefault();
-        redo();
-        toast.info("已重做", { duration: 1200 });
+        handleRedo();
       }
       if (!isEditing && e.ctrlKey && !e.shiftKey && e.key === "y") {
         e.preventDefault();
-        redo();
-        toast.info("已重做", { duration: 1200 });
+        handleRedo();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveCanvas, handleUndo, redo, runWorkflow, nodes, handleRunRequest, reactFlow]);
+  }, [saveCanvas, handleUndo, handleRedo, runWorkflow, nodes, handleRunRequest, reactFlow]);
 
   const collaboratorList = Array.from(collaborators.values());
 
@@ -2119,7 +2229,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => { redo(); toast.info("已重做", { duration: 1200 }); }}
+                onClick={handleRedo}
                 disabled={future.length === 0 || isReadOnly}
                 className="topbar-btn"
                 title={isReadOnly ? "只读模式下不可编辑" : undefined}
@@ -3564,10 +3674,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
               deleteNodeMutation.mutate({ id: nid, projectId });
               emitCollabEvent("node:delete", { id: nid });
             } : undefined}
-            onDuplicateNode={contextMenu.nodeId ? () => duplicateNode(contextMenu.nodeId!) : undefined}
+            onDuplicateNode={contextMenu.nodeId ? () => { const before = snapshotGraphIds(); duplicateNode(contextMenu.nodeId!); emitGraphAdditions(before); } : undefined}
             onGroup={selectedGroupableIds.length >= 2 ? () => {
+              const before = snapshotGraphIds();
               const gid = useCanvasStore.getState().groupSelected(selectedGroupableIds);
-              if (gid) toast.success(`已组合 ${selectedGroupableIds.length} 个节点为群组`);
+              if (gid) { emitGraphAdditions(before); toast.success(`已组合 ${selectedGroupableIds.length} 个节点为群组`); }
             } : undefined}
             onUngroup={ctxNodeType === "group" ? () => {
               const gid = contextMenu.nodeId!;
@@ -3586,8 +3697,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
               }
             } : undefined}
             onDuplicateGroup={ctxNodeType === "group" ? () => {
+              const before = snapshotGraphIds();
               const gid = useCanvasStore.getState().duplicateGroup(contextMenu.nodeId!);
               if (gid) {
+                emitGraphAdditions(before);
                 const cnt = (((useCanvasStore.getState().nodes.find((n) => n.id === gid)?.data.payload) as GroupNodeData | undefined)?.childIds ?? []).length;
                 toast.success(`已复制群组及 ${cnt} 个成员`);
               }

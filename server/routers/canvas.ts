@@ -32,6 +32,7 @@ import {
   getVideoTasksByProject,
   createVideoTask,
   updateVideoTask,
+  completeVideoTaskIfProcessing,
   claimVideoTaskForSubmit,
   getVideoTask,
   findInFlightVideoTask,
@@ -42,6 +43,7 @@ import {
 } from "../db";
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl, toInternalStoragePath, storagePresignPut, isStorageConfigured, finalizeStorageKey } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
+import { safeUploadMime, SAFE_UPLOAD_MIME_MSG } from "../_core/uploadMime";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { getCachedDisabledModels } from "../_core/modelToggles";
 import { getCachedSystemDefaultModels, getSystemDefaultModel } from "../_core/systemDefaultModels";
@@ -435,7 +437,7 @@ export const assetsRouter = router({
   createUploadUrl: protectedProcedure
     .input(z.object({
       name: z.string().max(255),
-      mimeType: z.string().max(128),
+      mimeType: z.string().max(128).refine(safeUploadMime, SAFE_UPLOAD_MIME_MSG),
       size: z.number().int().min(1),
       projectId: z.number().optional(),
     }))
@@ -604,12 +606,24 @@ export const assetsRouter = router({
 const pollLastCheck = new Map<string, number>();
 const POLL_THROTTLE_MS = 4_000;
 
+/** 剥离仅供服务端后台轮询器使用的内部 params 字段（`_` 前缀，尤其加密的 kie 凭据 `_kieKeyEnc`），
+ *  绝不能随 task 越过信任边界返回给客户端——否则同项目任一 viewer 都能读到他人/公用凭据的密文
+ *  （虽是 AES-GCM 密文、无 KIE_KEY_SECRET 不可解，仍属凭据材料越权外发）。客户端不读任何 `_` 字段。 */
+export function sanitizeTaskForClient<T>(task: T): T {
+  if (!task || typeof task !== "object") return task;
+  const p = (task as { params?: unknown }).params;
+  if (!p || typeof p !== "object") return task;
+  const cleaned: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(p as Record<string, unknown>)) if (!k.startsWith("_")) cleaned[k] = v;
+  return { ...(task as object), params: cleaned } as T;
+}
+
 export const videoTasksRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
-      return getVideoTasksByProject(input.projectId);
+      return (await getVideoTasksByProject(input.projectId)).map(sanitizeTaskForClient);
     }),
 
   create: protectedProcedure
@@ -730,7 +744,7 @@ export const videoTasksRouter = router({
           return { task: created, preexisting: false as const };
         },
       );
-      if (preexisting) return task;
+      if (preexisting) return sanitizeTaskForClient(task);
       if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create video task" });
 
       // ── Submit to external provider ──────────────────────────────────────────
@@ -757,7 +771,7 @@ export const videoTasksRouter = router({
         // claim it, return the task as processing — the winner is responsible
         // for the upstream submit and the client should poll for its result.
         console.warn(`[videoTasks.create] task ${task.id} already claimed by another worker; deferring to it`);
-        return { ...task, status: "processing" as const };
+        return sanitizeTaskForClient({ ...task, status: "processing" as const });
       } else {
         try {
           if (isPoyoVideoProvider(input.provider)) {
@@ -778,7 +792,10 @@ export const videoTasksRouter = router({
               provider: input.provider,
               prompt: input.prompt,
               negativePrompt: input.negativePrompt,
-              referenceImageUrl: input.referenceImageUrl,
+              // 与 Poyo/kie 分支及 DB 落库(739)、后台轮询器一致取 refList[0]——否则客户端只传
+              // referenceImageUrls 数组(DoP 契约支持)时 input.referenceImageUrl 为 undefined，
+              // submitHiggsfieldVideo 直接抛「必须提供参考图」，任务被内联标 failed[CHARGED?] 无法重试。
+              referenceImageUrl: refList[0] ?? input.referenceImageUrl,
               params: input.params as Record<string, unknown>,
             });
             externalTaskId = result.externalTaskId;
@@ -833,15 +850,15 @@ export const videoTasksRouter = router({
       });
 
       if (externalTaskId) {
-        return { ...task, status: "processing" as const, externalTaskId };
+        return sanitizeTaskForClient({ ...task, status: "processing" as const, externalTaskId });
       }
       if (submitFailed) {
-        return { ...task, status: "failed" as const };
+        return sanitizeTaskForClient({ ...task, status: "failed" as const });
       }
       // Claim succeeded but no provider matched (unknown provider — shouldn't
       // happen given the enum validator) and no submit attempt was made.
       // Task is now `processing` with no externalTaskId; poller will skip it.
-      return { ...task, status: "processing" as const };
+      return sanitizeTaskForClient({ ...task, status: "processing" as const });
     }),
 
   // OmniHuman「指定说话主体」：对肖像图跑主体检测，返回各主体蒙版图 URL（≤5）。
@@ -859,12 +876,15 @@ export const videoTasksRouter = router({
   poll: protectedProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
-      const task = await getVideoTask(input.id);
-      if (!task) return null;
+      const raw = await getVideoTask(input.id);
+      if (!raw) return null;
       // Project-level access (editor+). Previously hard-checked task.userId,
       // which broke once any editor (not just owner) could create tasks —
       // the owner could see the task in the UI but couldn't poll it.
-      await assertProjectAccess(task.projectId, ctx.user.id, "editor");
+      await assertProjectAccess(raw.projectId, ctx.user.id, "editor");
+      // 从这里起用剥离了内部 `_` 字段（含加密凭据 _kieKeyEnc）的副本——poll 的所有返回分支都把 task
+      // 回给客户端，且轮询逻辑只读 status/externalTaskId/provider 等非内部字段，故整段用 sanitized 版安全。
+      const task = sanitizeTaskForClient(raw);
 
       // 同步上游状态会用平台公用 key（Poyo/Higgsfield）。非白名单用户/协作者不得借 poll 触达公用 key——
       // 此时跳过上游同步、直接返回当前状态（后台 poller 用平台凭证仍会推进），既守门控又不打断 UI。
@@ -891,8 +911,7 @@ export const videoTasksRouter = router({
                 // the UI block one-click resubmit so the user isn't tricked
                 // into re-paying for our parser miss.
                 const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在上游生成完成，但本系统未识别 URL（积分已扣，请勿重试；联系管理员查看 Poyo 控制台）" };
-                await updateVideoTask(task.id, update);
-                auditVideoTaskResult(task, false, update.errorMessage);
+                if (await completeVideoTaskIfProcessing(task.id, update)) auditVideoTaskResult(task, false, update.errorMessage);
                 return { ...task, ...update };
               }
               // CRITICAL: same persistence step as the background poller —
@@ -904,18 +923,19 @@ export const videoTasksRouter = router({
               const persistedList = await persistVideosOrFallback(urls, task.provider);
               const persisted = persistedList.join("\n");
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, true);
-              for (const u of persistedList) {
-                await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: u, name: task.provider });
+              // CAS：仅首个把 processing→succeeded 的调用方 record/audit，避免与后台 poller 双写重复素材。
+              if (await completeVideoTaskIfProcessing(task.id, update)) {
+                auditVideoTaskResult(task, true);
+                for (const u of persistedList) {
+                  await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: u, name: task.provider });
+                }
               }
               return { ...task, ...update };
             }
             if (upstream.status === "failed") {
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, false, update.errorMessage);
+              if (await completeVideoTaskIfProcessing(task.id, update)) auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
           } catch (err) {
@@ -938,24 +958,23 @@ export const videoTasksRouter = router({
               // Same persistence step as background poller (see comment above).
               const persisted = await persistVideoOrFallback(upstream.resultVideoUrl, task.provider);
               const update = { status: "succeeded" as const, resultVideoUrl: persisted };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, true);
-              await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: persisted, name: task.provider });
+              if (await completeVideoTaskIfProcessing(task.id, update)) {
+                auditVideoTaskResult(task, true);
+                await recordGeneratedAsset({ userId: task.userId, projectId: task.projectId, nodeId: task.nodeId, type: "video", source: "generated", provider: task.provider, model: (task.params as { model?: string } | null)?.model ?? task.provider, url: persisted, name: task.provider });
+              }
               return { ...task, ...update };
             }
             if (upstream.status === "succeeded" && !upstream.resultVideoUrl) {
               pollLastCheck.delete(task.externalTaskId);
               // Credits spent; [CHARGED] blocks UI from one-click resubmit.
               const update = { status: "failed" as const, errorMessage: "[CHARGED] 视频已在 Higgsfield 生成完成，但本系统未识别 URL（积分已扣，请勿重试）" };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, false, update.errorMessage);
+              if (await completeVideoTaskIfProcessing(task.id, update)) auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
             if (upstream.status === "failed") {
               pollLastCheck.delete(task.externalTaskId);
               const update = { status: "failed" as const, errorMessage: upstream.errorMessage ?? "生成失败" };
-              await updateVideoTask(task.id, update);
-              auditVideoTaskResult(task, false, update.errorMessage);
+              if (await completeVideoTaskIfProcessing(task.id, update)) auditVideoTaskResult(task, false, update.errorMessage);
               return { ...task, ...update };
             }
           } catch (err) {
@@ -1198,14 +1217,14 @@ export const imageGenRouter = router({
     .input(
       z.object({
         prompt: z.string().min(1).max(8000), // bound to avoid unbounded payloads (char-injected prompts stay well under)
-        negativePrompt: z.string().optional(),
-        referenceImageUrl: z.string().optional(),
+        negativePrompt: z.string().max(4000).optional(), // 与 video.create 一致；防超大 payload
+        referenceImageUrl: z.string().max(2048).optional(),
         // Multi-angle reference images (first mirrors referenceImageUrl). Edit/
         // unified models read all of these via `image_urls`.
-        referenceImageUrls: z.array(z.string()).max(8).optional(),
-        style: z.string().optional(),
+        referenceImageUrls: z.array(z.string().max(2048)).max(8).optional(),
+        style: z.string().max(2000).optional(),
         model: z.enum(IMAGE_GEN_MODELS).optional(),
-        poyoAspectRatio: z.string().optional(),
+        poyoAspectRatio: z.string().max(32).optional(),
         // Generic aspect ratio (the 比例 selector) — used by kie image models,
         // clamped per-model server-side.
         aspectRatio: z.string().max(32).optional(),
@@ -1215,13 +1234,13 @@ export const imageGenRouter = router({
         imageResolution: z.enum(["0.5K", "1K", "2K", "3K", "4K"]).optional(),
         imageN: z.number().int().min(1).max(15).optional(),
         imageOutputFormat: z.enum(["png", "jpg", "jpeg", "webp"]).optional(),
-        widthAndHeight: z.string().optional(),
+        widthAndHeight: z.string().max(64).optional(),
         quality: z.enum(["720p", "1080p"]).optional(),
         batchSize: z.union([z.literal(1), z.literal(4)]).optional(),
         seed: z.number().int().optional(),
         enhancePrompt: z.boolean().optional(),
         // Reve specific params
-        reveAspectRatio: z.string().optional(),
+        reveAspectRatio: z.string().max(32).optional(),
         // v2 image endpoints (reve / seedream / flux-pro) use coarse K-tier
         // labels rather than px-based 720p/1080p (those are Soul-only).
         reveResolution: z.enum(["1K", "2K", "4K"]).optional(),
@@ -2802,7 +2821,9 @@ export const clipRouter = router({
         if ("error" in transcription) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `转录失败：${transcription.error}` });
         }
-        const segments = transcription.segments.map((s) => ({
+        const rawSegs = transcription.segments ?? [];
+        if (rawSegs.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "转写未返回时间戳段落，无法智能剪辑；请改用支持段级时间戳的模型（如 whisper-1）" });
+        const segments = rawSegs.map((s) => ({
           start: s.start, end: s.end, text: s.text.trim(),
           no_speech_prob: s.no_speech_prob ?? 0,
         }));
@@ -3064,7 +3085,11 @@ export const subtitleRouter = router({
         if ("error" in result) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
         }
-        const entries: SubtitleEntry[] = result.segments.map((s) => ({
+        // 有的模型（如 gpt-4o-transcribe）只回文本、不返回段级时间戳（segments 缺失），此前 .map 直接
+        // 崩 500。改为可读业务错误，引导换用支持时间戳的模型。
+        const segs = result.segments ?? [];
+        if (segs.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "该转写模型未返回时间戳段落，无法生成字幕；请改用支持段级时间戳的模型（如 whisper-1）" });
+        const entries: SubtitleEntry[] = segs.map((s) => ({
           start: s.start,
           end: s.end,
           text: s.text.trim(),
@@ -3123,7 +3148,9 @@ export const subtitleMotionRouter = router({
       return dedupe("subtitleMotion.transcribe", ctx.user.id, input, async () => {
         const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language, model: input.model });
         if ("error" in result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
-        const entries: SubtitleEntry[] = result.segments.map((s) => ({ start: s.start, end: s.end, text: s.text.trim() }));
+        const segs = result.segments ?? [];
+        if (segs.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "该转写模型未返回时间戳段落，无法生成字幕；请改用支持段级时间戳的模型（如 whisper-1）" });
+        const entries: SubtitleEntry[] = segs.map((s) => ({ start: s.start, end: s.end, text: s.text.trim() }));
         return { entries, fullText: result.text, language: result.language };
       });
     }),

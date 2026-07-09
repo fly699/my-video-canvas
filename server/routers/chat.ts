@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
 import { storagePut, storagePresignPut, isStorageConfigured, canBrowserReachStorageDirectly, assertObjectStorageWritable, finalizeStorageKey, resolveToAbsoluteUrl } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
+import { safeUploadMime, SAFE_UPLOAD_MIME_MSG } from "../_core/uploadMime";
 import { hashPassword, verifyPassword } from "../_core/scrypt";
 import {
   getOrCreateLobby,
@@ -725,7 +726,7 @@ export const chatRouter = router({
     .input(z.object({
       conversationId: z.number(),
       filename: z.string().max(255),
-      mimeType: z.string().max(128),
+      mimeType: z.string().max(128).refine(safeUploadMime, SAFE_UPLOAD_MIME_MSG),
       size: z.number().int().min(1),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -791,6 +792,9 @@ export const chatRouter = router({
       if (!(await isChatMember(conv.id, ctx.user.id))) throw new TRPCError({ code: "FORBIDDEN" });
       // Guard: the key must live under this conversation's namespace.
       if (!input.key.startsWith(`chat/${conv.id}/`)) throw new TRPCError({ code: "BAD_REQUEST", message: "非法的存储 key" });
+      // Guard: url 必须正是该 key 的存储代理路径，禁止客户端把 url 指向外部/他处对象
+      // （否则成员用合法 key 通过前缀校验、却让附件链接指向钓鱼/他人对象）。与 canvas.confirmUpload 对齐。
+      if (input.url !== `/manus-storage/${input.key}`) throw new TRPCError({ code: "BAD_REQUEST", message: "url 与 key 不匹配" });
       const att = await insertChatAttachment({
         conversationId: conv.id, uploaderId: ctx.user.id, storageKey: input.key, url: input.url,
         name: displayFileName(input.name), mimeType: input.mimeType, size: input.size, kind: kindFromMime(input.mimeType),

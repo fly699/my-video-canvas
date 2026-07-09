@@ -86,7 +86,7 @@ export function CanvasChatWindow({ onClose }: { onClose: () => void }) {
             <Btn title={sidebar ? "隐藏会话栏" : "显示会话栏"} active={sidebar} onClick={() => setSidebar((v) => !v)}><PanelLeft size={15} /></Btn>
             <Btn title="成员/在线" active={members} onClick={() => setMembers((v) => !v)}><Users size={15} /></Btn>
             <Btn title={pinned ? "已固定（点解锁可拖动）" : "固定窗口"} active={pinned} onClick={() => setPinned((v) => !v)}>{pinned ? <Pin size={15} /> : <PinOff size={15} />}</Btn>
-            <Btn title="在新标签打开完整页面" onClick={() => window.open("/chat", "_blank")}><ExternalLink size={15} /></Btn>
+            <Btn title="在新标签打开完整页面" onClick={() => window.open("/chat", "_blank", "noopener,noreferrer")}><ExternalLink size={15} /></Btn>
             <Btn title="关闭" onClick={onClose}><X size={15} /></Btn>
           </div>
         </div>

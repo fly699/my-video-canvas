@@ -6,6 +6,7 @@ import { EC, probeMediaDuration } from "./theme";
 import { useEditorStore } from "./editorStore";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import type { Clip } from "@shared/editorTypes";
+import { transformAt } from "@shared/editorTypes";
 import { SHAPE_ICONS, iconSvg } from "@shared/shapeIcons";
 import { LLMModelPicker, type LLMModelId } from "@/components/canvas/LLMModelPicker";
 import { LLM_MODELS } from "@/lib/models";
@@ -75,6 +76,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const playhead = useEditorStore((s) => s.playhead);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
+  const setKeyframeField = useEditorStore((s) => s.setKeyframeField);
   const removeKeyframe = useEditorStore((s) => s.removeKeyframe);
   const clearKeyframes = useEditorStore((s) => s.clearKeyframes);
   const selectedClipIds = useEditorStore((s) => s.selectedClipIds);
@@ -209,10 +211,17 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const isVisual = c.kind === "video" || c.kind === "image" || c.kind === "text";
   const isMedia = c.kind === "video" || c.kind === "audio";
   const eff = c.effects ?? {};
-  const tf = c.transform ?? {};
+  // 有关键帧时，渲染只看关键帧插值（transformAt），base transform 被忽略。故属性面板也须以「当前
+  // 播放头处的插值姿态」为准显示滑块值，并把滑块改动写进播放头处的关键帧（#88）——否则改 base 无效。
+  const hasKf = (c.keyframes?.length ?? 0) > 0;
+  const kfLocalT = Math.max(0, +(playhead - c.start).toFixed(3));
+  const tf = hasKf ? transformAt(c, kfLocalT) : (c.transform ?? {});
 
   const setEff = (k: keyof NonNullable<Clip["effects"]>, v: number | string | undefined) => update(c.id, { effects: { ...eff, [k]: v } });
-  const setTf = (k: keyof NonNullable<Clip["transform"]>, v: number) => update(c.id, { transform: { ...tf, [k]: v } });
+  const setTf = (k: "x" | "y" | "scale" | "opacity" | "rotation", v: number) => {
+    if (hasKf) setKeyframeField(c.id, kfLocalT, k, v); // 写播放头关键帧（无则以当前姿态新建再改）
+    else update(c.id, { transform: { ...(c.transform ?? {}), [k]: v } });
+  };
   const txt = c.text;
   const setText = (patch: Partial<NonNullable<Clip["text"]>>) => update(c.id, { text: { ...txt, content: txt?.content ?? "", ...patch } });
   const setShape = (patch: Partial<NonNullable<Clip["shape"]>>) => update(c.id, { shape: { type: "rect", ...(c.shape ?? {}), ...patch } as NonNullable<Clip["shape"]> });
@@ -534,8 +543,10 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
               {clipTrackType === "video" && (c.kind === "video" || c.kind === "image") && (
                 <button onClick={() => update(c.id, { fit: "cover", transform: undefined, keyframes: undefined })} title="自动缩放铺满画框、消除黑边（按比例裁切溢出；预览与导出一致）" style={{ ...alignBtn, color: EC.accent, borderColor: EC.accent }}>填满</button>
               )}
-              <button onClick={() => centerAxis("x")} title="水平居中（画中画时居中框）" style={alignBtn}>水平居中</button>
-              <button onClick={() => centerAxis("y")} title="垂直居中（画中画时居中框）" style={alignBtn}>垂直居中</button>
+              {/* 居中仅对叠加轨（画中画）盒子有意义；主视频轨片段永远整屏铺满，
+                  没有可居中的定位盒（centerAxis 会空操作）——故对主轨隐藏这两个死控件。 */}
+              {clipTrackType !== "video" && <button onClick={() => centerAxis("x")} title="水平居中（画中画居中框）" style={alignBtn}>水平居中</button>}
+              {clipTrackType !== "video" && <button onClick={() => centerAxis("y")} title="垂直居中（画中画居中框）" style={alignBtn}>垂直居中</button>}
               <button onClick={() => update(c.id, { transform: undefined, keyframes: undefined })} title="复位为整屏居中（清除手动位置/缩放/旋转）" style={alignBtn}>居中</button>
               <button onClick={() => update(c.id, { transform: undefined })} title="清除位置/缩放/旋转" style={alignBtn}>重置</button>
             </div>
@@ -673,7 +684,9 @@ function Select({ value, options, onChange }: { value: string; options: [string,
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false); };
+    // 点击面板外关闭时，与 Esc 一致地还原打开前的值——否则「悬停预览」的最后一项会被当成
+    // 提交（取消手势反而改了值）。仅 onClick 选中某项才真正提交。
+    const onDoc = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) { onChange(committedRef.current); setOpen(false); } };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);

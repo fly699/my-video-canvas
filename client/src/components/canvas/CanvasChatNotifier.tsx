@@ -9,7 +9,7 @@ function muted(): boolean {
   try { return localStorage.getItem(CHAT_MUTED_KEY) === "1"; } catch { return false; }
 }
 
-type IncomingLike = { conversationId: number; senderId: number; senderName?: string | null; content?: string; attachments?: unknown[]; fileMeta?: unknown };
+type IncomingLike = { conversationId: number; senderId: number; senderName?: string | null; content?: string; attachments?: unknown[]; fileMeta?: unknown; kind?: string; last?: boolean };
 
 /**
  * 画布端「常驻」聊天通知监听器：在**聊天窗关着**时也能收到新消息的声音 / 桌面 / 应用内横幅提醒，
@@ -51,9 +51,16 @@ export function CanvasChatNotifier({ onNewMessage }: { onNewMessage: () => void 
     };
 
     socket.on("chat:message:new", (m: IncomingLike) => notify(m));
-    // 端到端消息经 chat:relay 转发，画布通知器无会话密钥，用通用预览。
-    socket.on("chat:relay", (m: IncomingLike) => notify(m, "[加密消息]"));
-    socket.on("chat:file-chunk", (m: IncomingLike) => notify(m, "[媒体]"));
+    // 端到端消息经 chat:relay 转发，画布通知器无会话密钥，用通用预览。密钥请求/分发（key-request/
+    // key-bundle）是控制帧、非真消息——任一成员上线都会触发一轮密钥中继，若也弹通知会让其他成员莫名
+    // 收到「[加密消息]」提示音洪泛。只对普通 message 弹（与 useChat.handleRelay 的 kind 分支一致）。
+    socket.on("chat:relay", (m: IncomingLike) => {
+      if (m.kind === "key-request" || m.kind === "key-bundle") return;
+      notify(m, "[加密消息]");
+    });
+    // 文件分片：一个文件被切成很多帧（每 256KB 一帧），只在最后一帧（last）弹一次，否则一个 10MB
+    // 文件会弹 ~40 次通知+声音。与 useChat.handleFileChunk 只在 frame.last 通知一致。
+    socket.on("chat:file-chunk", (m: IncomingLike) => { if (m.last) notify(m, "[媒体]"); });
     // 管理员广播：定向到个人房（恒加入），保证一定收到。senderId=-2 系统，绕过自己过滤。
     socket.on("system:announce", (p: { roomId: number; title: string; body: string }) => {
       notify({ conversationId: p.roomId, senderId: -2, senderName: `📢 系统公告` }, (p.title || "系统公告").slice(0, 60));

@@ -44,6 +44,14 @@ describe("buildStoryboardGenInput（分镜生图组装器）", () => {
     expect(r.input.kieTempKey).toBeUndefined();
   });
 
+  it("projectId 透传进 input（生成的关键帧才归属项目、入素材库）", () => {
+    const r = buildStoryboardGenInput({ id: "sb", payload: base, nodes: [], edges: [], projectId: 42 });
+    expect(r.input.projectId).toBe(42);
+    // 未传时为 undefined（服务端落 null），不报错
+    const r2 = buildStoryboardGenInput({ id: "sb", payload: base, nodes: [], edges: [] });
+    expect(r2.input.projectId).toBeUndefined();
+  });
+
   it("效果注入：连接 post_process 的效果提示词被追加（审计修复点）", () => {
     const nodes = [
       N("sb", "storyboard", base),

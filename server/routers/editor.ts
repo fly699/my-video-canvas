@@ -8,7 +8,7 @@ import { composeTimeline } from "../_core/videoComposer";
 import { execFileAsync, downloadToTemp } from "../_core/videoEditor";
 import { looksLikeAVContainer, readHead } from "../_core/voiceTranscription";
 import { promises as fsp } from "node:fs";
-import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs } from "../_core/editorRenderJobs";
+import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs, getActiveRenderJobForSession } from "../_core/editorRenderJobs";
 import { assertProjectAccess } from "../_core/permissions";
 import { assertWhitelisted } from "../_core/whitelist";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
@@ -376,5 +376,14 @@ export const editorRouter = router({
       const job = getRenderJob(input.jobId, ctx.user.id);
       if (!job) throw new TRPCError({ code: "NOT_FOUND" });
       return { status: job.status, progress: job.progress, stage: job.stage, url: job.url ?? null, error: job.error ?? null, duration: job.duration ?? null };
+    }),
+
+  // 恢复该会话进行中/刚完成的导出（离开剪辑器再回来时重连进度/成片，#90）。无则 null。
+  activeExport: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(({ ctx, input }) => {
+      const job = getActiveRenderJobForSession(ctx.user.id, input.id);
+      if (!job) return null;
+      return { jobId: job.id, status: job.status, progress: job.progress, stage: job.stage, url: job.url ?? null, duration: job.duration ?? null };
     }),
 });

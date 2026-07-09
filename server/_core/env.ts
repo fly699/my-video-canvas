@@ -1,5 +1,9 @@
-if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
-  console.error("[FATAL] JWT_SECRET must be set in production. Refusing to start with the insecure dev fallback.");
+// 仅本地开发（NODE_ENV==="development"）才允许回落到公开的 dev 密钥。此前只在精确的
+// "production" 才强制，于是 NODE_ENV=staging/prod/未设 时会静默用源码里的固定密钥签发/校验
+// 会话 JWT——任何人知道该常量即可伪造任意用户(含 admin)会话。改为「非 development 一律要求
+// JWT_SECRET」，堵住这一会话伪造面（P0）。
+if (process.env.NODE_ENV !== "development" && !process.env.JWT_SECRET) {
+  console.error("[FATAL] JWT_SECRET must be set unless NODE_ENV=development. Refusing to start with the insecure public dev fallback (session-forgery risk).");
   process.exit(1);
 }
 

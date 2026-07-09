@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
+import { randomBytes } from "node:crypto";
 
 /**
  * 内置「局域网大文件中转站」——把本应用当作内网里机器对机器搬运几十 GB 大文件的
@@ -61,20 +62,47 @@ function setRetentionDays(days: number): number {
   return n;
 }
 
-/** 删除超过保留期的文件（按 mtime 从旧到新顺序删），并清理变空的子目录。retention<=0 不删。 */
+/** 删除超过保留期的文件（按 mtime 从旧到新顺序删），并清理变空的子目录。retention<=0 不删。
+ *  另外总是回收陈旧的孤儿 .part（进程崩溃/被杀残留的上传分片）——walkRelay 有意跳过 .part，故它们
+ *  永不进保留期清理；用固定 24h 阈值（合法上传绝不会持续这么久，不会误删进行中的分片），与保留期无关。 */
 export function sweepExpiredRelayFiles(): { removed: number } {
+  let removed = sweepStalePartFiles(24 * 60 * 60 * 1000);
   const days = getRetentionDays();
-  if (days <= 0) return { removed: 0 };
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  const files = walkRelay().filter((f) => f.mtime < cutoff).sort((a, b) => a.mtime - b.mtime); // 旧→新
-  let removed = 0;
-  for (const f of files) {
-    const full = fullOf(f.name);
-    if (!full) continue;
-    try { fs.unlinkSync(full); removed++; pruneEmptyDirs(path.dirname(full)); } catch { /* skip */ }
+  if (days > 0) {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const files = walkRelay().filter((f) => f.mtime < cutoff).sort((a, b) => a.mtime - b.mtime); // 旧→新
+    for (const f of files) {
+      const full = fullOf(f.name);
+      if (!full) continue;
+      try { fs.unlinkSync(full); removed++; pruneEmptyDirs(path.dirname(full)); } catch { /* skip */ }
+    }
   }
-  if (removed > 0) console.log(`[relay] 自动清理：删除 ${removed} 个超过 ${days} 天的中转文件`);
+  if (removed > 0) console.log(`[relay] 自动清理：删除 ${removed} 个中转文件/残留分片`);
   return { removed };
+}
+
+/** 递归删除 mtime 早于 now-maxAgeMs 的 .part 孤儿分片，返回删除数。纯 IO，异常即跳过。 */
+function sweepStalePartFiles(maxAgeMs: number): number {
+  const root = ensureDir();
+  const cutoff = Date.now() - maxAgeMs;
+  let removed = 0;
+  const stack: string[] = [""];
+  while (stack.length) {
+    const rel = stack.pop() as string;
+    const abs = rel ? path.join(root, rel) : root;
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      const childRel = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) { stack.push(childRel); continue; }
+      if (!e.isFile() || !e.name.endsWith(".part")) continue;
+      try {
+        const full = path.join(root, childRel);
+        if (fs.statSync(full).mtimeMs < cutoff) { fs.unlinkSync(full); removed++; pruneEmptyDirs(path.dirname(full)); }
+      } catch { /* skip */ }
+    }
+  }
+  return removed;
 }
 
 /** 把外部传入的文件名收敛为安全的纯文件名（去目录、拒绝穿越）；非法返回 null。 */
@@ -237,11 +265,18 @@ export function registerFileRelay(app: Express): void {
     if (!checkToken(req, res)) return;
     const rel = pickRel(req);
     if (!rel) { res.status(400).json({ error: "非法文件名/路径" }); return; }
+    // 本上传是「整文件覆盖写」，不支持偏移续传。若客户端带 Content-Range（如 curl -C - 续传），
+    // 直接写尾部字节当整文件会静默产出损坏/截断文件却回 ok:true——一律拒绝，避免数据损坏。
+    if (req.headers["content-range"]) {
+      res.status(400).json({ error: "上传不支持断点续传（Content-Range），请重新完整上传" });
+      return;
+    }
     ensureDir();
     const finalPath = fullOf(rel);
     if (!finalPath) { res.status(400).json({ error: "非法路径" }); return; }
     fs.mkdirSync(path.dirname(finalPath), { recursive: true });
-    const tmpPath = `${finalPath}.${Date.now()}.part`;
+    // tmp 名加入 pid + 随机串，避免并发上传同名文件在同一毫秒下 tmpPath 碰撞、字节交错损坏。
+    const tmpPath = `${finalPath}.${process.pid}.${randomBytes(6).toString("hex")}.part`;
     const max = relayMaxBytes();
     const ws = fs.createWriteStream(tmpPath);
     let bytes = 0;
@@ -282,15 +317,20 @@ export function registerFileRelay(app: Express): void {
         res.end();
         return;
       }
+      // 客户端中断（续传/网络抖动很常见）时销毁源读流，否则 FD/读流泄漏、大文件高频中断下耗尽 FD。
+      const rs = range
+        ? fs.createReadStream(full, { start: range.start, end: range.end })
+        : fs.createReadStream(full);
+      res.on("close", () => rs.destroy());
+      rs.on("error", () => { if (!res.headersSent) res.status(500).end(); else res.destroy(); });
       if (range) {
         res.status(206);
         res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${st.size}`);
         res.setHeader("Content-Length", String(range.end - range.start + 1));
-        fs.createReadStream(full, { start: range.start, end: range.end }).pipe(res);
       } else {
         res.setHeader("Content-Length", String(st.size));
-        fs.createReadStream(full).pipe(res);
       }
+      rs.pipe(res);
     });
   });
 

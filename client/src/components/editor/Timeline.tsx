@@ -1,11 +1,11 @@
 import { useRef, useCallback, useState, useEffect } from "react";
 import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Combine, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend, AlignHorizontalJustifyStart, GripVertical } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
-import { useEditorStore, clipDuration, canMergeClips, canMergeSource, rightNeighbour } from "./editorStore";
+import { useEditorStore, clipDuration, canMergeClips, canMergeSource, rightNeighbour, trimRightSource } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
 import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
 import { usePersistentState } from "@/hooks/usePersistentState";
-import type { TrackType } from "@shared/editorTypes";
+import type { TrackType, TransformKeyframe } from "@shared/editorTypes";
 
 const LABEL_W = 132;
 const RULER_H = 26;
@@ -14,7 +14,7 @@ const SNAP_PX = 7; // snap threshold in screen pixels
 
 type DragMode =
   | { kind: "move"; clipId: string; startX: number; grabDx: number; group: boolean; orig: { start: number; dur: number; trackId: string } }
-  | { kind: "trim-l" | "trim-r"; clipId: string; startX: number; orig: { start: number; trimIn: number; trimOut: number; speed: number; isImage: boolean; isVideo: boolean; dur: number; trackId: string; followers: { id: string; start: number }[] } }
+  | { kind: "trim-l" | "trim-r"; clipId: string; startX: number; orig: { start: number; trimIn: number; trimOut: number; speed: number; reverse: boolean; keyframes?: TransformKeyframe[]; isImage: boolean; isVideo: boolean; dur: number; trackId: string; followers: { id: string; start: number }[] } }
   | { kind: "scrub"; startX: number }
   | { kind: "band"; startX: number; startY: number; additive: boolean; baseIds: string[] };
 
@@ -91,7 +91,7 @@ export function Timeline() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, [contenteditable='true']")) return;
+      if (t.closest("input, textarea, select, [contenteditable='true']")) return;
       const st = useEditorStore.getState();
       // paste & 全轨分割 work without a current selection
       if ((e.key === "v" || e.key === "V") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.pasteClip(st.playhead); return; }
@@ -178,7 +178,7 @@ export function Timeline() {
         .filter((c) => c.id !== clipId && c.start >= myEnd - 1e-4)
         .map((c) => ({ id: c.id, start: c.start }))
         .sort((a, b) => a.start - b.start);
-      dragRef.current = { kind: mode, clipId, startX: e.clientX, orig: { start: clip.start, trimIn: clip.trimIn, trimOut: clip.trimOut, speed: clip.speed ?? 1, isImage: clip.kind === "image", isVideo: clip.kind === "video", dur, trackId, followers } };
+      dragRef.current = { kind: mode, clipId, startX: e.clientX, orig: { start: clip.start, trimIn: clip.trimIn, trimOut: clip.trimOut, speed: clip.speed ?? 1, reverse: !!clip.reverse, keyframes: clip.keyframes, isImage: clip.kind === "image", isVideo: clip.kind === "video", dur, trackId, followers } };
     }
     try { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* synthetic/no-active-pointer */ }
   }, [pxPerSec, selectClip]);
@@ -267,10 +267,18 @@ export function Timeline() {
         // 视频默认：拉长/缩短 = 变速（保留整段已裁素材，按新长度拉伸播放）。speed=源长/目标长。
         const speed = Math.max(0.25, Math.min(4, srcLen / newDur));
         realDur = srcLen / speed;                            // 受 speed 上下限约束后的实际长度
-        store.updateClip(d.clipId, { speed });
+        // 变速改变可视时长，关键帧 t 是「相对片段起点的时间轴秒」，必须按 realDur/旧时长 比例重基准，
+        // 否则动画时序与画面脱节、菱形标记溢出片段（k.t/cd>1）。仅有关键帧时才带上。
+        const kfScale = realDur / d.orig.dur;
+        const patch: Parameters<typeof store.updateClip>[1] = { speed };
+        if (d.orig.keyframes?.length && Math.abs(kfScale - 1) > 1e-6) {
+          patch.keyframes = d.orig.keyframes.map((k) => ({ ...k, t: k.t * kfScale }));
+        }
+        store.updateClip(d.clipId, patch);
       } else {
-        // 图片/音频，或视频按住 Ctrl：在素材内裁剪（改 trimOut，保持当前速度）。
-        store.trimClip(d.clipId, { trimOut: d.orig.trimIn + newDur * d.orig.speed });
+        // 图片/音频，或视频按住 Ctrl：在素材内裁剪（保持当前速度）。倒放时右缘对应源 trimIn 侧，
+        // 改 trimIn、保留 trimOut（trimRightSource 处理正反向）。
+        store.trimClip(d.clipId, trimRightSource(d.orig, newDur));
       }
       // 联动跟随：后续片段按本片段右缘的位移整体平移（保持原有间隙、不重叠）。
       const delta = (d.orig.start + realDur) - (d.orig.start + d.orig.dur);
@@ -291,9 +299,16 @@ export function Timeline() {
         const rightEdge = d.orig.start + d.orig.dur;
         const clampedSec = Math.min(Math.max(0, sec), rightEdge - 0.05);
         const clampedDelta = clampedSec - d.orig.start;
-        const newTrimIn = Math.max(0, d.orig.trimIn + clampedDelta * d.orig.speed);
-        const applied = newTrimIn - d.orig.trimIn;
-        store.trimClip(d.clipId, { trimIn: newTrimIn, start: Math.max(0, d.orig.start + applied / d.orig.speed) });
+        if (d.orig.reverse) {
+          // 倒放：时间轴左缘对应源 trimOut 侧，从左裁进=改 trimOut（保留 trimIn，右缘=源 trimIn 侧不变）。
+          const newTrimOut = Math.max(d.orig.trimIn + 0.05, d.orig.trimOut - clampedDelta * d.orig.speed);
+          const appliedSrc = d.orig.trimOut - newTrimOut;
+          store.trimClip(d.clipId, { trimOut: newTrimOut, start: Math.max(0, d.orig.start + appliedSrc / d.orig.speed) });
+        } else {
+          const newTrimIn = Math.max(0, d.orig.trimIn + clampedDelta * d.orig.speed);
+          const applied = newTrimIn - d.orig.trimIn;
+          store.trimClip(d.clipId, { trimIn: newTrimIn, start: Math.max(0, d.orig.start + applied / d.orig.speed) });
+        }
       }
     }
   }, [pxPerSec, snap, setPlayhead]);

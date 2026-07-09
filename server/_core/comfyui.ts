@@ -969,7 +969,13 @@ export function buildImageWorkflow(a: BuildImageWorkflowArgs): Record<string, { 
   // Model loader: a standalone UNet/diffusion-model file (UNETLoader, no embedded
   // CLIP/VAE — those must come from the separate CLIP loader + VAELoader) or a
   // full checkpoint (CheckpointLoaderSimple → model/clip/vae).
-  if ((a.modelSource ?? "checkpoint") === "unet") {
+  const modelSource = a.modelSource ?? "checkpoint";
+  if (modelSource === "unet") {
+    // UNETLoader 只有 1 个输出(MODEL/slot0)，不含内置 CLIP/VAE。若缺 CLIP/VAE，下方 clipRef=["4",1]、
+    // vaeRef=["4",2] 会指向不存在的输出槽，产出一张必然在 ComfyUI 提交时以晦涩错误报废的图。故此处
+    // 提前用可读错误拦下（Flux/SD3/Qwen 等新架构本就要求单独提供 CLIP/VAE）。
+    if (!a.clip?.name1?.trim()) throw new Error("该架构使用单独的 UNet 模型（UNETLoader 不含内置 CLIP），请同时选择 CLIP 模型");
+    if (!a.vae?.trim()) throw new Error("该架构使用单独的 UNet 模型（UNETLoader 不含内置 VAE），请同时选择 VAE 模型");
     wf["4"] = { class_type: "UNETLoader", inputs: { unet_name: a.ckpt, weight_dtype: a.unetWeightDtype || "default" } };
   } else {
     wf["4"] = { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: a.ckpt } };
@@ -2583,7 +2589,7 @@ function genericScan(info: ObjectInfo, list: ComfyModelList): void {
         else if (f === "control_net_name" || f === "controlnet_name") add(list.controlnets, vals);
         else if (f === "upscale_model_name") add(list.upscaleModels, vals);
         else if (f === "unet_name") add(list.unets, vals);
-        else if (f === "clip_name" || f === "clip_name1" || f === "clip_name2") add(list.clips, vals);
+        else if (f === "clip_name" || f === "clip_name1" || f === "clip_name2" || f === "clip_name3") add(list.clips, vals);
         else if (f === "clip_vision_name") add(list.clipVisions, vals);
         else if (f === "ipadapter_file" || f === "ipadapter_name") add(list.ipadapters, vals);
         else if (f === "style_model_name") add(list.styleModels, vals);
@@ -2740,7 +2746,9 @@ function randomizeSeeds(wf: WorkflowJson): void {
     const inputs = node?.inputs;
     if (!inputs || typeof inputs !== "object") continue;
     for (const key of Object.keys(inputs)) {
-      if (key === "seed" || key === "noise_seed") {
+      // 仅覆盖字面量 seed；连线来的 seed（值为 ["nodeId", slot] 数组，如 rgthree Seed Everywhere/
+      // Primitive 驱动多采样器）若被覆盖成常量会切断上游连接，让压测跑的图结构与用户真实工作流不同。
+      if ((key === "seed" || key === "noise_seed") && typeof inputs[key] === "number") {
         inputs[key] = Math.floor(Math.random() * 2_147_483_647);
       }
     }

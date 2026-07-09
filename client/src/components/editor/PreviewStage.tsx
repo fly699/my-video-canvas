@@ -210,6 +210,24 @@ export function PreviewStage() {
   const setPlaying = useEditorStore((s) => s.setPlaying);
   const selectClip = useEditorStore((s) => s.selectClip);
   const updateClip = useEditorStore((s) => s.updateClip);
+  const setKeyframeField = useEditorStore((s) => s.setKeyframeField);
+  // 有关键帧时，预览拖拽/缩放/旋转须写「播放头处的关键帧」而非 base transform（否则 transformAt
+  // 只看关键帧、base 改动被静默忽略，拖动画面毫无反应，#88）。此 helper 统一路由。
+  const applyTf = useCallback((id: string, patch: Partial<ClipTransform>) => {
+    const stt = useEditorStore.getState();
+    const c = findClip(stt.doc, id);
+    if (c && (c.keyframes?.length ?? 0) > 0) {
+      const local = Math.max(0, +(stt.playhead - c.start).toFixed(3));
+      for (const k of Object.keys(patch) as (keyof ClipTransform)[]) {
+        const v = patch[k];
+        if (typeof v === "number" && (k === "x" || k === "y" || k === "scale" || k === "opacity" || k === "rotation")) {
+          stt.setKeyframeField(id, local, k, v);
+        }
+      }
+    } else {
+      updateClip(id, { transform: { ...(c?.transform ?? {}), ...patch } });
+    }
+  }, [updateClip, setKeyframeField]);
   const [thirds, setThirds] = usePersistentState<boolean>("ui:editor:preview-thirds:v1", false, { validate: (p) => (typeof p === "boolean" ? p : null) });
   const [safeZone, setSafeZone] = usePersistentState<string>("ui:editor:preview-safezone:v1", "", { validate: (p) => (typeof p === "string" ? p : null) });
   // 自定义安全区（可拖动/缩放）。safeZone === "custom" 时用它，否则用 SAFE_ZONES 预设。
@@ -311,7 +329,7 @@ export function PreviewStage() {
       } else {
         setSnapGuide({ x: null, y: null });
       }
-      updateClip(d.id, { transform: { ...d.tf, x: Math.max(-0.5, Math.min(1, nx)), y: Math.max(-0.5, Math.min(1, ny)) } });
+      applyTf(d.id, { x: Math.max(-0.5, Math.min(1, nx)), y: Math.max(-0.5, Math.min(1, ny)) });
     } else if (d.mode === "scale") {
       const distX = Math.abs(e.clientX - left - d.cx);
       let newW = Math.max(0.04, (distX * 2) / w);                // width fraction (symmetric from center)
@@ -322,22 +340,24 @@ export function PreviewStage() {
       const cur = findClip(st.doc, d.id);
       const pos = { x: cxFrac - newW / 2, y: cyFrac - newH / 2 };
       if (d.kind === "shape") {
-        // 形状：拖动手柄改 shape.w/h（保持形状比例），位置随之居中。
-        updateClip(d.id, { shape: { ...(cur?.shape ?? { type: "rect" }), w: newW, h: newH } as NonNullable<Clip["shape"]>, transform: { ...(cur?.transform ?? {}), ...pos } });
+        // 形状：拖动手柄改 shape.w/h（保持形状比例）；位置(transform)经 applyTf 路由到关键帧/base。
+        updateClip(d.id, { shape: { ...(cur?.shape ?? { type: "rect" }), w: newW, h: newH } as NonNullable<Clip["shape"]> });
+        applyTf(d.id, pos);
       } else if (d.kind === "text") {
         // 文字：拖动手柄同时缩放字号（按宽度比例）+ 文本框宽度，所见即所得。
         const ratio = newW / Math.max(0.001, d.startW);
         const newSize = Math.max(6, Math.round(d.startSize * ratio));
-        updateClip(d.id, { transform: { ...(cur?.transform ?? {}), scale: newW, ...pos }, text: { ...(cur?.text ?? { content: "" }), size: newSize } as NonNullable<Clip["text"]> });
+        updateClip(d.id, { text: { ...(cur?.text ?? { content: "" }), size: newSize } as NonNullable<Clip["text"]> });
+        applyTf(d.id, { scale: newW, ...pos });
       } else {
-        updateClip(d.id, { transform: { ...(cur?.transform ?? {}), scale: newW, ...pos } });
+        applyTf(d.id, { scale: newW, ...pos });
       }
     } else if (d.mode === "rotate") {
       let ang = Math.round(Math.atan2(e.clientY - top - d.cy, e.clientX - left - d.cx) * 180 / Math.PI + 90);
       if (!e.altKey) ang = snapAngle(ang, 6);                    // snap to 15° steps (Alt bypasses)
-      updateClip(d.id, { transform: { ...(findClip(useEditorStore.getState().doc, d.id)?.transform ?? {}), rotation: ang } });
+      applyTf(d.id, { rotation: ang });
     }
-  }, [updateClip]);
+  }, [updateClip, applyTf]);
 
   const endDrag = useCallback(() => {
     dragRef.current = null;
@@ -348,13 +368,15 @@ export function PreviewStage() {
 
   const beginMove = useCallback((e: React.PointerEvent, clip: Clip) => {
     e.stopPropagation(); selectClip(clip.id);
-    const tf = { x: clip.transform?.x ?? 0.1, y: clip.transform?.y ?? 0.1, scale: clip.transform?.scale ?? 0.4, rotation: clip.transform?.rotation ?? 0, opacity: clip.transform?.opacity ?? 1 };
+    // 有关键帧时以「播放头处的插值姿态」为拖动起点，否则拖一个 keyframed 片段会从 base(常 0,0)起跳。
+    const eff = (clip.keyframes?.length ?? 0) > 0 ? transformAt(clip, Math.max(0, playhead - clip.start)) : (clip.transform ?? {});
+    const tf = { x: eff.x ?? 0.1, y: eff.y ?? 0.1, scale: eff.scale ?? 0.4, rotation: eff.rotation ?? 0, opacity: eff.opacity ?? 1 };
     // capture the box's normalized size for edge/center snapping
     const { w, h } = stageSize();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     dragRef.current = { mode: "move", id: clip.id, px: e.clientX, py: e.clientY, tf, bw: r.width / w, bh: r.height / h };
     window.addEventListener("pointermove", onWinMove); window.addEventListener("pointerup", endDrag);
-  }, [selectClip, onWinMove, endDrag]);
+  }, [selectClip, onWinMove, endDrag, playhead]);
 
   const beginScale = useCallback((e: React.PointerEvent, clip: Clip, boxEl: HTMLElement | null) => {
     e.stopPropagation(); e.preventDefault();

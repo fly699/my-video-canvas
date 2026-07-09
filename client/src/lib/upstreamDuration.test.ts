@@ -53,8 +53,8 @@ describe("resolveComfyFramesFromDuration（comfyui 视频按分镜时长换算 f
     expect(resolveComfyFramesFromDuration("v", [], [N("v", "comfyui_video", {})], 16, 8)).toBe(16);
     expect(resolveComfyFramesFromDuration("v", [], [N("v", "comfyui_video", {})], undefined, 8)).toBeUndefined();
   });
-  it("clamp 防跑飞：超长时长夹到 300 帧上限", () => {
-    expect(resolveComfyFramesFromDuration("v", e, sb(100), undefined, 16)).toBe(300); // 100×16=1600 → 300
+  it("clamp 防跑飞：超长时长夹到 256 帧上限（与服务端 zod frames.max(256) 一致）", () => {
+    expect(resolveComfyFramesFromDuration("v", e, sb(100), undefined, 16)).toBe(256); // 100×16=1600 → 256
   });
 });
 

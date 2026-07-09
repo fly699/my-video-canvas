@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, Server, Mic, Radio } from "lucide-react";
+import { Lock, Paperclip, Send, ShieldCheck, Users, Trash2, LogOut, X, FileIcon, ImageIcon, Film, FolderOpen, Download, Crop, HardDriveUpload, Sparkles, BookOpen, Copy, Server, Mic, Radio, ChevronDown } from "lucide-react";
 import { BroadcastComposer } from "./BroadcastComposer";
 import { captureScreen, CropSelectOverlay, ScreenshotEditor } from "./ScreenshotEditor";
 import { ComfyServerStatusIndicator } from "../canvas/ComfyServerStatusIndicator";
@@ -156,7 +156,23 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
 
   // 前插「更早消息」时不要自动滚到底（否则视口会跳走）；由 onLoadEarlier 用锚点恢复位置。
   const prependingRef = useRef(false);
-  useEffect(() => { if (prependingRef.current) return; if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
+  // 仅当用户已在底部附近时，新消息才自动置底——否则用户正在回看历史会被强行拽回底部。
+  const nearBottomRef = useRef(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const onListScroll = () => {
+    const el = scrollRef.current; if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    nearBottomRef.current = near;
+    setShowJumpToBottom(!near);
+  };
+  const jumpToBottom = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; nearBottomRef.current = true; setShowJumpToBottom(false); };
+  useEffect(() => {
+    if (prependingRef.current) return;
+    if (!nearBottomRef.current) return; // 用户在回看历史 → 不打断
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
+  // 切换会话时重置为「在底部」，确保新会话首屏落到最新消息。
+  useEffect(() => { nearBottomRef.current = true; setShowJumpToBottom(false); }, [activeConv?.id]);
 
   // 加载更早消息并保持滚动锚点：记录加载前的 scrollHeight/scrollTop，前插后按高度差回补 scrollTop。
   const onLoadEarlier = async () => {
@@ -442,7 +458,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
       )}
 
       {/* messages */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: narrow ? "12px 10px" : "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div ref={scrollRef} onScroll={onListScroll} style={{ flex: 1, overflowY: "auto", padding: narrow ? "12px 10px" : "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
         {loadingMessages && <div style={{ alignSelf: "center", color: C.t3, fontSize: 13 }}>加载中…</div>}
         {!loadingMessages && hasMoreMessages && (
           <button onClick={() => void onLoadEarlier()} disabled={loadingEarlier}
@@ -459,6 +475,14 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
           </div>
         )}
       </div>
+
+      {/* 回到底部（用户在回看历史、新消息不再自动置底时出现） */}
+      {showJumpToBottom && (
+        <button onClick={jumpToBottom} title="回到最新消息" aria-label="回到最新消息"
+          style={{ position: "absolute", right: narrow ? 12 : 20, bottom: 92, zIndex: 8, width: 38, height: 38, borderRadius: "50%", border: `1px solid ${C.borderStrong}`, background: C.surface, color: C.t1, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <ChevronDown size={18} />
+        </button>
+      )}
 
       {/* AI 模型选择（仅 AI 助手会话） */}
       {isAI ? (

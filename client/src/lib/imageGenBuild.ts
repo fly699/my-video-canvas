@@ -59,8 +59,9 @@ export function buildImageGenInput(args: {
   const model = payload.model || args.defaultModel;
   const raw = payload.model;
   const isReveOrSeedream = raw === "hf_reve" || raw === "hf_seedream_v4" || raw === "hf_flux_pro";
-  const reveAspectAllowed: readonly string[] = raw === "hf_flux_pro" ? V2_ASPECT_RATIOS : V2_ASPECT_RATIOS;
-  const reveAspect = reveAspectAllowed.includes(payload.reveAspectRatio ?? "") ? payload.reveAspectRatio : undefined;
+  // reve / seedream_v4 / flux_pro 目前共用同一套比例白名单（V2_ASPECT_RATIOS）；原写成
+  // `flux_pro ? A : A` 的死三元（两分支相同）易被误读为「flux_pro 有独立比例集」，简化掉。
+  const reveAspect = (V2_ASPECT_RATIOS as readonly string[]).includes(payload.reveAspectRatio ?? "") ? payload.reveAspectRatio : undefined;
   const fluxNum = ([1, 2, 3, 4] as number[]).includes(payload.fluxNumImages as number) ? (payload.fluxNumImages as 1 | 2 | 3 | 4) : undefined;
   const soulQuality = (SOUL_QUALITIES as readonly string[]).includes(payload.soulQuality ?? "") ? payload.soulQuality : undefined;
   const reveResolution = (V2_RESOLUTIONS as readonly string[]).includes(payload.reveResolution ?? "") ? payload.reveResolution : undefined;

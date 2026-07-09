@@ -21,7 +21,7 @@ async function downloadImage(src: string) {
     const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch {
-    window.open(mediaFetchUrl(src, true, "image"), "_blank");
+    window.open(mediaFetchUrl(src, true, "image"), "_blank", "noopener,noreferrer");
   }
 }
 

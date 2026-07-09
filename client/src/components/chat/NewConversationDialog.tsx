@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Search, Users, MessageSquare, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useChat } from "@/hooks/useChat";
@@ -19,12 +19,15 @@ export function NewConversationDialog({ onClose }: { onClose: () => void }) {
   const searchQuery = trpc.chat.searchUsers.useQuery({ q }, { enabled: q.trim().length > 0 });
   const startDm = trpc.chat.startDm.useMutation();
 
-  // #R5-6 Esc 关闭（此前只支持点遮罩/X）。
+  // #R5-6 Esc 关闭（此前只支持点遮罩/X）。onClose 是父级内联函数、每次渲染都换引用，
+  // 若放进依赖数组会让 socket 高频重渲染时监听器反复解绑/重绑——用 ref 承接 + 空依赖只绑一次。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCloseRef.current(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   async function onCreateRoom() {
     if (!title.trim()) return;
@@ -48,7 +51,7 @@ export function NewConversationDialog({ onClose }: { onClose: () => void }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: 420, maxWidth: "90vw", background: "var(--c-surface, #1a1a22)", borderRadius: 14,
+        width: 420, maxWidth: "90vw", maxHeight: "90vh", overflowY: "auto", background: "var(--c-surface, #1a1a22)", borderRadius: 14,
         border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))", padding: 20, color: "var(--c-t1, #f0f0f4)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>

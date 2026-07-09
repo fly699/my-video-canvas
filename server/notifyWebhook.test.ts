@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isBlockedIp, assertPublicHttpUrl } from "./_core/notifyWebhook";
+import { isBlockedIp, assertPublicHttpUrl, resolveValidatedIps } from "./_core/notifyWebhook";
 
 describe("isBlockedIp — SSRF 私网/环回/元数据段守卫", () => {
   const blocked = [
@@ -42,5 +42,20 @@ describe("assertPublicHttpUrl — URL 级校验（无需 DNS 的路径）", () =
   });
   it("非法 URL 抛错", async () => {
     await expect(assertPublicHttpUrl("not a url")).rejects.toThrow();
+  });
+});
+
+describe("resolveValidatedIps — 固定连接 IP（防 DNS 重绑定）", () => {
+  it("IP 字面量：公网直接返回自身", async () => {
+    await expect(resolveValidatedIps(new URL("https://8.8.8.8/hook"))).resolves.toEqual(["8.8.8.8"]);
+  });
+  it("IP 字面量：私网/环回/元数据拒绝", async () => {
+    await expect(resolveValidatedIps(new URL("http://127.0.0.1/x"))).rejects.toThrow();
+    await expect(resolveValidatedIps(new URL("http://169.254.169.254/latest/"))).rejects.toThrow();
+    await expect(resolveValidatedIps(new URL("http://10.1.2.3/x"))).rejects.toThrow();
+  });
+  it("主机名解析到环回即拒绝（localhost→127.0.0.1）", async () => {
+    // localhost 解析结果落在禁段 → 抛错（即便按名字校验被绕过，按解析 IP 也拦下）
+    await expect(resolveValidatedIps(new URL("http://localhost/x"))).rejects.toThrow();
   });
 });

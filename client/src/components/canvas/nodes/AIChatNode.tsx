@@ -59,7 +59,7 @@ import { AI_TEMPLATE_CATEGORIES, type AITemplate } from "@/lib/aiAssistantTempla
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 
 export const AIChatNode = memo(function AIChatNode({ id, selected, data }: Props) {
-  const { updateNodeData } = useCanvasStore();
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const { resolve } = useNodeDefaultModels();
   const hasDownstream = useCanvasStore(useMemo(() => (s) => s.edges.some(e => e.source === id), [id]));
   const payload = data.payload;

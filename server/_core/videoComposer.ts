@@ -292,6 +292,7 @@ export interface AudioInput {
   trimIn: number;
   trimOut: number;
   speed: number;
+  reverse?: boolean;   // 倒放：音频逆序（与预览 sourceTimeAt 一致；主轨音频已有 areverse，此处对齐独立音轨）
   start: number;       // timeline position (seconds)
   volume: number;
   fadeIn: number;
@@ -566,10 +567,14 @@ export function buildFilterGraph(
     // feeding a concat (hard cut) output into a later xfade alongside a fresh
     // segment then fails with "timebase ... do not match" → "Failed to
     // configure output pad". settb keeps all combine inputs on 1/fps.
-    // 片段不透明度（主轨）：与预览一致 = 在 RGB 上朝黑乘 op。仅 op<1 时插入此滤镜，
-    // op=1（绝大多数片段）链路保持原样、无任何额外转换 → 对常规导出零影响、零质量损失。
+    // 片段不透明度（主轨）：与预览一致 = 在 RGB 上朝黑乘 op。有 opacity 关键帧时逐帧乘（geq 时变，
+    // 大写 T=clip-local 时基，与 transformAt 一致），否则静态用 colorchannelmixer。op=1 且无关键帧
+    // （绝大多数片段）链路保持原样、无任何额外转换 → 对常规导出零影响、零质量损失。
+    const opKfExpr = buildKeyframeExpr(keyframePoints(s.keyframes, "opacity", 0, (v) => Math.max(0, Math.min(1, v))));
     const op = s.transform?.opacity ?? 1;
-    const opChain = op < 0.999 ? [`colorchannelmixer=rr=${op.toFixed(3)}:gg=${op.toFixed(3)}:bb=${op.toFixed(3)}`] : [];
+    const opChain = opKfExpr != null
+      ? [`format=rgb24`, `geq=r='r(X,Y)*clip(${opKfExpr.replace(/\bt\b/g, "T")},0,1)':g='g(X,Y)*clip(${opKfExpr.replace(/\bt\b/g, "T")},0,1)':b='b(X,Y)*clip(${opKfExpr.replace(/\bt\b/g, "T")},0,1)'`]
+      : op < 0.999 ? [`colorchannelmixer=rr=${op.toFixed(3)}:gg=${op.toFixed(3)}:bb=${op.toFixed(3)}`] : [];
     const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), ...opChain, "format=yuv420p", ...videoFadeFilters(s.fadeIn, s.fadeOut, dur), `settb=1/${fps}`];
 
     if (s.fit === "blur") {
@@ -682,10 +687,12 @@ export function buildFilterGraph(
     // 旋转：有 rotation 关键帧时逐帧旋转。坑：rotate 的 a 本应逐帧求值，但 c=none（透明填充）
     // 会禁用逐帧（实测 6.1.1：c=none 下 a 冻结在首帧）；必须用 c=black@0（透明黑）才能既保透明角
     // 又动画，ow=iw:oh=ih 固定输出尺寸（绕开下游缩放的 config_props 尺寸锁，且中心对齐预览）。
-    // 静态情形保持原 c=none:ow=rotw/roth（零回归）。
+    // 静态旋转同样固定输出尺寸 ow=iw:oh=ih：原 ow=rotw/roth 会把 bbox 撑大，而 overlay 按左上角
+    // 锚定合成 → PiP 整体向右下漂移 (rotw-iw)/2；预览是绕中心 CSS 旋转、不改布局盒。与动画路径统一，
+    // 静态旋转 c=none 无 eval 冻结问题（常量角）。
     const rotExpr = buildKeyframeExpr(keyframePoints(o.keyframes, "rotation", 0, (v) => v * Math.PI / 180));
     if (rotExpr != null) oc.push(`rotate=a='${rotExpr}':c=black@0:ow=iw:oh=ih`);
-    else if (o.transform?.rotation) oc.push(`rotate=${(o.transform.rotation * Math.PI / 180).toFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)`);
+    else if (o.transform?.rotation) oc.push(`rotate=${(o.transform.rotation * Math.PI / 180).toFixed(5)}:c=none:ow=iw:oh=ih`);
     // alpha fade in/out while the overlay's PTS is still clip-local (0..duration)
     oc.push(...videoFadeFilters(o.fadeIn, o.fadeOut, o.duration, true));
     // 动画缩放放到所有像素滤镜之后、位移 setpts 之前（见上方说明：尺寸安全顺序）
@@ -732,10 +739,9 @@ export function buildFilterGraph(
     audioClips.forEach((a, k) => {
       const inIdx = segs.length + overlays.length + k;
       const dur = Math.max(0.05, (a.trimOut - a.trimIn) / (a.speed || 1));
-      const ac: string[] = [
-        `atrim=start=${a.trimIn.toFixed(3)}:end=${a.trimOut.toFixed(3)}`,
-        "asetpts=PTS-STARTPTS",
-      ];
+      const ac: string[] = [`atrim=start=${a.trimIn.toFixed(3)}:end=${a.trimOut.toFixed(3)}`];
+      if (a.reverse) ac.push("areverse");   // 倒放：音频逆序（在 atrim 后、重置 PTS 前）
+      ac.push("asetpts=PTS-STARTPTS");
       if (a.denoise) ac.push("afftdn=nr=20:nf=-30"); // 降噪：对原始音频做 FFT 降噪（实测噪声带降约 12dB）
       if (Math.abs(a.speed - 1) > 0.001) ac.push(...buildAtempoFilters(a.speed));
       if (Math.abs(a.volume - 1) > 0.001) ac.push(`volume=${a.volume.toFixed(3)}`);
@@ -1024,7 +1030,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
       if (!c.assetUrl) continue;
       const p = await downloadToTemp(c.assetUrl, "m4a");
       tmpFiles.push(p);
-      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, start: c.start, volume: effVolume(c), fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, fadeCurve: c.fadeCurve, ducking: c.ducking, denoise: c.denoise });
+      audioClips.push({ trimIn: c.trimIn, trimOut: c.trimOut, speed: c.speed ?? 1, reverse: c.reverse, start: c.start, volume: effVolume(c), fadeIn: c.fadeIn ?? 0, fadeOut: c.fadeOut ?? 0, fadeCurve: c.fadeCurve, ducking: c.ducking, denoise: c.denoise });
       inputArgs.push("-i", p);
       report(2 + Math.round((++done) / total * 28), "下载素材");
     }
@@ -1074,11 +1080,20 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
 
     const outName = `compose-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const outPath = path.join(os.tmpdir(), outName);
+    // 立即登记待清理——与输入素材一致（拿到即 push）。若登记推迟到 ffmpeg 成功之后，渲染失败/超时
+    // 留下的成片临时文件（可能是 0 字节，也可能是超时被杀的大体积半成品）会漏删、长期填满 /tmp。
+    tmpFiles.push(outPath);
 
     const buildArgs = (vc: string[]) => [
       ...inputArgs,
       "-filter_complex", graph.filterComplex,
       "-map", graph.outV, "-map", graph.outA,
+      // 片长=画面长：独立音轨（如拖过片尾的背景音乐）经 amix(duration=longest) 会让 [outa] 长于视频，
+      // 无 -shortest 时容器时长取音频长度 → 画面在末尾冻结、且回报的 duration(=curDur) 与文件不符。
+      // -shortest 把输出裁到最短流=视频长度。安全前提：本图基轨每段都发等长音频（真声或 anullsrc 静音），
+      // 故 [outa] 恒 ≥ 视频长度，-shortest 只会裁音频尾、绝不会截断画面。真机 ffprobe 验证：无它音频 10s/
+      // 视频 3s 不一致，加它后统一为 3s。
+      "-shortest",
       ...vc,
       ...aCodec,
       ...containerArgs,
@@ -1123,7 +1138,6 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     report(88, "上传成片");
 
     const outBuffer = await fs.readFile(outPath);
-    tmpFiles.push(outPath);
     await assertObjectStorageWritable();
     const namePart = sanitizeFilenamePrefix(opts.projectName || "成片") || "成片";
     const key = `u/${opts.userId}/editor/${namePart}-${Date.now()}.${ext}`;

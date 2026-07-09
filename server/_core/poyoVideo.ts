@@ -450,14 +450,19 @@ export async function checkPoyoVideoStatus(externalTaskId: string): Promise<Poyo
   }
 
   const d = body.data;
-  const KNOWN_STATUSES = new Set(["not_started", "running", "finished", "failed"]);
+  // 只有明确「在途」的状态才继续轮询；其余非 finished 的状态（failed/cancelled/expired/timeout/error
+  // 或任何未知值）一律判 failed 立即收敛——否则视频轮询器对「带 externalTaskId 的 processing」无墙钟
+  // 超时（STUCK_TASK_MS 只回收缺 externalTaskId 的任务），未知状态会被当成 running 永久轮询、永不失败。
+  // 与 poyoAudio 的 IN_PROGRESS_STATUSES 同款策略（该模块已实证 Poyo 会下发 cancelled/expired 等）。
+  const IN_PROGRESS = new Set(["not_started", "queued", "pending", "processing", "running", "submitted", "in_progress", "started"]);
   const rawStatus = d.status;
-  if (!KNOWN_STATUSES.has(rawStatus)) {
-    // Unknown intermediate status from upstream — treat as still running so the
-    // poller keeps checking rather than silently looping or crashing
-    console.warn(`[checkPoyoVideoStatus] Unknown status "${rawStatus}" for task ${externalTaskId}; treating as running`);
+  const status: PoyoTaskStatus["status"] =
+    rawStatus === "finished" ? "finished"
+    : IN_PROGRESS.has(rawStatus) ? "running"
+    : "failed";
+  if (status === "failed" && rawStatus !== "failed") {
+    console.warn(`[checkPoyoVideoStatus] Non-progress status "${rawStatus}" for task ${externalTaskId}; treating as failed`);
   }
-  const status = (KNOWN_STATUSES.has(rawStatus) ? rawStatus : "running") as PoyoTaskStatus["status"];
 
   // Collect every video-ish URL we can find. Some providers/modes return:
   //   - `files: [{file_type: "video", file_url: ...}]`              (standard)

@@ -4,6 +4,7 @@ import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import { useStudioExpandAll } from "../../hooks/useStudioExpandAll";
 import { useBoxSelecting } from "../../hooks/useBoxSelecting";
 import { useComfyPreviewStore } from "../../hooks/useComfyPreviewStore";
@@ -100,7 +101,11 @@ export const BaseNode = memo(function BaseNode({
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
-  const { deleteNode, duplicateNode, createVariants, updateNodeTitle, projectId } = useCanvasStore();
+  // 窄 selector：只订阅这几个稳定 action + projectId，避免无 selector 订阅整个 store——
+  // 否则任意节点拖动/输入触发的 set 会让画布上每个 BaseNode 重渲染（大图 O(N²)）。
+  const { deleteNode, duplicateNode, createVariants, updateNodeTitle, projectId } = useCanvasStore(
+    useShallow((s) => ({ deleteNode: s.deleteNode, duplicateNode: s.duplicateNode, createVariants: s.createVariants, updateNodeTitle: s.updateNodeTitle, projectId: s.projectId })),
+  );
   // Detect ambiguous dual-target connection: when both `input` (left) and `top` handles
   // receive edges, the workflow runner only uses one — warn the user.
   const dualTargetConflict = useCanvasStore((s) => {

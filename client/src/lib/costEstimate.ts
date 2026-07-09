@@ -129,6 +129,9 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   // 数字人：价格表 标准 8 / 专业 16 点·秒；时长随音频，按 10s 估。
   kie_kling_avatar_std: () => pt(8 * 10, true),
   kie_kling_avatar_pro: () => pt(16 * 10, true),
+  // 对口型：OmniHuman 1.5 27 / Volcengine 8 点·秒；时长随音频/源视频，按 10s 估（approx）。
+  kie_omnihuman15:        () => pt(27 * 10, true),
+  kie_volcengine_lipsync: () => pt(8 * 10, true),
   // Wan Animate：价格表 480p 6 / 580p 9.5 / 720p 12.5 点·秒；时长随源视频，按 5s 估。
   kie_wan_animate_move:    (p) => pt(({ "480p": 6, "580p": 9.5, "720p": 12.5 }[str(p, "resolution", "480p")] ?? 6) * 5, true),
   kie_wan_animate_replace: (p) => pt(({ "480p": 6, "580p": 9.5, "720p": 12.5 }[str(p, "resolution", "480p")] ?? 6) * 5, true),

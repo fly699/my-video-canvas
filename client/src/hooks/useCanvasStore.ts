@@ -87,6 +87,20 @@ const CLONE_RUNTIME_FIELDS = [
   "status", "messages", "url", "storageKey", "outputUrl", "outputDuration",
 ];
 
+// ── 协作广播钩子（由 Canvas.tsx 注册；避免 store ↔ socket 直接耦合）──────────────
+// updateNodeData/updateNodeTitle 的**本地**改动经此回调广播给协作者（node:update / node:title）。
+// 防回声：远端改动经 applyRemoteMutation 走 setNodes 直改，不经 updateNodeData，故不会二次广播。
+type NodeMutationBroadcast =
+  | { kind: "update"; id: string; patch: Record<string, unknown> }
+  | { kind: "title"; id: string; title: string }
+  | { kind: "add"; nodes: CanvasNode[]; edges: CanvasEdge[] };
+let _nodeMutationBroadcaster: ((m: NodeMutationBroadcast) => void) | null = null;
+export function registerNodeMutationBroadcaster(fn: ((m: NodeMutationBroadcast) => void) | null): void {
+  _nodeMutationBroadcaster = fn;
+}
+// 运行态/生成态字段属每用户本地进度，绝不广播（否则协作者互相污染进度/结果）。pinned 为本地 UI 偏好。
+const NON_BROADCAST_FIELDS = new Set<string>([...CLONE_RUNTIME_FIELDS, "pinned"]);
+
 // Generation node types that support A/B 变体 (fresh seed per clone).
 export const VARIANT_TYPES: NodeType[] = [
   "image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow",
@@ -232,6 +246,19 @@ interface CanvasStore {
 }
 
 /** Push current state to past stack and clear future */
+/** 从所有 group 节点的 childIds 中剔除被删除的成员 id，避免残留幽灵引用
+ *  （否则 group 头部「N 个节点」计数虚高、「整组执行」会请求已不存在的节点）。 */
+function pruneGroupChildren(nodes: CanvasNode[], removed: Set<string>): CanvasNode[] {
+  if (removed.size === 0) return nodes;
+  return nodes.map((n) => {
+    if (n.data.nodeType !== "group") return n;
+    const gp = n.data.payload as GroupNodeData;
+    const childIds = gp.childIds ?? [];
+    const filtered = childIds.filter((cid) => !removed.has(cid));
+    return filtered.length === childIds.length ? n : { ...n, data: { ...n.data, payload: { ...gp, childIds: filtered } } };
+  });
+}
+
 function pushHistory(state: CanvasStore): Partial<CanvasStore> {
   const snapshot: HistorySnapshot = {
     nodes: state.nodes,
@@ -276,7 +303,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const removedIds = changes.filter((c) => c.type === "remove").map((c) => (c as { id: string }).id);
     set((state) => ({
       ...(isStructural ? pushHistory(state) : {}),
-      nodes: applyNodeChanges(changes, state.nodes) as CanvasNode[],
+      nodes: pruneGroupChildren(applyNodeChanges(changes, state.nodes) as CanvasNode[], new Set(removedIds)),
       deletedNodeIds: removedIds.length ? [...state.deletedNodeIds, ...removedIds] : state.deletedNodeIds,
       isDirty: true,
     }));
@@ -623,6 +650,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ),
       isDirty: true,
     }));
+    // 广播配置类改动给协作者（剥离运行态/生成态字段；空补丁不发）。远端 apply 走 setNodes 不到这。
+    if (_nodeMutationBroadcaster) {
+      const cfg: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(payload)) if (!NON_BROADCAST_FIELDS.has(k)) cfg[k] = v;
+      if (Object.keys(cfg).length) _nodeMutationBroadcaster({ kind: "update", id, patch: cfg });
+    }
   },
 
   batchUpdateNodeData: (updates) => {
@@ -853,12 +886,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       ),
       isDirty: true,
     }));
+    if (_nodeMutationBroadcaster) _nodeMutationBroadcaster({ kind: "title", id, title });
   },
 
   deleteNode: (id) => {
     set((state) => ({
       ...(get()._suppressHistory ? {} : pushHistory(state)),
-      nodes: state.nodes.filter((n) => n.id !== id),
+      nodes: pruneGroupChildren(state.nodes.filter((n) => n.id !== id), new Set([id])),
       edges: state.edges.filter((e) => e.source !== id && e.target !== id),
       deletedNodeIds: [...state.deletedNodeIds, id],
       isDirty: true,
@@ -888,16 +922,19 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     // The duplicate is authored by whoever clicked duplicate.
     const dupUid = get().currentUserId;
     if (dupUid != null) clonedPayload.createdBy = dupUid;
+    // 递增落位：统计已叠在目标位附近的节点数，逐个错开，避免连按 Ctrl+D 副本全部重叠在同一点。
+    const baseX = node.position.x + 40, baseY = node.position.y + 40;
+    const overlap = get().nodes.filter((n) => Math.abs(n.position.x - baseX) < 24 && Math.abs(n.position.y - baseY) < 24).length;
     const newNode: CanvasNode = {
       ...node,
       id: newId,
-      position: { x: node.position.x + 40, y: node.position.y + 40 },
+      position: { x: baseX + overlap * 32, y: baseY + overlap * 32 },
       data: { ...node.data, payload: clonedPayload as typeof node.data.payload },
-      selected: false,
+      selected: true, // 选中副本（并在下方取消原节点选中），使随后拖动操作的是副本而非原件
     };
     set((state) => ({
       ...(get()._suppressHistory ? {} : pushHistory(state)),
-      nodes: [...state.nodes, newNode],
+      nodes: [...state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)), newNode],
       isDirty: true,
     }));
   },
@@ -1027,6 +1064,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       edges: [...s.edges, ...newEdges],
       isDirty: true,
     }));
+    // 广播变体新节点/边给协作者（createVariants 由 BaseNode 调用、不经 Canvas 的批量 diff 广播）。
+    if (_nodeMutationBroadcaster && newNodes.length) _nodeMutationBroadcaster({ kind: "add", nodes: newNodes, edges: newEdges });
     return newNodes.length;
   },
 
