@@ -28,6 +28,16 @@ export interface ConversationSummary {
 
 export interface JoinableRoom { id: number; title: string | null; isPrivate: boolean; mode: string }
 
+// Monotonic client-side message id for optimistic echoes and E2E-relayed messages (which
+// have no server row id). Bare Date.now()(+rand) collided when two were minted in the same
+// millisecond → appendLocalHistory dedupes by id and silently dropped one on the next reload.
+// Strictly-increasing + large (≫ any real DB id) avoids both collisions and server-id clashes.
+let _lastLocalMsgId = 0;
+function nextLocalMsgId(): number {
+  _lastLocalMsgId = Math.max(_lastLocalMsgId + 1, Date.now() * 1000);
+  return _lastLocalMsgId;
+}
+
 interface ChatContextValue {
   conversations: ConversationSummary[];
   refetchConversations: () => void;
@@ -136,7 +146,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   type FileChunkFrame = { conversationId: number; transferId: string; seq: number; last: boolean; data: string; meta?: ChatFileRef; encrypted?: boolean; senderId: number; senderName?: string };
   const handleFileChunkRef = useRef<(f: FileChunkFrame) => Promise<void>>(async () => {});
   // serverless inbound file reassembly
-  const fileBufs = useRef<Map<string, { chunks: Uint8Array[]; meta: ChatFileRef }>>(new Map());
+  const fileBufs = useRef<Map<string, { chunks: Uint8Array[]; meta: ChatFileRef; received: Set<number>; total: number | null; done: boolean }>>(new Map());
 
   const sendMessageMut = trpc.chat.sendMessage.useMutation();
   const uploadFileMut = trpc.chat.uploadFile.useMutation();
@@ -472,7 +482,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     let text = DECRYPT_FAIL;
     if (key) { try { text = await decryptText(key, { ciphertext: payload.ciphertext, iv: payload.iv }); } catch { /* keep placeholder */ } }
     const wire: StoredChatMsg = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: nextLocalMsgId(),
       conversationId: payload.conversationId,
       senderId: payload.senderId,
       senderName: payload.senderName,
@@ -500,7 +510,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     let entry = fileBufs.current.get(frame.transferId);
     if (!entry) {
       if (!frame.meta) return;
-      entry = { chunks: [], meta: frame.meta };
+      entry = { chunks: [], meta: frame.meta, received: new Set(), total: null, done: false };
       fileBufs.current.set(frame.transferId, entry);
     }
     try {
@@ -514,23 +524,31 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       } else {
         entry.chunks[frame.seq] = raw; // plaintext fast path
       }
+      entry.received.add(frame.seq);
     } catch { return; }
-    if (frame.last) {
-      const blob = new Blob(entry.chunks as unknown as BlobPart[], { type: entry.meta.mimeType });
-      const url = URL.createObjectURL(blob);
-      fileBufs.current.delete(frame.transferId);
-      const wire: ChatWireMessage = {
-        id: Date.now() + Math.floor(Math.random() * 1000),
-        conversationId: frame.conversationId, senderId: frame.senderId,
-        senderName: frame.senderName ?? "",
-        content: "", attachments: [{ ...entry.meta, url }],
-        createdAt: new Date().toISOString(),
-      };
-      await appendLocalHistory(frame.conversationId, wire);
-      if (frame.conversationId === activeIdRef.current) setMessages((prev) => [...prev, wire]);
-      // E2E 会话收到的文件/语音也要提醒（与 server 模式一致；此前遗漏）。
-      notifyIncoming({ conversationId: frame.conversationId, senderId: frame.senderId, senderName: frame.senderName, hasMedia: true });
-    }
+    // Frames are dispatched fire-and-forget and decrypt concurrently, so the `last` frame can
+    // finish BEFORE an earlier chunk (whose seq-0 decrypt triggered the key fetch). Assembling on
+    // `last` alone could snapshot a chunks[] with undefined holes → corrupt file. Instead track the
+    // total (last frame's seq+1) and the set of received seqs, and assemble only once EVERY chunk is
+    // in — whichever frame completes the set wins (guarded by `done` so it runs exactly once).
+    if (frame.last) entry.total = frame.seq + 1;
+    if (entry.done || entry.total == null || entry.received.size < entry.total) return;
+    entry.done = true; // synchronous from here to the map delete → no re-entry race
+    const blob = new Blob(entry.chunks as unknown as BlobPart[], { type: entry.meta.mimeType });
+    const url = URL.createObjectURL(blob);
+    const meta = entry.meta;
+    fileBufs.current.delete(frame.transferId);
+    const wire: ChatWireMessage = {
+      id: nextLocalMsgId(),
+      conversationId: frame.conversationId, senderId: frame.senderId,
+      senderName: frame.senderName ?? "",
+      content: "", attachments: [{ ...meta, url }],
+      createdAt: new Date().toISOString(),
+    };
+    await appendLocalHistory(frame.conversationId, wire);
+    if (frame.conversationId === activeIdRef.current) setMessages((prev) => [...prev, wire]);
+    // E2E 会话收到的文件/语音也要提醒（与 server 模式一致；此前遗漏）。
+    notifyIncoming({ conversationId: frame.conversationId, senderId: frame.senderId, senderName: frame.senderName, hasMedia: true });
   }, [conversations, getConversationKey, notifyIncoming]);
   handleFileChunkRef.current = handleFileChunk;
 
@@ -632,7 +650,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       socketRef.current?.emit("chat:relay", payload);
       // optimistic local echo
       const wire: ChatWireMessage = {
-        id: Date.now(), conversationId: id, senderId: -1, senderName: "我",
+        id: nextLocalMsgId(), conversationId: id, senderId: -1, senderName: "我",
         content: text, attachments: null, createdAt: new Date().toISOString(),
       };
       await appendLocalHistory(id, wire);
@@ -681,7 +699,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
       const localUrl = URL.createObjectURL(file);
       const wire: ChatWireMessage = {
-        id: Date.now(), conversationId: id, senderId: -1, senderName: "我",
+        id: nextLocalMsgId(), conversationId: id, senderId: -1, senderName: "我",
         content: "", attachments: [{ ...meta, url: localUrl }], createdAt: new Date().toISOString(),
       };
       await appendLocalHistory(id, wire);
