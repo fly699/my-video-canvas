@@ -8,6 +8,21 @@ import type { ClipKind } from "@shared/editorTypes";
 const videoThumbCache = new Map<string, string>();   // key -> dataURL
 const audioPeaksCache = new Map<string, number[]>();  // url -> normalized peaks
 const inFlight = new Set<string>();
+// Waiters keyed the same as inFlight: when a SECOND clip of the same asset mounts while the
+// first is still extracting, it can't kick off its own extraction (deduped) and its effect
+// deps never change, so it would stay blank forever. Instead it registers here; the extractor
+// notifies all waiters on completion so every clip of the asset picks up the cached result.
+const waiters = new Map<string, Set<() => void>>();
+function addWaiter(key: string, cb: () => void): () => void {
+  let set = waiters.get(key);
+  if (!set) { set = new Set(); waiters.set(key, set); }
+  set.add(cb);
+  return () => { const s = waiters.get(key); if (s) { s.delete(cb); if (s.size === 0) waiters.delete(key); } };
+}
+function notifyWaiters(key: string): void {
+  const set = waiters.get(key);
+  if (set) { waiters.delete(key); for (const cb of Array.from(set)) cb(); }
+}
 
 const vKey = (url: string, t: number) => `${url}#${Math.round(t)}`;
 
@@ -25,14 +40,19 @@ function useVideoThumb(url: string | undefined, trimIn: number): string | null {
     const key = vKey(url, trimIn);
     const cached = videoThumbCache.get(key);
     if (cached) { setThumb(cached); return; }
-    if (inFlight.has(key)) return;
+    if (inFlight.has(key)) {
+      // another clip of this asset is already extracting — wait for it, then read the cache.
+      let cancelled = false;
+      const off = addWaiter(key, () => { const c = videoThumbCache.get(key); if (c && !cancelled) setThumb(c); });
+      return () => { cancelled = true; off(); };
+    }
     inFlight.add(key);
     let cancelled = false;
     const v = document.createElement("video");
     v.crossOrigin = "anonymous";
     v.muted = true;
     v.preload = "metadata";
-    const done = () => { inFlight.delete(key); try { v.removeAttribute("src"); v.load(); } catch { /* ignore */ } };
+    const done = () => { inFlight.delete(key); notifyWaiters(key); try { v.removeAttribute("src"); v.load(); } catch { /* ignore */ } };
     const fail = () => { if (!cancelled) setThumb(null); done(); };
     v.addEventListener("error", fail, { once: true });
     v.addEventListener("loadeddata", () => {
@@ -71,7 +91,12 @@ function useAudioPeaks(url: string | undefined): number[] | null {
     const cached = audioPeaksCache.get(url);
     if (cached) { setPeaks(cached); return; }
     const key = `a:${url}`;
-    if (inFlight.has(key)) return;
+    if (inFlight.has(key)) {
+      // another clip of this asset is already extracting — wait for it, then read the cache.
+      let waiterCancelled = false;
+      const off = addWaiter(key, () => { const c = audioPeaksCache.get(url); if (c && !waiterCancelled) setPeaks(c); });
+      return () => { waiterCancelled = true; off(); };
+    }
     inFlight.add(key);
     let cancelled = false;
     void (async () => {
@@ -102,6 +127,7 @@ function useAudioPeaks(url: string | undefined): number[] | null {
         if (!cancelled) setPeaks(null);
       } finally {
         inFlight.delete(key);
+        notifyWaiters(key); // wake other clips of this asset (cache is set on success above)
         try { await ac?.close(); } catch { /* ignore */ }
       }
     })();

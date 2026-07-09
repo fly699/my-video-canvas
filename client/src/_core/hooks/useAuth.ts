@@ -45,10 +45,6 @@ export function useAuth(options?: UseAuthOptions) {
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => {
-    localStorage.setItem(
-      "manus-runtime-user-info",
-      JSON.stringify(meQuery.data)
-    );
     return {
       user: meQuery.data ?? null,
       loading: meQuery.isLoading || logoutMutation.isPending,
@@ -62,6 +58,15 @@ export function useAuth(options?: UseAuthOptions) {
     logoutMutation.error,
     logoutMutation.isPending,
   ]);
+
+  // 把当前用户信息同步给 Manus 运行时宿主。必须在 effect 里做（副作用不该进 useMemo，StrictMode 会
+  // 重算两次）；且加载中 meQuery.data 为 undefined 时 JSON.stringify 得到 JS undefined，setItem 会写成
+  // 字面量 "undefined"——非法 JSON，宿主 JSON.parse 会抛错。故未确定前跳过，登出/无用户写 null。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (meQuery.data === undefined) return; // 仍在加载，别写非法 "undefined"
+    try { localStorage.setItem("manus-runtime-user-info", JSON.stringify(meQuery.data ?? null)); } catch { /* ignore */ }
+  }, [meQuery.data]);
 
   useEffect(() => {
     if (!redirectOnUnauthenticated) return;
