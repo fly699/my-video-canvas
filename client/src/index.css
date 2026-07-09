@@ -1696,6 +1696,9 @@ button:active:not(:disabled) {
   .wm-loop-btn { width: 38px; height: 38px; }
   .wm-vctrl { height: 36px; min-width: 36px; }
   .wm-vctrl-row { left: 54px; }
+  /* 通用：显式标注 data-touch-show 的「hover 才显、且触屏无替代路径」控件（如参考图删除钮）
+     在无 hover 设备上常显。仅对标注元素生效，不盲目放出所有 group-hover 元素、避免小屏挤乱。 */
+  [data-touch-show] { opacity: 1 !important; }
 }
 
 /* 时间轴轨道音量滑块：细轨 + 小圆钮（默认的原生滑块圆钮过大） */

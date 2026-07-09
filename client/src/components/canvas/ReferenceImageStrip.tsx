@@ -271,6 +271,7 @@ export function ReferenceImageStrip({
                 {canRemove && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onRemove(img.id); }}
+                    data-touch-show
                     className="nodrag absolute opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{ right: 3, top: 3, padding: 2, borderRadius: "50%", background: "oklch(0 0 0 / 0.7)", color: "white", lineHeight: 0 }}
                     title="删除"
