@@ -573,7 +573,18 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       throw e;
     }
 
-    if (response.ok) return (await response.json()) as InvokeResult;
+    if (response.ok) {
+      // 不能盲目 .json()：网关/隧道超时或上游过载时常返回「HTTP 200 + HTML 错误页」，
+      // .json() 会抛 `Unexpected token '<', "<!DOCTYPE"` 原样漏给用户。先读文本再解析，
+      // 非 JSON 给可读中文错误（超大输入下自建模型易触发；提示重试/缩短输入）。
+      const raw = await response.text();
+      try {
+        return JSON.parse(raw) as InvokeResult;
+      } catch {
+        const snippet = raw.slice(0, 160).replace(/\s+/g, " ").trim();
+        throw new Error(`LLM 端点返回了非 JSON 响应（HTTP 200，但内容不是 JSON —— 通常是网关/隧道超时或上游过载插入了 HTML 错误页）。请重试；若输入很长，尝试缩短后再发。响应开头：${snippet}`);
+      }
+    }
 
     const errorText = await response.text();
     // Retry transient upstream errors (5xx / 429); surface caller-fixable 4xx now.
