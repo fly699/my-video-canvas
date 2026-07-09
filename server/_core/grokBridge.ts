@@ -16,7 +16,9 @@
 //  - 因本环境无 Grok Build CLI + 无订阅，**精确调用需在你服务器上先 `grok -p "hi"` 冒烟验证**
 //    （与 gpt-local 要求先验 `codex exec ... "hi"` 同理）。
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { win32 as winPath } from "node:path";
 import type { OAMessage } from "./claudeBridge";
 import { messagesToPrompt } from "./claudeBridge";
 import { collectFileUrls, docTextFromFileUrls } from "./bridgeAttachments";
@@ -37,8 +39,27 @@ export function grokModelArg(model: unknown): string | null {
   return m;
 }
 
-/** grok 可执行文件（可用 env GROK_BIN 覆盖）。 */
-export function resolveGrokBin(): string { return process.env.GROK_BIN?.trim() || "grok"; }
+/** grok 可执行文件路径。优先 env GROK_BIN；否则默认裸名 "grok"（走 PATH）。
+ *  Windows 特例：裸名 grok 在无 shell 的 spawn 下常找不到（且新装的 grok 要重启进程才进 PATH）——
+ *  自动探测官方默认安装位置 %USERPROFILE%\.grok\bin\grok.exe，命中即用绝对路径，省掉手配 GROK_BIN。
+ *  纯函数（依赖注入，便于单测）。 */
+export function resolveGrokBin(opts: {
+  env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform; exists?: (p: string) => boolean;
+} = {}): string {
+  const env = opts.env ?? process.env;
+  const explicit = env.GROK_BIN?.trim();
+  if (explicit) return explicit; // 用户显式指定 → 最高优先，原样用
+  const platform = opts.platform ?? process.platform;
+  if (platform === "win32") {
+    const exists = opts.exists ?? existsSync;
+    const home = env.USERPROFILE || (env.HOMEDRIVE && env.HOMEPATH ? env.HOMEDRIVE + env.HOMEPATH : "") || "";
+    if (home) {
+      const probe = winPath.join(home, ".grok", "bin", "grok.exe");
+      if (exists(probe)) return probe; // 默认安装位置命中 → 绝对路径，不依赖 PATH
+    }
+  }
+  return "grok";
+}
 
 /** env GROK_BRIDGE_ARGS（空格分隔）→ 追加参数数组。空/未设 → []。纯函数（供单测）。 */
 export function extraGrokArgs(raw?: string): string[] {
