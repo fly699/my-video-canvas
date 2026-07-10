@@ -745,6 +745,30 @@ function CanvasInner({ projectId }: { projectId: number }) {
     { projectId }, { enabled: !!projectId && isAuthenticated }
   );
 
+  // ── 进入画布的读取进度条 ──────────────────────────────────────────────────
+  // 项目 → 节点 → 连线 → 渲染 分段推进；大画布节点多时不再「像卡住一样干等」。
+  // 180ms 内全部就绪（小画布）则完全不闪进度层。
+  const [bootPct, setBootPct] = useState(12);
+  const [bootDone, setBootDone] = useState(false);
+  const [bootVisible, setBootVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setBootVisible(true), 180); return () => clearTimeout(t); }, []);
+  useEffect(() => {
+    let pct = 12;
+    if (project) pct = 35;
+    if (project && dbNodes) pct = 78;
+    if (project && dbNodes && dbEdges) pct = 94;
+    setBootPct((p) => Math.max(p, pct));
+    if (project && dbNodes && dbEdges) {
+      // 等一拍让 React Flow 把节点画出来，再推满并淡出。
+      const t = setTimeout(() => { setBootPct(100); const t2 = setTimeout(() => setBootDone(true), 320); return () => clearTimeout(t2); }, 80);
+      return () => clearTimeout(t);
+    }
+  }, [project, dbNodes, dbEdges]);
+  const bootLabel = !project ? "读取项目…"
+    : !dbNodes ? "读取节点数据…"
+    : !dbEdges ? `读取连线（已载入 ${dbNodes.length} 个节点）…`
+    : `渲染 ${dbNodes.length} 个节点…`;
+
   // 全局角色库 → 灌进「影子节点」，让 @引用 无需先把角色拖到画布也能命中库里的角色。
   const { data: libraryChars } = trpc.characterLibrary.list.useQuery(undefined, {
     enabled: isAuthenticated, refetchOnWindowFocus: true,
@@ -1945,9 +1969,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
         <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center">
           <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
         </div>
+        <div style={{ width: 240, height: 6, borderRadius: 3, background: "var(--c-input)", overflow: "hidden" }}>
+          <div style={{ width: "20%", height: "100%", borderRadius: 3, background: "oklch(0.62 0.19 285)" }} />
+        </div>
         <div className="flex items-center gap-2 text-sm" style={{ color: "var(--c-t4)" }}>
           <Loader2 className="w-4 h-4 animate-spin" />
-          加载中...
+          读取项目…
         </div>
       </div>
     );
@@ -1956,6 +1983,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
   return (
    <NodeDefaultModelsProvider config={defaultModelsConfig} systemDefaults={systemDefaultModels} onChange={handleDefaultModelsChange} readOnly={isReadOnly}>
     <div className="w-screen h-screen flex flex-col overflow-hidden" style={{ background: "var(--c-canvas)" }}>
+      {/* 读取进度层：节点/连线加载与首帧渲染期间显示，完成后淡出（小画布 180ms 内就绪则不闪） */}
+      {bootVisible && !bootDone && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 80, background: "var(--c-canvas)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, opacity: bootPct >= 100 ? 0 : 1, transition: "opacity 0.3s", pointerEvents: bootPct >= 100 ? "none" : "auto" }}>
+          <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center">
+            <img src="/chat-icon.svg" alt="KingTai" className="w-full h-full object-cover" />
+          </div>
+          <div style={{ width: 240, height: 6, borderRadius: 3, background: "var(--c-input)", overflow: "hidden" }}>
+            <div style={{ width: `${bootPct}%`, height: "100%", borderRadius: 3, background: "oklch(0.62 0.19 285)", transition: "width 0.35s ease" }} />
+          </div>
+          <div style={{ fontSize: 12, color: "var(--c-t4)", fontVariantNumeric: "tabular-nums" }}>{bootLabel}</div>
+        </div>
+      )}
 
       {/* ══ Top Bar ══════════════════════════════════════════════════════════ */}
       <header
