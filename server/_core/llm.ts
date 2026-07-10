@@ -583,7 +583,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       try {
         return JSON.parse(raw) as InvokeResult;
       } catch {
-        const snippet = raw.slice(0, 160).replace(/\s+/g, " ").trim();
+        // 转义 <：避免片段里的 "<!DOCTYPE"/"<html" 传到前端后被 friendlyClientError 误判成
+        // 传输层网关错误，也避免聊天气泡里出现原始 HTML。
+        const snippet = raw.slice(0, 160).replace(/\s+/g, " ").replace(/</g, "‹").trim();
         throw new Error(`LLM 端点返回了非 JSON 响应（HTTP 200，但内容不是 JSON —— 通常是网关/隧道超时或上游过载插入了 HTML 错误页）。请重试；若输入很长，尝试缩短后再发。响应开头：${snippet}`);
       }
     }
