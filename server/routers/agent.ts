@@ -32,34 +32,57 @@ export function extractJsonObjects(s: string): string[] {
   return out;
 }
 
-/** 超长输入自适应压缩：30k 级大纲 + 完整历史/画布摘要 + 16000 输出预算会让自建 27B 级模型
- *  单次生成耗时数分钟，撞上 llm.ts 的 fetch 超时（自建 300s / 云端 120s）而报「请求超时」。
- *  消息超过阈值时收紧上下文与输出预算以缩短单次生成耗时：history 只留最近 2 条且每条截短、
- *  graphSummary 截小、maxTokens 16000→6000（自建模型 llm.ts 有 8192 思维链下限，实际生效
- *  8192，仍约减半）。正常输入原样返回，行为不变。 */
+/** 上下文总量预算动态分配：30k 级大纲 + 完整历史/画布摘要 + 16000 输出预算会让自建 27B 级
+ *  模型单次生成耗时数分钟，撞上 llm.ts 的 fetch 超时（自建 300s / 云端 120s）而报「请求超时」。
+ *
+ *  规则（正文 message 永不截断）：
+ *  - message+history+graphSummary 总字符数 ≤ AGENT_INPUT_CHAR_BUDGET → 全部原样，不动。
+ *  - 超预算时，扣除正文后的剩余预算在两者间分配：graphSummary 拿剩余的一半（下限
+ *    GRAPH_MIN_CHARS），历史用余下额度从最新往旧装（整条装不下且已有 ≥2 条时截断/停止）；
+ *    无论多挤都保底最近 HISTORY_MIN_KEEP 条、每条至少 HISTORY_MIN_ENTRY_CHARS 字符。
+ *  - 正文越短剩余越多，历史/摘要保留就越多——不再是旧版「一刀切 2 条×1000 + 4000」。
+ *  - 输出预算按正文长度分两档：>LONG_INPUT_THRESHOLD 时 16000→6000（自建模型 llm.ts 有
+ *    8192 思维链下限，实际生效 8192，仍约减半），缩短大输入下的单次生成耗时。 */
+export const AGENT_INPUT_CHAR_BUDGET = 40_000;
 export const LONG_INPUT_THRESHOLD = 8000;
-export function adaptToLongInput(args: {
+export const GRAPH_MIN_CHARS = 4000;
+export const HISTORY_MIN_KEEP = 2;
+export const HISTORY_MIN_ENTRY_CHARS = 1000;
+
+type AgentTurn = { role: "user" | "assistant"; content: string };
+
+export function allocateContextBudget(args: {
   message: string;
-  history?: { role: "user" | "assistant"; content: string }[];
+  history?: AgentTurn[];
   graphSummary?: string;
-}): {
-  longInput: boolean;
-  history: { role: "user" | "assistant"; content: string }[];
-  graphSummary: string;
-  maxTokens: number;
-} {
+}): { trimmed: boolean; history: AgentTurn[]; graphSummary: string; maxTokens: number } {
   const graphSummary = args.graphSummary?.trim() ?? "";
   const history = args.history ?? [];
-  if (args.message.length <= LONG_INPUT_THRESHOLD) {
-    return { longInput: false, history, graphSummary, maxTokens: 16000 };
+  const maxTokens = args.message.length > LONG_INPUT_THRESHOLD ? 6000 : 16000;
+  const histTotal = history.reduce((a, m) => a + m.content.length, 0);
+  if (args.message.length + histTotal + graphSummary.length <= AGENT_INPUT_CHAR_BUDGET) {
+    return { trimmed: false, history, graphSummary, maxTokens };
   }
   const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…（已截断）" : s);
-  return {
-    longInput: true,
-    history: history.slice(-2).map((m) => ({ role: m.role, content: clip(m.content, 1000) })),
-    graphSummary: clip(graphSummary, 4000),
-    maxTokens: 6000,
-  };
+  // 正文优先占用；剩余预算保底能装下 graph 下限 + 历史保底条数。
+  const remaining = Math.max(
+    AGENT_INPUT_CHAR_BUDGET - args.message.length,
+    GRAPH_MIN_CHARS + HISTORY_MIN_KEEP * HISTORY_MIN_ENTRY_CHARS,
+  );
+  const graphBudget = Math.min(graphSummary.length, Math.max(GRAPH_MIN_CHARS, Math.floor(remaining / 2)));
+  const graph = clip(graphSummary, graphBudget);
+  let histBudget = remaining - graphBudget;
+  const kept: AgentTurn[] = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const mustKeep = kept.length < HISTORY_MIN_KEEP;
+    // 保底条目即使预算耗尽也至少给 HISTORY_MIN_ENTRY_CHARS；预算所剩无几时不再装非保底条目。
+    const allow = mustKeep ? Math.max(histBudget, HISTORY_MIN_ENTRY_CHARS) : histBudget;
+    if (!mustKeep && allow < 500) break;
+    const content = clip(history[i].content, allow);
+    kept.unshift({ role: history[i].role, content });
+    histBudget = Math.max(0, histBudget - content.length);
+  }
+  return { trimmed: true, history: kept, graphSummary: graph, maxTokens };
 }
 
 // ── Agent (Copilot) router ────────────────────────────────────────────────────
@@ -114,8 +137,8 @@ export const agentRouter = router({
 
       const model = input.model ?? FACTORY_DEFAULT_MODELS.llm;
 
-      // 超长输入（如整篇大纲）自适应压缩上下文与输出预算，避免单次生成撞 LLM fetch 超时。
-      const ctxBudget = adaptToLongInput(input);
+      // 上下文总量预算动态分配（正文永不截断），避免大输入单次生成撞 LLM fetch 超时。
+      const ctxBudget = allocateContextBudget(input);
 
       // Before planning, refresh template knowledge: incrementally analyze any
       // newly-added / changed templates (capped so a turn isn't blocked on a big
