@@ -52,7 +52,9 @@ export function MultiSelectBar() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [showParams]);
   const ids = selectedKey ? selectedKey.split(",") : [];
-  if (uiStyle !== "studio" || ids.length < 2) return null;
+  // LibTV 化 1.4：多选操作条开放到所有皮肤（原仅 studio）——框选≥2 节点即可
+  // 整组执行 / 自动成片 / 批量参数 / 成组 / 批量下载。
+  if (ids.length < 2) return null;
 
   // ★10：把画面比例统一写入所有支持该字段的选中节点（clip 用 aspect 且仅限 9:16/16:9/1:1，
   // comfyui_workflow 需联动 overrideRatioSize，否则比例覆盖不生效）。
@@ -141,10 +143,13 @@ export function MultiSelectBar() {
               <RatioPicker value="" options={RATIOS} onChange={applyRatio} />
               <p style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 6, lineHeight: 1.5 }}>应用到所有支持比例的选中节点</p>
             </div>
-            <label className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "var(--c-t2)", fontWeight: 600 }}>
-              <input type="checkbox" checked={expandAll} onChange={(e) => setExpandAll(e.target.checked)} />
-              展开全部参数（所有节点）
-            </label>
+            {/* 「展开全部参数」是工作室皮肤的收缩/展开概念，其它皮肤节点常驻展开——仅 studio 显示 */}
+            {uiStyle === "studio" && (
+              <label className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "var(--c-t2)", fontWeight: 600 }}>
+                <input type="checkbox" checked={expandAll} onChange={(e) => setExpandAll(e.target.checked)} />
+                展开全部参数（所有节点）
+              </label>
+            )}
           </div>
         )}
       </div>

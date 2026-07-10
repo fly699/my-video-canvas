@@ -518,6 +518,27 @@ export async function extractFrame(opts: { inputUrl: string; time: number }): Pr
   }
 }
 
+// ── Extract audio（音频分离，LibTV 化 1.3）───────────────────────────────────
+// 把视频的音轨整条提取为 mp3（-vn 去视频流）。无音轨时 ffmpeg 报 does not contain
+// any stream 类错误，由调用方转为友好提示。本地 ffmpeg，无第三方 AI。
+export async function extractAudio(opts: { inputUrl: string }): Promise<{ url: string; duration?: number }> {
+  const inputPath = await downloadToTemp(opts.inputUrl, "mp4");
+  const outPath = path.join(os.tmpdir(), `audio-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
+  try {
+    await execFileAsync("ffmpeg", ["-i", inputPath, "-vn", "-acodec", "libmp3lame", "-b:a", "192k", "-y", outPath]);
+    const buf = await fs.readFile(outPath);
+    if (buf.length < 200) throw new Error("视频不含音轨或音轨为空");
+    await assertObjectStorageWritable();
+    const { url } = await storagePut(`generated/audio-${Date.now()}.mp3`, buf, "audio/mpeg");
+    let duration: number | undefined;
+    try { duration = await getVideoDuration(url); } catch { /* 时长非关键 */ }
+    return { url, duration };
+  } finally {
+    await fs.unlink(inputPath).catch(() => undefined);
+    await fs.unlink(outPath).catch(() => undefined);
+  }
+}
+
 // ── Merge ─────────────────────────────────────────────────────────────────────
 
 export interface MergeOptions {

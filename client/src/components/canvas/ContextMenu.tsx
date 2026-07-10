@@ -6,7 +6,7 @@ import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
   BookmarkPlus, Bookmark, Download, Upload, Boxes, Group, Ungroup, Pencil, GripVertical, Check, RotateCcw, Lock, Unlock,
-} from "lucide-react";
+ UserPlus, LayoutDashboard } from "lucide-react";
 import type { NodeTemplate } from "../../lib/nodeTemplates";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 
@@ -43,6 +43,10 @@ interface ContextMenuProps {
   onUngroup?: () => void;
   onDeleteGroup?: () => void;
   onDuplicateGroup?: () => void;
+  /** LibTV 化 1.7：带图节点 → 以结果图为参考图新建角色主体节点。 */
+  onSaveAsCharacter?: () => void;
+  /** LibTV 化 1.7：画布菜单「一键整理布局」（复用 autoLayout store action）。 */
+  onAutoLayout?: () => void;
 }
 
 // 菜单项右侧的快捷键提示片：与顶栏 tooltip 的 kbd 保持一致，让用户在右键菜单里也能学到键位。
@@ -59,6 +63,7 @@ export function ContextMenu({
   nodeTemplates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
   onExportTemplates, onImportTemplates, onSaveToLibrary,
   onGroup, onUngroup, onDeleteGroup, onDuplicateGroup,
+  onSaveAsCharacter, onAutoLayout,
 }: ContextMenuProps) {
   const tplFileRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -438,6 +443,24 @@ export function ContextMenu({
               scrollbarColor: "var(--c-bd3) transparent",
             }}>
               {/* ComfyUI 节点模板库快捷入口 — 置于列表第一位 */}
+              {onAutoLayout && (
+                <button
+                  onClick={() => { onAutoLayout(); onClose(); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    width: "100%", padding: "7px 8px", fontSize: 12,
+                    cursor: "pointer", background: "transparent", border: "none",
+                    textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
+                    transition: "all 120ms ease",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  一键整理布局
+                  <Kbd>⌥⇧F</Kbd>
+                </button>
+              )}
               {onOpenNodeLibrary && (
                 <>
                   <button
@@ -655,6 +678,23 @@ export function ContextMenu({
                 <Play className="w-3.5 h-3.5" />
                 从此节点运行工作流
                 <Kbd>⇧R</Kbd>
+              </button>
+            )}
+            {onSaveAsCharacter && (
+              <button
+                onClick={() => { onSaveAsCharacter(); onClose(); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "7px 8px", fontSize: 12,
+                  cursor: "pointer", background: "transparent", border: "none",
+                  textAlign: "left", color: "var(--c-t2)", borderRadius: 8,
+                  transition: "all 120ms ease",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                存为角色主体（本图作参考）
               </button>
             )}
             {onRunWorkflow && (onTogglePin || onCollapse) && (

@@ -22,7 +22,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2, Lock,
-  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2,
 } from "lucide-react";
 import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
 import { downloadMedia } from "../../lib/download";
@@ -442,6 +442,46 @@ export const BaseNode = memo(function BaseNode({
     { type: "smart_cut", label: "智能剪辑", Icon: Wand2 },
     { type: "merge", label: "合并", Icon: Combine },
   ];
+
+  // ── LibTV 化 1.3：视频一键操作（音频分离 / 高清放大）────────────────────────────
+  // 音频分离：本地 ffmpeg 提取整条音轨 → 产物落新建 audio 节点（可直接连回合并/剪辑）。
+  // 高清放大：新建 video_task 预设 kie_topaz_upscale（需源视频的云端超分模型），连线即读上游视频。
+  const extractAudioMut = trpc.clip.extractAudio.useMutation();
+  const [audioSepBusy, setAudioSepBusy] = useState(false);
+  const handleExtractAudio = async () => {
+    if (audioSepBusy || !resultVideoUrl) return;
+    setAudioSepBusy(true);
+    const tid = toast.loading("音频分离中（提取音轨为 mp3）…");
+    try {
+      const r = await extractAudioMut.mutateAsync({ inputUrl: resultVideoUrl, ...(projectId ? { projectId } : {}), nodeId: id });
+      const st = useCanvasStore.getState();
+      const self = st.nodes.find((n) => n.id === id);
+      if (!self) return;
+      const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
+      const node = st.addNode("audio", { x: self.position.x + w + 60, y: self.position.y });
+      st.updateNodeTitle(node.id, "分离音轨");
+      st.updateNodeData(node.id, { audioCategory: "upload", source: "upload", name: "分离音轨.mp3", url: r.url, mimeType: "audio/mpeg", ...(r.duration ? { duration: r.duration } : {}) });
+      useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node.id })) }));
+      toast.success("已分离音轨（新音频节点，可连回合并/剪辑）", { id: tid });
+    } catch (e) {
+      toast.error("音频分离失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
+    } finally { setAudioSepBusy(false); }
+  };
+  const spawnVideoUpscale = () => {
+    if (!resultVideoUrl) return;
+    const st = useCanvasStore.getState();
+    const self = st.nodes.find((n) => n.id === id);
+    if (!self) return;
+    const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
+    let node;
+    try { node = st.addNode("video_task", { x: self.position.x + w + 60, y: self.position.y }); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
+    st.updateNodeTitle(node.id, "视频高清放大");
+    st.updateNodeData(node.id, { provider: "kie_topaz_upscale", prompt: "" });
+    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
+    useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
+    toast.success("已创建「视频高清放大」节点（Topaz 超分，已连源视频，点运行生成）", { duration: 2200 });
+  };
   // A previewable node that has a result and is NOT being edited (not selected,
   // not pinned) renders collapsed: only the title bar + warning/error/progress +
   // the hero preview. In that state drop the min-height floor so the node shrinks
@@ -827,6 +867,27 @@ export const BaseNode = memo(function BaseNode({
                       <Icon size={12} /> {label}
                     </button>
                   ))}
+                  {/* LibTV 化 1.3：音频分离（本地 ffmpeg 抽音轨 → 新音频节点） */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); void handleExtractAudio(); }}
+                    disabled={audioSepBusy}
+                    title="音频分离（提取整条音轨为 mp3，落入新音频节点）"
+                    className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                    style={{ background: "var(--c-surface)", color: audioSepBusy ? "var(--c-t4)" : "var(--c-t2)", border: "none", cursor: audioSepBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                  >
+                    {audioSepBusy ? <Loader2 size={12} className="animate-spin" /> : <Music2 size={12} />} 音频分离
+                  </button>
+                  {/* LibTV 化 1.3：视频高清放大（Topaz 云端超分 video_task 预设） */}
+                  {getCompatibleTargets(nodeType).includes("video_task") && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); spawnVideoUpscale(); }}
+                      title="高清放大（Topaz 视频超分，生成连好源视频的任务节点）"
+                      className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                      style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                    >
+                      <Sparkles size={12} /> 高清放大
+                    </button>
+                  )}
                 </>
               );
             })()}
