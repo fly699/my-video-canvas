@@ -249,6 +249,8 @@ export interface StoryboardNodeData {
   beatRef?: string;
   imageModel?: ImageGenModel;
   referenceImageUrl?: string;
+  /** 真 3D（Tripo3D）已生成的模型——重开免费复用（与图像节点同款）。 */
+  model3d?: Model3DResult;
   /** 手动多参考图管理（与 ImageGenNode 同款；[0].url 与 referenceImageUrl 镜像）。 */
   referenceImages?: ReferenceImage[];
   /** kie 图像模型的通用比例（服务端按模型枚举夹取）。 */
