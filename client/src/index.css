@@ -524,24 +524,28 @@
      低透明细白边框/连线 + 反色（近白）强调。整组变量覆盖所有 data-theme 块
      （MUST appear after all theme blocks to win equal-specificity cascade）。 */
   :root[data-canvas-mode="creative"] {
-    --c-canvas:   oklch(0.165 0.004 260);   /* near-black canvas ≈ #0d0e10 */
-    --c-base:     oklch(0.205 0.004 260);   /* panels above canvas */
-    --c-surface:  oklch(0.230 0.004 260);   /* dark-gray cards ≈ #1a1b1e */
-    --c-elevated: oklch(0.268 0.005 260);   /* elevated above surface */
-    --c-overlay:  oklch(0.295 0.005 260);   /* panel overlays */
-    --c-input:    oklch(0.180 0.004 260);   /* recessed input */
+    /* 3.1b 精校：逐帧采样 LibTV 操作视频的实际像素值——画布 #121212、
+       顶栏/dock/输入面板统一 #252525、控件 #303030，全部纯中性灰（零色偏）。 */
+    --c-canvas:   #121212;                  /* canvas（视频实测 RGB 18,18,18） */
+    --c-base:     #252525;                  /* 顶栏/dock/面板（实测 37,37,37） */
+    --c-surface:  #232323;                  /* cards — 比面板略深一档 */
+    --c-elevated: #303030;                  /* 控件/抬升（实测 48,48,48） */
+    --c-overlay:  #383838;                  /* 浮层 */
+    --c-input:    #1b1b1b;                  /* 凹陷输入底 */
     --c-bd1:      oklch(1 0 0 / 0.07);      /* faint white divider */
     --c-bd2:      oklch(1 0 0 / 0.12);      /* node borders — low-alpha white */
     --c-bd3:      oklch(1 0 0 / 0.20);      /* stronger border */
-    --c-t1:       oklch(0.955 0.002 260);   /* primary text — near-white */
-    --c-t2:       oklch(0.820 0.003 260);   /* secondary text */
-    --c-t3:       oklch(0.640 0.004 260);   /* labels */
-    --c-t4:       oklch(0.500 0.004 260);   /* placeholder */
-    --c-node-bg:  oklch(0.230 0.004 260);   /* dark-gray cards */
-    /* 反色强调（LibTV：强调按钮/选中态用近白反色，而非彩色） */
-    --ui-accent:  oklch(0.94 0.005 260);
-    /* 大圆角卡（BaseNode 节点根用 var(--ui-radius-node, 16px)） */
-    --ui-radius-node: 20px;
+    --c-t1:       #ececec;                  /* primary text — near-white（中性） */
+    --c-t2:       #c9c9c9;                  /* secondary text */
+    --c-t3:       #9a9a9a;                  /* labels（视频节点标签行实测同档） */
+    --c-t4:       #6f6f6f;                  /* placeholder */
+    --c-node-bg:  #232323;                  /* dark-gray cards */
+    /* 反色强调（LibTV：发送按钮=白底黑箭头、选中态近白，而非彩色） */
+    --ui-accent:  #ececec;
+    /* 节点小圆角（视频实测图片节点圆角很小；大圆角只属于输入面板/浮层） */
+    --ui-radius-node: 10px;
+    /* 中文黑体优先字体栈（LibTV 全 UI 为现代中文黑体；Inter 不含中文回退到系统衬线感） */
+    --font-sans: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Inter", ui-sans-serif, system-ui, sans-serif;
     --c-node-shadow-rest:     0 1px 3px oklch(0 0 0 / 0.35), 0 4px 18px oklch(0 0 0 / 0.35);
     --c-node-shadow-hover:    0 6px 24px oklch(0 0 0 / 0.45), 0 1px 5px oklch(0 0 0 / 0.35);
     --c-node-shadow-selected: 0 10px 36px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40);
@@ -1481,8 +1485,19 @@ button:active:not(:disabled) {
 }
 :root[data-canvas-mode="creative"] .react-flow__background pattern circle,
 :root[data-canvas-mode="creative"] .react-flow__background pattern rect {
-  fill: oklch(0.62 0.004 260) !important;
-  opacity: 0.22;
+  /* 3.1b：视频实测 LibTV 画布几乎看不到网格点（纯色底+细白连线）——降到将隐 */
+  fill: oklch(0.55 0 0) !important;
+  opacity: 0.10;
+}
+
+/* 3.1b：创意模式输入控件统一无衬线中文黑体——多个节点的提示词框此前用
+   JetBrains Mono 等宽字体显示中文（技术感重、与 LibTV 全黑体观感相悖）。
+   inline style 非 !important，此处 !important 可覆盖。 */
+:root[data-canvas-mode="creative"] .react-flow__node textarea,
+:root[data-canvas-mode="creative"] .react-flow__node input,
+:root[data-canvas-mode="creative"] .react-flow__node-toolbar textarea,
+:root[data-canvas-mode="creative"] .react-flow__node-toolbar input {
+  font-family: var(--font-sans) !important;
 }
 
 /* Creative mode (LibTV dark): chrome surfaces follow the dark tokens（不再硬编码白底，
