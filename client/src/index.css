@@ -1303,6 +1303,24 @@ button:active:not(:disabled) {
   .react-flow {
     overscroll-behavior: none;
   }
+  /* B 档窄屏适配：中频顶栏按钮收进「更多⋯」下拉（Canvas.tsx isMobile 分支补入菜单项）；
+     顶栏整体允许横向滚动兜底，任何情况下按钮都够得着、不换行撑高。 */
+  .topbar-mid {
+    display: none !important;
+  }
+  .canvas-topbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .canvas-topbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* 底部悬浮工具栏：窄屏换行铺开，不超出视口宽度。 */
+  .canvas-bottombar {
+    flex-wrap: wrap;
+    max-width: calc(100vw - 16px);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

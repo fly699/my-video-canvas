@@ -15,7 +15,12 @@ const DOCK_W = 380;
 export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
   const { box, onHeaderMouseDown, onResizeMouseDown } = useFloatingBox(
     "ui:prompt-library:v1",
-    { x: Math.max(16, (typeof window !== "undefined" ? window.innerWidth : 1200) - DOCK_W - 16), y: 56, w: DOCK_W, h: 640 },
+    {
+      x: Math.max(8, (typeof window !== "undefined" ? window.innerWidth : 1200) - Math.min(DOCK_W, (typeof window !== "undefined" ? window.innerWidth : 1200) - 32) - 16),
+      y: 56,
+      w: Math.min(DOCK_W, (typeof window !== "undefined" ? window.innerWidth : 1200) - 32),
+      h: Math.min(640, (typeof window !== "undefined" ? window.innerHeight : 800) * 0.82),
+    },
     { minW: 260, minH: 300 },
   );
   const [pinned, setPinned] = usePersistentState<boolean>("ui:prompt-library:pinned:v1", false, { crossTab: false });
@@ -112,13 +117,15 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
 
   const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-  const left = pinned ? vw - DOCK_W - 16 : box.x;
+  // B 档移动端适配：钉住宽度不超过视口（380 在手机上会溢出），left 永不为负。
+  const dockW = Math.min(DOCK_W, vw - 32);
+  const left = pinned ? Math.max(8, vw - dockW - 16) : box.x;
   const top = pinned ? 56 : box.y;
-  const width = pinned ? DOCK_W : box.w;
+  const width = pinned ? dockW : Math.min(box.w, vw - 16);
   const maxHeight = pinned ? Math.max(360, vh - 88) : Math.min(box.h, vh - top - 16);
 
   const cornerHandle = (corner: Corner, style: React.CSSProperties) => (
-    <div onMouseDown={onResizeMouseDown(corner)} style={{ position: "absolute", width: 16, height: 16, zIndex: 3, cursor: corner === "tl" || corner === "br" ? "nwse-resize" : "nesw-resize", ...style }} />
+    <div onPointerDown={onResizeMouseDown(corner)} style={{ position: "absolute", width: 16, height: 16, zIndex: 3, touchAction: "none", cursor: corner === "tl" || corner === "br" ? "nwse-resize" : "nesw-resize", ...style }} />
   );
 
   const slotPicker = (id: number, kind: "prompt" | "category", currentSlot: number | null) => (
@@ -142,7 +149,7 @@ export function PromptLibraryPanel({ onClose }: { onClose: () => void }) {
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between px-3.5 py-3 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)", cursor: pinned ? "default" : "move", userSelect: "none" }} onMouseDown={pinned ? undefined : onHeaderMouseDown}>
+      <div className="flex items-center justify-between px-3.5 py-3 flex-shrink-0" style={{ borderBottom: "1px solid var(--c-elevated)", cursor: pinned ? "default" : "move", userSelect: "none", touchAction: pinned ? undefined : "none" }} onPointerDown={pinned ? undefined : onHeaderMouseDown}>
         <div className="flex items-center gap-2">
           <BookText className="w-4 h-4" style={{ color: "oklch(0.66 0.18 30)" }} />
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--c-t1)" }}>提示词库</span>

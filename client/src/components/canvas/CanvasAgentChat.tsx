@@ -195,20 +195,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     el.addEventListener("pointercancel", onUp);
   };
 
-  const startDrag = (e: React.MouseEvent) => {
+  const startDrag = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button, input, textarea, [role='listbox']")) return;
     e.preventDefault();
     const sx = e.clientX, sy = e.clientY, il = left, it = top;
-    const onMove = (mv: MouseEvent) => setPos({ left: Math.max(0, Math.min(window.innerWidth - 120, il + mv.clientX - sx)), top: Math.max(0, Math.min(window.innerHeight - 40, it + mv.clientY - sy)) });
-    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-    window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+    const onMove = (mv: PointerEvent) => setPos({ left: Math.max(0, Math.min(window.innerWidth - 120, il + mv.clientX - sx)), top: Math.max(0, Math.min(window.innerHeight - 40, it + mv.clientY - sy)) });
+    const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
+    window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp); window.addEventListener("pointercancel", onUp);
   };
-  const startResize = (e: React.MouseEvent) => {
+  const startResize = (e: React.PointerEvent) => {
     e.preventDefault(); e.stopPropagation();
     const sx = e.clientX, sy = e.clientY, iw = size.w, ih = size.h;
-    const onMove = (mv: MouseEvent) => setSize({ w: Math.max(300, Math.min(window.innerWidth - 16, iw + mv.clientX - sx)), h: Math.max(360, Math.min(window.innerHeight - 16, ih + mv.clientY - sy)) });
-    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-    window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+    const onMove = (mv: PointerEvent) => setSize({ w: Math.max(300, Math.min(window.innerWidth - 16, iw + mv.clientX - sx)), h: Math.max(360, Math.min(window.innerHeight - 16, ih + mv.clientY - sy)) });
+    const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
+    window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp); window.addEventListener("pointercancel", onUp);
   };
 
   useEffect(() => { try { localStorage.setItem(`avc:canvasAgent:${projectId}`, JSON.stringify(turns.slice(-40))); } catch { /* quota */ } }, [turns, projectId]);
@@ -371,7 +371,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       boxShadow: "0 18px 50px rgba(0,0,0,0.45)", zIndex: 50, overflow: "hidden",
     }} onClick={(e) => e.stopPropagation()}>
       {/* header（拖动手柄） */}
-      <div onMouseDown={startDrag} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0, cursor: "move" }}>
+      <div onPointerDown={startDrag} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0, cursor: "move", touchAction: "none" }}>
         <Sparkles className="w-4 h-4" style={{ color: accent }} />
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--c-t1)" }}>画布助手</span>
         <div style={{ flex: 1 }} />
@@ -551,7 +551,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       </div>
 
       {/* 右下角缩放把手 */}
-      <div onMouseDown={startResize} title="拖动缩放" style={{
+      <div onPointerDown={startResize} title="拖动缩放" style={{ touchAction: "none",
         position: "absolute", right: 0, bottom: 0, width: 16, height: 16, cursor: "nwse-resize", zIndex: 2,
         background: "linear-gradient(135deg, transparent 50%, var(--c-bd3) 50%, var(--c-bd3) 60%, transparent 60%, transparent 72%, var(--c-bd3) 72%, var(--c-bd3) 82%, transparent 82%)",
       }} />

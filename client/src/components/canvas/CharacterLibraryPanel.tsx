@@ -81,9 +81,9 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
 
   const cornerHandle = (corner: Corner, style: React.CSSProperties) => (
     <div
-      onMouseDown={onResizeMouseDown(corner)}
+      onPointerDown={onResizeMouseDown(corner)}
       style={{
-        position: "absolute", width: 16, height: 16, zIndex: 3,
+        position: "absolute", width: 16, height: 16, zIndex: 3, touchAction: "none",
         cursor: corner === "tl" || corner === "br" ? "nwse-resize" : "nesw-resize",
         ...style,
       }}
@@ -103,8 +103,8 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
     >
       <div
         className="flex items-center justify-between px-3.5 py-3 flex-shrink-0"
-        style={{ borderBottom: "1px solid var(--c-elevated)", cursor: pinned ? "default" : "move", userSelect: "none" }}
-        onMouseDown={pinned ? undefined : onHeaderMouseDown}
+        style={{ borderBottom: "1px solid var(--c-elevated)", cursor: pinned ? "default" : "move", userSelect: "none", touchAction: pinned ? undefined : "none" }}
+        onPointerDown={pinned ? undefined : onHeaderMouseDown}
       >
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4" style={{ color: "oklch(0.66 0.18 30)" }} />

@@ -66,11 +66,13 @@ export function useFloatingBox(
     return () => window.removeEventListener("resize", fix);
   }, [setBox]);
 
-  function onHeaderMouseDown(e: React.MouseEvent) {
+  // Pointer 事件统一鼠标/触屏（B 档移动端适配：mousedown 在触屏上收不到，浮层拖不动/缩放不了）。
+  // 调用方必须给手柄元素加 style touchAction:"none"，否则触摸移动会被浏览器当页面滚动吃掉。
+  function onHeaderMouseDown(e: React.PointerEvent) {
     if ((e.target as HTMLElement).closest("button,input,select,a")) return; // don't drag from controls
     e.preventDefault();
     dragRef.current = { mx: e.clientX, my: e.clientY, x: box.x, y: box.y };
-    const move = (ev: MouseEvent) => {
+    const move = (ev: PointerEvent) => {
       const d = dragRef.current; if (!d) return;
       setBox((b) => ({
         ...b,
@@ -78,22 +80,24 @@ export function useFloatingBox(
         y: clamp(d.y + ev.clientY - d.my, 0, window.innerHeight - 48),
       }));
     };
-    const up = () => { dragRef.current = null; window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    const up = () => { dragRef.current = null; window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
 
   function onResizeMouseDown(corner: Corner) {
-    return (e: React.MouseEvent) => {
+    return (e: React.PointerEvent) => {
       e.preventDefault(); e.stopPropagation();
       rezRef.current = { mx: e.clientX, my: e.clientY, start: box, corner };
-      const move = (ev: MouseEvent) => {
+      const move = (ev: PointerEvent) => {
         const r = rezRef.current; if (!r) return;
         setBox(resizeBoxByCorner(r.start, r.corner, ev.clientX - r.mx, ev.clientY - r.my, minW, minH, window.innerWidth, window.innerHeight));
       };
-      const up = () => { rezRef.current = null; window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
-      window.addEventListener("mousemove", move);
-      window.addEventListener("mouseup", up);
+      const up = () => { rezRef.current = null; window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
     };
   }
 

@@ -9,7 +9,10 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes } from "lucide-react";
+import { Depth3DViewer } from "../Depth3DViewer";
+import { Model3DViewer } from "../Model3DViewer";
+import { confirmDialog } from "@/components/ui/dialogService";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { estimateImageCost, costEstimateLabel, KIE_IMAGE_RES_COST } from "@/lib/costEstimate";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
@@ -210,6 +213,20 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   }, [id, payload]);
   const [batchCount, setBatchCount] = useState<1 | 4>(([1, 4].includes(payload.batchSize as number) ? payload.batchSize : 1) as 1 | 4);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
+  // 3D 换视角（与图像节点同款）：伪3D 深度位移 / 真3D 图生网格 → 截图设为参考图 → 重绘该分镜。
+  const [view3dSrc, setView3dSrc] = useState<string | null>(null);
+  const [model3dSrc, setModel3dSrc] = useState<string | null>(null);
+  const [pendingGen3d, setPendingGen3d] = useState(false);
+  const openTrue3d = useCallback(async (url: string) => {
+    if (!url) return;
+    if (payload.model3d?.glbUrl && payload.model3d.sourceUrl === url) { setModel3dSrc(url); return; }
+    const ok = await confirmDialog({
+      title: "生成真 3D 模型？",
+      message: "将调用 Tripo3D 把这张分镜图生成为可 360° 环绕的 3D 网格。约消耗 30–60 credits，通常需 1–3 分钟。生成结果会随节点保存，之后可免费重开。",
+      confirmLabel: "生成",
+    });
+    if (ok) setModel3dSrc(url);
+  }, [payload.model3d]);
 
   // Close lightbox on Escape
   useEffect(() => {
@@ -357,6 +374,14 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     }
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!pendingGen3d) return;
+    if (generating || genImageMutation.isPending) return;
+    setPendingGen3d(false);
+    handleGenerate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingGen3d, payload.referenceImageUrl]);
+
   const handleGenerate = () => {
     // Double guard — local state is async (could be stale on rapid double-click) so
     // also check the mutation's own isPending which tRPC flips synchronously
@@ -499,6 +524,22 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
                     }}
                   >
                     <ZoomIn className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setView3dSrc(payload.imageUrl || null); }}
+                    title="3D 换视角（深度位移，免费，需 ComfyUI）"
+                    className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: "oklch(0.70 0.20 310 / 0.20)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.70 0.20 310 / 0.5)", color: "oklch(0.78 0.15 310)" }}
+                  >
+                    <Rotate3d className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); void openTrue3d(payload.imageUrl || ""); }}
+                    title={payload.model3d?.sourceUrl === payload.imageUrl ? "真 3D 换视角（已生成，免费重开）" : "真 3D 换视角（Tripo3D 图生网格，约 30–60 credits）"}
+                    className="nodrag flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: "oklch(0.72 0.17 160 / 0.20)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.72 0.17 160 / 0.5)", color: "oklch(0.78 0.14 160)" }}
+                  >
+                    <Boxes className="w-3 h-3" />
                   </button>
                 </div>
                 {(payload.imageHistory?.length ?? 0) > 0 && (
@@ -1336,6 +1377,34 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         </div>,
         document.body
       )}
+
+    {/* 3D 查看器必须在 BaseNode 外（children 随选中态换容器会把全屏层卸载——图像节点同款修复） */}
+    {view3dSrc && (
+      <Depth3DViewer
+        sourceImageUrl={view3dSrc}
+        onClose={() => setView3dSrc(null)}
+        onGenerate={(capturedUrl) => {
+          updateNodeData(id, { referenceImageUrl: capturedUrl });
+          setPendingGen3d(true); // 参考图落 payload 后由 effect 触发重绘
+        }}
+      />
+    )}
+    {model3dSrc && (
+      <Model3DViewer
+        sourceImageUrl={model3dSrc}
+        initialGlbUrl={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.glbUrl : undefined}
+        savedToLibrary={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.saved : undefined}
+        projectId={data.projectId}
+        nodeId={id}
+        onGlbReady={(glbUrl) => updateNodeData(id, { model3d: { sourceUrl: model3dSrc, glbUrl } })}
+        onSavedToLibrary={() => payload.model3d && updateNodeData(id, { model3d: { ...payload.model3d, saved: true } })}
+        onClose={() => setModel3dSrc(null)}
+        onGenerate={(capturedUrl) => {
+          updateNodeData(id, { referenceImageUrl: capturedUrl });
+          setPendingGen3d(true);
+        }}
+      />
+    )}
     </>
   );
 });

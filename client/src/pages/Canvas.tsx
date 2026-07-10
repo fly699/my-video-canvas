@@ -669,7 +669,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // Collapse the toolbar to just the essentials (add / zoom / run / skin), folding away
   // the less-used tools (orientation, grid, fit, layout, snap, region-zoom, help).
   const [toolbarCollapsed, setToolbarCollapsed] = usePersistentState<boolean>(
-    "ui:toolbar:collapsed:v1", false,
+    // 手机首访默认折叠（占屏太多）；用户手动展开后按持久化值走。
+    "ui:toolbar:collapsed:v1", typeof window !== "undefined" && window.innerWidth < 768,
     { validate: (v) => (typeof v === "boolean" ? v : null) },
   );
   const [mmPos, setMmPos] = usePersistentState<{ bottom: number; right: number }>(
@@ -2044,11 +2045,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
         <RunStatusBar runState={runState} onCancel={cancelWorkflowRun} onRetryFailed={(ids) => useCanvasStore.getState().requestRun(null, ids)} />
 
         {/* Poyo 暂存/存储可达状态灯（顶部工具栏左侧；可达且未暂存时不显示） */}
-        <PoyoStorageStatusChip className="flex-shrink-0" />
-
-        <PoyoBalanceDashboard />
-        <KieBalanceDashboard compact={topbarNarrow} />
-        <CustomLlmKeyDashboard compact={topbarNarrow} />
+        {/* 余额/密钥/存储徽章：手机上被压成竖排溢出顶栏（topbar-mid 隐藏），信息可去管理后台看 */}
+        <span className="topbar-mid flex items-center gap-2 flex-shrink-0">
+          <PoyoStorageStatusChip className="flex-shrink-0" />
+          <PoyoBalanceDashboard />
+          <KieBalanceDashboard compact={topbarNarrow} />
+          <CustomLlmKeyDashboard compact={topbarNarrow} />
+        </span>
 
         <div className="flex-1" />
 
@@ -2124,7 +2127,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowTemplates(!showTemplates)}
-                className="topbar-btn"
+                className="topbar-btn topbar-mid"
                 data-active={showTemplates ? "true" : undefined}
                 style={showTemplates ? { background: "oklch(0.68 0.22 285 / 0.12)", border: "1px solid oklch(0.68 0.22 285 / 0.3)", color: "oklch(0.68 0.22 285)" } : undefined}
               >
@@ -2141,7 +2144,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowNodeLib(!showNodeLib)}
-                className="topbar-btn"
+                className="topbar-btn topbar-mid"
                 data-tour="node-lib"
                 data-active={showNodeLib ? "true" : undefined}
                 style={showNodeLib ? { background: "oklch(0.65 0.20 140 / 0.12)", border: "1px solid oklch(0.65 0.20 140 / 0.3)", color: "oklch(0.65 0.20 140)" } : undefined}
@@ -2157,7 +2160,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowNodeSearch(true)}
-                className="topbar-btn"
+                className="topbar-btn topbar-mid"
               >
                 <Search className="w-3.5 h-3.5" />
               </button>
@@ -2188,7 +2191,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => setShowCharLib((v) => !v)}
-                className="topbar-btn"
+                className="topbar-btn topbar-mid"
                 data-tour="charlib"
                 data-active={showCharLib ? "true" : undefined}
                 style={showCharLib ? { background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)" } : undefined}
@@ -2204,7 +2207,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => navigate("/editor")}
-                className="topbar-btn"
+                className="topbar-btn topbar-mid"
                 data-tour="editor"
                 style={{ background: "oklch(0.65 0.19 310 / 0.12)", border: "1px solid oklch(0.65 0.19 310 / 0.32)", color: "oklch(0.7 0.19 310)" }}
               >
@@ -2284,7 +2287,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipTrigger asChild>
                 <button
                   onClick={() => setShowRatioPicker((v) => !v)}
-                  className="flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] transition-all"
+                  className="topbar-mid flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] transition-all"
                   style={{
                     background: globalAspectRatio ? "oklch(0.72 0.20 80 / 0.12)" : "transparent",
                     border: globalAspectRatio ? "1px solid oklch(0.72 0.20 80 / 0.35)" : "1px solid var(--c-bd2)",
@@ -2364,6 +2367,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <DropdownMenuItem onClick={() => { resetCanvasTips(); toast.success("已重新开启操作小贴士"); }}><Lightbulb className="w-3.5 h-3.5 mr-2" /> 重新开启小贴士</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowNotifySettings(true)}><Bell className="w-3.5 h-3.5 mr-2" /> 产物推送设置</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowPresentation(true)}><Play className="w-3.5 h-3.5 mr-2" /> 演示模式</DropdownMenuItem>
+
+              {/* 手机窄屏：顶栏放不下的中频按钮（.topbar-mid 已隐藏）收进这里 */}
+              {isMobile && (<>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>工具</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setShowTemplates((v) => !v)}><LayoutGrid className="w-3.5 h-3.5 mr-2" /> 快速模板</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowNodeLib((v) => !v)}><Boxes className="w-3.5 h-3.5 mr-2" /> ComfyUI 模板库</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowNodeSearch(true)}><Search className="w-3.5 h-3.5 mr-2" /> 节点搜索</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowCharLib((v) => !v)}><Users className="w-3.5 h-3.5 mr-2" /> 角色库</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/editor")}><Clapperboard className="w-3.5 h-3.5 mr-2" /> 视频剪辑器</DropdownMenuItem>
+              </>)}
 
               <DropdownMenuSeparator />
               <DropdownMenuLabel>库</DropdownMenuLabel>
