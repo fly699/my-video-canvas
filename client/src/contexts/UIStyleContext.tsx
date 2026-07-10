@@ -17,10 +17,11 @@ interface UIStyleContextType {
   setUIStyle: (s: UIStyle) => void;
 }
 
-// 画布默认风格：工作室（影院深色 · 命令栏 · 媒体优先）。只有用户「显式切换过」才尊重其选择，
-// 否则一律用该默认——这样改默认能同时覆盖新用户与从未主动选过的老用户，而不会顶掉主动选了
-// 专业/创意的人（他们切换时会打上 explicit 标记）。
-const DEFAULT_UI_STYLE: UIStyle = "studio";
+// 画布默认风格：pro 皮肤（配合 CanvasMode 默认 creative = 「创意/LibTV 模式」——
+// 首次进入即 LibTV 观感，快速黏住 LibTV 用户）。只有用户「显式切换过」才尊重其选择，
+// 否则一律用该默认——这样改默认能同时覆盖新用户与从未主动选过的老用户，而不会顶掉
+// 主动选了专业/工作室的人（他们切换时会打上 explicit 标记）。
+const DEFAULT_UI_STYLE: UIStyle = "pro";
 const EXPLICIT_KEY = "avc:ui-style-explicit";
 
 const UIStyleContext = createContext<UIStyleContextType>({

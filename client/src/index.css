@@ -1513,6 +1513,35 @@ button:active:not(:disabled) {
   color: var(--c-t3);
 }
 
+/* ── LibTV 化 3.6 细节打磨 ──────────────────────────────────────────────────── */
+/* dock 紧凑（icon-only）：LibTV 底部 dock 是一排小图标胶囊；隐藏按钮文字标签
+  （复用竖排 dock 同款机制，功能不变、tooltip 仍在） */
+:root[data-canvas-mode="creative"] .canvas-bottombar [data-toolbar-label] {
+  display: none !important;
+}
+/* 连接柄静止弱化：LibTV 连接点平时几乎不可见——非悬停/非选中节点的 handle 淡出。
+   handle 的 opacity 是 inline（handleStyle），需 !important；拉线进行中
+  （画布存在 .react-flow__connection）不弱化，保证放线目标可见。 */
+:root[data-canvas-mode="creative"] .react-flow:not(:has(.react-flow__connection)) .react-flow__node:not(:hover):not(.selected) .react-flow__handle {
+  opacity: 0.25 !important;
+}
+/* 选中节点的 resize 手柄 → 白色小圆点（原彩色方点太抢眼；LibTV 选中只有白描边+素点） */
+:root[data-canvas-mode="creative"] .react-flow__resize-control.handle {
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  background: #ececec !important;
+  border: 1px solid oklch(0 0 0 / 0.5) !important;
+}
+/* 空态占位中性化：生成节点的「结果将显示在这里」占位卡去彩色，统一深灰+中性字 */
+:root[data-canvas-mode="creative"] .node-empty-placeholder {
+  border-color: var(--c-bd2) !important;
+  background: var(--c-input) !important;
+}
+:root[data-canvas-mode="creative"] .node-empty-placeholder > div {
+  color: var(--c-t4) !important;
+}
+
 /* 3.1b：创意模式输入控件统一无衬线中文黑体——多个节点的提示词框此前用
    JetBrains Mono 等宽字体显示中文（技术感重、与 LibTV 全黑体观感相悖）。
    inline style 非 !important，此处 !important 可覆盖。 */
