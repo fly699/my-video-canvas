@@ -27,8 +27,8 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[] };
-const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "", videoProvider: "", genNodes: [] };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[] };
+const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "", videoProvider: "", genNodes: [], workflowTemplateIds: [] };
 const QP_GEN_NODES: { v: string; label: string }[] = [
   { v: "image_gen", label: "云端图像" }, { v: "video_task", label: "云端视频" },
   { v: "comfyui_image", label: "ComfyUI图像" }, { v: "comfyui_video", label: "ComfyUI视频" }, { v: "comfyui_workflow", label: "ComfyUI模板" },
@@ -131,7 +131,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [showQuick, setShowQuick] = useState(false);
   const setQP = (patch: Partial<QuickPrefs>) => setQuickPrefs((p) => ({ ...p, ...patch }));
   const qpActiveCount = (quickPrefs.aspect ? 1 : 0) + (quickPrefs.style ? 1 : 0) + (quickPrefs.durationSec ? 1 : 0) + (quickPrefs.imageFirst ? 1 : 0) + (quickPrefs.addMusic ? 1 : 0) + (quickPrefs.addSubtitle ? 1 : 0)
-    + (quickPrefs.imageModel ? 1 : 0) + (quickPrefs.videoProvider ? 1 : 0) + (quickPrefs.genNodes.length ? 1 : 0);
+    + (quickPrefs.imageModel ? 1 : 0) + (quickPrefs.videoProvider ? 1 : 0) + (quickPrefs.genNodes.length ? 1 : 0) + (quickPrefs.workflowTemplateIds.length ? 1 : 0);
+  // 「ComfyUI模板」的二级选择：模板库中已存在的工作流模板（只有 comfyui_workflow 型模板
+  // 带 workflowJson，可被 comfyui_workflow 节点引用）。选中 = 只允许助手用这些模板。
+  const workflowTemplates = (templatesQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow");
+  const chosenWorkflowTpls = workflowTemplates.filter((t) => quickPrefs.workflowTemplateIds.includes(t.id));
   const buildQuickPrefsText = (): string | undefined => {
     const lines: string[] = [];
     if (quickPrefs.imageFirst) lines.push("- 【强制·先生图再生视频】每个视频镜头先建 image_gen 图像节点（把镜头画面描述作为它的 prompt），再建 video_task 视频节点并连接 image_gen → video_task 作首帧，严禁 storyboard/prompt/script 直连 video_task 做文生视频。");
@@ -143,6 +147,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     if (quickPrefs.genNodes.length) lines.push(`- 【强制】生成节点只允许使用：${quickPrefs.genNodes.join(" / ")}；其余生成节点类型（image_gen/video_task/comfyui_image/comfyui_video/comfyui_workflow 中未列出的）一律禁止创建。`);
     if (quickPrefs.imageModel) lines.push(`- 【强制】图像生成一律使用模型 ${quickPrefs.imageModel}（写入 image_gen.model / storyboard.imageModel）。`);
     if (quickPrefs.videoProvider) lines.push(`- 【强制】视频生成一律使用模型 ${quickPrefs.videoProvider}（写入 video_task.provider；params 键与取值严格按该模型的参数表）。`);
+    if (chosenWorkflowTpls.length) lines.push(`- 【强制】comfyui_workflow 节点只允许引用以下模板：${chosenWorkflowTpls.map((t) => `id=${t.id}「${t.label}」`).join("、")}；其它模板一律禁止。`);
     return lines.length ? lines.join("\n") : undefined;
   };
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -368,6 +373,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           templates, ownerAgentId: "canvas-agent-chat", aspect: quickPrefs.aspect || undefined,
           imageModel: quickPrefs.imageModel || undefined, videoProvider: quickPrefs.videoProvider || undefined,
           allowedGenNodes: quickPrefs.genNodes.length ? quickPrefs.genNodes : undefined,
+          allowedTemplateIds: quickPrefs.workflowTemplateIds.length ? quickPrefs.workflowTemplateIds : undefined,
         });
         applied = opsSummary(ops); createdIds = res.createdIds ?? [];
         if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
@@ -474,6 +480,26 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 );
               })}
             </div>
+            {/* ComfyUI模板 的二级选择：勾选具体允许的工作流模板（全不勾=不限；已选则强制只用所选） */}
+            {(quickPrefs.genNodes.includes("comfyui_workflow") || quickPrefs.workflowTemplateIds.length > 0) && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0, paddingTop: 4 }} title="勾选=只允许引用这些工作流模板；全不勾=不限">模板</span>
+                {workflowTemplates.length === 0 ? (
+                  <span style={{ fontSize: 11, color: "var(--c-t4)", paddingTop: 4 }}>模板库暂无工作流模板（先在模板库添加/分析）</span>
+                ) : (
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", flex: 1, maxHeight: 88, overflowY: "auto" }} className="nowheel">
+                    {workflowTemplates.map((t) => {
+                      const on = quickPrefs.workflowTemplateIds.includes(t.id);
+                      return (
+                        <button key={t.id} title={`id=${t.id}${t.note ? ` · ${t.note}` : ""}`}
+                          onClick={() => setQP({ workflowTemplateIds: on ? quickPrefs.workflowTemplateIds.filter((x) => x !== t.id) : [...quickPrefs.workflowTemplateIds, t.id] })}
+                          style={{ ...chip(on), maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.label}</button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
               {([["imageFirst", "生图 → 再生视频"], ["addMusic", "自动配乐"], ["addSubtitle", "自动字幕"]] as const).map(([k, label]) => (
                 <label key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
