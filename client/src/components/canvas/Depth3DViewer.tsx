@@ -91,7 +91,7 @@ export function Depth3DViewer({ sourceImageUrl, comfyBaseUrl, onGenerate, onClos
         });
         if (!cancelled) setDepthUrl(url);
       } catch (e) {
-        if (!cancelled) setErr("提取深度失败——需要已配置的 ComfyUI 服务器（DepthAnythingV2）。" + (e instanceof Error ? `\n${e.message}` : ""));
+        if (!cancelled) setErr("提取深度失败——需要可用的 ComfyUI 服务器（装有 DepthAnythingV2 / controlnet_aux 插件）。可在 管理后台 →「ComfyUI 服务器」添加并测试。" + (e instanceof Error ? `\n${e.message}` : ""));
       }
     })();
     return () => { cancelled = true; };

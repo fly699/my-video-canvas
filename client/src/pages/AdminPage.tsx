@@ -3,8 +3,9 @@ import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, type LucideIcon } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, type LucideIcon } from "lucide-react";
 import { ConfigChecklistPanel } from "@/components/admin/ConfigChecklistPanel";
+import { ComfyServersPanel } from "@/components/admin/ComfyServersPanel";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 import { ComfyOpsPanel } from "@/components/admin/ComfyOpsPanel";
 import { AuroraBackground } from "@/components/AuroraBackground";
@@ -21,7 +22,7 @@ import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOr
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
 
 // 标签页定义：[key, 中文标签, 图标]
 const TAB_DEFS: [Tab, string, LucideIcon][] = [
@@ -35,6 +36,7 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["models", "模型管理", Boxes],
   ["tunnel", "公网隧道", Globe2],
   ["chat", "聊天管理", MessageCircle],
+  ["comfyServers", "ComfyUI 服务器", ServerIcon],
   ["comfyStress", "ComfyUI 压测", Activity],
   ["comfyOps", "ComfyUI 运维中心", Wrench],
   ["assets", "素材库(全用户)", ImageIcon],
@@ -260,6 +262,7 @@ export default function AdminPage() {
           {activeTab === "storage" && <StoragePanel />}
           {activeTab === "models" && <LevelGate need={3}><ModelsPanel /></LevelGate>}
           {activeTab === "chat" && <ChatAdminPanel />}
+          {activeTab === "comfyServers" && <LevelGate need={3} label="只读模式 · 修改全局 ComfyUI 服务器列表需「管理员」及以上权限"><ComfyServersPanel /></LevelGate>}
           {activeTab === "comfyStress" && <LevelGate need={3} label="只读模式 · ComfyUI 压测需「管理员」及以上权限"><ComfyStressPanel /></LevelGate>}
           {activeTab === "comfyOps" && <LevelGate need={3} label="只读模式 · ComfyUI 运维（SSH/Docker/安装/脚本）需「管理员」及以上权限"><ComfyOpsPanel /></LevelGate>}
           {activeTab === "assets" && <AssetsAdminPanel />}
