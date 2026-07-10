@@ -6,6 +6,7 @@ import { assertLLMAllowed } from "../_core/whitelist";
 import { isCustomLLMModel } from "../_core/customLlm";
 import { extractTextContent, type Message, type MessageContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
+import type { TrpcContext } from "../_core/context";
 import { catalogText, sanitizeOperationDetailed, templateKnowledgeText } from "../_core/agentCatalog";
 import { enforceImageFirst, enforceImageFirstComfy } from "../_core/imageFirst";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
@@ -93,10 +94,7 @@ export function allocateContextBudget(args: {
 // returned operations through the canvas store, so every change is undoable,
 // persisted and broadcast exactly like a manual edit. LLM-gated (respects the
 // admin "open LLM" toggle); editor access required.
-export const agentRouter = router({
-  chat: protectedProcedure
-    .input(
-      z.object({
+const agentChatInput = z.object({
         projectId: z.number(),
         message: z.string().min(1).max(32000),
         history: z
@@ -129,9 +127,23 @@ export const agentRouter = router({
           )
           .max(4)
           .optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
+      });
+
+type AuthedCtx = TrpcContext & { user: NonNullable<TrpcContext["user"]> };
+
+// ── 后台任务化的画布助手规划 ────────────────────────────────────────────────
+// 长生成（本机 Claude/GPT 大计划 3~10 分钟）靠一条 HTTP 长连接等结果太脆：网络抖动/代理
+// 掐线/服务重启都会让客户端白等——真实翻车：回复已生成完，连接中途断了报「网络请求失败」。
+// 改为 submitChat 提交 → chatStatus 轮询（同图生 3D 的两端点模式），彻底不依赖长连接。
+type AgentChatJob = { userId: number; createdAt: number; done: boolean; result?: Awaited<ReturnType<typeof runAgentChat>>; error?: string };
+const agentChatJobs = new Map<string, AgentChatJob>();
+const AGENT_JOB_TTL_MS = 30 * 60_000; // 完成后 30 分钟内没被取走（客户端崩了）就清理
+function sweepAgentChatJobs(): void {
+  const now = Date.now();
+  agentChatJobs.forEach((j, k) => { if (now - j.createdAt > AGENT_JOB_TTL_MS) agentChatJobs.delete(k); });
+}
+
+async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput>) {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // 自定义模型走自带 key 体系：门控收敛到 invokeLLMWithKie（自带 key 放行 / env 兜底门控）。
       if (!isCustomLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
@@ -386,6 +398,40 @@ ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.
       // Dedupe + cap the drop reasons (same reason often repeats across many ops).
       const droppedReasons = Array.from(new Set(dropped)).slice(0, 6);
       return { reply, operations, plan, dropped: droppedReasons, droppedCount: dropped.length };
+}
+
+export const agentRouter = router({
+  chat: protectedProcedure
+    .input(agentChatInput)
+    .mutation(async ({ ctx, input }) => runAgentChat(ctx, input)),
+
+  // 提交后台规划任务：立即返回 jobId，客户端轮询 chatStatus 取结果——轮询是短请求，
+  // 断连/隧道掐线/服务端慢都不会丢「等待中」的状态（服务重启会丢任务→missing，客户端明确提示）。
+  submitChat: protectedProcedure
+    .input(agentChatInput)
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor"); // 快速失败；runAgentChat 内还会再校验
+      sweepAgentChatJobs();
+      const jobId = `acj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      const job: AgentChatJob = { userId: ctx.user.id, createdAt: Date.now(), done: false };
+      agentChatJobs.set(jobId, job);
+      void runAgentChat(ctx, input)
+        .then((r) => { job.result = r; job.done = true; })
+        .catch((e) => { job.error = e instanceof Error ? e.message : String(e); job.done = true; });
+      return { jobId };
+    }),
+
+  // 轮询任务状态；done 后取走即删（结果一次性消费，客户端拿到后自行持久化到会话）。
+  chatStatus: protectedProcedure
+    .input(z.object({ jobId: z.string().max(64) }))
+    .query(({ ctx, input }) => {
+      const j = agentChatJobs.get(input.jobId);
+      if (!j || j.userId !== ctx.user.id) return { state: "missing" as const };
+      if (!j.done) return { state: "running" as const };
+      agentChatJobs.delete(input.jobId);
+      return j.error
+        ? { state: "error" as const, error: j.error }
+        : { state: "done" as const, result: j.result };
     }),
 
   // Generate per-shot descriptions for a 成片配方 from a topic, so the recipe's

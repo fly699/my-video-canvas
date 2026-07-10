@@ -54,7 +54,9 @@ const sanitizeTurnsForSave = (ts: Turn[]) => ts.slice(-80).map((t) => ({
 
 export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onClose: () => void }) {
   const reactFlow = useReactFlow();
-  const chat = trpc.agent.chat.useMutation();
+  // 规划改「submitChat 提交 → chatStatus 轮询」：长生成不再押一条 HTTP 长连接（断连/掐线/
+  // 服务端慢都曾让已生成完的回复报「网络请求失败」白丢）。busy 为本地进行中状态。
+  const [busy, setBusy] = useState(false);
   // 服务端持久化：跨设备/清缓存后对话仍在（替代原来仅 localStorage）。
   const historyQuery = trpc.agent.getHistory.useQuery({ projectId }, { staleTime: Infinity, refetchOnWindowFocus: false });
   const saveHistoryMut = trpc.agent.saveHistory.useMutation();
@@ -228,7 +230,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 内容相同（多半是自己保存的回声）时原样返回 cur，避免 setTurns→回写→再广播 的循环。
   useEffect(() => {
     const onRemote = () => {
-      if (chat.isPending || saveHistoryMut.isPending || !hydratedRef.current) return;
+      if (busy || saveHistoryMut.isPending || !hydratedRef.current) return;
       void historyQuery.refetch().then((r) => {
         const dbTurns = (r.data?.turns as Turn[]) ?? [];
         setTurns((cur) => (JSON.stringify(cur) === JSON.stringify(dbTurns) ? cur : dbTurns));
@@ -237,11 +239,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     window.addEventListener("avc:agent-history-updated", onRemote);
     return () => window.removeEventListener("avc:agent-history-updated", onRemote);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.isPending, saveHistoryMut.isPending, projectId]);
+  }, [busy, saveHistoryMut.isPending, projectId]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:model", model); } catch { /* quota */ } }, [model]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:template", template); } catch { /* quota */ } }, [template]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:prefs", JSON.stringify(quickPrefs)); } catch { /* quota */ } }, [quickPrefs]);
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [turns, chat.isPending]);
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [turns, busy]);
 
   // ── @角色 / 技能 触发面板（输入末尾 @片段 或 /片段 时浮出可选列表）──
   const [pickHi, setPickHi] = useState(0);
@@ -293,16 +295,17 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   async function send() {
     const files = staged;
     const msg = input.trim() || (files.length ? "请参考附件规划画布。" : "");
-    if (!msg || chat.isPending) return;
+    if (!msg || busy) return;
     setInput(""); setStaged([]); setAttachErr("");
     // 每条截到 8000（服务端 history zod 上限）——否则发过超长消息后，下一条会整包被 400 拒掉。
     const history = turns.slice(-10).map((t) => ({ role: t.role, content: t.content.slice(0, 8000) }));
     const attachLabel = files.length ? `　📎 ${files.map((f) => f.name).join("、")}` : "";
     setTurns((p) => [...p, { role: "user", content: msg + attachLabel }]);
-    // 软取消：本机 Claude 大计划可能等 1~5 分钟——给用户「取消」按钮立刻拿回控制（请求可能仍在
-    // 后台完成，结果按 aborted 丢弃），避免全程干等。
+    // 软取消：本机 Claude/GPT 大计划可能等 1~10 分钟——「取消」按钮立刻拿回控制
+    // （后台任务仍会跑完，结果被丢弃）。
     const controller = new AbortController();
     abortRef.current = controller;
+    setBusy(true);
     try {
       const attachments = files.length
         ? await Promise.all(files.map(async (f) => ({ url: await fileToDataUri(f), mimeType: f.type || "application/octet-stream", name: f.name })))
@@ -310,11 +313,32 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const focus = selectedNodeIds.filter(Boolean);
       const summary = buildGraphSummary("", focus.length ? { focusNodeIds: focus } : {});
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
-      const r = await Promise.race([
-        chat.mutateAsync({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined }),
-        new Promise<never>((_, rej) => controller.signal.addEventListener("abort", () => rej(new DOMException("已取消", "AbortError")))),
-      ]);
-      if (controller.signal.aborted) return; // 已取消，丢弃迟到结果
+      // 提交后台任务 → 每 2.5s 轮询取结果。轮询是短请求：网络抖动/隧道掐线不影响「等待中」，
+      // 单次轮询失败自动重试；服务重启会丢任务（missing）→ 明确提示重试而非无限等。
+      const { jobId } = await utils.client.agent.submitChat.mutate({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined });
+      const startedAt = Date.now();
+      let r: Awaited<ReturnType<typeof utils.client.agent.chat.mutate>> | undefined;
+      let missCount = 0;
+      for (;;) {
+        if (controller.signal.aborted) break;
+        if (Date.now() - startedAt > 20 * 60_000) throw new Error("生成超过 20 分钟仍未完成。请重试，或缩短输入/减少一次性规划的镜头数。");
+        await new Promise((res) => setTimeout(res, 2500));
+        if (controller.signal.aborted) break;
+        let st: Awaited<ReturnType<typeof utils.client.agent.chatStatus.query>>;
+        try {
+          st = await utils.client.agent.chatStatus.query({ jobId });
+        } catch { continue; } // 单次轮询失败（网络抖动/服务重启中）不放弃，下一轮再试
+        if (st.state === "running") continue;
+        if (st.state === "missing") {
+          // 服务重启中首次可能短暂 missing——连续 3 次才判死，避免误报
+          if (++missCount >= 3) throw new Error("任务已丢失（服务器可能重启过）。请重新发送。");
+          continue;
+        }
+        if (st.state === "error") throw new Error(st.error || "生成失败");
+        r = st.result!;
+        break;
+      }
+      if (controller.signal.aborted || !r) { if (controller.signal.aborted) throw new DOMException("已取消", "AbortError"); return; }
       const ops = (r.operations ?? []) as AgentOperation[];
       // 服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）——此前画布助手完全不展示，
       // 用户只见「operations 静默变少」。合并进「未应用」提示，与客户端 apply 失败一并可见。
@@ -331,17 +355,18 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);
     } catch (e) {
       if (controller.signal.aborted || (e instanceof Error && e.name === "AbortError")) {
-        setTurns((p) => [...p, { role: "assistant", content: "已取消本次规划（请求可能仍在后台完成，结果已忽略）。", error: true }]);
+        setTurns((p) => [...p, { role: "assistant", content: "已取消本次规划（后台任务可能仍会完成，结果已忽略）。", error: true }]);
         return;
       }
       setTurns((p) => [...p, { role: "assistant", content: friendlyClientLLMError(e), error: true }]);
     } finally {
       abortRef.current = null;
+      setBusy(false);
     }
   }
 
-  // 取消进行中的规划：中止等待 + reset mutation 释放 isPending（真请求可能仍在后台，结果被丢弃）。
-  const cancelSend = () => { abortRef.current?.abort(); chat.reset(); };
+  // 取消进行中的规划：中止轮询等待（后台任务仍会跑完，结果被丢弃）。
+  const cancelSend = () => { abortRef.current?.abort(); };
 
   const templateGroups = [
     { options: [{ value: BLANK_TEMPLATE_ID, label: BLANK_TEMPLATE_LABEL, title: "不设任何人设/风格" }] },
@@ -360,7 +385,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <Sparkles className="w-4 h-4" style={{ color: accent }} />
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--c-t1)" }}>画布助手</span>
         <div style={{ flex: 1 }} />
-        <div style={{ maxWidth: 150 }}><LLMModelPicker value={model} onChange={setModel} disabled={chat.isPending} /></div>
+        <div style={{ maxWidth: 150 }}><LLMModelPicker value={model} onChange={setModel} disabled={busy} /></div>
         <button
           onClick={() => {
             if (!turns.length) { toast.info("当前已是新对话（暂无历史可清空）"); return; }
@@ -368,8 +393,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             setTurns([]); persistTurns([]);
             toast.success("已开始新对话");
           }}
-          title="新对话（清空当前画布助手对话，开启一段全新对话）" disabled={chat.isPending}
-          style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: chat.isPending ? "default" : "pointer" }}
+          title="新对话（清空当前画布助手对话，开启一段全新对话）" disabled={busy}
+          style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: busy ? "default" : "pointer" }}
         ><Plus size={14} /></button>
         <button onClick={() => setCollapsed(true)} title="收起为悬浮球（右键小球可关闭）" style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer" }}><X size={14} /></button>
       </div>
@@ -458,7 +483,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             )}
           </div>
         ))}
-        {chat.isPending && (
+        {busy && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: accent }}>
             <Loader2 size={13} className="animate-spin" /> 正在规划并修改画布…
             <span style={{ color: "var(--c-t4)", fontSize: 11 }}>（本机模型大计划可能较久）</span>
@@ -510,8 +535,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 10px 10px", borderTop: "1px solid var(--c-bd2)", flexShrink: 0 }}>
         <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx" style={{ display: "none" }}
           onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); if (fileInputRef.current) fileInputRef.current.value = ""; }} />
-        <button onClick={() => fileInputRef.current?.click()} disabled={chat.isPending} title="附参考图 / 文档（据图规划画面·风格·角色）"
-          style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: staged.length ? accent : "var(--c-t3)", cursor: chat.isPending ? "not-allowed" : "pointer", flexShrink: 0 }}>
+        <button onClick={() => fileInputRef.current?.click()} disabled={busy} title="附参考图 / 文档（据图规划画面·风格·角色）"
+          style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: staged.length ? accent : "var(--c-t3)", cursor: busy ? "not-allowed" : "pointer", flexShrink: 0 }}>
           <Paperclip size={16} />
         </button>
         <textarea value={input} onChange={(e) => setInput(e.target.value)}
@@ -529,9 +554,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           }}
           placeholder="指挥画布，Enter 发送；@ 角色、/ 技能、📎 附参考图" rows={1}
           style={{ flex: 1, resize: "none", maxHeight: 120, padding: "9px 11px", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t1)", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
-        <button onClick={() => void send()} disabled={chat.isPending || (!input.trim() && staged.length === 0)} title="发送"
-          style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${accent}`, background: accentSoft, color: accent, cursor: chat.isPending || (!input.trim() && !staged.length) ? "not-allowed" : "pointer", opacity: chat.isPending || (!input.trim() && !staged.length) ? 0.5 : 1, flexShrink: 0 }}>
-          {chat.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+        <button onClick={() => void send()} disabled={busy || (!input.trim() && staged.length === 0)} title="发送"
+          style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${accent}`, background: accentSoft, color: accent, cursor: busy || (!input.trim() && !staged.length) ? "not-allowed" : "pointer", opacity: busy || (!input.trim() && !staged.length) ? 0.5 : 1, flexShrink: 0 }}>
+          {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         </button>
       </div>
 
@@ -577,9 +602,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <div style={{
           position: "absolute", inset: 0, borderRadius: "50%", pointerEvents: "none",
           border: "2px solid oklch(0.80 0.16 310)",
-          animation: `avc-ball-ring ${chat.isPending ? "1.1s" : "2.2s"} ease-out infinite`,
+          animation: `avc-ball-ring ${busy ? "1.1s" : "2.2s"} ease-out infinite`,
         }} />
-        {chat.isPending
+        {busy
           ? <Loader2 size={17} className="animate-spin" style={{ color: "white", position: "relative", zIndex: 1 }} />
           : <Sparkles size={18} style={{ color: "white", position: "relative", zIndex: 1, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />}
       </div>
