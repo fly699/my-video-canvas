@@ -48,7 +48,14 @@ function putWithProgress(url: string, file: File, mimeType: string, onProgress?:
 }
 
 export async function uploadAssetFile(client: TrpcClient, file: File, projectId?: number, onProgress?: (pct: number) => void): Promise<boolean> {
-  if (file.size > MAX_BYTES) { toast.error(`文件不能超过 ${MAX_MB}MB`); return false; }
+  return (await uploadAssetFileForUrl(client, file, projectId, onProgress)) != null;
+}
+
+/** 同 uploadAssetFile，但返回上传后的访问 URL（失败返回 null，已自带错误 toast）。
+ *  供「导演台导入 GLB」等既要入库又要立刻拿 URL 使用的调用方；任意大小/类型
+ *  （配了对象存储走直传，无 16MB base64 上限——曾把大 GLB 撞成 HTML 413 报错）。 */
+export async function uploadAssetFileForUrl(client: TrpcClient, file: File, projectId?: number, onProgress?: (pct: number) => void): Promise<string | null> {
+  if (file.size > MAX_BYTES) { toast.error(`文件不能超过 ${MAX_MB}MB`); return null; }
   const mimeType = file.type || "application/octet-stream";
   const type = assetKindOf(mimeType);
   try {
@@ -58,19 +65,19 @@ export async function uploadAssetFile(client: TrpcClient, file: File, projectId?
       // 而不是让请求撞上服务端 413 报出费解的错误。
       if (file.size > BASE64_MAX_BYTES) {
         toast.error(`未配置对象存储时单文件上限约 36MB（当前 ${(file.size / 1024 / 1024).toFixed(0)}MB）。请让管理员配置对象存储（MinIO/S3）后即可直传大文件。`);
-        return false;
+        return null;
       }
       onProgress?.(0);
       const base64 = await fileToBase64(file);
-      await client.assets.upload.mutate({ name: file.name, type, mimeType, size: file.size, base64, projectId });
+      const asset = await client.assets.upload.mutate({ name: file.name, type, mimeType, size: file.size, base64, projectId });
       onProgress?.(100);
-    } else {
-      await putWithProgress(res.uploadUrl, file, mimeType, onProgress);
-      await client.assets.confirmUpload.mutate({ key: res.key, url: res.url, name: file.name, type, mimeType, size: file.size, projectId });
+      return asset.url;
     }
-    return true;
+    await putWithProgress(res.uploadUrl, file, mimeType, onProgress);
+    await client.assets.confirmUpload.mutate({ key: res.key, url: res.url, name: file.name, type, mimeType, size: file.size, projectId });
+    return res.url;
   } catch (e) {
     toast.error("上传失败：" + (e instanceof Error ? e.message : String(e)));
-    return false;
+    return null;
   }
 }
