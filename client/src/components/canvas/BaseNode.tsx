@@ -383,13 +383,13 @@ export const BaseNode = memo(function BaseNode({
     } finally { setGridBusy(false); }
   };
 
-  const handleGridSlice = async (n: number) => {
+  const handleGridSlice = async (rows: number, cols: number) => {
     if (gridBusy || !resultImageUrl) return;
     setGridMenuOpen(false);
     setGridBusy(true);
-    const tid = toast.loading(`宫格切分（${n}×${n}）…`);
+    const tid = toast.loading(`宫格切分（${rows}×${cols}）…`);
     try {
-      const sliced = await gridSliceMut.mutateAsync({ imageUrl: resultImageUrl, rows: n, cols: n, ...(projectId ? { projectId } : {}) });
+      const sliced = await gridSliceMut.mutateAsync({ imageUrl: resultImageUrl, rows, cols, ...(projectId ? { projectId } : {}) });
       if (!sliced.urls.length) throw new Error("未产生子图");
       spawnImageResultNode(`宫格切分 · ${sliced.urls.length} 张`, sliced.urls);
       toast.success(`已切分为 ${sliced.urls.length} 张子图（新节点）`, { id: tid });
@@ -819,14 +819,41 @@ export const BaseNode = memo(function BaseNode({
                     <Grid3X3 size={12} /> 宫格切分 <ChevronDown size={10} />
                   </button>
                   {gridMenuOpen && (
-                    <div className="nodrag" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, display: "flex", flexDirection: "column", gap: 2, padding: 4, borderRadius: 9, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
-                      {[2, 3, 4, 5].map((n) => (
-                        <button key={n} onClick={(e) => { e.stopPropagation(); void handleGridSlice(n); }}
+                    <div className="nodrag" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, display: "flex", flexDirection: "column", gap: 2, padding: 6, borderRadius: 9, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+                      {/* 行×列 网格：含 1×2/2×1/1×3/3×1/2×3/3×2 等非方形排列（用户实际素材常见混排/条带） */}
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3 }}>
+                        {([[2, 2], [3, 3], [4, 4], [1, 2], [2, 1], [1, 3], [3, 1], [2, 3], [3, 2], [2, 4], [4, 2], [5, 5]] as const).map(([r, c]) => (
+                          <button key={`${r}x${c}`} onClick={(e) => { e.stopPropagation(); void handleGridSlice(r, c); }}
+                            className="studio-toolbtn rounded-md"
+                            style={{ padding: "4px 8px", fontSize: 11, whiteSpace: "nowrap", background: "var(--c-surface)", color: "var(--c-t2)", border: "1px solid var(--c-bd1)", cursor: "pointer", textAlign: "center" }}>
+                            {r}×{c}
+                          </button>
+                        ))}
+                      </div>
+                      {/* 自定义 行×列（1-8）——后端 slice 本就支持任意行列 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, paddingTop: 4, borderTop: "1px solid var(--c-bd1)", marginTop: 3 }}>
+                        <span style={{ fontSize: 10, color: "var(--c-t4)" }}>自定义</span>
+                        <input type="number" min={1} max={8} defaultValue={2} id={`grid-r-${id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ width: 36, fontSize: 11, padding: "2px 4px", borderRadius: 5, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                        <span style={{ fontSize: 10, color: "var(--c-t4)" }}>行 ×</span>
+                        <input type="number" min={1} max={8} defaultValue={3} id={`grid-c-${id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ width: 36, fontSize: 11, padding: "2px 4px", borderRadius: 5, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                        <span style={{ fontSize: 10, color: "var(--c-t4)" }}>列</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const r = Math.max(1, Math.min(8, Number((document.getElementById(`grid-r-${id}`) as HTMLInputElement)?.value || 2)));
+                            const c = Math.max(1, Math.min(8, Number((document.getElementById(`grid-c-${id}`) as HTMLInputElement)?.value || 3)));
+                            if (r * c < 2) { toast.info("行×列至少要 2 格"); return; }
+                            void handleGridSlice(r, c);
+                          }}
                           className="studio-toolbtn rounded-md"
-                          style={{ padding: "4px 12px", fontSize: 11, whiteSpace: "nowrap", background: "transparent", color: "var(--c-t2)", border: "none", cursor: "pointer", textAlign: "left" }}>
-                          {n}×{n}（{n * n} 格）
+                          style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11, background: "var(--c-surface)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", cursor: "pointer", fontWeight: 600 }}>
+                          切分
                         </button>
-                      ))}
+                      </div>
                     </div>
                   )}
                 </span>
