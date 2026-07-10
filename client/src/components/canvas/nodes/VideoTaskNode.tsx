@@ -7,6 +7,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { usePersistentState } from "../../../hooks/usePersistentState";
 import type { VideoTaskNodeData, VideoProvider, CharacterNodeData } from "../../../../../shared/types";
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
+import { appendSubjectMapping, subjectOverflow } from "../../../../../shared/subjectRef";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, effectiveCharacterVideoRefs, effectiveCharacterAudioRefs } from "../../../lib/characterConditioning";
 import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
@@ -391,8 +392,19 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const supportsRefAudio = SUPPORTS_REF_AUDIO.has(payload.provider);
   const videoItems = useVideoStripItems(id, payload.prompt ?? "");
   const audioItems = useAudioStripItems(id, payload.prompt ?? "");
+  // LibTV 化 2.3：多主体参考语法——多图 provider 且附了 ≥2 张手动参考图时，
+  // 给每张打「主体N」编号（N = 发送顺序，与 buildRefUrls 同源），提示词可用
+  // 主体1/主体2… 指代对应图。仅编号会真正发送的前 max 张。
+  const providerMaxRefs = maxRefImagesForProvider(payload.provider);
+  const subjectTagging = providerMaxRefs > 1 && refImages.images.length > 1;
+  const subjectCount = subjectTagging ? Math.min(refImages.images.length, providerMaxRefs) : 0;
+  const insertSubjectToken = useCallback((n: number) => {
+    const cur = payload.prompt ?? "";
+    const token = `主体${n}`;
+    updateNodeData(id, { prompt: cur.trim() ? `${cur.replace(/\s+$/, "")} ${token}` : token });
+  }, [id, payload.prompt, updateNodeData]);
   const stripImages: StripItem[] = [
-    ...refImages.images.map((img) => ({ ...img, label: "参考图", removable: true })),
+    ...refImages.images.map((img, i) => ({ ...img, label: "参考图", removable: true, subjectIndex: subjectTagging && i < providerMaxRefs ? i + 1 : undefined })),
     ...charSceneItems,
     ...(supportsRefVideo ? videoItems : []),
     ...(supportsRefAudio ? audioItems : []),
@@ -611,13 +623,23 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     const wantDur = (typeof ownDur !== "number" || ownDur === provDurDefault) ? (upDur ?? ownDur) : ownDur;
     const clampedDur = clampDurationForProvider(PROVIDER_PARAMS[payload.provider], wantDur);
     const submitParams = withParamDefaults(payload.provider, clampedDur != null ? { ...(payload.params ?? {}), duration: clampedDur } : payload.params);
+    // LibTV 化 2.3：主体N ↔ 参考图顺序绑定。越界（主体3 但只送 2 张图）提交前拦截，
+    // 合法引用则确定性追加映射说明行（appendSubjectMapping 幂等）。
+    const refUrlsForSubmit = buildRefUrls(payload.provider, finalRefImage);
+    const subjectRefCount = refUrlsForSubmit?.length ?? (finalRefImage?.trim() ? 1 : 0);
+    const overflow = subjectOverflow(finalPrompt, subjectRefCount);
+    if (overflow.length) {
+      toast.error(`提示词引用了主体${overflow.join("、主体")}，但本次只会发送 ${subjectRefCount} 张参考图（${payload.provider} 上限 ${maxRefImagesForProvider(payload.provider)} 张）。请补参考图或改用已有的主体编号。`);
+      return;
+    }
+    const promptForSubmit = appendSubjectMapping(finalPrompt, subjectRefCount);
     const submit = () => createTaskMutation.mutate({
       projectId: data.projectId, nodeId: id,
-      provider: payload.provider, prompt: finalPrompt,
+      provider: payload.provider, prompt: promptForSubmit,
       // Only send negativePrompt for providers that actually support it
       negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(payload.provider) ? payload.negativePrompt : undefined,
       referenceImageUrl: finalRefImage,
-      referenceImageUrls: buildRefUrls(payload.provider, finalRefImage),
+      referenceImageUrls: refUrlsForSubmit,
       referenceVideoUrls: refMedia.videoRefs,
       referenceAudioUrls: refMedia.audioRefs,
       // OmniHuman 指定说话主体的蒙版（用户在节点上勾选）。
@@ -926,6 +948,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             onZoom={(i) => { const u = stripImages[i]?.url; if (u) openNodeImage(u); }}
             onHoverChange={docks.onDockHoverChange}
             onPin={docks.pinRef}
+            onInsertSubject={insertSubjectToken}
           />
           <PromptDock
             open={docks.promptOpen}
@@ -1182,12 +1205,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
                   parallelInFlightRef.current += parallelProviders.length;
                   parallelProviders.forEach(provider => {
                     setParallelResults(prev => ({ ...prev, [provider]: { status: "processing" } }));
+                    // 主体N 映射按各 provider 实际发送的参考图张数分别追加（多图上限不同）。
+                    const pRefUrls = buildRefUrls(provider, submission.referenceImageUrl);
                     createTaskMutation.mutate(
                       // Don't share the node's params bag across providers (they diverge),
                       // but each provider still needs its OWN required-field defaults
                       // (resolution/aspect_ratio/duration/...) since the backend no longer
                       // hard-defaults them — so pass that provider's ParamDef defaults.
-                      { nodeId: id, projectId: data.projectId, provider, prompt: submission.prompt, negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: buildRefUrls(provider, submission.referenceImageUrl), referenceVideoUrls: collectRefMedia(provider).videoRefs, referenceAudioUrls: collectRefMedia(provider).audioRefs, referenceMode: refModeForSubmit(), params: withParamDefaults(provider, {}), estimatedCost: costEstimateLabel(estimateVideoCost(provider, withParamDefaults(provider, {}))) || undefined, ...(provider.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}) },
+                      { nodeId: id, projectId: data.projectId, provider, prompt: appendSubjectMapping(submission.prompt, pRefUrls?.length ?? (submission.referenceImageUrl?.trim() ? 1 : 0)), negativePrompt: SUPPORTS_NEGATIVE_PROMPT.has(provider) ? payload.negativePrompt : undefined, referenceImageUrl: submission.referenceImageUrl, referenceImageUrls: pRefUrls, referenceVideoUrls: collectRefMedia(provider).videoRefs, referenceAudioUrls: collectRefMedia(provider).audioRefs, referenceMode: refModeForSubmit(), params: withParamDefaults(provider, {}), estimatedCost: costEstimateLabel(estimateVideoCost(provider, withParamDefaults(provider, {}))) || undefined, ...(provider.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}) },
                       {
                         onSuccess: (result) => {
                           if (parallelGenRef.current !== gen) return; // stale — user closed parallel mode
@@ -2019,6 +2044,20 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               </div>
             )}
           </span>
+          {/* LibTV 化 2.3：主体引用 chips（≥2 张参考图且多图模型）——点插「主体N」；
+              全量编号见参考图条角标，这里最多露 3 个防挤爆输入条。 */}
+          {subjectCount >= 2 && (
+            <span style={{ display: "inline-flex", gap: 4 }}>
+              {Array.from({ length: Math.min(subjectCount, 3) }, (_, i) => i + 1).map((n) => (
+                <button key={n} className="nodrag" onClick={(e) => { e.stopPropagation(); insertSubjectToken(n); }}
+                  title={`把「主体${n}」插入提示词（生成时按参考图顺序绑定第 ${n} 张）`}
+                  style={{ height: 28, padding: "0 8px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>
+                  主体{n}
+                </button>
+              ))}
+              {subjectCount > 3 && <span style={{ alignSelf: "center", fontSize: 10, color: "var(--c-t4)" }}>…{subjectCount}</span>}
+            </span>
+          )}
           <div style={{ flex: 1 }} />
           <span title="按当前模型与参数实时预估的点数消耗，仅供参考" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>⚡ {costLabel || "—"}</span>
           <button
