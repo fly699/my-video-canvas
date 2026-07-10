@@ -1271,6 +1271,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
       bcRef.current = bc;
     } catch { /* BroadcastChannel unsupported — socket still covers cross-device */ }
 
+    // 画布助手共享对话被协作者更新：转发为 window 事件，CanvasAgentChat 收到后从服务器权威重载。
+    socket.on("agent:history-updated", (e: { projectId: number; byUserId: number }) => {
+      if (e?.projectId === projectId) window.dispatchEvent(new CustomEvent("avc:agent-history-updated", { detail: e }));
+    });
     socket.on("comfyui:progress", (event: { nodeId: string; type: string; value?: number; max?: number; preview?: string; queueRemaining?: number }) => {
       if (event.type === "progress" && event.value != null && event.max != null && event.max > 0) {
         const pct = Math.round((event.value / event.max) * 100);

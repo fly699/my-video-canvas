@@ -1350,19 +1350,32 @@ function normalizeAgentTurns(v: unknown): CanvasAgentTurn[] {
     && ((t as { role?: unknown }).role === "user" || (t as { role?: unknown }).role === "assistant"));
 }
 
+// 共享会话行：userId=0 哨兵——一个项目一行，全体协作者共读共写（原按 userId 隔离导致
+// 协作方看不到彼此与助手的对话）。迁移策略：尚无共享行时回退读「请求者自己的旧按用户行」，
+// 该用户下次保存即写入共享行完成迁移；注意按「行是否存在」而非「turns 是否为空」判断回退，
+// 否则「新对话」清空共享行后旧个人历史会诈尸。
+const SHARED_AGENT_SESSION_USER = 0;
+
 export async function getCanvasAgentSession(projectId: number, userId: number): Promise<CanvasAgentTurn[]> {
   const db = await getDb();
-  if (!db) return DEV_MODE ? dev.devGetCanvasAgentSession(projectId, userId) : [];
+  if (!db) {
+    if (!DEV_MODE) return [];
+    const shared = dev.devGetCanvasAgentSession(projectId, SHARED_AGENT_SESSION_USER);
+    return shared.length ? shared : dev.devGetCanvasAgentSession(projectId, userId);
+  }
   const rows = await db.select().from(canvasAgentSessions)
+    .where(and(eq(canvasAgentSessions.projectId, projectId), eq(canvasAgentSessions.userId, SHARED_AGENT_SESSION_USER))).limit(1);
+  if (rows.length) return normalizeAgentTurns(rows[0].turns);
+  const legacy = await db.select().from(canvasAgentSessions)
     .where(and(eq(canvasAgentSessions.projectId, projectId), eq(canvasAgentSessions.userId, userId))).limit(1);
-  return normalizeAgentTurns(rows[0]?.turns);
+  return normalizeAgentTurns(legacy[0]?.turns);
 }
 
-export async function setCanvasAgentSession(projectId: number, userId: number, turns: CanvasAgentTurn[]): Promise<void> {
+export async function setCanvasAgentSession(projectId: number, _userId: number, turns: CanvasAgentTurn[]): Promise<void> {
   const clean = normalizeAgentTurns(turns).slice(-80); // 服务端也封顶，防超大 payload
   const db = await getDb();
-  if (!db) { if (DEV_MODE) dev.devSetCanvasAgentSession(projectId, userId, clean); return; }
-  await db.insert(canvasAgentSessions).values({ projectId, userId, turns: clean })
+  if (!db) { if (DEV_MODE) dev.devSetCanvasAgentSession(projectId, SHARED_AGENT_SESSION_USER, clean); return; }
+  await db.insert(canvasAgentSessions).values({ projectId, userId: SHARED_AGENT_SESSION_USER, turns: clean })
     .onDuplicateKeyUpdate({ set: { turns: clean, updatedAt: new Date() } });
 }
 

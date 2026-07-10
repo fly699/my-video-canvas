@@ -109,7 +109,9 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
             disablePictureInPicture
             onContextMenu={(e) => e.preventDefault()}
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "96vw", maxHeight: "92vh", background: "#000", borderRadius: 8 }}
+            // width/height 撑满视口 + contain：小分辨率视频也放大铺满（原 maxWidth/maxHeight
+            // 只封顶不放大，720p 素材在大屏上只占中间一小块，看起来「全屏还是小窗口」）。
+            style={{ width: "96vw", height: "92vh", objectFit: "contain", background: "transparent" }}
           />
           <button
             type="button"

@@ -908,11 +908,31 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
   const trackVolOf = new Map<string, number>();
   for (const t of doc.tracks) { const v = t.volume ?? 1; for (const c of t.clips) trackVolOf.set(c.id, v); }
   const effVolume = (c: Clip) => (c.volume ?? 1) * (trackVolOf.get(c.id) ?? 1);
-  if (clips.length === 0) throw new Error("时间轴没有可渲染的视频/图片片段");
   const overlayClips = collectOverlayClips(doc);
   const audioClipsSrc = collectAudioClips(doc);
   const textClips = collectTextClips(doc);
   const shapeClips = collectShapeClips(doc);
+  // 基轨（video 轨）为空的兜底与诊断。原来一律抛「时间轴没有可渲染的视频/图片片段」，
+  // 素材都在叠加轨、或视频轨被点了「隐藏」时用户对着满屏内容不知所措：
+  // - 有叠加/文字/形状等可视内容 → 合成等长黑场基轨照常渲染（与预览一致：预览就是黑底+叠加）。
+  // - 视频轨隐藏导致为空 → 明确提示取消隐藏。
+  // - 只有音频 → 明确提示需要画面素材。
+  let syntheticBaseDur = 0;
+  if (clips.length === 0) {
+    const endOf = (c: Clip) => c.start + clipVisibleDuration(c);
+    const visualEnd = Math.max(0, ...overlayClips.map(endOf), ...textClips.map((t) => t.end), ...shapeClips.map(endOf));
+    if (visualEnd > 0.05) {
+      // 黑场基轨铺满整条时间轴（含更长的音频尾），叠加/文字/音频按各自绝对时间定位。
+      syntheticBaseDur = Math.max(visualEnd, ...audioClipsSrc.map(endOf));
+    } else {
+      const hiddenCnt = doc.tracks
+        .filter((t) => t.type === "video" && t.hidden)
+        .reduce((a, t) => a + t.clips.filter((c) => c.kind === "video" || c.kind === "image").length, 0);
+      if (hiddenCnt > 0) throw new Error(`视频轨道处于「隐藏」状态（其中 ${hiddenCnt} 个片段未参与渲染）。请点击轨道头的眼睛图标取消隐藏后再渲染。`);
+      if (audioClipsSrc.length > 0) throw new Error("时间轴上只有音频片段，没有画面内容。请在视频轨道添加至少一个视频或图片片段后再渲染。");
+      throw new Error("时间轴没有可渲染的视频/图片片段");
+    }
+  }
 
   const report = (p: number, s: string) => opts.onProgress?.(p, s);
   report(2, "准备素材");
@@ -940,6 +960,11 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     // Main (base) clips first — input order must match the filter graph. 前导/片段间空隙插黑场。
     let skippedNoVideo = 0;
     let hasRealBaseSegment = false; // 黑场空隙不算——全是黑场（所有片段无画面）时仍要报错
+    if (syntheticBaseDur > 0) {
+      // 基轨为空但有叠加/文字内容：黑场基轨兜底（见上方判定），叠加照常合成。
+      pushBlackGap(syntheticBaseDur);
+      hasRealBaseSegment = true;
+    }
     for (const entry of planBaseSegments(clips)) {
       if ("gap" in entry) { pushBlackGap(entry.gap); continue; }
       const c = entry.clip;

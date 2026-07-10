@@ -22,6 +22,7 @@ import { serveStatic, setupVite } from "./vite";
 import { Server as SocketIOServer } from "socket.io";
 import { setupVideoTaskPoller } from "../videoTaskPoller";
 import { setComfySocketIO } from "./comfyui";
+import { setAgentSocketIO } from "./agentBus";
 import { setStressSocketIO, STRESS_ROOM } from "./comfyStress";
 import {
   setOpsTerminalSocketIO, openTerminalSession, writeToSession,
@@ -549,6 +550,7 @@ async function startServer() {
 
   // ── ComfyUI progress relay ────────────────────────────────────────────────
   setComfySocketIO(io);
+  setAgentSocketIO(io);
   setStressSocketIO(io);
   setDownloadSocketIO(io);
   setOpsTerminalSocketIO(io);

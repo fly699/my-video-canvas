@@ -223,6 +223,21 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turns, projectId]);
+  // 协作者更新了共享对话（Canvas.tsx 把 socket 事件转发为 window 事件）：从服务器权威重载，
+  // 不单押 socket 载荷。本端正在生成/保存时跳过（结束后本端保存会再广播、届时对方重载）；
+  // 内容相同（多半是自己保存的回声）时原样返回 cur，避免 setTurns→回写→再广播 的循环。
+  useEffect(() => {
+    const onRemote = () => {
+      if (chat.isPending || saveHistoryMut.isPending || !hydratedRef.current) return;
+      void historyQuery.refetch().then((r) => {
+        const dbTurns = (r.data?.turns as Turn[]) ?? [];
+        setTurns((cur) => (JSON.stringify(cur) === JSON.stringify(dbTurns) ? cur : dbTurns));
+      });
+    };
+    window.addEventListener("avc:agent-history-updated", onRemote);
+    return () => window.removeEventListener("avc:agent-history-updated", onRemote);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.isPending, saveHistoryMut.isPending, projectId]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:model", model); } catch { /* quota */ } }, [model]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:template", template); } catch { /* quota */ } }, [template]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:prefs", JSON.stringify(quickPrefs)); } catch { /* quota */ } }, [quickPrefs]);
