@@ -58,7 +58,7 @@ import { generateImage } from "../_core/imageGeneration";
 import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL, getImageEditOp } from "../../shared/imageEdit";
 import { sliceGridImage } from "../_core/imageGrid";
 import { extractStoryboardFrames } from "../_core/videoStoryboard";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeHunyuan3D, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
@@ -3711,6 +3711,33 @@ export const comfyuiRouter = router({
   // Shot continuity: extract a ControlNet control map (depth/pose/canny…) from a
   // shot's output image, so the next shot can reuse the structure. Returns the
   // stored URL of the extracted map.
+  // 混元 3D：图生 .glb（本机 ComfyUI + Hunyuan3DWrapper 插件），免 credits。
+  // 默认内置工作流；插件版本不匹配时用 HUNYUAN3D_WORKFLOW_JSON 环境变量替换（见 comfyui.ts）。
+  imageTo3d: protectedProcedure
+    .input(z.object({
+      customBaseUrl: z.string().max(2048).optional(),
+      sourceImageUrl: mediaUrlSchema,
+      workflowJson: z.string().max(2_000_000).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertComfyuiAllowed(ctx);
+      guardUrl(input.sourceImageUrl);
+      const baseUrl = await resolveComfyBase(input.customBaseUrl);
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: COMFY_NOT_CONFIGURED });
+      return withComfyUsageLog(ctx, { action: "imageTo3d", baseUrl, model: "hunyuan3d" }, async () => {
+        try {
+          const r = await executeHunyuan3D(baseUrl, input.sourceImageUrl, { workflowJson: input.workflowJson });
+          // 转存成功的 glb 记入素材库（volatile 直链不记，防素材库里躺失效链接）。
+          if (!r.volatile) {
+            try { await recordGeneratedAsset({ userId: ctx.user.id, projectId: null, type: "other", source: "generated", provider: "hunyuan3d", model: "comfyui", url: r.glbUrl, name: "混元3D模型.glb", mimeType: "model/gltf-binary" }); } catch { /* 尽力而为 */ }
+          }
+          return r;
+        } catch (err) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+        }
+      }, (r) => ({ resultUrl: r.glbUrl, resultCount: 1 }));
+    }),
+
   extractControlMap: protectedProcedure
     .input(z.object({
       customBaseUrl: z.string().max(2048).optional(),

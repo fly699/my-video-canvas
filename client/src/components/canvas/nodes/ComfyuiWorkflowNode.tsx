@@ -35,7 +35,6 @@ import {
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { Depth3DViewer } from "../Depth3DViewer";
 import { Model3DViewer } from "../Model3DViewer";
-import { confirmDialog } from "@/components/ui/dialogService";
 import { useResultHistoryCapture } from "../../../hooks/useResultHistoryCapture";
 import { ResultHistoryStrip } from "../ResultHistoryStrip";
 import type { ResultSnapshot } from "../../../../../shared/types";
@@ -591,17 +590,10 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     const b = (payload.paramBindings ?? []).find((x) => x.type === "image");
     return b ? `${b.nodeId}.${b.fieldPath}` : null;
   }, [payload.paramBindings]);
-  // 真3D 付费确认（同图像节点）。同源图已生成过（payload.model3d 持久化）→ 免确认免费重开。
+  // 打开真3D查看器：引擎选择/计费确认在查看器内完成；同源图已有模型则直接复用（免费重开）。
   const openTrue3d = useCallback(async (url: string) => {
-    if (!url) return;
-    if (payload.model3d?.glbUrl && payload.model3d.sourceUrl === url) { setModel3dSrc(url); return; }
-    const ok = await confirmDialog({
-      title: "生成真 3D 模型？",
-      message: "将调用 Tripo3D 把这张图生成为可 360° 环绕的 3D 网格。约消耗 30–60 credits，通常需 1–3 分钟。生成结果会随节点保存，之后可免费重开。",
-      confirmLabel: "生成",
-    });
-    if (ok) setModel3dSrc(url);
-  }, [payload.model3d]);
+    if (url) setModel3dSrc(url);
+  }, []);
   // 换视角截图 → 写入首个图像输入参数（非默认值→resolveImageParamsWithMap 视为用户编辑而保留）→ 重跑。
   const on3dGenerate = useCallback((capturedUrl: string) => {
     if (!firstImageParamKey) { toast.error("该工作流没有图像输入参数，无法回灌重绘（可先连一个图生图/ControlNet 工作流）"); return; }
@@ -1839,6 +1831,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     {model3dSrc && (
       <Model3DViewer
         sourceImageUrl={model3dSrc}
+        comfyBaseUrl={payload.customBaseUrl}
         initialGlbUrl={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.glbUrl : undefined}
         savedToLibrary={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.saved : undefined}
         projectId={data.projectId}

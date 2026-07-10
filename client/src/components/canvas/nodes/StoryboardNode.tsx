@@ -12,7 +12,6 @@ import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes } from "lucide-react";
 import { Depth3DViewer } from "../Depth3DViewer";
 import { Model3DViewer } from "../Model3DViewer";
-import { confirmDialog } from "@/components/ui/dialogService";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { estimateImageCost, costEstimateLabel, KIE_IMAGE_RES_COST } from "@/lib/costEstimate";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
@@ -217,16 +216,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [view3dSrc, setView3dSrc] = useState<string | null>(null);
   const [model3dSrc, setModel3dSrc] = useState<string | null>(null);
   const [pendingGen3d, setPendingGen3d] = useState(false);
+  // 打开真3D查看器：引擎选择/计费确认在查看器内完成；同源图已有模型则直接复用（免费重开）。
   const openTrue3d = useCallback(async (url: string) => {
-    if (!url) return;
-    if (payload.model3d?.glbUrl && payload.model3d.sourceUrl === url) { setModel3dSrc(url); return; }
-    const ok = await confirmDialog({
-      title: "生成真 3D 模型？",
-      message: "将调用 Tripo3D 把这张分镜图生成为可 360° 环绕的 3D 网格。约消耗 30–60 credits，通常需 1–3 分钟。生成结果会随节点保存，之后可免费重开。",
-      confirmLabel: "生成",
-    });
-    if (ok) setModel3dSrc(url);
-  }, [payload.model3d]);
+    if (url) setModel3dSrc(url);
+  }, []);
 
   // Close lightbox on Escape
   useEffect(() => {

@@ -13,6 +13,7 @@ import { MiniSelect } from "@/components/ui/MiniSelect";
 import { useBridgeSkills } from "@/lib/useBridgeSkills";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, BLANK_TEMPLATE_LABEL } from "@/lib/aiAssistantTemplates";
+import { IMAGE_MODELS, VIDEO_MODELS } from "@/lib/models";
 import type { AgentOperation } from "../../../../shared/types";
 
 /** 浮动「画布助手」：对话式让 AI（如本机 Claude）边聊边直接改画布。复用智能体节点同一套引擎
@@ -24,10 +25,29 @@ type Turn = { role: "user" | "assistant"; content: string; applied?: string; fai
 const accent = "oklch(0.70 0.20 310)";
 const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
-// 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean };
-const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false };
+// 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
+// genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[] };
+const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "", videoProvider: "", genNodes: [] };
+const QP_GEN_NODES: { v: string; label: string }[] = [
+  { v: "image_gen", label: "云端图像" }, { v: "video_task", label: "云端视频" },
+  { v: "comfyui_image", label: "ComfyUI图像" }, { v: "comfyui_video", label: "ComfyUI视频" }, { v: "comfyui_workflow", label: "ComfyUI模板" },
+];
 const QP_ASPECTS = ["", "16:9", "9:16", "1:1", "4:3"];
+// 指定模型下拉的分组选项（与节点选择器同源清单；MiniSelect 自绘下拉，缩放窗口内可点）。
+const groupModelOptions = <T extends { group: string; value: string; label: string }>(ms: readonly T[], title: (m: T) => string | undefined) => {
+  const order: string[] = []; const by = new Map<string, T[]>();
+  for (const m of ms) { if (!by.has(m.group)) { by.set(m.group, []); order.push(m.group); } by.get(m.group)!.push(m); }
+  return order.map((g) => ({ label: g, options: by.get(g)!.map((m) => ({ value: m.value, label: m.label, title: title(m) })) }));
+};
+const QP_IMAGE_MODEL_GROUPS = [
+  { options: [{ value: "", label: "默认（助手自选）" }] },
+  ...groupModelOptions(IMAGE_MODELS, (m) => m.desc),
+];
+const QP_VIDEO_MODEL_GROUPS = [
+  { options: [{ value: "", label: "默认（助手自选）" }] },
+  ...groupModelOptions(VIDEO_MODELS.filter((m) => m.value !== "mock"), (m) => m.costLabel),
+];
 const QP_STYLES = ["电影感", "赛博朋克", "写实", "动漫", "水彩插画", "3D 渲染", "复古胶片", "极简", "梦幻唯美"];
 const QP_DURATIONS: { v: number; label: string }[] = [{ v: 0, label: "不限" }, { v: 15, label: "15s" }, { v: 30, label: "30s" }, { v: 60, label: "60s" }];
 
@@ -110,7 +130,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   });
   const [showQuick, setShowQuick] = useState(false);
   const setQP = (patch: Partial<QuickPrefs>) => setQuickPrefs((p) => ({ ...p, ...patch }));
-  const qpActiveCount = (quickPrefs.aspect ? 1 : 0) + (quickPrefs.style ? 1 : 0) + (quickPrefs.durationSec ? 1 : 0) + (quickPrefs.imageFirst ? 1 : 0) + (quickPrefs.addMusic ? 1 : 0) + (quickPrefs.addSubtitle ? 1 : 0);
+  const qpActiveCount = (quickPrefs.aspect ? 1 : 0) + (quickPrefs.style ? 1 : 0) + (quickPrefs.durationSec ? 1 : 0) + (quickPrefs.imageFirst ? 1 : 0) + (quickPrefs.addMusic ? 1 : 0) + (quickPrefs.addSubtitle ? 1 : 0)
+    + (quickPrefs.imageModel ? 1 : 0) + (quickPrefs.videoProvider ? 1 : 0) + (quickPrefs.genNodes.length ? 1 : 0);
   const buildQuickPrefsText = (): string | undefined => {
     const lines: string[] = [];
     if (quickPrefs.imageFirst) lines.push("- 【强制·先生图再生视频】每个视频镜头先建 image_gen 图像节点（把镜头画面描述作为它的 prompt），再建 video_task 视频节点并连接 image_gen → video_task 作首帧，严禁 storyboard/prompt/script 直连 video_task 做文生视频。");
@@ -119,6 +140,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     if (quickPrefs.aspect) lines.push(`- 画面比例统一为 ${quickPrefs.aspect}。`);
     if (quickPrefs.style.trim()) lines.push(`- 整体视觉风格：${quickPrefs.style.trim()}。`);
     if (quickPrefs.durationSec > 0) lines.push(`- 目标总时长约 ${quickPrefs.durationSec} 秒，据此规划镜头数与每镜时长。`);
+    if (quickPrefs.genNodes.length) lines.push(`- 【强制】生成节点只允许使用：${quickPrefs.genNodes.join(" / ")}；其余生成节点类型（image_gen/video_task/comfyui_image/comfyui_video/comfyui_workflow 中未列出的）一律禁止创建。`);
+    if (quickPrefs.imageModel) lines.push(`- 【强制】图像生成一律使用模型 ${quickPrefs.imageModel}（写入 image_gen.model / storyboard.imageModel）。`);
+    if (quickPrefs.videoProvider) lines.push(`- 【强制】视频生成一律使用模型 ${quickPrefs.videoProvider}（写入 video_task.provider；params 键与取值严格按该模型的参数表）。`);
     return lines.length ? lines.join("\n") : undefined;
   };
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -288,9 +312,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setPickDismiss("");
   };
 
+  // 只统计真正应用成功的操作（status==="applied"）——被节点白名单/连线规则拦下的不能算
+  // 「已应用」，否则「已应用：新建 3」与「1 项未应用」并排出现自相矛盾。
   const opsSummary = (ops: AgentOperation[]): string => {
-    const c = ops.filter((o) => o.op === "create").length, l = ops.filter((o) => o.op === "connect").length;
-    const u = ops.filter((o) => o.op === "update").length, d = ops.filter((o) => o.op === "delete").length;
+    const ok = ops.filter((o) => o.status === "applied");
+    const c = ok.filter((o) => o.op === "create").length, l = ok.filter((o) => o.op === "connect").length;
+    const u = ok.filter((o) => o.op === "update").length, d = ok.filter((o) => o.op === "delete").length;
     return [c && `新建 ${c}`, l && `连线 ${l}`, u && `改 ${u}`, d && `删 ${d}`].filter(Boolean).join(" · ");
   };
 
@@ -337,7 +364,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       if (ops.length) {
         const anchor = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2 - 120, y: window.innerHeight / 2 - 120 });
         const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
-        const res = applyAgentOperations(ops, anchor, { templates, ownerAgentId: "canvas-agent-chat", aspect: quickPrefs.aspect || undefined });
+        const res = applyAgentOperations(ops, anchor, {
+          templates, ownerAgentId: "canvas-agent-chat", aspect: quickPrefs.aspect || undefined,
+          imageModel: quickPrefs.imageModel || undefined, videoProvider: quickPrefs.videoProvider || undefined,
+          allowedGenNodes: quickPrefs.genNodes.length ? quickPrefs.genNodes : undefined,
+        });
         applied = opsSummary(ops); createdIds = res.createdIds ?? [];
         if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
       }
@@ -423,6 +454,25 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }}>时长</span>
               {QP_DURATIONS.map((d) => <button key={d.v} onClick={() => setQP({ durationSec: d.v })} style={chip(quickPrefs.durationSec === d.v)}>{d.label}</button>)}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>模型</span>
+              <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>图</span>
+              <MiniSelect value={quickPrefs.imageModel} placeholder="默认" maxWidth={128} accent={accent} accentSoft={accentSoft}
+                title="指定图像生成模型（写入 image_gen/分镜关键帧；默认=助手自选）" groups={QP_IMAGE_MODEL_GROUPS} onChange={(v) => setQP({ imageModel: v })} />
+              <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>视</span>
+              <MiniSelect value={quickPrefs.videoProvider} placeholder="默认" maxWidth={128} accent={accent} accentSoft={accentSoft}
+                title="指定视频生成模型（写入 video_task.provider；默认=助手自选）" groups={QP_VIDEO_MODEL_GROUPS} onChange={(v) => setQP({ videoProvider: v })} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }} title="勾选=只允许助手用这些生成节点；全不勾=不限">节点</span>
+              {QP_GEN_NODES.map((n) => {
+                const on = quickPrefs.genNodes.includes(n.v);
+                return (
+                  <button key={n.v} onClick={() => setQP({ genNodes: on ? quickPrefs.genNodes.filter((x) => x !== n.v) : [...quickPrefs.genNodes, n.v] })}
+                    title={`${n.v}（勾选=只允许所选类型；全不勾=不限）`} style={chip(on)}>{n.label}</button>
+                );
+              })}
             </div>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
               {([["imageFirst", "生图 → 再生视频"], ["addMusic", "自动配乐"], ["addSubtitle", "自动字幕"]] as const).map(([k, label]) => (

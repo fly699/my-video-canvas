@@ -193,3 +193,79 @@ describe("agentCatalog 审计修复", () => {
     expect(op!.payload).toMatchObject({ aspectRatio: "9:16", overrideRatioSize: true });
   });
 });
+
+describe("video_task params 字段（助手可设比例/分辨率）", () => {
+  it("params 纯对象放行（aspect_ratio 等模型参数可写入）", () => {
+    const r = sanitizeOperationDetailed({ op: "create", nodeType: "video_task", tempId: "v1", payload: { prompt: "p", params: { aspect_ratio: "16:9", resolution: "720p" } } }, {});
+    expect("op" in r && (r.op as { payload: Record<string, unknown> }).payload.params).toEqual({ aspect_ratio: "16:9", resolution: "720p" });
+  });
+  it("params 非对象（字符串/数组）被丢弃，其余字段保留", () => {
+    const r = sanitizeOperationDetailed({ op: "create", nodeType: "video_task", tempId: "v2", payload: { prompt: "p", params: "16:9" } }, {});
+    const payload = (r as { op: { payload: Record<string, unknown> } }).op.payload;
+    expect(payload.params).toBeUndefined();
+    expect(payload.prompt).toBe("p");
+  });
+});
+
+// ── 模型清单接入：provider/model 取值校验 + params 按模型参数表过滤 + 清单文本 ──
+import { videoModelDigestText, imageModelDigestText, modelKnowledgeText } from "./_core/agentCatalog";
+
+describe("模型取值校验（与节点选择器同源清单）", () => {
+  it("video_task.provider 合法值保留", () => {
+    const op = sanitizeOperation({ op: "create", nodeType: "video_task", payload: { prompt: "p", provider: "kie_grok_i2v" } });
+    expect(op!.payload).toMatchObject({ provider: "kie_grok_i2v" });
+  });
+  it("video_task.provider 编造值被剥除，其余字段保留", () => {
+    const op = sanitizeOperation({ op: "create", nodeType: "video_task", payload: { prompt: "p", provider: "kie_sora_9000" } });
+    expect((op!.payload as Record<string, unknown>).provider).toBeUndefined();
+    expect(op!.payload).toMatchObject({ prompt: "p" });
+  });
+  it("image_gen.model 合法/编造", () => {
+    const ok = sanitizeOperation({ op: "create", nodeType: "image_gen", payload: { prompt: "p", model: "kie_seedream_45" } });
+    expect(ok!.payload).toMatchObject({ model: "kie_seedream_45" });
+    const bad = sanitizeOperation({ op: "create", nodeType: "image_gen", payload: { prompt: "p", model: "dalle_99" } });
+    expect((bad!.payload as Record<string, unknown>).model).toBeUndefined();
+  });
+  it("storyboard.imageModel 编造值被剥除", () => {
+    const op = sanitizeOperation({ op: "create", nodeType: "storyboard", payload: { description: "d", promptText: "p", imageModel: "not_a_model" } });
+    expect((op!.payload as Record<string, unknown>).imageModel).toBeUndefined();
+  });
+  it("update 路径同样校验 provider/model 取值", () => {
+    const op = sanitizeOperation({ op: "update", targetRef: "n1", payload: { provider: "kie_fake", model: "kie_seedream_45" } });
+    expect((op!.payload as Record<string, unknown>).provider).toBeUndefined();
+    expect(op!.payload).toMatchObject({ model: "kie_seedream_45" });
+  });
+});
+
+describe("video_task.params 按所选模型参数表过滤", () => {
+  it("provider 已知：清单外的幻觉键被丢弃，合法键保留", () => {
+    // kie_grok_t2v 参数表：resolution / aspect_ratio / mode / duration
+    const op = sanitizeOperation({ op: "create", nodeType: "video_task", payload: {
+      prompt: "p", provider: "kie_grok_t2v",
+      params: { aspect_ratio: "9:16", resolution: "720p", cfg_scale: 0.7, sound: true },
+    } });
+    expect(op!.payload.params).toEqual({ aspect_ratio: "9:16", resolution: "720p" });
+  });
+  it("provider 未设：params 原样保留（提交层各 provider allow-list 兜底）", () => {
+    const op = sanitizeOperation({ op: "create", nodeType: "video_task", payload: { prompt: "p", params: { aspect_ratio: "1:1", anything: 1 } } });
+    expect(op!.payload.params).toEqual({ aspect_ratio: "1:1", anything: 1 });
+  });
+});
+
+describe("模型清单文本（喂给 LLM 的知识块）", () => {
+  it("视频清单含每模型参数表（含枚举与默认标记）", () => {
+    const t = videoModelDigestText();
+    expect(t).toContain("kie_grok_t2v");
+    expect(t).toMatch(/kie_grok_t2v.*aspect_ratio=/);
+    expect(t).toContain("16:9*");          // 默认值标记
+    expect(t).not.toContain("mock");       // 测试模型不进清单
+  });
+  it("图像清单含模型 id 与需参考图标注", () => {
+    const t = imageModelDigestText();
+    expect(t).toContain("kie_seedream_45");
+    expect(t).toMatch(/kie_nano_banana_edit.*需参考图/);
+  });
+  it("汇总文本体量可控（<25k 字符，防系统提示爆量）", () => {
+    expect(modelKnowledgeText().length).toBeLessThan(25000);
+  });
+});

@@ -319,14 +319,17 @@ describe("applyAgentOperations 画面比例确定性透传", () => {
     expect(pr.aspectRatio).toBe("9:16");
   });
 
-  it("LLM 已设比例则不覆盖（fill-only）", () => {
+  it("LLM 已设比例则不覆盖，且族内字段按【节点自身比例】展开（不混入全局比例）", () => {
     const ops: AgentOperation[] = [
       { op: "create", nodeType: "storyboard", tempId: "sb", payload: { aspectRatio: "16:9" } },
     ];
     applyAgentOperations(ops, { x: 0, y: 0 }, { aspect: "9:16" });
     const sb = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "storyboard")!.data.payload as Record<string, unknown>;
     expect(sb.aspectRatio).toBe("16:9");          // 不覆盖用户/LLM 显式值
-    expect(sb.poyoAspectRatio).toBe("9:16");       // 未设的仍补
+    // 语义修正：LLM 给该节点设了 16:9，则 poyo/reve 族字段也展开为 16:9（节点内比例一致），
+    // 而不是补全局的 9:16——否则同一节点换个模型族出片比例就漂移。
+    expect(sb.poyoAspectRatio).toBe("16:9");
+    expect(sb.reveAspectRatio).toBe("16:9");
   });
 
   it("无 opts.aspect 时不动比例字段", () => {
@@ -379,5 +382,87 @@ describe("applyAgentOperations 校验一致性：update/delete 也要求 ref 落
     expect(res.failures.some((f) => f.op === "connect")).toBe(true);
     // 没有指向已删节点的悬空边
     expect(useCanvasStore.getState().edges.some((e) => e.target === x.id)).toBe(false);
+  });
+});
+
+// ── 防宫格兜底 + 快速设置（指定模型 / 生成节点白名单 / 全局比例进 video_task.params）──
+describe("applyAgentOperations 防宫格反向词兜底", () => {
+  const payloadOf = (type: string) =>
+    useCanvasStore.getState().nodes.find((n) => n.data.nodeType === type)!.data.payload as Record<string, unknown>;
+
+  it("智能体新建的分镜/图像节点自动追加反宫格 negativePrompt", () => {
+    applyAgentOperations([
+      { op: "create", nodeType: "storyboard", tempId: "sb", payload: { description: "d", promptText: "a cat by the window" } },
+      { op: "create", nodeType: "image_gen", tempId: "ig", payload: { prompt: "a dog" } },
+    ], { x: 0, y: 0 });
+    expect(String(payloadOf("storyboard").negativePrompt)).toContain("multi-panel");
+    expect(String(payloadOf("image_gen").negativePrompt)).toContain("grid");
+  });
+
+  it("已有 negativePrompt 时追加而不覆盖；已含防宫格词则不重复", () => {
+    applyAgentOperations([
+      { op: "create", nodeType: "image_gen", tempId: "ig", payload: { prompt: "p", negativePrompt: "blurry, low quality" } },
+    ], { x: 0, y: 0 });
+    const neg = String(payloadOf("image_gen").negativePrompt);
+    expect(neg).toContain("blurry, low quality");
+    expect(neg).toContain("multi-panel");
+    expect(neg.match(/multi-panel/g)!.length).toBe(1);
+  });
+
+  it("正向提示词明确要拼贴/宫格时不注入（避免正反冲突）", () => {
+    applyAgentOperations([
+      { op: "create", nodeType: "image_gen", tempId: "ig", payload: { prompt: "四宫格漫画拼贴海报" } },
+    ], { x: 0, y: 0 });
+    expect(payloadOf("image_gen").negativePrompt).toBeUndefined();
+  });
+});
+
+describe("applyAgentOperations 快速设置落地", () => {
+  const payloadOf = (type: string) =>
+    useCanvasStore.getState().nodes.find((n) => n.data.nodeType === type)!.data.payload as Record<string, unknown>;
+
+  it("指定图像/视频模型 fill-only 写入新建生成节点", () => {
+    applyAgentOperations([
+      { op: "create", nodeType: "image_gen", tempId: "ig", payload: { prompt: "p" } },
+      { op: "create", nodeType: "storyboard", tempId: "sb", payload: { description: "d", promptText: "p" } },
+      { op: "create", nodeType: "video_task", tempId: "vt", payload: { prompt: "p" } },
+    ], { x: 0, y: 0 }, { imageModel: "kie_seedream_45", videoProvider: "kie_grok_i2v" });
+    expect(payloadOf("image_gen").model).toBe("kie_seedream_45");
+    expect(payloadOf("storyboard").imageModel).toBe("kie_seedream_45");
+    expect(payloadOf("video_task").provider).toBe("kie_grok_i2v");
+  });
+
+  it("LLM 已显式选模型时不覆盖", () => {
+    applyAgentOperations([
+      { op: "create", nodeType: "video_task", tempId: "vt", payload: { prompt: "p", provider: "kie_veo31_fast" } },
+    ], { x: 0, y: 0 }, { videoProvider: "kie_grok_i2v" });
+    expect(payloadOf("video_task").provider).toBe("kie_veo31_fast");
+  });
+
+  it("生成节点白名单：清单外的生成类 create 判失败，非生成节点不受限", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "image_gen", tempId: "ig", payload: { prompt: "p" } },
+      { op: "create", nodeType: "video_task", tempId: "vt", payload: { prompt: "p" } },
+      { op: "create", nodeType: "script", tempId: "sc", payload: { synopsis: "s" } },
+    ];
+    const r = applyAgentOperations(ops, { x: 0, y: 0 }, { allowedGenNodes: ["video_task"] });
+    expect(r.created).toBe(2);            // video_task + script
+    expect(r.failures).toHaveLength(1);
+    expect(r.failures[0].reason).toContain("image_gen");
+    expect(useCanvasStore.getState().nodes.some((n) => n.data.nodeType === "image_gen")).toBe(false);
+  });
+
+  it("全局比例写入 video_task.params.aspect_ratio（fill-only，不覆盖 LLM 已设值）", () => {
+    applyAgentOperations([
+      { op: "create", nodeType: "video_task", tempId: "v1", payload: { prompt: "p", duration: 5 } },
+    ], { x: 0, y: 0 }, { aspect: "9:16" });
+    const p = payloadOf("video_task");
+    expect(p.params).toMatchObject({ aspect_ratio: "9:16", duration: 5 });
+
+    useCanvasStore.getState().resetCanvas(); useCanvasStore.getState().setProjectId(1);
+    applyAgentOperations([
+      { op: "create", nodeType: "video_task", tempId: "v2", payload: { prompt: "p", params: { aspect_ratio: "1:1" } } },
+    ], { x: 0, y: 0 }, { aspect: "9:16" });
+    expect((payloadOf("video_task").params as Record<string, unknown>).aspect_ratio).toBe("1:1");
   });
 });

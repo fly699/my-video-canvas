@@ -2027,6 +2027,90 @@ export interface ExecuteCustomWorkflowOptions {
   apiKey?: string;
 }
 
+// ── 混元 3D（Hunyuan3D 2.x，经本机 ComfyUI）图生 .glb ────────────────────────
+// 默认工作流按 kijai/ComfyUI-Hunyuan3DWrapper 常见形态（shape-only → 导出 GLB）。插件/
+// 节点名因版本而异——默认图跑不通时：把你在 ComfyUI 网页跑通的工作流（API 格式）放进
+// 服务器环境变量 HUNYUAN3D_WORKFLOW_JSON（或调用时传 workflowJson）即可，任意「含
+// LoadImage、以导出 .glb/.obj 网格收尾」的图都行；本函数只负责注图→提交→轮询→通用
+// 扫描网格产物→下载转存。
+export const HUNYUAN3D_DEFAULT_WORKFLOW: WorkflowJson = {
+  "1": { class_type: "LoadImage", inputs: { image: "__IMAGE__" } },
+  "2": { class_type: "Hy3DModelLoader", inputs: { model: "hunyuan3d-dit-v2-1.safetensors", attention_mode: "sdpa" } },
+  "3": { class_type: "Hy3DGenerateMesh", inputs: { pipeline: ["2", 0], image: ["1", 0], guidance_scale: 5.0, steps: 30, seed: 42 } },
+  "4": { class_type: "Hy3DVAEDecode", inputs: { vae: ["2", 1], latents: ["3", 0], box_v: 1.01, octree_resolution: 256, num_chunks: 8000, mc_level: 0, mc_algo: "mc" } },
+  "5": { class_type: "Hy3DPostprocessMesh", inputs: { trimesh: ["4", 0], remove_floaters: true, remove_degenerate_faces: true, reduce_faces: true, max_facenum: 40000, smooth_normals: false } },
+  "6": { class_type: "Hy3DExportMesh", inputs: { trimesh: ["5", 0], filename_prefix: "3D/hunyuan3d", file_format: "glb", save_file: true } },
+};
+
+const MESH_FILE_EXT = /\.(glb|gltf|obj|ply)$/i;
+
+export interface Hunyuan3DResult {
+  glbUrl: string;
+  /** true = 转存对象存储失败，返回的是 ComfyUI /view 直链（内网可达，但 ComfyUI 清理后失效）。 */
+  volatile: boolean;
+}
+
+export async function executeHunyuan3D(
+  rawBaseUrl: string,
+  sourceImageUrl: string,
+  opts?: { workflowJson?: string; apiKey?: string },
+): Promise<Hunyuan3DResult> {
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  const rawWf = opts?.workflowJson?.trim() || process.env.HUNYUAN3D_WORKFLOW_JSON?.trim() || JSON.stringify(HUNYUAN3D_DEFAULT_WORKFLOW);
+  let wf: WorkflowJson;
+  try { wf = JSON.parse(rawWf) as WorkflowJson; } catch { throw new Error("混元 3D 工作流 JSON 无法解析（检查 HUNYUAN3D_WORKFLOW_JSON 环境变量）"); }
+  wf = JSON.parse(JSON.stringify(wf)) as WorkflowJson;
+
+  // 注入源图到第一个 LoadImage 类节点
+  const filename = await uploadImageToComfy(baseUrl, sourceImageUrl, opts?.apiKey);
+  let injected = false;
+  for (const node of Object.values(wf)) {
+    if (node && typeof node.class_type === "string" && /loadimage/i.test(node.class_type)) {
+      node.inputs.image = filename; injected = true; break;
+    }
+  }
+  if (!injected) throw new Error("混元 3D 工作流缺少 LoadImage 节点，无法注入源图");
+
+  const promptId = await submitWorkflow(baseUrl, wf, undefined, opts?.apiKey);
+  const entry = await pollHistory(baseUrl, promptId, POLL_MAX_ATTEMPTS_VIDEO, undefined, opts?.apiKey);
+
+  // 通用网格产物扫描：任何输出键下 filename 以 .glb/.gltf/.obj/.ply 结尾
+  // （对象数组 {filename,subfolder,type} 或字符串路径数组都认——插件输出键名不统一）。
+  let found: { filename: string; subfolder: string; type: string } | null = null;
+  for (const nodeOutput of Object.values(entry.outputs ?? {})) {
+    for (const arr of Object.values(nodeOutput as Record<string, unknown>)) {
+      if (!Array.isArray(arr)) continue;
+      for (const it of arr as Array<unknown>) {
+        if (typeof it === "string" && MESH_FILE_EXT.test(it)) {
+          const idx = it.lastIndexOf("/");
+          found = { filename: idx >= 0 ? it.slice(idx + 1) : it, subfolder: idx >= 0 ? it.slice(0, idx) : "", type: "output" };
+          break;
+        }
+        const o = it as { filename?: string; subfolder?: string; type?: string };
+        if (o && typeof o.filename === "string" && MESH_FILE_EXT.test(o.filename)) {
+          found = { filename: o.filename, subfolder: o.subfolder ?? "", type: o.type ?? "output" };
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (found) break;
+  }
+  if (!found) {
+    const dbg = Object.entries(entry.outputs ?? {}).map(([nid, o]) => `${nid}:[${Object.keys(o as object).join(",")}]`).join(" ");
+    throw new Error(`混元 3D 任务完成但未找到 .glb/.obj 网格输出。历史输出节点：${dbg || "（空）"}。请确认工作流以「导出网格」节点收尾（如 Hy3DExportMesh，file_format=glb、save_file=true）。`);
+  }
+
+  const dl = downloadUrl(baseUrl, found.filename, found.subfolder, found.type);
+  try {
+    const stored = await downloadAndStore(dl, found.filename.split(".").pop() || "glb", "model/gltf-binary", opts?.apiKey);
+    return { glbUrl: stored.url, volatile: false };
+  } catch {
+    // 对象存储不可用 → 回退 ComfyUI 直链（内网浏览器可达；ComfyUI 清理输出目录后会失效）。
+    return { glbUrl: dl, volatile: true };
+  }
+}
+
 export async function executeCustomWorkflow(
   rawBaseUrl: string,
   options: ExecuteCustomWorkflowOptions,
