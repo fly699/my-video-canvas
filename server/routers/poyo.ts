@@ -3,8 +3,9 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
 import { ENV } from "../_core/env";
 import { assertWhitelisted } from "../_core/whitelist";
-import { insertPoyoBalanceSnapshotThrottled, getRecentPoyoBalanceSnapshots } from "../db";
+import { insertPoyoBalanceSnapshotThrottled, getRecentPoyoBalanceSnapshots, recordGeneratedAsset } from "../db";
 import { submitPoyoImageTo3D, checkPoyo3DStatus, persist3DModelOrFallback } from "../_core/poyo3d";
+import { assertProjectAccess } from "../_core/permissions";
 
 const POYO_BASE = "https://api.poyo.ai";
 
@@ -102,5 +103,32 @@ export const poyoRouter = router({
         thumbnailUrl: st.thumbnailUrl ?? null,
         error: st.errorMessage ?? null,
       };
+    }),
+
+  // 把已生成（已转存自有存储）的 .glb 记入素材库（type=other），供下载/跨项目复用。
+  // 只建索引记录、不再下载搬运；素材归调用者本人，项目归属需 editor 权限。
+  save3dToLibrary: protectedProcedure
+    .input(z.object({
+      glbUrl: z.string().min(1).max(2000),
+      projectId: z.number().optional(),
+      nodeId: z.string().max(64).optional(),
+      name: z.string().max(120).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      // recordGeneratedAsset 自带按 storageKey 去重（重复保存 = no-op）。
+      await recordGeneratedAsset({
+        userId: ctx.user.id,
+        projectId: input.projectId ?? null,
+        nodeId: input.nodeId ?? null,
+        type: "other",
+        source: "generated",
+        provider: "poyo",
+        model: "tripo3d",
+        url: input.glbUrl,
+        name: (input.name?.trim() || "真3D模型") + ".glb",
+        mimeType: "model/gltf-binary",
+      });
+      return { saved: true };
     }),
 });
