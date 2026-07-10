@@ -1,4 +1,6 @@
 import type { NodeType, AgentOperation } from "../../shared/types";
+import { IMAGE_MODELS, VIDEO_MODELS } from "../../shared/modelCatalog";
+import { PROVIDER_PARAMS, SUPPORTS_NEGATIVE_PROMPT, REQUIRES_REFERENCE_IMAGE, type ParamDef } from "../../shared/videoModelParams";
 
 // ── Agent node catalog ────────────────────────────────────────────────────────
 // The curated set of node types the Copilot agent may create/configure, plus the
@@ -37,6 +39,9 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "aiMood", type: "string", desc: "情感基调，如 温暖治愈/紧张刺激" },
       { name: "aiSceneCount", type: "number", desc: "目标分镜数 2-12" },
       { name: "aiTargetModel", type: "string", desc: "目标生成模型，如 qwen/flux/wan_local/kling" },
+      { name: "totalDuration", type: "number", desc: "成片目标总时长（秒），供拆镜/装配参考" },
+      { name: "aiAspectRatio", type: "string", desc: "AI 生成分镜关键帧的画面比例，如 16:9 / 9:16" },
+      { name: "aiPromptLang", type: "string", desc: "分镜提示词语言：en（默认，多数生成模型英文效果好）或 zh" },
     ],
   },
   {
@@ -46,11 +51,18 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "characterKind", type: "string", desc: "person（人物）或 scene（场景）" },
       { name: "name", type: "string", desc: "角色姓名（人物）" },
       { name: "role", type: "string", desc: "职业/角色定位，如 主角/侦探" },
+      { name: "gender", type: "string", desc: "性别（人物）" },
+      { name: "age", type: "string", desc: "年龄/年龄段（人物），如 28岁/中年" },
       { name: "appearance", type: "string", desc: "外貌描述（发型/脸型/体型等）" },
+      { name: "personality", type: "string", desc: "性格特质（人物），如 冷静寡言/热情冲动" },
       { name: "outfit", type: "string", desc: "服装，如 黑色西装+红领带" },
       { name: "signature", type: "string", desc: "标志性物件/特征，如 银怀表/左眼疤痕" },
       { name: "sceneName", type: "string", desc: "场景名（characterKind=scene 时）" },
       { name: "sceneDescription", type: "string", desc: "场景描述（characterKind=scene 时）" },
+      { name: "locationType", type: "string", desc: "场所类型（场景），如 室内/街道/森林" },
+      { name: "atmosphere", type: "string", desc: "氛围（场景），如 阴郁压抑/明快温暖" },
+      { name: "timeOfDay", type: "string", desc: "时间（场景），如 黄昏/深夜/清晨" },
+      { name: "notes", type: "string", desc: "补充备注（通用）" },
     ],
   },
   {
@@ -70,6 +82,10 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "lighting", type: "string", desc: "灯光，如 soft key + 轮廓光, golden hour" },
       { name: "sfx", type: "string", desc: "音效/氛围声意图，如 雨声+远雷" },
       { name: "colorTone", type: "string", desc: "调色，如 暖色 teal-orange" },
+      { name: "beatRef", type: "string", desc: "对应节拍表拍点（如「3」或「中点」）" },
+      { name: "aspectRatio", type: "string", desc: "关键帧图比例，如 16:9 / 9:16（按所选图像模型的档位夹取）" },
+      { name: "imageModel", type: "string", desc: "关键帧生成用图像模型 id（见「云端生成模型清单·图像模型」，勿编造）" },
+      { name: "imageResolution", type: "string", desc: "kie 图像分辨率档，如 1K/2K/4K（逐档计价，按模型支持档位夹取）" },
     ],
   },
   {
@@ -89,7 +105,10 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "prompt", type: "string", desc: "图像提示词" },
       { name: "negativePrompt", type: "string", desc: "反向提示词" },
       { name: "style", type: "string", desc: "风格" },
-      { name: "aspectRatio", type: "string", desc: "比例，如 16:9" },
+      { name: "aspectRatio", type: "string", desc: "比例，如 16:9（会自动同步到所选模型族对应的比例字段）" },
+      { name: "model", type: "string", desc: "图像模型 id（见「云端生成模型清单·图像模型」，勿编造；不设则用节点默认）" },
+      { name: "imageResolution", type: "string", desc: "kie 图像分辨率档，如 1K/2K/4K（逐档计价，按模型支持档位夹取）" },
+      { name: "seed", type: "number", desc: "随机种子（可选；同角色跨镜锁同一 seed 可提升一致性）" },
     ],
   },
   {
@@ -98,6 +117,10 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     fields: [
       { name: "prompt", type: "string", desc: "正向提示词" },
       { name: "negPrompt", type: "string", desc: "反向提示词" },
+      { name: "width", type: "number", desc: "出图宽（px，/64 对齐，如 1280）" },
+      { name: "height", type: "number", desc: "出图高（px，/64 对齐，如 720）" },
+      { name: "seed", type: "number", desc: "随机种子（可选）" },
+      { name: "steps", type: "number", desc: "采样步数（可选，默认由模板决定）" },
     ],
   },
   {
@@ -106,6 +129,8 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     fields: [
       { name: "prompt", type: "string", desc: "正向提示词" },
       { name: "negPrompt", type: "string", desc: "反向提示词" },
+      { name: "width", type: "number", desc: "出片宽（px，/64 对齐）" },
+      { name: "height", type: "number", desc: "出片高（px，/64 对齐）" },
     ],
   },
   {
@@ -113,9 +138,10 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     connectsTo: ["merge", "clip", "asset"],
     fields: [
       { name: "prompt", type: "string", desc: "视频提示词" },
-      { name: "negativePrompt", type: "string", desc: "反向提示词" },
+      { name: "negativePrompt", type: "string", desc: "反向提示词（仅部分模型支持，见清单标注）" },
+      { name: "provider", type: "string", desc: "视频模型 id（见「云端生成模型清单·视频模型」，勿编造；不设则用节点默认。选型看清单的能力标签：T2V=文生、I2V=图生需上游图）" },
       { name: "duration", type: "number", desc: "单镜时长（秒）；会写入所选视频模型的时长参数并按其档位夹取。连了分镜时也会自动继承分镜的 duration，故通常无需显式设" },
-      { name: "params", type: "object", desc: '视频模型专属参数对象（原样传给所选视频模型的参数面板），如 {"aspect_ratio":"16:9","resolution":"720p"}。设比例/分辨率/模式用这里；可用键与取值以该模型的参数面板为准（多数模型 aspect_ratio 仅支持 16:9/9:16/1:1 等枚举档，不支持任意比例），未知键可能被上游拒绝' },
+      { name: "params", type: "object", desc: '视频模型专属参数对象，如 {"aspect_ratio":"16:9","resolution":"720p"}。设比例/分辨率/模式用这里；可用键与取值【严格】按「云端生成模型清单·视频模型」中该 provider 的参数表（各模型键名/枚举档不同，清单外的键会被丢弃）' },
     ],
   },
   {
@@ -123,15 +149,22 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     connectsTo: ["subtitle", "overlay", "asset"],
     fields: [
       { name: "transition", type: "string", desc: "全局转场：none/fade/dissolve（逐镜转场由装配按分镜 transition 自动设置）" },
+      { name: "transitionDuration", type: "number", desc: "转场时长（秒，0.1-2.0，默认 0.5）" },
+      { name: "burnShotSubtitles", type: "boolean", desc: "true 时装配完成后把镜头表对白直接烧录为成片字幕" },
     ],
   },
   {
-    type: "audio", label: "音频", purpose: "AI 配乐(music)/配音(dubbing)或上传音频。逐镜配音不要手建——镜头表面板会按分镜 dialogue 批量生成",
+    type: "audio", label: "音频", purpose: "AI 配乐(music)/配音(dubbing)/音效(sfx)或上传音频。逐镜配音不要手建——镜头表面板会按分镜 dialogue 批量生成",
     connectsTo: ["merge", "clip"],
     fields: [
-      { name: "audioCategory", type: "string", desc: "music（配乐）或 dubbing（配音）" },
+      { name: "audioCategory", type: "string", desc: "music（配乐）/ dubbing（配音）/ sfx（音效）" },
       { name: "ttsText", type: "string", desc: "配音文案（audioCategory=dubbing 时）" },
       { name: "musicPrompt", type: "string", desc: "配乐描述（audioCategory=music 时），如 轻快钢琴+弦乐" },
+      { name: "musicStyle", type: "string", desc: "配乐风格标签（music），如 cinematic/lo-fi" },
+      { name: "musicInstrumental", type: "boolean", desc: "true=纯音乐不带人声（music）" },
+      { name: "sfxPrompt", type: "string", desc: "音效描述（audioCategory=sfx 时），如 玻璃碎裂声" },
+      { name: "sfxDuration", type: "number", desc: "音效时长（秒，0.5-22；不设=模型按描述自动定）" },
+      { name: "sfxLoop", type: "boolean", desc: "true=生成可无缝循环的氛围音效（sfx）" },
     ],
   },
   {
@@ -153,6 +186,53 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
 ];
 
 const SPEC_BY_TYPE = new Map(AGENT_NODE_CATALOG.map((s) => [s.type, s]));
+
+// ── 云端生成模型清单（喂给 LLM 的模型/参数知识 + 服务端取值校验）───────────────
+// 与节点选择器同源（shared/modelCatalog + shared/videoModelParams），零手抄零漂移。
+const VALID_VIDEO_PROVIDERS = new Set<string>(VIDEO_MODELS.map((m) => m.value));
+const VALID_IMAGE_MODELS = new Set<string>(IMAGE_MODELS.map((m) => m.value));
+
+/** 单个参数定义 → 紧凑单行片段（*=默认值）。 */
+function paramDefBrief(d: ParamDef): string {
+  if (d.type === "select") {
+    const opts = d.options.map((o) => (d.default !== undefined && String(o.value) === String(d.default) ? `${o.value}*` : String(o.value))).join("|");
+    return `${d.key}=${opts}`;
+  }
+  if (d.type === "range" || d.type === "number") {
+    return `${d.key}=${d.min}~${d.max}${d.default !== undefined ? `(默认${d.default})` : ""}`;
+  }
+  // toggle
+  return `${d.key}=true|false${d.default !== undefined ? `(默认${String(d.default)})` : ""}`;
+}
+
+/** 视频模型清单：每行一个模型（id、名称、能力标签、参考图/反向词支持、完整参数表）。 */
+export function videoModelDigestText(): string {
+  return VIDEO_MODELS
+    .filter((m) => m.value !== "mock")
+    .map((m) => {
+      const caps = m.caps?.length ? `[${m.caps.join("/")}]` : "";
+      const marks = [
+        REQUIRES_REFERENCE_IMAGE.has(m.value) ? "需参考图" : "",
+        SUPPORTS_NEGATIVE_PROMPT.has(m.value) ? "支持negativePrompt" : "",
+      ].filter(Boolean).join("·");
+      const defs = PROVIDER_PARAMS[m.value] ?? [];
+      const ps = defs.length ? defs.map(paramDefBrief).join(", ") : "（无可调参数）";
+      return `- ${m.value}「${m.label}」${caps}${marks ? `（${marks}）` : ""} params: ${ps}`;
+    })
+    .join("\n");
+}
+
+/** 图像模型清单：id、名称、能力标签、是否必须参考图。 */
+export function imageModelDigestText(): string {
+  return IMAGE_MODELS
+    .map((m) => `- ${m.value}「${m.label}」${m.caps?.length ? `[${m.caps.join("/")}]` : ""}${m.requiresRef ? "（需参考图/上游图输入）" : ""}`)
+    .join("\n");
+}
+
+/** 汇总成系统提示的「云端生成模型清单」章节（仅非 comfyOnly 模式注入）。 */
+export function modelKnowledgeText(): string {
+  return `## 图像模型（image_gen.model / storyboard.imageModel 的合法取值）\n${imageModelDigestText()}\n## 视频模型（video_task.provider 的合法取值；params 键与取值严格按各自参数表，*=默认）\n${videoModelDigestText()}`;
+}
 
 // update 操作只带 targetRef（节点 id）不带 nodeType，服务端无法按类型过滤——改用「全目录
 // 字段名并集」过滤：保留属于任一节点类型 spec 的字段，丢弃并集外的纯幻觉字段。再显式放行
@@ -249,6 +329,23 @@ export function sanitizeOperationDetailed(
         payload[k] = v;
       }
     }
+    // 模型取值校验（与节点选择器同源清单）：LLM 编造的模型 id 静默剥除（保留同批其它字段，
+    // 节点回落默认模型），比整条丢弃更贴合意图。
+    if (typeof payload.provider === "string" && !VALID_VIDEO_PROVIDERS.has(payload.provider)) delete payload.provider;
+    if (typeof payload.model === "string" && !VALID_IMAGE_MODELS.has(payload.model)) delete payload.model;
+    if (typeof payload.imageModel === "string" && !VALID_IMAGE_MODELS.has(payload.imageModel)) delete payload.imageModel;
+    // video_task.params 键按所选模型的参数表过滤（幻觉键会被上游拒绝或静默无效）；
+    // provider 未设/未知时保留原样——提交层还有各 provider 的 allow-list 兜底。
+    if (nodeType === "video_task" && payload.params && typeof payload.params === "object") {
+      const prov = typeof payload.provider === "string" ? payload.provider : undefined;
+      const defs = prov ? PROVIDER_PARAMS[prov] : undefined;
+      if (defs) {
+        const known = new Set(defs.map((d) => d.key));
+        const cleaned: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(payload.params as Record<string, unknown>)) if (known.has(k)) cleaned[k] = v;
+        payload.params = cleaned;
+      }
+    }
     // Hard-guard comfyui_workflow templateId against the real analyzed-template set
     // so the model can't fabricate a template (e.g. an invented name with a made-up
     // / missing id that materializes into an empty, un-runnable shell node).
@@ -289,6 +386,21 @@ export function sanitizeOperationDetailed(
     if (payload.templateId != null && opts.validTemplateIds) {
       const tid = Number(payload.templateId);
       if (!(Number.isInteger(tid) && opts.validTemplateIds.has(tid))) delete payload.templateId;
+    }
+    // 与 create 对称：编造的模型 id 剥除（provider 属 video_task、model/imageModel 属图像生成，
+    // 全局唯一字段名，无需 nodeType 也能校验）；params 非纯对象剥除，provider 已知时按参数表过滤键。
+    if (typeof payload.provider === "string" && !VALID_VIDEO_PROVIDERS.has(payload.provider)) delete payload.provider;
+    if (typeof payload.model === "string" && !VALID_IMAGE_MODELS.has(payload.model)) delete payload.model;
+    if (typeof payload.imageModel === "string" && !VALID_IMAGE_MODELS.has(payload.imageModel)) delete payload.imageModel;
+    if (payload.params !== undefined && (typeof payload.params !== "object" || payload.params === null || Array.isArray(payload.params))) delete payload.params;
+    if (payload.params && typeof payload.provider === "string") {
+      const defs = PROVIDER_PARAMS[payload.provider];
+      if (defs) {
+        const known = new Set(defs.map((d) => d.key));
+        const cleaned: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(payload.params as Record<string, unknown>)) if (known.has(k)) cleaned[k] = v;
+        payload.params = cleaned;
+      }
     }
     return { op: { op: "update", targetRef, title: str(o.title), payload, note: noteStr(o.note) } };
   }

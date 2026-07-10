@@ -94,10 +94,41 @@ export function aspectFieldsFor(nodeType: NodeType, aspect: string): Record<stri
   }
 }
 
+// ── 防宫格兜底（确定性）────────────────────────────────────────────────────────
+// 分镜/图像生成常把「多镜头描述」画成一张宫格/拼贴参考图，下游图生视频无法处理。
+// 除了系统提示要求 LLM 单帧措辞外，这里对智能体新建的生成节点在 negativePrompt
+// 里确定性追加反宫格词（fill-append：已含关键词则不重复）。
+const ANTI_GRID_NEGATIVE = "multi-panel, grid, collage, storyboard, comic strip, split screen";
+export function appendAntiGridNegative(existing: unknown): string {
+  const cur = typeof existing === "string" ? existing.trim() : "";
+  if (/multi-panel|宫格|拼贴|collage|storyboard/i.test(cur)) return cur; // 已有防宫格词，不重复
+  return cur ? `${cur}, ${ANTI_GRID_NEGATIVE}` : ANTI_GRID_NEGATIVE;
+}
+// negativePrompt 的字段名按节点类型：storyboard/image_gen→negativePrompt，comfy 系→negPrompt。
+// 配对的正向字段用于「用户就是要拼贴」时跳过注入（正反词冲突反而毁图）。
+const ANTI_GRID_FIELD: Partial<Record<NodeType, { neg: string; pos: string }>> = {
+  storyboard: { neg: "negativePrompt", pos: "promptText" },
+  image_gen: { neg: "negativePrompt", pos: "prompt" },
+  prompt: { neg: "negativePrompt", pos: "positivePrompt" },
+  comfyui_image: { neg: "negPrompt", pos: "prompt" },
+};
+const GRID_INTENT_RE = /宫格|拼贴|连环画|分镜表|故事板|multi-panel|collage|contact sheet|comic strip|storyboard|split screen/i;
+
+/** 生成类节点类型（快速设置「允许使用的生成节点」勾选的作用域）。 */
+export const GEN_NODE_TYPES = ["image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow"] as const;
+
 export function applyAgentOperations(
   ops: AgentOperation[],
   anchor: { x: number; y: number },
-  opts: { templates?: AgentTemplate[]; freeVramAfterRun?: boolean; ownerAgentId?: string; characterImportMode?: CharacterImportMode; aspect?: string } = {},
+  opts: {
+    templates?: AgentTemplate[]; freeVramAfterRun?: boolean; ownerAgentId?: string; characterImportMode?: CharacterImportMode; aspect?: string;
+    /** 快速设置指定的图像模型（fill-only 写入新建 image_gen.model / storyboard.imageModel）。 */
+    imageModel?: string;
+    /** 快速设置指定的视频模型（fill-only 写入新建 video_task.provider）。 */
+    videoProvider?: string;
+    /** 快速设置勾选的「允许使用的生成节点类型」；提供且非空时，清单外的生成类 create 直接判失败。 */
+    allowedGenNodes?: string[];
+  } = {},
 ): ApplyResult {
   injectFreeVramIntoOps(ops, opts.freeVramAfterRun === true);
   const store = useCanvasStore.getState();
@@ -170,6 +201,12 @@ export function applyAgentOperations(
           // 未知节点类型（服务端 sanitize 漏网 / 非官方客户端）——友好拦截，避免 store.addNode
           // 读 NODE_CONFIGS[未知].defaultTitle 抛「Cannot read properties of undefined」内部错误。
           if (!(op.nodeType in NODE_CONFIGS)) { fail(index, op, `未知节点类型：${op.nodeType}`); return; }
+          // 快速设置「允许使用的生成节点」硬约束：LLM 违规选了未勾选的生成节点类型 → 判失败
+          // （失败原因会随自愈回路喂回 LLM，促使换成允许的类型），非生成类节点不受限。
+          if (opts.allowedGenNodes && opts.allowedGenNodes.length && (GEN_NODE_TYPES as readonly string[]).includes(op.nodeType) && !opts.allowedGenNodes.includes(op.nodeType)) {
+            fail(index, op, `规划设置不允许使用 ${op.nodeType} 节点（允许：${opts.allowedGenNodes.join("/")}）`);
+            return;
+          }
           // comfyui_workflow with a templateId → materialize from the library.
           let payload = op.payload as Record<string, unknown> | undefined;
           if (op.nodeType === "comfyui_workflow" && payload?.templateId != null) {
@@ -229,20 +266,52 @@ export function applyAgentOperations(
             );
             if (overlay) payload = { ...payload, ...overlay };
           }
-          // 画面比例确定性透传：用户在「规划设置」选了统一比例时，对生成节点补齐比例字段
-          // （仅 LLM 未自行设置时填，fill-only），让非 KIE 模型也按所选比例出片。
-          if (opts.aspect) {
-            const af = aspectFieldsFor(op.nodeType as NodeType, opts.aspect);
+          // 防宫格兜底：智能体新建的分镜/图像生成节点，negativePrompt 确定性追加反宫格词
+          // （宫格参考图下游图生视频无法处理；LLM 忘写时由这里补齐）。
+          {
+            const ag = ANTI_GRID_FIELD[op.nodeType as NodeType];
             const cur = (payload ?? {}) as Record<string, unknown>;
-            const add: Record<string, unknown> = {};
-            for (const [k, v] of Object.entries(af)) if (cur[k] === undefined || cur[k] === "") add[k] = v;
-            if (Object.keys(add).length) payload = { ...(payload ?? {}), ...add };
+            const pos = ag ? cur[ag.pos] : undefined;
+            const wantsGrid = typeof pos === "string" && GRID_INTENT_RE.test(pos); // 正向明确要拼贴 → 不注入
+            if (ag && !wantsGrid) payload = { ...cur, [ag.neg]: appendAntiGridNegative(cur[ag.neg]) };
+          }
+          // 画面比例确定性透传：LLM 自己给的 aspectRatio 或「规划设置」统一比例（LLM 值优先），
+          // 展开成该节点类型的全部比例字段（kie/poyo/reve 各族读不同字段），fill-only 不覆盖已设值。
+          {
+            const cur = (payload ?? {}) as Record<string, unknown>;
+            const aspectSeed = (typeof cur.aspectRatio === "string" && cur.aspectRatio) || opts.aspect || "";
+            if (aspectSeed) {
+              const af = aspectFieldsFor(op.nodeType as NodeType, aspectSeed);
+              const add: Record<string, unknown> = {};
+              for (const [k, v] of Object.entries(af)) if (cur[k] === undefined || cur[k] === "") add[k] = v;
+              if (Object.keys(add).length) payload = { ...(payload ?? {}), ...add };
+            }
+          }
+          // 快速设置指定模型：fill-only 写入新建生成节点（LLM 显式选的模型优先）。
+          if (op.nodeType === "image_gen" && opts.imageModel && !(payload as Record<string, unknown> | undefined)?.model) {
+            payload = { ...(payload ?? {}), model: opts.imageModel };
+          }
+          if (op.nodeType === "storyboard" && opts.imageModel && !(payload as Record<string, unknown> | undefined)?.imageModel) {
+            payload = { ...(payload ?? {}), imageModel: opts.imageModel };
+          }
+          if (op.nodeType === "video_task" && opts.videoProvider && !(payload as Record<string, unknown> | undefined)?.provider) {
+            payload = { ...(payload ?? {}), provider: opts.videoProvider };
           }
           // video_task 的 duration 在智能体目录是【顶层字段】，但节点实际读 payload.params.duration
           // ——落地时映射进 params，让智能体设的时长真正生效（连了分镜则由提交时的上游继承兜底）。
           if (op.nodeType === "video_task" && payload && typeof (payload as { duration?: unknown }).duration === "number") {
             const { duration, ...rest } = payload as Record<string, unknown> & { duration: number };
             payload = { ...rest, params: { ...((rest.params as Record<string, unknown>) ?? {}), duration } };
+          }
+          // video_task 的统一比例落进 params.aspect_ratio（fill-only；不支持该键的模型在提交层
+          // 会被各 provider 的参数 allow-list 自动剔除，写了也无害）。
+          if (op.nodeType === "video_task" && opts.aspect) {
+            const rest = (payload ?? {}) as Record<string, unknown>;
+            const params = { ...((rest.params as Record<string, unknown>) ?? {}) };
+            if (params.aspect_ratio === undefined || params.aspect_ratio === "") {
+              params.aspect_ratio = opts.aspect;
+              payload = { ...rest, params };
+            }
           }
           // Stamp ownership (multi-agent) + scene membership (so a Character can
           // "应用到本场景所有镜头"). Both stored in payload like `createdBy`.
@@ -351,7 +420,7 @@ const SUMMARY_FIELDS: Partial<Record<NodeType, string[]>> = {
   comfyui_image: ["prompt", "negPrompt", "templateLabel", "templateId"],
   comfyui_video: ["prompt", "negPrompt", "templateLabel", "templateId"],
   comfyui_workflow: ["templateLabel", "templateId", "aspectRatio"],
-  video_task: ["prompt", "negativePrompt", "provider"],
+  video_task: ["prompt", "negativePrompt", "provider", "params"],
   merge: ["transition"],
   audio: ["audioCategory", "ttsText", "musicPrompt"],
   note: ["content"],

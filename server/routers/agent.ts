@@ -7,7 +7,7 @@ import { isCustomLLMModel } from "../_core/customLlm";
 import { extractTextContent, type Message, type MessageContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import type { TrpcContext } from "../_core/context";
-import { catalogText, sanitizeOperationDetailed, templateKnowledgeText } from "../_core/agentCatalog";
+import { catalogText, sanitizeOperationDetailed, templateKnowledgeText, modelKnowledgeText } from "../_core/agentCatalog";
 import { enforceImageFirst, enforceImageFirstComfy } from "../_core/imageFirst";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import { broadcastAgentHistoryUpdated } from "../_core/agentBus";
@@ -329,7 +329,7 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
 
 # 可用节点目录（只能使用下面列出的节点类型与字段，禁止编造任何不存在的节点或字段）
-${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}
+${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText()}`}
 
 # 当前画布
 ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}
@@ -354,6 +354,7 @@ ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.
 - 时长感知拆镜（重要）：视频模板/模型每镜有最长时长（上面括号里的「每镜≈Ns」就是单个镜头能生成的秒数上限）。当用户的目标总时长 T 大于所选模板的每镜上限 d 时，绝不能只做几个镜头，必须按 镜头数 = ceil(T / d) 规划足够多的镜头，使 镜头数 × d ≈ T（例：目标 60s、每镜 5s → 需 12 个镜头）。把这些镜头组织成若干「场景」（叙事段落），每个场景包含一个或多个镜头。
 - 场景分组：为每个生成节点加 sceneGroup 字段标注它属于哪个场景（如 "s1"/"s2"…，同一场景的镜头用同一个值），画布会据此把同场景的镜头框进一个「场景」分组容器。所有镜头仍各自连入 merge 合并成片。
 - 角色一致性：当故事有反复出现的人物/主角时，为每个主要角色创建一个 character 节点（填 name/role/appearance/outfit/signature），并把该 character 连接到它出现的每一个分镜/生成节点（character → storyboard/comfyui_image/image_gen/video_task）。这样跨镜的脸/服装/特征会保持一致（连到 ComfyUI 图像节点会自动用作 IPAdapter 人脸参考）。同一角色只建一个节点、复用连接到多个镜头，不要每镜各建一个。
+- 单帧构图（重要，防宫格图）：每个分镜/图像提示词（promptText / image_gen.prompt / prompt 节点）都只描述【一个镜头的单幅画面】，措辞必须是单帧视角；严禁出现会诱导模型输出宫格/拼贴的词（如 分镜表/故事板/四宫格/九宫格/多画面/连环画/storyboard/grid/collage/multi-panel/comic strip）。同时在 negativePrompt 里加上 "multi-panel, grid, collage, storyboard, comic strip, split screen" 兜底——下游图生视频节点无法处理宫格参考图，一张图必须只含一个画面。
 - 镜头表完备（重要）：创建 storyboard 时必须【同时】给 description（中文画面描述，给人看）和 promptText（详细生成提示词，直接喂生图/生视频模型，禁止留空、也不要把提示词堆进 description）；必须给连续镜号 sceneNumber（1,2,3…，装配成片按它排序）；有人声内容（台词/旁白/口播/解说）的镜头填 dialogue（多人对话每行一句「角色名：台词」，纯旁白直接写文本）；按叙事节奏给 transition（常规切换 cut、时间/地点跳跃 dissolve、开场收尾 fade、强调匹配 match-cut）；尽量补 duration/shotType。这些字段会被镜头表批量生产与装配直接消费，缺了用户就要手工补。
 - 分镜→成片管线：每镜建一个 video_task（或 ComfyUI 视频）工位并连入 merge——后续「镜头表面板」的批量生图/生视频会复用这些工位；逐镜配音【不要】建 audio 节点（批量配音按 dialogue 自动生成），只有整体配乐才建一个 audio(music) 连入 merge。视频出片后用户在合并节点点「按镜头表装配」即可自动完成镜号排序、逐镜转场与配音对位——请在 reply 末尾用一句话提醒该操作路径。
 - 规划摘要：当涉及视频时长拆分时，在返回 JSON 顶层additionally给出 plan 对象：{"targetSeconds":目标总秒数,"perShotSeconds":每镜秒数,"templateLabel":"所选模板名","shots":镜头总数}，供前端做时长校验与提示。
