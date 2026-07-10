@@ -68,7 +68,7 @@ import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio"
 import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame, concatAudioSegments } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame, extractAudio, concatAudioSegments } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -2722,12 +2722,12 @@ export const audioGenRouter = router({
 // the file lands in MinIO but stays an orphan object (not in the DB).
 async function recordEditedAsset(opts: {
   userId: number; projectId?: number; nodeId?: string;
-  url: string; type: "video" | "image"; name: string; mimeType?: string;
+  url: string; type: "video" | "image" | "audio"; name: string; mimeType?: string;
 }): Promise<void> {
   await recordGeneratedAsset({
     userId: opts.userId, projectId: opts.projectId ?? null, nodeId: opts.nodeId ?? null,
     type: opts.type, source: "generated", provider: "ffmpeg", model: null,
-    url: opts.url, name: opts.name, mimeType: opts.mimeType ?? (opts.type === "video" ? "video/mp4" : "image/png"),
+    url: opts.url, name: opts.name, mimeType: opts.mimeType ?? (opts.type === "video" ? "video/mp4" : opts.type === "audio" ? "audio/mpeg" : "image/png"),
   });
 }
 
@@ -2802,6 +2802,26 @@ export const clipRouter = router({
       const result = await extractFrame(input);
       await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "image", name: "剪辑封面帧" });
       return { url: result.url };
+    }),
+
+  // 音频分离（LibTV 化 1.3）：整条音轨提取为 mp3。本地 ffmpeg，无第三方 AI，不走白名单。
+  extractAudio: protectedProcedure
+    .input(z.object({ inputUrl: mediaUrlSchema, projectId: z.number().optional(), nodeId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.inputUrl);
+      let result;
+      try {
+        result = await extractAudio(input);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/does not contain|matches no streams|音轨/.test(msg)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "该视频不含音轨，无法分离音频" });
+        }
+        throw e;
+      }
+      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "audio", name: "音频分离", mimeType: "audio/mpeg" });
+      return { url: result.url, duration: result.duration };
     }),
 
   getVideoDuration: protectedProcedure
