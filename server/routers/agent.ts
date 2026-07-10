@@ -32,6 +32,59 @@ export function extractJsonObjects(s: string): string[] {
   return out;
 }
 
+/** 上下文总量预算动态分配：30k 级大纲 + 完整历史/画布摘要 + 16000 输出预算会让自建 27B 级
+ *  模型单次生成耗时数分钟，撞上 llm.ts 的 fetch 超时（自建 300s / 云端 120s）而报「请求超时」。
+ *
+ *  规则（正文 message 永不截断）：
+ *  - message+history+graphSummary 总字符数 ≤ AGENT_INPUT_CHAR_BUDGET → 全部原样，不动。
+ *  - 超预算时，扣除正文后的剩余预算在两者间分配：graphSummary 拿剩余的一半（下限
+ *    GRAPH_MIN_CHARS），历史用余下额度从最新往旧装（整条装不下且已有 ≥2 条时截断/停止）；
+ *    无论多挤都保底最近 HISTORY_MIN_KEEP 条、每条至少 HISTORY_MIN_ENTRY_CHARS 字符。
+ *  - 正文越短剩余越多，历史/摘要保留就越多——不再是旧版「一刀切 2 条×1000 + 4000」。
+ *  - 输出预算按正文长度分两档：>LONG_INPUT_THRESHOLD 时 16000→6000（自建模型 llm.ts 有
+ *    8192 思维链下限，实际生效 8192，仍约减半），缩短大输入下的单次生成耗时。 */
+export const AGENT_INPUT_CHAR_BUDGET = 40_000;
+export const LONG_INPUT_THRESHOLD = 8000;
+export const GRAPH_MIN_CHARS = 4000;
+export const HISTORY_MIN_KEEP = 2;
+export const HISTORY_MIN_ENTRY_CHARS = 1000;
+
+type AgentTurn = { role: "user" | "assistant"; content: string };
+
+export function allocateContextBudget(args: {
+  message: string;
+  history?: AgentTurn[];
+  graphSummary?: string;
+}): { trimmed: boolean; history: AgentTurn[]; graphSummary: string; maxTokens: number } {
+  const graphSummary = args.graphSummary?.trim() ?? "";
+  const history = args.history ?? [];
+  const maxTokens = args.message.length > LONG_INPUT_THRESHOLD ? 6000 : 16000;
+  const histTotal = history.reduce((a, m) => a + m.content.length, 0);
+  if (args.message.length + histTotal + graphSummary.length <= AGENT_INPUT_CHAR_BUDGET) {
+    return { trimmed: false, history, graphSummary, maxTokens };
+  }
+  const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…（已截断）" : s);
+  // 正文优先占用；剩余预算保底能装下 graph 下限 + 历史保底条数。
+  const remaining = Math.max(
+    AGENT_INPUT_CHAR_BUDGET - args.message.length,
+    GRAPH_MIN_CHARS + HISTORY_MIN_KEEP * HISTORY_MIN_ENTRY_CHARS,
+  );
+  const graphBudget = Math.min(graphSummary.length, Math.max(GRAPH_MIN_CHARS, Math.floor(remaining / 2)));
+  const graph = clip(graphSummary, graphBudget);
+  let histBudget = remaining - graphBudget;
+  const kept: AgentTurn[] = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const mustKeep = kept.length < HISTORY_MIN_KEEP;
+    // 保底条目即使预算耗尽也至少给 HISTORY_MIN_ENTRY_CHARS；预算所剩无几时不再装非保底条目。
+    const allow = mustKeep ? Math.max(histBudget, HISTORY_MIN_ENTRY_CHARS) : histBudget;
+    if (!mustKeep && allow < 500) break;
+    const content = clip(history[i].content, allow);
+    kept.unshift({ role: history[i].role, content });
+    histBudget = Math.max(0, histBudget - content.length);
+  }
+  return { trimmed: true, history: kept, graphSummary: graph, maxTokens };
+}
+
 // ── Agent (Copilot) router ────────────────────────────────────────────────────
 // `chat` is the agent's "planning brain": it turns a natural-language request +
 // the current graph into a set of canvas operations (create/connect/update/
@@ -83,6 +136,9 @@ export const agentRouter = router({
       if (!isCustomLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
 
       const model = input.model ?? FACTORY_DEFAULT_MODELS.llm;
+
+      // 上下文总量预算动态分配（正文永不截断），避免大输入单次生成撞 LLM fetch 超时。
+      const ctxBudget = allocateContextBudget(input);
 
       // Before planning, refresh template knowledge: incrementally analyze any
       // newly-added / changed templates (capped so a turn isn't blocked on a big
@@ -205,7 +261,7 @@ export const agentRouter = router({
 ${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}
 
 # 当前画布
-${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}
+${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}
 
 # 输出要求
 严格只输出一个 JSON 对象（不要 markdown 代码块、不要任何多余文字），结构如下：
@@ -246,18 +302,19 @@ ${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.pre
         : input.message;
       const messages: Message[] = [
         { role: "system", content: system },
-        ...(input.history ?? []).map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+        ...ctxBudget.history.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: userContent },
       ];
 
       // A full multi-shot plan (script + N storyboards + connects + merge) is a
       // large JSON object. 4000 tokens truncated it → JSON.parse failed → the raw
       // (truncated) JSON leaked into the chat as "乱码". Give it plenty of room
-      // (capped per-model by resolveMaxTokens). NB: we deliberately do NOT force
+      // (capped per-model by resolveMaxTokens; 超长输入时由 adaptToLongInput 压到 6000
+      // 以缩短单次生成耗时). NB: we deliberately do NOT force
       // response_format json_object — the default model is Claude (proxied), where
       // the OpenAI-style flag isn't reliably supported; the robust parse below
       // handles fences/prose instead.
-      const response = await invokeLLMWithKie(ctx, { messages, model, maxTokens: 16000 });
+      const response = await invokeLLMWithKie(ctx, { messages, model, maxTokens: ctxBudget.maxTokens });
       const text = extractTextContent(response);
 
       let reply = text.trim();

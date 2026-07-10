@@ -280,7 +280,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     const msg = input.trim() || (files.length ? "请参考附件规划画布。" : "");
     if (!msg || chat.isPending) return;
     setInput(""); setStaged([]); setAttachErr("");
-    const history = turns.slice(-10).map((t) => ({ role: t.role, content: t.content }));
+    // 每条截到 8000（服务端 history zod 上限）——否则发过超长消息后，下一条会整包被 400 拒掉。
+    const history = turns.slice(-10).map((t) => ({ role: t.role, content: t.content.slice(0, 8000) }));
     const attachLabel = files.length ? `　📎 ${files.map((f) => f.name).join("、")}` : "";
     setTurns((p) => [...p, { role: "user", content: msg + attachLabel }]);
     // 软取消：本机 Claude 大计划可能等 1~5 分钟——给用户「取消」按钮立刻拿回控制（请求可能仍在

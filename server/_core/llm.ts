@@ -522,7 +522,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   // 自建推理模型（vLLM Qwen3 等）思维链会吃掉预算 → 给更高默认/下限，避免可见答案被截断。
   // 桥接模型（claude-local*/gpt-local*）与自建 vLLM 同属「本机」——maxTokens 下限、超时、不重试
   // 一并按自建口径处理（否则 claude-local 未登记进自建列表时，这些逻辑对它全部失效 = 审计 R3）。
-  const selfHostedLike = isSelfHostedModel(model) || (isBridgeModel(model) && isClaudeBridgeEnabled());
+  // 用 resolvedModel 判定（与下方 resolveApiUrl/getApiKey 同口径）——确保路由到自建端点的
+  // 请求必然拿到自建的 300s 超时与不重试策略，别名映射后也不会出现「路由自建、超时按云端」。
+  const selfHostedLike = isSelfHostedModel(resolvedModel) || (isBridgeModel(resolvedModel) && isClaudeBridgeEnabled());
   const effectiveMax = chooseMaxTokens(selfHostedLike, params.maxTokens ?? params.max_tokens);
   payload.max_tokens = resolveMaxTokens(resolvedModel, effectiveMax);
 

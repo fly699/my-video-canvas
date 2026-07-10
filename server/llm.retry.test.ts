@@ -4,9 +4,10 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vite
 // one before the dynamic import below.
 beforeAll(() => { process.env.BUILT_IN_FORGE_API_KEY = "test-key"; process.env.KIE_API_KEY = "kie-test-key"; });
 
+// invokeLLM 现在先 response.text() 再 JSON.parse（#783 防 HTTP 200+HTML），mock 须提供 text()。
 const ok = (content: string) => ({
   ok: true,
-  json: async () => ({ choices: [{ message: { content } }] }),
+  text: async () => JSON.stringify({ choices: [{ message: { content } }] }),
 });
 const fail = (status: number, body: string, statusText = "Error") => ({
   ok: false, status, statusText, text: async () => body,
