@@ -2416,8 +2416,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <DropdownMenuItem onClick={() => setShowNotifySettings(true)}><Bell className="w-3.5 h-3.5 mr-2" /> 产物推送设置</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowPresentation(true)}><Play className="w-3.5 h-3.5 mr-2" /> 演示模式</DropdownMenuItem>
 
-              {/* 手机窄屏：顶栏放不下的中频按钮（.topbar-mid 已隐藏）收进这里 */}
-              {isMobile && (<>
+              {/* 手机窄屏 / 创意模式（LibTV 化 3.2 顶栏精简）：顶栏隐藏的中频按钮
+                  （.topbar-mid）收进这里，功能不丢只换入口。 */}
+              {(isMobile || canvasMode === "creative") && (<>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>工具</DropdownMenuLabel>
                 <DropdownMenuItem onClick={() => setShowTemplates((v) => !v)}><LayoutGrid className="w-3.5 h-3.5 mr-2" /> 快速模板</DropdownMenuItem>

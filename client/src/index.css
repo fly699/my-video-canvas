@@ -1502,6 +1502,16 @@ button:active:not(:disabled) {
 :root[data-canvas-mode="creative"] .canvas-bottombar {
   background: color-mix(in oklch, var(--c-base) 92%, transparent) !important;
   border-top-color: var(--c-bd1) !important;
+  /* LibTV 化 3.2：底部中央圆角 dock 质感——更大圆角 + 更深投影 */
+  border-radius: 20px !important;
+  box-shadow: 0 16px 48px oklch(0 0 0 / 0.5), 0 0 0 1px var(--c-bd1) !important;
+}
+
+/* LibTV 化 3.2：创意模式顶栏精简——中频按钮（快速模板/ComfyUI 模板库/节点搜索/
+   素材库/角色库/剪辑器与余额徽章）隐藏，功能收进「更多」菜单（Canvas.tsx 的
+   isMobile||creative 分支），顶栏只留 返回/项目名/保存态 | 撤销重做保存/比例锁/更多。 */
+:root[data-canvas-mode="creative"] .canvas-topbar .topbar-mid {
+  display: none !important;
 }
 
 /* 横排工具栏：按钮多时不再溢出到屏幕外把末尾挤没——限制不超过视口宽度，超出则自动换行到多排，
