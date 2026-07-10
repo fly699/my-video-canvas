@@ -8,16 +8,17 @@ interface CanvasModeContextType {
 }
 
 const CanvasModeContext = createContext<CanvasModeContextType>({
-  mode: "professional",
+  mode: "creative",
   setMode: () => {},
 });
 
 function readStoredMode(): CanvasMode {
+  // 首次进入默认「创意」（LibTV 模式）——用户显式切换过则尊重其选择（localStorage）。
   try {
     const stored = localStorage.getItem("avc:canvas-mode");
-    return stored === "creative" || stored === "professional" ? stored : "professional";
+    return stored === "creative" || stored === "professional" ? stored : "creative";
   } catch {
-    return "professional";
+    return "creative";
   }
 }
 

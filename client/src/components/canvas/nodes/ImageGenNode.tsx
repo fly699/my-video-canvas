@@ -752,7 +752,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             </div>
           ) : (
             <div
-              className="rounded-lg flex items-center justify-center flex-shrink-0"
+              className="node-empty-placeholder rounded-lg flex items-center justify-center flex-shrink-0"
               style={{ aspectRatio: "16/9", borderWidth: 1, borderStyle: "dashed", borderColor: `oklch(0.72 0.20 330 / 0.25)`, background: `oklch(0.72 0.20 330 / 0.04)` }}
             >
               <div className="flex flex-col items-center gap-1.5" style={{ color: "oklch(0.72 0.20 330 / 0.5)" }}>

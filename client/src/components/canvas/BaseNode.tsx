@@ -87,7 +87,7 @@ interface BaseNodeProps {
 /** LibTV 化 3.3：创意模式英雄区右下角的尺寸标注 chip——读取容器内首个
  *  img/video 的自然分辨率（LibTV 节点卡「大预览主体 + 尺寸标注」形态）。
  *  用事件捕获 + MutationObserver 兜底：媒体懒加载/结果替换时自动刷新。 */
-function HeroSizeBadge({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | null> }) {
+function HeroSizeBadge({ hostRef, variant = "chip" }: { hostRef: React.RefObject<HTMLDivElement | null>; variant?: "chip" | "text" }) {
   const [dim, setDim] = useState<string | null>(null);
   useEffect(() => {
     const host = hostRef.current;
@@ -113,6 +113,15 @@ function HeroSizeBadge({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | 
     };
   }, [hostRef]);
   if (!dim) return null;
+  // text 版：LibTV 标签行右端的灰色尺寸小字（如「2048 × 1152」）；chip 版：媒体角落胶囊。
+  if (variant === "text") {
+    return (
+      <span className="nodrag pointer-events-none flex-shrink-0"
+        style={{ fontSize: 10, fontWeight: 500, color: "var(--c-t4)", fontVariantNumeric: "tabular-nums", letterSpacing: "0.02em", whiteSpace: "nowrap" }}>
+        {dim.replace("×", " × ")}
+      </span>
+    );
+  }
   return (
     <span
       className="nodrag pointer-events-none"
@@ -1301,6 +1310,9 @@ export const BaseNode = memo(function BaseNode({
 
         {headerRight && <div className="flex-shrink-0">{headerRight}</div>}
 
+        {/* LibTV 化 3.6：创意模式标签行右端的媒体尺寸灰字（如「2048 × 1152」） */}
+        {isCreative && hasHero && <HeroSizeBadge hostRef={heroMediaRef} variant="text" />}
+
         {/* Type badge */}
         {!hideTypeBadge && (
           <span
@@ -1517,8 +1529,7 @@ export const BaseNode = memo(function BaseNode({
       {hasHero && (
         <div className="node-hero-media" ref={heroMediaRef}>
           {heroMedia}
-          {/* LibTV 化 3.3：创意模式大预览主体的尺寸标注（右下角分辨率 chip） */}
-          {isCreative && <HeroSizeBadge hostRef={heroMediaRef} />}
+          {/* 尺寸标注移至标题标签行（LibTV 标签行右端灰字，3.6）；hero 角落 chip 不再重复 */}
           {/* LibTV 化 3.4：创意模式生成中的英雄区骨架流光 + 进度百分比覆盖层
               （与标题栏下常驻进度条同一 payload.status/progress 数据源） */}
           {isCreative && genBusy && (
