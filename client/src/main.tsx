@@ -94,6 +94,16 @@ const trpcClient = trpc.createClient({
   ],
 });
 
+// 版本更新后旧标签页里 SPA 跳转会去加载已被替换的旧 hash chunk → 404 → 白屏。
+// Vite 会发 vite:preloadError 事件；自动整页刷新一次拉新版（sessionStorage 防无限刷新循环）。
+window.addEventListener("vite:preloadError", (e) => {
+  if (sessionStorage.getItem("avc:chunk-reloaded") === "1") return; // 已刷过仍失败 → 交给默认报错
+  sessionStorage.setItem("avc:chunk-reloaded", "1");
+  e.preventDefault();
+  window.location.reload();
+});
+window.addEventListener("load", () => { try { sessionStorage.removeItem("avc:chunk-reloaded"); } catch { /* ignore */ } });
+
 createRoot(document.getElementById("root")!).render(
   <trpc.Provider client={trpcClient} queryClient={queryClient}>
     <QueryClientProvider client={queryClient}>
