@@ -199,4 +199,27 @@ describe("estimateCanvasBudget — 画布级预算汇总", () => {
     expect(b.pt).toBe(41);                             // 6 + 10 + 25
     expect(b.runnableCount).toBe(3);
   });
+  it("分镜智能跳过：有下游 image_gen 或设 skipAutoImage 的分镜不计价（防幻影预算/重复计费）", () => {
+    const idNode = (id: string, nodeType: string, payload: Record<string, unknown>) => ({ id, data: { nodeType, payload } });
+    const resolve = (nt: string, slot: string): string | undefined =>
+      nt === "storyboard" && slot === "image" ? "kie_gpt_image_2" : undefined;
+    const b = estimateCanvasBudget([
+      idNode("sb1", "storyboard", {}),                          // 有下游 image_gen → 跳过（原按默认模型计 6 点）
+      idNode("sb2", "storyboard", { skipAutoImage: true }),     // 显式跳过
+      idNode("sb3", "storyboard", {}),                          // 无下游/未跳过 → 默认模型 6 点
+      idNode("ig1", "image_gen", { model: "kie_gpt_image_2" }), // 6 点
+    ], resolve, [{ source: "sb1", target: "ig1" }]);
+    expect(b.pt).toBe(12);            // sb3(6) + ig1(6)；sb1/sb2 不计
+    expect(b.runnableCount).toBe(2);
+    expect(b.unknownCount).toBe(0);
+  });
+  it("「跳过执行」（disabled）的节点全类型不计价", () => {
+    const b = estimateCanvasBudget([
+      node("video_task", { provider: "kie_kling21_std", duration: 5, disabled: true }),
+      node("image_gen", { model: "kie_gpt_image_2", disabled: true }),
+      node("image_gen", { model: "kie_gpt_image_2" }), // 只有它计价：1K=6 点
+    ]);
+    expect(b.pt).toBe(6);
+    expect(b.runnableCount).toBe(1);
+  });
 });

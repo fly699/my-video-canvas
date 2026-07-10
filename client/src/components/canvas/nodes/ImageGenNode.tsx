@@ -129,6 +129,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const { mode: canvasMode } = useCanvasMode();
   const isCreativeMode = uiStyle !== "studio" && canvasMode === "creative";
   const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
+  // LibTV：创意模式配置区默认收起（就地输入条是主入口），点输入条「高级」才展开——
+  // 否则选中节点配置区全高展开，会把锚在节点底部的输入条顶出视口（用户实测反馈）。
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const payload = data.payload;
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
@@ -761,15 +764,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         )}
         </HideWhenStudioFloating>
 
-        {/* ── Input area (collapsed when not selected, kept open if pinned) ── */}
+        {/* ── Input area (collapsed when not selected, kept open if pinned) ──
+            创意模式：默认收起，由就地输入条「高级」开关展开（防节点过高顶飞输入条）。 */}
         <div
-          style={{
-            overflow: "hidden",
-            maxHeight: expanded ? "9999px" : "0px",
-            transition: expanded
-              ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
-              : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
-          }}
+          style={(() => {
+            const open = isCreativeMode ? advancedOpen : expanded;
+            return {
+              overflow: "hidden",
+              maxHeight: open ? "9999px" : "0px",
+              transition: open
+                ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+                : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+            };
+          })()}
         >
 
         {/* Model selector */}
@@ -1391,6 +1398,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               </div>
             )}
           </span>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（参考图/风格/更多参数）"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 8px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            高级
+          </button>
           <div style={{ flex: 1 }} />
           <span title="预估消耗" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>⚡ {genCostLabel || "—"}</span>
           <button

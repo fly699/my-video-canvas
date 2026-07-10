@@ -425,7 +425,7 @@ export function applyAgentOperations(
 const SUMMARY_FIELDS: Partial<Record<NodeType, string[]>> = {
   script: ["aiGenre", "aiStyle", "aiMood", "aiSceneCount", "aiTargetModel", "synopsis"],
   // 镜号/转场/对白是镜头表与装配的核心字段，增量编辑必须可见（否则智能体盲改/重复）。
-  storyboard: ["sceneNumber", "description", "promptText", "negativePrompt", "dialogue", "transition", "cameraMovement", "duration", "aspectRatio"],
+  storyboard: ["sceneNumber", "description", "promptText", "negativePrompt", "dialogue", "transition", "cameraMovement", "duration", "aspectRatio", "skipAutoImage"],
   prompt: ["positivePrompt", "negativePrompt", "style", "aspectRatio"],
   image_gen: ["prompt", "negativePrompt", "model", "aspectRatio"],
   comfyui_image: ["prompt", "negPrompt", "templateLabel", "templateId"],

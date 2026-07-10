@@ -232,7 +232,8 @@ export type CanvasBudget = {
   localCount: number;    // comfyui_*（自有服务器，免费）
   runnableCount: number; // 参与估算的生成节点总数
 };
-type BudgetNode = { data: { nodeType: string; payload?: Record<string, unknown> } };
+type BudgetNode = { id?: string; data: { nodeType: string; payload?: Record<string, unknown> } };
+type BudgetEdge = { source: string; target: string };
 // comfyui_*（自有服务器）与 subtitle（内置 Forge STT 转录）都不计 kie 点 / Poyo cr，记为本地/内置免费。
 const LOCAL_BUDGET_TYPES = new Set(["comfyui_image", "comfyui_video", "comfyui_workflow", "subtitle"]);
 
@@ -243,6 +244,7 @@ const LOCAL_BUDGET_TYPES = new Set(["comfyui_image", "comfyui_video", "comfyui_w
 export function estimateCanvasBudget(
   nodes: BudgetNode[],
   resolveModel?: (nodeType: string, slot: "llm" | "image" | "video") => string | undefined,
+  edges?: BudgetEdge[],
 ): CanvasBudget {
   const map = new Map<string, CanvasBudgetLine>();
   let totPt = 0, totCr = 0, approx = false, unknownCount = 0, localCount = 0, runnableCount = 0;
@@ -256,9 +258,18 @@ export function estimateCanvasBudget(
     if (ex) { ex.count++; ex.credits += est.credits; }
     else map.set(key, { key, label, unit: est.unit, count: 1, credits: est.credits });
   };
+  // 「分镜有下游 image_gen 连线」判定（与 useWorkflowRunner 的执行跳过同口径）：
+  // 这类分镜是纯镜头表数据行，运行全部不会兜底生图，估价也不应把它按默认模型计价
+  // ——此前正是这条把未设 imageModel 的分镜按平台默认（如 Nano Banana Pro）估出幻影成本。
+  const typeById = new Map<string, string>();
+  for (const n of nodes) if (n.id) typeById.set(n.id, n.data.nodeType);
+  const hasDownstreamImageGen = (id: string | undefined) =>
+    !!id && !!edges?.some((e) => e.source === id && typeById.get(e.target) === "image_gen");
   for (const n of nodes) {
     const t = n.data.nodeType;
     const p = (n.data.payload ?? {}) as Record<string, unknown>;
+    // 「跳过执行」的节点（右键可切换）不参与运行，也不计价。
+    if (p.disabled === true) continue;
     if (LOCAL_BUDGET_TYPES.has(t)) { localCount++; continue; }
     if (t === "video_task") {
       runnableCount++;
@@ -274,6 +285,9 @@ export function estimateCanvasBudget(
     } else if (t === "storyboard") {
       // 分镜节点本质是「按分镜生成图像」，计价与 image_gen 同源（StoryboardNode 用 imageModel
       // 字段；hf_soul 批量 batchSize 张，其余 1 张）。此前漏算导致分镜不计入预算。
+      // 智能跳过（与运行器同口径）：设了 skipAutoImage、或已有下游 image_gen 工位的分镜
+      // 不会在「运行全部」时生图 → 不计价、不计 runnableCount。
+      if (p.skipAutoImage === true || hasDownstreamImageGen(n.id)) continue;
       runnableCount++;
       const model = String(p.imageModel ?? p.model ?? resolveModel?.("storyboard", "image") ?? "");
       if (!model || !IMAGE_MODELS.some((m) => m.value === model)) { unknownCount++; continue; }
