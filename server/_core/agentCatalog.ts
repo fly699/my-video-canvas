@@ -11,7 +11,7 @@ import type { NodeType, AgentOperation } from "../../shared/types";
 
 export interface AgentFieldSpec {
   name: string;
-  type: "string" | "number" | "boolean";
+  type: "string" | "number" | "boolean" | "object";
   desc: string;
 }
 
@@ -115,6 +115,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "prompt", type: "string", desc: "视频提示词" },
       { name: "negativePrompt", type: "string", desc: "反向提示词" },
       { name: "duration", type: "number", desc: "单镜时长（秒）；会写入所选视频模型的时长参数并按其档位夹取。连了分镜时也会自动继承分镜的 duration，故通常无需显式设" },
+      { name: "params", type: "object", desc: '视频模型专属参数对象（原样传给所选视频模型的参数面板），如 {"aspect_ratio":"16:9","resolution":"720p"}。设比例/分辨率/模式用这里；可用键与取值以该模型的参数面板为准（多数模型 aspect_ratio 仅支持 16:9/9:16/1:1 等枚举档，不支持任意比例），未知键可能被上游拒绝' },
     ],
   },
   {
@@ -242,7 +243,10 @@ export function sanitizeOperationDetailed(
     const payload: Record<string, unknown> = {};
     if (o.payload && typeof o.payload === "object") {
       for (const [k, v] of Object.entries(o.payload as Record<string, unknown>)) {
-        if (allowed.has(k)) payload[k] = v;
+        if (!allowed.has(k)) continue;
+        // object 型字段（如 video_task.params）必须是纯对象——字符串/数组会破坏节点参数面板。
+        if (k === "params" && (typeof v !== "object" || v === null || Array.isArray(v))) continue;
+        payload[k] = v;
       }
     }
     // Hard-guard comfyui_workflow templateId against the real analyzed-template set

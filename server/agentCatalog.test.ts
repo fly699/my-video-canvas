@@ -193,3 +193,16 @@ describe("agentCatalog 审计修复", () => {
     expect(op!.payload).toMatchObject({ aspectRatio: "9:16", overrideRatioSize: true });
   });
 });
+
+describe("video_task params 字段（助手可设比例/分辨率）", () => {
+  it("params 纯对象放行（aspect_ratio 等模型参数可写入）", () => {
+    const r = sanitizeOperationDetailed({ op: "create", nodeType: "video_task", tempId: "v1", payload: { prompt: "p", params: { aspect_ratio: "16:9", resolution: "720p" } } }, {});
+    expect("op" in r && (r.op as { payload: Record<string, unknown> }).payload.params).toEqual({ aspect_ratio: "16:9", resolution: "720p" });
+  });
+  it("params 非对象（字符串/数组）被丢弃，其余字段保留", () => {
+    const r = sanitizeOperationDetailed({ op: "create", nodeType: "video_task", tempId: "v2", payload: { prompt: "p", params: "16:9" } }, {});
+    const payload = (r as { op: { payload: Record<string, unknown> } }).op.payload;
+    expect(payload.params).toBeUndefined();
+    expect(payload.prompt).toBe("p");
+  });
+});
