@@ -5,6 +5,7 @@ import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { AgentNodeData, AgentMessage, AgentOperation, PipelineStep } from "../../../../../shared/types";
 import { derivePipelineSteps } from "@/lib/pipelinePlan";
+import { runAgentChatJob } from "@/lib/agentChatJob";
 import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -108,7 +109,9 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const healTargetsRef = useRef<string[] | null>(null);
   const prevRunningRef = useRef(false);
   const sawRunningRef = useRef(false);
-  const chat = trpc.agent.chat.useMutation();
+  // 规划走「submitChat 提交 → chatStatus 轮询」（runAgentChatJob）：长生成不押 HTTP 长连接。
+  const trpcUtils = trpc.useUtils();
+  const [busy, setBusy] = useState(false);
   const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
   const analysisQuery = trpc.comfyTemplates.analysisList.useQuery(undefined, { staleTime: 30_000, enabled: showTemplates });
   const templatePrefs = payload.templatePrefs ?? {};
@@ -180,7 +183,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages.length, chat.isPending]);
+  }, [messages.length, busy]);
 
   // 余额/成本守卫：估算本批生成的云端消耗，与 Poyo 余额比较；另对照「项目预算上限
   // （kie 点，工具栏预算面板可设）」——该守卫在 ops 已应用后调用，画布即最终状态，
@@ -323,7 +326,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   // Core planning call. `baseMessages` already ends with the user message being
   // answered (so history = everything before it). Shared by send and retry.
   const runChat = async (text: string, baseMessages: AgentMessage[], focusNodeIds?: string[]) => {
-    if (!text || chat.isPending) return;
+    if (!text || busy) return;
     // 过滤掉管线引导卡（content 为空、仅 UI）——不污染发给 LLM 的对话历史。
     const history = baseMessages.slice(0, -1).filter((m) => m.content.trim() !== "").map((m) => ({ role: m.role, content: m.content.slice(0, 8000) })).slice(-20); // 服务端 history 上限 20 条、每条 8000 字符，超限会 400
     // Multi-agent isolation: scope the planning context to THIS agent's own nodes
@@ -335,8 +338,9 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     setMessages(baseMessages);
     // Read the freshest template choice from the store (the picker may have just set it).
     const tp = ((useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as AgentNodeData | undefined)?.templatePrefs) ?? {};
+    setBusy(true);
     try {
-      const r = await chat.mutateAsync({
+      const r = await runAgentChatJob(trpcUtils.client, {
         projectId: data.projectId, message: text, history,
         graphSummary: summary || undefined, model, comfyOnly,
         prefs: buildPrefsText(),
@@ -363,12 +367,14 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
       }
     } catch (e) {
       setMessages([...baseMessages, { role: "assistant", content: FAIL_PREFIX + (e instanceof Error ? e.message : ""), operations: [] }]);
+    } finally {
+      setBusy(false);
     }
   };
 
   const handleSend = async (override?: string, focusNodeIds?: string[]) => {
     const text = (override ?? input).trim();
-    if (!text || chat.isPending) return;
+    if (!text || busy) return;
     if (!override) { selfHealRoundsRef.current = 0; lastFailSigRef.current = ""; healTargetsRef.current = null; } // genuine user send resets the self-heal cap/熔断
     // 仅 ComfyUI：首次规划前先弹「模板选择」让用户指定/确认（或自动），选完再规划。
     if (comfyOnly && !templatePrefs.asked) {
@@ -391,7 +397,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
 
   // 重试：重跑失败助手消息所对应的上一条用户指令（丢弃失败回复，不重复用户气泡）。
   const handleRetry = (failedIdx: number) => {
-    if (chat.isPending) return;
+    if (busy) return;
     const msgs = freshMessages();
     const userMsg = msgs[failedIdx - 1];
     if (!userMsg || userMsg.role !== "user") { toast.error("找不到可重试的上一条指令"); return; }
@@ -605,16 +611,16 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               {m.role === "assistant" && m.content.startsWith(FAIL_PREFIX) && (
                 <button
                   onClick={() => handleRetry(i)}
-                  disabled={chat.isPending}
+                  disabled={busy}
                   className="nodrag flex items-center gap-1"
                   title="重试：重跑上一条指令"
                   style={{
                     marginTop: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, borderRadius: 8,
                     background: accentA(0.12), border: `1px solid ${accentA(0.35)}`, color: accent,
-                    cursor: chat.isPending ? "wait" : "pointer",
+                    cursor: busy ? "wait" : "pointer",
                   }}
                 >
-                  {chat.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}重试
+                  {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}重试
                 </button>
               )}
               {m.role === "assistant" && m.operations && m.operations.length > 0 && (
@@ -728,7 +734,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               )}
             </div>
           ))}
-          {chat.isPending && (
+          {busy && (
             <div style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--c-t3)", padding: "7px 10px" }}>
               <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />规划中…
             </div>
@@ -817,10 +823,10 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
             </button>
             <button
               onClick={handleRefineSelected}
-              disabled={chat.isPending || selectedNodeIds.length === 0}
+              disabled={busy || selectedNodeIds.length === 0}
               className={TBTN}
               title="局部编辑：只针对画布上选中的节点微调（不新建无关节点）"
-              style={{ background: selectedNodeIds.length ? accentA(0.1) : "var(--c-surface)", border: `1px solid ${selectedNodeIds.length ? accentA(0.3) : "var(--c-bd2)"}`, color: selectedNodeIds.length ? accent : "var(--c-t4)", cursor: selectedNodeIds.length && !chat.isPending ? "pointer" : "not-allowed" }}
+              style={{ background: selectedNodeIds.length ? accentA(0.1) : "var(--c-surface)", border: `1px solid ${selectedNodeIds.length ? accentA(0.3) : "var(--c-bd2)"}`, color: selectedNodeIds.length ? accent : "var(--c-t4)", cursor: selectedNodeIds.length && !busy ? "pointer" : "not-allowed" }}
             >
               <Focus className="w-3 h-3" />微调选中{selectedNodeIds.length ? `(${selectedNodeIds.length})` : ""}
             </button>
@@ -850,10 +856,10 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
             </button>
             <button
               onClick={handleSelfHeal}
-              disabled={chat.isPending}
+              disabled={busy}
               className={TBTN}
               title="运行自愈：检查画布上运行失败/缺参的节点并给出修复方案"
-              style={{ ...ghostBtn, cursor: chat.isPending ? "wait" : "pointer" }}
+              style={{ ...ghostBtn, cursor: busy ? "wait" : "pointer" }}
               {...ghostHover}
             >
               <Wrench className="w-3 h-3" />诊断修复
@@ -896,7 +902,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
               <input type="checkbox" checked={analyzeFull} onChange={(e) => setAnalyzeFull(e.target.checked)} style={{ accentColor: accent }} />全量
             </label>
           </div>
-          <LLMModelPicker value={model} onChange={(m) => updateNodeData(id, { model: m })} disabled={chat.isPending} />
+          <LLMModelPicker value={model} onChange={(m) => updateNodeData(id, { model: m })} disabled={busy} />
           {/* 示例指令：对话为空时引导新用户，点击填入输入框（不知道能让它做什么时的起点）*/}
           {messages.length === 0 && !input.trim() && (
             <div className="flex flex-wrap gap-1.5">
@@ -926,17 +932,17 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
             />
             <button
               onClick={() => void handleSend()}
-              disabled={chat.isPending || !input.trim()}
+              disabled={busy || !input.trim()}
               className="nodrag flex items-center justify-center flex-shrink-0"
               title="发送（Ctrl/⌘+Enter）"
               style={{
                 width: 34, height: 34, borderRadius: 8, border: "none",
-                background: chat.isPending || !input.trim() ? "var(--c-surface)" : accent,
-                color: chat.isPending || !input.trim() ? "var(--c-t4)" : "oklch(0.99 0 0)",
-                cursor: chat.isPending || !input.trim() ? "not-allowed" : "pointer",
+                background: busy || !input.trim() ? "var(--c-surface)" : accent,
+                color: busy || !input.trim() ? "var(--c-t4)" : "oklch(0.99 0 0)",
+                cursor: busy || !input.trim() ? "not-allowed" : "pointer",
               }}
             >
-              {chat.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
         </div>

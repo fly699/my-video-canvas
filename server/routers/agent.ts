@@ -425,6 +425,7 @@ export const agentRouter = router({
   chatStatus: protectedProcedure
     .input(z.object({ jobId: z.string().max(64) }))
     .query(({ ctx, input }) => {
+      sweepAgentChatJobs(); // 轮询频繁，顺带清理过期任务（不只依赖 submit 时清扫）
       const j = agentChatJobs.get(input.jobId);
       if (!j || j.userId !== ctx.user.id) return { state: "missing" as const };
       if (!j.done) return { state: "running" as const };
