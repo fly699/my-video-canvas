@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
-import { Handle, Position, NodeResizer, useUpdateNodeInternals, useStore } from "@xyflow/react";
+import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals, useStore } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
@@ -82,6 +82,51 @@ interface BaseNodeProps {
   onAssetImageDrop?: (urls: string[]) => void;
   /** 可选：鼠标悬停标题栏满 1 秒触发（true）、离开时（false）。用于临时展开参考图/提示词吸附窗。 */
   onHeaderHoverChange?: (hovering: boolean) => void;
+}
+
+/** LibTV 化 3.3：创意模式英雄区右下角的尺寸标注 chip——读取容器内首个
+ *  img/video 的自然分辨率（LibTV 节点卡「大预览主体 + 尺寸标注」形态）。
+ *  用事件捕获 + MutationObserver 兜底：媒体懒加载/结果替换时自动刷新。 */
+function HeroSizeBadge({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | null> }) {
+  const [dim, setDim] = useState<string | null>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    let raf = 0;
+    const read = () => {
+      const img = host.querySelector("img");
+      const vid = host.querySelector("video");
+      if (img && img.naturalWidth) setDim(`${img.naturalWidth}×${img.naturalHeight}`);
+      else if (vid && vid.videoWidth) setDim(`${vid.videoWidth}×${vid.videoHeight}`);
+      else setDim(null);
+    };
+    read();
+    const onLoad = () => read();
+    host.addEventListener("load", onLoad, true);           // <img> load（捕获）
+    host.addEventListener("loadedmetadata", onLoad, true); // <video> 元数据
+    const mo = new MutationObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(read); });
+    mo.observe(host, { childList: true, subtree: true });
+    return () => {
+      host.removeEventListener("load", onLoad, true);
+      host.removeEventListener("loadedmetadata", onLoad, true);
+      mo.disconnect(); cancelAnimationFrame(raf);
+    };
+  }, [hostRef]);
+  if (!dim) return null;
+  return (
+    <span
+      className="nodrag pointer-events-none"
+      style={{
+        position: "absolute", right: 6, bottom: 6, zIndex: 5,
+        fontSize: 9, fontWeight: 700, letterSpacing: "0.03em", fontVariantNumeric: "tabular-nums",
+        padding: "2px 6px", borderRadius: 6, lineHeight: 1.4,
+        background: "oklch(0 0 0 / 0.55)", color: "oklch(0.92 0 0)",
+        border: "1px solid oklch(1 0 0 / 0.14)", backdropFilter: "blur(6px)",
+      }}
+    >
+      {dim}
+    </span>
+  );
 }
 
 /** 从拖拽数据里提取图片素材的 URL（仅 image 类型）。 */
@@ -209,8 +254,11 @@ export const BaseNode = memo(function BaseNode({
   const { uiStyle } = useUIStyle();
   const isStudio = uiStyle === "studio";
   const isCreative = canvasMode === "creative";
-  const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || isCreative;
+  // LibTV 化 3.1：创意模式换为 LibTV 暗色皮肤——不论 theme 亮暗，创意一律走暗分支
+  //（此前创意是强制暖白、被并入 isLight；现在反过来强制排除）。
+  const isLight = !isCreative && (theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper");
   const hasHero = heroMedia != null;
+  const heroMediaRef = useRef<HTMLDivElement>(null); // LibTV 化 3.3：尺寸标注读取宿主
   // 节点 LOD：缩放很小时（<0.3）画布上一屏可挤下几十上百个节点，此时逐个渲染命令栏/
   // 参数表/工具条纯属浪费。用 useStore 只取「是否低于阈值」的布尔——仅在跨越阈值时才
   // 触发本节点重渲染（而非每次缩放都重渲），越阈值后隐藏交互 body（保留缩略图英雄区，
@@ -642,8 +690,9 @@ export const BaseNode = memo(function BaseNode({
         ? `2px solid ${borderTint}`
         : `1px solid ${borderTint}99`
       : isCreative
+        // LibTV：选中态反色（近白）强调，常态低透明白细边。
         ? selVis
-          ? `2px solid ${config.color}`
+          ? `2px solid var(--ui-accent, ${config.color})`
           : `1px solid var(--c-bd2)`
         : selVis
           ? `2px solid ${config.color}`
@@ -729,18 +778,22 @@ export const BaseNode = memo(function BaseNode({
           and the self-contained duplicateNode store action), so it cannot diverge
           from or break existing behavior. */}
       {/* LibTV 化：工具条开放到所有皮肤（原仅 studio）——选中即浮出快捷 AI 操作。 */}
-      {(storeSelected || pinned) && (onRun || resultVideoUrl || resultImageUrl) && (
-        // 绝对定位于节点根（锚在节点上方、水平居中），而非 ReactFlow NodeToolbar——
-        // NodeToolbar 渲染在屏幕坐标、不随画布 zoom 缩放，与下方「绝对定位、随缩放」的参数
-        // 面板不一致（顶部工具栏不跟着节点缩放）。改为节点内绝对定位即随节点一起缩放。
+      {(storeSelected || pinned) && (onRun || resultVideoUrl || resultImageUrl) && (() => {
+        // LibTV 化 2.x：创意模式的工具条迁入 NodeToolbar——屏幕恒定（画布缩放时节点内容
+        // 缩放、工具条保持固定屏幕尺寸），与就地生成输入条同一交互范式；studio/pro 保持
+        // 原有「节点内绝对定位、随节点缩放」的行为不变（与下方随缩放的参数面板一致）。
+        const creativeConstant = !isStudio && isCreative;
+        const bar = (
         <div
           className="nodrag flex items-center gap-1"
           style={{
-            position: "absolute",
-            bottom: "calc(100% + 10px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 21,
+            ...(creativeConstant ? {} : {
+              position: "absolute" as const,
+              bottom: "calc(100% + 10px)",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 21,
+            }),
             whiteSpace: "nowrap",
             background: "var(--c-elevated)",
             border: "1px solid var(--c-bd2)",
@@ -919,7 +972,11 @@ export const BaseNode = memo(function BaseNode({
               );
             })()}
           </div>
-      )}
+        );
+        return creativeConstant
+          ? <NodeToolbar isVisible position={Position.Top} offset={10}>{bar}</NodeToolbar>
+          : bar;
+      })()}
 
       {/* Studio: hover quick actions — re-run (+ download when there's a result) without
           selecting/expanding the node. Reuses the exact onRun the toolbar uses; visibility
@@ -1441,8 +1498,17 @@ export const BaseNode = memo(function BaseNode({
 
       {/* ── Hero media (creative mode only, shown via CSS) ── */}
       {hasHero && (
-        <div className="node-hero-media">
+        <div className="node-hero-media" ref={heroMediaRef}>
           {heroMedia}
+          {/* LibTV 化 3.3：创意模式大预览主体的尺寸标注（右下角分辨率 chip） */}
+          {isCreative && <HeroSizeBadge hostRef={heroMediaRef} />}
+          {/* LibTV 化 3.4：创意模式生成中的英雄区骨架流光 + 进度百分比覆盖层
+              （与标题栏下常驻进度条同一 payload.status/progress 数据源） */}
+          {isCreative && genBusy && (
+            <div className="node-hero-genmask">
+              <span>{genProgress != null ? `${Math.round(genProgress)}%` : "生成中…"}</span>
+            </div>
+          )}
           {/* Studio: fullscreen lightbox trigger — 仅图片结果。视频结果不再叠加自定义全屏钮：
               原生控制条自带的全屏能真正铺满屏幕，双按钮只会让人点到不铺满的那个（用户实测反馈）；
               水印开启时原生全屏被禁，但 WatermarkedVideo 自带的放大预览钮会顶上。图片无原生全屏，保留。 */}

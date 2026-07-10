@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, memo } from "react";
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, Position } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, getStraightPath, Position } from "@xyflow/react";
 import type { EdgeProps } from "@xyflow/react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useHoverStore } from "../../hooks/useHoverStore";
@@ -68,6 +68,12 @@ export const CustomEdge = memo(function CustomEdge({
     return anySel ? "dim" : "none";
   });
   const dimmed = focusState === "dim";
+  // LibTV 化 3.1：创意模式连线为「低透明细白直线」——路径与配色都按模式分支，
+  // hooks 需在 orderBadge 计算之前取得。
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreative = canvasMode === "creative";
+  const { uiStyle } = useUIStyle();
+  const isStudio = uiStyle === "studio";
   let orderBadge: { x: number; y: number; n: number } | null = null;
   if (hoveredNodeId && (hoveredNodeId === target || hoveredNodeId === source)) {
     const side = hoveredNodeId === target ? "in" : "out";
@@ -77,8 +83,9 @@ export const CustomEdge = memo(function CustomEdge({
       // FIXED distance piles every badge on top of each other near the handle.
       // Stagger each badge's distance along its curve by its order index — since the
       // edge bundle fans out away from the node, different distances separate them.
-      const sc = bezierControl(sourcePosition, sourceX, sourceY, targetX, targetY);
-      const tc = bezierControl(targetPosition, targetX, targetY, sourceX, sourceY);
+      // 创意模式是直线：控制点取端点本身（贝塞尔退化为线段上的点，公式不变）。
+      const sc = isCreative ? [sourceX, sourceY] as [number, number] : bezierControl(sourcePosition, sourceX, sourceY, targetX, targetY);
+      const tc = isCreative ? [targetX, targetY] as [number, number] : bezierControl(targetPosition, targetX, targetY, sourceX, sourceY);
       const frac = total > 1 ? index / (total - 1) : 0; // 0..1 across the order
       const spread = Math.min(0.34, 0.05 * total); // wider stagger when more edges
       // "in": closest to target for #1, stepping further back; "out": mirror.
@@ -89,15 +96,14 @@ export const CustomEdge = memo(function CustomEdge({
   }
   const sourceNodeType = nodes.find(n => n.id === source)?.data.nodeType as string | undefined;
   const typeColor = sourceNodeType ? getNodeConfig(sourceNodeType as Parameters<typeof getNodeConfig>[0]).color : null;
-  const { mode: canvasMode } = useCanvasMode();
-  const isCreative = canvasMode === "creative";
-  const { uiStyle } = useUIStyle();
-  const isStudio = uiStyle === "studio";
 
-  const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX, sourceY, sourcePosition,
-    targetX, targetY, targetPosition,
-  });
+  // LibTV：创意模式直线；其余模式保持贝塞尔曲线。
+  const [edgePath, labelX, labelY] = isCreative
+    ? getStraightPath({ sourceX, sourceY, targetX, targetY })
+    : getBezierPath({
+        sourceX, sourceY, sourcePosition,
+        targetX, targetY, targetPosition,
+      });
 
   const { updateEdgeLabel, onEdgesChange } = useCanvasStore();
   const [editing, setEditing] = useState(false);
@@ -142,12 +148,13 @@ export const CustomEdge = memo(function CustomEdge({
     ? "oklch(0.64 0.22 155 / 0.9)"
     : sourceFailed
       ? "oklch(0.62 0.24 25 / 0.9)"
-      : selected
-        ? (typeColor ?? "oklch(0.68 0.24 285)")
-        : hovered
-          ? (typeColor ?? "oklch(0.72 0.18 285)")
-          : isCreative
-            ? (typeColor ? `${typeColor}99` : "oklch(0.70 0.12 260 / 0.6)")
+      : isCreative
+        // LibTV：低透明细白线，交互只提亮不变彩色（反色强调）；完成/失败保留状态色。
+        ? (selected ? "oklch(0.97 0 0 / 0.95)" : hovered ? "oklch(0.97 0 0 / 0.6)" : "oklch(0.97 0 0 / 0.25)")
+        : selected
+          ? (typeColor ?? "oklch(0.68 0.24 285)")
+          : hovered
+            ? (typeColor ?? "oklch(0.72 0.18 285)")
             : typeColor
               ? `${typeColor}c0`
               : "oklch(0.68 0.16 260 / 0.75)";
@@ -155,7 +162,7 @@ export const CustomEdge = memo(function CustomEdge({
   // Slightly thinner than the bold pass (user asked to slim down a touch);
   // hover/selection still step up for emphasis.
   const strokeWidth = isCreative
-    ? selected ? 2.75 : hovered ? 2.25 : 1.5
+    ? selected ? 2.25 : hovered ? 1.75 : 1.25
     : isStudio
       ? selected ? 3.5 : hovered ? 3 : 2.4   // studio: a touch thicker/softer flow
       : selected ? 3.5 : hovered ? 2.75 : 2;
@@ -215,15 +222,16 @@ export const CustomEdge = memo(function CustomEdge({
           strokeWidth,
           // Persistent soft glow on every edge so colored lines feel luminous,
           // upgraded for selected / completed / failed states.
+          // LibTV（创意）极简：常态不带彩色光晕，只留运行/完成/失败的状态辉光。
           filter: selected
-            ? "drop-shadow(0 0 6px oklch(0.68 0.22 285 / 0.55))"
+            ? (isCreative ? "drop-shadow(0 0 5px oklch(0.97 0 0 / 0.35))" : "drop-shadow(0 0 6px oklch(0.68 0.22 285 / 0.55))")
             : sourceCompleted
               ? "drop-shadow(0 0 5px oklch(0.65 0.20 155 / 0.45))"
               : sourceFailed
                 ? "drop-shadow(0 0 5px oklch(0.62 0.22 25 / 0.45))"
                 : sourceRunning
                   ? "drop-shadow(0 0 6px oklch(0.85 0.26 142 / 0.55))"
-                  : typeColor
+                  : (!isCreative && typeColor)
                     ? `drop-shadow(0 0 4px ${typeColor}77)`
                     : undefined,
           transition: "stroke 300ms ease, stroke-width 140ms ease, filter 300ms ease, opacity 160ms ease",

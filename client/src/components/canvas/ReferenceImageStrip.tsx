@@ -12,7 +12,11 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
  * `kind:"audio"` 时表示音频项，用波形缩略图展示（点击播放/暂停）；`kind:"video"` 时表示
  * 视频项，用 <video>（首帧/可点击播放）展示。`name` 为显示名（@音频名 / @视频名 提及用）。
  */
-export type StripItem = ReferenceImage & { label?: string; removable?: boolean; kind?: "image" | "audio" | "video"; name?: string };
+export type StripItem = ReferenceImage & {
+  label?: string; removable?: boolean; kind?: "image" | "audio" | "video"; name?: string;
+  /** LibTV 化 2.3：多主体参考语法——该图对应的「主体N」编号（点角标可插入提示词）。 */
+  subjectIndex?: number;
+};
 
 /** 音频项的波形缩略图磁贴：伪波形 + 居中播放/暂停按钮，点击就地播放。 */
 function AudioWaveTile({ url, name, accent }: { url: string; name?: string; accent: string }) {
@@ -112,6 +116,8 @@ interface Props {
   onPin?: () => void;
   /** 只读模式底部的说明文字（仅 readOnly 时显示）。如工作流的「删除＝清空该参数」。 */
   readOnlyHint?: React.ReactNode;
+  /** 点击「主体N」角标 → 把该 token 插入提示词（有 subjectIndex 的图才显示角标）。 */
+  onInsertSubject?: (n: number) => void;
 }
 
 /** Pull image URLs out of a drag payload (asset-list JSON, then uri/text). */
@@ -139,7 +145,7 @@ function urlsFromDrag(dt: DataTransfer): string[] {
  */
 export function ReferenceImageStrip({
   images, open, onClose, onRemove, onMove, onInsertUrls, onDropFiles, onZoom, accent = "oklch(0.72 0.20 330)",
-  readOnly = false, title = "参考图", onHoverChange, onPin, readOnlyHint,
+  readOnly = false, title = "参考图", onHoverChange, onPin, readOnlyHint, onInsertSubject,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -352,6 +358,23 @@ export function ReferenceImageStrip({
                   >
                     {caption}
                   </span>
+                )}
+                {/* LibTV 化 2.3：主体N 角标（多主体参考语法）——常驻左上角，点角标把
+                    「主体N」插入提示词。编号 = 参考图发送顺序（与 buildRefUrls 同源）。 */}
+                {img.subjectIndex != null && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onInsertSubject?.(img.subjectIndex!); }}
+                    className="nodrag"
+                    title={`主体${img.subjectIndex}（点击把「主体${img.subjectIndex}」插入提示词，生成时按参考图顺序绑定）`}
+                    style={{
+                      position: "absolute", left: 3, top: 3, padding: "1px 5px", borderRadius: 6,
+                      fontSize: 8.5, fontWeight: 800, lineHeight: 1.4, letterSpacing: "0.02em",
+                      background: accent, color: "#0b0d12", border: "none",
+                      cursor: onInsertSubject ? "pointer" : "default", boxShadow: "0 1px 4px oklch(0 0 0 / 0.4)",
+                    }}
+                  >
+                    主体{img.subjectIndex}
+                  </button>
                 )}
                 {/* delete on hover (both image & audio) */}
                 {canRemove && (

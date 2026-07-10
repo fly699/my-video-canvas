@@ -44,6 +44,7 @@ import { CustomEdge } from "../components/canvas/CustomEdge";
 import { ContextMenu } from "../components/canvas/ContextMenu";
 import { CollaboratorCursors } from "../components/canvas/CollaboratorCursors";
 import { FloatingAssetPanel } from "../components/canvas/FloatingAssetPanel";
+import { CanvasLeftPanel } from "../components/canvas/CanvasLeftPanel";
 import { CharacterLibraryPanel } from "../components/canvas/CharacterLibraryPanel";
 import { PromptLibraryPanel } from "../components/canvas/PromptLibraryPanel";
 import { setLibraryCharacters } from "../lib/characterConditioning";
@@ -153,6 +154,7 @@ import {
   Wand2,
   Compass,
   Bell,
+  PanelLeft,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -459,6 +461,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showFilmstrip, setShowFilmstrip] = usePersistentState<boolean>(
     "ui:panel:filmstrip:v1", false, { validate: validateBool, crossTab: false },
   );
+  // LibTV 化 2.4：资产管理左栏（画布大纲 + 资产双 tab），底部 dock「资产管理」开关。
+  const [showLeftPanel, setShowLeftPanel] = usePersistentState<boolean>(
+    "ui:panel:leftpanel:v1", false, { validate: validateBool, crossTab: false },
+  );
   const [showTimeline, setShowTimeline] = usePersistentState<boolean>(
     "ui:panel:timeline:v1", false, { validate: validateBool, crossTab: false },
   );
@@ -535,13 +541,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const themeIsDark = THEMES.find((t) => t.id === theme)?.dark ?? true;
-  const isLight = !themeIsDark || canvasMode === "creative";
+  // LibTV 化 3.1：创意模式为 LibTV 暗色皮肤——一律按暗分支处理（minimap 遮罩等）。
+  const isLight = canvasMode === "creative" ? false : !themeIsDark;
   // Effective canvas background: in "follow theme" mode use the theme's own
   // --c-canvas (so switching theme updates it) with a theme-appropriate pattern
   // color; otherwise use the user's explicit picker color.
   const effectiveBgColor = canvasBg.followTheme ? "var(--c-canvas)" : canvasBg.bgColor;
   const effectivePatternColor = canvasBg.followTheme
-    ? (themeIsDark ? "oklch(0.32 0.010 260 / 0.6)" : "oklch(0.60 0.010 260 / 0.5)")
+    ? (!isLight ? "oklch(0.32 0.010 260 / 0.6)" : "oklch(0.60 0.010 260 / 0.5)")
     : canvasBg.patternColor;
   // Auto-show the filmstrip when ENTERING creative mode and hide when LEAVING —
   // but only on an actual mode transition, so the persisted open-state isn't
@@ -2409,8 +2416,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <DropdownMenuItem onClick={() => setShowNotifySettings(true)}><Bell className="w-3.5 h-3.5 mr-2" /> 产物推送设置</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowPresentation(true)}><Play className="w-3.5 h-3.5 mr-2" /> 演示模式</DropdownMenuItem>
 
-              {/* 手机窄屏：顶栏放不下的中频按钮（.topbar-mid 已隐藏）收进这里 */}
-              {isMobile && (<>
+              {/* 手机窄屏 / 创意模式（LibTV 化 3.2 顶栏精简）：顶栏隐藏的中频按钮
+                  （.topbar-mid）收进这里，功能不丢只换入口。 */}
+              {(isMobile || canvasMode === "creative") && (<>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>工具</DropdownMenuLabel>
                 <DropdownMenuItem onClick={() => setShowTemplates((v) => !v)}><LayoutGrid className="w-3.5 h-3.5 mr-2" /> 快速模板</DropdownMenuItem>
@@ -2427,6 +2435,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <DropdownMenuSeparator />
               <DropdownMenuLabel>视图 / 面板</DropdownMenuLabel>
               {!isPopout && <DropdownMenuItem onClick={() => setShowStatsSidebar((v) => !v)}><BarChart2 className="w-3.5 h-3.5 mr-2" /> 画布统计</DropdownMenuItem>}
+              <DropdownMenuItem onClick={() => setShowLeftPanel((v) => !v)}><PanelLeft className="w-3.5 h-3.5 mr-2" /> 资产管理（大纲 + 资产）</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowFilmstrip((v) => !v)}><Film className="w-3.5 h-3.5 mr-2" /> 胶片条</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowTimeline((v) => !v)}><ListVideo className="w-3.5 h-3.5 mr-2" /> 时间轴预览</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowArcPicker(true)}><Spline className="w-3.5 h-3.5 mr-2" /> 叙事弧线编排</DropdownMenuItem>
@@ -3026,6 +3035,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
             </Tooltip>
             <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />
 
+            {/* LibTV 化 2.4：资产管理左栏开关（画布大纲 + 资产双 tab） */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  data-tb-sec
+                  onClick={() => setShowLeftPanel((v) => !v)}
+                  className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+                  style={{ color: showLeftPanel ? "oklch(0.72 0.18 285)" : "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = showLeftPanel ? "oklch(0.72 0.18 285)" : "var(--c-t3)"; }}
+                >
+                  <PanelLeft className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">资产管理（画布大纲 + 资产）</TooltipContent>
+            </Tooltip>
+
             {/* Add node — primary action (hidden for viewers) */}
             {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
@@ -3552,6 +3578,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
         {showAssets && (
           <FloatingAssetPanel projectId={projectId} onClose={() => setShowAssets(false)} />
         )}
+
+        {/* ── LibTV 化 2.4：资产管理左栏（画布大纲 + 资产双 tab，左侧滑入） ── */}
+        <CanvasLeftPanel open={showLeftPanel && !isPopout} projectId={projectId} onClose={() => setShowLeftPanel(false)} />
 
         {/* ── Stats sidebar ── */}
         <div
