@@ -541,13 +541,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const { mode: canvasMode } = useCanvasMode();
   const { theme } = useTheme();
   const themeIsDark = THEMES.find((t) => t.id === theme)?.dark ?? true;
-  const isLight = !themeIsDark || canvasMode === "creative";
+  // LibTV 化 3.1：创意模式为 LibTV 暗色皮肤——一律按暗分支处理（minimap 遮罩等）。
+  const isLight = canvasMode === "creative" ? false : !themeIsDark;
   // Effective canvas background: in "follow theme" mode use the theme's own
   // --c-canvas (so switching theme updates it) with a theme-appropriate pattern
   // color; otherwise use the user's explicit picker color.
   const effectiveBgColor = canvasBg.followTheme ? "var(--c-canvas)" : canvasBg.bgColor;
   const effectivePatternColor = canvasBg.followTheme
-    ? (themeIsDark ? "oklch(0.32 0.010 260 / 0.6)" : "oklch(0.60 0.010 260 / 0.5)")
+    ? (!isLight ? "oklch(0.32 0.010 260 / 0.6)" : "oklch(0.60 0.010 260 / 0.5)")
     : canvasBg.patternColor;
   // Auto-show the filmstrip when ENTERING creative mode and hide when LEAVING —
   // but only on an actual mode transition, so the persisted open-state isn't

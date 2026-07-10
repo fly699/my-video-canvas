@@ -209,7 +209,9 @@ export const BaseNode = memo(function BaseNode({
   const { uiStyle } = useUIStyle();
   const isStudio = uiStyle === "studio";
   const isCreative = canvasMode === "creative";
-  const isLight = theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper" || isCreative;
+  // LibTV 化 3.1：创意模式换为 LibTV 暗色皮肤——不论 theme 亮暗，创意一律走暗分支
+  //（此前创意是强制暖白、被并入 isLight；现在反过来强制排除）。
+  const isLight = !isCreative && (theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper");
   const hasHero = heroMedia != null;
   // 节点 LOD：缩放很小时（<0.3）画布上一屏可挤下几十上百个节点，此时逐个渲染命令栏/
   // 参数表/工具条纯属浪费。用 useStore 只取「是否低于阈值」的布尔——仅在跨越阈值时才
@@ -642,8 +644,9 @@ export const BaseNode = memo(function BaseNode({
         ? `2px solid ${borderTint}`
         : `1px solid ${borderTint}99`
       : isCreative
+        // LibTV：选中态反色（近白）强调，常态低透明白细边。
         ? selVis
-          ? `2px solid ${config.color}`
+          ? `2px solid var(--ui-accent, ${config.color})`
           : `1px solid var(--c-bd2)`
         : selVis
           ? `2px solid ${config.color}`

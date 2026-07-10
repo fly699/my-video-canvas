@@ -519,28 +519,34 @@
     color-scheme: light;
   }
 
-  /* ── Creative Mode — LibTV-inspired whiteboard canvas ─────────────────────── */
-  /* MUST appear after all theme blocks to win equal-specificity (0-2-0) cascade. */
+  /* ── Creative Mode — LibTV dark skin（LibTV 化 3.1 色板落地）──────────────── */
+  /* 逐帧分析 LibTV 定标：近黑画布（≈#0d0e10）+ 深灰大圆角卡（≈#1a1b1e）+
+     低透明细白边框/连线 + 反色（近白）强调。整组变量覆盖所有 data-theme 块
+     （MUST appear after all theme blocks to win equal-specificity cascade）。 */
   :root[data-canvas-mode="creative"] {
-    --c-canvas:   oklch(0.940 0.008 85);    /* warm paper — deeper so cards pop */
-    --c-base:     oklch(0.998 0.003 80);    /* warm white panels */
-    --c-surface:  oklch(0.980 0.006 80);    /* warm white cards */
-    --c-elevated: oklch(0.998 0.003 80);    /* elevated above surface */
-    --c-overlay:  oklch(0.952 0.008 80);    /* panel overlays — clearly different */
-    --c-input:    oklch(0.945 0.008 80);    /* input bg — clearly recessed */
-    --c-bd1:      oklch(0.872 0.008 80);    /* visible divider */
-    --c-bd2:      oklch(0.795 0.010 80);    /* node borders */
-    --c-bd3:      oklch(0.685 0.012 80);    /* stronger border */
-    --c-t1:       oklch(0.120 0.014 60);    /* primary text — warm near-black */
-    --c-t2:       oklch(0.295 0.012 60);    /* secondary text */
-    --c-t3:       oklch(0.448 0.010 60);    /* labels readable */
-    --c-t4:       oklch(0.560 0.008 60);    /* placeholder — still legible */
-    --c-node-bg:  oklch(0.998 0.003 80);    /* warm white cards */
-    --c-node-shadow-rest:     0 1px 3px oklch(0.50 0.04 80 / 0.10), 0 3px 14px oklch(0.50 0.04 80 / 0.10);
-    --c-node-shadow-hover:    0 4px 18px oklch(0.50 0.04 80 / 0.14), 0 1px 5px oklch(0.50 0.04 80 / 0.10);
-    --c-node-shadow-selected: 0 8px 30px oklch(0.50 0.04 80 / 0.18), 0 2px 8px oklch(0.50 0.04 80 / 0.12);
-    --c-node-shadow-run:      0 8px 24px oklch(0.50 0.04 80 / 0.14);
-    color-scheme: light;
+    --c-canvas:   oklch(0.165 0.004 260);   /* near-black canvas ≈ #0d0e10 */
+    --c-base:     oklch(0.205 0.004 260);   /* panels above canvas */
+    --c-surface:  oklch(0.230 0.004 260);   /* dark-gray cards ≈ #1a1b1e */
+    --c-elevated: oklch(0.268 0.005 260);   /* elevated above surface */
+    --c-overlay:  oklch(0.295 0.005 260);   /* panel overlays */
+    --c-input:    oklch(0.180 0.004 260);   /* recessed input */
+    --c-bd1:      oklch(1 0 0 / 0.07);      /* faint white divider */
+    --c-bd2:      oklch(1 0 0 / 0.12);      /* node borders — low-alpha white */
+    --c-bd3:      oklch(1 0 0 / 0.20);      /* stronger border */
+    --c-t1:       oklch(0.955 0.002 260);   /* primary text — near-white */
+    --c-t2:       oklch(0.820 0.003 260);   /* secondary text */
+    --c-t3:       oklch(0.640 0.004 260);   /* labels */
+    --c-t4:       oklch(0.500 0.004 260);   /* placeholder */
+    --c-node-bg:  oklch(0.230 0.004 260);   /* dark-gray cards */
+    /* 反色强调（LibTV：强调按钮/选中态用近白反色，而非彩色） */
+    --ui-accent:  oklch(0.94 0.005 260);
+    /* 大圆角卡（BaseNode 节点根用 var(--ui-radius-node, 16px)） */
+    --ui-radius-node: 20px;
+    --c-node-shadow-rest:     0 1px 3px oklch(0 0 0 / 0.35), 0 4px 18px oklch(0 0 0 / 0.35);
+    --c-node-shadow-hover:    0 6px 24px oklch(0 0 0 / 0.45), 0 1px 5px oklch(0 0 0 / 0.35);
+    --c-node-shadow-selected: 0 10px 36px oklch(0 0 0 / 0.55), 0 2px 8px oklch(0 0 0 / 0.40);
+    --c-node-shadow-run:      0 8px 26px oklch(0 0 0 / 0.45);
+    color-scheme: dark;
   }
 
   /* ── UI style skin: "studio" (media-first cinema). Orthogonal to data-theme.
@@ -1469,32 +1475,33 @@ button:active:not(:disabled) {
   filter: none;
 }
 
-/* Creative mode: ReactFlow background gets warm dot grid */
+/* Creative mode (LibTV dark): near-black canvas + faint dot grid（极淡网格点） */
 :root[data-canvas-mode="creative"] .react-flow__background {
   background-color: var(--c-canvas) !important;
 }
 :root[data-canvas-mode="creative"] .react-flow__background pattern circle,
 :root[data-canvas-mode="creative"] .react-flow__background pattern rect {
-  fill: oklch(0.70 0.018 80) !important;
-  opacity: 0.28;
+  fill: oklch(0.62 0.004 260) !important;
+  opacity: 0.22;
 }
 
-/* Creative mode: top bar adapts to light theme via --c-base token */
+/* Creative mode (LibTV dark): chrome surfaces follow the dark tokens（不再硬编码白底，
+   跟随 --c-base 令后续调色一处生效） */
 :root[data-canvas-mode="creative"] .canvas-topbar {
-  background: oklch(1.00 0 0 / 0.92) !important;
-  border-bottom-color: var(--c-bd2) !important;
+  background: color-mix(in oklch, var(--c-base) 92%, transparent) !important;
+  border-bottom-color: var(--c-bd1) !important;
 }
 
 /* Creative mode: left panel adapts */
 :root[data-canvas-mode="creative"] .canvas-left-panel {
-  background: oklch(1.00 0 0 / 0.88) !important;
-  border-right-color: var(--c-bd2) !important;
+  background: color-mix(in oklch, var(--c-base) 90%, transparent) !important;
+  border-right-color: var(--c-bd1) !important;
 }
 
 /* Creative mode: bottom toolbar adapts */
 :root[data-canvas-mode="creative"] .canvas-bottombar {
-  background: oklch(0.998 0.003 80 / 0.92) !important;
-  border-top-color: var(--c-bd2) !important;
+  background: color-mix(in oklch, var(--c-base) 92%, transparent) !important;
+  border-top-color: var(--c-bd1) !important;
 }
 
 /* 横排工具栏：按钮多时不再溢出到屏幕外把末尾挤没——限制不超过视口宽度，超出则自动换行到多排，
@@ -1524,20 +1531,20 @@ button:active:not(:disabled) {
   flex-direction: column !important;
 }
 
-/* Creative mode edge lines */
+/* Creative mode (LibTV dark) edge lines：低透明细白线 */
 :root[data-canvas-mode="creative"] .react-flow__edge-path {
-  stroke-width: 1 !important;
-  stroke: oklch(0.72 0.018 80) !important;
-  stroke-opacity: 0.55 !important;
+  stroke-width: 1.25 !important;
+  stroke: oklch(0.98 0 0) !important;
+  stroke-opacity: 0.22 !important;
 }
 :root[data-canvas-mode="creative"] .react-flow__edge.selected .react-flow__edge-path {
-  stroke-opacity: 0.85 !important;
+  stroke-opacity: 0.7 !important;
 }
 
-/* Creative mode: filmstrip adapts to warm theme */
+/* Creative mode: filmstrip follows dark tokens */
 :root[data-canvas-mode="creative"] .canvas-filmstrip {
-  background: oklch(0.998 0.003 80 / 0.95) !important;
-  border-top-color: var(--c-bd2) !important;
+  background: color-mix(in oklch, var(--c-base) 94%, transparent) !important;
+  border-top-color: var(--c-bd1) !important;
 }
 
 /* Hero placeholder (no content yet) */
