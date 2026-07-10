@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Server, Plus, Trash2, Plug, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Server, Plus, Trash2, Plug, Loader2, CheckCircle2, XCircle, Star } from "lucide-react";
 
 // 管理后台「ComfyUI 服务器」独立配置页：维护全局服务器列表（comfy_settings.servers，
 // 所有用户/所有节点/深度提取共用），每台可一键「测试」连通性。
@@ -42,6 +42,10 @@ export function ComfyServersPanel() {
     if (!confirm(`确认从全局列表移除 ${u}？`)) return;
     setMut.mutate({ servers: servers.filter((x) => x !== u) }, { onSuccess: () => toast.success("已移除") });
   };
+  // 设为默认 = 移到列表第一位（服务端 resolveComfyBase 取第一台作缺省）。
+  const makeDefault = (u: string) => {
+    setMut.mutate({ servers: [u, ...servers.filter((x) => x !== u)] }, { onSuccess: () => toast.success(`已把 ${u} 设为默认`) });
+  };
   const test = async (u: string) => {
     setTesting(u);
     try {
@@ -61,8 +65,8 @@ export function ComfyServersPanel() {
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ ...card, fontSize: 12.5, color: "var(--c-t3)", lineHeight: 1.7 }}>
         这里维护 <b style={{ color: "var(--c-t1)" }}>全局 ComfyUI 服务器列表</b>——所有用户、所有 ComfyUI 节点、深度提取（3D 换视角）、工作流分析共用。
-        地址解析优先级：<b style={{ color: "var(--c-t1)" }}>节点自定义地址 → 环境变量 COMFYUI_BASE_URL → 本列表第一台</b>。
-        节点没填自定义地址时，会自动用本列表的第一台，请把最常用的放在最前（先删后加即可调序）。
+        地址解析优先级：<b style={{ color: "var(--c-t1)" }}>节点自定义地址 → 环境变量 COMFYUI_BASE_URL → 本列表第一台（默认）</b>。
+        节点没填自定义地址时自动用默认台；点任意一台的「设为默认」即可切换。
       </div>
 
       {/* 添加 */}
@@ -102,6 +106,11 @@ export function ComfyServersPanel() {
                     : <><XCircle size={11} /> 离线{st?.error ? `：${st.error}` : ""}</>}
                 </div>
               </div>
+              {i !== 0 && (
+                <button style={btnGhost} onClick={() => makeDefault(u)} disabled={setMut.isPending} title="设为默认（节点未填自定义地址时使用这台）">
+                  <Star size={13} /> 设为默认
+                </button>
+              )}
               <button style={btnGhost} onClick={() => void test(u)} disabled={testing === u}>
                 {testing === u ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />} 测试
               </button>
