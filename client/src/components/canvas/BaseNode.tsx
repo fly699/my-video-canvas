@@ -84,6 +84,51 @@ interface BaseNodeProps {
   onHeaderHoverChange?: (hovering: boolean) => void;
 }
 
+/** LibTV 化 3.3：创意模式英雄区右下角的尺寸标注 chip——读取容器内首个
+ *  img/video 的自然分辨率（LibTV 节点卡「大预览主体 + 尺寸标注」形态）。
+ *  用事件捕获 + MutationObserver 兜底：媒体懒加载/结果替换时自动刷新。 */
+function HeroSizeBadge({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | null> }) {
+  const [dim, setDim] = useState<string | null>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    let raf = 0;
+    const read = () => {
+      const img = host.querySelector("img");
+      const vid = host.querySelector("video");
+      if (img && img.naturalWidth) setDim(`${img.naturalWidth}×${img.naturalHeight}`);
+      else if (vid && vid.videoWidth) setDim(`${vid.videoWidth}×${vid.videoHeight}`);
+      else setDim(null);
+    };
+    read();
+    const onLoad = () => read();
+    host.addEventListener("load", onLoad, true);           // <img> load（捕获）
+    host.addEventListener("loadedmetadata", onLoad, true); // <video> 元数据
+    const mo = new MutationObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(read); });
+    mo.observe(host, { childList: true, subtree: true });
+    return () => {
+      host.removeEventListener("load", onLoad, true);
+      host.removeEventListener("loadedmetadata", onLoad, true);
+      mo.disconnect(); cancelAnimationFrame(raf);
+    };
+  }, [hostRef]);
+  if (!dim) return null;
+  return (
+    <span
+      className="nodrag pointer-events-none"
+      style={{
+        position: "absolute", right: 6, bottom: 6, zIndex: 5,
+        fontSize: 9, fontWeight: 700, letterSpacing: "0.03em", fontVariantNumeric: "tabular-nums",
+        padding: "2px 6px", borderRadius: 6, lineHeight: 1.4,
+        background: "oklch(0 0 0 / 0.55)", color: "oklch(0.92 0 0)",
+        border: "1px solid oklch(1 0 0 / 0.14)", backdropFilter: "blur(6px)",
+      }}
+    >
+      {dim}
+    </span>
+  );
+}
+
 /** 从拖拽数据里提取图片素材的 URL（仅 image 类型）。 */
 function imageUrlsFromAssetDrag(dt: DataTransfer): string[] {
   const raw = dt.getData("application/x-asset-list");
@@ -213,6 +258,7 @@ export const BaseNode = memo(function BaseNode({
   //（此前创意是强制暖白、被并入 isLight；现在反过来强制排除）。
   const isLight = !isCreative && (theme === "light" || theme === "warm" || theme === "mint" || theme === "lavender" || theme === "paper");
   const hasHero = heroMedia != null;
+  const heroMediaRef = useRef<HTMLDivElement>(null); // LibTV 化 3.3：尺寸标注读取宿主
   // 节点 LOD：缩放很小时（<0.3）画布上一屏可挤下几十上百个节点，此时逐个渲染命令栏/
   // 参数表/工具条纯属浪费。用 useStore 只取「是否低于阈值」的布尔——仅在跨越阈值时才
   // 触发本节点重渲染（而非每次缩放都重渲），越阈值后隐藏交互 body（保留缩略图英雄区，
@@ -1452,8 +1498,10 @@ export const BaseNode = memo(function BaseNode({
 
       {/* ── Hero media (creative mode only, shown via CSS) ── */}
       {hasHero && (
-        <div className="node-hero-media">
+        <div className="node-hero-media" ref={heroMediaRef}>
           {heroMedia}
+          {/* LibTV 化 3.3：创意模式大预览主体的尺寸标注（右下角分辨率 chip） */}
+          {isCreative && <HeroSizeBadge hostRef={heroMediaRef} />}
           {/* Studio: fullscreen lightbox trigger — 仅图片结果。视频结果不再叠加自定义全屏钮：
               原生控制条自带的全屏能真正铺满屏幕，双按钮只会让人点到不铺满的那个（用户实测反馈）；
               水印开启时原生全屏被禁，但 WatermarkedVideo 自带的放大预览钮会顶上。图片无原生全屏，保留。 */}
