@@ -154,7 +154,8 @@ export function useMention(
       libItems.push({ name, kind: a.type, fromLibrary: true, asset: a });
     }
     const pool = [...chars, ...libItems];
-    const filtered = (q ? pool.filter((i) => i.name.toLowerCase().includes(q)) : pool).slice(0, 9);
+    // 限 7 条：候选区不出滚动条，固定底部的「上传」与全部候选同屏可见；再多靠输入过滤收敛。
+    const filtered = (q ? pool.filter((i) => i.name.toLowerCase().includes(q)) : pool).slice(0, 7);
     // 「上传媒体」入口常驻最后一项：免先进素材库，上传即引用。
     const items: MentionItem[] = [...filtered, { name: "上传图片 / 媒体…", kind: "upload" }];
     setSt({ open: true, query, start: caret - m[0].length, items, active: 0, rect: el.getBoundingClientRect() });
@@ -238,7 +239,7 @@ export function useMention(
   }, [select, close]);
 
   // 视口下方空间不足时向上翻，避免靠近屏幕底部的节点其下拉被裁切、看不到也选不了。
-  const MENTION_MENU_MAX = 240;
+  const MENTION_MENU_MAX = 310;
   const flipUp = !!st.rect && typeof window !== "undefined" && st.rect.bottom + MENTION_MENU_MAX + 8 > window.innerHeight && st.rect.top > MENTION_MENU_MAX;
   const dropdown = st.open && st.rect ? createPortal(
     <div
@@ -247,13 +248,16 @@ export function useMention(
       style={{
         position: "fixed", left: st.rect.left, zIndex: 100002,
         ...(flipUp ? { bottom: window.innerHeight - st.rect.top + 4 } : { top: st.rect.bottom + 4 }),
-        minWidth: Math.max(180, st.rect.width), maxWidth: 320, maxHeight: MENTION_MENU_MAX, overflowY: "auto",
+        minWidth: Math.max(180, st.rect.width), maxWidth: 320, maxHeight: MENTION_MENU_MAX,
+        // 「上传」项 sticky 固定底部：容器不滚，候选列表单独滚——上传入口始终可见。
+        display: "flex", flexDirection: "column", overflow: "hidden",
         background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 10,
         boxShadow: "0 12px 36px oklch(0 0 0 / 0.45)", padding: 4,
       }}
     >
-      <div style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "3px 8px 4px" }}>选择角色 / 素材引用，或直接上传（输入即搜索）</div>
-      {st.items.map((it, i) => (
+      <div style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "3px 8px 4px", flexShrink: 0 }}>选择角色 / 素材引用，或直接上传（输入即搜索）</div>
+      <div className="nowheel" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      {st.items.filter((it) => it.kind !== "upload").map((it, i) => (
         <button
           key={it.kind + it.name + (it.asset?.url ?? "")}
           onClick={() => select(it)}
@@ -286,6 +290,29 @@ export function useMention(
           </span>
         </button>
       ))}
+      </div>
+      {/* 「上传」入口固定在底部（不随候选列表滚动，始终可见） */}
+      {(() => {
+        const upIdx = st.items.findIndex((x) => x.kind === "upload");
+        if (upIdx < 0) return null;
+        const it = st.items[upIdx];
+        return (
+          <button
+            onClick={() => select(it)}
+            onMouseEnter={() => setSt((x) => ({ ...x, active: upIdx }))}
+            className="nodrag flex items-center gap-2 w-full text-left"
+            style={{
+              flexShrink: 0, padding: "6px 8px", cursor: "pointer", border: "none", borderTop: "1px solid var(--c-bd2)", marginTop: 2,
+              background: upIdx === st.active ? "oklch(0.66 0.18 30 / 0.14)" : "transparent",
+              color: "oklch(0.72 0.16 250)", fontSize: 12,
+            }}
+          >
+            <Upload className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "oklch(0.72 0.16 250)" }} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
+            <span style={{ marginLeft: "auto", fontSize: 9.5, color: "var(--c-t4)", flexShrink: 0 }}>本地文件</span>
+          </button>
+        );
+      })()}
     </div>,
     document.body,
   ) : null;
