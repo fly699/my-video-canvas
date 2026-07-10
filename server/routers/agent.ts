@@ -90,9 +90,19 @@ export function allocateContextBudget(args: {
 }
 
 // ── Higgsfield MCP 产物落地 ───────────────────────────────────────────────────
-/** Higgsfield MCP 产物链接判定：按主机名含 "higgsfield"；其余 URL 一律不动。 */
+/** Higgsfield MCP 产物链接判定。真实产物常挂 CloudFront（如
+ *  d8j0ntlcm91z4.cloudfront.net/user_x/hf_20260710_….png），域名不含品牌词（真机截图实锤）——
+ *  故除主机名含 higgsfield 外，还识别「*.cloudfront.net + 路径含 hf_/higgsfield」。
+ *  其余 URL 一律不动；将来换 CDN 可用 MCP_ASSET_HOST_HINTS（逗号分隔主机名子串）追加。 */
 export function isHiggsfieldUrl(u: string): boolean {
-  try { return new URL(u).hostname.toLowerCase().includes("higgsfield"); } catch { return false; }
+  try {
+    const url = new URL(u);
+    const host = url.hostname.toLowerCase();
+    if (host.includes("higgsfield")) return true;
+    if (host.endsWith(".cloudfront.net") && /\/(hf_|higgsfield)/i.test(url.pathname)) return true;
+    const hints = (process.env.MCP_ASSET_HOST_HINTS ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+    return hints.some((h) => host.includes(h));
+  } catch { return false; }
 }
 /** 从文本抽出全部 Higgsfield URL（去重、去尾部标点）。 */
 export function extractHiggsfieldUrls(text: string): string[] {
@@ -460,7 +470,14 @@ ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.
             if (inOps.includes(oldUrl)) {
               operations = JSON.parse(JSON.stringify(operations).split(oldUrl).join(r.url)) as AgentOperation[];
             } else {
-              operations.push({ op: "create", tempId: `mcp_asset_${++assetIdx}`, nodeType: "asset", payload: { url: r.url, name: r.name, type: r.type } } as unknown as AgentOperation);
+              // 优先把结果图挂到本轮新建且还没有图的图像节点上（模型常建「图像节点记录
+              // 提示词」但不带图——真机截图实锤「图片节点无图像」）；没有合适节点再补 asset 节点。
+              const ops = operations as Array<{ op?: string; nodeType?: string; payload?: Record<string, unknown> }>;
+              const target = r.type === "image"
+                ? ops.find((o) => o?.op === "create" && (o.nodeType === "image_gen" || o.nodeType === "comfyui_image") && !(o.payload as { imageUrl?: string } | undefined)?.imageUrl)
+                : undefined;
+              if (target) target.payload = { ...(target.payload ?? {}), imageUrl: r.url };
+              else operations.push({ op: "create", tempId: `mcp_asset_${++assetIdx}`, nodeType: "asset", payload: { url: r.url, name: r.name, type: r.type } } as unknown as AgentOperation);
             }
             reply = reply.split(oldUrl).join(`〔${r.type === "video" ? "视频" : r.type === "image" ? "图片" : "文件"}已转存到素材库并放入画布〕`);
           }
