@@ -6,7 +6,7 @@ installDomTranslationGuard();
 import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink, TRPCClientError } from "@trpc/client";
+import { httpBatchStreamLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
@@ -58,7 +58,10 @@ queryClient.getMutationCache().subscribe(event => {
 
 const trpcClient = trpc.createClient({
   links: [
-    httpBatchLink({
+    // 流式链路（非普通 httpBatchLink）：用 chunked 传输、请求一到即刷出响应首字节，绕过公网
+    // Cloudflare 隧道的「首字节 ~100s（524）」超时——长 LLM 生成（画布助手/脚本/聊天等所有
+    // 同步 procedure）不再被网关掐断返回 HTML、导致前端 `Unexpected token '<'`。一处覆盖全站。
+    httpBatchStreamLink({
       url: "/api/trpc",
       transformer: superjson,
       // 全局透传用户的 kie 临时 key（工具栏填写的，存 localStorage）。这样所有用到 kie 的
