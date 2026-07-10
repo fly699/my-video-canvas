@@ -1502,6 +1502,13 @@ export const BaseNode = memo(function BaseNode({
           {heroMedia}
           {/* LibTV 化 3.3：创意模式大预览主体的尺寸标注（右下角分辨率 chip） */}
           {isCreative && <HeroSizeBadge hostRef={heroMediaRef} />}
+          {/* LibTV 化 3.4：创意模式生成中的英雄区骨架流光 + 进度百分比覆盖层
+              （与标题栏下常驻进度条同一 payload.status/progress 数据源） */}
+          {isCreative && genBusy && (
+            <div className="node-hero-genmask">
+              <span>{genProgress != null ? `${Math.round(genProgress)}%` : "生成中…"}</span>
+            </div>
+          )}
           {/* Studio: fullscreen lightbox trigger — 仅图片结果。视频结果不再叠加自定义全屏钮：
               原生控制条自带的全屏能真正铺满屏幕，双按钮只会让人点到不铺满的那个（用户实测反馈）；
               水印开启时原生全屏被禁，但 WatermarkedVideo 自带的放大预览钮会顶上。图片无原生全屏，保留。 */}

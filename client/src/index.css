@@ -1568,6 +1568,52 @@ button:active:not(:disabled) {
   background: var(--c-input);
 }
 
+/* ── LibTV 化 3.4：创意模式 空态/生成态 统一 ─────────────────────────────────
+   空态：深底 + 低透明白虚线框（与低透明白连线/边框同语汇）。
+   生成态：英雄区骨架流光扫过 + 中央进度百分比（数据同标题栏下常驻进度条，
+   payload.status/progress 同源）。 */
+:root[data-canvas-mode="creative"] .node-hero-placeholder {
+  background: var(--c-input);
+  border: 1px dashed oklch(1 0 0 / 0.14);
+  border-radius: 12px;
+  margin: 8px;
+}
+.node-hero-genmask {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(0 0 0 / 0.38);
+  backdrop-filter: blur(2px);
+  overflow: hidden;
+  pointer-events: none;
+}
+.node-hero-genmask::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 38%, oklch(1 0 0 / 0.10) 50%, transparent 62%);
+  background-size: 240% 100%;
+  animation: hero-shimmer 1.6s linear infinite;
+}
+@keyframes hero-shimmer {
+  from { background-position: 130% 0; }
+  to   { background-position: -110% 0; }
+}
+.node-hero-genmask > span {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: oklch(0.96 0 0);
+  text-shadow: 0 1px 6px oklch(0 0 0 / 0.6);
+}
+@media (prefers-reduced-motion: reduce) {
+  .node-hero-genmask::before { animation: none; }
+}
+
 /* Creative mode: node cards get slightly more width */
 :root[data-canvas-mode="creative"] .react-flow__node > div {
   /* Handled by JS — see BaseNode width scaling */
