@@ -32,6 +32,36 @@ export function extractJsonObjects(s: string): string[] {
   return out;
 }
 
+/** 超长输入自适应压缩：30k 级大纲 + 完整历史/画布摘要 + 16000 输出预算会让自建 27B 级模型
+ *  单次生成耗时数分钟，撞上 llm.ts 的 fetch 超时（自建 300s / 云端 120s）而报「请求超时」。
+ *  消息超过阈值时收紧上下文与输出预算以缩短单次生成耗时：history 只留最近 2 条且每条截短、
+ *  graphSummary 截小、maxTokens 16000→6000（自建模型 llm.ts 有 8192 思维链下限，实际生效
+ *  8192，仍约减半）。正常输入原样返回，行为不变。 */
+export const LONG_INPUT_THRESHOLD = 8000;
+export function adaptToLongInput(args: {
+  message: string;
+  history?: { role: "user" | "assistant"; content: string }[];
+  graphSummary?: string;
+}): {
+  longInput: boolean;
+  history: { role: "user" | "assistant"; content: string }[];
+  graphSummary: string;
+  maxTokens: number;
+} {
+  const graphSummary = args.graphSummary?.trim() ?? "";
+  const history = args.history ?? [];
+  if (args.message.length <= LONG_INPUT_THRESHOLD) {
+    return { longInput: false, history, graphSummary, maxTokens: 16000 };
+  }
+  const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…（已截断）" : s);
+  return {
+    longInput: true,
+    history: history.slice(-2).map((m) => ({ role: m.role, content: clip(m.content, 1000) })),
+    graphSummary: clip(graphSummary, 4000),
+    maxTokens: 6000,
+  };
+}
+
 // ── Agent (Copilot) router ────────────────────────────────────────────────────
 // `chat` is the agent's "planning brain": it turns a natural-language request +
 // the current graph into a set of canvas operations (create/connect/update/
@@ -83,6 +113,9 @@ export const agentRouter = router({
       if (!isCustomLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
 
       const model = input.model ?? FACTORY_DEFAULT_MODELS.llm;
+
+      // 超长输入（如整篇大纲）自适应压缩上下文与输出预算，避免单次生成撞 LLM fetch 超时。
+      const ctxBudget = adaptToLongInput(input);
 
       // Before planning, refresh template knowledge: incrementally analyze any
       // newly-added / changed templates (capped so a turn isn't blocked on a big
@@ -205,7 +238,7 @@ export const agentRouter = router({
 ${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}
 
 # 当前画布
-${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}
+${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}
 
 # 输出要求
 严格只输出一个 JSON 对象（不要 markdown 代码块、不要任何多余文字），结构如下：
@@ -246,18 +279,19 @@ ${input.graphSummary?.trim() || "（空画布）"}${characterSection}${input.pre
         : input.message;
       const messages: Message[] = [
         { role: "system", content: system },
-        ...(input.history ?? []).map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+        ...ctxBudget.history.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: userContent },
       ];
 
       // A full multi-shot plan (script + N storyboards + connects + merge) is a
       // large JSON object. 4000 tokens truncated it → JSON.parse failed → the raw
       // (truncated) JSON leaked into the chat as "乱码". Give it plenty of room
-      // (capped per-model by resolveMaxTokens). NB: we deliberately do NOT force
+      // (capped per-model by resolveMaxTokens; 超长输入时由 adaptToLongInput 压到 6000
+      // 以缩短单次生成耗时). NB: we deliberately do NOT force
       // response_format json_object — the default model is Claude (proxied), where
       // the OpenAI-style flag isn't reliably supported; the robust parse below
       // handles fences/prose instead.
-      const response = await invokeLLMWithKie(ctx, { messages, model, maxTokens: 16000 });
+      const response = await invokeLLMWithKie(ctx, { messages, model, maxTokens: ctxBudget.maxTokens });
       const text = extractTextContent(response);
 
       let reply = text.trim();

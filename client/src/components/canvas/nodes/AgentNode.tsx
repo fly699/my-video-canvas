@@ -325,7 +325,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   const runChat = async (text: string, baseMessages: AgentMessage[], focusNodeIds?: string[]) => {
     if (!text || chat.isPending) return;
     // 过滤掉管线引导卡（content 为空、仅 UI）——不污染发给 LLM 的对话历史。
-    const history = baseMessages.slice(0, -1).filter((m) => m.content.trim() !== "").map((m) => ({ role: m.role, content: m.content })).slice(-20); // 服务端 history 上限 20，超限会 400
+    const history = baseMessages.slice(0, -1).filter((m) => m.content.trim() !== "").map((m) => ({ role: m.role, content: m.content.slice(0, 8000) })).slice(-20); // 服务端 history 上限 20 条、每条 8000 字符，超限会 400
     // Multi-agent isolation: scope the planning context to THIS agent's own nodes
     // (so it never sees or rewrites another agent's subgraph). An explicit
     // focusNodeIds (e.g. 微调选中) still wins. First plan owns nothing → empty context.

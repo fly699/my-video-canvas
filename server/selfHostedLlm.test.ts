@@ -12,7 +12,7 @@ describe("invokeLLM — 自建端点路由", () => {
     process.env.SELF_HOSTED_LLM_KEY = "sk-test";
     process.env.SELF_HOSTED_LLM_MODELS = "Qwen3.6-35B-A3B-FP8";
     vi.resetModules();
-    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: "你好" } }] }) });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({ choices: [{ message: { content: "你好" } }] }) });
     vi.stubGlobal("fetch", fetchMock);
     const { invokeLLM } = await import("./_core/llm");
     await invokeLLM({ model: "Qwen3.6-35B-A3B-FP8", messages: [{ role: "user", content: "hi" }] });
@@ -27,7 +27,7 @@ describe("invokeLLM — 自建端点路由", () => {
     process.env.SELF_HOSTED_LLM_KEY = "sk-owui";
     process.env.SELF_HOSTED_LLM_MODELS = "qwen2.5:72b";
     vi.resetModules();
-    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: "hi" } }] }) });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({ choices: [{ message: { content: "hi" } }] }) });
     vi.stubGlobal("fetch", fetchMock);
     const { invokeLLM } = await import("./_core/llm");
     await invokeLLM({ model: "qwen2.5:72b", messages: [{ role: "user", content: "hi" }] });
@@ -42,7 +42,7 @@ describe("invokeLLM — 自建端点路由", () => {
     delete process.env.BUILT_IN_FORGE_API_URL;
     delete process.env.POYO_API_KEY;
     vi.resetModules();
-    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: "x" } }] }) });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({ choices: [{ message: { content: "x" } }] }) });
     vi.stubGlobal("fetch", fetchMock);
     const { invokeLLM } = await import("./_core/llm");
     await invokeLLM({ model: "gemini-3-flash-preview", messages: [{ role: "user", content: "hi" }] });
