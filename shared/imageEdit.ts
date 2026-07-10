@@ -52,6 +52,12 @@ export const IMAGE_EDIT_OPS: ImageEditOpSpec[] = [
     promptPlaceholder: "描述目标光照，如「左侧暖色侧光，柔和电影感」",
   },
   {
+    id: "upscale", label: "高清放大", icon: "Sparkles",
+    desc: "内容构图不变，增强细节与锐度（指令式超分）",
+    needsMask: false, needsPrompt: false, needsAspect: false,
+    promptPlaceholder: "可选：补充强调，如「保留胶片颗粒感」",
+  },
+  {
     id: "reframe", label: "改比例 / 重构图", icon: "Crop",
     desc: "重构图到新画幅，主体保持良好构图",
     needsMask: false, needsPrompt: false, needsAspect: true,
@@ -123,6 +129,7 @@ export function comfyTemplateForOp(op: ImageEditOp, hasMask: boolean): "inpaint"
  *  uses the executor default (full denoise inside the mask). */
 export function comfyDenoiseForOp(op: ImageEditOp): number {
   switch (op) {
+    case "upscale": return 0.35;   // enhance only — structure must not drift
     case "relight": return 0.55;   // keep structure, change light
     case "reframe": return 0.5;
     case "remove_bg": return 0.6;
@@ -152,6 +159,8 @@ export function buildImageEditInstruction(
       return `Remove${extra ? extra : " the indicated object"} from the image and realistically fill the area with background consistent in texture, lighting and perspective. Keep everything else unchanged.`;
     case "relight":
       return `Relight the image${extra ? `:${extra}` : " with soft cinematic key lighting"}. Change only the lighting direction, intensity and color temperature — keep the subject, pose, composition and all content identical.`;
+    case "upscale":
+      return `Upscale and enhance this image to a higher-fidelity, high-resolution version. Sharpen fine details, textures and edges, remove blur and compression artifacts. Keep the content, composition, colors, lighting and style exactly identical — do not add, remove or alter anything.${extra}`;
     case "reframe":
       return `Recompose and reframe the image${aspect ? ` to a ${aspect} aspect ratio` : ""}, keeping the main subject well composed and naturally extending or filling the edges as needed.${extra}`;
     default:

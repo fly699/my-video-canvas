@@ -2,7 +2,6 @@ import { useState } from "react";
 import { X, FileText, ChevronUp, ChevronDown } from "lucide-react";
 import { useNodeId } from "@xyflow/react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
-import { useUIStyle } from "../../contexts/UIStyleContext";
 
 interface Props {
   open: boolean;
@@ -42,9 +41,9 @@ export function PromptDock({
   // → 当该工具条会出现时，把本窗再向上让位，避免被覆盖。仅多算一个常量高度，不依赖
   // 工具条实际渲染时机（toolbar 自身固定在节点上沿，dock 在其之上即可）。
   const nodeId = useNodeId();
-  const { uiStyle } = useUIStyle();
+  // LibTV 化后选中浮动工具条在【所有皮肤】渲染（原仅 studio），让位逻辑同步放宽，
+  // 否则专业/创意皮肤下本窗会与工具条重叠。
   const reserveForToolbar = useCanvasStore((s) => {
-    if (uiStyle !== "studio") return 0;
     const n = nodeId ? s.nodes.find((x) => x.id === nodeId) : undefined;
     if (!n || n.data.nodeType === "ai_chat") return 0;
     const sel = !!n.selected || Boolean((n.data.payload as Record<string, unknown> | undefined)?.pinned);
