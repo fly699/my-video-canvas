@@ -407,6 +407,8 @@ export const BaseNode = memo(function BaseNode({
   const gridSliceMut = trpc.imageGrid.slice.useMutation();
   const [gridBusy, setGridBusy] = useState(false);
   const [gridMenuOpen, setGridMenuOpen] = useState(false);
+  // 阶段四 4.1 工具箱下拉（连贯分镜/剧情推演/±5s 画面推演/三视图/表情表）
+  const [toolkitOpen, setToolkitOpen] = useState(false);
 
   const spawnImageResultNode = (nodeTitle: string, urls: string[], heroUrl?: string) => {
     const st = useCanvasStore.getState();
@@ -422,14 +424,18 @@ export const BaseNode = memo(function BaseNode({
     useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
   };
 
-  const handleMultiAngle = async () => {
+  /** 阶段四 4.1 工具箱通用管线：以本图为参考 → 生成宫格 sheet → 自动切分 → 落新节点。
+   *  「多角度/连贯分镜/剧情推演/三视图/表情表」共用（preset 与措辞不同而已）。 */
+  const runGridSheet = async (presetId: string, subject: string, titlePrefix: string, doneLabel: string) => {
     if (gridBusy || !resultImageUrl) return;
-    const preset = getGridPreset("grid9")!;
+    const preset = getGridPreset(presetId);
+    if (!preset) return;
     setGridBusy(true);
-    const tid = toast.loading("多角度生成中（九宫格 → 自动切分）…");
+    setToolkitOpen(false);
+    const tid = toast.loading(`${titlePrefix}生成中（${preset.rows}×${preset.cols} 宫格 → 自动切分）…`);
     try {
       const gen = await gridGenMut.mutateAsync({
-        prompt: buildGridPrompt("the exact same subject and scene shown in the reference image", preset),
+        prompt: buildGridPrompt(subject, preset),
         referenceImageUrl: resultImageUrl,
         aspectRatio: preset.sheetAspect, poyoAspectRatio: preset.sheetAspect, reveAspectRatio: preset.sheetAspect,
         ...(projectId ? { projectId } : {}),
@@ -438,10 +444,37 @@ export const BaseNode = memo(function BaseNode({
       if (!gridUrl) throw new Error("未返回宫格图");
       const sliced = await gridSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, ...(projectId ? { projectId } : {}) });
       if (!sliced.urls.length) throw new Error("切分未产生子图");
-      spawnImageResultNode(`多角度 · ${sliced.urls.length} 张`, sliced.urls);
-      toast.success(`已生成 ${sliced.urls.length} 个机位角度（新节点）`, { id: tid });
+      spawnImageResultNode(`${titlePrefix} · ${sliced.urls.length} 张`, sliced.urls);
+      toast.success(`已生成 ${sliced.urls.length} ${doneLabel}（新节点）`, { id: tid });
     } catch (e) {
-      toast.error("多角度生成失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
+      toast.error(`${titlePrefix}生成失败：` + (e instanceof Error ? e.message : String(e)), { id: tid });
+    } finally { setGridBusy(false); }
+  };
+
+  const handleMultiAngle = () =>
+    runGridSheet("grid9", "the exact same subject and scene shown in the reference image", "多角度", "个机位角度");
+
+  /** 阶段四 4.1 画面推演 ±N 秒：生成「本画面 N 秒前/后」的单帧（同机位同风格的时间外推）。 */
+  const handleTemporalShift = async (deltaSeconds: number) => {
+    if (gridBusy || !resultImageUrl) return;
+    setGridBusy(true);
+    setToolkitOpen(false);
+    const later = deltaSeconds > 0;
+    const n = Math.abs(deltaSeconds);
+    const label = later ? `推演后 ${n} 秒` : `回溯前 ${n} 秒`;
+    const tid = toast.loading(`${label}画面生成中…`);
+    try {
+      const gen = await gridGenMut.mutateAsync({
+        prompt: `the exact same scene, subjects and camera position as the reference image, but exactly ${n} seconds ${later ? "LATER" : "EARLIER"} in time — ${later ? "show the natural continuation of the action and motion that follows this moment" : "show the moment that naturally led up to this frame"}, single frame, consistent characters, lighting and art style`,
+        referenceImageUrl: resultImageUrl,
+        ...(projectId ? { projectId } : {}),
+      });
+      const url = gen.urls?.[0] || gen.url || "";
+      if (!url) throw new Error("未返回图片");
+      spawnImageResultNode(`${label}`, [url], url);
+      toast.success(`已生成「${label}」画面（新节点）`, { id: tid });
+    } catch (e) {
+      toast.error(`${label}生成失败：` + (e instanceof Error ? e.message : String(e)), { id: tid });
     } finally { setGridBusy(false); }
   };
 
@@ -874,10 +907,41 @@ export const BaseNode = memo(function BaseNode({
                 >
                   {gridBusy ? <Loader2 size={12} className="animate-spin" /> : <LayoutGrid size={12} />} 多角度
                 </button>
+                {/* 阶段四 4.1 工具箱：模板化操作套件（全部复用 宫格生成→切分 / 单图外推 管线） */}
+                <span style={{ position: "relative", display: "inline-flex" }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setToolkitOpen((v) => !v); setGridMenuOpen(false); }}
+                    disabled={gridBusy}
+                    title="工具箱（连贯分镜 / 剧情推演 / 画面推演±5s / 三视图 / 表情表——以本图为参考一键生成）"
+                    className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                    style={{ background: toolkitOpen ? "var(--c-elevated)" : "var(--c-surface)", color: gridBusy ? "var(--c-t4)" : "var(--c-t2)", border: "none", cursor: gridBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                  >
+                    <Wand2 size={12} /> 工具箱 <ChevronDown size={10} />
+                  </button>
+                  {toolkitOpen && (
+                    <div className="nodrag" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, display: "flex", flexDirection: "column", gap: 2, padding: 6, borderRadius: 9, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 10px 30px rgba(0,0,0,0.4)", minWidth: 168 }}>
+                      {([
+                        { label: "连贯分镜 25 格", desc: "5×5 逐拍推进整场戏", run: () => runGridSheet("grid25", "the exact same subject and scene shown in the reference image, telling the scene beat by beat", "连贯分镜", "个连续镜头") },
+                        { label: "剧情推演 4 格", desc: "2×2 剧情如何发展", run: () => runGridSheet("plot4", "the exact same subject and scene shown in the reference image, showing how the story develops from this moment", "剧情推演", "个剧情节拍") },
+                        { label: "画面推演 +5 秒", desc: "这一幕之后的画面", run: () => handleTemporalShift(5) },
+                        { label: "画面回溯 −5 秒", desc: "这一幕之前的画面", run: () => handleTemporalShift(-5) },
+                        { label: "角色三视图", desc: "正/侧/背设定图", run: () => runGridSheet("turnaround", "the exact same character shown in the reference image", "三视图", "张视图") },
+                        { label: "表情九宫格", desc: "同一角色 9 种表情", run: () => runGridSheet("expressions", "the exact same character shown in the reference image", "表情表", "种表情") },
+                      ] as const).map((it) => (
+                        <button key={it.label} onClick={(e) => { e.stopPropagation(); void it.run(); }}
+                          className="studio-toolbtn rounded-md"
+                          style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1, padding: "5px 9px", background: "var(--c-surface)", color: "var(--c-t2)", border: "1px solid var(--c-bd1)", cursor: "pointer", textAlign: "left" }}>
+                          <span style={{ fontSize: 11, fontWeight: 700 }}>{it.label}</span>
+                          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{it.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </span>
                 {/* 宫格切分：把本图按 N×N 切成子图（LibTV 同款 4/9/16/25 档） */}
                 <span style={{ position: "relative", display: "inline-flex" }}>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setGridMenuOpen((v) => !v); }}
+                    onClick={(e) => { e.stopPropagation(); setGridMenuOpen((v) => !v); setToolkitOpen(false); }}
                     disabled={gridBusy}
                     title="宫格切分（把宫格图切成多张子图，产物落入新节点）"
                     className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
