@@ -3700,6 +3700,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             nodePinned={ctxPinned}
             onClose={() => setContextMenu(null)}
             onAddNode={handleAddNode}
+            onAutoLayout={() => { const n = useCanvasStore.getState().autoLayout(); if (n > 0) { toast.success(`已整理 ${n} 个节点`, { duration: 1200 }); setTimeout(() => reactFlow.fitView({ padding: 0.15, duration: 400 }), 60); } else toast.info("没有可整理的自由节点（群组内节点不参与）"); }}
             onOpenNodeLibrary={() => { setContextMenu(null); setShowNodeLib(true); }}
             nodeTemplates={ctxTemplates}
             onSaveToLibrary={ctxNode && ctxIsComfy ? () => {
@@ -3781,6 +3782,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
               }
             } : undefined}
             onRunWorkflow={contextMenu.nodeId && ctxNodeType !== "group" ? () => handleRunRequest(contextMenu.nodeId ?? null) : undefined}
+            // LibTV 化 1.7：带图节点 → 以结果图为参考图新建角色主体节点（对齐「创建主体」）。
+            onSaveAsCharacter={(() => {
+              if (!ctxNode || ctxNodeType === "group" || ctxNodeType === "character") return undefined;
+              const p = ctxNode.data.payload as Record<string, unknown>;
+              const img = (typeof p.imageUrl === "string" && p.imageUrl) || (typeof p.resultImageUrl === "string" && p.resultImageUrl) || (typeof p.outputUrl === "string" && /\.(png|jpe?g|webp)(\?|#|$)/i.test(p.outputUrl) && p.outputUrl) || "";
+              if (!img) return undefined;
+              return () => {
+                const st = useCanvasStore.getState();
+                const self = st.nodes.find((n) => n.id === ctxNode.id);
+                if (!self) return;
+                const node = st.addNode("character", { x: self.position.x, y: self.position.y + 420 });
+                st.updateNodeTitle(node.id, "角色主体");
+                st.updateNodeData(node.id, { characterKind: "person", name: "", referenceImageUrl: img });
+                st.setNodes(st.nodes.map((n) => ({ ...n, selected: n.id === node.id })));
+                toast.success("已创建角色主体节点（本图作参考）——补充姓名/外貌后连到分镜或生成节点即可跨镜保持一致");
+              };
+            })()}
             // Pin: toggle payload.pinned so the node's input area stays expanded
             // even when the user clicks elsewhere on the canvas.
             onTogglePin={contextMenu.nodeId ? () => {
