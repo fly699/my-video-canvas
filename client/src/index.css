@@ -1708,6 +1708,21 @@ button:active:not(:disabled) {
   .node-hero-genmask::before { animation: none; }
 }
 
+/* ── 聊天「持续公告」横幅：间隔闪烁 ─────────────────────────────────────────────
+   4s 一个周期：前 1s 内两次短促脉冲（背景加亮），其余时间稳定常驻——够醒目又不晃眼。
+   颜色与聊天强调色（琥珀橙 #f59e0b）一致；无障碍下关闭动画（横幅仍常驻）。 */
+.chat-announce-blink {
+  animation: chat-announce-blink 4s ease-in-out infinite;
+}
+@keyframes chat-announce-blink {
+  0%, 25%, 100% { background-color: rgba(245, 158, 11, 0.14); }
+  6%, 19%       { background-color: rgba(245, 158, 11, 0.38); }
+  12%           { background-color: rgba(245, 158, 11, 0.14); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-announce-blink { animation: none; }
+}
+
 /* Creative mode: node cards get slightly more width */
 :root[data-canvas-mode="creative"] .react-flow__node > div {
   /* Handled by JS — see BaseNode width scaling */

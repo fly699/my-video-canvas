@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { X, Search, Users, Radio, Hash, User as UserIcon } from "lucide-react";
+import { X, Search, Users, Radio, Hash, User as UserIcon, BellRing } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { C } from "./chatTheme";
 
@@ -17,6 +17,9 @@ export function BroadcastComposer({ onClose, onSent }: { onClose: () => void; on
   const [userIds, setUserIds] = useState<Set<number>>(new Set());
   const [convIds, setConvIds] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState("");
+  // 持续公告：全体用户聊天窗顶部常驻突出显示并间隔闪烁，直至管理员关闭或到期。
+  const [persistent, setPersistent] = useState(false);
+  const [persistHours, setPersistHours] = useState<string>("24"); // 空 = 直至手动关闭
   const titleRef = useRef<HTMLInputElement>(null);
 
   const targetsQ = trpc.admin.chat.broadcastTargets.useQuery(undefined, { enabled: scope === "custom", staleTime: 60_000 });
@@ -50,12 +53,17 @@ export function BroadcastComposer({ onClose, onSent }: { onClose: () => void; on
 
   const send = () => {
     if (!title.trim() || !body.trim()) { toast.error("请填写标题和正文"); return; }
+    const hoursNum = persistHours.trim() === "" ? undefined : Number(persistHours);
+    if (persistent && hoursNum !== undefined && (!Number.isFinite(hoursNum) || hoursNum < 0.1 || hoursNum > 720)) {
+      toast.error("持续时长需在 0.1 ~ 720 小时之间（留空 = 直至手动关闭）"); return;
+    }
     const scopeLabel = scope === "all" ? "全体用户" : `${customCount} 个所选对象（用户 ${userIds.size} · 房间 ${convIds.size}）`;
-    if (!confirm(`确认向【${scopeLabel}】广播这条公告？\n\n标题：${title.trim()}`)) return;
+    const persistLabel = persistent ? `\n\n⚠ 将作为持续公告在全体用户聊天窗顶部常驻闪烁${hoursNum ? `（${hoursNum} 小时后自动结束）` : "（直至手动关闭）"}` : "";
+    if (!confirm(`确认向【${scopeLabel}】广播这条公告？\n\n标题：${title.trim()}${persistLabel}`)) return;
     const targets = scope === "all"
       ? { all: true }
       : { userIds: Array.from(userIds), conversationIds: Array.from(convIds) };
-    mu.mutate({ title: title.trim(), body: body.trim(), targets });
+    mu.mutate({ title: title.trim(), body: body.trim(), targets, persistent: persistent || undefined, persistHours: persistent ? hoursNum : undefined });
   };
 
   const chip = (active: boolean): React.CSSProperties => ({
@@ -92,6 +100,30 @@ export function BroadcastComposer({ onClose, onSent }: { onClose: () => void; on
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setScope("all")} style={chip(scope === "all")}><Users size={14} /> 全体用户</button>
             <button onClick={() => setScope("custom")} style={chip(scope === "custom")}><Hash size={14} /> 自定义收件人</button>
+          </div>
+
+          {/* 持续公告：顶部常驻 + 间隔闪烁，直至管理员关闭或到期（对全体用户显示，与收件人范围无关） */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, border: `1px solid ${persistent ? C.accent : C.border}`, borderRadius: 9, padding: "9px 11px", background: persistent ? C.accentSoft : "transparent" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: C.t1, fontSize: 13, fontWeight: 600 }}>
+              <input type="checkbox" checked={persistent} onChange={(e) => setPersistent(e.target.checked)} />
+              <BellRing size={14} style={{ color: persistent ? C.accent : C.t3 }} />
+              设为持续公告
+              <span style={{ fontWeight: 400, fontSize: 11.5, color: C.t3 }}>在所有用户聊天窗顶部常驻突出显示并间隔闪烁</span>
+            </label>
+            {persistent && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24 }}>
+                <span style={{ fontSize: 12, color: C.t2 }}>持续时长</span>
+                <input
+                  value={persistHours}
+                  onChange={(e) => setPersistHours(e.target.value.replace(/[^\d.]/g, ""))}
+                  placeholder="留空=不限"
+                  inputMode="decimal"
+                  style={{ ...inputStyle, width: 90, padding: "5px 8px", fontSize: 12 }}
+                />
+                <span style={{ fontSize: 12, color: C.t2 }}>小时</span>
+                <span style={{ fontSize: 11, color: C.t4 }}>{persistHours.trim() === "" ? "直至管理员手动关闭" : "到期自动消失；管理员也可随时手动关闭"}</span>
+              </div>
+            )}
           </div>
 
           {scope === "custom" && (

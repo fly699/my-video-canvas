@@ -728,6 +728,9 @@ export const chatSettings = mysqlTable("chat_settings", {
   serverlessAllowed: boolean("serverlessAllowed").notNull().default(true),
   lobbyEnabled: boolean("lobbyEnabled").notNull().default(true),
   maxFileMb: int("maxFileMb").notNull().default(5000),
+  // 当前生效的「持续公告」（JSON：{title,body,createdAt,expiresAt,createdBy}），null=无。
+  // 常驻显示在所有用户聊天窗顶部并间隔闪烁，直至管理员关闭或到期（见 routers/chat.ts）。
+  persistentAnnounceJson: text("persistentAnnounceJson"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

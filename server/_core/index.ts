@@ -39,6 +39,7 @@ import {
   registerChatBroadcaster,
   registerChatEventBroadcaster,
   registerChatUserBroadcaster,
+  registerChatAllBroadcaster,
   postAssetToNotifyRoom,
 } from "../routers/chat";
 import { registerAssetNotifier } from "../db";
@@ -544,6 +545,10 @@ async function startServer() {
   });
   registerChatUserBroadcaster((userId: number, event: string, payload: unknown) => {
     chatNs.to(`chat:user:${userId}`).emit(event, payload);
+  });
+  // 持续公告 set/clear → 推给 /chat 命名空间的全部在线客户端（顶部常驻横幅实时更新）。
+  registerChatAllBroadcaster((event: string, payload: unknown) => {
+    chatNs.emit(event, payload);
   });
   // 生成产物 → 自动推送到用户「我的产物通知」房 + 外部 webhook（fire-and-forget）。
   registerAssetNotifier((a) => { void postAssetToNotifyRoom(a); });
