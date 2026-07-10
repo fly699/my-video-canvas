@@ -228,6 +228,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const openTrue3d = useCallback(async (url: string) => {
     if (url) setModel3dSrc(url);
   }, []);
+  // 悬浮工具条「3D / 真3D」跨组件信号（BaseNode → 本节点）：与 shotlist 信号同款 token 写法。
+  const pseudo3dToken = useCanvasStore((s) => (s.panelRequest?.nodeId === id && s.panelRequest?.panel === "pseudo3d" ? s.panelRequest.token : 0));
+  const true3dToken = useCanvasStore((s) => (s.panelRequest?.nodeId === id && s.panelRequest?.panel === "true3d" ? s.panelRequest.token : 0));
+  useEffect(() => {
+    if (pseudo3dToken > 0 && payload.imageUrl) setView3dSrc(payload.imageUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pseudo3dToken]);
+  useEffect(() => {
+    if (true3dToken > 0 && payload.imageUrl) void openTrue3d(payload.imageUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [true3dToken]);
 
   // Close lightbox on Escape
   useEffect(() => {

@@ -1438,6 +1438,33 @@ button:active:not(:disabled) {
   max-width: 100%;
   margin: 0 auto;
 }
+
+/* 创意模式（LibTV）：选中时英雄区也保持可见——配置区默认收起（点「高级」才展开）后，
+   若沿用「选中隐藏 hero」的 pro 规则，选中瞬间 hero 藏 + body 又收起 → 预览图两头
+   都不显示（bug：分镜点击后预览图消失）。媒体优先卡与 studio 同款选中态规则。 */
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-hero-media {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+  line-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-hero-media img,
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-hero-media video {
+  max-width: 100%;
+  max-height: 460px;
+  width: auto;
+  height: auto;
+  aspect-ratio: auto;
+  display: block;
+  margin: 0 auto;
+}
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-hero-media .wm-video-wrap {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
 /* Studio: when selected, inset the hero into a rounded media block with a hairline
    ring so the result reads as a framed preview (media-first card), not a flush band. */
 :root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media {

@@ -161,6 +161,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const openTrue3d = useCallback(async (url: string) => {
     if (url) setModel3dSrc(url);
   }, []);
+  // 悬浮工具条「3D / 真3D」跨组件信号（BaseNode → 本节点）：token 防重触发，
+  // selector 返回原始 token 值（zustand「不返回新对象」铁律，与分镜 shotlist 同款）。
+  const pseudo3dToken = useCanvasStore((s) => (s.panelRequest?.nodeId === id && s.panelRequest?.panel === "pseudo3d" ? s.panelRequest.token : 0));
+  const true3dToken = useCanvasStore((s) => (s.panelRequest?.nodeId === id && s.panelRequest?.panel === "true3d" ? s.panelRequest.token : 0));
+  useEffect(() => {
+    if (pseudo3dToken > 0 && payload.imageUrl) setView3dSrc(payload.imageUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pseudo3dToken]);
+  useEffect(() => {
+    if (true3dToken > 0 && payload.imageUrl) void openTrue3d(payload.imageUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [true3dToken]);
   // Multi-reference-image list + left-docked expandable strip.
   const refImages = useReferenceImages(id, payload);
   // 上游图像（图像生成 / ComfyUI 图像·自定义 / 素材 / 分镜）自动作为参考图填充——

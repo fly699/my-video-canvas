@@ -22,7 +22,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2, Lock,
-  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes,
 } from "lucide-react";
 import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
 import { downloadMedia } from "../../lib/download";
@@ -897,6 +897,29 @@ export const BaseNode = memo(function BaseNode({
                     <Icon size={12} /> {label}
                   </button>
                 ))}
+                {/* 3D：伪3D 换视角 / 真3D 建模——上浮到工具条（原入口在节点 hero 悬停层，
+                    收起/选中态看不见）。仅对自带 3D 查看器的三类节点显示；通过 panelRequest
+                    跨组件信号让节点自身打开查看器（源图选取与截图回灌逻辑都在节点内部）。 */}
+                {(nodeType === "image_gen" || nodeType === "storyboard" || nodeType === "comfyui_workflow") && (
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().requestPanel(id, "pseudo3d"); }}
+                      title="3D 换视角（深度位移伪 3D，拖拽换视角后截图重绘）"
+                      className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                      style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                    >
+                      <Rotate3d size={12} /> 3D
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().requestPanel(id, "true3d"); }}
+                      title="真 3D 建模（Tripo3D 图生网格，完整 360° 环绕后从新视角重绘）"
+                      className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                      style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                    >
+                      <Boxes size={12} /> 真3D
+                    </button>
+                  </>
+                )}
                 {/* 多角度：本图为参考生成九宫格多机位 → 自动切分为子图（一键编排） */}
                 <button
                   onClick={(e) => { e.stopPropagation(); void handleMultiAngle(); }}
