@@ -290,6 +290,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       } : {}),
       bgMusicUrl: effectiveBgMusicUrl || undefined,
       bgMusicVolume: payload.bgMusicVolume,
+      originalVolume: payload.originalVolume,
     });
   };
 
@@ -516,7 +517,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
             </div>
             <div>
               <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
-                <label style={{ ...labelStyle, marginBottom: 0 }}>音量</label>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>音乐音量</label>
                 <span style={{ fontSize: 10, color: "var(--c-t3)" }}>{((payload.bgMusicVolume ?? 0.3) * 100).toFixed(0)}%</span>
               </div>
               <input
@@ -526,6 +527,22 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
                 className="nodrag w-full"
                 style={{ accentColor: accent }}
               />
+            </div>
+            <div>
+              <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>原声音量</label>
+                <span style={{ fontSize: 10, color: "var(--c-t3)" }}>{((payload.originalVolume ?? 1) * 100).toFixed(0)}%</span>
+              </div>
+              <input
+                type="range" min={0} max={2} step={0.05}
+                value={payload.originalVolume ?? 1}
+                onChange={(e) => update({ originalVolume: Number(e.target.value) })}
+                className="nodrag w-full"
+                style={{ accentColor: accent }}
+              />
+              <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 3 }}>
+                原视频自带声音的音量；接入音频后原声与音乐按各自音量混合，不再被替换。
+              </p>
             </div>
           </div>
         )}

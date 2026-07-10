@@ -455,8 +455,10 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
 
 /** 浮动「画布助手」的对话上下文（持久化，替代原来只存 localStorage/仅当前浏览器）。
- *  按 (projectId, userId) 一行：turns 是客户端拥有的整段对话（含 applied/createdIds/undone
- *  等应用后状态），随「新对话/清空」整体覆盖。个人助手草稿，故按 userId 隔离、协作者不共享。 */
+ *  项目级共享：userId=0 哨兵行为项目唯一共享会话，全体协作者共读共写（saveHistory 落库后
+ *  socket 广播其他端权威重载）。历史遗留的按-用户行仅在无共享行时作只读回退（平滑迁移）。
+ *  turns 是客户端拥有的整段对话（含 applied/createdIds/undone 等应用后状态），随「新对话/
+ *  清空」整体覆盖。 */
 export type CanvasAgentTurn = { role: "user" | "assistant"; content: string; applied?: string; failed?: string; error?: boolean; createdIds?: string[]; undone?: boolean };
 export const canvasAgentSessions = mysqlTable("canvas_agent_sessions", {
   id: int("id").autoincrement().primaryKey(),

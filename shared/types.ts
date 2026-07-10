@@ -865,6 +865,7 @@ export interface MergeNodeData {
   transitionDuration?: number;  // 0.1–2.0 seconds, default 0.5
   bgMusicUrl?: string;
   bgMusicVolume?: number;       // 0.0–1.0, default 0.3
+  originalVolume?: number;      // 原视频自带声音音量 0.0–2.0, default 1
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
   outputDuration?: number;

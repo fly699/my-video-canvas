@@ -526,6 +526,9 @@ export interface MergeOptions {
   transitionDuration?: number;
   bgMusicUrl?: string;
   bgMusicVolume?: number;
+  /** 原视频自带声音的音量（0..2，默认 1）。接入音频输入时原声与音乐 amix 共存，
+   *  不再被音乐整轨替换。 */
+  originalVolume?: number;
   /** 逐切点转场（长度 = 段数-1；来自分镜镜头表的 transition 字段）。给出时覆盖全局
    *  transition。"none"/cut 用 1 帧 xfade 实现硬切（避免 concat/xfade 混链时基问题）。 */
   transitions?: ("none" | "fade" | "dissolve" | "wipe")[];
@@ -583,11 +586,27 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       args.push("-f", "concat", "-safe", "0", "-i", listPath);
       if (bgMusicPath) args.push("-i", bgMusicPath);
 
-      if (bgMusicPath) {
+      const origVol = opts.originalVolume ?? 1;
+      // 引用 concat 输出的 [0:a] 前必须确认所有源都有音轨，否则 ffmpeg 找不到流直接报错。
+      const needAudioGraph = !!bgMusicPath || Math.abs(origVol - 1) > 1e-3;
+      const fastAllHaveAudio = needAudioGraph
+        ? (await Promise.all(inputPaths.map((p) => hasAudioTrack(p)))).every(Boolean)
+        : false;
+      if (bgMusicPath && fastAllHaveAudio) {
+        // 原声 + 音乐按各自音量 amix 共存。曾经的 bug：只 -map 1:a 把原视频声音整轨换成音乐。
+        args.push("-filter_complex", `[0:a][1:a]amix=inputs=2:duration=first:normalize=0:weights=${origVol.toFixed(4)}|${bgVol.toFixed(4)},alimiter=limit=0.95[aout]`);
+        args.push("-map", "0:v:0", "-map", "[aout]");
+        args.push("-c:v", "copy", "-c:a", "aac", "-shortest");
+      } else if (bgMusicPath) {
+        // 源视频没有音轨（或混有无声段）→ 沿用音乐作唯一音轨的旧行为。
         args.push("-map", "0:v:0", "-map", "1:a:0");
         args.push("-c:v", "libx264", "-preset", "fast");
         args.push("-af", `volume=${bgVol.toFixed(4)}`);
         args.push("-c:a", "aac", "-shortest");
+      } else if (Math.abs(origVol - 1) > 1e-3 && fastAllHaveAudio) {
+        // 只调原声音量（无音乐）：音频重编码，视频仍流拷贝。
+        args.push("-map", "0:v:0", "-map", "0:a:0");
+        args.push("-c:v", "copy", "-af", `volume=${origVol.toFixed(4)}`, "-c:a", "aac");
       } else {
         args.push("-c:v", "copy", "-c:a", "copy");
       }
@@ -695,7 +714,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
             lastA = `[ac${i}]`;
           }
         }
-        mixParts.push({ label: "[acat]", weight: 1 });
+        mixParts.push({ label: "[acat]", weight: opts.originalVolume ?? 1 });
       }
       if (bgMusicPath) {
         args.push("-i", bgMusicPath);
@@ -712,7 +731,10 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       if (mixParts.length > 1) {
         audioFilter = `${pre};${mixParts.map((m) => m.label).join("")}amix=inputs=${mixParts.length}:normalize=0:weights=${mixParts.map((m) => m.weight.toFixed(4)).join("|")},alimiter=limit=0.95[aout]`;
       } else if (mixParts.length === 1) {
-        audioFilter = mixParts[0].label === "[acat]" ? `${pre};[acat]anull[aout]` : `${pre};${mixParts[0].label}aresample=async=1[aout]`;
+        // 单独原声也应用原声音量（≠1 时）；anull 保持零回归。
+        const ov = opts.originalVolume ?? 1;
+        const acatChain = Math.abs(ov - 1) > 1e-3 ? `volume=${ov.toFixed(4)}` : "anull";
+        audioFilter = mixParts[0].label === "[acat]" ? `${pre};[acat]${acatChain}[aout]` : `${pre};${mixParts[0].label}aresample=async=1[aout]`;
       }
 
       args.push("-filter_complex", filterStr + audioFilter);

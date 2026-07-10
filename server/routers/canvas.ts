@@ -3048,6 +3048,7 @@ export const mergeRouter = router({
         sfxUrls: z.array(mediaUrlSchema.nullable()).max(50).optional(),
         bgMusicUrl: mediaUrlSchema.optional(),
         bgMusicVolume: z.number().min(0).max(1).optional(),
+        originalVolume: z.number().min(0).max(2).optional(),
         projectId: z.number().optional(),
         nodeId: z.string().optional(),
       })

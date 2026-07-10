@@ -9,6 +9,7 @@ import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { catalogText, sanitizeOperationDetailed, templateKnowledgeText } from "../_core/agentCatalog";
 import { enforceImageFirst, enforceImageFirstComfy } from "../_core/imageFirst";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
+import { broadcastAgentHistoryUpdated } from "../_core/agentBus";
 import * as db from "../db";
 import type { AgentOperation } from "../../shared/types";
 
@@ -423,8 +424,8 @@ ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.
       return { shots };
     }),
 
-  // ── 画布助手对话持久化（按 projectId + 当前用户）──
-  // 读：viewer 权限即可（个人助手历史，按 userId 隔离）。
+  // ── 画布助手对话持久化（项目级共享——全体协作者同一份历史）──
+  // 读：viewer 权限即可。db 层用 userId=0 共享行；无共享行时回退请求者的旧个人行（平滑迁移）。
   getHistory: protectedProcedure
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
@@ -450,6 +451,8 @@ ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await db.setCanvasAgentSession(input.projectId, ctx.user.id, input.turns);
+      // 通知同项目其他协作者重载共享对话（客户端收到后走 getHistory 权威重载）。
+      broadcastAgentHistoryUpdated(input.projectId, ctx.user.id);
       return { success: true };
     }),
 });
