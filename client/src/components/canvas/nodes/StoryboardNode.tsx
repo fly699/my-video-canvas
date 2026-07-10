@@ -9,7 +9,9 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes, ArrowUp } from "lucide-react";
+import { InlineGenBar } from "../InlineGenBar";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { Depth3DViewer } from "../Depth3DViewer";
 import { Model3DViewer } from "../Model3DViewer";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -113,6 +115,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   );
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
+  // LibTV 化 2.1c：创意模式（LibTV 模式宿主）下渲染屏幕恒定的就地生成输入条。
+  const { uiStyle } = useUIStyle();
+  const isCreativeMode = uiStyle !== "studio" && isCreative;
+  const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
   const payload = data.payload;
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
@@ -1299,6 +1305,90 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
       {reachabilityDialog}
     </BaseNode>
+
+    {/* LibTV 化 2.1c：创意模式的就地生成输入条（屏幕恒定，NodeToolbar 锚定节点下方）。
+        提示词/图像模型/参数（比例·清晰度·数量）/成本/生成一条龙，与配置区同一 payload 双向同步。 */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned)}>
+        <NodeTextArea
+          className="nodrag nowheel"
+          rows={2}
+          placeholder="描述本镜画面…（@ 引用角色/素材）"
+          value={payload.promptText ?? ""}
+          onValueChange={(v) => handleChange("promptText", v)}
+          style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ModelPicker value={model} onChange={setModel} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button
+              className="nodrag"
+              onClick={(e) => { e.stopPropagation(); setInlineParamsOpen((v) => !v); }}
+              title="生成参数（比例 / 清晰度 / 数量）"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, background: inlineParamsOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              {(payload.aspectRatio || "比例默认")}{KIE_IMAGE_RES_COST[model] ? ` · ${payload.imageResolution ?? Object.keys(KIE_IMAGE_RES_COST[model])[0]}` : ""}{isSoul ? ` · ${batchCount}张` : ""}
+            </button>
+            {inlineParamsOpen && (
+              <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
+                style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 40, width: 262, display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 12, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>比例</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
+                    {["", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "9:21"].map((r) => (
+                      <button key={r || "auto"} className="nodrag"
+                        onClick={() => handleChange("aspectRatio", r || undefined)}
+                        style={{ padding: "5px 0", fontSize: 10.5, borderRadius: 7, border: `1px solid ${(payload.aspectRatio ?? "") === r ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, background: (payload.aspectRatio ?? "") === r ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)", color: "var(--c-t2)", cursor: "pointer" }}>
+                        {r || "默认"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {KIE_IMAGE_RES_COST[model] && (
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>清晰度（逐档计价）</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {Object.keys(KIE_IMAGE_RES_COST[model]).map((r) => (
+                        <button key={r} className="nodrag" onClick={() => handleChange("imageResolution", r)}
+                          style={{ flex: 1, padding: "5px 0", fontSize: 10.5, borderRadius: 7, border: `1px solid ${(payload.imageResolution ?? Object.keys(KIE_IMAGE_RES_COST[model])[0]) === r ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, background: (payload.imageResolution ?? Object.keys(KIE_IMAGE_RES_COST[model])[0]) === r ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)", color: "var(--c-t2)", cursor: "pointer" }}>
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {isSoul && (
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>抽卡次数（Soul 专属）</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {([1, 4] as const).map((n) => (
+                        <button key={n} className="nodrag" onClick={() => { setBatchCount(n); updateNodeData(id, { batchSize: n }); }}
+                          style={{ flex: 1, padding: "5px 0", fontSize: 10.5, borderRadius: 7, border: `1px solid ${batchCount === n ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, background: batchCount === n ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)", color: "var(--c-t2)", cursor: "pointer" }}>
+                          {n}张
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </span>
+          <div style={{ flex: 1 }} />
+          <span title="按当前模型与参数实时预估的点数消耗，仅供参考" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>
+            ⚡ {costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1, { resolution: payload.imageResolution })) || "—"}
+          </span>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); if (!generating && payload.promptText?.trim()) handleGenerate(); }}
+            disabled={generating || !payload.promptText?.trim()}
+            title={generating ? "生成中…" : "生成分镜图"}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: generating || !payload.promptText?.trim() ? "not-allowed" : "pointer", background: generating || !payload.promptText?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: generating || !payload.promptText?.trim() ? "var(--c-t4)" : "#0b0d12" }}
+          >
+            {generating ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
+          </button>
+        </div>
+      </InlineGenBar>
+    )}
 
       {/* ── Image lightbox (portal to body — avoids React Flow event interception) ── */}
       {zoomUrl && createPortal(

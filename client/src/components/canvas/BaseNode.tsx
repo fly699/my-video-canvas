@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
-import { Handle, Position, NodeResizer, useUpdateNodeInternals, useStore } from "@xyflow/react";
+import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals, useStore } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp } from "../../../../shared/types";
@@ -729,18 +729,22 @@ export const BaseNode = memo(function BaseNode({
           and the self-contained duplicateNode store action), so it cannot diverge
           from or break existing behavior. */}
       {/* LibTV 化：工具条开放到所有皮肤（原仅 studio）——选中即浮出快捷 AI 操作。 */}
-      {(storeSelected || pinned) && (onRun || resultVideoUrl || resultImageUrl) && (
-        // 绝对定位于节点根（锚在节点上方、水平居中），而非 ReactFlow NodeToolbar——
-        // NodeToolbar 渲染在屏幕坐标、不随画布 zoom 缩放，与下方「绝对定位、随缩放」的参数
-        // 面板不一致（顶部工具栏不跟着节点缩放）。改为节点内绝对定位即随节点一起缩放。
+      {(storeSelected || pinned) && (onRun || resultVideoUrl || resultImageUrl) && (() => {
+        // LibTV 化 2.x：创意模式的工具条迁入 NodeToolbar——屏幕恒定（画布缩放时节点内容
+        // 缩放、工具条保持固定屏幕尺寸），与就地生成输入条同一交互范式；studio/pro 保持
+        // 原有「节点内绝对定位、随节点缩放」的行为不变（与下方随缩放的参数面板一致）。
+        const creativeConstant = !isStudio && isCreative;
+        const bar = (
         <div
           className="nodrag flex items-center gap-1"
           style={{
-            position: "absolute",
-            bottom: "calc(100% + 10px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 21,
+            ...(creativeConstant ? {} : {
+              position: "absolute" as const,
+              bottom: "calc(100% + 10px)",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 21,
+            }),
             whiteSpace: "nowrap",
             background: "var(--c-elevated)",
             border: "1px solid var(--c-bd2)",
@@ -919,7 +923,11 @@ export const BaseNode = memo(function BaseNode({
               );
             })()}
           </div>
-      )}
+        );
+        return creativeConstant
+          ? <NodeToolbar isVisible position={Position.Top} offset={10}>{bar}</NodeToolbar>
+          : bar;
+      })()}
 
       {/* Studio: hover quick actions — re-run (+ download when there's a result) without
           selecting/expanding the node. Reuses the exact onRun the toolbar uses; visibility
