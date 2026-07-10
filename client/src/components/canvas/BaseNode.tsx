@@ -1060,15 +1060,17 @@ export const BaseNode = memo(function BaseNode({
 
       {/* ── Header ── */}
       <div
-        className="flex items-center gap-2 px-3.5 py-1.5 select-none flex-shrink-0"
+        className="node-header flex items-center gap-2 px-3.5 py-1.5 select-none flex-shrink-0"
         onMouseEnter={onHeaderEnter}
         onMouseLeave={onHeaderLeave}
         style={{
+          // LibTV 化 3.5：创意模式标题栏「标签化」——透明无边框，观感上是卡顶
+          // 一行小标签（图标+名称），卡本体≈纯媒体；按钮组由 CSS 控制悬停才浮现。
           background: isCreative
-            ? `${config.color}0a`
+            ? "transparent"
             : `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
-          borderBottom: `1px solid ${(isCreative || isLight) ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
-          minHeight: isCreative ? 32 : 36,
+          borderBottom: isCreative ? "none" : `1px solid ${isLight ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
+          minHeight: isCreative ? 30 : 36,
         }}
       >
         {/* Drag grip */}
@@ -1236,7 +1238,7 @@ export const BaseNode = memo(function BaseNode({
           <button
             onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().updateNodeData(id, { locked: false }); }}
             title="已锁定(不可拖/删) — 点击解锁"
-            className="nodrag flex-shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded"
+            className="node-status-badge nodrag flex-shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded"
             style={{ background: "oklch(0.70 0.16 65 / 0.15)", color: "oklch(0.72 0.16 65)", border: "1px solid oklch(0.70 0.16 65 / 0.35)", cursor: "pointer" }}>
             <Lock size={10} />
           </button>
@@ -1246,7 +1248,7 @@ export const BaseNode = memo(function BaseNode({
           <button
             onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().updateNodeData(id, { disabled: false }); }}
             title="已设为跳过执行（运行全部/估价不包含）— 点击恢复参与执行"
-            className="nodrag flex-shrink-0 flex items-center gap-1 h-[18px] px-1.5 rounded"
+            className="node-status-badge nodrag flex-shrink-0 flex items-center gap-1 h-[18px] px-1.5 rounded"
             style={{ background: "var(--c-surface)", color: "var(--c-t4)", border: "1px dashed var(--c-bd3)", cursor: "pointer", fontSize: 9, fontWeight: 700, lineHeight: 1 }}>
             <CircleSlash size={9} /> 跳过
           </button>
@@ -1302,7 +1304,7 @@ export const BaseNode = memo(function BaseNode({
         {/* Type badge */}
         {!hideTypeBadge && (
           <span
-            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 leading-none tracking-widest uppercase"
+            className="node-type-badge text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 leading-none tracking-widest uppercase"
             style={{
               background: `${config.color}15`,
               color: `${config.color}`,

@@ -1490,6 +1490,29 @@ button:active:not(:disabled) {
   opacity: 0.10;
 }
 
+/* ── LibTV 化 3.5：创意模式节点卡形态——标题栏「标签化」──────────────────────
+   LibTV 节点观感 = 纯媒体卡 + 顶部一行灰色小标签（图标+名称+尺寸），操作按钮
+   平时不可见。创意模式下：header 按钮组与类型徽章默认隐藏，节点悬停/选中时
+   淡入；标题文字弱化为标签灰。功能全保留（悬停即现），仅改静态观感。 */
+:root[data-canvas-mode="creative"] .node-header button:not(.node-status-badge),
+:root[data-canvas-mode="creative"] .node-header .node-type-badge {
+  opacity: 0 !important; /* 徽章带 inline opacity:0.85，需 important 压过 */
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+:root[data-canvas-mode="creative"] .react-flow__node:hover .node-header button,
+:root[data-canvas-mode="creative"] .react-flow__node.selected .node-header button,
+:root[data-canvas-mode="creative"] .react-flow__node:hover .node-header .node-type-badge,
+:root[data-canvas-mode="creative"] .react-flow__node.selected .node-header .node-type-badge {
+  opacity: 1 !important;
+  pointer-events: auto;
+}
+/* 标题文字 → LibTV 标签灰小字（输入态/编辑中不受影响：只作用于展示 span） */
+:root[data-canvas-mode="creative"] .node-header {
+  font-size: 12px;
+  color: var(--c-t3);
+}
+
 /* 3.1b：创意模式输入控件统一无衬线中文黑体——多个节点的提示词框此前用
    JetBrains Mono 等宽字体显示中文（技术感重、与 LibTV 全黑体观感相悖）。
    inline style 非 !important，此处 !important 可覆盖。 */
