@@ -1,4 +1,6 @@
-import { forwardRef, useCallback, useEffect, useRef, useState, type ChangeEvent, type CompositionEvent, type FocusEvent } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState, type ChangeEvent, type CompositionEvent, type FocusEvent, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import { Maximize2, Check } from "lucide-react";
 import { useMention } from "./useMention";
 import { useSlashMenu } from "./useSlashMenu";
 
@@ -67,12 +69,99 @@ function useImeSafeValue<T extends HTMLInputElement | HTMLTextAreaElement>(
   return { local, onChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, commit };
 }
 
+// ── 宽幅弹出编辑器（对标 LibTV 宽输入框）──────────────────────────────────────
+// 节点宽仅 340px，长提示词在节点内读写费劲。textarea 聚焦时右上角浮出「放大」小按钮
+// （portal + getBoundingClientRect 定位，零布局侵入，与 @mention 下拉同款模式），点击
+// 打开画布中央宽幅编辑窗。弹窗内 textarea 用【非受控】defaultValue + 每键 commit——
+// 不回读外部值，IME 组合不会被打断；节点里的小框未聚焦，会正常采纳写回的新值。
+function useExpandEditor(
+  enabled: boolean,
+  elRef: RefObject<HTMLTextAreaElement | null>,
+  commit: (next: string) => void,
+  placeholder?: string,
+) {
+  const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
+  const [open, setOpen] = useState(false);
+  const [initial, setInitial] = useState("");
+  const openRef = useRef(false); openRef.current = open;
+  const bigRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const showBtn = useCallback(() => {
+    if (!enabled || !elRef.current) return;
+    setBtnRect(elRef.current.getBoundingClientRect());
+  }, [enabled, elRef]);
+  const hideBtnSoon = useCallback(() => {
+    // 延迟隐藏：留出点按放大按钮的时间窗（按钮 onPointerDown preventDefault 保焦点）。
+    setTimeout(() => { if (!openRef.current) setBtnRect(null); }, 150);
+  }, []);
+  const close = useCallback(() => {
+    if (bigRef.current) commit(bigRef.current.value); // 关闭前最终写回
+    setOpen(false); setBtnRect(null);
+  }, [commit]);
+
+  const ui = (
+    <>
+      {enabled && btnRect && !open && createPortal(
+        <button
+          className="nodrag"
+          title="放大编辑（宽屏窗口）"
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={() => { setInitial(elRef.current?.value ?? ""); setOpen(true); }}
+          style={{
+            position: "fixed", left: btnRect.right - 26, top: btnRect.top + 4, width: 22, height: 22, zIndex: 60,
+            display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 6, cursor: "pointer",
+            border: "1px solid var(--c-bd2)", background: "var(--c-base)", color: "var(--c-t3)", opacity: 0.85,
+          }}
+        ><Maximize2 size={12} /></button>,
+        document.body,
+      )}
+      {open && createPortal(
+        <div
+          className="nodrag nowheel"
+          style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={close}
+          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") close(); }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 720, maxWidth: "94vw", height: "64vh", maxHeight: 640, display: "flex", flexDirection: "column",
+              background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 14, boxShadow: "0 18px 60px rgba(0,0,0,0.5)", overflow: "hidden",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+              <Maximize2 size={14} style={{ color: "var(--c-t3)" }} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--c-t1)" }}>{placeholder?.trim() ? placeholder.slice(0, 24) : "编辑文本"}</span>
+              <div style={{ flex: 1 }} />
+              <button onClick={close} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 14px", borderRadius: 8, fontSize: 12.5, cursor: "pointer", border: "1px solid oklch(0.70 0.20 310 / 0.5)", background: "oklch(0.70 0.20 310 / 0.14)", color: "oklch(0.75 0.18 310)" }}>
+                <Check size={13} /> 完成
+              </button>
+            </div>
+            <textarea
+              ref={bigRef}
+              autoFocus
+              defaultValue={initial}
+              placeholder={placeholder}
+              onInput={(e) => commit((e.target as HTMLTextAreaElement).value)}
+              style={{ flex: 1, width: "100%", padding: "14px 16px", fontSize: 14, lineHeight: 1.75, background: "transparent", border: "none", outline: "none", resize: "none", color: "var(--c-t1)" }}
+            />
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+
+  return { showBtn, hideBtnSoon, refreshBtn: showBtn, ui };
+}
+
 // `noMention`: 关闭「@」角色/场景自动补全（默认开启）。
 // `noSlash`: 关闭「/」提示词库快捷菜单（默认开启）。AI 对话节点自带 /命令，需单独关掉避免冲突。
-type TextAreaProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & CommonProps & { noMention?: boolean; noSlash?: boolean };
+// `noExpand`: 关闭聚焦时的「放大编辑」浮动按钮（默认开启）。
+type TextAreaProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & CommonProps & { noMention?: boolean; noSlash?: boolean; noExpand?: boolean };
 
 export const NodeTextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function NodeTextArea(
-  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, noSlash, ...rest },
+  { value, onValueChange, onCompositionStart, onCompositionEnd, onFocus, onBlur, onKeyDown, onKeyUp, onClick, noMention, noSlash, noExpand, ...rest },
   ref,
 ) {
   const ime = useImeSafeValue<HTMLTextAreaElement>(value, onValueChange);
@@ -80,7 +169,8 @@ export const NodeTextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(funct
   const mergedRef = useMergedRef(ref, innerRef);
   const mention = useMention(!noMention, innerRef, ime.commit);
   const slash = useSlashMenu(!noMention && !noSlash, innerRef, ime.commit);
-  const probe = () => { mention.probe(); slash.probe(); };
+  const expand = useExpandEditor(!noExpand, innerRef, ime.commit, typeof rest.placeholder === "string" ? rest.placeholder : undefined);
+  const probe = () => { mention.probe(); slash.probe(); expand.refreshBtn(); };
   // 暴露 commitValue：以编程方式设值并写回 store，直接更新内部 local（绕过「聚焦中不采纳外部 value」
   // 守卫）。供外部按钮（如 AI 对话节点的 /命令、画布注入）即时改写输入框，避免聚焦时设值不生效。
   useEffect(() => {
@@ -98,11 +188,12 @@ export const NodeTextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(funct
         onClick={(e) => { probe(); onClick?.(e); }}
         onCompositionStart={(e) => { ime.onCompositionStart(); onCompositionStart?.(e); }}
         onCompositionEnd={(e) => { ime.onCompositionEnd(e); onCompositionEnd?.(e); probe(); }}
-        onFocus={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onFocus(); onFocus?.(e); }}
-        onBlur={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onBlur(); onBlur?.(e); setTimeout(() => { mention.close(); slash.close(); }, 120); }}
+        onFocus={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onFocus(); expand.showBtn(); onFocus?.(e); }}
+        onBlur={(e: FocusEvent<HTMLTextAreaElement>) => { ime.onBlur(); expand.hideBtnSoon(); onBlur?.(e); setTimeout(() => { mention.close(); slash.close(); }, 120); }}
       />
       {mention.dropdown}
       {slash.dropdown}
+      {expand.ui}
     </>
   );
 });
