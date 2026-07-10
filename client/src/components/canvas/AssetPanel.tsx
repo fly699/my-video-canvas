@@ -15,7 +15,7 @@ interface Props {
   projectId: number;
   onClose: () => void;
   /** When provided, the header acts as a drag handle for a floating container. */
-  onHeaderMouseDown?: (e: React.MouseEvent) => void;
+  onHeaderMouseDown?: (e: React.PointerEvent) => void; // pointer 事件：触屏可拖（B 档移动端适配）
 }
 
 type TypeFilter = "image" | "video" | "audio" | "other";
@@ -233,8 +233,8 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
       {/* ── Header (drag handle when floating) ── */}
       <div
         className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-        style={{ borderBottom: "1px solid var(--c-elevated)", cursor: onHeaderMouseDown ? "move" : undefined, userSelect: "none" }}
-        onMouseDown={onHeaderMouseDown}
+        style={{ borderBottom: "1px solid var(--c-elevated)", cursor: onHeaderMouseDown ? "move" : undefined, userSelect: "none", touchAction: onHeaderMouseDown ? "none" : undefined }}
+        onPointerDown={onHeaderMouseDown}
       >
         <div>
           <h3 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>素材库</h3>
@@ -452,6 +452,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}
                     title={isSel ? "取消选择" : "选择"}
+                    data-touch-show
                     className={`absolute top-1 left-1 z-10 w-4 h-4 rounded flex items-center justify-center transition-opacity ${isSel || selected.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                     style={{ border: `1.5px solid ${isSel ? "oklch(0.65 0.18 285)" : "oklch(1 0 0 / 0.6)"}`, background: isSel ? "oklch(0.65 0.18 285)" : "oklch(0 0 0 / 0.55)" }}
                   >
@@ -459,11 +460,11 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
                   </button>
 
                   {/* Hover overlay: name (bottom) + actions (top-right) */}
-                  <div className="absolute inset-x-0 bottom-0 px-1.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                  <div data-touch-show className="absolute inset-x-0 bottom-0 px-1.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
                     style={{ background: "linear-gradient(to top, oklch(0 0 0 / 0.75), transparent)" }}>
                     <p className="text-[9.5px] leading-tight truncate text-white">{asset.name}</p>
                   </div>
-                  <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div data-touch-show className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button title="下载" className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.55)", color: "white" }}
                       onClick={(e) => { e.stopPropagation(); void downloadMedia(asset.url, asset.name, asset.type === "video" ? "video" : "image", asset.id); }}>
                       <Download className="w-3 h-3" />
