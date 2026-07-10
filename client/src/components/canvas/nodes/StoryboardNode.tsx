@@ -132,7 +132,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.promptText ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
   const charSceneItems = useCharSceneItems(id, payload.promptText ?? "");
-  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || charSceneItems.length > 0, hasPrompt: !!finalPromptDisplay.trim() }, { prompt: finalPromptDisplay, ref: `${payload.referenceImageUrl ?? ""}|${charSceneItems.map((i) => i.id).join(",")}` });
+  const docks = useNodeDocks(id, { hasRef: true, /* 常开：空态悬停也能看到「上传/素材库」参考图入口 */ hasPrompt: !!finalPromptDisplay.trim() }, { prompt: finalPromptDisplay, ref: `${payload.referenceImageUrl ?? ""}|${charSceneItems.map((i) => i.id).join(",")}` });
   const refStrip = useSimpleRefStrip(id, payload, "multi", { accent: STORY_ACCENT, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef, extraItems: charSceneItems });
   const [inputExpanded, setInputExpanded] = useState(!!selected);
   const [llmModel, setLlmModel] = useState<LLMModelId>(() => resolve("storyboard", "llm") as LLMModelId);

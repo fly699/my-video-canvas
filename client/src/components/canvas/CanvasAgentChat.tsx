@@ -288,31 +288,68 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:prefs", JSON.stringify(quickPrefs)); } catch { /* quota */ } }, [quickPrefs]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [turns, busy]);
 
-  // ── @角色 / 技能 触发面板（输入末尾 @片段 或 /片段 时浮出可选列表）──
+  // ── @角色/素材/上传 / 技能 触发面板（输入末尾 @片段 或 /片段 时浮出可选列表）──
+  type PickItem = { name: string; sub?: string; kind: "char" | "skill" | "asset" | "upload"; url?: string };
   const [pickHi, setPickHi] = useState(0);
   const [pickDismiss, setPickDismiss] = useState("");
   const trig = /(^|\s)([@/])([^\s@/]*)$/.exec(input);
   const pickMode: "@" | "/" | null = trig ? (trig[2] as "@" | "/") : null;
   const pickFrag = (trig?.[3] ?? "").toLowerCase();
-  const pickItems = useMemo(() => {
+  // 素材库图片（项目 + 个人两路合并去重）：@ 可直接挑一张作参考附件——LLM 看图规划。
+  const projAssetsQuery = trpc.assets.list.useQuery({ projectId }, { staleTime: 30_000 });
+  const myAssetsQuery = trpc.assets.list.useQuery({}, { staleTime: 30_000 });
+  const imageAssets = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { name: string; url: string; mimeType?: string }[] = [];
+    for (const r of [...(projAssetsQuery.data ?? []), ...(myAssetsQuery.data ?? [])]) {
+      if (r.type !== "image" || seen.has(r.url)) continue;
+      seen.add(r.url);
+      out.push({ name: r.name, url: r.url, mimeType: r.mimeType ?? undefined });
+    }
+    return out;
+  }, [projAssetsQuery.data, myAssetsQuery.data]);
+  const pickItems = useMemo<PickItem[]>(() => {
     if (pickMode === "@") {
-      return (charsQuery.data ?? [])
+      const chars: PickItem[] = (charsQuery.data ?? [])
         .filter((c) => !pickFrag || (c.name ?? "").toLowerCase().includes(pickFrag))
-        .slice(0, 8).map((c) => ({ name: c.name, sub: c.characterKind === "scene" ? "场景" : "人物" }));
+        .slice(0, 5).map((c) => ({ name: c.name, sub: c.characterKind === "scene" ? "场景" : "人物", kind: "char" as const }));
+      const assets: PickItem[] = imageAssets
+        .filter((a) => !pickFrag || a.name.toLowerCase().includes(pickFrag))
+        .slice(0, 4).map((a) => ({ name: a.name, sub: "素材库 · 作为参考图附件", kind: "asset" as const, url: a.url }));
+      // 「上传」常驻最后：直接选本地图/文档作参考附件（免先进素材库）。
+      return [...chars, ...assets, { name: "上传图片 / 文档…", sub: "本地文件作为参考附件", kind: "upload" as const }];
     }
     if (pickMode === "/" && isClaudeLocal && bridgeSkills.enabled) {
       return bridgeSkills.skills
         .filter((s) => !pickFrag || s.name.toLowerCase().includes(pickFrag) || s.description.toLowerCase().includes(pickFrag))
-        .slice(0, 8).map((s) => ({ name: s.name, sub: s.description }));
+        .slice(0, 8).map((s) => ({ name: s.name, sub: s.description, kind: "skill" as const }));
     }
     return [];
-  }, [pickMode, pickFrag, charsQuery.data, isClaudeLocal, bridgeSkills.enabled, bridgeSkills.skills]);
+  }, [pickMode, pickFrag, charsQuery.data, isClaudeLocal, bridgeSkills.enabled, bridgeSkills.skills, imageAssets]);
   const showPicker = pickMode != null && input !== pickDismiss && pickItems.length > 0;
   useEffect(() => { setPickHi(0); }, [pickFrag, pickMode]);
-  const applyPick = (name: string) => {
+  /** 砍掉输入末尾的「触发符+片段」（@xx / /xx）。 */
+  const cutTrig = () => { if (trig) setInput(input.slice(0, input.length - (1 + (trig[3] ?? "").length))); setPickDismiss(""); };
+  const applyPick = (it: PickItem) => {
     if (!trig) return;
-    const cut = input.length - (1 + (trig[3] ?? "").length);   // 砍掉末尾的「触发符+片段」
-    const insertion = pickMode === "@" ? `@${name}` : `用 ${name} 技能：`;
+    if (it.kind === "upload") { cutTrig(); fileInputRef.current?.click(); return; }
+    if (it.kind === "asset" && it.url) {
+      // 素材 → 拉成 File 进现有附件管线（chip 展示、大小护栏、发送时转 data URI 喂 LLM）。
+      cutTrig();
+      void (async () => {
+        try {
+          const resp = await fetch(it.url!);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const blob = await resp.blob();
+          addFiles([new File([blob], it.name, { type: blob.type || "image/png" })]);
+        } catch (e) {
+          toast.error("拉取素材失败：" + (e instanceof Error ? e.message : String(e)));
+        }
+      })();
+      return;
+    }
+    const cut = input.length - (1 + (trig[3] ?? "").length);
+    const insertion = pickMode === "@" ? `@${it.name}` : `用 ${it.name} 技能：`;
     setInput(input.slice(0, cut) + insertion + " ");
     setPickDismiss("");
   };
@@ -564,17 +601,46 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       {/* @角色 / 技能 选择面板 */}
       {showPicker && (
         <div style={{ position: "relative", padding: "0 10px", flexShrink: 0 }}>
-          <div className="nowheel" style={{ position: "absolute", bottom: 4, left: 10, right: 10, maxHeight: 220, overflowY: "auto",
+          <div className="nowheel" style={{ position: "absolute", bottom: 4, left: 10, right: 10, maxHeight: 260,
+            display: "flex", flexDirection: "column", overflow: "hidden",
             background: "var(--c-elevated, #1b1b1f)", border: "1px solid var(--c-bd3)", borderRadius: 10, boxShadow: "0 12px 34px rgba(0,0,0,0.45)", zIndex: 40, padding: 5 }}>
-            <div style={{ fontSize: 10.5, color: "var(--c-t4)", padding: "3px 8px 5px" }}>{pickMode === "@" ? "角色" : "技能"} · ↑↓ 选择 · Enter 确认 · Esc 关闭</div>
-            {pickItems.map((it, i) => (
-              <button key={it.name} type="button" onMouseEnter={() => setPickHi(i)} onClick={() => applyPick(it.name)}
-                style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 9px", borderRadius: 7, border: "none", cursor: "pointer",
-                  background: i === pickHi ? accentSoft : "transparent", color: "var(--c-t1)" }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: i === pickHi ? accent : "var(--c-t1)" }}>{pickMode === "@" ? "@" : "/"}{it.name}</div>
-                {it.sub && <div style={{ fontSize: 11, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.sub}</div>}
+            <div style={{ fontSize: 10.5, color: "var(--c-t4)", padding: "3px 8px 5px", flexShrink: 0 }}>{pickMode === "@" ? "角色 / 素材（输入即搜索）/ 上传" : "技能"} · ↑↓ 选择 · Enter 确认 · Esc 关闭</div>
+            <div className="nowheel" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            {pickItems.filter((it) => it.kind !== "upload").map((it, i) => (
+              <button key={it.kind + it.name + (it.url ?? "")} type="button" onMouseEnter={() => setPickHi(i)} onClick={() => applyPick(it)}
+                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "6px 9px", borderRadius: 7, border: "none", cursor: "pointer",
+                  background: i === pickHi ? accentSoft : "transparent", color: "var(--c-t1)",
+                  ...(it.kind === "upload" ? { borderTop: "1px solid var(--c-bd2)", borderRadius: 0, marginTop: 2 } : {}) }}>
+                {it.kind === "asset" && it.url && (
+                  <img src={it.url} alt="" loading="lazy" style={{ width: 26, height: 26, objectFit: "cover", borderRadius: 5, border: "1px solid var(--c-bd2)", flexShrink: 0 }} />
+                )}
+                {it.kind === "upload" && <Paperclip size={14} style={{ color: accent, flexShrink: 0 }} />}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: i === pickHi ? accent : "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {it.kind === "char" ? "@" + it.name : it.kind === "skill" ? "/" + it.name : it.name}
+                  </div>
+                  {it.sub && <div style={{ fontSize: 11, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.sub}</div>}
+                </div>
               </button>
             ))}
+            </div>
+            {/* 「上传」入口固定底部（不随候选滚动，始终可见） */}
+            {(() => {
+              const upIdx = pickItems.findIndex((x) => x.kind === "upload");
+              if (upIdx < 0) return null;
+              const it = pickItems[upIdx];
+              return (
+                <button type="button" onMouseEnter={() => setPickHi(upIdx)} onClick={() => applyPick(it)}
+                  style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "6px 9px", border: "none", borderTop: "1px solid var(--c-bd2)", marginTop: 2, cursor: "pointer",
+                    background: upIdx === pickHi ? accentSoft : "transparent" }}>
+                  <Paperclip size={14} style={{ color: accent, flexShrink: 0 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: upIdx === pickHi ? accent : "var(--c-t1)" }}>{it.name}</div>
+                    {it.sub && <div style={{ fontSize: 11, color: "var(--c-t3)" }}>{it.sub}</div>}
+                  </div>
+                </button>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -613,7 +679,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             if (showPicker) {
               if (e.key === "ArrowDown") { e.preventDefault(); setPickHi((i) => (i + 1) % pickItems.length); return; }
               if (e.key === "ArrowUp") { e.preventDefault(); setPickHi((i) => (i - 1 + pickItems.length) % pickItems.length); return; }
-              if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); applyPick(pickItems[pickHi].name); return; }
+              if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); applyPick(pickItems[pickHi]); return; }
               if (e.key === "Escape") { e.preventDefault(); setPickDismiss(input); return; }
             }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); }

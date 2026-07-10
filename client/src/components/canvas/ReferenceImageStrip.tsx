@@ -1,9 +1,11 @@
 import { useMemo, useRef, useState } from "react";
-import { X, ZoomIn, Play, Pause } from "lucide-react";
+import { X, ZoomIn, Play, Pause, Upload, FolderOpen, Search } from "lucide-react";
 import type { ReferenceImage } from "../../../../shared/types";
 import { MediaImage } from "./MediaImage";
 import { mediaFetchUrl } from "@/lib/download";
 import { audioWaveBars } from "../../lib/audioWaveform";
+import { trpc } from "@/lib/trpc";
+import { useCanvasStore } from "../../hooks/useCanvasStore";
 
 /**
  * 吸附窗里的一项：默认是图片（角色/场景/参考图/分析图/工作流图），可带类型标签与可删标记。
@@ -140,7 +142,31 @@ export function ReferenceImageStrip({
   readOnly = false, title = "参考图", onHoverChange, onPin, readOnlyHint,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  // 「素材库」浮层（所有支持参考的节点统一入口）：搜索 + 缩略图网格，点选即插入参考图。
+  // fixed 定位 + 视口钳制：strip 本就挂在节点左侧，浮层若再向左挂会在节点靠屏幕左缘时出屏。
+  const [libAnchor, setLibAnchor] = useState<{ x: number; y: number } | null>(null);
+  const libOpen = libAnchor != null;
+  const setLibOpen = (v: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof v === "function" ? v(libOpen) : v;
+    if (!next) setLibAnchor(null);
+  };
+  const [libQ, setLibQ] = useState("");
+  const projectId = useCanvasStore((s) => s.projectId);
+  const projAssets = trpc.assets.list.useQuery({ projectId: projectId ?? undefined }, { enabled: open && libOpen && projectId != null, staleTime: 30_000 });
+  const myAssets = trpc.assets.list.useQuery({}, { enabled: open && libOpen, staleTime: 30_000 });
+  const libImages = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { name: string; url: string }[] = [];
+    for (const r of [...(projAssets.data ?? []), ...(myAssets.data ?? [])]) {
+      if (r.type !== "image" || seen.has(r.url)) continue;
+      seen.add(r.url);
+      out.push({ name: r.name, url: r.url });
+    }
+    const q = libQ.trim().toLowerCase();
+    return (q ? out.filter((a) => a.name.toLowerCase().includes(q)) : out).slice(0, 60);
+  }, [projAssets.data, myAssets.data, libQ]);
 
   if (!open) return null;
 
@@ -204,12 +230,72 @@ export function ReferenceImageStrip({
       onDragLeave={readOnly ? undefined : () => setDropIndex(null)}
       onDrop={readOnly ? undefined : onDrop}
     >
-      <div className="flex items-center justify-between" style={{ paddingInline: 2 }}>
-        <span style={{ fontSize: 10, color: "var(--c-t3)", fontWeight: 600 }}>{title} {images.length}</span>
-        <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="nodrag" style={{ color: "var(--c-t4)", lineHeight: 0 }} title="收起">
-          <X style={{ width: 12, height: 12 }} />
-        </button>
+      <div className="flex items-center justify-between" style={{ paddingInline: 2, gap: 4 }}>
+        <span style={{ fontSize: 10, color: "var(--c-t3)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title} {images.length}</span>
+        <span style={{ display: "inline-flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
+          {!readOnly && (
+            <>
+              <input ref={fileRef} type="file" multiple accept="image/*" style={{ display: "none" }}
+                onChange={(e) => { const fs = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/")); if (fs.length) onDropFiles(fs, images.length); if (fileRef.current) fileRef.current.value = ""; }} />
+              <button onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} className="nodrag" style={{ color: "var(--c-t4)", lineHeight: 0 }} title="上传本地图片作参考图">
+                <Upload style={{ width: 12, height: 12 }} />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (libAnchor) { setLibAnchor(null); return; }
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  setLibAnchor({ x: r.left, y: r.bottom });
+                }}
+                className="nodrag" style={{ color: libOpen ? accent : "var(--c-t4)", lineHeight: 0 }} title="从素材库选择参考图">
+                <FolderOpen style={{ width: 12, height: 12 }} />
+              </button>
+            </>
+          )}
+          <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="nodrag" style={{ color: "var(--c-t4)", lineHeight: 0 }} title="收起">
+            <X style={{ width: 12, height: 12 }} />
+          </button>
+        </span>
       </div>
+
+      {/* 素材库选择浮层：搜索 + 缩略图网格（挂在条外侧，避免挤压参考图列表） */}
+      {libOpen && !readOnly && libAnchor && (
+        <div
+          className="nodrag nowheel"
+          style={{
+            position: "fixed",
+            left: Math.max(8, Math.min(libAnchor.x - 80, (typeof window !== "undefined" ? window.innerWidth : 1280) - 176)),
+            top: Math.max(8, Math.min(libAnchor.y + 6, (typeof window !== "undefined" ? window.innerHeight : 800) - 316)),
+            width: 168, maxHeight: 300,
+            display: "flex", flexDirection: "column", gap: 6, padding: 8, borderRadius: 12, zIndex: 60,
+            border: "1px solid var(--c-bd2)", background: "color-mix(in oklch, var(--c-base) 96%, transparent)",
+            backdropFilter: "blur(16px)", boxShadow: "0 12px 36px oklch(0 0 0 / 0.4)",
+          }}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <Search style={{ width: 11, height: 11, color: "var(--c-t4)", flexShrink: 0 }} />
+            <input value={libQ} onChange={(e) => setLibQ(e.target.value)} placeholder="搜素材名…" autoFocus
+              style={{ flex: 1, minWidth: 0, fontSize: 11, padding: "3px 6px", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t1)", outline: "none" }} />
+            <button onClick={() => setLibOpen(false)} style={{ color: "var(--c-t4)", lineHeight: 0 }} title="关闭"><X style={{ width: 11, height: 11 }} /></button>
+          </div>
+          <div className="nowheel" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, overflowY: "auto" }}>
+            {libImages.length === 0 && (
+              <div style={{ gridColumn: "1 / -1", fontSize: 10, color: "var(--c-t4)", textAlign: "center", padding: "10px 4px" }}>
+                {projAssets.isLoading || myAssets.isLoading ? "加载素材库…" : libQ ? "无匹配素材" : "素材库暂无图片"}
+              </div>
+            )}
+            {libImages.map((a) => (
+              <button key={a.url} title={a.name}
+                onClick={(e) => { e.stopPropagation(); onInsertUrls([a.url], images.length); }}
+                className="nodrag" style={{ padding: 0, border: "1px solid var(--c-bd2)", borderRadius: 7, overflow: "hidden", cursor: "pointer", aspectRatio: "1 / 1", background: "var(--c-canvas)" }}>
+                <img src={a.url} alt={a.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 9, color: "var(--c-t4)", textAlign: "center" }}>点选即加入参考图 · 输入即搜索</div>
+        </div>
+      )}
 
       <div ref={listRef} className="nowheel" style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
         {images.map((img, i) => {

@@ -184,7 +184,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     ...refImages.images.map((img) => ({ ...img, label: "参考图", removable: true })),
     ...charSceneItems,
   ];
-  const docks = useNodeDocks(id, { hasRef: stripImages.length > 0, hasPrompt: !!finalPromptDisplay.trim() }, { prompt: finalPromptDisplay, ref: stripImages.map((i) => i.id).join(",") });
+  const docks = useNodeDocks(id, { hasRef: true, /* 常开：空态悬停也能看到「上传/素材库」参考图入口 */ hasPrompt: !!finalPromptDisplay.trim() }, { prompt: finalPromptDisplay, ref: stripImages.map((i) => i.id).join(",") });
   const { refOpen: stripOpen, setRefOpen: setStripOpen } = docks;
   const [paramsExpanded, setParamsExpanded] = useState(false);
   // Derived, not local state — stays in sync with collaboration/undo updates

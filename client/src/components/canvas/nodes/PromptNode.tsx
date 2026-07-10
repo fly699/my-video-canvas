@@ -185,7 +185,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const audioItems = useAudioStripItems(id, payload.positivePrompt ?? "");
   const videoItems = useVideoStripItems(id, payload.positivePrompt ?? "");
   const stripExtras = [...charSceneItems, ...audioItems, ...videoItems];
-  const docks = useNodeDocks(id, { hasRef: !!payload.referenceImageUrl?.trim() || stripExtras.length > 0, hasPrompt: !!payload.positivePrompt?.trim() }, { prompt: payload.positivePrompt ?? "", ref: `${payload.referenceImageUrl ?? ""}|${stripExtras.map((i) => i.id).join(",")}` });
+  const docks = useNodeDocks(id, { hasRef: true, /* 常开：空态悬停也能看到「上传/素材库」参考图入口 */ hasPrompt: !!payload.positivePrompt?.trim() }, { prompt: payload.positivePrompt ?? "", ref: `${payload.referenceImageUrl ?? ""}|${stripExtras.map((i) => i.id).join(",")}` });
   const refStrip = useSimpleRefStrip(id, payload, "single", { accent: accentColor, title: "分析图", mainLabel: "分析图", extraItems: stripExtras, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
 
   return (
