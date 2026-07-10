@@ -8,6 +8,8 @@ import { isOwnStorageUrl } from "../../lib/ownStorage";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
 import { resizePanelByCorner, resizePanelByEdge, type Corner, type Edge } from "../../lib/panelCornerResize";
+// 节点产物媒体解析抽到 lib/nodeMedia（LibTV 化 2.4：资产左栏大纲同源消费）。
+import { extractFrameMedia } from "../../lib/nodeMedia";
 
 interface FilmstripPanelProps {
   onClose: () => void;
@@ -50,24 +52,6 @@ function validateLayout(v: unknown): FilmstripLayout | null {
   return { docked: o.docked, left: o.left, top: o.top, width: o.width, height: o.height };
 }
 
-// Resolve a node payload's frame media, bridging the field-name split across node
-// types: imageUrl/imageUrls (image_gen, comfyui_image, storyboard), resultVideoUrl
-// (video_task, comfyui_video), and outputUrl/outputUrls+outputType (comfyui_workflow).
-function extractFrameMedia(p: Record<string, unknown>): { imageUrl?: string; videoUrl?: string } {
-  const imageUrl = (p.imageUrl as string | undefined)
-    || (Array.isArray(p.imageUrls) ? (p.imageUrls as string[])[0] : undefined);
-  let videoUrl = p.resultVideoUrl as string | undefined;
-  // comfyui_workflow output → bridge by outputType (fall back to extension sniff).
-  const out = (p.outputUrl as string | undefined)
-    || (Array.isArray(p.outputUrls) ? (p.outputUrls as string[])[0] : undefined);
-  if (out) {
-    const t = p.outputType as string | undefined;
-    const isVideo = t === "video" || (t !== "image" && /\.(mp4|webm|mov|m4v|mkv|avi|ogv|gif)(\?|#|$)/i.test(out));
-    if (isVideo) videoUrl = videoUrl || out;
-    else if (!imageUrl) return { imageUrl: out, videoUrl };
-  }
-  return { imageUrl, videoUrl };
-}
 
 export function FilmstripPanel({ onClose }: FilmstripPanelProps) {
   const { nodes } = useCanvasStore();

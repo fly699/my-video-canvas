@@ -16,13 +16,15 @@ interface Props {
   onClose: () => void;
   /** When provided, the header acts as a drag handle for a floating container. */
   onHeaderMouseDown?: (e: React.PointerEvent) => void; // pointer 事件：触屏可拖（B 档移动端适配）
+  /** LibTV 化 2.4：嵌入资产左栏时为 true——去掉自带关闭钮与左边框（宿主自带 tab 头/边框）。 */
+  embedded?: boolean;
 }
 
 type TypeFilter = "image" | "video" | "audio" | "other";
 type SourceFilter = "upload" | "generated" | "external";
 type SortKey = "new" | "old" | "name" | "size";
 
-export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
+export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: Props) {
   const { addNode, updateNodeData } = useCanvasStore();
   const reactFlow = useReactFlow();
   const [uploading, setUploading] = useState(false);
@@ -228,7 +230,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
   return (
     <div
       className="flex flex-col h-full"
-      style={{ background: "var(--c-base)", borderLeft: "1px solid var(--c-bd1)" }}
+      style={{ background: "var(--c-base)", borderLeft: embedded ? "none" : "1px solid var(--c-bd1)" }}
     >
       {/* ── Header (drag handle when floating) ── */}
       <div
@@ -251,16 +253,18 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
             )}
           </p>
         </div>
-        <button
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={onClose}
-          className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-          style={{ color: "var(--c-t4)", background: "transparent" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
-        >
-          <X className="w-4 h-4" />
-        </button>
+        {!embedded && (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+            style={{ color: "var(--c-t4)", background: "transparent" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* ── Upload zone (compact single row) ── */}
