@@ -22,8 +22,9 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2, Lock,
-  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid,
 } from "lucide-react";
+import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
 import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 import { VARIANT_TYPES } from "../../hooks/useCanvasStore";
@@ -329,11 +330,73 @@ export const BaseNode = memo(function BaseNode({
     toast.success(`已创建「${label}」编辑节点（已连源图，点运行生成）`, { duration: 1800 });
   };
   const QUICK_EDITS: { op: ImageEditOp; label: string; Icon: typeof Scissors }[] = [
+    { op: "upscale", label: "高清", Icon: Sparkles },
     { op: "remove_bg", label: "去背景", Icon: Scissors },
     { op: "outpaint", label: "扩图", Icon: Expand },
     { op: "relight", label: "重打光", Icon: Sun },
     { op: "reframe", label: "改比例", Icon: Crop },
   ];
+
+  // ── LibTV 式一键编排：多角度（九宫格多机位）与宫格切分 ─────────────────────────
+  // 多角度：以本图为参考生成多机位九宫格 → 切分 → 产物落入新建 image_gen 节点
+  // （imageUrls 网格展示），连线 本节点 → 新节点（矩阵允许 image_gen→image_gen 族）。
+  // 宫格切分：直接把本图按 N×N 切分落新节点。全部复用 imageGen.generate / imageGrid.slice。
+  const gridGenMut = trpc.imageGen.generate.useMutation();
+  const gridSliceMut = trpc.imageGrid.slice.useMutation();
+  const [gridBusy, setGridBusy] = useState(false);
+  const [gridMenuOpen, setGridMenuOpen] = useState(false);
+
+  const spawnImageResultNode = (nodeTitle: string, urls: string[], heroUrl?: string) => {
+    const st = useCanvasStore.getState();
+    const self = st.nodes.find((n) => n.id === id);
+    if (!self) return;
+    const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
+    let node;
+    try { node = st.addNode("image_gen", { x: self.position.x + w + 60, y: self.position.y }); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
+    st.updateNodeTitle(node.id, nodeTitle);
+    st.updateNodeData(node.id, { prompt: "", imageUrl: heroUrl ?? urls[0], imageUrls: urls, heroView: "grid" });
+    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
+    useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
+  };
+
+  const handleMultiAngle = async () => {
+    if (gridBusy || !resultImageUrl) return;
+    const preset = getGridPreset("grid9")!;
+    setGridBusy(true);
+    const tid = toast.loading("多角度生成中（九宫格 → 自动切分）…");
+    try {
+      const gen = await gridGenMut.mutateAsync({
+        prompt: buildGridPrompt("the exact same subject and scene shown in the reference image", preset),
+        referenceImageUrl: resultImageUrl,
+        aspectRatio: preset.sheetAspect, poyoAspectRatio: preset.sheetAspect, reveAspectRatio: preset.sheetAspect,
+        ...(projectId ? { projectId } : {}),
+      });
+      const gridUrl = gen.urls?.[0] || gen.url || "";
+      if (!gridUrl) throw new Error("未返回宫格图");
+      const sliced = await gridSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, ...(projectId ? { projectId } : {}) });
+      if (!sliced.urls.length) throw new Error("切分未产生子图");
+      spawnImageResultNode(`多角度 · ${sliced.urls.length} 张`, sliced.urls);
+      toast.success(`已生成 ${sliced.urls.length} 个机位角度（新节点）`, { id: tid });
+    } catch (e) {
+      toast.error("多角度生成失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
+    } finally { setGridBusy(false); }
+  };
+
+  const handleGridSlice = async (n: number) => {
+    if (gridBusy || !resultImageUrl) return;
+    setGridMenuOpen(false);
+    setGridBusy(true);
+    const tid = toast.loading(`宫格切分（${n}×${n}）…`);
+    try {
+      const sliced = await gridSliceMut.mutateAsync({ imageUrl: resultImageUrl, rows: n, cols: n, ...(projectId ? { projectId } : {}) });
+      if (!sliced.urls.length) throw new Error("未产生子图");
+      spawnImageResultNode(`宫格切分 · ${sliced.urls.length} 张`, sliced.urls);
+      toast.success(`已切分为 ${sliced.urls.length} 张子图（新节点）`, { id: tid });
+    } catch (e) {
+      toast.error("宫格切分失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
+    } finally { setGridBusy(false); }
+  };
 
   // Liblib-style 图生视频: spawn a connected downstream video_task using this node's
   // image result as the i2v first frame (set referenceImageUrl directly + wire by edge),
@@ -625,7 +688,8 @@ export const BaseNode = memo(function BaseNode({
           the EXACT existing handlers (same onRun reference the title-bar run uses,
           and the self-contained duplicateNode store action), so it cannot diverge
           from or break existing behavior. */}
-      {usesStudioFloating && (storeSelected || pinned) && (onRun || resultVideoUrl || resultImageUrl) && (
+      {/* LibTV 化：工具条开放到所有皮肤（原仅 studio）——选中即浮出快捷 AI 操作。 */}
+      {(storeSelected || pinned) && (onRun || resultVideoUrl || resultImageUrl) && (
         // 绝对定位于节点根（锚在节点上方、水平居中），而非 ReactFlow NodeToolbar——
         // NodeToolbar 渲染在屏幕坐标、不随画布 zoom 缩放，与下方「绝对定位、随缩放」的参数
         // 面板不一致（顶部工具栏不跟着节点缩放）。改为节点内绝对定位即随节点一起缩放。
@@ -693,6 +757,39 @@ export const BaseNode = memo(function BaseNode({
                     <Icon size={12} /> {label}
                   </button>
                 ))}
+                {/* 多角度：本图为参考生成九宫格多机位 → 自动切分为子图（一键编排） */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); void handleMultiAngle(); }}
+                  disabled={gridBusy}
+                  title="多角度（以本图为参考生成多机位九宫格并自动切分，产物落入新节点）"
+                  className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                  style={{ background: "var(--c-surface)", color: gridBusy ? "var(--c-t4)" : "var(--c-t2)", border: "none", cursor: gridBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                >
+                  {gridBusy ? <Loader2 size={12} className="animate-spin" /> : <LayoutGrid size={12} />} 多角度
+                </button>
+                {/* 宫格切分：把本图按 N×N 切成子图（LibTV 同款 4/9/16/25 档） */}
+                <span style={{ position: "relative", display: "inline-flex" }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setGridMenuOpen((v) => !v); }}
+                    disabled={gridBusy}
+                    title="宫格切分（把宫格图切成多张子图，产物落入新节点）"
+                    className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                    style={{ background: gridMenuOpen ? "var(--c-elevated)" : "var(--c-surface)", color: gridBusy ? "var(--c-t4)" : "var(--c-t2)", border: "none", cursor: gridBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                  >
+                    <Grid3X3 size={12} /> 宫格切分 <ChevronDown size={10} />
+                  </button>
+                  {gridMenuOpen && (
+                    <div className="nodrag" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, display: "flex", flexDirection: "column", gap: 2, padding: 4, borderRadius: 9, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+                      {[2, 3, 4, 5].map((n) => (
+                        <button key={n} onClick={(e) => { e.stopPropagation(); void handleGridSlice(n); }}
+                          className="studio-toolbtn rounded-md"
+                          style={{ padding: "4px 12px", fontSize: 11, whiteSpace: "nowrap", background: "transparent", color: "var(--c-t2)", border: "none", cursor: "pointer", textAlign: "left" }}>
+                          {n}×{n}（{n * n} 格）
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </span>
               </>
             )}
             {/* Liblib-style 图生视频 — image-result nodes that can wire into a video task.

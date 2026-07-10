@@ -715,7 +715,8 @@ function Bubble({ msg, mine, narrow }: { msg: ChatWireMessage; mine: boolean; na
           {displayContent.trim() && (
             <button
               onClick={() => void copyTextWithToast(displayContent, "已复制", { duration: 1200 })}
-              className="opacity-0 group-hover/msg:opacity-100 transition-opacity"
+              // 窄屏（移动端）无 hover，hover 才显示等于永远不可见 → 窄屏常显（淡色不扰）。
+              className={narrow ? "" : "opacity-0 group-hover/msg:opacity-100 transition-opacity"}
               style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: C.t4, background: "none", border: "none", cursor: "pointer", padding: 0 }}
               title="复制本条消息"
             >
