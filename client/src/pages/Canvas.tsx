@@ -63,6 +63,7 @@ import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
 import { AlignToolbar } from "../components/canvas/AlignToolbar";
 import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
+import { ReturnToNodesHint } from "../components/canvas/ReturnToNodesHint";
 import { setBoxSelecting } from "../hooks/useBoxSelecting";
 import { markGestureSelected, clearGestureSelected } from "../hooks/useNodeExpandGuard";
 import { useEdgeInsert } from "../hooks/useEdgeInsert";
@@ -2864,6 +2865,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <AlignToolbar />
           {/* 操作小贴士（右下角，定时/情境弹出，可自动消失，右键不再显示） */}
           <CanvasTips />
+          {/* 「返回节点」提示：视野里看不到任何节点时浮出，一键归位（对标 LibTV） */}
+          <ReturnToNodesHint />
           {/* Studio global creation bar (nothing selected → quick prompt → 生成) */}
           <StudioCreateBar />
           {/* ◆10 非 studio 皮肤的空画布空态 CTA（studio 由 StudioCreateBar 负责） */}
