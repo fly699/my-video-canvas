@@ -466,3 +466,32 @@ describe("applyAgentOperations 快速设置落地", () => {
     expect((payloadOf("video_task").params as Record<string, unknown>).aspect_ratio).toBe("1:1");
   });
 });
+
+describe("applyAgentOperations 工作流模板白名单（快速设置二级选择）", () => {
+  const TPLS = [
+    { id: 7, label: "Wan 图生视频", payload: { workflowJson: "{\"1\":{}}" } },
+    { id: 8, label: "Flux 出图", payload: { workflowJson: "{\"1\":{}}" } },
+  ];
+  it("允许清单内的模板正常物化", () => {
+    const r = applyAgentOperations([
+      { op: "create", nodeType: "comfyui_workflow", tempId: "w1", payload: { templateId: 7, prompt: "p" } },
+    ], { x: 0, y: 0 }, { templates: TPLS, allowedTemplateIds: [7] });
+    expect(r.created).toBe(1);
+    expect(r.failures).toEqual([]);
+  });
+  it("清单外/缺失 templateId 的 comfyui_workflow 判失败并给原因", () => {
+    const r = applyAgentOperations([
+      { op: "create", nodeType: "comfyui_workflow", tempId: "w1", payload: { templateId: 8, prompt: "p" } },
+      { op: "create", nodeType: "comfyui_workflow", tempId: "w2", payload: { prompt: "无模板空壳" } },
+    ], { x: 0, y: 0 }, { templates: TPLS, allowedTemplateIds: [7] });
+    expect(r.created).toBe(0);
+    expect(r.failures).toHaveLength(2);
+    expect(r.failures[0].reason).toContain("只允许使用模板");
+  });
+  it("未设白名单时不限制（templateId 只需真实存在）", () => {
+    const r = applyAgentOperations([
+      { op: "create", nodeType: "comfyui_workflow", tempId: "w1", payload: { templateId: 8, prompt: "p" } },
+    ], { x: 0, y: 0 }, { templates: TPLS });
+    expect(r.created).toBe(1);
+  });
+});

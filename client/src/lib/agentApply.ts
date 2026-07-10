@@ -128,6 +128,8 @@ export function applyAgentOperations(
     videoProvider?: string;
     /** 快速设置勾选的「允许使用的生成节点类型」；提供且非空时，清单外的生成类 create 直接判失败。 */
     allowedGenNodes?: string[];
+    /** 快速设置勾选的「允许引用的工作流模板 id」；提供且非空时，comfyui_workflow 只能引用其中的模板。 */
+    allowedTemplateIds?: number[];
   } = {},
 ): ApplyResult {
   injectFreeVramIntoOps(ops, opts.freeVramAfterRun === true);
@@ -206,6 +208,15 @@ export function applyAgentOperations(
           if (opts.allowedGenNodes && opts.allowedGenNodes.length && (GEN_NODE_TYPES as readonly string[]).includes(op.nodeType) && !opts.allowedGenNodes.includes(op.nodeType)) {
             fail(index, op, `规划设置不允许使用 ${op.nodeType} 节点（允许：${opts.allowedGenNodes.join("/")}）`);
             return;
+          }
+          // 快速设置「允许的工作流模板」硬约束：comfyui_workflow 必须引用所选模板之一
+          //（未带 templateId 的空壳节点在限定模式下同样拒绝——空壳跑不了也没意义）。
+          if (op.nodeType === "comfyui_workflow" && opts.allowedTemplateIds && opts.allowedTemplateIds.length) {
+            const tid = Number((op.payload as Record<string, unknown> | undefined)?.templateId);
+            if (!Number.isInteger(tid) || !opts.allowedTemplateIds.includes(tid)) {
+              fail(index, op, `规划设置只允许使用模板 id ∈ [${opts.allowedTemplateIds.join(", ")}]（本操作 templateId=${String((op.payload as Record<string, unknown> | undefined)?.templateId ?? "缺失")}）`);
+              return;
+            }
           }
           // comfyui_workflow with a templateId → materialize from the library.
           let payload = op.payload as Record<string, unknown> | undefined;
