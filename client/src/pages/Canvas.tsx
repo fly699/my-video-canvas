@@ -27,6 +27,7 @@ import { BudgetButton } from "../components/canvas/BudgetButton";
 import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels";
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { CanvasChatNotifier } from "../components/canvas/CanvasChatNotifier";
+import { CanvasAnnounceBanner } from "../components/canvas/CanvasAnnounceBanner";
 import { CanvasAgentChat } from "../components/canvas/CanvasAgentChat";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useTopbarNarrow } from "../hooks/useTopbarNarrow";
@@ -4151,6 +4152,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
       {!isPopout && chatOpen && <CanvasChatWindow onClose={() => setChatOpen(false)} />}
       {/* 聊天窗关闭时的常驻通知监听器：收新消息给声音/桌面/横幅提醒 + 顶栏红点（窗打开时由 ChatProvider 负责） */}
       {!isPopout && !chatOpen && isAuthenticated && <CanvasChatNotifier onNewMessage={() => setChatUnread((n) => n + 1)} />}
+      {/* 持续公告进入提醒：每次进入画布弹 5 秒自动消失的顶部横幅（不依赖聊天窗开关） */}
+      {!isPopout && isAuthenticated && <CanvasAnnounceBanner />}
       {!isPopout && !isReadOnly && agentChatOpen && <CanvasAgentChat projectId={projectId} onClose={() => setAgentChatOpen(false)} />}
     </div>
    </NodeDefaultModelsProvider>
