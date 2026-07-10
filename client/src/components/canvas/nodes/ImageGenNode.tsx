@@ -147,15 +147,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [model3dSrc, setModel3dSrc] = useState<string | null>(null);
   const [pendingGen3d, setPendingGen3d] = useState(false);
   // 图生 3D 是付费操作（Tripo3D 图生 30–60 credits、耗时 1–3 分钟），开窗前先确认费用。
+  // 同一张源图已生成过（payload.model3d 持久化）→ 免确认免费重开，继续调整视角。
   const openTrue3d = useCallback(async (url: string) => {
     if (!url) return;
+    if (payload.model3d?.glbUrl && payload.model3d.sourceUrl === url) { setModel3dSrc(url); return; }
     const ok = await confirmDialog({
       title: "生成真 3D 模型？",
-      message: "将调用 Tripo3D 把这张图生成为可 360° 环绕的 3D 网格。约消耗 30–60 credits，通常需 1–3 分钟。",
+      message: "将调用 Tripo3D 把这张图生成为可 360° 环绕的 3D 网格。约消耗 30–60 credits，通常需 1–3 分钟。生成结果会随节点保存，之后可免费重开。",
       confirmLabel: "生成",
     });
     if (ok) setModel3dSrc(url);
-  }, []);
+  }, [payload.model3d]);
   // Multi-reference-image list + left-docked expandable strip.
   const refImages = useReferenceImages(id, payload);
   // 上游图像（图像生成 / ComfyUI 图像·自定义 / 素材 / 分镜）自动作为参考图填充——
@@ -1334,10 +1336,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         />
       )}
 
-      {/* B 档 真3D：图生 .glb 网格 → 完整 360° 环绕 → 截图插为首位参考图 → 触发再生成。 */}
+      {/* B 档 真3D：图生 .glb 网格 → 完整 360° 环绕 → 截图插为首位参考图 → 触发再生成。
+          glbUrl 持久化进 payload.model3d：关闭后免费重开继续调整，可导出/存素材库。 */}
       {model3dSrc && (
         <Model3DViewer
           sourceImageUrl={model3dSrc}
+          initialGlbUrl={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.glbUrl : undefined}
+          savedToLibrary={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.saved : undefined}
+          projectId={data.projectId}
+          nodeId={id}
+          onGlbReady={(glbUrl) => update("model3d", { sourceUrl: model3dSrc, glbUrl })}
+          onSavedToLibrary={() => payload.model3d && update("model3d", { ...payload.model3d, saved: true })}
           onClose={() => setModel3dSrc(null)}
           onGenerate={(capturedUrl) => {
             refImages.insertUrls([capturedUrl], 0, "upload");

@@ -465,6 +465,14 @@ export const IMAGE_GEN_MODELS = [
   "kie_qwen_image_i2i", "kie_qwen_image_edit", "kie_qwen2_image_edit",
   "kie_flux_kontext_pro", "kie_flux_kontext_max", "kie_gpt_4o_image",
 ] as const satisfies readonly ImageGenModel[];
+/** 「真 3D」（Tripo3D 图生 .glb）结果：随节点持久化——生成一次约 30–60 credits，
+ *  关闭查看器后凭此免费重开继续调整视角；sourceUrl 变了才需要重新生成。 */
+export interface Model3DResult {
+  sourceUrl: string;   // 生成该模型所用的源图（用于判断是否可复用）
+  glbUrl: string;      // 已转存到自有存储的 .glb
+  saved?: boolean;     // 已存入素材库（服务端按 storageKey 去重，重复保存无害）
+}
+
 export interface ImageGenNodeData {
   prompt: string;
   negativePrompt?: string;
@@ -477,6 +485,8 @@ export interface ImageGenNodeData {
   referenceImages?: ReferenceImage[];
   imageUrl?: string;
   imageStorageKey?: string;
+  /** 真 3D（Tripo3D）已生成的模型——重开免费复用。 */
+  model3d?: Model3DResult;
   model?: ImageGenModel;
   // Poyo image params
   poyoQuality?: "low" | "medium" | "high";
@@ -1172,6 +1182,8 @@ export interface WorkflowParamBinding {
 
 export interface ComfyuiWorkflowNodeData {
   customBaseUrl?: string;
+  /** 真 3D（Tripo3D）已生成的模型——重开免费复用。 */
+  model3d?: Model3DResult;
   /** 瞬态：由「工具栏一键导入 ComfyUI 工作流」创建时置 true，节点挂载即打开导入向导后清除。 */
   _openWizard?: boolean;
   serverUrls?: string[];        // saved server addresses for quick selection (persisted on node)

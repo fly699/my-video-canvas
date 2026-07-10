@@ -1258,8 +1258,10 @@ export const BaseNode = memo(function BaseNode({
       {hasHero && (
         <div className="node-hero-media">
           {heroMedia}
-          {/* Studio: fullscreen lightbox trigger on the result media */}
-          {isStudio && (resultVideoUrl || resultImageUrl) && (
+          {/* Studio: fullscreen lightbox trigger — 仅图片结果。视频结果不再叠加自定义全屏钮：
+              原生控制条自带的全屏能真正铺满屏幕，双按钮只会让人点到不铺满的那个（用户实测反馈）；
+              水印开启时原生全屏被禁，但 WatermarkedVideo 自带的放大预览钮会顶上。图片无原生全屏，保留。 */}
+          {isStudio && !resultVideoUrl && resultImageUrl && (
             <button
               className="nodrag studio-toolbtn"
               onClick={(e) => { e.stopPropagation(); openLightbox(); }}

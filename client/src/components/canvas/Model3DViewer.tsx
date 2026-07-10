@@ -4,7 +4,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import { Box3, Vector3, type Object3D } from "three";
 import * as THREE from "three";
-import { X, Loader2, Sparkles, RotateCcw, Boxes } from "lucide-react";
+import { X, Loader2, Sparkles, RotateCcw, Boxes, Download, FolderPlus, Check } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
@@ -49,26 +49,39 @@ const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reje
   r.readAsDataURL(blob);
 });
 
-export function Model3DViewer({ sourceImageUrl, onGenerate, onClose }: {
+export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId, savedToLibrary, onGlbReady, onSavedToLibrary, onGenerate, onClose }: {
   sourceImageUrl: string;
+  /** 已生成过的 .glb（宿主节点 payload 持久化）——传入则直接载入，不再花钱重新生成。 */
+  initialGlbUrl?: string;
+  projectId?: number;
+  nodeId?: string;
+  /** 已存入过素材库（宿主持久化）——按钮显示「已在素材库」。 */
+  savedToLibrary?: boolean;
+  /** 生成完成回调：宿主把 glbUrl 写进节点 payload 持久化，下次免费重开。 */
+  onGlbReady?: (glbUrl: string) => void;
+  /** 存入素材库成功回调：宿主持久化标记。 */
+  onSavedToLibrary?: () => void;
   /** 「从此视角生成」：回传截图 URL 给调用方去触发再生成。 */
   onGenerate: (capturedViewUrl: string) => void;
   onClose: () => void;
 }) {
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [glbUrl, setGlbUrl] = useState<string | null>(null);
+  const [glbUrl, setGlbUrl] = useState<string | null>(initialGlbUrl ?? null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(!!savedToLibrary);
   const capRef = useRef<CaptureHandle | null>(null);
   const orbitRef = useRef<{ reset: () => void } | null>(null);
   const submittedRef = useRef(false);
 
   const submitMut = trpc.poyo.submitImageTo3d.useMutation();
   const uploadMut = trpc.upload.uploadImage.useMutation();
+  const saveMut = trpc.poyo.save3dToLibrary.useMutation();
 
-  // 提交图生 3D（StrictMode 双调用用 ref 去重）。
+  // 提交图生 3D（StrictMode 双调用用 ref 去重）。已有持久化模型 → 直接复用，不再提交。
   useEffect(() => {
-    if (submittedRef.current) return;
+    if (initialGlbUrl || submittedRef.current) return;
     submittedRef.current = true;
     (async () => {
       try {
@@ -91,10 +104,45 @@ export function Model3DViewer({ sourceImageUrl, onGenerate, onClose }: {
     if (!d) return;
     if (d.status === "finished") {
       // finished 但无 glb（未挑到模型文件）也要收敛为错误，否则 enabled 恒真会无限轮询。
-      if (d.glbUrl) setGlbUrl(d.glbUrl);
-      else setErr("生成已完成，但未返回可用的 3D 模型文件");
+      if (d.glbUrl) {
+        setGlbUrl(d.glbUrl);
+        onGlbReady?.(d.glbUrl); // 宿主持久化——关闭后可免费重开
+      } else setErr("生成已完成，但未返回可用的 3D 模型文件");
     } else if (d.status === "failed") setErr(d.error || "图生 3D 失败");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusQ.data]);
+
+  // 导出 .glb：fetch → blob 下载（跨源 a[download] 会被忽略，统一走 blob 保证落盘）。
+  const handleExport = useCallback(async () => {
+    if (!glbUrl) return;
+    try {
+      const res = await fetch(glbUrl);
+      if (!res.ok) throw new Error(`下载失败 (HTTP ${res.status})`);
+      const blob = await res.blob();
+      const o = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = o; a.download = "model3d.glb"; a.click();
+      setTimeout(() => URL.revokeObjectURL(o), 30_000);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "导出失败");
+    }
+  }, [glbUrl]);
+
+  // 存入素材库（type=other）：下次可在素材库下载/复用；服务端按 storageKey 去重。
+  const handleSaveToLibrary = useCallback(async () => {
+    if (!glbUrl || saving || saved) return;
+    setSaving(true);
+    try {
+      await saveMut.mutateAsync({ glbUrl, projectId, nodeId, name: "真3D模型" });
+      setSaved(true);
+      onSavedToLibrary?.();
+      toast.success("已存入素材库（类型：其他文件）");
+    } catch (e) {
+      toast.error("存入素材库失败：" + (e instanceof Error ? e.message : "未知错误"));
+    } finally {
+      setSaving(false);
+    }
+  }, [glbUrl, saving, saved, saveMut, projectId, nodeId, onSavedToLibrary]);
   const progress = statusQ.data?.progress ?? null;
 
   const bind = useCallback((h: CaptureHandle) => { capRef.current = h; }, []);
@@ -174,9 +222,19 @@ export function Model3DViewer({ sourceImageUrl, onGenerate, onClose }: {
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.12)", color: "#fff", flexShrink: 0, flexWrap: "wrap" }}>
         <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.55)" }}>
-          {glbUrl ? "拖拽任意角度环绕真 3D 模型，选好视角后重绘" : "生成中，请稍候…"}
+          {glbUrl ? "拖拽任意角度环绕真 3D 模型，选好视角后重绘（模型已随节点保存，关闭后可重开）" : "生成中，请稍候…"}
         </span>
         <button style={btn} disabled={!glbUrl} onClick={() => orbitRef.current?.reset()}><RotateCcw size={14} /> 复位视角</button>
+        <button style={btn} disabled={!glbUrl} onClick={handleExport} title="下载 .glb 文件（可导入 Blender/UE 等）"><Download size={14} /> 导出 GLB</button>
+        <button
+          style={{ ...btn, opacity: saved ? 0.7 : 1 }}
+          disabled={!glbUrl || saving || saved}
+          onClick={handleSaveToLibrary}
+          title={saved ? "已在素材库中" : "存入素材库，下次可直接下载/复用"}
+        >
+          {saved ? <Check size={14} /> : saving ? <Loader2 size={14} className="animate-spin" /> : <FolderPlus size={14} />}
+          {saved ? " 已在素材库" : " 存入素材库"}
+        </button>
         <div style={{ marginLeft: "auto" }} />
         <button
           onClick={handleGenerate}
