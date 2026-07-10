@@ -27,7 +27,7 @@ import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate, resta
 import { hashPassword } from "../_core/emailAuth";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { writeAuditLog } from "../_core/auditLog";
-import { broadcastSystemAnnouncement } from "./chat";
+import { broadcastSystemAnnouncement, setPersistentAnnouncement } from "./chat";
 import { adminDownloadsRouter } from "./downloads";
 import { encryptKieKey, kieKeyHash, kieKeyLast4, isKieCryptoConfigured } from "../_core/kieCrypto";
 import { fetchKieCredit } from "../_core/kie";
@@ -725,15 +725,34 @@ export const adminRouter = router({
           userIds: z.array(z.number().int().positive()).max(5000).optional(),
           conversationIds: z.array(z.number().int().positive()).max(500).optional(),
         }).optional(),
+        // 持续公告：额外在全体用户聊天窗顶部常驻突出显示并间隔闪烁，
+        // 直至管理员关闭或超出时长（persistHours；不传 = 直至手动关闭）。
+        persistent: z.boolean().optional(),
+        persistHours: z.number().min(0.1).max(720).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const targets = input.targets ?? { all: true };
         const hasTarget = !!targets.all || (targets.userIds?.length ?? 0) > 0 || (targets.conversationIds?.length ?? 0) > 0;
         if (!hasTarget) throw new TRPCError({ code: "BAD_REQUEST", message: "请至少选择一个接收对象" });
         const res = await broadcastSystemAnnouncement(input.title, input.body, targets);
-        writeAuditLog({ ctx, action: "chat_broadcast", detail: { title: input.title, delivered: res.delivered, total: res.total, scope: targets.all ? "all" : "custom" } });
+        if (input.persistent) {
+          const now = Date.now();
+          await setPersistentAnnouncement({
+            title: input.title, body: input.body, createdAt: now,
+            expiresAt: input.persistHours ? now + Math.round(input.persistHours * 3600_000) : null,
+            createdBy: ctx.user.name ?? undefined,
+          });
+        }
+        writeAuditLog({ ctx, action: "chat_broadcast", detail: { title: input.title, delivered: res.delivered, total: res.total, scope: targets.all ? "all" : "custom", persistent: !!input.persistent, persistHours: input.persistHours ?? null } });
         return res;
       }),
+
+    // 关闭当前生效的「持续公告」（顶部常驻横幅立即对全员消失）。
+    clearPersistentAnnouncement: managerProc.mutation(async ({ ctx }) => {
+      await setPersistentAnnouncement(null);
+      writeAuditLog({ ctx, action: "chat_broadcast_persistent_clear", detail: {} });
+      return { success: true };
+    }),
 
     // 广播编辑器的候选收件人：全体用户 + 可选房间/群组（含成员数），排除系统房。
     broadcastTargets: managerProc.query(async () => {

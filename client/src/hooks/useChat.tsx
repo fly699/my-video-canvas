@@ -273,6 +273,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       notifyIncoming({ conversationId: p.roomId, senderId: -2, senderName: "📢 系统公告", content: p.title });
       utils.chat.listConversations.invalidate();
     });
+    // 持续公告 set/clear：刷新顶部常驻横幅（ChatView 内查询该接口渲染）。
+    socket.on("system:announce:persistent", () => {
+      utils.chat.getPersistentAnnouncement.invalidate();
+    });
     socket.on("conversation:deleted", (p: { conversationId: number }) => {
       if (p.conversationId === activeIdRef.current) { activeIdRef.current = null; setActiveId(null); setMessages([]); }
       utils.chat.listConversations.invalidate();

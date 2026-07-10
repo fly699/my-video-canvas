@@ -2765,7 +2765,7 @@ export async function getChatSettings(): Promise<ChatSettingsRow> {
   return again[0]!;
 }
 
-export async function setChatSettings(patch: Partial<Pick<ChatSettingsRow, "serverlessAllowed" | "lobbyEnabled" | "maxFileMb">>): Promise<ChatSettingsRow> {
+export async function setChatSettings(patch: Partial<Pick<ChatSettingsRow, "serverlessAllowed" | "lobbyEnabled" | "maxFileMb" | "persistentAnnounceJson">>): Promise<ChatSettingsRow> {
   const db = await getDb();
   if (!db) { if (DEV_MODE) return dev.devSetChatSettings(patch); throw new Error("DB unavailable"); }
   await db.insert(chatSettings).values({ id: 1, ...patch }).onDuplicateKeyUpdate({ set: patch });

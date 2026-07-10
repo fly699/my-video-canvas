@@ -1438,6 +1438,33 @@ button:active:not(:disabled) {
   max-width: 100%;
   margin: 0 auto;
 }
+
+/* 创意模式（LibTV）：选中时英雄区也保持可见——配置区默认收起（点「高级」才展开）后，
+   若沿用「选中隐藏 hero」的 pro 规则，选中瞬间 hero 藏 + body 又收起 → 预览图两头
+   都不显示（bug：分镜点击后预览图消失）。媒体优先卡与 studio 同款选中态规则。 */
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-hero-media {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+  line-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-hero-media img,
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-hero-media video {
+  max-width: 100%;
+  max-height: 460px;
+  width: auto;
+  height: auto;
+  aspect-ratio: auto;
+  display: block;
+  margin: 0 auto;
+}
+:root[data-canvas-mode="creative"] [data-has-hero="true"][data-selected="true"] .node-hero-media .wm-video-wrap {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
 /* Studio: when selected, inset the hero into a rounded media block with a hairline
    ring so the result reads as a framed preview (media-first card), not a flush band. */
 :root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media {
@@ -1679,6 +1706,21 @@ button:active:not(:disabled) {
 }
 @media (prefers-reduced-motion: reduce) {
   .node-hero-genmask::before { animation: none; }
+}
+
+/* ── 聊天「持续公告」横幅：间隔闪烁 ─────────────────────────────────────────────
+   4s 一个周期：前 1s 内两次短促脉冲（背景加亮），其余时间稳定常驻——够醒目又不晃眼。
+   颜色与聊天强调色（琥珀橙 #f59e0b）一致；无障碍下关闭动画（横幅仍常驻）。 */
+.chat-announce-blink {
+  animation: chat-announce-blink 4s ease-in-out infinite;
+}
+@keyframes chat-announce-blink {
+  0%, 25%, 100% { background-color: rgba(245, 158, 11, 0.14); }
+  6%, 19%       { background-color: rgba(245, 158, 11, 0.38); }
+  12%           { background-color: rgba(245, 158, 11, 0.14); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-announce-blink { animation: none; }
 }
 
 /* Creative mode: node cards get slightly more width */

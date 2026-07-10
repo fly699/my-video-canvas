@@ -594,6 +594,19 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const openTrue3d = useCallback(async (url: string) => {
     if (url) setModel3dSrc(url);
   }, []);
+  // 悬浮工具条「3D / 真3D」跨组件信号（BaseNode → 本节点）：源图取首个输出图。
+  const pseudo3dToken = useCanvasStore((s) => (s.panelRequest?.nodeId === id && s.panelRequest?.panel === "pseudo3d" ? s.panelRequest.token : 0));
+  const true3dToken = useCanvasStore((s) => (s.panelRequest?.nodeId === id && s.panelRequest?.panel === "true3d" ? s.panelRequest.token : 0));
+  useEffect(() => {
+    const src = payload.outputUrls?.[0];
+    if (pseudo3dToken > 0 && src) setView3dSrc(src);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pseudo3dToken]);
+  useEffect(() => {
+    const src = payload.outputUrls?.[0];
+    if (true3dToken > 0 && src) void openTrue3d(src);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [true3dToken]);
   // 换视角截图 → 写入首个图像输入参数（非默认值→resolveImageParamsWithMap 视为用户编辑而保留）→ 重跑。
   const on3dGenerate = useCallback((capturedUrl: string) => {
     if (!firstImageParamKey) { toast.error("该工作流没有图像输入参数，无法回灌重绘（可先连一个图生图/ControlNet 工作流）"); return; }

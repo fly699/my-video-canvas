@@ -212,9 +212,12 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
 
   if (!activeConv) {
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, background: C.bg }}>
-        <img src="/chat-icon.svg" width={72} height={72} alt="" style={{ opacity: 0.5, borderRadius: 18 }} />
-        <div style={{ color: C.t3, fontSize: 14 }}>选择一个会话开始聊天</div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: C.bg }}>
+        <PersistentAnnounceBanner narrow={narrow} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
+          <img src="/chat-icon.svg" width={72} height={72} alt="" style={{ opacity: 0.5, borderRadius: 18 }} />
+          <div style={{ color: C.t3, fontSize: 14 }}>选择一个会话开始聊天</div>
+        </div>
       </div>
     );
   }
@@ -369,6 +372,8 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
          onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
          onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}>
+      {/* 持续公告：顶部常驻横幅（全员可见、间隔闪烁），管理员可关闭，到期自动消失 */}
+      <PersistentAnnounceBanner narrow={narrow} />
       {/* header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: narrow ? "9px 12px" : "12px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: narrow ? 8 : 11 }}>
@@ -725,6 +730,73 @@ function Bubble({ msg, mine, narrow }: { msg: ChatWireMessage; mine: boolean; na
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 持续公告横幅：聊天窗顶部常驻突出显示并间隔闪烁（全员可见），直至管理员关闭或到期。
+ *  数据来自 chat.getPersistentAnnouncement；set/clear 经 socket "system:announce:persistent"
+ *  在 useChat 里 invalidate 该查询实时刷新。管理员(L3+) 显示关闭按钮。 */
+function PersistentAnnounceBanner({ narrow = false }: { narrow?: boolean }) {
+  const { user } = useAuth();
+  const utils = trpc.useUtils();
+  const q = trpc.chat.getPersistentAnnouncement.useQuery(undefined, { staleTime: 30_000, refetchInterval: 5 * 60_000 });
+  const ann = q.data?.announcement ?? null;
+  const [expanded, setExpanded] = useState(false);
+  const clearMut = trpc.admin.chat.clearPersistentAnnouncement.useMutation({
+    onSuccess: () => { void utils.chat.getPersistentAnnouncement.invalidate(); toast.success("持续公告已关闭"); },
+    onError: (e) => toast.error("关闭失败：" + e.message),
+  });
+  // 到期自动消失：本地定时到点后重取（服务器惰性过期会返回 null），不依赖轮询间隔。
+  useEffect(() => {
+    if (!ann?.expiresAt) return;
+    const ms = ann.expiresAt - Date.now();
+    if (ms <= 0) { void utils.chat.getPersistentAnnouncement.invalidate(); return; }
+    const t = setTimeout(() => { void utils.chat.getPersistentAnnouncement.invalidate(); }, Math.min(ms + 500, 2_147_000_000));
+    return () => clearTimeout(t);
+  }, [ann?.expiresAt, utils]);
+  if (!ann) return null;
+  const isManager = user?.role === "admin" && (user?.adminLevel ?? 0) >= 3;
+  const expiryLabel = ann.expiresAt
+    ? (() => { const h = (ann.expiresAt - Date.now()) / 3600_000; return h >= 1 ? `${Math.ceil(h)} 小时后结束` : `${Math.max(1, Math.ceil(h * 60))} 分钟后结束`; })()
+    : null;
+  return (
+    <div
+      className="chat-announce-blink"
+      onClick={() => setExpanded((v) => !v)}
+      role="status"
+      title={expanded ? "收起" : "展开全文"}
+      style={{
+        display: "flex", alignItems: expanded ? "flex-start" : "center", gap: 8,
+        padding: narrow ? "8px 10px" : "9px 14px", flexShrink: 0, cursor: "pointer",
+        background: "rgba(245,158,11,0.14)",
+        borderBottom: "1px solid rgba(245,158,11,0.45)",
+        color: C.t1, fontSize: 13, lineHeight: 1.5,
+      }}
+    >
+      <span aria-hidden style={{ flexShrink: 0, fontSize: 15, lineHeight: "20px" }}>📢</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <b style={{ marginRight: 8 }}>{ann.title}</b>
+        <span style={expanded
+          ? { color: C.t2, whiteSpace: "pre-wrap", wordBreak: "break-word" }
+          : { color: C.t2, display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }}>
+          {ann.body}
+        </span>
+        {expanded && (
+          <div style={{ marginTop: 4, fontSize: 11, color: C.t4 }}>
+            {ann.createdBy ? `发布：${ann.createdBy} · ` : ""}{expiryLabel ?? "持续显示，直至管理员关闭"}
+          </div>
+        )}
+      </div>
+      {!expanded && expiryLabel && !narrow && <span style={{ flexShrink: 0, fontSize: 11, color: C.t4 }}>{expiryLabel}</span>}
+      {isManager && (
+        <button
+          onClick={(e) => { e.stopPropagation(); if (!clearMut.isPending && confirm("关闭这条持续公告？将立即对全体用户消失。")) clearMut.mutate(); }}
+          title="关闭持续公告（管理员）"
+          aria-label="关闭持续公告"
+          style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 6, border: `1px solid ${C.borderStrong}`, background: C.elevated, color: C.t2, cursor: "pointer" }}
+        ><X size={13} /></button>
+      )}
     </div>
   );
 }

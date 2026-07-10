@@ -2,16 +2,17 @@ import { describe, it, expect } from "vitest";
 import { GRID_PRESETS, getGridPreset, gridCellCount, buildGridPrompt } from "./grid";
 
 describe("GRID_PRESETS", () => {
-  it("exposes the 4 documented presets with unique ids", () => {
+  it("exposes the 5 documented presets with unique ids", () => {
     const ids = GRID_PRESETS.map((p) => p.id).sort();
-    expect(ids).toEqual(["grid25", "grid9", "plot4", "turnaround"]);
-    expect(new Set(ids).size).toBe(4);
+    expect(ids).toEqual(["expressions", "grid25", "grid9", "plot4", "turnaround"]);
+    expect(new Set(ids).size).toBe(5);
   });
   it("cell count = rows*cols and stays within the 64 slice cap", () => {
     expect(gridCellCount(getGridPreset("grid9")!)).toBe(9);
     expect(gridCellCount(getGridPreset("grid25")!)).toBe(25);
     expect(gridCellCount(getGridPreset("turnaround")!)).toBe(3);
     expect(gridCellCount(getGridPreset("plot4")!)).toBe(4);
+    expect(gridCellCount(getGridPreset("expressions")!)).toBe(9);
     for (const p of GRID_PRESETS) expect(p.rows * p.cols).toBeLessThanOrEqual(64);
   });
   it("rows/cols are positive integers and sheetAspect is set", () => {

@@ -32,6 +32,7 @@ import {
   getChatRoomKeyBundle,
   isChatBanned,
   getChatSettings,
+  setChatSettings,
   searchUsersForChat,
   getUserById,
   getOrCreateAssistantUserId,
@@ -186,6 +187,11 @@ let userBroadcaster: ((userId: number, event: string, payload: unknown) => void)
 export function registerChatUserBroadcaster(fn: (userId: number, event: string, payload: unknown) => void): void {
   userBroadcaster = fn;
 }
+/** Broadcast to EVERY connected chat client (namespace-wide) — for persistent-announcement set/clear. */
+let allBroadcaster: ((event: string, payload: unknown) => void) | null = null;
+export function registerChatAllBroadcaster(fn: (event: string, payload: unknown) => void): void {
+  allBroadcaster = fn;
+}
 
 /** 把一条新生成的产物推进用户「我的产物通知」房（server 模式，带媒体附件），并触发外部
  *  webhook。由 db.recordGeneratedAsset 经 registerAssetNotifier 注册后回调，全生成类型覆盖。
@@ -278,8 +284,49 @@ export async function broadcastSystemAnnouncement(
   return { delivered, total: recipientIds.length };
 }
 
+// ── 持续公告（顶部常驻 + 间隔闪烁）────────────────────────────────────────────
+// 管理员可把一条广播设为「持续公告」：全体用户的聊天窗顶部常驻突出显示并间隔闪烁，
+// 直至管理员手动关闭、或超出设置的时长。单条全局生效（新设覆盖旧条），存 chat_settings
+// 单行表的 persistentAnnounceJson（重启不丢），变更经 socket 全员实时推送。
+
+export interface PersistentAnnouncement {
+  title: string;
+  body: string;
+  createdAt: number;           // 毫秒时间戳
+  expiresAt: number | null;    // null = 直至管理员手动关闭
+  createdBy?: string;          // 发布者名（展示用）
+}
+
+/** 解析持续公告 JSON；已到期视为不存在（惰性过期，无需定时器）。 */
+export function parsePersistentAnnouncement(json: string | null | undefined, now: number): PersistentAnnouncement | null {
+  if (!json) return null;
+  try {
+    const a = JSON.parse(json) as PersistentAnnouncement;
+    if (!a || typeof a.title !== "string" || typeof a.body !== "string") return null;
+    if (typeof a.expiresAt === "number" && a.expiresAt <= now) return null;
+    return a;
+  } catch { return null; }
+}
+
+/** 读取当前生效的持续公告（过期返回 null）。 */
+export async function getActivePersistentAnnouncement(): Promise<PersistentAnnouncement | null> {
+  const settings = await getChatSettings().catch(() => null);
+  return parsePersistentAnnouncement(settings?.persistentAnnounceJson, Date.now());
+}
+
+/** 设置 / 清除持续公告，并向全体在线用户实时推送变更。 */
+export async function setPersistentAnnouncement(ann: PersistentAnnouncement | null): Promise<void> {
+  await setChatSettings({ persistentAnnounceJson: ann ? JSON.stringify(ann) : null });
+  if (allBroadcaster) allBroadcaster("system:announce:persistent", { announcement: ann });
+}
+
 
 export const chatRouter = router({
+  // 当前生效的「持续公告」（全体登录用户可见；到期/未设返回 null）。
+  getPersistentAnnouncement: protectedProcedure.query(async () => {
+    return { announcement: await getActivePersistentAnnouncement() };
+  }),
+
   // ── conversations ─────────────────────────────────────────────────────────
   listConversations: protectedProcedure.query(async ({ ctx }) => {
     const settings = await getChatSettings().catch(() => null);

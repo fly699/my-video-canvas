@@ -690,7 +690,7 @@ let chatNextMsgId = 1;
 let chatNextAttachId = 1;
 let chatNextBanId = 1;
 let chatSettingsDev: ChatSettingsRow = {
-  id: 1, serverlessAllowed: true, lobbyEnabled: true, maxFileMb: 5000, updatedAt: now(),
+  id: 1, serverlessAllowed: true, lobbyEnabled: true, maxFileMb: 5000, persistentAnnounceJson: null, updatedAt: now(),
 };
 
 export function devGetOrCreateLobby(): ChatConversation {
@@ -938,7 +938,7 @@ export function devGetChatSettings(): ChatSettingsRow {
   return chatSettingsDev;
 }
 
-export function devSetChatSettings(patch: Partial<Pick<ChatSettingsRow, "serverlessAllowed" | "lobbyEnabled" | "maxFileMb">>): ChatSettingsRow {
+export function devSetChatSettings(patch: Partial<Pick<ChatSettingsRow, "serverlessAllowed" | "lobbyEnabled" | "maxFileMb" | "persistentAnnounceJson">>): ChatSettingsRow {
   chatSettingsDev = { ...chatSettingsDev, ...patch, updatedAt: now() };
   return chatSettingsDev;
 }

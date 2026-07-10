@@ -36,6 +36,13 @@ export const GRID_PRESETS: GridPreset[] = [
     promptSuffix:
       "presented as a 2x2 storyboard grid sheet (4 equal panels, thin clean gridlines), four sequential story-beat shots showing how the scene develops, consistent characters, lighting and art style across all panels",
   },
+  {
+    // 阶段四 4.1 设定图套件：角色表情九宫格（同一角色 9 种表情，切分后可作
+    // 角色库参考图/对白镜头的表情基准）。
+    id: "expressions", label: "表情九宫格", rows: 3, cols: 3, sheetAspect: "1:1",
+    promptSuffix:
+      "character expression reference sheet as a 3x3 grid (9 equal panels, thin clean gridlines): the same character's head-and-shoulders portrait with nine different facial expressions — neutral, happy, sad, angry, surprised, afraid, disgusted, shy, determined — identical face, hairstyle and outfit in every panel, plain neutral background, consistent art style",
+  },
 ];
 
 export function getGridPreset(id?: string): GridPreset | undefined {
