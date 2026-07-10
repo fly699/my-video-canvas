@@ -796,6 +796,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   ) : null;
 
   return (
+    <>
     <BaseNode
       id={id}
       selected={selected}
@@ -1822,29 +1823,33 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         />
       )}
 
-      {/* 3D 换视角（与图像节点相同）：伪3D 深度位移 / 真3D 图生网格 → 截图回灌首个图像参数 → 重跑 */}
-      {view3dSrc && (
-        <Depth3DViewer
-          sourceImageUrl={view3dSrc}
-          comfyBaseUrl={payload.customBaseUrl}
-          onClose={() => setView3dSrc(null)}
-          onGenerate={on3dGenerate}
-        />
-      )}
-      {model3dSrc && (
-        <Model3DViewer
-          sourceImageUrl={model3dSrc}
-          initialGlbUrl={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.glbUrl : undefined}
-          savedToLibrary={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.saved : undefined}
-          projectId={data.projectId}
-          nodeId={id}
-          onGlbReady={(glbUrl) => update({ model3d: { sourceUrl: model3dSrc, glbUrl } })}
-          onSavedToLibrary={() => payload.model3d && update({ model3d: { ...payload.model3d, saved: true } })}
-          onClose={() => setModel3dSrc(null)}
-          onGenerate={on3dGenerate}
-        />
-      )}
     </BaseNode>
+
+    {/* ⚠ 两个 3D 查看器必须放在 BaseNode 外面：children 在选中(studioFloated)/lodFar 时会
+        整体换容器或不渲染，放里面会随选中状态卸载（真3D 界面消失回画布、点空白又出现）。 */}
+    {/* 3D 换视角（与图像节点相同）：伪3D 深度位移 / 真3D 图生网格 → 截图回灌首个图像参数 → 重跑 */}
+    {view3dSrc && (
+      <Depth3DViewer
+        sourceImageUrl={view3dSrc}
+        comfyBaseUrl={payload.customBaseUrl}
+        onClose={() => setView3dSrc(null)}
+        onGenerate={on3dGenerate}
+      />
+    )}
+    {model3dSrc && (
+      <Model3DViewer
+        sourceImageUrl={model3dSrc}
+        initialGlbUrl={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.glbUrl : undefined}
+        savedToLibrary={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.saved : undefined}
+        projectId={data.projectId}
+        nodeId={id}
+        onGlbReady={(glbUrl) => update({ model3d: { sourceUrl: model3dSrc, glbUrl } })}
+        onSavedToLibrary={() => payload.model3d && update({ model3d: { ...payload.model3d, saved: true } })}
+        onClose={() => setModel3dSrc(null)}
+        onGenerate={on3dGenerate}
+      />
+    )}
+    </>
   );
 });
 

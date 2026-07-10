@@ -18,6 +18,7 @@ import {
 } from "../../../lib/directorScene";
 import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset, mirrorPose, type Pose } from "../../../lib/directorPose";
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
+import { uploadAssetFileForUrl } from "../../../lib/assetUpload";
 import { HumanModel } from "./HumanModel";
 import { GlbModel } from "./GlbModel";
 import { PanoramaSphere } from "./Panorama";
@@ -308,25 +309,28 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
 
   const uploadMut = trpc.upload.uploadImage.useMutation();
 
-  // 导入本地 GLB 模型：上传 → 新建一个以 GLB 渲染的角色（无姿势，仅摆放）。
+  // 导入本地 GLB 模型：流式/预签名上传（经素材库通道，顺带入库可复用）→ 新建一个以 GLB
+  // 渲染的角色（无姿势，仅摆放）。不能走 base64 uploadImage：16MB 上限 + 大文件撞 express
+  // 50MB body 限时返回 HTML 错误页，前端报「<!DOCTYPE html is not valid JSON」（真实翻车）。
   const glbInputRef = useRef<HTMLInputElement>(null);
   const [glbBusy, setGlbBusy] = useState(false);
+  const trpcUtils = trpc.useUtils();
   const onGlbFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file) return;
     if (!/\.glb$/i.test(file.name)) { toast.error("当前支持 .glb 格式（.obj/.fbx 请先转 .glb）"); return; }
-    if (file.size > 64 * 1024 * 1024) { toast.error("模型文件不能超过 64MB"); return; }
     setGlbBusy(true);
     try {
-      const base64 = await blobToBase64(file);
-      const r = await uploadMut.mutateAsync({ base64, mimeType: "model/gltf-binary", filename: file.name });
+      const glbFile = file.type ? file : new File([file], file.name, { type: "model/gltf-binary" });
+      const url = await uploadAssetFileForUrl(trpcUtils.client, glbFile, projectId);
+      if (!url) return; // uploadAssetFileForUrl 已弹出具体错误
       setScene((s) => {
         const a = makeActor("male", s.actors, [s.actors.length * 0.6 - 0.3, 0, 0]);
-        a.glbUrl = r.url; a.name = file.name.replace(/\.glb$/i, "").slice(0, 16) || a.name;
+        a.glbUrl = url; a.name = file.name.replace(/\.glb$/i, "").slice(0, 16) || a.name;
         setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
         return { ...s, actors: [...s.actors, a] };
       });
-      toast.success("已导入模型");
+      toast.success("已导入模型（并已存入素材库）");
     } catch (err) {
       toast.error("模型导入失败：" + (err instanceof Error ? err.message : String(err)));
     } finally { setGlbBusy(false); }

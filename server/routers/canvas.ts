@@ -110,6 +110,18 @@ function guardUrl(url: string): void {
   }
 }
 
+/** ComfyUI 地址解析：节点自定义 > 环境变量 COMFYUI_BASE_URL > 管理员全局服务器列表第一台。
+ *  此前各入口都不查全局列表——用户在顶栏/后台添加了全局服务器，深度提取等未传自定义地址的
+ *  调用仍报「未配置」（真实翻车）。统一收敛到本函数。 */
+async function resolveComfyBase(customBaseUrl?: string): Promise<string> {
+  const explicit = customBaseUrl?.trim();
+  if (explicit) return explicit;
+  if (ENV.comfyuiBaseUrl) return ENV.comfyuiBaseUrl;
+  try { return (await getComfyGlobalServers())[0] ?? ""; } catch { return ""; }
+}
+
+const COMFY_NOT_CONFIGURED = "未配置 ComfyUI 服务器：请在 管理后台 →「ComfyUI 服务器」页（或画布顶栏服务器图标）添加全局地址，或在节点设置中填写自定义地址。";
+
 // 本地媒体端点（ffmpeg 剪辑/合并/字幕/叠加）的 URL 校验：除了绝对 http(s) URL，
 // 还必须接受自有存储的 `/manus-storage/…` 相对路径——ComfyUI、本地生成等节点的产物
 // 正是以该相对路径存储。`z.string().url()` 会把相对路径误判为「Invalid URL」，而底层
@@ -3330,8 +3342,8 @@ export const comfyuiRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
+      const baseUrl = await resolveComfyBase(input.customBaseUrl);
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: COMFY_NOT_CONFIGURED });
       return dedupe("comfyui.generateImage", ctx.user.id, input, () => withComfyUsageLog(
         ctx,
         { action: "generateImage", baseUrl, model: input.ckpt, projectId: input.projectId, nodeId: input.nodeId,
@@ -3440,8 +3452,8 @@ export const comfyuiRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
+      const baseUrl = await resolveComfyBase(input.customBaseUrl);
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: COMFY_NOT_CONFIGURED });
       return dedupe("comfyui.generateVideo", ctx.user.id, input, () => withComfyUsageLog(
         ctx,
         { action: "generateVideo", baseUrl, model: input.ckpt, projectId: input.projectId, nodeId: input.nodeId,
@@ -3522,8 +3534,8 @@ export const comfyuiRouter = router({
       // Use the ComfyUI-specific gate so cancel stays consistent with generate
       // when an admin has enabled the ComfyUI whitelist bypass.
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
+      const baseUrl = await resolveComfyBase(input.customBaseUrl);
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: COMFY_NOT_CONFIGURED });
       try {
         await interruptComfy(baseUrl);
         return { ok: true as const };
@@ -3561,8 +3573,8 @@ export const comfyuiRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.baseUrl.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
+      const baseUrl = await resolveComfyBase(input.baseUrl);
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: COMFY_NOT_CONFIGURED });
       return withComfyUsageLog(ctx, { action: `serverAction:${input.action}`, baseUrl }, async () => {
         try {
           if (input.action === "free") await freeComfyMemory(baseUrl);
@@ -3632,7 +3644,7 @@ export const comfyuiRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl || undefined;
+      const baseUrl = (await resolveComfyBase(input.customBaseUrl)) || undefined;
       try {
         return await analyzeWorkflow(input.workflowJson, baseUrl);
       } catch (err) {
@@ -3652,7 +3664,7 @@ export const comfyuiRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl || undefined;
+      const baseUrl = (await resolveComfyBase(input.customBaseUrl)) || undefined;
       let base: Awaited<ReturnType<typeof analyzeWorkflow>>;
       try { base = await analyzeWorkflow(input.workflowJson, baseUrl); }
       catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) }); }
@@ -3688,7 +3700,7 @@ export const comfyuiRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl || undefined;
+      const baseUrl = (await resolveComfyBase(input.customBaseUrl)) || undefined;
       try {
         return await validateWorkflow(input.workflowJson, baseUrl);
       } catch (err) {
@@ -3707,8 +3719,8 @@ export const comfyuiRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "未配置 ComfyUI 服务器地址" });
+      const baseUrl = await resolveComfyBase(input.customBaseUrl);
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: COMFY_NOT_CONFIGURED });
       return withComfyUsageLog(ctx, { action: "extractControlMap", baseUrl, model: input.preprocessor }, async () => {
         try {
           return { url: await extractControlMap(baseUrl, input.sourceImageUrl, input.preprocessor) };
@@ -3728,8 +3740,8 @@ export const comfyuiRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "未配置 ComfyUI 服务器地址，无法读取节点定义以转换" });
+      const baseUrl = await resolveComfyBase(input.customBaseUrl);
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "无法读取节点定义以转换——" + COMFY_NOT_CONFIGURED });
       try {
         return { workflowJson: await convertUiWorkflowToApi(input.uiWorkflow, baseUrl) };
       } catch (err) {
@@ -3746,8 +3758,8 @@ export const comfyuiRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置" });
+      const baseUrl = await resolveComfyBase(input.customBaseUrl);
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: COMFY_NOT_CONFIGURED });
       try {
         const comfyFilename = await uploadImageForWorkflow(baseUrl, input.sourceUrl);
         return { comfyFilename };
@@ -3799,8 +3811,8 @@ export const comfyuiRouter = router({
         apiKey = ENV.comfyuiCloudApiKey || undefined;
         if (!baseUrl || !apiKey) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI 云服务未配置：请在服务端设置 COMFYUI_CLOUD_BASE_URL 与 COMFYUI_CLOUD_API_KEY" });
       } else {
-        baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-        if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点设置中填写或服务端设置 COMFYUI_BASE_URL" });
+        baseUrl = await resolveComfyBase(input.customBaseUrl);
+        if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: COMFY_NOT_CONFIGURED });
       }
       return dedupe("comfyui.executeWorkflow", ctx.user.id, input, () => withComfyUsageLog(
         ctx,

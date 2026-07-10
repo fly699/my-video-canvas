@@ -498,6 +498,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   ) : null;
 
   return (
+    <>
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
@@ -1324,38 +1325,42 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         />
       )}
 
-      {/* 3D 换视角：把选中图深度位移为伪 3D，拖拽换视角截图 → 插为首位参考图 → 触发再生成。 */}
-      {view3dSrc && (
-        <Depth3DViewer
-          sourceImageUrl={view3dSrc}
-          onClose={() => setView3dSrc(null)}
-          onGenerate={(capturedUrl) => {
-            refImages.insertUrls([capturedUrl], 0, "upload"); // 作首位结构参考图，且在参考图条可见
-            setPendingGen3d(true); // 等 payload 反映后由 effect 触发生成
-          }}
-        />
-      )}
-
-      {/* B 档 真3D：图生 .glb 网格 → 完整 360° 环绕 → 截图插为首位参考图 → 触发再生成。
-          glbUrl 持久化进 payload.model3d：关闭后免费重开继续调整，可导出/存素材库。 */}
-      {model3dSrc && (
-        <Model3DViewer
-          sourceImageUrl={model3dSrc}
-          initialGlbUrl={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.glbUrl : undefined}
-          savedToLibrary={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.saved : undefined}
-          projectId={data.projectId}
-          nodeId={id}
-          onGlbReady={(glbUrl) => update("model3d", { sourceUrl: model3dSrc, glbUrl })}
-          onSavedToLibrary={() => payload.model3d && update("model3d", { ...payload.model3d, saved: true })}
-          onClose={() => setModel3dSrc(null)}
-          onGenerate={(capturedUrl) => {
-            refImages.insertUrls([capturedUrl], 0, "upload");
-            setPendingGen3d(true);
-          }}
-        />
-      )}
-
       {reachabilityDialog}
     </BaseNode>
+
+    {/* ⚠ 两个 3D 查看器必须放在 BaseNode 外面：BaseNode 的 children 在「选中(studioFloated)/
+        缩放很远(lodFar)」时会整体换容器或不渲染，放在 children 里会随选中状态卸载——真实翻车：
+        真3D 界面突然消失回画布、点空白处取消选中又出现（生成中还会重复扣费提交）。 */}
+    {/* 3D 换视角：把选中图深度位移为伪 3D，拖拽换视角截图 → 插为首位参考图 → 触发再生成。 */}
+    {view3dSrc && (
+      <Depth3DViewer
+        sourceImageUrl={view3dSrc}
+        onClose={() => setView3dSrc(null)}
+        onGenerate={(capturedUrl) => {
+          refImages.insertUrls([capturedUrl], 0, "upload"); // 作首位结构参考图，且在参考图条可见
+          setPendingGen3d(true); // 等 payload 反映后由 effect 触发生成
+        }}
+      />
+    )}
+
+    {/* B 档 真3D：图生 .glb 网格 → 完整 360° 环绕 → 截图插为首位参考图 → 触发再生成。
+        glbUrl 持久化进 payload.model3d：关闭后免费重开继续调整，可导出/存素材库。 */}
+    {model3dSrc && (
+      <Model3DViewer
+        sourceImageUrl={model3dSrc}
+        initialGlbUrl={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.glbUrl : undefined}
+        savedToLibrary={payload.model3d?.sourceUrl === model3dSrc ? payload.model3d.saved : undefined}
+        projectId={data.projectId}
+        nodeId={id}
+        onGlbReady={(glbUrl) => update("model3d", { sourceUrl: model3dSrc, glbUrl })}
+        onSavedToLibrary={() => payload.model3d && update("model3d", { ...payload.model3d, saved: true })}
+        onClose={() => setModel3dSrc(null)}
+        onGenerate={(capturedUrl) => {
+          refImages.insertUrls([capturedUrl], 0, "upload");
+          setPendingGen3d(true);
+        }}
+      />
+    )}
+    </>
   );
 });
