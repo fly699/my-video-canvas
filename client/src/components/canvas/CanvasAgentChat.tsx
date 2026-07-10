@@ -5,6 +5,7 @@ import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerU
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
+import { runAgentChatJob } from "@/lib/agentChatJob";
 import { friendlyClientLLMError } from "@/lib/friendlyClientError";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
 import { LLMModelPicker, type LLMModelId } from "./LLMModelPicker";
@@ -32,6 +33,7 @@ const QP_DURATIONS: { v: number; label: string }[] = [{ v: 0, label: "不限" },
 
 const MAX_ATTACHMENTS = 4;
 const MAX_ATTACH_MB = 10;
+const MAX_TOTAL_ATTACH_MB = 24; // 合计上限：base64 膨胀 1.37×，24MB→约 33MB，稳在 50MB body 限内
 /** 读成完整 data: URI（含前缀），供 agent.chat 的 image_url/file_url 直接使用。 */
 const fileToDataUri = (f: File): Promise<string> => new Promise((resolve, reject) => {
   const r = new FileReader();
@@ -90,8 +92,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setStaged((prev) => {
       const room = MAX_ATTACHMENTS - prev.length;
       if (room <= 0) { setAttachErr(`最多附 ${MAX_ATTACHMENTS} 个文件`); return prev; }
+      const next = [...prev, ...files.slice(0, room)];
+      // 合计上限：4×10MB 转 base64 后 ≈56MB，会撞服务端 50MB body 限返回 HTML 错误页。
+      const total = next.reduce((a, f) => a + f.size, 0);
+      if (total > MAX_TOTAL_ATTACH_MB * 1024 * 1024) { setAttachErr(`附件合计不能超过 ${MAX_TOTAL_ATTACH_MB}MB（当前 ${(total / 1024 / 1024).toFixed(0)}MB），请压缩或减少文件`); return prev; }
       if (files.length > room) setAttachErr(`最多附 ${MAX_ATTACHMENTS} 个文件，已取前 ${room} 个`);
-      return [...prev, ...files.slice(0, room)];
+      return next;
     });
   };
   const [model, setModel] = useState<LLMModelId>(() =>
@@ -225,6 +231,14 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turns, projectId]);
+  // 卸载兜底：① 中止进行中的轮询（否则关面板后循环还会跑最多 20 分钟）；② flush 一次持久化——
+  // 防抖 800ms 内关面板会把刚收到的最后一轮吞掉（重开时旧库快照覆盖本地，回复凭空消失）。
+  const turnsRef = useRef(turns); turnsRef.current = turns;
+  const persistRef = useRef(persistTurns); persistRef.current = persistTurns;
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    if (hydratedRef.current && turnsRef.current.length) persistRef.current(turnsRef.current);
+  }, []);
   // 协作者更新了共享对话（Canvas.tsx 把 socket 事件转发为 window 事件）：从服务器权威重载，
   // 不单押 socket 载荷。本端正在生成/保存时跳过（结束后本端保存会再广播、届时对方重载）；
   // 内容相同（多半是自己保存的回声）时原样返回 cur，避免 setTurns→回写→再广播 的循环。
@@ -313,32 +327,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const focus = selectedNodeIds.filter(Boolean);
       const summary = buildGraphSummary("", focus.length ? { focusNodeIds: focus } : {});
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
-      // 提交后台任务 → 每 2.5s 轮询取结果。轮询是短请求：网络抖动/隧道掐线不影响「等待中」，
-      // 单次轮询失败自动重试；服务重启会丢任务（missing）→ 明确提示重试而非无限等。
-      const { jobId } = await utils.client.agent.submitChat.mutate({ projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined });
-      const startedAt = Date.now();
-      let r: Awaited<ReturnType<typeof utils.client.agent.chat.mutate>> | undefined;
-      let missCount = 0;
-      for (;;) {
-        if (controller.signal.aborted) break;
-        if (Date.now() - startedAt > 20 * 60_000) throw new Error("生成超过 20 分钟仍未完成。请重试，或缩短输入/减少一次性规划的镜头数。");
-        await new Promise((res) => setTimeout(res, 2500));
-        if (controller.signal.aborted) break;
-        let st: Awaited<ReturnType<typeof utils.client.agent.chatStatus.query>>;
-        try {
-          st = await utils.client.agent.chatStatus.query({ jobId });
-        } catch { continue; } // 单次轮询失败（网络抖动/服务重启中）不放弃，下一轮再试
-        if (st.state === "running") continue;
-        if (st.state === "missing") {
-          // 服务重启中首次可能短暂 missing——连续 3 次才判死，避免误报
-          if (++missCount >= 3) throw new Error("任务已丢失（服务器可能重启过）。请重新发送。");
-          continue;
-        }
-        if (st.state === "error") throw new Error(st.error || "生成失败");
-        r = st.result!;
-        break;
-      }
-      if (controller.signal.aborted || !r) { if (controller.signal.aborted) throw new DOMException("已取消", "AbortError"); return; }
+      // 提交后台任务 → 轮询取结果（runAgentChatJob：短请求轮询，断连/掐线/重启不丢等待）。
+      const r = await runAgentChatJob(utils.client, { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined }, controller.signal);
       const ops = (r.operations ?? []) as AgentOperation[];
       // 服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）——此前画布助手完全不展示，
       // 用户只见「operations 静默变少」。合并进「未应用」提示，与客户端 apply 失败一并可见。
