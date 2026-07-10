@@ -30,7 +30,7 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp } from "lucide-react";
 import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
@@ -43,6 +43,10 @@ import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import { NodeTextArea } from "../NodeTextInput";
+import { InlineGenBar } from "../InlineGenBar";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
+import { aspectFieldsFor } from "../../../lib/agentApply";
 
 interface Props {
   id: string;
@@ -120,6 +124,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const { resolve } = useNodeDefaultModels();
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
+  // LibTV 化 2.1：创意模式（uiStyle=pro + canvasMode=creative）启用就地生成输入条。
+  const { uiStyle } = useUIStyle();
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreativeMode = uiStyle !== "studio" && canvasMode === "creative";
+  const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
   const payload = data.payload;
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
@@ -1318,6 +1327,84 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
       {reachabilityDialog}
     </BaseNode>
+
+    {/* LibTV 化 2.1：创意模式的就地生成输入条（屏幕恒定，NodeToolbar 锚定节点下方）。
+        提示词/模型/参数/成本/生成一条龙，读写与配置区同一 payload（双向同步）。 */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={expanded}>
+        <NodeTextArea
+          className="nodrag nowheel"
+          rows={2}
+          placeholder="描述你想生成的画面…（@ 引用角色/素材）"
+          value={payload.prompt ?? ""}
+          onValueChange={(v) => update("prompt", v)}
+          style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ModelPicker value={payload.model || ""} onChange={(v) => update("model", v)} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button
+              className="nodrag"
+              onClick={(e) => { e.stopPropagation(); setInlineParamsOpen((v) => !v); }}
+              title="生成参数（比例 / 分辨率 / 数量）"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, background: inlineParamsOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+            >
+              {(payload.aspectRatio || "比例默认")} · {(payload.imageResolution || "画质默认")} · {genCount}张
+            </button>
+            {inlineParamsOpen && (
+              <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
+                style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 40, width: 262, display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 12, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>比例</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
+                    {["", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "9:21"].map((r) => (
+                      <button key={r || "auto"} className="nodrag"
+                        onClick={() => { const af = aspectFieldsFor("image_gen", r); updateNodeData(id, r ? af : { aspectRatio: "", poyoAspectRatio: "", reveAspectRatio: "" }, true); }}
+                        style={{ padding: "5px 0", fontSize: 10.5, borderRadius: 7, border: `1px solid ${(payload.aspectRatio ?? "") === r ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, background: (payload.aspectRatio ?? "") === r ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)", color: "var(--c-t2)", cursor: "pointer" }}>
+                        {r || "默认"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>清晰度（kie 模型逐档计价）</div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {["", "1K", "2K", "4K"].map((r) => (
+                      <button key={r || "auto"} className="nodrag" onClick={() => update("imageResolution", r || undefined)}
+                        style={{ flex: 1, padding: "5px 0", fontSize: 10.5, borderRadius: 7, border: `1px solid ${(payload.imageResolution ?? "") === r ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, background: (payload.imageResolution ?? "") === r ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)", color: "var(--c-t2)", cursor: "pointer" }}>
+                        {r || "默认"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>生成数量（支持批量的模型生效）</div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {[1, 2, 4].map((n) => (
+                      <button key={n} className="nodrag" onClick={() => update("batchSize", n)}
+                        style={{ flex: 1, padding: "5px 0", fontSize: 10.5, borderRadius: 7, border: `1px solid ${(payload.batchSize ?? 1) === n ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, background: (payload.batchSize ?? 1) === n ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)", color: "var(--c-t2)", cursor: "pointer" }}>
+                        {n}张
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </span>
+          <div style={{ flex: 1 }} />
+          <span title="预估消耗" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>⚡ {genCostLabel || "—"}</span>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); if (!genMutation.isPending && payload.prompt?.trim()) handleGenerate(); }}
+            disabled={genMutation.isPending || !payload.prompt?.trim()}
+            title={genMutation.isPending ? "生成中…" : "生成"}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: genMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer", background: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-t4)" : "#0b0d12" }}
+          >
+            {genMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
+          </button>
+        </div>
+      </InlineGenBar>
+    )}
 
     {/* ⚠ 两个 3D 查看器必须放在 BaseNode 外面：BaseNode 的 children 在「选中(studioFloated)/
         缩放很远(lodFar)」时会整体换容器或不渲染，放在 children 里会随选中状态卸载——真实翻车：

@@ -17,7 +17,7 @@ import { SUPPORTS_REF_VIDEO, SUPPORTS_REF_AUDIO, collectVideoRefMedia } from "..
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film } from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film, ArrowUp } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
@@ -47,10 +47,34 @@ import {
   getTemplateById,
 } from "@/lib/cinematographyTemplates";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { InlineGenBar } from "../InlineGenBar";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
 // 视频模型参数表已抽到 shared/videoModelParams（服务端画布助手目录同源消费）；
 // 这里再导出以保持既有导入路径（ShotListPanel / StudioCommandBar / useWorkflowRunner 等）不变。
 import { PROVIDER_PARAMS, withParamDefaults, SUPPORTS_NEGATIVE_PROMPT, REQUIRES_REFERENCE_IMAGE } from "../../../../../shared/videoModelParams";
 export { PROVIDER_PARAMS, withParamDefaults, SUPPORTS_NEGATIVE_PROMPT, REQUIRES_REFERENCE_IMAGE };
+
+// LibTV 化 2.2：就地参数浮层的档位按钮（选中态走强调色，与 image_gen 输入条同款）。
+function InlinePill({ active, disabled, onClick, children }: {
+  active: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode;
+}) {
+  return (
+    <button
+      className="nodrag"
+      disabled={disabled}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      style={{
+        padding: "5px 9px", fontSize: 10.5, borderRadius: 7,
+        border: `1px solid ${active ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`,
+        background: active ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)",
+        color: "var(--c-t2)", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 // Heuristic: only allow http(s) / same-origin paths to render. Reject data:/blob:/javascript:.
 function isSafeMediaUrl(url: string | undefined): boolean {
@@ -312,6 +336,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  // LibTV 化 2.1b：创意模式（未来 LibTV 模式宿主）下渲染屏幕恒定的就地生成输入条。
+  const { uiStyle } = useUIStyle();
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreativeMode = uiStyle !== "studio" && canvasMode === "creative";
+  const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
   const payload = data.payload;
   // Pull a connected upstream prompt (提示词 / 分镜) into this node's blank prompt —
   // video_task advertises "← 提示词 / 分镜" but never consumed them. Primitive selector
@@ -748,6 +777,22 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     [payload.provider, payload.params],
   );
 
+  // LibTV 化 2.2：就地输入条的参数摘要（如「16:9 · 720p · 5秒」）。挑最常用的三类
+  // （比例 / 分辨率档 / 时长）；provider 没有该参数就跳过，全无则显示「参数」。
+  const inlineParamSummary = useMemo(() => {
+    const defs = PROVIDER_PARAMS[payload.provider] ?? [];
+    const p = payload.params ?? {};
+    const get = (k: string) => p[k] ?? defs.find((d) => d.key === k)?.default;
+    const parts: string[] = [];
+    const ar = get("aspect_ratio");
+    if (ar !== undefined && ar !== "") parts.push(String(ar));
+    const res = get("resolution") ?? get("quality");
+    if (res !== undefined && res !== "") parts.push(String(res));
+    const dur = get("duration");
+    if (dur !== undefined && dur !== "") parts.push(`${dur}秒`);
+    return parts.length ? parts.join(" · ") : "参数";
+  }, [payload.provider, payload.params]);
+
   // ── Custom presets (localStorage-backed) ────────────────────────────────
   const [customPresets, setCustomPresets] = useState<CustomVideoPreset[]>([]);
   useEffect(() => { setCustomPresets(listCustomPresets(payload.provider)); }, [payload.provider]);
@@ -853,7 +898,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     <RefHeroPreview url={payload.referenceImageUrl} />
   ) : null;
 
-  return (
+  return (<>
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}
       onRun={handleSubmit} running={createTaskMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim()} hasResult={payload.status === "succeeded"}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
@@ -1847,5 +1892,146 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
       {reachabilityDialog}
     </BaseNode>
-  );
+
+    {/* LibTV 化 2.1b：创意模式的就地生成输入条（屏幕恒定，NodeToolbar 锚定节点下方）。
+        提示词/模型/参数浮层/成本/提交一条龙，读写与配置区同一 payload（双向同步）。
+        2.2：参数浮层按当前 provider 的 ParamDef 全量渲染（档位按钮/下拉/滑杆/开关/数字）。 */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={expanded} width={520}>
+        <NodeTextArea
+          className="nodrag nowheel"
+          rows={2}
+          placeholder="描述你想生成的视频…（@ 引用角色/素材）"
+          value={payload.prompt ?? ""}
+          onValueChange={(v) => handleChange("prompt", v)}
+          disabled={isLocked}
+          style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit", opacity: isLocked ? 0.6 : 1 }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ModelPicker
+            value={payload.provider}
+            disabled={isLocked}
+            accent="oklch(0.7 0.18 25)"
+            options={PROVIDER_PICKER_OPTIONS}
+            minWidth={130}
+            onChange={(v) => updateNodeData(id, videoProviderChangePatch(v as VideoProvider))}
+          />
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button
+              className="nodrag"
+              onClick={(e) => { e.stopPropagation(); setInlineParamsOpen((v) => !v); }}
+              title="生成参数（该模型全部可调项）"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, background: inlineParamsOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              {inlineParamSummary}
+            </button>
+            {inlineParamsOpen && (
+              <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
+                style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 40, width: 300, maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 12, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
+                {paramDefs.length === 0 && (
+                  <div style={{ fontSize: 11, color: "var(--c-t3)" }}>该模型没有可调参数</div>
+                )}
+                {paramDefs.map((def) => {
+                  // 与配置区同规则：无运动/固定机位时速度项无意义
+                  if (def.key === "camera_motion_speed") {
+                    const motionType = params.camera_motion_type ?? "none";
+                    if (motionType === "none" || motionType === "static") return null;
+                  }
+                  const curVal = params[def.key] ?? def.default;
+                  if (def.type === "select") {
+                    return (
+                      <div key={def.key}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>{def.label}</div>
+                        {def.options.length <= 6 ? (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {def.options.map((opt) => (
+                              <InlinePill key={String(opt.value)} active={String(curVal ?? "") === String(opt.value)} disabled={isLocked}
+                                onClick={() => handleParamChange(def.key, opt.value)}>
+                                {opt.label}
+                              </InlinePill>
+                            ))}
+                          </div>
+                        ) : (
+                          <select
+                            value={String(curVal ?? "")}
+                            disabled={isLocked}
+                            className="nodrag"
+                            onChange={(e) => { const raw = e.target.value; const num = Number(raw); handleParamChange(def.key, isNaN(num) || raw === "" ? raw : num); }}
+                            style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: isLocked ? "not-allowed" : "pointer" }}
+                          >
+                            {def.options.map((opt) => (
+                              <option key={String(opt.value)} value={String(opt.value)} style={{ background: "var(--c-surface)" }}>{opt.label}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (def.type === "range") {
+                    const val = curVal !== undefined ? Number(curVal) : (def.default ?? def.min);
+                    const displayVal = def.unit === "s" ? `${val}秒` : def.key === "cfg_scale" ? val.toFixed(1) : String(val);
+                    return (
+                      <div key={def.key}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>{def.label}</span>
+                          <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>{displayVal}</span>
+                        </div>
+                        <input type="range" min={def.min} max={def.max} step={def.step} value={val} disabled={isLocked}
+                          onChange={(e) => handleParamChange(def.key, Number(e.target.value))}
+                          className="nodrag" style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))", opacity: isLocked ? 0.5 : 1 }} />
+                      </div>
+                    );
+                  }
+                  if (def.type === "number") {
+                    return (
+                      <div key={def.key}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>{def.label}</div>
+                        <input
+                          type="number" min={def.min} max={def.max} step={def.step}
+                          placeholder={def.default !== undefined ? String(def.default) : ""}
+                          value={curVal !== undefined ? String(curVal) : ""}
+                          disabled={isLocked}
+                          onChange={(e) => { const v = e.target.value === "" ? undefined : Number(e.target.value); handleParamChange(def.key, v); }}
+                          className="nodrag"
+                          style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", opacity: isLocked ? 0.5 : 1 }}
+                        />
+                      </div>
+                    );
+                  }
+                  if (def.type === "toggle") {
+                    const checked = curVal === true || curVal === "true";
+                    return (
+                      <div key={def.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>{def.label}</span>
+                        <button
+                          onClick={() => handleParamChange(def.key, !checked)}
+                          disabled={isLocked}
+                          className="nodrag"
+                          style={{ position: "relative", flexShrink: 0, width: 32, height: 18, borderRadius: 9, background: checked ? "oklch(0.62 0.20 25 / 0.7)" : "var(--c-bd1)", border: `1px solid ${checked ? "oklch(0.62 0.20 25 / 0.5)" : "var(--c-bd3)"}`, cursor: isLocked ? "not-allowed" : "pointer", transition: "background 150ms ease, border-color 150ms ease", opacity: isLocked ? 0.5 : 1 }}
+                        >
+                          <span style={{ position: "absolute", top: 2, left: checked ? 14 : 2, width: 12, height: 12, borderRadius: "50%", background: "var(--c-t1)", transition: "left 150ms ease" }} />
+                        </button>
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+            )}
+          </span>
+          <div style={{ flex: 1 }} />
+          <span title="按当前模型与参数实时预估的点数消耗，仅供参考" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>⚡ {costLabel || "—"}</span>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); if (!isLocked && !isResettable && !createTaskMutation.isPending && payload.prompt?.trim()) handleSubmit(); }}
+            disabled={isLocked || isResettable || createTaskMutation.isPending || !payload.prompt?.trim()}
+            title={payload.status === "processing" || createTaskMutation.isPending ? "生成中…" : isResettable ? "请先在配置区点「重置」再重新提交" : "提交任务"}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: isLocked || isResettable || createTaskMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer", background: isLocked || isResettable || createTaskMutation.isPending || !payload.prompt?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: isLocked || isResettable || createTaskMutation.isPending || !payload.prompt?.trim() ? "var(--c-t4)" : "#0b0d12" }}
+          >
+            {createTaskMutation.isPending || payload.status === "processing" ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
+          </button>
+        </div>
+      </InlineGenBar>
+    )}
+  </>);
 });
