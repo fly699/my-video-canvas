@@ -35,7 +35,8 @@ export function MediaPreview({ asset, onClose }: { asset: PreviewAsset; onClose:
     <div onClick={onClose} onContextMenu={noMenu} style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0 0 0 / 0.88)" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
         {asset.kind === "video" ? (
-          <video src={asset.url} controls autoPlay playsInline controlsList="nodownload" onContextMenu={noMenu} style={{ maxWidth: "90vw", maxHeight: "82vh", borderRadius: 8, boxShadow: "0 0 60px oklch(0 0 0 / 0.6)", background: "#000" }} />
+          // width/height + contain 铺满视口（max* 只封顶不放大，小分辨率视频只占中间一块）
+          <video src={asset.url} controls autoPlay playsInline controlsList="nodownload" onContextMenu={noMenu} style={{ width: "90vw", height: "82vh", objectFit: "contain", background: "#000", borderRadius: 8 }} />
         ) : (
           <div style={{ width: "min(520px, 90vw)", padding: 24, borderRadius: 12, background: EC.surface, border: `1px solid ${EC.border}` }}>
             <div style={{ fontSize: 13, color: EC.t2, marginBottom: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asset.name}</div>

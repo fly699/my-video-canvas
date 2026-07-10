@@ -552,7 +552,8 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown }: Props) {
           onContextMenu={(e) => e.preventDefault()}
         >
           <div className="relative" style={{ maxWidth: "90vw", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
-            <WatermarkedVideo src={videoPreview} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
+            {/* width/height + contain 铺满视口（max* 只封顶不放大，小分辨率视频只占中间一块） */}
+            <WatermarkedVideo src={videoPreview} controls autoPlay controlsList="nodownload" style={{ width: "90vw", height: "85vh", objectFit: "contain", borderRadius: 10, background: "#000" }} />
             <button
               onClick={() => setVideoPreview(null)}
               className="absolute flex items-center justify-center"

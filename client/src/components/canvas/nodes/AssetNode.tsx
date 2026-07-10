@@ -307,7 +307,8 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
           onContextMenu={(e) => e.preventDefault()}
         >
           <div className="relative" style={{ maxWidth: "90vw", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
-            <WatermarkedVideo src={mediaFetchUrl(payload.url)} controls autoPlay controlsList="nodownload" style={{ maxWidth: "90vw", maxHeight: "85vh", borderRadius: 10, background: "#000" }} />
+            {/* width/height + contain 铺满视口（max* 只封顶不放大，小分辨率视频只占中间一块） */}
+            <WatermarkedVideo src={mediaFetchUrl(payload.url)} controls autoPlay controlsList="nodownload" style={{ width: "90vw", height: "85vh", objectFit: "contain", borderRadius: 10, background: "#000" }} />
             <button
               onClick={() => setVideoPreview(false)}
               className="absolute flex items-center justify-center"

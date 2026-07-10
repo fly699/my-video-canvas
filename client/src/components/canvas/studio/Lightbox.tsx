@@ -104,8 +104,10 @@ export function Lightbox() {
       <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "92vw", maxHeight: "90vh", cursor: "default", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
         {(() => {
           const mediaMaxH = multi ? "72vh" : "86vh";
+          // 视频用 width/height + contain 铺满（max* 只封顶不放大，小分辨率视频只占中间一块）；
+          // 图片保持 max* 封顶（强行放大会糊）。
           return asVideo
-            ? <video src={url} controls autoPlay controlsList="nodownload noremoteplayback" disablePictureInPicture onContextMenu={(e) => e.preventDefault()} style={{ maxWidth: "92vw", maxHeight: mediaMaxH, borderRadius: 12, boxShadow: "0 20px 60px oklch(0 0 0 / 0.6)" }} />
+            ? <video src={url} controls autoPlay controlsList="nodownload noremoteplayback" disablePictureInPicture onContextMenu={(e) => e.preventDefault()} style={{ width: "92vw", height: mediaMaxH, objectFit: "contain" }} />
             : <img src={url} alt={title || "预览"} style={{ maxWidth: "92vw", maxHeight: mediaMaxH, objectFit: "contain", borderRadius: 12, boxShadow: "0 20px 60px oklch(0 0 0 / 0.6)" }} />;
         })()}
         {multi && <div style={{ fontSize: 12, color: "oklch(0.85 0 0)", fontWeight: 600 }}>{index + 1} / {urls.length}</div>}
