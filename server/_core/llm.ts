@@ -2,6 +2,7 @@ import { ENV } from "./env";
 import { isKieLLMModel, invokeKieLLM, type OAMessage } from "./kieLLM";
 import { isCustomLLMModel, invokeCustomLLM, CUSTOM_LLM_MODELS } from "./customLlm";
 import { isSelfHostedLlmModel, getSelfHostedConfig, selfHostedChatUrl } from "./selfHostedLlm";
+import { Agent as UndiciAgent } from "undici";
 import { rewriteBridgeSelfUrl, isClaudeBridgeEnabled, bridgeLocalUrl, claudeBridgeKey, isBridgeModel } from "./claudeBridge";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
@@ -233,6 +234,17 @@ const routesToPoyo = (model?: string) => isGptModel(model) || (!!model && POYO_M
 
 // Self-hosted model detection lives in selfHostedLlm.ts (shared with whitelist gating).
 const isSelfHostedModel = isSelfHostedLlmModel;
+
+// LLM fetch 专用 undici Agent（按超时值缓存复用）：把 headers/bodyTimeout 抬到与 per-attempt
+// 超时一致（+5s 裕量），否则 undici 默认 300s headersTimeout 会先于 AbortSignal 掐断长生成。
+// 注意必须用 undici@6（与 Node 22 内建同代）——v8 的 Agent 与内建 fetch 的 handler 接口不兼容
+// （UND_ERR_INVALID_ARG: invalid onRequestStart method，真机验证）。
+const _llmAgents = new Map<number, UndiciAgent>();
+function llmDispatcher(timeoutMs: number): UndiciAgent {
+  let a = _llmAgents.get(timeoutMs);
+  if (!a) { a = new UndiciAgent({ headersTimeout: timeoutMs + 5_000, bodyTimeout: timeoutMs + 5_000 }); _llmAgents.set(timeoutMs, a); }
+  return a;
+}
 
 const resolveApiUrl = (model?: string) => {
   // 桥接专属模型（claude-local*/gpt-local*）在桥接启用时【无条件】直连本机桥接回环，与「自建 LLM」
@@ -561,17 +573,28 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
         headers: { "content-type": "application/json", authorization: authHeader },
         body,
         signal: AbortSignal.timeout(perAttemptTimeoutMs), // fresh per attempt
+        // Node 内建 fetch(undici) 默认 headersTimeout=300s：上游 300s 内不回响应头就抛
+        // TypeError("fetch failed", cause UND_ERR_HEADERS_TIMEOUT)——把 LLM_SELF_HOSTED_TIMEOUT_MS
+        // 调到 >300s 也会在 300s 被 undici 先掐（真实翻车：本机 GPT 长生成 5 分钟整报 fetch failed）。
+        // 用显式 dispatcher 把 headers/body 超时对齐 perAttemptTimeoutMs，超时统一由 AbortSignal 说了算。
+        ...( { dispatcher: llmDispatcher(perAttemptTimeoutMs) } as RequestInit ),
       });
     } catch (e) {
       // Network error / timeout → transient; retry unless out of attempts.
       lastError = e;
+      const causeCode = (e as { cause?: { code?: string } })?.cause?.code ?? "";
       // 自建/桥接的超时是「生成太慢」而非瞬时网络抖动——重试只会再跑一遍慢生成、白等 2~3 倍时间，
       // 直接抛出，让用户尽快看到结果（并可调高 CLAUDE_BRIDGE_TIMEOUT_MS/LLM_SELF_HOSTED_TIMEOUT_MS）。
-      const isTimeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+      const isTimeout = (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError"))
+        || causeCode === "UND_ERR_HEADERS_TIMEOUT" || causeCode === "UND_ERR_BODY_TIMEOUT";
       if (selfHosted && isTimeout) {
         throw new Error(`本机模型生成超时（${Math.round(perAttemptTimeoutMs / 1000)}s）。复杂请求（如画布助手同时加角色+模板）生成较慢；可在服务器环境变量调高 CLAUDE_BRIDGE_TIMEOUT_MS 与 LLM_SELF_HOSTED_TIMEOUT_MS 后重试，或减少一次性规划的镜头/角色数量。`);
       }
       if (attempt < LLM_MAX_RETRIES) { await sleep(retryBackoffMs(attempt)); continue; }
+      // 裸 "fetch failed" 用户看不懂——包上目标与底层错误码（如 ECONNREFUSED/UND_ERR_*）。
+      if (e instanceof TypeError) {
+        throw new Error(`LLM 端点连接失败（${e.message}${causeCode ? " / " + causeCode : ""}）：请确认${selfHosted ? "本机桥接/自建服务是否在运行、地址是否可达" : "网络与上游服务状态"}。`);
+      }
       throw e;
     }
 
