@@ -36,9 +36,14 @@ export function BudgetButton({ orient = "h" }: { orient?: "h" | "v" }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  const edges = useCanvasStore((s) => s.edges);
   const budget = useMemo(
-    () => estimateCanvasBudget(nodes.map((n) => ({ data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })), resolveActiveNodeModel as (nt: string, slot: "llm" | "image" | "video") => string),
-    [nodes],
+    () => estimateCanvasBudget(
+      nodes.map((n) => ({ id: n.id, data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })),
+      resolveActiveNodeModel as (nt: string, slot: "llm" | "image" | "video") => string,
+      edges.map((e) => ({ source: e.source, target: e.target })), // 分镜有下游 image_gen 时不计价（与运行器同口径）
+    ),
+    [nodes, edges],
   );
 
   const tempKey = typeof localStorage !== "undefined" ? localStorage.getItem(KIE_TEMP_KEY) ?? "" : "";

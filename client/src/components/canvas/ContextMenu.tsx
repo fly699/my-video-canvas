@@ -4,7 +4,7 @@ import { NODE_TYPE_LIST, type NodeConfig } from "../../lib/nodeConfig";
 import { sortNodeConfigsForPalette } from "../../lib/nodeOrder";
 import type { NodeType } from "../../../../shared/types";
 import {
-  FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal,
+  FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal, CircleSlash,
   BookmarkPlus, Bookmark, Download, Upload, Boxes, Group, Ungroup, Pencil, GripVertical, Check, RotateCcw, Lock, Unlock,
  UserPlus, LayoutDashboard } from "lucide-react";
 import type { NodeTemplate } from "../../lib/nodeTemplates";
@@ -27,6 +27,9 @@ interface ContextMenuProps {
   onCollapse?: () => void;
   nodeLocked?: boolean;
   onToggleLock?: () => void;
+  /** 「跳过执行」开关（payload.disabled）：运行全部/框选运行时该节点整体跳过、估价不计。 */
+  nodeDisabled?: boolean;
+  onToggleDisabled?: () => void;
   // Per-node-type setting templates (localStorage). When provided, the node menu
   // shows 存为模板 + a list of saved templates to apply to this node.
   nodeTemplates?: NodeTemplate[];
@@ -57,7 +60,7 @@ const kbdChip: React.CSSProperties = {
 const Kbd = ({ children }: { children: React.ReactNode }) => <span style={kbdChip}>{children}</span>;
 
 export function ContextMenu({
-  x, y, type, nodeId, nodePinned, nodeLocked,
+  x, y, type, nodeId, nodePinned, nodeLocked, nodeDisabled, onToggleDisabled,
   onClose, onAddNode, onOpenNodeLibrary, onDeleteNode, onDuplicateNode, onRunWorkflow,
   onTogglePin, onCollapse, onToggleLock,
   nodeTemplates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
@@ -747,6 +750,20 @@ export function ContextMenu({
               >
                 {nodeLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                 {nodeLocked ? "解锁（恢复可拖/删）" : "锁定（不可拖/删）"}
+              </button>
+            )}
+            {onToggleDisabled && (
+              <button
+                onClick={() => { onToggleDisabled(); onClose(); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 8px", fontSize: 12,
+                  cursor: "pointer", background: "transparent", border: "none", textAlign: "left",
+                  color: nodeDisabled ? "oklch(0.72 0.16 65)" : "var(--c-t2)", borderRadius: 8, transition: "all 120ms ease" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                title="跳过执行：运行全部/框选运行时不执行该节点、预算也不计入（节点与数据保留）"
+              >
+                {nodeDisabled ? <Play className="w-3.5 h-3.5" /> : <CircleSlash className="w-3.5 h-3.5" />}
+                {nodeDisabled ? "恢复参与执行" : "跳过执行（不生成/不计价）"}
               </button>
             )}
             {(onTogglePin || onCollapse) && (onDuplicateNode || onDeleteNode) && (

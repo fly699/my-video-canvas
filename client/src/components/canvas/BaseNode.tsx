@@ -22,7 +22,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2, Lock,
-  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash,
 } from "lucide-react";
 import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
 import { downloadMedia } from "../../lib/download";
@@ -215,6 +215,11 @@ export const BaseNode = memo(function BaseNode({
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
   });
   // ◆6 锁定：payload.locked。锁定节点不可拖/不可删(在 Canvas displayNodes 注入 draggable/deletable=false)。
+  // 「跳过执行」：payload.disabled（右键切换）。运行器/估价同口径跳过；此处只管徽标。
+  const runDisabled = useCanvasStore((s) => {
+    const node = s.nodes.find((n) => n.id === id);
+    return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.disabled);
+  });
   const locked = useCanvasStore((s) => {
     const node = s.nodes.find((n) => n.id === id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.locked);
@@ -1234,6 +1239,16 @@ export const BaseNode = memo(function BaseNode({
             className="nodrag flex-shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded"
             style={{ background: "oklch(0.70 0.16 65 / 0.15)", color: "oklch(0.72 0.16 65)", border: "1px solid oklch(0.70 0.16 65 / 0.35)", cursor: "pointer" }}>
             <Lock size={10} />
+          </button>
+        )}
+        {/* 跳过执行徽标（payload.disabled，右键切换）：运行全部/估价均不含该节点；点击恢复 */}
+        {runDisabled && (
+          <button
+            onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().updateNodeData(id, { disabled: false }); }}
+            title="已设为跳过执行（运行全部/估价不包含）— 点击恢复参与执行"
+            className="nodrag flex-shrink-0 flex items-center gap-1 h-[18px] px-1.5 rounded"
+            style={{ background: "var(--c-surface)", color: "var(--c-t4)", border: "1px dashed var(--c-bd3)", cursor: "pointer", fontSize: 9, fontWeight: 700, lineHeight: 1 }}>
+            <CircleSlash size={9} /> 跳过
           </button>
         )}
 

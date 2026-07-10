@@ -1,4 +1,4 @@
-import { NodeToolbar, Position } from "@xyflow/react";
+import { NodeToolbar, Position, useStore } from "@xyflow/react";
 
 /**
  * LibTV 化 2.0：就地生成输入条的「屏幕恒定」容器。
@@ -20,8 +20,20 @@ export function InlineGenBar({ nodeId, visible, width = 480, children }: {
   width?: number;
   children: React.ReactNode;
 }) {
+  // 视口兜底（用户实测反馈）：节点较高/靠屏幕下缘时，锚在节点底部的输入条会被
+  // 顶出视口下沿够不着——检测节点底缘屏幕坐标越界时自动改锚节点上方。
+  // selector 只返回布尔——仅在越阈值时才触发重渲，平移/缩放不抖动。
+  const flipUp = useStore((s) => {
+    const n = s.nodeLookup.get(nodeId);
+    if (!n) return false;
+    const [, ty, zoom] = s.transform;
+    const h = n.measured?.height ?? 200;
+    const y = (n.internals?.positionAbsolute?.y ?? n.position.y) + h;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 900;
+    return y * zoom + ty > vh - 170;
+  });
   return (
-    <NodeToolbar nodeId={nodeId} isVisible={visible} position={Position.Bottom} offset={12}>
+    <NodeToolbar nodeId={nodeId} isVisible={visible} position={flipUp ? Position.Top : Position.Bottom} offset={12}>
       <div
         className="nodrag nowheel"
         onClick={(e) => e.stopPropagation()}

@@ -321,15 +321,25 @@ export function useWorkflowRunner() {
         .map((n) => n.id);
     }
 
+    // 「跳过执行」（右键切换，payload.disabled）：全类型尊重——从执行队列剔除、
+    // 状态面板标「跳过」。与估价（estimateCanvasBudget 的 disabled continue）同口径。
+    const disabledIds = runnableIds.filter((id) => {
+      const n = nodes.find((x) => x.id === id);
+      return (n?.data.payload as { disabled?: boolean } | undefined)?.disabled === true;
+    });
+    const disabledSet = new Set(disabledIds);
+    runnableIds = runnableIds.filter((id) => !disabledSet.has(id));
+
     if (runnableIds.length === 0) {
       runningRef.current = false;
-      toast.info("没有可运行的节点");
+      toast.info(disabledIds.length ? "所选节点均已设为「跳过执行」" : "没有可运行的节点");
       return;
     }
 
     // Initialize per-node states: all participating nodes start as "pending"
     const initialNodeStates: Record<string, NodeRunStatus> = {};
     for (const id of runnableIds) initialNodeStates[id] = { phase: "pending" };
+    for (const id of disabledIds) initialNodeStates[id] = { phase: "skipped" };
 
     setRunState({
       running: true,
@@ -354,7 +364,7 @@ export function useWorkflowRunner() {
         ...s,
         nodeStates: { ...s.nodeStates, [nodeId]: { ...s.nodeStates[nodeId], phase: "running", startedAt } },
       }));
-      let result: "ok" | "fail" = "fail";
+      let result: "ok" | "fail" | "skip" = "fail";
       let errorMessage: string | undefined;
       try {
         result = await runSingleNodeImpl(nodeId);
@@ -372,13 +382,14 @@ export function useWorkflowRunner() {
         ...s,
         nodeStates: {
           ...s.nodeStates,
-          [nodeId]: { phase: result === "ok" ? "done" : "failed", startedAt, completedAt: Date.now(), errorMessage },
+          [nodeId]: { phase: result === "ok" ? "done" : result === "skip" ? "skipped" : "failed", startedAt, completedAt: Date.now(), errorMessage },
         },
       }));
-      return result;
+      // 上层（分层并行调度）只关心成败：skip 视作成功（不阻断下游）。
+      return result === "fail" ? "fail" : "ok";
     };
 
-    const runSingleNodeImpl = async (nodeId: string): Promise<"ok" | "fail"> => {
+    const runSingleNodeImpl = async (nodeId: string): Promise<"ok" | "fail" | "skip"> => {
       if (abortRef.current) return "fail";
 
       // Skip if any direct upstream dependency already failed — avoids wasting
@@ -428,6 +439,18 @@ export function useWorkflowRunner() {
         // ── Storyboard 生图：复用逐节点 StoryboardNode 的纯函数（组装 + 写回 + 传播），
         //    与「生成」按钮完全同口径（kie 块/分模型 sizing/比例/效果/@图像/多参考/镜头表/色调）。──
         } else if (nodeType === "storyboard") {
+          // 智能跳过（与 estimateCanvasBudget 估价同口径）：分镜设了 skipAutoImage，
+          // 或已有下游 image_gen 出图工位时，分镜只作镜头表数据行——不兜底生图，
+          // 避免与 image_gen 就同一镜重复出图/重复计费（曾按平台默认模型偷偷生一遍）。
+          const sbP = p as { skipAutoImage?: boolean };
+          const curNodes = useCanvasStore.getState().nodes;
+          const hasImageGenDownstream = edges.some(
+            (e) => e.source === nodeId && curNodes.find((n) => n.id === e.target)?.data.nodeType === "image_gen",
+          );
+          if (sbP.skipAutoImage === true || hasImageGenDownstream) {
+            completed.push(nodeId); // 视作已完成：下游照常解锁
+            return "skip";
+          }
           const built = buildStoryboardGenInput({
             id: nodeId,
             payload: p as unknown as StoryboardNodeData,

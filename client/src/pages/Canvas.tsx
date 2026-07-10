@@ -3838,6 +3838,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
               const wasLocked = Boolean((ctxNode?.data.payload as { locked?: boolean } | undefined)?.locked);
               updateNodeData(contextMenu.nodeId!, { locked: !wasLocked });
             } : undefined}
+            // 跳过执行（payload.disabled）：运行全部/框选运行整体跳过、估价不计。
+            // 仅对参与「运行全部」的可运行类型展示——其它类型本就不执行，开关无意义。
+            nodeDisabled={Boolean((ctxNode?.data.payload as { disabled?: boolean } | undefined)?.disabled)}
+            onToggleDisabled={contextMenu.nodeId && ctxNode && RUNNABLE_TYPES.includes(ctxNode.data.nodeType as NodeType) ? () => {
+              const was = Boolean((ctxNode?.data.payload as { disabled?: boolean } | undefined)?.disabled);
+              updateNodeData(contextMenu.nodeId!, { disabled: !was });
+              toast.success(was ? "已恢复参与执行" : "已设为跳过执行（运行/估价均不再包含该节点）", { duration: 2000 });
+            } : undefined}
             // Collapse: clear pinned + deselect the node so it returns to its
             // compact preview-only height.
             onCollapse={contextMenu.nodeId ? () => {
@@ -3985,8 +3993,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
         const totalNodes = scopeNodes.length;
         // 预估本次消耗（复用 BudgetButton 同源的精算函数，逐节点按当前模型/参数汇总）。
         const budget = estimateCanvasBudget(
-          scopeNodes.map((n) => ({ data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })),
+          scopeNodes.map((n) => ({ id: n.id, data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })),
           resolveActiveNodeModel as (nt: string, slot: "llm" | "image" | "video") => string,
+          // edges：让「有下游 image_gen 的分镜」按运行器同口径不计价（防 Nano Banana 幻影预算）。
+          edges.map((e) => ({ source: e.source, target: e.target })),
         );
         const kieAmount = kieBalQ.data?.configured ? (kieBalQ.data.creditsAmount ?? null) : null;
         const poyoAmount = poyoBalQ.data?.configured ? (poyoBalQ.data.creditsAmount ?? null) : null;

@@ -86,6 +86,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "aspectRatio", type: "string", desc: "关键帧图比例，如 16:9 / 9:16（按所选图像模型的档位夹取）" },
       { name: "imageModel", type: "string", desc: "关键帧生成用图像模型 id（见「云端生成模型清单·图像模型」，勿编造）" },
       { name: "imageResolution", type: "string", desc: "kie 图像分辨率档，如 1K/2K/4K（逐档计价，按模型支持档位夹取）" },
+      { name: "skipAutoImage", type: "boolean", desc: "true=分镜仅作镜头表数据行：「运行全部」不为它兜底生关键帧图、预算不计入。分镜已连下游 image_gen 出图工位时系统自动跳过（无需设置）；仅『分镜独立出图但想暂停』时才设 true" },
     ],
   },
   {
@@ -109,6 +110,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "model", type: "string", desc: "图像模型 id（见「云端生成模型清单·图像模型」，勿编造；不设则用节点默认）" },
       { name: "imageResolution", type: "string", desc: "kie 图像分辨率档，如 1K/2K/4K（逐档计价，按模型支持档位夹取）" },
       { name: "seed", type: "number", desc: "随机种子（可选；同角色跨镜锁同一 seed 可提升一致性）" },
+      { name: "batchSize", type: "number", desc: "出图张数（仅部分模型生效：hf_soul_standard 支持 1/4；kie/poyo 的 Grok Imagine 每次固定返回一组约 6 张候选、按次计费，张数不可控，设了也无效）" },
     ],
   },
   {
@@ -225,7 +227,7 @@ export function videoModelDigestText(): string {
 /** 图像模型清单：id、名称、能力标签、是否必须参考图。 */
 export function imageModelDigestText(): string {
   return IMAGE_MODELS
-    .map((m) => `- ${m.value}「${m.label}」${m.caps?.length ? `[${m.caps.join("/")}]` : ""}${m.requiresRef ? "（需参考图/上游图输入）" : ""}`)
+    .map((m) => `- ${m.value}「${m.label}」${m.caps?.length ? `[${m.caps.join("/")}]` : ""}${m.requiresRef ? "（需参考图/上游图输入）" : ""}${m.note ? `（${m.note}）` : ""}`)
     .join("\n");
 }
 
@@ -240,6 +242,8 @@ export function modelKnowledgeText(): string {
 const ALL_SPEC_FIELDS = new Set<string>([
   ...AGENT_NODE_CATALOG.flatMap((s) => s.fields.map((f) => f.name)),
   "customBaseUrl",
+  // 「跳过执行」通用开关（任意可运行节点；用户右键或助手 update 均可切换）。
+  "disabled",
 ]);
 
 // In "仅 ComfyUI 生成" mode these node types are excluded. The generation nodes

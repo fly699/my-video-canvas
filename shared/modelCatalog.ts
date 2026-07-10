@@ -42,6 +42,8 @@ export type ImageModelMeta = {
   caps?: string[];
   /** 图生图 / 编辑模型：必须提供参考图，否则上游会报错。驱动节点内的「需参考图」提示。 */
   requiresRef?: boolean;
+  /** 行为备注（进画布助手模型清单与 UI 提示），如「每次固定返回一组约 6 张候选」。 */
+  note?: string;
 };
 
 /** 选定模型是否强制需要参考图（编辑 / 图生图）。供节点 UI 在缺图时给出提示。 */
@@ -87,7 +89,7 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
 
   // --- Poyo · others ---
   { value: "poyo_z_image",    label: "Z-Image",      desc: "超快 · 风格化", group: "Poyo", family: "Z",    provider: "Poyo", costNote: "2 cr/张", caps: ["T2I", "自动编辑"] },
-  { value: "poyo_grok_image", label: "Grok Imagine", desc: "xAI · 高对比",  group: "Poyo", family: "Grok", provider: "Poyo", costNote: "6 cr/张", caps: ["T2I", "I2I"] },
+  { value: "poyo_grok_image", label: "Grok Imagine", desc: "xAI · 高对比",  group: "Poyo", family: "Grok", provider: "Poyo", costNote: "6 cr/张", caps: ["T2I", "I2I"], note: "每次固定返回一组约 6 张候选（按次计费，张数不可控）" },
 
   // --- Higgsfield ---
   { value: "hf_soul_standard", label: "Soul Standard",    desc: "旗舰 · 电影级",   group: "Higgsfield", family: "Soul",     provider: "Higgsfield", costNote: "HF 计费", caps: ["T2I", "参考图"] },
@@ -110,7 +112,7 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "kie_imagen4_fast",      label: "Imagen 4 Fast",      desc: "Google · 快",       group: "Kie", family: "Imagen",      provider: "Kie", costNote: "4 点/张",  caps: ["T2I"] },
   { value: "kie_imagen4_ultra",     label: "Imagen 4 Ultra",     desc: "Google · 超清",     group: "Kie", family: "Imagen",      provider: "Kie", costNote: "12 点/张", caps: ["T2I"] },
   { value: "kie_z_image",           label: "Z-Image",            desc: "超快 · 风格化",     group: "Kie", family: "Z-Image",     provider: "Kie", costNote: "0.8 点/张", caps: ["T2I"] },
-  { value: "kie_grok_image",        label: "Grok Image",         desc: "xAI · 高对比",      group: "Kie", family: "Grok",        provider: "Kie", costNote: "≈1 点/张", caps: ["T2I"] },
+  { value: "kie_grok_image",        label: "Grok Image",         desc: "xAI · 高对比",      group: "Kie", family: "Grok",        provider: "Kie", costNote: "≈1 点/张", caps: ["T2I"], note: "每次固定返回一组约 6 张候选（按次计费，张数不可控）" },
   // ── kie 第二批扩充 ──
   { value: "kie_nano_banana_2",     label: "Nano Banana 2",      desc: "Google · 1-4K",     group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "1K 8/2K 12/4K 18 点", caps: ["T2I", "4K"] },
   { value: "kie_flux2_flex",        label: "Flux-2 Flex",        desc: "BFL · 快速多风格",  group: "Kie", family: "Flux-2",      provider: "Kie", costNote: "1K 14/2K 24 点", caps: ["T2I"] },

@@ -248,6 +248,10 @@ export interface StoryboardNodeData {
   /** 所属节拍表拍点（如「3」或「中点」），承接脚本节点的 beat sheet。 */
   beatRef?: string;
   imageModel?: ImageGenModel;
+  /** true=分镜只作镜头表数据行：「运行全部」不为它兜底生关键帧图、估价也不计入。
+   *  另外分镜若已有下游 image_gen 连线（专职出图工位），运行/估价会自动跳过它——
+   *  两条规则都为了避免与 image_gen 重复出图、重复计费。 */
+  skipAutoImage?: boolean;
   referenceImageUrl?: string;
   /** 真 3D（Tripo3D）已生成的模型——重开免费复用（与图像节点同款）。 */
   model3d?: Model3DResult;

@@ -119,6 +119,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const { uiStyle } = useUIStyle();
   const isCreativeMode = uiStyle !== "studio" && isCreative;
   const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
+  // LibTV：创意模式配置区默认收起（就地输入条为主入口），点「高级」才展开。
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const payload = data.payload;
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
@@ -648,17 +650,21 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           </div>
         )}
 
-        {/* ── Collapsible inputs ── */}
+        {/* ── Collapsible inputs ──
+            创意模式：默认收起，由就地输入条「高级」开关展开（防节点过高顶飞输入条）。 */}
         <div
-          style={{
-            overflow: "hidden",
-            maxHeight: inputExpanded ? 2000 : 0,
-            opacity: inputExpanded ? 1 : 0,
-            transition: "max-height 250ms cubic-bezier(0.23,1,0.32,1), opacity 200ms ease",
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
+          style={(() => {
+            const open = isCreativeMode ? advancedOpen : inputExpanded;
+            return {
+              overflow: "hidden",
+              maxHeight: open ? 2000 : 0,
+              opacity: open ? 1 : 0,
+              transition: "max-height 250ms cubic-bezier(0.23,1,0.32,1), opacity 200ms ease",
+              display: "flex" as const,
+              flexDirection: "column" as const,
+              gap: 12,
+            };
+          })()}
         >
         {/* ── Shot List 工具行：镜头表（侧向展开） + 拍点 ── */}
         <div className="flex items-center gap-1.5">
@@ -1373,6 +1379,14 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               </div>
             )}
           </span>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（镜头表字段/参考图/更多参数）"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 8px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            高级
+          </button>
           <div style={{ flex: 1 }} />
           <span title="按当前模型与参数实时预估的点数消耗，仅供参考" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>
             ⚡ {costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1, { resolution: payload.imageResolution })) || "—"}
