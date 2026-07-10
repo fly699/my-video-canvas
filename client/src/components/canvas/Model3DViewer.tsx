@@ -49,7 +49,7 @@ const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reje
   r.readAsDataURL(blob);
 });
 
-export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId, savedToLibrary, onGlbReady, onSavedToLibrary, onGenerate, onClose }: {
+export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId, savedToLibrary, comfyBaseUrl, onGlbReady, onSavedToLibrary, onGenerate, onClose }: {
   sourceImageUrl: string;
   /** 已生成过的 .glb（宿主节点 payload 持久化）——传入则直接载入，不再花钱重新生成。 */
   initialGlbUrl?: string;
@@ -57,6 +57,8 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
   nodeId?: string;
   /** 已存入过素材库（宿主持久化）——按钮显示「已在素材库」。 */
   savedToLibrary?: boolean;
+  /** 混元 3D（本机 ComfyUI）引擎用的自定义地址（ComfyUI 节点才有；留空走全局默认）。 */
+  comfyBaseUrl?: string;
   /** 生成完成回调：宿主把 glbUrl 写进节点 payload 持久化，下次免费重开。 */
   onGlbReady?: (glbUrl: string) => void;
   /** 存入素材库成功回调：宿主持久化标记。 */
@@ -78,10 +80,15 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
   const submitMut = trpc.poyo.submitImageTo3d.useMutation();
   const uploadMut = trpc.upload.uploadImage.useMutation();
   const saveMut = trpc.poyo.save3dToLibrary.useMutation();
+  const hunyuanMut = trpc.comfyui.imageTo3d.useMutation();
+  // 引擎选择：null = 未选（显示选择界面）；记住上次选择。已有持久化模型时无需选择。
+  const [engine, setEngine] = useState<"tripo" | "hunyuan" | null>(() =>
+    initialGlbUrl ? "tripo" : null);
 
-  // 提交图生 3D（StrictMode 双调用用 ref 去重）。已有持久化模型 → 直接复用，不再提交。
+  // 提交图生 3D（StrictMode 双调用用 ref 去重）。已有持久化模型 → 直接复用，不再提交；
+  // 未选引擎（选择界面）不提交。
   useEffect(() => {
-    if (initialGlbUrl || submittedRef.current) return;
+    if (initialGlbUrl || engine !== "tripo" || submittedRef.current) return;
     submittedRef.current = true;
     (async () => {
       try {
@@ -92,7 +99,25 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceImageUrl]);
+  }, [sourceImageUrl, engine]);
+
+  // 混元 3D（本机 ComfyUI）：单次调用直至完成（内网短链路；1~10 分钟视显存）。
+  const startHunyuan = async () => {
+    setEngine("hunyuan");
+    try { localStorage.setItem("avc:model3d:engine", "hunyuan"); } catch { /* ignore */ }
+    try {
+      const r = await hunyuanMut.mutateAsync({ sourceImageUrl, customBaseUrl: comfyBaseUrl?.trim() || undefined });
+      setGlbUrl(r.glbUrl);
+      onGlbReady?.(r.glbUrl);
+      if (r.volatile) toast.warning("对象存储不可用：模型暂用 ComfyUI 直链（其输出目录清理后会失效），建议配置 MinIO/S3 后重新生成。");
+    } catch (e) {
+      setErr((e instanceof Error ? e.message : "混元 3D 生成失败") + "\n（需 ComfyUI 装有 Hunyuan3DWrapper 插件；默认工作流不匹配时可用 HUNYUAN3D_WORKFLOW_JSON 环境变量替换）");
+    }
+  };
+  const startTripo = () => {
+    setEngine("tripo");
+    try { localStorage.setItem("avc:model3d:engine", "tripo"); } catch { /* ignore */ }
+  };
 
   // 轮询状态：每 4s 一次，直到拿到 glb 或失败。
   const statusQ = trpc.poyo.status3d.useQuery(
@@ -191,11 +216,24 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
             <div style={{ maxWidth: 460, color: "#fca5a5", fontSize: 13, whiteSpace: "pre-wrap", textAlign: "center", lineHeight: 1.6 }}>{err}</div>
           </div>
+        ) : !glbUrl && engine === null ? (
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>选择 3D 生成引擎</div>
+            <button onClick={startTripo} style={{ width: 320, textAlign: "left", padding: "12px 16px", borderRadius: 12, border: "1px solid rgba(52,211,153,0.5)", background: "rgba(52,211,153,0.12)", color: "#fff", cursor: "pointer" }}>
+              <div style={{ fontWeight: 700 }}>Tripo3D（云端）</div>
+              <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>质量稳定 · 约消耗 30–60 credits · 1–3 分钟</div>
+            </button>
+            <button onClick={() => void startHunyuan()} style={{ width: 320, textAlign: "left", padding: "12px 16px", borderRadius: 12, border: "1px solid rgba(167,139,250,0.5)", background: "rgba(167,139,250,0.12)", color: "#fff", cursor: "pointer" }}>
+              <div style={{ fontWeight: 700 }}>混元 3D（本机 ComfyUI）</div>
+              <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>免费 · 需装 Hunyuan3DWrapper 插件 · 1–10 分钟视显存</div>
+            </button>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>生成结果都会随节点保存，之后免费重开</div>
+          </div>
         ) : !glbUrl ? (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>
             <Loader2 size={22} className="animate-spin" />
-            <div>正在把图片生成为真 3D 网格…（Tripo3D，通常需 1–3 分钟）</div>
-            {progress != null && (
+            <div>{engine === "hunyuan" ? "本机 ComfyUI 混元 3D 生成中…（1–10 分钟视显存）" : "正在把图片生成为真 3D 网格…（Tripo3D，通常需 1–3 分钟）"}</div>
+            {engine === "tripo" && progress != null && (
               <div style={{ width: 240, height: 6, borderRadius: 3, background: "rgba(255,255,255,0.12)", overflow: "hidden" }}>
                 <div style={{ width: `${Math.max(3, Math.min(100, progress))}%`, height: "100%", background: "#34d399", transition: "width 0.4s" }} />
               </div>
@@ -222,7 +260,7 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.12)", color: "#fff", flexShrink: 0, flexWrap: "wrap" }}>
         <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.55)" }}>
-          {glbUrl ? "拖拽任意角度环绕真 3D 模型，选好视角后重绘（模型已随节点保存，关闭后可重开）" : "生成中，请稍候…"}
+          {glbUrl ? "拖拽任意角度环绕真 3D 模型，选好视角后重绘（模型已随节点保存，关闭后可重开）" : engine === null ? "选择上方任一引擎开始生成" : "生成中，请稍候…"}
         </span>
         <button style={btn} disabled={!glbUrl} onClick={() => orbitRef.current?.reset()}><RotateCcw size={14} /> 复位视角</button>
         <button style={btn} disabled={!glbUrl} onClick={handleExport} title="下载 .glb 文件（可导入 Blender/UE 等）"><Download size={14} /> 导出 GLB</button>

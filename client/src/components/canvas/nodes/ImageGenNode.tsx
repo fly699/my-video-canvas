@@ -20,7 +20,6 @@ import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { openNodeImage } from "../NodeImageLightbox";
 import { Depth3DViewer } from "../Depth3DViewer";
 import { Model3DViewer } from "../Model3DViewer";
-import { confirmDialog } from "@/components/ui/dialogService";
 import { useResultHistoryCapture } from "../../../hooks/useResultHistoryCapture";
 import { ResultHistoryStrip } from "../ResultHistoryStrip";
 import type { ResultSnapshot } from "../../../../../shared/types";
@@ -146,18 +145,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // B 档「真3D」：把选中图交 Poyo Tripo3D 图生 .glb 网格，完整 360° 环绕后截图重绘。复用 pendingGen3d。
   const [model3dSrc, setModel3dSrc] = useState<string | null>(null);
   const [pendingGen3d, setPendingGen3d] = useState(false);
-  // 图生 3D 是付费操作（Tripo3D 图生 30–60 credits、耗时 1–3 分钟），开窗前先确认费用。
-  // 同一张源图已生成过（payload.model3d 持久化）→ 免确认免费重开，继续调整视角。
+  // 打开真3D查看器：引擎选择/计费确认在查看器内完成；同源图已有模型则直接复用（免费重开）。
   const openTrue3d = useCallback(async (url: string) => {
-    if (!url) return;
-    if (payload.model3d?.glbUrl && payload.model3d.sourceUrl === url) { setModel3dSrc(url); return; }
-    const ok = await confirmDialog({
-      title: "生成真 3D 模型？",
-      message: "将调用 Tripo3D 把这张图生成为可 360° 环绕的 3D 网格。约消耗 30–60 credits，通常需 1–3 分钟。生成结果会随节点保存，之后可免费重开。",
-      confirmLabel: "生成",
-    });
-    if (ok) setModel3dSrc(url);
-  }, [payload.model3d]);
+    if (url) setModel3dSrc(url);
+  }, []);
   // Multi-reference-image list + left-docked expandable strip.
   const refImages = useReferenceImages(id, payload);
   // 上游图像（图像生成 / ComfyUI 图像·自定义 / 素材 / 分镜）自动作为参考图填充——
