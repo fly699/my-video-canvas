@@ -11,6 +11,8 @@ import { catalogText, sanitizeOperationDetailed, templateKnowledgeText } from ".
 import { enforceImageFirst, enforceImageFirstComfy } from "../_core/imageFirst";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import { broadcastAgentHistoryUpdated } from "../_core/agentBus";
+import { assertSafeUrl } from "../_core/videoEditor";
+import { storagePut, assertObjectStorageWritable } from "../storage";
 import * as db from "../db";
 import type { AgentOperation } from "../../shared/types";
 
@@ -85,6 +87,52 @@ export function allocateContextBudget(args: {
     histBudget = Math.max(0, histBudget - content.length);
   }
   return { trimmed: true, history: kept, graphSummary: graph, maxTokens };
+}
+
+// ── Higgsfield MCP 产物落地 ───────────────────────────────────────────────────
+/** Higgsfield MCP 产物链接判定：按主机名含 "higgsfield"；其余 URL 一律不动。 */
+export function isHiggsfieldUrl(u: string): boolean {
+  try { return new URL(u).hostname.toLowerCase().includes("higgsfield"); } catch { return false; }
+}
+/** 从文本抽出全部 Higgsfield URL（去重、去尾部标点）。 */
+export function extractHiggsfieldUrls(text: string): string[] {
+  const out = new Set<string>();
+  // URL 只含 ASCII——用白名单字符集，避免中文语境里全角标点/汉字被粘进链接（如「…a.png，视频」）。
+  const matches = text.match(/https?:\/\/[A-Za-z0-9\-._~:/?#@!$&*+,;=%]+/g) ?? [];
+  for (const m of matches) {
+    const u = m.replace(/[.,;:!?]+$/, "");
+    if (isHiggsfieldUrl(u)) out.add(u);
+  }
+  return Array.from(out);
+}
+
+/** 把一条 Higgsfield 外链下载转存到自有存储并记入素材库（外链约 24h 过期）。
+ *  失败返回 null（保留原链，不影响回复）。100MB 上限、60s 超时、SSRF 守卫（含重定向后）。 */
+async function rehostMcpAsset(userId: number, projectId: number, url: string): Promise<{ url: string; type: "image" | "video" | "audio" | "other"; name: string } | null> {
+  try {
+    assertSafeUrl(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(60_000), redirect: "follow" });
+    if (res.url) assertSafeUrl(res.url); // 重定向后复检，防公网 302 到内网
+    if (!res.ok || !res.body) return null;
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const MAX = 100 * 1024 * 1024;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) { total += value.length; if (total > MAX) { try { await reader.cancel(); } catch { /* ignore */ } return null; } chunks.push(value); }
+    }
+    const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+    const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+    const type = mime.startsWith("video/") ? "video" as const : mime.startsWith("audio/") ? "audio" as const : mime.startsWith("image/") ? "image" as const : "other" as const;
+    const rawName = decodeURIComponent(url.split("/").pop()?.split("?")[0] || "") || "higgsfield";
+    const name = rawName.replace(/[^\w.\-一-龥]/g, "_").slice(0, 80) || "higgsfield";
+    await assertObjectStorageWritable();
+    const { url: own, key } = await storagePut(`u/${userId}/mcp/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}-${name}`, buffer, mime);
+    await db.recordGeneratedAsset({ userId, projectId, type, source: "generated", provider: "higgsfield", model: "mcp", url: own, storageKey: key, name, mimeType: mime, size: buffer.length });
+    return { url: own, type, name };
+  } catch { return null; }
 }
 
 // ── Agent (Copilot) router ────────────────────────────────────────────────────
@@ -396,6 +444,29 @@ ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.
         }
       }
       // Dedupe + cap the drop reasons (same reason often repeats across many ops).
+      // ── Higgsfield MCP 产物落地（本机 Claude 挂 MCP 时回复里常带其外链，约 24h 过期）：
+      // ① 转存自有存储 + 记入素材库；② 操作里的外链替换为自有 URL；③ 回复文本过滤裸链
+      // （其余域名的 URL 一律不动）；④ 操作里没引用的产物自动补 asset 节点落画布。
+      // 转存失败的链接原样保留（用户至少还能点）。
+      try {
+        const inOps = extractHiggsfieldUrls(JSON.stringify(operations));
+        const inReply = extractHiggsfieldUrls(reply);
+        const allUrls = Array.from(new Set([...inOps, ...inReply])).slice(0, 6); // 单轮上限 6 个，防滥用
+        if (allUrls.length > 0) {
+          let assetIdx = 0;
+          for (const oldUrl of allUrls) {
+            const r = await rehostMcpAsset(ctx.user.id, input.projectId, oldUrl);
+            if (!r) continue;
+            if (inOps.includes(oldUrl)) {
+              operations = JSON.parse(JSON.stringify(operations).split(oldUrl).join(r.url)) as AgentOperation[];
+            } else {
+              operations.push({ op: "create", tempId: `mcp_asset_${++assetIdx}`, nodeType: "asset", payload: { url: r.url, name: r.name, type: r.type } } as unknown as AgentOperation);
+            }
+            reply = reply.split(oldUrl).join(`〔${r.type === "video" ? "视频" : r.type === "image" ? "图片" : "文件"}已转存到素材库并放入画布〕`);
+          }
+        }
+      } catch { /* 落地失败不影响正常回复 */ }
+
       const droppedReasons = Array.from(new Set(dropped)).slice(0, 6);
       return { reply, operations, plan, dropped: droppedReasons, droppedCount: dropped.length };
 }
