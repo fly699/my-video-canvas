@@ -28,6 +28,7 @@ import type { NodeDefaultModelsConfig } from "../../../shared/nodeDefaultModels"
 import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { CanvasChatNotifier } from "../components/canvas/CanvasChatNotifier";
 import { CanvasAnnounceBanner } from "../components/canvas/CanvasAnnounceBanner";
+import { getDeviceFingerprint } from "@/lib/deviceFingerprint";
 import { CanvasAgentChat } from "../components/canvas/CanvasAgentChat";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useTopbarNarrow } from "../hooks/useTopbarNarrow";
@@ -1221,7 +1222,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
-    const socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true });
+    const socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true, auth: { deviceFp: getDeviceFingerprint() ?? undefined } });
     socket.on("connect", () => {
       setSocketConnected(true);
       socket.emit("join-project", { projectId, userName: user.name ?? "匿名", color: COLLABORATOR_COLORS[user.id % COLLABORATOR_COLORS.length] });

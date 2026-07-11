@@ -6,6 +6,7 @@ import { Bell } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { goToAdminTab } from "@/lib/adminNav";
+import { getDeviceFingerprint } from "@/lib/deviceFingerprint";
 
 interface Notice {
   grantId: number;
@@ -40,7 +41,7 @@ export function DownloadNotifier() {
 
   useEffect(() => {
     if (!canApprove) return;
-    const socket: Socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true });
+    const socket: Socket = io("/", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true, auth: { deviceFp: getDeviceFingerprint() ?? undefined } });
     socket.on("download:request", (n: Notice) => {
       setNotices((prev) => (prev.some((p) => p.grantId === n.grantId) ? prev : [n, ...prev].slice(0, 5)));
       void utils.admin.downloads.pendingCount.invalidate();

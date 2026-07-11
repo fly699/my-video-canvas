@@ -7,7 +7,7 @@ import { adminProcedure, levelProcedure, router } from "../_core/trpc";
 import { getEffectiveTabLevels, invalidateAdminPermsCache } from "../_core/adminPerms";
 import { EDITABLE_TAB_KEYS, effectiveTabLevels } from "../../shared/adminPerms";
 import * as db from "../db";
-import { getOnlineUserIds, getPresenceStats } from "../_core/presence";
+import { getOnlineUserIds, getPresenceStats, getActiveSessions } from "../_core/presence";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
@@ -1052,6 +1052,16 @@ export const adminRouter = router({
     onlineIds: adminProcedure.query(() => getOnlineUserIds()),
     // 在线状态 + 今日在线时长（秒），供用户表显示「在线 · 今日时长」。
     onlineStats: adminProcedure.query(() => getPresenceStats()),
+    // 活跃会话（按会话粒度，同账号多处登录分列）：IP + 设备/会话指纹 + UA + 上线时刻，附用户名。
+    activeSessions: adminProcedure.query(async () => {
+      const sessions = getActiveSessions();
+      const nameById = new Map<number, string | null>();
+      await Promise.all(Array.from(new Set(sessions.map((s) => s.userId))).map(async (uid) => {
+        const u = await db.getUserById(uid).catch(() => undefined);
+        nameById.set(uid, u?.name ?? null);
+      }));
+      return sessions.map((s) => ({ ...s, userName: nameById.get(s.userId) ?? null }));
+    }),
     resetPassword: managerProc
       .input(z.object({ userId: z.number().int().positive(), newPassword: z.string().min(6).max(200) }))
       .mutation(async ({ ctx, input }) => {

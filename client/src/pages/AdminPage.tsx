@@ -345,6 +345,9 @@ function UsersPanel() {
   const statMap = new Map((onlineStats ?? []).map((s) => [s.userId, s]));
   const onlineSet = new Set((onlineStats ?? []).filter((s) => s.online).map((s) => s.userId));
   const onlineCount = onlineSet.size;
+  // 活跃会话（同账号多登录分列，含 IP/指纹）——可展开
+  const [showSessions, setShowSessions] = useState(false);
+  const { data: activeSessions } = trpc.admin.users.activeSessions.useQuery(undefined, { refetchInterval: 15000, enabled: showSessions });
   const fmtDur = (sec: number): string => {
     if (sec < 60) return `${sec}秒`;
     const m = Math.floor(sec / 60);
@@ -425,7 +428,39 @@ function UsersPanel() {
               {pendingCount} 个待审批
             </span>
           )}
+          <button onClick={() => setShowSessions((v) => !v)} style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 99, background: showSessions ? "oklch(0.65 0.18 250 / 0.18)" : "var(--c-surface, rgba(255,255,255,0.05))", color: showSessions ? "oklch(0.68 0.16 250)" : "var(--c-t2)", border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))", cursor: "pointer" }}>
+            {showSessions ? "收起活跃会话" : "活跃会话 · IP/指纹"}
+          </button>
         </div>
+        {/* 活跃会话：同一账号在不同设备/浏览器/网络的登录分别列出，含 IP + 设备/会话指纹，
+            用于溯源「同账号多人同时使用」。会话粒度 = 用户+会话指纹+设备指纹+IP 去重。 */}
+        {showSessions && (
+          <div style={{ marginTop: 10, border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 8, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 720 }}>
+              <thead><tr style={{ background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+                {["用户", "IP", "设备指纹", "会话指纹", "连接数", "上线时刻", "UA"].map((h) => <th key={h} style={{ padding: "6px 9px", textAlign: "left", color: "var(--c-t3)", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {(activeSessions ?? []).length === 0 ? (
+                  <tr><td colSpan={7} style={{ padding: 14, textAlign: "center", color: "var(--c-t4)" }}>暂无活跃会话（无人在线，或刚重启）</td></tr>
+                ) : (activeSessions ?? []).map((s, i) => (
+                  <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t1)", whiteSpace: "nowrap" }}>{s.userName ?? "?"} <span style={{ color: "var(--c-t4)", fontFamily: "monospace" }}>#{s.userId}</span></td>
+                    <td style={{ padding: "6px 9px", fontFamily: "monospace", color: "var(--c-t1)", whiteSpace: "nowrap" }}>{s.ip}</td>
+                    <td style={{ padding: "6px 9px", fontFamily: "monospace", color: "var(--c-t2)", whiteSpace: "nowrap" }} title={s.deviceFp ?? ""}>{s.deviceFp ? s.deviceFp.slice(0, 12) : "—"}</td>
+                    <td style={{ padding: "6px 9px", fontFamily: "monospace", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{s.sessionFp ?? "—"}</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t3)", textAlign: "center" }}>{s.socketCount}</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{new Date(s.connectedAt).toLocaleString("zh-CN", { hour12: false })}</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t4)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.userAgent ?? ""}>{s.userAgent ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ padding: "6px 10px", fontSize: 11, color: "var(--c-t4)", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+              同一账号出现多行 = 多处登录（不同设备/浏览器/IP）。设备指纹相同但 IP/会话不同 = 同一设备多次登录；设备指纹不同 = 不同设备/人。
+            </div>
+          </div>
+        )}
         <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2)", lineHeight: 1.5 }}>
           重置密码、冻结/解冻、删除用户。冻结的用户无法登录、现有会话立即失效。不能对自己冻结或删除。
           {isSuper
@@ -2034,7 +2069,7 @@ function LogsPanel() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
             <thead>
               <tr>
-                {["时间", "用户", "IP 地址", "地区", "操作类型", "详情"].map((h) => (
+                {["时间", "用户", "IP 地址", "设备指纹", "地区", "操作类型", "详情"].map((h) => (
                   <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "var(--c-t2, rgba(255,255,255,0.4))", fontWeight: 500, borderBottom: "1px solid rgba(255,255,255,0.06)", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
@@ -2055,6 +2090,11 @@ function LogsPanel() {
                       {log.userId != null && <div style={{ fontSize: "10px", color: "var(--c-t2, rgba(255,255,255,0.28))", fontFamily: "monospace" }}>ID: {log.userId}</div>}
                     </td>
                     <td style={{ ...tdStyle, fontFamily: "monospace", color: "var(--c-t1, #f0f0f4)", whiteSpace: "nowrap" }}>{log.ip}</td>
+                    <td style={{ ...tdStyle, whiteSpace: "nowrap", fontFamily: "monospace", fontSize: "11px", color: "var(--c-t2, rgba(255,255,255,0.5))" }}
+                      title={`设备指纹：${log.deviceFp ?? "—"}\n会话指纹：${log.sessionFp ?? "—"}\nUA：${log.userAgent ?? "—"}`}>
+                      {log.deviceFp ? String(log.deviceFp).slice(0, 10) : "—"}
+                      {log.sessionFp && <div style={{ fontSize: "10px", color: "var(--c-t2, rgba(255,255,255,0.3))" }}>会话 {String(log.sessionFp).slice(0, 8)}</div>}
+                    </td>
                     <td style={{ ...tdStyle, color: "var(--c-t2, rgba(255,255,255,0.45))", whiteSpace: "nowrap" }}>{geo}</td>
                     <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
                       <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: `color-mix(in oklch, ${actionColor} 15%, transparent)`, color: actionColor, border: `1px solid color-mix(in oklch, ${actionColor} 30%, transparent)` }}>
@@ -2747,6 +2787,7 @@ function ChatAdminPanel() {
       <ChatSettingsPanel />
       <ChatConversationsPanel />
       <ChatMessageSearchPanel />
+      <ChatFilesPanel />
       <ChatBansPanel />
     </div>
   );
@@ -2892,6 +2933,69 @@ function ChatMessageSearchPanel() {
         </table>
       )}
       {q.data && !q.data.encrypted && q.data.rows.length === 0 && <p style={chatDim}>无匹配消息</p>}
+    </div>
+  );
+}
+
+// 聊天附件/媒体浏览：列出用户在聊天里上传的全部文件（图片缩略图可点开预览、视频内联、
+// 其它给下载链接），可按会话 ID 过滤。走 /manus-storage 门控代理，与聊天内一致。
+function ChatFilesPanel() {
+  const [convId, setConvId] = useState("");
+  const [applied, setApplied] = useState<number | undefined>(undefined);
+  const [page, setPage] = useState(0);
+  const [preview, setPreview] = useState<string | null>(null);
+  const PAGE = 40;
+  const q = trpc.admin.chat.listFiles.useQuery({ conversationId: applied, limit: PAGE, offset: page * PAGE });
+  const rows = q.data?.rows ?? [];
+  const total = q.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE));
+  const fmtSize = (n: number) => n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : n >= 1024 ? `${(n / 1024).toFixed(0)}KB` : `${n}B`;
+  return (
+    <div style={chatCard}>
+      <h3 style={chatCardTitle}>附件 / 媒体浏览{total > 0 && <span style={{ fontWeight: 400, color: "var(--c-t3)", fontSize: 12, marginLeft: 8 }}>（共 {total} 个）</span>}</h3>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <input placeholder="会话ID（留空=全部）" value={convId} onChange={(e) => setConvId(e.target.value.replace(/[^\d]/g, ""))} style={{ ...chatInput, width: 150 }} />
+        <button onClick={() => { setPage(0); setApplied(convId ? Number(convId) : undefined); }} style={chatPrimarySm}>筛选</button>
+        <button onClick={() => q.refetch()} style={{ ...chatPrimarySm, background: "var(--c-surface, rgba(255,255,255,0.05))", color: "var(--c-t2)" }}>刷新</button>
+        <span style={{ fontSize: 11, color: "var(--c-t4)" }}>点击图片放大预览；视频/其它文件走门控下载</span>
+      </div>
+      {q.isLoading ? <p style={chatDim}>加载中…</p> : rows.length === 0 ? <p style={chatDim}>无附件</p> : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+          {rows.map((f) => (
+            <div key={f.id} style={{ border: "1px solid var(--c-bd1, rgba(255,255,255,0.07))", borderRadius: 8, overflow: "hidden", background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+              <div style={{ height: 110, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.2)", overflow: "hidden" }}>
+                {f.kind === "image" ? (
+                  <img src={f.url} alt={f.name} onClick={() => setPreview(f.url)} draggable={false}
+                    onContextMenu={(e) => e.preventDefault()}
+                    style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "cover", cursor: "zoom-in", WebkitTouchCallout: "none", userSelect: "none" }} />
+                ) : f.kind === "video" ? (
+                  <video src={f.url} controls controlsList="nodownload noremoteplayback" disablePictureInPicture onContextMenu={(e) => e.preventDefault()} style={{ maxWidth: "100%", maxHeight: "100%" }} />
+                ) : (
+                  <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize: 28 }} title="下载">📄</a>
+                )}
+              </div>
+              <div style={{ padding: "6px 8px" }}>
+                <div style={{ fontSize: 11.5, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>{f.name}</div>
+                <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 2 }}>会话#{f.conversationId} · 上传者#{f.uploaderId} · {fmtSize(f.size)}</div>
+                <div style={{ fontSize: 10, color: "var(--c-t4)" }}>{new Date(f.createdAt).toLocaleString("zh-CN", { hour12: false })}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {totalPages > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12, fontSize: 11.5, color: "var(--c-t3)", alignItems: "center" }}>
+          <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={paginBtn}>‹ 上一页</button>
+          <span>{page + 1} / {totalPages}</span>
+          <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={paginBtn}>下一页 ›</button>
+        </div>
+      )}
+      {preview && createPortal(
+        <div onClick={() => setPreview(null)} style={{ position: "fixed", inset: 0, zIndex: 10001, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out" }}>
+          <img src={preview} alt="" onContextMenu={(e) => e.preventDefault()} draggable={false} style={{ maxWidth: "95vw", maxHeight: "92vh", objectFit: "contain", WebkitTouchCallout: "none", userSelect: "none" }} />
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
