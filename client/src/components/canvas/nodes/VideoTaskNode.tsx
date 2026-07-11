@@ -49,6 +49,7 @@ import {
 } from "@/lib/cinematographyTemplates";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { InlineGenBar } from "../InlineGenBar";
+import { QuickTrimBar } from "../QuickTrimBar";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 // 视频模型参数表已抽到 shared/videoModelParams（服务端画布助手目录同源消费）；
@@ -910,6 +911,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   // 绿点指示：结果视频是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
   const videoStoredInMinio = isOwnStorageUrl(primaryUrl);
+
+  // ── LibTV 化：快速剪辑条（BaseNode 操作条「剪辑」按钮派发 canvas:quick-trim 打开）──
+  const [quickTrimOpen, setQuickTrimOpen] = useState(false);
+  useEffect(() => {
+    const h = (e: Event) => { if ((e as CustomEvent).detail?.nodeId === id) setQuickTrimOpen(true); };
+    window.addEventListener("canvas:quick-trim", h);
+    return () => window.removeEventListener("canvas:quick-trim", h);
+  }, [id]);
 
   // ── LibTV 化 B：空视频节点工作流预设 ────────────────────────────────────────
   // 「空节点」= 无提示词、无结果、无参考图、无上游连线 → 配置区顶部给出一键搭建入口：
@@ -2168,6 +2177,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </button>
         </div>
       </InlineGenBar>
+    )}
+
+    {/* LibTV 化：快速剪辑条（屏幕底部固定；确认走 clip.trimVideo，完成后原地替换结果视频） */}
+    {quickTrimOpen && primaryUrl && (
+      <QuickTrimBar
+        videoUrl={primaryUrl}
+        projectId={data.projectId}
+        nodeId={id}
+        onClose={() => setQuickTrimOpen(false)}
+        onDone={(url) => updateNodeData(id, { resultVideoUrl: url })}
+      />
     )}
   </>);
 });
