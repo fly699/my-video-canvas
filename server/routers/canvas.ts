@@ -2973,11 +2973,13 @@ export const imageEditRouter = router({
   run: protectedProcedure
     .input(z.object({
       sourceImageUrl: mediaUrlSchema,
-      operation: z.enum(["remove_bg", "outpaint", "inpaint", "erase", "relight", "reframe", "upscale"]),
+      operation: z.enum(["remove_bg", "outpaint", "inpaint", "erase", "relight", "reframe", "upscale", "reangle"]),
       // Edit-capable model (validated against the shared allow-list). Empty → default.
       model: z.string().max(64).optional(),
       prompt: z.string().max(1000).optional(),
       maskUrl: mediaUrlSchema.optional(),
+      // 打光智能模式的参考图：作为第二张图传给编辑模型，指令要求匹配其光照氛围（#72）。
+      refImageUrl: mediaUrlSchema.optional(),
       aspectRatio: z.string().max(32).optional(),
       kieTempKey: z.string().max(256).optional(),
       estimatedCost: z.string().max(32).optional(),
@@ -3001,6 +3003,7 @@ export const imageEditRouter = router({
       }
       guardUrl(input.sourceImageUrl);
       if (input.maskUrl) guardUrl(input.maskUrl);
+      if (input.refImageUrl) guardUrl(input.refImageUrl);
       return dedupe("imageEdit", ctx.user.id, input, async () => {
         let instruction = buildImageEditInstruction(input.operation, input.prompt, input.aspectRatio);
         // When a painted mask is supplied (inpaint/erase), pass it as an extra
@@ -3010,6 +3013,11 @@ export const imageEditRouter = router({
         if (input.maskUrl && (input.operation === "inpaint" || input.operation === "erase")) {
           images.push({ url: input.maskUrl });
           instruction += " The second provided image is a mask: its white area marks the exact region to edit; leave the rest untouched.";
+        }
+        // 打光智能模式：参考图作为光照氛围范本（仅 relight 生效，避免其它操作被误导）。
+        if (input.refImageUrl && input.operation === "relight") {
+          images.push({ url: input.refImageUrl });
+          instruction += " The second provided image is a lighting reference: match its lighting direction, color palette and mood, but keep the first image's subject and composition unchanged.";
         }
         // 目标画幅(扩图/改比例)此前只拼进指令文本，模型多半不真正改比例。改为同时按
         // 结构化参数下发：size 覆盖 poyo(aspect_ratio)/kie(options.size)，reveAspectRatio

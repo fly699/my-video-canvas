@@ -1,4 +1,5 @@
-import { memo, useState, useRef, useCallback, useEffect } from "react";
+import { memo, useState, useRef, useCallback, useEffect, lazy, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals, useStore } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
@@ -40,6 +41,10 @@ import { agentBadge } from "../../lib/agentOwnership";
 // super_agent（工程智能体）同理——它是「任务输入 + 流式活动日志 + 结果 + 写回」的交互面板，
 // 不是参数表单；不加入这里会在工作室模式被折叠成「空标题卡 + 参数浮层下方」，上方窗口空着。
 const STUDIO_PRO_BODY_TYPES = new Set<NodeType>(["ai_chat", "super_agent"]);
+
+// #72 LibTV 多角度/打光全功能编辑器（全模式）：懒加载，仅在打开时拉取代码。
+const MultiAngleEditorLazy = lazy(() => import("./editors/AngleRelightEditors").then((m) => ({ default: m.MultiAngleEditor })));
+const RelightEditorLazy = lazy(() => import("./editors/AngleRelightEditors").then((m) => ({ default: m.RelightEditor })));
 
 interface BaseNodeProps {
   id: string;
@@ -422,12 +427,31 @@ export const BaseNode = memo(function BaseNode({
     { op: "upscale", label: "高清", Icon: Sparkles },
     { op: "remove_bg", label: "去背景", Icon: Scissors },
     { op: "outpaint", label: "扩图", Icon: Expand },
-    { op: "relight", label: "重打光", Icon: Sun },
     { op: "reframe", label: "改比例", Icon: Crop },
     // LibTV #59：聚焦=局部重绘（涂抹聚焦区域重点重绘）、擦除物体——op 与蒙版涂抹器均为既有能力。
     { op: "inpaint", label: "聚焦", Icon: Focus },
     { op: "erase", label: "擦除", Icon: Eraser },
   ];
+
+  // #72 多角度/打光全功能编辑器：结果写回本节点结果字段（useResultHistoryCapture
+  // 会自动把旧图押入版本历史），字段按 nodeType 与 resultImageUrl 的读取口径一致。
+  const [angleEditorOpen, setAngleEditorOpen] = useState(false);
+  const [relightEditorOpen, setRelightEditorOpen] = useState(false);
+  const applyEditedImage = useCallback((url: string) => {
+    const st = useCanvasStore.getState();
+    switch (nodeType) {
+      case "image_edit": st.updateNodeData(id, { outputUrl: url }); break;
+      case "comfyui_workflow": {
+        const p = st.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
+        const urls = Array.isArray(p?.outputUrls) ? [...(p!.outputUrls as string[])] : [];
+        urls[0] = url;
+        st.updateNodeData(id, { outputUrls: urls });
+        break;
+      }
+      case "asset": st.updateNodeData(id, { url }); break;
+      default: st.updateNodeData(id, { imageUrl: url });
+    }
+  }, [id, nodeType]);
 
   // ── LibTV 式一键编排：多角度（九宫格多机位）与宫格切分 ─────────────────────────
   // 多角度：以本图为参考生成多机位九宫格 → 切分 → 产物落入新建 image_gen 节点
@@ -981,15 +1005,24 @@ export const BaseNode = memo(function BaseNode({
                     </button>
                   </>
                 )}
-                {/* 多角度：本图为参考生成九宫格多机位 → 自动切分为子图（一键编排） */}
+                {/* #72 多角度：LibTV 式全功能编辑器（预设/球面机位/滑杆/提示词/积分），
+                    结果写回本节点并入版本历史；九宫格多机位保留在工具箱菜单里 */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); void handleMultiAngle(); }}
-                  disabled={gridBusy}
-                  title="多角度（以本图为参考生成多机位九宫格并自动切分，产物落入新节点）"
+                  onClick={(e) => { e.stopPropagation(); setAngleEditorOpen(true); }}
+                  title="多角度（球面机位控件 + 预设视角 + 景别，换机位重拍本图，结果入版本历史）"
                   className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                  style={{ background: "var(--c-surface)", color: gridBusy ? "var(--c-t4)" : "var(--c-t2)", border: "none", cursor: gridBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                  style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                 >
-                  {gridBusy ? <Loader2 size={12} className="animate-spin" /> : <LayoutGrid size={12} />} 多角度
+                  <Rotate3d size={12} /> 多角度
+                </button>
+                {/* #72 打光：LibTV 式全功能编辑器（光源球面/六方位/亮度颜色/轮廓光/智能模式/8款预设） */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setRelightEditorOpen(true); }}
+                  title="打光效果（光源球面控件 + 全局亮度/颜色 + 轮廓光 + 智能模式 + 8 款预设，结果入版本历史）"
+                  className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                  style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                >
+                  <Sun size={12} /> 打光
                 </button>
                 {/* 阶段四 4.1 工具箱：模板化操作套件（全部复用 宫格生成→切分 / 单图外推 管线） */}
                 <span style={{ position: "relative", display: "inline-flex" }}>
@@ -1005,6 +1038,7 @@ export const BaseNode = memo(function BaseNode({
                   {toolkitOpen && (
                     <div className="nodrag" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, display: "flex", flexDirection: "column", gap: 2, padding: 6, borderRadius: 9, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 10px 30px rgba(0,0,0,0.4)", minWidth: 168 }}>
                       {([
+                        { label: "多机位九宫格", desc: "9 个机位角度一次出齐", run: () => handleMultiAngle() },
                         { label: "连贯分镜 25 格", desc: "5×5 逐拍推进整场戏", run: () => runGridSheet("grid25", "the exact same subject and scene shown in the reference image, telling the scene beat by beat", "连贯分镜", "个连续镜头") },
                         { label: "剧情推演 4 格", desc: "2×2 剧情如何发展", run: () => runGridSheet("plot4", "the exact same subject and scene shown in the reference image, showing how the story develops from this moment", "剧情推演", "个剧情节拍") },
                         { label: "画面推演 +5 秒", desc: "这一幕之后的画面", run: () => handleTemporalShift(5) },
@@ -1858,6 +1892,19 @@ export const BaseNode = memo(function BaseNode({
           collapsible body, so they survive the studio skin's collapsed (body max-height:0)
           state. Nodes pass these via `extraHandles` together with showHandles={false}. */}
       {extraHandles}
+
+      {/* #72 多角度/打光全功能编辑器：portal 到 body（节点 DOM 有 transform，
+          fixed 定位会被祸害成相对定位）；独立于 NodeToolbar 挂载，节点取消选中也不闪关。 */}
+      {angleEditorOpen && resultImageUrl && createPortal(
+        <Suspense fallback={null}>
+          <MultiAngleEditorLazy sourceUrl={resultImageUrl} projectId={projectId ?? 0}
+            onApply={applyEditedImage} onClose={() => setAngleEditorOpen(false)} />
+        </Suspense>, document.body)}
+      {relightEditorOpen && resultImageUrl && createPortal(
+        <Suspense fallback={null}>
+          <RelightEditorLazy sourceUrl={resultImageUrl} projectId={projectId ?? 0}
+            onApply={applyEditedImage} onClose={() => setRelightEditorOpen(false)} />
+        </Suspense>, document.body)}
     </div>
   );
 });
