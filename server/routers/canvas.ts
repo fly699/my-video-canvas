@@ -68,7 +68,7 @@ import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio"
 import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame, extractAudio, concatAudioSegments } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame, extractAudio, concatAudioSegments, processAudioClip } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -2710,6 +2710,32 @@ export const audioGenRouter = router({
       for (const u of input.urls) guardUrl(u);
       const result = await concatAudioSegments(input.urls);
       await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "ffmpeg", model: null, url: result.url, name: "配音拼接（多角色）" });
+      return result;
+    }),
+
+  // LibTV 化：音频节点「截取 / 变速」操作条（本地 ffmpeg，不消耗 AI 积分，故不做白名单拦截）。
+  processAudio: protectedProcedure
+    .input(
+      z.object({
+        url: mediaUrlSchema,
+        trimStart: z.number().min(0).max(36000).optional(),
+        trimEnd: z.number().min(0).max(36000).optional(),
+        speed: z.number().min(0.25).max(4).optional(),
+        projectId: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.url);
+      const hasTrim = input.trimStart != null || input.trimEnd != null;
+      const hasSpeed = input.speed != null && Math.abs(input.speed - 1) > 0.001;
+      if (!hasTrim && !hasSpeed) throw new TRPCError({ code: "BAD_REQUEST", message: "请指定截取区间或变速倍率" });
+      if (input.trimStart != null && input.trimEnd != null && input.trimEnd <= input.trimStart) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "截取终点必须大于起点" });
+      }
+      const result = await processAudioClip({ url: input.url, trimStart: input.trimStart, trimEnd: input.trimEnd, speed: input.speed });
+      const opLabel = [hasTrim ? "截取" : null, hasSpeed ? `变速×${input.speed}` : null].filter(Boolean).join("+");
+      await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "ffmpeg", model: null, url: result.url, name: `音频${opLabel}` });
       return result;
     }),
 });
