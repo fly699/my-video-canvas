@@ -30,8 +30,9 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin } from "lucide-react";
 import { StylePicker } from "../StylePicker";
+import { ToolChip, RefThumbRow } from "../InlineBarParts";
 import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
@@ -135,6 +136,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // LibTV：输入条「风格」chip 打开风格库，选中把风格片段追加到提示词。
   const [styleOpen, setStyleOpen] = useState(false);
+  // LibTV 三段式输入条：顶部「＋参考」的隐藏文件选择器。
+  const inlineRefFileRef = useRef<HTMLInputElement>(null);
   // 「高级」展开态不跨选中记忆：取消选中即复位，下次点选默认收起、需再点「高级」才展开。
   useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
   // 快捷键 A：选中时切换「高级」参数区（Canvas 派发 canvas:toggle-advanced）。
@@ -1367,14 +1370,29 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         提示词/模型/参数/成本/生成一条龙，读写与配置区同一 payload（双向同步）。 */}
     {isCreativeMode && (
       <InlineGenBar nodeId={id} visible={expanded}>
+        {/* ── LibTV 三段式 Row1：工具 chips 行（＋参考 / 标记 / 风格） ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          <ToolChip icon={<Plus size={13} />} label="参考" title="添加参考图（本地上传，最多随模型上限）" onClick={() => inlineRefFileRef.current?.click()} />
+          <ToolChip icon={<MapPin size={12} />} label="标记" disabled={refImages.images.length === 0}
+            title={refImages.images.length ? "把「图片1」引用插入提示词（点下方缩略图可插对应编号）" : "先添加参考图，才能在提示词中标记引用"}
+            onClick={() => update("prompt", `${(payload.prompt ?? "").trim()}${(payload.prompt ?? "").trim() ? " " : ""}图片1 `)} />
+          <ToolChip icon={<Palette size={12} />} label="风格" title="风格库（选一个风格追加到提示词）" onClick={() => setStyleOpen(true)} />
+          <input ref={inlineRefFileRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) void uploadFilesToRef(files, refImages.images.length); e.target.value = ""; }} />
+        </div>
+        {/* ── Row2：参考图缩略行（点缩略图插入「图片N」引用） ── */}
+        <RefThumbRow images={refImages.images} onRemove={refImages.removeId}
+          onClick={(i) => update("prompt", `${(payload.prompt ?? "").trim()}${(payload.prompt ?? "").trim() ? " " : ""}图片${i + 1} `)} />
+        {/* ── Row3：大提示词区（无边框大字，贴 LibTV） ── */}
         <NodeTextArea
           className="nodrag nowheel"
-          rows={2}
+          rows={3}
           placeholder="描述你想生成的画面…（@ 引用角色/素材）"
           value={payload.prompt ?? ""}
           onValueChange={(v) => update("prompt", v)}
-          style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+          style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
         />
+        {/* ── Row4：精简控制行 ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <ModelPicker value={payload.model || ""} onChange={(v) => update("model", v)} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
           {/* LibTV 控制行分组竖分隔线：模型 │ 参数·高级 … 积分 │ 发送 */}
@@ -1428,15 +1446,6 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               </div>
             )}
           </span>
-          {/* LibTV：输入条「风格」chip——打开风格库，选中把风格片段追加到提示词 */}
-          <button
-            className="nodrag"
-            onClick={(e) => { e.stopPropagation(); setStyleOpen(true); }}
-            title="风格库（选一个风格追加到提示词）"
-            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
-          >
-            <Palette size={12} /> 风格
-          </button>
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}

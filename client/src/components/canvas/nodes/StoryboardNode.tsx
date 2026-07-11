@@ -9,7 +9,9 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes, ArrowUp } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes, ArrowUp, Plus, Palette } from "lucide-react";
+import { ToolChip, RefThumbRow } from "../InlineBarParts";
+import { StylePicker } from "../StylePicker";
 import { InlineGenBar } from "../InlineGenBar";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { Depth3DViewer } from "../Depth3DViewer";
@@ -287,6 +289,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
+  // LibTV：输入条「风格」chip 打开风格库，选中把风格片段追加到本镜提示词。
+  const [styleOpen, setStyleOpen] = useState(false);
 
   const uploadRefMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
@@ -1338,14 +1342,26 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         提示词/图像模型/参数（比例·清晰度·数量）/成本/生成一条龙，与配置区同一 payload 双向同步。 */}
     {isCreativeMode && (
       <InlineGenBar nodeId={id} visible={Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned)}>
+        {/* ── LibTV 三段式 Row1：工具 chips 行（＋参考 / 风格） ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          <ToolChip icon={<Plus size={13} />} label="参考" title="上传参考图（图生图约束本镜画面）" onClick={() => refInputRef.current?.click()} />
+          <ToolChip icon={<Palette size={12} />} label="风格" title="风格库（选一个风格追加到本镜提示词）" onClick={() => setStyleOpen(true)} />
+          {uploadingRef && <Loader2 size={13} className="animate-spin" style={{ color: "var(--c-t3)" }} />}
+        </div>
+        {/* ── Row2：参考图缩略（分镜为单图） ── */}
+        {payload.referenceImageUrl && (
+          <RefThumbRow images={[{ id: "ref", url: payload.referenceImageUrl }]} onRemove={() => updateNodeData(id, { referenceImageUrl: undefined })} />
+        )}
+        {/* ── Row3：大提示词区 ── */}
         <NodeTextArea
           className="nodrag nowheel"
-          rows={2}
+          rows={3}
           placeholder="描述本镜画面…（@ 引用角色/素材）"
           value={payload.promptText ?? ""}
           onValueChange={(v) => handleChange("promptText", v)}
-          style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+          style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
         />
+        {/* ── Row4：精简控制行 ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <ModelPicker value={model} onChange={setModel} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
           {/* LibTV 控制行分组竖分隔线：模型 │ 参数·高级 … 积分 │ 发送 */}
@@ -1427,6 +1443,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           </button>
         </div>
       </InlineGenBar>
+    )}
+
+    {/* LibTV：输入条「风格」chip 打开的风格库（portal 到 body） */}
+    {styleOpen && (
+      <StylePicker
+        onClose={() => setStyleOpen(false)}
+        onSelect={(p) => {
+          const cur = (payload.promptText ?? "").trim();
+          handleChange("promptText", cur ? `${cur}，${p.prompt}` : p.prompt);
+          toast.success(`已应用风格：${p.label}`);
+        }}
+      />
     )}
 
       {/* ── Image lightbox (portal to body — avoids React Flow event interception) ── */}

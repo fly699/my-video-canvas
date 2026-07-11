@@ -898,11 +898,11 @@ export const BaseNode = memo(function BaseNode({
             {resultVideoUrl && nodeType === "video_task" && (
               <button
                 onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("canvas:quick-trim", { detail: { nodeId: id } })); }}
-                title="快速剪辑（时间轴选区截取 · I/O 出入点 · Enter 确认）"
+                title="快剪（时间轴选区截取 · I/O 出入点 · Enter 确认；与「剪辑」节点区分）"
                 className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
                 style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
               >
-                <Scissors size={12} /> 剪辑
+                <Scissors size={12} /> 快剪
               </button>
             )}
             {/* Liblib-style quick AI-edit actions — only for nodes with an image result.
