@@ -50,8 +50,6 @@ import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
 import { NodeTextArea } from "../NodeTextInput";
 import { InlineGenBar } from "../InlineGenBar";
-import { useCanvasMode } from "../../../contexts/CanvasModeContext";
-import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { aspectFieldsFor } from "../../../lib/agentApply";
 
 interface Props {
@@ -130,10 +128,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const { resolve } = useNodeDefaultModels();
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
-  // LibTV 化 2.1：创意模式（uiStyle=pro + canvasMode=creative）启用就地生成输入条。
-  const { uiStyle } = useUIStyle();
-  const { mode: canvasMode } = useCanvasMode();
-  const isCreativeMode = uiStyle !== "studio" && canvasMode === "creative";
+  // LibTV 全模式统一（#70）：节点级 LibTV 范式（就地输入条 / 配置区收起走「高级」/
+  // 多图堆叠 hero）不再按皮肤或画布模式差异化——工作室 / 专业 / 创意完全一致。
+  const isCreativeMode = true;
   // LibTV：双击参考缩略图 → 聚焦至来源节点。
   const focusRefSource = useFocusRefSource(id);
   const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
@@ -481,12 +478,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // 否则工作室收缩后（无 inline body）整个节点只剩标题栏，参考图根本看不见。
   const heroRefUrl = refImages.images[0]?.url ?? payload.referenceImageUrl ?? payload.referenceImages?.[0];
 
-  // Collapsed hero: a multi-image batch shows the whole grid by default
-  // ("grid"); "single" falls back to just the selected image.
-  // 创意模式效仿 LibTV「多图模式」：只显示当前选中图，右下露出叠层卡边，
-  // 右上「N张」角标点开放大查看（可翻页），两侧悬停箭头切换当前图。
-  const heroShowStack = hasMultiple && isCreativeMode && !!payload.imageUrl;
-  const heroShowGrid = hasMultiple && !heroShowStack && payload.heroView !== "single";
+  // 多图 hero（LibTV 多图模式）：默认堆叠——只显当前选中图、右下露叠层卡边、
+  // 「N 张」角标展开为画布内网格（heroView="grid"，每张 hover 下载/设为主图，
+  // 主图「收起」回堆叠）、两侧悬停箭头切换当前图。
+  const heroShowStack = hasMultiple && !!payload.imageUrl && payload.heroView !== "grid";
+  const heroShowGrid = hasMultiple && !heroShowStack;
   const stackOthers = heroShowStack ? (payload.imageUrls ?? []).filter((u) => u !== payload.imageUrl) : [];
   const stackCycle = (dir: 1 | -1) => {
     const urls = payload.imageUrls ?? [];
@@ -509,12 +505,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
         )}
         <button
-          onClick={(e) => { e.stopPropagation(); setLightboxIndex(Math.max(0, (payload.imageUrls ?? []).indexOf(payload.imageUrl ?? ""))); }}
-          title={`共 ${payload.imageUrls!.length} 张，点击放大查看/翻页`}
+          onClick={(e) => { e.stopPropagation(); update("heroView", "grid"); }}
+          title={`共 ${payload.imageUrls!.length} 张，点击展开为网格（每张可下载/设为主图）`}
           className="nodrag absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold"
           style={{ background: "oklch(0 0 0 / 0.6)", backdropFilter: "blur(8px)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(1 0 0 / 0.18)", color: "#fff" }}
         >
-          <ZoomIn className="w-3 h-3" />
+          <Grid2X2 className="w-3 h-3" />
           {payload.imageUrls!.length} 张
         </button>
         {([[-1, "‹", "上一张", { left: 6 }] as const, [1, "›", "下一张", { right: 6 }] as const]).map(([dir, glyph, tip, pos]) => (
@@ -536,8 +532,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     >
       {payload.imageUrls!.map((url, idx) => {
         const isSelected = url === payload.imageUrl;
+        const tileBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", borderRadius: 7, fontSize: 10.5, fontWeight: 700, background: "oklch(0 0 0 / 0.62)", border: "1px solid oklch(1 0 0 / 0.22)", color: "#fff", cursor: "pointer", backdropFilter: "blur(6px)" };
         return (
-          <div key={idx} className="relative rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)" }}>
+          <div key={idx} className="relative rounded-lg overflow-hidden group" style={{ background: "var(--c-canvas)" }}>
             <MediaImage
               src={url}
               alt={`generated-${idx}`}
@@ -559,6 +556,25 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
               </div>
             )}
+            {/* LibTV 展开态 hover 操作：下载 + 设为主图（主图为「收起」回堆叠） */}
+            <div className="absolute inset-x-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-start justify-end gap-1 p-1.5"
+              style={{ background: "linear-gradient(oklch(0 0 0 / 0.45), oklch(0 0 0 / 0) 80%)" }}>
+              <button className="nodrag" style={tileBtn} title="下载这张图"
+                onClick={(e) => { e.stopPropagation(); handleDownloadImage(url); }}>
+                <Download style={{ width: 10, height: 10 }} /> 下载
+              </button>
+              {isSelected ? (
+                <button className="nodrag" style={tileBtn} title="收起为堆叠视图"
+                  onClick={(e) => { e.stopPropagation(); update("heroView", "single"); }}>
+                  收起
+                </button>
+              ) : (
+                <button className="nodrag" style={tileBtn} title="设为当前主图（同步下游节点）"
+                  onClick={(e) => { e.stopPropagation(); handleSelectImage(url); }}>
+                  设为主图
+                </button>
+              )}
+            </div>
           </div>
         );
       })}
@@ -682,19 +698,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               </span>
               <div className="flex gap-1">
                 {/* 折叠预览模式：网格 / 单图 */}
-                <div className="flex items-center rounded overflow-hidden" style={{ border: `1px solid ${BORDER_DEFAULT}` }} title="折叠后预览：整组网格 / 仅选中图">
+                <div className="flex items-center rounded overflow-hidden" style={{ border: `1px solid ${BORDER_DEFAULT}` }} title="预览形态：展开网格 / 堆叠（默认）">
                   {(["grid", "single"] as const).map((mode) => {
-                    const active = (payload.heroView ?? "grid") === mode;
+                    const active = (payload.heroView ?? "single") === mode;
                     return (
                       <button
                         key={mode}
                         onClick={() => update("heroView", mode)}
                         className="nodrag flex items-center gap-1 px-1.5 py-0.5"
                         style={{ fontSize: 9.5, background: active ? accent : "transparent", color: active ? "white" : "var(--c-t3)" }}
-                        title={mode === "grid" ? "折叠后显示整组网格（默认）" : "折叠后只显示选中图"}
+                        title={mode === "grid" ? "展开为网格（每张可下载/设为主图）" : "堆叠视图（默认）：当前图 + 叠层卡边"}
                       >
                         {mode === "grid" ? <Grid2X2 style={{ width: 10, height: 10 }} /> : <ImagePlus style={{ width: 10, height: 10 }} />}
-                        {mode === "grid" ? "网格" : "单图"}
+                        {mode === "grid" ? "网格" : "堆叠"}
                       </button>
                     );
                   })}

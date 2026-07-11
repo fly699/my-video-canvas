@@ -12,8 +12,6 @@ import {
 import { NodeToolbar, Position } from "@xyflow/react";
 import { downloadMedia } from "@/lib/download";
 import { InlineGenBar } from "../InlineGenBar";
-import { useCanvasMode } from "../../../contexts/CanvasModeContext";
-import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { safeHref } from "@/lib/safeUrl";
 import { mediaFetchUrl } from "@/lib/download";
@@ -819,10 +817,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   ) : null;
 
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
-  // LibTV 化：创意模式（pro 皮肤 + creative 画布）启用就地生成输入条。
-  const { uiStyle } = useUIStyle();
-  const { mode: canvasModeVal } = useCanvasMode();
-  const isCreativeMode = uiStyle !== "studio" && canvasModeVal === "creative";
+  // LibTV 全模式统一（#70）：小卡形态 + 就地输入条不再按皮肤/画布模式差异化。
+  const isCreativeMode = true;
   // 创意模式点击不展开完整配置区（对齐图像/视频节点）：由输入条「高级」开关展开，
   // 取消选中即复位；快捷键 A（Canvas 派发 canvas:toggle-advanced）同样生效。
   const [advancedOpen, setAdvancedOpen] = useState(false);
