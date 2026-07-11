@@ -1394,7 +1394,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         />
         {/* ── Row4：精简控制行 ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <ModelPicker value={payload.model || ""} onChange={(v) => update("model", v)} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
+          {/* 模型未显式选择时回退到默认模型（与配置区/提交口径一致），避免选择器显示空白 */}
+          <ModelPicker value={payload.model ?? resolve("image_gen", "image")} onChange={(v) => update("model", v)} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
           {/* LibTV 控制行分组竖分隔线：模型 │ 参数·高级 … 积分 │ 发送 */}
           <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <span style={{ position: "relative", display: "inline-flex" }}>
@@ -1402,7 +1403,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               className="nodrag"
               onClick={(e) => { e.stopPropagation(); setInlineParamsOpen((v) => !v); }}
               title="生成参数（比例 / 分辨率 / 数量）"
-              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, background: inlineParamsOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, background: inlineParamsOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
             >
               {(payload.aspectRatio || "比例默认")} · {(payload.imageResolution || "画质默认")} · {genCount}张
             </button>
