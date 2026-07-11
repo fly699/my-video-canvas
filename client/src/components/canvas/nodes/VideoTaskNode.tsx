@@ -1008,9 +1008,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           />
         </>
       }>
-      <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
+      {/* 创意模式收起态（未展开高级）：body 内容全被隐藏，padding/gap 一并归零，
+          否则点击带结果节点后预览下会剩一块空 padding 灰条（空节点预设卡场景保留 padding）。 */}
+      <div className="flex flex-col h-full overflow-auto" style={isCreativeMode && !advancedOpen && !isEmptyNode ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
 
-        {/* ── Status pill ── */}
+        {/* ── Status pill ──
+            生成完成后不再显示绿色状态条（结果视频本身即状态，全模式）；创意收起态整条隐藏
+            （进度/失败已有 BaseNode 标题栏常驻条）。 */}
+        {payload.status !== "succeeded" && !(isCreativeMode && !advancedOpen) && (
         <div
           className="flex items-center gap-2 px-2.5 py-2 rounded-lg flex-shrink-0"
           style={{ background: status.bg, borderWidth: 1, borderStyle: "solid", borderColor: status.borderColor }}
@@ -1023,10 +1028,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           {payload.status === "processing" && (
             <span className="ml-auto text-[10px] animate-pulse" style={{ color: "var(--c-t3)" }}>轮询中...</span>
           )}
-          {payload.status === "succeeded" && (
-            <span className="ml-auto text-[10px]" style={{ color: "var(--c-t4)" }}>生成完成</span>
-          )}
         </div>
+        )}
 
         {/* ── 空节点工作流预设（LibTV）：一键搭建 首帧 / 首尾帧 生成视频 ── */}
         {isEmptyNode && !isLocked && (
