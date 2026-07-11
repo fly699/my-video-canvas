@@ -890,6 +890,18 @@ export const BaseNode = memo(function BaseNode({
                 <Download size={13} />
               </button>
             )}
+            {/* LibTV 化：视频节点「快速剪辑」——底部弹出时间轴选区剪辑条（事件解耦，
+                由 VideoTaskNode 监听 canvas:quick-trim 打开，避免 BaseNode 掺业务实现）。 */}
+            {resultVideoUrl && nodeType === "video_task" && (
+              <button
+                onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("canvas:quick-trim", { detail: { nodeId: id } })); }}
+                title="快速剪辑（时间轴选区截取 · I/O 出入点 · Enter 确认）"
+                className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+              >
+                <Scissors size={12} /> 剪辑
+              </button>
+            )}
             {/* Liblib-style quick AI-edit actions — only for nodes with an image result.
                 Each spawns a connected image_edit node preset to that operation. */}
             {resultImageUrl && nodeType !== "image_edit" && (
