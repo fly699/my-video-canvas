@@ -134,6 +134,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // 「高级」展开态不跨选中记忆：取消选中即复位，下次点选默认收起、需再点「高级」才展开。
   useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
+  // 快捷键 A：选中时切换「高级」参数区（Canvas 派发 canvas:toggle-advanced）。
+  useEffect(() => {
+    if (!selected) return;
+    const h = () => setAdvancedOpen((v) => !v);
+    window.addEventListener("canvas:toggle-advanced", h);
+    return () => window.removeEventListener("canvas:toggle-advanced", h);
+  }, [selected]);
   const payload = data.payload;
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
@@ -1415,7 +1422,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
-            title={advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（参考图/风格/更多参数）"}
+            title={(advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（参考图/风格/更多参数）") + " · 快捷键 A"}
             style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 8px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
           >
             高级

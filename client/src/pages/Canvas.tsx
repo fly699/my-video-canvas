@@ -1926,6 +1926,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
         else handleRunRequest(nodes.find((n) => n.selected)?.id ?? null);
       }
 
+      // A：切换选中节点的「高级」参数区（创意模式就地输入条的「高级」开关同款）。
+      // 无修饰键，仅非编辑态生效；派发事件由选中的创意节点自行切换 advancedOpen。
+      if (!isEditing && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === "a" || e.key === "A")) {
+        if (nodes.some((n) => n.selected)) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("canvas:toggle-advanced"));
+        }
+      }
+
       // Undo: Cmd+Z / Ctrl+Z
       if (!isEditing && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "z") {
         e.preventDefault();

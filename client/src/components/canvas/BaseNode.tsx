@@ -1409,8 +1409,9 @@ export const BaseNode = memo(function BaseNode({
         {/* LibTV 化 3.6：创意模式标签行右端的媒体尺寸灰字（如「2048 × 1152」） */}
         {isCreative && hasHero && <HeroSizeBadge hostRef={heroMediaRef} variant="text" />}
 
-        {/* Type badge */}
-        {!hideTypeBadge && (
+        {/* Type badge —— 创意(LibTV)皮肤隐藏这枚彩色类型标签：LibTV 标题行只有灰名 + 灰尺寸，
+            节点类型由左侧小图标传达即可，彩色徽章与「纯媒体+极简标签」的观感相悖。 */}
+        {!hideTypeBadge && !isCreative && (
           <span
             className="node-type-badge text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 leading-none tracking-widest uppercase"
             style={{
