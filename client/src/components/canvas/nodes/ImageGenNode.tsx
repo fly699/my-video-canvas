@@ -36,6 +36,8 @@ import { ToolChip, RefThumbRow, MarkElementPicker, MarkChipRow, loadMarkModel, s
 import { nanoid } from "nanoid";
 import { openNodeCompare } from "../CompareLightbox";
 import { usePickStore } from "../../../hooks/usePickStore";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { useFocusRefSource } from "../../../hooks/useFocusRefSource";
 import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -128,9 +130,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const { resolve } = useNodeDefaultModels();
   const { guard, reachable, dialog: reachabilityDialog } = useRefImageGuard();
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
-  // LibTV 全模式统一（#70）：节点级 LibTV 范式（就地输入条 / 配置区收起走「高级」/
-  // 多图堆叠 hero）不再按皮肤或画布模式差异化——工作室 / 专业 / 创意完全一致。
-  const isCreativeMode = true;
+  // LibTV 化 2.1：创意模式（uiStyle=pro + canvasMode=creative）启用就地生成输入条。
+  const { uiStyle } = useUIStyle();
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreativeMode = uiStyle !== "studio" && canvasMode === "creative";
   // LibTV：双击参考缩略图 → 聚焦至来源节点。
   const focusRefSource = useFocusRefSource(id);
   const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
@@ -481,8 +484,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // 多图 hero（LibTV 多图模式）：默认堆叠——只显当前选中图、右下露叠层卡边、
   // 「N 张」角标展开为画布内网格（heroView="grid"，每张 hover 下载/设为主图，
   // 主图「收起」回堆叠）、两侧悬停箭头切换当前图。
-  const heroShowStack = hasMultiple && !!payload.imageUrl && payload.heroView !== "grid";
-  const heroShowGrid = hasMultiple && !heroShowStack;
+  const heroShowStack = hasMultiple && isCreativeMode && !!payload.imageUrl && payload.heroView !== "grid";
+  const heroShowGrid = hasMultiple && !heroShowStack && payload.heroView !== "single";
   const stackOthers = heroShowStack ? (payload.imageUrls ?? []).filter((u) => u !== payload.imageUrl) : [];
   const stackCycle = (dir: 1 | -1) => {
     const urls = payload.imageUrls ?? [];
@@ -700,7 +703,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 {/* 折叠预览模式：网格 / 单图 */}
                 <div className="flex items-center rounded overflow-hidden" style={{ border: `1px solid ${BORDER_DEFAULT}` }} title="预览形态：展开网格 / 堆叠（默认）">
                   {(["grid", "single"] as const).map((mode) => {
-                    const active = (payload.heroView ?? "single") === mode;
+                    const active = (payload.heroView ?? (isCreativeMode ? "single" : "grid")) === mode;
                     return (
                       <button
                         key={mode}
