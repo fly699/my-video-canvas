@@ -1948,7 +1948,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           disabled={isLocked}
           style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit", opacity: isLocked ? 0.6 : 1 }}
         />
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <ModelPicker
             value={payload.provider}
             disabled={isLocked}
@@ -1957,6 +1957,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             minWidth={130}
             onChange={(v) => updateNodeData(id, videoProviderChangePatch(v as VideoProvider))}
           />
+          {/* LibTV 控制行分组竖分隔线：模型 │ 参数·主体·高级 … 积分 │ 发送 */}
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <span style={{ position: "relative", display: "inline-flex" }}>
             <button
               className="nodrag"
@@ -2084,6 +2086,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </button>
           <div style={{ flex: 1 }} />
           <span title="按当前模型与参数实时预估的点数消耗，仅供参考" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>⚡ {costLabel || "—"}</span>
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); if (!isLocked && !isResettable && !createTaskMutation.isPending && payload.prompt?.trim()) handleSubmit(); }}
