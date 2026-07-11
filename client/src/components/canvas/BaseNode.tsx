@@ -29,6 +29,7 @@ import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 import { VARIANT_TYPES } from "../../hooks/useCanvasStore";
 import { toast } from "sonner";
+import { openNodeCompare } from "./CompareLightbox";
 import { hasPassableOutput, directPassDownstream } from "../../lib/canvasPassthrough";
 import { handleStyle } from "../../lib/handleStyle";
 import { agentBadge } from "../../lib/agentOwnership";
@@ -391,20 +392,16 @@ export const BaseNode = memo(function BaseNode({
     useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
     toast.success(`已创建「${label}」编辑节点（已连源图，点运行生成）`, { duration: 1800 });
   };
-  // 生成版本/素材对比：一键建「对比」节点（A 路预填本节点结果并连线；B 路由用户
-  // 再连一路，或在另一节点上也点「对比」后手动接入）。图/视频结果均可。
-  const spawnCompare = (mediaUrl: string) => {
+  // 就地版本对比（不建对比节点）：从本节点自身找 B 候选——版本历史上一版 > 多结果第二张/段，
+  // 直接全屏打开滑块对比查看器（openNodeCompare）。无第二源时给出明确提示。
+  const openSelfCompare = (currentUrl: string) => {
     const st = useCanvasStore.getState();
-    const self = st.nodes.find((n) => n.id === id);
-    if (!self) return;
-    const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
-    let node;
-    try { node = st.addNode("compare", { x: self.position.x + w + 60, y: self.position.y }); }
-    catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
-    st.updateNodeData(node.id, { aUrl: mediaUrl });
-    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
-    useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
-    toast.success("已创建「对比」节点（A 路=本结果，再连一路即可左右对比）", { duration: 2200 });
+    const p = (st.nodes.find((n) => n.id === id)?.data.payload ?? {}) as Record<string, unknown>;
+    const history = (p.resultHistory as { url: string }[] | undefined) ?? [];
+    const multi = ([...(p.imageUrls as string[] | undefined) ?? [], ...(p.outputUrls as string[] | undefined) ?? [], ...(p.resultUrls as string[] | undefined) ?? []]).filter((u) => typeof u === "string" && u);
+    const bUrl = history.find((h) => h.url && h.url !== currentUrl)?.url ?? multi.find((u) => u !== currentUrl);
+    if (!bUrl) { toast.info("没有可对比的第二个结果——再生成一次、或在版本历史/批量结果里挑一个"); return; }
+    openNodeCompare(currentUrl, bUrl);
   };
   const QUICK_EDITS: { op: ImageEditOp; label: string; Icon: typeof Scissors }[] = [
     { op: "upscale", label: "高清", Icon: Sparkles },
@@ -920,11 +917,11 @@ export const BaseNode = memo(function BaseNode({
                 <Scissors size={12} /> 快剪
               </button>
             )}
-            {/* 生成版本/素材对比入口：有图或视频结果即可（compare 节点自身除外） */}
+            {/* 就地版本对比入口：有图或视频结果即可（compare 节点自身除外），不建节点 */}
             {(resultImageUrl || resultVideoUrl) && nodeType !== "compare" && (
               <button
-                onClick={(e) => { e.stopPropagation(); spawnCompare(resultVideoUrl || resultImageUrl!); }}
-                title="对比：建「对比」节点（A 路=本结果），再连一路即可左右滑块对比（视频可同步播放）"
+                onClick={(e) => { e.stopPropagation(); openSelfCompare(resultVideoUrl || resultImageUrl!); }}
+                title="对比：全屏滑块对比本节点当前结果与上一版本/其它批量结果（视频同步播放），不建节点"
                 className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
                 style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
               >

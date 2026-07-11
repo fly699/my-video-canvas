@@ -32,7 +32,7 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // video_task → video_task：生成的视频可作另一视频任务的「源视频」参考——V2V/运动控制/
   // 上采样/Aleph/对口型等 provider 会经 collectVideoRefMedia 取上游视频（不支持的 provider 自动忽略，
   // 拖线无害）。这是唯一保留的同类自链（其它同类如 prompt/storyboard 仍禁止）。
-  video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
+  video_task: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task", "compare"],
   // audio → audio: 把一段音频作为本地 VoxCPM 配音的参考音色喂给下游音频节点。
   // audio → comfyui_workflow: 作为自定义工作流的音频参数来源（VHS_LoadAudioUpload 等）。
   // audio → merge：合并节点自动把连入的音频节点用作整片背景音乐（MergeNode 的
@@ -43,17 +43,17 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   asset: ["image_gen", "image_edit", "video_task", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio", "compare"],
   // 注：曾有 ai_chat → script，但 ScriptNode 不读任何上游——连了无效，已删。
   ai_chat: ["storyboard", "prompt"],
-  clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
+  clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task", "compare"],
   post_process: ["video_task", "image_gen", "asset"],
   // 视频后处理节点（overlay/subtitle/subtitle_motion/smart_cut/clip/merge）互为视频源与视频消费者
   // （六者都在 VIDEO_SOURCE_TYPES，且各自经 autoDetectInputVideo/collectInputVideoUrls 取上游视频）。
   // 故任一后处理节点的输出都可再喂给其它任一后处理节点（叠加后加字幕、字幕后智能剪辑、合并后加动态
   // 字幕…），另可存素材(asset)与作 video_task 的 V2V 源。此前它们只允许 → asset/merge，导致「叠加→
   // 字幕」「合并→字幕」「智能剪辑→合并」等真实链路拖线/智能体建线判定失败（各节点不自链）。
-  overlay: ["asset", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
-  subtitle: ["asset", "clip", "overlay", "merge", "subtitle_motion", "smart_cut", "video_task"],
-  subtitle_motion: ["asset", "clip", "overlay", "merge", "subtitle", "smart_cut", "video_task"],
-  smart_cut: ["asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "video_task"],
+  overlay: ["asset", "clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task", "compare"],
+  subtitle: ["asset", "clip", "overlay", "merge", "subtitle_motion", "smart_cut", "video_task", "compare"],
+  subtitle_motion: ["asset", "clip", "overlay", "merge", "subtitle", "smart_cut", "video_task", "compare"],
+  smart_cut: ["asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "video_task", "compare"],
   // pose_control → comfyui_image/comfyui_workflow：构图/姿态图作 ControlNet 引导图
   // （propagateControlMap 明确把姿态图推给下游 comfyui_image 的 ControlNet；comfyui_workflow 经
   // resolveWorkflowImageParams 收其图为图像参数）。→ video_task/comfyui_video：作首帧/参考图
@@ -65,21 +65,21 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // connections that can't actually be made. Restore their edges (see git
   // history) when the underlying API integration ships.
   voice_clone: [],
-  lip_sync: [],
-  avatar: [],
+  lip_sync: ["compare"],
+  avatar: ["compare"],
   // merge → merge：合并链——把若干子序列各自合并后再汇入一个总合并节点（MergeNode 的
   // VIDEO_SOURCE_TYPES 已认 merge 为视频源）。此前 merge 仅允许 → asset/clip，导致
   // 「合并 → 合并」串联与智能体建线判定失败。
   // merge → clip/overlay/subtitle/subtitle_motion/smart_cut：合并成片后仍可继续后处理（整片加字幕/
   // 叠加水印/裁段/智能剪辑），merge 输出是视频源；→ merge 合并链；→ video_task 作 V2V 源；→ asset 存档。
-  merge: ["asset", "clip", "merge", "overlay", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
+  merge: ["asset", "clip", "merge", "overlay", "subtitle", "subtitle_motion", "smart_cut", "video_task", "compare"],
   comfyui_image: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard", "compare"],
   // comfyui_video 产出的是「视频」（resultVideoUrl）。下游 comfyui_image/comfyui_video 只经
   // useComfyUpstreamAutoFill→detectUpstreamImages 取「图源」（IMAGE_SOURCE_TYPES 不含 comfyui_video），
   // comfyui_workflow 的参数绑定类型只有 image/audio/text/number（无 video 输入槽）——三者都消费不了
   // comfyui_video 的视频，故不再列为目标（连了也取不到数据，是死边）。视频的正确去向是后处理链/
   // 剪辑/合并/video_task(V2V 源)/素材，均已在下方。
-  comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task"],
+  comfyui_video: ["clip", "asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task", "compare"],
   // comfyui_workflow → pose_control：自定义工作流出的图可再抽姿态/构图（pose_control 认其为图源）。
   comfyui_workflow: ["video_task", "asset", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "character", "image_gen", "image_edit", "comfyui_workflow", "comfyui_image", "comfyui_video", "pose_control", "compare"],
   note: [],
@@ -171,9 +171,9 @@ export const CONNECTION_HINTS: Record<
     incoming: "← 无（脚本自成起点：向导 / AI 生成正文）",
   },
   compare: {
-    label: "图片对比",
+    label: "对比",
     outgoing: "→ 无（对比查看，纯前端不产出）",
-    incoming: "← 两路图像（生图 / 图像编辑 / 导演台 / 素材 / 分镜 / ComfyUI / 构图控制）",
+    incoming: "← 两路图像或视频（生图 / 视频任务 / 剪辑 / 合并 / 素材 / 分镜 / ComfyUI …）",
   },
   storyboard: {
     label: "分镜",

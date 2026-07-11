@@ -54,6 +54,7 @@ import { setLibraryCharacters } from "../lib/characterConditioning";
 import { setPromptLibrary } from "../lib/promptLibraryStore";
 import { ChangePasswordDialog } from "../components/ChangePasswordDialog";
 import { NodeImageLightbox } from "../components/canvas/NodeImageLightbox";
+import { CompareLightbox } from "../components/canvas/CompareLightbox";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeTemplateLibrary } from "../components/canvas/NodeTemplateLibrary";
 import { NodeSearch } from "../components/canvas/NodeSearch";
@@ -3623,6 +3624,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
         {/* 画布级图片放大预览（节点参考图点击放大） */}
         <NodeImageLightbox />
+        {/* 就地对比查看器（openNodeCompare 打开；不建对比节点） */}
+        <CompareLightbox />
 
         {/* ── Asset panel (floating, draggable, resizable) ── */}
         {showCharLib && <CharacterLibraryPanel onClose={() => setShowCharLib(false)} />}

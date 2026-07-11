@@ -101,7 +101,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
   },
   {
     type: "image_gen", label: "图像生成", purpose: "云端 AI 文/图生图",
-    connectsTo: ["video_task", "asset"],
+    connectsTo: ["video_task", "asset", "compare"],
     fields: [
       { name: "prompt", type: "string", desc: "图像提示词" },
       { name: "negativePrompt", type: "string", desc: "反向提示词" },
@@ -115,7 +115,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
   },
   {
     type: "comfyui_image", label: "ComfyUI 图像", purpose: "本地 ComfyUI 文/图生图",
-    connectsTo: ["video_task", "comfyui_video", "asset"],
+    connectsTo: ["video_task", "comfyui_video", "asset", "compare"],
     fields: [
       { name: "prompt", type: "string", desc: "正向提示词" },
       { name: "negPrompt", type: "string", desc: "反向提示词" },
@@ -127,7 +127,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
   },
   {
     type: "comfyui_video", label: "ComfyUI 视频", purpose: "本地 ComfyUI 文/图生视频",
-    connectsTo: ["merge", "asset"],
+    connectsTo: ["merge", "asset", "compare"],
     fields: [
       { name: "prompt", type: "string", desc: "正向提示词" },
       { name: "negPrompt", type: "string", desc: "反向提示词" },
@@ -136,8 +136,16 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     ],
   },
   {
+    type: "compare", label: "对比", purpose: "A/B 滑块对比两路上游结果（图或视频均可，双视频同步播放）；纯前端查看、不生成不扣费。用户也可在节点上直接全屏对比版本",
+    connectsTo: [],
+    fields: [
+      { name: "aUrl", type: "string", desc: "A 路媒体 URL（可选；不填自动取第 1 路上游输出）" },
+      { name: "bUrl", type: "string", desc: "B 路媒体 URL（可选；不填自动取第 2 路上游输出）" },
+    ],
+  },
+  {
     type: "video_task", label: "视频任务", purpose: "云端 AI 文/图生视频",
-    connectsTo: ["merge", "clip", "asset"],
+    connectsTo: ["merge", "clip", "asset", "compare"],
     fields: [
       { name: "prompt", type: "string", desc: "视频提示词" },
       { name: "negativePrompt", type: "string", desc: "反向提示词（仅部分模型支持，见清单标注）" },
