@@ -334,10 +334,12 @@ function audioModelPlatform(value: string): string {
   return "Poyo";
 }
 
-function ModelSelect({ models, value, onChange }: {
+function ModelSelect({ models, value, onChange, bare }: {
   models: typeof MUSIC_MODELS;
   value?: string;
   onChange: (v: string) => void;
+  /** 就地输入条用：不渲染「AI 模型」label，只出 picker 本体。 */
+  bare?: boolean;
 }) {
   // 统一 ModelPicker：group=厂家（Suno/MiniMax/OpenAI/ElevenLabs/本地），family=真实来源平台。
   // kie 各音频模型计价不同（docs/kie-pricing.md）：Suno 12点/次、SFX 0.24点/秒、
@@ -357,6 +359,9 @@ function ModelSelect({ models, value, onChange }: {
     caps: [m.desc],
     costLabel: kieAudioCost(m.value),
   }));
+  if (bare) {
+    return <ModelPicker value={value ?? models[0]?.value ?? ""} onChange={onChange} options={options} searchable={false} minWidth={130} />;
+  }
   return (
     <div>
       <label style={labelStyle}>AI 模型</label>
@@ -818,6 +823,16 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const { uiStyle } = useUIStyle();
   const { mode: canvasModeVal } = useCanvasMode();
   const isCreativeMode = uiStyle !== "studio" && canvasModeVal === "creative";
+  // 创意模式点击不展开完整配置区（对齐图像/视频节点）：由输入条「高级」开关展开，
+  // 取消选中即复位；快捷键 A（Canvas 派发 canvas:toggle-advanced）同样生效。
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
+  useEffect(() => {
+    if (!selected) return;
+    const h = () => setAdvancedOpen((v) => !v);
+    window.addEventListener("canvas:toggle-advanced", h);
+    return () => window.removeEventListener("canvas:toggle-advanced", h);
+  }, [selected]);
 
   // ── LibTV 化：音频操作条（截取 / 变速 / 下载）——选中且有音频结果时浮现于节点上方。
   // 截取/变速走服务端 ffmpeg（audioGen.processAudio），完成后原地替换本节点音频 URL。
@@ -944,13 +959,17 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         </>
       }>
       <div
-        style={{
-          overflow: "hidden",
-          maxHeight: expanded ? "9999px" : "0px",
-          transition: expanded
-            ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
-            : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
-        }}
+        style={(() => {
+          // 创意模式：点击选中不展开完整配置区（对齐图像/视频节点），由输入条「高级」开关展开。
+          const open = isCreativeMode ? advancedOpen : expanded;
+          return {
+            overflow: "hidden",
+            maxHeight: open ? "9999px" : "0px",
+            transition: open
+              ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+              : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+          };
+        })()}
       >
       <div className="flex flex-col gap-3 p-3.5">
 
@@ -1601,7 +1620,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           onValueChange={(v) => updateNodeData(id, category === "dubbing" ? { ttsText: v } : category === "sfx" ? { sfxPrompt: v } : { musicPrompt: v })}
           style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
         />
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
           {/* 类别切换 chips */}
           {([
             { key: "music" as const, label: "配乐" },
@@ -1618,6 +1637,23 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             </button>
           ))}
           <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          {/* 模型选择（按类别切换字段，与配置区双向同步） */}
+          {category === "music" && (
+            <ModelSelect bare models={MUSIC_MODELS} value={normalizeMusicModel(payload.musicModel ?? payload.aiModel)} onChange={(v) => updateNodeData(id, { musicModel: v })} />
+          )}
+          {category === "dubbing" && (
+            <ModelSelect bare models={DUBBING_MODELS} value={DUBBING_MODELS.some((m) => m.value === payload.ttsModel) ? payload.ttsModel : DUBBING_MODELS[0]?.value} onChange={(v) => updateNodeData(id, { ttsModel: v })} />
+          )}
+          {category === "sfx" && (
+            <ModelSelect bare models={SFX_MODELS} value={SFX_MODELS.some((m) => m.value === payload.sfxModel) ? payload.sfxModel : "kie_elevenlabs_sfx"} onChange={(v) => updateNodeData(id, { sfxModel: v })} />
+          )}
+          {/* 高级：展开节点内完整配置区（歌词/音色/语速等细节参数） */}
+          <button className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（歌词/音色/语速等）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 8px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>
+            高级
+          </button>
           {category === "dubbing" && (
             <button className="nodrag" onClick={(e) => { e.stopPropagation(); handleTranslate(); }} disabled={translateMut.isPending}
               title={`翻译配音文本（目标：${payload.ttsTranslateTarget ?? "英语"}，配置区可改）`}
