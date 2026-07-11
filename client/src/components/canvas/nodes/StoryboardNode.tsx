@@ -500,7 +500,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           {showShotList && <ShotListPanel id={id} onClose={() => setShowShotList(false)} />}
         </>
       }>
-      <div className="flex flex-col h-full p-3.5 gap-3">
+      {/* 创意模式收起态（未展开高级）且已有分镜图：内嵌预览/配置全被隐藏，padding/gap 归零，
+          否则点击后预览下会剩一块空 padding 灰条。空节点（无图）保留 padding 给生成入口。 */}
+      <div className="flex flex-col h-full" style={isCreativeMode && !advancedOpen && payload.imageUrl ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
 
         {/* ── Image preview — hidden in creative mode (image shown in heroMedia instead) ── */}
         {!(isCreative && payload.imageUrl) && (<div

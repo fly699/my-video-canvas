@@ -3784,6 +3784,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onClose={() => setContextMenu(null)}
             onAddNode={handleAddNode}
             onAutoLayout={() => { const n = useCanvasStore.getState().autoLayout(); if (n > 0) { toast.success(`已整理 ${n} 个节点`, { duration: 1200 }); setTimeout(() => reactFlow.fitView({ padding: 0.15, duration: 400 }), 60); } else toast.info("没有可整理的自由节点（群组内节点不参与）"); }}
+            // LibTV-D 画布根菜单：上传素材 / 撤销 / 重做 / 粘贴（只读画布不提供编辑项）
+            onOpenAssets={() => setShowAssets(true)}
+            onUndo={!isReadOnly ? handleUndo : undefined}
+            onRedo={!isReadOnly ? handleRedo : undefined}
+            onPaste={!isReadOnly && clipboardRef.current.length > 0 ? () => {
+              const store = useCanvasStore.getState();
+              pasteCountRef.current += 1;
+              const off = 50 + 40 * pasteCountRef.current;
+              const before = snapshotGraphIds();
+              const newIds = store.cloneSubgraph(clipboardRef.current, { x: off, y: off });
+              emitGraphAdditions(before);
+              if (newIds.length > 0) toast.success(`已粘贴 ${newIds.length} 个节点`, { duration: 1200 });
+            } : undefined}
             onOpenNodeLibrary={() => { setContextMenu(null); setShowNodeLib(true); }}
             nodeTemplates={ctxTemplates}
             onSaveToLibrary={ctxNode && ctxIsComfy ? () => {

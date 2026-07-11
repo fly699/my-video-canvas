@@ -563,10 +563,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           />
         </>
       }>
-      <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
+      {/* 创意模式收起态（未展开高级）：body 内容全被隐藏，padding/gap 一并归零，
+          否则点击带结果节点后预览下会剩一块空 padding 灰条。 */}
+      <div className="flex flex-col h-full overflow-auto" style={isCreativeMode && !advancedOpen ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
 
-        {/* #5 版本历史：历次产出的结果快照，点击回滚（共享组件）。 */}
-        <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.imageUrl} accent={accent} onRollback={rollbackToSnapshot} />
+        {/* #5 版本历史：历次产出的结果快照，点击回滚（共享组件）。创意收起态隐藏（预览下不留条）。 */}
+        {!(isCreativeMode && !advancedOpen) && (
+          <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.imageUrl} accent={accent} onRollback={rollbackToSnapshot} />
+        )}
 
         {/* ── Batch grid result ── (hidden inside the studio floating panel — the
             node card's hero preview already shows the result there → no duplicate) */}

@@ -6,7 +6,7 @@ import type { NodeType } from "../../../../shared/types";
 import {
   FileText, Copy, Trash2, Plus, Play, Pin, PinOff, ChevronUp, X, GripHorizontal, CircleSlash,
   BookmarkPlus, Bookmark, Download, Upload, Boxes, Group, Ungroup, Pencil, GripVertical, Check, RotateCcw, Lock, Unlock,
- UserPlus, LayoutDashboard } from "lucide-react";
+ UserPlus, LayoutDashboard, ChevronRight, ChevronLeft, Undo2, Redo2, ClipboardPaste } from "lucide-react";
 import type { NodeTemplate } from "../../lib/nodeTemplates";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 
@@ -50,6 +50,13 @@ interface ContextMenuProps {
   onSaveAsCharacter?: () => void;
   /** LibTV 化 1.7：画布菜单「一键整理布局」（复用 autoLayout store action）。 */
   onAutoLayout?: () => void;
+  // LibTV-D 层级结构：画布根菜单的 撤销 / 重做 / 粘贴 / 上传素材（样式沿用原菜单项，仅动层级）。
+  onUndo?: () => void;
+  onRedo?: () => void;
+  /** 粘贴子图（Ctrl+C 复制过节点后可用）；未复制过时为 undefined → 菜单项置灰。 */
+  onPaste?: () => void;
+  /** 打开资产管理面板（上传素材入口）。 */
+  onOpenAssets?: () => void;
 }
 
 // 菜单项右侧的快捷键提示片：与顶栏 tooltip 的 kbd 保持一致，让用户在右键菜单里也能学到键位。
@@ -67,6 +74,7 @@ export function ContextMenu({
   onExportTemplates, onImportTemplates, onSaveToLibrary,
   onGroup, onUngroup, onDeleteGroup, onDuplicateGroup,
   onSaveAsCharacter, onAutoLayout,
+  onUndo, onRedo, onPaste, onOpenAssets,
 }: ContextMenuProps) {
   const tplFileRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -86,6 +94,10 @@ export function ContextMenu({
     false,
     { validate: (v) => (typeof v === "boolean" ? v : null) },
   );
+  // LibTV-D 层级结构：画布菜单两级——根菜单（上传素材/添加节点▸/撤销/重做/粘贴/整理布局）
+  // +「添加节点」下钻到原节点面板（固定/拖拽/改名排序等原有能力全部保留，样式不变）。
+  // 已固定为浮动面板时直接停在 add 级（固定的本就是节点面板）。
+  const [level, setLevel] = useState<"root" | "add">(persistent ? "add" : "root");
   const [dragPos, setDragPos] = usePersistentState<{ left: number; top: number } | null>(
     "ui:ctxmenu:pos:v1",
     null,
@@ -311,7 +323,7 @@ export function ContextMenu({
     }
 
     setPos({ left, top, maxHeight });
-  }, [x, y, panelSize.w, panelSize.h]);
+  }, [x, y, panelSize.w, panelSize.h, level]);
 
   const menuWidth = 210;
   // When persistent and user has set a size, use it; otherwise fall back to menuWidth
@@ -352,7 +364,85 @@ export function ContextMenu({
           flexDirection: "column",
         }}
       >
-        {type === "canvas" ? (
+        {type === "canvas" && level === "root" && !persistent ? (
+          /* ── LibTV-D 画布根菜单：上传素材 / 添加节点▸ / 撤销 / 重做 / 粘贴 / 整理布局 ──
+             菜单项样式与原节点菜单一致（只动层级结构，不动视觉）。 */
+          <div style={{ padding: "4px" }}>
+            {onOpenAssets && (
+              <button
+                onClick={() => { onOpenAssets(); onClose(); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 8px", fontSize: 12, cursor: "pointer", background: "transparent", border: "none", textAlign: "left", color: "var(--c-t2)", borderRadius: 8, transition: "all 120ms ease" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+              >
+                <Upload className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+                上传素材（资产面板）
+              </button>
+            )}
+            <button
+              onClick={() => setLevel("add")}
+              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 8px", fontSize: 12, cursor: "pointer", background: "transparent", border: "none", textAlign: "left", color: "var(--c-t2)", borderRadius: 8, transition: "all 120ms ease" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+            >
+              <Plus className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+              添加节点
+              <ChevronRight className="w-3.5 h-3.5" style={{ marginLeft: "auto", color: "var(--c-t4)" }} />
+            </button>
+            {(onUndo || onRedo || onPaste !== undefined) && <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />}
+            {onUndo && (
+              <button
+                onClick={() => { onUndo(); onClose(); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 8px", fontSize: 12, cursor: "pointer", background: "transparent", border: "none", textAlign: "left", color: "var(--c-t2)", borderRadius: 8, transition: "all 120ms ease" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+              >
+                <Undo2 className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+                撤销
+                <Kbd>⌘Z</Kbd>
+              </button>
+            )}
+            {onRedo && (
+              <button
+                onClick={() => { onRedo(); onClose(); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 8px", fontSize: 12, cursor: "pointer", background: "transparent", border: "none", textAlign: "left", color: "var(--c-t2)", borderRadius: 8, transition: "all 120ms ease" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+              >
+                <Redo2 className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+                重做
+                <Kbd>⇧⌘Z</Kbd>
+              </button>
+            )}
+            <button
+              onClick={onPaste ? () => { onPaste(); onClose(); } : undefined}
+              disabled={!onPaste}
+              title={onPaste ? "粘贴已复制的子图" : "先 Ctrl+C 复制节点后可粘贴"}
+              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 8px", fontSize: 12, cursor: onPaste ? "pointer" : "not-allowed", background: "transparent", border: "none", textAlign: "left", color: onPaste ? "var(--c-t2)" : "var(--c-t4)", borderRadius: 8, transition: "all 120ms ease", opacity: onPaste ? 1 : 0.6 }}
+              onMouseEnter={(e) => { if (onPaste) { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; } }}
+              onMouseLeave={(e) => { if (onPaste) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; } }}
+            >
+              <ClipboardPaste className="w-3.5 h-3.5" style={{ color: onPaste ? "var(--c-t3)" : "var(--c-t4)" }} />
+              粘贴
+              <Kbd>⌘V</Kbd>
+            </button>
+            {onAutoLayout && (
+              <>
+                <div style={{ height: 1, background: "var(--c-bd1)", margin: "3px 6px" }} />
+                <button
+                  onClick={() => { onAutoLayout(); onClose(); }}
+                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 8px", fontSize: 12, cursor: "pointer", background: "transparent", border: "none", textAlign: "left", color: "var(--c-t2)", borderRadius: 8, transition: "all 120ms ease" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t2)"; }}
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" style={{ color: "var(--c-t3)" }} />
+                  一键整理布局
+                  <Kbd>⌥⇧F</Kbd>
+                </button>
+              </>
+            )}
+          </div>
+        ) : type === "canvas" ? (
           <>
             {/* Header — draggable when persistent; hosts pin + close buttons */}
             <div
@@ -370,6 +460,18 @@ export function ContextMenu({
               }}
             >
               {persistent && <GripHorizontal className="w-3 h-3" style={{ color: "oklch(0.78 0.16 285)" }} />}
+              {/* LibTV-D：未固定时可返回画布根菜单（上传/撤销/重做/粘贴等） */}
+              {!persistent && (
+                <button
+                  onClick={() => setLevel("root")}
+                  title="返回上级菜单"
+                  style={{ background: "none", border: "none", padding: 2, borderRadius: 4, cursor: "pointer", color: "var(--c-t3)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                >
+                  <ChevronLeft size={12} />
+                </button>
+              )}
               {!persistent && <Plus className="w-3 h-3" style={{ color: "var(--c-t4)" }} />}
               <span style={{
                 fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em",

@@ -911,6 +911,40 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // 绿点指示：结果视频是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
   const videoStoredInMinio = isOwnStorageUrl(primaryUrl);
 
+  // ── LibTV 化 B：空视频节点工作流预设 ────────────────────────────────────────
+  // 「空节点」= 无提示词、无结果、无参考图、无上游连线 → 配置区顶部给出一键搭建入口：
+  // 首帧生成视频（建 1 个首帧图节点连入）/ 首尾帧生成视频（建首帧+尾帧两个图节点连入），
+  // 建好后整体成组并命名「预设 - ×××」，示例提示词直接可跑。全部复用现有 store action。
+  const hasUpstream = useCanvasStore((s) => s.edges.some((e) => e.target === id));
+  const isEmptyNode = payload.status !== "processing" && payload.status !== "succeeded"
+    && !payload.prompt?.trim() && !payload.referenceImageUrl?.trim() && refImages.images.length === 0 && !hasUpstream;
+  const buildWorkflowPreset = useCallback((kind: "first" | "firstlast") => {
+    const st = useCanvasStore.getState();
+    const me = st.nodes.find((n) => n.id === id);
+    if (!me) return;
+    const baseX = me.position.x - 480;
+    const created: string[] = [];
+    if (kind === "first") {
+      const img = st.addNode("image_gen", { x: baseX, y: me.position.y + 40 });
+      st.updateNodeTitle(img.id, "首帧");
+      st.onConnect({ source: img.id, target: id, sourceHandle: null, targetHandle: "ref-image-in" });
+      st.updateNodeData(id, { prompt: "以当前图为首帧生成视频。" }, true);
+      created.push(img.id);
+    } else {
+      const img1 = st.addNode("image_gen", { x: baseX, y: me.position.y - 40 });
+      const img2 = st.addNode("image_gen", { x: baseX, y: me.position.y + 300 });
+      st.updateNodeTitle(img1.id, "首帧");
+      st.updateNodeTitle(img2.id, "尾帧");
+      st.onConnect({ source: img1.id, target: id, sourceHandle: null, targetHandle: "ref-image-in" });
+      st.onConnect({ source: img2.id, target: id, sourceHandle: null, targetHandle: "ref-image-in" });
+      st.updateNodeData(id, { prompt: "以图一为首帧、图二为尾帧生成视频。" }, true);
+      created.push(img1.id, img2.id);
+    }
+    const label = kind === "first" ? "预设 - 首帧生成视频" : "预设 - 首尾帧生成视频";
+    st.groupSelected([...created, id], label);
+    toast.success(`已按「${label.replace("预设 - ", "")}」搭好工作流——先生成首${kind === "firstlast" ? "/尾" : ""}帧图，再回本节点生成视频`);
+  }, [id]);
+
   // Only treat a finished result video as a "hero" preview — a bare reference
   // image is an INPUT, not a result, so the node must stay expanded (showing its
   // controls) until it has actually produced a video.
@@ -974,9 +1008,14 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           />
         </>
       }>
-      <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
+      {/* 创意模式收起态（未展开高级）：body 内容全被隐藏，padding/gap 一并归零，
+          否则点击带结果节点后预览下会剩一块空 padding 灰条（空节点预设卡场景保留 padding）。 */}
+      <div className="flex flex-col h-full overflow-auto" style={isCreativeMode && !advancedOpen && !isEmptyNode ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
 
-        {/* ── Status pill ── */}
+        {/* ── Status pill ──
+            生成完成后不再显示绿色状态条（结果视频本身即状态，全模式）；创意收起态整条隐藏
+            （进度/失败已有 BaseNode 标题栏常驻条）。 */}
+        {payload.status !== "succeeded" && !(isCreativeMode && !advancedOpen) && (
         <div
           className="flex items-center gap-2 px-2.5 py-2 rounded-lg flex-shrink-0"
           style={{ background: status.bg, borderWidth: 1, borderStyle: "solid", borderColor: status.borderColor }}
@@ -989,10 +1028,41 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           {payload.status === "processing" && (
             <span className="ml-auto text-[10px] animate-pulse" style={{ color: "var(--c-t3)" }}>轮询中...</span>
           )}
-          {payload.status === "succeeded" && (
-            <span className="ml-auto text-[10px]" style={{ color: "var(--c-t4)" }}>生成完成</span>
-          )}
         </div>
+        )}
+
+        {/* ── 空节点工作流预设（LibTV）：一键搭建 首帧 / 首尾帧 生成视频 ── */}
+        {isEmptyNode && !isLocked && (
+          <div className="flex flex-col gap-1.5 flex-shrink-0">
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)", letterSpacing: "0.04em" }}>工作流预设 · 一键搭建</div>
+            <div className="flex gap-2">
+              {([
+                { kind: "first" as const, label: "首帧生成视频", desc: "首帧图 → 本节点" },
+                { kind: "firstlast" as const, label: "首尾帧生成视频", desc: "首帧+尾帧 → 本节点" },
+              ]).map(({ kind, label, desc }) => (
+                <button
+                  key={kind}
+                  className="nodrag"
+                  onClick={(e) => { e.stopPropagation(); buildWorkflowPreset(kind); }}
+                  title={`${desc}（自动建图节点、连线、填示例提示词并成组）`}
+                  style={{
+                    flex: 1, display: "flex", alignItems: "center", gap: 7, padding: "8px 10px", textAlign: "left",
+                    borderRadius: 9, border: "1px solid var(--c-bd2)", background: "var(--c-surface)",
+                    color: "var(--c-t2)", cursor: "pointer", transition: "border-color 120ms ease, background 120ms ease",
+                  }}
+                  onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.borderColor = "oklch(0.7 0.18 25 / 0.55)"; (ev.currentTarget as HTMLElement).style.background = "oklch(0.7 0.18 25 / 0.08)"; }}
+                  onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.borderColor = "var(--c-bd2)"; (ev.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+                >
+                  <Film size={13} style={{ color: "oklch(0.7 0.18 25)", flexShrink: 0 }} />
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 11.5, fontWeight: 600 }}>{label}</span>
+                    <span style={{ display: "block", fontSize: 9.5, color: "var(--c-t4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{desc}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Result video(s) ──
             Single result: full-width player.
