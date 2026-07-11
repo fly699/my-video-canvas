@@ -123,7 +123,11 @@ const MARK_MODEL_KEY = "canvas.markModel";
 export function loadMarkModel(): string {
   try {
     const v = localStorage.getItem(MARK_MODEL_KEY);
-    if (v && LLM_MODELS.some((m) => m.id === v && m.vision)) return v;
+    if (v) {
+      const meta = LLM_MODELS.find((m) => m.id === v);
+      // 静态模型须支持视觉；不在静态表里的 id 视为管理员自建模型（动态并入），放行
+      if (!meta || meta.vision) return v;
+    }
   } catch { /* SSR/隐私模式下不可用 */ }
   return "gpt-5.2";
 }
@@ -167,7 +171,7 @@ export function MarkElementPicker({ imageUrl, elements, loading, error, onSelect
   const modelMeta = model ? LLM_MODELS.find((m) => m.id === model) : undefined;
   const costLabel = modelMeta
     ? (modelMeta.costNote ? `${modelMeta.costNote} 点/百万tokens` : `计费档：${modelMeta.costTier}（按 tokens）`)
-    : undefined;
+    : (model ? "自建/自定义模型 · 按端点计费" : undefined);
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.55)", backdropFilter: "blur(4px)" }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
@@ -185,8 +189,10 @@ export function MarkElementPicker({ imageUrl, elements, loading, error, onSelect
         {model && onModelChange && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderBottom: "1px solid var(--c-bd1)" }}>
             <span style={{ fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>分析模型</span>
+            {/* 视觉模型 + 自建模型（自建是否支持读图由端点决定，交给用户选择；
+                自带 key 的自定义 ChatGPT/Claude 本身带 vision 标记已包含） */}
             <LLMModelPicker value={model as LLMModelId} onChange={(v) => onModelChange(v)} disabled={loading}
-              filter={(m) => !!m.vision} />
+              filter={(m) => !!m.vision || m.provider === "SelfHosted"} />
             {costLabel && <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto", whiteSpace: "nowrap" }}>{costLabel}</span>}
           </div>
         )}

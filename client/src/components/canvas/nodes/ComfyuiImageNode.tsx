@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
   ChevronDown, ChevronRight, Server, Boxes, ImageIcon,
-  Languages, Check, Copy, Lock, Unlock, Ban, Plus, Layers,
+  Languages, Check, Copy, Lock, Unlock, Ban, Plus, Layers, SlidersHorizontal, ArrowUp,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useComfyUpstreamAutoFill } from "./useComfyUpstreamAutoFill";
@@ -35,6 +35,9 @@ import { ComfyServerUrlField } from "./ComfyServerUrlField";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { NodeConfigTabs } from "../NodeConfigTabs";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { InlineGenBar } from "../InlineGenBar";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { PromptDock } from "../PromptDock";
 import { RefHeroPreview } from "../RefHeroPreview";
@@ -219,6 +222,18 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     },
   });
 
+  // LibTV 化（#70 创意模式）：配置区默认收起（就地输入条为主入口），「高级」/快捷键 A 展开。
+  const { uiStyle } = useUIStyle();
+  const { mode: canvasModeVal } = useCanvasMode();
+  const isCreativeMode = uiStyle !== "studio" && canvasModeVal === "creative";
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
+  useEffect(() => {
+    if (!selected) return;
+    const h = () => setAdvancedOpen((v) => !v);
+    window.addEventListener("canvas:toggle-advanced", h);
+    return () => window.removeEventListener("canvas:toggle-advanced", h);
+  }, [selected]);
   const update = useCallback(
     (field: keyof ComfyuiImageNodeData, value: unknown) => updateNodeData(id, { [field]: value }),
     [id, updateNodeData]
@@ -573,6 +588,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   ) : null;
 
   return (
+    <>
     <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} resizable heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], ...(payload.workflowTemplate !== "img2img" && payload.workflowTemplate !== "inpaint" ? { workflowTemplate: "img2img" } : {}) })}
@@ -612,10 +628,13 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         </span>
       ) : undefined}>
       <div
-        className="flex flex-col h-full p-3.5 gap-3 overflow-auto"
+        className="flex flex-col h-full overflow-auto"
+        style={isCreativeMode && !advancedOpen ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}
         onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/uri-list")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
         onDrop={handleNodeDrop}
       >
+        {/* LibTV（创意模式）：配置区默认收起，由输入条「高级」展开 */}
+        {!(isCreativeMode && !advancedOpen) && (<>
 
         {/* #5 版本历史：历次产出快照，点击回滚（共享组件） */}
         <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.imageUrl} accent={accent} onRollback={rollbackToSnapshot} />
@@ -1795,6 +1814,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         )}
 
         </div>{/* end input collapse wrapper */}
+        </>)}
       </div>
 
       {/* Output handle — provided by BaseNode default (id="output" on Position.Right);
@@ -1839,6 +1859,42 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
         />
       )}
     </BaseNode>
+    {/* ── LibTV（创意模式）就地输入条：大提示词 + 高级/发送 ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={480}>
+        <NodeTextArea
+          className="nodrag nowheel"
+          rows={3}
+          placeholder="描述你想生成的画面…（ComfyUI 本地工作流）"
+          value={payload.prompt ?? ""}
+          onValueChange={(v) => update("prompt", v)}
+          style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+        />
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（服务器/工作流/模型/参数）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <SlidersHorizontal size={12} /> 高级
+          </button>
+          <div style={{ flex: 1 }} />
+          <span title="ComfyUI 自建/本地算力，无平台点数消耗" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>⚡ 自建算力</span>
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); if (!genMutation.isPending && payload.prompt?.trim()) handleGenerate(); }}
+            disabled={genMutation.isPending || !payload.prompt?.trim()}
+            title={genMutation.isPending ? "生成中…" : "生成"}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: genMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer", background: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-t4)" : "#0b0d12" }}
+          >
+            {genMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
+          </button>
+        </div>
+      </InlineGenBar>
+    )}
+    </>
   );
 });
 
