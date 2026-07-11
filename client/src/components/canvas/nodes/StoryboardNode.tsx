@@ -1346,6 +1346,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <ModelPicker value={model} onChange={setModel} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
+          {/* LibTV 控制行分组竖分隔线：模型 │ 参数·高级 … 积分 │ 发送 */}
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <span style={{ position: "relative", display: "inline-flex" }}>
             <button
               className="nodrag"
@@ -1411,6 +1413,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           <span title="按当前模型与参数实时预估的点数消耗，仅供参考" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>
             ⚡ {costEstimateLabel(estimateImageCost(model, isSoul ? batchCount : 1, { resolution: payload.imageResolution })) || "—"}
           </span>
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); if (!generating && payload.promptText?.trim()) handleGenerate(); }}

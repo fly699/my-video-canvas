@@ -1370,6 +1370,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <ModelPicker value={payload.model || ""} onChange={(v) => update("model", v)} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
+          {/* LibTV 控制行分组竖分隔线：模型 │ 参数·高级 … 积分 │ 发送 */}
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <span style={{ position: "relative", display: "inline-flex" }}>
             <button
               className="nodrag"
@@ -1429,6 +1431,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           </button>
           <div style={{ flex: 1 }} />
           <span title="预估消耗" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>⚡ {genCostLabel || "—"}</span>
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); if (!genMutation.isPending && payload.prompt?.trim()) handleGenerate(); }}
