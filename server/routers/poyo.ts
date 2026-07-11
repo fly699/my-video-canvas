@@ -6,6 +6,7 @@ import { assertWhitelisted } from "../_core/whitelist";
 import { insertPoyoBalanceSnapshotThrottled, getRecentPoyoBalanceSnapshots, recordGeneratedAsset } from "../db";
 import { submitPoyoImageTo3D, checkPoyo3DStatus, persist3DModelOrFallback } from "../_core/poyo3d";
 import { assertProjectAccess } from "../_core/permissions";
+import { writeAuditLog } from "../_core/auditLog";
 
 const POYO_BASE = "https://api.poyo.ai";
 
@@ -77,8 +78,11 @@ export const poyoRouter = router({
       if (!ENV.poyoApiKey) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "平台未配置 Poyo API Key，无法图生 3D" });
       try {
         const { externalTaskId } = await submitPoyoImageTo3D(input);
+        // #73 纳管审计：图生 3D（Poyo 计费调用）此前无审计记录
+        writeAuditLog({ ctx, action: "image_to_3d", detail: { provider: "poyo", taskId: externalTaskId, texture: input.texture ?? false, success: true } });
         return { taskId: externalTaskId };
       } catch (err) {
+        writeAuditLog({ ctx, action: "image_to_3d", detail: { provider: "poyo", success: false, error: err instanceof Error ? err.message : String(err) } });
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `图生 3D 提交失败：${err instanceof Error ? err.message : String(err)}` });
       }
     }),

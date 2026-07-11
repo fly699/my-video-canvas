@@ -35,6 +35,8 @@ import { detectUpstreamImages, listUpstreamVideoSources } from "../../lib/comfyW
 import { hasPassableOutput, directPassDownstream } from "../../lib/canvasPassthrough";
 import { handleStyle } from "../../lib/handleStyle";
 import { agentBadge } from "../../lib/agentOwnership";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption } from "./ModelPicker";
+import { estimateImageCost, costEstimateLabel } from "../../lib/costEstimate";
 
 // Nodes that keep their full PRO body in the studio skin (no floating command bar,
 // no top toolbar, no compact panel). Their UX isn't a parameter form.
@@ -45,6 +47,20 @@ const STUDIO_PRO_BODY_TYPES = new Set<NodeType>(["ai_chat", "super_agent"]);
 // #72 LibTV 多角度/打光全功能编辑器（全模式）：懒加载，仅在打开时拉取代码。
 const MultiAngleEditorLazy = lazy(() => import("./editors/AngleRelightEditors").then((m) => ({ default: m.MultiAngleEditor })));
 const RelightEditorLazy = lazy(() => import("./editors/AngleRelightEditors").then((m) => ({ default: m.RelightEditor })));
+
+// #73 纳管：工具箱宫格管线（多机位九宫格/连贯分镜/剧情推演/三视图/表情表/±5s推演）
+// 此前一律走服务端默认模型且无计价显示（隐形付费点）。补模型选择（记忆到 localStorage）
+// + 计价显示，并把 model/estimatedCost 回传服务端（审计日志随之记录真实模型与预估）。
+const TOOLKIT_MODEL_KEY = "canvas.toolkitImageModel";
+const TOOLKIT_MODEL_OPTIONS: ModelPickerOption[] = [
+  { value: "", label: "默认模型（系统设置）", group: "默认", family: "默认" },
+  ...IMAGE_MODEL_PICKER_OPTIONS,
+];
+const toolkitCostLabel = (model: string): string => {
+  if (!model) return "按系统默认模型";
+  const c = estimateImageCost(model);
+  return c ? costEstimateLabel(c) : "按模型页";
+};
 
 interface BaseNodeProps {
   id: string;
@@ -463,6 +479,10 @@ export const BaseNode = memo(function BaseNode({
   const [gridMenuOpen, setGridMenuOpen] = useState(false);
   // 阶段四 4.1 工具箱下拉（连贯分镜/剧情推演/±5s 画面推演/三视图/表情表）
   const [toolkitOpen, setToolkitOpen] = useState(false);
+  // #73 工具箱宫格管线模型选择（""=系统默认），记忆到 localStorage；计价随选联动
+  const [toolkitModel, setToolkitModel] = useState<string>(() => { try { return localStorage.getItem(TOOLKIT_MODEL_KEY) ?? ""; } catch { return ""; } });
+  const toolkitCost = toolkitCostLabel(toolkitModel);
+  const pickToolkitModel = (v: string) => { setToolkitModel(v); try { localStorage.setItem(TOOLKIT_MODEL_KEY, v); } catch { /* ignore */ } };
 
   const spawnImageResultNode = (nodeTitle: string, urls: string[], heroUrl?: string) => {
     const st = useCanvasStore.getState();
@@ -493,7 +513,8 @@ export const BaseNode = memo(function BaseNode({
         referenceImageUrl: resultImageUrl,
         aspectRatio: preset.sheetAspect, poyoAspectRatio: preset.sheetAspect, reveAspectRatio: preset.sheetAspect,
         ...(projectId ? { projectId } : {}),
-      });
+        ...(toolkitModel ? { model: toolkitModel, estimatedCost: toolkitCost } : {}),
+      } as Parameters<typeof gridGenMut.mutateAsync>[0]);
       const gridUrl = gen.urls?.[0] || gen.url || "";
       if (!gridUrl) throw new Error("未返回宫格图");
       const sliced = await gridSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, ...(projectId ? { projectId } : {}) });
@@ -522,7 +543,8 @@ export const BaseNode = memo(function BaseNode({
         prompt: `the exact same scene, subjects and camera position as the reference image, but exactly ${n} seconds ${later ? "LATER" : "EARLIER"} in time — ${later ? "show the natural continuation of the action and motion that follows this moment" : "show the moment that naturally led up to this frame"}, single frame, consistent characters, lighting and art style`,
         referenceImageUrl: resultImageUrl,
         ...(projectId ? { projectId } : {}),
-      });
+        ...(toolkitModel ? { model: toolkitModel, estimatedCost: toolkitCost } : {}),
+      } as Parameters<typeof gridGenMut.mutateAsync>[0]);
       const url = gen.urls?.[0] || gen.url || "";
       if (!url) throw new Error("未返回图片");
       spawnImageResultNode(`${label}`, [url], url);
@@ -1053,6 +1075,12 @@ export const BaseNode = memo(function BaseNode({
                           <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{it.desc}</span>
                         </button>
                       ))}
+                      {/* #73 纳管：宫格管线模型选择 + 计价（此前隐形走服务端默认模型） */}
+                      <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 5, borderTop: "1px solid var(--c-bd1)", marginTop: 3 }}>
+                        <span style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "0 2px" }}>生成模型（上列全部操作生效）</span>
+                        <ModelPicker value={toolkitModel} onChange={pickToolkitModel} options={TOOLKIT_MODEL_OPTIONS} minWidth={156} />
+                        <span style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "0 2px" }} title="预计消耗（宫格为单张大图计一次生成）">预计：{toolkitCost}</span>
+                      </div>
                     </div>
                   )}
                 </span>
