@@ -28,6 +28,7 @@ import { hashPassword } from "../_core/emailAuth";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { writeAuditLog } from "../_core/auditLog";
 import { broadcastSystemAnnouncement, setPersistentAnnouncement } from "./chat";
+import { sendLogEmailNow } from "../_core/logEmailer";
 import { adminDownloadsRouter } from "./downloads";
 import { encryptKieKey, kieKeyHash, kieKeyLast4, isKieCryptoConfigured } from "../_core/kieCrypto";
 import { fetchKieCredit } from "../_core/kie";
@@ -200,6 +201,43 @@ export const adminRouter = router({
       await db.clearLlmUsageLogs();
       writeAuditLog({ ctx, action: "llm_logs_cleared", detail: {} });
       return { success: true };
+    }),
+  }),
+
+  // ── 日志加密打包邮送（操作/LLM/ComfyUI 三类，AES-256 zip + SMTP）──────────
+  logEmail: router({
+    getSettings: managerProc.query(async () => {
+      const s = await db.getLogEmailSettings();
+      // 压缩密码不回传明文，只回「是否已设置」（与 SMTP 密码同口径）
+      return { ...s, zipPassword: undefined, zipPasswordSet: !!s.zipPassword?.trim() };
+    }),
+    setSettings: managerProc
+      .input(z.object({
+        enabled: z.boolean().optional(),
+        recipients: z.string().max(2000).optional(),
+        /** 传空串=清除密码；不传=保持不变 */
+        zipPassword: z.string().max(128).optional(),
+        includeAudit: z.boolean().optional(),
+        includeLlm: z.boolean().optional(),
+        includeComfy: z.boolean().optional(),
+        rangeDays: z.number().int().min(0).max(365).optional(),
+        scheduleMode: z.enum(["hours", "daily", "weekly", "monthly"]).optional(),
+        intervalHours: z.number().int().min(1).max(720).optional(),
+        sendHour: z.number().int().min(0).max(23).optional(),
+        sendWeekday: z.number().int().min(0).max(6).optional(),
+        sendMonthday: z.number().int().min(1).max(28).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.setLogEmailSettings(input);
+        writeAuditLog({ ctx, action: "log_email_settings", detail: { ...input, zipPassword: input.zipPassword !== undefined ? "(changed)" : undefined } });
+        const s = await db.getLogEmailSettings();
+        return { ...s, zipPassword: undefined, zipPasswordSet: !!s.zipPassword?.trim() };
+      }),
+    /** 立即打包发送一次（按当前设置；也用于配置验证） */
+    sendNow: managerProc.mutation(async ({ ctx }) => {
+      const r = await sendLogEmailNow("manual");
+      writeAuditLog({ ctx, action: "log_email_send", detail: { ok: r.ok, message: r.message } });
+      return r;
     }),
   }),
 

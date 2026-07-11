@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, BrainCircuit, Search, type LucideIcon } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, BrainCircuit, Search, Send, type LucideIcon } from "lucide-react";
 import { ConfigChecklistPanel } from "@/components/admin/ConfigChecklistPanel";
 import { ComfyServersPanel } from "@/components/admin/ComfyServersPanel";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
@@ -258,7 +258,7 @@ export default function AdminPage() {
           {activeTab === "kie" && <LevelGate need={3}><KiePanel /></LevelGate>}
           {activeTab === "users" && <UsersPanel />}
           {activeTab === "auth" && <LevelGate need={3}><AuthPanel /></LevelGate>}
-          {activeTab === "logs" && <LogsPanel />}
+          {activeTab === "logs" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}><LogEmailCard /><LogsPanel /></div>}
           {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
           {activeTab === "llmLogs" && <LlmLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
@@ -1932,13 +1932,15 @@ function LogsPanel() {
         if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
       };
-      const header = ["时间", "用户ID", "用户名", "邮箱", "IP", "国家", "城市", "操作类型", "是否成功", "预估点数", "详情JSON"];
+      const header = ["时间", "用户ID", "用户名", "邮箱", "IP", "国家", "城市", "设备指纹", "会话指纹", "UA", "操作类型", "是否成功", "预估点数", "详情JSON"];
       const lines = all.map((r) => {
         const d = r.detail as Record<string, unknown> | null;
+        const rr = r as typeof r & { deviceFp?: string | null; sessionFp?: string | null; userAgent?: string | null };
         return [
           new Date(r.createdAt).toLocaleString("zh-CN"),
           r.userId ?? "", r.userName ?? "", r.userEmail ?? "", r.ip,
           r.country ?? "", r.city ?? "",
+          rr.deviceFp ?? "", rr.sessionFp ?? "", rr.userAgent ?? "",
           ACTION_LABELS[r.action] ?? r.action,
           typeof d?.success === "boolean" ? (d.success ? "成功" : "失败") : "",
           d?.estimatedCost ?? "",
@@ -2274,6 +2276,110 @@ function ComfyUsageLogsPanel() {
 }
 
 
+
+// ── 日志加密打包邮送设置 ────────────────────────────────────────────────────────
+// 三类行为日志（操作/LLM/ComfyUI）按配置定时打包成 AES-256 加密 zip，经「注册认证」页
+// 的 SMTP 发送到多个收件邮箱。调度粒度：每 N 小时 / 每日 / 每周 / 每月（服务端 5 分钟 tick）。
+function LogEmailCard() {
+  const utils = trpc.useUtils();
+  const q = trpc.admin.logEmail.getSettings.useQuery();
+  const mu = trpc.admin.logEmail.setSettings.useMutation({
+    onSuccess: () => { utils.admin.logEmail.getSettings.invalidate(); toast.success("已保存"); },
+    onError: (e) => toast.error("保存失败：" + e.message),
+  });
+  const sendMut = trpc.admin.logEmail.sendNow.useMutation({
+    onSuccess: (r) => { r.ok ? toast.success(r.message) : toast.error(r.message); utils.admin.logEmail.getSettings.invalidate(); },
+    onError: (e) => toast.error("发送失败：" + e.message),
+  });
+  const [recipients, setRecipients] = useState<string | null>(null);
+  const [pwd, setPwd] = useState("");
+  const s = q.data;
+  if (!s) return <div style={cardStyle}><p style={{ color: "var(--c-t3)", fontSize: 13, margin: 0 }}>日志邮送设置加载中…</p></div>;
+  const canOp = true;
+  const set = (patch: Record<string, unknown>) => mu.mutate(patch);
+  const rowLabel: React.CSSProperties = { fontSize: 12.5, color: "var(--c-t2)", minWidth: 76, flexShrink: 0 };
+  const numSel = (value: number, onChange: (v: number) => void, opts: number[], suffix: string) => (
+    <select value={value} onChange={(e) => onChange(Number(e.target.value))} style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: 12 }}>
+      {opts.map((v) => <option key={v} value={v}>{v}{suffix}</option>)}
+    </select>
+  );
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <MailCheck style={{ width: 16, height: 16, color: "oklch(0.7 0.17 160)" }} />
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1)" }}>日志加密打包邮送</h3>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: s.enabled ? "#4ade80" : "var(--c-t3)", cursor: "pointer" }}>
+            <input type="checkbox" checked={s.enabled} onChange={(e) => set({ enabled: e.target.checked })} disabled={!canOp} />
+            {s.enabled ? "定时发送已启用" : "定时发送已停用"}
+          </label>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {s.lastResult && <span style={{ fontSize: 11.5, color: s.lastResult.startsWith("✓") ? "var(--c-t3)" : "#f87171", maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`${s.lastResult}${s.lastSentAt ? ` · ${new Date(s.lastSentAt).toLocaleString("zh-CN")}` : ""}`}>
+            上次：{s.lastResult}{s.lastSentAt ? ` · ${new Date(s.lastSentAt).toLocaleString("zh-CN", { hour12: false })}` : ""}
+          </span>}
+          <button onClick={() => sendMut.mutate()} disabled={sendMut.isPending}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 9, border: "1px solid oklch(0.7 0.17 160 / 0.5)", background: "oklch(0.7 0.17 160 / 0.12)", color: "oklch(0.75 0.15 160)", fontWeight: 600, fontSize: 12.5, cursor: "pointer", opacity: sendMut.isPending ? 0.6 : 1 }}>
+            {sendMut.isPending ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} /> : <Send style={{ width: 13, height: 13 }} />} 立即打包发送
+          </button>
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ ...rowLabel, paddingTop: 7 }}>接收邮箱</span>
+          <textarea
+            value={recipients ?? s.recipients ?? ""}
+            onChange={(e) => setRecipients(e.target.value)}
+            onBlur={() => { if (recipients != null && recipients !== (s.recipients ?? "")) set({ recipients }); }}
+            placeholder="多个邮箱用逗号 / 换行分隔，如：ops@a.com, boss@b.com"
+            rows={2}
+            style={{ ...inputStyle, flex: 1, minWidth: 260, resize: "vertical", fontFamily: "inherit", fontSize: 12.5 }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={rowLabel}>压缩密码</span>
+          <input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)}
+            placeholder={s.zipPasswordSet ? "已设置（输入新密码可更换）" : "未设置（zip 将不加密，不建议）"}
+            style={{ ...inputStyle, width: 240, fontSize: 12.5 }} />
+          <button onClick={() => { set({ zipPassword: pwd }); setPwd(""); }} disabled={mu.isPending}
+            style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))", background: "var(--c-surface, rgba(255,255,255,0.04))", color: "var(--c-t1)", fontSize: 12, cursor: "pointer" }}>
+            {pwd ? "保存密码" : "清除密码"}
+          </button>
+          <span style={{ fontSize: 11, color: "var(--c-t4)" }}>AES-256 加密，收件人用 7-Zip / WinRAR 输入密码解压</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={rowLabel}>日志内容</span>
+          {([["includeAudit", "操作日志"], ["includeLlm", "LLM 日志"], ["includeComfy", "ComfyUI 日志"]] as const).map(([k, l]) => (
+            <label key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--c-t1)", cursor: "pointer" }}>
+              <input type="checkbox" checked={Boolean(s[k])} onChange={(e) => set({ [k]: e.target.checked })} /> {l}
+            </label>
+          ))}
+          <span style={{ width: 1, height: 14, background: "var(--c-bd1, rgba(255,255,255,0.08))" }} />
+          <span style={{ fontSize: 12.5, color: "var(--c-t2)" }}>范围</span>
+          <select value={s.rangeDays} onChange={(e) => set({ rangeDays: Number(e.target.value) })} style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: 12 }}>
+            {[[0, "全部历史"], [1, "最近 1 天"], [7, "最近 7 天"], [30, "最近 30 天"], [90, "最近 90 天"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={rowLabel}>发送周期</span>
+          <select value={s.scheduleMode} onChange={(e) => set({ scheduleMode: e.target.value })} style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: 12 }}>
+            <option value="hours">按间隔（每 N 小时）</option>
+            <option value="daily">每天</option>
+            <option value="weekly">每周</option>
+            <option value="monthly">每月</option>
+          </select>
+          {s.scheduleMode === "hours" && <>每 {numSel(s.intervalHours, (v) => set({ intervalHours: v }), [1, 2, 4, 6, 8, 12, 24, 48, 72, 168], " 小时")} 发送一次</>}
+          {s.scheduleMode !== "hours" && <>
+            {s.scheduleMode === "weekly" && <>周{numSel(s.sendWeekday, (v) => set({ sendWeekday: v }), [0, 1, 2, 3, 4, 5, 6], "")}</>}
+            {s.scheduleMode === "monthly" && <>每月 {numSel(s.sendMonthday, (v) => set({ sendMonthday: v }), Array.from({ length: 28 }, (_, i) => i + 1), " 日")}</>}
+            {numSel(s.sendHour, (v) => set({ sendHour: v }), Array.from({ length: 24 }, (_, i) => i), " 点")} 发送
+          </>}
+          <span style={{ fontSize: 11, color: "var(--c-t4)" }}>用「注册认证」页配置的 SMTP 发信；周几：0=周日 1=周一 …</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── LLM 调用日志 ───────────────────────────────────────────────────────────────
 // 统一埋点在 invokeLLMWithKie（所有 LLM 入口收敛于此，无遗漏）；scene=tRPC 接口路径。
 // 常见场景路径 → 中文标签（未列出的显示原路径，不影响筛选）。
@@ -2351,10 +2457,11 @@ function LlmLogsPanel() {
         if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
       };
-      const header = ["时间", "用户ID", "用户名", "场景", "模型", "路由", "状态", "耗时(秒)", "prompt字数", "回复字数", "prompt预览", "回复预览", "错误"];
+      const header = ["时间", "用户ID", "用户名", "IP", "设备指纹", "会话指纹", "UA", "场景", "模型", "路由", "状态", "耗时(秒)", "prompt字数", "回复字数", "prompt预览", "回复预览", "错误"];
       const lines = all.map((r) => [
         new Date(r.createdAt as string).toLocaleString("zh-CN"),
         r.userId ?? "", r.userName ?? "",
+        r.ip ?? "", r.deviceFp ?? "", r.sessionFp ?? "", r.userAgent ?? "",
         LLM_SCENE_LABELS[String(r.scene)] ?? r.scene ?? "", r.model ?? "", LLM_ROUTE_LABELS[String(r.route)] ?? r.route ?? "",
         r.status === "success" ? "成功" : "失败",
         r.durationMs != null ? (Number(r.durationMs) / 1000).toFixed(1) : "",
@@ -2480,15 +2587,16 @@ function LlmLogsPanel() {
       <div style={{ border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 8, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
           <thead><tr style={{ background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
-            {["时间", "用户", "场景", "模型", "路由", "状态", "耗时", "prompt 预览（点行看全文）"].map((h) => <th key={h} style={{ padding: "6px 9px", textAlign: "left", color: "var(--c-t3)", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>)}
+            {["时间", "用户", "IP", "场景", "模型", "路由", "状态", "耗时", "prompt 预览（点行看全文）"].map((h) => <th key={h} style={{ padding: "6px 9px", textAlign: "left", color: "var(--c-t3)", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {listQ.isLoading ? <tr><td colSpan={8} style={{ padding: 18, color: "var(--c-t4)", textAlign: "center" }}>加载中…</td></tr> :
-              rows.length === 0 ? <tr><td colSpan={8} style={{ padding: 18, color: "var(--c-t4)", textAlign: "center" }}>暂无日志</td></tr> :
+            {listQ.isLoading ? <tr><td colSpan={9} style={{ padding: 18, color: "var(--c-t4)", textAlign: "center" }}>加载中…</td></tr> :
+              rows.length === 0 ? <tr><td colSpan={9} style={{ padding: 18, color: "var(--c-t4)", textAlign: "center" }}>暂无日志</td></tr> :
               rows.map((r) => (
                 <tr key={String(r.id)} onClick={() => setDetailId(Number(r.id))} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
                   <td style={{ padding: "6px 9px", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{new Date(String(r.createdAt)).toLocaleString("zh-CN", { hour12: false })}</td>
                   <td style={{ padding: "6px 9px", color: "var(--c-t2)", whiteSpace: "nowrap", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" }} title={`${r.userName ?? ""} #${r.userId ?? ""}`}>{String(r.userName ?? "?")}</td>
+                  <td style={{ padding: "6px 9px", color: "var(--c-t3)", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }} title={`IP ${String(r.ip ?? "")}\n设备 ${String(r.deviceFp ?? "-")}\n会话 ${String(r.sessionFp ?? "-")}\n${String(r.userAgent ?? "")}`}>{String(r.ip ?? "")}</td>
                   <td style={{ padding: "6px 9px", color: "var(--c-t1)", whiteSpace: "nowrap" }} title={String(r.scene)}>{sceneLabel(r.scene)}</td>
                   <td style={{ padding: "6px 9px", color: "var(--c-t2)", whiteSpace: "nowrap", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }} title={String(r.model ?? "")}>{String(r.model ?? "")}</td>
                   <td style={{ padding: "6px 9px", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{LLM_ROUTE_LABELS[String(r.route)] ?? String(r.route)}</td>
@@ -2530,6 +2638,12 @@ function LlmLogsPanel() {
                   <span style={{ color: detail.status === "success" ? "#4ade80" : "#f87171" }}>{detail.status === "success" ? "成功" : "失败"}</span>
                   <span>耗时 {detail.durationMs != null ? `${(Number(detail.durationMs) / 1000).toFixed(1)}s` : "?"}</span>
                   <span>prompt {String(detail.promptChars ?? 0)} 字 · 回复 {String(detail.replyChars ?? 0)} 字</span>
+                </div>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12, color: "var(--c-t3)", marginBottom: 4 }}>
+                  <span>IP：{String(detail.ip ?? "-")}</span>
+                  <span>设备指纹：{String(detail.deviceFp ?? "-")}</span>
+                  <span>会话指纹：{String(detail.sessionFp ?? "-")}</span>
+                  <span style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={String(detail.userAgent ?? "")}>UA：{String(detail.userAgent ?? "-")}</span>
                 </div>
                 {detail.status !== "success" && !!detail.errorMessage && pre("错误信息", String(detail.errorMessage))}
                 {pre("Prompt（完整上下文，多模态部分以占位符表示）", String(detail.promptText ?? ""))}

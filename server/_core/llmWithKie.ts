@@ -69,6 +69,11 @@ export async function invokeLLMWithKie(ctx: TrpcContext, params: InvokeParams, t
     void insertLlmUsageLog({
       userId: ctx.user?.id ?? null,
       userName: ctx.user?.name ?? null,
+      // 溯源指纹：IP + 设备指纹 + UA + 会话指纹（防多用户共用账号无法追责）
+      ip: (ctx.clientIp ?? "unknown").slice(0, 64),
+      deviceFp: ctx.deviceFp ?? null,
+      userAgent: ctx.userAgent ?? null,
+      sessionFp: ctx.sessionFp ?? null,
       scene: scene.slice(0, 128),
       model: (params.model ?? "default").slice(0, 128),
       route: detectLlmRoute(params.model),

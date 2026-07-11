@@ -4,6 +4,7 @@ import { installDomTranslationGuard } from "@/lib/domTranslationGuard";
 installDomTranslationGuard();
 
 import { trpc } from "@/lib/trpc";
+import { getDeviceFingerprint } from "@/lib/deviceFingerprint";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchStreamLink, TRPCClientError } from "@trpc/client";
@@ -70,6 +71,9 @@ const trpcClient = trpc.createClient({
       // 前端工具栏录入存 localStorage，经请求头到达 invokeLLMWithKie（前端 key 优先，否则回退后端 env）。
       headers() {
         const h: Record<string, string> = {};
+        // 设备指纹（行为日志溯源）：canvas/WebGL/屏幕等特征哈希，随每个请求上报。
+        const fp = getDeviceFingerprint();
+        if (fp) h["x-device-fp"] = fp;
         try {
           const t = localStorage.getItem("kie:tempKey") || "";
           if (t) h["x-kie-temp-key"] = t;

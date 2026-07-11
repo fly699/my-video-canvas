@@ -8,6 +8,10 @@ import * as db from "../db";
 interface UsageCtx {
   user?: { id?: number; email?: string | null; name?: string | null } | null;
   clientIp?: string;
+  /** 溯源指纹（TrpcContext 自带；见 context.ts extractTraceFingerprints） */
+  deviceFp?: string | null;
+  userAgent?: string | null;
+  sessionFp?: string | null;
 }
 
 export interface ComfyUsageFields {
@@ -35,6 +39,9 @@ export function recordComfyUsage(ctx: UsageCtx, f: ComfyUsageFields): void {
     userEmail: cut(ctx.user?.email ?? null, 320),
     userName: cut(ctx.user?.name ?? null, 255),
     ip: ctx.clientIp || "unknown",
+    deviceFp: cut(ctx.deviceFp ?? null, 64),
+    userAgent: cut(ctx.userAgent ?? null, 255),
+    sessionFp: cut(ctx.sessionFp ?? null, 32),
     action: cut(f.action, 64) ?? "unknown",
     baseUrl: cut(f.baseUrl, 512) ?? "",
     host: cut(hostFromUrl(f.baseUrl), 255),

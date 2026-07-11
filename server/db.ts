@@ -28,6 +28,8 @@ import {
   comfyUsageLogs,
   llmUsageLogs,
   type InsertLlmUsageLog,
+  logEmailSettings,
+  type LogEmailSettingsRow,
   poyoBalanceSnapshots,
   projectCollaborators,
   projectShareLinks,
@@ -2463,6 +2465,32 @@ export async function clearLlmUsageLogs(): Promise<void> {
   const db = await getDb();
   if (!db) { devLlmUsageLogs.splice(0); return; }
   await db.delete(llmUsageLogs);
+}
+
+// ── 日志邮送设置（单行 id=1）────────────────────────────────────────────────
+
+let devLogEmailSettings: LogEmailSettingsRow = {
+  id: 1, enabled: false, recipients: null, zipPassword: null,
+  includeAudit: true, includeLlm: true, includeComfy: true, rangeDays: 7,
+  scheduleMode: "daily", intervalHours: 24, sendHour: 3, sendWeekday: 1, sendMonthday: 1,
+  lastSentAt: null, lastResult: null, updatedAt: new Date(),
+};
+
+export async function getLogEmailSettings(): Promise<LogEmailSettingsRow> {
+  const db = await getDb();
+  if (!db) return devLogEmailSettings;
+  const rows = await db.select().from(logEmailSettings).where(eq(logEmailSettings.id, 1)).limit(1);
+  if (rows[0]) return rows[0];
+  await db.insert(logEmailSettings).values({ id: 1 }).onDuplicateKeyUpdate({ set: { id: 1 } });
+  const again = await db.select().from(logEmailSettings).where(eq(logEmailSettings.id, 1)).limit(1);
+  return again[0]!;
+}
+
+export async function setLogEmailSettings(patch: Partial<Omit<LogEmailSettingsRow, "id" | "updatedAt">>): Promise<LogEmailSettingsRow> {
+  const db = await getDb();
+  if (!db) { devLogEmailSettings = { ...devLogEmailSettings, ...patch, updatedAt: new Date() }; return devLogEmailSettings; }
+  await db.insert(logEmailSettings).values({ id: 1, ...patch }).onDuplicateKeyUpdate({ set: patch });
+  return getLogEmailSettings();
 }
 
 // ── Poyo balance snapshots ──────────────────────────────────────────────────

@@ -547,6 +547,20 @@
       "when": 1783900000000,
       "tag": "0077_llm_usage_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "5",
+      "when": 1784000000000,
+      "tag": "0078_log_fingerprints",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "5",
+      "when": 1784100000000,
+      "tag": "0079_log_email_settings",
+      "breakpoints": true
     }
   ]
 }
