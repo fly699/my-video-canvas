@@ -396,6 +396,18 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     if (!file || !file.type.startsWith("image/")) { if (file) toast.error("请选择全景图片"); return; }
     setPanoBusy(true);
     try {
+      // #71 全景比例结构校验：等距全景标准为 2:1（360°×180°）。偏差大时贴到球上会把
+      // 地平线/建筑结构纵向拉伸变形，先给出明确提示（仍允许继续，用户可能有意为之）。
+      const dims = await new Promise<{ w: number; h: number } | null>((res) => {
+        const u = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => { URL.revokeObjectURL(u); res({ w: img.naturalWidth, h: img.naturalHeight }); };
+        img.onerror = () => { URL.revokeObjectURL(u); res(null); };
+        img.src = u;
+      });
+      if (dims && dims.h > 0 && Math.abs(dims.w / dims.h - 2) > 0.25) {
+        toast.warning(`全景图比例 ${dims.w}×${dims.h}（≈${(dims.w / dims.h).toFixed(2)}:1），等距全景标准为 2:1——偏差过大时地平线与结构会拉伸变形，建议换用 2:1 全景图`, { duration: 7000 });
+      }
       const r = await uploadMut.mutateAsync({ base64: await blobToBase64(file), mimeType: file.type, filename: file.name });
       patchScene({ panoramaUrl: r.url, groundVisible: false });
       toast.success("已设为全景背景");
@@ -428,6 +440,18 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     setOriginXZ(t.x, t.z);
     toast.success("原点已移到当前视点中心");
   };
+
+  // #71 操控便利性：双击地面在点击处直接放置人偶。世界坐标 → 场景组（缩放+平移）局部坐标，
+  // 保证全景模式下调过「场景缩放/平移」后落点依旧踩在双击的位置上。
+  const placeActorAt = useCallback((wx: number, wz: number) => {
+    setScene((s) => {
+      const S = s.sceneScale ?? 1;
+      const lx = (wx - (s.sceneOffsetX ?? 0)) / S, lz = (wz - (s.sceneOffsetZ ?? 0)) / S;
+      const a = makeActor("male", s.actors, [Number(lx.toFixed(2)), 0, Number(lz.toFixed(2))]);
+      setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
+      return { ...s, actors: [...s.actors, a] };
+    });
+  }, []);
 
   // #71 多物体：几何道具（与人偶同链路：选中/变换/编组/控制图）
   const addProp = (prim: PropPrim) => {
@@ -1007,6 +1031,26 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {scene.background !== "#000000" && (
                 <ContactShadows position={[scene.sceneOffsetX ?? 0, (scene.sceneOffsetY ?? 0) + 0.01, scene.sceneOffsetZ ?? 0]} scale={24} resolution={1024} blur={2.6} far={5} opacity={0.5} color="#000000" />
               )}
+              {/* #71 双击地面放置人偶：透明拾取地面（世界 y=0，不参与截图/控制图/导出——顶层非
+                  ACTORS_GROUP 对象在控制图渲染前会被隐藏，导出只打包 ACTORS_GROUP）。
+                  单击空地=取消选中（与 onPointerMissed 行为一致）；双击=在点击处放一个人偶。
+                  intersections[0] 守卫：点在人偶/道具上时它们离相机更近，此时不触发地面行为。 */}
+              <mesh
+                rotation={[-Math.PI / 2, 0, 0]}
+                position={[0, -0.001, 0]}
+                onClick={(e) => {
+                  if (e.delta > 5 || e.intersections[0]?.eventObject !== e.eventObject) return;
+                  setSelectedId(null); setSelectedGroupId(null);
+                }}
+                onDoubleClick={(e) => {
+                  if (e.delta > 5 || e.intersections[0]?.eventObject !== e.eventObject) return;
+                  e.stopPropagation();
+                  placeActorAt(e.point.x, e.point.z);
+                }}
+              >
+                <planeGeometry args={[600, 600]} />
+                <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+              </mesh>
               {/* 场景缩放 + 升降：把整个「人物场景」(角色+群组) 包一层统一缩放与上下平移，相对全景
                   空间整体放大/缩小、升降，使人物与全景尺度/地面线匹配（LibTV 场景缩放）。 */}
               <group name={ACTORS_GROUP} position={[scene.sceneOffsetX ?? 0, scene.sceneOffsetY ?? 0, scene.sceneOffsetZ ?? 0]} scale={scene.sceneScale ?? 1}>
@@ -1233,7 +1277,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 </>
               )}
               <p style={{ ...hint, marginTop: 10 }}>
-                点选左侧图层或画面中的人偶/机位进行编辑；选中独立人偶后可用画面左上「移动/旋转/缩放」手柄直接拖。<br /><br />
+                点选左侧图层或画面中的人偶/机位进行编辑；选中独立人偶后可用画面左上「移动/旋转/缩放」手柄直接拖；<b>双击地面</b>可在点击处直接放置人偶。<br /><br />
                 工作流：摆好站位与机位 → 「截图 → 参考图」→ 连到生图/视频节点，提示词强调「人物站位与参考图一致」。
               </p>
             </div>
