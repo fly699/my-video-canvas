@@ -1,18 +1,33 @@
 // 管理后台权限矩阵（前后端共享单一事实源）。
 //
 // 管理员级别：0=普通用户 · 1=查看员 · 2=运营 · 3=管理员 · 4=超级管理员 · 5=站长。
-// 矩阵记录每个后台页面（tab）的「最低可见/可查级别」，站长(L5) 可在「权限管理」页
-// 按级别调整各页面的管理范围；服务端对日志/聊天等敏感页的接口做同口径强制。
-// 「权限管理」页自身恒为 L5，不可下放（防止低级别管理员改权限自提升）。
+// 每个后台页面（tab）有两个级别：
+//   · view    可见/只读级——达到即可「进入查看」该页（门控所有 query 读接口）。
+//   · operate 可操作级——达到才能在该页写操作（门控所有 mutation 写接口）。
+// 不变量：view ≤ operate（看不见就不可能操作）。站长(L5) 在「权限管理」页统一配置二者，
+// 把 view 降到 operate 以下即启用「可见但只读」层。服务端对所有 admin.* 端点按 query/mutation
+// 自动套 view/operate（enforceAdminMatrix），故是真门控而非仅前端隐藏。
+//
+// 【安全地板】写接口除受本矩阵 operate 约束外，仍各自带静态级别下限（server 的 managerProc 等），
+// 二者取严（max）。敏感写（改密/封禁/删数据/管理员管理/系统更新/权限矩阵）的静态地板不可被矩阵
+// 下调，杜绝「把 operate 设很低就能降级敏感写」的提权。矩阵 operate 只在静态地板之上进一步收紧。
+// 「权限管理」页自身恒为 view=operate=5（站长专属），不可下放。
 
 export const ADMIN_LEVEL_LABELS: [number, string][] = [
   [0, "普通用户"], [1, "查看员"], [2, "运营"], [3, "管理员"], [4, "超级管理员"], [5, "站长"],
 ];
 
-/** 各后台页面的默认最低查看级别。日志三页 + 聊天管理 = L4（超管及以上）；
- *  白名单/下载审批 = L3（沿既有约束）；权限管理恒 L5；其余任意管理员可见（页内写操作
- *  仍受各自接口的静态级别门控约束，矩阵只会收紧、不会放松写权限）。 */
-export const DEFAULT_TAB_LEVELS: Record<string, number> = {
+export interface TabAccess {
+  /** 可见/只读级：达到即可进入查看该页（门控 query）。 */
+  view: number;
+  /** 可操作级：达到才能写操作（门控 mutation）。恒 ≥ view。 */
+  operate: number;
+}
+
+/** 各后台页面的默认级别（升级前的单级别）。默认 view=operate，行为与升级前完全一致；
+ *  站长把 view 降到 operate 以下即启用只读层。日志三页 + 聊天管理 = L4；白名单/下载审批 = L3；
+ *  权限管理恒 L5；其余任意管理员可见（其写操作仍受各自静态地板约束）。 */
+const DEFAULT_LEVEL: Record<string, number> = {
   whitelist: 3,
   kie: 1,
   users: 1,
@@ -36,8 +51,18 @@ export const DEFAULT_TAB_LEVELS: Record<string, number> = {
   perms: 5, // 权限管理页：恒站长，不可下放
 };
 
+/** 二维默认矩阵（view=operate=单级别默认）。 */
+export const DEFAULT_TAB_ACCESS: Record<string, TabAccess> = Object.fromEntries(
+  Object.entries(DEFAULT_LEVEL).map(([k, v]) => [k, { view: v, operate: v }]),
+);
+
+/** 兼容旧消费方：仅 view 级别的一维映射（前端 fallback / 旧测试用）。 */
+export const DEFAULT_TAB_LEVELS: Record<string, number> = Object.fromEntries(
+  Object.entries(DEFAULT_LEVEL).map(([k, v]) => [k, v]),
+);
+
 /** 站长可调整的 tab（perms 自身除外）。 */
-export const EDITABLE_TAB_KEYS = Object.keys(DEFAULT_TAB_LEVELS).filter((k) => k !== "perms");
+export const EDITABLE_TAB_KEYS = Object.keys(DEFAULT_LEVEL).filter((k) => k !== "perms");
 
 // 少数 sub-router 名 ≠ tab 键的别名（其余 admin sub-router 名与 tab 同名）。
 export const ADMIN_SUBROUTER_TAB_ALIAS: Record<string, string> = {
@@ -71,7 +96,7 @@ export const MATRIX_EXEMPT_METHODS = new Set<string>([
 
 /** 由 tRPC 路径（admin.<sub>.<method>）解析出受矩阵约束的 tab；非 admin / 豁免端点返回 null。
  *  用于服务端统一门控（adminProcedure/levelProcedure 叠加矩阵），让站长的「管理范围」配置
- *  真实生效到接口层，而非仅前端隐藏。未知 sub-router 的 tab 走默认（getTabMinLevel 回退 1，
+ *  真实生效到接口层，而非仅前端隐藏。未知 sub-router 的 tab 走默认（getTabAccess 回退 view=operate=1，
  *  即不额外收紧，静态级别仍生效）。 */
 export function adminTabFromRpcPath(path: string | undefined | null): string | null {
   if (!path || !path.startsWith("admin.")) return null;
@@ -81,16 +106,43 @@ export function adminTabFromRpcPath(path: string | undefined | null): string | n
   return ADMIN_SUBROUTER_TAB_ALIAS[seg] ?? seg;
 }
 
-/** 合并覆盖值 → 全量生效矩阵：非法键丢弃、级别钳制 1~5、perms 恒 5。 */
-export function effectiveTabLevels(overrides: Record<string, unknown> | null | undefined): Record<string, number> {
-  const out: Record<string, number> = { ...DEFAULT_TAB_LEVELS };
+function clampLevel(v: unknown, fallback: number): number {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : fallback;
+}
+
+/** 合并覆盖值 → 全量生效二维矩阵：非法键丢弃、级别钳制 1~5、view ≤ operate、perms 恒 5/5。
+ *  兼容旧格式：覆盖值为数字 n 时按 {view:n, operate:n} 解析。 */
+export function effectiveTabAccess(
+  overrides: Record<string, unknown> | null | undefined,
+): Record<string, TabAccess> {
+  const out: Record<string, TabAccess> = {};
+  for (const [k, def] of Object.entries(DEFAULT_TAB_ACCESS)) out[k] = { ...def };
   if (overrides && typeof overrides === "object") {
     for (const [k, v] of Object.entries(overrides)) {
-      if (!(k in DEFAULT_TAB_LEVELS) || k === "perms") continue;
-      const n = Number(v);
-      if (Number.isInteger(n) && n >= 1 && n <= 5) out[k] = n;
+      if (!(k in DEFAULT_TAB_ACCESS) || k === "perms") continue;
+      let view: number, operate: number;
+      if (typeof v === "number") {
+        view = operate = clampLevel(v, out[k].view);
+      } else if (v && typeof v === "object") {
+        const o = v as Record<string, unknown>;
+        operate = clampLevel(o.operate, out[k].operate);
+        view = clampLevel(o.view, out[k].view);
+      } else {
+        continue;
+      }
+      if (view > operate) view = operate; // 不变量：可见级 ≤ 可操作级
+      out[k] = { view, operate };
     }
   }
-  out.perms = 5;
+  out.perms = { view: 5, operate: 5 };
   return out;
+}
+
+/** 兼容旧消费方：返回仅 view 级别的一维映射。 */
+export function effectiveTabLevels(
+  overrides: Record<string, unknown> | null | undefined,
+): Record<string, number> {
+  const acc = effectiveTabAccess(overrides);
+  return Object.fromEntries(Object.entries(acc).map(([k, a]) => [k, a.view]));
 }

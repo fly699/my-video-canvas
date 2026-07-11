@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useContext, createContext } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -20,7 +20,20 @@ import { TunnelPanel } from "@/components/admin/TunnelPanel";
 import { BroadcastComposer } from "@/components/chat/BroadcastComposer";
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
-import { DEFAULT_TAB_LEVELS, ADMIN_LEVEL_LABELS, EDITABLE_TAB_KEYS } from "@shared/adminPerms";
+import { DEFAULT_TAB_ACCESS, ADMIN_LEVEL_LABELS, EDITABLE_TAB_KEYS, type TabAccess } from "@shared/adminPerms";
+
+// 权限矩阵二维级别（{view 可见, operate 可操作}）经 Context 下发给各 Panel，
+// 使 LevelGate 与各 canX 写门控在「静态地板」之上叠加站长配置的 operate（取严 max）。
+const AdminMatrixContext = createContext<Record<string, TabAccess>>(DEFAULT_TAB_ACCESS);
+/** 某 tab 的矩阵 operate 级别（未配置回退默认）。 */
+function useTabOperate(tab: string): number {
+  const acc = useContext(AdminMatrixContext);
+  return acc[tab]?.operate ?? DEFAULT_TAB_ACCESS[tab]?.operate ?? 1;
+}
+/** 某页某写操作的生效门槛 = max(静态地板, 矩阵 operate)。矩阵只会在静态地板之上进一步收紧。 */
+function useEffOperate(tab: string, staticFloor: number): number {
+  return Math.max(staticFloor, useTabOperate(tab));
+}
 
 type EntryType = "ip" | "user";
 type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "perms" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
@@ -89,8 +102,9 @@ export default function AdminPage() {
   // 权限矩阵（站长在「权限管理」页配置各页最低查看级别；默认日志/聊天=L4、白名单/下载审批=L3）。
   // 服务端对日志/聊天接口同口径强制，这里只做 tab 可见性与越权兜底跳转。
   const permsQ = trpc.admin.perms.get.useQuery(undefined, { enabled: user?.role === "admin", staleTime: 30_000 });
-  const tabLevels = permsQ.data?.levels ?? DEFAULT_TAB_LEVELS;
-  const tabAllowed = (tab: Tab) => myLevel >= (tabLevels[tab] ?? 1);
+  const tabAccess = permsQ.data?.access ?? DEFAULT_TAB_ACCESS;
+  // tab 可见性按 view（可见/只读级）：达到 view 即可进入查看；页内写操作再按 operate 门控。
+  const tabAllowed = (tab: Tab) => myLevel >= (tabAccess[tab]?.view ?? DEFAULT_TAB_ACCESS[tab]?.view ?? 1);
   // Initial tab comes from ?tab= so deep links (e.g. a download-approval "查看")
   // land on the right sub-page instead of the default.
   const [activeTab, setActiveTab] = useState<Tab>(() => adminTabFromUrl() as Tab);
@@ -260,32 +274,34 @@ export default function AdminPage() {
           })}
         </div>
 
-        {/* 面板：key 驱动切换入场动效 */}
+        {/* 面板：key 驱动切换入场动效；Context 下发矩阵 operate 给各 Panel 的写门控 */}
+        <AdminMatrixContext.Provider value={tabAccess}>
         <div key={activeTab} className="animate-fade-up">
           {/* 单一级别面板：整面在 switch 处用 LevelGate 包裹（低于该级别 → 整面只读）。
               混合级别面板（白名单/存储/聊天/素材/下载/用户/系统）在各自 Panel 内部按操作分级门控。 */}
           {activeTab === "whitelist" && <WhitelistPanel />}
-          {activeTab === "kie" && <LevelGate need={3}><KiePanel /></LevelGate>}
+          {activeTab === "kie" && <LevelGate need={3} tab="kie"><KiePanel /></LevelGate>}
           {activeTab === "users" && <UsersPanel />}
-          {activeTab === "auth" && <LevelGate need={3}><AuthPanel /></LevelGate>}
+          {activeTab === "auth" && <LevelGate need={3} tab="auth"><AuthPanel /></LevelGate>}
           {activeTab === "logs" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}><LogEmailCard /><LogsPanel /></div>}
           {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
           {activeTab === "perms" && <PermsPanel />}
           {activeTab === "llmLogs" && <LlmLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
-          {activeTab === "models" && <LevelGate need={3}><ModelsPanel /></LevelGate>}
+          {activeTab === "models" && <LevelGate need={3} tab="models"><ModelsPanel /></LevelGate>}
           {activeTab === "chat" && <ChatAdminPanel />}
-          {activeTab === "comfyServers" && <LevelGate need={3} label="只读模式 · 修改全局 ComfyUI 服务器列表需「管理员」及以上权限"><ComfyServersPanel /></LevelGate>}
-          {activeTab === "comfyStress" && <LevelGate need={3} label="只读模式 · ComfyUI 压测需「管理员」及以上权限"><ComfyStressPanel /></LevelGate>}
-          {activeTab === "comfyOps" && <LevelGate need={3} label="只读模式 · ComfyUI 运维（SSH/Docker/安装/脚本）需「管理员」及以上权限"><ComfyOpsPanel /></LevelGate>}
+          {activeTab === "comfyServers" && <LevelGate need={3} tab="comfyServers" label="只读模式 · 修改全局 ComfyUI 服务器列表需「管理员」及以上权限"><ComfyServersPanel /></LevelGate>}
+          {activeTab === "comfyStress" && <LevelGate need={3} tab="comfyStress" label="只读模式 · ComfyUI 压测需「管理员」及以上权限"><ComfyStressPanel /></LevelGate>}
+          {activeTab === "comfyOps" && <LevelGate need={3} tab="comfyOps" label="只读模式 · ComfyUI 运维（SSH/Docker/安装/脚本）需「管理员」及以上权限"><ComfyOpsPanel /></LevelGate>}
           {activeTab === "assets" && <AssetsAdminPanel />}
           {activeTab === "downloads" && <DownloadsAdminPanel />}
           {activeTab === "system" && <SystemUpdatePanel />}
-          {activeTab === "config" && <LevelGate need={3}><ConfigChecklistPanel /></LevelGate>}
-          {activeTab === "tunnel" && <LevelGate need={3}><TunnelPanel /></LevelGate>}
+          {activeTab === "config" && <LevelGate need={3} tab="config"><ConfigChecklistPanel /></LevelGate>}
+          {activeTab === "tunnel" && <LevelGate need={3} tab="tunnel"><TunnelPanel /></LevelGate>}
           {activeTab === "report" && <ReportFrame src="/work-report.html" title="工作成果量化评估报告" desc="基于 Git 全量历史与会话转录的多维度量化评估（提交/工时/代码量/Token/工作量系数 + 立项初衷与对比表）" />}
           {activeTab === "intro" && <ReportFrame src="/project-report.html" title="项目功能汇报" desc="平台全功能图文汇报（含「界面实录」真实截图：系统架构 / AI 模型矩阵 / ComfyUI 算力 / 3D 导演台 / 安全防护 / 私有定制）" />}
         </div>
+        </AdminMatrixContext.Provider>
       </div>
     </div>
   );
@@ -306,10 +322,13 @@ function useMyLevel(): number {
  * 用于「点进去能看、不能改」的写操作区域；与服务端 levelProcedure 一一对应，是 UI 层防误触，
  * 真正的权限以后端为准。级别足够时原样渲染、零副作用。
  */
-function LevelGate({ need, children, label, innerStyle }: { need: number; children: React.ReactNode; label?: string; innerStyle?: React.CSSProperties }) {
+function LevelGate({ need, tab, children, label, innerStyle }: { need: number; tab?: string; children: React.ReactNode; label?: string; innerStyle?: React.CSSProperties }) {
   const lvl = useMyLevel();
+  // 生效门槛 = max(静态地板 need, 该页矩阵 operate)。站长把该页 operate 调高即进一步收紧。
+  const matrixOp = useTabOperate(tab ?? "");
+  const effNeed = tab ? Math.max(need, matrixOp) : need;
   // 级别足够：原样渲染（fragment 不产生 DOM 节点，外层 flex gap 等布局完全不受影响）。
-  if (lvl >= need) return <>{children}</>;
+  if (lvl >= effNeed) return <>{children}</>;
   return (
     <div>
       <div style={{
@@ -319,7 +338,7 @@ function LevelGate({ need, children, label, innerStyle }: { need: number; childr
         color: "oklch(0.82 0.13 65)",
       }}>
         <Shield style={{ width: 14, height: 14, flexShrink: 0 }} />
-        {label ?? `只读模式 · 修改需「${LEVEL_NAME[need] ?? "更高"}」及以上权限`}
+        {label ?? `只读模式 · 修改需「${LEVEL_NAME[effNeed] ?? `L${effNeed}`}」及以上权限`}
         <span style={{ color: "var(--c-t3, rgba(255,255,255,0.45))", fontWeight: 400 }}>（当前：{adminLevelLabel(lvl)}）</span>
       </div>
       <div style={{ pointerEvents: "none", opacity: 0.5, ...innerStyle }} aria-disabled>
@@ -377,9 +396,10 @@ function UsersPanel() {
     onError: (e) => toast.error("操作失败：" + e.message),
   });
   const lvl = me?.adminLevel ?? 0;
-  const isSuper = lvl >= 4;
-  const canFreeze = lvl >= 2;   // 冻结/解冻=运营 L2+
-  const canManage = lvl >= 3;   // 重置密码/删除=管理员 L3+
+  const opUsers = useTabOperate("users"); // 站长为「用户」页设的 operate（在各静态地板之上再收紧）
+  const isSuper = lvl >= Math.max(4, opUsers);   // 管理员管理=超管 L4+
+  const canFreeze = lvl >= Math.max(2, opUsers); // 冻结/解冻=运营 L2+
+  const canManage = lvl >= Math.max(3, opUsers); // 重置密码/删除=管理员 L3+
 
   const onReset = (id: number, label: string) => {
     const pw = window.prompt(`为「${label}」设置新密码（至少 6 位）：`)?.trim();
@@ -843,7 +863,7 @@ function StoragePanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Config export / import — 超管(L4)专属：跨部署迁移 / 批量覆盖配置 */}
-      <LevelGate need={4} label="配置「导出 / 导入」仅「超级管理员」(L4) 可用">
+      <LevelGate need={4} tab="storage" label="配置「导出 / 导入」仅「超级管理员」(L4) 可用">
       <div style={{ ...cardStyle, alignItems: "stretch", padding: "14px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <DownloadCloud style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0 }} />
@@ -867,7 +887,7 @@ function StoragePanel() {
       </div>
       </LevelGate>
       {/* 存储设置 / 连通性测试 — 管理员(L3+)可改，查看员/运营只读 */}
-      <LevelGate need={3} innerStyle={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <LevelGate need={3} tab="storage" innerStyle={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ ...cardStyle, alignItems: "stretch", padding: "16px 20px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
           <HardDrive style={{ width: 18, height: 18, color: "oklch(0.72 0.2 285)", flexShrink: 0, marginTop: 2 }} />
@@ -1504,7 +1524,7 @@ function SystemUpdatePanel() {
 
   const status = statusQuery.data;
   const running = status?.state === "running";
-  const canEdit = useMyLevel() >= 4; // 检查更新 / 立即更新 / 重启服务 = 超管(L4) 独占
+  const canEdit = useMyLevel() >= useEffOperate("system", 4); // 检查更新 / 立即更新 / 重启服务 = 超管(L4) 独占
   const version = versionQuery.data;
   // 缓存的可用更新信息（打开标签即显示，未手动检查时也可见）
   const available = checkMut.data ?? availableQuery.data;
@@ -1727,7 +1747,7 @@ function ReportFrame({ src, title, desc }: { src: string; title: string; desc: s
 }
 
 function WhitelistPanel() {
-  const canSettings = (useAuth().user?.adminLevel ?? 0) >= 3; // 旁路/启用开关=管理员 L3+（白名单条目增删=运营 L2，由标签页门控）
+  const canSettings = (useAuth().user?.adminLevel ?? 0) >= useEffOperate("whitelist", 3); // 旁路/启用开关=管理员 L3+（白名单条目增删=运营 L2，由标签页门控）
   const settingsQuery = trpc.admin.whitelist.getSettings.useQuery();
   const entriesQuery = trpc.admin.whitelist.listEntries.useQuery();
   const utils = trpc.useUtils();
@@ -1871,7 +1891,7 @@ function WhitelistPanel() {
       </div>
 
       {/* 白名单条目「添加 / 删除」= 运营(L2+)；查看员(L1) 只读 */}
-      <LevelGate need={2} label="白名单条目「添加 / 删除」需「运营」(L2) 及以上权限">
+      <LevelGate need={2} tab="whitelist" label="白名单条目「添加 / 删除」需「运营」(L2) 及以上权限">
       {/* Add entry form */}
       <div style={{ ...cardStyle, marginBottom: "20px" }}>
         <h3 style={{ margin: "0 0 16px", fontSize: "15px", fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>添加白名单条目</h3>
@@ -1941,7 +1961,7 @@ function WhitelistPanel() {
 type AuditAction = "login_email" | "login_oauth" | "image_gen" | "video_gen" | "audio_music" | "audio_dubbing" | "subtitle_transcribe" | "superagent_comfy_build" | "superagent_code_task" | "kie_gen";
 
 function LogsPanel() {
-  const canClear = (useAuth().user?.adminLevel ?? 0) >= 2; // 清空日志=运营 L2+
+  const canClear = (useAuth().user?.adminLevel ?? 0) >= useEffOperate("logs", 2); // 清空日志=运营 L2+
   const [offset, setOffset] = useState(0);
   const [actionFilter, setActionFilter] = useState<AuditAction | "">("");
   const [userInput, setUserInput] = useState("");   // 输入框（回车/失焦才应用）
@@ -2148,7 +2168,7 @@ function DetailCell({ detail }: { detail: Record<string, unknown> | null }) {
 
 // ── ComfyUI usage logs (per-user / per-server, detailed) ─────────────────────
 function ComfyUsageLogsPanel() {
-  const canClear = (useAuth().user?.adminLevel ?? 0) >= 2; // 清空=运营 L2+
+  const canClear = (useAuth().user?.adminLevel ?? 0) >= useEffOperate("comfyLogs", 2); // 清空=运营 L2+
   const [offset, setOffset] = useState(0);
   const [rangeDays, setRangeDays] = useState("7");
   const [statusFilter, setStatusFilter] = useState<"" | "success" | "error">("");
@@ -2339,16 +2359,21 @@ function PermsPanel() {
     onSuccess: () => { utils.admin.perms.get.invalidate(); toast.success("权限矩阵已保存（30 秒内全局生效）"); setDirty({}); },
     onError: (e) => toast.error("保存失败：" + e.message),
   });
-  const [dirty, setDirty] = useState<Record<string, number>>({});
-  const levels = q.data?.levels;
-  if (!levels) return <div style={cardStyle}><p style={{ color: "var(--c-t3)", fontSize: 13, margin: 0 }}>加载中…</p></div>;
-  const cur = (tab: string) => dirty[tab] ?? levels[tab] ?? 1;
+  const [dirty, setDirty] = useState<Record<string, TabAccess>>({});
+  const access = q.data?.access;
+  if (!access) return <div style={cardStyle}><p style={{ color: "var(--c-t3)", fontSize: 13, margin: 0 }}>加载中…</p></div>;
+  const base = (tab: string): TabAccess => access[tab] ?? DEFAULT_TAB_ACCESS[tab] ?? { view: 1, operate: 1 };
+  const cur = (tab: string): TabAccess => dirty[tab] ?? base(tab);
   const tabLabel = (tab: string) => TAB_DEFS.find(([t]) => t === tab)?.[1] ?? tab;
-  const changed = Object.keys(dirty).some((k) => dirty[k] !== (levels[k] ?? 1));
+  const isDirty = (tab: string) => { const c = cur(tab), b = base(tab); return c.view !== b.view || c.operate !== b.operate; };
+  const changed = EDITABLE_TAB_KEYS.some(isDirty);
+  // 改 view：不得高于 operate（否则联动抬高 operate）；改 operate：不得低于 view（否则联动压低 view）。
+  const setView = (tab: string, v: number) => setDirty((d) => { const c = cur(tab); return { ...d, [tab]: { view: v, operate: Math.max(v, c.operate) } }; });
+  const setOperate = (tab: string, o: number) => setDirty((d) => { const c = cur(tab); return { ...d, [tab]: { view: Math.min(o, c.view), operate: o } }; });
   const save = () => {
-    const merged: Record<string, number> = {};
-    for (const k of EDITABLE_TAB_KEYS) merged[k] = dirty[k] ?? levels[k] ?? 1;
-    mu.mutate({ levels: merged });
+    const merged: Record<string, TabAccess> = {};
+    for (const k of EDITABLE_TAB_KEYS) merged[k] = cur(k);
+    mu.mutate({ access: merged });
   };
   const groups: [string, string[]][] = [
     ["日志与审计", ["logs", "comfyLogs", "llmLogs"]],
@@ -2357,6 +2382,7 @@ function PermsPanel() {
     ["ComfyUI", ["comfyServers", "comfyStress", "comfyOps"]],
     ["系统", ["tunnel", "system", "config", "report", "intro"]],
   ];
+  const levelOpts = ADMIN_LEVEL_LABELS.filter(([lv]) => lv >= 1);
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
@@ -2370,24 +2396,39 @@ function PermsPanel() {
         </button>
       </div>
       <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--c-t3)", lineHeight: 1.6 }}>
-        为每个后台页面设置<b>最低可见级别</b>（1=查看员 · 2=运营 · 3=管理员 · 4=超级管理员 · 5=站长）。
-        低于该级别的管理员看不到对应页面；日志三页与聊天管理的服务端接口按同一矩阵强制（页内写操作另有各自的固定下限，矩阵只收紧不放松）。
+        为每个后台页面分别设置<b>可见级</b>（达到即可进入查看，门控读接口）与<b>可操作级</b>（达到才能写操作，门控写接口）。
+        级别 1=查看员 · 2=运营 · 3=管理员 · 4=超级管理员 · 5=站长。把「可见级」设得比「可操作级」低，即让该区间的管理员<b>可见但只读</b>。
+        服务端对所有后台接口按此矩阵强制（读→可见级、写→可操作级），非仅前端隐藏。
+        注意：敏感写操作（改密/封禁/删数据/管理员管理/系统更新等）另有各自的<b>固定安全地板</b>，矩阵只在其上进一步收紧、不会把它们降级。
         「权限管理」页自身恒为站长专属，不可下放。
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {groups.map(([g, tabs]) => (
           <div key={g}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>{g}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>
-              {tabs.map((tab) => (
-                <div key={tab} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 11px", borderRadius: 9, border: `1px solid ${cur(tab) !== (levels[tab] ?? 1) ? "oklch(0.72 0.19 25 / 0.55)" : "var(--c-bd1, rgba(255,255,255,0.07))"}`, background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
-                  <span style={{ fontSize: 13, color: "var(--c-t1)" }}>{tabLabel(tab)}</span>
-                  <select value={cur(tab)} onChange={(e) => setDirty((d) => ({ ...d, [tab]: Number(e.target.value) }))}
-                    style={{ ...inputStyle, width: "auto", padding: "4px 8px", fontSize: 12 }}>
-                    {ADMIN_LEVEL_LABELS.filter(([lv]) => lv >= 1).map(([lv, lb]) => <option key={lv} value={lv}>L{lv} {lb}</option>)}
-                  </select>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 8 }}>
+              {tabs.map((tab) => {
+                const c = cur(tab);
+                return (
+                <div key={tab} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 11px", borderRadius: 9, border: `1px solid ${isDirty(tab) ? "oklch(0.72 0.19 25 / 0.55)" : "var(--c-bd1, rgba(255,255,255,0.07))"}`, background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+                  <span style={{ fontSize: 13, color: "var(--c-t1)", flexShrink: 0 }}>{tabLabel(tab)}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--c-t3)" }}>可见
+                      <select value={c.view} onChange={(e) => setView(tab, Number(e.target.value))}
+                        style={{ ...inputStyle, width: "auto", padding: "3px 5px", fontSize: 11.5 }}>
+                        {levelOpts.map(([lv, lb]) => <option key={lv} value={lv}>L{lv} {lb}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--c-t3)" }}>可操作
+                      <select value={c.operate} onChange={(e) => setOperate(tab, Number(e.target.value))}
+                        style={{ ...inputStyle, width: "auto", padding: "3px 5px", fontSize: 11.5 }}>
+                        {levelOpts.map(([lv, lb]) => <option key={lv} value={lv}>L{lv} {lb}</option>)}
+                      </select>
+                    </label>
+                  </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
@@ -2415,7 +2456,7 @@ function LogEmailCard() {
   const [pwd, setPwd] = useState("");
   const s = q.data;
   if (!s) return <div style={cardStyle}><p style={{ color: "var(--c-t3)", fontSize: 13, margin: 0 }}>日志邮送设置加载中…</p></div>;
-  const canOp = true;
+  const canOp = useMyLevel() >= useEffOperate("logs", 3); // 邮送设置/立即发送=管理员 L3+（logEmail 在「操作日志」页）
   const set = (patch: Record<string, unknown>) => mu.mutate(patch);
   const rowLabel: React.CSSProperties = { fontSize: 12.5, color: "var(--c-t2)", minWidth: 76, flexShrink: 0 };
   const numSel = (value: number, onChange: (v: number) => void, opts: number[], suffix: string) => (
@@ -2523,7 +2564,7 @@ const LLM_SCENE_LABELS: Record<string, string> = {
 const LLM_ROUTE_LABELS: Record<string, string> = { kie: "kie", custom: "自定义", self_hosted: "自建", bridge: "本机桥接", platform: "平台" };
 
 function LlmLogsPanel() {
-  const canClear = (useAuth().user?.adminLevel ?? 0) >= 2; // 清空=运营 L2+
+  const canClear = (useAuth().user?.adminLevel ?? 0) >= useEffOperate("llmLogs", 2); // 清空=运营 L2+
   const [offset, setOffset] = useState(0);
   const [rangeDays, setRangeDays] = useState("7");
   const [statusFilter, setStatusFilter] = useState<"" | "success" | "error">("");
@@ -2821,7 +2862,7 @@ function ChatSettingsPanel() {
     <div style={chatCard}>
       <h3 style={chatCardTitle}>聊天设置</h3>
       {!s ? <p style={chatDim}>加载中…</p> : (
-        <LevelGate need={3} label="聊天设置修改需「管理员」(L3) 及以上权限">
+        <LevelGate need={3} tab="chat" label="聊天设置修改需「管理员」(L3) 及以上权限">
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <label style={chatToggleRow}>
             <span>允许「无服务器（端到端加密）」模式</span>
@@ -2862,7 +2903,7 @@ function ChatConversationsPanel() {
         </select>
       </div>
       {/* 删除会话 = 管理员(L3+)；查看员/运营只读（筛选保持可用） */}
-      <LevelGate need={3} label="删除会话需「管理员」(L3) 及以上权限">
+      <LevelGate need={3} tab="chat" label="删除会话需「管理员」(L3) 及以上权限">
       <table style={chatTable}>
         <thead><tr><ChatTh>ID</ChatTh><ChatTh>类型</ChatTh><ChatTh>模式</ChatTh><ChatTh>标题</ChatTh><ChatTh>成员</ChatTh><ChatTh>操作</ChatTh></tr></thead>
         <tbody>
@@ -3001,7 +3042,7 @@ function ChatFilesPanel() {
 }
 
 function ChatBansPanel() {
-  const canBan = (useAuth().user?.adminLevel ?? 0) >= 3; // 封禁/解封=管理员 L3+
+  const canBan = (useAuth().user?.adminLevel ?? 0) >= useEffOperate("chat", 3); // 封禁/解封=管理员 L3+
   const utils = trpc.useUtils();
   const q = trpc.admin.chat.listBans.useQuery();
   const [userId, setUserId] = useState("");
@@ -3321,7 +3362,7 @@ function DownloadsAdminPanel() {
   const decideMut = trpc.admin.downloads.decide.useMutation({ onSuccess: onDone });
   const revokeMut = trpc.admin.downloads.revoke.useMutation({ onSuccess: onDone });
   const grantMut = trpc.admin.downloads.grant.useMutation({ onSuccess: onDone });
-  const canDecide = useMyLevel() >= 2; // 批准/拒绝/授权/撤销 = 运营(L2+)；查看员(L1) 只读
+  const canDecide = useMyLevel() >= useEffOperate("downloads", 2); // 批准/拒绝/授权/撤销 = 运营(L2+)；查看员(L1) 只读
   // 折进 busy：级别不足时所有审批/授权/撤销按钮一并禁用（查证文件/预览仍可用）。
   const busy = decideMut.isPending || revokeMut.isPending || grantMut.isPending || !canDecide;
 
@@ -3564,7 +3605,7 @@ function AssetsAdminPanel() {
   const [source, setSource] = useState<"" | "upload" | "generated" | "external">("");
   const [q, setQ] = useState("");
   const utils = trpc.useUtils();
-  const canEdit = useMyLevel() >= 3; // 删除/彻底删除/回填 = 管理员(L3+)；查看员/运营只读（筛选/预览仍可用）
+  const canEdit = useMyLevel() >= useEffOperate("assets", 3); // 删除/彻底删除/回填 = 管理员(L3+)；查看员/运营只读（筛选/预览仍可用）
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [preview, setPreview] = useState<AdminAsset | null>(null);
   const { data: assets, isFetching } = trpc.admin.assets.list.useQuery({
