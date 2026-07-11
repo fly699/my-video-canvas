@@ -4,8 +4,8 @@ import { readFileSync } from "fs";
 import { TRPCError } from "@trpc/server";
 import { mcpServerNames } from "../_core/claudeBridge";
 import { adminProcedure, levelProcedure, router } from "../_core/trpc";
-import { getEffectiveTabLevels, invalidateAdminPermsCache } from "../_core/adminPerms";
-import { EDITABLE_TAB_KEYS, effectiveTabLevels } from "../../shared/adminPerms";
+import { getEffectiveTabAccess, invalidateAdminPermsCache } from "../_core/adminPerms";
+import { EDITABLE_TAB_KEYS, effectiveTabAccess } from "../../shared/adminPerms";
 import * as db from "../db";
 import { getOnlineUserIds, getPresenceStats, getActiveSessions } from "../_core/presence";
 import { invalidateWhitelistCache } from "../_core/whitelist";
@@ -82,19 +82,25 @@ const AUDIT_ACTIONS = [
 ] as const;
 
 export const adminRouter = router({
-  // ── 权限矩阵：各后台页面的最低查看级别（站长 L5 独占编辑；任意管理员可读，供前端过滤 tab）──
+  // ── 权限矩阵：各后台页面的二维级别 {view 可见, operate 可操作}（站长 L5 独占编辑；
+  //    任意管理员可读，供前端过滤 tab / 判定只读）──
   perms: router({
-    get: adminProcedure.query(async () => ({ levels: await getEffectiveTabLevels() })),
+    get: adminProcedure.query(async () => ({ access: await getEffectiveTabAccess() })),
     set: ownerProc
-      .input(z.object({ levels: z.record(z.string().max(32), z.number().int().min(1).max(5)) }))
+      .input(z.object({
+        access: z.record(
+          z.string().max(32),
+          z.object({ view: z.number().int().min(1).max(5), operate: z.number().int().min(1).max(5) }),
+        ),
+      }))
       .mutation(async ({ ctx, input }) => {
-        // 只接受合法 tab 键并钳制（effectiveTabLevels 已做丢弃/钳制/perms 恒 5）
-        const clean: Record<string, number> = {};
-        for (const k of EDITABLE_TAB_KEYS) if (typeof input.levels[k] === "number") clean[k] = input.levels[k];
+        // 只接受合法 tab 键（effectiveTabAccess 再做钳制/丢弃/view≤operate/perms 恒 5）
+        const clean: Record<string, { view: number; operate: number }> = {};
+        for (const k of EDITABLE_TAB_KEYS) if (input.access[k]) clean[k] = input.access[k];
         await db.setAdminPermsJson(JSON.stringify(clean));
         invalidateAdminPermsCache();
-        writeAuditLog({ ctx, action: "admin_perms_set", detail: { levels: clean } });
-        return { levels: effectiveTabLevels(clean) };
+        writeAuditLog({ ctx, action: "admin_perms_set", detail: { access: clean } });
+        return { access: effectiveTabAccess(clean) };
       }),
   }),
 

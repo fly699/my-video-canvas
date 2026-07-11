@@ -81,8 +81,8 @@ describe("对抗③：广播豁免矩阵（聊天室 L3 功能不被 chat 页 L4
 
 describe("对抗④：权限矩阵管理站长独占", () => {
   it("perms.set：L4 超管 FORBIDDEN、L5 站长放行", async () => {
-    await denied(call(4).admin.perms.set({ levels: { logs: 1 } }));
-    await expect(call(5).admin.perms.set({ levels: { logs: 4 } })).resolves.toBeDefined();
+    await denied(call(4).admin.perms.set({ access: { logs: { view: 1, operate: 1 } } }));
+    await expect(call(5).admin.perms.set({ access: { logs: { view: 4, operate: 4 } } })).resolves.toBeDefined();
     await db.setAdminPermsJson("{}"); invalidateAdminPermsCache();
   });
   it("perms.get：任意管理员可读（供前端过滤 tab），非管理员 FORBIDDEN", async () => {
@@ -125,7 +125,86 @@ describe("对抗⑤：setLevel 夺权/提权守卫", () => {
   });
 });
 
-describe("对抗⑥：非管理员/未登录彻底挡在门外", () => {
+describe("对抗⑥：跨页共享的非敏感只读端点豁免（不误伤），但敏感数据/写仍受矩阵强制", () => {
+  // whitelist.getSettings 只回 4 个功能布尔标志，被 KiePanel(kie 页 L1) 与白名单页共同只读引用，
+  // 豁免矩阵——否则 L1/L2 管理员打开 KIE 页就 403。而真正敏感的 listEntries（IP 明细）与写开关
+  // 仍是 managerProc + whitelist 页矩阵，绝不豁免（否则就是「前端藏、API 通」的自欺欺人）。
+  it("getSettings：L1 查看员可读（默认），豁免生效", async () => {
+    await expect(call(1).admin.whitelist.getSettings()).resolves.toBeDefined();
+  });
+  it("站长把「白名单」收紧到 L5 后，getSettings 仍 L1 可读（豁免不随页面收紧误伤 KIE 页）", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ whitelist: 5 }));
+    invalidateAdminPermsCache();
+    await expect(call(1).admin.whitelist.getSettings()).resolves.toBeDefined();
+    await expect(call(3).admin.whitelist.getSettings()).resolves.toBeDefined();
+  });
+  it("敏感的 listEntries（IP 明细）：默认受静态 managerProc L3 拦 L1/L2", async () => {
+    await denied(call(1).admin.whitelist.listEntries());
+    await denied(call(2).admin.whitelist.listEntries());
+    await expect(call(3).admin.whitelist.listEntries()).resolves.toBeDefined();
+  });
+  it("站长把「白名单」收紧到 L5 → 敏感 listEntries 对 L3/L4 变 FORBIDDEN（矩阵强制，无 API 绕过）", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ whitelist: 5 }));
+    invalidateAdminPermsCache();
+    await denied(call(3).admin.whitelist.listEntries());
+    await denied(call(4).admin.whitelist.listEntries());
+    await expect(call(5).admin.whitelist.listEntries()).resolves.toBeDefined();
+  });
+  it("站长把「白名单」收紧到 L5 → 敏感写开关 setEnabled 对 L4 变 FORBIDDEN", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ whitelist: 5 }));
+    invalidateAdminPermsCache();
+    await denied(call(4).admin.whitelist.setEnabled({ enabled: false }));
+  });
+});
+
+describe("对抗⑦：双级别矩阵（view 门控读 / operate 门控写），只读层生效且写不被绕过", () => {
+  // 站长把「操作日志」页设为 view=2 / operate=4：L2/L3 可只读查看日志，但清空(写)仍需 L4。
+  it("logs view=2/operate=4：L2 可读 list（query 走 view），但清空(mutation 走 operate)被拒", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ logs: { view: 2, operate: 4 } }));
+    invalidateAdminPermsCache();
+    await expect(call(2).admin.logs.list({ limit: 5, offset: 0 })).resolves.toBeDefined(); // 只读放行
+    await expect(call(3).admin.logs.list({ limit: 5, offset: 0 })).resolves.toBeDefined();
+    await denied(call(2).admin.logs.clear()); // 写：operate=4，L2 拒
+    await denied(call(3).admin.logs.clear()); // 写：operate=4，L3 拒
+    await expect(call(4).admin.logs.clear()).resolves.toBeDefined(); // L4 放行
+  });
+  it("logs view=1：L1 查看员可只读读取日志（view 权威可降到 L1）", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ logs: { view: 1, operate: 4 } }));
+    invalidateAdminPermsCache();
+    await expect(call(1).admin.logs.list({ limit: 5, offset: 0 })).resolves.toBeDefined();
+    await denied(call(1).admin.logs.clear());
+  });
+  it("view 不得高于 operate：给 view>operate 会被钳制（chat view=5/operate=2 → 实际 2/2）", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ chat: { view: 5, operate: 2 } }));
+    invalidateAdminPermsCache();
+    // 钳制后 view=2：L2 可读 listConversations
+    await expect(call(2).admin.chat.listConversations({})).resolves.toBeDefined();
+  });
+});
+
+describe("对抗⑧：命名空间外的后台管理端点也受矩阵强制（堵「前端藏、API 通」自欺欺人）", () => {
+  // comfyStress/comfyOps 挂在顶层 router、全局 ComfyUI 服务器写挂在 comfyui.*——都不在 admin.* 下，
+  // 若矩阵不显式登记，站长收紧对应页只会隐藏前端入口、后端 API 仍可直调。
+  it("comfyStress.list（归 comfyStress 页）：view 收紧到 L5 后，L3/L4 直调 API 被拒", async () => {
+    await expect(call(3).comfyStress.list()).resolves.toBeDefined(); // 默认 view=1，任意管理员可读
+    await db.setAdminPermsJson(JSON.stringify({ comfyStress: { view: 5, operate: 5 } }));
+    invalidateAdminPermsCache();
+    await denied(call(3).comfyStress.list());
+    await denied(call(4).comfyStress.list());
+    await expect(call(5).comfyStress.list()).resolves.toBeDefined();
+  });
+  it("comfyui.setGlobalServers（全局 ComfyUI 服务器写，归 comfyServers 页）：operate 收紧到 L5 后 L3/L4 直调被拒", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ comfyServers: { view: 1, operate: 5 } }));
+    invalidateAdminPermsCache();
+    await denied(call(3).comfyui.setGlobalServers({ servers: [] }));
+    await denied(call(4).comfyui.setGlobalServers({ servers: [] }));
+    await expect(call(5).comfyui.setGlobalServers({ servers: [] })).resolves.toMatchObject({ ok: true });
+  });
+  // 注：画布共享只读 comfyui.serverStatus/globalServers 是 protectedProcedure，不经 enforceAdminMatrix，
+  // 天然不受 comfyServers 矩阵影响（adminPerms.test.ts 已断言其 adminTabFromRpcPath 返回 null）。
+});
+
+describe("对抗⑨：非管理员/未登录彻底挡在门外", () => {
   it("普通用户 & 未登录访问 admin 端点 → FORBIDDEN / UNAUTHORIZED", async () => {
     await denied(call(0).admin.logs.list({ limit: 1, offset: 0 }));
     const anon = appRouter.createCaller({ ...ctxAt(0), user: null });

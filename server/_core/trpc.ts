@@ -4,17 +4,22 @@ import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { adminTabFromRpcPath } from "../../shared/adminPerms";
 
-/** 页面权限矩阵的统一后端强制：凡是 admin.* 端点（广播/perms 等豁免除外），
- *  除各自的静态级别门控外，还须满足站长在「权限管理」页为该页设置的最低级别。
- *  这样站长收紧任一页面时，低级管理员既看不到入口、也无法经 API 绕过（深度防御）。
- *  已通过静态门控（role=admin）后才调用；矩阵只会在静态级别之上收紧，不会放松。 */
-async function enforceAdminMatrix(ctx: TrpcContext): Promise<void> {
+/** 页面权限矩阵的统一后端强制：凡是 admin.* 端点（广播/perms 等豁免除外），除各自的静态级别
+ *  门控外，还须满足站长在「权限管理」页为该页设置的二维级别——读接口(query)按 view、写接口
+ *  (mutation)按 operate。这样站长收紧任一页面时，低级管理员既看不到入口、也无法经 API 绕过
+ *  （深度防御）；把 view 降到 operate 以下即启用「可见但只读」。已通过静态门控（role=admin）后
+ *  才调用；矩阵只在静态级别之上收紧，不会放松。 */
+async function enforceAdminMatrix(ctx: TrpcContext, isMutation: boolean): Promise<void> {
   const tab = adminTabFromRpcPath(ctx.rpcPath);
   if (!tab) return;
-  const { getTabMinLevel } = await import("./adminPerms");
-  const need = await getTabMinLevel(tab);
+  const { getTabAccess } = await import("./adminPerms");
+  const access = await getTabAccess(tab);
+  const need = isMutation ? access.operate : access.view;
   if ((ctx.user?.adminLevel ?? 0) < need) {
-    throw new TRPCError({ code: "FORBIDDEN", message: `该页面需管理员级别 L${need} 及以上` });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: isMutation ? `该操作需管理员级别 L${need} 及以上` : `该页面需管理员级别 L${need} 及以上`,
+    });
   }
 }
 
@@ -53,12 +58,12 @@ export const protectedProcedure = t.procedure.use(stampPath).use(requireUser);
 
 export const adminProcedure = t.procedure.use(stampPath).use(
   t.middleware(async opts => {
-    const { ctx, next } = opts;
+    const { ctx, next, type } = opts;
 
     if (!ctx.user || ctx.user.role !== 'admin') {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
-    await enforceAdminMatrix(ctx); // 页面权限矩阵后端强制（admin.* 端点，豁免除外）
+    await enforceAdminMatrix(ctx, type === "mutation"); // 页面权限矩阵后端强制（读→view、写→operate）
 
     return next({
       ctx: {
@@ -75,11 +80,11 @@ export const adminProcedure = t.procedure.use(stampPath).use(
 export function levelProcedure(minLevel: number) {
   return t.procedure.use(stampPath).use(
     t.middleware(async opts => {
-      const { ctx, next } = opts;
+      const { ctx, next, type } = opts;
       if (!ctx.user || ctx.user.role !== 'admin' || (ctx.user.adminLevel ?? 0) < minLevel) {
         throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
       }
-      await enforceAdminMatrix(ctx); // admin.* 端点叠加页面矩阵（非 admin 路径与豁免端点自动跳过）
+      await enforceAdminMatrix(ctx, type === "mutation"); // admin.* 端点叠加页面矩阵（读→view、写→operate；非 admin/豁免端点自动跳过）
       return next({ ctx: { ...ctx, user: ctx.user } });
     }),
   );
