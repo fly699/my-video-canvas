@@ -113,6 +113,8 @@ export type AuditAction =
   | "log_email_settings"
   | "log_email_send"
   | "admin_perms_set"
+  | "config_export"
+  | "config_import"
   | "user_delete"
   | "admin_set_level"
   | "user_change_password"

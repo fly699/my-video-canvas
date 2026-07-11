@@ -5,6 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, BrainCircuit, Search, Send, type LucideIcon } from "lucide-react";
 import { ConfigChecklistPanel } from "@/components/admin/ConfigChecklistPanel";
+import { ConfigBackupSection } from "@/components/admin/ConfigBackupSection";
 import { ComfyServersPanel } from "@/components/admin/ComfyServersPanel";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
 import { ComfyOpsPanel } from "@/components/admin/ComfyOpsPanel";
@@ -1700,6 +1701,9 @@ function SystemUpdatePanel() {
           )}
         </div>
       )}
+
+      {/* #75 全量配置导入/导出（站长 L5，服务端 ownerProc 硬门控） */}
+      <ConfigBackupSection />
     </div>
   );
 }
