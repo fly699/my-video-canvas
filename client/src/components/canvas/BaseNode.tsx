@@ -22,7 +22,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2, Lock,
-  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes, Focus, Eraser,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes, Focus, Eraser, Columns2,
 } from "lucide-react";
 import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
 import { downloadMedia } from "../../lib/download";
@@ -390,6 +390,21 @@ export const BaseNode = memo(function BaseNode({
     // select the new node from FRESH state (addNode/updateNodeData replaced the array)
     useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
     toast.success(`已创建「${label}」编辑节点（已连源图，点运行生成）`, { duration: 1800 });
+  };
+  // 生成版本/素材对比：一键建「对比」节点（A 路预填本节点结果并连线；B 路由用户
+  // 再连一路，或在另一节点上也点「对比」后手动接入）。图/视频结果均可。
+  const spawnCompare = (mediaUrl: string) => {
+    const st = useCanvasStore.getState();
+    const self = st.nodes.find((n) => n.id === id);
+    if (!self) return;
+    const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
+    let node;
+    try { node = st.addNode("compare", { x: self.position.x + w + 60, y: self.position.y }); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
+    st.updateNodeData(node.id, { aUrl: mediaUrl });
+    st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
+    useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
+    toast.success("已创建「对比」节点（A 路=本结果，再连一路即可左右对比）", { duration: 2200 });
   };
   const QUICK_EDITS: { op: ImageEditOp; label: string; Icon: typeof Scissors }[] = [
     { op: "upscale", label: "高清", Icon: Sparkles },
@@ -903,6 +918,17 @@ export const BaseNode = memo(function BaseNode({
                 style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
               >
                 <Scissors size={12} /> 快剪
+              </button>
+            )}
+            {/* 生成版本/素材对比入口：有图或视频结果即可（compare 节点自身除外） */}
+            {(resultImageUrl || resultVideoUrl) && nodeType !== "compare" && (
+              <button
+                onClick={(e) => { e.stopPropagation(); spawnCompare(resultVideoUrl || resultImageUrl!); }}
+                title="对比：建「对比」节点（A 路=本结果），再连一路即可左右滑块对比（视频可同步播放）"
+                className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+              >
+                <Columns2 size={12} /> 对比
               </button>
             )}
             {/* Liblib-style quick AI-edit actions — only for nodes with an image result.
