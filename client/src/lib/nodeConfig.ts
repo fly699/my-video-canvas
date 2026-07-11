@@ -108,13 +108,13 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   },
   compare: {
     type: "compare",
-    label: "图片对比",
+    label: "对比",
     icon: "Columns2",
     color: "oklch(0.70 0.15 210)",
     bgColor: "oklch(0.70 0.15 210 / 0.08)",
     borderColor: "oklch(0.70 0.15 210 / 0.4)",
     defaultWidth: 320,
-    defaultTitle: "图片对比",
+    defaultTitle: "对比",
   },
   audio: {
     type: "audio",
