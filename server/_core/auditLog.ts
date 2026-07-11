@@ -107,6 +107,7 @@ export type AuditAction =
   | "llm_logs_cleared"
   | "log_email_settings"
   | "log_email_send"
+  | "admin_perms_set"
   | "user_delete"
   | "admin_set_level"
   | "user_change_password"

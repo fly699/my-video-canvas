@@ -59,6 +59,47 @@ export function isUserOnline(userId: number): boolean {
   return (map.get(userId)?.count ?? 0) > 0;
 }
 
+// ── 活跃会话登记（溯源用）──────────────────────────────────────────────────
+// 每个 socket 连接登记一条会话（IP + 设备/会话指纹 + UA + 上线时刻），供管理后台
+// 「在线状态」按会话粒度展示：同一账号在不同设备/浏览器/网络的多处登录会分别列出，
+// 精确追溯「同账号多人同时使用」。内存态，随重启清零（与在线状态本身一致）。
+export interface SessionMeta {
+  userId: number;
+  ip: string;
+  deviceFp: string | null;
+  userAgent: string | null;
+  sessionFp: string | null;
+  connectedAt: number;
+}
+const sessions = new Map<string, SessionMeta>(); // socketId → meta
+
+export function registerSocketSession(socketId: string, meta: SessionMeta): void {
+  if (!socketId) return;
+  sessions.set(socketId, meta);
+}
+export function unregisterSocketSession(socketId: string): void {
+  sessions.delete(socketId);
+}
+
+/** 活跃会话（按「用户 + 会话指纹 + 设备指纹 + IP」聚合去重——同一浏览器会话的多个
+ *  socket/命名空间只算一条），供管理后台在线状态展示。同账号多处登录→多条。 */
+export function getActiveSessions(): Array<{
+  userId: number; ip: string; deviceFp: string | null; userAgent: string | null;
+  sessionFp: string | null; connectedAt: number; socketCount: number;
+}> {
+  const agg = new Map<string, { m: SessionMeta; count: number; earliest: number }>();
+  sessions.forEach((m) => {
+    const key = `${m.userId}|${m.sessionFp ?? ""}|${m.deviceFp ?? ""}|${m.ip}`;
+    const e = agg.get(key);
+    if (e) { e.count += 1; e.earliest = Math.min(e.earliest, m.connectedAt); }
+    else agg.set(key, { m, count: 1, earliest: m.connectedAt });
+  });
+  return Array.from(agg.values()).map(({ m, count, earliest }) => ({
+    userId: m.userId, ip: m.ip, deviceFp: m.deviceFp, userAgent: m.userAgent,
+    sessionFp: m.sessionFp, connectedAt: earliest, socketCount: count,
+  })).sort((a, b) => a.userId - b.userId || b.connectedAt - a.connectedAt);
+}
+
 /** 在线状态 + 今日在线时长（秒）。含已下线但今日有累计时长的用户，供管理后台显示。 */
 export function getPresenceStats(): { userId: number; online: boolean; todaySeconds: number }[] {
   const now = Date.now();

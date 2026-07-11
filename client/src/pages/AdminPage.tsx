@@ -20,9 +20,10 @@ import { TunnelPanel } from "@/components/admin/TunnelPanel";
 import { BroadcastComposer } from "@/components/chat/BroadcastComposer";
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
+import { DEFAULT_TAB_LEVELS, ADMIN_LEVEL_LABELS, EDITABLE_TAB_KEYS } from "@shared/adminPerms";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "perms" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
 
 // 标签页定义：[key, 中文标签, 图标]
 const TAB_DEFS: [Tab, string, LucideIcon][] = [
@@ -46,6 +47,7 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["config", "配置体检", ClipboardCheck],
   ["report", "工作成果报告", FileBarChart2],
   ["intro", "项目功能汇报", FileText],
+  ["perms", "权限管理", KeyRound],
 ];
 
 // 管理员级别 → 可执行的「写操作」最低级别（与服务端 levelProcedure 一致）：
@@ -81,20 +83,28 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 // 「白名单管理」「下载审批」限管理员 L3+（查看员 L1、运营 L2 均无权，含查看）。
-const L3_ONLY_TABS = new Set<Tab>(["whitelist", "downloads"]);
-
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
   const myLevel = user?.adminLevel ?? 0;
+  // 权限矩阵（站长在「权限管理」页配置各页最低查看级别；默认日志/聊天=L4、白名单/下载审批=L3）。
+  // 服务端对日志/聊天接口同口径强制，这里只做 tab 可见性与越权兜底跳转。
+  const permsQ = trpc.admin.perms.get.useQuery(undefined, { enabled: user?.role === "admin", staleTime: 30_000 });
+  const tabLevels = permsQ.data?.levels ?? DEFAULT_TAB_LEVELS;
+  const tabAllowed = (tab: Tab) => myLevel >= (tabLevels[tab] ?? 1);
   // Initial tab comes from ?tab= so deep links (e.g. a download-approval "查看")
   // land on the right sub-page instead of the default.
   const [activeTab, setActiveTab] = useState<Tab>(() => adminTabFromUrl() as Tab);
   const [, navigate] = useLocation();
 
-  // 低于 L3 的管理员若（经深链/事件）落到受限标签，跳回一个安全默认页，避免看到无权面板。
+  // 越权兜底：（经深链/事件）落到无权标签时跳回第一个有权限的页，避免看到无权面板。
   useEffect(() => {
-    if (myLevel < 3 && L3_ONLY_TABS.has(activeTab)) setActiveTab("logs");
-  }, [myLevel, activeTab]);
+    if (!permsQ.data) return;
+    if (!tabAllowed(activeTab)) {
+      const first = TAB_DEFS.find(([t]) => tabAllowed(t))?.[0];
+      if (first && first !== activeTab) setActiveTab(first);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myLevel, activeTab, permsQ.data]);
 
   // Switch tab when a deep-link event fires while this page is already mounted
   // (a query-only URL change doesn't remount the page).
@@ -202,7 +212,7 @@ export default function AdminPage() {
 
         {/* Tabs — 胶囊式（带图标） */}
         <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px", animationDelay: "60ms" }}>
-          {TAB_DEFS.filter(([tab]) => myLevel >= 3 || !L3_ONLY_TABS.has(tab)).map(([tab, label, Icon]) => {
+          {TAB_DEFS.filter(([tab]) => tabAllowed(tab)).map(([tab, label, Icon]) => {
             const active = activeTab === tab;
             return (
               <button
@@ -260,6 +270,7 @@ export default function AdminPage() {
           {activeTab === "auth" && <LevelGate need={3}><AuthPanel /></LevelGate>}
           {activeTab === "logs" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}><LogEmailCard /><LogsPanel /></div>}
           {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
+          {activeTab === "perms" && <PermsPanel />}
           {activeTab === "llmLogs" && <LlmLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
           {activeTab === "models" && <LevelGate need={3}><ModelsPanel /></LevelGate>}
@@ -281,7 +292,7 @@ export default function AdminPage() {
 }
 
 // 管理员级别标签（与服务端 levelProcedure 一致）。
-const ADMIN_LEVELS: [number, string][] = [[0, "普通用户"], [1, "查看员"], [2, "运营"], [3, "管理员"], [4, "超级管理员"]];
+const ADMIN_LEVELS: [number, string][] = [[0, "普通用户"], [1, "查看员"], [2, "运营"], [3, "管理员"], [4, "超级管理员"], [5, "站长"]];
 const adminLevelLabel = (lv: number) => ADMIN_LEVELS.find(([n]) => n === lv)?.[1] ?? "普通用户";
 
 /** 当前登录管理员的级别（0 普通 … 4 超管）。 */
@@ -334,6 +345,9 @@ function UsersPanel() {
   const statMap = new Map((onlineStats ?? []).map((s) => [s.userId, s]));
   const onlineSet = new Set((onlineStats ?? []).filter((s) => s.online).map((s) => s.userId));
   const onlineCount = onlineSet.size;
+  // 活跃会话（同账号多登录分列，含 IP/指纹）——可展开
+  const [showSessions, setShowSessions] = useState(false);
+  const { data: activeSessions } = trpc.admin.users.activeSessions.useQuery(undefined, { refetchInterval: 15000, enabled: showSessions });
   const fmtDur = (sec: number): string => {
     if (sec < 60) return `${sec}秒`;
     const m = Math.floor(sec / 60);
@@ -414,7 +428,39 @@ function UsersPanel() {
               {pendingCount} 个待审批
             </span>
           )}
+          <button onClick={() => setShowSessions((v) => !v)} style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 99, background: showSessions ? "oklch(0.65 0.18 250 / 0.18)" : "var(--c-surface, rgba(255,255,255,0.05))", color: showSessions ? "oklch(0.68 0.16 250)" : "var(--c-t2)", border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))", cursor: "pointer" }}>
+            {showSessions ? "收起活跃会话" : "活跃会话 · IP/指纹"}
+          </button>
         </div>
+        {/* 活跃会话：同一账号在不同设备/浏览器/网络的登录分别列出，含 IP + 设备/会话指纹，
+            用于溯源「同账号多人同时使用」。会话粒度 = 用户+会话指纹+设备指纹+IP 去重。 */}
+        {showSessions && (
+          <div style={{ marginTop: 10, border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 8, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 720 }}>
+              <thead><tr style={{ background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+                {["用户", "IP", "设备指纹", "会话指纹", "连接数", "上线时刻", "UA"].map((h) => <th key={h} style={{ padding: "6px 9px", textAlign: "left", color: "var(--c-t3)", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {(activeSessions ?? []).length === 0 ? (
+                  <tr><td colSpan={7} style={{ padding: 14, textAlign: "center", color: "var(--c-t4)" }}>暂无活跃会话（无人在线，或刚重启）</td></tr>
+                ) : (activeSessions ?? []).map((s, i) => (
+                  <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t1)", whiteSpace: "nowrap" }}>{s.userName ?? "?"} <span style={{ color: "var(--c-t4)", fontFamily: "monospace" }}>#{s.userId}</span></td>
+                    <td style={{ padding: "6px 9px", fontFamily: "monospace", color: "var(--c-t1)", whiteSpace: "nowrap" }}>{s.ip}</td>
+                    <td style={{ padding: "6px 9px", fontFamily: "monospace", color: "var(--c-t2)", whiteSpace: "nowrap" }} title={s.deviceFp ?? ""}>{s.deviceFp ? s.deviceFp.slice(0, 12) : "—"}</td>
+                    <td style={{ padding: "6px 9px", fontFamily: "monospace", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{s.sessionFp ?? "—"}</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t3)", textAlign: "center" }}>{s.socketCount}</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{new Date(s.connectedAt).toLocaleString("zh-CN", { hour12: false })}</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t4)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.userAgent ?? ""}>{s.userAgent ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ padding: "6px 10px", fontSize: 11, color: "var(--c-t4)", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+              同一账号出现多行 = 多处登录（不同设备/浏览器/IP）。设备指纹相同但 IP/会话不同 = 同一设备多次登录；设备指纹不同 = 不同设备/人。
+            </div>
+          </div>
+        )}
         <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--c-t2)", lineHeight: 1.5 }}>
           重置密码、冻结/解冻、删除用户。冻结的用户无法登录、现有会话立即失效。不能对自己冻结或删除。
           {isSuper
@@ -498,7 +544,7 @@ function UsersPanel() {
                           disabled={setLevelMut.isPending}
                           style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer" }}
                         >
-                          {ADMIN_LEVELS.map(([lv, lb]) => <option key={lv} value={lv}>{lb}</option>)}
+                          {ADMIN_LEVELS.filter(([lv]) => lv <= (me?.adminLevel ?? 0)).map(([lv, lb]) => <option key={lv} value={lv}>{lb}</option>)}
                         </select>
                       ) : (
                         <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
@@ -2023,7 +2069,7 @@ function LogsPanel() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
             <thead>
               <tr>
-                {["时间", "用户", "IP 地址", "地区", "操作类型", "详情"].map((h) => (
+                {["时间", "用户", "IP 地址", "设备指纹", "地区", "操作类型", "详情"].map((h) => (
                   <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "var(--c-t2, rgba(255,255,255,0.4))", fontWeight: 500, borderBottom: "1px solid rgba(255,255,255,0.06)", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
@@ -2044,6 +2090,11 @@ function LogsPanel() {
                       {log.userId != null && <div style={{ fontSize: "10px", color: "var(--c-t2, rgba(255,255,255,0.28))", fontFamily: "monospace" }}>ID: {log.userId}</div>}
                     </td>
                     <td style={{ ...tdStyle, fontFamily: "monospace", color: "var(--c-t1, #f0f0f4)", whiteSpace: "nowrap" }}>{log.ip}</td>
+                    <td style={{ ...tdStyle, whiteSpace: "nowrap", fontFamily: "monospace", fontSize: "11px", color: "var(--c-t2, rgba(255,255,255,0.5))" }}
+                      title={`设备指纹：${log.deviceFp ?? "—"}\n会话指纹：${log.sessionFp ?? "—"}\nUA：${log.userAgent ?? "—"}`}>
+                      {log.deviceFp ? String(log.deviceFp).slice(0, 10) : "—"}
+                      {log.sessionFp && <div style={{ fontSize: "10px", color: "var(--c-t2, rgba(255,255,255,0.3))" }}>会话 {String(log.sessionFp).slice(0, 8)}</div>}
+                    </td>
                     <td style={{ ...tdStyle, color: "var(--c-t2, rgba(255,255,255,0.45))", whiteSpace: "nowrap" }}>{geo}</td>
                     <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
                       <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: `color-mix(in oklch, ${actionColor} 15%, transparent)`, color: actionColor, border: `1px solid color-mix(in oklch, ${actionColor} 30%, transparent)` }}>
@@ -2275,6 +2326,75 @@ function ComfyUsageLogsPanel() {
   );
 }
 
+
+
+
+// ── 权限管理（站长 L5 独占）────────────────────────────────────────────────────
+// 配置各后台页面的最低可见/可查级别。日志三页 + 聊天管理默认 L4；服务端对这些页面的
+// 接口按同一矩阵强制（改矩阵 30 秒内全局生效）。「权限管理」页自身恒 L5 不可下放。
+function PermsPanel() {
+  const utils = trpc.useUtils();
+  const q = trpc.admin.perms.get.useQuery();
+  const mu = trpc.admin.perms.set.useMutation({
+    onSuccess: () => { utils.admin.perms.get.invalidate(); toast.success("权限矩阵已保存（30 秒内全局生效）"); setDirty({}); },
+    onError: (e) => toast.error("保存失败：" + e.message),
+  });
+  const [dirty, setDirty] = useState<Record<string, number>>({});
+  const levels = q.data?.levels;
+  if (!levels) return <div style={cardStyle}><p style={{ color: "var(--c-t3)", fontSize: 13, margin: 0 }}>加载中…</p></div>;
+  const cur = (tab: string) => dirty[tab] ?? levels[tab] ?? 1;
+  const tabLabel = (tab: string) => TAB_DEFS.find(([t]) => t === tab)?.[1] ?? tab;
+  const changed = Object.keys(dirty).some((k) => dirty[k] !== (levels[k] ?? 1));
+  const save = () => {
+    const merged: Record<string, number> = {};
+    for (const k of EDITABLE_TAB_KEYS) merged[k] = dirty[k] ?? levels[k] ?? 1;
+    mu.mutate({ levels: merged });
+  };
+  const groups: [string, string[]][] = [
+    ["日志与审计", ["logs", "comfyLogs", "llmLogs"]],
+    ["聊天与用户", ["chat", "users", "auth", "whitelist", "downloads"]],
+    ["资源与模型", ["assets", "storage", "models", "kie"]],
+    ["ComfyUI", ["comfyServers", "comfyStress", "comfyOps"]],
+    ["系统", ["tunnel", "system", "config", "report", "intro"]],
+  ];
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Shield style={{ width: 16, height: 16, color: "oklch(0.72 0.19 25)" }} />
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1)" }}>权限管理（站长）</h3>
+        </div>
+        <button onClick={save} disabled={!changed || mu.isPending}
+          style={{ padding: "8px 18px", borderRadius: 9, border: "1px solid oklch(0.72 0.19 25 / 0.5)", background: changed ? "oklch(0.72 0.19 25 / 0.14)" : "var(--c-surface)", color: changed ? "oklch(0.75 0.17 25)" : "var(--c-t4)", fontWeight: 700, fontSize: 13, cursor: changed ? "pointer" : "not-allowed" }}>
+          {mu.isPending ? "保存中…" : "保存权限矩阵"}
+        </button>
+      </div>
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--c-t3)", lineHeight: 1.6 }}>
+        为每个后台页面设置<b>最低可见级别</b>（1=查看员 · 2=运营 · 3=管理员 · 4=超级管理员 · 5=站长）。
+        低于该级别的管理员看不到对应页面；日志三页与聊天管理的服务端接口按同一矩阵强制（页内写操作另有各自的固定下限，矩阵只收紧不放松）。
+        「权限管理」页自身恒为站长专属，不可下放。
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {groups.map(([g, tabs]) => (
+          <div key={g}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>{g}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>
+              {tabs.map((tab) => (
+                <div key={tab} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 11px", borderRadius: 9, border: `1px solid ${cur(tab) !== (levels[tab] ?? 1) ? "oklch(0.72 0.19 25 / 0.55)" : "var(--c-bd1, rgba(255,255,255,0.07))"}`, background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+                  <span style={{ fontSize: 13, color: "var(--c-t1)" }}>{tabLabel(tab)}</span>
+                  <select value={cur(tab)} onChange={(e) => setDirty((d) => ({ ...d, [tab]: Number(e.target.value) }))}
+                    style={{ ...inputStyle, width: "auto", padding: "4px 8px", fontSize: 12 }}>
+                    {ADMIN_LEVEL_LABELS.filter(([lv]) => lv >= 1).map(([lv, lb]) => <option key={lv} value={lv}>L{lv} {lb}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 
 // ── 日志加密打包邮送设置 ────────────────────────────────────────────────────────
@@ -2667,6 +2787,7 @@ function ChatAdminPanel() {
       <ChatSettingsPanel />
       <ChatConversationsPanel />
       <ChatMessageSearchPanel />
+      <ChatFilesPanel />
       <ChatBansPanel />
     </div>
   );
@@ -2812,6 +2933,69 @@ function ChatMessageSearchPanel() {
         </table>
       )}
       {q.data && !q.data.encrypted && q.data.rows.length === 0 && <p style={chatDim}>无匹配消息</p>}
+    </div>
+  );
+}
+
+// 聊天附件/媒体浏览：列出用户在聊天里上传的全部文件（图片缩略图可点开预览、视频内联、
+// 其它给下载链接），可按会话 ID 过滤。走 /manus-storage 门控代理，与聊天内一致。
+function ChatFilesPanel() {
+  const [convId, setConvId] = useState("");
+  const [applied, setApplied] = useState<number | undefined>(undefined);
+  const [page, setPage] = useState(0);
+  const [preview, setPreview] = useState<string | null>(null);
+  const PAGE = 40;
+  const q = trpc.admin.chat.listFiles.useQuery({ conversationId: applied, limit: PAGE, offset: page * PAGE });
+  const rows = q.data?.rows ?? [];
+  const total = q.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE));
+  const fmtSize = (n: number) => n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : n >= 1024 ? `${(n / 1024).toFixed(0)}KB` : `${n}B`;
+  return (
+    <div style={chatCard}>
+      <h3 style={chatCardTitle}>附件 / 媒体浏览{total > 0 && <span style={{ fontWeight: 400, color: "var(--c-t3)", fontSize: 12, marginLeft: 8 }}>（共 {total} 个）</span>}</h3>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <input placeholder="会话ID（留空=全部）" value={convId} onChange={(e) => setConvId(e.target.value.replace(/[^\d]/g, ""))} style={{ ...chatInput, width: 150 }} />
+        <button onClick={() => { setPage(0); setApplied(convId ? Number(convId) : undefined); }} style={chatPrimarySm}>筛选</button>
+        <button onClick={() => q.refetch()} style={{ ...chatPrimarySm, background: "var(--c-surface, rgba(255,255,255,0.05))", color: "var(--c-t2)" }}>刷新</button>
+        <span style={{ fontSize: 11, color: "var(--c-t4)" }}>点击图片放大预览；视频/其它文件走门控下载</span>
+      </div>
+      {q.isLoading ? <p style={chatDim}>加载中…</p> : rows.length === 0 ? <p style={chatDim}>无附件</p> : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+          {rows.map((f) => (
+            <div key={f.id} style={{ border: "1px solid var(--c-bd1, rgba(255,255,255,0.07))", borderRadius: 8, overflow: "hidden", background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+              <div style={{ height: 110, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.2)", overflow: "hidden" }}>
+                {f.kind === "image" ? (
+                  <img src={f.url} alt={f.name} onClick={() => setPreview(f.url)} draggable={false}
+                    onContextMenu={(e) => e.preventDefault()}
+                    style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "cover", cursor: "zoom-in", WebkitTouchCallout: "none", userSelect: "none" }} />
+                ) : f.kind === "video" ? (
+                  <video src={f.url} controls controlsList="nodownload noremoteplayback" disablePictureInPicture onContextMenu={(e) => e.preventDefault()} style={{ maxWidth: "100%", maxHeight: "100%" }} />
+                ) : (
+                  <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize: 28 }} title="下载">📄</a>
+                )}
+              </div>
+              <div style={{ padding: "6px 8px" }}>
+                <div style={{ fontSize: 11.5, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>{f.name}</div>
+                <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 2 }}>会话#{f.conversationId} · 上传者#{f.uploaderId} · {fmtSize(f.size)}</div>
+                <div style={{ fontSize: 10, color: "var(--c-t4)" }}>{new Date(f.createdAt).toLocaleString("zh-CN", { hour12: false })}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {totalPages > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12, fontSize: 11.5, color: "var(--c-t3)", alignItems: "center" }}>
+          <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={paginBtn}>‹ 上一页</button>
+          <span>{page + 1} / {totalPages}</span>
+          <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={paginBtn}>下一页 ›</button>
+        </div>
+      )}
+      {preview && createPortal(
+        <div onClick={() => setPreview(null)} style={{ position: "fixed", inset: 0, zIndex: 10001, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out" }}>
+          <img src={preview} alt="" onContextMenu={(e) => e.preventDefault()} draggable={false} style={{ maxWidth: "95vw", maxHeight: "92vh", objectFit: "contain", WebkitTouchCallout: "none", userSelect: "none" }} />
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

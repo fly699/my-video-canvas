@@ -30,6 +30,7 @@ import {
   type InsertLlmUsageLog,
   logEmailSettings,
   type LogEmailSettingsRow,
+  adminPermSettings,
   poyoBalanceSnapshots,
   projectCollaborators,
   projectShareLinks,
@@ -2491,6 +2492,23 @@ export async function setLogEmailSettings(patch: Partial<Omit<LogEmailSettingsRo
   if (!db) { devLogEmailSettings = { ...devLogEmailSettings, ...patch, updatedAt: new Date() }; return devLogEmailSettings; }
   await db.insert(logEmailSettings).values({ id: 1, ...patch }).onDuplicateKeyUpdate({ set: patch });
   return getLogEmailSettings();
+}
+
+// ── 管理后台权限矩阵（单行 id=1，permsJson 覆盖值）──────────────────────────
+
+let devAdminPermsJson: string | null = null;
+
+export async function getAdminPermsJson(): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return devAdminPermsJson;
+  const rows = await db.select().from(adminPermSettings).where(eq(adminPermSettings.id, 1)).limit(1);
+  return rows[0]?.permsJson ?? null;
+}
+
+export async function setAdminPermsJson(json: string): Promise<void> {
+  const db = await getDb();
+  if (!db) { devAdminPermsJson = json; return; }
+  await db.insert(adminPermSettings).values({ id: 1, permsJson: json }).onDuplicateKeyUpdate({ set: { permsJson: json } });
 }
 
 // ── Poyo balance snapshots ──────────────────────────────────────────────────

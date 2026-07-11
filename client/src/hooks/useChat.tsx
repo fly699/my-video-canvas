@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { trpc } from "@/lib/trpc";
+import { getDeviceFingerprint } from "@/lib/deviceFingerprint";
 import type {
   ChatWireMessage, ChatPresenceUser, ChatRelayPayload, ChatFileRef,
 } from "@shared/types";
@@ -228,7 +229,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       path: "/api/socket",
       transports: ["websocket", "polling"],
       withCredentials: true,
-      auth: devUser ? { devUser: Number(devUser) } : {},
+      // deviceFp 走 auth 通道（websocket 握手不能设自定义头）——在线状态溯源用
+      auth: { ...(devUser ? { devUser: Number(devUser) } : {}), deviceFp: getDeviceFingerprint() ?? undefined },
     });
     socketRef.current = socket;
     socket.on("connect", () => {

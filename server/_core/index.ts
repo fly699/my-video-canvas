@@ -14,8 +14,8 @@ import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
 import { registerClaudeBridge, setBridgeSelfHttpPort } from "./claudeBridge";
 import { appRouter } from "../routers";
-import { createContext, resolveRequestUser, applyAuthGates } from "./context";
-import { markOnline, markOffline } from "./presence";
+import { createContext, resolveRequestUser, applyAuthGates, extractSocketTrace } from "./context";
+import { markOnline, markOffline, registerSocketSession, unregisterSocketSession } from "./presence";
 import { getTunnelGate, initTunnel, setTunnelOrigin, getTunnelListenerPort, trackTunnelSocket } from "./tunnel";
 import { isTunnelRequest, isTunnelExemptPath, isTunnelAllowed } from "./tunnelGate";
 import { serveStatic, setupVite } from "./vite";
@@ -179,7 +179,7 @@ async function startServer() {
     loginMethod: "dev",
     passwordHash: null,
     role: "admin",
-    adminLevel: 4,
+    adminLevel: 5,
     disabled: false,
     emailVerified: true,
     approved: true,
@@ -231,7 +231,9 @@ async function startServer() {
     // 全局在线计数（供管理后台）：markOnline 与离线回收原子配对——用 once("disconnect") 紧邻登记，
     // 即使后续 setup 同步抛错也不会「计数了却永不 markOffline」造成假在线累积。
     markOnline(user.id);
-    socket.once("disconnect", () => markOffline(user.id));
+    // 溯源会话登记：本连接的 IP + 设备/会话指纹 + UA（在线状态按会话展示，多登录分列）。
+    registerSocketSession(socket.id, { userId: user.id, connectedAt: Date.now(), ...extractSocketTrace(socket.handshake) });
+    socket.once("disconnect", () => { markOffline(user.id); unregisterSocketSession(socket.id); });
     let currentProjectId: number | null = null;
     // Cache the user's effective role per joined project so the high-frequency
     // node:move stream doesn't run a DB query per event. The cache is
@@ -464,6 +466,7 @@ async function startServer() {
     // 此处若再 once("disconnect") 扣一次会对同一 socket 断开双扣 count，把仍在线的用户误判离线、
     // 提前结算今日时长（曾因此回归）。故这里只 markOnline，扣减交给 505 行的 disconnect。
     markOnline(user.id);
+    registerSocketSession(socket.id, { userId: user.id, connectedAt: Date.now(), ...extractSocketTrace(socket.handshake) });
     const joined = new Set<number>();
     // Personal room for new-DM / invite notifications.
     socket.join(`chat:user:${user.id}`);
@@ -525,6 +528,7 @@ async function startServer() {
 
     socket.on("disconnect", () => {
       markOffline(user.id);
+      unregisterSocketSession(socket.id);
       for (const convId of Array.from(joined)) {
         const stillHere = Array.from(chatNs.sockets.values()).some(
           (s) => s.id !== socket.id && (s.data as { user?: User }).user?.id === user.id && s.rooms.has(`chat:conv:${convId}`),

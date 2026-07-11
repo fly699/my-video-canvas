@@ -1005,6 +1005,15 @@ export const logEmailSettings = mysqlTable("log_email_settings", {
 
 export type LogEmailSettingsRow = typeof logEmailSettings.$inferSelect;
 
+// ── 管理后台权限矩阵（单行表 id=1）──────────────────────────────────────────
+// permsJson: {"logs":4,"chat":4,...} 各 tab 的最低查看级别覆盖值（默认见
+// shared/adminPerms.ts）。仅站长(L5) 可改；服务端对日志/聊天接口同口径强制。
+export const adminPermSettings = mysqlTable("admin_perm_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  permsJson: text("permsJson"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 // ── Poyo Balance Snapshots ──────────────────────────────────────────────────
 // Poyo's balance API only returns the current credit amount (no history), so we
 // snapshot it periodically to chart consumption / spending trends. The balance

@@ -4,8 +4,10 @@ import { readFileSync } from "fs";
 import { TRPCError } from "@trpc/server";
 import { mcpServerNames } from "../_core/claudeBridge";
 import { adminProcedure, levelProcedure, router } from "../_core/trpc";
+import { getEffectiveTabLevels, invalidateAdminPermsCache } from "../_core/adminPerms";
+import { EDITABLE_TAB_KEYS, effectiveTabLevels } from "../../shared/adminPerms";
 import * as db from "../db";
-import { getOnlineUserIds, getPresenceStats } from "../_core/presence";
+import { getOnlineUserIds, getPresenceStats, getActiveSessions } from "../_core/presence";
 import { invalidateWhitelistCache } from "../_core/whitelist";
 import { invalidateStorageSettingsCache } from "../_core/storageConfig";
 import { invalidateModelTogglesCache } from "../_core/modelToggles";
@@ -42,6 +44,21 @@ const viewerProc = adminProcedure;
 const operatorProc = levelProcedure(2);
 const managerProc = levelProcedure(3);
 const superProc = levelProcedure(4);
+const ownerProc = levelProcedure(5); // 站长(L5)独占：权限矩阵管理
+
+// 日志/聊天页面的门控别名：静态级别（下限）+ enforceAdminMatrix 自动叠加页面矩阵。
+// 默认矩阵 logs/comfyLogs/llmLogs/chat = L4，故：查看 = max(L1,L4)=L4、清空 = max(L2,L4)=L4、
+// 邮送设置 = max(L3,L4)=L4、聊天治理 = max(L3,L4)=L4。站长调矩阵即时改变实际门槛，
+// 且静态下限保证「即便矩阵被下调也不会低于清空 L2 / 治理 L3」。
+const logsView = viewerProc;
+const logsClear = operatorProc;
+const logsEmailProc = managerProc;
+const comfyLogsView = viewerProc;
+const comfyLogsClear = operatorProc;
+const llmLogsView = viewerProc;
+const llmLogsClear = operatorProc;
+const chatView = viewerProc;
+const chatManage = managerProc;
 
 /** 越权守卫：禁止对「同级或更高级别的管理员」执行重置密码/删除/冻结/审批等操作——
  *  否则低级管理员可重置更高级管理员的密码进而接管其账户（提权）。目标为普通用户(level 0)
@@ -65,6 +82,22 @@ const AUDIT_ACTIONS = [
 ] as const;
 
 export const adminRouter = router({
+  // ── 权限矩阵：各后台页面的最低查看级别（站长 L5 独占编辑；任意管理员可读，供前端过滤 tab）──
+  perms: router({
+    get: adminProcedure.query(async () => ({ levels: await getEffectiveTabLevels() })),
+    set: ownerProc
+      .input(z.object({ levels: z.record(z.string().max(32), z.number().int().min(1).max(5)) }))
+      .mutation(async ({ ctx, input }) => {
+        // 只接受合法 tab 键并钳制（effectiveTabLevels 已做丢弃/钳制/perms 恒 5）
+        const clean: Record<string, number> = {};
+        for (const k of EDITABLE_TAB_KEYS) if (typeof input.levels[k] === "number") clean[k] = input.levels[k];
+        await db.setAdminPermsJson(JSON.stringify(clean));
+        invalidateAdminPermsCache();
+        writeAuditLog({ ctx, action: "admin_perms_set", detail: { levels: clean } });
+        return { levels: effectiveTabLevels(clean) };
+      }),
+  }),
+
   // Download authorization: review/approve user requests, batch-grant, revoke.
   downloads: adminDownloadsRouter,
   // Cross-user media library retrieval (admin browses every user's 专有仓库).
@@ -115,7 +148,7 @@ export const adminRouter = router({
       }),
   }),
   logs: router({
-    list: adminProcedure
+    list: logsView
       .input(z.object({
         // 上限 1000：管理面板分页用 50，「导出」按 1000/页 循环拉取。
         limit: z.number().int().min(1).max(1000).default(50),
@@ -128,7 +161,7 @@ export const adminRouter = router({
         return db.getAuditLogs({ limit: input.limit, offset: input.offset, action: input.action, user: input.user });
       }),
 
-    clear: operatorProc.mutation(async ({ ctx }) => {
+    clear: logsClear.mutation(async ({ ctx }) => {
       await db.clearAuditLogs();
       // Write a sentinel so the next log review shows when and who cleared
       await db.insertAuditLog({
@@ -147,7 +180,7 @@ export const adminRouter = router({
   // Per-user ComfyUI server usage logs (detailed: server/host, model, status,
   // duration, result, error) + per-user / per-server analytics.
   comfyLogs: router({
-    list: adminProcedure
+    list: comfyLogsView
       .input(z.object({
         // 上限 1000：管理面板分页用 50，「导出」按 1000/页 循环拉取。
         limit: z.number().int().min(1).max(1000).default(50),
@@ -160,11 +193,11 @@ export const adminRouter = router({
       }))
       .query(async ({ input }) => db.getComfyUsageLogs(input)),
 
-    summary: adminProcedure
+    summary: comfyLogsView
       .input(z.object({ sinceMs: z.number().int().optional() }).optional())
       .query(async ({ input }) => db.getComfyUsageSummary({ sinceMs: input?.sinceMs })),
 
-    clear: operatorProc.mutation(async () => {
+    clear: comfyLogsClear.mutation(async () => {
       await db.clearComfyUsageLogs();
       return { success: true };
     }),
@@ -172,7 +205,7 @@ export const adminRouter = router({
 
   // ── LLM 调用日志（统一埋点 invokeLLMWithKie，全入口覆盖）────────────────
   llmLogs: router({
-    list: adminProcedure
+    list: llmLogsView
       .input(z.object({
         // 上限 1000：面板分页用 50，「导出」按 1000/页 循环拉取。
         limit: z.number().int().min(1).max(1000).default(50),
@@ -189,15 +222,15 @@ export const adminRouter = router({
       }))
       .query(async ({ input }) => db.getLlmUsageLogs(input)),
 
-    detail: adminProcedure
+    detail: llmLogsView
       .input(z.object({ id: z.number().int() }))
       .query(async ({ input }) => db.getLlmUsageLogDetail(input.id)),
 
-    summary: adminProcedure
+    summary: llmLogsView
       .input(z.object({ sinceMs: z.number().int().optional() }).optional())
       .query(async ({ input }) => db.getLlmUsageSummary({ sinceMs: input?.sinceMs })),
 
-    clear: operatorProc.mutation(async ({ ctx }) => {
+    clear: llmLogsClear.mutation(async ({ ctx }) => {
       await db.clearLlmUsageLogs();
       writeAuditLog({ ctx, action: "llm_logs_cleared", detail: {} });
       return { success: true };
@@ -206,12 +239,12 @@ export const adminRouter = router({
 
   // ── 日志加密打包邮送（操作/LLM/ComfyUI 三类，AES-256 zip + SMTP）──────────
   logEmail: router({
-    getSettings: managerProc.query(async () => {
+    getSettings: logsEmailProc.query(async () => {
       const s = await db.getLogEmailSettings();
       // 压缩密码不回传明文，只回「是否已设置」（与 SMTP 密码同口径）
       return { ...s, zipPassword: undefined, zipPasswordSet: !!s.zipPassword?.trim() };
     }),
-    setSettings: managerProc
+    setSettings: logsEmailProc
       .input(z.object({
         enabled: z.boolean().optional(),
         recipients: z.string().max(2000).optional(),
@@ -234,7 +267,7 @@ export const adminRouter = router({
         return { ...s, zipPassword: undefined, zipPasswordSet: !!s.zipPassword?.trim() };
       }),
     /** 立即打包发送一次（按当前设置；也用于配置验证） */
-    sendNow: managerProc.mutation(async ({ ctx }) => {
+    sendNow: logsEmailProc.mutation(async ({ ctx }) => {
       const r = await sendLogEmailNow("manual");
       writeAuditLog({ ctx, action: "log_email_send", detail: { ok: r.ok, message: r.message } });
       return r;
@@ -850,7 +883,7 @@ export const adminRouter = router({
       if (!(await db.isChatMember(ch.id, ctx.user.id))) await db.addChatMember(ch.id, ctx.user.id, "member");
       return { id: ch.id };
     }),
-    listConversations: adminProcedure
+    listConversations: chatView
       .input(z.object({
         type: z.enum(["lobby", "group", "dm"]).optional(),
         mode: z.enum(["server", "serverless"]).optional(),
@@ -871,7 +904,7 @@ export const adminRouter = router({
         return { rows: enriched, total };
       }),
 
-    getConversation: adminProcedure
+    getConversation: chatView
       .input(z.object({ conversationId: z.number().int() }))
       .query(async ({ input }) => {
         const conv = await db.getConversationById(input.conversationId);
@@ -884,7 +917,7 @@ export const adminRouter = router({
         return { id: conv.id, type: conv.type, mode: conv.mode, title: conv.title, members: membersWithNames };
       }),
 
-    searchMessages: adminProcedure
+    searchMessages: chatView
       .input(z.object({
         userId: z.number().int().optional(),
         conversationId: z.number().int().optional(),
@@ -923,7 +956,7 @@ export const adminRouter = router({
         };
       }),
 
-    listFiles: adminProcedure
+    listFiles: chatView
       .input(z.object({
         conversationId: z.number().int().optional(),
         limit: z.number().int().min(1).max(200).default(50),
@@ -941,21 +974,21 @@ export const adminRouter = router({
         };
       }),
 
-    deleteMessage: managerProc
+    deleteMessage: chatManage
       .input(z.object({ messageId: z.number().int() }))
       .mutation(async ({ input }) => {
         await db.deleteConversationMessage(input.messageId);
         return { success: true };
       }),
 
-    deleteConversation: managerProc
+    deleteConversation: chatManage
       .input(z.object({ conversationId: z.number().int() }))
       .mutation(async ({ input }) => {
         await db.deleteConversation(input.conversationId);
         return { success: true };
       }),
 
-    banUser: managerProc
+    banUser: chatManage
       .input(z.object({
         userId: z.number().int(),
         scope: z.enum(["global", "conversation"]),
@@ -975,14 +1008,14 @@ export const adminRouter = router({
         return { id: row.id };
       }),
 
-    unbanUser: managerProc
+    unbanUser: chatManage
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => {
         await db.removeChatBan(input.id);
         return { success: true };
       }),
 
-    listBans: adminProcedure.query(async () => {
+    listBans: chatView.query(async () => {
       const rows = await db.listChatBans();
       return Promise.all(rows.map(async (b) => {
         const u = await db.getUserById(b.userId).catch(() => undefined);
@@ -993,12 +1026,12 @@ export const adminRouter = router({
       }));
     }),
 
-    getSettings: adminProcedure.query(async () => {
+    getSettings: chatView.query(async () => {
       const s = await db.getChatSettings();
       return { serverlessAllowed: s.serverlessAllowed, lobbyEnabled: s.lobbyEnabled, maxFileMb: s.maxFileMb };
     }),
 
-    setSettings: managerProc
+    setSettings: chatManage
       .input(z.object({
         serverlessAllowed: z.boolean().optional(),
         lobbyEnabled: z.boolean().optional(),
@@ -1019,6 +1052,16 @@ export const adminRouter = router({
     onlineIds: adminProcedure.query(() => getOnlineUserIds()),
     // 在线状态 + 今日在线时长（秒），供用户表显示「在线 · 今日时长」。
     onlineStats: adminProcedure.query(() => getPresenceStats()),
+    // 活跃会话（按会话粒度，同账号多处登录分列）：IP + 设备/会话指纹 + UA + 上线时刻，附用户名。
+    activeSessions: adminProcedure.query(async () => {
+      const sessions = getActiveSessions();
+      const nameById = new Map<number, string | null>();
+      await Promise.all(Array.from(new Set(sessions.map((s) => s.userId))).map(async (uid) => {
+        const u = await db.getUserById(uid).catch(() => undefined);
+        nameById.set(uid, u?.name ?? null);
+      }));
+      return sessions.map((s) => ({ ...s, userName: nameById.get(s.userId) ?? null }));
+    }),
     resetPassword: managerProc
       .input(z.object({ userId: z.number().int().positive(), newPassword: z.string().min(6).max(200) }))
       .mutation(async ({ ctx, input }) => {
@@ -1054,12 +1097,18 @@ export const adminRouter = router({
         writeAuditLog({ ctx, action: "user_delete", detail: { userId: input.userId } });
         return { success: true };
       }),
-    // 设置某用户的管理员级别（0=普通·1=查看员·2=运营·3=管理员·4=超管）——仅超管(L4)。
-    // 加管理员 = 设为 ≥1；降为普通 = 设 0。禁止改自己（防自我锁死/误降）。
+    // 设置某用户的管理员级别（0=普通·1=查看员·2=运营·3=管理员·4=超管·5=站长）——超管(L4)及以上。
+    // 加管理员 = 设为 ≥1；降为普通 = 设 0。禁止改自己（防自我锁死/误降）；
+    // 授予级别不得高于自己（L4 不能造 L5，只有站长能任命站长）。
     setLevel: superProc
-      .input(z.object({ userId: z.number().int().positive(), level: z.number().int().min(0).max(4) }))
+      .input(z.object({ userId: z.number().int().positive(), level: z.number().int().min(0).max(5) }))
       .mutation(async ({ ctx, input }) => {
         if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能修改自己的管理员级别" });
+        // 不能操作同级或更高级别的管理员（防 L4 罢免/降级 L5 站长、防同级互改夺权）——
+        // 与重置密码/删除/冻结同一守卫。目标为普通用户(0)始终放行。
+        await assertOutranksTarget(ctx, input.userId);
+        // 授予级别不得高于自己（L4 不能造 L5，只有站长能任命站长）。
+        if (input.level > (ctx.user.adminLevel ?? 0)) throw new TRPCError({ code: "FORBIDDEN", message: "不能授予高于自己级别的权限" });
         await db.setUserAdminLevel(input.userId, input.level);
         writeAuditLog({ ctx, action: "admin_set_level", detail: { userId: input.userId, level: input.level } });
         return { success: true };

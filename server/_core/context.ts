@@ -51,9 +51,9 @@ const DEV_USER: User = {
   email: "dev@localhost",
   loginMethod: "dev",
   passwordHash: null,
-  // dev bypass = 本地超级管理员，便于本地访问/测试管理后台（生产由真实 role/adminLevel 决定）。
+  // dev bypass = 本地站长（最高级），便于本地访问/测试管理后台（生产由真实 role/adminLevel 决定）。
   role: "admin",
-  adminLevel: 4,
+  adminLevel: 5,
   disabled: false,
   emailVerified: true,
   approved: true,
@@ -109,6 +109,24 @@ export function extractTraceFingerprints(req: CreateExpressContextOptions["req"]
   const cookie = typeof h.cookie === "string" ? h.cookie : "";
   const sessionFp = cookie ? createHash("sha256").update(cookie).digest("hex").slice(0, 16) : null;
   return { deviceFp, userAgent: ua, sessionFp };
+}
+
+/** 从 Socket.IO handshake 提取溯源指纹（在线状态会话登记用）：
+ *  - IP：x-forwarded-for 首段（信任代理）→ handshake.address。
+ *  - deviceFp：客户端经 socket auth 传（websocket 握手不能设自定义头，故走 auth 通道）。
+ *  - userAgent / sessionFp(cookie 哈希)：从 handshake headers 取（同源 cookie/UA 会带上）。 */
+export function extractSocketTrace(handshake: {
+  headers?: Record<string, unknown>; address?: string; auth?: Record<string, unknown>;
+}): { ip: string; deviceFp: string | null; userAgent: string | null; sessionFp: string | null } {
+  const h = handshake.headers ?? {};
+  const xff = typeof h["x-forwarded-for"] === "string" ? h["x-forwarded-for"].split(",")[0].trim() : "";
+  const ip = xff || handshake.address || "unknown";
+  const rawFp = typeof handshake.auth?.deviceFp === "string" ? handshake.auth.deviceFp.trim() : "";
+  const deviceFp = /^[a-f0-9]{16,64}$/i.test(rawFp) ? rawFp.toLowerCase() : null;
+  const ua = typeof h["user-agent"] === "string" ? (h["user-agent"] as string).slice(0, 255) : null;
+  const cookie = typeof h.cookie === "string" ? (h.cookie as string) : "";
+  const sessionFp = cookie ? createHash("sha256").update(cookie).digest("hex").slice(0, 16) : null;
+  return { ip: String(ip).slice(0, 64), deviceFp, userAgent: ua, sessionFp };
 }
 
 export async function createContext(

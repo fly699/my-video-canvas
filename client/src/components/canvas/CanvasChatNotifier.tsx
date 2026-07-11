@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { playMessageSound, showCompletionNotification, ensureNotificationPermission } from "@/lib/notify";
 import { CHAT_MUTED_KEY } from "@/hooks/useChat";
+import { getDeviceFingerprint } from "@/lib/deviceFingerprint";
 
 function muted(): boolean {
   try { return localStorage.getItem(CHAT_MUTED_KEY) === "1"; } catch { return false; }
@@ -31,7 +32,7 @@ export function CanvasChatNotifier({ onNewMessage }: { onNewMessage: () => void 
     if (!user) return;
     if (!muted()) void ensureNotificationPermission();
 
-    const socket: Socket = io("/chat", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true });
+    const socket: Socket = io("/chat", { path: "/api/socket", transports: ["websocket", "polling"], withCredentials: true, auth: { deviceFp: getDeviceFingerprint() ?? undefined } });
     socket.on("connect", () => socket.emit("chat:subscribe-all"));
 
     const notify = (m: IncomingLike, previewOverride?: string) => {
