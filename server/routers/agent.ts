@@ -117,8 +117,10 @@ export function extractHiggsfieldUrls(text: string): string[] {
 }
 
 /** 把一条 Higgsfield 外链下载转存到自有存储并记入素材库（外链约 24h 过期）。
- *  失败返回 null（保留原链，不影响回复）。100MB 上限、60s 超时、SSRF 守卫（含重定向后）。 */
-async function rehostMcpAsset(userId: number, projectId: number, url: string): Promise<{ url: string; type: "image" | "video" | "audio" | "other"; name: string } | null> {
+ *  失败返回 null（保留原链，不影响回复）。100MB 上限、60s 超时、SSRF 守卫（含重定向后）。
+ *  导出供聊天室 AI 助手复用（sendToAssistant 同款落地：隐藏外链 + 入素材库 + 门控渲染）；
+ *  聊天场景无项目上下文，projectId 传 null。 */
+export async function rehostMcpAsset(userId: number, projectId: number | null, url: string): Promise<{ url: string; type: "image" | "video" | "audio" | "other"; name: string; mimeType: string; size: number } | null> {
   try {
     assertSafeUrl(url);
     const res = await fetch(url, { signal: AbortSignal.timeout(60_000), redirect: "follow" });
@@ -141,7 +143,7 @@ async function rehostMcpAsset(userId: number, projectId: number, url: string): P
     await assertObjectStorageWritable();
     const { url: own, key } = await storagePut(`u/${userId}/mcp/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}-${name}`, buffer, mime);
     await db.recordGeneratedAsset({ userId, projectId, type, source: "generated", provider: "higgsfield", model: "mcp", url: own, storageKey: key, name, mimeType: mime, size: buffer.length });
-    return { url: own, type, name };
+    return { url: own, type, name, mimeType: mime, size: buffer.length };
   } catch { return null; }
 }
 
