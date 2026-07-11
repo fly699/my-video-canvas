@@ -777,7 +777,10 @@ export const BaseNode = memo(function BaseNode({
         minWidth: (isCreative || isStudio) ? Math.round(minWidth * 1.25) : minWidth,
         // Studio floating nodes have no inline body, so drop the min-height floor too —
         // selected → floating panel below; deselected → a compact title(+hero) card.
-        minHeight: (isCollapsedPreview || studioFloated) ? 0 : minHeight,
+        // 创意皮肤同理：has-hero 节点的结果预览走顶部英雄区、控件走底部输入条，选中后 body
+        // 里的预览被隐藏(HideWhenStudioFloating/各节点创意分支)、参数默认收起——若仍套 minHeight
+        // 就会在英雄区下方空出一块灰区（用户反馈「分镜底部灰一块」）。故创意+has-hero 也 drop。
+        minHeight: (isCollapsedPreview || studioFloated || (!isStudio && isCreative && hasHero)) ? 0 : minHeight,
         width: "100%",
         height: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
@@ -1169,21 +1172,26 @@ export const BaseNode = memo(function BaseNode({
           minHeight: isCreative ? 30 : 36,
         }}
       >
-        {/* Drag grip */}
-        <GripVertical
-          className="w-3.5 h-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing"
-          style={{
-            color: isHovered ? "var(--c-t4)" : "var(--c-bd3)",
-            transition: "color 150ms ease",
-          }}
-        />
+        {/* Drag grip — 创意(LibTV)皮肤下移除：卡顶应是极简「图标+名称」小标签，
+            整个标题栏本就可拖拽，grip 只增视觉噪声与占位。仅 pro/studio 保留。 */}
+        {!isCreative && (
+          <GripVertical
+            className="w-3.5 h-3.5 flex-shrink-0 cursor-grab active:cursor-grabbing"
+            style={{
+              color: isHovered ? "var(--c-t4)" : "var(--c-bd3)",
+              transition: "color 150ms ease",
+            }}
+          />
+        )}
 
-        {/* Node type icon */}
+        {/* Node type icon — 创意皮肤下弱化为无框裸图标（更接近 LibTV 的小标签观感） */}
         <div
-          className="w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0"
+          className="rounded-lg flex items-center justify-center flex-shrink-0"
           style={{
-            background: `${config.color}1a`,
-            border: `1px solid ${config.color}35`,
+            width: isCreative ? 18 : 20,
+            height: isCreative ? 18 : 20,
+            background: isCreative ? "transparent" : `${config.color}1a`,
+            border: isCreative ? "none" : `1px solid ${config.color}35`,
           }}
         >
           <Icon className="w-3.5 h-3.5" style={{ color: config.color }} />
@@ -1230,9 +1238,10 @@ export const BaseNode = memo(function BaseNode({
             // React Flow's node-select behavior (preserved on purpose).
             <div className="flex items-center gap-1 min-w-0 flex-1 group/title">
               <span
-                className="text-xs font-semibold truncate ui-node-title"
+                className={`text-xs truncate ui-node-title ${isCreative ? "font-medium" : "font-semibold"}`}
                 style={{
-                  color: "var(--c-t1)",
+                  // 创意皮肤：标题降为次级色 + 中等字重，作卡顶小标签而非抢眼主标题。
+                  color: isCreative ? "var(--c-t3)" : "var(--c-t1)",
                   cursor: "text",
                   letterSpacing: "-0.01em",
                   transition: "color 150ms ease",
