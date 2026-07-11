@@ -2782,6 +2782,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 color={effectivePatternColor}
               />
             )}
+            {/* 鸟瞰图（MiniMap）：创意模式隐藏（LibTV 无总览缩略图），专业/工作室保留 */}
+            {canvasMode !== "creative" && (<>
             <MiniMap
               position="bottom-right"
               pannable
@@ -2879,6 +2881,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </svg>
               </div>
             </div>
+            </>)}
           </ReactFlow>
           </WorkflowRunProvider>
 

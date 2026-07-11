@@ -8,6 +8,7 @@ import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
 import { runAgentChatJob } from "@/lib/agentChatJob";
 import { friendlyClientLLMError } from "@/lib/friendlyClientError";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
+import { useCanvasMode } from "../../contexts/CanvasModeContext";
 import { LLMModelPicker, type LLMModelId } from "./LLMModelPicker";
 import { MiniSelect } from "@/components/ui/MiniSelect";
 import { useBridgeSkills } from "@/lib/useBridgeSkills";
@@ -178,7 +179,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // ── 收起为悬浮小球（点关闭=收起，非真关闭；小球右键才可关闭）──
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem("avc:canvasAgent:collapsed") === "1");
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:collapsed", collapsed ? "1" : "0"); } catch { /* quota */ } }, [collapsed]);
-  const BALL = 44; // 小球直径（比原 58 小巧，减少遮挡；≥44 满足移动端触摸目标）
+  // 创意模式（LibTV 风）悬浮球更小巧（34），减少对媒体优先画布的遮挡；其它模式沿用 44。
+  const { mode: canvasMode } = useCanvasMode();
+  const BALL = canvasMode === "creative" ? 34 : 44;
   const [ballPos, setBallPos] = useState<{ left: number; top: number } | null>(() => {
     try { const s = localStorage.getItem("avc:canvasAgent:ballpos"); if (s) return JSON.parse(s); } catch { /* ignore */ }
     return null;
@@ -737,8 +740,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           animation: `avc-ball-ring ${busy ? "1.1s" : "2.2s"} ease-out infinite`,
         }} />
         {busy
-          ? <Loader2 size={17} className="animate-spin" style={{ color: "white", position: "relative", zIndex: 1 }} />
-          : <Sparkles size={18} style={{ color: "white", position: "relative", zIndex: 1, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />}
+          ? <Loader2 size={canvasMode === "creative" ? 14 : 17} className="animate-spin" style={{ color: "white", position: "relative", zIndex: 1 }} />
+          : <Sparkles size={canvasMode === "creative" ? 14 : 18} style={{ color: "white", position: "relative", zIndex: 1, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />}
       </div>
       {ballMenu && (
         <div
