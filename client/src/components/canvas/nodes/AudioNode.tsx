@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 import { NodeToolbar, Position } from "@xyflow/react";
 import { downloadMedia } from "@/lib/download";
+import { InlineGenBar } from "../InlineGenBar";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { safeHref } from "@/lib/safeUrl";
 import { mediaFetchUrl } from "@/lib/download";
@@ -811,6 +814,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   ) : null;
 
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
+  // LibTV 化：创意模式（pro 皮肤 + creative 画布）启用就地生成输入条。
+  const { uiStyle } = useUIStyle();
+  const { mode: canvasModeVal } = useCanvasMode();
+  const isCreativeMode = uiStyle !== "studio" && canvasModeVal === "creative";
 
   // ── LibTV 化：音频操作条（截取 / 变速 / 下载）——选中且有音频结果时浮现于节点上方。
   // 截取/变速走服务端 ffmpeg（audioGen.processAudio），完成后原地替换本节点音频 URL。
@@ -1581,5 +1588,66 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         </div>
       )}
     </BaseNode>
+
+    {/* LibTV 化：创意模式就地生成输入条——类别 chips + 文本 + 翻译（配音）+ 积分 + 发送。
+        读写与配置区同一 payload 字段（双向同步）；模型等细节参数仍在配置区调整。 */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={expanded} width={480}>
+        <NodeTextArea
+          className="nodrag nowheel"
+          rows={2}
+          placeholder={category === "dubbing" ? "输入要合成的配音文本…" : category === "sfx" ? "描述你想要的音效…" : "描述你想生成的音乐…"}
+          value={(category === "dubbing" ? payload.ttsText : category === "sfx" ? payload.sfxPrompt : payload.musicPrompt) ?? ""}
+          onValueChange={(v) => updateNodeData(id, category === "dubbing" ? { ttsText: v } : category === "sfx" ? { sfxPrompt: v } : { musicPrompt: v })}
+          style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          {/* 类别切换 chips */}
+          {([
+            { key: "music" as const, label: "配乐" },
+            { key: "dubbing" as const, label: "配音" },
+            { key: "sfx" as const, label: "音效" },
+          ]).map(({ key, label }) => (
+            <button key={key} className="nodrag"
+              onClick={(e) => { e.stopPropagation(); updateNodeData(id, { audioCategory: key }); }}
+              style={{ height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                background: category === key ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)",
+                border: `1px solid ${category === key ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`,
+                color: category === key ? "var(--c-t1)" : "var(--c-t3)" }}>
+              {label}
+            </button>
+          ))}
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          {category === "dubbing" && (
+            <button className="nodrag" onClick={(e) => { e.stopPropagation(); handleTranslate(); }} disabled={translateMut.isPending}
+              title={`翻译配音文本（目标：${payload.ttsTranslateTarget ?? "英语"}，配置区可改）`}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>
+              {translateMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Languages size={12} />} 翻译
+            </button>
+          )}
+          <div style={{ flex: 1 }} />
+          {category === "music" && (
+            <span title="按当前音乐模型预估的点数消耗，仅供参考" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>
+              ⚡ {costEstimateLabel(estimateMusicCost(normalizeMusicModel(payload.musicModel ?? payload.aiModel))) || "—"}
+            </span>
+          )}
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          <button
+            className="nodrag"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (category === "dubbing") handleGenerateTTS();
+              else if (category === "sfx") handleGenerateSFX();
+              else handleGenerateMusic();
+            }}
+            disabled={musicMutation.isPending || ttsMutation.isPending || sfxMutation.isPending}
+            title="生成"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: "pointer", background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12" }}
+          >
+            {(musicMutation.isPending || ttsMutation.isPending || sfxMutation.isPending) ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+          </button>
+        </div>
+      </InlineGenBar>
+    )}
   </>);
 });
