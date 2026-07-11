@@ -32,8 +32,9 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin } from "lucide-react";
 import { StylePicker } from "../StylePicker";
-import { ToolChip, RefThumbRow } from "../InlineBarParts";
+import { ToolChip, RefThumbRow, MarkElementPicker } from "../InlineBarParts";
 import { openNodeCompare } from "../CompareLightbox";
+import { usePickStore } from "../../../hooks/usePickStore";
 import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
@@ -139,6 +140,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [styleOpen, setStyleOpen] = useState(false);
   // LibTV 三段式输入条：顶部「＋参考」的隐藏文件选择器。
   const inlineRefFileRef = useRef<HTMLInputElement>(null);
+
+  // ── LibTV 画布拾取（＋参考=从画布选参考 / 标记=元素选择模式）──
+  // 拾取结果经 canvas:pick-result 派回；canvas:pick-upload = 浮条「本地上传」回落。
+  const [markState, setMarkState] = useState<{ url: string; loading: boolean; error: string | null; elements: { name: string; desc?: string }[] } | null>(null);
+  const analyzeMut = trpc.aiEnhance.analyzeImageElements.useMutation();
   // 「高级」展开态不跨选中记忆：取消选中即复位，下次点选默认收起、需再点「高级」才展开。
   useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
   // 快捷键 A：选中时切换「高级」参数区（Canvas 派发 canvas:toggle-advanced）。
@@ -191,6 +197,29 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   }, [true3dToken]);
   // Multi-reference-image list + left-docked expandable strip.
   const refImages = useReferenceImages(id, payload);
+  // 画布拾取结果监听（需在 refImages 之后声明）。
+  useEffect(() => {
+    const onResult = (e: Event) => {
+      const d = (e as CustomEvent<{ forNodeId: string; kind: string; url: string }>).detail;
+      if (d?.forNodeId !== id) return;
+      if (d.kind === "ref") { refImages.addUrls([d.url], "url"); return; }
+      // mark：图加入参考（若未在），并启动元素分析
+      if (!refImages.images.some((r) => r.url === d.url)) refImages.addUrls([d.url], "url");
+      setMarkState({ url: d.url, loading: true, error: null, elements: [] });
+      analyzeMut.mutate({ imageUrl: d.url }, {
+        onSuccess: (r) => setMarkState((s) => (s && s.url === d.url ? { ...s, loading: false, elements: r.elements } : s)),
+        onError: (err) => setMarkState((s) => (s && s.url === d.url ? { ...s, loading: false, error: err.message } : s)),
+      });
+    };
+    const onUpload = (e: Event) => {
+      if ((e as CustomEvent<{ forNodeId: string }>).detail?.forNodeId !== id) return;
+      inlineRefFileRef.current?.click();
+    };
+    window.addEventListener("canvas:pick-result", onResult);
+    window.addEventListener("canvas:pick-upload", onUpload);
+    return () => { window.removeEventListener("canvas:pick-result", onResult); window.removeEventListener("canvas:pick-upload", onUpload); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, refImages.images]);
   // 上游图像（图像生成 / ComfyUI 图像·自定义 / 素材 / 分镜）自动作为参考图填充——
   // 仅当本节点尚无任何参考图时（fill-only-when-blank），绝不覆盖手动参考图，也不改变
   // 「无参考图时用连线角色」的既有优先级（角色不在图源类型里，单独走 connectedCharacterRefImages）。
@@ -1375,10 +1404,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       <InlineGenBar nodeId={id} visible={expanded}>
         {/* ── LibTV 三段式 Row1：工具 chips 行（＋参考 / 标记 / 风格） ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-          <ToolChip icon={<Plus size={13} />} label="参考" title="添加参考图（本地上传，最多随模型上限）" onClick={() => inlineRefFileRef.current?.click()} />
-          <ToolChip icon={<MapPin size={12} />} label="标记" disabled={refImages.images.length === 0}
-            title={refImages.images.length ? "把「图片1」引用插入提示词（点下方缩略图可插对应编号）" : "先添加参考图，才能在提示词中标记引用"}
-            onClick={() => update("prompt", `${(payload.prompt ?? "").trim()}${(payload.prompt ?? "").trim() ? " " : ""}图片1 `)} />
+          <ToolChip icon={<Plus size={13} />} label="参考" title="从画布选择参考（点击其它节点的产物；浮条内可切本地上传）" onClick={() => usePickStore.getState().begin("ref", id)} />
+          <ToolChip icon={<MapPin size={12} />} label="标记"
+            title="元素选择模式：点击画布上的图片，AI 分析图中元素后点选插入引用"
+            onClick={() => usePickStore.getState().begin("mark", id)} />
           <ToolChip icon={<Palette size={12} />} label="风格" title="风格库（选一个风格追加到提示词）" onClick={() => setStyleOpen(true)} />
           <input ref={inlineRefFileRef} type="file" accept="image/*" multiple className="hidden"
             onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) void uploadFilesToRef(files, refImages.images.length); e.target.value = ""; }} />
@@ -1472,6 +1501,25 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           </button>
         </div>
       </InlineGenBar>
+    )}
+
+    {/* LibTV「标记」元素选择浮层：AI 分析后点选元素 → 插入「图片N 的<元素>」引用 */}
+    {markState && (
+      <MarkElementPicker
+        imageUrl={markState.url}
+        elements={markState.elements}
+        loading={markState.loading}
+        error={markState.error}
+        onClose={() => setMarkState(null)}
+        onSelect={(name) => {
+          const idx = refImages.images.findIndex((r) => r.url === markState.url);
+          const refToken = idx >= 0 ? `图片${idx + 1} 的${name}` : name;
+          const cur = (payload.prompt ?? "").trim();
+          update("prompt", cur ? `${cur} ${refToken} ` : `${refToken} `);
+          setMarkState(null);
+          toast.success(`已插入标记引用：${refToken}`);
+        }}
+      />
     )}
 
     {/* LibTV：输入条「风格」chip 打开的风格库（portal 到 body，不受节点收缩影响） */}

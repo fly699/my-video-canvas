@@ -55,6 +55,7 @@ import { setPromptLibrary } from "../lib/promptLibraryStore";
 import { ChangePasswordDialog } from "../components/ChangePasswordDialog";
 import { NodeImageLightbox } from "../components/canvas/NodeImageLightbox";
 import { CompareLightbox } from "../components/canvas/CompareLightbox";
+import { PickModeBar } from "../components/canvas/PickModeBar";
 import { TemplatePanel } from "../components/canvas/TemplatePanel";
 import { NodeTemplateLibrary } from "../components/canvas/NodeTemplateLibrary";
 import { NodeSearch } from "../components/canvas/NodeSearch";
@@ -3626,6 +3627,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
         <NodeImageLightbox />
         {/* 就地对比查看器（openNodeCompare 打开；不建对比节点） */}
         <CompareLightbox />
+        {/* 画布拾取模式浮条（＋参考=从画布选择参考 / 标记=元素选择模式） */}
+        <PickModeBar />
 
         {/* ── Asset panel (floating, draggable, resizable) ── */}
         {showCharLib && <CharacterLibraryPanel onClose={() => setShowCharLib(false)} />}

@@ -30,6 +30,7 @@ import { NODE_ICONS } from "../../lib/nodeConfig";
 import { VARIANT_TYPES } from "../../hooks/useCanvasStore";
 import { toast } from "sonner";
 import { openNodeCompare } from "./CompareLightbox";
+import { detectUpstreamImages, listUpstreamVideoSources } from "../../lib/comfyWorkflowParams";
 import { hasPassableOutput, directPassDownstream } from "../../lib/canvasPassthrough";
 import { handleStyle } from "../../lib/handleStyle";
 import { agentBadge } from "../../lib/agentOwnership";
@@ -392,15 +393,29 @@ export const BaseNode = memo(function BaseNode({
     useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node!.id })) }));
     toast.success(`已创建「${label}」编辑节点（已连源图，点运行生成）`, { duration: 1800 });
   };
-  // 就地版本对比（不建对比节点）：从本节点自身找 B 候选——版本历史上一版 > 多结果第二张/段，
+  // 就地版本对比（不建对比节点）：从本节点找 B 候选——版本历史上一版 > 多结果第二张/段 >
+  // 本节点源媒体（剪辑/编辑类：结果 vs 原片）> 上游第一路媒体（结果 vs 源），
   // 直接全屏打开滑块对比查看器（openNodeCompare）。无第二源时给出明确提示。
   const openSelfCompare = (currentUrl: string) => {
     const st = useCanvasStore.getState();
     const p = (st.nodes.find((n) => n.id === id)?.data.payload ?? {}) as Record<string, unknown>;
     const history = (p.resultHistory as { url: string }[] | undefined) ?? [];
     const multi = ([...(p.imageUrls as string[] | undefined) ?? [], ...(p.outputUrls as string[] | undefined) ?? [], ...(p.resultUrls as string[] | undefined) ?? []]).filter((u) => typeof u === "string" && u);
-    const bUrl = history.find((h) => h.url && h.url !== currentUrl)?.url ?? multi.find((u) => u !== currentUrl);
-    if (!bUrl) { toast.info("没有可对比的第二个结果——再生成一次、或在版本历史/批量结果里挑一个"); return; }
+    // 源媒体字段（原视频/原图）：剪辑 videoUrl、图像编辑 sourceImageUrl、图生类 referenceImageUrl
+    const selfSources = [p.videoUrl, p.sourceVideoUrl, p.inputUrl, p.sourceImageUrl, p.referenceImageUrl]
+      .filter((u): u is string => typeof u === "string" && !!u);
+    let bUrl = history.find((h) => h.url && h.url !== currentUrl)?.url
+      ?? multi.find((u) => u !== currentUrl)
+      ?? selfSources.find((u) => u !== currentUrl);
+    if (!bUrl) {
+      // 上游第一路媒体（视频优先）：剪辑/字幕/合并等「结果 vs 原片」、生成节点「结果 vs 参考」
+      const ups = [
+        ...listUpstreamVideoSources(id, st.edges, st.nodes).map((v) => v.url),
+        ...detectUpstreamImages(id, st.edges, st.nodes),
+      ].filter(Boolean);
+      bUrl = ups.find((u) => u !== currentUrl);
+    }
+    if (!bUrl) { toast.info("没有可对比的第二个媒体——再生成一次、或连一路源素材"); return; }
     openNodeCompare(currentUrl, bUrl);
   };
   const QUICK_EDITS: { op: ImageEditOp; label: string; Icon: typeof Scissors }[] = [

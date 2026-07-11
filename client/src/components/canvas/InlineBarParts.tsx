@@ -1,4 +1,6 @@
-import { X } from "lucide-react";
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import { X, Loader2, Sparkles } from "lucide-react";
 import { MediaImage } from "./MediaImage";
 
 /**
@@ -43,11 +45,19 @@ export function RefThumbRow({ images, onRemove, onClick }: {
   /** 点缩略图（如插入「主体N」token / 放大查看）。 */
   onClick?: (index: number) => void;
 }) {
+  // 悬停自动放大预览（LibTV）：hover 缩略图在其上方浮出大图。
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (images.length === 0) return null;
   return (
     <div className="nodrag" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {images.map((img, i) => (
-        <div key={img.id} style={{ position: "relative", width: 48, height: 48, flexShrink: 0 }}>
+        <div key={img.id} style={{ position: "relative", width: 48, height: 48, flexShrink: 0 }}
+          onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx((v) => (v === i ? null : v))}>
+          {hoverIdx === i && (
+            <div style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 60, width: 220, borderRadius: 12, overflow: "hidden", border: "1px solid var(--c-bd2)", background: "var(--c-base)", boxShadow: "0 14px 44px oklch(0 0 0 / 0.55)", pointerEvents: "none" }}>
+              <MediaImage src={img.url} alt={`参考 ${i + 1} 预览`} style={{ display: "block", width: "100%", maxHeight: 260, objectFit: "contain", background: "var(--c-canvas)" }} />
+            </div>
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); onClick?.(i); }}
             title={onClick ? `图片 ${i + 1}（点击插入引用）` : `图片 ${i + 1}`}
@@ -69,5 +79,55 @@ export function RefThumbRow({ images, onRemove, onClick }: {
         </div>
       ))}
     </div>
+  );
+}
+
+/** LibTV「标记」元素选择浮层：AI 分析选中图片的可引用元素，点选后回调插入引用。 */
+export function MarkElementPicker({ imageUrl, elements, loading, error, onSelect, onClose }: {
+  imageUrl: string;
+  elements: { name: string; desc?: string }[];
+  loading: boolean;
+  error?: string | null;
+  onSelect: (name: string) => void;
+  onClose: () => void;
+}) {
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.55)", backdropFilter: "blur(4px)" }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ width: "min(420px, 90vw)", background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 14, boxShadow: "0 24px 60px oklch(0 0 0 / 0.55)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid var(--c-bd1)" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 700, color: "var(--c-t1)" }}>
+            <Sparkles size={14} /> 选择要标记的元素
+          </span>
+          <button onClick={onClose} title="关闭"
+            style={{ width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t3)", cursor: "pointer" }}>
+            <X size={13} />
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 12, padding: 14 }}>
+          <div style={{ width: 120, flexShrink: 0, borderRadius: 10, overflow: "hidden", border: "1px solid var(--c-bd2)", background: "var(--c-canvas)", alignSelf: "flex-start" }}>
+            <MediaImage src={imageUrl} alt="标记源图" style={{ display: "block", width: "100%", objectFit: "cover" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+            {loading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--c-t3)", padding: "12px 0" }}>
+                <Loader2 size={14} className="animate-spin" /> AI 正在分析图中元素…
+              </div>
+            )}
+            {!loading && error && <div style={{ fontSize: 12, color: "oklch(0.62 0.20 25)", padding: "8px 0" }}>{error}</div>}
+            {!loading && !error && elements.map((el) => (
+              <button key={el.name} onClick={() => onSelect(el.name)}
+                style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "8px 11px", borderRadius: 10, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer", textAlign: "left" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--ui-accent, var(--c-accent))"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--c-bd2)"; }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{el.name}</span>
+                {el.desc && <span style={{ fontSize: 10.5, color: "var(--c-t3)" }}>{el.desc}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
