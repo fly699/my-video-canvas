@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Check } from "lucide-react";
+import { X, Check, Star, Search } from "lucide-react";
 import {
   CINEMATOGRAPHY_TEMPLATES,
   CINEMATOGRAPHY_CATEGORIES,
@@ -20,22 +20,52 @@ interface Props {
   onClose: () => void;
 }
 
+// LibTV 图六：运镜库三 tab（运镜广场 / 我的收藏 / 我的运镜）+ 搜索 + 收藏。收藏存 localStorage。
+type CineTab = "plaza" | "fav" | "mine";
+const FAV_KEY = "avc:cinematography:favorites:v1";
+function loadFavs(): string[] {
+  try { const v = JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; }
+  catch { return []; }
+}
+
 /**
- * Modal cinematography template picker. Categories tab on the left, card grid
- * on the right. Card shows emoji + label + EN subtitle + description; clicking
- * a card calls onSelect and closes the modal.
+ * 运镜模板库弹窗（对齐 LibTV 运镜库）：顶部三 tab + 搜索框；运镜广场按分类侧栏浏览、
+ * 搜索时跨分类匹配；卡片可收藏（右上角星标），「我的收藏」tab 汇总。点击卡片 onSelect 并关闭。
  *
- * Cards for templates that don't have a native camera_motion mapping for the
- * current provider show a small "仅 Prompt 注入" hint, so the user understands
- * the model will rely on prompt language rather than a structured parameter.
+ * 无原生 camera_motion 映射的模板对当前 provider 仅注入 prompt 文本，卡片给出「原生支持」标签提示。
  */
 export function CinematographyPicker({ provider, activeTemplateId, onSelect, onClear, onClose }: Props) {
   const [activeCategory, setActiveCategory] = useState<CinematographyCategory>("推拉");
+  const [tab, setTab] = useState<CineTab>("plaza");
+  const [query, setQuery] = useState("");
+  const [favs, setFavs] = useState<string[]>(loadFavs);
   const supportsNative = providerSupportsNativeCameraMotion(provider);
 
-  const filtered = CINEMATOGRAPHY_TEMPLATES.filter((t) => t.category === activeCategory);
+  const toggleFav = (id: string) => setFavs((prev) => {
+    const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+    try { localStorage.setItem(FAV_KEY, JSON.stringify(next)); } catch { /* quota */ }
+    return next;
+  });
+
+  const q = query.trim().toLowerCase();
+  const matchQ = (t: CinematographyTemplate) =>
+    !q || t.label.toLowerCase().includes(q) || (t.englishLabel || "").toLowerCase().includes(q) || (t.description || "").toLowerCase().includes(q);
+
+  const showSidebar = tab === "plaza" && !q;
+  const filtered = tab === "fav"
+    ? CINEMATOGRAPHY_TEMPLATES.filter((t) => favs.includes(t.id) && matchQ(t))
+    : tab === "mine"
+      ? []
+      : CINEMATOGRAPHY_TEMPLATES.filter((t) => (q ? true : t.category === activeCategory) && matchQ(t));
+
   const counts: Record<string, number> = {};
   for (const t of CINEMATOGRAPHY_TEMPLATES) counts[t.category] = (counts[t.category] ?? 0) + 1;
+
+  const TABS: { id: CineTab; label: string }[] = [
+    { id: "plaza", label: "运镜广场" },
+    { id: "fav", label: "我的收藏" },
+    { id: "mine", label: "我的运镜" },
+  ];
 
   return createPortal(
     <div
@@ -47,8 +77,8 @@ export function CinematographyPicker({ provider, activeTemplateId, onSelect, onC
         onClick={(e) => e.stopPropagation()}
         className="flex flex-col"
         style={{
-          width: "min(900px, 92vw)",
-          height: "min(620px, 86vh)",
+          width: "min(920px, 92vw)",
+          height: "min(640px, 86vh)",
           background: "var(--c-base)",
           border: "1px solid var(--c-bd2)",
           borderRadius: 14,
@@ -56,200 +86,162 @@ export function CinematographyPicker({ provider, activeTemplateId, onSelect, onC
           overflow: "hidden",
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "14px 18px",
-            borderBottom: "1px solid var(--c-bd1)",
-          }}
-        >
-          <div>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--c-t1)" }}>
-              🎬 运镜模板库
-            </h3>
-            <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--c-t3)" }}>
-              {supportsNative
-                ? "当前模型支持原生 camera_motion，模板会同步应用结构化参数 + prompt 注入"
-                : "当前模型不支持原生 camera_motion，模板仅注入 prompt 自然语言（依赖模型理解）"}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            {activeTemplateId && onClear && (
-              <button
-                onClick={() => { onClear(); onClose(); }}
-                title="清除运镜模板"
-                style={{
-                  padding: "4px 10px",
-                  fontSize: 11,
-                  background: "transparent",
-                  border: "1px solid var(--c-bd2)",
-                  borderRadius: 6,
-                  color: "var(--c-t3)",
-                  cursor: "pointer",
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-              >
-                清除
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              title="关闭"
-              style={{
-                width: 26, height: 26, padding: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: "transparent",
-                border: "1px solid var(--c-bd2)",
-                borderRadius: 6,
-                color: "var(--c-t3)",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-            >
-              <X style={{ width: 14, height: 14 }} />
-            </button>
-          </div>
-        </div>
-
-        {/* Body — categories sidebar + grid */}
-        <div className="flex" style={{ flex: 1, minHeight: 0 }}>
-          {/* Sidebar */}
-          <div
-            style={{
-              width: 130,
-              flexShrink: 0,
-              borderRight: "1px solid var(--c-bd1)",
-              padding: "8px 4px",
-              overflowY: "auto",
-            }}
-          >
-            {CINEMATOGRAPHY_CATEGORIES.map((cat) => {
-              const isActive = cat === activeCategory;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    fontSize: 12,
-                    background: isActive ? "oklch(0.68 0.22 285 / 0.12)" : "transparent",
-                    border: "none",
-                    borderLeft: `2px solid ${isActive ? "oklch(0.68 0.22 285)" : "transparent"}`,
-                    color: isActive ? "oklch(0.78 0.18 285)" : "var(--c-t2)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontWeight: isActive ? 600 : 400,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    transition: "background 120ms ease, color 120ms ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent";
-                  }}
-                >
-                  <span>{cat}</span>
-                  <span style={{ fontSize: 10, color: "var(--c-t4)" }}>{counts[cat] ?? 0}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Card grid */}
-          <div
-            className="nowheel"
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              padding: "14px",
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-              gap: 10,
-              alignContent: "start",
-            }}
-          >
-            {filtered.map((t) => {
-              const isActive = activeTemplateId === t.id;
-              const hasNativeMap =
-                (provider.startsWith("hf_dop_") && !!t.providerParams.higgsfield) ||
-                (provider === "poyo_seedance" && !!t.providerParams.seedance);
+        {/* Header — tabs + search + close */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--c-bd1)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            {TABS.map((t) => {
+              const active = tab === t.id;
               return (
                 <button
                   key={t.id}
-                  onClick={() => { onSelect(t); onClose(); }}
+                  onClick={() => setTab(t.id)}
                   style={{
-                    textAlign: "left",
-                    padding: "10px 12px",
-                    background: isActive ? "oklch(0.68 0.22 285 / 0.08)" : "var(--c-surface)",
-                    border: `1px solid ${isActive ? "oklch(0.68 0.22 285 / 0.5)" : "var(--c-bd2)"}`,
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    transition: "transform 150ms ease, border-color 150ms ease, background 150ms ease",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 4,
+                    padding: "6px 12px", fontSize: 13, fontWeight: active ? 700 : 500,
+                    background: active ? "var(--c-elevated)" : "transparent", border: "none", borderRadius: 8,
+                    color: active ? "var(--c-t1)" : "var(--c-t3)", cursor: "pointer",
                   }}
-                  onMouseEnter={(e) => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.transform = "translateY(-1px)";
-                    if (!isActive) el.style.borderColor = "var(--c-t4)";
-                  }}
-                  onMouseLeave={(e) => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.transform = "translateY(0)";
-                    if (!isActive) el.style.borderColor = "var(--c-bd2)";
-                  }}
+                  onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
                 >
-                  <div className="flex items-center gap-2">
-                    <span style={{ fontSize: 18, lineHeight: 1 }}>{t.emoji}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="flex items-center gap-1.5">
-                        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--c-t1)" }}>
-                          {t.label}
-                        </span>
-                        {isActive && <Check style={{ width: 12, height: 12, color: "oklch(0.78 0.18 285)" }} />}
-                      </div>
-                      <span style={{ fontSize: 10, color: "var(--c-t4)" }}>{t.englishLabel}</span>
-                    </div>
-                  </div>
-                  <p style={{ margin: 0, fontSize: 11, color: "var(--c-t3)", lineHeight: 1.45 }}>
-                    {t.description}
-                  </p>
-                  <div className="flex items-center justify-between" style={{ marginTop: 2 }}>
-                    {t.recommendedScenarios && t.recommendedScenarios.length > 0 && (
-                      <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
-                        适合：{t.recommendedScenarios.join("/")}
-                      </span>
-                    )}
-                    {supportsNative && hasNativeMap && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          padding: "1px 5px",
-                          borderRadius: 99,
-                          background: "oklch(0.72 0.18 155 / 0.18)",
-                          color: "oklch(0.72 0.18 155)",
-                          fontWeight: 600,
-                          flexShrink: 0,
-                        }}
-                      >
-                        原生支持
-                      </span>
-                    )}
-                  </div>
+                  {t.label}
                 </button>
               );
             })}
           </div>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, height: 34, padding: "0 10px", borderRadius: 9, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", maxWidth: 320 }}>
+            <Search size={14} style={{ color: "var(--c-t4)", flexShrink: 0 }} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索运镜名称"
+              style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: "var(--c-t1)", fontSize: 12.5 }}
+            />
+            {query && <button onClick={() => setQuery("")} style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", lineHeight: 0, padding: 0 }}><X size={13} /></button>}
+          </div>
+          {activeTemplateId && onClear && (
+            <button
+              onClick={() => { onClear(); onClose(); }}
+              title="清除运镜模板"
+              style={{ padding: "4px 10px", fontSize: 11, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t3)", cursor: "pointer" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.20 25)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+            >清除</button>
+          )}
+          <button
+            onClick={onClose}
+            title="关闭"
+            style={{ width: 26, height: 26, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, color: "var(--c-t3)", cursor: "pointer" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+          ><X style={{ width: 14, height: 14 }} /></button>
+        </div>
+
+        {/* provider hint */}
+        <div style={{ padding: "7px 16px", borderBottom: "1px solid var(--c-bd1)", fontSize: 10.5, color: "var(--c-t4)" }}>
+          {supportsNative
+            ? "当前模型支持原生 camera_motion，模板会同步应用结构化参数 + prompt 注入"
+            : "当前模型不支持原生 camera_motion，模板仅注入 prompt 自然语言（依赖模型理解）"}
+        </div>
+
+        {/* Body */}
+        <div className="flex" style={{ flex: 1, minHeight: 0 }}>
+          {showSidebar && (
+            <div style={{ width: 130, flexShrink: 0, borderRight: "1px solid var(--c-bd1)", padding: "8px 4px", overflowY: "auto" }}>
+              {CINEMATOGRAPHY_CATEGORIES.map((cat) => {
+                const isActive = cat === activeCategory;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    style={{
+                      width: "100%", padding: "8px 12px", fontSize: 12,
+                      background: isActive ? "oklch(0.68 0.22 285 / 0.12)" : "transparent", border: "none",
+                      borderLeft: `2px solid ${isActive ? "oklch(0.68 0.22 285)" : "transparent"}`,
+                      color: isActive ? "oklch(0.78 0.18 285)" : "var(--c-t2)", cursor: "pointer", textAlign: "left",
+                      fontWeight: isActive ? 600 : 400, display: "flex", alignItems: "center", justifyContent: "space-between",
+                      transition: "background 120ms ease, color 120ms ease",
+                    }}
+                    onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                    onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <span>{cat}</span>
+                    <span style={{ fontSize: 10, color: "var(--c-t4)" }}>{counts[cat] ?? 0}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Card grid / empty states */}
+          {tab === "mine" ? (
+            <div className="flex flex-col items-center justify-center" style={{ flex: 1, gap: 8, color: "var(--c-t4)" }}>
+              <span style={{ fontSize: 30 }}>🎥</span>
+              <p style={{ fontSize: 13, color: "var(--c-t3)", margin: 0 }}>暂无自定义运镜</p>
+              <p style={{ fontSize: 11, margin: 0 }}>自定义运镜功能即将上线</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center" style={{ flex: 1, gap: 8, color: "var(--c-t4)" }}>
+              <span style={{ fontSize: 30 }}>{tab === "fav" ? "⭐" : "🔍"}</span>
+              <p style={{ fontSize: 12.5, color: "var(--c-t3)", margin: 0 }}>{tab === "fav" ? "还没有收藏的运镜（点卡片右上角星标收藏）" : "没有匹配的运镜"}</p>
+            </div>
+          ) : (
+            <div
+              className="nowheel"
+              style={{ flex: 1, overflowY: "auto", padding: "14px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10, alignContent: "start" }}
+            >
+              {filtered.map((t) => {
+                const isActive = activeTemplateId === t.id;
+                const isFav = favs.includes(t.id);
+                const hasNativeMap =
+                  (provider.startsWith("hf_dop_") && !!t.providerParams.higgsfield) ||
+                  (provider === "poyo_seedance" && !!t.providerParams.seedance);
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => { onSelect(t); onClose(); }}
+                    style={{
+                      position: "relative", textAlign: "left", padding: "10px 12px",
+                      background: isActive ? "oklch(0.68 0.22 285 / 0.08)" : "var(--c-surface)",
+                      border: `1px solid ${isActive ? "oklch(0.68 0.22 285 / 0.5)" : "var(--c-bd2)"}`,
+                      borderRadius: 8, cursor: "pointer",
+                      transition: "transform 150ms ease, border-color 150ms ease, background 150ms ease",
+                      display: "flex", flexDirection: "column", gap: 4,
+                    }}
+                    onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = "translateY(-1px)"; if (!isActive) el.style.borderColor = "var(--c-t4)"; }}
+                    onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = "translateY(0)"; if (!isActive) el.style.borderColor = "var(--c-bd2)"; }}
+                  >
+                    {/* 收藏星标 */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleFav(t.id); }}
+                      title={isFav ? "取消收藏" : "收藏"}
+                      style={{ position: "absolute", top: 8, right: 8, background: "none", border: "none", cursor: "pointer", lineHeight: 0, padding: 2 }}
+                    >
+                      <Star size={14} style={{ color: isFav ? "oklch(0.80 0.16 85)" : "var(--c-t4)", fill: isFav ? "oklch(0.80 0.16 85)" : "none" }} />
+                    </button>
+                    <div className="flex items-center gap-2" style={{ paddingRight: 20 }}>
+                      <span style={{ fontSize: 18, lineHeight: 1 }}>{t.emoji}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="flex items-center gap-1.5">
+                          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--c-t1)" }}>{t.label}</span>
+                          {isActive && <Check style={{ width: 12, height: 12, color: "oklch(0.78 0.18 285)" }} />}
+                        </div>
+                        <span style={{ fontSize: 10, color: "var(--c-t4)" }}>{t.englishLabel}</span>
+                      </div>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 11, color: "var(--c-t3)", lineHeight: 1.45 }}>{t.description}</p>
+                    <div className="flex items-center justify-between" style={{ marginTop: 2 }}>
+                      {t.recommendedScenarios && t.recommendedScenarios.length > 0 && (
+                        <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>适合：{t.recommendedScenarios.join("/")}</span>
+                      )}
+                      {supportsNative && hasNativeMap && (
+                        <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 99, background: "oklch(0.72 0.18 155 / 0.18)", color: "oklch(0.72 0.18 155)", fontWeight: 600, flexShrink: 0 }}>原生支持</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>,
