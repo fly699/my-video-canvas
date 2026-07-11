@@ -63,6 +63,11 @@ export type AuditAction =
   | "audio_dubbing"
   | "audio_sfx"
   | "subtitle_transcribe"
+  // #73 纳管审计补漏：此前无审计日志的 AI 调用
+  | "pose_control"
+  | "smart_cut"
+  | "image_to_3d"
+  | "omnihuman_detect"
   | "logs_cleared"
   | "comfyui_image_gen"
   | "comfyui_video_gen"

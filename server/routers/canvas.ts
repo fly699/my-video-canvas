@@ -882,7 +882,10 @@ export const videoTasksRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const { key } = await resolveKieKey(ctx, input.kieTempKey);
-      return await detectOmnihumanSubjects(input.imageUrl, key);
+      const r = await detectOmnihumanSubjects(input.imageUrl, key);
+      // #73 纳管审计：Omnihuman 主体检测（kie 视觉调用）此前无审计记录
+      writeAuditLog({ ctx, action: "omnihuman_detect", detail: { success: true } });
+      return r;
     }),
 
   poll: protectedProcedure
@@ -2936,6 +2939,8 @@ export const clipRouter = router({
           ? Math.min(result.outputDuration, originalDuration)
           : result.outputDuration;
         await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "智能剪辑" });
+        // #73 纳管审计：智能剪辑此前无审计记录（LLM 用量另有统一 LLM 日志，这里记操作本身）
+        writeAuditLog({ ctx, action: "smart_cut", detail: { model: input.model ?? "default", aggressiveness: input.aggressiveness, keptSegments: keepSegments.length, resultUrl: result.url, success: true } });
         return { url: result.url, outputDuration, originalDuration };
       });
     }),
@@ -2960,6 +2965,8 @@ export const clipRouter = router({
           originalImages: [{ url: input.referenceImageUrl }],
           fluxGuidanceScale: input.guidanceScale,
         });
+        // #73 纳管审计：姿态控制此前无审计记录
+        writeAuditLog({ ctx, action: "pose_control", detail: { model: "hf_flux_pro", prompt: truncate(input.prompt), resultUrl: result.url ?? null, success: true } });
         return { url: result.url };
       });
     }),
@@ -3218,6 +3225,8 @@ export const subtitleMotionRouter = router({
         const segs = result.segments ?? [];
         if (segs.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "该转写模型未返回时间戳段落，无法生成字幕；请改用支持段级时间戳的模型（如 whisper-1）" });
         const entries: SubtitleEntry[] = segs.map((s) => ({ start: s.start, end: s.end, text: s.text.trim() }));
+        // #73 纳管审计：动态字幕转写此前无审计记录（subtitle.transcribe 的孪生入口，口径对齐）
+        writeAuditLog({ ctx, action: "subtitle_transcribe", detail: { model: input.model ?? "default", entries: entries.length, kind: "motion", success: true } });
         return { entries, fullText: result.text, language: result.language };
       });
     }),

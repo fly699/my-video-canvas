@@ -27,6 +27,8 @@ import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterC
 import { CharacterRecognitionPanel } from "../CharacterRecognitionPanel";
 import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterRecognition";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption } from "../ModelPicker";
+import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { ZoomableImage } from "../ZoomableImage";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
@@ -42,6 +44,12 @@ interface Props {
     projectId: number;
   };
 }
+
+// #73 三视图生成模型选项（""=系统默认），与工具箱宫格管线同源
+const MA_MODEL_OPTIONS: ModelPickerOption[] = [
+  { value: "", label: "默认模型（系统设置）", group: "默认", family: "默认" },
+  ...IMAGE_MODEL_PICKER_OPTIONS,
+];
 
 const accent = "oklch(0.66 0.18 140)";
 const accentA = (a: number) => `oklch(0.66 0.18 140 / ${a})`;
@@ -196,6 +204,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const [multiAngleBusy, setMultiAngleBusy] = useState(false);
   const maGenMut = trpc.imageGen.generate.useMutation();
   const maSliceMut = trpc.imageGrid.slice.useMutation();
+  // #73 纳管：三视图生成此前隐形走服务端默认模型且无计价——补模型选择（与工具箱宫格
+  // 管线共享 localStorage 键，同族操作同一偏好）+ 计价显示，并回传 model/estimatedCost。
+  const [maModel, setMaModel] = useState<string>(() => { try { return localStorage.getItem("canvas.toolkitImageModel") ?? ""; } catch { return ""; } });
+  const maCost = useMemo(() => { if (!maModel) return "按系统默认模型"; const c = estimateImageCost(maModel); return c ? costEstimateLabel(c) : "按模型页"; }, [maModel]);
+  const pickMaModel = (v: string) => { setMaModel(v); try { localStorage.setItem("canvas.toolkitImageModel", v); } catch { /* ignore */ } };
   const handleMultiAngle = async () => {
     if (multiAngleBusy) return;
     const preset = getGridPreset("turnaround")!;
@@ -210,7 +223,8 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         poyoAspectRatio: preset.sheetAspect,
         reveAspectRatio: preset.sheetAspect,
         projectId: data.projectId,
-      });
+        ...(maModel ? { model: maModel, estimatedCost: maCost } : {}),
+      } as Parameters<typeof maGenMut.mutateAsync>[0]);
       const gridUrl = gen.urls?.[0] || gen.url || "";
       if (!gridUrl) { toast.error("三视图生成失败：未返回图像"); setMultiAngleBusy(false); return; }
       const sliced = await maSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, projectId: data.projectId });
@@ -305,6 +319,8 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       characterKind: kind,
       profileText: profileText.length > 0 ? clampLen(profileText, 1500) : undefined,
       imageUrls: urls,
+      // #73：一致性审查此前不传 model（服务端默认），改随「识别」选择的视觉模型（含自建/桥接）
+      model: recognizeModel,
     });
   };
 
@@ -602,6 +618,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               {multiAngleBusy ? "生成多视角中…" : "一键多视角（三视图参考）"}
             </button>
           )}
+          {/* #73 纳管：三视图生成模型选择 + 计价（此前隐形走服务端默认模型） */}
+          <div className="nodrag flex items-center gap-2" style={{ marginTop: 4 }}>
+            <ModelPicker value={maModel} onChange={pickMaModel} options={MA_MODEL_OPTIONS} minWidth={150} />
+            <span style={{ fontSize: 9.5, color: "var(--c-t4)", whiteSpace: "nowrap" }} title="三视图为单张大图，计一次生成">预计：{maCost}</span>
+          </div>
         </div>
 
         {/* ── 人物 (Person) fields ── */}
@@ -806,7 +827,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         {selected && (
           <div className="flex flex-col gap-1.5">
             <div className="nodrag" onPointerDown={(e) => e.stopPropagation()}>
-              <LLMModelPicker value={recognizeModel} onChange={setRecognizeModel} disabled={recognizeMut.isPending} filter={(m) => !!m.vision} />
+              <LLMModelPicker value={recognizeModel} onChange={setRecognizeModel} disabled={recognizeMut.isPending} filter={(m) => !!m.vision || m.provider === "SelfHosted"} />
             </div>
             <button
               onClick={handleRecognize}

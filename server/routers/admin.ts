@@ -74,9 +74,13 @@ async function assertOutranksTarget(ctx: { user: { adminLevel?: number | null } 
 
 const AUDIT_ACTIONS = [
   "login_email", "login_oauth",
-  "image_gen", "video_gen",
-  "audio_music", "audio_dubbing",
+  "image_gen", "image_edit", "video_gen",
+  "audio_music", "audio_dubbing", "audio_sfx",
   "subtitle_transcribe",
+  // #73 纳管审计补漏动作 + 此前缺席过滤清单的 AI 动作
+  "pose_control", "smart_cut", "image_to_3d", "omnihuman_detect",
+  "comfyui_image_gen", "comfyui_video_gen", "comfyui_workflow_exec",
+  "editor:aiCut",
   "superagent_comfy_build", "superagent_code_task",
   "logs_cleared",
 ] as const;
