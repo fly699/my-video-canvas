@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { applyFreeVramToAllComfyNodes } from "../../../lib/comfyFreeVram";
 import {
   Play, Loader2, RefreshCw, Upload, X, Cpu, AlertCircle,
-  ChevronDown, ChevronRight, Server, Boxes, Languages, Copy, Lock, Unlock, Ban, Sparkles, Layers,
+  ChevronDown, ChevronRight, Server, Boxes, Languages, Copy, Lock, Unlock, Ban, Sparkles, Layers, SlidersHorizontal, ArrowUp,
 } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl } from "@/lib/download";
@@ -31,6 +31,9 @@ import { RefHeroPreview } from "../RefHeroPreview";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { InlineGenBar } from "../InlineGenBar";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 
 interface Props {
@@ -156,6 +159,18 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     },
   });
 
+  // LibTV 化（#70 创意模式）：配置区默认收起（就地输入条为主入口），「高级」/快捷键 A 展开。
+  const { uiStyle } = useUIStyle();
+  const { mode: canvasModeVal } = useCanvasMode();
+  const isCreativeMode = uiStyle !== "studio" && canvasModeVal === "creative";
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
+  useEffect(() => {
+    if (!selected) return;
+    const h = () => setAdvancedOpen((v) => !v);
+    window.addEventListener("canvas:toggle-advanced", h);
+    return () => window.removeEventListener("canvas:toggle-advanced", h);
+  }, [selected]);
   const update = useCallback(
     (field: keyof ComfyuiVideoNodeData, value: unknown) => updateNodeData(id, { [field]: value }),
     [id, updateNodeData]
@@ -344,6 +359,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   ) : null;
 
   return (
+    <>
     <BaseNode id={id} selected={selected} nodeType="comfyui_video" title={data.title} minHeight={300} resizable heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={payload.status === "done" && !!payload.resultVideoUrl}
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
@@ -382,7 +398,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
           {cornerText}
         </span>
       ) : undefined}>
-      <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
+      <div className="flex flex-col h-full overflow-auto" style={isCreativeMode && !advancedOpen ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
+        {/* LibTV（创意模式）：配置区默认收起，由输入条「高级」展开 */}
+        {!(isCreativeMode && !advancedOpen) && (<>
 
         {/* ── Status pill ── (hidden once done — the player + green MinIO dot suffice) */}
         {payload.status !== "done" && (
@@ -1033,11 +1051,48 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         )}
 
         </div>{/* end input collapse wrapper */}
+        </>)}
       </div>
 
       {/* Input handle (ref-image-in) and output handle are rendered via BaseNode's
           extraHandles / default handles — outside the collapsible body so they
           survive the studio skin's collapsed state. */}
     </BaseNode>
+    {/* ── LibTV（创意模式）就地输入条：大提示词 + 高级/发送 ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={480}>
+        <NodeTextArea
+          className="nodrag nowheel"
+          rows={3}
+          placeholder="描述你想生成的视频…（ComfyUI 本地工作流）"
+          value={payload.prompt ?? ""}
+          onValueChange={(v) => update("prompt", v)}
+          style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+        />
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（服务器/工作流/模型/参数）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <SlidersHorizontal size={12} /> 高级
+          </button>
+          <div style={{ flex: 1 }} />
+          <span title="ComfyUI 自建/本地算力，无平台点数消耗" style={{ fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }}>⚡ 自建算力</span>
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); if (!genMutation.isPending && payload.prompt?.trim()) handleGenerate(); }}
+            disabled={genMutation.isPending || !payload.prompt?.trim()}
+            title={genMutation.isPending ? "生成中…" : "生成"}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: genMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer", background: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-t4)" : "#0b0d12" }}
+          >
+            {genMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
+          </button>
+        </div>
+      </InlineGenBar>
+    )}
+    </>
   );
 });
