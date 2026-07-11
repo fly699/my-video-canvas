@@ -2,6 +2,21 @@ import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
+import { adminTabFromRpcPath } from "../../shared/adminPerms";
+
+/** 页面权限矩阵的统一后端强制：凡是 admin.* 端点（广播/perms 等豁免除外），
+ *  除各自的静态级别门控外，还须满足站长在「权限管理」页为该页设置的最低级别。
+ *  这样站长收紧任一页面时，低级管理员既看不到入口、也无法经 API 绕过（深度防御）。
+ *  已通过静态门控（role=admin）后才调用；矩阵只会在静态级别之上收紧，不会放松。 */
+async function enforceAdminMatrix(ctx: TrpcContext): Promise<void> {
+  const tab = adminTabFromRpcPath(ctx.rpcPath);
+  if (!tab) return;
+  const { getTabMinLevel } = await import("./adminPerms");
+  const need = await getTabMinLevel(tab);
+  if ((ctx.user?.adminLevel ?? 0) < need) {
+    throw new TRPCError({ code: "FORBIDDEN", message: `该页面需管理员级别 L${need} 及以上` });
+  }
+}
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -43,6 +58,7 @@ export const adminProcedure = t.procedure.use(stampPath).use(
     if (!ctx.user || ctx.user.role !== 'admin') {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
+    await enforceAdminMatrix(ctx); // 页面权限矩阵后端强制（admin.* 端点，豁免除外）
 
     return next({
       ctx: {
@@ -63,27 +79,9 @@ export function levelProcedure(minLevel: number) {
       if (!ctx.user || ctx.user.role !== 'admin' || (ctx.user.adminLevel ?? 0) < minLevel) {
         throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
       }
+      await enforceAdminMatrix(ctx); // admin.* 端点叠加页面矩阵（非 admin 路径与豁免端点自动跳过）
       return next({ ctx: { ...ctx, user: ctx.user } });
     }),
   );
 }
 
-/** 后台页面动态门控：级别须 ≥ max(staticMin, 站长配置的该 tab 最低级别)。
- *  用于日志/聊天管理等敏感页的接口——站长在「权限管理」页调矩阵即时生效（30s 缓存），
- *  矩阵只会收紧、不会放松 staticMin 规定的写权限下限。 */
-export function tabLevelProcedure(tab: string, staticMin = 1) {
-  return t.procedure.use(stampPath).use(
-    t.middleware(async opts => {
-      const { ctx, next } = opts;
-      if (!ctx.user || ctx.user.role !== 'admin') {
-        throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
-      }
-      const { getTabMinLevel } = await import("./adminPerms"); // 动态引入避免模块环
-      const need = Math.max(staticMin, await getTabMinLevel(tab));
-      if ((ctx.user.adminLevel ?? 0) < need) {
-        throw new TRPCError({ code: "FORBIDDEN", message: `该页面需管理员级别 L${need} 及以上` });
-      }
-      return next({ ctx: { ...ctx, user: ctx.user } });
-    }),
-  );
-}

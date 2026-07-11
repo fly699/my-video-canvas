@@ -3,7 +3,7 @@ import { isIP } from "net";
 import { readFileSync } from "fs";
 import { TRPCError } from "@trpc/server";
 import { mcpServerNames } from "../_core/claudeBridge";
-import { adminProcedure, levelProcedure, tabLevelProcedure, router } from "../_core/trpc";
+import { adminProcedure, levelProcedure, router } from "../_core/trpc";
 import { getEffectiveTabLevels, invalidateAdminPermsCache } from "../_core/adminPerms";
 import { EDITABLE_TAB_KEYS, effectiveTabLevels } from "../../shared/adminPerms";
 import * as db from "../db";
@@ -46,17 +46,19 @@ const managerProc = levelProcedure(3);
 const superProc = levelProcedure(4);
 const ownerProc = levelProcedure(5); // 站长(L5)独占：权限矩阵管理
 
-// 页面动态门控（站长可在「权限管理」页调整各页最低查看级别；默认日志/聊天=4）：
-// 静态下限保证矩阵只会收紧、不会放松写权限（如清日志静态下限 L2、聊天治理 L3）。
-const logsView = tabLevelProcedure("logs", 1);
-const logsClear = tabLevelProcedure("logs", 2);
-const logsEmailProc = tabLevelProcedure("logs", 3);
-const comfyLogsView = tabLevelProcedure("comfyLogs", 1);
-const comfyLogsClear = tabLevelProcedure("comfyLogs", 2);
-const llmLogsView = tabLevelProcedure("llmLogs", 1);
-const llmLogsClear = tabLevelProcedure("llmLogs", 2);
-const chatView = tabLevelProcedure("chat", 1);
-const chatManage = tabLevelProcedure("chat", 3);
+// 日志/聊天页面的门控别名：静态级别（下限）+ enforceAdminMatrix 自动叠加页面矩阵。
+// 默认矩阵 logs/comfyLogs/llmLogs/chat = L4，故：查看 = max(L1,L4)=L4、清空 = max(L2,L4)=L4、
+// 邮送设置 = max(L3,L4)=L4、聊天治理 = max(L3,L4)=L4。站长调矩阵即时改变实际门槛，
+// 且静态下限保证「即便矩阵被下调也不会低于清空 L2 / 治理 L3」。
+const logsView = viewerProc;
+const logsClear = operatorProc;
+const logsEmailProc = managerProc;
+const comfyLogsView = viewerProc;
+const comfyLogsClear = operatorProc;
+const llmLogsView = viewerProc;
+const llmLogsClear = operatorProc;
+const chatView = viewerProc;
+const chatManage = managerProc;
 
 /** 越权守卫：禁止对「同级或更高级别的管理员」执行重置密码/删除/冻结/审批等操作——
  *  否则低级管理员可重置更高级管理员的密码进而接管其账户（提权）。目标为普通用户(level 0)
@@ -1092,6 +1094,10 @@ export const adminRouter = router({
       .input(z.object({ userId: z.number().int().positive(), level: z.number().int().min(0).max(5) }))
       .mutation(async ({ ctx, input }) => {
         if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "不能修改自己的管理员级别" });
+        // 不能操作同级或更高级别的管理员（防 L4 罢免/降级 L5 站长、防同级互改夺权）——
+        // 与重置密码/删除/冻结同一守卫。目标为普通用户(0)始终放行。
+        await assertOutranksTarget(ctx, input.userId);
+        // 授予级别不得高于自己（L4 不能造 L5，只有站长能任命站长）。
         if (input.level > (ctx.user.adminLevel ?? 0)) throw new TRPCError({ code: "FORBIDDEN", message: "不能授予高于自己级别的权限" });
         await db.setUserAdminLevel(input.userId, input.level);
         writeAuditLog({ ctx, action: "admin_set_level", detail: { userId: input.userId, level: input.level } });
