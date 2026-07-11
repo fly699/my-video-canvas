@@ -59,6 +59,19 @@ interface ContextMenuProps {
   onOpenAssets?: () => void;
 }
 
+// 「添加节点」面板的分类分组（浏览态）：对齐 LibTV 添加节点子菜单的语义分组，
+// 长平铺列表按类分段更好扫读；编辑态（改名/拖拽排序）仍用平铺。未列入的新类型归「其他」。
+const NODE_CATEGORIES: { label: string; types: string[] }[] = [
+  { label: "创作", types: ["script", "storyboard", "prompt", "director", "character"] },
+  { label: "图像", types: ["image_gen", "image_edit", "pose_control", "compare"] },
+  { label: "视频", types: ["video_task", "avatar", "lip_sync"] },
+  { label: "音频", types: ["audio", "voice_clone"] },
+  { label: "剪辑合成", types: ["clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "overlay", "post_process"] },
+  { label: "ComfyUI", types: ["comfyui_image", "comfyui_video", "comfyui_workflow"] },
+  { label: "智能体", types: ["ai_chat", "agent", "super_agent"] },
+  { label: "工具", types: ["asset", "note", "group"] },
+];
+
 // 菜单项右侧的快捷键提示片：与顶栏 tooltip 的 kbd 保持一致，让用户在右键菜单里也能学到键位。
 const kbdChip: React.CSSProperties = {
   marginLeft: "auto", flexShrink: 0, fontSize: 10, lineHeight: 1.4, fontFamily: "ui-monospace, SFMono-Regular, monospace",
@@ -543,7 +556,8 @@ export function ContextMenu({
               // When height is user-controlled via resize, fill remaining space;
               // otherwise cap at viewport-aware maxHeight from initial measurement.
               flex: currentH != null ? 1 : undefined,
-              maxHeight: currentH != null ? undefined : (pos ? pos.maxHeight - 40 : "none"),
+              // 列表至少给到 60vh，右键位置靠下也不至于只露几行（视口更小时仍受 pos.maxHeight 保护）。
+              maxHeight: currentH != null ? undefined : (pos ? Math.max(pos.maxHeight - 40, Math.round(window.innerHeight * 0.6)) : "none"),
               scrollbarWidth: "thin",
               scrollbarColor: "var(--c-bd3) transparent",
             }}>
@@ -595,10 +609,10 @@ export function ContextMenu({
                   <div style={{ height: 1, background: "var(--c-bd1)", margin: "4px 6px" }} />
                 </>
               )}
-              {/* Flat list: ComfyUI nodes pinned to the top, rest preserves
-                  the source order from NODE_CONFIGS (same sort as the bottom
-                  NodePicker). */}
-              {orderedConfigs.map((config: NodeConfig) => {
+              {/* 浏览态：按 NODE_CATEGORIES 分组渲染（组内保持自定义顺序）；
+                  编辑态：平铺（拖拽排序跨组无意义，沿用原交互）。 */}
+              {(() => {
+              const renderItem = (config: NodeConfig) => {
                 const Icon = NODE_ICONS[config.icon] ?? FileText;
                 const soon = config.comingSoon === true;
                 const label = labelOf(config);
@@ -693,7 +707,24 @@ export function ContextMenu({
                     </div>
                   </button>
                 );
-              })}
+              };
+              if (paletteEdit) return orderedConfigs.map(renderItem);
+              const used = new Set<string>();
+              const sections: { label: string; items: NodeConfig[] }[] = [];
+              for (const cat of NODE_CATEGORIES) {
+                const items = orderedConfigs.filter((c) => cat.types.includes(c.type));
+                items.forEach((c) => used.add(c.type));
+                if (items.length) sections.push({ label: cat.label, items });
+              }
+              const rest = orderedConfigs.filter((c) => !used.has(c.type));
+              if (rest.length) sections.push({ label: "其他", items: rest });
+              return sections.map((s) => (
+                <div key={s.label}>
+                  <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", color: "var(--c-t4)", padding: "7px 8px 3px" }}>{s.label}</div>
+                  {s.items.map(renderItem)}
+                </div>
+              ));
+              })()}
             </div>
           </>
         ) : (
