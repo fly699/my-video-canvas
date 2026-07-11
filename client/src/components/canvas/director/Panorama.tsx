@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { BackSide, type Mesh } from "three";
+import { BackSide, SRGBColorSpace, type Mesh, type Texture } from "three";
 
 // 720°全景背景：把等距(equirectangular)全景图贴到一个大球内壁，角色置于其中即融入真实场景。
 // 关键：球做成「天空盒」——每帧把球心完全跟随相机(X/Y/Z)，相机永远在球心、地平线恒在视平线
@@ -11,7 +11,9 @@ import { BackSide, type Mesh } from "three";
 // 与 y=0 网格地面平行(解决「地面无法重合/平行」)；scale=球半径(影响透视与距离感)。
 // 旋转用 YXZ 序：先绕世界竖直轴 yaw 定方位，再 pitch/roll 微调地平线，符合「先转向、后扶正」的直觉。
 export function PanoramaSphere({ url, yaw = 0, pitch = 0, roll = 0, scale = 1 }: { url: string; yaw?: number; pitch?: number; roll?: number; scale?: number }) {
-  const tex = useTexture(url);
+  // #71 全景结构校验：等距全景是 sRGB 照片，必须标记 colorSpace，否则被当线性数据二次转换、
+  // 整体发灰过曝（FlatBackground 同款处理）；anisotropy 提高地平线附近斜视角清晰度。
+  const tex = useTexture(url, (t: Texture) => { t.colorSpace = SRGBColorSpace; t.anisotropy = 8; t.needsUpdate = true; });
   const ref = useRef<Mesh>(null);
   const s = scale > 0 ? scale : 1;
   const d = Math.PI / 180;
