@@ -55,6 +55,8 @@ import { Camera, MapPin } from "lucide-react";
 import { ToolChip, RefThumbRow, MarkElementPicker, MarkChipRow, loadMarkModel, saveMarkModel, switchMark, removeMark } from "../InlineBarParts";
 import { nanoid } from "nanoid";
 import { usePickStore } from "../../../hooks/usePickStore";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { useFocusRefSource } from "../../../hooks/useFocusRefSource";
 // 视频模型参数表已抽到 shared/videoModelParams（服务端画布助手目录同源消费）；
 // 这里再导出以保持既有导入路径（ShotListPanel / StudioCommandBar / useWorkflowRunner 等）不变。
@@ -343,8 +345,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Use selector to avoid re-rendering on every store change (other nodes' updates)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   // LibTV 化 2.1b：创意模式（未来 LibTV 模式宿主）下渲染屏幕恒定的就地生成输入条。
-  // LibTV 全模式统一（#70）：节点级 LibTV 范式不再按皮肤/画布模式差异化。
-  const isCreativeMode = true;
+  const { uiStyle } = useUIStyle();
+  const { mode: canvasMode } = useCanvasMode();
+  const isCreativeMode = uiStyle !== "studio" && canvasMode === "creative";
   const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
   // LibTV：创意模式配置区默认收起（就地输入条为主入口），点「高级」才展开——
   // 防止选中后配置区全高展开把输入条顶出视口。

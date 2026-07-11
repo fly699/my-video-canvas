@@ -20,6 +20,8 @@ import { PromptDock } from "../PromptDock";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { ModelPicker } from "../ModelPicker";
 import { estimateMusicCost, estimateTtsCost, costEstimateLabel } from "@/lib/costEstimate";
 
@@ -817,8 +819,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   ) : null;
 
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
-  // LibTV 全模式统一（#70）：小卡形态 + 就地输入条不再按皮肤/画布模式差异化。
-  const isCreativeMode = true;
+  // LibTV 化：创意模式（pro 皮肤 + creative 画布）启用就地生成输入条。
+  const { uiStyle } = useUIStyle();
+  const { mode: canvasModeVal } = useCanvasMode();
+  const isCreativeMode = uiStyle !== "studio" && canvasModeVal === "creative";
   // 创意模式点击不展开完整配置区（对齐图像/视频节点）：由输入条「高级」开关展开，
   // 取消选中即复位；快捷键 A（Canvas 派发 canvas:toggle-advanced）同样生效。
   const [advancedOpen, setAdvancedOpen] = useState(false);
