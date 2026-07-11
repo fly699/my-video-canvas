@@ -45,11 +45,20 @@ export const ADMIN_SUBROUTER_TAB_ALIAS: Record<string, string> = {
   update: "system",  // 系统更新在「系统更新」页
 };
 
-// 矩阵后端强制的豁免端点（完整 rpcPath）：这些端点虽挂在 admin.chat/admin.perms 下，
-// 但语义不属于「聊天管理」「权限」页的可见性范畴——各自靠静态级别门控，不受页面矩阵约束。
+// 矩阵后端强制的豁免端点（完整 rpcPath）：这些端点虽挂在某个 admin 子路由下，但语义不属于
+// 该页面的「可见性范畴」——它们是跨页面共享的非敏感状态读，或独立静态门控的功能帧，
+// 若被页面矩阵一并收紧就会误伤其他页面。故豁免矩阵、仅保留各自的静态级别门控。
+// 注意：这里只豁免「非敏感只读 / 独立功能帧」，任何会暴露敏感数据或写操作的端点绝不豁免，
+// 必须继续受页面矩阵强制（否则就成了「前端隐藏、API 仍可绕过」的自欺欺人）。
 //  - 广播类：聊天室「广播频道」功能（L3 管理员在聊天里用），非后台聊天管理页。
+//  - clearPersistentAnnouncement：聊天室里关公告，非后台聊天管理页。
 //  - perms.get：任意管理员都要读矩阵以过滤自己可见的 tab（读矩阵无害）。
 //  - perms.set：站长(L5)独占，靠 ownerProc 静态门控。
+//  - whitelist.getSettings：只回 4 个功能布尔标志（enabled/comfyuiBypass/llmBypass/kieEnabled），
+//    非敏感的白名单条目本身；被 KiePanel(kie 页, L1) 与白名单页共同只读引用。若受 whitelist 页
+//    (L3) 矩阵约束，L1/L2 管理员打开 KIE 页就会 403。真正敏感的 listEntries（IP 明细）及所有写
+//    开关（setEnabled/setComfyuiBypass/setLlmBypass/setKieEnabled/addEntry/removeEntry）均为
+//    managerProc 且不在此豁免，继续受 whitelist 页矩阵强制。
 export const MATRIX_EXEMPT_METHODS = new Set<string>([
   "admin.chat.broadcast",
   "admin.chat.broadcastTargets",
@@ -57,6 +66,7 @@ export const MATRIX_EXEMPT_METHODS = new Set<string>([
   "admin.chat.clearPersistentAnnouncement",
   "admin.perms.get",
   "admin.perms.set",
+  "admin.whitelist.getSettings",
 ]);
 
 /** 由 tRPC 路径（admin.<sub>.<method>）解析出受矩阵约束的 tab；非 admin / 豁免端点返回 null。

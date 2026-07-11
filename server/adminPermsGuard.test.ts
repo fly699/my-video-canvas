@@ -125,7 +125,39 @@ describe("对抗⑤：setLevel 夺权/提权守卫", () => {
   });
 });
 
-describe("对抗⑥：非管理员/未登录彻底挡在门外", () => {
+describe("对抗⑥：跨页共享的非敏感只读端点豁免（不误伤），但敏感数据/写仍受矩阵强制", () => {
+  // whitelist.getSettings 只回 4 个功能布尔标志，被 KiePanel(kie 页 L1) 与白名单页共同只读引用，
+  // 豁免矩阵——否则 L1/L2 管理员打开 KIE 页就 403。而真正敏感的 listEntries（IP 明细）与写开关
+  // 仍是 managerProc + whitelist 页矩阵，绝不豁免（否则就是「前端藏、API 通」的自欺欺人）。
+  it("getSettings：L1 查看员可读（默认），豁免生效", async () => {
+    await expect(call(1).admin.whitelist.getSettings()).resolves.toBeDefined();
+  });
+  it("站长把「白名单」收紧到 L5 后，getSettings 仍 L1 可读（豁免不随页面收紧误伤 KIE 页）", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ whitelist: 5 }));
+    invalidateAdminPermsCache();
+    await expect(call(1).admin.whitelist.getSettings()).resolves.toBeDefined();
+    await expect(call(3).admin.whitelist.getSettings()).resolves.toBeDefined();
+  });
+  it("敏感的 listEntries（IP 明细）：默认受静态 managerProc L3 拦 L1/L2", async () => {
+    await denied(call(1).admin.whitelist.listEntries());
+    await denied(call(2).admin.whitelist.listEntries());
+    await expect(call(3).admin.whitelist.listEntries()).resolves.toBeDefined();
+  });
+  it("站长把「白名单」收紧到 L5 → 敏感 listEntries 对 L3/L4 变 FORBIDDEN（矩阵强制，无 API 绕过）", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ whitelist: 5 }));
+    invalidateAdminPermsCache();
+    await denied(call(3).admin.whitelist.listEntries());
+    await denied(call(4).admin.whitelist.listEntries());
+    await expect(call(5).admin.whitelist.listEntries()).resolves.toBeDefined();
+  });
+  it("站长把「白名单」收紧到 L5 → 敏感写开关 setEnabled 对 L4 变 FORBIDDEN", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ whitelist: 5 }));
+    invalidateAdminPermsCache();
+    await denied(call(4).admin.whitelist.setEnabled({ enabled: false }));
+  });
+});
+
+describe("对抗⑦：非管理员/未登录彻底挡在门外", () => {
   it("普通用户 & 未登录访问 admin 端点 → FORBIDDEN / UNAUTHORIZED", async () => {
     await denied(call(0).admin.logs.list({ limit: 1, offset: 0 }));
     const anon = appRouter.createCaller({ ...ctxAt(0), user: null });
