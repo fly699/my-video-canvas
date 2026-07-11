@@ -182,7 +182,29 @@ describe("对抗⑦：双级别矩阵（view 门控读 / operate 门控写），
   });
 });
 
-describe("对抗⑧：非管理员/未登录彻底挡在门外", () => {
+describe("对抗⑧：命名空间外的后台管理端点也受矩阵强制（堵「前端藏、API 通」自欺欺人）", () => {
+  // comfyStress/comfyOps 挂在顶层 router、全局 ComfyUI 服务器写挂在 comfyui.*——都不在 admin.* 下，
+  // 若矩阵不显式登记，站长收紧对应页只会隐藏前端入口、后端 API 仍可直调。
+  it("comfyStress.list（归 comfyStress 页）：view 收紧到 L5 后，L3/L4 直调 API 被拒", async () => {
+    await expect(call(3).comfyStress.list()).resolves.toBeDefined(); // 默认 view=1，任意管理员可读
+    await db.setAdminPermsJson(JSON.stringify({ comfyStress: { view: 5, operate: 5 } }));
+    invalidateAdminPermsCache();
+    await denied(call(3).comfyStress.list());
+    await denied(call(4).comfyStress.list());
+    await expect(call(5).comfyStress.list()).resolves.toBeDefined();
+  });
+  it("comfyui.setGlobalServers（全局 ComfyUI 服务器写，归 comfyServers 页）：operate 收紧到 L5 后 L3/L4 直调被拒", async () => {
+    await db.setAdminPermsJson(JSON.stringify({ comfyServers: { view: 1, operate: 5 } }));
+    invalidateAdminPermsCache();
+    await denied(call(3).comfyui.setGlobalServers({ servers: [] }));
+    await denied(call(4).comfyui.setGlobalServers({ servers: [] }));
+    await expect(call(5).comfyui.setGlobalServers({ servers: [] })).resolves.toMatchObject({ ok: true });
+  });
+  // 注：画布共享只读 comfyui.serverStatus/globalServers 是 protectedProcedure，不经 enforceAdminMatrix，
+  // 天然不受 comfyServers 矩阵影响（adminPerms.test.ts 已断言其 adminTabFromRpcPath 返回 null）。
+});
+
+describe("对抗⑨：非管理员/未登录彻底挡在门外", () => {
   it("普通用户 & 未登录访问 admin 端点 → FORBIDDEN / UNAUTHORIZED", async () => {
     await denied(call(0).admin.logs.list({ limit: 1, offset: 0 }));
     const anon = appRouter.createCaller({ ...ctxAt(0), user: null });

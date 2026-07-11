@@ -70,6 +70,20 @@ export const ADMIN_SUBROUTER_TAB_ALIAS: Record<string, string> = {
   update: "system",  // 系统更新在「系统更新」页
 };
 
+// 少数「后台管理功能」不在 admin.* 命名空间下（挂在顶层/共享 router），必须显式登记到对应 tab，
+// 否则矩阵无法在后端强制它们的写——而前端却已按矩阵隐藏入口，就成了「前端藏、API 通」的自欺欺人。
+//  · 按 router 前缀整体归属（这些顶层 router 的非 admin 端点均为 protectedProcedure，本就不经
+//    enforceAdminMatrix，故整体前缀映射不会误伤用户侧只读端点）。
+const NON_ADMIN_ROUTER_TAB_PREFIX: [string, string][] = [
+  ["comfyStress.", "comfyStress"], // ComfyUI 压测（全部 admin 端点）
+  ["comfyOps.", "comfyOps"],       // ComfyUI 运维中心（admin 端点；alerts/dashboard 等用户只读为 protected，自动豁免）
+];
+//  · 精确路径归属：共享 router 里个别的后台管理写（如全局 ComfyUI 服务器设置，挂在 comfyui.*）。
+//    只登记该写端点；同 router 的 serverStatus/globalServers 是画布共享只读(protected)，不登记、不受影响。
+const NON_ADMIN_EXACT_PATH_TAB: Record<string, string> = {
+  "comfyui.setGlobalServers": "comfyServers",
+};
+
 // 矩阵后端强制的豁免端点（完整 rpcPath）：这些端点虽挂在某个 admin 子路由下，但语义不属于
 // 该页面的「可见性范畴」——它们是跨页面共享的非敏感状态读，或独立静态门控的功能帧，
 // 若被页面矩阵一并收紧就会误伤其他页面。故豁免矩阵、仅保留各自的静态级别门控。
@@ -99,8 +113,13 @@ export const MATRIX_EXEMPT_METHODS = new Set<string>([
  *  真实生效到接口层，而非仅前端隐藏。未知 sub-router 的 tab 走默认（getTabAccess 回退 view=operate=1，
  *  即不额外收紧，静态级别仍生效）。 */
 export function adminTabFromRpcPath(path: string | undefined | null): string | null {
-  if (!path || !path.startsWith("admin.")) return null;
+  if (!path) return null;
   if (MATRIX_EXEMPT_METHODS.has(path)) return null;
+  // 先处理不在 admin.* 命名空间下、但属于某后台页的管理端点（否则矩阵漏管、API 可绕过）。
+  const exact = NON_ADMIN_EXACT_PATH_TAB[path];
+  if (exact) return exact;
+  for (const [prefix, tab] of NON_ADMIN_ROUTER_TAB_PREFIX) if (path.startsWith(prefix)) return tab;
+  if (!path.startsWith("admin.")) return null;
   const seg = path.split(".")[1];
   if (!seg) return null;
   return ADMIN_SUBROUTER_TAB_ALIAS[seg] ?? seg;

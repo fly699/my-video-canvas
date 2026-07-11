@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { effectiveTabAccess, effectiveTabLevels, DEFAULT_TAB_LEVELS, EDITABLE_TAB_KEYS } from "../shared/adminPerms";
+import { effectiveTabAccess, effectiveTabLevels, DEFAULT_TAB_LEVELS, EDITABLE_TAB_KEYS, adminTabFromRpcPath } from "../shared/adminPerms";
 
 describe("管理后台权限矩阵（effectiveTabAccess 二维 view/operate）", () => {
   it("默认矩阵：日志三页 + 聊天管理 view=operate=4，白名单/下载审批 3/3，权限管理恒 5/5", () => {
@@ -45,5 +45,33 @@ describe("管理后台权限矩阵（effectiveTabAccess 二维 view/operate）",
   it("EDITABLE_TAB_KEYS 覆盖全部 tab（除 perms）", () => {
     expect(EDITABLE_TAB_KEYS).not.toContain("perms");
     expect(EDITABLE_TAB_KEYS.length).toBe(Object.keys(DEFAULT_TAB_LEVELS).length - 1);
+  });
+});
+
+describe("adminTabFromRpcPath：路径 → 受矩阵约束的 tab", () => {
+  it("admin.* 子路由与别名正确归属；豁免端点返回 null", () => {
+    expect(adminTabFromRpcPath("admin.logs.list")).toBe("logs");
+    expect(adminTabFromRpcPath("admin.logEmail.getSettings")).toBe("logs");   // 别名
+    expect(adminTabFromRpcPath("admin.update.available")).toBe("system");     // 别名
+    expect(adminTabFromRpcPath("admin.whitelist.listEntries")).toBe("whitelist");
+    expect(adminTabFromRpcPath("admin.whitelist.getSettings")).toBeNull();    // 豁免
+    expect(adminTabFromRpcPath("admin.chat.broadcast")).toBeNull();           // 豁免
+    expect(adminTabFromRpcPath("admin.perms.set")).toBeNull();                // 豁免
+  });
+
+  it("命名空间外的后台管理端点也正确归属 tab（否则矩阵漏管、API 可绕过）", () => {
+    expect(adminTabFromRpcPath("comfyStress.start")).toBe("comfyStress");
+    expect(adminTabFromRpcPath("comfyStress.presets.save")).toBe("comfyStress"); // 嵌套子路由仍前缀匹配
+    expect(adminTabFromRpcPath("comfyOps.exec")).toBe("comfyOps");
+    expect(adminTabFromRpcPath("comfyui.setGlobalServers")).toBe("comfyServers"); // 精确路径
+  });
+
+  it("画布共享 / 用户只读端点不被误纳（避免误伤普通用户）", () => {
+    expect(adminTabFromRpcPath("comfyui.serverStatus")).toBeNull();  // protected 只读
+    expect(adminTabFromRpcPath("comfyui.globalServers")).toBeNull(); // protected 只读
+    expect(adminTabFromRpcPath("comfyui.generate")).toBeNull();      // 用户生成
+    expect(adminTabFromRpcPath("canvas.list")).toBeNull();
+    expect(adminTabFromRpcPath("chat.getMessages")).toBeNull();      // 非 admin.chat
+    expect(adminTabFromRpcPath(null)).toBeNull();
   });
 });
