@@ -3431,11 +3431,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* UI style switcher (专业 / 创意 / 工作室) */}
             <UIStyleSwitcher orient={toolbarOrient} />
 
-            {/* Theme switcher (foldable) */}
-            <span data-tb-sec data-tour="theme" style={{ display: "inline-flex", alignItems: "center" }}><ThemeSwitcher /></span>
-
-            {/* Canvas background picker (foldable) */}
-            <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><CanvasBgPicker value={canvasBg} onChange={setCanvasBg} /></span>
+            {/* Theme + background pickers —— 创意(LibTV)模式隐藏：创意皮肤有自己固定的
+                媒体优先配色与画布底，主题/背景选择在此模式无意义、只增噪声。 */}
+            {canvasMode !== "creative" && (<>
+              <span data-tb-sec data-tour="theme" style={{ display: "inline-flex", alignItems: "center" }}><ThemeSwitcher /></span>
+              <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><CanvasBgPicker value={canvasBg} onChange={setCanvasBg} /></span>
+            </>)}
           </div>
 
           {/* Filmstrip panel */}
