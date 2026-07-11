@@ -10,6 +10,9 @@ import { useMention } from "./useMention";
 import { useSlashMenu } from "./useSlashMenu";
 
 const WIDE_EDITOR_LLM_KEY = "avc:wide-editor-llm";
+// #73：散点 AI 工具按钮（无独立选择器的一键扩写/翻译/智能剪辑等）读取同一偏好，
+// 用户在宽幅弹窗里选过的 LLM（含自建/桥接）即全局生效，不再暗走服务端默认。
+export const loadAiToolModel = (): string => { try { return localStorage.getItem(WIDE_EDITOR_LLM_KEY) ?? ""; } catch { return ""; } };
 
 /** 稳定的「合并外部转发 ref + 内部 ref」回调（避免每次渲染重建导致 ref 反复挂卸）。 */
 function useMergedRef<T>(external: React.ForwardedRef<T>, internal: React.MutableRefObject<T | null>) {

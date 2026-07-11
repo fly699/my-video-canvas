@@ -6,6 +6,7 @@ import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SmartCutNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { loadAiToolModel } from "../NodeTextInput";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -107,6 +108,8 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
       // 服务端要求 5-3600；<5 视为「自动判定」不下发，避免被 zod 拒。
       targetDuration: typeof payload.targetDuration === "number" && payload.targetDuration >= 5 ? Math.min(3600, payload.targetDuration) : undefined,
       shotBoundaries: shotBoundariesFor(videoUrl),
+      // #73：此前不传 model 暗走服务端默认——随宽幅弹窗 AI 工具偏好（含自建/桥接）
+      ...(loadAiToolModel() ? { model: loadAiToolModel() } : {}),
     });
   };
 

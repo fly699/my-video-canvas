@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { trpc } from "@/lib/trpc";
+import { loadAiToolModel } from "../NodeTextInput";
 import { toast } from "sonner";
 import { NodeTextArea } from "../NodeTextInput";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
@@ -593,7 +594,8 @@ function PromptBox({ nodeId, field, placeholder, enhance }: { nodeId: string; fi
     if (!value.trim()) { toast.error("内容为空"); return; }
     setEnhancing(mode);
     try {
-      const r = await enhanceMutation.mutateAsync({ text: value, mode });
+      const m = loadAiToolModel();
+      const r = await enhanceMutation.mutateAsync({ text: value, mode, ...(m ? { model: m } : {}) });
       const out = r.result?.trim();
       if (!useCanvasStore.getState().nodes.some((n) => n.id === nodeId)) return;
       if (out) { updateNodeData(nodeId, { [field]: out }); toast.success(mode === "expand" ? "已扩写" : "已翻译为英文"); }
