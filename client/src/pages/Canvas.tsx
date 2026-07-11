@@ -2974,7 +2974,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* ── Floating toolbar — drops anywhere; horizontal/vertical via toggle ── */}
           <div
-            className={`canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl ${toolbarOrient === "v" ? "flex-col" : ""}`}
+            className={`canvas-bottombar absolute z-20 flex items-center rounded-2xl ${toolbarOrient === "v" ? "flex-col " : ""}${canvasMode === "creative" ? "bottombar-creative gap-0.5 px-1.5 py-1" : "gap-1.5 px-2.5 py-1.5"}`}
             data-bar-orient={toolbarOrient}
             data-toolbar-collapsed={toolbarCollapsed ? "true" : "false"}
             onClick={(e) => e.stopPropagation()}
@@ -3013,10 +3013,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
               top: toolbarPos.x < 0 ? (window.visualViewport?.height ?? window.innerHeight) - 104 : toolbarPos.y,
               touchAction: "none",
               cursor: "grab",
-              background: "color-mix(in oklch, var(--c-base) 38%, transparent)",
-              backdropFilter: "blur(24px)",
-              border: "1px solid var(--c-bd2)",
-              boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
+              // 创意模式（LibTV 风）：容器更实一点、模糊更强、边框更淡、圆角更大、阴影更柔，
+              // 与媒体优先画布上的胶囊 dock 观感一致；其它模式沿用原质感。
+              ...(canvasMode === "creative"
+                ? {
+                    background: "color-mix(in oklch, var(--c-base) 66%, transparent)",
+                    backdropFilter: "blur(30px)",
+                    border: "1px solid color-mix(in oklch, var(--c-bd2) 60%, transparent)",
+                    borderRadius: 20,
+                    boxShadow: "0 10px 34px oklch(0 0 0 / 0.4)",
+                  }
+                : {
+                    background: "color-mix(in oklch, var(--c-base) 38%, transparent)",
+                    backdropFilter: "blur(24px)",
+                    border: "1px solid var(--c-bd2)",
+                    boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
+                  }),
             }}
           >
             {/* Collapse toggle — folds the less-used tools (always visible, far left) */}
