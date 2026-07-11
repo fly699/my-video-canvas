@@ -3,8 +3,12 @@ import { createPortal } from "react-dom";
 import { Maximize2, Check, Wand2, Languages, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { LLMModelPicker, type LLMModelId } from "./LLMModelPicker";
+import { useNodeDefaultModels } from "../../contexts/NodeDefaultModelsContext";
 import { useMention } from "./useMention";
 import { useSlashMenu } from "./useSlashMenu";
+
+const WIDE_EDITOR_LLM_KEY = "avc:wide-editor-llm";
 
 /** 稳定的「合并外部转发 ref + 内部 ref」回调（避免每次渲染重建导致 ref 反复挂卸）。 */
 function useMergedRef<T>(external: React.ForwardedRef<T>, internal: React.MutableRefObject<T | null>) {
@@ -92,6 +96,16 @@ function useExpandEditor(
   // 也具备同样能力。底层复用 aiEnhance.enhance（与提示词节点同一端点）。因 useExpandEditor 被
   // 所有 NodeTextArea 复用，故一处接入即覆盖所有含提示词的节点（图像/视频/分镜/提示词等）。
   const enhance = trpc.aiEnhance.enhance.useMutation();
+  const { resolve } = useNodeDefaultModels();
+  // AI 工具用的 LLM 模型：默认取系统默认 LLM，用户可在弹窗内切换，localStorage 记住上次选择。
+  const [aiModel, setAiModel] = useState<LLMModelId>(() => {
+    try { const s = localStorage.getItem(WIDE_EDITOR_LLM_KEY); if (s) return s as LLMModelId; } catch { /* ignore */ }
+    return resolve("prompt", "llm") as LLMModelId;
+  });
+  const pickModel = useCallback((m: LLMModelId) => {
+    setAiModel(m);
+    try { localStorage.setItem(WIDE_EDITOR_LLM_KEY, m); } catch { /* ignore */ }
+  }, []);
   const [aiBusy, setAiBusy] = useState<null | "expand" | "translate_en" | "polish">(null);
   const runAi = useCallback(async (mode: "expand" | "translate_en" | "polish", label: string) => {
     const el = bigRef.current;
@@ -100,7 +114,7 @@ function useExpandEditor(
     if (!text) { toast.error("提示词为空，无法" + label); return; }
     setAiBusy(mode);
     try {
-      const r = await enhance.mutateAsync({ text, mode });
+      const r = await enhance.mutateAsync({ text, mode, model: aiModel });
       const out = r.result?.trim();
       if (out) { el.value = out; commit(out); toast.success(label + "完成"); }
       else toast.error(label + "失败：无返回");
@@ -109,7 +123,7 @@ function useExpandEditor(
     } finally {
       setAiBusy(null);
     }
-  }, [aiBusy, commit, enhance]);
+  }, [aiBusy, aiModel, commit, enhance]);
 
   const showBtn = useCallback(() => {
     if (!enabled || !elRef.current) return;
@@ -158,6 +172,10 @@ function useExpandEditor(
               <Maximize2 size={14} style={{ color: "var(--c-t3)" }} />
               <span style={{ fontSize: 13, fontWeight: 600, color: "var(--c-t1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180 }}>{placeholder?.trim() ? placeholder.slice(0, 24) : "编辑文本"}</span>
               <div style={{ flex: 1 }} />
+              {/* AI 工具用的 LLM 模型选择（扩写/翻译/润色共用），持久化记住上次选择 */}
+              <div className="nodrag" onClick={(e) => e.stopPropagation()}>
+                <LLMModelPicker value={aiModel} onChange={pickModel} disabled={!!aiBusy} />
+              </div>
               {/* AI 提示词工具（LibTV 内联能力搬进宽幅弹窗）：扩写 / 翻译英文 / 润色 */}
               {([
                 { mode: "expand" as const, label: "扩写", Icon: Wand2 },

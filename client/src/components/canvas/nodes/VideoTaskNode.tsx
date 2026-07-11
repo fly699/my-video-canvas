@@ -347,6 +347,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // 「高级」展开态不跨选中记忆：取消选中即复位，下次点选默认收起、需再点「高级」才展开。
   useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
+  // 快捷键 A：选中时切换「高级」参数区（Canvas 派发 canvas:toggle-advanced）。
+  useEffect(() => {
+    if (!selected) return;
+    const h = () => setAdvancedOpen((v) => !v);
+    window.addEventListener("canvas:toggle-advanced", h);
+    return () => window.removeEventListener("canvas:toggle-advanced", h);
+  }, [selected]);
   const payload = data.payload;
   // Pull a connected upstream prompt (提示词 / 分镜) into this node's blank prompt —
   // video_task advertises "← 提示词 / 分镜" but never consumed them. Primitive selector
@@ -2070,7 +2077,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
-            title={advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（参考图/预设/全部参数）"}
+            title={(advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（参考图/预设/全部参数）") + " · 快捷键 A"}
             style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 8px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
           >
             高级

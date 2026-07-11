@@ -1159,17 +1159,19 @@ export const BaseNode = memo(function BaseNode({
 
       {/* ── Header ── */}
       <div
-        className="node-header flex items-center gap-2 px-3.5 py-1.5 select-none flex-shrink-0"
+        className={`node-header flex items-center select-none flex-shrink-0 ${isCreative ? "gap-1.5 px-2.5" : "gap-2 px-3.5 py-1.5"}`}
         onMouseEnter={onHeaderEnter}
         onMouseLeave={onHeaderLeave}
         style={{
-          // LibTV 化 3.5：创意模式标题栏「标签化」——透明无边框，观感上是卡顶
-          // 一行小标签（图标+名称），卡本体≈纯媒体；按钮组由 CSS 控制悬停才浮现。
+          // LibTV 化 3.5/3.7：创意模式标题栏「标签化」——透明无边框，观感上是卡顶一行小标签
+          // （小图标 + 灰名 + 灰尺寸），卡本体≈纯媒体。3.7：进一步压薄（≈22px 高、更小内边距/
+          // 图标/间距），让标题栏在卡里占比更小，贴近 LibTV。按钮组由 CSS 控制悬停才浮现。
           background: isCreative
             ? "transparent"
             : `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
           borderBottom: isCreative ? "none" : `1px solid ${isLight ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
-          minHeight: isCreative ? 30 : 36,
+          minHeight: isCreative ? 22 : 36,
+          ...(isCreative ? { paddingTop: 3, paddingBottom: 3 } : {}),
         }}
       >
         {/* Drag grip — 创意(LibTV)皮肤下移除：卡顶应是极简「图标+名称」小标签，
@@ -1184,17 +1186,17 @@ export const BaseNode = memo(function BaseNode({
           />
         )}
 
-        {/* Node type icon — 创意皮肤下弱化为无框裸图标（更接近 LibTV 的小标签观感） */}
+        {/* Node type icon — 创意皮肤下弱化为无框小裸图标（更接近 LibTV 的小标签观感） */}
         <div
           className="rounded-lg flex items-center justify-center flex-shrink-0"
           style={{
-            width: isCreative ? 18 : 20,
-            height: isCreative ? 18 : 20,
+            width: isCreative ? 15 : 20,
+            height: isCreative ? 15 : 20,
             background: isCreative ? "transparent" : `${config.color}1a`,
             border: isCreative ? "none" : `1px solid ${config.color}35`,
           }}
         >
-          <Icon className="w-3.5 h-3.5" style={{ color: config.color }} />
+          <Icon style={{ width: isCreative ? 13 : 14, height: isCreative ? 13 : 14, color: config.color }} />
         </div>
 
         {/* Title */}
@@ -1240,8 +1242,9 @@ export const BaseNode = memo(function BaseNode({
               <span
                 className={`text-xs truncate ui-node-title ${isCreative ? "font-medium" : "font-semibold"}`}
                 style={{
-                  // 创意皮肤：标题降为次级色 + 中等字重，作卡顶小标签而非抢眼主标题。
+                  // 创意皮肤：标题降为次级色 + 中等字重 + 略小字号，作卡顶小标签而非抢眼主标题。
                   color: isCreative ? "var(--c-t3)" : "var(--c-t1)",
+                  fontSize: isCreative ? 11 : undefined,
                   cursor: "text",
                   letterSpacing: "-0.01em",
                   transition: "color 150ms ease",
@@ -1409,8 +1412,9 @@ export const BaseNode = memo(function BaseNode({
         {/* LibTV 化 3.6：创意模式标签行右端的媒体尺寸灰字（如「2048 × 1152」） */}
         {isCreative && hasHero && <HeroSizeBadge hostRef={heroMediaRef} variant="text" />}
 
-        {/* Type badge */}
-        {!hideTypeBadge && (
+        {/* Type badge —— 创意(LibTV)皮肤隐藏这枚彩色类型标签：LibTV 标题行只有灰名 + 灰尺寸，
+            节点类型由左侧小图标传达即可，彩色徽章与「纯媒体+极简标签」的观感相悖。 */}
+        {!hideTypeBadge && !isCreative && (
           <span
             className="node-type-badge text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 leading-none tracking-widest uppercase"
             style={{
