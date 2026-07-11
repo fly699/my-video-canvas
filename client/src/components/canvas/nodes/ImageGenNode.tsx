@@ -573,9 +573,20 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           否则点击带结果节点后预览下会剩一块空 padding 灰条。 */}
       <div className="flex flex-col h-full overflow-auto" style={isCreativeMode && !advancedOpen ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
 
-        {/* #5 版本历史：历次产出的结果快照，点击回滚（共享组件）。创意收起态隐藏（预览下不留条）。 */}
+        {/* #5 版本历史：历次产出的结果快照，点击回滚（共享组件）。创意收起态隐藏（预览下不留条）。
+            hover 单项出「对比」→ 建对比节点（A=当前结果 B=该版本）做版本间滑块对比。 */}
         {!(isCreativeMode && !advancedOpen) && (
-          <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.imageUrl} accent={accent} onRollback={rollbackToSnapshot} />
+          <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.imageUrl} accent={accent} onRollback={rollbackToSnapshot}
+            onCompare={(snap) => {
+              const st = useCanvasStore.getState();
+              const self = st.nodes.find((n) => n.id === id);
+              if (!self || !payload.imageUrl) return;
+              const w = (self.style?.width as number | undefined) ?? 320;
+              const node = st.addNode("compare", { x: self.position.x + w + 60, y: self.position.y });
+              st.updateNodeData(node.id, { aUrl: payload.imageUrl, bUrl: snap.url });
+              useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === node.id })) }));
+              toast.success("已建对比节点：A=当前结果，B=该历史版本");
+            }} />
         )}
 
         {/* ── Batch grid result ── (hidden inside the studio floating panel — the
