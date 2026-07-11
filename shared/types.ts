@@ -571,6 +571,8 @@ export interface DirectorActor {
   groupId?: string;     // P4：所属群众群组 id；置位时 position 为「组内局部坐标」
   glbUrl?: string;      // 用 GLB 网格渲染（本地导入 / 内置真人模型）；置位时不再是参数化人偶
   tint?: boolean;       // GLB 材质染成 actor.color（纯色人偶，便于黑底分离/彩色替换）
+  /** #71 多物体：几何体道具（方块/球体/圆柱/圆锥/平面板）；置位时渲染几何体而非人偶。 */
+  prim?: "box" | "sphere" | "cylinder" | "cone" | "plane";
 }
 
 // P4：群众群组——一组人偶的统一变换父级（位置/旋转/缩放整体作用于成员）。
@@ -616,6 +618,10 @@ export interface DirectorScene {
   sceneOffsetZ?: number;  // 场景平移Z(米)：整体前后移动「人物场景」，在全景房间里前后挪位，默认 0
   groundVisible: boolean;
   labelsVisible: boolean;
+  /** #71 原点可位移：布景原点（新增人物/群众/模板的落点 + 地面网格中心 + 原点标记）。缺省 [0,0,0]。 */
+  origin?: Vec3;
+  /** #71 非全景背景图：整屏静态背景（不随机位转动；与全景/黑底分离互斥，全景优先）。 */
+  backgroundImageUrl?: string;
 }
 
 export interface DirectorNodeData {

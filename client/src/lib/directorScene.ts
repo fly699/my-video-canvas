@@ -239,3 +239,66 @@ export function makeDefaultDirectorScene(): DirectorScene {
     labelsVisible: true,
   };
 }
+
+// ── #71 多物体：几何体道具 ─────────────────────────────────────────────
+export const PROP_PRIMS = [
+  { key: "box", label: "方块" },
+  { key: "sphere", label: "球体" },
+  { key: "cylinder", label: "圆柱" },
+  { key: "cone", label: "圆锥" },
+  { key: "plane", label: "平面板" },
+] as const;
+export type PropPrim = (typeof PROP_PRIMS)[number]["key"];
+
+export function makeProp(prim: PropPrim, existing: DirectorActor[], position?: Vec3): DirectorActor {
+  const a = makeActor("male", existing, position);
+  const n = existing.filter((x) => x.prim).length + 1;
+  a.prim = prim;
+  a.name = `${PROP_PRIMS.find((pp) => pp.key === prim)?.label ?? "物体"} ${n}`;
+  a.color = "#8a93a6"; // 道具默认中性灰，与人偶配色区分
+  return a;
+}
+
+// ── #71 场景人物位置模板 ───────────────────────────────────────────────
+// 坐标相对场景原点；rotY 按「0=面向默认机位(+Z)」约定（faceCameraYaw 同系）。
+export interface LayoutTemplate {
+  key: string;
+  label: string;
+  desc: string;
+  specs: { model: string; dx: number; dz: number; rotY: number }[];
+}
+export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
+  { key: "duo", label: "对话双人", desc: "两人面对面（近景对话/正反打）", specs: [
+    { model: "male", dx: -0.7, dz: 0, rotY: 90 }, { model: "female", dx: 0.7, dz: 0, rotY: -90 },
+  ] },
+  { key: "trio", label: "三人三角", desc: "三人围成三角、面向圆心（群像对话）", specs: [
+    { model: "male", dx: 0, dz: -0.9, rotY: 180 }, { model: "female", dx: -1.0, dz: 0.6, rotY: 55 }, { model: "tall", dx: 1.0, dz: 0.6, rotY: -55 },
+  ] },
+  { key: "lineup", label: "一字排开", desc: "四人横排面向机位（阵容/海报位）", specs: [
+    { model: "male", dx: -1.2, dz: 0, rotY: 0 }, { model: "female", dx: -0.4, dz: 0, rotY: 0 }, { model: "tall", dx: 0.4, dz: 0, rotY: 0 }, { model: "male", dx: 1.2, dz: 0, rotY: 0 },
+  ] },
+  { key: "roundtable", label: "圆桌围坐", desc: "六人围圈、面向圆心（会议/篝火）", specs: Array.from({ length: 6 }, (_, i) => {
+    const ang = (i / 6) * Math.PI * 2;
+    const dx = Math.sin(ang) * 1.2, dz = Math.cos(ang) * 1.2;
+    return { model: i % 2 ? "female" : "male", dx: Number(dx.toFixed(2)), dz: Number(dz.toFixed(2)), rotY: Math.round(Math.atan2(-dx, -dz) * 180 / Math.PI) };
+  }) },
+  { key: "confront", label: "两组对峙", desc: "两两对峙、间隔拉开（冲突/谈判）", specs: [
+    { model: "male", dx: -1.1, dz: -0.2, rotY: 90 }, { model: "tall", dx: -1.7, dz: 0.5, rotY: 90 },
+    { model: "female", dx: 1.1, dz: -0.2, rotY: -90 }, { model: "male", dx: 1.7, dz: 0.5, rotY: -90 },
+  ] },
+  { key: "hero", label: "主角+群像", desc: "主角前置、四人背景横排（纵深层次）", specs: [
+    { model: "male", dx: 0, dz: 1.0, rotY: 0 },
+    { model: "female", dx: -1.5, dz: -1.2, rotY: 0 }, { model: "tall", dx: -0.5, dz: -1.4, rotY: 0 }, { model: "male", dx: 0.5, dz: -1.4, rotY: 0 }, { model: "female", dx: 1.5, dz: -1.2, rotY: 0 },
+  ] },
+];
+
+/** 按模板生成一批新角色（追加式；落点相对 origin），返回新角色数组。 */
+export function templateActors(tpl: LayoutTemplate, existing: DirectorActor[], origin: Vec3): DirectorActor[] {
+  const out: DirectorActor[] = [];
+  for (const sp of tpl.specs) {
+    const a = makeActor(sp.model, [...existing, ...out], [origin[0] + sp.dx, origin[1], origin[2] + sp.dz]);
+    a.rotation = [0, sp.rotY, 0];
+    out.push(a);
+  }
+  return out;
+}
