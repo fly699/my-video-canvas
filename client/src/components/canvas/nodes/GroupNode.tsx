@@ -1,10 +1,25 @@
 import { memo, useState, useEffect } from "react";
 import { NodeResizer, NodeToolbar, Position } from "@xyflow/react";
+import { toast } from "sonner";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { useShallow } from "zustand/react/shallow";
-import { useUIStyle } from "../../../contexts/UIStyleContext";
 import type { GroupNodeData } from "../../../../../shared/types";
-import { FolderOpen, FolderClosed, Maximize2, Play, Ungroup } from "lucide-react";
+import { getNodeImageOutput } from "../../../lib/canvasPassthrough";
+import { downloadMedia } from "../../../lib/download";
+import { FolderOpen, FolderClosed, Maximize2, Play, Ungroup, Download, Package, Clapperboard } from "lucide-react";
+
+// 组内批量下载：与多选操作条同规则的媒体提取（视频优先 resultVideoUrl/videoUrl，其次 outputUrl，
+// 再退到图片输出）。放模块级，避免每次渲染重建。
+const GROUP_VIDEO_OUT_TYPES = new Set(["clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "overlay", "video_task", "comfyui_video", "comfyui_workflow", "lip_sync", "avatar"]);
+const isGroupVideoUrl = (u: string) => /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(u);
+function groupNodeMedia(nodeType: string, payload: Record<string, unknown>): { url: string; type: "image" | "video" } | null {
+  const v = (payload.resultVideoUrl ?? payload.videoUrl) as unknown;
+  if (typeof v === "string" && v) return { url: v, type: "video" };
+  const out = payload.outputUrl as unknown;
+  if (typeof out === "string" && out) return { url: out, type: isGroupVideoUrl(out) || GROUP_VIDEO_OUT_TYPES.has(nodeType) ? "video" : "image" };
+  const img = getNodeImageOutput(nodeType, payload as never);
+  return img ? { url: img, type: "image" } : null;
+}
 
 interface Props {
   id: string;
@@ -27,8 +42,6 @@ const GROUP_COLORS = [
 
 export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) {
   const { updateNodeData, updateNodeTitle, fitGroupToMembers, toggleGroupCollapsed, ungroup, requestRun } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, updateNodeTitle: s.updateNodeTitle, fitGroupToMembers: s.fitGroupToMembers, toggleGroupCollapsed: s.toggleGroupCollapsed, ungroup: s.ungroup, requestRun: s.requestRun })));
-  const { uiStyle } = useUIStyle();
-  const isStudio = uiStyle === "studio";
   const payload = data.payload;
   const [editingLabel, setEditingLabel] = useState(false);
   const [labelValue, setLabelValue] = useState(data.title);
@@ -45,11 +58,27 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
     setEditingLabel(false);
   };
 
+  // 组内批量下载：把组内每个有结果的节点各下载一份（图片/视频）。
+  const downloadGroup = () => {
+    const st = useCanvasStore.getState();
+    const ids = new Set(payload.childIds ?? []);
+    let k = 0;
+    for (const n of st.nodes) {
+      if (!ids.has(n.id)) continue;
+      const m = groupNodeMedia(n.data.nodeType, n.data.payload as Record<string, unknown>);
+      if (!m) continue;
+      const ext = m.type === "video" ? "mp4" : "png";
+      void downloadMedia(m.url, `${n.data.title || n.data.nodeType}.${ext}`, m.type);
+      k++;
+    }
+    toast[k > 0 ? "success" : "info"](k > 0 ? `开始下载组内 ${k} 个结果` : "组内暂无可下载的结果");
+  };
+
   return (
     <>
-      {/* Studio skin: floating group toolbar — run-all / ungroup. Reuses existing
-          store actions (requestRun with member ids, ungroup). Studio + selected only. */}
-      {isStudio && selected && (
+      {/* 群组浮动操作条（LibTV 图二）——开放到所有模式（原仅 studio）：整组执行 / 添加到工具箱 /
+          转分镜组（占位）/ 解组 / 批量下载。全部复用既有 store action，选中群组时浮现于上方。 */}
+      {selected && (
         <NodeToolbar nodeId={id} isVisible position={Position.Top} offset={10}>
           <div className="nodrag flex items-center gap-1" style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", borderRadius: 11, padding: "5px 7px", boxShadow: "var(--c-node-shadow-hover)" }}>
             {memberCount > 0 && (
@@ -63,6 +92,22 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
               </button>
             )}
             <button
+              disabled
+              title="添加到工具箱（把该组存为可复用工作流 · 即将上线）"
+              className="studio-toolbtn flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
+              style={{ background: "var(--c-surface)", color: "var(--c-t4)", border: "none", cursor: "not-allowed", fontSize: 12, fontWeight: 600, opacity: 0.55 }}
+            >
+              <Package size={12} /> 添加到工具箱
+            </button>
+            <button
+              disabled
+              title="转分镜组（即将上线）"
+              className="studio-toolbtn flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
+              style={{ background: "var(--c-surface)", color: "var(--c-t4)", border: "none", cursor: "not-allowed", fontSize: 12, fontWeight: 600, opacity: 0.55 }}
+            >
+              <Clapperboard size={12} /> 转分镜组
+            </button>
+            <button
               onClick={(e) => { e.stopPropagation(); ungroup(id); }}
               title="解组（保留组内节点，移除分组框）"
               className="studio-toolbtn flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
@@ -70,6 +115,16 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
             >
               <Ungroup size={12} /> 解组
             </button>
+            {memberCount > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); downloadGroup(); }}
+                title="批量下载（组内所有已完成结果）"
+                className="studio-toolbtn flex items-center gap-1.5 px-2.5 h-7 rounded-lg"
+                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+              >
+                <Download size={12} /> 批量下载
+              </button>
+            )}
           </div>
         </NodeToolbar>
       )}
