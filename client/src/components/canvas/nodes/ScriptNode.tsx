@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { BaseNode } from "../BaseNode";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -21,6 +22,10 @@ import { snapshotContent } from "@/lib/scriptHistory";
 import { hashContent, hasDownstreamStoryboardForId } from "@/lib/scriptStoryboardSync";
 import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+
+
+// LibTV（#70 创意模式）文本框样式：无边框大字（聚焦时仍显强调色边框）。
+const LIBTV_TA = { fontSize: 13.5, lineHeight: 1.7, fontFamily: "inherit", background: "transparent", borderColor: "transparent" } as const;
 
 interface Props {
   id: string;
@@ -537,6 +542,9 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
   // Actual cap for generateStoryboards (server max is 8)
   const storyboardCount = Math.min(sceneCount, 8);
 
+
+  // LibTV（#70 创意模式）：脚本正文文本框无边框大字。
+  const { isCreativeMode } = useCreativeAdvanced(selected);
   return (
     <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable
       leftDock={
@@ -607,7 +615,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
           placeholder={"在此输入或粘贴脚本内容...\n\n也可直接使用下方「AI 剧本创作」一键生成。"}
           value={payload.content ?? ""}
           onValueChange={(v) => handleChange("content", v)}
-          style={textareaStyle}
+          style={{ ...textareaStyle, ...(isCreativeMode ? LIBTV_TA : {}) }}
           onFocus={onFocus}
           onBlur={onBlur}
         />

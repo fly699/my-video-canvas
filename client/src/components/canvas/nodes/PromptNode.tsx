@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { BaseNode } from "../BaseNode";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -14,6 +15,10 @@ import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useNodeDocks, useCharSceneItems, useAudioStripItems, useVideoStripItems } from "../../../hooks/useNodeDocks";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { PromptDock } from "../PromptDock";
+
+
+// LibTV（#70 创意模式）文本框样式：无边框大字（聚焦时仍显强调色边框）。
+const LIBTV_TA = { fontSize: 13.5, lineHeight: 1.7, fontFamily: "inherit", background: "transparent", borderColor: "transparent" } as const;
 
 interface Props {
   id: string;
@@ -188,6 +193,9 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const docks = useNodeDocks(id, { hasRef: true, /* 常开：空态悬停也能看到「上传/素材库」参考图入口 */ hasPrompt: !!payload.positivePrompt?.trim() }, { prompt: payload.positivePrompt ?? "", ref: `${payload.referenceImageUrl ?? ""}|${stripExtras.map((i) => i.id).join(",")}` });
   const refStrip = useSimpleRefStrip(id, payload, "single", { accent: accentColor, title: "分析图", mainLabel: "分析图", extraItems: stripExtras, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
 
+  // LibTV（#70 创意模式）：文本框无边框大字。
+  const { isCreativeMode } = useCreativeAdvanced(selected);
+
   return (
     <BaseNode
       id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable heroMedia={heroMedia}
@@ -243,7 +251,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               <label style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--c-t4)", display: "block", marginBottom: 5 }}>正向提示词（输出至下游）</label>
               <NodeTextArea className="nodrag nowheel" placeholder="masterpiece, best quality, cinematic lighting..."
                 value={payload.positivePrompt ?? ""} onValueChange={(v) => handleChange("positivePrompt", v)} rows={3}
-                style={{ ...monoStyle, borderColor: accentA(0.3), flex: 1, minHeight: 64, height: "100%" }} onFocus={onFocusAccent} onBlur={onBlurAccent} />
+                style={{ ...monoStyle, borderColor: accentA(0.3), flex: 1, minHeight: 64, height: "100%", ...(isCreativeMode ? LIBTV_TA : {}) }} onFocus={onFocusAccent} onBlur={onBlurAccent} />
             </div>
 
             {/* Negative prompt */}
@@ -251,7 +259,7 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
               <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>反向提示词</label>
               <NodeTextArea className="nodrag nowheel" placeholder="blurry, low quality, distorted..."
                 value={payload.negativePrompt ?? ""} onValueChange={(v) => handleChange("negativePrompt", v)} rows={2}
-                style={monoStyle} onFocus={onFocusNeg} onBlur={onBlurDefault} />
+                style={{ ...monoStyle, ...(isCreativeMode ? LIBTV_TA : {}) }} onFocus={onFocusNeg} onBlur={onBlurDefault} />
             </div>
 
             {/* Input image (analysis only — never output downstream) */}
