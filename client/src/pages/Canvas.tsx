@@ -1899,8 +1899,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
         if (newIds.length > 0) toast.success(`已粘贴 ${newIds.length} 个节点`, { duration: 1200 });
       }
 
-      // 群组：Cmd/Ctrl+G 组合选中节点；Cmd/Ctrl+Shift+G 解组（删除选中的 group 容器）。
-      if (!isEditing && (e.metaKey || e.ctrlKey) && (e.key === "g" || e.key === "G")) {
+      // 群组：Cmd/Ctrl/Alt+G 组合选中节点；+Shift 解组（删除选中的 group 容器）。对齐 LibTV
+      // 的 Ctrl/Alt+G / Ctrl/Alt/Shift+G。用 e.code 兜底，避免 Alt 组合在部分键盘产生特殊字符。
+      if (!isEditing && (e.metaKey || e.ctrlKey || e.altKey) && (e.key === "g" || e.key === "G" || e.code === "KeyG")) {
         e.preventDefault();
         const store = useCanvasStore.getState();
         if (e.shiftKey) {
@@ -1931,6 +1932,35 @@ function CanvasInner({ projectId }: { projectId: number }) {
         if (nodes.some((n) => n.selected)) {
           e.preventDefault();
           window.dispatchEvent(new CustomEvent("canvas:toggle-advanced"));
+        }
+      }
+
+      // Tab — 新建节点（打开节点选择器），对齐 LibTV。仅非编辑态、无修饰键。
+      if (!isEditing && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key === "Tab") {
+        e.preventDefault();
+        setShowNodePicker((v) => !v);
+      }
+
+      // Cmd/Ctrl + Enter — 生成：运行选中节点（≥2=仅运行选中；1=从该节点运行；无=全部），对齐 LibTV。
+      if (!isEditing && (e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (runStateRunningRef.current) return;
+        const selIds = nodes.filter((n) => n.selected && RUNNABLE_TYPES.includes(n.data.nodeType as NodeType)).map((n) => n.id);
+        if (selIds.length >= 2) handleRunRequest(null, selIds);
+        else handleRunRequest(nodes.find((n) => n.selected)?.id ?? null);
+      }
+
+      // Cmd/Ctrl + L — 连线：选中恰好 2 个非群组节点时，按画布位置左→右自动连一条边，对齐 LibTV。
+      if (!isEditing && (e.metaKey || e.ctrlKey) && (e.key === "l" || e.key === "L")) {
+        e.preventDefault();
+        const store = useCanvasStore.getState();
+        const sel = store.nodes.filter((n) => n.selected && n.data.nodeType !== "group");
+        if (sel.length === 2) {
+          const [a, b2] = sel[0].position.x <= sel[1].position.x ? [sel[0], sel[1]] : [sel[1], sel[0]];
+          store.onConnect({ source: a.id, target: b2.id, sourceHandle: null, targetHandle: null });
+          toast.success("已连接选中的两个节点", { duration: 1000 });
+        } else {
+          toast.info("请先选中恰好 2 个节点，再按 Ctrl+L 连线", { duration: 1600 });
         }
       }
 
@@ -3302,71 +3332,82 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 <TooltipContent side="top" className="text-xs">快捷键列表</TooltipContent>
               </Tooltip>
 
-              {/* Shortcuts panel */}
+              {/* Shortcuts panel — LibTV 风四栏（创作 / 缩放 / 移动画布 / 其他），屏幕居中弹窗 */}
               {showShortcuts && (
                 <div
-                  className="absolute bottom-12 right-0 rounded-2xl p-4 z-40 animate-scale-in"
-                  style={{
-                    width: 280,
-                    background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
-                    backdropFilter: "blur(24px)",
-                    border: "1px solid var(--c-bd2)",
-                    boxShadow: "0 16px 48px oklch(0 0 0 / 0.70), 0 4px 12px oklch(0 0 0 / 0.40)",
-                  }}
+                  onClick={() => setShowShortcuts(false)}
+                  style={{ position: "fixed", inset: 0, zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0 0 0 / 0.45)", backdropFilter: "blur(3px)" }}
                 >
-                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: "var(--c-t4)" }}>快捷键速查</p>
-                  {[
-                    { group: "画布操作", items: [
-                      { key: "Ctrl + 滚轮", desc: "缩放画布" },
-                      { key: "滚轮", desc: "上下平移" },
-                      { key: "Shift + 滚轮", desc: "左右平移" },
-                      { key: "拖拽空白处", desc: "平移画布" },
-                      { key: "F", desc: "缩放到选中（无选中=适应全部）" },
-                      { key: "右键 / 双击空白", desc: "上下文菜单 / 快速添加节点" },
-                    ]},
-                    { group: "节点操作", items: [
-                      { key: "Delete / Backspace", desc: "删除选中节点" },
-                      { key: "Cmd/Ctrl + D", desc: "原地复制选中节点" },
-                      { key: "Cmd/Ctrl + C / V", desc: "复制/粘贴子图（含内部连线）" },
-                      { key: "Cmd/Ctrl + G", desc: "组合为群组（Shift 解组）" },
-                      { key: "Cmd/Ctrl + A", desc: "全选节点" },
-                      { key: "Esc", desc: "取消选中" },
-                    ]},
-                    { group: "撤销/重做", items: [
-                      { key: "Cmd/Ctrl + Z", desc: "撤销" },
-                      { key: "Cmd/Ctrl + Shift + Z", desc: "重做" },
-                      { key: "Ctrl + Y", desc: "重做（Windows）" },
-                    ]},
-                    { group: "工作流", items: [
-                      { key: "Shift + R", desc: "运行工作流（框选多个=仅运行选中；选 1 个=从该节点运行）" },
-                    ]},
-                    { group: "其他", items: [
-                      { key: "Cmd/Ctrl + K", desc: "搜索节点" },
-                      { key: "Cmd/Ctrl + T", desc: "打开模板面板" },
-                      { key: "Cmd/Ctrl + S", desc: "保存画布" },
-                      { key: "Alt + W", desc: "速览：临时展开全部节点的参考图 + 提示词窗（再按或 5 秒后恢复）" },
-                      { key: "?", desc: "开关快捷键面板" },
-                    ]},
-                  ].map(({ group, items }) => (
-                    <div key={group} className="mb-3 last:mb-0">
-                      <p className="text-[9px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--c-t4)" }}>{group}</p>
-                      <div className="flex flex-col gap-1">
-                        {items.map(({ key, desc }) => (
-                          <div key={key} className="flex items-center justify-between">
-                            <span style={{ fontSize: 11, color: "var(--c-t2)" }}>{desc}</span>
-                            <span
-                              className="font-mono text-[10px] px-1.5 py-0.5 rounded-md"
-                              style={{
-                                background: "var(--c-elevated)",
-                                border: "1px solid var(--c-bd3)",
-                                color: "oklch(0.72 0.12 285)",
-                              }}
-                            >{key}</span>
-                          </div>
-                        ))}
-                      </div>
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="animate-scale-in"
+                    style={{
+                      position: "relative", width: "min(880px, 92vw)", maxHeight: "82vh", overflowY: "auto",
+                      borderRadius: 18, padding: "22px 24px",
+                      background: "color-mix(in oklch, var(--c-base) 97%, transparent)", backdropFilter: "blur(24px)",
+                      border: "1px solid var(--c-bd2)", boxShadow: "0 24px 64px oklch(0 0 0 / 0.6)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: "var(--c-t1)" }}>快捷键</span>
+                      <button onClick={() => setShowShortcuts(false)} title="关闭（Esc）"
+                        style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                        onMouseEnter={(e)=>{(e.currentTarget as HTMLElement).style.background="var(--c-elevated)";}}
+                        onMouseLeave={(e)=>{(e.currentTarget as HTMLElement).style.background="transparent";}}
+                      ><X className="w-4 h-4" /></button>
                     </div>
-                  ))}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 22 }}>
+                    {[
+                      { group: "创作", items: [
+                        { key: "⌘/Ctrl/Alt + G", desc: "成组" },
+                        { key: "⌘/Ctrl/Alt + ⇧ + G", desc: "解组" },
+                        { key: "⌘/Ctrl + L", desc: "连线（选中 2 个节点）" },
+                        { key: "⌘/Ctrl + D", desc: "复制节点和连线" },
+                        { key: "⌘/Ctrl + Enter", desc: "生成（运行选中）" },
+                        { key: "Tab", desc: "新建节点" },
+                        { key: "⌘/Ctrl + A", desc: "全选节点" },
+                        { key: "⌘/Ctrl + C / V", desc: "复制 / 粘贴子图" },
+                        { key: "Del / ⌫", desc: "删除" },
+                        { key: "Esc", desc: "取消选中" },
+                      ]},
+                      { group: "缩放", items: [
+                        { key: "⌘/Ctrl + +", desc: "放大" },
+                        { key: "⌘/Ctrl + -", desc: "缩小" },
+                        { key: "⌘/Ctrl + 0", desc: "适应画布" },
+                        { key: "F", desc: "缩放到选中" },
+                        { key: "Ctrl + 滚轮", desc: "缩放画布" },
+                      ]},
+                      { group: "移动画布", items: [
+                        { key: "拖拽空白处", desc: "平移画布" },
+                        { key: "滚轮", desc: "上下平移" },
+                        { key: "⇧ + 滚轮", desc: "左右平移" },
+                        { key: "Alt + ⇧ + F", desc: "整理画布" },
+                      ]},
+                      { group: "其他", items: [
+                        { key: "⌘/Ctrl + Z", desc: "撤销" },
+                        { key: "⌘/Ctrl + ⇧ + Z", desc: "重做" },
+                        { key: "⇧ + R", desc: "运行工作流" },
+                        { key: "⌘/Ctrl + K", desc: "搜索节点" },
+                        { key: "⌘/Ctrl + T", desc: "模板面板" },
+                        { key: "⌘/Ctrl + S", desc: "保存画布" },
+                        { key: "Alt + W", desc: "速览（临时展开参考/提示词）" },
+                        { key: "?", desc: "开关本面板" },
+                      ]},
+                    ].map(({ group, items }) => (
+                      <div key={group}>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest mb-2.5" style={{ color: "oklch(0.68 0.16 250)" }}>{group}</p>
+                        <div className="flex flex-col gap-2">
+                          {items.map(({ key, desc }) => (
+                            <div key={key} className="flex items-center justify-between gap-3">
+                              <span style={{ fontSize: 12, color: "var(--c-t2)" }}>{desc}</span>
+                              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-md" style={{ background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "var(--c-t2)", whiteSpace: "nowrap", flexShrink: 0 }}>{key}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
