@@ -22,7 +22,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2, Lock,
-  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes, Focus, Eraser,
 } from "lucide-react";
 import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
 import { downloadMedia } from "../../lib/download";
@@ -397,6 +397,9 @@ export const BaseNode = memo(function BaseNode({
     { op: "outpaint", label: "扩图", Icon: Expand },
     { op: "relight", label: "重打光", Icon: Sun },
     { op: "reframe", label: "改比例", Icon: Crop },
+    // LibTV #59：聚焦=局部重绘（涂抹聚焦区域重点重绘）、擦除物体——op 与蒙版涂抹器均为既有能力。
+    { op: "inpaint", label: "聚焦", Icon: Focus },
+    { op: "erase", label: "擦除", Icon: Eraser },
   ];
 
   // ── LibTV 式一键编排：多角度（九宫格多机位）与宫格切分 ─────────────────────────
