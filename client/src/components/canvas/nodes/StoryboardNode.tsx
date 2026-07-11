@@ -16,7 +16,6 @@ import { usePickStore } from "../../../hooks/usePickStore";
 import { useReferenceImages } from "../../../hooks/useReferenceImages";
 import { useFocusRefSource } from "../../../hooks/useFocusRefSource";
 import { InlineGenBar } from "../InlineGenBar";
-import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { Depth3DViewer } from "../Depth3DViewer";
 import { Model3DViewer } from "../Model3DViewer";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -120,9 +119,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   );
   const { mode: canvasMode } = useCanvasMode();
   const isCreative = canvasMode === "creative";
-  // LibTV 化 2.1c：创意模式（LibTV 模式宿主）下渲染屏幕恒定的就地生成输入条。
-  const { uiStyle } = useUIStyle();
-  const isCreativeMode = uiStyle !== "studio" && isCreative;
+  // LibTV 全模式统一（#70）：节点级 LibTV 范式不再按皮肤/画布模式差异化。
+  const isCreativeMode = true;
   const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
   // LibTV：创意模式配置区默认收起（就地输入条为主入口），点「高级」才展开。
   const [advancedOpen, setAdvancedOpen] = useState(false);

@@ -39,7 +39,10 @@ import { agentBadge } from "../../lib/agentOwnership";
 // no top toolbar, no compact panel). Their UX isn't a parameter form.
 // super_agent（工程智能体）同理——它是「任务输入 + 流式活动日志 + 结果 + 写回」的交互面板，
 // 不是参数表单；不加入这里会在工作室模式被折叠成「空标题卡 + 参数浮层下方」，上方窗口空着。
-const STUDIO_PRO_BODY_TYPES = new Set<NodeType>(["ai_chat", "super_agent"]);
+// LibTV 全模式统一（#70）：已有就地三段式输入条的节点（图像/视频/分镜/音频）在工作室
+// 皮肤同样走 LibTV 范式（输入条为主入口 + 配置区「高级」展开），不再弹工作室浮动命令
+// 面板——否则输入条与命令栏双份输入 UI 叠出（实测截图确认）。
+const STUDIO_PRO_BODY_TYPES = new Set<NodeType>(["ai_chat", "super_agent", "image_gen", "video_task", "storyboard", "audio"]);
 
 interface BaseNodeProps {
   id: string;

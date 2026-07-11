@@ -1243,8 +1243,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 }));
 
 // 仅开发环境：把 store 暴露到 window，供无头浏览器 E2E 直接注入/读取节点状态
-// （生产构建 tree-shake 掉，不出现在线上包）。
-if (import.meta.env.DEV) {
+// （生产构建 tree-shake 掉，不出现在线上包）。vitest 跑在无 window 的 node 环境、
+// 且 DEV 为真——必须加 typeof window 守卫，否则 import 本模块的所有测试套件直接炸。
+if (import.meta.env.DEV && typeof window !== "undefined") {
   (window as unknown as { __canvasStore?: typeof useCanvasStore }).__canvasStore = useCanvasStore;
 }
 
