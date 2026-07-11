@@ -5,6 +5,7 @@ import { TRPCError } from "@trpc/server";
 import { mcpServerNames } from "../_core/claudeBridge";
 import { adminProcedure, levelProcedure, router } from "../_core/trpc";
 import { getEffectiveTabAccess, invalidateAdminPermsCache } from "../_core/adminPerms";
+import { collectAllConfig, applyConfig, encryptConfig, decryptConfig, type ConfigBackup } from "../_core/configBackup";
 import { EDITABLE_TAB_KEYS, effectiveTabAccess } from "../../shared/adminPerms";
 import * as db from "../db";
 import { getOnlineUserIds, getPresenceStats, getActiveSessions } from "../_core/presence";
@@ -82,6 +83,7 @@ const AUDIT_ACTIONS = [
   "comfyui_image_gen", "comfyui_video_gen", "comfyui_workflow_exec",
   "editor:aiCut",
   "superagent_comfy_build", "superagent_code_task",
+  "config_export", "config_import",
   "logs_cleared",
 ] as const;
 
@@ -105,6 +107,35 @@ export const adminRouter = router({
         invalidateAdminPermsCache();
         writeAuditLog({ ctx, action: "admin_perms_set", detail: { access: clean } });
         return { access: effectiveTabAccess(clean) };
+      }),
+  }),
+
+  // #75 全量配置导入/导出（站长 L5 独占）。导出=收集全部后台配置（含 SMTP/日志邮送
+  // 等敏感密码）→ gzip → AES-256-GCM 口令加密 → base64 单文件；导入=解密解压校验后
+  // 按节写回（白名单条目增量合并、其余整节覆盖）。两个方向均写审计日志。
+  configBackup: router({
+    export: ownerProc
+      .input(z.object({ passphrase: z.string().min(6, "口令至少 6 位").max(128) }))
+      .mutation(async ({ ctx, input }) => {
+        const cfg = await collectAllConfig();
+        const data = encryptConfig(JSON.stringify(cfg), input.passphrase);
+        writeAuditLog({ ctx, action: "config_export", detail: { sections: Object.keys(cfg.sections).length, bytes: data.length } });
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+        return { filename: `avc-config-${stamp}.avccfg`, data, sections: Object.keys(cfg.sections) };
+      }),
+    import: ownerProc
+      .input(z.object({ passphrase: z.string().min(1).max(128), data: z.string().min(64).max(4_000_000) }))
+      .mutation(async ({ ctx, input }) => {
+        let parsed: ConfigBackup;
+        try {
+          parsed = JSON.parse(decryptConfig(input.data, input.passphrase)) as ConfigBackup;
+        } catch (e) {
+          writeAuditLog({ ctx, action: "config_import", detail: { success: false, error: e instanceof Error ? e.message : String(e) } });
+          throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof Error ? e.message : "解密失败" });
+        }
+        const r = await applyConfig(parsed, { userId: ctx.user.id });
+        writeAuditLog({ ctx, action: "config_import", detail: { success: true, applied: r.applied, skipped: r.skipped } });
+        return r;
       }),
   }),
 
