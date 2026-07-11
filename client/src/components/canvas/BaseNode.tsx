@@ -737,9 +737,9 @@ export const BaseNode = memo(function BaseNode({
         ? `2px solid ${borderTint}`
         : `1px solid ${borderTint}99`
       : isCreative
-        // LibTV：选中态反色（近白）强调，常态低透明白细边。
+        // LibTV：选中态用「极细」高亮边（1px），常态低透明白细边——发光框不喧宾夺主。
         ? selVis
-          ? `2px solid var(--ui-accent, ${config.color})`
+          ? `1px solid var(--ui-accent, ${config.color})`
           : `1px solid var(--c-bd2)`
         : selVis
           ? `2px solid ${config.color}`
@@ -754,7 +754,10 @@ export const BaseNode = memo(function BaseNode({
   const shadowStyle = runShadow
     ? `${runShadow}, var(--c-node-shadow-run)`
     : selVis
-      ? `0 0 0 2.5px ${config.color}, 0 0 0 9px color-mix(in oklch, ${config.color} 22%, transparent), var(--c-node-shadow-selected)`
+      // 创意(LibTV)：极细 1px 高亮环 + 基础投影，去掉抢眼的 2.5px 实环 + 9px 大光晕。
+      ? isCreative
+        ? `0 0 0 1px color-mix(in oklch, ${config.color} 55%, transparent), var(--c-node-shadow-selected)`
+        : `0 0 0 2.5px ${config.color}, 0 0 0 9px color-mix(in oklch, ${config.color} 22%, transparent), var(--c-node-shadow-selected)`
       : isHovered
         ? `var(--c-node-shadow-hover)`
         : `var(--c-node-shadow-rest)`;
@@ -1170,8 +1173,8 @@ export const BaseNode = memo(function BaseNode({
             ? "transparent"
             : `linear-gradient(180deg, ${config.color}0e 0%, transparent 100%)`,
           borderBottom: isCreative ? "none" : `1px solid ${isLight ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
-          minHeight: isCreative ? 22 : 36,
-          ...(isCreative ? { paddingTop: 3, paddingBottom: 3 } : {}),
+          minHeight: isCreative ? 20 : 36,
+          ...(isCreative ? { paddingTop: 2, paddingBottom: 2 } : {}),
         }}
       >
         {/* Drag grip — 创意(LibTV)皮肤下移除：卡顶应是极简「图标+名称」小标签，

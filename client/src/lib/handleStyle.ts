@@ -28,9 +28,9 @@ const COARSE_POINTER = typeof window !== "undefined" && !!window.matchMedia && w
 
 export function handleStyle(color: string, active: boolean, shape: HandleShape = "circle", connect?: HandleConnect): CSSProperties {
   const base: CSSProperties = {
-    width: 15,
-    height: 15,
-    borderWidth: 2,
+    width: 12,
+    height: 12,
+    borderWidth: 1.5,
     borderStyle: "solid",
     boxSizing: "border-box",
     borderRadius: shape === "square" ? 4 : "50%",
@@ -51,11 +51,12 @@ export function handleStyle(color: string, active: boolean, shape: HandleShape =
     ...base,
     ...(active
       ? {
-          background: color,
-          borderColor: "var(--c-canvas)",
-          opacity: 1,
-          transform: "scale(1.12)",
-          boxShadow: `0 0 0 4px color-mix(in oklch, ${color} 22%, transparent)`,
+          // 轻量化：半透明填充 + 不放大 + 很弱的光晕（原来 selVis 时是实心大绿点，太抢眼）。
+          background: `color-mix(in oklch, ${color} 45%, transparent)`,
+          borderColor: color,
+          opacity: 0.9,
+          transform: "scale(1)",
+          boxShadow: `0 0 0 2px color-mix(in oklch, ${color} 12%, transparent)`,
         }
       : {
           background: COARSE_POINTER ? color : "transparent",
