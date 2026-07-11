@@ -52,8 +52,10 @@ import { InlineGenBar } from "../InlineGenBar";
 import { QuickTrimBar } from "../QuickTrimBar";
 import { CameraRigPicker, stripCameraRig } from "../CameraRigPicker";
 import { Camera, MapPin } from "lucide-react";
-import { ToolChip, RefThumbRow, MarkElementPicker } from "../InlineBarParts";
+import { ToolChip, RefThumbRow, MarkElementPicker, MarkChipRow, loadMarkModel, saveMarkModel, switchMark, removeMark } from "../InlineBarParts";
+import { nanoid } from "nanoid";
 import { usePickStore } from "../../../hooks/usePickStore";
+import { useFocusRefSource } from "../../../hooks/useFocusRefSource";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 // 视频模型参数表已抽到 shared/videoModelParams（服务端画布助手目录同源消费）；
@@ -922,19 +924,31 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const inlineRefFileRef = useRef<HTMLInputElement>(null);
 
   // ── LibTV 画布拾取（＋参考=从画布选参考 / 标记=元素选择模式）──
+  // 双击参考缩略图 → 聚焦至来源节点。
+  const focusRefSource = useFocusRefSource(id);
   const [markState, setMarkState] = useState<{ url: string; loading: boolean; error: string | null; elements: { name: string; desc?: string }[] } | null>(null);
   const analyzeMut = trpc.aiEnhance.analyzeImageElements.useMutation();
+  // 标记分析用的视觉模型（全局偏好持久化）；换模型立即用新模型重跑分析。
+  const [markModel, setMarkModel] = useState<string>(loadMarkModel);
+  const runAnalyze = useCallback((url: string, model: string) => {
+    setMarkState({ url, loading: true, error: null, elements: [] });
+    analyzeMut.mutate({ imageUrl: url, model }, {
+      onSuccess: (r) => setMarkState((s) => (s && s.url === url ? { ...s, loading: false, elements: r.elements } : s)),
+      onError: (err) => setMarkState((s) => (s && s.url === url ? { ...s, loading: false, error: err.message } : s)),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     const onResult = (e: Event) => {
       const d = (e as CustomEvent<{ forNodeId: string; kind: string; url: string }>).detail;
       if (d?.forNodeId !== id) return;
-      if (d.kind === "ref") { refImages.addUrls([d.url], "url"); return; }
+      if (d.kind === "ref") {
+        // 同 URL 去重追加——重复点选同一产物时明确提示，避免误以为「覆盖/加不上」
+        if (!refImages.addUrls([d.url], "url")) toast.info("该图已在参考列表中，未重复添加");
+        return;
+      }
       if (!refImages.images.some((r) => r.url === d.url)) refImages.addUrls([d.url], "url");
-      setMarkState({ url: d.url, loading: true, error: null, elements: [] });
-      analyzeMut.mutate({ imageUrl: d.url }, {
-        onSuccess: (r) => setMarkState((s) => (s && s.url === d.url ? { ...s, loading: false, elements: r.elements } : s)),
-        onError: (err) => setMarkState((s) => (s && s.url === d.url ? { ...s, loading: false, error: err.message } : s)),
-      });
+      runAnalyze(d.url, markModel);
     };
     const onUpload = (e: Event) => {
       if ((e as CustomEvent<{ forNodeId: string }>).detail?.forNodeId !== id) return;
@@ -944,7 +958,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     window.addEventListener("canvas:pick-upload", onUpload);
     return () => { window.removeEventListener("canvas:pick-result", onResult); window.removeEventListener("canvas:pick-upload", onUpload); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, refImages.images]);
+  }, [id, refImages.images, markModel]);
 
   // ── LibTV 化：快速剪辑条（BaseNode 操作条「剪辑」按钮派发 canvas:quick-trim 打开）──
   const [quickTrimOpen, setQuickTrimOpen] = useState(false);
@@ -2067,7 +2081,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) void uploadRefFiles(files, refImages.images.length); e.target.value = ""; }} />
         </div>
         {/* ── Row2：参考图缩略行（点缩略图插入「主体N」） ── */}
-        <RefThumbRow images={refImages.images} onRemove={refImages.removeId} onClick={(i) => insertSubjectToken(i + 1)} />
+        <RefThumbRow images={refImages.images} onRemove={refImages.removeId} onClick={(i) => insertSubjectToken(i + 1)}
+          onDoubleClick={(i) => focusRefSource(refImages.images[i]?.url ?? "")} />
         {/* ── Row3：大提示词区 ── */}
         <NodeTextArea
           className="nodrag nowheel"
@@ -2078,6 +2093,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           disabled={isLocked}
           style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit", opacity: isLocked ? 0.6 : 1 }}
         />
+        {/* ── Row3.5：标记引用 chips（嵌入提示词后仍可下拉换选元素 / 移除，LibTV 同款） ── */}
+        {(payload.markRefs?.length ?? 0) > 0 && (
+          <MarkChipRow
+            marks={payload.markRefs!}
+            onSwitch={(mid, newName) => {
+              const r = switchMark(payload.markRefs ?? [], payload.prompt ?? "", mid, newName);
+              if (r) updateNodeData(id, r);
+            }}
+            onRemove={(mid) => updateNodeData(id, removeMark(payload.markRefs ?? [], payload.prompt ?? "", mid))}
+          />
+        )}
         {/* ── Row4：精简控制行 ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <ModelPicker
@@ -2225,11 +2251,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         loading={markState.loading}
         error={markState.error}
         onClose={() => setMarkState(null)}
+        model={markModel}
+        onModelChange={(m) => { setMarkModel(m); saveMarkModel(m); runAnalyze(markState.url, m); }}
         onSelect={(name) => {
           const idx = refImages.images.findIndex((r) => r.url === markState.url);
           const refToken = idx >= 0 ? `主体${idx + 1} 的${name}` : name;
           const cur = (payload.prompt ?? "").trim();
-          handleChange("prompt", cur ? `${cur} ${refToken} ` : `${refToken} `);
+          // 提示词插入 + 常驻标记 chip（记录 token 与全部候选元素，事后可下拉换选）
+          updateNodeData(id, {
+            prompt: cur ? `${cur} ${refToken} ` : `${refToken} `,
+            markRefs: [...(payload.markRefs ?? []), { id: nanoid(8), url: markState.url, element: name, token: refToken, elements: markState.elements }],
+          });
           setMarkState(null);
           toast.success(`已插入标记引用：${refToken}`);
         }}

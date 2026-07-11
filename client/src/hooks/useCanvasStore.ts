@@ -1242,6 +1242,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 }));
 
+// 仅开发环境：把 store 暴露到 window，供无头浏览器 E2E 直接注入/读取节点状态
+// （生产构建 tree-shake 掉，不出现在线上包）。
+if (import.meta.env.DEV) {
+  (window as unknown as { __canvasStore?: typeof useCanvasStore }).__canvasStore = useCanvasStore;
+}
+
 function getDefaultPayload(type: NodeType): NodeData {
   switch (type) {
     case "script":

@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Loader2, Sparkles } from "lucide-react";
+import { X, Loader2, Sparkles, ChevronDown } from "lucide-react";
 import { MediaImage } from "./MediaImage";
+import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "./LLMModelPicker";
+import type { MarkRef } from "../../../../shared/types";
 
 /**
  * LibTV 三段式就地输入条的共享部件：
@@ -39,17 +41,50 @@ export function ToolChip({ icon, label, onClick, active, title, disabled }: {
   );
 }
 
-export function RefThumbRow({ images, onRemove, onClick }: {
+export function RefThumbRow({ images, onRemove, onClick, onDoubleClick }: {
   images: { id: string; url: string }[];
   onRemove?: (id: string) => void;
   /** 点缩略图（如插入「主体N」token / 放大查看）。 */
   onClick?: (index: number) => void;
+  /** 双击缩略图（LibTV：聚焦至参考图来源节点）。 */
+  onDoubleClick?: (index: number) => void;
 }) {
   // 悬停自动放大预览（LibTV）：hover 缩略图在其上方浮出大图。
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  // 双击检测用点击计时自实现（React Flow 节点内原生 dblclick 委托不可靠）；
+  // 提供 onDoubleClick 时单击动作延迟 320ms 触发，双击则取消单击、直接聚焦。
+  const lastClickRef = useRef<{ i: number; t: number }>({ i: -1, t: 0 });
+  const clickTimerRef = useRef<number | null>(null);
+  const handleThumbClick = (i: number) => {
+    if (!onDoubleClick) { onClick?.(i); return; }
+    const now = Date.now();
+    if (lastClickRef.current.i === i && now - lastClickRef.current.t < 320) {
+      if (clickTimerRef.current !== null) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
+      lastClickRef.current = { i: -1, t: 0 };
+      onDoubleClick(i);
+      return;
+    }
+    lastClickRef.current = { i, t: now };
+    if (onClick) {
+      if (clickTimerRef.current !== null) clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = window.setTimeout(() => { clickTimerRef.current = null; onClick(i); }, 330);
+    }
+  };
   if (images.length === 0) return null;
   return (
-    <div className="nodrag" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <div
+      className="nodrag"
+      style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+      // 原生捕获层拦掉 dblclick：React 的 stopPropagation 挡不住 React Flow 在
+      // pane 上的原生 d3 dblclick-zoom（NodeToolbar 不在节点元素内、不被 RF 豁免），
+      // 双击缩略图会连带把画布放大——必须在冒泡到 pane 之前原生截断。
+      ref={(el) => {
+        if (el && !(el as HTMLDivElement & { _dblGuard?: boolean })._dblGuard) {
+          (el as HTMLDivElement & { _dblGuard?: boolean })._dblGuard = true;
+          el.addEventListener("dblclick", (e) => e.stopPropagation());
+        }
+      }}
+    >
       {images.map((img, i) => (
         <div key={img.id} style={{ position: "relative", width: 48, height: 48, flexShrink: 0 }}
           onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx((v) => (v === i ? null : v))}>
@@ -59,8 +94,9 @@ export function RefThumbRow({ images, onRemove, onClick }: {
             </div>
           )}
           <button
-            onClick={(e) => { e.stopPropagation(); onClick?.(i); }}
-            title={onClick ? `图片 ${i + 1}（点击插入引用）` : `图片 ${i + 1}`}
+            onClick={(e) => { e.stopPropagation(); handleThumbClick(i); }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            title={`${onClick ? `图片 ${i + 1}（点击插入引用）` : `图片 ${i + 1}`}${onDoubleClick ? "，双击可聚焦至来源节点" : ""}`}
             style={{ width: "100%", height: "100%", padding: 0, border: "1px solid var(--c-bd2)", borderRadius: 10, overflow: "hidden", cursor: onClick ? "pointer" : "default", background: "var(--c-input)" }}
           >
             <MediaImage src={img.url} alt={`参考 ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -82,15 +118,56 @@ export function RefThumbRow({ images, onRemove, onClick }: {
   );
 }
 
-/** LibTV「标记」元素选择浮层：AI 分析选中图片的可引用元素，点选后回调插入引用。 */
-export function MarkElementPicker({ imageUrl, elements, loading, error, onSelect, onClose }: {
+// ── 标记分析模型偏好（全局持久化，视觉模型才有效；默认 gpt-5.2 与服务端一致）──
+const MARK_MODEL_KEY = "canvas.markModel";
+export function loadMarkModel(): string {
+  try {
+    const v = localStorage.getItem(MARK_MODEL_KEY);
+    if (v && LLM_MODELS.some((m) => m.id === v && m.vision)) return v;
+  } catch { /* SSR/隐私模式下不可用 */ }
+  return "gpt-5.2";
+}
+export function saveMarkModel(v: string) {
+  try { localStorage.setItem(MARK_MODEL_KEY, v); } catch { /* ignore */ }
+}
+
+/** 换选标记元素：按记录的 token 精确改写提示词（找不到 token 时追加新 token）。 */
+export function switchMark(marks: MarkRef[], prompt: string, markId: string, newName: string): { prompt: string; markRefs: MarkRef[] } | null {
+  const m = marks.find((x) => x.id === markId);
+  if (!m || m.element === newName) return null;
+  const newToken = m.token.endsWith(m.element)
+    ? m.token.slice(0, m.token.length - m.element.length) + newName
+    : newName;
+  const nextPrompt = prompt.includes(m.token)
+    ? prompt.replace(m.token, newToken)
+    : `${prompt.trim()}${prompt.trim() ? " " : ""}${newToken} `;
+  return { prompt: nextPrompt, markRefs: marks.map((x) => (x.id === markId ? { ...x, element: newName, token: newToken } : x)) };
+}
+
+/** 移除标记 chip：同时从提示词删除其 token（清理多余空格）。 */
+export function removeMark(marks: MarkRef[], prompt: string, markId: string): { prompt: string; markRefs: MarkRef[] } {
+  const m = marks.find((x) => x.id === markId);
+  const nextPrompt = m && prompt.includes(m.token) ? prompt.replace(m.token, "").replace(/ {2,}/g, " ").trimStart() : prompt;
+  return { prompt: nextPrompt, markRefs: marks.filter((x) => x.id !== markId) };
+}
+
+/** LibTV「标记」元素选择浮层：AI 分析选中图片的可引用元素，点选后回调插入引用。
+ *  传入 model/onModelChange 可切换分析用的视觉模型（换选即重新分析），并显示计费标注。 */
+export function MarkElementPicker({ imageUrl, elements, loading, error, onSelect, onClose, model, onModelChange }: {
   imageUrl: string;
   elements: { name: string; desc?: string }[];
   loading: boolean;
   error?: string | null;
   onSelect: (name: string) => void;
   onClose: () => void;
+  /** 分析用视觉模型（可选；提供后浮层内显示模型选择 + 计费标注）。 */
+  model?: string;
+  onModelChange?: (m: string) => void;
 }) {
+  const modelMeta = model ? LLM_MODELS.find((m) => m.id === model) : undefined;
+  const costLabel = modelMeta
+    ? (modelMeta.costNote ? `${modelMeta.costNote} 点/百万tokens` : `计费档：${modelMeta.costTier}（按 tokens）`)
+    : undefined;
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.55)", backdropFilter: "blur(4px)" }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
@@ -104,6 +181,15 @@ export function MarkElementPicker({ imageUrl, elements, loading, error, onSelect
             <X size={13} />
           </button>
         </div>
+        {/* 分析模型选择 + 计费标注（换模型立即用新模型重新分析；仅视觉模型可选） */}
+        {model && onModelChange && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderBottom: "1px solid var(--c-bd1)" }}>
+            <span style={{ fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>分析模型</span>
+            <LLMModelPicker value={model as LLMModelId} onChange={(v) => onModelChange(v)} disabled={loading}
+              filter={(m) => !!m.vision} />
+            {costLabel && <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto", whiteSpace: "nowrap" }}>{costLabel}</span>}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 12, padding: 14 }}>
           <div style={{ width: 120, flexShrink: 0, borderRadius: 10, overflow: "hidden", border: "1px solid var(--c-bd2)", background: "var(--c-canvas)", alignSelf: "flex-start" }}>
             <MediaImage src={imageUrl} alt="标记源图" style={{ display: "block", width: "100%", objectFit: "cover" }} />
@@ -129,5 +215,66 @@ export function MarkElementPicker({ imageUrl, elements, loading, error, onSelect
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** LibTV「标记」常驻引用 chips 行：缩略图 + 当前元素名 + 下拉换选（同图其它候选元素）。
+ *  嵌入提示词后仍可点 chip 换选（onSwitch 同步改写提示词 token），× 移除。
+ *  下拉用节点内 in-DOM 绝对定位（节点处于 React Flow transform:scale 容器内，
+ *  原生 select / portal 弹层都会错位——沿用 MiniSelect 的教训）。 */
+export function MarkChipRow({ marks, onSwitch, onRemove }: {
+  marks: MarkRef[];
+  /** 换选元素：同步更新 markRefs 与提示词 token。 */
+  onSwitch: (markId: string, newName: string) => void;
+  onRemove: (markId: string) => void;
+}) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  if (marks.length === 0) return null;
+  return (
+    <div className="nodrag" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {marks.map((m) => {
+        const open = openId === m.id;
+        return (
+          <div key={m.id} style={{ position: "relative" }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setOpenId(open ? null : m.id); }}
+              title={`标记引用：${m.token}（点击换选该图其它元素）`}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 9px 0 4px", borderRadius: 99, background: "var(--c-surface)", border: `1px solid ${open ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, color: "var(--c-t1)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+            >
+              <span style={{ width: 22, height: 22, borderRadius: 99, overflow: "hidden", flexShrink: 0, background: "var(--c-input)" }}>
+                <MediaImage src={m.url} alt={m.element} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              </span>
+              {m.element}
+              <ChevronDown size={11} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "transform 150ms ease" }} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setOpenId(null); onRemove(m.id); }}
+              title="移除该标记引用（同时从提示词删除）"
+              style={{ position: "absolute", top: -5, right: -5, width: 15, height: 15, borderRadius: "50%", background: "oklch(0.3 0.02 260)", border: "1px solid var(--c-bd3)", color: "var(--c-t2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+            >
+              <X size={9} />
+            </button>
+            {open && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 70, minWidth: 148, maxHeight: 220, overflowY: "auto", borderRadius: 12, background: "var(--c-base)", border: "1px solid var(--c-bd2)", boxShadow: "0 14px 44px oklch(0 0 0 / 0.55)", padding: 4 }}>
+                {m.elements.map((el) => {
+                  const cur = el.name === m.element;
+                  return (
+                    <button key={el.name}
+                      onClick={(e) => { e.stopPropagation(); setOpenId(null); if (!cur) onSwitch(m.id, el.name); }}
+                      title={el.desc || el.name}
+                      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 10px", borderRadius: 8, background: cur ? "var(--c-elevated)" : "transparent", border: "none", color: cur ? "var(--c-t1)" : "var(--c-t2)", cursor: cur ? "default" : "pointer", fontSize: 12.5, fontWeight: cur ? 700 : 500, textAlign: "left" }}
+                      onMouseEnter={(e) => { if (!cur) (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+                      onMouseLeave={(e) => { if (!cur) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                      <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{el.name}</span>
+                      {cur && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-t3)", flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

@@ -328,6 +328,20 @@ export interface ReferenceImage {
   label?: string;
 }
 
+/** LibTV「标记」常驻元素引用：记录源图、已插入提示词的 token、当前选中元素与该图
+ *  全部候选元素——嵌入提示词后仍可通过 chip 下拉换选其它元素（同步改写提示词 token）。 */
+export interface MarkRef {
+  id: string;
+  /** 被标记的源图 URL（对应参考图列表中的一张）。 */
+  url: string;
+  /** 当前选中的元素名。 */
+  element: string;
+  /** 实际插入提示词的完整 token（如「图片1 的树枝」），换选时按它精确替换提示词。 */
+  token: string;
+  /** AI 分析出的全部候选元素（下拉换选数据源）。 */
+  elements: { name: string; desc?: string }[];
+}
+
 export interface VideoTaskNodeData {
   provider: VideoProvider;
   status: VideoTaskStatus;
@@ -338,6 +352,8 @@ export interface VideoTaskNodeData {
   referenceImageUrl?: string;
   /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
   referenceImages?: ReferenceImage[];
+  /** LibTV「标记」常驻元素引用 chips（见 MarkRef）。 */
+  markRefs?: MarkRef[];
   /** Final video URL. Named `resultVideoUrl` (not `outputUrl` like the post-processing
    *  nodes) for historical reasons: video_task results come from the async provider-task
    *  subsystem and are filled by server/videoTaskPoller into this field. The in-app
@@ -489,6 +505,8 @@ export interface ImageGenNodeData {
   referenceImageUrl?: string;
   /** Multi-angle reference images (see ReferenceImage). [0].url mirrors referenceImageUrl. */
   referenceImages?: ReferenceImage[];
+  /** LibTV「标记」常驻元素引用 chips（见 MarkRef）。 */
+  markRefs?: MarkRef[];
   imageUrl?: string;
   imageStorageKey?: string;
   /** 真 3D（Tripo3D）已生成的模型——重开免费复用。 */

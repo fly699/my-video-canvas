@@ -51,7 +51,7 @@ export function PickModeBar() {
   };
 
   return createPortal(
-    <div style={{ position: "fixed", top: 16, right: 16, zIndex: 90, display: "flex", alignItems: "center", gap: 10, padding: "9px 10px 9px 12px", borderRadius: 14, background: "color-mix(in oklch, var(--c-base) 94%, transparent)", backdropFilter: "blur(16px)", border: "1px solid var(--c-bd2)", boxShadow: "0 12px 40px oklch(0 0 0 / 0.5)" }}>
+    <div style={{ position: "fixed", top: 72, left: "50%", transform: "translateX(-50%)", zIndex: 90, display: "flex", alignItems: "center", gap: 10, padding: "9px 10px 9px 12px", borderRadius: 14, background: "color-mix(in oklch, var(--c-base) 94%, transparent)", backdropFilter: "blur(16px)", border: "1px solid var(--c-bd2)", boxShadow: "0 12px 40px oklch(0 0 0 / 0.5)", maxWidth: "min(92vw, 640px)" }}>
       <span style={{ width: 30, height: 30, borderRadius: 9, background: "var(--c-elevated)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-t2)", flexShrink: 0 }}>
         <MousePointerClick size={15} />
       </span>
