@@ -555,16 +555,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const effectivePatternColor = canvasBg.followTheme
     ? (!isLight ? "oklch(0.32 0.010 260 / 0.6)" : "oklch(0.60 0.010 260 / 0.5)")
     : canvasBg.patternColor;
-  // Auto-show the filmstrip when ENTERING creative mode and hide when LEAVING —
-  // but only on an actual mode transition, so the persisted open-state isn't
-  // clobbered on mount/reload.
+  // 进入创意模式不再默认打开胶片条（用户可从菜单手动开启）；离开创意模式时若开着则收起，
+  // 避免胶片条残留到专业/工作室模式。只在真正的模式切换时处理，避免挂载/刷新清掉持久化开关。
   const prevCanvasModeRef = useRef(canvasMode);
   useEffect(() => {
     const prev = prevCanvasModeRef.current;
     if (prev === canvasMode) return;
     prevCanvasModeRef.current = canvasMode;
-    if (canvasMode === "creative") setShowFilmstrip(true);
-    else setShowFilmstrip(false);
+    if (canvasMode !== "creative") setShowFilmstrip(false);
   }, [canvasMode, setShowFilmstrip]);
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
   // 拉线松手落在空白处时，在鼠标位置弹出的「建节点并连线」小菜单（仅列可连接类型）。
