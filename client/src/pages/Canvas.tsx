@@ -90,6 +90,7 @@ import { NarrativeArcPicker } from "../components/canvas/NarrativeArcPicker";
 import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { UIStyleSwitcher } from "../components/canvas/UIStyleSwitcher";
+import { ZoomControl } from "../components/canvas/ZoomControl";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { useCanvasMode } from "../contexts/CanvasModeContext";
 import { useTheme, THEMES } from "../contexts/ThemeContext";
@@ -555,16 +556,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const effectivePatternColor = canvasBg.followTheme
     ? (!isLight ? "oklch(0.32 0.010 260 / 0.6)" : "oklch(0.60 0.010 260 / 0.5)")
     : canvasBg.patternColor;
-  // Auto-show the filmstrip when ENTERING creative mode and hide when LEAVING —
-  // but only on an actual mode transition, so the persisted open-state isn't
-  // clobbered on mount/reload.
+  // 进入创意模式不再默认打开胶片条（用户可从菜单手动开启）；离开创意模式时若开着则收起，
+  // 避免胶片条残留到专业/工作室模式。只在真正的模式切换时处理，避免挂载/刷新清掉持久化开关。
   const prevCanvasModeRef = useRef(canvasMode);
   useEffect(() => {
     const prev = prevCanvasModeRef.current;
     if (prev === canvasMode) return;
     prevCanvasModeRef.current = canvasMode;
-    if (canvasMode === "creative") setShowFilmstrip(true);
-    else setShowFilmstrip(false);
+    if (canvasMode !== "creative") setShowFilmstrip(false);
   }, [canvasMode, setShowFilmstrip]);
   const [connectingFromType, setConnectingFromType] = useState<NodeType | null>(null);
   // 拉线松手落在空白处时，在鼠标位置弹出的「建节点并连线」小菜单（仅列可连接类型）。
@@ -2783,6 +2782,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 color={effectivePatternColor}
               />
             )}
+            {/* 鸟瞰图（MiniMap）：创意模式隐藏（LibTV 无总览缩略图），专业/工作室保留 */}
+            {canvasMode !== "creative" && (<>
             <MiniMap
               position="bottom-right"
               pannable
@@ -2880,6 +2881,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </svg>
               </div>
             </div>
+            </>)}
           </ReactFlow>
           </WorkflowRunProvider>
 
@@ -2972,7 +2974,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
           {/* ── Floating toolbar — drops anywhere; horizontal/vertical via toggle ── */}
           <div
-            className={`canvas-bottombar absolute z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl ${toolbarOrient === "v" ? "flex-col" : ""}`}
+            className={`canvas-bottombar absolute z-20 flex items-center rounded-2xl ${toolbarOrient === "v" ? "flex-col " : ""}${canvasMode === "creative" ? "bottombar-creative gap-0.5 px-1.5 py-1" : "gap-1.5 px-2.5 py-1.5"}`}
             data-bar-orient={toolbarOrient}
             data-toolbar-collapsed={toolbarCollapsed ? "true" : "false"}
             onClick={(e) => e.stopPropagation()}
@@ -3011,10 +3013,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
               top: toolbarPos.x < 0 ? (window.visualViewport?.height ?? window.innerHeight) - 104 : toolbarPos.y,
               touchAction: "none",
               cursor: "grab",
-              background: "color-mix(in oklch, var(--c-base) 38%, transparent)",
-              backdropFilter: "blur(24px)",
-              border: "1px solid var(--c-bd2)",
-              boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
+              // 创意模式（LibTV 风）：容器更实一点、模糊更强、边框更淡、圆角更大、阴影更柔，
+              // 与媒体优先画布上的胶囊 dock 观感一致；其它模式沿用原质感。
+              ...(canvasMode === "creative"
+                ? {
+                    background: "color-mix(in oklch, var(--c-base) 66%, transparent)",
+                    backdropFilter: "blur(30px)",
+                    border: "1px solid color-mix(in oklch, var(--c-bd2) 60%, transparent)",
+                    borderRadius: 20,
+                    boxShadow: "0 10px 34px oklch(0 0 0 / 0.4)",
+                  }
+                : {
+                    background: "color-mix(in oklch, var(--c-base) 38%, transparent)",
+                    backdropFilter: "blur(24px)",
+                    border: "1px solid var(--c-bd2)",
+                    boxShadow: "var(--c-node-shadow-hover), 0 0 0 1px var(--c-bd2)",
+                  }),
             }}
           >
             {/* Collapse toggle — folds the less-used tools (always visible, far left) */}
@@ -3172,47 +3186,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* Divider (only when add button is shown) */}
             {!isReadOnly && <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />}
 
-            {/* Zoom controls */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => reactFlow.zoomOut({ duration: 200 })}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                  style={{ color: "var(--c-t3)" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-                >
-                  <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>−</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">缩小</TooltipContent>
-            </Tooltip>
-
-            <button
-              onClick={() => reactFlow.zoomTo(1, { duration: 300 })}
-              className="h-7 px-2 rounded-lg text-[11px] font-mono transition-all tabular-nums"
-              style={{ color: "var(--c-t3)", minWidth: 44, textAlign: "center" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-              title="点击重置为 100%"
-            >
-              {Math.round(viewport.zoom * 100)}%
-            </button>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => reactFlow.zoomIn({ duration: 200 })}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                  style={{ color: "var(--c-t3)" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-                >
-                  <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>+</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">放大</TooltipContent>
-            </Tooltip>
+            {/* Zoom controls — 合并为一个百分比药丸，点击向上弹出缩放菜单（三种模式通用） */}
+            <ZoomControl />
 
             <Tooltip>
               <TooltipTrigger asChild>
@@ -3229,10 +3204,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">适应视图 · 选中时按 F 缩放到选中</TooltipContent>
             </Tooltip>
 
-            {/* ◆3 回到原点：把视口拉回世界原点(0,0) */}
+            {/* ◆3 回到原点：把视口拉回世界原点(0,0)。标 data-tb-sec → 收缩工具条时隐藏（不常用）。 */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => reactFlow.setCenter(0, 0, { zoom: 1, duration: 400 })}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ color: "var(--c-t3)" }}
@@ -3431,11 +3407,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* UI style switcher (专业 / 创意 / 工作室) */}
             <UIStyleSwitcher orient={toolbarOrient} />
 
-            {/* Theme switcher (foldable) */}
-            <span data-tb-sec data-tour="theme" style={{ display: "inline-flex", alignItems: "center" }}><ThemeSwitcher /></span>
-
-            {/* Canvas background picker (foldable) */}
-            <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><CanvasBgPicker value={canvasBg} onChange={setCanvasBg} /></span>
+            {/* Theme + background pickers —— 创意(LibTV)模式隐藏：创意皮肤有自己固定的
+                媒体优先配色与画布底，主题/背景选择在此模式无意义、只增噪声。 */}
+            {canvasMode !== "creative" && (<>
+              <span data-tb-sec data-tour="theme" style={{ display: "inline-flex", alignItems: "center" }}><ThemeSwitcher /></span>
+              <span data-tb-sec style={{ display: "inline-flex", alignItems: "center" }}><CanvasBgPicker value={canvasBg} onChange={setCanvasBg} /></span>
+            </>)}
           </div>
 
           {/* Filmstrip panel */}

@@ -1082,6 +1082,13 @@
    essentials (add / zoom / run / skin) stay. Toggled from the left chevron. */
 [data-toolbar-collapsed="true"] [data-tb-sec] { display: none !important; }
 
+/* 创意模式（LibTV 风）底部工具条更紧凑：收窄图标按钮（w-8 32px → 28px），缩小其内图标，
+   使整条更贴近 LibTV 的紧凑胶囊 dock。仅命中 w-8 图标按钮，不动运行主按钮(h-8 px-3)/
+   缩放药丸(h-7)/模式切换等；只作用于 .bottombar-creative（创意），其它模式不受影响。 */
+.canvas-bottombar.bottombar-creative .w-8 { width: 1.75rem !important; height: 1.75rem !important; }
+.canvas-bottombar.bottombar-creative .w-8 svg { width: 0.85rem; height: 0.85rem; }
+.canvas-bottombar.bottombar-creative .w-7 { width: 1.55rem !important; height: 1.55rem !important; }
+
 /* Studio quick-run: a hover-only run button on each runnable node, so you can re-run
    without selecting/expanding it. Hidden by default; revealed when hovering the node
    card (and only while it isn't the selected node — the selected node already has the

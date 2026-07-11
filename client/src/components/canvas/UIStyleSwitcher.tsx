@@ -8,10 +8,11 @@ import { useCanvasMode } from "../../contexts/CanvasModeContext";
 //   创意   → pro skin   + creative canvas    (white, media-first / LibTV)
 //   工作室 → studio skin + professional canvas (cinema dark, command bars)
 type Mode = "pro" | "creative" | "studio";
+// 顺序：创意（默认/主推 LibTV）· 工作室（影院）· 专业（标准），与产品主次一致。
 const OPTIONS: { id: Mode; label: string; title: string }[] = [
-  { id: "pro", label: "专业", title: "专业版（标准界面）" },
   { id: "creative", label: "创意", title: "创意模式（白色画布 · 媒体优先 · LibTV 风）" },
   { id: "studio", label: "工作室", title: "工作室（影院深色 · 命令栏 · 媒体优先）" },
+  { id: "pro", label: "专业", title: "专业版（标准界面）" },
 ];
 
 export function UIStyleSwitcher({ orient = "h" }: { orient?: "h" | "v" }) {
