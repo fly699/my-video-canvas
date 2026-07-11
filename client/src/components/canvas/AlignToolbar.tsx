@@ -5,6 +5,7 @@ import {
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
 } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
+import { useSelectionScreenBox } from "../../hooks/useSelectionScreenBox";
 
 // ◆2 对齐 / 分布工具条：选中 ≥2 个节点时浮在底部(所有皮肤通用)。用 ReactFlow 的 measured 尺寸
 // 计算目标位置，批量落位(batchUpdateNodePositions 入历史，可撤销)。
@@ -14,8 +15,15 @@ export function AlignToolbar() {
   const rf = useReactFlow();
   // 仅在「≥2 个非 group 节点被选中」时显示；用稳定 key 触发重渲染。
   const selKey = useCanvasStore((s) => s.nodes.filter((n) => n.selected && n.data.nodeType !== "group").map((n) => n.id).join(","));
+  const box = useSelectionScreenBox();
   const ids = selKey ? selKey.split(",") : [];
   if (ids.length < 2) return null;
+
+  // 吸附到框选区域「上边」；顶部空间不足时下压，水平中心夹在视口内，避免飞出屏幕。
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1920;
+  const anchorPos = box
+    ? { top: Math.max(box.top, 88), left: Math.min(Math.max(box.cx, 180), vw - 180), transform: "translate(-50%, calc(-100% - 10px))" as const }
+    : { top: 64, left: "50%" as const, transform: "translateX(-50%)" as const };
 
   const rects = (): Rect[] => ids.map((id) => {
     const n = rf.getNode(id);
@@ -60,7 +68,7 @@ export function AlignToolbar() {
 
   const canDist = ids.length >= 3;
   return (
-    <div className="nodrag" style={{ position: "fixed", top: 64, left: "50%", transform: "translateX(-50%)", zIndex: 44,
+    <div className="nodrag" style={{ position: "fixed", top: anchorPos.top, left: anchorPos.left, transform: anchorPos.transform, zIndex: 44,
       display: "flex", alignItems: "center", gap: 2, padding: "5px 7px", borderRadius: 12,
       background: "color-mix(in oklch, var(--c-elevated) 92%, transparent)", backdropFilter: "blur(18px)",
       border: "1px solid var(--c-bd2)", boxShadow: "var(--c-node-shadow-hover)" }}>

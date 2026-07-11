@@ -8,6 +8,7 @@ import { planAutoAssemble } from "../../../lib/autoAssemble";
 import { downloadMedia } from "../../../lib/download";
 import { RatioPicker, RATIOS } from "./StudioCommandBar";
 import { useStudioExpandAll } from "../../../hooks/useStudioExpandAll";
+import { useSelectionScreenBox } from "../../../hooks/useSelectionScreenBox";
 
 // ★10：多选批量改参数——把「统一画面比例 / 展开全部参数」一次性应用到所有选中节点。
 // 不同节点的比例字段名不同，按类型映射；只写它真正支持的字段，避免污染无关 payload。
@@ -51,6 +52,7 @@ export function MultiSelectBar() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [showParams]);
+  const box = useSelectionScreenBox();
   const ids = selectedKey ? selectedKey.split(",") : [];
   // LibTV 化 1.4：多选操作条开放到所有皮肤（原仅 studio）——框选≥2 节点即可
   // 整组执行 / 自动成片 / 批量参数 / 成组 / 批量下载。
@@ -122,7 +124,11 @@ export function MultiSelectBar() {
   return (
     <div
       className="nodrag"
-      style={{ position: "fixed", bottom: 84, left: "50%", transform: "translateX(-50%)", zIndex: 45,
+      style={{ position: "fixed", zIndex: 45,
+        // 吸附到框选区域「下边」；底部空间不足时上抬，水平中心夹在视口内。无 box 时回退底部居中。
+        ...(box
+          ? { top: Math.min(box.bottom + 12, (typeof window !== "undefined" ? window.innerHeight : 1080) - 60), left: Math.min(Math.max(box.cx, 220), (typeof window !== "undefined" ? window.innerWidth : 1920) - 220), transform: "translateX(-50%)" }
+          : { bottom: 84, left: "50%", transform: "translateX(-50%)" }),
         display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 14,
         background: "color-mix(in oklch, var(--c-elevated) 92%, transparent)", backdropFilter: "blur(18px)",
         border: "1px solid var(--c-bd2)", boxShadow: "var(--c-node-shadow-hover)" }}
