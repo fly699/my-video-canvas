@@ -1,4 +1,6 @@
 import { memo, useMemo, useState } from "react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
+import { AdvancedToggleRow } from "../InlineBarParts";
 import { useReactFlow } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
@@ -82,6 +84,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   // Auto-collapse the editing controls when the node is deselected; expand when
   // selected or pinned (mirrors NodeSelectedContext / the other nodes' behavior).
   const expanded = Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned);
+  // LibTV（#70 创意模式）：选中后编辑控件也默认收起（保留产出/状态/合并按钮），
+  // 点「参数设置」/快捷键 A 展开。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
 
   // 内嵌字幕烧录（成片字幕一步到位）：合并产物 + 镜头表对白 + 回传 segStarts → 烧字幕。
   const burnSubMutation = trpc.subtitle.burnIn.useMutation({
@@ -393,7 +398,8 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         )}
 
         {/* Editing controls — collapse when the node is deselected. */}
-        {expanded && (<>
+{expanded && isCreativeMode && <AdvancedToggleRow open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />}
+        {expanded && !(isCreativeMode && !advancedOpen) && (<>
 
         {/* Ordered input list — drag to set the concatenation order. Connected
             inputs are smart-ordered by default; dragging fixes an explicit order. */}
@@ -599,6 +605,10 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
           </>
         )}
 
+        </>)}
+
+        {/* 合并按钮 —— 移出收起区：选中即常显（LibTV 主操作优先） */}
+        {expanded && (<>
         {/* Merge button */}
         <button
           onClick={handleMerge}
