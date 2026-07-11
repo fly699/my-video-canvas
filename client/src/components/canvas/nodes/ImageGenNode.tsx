@@ -132,6 +132,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // LibTV：创意模式配置区默认收起（就地输入条是主入口），点输入条「高级」才展开——
   // 否则选中节点配置区全高展开，会把锚在节点底部的输入条顶出视口（用户实测反馈）。
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // 「高级」展开态不跨选中记忆：取消选中即复位，下次点选默认收起、需再点「高级」才展开。
+  useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
   const payload = data.payload;
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).

@@ -121,6 +121,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
   // LibTV：创意模式配置区默认收起（就地输入条为主入口），点「高级」才展开。
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // 「高级」展开态不跨选中记忆：取消选中即复位，下次点选默认收起、需再点「高级」才展开。
+  useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
   const payload = data.payload;
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).

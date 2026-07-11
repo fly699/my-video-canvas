@@ -1915,9 +1915,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
         }
       }
 
-      // Shift+R: ≥2 box-selected → run ONLY those; 1 selected → run from it
+      // Shift+R（不带 Ctrl/Meta）：≥2 box-selected → run ONLY those; 1 selected → run from it
       // (its up/downstream chain); none → run everything.
-      if (!isEditing && e.shiftKey && e.key === "R") {
+      // 必须排除 Ctrl/Meta，否则浏览器「强制刷新」Ctrl+Shift+R 也会触发运行（与刷新冲突）。
+      if (!isEditing && e.shiftKey && !e.ctrlKey && !e.metaKey && e.key === "R") {
         e.preventDefault();
         if (runStateRunningRef.current) return;
         const selIds = nodes.filter((n) => n.selected && RUNNABLE_TYPES.includes(n.data.nodeType as NodeType)).map((n) => n.id);

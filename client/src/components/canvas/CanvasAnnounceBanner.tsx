@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 /**
  * 画布端「持续公告」进入横幅：每次进入画布时，若有生效中的持续公告（管理员在聊天
  * 广播里勾选「设为持续公告」），在顶栏下方居中弹一条短暂横幅（📢 + 标题），
- * 5 秒后自动消失——只做提醒，不常驻（常驻横幅在聊天窗顶部，见 ChatView 的
+ * 10 秒后自动消失——只做提醒，不常驻（常驻横幅在聊天窗顶部，见 ChatView 的
  * PersistentAnnounceBanner）。同一条公告本次进入只弹一次；换了新公告会再次弹出。
  */
 export function CanvasAnnounceBanner() {
@@ -17,7 +17,7 @@ export function CanvasAnnounceBanner() {
     if (shownKeyRef.current === ann.createdAt) return; // 同一条公告只弹一次
     shownKeyRef.current = ann.createdAt;
     setVisible(true);
-    const t = setTimeout(() => setVisible(false), 5000);
+    const t = setTimeout(() => setVisible(false), 10000);
     return () => clearTimeout(t);
   }, [ann?.createdAt]);
   if (!ann || !visible) return null;

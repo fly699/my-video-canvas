@@ -122,9 +122,9 @@ export function OutlineList() {
           </p>
         )}
         {sections.map((sec) => (
-          <div key={sec.key} className="flex flex-col gap-0.5">
+          <div key={sec.key} className="flex flex-col gap-0.5 flex-shrink-0">
             {sec.label && (
-              <div className="flex items-center gap-1.5 px-1.5 pt-1.5 pb-0.5">
+              <div className="flex items-center gap-1.5 px-1.5 pt-1.5 pb-0.5 flex-shrink-0">
                 <Layers size={10} style={{ color: "var(--c-t4)" }} />
                 <span style={{ fontSize: 10, fontWeight: 700, color: "var(--c-t4)", letterSpacing: "0.04em" }}>{sec.label}</span>
                 <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{sec.rows.length}</span>
@@ -137,7 +137,7 @@ export function OutlineList() {
                 <div
                   key={r.id}
                   onClick={() => focusNode(r.id)}
-                  className="group flex items-center gap-2 rounded-lg px-1.5 py-1 cursor-pointer transition-colors"
+                  className="group flex items-center gap-2 rounded-lg px-1.5 py-1 cursor-pointer transition-colors flex-shrink-0"
                   style={{ minHeight: 34 }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
@@ -154,9 +154,9 @@ export function OutlineList() {
                       <span style={{ width: 8, height: 8, borderRadius: "50%", background: cfg?.color ?? "var(--c-bd3)" }} />
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--c-t1)" }}>{r.title}</div>
-                    <div className="truncate" style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{cfg?.label ?? r.nodeType}</div>
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="truncate" style={{ fontSize: 11.5, lineHeight: "16px", fontWeight: 600, color: "var(--c-t1)" }}>{r.title}</div>
+                    <div className="truncate" style={{ fontSize: 9.5, lineHeight: "13px", color: "var(--c-t4)" }}>{cfg?.label ?? r.nodeType}</div>
                   </div>
                   <StatusDot status={r.status} />
                   {runnable && (

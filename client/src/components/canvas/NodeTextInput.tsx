@@ -1,6 +1,8 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ChangeEvent, type CompositionEvent, type FocusEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, Check } from "lucide-react";
+import { Maximize2, Check, Wand2, Languages, Sparkles, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 import { useMention } from "./useMention";
 import { useSlashMenu } from "./useSlashMenu";
 
@@ -86,6 +88,29 @@ function useExpandEditor(
   const openRef = useRef(false); openRef.current = open;
   const bigRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // AI 提示词工具（扩写/翻译/润色）——LibTV 把这些内联在提示词输入区，这里让宽幅编辑弹窗
+  // 也具备同样能力。底层复用 aiEnhance.enhance（与提示词节点同一端点）。因 useExpandEditor 被
+  // 所有 NodeTextArea 复用，故一处接入即覆盖所有含提示词的节点（图像/视频/分镜/提示词等）。
+  const enhance = trpc.aiEnhance.enhance.useMutation();
+  const [aiBusy, setAiBusy] = useState<null | "expand" | "translate_en" | "polish">(null);
+  const runAi = useCallback(async (mode: "expand" | "translate_en" | "polish", label: string) => {
+    const el = bigRef.current;
+    if (!el || aiBusy) return;
+    const text = el.value.trim();
+    if (!text) { toast.error("提示词为空，无法" + label); return; }
+    setAiBusy(mode);
+    try {
+      const r = await enhance.mutateAsync({ text, mode });
+      const out = r.result?.trim();
+      if (out) { el.value = out; commit(out); toast.success(label + "完成"); }
+      else toast.error(label + "失败：无返回");
+    } catch (e) {
+      toast.error(label + "失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setAiBusy(null);
+    }
+  }, [aiBusy, commit, enhance]);
+
   const showBtn = useCallback(() => {
     if (!enabled || !elRef.current) return;
     setBtnRect(elRef.current.getBoundingClientRect());
@@ -131,8 +156,30 @@ function useExpandEditor(
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0 }}>
               <Maximize2 size={14} style={{ color: "var(--c-t3)" }} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--c-t1)" }}>{placeholder?.trim() ? placeholder.slice(0, 24) : "编辑文本"}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--c-t1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180 }}>{placeholder?.trim() ? placeholder.slice(0, 24) : "编辑文本"}</span>
               <div style={{ flex: 1 }} />
+              {/* AI 提示词工具（LibTV 内联能力搬进宽幅弹窗）：扩写 / 翻译英文 / 润色 */}
+              {([
+                { mode: "expand" as const, label: "扩写", Icon: Wand2 },
+                { mode: "translate_en" as const, label: "翻译", Icon: Languages },
+                { mode: "polish" as const, label: "润色", Icon: Sparkles },
+              ]).map(({ mode, label, Icon }) => (
+                <button
+                  key={mode}
+                  className="nodrag"
+                  onClick={() => runAi(mode, label)}
+                  disabled={!!aiBusy}
+                  title={`AI ${label}（作用于当前文本）`}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 8,
+                    fontSize: 12, fontWeight: 500, cursor: aiBusy ? "default" : "pointer",
+                    border: "1px solid var(--c-bd2)", background: "var(--c-surface)",
+                    color: aiBusy && aiBusy !== mode ? "var(--c-t4)" : "var(--c-t2)", opacity: aiBusy && aiBusy !== mode ? 0.5 : 1,
+                  }}
+                >
+                  {aiBusy === mode ? <Loader2 size={12} className="animate-spin" /> : <Icon size={12} />} {label}
+                </button>
+              ))}
               <button onClick={close} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 14px", borderRadius: 8, fontSize: 12.5, cursor: "pointer", border: "1px solid oklch(0.70 0.20 310 / 0.5)", background: "oklch(0.70 0.20 310 / 0.14)", color: "oklch(0.75 0.18 310)" }}>
                 <Check size={13} /> 完成
               </button>
