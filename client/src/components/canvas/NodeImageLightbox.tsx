@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Download, X } from "lucide-react";
 import { mediaFetchUrl } from "@/lib/download";
@@ -28,9 +28,17 @@ async function downloadImage(src: string) {
 /** 画布级全屏图片预览层（下载 + 关闭）。在 Canvas 里挂载一个。 */
 export function NodeImageLightbox() {
   const [src, setSrc] = useState<string | null>(null);
+  // ⚠ 该组件全局常驻。Esc 只在 lightbox「已打开」时拦截——原来无条件 stopImmediatePropagation
+  //  会把所有后注册的 window capture Esc 监听（风格库/运镜库/快速剪辑条等）全部吞掉。
+  const openRef = useRef(false);
+  openRef.current = src !== null; // 每次渲染同步，覆盖所有打开/关闭路径（遮罩点击、按钮等）
   useEffect(() => {
     const open = (e: Event) => setSrc((e as CustomEvent<string>).detail);
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); setSrc(null); } };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !openRef.current) return;
+      e.stopImmediatePropagation();
+      setSrc(null);
+    };
     window.addEventListener("canvas:image-lightbox", open);
     window.addEventListener("keydown", esc, true);
     return () => { window.removeEventListener("canvas:image-lightbox", open); window.removeEventListener("keydown", esc, true); };

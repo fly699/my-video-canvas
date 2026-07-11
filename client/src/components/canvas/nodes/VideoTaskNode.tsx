@@ -2155,6 +2155,18 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               {subjectCount > 3 && <span style={{ alignSelf: "center", fontSize: 10, color: "var(--c-t4)" }}>…{subjectCount}</span>}
             </span>
           )}
+          {/* LibTV：输入条「运镜」chip——直接打开运镜库（原入口在配置区，创意收起态摸不到） */}
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setPickerOpen(true); }}
+            title={activeCameraTemplateId ? "运镜库（当前已应用运镜，可更换/清除）" : "运镜库（选一个运镜注入提示词/参数）"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+              background: activeCameraTemplateId ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)",
+              border: `1px solid ${activeCameraTemplateId ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`,
+              color: activeCameraTemplateId ? "var(--c-t1)" : "var(--c-t2)" }}
+          >
+            <Film size={12} /> 运镜
+          </button>
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}

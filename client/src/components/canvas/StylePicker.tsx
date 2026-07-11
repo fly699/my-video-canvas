@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Star, Search } from "lucide-react";
 import { STYLE_PRESETS, STYLE_CATEGORIES, type StylePreset, type StyleCategory } from "../../lib/stylePresets";
@@ -22,6 +22,12 @@ function loadFavs(): string[] {
  */
 export function StylePicker({ onSelect, onClose }: Props) {
   const [activeCategory, setActiveCategory] = useState<StyleCategory>("影视质感");
+  // Esc 关闭（capture 抢在画布 Esc 取消选中之前）。
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    window.addEventListener("keydown", h, true);
+    return () => window.removeEventListener("keydown", h, true);
+  }, [onClose]);
   const [tab, setTab] = useState<StyleTab>("plaza");
   const [query, setQuery] = useState("");
   const [favs, setFavs] = useState<string[]>(loadFavs);
