@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
@@ -33,6 +34,13 @@ export type TrpcContext = {
   res: CreateExpressContextOptions["res"];
   user: User | null;
   clientIp: string;
+  /** 当前 tRPC 接口路径（如 "scripts.generate"），由 trpc.ts 的盖章中间件写入。
+   *  用作 LLM 调用日志的场景标签——新增入口零改动自动覆盖。 */
+  rpcPath?: string;
+  /** 溯源指纹（行为日志用，见 extractTraceFingerprints）：设备指纹 / UA / 会话指纹。 */
+  deviceFp?: string | null;
+  userAgent?: string | null;
+  sessionFp?: string | null;
 };
 
 // Dev-only: auto-login when neither OAuth nor DB is configured (local testing without external services)
@@ -87,6 +95,22 @@ export function isDevBypassMode(): boolean {
   return isDevBypass;
 }
 
+/** 溯源指纹提取（行为日志用）：
+ *  - deviceFp：客户端设备指纹（x-device-fp 请求头，前端 canvas/webgl/屏幕/时区等特征哈希，
+ *    存 localStorage 跨会话稳定）——同一账号被多人使用时按设备区分。仅接受 16~64 位十六进制。
+ *  - userAgent：浏览器/系统标识（截 255）。
+ *  - sessionFp：会话指纹 = Cookie 全串 SHA-256 前 16 位（不落原始 cookie，防日志泄漏会话凭证）；
+ *    同一设备的不同登录会话/不同浏览器可区分。 */
+export function extractTraceFingerprints(req: CreateExpressContextOptions["req"]): { deviceFp: string | null; userAgent: string | null; sessionFp: string | null } {
+  const h = req.headers ?? {};
+  const rawFp = typeof h["x-device-fp"] === "string" ? h["x-device-fp"].trim() : "";
+  const deviceFp = /^[a-f0-9]{16,64}$/i.test(rawFp) ? rawFp.toLowerCase() : null;
+  const ua = typeof h["user-agent"] === "string" ? h["user-agent"].slice(0, 255) : null;
+  const cookie = typeof h.cookie === "string" ? h.cookie : "";
+  const sessionFp = cookie ? createHash("sha256").update(cookie).digest("hex").slice(0, 16) : null;
+  return { deviceFp, userAgent: ua, sessionFp };
+}
+
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
@@ -95,10 +119,11 @@ export async function createContext(
   // req.ip is set by Express respecting the "trust proxy" setting configured in index.ts.
   // It correctly handles X-Forwarded-For from trusted proxies and falls back to socket IP.
   const clientIp = opts.req.ip ?? opts.req.socket?.remoteAddress ?? "unknown";
+  const trace = extractTraceFingerprints(opts.req);
 
   if (isDevBypass) {
     user = DEV_USER;
-    return { req: opts.req, res: opts.res, user, clientIp: "127.0.0.1" };
+    return { req: opts.req, res: opts.res, user, clientIp: "127.0.0.1", ...trace };
   } else {
     try {
       user = await sdk.authenticateRequest(opts.req);
@@ -114,5 +139,6 @@ export async function createContext(
     res: opts.res,
     user,
     clientIp,
+    ...trace,
   };
 }

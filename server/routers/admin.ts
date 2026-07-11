@@ -28,6 +28,7 @@ import { hashPassword } from "../_core/emailAuth";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { writeAuditLog } from "../_core/auditLog";
 import { broadcastSystemAnnouncement, setPersistentAnnouncement } from "./chat";
+import { sendLogEmailNow } from "../_core/logEmailer";
 import { adminDownloadsRouter } from "./downloads";
 import { encryptKieKey, kieKeyHash, kieKeyLast4, isKieCryptoConfigured } from "../_core/kieCrypto";
 import { fetchKieCredit } from "../_core/kie";
@@ -166,6 +167,77 @@ export const adminRouter = router({
     clear: operatorProc.mutation(async () => {
       await db.clearComfyUsageLogs();
       return { success: true };
+    }),
+  }),
+
+  // ── LLM 调用日志（统一埋点 invokeLLMWithKie，全入口覆盖）────────────────
+  llmLogs: router({
+    list: adminProcedure
+      .input(z.object({
+        // 上限 1000：面板分页用 50，「导出」按 1000/页 循环拉取。
+        limit: z.number().int().min(1).max(1000).default(50),
+        offset: z.number().int().min(0).default(0),
+        userId: z.number().int().optional(),
+        scene: z.string().max(128).optional(),
+        model: z.string().max(128).optional(),
+        route: z.string().max(24).optional(),
+        status: z.enum(["success", "error"]).optional(),
+        /** 关键词：模糊匹配 prompt / 回复 / 错误信息 / 用户名 */
+        q: z.string().max(200).optional(),
+        sinceMs: z.number().int().optional(),
+        untilMs: z.number().int().optional(),
+      }))
+      .query(async ({ input }) => db.getLlmUsageLogs(input)),
+
+    detail: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .query(async ({ input }) => db.getLlmUsageLogDetail(input.id)),
+
+    summary: adminProcedure
+      .input(z.object({ sinceMs: z.number().int().optional() }).optional())
+      .query(async ({ input }) => db.getLlmUsageSummary({ sinceMs: input?.sinceMs })),
+
+    clear: operatorProc.mutation(async ({ ctx }) => {
+      await db.clearLlmUsageLogs();
+      writeAuditLog({ ctx, action: "llm_logs_cleared", detail: {} });
+      return { success: true };
+    }),
+  }),
+
+  // ── 日志加密打包邮送（操作/LLM/ComfyUI 三类，AES-256 zip + SMTP）──────────
+  logEmail: router({
+    getSettings: managerProc.query(async () => {
+      const s = await db.getLogEmailSettings();
+      // 压缩密码不回传明文，只回「是否已设置」（与 SMTP 密码同口径）
+      return { ...s, zipPassword: undefined, zipPasswordSet: !!s.zipPassword?.trim() };
+    }),
+    setSettings: managerProc
+      .input(z.object({
+        enabled: z.boolean().optional(),
+        recipients: z.string().max(2000).optional(),
+        /** 传空串=清除密码；不传=保持不变 */
+        zipPassword: z.string().max(128).optional(),
+        includeAudit: z.boolean().optional(),
+        includeLlm: z.boolean().optional(),
+        includeComfy: z.boolean().optional(),
+        rangeDays: z.number().int().min(0).max(365).optional(),
+        scheduleMode: z.enum(["hours", "daily", "weekly", "monthly"]).optional(),
+        intervalHours: z.number().int().min(1).max(720).optional(),
+        sendHour: z.number().int().min(0).max(23).optional(),
+        sendWeekday: z.number().int().min(0).max(6).optional(),
+        sendMonthday: z.number().int().min(1).max(28).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.setLogEmailSettings(input);
+        writeAuditLog({ ctx, action: "log_email_settings", detail: { ...input, zipPassword: input.zipPassword !== undefined ? "(changed)" : undefined } });
+        const s = await db.getLogEmailSettings();
+        return { ...s, zipPassword: undefined, zipPasswordSet: !!s.zipPassword?.trim() };
+      }),
+    /** 立即打包发送一次（按当前设置；也用于配置验证） */
+    sendNow: managerProc.mutation(async ({ ctx }) => {
+      const r = await sendLogEmailNow("manual");
+      writeAuditLog({ ctx, action: "log_email_send", detail: { ok: r.ok, message: r.message } });
+      return r;
     }),
   }),
 

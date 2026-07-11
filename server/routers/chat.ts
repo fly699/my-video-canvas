@@ -47,6 +47,7 @@ import {
 } from "../db";
 import type { RecordedAssetInfo } from "../db";
 import { dispatchAssetWebhook, assertPublicHttpUrl, sendTestWebhook, WEBHOOK_KINDS, type WebhookKind } from "../_core/notifyWebhook";
+import { extractHiggsfieldUrls, rehostMcpAsset } from "./agent";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
@@ -318,6 +319,15 @@ export async function getActivePersistentAnnouncement(): Promise<PersistentAnnou
 export async function setPersistentAnnouncement(ann: PersistentAnnouncement | null): Promise<void> {
   await setChatSettings({ persistentAnnounceJson: ann ? JSON.stringify(ann) : null });
   if (allBroadcaster) allBroadcaster("system:announce:persistent", { announcement: ann });
+}
+
+/** 聊天助手回复的 Higgsfield 外链隐藏：已转存的裸链替换为占位说明，并清理替换后残留的
+ *  markdown 图片/链接语法（如 `![图](〔…〕)` → `〔…〕`），避免渲染出坏图。纯函数（导出供单测）。 */
+export function stripRehostedUrls(reply: string, replaced: Array<{ url: string; type: string }>): string {
+  for (const { url, type } of replaced) {
+    reply = reply.split(url).join(`〔${type === "video" ? "视频" : type === "image" ? "图片" : "文件"}已转存到素材库，见下方附件〕`);
+  }
+  return reply.replace(/!?\[[^\]]*\]\((〔[^)]*〕)\)/g, "$1");
 }
 
 
@@ -596,9 +606,33 @@ export const chatRouter = router({
         reply = `⚠️ AI 回复失败：${err instanceof Error ? err.message : String(err)}`;
       }
 
+      // 3.5) Higgsfield MCP 产物落地（与画布助手 runAgentChat 同款）：本机 Claude/GPT 桥接挂
+      // Higgsfield MCP 时，回复里常带其外链（约 24h 过期、绕过下载门控、可被转发）。处理：
+      // ① 下载转存自有 S3 存储并记入素材库（rehostMcpAsset）；② 回复文本里的裸外链替换为
+      // 占位说明（隐藏外链地址）；③ 产物以聊天附件下发——Attachment 组件按 kind 渲染，
+      // 图片禁右键/长按/拖拽另存（含移动端 WebkitTouchCallout）、视频去下载控件，下载走
+      // /manus-storage/ 代理受登录 + 下载门控 + 水印体系。转存失败的链接原样保留（用户至少能点）。
+      let aiAttachments: ChatFileRef[] | undefined;
+      try {
+        const hfUrls = extractHiggsfieldUrls(reply).slice(0, 6); // 单轮上限 6 个，防滥用（与画布助手一致）
+        if (hfUrls.length > 0) {
+          const atts: ChatFileRef[] = [];
+          const replaced: Array<{ url: string; type: string }> = [];
+          for (const oldUrl of hfUrls) {
+            const r = await rehostMcpAsset(ctx.user.id, null, oldUrl);
+            if (!r) continue;
+            atts.push({ name: r.name, mimeType: r.mimeType, size: r.size, url: r.url, kind: r.type === "image" ? "image" : r.type === "video" ? "video" : "file" });
+            replaced.push({ url: oldUrl, type: r.type });
+          }
+          reply = stripRehostedUrls(reply, replaced);
+          if (atts.length > 0) aiAttachments = atts;
+        }
+      } catch { /* 落地失败不影响正常回复 */ }
+
       // 4) 落库并广播 AI 回复
       const aiMsg = await insertConversationMessage({
         conversationId: conv.id, senderId: aiId, senderName: ASSISTANT_NAME, content: reply,
+        attachments: aiAttachments,
       });
       if (aiMsg && broadcaster) broadcaster(conv.id, rowToWire(aiMsg));
       return aiMsg ? rowToWire(aiMsg) : null;

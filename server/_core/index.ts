@@ -21,6 +21,7 @@ import { isTunnelRequest, isTunnelExemptPath, isTunnelAllowed } from "./tunnelGa
 import { serveStatic, setupVite } from "./vite";
 import { Server as SocketIOServer } from "socket.io";
 import { setupVideoTaskPoller } from "../videoTaskPoller";
+import { startLogEmailScheduler } from "./logEmailer";
 import { setComfySocketIO } from "./comfyui";
 import { setAgentSocketIO } from "./agentBus";
 import { setStressSocketIO, STRESS_ROOM } from "./comfyStress";
@@ -564,6 +565,9 @@ async function startServer() {
 
   // ── Video task background poller ───────────────────────────────────────────
   setupVideoTaskPoller(io);
+
+  // ── 日志加密打包定时邮送（管理后台「操作日志」页配置）─────────────────────────
+  startLogEmailScheduler();
 
   // Development or production static
   if (process.env.NODE_ENV === "development") {

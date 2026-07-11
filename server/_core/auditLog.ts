@@ -104,6 +104,9 @@ export type AuditAction =
   | "user_set_approved"
   | "chat_broadcast"
   | "chat_broadcast_persistent_clear"
+  | "llm_logs_cleared"
+  | "log_email_settings"
+  | "log_email_send"
   | "user_delete"
   | "admin_set_level"
   | "user_change_password"
@@ -151,6 +154,10 @@ export function writeAuditLog(opts: AuditOpts): void {
         country: geo.country ?? null,
         region: geo.region ?? null,
         city: geo.city ?? null,
+        // 溯源指纹：设备指纹（客户端 x-device-fp）/ UA / 会话指纹——同一账号多人使用可区分
+        deviceFp: opts.ctx?.deviceFp ?? null,
+        userAgent: opts.ctx?.userAgent ?? null,
+        sessionFp: opts.ctx?.sessionFp ?? null,
         action: opts.action,
         detail: opts.detail ?? null,
       })

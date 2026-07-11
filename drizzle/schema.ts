@@ -888,6 +888,10 @@ export const auditLogs = mysqlTable("auditLogs", {
   country: varchar("country", { length: 64 }),
   region: varchar("region", { length: 128 }),
   city: varchar("city", { length: 128 }),
+  // 溯源指纹（0078 迁移追加）：设备指纹 / UA / 会话指纹（IP 已有）
+  deviceFp: varchar("deviceFp", { length: 64 }),
+  userAgent: varchar("userAgent", { length: 255 }),
+  sessionFp: varchar("sessionFp", { length: 32 }),
   action: varchar("action", { length: 64 }).notNull(),
   detail: json("detail"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -910,6 +914,10 @@ export const comfyUsageLogs = mysqlTable("comfyUsageLogs", {
   userEmail: varchar("userEmail", { length: 320 }),
   userName: varchar("userName", { length: 255 }),
   ip: varchar("ip", { length: 64 }).notNull(),
+  // 溯源指纹（0078 迁移追加）：设备指纹 / UA / 会话指纹（IP 已有）
+  deviceFp: varchar("deviceFp", { length: 64 }),
+  userAgent: varchar("userAgent", { length: 255 }),
+  sessionFp: varchar("sessionFp", { length: 32 }),
   action: varchar("action", { length: 64 }).notNull(),       // generateImage / generateVideo / executeWorkflow / serverAction:free …
   baseUrl: varchar("baseUrl", { length: 512 }).notNull(),    // the server address used
   host: varchar("host", { length: 255 }),                    // host:port derived from baseUrl
@@ -932,6 +940,70 @@ export const comfyUsageLogs = mysqlTable("comfyUsageLogs", {
 
 export type ComfyUsageLog = typeof comfyUsageLogs.$inferSelect;
 export type InsertComfyUsageLog = typeof comfyUsageLogs.$inferInsert;
+
+// ── LLM 调用日志 ──────────────────────────────────────────────────────────────
+// 全站所有 LLM 调用（画布助手/AI 对话/脚本/分镜/增强/翻译/看图/工程智能体/聊天助手…）
+// 的统一审计：唯一埋点在 invokeLLMWithKie（所有入口都收敛于此），scene 取 tRPC 接口
+// 路径（中间件自动盖章）——新增入口零改动自动覆盖。prompt/回复截断存储（各 12000 字）。
+export const llmUsageLogs = mysqlTable("llmUsageLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  userName: varchar("userName", { length: 255 }),
+  // 溯源指纹（防多用户共用账号无法追责）：IP + 设备指纹 + UA + 会话指纹
+  ip: varchar("ip", { length: 64 }),
+  deviceFp: varchar("deviceFp", { length: 64 }),
+  userAgent: varchar("userAgent", { length: 255 }),
+  sessionFp: varchar("sessionFp", { length: 32 }),
+  scene: varchar("scene", { length: 128 }).notNull().default("unknown"), // tRPC 路径，如 scripts.generate / agent.chat
+  model: varchar("model", { length: 128 }),
+  route: varchar("route", { length: 24 }).notNull().default("platform"), // kie | custom | self_hosted | bridge | platform
+  status: varchar("status", { length: 16 }).notNull(),                  // success | error
+  errorMessage: varchar("errorMessage", { length: 1024 }),
+  durationMs: int("durationMs"),
+  promptChars: int("promptChars"),
+  replyChars: int("replyChars"),
+  promptText: text("promptText"),
+  replyText: text("replyText"),
+  projectId: int("projectId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  userIdIdx: index("llmUsageLogs_userId_idx").on(t.userId),
+  sceneIdx: index("llmUsageLogs_scene_idx").on(t.scene),
+  modelIdx: index("llmUsageLogs_model_idx").on(t.model),
+  statusIdx: index("llmUsageLogs_status_idx").on(t.status),
+  createdAtIdx: index("llmUsageLogs_createdAt_idx").on(t.createdAt),
+}));
+
+export type LlmUsageLog = typeof llmUsageLogs.$inferSelect;
+export type InsertLlmUsageLog = typeof llmUsageLogs.$inferInsert;
+
+// ── 日志邮送设置（单行表 id=1）───────────────────────────────────────────────
+// 三类日志（操作/LLM/ComfyUI）按管理员配置定时打包成 AES-256 加密 zip，经注册认证页
+// 配置的 SMTP 发送到多个收件邮箱。调度由 server 内置定时器（logEmailer.ts）驱动。
+export const logEmailSettings = mysqlTable("log_email_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  enabled: boolean("enabled").notNull().default(false),
+  /** 收件邮箱，逗号/换行分隔（多个） */
+  recipients: text("recipients"),
+  /** zip 压缩密码（AES-256；7-Zip/WinRAR 可解） */
+  zipPassword: varchar("zipPassword", { length: 128 }),
+  includeAudit: boolean("includeAudit").notNull().default(true),
+  includeLlm: boolean("includeLlm").notNull().default(true),
+  includeComfy: boolean("includeComfy").notNull().default(true),
+  /** 每次打包的日志范围：0=全部历史，N=最近 N 天 */
+  rangeDays: int("rangeDays").notNull().default(7),
+  /** 调度：hours=每 N 小时 / daily=每天 sendHour 点 / weekly=每周 sendWeekday 的 sendHour 点 / monthly=每月 sendMonthday 日的 sendHour 点 */
+  scheduleMode: varchar("scheduleMode", { length: 16 }).notNull().default("daily"),
+  intervalHours: int("intervalHours").notNull().default(24),
+  sendHour: int("sendHour").notNull().default(3),
+  sendWeekday: int("sendWeekday").notNull().default(1),
+  sendMonthday: int("sendMonthday").notNull().default(1),
+  lastSentAt: timestamp("lastSentAt"),
+  lastResult: varchar("lastResult", { length: 512 }),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LogEmailSettingsRow = typeof logEmailSettings.$inferSelect;
 
 // ── Poyo Balance Snapshots ──────────────────────────────────────────────────
 // Poyo's balance API only returns the current credit amount (no history), so we

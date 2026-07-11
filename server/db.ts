@@ -26,6 +26,10 @@ import {
   type BridgeMcpConfig,
   auditLogs,
   comfyUsageLogs,
+  llmUsageLogs,
+  type InsertLlmUsageLog,
+  logEmailSettings,
+  type LogEmailSettingsRow,
   poyoBalanceSnapshots,
   projectCollaborators,
   projectShareLinks,
@@ -2330,6 +2334,163 @@ export async function clearComfyUsageLogs(): Promise<void> {
   const db = await getDb();
   if (!db) { devComfyUsageLogs.splice(0); return; }
   await db.delete(comfyUsageLogs);
+}
+
+// ── LLM 调用日志（统一埋点：invokeLLMWithKie）────────────────────────────────
+
+type DevLlmUsageLog = typeof llmUsageLogs.$inferSelect;
+const devLlmUsageLogs: DevLlmUsageLog[] = []; // newest first
+let devLlmUsageLogId = 1;
+
+export async function insertLlmUsageLog(data: InsertLlmUsageLog): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    devLlmUsageLogs.unshift({ ...data, id: devLlmUsageLogId++, createdAt: new Date() } as DevLlmUsageLog);
+    if (devLlmUsageLogs.length > 2000) devLlmUsageLogs.pop();
+    return;
+  }
+  await db.insert(llmUsageLogs).values(data);
+}
+
+/** 列表行不带 prompt/回复全文（截为 200 字预览），全文经 getLlmUsageLogDetail 单条取。 */
+export type LlmUsageLogListRow = Omit<DevLlmUsageLog, "promptText" | "replyText"> & { promptPreview: string; replyPreview: string };
+
+export async function getLlmUsageLogs(opts: {
+  limit?: number; offset?: number;
+  userId?: number; scene?: string; model?: string; route?: string; status?: string;
+  q?: string; sinceMs?: number; untilMs?: number;
+}): Promise<{ rows: LlmUsageLogListRow[]; total: number }> {
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+  const toRow = (l: DevLlmUsageLog): LlmUsageLogListRow => {
+    const { promptText, replyText, ...rest } = l;
+    return { ...rest, promptPreview: (promptText ?? "").slice(0, 200), replyPreview: (replyText ?? "").slice(0, 200) };
+  };
+  const db = await getDb();
+  if (!db) {
+    const kw = opts.q?.trim().toLowerCase();
+    const f = devLlmUsageLogs.filter((l) =>
+      (opts.userId == null || l.userId === opts.userId) &&
+      (!opts.scene || l.scene === opts.scene) &&
+      (!opts.model || l.model === opts.model) &&
+      (!opts.route || l.route === opts.route) &&
+      (!opts.status || l.status === opts.status) &&
+      (opts.sinceMs == null || l.createdAt.getTime() >= opts.sinceMs) &&
+      (opts.untilMs == null || l.createdAt.getTime() <= opts.untilMs) &&
+      (!kw || (l.promptText ?? "").toLowerCase().includes(kw) || (l.replyText ?? "").toLowerCase().includes(kw) ||
+        (l.errorMessage ?? "").toLowerCase().includes(kw) || (l.userName ?? "").toLowerCase().includes(kw)));
+    return { rows: f.slice(offset, offset + limit).map(toRow), total: f.length };
+  }
+  const kw = opts.q?.trim();
+  const kwLike = kw ? `%${kw}%` : null;
+  const conds = [
+    opts.userId != null ? eq(llmUsageLogs.userId, opts.userId) : undefined,
+    opts.scene ? eq(llmUsageLogs.scene, opts.scene) : undefined,
+    opts.model ? eq(llmUsageLogs.model, opts.model) : undefined,
+    opts.route ? eq(llmUsageLogs.route, opts.route) : undefined,
+    opts.status ? eq(llmUsageLogs.status, opts.status) : undefined,
+    opts.sinceMs != null ? gte(llmUsageLogs.createdAt, new Date(opts.sinceMs)) : undefined,
+    opts.untilMs != null ? sql`${llmUsageLogs.createdAt} <= ${new Date(opts.untilMs)}` : undefined,
+    kwLike ? or(
+      like(llmUsageLogs.promptText, kwLike), like(llmUsageLogs.replyText, kwLike),
+      like(llmUsageLogs.errorMessage, kwLike), like(llmUsageLogs.userName, kwLike),
+    ) : undefined,
+  ].filter(Boolean);
+  const where = conds.length > 0 ? and(...conds) : undefined;
+  const [rows, countRows] = await Promise.all([
+    db.select().from(llmUsageLogs).where(where).orderBy(desc(llmUsageLogs.createdAt)).limit(limit).offset(offset),
+    db.select({ count: sql<number>`COUNT(*)` }).from(llmUsageLogs).where(where),
+  ]);
+  return { rows: rows.map(toRow), total: Number(countRows[0]?.count ?? 0) };
+}
+
+export async function getLlmUsageLogDetail(id: number): Promise<DevLlmUsageLog | null> {
+  const db = await getDb();
+  if (!db) return devLlmUsageLogs.find((l) => l.id === id) ?? null;
+  const rows = await db.select().from(llmUsageLogs).where(eq(llmUsageLogs.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+/** 聚合统计：总量/失败/均时 + 按场景/模型/用户 Top 榜（同时充当筛选下拉的候选值来源）。 */
+export async function getLlmUsageSummary(opts: { sinceMs?: number } = {}): Promise<{
+  totals: { calls: number; errors: number; avgMs: number };
+  byScene: { scene: string; calls: number; errors: number; avgMs: number }[];
+  byModel: { model: string | null; calls: number; errors: number; avgMs: number }[];
+  byUser: { userId: number | null; userName: string | null; calls: number; errors: number; avgMs: number }[];
+}> {
+  const db = await getDb();
+  const errExpr = sql<number>`SUM(CASE WHEN ${llmUsageLogs.status} = 'error' THEN 1 ELSE 0 END)`;
+  const avgExpr = sql<number>`AVG(${llmUsageLogs.durationMs})`;
+  if (!db) {
+    const since = opts.sinceMs ?? 0;
+    const rows = devLlmUsageLogs.filter((l) => l.createdAt.getTime() >= since);
+    const grp = <K,>(key: (l: DevLlmUsageLog) => K) => {
+      const m = new Map<K, { calls: number; errors: number; sum: number; n: number; sample: DevLlmUsageLog }>();
+      for (const l of rows) {
+        const k = key(l); const e = m.get(k) ?? { calls: 0, errors: 0, sum: 0, n: 0, sample: l };
+        e.calls++; if (l.status === "error") e.errors++; if (typeof l.durationMs === "number") { e.sum += l.durationMs; e.n++; }
+        m.set(k, e);
+      }
+      return Array.from(m.entries()).map(([k, v]) => ({ key: k, calls: v.calls, errors: v.errors, avgMs: v.n ? Math.round(v.sum / v.n) : 0, sample: v.sample })).sort((a, b) => b.calls - a.calls);
+    };
+    const calls = rows.length, errors = rows.filter((l) => l.status === "error").length;
+    const durs = rows.filter((l) => typeof l.durationMs === "number");
+    return {
+      totals: { calls, errors, avgMs: durs.length ? Math.round(durs.reduce((s, l) => s + (l.durationMs ?? 0), 0) / durs.length) : 0 },
+      byScene: grp((l) => l.scene).map((g) => ({ scene: String(g.key), calls: g.calls, errors: g.errors, avgMs: g.avgMs })),
+      byModel: grp((l) => l.model).map((g) => ({ model: g.key as string | null, calls: g.calls, errors: g.errors, avgMs: g.avgMs })),
+      byUser: grp((l) => l.userId).map((g) => ({ userId: g.key as number | null, userName: g.sample.userName, calls: g.calls, errors: g.errors, avgMs: g.avgMs })),
+    };
+  }
+  const where = opts.sinceMs != null ? gte(llmUsageLogs.createdAt, new Date(opts.sinceMs)) : undefined;
+  const [bySceneRows, byModelRows, byUserRows, totalRows] = await Promise.all([
+    db.select({ scene: llmUsageLogs.scene, calls: sql<number>`COUNT(*)`, errors: errExpr, avgMs: avgExpr })
+      .from(llmUsageLogs).where(where).groupBy(llmUsageLogs.scene).orderBy(desc(sql`COUNT(*)`)).limit(50),
+    db.select({ model: llmUsageLogs.model, calls: sql<number>`COUNT(*)`, errors: errExpr, avgMs: avgExpr })
+      .from(llmUsageLogs).where(where).groupBy(llmUsageLogs.model).orderBy(desc(sql`COUNT(*)`)).limit(50),
+    db.select({ userId: llmUsageLogs.userId, userName: llmUsageLogs.userName, calls: sql<number>`COUNT(*)`, errors: errExpr, avgMs: avgExpr })
+      .from(llmUsageLogs).where(where).groupBy(llmUsageLogs.userId, llmUsageLogs.userName).orderBy(desc(sql`COUNT(*)`)).limit(50),
+    db.select({ calls: sql<number>`COUNT(*)`, errors: errExpr, avgMs: avgExpr }).from(llmUsageLogs).where(where),
+  ]);
+  const num = (v: unknown) => Math.round(Number(v ?? 0));
+  return {
+    totals: { calls: num(totalRows[0]?.calls), errors: num(totalRows[0]?.errors), avgMs: num(totalRows[0]?.avgMs) },
+    byScene: bySceneRows.map((r) => ({ scene: r.scene, calls: num(r.calls), errors: num(r.errors), avgMs: num(r.avgMs) })),
+    byModel: byModelRows.map((r) => ({ model: r.model, calls: num(r.calls), errors: num(r.errors), avgMs: num(r.avgMs) })),
+    byUser: byUserRows.map((r) => ({ userId: r.userId, userName: r.userName, calls: num(r.calls), errors: num(r.errors), avgMs: num(r.avgMs) })),
+  };
+}
+
+export async function clearLlmUsageLogs(): Promise<void> {
+  const db = await getDb();
+  if (!db) { devLlmUsageLogs.splice(0); return; }
+  await db.delete(llmUsageLogs);
+}
+
+// ── 日志邮送设置（单行 id=1）────────────────────────────────────────────────
+
+let devLogEmailSettings: LogEmailSettingsRow = {
+  id: 1, enabled: false, recipients: null, zipPassword: null,
+  includeAudit: true, includeLlm: true, includeComfy: true, rangeDays: 7,
+  scheduleMode: "daily", intervalHours: 24, sendHour: 3, sendWeekday: 1, sendMonthday: 1,
+  lastSentAt: null, lastResult: null, updatedAt: new Date(),
+};
+
+export async function getLogEmailSettings(): Promise<LogEmailSettingsRow> {
+  const db = await getDb();
+  if (!db) return devLogEmailSettings;
+  const rows = await db.select().from(logEmailSettings).where(eq(logEmailSettings.id, 1)).limit(1);
+  if (rows[0]) return rows[0];
+  await db.insert(logEmailSettings).values({ id: 1 }).onDuplicateKeyUpdate({ set: { id: 1 } });
+  const again = await db.select().from(logEmailSettings).where(eq(logEmailSettings.id, 1)).limit(1);
+  return again[0]!;
+}
+
+export async function setLogEmailSettings(patch: Partial<Omit<LogEmailSettingsRow, "id" | "updatedAt">>): Promise<LogEmailSettingsRow> {
+  const db = await getDb();
+  if (!db) { devLogEmailSettings = { ...devLogEmailSettings, ...patch, updatedAt: new Date() }; return devLogEmailSettings; }
+  await db.insert(logEmailSettings).values({ id: 1, ...patch }).onDuplicateKeyUpdate({ set: patch });
+  return getLogEmailSettings();
 }
 
 // ── Poyo balance snapshots ──────────────────────────────────────────────────
