@@ -572,7 +572,7 @@ export interface DirectorActor {
   glbUrl?: string;      // 用 GLB 网格渲染（本地导入 / 内置真人模型）；置位时不再是参数化人偶
   tint?: boolean;       // GLB 材质染成 actor.color（纯色人偶，便于黑底分离/彩色替换）
   /** #71 多物体：几何体道具（方块/球体/圆柱/圆锥/平面板）；置位时渲染几何体而非人偶。 */
-  prim?: "box" | "sphere" | "cylinder" | "cone" | "plane";
+  prim?: "box" | "sphere" | "cylinder" | "cone" | "plane" | "table" | "chair" | "bed" | "doorframe" | "stairs" | "tree";
 }
 
 // P4：群众群组——一组人偶的统一变换父级（位置/旋转/缩放整体作用于成员）。
