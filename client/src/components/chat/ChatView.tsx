@@ -734,7 +734,8 @@ function Bubble({ msg, mine, narrow }: { msg: ChatWireMessage; mine: boolean; na
   );
 }
 
-/** 持续公告横幅：聊天窗顶部常驻突出显示并间隔闪烁（全员可见），直至管理员关闭或到期。
+/** 持续公告横幅：聊天窗顶部常驻突出显示（全员可见），直至管理员关闭或到期。
+ *  收起态只显示标题，点击展开全文；每次进入聊天室只闪烁 30 秒后转为静止常驻。
  *  数据来自 chat.getPersistentAnnouncement；set/clear 经 socket "system:announce:persistent"
  *  在 useChat 里 invalidate 该查询实时刷新。管理员(L3+) 显示关闭按钮。 */
 function PersistentAnnounceBanner({ narrow = false }: { narrow?: boolean }) {
@@ -743,6 +744,7 @@ function PersistentAnnounceBanner({ narrow = false }: { narrow?: boolean }) {
   const q = trpc.chat.getPersistentAnnouncement.useQuery(undefined, { staleTime: 30_000, refetchInterval: 5 * 60_000 });
   const ann = q.data?.announcement ?? null;
   const [expanded, setExpanded] = useState(false);
+  const [blinking, setBlinking] = useState(true);
   const clearMut = trpc.admin.chat.clearPersistentAnnouncement.useMutation({
     onSuccess: () => { void utils.chat.getPersistentAnnouncement.invalidate(); toast.success("持续公告已关闭"); },
     onError: (e) => toast.error("关闭失败：" + e.message),
@@ -755,6 +757,13 @@ function PersistentAnnounceBanner({ narrow = false }: { narrow?: boolean }) {
     const t = setTimeout(() => { void utils.chat.getPersistentAnnouncement.invalidate(); }, Math.min(ms + 500, 2_147_000_000));
     return () => clearTimeout(t);
   }, [ann?.expiresAt, utils]);
+  // 每次进入聊天室（横幅挂载）或换了新公告 → 闪烁 30 秒后停止（横幅仍静止常驻）。
+  useEffect(() => {
+    if (!ann?.createdAt) return;
+    setBlinking(true);
+    const t = setTimeout(() => setBlinking(false), 30_000);
+    return () => clearTimeout(t);
+  }, [ann?.createdAt]);
   if (!ann) return null;
   const isManager = user?.role === "admin" && (user?.adminLevel ?? 0) >= 3;
   const expiryLabel = ann.expiresAt
@@ -762,10 +771,10 @@ function PersistentAnnounceBanner({ narrow = false }: { narrow?: boolean }) {
     : null;
   return (
     <div
-      className="chat-announce-blink"
+      className={blinking ? "chat-announce-blink" : undefined}
       onClick={() => setExpanded((v) => !v)}
       role="status"
-      title={expanded ? "收起" : "展开全文"}
+      title={expanded ? "收起" : "点击查看全文"}
       style={{
         display: "flex", alignItems: expanded ? "flex-start" : "center", gap: 8,
         padding: narrow ? "8px 10px" : "9px 14px", flexShrink: 0, cursor: "pointer",
@@ -776,19 +785,20 @@ function PersistentAnnounceBanner({ narrow = false }: { narrow?: boolean }) {
     >
       <span aria-hidden style={{ flexShrink: 0, fontSize: 15, lineHeight: "20px" }}>📢</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <b style={{ marginRight: 8 }}>{ann.title}</b>
-        <span style={expanded
-          ? { color: C.t2, whiteSpace: "pre-wrap", wordBreak: "break-word" }
-          : { color: C.t2, display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }}>
-          {ann.body}
-        </span>
+        {/* 收起态只显示标题（正文点击展开），避免长公告默认占满横幅 */}
+        <b style={expanded ? { marginRight: 8 } : { display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ann.title}</b>
+        {expanded && (
+          <div style={{ marginTop: 3, color: C.t2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {ann.body}
+          </div>
+        )}
         {expanded && (
           <div style={{ marginTop: 4, fontSize: 11, color: C.t4 }}>
             {ann.createdBy ? `发布：${ann.createdBy} · ` : ""}{expiryLabel ?? "持续显示，直至管理员关闭"}
           </div>
         )}
       </div>
-      {!expanded && expiryLabel && !narrow && <span style={{ flexShrink: 0, fontSize: 11, color: C.t4 }}>{expiryLabel}</span>}
+      {!expanded && <span style={{ flexShrink: 0, fontSize: 11, color: C.t4 }}>{narrow ? "点击查看" : `点击查看全文${expiryLabel ? ` · ${expiryLabel}` : ""}`}</span>}
       {isManager && (
         <button
           onClick={(e) => { e.stopPropagation(); if (!clearMut.isPending && confirm("关闭这条持续公告？将立即对全体用户消失。")) clearMut.mutate(); }}
