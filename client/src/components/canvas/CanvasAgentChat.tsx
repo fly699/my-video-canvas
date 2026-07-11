@@ -187,7 +187,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     return null;
   });
   useEffect(() => { if (ballPos) { try { localStorage.setItem("avc:canvasAgent:ballpos", JSON.stringify(ballPos)); } catch { /* quota */ } } }, [ballPos]);
-  const ballLeft = ballPos ? ballPos.left : 16; // 默认左下角
+  // 创意（创作者）模式默认停在右下角，其它模式默认左下角；用户拖过则用其保存位置。
+  const ballLeft = ballPos ? ballPos.left : (canvasMode === "creative" ? Math.max(8, (typeof window !== "undefined" ? window.innerWidth : 1280) - BALL - 16) : 16);
   const ballTop = ballPos ? ballPos.top : Math.max(8, (window.visualViewport?.height ?? window.innerHeight) - BALL - 16);
   const [ballMenu, setBallMenu] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {

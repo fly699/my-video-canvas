@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ChangeEvent, type CompositionEvent, type FocusEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, Check, Wand2, Languages, Sparkles, Loader2 } from "lucide-react";
+import { Maximize2, Check, Wand2, Languages, Sparkles, Loader2, Palette } from "lucide-react";
+import { StylePicker } from "./StylePicker";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { LLMModelPicker, type LLMModelId } from "./LLMModelPicker";
@@ -107,6 +108,8 @@ function useExpandEditor(
     try { localStorage.setItem(WIDE_EDITOR_LLM_KEY, m); } catch { /* ignore */ }
   }, []);
   const [aiBusy, setAiBusy] = useState<null | "expand" | "translate_en" | "polish">(null);
+  // 风格库：选中风格把其提示词片段追加到当前文本末尾（LibTV「风格」入口）。
+  const [styleOpen, setStyleOpen] = useState(false);
   const runAi = useCallback(async (mode: "expand" | "translate_en" | "polish", label: string) => {
     const el = bigRef.current;
     if (!el || aiBusy) return;
@@ -198,6 +201,16 @@ function useExpandEditor(
                   {aiBusy === mode ? <Loader2 size={12} className="animate-spin" /> : <Icon size={12} />} {label}
                 </button>
               ))}
+              {/* 风格库入口：打开风格广场，选中把风格片段追加到文本 */}
+              <button
+                className="nodrag"
+                onClick={() => setStyleOpen(true)}
+                disabled={!!aiBusy}
+                title="风格库（选一个风格追加到提示词）"
+                style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: aiBusy ? "default" : "pointer", border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t2)", opacity: aiBusy ? 0.5 : 1 }}
+              >
+                <Palette size={12} /> 风格
+              </button>
               <button onClick={close} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 14px", borderRadius: 8, fontSize: 12.5, cursor: "pointer", border: "1px solid oklch(0.70 0.20 310 / 0.5)", background: "oklch(0.70 0.20 310 / 0.14)", color: "oklch(0.75 0.18 310)" }}>
                 <Check size={13} /> 完成
               </button>
@@ -213,6 +226,20 @@ function useExpandEditor(
           </div>
         </div>,
         document.body,
+      )}
+      {styleOpen && (
+        <StylePicker
+          onClose={() => setStyleOpen(false)}
+          onSelect={(p) => {
+            const el = bigRef.current;
+            if (!el) return;
+            const cur = el.value.trim();
+            const next = cur ? `${cur}，${p.prompt}` : p.prompt;
+            el.value = next;
+            commit(next);
+            toast.success(`已应用风格：${p.label}`);
+          }}
+        />
       )}
     </>
   );
