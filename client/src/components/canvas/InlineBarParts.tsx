@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Loader2, Sparkles, ChevronDown } from "lucide-react";
+import { X, Loader2, Sparkles, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { MediaImage } from "./MediaImage";
 import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "./LLMModelPicker";
 import type { MarkRef } from "../../../../shared/types";
@@ -153,6 +153,22 @@ export function removeMark(marks: MarkRef[], prompt: string, markId: string): { 
   const m = marks.find((x) => x.id === markId);
   const nextPrompt = m && prompt.includes(m.token) ? prompt.replace(m.token, "").replace(/ {2,}/g, " ").trimStart() : prompt;
   return { prompt: nextPrompt, markRefs: marks.filter((x) => x.id !== markId) };
+}
+
+/** LibTV（创意模式）编辑系节点的「参数设置」切换行：收起态只显本行 + 预览/状态，
+ *  点击展开完整参数区（与「高级」/快捷键 A 同源，用 useCreativeAdvanced 管理状态）。 */
+export function AdvancedToggleRow({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className="nodrag"
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      title={(open ? "收起参数区" : "展开参数区") + " · 快捷键 A"}
+      style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "7px 0", borderRadius: 10, fontSize: 11.5, fontWeight: 600, background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
+    >
+      <SlidersHorizontal size={12} />
+      {open ? "收起参数" : "参数设置"}
+    </button>
+  );
 }
 
 /** LibTV「标记」元素选择浮层：AI 分析选中图片的可引用元素，点选后回调插入引用。

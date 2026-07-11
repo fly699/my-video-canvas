@@ -1,4 +1,6 @@
 import { memo, useCallback } from "react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
+import { AdvancedToggleRow } from "../InlineBarParts";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -48,6 +50,8 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
   const payload = data.payload;
 
   const update = useCallback((patch: Partial<SmartCutNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
+  // LibTV（#70 创意模式）：参数区默认收起（保留状态/产出/运行），点「参数设置」/快捷键 A 展开。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
 
   const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
 
@@ -134,6 +138,8 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
           </p>
         )}
 
+        {isCreativeMode && <AdvancedToggleRow open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />}
+        {!(isCreativeMode && !advancedOpen) && (<>
         {/* Video URL */}
         <div>
           <label style={labelStyle}>视频 URL（自动从连接节点读取）</label>
@@ -167,6 +173,8 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
             onChange={(e) => { const n = Number(e.target.value); update({ targetDuration: Number.isFinite(n) && n >= 5 ? Math.min(3600, n) : undefined }); }}
             style={fieldStyle} />
         </div>
+
+        </>)}
 
         {/* Output stats */}
         {payload.status === "done" && payload.outputDuration != null && (

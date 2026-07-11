@@ -1,4 +1,6 @@
 import { memo, useCallback } from "react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
+import { AdvancedToggleRow } from "../InlineBarParts";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -141,10 +143,15 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
 
   const mode = payload.mode ?? "watermark";
 
+  // LibTV（#70 创意模式）：参数区默认收起（保留产出/状态/运行），点「参数设置」/快捷键 A 展开。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
+
   return (
     <BaseNode id={id} selected={selected} nodeType="overlay" title={data.title} minHeight={240}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
+        {isCreativeMode && <AdvancedToggleRow open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />}
+        {!(isCreativeMode && !advancedOpen) && (<>
         {/* Icon + mode selector */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <Blend style={{ width: 14, height: 14, color: accentColor, flexShrink: 0 }} />
@@ -374,6 +381,8 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
             </div>
           </div>
         )}
+
+        </>)}
 
         {/* Result video */}
         {isDone && payload.outputUrl && videoSrc && (
