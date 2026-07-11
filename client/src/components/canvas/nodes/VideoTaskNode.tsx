@@ -52,7 +52,8 @@ import { InlineGenBar } from "../InlineGenBar";
 import { QuickTrimBar } from "../QuickTrimBar";
 import { CameraRigPicker, stripCameraRig } from "../CameraRigPicker";
 import { Camera, MapPin } from "lucide-react";
-import { ToolChip, RefThumbRow } from "../InlineBarParts";
+import { ToolChip, RefThumbRow, MarkElementPicker } from "../InlineBarParts";
+import { usePickStore } from "../../../hooks/usePickStore";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 // 视频模型参数表已抽到 shared/videoModelParams（服务端画布助手目录同源消费）；
@@ -919,6 +920,31 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const [camRigOpen, setCamRigOpen] = useState(false);
   // LibTV 三段式输入条：顶部「＋参考」的隐藏文件选择器。
   const inlineRefFileRef = useRef<HTMLInputElement>(null);
+
+  // ── LibTV 画布拾取（＋参考=从画布选参考 / 标记=元素选择模式）──
+  const [markState, setMarkState] = useState<{ url: string; loading: boolean; error: string | null; elements: { name: string; desc?: string }[] } | null>(null);
+  const analyzeMut = trpc.aiEnhance.analyzeImageElements.useMutation();
+  useEffect(() => {
+    const onResult = (e: Event) => {
+      const d = (e as CustomEvent<{ forNodeId: string; kind: string; url: string }>).detail;
+      if (d?.forNodeId !== id) return;
+      if (d.kind === "ref") { refImages.addUrls([d.url], "url"); return; }
+      if (!refImages.images.some((r) => r.url === d.url)) refImages.addUrls([d.url], "url");
+      setMarkState({ url: d.url, loading: true, error: null, elements: [] });
+      analyzeMut.mutate({ imageUrl: d.url }, {
+        onSuccess: (r) => setMarkState((s) => (s && s.url === d.url ? { ...s, loading: false, elements: r.elements } : s)),
+        onError: (err) => setMarkState((s) => (s && s.url === d.url ? { ...s, loading: false, error: err.message } : s)),
+      });
+    };
+    const onUpload = (e: Event) => {
+      if ((e as CustomEvent<{ forNodeId: string }>).detail?.forNodeId !== id) return;
+      inlineRefFileRef.current?.click();
+    };
+    window.addEventListener("canvas:pick-result", onResult);
+    window.addEventListener("canvas:pick-upload", onUpload);
+    return () => { window.removeEventListener("canvas:pick-result", onResult); window.removeEventListener("canvas:pick-upload", onUpload); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, refImages.images]);
 
   // ── LibTV 化：快速剪辑条（BaseNode 操作条「剪辑」按钮派发 canvas:quick-trim 打开）──
   const [quickTrimOpen, setQuickTrimOpen] = useState(false);
@@ -2028,10 +2054,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       <InlineGenBar nodeId={id} visible={expanded} width={520}>
         {/* ── LibTV 三段式 Row1：工具 chips 行（＋参考 / 标记 / 运镜 / 摄像机） ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-          <ToolChip icon={<Plus size={13} />} label="参考" title="添加参考图（本地上传）" onClick={() => inlineRefFileRef.current?.click()} />
-          <ToolChip icon={<MapPin size={12} />} label="标记" disabled={refImages.images.length === 0}
-            title={refImages.images.length ? "把「主体1」引用插入提示词（点下方缩略图可插对应编号）" : "先添加参考图，才能在提示词中标记主体"}
-            onClick={() => insertSubjectToken(1)} />
+          <ToolChip icon={<Plus size={13} />} label="参考" title="从画布选择参考（点击其它节点的产物；浮条内可切本地上传）" onClick={() => usePickStore.getState().begin("ref", id)} />
+          <ToolChip icon={<MapPin size={12} />} label="标记"
+            title="元素选择模式：点击画布上的图片，AI 分析图中元素后点选插入引用"
+            onClick={() => usePickStore.getState().begin("mark", id)} />
           <ToolChip icon={<Film size={12} />} label="运镜" active={!!activeCameraTemplateId}
             title={activeCameraTemplateId ? "运镜库（已应用运镜，可更换/清除）" : "运镜库（选一个运镜注入提示词/参数）"}
             onClick={() => setPickerOpen(true)} />
@@ -2189,6 +2215,25 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </button>
         </div>
       </InlineGenBar>
+    )}
+
+    {/* LibTV「标记」元素选择浮层：AI 分析后点选元素 → 插入「主体N 的<元素>」引用 */}
+    {markState && (
+      <MarkElementPicker
+        imageUrl={markState.url}
+        elements={markState.elements}
+        loading={markState.loading}
+        error={markState.error}
+        onClose={() => setMarkState(null)}
+        onSelect={(name) => {
+          const idx = refImages.images.findIndex((r) => r.url === markState.url);
+          const refToken = idx >= 0 ? `主体${idx + 1} 的${name}` : name;
+          const cur = (payload.prompt ?? "").trim();
+          handleChange("prompt", cur ? `${cur} ${refToken} ` : `${refToken} `);
+          setMarkState(null);
+          toast.success(`已插入标记引用：${refToken}`);
+        }}
+      />
     )}
 
     {/* LibTV 化：摄像机参数选择器（应用把拍摄参数片段注入提示词，重复应用先替换旧片段） */}

@@ -89,6 +89,24 @@ export async function downloadToTemp(url: string, ext: string): Promise<string> 
   return tmpPath;
 }
 
+
+/** ffmpeg stderr 摘要：剥掉 banner/configuration/lib 版本行，取尾部有效行——
+ *  真实错误总在 stderr 末尾；此前把整段 stderr（数 KB banner 开头）抛给前端，
+ *  用户只看到版本横幅、看不到真正原因（真实翻车：Windows ffmpeg 8.1 报错不可读）。
+ *  完整 stderr 同时打到服务端日志便于排查。 */
+export function summarizeFfmpegStderr(stderr: string | undefined, fallback?: string, maxLines = 14): string {
+  const raw = (stderr ?? "").trim();
+  if (!raw) return fallback ?? "unknown ffmpeg error";
+  console.error("[ffmpeg] full stderr:\n" + raw.slice(-8000));
+  const lines = raw.split(/\r?\n/).filter((l) => {
+    const t = l.trim();
+    if (!t) return false;
+    if (/^ffmpeg version |^built with |^configuration:|^lib(avutil|avcodec|avformat|avdevice|avfilter|swscale|swresample|postproc)\s/.test(t)) return false;
+    return true;
+  });
+  return lines.slice(-maxLines).join("\n") || raw.slice(-800);
+}
+
 export function buildAtempoFilters(speed: number): string[] {
   // atempo supports 0.5–2.0; chain multiple filters for values outside this range
   const filters: string[] = [];
@@ -470,7 +488,7 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
       const execErr = err as { stderr?: string; stdout?: string; message?: string };
       stderrOutput = execErr.stderr ?? "";
       throw new Error(
-        `FFmpeg failed:\n${stderrOutput || (execErr.message ?? String(err))}`
+        `FFmpeg failed:\n${summarizeFfmpegStderr(stderrOutput, execErr.message ?? String(err))}`
       );
     }
 
@@ -637,7 +655,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         await execFileAsync("ffmpeg", args);
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };
-        throw new Error(`FFmpeg merge failed:\n${e.stderr || e.message || String(err)}`);
+        throw new Error(`FFmpeg merge failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
       } finally {
         await fs.unlink(listPath).catch(() => undefined);
       }
@@ -772,7 +790,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         await execFileAsync("ffmpeg", args);
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };
-        throw new Error(`FFmpeg xfade merge failed:\n${e.stderr || e.message || String(err)}`);
+        throw new Error(`FFmpeg xfade merge failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
       }
 
       // 末段起点 + 末段时长 = 成片总长（逐切点 duration 各异时仍精确；
@@ -820,7 +838,7 @@ export async function processAudioClip(opts: {
       await execFileAsync("ffmpeg", args);
     } catch (err: unknown) {
       const e = err as { stderr?: string; message?: string };
-      throw new Error(`FFmpeg audio process failed:\n${e.stderr || e.message || String(err)}`);
+      throw new Error(`FFmpeg audio process failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
     }
     let duration = 0;
     try {
@@ -857,7 +875,7 @@ export async function concatAudioSegments(urls: string[]): Promise<{ url: string
       await execFileAsync("ffmpeg", args);
     } catch (err: unknown) {
       const e = err as { stderr?: string; message?: string };
-      throw new Error(`FFmpeg audio concat failed:\n${e.stderr || e.message || String(err)}`);
+      throw new Error(`FFmpeg audio concat failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
     }
     let duration = 0;
     try {
@@ -944,7 +962,7 @@ export async function burnSubtitles(
       await execFileAsync("ffmpeg", args);
     } catch (err: unknown) {
       const e = err as { stderr?: string; message?: string };
-      throw new Error(`FFmpeg subtitle burn failed:\n${e.stderr || e.message || String(err)}`);
+      throw new Error(`FFmpeg subtitle burn failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
     }
 
     const outBuffer = await fs.readFile(outPath);
@@ -1117,7 +1135,7 @@ export async function burnAssSubtitles(
       await execFileAsync("ffmpeg", args);
     } catch (err: unknown) {
       const e = err as { stderr?: string; message?: string };
-      throw new Error(`FFmpeg ASS burn failed:\n${e.stderr || e.message || String(err)}`);
+      throw new Error(`FFmpeg ASS burn failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
     }
 
     const outBuffer = await fs.readFile(outPath);
@@ -1260,7 +1278,7 @@ export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResu
       await execFileAsync("ffmpeg", args);
     } catch (err: unknown) {
       const e = err as { stderr?: string; message?: string };
-      throw new Error(`FFmpeg smart cut failed:\n${e.stderr || e.message || String(err)}`);
+      throw new Error(`FFmpeg smart cut failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
     }
 
     const outBuffer = await fs.readFile(outPath);
@@ -1331,7 +1349,7 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
         ]);
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };
-        throw new Error(`FFmpeg watermark overlay failed:\n${e.stderr || e.message || String(err)}`);
+        throw new Error(`FFmpeg watermark overlay failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
       }
     } else if (opts.mode === "pip" && opts.pipVideoUrl) {
       const pipPath = await downloadToTemp(opts.pipVideoUrl, "mp4");
@@ -1355,7 +1373,7 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
         ]);
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };
-        throw new Error(`FFmpeg PiP overlay failed:\n${e.stderr || e.message || String(err)}`);
+        throw new Error(`FFmpeg PiP overlay failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
       }
     } else if (opts.mode === "color_correction") {
       const brightness = opts.brightness ?? 0;
@@ -1371,7 +1389,7 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
         ]);
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };
-        throw new Error(`FFmpeg color correction failed:\n${e.stderr || e.message || String(err)}`);
+        throw new Error(`FFmpeg color correction failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
       }
     } else {
       throw new Error("无效的叠加模式或缺少参数");

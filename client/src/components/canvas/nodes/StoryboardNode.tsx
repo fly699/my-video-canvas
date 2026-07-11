@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes, ArrowUp, Plus, Palette } from "lucide-react";
 import { ToolChip, RefThumbRow } from "../InlineBarParts";
 import { StylePicker } from "../StylePicker";
+import { usePickStore } from "../../../hooks/usePickStore";
 import { InlineGenBar } from "../InlineGenBar";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { Depth3DViewer } from "../Depth3DViewer";
@@ -291,6 +292,21 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const refInputRef = useRef<HTMLInputElement>(null);
   // LibTV：输入条「风格」chip 打开风格库，选中把风格片段追加到本镜提示词。
   const [styleOpen, setStyleOpen] = useState(false);
+  // LibTV 画布拾取（＋参考=从画布选参考；分镜为单参考图，取最后一次拾取）。
+  useEffect(() => {
+    const onResult = (e: Event) => {
+      const d = (e as CustomEvent<{ forNodeId: string; kind: string; url: string }>).detail;
+      if (d?.forNodeId !== id || d.kind !== "ref") return;
+      updateNodeData(id, { referenceImageUrl: d.url });
+    };
+    const onUpload = (e: Event) => {
+      if ((e as CustomEvent<{ forNodeId: string }>).detail?.forNodeId !== id) return;
+      refInputRef.current?.click();
+    };
+    window.addEventListener("canvas:pick-result", onResult);
+    window.addEventListener("canvas:pick-upload", onUpload);
+    return () => { window.removeEventListener("canvas:pick-result", onResult); window.removeEventListener("canvas:pick-upload", onUpload); };
+  }, [id, updateNodeData]);
 
   const uploadRefMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
@@ -1344,7 +1360,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       <InlineGenBar nodeId={id} visible={Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned)}>
         {/* ── LibTV 三段式 Row1：工具 chips 行（＋参考 / 风格） ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-          <ToolChip icon={<Plus size={13} />} label="参考" title="上传参考图（图生图约束本镜画面）" onClick={() => refInputRef.current?.click()} />
+          <ToolChip icon={<Plus size={13} />} label="参考" title="从画布选择参考（点击其它节点的产物；浮条内可切本地上传）" onClick={() => usePickStore.getState().begin("ref", id)} />
           <ToolChip icon={<Palette size={12} />} label="风格" title="风格库（选一个风格追加到本镜提示词）" onClick={() => setStyleOpen(true)} />
           {uploadingRef && <Loader2 size={13} className="animate-spin" style={{ color: "var(--c-t3)" }} />}
         </div>

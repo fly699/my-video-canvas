@@ -3936,6 +3936,49 @@ export const comfyuiRouter = router({
 
 // ── AI Prompt Enhancement ─────────────────────────────────────────────────────
 export const aiEnhanceRouter = router({
+  // LibTV「标记」：视觉 LLM 分析一张生成图中可单独引用的元素（人物/物件/背景等），
+  // 前端点选元素后把「图片N 的<元素>」插入提示词。纯分析、不生成。
+  analyzeImageElements: protectedProcedure
+    .input(z.object({
+      imageUrl: z.string().min(1).max(2048),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertLLMAllowed(ctx, input.model);
+      return dedupe("aiEnhance.analyzeImageElements", ctx.user.id, input, async () => {
+        let absoluteUrl: string;
+        try { absoluteUrl = await resolveToAbsoluteUrl(input.imageUrl); }
+        catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: `图像 URL 无法解析为绝对路径（${err instanceof Error ? err.message : "未知错误"}）` }); }
+        const systemPrompt = `你是图像元素标注助手。分析给定图片，列出其中可被单独指代/引用的主要元素（人物、动物、显著物件、显著背景元素等）。\n`
+          + `仅输出合法 JSON，无 markdown 代码块，无解释文字：\n`
+          + `{"elements":[{"name":"人物","desc":"黑袍剑客，背对镜头"},{"name":"长枪","desc":"背在身后的红缨长枪"}]}\n`
+          + `约束：\n- elements 3-8 条，按显著程度排序，主体人物/动物在前\n- name 2-6 个字的中文短名（用于点选与提示词引用）\n- desc 不超 20 字的中文描述`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: [
+              { type: "text" as const, text: "请分析这张图片的可引用元素：" },
+              { type: "image_url" as const, image_url: { url: absoluteUrl, detail: "high" as const } },
+            ] },
+          ],
+          model: input.model ?? "gpt-5.2", // 视觉任务：默认用支持读图的模型
+          maxTokens: 800,
+        });
+        const text = extractTextContent(response);
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效 JSON" });
+        let parsed: { elements?: unknown };
+        try { parsed = JSON.parse(jsonMatch[0]); } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "JSON 解析失败" }); }
+        const raw = Array.isArray(parsed.elements) ? parsed.elements : [];
+        const elements = raw
+          .map((e) => ({ name: String((e as { name?: unknown }).name ?? "").trim().slice(0, 12), desc: String((e as { desc?: unknown }).desc ?? "").trim().slice(0, 40) }))
+          .filter((e) => e.name)
+          .slice(0, 8);
+        if (elements.length === 0) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "未识别出可引用元素" });
+        return { elements };
+      });
+    }),
+
   enhance: protectedProcedure
     .input(
       z.object({
