@@ -933,6 +933,37 @@ export const comfyUsageLogs = mysqlTable("comfyUsageLogs", {
 export type ComfyUsageLog = typeof comfyUsageLogs.$inferSelect;
 export type InsertComfyUsageLog = typeof comfyUsageLogs.$inferInsert;
 
+// ── LLM 调用日志 ──────────────────────────────────────────────────────────────
+// 全站所有 LLM 调用（画布助手/AI 对话/脚本/分镜/增强/翻译/看图/工程智能体/聊天助手…）
+// 的统一审计：唯一埋点在 invokeLLMWithKie（所有入口都收敛于此），scene 取 tRPC 接口
+// 路径（中间件自动盖章）——新增入口零改动自动覆盖。prompt/回复截断存储（各 12000 字）。
+export const llmUsageLogs = mysqlTable("llmUsageLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  userName: varchar("userName", { length: 255 }),
+  scene: varchar("scene", { length: 128 }).notNull().default("unknown"), // tRPC 路径，如 scripts.generate / agent.chat
+  model: varchar("model", { length: 128 }),
+  route: varchar("route", { length: 24 }).notNull().default("platform"), // kie | custom | self_hosted | bridge | platform
+  status: varchar("status", { length: 16 }).notNull(),                  // success | error
+  errorMessage: varchar("errorMessage", { length: 1024 }),
+  durationMs: int("durationMs"),
+  promptChars: int("promptChars"),
+  replyChars: int("replyChars"),
+  promptText: text("promptText"),
+  replyText: text("replyText"),
+  projectId: int("projectId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  userIdIdx: index("llmUsageLogs_userId_idx").on(t.userId),
+  sceneIdx: index("llmUsageLogs_scene_idx").on(t.scene),
+  modelIdx: index("llmUsageLogs_model_idx").on(t.model),
+  statusIdx: index("llmUsageLogs_status_idx").on(t.status),
+  createdAtIdx: index("llmUsageLogs_createdAt_idx").on(t.createdAt),
+}));
+
+export type LlmUsageLog = typeof llmUsageLogs.$inferSelect;
+export type InsertLlmUsageLog = typeof llmUsageLogs.$inferInsert;
+
 // ── Poyo Balance Snapshots ──────────────────────────────────────────────────
 // Poyo's balance API only returns the current credit amount (no history), so we
 // snapshot it periodically to chart consumption / spending trends. The balance

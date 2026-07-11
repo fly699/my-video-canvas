@@ -33,6 +33,9 @@ export type TrpcContext = {
   res: CreateExpressContextOptions["res"];
   user: User | null;
   clientIp: string;
+  /** 当前 tRPC 接口路径（如 "scripts.generate"），由 trpc.ts 的盖章中间件写入。
+   *  用作 LLM 调用日志的场景标签——新增入口零改动自动覆盖。 */
+  rpcPath?: string;
 };
 
 // Dev-only: auto-login when neither OAuth nor DB is configured (local testing without external services)

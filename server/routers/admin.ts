@@ -169,6 +169,40 @@ export const adminRouter = router({
     }),
   }),
 
+  // ── LLM 调用日志（统一埋点 invokeLLMWithKie，全入口覆盖）────────────────
+  llmLogs: router({
+    list: adminProcedure
+      .input(z.object({
+        // 上限 1000：面板分页用 50，「导出」按 1000/页 循环拉取。
+        limit: z.number().int().min(1).max(1000).default(50),
+        offset: z.number().int().min(0).default(0),
+        userId: z.number().int().optional(),
+        scene: z.string().max(128).optional(),
+        model: z.string().max(128).optional(),
+        route: z.string().max(24).optional(),
+        status: z.enum(["success", "error"]).optional(),
+        /** 关键词：模糊匹配 prompt / 回复 / 错误信息 / 用户名 */
+        q: z.string().max(200).optional(),
+        sinceMs: z.number().int().optional(),
+        untilMs: z.number().int().optional(),
+      }))
+      .query(async ({ input }) => db.getLlmUsageLogs(input)),
+
+    detail: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .query(async ({ input }) => db.getLlmUsageLogDetail(input.id)),
+
+    summary: adminProcedure
+      .input(z.object({ sinceMs: z.number().int().optional() }).optional())
+      .query(async ({ input }) => db.getLlmUsageSummary({ sinceMs: input?.sinceMs })),
+
+    clear: operatorProc.mutation(async ({ ctx }) => {
+      await db.clearLlmUsageLogs();
+      writeAuditLog({ ctx, action: "llm_logs_cleared", detail: {} });
+      return { success: true };
+    }),
+  }),
+
   whitelist: router({
     // 「白名单管理」限管理员 L3+：条目查看/增删（listEntries/addEntry/removeEntry）与开关（setEnabled/
     // setComfyuiBypass/setLlmBypass/setKieEnabled）都是 managerProc。getSettings 只回 4 个功能布尔标志

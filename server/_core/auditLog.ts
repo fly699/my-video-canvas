@@ -104,6 +104,7 @@ export type AuditAction =
   | "user_set_approved"
   | "chat_broadcast"
   | "chat_broadcast_persistent_clear"
+  | "llm_logs_cleared"
   | "user_delete"
   | "admin_set_level"
   | "user_change_password"

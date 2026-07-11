@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, type LucideIcon } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, BrainCircuit, Search, type LucideIcon } from "lucide-react";
 import { ConfigChecklistPanel } from "@/components/admin/ConfigChecklistPanel";
 import { ComfyServersPanel } from "@/components/admin/ComfyServersPanel";
 import { ComfyStressPanel } from "@/components/admin/ComfyStressPanel";
@@ -22,7 +22,7 @@ import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOr
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
 
 // 标签页定义：[key, 中文标签, 图标]
 const TAB_DEFS: [Tab, string, LucideIcon][] = [
@@ -32,6 +32,7 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["auth", "注册认证", MailCheck],
   ["logs", "操作日志", ClipboardList],
   ["comfyLogs", "ComfyUI 日志", ScrollText],
+  ["llmLogs", "LLM 日志", BrainCircuit],
   ["storage", "存储设置", HardDrive],
   ["models", "模型管理", Boxes],
   ["tunnel", "公网隧道", Globe2],
@@ -259,6 +260,7 @@ export default function AdminPage() {
           {activeTab === "auth" && <LevelGate need={3}><AuthPanel /></LevelGate>}
           {activeTab === "logs" && <LogsPanel />}
           {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
+          {activeTab === "llmLogs" && <LlmLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
           {activeTab === "models" && <LevelGate need={3}><ModelsPanel /></LevelGate>}
           {activeTab === "chat" && <ChatAdminPanel />}
@@ -2271,6 +2273,276 @@ function ComfyUsageLogsPanel() {
   );
 }
 
+
+// ── LLM 调用日志 ───────────────────────────────────────────────────────────────
+// 统一埋点在 invokeLLMWithKie（所有 LLM 入口收敛于此，无遗漏）；scene=tRPC 接口路径。
+// 常见场景路径 → 中文标签（未列出的显示原路径，不影响筛选）。
+const LLM_SCENE_LABELS: Record<string, string> = {
+  "agent.chat": "画布助手", "agent.submitChat": "画布助手(后台)",
+  "chat.sendToAssistant": "聊天室 AI 助手",
+  "aiChat.sendMessage": "AI 对话节点", "aiChat.send": "AI 对话节点",
+  "scripts.generate": "脚本生成", "scripts.generateFullScript": "整片脚本",
+  "scripts.generateStoryboards": "分镜生成", "scripts.refineScene": "场景润色",
+  "scripts.refineShotContinuity": "镜头衔接优化", "scripts.reviewScript": "剧本审阅",
+  "scripts.generateLogline": "一句话梗概", "scripts.generateBeatSheet": "节拍表",
+  "scripts.generateEpisodeOutline": "分集大纲", "scripts.scriptCoverage": "剧本评估",
+  "scripts.applyScriptFix": "剧本修订", "scripts.extractDialogue": "台词提取",
+  "prompts.enhance": "提示词增强", "prompts.translate": "提示词翻译",
+  "characters.checkCharacterConsistency": "角色一致性检查", "characters.analyzeCharacterFromImages": "看图识角色",
+  "canvas.generateVariants": "变体生成", "canvas.refineConversation": "对话润色",
+  "canvas.applyStyleTransfer": "风格迁移", "canvas.generateMoodBoard": "情绪板",
+  "smartCut.smartCut": "智能剪辑", "comfy.analyzeWorkflowAI": "工作流 AI 分析",
+  "editor.aiSubtitle": "剪辑器 AI", "superAgent.run": "工程智能体",
+};
+const LLM_ROUTE_LABELS: Record<string, string> = { kie: "kie", custom: "自定义", self_hosted: "自建", bridge: "本机桥接", platform: "平台" };
+
+function LlmLogsPanel() {
+  const canClear = (useAuth().user?.adminLevel ?? 0) >= 2; // 清空=运营 L2+
+  const [offset, setOffset] = useState(0);
+  const [rangeDays, setRangeDays] = useState("7");
+  const [statusFilter, setStatusFilter] = useState<"" | "success" | "error">("");
+  const [sceneFilter, setSceneFilter] = useState("");
+  const [modelFilter, setModelFilter] = useState("");
+  const [routeFilter, setRouteFilter] = useState("");
+  const [userFilter, setUserFilter] = useState<number | null>(null);
+  const [kw, setKw] = useState("");
+  const [kwApplied, setKwApplied] = useState("");
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const utils = trpc.useUtils();
+  const LIMIT = 50;
+  const sinceMs = useMemo(() => (rangeDays === "0" ? undefined : Date.now() - Number(rangeDays) * 86400000), [rangeDays]);
+  // 关键词防抖：停止输入 400ms 后生效，避免每敲一键打一次全文 LIKE。
+  useEffect(() => { const t = setTimeout(() => { setKwApplied(kw.trim()); setOffset(0); }, 400); return () => clearTimeout(t); }, [kw]);
+
+  const summaryQ = trpc.admin.llmLogs.summary.useQuery({ sinceMs });
+  const listQ = trpc.admin.llmLogs.list.useQuery(
+    {
+      limit: LIMIT, offset, sinceMs,
+      status: statusFilter || undefined, scene: sceneFilter || undefined, model: modelFilter || undefined,
+      route: routeFilter || undefined, userId: userFilter ?? undefined, q: kwApplied || undefined,
+    },
+    { keepPreviousData: true } as object,
+  );
+  const detailQ = trpc.admin.llmLogs.detail.useQuery({ id: detailId ?? 0 }, { enabled: detailId != null });
+  const clearMut = trpc.admin.llmLogs.clear.useMutation({
+    onSuccess: () => { utils.admin.llmLogs.list.invalidate(); utils.admin.llmLogs.summary.invalidate(); setOffset(0); toast.success("已清空 LLM 日志"); },
+    onError: (e) => toast.error("清空失败：" + e.message),
+  });
+
+  // 导出 CSV：按当前筛选分页拉全量（1000/页，上限 2 万条），防公式注入 + BOM。
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const all: Array<Record<string, unknown>> = [];
+      const PAGE = 1000, CAP = 20000;
+      for (let off = 0; ; off += PAGE) {
+        const d = await utils.admin.llmLogs.list.fetch({
+          limit: PAGE, offset: off, sinceMs,
+          status: statusFilter || undefined, scene: sceneFilter || undefined, model: modelFilter || undefined,
+          route: routeFilter || undefined, userId: userFilter ?? undefined, q: kwApplied || undefined,
+        });
+        all.push(...(d.rows as Array<Record<string, unknown>>));
+        if (d.rows.length < PAGE || all.length >= Math.min(d.total, CAP)) break;
+      }
+      const esc = (v: unknown) => {
+        let s = v == null ? "" : String(v);
+        if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const header = ["时间", "用户ID", "用户名", "场景", "模型", "路由", "状态", "耗时(秒)", "prompt字数", "回复字数", "prompt预览", "回复预览", "错误"];
+      const lines = all.map((r) => [
+        new Date(r.createdAt as string).toLocaleString("zh-CN"),
+        r.userId ?? "", r.userName ?? "",
+        LLM_SCENE_LABELS[String(r.scene)] ?? r.scene ?? "", r.model ?? "", LLM_ROUTE_LABELS[String(r.route)] ?? r.route ?? "",
+        r.status === "success" ? "成功" : "失败",
+        r.durationMs != null ? (Number(r.durationMs) / 1000).toFixed(1) : "",
+        r.promptChars ?? "", r.replyChars ?? "",
+        r.promptPreview ?? "", r.replyPreview ?? "", r.errorMessage ?? "",
+      ].map(esc).join(","));
+      downloadTextFile(`LLM日志-${new Date().toISOString().slice(0, 10)}.csv`, "﻿" + [header.join(","), ...lines].join("\n"), "text/csv;charset=utf-8");
+      toast.success(`已导出 ${all.length} 条日志`);
+    } catch (e) {
+      toast.error(`导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const s = summaryQ.data;
+  const rows = (listQ.data?.rows ?? []) as Array<Record<string, unknown>>;
+  const total = listQ.data?.total ?? 0;
+  const totalPages = Math.ceil(total / LIMIT);
+  const currentPage = Math.floor(offset / LIMIT) + 1;
+  const errRate = s && s.totals.calls > 0 ? Math.round((s.totals.errors / s.totals.calls) * 100) : 0;
+  const sceneLabel = (v: unknown) => LLM_SCENE_LABELS[String(v)] ?? String(v ?? "");
+
+  const stat = (label: string, value: string, color = "var(--c-t1)") => (
+    <div style={{ flex: 1, minWidth: 110, padding: "10px 12px", borderRadius: 8, background: "var(--c-surface, rgba(255,255,255,0.03))", border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))" }}>
+      <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.45))" }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color }}>{value}</div>
+    </div>
+  );
+  const miniTable = (title: string, header: string, items: Array<{ key: string; label: string; calls: number; errors: number; avgMs: number; onClick?: () => void; active?: boolean }>) => (
+    <div style={{ flex: 1, minWidth: 240 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t2)", marginBottom: 6 }}>{title}<span style={{ fontWeight: 400, color: "var(--c-t4)", marginLeft: 6 }}>点击行即筛选</span></div>
+      <div style={{ border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 8, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead><tr style={{ background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+            {[header, "调用", "失败", "均时"].map((h) => <th key={h} style={{ padding: "5px 8px", textAlign: "left", color: "var(--c-t3)", fontWeight: 500 }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {items.length === 0 ? <tr><td colSpan={4} style={{ padding: 10, color: "var(--c-t4)", textAlign: "center" }}>暂无</td></tr> :
+              items.slice(0, 8).map((it) => (
+                <tr key={it.key} onClick={it.onClick} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", cursor: it.onClick ? "pointer" : "default", background: it.active ? "rgba(139,92,246,0.10)" : undefined }}>
+                  <td style={{ padding: "5px 8px", color: "var(--c-t1)", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={it.label}>{it.label}</td>
+                  <td style={{ padding: "5px 8px", color: "var(--c-t2)" }}>{it.calls}</td>
+                  <td style={{ padding: "5px 8px", color: it.errors > 0 ? "#f87171" : "var(--c-t3)" }}>{it.errors}</td>
+                  <td style={{ padding: "5px 8px", color: "var(--c-t3)" }}>{(it.avgMs / 1000).toFixed(1)}s</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const detail = detailQ.data as Record<string, unknown> | null | undefined;
+  const pre = (label: string, text: string) => (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t2)" }}>{label}</span>
+        <button onClick={() => { void navigator.clipboard.writeText(text).then(() => toast.success("已复制")); }} style={{ ...iconBtn, width: 22, height: 22 }} title="复制"><ClipboardList style={{ width: 12, height: 12 }} /></button>
+      </div>
+      <pre style={{ margin: 0, padding: 10, borderRadius: 8, background: "var(--c-surface, rgba(255,255,255,0.03))", border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", fontSize: 12, lineHeight: 1.55, color: "var(--c-t1)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 300, overflowY: "auto" }}>{text || "（空）"}</pre>
+    </div>
+  );
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <BrainCircuit style={{ width: 16, height: 16, color: "oklch(0.72 0.2 310)" }} />
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1, #f0f0f4)" }}>LLM 调用日志
+            {total > 0 && <span style={{ fontWeight: 400, color: "var(--c-t2)", fontSize: 13, marginLeft: 8 }}>（共 {total} 条）</span>}</h3>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ position: "relative" }}>
+            <Search style={{ width: 13, height: 13, position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "var(--c-t4)" }} />
+            <input value={kw} onChange={(e) => setKw(e.target.value)} placeholder="搜 prompt / 回复 / 错误 / 用户名" style={{ ...inputStyle, width: 220, padding: "6px 10px 6px 26px", fontSize: 12 }} />
+          </div>
+          <select value={rangeDays} onChange={(e) => { setRangeDays(e.target.value); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12 }}>
+            {[["1", "近 24 小时"], ["7", "近 7 天"], ["30", "近 30 天"], ["0", "全部"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as "" | "success" | "error"); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12 }}>
+            <option value="">全部状态</option><option value="success">成功</option><option value="error">失败</option>
+          </select>
+          <select value={sceneFilter} onChange={(e) => { setSceneFilter(e.target.value); setOffset(0); }} style={{ ...inputStyle, width: "auto", maxWidth: 170, padding: "6px 10px", fontSize: 12 }}>
+            <option value="">全部场景</option>
+            {(s?.byScene ?? []).map((it) => <option key={it.scene} value={it.scene}>{sceneLabel(it.scene)}（{it.calls}）</option>)}
+          </select>
+          <select value={modelFilter} onChange={(e) => { setModelFilter(e.target.value); setOffset(0); }} style={{ ...inputStyle, width: "auto", maxWidth: 160, padding: "6px 10px", fontSize: 12 }}>
+            <option value="">全部模型</option>
+            {(s?.byModel ?? []).map((it) => <option key={it.model ?? "-"} value={it.model ?? ""}>{it.model ?? "(默认)"}（{it.calls}）</option>)}
+          </select>
+          <select value={routeFilter} onChange={(e) => { setRouteFilter(e.target.value); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12 }}>
+            <option value="">全部路由</option>
+            {Object.entries(LLM_ROUTE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          {userFilter != null && <button onClick={() => { setUserFilter(null); setOffset(0); }} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12, cursor: "pointer" }} title="清除用户筛选">用户 #{userFilter} ✕</button>}
+          <button onClick={() => { listQ.refetch(); summaryQ.refetch(); }} style={iconBtn} title="刷新"><RefreshCw style={{ width: 14, height: 14 }} /></button>
+          <button onClick={() => void exportCsv()} disabled={exporting} style={iconBtn} title="按当前筛选导出全部日志为 CSV">
+            {exporting ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> : <Download style={{ width: 14, height: 14 }} />}
+          </button>
+          {canClear && (
+            <button onClick={() => { if (confirm("确定清空全部 LLM 调用日志？此操作不可恢复。")) clearMut.mutate(); }} disabled={clearMut.isPending} style={iconBtn} title="清空全部日志（运营 L2+）">
+              <Trash2 style={{ width: 14, height: 14, color: "#f87171" }} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 统计卡 + Top 榜 */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+        {stat("调用总数", String(s?.totals.calls ?? "—"))}
+        {stat("失败", String(s?.totals.errors ?? "—"), (s?.totals.errors ?? 0) > 0 ? "#f87171" : "var(--c-t1)")}
+        {stat("失败率", s ? `${errRate}%` : "—", errRate > 10 ? "#f87171" : "var(--c-t1)")}
+        {stat("平均耗时", s ? `${((s.totals.avgMs ?? 0) / 1000).toFixed(1)}s` : "—")}
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        {miniTable("按场景", "场景", (s?.byScene ?? []).map((it) => ({ key: it.scene, label: sceneLabel(it.scene), calls: it.calls, errors: it.errors, avgMs: it.avgMs, active: sceneFilter === it.scene, onClick: () => { setSceneFilter(sceneFilter === it.scene ? "" : it.scene); setOffset(0); } })))}
+        {miniTable("按模型", "模型", (s?.byModel ?? []).map((it) => ({ key: it.model ?? "-", label: it.model ?? "(默认)", calls: it.calls, errors: it.errors, avgMs: it.avgMs, active: modelFilter === (it.model ?? ""), onClick: () => { setModelFilter(modelFilter === (it.model ?? "") ? "" : (it.model ?? "")); setOffset(0); } })))}
+        {miniTable("按用户", "用户", (s?.byUser ?? []).map((it) => ({ key: String(it.userId ?? "-"), label: `${it.userName ?? "?"} #${it.userId ?? "-"}`, calls: it.calls, errors: it.errors, avgMs: it.avgMs, active: userFilter === it.userId, onClick: () => { setUserFilter(userFilter === it.userId ? null : it.userId); setOffset(0); } })))}
+      </div>
+
+      {/* 明细列表 */}
+      <div style={{ border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 8, overflow: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
+          <thead><tr style={{ background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+            {["时间", "用户", "场景", "模型", "路由", "状态", "耗时", "prompt 预览（点行看全文）"].map((h) => <th key={h} style={{ padding: "6px 9px", textAlign: "left", color: "var(--c-t3)", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {listQ.isLoading ? <tr><td colSpan={8} style={{ padding: 18, color: "var(--c-t4)", textAlign: "center" }}>加载中…</td></tr> :
+              rows.length === 0 ? <tr><td colSpan={8} style={{ padding: 18, color: "var(--c-t4)", textAlign: "center" }}>暂无日志</td></tr> :
+              rows.map((r) => (
+                <tr key={String(r.id)} onClick={() => setDetailId(Number(r.id))} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
+                  <td style={{ padding: "6px 9px", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{new Date(String(r.createdAt)).toLocaleString("zh-CN", { hour12: false })}</td>
+                  <td style={{ padding: "6px 9px", color: "var(--c-t2)", whiteSpace: "nowrap", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" }} title={`${r.userName ?? ""} #${r.userId ?? ""}`}>{String(r.userName ?? "?")}</td>
+                  <td style={{ padding: "6px 9px", color: "var(--c-t1)", whiteSpace: "nowrap" }} title={String(r.scene)}>{sceneLabel(r.scene)}</td>
+                  <td style={{ padding: "6px 9px", color: "var(--c-t2)", whiteSpace: "nowrap", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }} title={String(r.model ?? "")}>{String(r.model ?? "")}</td>
+                  <td style={{ padding: "6px 9px", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{LLM_ROUTE_LABELS[String(r.route)] ?? String(r.route)}</td>
+                  <td style={{ padding: "6px 9px", whiteSpace: "nowrap", color: r.status === "success" ? "#4ade80" : "#f87171" }}>{r.status === "success" ? "成功" : "失败"}</td>
+                  <td style={{ padding: "6px 9px", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{r.durationMs != null ? `${(Number(r.durationMs) / 1000).toFixed(1)}s` : ""}</td>
+                  <td style={{ padding: "6px 9px", color: "var(--c-t3)", maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={String(r.promptPreview ?? "")}>
+                    {r.status === "error" ? <span style={{ color: "#f87171" }}>{String(r.errorMessage ?? "")}</span> : String(r.promptPreview ?? "")}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+
+      {totalPages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 16 }}>
+          <button onClick={() => setOffset(Math.max(0, offset - LIMIT))} disabled={offset === 0} style={paginBtn}>上一页</button>
+          <span style={{ fontSize: 13, color: "var(--c-t2)" }}>{currentPage} / {totalPages}</span>
+          <button onClick={() => setOffset(offset + LIMIT)} disabled={currentPage >= totalPages} style={paginBtn}>下一页</button>
+        </div>
+      )}
+
+      {/* 详情弹层：完整 prompt / 回复 / 错误 */}
+      {detailId != null && createPortal(
+        <div onClick={() => setDetailId(null)} style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(760px, 96vw)", maxHeight: "88vh", overflowY: "auto", background: "var(--c-elevated, #1b1b22)", border: "1px solid var(--c-bd2, rgba(255,255,255,0.1))", borderRadius: 14, padding: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <b style={{ fontSize: 15, color: "var(--c-t1)" }}>调用详情 #{detailId}</b>
+              <button onClick={() => setDetailId(null)} style={iconBtn} aria-label="关闭"><X style={{ width: 15, height: 15 }} /></button>
+            </div>
+            {!detail ? <p style={{ color: "var(--c-t3)", fontSize: 13 }}>加载中…</p> : (
+              <>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: "var(--c-t2)", marginBottom: 4 }}>
+                  <span>{new Date(String(detail.createdAt)).toLocaleString("zh-CN", { hour12: false })}</span>
+                  <span>用户：{String(detail.userName ?? "?")} #{String(detail.userId ?? "-")}</span>
+                  <span>场景：{sceneLabel(detail.scene)}（{String(detail.scene)}）</span>
+                  <span>模型：{String(detail.model ?? "")}</span>
+                  <span>路由：{LLM_ROUTE_LABELS[String(detail.route)] ?? String(detail.route)}</span>
+                  <span style={{ color: detail.status === "success" ? "#4ade80" : "#f87171" }}>{detail.status === "success" ? "成功" : "失败"}</span>
+                  <span>耗时 {detail.durationMs != null ? `${(Number(detail.durationMs) / 1000).toFixed(1)}s` : "?"}</span>
+                  <span>prompt {String(detail.promptChars ?? 0)} 字 · 回复 {String(detail.replyChars ?? 0)} 字</span>
+                </div>
+                {detail.status !== "success" && !!detail.errorMessage && pre("错误信息", String(detail.errorMessage))}
+                {pre("Prompt（完整上下文，多模态部分以占位符表示）", String(detail.promptText ?? ""))}
+                {detail.status === "success" && pre("回复", String(detail.replyText ?? ""))}
+              </>
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
 
 // ── Chat administration ────────────────────────────────────────────────────────
 

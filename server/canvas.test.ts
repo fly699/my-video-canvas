@@ -20,6 +20,7 @@ vi.mock("./db", () => {
   return ({
   upsertUser: vi.fn(),
   getUserByOpenId: vi.fn(),
+  insertLlmUsageLog: vi.fn().mockResolvedValue(undefined), // LLM 调用日志统一埋点（fire-and-forget）
   getProjectsByUser: vi.fn().mockResolvedValue([MOCK_PROJECT]),
   getProjectsSharedWithUser: vi.fn().mockResolvedValue([]),
   getProjectById: vi.fn().mockResolvedValue(MOCK_PROJECT),
