@@ -792,6 +792,51 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
   }
 }
 
+// ── Audio clip processing（音频节点 截取/变速：LibTV 化操作条）──────────────────
+/** 对单条音频做截取（trimStart/trimEnd，秒）和/或变速（speed，复用 atempo 链，变速不变调）。
+ *  -ss 放在 -i 前快速 seek；时长用 -t (end-start) 表达，规避 -ss 前置时 -to 语义歧义的老坑。
+ *  输出统一转 mp3（libmp3lame q2），落对象存储返回 URL + 新时长。 */
+export async function processAudioClip(opts: {
+  url: string; trimStart?: number; trimEnd?: number; speed?: number;
+}): Promise<{ url: string; duration: number }> {
+  const start = Math.max(0, opts.trimStart ?? 0);
+  const hasSpeed = opts.speed != null && Number.isFinite(opts.speed) && Math.abs(opts.speed - 1) > 0.001;
+  const outPath = path.join(os.tmpdir(), `ffmpeg-aclip-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
+  let srcPath: string | null = null;
+  try {
+    srcPath = await downloadToTemp(opts.url, "mp3");
+    const args: string[] = [];
+    if (start > 0) args.push("-ss", start.toFixed(3));
+    // ⚠ -t 必须作为「输入选项」放 -i 前（限制读取时长）。若放输出侧，atempo 变速把全长
+    // 压到小于 -t 时截取区间会整个失效（真机 ffmpeg 6.1 复现：截 2s+2× 期望 1s 实出 1.54s）。
+    if (opts.trimEnd != null) args.push("-t", Math.max(0.05, opts.trimEnd - start).toFixed(3));
+    args.push("-i", srcPath);
+    if (hasSpeed) {
+      const filters = buildAtempoFilters(opts.speed!);
+      if (filters.length) args.push("-af", filters.join(","));
+    }
+    args.push("-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", outPath);
+    try {
+      await execFileAsync("ffmpeg", args);
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      throw new Error(`FFmpeg audio process failed:\n${e.stderr || e.message || String(err)}`);
+    }
+    let duration = 0;
+    try {
+      const r = await execFileAsync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", outPath]);
+      duration = parseFloat(r.stdout.trim()) || 0;
+    } catch { /* duration best-effort */ }
+    const buf = await fs.readFile(outPath);
+    await assertObjectStorageWritable();
+    const { url } = await storagePut(`generated/audio-clip-${Date.now()}.mp3`, buf, "audio/mpeg");
+    return { url, duration };
+  } finally {
+    if (srcPath) await fs.unlink(srcPath).catch(() => undefined);
+    await fs.unlink(outPath).catch(() => undefined);
+  }
+}
+
 // ── Audio segment concat（多角色配音 casting：分段 TTS 后拼接为镜级单条配音）────
 /** 把多段音频按顺序拼接为一条 mp3。各段先统一重采样 44.1kHz/单声道再 concat，
  *  规避不同 TTS 提供商采样率/声道不一致导致的 concat 失败或变调。 */
