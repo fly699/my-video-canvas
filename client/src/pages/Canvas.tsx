@@ -90,6 +90,7 @@ import { NarrativeArcPicker } from "../components/canvas/NarrativeArcPicker";
 import { WorkflowStatusPanel } from "../components/canvas/WorkflowStatusPanel";
 import { ThemeSwitcher } from "../components/canvas/ThemeSwitcher";
 import { UIStyleSwitcher } from "../components/canvas/UIStyleSwitcher";
+import { ZoomControl } from "../components/canvas/ZoomControl";
 import { CanvasBgPicker, loadCanvasBg, type CanvasBg } from "../components/canvas/CanvasBgPicker";
 import { useCanvasMode } from "../contexts/CanvasModeContext";
 import { useTheme, THEMES } from "../contexts/ThemeContext";
@@ -3170,47 +3171,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             {/* Divider (only when add button is shown) */}
             {!isReadOnly && <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />}
 
-            {/* Zoom controls */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => reactFlow.zoomOut({ duration: 200 })}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                  style={{ color: "var(--c-t3)" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-                >
-                  <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>−</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">缩小</TooltipContent>
-            </Tooltip>
-
-            <button
-              onClick={() => reactFlow.zoomTo(1, { duration: 300 })}
-              className="h-7 px-2 rounded-lg text-[11px] font-mono transition-all tabular-nums"
-              style={{ color: "var(--c-t3)", minWidth: 44, textAlign: "center" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-              title="点击重置为 100%"
-            >
-              {Math.round(viewport.zoom * 100)}%
-            </button>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => reactFlow.zoomIn({ duration: 200 })}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                  style={{ color: "var(--c-t3)" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
-                >
-                  <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>+</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">放大</TooltipContent>
-            </Tooltip>
+            {/* Zoom controls — 合并为一个百分比药丸，点击向上弹出缩放菜单（三种模式通用） */}
+            <ZoomControl />
 
             <Tooltip>
               <TooltipTrigger asChild>
@@ -3227,10 +3189,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">适应视图 · 选中时按 F 缩放到选中</TooltipContent>
             </Tooltip>
 
-            {/* ◆3 回到原点：把视口拉回世界原点(0,0) */}
+            {/* ◆3 回到原点：把视口拉回世界原点(0,0)。标 data-tb-sec → 收缩工具条时隐藏（不常用）。 */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => reactFlow.setCenter(0, 0, { zoom: 1, duration: 400 })}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ color: "var(--c-t3)" }}
