@@ -1,4 +1,6 @@
 import { memo, useState, useCallback } from "react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
+import { AdvancedToggleRow } from "../InlineBarParts";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -71,6 +73,9 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
   const [tab, setTab] = useState<"edit" | "style">("edit");
 
   const update = useCallback((patch: Partial<SubtitleMotionNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
+  // LibTV（#70 创意模式）：编辑/样式 tab 区默认收起（保留状态/产出/烧录按钮），
+  // 点「参数设置」/快捷键 A 展开。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
 
   const { resolve } = useNodeDefaultModels();
   const disabledModels = useDisabledModels();
@@ -200,16 +205,6 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
       >
       <div className="flex flex-col gap-3 p-3.5">
 
-        {/* Tab bar */}
-        <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
-          {(["edit", "style"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className="nodrag flex-1 py-1.5 rounded-md text-[10.5px] font-medium transition-all"
-              style={{ background: tab === t ? accentA(0.18) : "transparent", border: `1px solid ${tab === t ? accentA(0.40) : "transparent"}`, color: tab === t ? accent : "var(--c-t3)", cursor: "pointer" }}>
-              {t === "edit" ? "字幕编辑" : "动态样式"}
-            </button>
-          ))}
-        </div>
-
         {/* Status banners */}
         {(isTranscribing || isBurning) && (
           <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
@@ -222,6 +217,18 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
             <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
           </div>
         )}
+
+        {isCreativeMode && <AdvancedToggleRow open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />}
+        {!(isCreativeMode && !advancedOpen) && (<>
+        {/* Tab bar */}
+        <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+          {(["edit", "style"] as const).map((t) => (
+            <button key={t} onClick={() => setTab(t)} className="nodrag flex-1 py-1.5 rounded-md text-[10.5px] font-medium transition-all"
+              style={{ background: tab === t ? accentA(0.18) : "transparent", border: `1px solid ${tab === t ? accentA(0.40) : "transparent"}`, color: tab === t ? accent : "var(--c-t3)", cursor: "pointer" }}>
+              {t === "edit" ? "字幕编辑" : "动态样式"}
+            </button>
+          ))}
+        </div>
 
         {tab === "edit" && (
           <>
@@ -349,6 +356,11 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
               </div>
             </div>
 
+          </>
+        )}
+        </>)}
+
+        {/* 产出视频 + 烧录按钮 —— 移出 tab/收起区：任何 tab 或收起态都常显（LibTV 预览优先） */}
             {/* Output video */}
             {payload.outputUrl && (
               <div className="flex flex-col gap-1.5">
@@ -382,8 +394,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
               {isBurning ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Mic2 style={{ width: 12, height: 12 }} />}
               {isBurning ? "FFmpeg 烧录中..." : "烧录动态字幕到视频"}
             </button>
-          </>
-        )}
+
       </div>
       </div>{/* end collapse wrapper */}
     </BaseNode>

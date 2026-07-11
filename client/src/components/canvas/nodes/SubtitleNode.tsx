@@ -1,4 +1,6 @@
 import { memo, useState, useCallback } from "react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
+import { AdvancedToggleRow } from "../InlineBarParts";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -81,6 +83,9 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
   const [tab, setTab] = useState<"edit" | "settings">("edit");
 
   const update = useCallback((patch: Partial<SubtitleNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
+  // LibTV（#70 创意模式）：编辑/设置 tab 区默认收起（保留状态/产出/烧录按钮），
+  // 点「参数设置」/快捷键 A 展开。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
 
   const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
 
@@ -240,6 +245,22 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
       >
       <div className="flex flex-col gap-3 p-3.5">
 
+        {/* Status */}
+        {(isTranscribing || isBurning) && (
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
+            <span className="text-xs" style={{ color: accent }}>{isTranscribing ? "Whisper 转录中..." : "FFmpeg 烧录中..."}</span>
+          </div>
+        )}
+
+        {payload.status === "failed" && payload.errorMessage && (
+          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
+            <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
+          </div>
+        )}
+
+        {isCreativeMode && <AdvancedToggleRow open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />}
+        {!(isCreativeMode && !advancedOpen) && (<>
         {/* Tab bar */}
         <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
           {(["edit", "settings"] as const).map((t) => (
@@ -258,20 +279,6 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
             </button>
           ))}
         </div>
-
-        {/* Status */}
-        {(isTranscribing || isBurning) && (
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
-            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
-            <span className="text-xs" style={{ color: accent }}>{isTranscribing ? "Whisper 转录中..." : "FFmpeg 烧录中..."}</span>
-          </div>
-        )}
-
-        {payload.status === "failed" && payload.errorMessage && (
-          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
-            <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
-          </div>
-        )}
 
         {tab === "edit" && (
           <>
@@ -488,6 +495,11 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
               </div>
             </div>
 
+          </>
+        )}
+        </>)}
+
+        {/* 产出视频 + 烧录按钮 —— 移出 tab/收起区：任何 tab 或收起态都常显（LibTV 预览优先） */}
             {/* Output video */}
             {payload.outputUrl && (
               <div className="flex flex-col gap-1.5">
@@ -545,8 +557,6 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                 : <Mic2 style={{ width: 12, height: 12 }} />}
               {isBurning ? "FFmpeg 烧录中..." : "烧录字幕到视频"}
             </button>
-          </>
-        )}
 
       </div>
       </div>{/* end collapse wrapper */}
