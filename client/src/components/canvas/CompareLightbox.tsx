@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Columns2, Play, Pause } from "lucide-react";
+import { X, Columns2, Play, Pause, Volume2, VolumeX } from "lucide-react";
 import { MediaImage } from "./MediaImage";
 import { mediaFetchUrl } from "@/lib/download";
 
@@ -21,6 +21,8 @@ export function CompareLightbox() {
   const [pair, setPair] = useState<{ aUrl: string; bUrl: string } | null>(null);
   const [pos, setPosState] = useState(0.5);
   const [playing, setPlaying] = useState(false);
+  // 声道：两路同播只出一路声避免混叠——默认 A 路，可切 B / 静音。
+  const [audio, setAudio] = useState<"a" | "b" | "off">("a");
   const openRef = useRef(false);
   openRef.current = pair !== null;
   const boxRef = useRef<HTMLDivElement>(null);
@@ -66,9 +68,14 @@ export function CompareLightbox() {
       ? { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }
       : { display: "block", maxWidth: "88vw", maxHeight: "84vh", width: "auto", height: "auto", pointerEvents: "none" };
     if (isVideoUrl(url)) {
-      return <video ref={ref} src={mediaFetchUrl(url)} muted loop playsInline preload="metadata" onTimeUpdate={label === "A" ? onATime : undefined} onEnded={() => setPlaying(false)} style={common} />;
+      const muted = label === "A" ? audio !== "a" : audio !== "b";
+      return <video ref={ref} src={mediaFetchUrl(url)} muted={muted} loop playsInline preload="metadata" onTimeUpdate={label === "A" ? onATime : undefined} onEnded={() => setPlaying(false)} style={common} />;
     }
     return <MediaImage src={url} alt={label} draggable={false} style={common} />;
+  };
+  const cycleAudio = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAudio((v) => (v === "a" ? "b" : v === "b" ? "off" : "a"));
   };
 
   return createPortal(
@@ -95,10 +102,19 @@ export function CompareLightbox() {
         <span style={{ position: "absolute", left: 10, top: 10, ...tag }}>A · 当前</span>
         <span style={{ position: "absolute", right: 10, top: 10, ...tag }}>B</span>
         {anyVideo && (
-          <button onClick={togglePlay} onPointerDown={(e) => e.stopPropagation()} title={playing ? "暂停（两路同步）" : "同步播放两路视频"}
-            style={{ position: "absolute", left: 12, bottom: 12, width: 38, height: 38, borderRadius: 99, background: "rgba(0,0,0,0.62)", border: "1px solid rgba(255,255,255,0.28)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(6px)" }}>
-            {playing ? <Pause size={15} /> : <Play size={15} />}
-          </button>
+          <div style={{ position: "absolute", left: 12, bottom: 12, display: "flex", gap: 8 }}>
+            <button onClick={togglePlay} onPointerDown={(e) => e.stopPropagation()} title={playing ? "暂停（两路同步）" : "同步播放两路视频"}
+              style={{ width: 38, height: 38, borderRadius: 99, background: "rgba(0,0,0,0.62)", border: "1px solid rgba(255,255,255,0.28)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(6px)" }}>
+              {playing ? <Pause size={15} /> : <Play size={15} />}
+            </button>
+            {/* 声道切换：A声 → B声 → 静音（两路同播只出一路声，避免混叠） */}
+            <button onClick={cycleAudio} onPointerDown={(e) => e.stopPropagation()}
+              title={audio === "a" ? "当前：A 路声音（点击切 B 路）" : audio === "b" ? "当前：B 路声音（点击静音）" : "当前：静音（点击切 A 路）"}
+              style={{ height: 38, padding: "0 12px", borderRadius: 99, background: "rgba(0,0,0,0.62)", border: "1px solid rgba(255,255,255,0.28)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, backdropFilter: "blur(6px)", fontSize: 12, fontWeight: 700 }}>
+              {audio === "off" ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              {audio === "a" ? "A" : audio === "b" ? "B" : "静音"}
+            </button>
+          </div>
         )}
       </div>
       <button

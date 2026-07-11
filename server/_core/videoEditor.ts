@@ -447,7 +447,7 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
       if (needVideoEncode) parts.push(`[0:v]${allVideoFilters.join(",")}[vout]`);
       parts.push(audioGraph.complex);
       args.push("-filter_complex", parts.join(";"));
-      args.push("-map", needVideoEncode ? "[vout]" : "0:v");
+      args.push("-map", needVideoEncode ? "[vout]" : "0:v:0");
       args.push("-map", `[${audioGraph.outLabel}]`);
       args.push("-c:v", needVideoEncode ? vcodec : "copy");
       if (needVideoEncode) args.push("-preset", fmt === "webm" ? "realtime" : "fast");
@@ -458,7 +458,7 @@ export async function trimVideo(opts: TrimOptions): Promise<TrimResult> {
       // Exactly one audio source (original OR one external track) → -vf/-af.
       const single = sources[0];
       const af = buildAudioSourceChain(single, clipDuration);
-      args.push("-map", needVideoEncode ? "0:v" : "0:v");
+      args.push("-map", "0:v:0");
       args.push("-map", single.label);
       if (needVideoEncode) args.push("-vf", allVideoFilters.join(","));
       if (af.length) args.push("-af", af.join(","));
@@ -1344,7 +1344,7 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
         await execFileAsync("ffmpeg", [
           "-i", inputPath, "-i", overlayPath,
           "-filter_complex", overlayFilter,
-          "-map", "0:v", "-map", "0:a?", "-codec:a", "copy",
+          "-map", "0:v:0", "-map", "0:a?", "-codec:a", "copy",
           "-y", outputPath,
         ]);
       } catch (err: unknown) {
@@ -1368,7 +1368,7 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
         await execFileAsync("ffmpeg", [
           "-i", inputPath, "-i", pipPath,
           "-filter_complex", `[1:v]scale=iw*${scale}:-2[pip];[0:v][pip]overlay=${xy}`,
-          "-map", "0:v", "-map", "0:a?", "-codec:a", "copy",
+          "-map", "0:v:0", "-map", "0:a?", "-codec:a", "copy",
           "-y", outputPath,
         ]);
       } catch (err: unknown) {
@@ -1384,7 +1384,7 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
         await execFileAsync("ffmpeg", [
           "-i", inputPath,
           "-vf", `eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`,
-          "-map", "0:v", "-map", "0:a?", "-codec:a", "copy",
+          "-map", "0:v:0", "-map", "0:a?", "-codec:a", "copy",
           "-y", outputPath,
         ]);
       } catch (err: unknown) {
