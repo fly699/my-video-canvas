@@ -13,6 +13,8 @@ import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Fil
 import { ToolChip, RefThumbRow } from "../InlineBarParts";
 import { StylePicker } from "../StylePicker";
 import { usePickStore } from "../../../hooks/usePickStore";
+import { useReferenceImages } from "../../../hooks/useReferenceImages";
+import { useFocusRefSource } from "../../../hooks/useFocusRefSource";
 import { InlineGenBar } from "../InlineGenBar";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { Depth3DViewer } from "../Depth3DViewer";
@@ -292,12 +294,17 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const refInputRef = useRef<HTMLInputElement>(null);
   // LibTV：输入条「风格」chip 打开风格库，选中把风格片段追加到本镜提示词。
   const [styleOpen, setStyleOpen] = useState(false);
-  // LibTV 画布拾取（＋参考=从画布选参考；分镜为单参考图，取最后一次拾取）。
+  // 多参考图管理（referenceImages[]，[0] 与 referenceImageUrl 镜像；生成链路最多取 8 张）。
+  // 之前拾取直接写 referenceImageUrl 单字段，连选第二张会覆盖第一张（用户实测反馈）。
+  const refImages = useReferenceImages(id, payload);
+  // 双击参考缩略图 → 聚焦至来源节点。
+  const focusRefSource = useFocusRefSource(id);
+  // LibTV 画布拾取（＋参考=从画布选参考，可连选追加）。
   useEffect(() => {
     const onResult = (e: Event) => {
       const d = (e as CustomEvent<{ forNodeId: string; kind: string; url: string }>).detail;
       if (d?.forNodeId !== id || d.kind !== "ref") return;
-      updateNodeData(id, { referenceImageUrl: d.url });
+      if (!refImages.addUrls([d.url], "url")) toast.info("该图已在参考列表中，未重复添加");
     };
     const onUpload = (e: Event) => {
       if ((e as CustomEvent<{ forNodeId: string }>).detail?.forNodeId !== id) return;
@@ -306,11 +313,12 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     window.addEventListener("canvas:pick-result", onResult);
     window.addEventListener("canvas:pick-upload", onUpload);
     return () => { window.removeEventListener("canvas:pick-result", onResult); window.removeEventListener("canvas:pick-upload", onUpload); };
-  }, [id, updateNodeData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, refImages.images]);
 
   const uploadRefMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
-      updateNodeData(id, { referenceImageUrl: result.url });
+      refImages.addUrls([result.url], "upload");
       setUploadingRef(false);
       toast.success("参考图已上传");
     },
@@ -502,7 +510,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     <>
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}
       onRun={handleGenerate} running={generating} canRun={!!payload.promptText?.trim()} hasResult={!!payload.imageUrl}
-      onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
+      onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <>
@@ -1052,14 +1060,14 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
               }}
             >
               {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-              {payload.referenceImageUrl ? "更换参考图" : "上传参考图"}
+              {payload.referenceImageUrl ? "添加参考图" : "上传参考图"}
             </button>
             {payload.referenceImageUrl && (
               <button
-                onClick={() => updateNodeData(id, { referenceImageUrl: undefined })}
+                onClick={() => updateNodeData(id, { referenceImageUrl: undefined, referenceImages: [] })}
                 className="nodrag p-1 rounded transition-all"
                 style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }}
-                title="清除参考图"
+                title="清除全部参考图"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -1364,10 +1372,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           <ToolChip icon={<Palette size={12} />} label="风格" title="风格库（选一个风格追加到本镜提示词）" onClick={() => setStyleOpen(true)} />
           {uploadingRef && <Loader2 size={13} className="animate-spin" style={{ color: "var(--c-t3)" }} />}
         </div>
-        {/* ── Row2：参考图缩略（分镜为单图） ── */}
-        {payload.referenceImageUrl && (
-          <RefThumbRow images={[{ id: "ref", url: payload.referenceImageUrl }]} onRemove={() => updateNodeData(id, { referenceImageUrl: undefined })} />
-        )}
+        {/* ── Row2：参考图缩略行（多图连选，编号 + hover 放大 + 删除 + 双击聚焦来源） ── */}
+        <RefThumbRow images={refImages.images} onRemove={refImages.removeId}
+          onDoubleClick={(i) => focusRefSource(refImages.images[i]?.url ?? "")} />
         {/* ── Row3：大提示词区 ── */}
         <NodeTextArea
           className="nodrag nowheel"

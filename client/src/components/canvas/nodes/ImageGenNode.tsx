@@ -32,9 +32,11 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin } from "lucide-react";
 import { StylePicker } from "../StylePicker";
-import { ToolChip, RefThumbRow, MarkElementPicker } from "../InlineBarParts";
+import { ToolChip, RefThumbRow, MarkElementPicker, MarkChipRow, loadMarkModel, saveMarkModel, switchMark, removeMark } from "../InlineBarParts";
+import { nanoid } from "nanoid";
 import { openNodeCompare } from "../CompareLightbox";
 import { usePickStore } from "../../../hooks/usePickStore";
+import { useFocusRefSource } from "../../../hooks/useFocusRefSource";
 import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
@@ -132,6 +134,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const { uiStyle } = useUIStyle();
   const { mode: canvasMode } = useCanvasMode();
   const isCreativeMode = uiStyle !== "studio" && canvasMode === "creative";
+  // LibTV：双击参考缩略图 → 聚焦至来源节点。
+  const focusRefSource = useFocusRefSource(id);
   const [inlineParamsOpen, setInlineParamsOpen] = useState(false);
   // LibTV：创意模式配置区默认收起（就地输入条是主入口），点输入条「高级」才展开——
   // 否则选中节点配置区全高展开，会把锚在节点底部的输入条顶出视口（用户实测反馈）。
@@ -145,6 +149,16 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // 拾取结果经 canvas:pick-result 派回；canvas:pick-upload = 浮条「本地上传」回落。
   const [markState, setMarkState] = useState<{ url: string; loading: boolean; error: string | null; elements: { name: string; desc?: string }[] } | null>(null);
   const analyzeMut = trpc.aiEnhance.analyzeImageElements.useMutation();
+  // 标记分析用的视觉模型（全局偏好持久化）；换模型立即用新模型重跑分析。
+  const [markModel, setMarkModel] = useState<string>(loadMarkModel);
+  const runAnalyze = useCallback((url: string, model: string) => {
+    setMarkState({ url, loading: true, error: null, elements: [] });
+    analyzeMut.mutate({ imageUrl: url, model }, {
+      onSuccess: (r) => setMarkState((s) => (s && s.url === url ? { ...s, loading: false, elements: r.elements } : s)),
+      onError: (err) => setMarkState((s) => (s && s.url === url ? { ...s, loading: false, error: err.message } : s)),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // 「高级」展开态不跨选中记忆：取消选中即复位，下次点选默认收起、需再点「高级」才展开。
   useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
   // 快捷键 A：选中时切换「高级」参数区（Canvas 派发 canvas:toggle-advanced）。
@@ -202,14 +216,14 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     const onResult = (e: Event) => {
       const d = (e as CustomEvent<{ forNodeId: string; kind: string; url: string }>).detail;
       if (d?.forNodeId !== id) return;
-      if (d.kind === "ref") { refImages.addUrls([d.url], "url"); return; }
+      if (d.kind === "ref") {
+        // 同 URL 去重追加——重复点选同一产物时明确提示，避免误以为「覆盖/加不上」
+        if (!refImages.addUrls([d.url], "url")) toast.info("该图已在参考列表中，未重复添加");
+        return;
+      }
       // mark：图加入参考（若未在），并启动元素分析
       if (!refImages.images.some((r) => r.url === d.url)) refImages.addUrls([d.url], "url");
-      setMarkState({ url: d.url, loading: true, error: null, elements: [] });
-      analyzeMut.mutate({ imageUrl: d.url }, {
-        onSuccess: (r) => setMarkState((s) => (s && s.url === d.url ? { ...s, loading: false, elements: r.elements } : s)),
-        onError: (err) => setMarkState((s) => (s && s.url === d.url ? { ...s, loading: false, error: err.message } : s)),
-      });
+      runAnalyze(d.url, markModel);
     };
     const onUpload = (e: Event) => {
       if ((e as CustomEvent<{ forNodeId: string }>).detail?.forNodeId !== id) return;
@@ -219,7 +233,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     window.addEventListener("canvas:pick-upload", onUpload);
     return () => { window.removeEventListener("canvas:pick-result", onResult); window.removeEventListener("canvas:pick-upload", onUpload); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, refImages.images]);
+  }, [id, refImages.images, markModel]);
   // 上游图像（图像生成 / ComfyUI 图像·自定义 / 素材 / 分镜）自动作为参考图填充——
   // 仅当本节点尚无任何参考图时（fill-only-when-blank），绝不覆盖手动参考图，也不改变
   // 「无参考图时用连线角色」的既有优先级（角色不在图源类型里，单独走 connectedCharacterRefImages）。
@@ -469,8 +483,53 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
   // Collapsed hero: a multi-image batch shows the whole grid by default
   // ("grid"); "single" falls back to just the selected image.
-  const heroShowGrid = hasMultiple && payload.heroView !== "single";
-  const heroMedia = heroShowGrid ? (
+  // 创意模式效仿 LibTV「多图模式」：只显示当前选中图，右下露出叠层卡边，
+  // 右上「N张」角标点开放大查看（可翻页），两侧悬停箭头切换当前图。
+  const heroShowStack = hasMultiple && isCreativeMode && !!payload.imageUrl;
+  const heroShowGrid = hasMultiple && !heroShowStack && payload.heroView !== "single";
+  const stackOthers = heroShowStack ? (payload.imageUrls ?? []).filter((u) => u !== payload.imageUrl) : [];
+  const stackCycle = (dir: 1 | -1) => {
+    const urls = payload.imageUrls ?? [];
+    if (urls.length < 2) return;
+    const cur = Math.max(0, urls.indexOf(payload.imageUrl ?? ""));
+    handleSelectImage(urls[(cur + dir + urls.length) % urls.length]);
+  };
+  const heroMedia = heroShowStack ? (
+    <div className="relative" style={{ padding: "0 10px 10px 0" }}>
+      {stackOthers.slice(0, 2).map((u, i) => (
+        <div key={u} className="absolute overflow-hidden rounded-xl pointer-events-none"
+          style={{ top: (i + 1) * 5, left: (i + 1) * 5, right: 10 - (i + 1) * 5, bottom: 10 - (i + 1) * 5, opacity: i === 0 ? 0.9 : 0.55, zIndex: 0, border: "1px solid var(--c-bd2)", background: "var(--c-canvas)" }}>
+          <MediaImage src={u} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        </div>
+      ))}
+      <div className="relative overflow-hidden rounded-xl group" style={{ zIndex: 1, background: "var(--c-canvas)" }}>
+        <MediaImage src={payload.imageUrl!} alt="generated" className="w-full" draggable={false} style={{ display: "block" }} />
+        {imgStoredInMinio && (
+          <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+            style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); setLightboxIndex(Math.max(0, (payload.imageUrls ?? []).indexOf(payload.imageUrl ?? ""))); }}
+          title={`共 ${payload.imageUrls!.length} 张，点击放大查看/翻页`}
+          className="nodrag absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold"
+          style={{ background: "oklch(0 0 0 / 0.6)", backdropFilter: "blur(8px)", borderWidth: 1, borderStyle: "solid", borderColor: "oklch(1 0 0 / 0.18)", color: "#fff" }}
+        >
+          <ZoomIn className="w-3 h-3" />
+          {payload.imageUrls!.length} 张
+        </button>
+        {([[-1, "‹", "上一张", { left: 6 }] as const, [1, "›", "下一张", { right: 6 }] as const]).map(([dir, glyph, tip, pos]) => (
+          <button key={glyph}
+            onClick={(e) => { e.stopPropagation(); stackCycle(dir); }}
+            title={`${tip}（共 ${payload.imageUrls!.length} 张）`}
+            className="nodrag absolute z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ ...pos, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, borderRadius: 99, background: "oklch(0 0 0 / 0.55)", border: "1px solid oklch(1 0 0 / 0.2)", color: "#fff", fontSize: 17, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(6px)" }}
+          >
+            {glyph}
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : heroShowGrid ? (
     <div
       className="grid gap-1 p-2"
       style={{ gridTemplateColumns: payload.imageUrls!.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls!.length, 3)}, 1fr)` }}
@@ -1414,7 +1473,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         </div>
         {/* ── Row2：参考图缩略行（点缩略图插入「图片N」引用） ── */}
         <RefThumbRow images={refImages.images} onRemove={refImages.removeId}
-          onClick={(i) => update("prompt", `${(payload.prompt ?? "").trim()}${(payload.prompt ?? "").trim() ? " " : ""}图片${i + 1} `)} />
+          onClick={(i) => update("prompt", `${(payload.prompt ?? "").trim()}${(payload.prompt ?? "").trim() ? " " : ""}图片${i + 1} `)}
+          onDoubleClick={(i) => focusRefSource(refImages.images[i]?.url ?? "")} />
         {/* ── Row3：大提示词区（无边框大字，贴 LibTV） ── */}
         <NodeTextArea
           className="nodrag nowheel"
@@ -1424,6 +1484,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           onValueChange={(v) => update("prompt", v)}
           style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
         />
+        {/* ── Row3.5：标记引用 chips（嵌入提示词后仍可下拉换选元素 / 移除，LibTV 同款） ── */}
+        {(payload.markRefs?.length ?? 0) > 0 && (
+          <MarkChipRow
+            marks={payload.markRefs!}
+            onSwitch={(mid, newName) => {
+              const r = switchMark(payload.markRefs ?? [], payload.prompt ?? "", mid, newName);
+              if (r) updateNodeData(id, r);
+            }}
+            onRemove={(mid) => updateNodeData(id, removeMark(payload.markRefs ?? [], payload.prompt ?? "", mid))}
+          />
+        )}
         {/* ── Row4：精简控制行 ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {/* 模型未显式选择时回退到默认模型（与配置区/提交口径一致），避免选择器显示空白 */}
@@ -1511,11 +1582,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         loading={markState.loading}
         error={markState.error}
         onClose={() => setMarkState(null)}
+        model={markModel}
+        onModelChange={(m) => { setMarkModel(m); saveMarkModel(m); runAnalyze(markState.url, m); }}
         onSelect={(name) => {
           const idx = refImages.images.findIndex((r) => r.url === markState.url);
           const refToken = idx >= 0 ? `图片${idx + 1} 的${name}` : name;
           const cur = (payload.prompt ?? "").trim();
-          update("prompt", cur ? `${cur} ${refToken} ` : `${refToken} `);
+          // 提示词插入 + 常驻标记 chip（记录 token 与全部候选元素，事后可下拉换选）
+          updateNodeData(id, {
+            prompt: cur ? `${cur} ${refToken} ` : `${refToken} `,
+            markRefs: [...(payload.markRefs ?? []), { id: nanoid(8), url: markState.url, element: name, token: refToken, elements: markState.elements }],
+          });
           setMarkState(null);
           toast.success(`已插入标记引用：${refToken}`);
         }}
