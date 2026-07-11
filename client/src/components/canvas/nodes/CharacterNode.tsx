@@ -443,10 +443,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   const heroMedia = payload.referenceImageUrl ? (
     <div className="relative" style={{ width: "100%" }}>
+      {/* #74：随预览自适应——不再 cover 裁切/240 封顶，按原图比例铺满宽度，
+          框体高度跟随图片；需要更大可直接拖节点缩放（resizable）。 */}
       <MediaImage
         src={payload.referenceImageUrl}
         alt="参考图"
-        style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
+        style={{ width: "100%", height: "auto", display: "block" }}
         draggable={false}
       />
       {isOwnStorageUrl(payload.referenceImageUrl) && (
@@ -510,6 +512,9 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         />
       )}
       <div className="flex flex-col" style={isCreativeMode && !advancedOpen ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
+        {/* 隐藏文件输入常驻收起区外——创意收起时输入条「参考图」按钮仍可触发上传
+            （曾因 input 随表单一起不渲染导致按钮无效，实测逮到后修复） */}
+        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
         {/* LibTV（创意模式）：完整表单仅在「高级」展开时渲染；收起态只剩 hero 小卡 */}
         {!(isCreativeMode && !advancedOpen) && (<>
 
@@ -585,13 +590,6 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               <span style={{ fontSize: 11 }}>{uploading ? "上传中..." : "上传参考图（可选）"}</span>
             </button>
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleImageUpload}
-          />
           {kind === "person" && (
             <button
               onClick={handleMultiAngle}
