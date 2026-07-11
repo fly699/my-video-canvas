@@ -830,8 +830,10 @@ export const BaseNode = memo(function BaseNode({
           the EXACT existing handlers (same onRun reference the title-bar run uses,
           and the self-contained duplicateNode store action), so it cannot diverge
           from or break existing behavior. */}
-      {/* LibTV 化：工具条开放到所有皮肤（原仅 studio）——选中即浮出快捷 AI 操作。 */}
-      {(storeSelected || pinned) && (onRun || resultVideoUrl || resultImageUrl) && (() => {
+      {/* LibTV 化：工具条开放到所有皮肤（原仅 studio）——选中即浮出快捷 AI 操作。
+          框选/多选（≥2 选中）时不再逐个弹出单节点操作条，避免画布被一排排工具条淹没；
+          此时只保留框选级的对齐条 + 多选操作条（全模式统一）。 */}
+      {(storeSelected || pinned) && !multiSelected && (onRun || resultVideoUrl || resultImageUrl) && (() => {
         // LibTV 化 2.x：创意模式的工具条迁入 NodeToolbar——屏幕恒定（画布缩放时节点内容
         // 缩放、工具条保持固定屏幕尺寸），与就地生成输入条同一交互范式；studio/pro 保持
         // 原有「节点内绝对定位、随节点缩放」的行为不变（与下方随缩放的参数面板一致）。
