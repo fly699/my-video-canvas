@@ -30,7 +30,8 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette } from "lucide-react";
+import { StylePicker } from "../StylePicker";
 import { imageModelRequiresRef } from "../../../lib/models";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { downloadMedia } from "@/lib/download";
@@ -132,6 +133,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // LibTV：创意模式配置区默认收起（就地输入条是主入口），点输入条「高级」才展开——
   // 否则选中节点配置区全高展开，会把锚在节点底部的输入条顶出视口（用户实测反馈）。
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // LibTV：输入条「风格」chip 打开风格库，选中把风格片段追加到提示词。
+  const [styleOpen, setStyleOpen] = useState(false);
   // 「高级」展开态不跨选中记忆：取消选中即复位，下次点选默认收起、需再点「高级」才展开。
   useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
   // 快捷键 A：选中时切换「高级」参数区（Canvas 派发 canvas:toggle-advanced）。
@@ -1425,6 +1428,15 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
               </div>
             )}
           </span>
+          {/* LibTV：输入条「风格」chip——打开风格库，选中把风格片段追加到提示词 */}
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setStyleOpen(true); }}
+            title="风格库（选一个风格追加到提示词）"
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <Palette size={12} /> 风格
+          </button>
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
@@ -1447,6 +1459,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           </button>
         </div>
       </InlineGenBar>
+    )}
+
+    {/* LibTV：输入条「风格」chip 打开的风格库（portal 到 body，不受节点收缩影响） */}
+    {styleOpen && (
+      <StylePicker
+        onClose={() => setStyleOpen(false)}
+        onSelect={(p) => {
+          const cur = (payload.prompt ?? "").trim();
+          update("prompt", cur ? `${cur}，${p.prompt}` : p.prompt);
+          toast.success(`已应用风格：${p.label}`);
+        }}
+      />
     )}
 
     {/* ⚠ 两个 3D 查看器必须放在 BaseNode 外面：BaseNode 的 children 在「选中(studioFloated)/

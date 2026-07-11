@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Check, Star, Search } from "lucide-react";
 import {
@@ -40,6 +40,12 @@ export function CinematographyPicker({ provider, activeTemplateId, onSelect, onC
   const [query, setQuery] = useState("");
   const [favs, setFavs] = useState<string[]>(loadFavs);
   const supportsNative = providerSupportsNativeCameraMotion(provider);
+  // Esc 关闭（capture 抢在画布 Esc 取消选中之前）。
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    window.addEventListener("keydown", h, true);
+    return () => window.removeEventListener("keydown", h, true);
+  }, [onClose]);
 
   const toggleFav = (id: string) => setFavs((prev) => {
     const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];

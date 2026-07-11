@@ -3112,11 +3112,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">特效广场（运镜 / 画风特效 / 工作流）</TooltipContent>
             </Tooltip>
 
-            {/* LibTV 化 2.4：资产管理左栏开关（画布大纲 + 资产双 tab） */}
+            {/* LibTV 化 2.4：资产管理左栏开关（画布大纲 + 资产双 tab）。
+                常用入口：不标 data-tb-sec，收缩工具条时保留。 */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  data-tb-sec
                   onClick={() => setShowLeftPanel((v) => !v)}
                   className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
                   style={{ color: showLeftPanel ? "oklch(0.72 0.18 285)" : "var(--c-t3)" }}
@@ -3181,10 +3181,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">运行工作流（框选多个=仅运行选中；选 1 个=从该节点运行；不选=运行全部）· 快捷键 Shift+R</TooltipContent>
             </Tooltip>}
 
-            {/* Grid storyboard starter (hidden for viewers) */}
+            {/* Grid storyboard starter (hidden for viewers)。标 data-tb-sec → 收缩工具条时隐藏。 */}
             {!isReadOnly && <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={() => setShowGridStoryboard(true)}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ color: "oklch(0.65 0.20 160)" }}

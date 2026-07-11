@@ -50,6 +50,8 @@ import {
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { InlineGenBar } from "../InlineGenBar";
 import { QuickTrimBar } from "../QuickTrimBar";
+import { CameraRigPicker, stripCameraRig } from "../CameraRigPicker";
+import { Camera } from "lucide-react";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 // 视频模型参数表已抽到 shared/videoModelParams（服务端画布助手目录同源消费）；
@@ -911,6 +913,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   // 绿点指示：结果视频是否已落到我方 MinIO 长期存储（/manus-storage/ 路径）。
   const videoStoredInMinio = isOwnStorageUrl(primaryUrl);
+
+  // ── LibTV 化：摄像机参数选择器（输入条 Camera chip 打开）──
+  const [camRigOpen, setCamRigOpen] = useState(false);
 
   // ── LibTV 化：快速剪辑条（BaseNode 操作条「剪辑」按钮派发 canvas:quick-trim 打开）──
   const [quickTrimOpen, setQuickTrimOpen] = useState(false);
@@ -2155,6 +2160,30 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               {subjectCount > 3 && <span style={{ alignSelf: "center", fontSize: 10, color: "var(--c-t4)" }}>…{subjectCount}</span>}
             </span>
           )}
+          {/* LibTV：输入条「摄像机」chip——相机/镜头/焦距/光圈选择器，注入拍摄参数片段 */}
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setCamRigOpen(true); }}
+            title="摄像机参数（相机/镜头/焦距/光圈 → 注入提示词）"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+              background: /shot on /i.test(payload.prompt ?? "") ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)",
+              border: `1px solid ${/shot on /i.test(payload.prompt ?? "") ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`,
+              color: /shot on /i.test(payload.prompt ?? "") ? "var(--c-t1)" : "var(--c-t2)" }}
+          >
+            <Camera size={13} />
+          </button>
+          {/* LibTV：输入条「运镜」chip——直接打开运镜库（原入口在配置区，创意收起态摸不到） */}
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setPickerOpen(true); }}
+            title={activeCameraTemplateId ? "运镜库（当前已应用运镜，可更换/清除）" : "运镜库（选一个运镜注入提示词/参数）"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+              background: activeCameraTemplateId ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)",
+              border: `1px solid ${activeCameraTemplateId ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`,
+              color: activeCameraTemplateId ? "var(--c-t1)" : "var(--c-t2)" }}
+          >
+            <Film size={12} /> 运镜
+          </button>
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
@@ -2177,6 +2206,20 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           </button>
         </div>
       </InlineGenBar>
+    )}
+
+    {/* LibTV 化：摄像机参数选择器（应用把拍摄参数片段注入提示词，重复应用先替换旧片段） */}
+    {camRigOpen && (
+      <CameraRigPicker
+        active={/shot on /i.test(payload.prompt ?? "")}
+        onApply={(frag) => {
+          const base = stripCameraRig(payload.prompt ?? "");
+          handleChange("prompt", base ? `${base}，${frag}` : frag);
+          toast.success("已注入摄像机参数");
+        }}
+        onClear={() => { handleChange("prompt", stripCameraRig(payload.prompt ?? "")); toast.success("已清除摄像机参数"); }}
+        onClose={() => setCamRigOpen(false)}
+      />
     )}
 
     {/* LibTV 化：快速剪辑条（屏幕底部固定；确认走 clip.trimVideo，完成后原地替换结果视频） */}
