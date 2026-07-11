@@ -2454,9 +2454,10 @@ function LogEmailCard() {
   });
   const [recipients, setRecipients] = useState<string | null>(null);
   const [pwd, setPwd] = useState("");
+  const canOp = useMyLevel() >= useEffOperate("logs", 3); // 邮送设置/立即发送=管理员 L3+（logEmail 在「操作日志」页）
+  // ↑ hooks 必须在任何条件早退之前调用（否则加载态→数据态 hook 数量变化，React 报错）。
   const s = q.data;
   if (!s) return <div style={cardStyle}><p style={{ color: "var(--c-t3)", fontSize: 13, margin: 0 }}>日志邮送设置加载中…</p></div>;
-  const canOp = useMyLevel() >= useEffOperate("logs", 3); // 邮送设置/立即发送=管理员 L3+（logEmail 在「操作日志」页）
   const set = (patch: Record<string, unknown>) => mu.mutate(patch);
   const rowLabel: React.CSSProperties = { fontSize: 12.5, color: "var(--c-t2)", minWidth: 76, flexShrink: 0 };
   const numSel = (value: number, onChange: (v: number) => void, opts: number[], suffix: string) => (
