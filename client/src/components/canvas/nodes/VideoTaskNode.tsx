@@ -51,7 +51,8 @@ import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { InlineGenBar } from "../InlineGenBar";
 import { QuickTrimBar } from "../QuickTrimBar";
 import { CameraRigPicker, stripCameraRig } from "../CameraRigPicker";
-import { Camera } from "lucide-react";
+import { Camera, MapPin } from "lucide-react";
+import { ToolChip, RefThumbRow } from "../InlineBarParts";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 // 视频模型参数表已抽到 shared/videoModelParams（服务端画布助手目录同源消费）；
@@ -916,6 +917,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   // ── LibTV 化：摄像机参数选择器（输入条 Camera chip 打开）──
   const [camRigOpen, setCamRigOpen] = useState(false);
+  // LibTV 三段式输入条：顶部「＋参考」的隐藏文件选择器。
+  const inlineRefFileRef = useRef<HTMLInputElement>(null);
 
   // ── LibTV 化：快速剪辑条（BaseNode 操作条「剪辑」按钮派发 canvas:quick-trim 打开）──
   const [quickTrimOpen, setQuickTrimOpen] = useState(false);
@@ -2023,15 +2026,33 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
         2.2：参数浮层按当前 provider 的 ParamDef 全量渲染（档位按钮/下拉/滑杆/开关/数字）。 */}
     {isCreativeMode && (
       <InlineGenBar nodeId={id} visible={expanded} width={520}>
+        {/* ── LibTV 三段式 Row1：工具 chips 行（＋参考 / 标记 / 运镜 / 摄像机） ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          <ToolChip icon={<Plus size={13} />} label="参考" title="添加参考图（本地上传）" onClick={() => inlineRefFileRef.current?.click()} />
+          <ToolChip icon={<MapPin size={12} />} label="标记" disabled={refImages.images.length === 0}
+            title={refImages.images.length ? "把「主体1」引用插入提示词（点下方缩略图可插对应编号）" : "先添加参考图，才能在提示词中标记主体"}
+            onClick={() => insertSubjectToken(1)} />
+          <ToolChip icon={<Film size={12} />} label="运镜" active={!!activeCameraTemplateId}
+            title={activeCameraTemplateId ? "运镜库（已应用运镜，可更换/清除）" : "运镜库（选一个运镜注入提示词/参数）"}
+            onClick={() => setPickerOpen(true)} />
+          <ToolChip icon={<Camera size={12} />} label="摄像机" active={/shot on /i.test(payload.prompt ?? "")}
+            title="摄像机参数（相机/镜头/焦距/光圈 → 注入提示词）" onClick={() => setCamRigOpen(true)} />
+          <input ref={inlineRefFileRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) void uploadRefFiles(files, refImages.images.length); e.target.value = ""; }} />
+        </div>
+        {/* ── Row2：参考图缩略行（点缩略图插入「主体N」） ── */}
+        <RefThumbRow images={refImages.images} onRemove={refImages.removeId} onClick={(i) => insertSubjectToken(i + 1)} />
+        {/* ── Row3：大提示词区 ── */}
         <NodeTextArea
           className="nodrag nowheel"
-          rows={2}
+          rows={3}
           placeholder="描述你想生成的视频…（@ 引用角色/素材）"
           value={payload.prompt ?? ""}
           onValueChange={(v) => handleChange("prompt", v)}
           disabled={isLocked}
-          style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit", opacity: isLocked ? 0.6 : 1 }}
+          style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit", opacity: isLocked ? 0.6 : 1 }}
         />
+        {/* ── Row4：精简控制行 ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <ModelPicker
             value={payload.provider}
@@ -2146,44 +2167,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               </div>
             )}
           </span>
-          {/* LibTV 化 2.3：主体引用 chips（≥2 张参考图且多图模型）——点插「主体N」；
-              全量编号见参考图条角标，这里最多露 3 个防挤爆输入条。 */}
-          {subjectCount >= 2 && (
-            <span style={{ display: "inline-flex", gap: 4 }}>
-              {Array.from({ length: Math.min(subjectCount, 3) }, (_, i) => i + 1).map((n) => (
-                <button key={n} className="nodrag" onClick={(e) => { e.stopPropagation(); insertSubjectToken(n); }}
-                  title={`把「主体${n}」插入提示词（生成时按参考图顺序绑定第 ${n} 张）`}
-                  style={{ height: 28, padding: "0 8px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>
-                  主体{n}
-                </button>
-              ))}
-              {subjectCount > 3 && <span style={{ alignSelf: "center", fontSize: 10, color: "var(--c-t4)" }}>…{subjectCount}</span>}
-            </span>
-          )}
-          {/* LibTV：输入条「摄像机」chip——相机/镜头/焦距/光圈选择器，注入拍摄参数片段 */}
-          <button
-            className="nodrag"
-            onClick={(e) => { e.stopPropagation(); setCamRigOpen(true); }}
-            title="摄像机参数（相机/镜头/焦距/光圈 → 注入提示词）"
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, cursor: "pointer",
-              background: /shot on /i.test(payload.prompt ?? "") ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)",
-              border: `1px solid ${/shot on /i.test(payload.prompt ?? "") ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`,
-              color: /shot on /i.test(payload.prompt ?? "") ? "var(--c-t1)" : "var(--c-t2)" }}
-          >
-            <Camera size={13} />
-          </button>
-          {/* LibTV：输入条「运镜」chip——直接打开运镜库（原入口在配置区，创意收起态摸不到） */}
-          <button
-            className="nodrag"
-            onClick={(e) => { e.stopPropagation(); setPickerOpen(true); }}
-            title={activeCameraTemplateId ? "运镜库（当前已应用运镜，可更换/清除）" : "运镜库（选一个运镜注入提示词/参数）"}
-            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
-              background: activeCameraTemplateId ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)",
-              border: `1px solid ${activeCameraTemplateId ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`,
-              color: activeCameraTemplateId ? "var(--c-t1)" : "var(--c-t2)" }}
-          >
-            <Film size={12} /> 运镜
-          </button>
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}

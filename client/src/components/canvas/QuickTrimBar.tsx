@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Check, Keyboard, Loader2, Play, Pause, Repeat } from "lucide-react";
+import { X, Check, Keyboard, Loader2, Play, Pause, Repeat, Magnet } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { mediaFetchUrl } from "@/lib/download";
@@ -32,9 +32,23 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
   const [playing, setPlaying] = useState(false);
   const [loop, setLoop] = useState(true);
   const [kbdOpen, setKbdOpen] = useState(false);
-  // 快捷键 handler 里读最新值用 refs（listener 只挂一次）。
-  const stRef = useRef({ start: 0, end: 0, duration: 0, loop: true });
-  stRef.current = { start, end, duration, loop };
+  // 整秒磁吸：开启时拖动手柄吸附到整秒（键盘微调不受影响，仍可精确）。
+  const [snap, setSnap] = useState(true);
+  // 快捷键/拖拽 handler 里读最新值用 refs（listener 只挂一次）。
+  const stRef = useRef({ start: 0, end: 0, duration: 0, loop: true, snap: true });
+  stRef.current = { start, end, duration, loop, snap };
+  // 自绘手柄拖拽（替代叠加双 range——上层 range 会永远盖住入点手柄，导致前段裁不了）。
+  const dragRef2 = useRef<"start" | "end" | null>(null);
+  const posToTime = (clientX: number) => {
+    const r = trackRef.current?.getBoundingClientRect();
+    if (!r || !stRef.current.duration) return 0;
+    return Math.max(0, Math.min(stRef.current.duration, ((clientX - r.left) / r.width) * stRef.current.duration));
+  };
+  const applyDrag = (which: "start" | "end", t: number) => {
+    const v = stRef.current.snap ? Math.round(t) : t;
+    if (which === "start") setStart(Math.min(v, stRef.current.end - 0.2));
+    else setEnd(Math.min(stRef.current.duration, Math.max(v, stRef.current.start + 0.2)));
+  };
 
   const trimMutation = trpc.clip.trimVideo.useMutation({
     onSuccess: (r) => { toast.success("剪辑完成，已替换为选区结果"); onDone(r.url, r.duration); onClose(); },
@@ -164,23 +178,31 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
         </div>
         {/* 轨道 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "min(380px, 40vw)" }}>
-          <div ref={trackRef} style={{ position: "relative", height: 34, borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", overflow: "hidden" }}>
+          <div
+            ref={trackRef}
+            onPointerDown={(e) => {
+              if (!duration) return;
+              e.preventDefault(); e.stopPropagation();
+              const t = posToTime(e.clientX);
+              // 就近吸附：按下点离哪个手柄近就拖哪个 → 入点/出点都能拖（修复前段裁不了）。
+              const which = Math.abs(t - stRef.current.start) <= Math.abs(t - stRef.current.end) ? "start" : "end";
+              dragRef2.current = which;
+              applyDrag(which, t);
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => { if (dragRef2.current) applyDrag(dragRef2.current, posToTime(e.clientX)); }}
+            onPointerUp={() => { dragRef2.current = null; }}
+            onPointerCancel={() => { dragRef2.current = null; }}
+            style={{ position: "relative", height: 34, borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", overflow: "hidden", cursor: "ew-resize", touchAction: "none" }}>
             {/* 选区 */}
             <div style={{ position: "absolute", top: 0, bottom: 0, left: pct(start), width: duration > 0 ? `${((end - start) / duration) * 100}%` : "100%", background: "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 22%, transparent)", border: "1px solid color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)", pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--c-t1)", textShadow: "0 1px 2px rgba(0,0,0,0.5)", whiteSpace: "nowrap" }}>{fmt(Math.max(0, end - start))}</span>
             </div>
             {/* 播放头 */}
             <div style={{ position: "absolute", top: 0, bottom: 0, left: pct(Math.min(Math.max(current, 0), duration)), width: 2, background: "var(--c-t1)", pointerEvents: "none" }} />
-            {/* 双滑块（透明 range，同 ClipNode TrimBar 交互） */}
-            <input type="range" min={0} max={duration || 1} step={0.01} value={start}
-              onChange={(e) => setStart(Math.min(Number(e.target.value), end - 0.2))}
-              className="nodrag" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "ew-resize", zIndex: 2 }} title={`入点 ${fmt(start)}（I）`} />
-            <input type="range" min={0} max={duration || 1} step={0.01} value={end}
-              onChange={(e) => setEnd(Math.max(Number(e.target.value), start + 0.2))}
-              className="nodrag" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "ew-resize", zIndex: 3 }} title={`出点 ${fmt(end)}（O）`} />
-            {/* 手柄视觉 */}
-            <div style={{ position: "absolute", top: 0, bottom: 0, left: pct(start), width: 4, borderRadius: 2, background: "var(--ui-accent, var(--c-accent))", pointerEvents: "none" }} />
-            <div style={{ position: "absolute", top: 0, bottom: 0, left: `calc(${pct(end)} - 4px)`, width: 4, borderRadius: 2, background: "var(--ui-accent, var(--c-accent))", pointerEvents: "none" }} />
+            {/* 手柄视觉（拖拽由轨道 pointer 事件统一处理：就近吸附入/出点） */}
+            <div style={{ position: "absolute", top: 0, bottom: 0, left: pct(start), width: 5, borderRadius: 2, background: "var(--ui-accent, var(--c-accent))", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", top: 0, bottom: 0, left: `calc(${pct(end)} - 5px)`, width: 5, borderRadius: 2, background: "var(--ui-accent, var(--c-accent))", pointerEvents: "none" }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--c-t4)" }}>
             <span>入 {fmt(start)}</span>
@@ -189,6 +211,11 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
           </div>
         </div>
       </div>
+      {/* 整秒磁吸开关：拖动手柄吸附到整秒（键盘微调不受影响） */}
+      <button onClick={() => setSnap((v) => !v)} title={snap ? "整秒磁吸（开）——拖动吸附到整秒" : "整秒磁吸（关）——自由拖动"}
+        style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${snap ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)" : "var(--c-bd2)"}`, background: snap ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 14%, var(--c-surface))" : "var(--c-surface)", color: snap ? "var(--c-t1)" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Magnet size={14} />
+      </button>
       {/* 循环开关 */}
       <button onClick={() => setLoop((v) => !v)} title={loop ? "选区循环播放（开）" : "选区循环播放（关）"}
         style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${loop ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)" : "var(--c-bd2)"}`, background: loop ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 14%, var(--c-surface))" : "var(--c-surface)", color: loop ? "var(--c-t1)" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
