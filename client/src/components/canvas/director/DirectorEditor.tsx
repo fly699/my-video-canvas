@@ -3,7 +3,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid, TransformControls, ContactShadows } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy, Boxes, PersonStanding } from "lucide-react";
+import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy, Boxes, PersonStanding, Download, Crosshair } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateControlMap } from "../../../lib/refImagePropagation";
@@ -15,11 +15,19 @@ import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../.
 import {
   MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers, respaceCrowdMembers, makeGroupFromActors, CROWD_SPACING,
   ensureCameras, newCameraId, nextCameraName, actorWorldPosition, shotAimTarget, faceCameraYaw,
+  PROP_PRIMS, makeProp, LAYOUT_TEMPLATES, templateActors, type PropPrim,
 } from "../../../lib/directorScene";
+// #71 多格式导入/导出：obj/stl/fbx/gltf 客户端解析 → 统一转 glb 上传；场景可导出 glb。
+import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { JOINT_GROUPS, POSE_PRESETS, applyPosePreset, mirrorPose, type Pose } from "../../../lib/directorPose";
 import { GRID_PRESETS, gridCameraPosition, type GridPreset } from "../../../lib/directorGrid";
 import { uploadAssetFileForUrl } from "../../../lib/assetUpload";
 import { HumanModel } from "./HumanModel";
+import { PropModel } from "./PropModel";
 import { GlbModel } from "./GlbModel";
 import { PanoramaSphere } from "./Panorama";
 import { ShotPreview } from "./ShotPreview";
@@ -101,6 +109,21 @@ type OrbitImpl = { target: THREE.Vector3; update: () => void; object: THREE.Came
 export interface CaptureHandle { gl: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.Camera; orbit: OrbitImpl; }
 
 // ── 相机机架：初始 target、响应式 FOV、释放时回写机位、把渲染上下文暴露给截图/重置 ──
+// #71 非全景背景图：加载为 scene.background（屏幕空间静态背景，不随机位转动）。
+function FlatBackground({ url }: { url: string }) {
+  const { scene } = useThree();
+  useEffect(() => {
+    let alive = true;
+    new THREE.TextureLoader().load(url, (tex) => {
+      if (!alive) { tex.dispose(); return; }
+      tex.colorSpace = THREE.SRGBColorSpace;
+      scene.background = tex;
+    });
+    return () => { alive = false; if (scene.background instanceof THREE.Texture) scene.background.dispose(); scene.background = null; };
+  }, [url, scene]);
+  return null;
+}
+
 function CameraRig({ cam, onCommit, bind, locked, grab }: {
   cam: { position: Vec3; target: Vec3; fov: number };
   onCommit: (pos: Vec3, target: Vec3) => void;
@@ -226,7 +249,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
 
   const addActor = (model: string) => {
     setScene((s) => {
-      const a = makeActor(model, s.actors, [s.actors.length * 0.6 - 0.3, 0, 0]);
+      const o = s.origin ?? [0, 0, 0];
+      const a = makeActor(model, s.actors, [o[0] + s.actors.length * 0.6 - 0.3, 0, o[2]]);
       setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
       return { ...s, actors: [...s.actors, a] };
     });
@@ -254,7 +278,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   }, []);
   const addCrowd = (rows: number, cols: number) => {
     setScene((s) => {
-      const { group, actors } = makeCrowd(rows, cols, s.actors);
+      const o = s.origin ?? [0, 0, 0];
+      const { group, actors } = makeCrowd(rows, cols, s.actors, [o[0], 0, o[2] - 1.2]);
       setSelectedGroupId(group.id); setSelectedId(null); setCamSelected(false);
       return { ...s, groups: [...(s.groups ?? []), group], actors: [...s.actors, ...actors] };
     });
@@ -315,17 +340,42 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const glbInputRef = useRef<HTMLInputElement>(null);
   const [glbBusy, setGlbBusy] = useState(false);
   const trpcUtils = trpc.useUtils();
+  // #71 多格式：obj/stl/fbx/gltf 客户端解析 → GLTFExporter 转成 .glb 再上传（存储/渲染统一走 glb）。
+  const convertToGlb = async (file: File): Promise<File> => {
+    const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] ?? "").toLowerCase();
+    if (ext === "glb") return file.type ? file : new File([file], file.name, { type: "model/gltf-binary" });
+    let obj3d: THREE.Object3D;
+    if (ext === "obj") {
+      obj3d = new OBJLoader().parse(await file.text());
+    } else if (ext === "stl") {
+      const geo = new STLLoader().parse(await file.arrayBuffer());
+      geo.computeVertexNormals();
+      obj3d = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: "#9aa3b5", roughness: 0.6 }));
+    } else if (ext === "fbx") {
+      obj3d = new FBXLoader().parse(await file.arrayBuffer(), "");
+    } else if (ext === "gltf") {
+      // 仅支持自包含 .gltf（嵌入 data URI 缓冲）；外部 .bin 依赖无法随单文件解析
+      const gltf = await new GLTFLoader().parseAsync(await file.text(), "");
+      obj3d = gltf.scene;
+    } else {
+      throw new Error(`不支持的格式 .${ext}（支持 .glb/.gltf/.obj/.stl/.fbx）`);
+    }
+    const bin = await new Promise<ArrayBuffer>((res, rej) => {
+      new GLTFExporter().parse(obj3d, (r) => res(r as ArrayBuffer), (err) => rej(err), { binary: true });
+    });
+    return new File([bin], file.name.replace(/\.[a-z0-9]+$/i, ".glb"), { type: "model/gltf-binary" });
+  };
   const onGlbFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file) return;
-    if (!/\.glb$/i.test(file.name)) { toast.error("当前支持 .glb 格式（.obj/.fbx 请先转 .glb）"); return; }
     setGlbBusy(true);
     try {
-      const glbFile = file.type ? file : new File([file], file.name, { type: "model/gltf-binary" });
+      const glbFile = await convertToGlb(file);
       const url = await uploadAssetFileForUrl(trpcUtils.client, glbFile, projectId);
       if (!url) return; // uploadAssetFileForUrl 已弹出具体错误
       setScene((s) => {
-        const a = makeActor("male", s.actors, [s.actors.length * 0.6 - 0.3, 0, 0]);
+        const o = s.origin ?? [0, 0, 0];
+        const a = makeActor("male", s.actors, [o[0] + s.actors.length * 0.6 - 0.3, 0, o[2]]);
         a.glbUrl = url; a.name = file.name.replace(/\.glb$/i, "").slice(0, 16) || a.name;
         setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
         return { ...s, actors: [...s.actors, a] };
@@ -349,6 +399,67 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       toast.success("已设为全景背景");
     } catch (err) { toast.error("全景上传失败：" + (err instanceof Error ? err.message : String(err))); }
     finally { setPanoBusy(false); }
+  };
+
+  // #71 非全景背景图：与全景/黑底分离互斥（全景优先、黑底压过一切）
+  const flatBgActive = !!scene.backgroundImageUrl && !scene.panoramaUrl && scene.background !== "#000000";
+  const bgInputRef = useRef<HTMLInputElement>(null);
+  const [bgBusy, setBgBusy] = useState(false);
+  const onBgFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file || !file.type.startsWith("image/")) { if (file) toast.error("请选择图片"); return; }
+    setBgBusy(true);
+    try {
+      const r = await uploadMut.mutateAsync({ base64: await blobToBase64(file), mimeType: file.type, filename: file.name });
+      patchScene({ backgroundImageUrl: r.url });
+      toast.success("已设为背景图（整屏静态背景；机位转动时背景不动）");
+    } catch (err) { toast.error("背景图上传失败：" + (err instanceof Error ? err.message : String(err))); }
+    finally { setBgBusy(false); }
+  };
+
+  // #71 原点可位移：新增人物/群众/物体/模板一律落在原点附近；网格与原点标记随之移动。
+  const origin: Vec3 = scene.origin ?? [0, 0, 0];
+  const setOriginXZ = (x: number, z: number) => patchScene({ origin: [Number(x.toFixed(2)), 0, Number(z.toFixed(2))] });
+  const originToViewCenter = () => {
+    const cap = captureRef.current; if (!cap?.orbit) return;
+    const t = cap.orbit.target;
+    setOriginXZ(t.x, t.z);
+    toast.success("原点已移到当前视点中心");
+  };
+
+  // #71 多物体：几何道具（与人偶同链路：选中/变换/编组/控制图）
+  const addProp = (prim: PropPrim) => {
+    setScene((s) => {
+      const o = s.origin ?? [0, 0, 0];
+      const a = makeProp(prim, s.actors, [o[0] + (s.actors.length % 5) * 0.5 - 1, 0, o[2] + 0.6]);
+      setSelectedId(a.id); setSelectedGroupId(null); setCamSelected(false);
+      return { ...s, actors: [...s.actors, a] };
+    });
+  };
+
+  // #71 位置模板：一键布景（追加式，落点相对原点）
+  const applyLayoutTemplate = (key: string) => {
+    const tpl = LAYOUT_TEMPLATES.find((t) => t.key === key); if (!tpl) return;
+    setScene((s) => {
+      const added = templateActors(tpl, s.actors, s.origin ?? [0, 0, 0]);
+      if (added[0]) { setSelectedId(added[0].id); setSelectedGroupId(null); setCamSelected(false); }
+      return { ...s, actors: [...s.actors, ...added] };
+    });
+    toast.success(`已应用模板「${tpl.label}」（${tpl.specs.length} 人，落在原点处）`);
+  };
+
+  // #71 导出场景 .glb：把 ACTORS_GROUP（人物+道具+导入模型）打包下载，可导入任何 3D 工具复用
+  const exportSceneGlb = () => {
+    const cap = captureRef.current;
+    const grp = cap?.scene.getObjectByName(ACTORS_GROUP);
+    if (!grp) { toast.error("场景里没有可导出的对象"); return; }
+    new GLTFExporter().parse(grp, (bin) => {
+      const blob = new Blob([bin as ArrayBuffer], { type: "model/gltf-binary" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = "director-scene.glb"; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast.success("场景已导出为 .glb");
+    }, (err) => toast.error("导出失败：" + String(err)), { binary: true });
   };
 
   const onCommitCam = useCallback((position: Vec3, target: Vec3) => patchCam({ position, target }), [patchCam]);
@@ -787,10 +898,27 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <button key={`${r}x${c}`} onClick={() => addCrowd(r, c)} style={{ ...chip }}><Plus size={11} /> {c}×{r}</button>
             ))}
           </div>
-          <button onClick={() => glbInputRef.current?.click()} disabled={glbBusy} style={{ ...chip, justifyContent: "center", marginTop: 6, opacity: glbBusy ? 0.6 : 1 }}>
-            {glbBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 导入 3D 模型（.glb）
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginTop: 6 }}>添加物体（几何道具）</div>
+          <div className="flex flex-wrap gap-1">
+            {PROP_PRIMS.map((pp) => (
+              <button key={pp.key} onClick={() => addProp(pp.key)} title={`在原点附近放置一个${pp.label}`} style={{ ...chip }}><Plus size={11} /> {pp.label}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginTop: 6 }}>位置模板（一键布景）</div>
+          <div className="flex flex-wrap gap-1">
+            {LAYOUT_TEMPLATES.map((t) => (
+              <button key={t.key} onClick={() => applyLayoutTemplate(t.key)} title={t.desc} style={{ ...chip }}>{t.label}</button>
+            ))}
+          </div>
+          <button onClick={() => glbInputRef.current?.click()} disabled={glbBusy} style={{ ...chip, justifyContent: "center", marginTop: 6, opacity: glbBusy ? 0.6 : 1 }}
+            title="导入本地 3D 模型：glb 直传；gltf/obj/stl/fbx 自动转换为 glb（gltf 需自包含）">
+            {glbBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 导入 3D 模型（glb/obj/stl/fbx）
           </button>
-          <input ref={glbInputRef} type="file" accept=".glb,model/gltf-binary" style={{ display: "none" }} onChange={onGlbFile} />
+          <button onClick={exportSceneGlb} style={{ ...chip, justifyContent: "center", marginTop: 4 }}
+            title="把当前场景（人物+道具+导入模型）导出为 .glb，可在 Blender 等工具打开或再导入">
+            <Download size={11} /> 导出场景（.glb）
+          </button>
+          <input ref={glbInputRef} type="file" accept=".glb,.gltf,.obj,.stl,.fbx,model/gltf-binary" style={{ display: "none" }} onChange={onGlbFile} />
         </div>
 
         {/* 中：3D 取景区 */}
@@ -800,6 +928,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             {([["translate", "移动"], ["rotate", "旋转"], ["scale", "缩放"]] as const).map(([mode, lbl]) => (
               <button key={mode} onClick={() => setGizmoMode(mode)} style={{ ...chip, fontWeight: gizmoMode === mode ? 700 : 500, background: gizmoMode === mode ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: gizmoMode === mode ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
             ))}
+          </div>
+          {/* #71 原点可位移：布景原点（新增人物/群众/物体/模板的落点 + 网格中心 + 三色轴标记） */}
+          <div style={{ position: "absolute", top: 56, left: 12, zIndex: 5, display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 10, background: "color-mix(in oklch, var(--c-elevated) 90%, transparent)", border: "1px solid var(--c-bd2)", backdropFilter: "blur(10px)" }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }} title="布景原点：新增人物/群众/物体/位置模板都落在这里；画面中的三色轴即原点">原点</span>
+            <DragNumber label="X" value={origin[0]} step={0.1} fixed={1} onChange={(v) => setOriginXZ(v, origin[2])} />
+            <DragNumber label="Z" value={origin[2]} step={0.1} fixed={1} onChange={(v) => setOriginXZ(origin[0], v)} />
+            <button onClick={originToViewCenter} title="把原点移到当前视点中心（先环绕到目标区域再点）" style={{ ...iconBtn }}><Crosshair size={12} /></button>
+            <button onClick={() => setOriginXZ(0, 0)} title="原点归零" style={{ ...iconBtn }}><RotateCcw size={11} /></button>
           </div>
           {/* 全景对齐：仅在已设全景时显示。升降/缩放使全景地面与人物脚底对齐（LibTV 模块16） */}
           {scene.panoramaUrl && !scene.background && (
@@ -832,7 +968,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               onPointerMissed={() => { setSelectedId(null); setSelectedGroupId(null); }}
             >
               {/* 天空颜色：默认深空黑 #060608（对齐 LibTV 模块16），全景未覆盖处即此色 */}
-              <color attach="background" args={[scene.background || (scene.panoramaUrl ? "#060608" : "#1a1d24")]} />
+              {/* 背景图激活时不 attach 纯色（两者都写 scene.background 会互相覆盖） */}
+              {!flatBgActive && <color attach="background" args={[scene.background || (scene.panoramaUrl ? "#060608" : "#1a1d24")]} />}
+              {flatBgActive && <FlatBackground url={scene.backgroundImageUrl!} />}
               {scene.panoramaUrl && !scene.background && (
                 <Suspense fallback={null}>
                   <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} pitch={scene.panoramaPitch ?? 0} roll={scene.panoramaRoll ?? 0} scale={scene.panoramaScale ?? 1} />
@@ -842,8 +980,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <directionalLight position={[4, 8, 5]} intensity={1.1} castShadow shadow-mapSize={[1024, 1024]} />
               <directionalLight position={[-5, 4, -3]} intensity={0.4} />
               {scene.groundVisible && (
-                <Grid args={[40, 40]} cellSize={0.5} cellThickness={0.6} sectionSize={2} sectionThickness={1} infiniteGrid fadeDistance={26} cellColor="#2a2f3a" sectionColor="#3a4150" position={[0, 0, 0]} />
+                <Grid args={[40, 40]} cellSize={0.5} cellThickness={0.6} sectionSize={2} sectionThickness={1} infiniteGrid fadeDistance={26} cellColor="#2a2f3a" sectionColor="#3a4150" position={[origin[0], 0, origin[2]]} />
               )}
+              {/* #71 原点标记：三色轴小十字，标出布景原点（新增人物/模板落点） */}
+              {scene.groundVisible && <axesHelper args={[0.7]} position={[origin[0], 0.02, origin[2]]} />}
               {/* 接触阴影：始终在 y=0 给人物落一层柔和投影，让角色「站在地面上」——
                   尤其全景模式(隐藏网格)下，否则人物会显得悬浮空中。纯黑分离模式下不渲染（看不到且干扰）。 */}
               {scene.background !== "#000000" && (
@@ -859,7 +999,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   {scene.actors.filter((a) => a.groupId === g.id).map((a) => (
                     <group key={a.id} name={`actor:${a.id}`} position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
                       onPointerDown={(e) => { e.stopPropagation(); selectActor(a.id); }}>
-                      {a.glbUrl ? <GlbModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} /> : <HumanModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} />}
+                      {a.prim ? <PropModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} /> : a.glbUrl ? <GlbModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} /> : <HumanModel actor={a} selected={a.id === selectedId || g.id === selectedGroupId} />}
                     </group>
                   ))}
                 </group>
@@ -871,7 +1011,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   <group key={a.id} name={`actor:${a.id}`} ref={sel ? ((el) => setGizmoTarget(el)) : undefined}
                     position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
                     onPointerDown={(e) => { e.stopPropagation(); selectActor(a.id); }}>
-                    {a.glbUrl ? <GlbModel actor={a} selected={sel} /> : <HumanModel actor={a} selected={sel} />}
+                    {a.prim ? <PropModel actor={a} selected={sel} /> : a.glbUrl ? <GlbModel actor={a} selected={sel} /> : <HumanModel actor={a} selected={sel} />}
                   </group>
                 );
               })}
@@ -922,6 +1062,15 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 {panoBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 全景
               </button>
             )}
+            {/* #71 非全景背景图：整屏静态背景（机位转动背景不动；全景已设时全景优先） */}
+            {scene.backgroundImageUrl ? (
+              <button onClick={() => patchScene({ backgroundImageUrl: undefined })} title="清除背景图" style={{ ...chip, background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12", fontWeight: 700 }}>背景图 ×</button>
+            ) : (
+              <button onClick={() => bgInputRef.current?.click()} disabled={bgBusy} title="上传普通背景图（非全景）：整屏静态背景，适合平面剧照/概念图垫底；全景已设时全景优先" style={{ ...chip, opacity: bgBusy ? 0.6 : 1 }}>
+                {bgBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 背景图
+              </button>
+            )}
+            <input ref={bgInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onBgFile} />
             <input ref={panoInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPanoFile} />
           </div>
         </div>
