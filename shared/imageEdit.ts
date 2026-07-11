@@ -58,6 +58,12 @@ export const IMAGE_EDIT_OPS: ImageEditOpSpec[] = [
     promptPlaceholder: "可选：补充强调，如「保留胶片颗粒感」",
   },
   {
+    id: "reangle", label: "多角度 / 换机位", icon: "Camera",
+    desc: "同一主体与场景，换一个机位角度重新拍摄",
+    needsMask: false, needsPrompt: true, needsAspect: false,
+    promptPlaceholder: "描述目标机位，如「水平环绕 45°，俯拍 30°，中景镜头」",
+  },
+  {
     id: "reframe", label: "改比例 / 重构图", icon: "Crop",
     desc: "重构图到新画幅，主体保持良好构图",
     needsMask: false, needsPrompt: false, needsAspect: true,
@@ -131,6 +137,7 @@ export function comfyDenoiseForOp(op: ImageEditOp): number {
   switch (op) {
     case "upscale": return 0.35;   // enhance only — structure must not drift
     case "relight": return 0.55;   // keep structure, change light
+    case "reangle": return 0.7;    // camera move = big structural change, keep identity/style
     case "reframe": return 0.5;
     case "remove_bg": return 0.6;
     case "outpaint": return 0.7;
@@ -161,6 +168,8 @@ export function buildImageEditInstruction(
       return `Relight the image${extra ? `:${extra}` : " with soft cinematic key lighting"}. Change only the lighting direction, intensity and color temperature — keep the subject, pose, composition and all content identical.`;
     case "upscale":
       return `Upscale and enhance this image to a higher-fidelity, high-resolution version. Sharpen fine details, textures and edges, remove blur and compression artifacts. Keep the content, composition, colors, lighting and style exactly identical — do not add, remove or alter anything.${extra}`;
+    case "reangle":
+      return `Re-render the exact same subject and scene from a different camera angle${extra ? `:${extra}` : ""}. Keep the subject's identity, outfit, environment, lighting mood and overall style strictly identical — only the camera position, viewing angle and framing change.`;
     case "reframe":
       return `Recompose and reframe the image${aspect ? ` to a ${aspect} aspect ratio` : ""}, keeping the main subject well composed and naturally extending or filling the edges as needed.${extra}`;
     default:
