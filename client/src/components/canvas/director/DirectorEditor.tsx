@@ -264,7 +264,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     setScene((s) => {
       const src = s.actors.find((a) => a.id === id); if (!src) return s;
       const base = makeActor(src.model, s.actors, [src.position[0] + 0.6, src.position[1], src.position[2]]);
-      const copy: DirectorActor = { ...base, rotation: [...src.rotation] as Vec3, scale: src.scale, pose: src.pose ? { ...src.pose } : undefined, glbUrl: src.glbUrl, tint: src.tint };
+      // prim/color/name 必须显式带上：{...base} 会用 makeActor 的新名新色覆盖，
+      // 否则几何道具复制出来变成人偶、名字错乱（#71 Ctrl+D 真机逮到）。
+      const copy: DirectorActor = { ...base, rotation: [...src.rotation] as Vec3, scale: src.scale, pose: src.pose ? { ...src.pose } : undefined, glbUrl: src.glbUrl, tint: src.tint, prim: src.prim, color: src.color, name: src.prim || src.glbUrl ? `${src.name}·副本`.slice(0, 18) : base.name };
       setSelectedId(copy.id); setSelectedGroupId(null); setCamSelected(false);
       return { ...s, actors: [...s.actors, copy] };
     });
@@ -758,14 +760,30 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   // Ctrl/Cmd+G 把多选的独立角色一键编组（模块10）。
   const multiSelRef = useRef(multiSel);
   multiSelRef.current = multiSel;
+  // #71 操控便利性：Delete/Backspace 删除选中（人偶/道具/整组），Ctrl/Cmd+D 复制选中。
+  const selectedIdRef = useRef(selectedId); selectedIdRef.current = selectedId;
+  const selectedGroupIdRef = useRef(selectedGroupId); selectedGroupIdRef.current = selectedGroupId;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "g" || e.key === "G")) {
         if (multiSelRef.current.size >= 2) { e.preventDefault(); groupSelectedActors(); }
+        return;
+      }
+      // 输入框内不劫持（改名/数值输入时 Delete 是正常编辑）
+      const t = e.target as HTMLElement | null;
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedGroupIdRef.current) { e.preventDefault(); deleteGroup(selectedGroupIdRef.current); return; }
+        if (selectedIdRef.current) { e.preventDefault(); removeActor(selectedIdRef.current); return; }
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+        if (selectedGroupIdRef.current) { e.preventDefault(); duplicateGroup(selectedGroupIdRef.current); return; }
+        if (selectedIdRef.current) { e.preventDefault(); duplicateActor(selectedIdRef.current); return; }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupSelectedActors]);
 
   const panel: React.CSSProperties = { background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 12, padding: 12 };

@@ -247,6 +247,13 @@ export const PROP_PRIMS = [
   { key: "cylinder", label: "圆柱" },
   { key: "cone", label: "圆锥" },
   { key: "plane", label: "平面板" },
+  // #71 预置素材（参数化复合道具，纯几何拼装、零外部资源）
+  { key: "table", label: "桌子" },
+  { key: "chair", label: "椅子" },
+  { key: "bed", label: "床" },
+  { key: "doorframe", label: "门框" },
+  { key: "stairs", label: "台阶" },
+  { key: "tree", label: "树" },
 ] as const;
 export type PropPrim = (typeof PROP_PRIMS)[number]["key"];
 
