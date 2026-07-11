@@ -10,7 +10,11 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles, Music, Dices } from "lucide-react";
+import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles, Music, Dices, SlidersHorizontal } from "lucide-react";
+import { InlineGenBar } from "../InlineGenBar";
+import { ToolChip } from "../InlineBarParts";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import {
   characterToPromptInjection,
   clampLen,
@@ -83,6 +87,19 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
   const [uploading, setUploading] = useState(false);
+  // LibTV 化（#70 创意模式）：角色小卡形态——完整表单默认收起，由底部输入条「高级」
+  // （或快捷键 A）展开；其它模式不受影响。
+  const { uiStyle } = useUIStyle();
+  const { mode: canvasModeVal } = useCanvasMode();
+  const isCreativeMode = uiStyle !== "studio" && canvasModeVal === "creative";
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
+  useEffect(() => {
+    if (!selected) return;
+    const h = () => setAdvancedOpen((v) => !v);
+    window.addEventListener("canvas:toggle-advanced", h);
+    return () => window.removeEventListener("canvas:toggle-advanced", h);
+  }, [selected]);
   // 左侧吸附参考图预览窗（与内嵌主图/备用视角网格并存、同源同步）。无按钮：悬停标题栏
   // 1 秒临时展开，点击吸附窗钉住持久展开（与其它生成节点统一）。
   const hasRefImg = !!(payload.referenceImageUrl?.trim() || (payload.additionalImageUrls?.length ?? 0) > 0);
@@ -453,7 +470,8 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   })();
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={160} resizable heroMedia={heroMedia}
+    <>
+    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={isCreativeMode ? 90 : 160} resizable heroMedia={heroMedia}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <>
@@ -491,7 +509,9 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           onClose={() => setRecognizeRows(null)}
         />
       )}
-      <div className="flex flex-col gap-3 p-3.5">
+      <div className="flex flex-col" style={isCreativeMode && !advancedOpen ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
+        {/* LibTV（创意模式）：完整表单仅在「高级」展开时渲染；收起态只剩 hero 小卡 */}
+        {!(isCreativeMode && !advancedOpen) && (<>
 
         {/* Kind toggle */}
         <div
@@ -942,8 +962,53 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           </div>
         )}
 
+      </>)}
       </div>
     </BaseNode>
+    {/* ── LibTV（创意模式）就地输入条：类别 / 参考图 / 识别 / 多视角 ‖ 姓名 / 高级 / 存库 ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={470}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {KINDS.map((k) => (
+            <ToolChip key={k.id} icon={k.icon} label={k.label} active={kind === k.id}
+              onClick={() => update("characterKind", k.id)} title={`切换为${k.label}`} />
+          ))}
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          <ToolChip icon={uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} label="参考图"
+            onClick={() => fileInputRef.current?.click()} disabled={uploading} title="上传参考图（可拖入素材）" />
+          <ToolChip icon={recognizeMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} label="识别"
+            onClick={handleRecognize} disabled={recognizeMut.isPending} title="AI 看图识别，自动填充外貌/服装等字段" />
+          <ToolChip icon={multiAngleBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} label="多视角"
+            onClick={() => void handleMultiAngle()} disabled={multiAngleBusy} title="一键多视角（三视图参考，强化跨镜一致性）" />
+        </div>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            value={(kind === "scene" ? payload.sceneName : payload.name) ?? ""}
+            placeholder={kind === "scene" ? "场景名…" : "角色名…"}
+            onChange={(e) => update(kind === "scene" ? "sceneName" : "name", e.target.value)}
+            className="nodrag"
+            style={{ flex: 1, minWidth: 0, height: 30, padding: "0 10px", borderRadius: 9, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", fontSize: 12.5, outline: "none" }}
+          />
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起完整资料表单" : "展开完整资料表单（职业/外貌/性格/服装等）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <SlidersHorizontal size={12} /> 高级
+          </button>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); saveToLibrary(); }}
+            title="保存到角色库（跨项目复用）"
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: "var(--ui-accent, var(--c-accent))", border: "none", color: "#0b0d12", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <Save size={12} /> 存库
+          </button>
+        </div>
+      </InlineGenBar>
+    )}
+    </>
   );
 });
 
