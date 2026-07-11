@@ -179,7 +179,7 @@ async function startServer() {
     loginMethod: "dev",
     passwordHash: null,
     role: "admin",
-    adminLevel: 4,
+    adminLevel: 5,
     disabled: false,
     emailVerified: true,
     approved: true,

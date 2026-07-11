@@ -20,9 +20,10 @@ import { TunnelPanel } from "@/components/admin/TunnelPanel";
 import { BroadcastComposer } from "@/components/chat/BroadcastComposer";
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
+import { DEFAULT_TAB_LEVELS, ADMIN_LEVEL_LABELS, EDITABLE_TAB_KEYS } from "@shared/adminPerms";
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "perms" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
 
 // 标签页定义：[key, 中文标签, 图标]
 const TAB_DEFS: [Tab, string, LucideIcon][] = [
@@ -46,6 +47,7 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["config", "配置体检", ClipboardCheck],
   ["report", "工作成果报告", FileBarChart2],
   ["intro", "项目功能汇报", FileText],
+  ["perms", "权限管理", KeyRound],
 ];
 
 // 管理员级别 → 可执行的「写操作」最低级别（与服务端 levelProcedure 一致）：
@@ -81,20 +83,28 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 // 「白名单管理」「下载审批」限管理员 L3+（查看员 L1、运营 L2 均无权，含查看）。
-const L3_ONLY_TABS = new Set<Tab>(["whitelist", "downloads"]);
-
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
   const myLevel = user?.adminLevel ?? 0;
+  // 权限矩阵（站长在「权限管理」页配置各页最低查看级别；默认日志/聊天=L4、白名单/下载审批=L3）。
+  // 服务端对日志/聊天接口同口径强制，这里只做 tab 可见性与越权兜底跳转。
+  const permsQ = trpc.admin.perms.get.useQuery(undefined, { enabled: user?.role === "admin", staleTime: 30_000 });
+  const tabLevels = permsQ.data?.levels ?? DEFAULT_TAB_LEVELS;
+  const tabAllowed = (tab: Tab) => myLevel >= (tabLevels[tab] ?? 1);
   // Initial tab comes from ?tab= so deep links (e.g. a download-approval "查看")
   // land on the right sub-page instead of the default.
   const [activeTab, setActiveTab] = useState<Tab>(() => adminTabFromUrl() as Tab);
   const [, navigate] = useLocation();
 
-  // 低于 L3 的管理员若（经深链/事件）落到受限标签，跳回一个安全默认页，避免看到无权面板。
+  // 越权兜底：（经深链/事件）落到无权标签时跳回第一个有权限的页，避免看到无权面板。
   useEffect(() => {
-    if (myLevel < 3 && L3_ONLY_TABS.has(activeTab)) setActiveTab("logs");
-  }, [myLevel, activeTab]);
+    if (!permsQ.data) return;
+    if (!tabAllowed(activeTab)) {
+      const first = TAB_DEFS.find(([t]) => tabAllowed(t))?.[0];
+      if (first && first !== activeTab) setActiveTab(first);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myLevel, activeTab, permsQ.data]);
 
   // Switch tab when a deep-link event fires while this page is already mounted
   // (a query-only URL change doesn't remount the page).
@@ -202,7 +212,7 @@ export default function AdminPage() {
 
         {/* Tabs — 胶囊式（带图标） */}
         <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px", animationDelay: "60ms" }}>
-          {TAB_DEFS.filter(([tab]) => myLevel >= 3 || !L3_ONLY_TABS.has(tab)).map(([tab, label, Icon]) => {
+          {TAB_DEFS.filter(([tab]) => tabAllowed(tab)).map(([tab, label, Icon]) => {
             const active = activeTab === tab;
             return (
               <button
@@ -260,6 +270,7 @@ export default function AdminPage() {
           {activeTab === "auth" && <LevelGate need={3}><AuthPanel /></LevelGate>}
           {activeTab === "logs" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}><LogEmailCard /><LogsPanel /></div>}
           {activeTab === "comfyLogs" && <ComfyUsageLogsPanel />}
+          {activeTab === "perms" && <PermsPanel />}
           {activeTab === "llmLogs" && <LlmLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
           {activeTab === "models" && <LevelGate need={3}><ModelsPanel /></LevelGate>}
@@ -281,7 +292,7 @@ export default function AdminPage() {
 }
 
 // 管理员级别标签（与服务端 levelProcedure 一致）。
-const ADMIN_LEVELS: [number, string][] = [[0, "普通用户"], [1, "查看员"], [2, "运营"], [3, "管理员"], [4, "超级管理员"]];
+const ADMIN_LEVELS: [number, string][] = [[0, "普通用户"], [1, "查看员"], [2, "运营"], [3, "管理员"], [4, "超级管理员"], [5, "站长"]];
 const adminLevelLabel = (lv: number) => ADMIN_LEVELS.find(([n]) => n === lv)?.[1] ?? "普通用户";
 
 /** 当前登录管理员的级别（0 普通 … 4 超管）。 */
@@ -498,7 +509,7 @@ function UsersPanel() {
                           disabled={setLevelMut.isPending}
                           style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer" }}
                         >
-                          {ADMIN_LEVELS.map(([lv, lb]) => <option key={lv} value={lv}>{lb}</option>)}
+                          {ADMIN_LEVELS.filter(([lv]) => lv <= (me?.adminLevel ?? 0)).map(([lv, lb]) => <option key={lv} value={lv}>{lb}</option>)}
                         </select>
                       ) : (
                         <span style={{ fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
@@ -2275,6 +2286,75 @@ function ComfyUsageLogsPanel() {
   );
 }
 
+
+
+
+// ── 权限管理（站长 L5 独占）────────────────────────────────────────────────────
+// 配置各后台页面的最低可见/可查级别。日志三页 + 聊天管理默认 L4；服务端对这些页面的
+// 接口按同一矩阵强制（改矩阵 30 秒内全局生效）。「权限管理」页自身恒 L5 不可下放。
+function PermsPanel() {
+  const utils = trpc.useUtils();
+  const q = trpc.admin.perms.get.useQuery();
+  const mu = trpc.admin.perms.set.useMutation({
+    onSuccess: () => { utils.admin.perms.get.invalidate(); toast.success("权限矩阵已保存（30 秒内全局生效）"); setDirty({}); },
+    onError: (e) => toast.error("保存失败：" + e.message),
+  });
+  const [dirty, setDirty] = useState<Record<string, number>>({});
+  const levels = q.data?.levels;
+  if (!levels) return <div style={cardStyle}><p style={{ color: "var(--c-t3)", fontSize: 13, margin: 0 }}>加载中…</p></div>;
+  const cur = (tab: string) => dirty[tab] ?? levels[tab] ?? 1;
+  const tabLabel = (tab: string) => TAB_DEFS.find(([t]) => t === tab)?.[1] ?? tab;
+  const changed = Object.keys(dirty).some((k) => dirty[k] !== (levels[k] ?? 1));
+  const save = () => {
+    const merged: Record<string, number> = {};
+    for (const k of EDITABLE_TAB_KEYS) merged[k] = dirty[k] ?? levels[k] ?? 1;
+    mu.mutate({ levels: merged });
+  };
+  const groups: [string, string[]][] = [
+    ["日志与审计", ["logs", "comfyLogs", "llmLogs"]],
+    ["聊天与用户", ["chat", "users", "auth", "whitelist", "downloads"]],
+    ["资源与模型", ["assets", "storage", "models", "kie"]],
+    ["ComfyUI", ["comfyServers", "comfyStress", "comfyOps"]],
+    ["系统", ["tunnel", "system", "config", "report", "intro"]],
+  ];
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Shield style={{ width: 16, height: 16, color: "oklch(0.72 0.19 25)" }} />
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1)" }}>权限管理（站长）</h3>
+        </div>
+        <button onClick={save} disabled={!changed || mu.isPending}
+          style={{ padding: "8px 18px", borderRadius: 9, border: "1px solid oklch(0.72 0.19 25 / 0.5)", background: changed ? "oklch(0.72 0.19 25 / 0.14)" : "var(--c-surface)", color: changed ? "oklch(0.75 0.17 25)" : "var(--c-t4)", fontWeight: 700, fontSize: 13, cursor: changed ? "pointer" : "not-allowed" }}>
+          {mu.isPending ? "保存中…" : "保存权限矩阵"}
+        </button>
+      </div>
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--c-t3)", lineHeight: 1.6 }}>
+        为每个后台页面设置<b>最低可见级别</b>（1=查看员 · 2=运营 · 3=管理员 · 4=超级管理员 · 5=站长）。
+        低于该级别的管理员看不到对应页面；日志三页与聊天管理的服务端接口按同一矩阵强制（页内写操作另有各自的固定下限，矩阵只收紧不放松）。
+        「权限管理」页自身恒为站长专属，不可下放。
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {groups.map(([g, tabs]) => (
+          <div key={g}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>{g}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>
+              {tabs.map((tab) => (
+                <div key={tab} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 11px", borderRadius: 9, border: `1px solid ${cur(tab) !== (levels[tab] ?? 1) ? "oklch(0.72 0.19 25 / 0.55)" : "var(--c-bd1, rgba(255,255,255,0.07))"}`, background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+                  <span style={{ fontSize: 13, color: "var(--c-t1)" }}>{tabLabel(tab)}</span>
+                  <select value={cur(tab)} onChange={(e) => setDirty((d) => ({ ...d, [tab]: Number(e.target.value) }))}
+                    style={{ ...inputStyle, width: "auto", padding: "4px 8px", fontSize: 12 }}>
+                    {ADMIN_LEVEL_LABELS.filter(([lv]) => lv >= 1).map(([lv, lb]) => <option key={lv} value={lv}>L{lv} {lb}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 
 // ── 日志加密打包邮送设置 ────────────────────────────────────────────────────────

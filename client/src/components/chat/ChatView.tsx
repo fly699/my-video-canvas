@@ -120,6 +120,9 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   const isClaudeLocalModel = !!effModel && effModel.toLowerCase().startsWith("claude-local");
   const bridgeSkills = useBridgeSkills(isAI && isClaudeLocalModel);
   const [skillHi, setSkillHi] = useState(0);
+  // 键盘 ↑↓ 导航时把高亮项滚进可视区（block:nearest 不跳页）；鼠标滚轮/点击不受影响。
+  const skillHiRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => { skillHiRef.current?.scrollIntoView({ block: "nearest" }); }, [skillHi]);
   const [skillDismiss, setSkillDismiss] = useState("");
   const slashFrag = /^\/([^\s/]*)$/.exec(text)?.[1];
   const skillMatches = useMemo(() => {
@@ -551,7 +554,10 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
             <div style={{ fontSize: 10.5, color: C.t4, padding: "3px 8px 5px" }}>技能 · ↑↓ 选择 · Enter 确认 · Esc 关闭</div>
             {skillMatches.map((s, i) => (
               <button key={s.name} type="button"
-                onMouseEnter={() => setSkillHi(i)}
+                ref={i === skillHi ? skillHiRef : undefined}
+                // mousemove（而非 mouseenter）：键盘滚动把新元素滚到静止的鼠标下时不抢高亮，
+                // 只有真实移动鼠标才切换——否则 ↓ 键自动滚动会被鼠标 hover 立刻拽回去。
+                onMouseMove={() => setSkillHi(i)}
                 onClick={() => pickSkill(s.name)}
                 style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 9px", borderRadius: 7, border: "none", cursor: "pointer",
                   background: i === skillHi ? C.accentSoft : "transparent", color: C.t1 }}>
