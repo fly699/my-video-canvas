@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Music, Upload, Mic, Loader2, Play, Pause, X, Volume2, Zap, Wind, HardDriveDownload, Languages, Sparkles,
-  Scissors, Gauge, Download,
+  Scissors, Gauge, Download, SlidersHorizontal,
 } from "lucide-react";
 import { NodeToolbar, Position } from "@xyflow/react";
 import { downloadMedia } from "@/lib/download";
@@ -826,7 +826,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   // 创意模式点击不展开完整配置区（对齐图像/视频节点）：由输入条「高级」开关展开，
   // 取消选中即复位；快捷键 A（Canvas 派发 canvas:toggle-advanced）同样生效。
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
+  // 输入条「设置」浮层（常用参数按类别排布；节点本体不展开）。
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => { if (!selected) { setAdvancedOpen(false); setSettingsOpen(false); } }, [selected]);
   useEffect(() => {
     if (!selected) return;
     const h = () => setAdvancedOpen((v) => !v);
@@ -925,7 +927,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         </div>
       </NodeToolbar>
     )}
-    <BaseNode id={id} selected={selected} nodeType="audio" title={data.title} minHeight={160} resizable
+    <BaseNode id={id} selected={selected} nodeType="audio" title={data.title} minHeight={isCreativeMode ? 56 : 160} resizable
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <>
@@ -1647,13 +1649,82 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           {category === "sfx" && (
             <ModelSelect bare models={SFX_MODELS} value={SFX_MODELS.some((m) => m.value === payload.sfxModel) ? payload.sfxModel : "kie_elevenlabs_sfx"} onChange={(v) => updateNodeData(id, { sfxModel: v })} />
           )}
-          {/* 高级：展开节点内完整配置区（歌词/音色/语速等细节参数） */}
-          <button className="nodrag"
-            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
-            title={(advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（歌词/音色/语速等）") + " · 快捷键 A"}
-            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 8px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>
-            高级
-          </button>
+          {/* 设置浮层（LibTV）：常用参数按类别向上弹出——节点本体不再展开配置区 */}
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button className="nodrag"
+              onClick={(e) => { e.stopPropagation(); setSettingsOpen((v) => !v); }}
+              title="设置（风格/音色/语速/时长等常用参数）"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: settingsOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>
+              <SlidersHorizontal size={12} /> 设置
+            </button>
+            {settingsOpen && (
+              <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
+                style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 40, width: 288, maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 11, padding: 12, borderRadius: 12, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
+                {category === "music" && (<>
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>风格标签</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {MUSIC_STYLES_ZH.map((s) => (
+                        <button key={s} className="nodrag" onClick={() => updateNodeData(id, { musicStyle: payload.musicStyle === s ? undefined : s })}
+                          style={{ padding: "4px 9px", fontSize: 10.5, borderRadius: 99, border: `1px solid ${payload.musicStyle === s ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, background: payload.musicStyle === s ? "color-mix(in oklab, var(--ui-accent) 16%, var(--c-surface))" : "var(--c-surface)", color: payload.musicStyle === s ? "var(--c-t1)" : "var(--c-t2)", cursor: "pointer" }}>
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>纯器乐</span>
+                    <button className="nodrag" onClick={() => updateNodeData(id, { musicInstrumental: !(payload.musicInstrumental ?? true) })}
+                      style={{ position: "relative", width: 32, height: 18, borderRadius: 9, background: (payload.musicInstrumental ?? true) ? "color-mix(in oklab, var(--ui-accent) 70%, transparent)" : "var(--c-bd1)", border: "1px solid var(--c-bd3)", cursor: "pointer" }}>
+                      <span style={{ position: "absolute", top: 2, left: (payload.musicInstrumental ?? true) ? 14 : 2, width: 12, height: 12, borderRadius: "50%", background: "var(--c-t1)", transition: "left 150ms ease" }} />
+                    </button>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>排除元素（可选）</div>
+                    <input value={payload.musicNegativeTags ?? ""} onChange={(e) => updateNodeData(id, { musicNegativeTags: e.target.value })}
+                      placeholder="例如：drums, vocals" className="nodrag"
+                      style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+                  </div>
+                </>)}
+                {category === "dubbing" && (<>
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>音色</div>
+                    <select value={payload.ttsVoice ?? voicesForModel(payload.ttsModel)[0]?.value ?? ""} className="nodrag"
+                      onChange={(e) => updateNodeData(id, { ttsVoice: e.target.value })}
+                      style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }}>
+                      {voicesForModel(payload.ttsModel).map((v) => <option key={v.value} value={v.value} style={{ background: "var(--c-surface)" }}>{v.label} · {v.desc}</option>)}
+                    </select>
+                  </div>
+                  {modelSupportsSpeed(payload.ttsModel) && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>语速</span>
+                        <span style={{ fontSize: 11, color: "var(--c-t3)" }}>{(payload.ttsSpeed ?? 1).toFixed(2)}×</span>
+                      </div>
+                      <input type="range" min={0.5} max={2} step={0.05} value={payload.ttsSpeed ?? 1} className="nodrag"
+                        onChange={(e) => updateNodeData(id, { ttsSpeed: Number(e.target.value) })}
+                        style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))" }} />
+                    </div>
+                  )}
+                </>)}
+                {category === "sfx" && (<>
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>时长（秒，0.5–22，留空自动）</div>
+                    <input type="number" min={0.5} max={22} step={0.5} value={payload.sfxDuration ?? ""} className="nodrag"
+                      onChange={(e) => updateNodeData(id, { sfxDuration: e.target.value === "" ? undefined : Number(e.target.value) })}
+                      style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)" }} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>可循环</span>
+                    <button className="nodrag" onClick={() => updateNodeData(id, { sfxLoop: !payload.sfxLoop })}
+                      style={{ position: "relative", width: 32, height: 18, borderRadius: 9, background: payload.sfxLoop ? "color-mix(in oklab, var(--ui-accent) 70%, transparent)" : "var(--c-bd1)", border: "1px solid var(--c-bd3)", cursor: "pointer" }}>
+                      <span style={{ position: "absolute", top: 2, left: payload.sfxLoop ? 14 : 2, width: 12, height: 12, borderRadius: "50%", background: "var(--c-t1)", transition: "left 150ms ease" }} />
+                    </button>
+                  </div>
+                </>)}
+              </div>
+            )}
+          </span>
           {category === "dubbing" && (
             <button className="nodrag" onClick={(e) => { e.stopPropagation(); handleTranslate(); }} disabled={translateMut.isPending}
               title={`翻译配音文本（目标：${payload.ttsTranslateTarget ?? "英语"}，配置区可改）`}
