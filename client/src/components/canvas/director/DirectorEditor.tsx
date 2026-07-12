@@ -182,7 +182,7 @@ function CameraGizmo({ cam, active, hidden, labelsVisible, onSelect, bindRef }: 
   // FOV 视锥线框（局部空间，-Z 向前）：长度随机位到注视点距离取 35%，夹在 0.5~2.2m
   const frustum = useMemo(() => {
     const dist = Math.hypot(cam.target[0] - cam.position[0], cam.target[1] - cam.position[1], cam.target[2] - cam.position[2]);
-    const len = Math.max(0.5, Math.min(2.2, dist * 0.35));
+    const len = Math.max(0.4, Math.min(1.25, dist * 0.22)); // #85 视锥更紧凑（此前过大喧宾夺主）
     const hh = len * Math.tan((cam.fov * Math.PI) / 360);
     const hw = hh * 16 / 9;
     const c = [[-hw, -hh, -len], [hw, -hh, -len], [hw, hh, -len], [-hw, hh, -len]];
@@ -201,11 +201,11 @@ function CameraGizmo({ cam, active, hidden, labelsVisible, onSelect, bindRef }: 
         onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}
         onClick={(e) => { e.stopPropagation(); }}
       >
-        <boxGeometry args={[0.34, 0.3, 0.28]} />
+        <boxGeometry args={[0.3, 0.26, 0.24]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
       <mesh>
-        <boxGeometry args={[0.22, 0.15, 0.12]} />
+        <boxGeometry args={[0.18, 0.125, 0.1]} />
         <meshStandardMaterial color={col} emissive={col} emissiveIntensity={active ? 0.55 : 0.2} roughness={0.4} />
       </mesh>
       <mesh position={[0, 0, -0.1]} rotation={[Math.PI / 2, 0, 0]}>
@@ -223,7 +223,7 @@ function CameraGizmo({ cam, active, hidden, labelsVisible, onSelect, bindRef }: 
         <lineBasicMaterial color={col} transparent opacity={active ? 0.85 : 0.45} />
       </lineSegments>
       {labelsVisible && (
-        <Html center position={[0, 0.32, 0]} style={{ pointerEvents: "none" }} zIndexRange={[10, 0]}>
+        <Html center position={[0, 0.26, 0]} style={{ pointerEvents: "none" }} zIndexRange={[10, 0]}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: "#fff", background: "rgba(0,0,0,0.6)", padding: "1px 7px", borderRadius: 6, whiteSpace: "nowrap", textShadow: "0 1px 3px rgba(0,0,0,0.8)", border: active ? "1px solid #ffb02088" : "1px solid transparent" }}>
             📷 {cam.name ?? "机位"}
           </div>
@@ -253,19 +253,23 @@ function FlatBackground({ url }: { url: string }) {
   return null;
 }
 
+// #85 导演视角的自由相机初始视点：俯瞰全场（能同时看到人偶与机位1 实体）。
+// 与任何机位彻底解耦——环绕只是「看」，永远不会写回机位数据。
+const FREE_CAM_POS: Vec3 = [4.6, 3.4, 6.8];
+const FREE_CAM_TARGET: Vec3 = [0, 0.9, 0];
+
 function CameraRig({ cam, onCommit, bind, locked, grab }: {
   cam: { position: Vec3; target: Vec3; fov: number };
   onCommit: (pos: Vec3, target: Vec3) => void;
   bind: (h: CaptureHandle) => void;
-  locked: boolean; // true=机位视角（锁定到该机位的精确取景，禁止轨道）；false=导演视角（自由环绕）
+  locked: boolean; // true=机位视角（吸附到活动机位；拖拽即瞄准该机位，松手提交）；false=导演视角（自由环绕，绝不写机位）
   grab: boolean;   // true=抓背景拖（反转水平拖拽方向，像 360 看图器）；false=绕主体转（标准 3D 环绕）
 }) {
   const { gl, scene, camera } = useThree();
   const orbit = useRef<OrbitImpl>(null);
   const inited = useRef(false);
-  // #84 提交守卫：OrbitControls 的 onStart/onEnd 是原生 canvas 监听，R3F 的 stopPropagation
-  // 拦不住——点选机位/灯光 gizmo 的那一下也会触发 onEnd，把未动过的自由视角原样「提交」
-  // 进刚激活的机位，导致机位被瞬移到眼位（真机逮到）。守卫：本次拖拽真实位移 > 1cm 才提交。
+  // 提交守卫：OrbitControls 的 onStart/onEnd 是原生 canvas 监听，R3F 的 stopPropagation
+  // 拦不住——点选机位/灯光 gizmo 的那一下也会触发 onEnd。守卫：真实位移 > 1cm 才算拖拽。
   const dragStart = useRef<THREE.Vector3 | null>(null);
 
   // 拖拽手感：仅反转水平方向（three-stdlib OrbitControls 的 reverseHorizontalOrbit），不动俯仰。
@@ -274,16 +278,16 @@ function CameraRig({ cam, onCommit, bind, locked, grab }: {
     if (o) o.reverseHorizontalOrbit = grab;
   }, [grab]);
 
-  useEffect(() => { // 初始 target（位置/FOV 由 Canvas camera 初值 + 下方 FOV effect 负责）
+  useEffect(() => { // 初始 target：导演视角自由俯瞰（#85 与机位解耦，不再取机位注视点）
     if (inited.current || !orbit.current) return;
     inited.current = true;
-    orbit.current.target.set(...cam.target); orbit.current.update();
-  }, [cam.target]);
+    orbit.current.target.set(...FREE_CAM_TARGET); orbit.current.update();
+  }, []);
 
-  useEffect(() => { // FOV 面板调节即时生效（不影响 OrbitControls 拥有的位置）
-    (camera as THREE.PerspectiveCamera).fov = cam.fov;
+  useEffect(() => { // FOV：仅机位视角跟随机位 FOV；导演视角自由相机固定 50°（#85 解耦）
+    (camera as THREE.PerspectiveCamera).fov = locked ? cam.fov : 50;
     (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
-  }, [camera, cam.fov]);
+  }, [camera, cam.fov, locked]);
 
   // 机位视角：把相机精确拨到该机位的位置/注视点（所见即截图所得）；导演视角不动，保留自由环绕。
   useEffect(() => {
@@ -299,7 +303,8 @@ function CameraRig({ cam, onCommit, bind, locked, grab }: {
     <OrbitControls
       ref={orbit as never}
       makeDefault
-      enabled={!locked}
+      // #85 机位视角也开放环绕：透过机位拖拽即瞄准（松手提交回机位）；导演视角自由看
+      enabled
       // 关阻尼惯性：drei 默认 enableDamping，松手后相机还会滑行几帧，而 onEnd 在松手瞬间就提交，
       // 导致存下的机位落后于视觉最终位置（甩得越快偏差越大），破坏「所见即截图所得」。关掉即一致。
       enableDamping={false}
@@ -309,9 +314,11 @@ function CameraRig({ cam, onCommit, bind, locked, grab }: {
       onStart={() => { dragStart.current = camera.position.clone(); }}
       onEnd={() => {
         if (!orbit.current) return;
-        // 纯点击（无位移）不提交：避免点选 gizmo 时把自由视角误写进当前机位
-        if (dragStart.current && camera.position.distanceTo(dragStart.current) < 0.01) { dragStart.current = null; return; }
+        const moved = !dragStart.current || camera.position.distanceTo(dragStart.current) >= 0.01;
         dragStart.current = null;
+        // #85 只有「机位视角」的拖拽才写回机位（透过取景器瞄准）；导演视角环绕纯看不写，
+        // 机位数据只能被 实体拖拽 / 面板滑杆 / 景别 / 注视 等显式操作改动。
+        if (!locked || !moved) return;
         onCommit(camera.position.toArray() as Vec3, orbit.current.target.toArray() as Vec3);
       }}
     />
@@ -368,10 +375,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const captureRef = useRef<CaptureHandle | null>(null);
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
-  // Canvas 初始机位（只在挂载时取一次，之后由 OrbitControls 拥有位置，避免受控 prop 与拖拽打架）。
+  // Canvas 初始视角：#85 导演视角=独立自由俯瞰相机（能同时看到人偶与机位实体），
+  // 与机位彻底解耦——此前初始即机位1眼位，导致「机位1永远看不见 + 环绕误写机位」。
   // far 必须大于全景天空盒最大半径(60×球半径上限8=480)，否则球的远半球会被远裁剪面切掉、
   // 露出背景色形成「黑芯」。给到 2000 既覆盖全景球，也覆盖放大场景里被拉远的机位。
-  const initCam = useMemo(() => ({ fov: scene.camera.fov, position: scene.camera.position as Vec3, near: 0.1, far: 2000 }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const initCam = useMemo(() => ({ fov: 50, position: FREE_CAM_POS, near: 0.1, far: 2000 }), []);
 
   // #78 相机截图库（LibTV「摄像机截图」）：多张暂存、清空、发送到画布；随节点持久化。
   const initialShots = useCanvasStore((s) => {
@@ -684,7 +692,6 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   // #84 点选画面中的机位实体：激活该机位并打开机位面板（不动导演视角的自由环绕；
   // 机位视角下 CameraRig 的 locked effect 会随 cam.position/target 变化自动吸附）。
   const selectCameraFromScene = useCallback((id: string) => {
-    liveDetachedRef.current = true; // 只选中不跳视角：脱离期环绕不回写，防机位被瞬移
     setScene((s) => {
       const cams = ensureCameras(s);
       const c = cams.find((x) => x.id === id) ?? cams[0];
@@ -707,23 +714,39 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     }, (err) => toast.error("导出失败：" + String(err)), { binary: true });
   };
 
-  // #84 视角脱离标记：经 gizmo 点选机位后，自由视角与新激活机位并不重合——此时环绕视角
-  // 不应把「别处的眼位」回写进该机位（否则机位被瞬移）。任何把视角对齐到机位的操作
-  // （切换机位/景别/注视/重置/机位视角）都会重新挂钩。
-  const liveDetachedRef = useRef(false);
-  const onCommitCam = useCallback((position: Vec3, target: Vec3) => {
-    if (liveDetachedRef.current) return; // 脱离期间环绕只看不写
-    patchCam({ position, target });
-  }, [patchCam]);
+  // #85 提交入口只剩「机位视角拖拽瞄准」一条路（CameraRig 内已按 locked 门控）。
+  const onCommitCam = useCallback((position: Vec3, target: Vec3) => patchCam({ position, target }), [patchCam]);
   const bindCapture = useCallback((h: CaptureHandle) => { captureRef.current = h; }, []);
-  useEffect(() => { if (viewMode === "camera") liveDetachedRef.current = false; }, [viewMode]);
+  // moveLiveCamera 等回调是稳定引用，读视角模式走 ref。
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
+  // #85 产出统一从「活动机位」渲染：导演视角随便飞，截图/控制图/宫格/入库永远是机位构图。
+  // 渲染前把 live 相机拨到活动机位（位置/注视/FOV），渲染后原样还原（含自由视角的姿态）。
+  const withActiveCamera = useCallback(<T,>(fn: () => T): T => {
+    const cap = captureRef.current;
+    if (!cap) return fn();
+    const cam = cap.camera as THREE.PerspectiveCamera;
+    const saved = { pos: cam.position.clone(), quat: cam.quaternion.clone(), fov: cam.fov };
+    const ac = sceneRef.current.camera;
+    cam.position.set(...ac.position);
+    cam.lookAt(new THREE.Vector3(...ac.target));
+    cam.fov = ac.fov;
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld();
+    try { return fn(); } finally {
+      cam.position.copy(saved.pos);
+      cam.quaternion.copy(saved.quat);
+      cam.fov = saved.fov;
+      cam.updateProjectionMatrix();
+      cam.updateMatrixWorld();
+    }
+  }, []);
 
   // 重置机位：imperatively 把相机/控制器拨回默认，并同步场景（避免受控 prop 回灌打架）。
   const resetCamera = useCallback(() => {
-    liveDetachedRef.current = false;
     const dft = makeDefaultDirectorScene().camera;
     const cap = captureRef.current;
-    if (cap) {
+    if (cap && viewModeRef.current === "camera") {
       cap.camera.position.set(...dft.position);
       (cap.camera as THREE.PerspectiveCamera).fov = dft.fov;
       (cap.camera as THREE.PerspectiveCamera).updateProjectionMatrix();
@@ -737,7 +760,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const activeCameraId = scene.activeCameraId ?? cameras[0].id!;
   // imperatively 把 live 相机拨到某机位（切换/对准时复用）。
   const moveLiveCamera = useCallback((c: DirectorCamera) => {
-    liveDetachedRef.current = false; // 视角已对齐到机位，恢复「环绕即调机位」挂钩
+    // #85 导演视角是独立自由相机：机位数据操作（切换/景别/注视/全景滑杆）不再劫持它，
+    // 构图反馈看右下「机位预览」小窗或切「机位视角」；仅机位视角下才把视口拨到机位。
+    if (viewModeRef.current !== "camera") return;
     const cap = captureRef.current; if (!cap) return;
     cap.camera.position.set(...c.position);
     (cap.camera as THREE.PerspectiveCamera).fov = c.fov;
@@ -782,9 +807,17 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     patchScene({ sceneOffsetY: Number(oy.toFixed(2)) });
   }, [patchScene]);
   const addCamera = useCallback(() => {
+    // #85 导演视角：把「当前自由视角」快照成新机位（所见即新机位构图，也避免与旧机位原地重叠）；
+    // 机位视角：复制活动机位并右移 1m 防重叠。
+    const cap = captureRef.current;
     setScene((s) => {
       const cams = ensureCameras(s);
-      const nc: DirectorCamera = { ...s.camera, id: newCameraId(), name: nextCameraName(cams), lookAtActorId: undefined };
+      let nc: DirectorCamera;
+      if (viewModeRef.current !== "camera" && cap?.orbit) {
+        nc = { id: newCameraId(), name: nextCameraName(cams), position: cap.camera.position.toArray() as Vec3, target: cap.orbit.target.toArray() as Vec3, fov: s.camera.fov, lookAtActorId: undefined };
+      } else {
+        nc = { ...s.camera, id: newCameraId(), name: nextCameraName(cams), position: [s.camera.position[0] + 1, s.camera.position[1], s.camera.position[2]] as Vec3, lookAtActorId: undefined };
+      }
       return { ...s, cameras: [...cams, nc], camera: nc, activeCameraId: nc.id };
     });
   }, []);
@@ -856,7 +889,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       const restore = hideLightMarkers();
       let blob: Blob | null;
       try {
-        cap.gl.render(cap.scene, cap.camera);
+        withActiveCamera(() => cap.gl.render(cap.scene, cap.camera)); // #85 产出=活动机位构图
         blob = await canvasToBlob(cap.gl);
       } finally { restore(); }
       if (!blob) throw new Error("渲染截图失败");
@@ -880,7 +913,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       const restore = hideLightMarkers();
       let blob: Blob | null;
       try {
-        cap.gl.render(cap.scene, cap.camera);
+        withActiveCamera(() => cap.gl.render(cap.scene, cap.camera)); // #85 产出=活动机位构图
         blob = await canvasToBlob(cap.gl);
       } finally { restore(); }
       if (!blob) throw new Error("渲染截图失败");
@@ -925,13 +958,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         const ctx = c2d.getContext("2d");
         if (!ctx) throw new Error("2D 画布上下文不可用");
         cap.scene.updateMatrixWorld(true);
-        cap.camera.updateMatrixWorld();
-        (cap.camera as THREE.PerspectiveCamera).updateProjectionMatrix?.();
         let actorsGroup: THREE.Object3D | undefined;
         cap.scene.children.forEach((o) => { if (o.name === ACTORS_GROUP) actorsGroup = o; });
         const roots: THREE.Object3D[] = [];
         actorsGroup?.traverse((o) => { if (o.name.startsWith("actor:")) roots.push(o); });
-        const drawn = drawOpenpose(ctx, roots, cap.camera, w, h);
+        const drawn = withActiveCamera(() => drawOpenpose(ctx, roots, cap.camera, w, h)); // #85 骨架投影取活动机位
         if (!drawn) throw new Error("未找到可用的人物骨架（导入的 GLB 模型无骨架，请用内置人偶）");
         blob = await new Promise<Blob | null>((res) => c2d.toBlob((b) => res(b), "image/png"));
       } else {
@@ -950,7 +981,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         // normal：MeshNormalMaterial 直接给标准法线 RGB，背景取「朝相机」的平面法线(128,128,255)。
         let mat: THREE.Material;
         if (kind === "depth") {
-          const camDist = cam.position.distanceTo(new THREE.Vector3(...sceneRef.current.camera.target));
+          const acRef = sceneRef.current.camera;
+          const camDist = new THREE.Vector3(...acRef.position).distanceTo(new THREE.Vector3(...acRef.target));
           const spread = Math.max(1, camDist * 0.6);
           mat = new THREE.ShaderMaterial({
             uniforms: { uNear: { value: Math.max(0.01, camDist - spread) }, uFar: { value: camDist + spread } },
@@ -965,7 +997,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         }
         try {
           scene.overrideMaterial = mat;
-          cap.gl.render(scene, cam);
+          withActiveCamera(() => cap.gl.render(scene, cam)); // #85 控制图=活动机位构图
           blob = await canvasToBlob(cap.gl);
         } finally {
           // 无论渲染/抓帧成败，都在上传网络等待之前还原可见画面并释放材质，避免视口停在控制图上或泄漏 GPU 材质。
@@ -995,13 +1027,19 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     setGridBusy(preset.label);
     const cam = cap.camera as THREE.PerspectiveCamera;
     const savePos = cam.position.clone();
-    const target = sceneRef.current.camera.target;
+    const saveQuat = cam.quaternion.clone();
+    const saveFov = cam.fov;
+    // #85 宫格基准=活动机位（不再依赖 live 视角），FOV 也用机位的
+    const ac = sceneRef.current.camera;
+    const basePos: Vec3 = [...ac.position] as Vec3;
+    const target = ac.target;
     const tVec = new THREE.Vector3(...target);
+    cam.fov = ac.fov; cam.updateProjectionMatrix();
     const restoreMarkers = hideLightMarkers(); // #78 灯光标记不入宫格成片
     try {
       const urls: string[] = [];
       for (let i = 0; i < preset.angles.length; i++) {
-        const pos = gridCameraPosition(savePos.toArray() as Vec3, target, preset.angles[i]);
+        const pos = gridCameraPosition(basePos, target, preset.angles[i]);
         cam.position.set(...pos); cam.lookAt(tVec); cam.updateMatrixWorld();
         cap.gl.render(cap.scene, cam);
         const blob = await canvasToBlob(cap.gl);
@@ -1011,9 +1049,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         setGridBusy(`${preset.label} ${i + 1}/${preset.angles.length}`);
       }
       restoreMarkers();
-      // 还原机位
-      cam.position.copy(savePos); cam.lookAt(tVec);
-      if (cap.orbit) { cap.orbit.target.set(...target); cap.orbit.update(); }
+
       if (urls.length) {
         updateNodeData(nodeId, { scene: sceneRef.current }, true);
         addGridNodes(urls, { rows: preset.rows, cols: preset.cols, sourcePosition: nodePos, sourceNodeId: nodeId, titlePrefix: "机位", aspectRatio: sceneRef.current.aspectRatio });
@@ -1022,7 +1058,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       }
     } catch (e) {
       toast.error("多机位生成失败：" + (e instanceof Error ? e.message : String(e)));
-    } finally { restoreMarkers(); setGridBusy(null); }
+    } finally {
+      // 还原自由视角（位置/朝向/FOV 全还原；异常路径同样还原）
+      cam.position.copy(savePos); cam.quaternion.copy(saveQuat); cam.fov = saveFov; cam.updateProjectionMatrix();
+      restoreMarkers(); setGridBusy(null);
+    }
   };
 
   const ar = aspectRatioValue(scene.aspectRatio);
@@ -1099,7 +1139,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         {/* 导演视角 / 机位视角 切换（模块2）：自由布局 vs 锁定预览最终取景 */}
         <div className="flex items-center" style={{ padding: 3, borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", marginRight: 4 }}>
           {([["director", "导演视角"], ["camera", "机位视角"]] as const).map(([m, lbl]) => (
-            <button key={m} onClick={() => setViewMode(m)} title={m === "director" ? "自由环绕，用于整体布局" : "锁定当前机位，预览最终构图（所见即截图）"}
+            <button key={m} onClick={() => setViewMode(m)} title={m === "director" ? "独立自由视角：环绕布光摆位，不影响任何机位" : "透过当前机位取景：拖拽即瞄准该机位（松手记录），所见即截图"}
               style={{ fontSize: 11, fontWeight: viewMode === m ? 700 : 500, padding: "3px 9px", borderRadius: 7, border: "none", cursor: "pointer", background: viewMode === m ? "var(--ui-accent, var(--c-accent))" : "transparent", color: viewMode === m ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
           ))}
         </div>
@@ -1547,7 +1587,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   </div>
                 </>
               )}
-              <p style={hint}>在画面里拖拽即转动当前机位；松手自动记录。多机位便于一套场景出多个分镜角度。</p>
+              <p style={hint}>导演视角自由环绕只是「看」，不会改机位；要瞄准请切「机位视角」拖拽取景（松手记录），或直接拖画面中的机位实体/上方滑杆。截图/宫格/控制图永远按当前机位输出。</p>
             </div>
           ) : selectedLight ? (
             <div style={panel}>
