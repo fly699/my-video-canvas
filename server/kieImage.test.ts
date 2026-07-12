@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { KIE_IMAGE_MODELS, isKieImageModel, kieImageSupportsNegative } from "./_core/kieImage";
+import { KIE_IMAGE_MODELS, isKieImageModel, kieImageSupportsNegative, KIE_T2I_TO_I2I, clampAspectTo } from "./_core/kieImage";
 import { IMAGE_GEN_MODELS } from "../shared/types";
 
 describe("kie image model map", () => {
@@ -77,6 +77,49 @@ describe("kie image model map", () => {
     expect(kieImageSupportsNegative("kie_gpt_image_2")).toBe(false);
     expect(kieImageSupportsNegative("poyo_seedream_4")).toBe(false);
     expect(kieImageSupportsNegative(undefined)).toBe(false);
+  });
+
+  // 2026-07 真实故障回归：t2i 模型带参考图时 jobs 分支静默丢参考（画面推演产物与源图无关）。
+  describe("KIE_T2I_TO_I2I 文生图→图生图自动切换映射", () => {
+    it("每对配对：键为无 ref 的 t2i、值为有 ref 的 i2i，且同族同版本", () => {
+      for (const [t2i, i2i] of Object.entries(KIE_T2I_TO_I2I)) {
+        const a = KIE_IMAGE_MODELS[t2i], b = KIE_IMAGE_MODELS[i2i];
+        expect(a, `${t2i} 不在模型表`).toBeTruthy();
+        expect(b, `${i2i} 不在模型表`).toBeTruthy();
+        expect(a.ref, `${t2i} 应为纯文生图`).toBeUndefined();
+        expect(b.ref, `${i2i} 应有参考图字段`).toBeTruthy();
+        expect(a.family).toBe(b.family);
+        expect(a.endpoint ?? "jobs").toBe("jobs"); // 专属端点(flux-kontext/gpt4o)本就支持可选参考图，不参与切换
+      }
+    });
+    it("默认模型 GPT Image 2 必须在映射里（画面推演主通道）", () => {
+      expect(KIE_T2I_TO_I2I.kie_gpt_image_2).toBe("kie_gpt_image_2_i2i");
+    });
+    it("无同版编辑兄弟的模型不得乱配（Seedream 4.5 / Imagen / Grok / Wan / Z-Image）", () => {
+      for (const k of ["kie_seedream_45", "kie_imagen4", "kie_grok_image", "kie_wan27_image", "kie_z_image", "kie_nano_banana_pro", "kie_nano_banana_2"]) {
+        expect(k in KIE_T2I_TO_I2I, `${k} 不应出现在映射`).toBe(false);
+      }
+    });
+  });
+
+  describe("clampAspectTo 比例就近夹取（旧行为一律回落首位 → 21:9 源图被夹成方图）", () => {
+    const A_GPT2 = KIE_IMAGE_MODELS.kie_gpt_image_2.aspects!;
+    it("命中枚举原样返回；未传比例回枚举首位默认", () => {
+      expect(clampAspectTo(A_GPT2, "16:9")).toBe("16:9");
+      expect(clampAspectTo(A_GPT2, undefined)).toBe(A_GPT2[0]);
+    });
+    it("未命中时按数值就近：2.39:1 宽幅 → 21:9；非数值串回首位", () => {
+      expect(clampAspectTo(["1:1", "16:9", "21:9"], "2.39:1")).toBe("21:9");
+      expect(clampAspectTo(["1:1", "3:2"], "16:9")).toBe("3:2"); // GPT Image 1.5 无 16:9 → 就近 3:2 而非 1:1
+      expect(clampAspectTo(["1:1", "3:2"], "garbage")).toBe("1:1");
+    });
+    it("auto 等非数值令牌不参与就近比较（不会把 21:9 就近到 auto）", () => {
+      expect(clampAspectTo(["auto", "1:1", "21:9"], "2.2:1")).toBe("21:9");
+    });
+    it("未传比例且枚举含 auto → 用 auto（i2i 下跟随输入图画幅，防编辑请求被压成首位 1:1）", () => {
+      expect(clampAspectTo(["1:1", "9:16", "auto"], undefined)).toBe("auto"); // nano-banana-edit 场景
+      expect(clampAspectTo(["1:1", "3:2"], undefined)).toBe("1:1");           // 无 auto 仍回首位
+    });
   });
 
   it("有额外必填参数的模型带 fixed 默认（Seedream4.5/GPT quality、Flux resolution）", () => {

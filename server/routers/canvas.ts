@@ -55,7 +55,7 @@ import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { isClaudeBridgeEnabled } from "../_core/claudeBridge";
 import { mergeAiBindings, parseAiBindings, nodeClassMap } from "../_core/workflowAiAnalyze";
 import { generateImage } from "../_core/imageGeneration";
-import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL, getImageEditOp } from "../../shared/imageEdit";
+import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL } from "../../shared/imageEdit";
 import { sliceGridImage } from "../_core/imageGrid";
 import { extractStoryboardFrames } from "../_core/videoStoryboard";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeHunyuan3D, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
@@ -1329,8 +1329,11 @@ export const imageGenRouter = router({
         // spec table (POYO_IMAGE_SPECS) decides which fields each model actually
         // sends. `imageSize` (new ParamDef field) falls back to the legacy
         // `poyoAspectRatio` so old nodes keep working.
-        ...(input.model?.startsWith("poyo_") ? {
-          size: input.imageSize ?? input.poyoAspectRatio,
+        // 「默认模型」（model 未传）同样路由到 Poyo（generateImage 兜底分支），比例/画质
+        // 参数必须一并透传——此前只对 poyo_ 前缀生效，默认路径 size 丢失 → 工具箱推演/
+        // 宫格产物落回上游默认方图（真实故障：1937×812 宽幅源图推演出 960×960）。
+        ...(input.model?.startsWith("poyo_") || !input.model ? {
+          size: input.imageSize ?? input.poyoAspectRatio ?? input.aspectRatio,
           quality: input.poyoQuality,
           resolution: input.imageResolution,
           n: input.imageN,
@@ -3026,11 +3029,13 @@ export const imageEditRouter = router({
           images.push({ url: input.refImageUrl });
           instruction += " The second provided image is a lighting reference: match its lighting direction, color palette and mood, but keep the first image's subject and composition unchanged.";
         }
-        // 目标画幅(扩图/改比例)此前只拼进指令文本，模型多半不真正改比例。改为同时按
-        // 结构化参数下发：size 覆盖 poyo(aspect_ratio)/kie(options.size)，reveAspectRatio
-        // 覆盖 Higgsfield(Reve/Seedream/Flux Pro)。仅 needsAspect 的操作传，其余操作保持
-        // 源图画幅不变。与 imageGen 路由「size + reveAspectRatio 双写」口径一致。
-        const wantsAspect = !!input.aspectRatio && (getImageEditOp(input.operation)?.needsAspect ?? false);
+        // 画幅结构化下发：size 覆盖 poyo(aspect_ratio)/kie(options.size)，reveAspectRatio
+        // 覆盖 Higgsfield(Reve/Seedream/Flux Pro)。needsAspect 操作（扩图/改比例）传用户
+        // 选的目标比例；其余操作客户端现传「源图比例」——不能只依赖模型自觉保画幅：
+        // kie 编辑系未传比例时被 clampAspect 强制回落枚举首位（nano-banana-edit=1:1、
+        // flux-kontext=21:9），原图画幅被静默改掉（2026-07 真实反馈：多功能丢失原图比例）。
+        // 指令文本里的比例措辞仍只对 needsAspect 操作拼入（buildImageEditInstruction 内部按 op 判断）。
+        const wantsAspect = !!input.aspectRatio;
         try {
           const result = await generateImage({
             prompt: instruction,

@@ -685,10 +685,14 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     // 已填字段以摘要行带出；不再返回 null 留白。
     return (
       <div style={{ position: "relative", padding: "16px 14px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, textAlign: "center", background: "linear-gradient(oklch(0.2 0.015 285 / 0.35), transparent)" }}>
-        {kind === "scene"
-          ? <Mountain style={{ width: 26, height: 26, color: "var(--c-t4)", opacity: 0.75 }} />
-          : <User style={{ width: 26, height: 26, color: "var(--c-t4)", opacity: 0.75 }} />}
-        <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>上传参考图，或用「多视角」直接生成</span>
+        {/* 空态引导只在「选中且完全没填内容」时显示——已填字段或未选中时纯属视觉噪音
+            （真实反馈：提示叠在角色描述上方碍眼），此时只展示摘要行。 */}
+        {selected && bits.length === 0 && (<>
+          {kind === "scene"
+            ? <Mountain style={{ width: 26, height: 26, color: "var(--c-t4)", opacity: 0.75 }} />
+            : <User style={{ width: 26, height: 26, color: "var(--c-t4)", opacity: 0.75 }} />}
+          <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>上传参考图，或用「多视角」直接生成</span>
+        </>)}
         {bits.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "left", width: "100%", marginTop: 2 }}>
             {bits.slice(0, 3).map((b, i) => (
