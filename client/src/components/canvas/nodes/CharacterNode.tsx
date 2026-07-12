@@ -101,6 +101,21 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   const { mode: canvasModeVal } = useCanvasMode();
   const isCreativeMode = uiStyle !== "studio" && canvasModeVal === "creative";
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // #76 批1：hero 姓名条就地改名。React Flow 节点内原生 dblclick 委托不可靠且会触发
+  // 画布 d3 缩放（#69 RefThumbRow 同款教训）——改用 onClick 计时自实现双击（320ms 窗口），
+  // 并在根元素挂原生 dblclick stopPropagation+preventDefault 截断 d3 缩放。
+  const [nameEditing, setNameEditing] = useState(false);
+  const lastNameClickRef = useRef(0);
+  const onNameBarClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - lastNameClickRef.current < 320) { setNameEditing(true); lastNameClickRef.current = 0; return; }
+    lastNameClickRef.current = now;
+  }, []);
+  const nameBarRef = useCallback((el: HTMLDivElement | null) => {
+    const e = el as (HTMLDivElement & { _dblGuard?: boolean }) | null;
+    if (e && !e._dblGuard) { e._dblGuard = true; e.addEventListener("dblclick", (ev) => { ev.stopPropagation(); ev.preventDefault(); }); }
+  }, []);
   useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
   useEffect(() => {
     if (!selected) return;
@@ -457,10 +472,42 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     </div>
   );
 
+  // #76 批1：LibTV 角色卡——hero 底部姓名/身份渐变标签条（双击就地改名）
+  const displayName = ((kind === "scene" ? payload.sceneName : payload.name) ?? "").trim();
+  const commitName = (v: string) => { update(kind === "scene" ? "sceneName" : "name", v.trim()); setNameEditing(false); };
+  const nameBar = (
+    <div
+      ref={nameBarRef}
+      className="nodrag absolute left-0 right-0 bottom-0 z-10 flex items-center"
+      onClick={onNameBarClick}
+      onDoubleClick={(e) => e.stopPropagation()}
+      title="双击改名"
+      style={{ padding: "20px 12px 8px", gap: 6, background: "linear-gradient(transparent, oklch(0 0 0 / 0.74))", cursor: "text" }}
+    >
+      {nameEditing ? (
+        <input
+          autoFocus
+          defaultValue={displayName}
+          placeholder={kind === "scene" ? "场景名…" : "角色名…"}
+          onBlur={(e) => commitName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") commitName((e.target as HTMLInputElement).value); if (e.key === "Escape") setNameEditing(false); }}
+          onClick={(e) => e.stopPropagation()}
+          style={{ flex: 1, minWidth: 0, height: 24, padding: "0 8px", borderRadius: 6, fontSize: 12.5, fontWeight: 700, background: "oklch(0 0 0 / 0.5)", border: `1px solid ${accentA(0.5)}`, color: "#fff", outline: "none" }}
+        />
+      ) : (
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "#fff", textShadow: "0 1px 4px oklch(0 0 0 / 0.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {displayName || (kind === "scene" ? "未命名场景" : "未命名角色")}
+        </span>
+      )}
+      <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 7px", borderRadius: 99, fontSize: 9.5, fontWeight: 700, background: accentA(0.28), border: `1px solid ${accentA(0.5)}`, color: "#fff" }}>
+        {kind === "scene" ? "场景" : "人物"}
+      </span>
+    </div>
+  );
+
   const heroMedia = payload.referenceImageUrl ? (
     <div className="relative" style={{ width: "100%" }}>
-      {/* #74：随预览自适应——不再 cover 裁切/240 封顶，按原图比例铺满宽度，
-          框体高度跟随图片；需要更大可直接拖节点缩放（resizable）。 */}
+      {/* #74：随预览自适应——按原图比例铺满宽度，框体高度跟随图片（resizable 可再拉大） */}
       <MediaImage
         src={payload.referenceImageUrl}
         alt="参考图"
@@ -471,69 +518,49 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
           style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
       )}
+      {/* 姓名条仅创意模式——studio 选中态 hero 可见（CSS 只藏未选中态），不得漏入 */}
+      {isCreativeMode && nameBar}
     </div>
   ) : (() => {
     // 无参考图：用紧凑摘要卡作折叠预览（角色/场景关键字段），使节点收缩后高度与提示词
     // 节点相当，而不是被 minHeight 撑高、依旧显示整张表单。
     const bits = [payload.role, payload.appearance, payload.outfit, payload.locationType, payload.atmosphere, payload.sceneDescription]
       .map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean);
-    if (bits.length === 0) return null; // 完全空 → 不收缩（提示用户填写）
+    // 非创意（studio 选中态会渲染 hero）：维持旧摘要卡口径，空则不渲染
+    if (!isCreativeMode) {
+      if (bits.length === 0) return null;
+      return (
+        <div style={{ padding: "9px 14px 11px", display: "flex", flexDirection: "column", gap: 3, textAlign: "left" }}>
+          {bits.slice(0, 3).map((b, i) => (
+            <div key={i} style={{ fontSize: 11.5, lineHeight: 1.5, color: i === 0 ? "var(--c-t2)" : "var(--c-t3)", fontWeight: i === 0 ? 600 : 400, display: "-webkit-box", WebkitLineClamp: i === 0 ? 1 : 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{b}</div>
+          ))}
+        </div>
+      );
+    }
+    // #76 批1：LibTV 式剪影占位——无图也呈现「角色卡」形态（图标 + 名字 + 上传/生成提示），
+    // 已填字段以摘要行带出；不再返回 null 留白。
     return (
-      <div style={{ padding: "9px 14px 11px", display: "flex", flexDirection: "column", gap: 3, textAlign: "left" }}>
-        {bits.slice(0, 3).map((b, i) => (
-          <div key={i} style={{ fontSize: 11.5, lineHeight: 1.5, color: i === 0 ? "var(--c-t2)" : "var(--c-t3)", fontWeight: i === 0 ? 600 : 400, display: "-webkit-box", WebkitLineClamp: i === 0 ? 1 : 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{b}</div>
-        ))}
+      <div style={{ position: "relative", padding: "16px 14px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, textAlign: "center", background: "linear-gradient(oklch(0.2 0.015 285 / 0.35), transparent)" }}>
+        {kind === "scene"
+          ? <Mountain style={{ width: 26, height: 26, color: "var(--c-t4)", opacity: 0.75 }} />
+          : <User style={{ width: 26, height: 26, color: "var(--c-t4)", opacity: 0.75 }} />}
+        <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>上传参考图，或用「多视角」直接生成</span>
+        {bits.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "left", width: "100%", marginTop: 2 }}>
+            {bits.slice(0, 3).map((b, i) => (
+              <div key={i} style={{ fontSize: 11.5, lineHeight: 1.5, color: i === 0 ? "var(--c-t2)" : "var(--c-t3)", fontWeight: i === 0 ? 600 : 400, display: "-webkit-box", WebkitLineClamp: i === 0 ? 1 : 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{b}</div>
+            ))}
+          </div>
+        )}
+        {nameBar}
       </div>
     );
   })();
 
-  return (
+  // #76 批1：完整资料表单（单一来源）——工作室/专业渲染在卡体内；创意模式渲染在
+  // 输入条下方的浮动资料面板里（卡体保持纯「角色卡」形态）。
+  const formBody = (
     <>
-    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={isCreativeMode ? 90 : 160} resizable heroMedia={heroMedia}
-      onHeaderHoverChange={docks.onHeaderHoverChange}
-      leftDock={
-        <>
-          {refStrip.strip}
-          <PromptDock
-            open={docks.promptOpen}
-            text={charPromptText}
-            label="角色提示词"
-            note="注入下游提示词"
-            accent={accent}
-            onClose={() => docks.setPromptOpen(false)}
-            onHoverChange={docks.onDockHoverChange}
-            onPin={docks.pinPrompt}
-          />
-        </>
-      }
-      onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], referenceStorageKey: undefined, ...(urls.length > 1 ? { additionalImageUrls: urls.slice(1, 1 + MAX_ADDITIONAL_IMAGES) } : {}) })}>
-      {consistencyOpen && consistencyResult && (
-        <CharacterConsistencyPanel
-          characterName={payload.name || payload.sceneName}
-          sceneNodeIds={consistencyScenes.ids}
-          imageUrls={consistencyScenes.urls}
-          result={consistencyResult}
-          onClose={() => setConsistencyOpen(false)}
-        />
-      )}
-      {recognizeRows && (
-        <CharacterRecognitionPanel
-          kind={kind}
-          rows={recognizeRows}
-          onApply={(patch) => {
-            if (Object.keys(patch).length > 0) { updateNodeData(id, patch); toast.success(`已填充 ${Object.keys(patch).length} 个字段`); }
-            setRecognizeRows(null);
-          }}
-          onClose={() => setRecognizeRows(null)}
-        />
-      )}
-      <div className="flex flex-col" style={isCreativeMode && !advancedOpen ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
-        {/* 隐藏文件输入常驻收起区外——创意收起时输入条「参考图」按钮仍可触发上传
-            （曾因 input 随表单一起不渲染导致按钮无效，实测逮到后修复） */}
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-        {/* LibTV（创意模式）：完整表单仅在「高级」展开时渲染；收起态只剩 hero 小卡 */}
-        {!(isCreativeMode && !advancedOpen) && (<>
-
         {/* Kind toggle */}
         <div
           className="flex gap-0.5 p-0.5 rounded-lg"
@@ -980,8 +1007,54 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             />
           </div>
         )}
+    </>
+  );
 
-      </>)}
+  return (
+    <>
+    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={isCreativeMode ? 72 : 160} resizable heroMedia={heroMedia}
+      onHeaderHoverChange={docks.onHeaderHoverChange}
+      leftDock={
+        <>
+          {refStrip.strip}
+          <PromptDock
+            open={docks.promptOpen}
+            text={charPromptText}
+            label="角色提示词"
+            note="注入下游提示词"
+            accent={accent}
+            onClose={() => docks.setPromptOpen(false)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinPrompt}
+          />
+        </>
+      }
+      onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], referenceStorageKey: undefined, ...(urls.length > 1 ? { additionalImageUrls: urls.slice(1, 1 + MAX_ADDITIONAL_IMAGES) } : {}) })}>
+      {consistencyOpen && consistencyResult && (
+        <CharacterConsistencyPanel
+          characterName={payload.name || payload.sceneName}
+          sceneNodeIds={consistencyScenes.ids}
+          imageUrls={consistencyScenes.urls}
+          result={consistencyResult}
+          onClose={() => setConsistencyOpen(false)}
+        />
+      )}
+      {recognizeRows && (
+        <CharacterRecognitionPanel
+          kind={kind}
+          rows={recognizeRows}
+          onApply={(patch) => {
+            if (Object.keys(patch).length > 0) { updateNodeData(id, patch); toast.success(`已填充 ${Object.keys(patch).length} 个字段`); }
+            setRecognizeRows(null);
+          }}
+          onClose={() => setRecognizeRows(null)}
+        />
+      )}
+      <div className="flex flex-col" style={isCreativeMode ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
+        {/* 隐藏文件输入常驻卡体（不随表单/浮层卸载）——创意态输入条「参考图」按钮仍可触发上传 */}
+        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+        {/* #76 批1：创意模式下表单不再进卡体（改挂输入条下浮动资料面板）；工作室/专业保持原样 */}
+        {!isCreativeMode && formBody}
       </div>
     </BaseNode>
     {/* ── LibTV（创意模式）就地输入条：类别 / 参考图 / 识别 / 多视角 ‖ 姓名 / 高级 / 存库 ── */}
@@ -1011,7 +1084,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           <button
             className="nodrag"
             onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
-            title={(advancedOpen ? "收起完整资料表单" : "展开完整资料表单（职业/外貌/性格/服装等）") + " · 快捷键 A"}
+            title={(advancedOpen ? "收起资料面板" : "展开资料面板（职业/外貌/性格/服装等，浮现于输入条下方）") + " · 快捷键 A"}
             style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
           >
             <SlidersHorizontal size={12} /> 高级
@@ -1025,6 +1098,13 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             <Save size={12} /> 存库
           </button>
         </div>
+        {/* #76 批1：下浮动资料面板——「高级」展开时表单浮现在输入条下方（内部滚动），
+            卡体不再被表单撑开；有状态挂载物（隐藏上传 input、识别/一致性面板）常驻卡体不受影响 */}
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {formBody}
+          </div>
+        )}
       </InlineGenBar>
     )}
     </>
