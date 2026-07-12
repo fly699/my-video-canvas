@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
-import { Zap, Loader2, Download, RotateCcw } from "lucide-react";
+import { Zap, Loader2, Download, RotateCcw, Clapperboard } from "lucide-react";
 
 interface Props {
   id: string;
@@ -78,6 +78,22 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
     onError: (err) => { update({ status: "failed", errorMessage: err.message }); toast.error("智能剪辑失败：" + err.message); },
   });
 
+
+  // #100 场景切点检测：本地 ffmpeg 找视觉切换点，作为剪辑边界吸附（与镜界保护同通道）。
+  const detectMutation = trpc.clip.detectScenes.useMutation({
+    onSuccess: (r) => {
+      update({ sceneBoundaries: r.boundaries });
+      toast.success(r.boundaries.length ? `检测到 ${r.boundaries.length} 个场景切点，剪辑边界将优先吸附` : "未检测到明显场景切换（画面连续），将按语义自由剪辑");
+    },
+    onError: (err) => toast.error("场景检测失败：" + err.message),
+  });
+  const handleDetectScenes = () => {
+    if (detectMutation.isPending) return;
+    const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
+    if (!videoUrl) { toast.error("请先连接视频节点或填写视频 URL"); return; }
+    detectMutation.mutate({ inputUrl: videoUrl, projectId: data.projectId });
+  };
+
   // 镜界保护：上游是「已装配并完成合并」的成片、且本次剪辑源就是该成片时，
   // 把各段精确起点（segStarts）作为镜头边界传给智能剪辑——剪辑边界优先落在切点上
   // （LLM 提示 + 服务端 ±0.5s 确定性吸附），不在镜头中间起切。
@@ -108,7 +124,11 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
       aggressiveness: payload.aggressiveness ?? "medium",
       // 服务端要求 5-3600；<5 视为「自动判定」不下发，避免被 zod 拒。
       targetDuration: typeof payload.targetDuration === "number" && payload.targetDuration >= 5 ? Math.min(3600, payload.targetDuration) : undefined,
-      shotBoundaries: shotBoundariesFor(videoUrl),
+      // #100 镜界（装配成片 segStarts）与场景检测切点合并去重（上限 60，服务端 zod 同限）
+      shotBoundaries: (() => {
+        const merged = Array.from(new Set([...(shotBoundariesFor(videoUrl) ?? []), ...(payload.sceneBoundaries ?? [])])).sort((a, b) => a - b).slice(0, 60);
+        return merged.length ? merged : undefined;
+      })(),
       // #73：此前不传 model 暗走服务端默认——随宽幅弹窗 AI 工具偏好（含自建/桥接）
       ...(loadAiToolModel() ? { model: loadAiToolModel() } : {}),
     });
@@ -128,6 +148,21 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
             onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
         </div>
+        {/* #100 场景切点检测行 */}
+        <div className="flex items-center gap-2">
+          <button onClick={handleDetectScenes} disabled={detectMutation.isPending || isProcessing}
+            className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10.5px] font-semibold transition-all flex-shrink-0"
+            style={{ background: detectMutation.isPending ? "var(--c-surface)" : accentA(0.12), border: `1px solid ${detectMutation.isPending ? BORDER_DEFAULT : accentA(0.4)}`, color: detectMutation.isPending || isProcessing ? "var(--c-t4)" : accent, cursor: detectMutation.isPending || isProcessing ? "not-allowed" : "pointer" }}>
+            {detectMutation.isPending ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Clapperboard style={{ width: 11, height: 11 }} />}
+            检测场景切点
+          </button>
+          <span style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4 }}>
+            {payload.sceneBoundaries?.length
+              ? `已检测 ${payload.sceneBoundaries.length} 个视觉切点——剪辑边界将优先吸附，不在镜头中间起切`
+              : "ffmpeg 找视觉场景切换点 → 剪辑边界吸附（免费，本地执行）"}
+          </span>
+        </div>
+
 
         {/* Aggressiveness */}
         <div>

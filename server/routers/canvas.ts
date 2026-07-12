@@ -68,7 +68,7 @@ import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio"
 import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, extractFrame, extractAudio, concatAudioSegments, processAudioClip } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, detectSceneChanges, extractFrame, extractAudio, concatAudioSegments, processAudioClip } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -2865,6 +2865,20 @@ export const clipRouter = router({
       return { duration };
     }),
 
+  // #100 场景切点检测：本地 ffmpeg（无第三方 AI）→ 仅项目门控 + SSRF 守卫（对齐 imageGrid.slice）。
+  detectScenes: protectedProcedure
+    .input(z.object({
+      inputUrl: mediaUrlSchema,
+      threshold: z.number().min(0.1).max(0.9).default(0.3),
+      projectId: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.inputUrl);
+      const boundaries = await detectSceneChanges(input.inputUrl, input.threshold);
+      return { boundaries };
+    }),
+
   smartCut: protectedProcedure
     .input(z.object({
       inputUrl: mediaUrlSchema,
@@ -3300,12 +3314,12 @@ export const overlayRouter = router({
         mode: z.enum(["watermark", "pip", "color_correction"]),
         // Watermark
         overlayImageUrl: mediaUrlSchema.optional(),
-        overlayPosition: z.enum(["top-left", "top-right", "bottom-left", "bottom-right", "center"]).optional(),
+        overlayPosition: z.enum(["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"]).optional(),
         overlayScale: z.number().min(0.05).max(1.0).optional(),
         overlayOpacity: z.number().min(0).max(1).optional(),
         // PiP
         pipVideoUrl: mediaUrlSchema.optional(),
-        pipPosition: z.enum(["top-left", "top-right", "bottom-left", "bottom-right"]).optional(),
+        pipPosition: z.enum(["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"]).optional(),
         pipScale: z.number().min(0.1).max(0.5).optional(),
         // Color correction
         brightness: z.number().min(-1).max(1).optional(),

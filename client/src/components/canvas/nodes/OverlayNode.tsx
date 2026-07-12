@@ -53,6 +53,50 @@ const labelStyle: React.CSSProperties = {
 
 const accentColor = "oklch(0.65 0.18 30)";
 
+
+// ── #100 九宫格位置选择 + 实时预览 ──────────────────────────────────────────────
+const POS_ROWS = [
+  ["top-left", "top-center", "top-right"],
+  ["middle-left", "center", "middle-right"],
+  ["bottom-left", "bottom-center", "bottom-right"],
+] as const;
+type PosKey = (typeof POS_ROWS)[number][number];
+const POS_LABEL: Record<PosKey, string> = {
+  "top-left": "左上", "top-center": "上中", "top-right": "右上",
+  "middle-left": "左中", "center": "居中", "middle-right": "右中",
+  "bottom-left": "左下", "bottom-center": "下中", "bottom-right": "右下",
+};
+/** 预览层的近似定位（与服务端 ffmpeg posMap 同布局，边距按百分比近似）。 */
+const PREVIEW_POS: Record<PosKey, React.CSSProperties> = {
+  "top-left": { top: "4%", left: "3%" },
+  "top-center": { top: "4%", left: "50%", transform: "translateX(-50%)" },
+  "top-right": { top: "4%", right: "3%" },
+  "middle-left": { top: "50%", left: "3%", transform: "translateY(-50%)" },
+  "center": { top: "50%", left: "50%", transform: "translate(-50%, -50%)" },
+  "middle-right": { top: "50%", right: "3%", transform: "translateY(-50%)" },
+  "bottom-left": { bottom: "4%", left: "3%" },
+  "bottom-center": { bottom: "4%", left: "50%", transform: "translateX(-50%)" },
+  "bottom-right": { bottom: "4%", right: "3%" },
+};
+function PosGrid({ value, onChange, disabled }: { value: string; onChange: (v: PosKey) => void; disabled?: boolean }) {
+  return (
+    <div className="nodrag" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, width: 96 }}>
+      {POS_ROWS.flat().map((k) => {
+        const active = value === k;
+        return (
+          <button key={k} onClick={() => !disabled && onChange(k)} title={POS_LABEL[k]} disabled={disabled}
+            style={{ height: 22, borderRadius: 5, cursor: disabled ? "not-allowed" : "pointer",
+              background: active ? `${accentColor}2a` : "var(--c-input)",
+              border: `1px solid ${active ? accentColor : "var(--c-bd2)"}`,
+              display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ width: 5, height: 5, borderRadius: 2, background: active ? accentColor : "var(--c-t4)" }} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Props) {
   const { updateNodeData, edges, nodes } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, edges: s.edges, nodes: s.nodes })));
   const payload = data.payload;
@@ -168,6 +212,29 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
           </select>
         </div>
 
+        {/* #100 实时预览：底图 + 按当前 位置/缩放/透明度 近似定位的叠加层（纯客户端，零开销） */}
+        {(mode === "watermark" || mode === "pip") && (
+          <div className="flex-shrink-0">
+            <label style={labelStyle}>实时预览（近似位置 / 大小 / 透明度）</label>
+            <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", background: "#0d0f14", borderRadius: 8, overflow: "hidden", border: "1px solid var(--c-bd1)" }}>
+              {effectiveInputUrl ? (
+                <video src={mediaFetchUrl(effectiveInputUrl)} muted preload="metadata" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+              ) : (
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "var(--c-t4)" }}>连接主视频后显示底图</div>
+              )}
+              {mode === "watermark" && payload.overlayImageUrl?.trim() && (
+                <img src={mediaFetchUrl(payload.overlayImageUrl)} alt="水印预览"
+                  style={{ position: "absolute", width: `${(payload.overlayScale ?? 0.2) * 100}%`, opacity: payload.overlayOpacity ?? 1, pointerEvents: "none", ...PREVIEW_POS[(payload.overlayPosition ?? "bottom-right") as PosKey] }} />
+              )}
+              {mode === "pip" && effectivePipUrl && (
+                <video src={mediaFetchUrl(effectivePipUrl)} muted preload="metadata"
+                  style={{ position: "absolute", width: `${(payload.pipScale ?? 0.25) * 100}%`, border: "1px solid oklch(1 0 0 / 0.4)", borderRadius: 3, pointerEvents: "none", ...PREVIEW_POS[(payload.pipPosition ?? "bottom-right") as PosKey] }} />
+              )}
+            </div>
+          </div>
+        )}
+
+
         {/* Input video URL */}
         <div className="flex-shrink-0">
           <label style={labelStyle}>
@@ -208,22 +275,8 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
             </div>
             <div className="grid grid-cols-2 gap-2 flex-shrink-0">
               <div>
-                <label style={labelStyle}>位置</label>
-                <select
-                  value={payload.overlayPosition ?? "bottom-right"}
-                  onChange={(e) => handleChange("overlayPosition", e.target.value)}
-                  disabled={isProcessing}
-                  className="nodrag"
-                  style={{ ...fieldStyle, cursor: "pointer", opacity: isProcessing ? 0.5 : 1 }}
-                  onFocus={onFocusMid}
-                  onBlur={onBlurDefault}
-                >
-                  <option value="top-left">左上</option>
-                  <option value="top-right">右上</option>
-                  <option value="bottom-left">左下</option>
-                  <option value="bottom-right">右下</option>
-                  <option value="center">居中</option>
-                </select>
+                <label style={labelStyle}>位置（九宫格）</label>
+                <PosGrid value={payload.overlayPosition ?? "bottom-right"} onChange={(v) => handleChange("overlayPosition", v)} disabled={isProcessing} />
               </div>
               <div>
                 <label style={labelStyle}>缩放 ({Math.round((payload.overlayScale ?? 0.2) * 100)}%)</label>
@@ -298,21 +351,8 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
             </div>
             <div className="grid grid-cols-2 gap-2 flex-shrink-0">
               <div>
-                <label style={labelStyle}>位置</label>
-                <select
-                  value={payload.pipPosition ?? "bottom-right"}
-                  onChange={(e) => handleChange("pipPosition", e.target.value)}
-                  disabled={isProcessing}
-                  className="nodrag"
-                  style={{ ...fieldStyle, cursor: "pointer", opacity: isProcessing ? 0.5 : 1 }}
-                  onFocus={onFocusMid}
-                  onBlur={onBlurDefault}
-                >
-                  <option value="top-left">左上</option>
-                  <option value="top-right">右上</option>
-                  <option value="bottom-left">左下</option>
-                  <option value="bottom-right">右下</option>
-                </select>
+                <label style={labelStyle}>位置（九宫格）</label>
+                <PosGrid value={payload.pipPosition ?? "bottom-right"} onChange={(v) => handleChange("pipPosition", v)} disabled={isProcessing} />
               </div>
               <div>
                 <label style={labelStyle}>大小 ({Math.round((payload.pipScale ?? 0.25) * 100)}%)</label>
