@@ -675,6 +675,7 @@ export const adminRouter = router({
         strict: z.boolean().default(true),
         permissionMode: z.string().trim().max(40).default(""),
         allowedTools: z.string().trim().max(2000).default(""),
+        workspace: z.boolean().default(false),
       }))
       .mutation(async ({ input }) => {
         const mcpConfig = input.mcpConfig.trim();
@@ -686,7 +687,7 @@ export const adminRouter = router({
           const servers = (parsed as { mcpServers?: unknown } | null)?.mcpServers;
           if (!servers || typeof servers !== "object") throw new TRPCError({ code: "BAD_REQUEST", message: "MCP 配置缺少 mcpServers 对象" });
         }
-        await db.setBridgeMcpConfig({ mcpConfig, skills: input.skills, strict: input.strict, permissionMode: input.permissionMode, allowedTools: input.allowedTools });
+        await db.setBridgeMcpConfig({ mcpConfig, skills: input.skills, strict: input.strict, permissionMode: input.permissionMode, allowedTools: input.allowedTools, workspace: input.workspace });
         await reloadBridgeMcpConfig(); // 立即热更新桥接增强参数缓存
         return { success: true };
       }),

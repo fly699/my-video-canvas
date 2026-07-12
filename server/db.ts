@@ -1689,6 +1689,8 @@ export function normalizeBridgeMcp(v: unknown): BridgeMcpConfig {
     strict: o.strict === false ? false : true,
     permissionMode: typeof o.permissionMode === "string" ? o.permissionMode : "",
     allowedTools: typeof o.allowedTools === "string" ? o.allowedTools : "",
+    // 桥接临时工作区（#88）：缺省关闭——旧行没有该字段时保持纯文本安全基线。
+    workspace: o.workspace === true,
   };
 }
 

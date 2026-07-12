@@ -14,6 +14,7 @@ export function BridgeMcpSection() {
   const [mcpConfig, setMcpConfig] = useState("");
   const [skills, setSkills] = useState(false);
   const [strict, setStrict] = useState(true);
+  const [workspace, setWorkspace] = useState(false);
   const [permissionMode, setPermissionMode] = useState("");
   const [allowedTools, setAllowedTools] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -36,6 +37,7 @@ export function BridgeMcpSection() {
       setMcpConfig(q.data.mcpConfig ?? "");
       setSkills(!!q.data.skills);
       setStrict(q.data.strict !== false);
+      setWorkspace(q.data.workspace === true);
       setPermissionMode(q.data.permissionMode ?? "");
       setAllowedTools(q.data.allowedTools ?? "");
     }
@@ -59,7 +61,7 @@ export function BridgeMcpSection() {
     const t = mcpConfig.trim();
     if (t.startsWith("{") && preview.error) { toast.error("MCP 配置" + preview.error + "，请修正后再保存"); return; }
     try {
-      await saveMut.mutateAsync({ mcpConfig: t, skills, strict, permissionMode: permissionMode.trim(), allowedTools: allowedTools.trim() });
+      await saveMut.mutateAsync({ mcpConfig: t, skills, strict, permissionMode: permissionMode.trim(), allowedTools: allowedTools.trim(), workspace });
       await utils.admin.models.getBridgeMcp.invalidate();
       toast.success("已保存桥接 MCP 配置，下一次桥接请求即生效（无需重启）");
     } catch (e) {
@@ -171,6 +173,7 @@ export function BridgeMcpSection() {
 
       {/* 开关 */}
       {toggleRow(skills, setSkills, "启用技能（Skill 工具）", "对应 CLAUDE_BRIDGE_SKILLS=1，放行 Skill 工具让桥接能跑技能。")}
+      {toggleRow(workspace, setWorkspace, "临时文件工作区（生成文件自动回传聊天）", "开启后每次桥接调用获得一个独立临时文件夹的写权限（经 filesystem MCP 强制目录白名单，其余路径均拒绝）：模型把生成文件写进去，调用结束系统自动收集（扩展名白名单 · 单文件 20MB · 总量 100MB · 最多 12 个）上传到存储，并把下载链接附在回复末尾，随后即焚该目录。首次调用需联网拉取 @modelcontextprotocol/server-filesystem（或预先 npm i -g）。⚠️ 等于给持有 bridge key 的调用方开放该沙箱写入，公网可达部署请确认 Key 强度。")}
       {toggleRow(strict, setStrict, "严格模式（--strict-mcp-config）", "默认开：只认上面这份配置、忽略 claude 自带（~/.claude）里的 MCP。用 OAuth 型 MCP（如 higgsfield，靠 claude mcp add/login 把凭证存在 claude 自带配置里）时必须【关闭】才能合并进来；关闭后记得在下面 allowedTools 手动放行它的 mcp__<名>。")}
 
       {/* 高级项（折叠） */}

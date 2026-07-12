@@ -13,12 +13,13 @@ function envConfig(): BridgeMcpConfig {
     strict: process.env.CLAUDE_BRIDGE_MCP_STRICT !== "0",
     permissionMode: process.env.CLAUDE_BRIDGE_PERMISSION_MODE?.trim() ?? "",
     allowedTools: process.env.CLAUDE_BRIDGE_ALLOWED_TOOLS?.trim() ?? "",
+    workspace: process.env.CLAUDE_BRIDGE_WORKSPACE === "1",
   };
 }
 
 /** DB 里是否存在「实质配置」——任一有意义字段被设过就用 DB，否则回退 env。 */
 function hasMeaningfulConfig(c: BridgeMcpConfig): boolean {
-  return !!(c.mcpConfig.trim() || c.skills || c.allowedTools.trim() || c.permissionMode.trim());
+  return !!(c.mcpConfig.trim() || c.skills || c.allowedTools.trim() || c.permissionMode.trim() || c.workspace);
 }
 
 let cache: BridgeMcpConfig | null = null;
