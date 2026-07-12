@@ -257,6 +257,8 @@ export interface StoryboardNodeData {
   model3d?: Model3DResult;
   /** 手动多参考图管理（与 ImageGenNode 同款；[0].url 与 referenceImageUrl 镜像）。 */
   referenceImages?: ReferenceImage[];
+  /** LibTV「标记」常驻元素引用 chips（与图像/视频节点同款，token 落在 promptText 里）。 */
+  markRefs?: MarkRef[];
   /** kie 图像模型的通用比例（服务端按模型枚举夹取）。 */
   aspectRatio?: string;
   /** kie 分辨率档（如 GPT Image 2 的 1K/2K/4K，逐档计价；服务端按模型 resOptions 夹取）。 */
