@@ -1587,11 +1587,14 @@ button:active:not(:disabled) {
 :root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"][data-has-result="true"] > div > *:not(.node-hero-media) {
   display: none !important;
 }
-/* 预览框即卡片 */
+/* 预览框即卡片。必须自带卡体底色：创意模式视频预览懒加载（悬停才拉流、无 poster），
+   媒体未加载时若无底色，透明壳 + 空视频 = 节点整体隐身（用户实测「节点框看不见」）。
+   描边也提亮一档，保证近黑画布上始终可辨。 */
 :root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"][data-has-result="true"] .node-hero-media {
   border-radius: 12px !important;
   overflow: hidden !important;
-  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35) !important;
+  background: var(--c-node-bg) !important;
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.16), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35) !important;
 }
 :root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"][data-has-result="true"] .node-hero-media img,
 :root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"][data-has-result="true"] .node-hero-media video,
