@@ -7,7 +7,7 @@
 // 工具、不 --add-dir、cwd 为临时目录，比代码任务安全得多。
 import type { Express, Request, Response } from "express";
 import { spawn } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveClaudeSpawn, resolveClaudeBin } from "./superAgent/claudeProcess";
@@ -15,6 +15,11 @@ import { isGptLocalModel, codexModelArg, runCodexText } from "./codexBridge";
 import { isGrokLocalModel, grokModelArg, runGrokText } from "./grokBridge";
 import { collectImageUrls, collectFileUrls, resolveImages, docTextFromFileUrls, buildClaudeStreamJsonInput, parseClaudeStreamJsonResult } from "./bridgeAttachments";
 import { getBridgeMcpConfig } from "./bridgeMcp";
+import { storagePut } from "../storage";
+import {
+  createCallWorkspace, cleanupCallWorkspace, sweepStaleWorkspaces,
+  mergeWorkspaceMcp, workspacePromptHint, collectWorkspaceFiles, safeStorageName, formatFilesReply,
+} from "./bridgeWorkspace";
 
 type OAContent = string | Array<string | { type?: string; text?: string }>;
 export interface OAMessage { role?: string; content?: OAContent }
@@ -162,14 +167,27 @@ export function buildBridgeAgenticArgs(opts: {
 }
 
 /** 读配置（DB 快照优先、env 兜底）→ 桥接增强参数（内联 MCP JSON 落临时文件；文件路径读出取服务器名）。空数组=纯文本。 */
-export function resolveBridgeAgenticArgs(): string[] {
+export function resolveBridgeAgenticArgs(workspaceDir?: string | null): string[] {
   const cfg = getBridgeMcpConfig(); // 管理后台 DB 配置（同步快照，30s TTL 后台刷新）；无则回退 CLAUDE_BRIDGE_* env
   const rawMcp = cfg.mcpConfig.trim();
   const skills = cfg.skills;
-  if (!rawMcp && !skills) return [];
+  if (!rawMcp && !skills && !workspaceDir) return [];
   let mcpConfigArg: string | null = null;
   let serverNames: string[] = [];
-  if (rawMcp) {
+  if (workspaceDir) {
+    // #88 临时工作区：把范围锁死到本次调用子目录的 filesystem MCP 合并进管理员配置。
+    // 管理员配置若是文件路径，先读出文本再合并（读失败 → 仅工作区服务器）。
+    // 合并结果落【每调用唯一】的临时文件（<wsDir>.mcp.json，工作区目录的兄弟文件——
+    // 不能放进工作区内，否则会被当成生成文件收集/可被模型改写）。
+    let adminInline = rawMcp;
+    if (rawMcp && !rawMcp.startsWith("{")) {
+      try { adminInline = readFileSync(rawMcp, "utf8"); } catch { adminInline = ""; }
+    }
+    const merged = mergeWorkspaceMcp(adminInline, workspaceDir);
+    serverNames = merged.serverNames;
+    try { const pth = workspaceDir + ".mcp.json"; writeFileSync(pth, merged.json); mcpConfigArg = pth; }
+    catch { mcpConfigArg = merged.json; }
+  } else if (rawMcp) {
     if (rawMcp.startsWith("{")) {
       // 内联 JSON → 落临时文件（部分 claude 版本 --mcp-config 只认路径）
       serverNames = mcpServerNames(rawMcp);
@@ -230,14 +248,16 @@ function spawnClaudeCollect(
 /** 跑一次无头 claude 拿回复。model 为 null 时不传 --model（订阅默认）；env 继承 CLAUDE_CODE_OAUTH_TOKEN。
  *  纯文本走 `--output-format json`（快）；检测到图片附件时改走 `--input-format stream-json`
  *  内联 base64 图片块（真机实测可用，无需给工具、不落磁盘）；文档一律解析成文本追加进提示词。 */
-export async function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null }): Promise<{ text: string; isError: boolean }> {
+export async function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null; workspaceDir?: string | null }): Promise<{ text: string; isError: boolean }> {
   let prompt = messagesToPrompt(opts.messages);
   const docText = await docTextFromFileUrls(collectFileUrls(opts.messages));
   if (docText) prompt = [prompt, docText].filter(Boolean).join("\n\n");
+  // #88 工作区提示：告诉模型唯一可写位置与交付方式（系统会自动回传链接）。
+  if (opts.workspaceDir) prompt = [prompt, workspacePromptHint(opts.workspaceDir)].filter(Boolean).join("\n\n");
   const images = await resolveImages(collectImageUrls(opts.messages));
   const modelArgs = opts.model ? ["--model", opts.model] : [];
   // 技能/MCP 增强（默认空数组 = 纯文本，行为不变）。两条路径都带上。
-  const agentic = resolveBridgeAgenticArgs();
+  const agentic = resolveBridgeAgenticArgs(opts.workspaceDir);
 
   if (images.length) {
     // 图片路径：stream-json 输入必须配 stream-json 输出（CLI 强制），末尾 result 行取答案。
@@ -257,6 +277,14 @@ export async function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: nu
     if ((!parsed.text || parsed.isError) && err.trim()) return { text: parsed.text || err.trim().slice(-800), isError: true };
     return parsed;
   });
+}
+
+// #88 启动清扫：进程首次用到工作区时清一次上回异常退出的残留（正常路径即焚，这里只兜异常）。
+let _swept = false;
+function sweepWorkspacesOnce(): void {
+  if (_swept) return;
+  _swept = true;
+  try { const n = sweepStaleWorkspaces(); if (n) console.log(`[BridgeWorkspace] 启动清扫移除 ${n} 个残留目录`); } catch { /* 忽略 */ }
 }
 
 /** 注册 OpenAI 兼容桥接端点：POST /api/claude-bridge/v1/chat/completions。 */
@@ -281,11 +309,42 @@ export function registerClaudeBridge(app: Express): void {
       // 会被 SIGKILL、外层 fetch 随后 abort → 用户见「aborted due to timeout」）。可用
       // CLAUDE_BRIDGE_TIMEOUT_MS 覆盖；须 < llm.ts 自建 fetch 超时（默认 300s），让桥接干净报错先出。
       const bridgeMs = bridgeTimeoutMs();
-      const { text, isError } = grok
-        ? await runGrokText({ messages, timeoutMs: bridgeMs, model: grokModelArg(req.body?.model) })
-        : gpt
-        ? await runCodexText({ messages, timeoutMs: bridgeMs, model: codexModelArg(req.body?.model) })
-        : await runClaudeText({ messages, timeoutMs: bridgeMs, model: bridgeModelArg(req.body?.model) });
+      // #88 临时工作区（仅 Claude 分支；管理后台开关，默认关）：为本次调用建独立子目录，
+      // 经 filesystem MCP 授予【仅此目录】的写权限；结束后收集→上传→链接附回→即焚。
+      let wsDir: string | null = null;
+      if (!grok && !gpt && getBridgeMcpConfig().workspace === true) {
+        sweepWorkspacesOnce();
+        try { wsDir = createCallWorkspace(); } catch { wsDir = null; /* 建目录失败 → 本次退化为纯文本 */ }
+      }
+      let text = "", isError = false;
+      try {
+        const r = grok
+          ? await runGrokText({ messages, timeoutMs: bridgeMs, model: grokModelArg(req.body?.model) })
+          : gpt
+          ? await runCodexText({ messages, timeoutMs: bridgeMs, model: codexModelArg(req.body?.model) })
+          : await runClaudeText({ messages, timeoutMs: bridgeMs, model: bridgeModelArg(req.body?.model), workspaceDir: wsDir });
+        text = r.text; isError = r.isError;
+        if (wsDir && !isError) {
+          // 收集生成文件：白名单/限额/防软链都在 collectWorkspaceFiles 内强制。
+          const col = collectWorkspaceFiles(wsDir);
+          if (col.files.length || col.skipped.length) {
+            const uploaded: { name: string; url: string }[] = [];
+            for (const f of col.files) {
+              try {
+                const r2 = await storagePut(`bridge-ws/${Date.now()}-${safeStorageName(f.name)}`, readFileSync(f.path), f.contentType);
+                uploaded.push({ name: f.name, url: r2.url });
+              } catch { col.skipped.push({ name: f.name, reason: "上传存储失败" }); }
+            }
+            text += formatFilesReply(uploaded, col.skipped);
+            console.log(`[BridgeWorkspace] 回传 ${uploaded.length} 个文件（跳过 ${col.skipped.length}）`);
+          }
+        }
+      } finally {
+        if (wsDir) {
+          cleanupCallWorkspace(wsDir);
+          try { rmSync(wsDir + ".mcp.json", { force: true }); } catch { /* 已不存在 */ }
+        }
+      }
       if (isError) return res.status(502).json({ error: { message: `本机 ${grok ? "grok" : gpt ? "codex" : "claude"} 返回错误：` + (text || "").slice(0, 600) } });
       res.json({
         id: `claude-local-${Date.now()}`,

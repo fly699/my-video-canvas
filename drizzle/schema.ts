@@ -841,7 +841,7 @@ export type TunnelEmailNotify = { to: string; host: string; port: number; user: 
 export type SelfHostedLlmConfig = { url: string; apiKey: string; models: { id: string; label: string }[] };
 // 管理员后台配置的「本机 Claude 桥接」MCP/技能增强（替代 CLAUDE_BRIDGE_* 环境变量）。
 // mcpConfig：{mcpServers:{...}} 的原始 JSON 文本，或服务器上一个配置文件的绝对路径。
-export type BridgeMcpConfig = { mcpConfig: string; skills: boolean; strict: boolean; permissionMode: string; allowedTools: string };
+export type BridgeMcpConfig = { mcpConfig: string; skills: boolean; strict: boolean; permissionMode: string; allowedTools: string; workspace: boolean };
 export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   id: int("id").primaryKey(),
   disabledModels: json("disabledModels").$type<string[]>(),
