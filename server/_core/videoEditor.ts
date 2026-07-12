@@ -1217,6 +1217,32 @@ export async function probeStreams(filePath: string): Promise<{ hasVideo: boolea
   }
 }
 
+
+/** #100 场景切点检测：ffmpeg select scene 滤镜找视觉切换点（本地执行，无第三方 AI）。
+ *  返回升序去重的秒级时间戳（保留两位小数），上限 60 个（与 smartCut shotBoundaries 上限一致）。
+ *  showinfo 输出在 stderr；ffmpeg 正常退出码为 0。threshold 越低越敏感（0.3 为常用默认）。 */
+export async function detectSceneChanges(inputUrl: string, threshold = 0.3): Promise<number[]> {
+  const videoPath = await downloadToTemp(inputUrl, "mp4");
+  try {
+    const { stderr } = await execFileAsync("ffmpeg", [
+      "-i", videoPath,
+      "-vf", `select='gt(scene,${threshold})',showinfo`,
+      "-an", "-f", "null", "-",
+    ]);
+    const times: number[] = [];
+    for (const m of Array.from(String(stderr ?? "").matchAll(/pts_time:([0-9]+(?:\.[0-9]+)?)/g))) {
+      const t = Math.round(parseFloat(m[1]) * 100) / 100;
+      if (Number.isFinite(t) && t > 0.2) times.push(t); // 开头 0.2s 内的伪切点丢弃
+    }
+    return Array.from(new Set(times)).sort((a, b) => a - b).slice(0, 60);
+  } catch (err: unknown) {
+    const e = err as { stderr?: string; message?: string };
+    throw new Error(`场景检测失败：${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
+  } finally {
+    await fs.unlink(videoPath).catch(() => undefined);
+  }
+}
+
 export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResult> {
   if (opts.keepSegments.length === 0) throw new Error("keepSegments 不能为空");
 
@@ -1301,12 +1327,12 @@ export interface OverlayOptions {
   mode: OverlayMode;
   // Watermark
   overlayImageUrl?: string;
-  overlayPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+  overlayPosition?: "top-left" | "top-center" | "top-right" | "middle-left" | "center" | "middle-right" | "bottom-left" | "bottom-center" | "bottom-right";
   overlayScale?: number;
   overlayOpacity?: number;
   // PiP
   pipVideoUrl?: string;
-  pipPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  pipPosition?: "top-left" | "top-center" | "top-right" | "middle-left" | "center" | "middle-right" | "bottom-left" | "bottom-center" | "bottom-right";
   pipScale?: number;
   // Color correction
   brightness?: number;
@@ -1326,10 +1352,14 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
 
       const posMap: Record<string, string> = {
         "top-left": "10:10",
+        "top-center": "(W-w)/2:10",
         "top-right": "W-w-10:10",
-        "bottom-left": "10:H-h-10",
-        "bottom-right": "W-w-10:H-h-10",
+        "middle-left": "10:(H-h)/2",
         "center": "(W-w)/2:(H-h)/2",
+        "middle-right": "W-w-10:(H-h)/2",
+        "bottom-left": "10:H-h-10",
+        "bottom-center": "(W-w)/2:H-h-10",
+        "bottom-right": "W-w-10:H-h-10",
       };
       const xy = posMap[opts.overlayPosition ?? "bottom-right"];
       const scale = opts.overlayScale ?? 0.2;
@@ -1357,8 +1387,13 @@ export async function overlayVideo(opts: OverlayOptions): Promise<{ url: string 
 
       const posMap: Record<string, string> = {
         "top-left": "10:10",
+        "top-center": "(W-w)/2:10",
         "top-right": "W-w-10:10",
+        "middle-left": "10:(H-h)/2",
+        "center": "(W-w)/2:(H-h)/2",
+        "middle-right": "W-w-10:(H-h)/2",
         "bottom-left": "10:H-h-10",
+        "bottom-center": "(W-w)/2:H-h-10",
         "bottom-right": "W-w-10:H-h-10",
       };
       const xy = posMap[opts.pipPosition ?? "bottom-right"];

@@ -2013,3 +2013,14 @@ select:-webkit-autofill:focus {
 [data-perf="lite"] .react-flow__node { box-shadow: none !important; }
 [data-perf="lite"] .react-flow__edge-path { animation: none !important; }
 [data-perf="lite"] .react-flow__background { opacity: 0.35; }
+
+/* ── #100 创意模式：绿色「已入库」指示点轻量化——空心细环 + 直径缩小（10px 实心+光晕 → 7px 空心）。
+   全站 30+ 处内联绿点共享 title="已存储到 MinIO·长期有效"，属性选择器统一覆写；
+   工作室/专业模式保持原实心点不变。 */
+html[data-canvas-mode="creative"] [title^="已存储到 MinIO"] {
+  width: 7px !important;
+  height: 7px !important;
+  background: transparent !important;
+  border: 1.5px solid oklch(0.72 0.18 155 / 0.85);
+  box-shadow: none !important;
+}

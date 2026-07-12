@@ -959,12 +959,12 @@ export interface OverlayNodeData {
   mode?: OverlayMode;
   // Watermark
   overlayImageUrl?: string;
-  overlayPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+  overlayPosition?: "top-left" | "top-center" | "top-right" | "middle-left" | "center" | "middle-right" | "bottom-left" | "bottom-center" | "bottom-right";
   overlayScale?: number;     // 0.05–1.0
   overlayOpacity?: number;   // 0.0–1.0
   // PiP
   pipVideoUrl?: string;
-  pipPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  pipPosition?: "top-left" | "top-center" | "top-right" | "middle-left" | "center" | "middle-right" | "bottom-left" | "bottom-center" | "bottom-right";
   pipScale?: number;         // 0.1–0.5
   // Color correction
   brightness?: number;       // -1.0–1.0
@@ -993,6 +993,8 @@ export interface SubtitleMotionNodeData {
 }
 
 export interface SmartCutNodeData {
+  /** #100 场景检测切点（秒，clip.detectScenes 产出）——剪辑边界吸附用。 */
+  sceneBoundaries?: number[];
   inputVideoUrl?: string;
   aggressiveness?: "low" | "medium" | "high";
   targetDuration?: number;

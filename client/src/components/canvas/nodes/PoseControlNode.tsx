@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { BaseNode } from "../BaseNode";
 import { InlineGenBar } from "../InlineGenBar";
 import { SlidersHorizontal } from "lucide-react";
@@ -13,7 +13,8 @@ import { getNodeImageOutput } from "@/lib/canvasPassthrough";
 import type { PoseControlNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Layers, Loader2, Download, RotateCcw } from "lucide-react";
+import { Layers, Loader2, Download, RotateCcw, PersonStanding } from "lucide-react";
+import { PosePresetPicker } from "../PosePresetPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { useNodeDocks } from "../../../hooks/useNodeDocks";
@@ -99,6 +100,8 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
   const docks = useNodeDocks(id, { hasRef: !!(payload.referenceImageUrl?.trim() || sourceImageUrl), hasPrompt: !!payload.prompt?.trim() }, { prompt: payload.prompt ?? "", ref: payload.referenceImageUrl || sourceImageUrl || "" });
   const refStrip = useSimpleRefStrip(id, payload, "single", { accent, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
 
+  // #100 姿势库：导演台 22 款预设 → 3D 摆姿截图作参考构图。
+  const [posePickerOpen, setPosePickerOpen] = useState(false);
   // #97 LibTV：创意模式参数下浮（高级机制，快捷键 A）。
   const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
   // 配置区单一来源：非创意内联卡体（原样）；创意模式挂输入条「参数与操作」下浮面板。
@@ -106,7 +109,15 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
     <>
         {/* Reference image */}
         <div>
-          <label style={labelStyle}>参考构图图像 URL（自动从连接节点读取）</label>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <label style={{ ...labelStyle, marginBottom: 0 }}>参考构图图像 URL（自动从连接节点读取）</label>
+            <button onClick={() => setPosePickerOpen(true)}
+              className="nodrag flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all flex-shrink-0"
+              title="从导演台姿势库选姿势：3D 人偶摆姿 + 拖拽换角度 → 截图作参考构图"
+              style={{ background: accentA(0.12), border: `1px solid ${accentA(0.4)}`, color: accent, cursor: "pointer" }}>
+              <PersonStanding style={{ width: 11, height: 11 }} /> 姿势库
+            </button>
+          </div>
           <NodeInput className="nodrag" placeholder="https://..." value={payload.referenceImageUrl ?? ""}
             onValueChange={(v) => update({ referenceImageUrl: v })} style={fieldStyle}
             onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
@@ -242,6 +253,13 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
           </div>
         )}
       </InlineGenBar>
+    )}
+    {/* #100 姿势库选择器（portal 到 body，不受节点收缩/浮面板卸载影响） */}
+    {posePickerOpen && (
+      <PosePresetPicker
+        onApply={(url) => update({ referenceImageUrl: url })}
+        onClose={() => setPosePickerOpen(false)}
+      />
     )}
     </>
   );
