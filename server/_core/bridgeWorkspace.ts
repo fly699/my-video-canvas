@@ -21,10 +21,15 @@ export const WS_LIMITS = {
   maxDepth: 3,                      // 目录层深上限
 } as const;
 
-/** 扩展名白名单 → Content-Type。刻意排除 svg/html/js/可执行等（存储直出场景防被动 XSS / 投毒）。 */
+/** 扩展名白名单 → Content-Type。刻意排除 svg/js/可执行等（存储直出场景防被动 XSS / 投毒）；
+ *  html/htm 特例放行但降为 text/plain 交付（见下方注释）。 */
 export const WS_CONTENT_TYPES: Record<string, string> = {
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif",
   txt: "text/plain; charset=utf-8", md: "text/markdown; charset=utf-8", json: "application/json",
+  // HTML 放行但以纯文本 Content-Type 回传：存储与应用同源直出，若按 text/html 服务，
+  // 模型产出的 <script> 会以站点身份执行（存储型 XSS）。text/plain 下浏览器只显示源码，
+  // 用户下载后本地打开即是完整网页——交付能力保留、同源执行风险归零。
+  html: "text/plain; charset=utf-8", htm: "text/plain; charset=utf-8",
   csv: "text/csv; charset=utf-8", srt: "text/plain; charset=utf-8", vtt: "text/vtt; charset=utf-8",
   pdf: "application/pdf",
   mp3: "audio/mpeg", wav: "audio/wav",

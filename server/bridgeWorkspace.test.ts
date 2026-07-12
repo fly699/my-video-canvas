@@ -67,11 +67,12 @@ describe("bridgeWorkspace #88", () => {
       writeFileSync(join(d, "page.html"), "<script>");
       writeFileSync(join(d, "big.md"), Buffer.alloc(60));
       const r = collectWorkspaceFiles(d, { ...WS_LIMITS, maxFileBytes: 50 });
-      expect(r.files.map((f) => f.name).sort()).toEqual(["a.png", "b.txt"]);
+      expect(r.files.map((f) => f.name).sort()).toEqual(["a.png", "b.txt", "page.html"].sort());
       expect(r.files.find((f) => f.name === "a.png")?.contentType).toBe("image/png");
+      // HTML 放行但降为纯文本交付（同源直出防脚本执行）
+      expect(r.files.find((f) => f.name === "page.html")?.contentType).toBe("text/plain; charset=utf-8");
       const reasons = Object.fromEntries(r.skipped.map((s) => [s.name, s.reason]));
       expect(reasons["evil.sh"]).toContain("白名单");
-      expect(reasons["page.html"]).toContain("白名单");
       expect(reasons["big.md"]).toContain("单文件上限");
     });
 

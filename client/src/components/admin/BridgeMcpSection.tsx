@@ -173,7 +173,20 @@ export function BridgeMcpSection() {
 
       {/* 开关 */}
       {toggleRow(skills, setSkills, "启用技能（Skill 工具）", "对应 CLAUDE_BRIDGE_SKILLS=1，放行 Skill 工具让桥接能跑技能。")}
-      {toggleRow(workspace, setWorkspace, "临时文件工作区（生成文件自动回传聊天）", "开启后每次桥接调用获得一个独立临时文件夹的写权限（经 filesystem MCP 强制目录白名单，其余路径均拒绝）：模型把生成文件写进去，调用结束系统自动收集（扩展名白名单 · 单文件 20MB · 总量 100MB · 最多 12 个）上传到存储，并把下载链接附在回复末尾，随后即焚该目录。首次调用需联网拉取 @modelcontextprotocol/server-filesystem（或预先 npm i -g）。⚠️ 等于给持有 bridge key 的调用方开放该沙箱写入，公网可达部署请确认 Key 强度。")}
+      {toggleRow(workspace, setWorkspace, "临时文件工作区（生成文件自动回传聊天）", "开启后每次桥接调用获得一个独立临时文件夹的写权限：模型把生成文件写进去，调用结束系统自动收集上传，并把下载链接附在回复末尾，随后即焚该目录。")}
+      {workspace && (
+        <div style={{ margin: "4px 0 8px 24px", padding: "10px 12px", borderRadius: 10, background: "oklch(0.75 0.15 75 / 0.08)", border: "1px solid oklch(0.75 0.15 75 / 0.35)", fontSize: 11, lineHeight: 1.7, color: "var(--c-t2)" }}>
+          <div style={{ fontWeight: 700, color: "oklch(0.78 0.14 75)", marginBottom: 4 }}>⚠️ 临时工作区安全须知</div>
+          <ul style={{ margin: 0, paddingLeft: 16, display: "flex", flexDirection: "column", gap: 2 }}>
+            <li><b>沙箱范围</b>：写权限经 filesystem MCP 强制限定在每次调用的独立子目录（ws-*），其余路径一律被拒；每次调用互相隔离，结束后目录立即销毁。</li>
+            <li><b>收集限额</b>：扩展名白名单（图片/文本/字幕/HTML/PDF/音视频；无 svg/js/可执行）· 单文件 20MB · 总量 100MB · 最多 12 个 · 目录层深 3 · 符号链接一律不收集（防把沙箱外文件偷渡上传）。</li>
+            <li><b>HTML 特别处理</b>：.html/.htm 允许交付，但按纯文本 Content-Type 回传——浏览器打开链接只显示源码、脚本不会以本站身份执行（防存储型 XSS）；用户下载后本地打开即是完整网页。</li>
+            <li><b>权限边界</b>：这等于给持有 bridge key 的任何调用方开放该沙箱写入。公网可达部署请确认 CLAUDE_LOCAL_BRIDGE_KEY 足够强，且不要把 BRIDGE_WORKSPACE_DIR 指向代码或数据目录。</li>
+            <li><b>依赖</b>：首次调用需联网拉取 @modelcontextprotocol/server-filesystem（或预先 npm i -g，并用 BRIDGE_FS_MCP_CMD 指到本地命令）。</li>
+            <li><b>配合人设</b>：AI 助手模板库「工作流 · 元 → 沙箱写文件」提供了配套人设提示词，选中即让模型主动使用工作区交付文件。</li>
+          </ul>
+        </div>
+      )}
       {toggleRow(strict, setStrict, "严格模式（--strict-mcp-config）", "默认开：只认上面这份配置、忽略 claude 自带（~/.claude）里的 MCP。用 OAuth 型 MCP（如 higgsfield，靠 claude mcp add/login 把凭证存在 claude 自带配置里）时必须【关闭】才能合并进来；关闭后记得在下面 allowedTools 手动放行它的 mcp__<名>。")}
 
       {/* 高级项（折叠） */}
