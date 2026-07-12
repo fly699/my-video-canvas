@@ -11,11 +11,12 @@ import { drawOpenpose } from "../../../lib/directorOpenpose";
 
 // 渲控制图时用来隔离「只渲人物、避开网格/阴影/全景/gizmo」的 actors 组名。
 const ACTORS_GROUP = "__director_actors__";
-import type { DirectorScene, DirectorActor, DirectorCamera, Vec3 } from "../../../../../shared/types";
+import type { DirectorScene, DirectorActor, DirectorCamera, DirectorLight, Vec3 } from "../../../../../shared/types";
 import {
   MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers, respaceCrowdMembers, makeGroupFromActors, CROWD_SPACING,
   ensureCameras, newCameraId, nextCameraName, actorWorldPosition, shotAimTarget, faceCameraYaw,
   PROP_PRIMS, makeProp, LAYOUT_TEMPLATES, templateActors, type PropPrim,
+  makeLight, LIGHT_RIG_PRESETS, lightsFromRig, describeLights, LIGHT_KIND_LABEL, type LightRigPreset,
 } from "../../../lib/directorScene";
 // #71 多格式导入/导出：obj/stl/fbx/gltf 客户端解析 → 统一转 glb 上传；场景可导出 glb。
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
@@ -101,6 +102,66 @@ function Slider({ label, value, min, max, step = 1, fixed = 0, onChange }: {
         onChange={(e) => onChange(clamp(Number(e.target.value) || 0))}
         style={{ width: 46, padding: "2px 4px", fontSize: 10.5, textAlign: "right", fontVariantNumeric: "tabular-nums", background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none" }} />
     </div>
+  );
+}
+
+// ── #78 真 3D 灯光实体：真实 three 光源（实时照亮人偶/道具）+ 可点选标记球（截图时隐藏）──
+// 标记组 name="light-marker"：shoot/renderGrid/截图入库前统一隐藏（hideLightMarkers），
+// 控制图渲染走「顶层非 ACTORS_GROUP 全隐藏」路径自然covered。decay=0 使强度手感线性可控。
+function LightObj({ light, selected, onSelect, bindMarker }: {
+  light: DirectorLight; selected: boolean; onSelect: () => void;
+  bindMarker?: (el: THREE.Object3D | null) => void;
+}) {
+  const spotRef = useRef<THREE.SpotLight>(null);
+  const tgtRef = useRef<THREE.Object3D>(null);
+  useEffect(() => {
+    if (light.kind === "spot" && spotRef.current && tgtRef.current) {
+      spotRef.current.target = tgtRef.current;
+      tgtRef.current.updateMatrixWorld();
+    }
+  }, [light.kind, light.target]);
+  const tgt = light.target ?? [0, 1.0, 0];
+  return (
+    <>
+      {light.kind === "spot" ? (
+        <>
+          <spotLight ref={spotRef} position={light.position} color={light.color} intensity={light.intensity}
+            angle={(light.angle ?? 40) * Math.PI / 180} penumbra={0.35} decay={0}
+            castShadow={!!light.castShadow} shadow-mapSize={[1024, 1024]} shadow-bias={-0.0004} />
+          <object3D ref={tgtRef} position={tgt} />
+        </>
+      ) : (
+        <pointLight position={light.position} color={light.color} intensity={light.intensity} decay={0} castShadow={!!light.castShadow} shadow-mapSize={[512, 512]} />
+      )}
+      {/* 标记球（可点选/拖拽；截图时隐藏）+ 选中线框环 + 聚光指向虚线 */}
+      <group name="light-marker" position={light.position} ref={bindMarker as never}>
+        <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
+          <sphereGeometry args={[0.09, 16, 16]} />
+          <meshBasicMaterial color={light.color} />
+        </mesh>
+        {selected && (
+          <mesh>
+            <sphereGeometry args={[0.14, 12, 12]} />
+            <meshBasicMaterial color={light.color} wireframe transparent opacity={0.55} />
+          </mesh>
+        )}
+      </group>
+      {selected && light.kind === "spot" && (
+        <group name="light-marker">
+          {/* 指向线：光位 → 指向点（选中时可视化聚光方向） */}
+          <line>
+            <bufferGeometry>
+              <bufferAttribute attach="attributes-position" args={[new Float32Array([...light.position, ...tgt]), 3]} />
+            </bufferGeometry>
+            <lineBasicMaterial color={light.color} transparent opacity={0.6} />
+          </line>
+          <mesh position={tgt}>
+            <sphereGeometry args={[0.055, 10, 10]} />
+            <meshBasicMaterial color={light.color} transparent opacity={0.8} />
+          </mesh>
+        </group>
+      )}
+    </>
   );
 }
 
@@ -200,14 +261,22 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   });
   useEffect(() => { try { localStorage.setItem("director:dragMode", dragMode); } catch { /* ignore */ } }, [dragMode]);
   const [gizmoTarget, setGizmoTarget] = useState<THREE.Object3D | null>(null);
+  // #78 灯光选中 + 拖拽手柄目标 + 网格吸附
+  const [selectedLightId, setSelectedLightId] = useState<string | null>(null);
+  const [lightGizmoTarget, setLightGizmoTarget] = useState<THREE.Object3D | null>(null);
+  const [snap, setSnap] = useState<boolean>(() => {
+    try { return localStorage.getItem("director:snap") === "1"; } catch { return false; }
+  });
+  useEffect(() => { try { localStorage.setItem("director:snap", snap ? "1" : "0"); } catch { /* ignore */ } }, [snap]);
   // 多选（用于「任意角色手动编组」，模块10）：Shift/Ctrl 点击独立角色加入多选集。
   const [multiSel, setMultiSel] = useState<Set<string>>(() => new Set());
-  const selectActor = useCallback((id: string) => { setSelectedId(id); setSelectedGroupId(null); setCamSelected(false); setMultiSel(new Set()); }, []);
+  const selectActor = useCallback((id: string) => { setSelectedId(id); setSelectedGroupId(null); setCamSelected(false); setSelectedLightId(null); setMultiSel(new Set()); }, []);
   const toggleMultiActor = useCallback((id: string) => {
     setMultiSel((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-    setSelectedId(id); setSelectedGroupId(null); setCamSelected(false);
+    setSelectedId(id); setSelectedGroupId(null); setCamSelected(false); setSelectedLightId(null);
   }, []);
-  const selectGroup = useCallback((id: string) => { setSelectedGroupId(id); setSelectedId(null); setCamSelected(false); setMultiSel(new Set()); }, []);
+  const selectGroup = useCallback((id: string) => { setSelectedGroupId(id); setSelectedId(null); setCamSelected(false); setSelectedLightId(null); setMultiSel(new Set()); }, []);
+  const selectLight = useCallback((id: string) => { setSelectedLightId(id); setSelectedId(null); setSelectedGroupId(null); setCamSelected(false); setMultiSel(new Set()); }, []);
   const [saving, setSaving] = useState(false);
   // ③ 结构锁强度：注入下游 ControlNet 的 strength（0=不约束，1=强约束）。记忆到 localStorage。
   const [ctrlStrength, setCtrlStrength] = useState<number>(() => {
@@ -223,8 +292,17 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   // 露出背景色形成「黑芯」。给到 2000 既覆盖全景球，也覆盖放大场景里被拉远的机位。
   const initCam = useMemo(() => ({ fov: scene.camera.fov, position: scene.camera.position as Vec3, near: 0.1, far: 2000 }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // #78 相机截图库（LibTV「摄像机截图」）：多张暂存、清空、发送到画布；随节点持久化。
+  const initialShots = useCanvasStore((s) => {
+    const n = s.nodes.find((x) => x.id === nodeId);
+    return (n?.data.payload as { shots?: { url: string; name: string }[] })?.shots;
+  });
+  const [shots, setShots] = useState<{ url: string; name: string }[]>(() => initialShots ?? []);
+  const shotsRef = useRef(shots);
+  shotsRef.current = shots;
+
   // 持久化：关闭时把场景写回节点（不丢编辑）。
-  useEffect(() => () => { updateNodeData(nodeId, { scene: sceneRef.current, aspectRatio: sceneRef.current.aspectRatio }, true); }, [nodeId, updateNodeData]);
+  useEffect(() => () => { updateNodeData(nodeId, { scene: sceneRef.current, aspectRatio: sceneRef.current.aspectRatio, shots: shotsRef.current }, true); }, [nodeId, updateNodeData]);
 
   const selected = scene.actors.find((a) => a.id === selectedId) ?? null;
   const patchScene = useCallback((p: Partial<DirectorScene>) => setScene((s) => ({ ...s, ...p })), []);
@@ -474,6 +552,53 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     toast.success(`已应用模板「${tpl.label}」（${tpl.specs.length} 人，落在原点处）`);
   };
 
+  // ── #78 真 3D 灯光：CRUD + 布光预设 + 指向 ────────────────────────────────
+  const lights = scene.lights ?? [];
+  const selectedLight = lights.find((l) => l.id === selectedLightId) ?? null;
+  const patchLight = useCallback((id: string, p: Partial<DirectorLight>) => {
+    setScene((s) => ({ ...s, lights: (s.lights ?? []).map((l) => (l.id === id ? { ...l, ...p } : l)) }));
+  }, []);
+  const addLightKind = (kind: DirectorLight["kind"]) => {
+    setScene((s) => {
+      const ls = s.lights ?? [];
+      // 新灯错落落位（避免重叠）：按序绕主体换边
+      const side = ls.length % 2 === 0 ? 1 : -1;
+      const nl = makeLight(kind, ls, [side * (1.4 + ls.length * 0.3), 2.0 + (ls.length % 3) * 0.4, 1.8]);
+      setSelectedLightId(nl.id); setSelectedId(null); setSelectedGroupId(null); setCamSelected(false);
+      return { ...s, lights: [...ls, nl], dimBase: s.dimBase ?? true };
+    });
+  };
+  const removeLight = (id: string) => {
+    setScene((s) => ({ ...s, lights: (s.lights ?? []).filter((l) => l.id !== id) }));
+    setSelectedLightId((cur) => (cur === id ? null : cur));
+  };
+  const applyLightRig = (rig: LightRigPreset) => {
+    setScene((s) => {
+      const ls = lightsFromRig(rig);
+      setSelectedLightId(ls[0]?.id ?? null); setSelectedId(null); setSelectedGroupId(null); setCamSelected(false);
+      return { ...s, lights: ls, dimBase: s.dimBase ?? true };
+    });
+    toast.success(`已应用布光「${rig.label}」（${rig.lights.length} 盏灯，基础光已压暗）`);
+  };
+  // 聚光指向：对准角色（胸高，含场景缩放/平移换算——与注视目标同一套几何）
+  const aimLightAtActor = (lightId: string, actorId: string) => {
+    const scn = sceneRef.current;
+    const a = scn.actors.find((x) => x.id === actorId); if (!a) return;
+    const base = actorWorldPosition(a, scn.groups);
+    const target = shotAimTarget(base, { sceneScale: scn.sceneScale, offsetX: scn.sceneOffsetX, offsetY: scn.sceneOffsetY, offsetZ: scn.sceneOffsetZ, actorScale: a.scale, aimY: 1.0 });
+    patchLight(lightId, { target });
+  };
+  // 截图前隐藏灯光标记球/指向线 + TransformControls 手柄（不隐藏光源本身——光照必须留在成片里）。
+  const hideLightMarkers = useCallback(() => {
+    const cap = captureRef.current;
+    const hidden: THREE.Object3D[] = [];
+    cap?.scene.traverse((o) => {
+      const anyO = o as THREE.Object3D & { isTransformControls?: boolean };
+      if ((o.name === "light-marker" || anyO.isTransformControls) && o.visible) { o.visible = false; hidden.push(o); }
+    });
+    return () => hidden.forEach((o) => { o.visible = true; });
+  }, []);
+
   // #71 导出场景 .glb：把 ACTORS_GROUP（人物+道具+导入模型）打包下载，可导入任何 3D 工具复用
   const exportSceneGlb = () => {
     const cap = captureRef.current;
@@ -623,16 +748,57 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     if (!cap || saving) return;
     setSaving(true);
     try {
-      cap.gl.render(cap.scene, cap.camera);
-      const blob = await canvasToBlob(cap.gl);
+      // #78 灯光标记球/手柄不入成片（光照本身保留）
+      const restore = hideLightMarkers();
+      let blob: Blob | null;
+      try {
+        cap.gl.render(cap.scene, cap.camera);
+        blob = await canvasToBlob(cap.gl);
+      } finally { restore(); }
       if (!blob) throw new Error("渲染截图失败");
       const base64 = await blobToBase64(blob);
       const result = await uploadMut.mutateAsync({ base64, mimeType: "image/png", filename: "director-3d.png" });
-      updateNodeData(nodeId, { scene: sceneRef.current, imageUrl: result.url, imageStorageKey: result.storageKey, aspectRatio: scene.aspectRatio, status: "done" });
-      toast.success("已截图并输出为参考图");
+      // #78 光效中文描述随截图落进节点，下游提示词可直接引用（无布光则清空）
+      const lightingDesc = describeLights(sceneRef.current.lights, sceneRef.current.dimBase) || undefined;
+      updateNodeData(nodeId, { scene: sceneRef.current, imageUrl: result.url, imageStorageKey: result.storageKey, aspectRatio: scene.aspectRatio, status: "done", lightingDesc });
+      toast.success(lightingDesc ? "已截图输出参考图（含布光描述）" : "已截图并输出为参考图");
     } catch (e) {
       toast.error("截图失败：" + (e instanceof Error ? e.message : String(e)));
     } finally { setSaving(false); }
+  };
+
+  // #78 截图入库：渲染当前机位一帧存入相机截图库（不覆盖节点主图）。
+  const shootToLibrary = async () => {
+    const cap = captureRef.current;
+    if (!cap || saving) return;
+    setSaving(true);
+    try {
+      const restore = hideLightMarkers();
+      let blob: Blob | null;
+      try {
+        cap.gl.render(cap.scene, cap.camera);
+        blob = await canvasToBlob(cap.gl);
+      } finally { restore(); }
+      if (!blob) throw new Error("渲染截图失败");
+      const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/png", filename: `director-shot-${shotsRef.current.length + 1}.png` });
+      const camName = sceneRef.current.camera.name ?? "机位";
+      setShots((prev) => [...prev, { url: r.url, name: `${camName}-截图${String(prev.length + 1).padStart(2, "0")}` }]);
+      toast.success("已存入相机截图库");
+    } catch (e) {
+      toast.error("截图入库失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally { setSaving(false); }
+  };
+  // 发送到画布：截图库整批落成连好线的分镜节点网格（同多机位宫格通道）。
+  const sendShotsToCanvas = () => {
+    const list = shotsRef.current;
+    if (!list.length || !nodePos) return;
+    const urls = list.map((s) => s.url);
+    const cols = Math.min(3, urls.length);
+    const rows = Math.ceil(urls.length / cols);
+    updateNodeData(nodeId, { scene: sceneRef.current, shots: list }, true);
+    addGridNodes(urls, { rows, cols, sourcePosition: nodePos, sourceNodeId: nodeId, titlePrefix: "截图", aspectRatio: sceneRef.current.aspectRatio });
+    toast.success(`已把 ${urls.length} 张截图发送到画布`);
+    onClose();
   };
 
   // ①③ 控制图：用当前机位【只渲人物】重渲一张像素级精确的控制图，直接注入下游 ComfyUI
@@ -727,6 +893,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const savePos = cam.position.clone();
     const target = sceneRef.current.camera.target;
     const tVec = new THREE.Vector3(...target);
+    const restoreMarkers = hideLightMarkers(); // #78 灯光标记不入宫格成片
     try {
       const urls: string[] = [];
       for (let i = 0; i < preset.angles.length; i++) {
@@ -739,6 +906,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         urls.push(r.url);
         setGridBusy(`${preset.label} ${i + 1}/${preset.angles.length}`);
       }
+      restoreMarkers();
       // 还原机位
       cam.position.copy(savePos); cam.lookAt(tVec);
       if (cap.orbit) { cap.orbit.target.set(...target); cap.orbit.update(); }
@@ -750,7 +918,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       }
     } catch (e) {
       toast.error("多机位生成失败：" + (e instanceof Error ? e.message : String(e)));
-    } finally { setGridBusy(null); }
+    } finally { restoreMarkers(); setGridBusy(null); }
   };
 
   const ar = aspectRatioValue(scene.aspectRatio);
@@ -952,6 +1120,29 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               <button key={t.key} onClick={() => applyLayoutTemplate(t.key)} title={t.desc} style={{ ...chip }}>{t.label}</button>
             ))}
           </div>
+          {/* #78 真 3D 灯光（LibTV 没有）：布光预设 + 单灯添加 + 灯光列表 */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", marginTop: 6 }}>灯光（真 3D 布光）</div>
+          <div className="flex flex-wrap gap-1">
+            {LIGHT_RIG_PRESETS.map((r) => (
+              <button key={r.key} onClick={() => applyLightRig(r)} title={r.desc} style={{ ...chip }}>💡 {r.label}</button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            <button onClick={() => addLightKind("spot")} title="添加一盏聚光灯（锥形光束，可指向角色）" style={{ ...chip }}><Plus size={11} /> 聚光</button>
+            <button onClick={() => addLightKind("point")} title="添加一盏点光源（向四周发散）" style={{ ...chip }}><Plus size={11} /> 点光</button>
+            {lights.length > 0 && (
+              <button onClick={() => { setScene((s) => ({ ...s, lights: [] })); setSelectedLightId(null); }} title="清空所有灯光（恢复默认基础光）" style={{ ...chip, color: "oklch(0.65 0.2 25)" }}>清空灯光</button>
+            )}
+          </div>
+          {lights.map((l) => (
+            <div key={l.id} className="flex items-center gap-1">
+              <button onClick={() => selectLight(l.id)} style={{ ...rowBtn(l.id === selectedLightId), flex: 1 }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: l.color, boxShadow: `0 0 6px ${l.color}`, display: "inline-block", marginRight: 7 }} />
+                {l.name}<span style={{ marginLeft: 5, fontSize: 9.5, color: "var(--c-t4)" }}>{LIGHT_KIND_LABEL[l.kind]}</span>
+              </button>
+              <button onClick={() => removeLight(l.id)} title="删除灯光" style={{ ...iconBtn }}><Trash2 size={12} /></button>
+            </div>
+          ))}
           <button onClick={() => glbInputRef.current?.click()} disabled={glbBusy} style={{ ...chip, justifyContent: "center", marginTop: 6, opacity: glbBusy ? 0.6 : 1 }}
             title="导入本地 3D 模型：glb 直传；gltf/obj/stl/fbx 自动转换为 glb（gltf 需自包含）">
             {glbBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 导入 3D 模型（glb/obj/stl/fbx）
@@ -970,6 +1161,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             {([["translate", "移动"], ["rotate", "旋转"], ["scale", "缩放"]] as const).map(([mode, lbl]) => (
               <button key={mode} onClick={() => setGizmoMode(mode)} style={{ ...chip, fontWeight: gizmoMode === mode ? 700 : 500, background: gizmoMode === mode ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: gizmoMode === mode ? "#0b0d12" : "var(--c-t3)" }}>{lbl}</button>
             ))}
+            {/* #78 网格吸附（LibTV）：拖拽步进 移动0.25m/旋转15°/缩放0.1 */}
+            <button onClick={() => setSnap((v) => !v)} title="网格吸附：拖拽手柄按步进对齐（移动 0.25m / 旋转 15° / 缩放 0.1）"
+              style={{ ...chip, fontWeight: snap ? 700 : 500, background: snap ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: snap ? "#0b0d12" : "var(--c-t3)" }}>吸附</button>
           </div>
           {/* #71 原点可位移：布景原点（新增人物/群众/物体/模板的落点 + 网格中心 + 三色轴标记） */}
           <div style={{ position: "absolute", top: 56, left: 12, zIndex: 5, display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 10, background: "color-mix(in oklch, var(--c-elevated) 90%, transparent)", border: "1px solid var(--c-bd2)", backdropFilter: "blur(10px)" }}>
@@ -1007,7 +1201,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               camera={initCam}
               gl={{ preserveDrawingBuffer: true, antialias: true }}
               style={{ width: "100%", height: "100%", borderRadius: 4 }}
-              onPointerMissed={() => { setSelectedId(null); setSelectedGroupId(null); }}
+              onPointerMissed={() => { setSelectedId(null); setSelectedGroupId(null); setSelectedLightId(null); }}
             >
               {/* 天空颜色：默认深空黑 #060608（对齐 LibTV 模块16），全景未覆盖处即此色 */}
               {/* 背景图激活时不 attach 纯色（两者都写 scene.background 会互相覆盖） */}
@@ -1018,9 +1212,16 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} pitch={scene.panoramaPitch ?? 0} roll={scene.panoramaRoll ?? 0} scale={scene.panoramaScale ?? 1} />
                 </Suspense>
               )}
-              <ambientLight intensity={0.7} />
-              <directionalLight position={[4, 8, 5]} intensity={1.1} castShadow shadow-mapSize={[1024, 1024]} />
-              <directionalLight position={[-5, 4, -3]} intensity={0.4} />
+              {/* #78 基础光：有布光且开「压暗基础光」时压到极低，让布光造型主导明暗 */}
+              <ambientLight intensity={lights.length && scene.dimBase !== false ? 0.12 : 0.7} />
+              <directionalLight position={[4, 8, 5]} intensity={lights.length && scene.dimBase !== false ? 0.15 : 1.1} castShadow shadow-mapSize={[1024, 1024]} />
+              <directionalLight position={[-5, 4, -3]} intensity={lights.length && scene.dimBase !== false ? 0.06 : 0.4} />
+              {/* #78 真 3D 灯光：真实光源实时照亮人偶/道具 + 可点选标记球（截图时隐藏标记） */}
+              {lights.map((l) => (
+                <LightObj key={l.id} light={l} selected={l.id === selectedLightId}
+                  onSelect={() => selectLight(l.id)}
+                  bindMarker={l.id === selectedLightId ? ((el) => setLightGizmoTarget(el)) : undefined} />
+              ))}
               {scene.groundVisible && (
                 <Grid args={[40, 40]} cellSize={0.5} cellThickness={0.6} sectionSize={2} sectionThickness={1} infiniteGrid fadeDistance={26} cellColor="#2a2f3a" sectionColor="#3a4150" position={[origin[0], 0, origin[2]]} />
               )}
@@ -1040,7 +1241,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 position={[0, -0.001, 0]}
                 onClick={(e) => {
                   if (e.delta > 5 || e.intersections[0]?.eventObject !== e.eventObject) return;
-                  setSelectedId(null); setSelectedGroupId(null);
+                  setSelectedId(null); setSelectedGroupId(null); setSelectedLightId(null);
                 }}
                 onDoubleClick={(e) => {
                   if (e.delta > 5 || e.intersections[0]?.eventObject !== e.eventObject) return;
@@ -1082,6 +1283,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {selected && !selected.groupId && gizmoTarget && (
                 <TransformControls
                   object={gizmoTarget} mode={gizmoMode} size={0.8}
+                  translationSnap={snap ? 0.25 : undefined}
+                  rotationSnap={snap ? Math.PI / 12 : undefined}
+                  scaleSnap={snap ? 0.1 : undefined}
                   onMouseUp={() => {
                     const o = gizmoTarget;
                     patchActor(selected.id, {
@@ -1089,6 +1293,16 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                       rotation: [o.rotation.x * 180 / Math.PI, o.rotation.y * 180 / Math.PI, o.rotation.z * 180 / Math.PI] as Vec3,
                       scale: Number(((o.scale.x + o.scale.y + o.scale.z) / 3).toFixed(3)),
                     });
+                  }}
+                />
+              )}
+              {/* #78 灯光拖拽手柄（仅移动；标记组即手柄目标） */}
+              {selectedLight && lightGizmoTarget && (
+                <TransformControls
+                  object={lightGizmoTarget} mode="translate" size={0.7}
+                  translationSnap={snap ? 0.25 : undefined}
+                  onMouseUp={() => {
+                    patchLight(selectedLight.id, { position: lightGizmoTarget.position.toArray() as Vec3 });
                   }}
                 />
               )}
@@ -1170,7 +1384,78 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 {scene.actors.map((a) => <option key={a.id} value={a.id}>对准 {a.name}</option>)}
               </select>
               <Xyz v={scene.camera.target} min={-reachFor(scene.camera.target)} max={reachFor(scene.camera.target)} onChange={(target) => { patchCam({ target, lookAtActorId: undefined }); moveLiveCamera({ ...scene.camera, target }); }} />
+              {/* #78 相机截图库（LibTV「摄像机截图」）：多张暂存 → 全部清空 / 发送到画布 */}
+              <div style={sub}>相机截图库{shots.length ? `（${shots.length}）` : ""}</div>
+              <button onClick={shootToLibrary} disabled={saving} style={{ ...chip, justifyContent: "center", width: "100%", opacity: saving ? 0.6 : 1 }}
+                title="把当前机位画面渲染一张存入截图库（不覆盖节点主图）；换机位/换布光可连拍多张再一起发送到画布">
+                {saving ? <Loader2 size={11} className="animate-spin" /> : <Camera size={11} />} 截图入库
+              </button>
+              {shots.length > 0 && (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginTop: 6 }}>
+                    {shots.map((s, i) => (
+                      <div key={`${s.url}-${i}`} style={{ position: "relative", borderRadius: 7, overflow: "hidden", border: "1px solid var(--c-bd2)" }}>
+                        <img src={s.url} alt={s.name} style={{ width: "100%", aspectRatio: String(ar), objectFit: "cover", display: "block" }} />
+                        <div style={{ fontSize: 8.5, color: "var(--c-t4)", padding: "2px 4px", background: "var(--c-surface)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div>
+                        <button onClick={() => setShots((prev) => prev.filter((_, j) => j !== i))} title="删除这张截图"
+                          style={{ position: "absolute", top: 2, right: 2, width: 16, height: 16, borderRadius: 5, border: "none", background: "oklch(0 0 0 / 0.55)", color: "#fff", fontSize: 10, lineHeight: "16px", cursor: "pointer", padding: 0 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-1" style={{ marginTop: 6 }}>
+                    <button onClick={() => setShots([])} style={{ ...chip, flex: 1, justifyContent: "center" }}>全部清空</button>
+                    <button onClick={sendShotsToCanvas} style={{ ...chip, flex: 1, justifyContent: "center", background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12", fontWeight: 700 }}
+                      title="把截图库整批落成连好线的分镜节点网格">发送到画布</button>
+                  </div>
+                </>
+              )}
               <p style={hint}>在画面里拖拽即转动当前机位；松手自动记录。多机位便于一套场景出多个分镜角度。</p>
+            </div>
+          ) : selectedLight ? (
+            <div style={panel}>
+              <input value={selectedLight.name} onChange={(e) => patchLight(selectedLight.id, { name: e.target.value.slice(0, 12) })}
+                style={{ ...ttl, width: "100%", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "4px 6px" }} />
+              <div className="flex gap-1" style={{ marginBottom: 6 }}>
+                {(["spot", "point"] as const).map((k) => (
+                  <button key={k} onClick={() => patchLight(selectedLight.id, { kind: k, ...(k === "spot" ? { target: selectedLight.target ?? [0, 1.0, 0], angle: selectedLight.angle ?? 40 } : {}) })}
+                    style={{ ...chip, flex: 1, justifyContent: "center", fontWeight: selectedLight.kind === k ? 700 : 500, background: selectedLight.kind === k ? "var(--ui-accent, var(--c-accent))" : "var(--c-surface)", color: selectedLight.kind === k ? "#0b0d12" : "var(--c-t3)" }}>{LIGHT_KIND_LABEL[k]}</button>
+                ))}
+              </div>
+              <div style={sub}>位置（可在画面里直接拖标记球）</div>
+              <Xyz v={selectedLight.position} min={-12} max={12} onChange={(position) => patchLight(selectedLight.id, { position })} />
+              <div style={sub}>光色</div>
+              <div className="flex items-center gap-1">
+                <input type="color" value={selectedLight.color} onChange={(e) => patchLight(selectedLight.id, { color: e.target.value })} style={{ flex: 1, height: 26, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
+                {["#fff1d6", "#dfe8ff", "#ff2d95", "#00e5ff", "#ffb020"].map((c) => (
+                  <button key={c} onClick={() => patchLight(selectedLight.id, { color: c })} title={c}
+                    style={{ width: 18, height: 18, borderRadius: "50%", border: selectedLight.color === c ? "2px solid var(--c-t1)" : "1px solid var(--c-bd2)", background: c, cursor: "pointer", padding: 0 }} />
+                ))}
+              </div>
+              <div style={sub}>强度</div>
+              <Slider label="强度" value={selectedLight.intensity} min={0.1} max={8} step={0.1} fixed={1} onChange={(v) => patchLight(selectedLight.id, { intensity: v })} />
+              {selectedLight.kind === "spot" && (
+                <>
+                  <Slider label="锥角" value={selectedLight.angle ?? 40} min={8} max={90} step={1} onChange={(v) => patchLight(selectedLight.id, { angle: v })} />
+                  <div style={sub}>聚光指向</div>
+                  <select value="" onChange={(e) => { if (e.target.value === "__origin__") patchLight(selectedLight.id, { target: [origin[0], 1.0, origin[2]] }); else if (e.target.value) aimLightAtActor(selectedLight.id, e.target.value); }}
+                    style={{ width: "100%", padding: "4px 6px", fontSize: 11, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6, marginBottom: 6 }}>
+                    <option value="">指向坐标（下方微调）…</option>
+                    <option value="__origin__">对准原点</option>
+                    {scene.actors.filter((a) => !a.prim).map((a) => <option key={a.id} value={a.id}>对准 {a.name}</option>)}
+                  </select>
+                  <Xyz v={selectedLight.target ?? [0, 1.0, 0]} min={-12} max={12} onChange={(target) => patchLight(selectedLight.id, { target })} />
+                </>
+              )}
+              <label className="flex items-center gap-2" style={{ fontSize: 11, color: "var(--c-t3)", marginTop: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={!!selectedLight.castShadow} onChange={(e) => patchLight(selectedLight.id, { castShadow: e.target.checked })} />
+                投射阴影（更真实，稍耗性能）
+              </label>
+              <label className="flex items-center gap-2" style={{ fontSize: 11, color: "var(--c-t3)", marginTop: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={scene.dimBase !== false} onChange={(e) => patchScene({ dimBase: e.target.checked })} />
+                压暗基础光（布光造型主导明暗）
+              </label>
+              <button onClick={() => removeLight(selectedLight.id)} style={{ ...chip, justifyContent: "center", width: "100%", marginTop: 10, color: "oklch(0.65 0.2 25)" }}><Trash2 size={11} /> 删除灯光</button>
+              <p style={hint}>光照实时作用于人偶/道具（LibTV 只有天空色没有布光）。截图时标记球自动隐藏、光照保留，并生成中文光效描述随节点输出。</p>
             </div>
           ) : selectedGroup ? (
             <div style={panel}>

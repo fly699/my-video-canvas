@@ -598,6 +598,19 @@ export interface DirectorCamera {
   lookAtActorId?: string; // 注视目标 = 指定角色（置位时 target 跟随该角色位置）
 }
 
+/** #78 导演台真 3D 灯光：可摆位光源（点光/聚光），实时照亮人偶与道具（LibTV 无此能力）。 */
+export interface DirectorLight {
+  id: string;
+  kind: "point" | "spot";
+  name: string;          // 如「主光」「轮廓光」
+  position: Vec3;        // 世界坐标（不随场景缩放组）
+  target?: Vec3;         // 聚光指向点（point 忽略）
+  color: string;         // 光色 hex
+  intensity: number;     // 强度 0.1..8（decay=0 线性手感）
+  angle?: number;        // 聚光锥角(度)，默认 40
+  castShadow?: boolean;  // 是否投影
+}
+
 export interface DirectorScene {
   actors: DirectorActor[];
   groups?: DirectorGroup[]; // P4：群众群组
@@ -622,6 +635,10 @@ export interface DirectorScene {
   origin?: Vec3;
   /** #71 非全景背景图：整屏静态背景（不随机位转动；与全景/黑底分离互斥，全景优先）。 */
   backgroundImageUrl?: string;
+  /** #78 真 3D 灯光列表（空/缺省=无布光，走默认环境光）。 */
+  lights?: DirectorLight[];
+  /** #78 压暗基础光：有布光时把环境光/方向光压到很低，突出灯光造型（缺省 true）。 */
+  dimBase?: boolean;
 }
 
 export interface DirectorNodeData {
@@ -633,6 +650,10 @@ export interface DirectorNodeData {
   /** ③ 硬结构句柄：最近一次输出的控制图（深度/法线/骨架）+ 强度。持久化后连线即自动注入下游
    *  ComfyUI 图像节点的 ControlNet（openpose/depth/normal），把「软参考图」升级为「硬结构约束」。 */
   controlMap?: { url: string; kind: "depth" | "normal" | "pose"; strength: number };
+  /** #78 截图时由 scene.lights 自动生成的中文光效描述（下游提示词可直接引用）。 */
+  lightingDesc?: string;
+  /** #78 相机截图库（LibTV「摄像机截图」）：多张暂存，可全部清空 / 发送到画布落成分镜节点。 */
+  shots?: { url: string; name: string }[];
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
 }

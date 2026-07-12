@@ -200,3 +200,64 @@ describe("取景/朝向几何（注视/景别/面向机位）", () => {
     });
   });
 });
+
+// ── #78 真 3D 灯光 ────────────────────────────────────────────────────────────
+import { makeLight, nextLightName, LIGHT_RIG_PRESETS, lightsFromRig, lightPosLabel, describeLights } from "./directorScene";
+import type { DirectorLight } from "../../../shared/types";
+
+describe("director lights (#78)", () => {
+  it("makeLight：唯一 id、递进命名、聚光带指向/锥角/投影，点光不带", () => {
+    const s1 = makeLight("spot", []);
+    expect(s1.kind).toBe("spot");
+    expect(s1.name).toBe("聚光1");
+    expect(s1.target).toBeDefined();
+    expect(s1.angle).toBe(40);
+    expect(s1.castShadow).toBe(true);
+    const p1 = makeLight("point", [s1]);
+    expect(p1.name).toBe("点光1");
+    expect(p1.target).toBeUndefined();
+    expect(p1.angle).toBeUndefined();
+    expect(p1.id).not.toBe(s1.id);
+    expect(nextLightName("spot", [s1, p1])).toBe("聚光2");
+  });
+
+  it("布光预设四款齐全，实例化配新 id 且深拷贝坐标", () => {
+    expect(LIGHT_RIG_PRESETS.map((r) => r.label)).toEqual(["三点布光", "逆光轮廓", "双色霓虹", "顶光舞台"]);
+    for (const r of LIGHT_RIG_PRESETS) {
+      expect(r.lights.length).toBeGreaterThan(0);
+      for (const l of r.lights) {
+        expect(l.intensity).toBeGreaterThan(0);
+        expect(l.color).toMatch(/^#[0-9a-fA-F]{6}$/);
+        if (l.kind === "spot") expect(l.target).toBeDefined();
+      }
+    }
+    const rig = LIGHT_RIG_PRESETS[0];
+    const a = lightsFromRig(rig), b = lightsFromRig(rig);
+    expect(a[0].id).not.toBe(b[0].id);
+    a[0].position[0] = 99;
+    expect(rig.lights[0].position[0]).not.toBe(99); // 不污染预设
+  });
+
+  it("lightPosLabel：方位/仰角组合描述正确", () => {
+    expect(lightPosLabel([0, 1.0, 2.5])).toBe("正前方");
+    expect(lightPosLabel([2.2, 2.4, 2.2])).toBe("右前方上方");
+    expect(lightPosLabel([-2.5, 0.9, 0])).toBe("左侧");
+    expect(lightPosLabel([0, 2.6, -2.6])).toBe("正后方上方");
+    expect(lightPosLabel([0.1, 3.6, 0.2])).toBe("正上方（顶光）");
+    expect(lightPosLabel([1.8, -0.6, 1.8])).toContain("低位（底光）");
+  });
+
+  it("describeLights：空/无灯返回空串；有灯生成含方位/光色/强度/压暗说明的中文描述", () => {
+    expect(describeLights(undefined)).toBe("");
+    expect(describeLights([])).toBe("");
+    const lights: DirectorLight[] = lightsFromRig(LIGHT_RIG_PRESETS[0]);
+    const s = describeLights(lights, true);
+    expect(s).toContain("画面布光");
+    expect(s).toContain("主光（聚光）来自");
+    expect(s).toContain("锥角 44°");
+    expect(s).toContain("带投影");
+    expect(s).toContain("基础环境光已压暗");
+    const s2 = describeLights(lights, false);
+    expect(s2).not.toContain("压暗");
+  });
+});
