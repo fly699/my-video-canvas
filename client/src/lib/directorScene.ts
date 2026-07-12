@@ -351,7 +351,46 @@ export const LIGHT_RIG_PRESETS: LightRigPreset[] = [
   { key: "stage", label: "顶光舞台", desc: "头顶一束窄光打下，舞台聚光戏剧感", lights: [
     { kind: "spot", name: "舞台顶光", position: [0, 3.6, 0.5], target: [0, 0.9, 0], color: "#fff7e6", intensity: 5.0, angle: 26, castShadow: true },
   ] },
+  // #110 导演台打磨：内置布光 4 → 8（经典影视布光族谱补齐）
+  { key: "rembrandt", label: "伦勃朗光", desc: "主光 45° 高位侧打，暗侧脸颊留三角光斑，弱辅光保层次", lights: [
+    { kind: "spot", name: "伦勃朗主光", position: [-2.2, 2.6, 1.4], target: [0, 1.35, 0], color: "#ffe7c4", intensity: 3.6, angle: 38, castShadow: true },
+    { kind: "point", name: "暗侧辅光", position: [2.4, 1.1, 1.6], color: "#b9c6dd", intensity: 0.35 },
+  ] },
+  { key: "butterfly", label: "蝴蝶光", desc: "派拉蒙式正面高位直打，鼻下蝶形影，美人像经典", lights: [
+    { kind: "spot", name: "蝶光主灯", position: [0, 2.9, 2.2], target: [0, 1.3, 0], color: "#fff3e0", intensity: 3.4, angle: 34, castShadow: true },
+    { kind: "point", name: "颌下反光", position: [0, 0.4, 1.8], color: "#ffe9d0", intensity: 0.5 },
+  ] },
+  { key: "horror", label: "恐怖底光", desc: "下方仰打面部，影子上翻的经典恐怖片光效", lights: [
+    { kind: "spot", name: "底光", position: [0, 0.15, 1.5], target: [0, 1.5, 0], color: "#cfe8d2", intensity: 3.8, angle: 46, castShadow: true },
+    { kind: "point", name: "背景冷光", position: [0, 2.2, -2.6], color: "#4c6a8f", intensity: 0.7 },
+  ] },
+  { key: "moonlight", label: "月夜冷光", desc: "高位冷蓝月光洒下 + 极弱暖辅光，夜戏氛围", lights: [
+    { kind: "spot", name: "月光", position: [1.8, 3.4, -1.2], target: [0, 1.0, 0], color: "#9fc0ff", intensity: 2.6, angle: 52, castShadow: true },
+    { kind: "point", name: "暖辅光", position: [-1.4, 0.9, 2.2], color: "#ffd9a8", intensity: 0.3 },
+  ] },
 ];
+
+// ── #110 我的布光（用户自定义预设，localStorage 持久化，与内置预设并列展示） ──
+const MY_RIGS_KEY = "avc:director:my-light-rigs:v1";
+export interface MyLightRig { name: string; lights: Omit<DirectorLight, "id">[] }
+export function loadMyLightRigs(): MyLightRig[] {
+  try {
+    const a = JSON.parse(localStorage.getItem(MY_RIGS_KEY) || "[]");
+    return Array.isArray(a) ? a.filter((r) => r && typeof r.name === "string" && Array.isArray(r.lights)) : [];
+  } catch { return []; }
+}
+export function saveMyLightRig(name: string, lights: DirectorLight[]): MyLightRig[] {
+  const rigs = loadMyLightRigs().filter((r) => r.name !== name);
+  const stripped = lights.map(({ id: _id, ...rest }) => ({ ...rest, position: [...rest.position] as Vec3, target: rest.target ? [...rest.target] as Vec3 : undefined }));
+  rigs.push({ name, lights: stripped });
+  try { localStorage.setItem(MY_RIGS_KEY, JSON.stringify(rigs.slice(-24))); } catch { /* quota */ }
+  return loadMyLightRigs();
+}
+export function deleteMyLightRig(name: string): MyLightRig[] {
+  const rigs = loadMyLightRigs().filter((r) => r.name !== name);
+  try { localStorage.setItem(MY_RIGS_KEY, JSON.stringify(rigs)); } catch { /* quota */ }
+  return rigs;
+}
 
 /** 用布光预设实例化一套灯（配新 id）。 */
 export function lightsFromRig(rig: LightRigPreset): DirectorLight[] {

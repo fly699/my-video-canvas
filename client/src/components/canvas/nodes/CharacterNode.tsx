@@ -31,6 +31,7 @@ import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption, useRes
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "../ComfyCkptSelect";
+import { PosePresetPicker } from "../PosePresetPicker";
 import { ZoomableImage } from "../ZoomableImage";
 import { useLightbox } from "../studio/Lightbox";
 import { downloadMedia } from "../../../lib/download";
@@ -110,6 +111,8 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // 画布 d3 缩放（#69 RefThumbRow 同款教训）——改用 onClick 计时自实现双击（320ms 窗口），
   // 并在根元素挂原生 dblclick stopPropagation+preventDefault 截断 d3 缩放。
   const [nameEditing, setNameEditing] = useState(false);
+  // #111 角色接姿势库：3D 摆姿截图 → 追加为备用视角（姿势参考）
+  const [posePickerOpen, setPosePickerOpen] = useState(false);
   const lastNameClickRef = useRef(0);
   const onNameBarClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -641,7 +644,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               </button>
             ))}
           </div>
-          {libPickerOpen && (
+{libPickerOpen && (
             <div className="nowheel" style={{ width: 210, maxHeight: 240, overflowY: "auto", padding: 6, borderRadius: 10, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 10px 30px oklch(0 0 0 / 0.5)", display: "flex", flexDirection: "column", gap: 3 }}>
               {libQuery.isLoading && <span style={{ fontSize: 10.5, color: "var(--c-t4)", padding: 6 }}>加载角色库…</span>}
               {!libQuery.isLoading && (libQuery.data ?? []).length === 0 && <span style={{ fontSize: 10.5, color: "var(--c-t4)", padding: 6 }}>角色库为空——先「存库」积累角色</span>}
@@ -791,6 +794,16 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             >
               {multiAngleBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Sparkles style={{ width: 11, height: 11 }} />}
               {multiAngleBusy ? "生成多视角中…" : "一键多视角（三视图参考）"}
+            </button>
+          )}
+          {kind === "person" && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setPosePickerOpen(true); }}
+              className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] font-medium transition-all"
+              style={{ marginTop: 4, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+              title="从导演台姿势库挑一个 3D 姿势，截图作为该角色的姿势参考视角（追加到备用视角）"
+            >
+              🕺 姿势库（3D 摆姿作参考视角）
             </button>
           )}
           {/* #73 纳管：三视图生成模型选择 + 计价（此前隐形走服务端默认模型） */}
@@ -1255,6 +1268,22 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           </div>
         )}
       </InlineGenBar>
+    )}
+    {/* #111 姿势库（portal 到 body；挂在顶层，不依赖 hero/hover 分支渲染） */}
+    {posePickerOpen && (
+      <PosePresetPicker
+        onApply={(url) => {
+          const st = useCanvasStore.getState();
+          const pl = st.nodes.find((n) => n.id === id)?.data.payload as CharacterNodeData | undefined;
+          const extras = (pl?.additionalImageUrls ?? []).map((u) => (u ?? "").trim()).filter(Boolean);
+          if (!pl?.referenceImageUrl?.trim()) {
+            st.updateNodeData(id, { referenceImageUrl: url, referenceStorageKey: undefined });
+          } else {
+            st.updateNodeData(id, { additionalImageUrls: [...extras, url].slice(0, 8) });
+          }
+        }}
+        onClose={() => setPosePickerOpen(false)}
+      />
     )}
     </>
   );
