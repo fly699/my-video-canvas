@@ -37,6 +37,8 @@ import { handleStyle } from "../../lib/handleStyle";
 import { agentBadge } from "../../lib/agentOwnership";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption } from "./ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../lib/costEstimate";
+import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../lib/comfyLocalRoute";
+import { ComfyCkptSelect } from "./ComfyCkptSelect";
 
 // Nodes that keep their full PRO body in the studio skin (no floating command bar,
 // no top toolbar, no compact panel). Their UX isn't a parameter form.
@@ -54,10 +56,12 @@ const RelightEditorLazy = lazy(() => import("./editors/AngleRelightEditors").the
 const TOOLKIT_MODEL_KEY = "canvas.toolkitImageModel";
 const TOOLKIT_MODEL_OPTIONS: ModelPickerOption[] = [
   { value: "", label: "默认模型（系统设置）", group: "默认", family: "默认" },
+  COMFY_LOCAL_OPTION,
   ...IMAGE_MODEL_PICKER_OPTIONS,
 ];
 const toolkitCostLabel = (model: string): string => {
   if (!model) return "按系统默认模型";
+  if (model === COMFY_LOCAL_MODEL) return "自建 · 免云端积分";
   const c = estimateImageCost(model);
   return c ? costEstimateLabel(c) : "按模型页";
 };
@@ -475,6 +479,8 @@ export const BaseNode = memo(function BaseNode({
   // 宫格切分：直接把本图按 N×N 切分落新节点。全部复用 imageGen.generate / imageGrid.slice。
   const gridGenMut = trpc.imageGen.generate.useMutation();
   const gridSliceMut = trpc.imageGrid.slice.useMutation();
+  // #77：工具箱宫格管线的本地自建路由（comfyui img2img，带参考图）
+  const gridComfyMut = trpc.comfyui.generateImage.useMutation();
   const [gridBusy, setGridBusy] = useState(false);
   const [gridMenuOpen, setGridMenuOpen] = useState(false);
   // 阶段四 4.1 工具箱下拉（连贯分镜/剧情推演/±5s 画面推演/三视图/表情表）
@@ -508,14 +514,26 @@ export const BaseNode = memo(function BaseNode({
     setToolkitOpen(false);
     const tid = toast.loading(`${titlePrefix}生成中（${preset.rows}×${preset.cols} 宫格 → 自动切分）…`);
     try {
-      const gen = await gridGenMut.mutateAsync({
-        prompt: buildGridPrompt(subject, preset),
-        referenceImageUrl: resultImageUrl,
-        aspectRatio: preset.sheetAspect, poyoAspectRatio: preset.sheetAspect, reveAspectRatio: preset.sheetAspect,
-        ...(projectId ? { projectId } : {}),
-        ...(toolkitModel ? { model: toolkitModel, estimatedCost: toolkitCost } : {}),
-      } as Parameters<typeof gridGenMut.mutateAsync>[0]);
-      const gridUrl = gen.urls?.[0] || gen.url || "";
+      let gridUrl = "";
+      if (toolkitModel === COMFY_LOCAL_MODEL) {
+        const ckpt = loadComfyCkpt();
+        if (!ckpt) { toast.error("本地 ComfyUI 需先在工具箱菜单里选择 checkpoint 模型", { id: tid }); setGridBusy(false); return; }
+        const gen = await gridComfyMut.mutateAsync({
+          nodeId: id, projectId: projectId ?? 0, workflowTemplate: "img2img", ckpt,
+          prompt: buildGridPrompt(subject, preset).slice(0, 2000),
+          referenceImageUrl: resultImageUrl, denoise: 0.8,
+        });
+        gridUrl = gen.url || "";
+      } else {
+        const gen = await gridGenMut.mutateAsync({
+          prompt: buildGridPrompt(subject, preset),
+          referenceImageUrl: resultImageUrl,
+          aspectRatio: preset.sheetAspect, poyoAspectRatio: preset.sheetAspect, reveAspectRatio: preset.sheetAspect,
+          ...(projectId ? { projectId } : {}),
+          ...(toolkitModel ? { model: toolkitModel, estimatedCost: toolkitCost } : {}),
+        } as Parameters<typeof gridGenMut.mutateAsync>[0]);
+        gridUrl = gen.urls?.[0] || gen.url || "";
+      }
       if (!gridUrl) throw new Error("未返回宫格图");
       const sliced = await gridSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, ...(projectId ? { projectId } : {}) });
       if (!sliced.urls.length) throw new Error("切分未产生子图");
@@ -539,13 +557,25 @@ export const BaseNode = memo(function BaseNode({
     const label = later ? `推演后 ${n} 秒` : `回溯前 ${n} 秒`;
     const tid = toast.loading(`${label}画面生成中…`);
     try {
-      const gen = await gridGenMut.mutateAsync({
-        prompt: `the exact same scene, subjects and camera position as the reference image, but exactly ${n} seconds ${later ? "LATER" : "EARLIER"} in time — ${later ? "show the natural continuation of the action and motion that follows this moment" : "show the moment that naturally led up to this frame"}, single frame, consistent characters, lighting and art style`,
-        referenceImageUrl: resultImageUrl,
-        ...(projectId ? { projectId } : {}),
-        ...(toolkitModel ? { model: toolkitModel, estimatedCost: toolkitCost } : {}),
-      } as Parameters<typeof gridGenMut.mutateAsync>[0]);
-      const url = gen.urls?.[0] || gen.url || "";
+      const tsPrompt = `the exact same scene, subjects and camera position as the reference image, but exactly ${n} seconds ${later ? "LATER" : "EARLIER"} in time — ${later ? "show the natural continuation of the action and motion that follows this moment" : "show the moment that naturally led up to this frame"}, single frame, consistent characters, lighting and art style`;
+      let url = "";
+      if (toolkitModel === COMFY_LOCAL_MODEL) {
+        const ckpt = loadComfyCkpt();
+        if (!ckpt) { toast.error("本地 ComfyUI 需先在工具箱菜单里选择 checkpoint 模型", { id: tid }); setGridBusy(false); return; }
+        const gen = await gridComfyMut.mutateAsync({
+          nodeId: id, projectId: projectId ?? 0, workflowTemplate: "img2img", ckpt,
+          prompt: tsPrompt.slice(0, 2000), referenceImageUrl: resultImageUrl, denoise: 0.7,
+        });
+        url = gen.url || "";
+      } else {
+        const gen = await gridGenMut.mutateAsync({
+          prompt: tsPrompt,
+          referenceImageUrl: resultImageUrl,
+          ...(projectId ? { projectId } : {}),
+          ...(toolkitModel ? { model: toolkitModel, estimatedCost: toolkitCost } : {}),
+        } as Parameters<typeof gridGenMut.mutateAsync>[0]);
+        url = gen.urls?.[0] || gen.url || "";
+      }
       if (!url) throw new Error("未返回图片");
       spawnImageResultNode(`${label}`, [url], url);
       toast.success(`已生成「${label}」画面（新节点）`, { id: tid });
@@ -1079,6 +1109,7 @@ export const BaseNode = memo(function BaseNode({
                       <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 5, borderTop: "1px solid var(--c-bd1)", marginTop: 3 }}>
                         <span style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "0 2px" }}>生成模型（上列全部操作生效）</span>
                         <ModelPicker value={toolkitModel} onChange={pickToolkitModel} options={TOOLKIT_MODEL_OPTIONS} minWidth={156} />
+                        <ComfyCkptSelect enabled={toolkitModel === COMFY_LOCAL_MODEL} width={156} />
                         <span style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "0 2px" }} title="预计消耗（宫格为单张大图计一次生成）">预计：{toolkitCost}</span>
                       </div>
                     </div>
@@ -1925,12 +1956,12 @@ export const BaseNode = memo(function BaseNode({
           fixed 定位会被祸害成相对定位）；独立于 NodeToolbar 挂载，节点取消选中也不闪关。 */}
       {angleEditorOpen && resultImageUrl && createPortal(
         <Suspense fallback={null}>
-          <MultiAngleEditorLazy sourceUrl={resultImageUrl} projectId={projectId ?? 0}
+          <MultiAngleEditorLazy sourceUrl={resultImageUrl} nodeId={id} projectId={projectId ?? 0}
             onApply={applyEditedImage} onClose={() => setAngleEditorOpen(false)} />
         </Suspense>, document.body)}
       {relightEditorOpen && resultImageUrl && createPortal(
         <Suspense fallback={null}>
-          <RelightEditorLazy sourceUrl={resultImageUrl} projectId={projectId ?? 0}
+          <RelightEditorLazy sourceUrl={resultImageUrl} nodeId={id} projectId={projectId ?? 0}
             onApply={applyEditedImage} onClose={() => setRelightEditorOpen(false)} />
         </Suspense>, document.body)}
     </div>

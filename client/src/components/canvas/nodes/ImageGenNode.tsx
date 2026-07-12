@@ -30,7 +30,7 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, ChevronUp, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin } from "lucide-react";
 import { StylePicker } from "../StylePicker";
 import { ToolChip, RefThumbRow, MarkElementPicker, MarkChipRow, loadMarkModel, saveMarkModel, switchMark, removeMark } from "../InlineBarParts";
 import { nanoid } from "nanoid";
@@ -529,58 +529,70 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       </div>
     </div>
   ) : heroShowGrid ? (
-    <div
-      className="grid gap-1 p-2"
-      style={{ gridTemplateColumns: payload.imageUrls!.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls!.length, 3)}, 1fr)` }}
-    >
-      {payload.imageUrls!.map((url, idx) => {
-        const isSelected = url === payload.imageUrl;
-        const tileBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", borderRadius: 7, fontSize: 10.5, fontWeight: 700, background: "oklch(0 0 0 / 0.62)", border: "1px solid oklch(1 0 0 / 0.22)", color: "#fff", cursor: "pointer", backdropFilter: "blur(6px)" };
-        return (
-          <div key={idx} className="relative rounded-lg overflow-hidden group" style={{ background: "var(--c-canvas)" }}>
-            <MediaImage
-              src={url}
-              alt={`generated-${idx}`}
-              className="w-full"
-              draggable={false}
-            />
-            {isOwnStorageUrl(url) && (
-              <div
-                title="已存储到 MinIO·长期有效"
-                className="absolute top-1 left-1 rounded-full pointer-events-none"
-                style={{ width: 9, height: 9, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2px oklch(0.72 0.18 155 / 0.35)" }}
+    /* #77 网格视图按钮重排：网格级「收起」从图面移到常驻头行（不再与每图 hover 的
+       「下载」挤在右上角）；每图 hover 改为底部渐变 + 图标圆钮（下载/设为主图），
+       可视性与命中率都更好。 */
+    <div className="flex flex-col">
+      <div className="nodrag flex items-center justify-between" style={{ padding: "6px 10px 0" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t4)" }}>{payload.imageUrls!.length} 张 · 网格视图</span>
+        <button
+          className="nodrag flex items-center gap-1"
+          title="收起为堆叠视图"
+          onClick={(e) => { e.stopPropagation(); update("heroView", "single"); }}
+          style={{ padding: "2px 9px", borderRadius: 99, fontSize: 10.5, fontWeight: 700, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+        >
+          <ChevronUp style={{ width: 11, height: 11 }} /> 收起
+        </button>
+      </div>
+      <div
+        className="grid gap-1 p-2"
+        style={{ gridTemplateColumns: payload.imageUrls!.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls!.length, 3)}, 1fr)` }}
+      >
+        {payload.imageUrls!.map((url, idx) => {
+          const isSelected = url === payload.imageUrl;
+          const iconBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: "50%", background: "oklch(0 0 0 / 0.66)", border: "1px solid oklch(1 0 0 / 0.28)", color: "#fff", cursor: "pointer", backdropFilter: "blur(6px)", padding: 0 };
+          return (
+            <div key={idx} className="relative rounded-lg overflow-hidden group" style={{ background: "var(--c-canvas)" }}>
+              <MediaImage
+                src={url}
+                alt={`generated-${idx}`}
+                className="w-full"
+                draggable={false}
               />
-            )}
-            {isSelected && (
-              <div
-                className="absolute top-1 right-1 rounded-full flex items-center justify-center"
-                style={{ width: 16, height: 16, background: accent }}
-              >
-                <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
-              </div>
-            )}
-            {/* LibTV 展开态 hover 操作：下载 + 设为主图（主图为「收起」回堆叠） */}
-            <div className="absolute inset-x-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-start justify-end gap-1 p-1.5"
-              style={{ background: "linear-gradient(oklch(0 0 0 / 0.45), oklch(0 0 0 / 0) 80%)" }}>
-              <button className="nodrag" style={tileBtn} title="下载这张图"
-                onClick={(e) => { e.stopPropagation(); handleDownloadImage(url); }}>
-                <Download style={{ width: 10, height: 10 }} /> 下载
-              </button>
-              {isSelected ? (
-                <button className="nodrag" style={tileBtn} title="收起为堆叠视图"
-                  onClick={(e) => { e.stopPropagation(); update("heroView", "single"); }}>
-                  收起
-                </button>
-              ) : (
-                <button className="nodrag" style={tileBtn} title="设为当前主图（同步下游节点）"
-                  onClick={(e) => { e.stopPropagation(); handleSelectImage(url); }}>
-                  设为主图
-                </button>
+              {isOwnStorageUrl(url) && (
+                <div
+                  title="已存储到 MinIO·长期有效"
+                  className="absolute top-1 left-1 rounded-full pointer-events-none"
+                  style={{ width: 9, height: 9, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2px oklch(0.72 0.18 155 / 0.35)" }}
+                />
               )}
+              {isSelected && (
+                <div
+                  title="当前主图"
+                  className="absolute top-1 right-1 rounded-full flex items-center justify-center pointer-events-none"
+                  style={{ width: 16, height: 16, background: accent }}
+                >
+                  <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
+                </div>
+              )}
+              {/* hover：底部渐变 + 图标圆钮（下载 / 设为主图），不再遮挡图片上缘 */}
+              <div className="absolute inset-x-0 bottom-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-2 pb-1.5 pt-4"
+                style={{ background: "linear-gradient(oklch(0 0 0 / 0) 0%, oklch(0 0 0 / 0.55) 100%)" }}>
+                <button className="nodrag" style={iconBtn} title="下载这张图"
+                  onClick={(e) => { e.stopPropagation(); handleDownloadImage(url); }}>
+                  <Download style={{ width: 12, height: 12 }} />
+                </button>
+                {!isSelected && (
+                  <button className="nodrag" style={iconBtn} title="设为当前主图（同步下游节点）"
+                    onClick={(e) => { e.stopPropagation(); handleSelectImage(url); }}>
+                    <ImagePlus style={{ width: 12, height: 12 }} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   ) : payload.imageUrl ? (
     <div className="relative overflow-hidden group" style={{ width: "100%" }}>
