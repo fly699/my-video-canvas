@@ -7,6 +7,7 @@ import { IMAGE_EDIT_MODEL_GROUPS, DEFAULT_IMAGE_EDIT_MODEL, buildImageEditInstru
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
+import { sourceAspectRatio } from "../../../lib/imageAspect";
 import {
   ANGLE_PRESETS, buildAnglePrompt, shotLabelForZoom, type AngleParams,
   RELIGHT_PRESETS, RELIGHT_DEFAULTS, LIGHT_DIRECTIONS, buildRelightPrompt, type RelightParams,
@@ -268,9 +269,12 @@ export function MultiAngleEditor({ sourceUrl, nodeId, projectId, onApply, onClos
         });
         url = r.url;
       } else {
+        // 换机位必须显式继承源图画幅：部分云端编辑模型未传比例时按默认枚举首位出图。
+        const aspect = await sourceAspectRatio(sourceUrl);
         const r = await run.mutateAsync({
           sourceImageUrl: sourceUrl, operation: "reangle", model: model || undefined,
           prompt: promptText.slice(0, 900), estimatedCost: costLabel,
+          ...(aspect ? { aspectRatio: aspect } : {}),
           ...(projectId ? { projectId } : {}),
         });
         url = (r as { url?: string }).url;
@@ -411,9 +415,12 @@ export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
         });
         url = r.url;
       } else {
+        // 打光只改光照不改画幅：显式继承源图比例，防云端编辑模型按默认枚举改画幅。
+        const aspect = await sourceAspectRatio(sourceUrl);
         const r = await run.mutateAsync({
           sourceImageUrl: sourceUrl, operation: "relight", model: model || undefined,
           prompt: promptText.slice(0, 900), estimatedCost: costLabel,
+          ...(aspect ? { aspectRatio: aspect } : {}),
           ...(projectId ? { projectId } : {}),
           ...(refUrl ? { refImageUrl: refUrl } : {}),
         });

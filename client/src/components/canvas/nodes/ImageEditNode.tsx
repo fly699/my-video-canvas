@@ -17,6 +17,7 @@ import { HideWhenStudioFloating } from "../../../contexts/StudioFloatingContext"
 import { MaskCanvas } from "./MaskCanvas";
 import { ModelPicker, type ModelPickerOption } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
+import { sourceAspectRatio } from "../../../lib/imageAspect";
 
 // Edit-model options for the rich ModelPicker: provider-grouped + per-model 点数 label
 // (via estimateImageCost, same as image-gen). Built once.
@@ -138,15 +139,20 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
 
     // cloud backend (Higgsfield / KIE / Poyo edit models)
     update({ status: "processing", errorMessage: undefined });
-    editMutation.mutate({
-      sourceImageUrl: srcUrl,
-      operation,
-      ...(payload.model ? { model: payload.model } : {}),
-      ...(prompt ? { prompt } : {}),
-      ...(opSpec.needsAspect && payload.aspectRatio ? { aspectRatio: payload.aspectRatio } : {}),
-      ...(payload.maskUrl?.trim() ? { maskUrl: payload.maskUrl.trim() } : {}),
-      ...(data.projectId ? { projectId: data.projectId } : {}),
-    });
+    void (async () => {
+      // 改画幅类操作用用户选的目标比例；其余操作必须显式传源图比例——部分云端编辑模型
+      // （如 kie 编辑系）未传比例时按各自默认枚举首位出图，原图画幅会被静默改掉。
+      const aspect = opSpec.needsAspect ? payload.aspectRatio : await sourceAspectRatio(srcUrl);
+      editMutation.mutate({
+        sourceImageUrl: srcUrl,
+        operation,
+        ...(payload.model ? { model: payload.model } : {}),
+        ...(prompt ? { prompt } : {}),
+        ...(aspect ? { aspectRatio: aspect } : {}),
+        ...(payload.maskUrl?.trim() ? { maskUrl: payload.maskUrl.trim() } : {}),
+        ...(data.projectId ? { projectId: data.projectId } : {}),
+      });
+    })();
   };
 
   const exportMask = useCallback((dataUrl: string) => {

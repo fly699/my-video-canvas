@@ -107,11 +107,13 @@ export const POYO_IMAGE_SPECS: Record<string, PoyoImageSpec> = {
   // Others — unified models, auto-edit when image_urls present (1 ref image each)
   poyo_z_image:    { wire: "z-image",            sizeMode: "size", unifiedRef: 1 },
   poyo_grok_image: { wire: "grok-imagine-image", sizeMode: "size", unifiedRef: 1 },
-  // Legacy aliases (kept so old payloads keep routing)
-  "gpt-image-2":  { wire: "gpt-image-2", sizeMode: "size", resolution: true, quality: true },
-  "seedream-4.5": { wire: "seedream-4.5", sizeMode: "size" },
-  "flux-2-pro":   { wire: "flux-2-pro", sizeMode: "aspect_ratio" },
-  "flux-2-flex":  { wire: "flux-2-flex", sizeMode: "aspect_ratio" },
+  // Legacy aliases (kept so old payloads keep routing)。edit 变体必须与上面的正式 spec
+  // 同步：默认管线（model 未传）走的正是 "gpt-image-2" 别名，此前漏配 edit → 带参考图的
+  // 请求参考图被静默丢弃（画面推演/多角度宫格真实故障：产物与源图完全无关）。
+  "gpt-image-2":  { wire: "gpt-image-2", edit: "gpt-image-2-edit", sizeMode: "size", resolution: true, quality: true },
+  "seedream-4.5": { wire: "seedream-4.5", edit: "seedream-4.5-edit", sizeMode: "size" },
+  "flux-2-pro":   { wire: "flux-2-pro", edit: "flux-2-pro-edit", sizeMode: "aspect_ratio" },
+  "flux-2-flex":  { wire: "flux-2-flex", edit: "flux-2-flex-edit", sizeMode: "aspect_ratio" },
   "wan-2.7-image":      { wire: "wan-2.7-image", sizeMode: "size", n: true, unifiedRef: 4 },
   "grok-imagine-image": { wire: "grok-imagine-image", sizeMode: "size", unifiedRef: 1 },
 };

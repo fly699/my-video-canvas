@@ -26,6 +26,7 @@ import {
   Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes, Focus, Eraser, Columns2,
 } from "lucide-react";
 import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
+import { sourceAspectRatio, imageNaturalRatio, nearestAspect } from "../../lib/imageAspect";
 import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
 import { VARIANT_TYPES } from "../../hooks/useCanvasStore";
@@ -69,6 +70,7 @@ const toolkitCostLabel = (model: string): string => {
   const c = estimateImageCost(model);
   return c ? costEstimateLabel(c) : "按模型页";
 };
+
 
 interface BaseNodeProps {
   id: string;
@@ -504,7 +506,11 @@ export const BaseNode = memo(function BaseNode({
     const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
     let node;
     try { node = st.addNode("image_gen", { x: self.position.x + w + 60, y: self.position.y }); }
-    catch (e) { toast.error(e instanceof Error ? e.message : "创建失败"); return; }
+    catch (e) {
+      // 生成已完成（已计费）却建不了节点：明确告知产物在素材库，别让用户以为白花积分。
+      toast.error(`${e instanceof Error ? e.message : "创建节点失败"}——产物已存入素材库（左栏「资产」可找回）`);
+      return;
+    }
     st.updateNodeTitle(node.id, nodeTitle);
     st.updateNodeData(node.id, { prompt: "", imageUrl: heroUrl ?? urls[0], imageUrls: urls, heroView: "grid" });
     st.onConnect({ source: id, sourceHandle: "output", target: node.id, targetHandle: "input" });
@@ -532,20 +538,34 @@ export const BaseNode = memo(function BaseNode({
         });
         gridUrl = gen.url || "";
       } else {
+        // sheet 比例按源图画幅推导：每格比例 = 源图比例 → sheet = 源比例 × cols/rows，
+        // 切分后的每一格都继承原图画幅（读不出尺寸时回落预设 sheetAspect）。
+        const srcRatio = await imageNaturalRatio(resultImageUrl);
+        const sheetAspect = (srcRatio ? nearestAspect((srcRatio * preset.cols) / preset.rows) : undefined) ?? preset.sheetAspect;
         const gen = await gridGenMut.mutateAsync({
           prompt: buildGridPrompt(subject, preset),
           referenceImageUrl: resultImageUrl,
-          aspectRatio: preset.sheetAspect, poyoAspectRatio: preset.sheetAspect, reveAspectRatio: preset.sheetAspect,
+          aspectRatio: sheetAspect, poyoAspectRatio: sheetAspect, reveAspectRatio: sheetAspect,
           ...(projectId ? { projectId } : {}),
           ...(toolkitModel ? { model: toolkitModel, estimatedCost: toolkitCost } : {}),
         } as Parameters<typeof gridGenMut.mutateAsync>[0]);
         gridUrl = gen.urls?.[0] || gen.url || "";
       }
       if (!gridUrl) throw new Error("未返回宫格图");
-      const sliced = await gridSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, ...(projectId ? { projectId } : {}) });
-      if (!sliced.urls.length) throw new Error("切分未产生子图");
-      spawnImageResultNode(`${titlePrefix} · ${sliced.urls.length} 张`, sliced.urls);
-      toast.success(`已生成 ${sliced.urls.length} ${doneLabel}（新节点）`, { id: tid });
+      // 切分失败不许把已生成（已计费、已入素材库）的宫格图丢在库里不见天日——
+      // 落宫格原图节点兜底，用户可手动「宫格切分」重试（真实反馈：产物只进素材库不建节点）。
+      let slicedUrls: string[] = [];
+      try {
+        const sliced = await gridSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, ...(projectId ? { projectId } : {}) });
+        slicedUrls = sliced.urls;
+      } catch { /* 下方按整图兜底 */ }
+      if (slicedUrls.length) {
+        spawnImageResultNode(`${titlePrefix} · ${slicedUrls.length} 张`, slicedUrls);
+        toast.success(`已生成 ${slicedUrls.length} ${doneLabel}（新节点）`, { id: tid });
+      } else {
+        spawnImageResultNode(`${titlePrefix} · 宫格原图`, [gridUrl], gridUrl);
+        toast.warning(`宫格已生成但自动切分失败——已把整张宫格图落为新节点，可在节点上手动「宫格切分」`, { id: tid });
+      }
     } catch (e) {
       toast.error(`${titlePrefix}生成失败：` + (e instanceof Error ? e.message : String(e)), { id: tid });
     } finally { setGridBusy(false); }
@@ -575,9 +595,12 @@ export const BaseNode = memo(function BaseNode({
         });
         url = gen.url || "";
       } else {
+        // 推演产物必须继承源图画幅：按源图实际宽高就近取比例传给三类模型的比例通道。
+        const ar = await sourceAspectRatio(resultImageUrl);
         const gen = await gridGenMut.mutateAsync({
           prompt: tsPrompt,
           referenceImageUrl: resultImageUrl,
+          ...(ar ? { aspectRatio: ar, poyoAspectRatio: ar, reveAspectRatio: ar } : {}),
           ...(projectId ? { projectId } : {}),
           ...(toolkitModel ? { model: toolkitModel, estimatedCost: toolkitCost } : {}),
         } as Parameters<typeof gridGenMut.mutateAsync>[0]);

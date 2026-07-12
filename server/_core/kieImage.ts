@@ -127,6 +127,49 @@ export function isKieImageModel(model?: string): boolean {
   return !!model && model in KIE_IMAGE_MODELS;
 }
 
+/** 文生图 → 同族图生图兄弟模型（jobs 端点）。带参考图却选中 t2i 模型时自动切换，
+ *  否则参考图被静默丢弃——模型根本看不到图，「与参考图相同场景」类提示词（画面推演/
+ *  多角度宫格/剧情推演等）必然产出无关画面（2026-07 真实故障：GPT Image 2 推演跑偏）。
+ *  只登记同版本、参数兼容的精确配对，禁止跨版本猜配（如 Seedream 4.5 无同版编辑模型就不配）。 */
+export const KIE_T2I_TO_I2I: Record<string, string> = {
+  kie_nano_banana: "kie_nano_banana_edit",
+  kie_seedream_v4: "kie_seedream_v4_edit",
+  kie_flux2_pro: "kie_flux2_pro_i2i",
+  kie_flux2_flex: "kie_flux2_flex_i2i",
+  kie_gpt_image_15: "kie_gpt_image_15_edit",
+  kie_gpt_image_2: "kie_gpt_image_2_i2i",
+  kie_seedream_5lite: "kie_seedream_5lite_i2i",
+  kie_qwen_image: "kie_qwen_image_i2i",
+};
+
+/** 把用户比例夹到模型枚举内：命中原样用；未命中按数值就近（对数距离）挑最接近项，
+ *  而不是一律回落枚举首位——旧行为会把 21:9 宽幅源图夹成 auto/1:1 方图。
+ *  未传比例仍回枚举首位默认；"auto" 等非数值令牌不参与就近比较。 */
+export function clampAspectTo(aspects: readonly string[], aspect: string | undefined): string {
+  // 未传比例：枚举含 "auto" 优先用 auto（图生图下 = 跟随输入图画幅，文生图下 = 模型自定），
+  // 否则回枚举首位——这是编辑/i2i 模型「保持原图比例」的兜底（nano-banana-edit 首位是 1:1，
+  // 旧行为把所有未传比例的编辑请求压成方图）。
+  if (!aspect) return aspects.includes("auto") ? "auto" : aspects[0];
+  if (!aspects.length) return aspects[0];
+  if (aspects.includes(aspect)) return aspect;
+  const ratioOf = (s: string): number => {
+    const m = /^(\d+(?:\.\d+)?)\s*[:x]\s*(\d+(?:\.\d+)?)$/.exec(s.trim());
+    const v = m ? Number(m[1]) / Number(m[2]) : NaN;
+    return Number.isFinite(v) && v > 0 ? v : NaN;
+  };
+  const want = ratioOf(aspect);
+  if (!Number.isFinite(want)) return aspects[0];
+  let best = aspects[0];
+  let bestDist = Infinity;
+  for (const c of aspects) {
+    const v = ratioOf(c);
+    if (!Number.isFinite(v)) continue;
+    const d = Math.abs(Math.log(v / want));
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return best;
+}
+
 /** 该 kie 图像模型的 input schema 是否支持 negative_prompt（Imagen4 家族 / Ideogram V3 /
  *  Qwen 系列）。router 据此决定：支持者「干净 prompt + 单独传负向」，否则退回把负向词塞进
  *  prompt 当「Avoid: …」后缀（因 API 无该字段）。 */
@@ -163,21 +206,25 @@ export async function generateImageKie(options: GenerateImageOptions): Promise<G
 async function generateImageKieOnce(options: GenerateImageOptions): Promise<GenerateImageResponse> {
   const apiKey = options.kieApiKey;
   if (!apiKey) throw new Error("kie API key 未解析（内部错误）");
-  const spec = KIE_IMAGE_MODELS[options.model ?? ""];
+  let spec = KIE_IMAGE_MODELS[options.model ?? ""];
   if (!spec) throw new Error(`未知 kie 图像模型：${options.model}`);
 
-  const endpoint = spec.endpoint ?? "jobs";
-  const aspect = options.size ?? options.reveAspectRatio;
-  const clampAspect = (def: string): string => {
-    const a = spec.aspects ?? [def];
-    return aspect && a.includes(aspect) ? aspect : a[0];
-  };
   // kie 从公网拉取参考图：相对路径（/manus-storage/...）它无法解析 → 4xx。
   // 与 poyoVideo.ts 完全同构（trim/filter → Set 去重保序 → resolveToAbsoluteUrl），
   // 该口径已在 Poyo 链路实测通过，勿引入差异。
   const rawRefs = Array.from(new Set(
     (options.originalImages ?? []).map((o) => o.url?.trim()).filter((u): u is string => Boolean(u)),
   ));
+  // 带参考图但选中的是纯文生图模型（jobs 端点无 ref 字段）→ 自动切到同族图生图，
+  // 否则参考图会被静默丢弃、产物与源图完全无关（画面推演/多角度宫格真实故障）。
+  if (rawRefs.length && !spec.ref && !spec.endpoint) {
+    const sibling = KIE_T2I_TO_I2I[options.model ?? ""];
+    if (sibling && KIE_IMAGE_MODELS[sibling]) spec = KIE_IMAGE_MODELS[sibling];
+  }
+
+  const endpoint = spec.endpoint ?? "jobs";
+  const aspect = options.size ?? options.reveAspectRatio;
+  const clampAspect = (def: string): string => clampAspectTo(spec.aspects ?? [def], aspect);
   const refs = await Promise.all(rawRefs.map((u) => resolveToAbsoluteUrl(u)));
 
   // ── Build per-endpoint submit URL + body ──
