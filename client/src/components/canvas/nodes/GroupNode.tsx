@@ -37,7 +37,9 @@ const GROUP_COLORS = [
   { value: "green",  accent: "oklch(0.65 0.20 160)", bg: "oklch(0.65 0.20 160 / 0.04)", border: "oklch(0.65 0.20 160 / 0.20)" },
   { value: "purple", accent: "oklch(0.68 0.22 300)", bg: "oklch(0.68 0.22 300 / 0.04)", border: "oklch(0.68 0.22 300 / 0.20)" },
   { value: "orange", accent: "oklch(0.70 0.20 60)",  bg: "oklch(0.70 0.20 60 / 0.04)",  border: "oklch(0.70 0.20 60 / 0.20)" },
-  { value: "gray",   accent: "oklch(0.55 0.08 260)", bg: "oklch(0.55 0.08 260 / 0.04)", border: "oklch(0.55 0.08 260 / 0.20)" },
+  // #113 默认灰改为中性浅灰（暗底上清晰可辨的淡灰填充+细边，对齐用户截图观感）；
+  // 其余彩色标记不变，仅默认观感变化。
+  { value: "gray",   accent: "oklch(0.75 0.01 260)", bg: "oklch(0.92 0.003 260 / 0.06)", border: "oklch(0.92 0.003 260 / 0.15)" },
 ];
 
 export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) {

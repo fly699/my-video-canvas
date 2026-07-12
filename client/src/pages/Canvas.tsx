@@ -1804,9 +1804,13 @@ function CanvasInner({ projectId }: { projectId: number }) {
     try {
       if (localStorage.getItem("avc:canvas-minimal") === "1") {
         document.documentElement.setAttribute("data-canvas-minimal", "1");
+        window.dispatchEvent(new CustomEvent("canvas:minimal-change"));
       }
     } catch { /* restricted */ }
-    return () => document.documentElement.removeAttribute("data-canvas-minimal");
+    return () => {
+      document.documentElement.removeAttribute("data-canvas-minimal");
+      window.dispatchEvent(new CustomEvent("canvas:minimal-change"));
+    };
   }, []);
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
@@ -1998,6 +2002,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
           const wasOn = el.getAttribute("data-canvas-minimal") === "1";
           if (wasOn) el.removeAttribute("data-canvas-minimal");
           else el.setAttribute("data-canvas-minimal", "1");
+          window.dispatchEvent(new CustomEvent("canvas:minimal-change"));
           try { localStorage.setItem("avc:canvas-minimal", wasOn ? "0" : "1"); } catch { /* restricted */ }
           toast.success(wasOn ? "已恢复标准显示" : "已切换到极简显示（再按 Alt+Q 恢复）", { duration: 1400 });
         }
