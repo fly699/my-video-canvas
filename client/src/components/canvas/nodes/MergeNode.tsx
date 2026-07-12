@@ -522,6 +522,8 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} resizable
+      heroMedia={/* #105 创意未选中且有成片→英雄区（悬停自动播放；选中走卡体预览避免双播放器；极简形态据此覆盖） */
+      isCreativeMode && !selected && payload.outputUrl ? <WatermarkedVideo block key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)} preload="metadata" className="w-full" style={{ display: "block" }} /> : null}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <ReferenceImageStrip
