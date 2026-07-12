@@ -558,16 +558,25 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           {displayName || (kind === "scene" ? "未命名场景" : "未命名角色")}
         </span>
       )}
-      <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 7px", borderRadius: 99, fontSize: 9.5, fontWeight: 700, background: accentA(0.28), border: `1px solid ${accentA(0.5)}`, color: "#fff" }}>
-        {kind === "scene" ? "场景" : "人物"}
-      </span>
-      {/* #76 批3：一致性种子快捷位——未锁=随机锁定；已锁=显示短码，再点重掷（表单里可解锁/精调） */}
+      {/* 类别按钮：点击直接在 人物↔场景 间切换（此前是纯标签，点击会冒泡到姓名条触发改名，
+          看起来就是「按不到」）。pointerDown 一并阻断，避免节点选中/拖拽抢事件。 */}
       <button
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); update("characterKind", kind === "scene" ? "person" : "scene"); }}
+        title={kind === "scene" ? "当前：场景（点击切换为人物）" : "当前：人物（点击切换为场景）"}
+        style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, height: 18, padding: "0 8px", borderRadius: 9, fontSize: 9.5, fontWeight: 700, lineHeight: 1, background: accentA(0.28), border: `1px solid ${accentA(0.5)}`, color: "#fff", cursor: "pointer" }}
+      >
+        {kind === "scene" ? "场景" : "人物"}
+      </button>
+      {/* #76 批3：一致性种子快捷位——未锁=随机锁定；已锁=显示短码，再点重掷（表单里可解锁/精调）。
+          与类别按钮同高同字号（此前 padding/字号不一致导致两枚 chip 大小不齐）。 */}
+      <button
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); update("consistencySeed", Math.floor(Math.random() * 2_147_483_647)); }}
         title={payload.consistencySeed != null ? `一致性种子已锁定 #${payload.consistencySeed}（点击重掷；解锁在资料面板）` : "随机锁定一致性种子（应用到分镜时钉到全部镜头）"}
-        style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 6px", borderRadius: 99, fontSize: 9, fontWeight: 700, background: payload.consistencySeed != null ? accentA(0.45) : "oklch(0 0 0 / 0.45)", border: `1px solid ${payload.consistencySeed != null ? accentA(0.7) : "var(--c-bd3)"}`, color: "#fff", cursor: "pointer" }}
+        style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, height: 18, padding: "0 7px", borderRadius: 9, fontSize: 9.5, fontWeight: 700, lineHeight: 1, background: payload.consistencySeed != null ? accentA(0.45) : "oklch(0 0 0 / 0.45)", border: `1px solid ${payload.consistencySeed != null ? accentA(0.7) : "var(--c-bd3)"}`, color: "#fff", cursor: "pointer" }}
       >
-        <Dices style={{ width: 10, height: 10 }} />
+        <Dices style={{ width: 10, height: 10, flexShrink: 0 }} />
         {payload.consistencySeed != null ? `#${String(payload.consistencySeed).slice(0, 6)}` : "种子"}
       </button>
     </div>
