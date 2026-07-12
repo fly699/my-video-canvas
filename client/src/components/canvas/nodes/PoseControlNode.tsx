@@ -1,5 +1,8 @@
 import { memo, useCallback, useMemo } from "react";
 import { BaseNode } from "../BaseNode";
+import { InlineGenBar } from "../InlineGenBar";
+import { SlidersHorizontal } from "lucide-react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { safeHref } from "@/lib/safeUrl";
 import { ZoomableImage } from "../ZoomableImage";
@@ -96,39 +99,11 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
   const docks = useNodeDocks(id, { hasRef: !!(payload.referenceImageUrl?.trim() || sourceImageUrl), hasPrompt: !!payload.prompt?.trim() }, { prompt: payload.prompt ?? "", ref: payload.referenceImageUrl || sourceImageUrl || "" });
   const refStrip = useSimpleRefStrip(id, payload, "single", { accent, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
 
-  return (
-    <BaseNode id={id} selected={selected} nodeType="pose_control" title={data.title} minHeight={200} resizable
-      onAssetImageDrop={(urls) => update({ referenceImageUrl: urls[0] })}
-      onHeaderHoverChange={docks.onHeaderHoverChange}
-      leftDock={
-        <>
-          {refStrip.strip}
-          <PromptDock
-            open={docks.promptOpen}
-            text={payload.prompt ?? ""}
-            accent={accent}
-            onClose={() => docks.setPromptOpen(false)}
-            onHoverChange={docks.onDockHoverChange}
-            onPin={docks.pinPrompt}
-          />
-        </>
-      }>
-
-      <div className="flex flex-col gap-3 p-3.5">
-
-        {/* Status banner */}
-        {isProcessing && (
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
-            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
-            <span className="text-xs" style={{ color: accent }}>Flux Pro Kontext 生成中...</span>
-          </div>
-        )}
-        {payload.status === "failed" && payload.errorMessage && (
-          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
-            <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
-          </div>
-        )}
-
+  // #97 LibTV：创意模式参数下浮（高级机制，快捷键 A）。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
+  // 配置区单一来源：非创意内联卡体（原样）；创意模式挂输入条「参数与操作」下浮面板。
+  const configBody = (
+    <>
         {/* Reference image */}
         <div>
           <label style={labelStyle}>参考构图图像 URL（自动从连接节点读取）</label>
@@ -171,6 +146,44 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
             <span>自由创作</span><span>严格遵循</span>
           </div>
         </div>
+    </>
+  );
+
+  return (
+    <>
+    <BaseNode id={id} selected={selected} nodeType="pose_control" title={data.title} minHeight={200} resizable
+      onAssetImageDrop={(urls) => update({ referenceImageUrl: urls[0] })}
+      onHeaderHoverChange={docks.onHeaderHoverChange}
+      leftDock={
+        <>
+          {refStrip.strip}
+          <PromptDock
+            open={docks.promptOpen}
+            text={payload.prompt ?? ""}
+            accent={accent}
+            onClose={() => docks.setPromptOpen(false)}
+            onHoverChange={docks.onDockHoverChange}
+            onPin={docks.pinPrompt}
+          />
+        </>
+      }>
+
+      <div className="flex flex-col gap-3 p-3.5">
+
+        {/* Status banner */}
+        {isProcessing && (
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
+            <span className="text-xs" style={{ color: accent }}>Flux Pro Kontext 生成中...</span>
+          </div>
+        )}
+        {payload.status === "failed" && payload.errorMessage && (
+          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
+            <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
+          </div>
+        )}
+
+        {!isCreativeMode && configBody}
 
         {/* Output image */}
         {payload.outputImageUrl && (
@@ -211,5 +224,25 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
       </div>
 
     </BaseNode>
+    {/* ── #97 LibTV（创意模式）就地输入条：参数与操作下浮面板（屏幕恒定） ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={440}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t2)", whiteSpace: "nowrap" }}>姿势控制</span>
+          <span style={{ fontSize: 10.5, color: "var(--c-t4)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>参考构图 / 描述 / 遵循强度（运行按钮在卡体常驻）</span>
+          <button className="nodrag" onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开参数与操作面板（浮现于输入条下方，不撑开节点卡体）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <SlidersHorizontal size={12} /> 参数与操作
+          </button>
+        </div>
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {configBody}
+          </div>
+        )}
+      </InlineGenBar>
+    )}
+    </>
   );
 });

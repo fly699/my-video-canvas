@@ -1,5 +1,8 @@
 import { memo, useCallback, useState, useMemo } from "react";
 import { BaseNode } from "../BaseNode";
+import { InlineGenBar } from "../InlineGenBar";
+import { SlidersHorizontal } from "lucide-react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { PostProcessNodeData } from "../../../../../shared/types";
 import { POST_PROCESS_CATEGORIES, buildEffectPrompt, getEffectById } from "../../../lib/postProcessOptions";
@@ -87,18 +90,11 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
 
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
 
-  return (
-    <BaseNode id={id} selected={selected} nodeType="post_process" title={data.title} minHeight={320} resizable>
-      <div
-        style={{
-          overflow: "hidden",
-          maxHeight: expanded ? "9999px" : "0px",
-          transition: expanded
-            ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
-            : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
-        }}
-      >
-      <div className="flex flex-col nodrag" style={{ userSelect: "none" }}>
+  // #97 LibTV：创意模式参数下浮（高级机制，快捷键 A）。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
+  // 配置区单一来源：非创意内联卡体（原样）；创意模式挂输入条「参数与操作」下浮面板。
+  const configBody = (
+    <>
 
         {/* ── Category tab bar ── */}
         <div
@@ -292,8 +288,45 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
             </div>
           )}
         </div>
+    </>
+  );
+
+  return (
+    <>
+    <BaseNode id={id} selected={selected} nodeType="post_process" title={data.title} minHeight={320} resizable>
+      <div
+        style={{
+          overflow: "hidden",
+          maxHeight: expanded ? "9999px" : "0px",
+          transition: expanded
+            ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+            : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+        }}
+      >
+      <div className="flex flex-col nodrag" style={{ userSelect: "none" }}>
+        {!isCreativeMode ? configBody : <div style={{ padding: "12px 14px", fontSize: 11.5, color: "var(--c-t3)" }}>已选 {selectedEffects.length} 个效果 — 选中节点后在下方浮动面板中选择与调整</div>}
       </div>
       </div>{/* end collapse wrapper */}
     </BaseNode>
+    {/* ── #97 LibTV（创意模式）就地输入条：参数与操作下浮面板（屏幕恒定） ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={440}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t2)", whiteSpace: "nowrap" }}>后处理</span>
+          <span style={{ fontSize: 10.5, color: "var(--c-t4)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>效果类别 / 强度 / 提示词预览</span>
+          <button className="nodrag" onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开参数与操作面板（浮现于输入条下方，不撑开节点卡体）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <SlidersHorizontal size={12} /> 参数与操作
+          </button>
+        </div>
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {configBody}
+          </div>
+        )}
+      </InlineGenBar>
+    )}
+    </>
   );
 });
