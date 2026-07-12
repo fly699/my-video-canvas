@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ANGLE_PRESETS, shotLabelForZoom, yawLabel, pitchLabel, buildAnglePrompt,
-  RELIGHT_PRESETS, LIGHT_DIRECTIONS, lightDirLabel, buildRelightPrompt, RELIGHT_DEFAULTS,
+  RELIGHT_PRESETS, LIGHT_DIRECTIONS, lightDirLabel, buildRelightPrompt, RELIGHT_DEFAULTS, LIGHT_COLOR_SWATCHES,
 } from "./angleRelight";
 
 describe("angleRelight 多角度", () => {
@@ -66,6 +66,13 @@ describe("angleRelight 打光", () => {
     for (const p of RELIGHT_PRESETS) {
       expect(p.prompt.length).toBeGreaterThan(10);
       expect(p.swatch).toContain("gradient");
+      // 实时预览「试穿」参数：方位/仰角/亮度/柔硬在合法范围
+      expect(p.preview.azimuth).toBeGreaterThanOrEqual(0);
+      expect(p.preview.azimuth).toBeLessThan(360);
+      expect(Math.abs(p.preview.elevation)).toBeLessThanOrEqual(90);
+      expect(p.preview.brightness).toBeGreaterThan(0);
+      expect(p.preview.softness).toBeGreaterThanOrEqual(0);
+      expect(p.preview.softness).toBeLessThanOrEqual(100);
     }
   });
 
@@ -87,6 +94,17 @@ describe("angleRelight 打光", () => {
     expect(s).toContain("#ff8800");
     expect(s).toContain("轮廓光");
     expect(s).toContain("黄昏咖啡馆");
+  });
+
+  it("光质描述：硬光/柔光按档位拼入，默认档不描述", () => {
+    expect(buildRelightPrompt({ ...RELIGHT_DEFAULTS, softness: 10 })).toContain("硬光");
+    expect(buildRelightPrompt({ ...RELIGHT_DEFAULTS, softness: 95 })).toContain("柔光");
+    expect(buildRelightPrompt({ ...RELIGHT_DEFAULTS, softness: 50 })).not.toContain("硬光");
+  });
+
+  it("常用光色快捷色卡齐全", () => {
+    expect(LIGHT_COLOR_SWATCHES.map((x) => x.label)).toEqual(["暖阳", "烛光", "冷月", "冷白", "霓虹粉", "青蓝"]);
+    for (const x of LIGHT_COLOR_SWATCHES) expect(x.hex).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
   it("默认参数只描述方位（不啰嗦亮度100%）", () => {
