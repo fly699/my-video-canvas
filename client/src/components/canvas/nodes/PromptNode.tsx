@@ -15,6 +15,9 @@ import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useNodeDocks, useCharSceneItems, useAudioStripItems, useVideoStripItems } from "../../../hooks/useNodeDocks";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
 import { PromptDock } from "../PromptDock";
+import { InlineGenBar } from "../InlineGenBar";
+import { ToolChip } from "../InlineBarParts";
+import { SlidersHorizontal } from "lucide-react";
 
 
 // LibTV（#70 创意模式）文本框样式：无边框大字（聚焦时仍显强调色边框）。
@@ -175,7 +178,8 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   // Creative-mode collapsed preview only — the prompt text is an INPUT, not a
   // generated result, so in other modes it must NOT act as a hero (the global
   // collapse rule would otherwise hide the editor before anything is produced).
-  const heroMedia = isCreative && hasAnyPrompt ? (
+  // #86：选中（编辑态）时也不给 hero——否则摘要框与可编辑文本框内容重复上下叠显。
+  const heroMedia = isCreative && hasAnyPrompt && !selected ? (
     <div className="node-hero-placeholder" style={{ minHeight: 80, padding: "14px 16px", alignItems: "flex-start", justifyContent: "flex-start" }}>
       {promptSummary}
     </div>
@@ -193,10 +197,73 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   const docks = useNodeDocks(id, { hasRef: true, /* 常开：空态悬停也能看到「上传/素材库」参考图入口 */ hasPrompt: !!payload.positivePrompt?.trim() }, { prompt: payload.positivePrompt ?? "", ref: `${payload.referenceImageUrl ?? ""}|${stripExtras.map((i) => i.id).join(",")}` });
   const refStrip = useSimpleRefStrip(id, payload, "single", { accent: accentColor, title: "分析图", mainLabel: "分析图", extraItems: stripExtras, open: docks.refOpen, onOpenChange: docks.setRefOpen, onHoverChange: docks.onDockHoverChange, onPin: docks.pinRef });
 
-  // LibTV（#70 创意模式）：文本框无边框大字。
-  const { isCreativeMode } = useCreativeAdvanced(selected);
+  // LibTV（#70 创意模式）：文本框无边框大字；#86 参数改挂输入条下浮面板（高级/快捷键 A）。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
+
+  // ── #86 配置分区（单一来源）：非创意内联在卡体；创意模式挂输入条「高级」下浮面板 ──
+  // 注意：隐藏 file input 常驻卡体（不随浮面板卸载），这里的按钮只触发它。
+  const imageSection = (
+    <div>
+      <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>输入图片（仅用于分析提取提示词）</label>
+      {payload.referenceImageUrl && (
+        <div className="relative rounded-lg overflow-hidden mb-1.5" style={{ borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT }}>
+          <ZoomableImage src={payload.referenceImageUrl} alt="输入图" maxHeight={160} radius={0} />
+        </div>
+      )}
+      <div className="flex items-center gap-1.5">
+        <button onClick={() => refInputRef.current?.click()} disabled={uploadingRef}
+          className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
+          style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)", cursor: uploadingRef ? "not-allowed" : "pointer" }}>
+          {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+          {payload.referenceImageUrl ? "更换图片" : "上传图片"}
+        </button>
+        {payload.referenceImageUrl && (
+          <button onClick={() => updateNodeData(id, { referenceImageUrl: undefined })} className="nodrag p-1 rounded transition-all"
+            style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }} title="清除图片"><X className="w-3 h-3" /></button>
+        )}
+      </div>
+      <input type="url" placeholder="或粘贴公网图片 URL（https://…）"
+        value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
+        onChange={(e) => updateNodeData(id, { referenceImageUrl: e.target.value.trim() || undefined })}
+        className="nodrag" style={{ ...fieldStyle, fontSize: 10.5, marginTop: 6 }} onFocus={onFocusAccent} onBlur={onBlurDefault} />
+    </div>
+  );
+  const modelSection = (
+    <div>
+      <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>AI 模型（分析 / 扩写 / 翻译）</label>
+      <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={!!busy} />
+    </div>
+  );
+  const opsSection = (
+    <div className="flex flex-col gap-1.5">
+      <div style={{ fontSize: 10, color: "var(--c-t4)", lineHeight: 1.5 }}>
+        AI 处理（开关决定是否在工作流运行时参与；多个开启时按 分析→扩写→翻译 顺序执行；全部关闭则用上方文本框内容）
+      </div>
+      <OpRow icon={<ScanText className="w-3 h-3" />} label="分析提取（图→提示词）" busy={busy === "analyze"} disabled={!!busy}
+        on={!!payload.enableAnalyze} onToggle={() => toggle("enableAnalyze")} onRun={() => doManual("analyze")} />
+      <OpRow icon={<Sparkles className="w-3 h-3" />} label="AI 扩写" busy={busy === "expand"} disabled={!!busy}
+        on={!!payload.enableExpand} onToggle={() => toggle("enableExpand")} onRun={() => doManual("expand")} />
+      <OpRow icon={<Languages className="w-3 h-3" />} label="翻译英文" busy={busy === "translate"} disabled={!!busy}
+        on={!!payload.enableTranslate} onToggle={() => toggle("enableTranslate")} onRun={() => doManual("translate")} />
+    </div>
+  );
+  const styleRatioSection = (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex gap-1.5 items-center">
+        <NodeInput placeholder="风格" value={payload.style ?? ""} onValueChange={(v) => handleChange("style", v)}
+          className="nodrag flex-1" style={fieldStyle} onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }} onBlur={onBlurDefault} />
+        <PassCheck label="传递" on={!!payload.passStyle} onToggle={() => toggle("passStyle")} />
+      </div>
+      <div className="flex gap-1.5 items-center">
+        <NodeInput placeholder="比例 (16:9)" value={payload.aspectRatio ?? ""} onValueChange={(v) => handleChange("aspectRatio", v)}
+          className="nodrag flex-1" style={fieldStyle} onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }} onBlur={onBlurDefault} />
+        <PassCheck label="传递" on={!!payload.passRatio} onToggle={() => toggle("passRatio")} />
+      </div>
+    </div>
+  );
 
   return (
+    <>
     <BaseNode
       id={id} selected={selected} nodeType="prompt" title={data.title} minHeight={200} resizable heroMedia={heroMedia}
       onRun={handleRunPipeline} running={busy === "pipeline"} canRun={canRun} hasResult={!!payload.positivePrompt?.trim()}
@@ -220,6 +287,8 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
       }
     >
       <div className="flex flex-col h-full p-3.5 gap-3">
+        {/* 隐藏文件输入常驻卡体（不随创意浮面板卸载）——输入条「分析图」按钮仍可触发上传 */}
+        <input ref={refInputRef} type="file" accept="image/*" className="hidden" onChange={handleRefUpload} />
         {/* Collapsed summary (professional mode): fills the remaining node height and
             scrolls, so a resized-tall node has no dead space and long prompts are
             fully readable (no line clamp) by scrolling. */}
@@ -262,70 +331,60 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
                 style={{ ...monoStyle, ...(isCreativeMode ? LIBTV_TA : {}) }} onFocus={onFocusNeg} onBlur={onBlurDefault} />
             </div>
 
-            {/* Input image (analysis only — never output downstream) */}
-            <div>
-              <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>输入图片（仅用于分析提取提示词）</label>
-              {payload.referenceImageUrl && (
-                <div className="relative rounded-lg overflow-hidden mb-1.5" style={{ borderWidth: 1, borderStyle: "solid", borderColor: BORDER_DEFAULT }}>
-                  <ZoomableImage src={payload.referenceImageUrl} alt="输入图" maxHeight={160} radius={0} />
-                </div>
-              )}
-              <div className="flex items-center gap-1.5">
-                <input ref={refInputRef} type="file" accept="image/*" className="hidden" onChange={handleRefUpload} />
-                <button onClick={() => refInputRef.current?.click()} disabled={uploadingRef}
-                  className="nodrag flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all flex-1"
-                  style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)", cursor: uploadingRef ? "not-allowed" : "pointer" }}>
-                  {uploadingRef ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                  {payload.referenceImageUrl ? "更换图片" : "上传图片"}
-                </button>
-                {payload.referenceImageUrl && (
-                  <button onClick={() => updateNodeData(id, { referenceImageUrl: undefined })} className="nodrag p-1 rounded transition-all"
-                    style={{ background: "var(--c-input)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t3)" }} title="清除图片"><X className="w-3 h-3" /></button>
-                )}
-              </div>
-              <input type="url" placeholder="或粘贴公网图片 URL（https://…）"
-                value={payload.referenceImageUrl?.startsWith("http") ? payload.referenceImageUrl : ""}
-                onChange={(e) => updateNodeData(id, { referenceImageUrl: e.target.value.trim() || undefined })}
-                className="nodrag" style={{ ...fieldStyle, fontSize: 10.5, marginTop: 6 }} onFocus={onFocusAccent} onBlur={onBlurDefault} />
-            </div>
-
-            {/* AI model */}
-            <div>
-              <label style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--c-t4)", display: "block", marginBottom: 4 }}>AI 模型（分析 / 扩写 / 翻译）</label>
-              <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={!!busy} />
-            </div>
-
-            {/* AI ops with workflow toggles */}
-            <div className="flex flex-col gap-1.5">
-              <div style={{ fontSize: 10, color: "var(--c-t4)", lineHeight: 1.5 }}>
-                AI 处理（开关决定是否在工作流运行时参与；多个开启时按 分析→扩写→翻译 顺序执行；全部关闭则用上方文本框内容）
-              </div>
-              <OpRow icon={<ScanText className="w-3 h-3" />} label="分析提取（图→提示词）" busy={busy === "analyze"} disabled={!!busy}
-                on={!!payload.enableAnalyze} onToggle={() => toggle("enableAnalyze")} onRun={() => doManual("analyze")} />
-              <OpRow icon={<Sparkles className="w-3 h-3" />} label="AI 扩写" busy={busy === "expand"} disabled={!!busy}
-                on={!!payload.enableExpand} onToggle={() => toggle("enableExpand")} onRun={() => doManual("expand")} />
-              <OpRow icon={<Languages className="w-3 h-3" />} label="翻译英文" busy={busy === "translate"} disabled={!!busy}
-                on={!!payload.enableTranslate} onToggle={() => toggle("enableTranslate")} onRun={() => doManual("translate")} />
-            </div>
-
-            {/* Style + ratio with downstream-pass checkboxes */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex gap-1.5 items-center">
-                <NodeInput placeholder="风格" value={payload.style ?? ""} onValueChange={(v) => handleChange("style", v)}
-                  className="nodrag flex-1" style={fieldStyle} onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }} onBlur={onBlurDefault} />
-                <PassCheck label="传递" on={!!payload.passStyle} onToggle={() => toggle("passStyle")} />
-              </div>
-              <div className="flex gap-1.5 items-center">
-                <NodeInput placeholder="比例 (16:9)" value={payload.aspectRatio ?? ""} onValueChange={(v) => handleChange("aspectRatio", v)}
-                  className="nodrag flex-1" style={fieldStyle} onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.5); }} onBlur={onBlurDefault} />
-                <PassCheck label="传递" on={!!payload.passRatio} onToggle={() => toggle("passRatio")} />
-              </div>
-            </div>
+            {/* #86 创意模式：配置分区不进卡体（挂输入条「高级」下浮面板），卡体只留双提示词
+                大字文本框——正向 flex:1 随节点拖拽缩放自适应；工作室/专业保持原内联表单。 */}
+            {!isCreativeMode && (<>
+              {imageSection}
+              {modelSection}
+              {opsSection}
+              {styleRatioSection}
+            </>)}
 
           </div>
         </div>
       </div>
     </BaseNode>
+    {/* ── #86 LibTV（创意模式）就地输入条：AI 工具 chips ‖ 模型 / 高级（参数下浮面板）── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={470}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <ToolChip icon={busy === "analyze" ? <Loader2 size={13} className="animate-spin" /> : <ScanText size={13} />} label="分析提取"
+            onClick={() => void doManual("analyze")} disabled={!!busy} title="AI 看图提取提示词（写入正向提示词）" />
+          <ToolChip icon={busy === "expand" ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} label="扩写"
+            onClick={() => void doManual("expand")} disabled={!!busy} title="AI 扩写正向提示词" />
+          <ToolChip icon={busy === "translate" ? <Loader2 size={13} className="animate-spin" /> : <Languages size={13} />} label="翻译"
+            onClick={() => void doManual("translate")} disabled={!!busy} title="翻译为英文提示词" />
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          <ToolChip icon={uploadingRef ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} label="分析图"
+            onClick={() => refInputRef.current?.click()} disabled={uploadingRef} title="上传输入图片（仅用于分析提取提示词）" />
+          {payload.referenceImageUrl && (
+            <ToolChip icon={<X size={13} />} label="清除" onClick={() => updateNodeData(id, { referenceImageUrl: undefined })} title="清除分析图" />
+          )}
+        </div>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <LLMModelPicker value={llmModel} onChange={setLlmModel} disabled={!!busy} />
+          </div>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开参数面板（输入图片/工作流开关/风格/比例，浮现于输入条下方）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+          >
+            <SlidersHorizontal size={12} /> 高级
+          </button>
+        </div>
+        {/* 参数下浮面板——「高级」展开时浮现在输入条下方（内部滚动），卡体不被表单撑开 */}
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {imageSection}
+            {opsSection}
+            {styleRatioSection}
+          </div>
+        )}
+      </InlineGenBar>
+    )}
+    </>
   );
 });
 
