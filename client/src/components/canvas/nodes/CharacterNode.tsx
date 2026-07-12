@@ -474,6 +474,16 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     </div>
   );
 
+  // #76 批3：hover 主图操作带 + 从库替换。库条目 payload 为角色快照，整包写回；
+  // characterKind 以库条目为准；storageKey 清空避免误关联旧上传。
+  const [libPickerOpen, setLibPickerOpen] = useState(false);
+  const libQuery = trpc.characterLibrary.list.useQuery(undefined, { enabled: libPickerOpen });
+  const replaceFromLibrary = useCallback((entry: { name: string; characterKind: string; payload: Record<string, unknown> }) => {
+    updateNodeData(id, { ...entry.payload, characterKind: entry.characterKind as CharacterKind, referenceStorageKey: undefined });
+    setLibPickerOpen(false);
+    toast.success(`已替换为「${entry.name}」（库快照整包写回）`);
+  }, [id, updateNodeData]);
+
   // #76 批2：多视角缩略条——主图 + 备用视角横排；点击备用图与主图互换（保持
   // referenceImageUrl=正面/主视角、additionalImageUrls=其余 的既有语义，下游条件化不变）。
   const extraViews = (payload.additionalImageUrls ?? []).map((u) => (u ?? "").trim()).filter(Boolean);
@@ -529,6 +539,15 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 7px", borderRadius: 99, fontSize: 9.5, fontWeight: 700, background: accentA(0.28), border: `1px solid ${accentA(0.5)}`, color: "#fff" }}>
         {kind === "scene" ? "场景" : "人物"}
       </span>
+      {/* #76 批3：一致性种子快捷位——未锁=随机锁定；已锁=显示短码，再点重掷（表单里可解锁/精调） */}
+      <button
+        onClick={(e) => { e.stopPropagation(); update("consistencySeed", Math.floor(Math.random() * 2_147_483_647)); }}
+        title={payload.consistencySeed != null ? `一致性种子已锁定 #${payload.consistencySeed}（点击重掷；解锁在资料面板）` : "随机锁定一致性种子（应用到分镜时钉到全部镜头）"}
+        style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 6px", borderRadius: 99, fontSize: 9, fontWeight: 700, background: payload.consistencySeed != null ? accentA(0.45) : "oklch(0 0 0 / 0.45)", border: `1px solid ${payload.consistencySeed != null ? accentA(0.7) : "var(--c-bd3)"}`, color: "#fff", cursor: "pointer" }}
+      >
+        <Dices style={{ width: 10, height: 10 }} />
+        {payload.consistencySeed != null ? `#${String(payload.consistencySeed).slice(0, 6)}` : "种子"}
+      </button>
     </div>
   );
 
@@ -562,7 +581,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   const heroMedia = payload.referenceImageUrl ? (
     <div style={{ width: "100%" }}>
-    <div className="relative" style={{ width: "100%" }}>
+    <div className="group/chero relative" style={{ width: "100%" }}>
       {/* #74：随预览自适应——按原图比例铺满宽度，框体高度跟随图片（resizable 可再拉大） */}
       <MediaImage
         src={payload.referenceImageUrl}
@@ -573,6 +592,40 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       {isOwnStorageUrl(payload.referenceImageUrl) && (
         <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
           style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
+      )}
+      {/* #76 批3：hover 主图操作带（仅创意模式）——存库 / 从库替换 / 应用到分镜 */}
+      {isCreativeMode && (
+        <div className="nodrag absolute top-1.5 right-1.5 z-10 flex-col items-end gap-1 hidden group-hover/chero:flex" style={{ display: undefined }}>
+          <div className="flex items-center gap-1 opacity-0 group-hover/chero:opacity-100" style={{ transition: "opacity 150ms ease" }}>
+            {([
+              { key: "save", label: "存库", title: "保存到角色库（跨项目复用）", onClick: () => saveToLibrary() },
+              { key: "lib", label: "从库替换", title: "从角色库选择条目整包替换本节点", onClick: () => setLibPickerOpen((v) => !v) },
+              { key: "apply", label: "应用到分镜", title: "把本角色的参考/LoRA/种子套用到所有连接的生成/分镜节点", onClick: () => applyToConnectedShots(false) },
+            ] as const).map((b) => (
+              <button key={b.key} title={b.title} onClick={(e) => { e.stopPropagation(); b.onClick(); }}
+                style={{ padding: "3px 8px", fontSize: 10, fontWeight: 600, borderRadius: 7, border: "1px solid var(--c-bd3)", background: "oklch(0.08 0.006 260 / 0.85)", color: "var(--c-t1)", cursor: "pointer", whiteSpace: "nowrap", backdropFilter: "blur(6px)" }}>
+                {b.label}
+              </button>
+            ))}
+          </div>
+          {libPickerOpen && (
+            <div className="nowheel" style={{ width: 210, maxHeight: 240, overflowY: "auto", padding: 6, borderRadius: 10, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 10px 30px oklch(0 0 0 / 0.5)", display: "flex", flexDirection: "column", gap: 3 }}>
+              {libQuery.isLoading && <span style={{ fontSize: 10.5, color: "var(--c-t4)", padding: 6 }}>加载角色库…</span>}
+              {!libQuery.isLoading && (libQuery.data ?? []).length === 0 && <span style={{ fontSize: 10.5, color: "var(--c-t4)", padding: 6 }}>角色库为空——先「存库」积累角色</span>}
+              {(libQuery.data ?? []).map((it) => (
+                <button key={it.id} onClick={(e) => { e.stopPropagation(); replaceFromLibrary(it as never); }}
+                  title={`替换为「${it.name}」`}
+                  style={{ display: "flex", alignItems: "center", gap: 7, padding: "4px 6px", borderRadius: 7, border: "1px solid var(--c-bd1)", background: "var(--c-surface)", cursor: "pointer", textAlign: "left" }}>
+                  {it.thumbnail
+                    ? <img src={it.thumbnail.startsWith("http") ? `/api/image-proxy?url=${encodeURIComponent(it.thumbnail)}` : it.thumbnail} alt="" style={{ width: 26, height: 26, objectFit: "cover", borderRadius: 5, flexShrink: 0 }} />
+                    : <span style={{ width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 5, background: "var(--c-input)", flexShrink: 0 }}>{it.characterKind === "scene" ? <Mountain style={{ width: 13, height: 13, color: "var(--c-t4)" }} /> : <User style={{ width: 13, height: 13, color: "var(--c-t4)" }} />}</span>}
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: "var(--c-t1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.name}</span>
+                  <span style={{ fontSize: 9, color: "var(--c-t4)", flexShrink: 0 }}>{it.characterKind === "scene" ? "场景" : "人物"}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
       {/* 姓名条仅创意模式——studio 选中态 hero 可见（CSS 只藏未选中态），不得漏入 */}
       {isCreativeMode && nameBar}
