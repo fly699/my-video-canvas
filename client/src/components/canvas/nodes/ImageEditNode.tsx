@@ -11,10 +11,13 @@ import type { ImageEditNodeData, ImageEditOp } from "../../../../../shared/types
 import { IMAGE_EDIT_OPS, IMAGE_EDIT_MODEL_GROUPS, getImageEditOp, buildImageEditInstruction, comfyTemplateForOp, comfyDenoiseForOp } from "../../../../../shared/imageEdit";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Loader2, Download, RotateCcw, Sparkles, Scissors, Maximize, Brush, Eraser, Lightbulb, Crop, Cloud, Cpu, type LucideIcon } from "lucide-react";
+import { Loader2, Download, RotateCcw, Sparkles, Scissors, Maximize, Brush, Eraser, Lightbulb, Crop, Cloud, Cpu, ArrowUp, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { HideWhenStudioFloating } from "../../../contexts/StudioFloatingContext";
 import { MaskCanvas } from "./MaskCanvas";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
+import { InlineGenBar } from "../InlineGenBar";
+import { ToolChip } from "../InlineBarParts";
 import { ModelPicker, type ModelPickerOption } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { sourceAspectRatio } from "../../../lib/imageAspect";
@@ -161,13 +164,125 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
     if (base64) uploadMutation.mutate({ base64, mimeType: "image/png", filename: "image-edit-mask.png" });
   }, [update, uploadMutation]);
 
+  // ── #91 LibTV 化：配置分区抽成单一来源常量——非创意内联卡体（原样），创意模式
+  //    卡体收干净、分区挂输入条与「高级」下浮面板（与图像/提示词/角色节点同范式）。 ──
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
+
+  const statusSection = (<>
+    {isProcessing && (
+      <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
+        <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
+        <span className="text-xs" style={{ color: accent }}>图像编辑生成中...</span>
+      </div>
+    )}
+    {payload.status === "failed" && payload.errorMessage && (
+      <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
+        <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
+      </div>
+    )}
+  </>);
+
+  const backendSection = (
+    <div>
+      <label style={labelStyle}>后端</label>
+      <div className="flex gap-1.5">
+        {([["cloud", "云端一键", Cloud], ["comfyui", "本地 ComfyUI", Cpu]] as const).map(([val, lbl, Icon]) => {
+          const active = backend === val;
+          return (
+            <button key={val} onClick={() => update({ backend: val })}
+              className="nodrag flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10.5px] font-medium transition-all"
+              style={{
+                background: active ? accentA(0.16) : "var(--c-input)",
+                border: active ? `1.5px solid ${accentA(0.5)}` : "1px solid var(--c-bd1)",
+                color: active ? accent : "var(--c-t4)", cursor: "pointer",
+              }}>
+              <Icon style={{ width: 11, height: 11 }} /> {lbl}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const sourceSection = (<>
+    <div>
+      <label style={labelStyle}>源图 URL（自动从连接节点读取）</label>
+      <NodeInput className="nodrag" placeholder="https://..." value={payload.sourceImageUrl ?? ""}
+        onValueChange={(v) => update({ sourceImageUrl: v })} style={fieldStyle}
+        onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
+        onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
+    </div>
+    {(payload.sourceImageUrl || sourceImageUrl) && (
+      <ZoomableImage src={(payload.sourceImageUrl || sourceImageUrl)!} alt="源图" maxHeight={150} border={`1px solid ${accentA(0.3)}`} />
+    )}
+  </>);
+
+  const modelSection = backend === "cloud" ? (
+    <div>
+      <label style={labelStyle}>编辑模型</label>
+      <ModelPicker value={payload.model ?? ""} onChange={(v) => update({ model: v || undefined })}
+        options={IMAGE_EDIT_MODEL_OPTIONS} disabled={isProcessing} minWidth={260} accent={accent} />
+    </div>
+  ) : null;
+
+  const comfySection = backend === "comfyui" ? (
+    <>
+      <div>
+        <label style={labelStyle}>ComfyUI 服务器 URL（留空用服务端默认）</label>
+        <NodeInput className="nodrag" placeholder="http://127.0.0.1:8188" value={payload.comfyBaseUrl ?? ""}
+          onValueChange={(v) => update({ comfyBaseUrl: v })} style={fieldStyle}
+          onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
+      </div>
+      <div>
+        <label style={labelStyle}>Checkpoint 模型名（必填）</label>
+        <NodeInput className="nodrag" placeholder="如 sd_xl_base_1.0.safetensors" value={payload.ckpt ?? ""}
+          onValueChange={(v) => update({ ckpt: v })} style={fieldStyle}
+          onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
+      </div>
+      <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: 0 }}>
+        本地后端：局部重绘/擦除走真·蒙版 inpaint；其余操作走 img2img 重绘（重打光/改比例等以指令引导）。
+      </p>
+    </>
+  ) : null;
+
+  const maskSection = (operation === "inpaint" || operation === "erase") && srcUrl ? (
+    <div>
+      <label style={labelStyle}>蒙版（涂抹要编辑的区域）{backend === "comfyui" ? " *" : "（可选）"}</label>
+      <MaskCanvas imageUrl={srcUrl} onExport={exportMask} accent={accent} />
+      {payload.maskUrl && <p style={{ fontSize: 9.5, color: "oklch(0.65 0.18 145)", margin: "2px 0 0" }}>✓ 蒙版已就绪</p>}
+      {uploadMutation.isPending && <p style={{ fontSize: 9.5, color: "var(--c-t4)", margin: "2px 0 0" }}>蒙版上传中…</p>}
+    </div>
+  ) : null;
+
+  const aspectSection = opSpec.needsAspect ? (
+    <div>
+      <label style={labelStyle}>目标画幅</label>
+      <select className="nodrag" value={payload.aspectRatio ?? ""} onChange={(e) => update({ aspectRatio: e.target.value || undefined })}
+        style={{ ...fieldStyle, cursor: "pointer" }}>
+        <option value="">保持原比例（仅向外扩展）</option>
+        {ASPECTS.map((a) => <option key={a} value={a}>{a}</option>)}
+      </select>
+    </div>
+  ) : null;
+
   return (
-    <BaseNode id={id} selected={selected} nodeType="image_edit" title={data.title} minHeight={220} resizable
+    <>
+    <BaseNode id={id} selected={selected} nodeType="image_edit" title={data.title} minHeight={isCreativeMode ? 140 : 220} resizable
       onRun={handleRun} running={isProcessing} canRun={!!srcUrl} hasResult={!!payload.outputUrl}
-      heroMedia={payload.outputUrl ? <img src={payload.outputUrl} alt="编辑结果" style={{ width: "100%", height: "auto", display: "block" }} /> : undefined}
+      // 创意模式：无结果时用源图作 hero（卡体即「正在编辑的图」），有结果换结果图。
+      heroMedia={(payload.outputUrl || (isCreativeMode ? srcUrl : undefined))
+        ? <img src={(payload.outputUrl || srcUrl)!} alt={payload.outputUrl ? "编辑结果" : "源图"} style={{ width: "100%", height: "auto", display: "block" }} />
+        : undefined}
       onAssetImageDrop={(urls) => update({ sourceImageUrl: urls[0] })}>
 
       <div className="flex flex-col gap-3 p-3.5">
+
+        {statusSection}
+
+        {/* #91 创意模式：配置全部移出卡体（输入条 + 高级下浮面板）；工作室/专业保持原内联表单 */}
+        {!isCreativeMode && (<>
 
         {/* Operation picker */}
         <div>
@@ -194,105 +309,12 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
           <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: "5px 0 0" }}>{opSpec.desc}</p>
         </div>
 
-        {/* Backend toggle: cloud edit models vs. local ComfyUI */}
-        <div>
-          <label style={labelStyle}>后端</label>
-          <div className="flex gap-1.5">
-            {([["cloud", "云端一键", Cloud], ["comfyui", "本地 ComfyUI", Cpu]] as const).map(([val, lbl, Icon]) => {
-              const active = backend === val;
-              return (
-                <button key={val} onClick={() => update({ backend: val })}
-                  className="nodrag flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10.5px] font-medium transition-all"
-                  style={{
-                    background: active ? accentA(0.16) : "var(--c-input)",
-                    border: active ? `1.5px solid ${accentA(0.5)}` : "1px solid var(--c-bd1)",
-                    color: active ? accent : "var(--c-t4)", cursor: "pointer",
-                  }}>
-                  <Icon style={{ width: 11, height: 11 }} /> {lbl}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Status / error */}
-        {isProcessing && (
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
-            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
-            <span className="text-xs" style={{ color: accent }}>图像编辑生成中...</span>
-          </div>
-        )}
-        {payload.status === "failed" && payload.errorMessage && (
-          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
-            <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
-          </div>
-        )}
-
-        {/* Source image */}
-        <div>
-          <label style={labelStyle}>源图 URL（自动从连接节点读取）</label>
-          <NodeInput className="nodrag" placeholder="https://..." value={payload.sourceImageUrl ?? ""}
-            onValueChange={(v) => update({ sourceImageUrl: v })} style={fieldStyle}
-            onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
-        </div>
-        {(payload.sourceImageUrl || sourceImageUrl) && (
-          <ZoomableImage src={(payload.sourceImageUrl || sourceImageUrl)!} alt="源图" maxHeight={150} border={`1px solid ${accentA(0.3)}`} />
-        )}
-
-        {/* Model (provider-grouped = the three cloud backends) */}
-        {backend === "cloud" && (
-          <div>
-            <label style={labelStyle}>编辑模型</label>
-            <ModelPicker value={payload.model ?? ""} onChange={(v) => update({ model: v || undefined })}
-              options={IMAGE_EDIT_MODEL_OPTIONS} disabled={isProcessing} minWidth={260} accent={accent} />
-          </div>
-        )}
-
-        {/* ComfyUI backend config */}
-        {backend === "comfyui" && (
-          <>
-            <div>
-              <label style={labelStyle}>ComfyUI 服务器 URL（留空用服务端默认）</label>
-              <NodeInput className="nodrag" placeholder="http://127.0.0.1:8188" value={payload.comfyBaseUrl ?? ""}
-                onValueChange={(v) => update({ comfyBaseUrl: v })} style={fieldStyle}
-                onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
-            </div>
-            <div>
-              <label style={labelStyle}>Checkpoint 模型名（必填）</label>
-              <NodeInput className="nodrag" placeholder="如 sd_xl_base_1.0.safetensors" value={payload.ckpt ?? ""}
-                onValueChange={(v) => update({ ckpt: v })} style={fieldStyle}
-                onFocus={(e) => { e.currentTarget.style.borderColor = accentA(0.6); }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }} />
-            </div>
-            <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: 0 }}>
-              本地后端：局部重绘/擦除走真·蒙版 inpaint；其余操作走 img2img 重绘（重打光/改比例等以指令引导）。
-            </p>
-          </>
-        )}
-
-        {/* Mask painter (inpaint / erase) — required for ComfyUI inpaint, optional context for cloud */}
-        {(operation === "inpaint" || operation === "erase") && srcUrl && (
-          <div>
-            <label style={labelStyle}>蒙版（涂抹要编辑的区域）{backend === "comfyui" ? " *" : "（可选）"}</label>
-            <MaskCanvas imageUrl={srcUrl} onExport={exportMask} accent={accent} />
-            {payload.maskUrl && <p style={{ fontSize: 9.5, color: "oklch(0.65 0.18 145)", margin: "2px 0 0" }}>✓ 蒙版已就绪</p>}
-            {uploadMutation.isPending && <p style={{ fontSize: 9.5, color: "var(--c-t4)", margin: "2px 0 0" }}>蒙版上传中…</p>}
-          </div>
-        )}
-
-        {/* Aspect (outpaint / reframe) */}
-        {opSpec.needsAspect && (
-          <div>
-            <label style={labelStyle}>目标画幅</label>
-            <select className="nodrag" value={payload.aspectRatio ?? ""} onChange={(e) => update({ aspectRatio: e.target.value || undefined })}
-              style={{ ...fieldStyle, cursor: "pointer" }}>
-              <option value="">保持原比例（仅向外扩展）</option>
-              {ASPECTS.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-        )}
+        {backendSection}
+        {sourceSection}
+        {modelSection}
+        {comfySection}
+        {maskSection}
+        {aspectSection}
 
         {/* Instruction */}
         <div>
@@ -308,11 +330,12 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
             onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
           />
         </div>
+        </>)}
 
         {/* Output. In studio's floating panel the preview + download are hidden (the
             node card hero shows the result, the floating top bar provides download),
             but 重置 stays reachable since it has no other home there. */}
-        {payload.outputUrl && (
+        {!isCreativeMode && payload.outputUrl && (
           <div className="flex flex-col gap-1.5">
             <HideWhenStudioFloating>
               <label style={labelStyle}>编辑结果</label>
@@ -338,7 +361,8 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
           </div>
         )}
 
-        {/* Run */}
+        {/* Run（非创意；创意模式在输入条上运行） */}
+        {!isCreativeMode && (<>
         <button onClick={handleRun} disabled={isProcessing}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
           style={{ background: isProcessing ? "var(--c-surface)" : accentA(0.15), border: `1px solid ${isProcessing ? BORDER_DEFAULT : accentA(0.5)}`, color: isProcessing ? "var(--c-t4)" : accent, cursor: isProcessing ? "not-allowed" : "pointer" }}>
@@ -349,7 +373,88 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
         <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: 0 }}>
           云端一键（Higgsfield / KIE / Poyo）或本地 ComfyUI（inpaint / img2img）。结果自动入库并可下游直传。
         </p>
+        </>)}
       </div>
     </BaseNode>
+
+    {/* ── #91 LibTV（创意模式）就地输入条：操作 chips ‖ 说明大字 ‖ 模型 / 画幅 / 高级 / 运行 ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={500}>
+        {/* Row1：编辑操作 chips（抠图/扩图/局部重绘/擦除/重打光/高清/多角度/改比例） */}
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {IMAGE_EDIT_OPS.map((op) => {
+            const I = OP_ICONS[op.icon] ?? Sparkles;
+            return (
+              <ToolChip key={op.id} icon={<I size={12} />} label={op.label.split(" / ")[0]} active={op.id === operation}
+                title={op.desc} onClick={() => update({ operation: op.id })} />
+            );
+          })}
+        </div>
+        {/* Row2：说明大字区 */}
+        <NodeTextArea
+          className="nodrag nowheel"
+          rows={2}
+          placeholder={opSpec.promptPlaceholder}
+          value={payload.prompt ?? ""}
+          onValueChange={(v) => update({ prompt: v })}
+          style={{ width: "100%", resize: "none", fontSize: 13.5, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+        />
+        {/* Row3：控制行（模型 │ 目标画幅 · 高级 │ 运行） */}
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {backend === "cloud" ? (
+            <ModelPicker value={payload.model ?? ""} onChange={(v) => update({ model: v || undefined })}
+              options={IMAGE_EDIT_MODEL_OPTIONS} disabled={isProcessing} minWidth={150} accent={accent} />
+          ) : (
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--c-t3)", whiteSpace: "nowrap" }}>本地 ComfyUI</span>
+          )}
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          {opSpec.needsAspect && (
+            <select className="nodrag" value={payload.aspectRatio ?? ""} onChange={(e) => update({ aspectRatio: e.target.value || undefined })}
+              title="目标画幅"
+              style={{ height: 28, padding: "0 6px", fontSize: 11, borderRadius: 8, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", outline: "none" }}>
+              <option value="">原比例</option>
+              {ASPECTS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          )}
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开参数面板（后端/源图/蒙版/画幅，浮现于输入条下方）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <SlidersHorizontal size={12} /> 高级
+          </button>
+          <div style={{ flex: 1 }} />
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); if (!isProcessing && srcUrl) handleRun(); }}
+            disabled={isProcessing || !srcUrl}
+            title={!srcUrl ? "请先连接上游图像或在「高级」里填源图" : isProcessing ? "生成中…" : `运行 · ${opSpec.label}`}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: isProcessing || !srcUrl ? "not-allowed" : "pointer", background: isProcessing || !srcUrl ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: isProcessing || !srcUrl ? "var(--c-t4)" : "#0b0d12" }}
+          >
+            {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
+          </button>
+        </div>
+        {/* 参数下浮面板：后端 / 源图 / 模型（comfy 时的服务器与 ckpt）/ 蒙版 / 画幅 / 重置 */}
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {backendSection}
+            {sourceSection}
+            {comfySection}
+            {maskSection}
+            {aspectSection}
+            {payload.outputUrl && (
+              <button onClick={() => update({ outputUrl: undefined, status: "idle", errorMessage: undefined })}
+                disabled={isProcessing}
+                className="nodrag flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px]"
+                style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: isProcessing ? "not-allowed" : "pointer", opacity: isProcessing ? 0.5 : 1 }}>
+                <RotateCcw style={{ width: 9, height: 9 }} /> 重置结果
+              </button>
+            )}
+          </div>
+        )}
+      </InlineGenBar>
+    )}
+    </>
   );
 });
