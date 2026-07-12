@@ -1568,48 +1568,38 @@ button:active:not(:disabled) {
   border: 1px solid oklch(0 0 0 / 0.5) !important;
 }
 /* ── #102 创意模式「极简显示」（Alt+Q）────────────────────────────────────────
-   所有节点仅留预览框：卡体外壳（底/边框/标题栏/正文）全部隐形，预览框自己成为
-   卡片——12px 圆角 + 极窄阴影（1px 微光描边 + 贴身投影）。悬停浮现标题小签；
-   桩点/缩放手柄非悬停时退场；选中态为预览框上一圈 1px 细高亮环。
+   仅作用于「有真实媒体结果」的节点（data-has-result=true，由 BaseNode 按
+   resultVideoUrl/resultImageUrl 计算——data-has-hero 不可靠，提示词等节点无结果
+   也会传占位 heroMedia）：卡体外壳全部隐形，预览框自己成为卡片——12px 圆角 +
+   极窄阴影（1px 微光描边 + 贴身投影），悬停浮现标题小签，桩点/缩放手柄非悬停退场，
+   选中态为预览框上一圈 1px 细高亮环。
+   没有预览结果的节点（提示词/便签/剪辑系/未出图的生成节点）完全不受影响，
+   与非极简模式显示一致（用户明确要求）。
    信号：<html data-canvas-minimal="1">（Canvas 的 Alt+Q 切换，localStorage 持久化）。
    工作室皮肤（data-ui=studio）不参与——其下浮面板是节点卡的直接子元素，会被误伤。 */
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node [data-has-hero="true"] {
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node [data-has-hero="true"][data-has-result="true"] {
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
 }
-/* 有预览节点：内层包装中除英雄区外全部隐藏（顶部渐变线/标题栏/进度条/失败横幅/正文） */
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"] > div > *:not(.node-hero-media) {
+/* 内层包装中除英雄区外全部隐藏（顶部渐变线/标题栏/进度条/失败横幅/正文） */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"][data-has-result="true"] > div > *:not(.node-hero-media) {
   display: none !important;
 }
 /* 预览框即卡片 */
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .node-hero-media {
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"][data-has-result="true"] .node-hero-media {
   border-radius: 12px !important;
   overflow: hidden !important;
   box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35) !important;
 }
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .node-hero-media img,
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .node-hero-media video,
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .node-hero-media .wm-video-wrap {
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"][data-has-result="true"] .node-hero-media img,
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"][data-has-result="true"] .node-hero-media video,
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"][data-has-result="true"] .node-hero-media .wm-video-wrap {
   border-radius: 12px !important;
 }
-/* 无预览节点（提示词/便签/剪辑系/未出图的生成节点）：保留「标题框 + 正文」的薄卡
-   ——外壳自己承担 12px 圆角与极窄阴影，标题栏不隐藏（用户反馈：没预览时得看清
-   这是什么节点），只去掉渐变装饰线/进度条等杂项 */
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node [data-has-hero="false"] {
-  background: var(--c-node-bg) !important;
-  border-color: transparent !important;
-  border-radius: 12px !important;
-  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35) !important;
-  backdrop-filter: none !important;
-}
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="false"] > div > *:not(.node-body-wrap):not(.node-header) {
-  display: none !important;
-}
-/* 悬停浮现标题小签（读 BaseNode 的 data-node-title；pointer-events 关闭不挡拖拽）。
-   仅有预览的节点需要——无预览节点标题栏常驻，不再重复浮签 */
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node:hover [data-has-hero="true"][data-node-title]:not([data-node-title=""])::after {
+/* 悬停浮现标题小签（读 BaseNode 的 data-node-title；pointer-events 关闭不挡拖拽） */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node:hover [data-has-hero="true"][data-has-result="true"][data-node-title]:not([data-node-title=""])::after {
   content: attr(data-node-title);
   position: absolute;
   top: -27px;
@@ -1625,18 +1615,15 @@ button:active:not(:disabled) {
   white-space: nowrap;
   pointer-events: none;
 }
-/* 桩点/缩放手柄退场：非悬停节点全隐；悬停该节点或拉线进行中恢复（可用性不丢） */
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow:not(:has(.react-flow__connection)) .react-flow__node:not(:hover) .react-flow__handle {
+/* 桩点/缩放手柄退场（仅极简化的结果节点）：非悬停全隐；悬停该节点或拉线进行中恢复 */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow:not(:has(.react-flow__connection)) .react-flow__node:not(:hover):has([data-has-hero="true"][data-has-result="true"]) .react-flow__handle {
   opacity: 0 !important;
 }
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node:not(:hover) .react-flow__resize-control {
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node:not(:hover):has([data-has-hero="true"][data-has-result="true"]) .react-flow__resize-control {
   display: none !important;
 }
-/* 选中态：预览框/内容卡一圈 1px 细高亮环（方向感不丢） */
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-selected="true"] .node-hero-media {
-  box-shadow: 0 0 0 1px var(--ui-accent, oklch(0.72 0.19 300)), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35) !important;
-}
-:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node [data-selected="true"][data-has-hero="false"] {
+/* 选中态：预览框一圈 1px 细高亮环（方向感不丢） */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-selected="true"][data-has-hero="true"][data-has-result="true"] .node-hero-media {
   box-shadow: 0 0 0 1px var(--ui-accent, oklch(0.72 0.19 300)), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35) !important;
 }
 
