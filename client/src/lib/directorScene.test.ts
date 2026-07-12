@@ -221,8 +221,8 @@ describe("director lights (#78)", () => {
     expect(nextLightName("spot", [s1, p1])).toBe("聚光2");
   });
 
-  it("布光预设四款齐全，实例化配新 id 且深拷贝坐标", () => {
-    expect(LIGHT_RIG_PRESETS.map((r) => r.label)).toEqual(["三点布光", "逆光轮廓", "双色霓虹", "顶光舞台"]);
+  it("布光预设八款齐全，实例化配新 id 且深拷贝坐标", () => {
+    expect(LIGHT_RIG_PRESETS.map((r) => r.label)).toEqual(["三点布光", "逆光轮廓", "双色霓虹", "顶光舞台", "伦勃朗光", "蝴蝶光", "恐怖底光", "月夜冷光"]);
     for (const r of LIGHT_RIG_PRESETS) {
       expect(r.lights.length).toBeGreaterThan(0);
       for (const l of r.lights) {

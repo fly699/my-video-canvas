@@ -17,6 +17,7 @@ import {
   ensureCameras, newCameraId, nextCameraName, actorWorldPosition, shotAimTarget, faceCameraYaw,
   PROP_PRIMS, makeProp, LAYOUT_TEMPLATES, templateActors, type PropPrim,
   makeLight, LIGHT_RIG_PRESETS, lightsFromRig, describeLights, LIGHT_KIND_LABEL, type LightRigPreset,
+  loadMyLightRigs, saveMyLightRig, deleteMyLightRig, type MyLightRig,
 } from "../../../lib/directorScene";
 import { usePerfStore, selectPerfLite } from "../../../lib/perfMode";
 // #71 多格式导入/导出：obj/stl/fbx/gltf 客户端解析 → 统一转 glb 上传；场景可导出 glb。
@@ -644,6 +645,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     toast.success(`已应用模板「${tpl.label}」（${tpl.specs.length} 人，落在原点处）`);
   };
 
+  // #110 我的布光：当前布光存为命名预设（localStorage），可一键应用/删除
+  const [myRigs, setMyRigs] = useState<MyLightRig[]>(() => loadMyLightRigs());
   // ── #78 真 3D 灯光：CRUD + 布光预设 + 指向 ────────────────────────────────
   const lights = scene.lights ?? [];
   const selectedLight = lights.find((l) => l.id === selectedLightId) ?? null;
@@ -1273,6 +1276,39 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           <div className="flex flex-wrap gap-1">
             {LIGHT_RIG_PRESETS.map((r) => (
               <button key={r.key} onClick={() => applyLightRig(r)} title={r.desc} style={{ ...chip }}>💡 {r.label}</button>
+            ))}
+          </div>
+          {/* #110 我的布光：存当前布光为预设 + 已存预设应用/删除 */}
+          <div className="flex flex-wrap gap-1">
+            <button
+              disabled={lights.length === 0}
+              onClick={() => {
+                if (lights.length === 0) return;
+                const name = window.prompt("给当前布光起个名字（同名覆盖）：", `布光 ${myRigs.length + 1}`)?.trim();
+                if (!name) return;
+                setMyRigs(saveMyLightRig(name, lights));
+                toast.success(`已保存我的布光「${name}」（${lights.length} 盏灯）`);
+              }}
+              title={lights.length === 0 ? "先摆几盏灯再保存" : "把当前全部灯光存为我的布光预设（本机保存）"}
+              style={{ ...chip, opacity: lights.length === 0 ? 0.5 : 1 }}
+            >⭐ 存为我的布光</button>
+            {myRigs.map((r) => (
+              <span key={r.name} style={{ display: "inline-flex", alignItems: "center" }}>
+                <button
+                  onClick={() => {
+                    setScene((sc) => ({ ...sc, lights: r.lights.map((l) => ({ ...l, id: `L${Math.random().toString(36).slice(2, 9)}`, position: [...l.position] as [number, number, number], target: l.target ? [...l.target] as [number, number, number] : undefined })), dimBase: sc.dimBase ?? true }));
+                    setSelectedLightId(null);
+                    toast.success(`已应用我的布光「${r.name}」（${r.lights.length} 盏灯）`);
+                  }}
+                  title={`应用我的布光「${r.name}」（${r.lights.length} 盏灯，替换现有灯光）`}
+                  style={{ ...chip, borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+                >⭐ {r.name}</button>
+                <button
+                  onClick={() => { setMyRigs(deleteMyLightRig(r.name)); toast.success(`已删除「${r.name}」`); }}
+                  title={`删除我的布光「${r.name}」`}
+                  style={{ ...chip, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: "none", paddingLeft: 5, paddingRight: 5, color: "oklch(0.65 0.2 25)" }}
+                >×</button>
+              </span>
             ))}
           </div>
           <div className="flex flex-wrap gap-1">
