@@ -27,7 +27,7 @@ import { CharacterConsistencyPanel, type ConsistencyResult } from "../CharacterC
 import { CharacterRecognitionPanel } from "../CharacterRecognitionPanel";
 import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterRecognition";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
-import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption } from "../ModelPicker";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption, useResolvedDefaultImageOption } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "../ComfyCkptSelect";
@@ -228,6 +228,8 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // #73 纳管：三视图生成此前隐形走服务端默认模型且无计价——补模型选择（与工具箱宫格
   // 管线共享 localStorage 键，同族操作同一偏好）+ 计价显示，并回传 model/estimatedCost。
   const [maModel, setMaModel] = useState<string>(() => { try { return localStorage.getItem("canvas.toolkitImageModel") ?? ""; } catch { return ""; } });
+  const resolvedDftImg = useResolvedDefaultImageOption();
+  const maOptionsResolved = useMemo(() => MA_MODEL_OPTIONS.map((o) => (o.value === "" ? { ...o, label: '默认 · ' + resolvedDftImg.label, costLabel: resolvedDftImg.costLabel } : o)), [resolvedDftImg.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const maCost = useMemo(() => { if (!maModel) return "按系统默认模型"; if (maModel === COMFY_LOCAL_MODEL) return "自建 · 免云端积分"; const c = estimateImageCost(maModel); return c ? costEstimateLabel(c) : "按模型页"; }, [maModel]);
   const pickMaModel = (v: string) => { setMaModel(v); try { localStorage.setItem("canvas.toolkitImageModel", v); } catch { /* ignore */ } };
   const handleMultiAngle = async () => {
@@ -789,7 +791,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           )}
           {/* #73 纳管：三视图生成模型选择 + 计价（此前隐形走服务端默认模型） */}
           <div className="nodrag flex items-center gap-2" style={{ marginTop: 4 }}>
-            <ModelPicker value={maModel} onChange={pickMaModel} options={MA_MODEL_OPTIONS} minWidth={150} />
+            <ModelPicker value={maModel} onChange={pickMaModel} options={maOptionsResolved} minWidth={150} />
             <ComfyCkptSelect enabled={maModel === COMFY_LOCAL_MODEL} width={140} />
             <span style={{ fontSize: 9.5, color: "var(--c-t4)", whiteSpace: "nowrap" }} title="三视图为单张大图，计一次生成">预计：{maCost}</span>
           </div>
