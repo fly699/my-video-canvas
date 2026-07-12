@@ -277,7 +277,7 @@ export function MarkChipRow({ marks, onSwitch, onRemove }: {
               <X size={9} />
             </button>
             {open && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 70, minWidth: 148, maxHeight: 220, overflowY: "auto", borderRadius: 12, background: "var(--c-base)", border: "1px solid var(--c-bd2)", boxShadow: "0 14px 44px oklch(0 0 0 / 0.55)", padding: 4 }}>
+              <div className="nowheel" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 70, minWidth: 148, maxHeight: 220, overflowY: "auto", borderRadius: 12, background: "var(--c-base)", border: "1px solid var(--c-bd2)", boxShadow: "0 14px 44px oklch(0 0 0 / 0.55)", padding: 4 }}>
                 {m.elements.map((el) => {
                   const cur = el.name === m.element;
                   return (

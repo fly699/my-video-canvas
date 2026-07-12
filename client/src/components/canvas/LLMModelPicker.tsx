@@ -95,7 +95,7 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
             }}
           />
           <div
-            className="nodrag rounded-xl overflow-hidden"
+            className="nodrag nowheel rounded-xl overflow-hidden"
             style={{
               position: "fixed",
               zIndex: 99981,
