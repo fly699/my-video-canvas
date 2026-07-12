@@ -30,7 +30,7 @@ import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
-  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle, Wand2, Rotate3d, Boxes,
+  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle, Wand2, Rotate3d, Boxes, SlidersHorizontal,
 } from "lucide-react";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { Depth3DViewer } from "../Depth3DViewer";
@@ -39,6 +39,8 @@ import { useResultHistoryCapture } from "../../../hooks/useResultHistoryCapture"
 import { ResultHistoryStrip } from "../ResultHistoryStrip";
 import type { ResultSnapshot } from "../../../../../shared/types";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
+import { InlineGenBar } from "../InlineGenBar";
 
 interface Props {
   id: string;
@@ -440,6 +442,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   // 批量「运行全部」进行中：runner 用独立 mutation 实例跑本节点、并不写本节点 payload.status，
   // 故 isProcessing 为 false、手动「运行」会对同一节点再发一次 → 双扣费/占卡。批量中禁用手动运行。
   const batchRunning = useWorkflowRunState().running;
+  // #77 LibTV 深度优化：创意模式配置区默认收起（选中也不展开），点输入条「高级」/快捷键 A
+  // 才展开；输入条承担 提示词/高级/运行 主入口。工作室/专业保持原折叠逻辑（随选中展开）。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
 
   const handleRun = useCallback(async () => {
     if (batchRunning) { toast.error("批量运行进行中，请等待完成后再单独运行"); return; }
@@ -885,8 +890,8 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
           style={{
             display: "flex", flexDirection: "column", gap: 10,
             overflow: "hidden",
-            maxHeight: selected ? "9999px" : "0px",
-            transition: selected
+            maxHeight: selected && !(isCreativeMode && !advancedOpen) ? "9999px" : "0px",
+            transition: selected && !(isCreativeMode && !advancedOpen)
               ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
               : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
           }}
@@ -1829,6 +1834,54 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       )}
 
     </BaseNode>
+
+    {/* #77 LibTV：创意模式就地输入条——正向提示词（写入绑定参数）+ 高级 + 运行 */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={470}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span title="本地自建 ComfyUI 工作流（免云端积分）" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 8, fontSize: 10.5, fontWeight: 700, background: "oklch(0.72 0.18 145 / 0.14)", border: "1px solid oklch(0.72 0.18 145 / 0.4)", color: "oklch(0.72 0.18 145)", whiteSpace: "nowrap", flexShrink: 0 }}>⚡ 工作流</span>
+          {(() => {
+            const posKey = positivePromptParamKey(payload.paramBindings ?? []);
+            if (!posKey) return <span style={{ flex: 1, fontSize: 11, color: "var(--c-t4)" }}>{payload.workflowJson?.trim() ? "该工作流未绑定提示词参数（点「高级」进参数面板）" : "尚未导入工作流——点「导入」选择模板或上传 JSON"}</span>;
+            return (
+              <NodeTextArea
+                className="nodrag nowheel"
+                placeholder="正向提示词（写入工作流绑定参数）…"
+                value={typeof payload.paramValues?.[posKey] === "string" ? (payload.paramValues[posKey] as string) : ""}
+                onValueChange={(v) => update({ paramValues: { ...(payload.paramValues ?? {}), [posKey]: v } })}
+                rows={1}
+                style={{ flex: 1, minWidth: 0, padding: "6px 10px", fontSize: 12, lineHeight: 1.5, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 9, color: "var(--c-t1)", outline: "none", resize: "none" }}
+              />
+            );
+          })()}
+        </div>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+          {!payload.workflowJson?.trim() && (
+            <button className="nodrag" onClick={(e) => { e.stopPropagation(); setShowWizard(true); }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+              <Upload size={12} /> 导入工作流 / 模板
+            </button>
+          )}
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开全部工作流参数") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <SlidersHorizontal size={12} /> 高级
+          </button>
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); void handleRun(); }}
+            disabled={isProcessing || batchRunning || !(phase === "run" && !!payload.workflowJson?.trim())}
+            title={payload.workflowJson?.trim() ? "运行工作流（自建算力）" : "先导入工作流"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: "0 16px", borderRadius: 9, fontSize: 12, fontWeight: 700, background: "var(--ui-accent, var(--c-accent))", border: "none", color: "#0b0d12", cursor: isProcessing ? "wait" : "pointer", opacity: isProcessing || batchRunning || !(phase === "run" && !!payload.workflowJson?.trim()) ? 0.55 : 1, whiteSpace: "nowrap" }}
+          >
+            {isProcessing ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} {isProcessing ? "执行中…" : "运行"}
+          </button>
+        </div>
+      </InlineGenBar>
+    )}
 
     {/* ⚠ 两个 3D 查看器必须放在 BaseNode 外面：children 在选中(studioFloated)/lodFar 时会
         整体换容器或不渲染，放里面会随选中状态卸载（真3D 界面消失回画布、点空白又出现）。 */}

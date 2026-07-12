@@ -29,6 +29,8 @@ import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterR
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
+import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../../lib/comfyLocalRoute";
+import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { ZoomableImage } from "../ZoomableImage";
 import { useLightbox } from "../studio/Lightbox";
 import { downloadMedia } from "../../../lib/download";
@@ -50,6 +52,7 @@ interface Props {
 // #73 三视图生成模型选项（""=系统默认），与工具箱宫格管线同源
 const MA_MODEL_OPTIONS: ModelPickerOption[] = [
   { value: "", label: "默认模型（系统设置）", group: "默认", family: "默认" },
+  COMFY_LOCAL_OPTION,
   ...IMAGE_MODEL_PICKER_OPTIONS,
 ];
 
@@ -220,11 +223,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // 写入 referenceImageUrl（正面）+ additionalImageUrls（侧/背），强化跨镜一致性。
   const [multiAngleBusy, setMultiAngleBusy] = useState(false);
   const maGenMut = trpc.imageGen.generate.useMutation();
+  const maComfyMut = trpc.comfyui.generateImage.useMutation();
   const maSliceMut = trpc.imageGrid.slice.useMutation();
   // #73 纳管：三视图生成此前隐形走服务端默认模型且无计价——补模型选择（与工具箱宫格
   // 管线共享 localStorage 键，同族操作同一偏好）+ 计价显示，并回传 model/estimatedCost。
   const [maModel, setMaModel] = useState<string>(() => { try { return localStorage.getItem("canvas.toolkitImageModel") ?? ""; } catch { return ""; } });
-  const maCost = useMemo(() => { if (!maModel) return "按系统默认模型"; const c = estimateImageCost(maModel); return c ? costEstimateLabel(c) : "按模型页"; }, [maModel]);
+  const maCost = useMemo(() => { if (!maModel) return "按系统默认模型"; if (maModel === COMFY_LOCAL_MODEL) return "自建 · 免云端积分"; const c = estimateImageCost(maModel); return c ? costEstimateLabel(c) : "按模型页"; }, [maModel]);
   const pickMaModel = (v: string) => { setMaModel(v); try { localStorage.setItem("canvas.toolkitImageModel", v); } catch { /* ignore */ } };
   const handleMultiAngle = async () => {
     if (multiAngleBusy) return;
@@ -233,16 +237,32 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     if (!subject) { toast.error("请先填写角色外貌 / 服装等描述"); return; }
     setMultiAngleBusy(true);
     try {
-      const gen = await maGenMut.mutateAsync({
-        prompt: buildGridPrompt(subject, preset),
-        ...(payload.referenceImageUrl?.trim() ? { referenceImageUrl: payload.referenceImageUrl.trim() } : {}),
-        aspectRatio: preset.sheetAspect,
-        poyoAspectRatio: preset.sheetAspect,
-        reveAspectRatio: preset.sheetAspect,
-        projectId: data.projectId,
-        ...(maModel ? { model: maModel, estimatedCost: maCost } : {}),
-      } as Parameters<typeof maGenMut.mutateAsync>[0]);
-      const gridUrl = gen.urls?.[0] || gen.url || "";
+      let gridUrl = "";
+      if (maModel === COMFY_LOCAL_MODEL) {
+        // #77 本地自建：comfyui img2img（有参考图身份约束；无图时也可纯文生但保持 img2img 需图，
+        // 故无图时回落 txt2img）
+        const ckpt = loadComfyCkpt();
+        if (!ckpt) { toast.error("本地 ComfyUI 需先选择 checkpoint 模型"); setMultiAngleBusy(false); return; }
+        const ref = payload.referenceImageUrl?.trim();
+        const gen = await maComfyMut.mutateAsync({
+          nodeId: id, projectId: data.projectId, ckpt,
+          workflowTemplate: ref ? "img2img" : "txt2img",
+          prompt: buildGridPrompt(subject, preset).slice(0, 2000),
+          ...(ref ? { referenceImageUrl: ref, denoise: 0.75 } : {}),
+        });
+        gridUrl = gen.url || "";
+      } else {
+        const gen = await maGenMut.mutateAsync({
+          prompt: buildGridPrompt(subject, preset),
+          ...(payload.referenceImageUrl?.trim() ? { referenceImageUrl: payload.referenceImageUrl.trim() } : {}),
+          aspectRatio: preset.sheetAspect,
+          poyoAspectRatio: preset.sheetAspect,
+          reveAspectRatio: preset.sheetAspect,
+          projectId: data.projectId,
+          ...(maModel ? { model: maModel, estimatedCost: maCost } : {}),
+        } as Parameters<typeof maGenMut.mutateAsync>[0]);
+        gridUrl = gen.urls?.[0] || gen.url || "";
+      }
       if (!gridUrl) { toast.error("三视图生成失败：未返回图像"); setMultiAngleBusy(false); return; }
       const sliced = await maSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, projectId: data.projectId });
       if (sliced.urls.length < 1) { toast.error("切分失败：未产生子图"); setMultiAngleBusy(false); return; }
@@ -759,6 +779,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           {/* #73 纳管：三视图生成模型选择 + 计价（此前隐形走服务端默认模型） */}
           <div className="nodrag flex items-center gap-2" style={{ marginTop: 4 }}>
             <ModelPicker value={maModel} onChange={pickMaModel} options={MA_MODEL_OPTIONS} minWidth={150} />
+            <ComfyCkptSelect enabled={maModel === COMFY_LOCAL_MODEL} width={140} />
             <span style={{ fontSize: 9.5, color: "var(--c-t4)", whiteSpace: "nowrap" }} title="三视图为单张大图，计一次生成">预计：{maCost}</span>
           </div>
         </div>

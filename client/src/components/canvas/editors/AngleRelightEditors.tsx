@@ -3,7 +3,9 @@ import { toast } from "sonner";
 import { X, RotateCcw, Loader2, Send, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Upload, Coins } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { ModelPicker, type ModelPickerOption } from "../ModelPicker";
-import { IMAGE_EDIT_MODEL_GROUPS, DEFAULT_IMAGE_EDIT_MODEL } from "../../../../../shared/imageEdit";
+import { IMAGE_EDIT_MODEL_GROUPS, DEFAULT_IMAGE_EDIT_MODEL, buildImageEditInstruction, comfyDenoiseForOp } from "../../../../../shared/imageEdit";
+import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../../lib/comfyLocalRoute";
+import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
 import {
   ANGLE_PRESETS, buildAnglePrompt, shotLabelForZoom, type AngleParams,
@@ -16,6 +18,7 @@ import {
 
 export interface AngleRelightProps {
   sourceUrl: string;
+  nodeId: string;
   projectId: number;
   onApply: (url: string) => void;
   onClose: () => void;
@@ -29,6 +32,7 @@ const saveModel = (v: string) => { try { localStorage.setItem(MODEL_KEY, v); } c
 
 const EDIT_MODEL_OPTIONS: ModelPickerOption[] = [
   { value: "", label: "默认（Flux Pro Kontext）", group: "默认", family: "默认" },
+  COMFY_LOCAL_OPTION,
   ...IMAGE_EDIT_MODEL_GROUPS.flatMap((g) => g.models.map((m) => {
     const c = estimateImageCost(m.value);
     return { value: m.value, label: m.label, group: g.label, family: g.label, costLabel: c ? costEstimateLabel(c) : undefined };
@@ -37,6 +41,7 @@ const EDIT_MODEL_OPTIONS: ModelPickerOption[] = [
 
 function useCostLabel(model: string): string {
   return useMemo(() => {
+    if (model === COMFY_LOCAL_MODEL) return "自建 · 免云端积分";
     const c = estimateImageCost(model || DEFAULT_IMAGE_EDIT_MODEL);
     return c ? costEstimateLabel(c) : "按模型页";
   }, [model]);
@@ -131,7 +136,7 @@ function SphereControl({ az, el, onDrag, thumb, size = 190, front = false, dotCo
 
 // ── 多角度编辑器 ─────────────────────────────────────────────────────────────
 
-export function MultiAngleEditor({ sourceUrl, projectId, onApply, onClose }: AngleRelightProps) {
+export function MultiAngleEditor({ sourceUrl, nodeId, projectId, onApply, onClose }: AngleRelightProps) {
   const [presetKey, setPresetKey] = useState("custom");
   const [params, setParams] = useState<AngleParams>({ yaw: 0, pitch: 0, zoom: 40 });
   const [promptOn, setPromptOn] = useState(true);
@@ -141,6 +146,7 @@ export function MultiAngleEditor({ sourceUrl, projectId, onApply, onClose }: Ang
   const promptText = override ?? auto;
   const costLabel = useCostLabel(model);
   const run = trpc.imageEdit.run.useMutation();
+  const comfyGen = trpc.comfyui.generateImage.useMutation();
 
   const setP = useCallback((p: Partial<AngleParams>) => { setParams((s) => ({ ...s, ...p })); setPresetKey((k) => (k === "custom" ? k : "custom")); setOverride(null); }, []);
   const applyPreset = (key: string) => {
@@ -153,14 +159,27 @@ export function MultiAngleEditor({ sourceUrl, projectId, onApply, onClose }: Ang
   const nudge = (dyaw: number, dpitch: number) => setP({ yaw: ((params.yaw + dyaw) % 360 + 360) % 360, pitch: Math.max(-90, Math.min(90, params.pitch + dpitch)) });
 
   const send = async () => {
-    if (run.isPending) return;
+    if (run.isPending || comfyGen.isPending) return;
     try {
-      const r = await run.mutateAsync({
-        sourceImageUrl: sourceUrl, operation: "reangle", model: model || undefined,
-        prompt: promptText.slice(0, 900), estimatedCost: costLabel,
-        ...(projectId ? { projectId } : {}),
-      });
-      const url = (r as { url?: string }).url;
+      let url: string | undefined;
+      if (model === COMFY_LOCAL_MODEL) {
+        // #77 本地自建：走 comfyui img2img（服务端 assertComfyuiAllowed 门控 + comfyui_image_gen 审计）
+        const ckpt = loadComfyCkpt();
+        if (!ckpt) { toast.error("请先在下方选择本地 ComfyUI 的 checkpoint 模型"); return; }
+        const r = await comfyGen.mutateAsync({
+          nodeId, projectId, workflowTemplate: "img2img", ckpt,
+          prompt: buildImageEditInstruction("reangle", promptText).slice(0, 2000),
+          referenceImageUrl: sourceUrl, denoise: comfyDenoiseForOp("reangle"),
+        });
+        url = r.url;
+      } else {
+        const r = await run.mutateAsync({
+          sourceImageUrl: sourceUrl, operation: "reangle", model: model || undefined,
+          prompt: promptText.slice(0, 900), estimatedCost: costLabel,
+          ...(projectId ? { projectId } : {}),
+        });
+        url = (r as { url?: string }).url;
+      }
       if (!url) throw new Error("模型未返回图片");
       onApply(url);
       toast.success("多角度已生成，原图已存入版本历史");
@@ -225,13 +244,14 @@ export function MultiAngleEditor({ sourceUrl, projectId, onApply, onClose }: Ang
         {/* 底部：模型 + 积分 + 发送 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, borderTop: "1px solid var(--c-bd1)", paddingTop: 10 }}>
           <ModelPicker value={model} onChange={(v) => { setModel(v); saveModel(v); }} options={EDIT_MODEL_OPTIONS} minWidth={200} />
+          <ComfyCkptSelect enabled={model === COMFY_LOCAL_MODEL} width={160} />
           <div style={{ flex: 1 }} />
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }} title="预计消耗（按所选编辑模型估算）">
             <Coins size={12} /> {costLabel}
           </span>
-          <button onClick={() => void send()} disabled={run.isPending}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "none", cursor: run.isPending ? "wait" : "pointer", background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", opacity: run.isPending ? 0.7 : 1 }}>
-            {run.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} {run.isPending ? "生成中…" : "发送"}
+          <button onClick={() => void send()} disabled={run.isPending || comfyGen.isPending}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "none", cursor: (run.isPending || comfyGen.isPending) ? "wait" : "pointer", background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", opacity: (run.isPending || comfyGen.isPending) ? 0.7 : 1 }}>
+            {(run.isPending || comfyGen.isPending) ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} {(run.isPending || comfyGen.isPending) ? "生成中…" : "发送"}
           </button>
         </div>
       </div>
@@ -241,7 +261,7 @@ export function MultiAngleEditor({ sourceUrl, projectId, onApply, onClose }: Ang
 
 // ── 打光编辑器 ───────────────────────────────────────────────────────────────
 
-export function RelightEditor({ sourceUrl, projectId, onApply, onClose }: AngleRelightProps) {
+export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }: AngleRelightProps) {
   const [view, setView] = useState<"persp" | "front">("persp");
   const [params, setParams] = useState<RelightParams>({ ...RELIGHT_DEFAULTS });
   const [presetKey, setPresetKey] = useState<string | null>(null);
@@ -251,6 +271,7 @@ export function RelightEditor({ sourceUrl, projectId, onApply, onClose }: AngleR
   const refInput = useRef<HTMLInputElement>(null);
   const uploadMut = trpc.upload.uploadImage.useMutation();
   const run = trpc.imageEdit.run.useMutation();
+  const comfyGen = trpc.comfyui.generateImage.useMutation();
   const auto = useMemo(() => buildRelightPrompt(params, presetKey ?? undefined), [params, presetKey]);
   const promptText = override ?? auto;
   const costLabel = useCostLabel(model);
@@ -272,15 +293,27 @@ export function RelightEditor({ sourceUrl, projectId, onApply, onClose }: AngleR
   };
 
   const send = async () => {
-    if (run.isPending) return;
+    if (run.isPending || comfyGen.isPending) return;
     try {
-      const r = await run.mutateAsync({
-        sourceImageUrl: sourceUrl, operation: "relight", model: model || undefined,
-        prompt: promptText.slice(0, 900), estimatedCost: costLabel,
-        ...(projectId ? { projectId } : {}),
-        ...(refUrl ? { refImageUrl: refUrl } : {}),
-      });
-      const url = (r as { url?: string }).url;
+      let url: string | undefined;
+      if (model === COMFY_LOCAL_MODEL) {
+        const ckpt = loadComfyCkpt();
+        if (!ckpt) { toast.error("请先在下方选择本地 ComfyUI 的 checkpoint 模型"); return; }
+        const r = await comfyGen.mutateAsync({
+          nodeId, projectId, workflowTemplate: "img2img", ckpt,
+          prompt: buildImageEditInstruction("relight", promptText).slice(0, 2000),
+          referenceImageUrl: sourceUrl, denoise: comfyDenoiseForOp("relight"),
+        });
+        url = r.url;
+      } else {
+        const r = await run.mutateAsync({
+          sourceImageUrl: sourceUrl, operation: "relight", model: model || undefined,
+          prompt: promptText.slice(0, 900), estimatedCost: costLabel,
+          ...(projectId ? { projectId } : {}),
+          ...(refUrl ? { refImageUrl: refUrl } : {}),
+        });
+        url = (r as { url?: string }).url;
+      }
       if (!url) throw new Error("模型未返回图片");
       onApply(url);
       toast.success("打光已生成，原图已存入版本历史");
@@ -372,13 +405,14 @@ export function RelightEditor({ sourceUrl, projectId, onApply, onClose }: AngleR
         {/* 底部：模型 + 积分 + 发送 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, borderTop: "1px solid var(--c-bd1)", paddingTop: 10 }}>
           <ModelPicker value={model} onChange={(v) => { setModel(v); saveModel(v); }} options={EDIT_MODEL_OPTIONS} minWidth={200} />
+          <ComfyCkptSelect enabled={model === COMFY_LOCAL_MODEL} width={160} />
           <div style={{ flex: 1 }} />
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }} title="预计消耗（按所选编辑模型估算）">
             <Coins size={12} /> {costLabel}
           </span>
-          <button onClick={() => void send()} disabled={run.isPending}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "none", cursor: run.isPending ? "wait" : "pointer", background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", opacity: run.isPending ? 0.7 : 1 }}>
-            {run.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} {run.isPending ? "生成中…" : "发送"}
+          <button onClick={() => void send()} disabled={run.isPending || comfyGen.isPending}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "none", cursor: (run.isPending || comfyGen.isPending) ? "wait" : "pointer", background: "var(--ui-accent, var(--c-accent))", color: "#0b0d12", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", opacity: (run.isPending || comfyGen.isPending) ? 0.7 : 1 }}>
+            {(run.isPending || comfyGen.isPending) ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} {(run.isPending || comfyGen.isPending) ? "生成中…" : "发送"}
           </button>
         </div>
       </div>
