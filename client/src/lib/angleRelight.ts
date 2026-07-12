@@ -91,9 +91,31 @@ export interface RelightParams {
   rimLight: boolean;
   /** 智能模式文字描述（光效/情绪，可空） */
   smartText?: string;
+  /** 光质 0-100：0=硬光（锐利阴影）50=默认 100=柔光（漫射） */
+  softness?: number;
 }
 
-export const RELIGHT_DEFAULTS: RelightParams = { azimuth: 45, elevation: 35, brightness: 100, color: "", rimLight: false, smartText: "" };
+export const RELIGHT_DEFAULTS: RelightParams = { azimuth: 45, elevation: 35, brightness: 100, color: "", rimLight: false, smartText: "", softness: 50 };
+
+/** 光质档位描述（拼进提示词；45-65 视为默认不描述） */
+export function lightQualityLabel(softness: number | undefined): string {
+  const v = softness ?? 50;
+  if (v <= 20) return "硬光（边缘锐利、阴影清晰）";
+  if (v < 45) return "偏硬光";
+  if (v <= 65) return "";
+  if (v < 85) return "偏柔光";
+  return "柔光（大面积漫射、阴影柔和过渡）";
+}
+
+/** 常用光色快捷色卡（点选即写入 color） */
+export const LIGHT_COLOR_SWATCHES: { label: string; hex: string }[] = [
+  { label: "暖阳", hex: "#ffb35c" },
+  { label: "烛光", hex: "#ff8a3d" },
+  { label: "冷月", hex: "#7fb2ff" },
+  { label: "冷白", hex: "#dfe8ff" },
+  { label: "霓虹粉", hex: "#ff4fd8" },
+  { label: "青蓝", hex: "#24d3ee" },
+];
 
 /** 主光源六方位快捷键（LibTV：左侧/顶部/右侧/前方/底部/后方） */
 export const LIGHT_DIRECTIONS: { key: string; label: string; azimuth: number; elevation: number }[] = [
@@ -129,17 +151,19 @@ export interface RelightPreset {
   prompt: string;
   /** 预设卡的 CSS 渐变色板（无缩略图时的视觉示意） */
   swatch: string;
+  /** 实时预览近似参数（hover 预设即时套到光照预览上「试穿」） */
+  preview: Pick<RelightParams, "azimuth" | "elevation" | "brightness" | "color" | "rimLight" | "softness">;
 }
 
 export const RELIGHT_PRESETS: RelightPreset[] = [
-  { key: "overexposed_film", label: "过曝胶片", prompt: "过曝胶片质感：高调曝光、轻微泛白的高光溢出、柔和颗粒感与淡淡的暖调漂白色偏", swatch: "linear-gradient(135deg,#f7f3e8,#e8d9b8)" },
-  { key: "blue_backlight", label: "蓝色逆光", prompt: "冷蓝色逆光：主体背后强烈蓝色轮廓光，正面暗部保留细节，冷色电影氛围", swatch: "linear-gradient(135deg,#0b2a55,#2f6fd6)" },
-  { key: "rembrandt", label: "伦勃朗光", prompt: "伦勃朗式打光：45° 侧上方单主光，脸颊出现标志性三角形亮区，暗部层次丰富，古典油画质感", swatch: "linear-gradient(135deg,#3a2a18,#c98f4a)" },
-  { key: "cyberpunk", label: "赛博朋克", prompt: "赛博朋克霓虹打光：品红与青色双色霓虹交叉照明，湿润反光高对比，未来都市夜景氛围", swatch: "linear-gradient(135deg,#ff2d95,#00e5ff)" },
-  { key: "sunset_trip", label: "落日迷幻", prompt: "落日迷幻色：橙紫渐变的落日余晖，长影拉伸，梦幻朦胧的空气感光晕", swatch: "linear-gradient(135deg,#ff7e45,#8b5cf6)" },
-  { key: "mystic_dark", label: "神秘暗调", prompt: "神秘暗调：低调布光，大面积深邃阴影，只保留一束窄光勾勒主体，悬疑氛围", swatch: "linear-gradient(135deg,#0a0d14,#3b4252)" },
-  { key: "golden_hour", label: "黄金时刻", prompt: "黄金时刻：日落前低角度金色阳光，温暖柔和的侧逆光，发丝与轮廓镶金边", swatch: "linear-gradient(135deg,#f5b942,#e07b39)" },
-  { key: "nolan_gray", label: "诺兰冷灰", prompt: "诺兰式冷灰调：去饱和的冷灰蓝色调，自然硬光，克制的对比与真实质感，史诗电影氛围", swatch: "linear-gradient(135deg,#5c6672,#9aa5b1)" },
+  { key: "overexposed_film", label: "过曝胶片", prompt: "过曝胶片质感：高调曝光、轻微泛白的高光溢出、柔和颗粒感与淡淡的暖调漂白色偏", swatch: "linear-gradient(135deg,#f7f3e8,#e8d9b8)", preview: { azimuth: 0, elevation: 30, brightness: 150, color: "#f2e6c8", rimLight: false, softness: 85 } },
+  { key: "blue_backlight", label: "蓝色逆光", prompt: "冷蓝色逆光：主体背后强烈蓝色轮廓光，正面暗部保留细节，冷色电影氛围", swatch: "linear-gradient(135deg,#0b2a55,#2f6fd6)", preview: { azimuth: 180, elevation: 25, brightness: 95, color: "#2f6fd6", rimLight: true, softness: 40 } },
+  { key: "rembrandt", label: "伦勃朗光", prompt: "伦勃朗式打光：45° 侧上方单主光，脸颊出现标志性三角形亮区，暗部层次丰富，古典油画质感", swatch: "linear-gradient(135deg,#3a2a18,#c98f4a)", preview: { azimuth: 315, elevation: 45, brightness: 90, color: "#e8b06a", rimLight: false, softness: 30 } },
+  { key: "cyberpunk", label: "赛博朋克", prompt: "赛博朋克霓虹打光：品红与青色双色霓虹交叉照明，湿润反光高对比，未来都市夜景氛围", swatch: "linear-gradient(135deg,#ff2d95,#00e5ff)", preview: { azimuth: 90, elevation: 10, brightness: 105, color: "#ff2d95", rimLight: true, softness: 45 } },
+  { key: "sunset_trip", label: "落日迷幻", prompt: "落日迷幻色：橙紫渐变的落日余晖，长影拉伸，梦幻朦胧的空气感光晕", swatch: "linear-gradient(135deg,#ff7e45,#8b5cf6)", preview: { azimuth: 250, elevation: 8, brightness: 105, color: "#ff7e45", rimLight: false, softness: 75 } },
+  { key: "mystic_dark", label: "神秘暗调", prompt: "神秘暗调：低调布光，大面积深邃阴影，只保留一束窄光勾勒主体，悬疑氛围", swatch: "linear-gradient(135deg,#0a0d14,#3b4252)", preview: { azimuth: 20, elevation: 60, brightness: 55, color: "#9fb4d8", rimLight: false, softness: 15 } },
+  { key: "golden_hour", label: "黄金时刻", prompt: "黄金时刻：日落前低角度金色阳光，温暖柔和的侧逆光，发丝与轮廓镶金边", swatch: "linear-gradient(135deg,#f5b942,#e07b39)", preview: { azimuth: 300, elevation: 6, brightness: 110, color: "#f5b942", rimLight: true, softness: 70 } },
+  { key: "nolan_gray", label: "诺兰冷灰", prompt: "诺兰式冷灰调：去饱和的冷灰蓝色调，自然硬光，克制的对比与真实质感，史诗电影氛围", swatch: "linear-gradient(135deg,#5c6672,#9aa5b1)", preview: { azimuth: 0, elevation: 50, brightness: 92, color: "#9aa5b1", rimLight: false, softness: 55 } },
 ];
 
 /** 参数 → 可编辑打光描述句 */
@@ -154,6 +178,8 @@ export function buildRelightPrompt(p: RelightParams, presetKey?: string): string
     return preset.prompt + (extras.length ? `，${extras.join("，")}` : "");
   }
   const parts: string[] = [`主光源来自${lightDirLabel(p.azimuth, p.elevation)}`];
+  const lq = lightQualityLabel(p.softness);
+  if (lq) parts.push(lq);
   if (p.brightness !== 100) parts.push(`整体亮度 ${Math.round(p.brightness)}%${p.brightness > 100 ? "（提亮）" : "（压暗）"}`);
   if (p.color) parts.push(`光色为 ${p.color}`);
   if (p.rimLight) parts.push("主体边缘加轮廓光（rim light）勾出发丝与肩线");

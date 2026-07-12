@@ -10,6 +10,7 @@ import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate"
 import {
   ANGLE_PRESETS, buildAnglePrompt, shotLabelForZoom, type AngleParams,
   RELIGHT_PRESETS, RELIGHT_DEFAULTS, LIGHT_DIRECTIONS, buildRelightPrompt, type RelightParams,
+  LIGHT_COLOR_SWATCHES,
 } from "../../../lib/angleRelight";
 
 // #72 LibTV 多角度 / 打光 全功能编辑器（全模式，从节点工具条进入）。
@@ -74,11 +75,16 @@ function SliderRow({ label, value, min, max, step = 1, suffix, onChange }: {
   );
 }
 
-/** 球面控件：中心缩略图 + 线框球 + 可拖拽定位点（水平→环绕角偏移，垂直→俯仰/仰角）。
- *  front=true 渲染为正面平面圆（打光的「正面」视图），false 为透视线框球。 */
-function SphereControl({ az, el, onDrag, thumb, size = 190, front = false, dotColor }: {
+/** 球面控件：中心画面平面 + 线框球 + 可拖拽定位点（水平→环绕角偏移，垂直→俯仰/仰角）。
+ *  front=true 渲染为正面平面圆；beam=true 渲染「光路锥」（光点→画面平面的锥形光束，
+ *  颜色随光色实时变化——对齐 LibTV 打光的光路可视化）。 */
+function SphereControl({ az, el, onDrag, thumb, size = 190, front = false, dotColor, beam = false, thumbScale = 1, thumbTilt }: {
   az: number; el: number; onDrag: (az: number, el: number) => void;
-  thumb?: string; size?: number; front?: boolean; dotColor?: string;
+  thumb?: string; size?: number; front?: boolean; dotColor?: string; beam?: boolean;
+  /** 画面平面缩放（多角度：随景别实时变化——全景小图/特写大图，对齐 LibTV） */
+  thumbScale?: number;
+  /** 画面平面倾斜（跟随环绕/俯仰实时变化） */
+  thumbTilt?: { rx: number; ry: number };
 }) {
   const R = size / 2;
   const wrap180 = (v: number) => { let x = ((v + 180) % 360 + 360) % 360 - 180; return x; };
@@ -122,14 +128,103 @@ function SphereControl({ az, el, onDrag, thumb, size = 190, front = false, dotCo
             <circle cx={R} cy={R} r={R * 0.92} fill="none" stroke="var(--c-bd2)" />
           </>
         )}
+        {/* 光路锥：从光点到画面平面的锥形光束（颜色=光色，随拖拽/取色实时变化） */}
+        {beam && (() => {
+          const lx = R + px, ly = R + py;
+          const dx = R - lx, dy = R - ly;
+          const len = Math.hypot(dx, dy) || 1;
+          // 垂直于光线方向的展开向量（锥底半宽 22%R）
+          const nx = (-dy / len) * R * 0.22, ny = (dx / len) * R * 0.22;
+          const col = dotColor ?? "#ffd66b";
+          const gid = `beam-${Math.round(lx)}-${Math.round(ly)}-${col.replace(/[^a-zA-Z0-9]/g, "")}`;
+          return (
+            <>
+              <defs>
+                <linearGradient id={gid} x1={lx} y1={ly} x2={R} y2={R} gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor={col} stopOpacity="0.85" />
+                  <stop offset="100%" stopColor={col} stopOpacity="0.05" />
+                </linearGradient>
+              </defs>
+              <polygon points={`${lx},${ly} ${R + nx},${R + ny} ${R - nx},${R - ny}`} fill={`url(#${gid})`} data-testid="light-beam" />
+            </>
+          );
+        })()}
       </svg>
-      {/* 中心缩略图（源图） */}
+      {/* 中心画面：beam 模式=源图作为球心「画面平面」（透视 3D 倾斜/正面正贴，对齐 LibTV）；
+          否则保持圆形缩略 */}
       {thumb && (
         <img src={thumb} alt="src" draggable={false}
-          style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", width: size * 0.36, height: size * 0.36, objectFit: "cover", borderRadius: "50%", border: "2px solid var(--c-bd2)", pointerEvents: "none", opacity: 0.95 }} />
+          data-testid="sphere-plane"
+          style={beam ? {
+            position: "absolute", left: "50%", top: "50%",
+            transform: front
+              ? `translate(-50%, -50%) scale(${thumbScale})`
+              : `translate(-50%, -50%) perspective(260px) rotateX(${thumbTilt ? 20 + thumbTilt.rx : 38}deg) rotateY(${thumbTilt ? thumbTilt.ry : -16}deg) scale(${thumbScale})`,
+            width: size * 0.44, height: size * 0.32, objectFit: "cover", borderRadius: 4,
+            border: "1px solid oklch(1 0 0 / 0.35)", boxShadow: "0 6px 18px oklch(0 0 0 / 0.5)", pointerEvents: "none", opacity: 0.95,
+            transition: "transform 120ms ease",
+          } : { position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", width: size * 0.36, height: size * 0.36, objectFit: "cover", borderRadius: "50%", border: "2px solid var(--c-bd2)", pointerEvents: "none", opacity: 0.95 }} />
       )}
       {/* 定位点 */}
       <span data-testid="sphere-dot" style={{ position: "absolute", left: R + px - 8, top: R + py - 8, width: 16, height: 16, borderRadius: "50%", background: dotColor ?? "var(--ui-accent, var(--c-accent))", border: "2.5px solid #fff", boxShadow: "0 0 10px oklch(0 0 0 / 0.5), 0 0 14px currentColor", pointerEvents: "none" }} />
+    </div>
+  );
+}
+
+/** #78 场景图实时光照渲染（超越 LibTV：他们只有光路锥示意，画面本身不变；我们把
+ *  光位/光色/亮度/光质/轮廓光实时合成到源图上，所见即所得，并支持点击图面直接定位光源）。
+ *  纯 CSS 混合层实现（screen 加光 / multiply 反侧压暗 / soft-light 全图色调），零依赖零延迟。 */
+function RelightPreview({ src, params, onPick }: {
+  src: string;
+  params: Pick<RelightParams, "azimuth" | "elevation" | "brightness" | "color" | "rimLight" | "softness">;
+  onPick?: (az: number, el: number) => void;
+}) {
+  const wrap180 = (v: number) => ((v + 180) % 360 + 360) % 360 - 180;
+  const azW = wrap180(params.azimuth);
+  const behind = Math.abs(azW) > 105; // 后方光 → 逆光形态（正面光斑弱化、边缘轮廓亮起）
+  const azRad = (azW * Math.PI) / 180, elRad = ((params.elevation ?? 0) * Math.PI) / 180;
+  // 光斑落点（%）：方位→水平位移，仰角→垂直位移
+  const lx = 50 + Math.sin(azRad) * Math.cos(elRad) * 46;
+  const ly = 50 - Math.sin(elRad) * 46;
+  const soft = params.softness ?? 50;
+  const radius = 42 + soft * 0.55;              // 柔光=大光斑，硬光=小而锐
+  const coreStop = soft <= 30 ? 18 : 8;         // 硬光核心更亮更集中
+  const col = params.color || "#ffe9c4";
+  const bright = params.brightness ?? 100;
+  const lightOpacity = Math.max(0.15, Math.min(0.9, (behind ? 0.25 : 0.55) * (bright / 100)));
+  const shadowOpacity = Math.max(0, Math.min(0.6, 0.45 - (bright - 100) / 300));
+  const rim = params.rimLight || behind;
+  const pick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!onPick) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    const nAz = Math.max(-120, Math.min(120, (x - 0.5) * 2 * 120));
+    const nEl = Math.max(-90, Math.min(90, -(y - 0.5) * 2 * 90));
+    onPick(Math.round(((nAz % 360) + 360) % 360), Math.round(nEl));
+  };
+  return (
+    <div data-testid="relight-preview" onClick={pick} title="实时光照预览 · 点击图面直接定位光源"
+      style={{ position: "relative", width: "100%", borderRadius: 10, overflow: "hidden", cursor: onPick ? "crosshair" : "default", border: "1px solid var(--c-bd2)", background: "#000" }}>
+      <img src={src} alt="preview" draggable={false}
+        style={{ width: "100%", display: "block", filter: `brightness(${0.55 + bright / 200}) contrast(${soft <= 30 ? 1.08 : 1})`, transition: "filter 120ms ease" }} />
+      {/* 主光斑（screen 加光） */}
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", mixBlendMode: "screen", opacity: lightOpacity, transition: "opacity 120ms ease",
+        background: `radial-gradient(circle at ${lx}% ${ly}%, ${col} ${coreStop}%, transparent ${radius}%)` }} />
+      {/* 反侧阴影（multiply 压暗）：光源对面渐暗，亮度越低阴影越重 */}
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", mixBlendMode: "multiply", opacity: shadowOpacity,
+        background: `radial-gradient(circle at ${100 - lx}% ${100 - ly}%, #05070c 0%, transparent 72%)` }} />
+      {/* 全图色调（soft-light）：光色轻染整图 */}
+      {params.color && (
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", mixBlendMode: "soft-light", opacity: 0.45, background: col }} />
+      )}
+      {/* 轮廓光 / 逆光：边缘内发光 */}
+      {rim && (
+        <div data-testid="rim-layer" style={{ position: "absolute", inset: 0, pointerEvents: "none", mixBlendMode: "screen", opacity: behind ? 0.75 : 0.5,
+          boxShadow: `inset 0 0 34px 6px ${col}` }} />
+      )}
+      {/* 光源标记 */}
+      <span style={{ position: "absolute", left: `${lx}%`, top: `${ly}%`, transform: "translate(-50%, -50%)", width: 10, height: 10, borderRadius: "50%", background: col, border: "2px solid #fff", boxShadow: `0 0 10px ${col}`, pointerEvents: "none" }} />
+      <span style={{ position: "absolute", left: 8, bottom: 6, fontSize: 9.5, fontWeight: 700, color: "oklch(1 0 0 / 0.75)", textShadow: "0 1px 3px #000", pointerEvents: "none" }}>实时光照预览 · 点击定位光源</span>
     </div>
   );
 }
@@ -211,7 +306,10 @@ export function MultiAngleEditor({ sourceUrl, nodeId, projectId, onApply, onClos
             <button onClick={() => nudge(0, 5)} style={iconBtn} title="俯拍 +5°"><ArrowUp size={13} /></button>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <button onClick={() => nudge(-5, 0)} style={iconBtn} title="环绕 −5°"><ArrowLeft size={13} /></button>
-              <SphereControl az={params.yaw} el={params.pitch} thumb={sourceUrl}
+              {/* #78 球心画面随景别实时缩放（全景小图→特写大图）+ 跟随环绕/俯仰倾斜（对齐 LibTV 并加视线光束） */}
+              <SphereControl az={params.yaw} el={params.pitch} thumb={sourceUrl} beam dotColor="#dfe8ff"
+                thumbScale={0.7 + (params.zoom / 100) * 0.85}
+                thumbTilt={{ rx: Math.max(-28, Math.min(28, params.pitch * 0.4)), ry: Math.max(-32, Math.min(32, -(((params.yaw + 180) % 360 + 360) % 360 - 180) * 0.25)) }}
                 onDrag={(az, el) => setP({ yaw: az, pitch: el })} />
               <button onClick={() => nudge(5, 0)} style={iconBtn} title="环绕 +5°"><ArrowRight size={13} /></button>
             </div>
@@ -277,6 +375,13 @@ export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
   const costLabel = useCostLabel(model);
 
   const setP = useCallback((p: Partial<RelightParams>) => { setParams((s) => ({ ...s, ...p })); setOverride(null); }, []);
+  // #78 预设「试穿」：hover 预设卡即把其近似参数套到实时预览上，点击才正式选中
+  const [hoverPreset, setHoverPreset] = useState<string | null>(null);
+  const previewParams = useMemo(() => {
+    const key = hoverPreset ?? presetKey;
+    const pv = key ? RELIGHT_PRESETS.find((x) => x.key === key)?.preview : undefined;
+    return pv ?? params;
+  }, [hoverPreset, presetKey, params]);
   // 手动动方位/智能文字视为脱离预设；亮度/颜色/轮廓光是叠加项，保留预设
   const setDir = (azimuth: number, elevation: number) => { setPresetKey(null); setP({ azimuth, elevation }); };
   const reset = () => { setParams({ ...RELIGHT_DEFAULTS }); setPresetKey(null); setOverride(null); setRefUrl(""); };
@@ -323,7 +428,7 @@ export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
 
   return (
     <div className="nodrag nowheel" style={shell} onClick={onClose} onPointerDown={(e) => e.stopPropagation()}>
-      <div style={card} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...card, width: 880 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={ttl}>💡 打光效果</span>
           <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>只改光照，内容与构图不变</span>
@@ -340,8 +445,8 @@ export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
                 <button key={k} onClick={() => setView(k)} style={chip(view === k)}>{lbl}</button>
               ))}
             </div>
-            <SphereControl az={params.azimuth} el={params.elevation} front={view === "front"} thumb={view === "front" ? sourceUrl : undefined}
-              dotColor={params.color || "#ffd66b"} onDrag={(az, el) => setDir(az, el)} />
+            <SphereControl az={previewParams.azimuth} el={previewParams.elevation} front={view === "front"} thumb={sourceUrl} beam
+              dotColor={previewParams.color || "#ffd66b"} onDrag={(az, el) => setDir(az, el)} />
             {/* 主光源六方位 */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4, width: 190 }}>
               {LIGHT_DIRECTIONS.map((d) => (
@@ -349,6 +454,19 @@ export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
                   style={chip(Math.abs(params.azimuth - d.azimuth) < 1 && Math.abs(params.elevation - d.elevation) < 1)}>{d.label}</button>
               ))}
             </div>
+            {/* #78 光质：硬光⇄柔光（拼进提示词 + 实时预览光斑锐度联动） */}
+            <div style={{ width: 190 }}>
+              <SliderRow label="光质" value={params.softness ?? 50} min={0} max={100} onChange={(v) => setP({ softness: v })} />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--c-t4)", padding: "0 62px 0 72px" }}>
+                <span>硬光</span><span>柔光</span>
+              </div>
+            </div>
+          </div>
+
+          {/* #78 中列：场景图实时光照渲染（超越 LibTV——画面本身实时被重新照亮，点击定位光源） */}
+          <div style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={sub}>实时预览{hoverPreset ? " · 预设试穿中" : ""}</div>
+            <RelightPreview src={sourceUrl} params={previewParams} onPick={(az, el) => setDir(az, el)} />
           </div>
 
           {/* 右：全局参数 + 智能模式 */}
@@ -360,8 +478,15 @@ export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
               <input type="color" value={params.color || "#ffffff"} onChange={(e) => setP({ color: e.target.value })}
                 style={{ width: 54, height: 26, padding: 0, background: "transparent", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }} />
               {params.color ? (
-                <button onClick={() => setP({ color: "" })} style={{ ...chip() }}>清除（不指定）</button>
-              ) : <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>未指定（保持原色温）</span>}
+                <button onClick={() => setP({ color: "" })} style={{ ...chip() }}>清除</button>
+              ) : <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>未指定</span>}
+              {/* #78 常用光色快捷色卡 */}
+              <span style={{ display: "inline-flex", gap: 4 }}>
+                {LIGHT_COLOR_SWATCHES.map((sw) => (
+                  <button key={sw.hex} title={sw.label} onClick={() => setP({ color: sw.hex })}
+                    style={{ width: 16, height: 16, padding: 0, borderRadius: "50%", background: sw.hex, border: params.color === sw.hex ? "2px solid #fff" : "1px solid var(--c-bd3)", cursor: "pointer" }} />
+                ))}
+              </span>
               <div style={{ flex: 1 }} />
               <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--c-t3)", cursor: "pointer" }}>
                 <input type="checkbox" checked={params.rimLight} onChange={(e) => setP({ rimLight: e.target.checked })} style={{ accentColor: "var(--ui-accent, var(--c-accent))" }} />
@@ -391,7 +516,8 @@ export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
         <div style={sub}>预设</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
           {RELIGHT_PRESETS.map((p) => (
-            <button key={p.key} onClick={() => { setPresetKey(p.key); setOverride(null); }} title={p.prompt}
+            <button key={p.key} onClick={() => { setPresetKey(p.key); setOverride(null); }} title={p.prompt + "（悬停即在实时预览上试穿）"}
+              onMouseEnter={() => setHoverPreset(p.key)} onMouseLeave={() => setHoverPreset(null)}
               style={{ position: "relative", height: 52, borderRadius: 9, overflow: "hidden", cursor: "pointer", border: `2px solid ${presetKey === p.key ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, background: p.swatch, padding: 0 }}>
               <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "3px 6px", fontSize: 10.5, fontWeight: 700, color: "#fff", background: "linear-gradient(transparent, oklch(0 0 0 / 0.66))", textAlign: "left" }}>{p.label}</span>
             </button>
