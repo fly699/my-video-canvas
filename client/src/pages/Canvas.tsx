@@ -1798,6 +1798,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
     }
   }, [nodes]);
 
+  // #102 极简显示：进画布时恢复持久化状态（Alt+Q 切换）；离开画布移除信号，
+  // 首页等非画布页面不受 CSS 覆写影响。
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("avc:canvas-minimal") === "1") {
+        document.documentElement.setAttribute("data-canvas-minimal", "1");
+      }
+    } catch { /* restricted */ }
+    return () => document.documentElement.removeAttribute("data-canvas-minimal");
+  }, []);
+
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1975,6 +1986,20 @@ function CanvasInner({ projectId }: { projectId: number }) {
           toast.success("已连接选中的两个节点", { duration: 1000 });
         } else {
           toast.info("请先选中恰好 2 个节点，再按 Ctrl+L 连线", { duration: 1600 });
+        }
+      }
+
+      // #102 Alt+Q — 创意模式「极简显示」开关：所有节点仅留预览框（框线取消，极窄阴影）。
+      // 用 e.code 兜底（Alt 组合在部分键盘布局产生特殊字符）；仅创意画布 + 非工作室皮肤生效。
+      if (!isEditing && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey && (e.key === "q" || e.key === "Q" || e.code === "KeyQ")) {
+        const el = document.documentElement;
+        if (el.getAttribute("data-canvas-mode") === "creative" && el.getAttribute("data-ui") !== "studio") {
+          e.preventDefault();
+          const wasOn = el.getAttribute("data-canvas-minimal") === "1";
+          if (wasOn) el.removeAttribute("data-canvas-minimal");
+          else el.setAttribute("data-canvas-minimal", "1");
+          try { localStorage.setItem("avc:canvas-minimal", wasOn ? "0" : "1"); } catch { /* restricted */ }
+          toast.success(wasOn ? "已恢复标准显示" : "已切换到极简显示（再按 Alt+Q 恢复）", { duration: 1400 });
         }
       }
 
@@ -3454,6 +3479,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                         { key: "⌘/Ctrl + T", desc: "模板面板" },
                         { key: "⌘/Ctrl + S", desc: "保存画布" },
                         { key: "Alt + W", desc: "速览（临时展开参考/提示词）" },
+                        { key: "Alt + Q", desc: "极简显示（创意模式，仅留预览框）" },
                         { key: "?", desc: "开关本面板" },
                       ]},
                     ].map(({ group, items }) => (
