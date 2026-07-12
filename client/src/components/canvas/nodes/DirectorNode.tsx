@@ -50,8 +50,14 @@ export const DirectorNode = memo(function DirectorNode({ id, selected, data }: P
           </div>
         )}
 
+        {payload.lightingDesc && (
+          <div title={payload.lightingDesc} style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            💡 {payload.lightingDesc}
+          </div>
+        )}
+
         <div className="flex items-center justify-between" style={{ fontSize: 11, color: "var(--c-t4)" }}>
-          <span>{scene.actors.length} 个角色 · 画幅 {scene.aspectRatio} · {scene.camera.fov.toFixed(0)}°</span>
+          <span>{scene.actors.length} 个角色{scene.lights?.length ? ` · ${scene.lights.length} 盏灯` : ""} · 画幅 {scene.aspectRatio} · {scene.camera.fov.toFixed(0)}°</span>
           {payload.imageUrl && (
             <button onClick={open} className="nodrag flex items-center gap-1" style={{ color: accent, background: "none", border: "none", cursor: "pointer" }} title="重新进入 / 重拍">
               <Maximize2 style={{ width: 11, height: 11 }} /> 重拍

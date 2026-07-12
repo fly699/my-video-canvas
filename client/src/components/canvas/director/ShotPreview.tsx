@@ -12,6 +12,19 @@ import { PanoramaSphere } from "./Panorama";
 // 右下角小窗实时显示「当前机位」的最终取景（所见即截图）。独立第二 Canvas，只读渲染，
 // 相机每帧锁定到 scene.camera，不参与交互。
 
+// #78 预览里的聚光（挂 target，无标记球）
+function PreviewSpot({ position, target, color, intensity, angle }: {
+  position: [number, number, number]; target: [number, number, number]; color: string; intensity: number; angle: number;
+}) {
+  const ref = { light: null as THREE.SpotLight | null, tgt: null as THREE.Object3D | null };
+  return (
+    <>
+      <spotLight ref={(l) => { ref.light = l; if (l && ref.tgt) l.target = ref.tgt; }} position={position} color={color} intensity={intensity} angle={angle} penumbra={0.35} decay={0} />
+      <object3D ref={(o) => { ref.tgt = o; if (o && ref.light) { ref.light.target = o; o.updateMatrixWorld(); } }} position={target} />
+    </>
+  );
+}
+
 function LockCam({ cam }: { cam: { position: [number, number, number]; target: [number, number, number]; fov: number } }) {
   const { camera } = useThree();
   useFrame(() => {
@@ -44,9 +57,15 @@ export function ShotPreview({ scene }: { scene: DirectorScene }) {
               <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} pitch={scene.panoramaPitch ?? 0} roll={scene.panoramaRoll ?? 0} scale={scene.panoramaScale ?? 1} />
             </Suspense>
           )}
-          <ambientLight intensity={0.7} />
-          <directionalLight position={[4, 8, 5]} intensity={1.1} />
-          <directionalLight position={[-5, 4, -3]} intensity={0.4} />
+          {/* #78 与主视口一致：有布光且压暗基础光时压低环境光，并渲染真实灯光（无标记球） */}
+          <ambientLight intensity={(scene.lights?.length ?? 0) && scene.dimBase !== false ? 0.12 : 0.7} />
+          <directionalLight position={[4, 8, 5]} intensity={(scene.lights?.length ?? 0) && scene.dimBase !== false ? 0.15 : 1.1} />
+          <directionalLight position={[-5, 4, -3]} intensity={(scene.lights?.length ?? 0) && scene.dimBase !== false ? 0.06 : 0.4} />
+          {(scene.lights ?? []).map((l) => (
+            l.kind === "spot"
+              ? <PreviewSpot key={l.id} position={l.position} target={l.target ?? [0, 1, 0]} color={l.color} intensity={l.intensity} angle={(l.angle ?? 40) * Math.PI / 180} />
+              : <pointLight key={l.id} position={l.position} color={l.color} intensity={l.intensity} decay={0} />
+          ))}
           {scene.groundVisible && (
             <Grid args={[40, 40]} cellSize={0.5} cellThickness={0.6} sectionSize={2} sectionThickness={1} infiniteGrid fadeDistance={26} cellColor="#2a2f3a" sectionColor="#3a4150" />
           )}

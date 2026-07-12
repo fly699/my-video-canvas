@@ -1,4 +1,4 @@
-import type { DirectorScene, DirectorActor, DirectorGroup, DirectorCamera, Vec3 } from "../../../shared/types";
+import type { DirectorScene, DirectorActor, DirectorGroup, DirectorCamera, DirectorLight, Vec3 } from "../../../shared/types";
 
 // 导演台场景的默认值、预置体型、画幅与机位预设。纯数据 + 工厂，供 store/节点/编辑器共用。
 
@@ -298,6 +298,97 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
     { model: "female", dx: -1.5, dz: -1.2, rotY: 0 }, { model: "tall", dx: -0.5, dz: -1.4, rotY: 0 }, { model: "male", dx: 0.5, dz: -1.4, rotY: 0 }, { model: "female", dx: 1.5, dz: -1.2, rotY: 0 },
   ] },
 ];
+
+// ── #78 真 3D 灯光（LibTV 无此能力的超越点） ───────────────────────────────────
+let _lseq = 0;
+export function newLightId(): string { _lseq += 1; return `l${_lseq}_${Math.round(performance.now())}`; }
+
+export const LIGHT_KIND_LABEL: Record<DirectorLight["kind"], string> = { point: "点光", spot: "聚光" };
+
+export function nextLightName(kind: DirectorLight["kind"], existing: DirectorLight[]): string {
+  const base = LIGHT_KIND_LABEL[kind];
+  for (let i = 1; i <= existing.length + 1; i++) { const n = `${base}${i}`; if (!existing.some((l) => l.name === n)) return n; }
+  return `${base}${existing.length + 1}`;
+}
+
+/** 新建一盏灯（默认落在主体右前上方，聚光指向原点胸高）。 */
+export function makeLight(kind: DirectorLight["kind"], existing: DirectorLight[], position?: Vec3): DirectorLight {
+  return {
+    id: newLightId(),
+    kind,
+    name: nextLightName(kind, existing),
+    position: position ?? [1.6, 2.2, 2.0],
+    target: kind === "spot" ? [0, 1.0, 0] : undefined,
+    color: "#fff1d6",
+    intensity: kind === "spot" ? 2.6 : 1.6,
+    angle: kind === "spot" ? 40 : undefined,
+    castShadow: kind === "spot",
+  };
+}
+
+/** 布光预设（一键成套布光，替换现有灯光并压暗基础光）。 */
+export interface LightRigPreset {
+  key: string;
+  label: string;
+  desc: string;
+  lights: Omit<DirectorLight, "id">[];
+}
+export const LIGHT_RIG_PRESETS: LightRigPreset[] = [
+  { key: "threepoint", label: "三点布光", desc: "经典人像：主光（左前上）+ 辅光（右前弱）+ 轮廓光（后上勾边）", lights: [
+    { kind: "spot", name: "主光", position: [-1.9, 2.3, 2.2], target: [0, 1.0, 0], color: "#fff1d6", intensity: 3.0, angle: 44, castShadow: true },
+    { kind: "point", name: "辅光", position: [2.1, 1.3, 1.9], color: "#cfe0ff", intensity: 0.8 },
+    { kind: "spot", name: "轮廓光", position: [0.7, 2.6, -2.4], target: [0, 1.25, 0], color: "#dfe8ff", intensity: 2.4, angle: 36 },
+  ] },
+  { key: "backlight", label: "逆光轮廓", desc: "背后强光勾出剪影轮廓，正面弱补光保细节", lights: [
+    { kind: "spot", name: "逆光", position: [0, 2.4, -2.8], target: [0, 1.1, 0], color: "#8fb7ff", intensity: 4.2, angle: 50, castShadow: true },
+    { kind: "point", name: "补光", position: [0.6, 1.2, 2.6], color: "#ffe9cf", intensity: 0.45 },
+  ] },
+  { key: "neon", label: "双色霓虹", desc: "品红/青色左右交叉照明，赛博朋克夜景", lights: [
+    { kind: "point", name: "品红霓虹", position: [-2.2, 1.6, 1.2], color: "#ff2d95", intensity: 2.2 },
+    { kind: "point", name: "青色霓虹", position: [2.2, 1.6, 1.2], color: "#00e5ff", intensity: 2.2 },
+    { kind: "spot", name: "顶部弱光", position: [0, 3.0, 0.4], target: [0, 1.0, 0], color: "#c5b6ff", intensity: 1.0, angle: 55 },
+  ] },
+  { key: "stage", label: "顶光舞台", desc: "头顶一束窄光打下，舞台聚光戏剧感", lights: [
+    { kind: "spot", name: "舞台顶光", position: [0, 3.6, 0.5], target: [0, 0.9, 0], color: "#fff7e6", intensity: 5.0, angle: 26, castShadow: true },
+  ] },
+];
+
+/** 用布光预设实例化一套灯（配新 id）。 */
+export function lightsFromRig(rig: LightRigPreset): DirectorLight[] {
+  return rig.lights.map((l) => ({ ...l, id: newLightId(), position: [...l.position] as Vec3, target: l.target ? [...l.target] as Vec3 : undefined }));
+}
+
+/** 灯位 → 中文方位描述（相对原点主体：+Z=前/机位侧，+X=右）。 */
+export function lightPosLabel(p: Vec3): string {
+  const [x, y, z] = p;
+  const hd = Math.hypot(x, z);
+  const elev = Math.atan2(y - 0.9, Math.max(0.001, hd)) * 180 / Math.PI; // 相对胸高的仰角
+  let h: string;
+  const a = Math.atan2(x, z) * 180 / Math.PI; // 0=正前，90=右，±180=后
+  const aa = Math.abs(a);
+  if (aa <= 30) h = "正前方";
+  else if (aa < 75) h = a > 0 ? "右前方" : "左前方";
+  else if (aa <= 105) h = a > 0 ? "右侧" : "左侧";
+  else if (aa < 150) h = a > 0 ? "右后方" : "左后方";
+  else h = "正后方";
+  if (elev >= 62) return hd < 0.6 ? "正上方（顶光）" : `${h}高位（近顶光）`;
+  if (elev >= 22) return `${h}上方`;
+  if (elev > -18) return h;
+  return `${h}低位（底光）`;
+}
+
+/** 灯光列表 → 中文光效描述句（截图时写入节点，供下游提示词直接引用）。 */
+export function describeLights(lights: DirectorLight[] | undefined, dimBase?: boolean): string {
+  if (!lights || !lights.length) return "";
+  const parts = lights.map((l) => {
+    const bits = [`${l.name}（${LIGHT_KIND_LABEL[l.kind]}）来自${lightPosLabel(l.position)}`, `光色 ${l.color}`, `强度 ${Number(l.intensity.toFixed(1))}`];
+    if (l.kind === "spot" && l.angle) bits.push(`锥角 ${Math.round(l.angle)}°`);
+    if (l.castShadow) bits.push("带投影");
+    return bits.join("、");
+  });
+  const tail = dimBase !== false ? "；基础环境光已压暗，布光造型主导画面明暗" : "";
+  return `画面布光：${parts.join("；")}${tail}`;
+}
 
 /** 按模板生成一批新角色（追加式；落点相对 origin），返回新角色数组。 */
 export function templateActors(tpl: LayoutTemplate, existing: DirectorActor[], origin: Vec3): DirectorActor[] {

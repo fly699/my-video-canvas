@@ -62,6 +62,26 @@ export const POSE_PRESETS: { key: string; label: string; pose: Pose }[] = [
   { key: "wave",    label: "招手", pose: { armROut: 135, elbowR: 45 } },
   // 看手机：单手(右手)持机抬到身前胸口高度看，左手自然垂于身侧——手机是单手拿，不是平板。
   { key: "phone",   label: "看手机", pose: { headNod: 28, armRForward: 40, armROut: 16, elbowR: 105 } },
+  // ── #78 扩充（对齐并超越 LibTV 20 款；角度经真机多角度截图逐一校验） ──
+  // 双膝跪：双大腿竖直向下(不前抬)、双小腿后折 125°，整体下沉使双膝触地、小腿平贴地面。
+  { key: "kneel2",  label: "双膝跪", pose: { legLForward: -2, kneeL: 125, legRForward: -2, kneeR: 125, torsoForward: 4, rootY: -0.40 } },
+  // 叉腰：上臂外展 32° 微前摆、屈肘 88° 使手折回腰际两侧，肘尖朝外（手落腰不落胸）。
+  { key: "akimbo",  label: "叉腰", pose: { armLOut: 32, armLForward: 8, elbowL: 88, armROut: 32, armRForward: 8, elbowR: 88 } },
+  // 倚靠：明显侧倾后仰（靠墙感）、右臂抬起手搭上腹、歪头、双腿交叉（左腿跨到右前）。
+  { key: "lean",    label: "倚靠", pose: { torsoSide: 18, torsoForward: -10, headTilt: 10, armROut: 40, armRForward: 12, elbowR: 105, legLForward: 14, legLOut: -22, kneeL: 12 } },
+  // 鞠躬：躯干前倾 48°、头随躯干微低、双臂自然下垂贴身前侧。
+  { key: "bow",     label: "鞠躬", pose: { torsoForward: 48, headNod: 18, armLForward: 12, armRForward: 12 } },
+  // 踢球：右腿前踢摆到最高点(膝近直)、支撑腿微屈、躯干后仰、双臂反向平衡。
+  { key: "kick",    label: "踢球", pose: { torsoForward: -10, torsoTwist: -8, legRForward: 62, kneeR: 12, kneeL: 14, armLOut: 42, armLForward: 26, armRForward: -28, armROut: 18 } },
+  // 投掷：右臂高举过肩后引(肘折蓄力)、躯干后拧、左臂前伸平衡、左腿跨前——棒球投掷预备式。
+  // 注意：前举(y 摆)在手臂下垂时只是自转，必须先用外展(armOut,z 抬)把臂抬起再摆向前/后。
+  { key: "throw",   label: "投掷", pose: { torsoTwist: -24, torsoForward: -8, armROut: 150, armRForward: -30, elbowR: 65, armLOut: 55, armLForward: 45, elbowL: 20, legLForward: 26, kneeL: 18, legRForward: -14 } },
+  // 推进：双臂抬平前推(外展抬臂+前摆转向正前、肘近直)、躯干前倾、弓步——推墙/推车发力。
+  { key: "push",    label: "推进", pose: { torsoForward: 20, armLOut: 66, armLForward: 78, elbowL: 14, armROut: 66, armRForward: 78, elbowR: 14, legLForward: 28, kneeL: 40, legRForward: -26, rootY: -0.04 } },
+  // 伸手：右臂水平伸直递向正前（外展抬平 72 + 前摆 82 转向正前）、身体微前倾、头微抬。
+  { key: "reach",   label: "伸手", pose: { torsoForward: 8, headNod: -4, armROut: 72, armRForward: 82, elbowR: 8, legLForward: 8 } },
+  // 抱臂：双上臂微外展前摆、双肘深屈 122° 使前臂交叠于胸前。
+  { key: "armfold", label: "抱臂", pose: { armLOut: 14, armLForward: 34, elbowL: 122, armROut: 14, armRForward: 34, elbowR: 122, headTilt: 4 } },
 ];
 
 export function applyPosePreset(presetKey: string): Pose {
