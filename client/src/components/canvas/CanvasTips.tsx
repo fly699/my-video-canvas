@@ -27,12 +27,23 @@ const TIPS: Tip[] = [
   { id: "ball", icon: <Maximize2 size={15} />, title: "助手收成悬浮球", body: "画布助手点关闭会收成左下角悬浮球：拖动移位、点击展开、右键才真正关闭。" },
   { id: "neg", studio: true, icon: <MessageSquareText size={15} />, title: "反向提示词", body: "图像 / 视频节点命令栏底部可填反向提示词，排除不想要的元素。" },
   { id: "guide", icon: <BookOpen size={15} />, title: "随时回看导览", body: "顶栏「更多 → 操作指南」可重新打开交互式新手导览。" },
+  // #115 创意/全皮肤通用贴士——保证创意模式有足量条目可循环
+  { id: "quicktrim", icon: <Clapperboard size={15} />, title: "快剪：就地截取视频", body: "任何有视频结果的节点，操作条点「快剪」：底部时间轴拖选区，I/O 设出入点、Enter 确认，原地替换成片。" },
+  { id: "fitview", icon: <Search size={15} />, title: "F 键：缩放到选中", body: "选中节点按 F 一键缩放居中；不选任何节点按 F 则适应整张画布。找节点最快的方式。" },
+  { id: "adv-a", icon: <SlidersHorizontal size={15} />, title: "A 键：展开高级参数", body: "创意模式选中节点按 A，即可展开/收起下方浮动参数面板，不用去点「高级」按钮。" },
+  { id: "gen-enter", icon: <Sparkles size={15} />, title: "Ctrl+Enter：立即生成", body: "选中节点按 Ctrl+Enter 从该节点运行；框选多个则只跑选中的；什么都不选 = 运行整条工作流。" },
+  { id: "tab-new", icon: <ImagePlus size={15} />, title: "Tab：快速新建节点", body: "按 Tab 打开节点选择器（支持搜索、回车添加）；画布空白处双击也能就地新建。" },
+  { id: "at-ref", icon: <MessageSquareText size={15} />, title: "@ 引用：无需连线", body: "在任意提示词框输入 @，引用画布上的角色 / 图像 / 音频 / 视频节点作参考，比连线更轻。" },
+  { id: "style-cam", icon: <Layers size={15} />, title: "风格库 · 运镜库", body: "底部工具栏可打开风格广场与运镜广场：选中节点后点一款风格/机位运动，直接应用到提示词。" },
+  { id: "multi-all", icon: <Layers size={15} />, title: "多选批量操作", body: "框选 2 个以上节点：底部多选操作条支持整组执行、批量下载、成组与颜色标记。" },
 ];
 const DKEY = "avc:tips:dismissed:v1";
-const OFFKEY = "avc:tips:off:v1";
+// #115 旧 OFFKEY（永久关闭）废弃不再读取——改为按日压制：点「今日不再提示」当天安静，次日恢复轮播。
+const OFFDAY_KEY = "avc:tips:offday:v1";
+const todayStr = () => new Date().toISOString().slice(0, 10);
 // 供「更多菜单」重新开启小贴士用：清除关闭/忽略记录。
 export function resetCanvasTips(): void {
-  try { localStorage.removeItem(OFFKEY); localStorage.removeItem(DKEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(OFFDAY_KEY); localStorage.removeItem(DKEY); } catch { /* ignore */ }
 }
 function loadDismissed(): Set<string> {
   try { const a = JSON.parse(localStorage.getItem(DKEY) || "[]"); return new Set(Array.isArray(a) ? a : []); } catch { return new Set(); }
@@ -62,7 +73,7 @@ export function CanvasTips() {
   isStudioRef.current = isStudio;
   const allowed = (t: Tip) => (!t.studio || isStudioRef.current) && !dismissedRef.current.has(t.id);
 
-  useEffect(() => { try { offRef.current = localStorage.getItem(OFFKEY) === "1"; } catch { /* ignore */ } }, []);
+  useEffect(() => { try { offRef.current = localStorage.getItem(OFFDAY_KEY) === todayStr(); } catch { /* ignore */ } }, []);
 
   const hide = useCallback(() => {
     setLeaving(true);
@@ -93,7 +104,7 @@ export function CanvasTips() {
     const pri = PRIORITY_TIPS.filter((t) => !dismissedRef.current.has(t.id) && (!t.creativeOnly || creativeRef.current));
     pri.forEach((t, i) => {
       timers.push(window.setTimeout(() => {
-        if (!dismissedRef.current.has(t.id)) { lastRef.current = 0; show(t, true, true); }
+        if (!dismissedRef.current.has(t.id)) { lastRef.current = 0; show(t, true, false); }
       }, 3500 + i * 11000));
     });
     return () => timers.forEach((id) => window.clearTimeout(id));
@@ -139,7 +150,7 @@ export function CanvasTips() {
   const turnOffAll = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     offRef.current = true;
-    try { localStorage.setItem(OFFKEY, "1"); } catch { /* quota */ }
+    try { localStorage.setItem(OFFDAY_KEY, todayStr()); } catch { /* quota */ }
     hide();
   };
 
@@ -181,7 +192,7 @@ export function CanvasTips() {
           <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.6, color: "var(--c-t3)" }}>{tip.body}</p>
           <div style={{ marginTop: 8, display: "flex", gap: 12 }}>
             <button onClick={dismissForever} style={tipLink}>不再显示这条</button>
-            <button onClick={turnOffAll} style={tipLink}>关闭全部贴士</button>
+            <button onClick={turnOffAll} style={tipLink}>今日不再提示</button>
           </div>
         </div>
         {/* 自动消失进度条 */}
