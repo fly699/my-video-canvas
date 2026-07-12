@@ -40,6 +40,7 @@ import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, useResolvedDefaultImageOption,
 import { estimateImageCost, costEstimateLabel } from "../../lib/costEstimate";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "./ComfyCkptSelect";
+import { QuickTrimBar } from "./QuickTrimBar";
 
 // Nodes that keep their full PRO body in the studio skin (no floating command bar,
 // no top toolbar, no compact panel). Their UX isn't a parameter form.
@@ -463,6 +464,8 @@ export const BaseNode = memo(function BaseNode({
   // 会自动把旧图押入版本历史），字段按 nodeType 与 resultImageUrl 的读取口径一致。
   const [angleEditorOpen, setAngleEditorOpen] = useState(false);
   const [relightEditorOpen, setRelightEditorOpen] = useState(false);
+  // #103 快剪覆盖所有视频节点：video_task 之外的类型由 BaseNode 统一渲染快剪条
+  const [quickTrimOpen, setQuickTrimOpen] = useState(false);
   const applyEditedImage = useCallback((url: string) => {
     const st = useCanvasStore.getState();
     switch (nodeType) {
@@ -1028,11 +1031,16 @@ export const BaseNode = memo(function BaseNode({
                 <Download size={13} />
               </button>
             )}
-            {/* LibTV 化：视频节点「快速剪辑」——底部弹出时间轴选区剪辑条（事件解耦，
-                由 VideoTaskNode 监听 canvas:quick-trim 打开，避免 BaseNode 掺业务实现）。 */}
-            {resultVideoUrl && nodeType === "video_task" && (
+            {/* LibTV 化：「快速剪辑」——底部弹出时间轴选区剪辑条。#103 放开到所有有视频
+                结果的节点：video_task 仍走 canvas:quick-trim 事件（其批量多结果的当前选中
+                由节点自己解析）；其余类型由 BaseNode 统一渲染 QuickTrimBar 并按类型写回。 */}
+            {resultVideoUrl && (
               <button
-                onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("canvas:quick-trim", { detail: { nodeId: id } })); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (nodeType === "video_task") window.dispatchEvent(new CustomEvent("canvas:quick-trim", { detail: { nodeId: id } }));
+                  else setQuickTrimOpen(true);
+                }}
                 title="快剪（时间轴选区截取 · I/O 出入点 · Enter 确认；与「剪辑」节点区分）"
                 className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
                 style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
@@ -1996,6 +2004,37 @@ export const BaseNode = memo(function BaseNode({
           <RelightEditorLazy sourceUrl={resultImageUrl} nodeId={id} projectId={projectId ?? 0}
             onApply={applyEditedImage} onClose={() => setRelightEditorOpen(false)} />
         </Suspense>, document.body)}
+
+      {/* #103 快剪条（video_task 之外的视频节点；确认走 clip.trimVideo，按类型写回结果字段）。
+          QuickTrimBar 自身 portal 到 body，不受节点 transform/overflow 影响。 */}
+      {quickTrimOpen && resultVideoUrl && nodeType !== "video_task" && (
+        <QuickTrimBar
+          videoUrl={resultVideoUrl}
+          projectId={projectId ?? 0}
+          nodeId={id}
+          onClose={() => setQuickTrimOpen(false)}
+          onDone={(url) => {
+            const st = useCanvasStore.getState();
+            switch (nodeType) {
+              case "comfyui_video": st.updateNodeData(id, { resultVideoUrl: url }); break;
+              case "clip": case "merge": case "subtitle": case "subtitle_motion":
+              case "overlay": case "smart_cut":
+                st.updateNodeData(id, { outputUrl: url }); break;
+              case "comfyui_workflow": {
+                // 替换 outputUrls 里第一个视频（与 resultVideoUrl 推导取的是同一个）
+                const p = st.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
+                const urls: string[] = Array.isArray(p?.outputUrls) ? [...(p!.outputUrls as string[])] : [];
+                const i = urls.findIndex((u) => typeof u === "string" && u);
+                if (i >= 0) urls[i] = url; else urls.unshift(url);
+                st.updateNodeData(id, { outputUrls: urls });
+                break;
+              }
+              case "asset": st.updateNodeData(id, { url }); break;
+              default: break; // resultVideoUrl 的枚举类型已全覆盖，不会走到
+            }
+          }}
+        />
+      )}
     </div>
   );
 });
