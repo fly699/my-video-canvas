@@ -1567,6 +1567,75 @@ button:active:not(:disabled) {
   background: #ececec !important;
   border: 1px solid oklch(0 0 0 / 0.5) !important;
 }
+/* ── #102 创意模式「极简显示」（Alt+Q）────────────────────────────────────────
+   所有节点仅留预览框：卡体外壳（底/边框/标题栏/正文）全部隐形，预览框自己成为
+   卡片——12px 圆角 + 极窄阴影（1px 微光描边 + 贴身投影）。悬停浮现标题小签；
+   桩点/缩放手柄非悬停时退场；选中态为预览框上一圈 1px 细高亮环。
+   信号：<html data-canvas-minimal="1">（Canvas 的 Alt+Q 切换，localStorage 持久化）。
+   工作室皮肤（data-ui=studio）不参与——其下浮面板是节点卡的直接子元素，会被误伤。 */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node [data-has-hero] {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+/* 有预览节点：内层包装中除英雄区外全部隐藏（顶部渐变线/标题栏/进度条/失败横幅/正文） */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="true"] > div > *:not(.node-hero-media) {
+  display: none !important;
+}
+/* 预览框即卡片 */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .node-hero-media {
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35) !important;
+}
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .node-hero-media img,
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .node-hero-media video,
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .node-hero-media .wm-video-wrap {
+  border-radius: 12px !important;
+}
+/* 无预览节点（提示词/便签/剪辑系/未出图的生成节点）：正文即预览薄卡，同款极窄阴影，
+   避免「节点丢了」的错觉 */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="false"] > div > *:not(.node-body-wrap) {
+  display: none !important;
+}
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-has-hero="false"] .node-body-wrap {
+  background: var(--c-node-bg);
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35);
+}
+/* 悬停浮现标题小签（读 BaseNode 的 data-node-title；pointer-events 关闭不挡拖拽） */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node:hover [data-node-title]:not([data-node-title=""])::after {
+  content: attr(data-node-title);
+  position: absolute;
+  top: -27px;
+  left: 6px;
+  z-index: 30;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: oklch(0.16 0.01 260 / 0.92);
+  border: 1px solid var(--c-bd2);
+  color: var(--c-t2);
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* 桩点/缩放手柄退场：非悬停节点全隐；悬停该节点或拉线进行中恢复（可用性不丢） */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow:not(:has(.react-flow__connection)) .react-flow__node:not(:hover) .react-flow__handle {
+  opacity: 0 !important;
+}
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) .react-flow__node:not(:hover) .react-flow__resize-control {
+  display: none !important;
+}
+/* 选中态：预览框/内容卡一圈 1px 细高亮环（方向感不丢） */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-selected="true"] .node-hero-media {
+  box-shadow: 0 0 0 1px var(--ui-accent, oklch(0.72 0.19 300)), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35) !important;
+}
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]) [data-selected="true"][data-has-hero="false"] .node-body-wrap {
+  box-shadow: 0 0 0 1px var(--ui-accent, oklch(0.72 0.19 300)), 0 1px 3px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.35);
+}
+
 /* 空态占位中性化：生成节点的「结果将显示在这里」占位卡去彩色，统一深灰+中性字 */
 :root[data-canvas-mode="creative"] .node-empty-placeholder {
   border-color: var(--c-bd2) !important;

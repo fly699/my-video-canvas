@@ -906,6 +906,8 @@ export const BaseNode = memo(function BaseNode({
       aria-label={`${title || config?.label || nodeType} 节点${config?.label && title ? `（${config.label}）` : ""}${runStatus === "running" ? " · 生成中" : genError ? " · 失败" : ""}`}
       data-selected={(storeSelected || pinned) ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
+      /* #102 极简显示（Alt+Q）悬停浮现标题：CSS ::after 通过 attr() 读取，无 JS 开销 */
+      data-node-title={(title || config?.label || "").slice(0, 40)}
       style={{
         // var() with the exact current literal as fallback → "pro" (no --ui-radius-node)
         // is byte-identical; "studio" skin overrides it for softer cards.
