@@ -1603,6 +1603,11 @@ button:active:not(:disabled) {
 :root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]):not([data-canvas-peek="1"]) [data-has-hero="true"][data-has-result="true"] .node-hero-media .wm-video-wrap {
   border-radius: 12px !important;
 }
+/* #109 修正：极简显示隐藏的是「画布顶栏」（项目名/面板开关一整条），节点的浮动
+   操作条保持可用（用户澄清）。速览（Alt+W）期间随整套规则一并豁免恢复。 */
+:root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]):not([data-canvas-peek="1"]) .canvas-topbar {
+  display: none !important;
+}
 /* 悬停浮现标题小签（读 BaseNode 的 data-node-title；pointer-events 关闭不挡拖拽） */
 :root[data-canvas-mode="creative"][data-canvas-minimal="1"]:not([data-ui="studio"]):not([data-canvas-peek="1"]) .react-flow__node:hover [data-has-hero="true"][data-has-result="true"][data-node-title]:not([data-node-title=""])::after {
   content: attr(data-node-title);

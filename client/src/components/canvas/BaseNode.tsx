@@ -41,7 +41,6 @@ import { estimateImageCost, costEstimateLabel } from "../../lib/costEstimate";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "./ComfyCkptSelect";
 import { QuickTrimBar } from "./QuickTrimBar";
-import { useMinimalDisplay } from "../../hooks/useMinimalDisplay";
 
 // Nodes that keep their full PRO body in the studio skin (no floating command bar,
 // no top toolbar, no compact panel). Their UX isn't a parameter form.
@@ -467,8 +466,6 @@ export const BaseNode = memo(function BaseNode({
   const [relightEditorOpen, setRelightEditorOpen] = useState(false);
   // #103 快剪覆盖所有视频节点：video_task 之外的类型由 BaseNode 统一渲染快剪条
   const [quickTrimOpen, setQuickTrimOpen] = useState(false);
-  // #109 极简显示态（响应式）：极简时隐藏选中节点的顶部工具条
-  const minimalDisplay = useMinimalDisplay();
   const applyEditedImage = useCallback((url: string) => {
     const st = useCanvasStore.getState();
     switch (nodeType) {
@@ -980,9 +977,7 @@ export const BaseNode = memo(function BaseNode({
       {/* LibTV 化：工具条开放到所有皮肤（原仅 studio）——选中即浮出快捷 AI 操作。
           框选/多选（≥2 选中）时不再逐个弹出单节点操作条，避免画布被一排排工具条淹没；
           此时只保留框选级的对齐条 + 多选操作条（全模式统一）。 */}
-      {/* #109 极简显示（Alt+Q）下顶部工具条整条隐藏（用户要求极简态最大化留白；
-          快剪/对比/下载等仍可通过右键菜单与恢复标准显示后使用）。 */}
-      {(storeSelected || pinned) && !multiSelected && !(minimalDisplay && isCreative && !isStudio) && (onRun || resultVideoUrl || resultImageUrl) && (() => {
+      {(storeSelected || pinned) && !multiSelected && (onRun || resultVideoUrl || resultImageUrl) && (() => {
         // LibTV 化 2.x：创意模式的工具条迁入 NodeToolbar——屏幕恒定（画布缩放时节点内容
         // 缩放、工具条保持固定屏幕尺寸），与就地生成输入条同一交互范式；studio/pro 保持
         // 原有「节点内绝对定位、随节点缩放」的行为不变（与下方随缩放的参数面板一致）。
