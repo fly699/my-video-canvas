@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Grid, TransformControls, ContactShadows } from "@react-three/drei";
+import { OrbitControls, Grid, TransformControls, ContactShadows, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
 import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy, Boxes, PersonStanding, Download, Crosshair } from "lucide-react";
@@ -165,6 +165,74 @@ function LightObj({ light, selected, onSelect, bindMarker }: {
   );
 }
 
+// ── #84 3D 机位实体（对齐 LibTV 视频）：橙色相机本体 + FOV 视锥线框 + 名字标签 ──
+// 点选即激活该机位并打开机位面板；激活机位可用移动/旋转手柄拖拽（移动改 position、
+// 旋转改 target 朝向）。组名 "cam-marker"：截图/宫格/入库时统一隐藏（同灯光标记），
+// 控制图渲染走「顶层非 ACTORS_GROUP 全隐藏」自然覆盖；Html 标签是 DOM 覆盖层，
+// 本就不进 WebGL 截图缓冲。机位视角下隐藏当前机位自身（正从它眼里看，实体会糊脸）。
+function CameraGizmo({ cam, active, hidden, labelsVisible, onSelect, bindRef }: {
+  cam: DirectorCamera; active: boolean; hidden: boolean; labelsVisible: boolean;
+  onSelect: () => void; bindRef?: (el: THREE.Object3D | null) => void;
+}) {
+  // 朝向：相机约定 -Z 指向注视点（Matrix4.lookAt 即相机式构造）
+  const quat = useMemo(() => {
+    const m = new THREE.Matrix4().lookAt(new THREE.Vector3(...cam.position), new THREE.Vector3(...cam.target), new THREE.Vector3(0, 1, 0));
+    return new THREE.Quaternion().setFromRotationMatrix(m);
+  }, [cam.position, cam.target]);
+  // FOV 视锥线框（局部空间，-Z 向前）：长度随机位到注视点距离取 35%，夹在 0.5~2.2m
+  const frustum = useMemo(() => {
+    const dist = Math.hypot(cam.target[0] - cam.position[0], cam.target[1] - cam.position[1], cam.target[2] - cam.position[2]);
+    const len = Math.max(0.5, Math.min(2.2, dist * 0.35));
+    const hh = len * Math.tan((cam.fov * Math.PI) / 360);
+    const hw = hh * 16 / 9;
+    const c = [[-hw, -hh, -len], [hw, -hh, -len], [hw, hh, -len], [-hw, hh, -len]];
+    const pts: number[] = [];
+    for (const p of c) pts.push(0, 0, 0, ...p);                     // 原点 → 四角
+    for (let i = 0; i < 4; i++) pts.push(...c[i], ...c[(i + 1) % 4]); // 远端矩形
+    return new Float32Array(pts);
+  }, [cam.fov, cam.position, cam.target]);
+  if (hidden) return null;
+  const col = active ? "#ffb020" : "#c8933f";
+  return (
+    <group name="cam-marker" position={cam.position} quaternion={quat} ref={bindRef as never}>
+      {/* 相机本体：机身 + 镜筒（可点选——点选热区用一个略大的透明包围盒承接，
+          比逐 mesh 命中更好点；handler 直接挂 mesh 上） */}
+      <mesh
+        onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}
+        onClick={(e) => { e.stopPropagation(); }}
+      >
+        <boxGeometry args={[0.34, 0.3, 0.28]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <mesh>
+        <boxGeometry args={[0.22, 0.15, 0.12]} />
+        <meshStandardMaterial color={col} emissive={col} emissiveIntensity={active ? 0.55 : 0.2} roughness={0.4} />
+      </mesh>
+      <mesh position={[0, 0, -0.1]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.05, 0.06, 0.08, 16]} />
+        <meshStandardMaterial color="#2b2f38" roughness={0.3} />
+      </mesh>
+      <mesh position={[-0.04, 0.115, 0]}>
+        <cylinderGeometry args={[0.045, 0.045, 0.06, 12]} />
+        <meshStandardMaterial color={col} emissive={col} emissiveIntensity={0.25} roughness={0.5} />
+      </mesh>
+      <lineSegments>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[frustum, 3]} />
+        </bufferGeometry>
+        <lineBasicMaterial color={col} transparent opacity={active ? 0.85 : 0.45} />
+      </lineSegments>
+      {labelsVisible && (
+        <Html center position={[0, 0.32, 0]} style={{ pointerEvents: "none" }} zIndexRange={[10, 0]}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: "#fff", background: "rgba(0,0,0,0.6)", padding: "1px 7px", borderRadius: 6, whiteSpace: "nowrap", textShadow: "0 1px 3px rgba(0,0,0,0.8)", border: active ? "1px solid #ffb02088" : "1px solid transparent" }}>
+            📷 {cam.name ?? "机位"}
+          </div>
+        </Html>
+      )}
+    </group>
+  );
+}
+
 // drei OrbitControls 实例（含 target / update）。
 type OrbitImpl = { target: THREE.Vector3; update: () => void; object: THREE.Camera } | null;
 export interface CaptureHandle { gl: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.Camera; orbit: OrbitImpl; }
@@ -195,6 +263,10 @@ function CameraRig({ cam, onCommit, bind, locked, grab }: {
   const { gl, scene, camera } = useThree();
   const orbit = useRef<OrbitImpl>(null);
   const inited = useRef(false);
+  // #84 提交守卫：OrbitControls 的 onStart/onEnd 是原生 canvas 监听，R3F 的 stopPropagation
+  // 拦不住——点选机位/灯光 gizmo 的那一下也会触发 onEnd，把未动过的自由视角原样「提交」
+  // 进刚激活的机位，导致机位被瞬移到眼位（真机逮到）。守卫：本次拖拽真实位移 > 1cm 才提交。
+  const dragStart = useRef<THREE.Vector3 | null>(null);
 
   // 拖拽手感：仅反转水平方向（three-stdlib OrbitControls 的 reverseHorizontalOrbit），不动俯仰。
   useEffect(() => {
@@ -234,7 +306,14 @@ function CameraRig({ cam, onCommit, bind, locked, grab }: {
       // 夹住俯仰极角：禁止越过头顶/钻到地面以下，避免相机翻转导致「地平线来回乱晃、上下颠倒」。
       minPolarAngle={0.12}
       maxPolarAngle={Math.PI * 0.92}
-      onEnd={() => { if (orbit.current) onCommit(camera.position.toArray() as Vec3, orbit.current.target.toArray() as Vec3); }}
+      onStart={() => { dragStart.current = camera.position.clone(); }}
+      onEnd={() => {
+        if (!orbit.current) return;
+        // 纯点击（无位移）不提交：避免点选 gizmo 时把自由视角误写进当前机位
+        if (dragStart.current && camera.position.distanceTo(dragStart.current) < 0.01) { dragStart.current = null; return; }
+        dragStart.current = null;
+        onCommit(camera.position.toArray() as Vec3, orbit.current.target.toArray() as Vec3);
+      }}
     />
   );
 }
@@ -264,6 +343,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   // #78 灯光选中 + 拖拽手柄目标 + 网格吸附
   const [selectedLightId, setSelectedLightId] = useState<string | null>(null);
   const [lightGizmoTarget, setLightGizmoTarget] = useState<THREE.Object3D | null>(null);
+  // #84 机位 gizmo 拖拽手柄目标（激活机位且机位面板打开时绑定）
+  const [camGizmoTarget, setCamGizmoTarget] = useState<THREE.Object3D | null>(null);
   const [snap, setSnap] = useState<boolean>(() => {
     try { return localStorage.getItem("director:snap") === "1"; } catch { return false; }
   });
@@ -588,15 +669,28 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const target = shotAimTarget(base, { sceneScale: scn.sceneScale, offsetX: scn.sceneOffsetX, offsetY: scn.sceneOffsetY, offsetZ: scn.sceneOffsetZ, actorScale: a.scale, aimY: 1.0 });
     patchLight(lightId, { target });
   };
-  // 截图前隐藏灯光标记球/指向线 + TransformControls 手柄（不隐藏光源本身——光照必须留在成片里）。
+  // 截图前隐藏灯光标记球/指向线 + 机位 gizmo + TransformControls 手柄
+  // （不隐藏光源本身——光照必须留在成片里；#84 机位实体同为编辑器专属标记）。
   const hideLightMarkers = useCallback(() => {
     const cap = captureRef.current;
     const hidden: THREE.Object3D[] = [];
     cap?.scene.traverse((o) => {
       const anyO = o as THREE.Object3D & { isTransformControls?: boolean };
-      if ((o.name === "light-marker" || anyO.isTransformControls) && o.visible) { o.visible = false; hidden.push(o); }
+      if ((o.name === "light-marker" || o.name === "cam-marker" || anyO.isTransformControls) && o.visible) { o.visible = false; hidden.push(o); }
     });
     return () => hidden.forEach((o) => { o.visible = true; });
+  }, []);
+
+  // #84 点选画面中的机位实体：激活该机位并打开机位面板（不动导演视角的自由环绕；
+  // 机位视角下 CameraRig 的 locked effect 会随 cam.position/target 变化自动吸附）。
+  const selectCameraFromScene = useCallback((id: string) => {
+    liveDetachedRef.current = true; // 只选中不跳视角：脱离期环绕不回写，防机位被瞬移
+    setScene((s) => {
+      const cams = ensureCameras(s);
+      const c = cams.find((x) => x.id === id) ?? cams[0];
+      return { ...s, camera: c, cameras: cams, activeCameraId: c.id };
+    });
+    setCamSelected(true); setSelectedId(null); setSelectedGroupId(null); setSelectedLightId(null);
   }, []);
 
   // #71 导出场景 .glb：把 ACTORS_GROUP（人物+道具+导入模型）打包下载，可导入任何 3D 工具复用
@@ -613,11 +707,20 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     }, (err) => toast.error("导出失败：" + String(err)), { binary: true });
   };
 
-  const onCommitCam = useCallback((position: Vec3, target: Vec3) => patchCam({ position, target }), [patchCam]);
+  // #84 视角脱离标记：经 gizmo 点选机位后，自由视角与新激活机位并不重合——此时环绕视角
+  // 不应把「别处的眼位」回写进该机位（否则机位被瞬移）。任何把视角对齐到机位的操作
+  // （切换机位/景别/注视/重置/机位视角）都会重新挂钩。
+  const liveDetachedRef = useRef(false);
+  const onCommitCam = useCallback((position: Vec3, target: Vec3) => {
+    if (liveDetachedRef.current) return; // 脱离期间环绕只看不写
+    patchCam({ position, target });
+  }, [patchCam]);
   const bindCapture = useCallback((h: CaptureHandle) => { captureRef.current = h; }, []);
+  useEffect(() => { if (viewMode === "camera") liveDetachedRef.current = false; }, [viewMode]);
 
   // 重置机位：imperatively 把相机/控制器拨回默认，并同步场景（避免受控 prop 回灌打架）。
   const resetCamera = useCallback(() => {
+    liveDetachedRef.current = false;
     const dft = makeDefaultDirectorScene().camera;
     const cap = captureRef.current;
     if (cap) {
@@ -634,6 +737,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const activeCameraId = scene.activeCameraId ?? cameras[0].id!;
   // imperatively 把 live 相机拨到某机位（切换/对准时复用）。
   const moveLiveCamera = useCallback((c: DirectorCamera) => {
+    liveDetachedRef.current = false; // 视角已对齐到机位，恢复「环绕即调机位」挂钩
     const cap = captureRef.current; if (!cap) return;
     cap.camera.position.set(...c.position);
     (cap.camera as THREE.PerspectiveCamera).fov = c.fov;
@@ -1055,8 +1159,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       </div>
 
       <div className="flex-1 flex" style={{ minHeight: 0 }}>
-        {/* 左：图层列表 */}
-        <div className="flex flex-col gap-2 p-3" style={{ width: 220, borderRight: "1px solid var(--c-bd2)", overflowY: "auto" }}>
+        {/* 左：图层列表。director-leftcol：子项 flex-shrink:0——内容超高时正常滚动，
+            否则 flex 列会把每个 chip 行压缩到重叠挤成一团（#84 灯光区加入后真实翻车）。 */}
+        <div className="director-leftcol flex flex-col gap-2 p-3" style={{ width: 220, borderRight: "1px solid var(--c-bd2)", overflowY: "auto" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>场景图层</div>
           <button onClick={() => { setCamSelected(true); setSelectedId(null); setSelectedGroupId(null); }} style={{ ...rowBtn(camSelected) }}>📷 机位（{scene.camera.fov.toFixed(0)}°）</button>
           {/* 群众群组（可展开成员、解组/删除） */}
@@ -1222,6 +1327,15 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   onSelect={() => selectLight(l.id)}
                   bindMarker={l.id === selectedLightId ? ((el) => setLightGizmoTarget(el)) : undefined} />
               ))}
+              {/* #84 3D 机位实体（对齐 LibTV）：全部命名机位在场景中可见/可点选/可拖拽；
+                  机位视角下隐藏当前机位自身（正从它眼里看） */}
+              {cameras.map((c) => (
+                <CameraGizmo key={c.id} cam={c} active={c.id === activeCameraId}
+                  hidden={viewMode === "camera" && c.id === activeCameraId}
+                  labelsVisible={scene.labelsVisible !== false}
+                  onSelect={() => selectCameraFromScene(c.id!)}
+                  bindRef={camSelected && c.id === activeCameraId ? ((el) => setCamGizmoTarget(el)) : undefined} />
+              ))}
               {scene.groundVisible && (
                 <Grid args={[40, 40]} cellSize={0.5} cellThickness={0.6} sectionSize={2} sectionThickness={1} infiniteGrid fadeDistance={26} cellColor="#2a2f3a" sectionColor="#3a4150" position={[origin[0], 0, origin[2]]} />
               )}
@@ -1303,6 +1417,30 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   translationSnap={snap ? 0.25 : undefined}
                   onMouseUp={() => {
                     patchLight(selectedLight.id, { position: lightGizmoTarget.position.toArray() as Vec3 });
+                  }}
+                />
+              )}
+              {/* #84 机位拖拽手柄：移动=挪机位（注视点不变）；旋转=转镜头朝向（重算 target）。
+                  仅导演视角下可拖（机位视角正从它眼里看，实体已隐藏）。 */}
+              {camSelected && camGizmoTarget && viewMode === "director" && (
+                <TransformControls
+                  object={camGizmoTarget}
+                  mode={gizmoMode === "rotate" ? "rotate" : "translate"}
+                  size={0.7}
+                  translationSnap={snap ? 0.25 : undefined}
+                  rotationSnap={snap ? Math.PI / 12 : undefined}
+                  onMouseUp={() => {
+                    const o = camGizmoTarget;
+                    const cur = sceneRef.current.camera;
+                    if (gizmoMode === "rotate") {
+                      // 旋转：取 gizmo 新朝向的 -Z 前向，注视距离保持不变，重算 target
+                      const dist = Math.hypot(cur.target[0] - cur.position[0], cur.target[1] - cur.position[1], cur.target[2] - cur.position[2]) || 3;
+                      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(o.quaternion);
+                      const t = new THREE.Vector3(...cur.position).addScaledVector(fwd, dist);
+                      patchCam({ target: [t.x, t.y, t.z], lookAtActorId: undefined });
+                    } else {
+                      patchCam({ position: o.position.toArray() as Vec3 });
+                    }
                   }}
                 />
               )}

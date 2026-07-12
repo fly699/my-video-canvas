@@ -1931,6 +1931,10 @@ button:active:not(:disabled) {
 /* 触屏无 hover：轻量条常显（与上方触屏常显策略一致） */
 @media (hover: none) { .wm-slim { opacity: 1; } }
 
+/* #84 导演台左栏：flex 列子项禁止压缩——内容超高时走 overflow-y 滚动，
+   否则每个 chip 行被压扁互相重叠挤成一团（灯光区加入后内容超出视口高度触发）。 */
+.director-leftcol > * { flex-shrink: 0; }
+
 /* 触屏（无 hover）设备：以上视频叠加按钮全靠 :hover 才显现，触屏没有 hover → 永远不可见、
    全屏/循环/逐帧钮根本点不到。故在无 hover 设备上常显，并放大到 ≥40px 触摸目标（循环钮变宽后
    右移逐帧行避让）。桌面端仍保持 hover 才显、不受影响。 */
