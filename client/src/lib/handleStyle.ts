@@ -27,6 +27,13 @@ const VALID_GREEN = "oklch(0.74 0.18 150)";
 const COARSE_POINTER = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
 export function handleStyle(color: string, active: boolean, shape: HandleShape = "circle", connect?: HandleConnect): CSSProperties {
+  // #101 创意模式（LibTV）：节点级 hover/选中不点亮桩点——保持静止态小空心环。
+  // 拉线中的 valid/invalid/muted（connect 分支）与桩点自身 :hover（index.css 的
+  // !important 覆写）不受影响。信号源与 index.css 创意皮肤同款 data-canvas-mode，
+  // 触屏静止态增强（COARSE_POINTER）也不受影响。
+  const creativeQuiet = typeof document !== "undefined"
+    && document.documentElement.getAttribute("data-canvas-mode") === "creative";
+  const isActive = active && !creativeQuiet;
   const base: CSSProperties = {
     width: 12,
     height: 12,
@@ -49,7 +56,7 @@ export function handleStyle(color: string, active: boolean, shape: HandleShape =
   }
   return {
     ...base,
-    ...(active
+    ...(isActive
       ? {
           // 轻量化：半透明填充 + 不放大 + 很弱的光晕（原来 selVis 时是实心大绿点，太抢眼）。
           background: `color-mix(in oklch, ${color} 45%, transparent)`,
