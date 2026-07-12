@@ -105,7 +105,7 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
               background: "var(--c-base)",
               border: "1px solid var(--c-bd2)",
               boxShadow: "0 8px 32px oklch(0 0 0 / 0.6)",
-              minWidth: 244,
+              minWidth: 300, // 与 ModelPicker 同步加宽：长模型名+徽标不再被截断
               maxHeight: maxH,
               overflowY: "auto",
             }}

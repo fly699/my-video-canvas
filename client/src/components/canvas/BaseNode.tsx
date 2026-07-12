@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useCallback, useEffect, lazy, Suspense } from "react";
+import { memo, useState, useRef, useCallback, useEffect, lazy, Suspense, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals, useStore } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
@@ -35,7 +35,7 @@ import { detectUpstreamImages, listUpstreamVideoSources } from "../../lib/comfyW
 import { hasPassableOutput, directPassDownstream } from "../../lib/canvasPassthrough";
 import { handleStyle } from "../../lib/handleStyle";
 import { agentBadge } from "../../lib/agentOwnership";
-import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption } from "./ModelPicker";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, useResolvedDefaultImageOption, type ModelPickerOption } from "./ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../lib/costEstimate";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "./ComfyCkptSelect";
@@ -59,6 +59,10 @@ const TOOLKIT_MODEL_OPTIONS: ModelPickerOption[] = [
   COMFY_LOCAL_OPTION,
   ...IMAGE_MODEL_PICKER_OPTIONS,
 ];
+/** 把「默认模型」哨兵项的 label/costLabel 换成解析后的真实模型（如「默认 · GPT Image 2」）。 */
+function withResolvedDefault(options: ModelPickerOption[], dft: { label: string; costLabel: string }): ModelPickerOption[] {
+  return options.map((o) => (o.value === "" ? { ...o, label: `默认 · ${dft.label}`, costLabel: dft.costLabel } : o));
+}
 const toolkitCostLabel = (model: string): string => {
   if (!model) return "按系统默认模型";
   if (model === COMFY_LOCAL_MODEL) return "自建 · 免云端积分";
@@ -487,7 +491,10 @@ export const BaseNode = memo(function BaseNode({
   const [toolkitOpen, setToolkitOpen] = useState(false);
   // #73 工具箱宫格管线模型选择（""=系统默认），记忆到 localStorage；计价随选联动
   const [toolkitModel, setToolkitModel] = useState<string>(() => { try { return localStorage.getItem(TOOLKIT_MODEL_KEY) ?? ""; } catch { return ""; } });
-  const toolkitCost = toolkitCostLabel(toolkitModel);
+  // 默认哨兵解析显示：让「默认模型」直接亮出实际会用的模型与计价（项目>系统>出厂）
+  const resolvedDft = useResolvedDefaultImageOption();
+  const toolkitOptionsResolved = useMemo(() => withResolvedDefault(TOOLKIT_MODEL_OPTIONS, resolvedDft), [resolvedDft.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toolkitCost = toolkitModel ? toolkitCostLabel(toolkitModel) : ('默认 · ' + resolvedDft.label + ' · ' + resolvedDft.costLabel);
   const pickToolkitModel = (v: string) => { setToolkitModel(v); try { localStorage.setItem(TOOLKIT_MODEL_KEY, v); } catch { /* ignore */ } };
 
   const spawnImageResultNode = (nodeTitle: string, urls: string[], heroUrl?: string) => {
@@ -1108,7 +1115,7 @@ export const BaseNode = memo(function BaseNode({
                       {/* #73 纳管：宫格管线模型选择 + 计价（此前隐形走服务端默认模型） */}
                       <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 5, borderTop: "1px solid var(--c-bd1)", marginTop: 3 }}>
                         <span style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "0 2px" }}>生成模型（上列全部操作生效）</span>
-                        <ModelPicker value={toolkitModel} onChange={pickToolkitModel} options={TOOLKIT_MODEL_OPTIONS} minWidth={156} />
+                        <ModelPicker value={toolkitModel} onChange={pickToolkitModel} options={toolkitOptionsResolved} minWidth={156} />
                         <ComfyCkptSelect enabled={toolkitModel === COMFY_LOCAL_MODEL} width={156} />
                         <span style={{ fontSize: 9.5, color: "var(--c-t4)", padding: "0 2px" }} title="预计消耗（宫格为单张大图计一次生成）">预计：{toolkitCost}</span>
                       </div>

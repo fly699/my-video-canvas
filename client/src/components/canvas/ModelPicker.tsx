@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, Check, Search } from "lucide-react";
 import { IMAGE_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
 import { useDisabledModels } from "@/lib/useDisabledModels";
+import { useNodeDefaultModels } from "@/contexts/NodeDefaultModelsContext";
 
 // Shared, classified model picker used by image / video / LLM nodes.
 // Generalizes LLMModelPicker's createPortal + backdrop anchoring. Options are
@@ -126,8 +127,10 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
               ...(flipUp ? { bottom: window.innerHeight - btnRect.top + 6 } : { top: btnRect.bottom + 6 }),
               // 钳制左缘：触发器很窄时下拉更宽，避免右溢出视口（portal 到 body，
               // 可超出父弹层）。
-              left: Math.max(8, Math.min(btnRect.left, window.innerWidth - Math.max(btnRect.width, minWidth) - 8)),
-              width: Math.max(btnRect.width, minWidth),
+              // 菜单最小 300px：触发器常常很窄（输入条/工具箱内 150px 级），跟随触发器宽度
+              // 会把长模型名+算力徽标挤没（用户实测「列表太窄开不全」通病）。
+              left: Math.max(8, Math.min(btnRect.left, window.innerWidth - Math.max(btnRect.width, minWidth, 300) - 8)),
+              width: Math.max(btnRect.width, minWidth, 300),
               maxHeight: menuMaxH,
               overflowY: "auto",
               background: "var(--c-base)",
@@ -237,6 +240,15 @@ export function ModelPicker({ value, onChange, options, disabled, searchable = t
       })()}
     </>
   );
+}
+
+/** 「默认模型（系统设置）」哨兵的展示解析：把默认链（项目 > 系统默认 > 出厂）的实际落点
+ *  亮出来（此前只写「系统设置」四个字，用户不知道到底会用哪个模型）。 */
+export function useResolvedDefaultImageOption(): { id: string; label: string; costLabel: string } {
+  const { resolve } = useNodeDefaultModels();
+  const id = resolve("image_gen", "image");
+  const m = IMAGE_MODELS.find((x) => x.value === id);
+  return { id, label: m?.label ?? id, costLabel: m ? imageCostLabel(m) : "按模型页" };
 }
 
 /** Format an image-model cost into a short badge label. */
