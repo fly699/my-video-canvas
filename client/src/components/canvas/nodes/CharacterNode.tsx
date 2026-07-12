@@ -30,6 +30,8 @@ import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { ZoomableImage } from "../ZoomableImage";
+import { useLightbox } from "../studio/Lightbox";
+import { downloadMedia } from "../../../lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
 import { detectUpstreamImagesExpanded } from "@/lib/comfyWorkflowParams";
@@ -472,6 +474,31 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     </div>
   );
 
+  // #76 批2：多视角缩略条——主图 + 备用视角横排；点击备用图与主图互换（保持
+  // referenceImageUrl=正面/主视角、additionalImageUrls=其余 的既有语义，下游条件化不变）。
+  const extraViews = (payload.additionalImageUrls ?? []).map((u) => (u ?? "").trim()).filter(Boolean);
+  const swapView = useCallback((idx: number) => {
+    const st = useCanvasStore.getState();
+    const pl = st.nodes.find((n) => n.id === id)?.data.payload as CharacterNodeData | undefined;
+    const extras = (pl?.additionalImageUrls ?? []).map((u) => (u ?? "").trim()).filter(Boolean);
+    const cur = pl?.referenceImageUrl?.trim();
+    const next = extras[idx];
+    if (!next || !cur) return;
+    extras[idx] = cur;
+    st.updateNodeData(id, { referenceImageUrl: next, referenceStorageKey: undefined, additionalImageUrls: extras });
+  }, [id]);
+  const removeView = useCallback((idx: number) => {
+    const st = useCanvasStore.getState();
+    const pl = st.nodes.find((n) => n.id === id)?.data.payload as CharacterNodeData | undefined;
+    const extras = (pl?.additionalImageUrls ?? []).map((u) => (u ?? "").trim()).filter(Boolean);
+    extras.splice(idx, 1);
+    st.updateNodeData(id, { additionalImageUrls: extras });
+  }, [id]);
+  const openViewLightbox = useCallback((startIdx: number) => {
+    const all = [payload.referenceImageUrl?.trim(), ...extraViews].filter((u): u is string => !!u);
+    if (all.length) useLightbox.getState().open(all, Math.min(startIdx, all.length - 1), "image", data.title, id);
+  }, [payload.referenceImageUrl, extraViews, data.title, id]);
+
   // #76 批1：LibTV 角色卡——hero 底部姓名/身份渐变标签条（双击就地改名）
   const displayName = ((kind === "scene" ? payload.sceneName : payload.name) ?? "").trim();
   const commitName = (v: string) => { update(kind === "scene" ? "sceneName" : "name", v.trim()); setNameEditing(false); };
@@ -505,7 +532,36 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     </div>
   );
 
+  // #76 批2：多视角缩略条（仅创意模式、有主图且有备用视角时显示）。
+  // 首格=当前主图（高亮不可点），其余=备用视角：点击设为主图（互换）、hover 放大/下载/删除。
+  const VIEW_LABELS = ["正面", "侧面", "背面"];
+  const viewStrip = isCreativeMode && payload.referenceImageUrl && extraViews.length > 0 ? (
+    <div className="nodrag flex items-center" style={{ gap: 4, padding: "5px 6px", background: "oklch(0.13 0.01 285)", borderTop: "1px solid var(--c-bd1)", overflowX: "auto" }}>
+      {[payload.referenceImageUrl, ...extraViews].map((u, i) => (
+        <div key={`${i}-${u.slice(-24)}`} className="group/view relative flex-shrink-0"
+          title={i === 0 ? `主图（${VIEW_LABELS[0]}）` : `点击设为主图${i < VIEW_LABELS.length ? `（${VIEW_LABELS[i]}）` : ""}`}
+          onClick={(e) => { e.stopPropagation(); if (i > 0) swapView(i - 1); }}
+          style={{ width: 44, height: 44, borderRadius: 7, overflow: "hidden", cursor: i === 0 ? "default" : "pointer", border: `2px solid ${i === 0 ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, opacity: i === 0 ? 1 : 0.85 }}>
+          <img src={u.startsWith("http") ? `/api/image-proxy?url=${encodeURIComponent(u)}` : u} alt={`视角${i}`} draggable={false}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          <div className="absolute inset-0 items-end justify-center gap-0.5 hidden group-hover/view:flex" style={{ background: "oklch(0 0 0 / 0.35)", paddingBottom: 2 }}>
+            <button title="放大预览" onClick={(e) => { e.stopPropagation(); openViewLightbox(i); }}
+              style={{ width: 15, height: 15, padding: 0, borderRadius: 4, border: "none", background: "oklch(0 0 0 / 0.65)", color: "#fff", cursor: "pointer", fontSize: 9, lineHeight: "15px" }}>⛶</button>
+            <button title="下载" onClick={(e) => { e.stopPropagation(); void downloadMedia(u, `character-view-${i}.png`); }}
+              style={{ width: 15, height: 15, padding: 0, borderRadius: 4, border: "none", background: "oklch(0 0 0 / 0.65)", color: "#fff", cursor: "pointer", fontSize: 9, lineHeight: "15px" }}>⤓</button>
+            {i > 0 && (
+              <button title="删除该视角" onClick={(e) => { e.stopPropagation(); removeView(i - 1); }}
+                style={{ width: 15, height: 15, padding: 0, borderRadius: 4, border: "none", background: "oklch(0.4 0.16 25 / 0.9)", color: "#fff", cursor: "pointer", fontSize: 9, lineHeight: "15px" }}>×</button>
+            )}
+          </div>
+        </div>
+      ))}
+      <span style={{ fontSize: 9.5, color: "var(--c-t4)", paddingLeft: 2, whiteSpace: "nowrap" }}>{extraViews.length + 1} 视图</span>
+    </div>
+  ) : null;
+
   const heroMedia = payload.referenceImageUrl ? (
+    <div style={{ width: "100%" }}>
     <div className="relative" style={{ width: "100%" }}>
       {/* #74：随预览自适应——按原图比例铺满宽度，框体高度跟随图片（resizable 可再拉大） */}
       <MediaImage
@@ -520,6 +576,8 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       )}
       {/* 姓名条仅创意模式——studio 选中态 hero 可见（CSS 只藏未选中态），不得漏入 */}
       {isCreativeMode && nameBar}
+    </div>
+    {viewStrip}
     </div>
   ) : (() => {
     // 无参考图：用紧凑摘要卡作折叠预览（角色/场景关键字段），使节点收缩后高度与提示词
