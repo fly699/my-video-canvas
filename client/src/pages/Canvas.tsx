@@ -441,6 +441,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
   usePerfSentinel();
   const perfLite = usePerfStore(selectPerfLite);
   const perfMode = usePerfStore((s) => s.mode);
+  // 离屏裁剪只在节点够多时才净赚：收益 = 少渲染视口外节点；代价 = 平移/双指缩放手势中
+  // 边界节点反复挂载/卸载 + 图片重解码。节点少时代价 > 收益——手机真实反馈「流畅模式反而更慢」
+  // 正是这个反噬。阈值 30：小画布 lite 只保留 CSS/3D 降级，大画布才叠加裁剪。
+  const perfNodeCount = useCanvasStore((s) => s.nodes.length);
+  const perfCullOffscreen = perfLite && perfNodeCount > 30;
   const [showPromptLib, setShowPromptLib] = usePersistentState<boolean>(
     "ui:panel:promptlib:v1", false, { validate: validateBool, crossTab: false },
   );
@@ -2699,10 +2704,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edges={displayEdges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            // #81 lite 档：只渲染视口内节点/边（老旧电脑大画布的最大开销就是离屏节点）。
-            // 代价：滚出视口的节点会卸载、其未持久化的临时 UI 态（如面板展开）复位——
-            // 数据全在 store 不受影响；quality/auto 未降档时行为与从前完全一致。
-            onlyRenderVisibleElements={perfLite}
+            // #81 lite 档 + 节点数阈值：只在大画布（>30 节点）才裁剪视口外节点/边——
+            // 少节点时裁剪省不了合成开销，反而在手势中反复挂载/卸载边界节点 + 图片重解码
+            // （#94 手机真实反馈：流畅模式反而更慢）。代价：滚出视口的节点卸载、其未持久化
+            // 的临时 UI 态复位——数据全在 store 不受影响；未降档时行为与从前完全一致。
+            onlyRenderVisibleElements={perfCullOffscreen}
             style={{ background: effectiveBgColor }}
             onNodesChange={onNodesChange}
             onNodeDragStart={handleNodeDragStart as unknown as Parameters<typeof ReactFlow>[0]["onNodeDragStart"]}
