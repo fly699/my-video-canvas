@@ -18,6 +18,7 @@ import {
   PROP_PRIMS, makeProp, LAYOUT_TEMPLATES, templateActors, type PropPrim,
   makeLight, LIGHT_RIG_PRESETS, lightsFromRig, describeLights, LIGHT_KIND_LABEL, type LightRigPreset,
 } from "../../../lib/directorScene";
+import { usePerfStore, selectPerfLite } from "../../../lib/perfMode";
 // #71 多格式导入/导出：obj/stl/fbx/gltf 客户端解析 → 统一转 glb 上传；场景可导出 glb。
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -326,6 +327,8 @@ function CameraRig({ cam, onCommit, bind, locked, grab }: {
 }
 
 export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string; projectId: number; onClose: () => void }) {
+  // #81 lite：3D 视口降 dpr/关抗锯齿（灯光/阴影等功能表现不降级）。
+  const perfLite = usePerfStore(selectPerfLite);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const addGridNodes = useCanvasStore((s) => s.addStoryboardGridNodes);
   const nodePos = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId)?.position);
@@ -1342,9 +1345,12 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           <div style={{ width: frame.w, height: frame.h, position: "relative", boxShadow: "0 0 0 1px var(--c-bd2), 0 8px 40px oklch(0 0 0 / 0.6)" }}>
             <Canvas
               shadows
-              dpr={[1, 2]}
+              // #81 lite：dpr 锁 1（高分屏 4× 像素量是老旧集显最大负担）+ 关抗锯齿。
+              // 刻意保留 shadows——灯光投影是导演台灯光系统的功能表现（#78），不属可降视觉。
+              // 提示：lite 下 3D 截图分辨率随 dpr 降低，追求产出画质时切回「画质」档再拍。
+              dpr={perfLite ? 1 : [1, 2]}
               camera={initCam}
-              gl={{ preserveDrawingBuffer: true, antialias: true }}
+              gl={{ preserveDrawingBuffer: true, antialias: !perfLite }}
               style={{ width: "100%", height: "100%", borderRadius: 4 }}
               onPointerMissed={() => { setSelectedId(null); setSelectedGroupId(null); setSelectedLightId(null); }}
             >

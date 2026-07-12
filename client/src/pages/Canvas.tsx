@@ -161,8 +161,11 @@ import {
   Compass,
   Bell,
   PanelLeft,
+  Gauge,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
+import { usePerfStore, selectPerfLite, PERF_MODE_LABEL, PERF_MODE_ORDER } from "../lib/perfMode";
+import { usePerfSentinel } from "../hooks/usePerfSentinel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const nodeTypes = { custom: CustomNode };
@@ -434,6 +437,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [showCharLib, setShowCharLib] = usePersistentState<boolean>(
     "ui:panel:charlib:v1", false, { validate: validateBool, crossTab: false },
   );
+  // #81 渲染性能：FPS 哨兵（auto 档自动降 lite）+ 生效档订阅（驱动 ReactFlow 离屏裁剪）。
+  usePerfSentinel();
+  const perfLite = usePerfStore(selectPerfLite);
+  const perfMode = usePerfStore((s) => s.mode);
   const [showPromptLib, setShowPromptLib] = usePersistentState<boolean>(
     "ui:panel:promptlib:v1", false, { validate: validateBool, crossTab: false },
   );
@@ -2692,6 +2699,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
             edges={displayEdges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            // #81 lite 档：只渲染视口内节点/边（老旧电脑大画布的最大开销就是离屏节点）。
+            // 代价：滚出视口的节点会卸载、其未持久化的临时 UI 态（如面板展开）复位——
+            // 数据全在 store 不受影响；quality/auto 未降档时行为与从前完全一致。
+            onlyRenderVisibleElements={perfLite}
             style={{ background: effectiveBgColor }}
             onNodesChange={onNodesChange}
             onNodeDragStart={handleNodeDragStart as unknown as Parameters<typeof ReactFlow>[0]["onNodeDragStart"]}
@@ -3145,6 +3156,33 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">角色库（跨项目复用角色 / 场景）</TooltipContent>
+            </Tooltip>
+
+            {/* #81 渲染性能三档：自适应（FPS 哨兵自动降档）/ 流畅（老旧电脑）/ 画质。常显不收缩。 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => {
+                    const next = PERF_MODE_ORDER[(PERF_MODE_ORDER.indexOf(perfMode) + 1) % PERF_MODE_ORDER.length];
+                    usePerfStore.getState().setMode(next);
+                    toast.success(
+                      next === "lite" ? "渲染：流畅模式（降低模糊/阴影/离屏渲染开销，适合老旧电脑）"
+                      : next === "quality" ? "渲染：画质模式（完整视觉效果，永不自动降档）"
+                      : "渲染：自适应（帧率偏低时自动切换流畅模式）",
+                      { id: "perf-mode" },
+                    );
+                  }}
+                  className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+                  style={{ color: perfLite ? "oklch(0.75 0.16 85)" : perfMode === "quality" ? "oklch(0.7 0.16 200)" : "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = perfLite ? "oklch(0.75 0.16 85)" : perfMode === "quality" ? "oklch(0.7 0.16 200)" : "var(--c-t3)"; }}
+                >
+                  <Gauge className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                渲染性能：{PERF_MODE_LABEL[perfMode]}{perfLite && perfMode === "auto" ? "（已自动降为流畅）" : ""} · 点击切换 自适应/流畅/画质
+              </TooltipContent>
             </Tooltip>
 
             {/* Add node — primary action (hidden for viewers) */}

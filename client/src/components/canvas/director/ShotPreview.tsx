@@ -4,6 +4,7 @@ import { Grid, ContactShadows } from "@react-three/drei";
 import * as THREE from "three";
 import type { DirectorScene } from "../../../../../shared/types";
 import { aspectRatioValue } from "../../../lib/directorScene";
+import { usePerfStore, selectPerfLite } from "../../../lib/perfMode";
 import { HumanModel } from "./HumanModel";
 import { GlbModel } from "./GlbModel";
 import { PanoramaSphere } from "./Panorama";
@@ -37,6 +38,8 @@ function LockCam({ cam }: { cam: { position: [number, number, number]; target: [
 }
 
 export function ShotPreview({ scene }: { scene: DirectorScene }) {
+  // #81 lite：第二 3D 视口是纯预览，降 dpr/关抗锯齿（取景内容与主视口锁定逻辑不变）。
+  const perfLite = usePerfStore(selectPerfLite);
   const ar = aspectRatioValue(scene.aspectRatio);
   const w = 224, h = Math.max(80, Math.round(w / ar));
   const S = scene.sceneScale ?? 1;
@@ -48,7 +51,7 @@ export function ShotPreview({ scene }: { scene: DirectorScene }) {
   return (
     <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 5, width: w, borderRadius: 10, overflow: "hidden", border: "1px solid var(--c-bd2)", boxShadow: "0 8px 28px oklch(0 0 0 / 0.6)", background: "#07090e" }}>
       <div style={{ height: h, position: "relative" }}>
-        <Canvas dpr={[1, 1.5]} gl={{ antialias: true }} style={{ width: "100%", height: "100%" }}
+        <Canvas dpr={perfLite ? 1 : [1, 1.5]} gl={{ antialias: !perfLite }} style={{ width: "100%", height: "100%" }}
           camera={{ position: scene.camera.position, fov: scene.camera.fov, near: 0.1, far: 2000 }}>
           <color attach="background" args={[scene.background || (scene.panoramaUrl ? "#060608" : "#1a1d24")]} />
           <LockCam cam={scene.camera} />

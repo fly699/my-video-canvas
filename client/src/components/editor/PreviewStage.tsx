@@ -7,6 +7,7 @@ import { computeSafeRect } from "@/lib/safeZone";
 import { shapeToDataUrl } from "@shared/shapeSvg";
 import type { Clip, ClipTransform, EditorDoc, FitMode } from "@shared/editorTypes";
 import { transformAt, applyEase, sourceTimeAt } from "@shared/editorTypes";
+import { usePerfStore, selectPerfLite } from "../../lib/perfMode";
 
 /** Reduce W:H to a tidy ratio label (e.g. 1920×1080 → "16:9"). */
 function ratioLabel(w: number, h: number): string {
@@ -278,11 +279,20 @@ export function PreviewStage() {
   useEffect(() => {
     if (!playing) { if (rafRef.current) cancelAnimationFrame(rafRef.current); rafRef.current = null; return; }
     lastTsRef.current = performance.now();
+    // #81 lite：每帧写 store 会驱动整棵时间轴 60Hz 重渲染（老旧电脑播放卡顿主因之一）。
+    // lite 档把播放头写入降到 ~30Hz——时间在 pending 里累积不丢（走时精度不变），
+    // 只是 UI 播放头刷新粗一档；quality/未降档时行为与从前完全一致。
+    let pending = 0;
     const tick = (ts: number) => {
       const dt = (ts - lastTsRef.current) / 1000; lastTsRef.current = ts;
-      const next = useEditorStore.getState().playhead + dt;
-      if (next >= duration) { setPlayhead(duration); setPlaying(false); return; }
-      setPlayhead(next);
+      pending += dt;
+      const lite = selectPerfLite(usePerfStore.getState());
+      if (!lite || pending >= 1 / 30) {
+        const next = useEditorStore.getState().playhead + pending;
+        pending = 0;
+        if (next >= duration) { setPlayhead(duration); setPlaying(false); return; }
+        setPlayhead(next);
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);

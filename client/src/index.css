@@ -1998,3 +1998,18 @@ select:-webkit-autofill:focus {
   caret-color: var(--c-t1);
   transition: background-color 99999s ease-in-out 0s;
 }
+
+/* ── #81 渲染性能：流畅模式（lite）视觉降级 ─────────────────────────────────────
+   单一信号源：<html data-perf="lite">（lib/perfMode.ts 写入：手动三档 auto/lite/quality
+   + FPS 哨兵自动降档）。原则：只降视觉成本，零功能删减——
+   1. backdrop-filter 模糊是老旧集显最贵的合成开销（工具条/dock/输入条全在用）→ 全关；
+   2. 节点内 CSS 过渡逐帧触发重绘 → 过渡时长清零（悬停浮现等交互仍瞬时生效，不丢功能）；
+   3. 节点卡大阴影在平移/缩放时反复重绘 → 关闭；
+   4. 连线 dash 动画持续消耗合成帧 → 关闭（连线本身与可点性不变）；
+   5. 背景网格降透明度（减少大面积图案重绘对比度开销）。
+   注意：不动 animation（转圈 spinner 是「生成中」的功能性反馈，必须保留）。 */
+[data-perf="lite"] * { backdrop-filter: none !important; }
+[data-perf="lite"] .react-flow__node, [data-perf="lite"] .react-flow__node * { transition-duration: 0s !important; }
+[data-perf="lite"] .react-flow__node { box-shadow: none !important; }
+[data-perf="lite"] .react-flow__edge-path { animation: none !important; }
+[data-perf="lite"] .react-flow__background { opacity: 0.35; }
