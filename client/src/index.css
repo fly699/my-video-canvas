@@ -1884,6 +1884,53 @@ button:active:not(:disabled) {
 .wm-vctrl[data-wide] { min-width: 46px; }
 .wm-vctrl:hover { background: rgba(0, 0, 0, 0.7); }
 
+/* ── #83 创意模式：视频叠加层大幅轻量化 ──────────────────────────────────────
+   循环/逐帧/倍速/全屏钮缩小到 22px、去边框、更透的底色（几乎不遮画面但仍可点）；
+   底部原生 controls 已在组件层去掉，换成 .wm-slim 细进度条控制条（hover 才浮现）。 */
+:root[data-canvas-mode="creative"] .wm-loop-btn,
+:root[data-canvas-mode="creative"] .wm-vctrl {
+  width: 22px; height: 22px; min-width: 22px;
+  border: none; border-radius: 6px;
+  background: rgba(0, 0, 0, 0.30);
+  font-size: 10px;
+}
+:root[data-canvas-mode="creative"] .wm-vctrl[data-wide] { min-width: 38px; width: auto; padding: 0 5px; }
+:root[data-canvas-mode="creative"] .wm-loop-btn svg,
+:root[data-canvas-mode="creative"] .wm-vctrl svg { width: 11px; height: 11px; }
+:root[data-canvas-mode="creative"] .wm-loop-btn { top: 6px; left: 6px; }
+:root[data-canvas-mode="creative"] .wm-vctrl-row { top: 6px; left: 32px; gap: 3px; }
+:root[data-canvas-mode="creative"] .wm-fs-btn { width: 24px; height: 24px; top: 6px; right: 6px; border: none; background: rgba(0, 0, 0, 0.30); }
+:root[data-canvas-mode="creative"] .wm-fs-btn svg { width: 12px; height: 12px; }
+
+/* 轻量控制条：细进度线 + 迷你播放/时间/静音，hover 才浮现，渐变垫底不糊画面 */
+.wm-slim {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: 6px;
+  padding: 14px 8px 5px; line-height: normal;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
+  opacity: 0; transition: opacity 160ms ease;
+}
+.wm-video-wrap:hover .wm-slim { opacity: 1; }
+.wm-slim-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; border: none; background: none;
+  color: #fff; cursor: pointer; opacity: 0.9; flex-shrink: 0;
+}
+.wm-slim-btn:hover { opacity: 1; }
+.wm-slim-btn svg { width: 12px; height: 12px; }
+.wm-slim-time { font-size: 9.5px; font-weight: 600; color: rgba(255, 255, 255, 0.85); font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+.wm-slim-track { position: relative; flex: 1; height: 12px; cursor: pointer; }
+.wm-slim-track::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 3px;
+  transform: translateY(-50%); background: rgba(255, 255, 255, 0.22); border-radius: 2px;
+}
+.wm-slim-fill {
+  position: absolute; left: 0; top: 50%; height: 3px; transform: translateY(-50%);
+  background: oklch(0.72 0.18 285); border-radius: 2px; z-index: 1; pointer-events: none;
+}
+/* 触屏无 hover：轻量条常显（与上方触屏常显策略一致） */
+@media (hover: none) { .wm-slim { opacity: 1; } }
+
 /* 触屏（无 hover）设备：以上视频叠加按钮全靠 :hover 才显现，触屏没有 hover → 永远不可见、
    全屏/循环/逐帧钮根本点不到。故在无 hover 设备上常显，并放大到 ≥40px 触摸目标（循环钮变宽后
    右移逐帧行避让）。桌面端仍保持 hover 才显、不受影响。 */

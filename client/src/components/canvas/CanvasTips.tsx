@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Command, Layers, SlidersHorizontal, Clapperboard, ImagePlus, Search, Sparkles, Maximize2, MessageSquareText, BookOpen } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useUIStyle } from "../../contexts/UIStyleContext";
+import { useCanvasMode } from "../../contexts/CanvasModeContext";
 
 // 操作小贴士：右下角极简动感卡片，定时轮播 + 情境触发（新增节点 / 进入多选），
 // 自动消失，右键=这条不再显示。纯表现层，pointer-events 仅落在卡片本身，不干扰画布。
@@ -33,6 +34,9 @@ function loadDismissed(): Set<string> {
 
 export function CanvasTips() {
   const { uiStyle } = useUIStyle();
+  // #79 创意模式 LibTV 皮肤：近黑底/细边框/扁平 accent 图标片/紧凑排版（工作室不受影响）
+  const { mode } = useCanvasMode();
+  const creative = uiStyle !== "studio" && mode === "creative";
   const nodeCount = useCanvasStore((s) => s.nodes.length);
   const multi = useCanvasStore((s) => { let c = 0; for (const n of s.nodes) { if (n.selected) { c++; if (c >= 2) return true; } } return false; });
 
@@ -130,17 +134,21 @@ export function CanvasTips() {
         onClick={hide}
         title="右键：这条不再显示 · 点击：关闭"
         style={{
-          pointerEvents: "auto", position: "relative", width: 288, overflow: "hidden",
-          display: "flex", gap: 11, padding: "12px 13px 14px", borderRadius: 14, cursor: "pointer",
-          background: "color-mix(in oklch, var(--c-elevated) 90%, transparent)", backdropFilter: "blur(18px)",
-          border: "1px solid var(--c-bd2)", boxShadow: "0 12px 34px oklch(0 0 0 / 0.32)",
+          pointerEvents: "auto", position: "relative", width: creative ? 272 : 288, overflow: "hidden",
+          display: "flex", gap: creative ? 10 : 11, padding: creative ? "11px 12px 13px" : "12px 13px 14px", borderRadius: creative ? 12 : 14, cursor: "pointer",
+          // #79 创意模式 LibTV 化：近黑实底 + 更细淡边框 + 更柔阴影；其它皮肤保持原观感
+          background: creative ? "color-mix(in oklch, oklch(0.145 0.008 285) 94%, transparent)" : "color-mix(in oklch, var(--c-elevated) 90%, transparent)",
+          backdropFilter: creative ? "blur(24px)" : "blur(18px)",
+          border: creative ? "1px solid oklch(0.32 0.012 285 / 0.65)" : "1px solid var(--c-bd2)",
+          boxShadow: creative ? "0 10px 30px oklch(0 0 0 / 0.45)" : "0 12px 34px oklch(0 0 0 / 0.32)",
           animation: `${leaving ? "avc-tip-out 0.24s ease forwards" : "avc-tip-in 0.34s cubic-bezier(0.16,1,0.3,1)"}`,
         }}
       >
-        {/* 图标片 */}
-        <span style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#fff", background: "radial-gradient(circle at 32% 28%, oklch(0.80 0.16 310), oklch(0.60 0.22 298))",
-          boxShadow: "0 3px 10px oklch(0.62 0.22 300 / 0.45)" }}>{tip.icon}</span>
+        {/* 图标片（创意模式扁平 accent 片，去发光渐变） */}
+        <span style={{ flexShrink: 0, width: creative ? 26 : 30, height: creative ? 26 : 30, borderRadius: creative ? 8 : 9, display: "flex", alignItems: "center", justifyContent: "center",
+          ...(creative
+            ? { color: "oklch(0.78 0.16 285)", background: "oklch(0.68 0.2 285 / 0.16)", border: "1px solid oklch(0.68 0.2 285 / 0.35)" }
+            : { color: "#fff", background: "radial-gradient(circle at 32% 28%, oklch(0.80 0.16 310), oklch(0.60 0.22 298))", boxShadow: "0 3px 10px oklch(0.62 0.22 300 / 0.45)" }) }}>{tip.icon}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
             <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: "var(--c-t4)", textTransform: "uppercase" }}>小贴士</span>
@@ -155,7 +163,7 @@ export function CanvasTips() {
         {/* 自动消失进度条 */}
         {!leaving && (
           <span className="avc-tip-bar" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 2, transformOrigin: "left",
-            background: "linear-gradient(90deg, oklch(0.80 0.16 310), oklch(0.62 0.22 300))",
+            background: creative ? "linear-gradient(90deg, oklch(0.74 0.17 285), oklch(0.62 0.20 285))" : "linear-gradient(90deg, oklch(0.80 0.16 310), oklch(0.62 0.22 300))",
             animation: "avc-tip-bar 9s linear forwards" }} />
         )}
       </div>

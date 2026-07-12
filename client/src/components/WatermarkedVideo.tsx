@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type VideoHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, Repeat, X, ChevronLeft, ChevronRight, Gauge } from "lucide-react";
+import { Maximize2, Repeat, X, ChevronLeft, ChevronRight, Gauge, Play, Pause, Volume2, VolumeX } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 
@@ -45,6 +45,44 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
     v.currentTime = Math.max(0, Math.min(dur, v.currentTime + dir * FRAME));
   };
 
+  // ── #83 创意模式：hover 自动播放 + 轻量自绘控制条（替代厚重的原生 controls）──
+  // 不依赖 React context（本组件也会在画布 Provider 之外使用），直接读 :root 的
+  // data-canvas-mode 标记（与 index.css 创意皮肤覆盖同一信号源）。
+  const creative = typeof document !== "undefined" && document.documentElement.getAttribute("data-canvas-mode") === "creative";
+  const hoverPlayed = useRef(false);
+  const [playing, setPlaying] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
+  const [mutedUi, setMutedUi] = useState(false);
+  const fmt = (s: number) => { const t = Math.max(0, Math.floor(s)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+  useEffect(() => {
+    if (!creative) return;
+    const v = videoRef.current; if (!v) return;
+    const onT = () => setCur(v.currentTime);
+    const onD = () => setDur(Number.isFinite(v.duration) ? v.duration : 0);
+    const onP = () => setPlaying(!v.paused);
+    const onVol = () => setMutedUi(v.muted);
+    v.addEventListener("timeupdate", onT); v.addEventListener("durationchange", onD); v.addEventListener("loadedmetadata", onD);
+    v.addEventListener("play", onP); v.addEventListener("pause", onP); v.addEventListener("volumechange", onVol);
+    onD(); onP(); onVol();
+    return () => {
+      v.removeEventListener("timeupdate", onT); v.removeEventListener("durationchange", onD); v.removeEventListener("loadedmetadata", onD);
+      v.removeEventListener("play", onP); v.removeEventListener("pause", onP); v.removeEventListener("volumechange", onVol);
+    };
+  }, [creative, props.src]);
+  // hover 播放：浏览器自动播放策略可能拒绝带声播放——被拒时静音重试（预览场景可接受）。
+  const hoverPlay = () => {
+    const v = videoRef.current; if (!v || !v.paused || !v.currentSrc) return;
+    v.play().then(() => { hoverPlayed.current = true; }).catch(() => {
+      v.muted = true; setMutedUi(true);
+      v.play().then(() => { hoverPlayed.current = true; }).catch(() => { /* 无源/加载失败 */ });
+    });
+  };
+  const hoverPause = () => {
+    const v = videoRef.current;
+    if (v && hoverPlayed.current) { v.pause(); hoverPlayed.current = false; }
+  };
+
   // 关闭放大预览：Esc。
   useEffect(() => {
     if (!big) return;
@@ -61,10 +99,30 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
   return (
     <div
       className="wm-video-wrap"
+      onMouseEnter={creative ? hoverPlay : undefined}
+      onMouseLeave={creative ? hoverPause : undefined}
       style={{ position: "relative", display: block ? "block" : "inline-block", width: block ? "100%" : undefined, lineHeight: 0 }}
     >
-      <video ref={videoRef} {...props} loop={loop} controlsList={controlsList} disablePictureInPicture onContextMenu={noMenu}
+      {/* #83 创意模式去掉厚重原生 controls，改用底部轻量自绘条；其它模式原样 */}
+      <video ref={videoRef} {...props} controls={creative ? false : props.controls} loop={loop} controlsList={controlsList} disablePictureInPicture onContextMenu={noMenu}
         onLoadedMetadata={(e) => { e.currentTarget.playbackRate = speed; props.onLoadedMetadata?.(e); }} />
+      {creative && (
+        <div className="wm-slim nodrag" onPointerDown={stopToNode} onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="wm-slim-btn" title={playing ? "暂停" : "播放"} aria-label="播放/暂停"
+            onClick={() => { const v = videoRef.current; if (!v) return; hoverPlayed.current = false; if (v.paused) v.play().catch(() => { /* ignore */ }); else v.pause(); }}>
+            {playing ? <Pause /> : <Play />}
+          </button>
+          <span className="wm-slim-time">{fmt(cur)} / {fmt(dur)}</span>
+          <div className="wm-slim-track" title="点击定位"
+            onClick={(e) => { const v = videoRef.current; if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return; const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); v.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * v.duration; }}>
+            <div className="wm-slim-fill" style={{ width: `${dur > 0 ? Math.min(100, (cur / dur) * 100) : 0}%` }} />
+          </div>
+          <button type="button" className="wm-slim-btn" title={mutedUi ? "取消静音" : "静音"} aria-label="静音切换"
+            onClick={() => { const v = videoRef.current; if (!v) return; v.muted = !v.muted; setMutedUi(v.muted); }}>
+            {mutedUi ? <VolumeX /> : <Volume2 />}
+          </button>
+        </div>
+      )}
       <button
         type="button"
         onPointerDown={stopToNode}
