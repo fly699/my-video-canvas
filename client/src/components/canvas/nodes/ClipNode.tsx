@@ -1,6 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position, useReactFlow } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
+import { InlineGenBar } from "../InlineGenBar";
+import { SlidersHorizontal } from "lucide-react";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -743,7 +746,116 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     ? payload.outputUrl
     : activeVideoUrl ?? undefined;
 
+  // #96 LibTV：创意模式参数下浮（高级机制，快捷键 A）。
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
+  // #96 剪辑参数块单一来源：非创意内联卡体（原样）；创意模式挂输入条「参数与操作」下浮面板。
+  // 时间轴 TrimBar 与处理按钮保留在卡体（剪辑核心交互，#60）。
+  const configBody = (
+    <>
+                {/* Precise numeric in / out (frame-accurate, complements the slider) */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <label style={labelStyle}>入点 (秒)</label>
+                    <input
+                      type="number" min={0} max={duration} step={0.1} value={Number(startTime.toFixed(2))}
+                      onChange={(e) => { const v = Math.max(0, Math.min(Number(e.target.value), endTime - 0.1)); update("startTime", v); if (videoRef.current) videoRef.current.currentTime = v; }}
+                      className="nodrag w-full px-2 py-1 rounded text-[11px]"
+                      style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label style={labelStyle}>出点 (秒)</label>
+                    <input
+                      type="number" min={0} max={duration} step={0.1} value={Number(endTime.toFixed(2))}
+                      onChange={(e) => { const v = Math.max(startTime + 0.1, Math.min(Number(e.target.value), duration)); update("endTime", v); }}
+                      className="nodrag w-full px-2 py-1 rounded text-[11px]"
+                      style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }}
+                    />
+                  </div>
+                </div>
+
+                {/* 在播放头分割为两段（裁切已由上方双滑块/数值入出点提供） */}
+                <button
+                  onClick={handleSplit}
+                  className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={{ background: accentA(0.10), border: `1px solid ${accentA(0.30)}`, color: accent, cursor: "pointer" }}
+                  title="在播放头把本剪辑分成两段（生成第二个剪辑节点承接后半段）"
+                >
+                  <Scissors style={{ width: 12, height: 12 }} /> 在播放头分割为两段
+                </button>
+
+                {/* 按镜号链批量分割（仅当上游成片带镜界时）：一键切成 N 段剪辑节点 */}
+                {shotMarkers.length >= 2 && (
+                  <button
+                    onClick={handleSplitByShots}
+                    className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                    style={{ background: accentA(0.10), border: `1px solid ${accentA(0.30)}`, color: accent, cursor: "pointer" }}
+                    title="按成片的镜界（镜号链）一次切成多段，每段生成一个剪辑节点（横排在本节点下方）"
+                  >
+                    <Scissors style={{ width: 12, height: 12 }} /> 按镜号批量分割为 {shotMarkers.length} 段
+                  </button>
+                )}
+
+                {/* Clip info */}
+                <div
+                  className="flex justify-between items-center px-2 py-1.5 rounded-lg"
+                  style={{ background: accentA(0.06), border: `1px solid ${accentA(0.20)}` }}
+                >
+                  <span style={{ fontSize: 10.5, color: "var(--c-t3)" }}>
+                    选段时长
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: accent, fontVariantNumeric: "tabular-nums" }}>
+                    {fmt(clipDuration)}
+                  </span>
+                </div>
+
+                {/* Speed control */}
+                <div>
+                  <label style={labelStyle}>播放速度</label>
+                  <div className="flex items-center gap-2">
+                    {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => update("speed", v)}
+                        className="nodrag flex-1 py-1 rounded text-[10px] font-medium transition-all"
+                        style={{
+                          background: Math.abs(speed - v) < 0.01 ? accentA(0.18) : "var(--c-input)",
+                          border: `1px solid ${Math.abs(speed - v) < 0.01 ? accentA(0.4) : "var(--c-bd2)"}`,
+                          color: Math.abs(speed - v) < 0.01 ? accent : "var(--c-t3)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {v}×
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span style={{ fontSize: 10, color: "var(--c-t4)", whiteSpace: "nowrap" }}>自定义</span>
+                    <input
+                      type="number" min={0.1} max={10} step={0.05} value={Number(speed.toFixed(2))}
+                      onChange={(e) => { const v = Math.max(0.1, Math.min(Number(e.target.value) || 1, 10)); update("speed", v); }}
+                      className="nodrag flex-1 px-2 py-1 rounded text-[11px]"
+                      style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }}
+                    />
+                    <span style={{ fontSize: 10, color: "var(--c-t4)" }}>×（0.1–10）</span>
+                  </div>
+                </div>
+
+                {/* Multi-track audio mixer */}
+                {audioSources.length > 0 && (
+                  <AudioTracksPanel sources={audioSources} payload={payload}
+                    setTrack={(nid, patch) => {
+                      const cur = payload.audioTracks ?? {};
+                      updateNodeData(id, { audioTracks: { ...cur, [nid]: { ...cur[nid], ...patch } } });
+                    }} />
+                )}
+
+                {/* Advanced picture/audio editing + pro options */}
+    </>
+  );
+
   return (
+    <>
     <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable showHandles={false}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       extraHandles={
@@ -921,105 +1033,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                   markers={shotMarkers}
                 />
 
-                {/* Precise numeric in / out (frame-accurate, complements the slider) */}
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <label style={labelStyle}>入点 (秒)</label>
-                    <input
-                      type="number" min={0} max={duration} step={0.1} value={Number(startTime.toFixed(2))}
-                      onChange={(e) => { const v = Math.max(0, Math.min(Number(e.target.value), endTime - 0.1)); update("startTime", v); if (videoRef.current) videoRef.current.currentTime = v; }}
-                      className="nodrag w-full px-2 py-1 rounded text-[11px]"
-                      style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }}
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label style={labelStyle}>出点 (秒)</label>
-                    <input
-                      type="number" min={0} max={duration} step={0.1} value={Number(endTime.toFixed(2))}
-                      onChange={(e) => { const v = Math.max(startTime + 0.1, Math.min(Number(e.target.value), duration)); update("endTime", v); }}
-                      className="nodrag w-full px-2 py-1 rounded text-[11px]"
-                      style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }}
-                    />
-                  </div>
-                </div>
-
-                {/* 在播放头分割为两段（裁切已由上方双滑块/数值入出点提供） */}
-                <button
-                  onClick={handleSplit}
-                  className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] font-medium transition-all"
-                  style={{ background: accentA(0.10), border: `1px solid ${accentA(0.30)}`, color: accent, cursor: "pointer" }}
-                  title="在播放头把本剪辑分成两段（生成第二个剪辑节点承接后半段）"
-                >
-                  <Scissors style={{ width: 12, height: 12 }} /> 在播放头分割为两段
-                </button>
-
-                {/* 按镜号链批量分割（仅当上游成片带镜界时）：一键切成 N 段剪辑节点 */}
-                {shotMarkers.length >= 2 && (
-                  <button
-                    onClick={handleSplitByShots}
-                    className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] font-medium transition-all"
-                    style={{ background: accentA(0.10), border: `1px solid ${accentA(0.30)}`, color: accent, cursor: "pointer" }}
-                    title="按成片的镜界（镜号链）一次切成多段，每段生成一个剪辑节点（横排在本节点下方）"
-                  >
-                    <Scissors style={{ width: 12, height: 12 }} /> 按镜号批量分割为 {shotMarkers.length} 段
-                  </button>
-                )}
-
-                {/* Clip info */}
-                <div
-                  className="flex justify-between items-center px-2 py-1.5 rounded-lg"
-                  style={{ background: accentA(0.06), border: `1px solid ${accentA(0.20)}` }}
-                >
-                  <span style={{ fontSize: 10.5, color: "var(--c-t3)" }}>
-                    选段时长
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: accent, fontVariantNumeric: "tabular-nums" }}>
-                    {fmt(clipDuration)}
-                  </span>
-                </div>
-
-                {/* Speed control */}
-                <div>
-                  <label style={labelStyle}>播放速度</label>
-                  <div className="flex items-center gap-2">
-                    {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((v) => (
-                      <button
-                        key={v}
-                        onClick={() => update("speed", v)}
-                        className="nodrag flex-1 py-1 rounded text-[10px] font-medium transition-all"
-                        style={{
-                          background: Math.abs(speed - v) < 0.01 ? accentA(0.18) : "var(--c-input)",
-                          border: `1px solid ${Math.abs(speed - v) < 0.01 ? accentA(0.4) : "var(--c-bd2)"}`,
-                          color: Math.abs(speed - v) < 0.01 ? accent : "var(--c-t3)",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {v}×
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <span style={{ fontSize: 10, color: "var(--c-t4)", whiteSpace: "nowrap" }}>自定义</span>
-                    <input
-                      type="number" min={0.1} max={10} step={0.05} value={Number(speed.toFixed(2))}
-                      onChange={(e) => { const v = Math.max(0.1, Math.min(Number(e.target.value) || 1, 10)); update("speed", v); }}
-                      className="nodrag flex-1 px-2 py-1 rounded text-[11px]"
-                      style={{ background: "var(--c-input)", border: `1px solid ${BORDER_DEFAULT}`, color: "var(--c-t1)" }}
-                    />
-                    <span style={{ fontSize: 10, color: "var(--c-t4)" }}>×（0.1–10）</span>
-                  </div>
-                </div>
-
-                {/* Multi-track audio mixer */}
-                {audioSources.length > 0 && (
-                  <AudioTracksPanel sources={audioSources} payload={payload}
-                    setTrack={(nid, patch) => {
-                      const cur = payload.audioTracks ?? {};
-                      updateNodeData(id, { audioTracks: { ...cur, [nid]: { ...cur[nid], ...patch } } });
-                    }} />
-                )}
-
-                {/* Advanced picture/audio editing + pro options */}
+                {!isCreativeMode && configBody}
                 <AdvancedEditPanel payload={payload} update={update} hasAudioTracks={audioSources.length > 0} />
 
                 {/* Process button */}
@@ -1094,5 +1108,27 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
         )}
       </div>
     </BaseNode>
+    {/* ── #96 LibTV（创意模式）就地输入条：剪辑参数与操作下浮面板（屏幕恒定） ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={460}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t2)", whiteSpace: "nowrap" }}>剪辑</span>
+          <span style={{ fontSize: 10.5, color: "var(--c-t4)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>出入点数值 / 分割 / 变速 / 混音 / 高级编辑（时间轴与处理按钮在卡体常驻）</span>
+          <button className="nodrag" onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开参数与操作面板（浮现于输入条下方，不撑开节点卡体）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <SlidersHorizontal size={12} /> 参数与操作
+          </button>
+        </div>
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {previewMode === "source" && duration > 0
+              ? configBody
+              : <span style={{ fontSize: 11, color: "var(--c-t4)" }}>连接源视频并切到「源片」预览后，此处显示出入点/变速/混音等参数</span>}
+          </div>
+        )}
+      </InlineGenBar>
+    )}
+    </>
   );
 });

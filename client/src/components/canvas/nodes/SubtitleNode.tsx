@@ -1,6 +1,7 @@
 import { memo, useState, useCallback } from "react";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
-import { AdvancedToggleRow } from "../InlineBarParts";
+import { InlineGenBar } from "../InlineGenBar";
+import { SlidersHorizontal } from "lucide-react";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -232,35 +233,9 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
 
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
 
-  return (
-    <BaseNode id={id} selected={selected} nodeType="subtitle" title={data.title} minHeight={240} resizable>
-      <div
-        style={{
-          overflow: "hidden",
-          maxHeight: expanded ? "9999px" : "0px",
-          transition: expanded
-            ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
-            : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
-        }}
-      >
-      <div className="flex flex-col gap-3 p-3.5">
-
-        {/* Status */}
-        {(isTranscribing || isBurning) && (
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
-            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
-            <span className="text-xs" style={{ color: accent }}>{isTranscribing ? "Whisper 转录中..." : "FFmpeg 烧录中..."}</span>
-          </div>
-        )}
-
-        {payload.status === "failed" && payload.errorMessage && (
-          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
-            <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
-          </div>
-        )}
-
-        {isCreativeMode && <AdvancedToggleRow open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />}
-        {!(isCreativeMode && !advancedOpen) && (<>
+  // #96 配置区单一来源：非创意内联卡体（原样）；创意模式挂输入条「参数与操作」下浮面板。
+  const configBody = (
+    <>
         {/* Tab bar */}
         <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
           {(["edit", "settings"] as const).map((t) => (
@@ -497,7 +472,38 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
 
           </>
         )}
-        </>)}
+    </>
+  );
+
+  return (
+    <>
+    <BaseNode id={id} selected={selected} nodeType="subtitle" title={data.title} minHeight={240} resizable>
+      <div
+        style={{
+          overflow: "hidden",
+          maxHeight: expanded ? "9999px" : "0px",
+          transition: expanded
+            ? "max-height 220ms cubic-bezier(0.23, 1, 0.32, 1)"
+            : "max-height 160ms cubic-bezier(0.77, 0, 0.175, 1)",
+        }}
+      >
+      <div className="flex flex-col gap-3 p-3.5">
+
+        {/* Status */}
+        {(isTranscribing || isBurning) && (
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
+            <span className="text-xs" style={{ color: accent }}>{isTranscribing ? "Whisper 转录中..." : "FFmpeg 烧录中..."}</span>
+          </div>
+        )}
+
+        {payload.status === "failed" && payload.errorMessage && (
+          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
+            <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
+          </div>
+        )}
+
+        {!isCreativeMode && configBody}
 
         {/* 产出视频 + 烧录按钮 —— 移出 tab/收起区：任何 tab 或收起态都常显（LibTV 预览优先） */}
             {/* Output video */}
@@ -561,5 +567,25 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
       </div>
       </div>{/* end collapse wrapper */}
     </BaseNode>
+    {/* ── #96 LibTV（创意模式）就地输入条：参数与操作下浮面板（屏幕恒定） ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={440}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t2)", whiteSpace: "nowrap" }}>字幕</span>
+          <span style={{ fontSize: 10.5, color: "var(--c-t4)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>转录 / 编辑 / 烧录设置</span>
+          <button className="nodrag" onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开参数与操作面板（浮现于输入条下方，不撑开节点卡体）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <SlidersHorizontal size={12} /> 参数与操作
+          </button>
+        </div>
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {configBody}
+          </div>
+        )}
+      </InlineGenBar>
+    )}
+    </>
   );
 });
