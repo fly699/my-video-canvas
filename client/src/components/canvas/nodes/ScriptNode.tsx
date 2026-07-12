@@ -1120,7 +1120,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                   </button>
                   {dialogueResult && (
                     <div className="flex flex-col gap-1.5">
-                      <pre style={{ fontSize: 10, color: "var(--c-t1)", lineHeight: 1.7, whiteSpace: "pre-wrap", fontFamily: "inherit", background: "var(--c-input)", border: "1px solid var(--c-bd1)", borderRadius: 8, padding: "8px 10px", maxHeight: 160, overflowY: "auto" }}>
+                      <pre className="nowheel" style={{ fontSize: 10, color: "var(--c-t1)", lineHeight: 1.7, whiteSpace: "pre-wrap", fontFamily: "inherit", background: "var(--c-input)", border: "1px solid var(--c-bd1)", borderRadius: 8, padding: "8px 10px", maxHeight: 160, overflowY: "auto" }}>
                         {dialogueResult}
                       </pre>
                       <button
@@ -1166,7 +1166,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                     </button>
                   )}
                   {moodBoardResult.length > 0 && (
-                    <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto nodrag">
+                    <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto nodrag nowheel">
                       {moodBoardResult.map((scene, i) => (
                         <div key={`${scene.sceneIndex}-${i}`} className="p-2.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
                           <div className="flex items-center gap-1.5 mb-1.5">

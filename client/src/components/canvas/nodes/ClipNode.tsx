@@ -15,6 +15,7 @@ import type { ClipNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { downloadMedia, mediaFetchUrl } from "@/lib/download";
+import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
 import {
   Scissors, Play, Pause, Loader2, Download, RotateCcw, Repeat,
@@ -857,6 +858,8 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable showHandles={false}
+      heroMedia={/* #105 创意未选中且有成片→英雄区（悬停自动播放；选中走卡体预览避免双播放器；极简形态据此覆盖） */
+      isCreativeMode && !selected && payload.outputUrl ? <WatermarkedVideo block key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)} preload="metadata" className="w-full" style={{ display: "block" }} /> : null}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       extraHandles={
         <>

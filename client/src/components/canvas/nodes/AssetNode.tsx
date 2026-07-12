@@ -218,7 +218,8 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
     if (payload.url && payload.type === "video") {
       return (
         <div className="relative nodrag" style={{ cursor: "zoom-in" }} onClick={(e) => { e.stopPropagation(); setVideoPreview(true); }} title="点击播放">
-          <video src={mediaFetchUrl(payload.url)} muted preload="metadata" style={{ width: "100%", maxHeight: 200, display: "block", objectFit: "cover" }} />
+          {/* #105 换 WatermarkedVideo：创意模式悬停节点即自动播放（与生成类节点一致） */}
+          <WatermarkedVideo block src={mediaFetchUrl(payload.url)} muted preload="metadata" style={{ width: "100%", maxHeight: 200, display: "block", objectFit: "cover" }} />
           {storedInMinio && (
             <div
               title="已存储到 MinIO·长期有效"

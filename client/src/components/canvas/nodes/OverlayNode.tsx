@@ -425,7 +425,9 @@ export const OverlayNode = memo(function OverlayNode({ id, selected, data }: Pro
 
   return (
     <>
-    <BaseNode id={id} selected={selected} nodeType="overlay" title={data.title} minHeight={240}>
+    <BaseNode id={id} selected={selected} nodeType="overlay" title={data.title} minHeight={240}
+      heroMedia={/* #105 创意未选中且有成片→英雄区（悬停自动播放；选中走卡体预览避免双播放器；极简形态据此覆盖） */
+      isCreativeMode && !selected && payload.outputUrl ? <WatermarkedVideo block key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)} preload="metadata" className="w-full" style={{ display: "block" }} /> : null}>
       <div className="flex flex-col h-full p-3.5 gap-3 overflow-auto">
 
         {!isCreativeMode && configBody}
