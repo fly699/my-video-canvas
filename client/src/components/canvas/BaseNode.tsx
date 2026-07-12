@@ -909,6 +909,9 @@ export const BaseNode = memo(function BaseNode({
       aria-label={`${title || config?.label || nodeType} 节点${config?.label && title ? `（${config.label}）` : ""}${runStatus === "running" ? " · 生成中" : genError ? " · 失败" : ""}`}
       data-selected={(storeSelected || pinned) ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
+      /* #102/#103 极简显示（Alt+Q）：只有「有真实媒体结果」的节点才极简化——
+         data-has-hero 不可靠（提示词等节点无结果也传占位 heroMedia）。 */
+      data-has-result={(resultVideoUrl || resultImageUrl) ? "true" : "false"}
       /* #102 极简显示（Alt+Q）悬停浮现标题：CSS ::after 通过 attr() 读取，无 JS 开销 */
       data-node-title={(title || config?.label || "").slice(0, 40)}
       style={{
