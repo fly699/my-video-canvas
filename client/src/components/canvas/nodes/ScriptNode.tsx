@@ -22,6 +22,9 @@ import { snapshotContent } from "@/lib/scriptHistory";
 import { hashContent, hasDownstreamStoryboardForId } from "@/lib/scriptStoryboardSync";
 import { SCRIPT_TEMPLATE_CATEGORIES, getScriptTemplate, type ScriptTemplate } from "@/lib/scriptCreationTemplates";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
+import { InlineGenBar } from "../InlineGenBar";
+import { ToolChip } from "../InlineBarParts";
+import { SlidersHorizontal } from "lucide-react";
 
 
 // LibTV（#70 创意模式）文本框样式：无边框大字（聚焦时仍显强调色边框）。
@@ -544,212 +547,12 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
 
 
   // LibTV（#70 创意模式）：脚本正文文本框无边框大字。
-  const { isCreativeMode } = useCreativeAdvanced(selected);
-  return (
-    <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable
-      leftDock={
-        <>
-          {sidePanel === "flow" && (
-            <ScriptDevFlowPanel
-              id={id} payload={payload} llmModel={llmModel}
-              fullGenPending={fullScriptMutation.isPending}
-              storyboardsPending={generateMutation.isPending}
-              onGenerateScript={(extra) => handleFullGenerate(extra)}
-              onGenerateStoryboards={() => {
-                if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-                generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang, targetVideoModel: targetModel || undefined });
-              }}
-              onOpenCoverage={() => setSidePanel("coverage")}
-              onClose={() => setSidePanel(null)}
-            />
-          )}
-          {sidePanel === "coverage" && (
-            <ScriptCoveragePanel id={id} payload={payload} llmModel={llmModel} onClose={() => setSidePanel(null)} />
-          )}
-          {sidePanel === "history" && (
-            <ScriptHistoryPanel id={id} payload={payload} onClose={() => setSidePanel(null)} />
-          )}
-          {sidePanel === "cast" && (
-            <ScriptCastPanel id={id} payload={payload} onClose={() => setSidePanel(null)} />
-          )}
-        </>
-      }>
-      <div className="flex flex-col h-full p-3.5 gap-3">
+  const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
 
-        {/* Synopsis row */}
-        <div className="flex gap-1.5 items-center">
-          <NodeInput
-            ref={synopsisInputRef}
-            placeholder="故事梗概（一句话概括，也是 AI 剧本创作的核心素材）"
-            value={payload.synopsis ?? ""}
-            onValueChange={(v) => handleChange("synopsis", v)}
-            className="nodrag"
-            style={{ ...inputStyle, flex: 1 }}
-            onFocus={onFocus}
-            onBlur={onBlur}
-          />
-          <button
-            onClick={handleSummarize}
-            disabled={anyPending || !payload.content?.trim()}
-            title="从脚本内容 AI 提取梗概"
-            className="nodrag flex-shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all"
-            style={{
-              fontSize: 10, fontWeight: 600,
-              background: summarizeMutation.isPending ? "var(--c-surface)" : "oklch(0.68 0.20 160 / 0.12)",
-              border: `1px solid oklch(0.68 0.20 160 / ${summarizeMutation.isPending ? "0.15" : "0.35"})`,
-              color: anyPending ? "var(--c-t4)" : "oklch(0.72 0.18 160)",
-              cursor: anyPending || !payload.content?.trim() ? "not-allowed" : "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {summarizeMutation.isPending
-              ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
-              : <FileText style={{ width: 10, height: 10 }} />
-            }
-            提取梗概
-          </button>
-        </div>
-
-        {/* Script content */}
-        <NodeTextArea className="nodrag nowheel flex-1 nowheel"
-          placeholder={"在此输入或粘贴脚本内容...\n\n也可直接使用下方「AI 剧本创作」一键生成。"}
-          value={payload.content ?? ""}
-          onValueChange={(v) => handleChange("content", v)}
-          style={{ ...textareaStyle, ...(isCreativeMode ? LIBTV_TA : {}) }}
-          onFocus={onFocus}
-          onBlur={onBlur}
-        />
-
-        {/* 脚本↔分镜过期提示：脚本在拆分镜后又被修改时出现，提示而非自动覆盖已有分镜 */}
-        {storyboardStale && (
-          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg nodrag" style={{ background: "oklch(0.72 0.16 70 / 0.12)", border: "1px solid oklch(0.72 0.16 70 / 0.4)" }}>
-            <AlertTriangle style={{ width: 13, height: 13, color: "oklch(0.72 0.16 70)", flexShrink: 0 }} />
-            <span style={{ fontSize: 10, color: "var(--c-t2)", flex: 1, lineHeight: 1.5 }}>脚本已修改，下游分镜可能已过期</span>
-            <button
-              onClick={() => {
-                if (anyPending) return;
-                if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-                generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang, targetVideoModel: targetModel || undefined });
-              }}
-              disabled={generateMutation.isPending}
-              title="按当前脚本重新拆分镜（新增分镜节点，不覆盖已有分镜）"
-              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-semibold transition-all flex-shrink-0"
-              style={{ background: "oklch(0.72 0.16 70 / 0.2)", border: "1px solid oklch(0.72 0.16 70 / 0.5)", color: "oklch(0.72 0.16 70)", cursor: generateMutation.isPending ? "default" : "pointer" }}
-            >
-              {generateMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Film className="w-2.5 h-2.5" />}
-              重新拆分镜
-            </button>
-          </div>
-        )}
-
-        {/* Quick AI buttons row */}
-        <div className="flex items-center gap-1 flex-wrap">
-          <LLMModelPicker value={llmModel} onChange={handleLlmModelChange} disabled={anyPending} />
-
-          {/* Polish mode segmented control */}
-          <div className="flex rounded-md overflow-hidden nodrag" style={{ border: "1px solid var(--c-bd2)" }}>
-            {POLISH_MODES.map((m) => (
-              <button
-                key={m.value}
-                onClick={() => setPolishMode(m.value)}
-                className="nodrag px-1.5 py-0.5 transition-all"
-                style={{
-                  fontSize: 9, fontWeight: polishMode === m.value ? 700 : 400,
-                  background: polishMode === m.value ? `${ACCENT}18` : "transparent",
-                  border: "none",
-                  color: polishMode === m.value ? ACCENT : "var(--c-t4)",
-                  cursor: "pointer",
-                }}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => {
-              if (anyPending) return;
-              if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
-              const rawText = payload.content ?? "";
-              const text = rawText.length > 8000 ? rawText.slice(0, 8000) : rawText;
-              if (rawText.length > 8000) toast.warning("脚本过长，已截断至 8000 字进行润色");
-              polishMutation.mutate({ text, mode: polishMode, model: llmModel });
-            }}
-            disabled={anyPending}
-            className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
-            style={{
-              background: polishMutation.isPending ? "var(--c-surface)" : `${ACCENT}18`,
-              border: `1px solid ${polishMutation.isPending ? BORDER_DEFAULT : `${ACCENT}40`}`,
-              color: anyPending ? "var(--c-t4)" : ACCENT,
-              cursor: anyPending ? "not-allowed" : "pointer",
-            }}
-          >
-            {polishMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
-            AI {POLISH_MODES.find(m => m.value === polishMode)?.label ?? "润色"}
-          </button>
-
-          {/* Copy button */}
-          <button
-            onClick={handleCopy}
-            disabled={!payload.content?.trim()}
-            title="复制脚本内容"
-            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
-            style={{
-              fontSize: 9, fontWeight: 500,
-              background: "transparent",
-              border: "1px solid var(--c-bd2)",
-              color: copied ? "oklch(0.72 0.18 160)" : "var(--c-t4)",
-              cursor: payload.content?.trim() ? "pointer" : "not-allowed",
-            }}
-          >
-            {copied
-              ? <Check style={{ width: 9, height: 9 }} />
-              : <Copy style={{ width: 9, height: 9 }} />
-            }
-            {copied ? "已复制" : "复制"}
-          </button>
-
-          {/* 侧向面板开关：创作向导（行业开发管线）/ 专业审查（Coverage） */}
-          <button
-            onClick={() => setSidePanel((v) => (v === "flow" ? null : "flow"))}
-            title="创作向导：想法 → Logline → 梗概 → 节拍表 → 剧本 → 分镜（侧向展开）"
-            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
-            style={{ fontSize: 9, fontWeight: sidePanel === "flow" ? 700 : 500, background: sidePanel === "flow" ? "oklch(0.66 0.18 250 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "flow" ? "oklch(0.66 0.18 250 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "flow" ? "oklch(0.66 0.18 250)" : "var(--c-t4)", cursor: "pointer" }}
-          >
-            <Route style={{ width: 9, height: 9 }} /> 向导
-          </button>
-          <button
-            onClick={() => setSidePanel((v) => (v === "coverage" ? null : "coverage"))}
-            title="专业审查：六维评分 + 裁决 + 一键修复闭环（侧向展开）"
-            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
-            style={{ fontSize: 9, fontWeight: sidePanel === "coverage" ? 700 : 500, background: sidePanel === "coverage" ? "oklch(0.68 0.20 295 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "coverage" ? "oklch(0.68 0.20 295 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "coverage" ? "oklch(0.68 0.20 295)" : "var(--c-t4)", cursor: "pointer" }}
-          >
-            <ClipboardCheck style={{ width: 9, height: 9 }} /> 审查
-          </button>
-          <button
-            onClick={() => setSidePanel((v) => (v === "history" ? null : "history"))}
-            title="版本历史：AI 改写前的正文快照，逐行 diff 对比 + 一键还原（侧向展开）"
-            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
-            style={{ fontSize: 9, fontWeight: sidePanel === "history" ? 700 : 500, background: sidePanel === "history" ? "oklch(0.70 0.15 165 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "history" ? "oklch(0.70 0.15 165 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "history" ? "oklch(0.70 0.15 165)" : "var(--c-t4)", cursor: "pointer" }}
-          >
-            <History style={{ width: 9, height: 9 }} />
-            历史{(payload.scriptHistory?.length ?? 0) > 0 ? ` ${payload.scriptHistory!.length}` : ""}
-          </button>
-          <button
-            onClick={() => setSidePanel((v) => (v === "cast" ? null : "cast"))}
-            title="角色配音：从脚本识别角色，逐个指定配音模型 + 音色（与镜头表共享，侧向展开）"
-            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
-            style={{ fontSize: 9, fontWeight: sidePanel === "cast" ? 700 : 500, background: sidePanel === "cast" ? "oklch(0.70 0.18 340 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "cast" ? "oklch(0.70 0.18 340 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "cast" ? "oklch(0.70 0.18 340)" : "var(--c-t4)", cursor: "pointer" }}
-          >
-            <Mic style={{ width: 9, height: 9 }} /> 配音
-          </button>
-
-          {/* Character count + duration */}
-          <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto" }}>
-            {charCount} 字 · {duration}s 视频
-          </span>
-        </div>
-
+  // #95 配置尾段（生成为/语言/AI 生成分镜/AI 剧本创作/高级功能）单一来源：
+  // 非创意内联卡体（与原先逐字节一致）；创意模式挂输入条「高级」下浮面板。
+  const configTail = (
+    <>
         {/* Downstream node type selector — applies to BOTH generate paths below */}
         <div className="flex items-center gap-1.5" style={{ marginBottom: 2 }}>
           <span style={{ fontSize: 10, color: "var(--c-t4)", flexShrink: 0 }}>生成为</span>
@@ -1390,8 +1193,295 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
             </div>
           )}
         </div>
+    </>
+  );
+
+  return (
+    <>
+    <BaseNode id={id} selected={selected} nodeType="script" title={data.title} minHeight={200} resizable
+      leftDock={
+        <>
+          {sidePanel === "flow" && (
+            <ScriptDevFlowPanel
+              id={id} payload={payload} llmModel={llmModel}
+              fullGenPending={fullScriptMutation.isPending}
+              storyboardsPending={generateMutation.isPending}
+              onGenerateScript={(extra) => handleFullGenerate(extra)}
+              onGenerateStoryboards={() => {
+                if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+                generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang, targetVideoModel: targetModel || undefined });
+              }}
+              onOpenCoverage={() => setSidePanel("coverage")}
+              onClose={() => setSidePanel(null)}
+            />
+          )}
+          {sidePanel === "coverage" && (
+            <ScriptCoveragePanel id={id} payload={payload} llmModel={llmModel} onClose={() => setSidePanel(null)} />
+          )}
+          {sidePanel === "history" && (
+            <ScriptHistoryPanel id={id} payload={payload} onClose={() => setSidePanel(null)} />
+          )}
+          {sidePanel === "cast" && (
+            <ScriptCastPanel id={id} payload={payload} onClose={() => setSidePanel(null)} />
+          )}
+        </>
+      }>
+      <div className="flex flex-col h-full p-3.5 gap-3">
+
+        {/* Synopsis row */}
+        <div className="flex gap-1.5 items-center">
+          <NodeInput
+            ref={synopsisInputRef}
+            placeholder="故事梗概（一句话概括，也是 AI 剧本创作的核心素材）"
+            value={payload.synopsis ?? ""}
+            onValueChange={(v) => handleChange("synopsis", v)}
+            className="nodrag"
+            style={{ ...inputStyle, flex: 1 }}
+            onFocus={onFocus}
+            onBlur={onBlur}
+          />
+          <button
+            onClick={handleSummarize}
+            disabled={anyPending || !payload.content?.trim()}
+            title="从脚本内容 AI 提取梗概"
+            className="nodrag flex-shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all"
+            style={{
+              fontSize: 10, fontWeight: 600,
+              background: summarizeMutation.isPending ? "var(--c-surface)" : "oklch(0.68 0.20 160 / 0.12)",
+              border: `1px solid oklch(0.68 0.20 160 / ${summarizeMutation.isPending ? "0.15" : "0.35"})`,
+              color: anyPending ? "var(--c-t4)" : "oklch(0.72 0.18 160)",
+              cursor: anyPending || !payload.content?.trim() ? "not-allowed" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {summarizeMutation.isPending
+              ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
+              : <FileText style={{ width: 10, height: 10 }} />
+            }
+            提取梗概
+          </button>
+        </div>
+
+        {/* Script content */}
+        <NodeTextArea className="nodrag nowheel flex-1 nowheel"
+          placeholder={"在此输入或粘贴脚本内容...\n\n也可直接使用下方「AI 剧本创作」一键生成。"}
+          value={payload.content ?? ""}
+          onValueChange={(v) => handleChange("content", v)}
+          style={{ ...textareaStyle, ...(isCreativeMode ? LIBTV_TA : {}) }}
+          onFocus={onFocus}
+          onBlur={onBlur}
+        />
+
+        {/* 脚本↔分镜过期提示：脚本在拆分镜后又被修改时出现，提示而非自动覆盖已有分镜 */}
+        {storyboardStale && (
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg nodrag" style={{ background: "oklch(0.72 0.16 70 / 0.12)", border: "1px solid oklch(0.72 0.16 70 / 0.4)" }}>
+            <AlertTriangle style={{ width: 13, height: 13, color: "oklch(0.72 0.16 70)", flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: "var(--c-t2)", flex: 1, lineHeight: 1.5 }}>脚本已修改，下游分镜可能已过期</span>
+            <button
+              onClick={() => {
+                if (anyPending) return;
+                if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+                generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang, targetVideoModel: targetModel || undefined });
+              }}
+              disabled={generateMutation.isPending}
+              title="按当前脚本重新拆分镜（新增分镜节点，不覆盖已有分镜）"
+              className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-semibold transition-all flex-shrink-0"
+              style={{ background: "oklch(0.72 0.16 70 / 0.2)", border: "1px solid oklch(0.72 0.16 70 / 0.5)", color: "oklch(0.72 0.16 70)", cursor: generateMutation.isPending ? "default" : "pointer" }}
+            >
+              {generateMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Film className="w-2.5 h-2.5" />}
+              重新拆分镜
+            </button>
+          </div>
+        )}
+
+        {/* #95 创意模式：快捷行与配置尾段移出卡体（输入条 + 高级下浮面板） */}
+        {!isCreativeMode && (<>
+        {/* Quick AI buttons row */}
+        <div className="flex items-center gap-1 flex-wrap">
+          <LLMModelPicker value={llmModel} onChange={handleLlmModelChange} disabled={anyPending} />
+
+          {/* Polish mode segmented control */}
+          <div className="flex rounded-md overflow-hidden nodrag" style={{ border: "1px solid var(--c-bd2)" }}>
+            {POLISH_MODES.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => setPolishMode(m.value)}
+                className="nodrag px-1.5 py-0.5 transition-all"
+                style={{
+                  fontSize: 9, fontWeight: polishMode === m.value ? 700 : 400,
+                  background: polishMode === m.value ? `${ACCENT}18` : "transparent",
+                  border: "none",
+                  color: polishMode === m.value ? ACCENT : "var(--c-t4)",
+                  cursor: "pointer",
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => {
+              if (anyPending) return;
+              if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+              const rawText = payload.content ?? "";
+              const text = rawText.length > 8000 ? rawText.slice(0, 8000) : rawText;
+              if (rawText.length > 8000) toast.warning("脚本过长，已截断至 8000 字进行润色");
+              polishMutation.mutate({ text, mode: polishMode, model: llmModel });
+            }}
+            disabled={anyPending}
+            className="nodrag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium transition-all"
+            style={{
+              background: polishMutation.isPending ? "var(--c-surface)" : `${ACCENT}18`,
+              border: `1px solid ${polishMutation.isPending ? BORDER_DEFAULT : `${ACCENT}40`}`,
+              color: anyPending ? "var(--c-t4)" : ACCENT,
+              cursor: anyPending ? "not-allowed" : "pointer",
+            }}
+          >
+            {polishMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+            AI {POLISH_MODES.find(m => m.value === polishMode)?.label ?? "润色"}
+          </button>
+
+          {/* Copy button */}
+          <button
+            onClick={handleCopy}
+            disabled={!payload.content?.trim()}
+            title="复制脚本内容"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{
+              fontSize: 9, fontWeight: 500,
+              background: "transparent",
+              border: "1px solid var(--c-bd2)",
+              color: copied ? "oklch(0.72 0.18 160)" : "var(--c-t4)",
+              cursor: payload.content?.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            {copied
+              ? <Check style={{ width: 9, height: 9 }} />
+              : <Copy style={{ width: 9, height: 9 }} />
+            }
+            {copied ? "已复制" : "复制"}
+          </button>
+
+          {/* 侧向面板开关：创作向导（行业开发管线）/ 专业审查（Coverage） */}
+          <button
+            onClick={() => setSidePanel((v) => (v === "flow" ? null : "flow"))}
+            title="创作向导：想法 → Logline → 梗概 → 节拍表 → 剧本 → 分镜（侧向展开）"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{ fontSize: 9, fontWeight: sidePanel === "flow" ? 700 : 500, background: sidePanel === "flow" ? "oklch(0.66 0.18 250 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "flow" ? "oklch(0.66 0.18 250 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "flow" ? "oklch(0.66 0.18 250)" : "var(--c-t4)", cursor: "pointer" }}
+          >
+            <Route style={{ width: 9, height: 9 }} /> 向导
+          </button>
+          <button
+            onClick={() => setSidePanel((v) => (v === "coverage" ? null : "coverage"))}
+            title="专业审查：六维评分 + 裁决 + 一键修复闭环（侧向展开）"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{ fontSize: 9, fontWeight: sidePanel === "coverage" ? 700 : 500, background: sidePanel === "coverage" ? "oklch(0.68 0.20 295 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "coverage" ? "oklch(0.68 0.20 295 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "coverage" ? "oklch(0.68 0.20 295)" : "var(--c-t4)", cursor: "pointer" }}
+          >
+            <ClipboardCheck style={{ width: 9, height: 9 }} /> 审查
+          </button>
+          <button
+            onClick={() => setSidePanel((v) => (v === "history" ? null : "history"))}
+            title="版本历史：AI 改写前的正文快照，逐行 diff 对比 + 一键还原（侧向展开）"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{ fontSize: 9, fontWeight: sidePanel === "history" ? 700 : 500, background: sidePanel === "history" ? "oklch(0.70 0.15 165 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "history" ? "oklch(0.70 0.15 165 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "history" ? "oklch(0.70 0.15 165)" : "var(--c-t4)", cursor: "pointer" }}
+          >
+            <History style={{ width: 9, height: 9 }} />
+            历史{(payload.scriptHistory?.length ?? 0) > 0 ? ` ${payload.scriptHistory!.length}` : ""}
+          </button>
+          <button
+            onClick={() => setSidePanel((v) => (v === "cast" ? null : "cast"))}
+            title="角色配音：从脚本识别角色，逐个指定配音模型 + 音色（与镜头表共享，侧向展开）"
+            className="nodrag flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition-all"
+            style={{ fontSize: 9, fontWeight: sidePanel === "cast" ? 700 : 500, background: sidePanel === "cast" ? "oklch(0.70 0.18 340 / 0.18)" : "transparent", border: `1px solid ${sidePanel === "cast" ? "oklch(0.70 0.18 340 / 0.5)" : "var(--c-bd2)"}`, color: sidePanel === "cast" ? "oklch(0.70 0.18 340)" : "var(--c-t4)", cursor: "pointer" }}
+          >
+            <Mic style={{ width: 9, height: 9 }} /> 配音
+          </button>
+
+          {/* Character count + duration */}
+          <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto" }}>
+            {charCount} 字 · {duration}s 视频
+          </span>
+        </div>
+        {configTail}
+        </>)}
 
       </div>
     </BaseNode>
+
+    {/* ── #95 LibTV（创意模式）就地输入条：AI 工具 chips ‖ 模型 · 高级 · 字数 ‖ 生成分镜 ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={520}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <ToolChip icon={summarizeMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />} label="提取梗概"
+            onClick={() => { if (!anyPending && payload.content?.trim()) handleSummarize(); }} disabled={anyPending || !payload.content?.trim()} title="从脚本内容 AI 提取梗概" />
+          <ToolChip icon={polishMutation.isPending && polishMode === "polish" ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} label="润色"
+            onClick={() => {
+              if (anyPending) return;
+              if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+              setPolishMode("polish");
+              const rawText = payload.content ?? "";
+              const text = rawText.length > 8000 ? rawText.slice(0, 8000) : rawText;
+              if (rawText.length > 8000) toast.warning("脚本过长，已截断至 8000 字进行润色");
+              polishMutation.mutate({ text, mode: "polish", model: llmModel });
+            }} disabled={anyPending} title="AI 润色脚本正文" />
+          <ToolChip icon={polishMutation.isPending && polishMode === "condense" ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} label="精简"
+            onClick={() => {
+              if (anyPending) return;
+              if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+              setPolishMode("condense");
+              const rawText = payload.content ?? "";
+              const text = rawText.length > 8000 ? rawText.slice(0, 8000) : rawText;
+              if (rawText.length > 8000) toast.warning("脚本过长，已截断至 8000 字进行精简");
+              polishMutation.mutate({ text, mode: "condense", model: llmModel });
+            }} disabled={anyPending} title="AI 精简脚本正文" />
+          <ToolChip icon={<Copy size={13} />} label="复制" onClick={handleCopy} disabled={!payload.content?.trim()} title="复制脚本内容" />
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          <ToolChip icon={<Route size={13} />} label="向导" active={sidePanel === "flow"}
+            onClick={() => setSidePanel((v) => (v === "flow" ? null : "flow"))} title="创作向导：想法 → Logline → 梗概 → 节拍表 → 剧本 → 分镜（侧向展开）" />
+          <ToolChip icon={<ClipboardCheck size={13} />} label="审查" active={sidePanel === "coverage"}
+            onClick={() => setSidePanel((v) => (v === "coverage" ? null : "coverage"))} title="专业审查：六维评分 + 裁决 + 一键修复（侧向展开）" />
+          <ToolChip icon={<History size={13} />} label={`历史${(payload.scriptHistory?.length ?? 0) > 0 ? ` ${payload.scriptHistory!.length}` : ""}`} active={sidePanel === "history"}
+            onClick={() => setSidePanel((v) => (v === "history" ? null : "history"))} title="版本历史：AI 改写前快照，diff 对比 + 一键还原（侧向展开）" />
+          <ToolChip icon={<Mic size={13} />} label="配音" active={sidePanel === "cast"}
+            onClick={() => setSidePanel((v) => (v === "cast" ? null : "cast"))} title="角色配音：识别角色并指定配音模型 + 音色（侧向展开）" />
+        </div>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <LLMModelPicker value={llmModel} onChange={handleLlmModelChange} disabled={anyPending} />
+          <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
+          <button
+            className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开参数面板（生成为/AI 剧本创作/变体·文风·对白·Mood Board）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+          >
+            <SlidersHorizontal size={12} /> 高级
+          </button>
+          <span style={{ fontSize: 10.5, color: "var(--c-t4)", whiteSpace: "nowrap" }}>{charCount} 字 · {duration}s</span>
+          <div style={{ flex: 1 }} />
+          <button
+            className="nodrag"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (anyPending) return;
+              if (!payload.content?.trim()) { toast.error("请先填写脚本内容"); return; }
+              generateMutation.mutate({ content: payload.content ?? "", synopsis: payload.synopsis, model: llmModel, count: storyboardCount, promptLang, targetVideoModel: targetModel || undefined });
+            }}
+            disabled={anyPending}
+            title={`AI 生成分镜（从现有脚本，共 ${storyboardCount} 个）`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: "0 12px", borderRadius: 9, fontSize: 11.5, fontWeight: 700, border: "none", cursor: anyPending ? "not-allowed" : "pointer", background: anyPending ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: anyPending ? "var(--c-t4)" : "#0b0d12", whiteSpace: "nowrap", flexShrink: 0 }}
+          >
+            {generateMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />} 生成分镜
+          </button>
+        </div>
+        {/* 参数下浮面板：生成为/提示词语言 + AI 剧本创作 + 高级功能（变体/文风/对白/Mood） */}
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {configTail}
+          </div>
+        )}
+      </InlineGenBar>
+    )}
+    </>
   );
 });
