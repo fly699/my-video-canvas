@@ -30,8 +30,9 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, ChevronUp, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, ChevronUp, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin, Camera } from "lucide-react";
 import { StylePicker } from "../StylePicker";
+import { CameraRigPicker, stripCameraRig } from "../CameraRigPicker";
 import { ToolChip, RefThumbRow, MarkElementPicker, MarkChipRow, loadMarkModel, saveMarkModel, switchMark, removeMark } from "../InlineBarParts";
 import { nanoid } from "nanoid";
 import { openNodeCompare } from "../CompareLightbox";
@@ -142,6 +143,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // LibTV：输入条「风格」chip 打开风格库，选中把风格片段追加到提示词。
   const [styleOpen, setStyleOpen] = useState(false);
+  // #90 LibTV：输入条「摄像机」chip 打开摄像机参数选择器（与视频节点同款，注入提示词）。
+  const [camRigOpen, setCamRigOpen] = useState(false);
   // LibTV 三段式输入条：顶部「＋参考」的隐藏文件选择器。
   const inlineRefFileRef = useRef<HTMLInputElement>(null);
 
@@ -1499,6 +1502,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             title="元素选择模式：点击画布上的图片，AI 分析图中元素后点选插入引用"
             onClick={() => usePickStore.getState().begin("mark", id)} />
           <ToolChip icon={<Palette size={12} />} label="风格" title="风格库（选一个风格追加到提示词）" onClick={() => setStyleOpen(true)} />
+          <ToolChip icon={<Camera size={12} />} label="摄像机" active={/shot on /i.test(payload.prompt ?? "")}
+            title="摄像机参数（相机/镜头/焦距/光圈 → 注入提示词）" onClick={() => setCamRigOpen(true)} />
           <input ref={inlineRefFileRef} type="file" accept="image/*" multiple className="hidden"
             onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) void uploadFilesToRef(files, refImages.images.length); e.target.value = ""; }} />
         </div>
@@ -1639,6 +1644,20 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           update("prompt", cur ? `${cur}，${p.prompt}` : p.prompt);
           toast.success(`已应用风格：${p.label}`);
         }}
+      />
+    )}
+
+    {/* #90 摄像机参数选择器（与视频节点同款）：相机/镜头/焦距/光圈 → 注入提示词，重复应用先替换旧片段 */}
+    {camRigOpen && (
+      <CameraRigPicker
+        active={/shot on /i.test(payload.prompt ?? "")}
+        onApply={(frag) => {
+          const base = stripCameraRig(payload.prompt ?? "");
+          update("prompt", base ? `${base}，${frag}` : frag);
+          toast.success("已注入摄像机参数");
+        }}
+        onClear={() => { update("prompt", stripCameraRig(payload.prompt ?? "")); toast.success("已清除摄像机参数"); }}
+        onClose={() => setCamRigOpen(false)}
       />
     )}
 

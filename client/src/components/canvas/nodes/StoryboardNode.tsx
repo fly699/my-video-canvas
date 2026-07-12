@@ -9,8 +9,10 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes, ArrowUp, Plus, Palette } from "lucide-react";
-import { ToolChip, RefThumbRow } from "../InlineBarParts";
+import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes, ArrowUp, Plus, Palette, MapPin, Camera } from "lucide-react";
+import { nanoid } from "nanoid";
+import { CameraRigPicker, stripCameraRig } from "../CameraRigPicker";
+import { ToolChip, RefThumbRow, MarkElementPicker, MarkChipRow, loadMarkModel, saveMarkModel, switchMark, removeMark } from "../InlineBarParts";
 import { StylePicker } from "../StylePicker";
 import { usePickStore } from "../../../hooks/usePickStore";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
@@ -299,12 +301,34 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const refImages = useReferenceImages(id, payload);
   // 双击参考缩略图 → 聚焦至来源节点。
   const focusRefSource = useFocusRefSource(id);
-  // LibTV 画布拾取（＋参考=从画布选参考，可连选追加）。
+  // #90 LibTV「标记」：点选画布图片 → AI 元素分析 → 插入「图片N 的<元素>」引用（与图像/视频节点同款）。
+  const [markState, setMarkState] = useState<{ url: string; loading: boolean; error: string | null; elements: { name: string; desc?: string }[] } | null>(null);
+  const analyzeElementsMut = trpc.aiEnhance.analyzeImageElements.useMutation();
+  const [markModel, setMarkModel] = useState<string>(loadMarkModel);
+  const runMarkAnalyze = useCallback((url: string, model: string) => {
+    setMarkState({ url, loading: true, error: null, elements: [] });
+    analyzeElementsMut.mutate({ imageUrl: url, model }, {
+      onSuccess: (r) => setMarkState((s) => (s && s.url === url ? { ...s, loading: false, elements: r.elements } : s)),
+      onError: (err) => setMarkState((s) => (s && s.url === url ? { ...s, loading: false, error: err.message } : s)),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // #90 LibTV：输入条「摄像机」chip 打开摄像机参数选择器（与视频节点同款，注入本镜提示词）。
+  const [camRigOpen, setCamRigOpen] = useState(false);
+  // LibTV 画布拾取（＋参考=从画布选参考，可连选追加；标记=元素选择模式）。
   useEffect(() => {
     const onResult = (e: Event) => {
       const d = (e as CustomEvent<{ forNodeId: string; kind: string; url: string }>).detail;
-      if (d?.forNodeId !== id || d.kind !== "ref") return;
-      if (!refImages.addUrls([d.url], "url")) toast.info("该图已在参考列表中，未重复添加");
+      if (d?.forNodeId !== id) return;
+      if (d.kind === "ref") {
+        if (!refImages.addUrls([d.url], "url")) toast.info("该图已在参考列表中，未重复添加");
+        return;
+      }
+      if (d.kind === "mark") {
+        // mark：图加入参考（若未在），并启动元素分析
+        if (!refImages.images.some((r) => r.url === d.url)) refImages.addUrls([d.url], "url");
+        runMarkAnalyze(d.url, markModel);
+      }
     };
     const onUpload = (e: Event) => {
       if ((e as CustomEvent<{ forNodeId: string }>).detail?.forNodeId !== id) return;
@@ -314,7 +338,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     window.addEventListener("canvas:pick-upload", onUpload);
     return () => { window.removeEventListener("canvas:pick-result", onResult); window.removeEventListener("canvas:pick-upload", onUpload); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, refImages.images]);
+  }, [id, refImages.images, markModel]);
 
   const uploadRefMutation = trpc.upload.uploadImage.useMutation({
     onSuccess: (result) => {
@@ -1366,10 +1390,15 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         提示词/图像模型/参数（比例·清晰度·数量）/成本/生成一条龙，与配置区同一 payload 双向同步。 */}
     {isCreativeMode && (
       <InlineGenBar nodeId={id} visible={Boolean(selected) || Boolean((data.payload as { pinned?: boolean }).pinned)}>
-        {/* ── LibTV 三段式 Row1：工具 chips 行（＋参考 / 风格） ── */}
+        {/* ── LibTV 三段式 Row1：工具 chips 行（＋参考 / 标记 / 风格 / 摄像机，#90 与图像/视频节点对齐） ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
           <ToolChip icon={<Plus size={13} />} label="参考" title="从画布选择参考（点击其它节点的产物；浮条内可切本地上传）" onClick={() => usePickStore.getState().begin("ref", id)} />
+          <ToolChip icon={<MapPin size={12} />} label="标记"
+            title="元素选择模式：点击画布上的图片，AI 分析图中元素后点选插入引用"
+            onClick={() => usePickStore.getState().begin("mark", id)} />
           <ToolChip icon={<Palette size={12} />} label="风格" title="风格库（选一个风格追加到本镜提示词）" onClick={() => setStyleOpen(true)} />
+          <ToolChip icon={<Camera size={12} />} label="摄像机" active={/shot on /i.test(payload.promptText ?? "")}
+            title="摄像机参数（相机/镜头/焦距/光圈 → 注入本镜提示词）" onClick={() => setCamRigOpen(true)} />
           {uploadingRef && <Loader2 size={13} className="animate-spin" style={{ color: "var(--c-t3)" }} />}
         </div>
         {/* ── Row2：参考图缩略行（多图连选，编号 + hover 放大 + 删除 + 双击聚焦来源） ── */}
@@ -1384,6 +1413,20 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           onValueChange={(v) => handleChange("promptText", v)}
           style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
         />
+        {/* ── Row3.5：标记引用 chips（嵌入提示词后仍可下拉换选元素 / 移除，#90 与图像节点同款） ── */}
+        {(payload.markRefs?.length ?? 0) > 0 && (
+          <MarkChipRow
+            marks={payload.markRefs!}
+            onSwitch={(mid, newName) => {
+              const r = switchMark(payload.markRefs ?? [], payload.promptText ?? "", mid, newName);
+              if (r) updateNodeData(id, { promptText: r.prompt, markRefs: r.markRefs });
+            }}
+            onRemove={(mid) => {
+              const r = removeMark(payload.markRefs ?? [], payload.promptText ?? "", mid);
+              updateNodeData(id, { promptText: r.prompt, markRefs: r.markRefs });
+            }}
+          />
+        )}
         {/* ── Row4：精简控制行 ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <ModelPicker value={model} onChange={setModel} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
@@ -1477,6 +1520,44 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           handleChange("promptText", cur ? `${cur}，${p.prompt}` : p.prompt);
           toast.success(`已应用风格：${p.label}`);
         }}
+      />
+    )}
+
+    {/* #90 LibTV「标记」元素选择浮层：AI 分析后点选元素 → 插入「图片N 的<元素>」引用 */}
+    {markState && (
+      <MarkElementPicker
+        imageUrl={markState.url}
+        elements={markState.elements}
+        loading={markState.loading}
+        error={markState.error}
+        onClose={() => setMarkState(null)}
+        model={markModel}
+        onModelChange={(m) => { setMarkModel(m); saveMarkModel(m); runMarkAnalyze(markState.url, m); }}
+        onSelect={(name) => {
+          const idx = refImages.images.findIndex((r) => r.url === markState.url);
+          const refToken = idx >= 0 ? `图片${idx + 1} 的${name}` : name;
+          const cur = (payload.promptText ?? "").trim();
+          updateNodeData(id, {
+            promptText: cur ? `${cur} ${refToken} ` : `${refToken} `,
+            markRefs: [...(payload.markRefs ?? []), { id: nanoid(8), url: markState.url, element: name, token: refToken, elements: markState.elements }],
+          });
+          setMarkState(null);
+          toast.success(`已插入标记引用：${refToken}`);
+        }}
+      />
+    )}
+
+    {/* #90 摄像机参数选择器（与视频节点同款）：相机/镜头/焦距/光圈 → 注入本镜提示词，重复应用先替换 */}
+    {camRigOpen && (
+      <CameraRigPicker
+        active={/shot on /i.test(payload.promptText ?? "")}
+        onApply={(frag) => {
+          const base = stripCameraRig(payload.promptText ?? "");
+          handleChange("promptText", base ? `${base}，${frag}` : frag);
+          toast.success("已注入摄像机参数");
+        }}
+        onClear={() => { handleChange("promptText", stripCameraRig(payload.promptText ?? "")); toast.success("已清除摄像机参数"); }}
+        onClose={() => setCamRigOpen(false)}
       />
     )}
 
