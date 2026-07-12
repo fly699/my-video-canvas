@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from "react";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
-import { AdvancedToggleRow } from "../InlineBarParts";
+import { InlineGenBar } from "../InlineGenBar";
+import { SlidersHorizontal } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
@@ -307,99 +308,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   const isDone = payload.status === "done";
   const isFailed = payload.status === "failed";
 
-  return (
-    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} resizable
-      onHeaderHoverChange={docks.onHeaderHoverChange}
-      leftDock={
-        <ReferenceImageStrip
-          images={audioItems}
-          open={docks.refOpen}
-          accent={accent}
-          readOnly
-          title="音频"
-          readOnlyHint={<>参与本节点的音频<br />（上游 / 背景音乐）</>}
-          onClose={() => docks.setRefOpen(false)}
-          onRemove={() => {}}
-          onMove={() => {}}
-          onInsertUrls={() => {}}
-          onDropFiles={() => {}}
-          onZoom={() => {}}
-          onHoverChange={docks.onDockHoverChange}
-          onPin={docks.pinRef}
-        />
-      }>
-
-      <div className="flex flex-col gap-3 p-3.5 h-full" onDragOver={handleDragOver} onDrop={handleDrop}>
-
-        {/* Status */}
-        {isProcessing && (
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
-            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
-            <span className="text-xs" style={{ color: accent }}>合并视频中...</span>
-          </div>
-        )}
-
-        {isFailed && (
-          <div className="flex flex-col gap-1 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
-            <span className="text-xs font-medium" style={{ color: "oklch(0.62 0.20 25)" }}>合并失败</span>
-            {payload.errorMessage && (
-              <span className="text-[10px]" style={{ color: "var(--c-t3)" }}>{payload.errorMessage}</span>
-            )}
-          </div>
-        )}
-
-        {/* Output video — fills the node height so it scales when the node is
-            resized (was locked at 140px). */}
-        {isDone && payload.outputUrl && (
-          <div className="flex flex-col gap-1.5 flex-1" style={{ minHeight: 0 }}>
-            <div className="relative" style={{ flex: 1, minHeight: 0, display: "flex" }}>
-              <WatermarkedVideo
-                block
-                key={payload.outputUrl}
-                src={mediaFetchUrl(payload.outputUrl)}
-                controls
-                className="w-full rounded-lg nodrag"
-                style={{ flex: 1, minHeight: 180, width: "100%", objectFit: "contain", display: "block", border: `1px solid ${accentA(0.4)}`, background: "#000" }}
-                preload="metadata"
-              />
-              {isOwnStorageUrl(payload.outputUrl) && (
-                <div
-                  title="已存储到 MinIO·长期有效"
-                  className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
-                  style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
-                />
-              )}
-            </div>
-            {/* Bottom controls hide when the node is collapsed — the output
-                video preview stays, but the reset button only shows expanded. */}
-            {expanded && (
-              <div className="flex gap-1.5 flex-shrink-0">
-                <button
-                  onClick={handleReset}
-                  className="nodrag flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px]"
-                  style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
-                >
-                  <RotateCcw style={{ width: 9, height: 9 }} />
-                  重置
-                  {payload.outputDuration ? <span style={{ color: "var(--c-t4)" }}> · {payload.outputDuration.toFixed(1)}s</span> : null}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Compact summary when collapsed (deselected) — keeps the node informative
-            without the full editing controls. */}
-        {!expanded && (
-          <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--c-t3)" }}>
-            <Merge style={{ width: 11, height: 11, color: accent, flexShrink: 0 }} />
-            <span>{orderItems.length} 个视频输入 · 转场：{TRANSITIONS.find((t) => t.value === (payload.transition ?? "none"))?.label ?? "直切"}{effectiveBgMusicUrl ? " · 含背景音乐" : ""}</span>
-          </div>
-        )}
-
-        {/* Editing controls — collapse when the node is deselected. */}
-{expanded && isCreativeMode && <AdvancedToggleRow open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />}
-        {expanded && !(isCreativeMode && !advancedOpen) && (<>
+  // #96 配置区单一来源：非创意内联卡体（原样）；创意模式挂输入条「参数与操作」下浮面板。
+  const configBody = (
+    <>
 
         {/* Ordered input list — drag to set the concatenation order. Connected
             inputs are smart-ordered by default; dragging fixes an explicit order. */}
@@ -605,7 +516,102 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
           </>
         )}
 
-        </>)}
+    </>
+  );
+
+  return (
+    <>
+    <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} resizable
+      onHeaderHoverChange={docks.onHeaderHoverChange}
+      leftDock={
+        <ReferenceImageStrip
+          images={audioItems}
+          open={docks.refOpen}
+          accent={accent}
+          readOnly
+          title="音频"
+          readOnlyHint={<>参与本节点的音频<br />（上游 / 背景音乐）</>}
+          onClose={() => docks.setRefOpen(false)}
+          onRemove={() => {}}
+          onMove={() => {}}
+          onInsertUrls={() => {}}
+          onDropFiles={() => {}}
+          onZoom={() => {}}
+          onHoverChange={docks.onDockHoverChange}
+          onPin={docks.pinRef}
+        />
+      }>
+
+      <div className="flex flex-col gap-3 p-3.5 h-full" onDragOver={handleDragOver} onDrop={handleDrop}>
+
+        {/* Status */}
+        {isProcessing && (
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
+            <span className="text-xs" style={{ color: accent }}>合并视频中...</span>
+          </div>
+        )}
+
+        {isFailed && (
+          <div className="flex flex-col gap-1 px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
+            <span className="text-xs font-medium" style={{ color: "oklch(0.62 0.20 25)" }}>合并失败</span>
+            {payload.errorMessage && (
+              <span className="text-[10px]" style={{ color: "var(--c-t3)" }}>{payload.errorMessage}</span>
+            )}
+          </div>
+        )}
+
+        {/* Output video — fills the node height so it scales when the node is
+            resized (was locked at 140px). */}
+        {isDone && payload.outputUrl && (
+          <div className="flex flex-col gap-1.5 flex-1" style={{ minHeight: 0 }}>
+            <div className="relative" style={{ flex: 1, minHeight: 0, display: "flex" }}>
+              <WatermarkedVideo
+                block
+                key={payload.outputUrl}
+                src={mediaFetchUrl(payload.outputUrl)}
+                controls
+                className="w-full rounded-lg nodrag"
+                style={{ flex: 1, minHeight: 180, width: "100%", objectFit: "contain", display: "block", border: `1px solid ${accentA(0.4)}`, background: "#000" }}
+                preload="metadata"
+              />
+              {isOwnStorageUrl(payload.outputUrl) && (
+                <div
+                  title="已存储到 MinIO·长期有效"
+                  className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
+                  style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
+                />
+              )}
+            </div>
+            {/* Bottom controls hide when the node is collapsed — the output
+                video preview stays, but the reset button only shows expanded. */}
+            {expanded && (
+              <div className="flex gap-1.5 flex-shrink-0">
+                <button
+                  onClick={handleReset}
+                  className="nodrag flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px]"
+                  style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
+                >
+                  <RotateCcw style={{ width: 9, height: 9 }} />
+                  重置
+                  {payload.outputDuration ? <span style={{ color: "var(--c-t4)" }}> · {payload.outputDuration.toFixed(1)}s</span> : null}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Compact summary when collapsed (deselected) — keeps the node informative
+            without the full editing controls. */}
+        {!expanded && (
+          <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--c-t3)" }}>
+            <Merge style={{ width: 11, height: 11, color: accent, flexShrink: 0 }} />
+            <span>{orderItems.length} 个视频输入 · 转场：{TRANSITIONS.find((t) => t.value === (payload.transition ?? "none"))?.label ?? "直切"}{effectiveBgMusicUrl ? " · 含背景音乐" : ""}</span>
+          </div>
+        )}
+
+        {/* Editing controls — collapse when the node is deselected. */}
+        {expanded && !isCreativeMode && configBody}
 
         {/* 合并按钮 —— 移出收起区：选中即常显（LibTV 主操作优先） */}
         {expanded && (<>
@@ -632,5 +638,25 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       </div>
 
     </BaseNode>
+    {/* ── #96 LibTV（创意模式）就地输入条：参数与操作下浮面板（屏幕恒定） ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={440}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t2)", whiteSpace: "nowrap" }}>合并</span>
+          <span style={{ fontSize: 10.5, color: "var(--c-t4)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>轨道排序 / 音量 / 音频轨参数</span>
+          <button className="nodrag" onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开参数与操作面板（浮现于输入条下方，不撑开节点卡体）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <SlidersHorizontal size={12} /> 参数与操作
+          </button>
+        </div>
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {configBody}
+          </div>
+        )}
+      </InlineGenBar>
+    )}
+    </>
   );
 });
