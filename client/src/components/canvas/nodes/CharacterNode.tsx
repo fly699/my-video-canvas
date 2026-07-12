@@ -539,7 +539,9 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       onClick={onNameBarClick}
       onDoubleClick={(e) => e.stopPropagation()}
       title="双击改名"
-      style={{ padding: "20px 12px 8px", gap: 6, background: "linear-gradient(transparent, oklch(0 0 0 / 0.74))", cursor: "text" }}
+      // #82 底部留白 18px：「人物」标签 / 种子 chip 抬离底边中央连线桩点的热区（原 8px 时
+      // chips 与 handle 几乎贴在同一水平带上，点标签极易误触拖出连线）。
+      style={{ padding: "18px 12px 18px", gap: 6, background: "linear-gradient(transparent, oklch(0 0 0 / 0.74))", cursor: "text" }}
     >
       {nameEditing ? (
         <input
