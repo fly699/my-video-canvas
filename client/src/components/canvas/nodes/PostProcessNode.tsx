@@ -4,10 +4,18 @@ import { InlineGenBar } from "../InlineGenBar";
 import { SlidersHorizontal } from "lucide-react";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useShallow } from "zustand/react/shallow";
 import type { PostProcessNodeData } from "../../../../../shared/types";
 import { POST_PROCESS_CATEGORIES, buildEffectPrompt, getEffectById } from "../../../lib/postProcessOptions";
 import { toast } from "sonner";
 import { copyTextWithToast } from "@/lib/clipboard";
+import { trpc } from "@/lib/trpc";
+import { getNodeImageOutput } from "@/lib/canvasPassthrough";
+import { propagateRefImage } from "../../../lib/refImagePropagation";
+import { sourceAspectRatio } from "../../../lib/imageAspect";
+import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
+import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
+import { Loader2 } from "lucide-react";
 import { Copy, ChevronDown, ChevronRight, X, Layers, Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight, Film, Wind, Circle, Zap, Flower2, PenLine, ScanLine, Maximize, Building2, Globe, Combine, Sparkles, Timer, Activity, TrendingUp, CloudFog, Lightbulb, Waves, Sunrise, Moon, Brush, Stars, Grid2x2, MessageSquare, Droplet, Box, Monitor, Thermometer, CircleDot, Blend, Wand2, RotateCcw, Image, type LucideIcon } from "lucide-react";
 
 const EFFECT_ICONS: Record<string, LucideIcon> = {
@@ -87,6 +95,68 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
   const clearAll = useCallback(() => {
     updateNodeData(id, { selectedEffects: [], effectIntensities: {}, generatedPrompt: "" });
   }, [id, updateNodeData]);
+
+  // ── #99 可执行化：检测上游图像 → 一键把已选效果应用为新图 ──────────────────────
+  // 走 imageGen 参考图管线：t2i→i2i 自动切换与源图比例继承由 #89 全链路保障，
+  // 结果落 outputUrl 并向下游参考图传播——后处理从「提示词生成器」升级为真正的执行节点。
+  const { ppEdges, ppNodes } = useCanvasStore(useShallow((s) => ({ ppEdges: s.edges, ppNodes: s.nodes })));
+  const srcUrl = useMemo(() => {
+    for (const e of ppEdges.filter((e) => e.target === id)) {
+      const src = ppNodes.find((n) => n.id === e.source);
+      if (!src) continue;
+      const url = getNodeImageOutput(src.data.nodeType, src.data.payload as Record<string, unknown>);
+      if (url) return url;
+    }
+    return payload.inputImageUrl?.trim() || undefined;
+  }, [ppEdges, ppNodes, id, payload.inputImageUrl]);
+  const [applyModel, setApplyModel] = useState("");
+  const applyMut = trpc.imageGen.generate.useMutation({
+    onSuccess: (r) => {
+      const url = r.url ?? r.urls?.[0];
+      if (!url) { updateNodeData(id, { status: "failed", errorMessage: "未返回结果图像" }); toast.error("应用效果失败：未返回图像"); return; }
+      updateNodeData(id, { outputUrl: url, status: "done", errorMessage: undefined });
+      propagateRefImage(id, url);
+      toast.success("效果已应用，结果图已生成");
+    },
+    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("应用效果失败：" + err.message); },
+  });
+  const isApplying = payload.status === "processing" || applyMut.isPending;
+  const handleApply = useCallback(async () => {
+    if (isApplying) return;
+    if (!srcUrl) { toast.error("请先连接上游图像节点（图像生成/素材/分镜等）"); return; }
+    if (!generatedPrompt) { toast.error("请先选择至少一个效果"); return; }
+    updateNodeData(id, { status: "processing", errorMessage: undefined });
+    const ar = await sourceAspectRatio(srcUrl); // 结果必须继承源图画幅
+    applyMut.mutate({
+      prompt: `Apply the following post-processing effects to the reference image, keeping the subject, composition and content strictly identical — change only the visual treatment: ${generatedPrompt}`,
+      referenceImageUrl: srcUrl,
+      ...(ar ? { aspectRatio: ar, poyoAspectRatio: ar, reveAspectRatio: ar } : {}),
+      ...(data.projectId ? { projectId: data.projectId } : {}),
+      ...(applyModel ? { model: applyModel, estimatedCost: costEstimateLabel(estimateImageCost(applyModel)) || "按模型页" } : {}),
+    } as Parameters<typeof applyMut.mutate>[0]);
+  }, [isApplying, srcUrl, generatedPrompt, id, data.projectId, applyModel, applyMut, updateNodeData]);
+  const canApply = !!srcUrl && !!generatedPrompt && !isApplying;
+  const applySection = (
+    <div className="flex flex-col gap-2" style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)" }}>
+      <div className="flex items-center gap-2">
+        <ModelPicker value={applyModel} onChange={setApplyModel} disabled={isApplying} minWidth={150} accent={accent}
+          options={[{ value: "", label: "默认模型（系统设置）", group: "默认", family: "默认" }, ...IMAGE_MODEL_PICKER_OPTIONS]} />
+        <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto", whiteSpace: "nowrap" }}>
+          {applyModel ? (costEstimateLabel(estimateImageCost(applyModel)) || "按模型页") : "按系统默认模型"}
+        </span>
+      </div>
+      <button onClick={() => void handleApply()} disabled={!canApply}
+        title={!srcUrl ? "请先连接上游图像节点" : !generatedPrompt ? "请先选择效果" : isApplying ? "生成中…" : "把已选效果应用到上游图像，生成结果图"}
+        className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
+        style={{ background: !canApply ? "var(--c-surface)" : accentA(0.15), border: `1px solid ${!canApply ? "var(--c-bd2)" : accentA(0.5)}`, color: !canApply ? "var(--c-t4)" : accent, cursor: !canApply ? "not-allowed" : "pointer" }}>
+        {isApplying ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Wand2 style={{ width: 12, height: 12 }} />}
+        {isApplying ? "应用效果生成中..." : `应用效果到上游图像${selectedEffects.length ? `（已选 ${selectedEffects.length}）` : ""}`}
+      </button>
+      {payload.status === "failed" && payload.errorMessage && (
+        <p style={{ fontSize: 10, color: "oklch(0.62 0.20 25)", margin: 0 }}>{payload.errorMessage}</p>
+      )}
+    </div>
+  );
 
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
 
@@ -293,7 +363,9 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
 
   return (
     <>
-    <BaseNode id={id} selected={selected} nodeType="post_process" title={data.title} minHeight={320} resizable>
+    <BaseNode id={id} selected={selected} nodeType="post_process" title={data.title} minHeight={320} resizable
+      onRun={() => void handleApply()} running={isApplying} canRun={!!srcUrl && !!generatedPrompt} hasResult={!!payload.outputUrl}
+      heroMedia={payload.outputUrl ? <img src={payload.outputUrl} alt="后处理结果" style={{ width: "100%", height: "auto", display: "block" }} /> : undefined}>
       <div
         style={{
           overflow: "hidden",
@@ -304,7 +376,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
         }}
       >
       <div className="flex flex-col nodrag" style={{ userSelect: "none" }}>
-        {!isCreativeMode ? configBody : <div style={{ padding: "12px 14px", fontSize: 11.5, color: "var(--c-t3)" }}>已选 {selectedEffects.length} 个效果 — 选中节点后在下方浮动面板中选择与调整</div>}
+        {!isCreativeMode ? (<>{configBody}{applySection}</>) : <div style={{ padding: "12px 14px", fontSize: 11.5, color: "var(--c-t3)" }}>已选 {selectedEffects.length} 个效果 — 选中节点后在下方浮动面板中选择与应用</div>}
       </div>
       </div>{/* end collapse wrapper */}
     </BaseNode>
@@ -323,6 +395,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
         {advancedOpen && (
           <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
             {configBody}
+            {applySection}
           </div>
         )}
       </InlineGenBar>
