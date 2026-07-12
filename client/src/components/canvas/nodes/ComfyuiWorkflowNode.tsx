@@ -1855,6 +1855,67 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             );
           })()}
         </div>
+        {/* #107 常用绑定参数直接上浮（主参数/负向词/种子/步数/CFG/尺寸等），完整参数仍在「高级」 */}
+        {(() => {
+          const bindings = payload.paramBindings ?? [];
+          if (bindings.length === 0) return null;
+          const posKey = positivePromptParamKey(bindings);
+          const keyOf = (b: WorkflowParamBinding) => `${b.nodeId}.${b.fieldPath}`;
+          const common = bindings.filter((b) => {
+            if (keyOf(b) === posKey || b.type === "image" || b.type === "audio") return false;
+            if (b.priority === 1 || b.role === "negative") return true;
+            return /负向|negative|seed|种子|steps|步数|cfg|denoise|width|height|宽|高|时长|帧数|frames|fps/i.test(`${b.label} ${b.fieldPath}`);
+          }).slice(0, 8);
+          if (common.length === 0) return null;
+          const setVal = (k: string, v: unknown) => update({ paramValues: { ...(payload.paramValues ?? {}), [k]: v } });
+          return (
+            <div className="nodrag" style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              {common.map((b) => {
+                const k = keyOf(b);
+                const cur = payload.paramValues?.[k] ?? b.defaultValue;
+                const lab = b.label || b.fieldPath;
+                if (b.type === "boolean") {
+                  return (
+                    <button key={k} className="nodrag" onClick={(e) => { e.stopPropagation(); setVal(k, !cur); }} title={lab}
+                      style={{ height: 26, padding: "0 9px", borderRadius: 8, fontSize: 10.5, fontWeight: 600, cursor: "pointer",
+                        background: cur ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 16%, var(--c-surface))" : "var(--c-input)",
+                        border: `1px solid ${cur ? "var(--ui-accent, var(--c-accent))" : "var(--c-bd2)"}`, color: cur ? "var(--c-t1)" : "var(--c-t3)" }}>
+                      {lab}{cur ? " ✓" : ""}
+                    </button>
+                  );
+                }
+                if (b.type === "select" && (b.options?.length ?? 0) > 0) {
+                  return (
+                    <label key={k} title={lab} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--c-t4)", whiteSpace: "nowrap" }}>
+                      {lab}
+                      <select className="nodrag" value={String(cur ?? "")} onChange={(e) => setVal(k, e.target.value)}
+                        style={{ height: 26, maxWidth: 150, fontSize: 10.5, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 7, color: "var(--c-t1)", padding: "0 4px" }}>
+                        {(b.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </label>
+                  );
+                }
+                if (b.type === "number") {
+                  return (
+                    <label key={k} title={lab} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--c-t4)", whiteSpace: "nowrap" }}>
+                      {lab}
+                      <input type="number" className="nodrag" value={cur === undefined || cur === null || cur === "" ? "" : Number(cur)}
+                        min={b.min} max={b.max} step={b.step}
+                        onChange={(e) => setVal(k, e.target.value === "" ? undefined : Number(e.target.value))}
+                        style={{ width: 68, height: 26, fontSize: 10.5, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 7, color: "var(--c-t1)", padding: "0 6px", outline: "none" }} />
+                    </label>
+                  );
+                }
+                return (
+                  <input key={k} className="nodrag" placeholder={lab} title={lab}
+                    value={typeof cur === "string" ? cur : cur == null ? "" : String(cur)}
+                    onChange={(e) => setVal(k, e.target.value)}
+                    style={{ flex: "1 1 100%", minWidth: 180, height: 26, fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 8, color: "var(--c-t2)", padding: "0 9px", outline: "none" }} />
+                );
+              })}
+            </div>
+          );
+        })()}
         <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
           {!payload.workflowJson?.trim() && (
             <button className="nodrag" onClick={(e) => { e.stopPropagation(); setShowWizard(true); }}

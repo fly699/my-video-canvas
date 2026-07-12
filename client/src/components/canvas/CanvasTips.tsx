@@ -9,7 +9,13 @@ import { useCanvasMode } from "../../contexts/CanvasModeContext";
 // 自动消失，右键=这条不再显示。纯表现层，pointer-events 仅落在卡片本身，不干扰画布。
 // studio:true 的贴士描述的是工作室专属 UI（命令栏/批量参数/搜索下拉等），仅在 studio 皮肤展示，
 // 否则在 pro/simple 皮肤会提示根本不存在的功能。cmdk/ball/guide 跨皮肤通用。
-interface Tip { id: string; icon: ReactNode; title: string; body: string; studio?: boolean }
+interface Tip { id: string; icon: ReactNode; title: string; body: string; studio?: boolean; creativeOnly?: boolean }
+// #108 优先贴士：每次进入画布都会依次提示（无视「关闭全部贴士」的历史状态），
+// 直到用户对这一条点「不再显示这条」。用于强曝光新快捷功能。
+const PRIORITY_TIPS: Tip[] = [
+  { id: "altq", creativeOnly: true, icon: <Maximize2 size={15} />, title: "极简显示 Alt+Q", body: "按 Alt+Q：所有节点只留预览框（无边框、极窄阴影），画布秒变看片墙；再按恢复标准显示。" },
+  { id: "altw", icon: <BookOpen size={15} />, title: "速览 Alt+W", body: "按 Alt+W 临时展开全部节点的参考图与顶部提示词窗，一眼速览整张画布的素材与文案；再按或 5 秒后自动恢复。" },
+];
 const TIPS: Tip[] = [
   { id: "cmdk", icon: <Command size={15} />, title: "命令面板 ⌘K", body: "搜索节点后回车进入命令层：定位 / 运行 / 改比例 / 复制 / 删除，键盘全程可达。" },
   { id: "node", studio: true, icon: <Sparkles size={15} />, title: "选中即可创作", body: "选中生成节点，下方命令栏可直接改模型、比例、参考图并一键生成。" },
@@ -64,8 +70,8 @@ export function CanvasTips() {
     leaveTimer.current = window.setTimeout(() => { setTip(null); setLeaving(false); }, 260);
   }, []);
 
-  const show = useCallback((t: Tip | null, force = false) => {
-    if (!t || offRef.current) return;
+  const show = useCallback((t: Tip | null, force = false, ignoreOff = false) => {
+    if (!t || (offRef.current && !ignoreOff)) return;
     if (dismissedRef.current.has(t.id)) return;
     if (t.studio && !isStudioRef.current) return; // 非 studio 皮肤不展示 studio 专属贴士
     if (typeof window !== "undefined" && window.innerWidth < 640) return; // 窄屏/移动端不打扰
@@ -78,18 +84,36 @@ export function CanvasTips() {
     hideTimer.current = window.setTimeout(() => hide(), 9000);
   }, [hide]);
 
-  // 定时轮播下一条未忽略的贴士。
+  // #108 优先贴士：每次进入画布依次强提示（无视「关闭全部贴士」），
+  // 直到用户对该条点「不再显示这条」。creativeOnly 条目仅创意画布展示。
+  const creativeRef = useRef(creative);
+  creativeRef.current = creative;
+  useEffect(() => {
+    const timers: number[] = [];
+    const pri = PRIORITY_TIPS.filter((t) => !dismissedRef.current.has(t.id) && (!t.creativeOnly || creativeRef.current));
+    pri.forEach((t, i) => {
+      timers.push(window.setTimeout(() => {
+        if (!dismissedRef.current.has(t.id)) { lastRef.current = 0; show(t, true, true); }
+      }, 3500 + i * 11000));
+    });
+    return () => timers.forEach((id) => window.clearTimeout(id));
+    // 仅进画布时跑一轮（模式中途切换不重复打扰）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show]);
+
+  // 定时轮播下一条未忽略的贴士（优先贴士也进常规轮播池）。
   useEffect(() => {
     const pick = () => {
       if (offRef.current) return;
-      const avail = TIPS.filter(allowed);
+      const avail = [...PRIORITY_TIPS.filter((t) => !t.creativeOnly || creativeRef.current), ...TIPS].filter(allowed);
       if (!avail.length) return;
       show(avail[idxRef.current % avail.length]);
       idxRef.current++;
     };
-    const first = window.setTimeout(pick, 9000);
+    const first = window.setTimeout(pick, 26000);
     const iv = window.setInterval(pick, 52000);
     return () => { window.clearTimeout(first); window.clearInterval(iv); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show]);
 
   // 情境触发：新增节点 → 提示如何使用；进入多选 → 提示批量操作。
