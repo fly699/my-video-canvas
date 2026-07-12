@@ -38,6 +38,7 @@ import { nanoid } from "nanoid";
 import { openNodeCompare } from "../CompareLightbox";
 import { usePickStore } from "../../../hooks/usePickStore";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
+import { useMinimalDisplay } from "../../../hooks/useMinimalDisplay";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { useFocusRefSource } from "../../../hooks/useFocusRefSource";
 import { imageModelRequiresRef } from "../../../lib/models";
@@ -487,8 +488,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // 多图 hero（LibTV 多图模式）：默认堆叠——只显当前选中图、右下露叠层卡边、
   // 「N 张」角标展开为画布内网格（heroView="grid"，每张 hover 下载/设为主图，
   // 主图「收起」回堆叠）、两侧悬停箭头切换当前图。
-  const heroShowStack = hasMultiple && isCreativeMode && !!payload.imageUrl && payload.heroView !== "grid";
-  const heroShowGrid = hasMultiple && !heroShowStack && payload.heroView !== "single";
+  // #109 极简显示（Alt+Q）：多产物强制网格平铺（堆叠只显一张，选片场景看不全）
+  const minimalDisplay = useMinimalDisplay();
+  const heroShowStack = hasMultiple && isCreativeMode && !!payload.imageUrl && payload.heroView !== "grid" && !minimalDisplay;
+  const heroShowGrid = hasMultiple && !heroShowStack && (minimalDisplay || payload.heroView !== "single");
   const stackOthers = heroShowStack ? (payload.imageUrls ?? []).filter((u) => u !== payload.imageUrl) : [];
   const stackCycle = (dir: 1 | -1) => {
     const urls = payload.imageUrls ?? [];
@@ -536,6 +539,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
        「下载」挤在右上角）；每图 hover 改为底部渐变 + 图标圆钮（下载/设为主图），
        可视性与命中率都更好。 */
     <div className="flex flex-col">
+      {!minimalDisplay && (
       <div className="nodrag flex items-center justify-between" style={{ padding: "6px 10px 0" }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t4)" }}>{payload.imageUrls!.length} 张 · 网格视图</span>
         <button
@@ -547,6 +551,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           <ChevronUp style={{ width: 11, height: 11 }} /> 收起
         </button>
       </div>
+      )}
       <div
         className="grid gap-1 p-2"
         style={{ gridTemplateColumns: payload.imageUrls!.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.imageUrls!.length, 3)}, 1fr)` }}
