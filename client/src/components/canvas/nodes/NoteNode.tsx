@@ -3,6 +3,7 @@ import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { NoteNodeData } from "../../../../../shared/types";
 import { NodeTextArea } from "../NodeTextInput";
+import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 
 interface Props {
   id: string;
@@ -37,6 +38,8 @@ function renderMarkdown(text: string): string {
 export const NoteNode = memo(function NoteNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  // #98 LibTV：创意模式便签用大字无边框排版（与提示词节点净卡体同款观感）。
+  const { isCreativeMode } = useCreativeAdvanced(selected);
 
   const handleChange = useCallback(
     (value: string) => { updateNodeData(id, { content: value }); },
@@ -54,14 +57,14 @@ export const NoteNode = memo(function NoteNode({ id, selected, data }: Props) {
 
             style={{
               resize: "none",
-              fontSize: 12,
+              fontSize: isCreativeMode ? 13.5 : 12,
               lineHeight: 1.75,
               background: "transparent",
               border: "none",
               outline: "none",
-              color: "var(--c-t2)",
+              color: isCreativeMode ? "var(--c-t1)" : "var(--c-t2)",
               minHeight: 80,
-              fontFamily: "var(--font-mono)",
+              fontFamily: isCreativeMode ? "inherit" : "var(--font-mono)",
             }}
           />
         ) : payload.content?.trim() ? (

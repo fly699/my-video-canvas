@@ -1,6 +1,7 @@
 import { memo, useCallback } from "react";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
-import { AdvancedToggleRow } from "../InlineBarParts";
+import { InlineGenBar } from "../InlineGenBar";
+import { SlidersHorizontal } from "lucide-react";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
@@ -116,33 +117,9 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
   const isProcessing = payload.status === "processing" || smartCutMutation.isPending;
   const aggressiveness = payload.aggressiveness ?? "medium";
 
-  return (
-    <BaseNode id={id} selected={selected} nodeType="smart_cut" title={data.title} minHeight={200} resizable>
-
-      <div className="flex flex-col gap-3 p-3.5">
-
-        {/* Status banner */}
-        {isProcessing && (
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
-            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
-            <span className="text-xs" style={{ color: accent }}>Whisper 转录 + AI 分析 + FFmpeg 剪辑中...</span>
-          </div>
-        )}
-        {payload.status === "failed" && payload.errorMessage && (
-          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
-            <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
-          </div>
-        )}
-
-        {boundaryCount > 0 && (
-          <p title="上游成片的各镜起点将作为剪辑保护切点：剪辑边界优先落在镜头切点上（±0.5s 自动吸附），不在镜头中间起切"
-            style={{ fontSize: 9.5, color: "oklch(0.65 0.20 160)", margin: 0, lineHeight: 1.5 }}>
-            🎬 已识别上游装配成片：{boundaryCount} 个镜头切点将作为剪辑保护边界
-          </p>
-        )}
-
-        {isCreativeMode && <AdvancedToggleRow open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />}
-        {!(isCreativeMode && !advancedOpen) && (<>
+  // #97 配置区单一来源：非创意内联卡体（原样）；创意模式挂输入条「参数与操作」下浮面板。
+  const configBody = (
+    <>
         {/* Video URL */}
         <div>
           <label style={labelStyle}>视频 URL（自动从连接节点读取）</label>
@@ -177,7 +154,36 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
             style={fieldStyle} />
         </div>
 
-        </>)}
+    </>
+  );
+
+  return (
+    <>
+    <BaseNode id={id} selected={selected} nodeType="smart_cut" title={data.title} minHeight={200} resizable>
+
+      <div className="flex flex-col gap-3 p-3.5">
+
+        {/* Status banner */}
+        {isProcessing && (
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
+            <span className="text-xs" style={{ color: accent }}>Whisper 转录 + AI 分析 + FFmpeg 剪辑中...</span>
+          </div>
+        )}
+        {payload.status === "failed" && payload.errorMessage && (
+          <div className="px-2.5 py-2 rounded-lg" style={{ background: "oklch(0.62 0.20 25 / 0.08)", border: "1px solid oklch(0.62 0.20 25 / 0.3)" }}>
+            <p className="text-xs" style={{ color: "oklch(0.62 0.20 25)" }}>{payload.errorMessage}</p>
+          </div>
+        )}
+
+        {boundaryCount > 0 && (
+          <p title="上游成片的各镜起点将作为剪辑保护切点：剪辑边界优先落在镜头切点上（±0.5s 自动吸附），不在镜头中间起切"
+            style={{ fontSize: 9.5, color: "oklch(0.65 0.20 160)", margin: 0, lineHeight: 1.5 }}>
+            🎬 已识别上游装配成片：{boundaryCount} 个镜头切点将作为剪辑保护边界
+          </p>
+        )}
+
+        {!isCreativeMode && configBody}
 
         {/* Output stats */}
         {payload.status === "done" && payload.outputDuration != null && (
@@ -236,5 +242,25 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
       </div>
 
     </BaseNode>
+    {/* ── #97 LibTV（创意模式）就地输入条：参数与操作下浮面板（屏幕恒定） ── */}
+    {isCreativeMode && (
+      <InlineGenBar nodeId={id} visible={!!selected} width={440}>
+        <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t2)", whiteSpace: "nowrap" }}>智能剪辑</span>
+          <span style={{ fontSize: 10.5, color: "var(--c-t4)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>检测参数 / 片段策略</span>
+          <button className="nodrag" onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起参数面板" : "展开参数与操作面板（浮现于输入条下方，不撑开节点卡体）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <SlidersHorizontal size={12} /> 参数与操作
+          </button>
+        </div>
+        {advancedOpen && (
+          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            {configBody}
+          </div>
+        )}
+      </InlineGenBar>
+    )}
+    </>
   );
 });
