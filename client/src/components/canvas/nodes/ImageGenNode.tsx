@@ -48,6 +48,9 @@ import { ImageLightbox } from "../ImageLightbox";
 import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
+import { COMFY_LOCAL_MODEL } from "@/lib/comfyLocalRoute";
+import { buildLocalComfyImageInput } from "@/lib/comfyLocalImageGen";
+import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { estimateImageCost, costEstimateLabel, KIE_IMAGE_RES_COST } from "@/lib/costEstimate";
 import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
@@ -291,40 +294,46 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // #140 放弃等待：云端生图是「提交即计费」的一次长请求，无法撤回；放弃 = 本地不再等、
   // 结果不回填（abandonedRef 守卫 onSuccess）。每次重新生成时复位。
   const abandonedRef = useRef(false);
-  const genMutation = trpc.imageGen.generate.useMutation({
-    onSuccess: (result) => {
-      if (abandonedRef.current) return; // 用户已放弃等待——结果丢弃，不回填
-      // Guard: node may have been deleted while generation was in flight
-      if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
-      if (result.urls && result.urls.length > 1) {
-        updateNodeData(id, {
-          imageUrls: result.urls,
-          imageUrl: result.urls[0],
-          imageUrlSources: result.sourceUrls,
-          imageUrlSource: result.sourceUrls?.[0] ?? result.sourceUrl,
-          imageUrlSourceAt: result.sourceAt,
-        });
-        propagateRefImage(id, result.urls[0]);
-        toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
-      } else {
-        const imageUrl = result.url ?? result.urls?.[0];
-        if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
-        updateNodeData(id, {
-          imageUrl,
-          imageUrls: undefined,
-          imageUrlSource: result.sourceUrl ?? result.sourceUrls?.[0],
-          imageUrlSources: undefined,
-          imageUrlSourceAt: result.sourceAt,
-        });
-        propagateRefImage(id, imageUrl);
-        toast.success("图像生成成功");
-      }
-    },
-    onError: (err) => {
-      if (abandonedRef.current) return; // 已放弃——错误也不打扰
-      toast.error("图像生成失败：" + err.message);
-    },
-  });
+  // 回填与报错抽成共享回调：云端 imageGen 与「本地 ComfyUI（自建算力）」两条生成路径复用同一套
+  // 写回逻辑（结果形状都是 { url, urls?, sourceUrl?, sourceUrls?, sourceAt? }，ComfyUI 无 source* 字段
+  // 时安全落 undefined）。
+  const applyGenResult = useCallback((result: { url?: string; urls?: string[]; sourceUrl?: string; sourceUrls?: string[]; sourceAt?: number }) => {
+    if (abandonedRef.current) return; // 用户已放弃等待——结果丢弃，不回填
+    // Guard: node may have been deleted while generation was in flight
+    if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+    if (result.urls && result.urls.length > 1) {
+      updateNodeData(id, {
+        imageUrls: result.urls,
+        imageUrl: result.urls[0],
+        imageUrlSources: result.sourceUrls,
+        imageUrlSource: result.sourceUrls?.[0] ?? result.sourceUrl,
+        imageUrlSourceAt: result.sourceAt,
+      });
+      propagateRefImage(id, result.urls[0]);
+      toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
+    } else {
+      const imageUrl = result.url ?? result.urls?.[0];
+      if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
+      updateNodeData(id, {
+        imageUrl,
+        imageUrls: undefined,
+        imageUrlSource: result.sourceUrl ?? result.sourceUrls?.[0],
+        imageUrlSources: undefined,
+        imageUrlSourceAt: result.sourceAt,
+      });
+      propagateRefImage(id, imageUrl);
+      toast.success("图像生成成功");
+    }
+  }, [id, updateNodeData, propagateRefImage]);
+  const applyGenError = useCallback((err: { message: string }) => {
+    if (abandonedRef.current) return; // 已放弃——错误也不打扰
+    toast.error("图像生成失败：" + err.message);
+  }, []);
+  const genMutation = trpc.imageGen.generate.useMutation({ onSuccess: applyGenResult, onError: applyGenError });
+  // #87 自建算力：模型选「本地 ComfyUI」时改走此 mutation（comfyui.generateImage，txt2img/img2img）。
+  const comfyLocalMut = trpc.comfyui.generateImage.useMutation({ onSuccess: applyGenResult, onError: applyGenError });
+  // 两条生成路径合一的「进行中」状态，供按钮禁用/转圈统一读取。
+  const isGenerating = genMutation.isPending || comfyLocalMut.isPending;
 
   const uploadMutation = trpc.upload.uploadImage.useMutation();
 
@@ -395,12 +404,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     }
   }, [id, payload.seed]);
 
-  // 批量「运行全部」进行中：runner 用它自己的 mutation 实例跑本节点，本节点 genMutation.isPending
+  // 批量「运行全部」进行中：runner 用它自己的 mutation 实例跑本节点，本节点 isGenerating
   // 却为 false，导致手动「运行」可对同一节点再发一次 → 双扣费/占卡。批量运行中禁用手动运行。
   const batchRunning = useWorkflowRunState().running;
 
   const handleGenerate = () => {
-    if (genMutation.isPending) return;
+    if (isGenerating) return;
     if (batchRunning) { toast.error("批量运行进行中，请等待完成后再单独运行"); return; }
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
@@ -413,6 +422,25 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     });
     if (built.blocked) { toast.error(built.blocked); return; }
     abandonedRef.current = false; // 新一轮生成：复位「放弃等待」标记
+    // #87 自建算力：走本地 ComfyUI（无参考=txt2img，有参考=img2img），复用全局地址/checkpoint。
+    if ((payload.model as string | undefined) === COMFY_LOCAL_MODEL) {
+      const bi = built.input as { prompt?: string; style?: string; negativePrompt?: string };
+      // 比例/张数是通用字段（ImageGenNodeData 类型未显式声明，运行时存在，与 buildImageGenInput 同款 cast）。
+      const g = payload as unknown as { aspectRatio?: string; imageSize?: string; poyoAspectRatio?: string; imageN?: number };
+      const local = buildLocalComfyImageInput({
+        prompt: bi.prompt ?? payload.prompt ?? "",
+        style: bi.style ?? payload.style,
+        negativePrompt: bi.negativePrompt ?? payload.negativePrompt,
+        refUrl: built.refUrl,
+        aspect: g.aspectRatio || g.imageSize || g.poyoAspectRatio,
+        batch: g.imageN,
+        projectId: data.projectId,
+        nodeId: id,
+      });
+      if (!local.ok) { toast.error(local.blocked); return; }
+      comfyLocalMut.mutate(local.input);
+      return;
+    }
     const submit = () => genMutation.mutate({
       ...(built.input as Parameters<typeof genMutation.mutate>[0]),
       projectId: data.projectId,
@@ -424,6 +452,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   const abandonWait = () => {
     abandonedRef.current = true;
     genMutation.reset();
+    comfyLocalMut.reset(); // 自建算力路径同样解锁
     toast.info("已放弃等待：节点已解锁。云端生成仍在进行（费用照常发生），其结果不会回填本节点", { duration: 7000 });
   };
 
@@ -431,7 +460,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // 避免同 tick 调 handleGenerate 读到旧 payload（buildImageGenInput 读 prop）。
   useEffect(() => {
     if (!pendingGen3d) return;
-    if (uploading || genMutation.isPending) return;
+    if (uploading || isGenerating) return;
     setPendingGen3d(false);
     handleGenerate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -675,8 +704,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}
-      onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
-      onCancelGenerate={genMutation.isPending ? abandonWait : undefined}
+      onRun={handleGenerate} running={isGenerating} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
+      onCancelGenerate={isGenerating ? abandonWait : undefined}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       extraHandles={
@@ -758,11 +787,11 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                 </div>
                 <button
                   onClick={handleGenerate}
-                  disabled={genMutation.isPending}
+                  disabled={isGenerating}
                   className="nodrag flex items-center gap-1 px-2 py-0.5 rounded text-xs"
                   style={{ background: "oklch(0.72 0.20 330 / 0.12)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent, fontSize: 10 }}
                 >
-                  {genMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+                  {isGenerating ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
                   重新生成
                 </button>
                 <button
@@ -969,6 +998,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             onChange={(v) => update("model", v as ImageGenModel)}
             options={IMAGE_MODEL_PICKER_OPTIONS}
           />
+          {/* #87 自建算力：选「本地 ComfyUI」时展示地址 + checkpoint（全能服务器管理器，全局共享）。 */}
+          {(payload.model as string | undefined) === COMFY_LOCAL_MODEL && (
+            <div style={{ marginTop: 8 }}><ComfyCkptSelect enabled width={180} /></div>
+          )}
           {/* 编辑 / 图生图模型必须有参考图——缺图时提前提示，避免提交后才被上游退回扣费 */}
           {imageModelRequiresRef(payload.model) && stripImages.length === 0 && (
             <div style={{
@@ -1449,30 +1482,30 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         {/* Generate button */}
         <button
           onClick={handleGenerate}
-          disabled={genMutation.isPending || batchRunning || !payload.prompt?.trim()}
+          disabled={isGenerating || batchRunning || !payload.prompt?.trim()}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
-            background: genMutation.isPending || !payload.prompt?.trim()
+            background: isGenerating || !payload.prompt?.trim()
               ? "var(--c-surface)"
               : "linear-gradient(135deg, oklch(0.72 0.20 330 / 0.18), oklch(0.68 0.22 285 / 0.18))",
             borderWidth: 1, borderStyle: "solid",
-            borderColor: genMutation.isPending || !payload.prompt?.trim() ? BORDER_DEFAULT : BORDER_ACCENT,
-            color: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-t4)" : accent,
-            cursor: genMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer",
+            borderColor: isGenerating || !payload.prompt?.trim() ? BORDER_DEFAULT : BORDER_ACCENT,
+            color: isGenerating || !payload.prompt?.trim() ? "var(--c-t4)" : accent,
+            cursor: isGenerating || !payload.prompt?.trim() ? "not-allowed" : "pointer",
             letterSpacing: "0.02em",
           }}
         >
-          {genMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+          {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
           {(() => {
             const poyoN = (payload as unknown as { imageN?: number }).imageN ?? 1;
             const batch = isSoul && (payload.batchSize ?? 1) > 1 ? (payload.batchSize ?? 1)
                         : isFluxPro && (payload.fluxNumImages ?? 1) > 1 ? (payload.fluxNumImages ?? 1)
                         : poyoN > 1 ? poyoN
                         : 1;
-            if (genMutation.isPending) return batch > 1 ? `批量生成中 (${batch} 张)...` : "AI 生成中...";
+            if (isGenerating) return batch > 1 ? `批量生成中 (${batch} 张)...` : "AI 生成中...";
             return batch > 1 ? `批量生成 ${batch} 张` : "生成图像";
           })()}
-          {genCostLabel && !genMutation.isPending && (
+          {genCostLabel && !isGenerating && (
             <span
               title="按当前模型与参数实时预估的点数消耗，仅供参考，实际以平台账单为准"
               style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "oklch(0.72 0.20 330 / 0.15)", letterSpacing: "0.02em" }}
@@ -1481,7 +1514,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             </span>
           )}
         </button>
-        {genMutation.isPending && (
+        {isGenerating && (
           // #140 放弃等待（云端生图提交即计费，无法撤回；放弃 = 本地解锁、结果不回填）
           <button
             onClick={abandonWait}
@@ -1633,12 +1666,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <button
             className="nodrag"
-            onClick={(e) => { e.stopPropagation(); if (!genMutation.isPending && payload.prompt?.trim()) handleGenerate(); }}
-            disabled={genMutation.isPending || !payload.prompt?.trim()}
-            title={genMutation.isPending ? "生成中…" : "生成"}
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: genMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer", background: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: genMutation.isPending || !payload.prompt?.trim() ? "var(--c-t4)" : "#0b0d12" }}
+            onClick={(e) => { e.stopPropagation(); if (!isGenerating && payload.prompt?.trim()) handleGenerate(); }}
+            disabled={isGenerating || !payload.prompt?.trim()}
+            title={isGenerating ? "生成中…" : "生成"}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: isGenerating || !payload.prompt?.trim() ? "not-allowed" : "pointer", background: isGenerating || !payload.prompt?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: isGenerating || !payload.prompt?.trim() ? "var(--c-t4)" : "#0b0d12" }}
           >
-            {genMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
+            {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
           </button>
         </div>
       </InlineGenBar>

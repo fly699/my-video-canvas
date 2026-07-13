@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check, Search } from "lucide-react";
 import { IMAGE_MODELS, platformBadge, modelGroupOrder } from "@/lib/models";
+import { COMFY_LOCAL_OPTION } from "@/lib/comfyLocalRoute";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { useNodeDefaultModels } from "@/contexts/NodeDefaultModelsContext";
 
@@ -261,11 +262,15 @@ export function imageCostLabel(meta: { cost?: number; costNote?: string }): stri
 // module constant, so this projection never changes. Sharing one frozen array
 // (instead of `IMAGE_MODELS.map(...)` inline in each node's render) keeps the
 // reference stable so ModelPicker's `groups` useMemo isn't busted every render.
-export const IMAGE_MODEL_PICKER_OPTIONS: ModelPickerOption[] = IMAGE_MODELS.map((m) => ({
-  value: m.value,
-  label: m.label,
-  group: m.group,
-  family: m.family,
-  caps: m.caps,
-  costLabel: imageCostLabel(m),
-}));
+export const IMAGE_MODEL_PICKER_OPTIONS: ModelPickerOption[] = [
+  ...IMAGE_MODELS.map((m) => ({
+    value: m.value,
+    label: m.label,
+    group: m.group,
+    family: m.family,
+    caps: m.caps,
+    costLabel: imageCostLabel(m),
+  })),
+  // #87 自建算力：选中即改走 comfyui.generateImage（本地 ComfyUI，免云端积分）。
+  { value: COMFY_LOCAL_OPTION.value, label: COMFY_LOCAL_OPTION.label, group: COMFY_LOCAL_OPTION.group, family: COMFY_LOCAL_OPTION.family, costLabel: COMFY_LOCAL_OPTION.costLabel },
+];
