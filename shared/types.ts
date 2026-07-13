@@ -659,6 +659,10 @@ export interface DirectorScene {
   lights?: DirectorLight[];
   /** #78 压暗基础光：有布光时把环境光/方向光压到很低，突出灯光造型（缺省 true）。 */
   dimBase?: boolean;
+  /** 截图输出格式（照片型产出：机位截图/入库/宫格）。缺省 "jpeg"（编码快、体积小）；"png" 无损更大。控制图始终 PNG，不受此项影响。 */
+  captureFormat?: "jpeg" | "png";
+  /** 截图输出质量档 → 分辨率：high=原生最清晰 / medium≤1280 / low≤720（长边）。缺省 "high"。JPEG 编码质量随档位 0.95/0.90/0.82。 */
+  captureQuality?: "high" | "medium" | "low";
 }
 
 export interface DirectorNodeData {
