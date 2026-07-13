@@ -57,7 +57,20 @@ export function NodeImageLightbox() {
         <button onClick={() => downloadImage(src)} title="下载图片" style={btn}><Download size={18} /></button>
         <button onClick={() => setSrc(null)} title="关闭" style={btn}><X size={18} /></button>
       </div>
-      <img src={src} alt="" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "94vw", maxHeight: "94vh", borderRadius: 8, boxShadow: "0 10px 50px rgba(0,0,0,0.6)", cursor: "default", objectFit: "contain" }} />
+      {/* 用户反馈（2026-07）：放大不满屏——改 100vw/100vh contain 等比充满（小图也放大）。
+          图片元素铺满后点「黑边」落在 img 上，按 contain 实绘区域判定 letterbox 点击关闭。 */}
+      <img src={src} alt="" style={{ width: "100vw", height: "100vh", cursor: "default", objectFit: "contain" }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const img = e.currentTarget;
+          const r = img.getBoundingClientRect();
+          const nw = img.naturalWidth, nh = img.naturalHeight;
+          if (!nw || !nh) return;
+          const s = Math.min(r.width / nw, r.height / nh);
+          const dw = nw * s, dh = nh * s;
+          const x0 = r.left + (r.width - dw) / 2, y0 = r.top + (r.height - dh) / 2;
+          if (e.clientX < x0 || e.clientX > x0 + dw || e.clientY < y0 || e.clientY > y0 + dh) setSrc(null);
+        }} />
     </div>,
     document.body,
   );
