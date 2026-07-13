@@ -216,7 +216,7 @@ const TEMPLATES: Template[] = [
       { type: "video_task", dx: -420, dy: 1160, title: "视频 1" },
       { type: "video_task", dx: 0,    dy: 1160, title: "视频 2" },
       { type: "video_task", dx: 420,  dy: 1160, title: "视频 3" },
-      { type: "merge",      dx: 0,    dy: 1540, title: "合并剪辑", initialData: { transition: "fade", bgMusicVolume: 0.25 } },
+      { type: "merge",      dx: 0,    dy: 1540, title: "合并剪辑", initialData: { transition: "none", bgMusicVolume: 0.25 } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -278,7 +278,7 @@ const TEMPLATES: Template[] = [
       { type: "video_task", dx: -210, dy: 1520, title: "视频片段 2" }, // 13
       { type: "video_task", dx: 210,  dy: 1520, title: "视频片段 3" }, // 14
       { type: "video_task", dx: 630,  dy: 1520, title: "视频片段 4" }, // 15
-      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑", initialData: { transition: "fade", bgMusicVolume: 0.3 } }, // 16
+      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑", initialData: { transition: "none", bgMusicVolume: 0.3 } }, // 16
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 4 },   // 脚本 → 4 个分镜
@@ -330,7 +330,7 @@ const TEMPLATES: Template[] = [
       { type: "video_task", dx: -150, dy: 1520, title: "Vlog 片段 2" }, // 12
       { type: "video_task", dx: 150,  dy: 1520, title: "Vlog 片段 3" }, // 13
       { type: "video_task", dx: 450,  dy: 1520, title: "Vlog 片段 4" }, // 14
-      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑", initialData: { transition: "dissolve", bgMusicVolume: 0.35 } }, // 15
+      { type: "merge",      dx: 0,    dy: 1900, title: "合并剪辑", initialData: { transition: "none", bgMusicVolume: 0.35 } }, // 15
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },   // 脚本 → 旁白配音（TTS 输入）
@@ -438,7 +438,7 @@ const TEMPLATES: Template[] = [
       { type: "video_task", dx: -420, dy: 1580, title: "视频 1" },
       { type: "video_task", dx: 0,    dy: 1580, title: "视频 2" },
       { type: "video_task", dx: 420,  dy: 1580, title: "视频 3" },
-      { type: "merge",      dx: 0,    dy: 1960, title: "合并剪辑", initialData: { transition: "fade", bgMusicVolume: 0.25 } },
+      { type: "merge",      dx: 0,    dy: 1960, title: "合并剪辑", initialData: { transition: "none", bgMusicVolume: 0.25 } },
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },
@@ -526,7 +526,7 @@ const TEMPLATES: Template[] = [
       { type: "video_task", dx: 360,  dy: -140, title: "视频1" },  // 6
       { type: "video_task", dx: 360,  dy: 140,  title: "视频2" },  // 7
       { type: "audio",      dx: 360,  dy: 380,  title: "配音",    initialData: { audioCategory: "dubbing", ttsSpeed: 1.0 } }, // 8
-      { type: "merge",      dx: 660,  dy: 0,    title: "合并",    initialData: { transition: "fade" } },            // 9
+      { type: "merge",      dx: 660,  dy: 0,    title: "合并",    initialData: { transition: "none" } },            // 9
     ],
     edgeSpecs: [
       { fromIndex: 0, toIndex: 1 },  // AI → 脚本

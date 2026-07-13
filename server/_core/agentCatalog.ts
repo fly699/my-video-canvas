@@ -158,7 +158,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     type: "merge", label: "合并", purpose: "把多个视频拼接成片。上游视频若能回溯到分镜，用户可在节点上一键「按镜头表装配」（镜号排序 + 逐镜转场 + 配音对位），无需手动排序",
     connectsTo: ["subtitle", "overlay", "asset"],
     fields: [
-      { name: "transition", type: "string", desc: "全局转场：none/fade/dissolve（逐镜转场由装配按分镜 transition 自动设置）" },
+      { name: "transition", type: "string", desc: "全局转场：none/fade/dissolve，默认 none 直切——除非用户点名要转场，否则不要设置（逐镜转场由装配按分镜 transition 自动设置）" },
       { name: "transitionDuration", type: "number", desc: "转场时长（秒，0.1-2.0，默认 0.5）" },
       { name: "burnShotSubtitles", type: "boolean", desc: "true 时装配完成后把镜头表对白直接烧录为成片字幕" },
     ],

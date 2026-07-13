@@ -85,7 +85,7 @@ export function buildRecipeOps(recipe: AgentRecipe, cfg: RecipeConfig): AgentOpe
   // Create merge up front so per-shot `connect → merge` resolves in apply order.
   ops.push({
     op: "create", nodeType: "merge", tempId: "merge", title: "合并成片",
-    payload: { transition: "fade", transitionDuration: 0.5 },
+    payload: { transition: "none" }, // #147 合并默认直切（转场由镜头表/用户显式设置）
   });
 
   for (let i = 0; i < shots; i++) {
