@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { BookOpen, User, Film, Music } from "lucide-react";
+import { BookOpen, User, Film, Music, Plus, LayoutGrid } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { applyAgentOperations } from "@/lib/agentApply";
@@ -56,7 +56,12 @@ const CARDS: GuideCard[] = [
   },
 ];
 
-export function EmptyCanvasGuide() {
+export function EmptyCanvasGuide({ onAddNode, onImportWorkflow }: {
+  /** 「添加第一个节点」按钮：打开节点选择器（Canvas 传 setShowNodePicker(true)）。 */
+  onAddNode?: () => void;
+  /** 「导入工作流」按钮：Canvas 传 addComfyWorkflowWithWizard。 */
+  onImportWorkflow?: () => void;
+} = {}) {
   const reactFlow = useReactFlow();
   const nodeCount = useCanvasStore((s) => s.nodes.length);
   // 加载期（boot 骨架/数据未回）画布短暂为空——延迟 1.2s 再显示，避免闪现误导。
@@ -111,6 +116,28 @@ export function EmptyCanvasGuide() {
           </button>
         ))}
       </div>
+      {/* #152 单一空态：显式「添加第一个节点 / 导入工作流」按钮并入此处（原独立 CTA
+          与本引导重叠、工作流卡盖住按钮致其点击失效——已合并，避免双层遮挡）。 */}
+      {(onAddNode || onImportWorkflow) && (
+        <div style={{ display: "flex", gap: 10, pointerEvents: "auto" }}>
+          {onAddNode && (
+            // stopPropagation：否则点击冒泡到画布 pane 的全局 click 会立即 setShowNodePicker(false)，
+            // 净效果是「点了没反应」——这正是用户报的「添加节点按钮无效」根因（与重叠无关）。
+            <button onClick={(e) => { e.stopPropagation(); onAddNode(); }} onPointerDown={(e) => e.stopPropagation()} className="nodrag"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                background: "var(--color-brand, oklch(0.62 0.2 285))", color: "#fff", border: "none", cursor: "pointer" }}>
+              <Plus className="w-4 h-4" /> 添加第一个节点
+            </button>
+          )}
+          {onImportWorkflow && (
+            <button onClick={(e) => { e.stopPropagation(); onImportWorkflow(); }} onPointerDown={(e) => e.stopPropagation()} className="nodrag"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                background: "var(--c-surface)", color: "var(--c-t2)", border: "1px solid var(--c-bd2)", cursor: "pointer" }}>
+              <LayoutGrid className="w-4 h-4" /> 导入工作流
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

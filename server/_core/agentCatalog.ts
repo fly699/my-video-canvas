@@ -164,10 +164,10 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     ],
   },
   {
-    type: "audio", label: "音频", purpose: "AI 配乐(music)/配音(dubbing)/音效(sfx)或上传音频。逐镜配音不要手建——镜头表面板会按分镜 dialogue 批量生成",
+    type: "audio", label: "音频", purpose: "AI 配乐(music)/配音(dubbing)/音效(sfx)/音频工具(tools)或上传音频。逐镜配音不要手建——镜头表面板会按分镜 dialogue 批量生成",
     connectsTo: ["merge", "clip"],
     fields: [
-      { name: "audioCategory", type: "string", desc: "music（配乐）/ dubbing（配音）/ sfx（音效）" },
+      { name: "audioCategory", type: "string", desc: "music（配乐）/ dubbing（配音）/ sfx（音效）/ tools（音频工具）" },
       { name: "ttsText", type: "string", desc: "配音文案（audioCategory=dubbing 时）" },
       { name: "musicPrompt", type: "string", desc: "配乐描述（audioCategory=music 时），如 轻快钢琴+弦乐" },
       { name: "musicStyle", type: "string", desc: "配乐风格标签（music），如 cinematic/lo-fi" },
@@ -175,6 +175,9 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "sfxPrompt", type: "string", desc: "音效描述（audioCategory=sfx 时），如 玻璃碎裂声" },
       { name: "sfxDuration", type: "number", desc: "音效时长（秒，0.5-22；不设=模型按描述自动定）" },
       { name: "sfxLoop", type: "boolean", desc: "true=生成可无缝循环的氛围音效（sfx）" },
+      // #152 音频工具（tools）：需连一个上游音频（lyrics 除外）。工具是对现成音频的加工，不吃提示词生成新曲。
+      { name: "toolModel", type: "string", desc: "音频工具（tools 时）：sep_vocals 人声分离 / cover 翻唱 / extend 续写 / lyrics 写歌词" },
+      { name: "toolPrompt", type: "string", desc: "cover 风格描述（必填）/ extend 续写方向（可选）/ lyrics 主题（tools 时）" },
     ],
   },
   {

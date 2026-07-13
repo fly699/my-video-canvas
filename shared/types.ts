@@ -693,7 +693,7 @@ export interface CompareNodeData {
   bUrl?: string;    // 显式覆盖右图（缺省取第 2 个上游图源）
 }
 
-export type AudioCategory = "upload" | "music" | "dubbing" | "sfx";
+export type AudioCategory = "upload" | "music" | "dubbing" | "sfx" | "tools";
 export type AudioSource = "upload" | "tts"; // legacy compat
 export interface AudioNodeData {
   audioCategory?: AudioCategory;
@@ -748,6 +748,19 @@ export interface AudioNodeData {
   sfxDuration?: number;
   /** 生成可无缝循环的氛围音效。 */
   sfxLoop?: boolean;
+  // ── #152 音乐工具（audioCategory="tools"）──
+  /** 选中的工具：sep_vocals(人声分离) / cover(翻唱) / extend(续写) / lyrics(写歌词)。 */
+  toolModel?: "sep_vocals" | "cover" | "extend" | "lyrics";
+  toolAudioUrl?: string;                 // 源音频（上传或从上游音频节点取）
+  toolAudioName?: string;                // 源音频显示名
+  toolPrompt?: string;                   // cover/extend 风格描述；lyrics 主题
+  toolMv?: string;                       // cover/extend 的 Suno 版本（默认 V5）
+  toolInstrumental?: boolean;            // cover/extend 纯器乐
+  toolSepModel?: "base" | "enhanced" | "instrumental";  // 分离质量
+  toolSepOutput?: "general" | "bass" | "drums" | "other" | "piano" | "guitar" | "vocals"; // 分离目标
+  toolContinueAt?: number;               // extend 起始秒
+  toolStems?: Record<string, string>;    // 分离产出各音轨 URL
+  toolLyrics?: string;                   // 写歌词产出文本
   // Legacy compat
   source?: AudioSource;
 }

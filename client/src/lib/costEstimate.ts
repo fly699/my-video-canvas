@@ -257,6 +257,17 @@ export function estimateMusicCost(model: string): CostEstimate {
   return null;
 }
 
+/** #152 音乐工具（人声分离/翻唱/续写/写歌词）：按次计费（round2-final-v2 权威价）。 */
+export function estimateAudioToolCost(tool: string): CostEstimate {
+  switch (tool) {
+    case "sep_vocals": return cr(15);
+    case "cover":      return cr(20);
+    case "extend":     return cr(20);
+    case "lyrics":     return cr(1);
+    default:           return null;
+  }
+}
+
 /** 配音 TTS：按字符数计费（每 1000 字符），向上取整千。本地 VoxCPM 免费。 */
 export function estimateTtsCost(model: string, textLength: number): CostEstimate {
   const kChars = Math.max(1, Math.ceil((textLength || 0) / 1000));
@@ -361,6 +372,11 @@ export function estimateCanvasBudget(
       } else if (cat === "sfx") {
         const secs = Math.max(0.5, Number(p.sfxDuration ?? 5) || 5);
         add("kie_sfx", "音效 SFX", pt(0.24 * secs, true)); // kie ElevenLabs SFX 0.24 点/秒
+      } else if (cat === "tools") {
+        const tool = String(p.toolModel ?? "");
+        if (!tool) { unknownCount++; continue; }
+        const lbl = { sep_vocals: "人声分离", cover: "翻唱", extend: "音频续写", lyrics: "写歌词" }[tool] ?? tool;
+        add(`tool_${tool}`, `音频工具·${lbl}`, estimateAudioToolCost(tool));
       } // upload：非生成，免费
     }
   }

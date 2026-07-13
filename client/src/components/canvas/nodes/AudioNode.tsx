@@ -23,7 +23,8 @@ import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { ModelPicker } from "../ModelPicker";
-import { estimateMusicCost, estimateTtsCost, costEstimateLabel } from "@/lib/costEstimate";
+import { estimateMusicCost, estimateTtsCost, estimateAudioToolCost, costEstimateLabel } from "@/lib/costEstimate";
+import { useDisabledModels } from "@/lib/useDisabledModels";
 
 interface Props {
   id: string;
@@ -226,6 +227,15 @@ export const SFX_MODELS = [
   { value: "kie_elevenlabs_sfx", label: "ElevenLabs SFX（kie）", desc: "文本→音效 · 0.5-22s", group: "ElevenLabs" },
 ];
 
+// #152 音乐工具第一批（audioCategory="tools"）。value = 服务端 tool id（禁止改名）。
+// 计价挂 estimateAudioToolCost；后台可经「音频工具」使能类目开关（useDisabledModels 过滤）。
+export const AUDIO_TOOL_MODELS = [
+  { value: "sep_vocals", label: "人声分离", desc: "拆分人声/伴奏/鼓/贝斯等音轨 · 15cr", group: "工具" },
+  { value: "cover",      label: "翻唱 / 转曲风", desc: "保留旋律换风格（需源音频）· 20cr", group: "工具" },
+  { value: "extend",     label: "音频续写", desc: "从指定秒起延长歌曲 · 20cr", group: "工具" },
+  { value: "lyrics",     label: "写歌词", desc: "描述主题 → AI 生成歌词 · 1cr", group: "工具" },
+];
+
 // Voice options vary by provider. Sending an OpenAI voice ID like "alloy" to
 // ElevenLabs/CosyVoice causes upstream errors or silent default-voice fallback —
 // both cases still bill the user. Pick a per-model list and reset on switch.
@@ -341,6 +351,7 @@ const CATEGORIES: { id: AudioCategory; label: string; icon: React.ReactNode }[] 
   { id: "music",   label: "配乐",   icon: <Music style={{ width: 11, height: 11 }} /> },
   { id: "dubbing", label: "配音",   icon: <Mic style={{ width: 11, height: 11 }} /> },
   { id: "sfx",     label: "音效",   icon: <Zap style={{ width: 11, height: 11 }} /> },
+  { id: "tools",   label: "工具",   icon: <Scissors style={{ width: 11, height: 11 }} /> },
   { id: "upload",  label: "上传",   icon: <Upload style={{ width: 11, height: 11 }} /> },
 ];
 
@@ -489,6 +500,8 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refFileInputRef = useRef<HTMLInputElement>(null);
+  const toolFileInputRef = useRef<HTMLInputElement>(null);       // #152 音乐工具源音频上传
+  const disabledModels = useDisabledModels();                    // 后台「音频工具」使能过滤
 
   const musicMutation = trpc.audioGen.generateMusic.useMutation({
     // payload.status 驱动 BaseNode 标题栏下方的常驻进度条/失败红条——节点收缩
@@ -504,6 +517,28 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         name: `${payload.musicStyle ? payload.musicStyle + " · " : ""}${payload.musicPrompt?.slice(0, 24) ?? "配乐"}`,
       });
       toast.success("配乐生成完成");
+    },
+    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
+  });
+
+  // #152 音乐工具（人声分离/翻唱/续写/写歌词）。结果形态随工具：音频→url、分离→toolStems、歌词→toolLyrics。
+  const toolMutation = trpc.audioGen.generateMusicTool.useMutation({
+    onMutate: () => updateNodeData(id, { status: "processing", errorMessage: undefined }),
+    onSuccess: (result) => {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+      if (result.kind === "audio" && result.url) {
+        updateNodeData(id, { url: result.url, duration: result.duration, status: "success", toolStems: undefined, toolLyrics: undefined, name: payload.toolModel === "cover" ? "翻唱" : "续写音频" });
+        toast.success("生成完成");
+      } else if (result.kind === "stems" && result.stems) {
+        // 主 url 取人声（无则任一轨），全部轨存 toolStems 供列表展示/下载。
+        const primary = result.stems.vocals ?? Object.values(result.stems)[0];
+        updateNodeData(id, { url: primary, duration: undefined, status: "success", toolStems: result.stems, toolLyrics: undefined, name: "人声分离" });
+        toast.success(`人声分离完成（${Object.keys(result.stems).length} 条音轨）`);
+      } else if (result.kind === "lyrics" && result.lyrics) {
+        updateNodeData(id, { toolLyrics: result.lyrics, status: "success", toolStems: undefined, name: result.title || "歌词" });
+        toast.success("歌词已生成");
+      }
     },
     onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
   });
@@ -601,6 +636,24 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     },
     onError: (err) => { setRefUploading(false); toast.error("参考音频上传失败：" + err.message); },
   });
+
+  // #152 工具源音频上传（写入 toolAudioUrl，不覆盖节点输出 url）。
+  const toolUploadMutation = trpc.upload.uploadImage.useMutation({
+    onSuccess: (result) => { updateNodeData(id, { toolAudioUrl: result.url }); toast.success("源音频已上传"); },
+    onError: (err) => { toast.error("上传失败：" + err.message); },
+  });
+  const handleToolAudioUpload = (file: File) => {
+    if (!file.type.startsWith("audio/")) { toast.error("请选择音频文件"); return; }
+    if (file.size > 30 * 1024 * 1024) { toast.error("源音频不能超过 30MB"); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      updateNodeData(id, { toolAudioName: file.name });
+      toolUploadMutation.mutate({ base64, mimeType: file.type, filename: file.name });
+    };
+    reader.onerror = () => toast.error("文件读取失败");
+    reader.readAsDataURL(file);
+  };
 
   const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1566,6 +1619,181 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
           </>
         )}
 
+        {/* ── 工具 Tools（#152 人声分离 / 翻唱 / 续写 / 写歌词）── */}
+        {category === "tools" && (() => {
+          const tool = payload.toolModel ?? "sep_vocals";
+          const availTools = AUDIO_TOOL_MODELS.filter((m) => !disabledModels.has(m.value));
+          const srcUrl = payload.toolAudioUrl ?? upstreamAudio[0]?.url ?? "";
+          const needsAudio = tool !== "lyrics";
+          const canRun = tool === "lyrics"
+            ? !!payload.toolPrompt?.trim()
+            : (!!srcUrl && (tool !== "cover" || !!payload.toolPrompt?.trim()));
+          return (
+          <>
+            <ModelSelect
+              models={availTools.length ? availTools : AUDIO_TOOL_MODELS}
+              value={tool}
+              onChange={(v) => update("toolModel", v)}
+            />
+            {/* 源音频（分离/翻唱/续写需要）：优先上游连线，可上传覆盖。 */}
+            {needsAudio && (
+              <div>
+                <label style={labelStyle}>源音频</label>
+                {srcUrl ? (
+                  <div className="flex items-center gap-2" style={{ fontSize: 11, color: "var(--c-t2)" }}>
+                    <Volume2 style={{ width: 12, height: 12, flexShrink: 0, color: accent }} />
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {payload.toolAudioName || upstreamAudio[0]?.name || "已选音频"}
+                    </span>
+                    {payload.toolAudioUrl && (
+                      <button className="nodrag" title="清除上传，改用上游音频"
+                        onClick={() => update("toolAudioUrl", undefined)}
+                        style={{ background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer", padding: 2 }}>
+                        <X style={{ width: 11, height: 11 }} />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: "var(--c-t4)" }}>连接一个上游音频节点，或点下方「上传源音频」</div>
+                )}
+                <button className="nodrag" onClick={() => toolFileInputRef.current?.click()}
+                  style={{ marginTop: 6, fontSize: 11, padding: "5px 10px", borderRadius: 8, cursor: "pointer",
+                    background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Upload style={{ width: 11, height: 11 }} /> 上传源音频
+                </button>
+                <input ref={toolFileInputRef} type="file" accept="audio/*" style={{ display: "none" }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleToolAudioUpload(f); e.currentTarget.value = ""; }} />
+              </div>
+            )}
+            {/* 人声分离：质量 + 目标音轨 */}
+            {tool === "sep_vocals" && (
+              <>
+                <div>
+                  <label style={labelStyle}>分离质量</label>
+                  <ModelSelect bare
+                    models={[
+                      { value: "base", label: "标准", desc: "默认速度/质量", group: "" },
+                      { value: "enhanced", label: "高质量", desc: "更准更慢", group: "" },
+                      { value: "instrumental", label: "器乐优化", desc: "适合纯伴奏", group: "" },
+                    ]}
+                    value={payload.toolSepModel ?? "base"}
+                    onChange={(v) => update("toolSepModel", v)}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>目标音轨</label>
+                  <ModelSelect bare
+                    models={[
+                      { value: "general", label: "全部音轨", desc: "人声+伴奏+各乐器", group: "" },
+                      { value: "vocals", label: "仅人声", desc: "", group: "" },
+                      { value: "drums", label: "仅鼓", desc: "", group: "" },
+                      { value: "bass", label: "仅贝斯", desc: "", group: "" },
+                      { value: "piano", label: "仅钢琴", desc: "", group: "" },
+                      { value: "guitar", label: "仅吉他", desc: "", group: "" },
+                      { value: "other", label: "其他乐器", desc: "", group: "" },
+                    ]}
+                    value={payload.toolSepOutput ?? "general"}
+                    onChange={(v) => update("toolSepOutput", v)}
+                  />
+                </div>
+              </>
+            )}
+            {/* 翻唱 / 续写 / 写歌词：文本描述 */}
+            {tool !== "sep_vocals" && (
+              <div>
+                <label style={labelStyle}>
+                  {tool === "cover" ? "想要的风格（必填）" : tool === "extend" ? "续写方向（可选）" : "歌词主题 / 描述"}
+                </label>
+                <NodeTextArea className="nodrag nowheel" rows={3}
+                  placeholder={tool === "cover" ? "例如：改成 lo-fi 爵士、女声、慵懒..." : tool === "extend" ? "留空则由模型自然续写；也可描述走向" : "描述主题、情绪、故事，例如：夏夜海边的告别"}
+                  value={payload.toolPrompt ?? ""}
+                  onValueChange={(v) => update("toolPrompt", v)}
+                  style={{ ...fieldStyle, resize: "none", lineHeight: 1.6 }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                />
+              </div>
+            )}
+            {/* 续写：起始秒 */}
+            {tool === "extend" && (
+              <div className="flex items-center justify-between">
+                <label style={{ ...labelStyle, marginBottom: 0 }}>从第几秒续写</label>
+                <NodeInput type="number" className="nodrag"
+                  value={String(payload.toolContinueAt ?? 0)}
+                  onValueChange={(v) => update("toolContinueAt", Math.max(0, Number(v) || 0))}
+                  style={{ ...fieldStyle, width: 80, textAlign: "right" }} />
+              </div>
+            )}
+            {/* 翻唱 / 续写：模型版本 + 纯器乐 */}
+            {(tool === "cover" || tool === "extend") && (
+              <>
+                <div>
+                  <label style={labelStyle}>模型版本</label>
+                  <ModelSelect bare
+                    models={[
+                      { value: "V5", label: "Suno V5", desc: "推荐", group: "" },
+                      { value: "V5_5", label: "Suno V5.5", desc: "个性化", group: "" },
+                      { value: "V4_5PLUS", label: "Suno V4.5 PLUS", desc: "更丰富", group: "" },
+                      { value: "V4_5", label: "Suno V4.5", desc: "", group: "" },
+                      { value: "V4", label: "Suno V4", desc: "经典", group: "" },
+                    ]}
+                    value={payload.toolMv ?? "V5"}
+                    onChange={(v) => update("toolMv", v)}
+                  />
+                </div>
+                <label className="nodrag" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: payload.toolInstrumental ? accent : "var(--c-t3)", cursor: "pointer" }}>
+                  <input type="checkbox" checked={payload.toolInstrumental ?? false} onChange={(e) => update("toolInstrumental", e.target.checked)} style={{ accentColor: accent, margin: 0 }} />
+                  纯器乐（无人声）
+                </label>
+              </>
+            )}
+            <GenerateBtn
+              disabled={!canRun || toolMutation.isPending}
+              loading={toolMutation.isPending}
+              onClick={() => {
+                if (needsAudio && !srcUrl) { toast.error("请先上传或连接一段源音频"); return; }
+                toolMutation.mutate({
+                  tool, projectId: data.projectId,
+                  audioUrl: needsAudio ? srcUrl : undefined,
+                  prompt: payload.toolPrompt?.trim() || undefined,
+                  sepModel: tool === "sep_vocals" ? (payload.toolSepModel ?? "base") : undefined,
+                  sepOutput: tool === "sep_vocals" ? (payload.toolSepOutput ?? "general") : undefined,
+                  mv: (tool === "cover" || tool === "extend") ? ((payload.toolMv ?? "V5") as "V4" | "V4_5" | "V4_5ALL" | "V4_5PLUS" | "V5" | "V5_5") : undefined,
+                  instrumental: (tool === "cover" || tool === "extend") ? (payload.toolInstrumental ?? false) : undefined,
+                  continueAt: tool === "extend" ? (payload.toolContinueAt ?? 0) : undefined,
+                  estimatedCost: costEstimateLabel(estimateAudioToolCost(tool)) || undefined,
+                });
+              }}
+              label={AUDIO_TOOL_MODELS.find((m) => m.value === tool)?.label ?? "运行"}
+              costLabel={costEstimateLabel(estimateAudioToolCost(tool))}
+            />
+            {/* 结果：分离多轨列表 / 歌词文本 */}
+            {payload.toolStems && Object.keys(payload.toolStems).length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <label style={labelStyle}>分离结果（{Object.keys(payload.toolStems).length} 条）</label>
+                <div className="flex flex-col gap-1">
+                  {Object.entries(payload.toolStems).map(([stem, u]) => (
+                    <div key={stem} className="flex items-center gap-2" style={{ fontSize: 11, color: "var(--c-t2)" }}>
+                      <span style={{ width: 44, color: "var(--c-t4)" }}>{({ vocals: "人声", bass: "贝斯", drums: "鼓", piano: "钢琴", guitar: "吉他", other: "其他" } as Record<string, string>)[stem] ?? stem}</span>
+                      <audio src={u} controls preload="none" className="nodrag" style={{ flex: 1, height: 26 }} />
+                      <a href={u} download className="nodrag" title="下载" style={{ color: "var(--c-t4)" }}><Download style={{ width: 12, height: 12 }} /></a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {payload.toolLyrics && (
+              <div style={{ marginTop: 4 }}>
+                <label style={labelStyle}>生成的歌词</label>
+                <NodeTextArea className="nodrag nowheel" rows={6} value={payload.toolLyrics}
+                  onValueChange={(v) => update("toolLyrics", v)}
+                  style={{ ...fieldStyle, resize: "vertical", lineHeight: 1.7 }} />
+              </div>
+            )}
+          </>
+          );
+        })()}
+
         {/* ── 上传 Upload ── */}
         {category === "upload" && (
           <>
@@ -1643,9 +1871,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         <NodeTextArea
           className="nodrag nowheel"
           rows={2}
-          placeholder={category === "dubbing" ? "输入要合成的配音文本…" : category === "sfx" ? "描述你想要的音效…" : "描述你想生成的音乐…"}
-          value={(category === "dubbing" ? payload.ttsText : category === "sfx" ? payload.sfxPrompt : payload.musicPrompt) ?? ""}
-          onValueChange={(v) => updateNodeData(id, category === "dubbing" ? { ttsText: v } : category === "sfx" ? { sfxPrompt: v } : { musicPrompt: v })}
+          placeholder={category === "dubbing" ? "输入要合成的配音文本…" : category === "sfx" ? "描述你想要的音效…" : category === "tools" ? "音频工具请在工作室/专业皮肤的配置区操作…" : "描述你想生成的音乐…"}
+          value={(category === "dubbing" ? payload.ttsText : category === "sfx" ? payload.sfxPrompt : category === "tools" ? payload.toolPrompt : payload.musicPrompt) ?? ""}
+          onValueChange={(v) => updateNodeData(id, category === "dubbing" ? { ttsText: v } : category === "sfx" ? { sfxPrompt: v } : category === "tools" ? { toolPrompt: v } : { musicPrompt: v })}
           style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
         />
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
