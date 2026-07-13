@@ -123,28 +123,41 @@ export function ImageLightbox({
       <div
         ref={imgWrapRef}
         className="relative flex items-center justify-center"
-        style={{ maxWidth: "90vw", maxHeight: "90vh", overflow: "hidden" }}
+        style={{ width: "100vw", height: "100vh", overflow: "hidden" }}
         onClick={(e) => e.stopPropagation()}
         onWheel={handleWheel}
       >
+        {/* 用户反馈（2026-07，与 #126 同类）：原 maxWidth 85vw + 不放大小图 → 放大预览
+            不满屏。改 width/height 铺满视口，objectFit: contain 等比充满（小图也放大）。 */}
         <MediaImage
           src={currentUrl}
           alt={`preview-${currentIndex}`}
           style={{
-            maxWidth: "85vw",
-            maxHeight: "85vh",
+            width: "100vw",
+            height: "100vh",
             objectFit: "contain",
-            borderRadius: 8,
-            boxShadow: "0 0 60px oklch(0 0 0 / 0.6)",
-            border: isSelected ? `2px solid ${accent}` : "2px solid var(--c-bd3)",
             transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
-            transition: panRef.current ? "none" : "transform 100ms ease, border-color 150ms ease",
+            transition: panRef.current ? "none" : "transform 100ms ease",
             cursor: scale > 1 ? (panRef.current ? "grabbing" : "grab") : "zoom-in",
           }}
           draggable={false}
           onContextMenu={(e) => e.preventDefault()}
           onMouseDown={onImgMouseDown}
           onDoubleClick={(e) => { e.stopPropagation(); scale > 1 ? resetZoom() : setScale(2); }}
+          onClick={(e) => {
+            // 图片元素铺满视口后，「点黑边关闭」的旧路径（点到 overlay）不复存在——
+            // 改为按 contain 实绘区域判定：点在图外的 letterbox 上即关闭。
+            e.stopPropagation();
+            if (scale > 1) return;
+            const img = e.currentTarget as HTMLImageElement;
+            const r = img.getBoundingClientRect();
+            const nw = img.naturalWidth, nh = img.naturalHeight;
+            if (!nw || !nh) return;
+            const s = Math.min(r.width / nw, r.height / nh);
+            const dw = nw * s, dh = nh * s;
+            const x0 = r.left + (r.width - dw) / 2, y0 = r.top + (r.height - dh) / 2;
+            if (e.clientX < x0 || e.clientX > x0 + dw || e.clientY < y0 || e.clientY > y0 + dh) onClose();
+          }}
         />
 
         {/* Top bar */}
