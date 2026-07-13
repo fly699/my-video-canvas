@@ -41,8 +41,39 @@ const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => 
   r.onerror = () => rej(new Error("读取失败"));
   r.readAsDataURL(blob);
 });
-const canvasToBlob = (gl: THREE.WebGLRenderer): Promise<Blob | null> =>
-  new Promise((res) => gl.domElement.toBlob((b) => res(b), "image/png"));
+// 截图抓帧：默认 PNG（无损，控制图 depth/normal/骨架 用它保精度）。照片型产出（机位截图/
+// 入库/宫格）改传 image/jpeg——3D 渲染是照片类内容，JPEG(q≈0.92) 视觉几乎无差，但编码快
+// 5~10×、体积小约 10×（PNG 一张 2~5MB，JPEG 约 150~400KB），直接砍掉「输出中…」的大头
+// （PNG 编码 + base64 膨胀 33% + JSON 上传大字符串）。控制图仍走 PNG（渐变/法线/骨架线怕 JPEG 块效应）。
+const canvasToBlob = (gl: THREE.WebGLRenderer, type: "image/png" | "image/jpeg" = "image/png", quality = 0.92): Promise<Blob | null> =>
+  new Promise((res) => gl.domElement.toBlob((b) => res(b), type, quality));
+
+// 用户可选的截图输出：格式（jpeg/png）+ 质量档→分辨率（high 原生 / medium≤1280 / low≤720 长边）。
+// 高于目标分辨率时先用 2D 画布高质量缩放再编码；控制图不走这里（始终 PNG 原生保精度）。
+export type CaptureFormat = "jpeg" | "png";
+export type CaptureQuality = "high" | "medium" | "low";
+export const CAPTURE_TIERS: Record<CaptureQuality, { maxLong: number; q: number }> = {
+  high: { maxLong: Infinity, q: 0.95 },
+  medium: { maxLong: 1280, q: 0.9 },
+  low: { maxLong: 720, q: 0.82 },
+};
+export const captureExt = (fmt: CaptureFormat) => (fmt === "png" ? "png" : "jpg");
+export const captureMime = (fmt: CaptureFormat) => (fmt === "png" ? "image/png" : "image/jpeg") as "image/png" | "image/jpeg";
+const captureFrame = (gl: THREE.WebGLRenderer, fmt: CaptureFormat, quality: CaptureQuality): Promise<Blob | null> => {
+  const src = gl.domElement;
+  const tier = CAPTURE_TIERS[quality] ?? CAPTURE_TIERS.high;
+  const mime = captureMime(fmt);
+  const long = Math.max(src.width, src.height);
+  if (long <= tier.maxLong) return new Promise((res) => src.toBlob((b) => res(b), mime, tier.q));
+  const scale = tier.maxLong / long;
+  const w = Math.max(1, Math.round(src.width * scale)), h = Math.max(1, Math.round(src.height * scale));
+  const c2d = document.createElement("canvas"); c2d.width = w; c2d.height = h;
+  const ctx = c2d.getContext("2d");
+  if (!ctx) return new Promise((res) => src.toBlob((b) => res(b), mime, tier.q));
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, w, h);
+  return new Promise((res) => c2d.toBlob((b) => res(b), mime, tier.q));
+};
 
 // 全屏 3D 导演台编辑器（P1）：摆放/选中人偶（数值精确 + Alt 微调）、控制机位(FOV)、
 // 画幅取景框、截图→上传作为本节点的参考图。双视角/姿势/宫格/全景见后续期次。
@@ -727,14 +758,24 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const target = shotAimTarget(base, { sceneScale: scn.sceneScale, offsetX: scn.sceneOffsetX, offsetY: scn.sceneOffsetY, offsetZ: scn.sceneOffsetZ, actorScale: a.scale, aimY: 1.0 });
     patchLight(lightId, { target });
   };
-  // 截图前隐藏灯光标记球/指向线 + 机位 gizmo + TransformControls 手柄
-  // （不隐藏光源本身——光照必须留在成片里；#84 机位实体同为编辑器专属标记）。
+  // 截图前隐藏一切「编辑器专属标记」——不进成片/参考图（不隐藏光源本身，光照必须留在成片里）：
+  //   · 灯光标记球/指向线(light-marker)、#84 机位实体(cam-marker)
+  //   · TransformControls 拖拽手柄（isTransformControls 根 + 其 Gizmo/Plane 子件——不同 three
+  //     版本挂法不一，按 type 前缀兜底）
+  //   · 选中角色脚下的选中环（RingGeometry，即「脚下圆圈」）
+  //   · 布景原点的三色轴 axesHelper（即「坐标指示」）
   const hideLightMarkers = useCallback(() => {
     const cap = captureRef.current;
     const hidden: THREE.Object3D[] = [];
     cap?.scene.traverse((o) => {
       const anyO = o as THREE.Object3D & { isTransformControls?: boolean };
-      if ((o.name === "light-marker" || o.name === "cam-marker" || anyO.isTransformControls) && o.visible) { o.visible = false; hidden.push(o); }
+      const mesh = o as THREE.Mesh;
+      const isGizmo =
+        o.name === "light-marker" || o.name === "cam-marker"
+        || anyO.isTransformControls || o.type.startsWith("TransformControls")
+        || o.type === "AxesHelper"
+        || (mesh.isMesh && (mesh.geometry as THREE.BufferGeometry | undefined)?.type === "RingGeometry");
+      if (isGizmo && o.visible) { o.visible = false; hidden.push(o); }
     });
     return () => hidden.forEach((o) => { o.visible = true; });
   }, []);
@@ -957,6 +998,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     patchActor(id, { rotation: [a.rotation[0], Number(yaw.toFixed(1)), a.rotation[2]] as Vec3 });
   };
 
+  // 用户在输出设置里选的格式/质量档（随场景持久化）；缺省 jpeg + high。
+  const capFmt: CaptureFormat = scene.captureFormat ?? "jpeg";
+  const capQual: CaptureQuality = scene.captureQuality ?? "high";
+
   // 截图：用当前机位渲染一帧 → toBlob → 上传 → 写入节点 imageUrl（参考图）。
   const shoot = async () => {
     const cap = captureRef.current;
@@ -968,11 +1013,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       let blob: Blob | null;
       try {
         withActiveCamera(() => cap.gl.render(cap.scene, cap.camera)); // #85 产出=活动机位构图
-        blob = await canvasToBlob(cap.gl);
+        blob = await captureFrame(cap.gl, capFmt, capQual);
       } finally { restore(); }
       if (!blob) throw new Error("渲染截图失败");
       const base64 = await blobToBase64(blob);
-      const result = await uploadMut.mutateAsync({ base64, mimeType: "image/png", filename: "director-3d.png" });
+      const result = await uploadMut.mutateAsync({ base64, mimeType: captureMime(capFmt), filename: `director-3d.${captureExt(capFmt)}` });
       // #78 光效中文描述随截图落进节点，下游提示词可直接引用（无布光则清空）
       const lightingDesc = describeLights(sceneRef.current.lights, sceneRef.current.dimBase) || undefined;
       // #110 激活机位的运镜描述（有动画路径才产出）随截图一并写入
@@ -994,10 +1039,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       let blob: Blob | null;
       try {
         withActiveCamera(() => cap.gl.render(cap.scene, cap.camera)); // #85 产出=活动机位构图
-        blob = await canvasToBlob(cap.gl);
+        blob = await captureFrame(cap.gl, capFmt, capQual);
       } finally { restore(); }
       if (!blob) throw new Error("渲染截图失败");
-      const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/png", filename: `director-shot-${shotsRef.current.length + 1}.png` });
+      const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: captureMime(capFmt), filename: `director-shot-${shotsRef.current.length + 1}.${captureExt(capFmt)}` });
       const camName = sceneRef.current.camera.name ?? "机位";
       setShots((prev) => [...prev, { url: r.url, name: `${camName}-截图${String(prev.length + 1).padStart(2, "0")}` }]);
       toast.success("已存入相机截图库");
@@ -1117,18 +1162,27 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     cam.fov = ac.fov; cam.updateProjectionMatrix();
     const restoreMarkers = hideLightMarkers(); // #78 灯光标记不入宫格成片
     try {
-      const urls: string[] = [];
+      // 先把所有机位串行渲染 + 抓帧（共用一个 GL 上下文，必须逐帧抓完再渲下一帧，否则
+      // 后一帧会覆盖前一帧的缓冲）；抓帧为 JPEG，编码快、体积小。
+      const blobs: (Blob | null)[] = [];
       for (let i = 0; i < preset.angles.length; i++) {
         const pos = gridCameraPosition(basePos, target, preset.angles[i]);
         cam.position.set(...pos); cam.lookAt(tVec); cam.updateMatrixWorld();
         cap.gl.render(cap.scene, cam);
-        const blob = await canvasToBlob(cap.gl);
-        if (!blob) continue;
-        const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/png", filename: `dir-grid-${preset.key}-${i}.png` });
-        urls.push(r.url);
-        setGridBusy(`${preset.label} ${i + 1}/${preset.angles.length}`);
+        blobs.push(await captureFrame(cap.gl, capFmt, capQual));
+        setGridBusy(`${preset.label} 渲染 ${i + 1}/${preset.angles.length}`);
       }
       restoreMarkers();
+      // 再把所有帧【并行】上传——渲染阶段已全部抓帧完成，网络并发不会打乱渲染缓冲，
+      // 也不再让每张的上传串行阻塞（原来 N 张 = N 次串行等网络，慢的大头之一）。
+      let uploaded = 0;
+      const uploadResults = await Promise.all(blobs.map(async (blob, i) => {
+        if (!blob) return null;
+        const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: captureMime(capFmt), filename: `dir-grid-${preset.key}-${i}.${captureExt(capFmt)}` });
+        setGridBusy(`${preset.label} 上传 ${++uploaded}/${blobs.length}`);
+        return r.url;
+      }));
+      const urls = uploadResults.filter((u): u is string => !!u);
 
       if (urls.length) {
         updateNodeData(nodeId, { scene: sceneRef.current }, true);
@@ -1271,6 +1325,22 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               onChange={(e) => setCtrlStrength(Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
               style={{ width: 44, padding: "2px 4px", fontSize: 10.5, textAlign: "right", background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none" }} />
           </label>
+        </div>
+        {/* 输出设置：格式 + 质量档（随场景持久化，作用于机位截图/入库/宫格；控制图恒为 PNG 保精度不受影响） */}
+        <div className="flex items-center gap-1" style={{ marginRight: 2 }}>
+          <select value={capFmt} onChange={(e) => patchScene({ captureFormat: e.target.value as CaptureFormat })}
+            title="截图格式：JPEG 编码快、体积小（推荐）；PNG 无损但更大更慢"
+            style={{ padding: "3px 5px", fontSize: 10.5, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none", cursor: "pointer" }}>
+            <option value="jpeg">JPEG</option>
+            <option value="png">PNG</option>
+          </select>
+          <select value={capQual} onChange={(e) => patchScene({ captureQuality: e.target.value as CaptureQuality })}
+            title="质量档 → 分辨率：高=原生最清晰 / 中≤1280 / 低≤720（长边）。越低越快越小"
+            style={{ padding: "3px 5px", fontSize: 10.5, background: "var(--c-input)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 5, outline: "none", cursor: "pointer" }}>
+            <option value="high">质量·高</option>
+            <option value="medium">质量·中</option>
+            <option value="low">质量·低</option>
+          </select>
         </div>
         <button onClick={shoot} disabled={saving} style={{ ...headBtn(true), opacity: saving ? 0.6 : 1 }}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />} {saving ? "输出中…" : "截图 → 参考图"}

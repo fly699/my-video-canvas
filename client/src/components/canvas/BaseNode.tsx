@@ -759,6 +759,19 @@ export const BaseNode = memo(function BaseNode({
     ? Math.round((nodeStyleWidth ?? config.defaultWidth) * 3)
     : undefined;
 
+  // 创意/工作室皮肤把卡片 minWidth 抬到 1.25×（见下方 style.minWidth），但节点 React Flow 宽度仍是
+  // 建节点时写入的 style.width(=config.defaultWidth)。当后者更小时，卡片 width:100%+min-width 会向右
+  // 单侧溢出节点框——而 handle、就地输入条(InlineGenBar/NodeToolbar) 都锚定在「节点框中线」，于是与更宽
+  // 的可见卡片中线错开（真机实测音频节点：节点框 300、卡片 350，卡片中心右偏 (350-300)/2=25 流单位，
+  // ×缩放≈111px，用户报的「两个框中线没对齐」正是此因，与缩放无关）。把溢出量对半用负 margin 左移，
+  // 令卡片重新居中在节点框上 → handle / 输入条 / 卡片三者中线一致。仅在「显式设了 style.width 且小于
+  // 抬高后的 min」时触发（未设 width 时 RF 按卡片内容自适应节点框，本就无溢出），因此只作用于真正溢出的
+  // 节点（实测仅音频 defaultWidth 300 < 350），其它节点 shift=0、零影响。
+  const creativeMinW = Math.round(minWidth * 1.25);
+  const cardOverflowShift = (isCreative || isStudio) && nodeStyleWidth != null && nodeStyleWidth < creativeMinW
+    ? (creativeMinW - nodeStyleWidth) / 2
+    : 0;
+
   // Workflow run status
   const { running, currentNodeId, completedIds, failedIds } = useWorkflowRunState();
   const runStatus: "running" | "done" | "failed" | null = (() => {
@@ -938,6 +951,9 @@ export const BaseNode = memo(function BaseNode({
         // 就会在英雄区下方空出一块灰区（用户反馈「分镜底部灰一块」）。故创意+has-hero 也 drop。
         minHeight: (isCollapsedPreview || studioFloated || (!isStudio && isCreative && hasHero)) ? 0 : minHeight,
         width: "100%",
+        // 见上方 cardOverflowShift 注释：把创意皮肤下卡片 min-width 溢出量对半左移，使卡片居中在节点框、
+        // 与 handle/就地输入条中线对齐（负 margin 仅视觉左移卡片，不影响 RF 的节点框/handle 定位）。
+        marginLeft: cardOverflowShift ? -cardOverflowShift : undefined,
         height: "100%",
         transition: "border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease",
         backdropFilter: isLight ? "none" : "blur(4px)",
