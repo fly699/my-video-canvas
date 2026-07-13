@@ -1421,6 +1421,8 @@ export interface SuperAgentNodeData {
   maxIterations?: number;
   /** 「加载全部资源」：系统提示不截断，列出服务器全部已装模型/LoRA/节点（配合大上下文模型）。 */
   showAllResources?: boolean;
+  /** 是否使用记忆体（资源记忆 + 工作流经验召回）。默认 true；false=本次忽略记忆、直接读真机。 */
+  useMemory?: boolean;
   status?: "idle" | "running" | "success" | "failed" | "exhausted" | "aborted";
   /** ComfyUI 模式连续对话记录（用户指令 + 智能体每轮结果摘要）。 */
   conversation?: { role: "user" | "agent"; text: string; workflowJson?: string; status?: string }[];

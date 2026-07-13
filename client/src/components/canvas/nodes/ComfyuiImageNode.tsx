@@ -15,6 +15,7 @@ import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { useComfyMemoryEnabled } from "@/lib/comfyMemoryPref";
 import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
@@ -147,8 +148,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // models that exist on another server but not the one the request targets,
   // failing with "not in list" on submit even though it was picked from the list.
   const serverUrls = payload.serverUrls ?? [];
+  const comfyMemoryOn = useComfyMemoryEnabled();
   const modelsQuery = trpc.comfyui.fetchModels.useQuery(
-    { customBaseUrl: debouncedUrl },
+    { customBaseUrl: debouncedUrl, useMemory: comfyMemoryOn },
     { staleTime: 60_000, retry: false }
   );
 

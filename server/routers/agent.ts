@@ -15,6 +15,7 @@ import { assertSafeUrl } from "../_core/videoEditor";
 import { storagePut, assertObjectStorageWritable } from "../storage";
 import { ENV } from "../_core/env";
 import { peekComfyKnowledge, getComfyKnowledge, type ComfyKnowledge } from "../_core/comfyKnowledge";
+import { recallWorkflowExperiences } from "../_core/comfyExperience";
 import * as db from "../db";
 import type { AgentOperation } from "../../shared/types";
 
@@ -170,6 +171,8 @@ const agentChatInput = z.object({
          *  未勾任何 comfyui_* 复选框）时传 true——不触发后台模板分析、不读模板表、
          *  不注入模板知识段，省 DB 读与提示词体积。与 comfyOnly 互斥（comfyOnly 优先）。 */
         skipComfyTemplates: z.boolean().optional(),
+        /** 是否使用 ComfyUI 记忆体（资源记忆 + 工作流经验）注入规划上下文。默认 true；关掉则不注入。 */
+        useComfyMemory: z.boolean().optional(),
         /** #141 模型清单按需注入：快速设置锁定的图/视频模型 id——对应类别只注入所锁模型
          *  的完整参数条目（其余压成名字目录），提示词大幅缩身。空/无效值 = 该类别全量。 */
         pinnedImageModel: z.string().max(128).optional(),
@@ -268,6 +271,19 @@ async function loadComfyResourceSection(): Promise<string> {
   return buildComfyResourceSection(k);
 }
 
+/** 取该 ComfyUI 服务器上、与本次任务相似的「成功工作流经验」摘要段（供规划参考，不含完整 JSON）。 */
+async function loadComfyExperienceSection(task: string): Promise<string> {
+  const base = (await resolveAgentComfyBase()).trim();
+  if (!base) return "";
+  const exps = await recallWorkflowExperiences(base, task, 3).catch(() => []);
+  if (!exps.length) return "";
+  const lines = exps.map((e) => {
+    const cls = e.nodeClasses.slice(0, 12).join("、") + (e.nodeClasses.length > 12 ? " …" : "");
+    return `- 「${e.label}」${cls ? `（关键节点：${cls}）` : ""}`;
+  });
+  return `\n\n# ComfyUI 工作流经验记忆体（工程智能体已成功搭通的相似工作流）\n（工程智能体在你这台 ComfyUI 上真实搭建并跑通过下列工作流；说明这些效果在本服务器上「可实现」。若规划需要用到 ComfyUI 自定义工作流，可据此判断哪些方案可行、优先复用已验证的路子；具体套用可让工程智能体按同类任务再建。）\n${lines.join("\n")}`;
+}
+
 async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput>, onStage?: (stage: string) => void) {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // 自定义模型走自带 key 体系：门控收敛到 invokeLLMWithKie（自带 key 放行 / env 兜底门控）。
@@ -353,12 +369,17 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
         }
       }
 
-      // 知识记忆体接入：把工程智能体学过的 ComfyUI 服务器真实资源注入规划上下文（best-effort）。
-      // 跳过模板链路（客户端确定本轮不用 ComfyUI）时无需注入，省上下文与一次记忆读取。
+      // 知识记忆体接入：把工程智能体学过的 ComfyUI 服务器真实资源 + 成功工作流经验注入规划上下文
+      //（best-effort）。跳过模板链路（客户端确定本轮不用 ComfyUI）时无需注入，省上下文与记忆读取。
       let comfyResourceSection = "";
-      if (!skipTemplates) {
-        try { comfyResourceSection = await loadComfyResourceSection(); }
-        catch (e) { console.warn("[agent] comfy knowledge unavailable:", e instanceof Error ? e.message : e); }
+      let comfyExperienceSection = "";
+      if (!skipTemplates && input.useComfyMemory !== false) {
+        try {
+          [comfyResourceSection, comfyExperienceSection] = await Promise.all([
+            loadComfyResourceSection(),
+            loadComfyExperienceSection(input.message),
+          ]);
+        } catch (e) { console.warn("[agent] comfy knowledge unavailable:", e instanceof Error ? e.message : e); }
       }
 
       // 仅 ComfyUI 模式但没有任何「已分析模板」可用：拒绝并明确指引，避免 LLM 编造模板生成空壳节点。
@@ -414,7 +435,7 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
 
 # 可用节点目录（只能使用下面列出的节点类型与字段，禁止编造任何不存在的节点或字段）
-${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyResourceSection}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel })}`}
+${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyResourceSection}${comfyExperienceSection}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel })}`}
 
 # 当前画布
 ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}

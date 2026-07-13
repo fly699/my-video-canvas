@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { getComfyKnowledge, peekComfyKnowledge, searchComfyKnowledge, invalidateComfyKnowledge } from "./_core/comfyKnowledge";
+import { getComfyKnowledge, peekComfyKnowledge, searchComfyKnowledge, invalidateComfyKnowledge, getComfyModelList } from "./_core/comfyKnowledge";
 
 const models = { ckpts: ["sd_xl.safetensors", "flux_dev.safetensors"], loras: ["detail.safetensors"], vaes: ["vae.safetensors"], samplers: ["euler"], schedulers: ["karras"] };
 const objectInfo = { KSampler: {}, CLIPTextEncode: {}, FluxGuidance: {} };
@@ -68,5 +68,27 @@ describe("comfyKnowledge 记忆体", () => {
     expect(k.objectInfo).toBeNull();
     expect(k.resources.nodeClasses).toEqual([]);
     expect(k.resources.checkpoints.length).toBe(2);
+  });
+
+  it("默认永不过期：多次取用始终命中缓存（无 TTL，只手动复位才重学）", async () => {
+    const f = fetchers();
+    await getComfyKnowledge("http://s", f);
+    // 不传 maxAgeMs → 默认 Infinity，无论多久都命中缓存
+    await getComfyKnowledge("http://s", f);
+    await getComfyKnowledge("http://s", f);
+    expect(f.modelCalls).toBe(1);
+    // 只有 force / 手动 invalidate 才重学
+    invalidateComfyKnowledge("http://s");
+    await getComfyKnowledge("http://s", f);
+    expect(f.modelCalls).toBe(2);
+  });
+
+  it("getComfyModelList：命中记忆里的全量模型清单（不重复抓取）", async () => {
+    const f = fetchers();
+    await getComfyKnowledge("http://s", f); // 学一次，modelList 从 models 落入记忆
+    const list = await getComfyModelList("http://s");
+    expect(list.ckpts).toEqual(["sd_xl.safetensors", "flux_dev.safetensors"]);
+    expect(list.loras).toEqual(["detail.safetensors"]);
+    expect(f.modelCalls).toBe(1); // 命中记忆，未再抓
   });
 });

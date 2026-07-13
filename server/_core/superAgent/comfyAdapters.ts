@@ -192,15 +192,18 @@ export interface ComfyToolsAdapterOptions {
   apiKey?: string;
   projectId?: number;
   nodeId?: string;
+  /** 是否使用「资源记忆体」缓存。默认 true；false 时强制读真机（仍写穿缓存供他方复用）。 */
+  useMemory?: boolean;
 }
 
 /** 用 comfyui.ts 过程兑现引擎工具接口。 */
 export function createComfyTools(opts: ComfyToolsAdapterOptions): ComfyAgentTools {
-  const { baseUrl, apiKey, projectId, nodeId } = opts;
+  const { baseUrl, apiKey, projectId, nodeId, useMemory } = opts;
   // 走共享「知识记忆体」：同一台服务器的 /object_info + 资源清单跨会话/跨节点复用，不必每次重拉。
   // listResources 取资源清单、describeNodes 取每类 schema，共用同一份记忆。
+  // useMemory=false：强制读真机（force），忽略缓存新鲜与否——但仍写穿缓存，供其它调用方复用。
   let knowledgePromise: Promise<ComfyKnowledge> | null = null;
-  const knowledge = () => (knowledgePromise ??= getComfyKnowledge(baseUrl));
+  const knowledge = () => (knowledgePromise ??= getComfyKnowledge(baseUrl, useMemory === false ? { force: true } : {}));
   const objectInfo = async () => (await knowledge()).objectInfo;
   return {
     async listResources() {

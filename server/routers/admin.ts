@@ -84,6 +84,7 @@ const AUDIT_ACTIONS = [
   "comfyui_image_gen", "comfyui_video_gen", "comfyui_workflow_exec",
   "editor:aiCut",
   "superagent_comfy_build", "superagent_code_task",
+  "superagent_workflow_memory_delete", "superagent_workflow_memory_clear",
   "config_export", "config_import",
   "logs_cleared",
 ] as const;

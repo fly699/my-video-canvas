@@ -60,7 +60,7 @@ import { sliceGridImage } from "../_core/imageGrid";
 import { extractStoryboardFrames } from "../_core/videoStoryboard";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeHunyuan3D, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
-import { getComfyKnowledge, peekComfyKnowledge, searchComfyKnowledge, invalidateComfyKnowledge } from "../_core/comfyKnowledge";
+import { getComfyKnowledge, peekComfyKnowledge, searchComfyKnowledge, invalidateComfyKnowledge, getComfyModelList } from "../_core/comfyKnowledge";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -3753,6 +3753,8 @@ export const comfyuiRouter = router({
       customBaseUrl: z.string().max(2048).optional(),
       // Multi-server: refresh the union of models across all saved addresses.
       customBaseUrls: z.array(z.string().max(2048)).max(20).optional(),
+      /** 是否使用「资源记忆体」缓存模型清单（默认 true；false=强制读真机刷新，如刚装/删模型）。 */
+      useMemory: z.boolean().optional(),
     }))
     .query(async ({ ctx, input }) => {
       // Whitelist check: fetchModels can be used as an SSRF probe via customBaseUrl
@@ -3781,7 +3783,11 @@ export const comfyuiRouter = router({
       // "server has no models" from "couldn't reach server".
       if (urls.length === 1) {
         try {
-          return await fetchComfyModels(urls[0]);
+          // 默认走「资源记忆体」：学过一次后直接命中缓存（永不过期，装/删模型点刷新或复位重学）；
+          // useMemory=false 强制读真机刷新。多服务器合并路径仍走实时（记忆按单服务器缓存）。
+          return input.useMemory === false
+            ? await getComfyModelList(urls[0], { force: true })
+            : await getComfyModelList(urls[0]);
         } catch (err) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
         }
@@ -3810,12 +3816,13 @@ export const comfyuiRouter = router({
   //    工程智能体 / ComfyUI 节点 / 画布助手都能复用，不必每次重拉。三端共用，见 comfyKnowledge.ts。──
   // getKnowledge：有新鲜记忆则命中，否则拉真机并写入记忆。返回资源摘要（不含庞大的 objectInfo 原文）。
   getKnowledge: protectedProcedure
-    .input(z.object({ customBaseUrl: z.string().max(2048).optional(), force: z.boolean().optional() }))
+    .input(z.object({ customBaseUrl: z.string().max(2048).optional(), force: z.boolean().optional(), useMemory: z.boolean().optional() }))
     .query(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
       const baseUrl = (await resolveComfyBase(input.customBaseUrl)).trim();
       if (!baseUrl) return { configured: false as const };
-      const k = await getComfyKnowledge(baseUrl, { force: input.force });
+      // useMemory=false（节点「不使用记忆体」）等价于 force：直接读真机（仍写穿缓存供他方复用）。
+      const k = await getComfyKnowledge(baseUrl, { force: input.force || input.useMemory === false });
       const r = k.resources;
       return {
         configured: true as const, baseUrl: k.baseUrl, fetchedAt: k.fetchedAt,
@@ -3844,12 +3851,15 @@ export const comfyuiRouter = router({
   }),
   // searchKnowledge：在记忆里按关键词检索资源（不发起真机检索，除非尚无记忆才先学习一次）。
   searchKnowledge: protectedProcedure
-    .input(z.object({ customBaseUrl: z.string().max(2048).optional(), query: z.string().max(200) }))
+    .input(z.object({ customBaseUrl: z.string().max(2048).optional(), query: z.string().max(200), useMemory: z.boolean().optional() }))
     .query(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
       const baseUrl = (await resolveComfyBase(input.customBaseUrl)).trim();
       if (!baseUrl) return { configured: false as const, matches: null };
-      const k = peekComfyKnowledge(baseUrl) ?? (await getComfyKnowledge(baseUrl));
+      // useMemory=false：不吃缓存，强制读真机后再检索。
+      const k = input.useMemory === false
+        ? await getComfyKnowledge(baseUrl, { force: true })
+        : (peekComfyKnowledge(baseUrl) ?? (await getComfyKnowledge(baseUrl)));
       return { configured: true as const, matches: searchComfyKnowledge(k, input.query) };
     }),
 
