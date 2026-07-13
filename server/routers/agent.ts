@@ -164,6 +164,10 @@ const agentChatInput = z.object({
         graphSummary: z.string().max(20000).optional(),
         model: z.string().optional(),
         comfyOnly: z.boolean().optional(),
+        /** #140 跳过 ComfyUI 模板知识：客户端确定本轮不会用 ComfyUI（快速设置「节点」
+         *  未勾任何 comfyui_* 复选框）时传 true——不触发后台模板分析、不读模板表、
+         *  不注入模板知识段，省 DB 读与提示词体积。与 comfyOnly 互斥（comfyOnly 优先）。 */
+        skipComfyTemplates: z.boolean().optional(),
         /** Pre-rendered 用户偏好/约束 block from the agent node's 规划设置 dialog. */
         prefs: z.string().max(2000).optional(),
         /** 画布助手「模板」人设/风格（选中的 AI 模板 prompt）——引导构思风格，但不得破坏 JSON 输出。 */
@@ -224,10 +228,13 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
       // #136 非 comfyOnly：分析改后台跑、绝不阻塞规划——此前每逢新增/变更模板，规划前要
       // 串行等最多 6 次 LLM 分析调用（实测数十秒到分钟级），这是「规划太慢」的头号元凶。
       // 本轮直接用现有分析结果（新模板下一轮自然可见），后台增量分析继续补齐。
+      // #140 跳过模板知识：客户端确定本轮不会用 ComfyUI（快速设置未勾任何 comfyui_*）时
+      // 完全绕开模板链路——不触发分析、不读模板表、不注入模板知识段。comfyOnly 优先生效。
+      const skipTemplates = !input.comfyOnly && input.skipComfyTemplates === true;
       if (input.comfyOnly) {
         onStage?.("分析模板库");
         try { await runLibraryAnalysis(ctx, model, { max: 40 }); } catch { /* non-fatal */ }
-      } else if (!libraryAnalysisInFlight) {
+      } else if (!skipTemplates && !libraryAnalysisInFlight) {
         libraryAnalysisInFlight = runLibraryAnalysis(ctx, model, { max: 6 })
           .catch((e) => console.warn("[agent] bg template analysis failed:", e instanceof Error ? e.message : e))
           .finally(() => { libraryAnalysisInFlight = null; });
@@ -239,7 +246,7 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
       let hasVideoTemplate = false;
       let imageTpls: { id: number; label: string; shotSeconds?: number | null; caps?: string[] }[] = [];
       let videoTpls: { id: number; label: string; shotSeconds?: number | null; caps?: string[] }[] = [];
-      try {
+      if (!skipTemplates) try {
         const [templates, analyses] = await Promise.all([db.listComfyNodeTemplates(), db.listComfyTemplateAnalysis()]);
         // Only comfyui_workflow templates carry a workflowJson + paramBindings, and
         // only the comfyui_workflow node references templates by payload.templateId

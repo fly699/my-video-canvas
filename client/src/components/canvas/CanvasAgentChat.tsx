@@ -429,9 +429,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
       // 提交后台任务 → 轮询取结果（runAgentChatJob：短请求轮询，断连/掐线/重启不丢等待）。
       setPlanStage("");
+      // #140 快速设置「节点」未勾任何 ComfyUI 系 → 本轮用不到模板：让服务端完全跳过
+      // 模板分析与模板知识注入（省 DB 读与提示词体积，规划更快）。
+      const skipComfyTemplates = !quickPrefs.genNodes.some((n) => n.startsWith("comfyui"));
       const r = await runAgentChatJob(
         utils.client,
-        { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined },
+        { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined },
         controller.signal,
         (p) => { if (p.stage) setPlanStage(p.stage); },
       );
@@ -551,7 +554,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 title="对白语种：对白/旁白/台词/字幕文本统一书写语言（画面提示词不受影响）；默认=跟随内容" groups={[{ options: [{ value: "", label: "默认（跟随内容）" }, ...QP_DIALOGUE_LANGS] }]} onChange={(v) => setQP({ dialogueLang: v })} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }} title="勾选=只允许助手用这些生成节点；全不勾=不限">节点</span>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }} title="勾选=只允许助手用这些生成节点；全不勾=不限。提示：未勾任何 ComfyUI 系时，规划会跳过模板库查询与注入（更快）——需要助手引用工作流模板时请勾选 ComfyUI模板">节点</span>
               {QP_GEN_NODES.map((n) => {
                 const on = quickPrefs.genNodes.includes(n.v);
                 return (

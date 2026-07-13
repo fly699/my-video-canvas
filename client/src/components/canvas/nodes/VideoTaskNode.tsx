@@ -1982,6 +1982,24 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
         {/* ── Actions ── */}
         <div className="flex gap-2 flex-shrink-0">
+          {payload.status === "processing" && (
+            // #140 放弃等待（云端任务提交即计费、平台不可撤回）：本地停轮询、节点解锁可
+            // 改参重提；云端任务继续跑但结果不回填。status 改动触发轮询 effect cleanup。
+            <button
+              onClick={() => {
+                updateNodeData(id, { status: "pending", taskId: undefined, externalTaskId: undefined, errorMessage: undefined }, true);
+                toast.info("已放弃等待：节点已解锁。云端任务仍在生成（费用照常发生），其结果不会回填本节点", { duration: 7000 });
+              }}
+              className="nodrag flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all"
+              style={{ background: "var(--c-surface)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+              title="停止等待该云端任务并解锁节点（任务已计费且会在云端继续，结果不回填；如需保留结果请耐心等待）"
+            >
+              <XIcon className="w-3 h-3" />
+              放弃等待
+            </button>
+          )}
           {isResettable && (
             <button
               onClick={handleReset}
