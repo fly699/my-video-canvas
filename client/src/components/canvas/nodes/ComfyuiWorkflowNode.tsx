@@ -30,7 +30,7 @@ import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
   Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
-  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle, Wand2, Rotate3d, Boxes, SlidersHorizontal,
+  Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle, Wand2, Rotate3d, Boxes, SlidersHorizontal, Check,
 } from "lucide-react";
 import { SyncConfigDialog } from "../SyncConfigDialog";
 import { Depth3DViewer } from "../Depth3DViewer";
@@ -706,6 +706,25 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
 
   const isProcessing = payload.status === "processing" || executeMutation.isPending;
 
+  // #142 取消生成（与 comfyui_image/video 同款）：POST /interrupt 中断本地推理，
+  // 立即回落可重跑状态——此前工作流模板节点完全没有取消入口。
+  const interruptMutation = trpc.comfyui.interrupt.useMutation({
+    onSuccess: () => toast.success("已发送中断请求"),
+    onError: (err) => toast.error("中断失败：" + err.message),
+  });
+  const handleCancel = useCallback(() => {
+    interruptMutation.mutate({ customBaseUrl: payload.customBaseUrl?.trim() || undefined });
+    update({ status: "failed", errorMessage: "已取消生成", progress: undefined });
+  }, [interruptMutation, payload.customBaseUrl, update]);
+
+  // #142 多图选用：下游（hero/3D/历史/装配/参考传播）一律消费 outputUrls[0]/outputUrl，
+  // 「设为使用图」= 把选中图挪到首位并同步 outputUrl。此前多图只能放大、不能选用。
+  const selectOutput = useCallback((url: string) => {
+    const rest = (payload.outputUrls ?? []).filter((u) => u !== url);
+    update({ outputUrl: url, outputUrls: [url, ...rest] });
+    toast.success("已设为使用图（下游节点将使用这张）");
+  }, [payload.outputUrls, update]);
+
   const handleReset = useCallback(() => {
     setLocalJson("");
     setPhase("empty");
@@ -777,6 +796,30 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       <div className="relative" style={{ width: "100%" }}>
         <WatermarkedVideo block src={payload.outputUrls[0]} controls className="w-full" preload="metadata" style={{ display: "block" }} />
       </div>
+    ) : payload.outputUrls.length > 1 ? (
+      // #142 hero 多图网格可点选（与 comfyui_image hero 同款）：创意模式配置区收起时
+      // 也能「选择一张为使用图」。点选把该图挪到 outputUrls[0]（下游消费位）。
+      <div
+        className="grid gap-1 p-2"
+        style={{ gridTemplateColumns: payload.outputUrls.length === 4 ? "1fr 1fr" : `repeat(${Math.min(payload.outputUrls.length, 3)}, 1fr)` }}
+      >
+        {payload.outputUrls.map((url, idx) => (
+          <div
+            key={url + idx}
+            className="nodrag relative rounded-lg overflow-hidden cursor-pointer"
+            onClick={(e) => { e.stopPropagation(); if (idx !== 0) selectOutput(url); }}
+            title={idx === 0 ? "当前使用图（下游节点使用这张）" : "点击设为使用图"}
+            style={{ background: "var(--c-canvas)", outline: idx === 0 ? `2px solid ${accent}` : "none", outlineOffset: -2 }}
+          >
+            <MediaImage src={url} alt={`workflow-output-${idx}`} className="w-full" draggable={false} />
+            {idx === 0 && (
+              <div className="absolute top-1 right-1 rounded-full flex items-center justify-center" style={{ width: 16, height: 16, background: accent }}>
+                <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     ) : (
       <div className="group relative overflow-hidden" style={{ width: "100%" }}>
         <MediaImage src={payload.outputUrls[0]} alt="workflow-output" className="w-full" draggable={false} style={{ display: "block" }} />
@@ -816,6 +859,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       heroMedia={wfHero}
       onRun={handleRun}
       running={isProcessing}
+      onCancelGenerate={handleCancel}
       canRun={phase === "run" && !!payload.workflowJson?.trim()}
       hasResult={!!payload.outputUrls && payload.outputUrls.length > 0}
       borderTint={accentColor}
@@ -1814,6 +1858,21 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                         {i + 1}
                       </a>
                     </div>
+                    {/* #142 多图选用：i===0 即当前使用图（下游一律消费 outputUrls[0]） */}
+                    {payload.outputUrls!.length > 1 && (i === 0 ? (
+                      <div title="当前使用图（下游节点使用这张）" className="absolute top-1 right-1 rounded-full flex items-center justify-center" style={{ width: 16, height: 16, background: accent }}>
+                        <Check style={{ width: 10, height: 10, color: "var(--c-canvas)" }} />
+                      </div>
+                    ) : (
+                      <button
+                        className="nodrag absolute top-1 right-1 rounded-md"
+                        onClick={(e) => { e.stopPropagation(); selectOutput(url); }}
+                        title="设为使用图（下游节点将使用这张）"
+                        style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", background: "rgba(0,0,0,0.6)", border: "1px solid rgba(255,255,255,0.35)", color: "#fff", cursor: "pointer" }}
+                      >
+                        选用
+                      </button>
+                    ))}
                   </div>
                   );
                 })}

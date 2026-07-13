@@ -120,6 +120,9 @@ interface BaseNodeProps {
    *  改为悬停/选中才浮现的顶部渐变叠加条（改名/按钮功能全保留）。姓名等身份信息由
    *  节点自己的 hero 内元素（如角色姓名条）承担。 */
   heroBareHeader?: boolean;
+  /** #142 常驻进度条右端的「取消」处理器（如 ComfyUI /interrupt）。提供后生成中在
+   *  进度条上渲染取消按钮——节点折叠/未选中也可达（此前取消只在收起的配置区里）。 */
+  onCancelGenerate?: () => void;
 }
 
 /** LibTV 化 3.3：创意模式英雄区右下角的尺寸标注 chip——读取容器内首个
@@ -193,6 +196,7 @@ export const BaseNode = memo(function BaseNode({
   heroMedia, leftDock, extraHandles, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
   onHeaderHoverChange,
   heroBareHeader,
+  onCancelGenerate,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -1783,6 +1787,17 @@ export const BaseNode = memo(function BaseNode({
           <span style={{ fontSize: 9.5, fontWeight: 700, color: config.color, whiteSpace: "nowrap" }}>
             {genProgress != null ? `${Math.round(genProgress)}%` : (genQueue != null ? `排队 ${genQueue}` : "生成中")}
           </span>
+          {onCancelGenerate && (
+            // #142 取消常驻可达：此前取消按钮在收起的配置区里，创意模式/未选中看不到。
+            <button
+              className="nodrag"
+              onClick={(e) => { e.stopPropagation(); onCancelGenerate(); }}
+              title="取消生成（中断本地 ComfyUI 推理）"
+              style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: "1px 7px", borderRadius: 6, background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer", lineHeight: "14px" }}
+            >
+              取消
+            </button>
+          )}
         </div>
       )}
 
