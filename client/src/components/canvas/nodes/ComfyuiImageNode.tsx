@@ -533,7 +533,15 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
       {payload.imageUrls!.map((url, idx) => {
         const isSelected = url === payload.imageUrl;
         return (
-          <div key={idx} className="relative rounded-lg overflow-hidden" style={{ background: "var(--c-canvas)" }}>
+          <div
+            key={idx}
+            className="nodrag relative rounded-lg overflow-hidden cursor-pointer"
+            // #142 hero 网格可点选：此前只有选中标记、点不了——创意模式配置区收起时
+            // 用户无法「选择一张为使用图」。点选同步 imageUrl 并向下游传播（与配置区网格同款）。
+            onClick={(e) => { e.stopPropagation(); selectImage(url); }}
+            title={isSelected ? "当前使用图（节点输出）" : "点击设为使用图（同步下游节点）"}
+            style={{ background: "var(--c-canvas)", outline: isSelected ? `2px solid ${accent}` : "none", outlineOffset: -2 }}
+          >
             <MediaImage src={url} alt={`comfyui-generated-${idx}`} className="w-full" draggable={false} />
             {isOwnStorageUrl(url) && (
               <div
@@ -591,6 +599,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     <>
     <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} resizable heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}
+      onCancelGenerate={handleCancel}
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], ...(payload.workflowTemplate !== "img2img" && payload.workflowTemplate !== "inpaint" ? { workflowTemplate: "img2img" } : {}) })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge

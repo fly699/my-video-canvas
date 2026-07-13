@@ -362,6 +362,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     <>
     <BaseNode id={id} selected={selected} nodeType="comfyui_video" title={data.title} minHeight={300} resizable heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={payload.status === "done" && !!payload.resultVideoUrl}
+      onCancelGenerate={handleCancel}
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0] })}
       headerTooltip={modelTip || undefined}
       hideTypeBadge
