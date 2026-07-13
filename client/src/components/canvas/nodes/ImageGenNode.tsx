@@ -288,8 +288,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (lightboxIndex >= len) setLightboxIndex(null);
   }, [hasMultiple, payload.imageUrls, payload.imageUrl, lightboxIndex]);
 
+  // #140 放弃等待：云端生图是「提交即计费」的一次长请求，无法撤回；放弃 = 本地不再等、
+  // 结果不回填（abandonedRef 守卫 onSuccess）。每次重新生成时复位。
+  const abandonedRef = useRef(false);
   const genMutation = trpc.imageGen.generate.useMutation({
     onSuccess: (result) => {
+      if (abandonedRef.current) return; // 用户已放弃等待——结果丢弃，不回填
       // Guard: node may have been deleted while generation was in flight
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       if (result.urls && result.urls.length > 1) {
@@ -317,6 +321,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       }
     },
     onError: (err) => {
+      if (abandonedRef.current) return; // 已放弃——错误也不打扰
       toast.error("图像生成失败：" + err.message);
     },
   });
@@ -407,11 +412,19 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       kieTempKey: localStorage.getItem("kie:tempKey"),
     });
     if (built.blocked) { toast.error(built.blocked); return; }
+    abandonedRef.current = false; // 新一轮生成：复位「放弃等待」标记
     const submit = () => genMutation.mutate({
       ...(built.input as Parameters<typeof genMutation.mutate>[0]),
       projectId: data.projectId,
     });
     guard({ model: payload.model ?? resolve("image_gen", "image"), refImageUrl: built.refUrl }, submit);
+  };
+
+  // #140 放弃等待：本地解锁按钮与状态；云端生成继续（提交即计费，不可撤回），结果不回填。
+  const abandonWait = () => {
+    abandonedRef.current = true;
+    genMutation.reset();
+    toast.info("已放弃等待：节点已解锁。云端生成仍在进行（费用照常发生），其结果不会回填本节点", { duration: 7000 });
   };
 
   // 3D 换视角截图已插为首位参考图后，等 payload.referenceImages re-render 反映到位再触发生成，
@@ -1467,6 +1480,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             </span>
           )}
         </button>
+        {genMutation.isPending && (
+          // #140 放弃等待（云端生图提交即计费，无法撤回；放弃 = 本地解锁、结果不回填）
+          <button
+            onClick={abandonWait}
+            className="nodrag flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-[11px] font-medium"
+            style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}
+            title="停止等待本次生成并解锁节点（任务已计费且会在云端继续，结果不回填；如需保留结果请耐心等待）"
+          >
+            <X className="w-3 h-3" /> 放弃等待
+          </button>
+        )}
 
         </div>{/* end input collapse wrapper */}
       </div>
