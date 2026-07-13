@@ -665,9 +665,47 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     }
   }, [data.projectId, payload.customBaseUrl, payload.paramValues, update, uploadImageMutation]);
 
+  // #149 上游参考图列表的 ref（paramImages 在下方才计算；回调经 ref 取最新值避免声明顺序问题）。
+  const paramImagesRef = useRef<{ url?: string }[]>([]);
+
   const setParamValue = useCallback((key: string, value: unknown) => {
     update({ paramValues: { ...payload.paramValues, [key]: value } }, true);
   }, [payload.paramValues, update]);
+
+  // #149 宽/高参数快捷填入：识别工作流暴露的宽/高绑定对；applyWH 一次原子写两键
+  //（连续两次 setParamValue 会因闭包旧值互相覆盖——既有比例 chips 的隐性 bug 一并修掉）。
+  const whBindings = useMemo(() => {
+    const bs = payload.paramBindings ?? [];
+    const w = bs.find((b) => b.type === "number" && (/width/i.test(b.fieldPath) || b.label.includes("宽")));
+    const h = bs.find((b) => b.type === "number" && (/height/i.test(b.fieldPath) || b.label.includes("高")));
+    return w && h ? { w, h } : null;
+  }, [payload.paramBindings]);
+  const applyWH = useCallback((w: number, h: number) => {
+    if (!whBindings) return;
+    update({ paramValues: {
+      ...payload.paramValues,
+      [`${whBindings.w.nodeId}.${whBindings.w.fieldPath}`]: w,
+      [`${whBindings.h.nodeId}.${whBindings.h.fieldPath}`]: h,
+    } }, true);
+  }, [whBindings, payload.paramValues, update]);
+  /** 读取上游/参考图实际分辨率填入宽高：/16 对齐、长边等比夹到 1344（常见工作流上限）。 */
+  const fillWHFromUpstream = useCallback(() => {
+    const url = paramImagesRef.current[0]?.url;
+    if (!url) { toast.error("没有上游/参考图可读取尺寸——先连上游图或在参考条添加"); return; }
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (!w || !h) { toast.error("读取图片尺寸失败"); return; }
+      const MAXL = 1344;
+      const scale = Math.min(1, MAXL / Math.max(w, h));
+      w = Math.max(16, Math.round((w * scale) / 16) * 16);
+      h = Math.max(16, Math.round((h * scale) / 16) * 16);
+      applyWH(w, h);
+      toast.success(`已按上游图填入 ${w}×${h}（/16 对齐${scale < 1 ? `、长边缩至 ${MAXL}` : ""}）`);
+    };
+    img.onerror = () => toast.error("读取上游图失败（图片无法加载）");
+    img.src = url;
+  }, [applyWH]);
 
   // Upload a local image file to our storage and return its URL (the run flow
   // then re-uploads URL-valued image params to ComfyUI). Powers drag-in / file
@@ -784,6 +822,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   // 工作流图像参数 + 最终参与的角色/场景图（按解析前正向词里的 @提及/连线，只读）。
   const charSceneItems = useCharSceneItems(id, finalPromptInfo.basePos);
   const audioItems = useAudioStripItems(id); // 「音频」波形项放最后
+  paramImagesRef.current = paramImages; // #149 供 fillWHFromUpstream 读最新参考图
   const stripImages: StripItem[] = [...paramImages, ...charSceneItems, ...audioItems];
   const docks = useNodeDocks(id, { hasRef: stripImages.length >= 1, hasPrompt: finalPromptInfo.hasPos }, { prompt: finalPromptInfo.pos, ref: stripImages.map((i) => i.id).join(",") });
   const stripOpen = docks.refOpen;
@@ -1536,10 +1575,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
 
             {/* Aspect-ratio presets — shown when the workflow exposes width + height.
                 Sets both params to a common resolution for the chosen ratio. */}
-            {(() => {
-              const widthB = (payload.paramBindings ?? []).find((b) => b.type === "number" && (/width/i.test(b.fieldPath) || b.label.includes("宽")));
-              const heightB = (payload.paramBindings ?? []).find((b) => b.type === "number" && (/height/i.test(b.fieldPath) || b.label.includes("高")));
-              if (!widthB || !heightB) return null;
+            {whBindings && (() => {
+              // #149：applyWH 原子写两键（原来连续两次 setParamValue 闭包旧值互相覆盖，宽度被丢）；
+              // 追加「按上游图」直传参考图实际分辨率。
               const PRESETS: [string, number, number][] = [["1:1", 1024, 1024], ["16:9", 1344, 768], ["9:16", 768, 1344], ["4:3", 1152, 896], ["3:4", 896, 1152]];
               return (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
@@ -1547,10 +1585,15 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                   {PRESETS.map(([lbl, w, h]) => (
                     <button
                       key={lbl}
-                      onClick={() => { setParamValue(`${widthB.nodeId}.${widthB.fieldPath}`, w); setParamValue(`${heightB.nodeId}.${heightB.fieldPath}`, h); }}
+                      onClick={() => applyWH(w, h)}
                       style={{ padding: "4px 9px", fontSize: 11, borderRadius: 6, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)" }}
                     >{lbl}</button>
                   ))}
+                  <button
+                    onClick={fillWHFromUpstream}
+                    title="读取上游/参考图的实际分辨率填入宽高（/16 对齐，长边等比夹到 1344）"
+                    style={{ padding: "4px 9px", fontSize: 11, borderRadius: 6, cursor: "pointer", background: `${accent}14`, border: `1px solid ${accent}45`, color: accent, fontWeight: 600 }}
+                  >按上游图</button>
                 </div>
               );
             })()}
@@ -1806,10 +1849,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 <ResultHistoryStrip history={payload.resultHistory} currentUrl={payload.outputUrls[0]} accent={accent} onRollback={rollbackToSnapshot} />
               </div>
             )}
-            {/* Video output */}
+            {/* Video output
+                #148 创意模式下 hero 已常显第一条视频——本区只列 hero 之外的产出
+                （单产出即不再重复渲染播放器，曾双预览）；非创意模式（无 hero）全量列出。 */}
             {payload.outputType === "video" ? (
               <div>
-                {payload.outputUrls.map((url, i) => (
+                {(isCreativeMode ? payload.outputUrls.slice(1) : payload.outputUrls).map((url, i) => (
                   <div key={i} style={{ position: "relative", marginBottom: 8 }}>
                     <WatermarkedVideo
                       block
@@ -1828,8 +1873,9 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                   </div>
                 ))}
               </div>
-            ) : (
-              /* Image grid */
+            ) : isCreativeMode ? null : (
+              /* Image grid — #148 创意模式下 hero 已是全量可点选网格（含设为使用图），
+                 body 不再重复渲染；非创意模式（无 hero）保持原样。 */
               <div style={{ display: "grid", gridTemplateColumns: payload.outputUrls.length > 1 ? "1fr 1fr" : "1fr", gap: 6 }}>
                 {payload.outputUrls.map((url, i) => {
                   // 单张：按原图比例自适应高度（不留黑边）；多张网格：方块铺满裁切(cover，不留黑边)。
@@ -1972,6 +2018,33 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                     style={{ flex: "1 1 100%", minWidth: 180, height: 26, fontSize: 11, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 8, color: "var(--c-t2)", padding: "0 9px", outline: "none" }} />
                 );
               })}
+              {/* #149 宽/高快捷填入：比例常用档一键写两值，或读取上游参考图实际分辨率直传 */}
+              {whBindings && (
+                <select
+                  className="nodrag"
+                  value=""
+                  title="宽/高快捷填入：选比例档一键写入两值，或「按上游图」读取参考图实际分辨率（/16 对齐、长边夹到 1344）"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    e.currentTarget.value = "";
+                    if (!v) return;
+                    if (v === "up") { fillWHFromUpstream(); return; }
+                    const [w, h] = v.split("x").map(Number);
+                    if (w && h) applyWH(w, h);
+                  }}
+                  style={{ height: 26, fontSize: 10.5, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 7, color: "var(--c-t2)", padding: "0 4px" }}
+                >
+                  <option value="">尺寸快填…</option>
+                  <option value="up">按上游图尺寸</option>
+                  <option value="1344x768">16:9 · 1344×768</option>
+                  <option value="768x1344">9:16 · 768×1344</option>
+                  <option value="1024x1024">1:1 · 1024×1024</option>
+                  <option value="1152x896">4:3 · 1152×896</option>
+                  <option value="896x1152">3:4 · 896×1152</option>
+                  <option value="832x480">16:9 小 · 832×480</option>
+                  <option value="480x832">9:16 小 · 480×832</option>
+                </select>
+              )}
             </div>
           );
         })()}
