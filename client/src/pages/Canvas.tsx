@@ -681,6 +681,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const isPopout = useMemo(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("popout"), []);
   const popoutVpKey = `ui:canvas:popoutViewport:${projectId}`;
   const bcRef = useRef<BroadcastChannel | null>(null);
+  // 工程智能体「使用了旧记忆体」提醒的节流时刻（5 分钟内只弹一次，避免连续运行刷屏）。
+  const memoryNoticeRef = useRef<number>(0);
   // Toolbar & minimap layout persists across reloads. Keys are namespaced
   // `ui:*` so the localStorage admin can grep for them. The validate fn
   // discards corrupted payloads (e.g. partial migrations) rather than
@@ -1358,6 +1360,20 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (msg.event.type === "result" && msg.event.data != null) {
         useCanvasStore.getState().updateNodeData(msg.nodeId, { pendingBuildResult: msg.event.data }, true);
         return;
+      }
+      // 记忆体提醒：本次用的是「知识记忆体」缓存（内存/DB）且已有些年头时，弹一次提醒——如已增删
+      // 模型/节点，去服务器面板「复位全部记忆」重学。刚学的（age 小）不打扰。每台服务器 5 分钟内只提醒一次。
+      if (msg.event.type === "resources") {
+        const age = (msg.event.data as { memoryAgeMs?: number | null } | undefined)?.memoryAgeMs;
+        if (typeof age === "number" && age > 60_000) {
+          const now = Date.now();
+          const last = memoryNoticeRef.current;
+          if (now - last > 5 * 60_000) {
+            memoryNoticeRef.current = now;
+            const mins = Math.round(age / 60_000);
+            toast.info(`工程智能体本次使用的是 ${mins < 60 ? `${mins} 分钟前` : `${Math.round(mins / 60)} 小时前`}学习的 ComfyUI 记忆。若你已增删模型/节点，请到顶栏服务器面板点「复位全部记忆」重学。`, { duration: 9000 });
+          }
+        }
       }
       const prev = ((node.data.payload as { log?: { type: string; iteration: number; message: string }[] }).log) ?? [];
       const next = [...prev, { type: msg.event.type, iteration: msg.event.iteration, message: msg.event.message }].slice(-200);

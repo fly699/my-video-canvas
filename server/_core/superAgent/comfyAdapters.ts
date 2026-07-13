@@ -209,6 +209,9 @@ export function createComfyTools(opts: ComfyToolsAdapterOptions): ComfyAgentTool
     async describeNodes(classNames) {
       return formatNodeSchemas(await objectInfo(), classNames);
     },
+    async resourceMemoryFetchedAt() {
+      return (await knowledge()).fetchedAt;
+    },
     async validate(workflowJson) {
       try {
         const r = await validateWorkflow(workflowJson, baseUrl);

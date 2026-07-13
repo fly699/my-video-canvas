@@ -43,6 +43,9 @@ export interface ComfyAgentTools {
   /** 查询若干节点类的精确输入/输出 schema（字段名·类型·枚举·默认），供 LLM 写图前对齐、
    *  不再靠记忆猜。返回一段人类可读文本（每个节点一块）。可选：老适配器不实现则引擎自动禁用。 */
   describeNodes?(classNames: string[]): Promise<string>;
+  /** 可选：本次资源清单/schema 的「知识记忆体」学习时刻（ms）。用于提醒用户记忆是否可能过时、
+   *  需不需要复位记忆体重学。不实现（如云端）则不提示。 */
+  resourceMemoryFetchedAt?(): Promise<number | null>;
   /** 可选：下载安装缺失模型（checkpoint/LoRA/VAE…）。仅当宿主提供（已注册 ops 服务器 + 权限 +
    *  开关）时可用；不提供则智能体无安装能力，只能用现有资源。参数经宿主侧安全校验。 */
   installModel?(spec: { url: string; dir: string; filename: string }): Promise<{ ok: boolean; message: string }>;
@@ -255,7 +258,17 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
 
   // 0. 拉资源清单，进系统提示。
   const resources = await opts.tools.listResources();
-  emit({ type: "resources", iteration: 0, message: `已获取服务器资源：${resources.checkpoints.length} checkpoints / ${resources.loras.length} loras / ${resources.nodeClasses.length} 节点类`, data: resources });
+  // 记忆体提醒：本次资源来自「知识记忆体」（内存/DB 缓存）时，附上学习时刻与「如已增删模型/节点请复位记忆体」
+  // 提醒，让用户判断记忆是否过时。刚学的（age 很小）也如实告知来源，满足「每次调用记忆都提示」。
+  const memAt = (await opts.tools.resourceMemoryFetchedAt?.().catch(() => null)) ?? null;
+  const memNote = ((): string => {
+    if (memAt == null) return "";
+    const ageMs = Date.now() - memAt;
+    const mins = Math.max(0, Math.round(ageMs / 60000));
+    const when = mins <= 0 ? "刚学习" : mins < 60 ? `${mins} 分钟前学习` : `${Math.round(mins / 60)} 小时前学习`;
+    return `（记忆体·${when}；若已增删模型/节点，请点服务器面板『复位全部记忆』重学）`;
+  })();
+  emit({ type: "resources", iteration: 0, message: `已获取服务器资源：${resources.checkpoints.length} checkpoints / ${resources.loras.length} loras / ${resources.nodeClasses.length} 节点类${memNote}`, data: { ...resources, memoryFetchedAt: memAt, memoryAgeMs: memAt == null ? null : Date.now() - memAt } });
 
   const continuing = !!opts.seedWorkflowJson;
   const canInstall = !!(opts.tools.installModel || opts.tools.installNode);
