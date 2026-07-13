@@ -10,7 +10,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { User, Users, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles, Music, Dices, SlidersHorizontal } from "lucide-react";
+import { User, Users, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles, Music, Dices, SlidersHorizontal, PersonStanding, Clapperboard } from "lucide-react";
 import { InlineGenBar } from "../InlineGenBar";
 import { ToolChip } from "../InlineBarParts";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
@@ -1191,7 +1191,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   return (
     <>
-    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={isCreativeMode ? 72 : 160} resizable heroMedia={heroMedia} heroBareHeader
+    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={isCreativeMode ? 72 : 160} resizable heroMedia={heroMedia} heroBareHeader={!!payload.referenceImageUrl?.trim()}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <>
@@ -1238,7 +1238,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     </BaseNode>
     {/* ── LibTV（创意模式）就地输入条：类别 / 参考图 / 识别 / 多视角 ‖ 姓名 / 高级 / 存库 ── */}
     {isCreativeMode && (
-      <InlineGenBar nodeId={id} visible={!!selected} width={470}>
+      <InlineGenBar nodeId={id} visible={!!selected} width={500}>
         <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           {KINDS.map((k) => (
             <ToolChip key={k.id} icon={k.icon} label={k.label} active={kind === k.id}
@@ -1251,6 +1251,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             onClick={handleRecognize} disabled={recognizeMut.isPending} title="AI 看图识别，自动填充外貌/服装等字段" />
           <ToolChip icon={multiAngleBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} label="多视角"
             onClick={() => void handleMultiAngle()} disabled={multiAngleBusy} title="一键多视角（三视图参考，强化跨镜一致性）" />
+          {/* #133 批C：高频操作一级化——姿势库 / 应用到分镜 从 hover 带提为输入条常驻 chip */}
+          <ToolChip icon={<PersonStanding size={13} />} label="姿势库"
+            onClick={() => setPosePickerOpen(true)} title="姿势库：22 款 3D 摆姿截图作参考（弹窗底部还可直通分镜）" />
+          <ToolChip icon={<Clapperboard size={13} />} label="应用到分镜"
+            onClick={() => applyToConnectedShots(false)} title="把本角色的参考/LoRA/一致性种子套用到所有连接的生成/分镜节点" />
         </div>
         <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input
