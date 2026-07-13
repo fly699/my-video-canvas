@@ -85,7 +85,7 @@ import { BeginnerGuide, ConnectionHintsPanel } from "../components/canvas/Beginn
 import { GuidedTour } from "../components/canvas/GuidedTour";
 import { NotifySettingsDialog } from "../components/canvas/NotifySettingsDialog";
 import { useGuideStore } from "../hooks/useGuideStore";
-import type { TourStep } from "../lib/guideSteps";
+import { GUIDE_STEPS, type TourStep } from "../lib/guideSteps";
 import { HelpPanel } from "../components/canvas/HelpPanel";
 import { CollaborationPanel } from "../components/canvas/CollaborationPanel";
 import { NarrativeArcPicker } from "../components/canvas/NarrativeArcPicker";
@@ -1839,6 +1839,29 @@ function CanvasInner({ projectId }: { projectId: number }) {
       window.dispatchEvent(new CustomEvent("canvas:minimal-change"));
     };
   }, []);
+
+  // #116 第四批「亲手试一试」：消费教程页写入的导览深链标志——挂载时读一次
+  //（教程点击时画布未开的情形），并监听 storage 事件（教程在另一标签页点击、
+  // 画布已开着的情形——storage 事件天然只发给其它标签页，正好即时启动）。
+  useEffect(() => {
+    const consume = () => {
+      try {
+        const raw = localStorage.getItem("avc:tutorial:tryit");
+        if (!raw) return;
+        localStorage.removeItem("avc:tutorial:tryit"); // 一次性消费，避免每次进画布都重启导览
+        const { step } = JSON.parse(raw) as { step?: string };
+        const idx = GUIDE_STEPS.findIndex((s) => s.id === step);
+        if (idx >= 0) {
+          startGuide(idx);
+          toast.info("来自教程的「亲手试一试」：已定位到对应导览步骤", { duration: 2500 });
+        }
+      } catch { /* 损坏的标志直接忽略 */ }
+    };
+    consume();
+    const onStorage = (e: StorageEvent) => { if (e.key === "avc:tutorial:tryit" && e.newValue) consume(); };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [startGuide]);
 
   // #112 画布助手的 fit_view / 整理布局后适应视图：agentApply 无 reactFlow 实例，
   // 经自定义事件转交这里执行。

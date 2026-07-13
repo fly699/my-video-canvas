@@ -227,7 +227,22 @@ export default function TutorialPage() {
               </>
             ) : (
               <>
-                <h2 style={{ margin: "0 0 4px", fontSize: 21, fontWeight: 800, color: "var(--c-t1)" }}>{chapter.icon} {chapter.title}</h2>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", margin: "0 0 4px" }}>
+                  <h2 style={{ margin: 0, fontSize: 21, fontWeight: 800, color: "var(--c-t1)" }}>{chapter.icon} {chapter.title}</h2>
+                  {/* #116 第四批「亲手试一试」：写入跨标签页标志——画布（已开的标签页经
+                      storage 事件立即、未开的下次进入时）从对应导览步启动聚光高亮。 */}
+                  {chapter.guideStep && (
+                    <button
+                      onClick={() => {
+                        try { localStorage.setItem("avc:tutorial:tryit", JSON.stringify({ step: chapter.guideStep, at: Date.now() })); } catch { /* restricted */ }
+                        toast.success("已发送到画布：切回画布标签页自动开始该功能的导览高亮（未开画布则进入任意项目后自动开始）", { duration: 4000 });
+                      }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 12px", borderRadius: 99, fontSize: 12, fontWeight: 700, background: "color-mix(in oklch, var(--color-brand, oklch(0.62 0.2 285)) 16%, transparent)", color: "var(--c-t1)", border: "1px solid color-mix(in oklch, var(--color-brand, oklch(0.62 0.2 285)) 45%, transparent)", cursor: "pointer" }}
+                    >
+                      🎯 亲手试一试
+                    </button>
+                  )}
+                </div>
                 <p style={{ margin: "0 0 22px", fontSize: 12.5, color: "var(--c-t3)" }}>{chapter.intro}</p>
                 {chapter.sections.map((s) => (
                   <SectionView key={s.id} chapter={chapter} section={s} overrides={overrides} isAdmin={isAdmin}

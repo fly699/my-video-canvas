@@ -26,12 +26,15 @@ export interface TutorialChapter {
   icon: string;             // emoji（数据文件保持纯净）
   title: string;
   intro: string;            // 章首一句话
+  /** #116 第四批「亲手试一试」：对应新手导览（GUIDE_STEPS）的步骤 id——
+   *  教程页按钮写入 localStorage 标志，画布消费后从该步启动导览聚光高亮。 */
+  guideStep?: string;
   sections: TutorialSection[];
 }
 
 export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
   {
-    id: "quickstart", icon: "🚀", title: "快速上手", intro: "10 分钟从零到出片：新建项目 → 搭第一条工作流 → 运行。",
+    id: "quickstart", guideStep: "add-node", icon: "🚀", title: "快速上手", intro: "10 分钟从零到出片：新建项目 → 搭第一条工作流 → 运行。",
     sections: [
       { id: "create-project", title: "第一步：新建项目", paragraphs: [
         "登录后在首页点「新建项目」即进入画布。每个项目是一张独立的无限画布，自动保存，可邀请协作者共同编辑。",
@@ -52,7 +55,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "overview", icon: "🧭", title: "界面总览", intro: "顶栏、底部工具栏、三种模式与主题。",
+    id: "overview", guideStep: "topbar", icon: "🧭", title: "界面总览", intro: "顶栏、底部工具栏、三种模式与主题。",
     sections: [
       { id: "topbar", title: "顶栏", paragraphs: [
         "左侧：返回、项目名（点击改名）、保存状态、实时余额仪表盘（Poyo / KIE 点数）。",
@@ -60,6 +63,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
       ], image: { slug: "overview-topbar", caption: "画布顶栏" } },
       { id: "dock", title: "底部工具栏（dock）", paragraphs: [
         "添加节点、运行、缩放百分比（点击弹缩放菜单）、适应视图、整理布局、连线指引、风格库、运镜库、角色库、快捷键帮助（?）等都在这一条上。",
+        "「整理布局」支持四种排法循环：流向分层 → 紧凑网格 → 横向一排 → 垂直一列，连续点击即切换（toast 会显示当前排法名）。选中群组时，群组工具条还有 横向 / 垂直 / 宫格 三种组内成员排列。",
         "创意模式下 dock 采用图标化紧凑排布，悬停看提示；专业 / 工作室模式带文字标签。",
       ], image: { slug: "overview-dock", caption: "底部 dock" } },
       { id: "modes", title: "三种界面模式", paragraphs: [
@@ -72,7 +76,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "creative", icon: "✨", title: "创意模式专章", intro: "就地输入条、高级面板、极简显示与速览——效率最高的创作形态。",
+    id: "creative", guideStep: "minimal-quicklook", icon: "✨", title: "创意模式专章", intro: "就地输入条、高级面板、极简显示与速览——效率最高的创作形态。",
     sections: [
       { id: "inline-bar", title: "就地生成输入条", paragraphs: [
         "创意模式下选中任意生成节点，下方浮出输入条：工具 chips 行（参考 / 标记 / 风格 / 运镜等）＋ 参考缩略行 ＋ 大提示词框 ＋ 精简控制行（模型 | 比例·画质·时长·张数 | 翻译·设置 | 积分 | 发送）。",
@@ -84,17 +88,19 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
       { id: "minimal", title: "极简显示（Alt+Q）", paragraphs: [
         "按 Alt+Q：有产出结果的节点只留预览框（无边框、极窄阴影），画布顶栏隐藏，整屏变成看片墙；批量多产物的节点自动平铺全部产物。再按恢复标准显示。",
         "极简下没有结果的节点保持原样；悬停预览浮现节点标题；选中节点仍可用输入条与浮动操作条正常生成。状态会记住，下次进画布沿用。",
+        "多产物平铺的网格右上角有「收起」钮——折成单张预览省空间；单张右上角「展开 N 张」随时还原平铺。该收起状态只在极简形态下生效。",
       ], keys: [["Alt", "Q"]], image: { slug: "creative-minimal", caption: "极简显示：看片墙形态" } },
       { id: "quicklook", title: "速览（Alt+W）", paragraphs: [
         "按 Alt+W 临时展开全部节点的左侧参考窗与顶部提示词窗，一眼看全整张画布用了哪些素材与文案；再按或 5 秒后自动复原。极简显示下速览会临时恢复完整形态。",
       ], keys: [["Alt", "W"]] },
       { id: "shortcuts", title: "快捷键全表", paragraphs: [
         "按 ? 打开快捷键面板。高频：Tab 新建节点、F 缩放到选中、A 高级参数、Ctrl+Enter 生成、Ctrl+K 搜索节点、Ctrl+L 连线两节点、Ctrl/Alt+G 成组、Alt+Shift+F 整理画布、Ctrl+C/V 复制粘贴子图（含内部连线）。",
+        "双击任意节点空白处：快速聚焦——平滑放大并居中该节点（双击标题仍是改名）；双击画布空白则是快速添加节点。",
       ], keys: [["?"], ["Tab"], ["F"], ["Ctrl", "Enter"]] },
     ],
   },
   {
-    id: "nodes", icon: "🧩", title: "节点大全", intro: "20+ 种节点逐个说明：用途、关键参数、连线与典型用法。",
+    id: "nodes", guideStep: "connect-rules", icon: "🧩", title: "节点大全", intro: "20+ 种节点逐个说明：用途、关键参数、连线与典型用法。",
     sections: [
       { id: "node-io", title: "连线与数据流（先读）", paragraphs: [
         "左 / 上桩点接收输入，右 / 下桩点输出产物。上游产物顺连线喂给下游：图像 → 视频 = 首帧引导；角色 → 生成节点 = 身份参考；音频 → 合并 = 配乐。",
@@ -176,7 +182,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "pipeline", icon: "🎬", title: "创作链路实战", intro: "脚本 → 分镜 → 图像 → 视频 → 装配成片的完整流程。",
+    id: "pipeline", guideStep: "workflow", icon: "🎬", title: "创作链路实战", intro: "脚本 → 分镜 → 图像 → 视频 → 装配成片的完整流程。",
     sections: [
       { id: "script", title: "写脚本", paragraphs: [
         "脚本节点：填一句话梗概即可让 AI 整本生成；输入条八个工具 chips（提取梗概 / 润色 / 精简 / 向导 / 审查 / 历史 / 配音等）覆盖打磨全流程；版本历史自动快照每次 AI 改写前的原文，可 diff 对比、一键还原。",
@@ -192,7 +198,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "assets-chars", icon: "🧑‍🎤", title: "素材与角色", intro: "素材库、角色库、一致性种子、姿势库与 @ 引用。",
+    id: "assets-chars", guideStep: "character", icon: "🧑‍🎤", title: "素材与角色", intro: "素材库、角色库、一致性种子、姿势库与 @ 引用。",
     sections: [
       { id: "assets", title: "素材库", paragraphs: [
         "多选 / 拖拽 / 粘贴（Ctrl+V）批量上传；同项目协作者共享，互见彼此上传与 AI 生成的素材；素材可直接拖进画布成节点，或拖到生成节点上作参考图。",
@@ -223,7 +229,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "editor", icon: "✂️", title: "剪辑器专章", intro: "时间轴精修与 AI 智能剪辑。",
+    id: "editor", guideStep: "editor", icon: "✂️", title: "剪辑器专章", intro: "时间轴精修与 AI 智能剪辑。",
     sections: [
       { id: "editor-basics", title: "时间轴剪辑", paragraphs: [
         "顶栏剪辑器进入 /editor：多片段时间轴（适应窗口一键铺满）、转场特效、画面适配 / 倒放 / 变速、富文本字幕、调色预设、撤销重做 + 自动保存，单遍 ffmpeg 导出高素质成片。",
@@ -231,6 +237,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
       ] },
       { id: "quick-trim", title: "画布内快剪", paragraphs: [
         "不进剪辑器也能剪：任何有视频结果的节点，操作条点「快剪」弹出底部时间轴选区条——拖选区、I/O 设出入点、整秒磁吸、选区循环预览、Enter 确认，原地替换成片。",
+        "快剪条还有三个轻量控件：变速（0.5~2× 循环，确认时随剪辑一并应用，title 里显示成片预估时长）、静音（去掉原声）、截取当前帧（存入素材库，可直接当参考图 / 封面）。复杂编辑仍建议进专用剪辑器。",
       ], keys: [["I"], ["O"], ["Enter"]] },
       { id: "smart-cut", title: "AI 智能剪辑", paragraphs: [
         "智能剪辑节点自动转写、按语义挑选保留段落出粗剪；「检测场景切点」用视觉分析找出画面切换点，剪辑边界优先吸附到这些切点。",
@@ -238,7 +245,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "comfyui", icon: "🧱", title: "ComfyUI 专章", intro: "自建算力：服务器、工作流导入与参数绑定。",
+    id: "comfyui", guideStep: "comfyui", icon: "🧱", title: "ComfyUI 专章", intro: "自建算力：服务器、工作流导入与参数绑定。",
     sections: [
       { id: "comfy-server", title: "连接自建服务器", paragraphs: [
         "ComfyUI 图像 / 视频 / 工作流节点填入自建服务器地址即用本地算力（免云端积分）；15 类模型自动发现（ckpt/LoRA/ControlNet/IPAdapter…）。",
@@ -253,11 +260,12 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "assistant", icon: "🪄", title: "画布助手专章", intro: "一句话指挥整张画布的总指挥。",
+    id: "assistant", guideStep: "agent", icon: "🪄", title: "画布助手专章", intro: "一句话指挥整张画布的总指挥。",
     sections: [
       { id: "assistant-basics", title: "它能做什么", paragraphs: [
         "右下角浮层助手用自然语言直接操作画布：「做一个橘猫晒太阳的竖屏短片，3 镜头」自动写脚本、拆分镜、建好整条节点链；「把刚才那个视频画幅改成 9:16」「把 @小明 加进第 2 个分镜」一句话完成修改。",
         "还能：批量改参数与模型、按语义整理布局、引用角色库 / 素材库、/ 唤起技能、解释报错并给修复建议。先框选节点再说话 = 只改选中的；每次改动可一键撤销。",
+        "画布级操作也能直接下令：「切到极简显示」「整理一下布局」「看全图」「把所有成品都下载下来」——助手会真的执行（不只是口头指路），执行结果在操作预览里逐条可见。",
       ], image: { slug: "assistant-chat", caption: "画布助手浮窗" } },
       { id: "assistant-cost", title: "花不花钱？", paragraphs: [
         "建 / 连 / 改画布本身不消耗点数——真正点「运行」触发生成才计费。所以尽管把它当搭档用：不知道功能在哪就直接问它，让它替你做。",
@@ -265,7 +273,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "billing", icon: "💰", title: "计费与预算", intro: "花之前先算清。",
+    id: "billing", guideStep: "budget", icon: "💰", title: "计费与预算", intro: "花之前先算清。",
     sections: [
       { id: "pricing", title: "模型计价", paragraphs: [
         "每个模型在选择器里标注点数消耗；生成按钮随模型与参数（时长 / 分辨率 / 张数）实时预估。kie 平台按任务计费（如一次固定返回多张候选仍算一次）。",
@@ -276,7 +284,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "collab", icon: "💬", title: "协作与聊天", intro: "多人同画布与团队沟通。",
+    id: "collab", guideStep: "collab", icon: "💬", title: "协作与聊天", intro: "多人同画布与团队沟通。",
     sections: [
       { id: "realtime", title: "实时协作", paragraphs: [
         "邀请协作者后多人同时编辑：节点变更秒同步、协作者光标可见、他人节点按创建者显示专属颜色；画布助手对话历史项目级共享。",
@@ -287,7 +295,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
     ],
   },
   {
-    id: "faq", icon: "🛟", title: "常见问题排查", intro: "先看这里，再找助手。",
+    id: "faq", guideStep: "shortcuts", icon: "🛟", title: "常见问题排查", intro: "先看这里，再找助手。",
     sections: [
       { id: "faq-run", title: "生成失败怎么办", paragraphs: [
         "点顶部状态条的失败项直接跳到出错节点，展开红色横幅看完整错误。常见：提示词为空（补字段）、缺上游输入（补连线）、余额不足 / 服务器离线（环境问题）。也可以把报错直接丢给画布助手，它会解释原因并尽量修复。",
