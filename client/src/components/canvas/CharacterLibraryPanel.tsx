@@ -155,39 +155,55 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
         {shownItems.length === 0 && (items?.length ?? 0) > 0 && (
           <div style={{ fontSize: 11, color: "var(--c-t4)", textAlign: "center", padding: "20px 8px" }}>没有匹配的角色/场景</div>
         )}
-        {shownItems.map((it) => (
-          <div key={it.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd2)" }}>
-            <div className="flex-shrink-0 rounded-md overflow-hidden flex items-center justify-center" style={{ width: 36, height: 36, background: "var(--c-canvas)", border: "1px solid var(--c-bd2)" }}>
-              {it.thumbnail
-                ? <img src={mediaFetchUrl(it.thumbnail)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                : (it.characterKind === "scene" ? <Mountain className="w-4 h-4" style={{ color: "var(--c-t4)" }} /> : <UserIcon className="w-4 h-4" style={{ color: "var(--c-t4)" }} />)}
-            </div>
-            <div className="flex-1 min-w-0" onDoubleClick={() => rename(it.id, it.name)} title="双击重命名">
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>{it.name}</div>
-              <div className="flex items-center gap-1" style={{ fontSize: 9.5, color: "var(--c-t4)" }}>
-                <span>{it.characterKind === "scene" ? "场景" : "人物"}</span>
-                {(() => {
-                  const p = (it.payload ?? {}) as { referenceAudioUrl?: string; additionalAudioUrls?: string[]; referenceVideoUrl?: string; additionalVideoUrls?: string[] };
-                  const hasAudio = !!(p.referenceAudioUrl?.trim() || p.additionalAudioUrls?.length);
-                  const hasVideo = !!(p.referenceVideoUrl?.trim() || p.additionalVideoUrls?.length);
-                  return (<>
-                    {hasAudio && <span title="含音频参考" style={{ display: "inline-flex", alignItems: "center", gap: 1, padding: "0 3px", borderRadius: 4, background: "oklch(0.66 0.18 30 / 0.14)", color: "oklch(0.66 0.18 30)" }}><Music className="w-2.5 h-2.5" />音</span>}
-                    {hasVideo && <span title="含视频参考" style={{ display: "inline-flex", alignItems: "center", gap: 1, padding: "0 3px", borderRadius: 4, background: "oklch(0.62 0.16 240 / 0.14)", color: "oklch(0.62 0.16 240)" }}><Film className="w-2.5 h-2.5" />视</span>}
-                  </>);
-                })()}
+        {/* #133 批B：列表 → 大预览网格卡（LibTV 库形态）。缩略图占卡主体、姓名叠底部渐变、
+            hover 右上浮现操作行；双击整卡 = 添加到画布（最高频操作零按钮直达）。 */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(116px, 1fr))", gap: 8 }} data-charlib-grid>
+          {shownItems.map((it) => {
+            const p = (it.payload ?? {}) as { referenceAudioUrl?: string; additionalAudioUrls?: string[]; referenceVideoUrl?: string; additionalVideoUrls?: string[] };
+            const hasAudio = !!(p.referenceAudioUrl?.trim() || p.additionalAudioUrls?.length);
+            const hasVideo = !!(p.referenceVideoUrl?.trim() || p.additionalVideoUrls?.length);
+            const isScene = it.characterKind === "scene";
+            return (
+              <div key={it.id} className="group/clib nodrag relative rounded-xl overflow-hidden"
+                title="双击添加到画布"
+                onDoubleClick={() => dropOnCanvas(it.payload, it.characterKind, false)}
+                style={{ aspectRatio: "3 / 4", background: "var(--c-input)", border: "1px solid var(--c-bd2)", cursor: "pointer" }}>
+                {it.thumbnail
+                  ? <img src={mediaFetchUrl(it.thumbnail)} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {isScene ? <Mountain className="w-7 h-7" style={{ color: "var(--c-t4)", opacity: 0.6 }} /> : <UserIcon className="w-7 h-7" style={{ color: "var(--c-t4)", opacity: 0.6 }} />}
+                    </div>}
+                {/* hover 操作行（右上）：添加 / 编辑 / 删除 */}
+                <div className="absolute top-1 right-1 z-10 flex items-center gap-1 opacity-0 group-hover/clib:opacity-100" style={{ transition: "opacity 140ms ease" }}>
+                  {([
+                    { key: "add", icon: <Plus className="w-3.5 h-3.5" />, title: "添加到画布（或双击整卡）", onClick: () => dropOnCanvas(it.payload, it.characterKind, false), accentBg: true },
+                    { key: "edit", icon: <Pencil className="w-3 h-3" />, title: "编辑（放到画布并选中，改完「保存到角色库」覆盖更新）", onClick: () => dropOnCanvas(it.payload, it.characterKind, true) },
+                    { key: "del", icon: <Trash2 className="w-3 h-3" />, title: "删除", onClick: () => { if (window.confirm(`从角色库删除「${it.name}」？`)) delMut.mutate({ id: it.id }); } },
+                  ] as const).map((b) => (
+                    <button key={b.key} title={b.title}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); b.onClick(); }}
+                      style={{ width: 24, height: 24, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 7, cursor: "pointer", backdropFilter: "blur(6px)",
+                        background: ("accentBg" in b && b.accentBg) ? "oklch(0.66 0.18 30 / 0.85)" : "oklch(0 0 0 / 0.55)",
+                        border: "1px solid oklch(1 0 0 / 0.2)", color: "#fff" }}>
+                      {b.icon}
+                    </button>
+                  ))}
+                </div>
+                {/* 底部渐变姓名条：双击名字=重命名（阻断卡片双击添加） */}
+                <div className="absolute left-0 right-0 bottom-0 flex items-center gap-1" style={{ padding: "14px 7px 6px", background: "linear-gradient(transparent, oklch(0 0 0 / 0.78))" }}>
+                  <span onDoubleClick={(e) => { e.stopPropagation(); rename(it.id, it.name); }} title="双击重命名"
+                    style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 700, color: "#fff", textShadow: "0 1px 3px oklch(0 0 0 / 0.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: "text" }}>
+                    {it.name}
+                  </span>
+                  <span style={{ flexShrink: 0, fontSize: 8.5, fontWeight: 700, padding: "1px 5px", borderRadius: 6, background: isScene ? "oklch(0.62 0.16 240 / 0.5)" : "oklch(0.66 0.18 30 / 0.5)", color: "#fff" }}>{isScene ? "场景" : "人物"}</span>
+                  {hasAudio && <Music className="w-2.5 h-2.5 flex-shrink-0" style={{ color: "#fff", opacity: 0.85 }} />}
+                  {hasVideo && <Film className="w-2.5 h-2.5 flex-shrink-0" style={{ color: "#fff", opacity: 0.85 }} />}
+                </div>
               </div>
-            </div>
-            <button onClick={() => dropOnCanvas(it.payload, it.characterKind, true)} title="编辑（放到画布并选中，改完「保存到角色库」即可覆盖更新）" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "none", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer" }}>
-              <Pencil className="w-3 h-3" />
-            </button>
-            <button onClick={() => dropOnCanvas(it.payload, it.characterKind, false)} title="添加到画布" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "oklch(0.66 0.18 30 / 0.12)", border: "1px solid oklch(0.66 0.18 30 / 0.3)", color: "oklch(0.66 0.18 30)", cursor: "pointer" }}>
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { if (window.confirm(`从角色库删除「${it.name}」？`)) delMut.mutate({ id: it.id }); }} title="删除" className="nodrag flex-shrink-0 flex items-center justify-center" style={{ width: 26, height: 26, borderRadius: 6, background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer" }}>
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ))}
+            );
+          })}
+        </div>
       </div>
 
       {/* Four-corner resize handles (floating only — pinned is docked & locked) */}

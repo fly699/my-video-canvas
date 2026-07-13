@@ -3273,6 +3273,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipTrigger asChild>
                 <button
                   onClick={() => setShowCharLib((v) => !v)}
+                  title="角色库"
+                  aria-label="角色库（跨项目复用角色 / 场景）"
                   className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
                   style={{ color: showCharLib ? "oklch(0.66 0.18 30)" : "var(--c-t3)" }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
