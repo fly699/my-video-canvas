@@ -155,7 +155,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 - **Puppeteer v25 API 变更**：`page.$x()`（XPath）、`page.waitForTimeout()`、`page.mouse.dblclick()` 已移除
   - XPath → 改用 `page.evaluate()` 手动查找
   - 等待 → 用 `const sleep = ms => new Promise(r => setTimeout(r, ms))`
-  - 双击 → 用 `page.mouse.click(x, y, { clickCount: 2 })`
+  - **双击（2026-07 血泪教训）**：`page.mouse.click(x, y, { clickCount: 2 })` 在 React Flow 节点等 React 组件上**不产生 dblclick 事件**（曾因此把「双击节点聚焦」误判失效、还出过两轮假阳性验证）。可靠做法是模拟真实双击序列：
+    `await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.up(); await page.mouse.down({clickCount:2}); await page.mouse.up({clickCount:2});`
+    验证双击类交互前，先挂 `document.addEventListener('dblclick', ..., true)` 探针确认事件真的派发，再断言业务效果。
 - **NodePicker vs NodeSearch**：
   - `添加` 按钮 → `setShowNodePicker` → 添加新节点到画布（正确入口）
   - `Ctrl+K` → `setShowNodeSearch` → 搜索**现有**画布节点（不能新增）

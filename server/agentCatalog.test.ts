@@ -133,6 +133,26 @@ describe("agentCatalog.sanitizeOperationDetailed", () => {
     expect("drop" in r && r.drop.includes("999")).toBe(true);
   });
 
+  // #112 画布级动作：合法 action 保留（多余字段剥除），非法 action / 缺 action 丢弃并说明
+  it("canvas op with whitelisted action is kept, extra fields stripped", () => {
+    for (const action of ["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all"]) {
+      const r = sanitizeOperationDetailed({ op: "canvas", action, note: "n", payload: { evil: 1 }, targetRef: "x" });
+      expect("op" in r).toBe(true);
+      if ("op" in r) {
+        expect(r.op.op).toBe("canvas");
+        expect(r.op.action).toBe(action);
+        expect(r.op.payload).toBeUndefined();
+        expect(r.op.targetRef).toBeUndefined();
+      }
+    }
+  });
+
+  it("canvas op with unknown/missing action → drop names the action", () => {
+    const bad = sanitizeOperationDetailed({ op: "canvas", action: "self_destruct" });
+    expect("drop" in bad && bad.drop.includes("self_destruct")).toBe(true);
+    expect("drop" in sanitizeOperationDetailed({ op: "canvas" })).toBe(true);
+  });
+
   it("malformed connect / missing op → drop", () => {
     expect("drop" in sanitizeOperationDetailed({ op: "connect", sourceRef: "n1" })).toBe(true);
     expect("drop" in sanitizeOperationDetailed(null)).toBe(true);

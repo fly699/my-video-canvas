@@ -56,11 +56,19 @@ const OP_META: Record<AgentOperation["op"], { Icon: typeof Plus; label: string }
   connect: { Icon: Link2, label: "连接" },
   update: { Icon: Pencil, label: "更新" },
   delete: { Icon: Trash2, label: "删除" },
+  canvas: { Icon: Sparkles, label: "画布" }, // #112 画布级动作
+};
+
+// #112 画布级动作的人话标签（操作预览行展示）。
+const CANVAS_ACTION_LABEL: Record<string, string> = {
+  minimal_on: "开启极简显示", minimal_off: "恢复标准显示",
+  arrange_layout: "整理布局", fit_view: "适应视图", download_all: "批量下载全部成品",
 };
 
 function opText(op: AgentOperation): string {
   if (op.op === "create") return `${getNodeConfig(op.nodeType!).label}${op.title ? ` · ${op.title}` : ""}`;
   if (op.op === "connect") return `${op.sourceRef} → ${op.targetRef}`;
+  if (op.op === "canvas") return CANVAS_ACTION_LABEL[op.action ?? ""] ?? String(op.action ?? "");
   if (op.op === "update") return `${op.targetRef}`;
   return `${op.targetRef}`;
 }
@@ -264,7 +272,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     const steps = derivePipelineSteps(id, useCanvasStore.getState().nodes);
     const withOps = freshMessages().map((m, i) => (i === msgIdx ? { ...m, operations: [...ops] } : m));
     setMessages(steps.length ? [...withOps, { role: "assistant", content: "", pipeline: steps }] : withOps);
-    const parts = [r.created && `新建 ${r.created}`, r.connected && `连接 ${r.connected}`, r.updated && `更新 ${r.updated}`, r.deleted && `删除 ${r.deleted}`].filter(Boolean);
+    const parts = [r.created && `新建 ${r.created}`, r.connected && `连接 ${r.connected}`, r.updated && `更新 ${r.updated}`, r.deleted && `删除 ${r.deleted}`, r.canvasActions && `画布动作 ${r.canvasActions}`].filter(Boolean);
     if (r.failures.length > 0) {
       toast.warning(`已应用 ${parts.join(" · ") || "0 步"}，${r.failures.length} 步失败：${r.failures[0].reason}`);
     } else {

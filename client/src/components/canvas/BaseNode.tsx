@@ -1443,6 +1443,7 @@ export const BaseNode = memo(function BaseNode({
                   letterSpacing: "-0.01em",
                   transition: "color 150ms ease",
                 }}
+                data-dblfocus-exempt="1" /* #123 标题双击=改名，豁免「双击节点聚焦」 */
                 onDoubleClick={() => { setEditingTitle(true); setTitleValue(title); }}
                 title={headerTooltip ? `${headerTooltip}\n\n双击编辑标题: ${title}` : `双击编辑标题: ${title}`}
               >

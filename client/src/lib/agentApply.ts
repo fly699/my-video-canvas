@@ -1,5 +1,8 @@
+import { toast } from "sonner";
 import { useCanvasStore, aspectToComfyWH } from "../hooks/useCanvasStore";
 import { NODE_CONFIGS } from "./nodeConfig";
+import { getNodeImageOutput } from "./canvasPassthrough";
+import { downloadMedia } from "./download";
 import { isConnectionValid, defaultTargetHandle } from "./connectionRules";
 import { charDisplayName, libraryOverlayByName, type CharacterImportMode } from "./characterConditioning";
 import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding, CharacterNodeData, CharacterKind } from "../../../shared/types";
@@ -36,6 +39,8 @@ export interface ApplyResult {
   connected: number;
   updated: number;
   deleted: number;
+  /** #112 画布级动作执行数（极简显示/整理布局/适应视图/批量下载）。 */
+  canvasActions: number;
   failures: { index: number; op: string; reason: string }[];
   /** 本批操作实际触及的真实节点 id（create 的新节点 / update 目标 / connect 的下游
    *  target）。自愈闭环用它把重跑范围收窄到「失败节点+本次修复涉及节点」，避免
@@ -117,6 +122,65 @@ const GRID_INTENT_RE = /宫格|拼贴|连环画|分镜表|故事板|multi-panel|
 /** 生成类节点类型（快速设置「允许使用的生成节点」勾选的作用域）。 */
 export const GEN_NODE_TYPES = ["image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow"] as const;
 
+// ── #112 画布级动作（op:"canvas"）────────────────────────────────────────────
+// 极简显示与 Canvas 的 Alt+Q 完全同一套信号（attr + localStorage + 事件）；
+// fit_view 经自定义事件转交 Canvas 持有的 reactFlow 实例（本文件拿不到实例）。
+export const CANVAS_FIT_VIEW_EVENT = "canvas:fit-view";
+
+/** 与批量下载同规则的成品提取：视频优先 resultVideoUrl/videoUrl → outputUrl → 图片输出。 */
+const CANVAS_VIDEO_OUT_TYPES = new Set(["clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "overlay", "video_task", "comfyui_video", "comfyui_workflow", "lip_sync", "avatar"]);
+function nodeResultMedia(nodeType: string, payload: Record<string, unknown>): { url: string; type: "image" | "video" } | null {
+  const v = (payload.resultVideoUrl ?? payload.videoUrl) as unknown;
+  if (typeof v === "string" && v) return { url: v, type: "video" };
+  const out = payload.outputUrl as unknown;
+  if (typeof out === "string" && out) return { url: out, type: /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(out) || CANVAS_VIDEO_OUT_TYPES.has(nodeType) ? "video" : "image" };
+  const img = getNodeImageOutput(nodeType as NodeType, payload as never);
+  return img ? { url: img, type: "image" } : null;
+}
+
+/** 执行一个画布级动作；返回失败原因（null=成功）。 */
+function runCanvasAction(action: AgentOperation["action"]): string | null {
+  const el = document.documentElement;
+  switch (action) {
+    case "minimal_on":
+    case "minimal_off": {
+      if (el.getAttribute("data-canvas-mode") !== "creative") return "极简显示仅在创意模式可用";
+      const on = action === "minimal_on";
+      if (on) el.setAttribute("data-canvas-minimal", "1");
+      else el.removeAttribute("data-canvas-minimal");
+      window.dispatchEvent(new CustomEvent("canvas:minimal-change"));
+      try { localStorage.setItem("avc:canvas-minimal", on ? "1" : "0"); } catch { /* restricted */ }
+      toast.success(on ? "已切换到极简显示（Alt+Q 恢复）" : "已恢复标准显示", { duration: 1600 });
+      return null;
+    }
+    case "arrange_layout": {
+      const n = useCanvasStore.getState().autoLayout();
+      window.dispatchEvent(new CustomEvent(CANVAS_FIT_VIEW_EVENT));
+      toast.success(n > 0 ? `已整理 ${n} 个节点` : "没有可整理的自由节点（群组内节点不参与）", { duration: 1600 });
+      return null;
+    }
+    case "fit_view":
+      window.dispatchEvent(new CustomEvent(CANVAS_FIT_VIEW_EVENT));
+      return null;
+    case "download_all": {
+      const st = useCanvasStore.getState();
+      let k = 0;
+      for (const n of st.nodes) {
+        if (n.data.nodeType === "group") continue;
+        const m = nodeResultMedia(n.data.nodeType, (n.data.payload ?? {}) as Record<string, unknown>);
+        if (!m) continue;
+        void downloadMedia(m.url, `${n.data.title || n.data.nodeType}.${m.type === "video" ? "mp4" : "png"}`, m.type);
+        k++;
+      }
+      if (k === 0) return "画布上还没有已生成的成品可下载";
+      toast.success(`开始下载 ${k} 个成品`, { duration: 1800 });
+      return null;
+    }
+    default:
+      return `未知的画布动作「${String(action)}」`;
+  }
+}
+
 export function applyAgentOperations(
   ops: AgentOperation[],
   anchor: { x: number; y: number },
@@ -141,7 +205,7 @@ export function applyAgentOperations(
   // would create a dangling edge, and an illegal pairing would bypass the rules.
   const liveIds = new Set(store.nodes.map((n) => n.id));
   const typeById = new Map<string, NodeType>(store.nodes.map((n) => [n.id, n.data.nodeType as NodeType]));
-  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, failures: [], touchedIds: [], createdIds: [] };
+  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, canvasActions: 0, failures: [], touchedIds: [], createdIds: [] };
   const fail = (index: number, op: AgentOperation, reason: string) => {
     op.status = "failed"; op.error = reason;
     res.failures.push({ index, op: op.op, reason });
@@ -406,6 +470,12 @@ export function applyAgentOperations(
           liveIds.delete(target); typeById.delete(target);
           op.status = "applied";
           res.deleted++;
+        } else if (op.op === "canvas") {
+          // #112 画布级动作：不针对单个节点。失败原因（如非创意模式）走统一 failures 通道。
+          const err = runCanvasAction(op.action);
+          if (err) { fail(index, op, err); return; }
+          op.status = "applied";
+          res.canvasActions++;
         }
       } catch (e) {
         fail(index, op, e instanceof Error ? e.message : String(e));
