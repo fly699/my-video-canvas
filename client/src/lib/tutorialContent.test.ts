@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { TUTORIAL_CHAPTERS, allTutorialImageSlugs } from "./tutorialContent";
+import { GUIDE_STEPS } from "./guideSteps";
 
 describe("TUTORIAL_CHAPTERS 教程内容完整性（#116）", () => {
   it("覆盖全部规划章节（≥13 章）", () => {
@@ -23,6 +24,15 @@ describe("TUTORIAL_CHAPTERS 教程内容完整性（#116）", () => {
       seen.add(key);
       expect(s.paragraphs.length).toBeGreaterThan(0);
       expect(s.paragraphs.every((p) => p.trim().length > 0)).toBe(true);
+    }
+  });
+
+  // #116 第四批：「亲手试一试」深链的 guideStep 必须指向真实存在的导览步骤 id，
+  // 否则画布端 findIndex 返回 -1、按钮静默无效。
+  it("guideStep 均为真实的 GUIDE_STEPS 步骤 id", () => {
+    const valid = new Set(GUIDE_STEPS.map((s) => s.id));
+    for (const c of TUTORIAL_CHAPTERS) {
+      if (c.guideStep) expect(valid.has(c.guideStep), `${c.id} → ${c.guideStep}`).toBe(true);
     }
   });
 
