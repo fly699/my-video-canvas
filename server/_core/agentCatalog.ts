@@ -215,10 +215,12 @@ function paramDefBrief(d: ParamDef): string {
   return `${d.key}=true|false${d.default !== undefined ? `(默认${String(d.default)})` : ""}`;
 }
 
-/** 视频模型清单：每行一个模型（id、名称、能力标签、参考图/反向词支持、完整参数表）。 */
-export function videoModelDigestText(): string {
+/** 视频模型清单：每行一个模型（id、名称、能力标签、参考图/反向词支持、完整参数表）。
+ *  only 提供时只输出该模型的完整条目（#141 按需注入）。 */
+export function videoModelDigestText(only?: string): string {
   return VIDEO_MODELS
     .filter((m) => m.value !== "mock")
+    .filter((m) => !only || m.value === only)
     .map((m) => {
       const caps = m.caps?.length ? `[${m.caps.join("/")}]` : "";
       const marks = [
@@ -232,16 +234,35 @@ export function videoModelDigestText(): string {
     .join("\n");
 }
 
-/** 图像模型清单：id、名称、能力标签、是否必须参考图。 */
-export function imageModelDigestText(): string {
+/** 图像模型清单：id、名称、能力标签、是否必须参考图。only 提供时只输出该模型（#141）。 */
+export function imageModelDigestText(only?: string): string {
   return IMAGE_MODELS
+    .filter((m) => !only || m.value === only)
     .map((m) => `- ${m.value}「${m.label}」${m.caps?.length ? `[${m.caps.join("/")}]` : ""}${m.requiresRef ? "（需参考图/上游图输入）" : ""}${m.note ? `（${m.note}）` : ""}`)
     .join("\n");
 }
 
-/** 汇总成系统提示的「云端生成模型清单」章节（仅非 comfyOnly 模式注入）。 */
-export function modelKnowledgeText(): string {
-  return `## 图像模型（image_gen.model / storyboard.imageModel 的合法取值）\n${imageModelDigestText()}\n## 视频模型（video_task.provider 的合法取值；params 键与取值严格按各自参数表，*=默认）\n${videoModelDigestText()}`;
+/** 汇总成系统提示的「云端生成模型清单」章节（仅非 comfyOnly 模式注入）。
+ *
+ *  #141 按需注入：快速设置锁定了图/视频模型时（pinned*），对应类别只保留所锁模型的
+ *  完整条目（含参数表），其余压成「仅名字目录」一行——清单体积大幅缩身、模型不再
+ *  选型犹豫；名目录明确标注「仅供答疑提及，生成禁止选用」防止对被裁模型编造参数。
+ *  锁定值不在清单里（拼错/已下架）则该类别回退全量，绝不让助手失明。
+ *  图/视频独立裁剪：只锁图像时视频仍全量，反之亦然；不锁 = 全量（与旧版逐字一致）。
+ *  可靠性依据：快速设置随每轮请求实时传入、服务端无状态——改模型下一轮即按新模型
+ *  注入、选回「默认」下一轮即恢复全量，无缓存/同步问题。 */
+export function modelKnowledgeText(opts: { pinnedImageModel?: string; pinnedVideoModel?: string } = {}): string {
+  const imgPin = opts.pinnedImageModel && IMAGE_MODELS.some((m) => m.value === opts.pinnedImageModel) ? opts.pinnedImageModel : undefined;
+  const vidPin = opts.pinnedVideoModel && VIDEO_MODELS.some((m) => m.value === opts.pinnedVideoModel && m.value !== "mock") ? opts.pinnedVideoModel : undefined;
+  const restNote = (kind: string, pin: string, rest: string) =>
+    `\n（已由用户在快速设置锁定${kind}模型 ${pin}，生成一律用它。其余${kind}模型仅名字目录、仅供答疑提及，本轮生成【禁止】选用——它们的参数未提供，选用即编造：${rest}）`;
+  const imgSection = imgPin
+    ? imageModelDigestText(imgPin) + restNote("图像", imgPin, IMAGE_MODELS.filter((m) => m.value !== imgPin).map((m) => m.value).join("、"))
+    : imageModelDigestText();
+  const vidSection = vidPin
+    ? videoModelDigestText(vidPin) + restNote("视频", vidPin, VIDEO_MODELS.filter((m) => m.value !== vidPin && m.value !== "mock").map((m) => m.value).join("、"))
+    : videoModelDigestText();
+  return `## 图像模型（image_gen.model / storyboard.imageModel 的合法取值）\n${imgSection}\n## 视频模型（video_task.provider 的合法取值；params 键与取值严格按各自参数表，*=默认）\n${vidSection}`;
 }
 
 // update 操作只带 targetRef（节点 id）不带 nodeType，服务端无法按类型过滤——改用「全目录

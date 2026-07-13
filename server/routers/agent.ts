@@ -168,6 +168,10 @@ const agentChatInput = z.object({
          *  未勾任何 comfyui_* 复选框）时传 true——不触发后台模板分析、不读模板表、
          *  不注入模板知识段，省 DB 读与提示词体积。与 comfyOnly 互斥（comfyOnly 优先）。 */
         skipComfyTemplates: z.boolean().optional(),
+        /** #141 模型清单按需注入：快速设置锁定的图/视频模型 id——对应类别只注入所锁模型
+         *  的完整参数条目（其余压成名字目录），提示词大幅缩身。空/无效值 = 该类别全量。 */
+        pinnedImageModel: z.string().max(128).optional(),
+        pinnedVideoModel: z.string().max(128).optional(),
         /** Pre-rendered 用户偏好/约束 block from the agent node's 规划设置 dialog. */
         prefs: z.string().max(2000).optional(),
         /** 画布助手「模板」人设/风格（选中的 AI 模板 prompt）——引导构思风格，但不得破坏 JSON 输出。 */
@@ -350,7 +354,7 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
 
 # 可用节点目录（只能使用下面列出的节点类型与字段，禁止编造任何不存在的节点或字段）
-${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText()}`}
+${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel })}`}
 
 # 当前画布
 ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}
