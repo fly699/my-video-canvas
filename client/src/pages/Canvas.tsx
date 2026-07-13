@@ -2738,7 +2738,29 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     </div>
                   </button>
                 );
-                if (list.length === 0 && !showWizardTile) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
+                // 模板库入口（与「ComfyUI 自定义」节点区分开：那是导入自己 JSON 的空白节点，
+                // 这是选用共享模板库里已存在的预设工作流）。点击打开模板库，选模板后落节点。
+                const TPL_ACC = "oklch(0.65 0.20 140)";
+                const showTplLibTile = !q || "comfyui模板库节点templatelib预设工作流".includes(q);
+                const tplLibTile = (
+                  <button
+                    key="__comfy_tpllib"
+                    onClick={() => { setShowNodePicker(false); setShowNodeLib(true); }}
+                    title="打开 ComfyUI 节点模板库（共享预设工作流），选一个模板即在画布新建带参节点"
+                    className="group/picker relative flex flex-col items-center gap-2.5 px-2 py-3 rounded-xl transition-all text-center"
+                    style={{ color: TPL_ACC, background: `${TPL_ACC}0e`, border: `1px solid ${TPL_ACC}40` }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = `${TPL_ACC}1c`; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = `${TPL_ACC}0e`; }}
+                  >
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${TPL_ACC}1f`, border: `1px solid ${TPL_ACC}40` }}>
+                      <LayoutGrid style={{ color: TPL_ACC, width: 18, height: 18 }} />
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-[11px] font-semibold leading-none" style={{ letterSpacing: "-0.01em" }}>节点模板库</p>
+                    </div>
+                  </button>
+                );
+                if (list.length === 0 && !showWizardTile && !showTplLibTile) return <p className="text-[11px] text-center py-6" style={{ color: "var(--c-t4)" }}>未找到匹配的节点</p>;
                 // 无搜索时，把最近添加过的类型置顶为「最近使用」快速区。
                 const recentConfigs = !q
                   ? recentNodeTypes.map((t) => NODE_TYPE_LIST.find((c) => c.type === t)).filter((c): c is NodeConfig => !!c && c.comingSoon !== true).slice(0, 8)
@@ -2754,10 +2776,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
                     )}
                     <div className="grid grid-cols-4 gap-1.5">
                       {q
-                        ? <>{showWizardTile && wizardTile}{list.map(renderTile)}</>
+                        ? <>{showWizardTile && wizardTile}{showTplLibTile && tplLibTile}{list.map(renderTile)}</>
                         // 无搜索时把首个节点（工程智能体，HEAD_ORDER 置顶）排在最前面，
-                        // 甚至先于「导入工作流」快捷入口。
-                        : (() => { const [first, ...rest] = list; return <>{first && renderTile(first)}{showWizardTile && wizardTile}{rest.map(renderTile)}</>; })()}
+                        // 再放「导入工作流」「节点模板库」两个 ComfyUI 快捷入口。
+                        : (() => { const [first, ...rest] = list; return <>{first && renderTile(first)}{showWizardTile && wizardTile}{showTplLibTile && tplLibTile}{rest.map(renderTile)}</>; })()}
                     </div>
                   </>
                 );

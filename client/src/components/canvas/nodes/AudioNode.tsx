@@ -1867,15 +1867,19 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     </BaseNode>
 
     {/* LibTV 化：创意模式就地生成输入条——类别 chips + 文本 + 翻译（配音）+ 积分 + 发送。
-        读写与配置区同一 payload 字段（双向同步）；模型等细节参数仍在配置区调整。 */}
+        读写与配置区同一 payload 字段（双向同步）；模型等细节参数仍在配置区调整。
+        #154：tools 类别不渲染本输入条——工具形态由就地完整面板（自带类别切换/工具选择/
+        源音频/运行按钮/多轨结果）独立承载。否则「随画布缩放的就地面板 + 固定480px屏幕恒定
+        输入条」两个宽度体系永远对不齐，用户看到的即「窗口错位」。切回 配乐/配音/音效 时
+        （面板顶部类别标签点选）本条自动恢复。 */}
     {isCreativeMode && (
-      <InlineGenBar nodeId={id} visible={expanded} width={480}>
+      <InlineGenBar nodeId={id} visible={expanded && category !== "tools"} width={480}>
         <NodeTextArea
           className="nodrag nowheel"
           rows={2}
-          placeholder={category === "dubbing" ? "输入要合成的配音文本…" : category === "sfx" ? "描述你想要的音效…" : category === "tools" ? "音频工具已在上方展开——选工具·连/传源音频·点运行…" : "描述你想生成的音乐…"}
-          value={(category === "dubbing" ? payload.ttsText : category === "sfx" ? payload.sfxPrompt : category === "tools" ? payload.toolPrompt : payload.musicPrompt) ?? ""}
-          onValueChange={(v) => updateNodeData(id, category === "dubbing" ? { ttsText: v } : category === "sfx" ? { sfxPrompt: v } : category === "tools" ? { toolPrompt: v } : { musicPrompt: v })}
+          placeholder={category === "dubbing" ? "输入要合成的配音文本…" : category === "sfx" ? "描述你想要的音效…" : "描述你想生成的音乐…"}
+          value={(category === "dubbing" ? payload.ttsText : category === "sfx" ? payload.sfxPrompt : payload.musicPrompt) ?? ""}
+          onValueChange={(v) => updateNodeData(id, category === "dubbing" ? { ttsText: v } : category === "sfx" ? { sfxPrompt: v } : { musicPrompt: v })}
           style={{ width: "100%", resize: "none", fontSize: 13, lineHeight: 1.6, padding: "6px 8px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
         />
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>

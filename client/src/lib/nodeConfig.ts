@@ -302,9 +302,11 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   },
   comfyui_workflow: {
     type: "comfyui_workflow",
-    // #144 与快速设置/镜头表等入口统一叫「ComfyUI模板」——旧名「ComfyUI 自定义」
-    // 让用户在添加节点菜单里找不到模板节点。
-    label: "ComfyUI模板",
+    // 这是「自定义 ComfyUI 工作流节点」（导入自己的 workflow JSON），不是「模板」。
+    // #144 曾误改叫「ComfyUI模板」把节点与模板库两个概念混了——已改回。模板库是独立
+    // 概念（comfyTemplates 路由 + DB 的共享预设），在添加节点菜单以单独的「节点模板库」
+    // 入口呈现（见 Canvas.tsx NodePicker 的模板库 tile）。两者都在、名字不混。
+    label: "ComfyUI 自定义",
     icon: "Workflow",
     color: "oklch(0.65 0.20 140)",
     bgColor: "oklch(0.65 0.20 140 / 0.08)",
