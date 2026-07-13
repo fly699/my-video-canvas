@@ -434,8 +434,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
         </div>
         )}
 
-        {/* ── Result video ── (download button removed; use the player's own menu) */}
-        {payload.status === "done" && payload.resultVideoUrl && videoSrc && (
+        {/* ── Result video ── (download button removed; use the player's own menu)
+            #148 创意模式下 hero 已常显同一视频——body 不再重复渲染（曾双预览）。 */}
+        {!isCreativeMode && payload.status === "done" && payload.resultVideoUrl && videoSrc && (
           <div className="flex-shrink-0">
             <div className="relative rounded-lg overflow-hidden" style={{ borderWidth: 1, borderStyle: "solid", borderColor: "oklch(0.72 0.18 155 / 0.30)" }}>
               {videoStoredInMinio && (
