@@ -12,6 +12,8 @@ import { computeRefImageUpdates, computePromptToVideoUpdates, resolveNodeOutputI
 // （此前 runner 用简化的 injectCharacters 手拼，丢了 kie 块/分模型 sizing/比例/效果/@图像/多参考/镜头表/色调）。
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../lib/storyboardGen";
 import { buildImageGenInput } from "../lib/imageGenBuild";
+import { COMFY_LOCAL_MODEL } from "../lib/comfyLocalRoute";
+import { buildLocalComfyImageInput } from "../lib/comfyLocalImageGen";
 import { composeCharacterEffectPrompt } from "../lib/promptCompose";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { handleWhitelistError } from "./useWhitelistBlocked";
@@ -486,10 +488,27 @@ export function useWorkflowRunner() {
             kieTempKey: localStorage.getItem("kie:tempKey"),
           });
           if (built.blocked) { failed.push(nodeId); return "fail"; }
-          const result = await imageGenMutation.mutateAsync({
-            ...(built.input as Parameters<typeof imageGenMutation.mutateAsync>[0]),
-            projectId: node.data.projectId,
-          });
+          // #87 自建算力：模型为「本地 ComfyUI」时改走 comfyui.generateImage（与逐节点同口径，
+          // 无参考=txt2img / 有参考=img2img；比例映射 width/height，地址+checkpoint 全局共享）。
+          const bi = built.input as { model?: string; prompt?: string; style?: string; negativePrompt?: string };
+          let result: { url?: string; urls?: string[] };
+          if (bi.model === COMFY_LOCAL_MODEL) {
+            const local = buildLocalComfyImageInput({
+              prompt: bi.prompt ?? (p.prompt as string) ?? "",
+              style: bi.style, negativePrompt: bi.negativePrompt, refUrl: built.refUrl,
+              // 比例/张数为通用字段，直接读节点 payload。
+              aspect: (p.aspectRatio as string) || (p.imageSize as string) || (p.poyoAspectRatio as string),
+              batch: p.imageN as number | undefined,
+              projectId: node.data.projectId, nodeId,
+            });
+            if (!local.ok) { failed.push(nodeId); return "fail"; }
+            result = await comfyuiImageMutation.mutateAsync(local.input);
+          } else {
+            result = await imageGenMutation.mutateAsync({
+              ...(built.input as Parameters<typeof imageGenMutation.mutateAsync>[0]),
+              projectId: node.data.projectId,
+            });
+          }
           const bestUrl = result.url ?? result.urls?.[0];
           if (!bestUrl) throw new Error("图像生成未返回 URL");
           useCanvasStore.getState().updateNodeData(nodeId, {

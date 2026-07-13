@@ -1431,6 +1431,9 @@ export interface SuperAgentNodeData {
   resultWorkflowJson?: string;
   /** 调通后的结构分析（参数绑定/输出节点/输出类型）。 */
   resultAnalysis?: { paramBindings?: unknown[]; outputNodeIds?: string[]; outputType?: string };
+  /** 隧道下 HTTP 长请求可能被切断（cloudflared ~100s/请求），服务端跑完后把最终结果经 socket 回灌到此
+   *  瞬态字段，节点据此兜底回填（非持久，应用后即清空）。 */
+  pendingBuildResult?: unknown;
   /** code 模式：任务最终文本结果。 */
   codeResult?: string;
   /** code 模式连续对话记录（用户任务 + 智能体每轮结果/失败摘要）。 */

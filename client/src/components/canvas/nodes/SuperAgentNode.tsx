@@ -89,6 +89,8 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [codeInputText, setCodeInputText] = useState("");
   const codeInputRef = useRef<HTMLTextAreaElement>(null);
+  // 一次 build 是否仍在等待结果：HTTP onSuccess 与 socket 兜底结果谁先到谁应用，另一路幂等跳过。
+  const awaitingBuildRef = useRef(false);
   const resetCodeMut = trpc.superAgent.resetCodeSession.useMutation();
   const handleTestServer = useCallback(async () => {
     setTestingServer(true);
@@ -140,6 +142,33 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     else if (isNew) setTimeout(() => reactFlow.fitView({ padding: 0.25, duration: 400 }), 60);
   }, [payload.resultWorkflowJson, payload.resultAnalysis, syncToNode, reactFlow]);
 
+  // 应用一次 build 的最终结果（HTTP 返回或 socket 兜底两路共用；幂等——只应用一次）。
+  // 从 store 取当前 conversation 追加 agent 轮，避免闭包里的 conv 过期。
+  type BuildResult = { status: string; workflowJson?: string; analysis?: SuperAgentNodeData["resultAnalysis"]; iterations?: number; log?: SuperAgentNodeData["log"] };
+  const applyBuildResult = useCallback((res: BuildResult) => {
+    if (!awaitingBuildRef.current) return; // 已被另一路径应用过 → 幂等跳过（防重复轮次）
+    awaitingBuildRef.current = false;
+    const st = useCanvasStore.getState();
+    const cur = ((st.nodes.find((n) => n.id === id)?.data.payload as SuperAgentNodeData | undefined)?.conversation) ?? [];
+    const summary = res.status === "success" ? `✅ 已调通（${res.iterations ?? "?"} 轮）`
+      : res.status === "exhausted" ? `⚠️ ${res.iterations ?? "?"} 轮未完全调通，保留最后一版`
+      : res.status === "aborted" ? "⏹ 已取消" : "❌ 未能调通";
+    const status = res.status as SuperAgentNodeData["status"];
+    const agentTurn: Turn = { role: "agent", text: summary, workflowJson: res.workflowJson, status: res.status };
+    update({ conversation: [...cur, agentTurn], status, resultWorkflowJson: res.workflowJson, resultAnalysis: res.analysis, log: res.log, pendingBuildResult: undefined });
+    if (res.status === "success" && res.workflowJson && payload.appliedNodeId) {
+      if (st.nodes.some((n) => n.id === payload.appliedNodeId)) { syncToNode(res.workflowJson, res.analysis, false); toast.success("已同步到链接节点，可点「重新生成」"); }
+    }
+  }, [id, update, payload.appliedNodeId, syncToNode]);
+
+  // socket 兜底：隧道下 HTTP 长请求被切断（network error）时，服务端把最终结果经 socket 回灌到
+  // payload.pendingBuildResult（见 Canvas.tsx 的 superagent:event 处理），这里据此回填、结束「运行中」。
+  useEffect(() => {
+    if (payload.pendingBuildResult == null) return;
+    if (!awaitingBuildRef.current) { update({ pendingBuildResult: undefined }); return; } // 无在飞任务 → 丢弃陈旧结果
+    applyBuildResult(payload.pendingBuildResult as BuildResult);
+  }, [payload.pendingBuildResult, applyBuildResult, update]);
+
   // ── ComfyUI 模式：连续对话发送 ──
   const handleSend = useCallback(() => {
     if (running) return;
@@ -151,7 +180,8 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     setInputText("");
     const el = inputRef.current as (HTMLTextAreaElement & { commitValue?: (v: string) => void }) | null;
     el?.commitValue?.(""); // 聚焦时也即时清空（NodeTextArea 聚焦中不采纳外部 value）
-    update({ conversation: conv, status: "running", log: [], errorMessage: undefined });
+    update({ conversation: conv, status: "running", log: [], errorMessage: undefined, pendingBuildResult: undefined });
+    awaitingBuildRef.current = true; // 标记「等待结果」——HTTP 或 socket 谁先回都能应用一次
     buildMut.mutate(
       {
         projectId: data.projectId, nodeId: id, task: instruction,
@@ -159,22 +189,30 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         ...(isFollowup ? { seedWorkflowJson: payload.resultWorkflowJson, history: buildHistory(priorConv) } : {}),
       },
       {
-        onSuccess: (res) => {
-          const summary = res.status === "success" ? `✅ 已调通（${res.iterations} 轮）`
-            : res.status === "exhausted" ? `⚠️ ${res.iterations} 轮未完全调通，保留最后一版`
-            : res.status === "aborted" ? "⏹ 已取消" : "❌ 未能调通";
-          const agentTurn: Turn = { role: "agent", text: summary, workflowJson: res.workflowJson, status: res.status };
-          update({ conversation: [...conv, agentTurn], status: res.status, resultWorkflowJson: res.workflowJson, resultAnalysis: res.analysis, log: res.log });
-          // 已链接节点：调通后自动把新工作流同步过去（不自动跑，重新生成一键触发）。
-          if (res.status === "success" && res.workflowJson && payload.appliedNodeId) {
-            const st = useCanvasStore.getState();
-            if (st.nodes.some((n) => n.id === payload.appliedNodeId)) { syncToNode(res.workflowJson, res.analysis, false); toast.success("已同步到链接节点，可点「重新生成」"); }
+        onSuccess: (res) => applyBuildResult(res),
+        onError: (e) => {
+          // 隧道下长请求可能被切断（cloudflared ~100s/请求），但服务端仍在跑、最终结果会经 socket 回填。
+          // 这类网络错误不判失败——保持「运行中」并提示，等 socket 的 pendingBuildResult 到达再回填。
+          const netErr = /network|fetch|timeout|timed out|Failed to fetch|Load failed|ERR_|502|503|504|reset|aborted|socket hang/i.test(e.message || "");
+          if (netErr && awaitingBuildRef.current) {
+            update({ status: "running" });
+            toast.info("请求超时（可能是公网隧道对长任务的限制）——任务仍在后台运行，完成后会自动回填结果，请稍候。", { duration: 9000 });
+            // 兜底：一段时间后主动拉一次服务端已缓存的最终结果（防 socket 漏收）。
+            setTimeout(() => {
+              if (!awaitingBuildRef.current) return;
+              utils.superAgent.getBuildResult.fetch({ projectId: data.projectId, nodeId: id })
+                .then((r) => { if (r?.result && awaitingBuildRef.current) applyBuildResult(r.result as BuildResult); })
+                .catch(() => { /* 兜底失败无妨，socket 仍是主路径 */ });
+            }, 8000);
+            return;
           }
+          awaitingBuildRef.current = false;
+          update({ status: "failed", errorMessage: e.message, conversation: [...conv, { role: "agent", text: "❌ " + e.message, status: "failed" }] });
+          toast.error("运行失败：" + e.message);
         },
-        onError: (e) => { update({ status: "failed", errorMessage: e.message, conversation: [...conv, { role: "agent", text: "❌ " + e.message, status: "failed" }] }); toast.error("运行失败：" + e.message); },
       },
     );
-  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.appliedNodeId, llmModel, data.projectId, id, buildMut, update, syncToNode]);
+  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, llmModel, data.projectId, id, buildMut, update, applyBuildResult, utils]);
 
   // ── 代码任务模式（连续对话：claude --resume 续接同一会话，保留上下文与工作区文件）──
   const handleRunCode = useCallback(() => {

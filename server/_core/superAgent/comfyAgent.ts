@@ -113,7 +113,7 @@ export interface RunComfyAgentOptions {
 
 /** LLM 每轮必须返回的单个 JSON 动作。 */
 interface AgentAction {
-  action: "author" | "validate" | "execute" | "finish" | "give_up" | "install_model" | "install_node" | "describe_nodes";
+  action: "author" | "validate" | "execute" | "finish" | "give_up" | "install_model" | "install_node" | "describe_nodes" | "search_resources";
   /** author / finish 时提供完整 API 格式 workflow 图。 */
   workflowJson?: string;
   /** 简短理由（进日志）。 */
@@ -126,33 +126,38 @@ interface AgentAction {
   nodeGitUrl?: string;
   /** describe_nodes：要查精确输入/输出 schema 的节点类名列表。 */
   nodeClasses?: string[];
+  /** search_resources：在服务器完整资源清单里按关键词检索（超出提示里所列的名单外也能找到）。 */
+  query?: string;
 }
 
-const VALID_ACTIONS = ["author", "validate", "execute", "finish", "give_up", "install_model", "install_node", "describe_nodes"];
+const VALID_ACTIONS = ["author", "validate", "execute", "finish", "give_up", "install_model", "install_node", "describe_nodes", "search_resources"];
 
 const ACTION_HINT =
-  '你必须只返回一个 JSON 对象，形如 {"action":"describe_nodes|author|validate|execute|finish|give_up","workflowJson":"...","reasoning":"..."}。' +
+  '你必须只返回一个 JSON 对象，形如 {"action":"describe_nodes|search_resources|author|validate|execute|finish|give_up","workflowJson":"...","reasoning":"..."}。' +
   "author/finish 时 workflowJson 必须是完整的 ComfyUI **API 格式** 图（形如 {\"节点id\":{\"class_type\":...,\"inputs\":{...}}}）。";
 
 /** 构建系统提示（纯函数，便于单测）。continuing=多轮修改；canInstall=宿主开放了下载安装能力；
  *  canDescribe=可用 describe_nodes 查节点精确 schema。 */
 export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false, canInstall = false, canDescribe = false, examples: { label: string; workflowJson: string }[] = []): string {
-  const cap = (arr: string[], n: number) => (arr.length > n ? arr.slice(0, n).concat(`…(+${arr.length - n})`) : arr);
-  // 有 describe_nodes 时节点类名只作「目录」，可放宽展示上限（真正的字段规格靠查）。
-  const nodeCap = canDescribe ? 400 : 120;
+  const cap = (arr: string[], n: number) => (arr.length > n ? arr.slice(0, n).concat(`…(+${arr.length - n}，用 search_resources 关键词检索完整清单)`) : arr);
+  // 节点类名只作「目录」，具体字段规格靠 describe_nodes 查，故可放宽展示上限；超出部分用 search_resources 检索。
+  const nodeCap = canDescribe ? 600 : 200;
   return [
     "你是资深 ComfyUI 工作流工程师。目标：产出一份能在给定服务器上真机跑通的 **API 格式** workflow 图，并通过校验与运行验证。",
     continuing
       ? `这是一段多轮对话。已有一版调通的工作流（见下方消息），请在其基础上按用户新指令修改，切勿从零重写、保留无关部分。本轮指令：${task}`
       : `任务：${task}`,
     "",
-    "该服务器上的可用资源（务必只用这些，切勿编造不存在的名字）：",
-    `- checkpoints: ${cap(res.checkpoints, 40).join(", ") || "（无）"}`,
-    `- loras: ${cap(res.loras, 40).join(", ") || "（无）"}`,
-    `- vaes: ${cap(res.vaes, 20).join(", ") || "（无）"}`,
-    `- samplers: ${cap(res.samplers, 40).join(", ") || "（无）"}`,
-    `- schedulers: ${cap(res.schedulers, 20).join(", ") || "（无）"}`,
+    `该服务器上的可用资源（务必只用这些，切勿编造不存在的名字；共 ${res.checkpoints.length} checkpoints / ${res.loras.length} loras / ${res.nodeClasses.length} 节点类）：`,
+    `- checkpoints: ${cap(res.checkpoints, 120).join(", ") || "（无）"}`,
+    `- loras: ${cap(res.loras, 120).join(", ") || "（无）"}`,
+    `- vaes: ${cap(res.vaes, 40).join(", ") || "（无）"}`,
+    `- samplers: ${cap(res.samplers, 60).join(", ") || "（无）"}`,
+    `- schedulers: ${cap(res.schedulers, 40).join(", ") || "（无）"}`,
     `- 已安装节点类（仅名字目录${canDescribe ? "，具体输入字段用 describe_nodes 查" : ""}）: ${cap(res.nodeClasses, nodeCap).join(", ") || "（未知）"}`,
+    "",
+    "**若上面清单被截断（出现 …(+N) 提示）而你想用的模型/LoRA/节点没列出，用 search_resources 按关键词检索完整清单**" +
+      "（如 {\"action\":\"search_resources\",\"query\":\"flux\"}），它会在服务器全部资源里匹配返回，避免因名单截断而误判「没有该资源」或编造名字。",
     "",
     ...(canDescribe
       ? [
@@ -228,7 +233,7 @@ export function nodeClassesMentioned(errorText: string, workflowJson: string | u
  * 纯编排：所有副作用都经注入的 tools / llm，因此可被完整单测。
  */
 export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAgentResult> {
-  const maxIterations = opts.maxIterations ?? 8;
+  const maxIterations = opts.maxIterations ?? 12;
   const cap = opts.maxFeedbackChars ?? 4000;
   const log: AgentEvent[] = [];
   const emit = (e: AgentEvent) => { log.push(e); opts.emit?.(e); };
@@ -293,6 +298,27 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
       const desc = await opts.tools.describeNodes(names);
       emit({ type: "tool_result", iteration: iter, message: `已查询 ${names.length} 个节点的输入规格`, data: { tool: "describe_nodes", nodeClasses: names } });
       messages.push({ role: "user", content: `describe_nodes 结果（严格按此写字段名/枚举/类型）：\n${clip(desc)}` });
+      continue;
+    }
+
+    if (action.action === "search_resources") {
+      // 在服务器完整资源清单里按关键词检索——突破系统提示里各清单的展示上限，让智能体能用上服务器上
+      // 全部已装的模型/LoRA/VAE/节点（不受初始名单截断影响）。纯内存过滤，无需再访问 ComfyUI。
+      const q = (action.query ?? "").trim().toLowerCase();
+      if (!q) { messages.push({ role: "user", content: "search_resources 需附 query（要检索的关键词）。" }); continue; }
+      const hit = (arr: string[], n: number) => arr.filter((s) => s.toLowerCase().includes(q)).slice(0, n);
+      const found = {
+        checkpoints: hit(resources.checkpoints, 60),
+        loras: hit(resources.loras, 60),
+        vaes: hit(resources.vaes, 40),
+        nodeClasses: hit(resources.nodeClasses, 100),
+        samplers: hit(resources.samplers, 40),
+        schedulers: hit(resources.schedulers, 40),
+      };
+      const total = Object.values(found).reduce((a, b) => a + b.length, 0);
+      emit({ type: "tool_result", iteration: iter, message: `检索「${action.query}」命中 ${total} 项资源`, data: { tool: "search_resources", query: action.query, total } });
+      const lines = Object.entries(found).filter(([, v]) => v.length).map(([k, v]) => `- ${k}: ${v.join(", ")}`);
+      messages.push({ role: "user", content: total ? `search_resources「${action.query}」命中（只用这些真实存在的名字）：\n${clip(lines.join("\n"))}` : `search_resources「${action.query}」无匹配——服务器上没有含该关键词的资源，请换关键词或改用已列出的资源。` });
       continue;
     }
 
