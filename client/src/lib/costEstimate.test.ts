@@ -91,10 +91,10 @@ describe("estimateImageCost", () => {
 });
 
 describe("estimateMusicCost / estimateTtsCost", () => {
-  it("Suno：Poyo 20 cr / kie 12 点；MiniMax 未知", () => {
+  it("Suno：Poyo 20 cr / kie 12 点；MiniMax 2.6 = 20 cr（round2 文档）", () => {
     expect(estimateMusicCost("suno-v5")).toEqual({ credits: 20, unit: "cr", approx: false });
     expect(estimateMusicCost("kie_suno_v5")).toEqual({ credits: 12, unit: "点", approx: false });
-    expect(estimateMusicCost("minimax-music-2.6")).toBeNull();
+    expect(estimateMusicCost("minimax-music-2.6")).toEqual({ credits: 20, unit: "cr", approx: false });
   });
   it("TTS 按千字符向上取整（kie ElevenLabs 6 点/1k）", () => {
     expect(estimateTtsCost("kie_elevenlabs_tts", 500)?.credits).toBe(6);
@@ -138,6 +138,50 @@ describe("estimateImageCost — 全量审计补齐档位（nano banana 2 / flux2
   });
   it("ideogram v3 按文档默认 BALANCED 档精确 7 点", () => {
     expect(estimateImageCost("kie_ideogram_v3", 1)).toEqual({ credits: 7, unit: "点", approx: false });
+  });
+});
+
+// ── 第 150 轮：round2 最新计价文档核对守卫 ─────────────────────────────────
+// 数据源：docs/incremental-models/2026-07-round2-final.json（poyo 站计价行）。
+describe("round2 计价核对（#150）", () => {
+  it("Seedance 2：无视频输入口径 480p 20/720p 40/1080p 90/4K 200 cr·s（旧半价表已废）", () => {
+    expect(estimateVideoCost("poyo_seedance", { resolution: "720p", duration: 5 })?.credits).toBe(200);
+    expect(estimateVideoCost("poyo_seedance", { resolution: "480p", duration: 5 })?.credits).toBe(100);
+    expect(estimateVideoCost("poyo_seedance", { resolution: "1080p", duration: 10 })?.credits).toBe(900);
+    expect(estimateVideoCost("poyo_seedance", { resolution: "4k", duration: 5 })?.credits).toBe(1000);
+  });
+  it("Seedance 1.5 Pro：整条计价 按分辨率×时长档，音频 ×2；非标准时长取最近档标 approx", () => {
+    expect(estimateVideoCost("poyo_seedance15_pro", { resolution: "480p", duration: 4 })).toEqual({ credits: 9, unit: "cr", approx: false });
+    expect(estimateVideoCost("poyo_seedance15_pro", { resolution: "720p", duration: 8, generate_audio: true })?.credits).toBe(64);
+    expect(estimateVideoCost("poyo_seedance15_pro", { resolution: "480p", duration: 12, generate_audio: true })?.credits).toBe(42);
+    const near = estimateVideoCost("poyo_seedance15_pro", { resolution: "720p", duration: 5 });
+    expect(near?.credits).toBe(16); // 5s → 4s 档
+    expect(near?.approx).toBe(true);
+  });
+  it("Sora 2 Pro 官方版：按秒×分辨率（720p 48/1024p 80/1080p 112），不再固定 100", () => {
+    expect(estimateVideoCost("poyo_sora2_pro_official", { resolution: "720p", duration: 4 })?.credits).toBe(192);
+    expect(estimateVideoCost("poyo_sora2_pro_official", { resolution: "1080p", duration: 8 })?.credits).toBe(896);
+    expect(estimateVideoCost("poyo_sora2_pro_official", { duration: 8 })?.credits).toBe(384); // 默认 720p
+  });
+  it("Veo 3.1 官方三档：Fast 10-15 / Quality 24-48 / Lite 3.6-6 cr·s（4K 上浮）", () => {
+    expect(estimateVideoCost("poyo_veo_fast_official", { resolution: "720p", duration: 8 })?.credits).toBe(80);
+    expect(estimateVideoCost("poyo_veo_fast_official", { resolution: "4k", duration: 8, sound: true })?.credits).toBe(280);
+    expect(estimateVideoCost("poyo_veo_quality_official", { resolution: "1080p", duration: 8, sound: true })?.credits).toBe(384);
+    expect(estimateVideoCost("poyo_veo_lite_official", { duration: 8 })?.credits).toBeCloseTo(28.8, 5);
+  });
+  it("poyo 图像修正：Seedream 4.5=5、Kling O1 Image=3.5、Flux Pro/Flex 档位互换归位", () => {
+    expect(estimateImageCost("poyo_seedream", 1)).toEqual({ credits: 5, unit: "cr", approx: false });
+    expect(estimateImageCost("poyo_kling_o1_image", 1)).toEqual({ credits: 3.5, unit: "cr", approx: false });
+    expect(estimateImageCost("poyo_flux", 1)?.credits).toBe((18 + 27) / 2);   // Pro 档 18-27 取中值
+    expect(estimateImageCost("poyo_sdxl", 1)?.credits).toBe((6 + 9) / 2);     // Flex 档 6-9 取中值
+    expect(estimateImageCost("poyo_nano_banana_2_official", 1)?.credits).toBe((7 + 20) / 2);
+  });
+  it("round2 未变价抽查：kling 系 / hailuo / runway / grok 维持原值", () => {
+    expect(estimateVideoCost("poyo_kling26", { duration: 5, sound: true })?.credits).toBe(120);
+    expect(estimateVideoCost("poyo_kling30_std", { resolution: "1080p", duration: 5 })?.credits).toBe(195);
+    expect(estimateVideoCost("poyo_hailuo02", { duration: 6 })?.credits).toBe(42);
+    expect(estimateVideoCost("poyo_runway45", { duration: 10 })?.credits).toBe(150);
+    expect(estimateVideoCost("poyo_grok_video", { duration: 10 })?.credits).toBe(40);
   });
 });
 

@@ -60,8 +60,8 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "poyo_nano_banana",     label: "Nano Banana",     desc: "预算 · 写实",        group: "Poyo", family: "Nano",     provider: "Poyo", cost: 5,  caps: ["T2I", "I2I"] },
   { value: "poyo_nano_banana_2",   label: "Nano Banana 2",   desc: "快速 · 4K",          group: "Poyo", family: "Nano",     provider: "Poyo", costNote: "5-12 cr/张", caps: ["T2I", "I2I", "4K"] },
   { value: "poyo_nano_banana_pro", label: "Nano Banana Pro", desc: "文字/图表 · 4K",     group: "Poyo", family: "Nano",     provider: "Poyo", costNote: "18-35 cr/张", caps: ["T2I", "编辑", "4K", "14图参考"] },
-  { value: "poyo_nano_banana_2_new",      label: "Nano Banana 2 New",  desc: "Gemini 3.1 · 2K/4K",  group: "Poyo", family: "Nano", provider: "Poyo", costNote: "按分辨率(模型页)", caps: ["T2I", "I2I", "编辑", "4K", "14图参考"] },
-  { value: "poyo_nano_banana_2_official", label: "Nano Banana 2 官方版", desc: "Gemini 3.1 · 0.5K-4K", group: "Poyo", family: "Nano", provider: "Poyo", costNote: "按分辨率(模型页)", caps: ["T2I", "I2I", "编辑", "4K", "14图参考"] },
+  { value: "poyo_nano_banana_2_new",      label: "Nano Banana 2 New",  desc: "Gemini 3.1 · 2K/4K",  group: "Poyo", family: "Nano", provider: "Poyo", costNote: "5-12 cr/张", caps: ["T2I", "I2I", "编辑", "4K", "14图参考"] },
+  { value: "poyo_nano_banana_2_official", label: "Nano Banana 2 官方版", desc: "Gemini 3.1 · 0.5K-4K", group: "Poyo", family: "Nano", provider: "Poyo", costNote: "7-20 cr/张", caps: ["T2I", "I2I", "编辑", "4K", "14图参考"] },
 
   // --- Poyo · GPT Image (OpenAI) ---
   { value: "poyo_gpt_4o_image", label: "GPT-4o Image",  desc: "GPT-4o · 蒙版编辑",  group: "Poyo", family: "GPT", provider: "Poyo", costNote: "4 cr/张", caps: ["T2I", "I2I", "蒙版"] },
@@ -69,14 +69,14 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "poyo_gpt_image",    label: "GPT Image 2",   desc: "类 GPT-4o · 创意",   group: "Poyo", family: "GPT", provider: "Poyo", cost: 2, costNote: "起 2cr × 1/2/4x", caps: ["T2I", "多图编辑", "4K"] },
 
   // --- Poyo · Flux (Black Forest Labs) ---
-  { value: "poyo_flux",              label: "Flux 2 Pro",       desc: "高质量 · 写实",      group: "Poyo", family: "Flux", provider: "Poyo", costNote: "6-9 cr/张", caps: ["T2I", "多图编辑", "2K"] },
-  { value: "poyo_sdxl",              label: "Flux 2 Flex",      desc: "快速 · 多风格",      group: "Poyo", family: "Flux", provider: "Poyo", costNote: "18-27 cr/张", caps: ["T2I", "多图编辑"] },
+  { value: "poyo_flux",              label: "Flux 2 Pro",       desc: "高质量 · 写实",      group: "Poyo", family: "Flux", provider: "Poyo", costNote: "18-27 cr/张", caps: ["T2I", "多图编辑", "2K"] },
+  { value: "poyo_sdxl",              label: "Flux 2 Flex",      desc: "快速 · 多风格",      group: "Poyo", family: "Flux", provider: "Poyo", costNote: "6-9 cr/张", caps: ["T2I", "多图编辑"] },
   { value: "poyo_flux_kontext_pro",  label: "Flux Kontext Pro", desc: "上下文编辑",         group: "Poyo", family: "Flux", provider: "Poyo", costNote: "8 cr/张", caps: ["I2I", "编辑"] },
   { value: "poyo_flux_kontext_max",  label: "Flux Kontext Max", desc: "上下文编辑 · 排版",  group: "Poyo", family: "Flux", provider: "Poyo", costNote: "16 cr/张", caps: ["I2I", "编辑", "排版"] },
 
   // --- Poyo · Seedream (ByteDance) ---
   { value: "poyo_seedream_4",      label: "Seedream 4",        desc: "4K · 多图 1-15",     group: "Poyo", family: "Seedream", provider: "Poyo", costNote: "5 cr/张", caps: ["T2I", "编辑", "4K"] },
-  { value: "poyo_seedream",        label: "Seedream 4.5",      desc: "4K · 精确控制",      group: "Poyo", family: "Seedream", provider: "Poyo", cost: 10, caps: ["T2I", "I2I", "编辑", "4K"] },
+  { value: "poyo_seedream",        label: "Seedream 4.5",      desc: "4K · 精确控制",      group: "Poyo", family: "Seedream", provider: "Poyo", cost: 5, caps: ["T2I", "I2I", "编辑", "4K"] },
   { value: "poyo_seedream_5_lite", label: "Seedream 5.0 Lite", desc: "视觉推理 · 指令编辑", group: "Poyo", family: "Seedream", provider: "Poyo", cost: 5, caps: ["T2I", "I2I", "编辑", "3K"] },
 
   // --- Poyo · Wan (Alibaba) ---
@@ -84,7 +84,7 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "poyo_wan_image_pro", label: "Wan 2.7 Image Pro", desc: "高质量版",     group: "Poyo", family: "Wan", provider: "Poyo", costNote: "10.5 cr/张", caps: ["T2I", "自动编辑"] },
 
   // --- Poyo · Kling (Kuaishou) ---
-  { value: "poyo_kling_o1_image", label: "Kling O1 Image", desc: "高一致性编辑 · 21:9", group: "Poyo", family: "Kling", provider: "Poyo", costNote: "分辨率×n", caps: ["编辑", "10图参考", "2K"] },
+  { value: "poyo_kling_o1_image", label: "Kling O1 Image", desc: "高一致性编辑 · 21:9", group: "Poyo", family: "Kling", provider: "Poyo", costNote: "3.5 cr/张", caps: ["编辑", "10图参考", "2K"] },
   { value: "poyo_kling_o3_image", label: "Kling O3 Image", desc: "高表现力 · 叙事",      group: "Poyo", family: "Kling", provider: "Poyo", costNote: "分辨率×n", caps: ["T2I", "编辑", "4K"] },
 
   // --- Poyo · others ---
@@ -198,15 +198,15 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "poyo_sora2",              label: "Sora 2",              group: "Poyo", family: "Sora",     costLabel: "模型页",      caps: ["T2V", "I2V", "10/15s"] },
   { value: "poyo_sora2_pro",          label: "Sora 2 Pro",          group: "Poyo", family: "Sora",     costLabel: "100 cr/次",   caps: ["T2V", "I2V", "15/25s", "HD"] },
   { value: "poyo_sora2_official",     label: "Sora 2 官方版",       group: "Poyo", family: "Sora",     costLabel: "≈12 cr/s",    caps: ["T2V", "+1图", "4-20s"] },
-  { value: "poyo_sora2_pro_official", label: "Sora 2 Pro 官方版",   group: "Poyo", family: "Sora",     costLabel: "100 cr/次",      caps: ["T2V", "I2V", "1080p"] },
+  { value: "poyo_sora2_pro_official", label: "Sora 2 Pro 官方版",   group: "Poyo", family: "Sora",     costLabel: "720p 48/1024p 80/1080p 112 cr/s",      caps: ["T2V", "I2V", "1080p"] },
   // ── Veo 3.1 ──
   { value: "poyo_veo",                label: "Veo 3.1 (Fast)",      group: "Poyo", family: "Veo",      costLabel: "模型页",      caps: ["T2V", "I2V", "8s", "4K"] },
   { value: "poyo_veo_fast",           label: "Veo 3.1 Fast",        group: "Poyo", family: "Veo",      costLabel: "模型页",      caps: ["T2V", "I2V", "8s", "4K"] },
   { value: "poyo_veo_quality",        label: "Veo 3.1 Quality",     group: "Poyo", family: "Veo",      costLabel: "模型页",      caps: ["T2V", "I2V", "8s", "4K"] },
   { value: "poyo_veo_lite",           label: "Veo 3.1 Lite",        group: "Poyo", family: "Veo",      costLabel: "模型页(低)",  caps: ["T2V", "8s"] },
-  { value: "poyo_veo_fast_official",    label: "Veo 3.1 Fast 官方",   group: "Poyo", family: "Veo", costLabel: "按秒×分辨率±音频(模型页)", caps: ["T2V", "I2V", "4/6/8s", "4K", "音频"] },
-  { value: "poyo_veo_quality_official", label: "Veo 3.1 Quality 官方", group: "Poyo", family: "Veo", costLabel: "按秒×分辨率±音频(模型页)", caps: ["T2V", "I2V", "参考生", "4/6/8s", "4K", "音频"] },
-  { value: "poyo_veo_lite_official",    label: "Veo 3.1 Lite 官方",   group: "Poyo", family: "Veo", costLabel: "按秒×分辨率(模型页·低)", caps: ["T2V", "I2V", "4/6/8s", "音频"] },
+  { value: "poyo_veo_fast_official",    label: "Veo 3.1 Fast 官方",   group: "Poyo", family: "Veo", costLabel: "≈10-15 cr/s(4K 30-35)", caps: ["T2V", "I2V", "4/6/8s", "4K", "音频"] },
+  { value: "poyo_veo_quality_official", label: "Veo 3.1 Quality 官方", group: "Poyo", family: "Veo", costLabel: "≈24-48 cr/s(4K 48-72)", caps: ["T2V", "I2V", "参考生", "4/6/8s", "4K", "音频"] },
+  { value: "poyo_veo_lite_official",    label: "Veo 3.1 Lite 官方",   group: "Poyo", family: "Veo", costLabel: "≈3.6-6 cr/s", caps: ["T2V", "I2V", "4/6/8s", "音频"] },
   // ── Kling ──
   { value: "poyo_kling21_std",        label: "Kling 2.1 Standard",  group: "Poyo", family: "Kling",    costLabel: "5s 30/10s 60 cr/次",      caps: ["I2V", "5/10s"] },
   { value: "poyo_kling21_pro",        label: "Kling 2.1 Pro",       group: "Poyo", family: "Kling",    costLabel: "5s 55/10s 110 cr/次",      caps: ["I2V", "首尾帧"] },
@@ -232,8 +232,8 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "poyo_wan22_i2v_fast",     label: "Wan 2.2 图生(快)",    group: "Poyo", family: "Wan",      costLabel: "480p 6/720p 12 cr",      caps: ["I2V", "720p"] },
   // ── Seedance ──
   { value: "poyo_seedance1_pro",      label: "Seedance 1.0 Pro",    group: "Poyo", family: "Seedance", costLabel: "720p 21/1080p 43 cr/次(5s)",      caps: ["T2V", "I2V", "5/10s"] },
-  { value: "poyo_seedance15_pro",     label: "Seedance 1.5 Pro",    group: "Poyo", family: "Seedance", costLabel: "480p 9/720p 16 cr起",      caps: ["T2V", "I2V", "音频"] },
-  { value: "poyo_seedance",           label: "Seedance 2",          group: "Poyo", family: "Seedance", costLabel: "480p 10/720p 20/1080p 45 cr/s", caps: ["T2V", "首尾帧", "参考", "音频"] },
+  { value: "poyo_seedance15_pro",     label: "Seedance 1.5 Pro",    group: "Poyo", family: "Seedance", costLabel: "480p 9-21/720p 16-42 cr/次(音频×2)",      caps: ["T2V", "I2V", "音频"] },
+  { value: "poyo_seedance",           label: "Seedance 2",          group: "Poyo", family: "Seedance", costLabel: "480p 20/720p 40/1080p 90 cr/s", caps: ["T2V", "首尾帧", "参考", "音频"] },
   { value: "poyo_seedance2_fast",     label: "Seedance 2 Fast",     group: "Poyo", family: "Seedance", costLabel: "模型页(低)",  caps: ["T2V", "720p", "音频"] },
   // ── Hailuo ──
   { value: "poyo_hailuo02",           label: "Hailuo 02",           group: "Poyo", family: "Hailuo",   costLabel: "768p 7 cr/s",      caps: ["T2V", "I2V", "768P"] },
