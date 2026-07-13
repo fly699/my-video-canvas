@@ -756,6 +756,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // it. Reset per project because Canvas is keyed by projectId (remounts).
   const nodesLoadedRef = useRef(false);
   const edgesLoadedRef = useRef(false);
+  // #122 空态门槛：节点快照已灌入 store（与 setNodes 同批提交，见加载 effect 注释）。
+  const [nodesHydrated, setNodesHydrated] = useState(false);
   const saveCanvasRef = useRef<(() => Promise<void>) | null>(null);
   // Baseline of what each node looked like at last successful save/load (id → sig).
   // saveCanvas upserts only nodes whose sig changed and deletes ids that vanished.
@@ -933,6 +935,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setNodes(flowNodes);
     // Seed the save baseline so unchanged loaded nodes are never re-upserted.
     savedNodeSigsRef.current = new Map(flowNodes.map((n) => [n.id, nodeSig(n)]));
+    // #122 二次修正：空态判定的「水合完成」标志。此前用 dbNodes 就绪当门槛仍会闪——
+    // 数据已返回但尚未灌进 store 的渲染空窗里「就绪 + 本地为空」恰好成立。此标志与
+    // setNodes 同一 effect 同批提交，与 store nodes 永远同帧一致，结构性消除空窗。
+    setNodesHydrated(true);
   }, [dbNodes]);
 
   useEffect(() => {
@@ -1467,10 +1473,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
       const n = nid ? useCanvasStore.getState().nodes.find((nn) => nn.id === nid) : undefined;
       if (!n || n.data.nodeType === "group") return;
       // 手动算目标缩放 + setCenter：fitView 的 maxZoom 选项对单节点聚焦不生效（实测
-      // 冲到 5×被实例上限 6 兜底）。目标=节点约占视口 70%，钳制 [0.8, 2]。
+      // 冲到 5×被实例上限 6 兜底）。目标=节点约占视口 75%，钳制 [0.8, 3]
+      //（用户两轮反馈放大不够：1.25→2→3）。
       const nw = n.measured?.width ?? 340;
       const nh = n.measured?.height ?? 240;
-      const zoom = Math.min(2, Math.max(0.8, Math.min(window.innerWidth * 0.7 / nw, window.innerHeight * 0.7 / nh)));
+      const zoom = Math.min(3, Math.max(0.8, Math.min(window.innerWidth * 0.75 / nw, window.innerHeight * 0.75 / nh)));
       void reactFlow.setCenter(n.position.x + nw / 2, n.position.y + nh / 2, { zoom, duration: 420 });
       return;
     }
@@ -3006,13 +3013,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
           {/* 「返回节点」提示：视野里看不到任何节点时浮出，一键归位（对标 LibTV） */}
           <ReturnToNodesHint />
           {/* 空画布引导：双击提示 + 工作流入口卡（对标 LibTV；有节点即消失）。
-              #122 须等节点数据加载完成（dbNodes 就绪）再判空，否则加载慢时会先误闪空态。 */}
-          {!isReadOnly && !!dbNodes && <EmptyCanvasGuide />}
+              #122 须等节点快照灌入 store（nodesHydrated）再判空——dbNodes 就绪但未
+              灌入的渲染空窗仍会闪，标志与 setNodes 同批提交才无时序窗口。 */}
+          {!isReadOnly && nodesHydrated && <EmptyCanvasGuide />}
           {/* Studio global creation bar (nothing selected → quick prompt → 生成) */}
           <StudioCreateBar />
           {/* ◆10 非 studio 皮肤的空画布空态 CTA（studio 由 StudioCreateBar 负责）。
-              #122 加 dbNodes 就绪门控：节点还在加载时本地 nodes 尚为空，不能当「画布是空的」。 */}
-          {uiStyle !== "studio" && !isReadOnly && !!dbNodes && nodes.filter((n) => n.data.nodeType !== "group").length === 0 && (
+              #122 nodesHydrated 门控：与 setNodes 同批置位，「已灌入且确实为空」才显示，
+              不存在「数据已回但还没灌进 store」的误判空窗。 */}
+          {uiStyle !== "studio" && !isReadOnly && nodesHydrated && nodes.filter((n) => n.data.nodeType !== "group").length === 0 && (
             <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-55%)", zIndex: 6,
               display: "flex", flexDirection: "column", alignItems: "center", gap: 14, pointerEvents: "none", textAlign: "center" }}>
               <div style={{ width: 56, height: 56, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
@@ -3382,7 +3391,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipTrigger asChild>
                 <button
                   data-tb-sec
-                  onClick={() => { const n = useCanvasStore.getState().autoLayout(); if (n > 0) { toast.success(`已整理 ${n} 个节点`, { duration: 1200 }); setTimeout(() => reactFlow.fitView({ padding: 0.15, duration: 400 }), 60); } else toast.info("没有可整理的自由节点（群组内节点不参与）"); }}
+                  aria-label="整理布局（点击循环切换排列方式）"
+                  onClick={() => { const r = useCanvasStore.getState().autoLayout(); if (r.count > 0) { toast.success(`已按「${r.label}」整理 ${r.count} 个节点 · 再点切换排列`, { duration: 1600 }); setTimeout(() => reactFlow.fitView({ padding: 0.15, duration: 400 }), 60); } else toast.info("没有可整理的自由节点（群组内节点不参与）"); }}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ color: "var(--c-t3)" }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
@@ -3914,7 +3924,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             nodePinned={ctxPinned}
             onClose={() => setContextMenu(null)}
             onAddNode={handleAddNode}
-            onAutoLayout={() => { const n = useCanvasStore.getState().autoLayout(); if (n > 0) { toast.success(`已整理 ${n} 个节点`, { duration: 1200 }); setTimeout(() => reactFlow.fitView({ padding: 0.15, duration: 400 }), 60); } else toast.info("没有可整理的自由节点（群组内节点不参与）"); }}
+            onAutoLayout={() => { const r = useCanvasStore.getState().autoLayout(); if (r.count > 0) { toast.success(`已按「${r.label}」整理 ${r.count} 个节点 · 再点切换排列`, { duration: 1600 }); setTimeout(() => reactFlow.fitView({ padding: 0.15, duration: 400 }), 60); } else toast.info("没有可整理的自由节点（群组内节点不参与）"); }}
             // LibTV-D 画布根菜单：上传素材 / 撤销 / 重做 / 粘贴（只读画布不提供编辑项）
             onOpenAssets={() => setShowAssets(true)}
             onUndo={!isReadOnly ? handleUndo : undefined}

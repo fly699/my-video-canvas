@@ -154,9 +154,10 @@ function runCanvasAction(action: AgentOperation["action"]): string | null {
       return null;
     }
     case "arrange_layout": {
-      const n = useCanvasStore.getState().autoLayout();
+      // 助手固定用确定性的「流向分层」（#124 的循环切换是给按钮连点交互用的）。
+      const r = useCanvasStore.getState().autoLayout("flow");
       window.dispatchEvent(new CustomEvent(CANVAS_FIT_VIEW_EVENT));
-      toast.success(n > 0 ? `已整理 ${n} 个节点` : "没有可整理的自由节点（群组内节点不参与）", { duration: 1600 });
+      toast.success(r.count > 0 ? `已按「${r.label}」整理 ${r.count} 个节点` : "没有可整理的自由节点（群组内节点不参与）", { duration: 1600 });
       return null;
     }
     case "fit_view":

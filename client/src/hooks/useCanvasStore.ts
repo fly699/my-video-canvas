@@ -70,6 +70,9 @@ function nodeSizeOf(n: CanvasNode): { w: number; h: number } {
   return { w, h };
 }
 
+// #124 整理布局的循环游标（会话内，不持久化）：连点「整理布局」按顺序换排法。
+let _layoutCycleIdx = 0;
+
 function getSnapshotKey(projectId: number | null) {
   return `ai-video-canvas:snapshots:${projectId ?? "default"}`;
 }
@@ -230,7 +233,9 @@ interface CanvasStore {
   cloneSubgraph: (ids: string[], offset?: { x: number; y: number }) => string[];
   /** 一键整理：按连线方向把自由节点（不在任何群组里的）做从左到右的分层布局，
    *  锚定在原包围盒左上角、保留层内大致上下顺序。返回被重排的节点数。 */
-  autoLayout: () => number;
+  /** #124 整理布局：不传 mode 每次调用循环切换排法（流向分层/紧凑网格/横向一排/垂直一列），
+   *  传 mode 固定用该排法。返回排到的节点数与排法名（供 toast）。 */
+  autoLayout: (mode?: "flow" | "grid" | "row" | "column") => { count: number; label: string };
   /** Clone a generation node into `count` A/B variants (fresh seed each, same
    *  upstream inputs re-wired). Returns the number of variants created. */
   createVariants: (id: string, count: number) => number;
@@ -1066,52 +1071,93 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     return newNodes.map((n) => n.id);
   },
 
-  autoLayout: () => {
+  // #124 多种排列循环：不传 mode 时每次调用按 流向分层 → 紧凑网格 → 横向一排 →
+  // 垂直一列 循环切换（「整理布局」按钮连点即换排法）；传 mode 则固定用该排法
+  //（画布助手 arrange_layout 用确定性的 flow）。返回 {count, label} 供 toast 显示排法名。
+  autoLayout: (mode) => {
+    const MODES = [
+      { key: "flow" as const, label: "流向分层" },
+      { key: "grid" as const, label: "紧凑网格" },
+      { key: "row" as const, label: "横向一排" },
+      { key: "column" as const, label: "垂直一列" },
+    ];
+    const chosen = mode ?? MODES[_layoutCycleIdx % MODES.length].key;
+    if (mode == null) _layoutCycleIdx++;
+    const label = MODES.find((m) => m.key === chosen)!.label;
     const { nodes, edges } = get();
     // 跳过群组容器与「群组成员」——挪动成员会破坏群组框选，只排自由节点。
     const grouped = new Set<string>();
     for (const n of nodes) if (n.data.nodeType === "group") for (const c of (n.data.payload as GroupNodeData).childIds ?? []) grouped.add(c);
     const free = nodes.filter((n) => n.data.nodeType !== "group" && !grouped.has(n.id));
-    if (free.length < 2) return 0;
-    const idSet = new Set(free.map((n) => n.id));
-    const preds = new Map<string, string[]>();
-    for (const n of free) preds.set(n.id, []);
-    for (const e of edges) if (idSet.has(e.source) && idSet.has(e.target)) preds.get(e.target)!.push(e.source);
-    // 最长路径分层：layer = max(前驱 layer)+1，无前驱=0（含环保护）。
-    const layer = new Map<string, number>();
-    const visiting = new Set<string>();
-    const calc = (id: string): number => {
-      const cached = layer.get(id);
-      if (cached != null) return cached;
-      if (visiting.has(id)) return 0;
-      visiting.add(id);
-      const ps = preds.get(id) ?? [];
-      const l = ps.length === 0 ? 0 : Math.max(...ps.map(calc)) + 1;
-      visiting.delete(id);
-      layer.set(id, l);
-      return l;
-    };
-    for (const n of free) calc(n.id);
+    if (free.length < 2) return { count: 0, label };
     const minX = Math.min(...free.map((n) => n.position.x));
     const minY = Math.min(...free.map((n) => n.position.y));
-    const COL = 360, ROW = 220;
-    const byLayer = new Map<number, CanvasNode[]>();
-    for (const n of free) {
-      const l = layer.get(n.id) ?? 0;
-      const arr = byLayer.get(l) ?? [];
-      arr.push(n); byLayer.set(l, arr);
-    }
     const pos = new Map<string, { x: number; y: number }>();
-    byLayer.forEach((group, l) => {
-      group.sort((a, b) => a.position.y - b.position.y); // 保留层内大致上下顺序，减少交叉
-      group.forEach((n, i) => pos.set(n.id, { x: minX + l * COL, y: minY + i * ROW }));
-    });
+    if (chosen === "flow") {
+      const idSet = new Set(free.map((n) => n.id));
+      const preds = new Map<string, string[]>();
+      for (const n of free) preds.set(n.id, []);
+      for (const e of edges) if (idSet.has(e.source) && idSet.has(e.target)) preds.get(e.target)!.push(e.source);
+      // 最长路径分层：layer = max(前驱 layer)+1，无前驱=0（含环保护）。
+      const layer = new Map<string, number>();
+      const visiting = new Set<string>();
+      const calc = (id: string): number => {
+        const cached = layer.get(id);
+        if (cached != null) return cached;
+        if (visiting.has(id)) return 0;
+        visiting.add(id);
+        const ps = preds.get(id) ?? [];
+        const l = ps.length === 0 ? 0 : Math.max(...ps.map(calc)) + 1;
+        visiting.delete(id);
+        layer.set(id, l);
+        return l;
+      };
+      for (const n of free) calc(n.id);
+      const COL = 360, ROW = 220;
+      const byLayer = new Map<number, CanvasNode[]>();
+      for (const n of free) {
+        const l = layer.get(n.id) ?? 0;
+        const arr = byLayer.get(l) ?? [];
+        arr.push(n); byLayer.set(l, arr);
+      }
+      byLayer.forEach((group, l) => {
+        group.sort((a, b) => a.position.y - b.position.y); // 保留层内大致上下顺序，减少交叉
+        group.forEach((n, i) => pos.set(n.id, { x: minX + l * COL, y: minY + i * ROW }));
+      });
+    } else {
+      // 其余三种按阅读序（先上后下、再左后右）重排，用节点实际尺寸（#120 nodeSizeOf
+      // 顶层优先）留间距，互不重叠。
+      const GAP = 60;
+      const sorted = [...free].sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
+      if (chosen === "row") {
+        let x = minX;
+        for (const n of sorted) { pos.set(n.id, { x, y: minY }); x += nodeSizeOf(n).w + GAP; }
+      } else if (chosen === "column") {
+        let y = minY;
+        for (const n of sorted) { pos.set(n.id, { x: minX, y }); y += nodeSizeOf(n).h + GAP; }
+      } else {
+        // grid：≈正方形列数，每列取最宽、每行取最高对齐（同群组宫格排列）。
+        const cols = Math.max(1, Math.ceil(Math.sqrt(sorted.length)));
+        const colW: number[] = [], rowH: number[] = [];
+        sorted.forEach((n, i) => {
+          const { w, h } = nodeSizeOf(n);
+          const c = i % cols, r = Math.floor(i / cols);
+          colW[c] = Math.max(colW[c] ?? 0, w);
+          rowH[r] = Math.max(rowH[r] ?? 0, h);
+        });
+        const colX: number[] = []; let cx = minX;
+        for (let c = 0; c < cols; c++) { colX[c] = cx; cx += (colW[c] ?? 0) + GAP; }
+        const rowY: number[] = []; let cy = minY;
+        for (let r = 0; r < rowH.length; r++) { rowY[r] = cy; cy += (rowH[r] ?? 0) + GAP; }
+        sorted.forEach((n, i) => pos.set(n.id, { x: colX[i % cols], y: rowY[Math.floor(i / cols)] }));
+      }
+    }
     set((s) => ({
       ...pushHistory(s),
       nodes: s.nodes.map((n) => (pos.has(n.id) ? { ...n, position: pos.get(n.id)! } : n)),
       isDirty: true,
     }));
-    return free.length;
+    return { count: free.length, label };
   },
 
   createVariants: (id, count) => {
