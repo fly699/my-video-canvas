@@ -195,6 +195,8 @@ export function applyAgentOperations(
     allowedGenNodes?: string[];
     /** 快速设置勾选的「允许引用的工作流模板 id」；提供且非空时，comfyui_workflow 只能引用其中的模板。 */
     allowedTemplateIds?: number[];
+    /** 快速设置「排除分镜节点」（#138）：为真时 storyboard 的 create 直接判失败（镜头信息应改由 prompt 节点承载）。 */
+    excludeStoryboard?: boolean;
   } = {},
 ): ApplyResult {
   injectFreeVramIntoOps(ops, opts.freeVramAfterRun === true);
@@ -268,6 +270,12 @@ export function applyAgentOperations(
           // 未知节点类型（服务端 sanitize 漏网 / 非官方客户端）——友好拦截，避免 store.addNode
           // 读 NODE_CONFIGS[未知].defaultTitle 抛「Cannot read properties of undefined」内部错误。
           if (!(op.nodeType in NODE_CONFIGS)) { fail(index, op, `未知节点类型：${op.nodeType}`); return; }
+          // 快速设置「排除分镜节点」硬约束（#138）：LLM 违规创建 storyboard → 判失败
+          // （失败原因随自愈回路喂回 LLM，促使改用 prompt 节点承载镜头信息）。
+          if (opts.excludeStoryboard && op.nodeType === "storyboard") {
+            fail(index, op, "规划设置已排除分镜节点（storyboard）——镜头信息请改用 prompt 提示词节点承载");
+            return;
+          }
           // 快速设置「允许使用的生成节点」硬约束：LLM 违规选了未勾选的生成节点类型 → 判失败
           // （失败原因会随自愈回路喂回 LLM，促使换成允许的类型），非生成类节点不受限。
           if (opts.allowedGenNodes && opts.allowedGenNodes.length && (GEN_NODE_TYPES as readonly string[]).includes(op.nodeType) && !opts.allowedGenNodes.includes(op.nodeType)) {

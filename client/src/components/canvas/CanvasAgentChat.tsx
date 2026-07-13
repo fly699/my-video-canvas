@@ -28,8 +28,21 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[] };
-const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "", videoProvider: "", genNodes: [], workflowTemplateIds: [] };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string };
+const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "", videoProvider: "", genNodes: [], workflowTemplateIds: [], noStoryboard: false, dialogueLang: "" };
+
+/** 对白语种（#138）：对白/旁白/台词统一书写语言；空 = 跟随内容默认。 */
+const QP_DIALOGUE_LANGS = [
+  { value: "中文", label: "中文" },
+  { value: "英语", label: "英语 English" },
+  { value: "日语", label: "日语 日本語" },
+  { value: "韩语", label: "韩语 한국어" },
+  { value: "粤语", label: "粤语" },
+  { value: "西班牙语", label: "西班牙语 Español" },
+  { value: "法语", label: "法语 Français" },
+  { value: "德语", label: "德语 Deutsch" },
+  { value: "俄语", label: "俄语 Русский" },
+];
 const QP_GEN_NODES: { v: string; label: string }[] = [
   { v: "image_gen", label: "云端图像" }, { v: "video_task", label: "云端视频" },
   { v: "comfyui_image", label: "ComfyUI图像" }, { v: "comfyui_video", label: "ComfyUI视频" }, { v: "comfyui_workflow", label: "ComfyUI模板" },
@@ -142,7 +155,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [showQuick, setShowQuick] = useState(false);
   const setQP = (patch: Partial<QuickPrefs>) => setQuickPrefs((p) => ({ ...p, ...patch }));
   const qpActiveCount = (quickPrefs.aspect ? 1 : 0) + (quickPrefs.style ? 1 : 0) + (quickPrefs.durationSec ? 1 : 0) + (quickPrefs.imageFirst ? 1 : 0) + (quickPrefs.addMusic ? 1 : 0) + (quickPrefs.addSubtitle ? 1 : 0)
-    + (quickPrefs.imageModel ? 1 : 0) + (quickPrefs.videoProvider ? 1 : 0) + (quickPrefs.genNodes.length ? 1 : 0) + (quickPrefs.workflowTemplateIds.length ? 1 : 0);
+    + (quickPrefs.imageModel ? 1 : 0) + (quickPrefs.videoProvider ? 1 : 0) + (quickPrefs.genNodes.length ? 1 : 0) + (quickPrefs.workflowTemplateIds.length ? 1 : 0)
+    + (quickPrefs.noStoryboard ? 1 : 0) + (quickPrefs.dialogueLang ? 1 : 0);
   // 「ComfyUI模板」的二级选择：模板库中已存在的工作流模板（只有 comfyui_workflow 型模板
   // 带 workflowJson，可被 comfyui_workflow 节点引用）。选中 = 只允许助手用这些模板。
   const workflowTemplates = (templatesQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow");
@@ -158,6 +172,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     if (quickPrefs.genNodes.length) lines.push(`- 【强制】生成节点只允许使用：${quickPrefs.genNodes.join(" / ")}；其余生成节点类型（image_gen/video_task/comfyui_image/comfyui_video/comfyui_workflow 中未列出的）一律禁止创建。`);
     if (quickPrefs.imageModel) lines.push(`- 【强制】图像生成一律使用模型 ${quickPrefs.imageModel}（写入 image_gen.model / storyboard.imageModel）。`);
     if (quickPrefs.videoProvider) lines.push(`- 【强制】视频生成一律使用模型 ${quickPrefs.videoProvider}（写入 video_task.provider；params 键与取值严格按该模型的参数表）。`);
+    if (quickPrefs.noStoryboard) lines.push("- 【强制·排除分镜节点】禁止创建 storyboard 分镜节点；镜头拆分与每镜画面描述改用 prompt 提示词节点承载（每镜一个 prompt 节点连到该镜的生成节点），链路：script → prompt → 生成节点 → merge。已存在的 storyboard 节点也不要新增连线到新链路。");
+    if (quickPrefs.dialogueLang) lines.push(`- 【强制·对白语种】所有对白/旁白/台词/口播文案一律用${quickPrefs.dialogueLang}书写（storyboard.dialogue、脚本台词、字幕文本等人声内容）；画面生成提示词的语言不受此限制，仍按生成模型的最佳实践。`);
     if (chosenWorkflowTpls.length) lines.push(`- 【强制】comfyui_workflow 节点只允许引用以下模板：${chosenWorkflowTpls.map((t) => `id=${t.id}「${t.label}」`).join("、")}；其它模板一律禁止。`);
     return lines.length ? lines.join("\n") : undefined;
   };
@@ -432,6 +448,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           imageModel: quickPrefs.imageModel || undefined, videoProvider: quickPrefs.videoProvider || undefined,
           allowedGenNodes: quickPrefs.genNodes.length ? quickPrefs.genNodes : undefined,
           allowedTemplateIds: quickPrefs.workflowTemplateIds.length ? quickPrefs.workflowTemplateIds : undefined,
+          excludeStoryboard: quickPrefs.noStoryboard || undefined,
         });
         applied = opsSummary(ops); createdIds = res.createdIds ?? [];
         if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
@@ -529,6 +546,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 title="指定视频生成模型（写入 video_task.provider；默认=助手自选）" groups={QP_VIDEO_MODEL_GROUPS} onChange={(v) => setQP({ videoProvider: v })} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="对白/旁白/台词/口播文案统一用所选语言书写；默认=跟随内容">语种</span>
+              <MiniSelect value={quickPrefs.dialogueLang} placeholder="默认" maxWidth={150} accent={accent} accentSoft={accentSoft}
+                title="对白语种：对白/旁白/台词/字幕文本统一书写语言（画面提示词不受影响）；默认=跟随内容" groups={[{ options: [{ value: "", label: "默认（跟随内容）" }, ...QP_DIALOGUE_LANGS] }]} onChange={(v) => setQP({ dialogueLang: v })} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }} title="勾选=只允许助手用这些生成节点；全不勾=不限">节点</span>
               {QP_GEN_NODES.map((n) => {
                 const on = quickPrefs.genNodes.includes(n.v);
@@ -559,8 +581,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               </div>
             )}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["imageFirst", "生图 → 再生视频"], ["addMusic", "自动配乐"], ["addSubtitle", "自动字幕"]] as const).map(([k, label]) => (
-                <label key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
+              {([["imageFirst", "生图 → 再生视频", ""], ["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"]] as const).map(([k, label, tip]) => (
+                <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>
               ))}
