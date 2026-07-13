@@ -2838,6 +2838,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
             zoomOnDoubleClick={false}
             zoomActivationKeyCode="Control"
             fitView={false}
+            elevateNodesOnSelect={false /* #117 关闭选中自动抬高：群组盒 zIndex=-1 常居底层，
+              选中若被抬到 1000 会盖住组内成员——点组内空白选中群组后成员就点不到 */}
             fitViewOptions={{ padding: 0.2 }}
             minZoom={0.05}
             maxZoom={6}
