@@ -231,16 +231,13 @@ export function ComfyServerStatusIndicator() {
     });
   };
 
-  // 复位「知识记忆体」：清掉该服务器已学习的资源/节点记忆并立即重学（refreshKnowledge=invalidate+重抓）。
-  // 复位后，工程智能体 / ComfyUI 节点 / 画布助手下次调用记忆时拿到的即是最新清单（装/删模型后手动复位用）。
-  const refreshKnowledgeMut = trpc.comfyui.refreshKnowledge.useMutation();
-  const resetMemory = (baseUrl: string) => {
-    refreshKnowledgeMut.mutate({ customBaseUrl: baseUrl }, {
-      onSuccess: (r) => {
-        if (!r.configured) { toast.error("未配置 ComfyUI 地址"); return; }
-        toast.success(`已复位并重建记忆：${r.counts.checkpoints} checkpoint · ${r.counts.loras} LoRA · ${r.counts.nodeClasses} 节点类`);
-      },
-      onError: (e) => toast.error(`复位记忆失败：${e.message}`),
+  // 复位「全部服务器」记忆体：清空进程内缓存 + DB 持久化全表（含数据库）。各服务器下次被调用时自动重建。
+  const resetAllMemoryMut = trpc.comfyui.resetAllKnowledge.useMutation();
+  const resetAllMemory = () => {
+    if (!window.confirm("复位全部服务器的记忆体？将清空所有已学的资源/节点记忆（含数据库）。各服务器下次被调用时会自动重新学习。")) return;
+    resetAllMemoryMut.mutate(undefined, {
+      onSuccess: () => toast.success("已复位全部服务器的记忆体（含数据库），下次调用自动重建"),
+      onError: (e) => toast.error(`复位全部记忆失败：${e.message}`),
     });
   };
 
@@ -355,6 +352,12 @@ export function ComfyServerStatusIndicator() {
                   className="topbar-btn" style={{ width: 22, height: 22, color: "oklch(0.66 0.18 30)" }} onClick={cleanAllFailed}>
                   <Eraser className="w-3 h-3" />
                 </button>
+                {isAdmin && (
+                  <button title="复位全部服务器的知识记忆体（清空已学资源/节点，含数据库；下次调用自动重学）"
+                    className="topbar-btn" style={{ width: 22, height: 22, color: "oklch(0.7 0.16 40)" }} disabled={resetAllMemoryMut.isPending} onClick={resetAllMemory}>
+                    <BrainCircuit className="w-3 h-3" />
+                  </button>
+                )}
                 <button
                   title={panelCompact ? "展开：显示选卡栏与操作按钮" : "折叠：隐藏选卡栏与操作按钮（仅留指标）"}
                   className="topbar-btn"
@@ -423,7 +426,6 @@ export function ComfyServerStatusIndicator() {
                                 <ActBtn icon={<Ban className="w-3 h-3" />} label="中断" color="oklch(0.65 0.21 25)" disabled={busy} onClick={() => runAction(s.baseUrl, "interrupt", "中断")} />
                                 <ActBtn icon={<ListX className="w-3 h-3" />} label="清空队列" color="oklch(0.74 0.16 80)" disabled={busy} onClick={() => runAction(s.baseUrl, "clearQueue", "清空队列")} />
                                 <ActBtn icon={<Sparkles className="w-3 h-3" />} label="推荐工作流" color="oklch(0.72 0.18 285)" onClick={() => setRecommendFor(s.baseUrl)} />
-                                <ActBtn icon={<BrainCircuit className="w-3 h-3" />} label="复位记忆" color="oklch(0.7 0.16 40)" disabled={refreshKnowledgeMut.isPending} onClick={() => resetMemory(s.baseUrl)} />
                                 <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="刷新" color="oklch(0.64 0.16 250)" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
                               </div>
                             )}

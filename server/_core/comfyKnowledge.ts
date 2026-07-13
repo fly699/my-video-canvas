@@ -6,7 +6,7 @@
 // 纯读取（listResources/describeNodes）都改走这里，天然跨「一次会话/一次生成」复用。DB 持久化可后续再加
 // （现为进程内，重启即重建；对「同一会话反复调、多节点共享」已足够）。
 import { fetchComfyModels } from "./comfyui";
-import { getComfyKnowledgeRow, setComfyKnowledgeRow, deleteComfyKnowledgeRow } from "../db";
+import { getComfyKnowledgeRow, setComfyKnowledgeRow, deleteComfyKnowledgeRow, deleteAllComfyKnowledgeRows } from "../db";
 
 export interface ComfyResourceMemory {
   checkpoints: string[];
@@ -123,7 +123,7 @@ export function searchComfyKnowledge(
 }
 
 /** 清空记忆（不传 baseUrl 清全部）+ 删 DB 持久化。装/删模型或手动「复位记忆体」后调用，
- *  强制下次重新学习（getComfyKnowledge 内存/DB 皆落空 → 抓真机重建）。 */
+ *  强制下次重新学习（getComfyKnowledge 内存/DB 皆落空 → 抓真机重建）。全清同时清内存与 DB 全表。 */
 export function invalidateComfyKnowledge(baseUrl?: string): void {
   if (baseUrl) {
     const key = norm(baseUrl);
@@ -131,6 +131,6 @@ export function invalidateComfyKnowledge(baseUrl?: string): void {
     void deleteComfyKnowledgeRow(key).catch(() => { /* DB 不可用无妨 */ });
   } else {
     cache.clear();
-    // 全清仅清内存；DB 全表删除较重且少用，按需在具体 baseUrl 上删。
+    void deleteAllComfyKnowledgeRows().catch(() => { /* DB 不可用无妨 */ });
   }
 }

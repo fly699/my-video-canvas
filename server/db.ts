@@ -1775,6 +1775,12 @@ export async function deleteComfyKnowledgeRow(baseUrl: string): Promise<void> {
   await db.delete(comfyKnowledge).where(eq(comfyKnowledge.baseUrl, baseUrl));
 }
 
+export async function deleteAllComfyKnowledgeRows(): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(comfyKnowledge);
+}
+
 /** 管理员配置的「系统默认模型」（按槽位 llm/image/video/transcribe）。单行 id=1 的 JSON 列。 */
 export async function getSystemDefaultModels(): Promise<Record<string, string>> {
   const db = await getDb();
