@@ -90,6 +90,12 @@ export const VIDEO_PROVIDERS = [
   "poyo_happy_horse_11",
   "poyo_omni_flash",
   "poyo_grok_video",
+  // ── #151 round2 新模型（poyo 视频）──
+  "poyo_grok_video_15",
+  "poyo_kling_avatar2_std", "poyo_kling_avatar2_pro",
+  "poyo_seedance2_mini",
+  "poyo_wan25_text", "poyo_wan25_image",
+  "poyo_wan_animate_move", "poyo_wan_animate_replace",
   // ── kie.ai video (additive; routed via server/_core/kieVideo.ts, NOT Poyo) ──
   "kie_veo31_quality",
   "kie_veo31_fast",
@@ -455,6 +461,8 @@ export type ImageGenModel =
   | "poyo_kling_o1_image" | "poyo_kling_o3_image"
   // Poyo · others
   | "poyo_z_image" | "poyo_grok_image"
+  // Poyo · #151 round2 新模型
+  | "poyo_seedream_5_pro" | "poyo_grok_image_quality" | "poyo_flux_dev" | "poyo_flux_schnell" | "poyo_nano_banana_2_lite"
   // Higgsfield
   | "hf_soul_standard" | "hf_reve" | "hf_seedream_v4" | "hf_flux_pro"
   // kie.ai (unified jobs API) — text-to-image
@@ -467,7 +475,9 @@ export type ImageGenModel =
   | "kie_gpt_image_2" | "kie_gpt_image_2_i2i" | "kie_seedream_5lite" | "kie_seedream_5lite_i2i"
   | "kie_wan27_image" | "kie_wan27_image_pro" | "kie_ideogram_v3" | "kie_qwen_image"
   | "kie_qwen_image_i2i" | "kie_qwen_image_edit" | "kie_qwen2_image_edit"
-  | "kie_flux_kontext_pro" | "kie_flux_kontext_max" | "kie_gpt_4o_image";
+  | "kie_flux_kontext_pro" | "kie_flux_kontext_max" | "kie_gpt_4o_image"
+  // kie.ai — #151 round2 新模型
+  | "kie_nano_banana_2_lite" | "kie_nano_banana_2_lite_i2i" | "kie_seedream_5pro_i2i";
 
 /** UI value strings for every image model — single source for the Zod enum. */
 export const IMAGE_GEN_MODELS = [
@@ -479,6 +489,7 @@ export const IMAGE_GEN_MODELS = [
   "poyo_wan_image", "poyo_wan_image_pro",
   "poyo_kling_o1_image", "poyo_kling_o3_image",
   "poyo_z_image", "poyo_grok_image",
+  "poyo_seedream_5_pro", "poyo_grok_image_quality", "poyo_flux_dev", "poyo_flux_schnell", "poyo_nano_banana_2_lite",
   "hf_soul_standard", "hf_reve", "hf_seedream_v4", "hf_flux_pro",
   "kie_nano_banana", "kie_nano_banana_pro", "kie_seedream_v4", "kie_seedream_45",
   "kie_flux2_pro", "kie_gpt_image_15", "kie_imagen4", "kie_imagen4_fast", "kie_imagen4_ultra", "kie_z_image", "kie_grok_image",
@@ -488,6 +499,7 @@ export const IMAGE_GEN_MODELS = [
   "kie_wan27_image", "kie_wan27_image_pro", "kie_ideogram_v3", "kie_qwen_image",
   "kie_qwen_image_i2i", "kie_qwen_image_edit", "kie_qwen2_image_edit",
   "kie_flux_kontext_pro", "kie_flux_kontext_max", "kie_gpt_4o_image",
+  "kie_nano_banana_2_lite", "kie_nano_banana_2_lite_i2i", "kie_seedream_5pro_i2i",
 ] as const satisfies readonly ImageGenModel[];
 /** 「真 3D」（Tripo3D 图生 .glb）结果：随节点持久化——生成一次约 30–60 credits，
  *  关闭查看器后凭此免费重开继续调整视角；sourceUrl 变了才需要重新生成。 */

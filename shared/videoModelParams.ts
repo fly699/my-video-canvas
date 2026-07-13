@@ -25,6 +25,10 @@ export const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   "kie_omnihuman15",  // 数字人：图 + 驱动音频
 
   "kie_wan_animate_move", "kie_wan_animate_replace",
+  // #151 round2 poyo 新模型（官方 schema image_urls required）
+  "poyo_grok_video_15", "poyo_wan25_image",
+  "poyo_kling_avatar2_std", "poyo_kling_avatar2_pro",
+  "poyo_wan_animate_move", "poyo_wan_animate_replace",
 ]);
 
 export type ParamDef =
@@ -95,6 +99,8 @@ export const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_t2v", "kie_kling21_master_i2v",
   // #112 复核：poyo kling-1.6 的 with-params 文档含 negative_prompt（3.0-turbo 没有）。
   "poyo_kling16_std", "poyo_kling16_pro",
+  // #151：poyo wan2.5 t2v/i2v 官方 schema 均含 negative_prompt。
+  "poyo_wan25_text", "poyo_wan25_image",
 ]);
 
 // ── Reusable param sets for the expanded model catalog ──
@@ -252,9 +258,11 @@ const SEEDANCE15_PARAMS: ParamDef[] = [
 ];
 // Hailuo
 const HAILUO02_PARAMS: ParamDef[] = [
-  { type: "select", key: "resolution", label: "分辨率", default: "768p",
-    options: [{ value: "512p", label: "512P" }, { value: "768p", label: "768P" }] },
+  // #151 二轮核查：官方枚举为大写 512P/768P（服务端对旧小写值做规范化兜底）
+  { type: "select", key: "resolution", label: "分辨率", default: "768P",
+    options: [{ value: "512P", label: "512P" }, { value: "768P", label: "768P" }] },
   { type: "select", key: "duration", label: "时长（秒）", default: 6, options: DUR_6_10 },
+  { type: "toggle", key: "prompt_optimizer", label: "提示词优化", default: false },
 ];
 const HAILUO02_PRO_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: [{ value: "1080p", label: "1080P" }] },
@@ -266,7 +274,22 @@ const HAILUO23_PARAMS: ParamDef[] = [
   { type: "select", key: "duration", label: "时长（秒）", default: 6, options: DUR_6_10 },
   { type: "toggle", key: "prompt_optimizer", label: "提示词优化", default: false },
 ];
+// #151 二轮核查：happy-horse(1.0) 官方画幅枚举仅 5 值（api-manual/happy-horse）；
+// 1.1 沿用 with-params 文档的 9 值枚举（该模型现仅存于 with-params 文档）。
+const AR_HH5 = [
+  { value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" },
+  { value: "1:1", label: "1:1 方形" }, { value: "4:3", label: "4:3" }, { value: "3:4", label: "3:4" },
+];
 const HAPPY_HORSE_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: WAN_RES },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_HH5 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
+  // 视频编辑模式（连源视频时）：音频处理 auto=模型决定 / origin=保留原声
+  { type: "select", key: "audio_setting", label: "视频编辑·音频处理", default: "auto",
+    options: [{ value: "auto", label: "自动" }, { value: "origin", label: "保留原声" }] },
+  seedDef,
+];
+const HAPPY_HORSE_11_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: WAN_RES },
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_HH9 },
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
@@ -475,6 +498,52 @@ const KIE_ALEPH_PARAMS: ParamDef[] = [
   { type: "select", key: "aspectRatio", label: "宽高比", default: "16:9", options: AR_ALEPH }, seedDef,
 ];
 
+// ── #151 round2 poyo 新模型参数（严格按官方 api-manual input schema）──
+// grok-imagine-video-1.5：resolution 480p/720p(默认 720p)，duration 1-15 整数(默认 6)
+const POYO_GROK15_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }] },
+  { type: "range", key: "duration", label: "时长（秒）", min: 1, max: 15, step: 1, default: 6, unit: "s" },
+];
+// kling-avatar-2.0：无可调参数（图 + 驱动音频，prompt 可选）
+// seedance-2-mini：resolution 480p/720p(默认 720p)、aspect_ratio 含 auto、duration 4-15 必填、generate_audio；无 seed/camera_fixed
+const POYO_SEEDANCE2_MINI_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }] },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "auto",
+    options: [
+      { value: "auto", label: "自动" },
+      { value: "21:9", label: "21:9 超宽" }, { value: "16:9", label: "16:9 横屏" },
+      { value: "4:3", label: "4:3 标准" }, { value: "1:1", label: "1:1 方形" },
+      { value: "3:4", label: "3:4 竖屏" }, { value: "9:16", label: "9:16 竖屏" },
+    ]},
+  { type: "range", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s" },
+  { type: "toggle", key: "generate_audio", label: "AI 生成音频", default: false },
+];
+// wan2.5-text-to-video：aspect_ratio 为尺寸串枚举，duration 5/10
+const POYO_WAN25_TEXT_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "输出尺寸", default: "1280*720",
+    options: [
+      { value: "1280*720", label: "1280×720 横屏" }, { value: "720*1280", label: "720×1280 竖屏" },
+      { value: "1920*1080", label: "1920×1080 横屏" }, { value: "1080*1920", label: "1080×1920 竖屏" },
+      { value: "832*480", label: "832×480 横屏" }, { value: "480*832", label: "480×832 竖屏" },
+    ]},
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  seedDef,
+];
+// wan2.5-image-to-video：resolution 480p/720p/1080p(默认 720p)，duration 5/10
+const POYO_WAN25_IMAGE_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "720p",
+    options: [{ value: "480p", label: "480p" }, { value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }] },
+  { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  seedDef,
+];
+// wan-animate（move/replace）：仅 resolution 480p/580p/720p(默认 480p)
+const POYO_WAN_ANIMATE_PARAMS: ParamDef[] = [
+  { type: "select", key: "resolution", label: "分辨率", default: "480p",
+    options: [{ value: "480p", label: "480p" }, { value: "580p", label: "580p" }, { value: "720p", label: "720p" }] },
+];
+
 export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
@@ -588,9 +657,18 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_hailuo02_pro: HAILUO02_PRO_PARAMS,
   poyo_hailuo23: HAILUO23_PARAMS,
   poyo_happy_horse: HAPPY_HORSE_PARAMS,
-  poyo_happy_horse_11: HAPPY_HORSE_PARAMS,
+  poyo_happy_horse_11: HAPPY_HORSE_11_PARAMS,
   poyo_omni_flash: OMNI_FLASH_PARAMS,
   poyo_grok_video: GROK_PARAMS,
+  // ── #151 round2 poyo 新模型 ──
+  poyo_grok_video_15: POYO_GROK15_PARAMS,
+  poyo_kling_avatar2_std: [],
+  poyo_kling_avatar2_pro: [],
+  poyo_seedance2_mini: POYO_SEEDANCE2_MINI_PARAMS,
+  poyo_wan25_text: POYO_WAN25_TEXT_PARAMS,
+  poyo_wan25_image: POYO_WAN25_IMAGE_PARAMS,
+  poyo_wan_animate_move: POYO_WAN_ANIMATE_PARAMS,
+  poyo_wan_animate_replace: POYO_WAN_ANIMATE_PARAMS,
   // ── kie.ai video ──
   kie_veo31_quality: KIE_VEO_PARAMS,
   kie_veo31_fast: KIE_VEO_PARAMS,

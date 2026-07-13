@@ -84,6 +84,17 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
   // 引擎选择：null = 未选（显示选择界面）；记住上次选择。已有持久化模型时无需选择。
   const [engine, setEngine] = useState<"tripo" | "hunyuan" | null>(() =>
     initialGlbUrl ? "tripo" : null);
+  // #151 云端 3D 模型可选（计价见 round2-final-v2）；记住上次选择。
+  const CLOUD_3D_MODELS: { value: string; label: string; note: string }[] = [
+    { value: "tripo_h31",     label: "Tripo3D H3.1（默认）", note: "高细节 · 30-60 cr" },
+    { value: "tripo_p1",      label: "Tripo3D P1",           note: "低多边形 · 56-70 cr" },
+    { value: "meshy_6",       label: "Meshy 6",              note: "60 cr" },
+    { value: "hunyuan_rapid", label: "混元 3D v3.1 Rapid",   note: "云端 · 36-60 cr" },
+    { value: "hunyuan_pro",   label: "混元 3D v3.1 Pro",     note: "云端 · 36-60 cr +PBR24" },
+  ];
+  const [cloudModel, setCloudModel] = useState<string>(() => {
+    try { return localStorage.getItem("avc:model3d:cloudModel") || "tripo_h31"; } catch { return "tripo_h31"; }
+  });
 
   // 提交图生 3D（StrictMode 双调用用 ref 去重）。已有持久化模型 → 直接复用，不再提交；
   // 未选引擎（选择界面）不提交。
@@ -92,7 +103,10 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
     submittedRef.current = true;
     (async () => {
       try {
-        const r = await submitMut.mutateAsync({ imageUrl: sourceImageUrl, texture: true });
+        const r = await submitMut.mutateAsync({
+          imageUrl: sourceImageUrl, texture: true,
+          model3d: cloudModel as "tripo_h31" | "tripo_p1" | "meshy_6" | "hunyuan_rapid" | "hunyuan_pro",
+        });
         setTaskId(r.taskId);
       } catch (e) {
         setErr((e instanceof Error ? e.message : "图生 3D 提交失败") + "\n（需平台已配置 Poyo API Key）");
@@ -220,9 +234,17 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
             <div style={{ fontSize: 14, fontWeight: 700 }}>选择 3D 生成引擎</div>
             <button onClick={startTripo} style={{ width: 320, textAlign: "left", padding: "12px 16px", borderRadius: 12, border: "1px solid rgba(52,211,153,0.5)", background: "rgba(52,211,153,0.12)", color: "#fff", cursor: "pointer" }}>
-              <div style={{ fontWeight: 700 }}>Tripo3D（云端）</div>
-              <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>质量稳定 · 约消耗 30–60 credits · 1–3 分钟</div>
+              <div style={{ fontWeight: 700 }}>云端图生 3D（Poyo）</div>
+              <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>质量稳定 · 约 30–70 credits · 1–3 分钟</div>
             </button>
+            <select
+              value={cloudModel}
+              onChange={(e) => { setCloudModel(e.target.value); try { localStorage.setItem("avc:model3d:cloudModel", e.target.value); } catch { /* ignore */ } }}
+              style={{ width: 320, padding: "7px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(0,0,0,0.4)", color: "#fff", fontSize: 12 }}
+              title="云端 3D 模型（点上方按钮开始生成）"
+            >
+              {CLOUD_3D_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label} · {m.note}</option>)}
+            </select>
             <button onClick={() => void startHunyuan()} style={{ width: 320, textAlign: "left", padding: "12px 16px", borderRadius: 12, border: "1px solid rgba(167,139,250,0.5)", background: "rgba(167,139,250,0.12)", color: "#fff", cursor: "pointer" }}>
               <div style={{ fontWeight: 700 }}>混元 3D（本机 ComfyUI）</div>
               <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>免费 · 需装 Hunyuan3DWrapper 插件 · 1–10 分钟视显存</div>

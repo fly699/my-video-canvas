@@ -60,6 +60,15 @@ export const POYO_PROVIDER_MAP: Record<string, string> = {
   poyo_happy_horse_11: "happy-horse-1.1",
   poyo_omni_flash: "omni-flash",
   poyo_grok_video:  "grok-imagine",
+  // ── #151 round2 新模型（参数 schema 来自 Poyo 官方文档 api-manual/*，2026-07 核对）──
+  poyo_grok_video_15:      "grok-imagine-video-1.5",
+  poyo_kling_avatar2_std:  "kling-avatar-2.0/standard",
+  poyo_kling_avatar2_pro:  "kling-avatar-2.0/pro",
+  poyo_seedance2_mini:     "seedance-2-mini",
+  poyo_wan25_text:         "wan2.5-text-to-video",
+  poyo_wan25_image:        "wan2.5-image-to-video",
+  poyo_wan_animate_move:    "wan-animate-move",
+  poyo_wan_animate_replace: "wan-animate-replace",
 };
 
 // Allowed input keys per wire model. The builder copies only these from
@@ -103,16 +112,28 @@ const VIDEO_PARAM_KEYS: Record<string, string[]> = {
   "wan2.7-reference-to-video": ["resolution", "duration", "seed"],
   "wan2.2-text-to-video-fast": ["aspect_ratio", "resolution", "seed"],
   "wan2.2-image-to-video-fast": ["resolution", "seed"],
-  "hailuo-02":     ["resolution", "duration"],
-  "hailuo-02-pro": ["resolution", "duration"],
+  // #151 二轮核查（api-manual/hailuo-02）：补 prompt_optimizer；duration/resolution 标注
+  // 「hailuo-02 only / image-to-video only」——pro 档不发，避免上游 400。
+  "hailuo-02":     ["resolution", "duration", "prompt_optimizer"],
+  "hailuo-02-pro": ["prompt_optimizer"],
   "hailuo-2.3":    ["resolution", "duration", "prompt_optimizer"],
-  "happy-horse":   ["resolution", "aspect_ratio", "duration", "seed"],
+  // #151 二轮核查（api-manual/happy-horse）：补视频编辑模式的 audio_setting 与 enable_safety_checker
+  "happy-horse":   ["resolution", "aspect_ratio", "duration", "seed", "audio_setting", "enable_safety_checker"],
   "grok-imagine":  ["aspect_ratio", "duration", "style"],
   "sora-2":              ["duration", "style", "storyboard"],
   "sora-2-pro":          ["duration", "style", "storyboard"],
   "sora-2-official":     ["duration", "aspect_ratio"],
   "sora-2-pro-official": ["duration", "aspect_ratio", "resolution"],
   "runway-gen-4.5":  ["aspect_ratio", "duration", "seed"],
+  // ── #151 round2 新模型（字段严格按官方文档 input schema）──
+  "grok-imagine-video-1.5":    ["resolution", "duration"],          // duration int 1-15 默认 6
+  "kling-avatar-2.0/standard": [],                                   // 仅 image_urls+audio_url(+prompt 可选)
+  "kling-avatar-2.0/pro":      [],
+  "seedance-2-mini":  ["resolution", "aspect_ratio", "duration", "generate_audio"], // 无 seed/camera_fixed（与 seedance-2 不同！）
+  "wan2.5-text-to-video":  ["aspect_ratio", "duration", "seed"],     // aspect_ratio 为尺寸串（832*480 等）
+  "wan2.5-image-to-video": ["resolution", "duration", "seed"],
+  "wan-animate-move":    ["resolution"],                             // 无 prompt 字段（PROMPTLESS）
+  "wan-animate-replace": ["resolution"],
 };
 
 // Models whose duration is fixed regardless of UI selection.
@@ -121,13 +142,15 @@ const FIXED_DURATION: Record<string, number> = {
 };
 
 const NUMERIC_KEYS = new Set(["duration", "seed"]);
-const BOOLEAN_KEYS = new Set(["camera_fixed", "generate_audio", "sound", "multi_shots", "storyboard", "prompt_optimizer"]);
+const BOOLEAN_KEYS = new Set(["camera_fixed", "generate_audio", "sound", "multi_shots", "storyboard", "prompt_optimizer", "enable_safety_checker"]);
 
 // Some models REQUIRE a param Poyo would otherwise 400 on ("sound is required"),
 // even though the UI offers no control for it. Send a safe default when the
 // caller didn't specify one. Keys here must also appear in VIDEO_PARAM_KEYS.
 // Kling 2.6 / 3.0 / o3 require `sound`; default to off (no audio, no surprises).
 const VIDEO_PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
+  // seedance-2-mini：duration 为 required（官方 schema），UI 未传时兜底 5s
+  "seedance-2-mini": { duration: 5 },
   "kling-2.6": { sound: false },
   "kling-3.0/standard": { sound: false },
   "kling-3.0/pro": { sound: false },
@@ -150,6 +173,21 @@ const SINGLE_START_IMAGE_MODELS = new Set<string>([
 const TEXT_ONLY_MODELS = new Set<string>([
   "veo3.1-lite",
   "wan2.6-text-to-video", "wan2.7-text-to-video", "wan2.2-text-to-video-fast",
+  "wan2.5-text-to-video", // #151：官方 schema 无任何图字段（图生是独立 wire）
+]);
+
+// ── #151 特殊输入字段模型（官方 schema 用单数专属字段，非 reference_*_urls）──
+// kling-avatar-2.0：image_urls(恰 1) + audio_url(必填, 2-60s 驱动音频)
+const AUDIO_URL_MODELS = new Set<string>(["kling-avatar-2.0/standard", "kling-avatar-2.0/pro"]);
+// wan-animate：video_url(必填源视频) + image_urls(恰 1)
+const VIDEO_URL_MODELS = new Set<string>(["wan-animate-move", "wan-animate-replace"]);
+// wan-animate 的 input schema 没有 prompt/negative_prompt 字段，发了可能 400
+const PROMPTLESS_MODELS = new Set<string>(["wan-animate-move", "wan-animate-replace"]);
+// 官方 schema 将 image_urls 标记 required 的模型（缺图直接给友好错误，不白扣费）
+const IMAGE_REQUIRED_MODELS = new Set<string>([
+  "grok-imagine-video-1.5", "wan2.5-image-to-video",
+  "kling-avatar-2.0/standard", "kling-avatar-2.0/pro",
+  "wan-animate-move", "wan-animate-replace",
 ]);
 
 // 专属「参考生视频」wire：参考图永远走 reference_image_urls（多模态参考），不当首尾帧；
@@ -175,13 +213,19 @@ const SINGLE_IMAGE_URLS_MODELS = new Set<string>([
   "kling-1.6/standard", "kling-1.6/pro",
   "kling-3.0-turbo/standard", "kling-3.0-turbo/pro",
   "happy-horse", "happy-horse-1.1", "omni-flash",
-  // #129 全量审计（docs/poyo-video-api.md）：kling-3.0 图生=首尾帧 image_urls（§kling-3-0，
+  // #151 二轮核查：hailuo-02 家族官方 schema image_urls（i2v 必带）+ end_image_url 尾帧
+  "hailuo-02", "hailuo-02-pro",
+  // #129 全量审计（docs/poyo-video-api.md)：kling-3.0 图生=首尾帧 image_urls（§kling-3-0，
   // 元素引用时 image_urls 必填）；kling-o3 图生=image_urls ≤2（§kling-o3）；
   // runway-gen-4.5 可选 image_urls ≤1（§runway-gen-4-5）。三组单图此前都掉进
   // reference_image_url 兜底被静默丢弃。
   "kling-3.0/standard", "kling-3.0/pro", "kling-3.0/4K",
   "kling-o3/standard", "kling-o3/pro", "kling-o3/4K",
   "runway-gen-4.5",
+  // #151 round2 新模型：官方 schema 均为 image_urls（grok1.5/wan2.5-i2v/avatar/animate 恰 1 张；mini 首尾帧 ≤2）
+  "grok-imagine-video-1.5", "wan2.5-image-to-video", "seedance-2-mini",
+  "kling-avatar-2.0/standard", "kling-avatar-2.0/pro",
+  "wan-animate-move", "wan-animate-replace",
 ]);
 
 // #129 守卫：官方文档【没有列出】图生字段名的模型——维持历史 reference_image_url 兜底
@@ -192,7 +236,8 @@ const SINGLE_IMAGE_FALLBACK_OK = new Set<string>([
   "sora-2", "sora-2-pro",          // 文档只说「文生+图生」，未列字段名
   "kling-2.6",                     // 同上
   "seedance-1.0-pro", "seedance-1.5-pro", // 同上（seedance-2 才明确 image_urls）
-  "hailuo-02", "hailuo-02-pro",    // 同上（hailuo-2.3 才明确 start_image_url）
+  // #151 二轮核查：hailuo-02/-pro 官方 schema 明确为 image_urls（+可选 end_image_url 尾帧），
+  // 已迁出本兜底名单（原 reference_image_url 兜底会被上游静默丢弃）。
   "grok-imagine",                  // 同上
 ]);
 
@@ -255,6 +300,19 @@ const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
   "wan2.7-reference-to-video":  { referenceImages: 4, referenceVideos: 3 },
   "wan2.2-image-to-video-fast": { imageUrls: 2 },
   "happy-horse":     { imageUrls: 1, referenceImages: 9 },
+  // #151：hailuo-02 首帧走 image_urls[0]，第 2 张图由 submit 特例写入独立的 end_image_url 字段
+  "hailuo-02":     { imageUrls: 1 },
+  "hailuo-02-pro": { imageUrls: 1 },
+  // ── #151 round2 新模型 ──
+  // seedance-2-mini：image_urls 首尾帧(≤2) 或 reference_* 多模态（互斥），视频/音频各 ≤3
+  //（官方文档未标参考图数量上限，UI 上限沿用 seedance-2 的 9，仅为客户端截断不影响 API 合法性）
+  "seedance-2-mini": { imageUrls: 2, referenceImages: 9, referenceVideos: 3, referenceAudios: 3 },
+  "grok-imagine-video-1.5":    { imageUrls: 1 },
+  "wan2.5-image-to-video":     { imageUrls: 1 },
+  "kling-avatar-2.0/standard": { imageUrls: 1 },
+  "kling-avatar-2.0/pro":      { imageUrls: 1 },
+  "wan-animate-move":          { imageUrls: 1 },
+  "wan-animate-replace":       { imageUrls: 1 },
 };
 
 function applyMultiImage(input: Record<string, unknown>, model: string, urls: string[]): void {
@@ -376,6 +434,37 @@ export async function submitPoyoVideo(opts: {
     }
   }
 
+  // #151 hailuo-02：第 2 张参考图作尾帧（独立 end_image_url 字段；官方要求此时 768P）；
+  // resolution 官方枚举为大写 512P/768P，规范化旧 payload 的小写值。
+  if ((model === "hailuo-02" || model === "hailuo-02-pro") ) {
+    if (model === "hailuo-02" && resolvedRefs.length >= 2) {
+      input.image_urls = [resolvedRefs[0]];
+      input.end_image_url = resolvedRefs[1];
+    }
+  }
+  // #151 happy-horse 视频编辑模式：连了源视频 → 走独立 video_url（3-60s，计费按源视频探测时长）
+  if (model === "happy-horse" && resolvedVideoRefs.length > 0) {
+    input.video_url = resolvedVideoRefs[0];
+  }
+
+  // ── #151 专属单数字段 + 必填校验（官方 schema）──
+  if (IMAGE_REQUIRED_MODELS.has(model) && !Array.isArray(input.image_urls)) {
+    // 上面的参考图路由只在有图时写 image_urls；这些模型缺图必 400，提前给友好错误。
+    throw new Error("该模型需要一张输入图片，请连接上游图片节点或添加参考图");
+  }
+  if (AUDIO_URL_MODELS.has(model)) {
+    if (resolvedAudioRefs.length === 0) throw new Error("数字人视频需要一段驱动音频（2-60 秒），请连接上游音频节点");
+    input.audio_url = resolvedAudioRefs[0];
+    delete input.reference_audio_urls; // avatar 用单数 audio_url，不是多模态参考
+    if (Array.isArray(input.image_urls)) input.image_urls = input.image_urls.slice(0, 1); // 恰 1 张
+  }
+  if (VIDEO_URL_MODELS.has(model)) {
+    if (resolvedVideoRefs.length === 0) throw new Error("Wan Animate 需要一个源视频（提取动作/表情），请连接上游视频节点");
+    input.video_url = resolvedVideoRefs[0];
+    delete input.reference_video_urls; // animate 用单数 video_url
+    if (Array.isArray(input.image_urls)) input.image_urls = input.image_urls.slice(0, 1);
+  }
+
   // Spec-driven: copy only the keys this model accepts (docs/poyo-video-api.md),
   // coercing numeric/boolean fields. Models not in the table send just prompt +
   // refs. This replaces the per-model if-chain so adding a model = one map entry.
@@ -403,12 +492,18 @@ export async function submitPoyoVideo(opts: {
   }
   // Fixed-duration models (Veo 3.1) always send their canonical duration.
   if (model in FIXED_DURATION) input.duration = FIXED_DURATION[model];
+  // #151 hailuo-02 resolution 官方枚举为大写（512P/768P）；兼容旧 payload 小写。
+  if (model === "hailuo-02" && typeof input.resolution === "string") input.resolution = (input.resolution as string).toUpperCase();
+  // #151 hailuo-02 提供尾帧时官方要求 768P。
+  if (model === "hailuo-02" && input.end_image_url && input.resolution !== "768P") input.resolution = "768P";
   // veo3.1-quality 不支持 reference 模式(docs/poyo-video-api.md:70)——客户端已不再
   // 提供该选项，但旧节点 params 里可能残留 generation_type:"reference"，会被 Poyo 400。
   // 兜底丢弃，让上游按图数自动判定(quality 上限 2 图=frame)。
   if (model === "veo3.1-quality" && input.generation_type === "reference") delete input.generation_type;
   // omni-flash：提供源视频(V2V)时省略 duration（schema 要求）。
   if (model === "omni-flash" && Array.isArray(input.video_urls) && input.video_urls.length > 0) delete input.duration;
+  // #151 wan-animate：schema 无 prompt/negative_prompt 字段，剔除以免 400。
+  if (PROMPTLESS_MODELS.has(model)) { delete input.prompt; delete input.negative_prompt; }
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",

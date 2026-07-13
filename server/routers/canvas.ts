@@ -64,7 +64,7 @@ import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { persistVideoOrFallback, persistVideosOrFallback } from "../_core/persistVideo";
-import { submitAndPollPoyoMusic, type PoyoMusicModel } from "../_core/poyoAudio";
+import { submitAndPollPoyoMusic, type PoyoMusicModel, type PoyoTTSModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
@@ -2412,6 +2412,8 @@ export const audioGenRouter = router({
           "suno-v4", "suno-v4.5", "suno-v4.5plus", "suno-v4.5all", "suno-v5", "suno-v5.5",
           // Live (MiniMax via status endpoint)
           "minimax-music-2.6",
+          // #151 Live (ElevenLabs Music via status endpoint, 128 cr/min)
+          "elevenlabs-music",
           // kie.ai Suno (own key system, /api/v1/generate)
           "kie_suno_v4", "kie_suno_v4_5", "kie_suno_v4_5plus", "kie_suno_v5", "kie_suno_v5_5",
           // Legacy aliases — normalized below
@@ -2507,6 +2509,8 @@ export const audioGenRouter = router({
           "openai_gpt4o_mini_tts",
           // Live (Poyo)
           "elevenlabs-v3-tts",
+          // #151 Live (Poyo round2 新 TTS)
+          "elevenlabs-tts-turbo-2-5", "gemini-3-1-flash-tts", "xai-tts-1",
           // Local / self-hosted Gradio TTS (VoxCPM2 等), via customBaseUrl
           "voxcpm-local",
           // kie.ai ElevenLabs TTS（自有 key 体系，见 kieTTS.ts）
@@ -2559,13 +2563,17 @@ export const audioGenRouter = router({
         cosyvoice_2: "openai_tts_real",
       };
       const model = LEGACY_TO_LIVE[input.model] ?? input.model;
-      const isPoyoTTS = model === "elevenlabs-v3-tts";
+      const POYO_TTS_MODELS = new Set(["elevenlabs-v3-tts", "elevenlabs-tts-turbo-2-5", "gemini-3-1-flash-tts", "xai-tts-1"]);
+      const isPoyoTTS = POYO_TTS_MODELS.has(model);
       const isGradioTTS = model === "voxcpm-local";
 
       // Per-model text limits. ElevenLabs V3 allows 5000; OpenAI TTS 4096;
       // local VoxCPM has no hard provider cap so it uses the 5000 schema max.
       const TEXT_LIMIT: Record<string, number> = {
         "elevenlabs-v3-tts":   5000,
+        "elevenlabs-tts-turbo-2-5": 5000,
+        "gemini-3-1-flash-tts": 5000,
+        "xai-tts-1":            5000,
         "voxcpm-local":        5000,
         kie_elevenlabs_tts:    5000,
         kie_elevenlabs_tts_ml: 5000,
@@ -2608,7 +2616,7 @@ export const audioGenRouter = router({
             })
           : isPoyoTTS
           ? await submitAndPollPoyoTTS({
-              model: "elevenlabs-v3-tts",
+              model: model as PoyoTTSModel,
               text: input.text,
               voice: input.voice,
               stability: input.stability,

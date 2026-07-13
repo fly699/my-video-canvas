@@ -12,6 +12,7 @@ const MUSIC_MODELS: [string, string][] = [
   ["suno-v5", "Suno V5"],
   ["suno-v5.5", "Suno V5.5"],
   ["minimax-music-2.6", "MiniMax 2.6"],
+  ["elevenlabs-music", "ElevenLabs Music"],
 ];
 const STYLE_PRESETS = ["轻松愉快", "史诗激昂", "悬疑紧张", "温馨抒情", "电子节奏", "古风国韵", "赛博朋克", "温柔钢琴"];
 

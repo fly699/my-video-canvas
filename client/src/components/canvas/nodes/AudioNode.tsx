@@ -82,6 +82,8 @@ export const MUSIC_MODELS = [
   { value: "suno-v4",          label: "Suno v4",          desc: "稳定 · 经典",   group: "Suno" },
   // ── MiniMax (status endpoint) ───
   { value: "minimax-music-2.6", label: "MiniMax Music 2.6", desc: "歌词 / 器乐", group: "MiniMax" },
+  // ── ElevenLabs Music（#151 round2 新接入；128 cr/分钟）───
+  { value: "elevenlabs-music", label: "ElevenLabs Music", desc: "文本描述作曲 · 128cr/分", group: "ElevenLabs" },
   // ── kie.ai Suno（厂家仍是 Suno，平台是 Kie；12 点/次，docs/kie-pricing.md 行276）───
   { value: "kie_suno_v5_5",     label: "Suno v5.5（kie）", desc: "最新",   group: "Suno" },
   { value: "kie_suno_v5",       label: "Suno v5（kie）",   desc: "最高质量", group: "Suno" },
@@ -115,6 +117,9 @@ export const DUBBING_MODELS = [
   { value: "openai_gpt4o_mini_tts", label: "GPT-4o Mini TTS",  desc: "新 · 支持 instructions", group: "OpenAI" },
   // ── Live (Poyo) ───
   { value: "elevenlabs-v3-tts",     label: "ElevenLabs v3 TTS", desc: "Poyo · 16 积分/1k 字",  group: "ElevenLabs" },
+  { value: "elevenlabs-tts-turbo-2-5", label: "ElevenLabs Turbo 2.5", desc: "Poyo · 低延迟 · 8 积分/1k 字", group: "ElevenLabs" },
+  { value: "gemini-3-1-flash-tts",  label: "Gemini 3.1 Flash TTS", desc: "Poyo · 表现力/多语 · 24 积分/1k 字", group: "Google" },
+  { value: "xai-tts-1",             label: "xAI TTS 1",         desc: "Poyo · 超低价 · 2.4 积分/1k 字", group: "xAI" },
   // ── Live (kie ElevenLabs) ───
   { value: "kie_elevenlabs_tts",    label: "ElevenLabs Turbo（kie）", desc: "kie · 6 积分/1k 字",  group: "ElevenLabs" },
   { value: "kie_elevenlabs_tts_ml", label: "ElevenLabs 多语 v2（kie）", desc: "kie · 12 积分/1k 字", group: "ElevenLabs" },
@@ -127,6 +132,9 @@ export const DUBBING_MODELS = [
 // at the provider or is silently truncated — in both cases the user pays.
 const TTS_TEXT_LIMIT: Record<string, number> = {
   "elevenlabs-v3-tts":   5000,
+  "elevenlabs-tts-turbo-2-5": 5000,
+  "gemini-3-1-flash-tts": 5000,
+  "xai-tts-1":            5000,
   "voxcpm-local":        5000,
   openai_tts_real:       4096,
   openai_tts_hd_real:    4096,
@@ -257,15 +265,33 @@ const ELEVENLABS_VOICES = [
   { value: "Bill",      label: "比尔 Bill",         desc: "男声" },
 ];
 
+// #151 Gemini 3.1 Flash TTS 音色（官方枚举 30 个，默认 Kore；此处收录全量）。
+const GEMINI_VOICES = [
+  "Kore", "Puck", "Zephyr", "Charon", "Fenrir", "Leda", "Orus", "Aoede", "Callirrhoe", "Autonoe",
+  "Enceladus", "Iapetus", "Umbriel", "Algieba", "Despina", "Erinome", "Algenib", "Rasalgethi",
+  "Laomedeia", "Achernar", "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
+  "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat",
+].map((v) => ({ value: v, label: v, desc: v === "Kore" ? "默认" : "" }));
+// #151 xAI TTS 音色（官方枚举 5 个，默认 eve）。
+const XAI_VOICES = [
+  { value: "eve", label: "Eve",  desc: "默认 · 女声" },
+  { value: "ara", label: "Ara",  desc: "女声" },
+  { value: "rex", label: "Rex",  desc: "男声" },
+  { value: "sal", label: "Sal",  desc: "男声" },
+  { value: "leo", label: "Leo",  desc: "男声" },
+];
+
 export function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
   if (modelIsVoxCPM(model)) return []; // 音色来自参考音频，无固定列表
+  if (model === "gemini-3-1-flash-tts") return GEMINI_VOICES;
+  if (model === "xai-tts-1") return XAI_VOICES;
   if (modelIsElevenLabs(model)) return ELEVENLABS_VOICES;
   return OPENAI_VOICES; // default for openai_tts_real / *_hd_real / gpt4o-mini / unknown
 }
 
 // ElevenLabs TTS：Poyo V3（+旧别名）+ kie 的 ElevenLabs（共用 ElevenLabs 音色与参数）。
 function modelIsElevenLabs(model?: string): boolean {
-  return model === "elevenlabs-v3-tts" || model === "elevenlabs_v3" || (!!model && model.startsWith("kie_elevenlabs"));
+  return model === "elevenlabs-v3-tts" || model === "elevenlabs-tts-turbo-2-5" || model === "elevenlabs_v3" || (!!model && model.startsWith("kie_elevenlabs"));
 }
 function modelIsKieTTS(model?: string): boolean {
   return !!model && model.startsWith("kie_elevenlabs");

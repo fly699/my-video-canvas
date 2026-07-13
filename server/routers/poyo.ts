@@ -67,6 +67,8 @@ export const poyoRouter = router({
   submitImageTo3d: protectedProcedure
     .input(z.object({
       imageUrl: z.string().min(1),
+      // #151：可选云端 3D 模型（tripo_h31 默认 / tripo_p1 / meshy_6 / hunyuan_rapid / hunyuan_pro）
+      model3d: z.enum(["tripo_h31", "tripo_p1", "meshy_6", "hunyuan_rapid", "hunyuan_pro"]).optional(),
       texture: z.boolean().optional(),
       textureQuality: z.enum(["standard", "detailed"]).optional(),
       geometryQuality: z.enum(["standard", "detailed"]).optional(),
@@ -79,7 +81,7 @@ export const poyoRouter = router({
       try {
         const { externalTaskId } = await submitPoyoImageTo3D(input);
         // #73 纳管审计：图生 3D（Poyo 计费调用）此前无审计记录
-        writeAuditLog({ ctx, action: "image_to_3d", detail: { provider: "poyo", taskId: externalTaskId, texture: input.texture ?? false, success: true } });
+        writeAuditLog({ ctx, action: "image_to_3d", detail: { provider: "poyo", model: input.model3d ?? "tripo_h31", taskId: externalTaskId, texture: input.texture ?? false, success: true } });
         return { taskId: externalTaskId };
       } catch (err) {
         writeAuditLog({ ctx, action: "image_to_3d", detail: { provider: "poyo", success: false, error: err instanceof Error ? err.message : String(err) } });

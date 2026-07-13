@@ -19,8 +19,43 @@ import type { ReadableStream as WebReadableStream } from "node:stream/web";
 const POYO_BASE = "https://api.poyo.ai";
 const IMAGE_TO_3D_MODEL = "tripo3d-h3.1-image-to-3d";
 
+// ── #151 图生 3D 可选模型（wire 与字段严格按 api-manual/3d-series 各页 schema；
+//    计价按 docs/incremental-models/2026-07-round2-final-v2.json）──
+// 每模型的 input 字段集各不相同，提交时按 fields 白名单裁剪，绝不跨模型透传。
+export const POYO_3D_MODELS: Record<string, { wire: string; label: string; costLabel: string; fields: ReadonlySet<string> }> = {
+  tripo_h31: {
+    wire: "tripo3d-h3.1-image-to-3d", label: "Tripo3D H3.1（高细节·默认）",
+    costLabel: "无纹理30/标准45/HD 60 cr",
+    fields: new Set(["texture", "pbr", "texture_quality", "geometry_quality", "quad", "face_limit"]),
+  },
+  tripo_p1: {
+    wire: "tripo3d-p1-image-to-3d", label: "Tripo3D P1（低多边形）",
+    costLabel: "无纹理56/带纹理70 cr",
+    fields: new Set(["texture", "face_limit"]),
+  },
+  meshy_6: {
+    wire: "meshy-6-image-to-3d", label: "Meshy 6",
+    costLabel: "60 cr",
+    // meshy 用 should_texture/enable_pbr/target_polycount/topology，由 builder 从通用 opts 映射
+    fields: new Set(["should_texture", "enable_pbr", "target_polycount", "topology"]),
+  },
+  hunyuan_rapid: {
+    wire: "hunyuan-3d/v3.1/rapid/image-to-3d", label: "混元 3D v3.1 Rapid",
+    costLabel: "36-60 cr",
+    fields: new Set(["enable_pbr"]),
+  },
+  hunyuan_pro: {
+    wire: "hunyuan-3d/v3.1/pro/image-to-3d", label: "混元 3D v3.1 Pro",
+    costLabel: "36-60 cr（+PBR 24）",
+    fields: new Set(["enable_pbr", "face_count"]),
+  },
+};
+export type Poyo3DModelKey = keyof typeof POYO_3D_MODELS;
+
 export interface SubmitPoyo3DOpts {
   imageUrl: string;
+  /** #151：可选云端 3D 模型（默认 tripo_h31，保持历史行为不变）。 */
+  model3d?: string;
   /** 是否生成纹理（默认 true）。false = 无纹理，最省 credits。 */
   texture?: boolean;
   /** 纹理精度：standard(默认) / detailed。 */
@@ -45,20 +80,35 @@ export async function submitPoyoImageTo3D(opts: SubmitPoyo3DOpts): Promise<Submi
   // Poyo 从上游抓取图片，相对路径 /manus-storage/{key} 它那边解析不到 → 先转绝对预签名 URL。
   const absUrl = await resolveToAbsoluteUrl(raw);
 
+  const spec = POYO_3D_MODELS[opts.model3d ?? "tripo_h31"] ?? POYO_3D_MODELS.tripo_h31;
+  const F = spec.fields;
   const input: Record<string, unknown> = { image_urls: [absUrl] };
-  if (opts.texture !== undefined) input.texture = opts.texture;
-  if (opts.pbr !== undefined) input.pbr = opts.pbr;
-  if (opts.textureQuality) input.texture_quality = opts.textureQuality;
-  if (opts.geometryQuality) input.geometry_quality = opts.geometryQuality;
-  if (opts.quad !== undefined) input.quad = opts.quad;
+  // 通用 opts → 各模型 schema 字段（仅写入该模型 fields 白名单内的键）。
+  if (opts.texture !== undefined) {
+    if (F.has("texture")) input.texture = opts.texture;
+    if (F.has("should_texture")) input.should_texture = opts.texture; // meshy 语义等价
+  }
+  if (opts.pbr !== undefined) {
+    if (F.has("pbr")) input.pbr = opts.pbr;
+    if (F.has("enable_pbr")) input.enable_pbr = opts.pbr;
+  }
+  if (opts.textureQuality && F.has("texture_quality")) input.texture_quality = opts.textureQuality;
+  if (opts.geometryQuality && F.has("geometry_quality")) input.geometry_quality = opts.geometryQuality;
+  if (opts.quad !== undefined) {
+    if (F.has("quad")) input.quad = opts.quad;
+    if (F.has("topology")) input.topology = opts.quad ? "quad" : "triangle"; // meshy 拓扑
+  }
   if (typeof opts.faceLimit === "number" && Number.isFinite(opts.faceLimit)) {
-    input.face_limit = Math.max(1000, Math.min(2_000_000, Math.trunc(opts.faceLimit)));
+    const n = Math.trunc(opts.faceLimit);
+    if (F.has("face_limit")) input.face_limit = Math.max(1000, Math.min(2_000_000, n));
+    if (F.has("target_polycount")) input.target_polycount = Math.max(1000, Math.min(2_000_000, n));
+    if (F.has("face_count")) input.face_count = Math.max(40_000, Math.min(1_500_000, n)); // hunyuan pro 范围
   }
 
   const res = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${ENV.poyoApiKey}` },
-    body: JSON.stringify({ model: IMAGE_TO_3D_MODEL, input }),
+    body: JSON.stringify({ model: spec.wire, input }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {

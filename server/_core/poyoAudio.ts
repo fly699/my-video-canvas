@@ -26,7 +26,8 @@ export type PoyoMusicModel =
   | "suno-v4.5all"
   | "suno-v5"
   | "suno-v5.5"
-  | "minimax-music-2.6";
+  | "minimax-music-2.6"
+  | "elevenlabs-music";
 
 // User-facing dotted id → Poyo wire mv value (underscore format per official docs).
 const SUNO_MV_MAP: Record<string, string> = {
@@ -196,6 +197,15 @@ export async function submitAndPollPoyoMusic(
     return pollPoyoStatusAudio(taskId);
   }
 
+  // ── #151 ElevenLabs Music — 标准 status 端点，input.text 或 composition_plan 二选一 ──
+  // （官方 api-manual/music-series/elevenlabs-music：text 描述 + 可选 duration/is_instrumental）
+  if (opts.model === "elevenlabs-music") {
+    const input: Record<string, unknown> = { text: opts.prompt.slice(0, 5000) };
+    if (opts.instrumental) input.is_instrumental = true;
+    const taskId = await poyoSubmit("elevenlabs-music", input);
+    return pollPoyoStatusAudio(taskId);
+  }
+
   // ── Suno series → generate-music + mv + custom_mode auto-switch ──
   const mv = SUNO_MV_MAP[opts.model];
   if (!mv) {
@@ -236,7 +246,21 @@ export async function submitAndPollPoyoMusic(
  * timestamps?, language_code?, apply_text_normalization? } }. There is NO speed
  * parameter for this model. Results poll the standard status endpoint.
  */
-export type PoyoTTSModel = "elevenlabs-v3-tts";
+export type PoyoTTSModel =
+  | "elevenlabs-v3-tts"
+  | "elevenlabs-tts-turbo-2-5"   // #151：与 v3 同参数族（voice/stability/timestamps/language_code/apply_text_normalization）
+  | "gemini-3-1-flash-tts"       // #151：仅 text/voice（+style_instructions/temperature，UI 暂不暴露）；
+                                 //       language_code 为「Chinese Mandarin (China)」式长名枚举，与 ISO 码不通，不透传
+  | "xai-tts-1";                 // #151：仅 text/voice（voice 枚举 eve/ara/rex/sal/leo）；language_code 默认 auto
+
+// #151 各 TTS 模型 input 允许键（官方 api-manual/music-series 各页 schema）。
+// 严禁把 v3 的键透传给 gemini/xai——上游 schema 不同，多发键可能 400。
+const POYO_TTS_INPUT_KEYS: Record<PoyoTTSModel, ReadonlySet<string>> = {
+  "elevenlabs-v3-tts":        new Set(["voice", "stability", "timestamps", "language_code", "apply_text_normalization"]),
+  "elevenlabs-tts-turbo-2-5": new Set(["voice", "stability", "timestamps", "language_code", "apply_text_normalization"]),
+  "gemini-3-1-flash-tts":     new Set(["voice"]),
+  "xai-tts-1":                new Set(["voice"]),
+};
 
 export interface SubmitPoyoTTSOptions {
   model: PoyoTTSModel;
@@ -251,13 +275,15 @@ export interface SubmitPoyoTTSOptions {
 export async function submitAndPollPoyoTTS(opts: SubmitPoyoTTSOptions): Promise<PoyoMusicResult> {
   if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
 
-  // input has additionalProperties:false — only send keys we have values for.
+  // input has additionalProperties:false — only send keys we have values for,
+  // AND only keys this model's schema accepts (#151 POYO_TTS_INPUT_KEYS).
+  const allowed = POYO_TTS_INPUT_KEYS[opts.model] ?? POYO_TTS_INPUT_KEYS["elevenlabs-v3-tts"];
   const input: Record<string, unknown> = { text: opts.text };
-  if (opts.voice) input.voice = opts.voice;
-  if (opts.stability !== undefined) input.stability = opts.stability;
-  if (opts.timestamps !== undefined) input.timestamps = opts.timestamps;
-  if (opts.languageCode) input.language_code = opts.languageCode;
-  if (opts.applyTextNormalization) input.apply_text_normalization = opts.applyTextNormalization;
+  if (opts.voice && allowed.has("voice")) input.voice = opts.voice;
+  if (opts.stability !== undefined && allowed.has("stability")) input.stability = opts.stability;
+  if (opts.timestamps !== undefined && allowed.has("timestamps")) input.timestamps = opts.timestamps;
+  if (opts.languageCode && allowed.has("language_code")) input.language_code = opts.languageCode;
+  if (opts.applyTextNormalization && allowed.has("apply_text_normalization")) input.apply_text_normalization = opts.applyTextNormalization;
 
   const submitRes = await fetch(`${POYO_BASE}/api/generate/submit`, {
     method: "POST",
