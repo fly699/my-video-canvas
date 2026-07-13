@@ -41,8 +41,12 @@ const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => 
   r.onerror = () => rej(new Error("读取失败"));
   r.readAsDataURL(blob);
 });
-const canvasToBlob = (gl: THREE.WebGLRenderer): Promise<Blob | null> =>
-  new Promise((res) => gl.domElement.toBlob((b) => res(b), "image/png"));
+// 截图抓帧：默认 PNG（无损，控制图 depth/normal/骨架 用它保精度）。照片型产出（机位截图/
+// 入库/宫格）改传 image/jpeg——3D 渲染是照片类内容，JPEG(q≈0.92) 视觉几乎无差，但编码快
+// 5~10×、体积小约 10×（PNG 一张 2~5MB，JPEG 约 150~400KB），直接砍掉「输出中…」的大头
+// （PNG 编码 + base64 膨胀 33% + JSON 上传大字符串）。控制图仍走 PNG（渐变/法线/骨架线怕 JPEG 块效应）。
+const canvasToBlob = (gl: THREE.WebGLRenderer, type: "image/png" | "image/jpeg" = "image/png", quality = 0.92): Promise<Blob | null> =>
+  new Promise((res) => gl.domElement.toBlob((b) => res(b), type, quality));
 
 // 全屏 3D 导演台编辑器（P1）：摆放/选中人偶（数值精确 + Alt 微调）、控制机位(FOV)、
 // 画幅取景框、截图→上传作为本节点的参考图。双视角/姿势/宫格/全景见后续期次。
@@ -968,11 +972,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       let blob: Blob | null;
       try {
         withActiveCamera(() => cap.gl.render(cap.scene, cap.camera)); // #85 产出=活动机位构图
-        blob = await canvasToBlob(cap.gl);
+        blob = await canvasToBlob(cap.gl, "image/jpeg");
       } finally { restore(); }
       if (!blob) throw new Error("渲染截图失败");
       const base64 = await blobToBase64(blob);
-      const result = await uploadMut.mutateAsync({ base64, mimeType: "image/png", filename: "director-3d.png" });
+      const result = await uploadMut.mutateAsync({ base64, mimeType: "image/jpeg", filename: "director-3d.jpg" });
       // #78 光效中文描述随截图落进节点，下游提示词可直接引用（无布光则清空）
       const lightingDesc = describeLights(sceneRef.current.lights, sceneRef.current.dimBase) || undefined;
       // #110 激活机位的运镜描述（有动画路径才产出）随截图一并写入
@@ -994,10 +998,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       let blob: Blob | null;
       try {
         withActiveCamera(() => cap.gl.render(cap.scene, cap.camera)); // #85 产出=活动机位构图
-        blob = await canvasToBlob(cap.gl);
+        blob = await canvasToBlob(cap.gl, "image/jpeg");
       } finally { restore(); }
       if (!blob) throw new Error("渲染截图失败");
-      const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/png", filename: `director-shot-${shotsRef.current.length + 1}.png` });
+      const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/jpeg", filename: `director-shot-${shotsRef.current.length + 1}.jpg` });
       const camName = sceneRef.current.camera.name ?? "机位";
       setShots((prev) => [...prev, { url: r.url, name: `${camName}-截图${String(prev.length + 1).padStart(2, "0")}` }]);
       toast.success("已存入相机截图库");
@@ -1117,18 +1121,27 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     cam.fov = ac.fov; cam.updateProjectionMatrix();
     const restoreMarkers = hideLightMarkers(); // #78 灯光标记不入宫格成片
     try {
-      const urls: string[] = [];
+      // 先把所有机位串行渲染 + 抓帧（共用一个 GL 上下文，必须逐帧抓完再渲下一帧，否则
+      // 后一帧会覆盖前一帧的缓冲）；抓帧为 JPEG，编码快、体积小。
+      const blobs: (Blob | null)[] = [];
       for (let i = 0; i < preset.angles.length; i++) {
         const pos = gridCameraPosition(basePos, target, preset.angles[i]);
         cam.position.set(...pos); cam.lookAt(tVec); cam.updateMatrixWorld();
         cap.gl.render(cap.scene, cam);
-        const blob = await canvasToBlob(cap.gl);
-        if (!blob) continue;
-        const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/png", filename: `dir-grid-${preset.key}-${i}.png` });
-        urls.push(r.url);
-        setGridBusy(`${preset.label} ${i + 1}/${preset.angles.length}`);
+        blobs.push(await canvasToBlob(cap.gl, "image/jpeg"));
+        setGridBusy(`${preset.label} 渲染 ${i + 1}/${preset.angles.length}`);
       }
       restoreMarkers();
+      // 再把所有帧【并行】上传——渲染阶段已全部抓帧完成，网络并发不会打乱渲染缓冲，
+      // 也不再让每张的上传串行阻塞（原来 N 张 = N 次串行等网络，慢的大头之一）。
+      let uploaded = 0;
+      const uploadResults = await Promise.all(blobs.map(async (blob, i) => {
+        if (!blob) return null;
+        const r = await uploadMut.mutateAsync({ base64: await blobToBase64(blob), mimeType: "image/jpeg", filename: `dir-grid-${preset.key}-${i}.jpg` });
+        setGridBusy(`${preset.label} 上传 ${++uploaded}/${blobs.length}`);
+        return r.url;
+      }));
+      const urls = uploadResults.filter((u): u is string => !!u);
 
       if (urls.length) {
         updateNodeData(nodeId, { scene: sceneRef.current }, true);
