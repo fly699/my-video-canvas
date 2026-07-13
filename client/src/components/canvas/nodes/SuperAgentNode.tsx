@@ -186,6 +186,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
       {
         projectId: data.projectId, nodeId: id, task: instruction,
         customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
+        ...(payload.maxIterations ? { maxIterations: payload.maxIterations } : {}),
         ...(isFollowup ? { seedWorkflowJson: payload.resultWorkflowJson, history: buildHistory(priorConv) } : {}),
       },
       {
@@ -212,7 +213,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         },
       },
     );
-  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, llmModel, data.projectId, id, buildMut, update, applyBuildResult, utils]);
+  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.maxIterations, llmModel, data.projectId, id, buildMut, update, applyBuildResult, utils]);
 
   // ── 代码任务模式（连续对话：claude --resume 续接同一会话，保留上下文与工作区文件）──
   const handleRunCode = useCallback(() => {
@@ -311,6 +312,15 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                   <div>
                     <label style={labelStyle}><Cpu size={9} style={{ display: "inline", marginRight: 3 }} />规划模型（默认 kie Claude Opus 4.7）</label>
                     <LLMModelPicker value={llmModel} onChange={(v) => update({ model: v })} disabled={running} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>
+                      <Settings2 size={9} style={{ display: "inline", marginRight: 3 }} />最大自驱轮次：<b style={{ color: accent }}>{payload.maxIterations ?? 20}</b>
+                      <span style={{ color: "var(--c-t4)", marginLeft: 4 }}>（轮次越高越能自愈复杂工作流，但更慢/更耗）</span>
+                    </label>
+                    <input type="range" min={4} max={40} step={1} value={payload.maxIterations ?? 20} disabled={running}
+                      onChange={(e) => update({ maxIterations: Number(e.target.value) })}
+                      className="nodrag" style={{ width: "100%", accentColor: accent, cursor: running ? "not-allowed" : "pointer" }} />
                   </div>
                 </div>
               )}

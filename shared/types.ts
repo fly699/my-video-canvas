@@ -1416,6 +1416,9 @@ export interface SuperAgentNodeData {
   serverUrls?: string[];
   /** 规划用 LLM 模型。 */
   model?: string;
+  /** 最大自驱轮次（每轮=一次 LLM 决策 + 工具调用）。留空用服务端默认（20）。上限 40。
+   *  复杂工作流可调高换更强自愈，代价是更慢/更多 LLM 调用。 */
+  maxIterations?: number;
   status?: "idle" | "running" | "success" | "failed" | "exhausted" | "aborted";
   /** ComfyUI 模式连续对话记录（用户指令 + 智能体每轮结果摘要）。 */
   conversation?: { role: "user" | "agent"; text: string; workflowJson?: string; status?: string }[];
