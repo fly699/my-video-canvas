@@ -157,6 +157,24 @@ describe("submitPoyoVideo multi-image mapping (per-model)", () => {
     expect((await submitWithRefs("poyo_omni_flash", [A])).input.image_urls).toEqual([A]);
   });
 
+  // #129 全量审计：kling-3.0 / kling-o3 图生字段=image_urls（文档 §kling-3-0 / §kling-o3），
+  // runway-gen-4.5 可选 image_urls ≤1——三组单图此前掉 reference_image_url 兜底被静默丢弃。
+  it("kling-3.0 / kling-o3 / runway-gen-4.5 → 单图走 image_urls", async () => {
+    for (const p of ["poyo_kling30_std", "poyo_kling30_pro", "poyo_kling30_4k", "poyo_kling_o3_std", "poyo_kling_o3_pro", "poyo_kling_o3_4k", "poyo_runway45"]) {
+      const b = await submitWithRefs(p, [A]);
+      expect(b.input.image_urls, p).toEqual([A]);
+      expect("reference_image_url" in b.input, p).toBe(false);
+    }
+  });
+  it("wan 文生 wire（无参考字段）→ 误连参考图时什么参考字段都不发", async () => {
+    for (const p of ["poyo_wan27_t2v", "poyo_wan22_t2v_fast", "poyo_wan25_t2v"]) {
+      const b = await submitWithRefs(p, [A]);
+      expect("reference_image_url" in b.input, p).toBe(false);
+      expect("image_urls" in b.input, p).toBe(false);
+      expect("start_image_url" in b.input, p).toBe(false);
+    }
+  });
+
   it("model without multi support → first image only, single mapping", async () => {
     // grok has no multi spec → falls back to reference_image_url on first image
     const body = await submitWithRefs("poyo_grok_video", [A, B]);
@@ -329,5 +347,20 @@ describe("submitPoyoVideo Veo 3.1 档位约束（docs:64-71）", () => {
   it("veo3.1-fast 仍可显式 frame，且保留 reference 能力", async () => {
     const b = await submit("poyo_veo_fast", { generation_type: "frame" });
     expect(b.input.generation_type).toBe("frame");
+  });
+});
+
+// ── #129 守卫：单图字段归类全覆盖 ──────────────────────────────────────────
+// 教训（#897）：单图兜底 reference_image_url 只是 wan2.7 视频编辑的字段，别的模型
+// 发它会被 Poyo 静默丢弃（图生退化文生还照常扣费）。曾因「新模型忘登名单」连中
+// kling-1.6 / kling-3.0(-turbo) / kling-o3 / happy-horse / omni-flash / runway 多款。
+// 本用例强制：POYO_PROVIDER_MAP 里每个 wire 必须被显式归类——新接模型时必须按
+// 官方文档把它登进 poyoVideo.ts 的对应名单（或文档未列字段时登 FALLBACK 白名单）。
+describe("#129 守卫：每个 poyo wire 的单图行为必须显式归类", () => {
+  it("POYO_PROVIDER_MAP 全部 wire 均已归类（null=忘登名单，禁止上线）", async () => {
+    const { POYO_PROVIDER_MAP, classifySingleImage } = await import("./_core/poyoVideo");
+    for (const wire of new Set(Object.values(POYO_PROVIDER_MAP))) {
+      expect(classifySingleImage(wire), `wire「${wire}」未归类：请按 docs/poyo-video-api.md 登入 poyoVideo.ts 的单图名单`).not.toBeNull();
+    }
   });
 });
