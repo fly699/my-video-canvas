@@ -41,7 +41,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
         "首次进入会弹出欢迎页与新手导览——建议完整走一遍导览（约 1 分钟），之后可随时从「更多 → 新手导览」重开。",
       ], image: { slug: "quickstart-home", caption: "首页：新建项目入口" } },
       { id: "first-node", title: "第二步：添加第一个节点", paragraphs: [
-        "点底部工具栏的「添加」（或按 Tab）打开节点选择器：按脚本 / 图像 / 视频 / 音频 / ComfyUI / 剪辑分类，支持搜索，回车添加首个匹配项。",
+        "点底部工具栏的「添加」（或按 Tab）打开节点选择器：按脚本 / 图像 / 视频 / 音频 / ComfyUI / 剪辑分类，支持搜索，回车添加首个匹配项。顶部另有「导入工作流」「节点模板库」两个快捷磁贴；其中「ComfyUI 自定义」是导入你自己工作流 JSON 的空白节点，「节点模板库」是共享预设工作流库，二者名字别混。",
         "画布空白处双击也可以就地新建节点。最常见的起点是「脚本」节点（写故事）或直接一个「图像」节点（出画面）。",
       ], image: { slug: "quickstart-node-picker", caption: "节点选择器" } },
       { id: "first-flow", title: "第三步：连线成工作流", paragraphs: [
@@ -132,6 +132,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
       ] },
       { id: "n-audio", title: "音频节点", paragraphs: [
         "用途：配乐 / 配音 / 音效生成，也可上传本地音频。截取 / 变速操作条随卡可用。",
+        "音频工具（「工具」类别）：人声分离（拆人声 / 伴奏 / 鼓 / 贝斯 / 钢琴 / 吉他多轨）、翻唱（换风格重唱一段）、续写（从第 N 秒自然接写）、写歌词（按主题生成歌词文本）；源音频可连上游音频节点或直接上传。",
         "典型连线：音频 → 合并（整体配乐）；逐镜配音不用建音频节点——镜头表「批量配音」按台词自动生成。",
       ] },
       { id: "n-character", title: "角色节点", paragraphs: [
