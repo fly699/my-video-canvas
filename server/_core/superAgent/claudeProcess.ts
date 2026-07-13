@@ -9,6 +9,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ClaudeArgsOptions, ClaudePermissionMode } from "./codeAgent";
 import { PERMISSION_TOOL_NAME } from "./permissionMcpServer";
+import { getSuperAgentConfig } from "./config";
 
 /**
  * 解析实际 spawn 的命令/参数，解决 Windows spawn `.cmd` 的坑：
@@ -40,14 +41,14 @@ export function resolveClaudeSpawn(
   return { cmd: bin, args, shell: false };
 }
 
-/** 是否启用 Phase 2 代码智能体（默认关闭）。 */
+/** 是否启用 Phase 2 代码智能体（默认关闭）。后台配置优先、env 兜底（见 ./config）。 */
 export function isCodeAgentEnabled(): boolean {
-  return process.env.SUPER_AGENT_CODE_ENABLED === "1";
+  return getSuperAgentConfig().codeEnabled;
 }
 
-/** 是否额外放行原始 Bash（第二把钥匙，默认关闭）。 */
+/** 是否额外放行原始 Bash（第二把钥匙，默认关闭）。后台配置优先、env 兜底。 */
 export function isBashAllowed(): boolean {
-  return process.env.SUPER_AGENT_CODE_ALLOW_BASH === "1";
+  return getSuperAgentConfig().allowBash;
 }
 
 /** claude 可执行文件（可用 env CLAUDE_BIN 覆盖）。 */

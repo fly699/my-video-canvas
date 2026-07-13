@@ -3680,7 +3680,9 @@ export const comfyuiRouter = router({
     .query(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
       const urls = Array.from(new Set(input.baseUrls.map((u) => u.trim()).filter(Boolean)));
-      const list = urls.length > 0 ? urls : (ENV.comfyuiBaseUrl ? [ENV.comfyuiBaseUrl] : []);
+      // 与 fetchModels/生成一致：留空回退到全局默认解析（env → 后台全局服务器列表），不只看 env。
+      let list = urls;
+      if (list.length === 0) { const dflt = (await resolveComfyBase("")).trim(); if (dflt) list = [dflt]; }
       const idx = input.gpuIndexByUrl ?? {};
       return Promise.all(list.map((u) => fetchComfyServerStatus(u, idx[u])));
     }),
@@ -3762,7 +3764,15 @@ export const comfyuiRouter = router({
           .map((u) => u?.trim())
           .filter((u): u is string => !!u),
       ));
-      const urls = candidates.length > 0 ? candidates : (ENV.comfyuiBaseUrl ? [ENV.comfyuiBaseUrl] : []);
+      // 无显式地址时，回退到与「生成」完全一致的全局默认解析（resolveComfyBase：
+      // 环境变量 COMFYUI_BASE_URL → 管理后台全局服务器列表第一台）。此前这里只看
+      // ENV.comfyuiBaseUrl，漏了 DB 全局服务器列表——导致「地址留空刷不到 checkpoint、
+      // 手动填入同一个全局地址却能刷到」（列表回退与生成回退不一致）的 bug。
+      let urls = candidates;
+      if (urls.length === 0) {
+        const dflt = (await resolveComfyBase("")).trim();
+        if (dflt) urls = [dflt];
+      }
       // Not configured is a benign empty state (UI degrades to free-text), not an error.
       if (urls.length === 0) return emptyModelList();
       // Single URL: preserve original behavior — surface the real reason

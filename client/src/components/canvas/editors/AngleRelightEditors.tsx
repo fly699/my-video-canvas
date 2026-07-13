@@ -343,10 +343,11 @@ export function MultiAngleEditor({ sourceUrl, nodeId, projectId, onApply, onClos
           )}
         </div>
 
+        {/* 本地 ComfyUI（自建）：地址(全能服务器管理) + checkpoint，仅选自建模型时出现 */}
+        {model === COMFY_LOCAL_MODEL && <div style={{ marginTop: 8 }}><ComfyCkptSelect enabled width={160} /></div>}
         {/* 底部：模型 + 积分 + 发送 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, borderTop: "1px solid var(--c-bd1)", paddingTop: 10 }}>
           <ModelPicker value={model} onChange={(v) => { setModel(v); saveModel(v); }} options={EDIT_MODEL_OPTIONS} minWidth={200} />
-          <ComfyCkptSelect enabled={model === COMFY_LOCAL_MODEL} width={160} />
           <div style={{ flex: 1 }} />
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }} title="预计消耗（按所选编辑模型估算）">
             <Coins size={12} /> {costLabel}
@@ -535,10 +536,11 @@ export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
         <textarea value={promptText} onChange={(e) => setOverride(e.target.value)} rows={2}
           style={{ width: "100%", resize: "vertical", padding: "8px 10px", fontSize: 12, lineHeight: 1.6, background: "var(--c-input)", color: "var(--c-t2)", border: "1px dashed var(--c-bd2)", borderRadius: 8, outline: "none" }} />
 
+        {/* 本地 ComfyUI（自建）：地址(全能服务器管理) + checkpoint，仅选自建模型时出现 */}
+        {model === COMFY_LOCAL_MODEL && <div style={{ marginTop: 8 }}><ComfyCkptSelect enabled width={160} /></div>}
         {/* 底部：模型 + 积分 + 发送 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, borderTop: "1px solid var(--c-bd1)", paddingTop: 10 }}>
           <ModelPicker value={model} onChange={(v) => { setModel(v); saveModel(v); }} options={EDIT_MODEL_OPTIONS} minWidth={200} />
-          <ComfyCkptSelect enabled={model === COMFY_LOCAL_MODEL} width={160} />
           <div style={{ flex: 1 }} />
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--c-t3)", whiteSpace: "nowrap" }} title="预计消耗（按所选编辑模型估算）">
             <Coins size={12} /> {costLabel}

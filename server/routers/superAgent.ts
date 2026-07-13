@@ -13,6 +13,7 @@ import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferen
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
+import { getSuperAgentConfig } from "../_core/superAgent/config";
 import { installModel, installCustomNode, isValidDownloadUrl, isValidModelFilename, isValidGitUrl, MODEL_DIRS, type ModelDir } from "../_core/ops/modelOps";
 import * as db from "../db";
 import type { TrpcContext } from "../_core/context";
@@ -20,13 +21,14 @@ import type { TrpcContext } from "../_core/context";
 const norm = (u: string) => u.replace(/\/+$/, "").trim();
 
 /**
- * 下载模型/节点框架（默认关闭，inert）：仅当 env SUPER_AGENT_AUTO_INSTALL=1 且当前用户 L3+ 且
- * 目标 ComfyUI 地址匹配到一台「已在运维台注册（有 SSH）且启用」的 ops 服务器时，才把 installModel/
- * installNode 工具交给引擎。否则返回空对象——引擎无安装能力，只能用现有资源。安装经 modelOps 的
- * 字符集+单引号注入防护 + 这里的 URL/文件名/目录白名单校验。
+ * 下载模型/节点框架（默认关闭，inert）：仅当「ComfyUI 缺件自动安装」开启（后台配置优先、
+ * env SUPER_AGENT_AUTO_INSTALL=1 兜底）且当前用户 L3+ 且目标 ComfyUI 地址匹配到一台「已在运维台
+ * 注册（有 SSH）且启用」的 ops 服务器时，才把 installModel/installNode 工具交给引擎。否则返回空
+ * 对象——引擎无安装能力，只能用现有资源。安装经 modelOps 的字符集+单引号注入防护 + 这里的
+ * URL/文件名/目录白名单校验。
  */
 async function resolveInstallTools(ctx: TrpcContext, baseUrl: string): Promise<Pick<ComfyAgentTools, "installModel" | "installNode">> {
-  if (process.env.SUPER_AGENT_AUTO_INSTALL !== "1") return {};
+  if (!getSuperAgentConfig().autoInstall) return {};
   if ((ctx.user?.adminLevel ?? 0) < 3) return {};
   const servers = await db.listOpsServers().catch(() => []);
   const match = servers.find((s) => s.enabled && s.comfyBaseUrl && norm(s.comfyBaseUrl) === norm(baseUrl));
@@ -176,7 +178,7 @@ export const superAgentRouter = router({
   codeStatus: managerProc.query(() => ({ enabled: isCodeAgentEnabled(), bashAllowed: isBashAllowed() })),
 
   // Phase 2：无头 Claude Code 编码任务（受限工作目录 + commandPolicy）。
-  // 权限：超级管理员 L4；且需服务端 env SUPER_AGENT_CODE_ENABLED=1（默认关闭，完全 inert）。
+  // 权限：超级管理员 L4；且需开启「代码任务」（后台「工程智能体权限」或 env SUPER_AGENT_CODE_ENABLED=1；默认关闭、完全 inert）。
   // 每次跑在一次性临时工作区（cwd + --add-dir 均限于此），结束即删。危险 Bash 由
   // runCodeAgent 的 commandPolicy 监控，命中即杀进程止损。
   runCodeTask: superProc
@@ -197,7 +199,7 @@ export const superAgentRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       if (!isCodeAgentEnabled()) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "代码智能体未启用：请在服务端设置 SUPER_AGENT_CODE_ENABLED=1（并按需 SUPER_AGENT_CODE_ALLOW_BASH=1 放行 shell）" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "代码智能体未启用：请在管理后台「配置体检 › 工程智能体权限」开启「代码任务」（或服务端设置 SUPER_AGENT_CODE_ENABLED=1，并按需放行 Bash）" });
       }
 
       sweepStaleCodeSessions();

@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { ENV } from "./env";
 import * as db from "../db";
 import { resolveClaudeBin, resolveClaudeSpawn } from "./superAgent/claudeProcess";
+import { getSuperAgentConfig } from "./superAgent/config";
 import { resolveCodexBin, resolveCodexSpawn } from "./codexBridge";
 import { mcpServerNames } from "./claudeBridge";
 
@@ -178,9 +179,9 @@ export function evaluateChecklist(s: ChecklistInput): CheckItem[] {
 
   // ── 工程智能体 ──
   if (!s.superAgent.enabled) {
-    add({ id: "sa.enabled", group: "工程智能体", label: "代码任务", status: "off", detail: "未启用（可选高级功能，默认关闭最安全；启用步骤见 docs/phase2-启用清单.md）" });
+    add({ id: "sa.enabled", group: "工程智能体", label: "代码任务", status: "off", detail: "未启用（可选高级功能，默认关闭最安全）", fix: "本页上方「工程智能体权限」区块开启「代码任务」即可（站长 L5 权限，即时生效、无需重启）；或服务端设 SUPER_AGENT_CODE_ENABLED=1。详见 docs/phase2-启用清单.md" });
   } else {
-    add({ id: "sa.enabled", group: "工程智能体", label: "代码任务", status: "ok", detail: "已启用（SUPER_AGENT_CODE_ENABLED=1）" });
+    add({ id: "sa.enabled", group: "工程智能体", label: "代码任务", status: "ok", detail: "已启用（本页「工程智能体权限」开关或 SUPER_AGENT_CODE_ENABLED=1）" });
     if (s.superAgent.allowBash && !s.superAgent.permissionCmdSet) {
       add({ id: "sa.bash", group: "工程智能体", label: "Bash 放行 + 执行前审批", status: "warn", detail: "放行了 Bash 但没配执行前命令审批——危险命令只能靠事后监控", fix: ".env 配 SUPER_AGENT_PERMISSION_CMD=node 与 SUPER_AGENT_PERMISSION_ARGS（指向 dist/permissionMcpServer.cjs）" });
     } else if (s.superAgent.allowBash) {
@@ -188,7 +189,7 @@ export function evaluateChecklist(s: ChecklistInput): CheckItem[] {
     } else {
       add({ id: "sa.bash", group: "工程智能体", label: "Bash 放行", status: "ok", detail: "未放行 Bash——只读沙箱模式（最安全）" });
     }
-    add({ id: "sa.autoInstall", group: "工程智能体", label: "ComfyUI 缺件自动安装", status: s.superAgent.autoInstall ? "ok" : "off", detail: s.superAgent.autoInstall ? "已启用" : "未启用（可选：SUPER_AGENT_AUTO_INSTALL=1）" });
+    add({ id: "sa.autoInstall", group: "工程智能体", label: "ComfyUI 缺件自动安装", status: s.superAgent.autoInstall ? "ok" : "off", detail: s.superAgent.autoInstall ? "已启用" : "未启用（可选：本页「工程智能体权限」开关，或 SUPER_AGENT_AUTO_INSTALL=1）" });
   }
 
   // ── 系统依赖 / 隧道 ──
@@ -246,6 +247,7 @@ export async function buildConfigChecklist(): Promise<{ items: CheckItem[]; envE
     return { raw, ok: names.length > 0, names };
   })();
 
+  const saCfg = getSuperAgentConfig(); // 工程智能体权限：后台配置优先、env 兜底
   const input: ChecklistInput = {
     isProduction: ENV.isProduction,
     devBypass: !ENV.isProduction && !ENV.databaseUrl && !ENV.oAuthServerUrl,
@@ -274,10 +276,11 @@ export async function buildConfigChecklist(): Promise<{ items: CheckItem[]; envE
       mcpServerNames: bridgeMcp.names,
     },
     superAgent: {
-      enabled: process.env.SUPER_AGENT_CODE_ENABLED === "1",
-      allowBash: process.env.SUPER_AGENT_CODE_ALLOW_BASH === "1",
+      // 后台配置优先、env 兜底（见 superAgent/config.ts）——体检显示的即运行时真实生效值。
+      enabled: saCfg.codeEnabled,
+      allowBash: saCfg.allowBash,
       permissionCmdSet: !!process.env.SUPER_AGENT_PERMISSION_CMD?.trim(),
-      autoInstall: process.env.SUPER_AGENT_AUTO_INSTALL === "1",
+      autoInstall: saCfg.autoInstall,
     },
     probes: {
       ffmpeg: ffmpegOk, claudeCli: claudeOk, codexCli: codexOk,

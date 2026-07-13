@@ -24,6 +24,7 @@ import {
   authSettings,
   type SelfHostedLlmConfig,
   type BridgeMcpConfig,
+  type SuperAgentConfig,
   auditLogs,
   comfyUsageLogs,
   llmUsageLogs,
@@ -132,7 +133,7 @@ export function isDupEntryError(e: unknown): boolean {
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
-const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; systemDefaultModels?: Record<string, string> } = { disabledModels: [] };
+const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; superAgent?: import("../drizzle/schema").SuperAgentConfig; systemDefaultModels?: Record<string, string> } = { disabledModels: [] };
 const devAuthSettings = { emailVerificationEnabled: false, registrationApprovalEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
@@ -1708,6 +1709,33 @@ export async function setBridgeMcpConfig(cfg: BridgeMcpConfig): Promise<void> {
   if (!db) { devModelToggleSettings.bridgeMcp = bridgeMcp; return; }
   await db.insert(modelToggleSettings).values({ id: 1, bridgeMcp })
     .onDuplicateKeyUpdate({ set: { bridgeMcp } });
+}
+
+/** 归一化「工程智能体」权限列。返回 null 表示后台从未配置（列为 NULL）→ 上层回退 env；
+ *  非 null 表示后台已显式保存（含全 false）→ 以此为准、覆盖 env。 */
+export function normalizeSuperAgent(v: unknown): SuperAgentConfig | null {
+  let o: Record<string, unknown> | null = null;
+  if (typeof v === "string") { try { o = JSON.parse(v) as Record<string, unknown>; } catch { o = null; } }
+  else if (v && typeof v === "object") o = v as Record<string, unknown>;
+  if (!o) return null;
+  return { codeEnabled: o.codeEnabled === true, allowBash: o.allowBash === true, autoInstall: o.autoInstall === true };
+}
+
+/** 管理员配置的「工程智能体」权限开关（替代 SUPER_AGENT_* env）。单行 id=1 的 JSON 列。
+ *  返回 null = 后台未配置（回退 env）；非 null = DB 显式覆盖。 */
+export async function getSuperAgentConfigRaw(): Promise<SuperAgentConfig | null> {
+  const db = await getDb();
+  if (!db) return normalizeSuperAgent(devModelToggleSettings.superAgent ?? null);
+  const rows = await db.select().from(modelToggleSettings).limit(1);
+  return normalizeSuperAgent(rows[0]?.superAgent);
+}
+
+export async function setSuperAgentConfig(cfg: SuperAgentConfig): Promise<void> {
+  const superAgent: SuperAgentConfig = { codeEnabled: !!cfg.codeEnabled, allowBash: !!cfg.allowBash, autoInstall: !!cfg.autoInstall };
+  const db = await getDb();
+  if (!db) { devModelToggleSettings.superAgent = superAgent; return; }
+  await db.insert(modelToggleSettings).values({ id: 1, superAgent })
+    .onDuplicateKeyUpdate({ set: { superAgent } });
 }
 
 /** 管理员配置的「系统默认模型」（按槽位 llm/image/video/transcribe）。单行 id=1 的 JSON 列。 */

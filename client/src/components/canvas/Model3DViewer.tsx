@@ -7,6 +7,9 @@ import * as THREE from "three";
 import { X, Loader2, Sparkles, RotateCcw, Boxes, Download, FolderPlus, Check } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { loadComfyBase, saveComfyBase } from "../../lib/comfyLocalRoute";
+import { useComfyServersStore } from "../../hooks/useComfyServersStore";
+import { ComfyServerUrlField } from "./nodes/ComfyServerUrlField";
 
 // ── B 档「真 3D 换视角」查看器 ──────────────────────────────────────────────
 // 把一张 2D 图交给 Poyo Tripo3D H3.1 图生 3D → 拿回真正的 .glb 网格 → 载入 three.js 用
@@ -81,6 +84,16 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
   const uploadMut = trpc.upload.uploadImage.useMutation();
   const saveMut = trpc.poyo.save3dToLibrary.useMutation();
   const hunyuanMut = trpc.comfyui.imageTo3d.useMutation();
+  // 混元 3D（本机 ComfyUI）地址：优先节点传入的 comfyBaseUrl，否则全局本地地址（自建算力各入口共享）。
+  const [hyBase, setHyBase] = useState(() => comfyBaseUrl?.trim() || loadComfyBase());
+  const hyServers = useComfyServersStore((s) => s.servers);
+  const hyAddServer = useComfyServersStore((s) => s.add);
+  const hyRemoveServer = useComfyServersStore((s) => s.remove);
+  const onChangeHyServers = (next: string[]) => {
+    const nextSet = new Set(next), curSet = new Set(hyServers);
+    next.forEach((u) => { if (!curSet.has(u)) hyAddServer(u); });
+    hyServers.forEach((u) => { if (!nextSet.has(u)) hyRemoveServer(u); });
+  };
   // 引擎选择：null = 未选（显示选择界面）；记住上次选择。已有持久化模型时无需选择。
   const [engine, setEngine] = useState<"tripo" | "hunyuan" | null>(() =>
     initialGlbUrl ? "tripo" : null);
@@ -120,7 +133,7 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
     setEngine("hunyuan");
     try { localStorage.setItem("avc:model3d:engine", "hunyuan"); } catch { /* ignore */ }
     try {
-      const r = await hunyuanMut.mutateAsync({ sourceImageUrl, customBaseUrl: comfyBaseUrl?.trim() || undefined });
+      const r = await hunyuanMut.mutateAsync({ sourceImageUrl, customBaseUrl: hyBase.trim() || comfyBaseUrl?.trim() || undefined });
       setGlbUrl(r.glbUrl);
       onGlbReady?.(r.glbUrl);
       if (r.volatile) toast.warning("对象存储不可用：模型暂用 ComfyUI 直链（其输出目录清理后会失效），建议配置 MinIO/S3 后重新生成。");
@@ -249,6 +262,21 @@ export function Model3DViewer({ sourceImageUrl, initialGlbUrl, projectId, nodeId
               <div style={{ fontWeight: 700 }}>混元 3D（本机 ComfyUI）</div>
               <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>免费 · 需装 Hunyuan3DWrapper 插件 · 1–10 分钟视显存</div>
             </button>
+            {/* 混元 3D 的 ComfyUI 地址（全能服务器管理：已存列表/体检/清理，与自建算力各入口共享）。留空走全局默认。 */}
+            <div style={{ width: 320, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>ComfyUI 地址（留空用全局默认）</div>
+              <ComfyServerUrlField
+                id="model3d-hunyuan"
+                value={hyBase}
+                onChange={(v) => { setHyBase(v); saveComfyBase(v); }}
+                serverUrls={hyServers}
+                onChangeServerUrls={onChangeHyServers}
+                accent="rgba(167,139,250,0.95)"
+                borderAccent="rgba(167,139,250,0.7)"
+                borderDefault="rgba(255,255,255,0.18)"
+                fieldBase={{ flex: 1, minWidth: 0, padding: "6px 9px", fontSize: 12, background: "rgba(0,0,0,0.4)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 9, outline: "none" }}
+              />
+            </div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>生成结果都会随节点保存，之后免费重开</div>
           </div>
         ) : !glbUrl ? (

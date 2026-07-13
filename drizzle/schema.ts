@@ -842,6 +842,11 @@ export type SelfHostedLlmConfig = { url: string; apiKey: string; models: { id: s
 // 管理员后台配置的「本机 Claude 桥接」MCP/技能增强（替代 CLAUDE_BRIDGE_* 环境变量）。
 // mcpConfig：{mcpServers:{...}} 的原始 JSON 文本，或服务器上一个配置文件的绝对路径。
 export type BridgeMcpConfig = { mcpConfig: string; skills: boolean; strict: boolean; permissionMode: string; allowedTools: string; workspace: boolean };
+// 管理员后台配置的「工程智能体」权限开关（替代 SUPER_AGENT_* 环境变量）：
+// codeEnabled=代码任务放行（对应 SUPER_AGENT_CODE_ENABLED）、allowBash=放行原始 Bash
+// （对应 SUPER_AGENT_CODE_ALLOW_BASH）、autoInstall=ComfyUI 缺件自动安装（对应 SUPER_AGENT_AUTO_INSTALL）。
+// 该列为「显式覆盖」：一旦后台保存（即使全 false）即以 DB 为准、覆盖 env；未保存过（列为 NULL）才回退 env。
+export type SuperAgentConfig = { codeEnabled: boolean; allowBash: boolean; autoInstall: boolean };
 export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   id: int("id").primaryKey(),
   disabledModels: json("disabledModels").$type<string[]>(),
@@ -849,6 +854,9 @@ export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   selfHostedLlm: json("selfHostedLlm").$type<SelfHostedLlmConfig>(),
   // 管理员后台配置的桥接 MCP/技能增强（替代 CLAUDE_BRIDGE_* env）：{ mcpConfig, skills, strict, permissionMode, allowedTools }。
   bridgeMcp: json("bridgeMcp").$type<BridgeMcpConfig>(),
+  // 管理员后台配置的「工程智能体」权限开关（替代 SUPER_AGENT_* env）：{ codeEnabled, allowBash, autoInstall }。
+  // NULL=后台从未配置→回退 env；非 NULL=以本列为准（含全 false，用于在后台显式关掉 env 已开的项）。
+  superAgent: json("superAgent").$type<SuperAgentConfig>(),
   // 管理员配置的「系统级默认模型」（按槽位 llm/image/video/transcribe），作用于所有项目：
   // 解析优先级排在项目级配置之下、出厂默认之上。{ llm?, image?, video?, transcribe? }。
   systemDefaultModels: json("systemDefaultModels").$type<Record<string, string>>(),
