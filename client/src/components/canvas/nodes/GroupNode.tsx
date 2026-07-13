@@ -6,7 +6,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { GroupNodeData } from "../../../../../shared/types";
 import { getNodeImageOutput } from "../../../lib/canvasPassthrough";
 import { downloadMedia } from "../../../lib/download";
-import { FolderOpen, FolderClosed, Maximize2, Play, Ungroup, Download, Package, Clapperboard } from "lucide-react";
+import { FolderOpen, FolderClosed, Maximize2, Play, Ungroup, Download, Package, Clapperboard, StretchHorizontal, StretchVertical, LayoutGrid } from "lucide-react";
 
 // 组内批量下载：与多选操作条同规则的媒体提取（视频优先 resultVideoUrl/videoUrl，其次 outputUrl，
 // 再退到图片输出）。放模块级，避免每次渲染重建。
@@ -43,7 +43,7 @@ const GROUP_COLORS = [
 ];
 
 export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) {
-  const { updateNodeData, updateNodeTitle, fitGroupToMembers, toggleGroupCollapsed, ungroup, requestRun } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, updateNodeTitle: s.updateNodeTitle, fitGroupToMembers: s.fitGroupToMembers, toggleGroupCollapsed: s.toggleGroupCollapsed, ungroup: s.ungroup, requestRun: s.requestRun })));
+  const { updateNodeData, updateNodeTitle, fitGroupToMembers, arrangeGroupMembers, toggleGroupCollapsed, ungroup, requestRun } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, updateNodeTitle: s.updateNodeTitle, fitGroupToMembers: s.fitGroupToMembers, arrangeGroupMembers: s.arrangeGroupMembers, toggleGroupCollapsed: s.toggleGroupCollapsed, ungroup: s.ungroup, requestRun: s.requestRun })));
   const payload = data.payload;
   const [editingLabel, setEditingLabel] = useState(false);
   const [labelValue, setLabelValue] = useState(data.title);
@@ -109,6 +109,35 @@ export const GroupNode = memo(function GroupNode({ id, selected, data }: Props) 
             >
               <Clapperboard size={12} /> 转分镜组
             </button>
+            {/* #121 组内自动排列：横向一排 / 垂直一列 / 宫格，排完底框自适应 */}
+            {memberCount > 1 && (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); arrangeGroupMembers(id, "row"); }}
+                  title="横向排列（组内节点排成一排）"
+                  className="studio-toolbtn flex items-center px-2 h-7 rounded-lg"
+                  style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
+                >
+                  <StretchHorizontal size={13} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); arrangeGroupMembers(id, "column"); }}
+                  title="垂直排列（组内节点排成一列）"
+                  className="studio-toolbtn flex items-center px-2 h-7 rounded-lg"
+                  style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
+                >
+                  <StretchVertical size={13} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); arrangeGroupMembers(id, "grid"); }}
+                  title="宫格排列（组内节点排成近方形网格）"
+                  className="studio-toolbtn flex items-center px-2 h-7 rounded-lg"
+                  style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
+                >
+                  <LayoutGrid size={13} />
+                </button>
+              </>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); ungroup(id); }}
               title="解组（保留组内节点，移除分组框）"

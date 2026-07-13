@@ -297,14 +297,18 @@ function SnapshotPanel({
 // session actually changed — so a stale/concurrent session can't re-create a node
 // it never touched, which previously "resurrected" deleted nodes).
 function nodeUpsertFields(n: CanvasNode) {
+  // #120 NodeResizer(@xyflow v12) 拖拽缩放写入的是节点【顶层】width/height（style 不动），
+  // 持久化必须优先读顶层，否则缩放后入库的仍是创建时的旧尺寸——群组底框拉大后刷新即回弹。
+  const w = typeof n.width === "number" ? n.width : (n.style?.width as number | undefined);
+  const h = typeof n.height === "number" ? n.height : (n.style?.height as number | undefined);
   return {
     type: n.data.nodeType,
     title: n.data.title,
     data: n.data.payload as Record<string, unknown>,
     posX: n.position.x,
     posY: n.position.y,
-    width: (n.style?.width as number) ?? 320,
-    height: (n.style?.height as number | undefined) ?? 0,
+    width: w ?? 320,
+    height: h ?? 0,
     zIndex: n.zIndex ?? 0,
   };
 }
@@ -2977,12 +2981,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <CanvasTips />
           {/* 「返回节点」提示：视野里看不到任何节点时浮出，一键归位（对标 LibTV） */}
           <ReturnToNodesHint />
-          {/* 空画布引导：双击提示 + 工作流入口卡（对标 LibTV；有节点即消失） */}
-          {!isReadOnly && <EmptyCanvasGuide />}
+          {/* 空画布引导：双击提示 + 工作流入口卡（对标 LibTV；有节点即消失）。
+              #122 须等节点数据加载完成（dbNodes 就绪）再判空，否则加载慢时会先误闪空态。 */}
+          {!isReadOnly && !!dbNodes && <EmptyCanvasGuide />}
           {/* Studio global creation bar (nothing selected → quick prompt → 生成) */}
           <StudioCreateBar />
-          {/* ◆10 非 studio 皮肤的空画布空态 CTA（studio 由 StudioCreateBar 负责） */}
-          {uiStyle !== "studio" && !isReadOnly && nodes.filter((n) => n.data.nodeType !== "group").length === 0 && (
+          {/* ◆10 非 studio 皮肤的空画布空态 CTA（studio 由 StudioCreateBar 负责）。
+              #122 加 dbNodes 就绪门控：节点还在加载时本地 nodes 尚为空，不能当「画布是空的」。 */}
+          {uiStyle !== "studio" && !isReadOnly && !!dbNodes && nodes.filter((n) => n.data.nodeType !== "group").length === 0 && (
             <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-55%)", zIndex: 6,
               display: "flex", flexDirection: "column", alignItems: "center", gap: 14, pointerEvents: "none", textAlign: "center" }}>
               <div style={{ width: 56, height: 56, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
