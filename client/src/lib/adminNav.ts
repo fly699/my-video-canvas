@@ -8,7 +8,7 @@
 //      (wouter's location is path-only, so a query-only change won't re-render it).
 
 export const ADMIN_TABS = [
-  "whitelist", "kie", "users", "logs", "comfyLogs", "llmLogs", "storage", "models", "chat", "comfyStress", "comfyOps", "assets", "downloads", "system", "config", "tunnel", "auth", "report", "intro", "perms",
+  "whitelist", "kie", "users", "logs", "comfyLogs", "llmLogs", "storage", "models", "chat", "comfyServers", "comfyStress", "comfyOps", "assets", "downloads", "tutorialImgs", "system", "config", "tunnel", "auth", "report", "intro", "perms",
 ] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 

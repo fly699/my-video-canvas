@@ -3237,7 +3237,7 @@ export async function deleteComfyTemplateAnalysis(templateId: number): Promise<v
 // 教程正文只引用 slug；管理员可随时上传替换（存 MinIO 后把 URL 记到这里），
 // 前端加载顺序 = 自定义 URL → 内置默认图（/tutorial/<slug>.png 构建产物）。
 // 自愈建表（CREATE TABLE IF NOT EXISTS，MySQL 8 兼容）；dev 无库时内存兜底。
-const _devTutorialImages = new Map<string, string>();
+const _devTutorialImages = new Map<string, { url: string; updatedAt: string }>();
 let _tutorialImagesReady: Promise<void> | null = null;
 async function ensureTutorialImagesTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<void> {
   if (_tutorialImagesReady) return _tutorialImagesReady;
@@ -3251,19 +3251,22 @@ async function ensureTutorialImagesTable(db: NonNullable<Awaited<ReturnType<type
   return _tutorialImagesReady;
 }
 
-export async function listTutorialImages(): Promise<Record<string, string>> {
+/** 自定义截图富记录（url + 更新时间，供管理后台总表显示「何时换的图」）。 */
+export async function listTutorialImages(): Promise<Record<string, { url: string; updatedAt: string | null }>> {
   const db = await getDb();
   if (!db) return Object.fromEntries(_devTutorialImages);
   await ensureTutorialImagesTable(db);
-  const rows = await db.execute(sql.raw("SELECT `slug`, `url` FROM `tutorial_images`"));
-  const out: Record<string, string> = {};
-  for (const r of rows[0] as unknown as { slug: string; url: string }[]) out[r.slug] = r.url;
+  const rows = await db.execute(sql.raw("SELECT `slug`, `url`, `updatedAt` FROM `tutorial_images`"));
+  const out: Record<string, { url: string; updatedAt: string | null }> = {};
+  for (const r of rows[0] as unknown as { slug: string; url: string; updatedAt: Date | string | null }[]) {
+    out[r.slug] = { url: r.url, updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : null };
+  }
   return out;
 }
 
 export async function setTutorialImage(slug: string, url: string): Promise<void> {
   const db = await getDb();
-  if (!db) { _devTutorialImages.set(slug, url); return; }
+  if (!db) { _devTutorialImages.set(slug, { url, updatedAt: new Date().toISOString() }); return; }
   await ensureTutorialImagesTable(db);
   await db.execute(sql`INSERT INTO tutorial_images (slug, url) VALUES (${slug}, ${url})
     ON DUPLICATE KEY UPDATE url = VALUES(url)`);

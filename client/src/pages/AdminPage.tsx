@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, BrainCircuit, Search, Send, type LucideIcon } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, RotateCcw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, BrainCircuit, Search, Send, Upload, GraduationCap, type LucideIcon } from "lucide-react";
+import { allTutorialImageSlugs } from "@/lib/tutorialContent";
 import { ConfigChecklistPanel } from "@/components/admin/ConfigChecklistPanel";
 import { ConfigBackupSection } from "@/components/admin/ConfigBackupSection";
 import { ComfyServersPanel } from "@/components/admin/ComfyServersPanel";
@@ -37,7 +38,7 @@ function useEffOperate(tab: string, staticFloor: number): number {
 }
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "perms" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "perms" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "tutorialImgs" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
 
 // 标签页定义：[key, 中文标签, 图标]
 const TAB_DEFS: [Tab, string, LucideIcon][] = [
@@ -57,6 +58,7 @@ const TAB_DEFS: [Tab, string, LucideIcon][] = [
   ["comfyOps", "ComfyUI 运维中心", Wrench],
   ["assets", "素材库(全用户)", ImageIcon],
   ["downloads", "下载审批", DownloadCloud],
+  ["tutorialImgs", "教程截图", GraduationCap],
   ["system", "系统更新", RotateCw],
   ["config", "配置体检", ClipboardCheck],
   ["report", "工作成果报告", FileBarChart2],
@@ -296,6 +298,7 @@ export default function AdminPage() {
           {activeTab === "comfyOps" && <LevelGate need={3} tab="comfyOps" label="只读模式 · ComfyUI 运维（SSH/Docker/安装/脚本）需「管理员」及以上权限"><ComfyOpsPanel /></LevelGate>}
           {activeTab === "assets" && <AssetsAdminPanel />}
           {activeTab === "downloads" && <DownloadsAdminPanel />}
+          {activeTab === "tutorialImgs" && <TutorialImagesPanel />}
           {activeTab === "system" && <SystemUpdatePanel />}
           {activeTab === "config" && <LevelGate need={3} tab="config"><ConfigChecklistPanel /></LevelGate>}
           {activeTab === "tunnel" && <LevelGate need={3} tab="tunnel"><TunnelPanel /></LevelGate>}
@@ -3101,6 +3104,132 @@ const pageStyle: React.CSSProperties = {
   display: "flex", flexDirection: "column", alignItems: "center",
   justifyContent: "flex-start", padding: "48px 24px", background: "var(--c-canvas, #0d0d10)",
 };
+
+// ── #116 教程截图总表：枚举全部 slug，集中查看/更换/恢复默认 ──────────────────
+// 与教程页图上悬停的「更换/恢复默认」同一套端点；此处一屏总览所有截图的
+// 来源（自定义/默认/缺失）与更换时间，不必逐章翻教程找图。
+
+function TutorialImagesPanel() {
+  const utils = trpc.useUtils();
+  const imagesQ = trpc.system.tutorialImages.useQuery();
+  const uploadMut = trpc.upload.uploadImage.useMutation();
+  const setMut = trpc.system.setTutorialImage.useMutation({
+    onSuccess: () => { void utils.system.tutorialImages.invalidate(); toast.success("截图已更换"); },
+    onError: (e) => toast.error("更换失败：" + e.message),
+  });
+  const resetMut = trpc.system.resetTutorialImage.useMutation({
+    onSuccess: () => { void utils.system.tutorialImages.invalidate(); toast.success("已恢复默认截图"); },
+    onError: (e) => toast.error("恢复失败：" + e.message),
+  });
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pendingSlugRef = useRef<string | null>(null);
+  // 默认图探测失败（构建产物缺图）的 slug——标「缺失」提醒管理员补图。
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  const rows = useMemo(() => allTutorialImageSlugs(), []);
+  const overrides = imagesQ.data?.images ?? {};
+  const updatedAtMap = imagesQ.data?.updatedAt ?? {};
+  const busy = uploadMut.isPending || setMut.isPending || resetMut.isPending;
+  const customCount = rows.filter((r) => overrides[r.slug]).length;
+
+  const pickFor = (slug: string) => { pendingSlugRef.current = slug; fileRef.current?.click(); };
+  const onFile = async (f: File | undefined) => {
+    const slug = pendingSlugRef.current;
+    pendingSlugRef.current = null;
+    if (!f || !slug) return;
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+        r.onerror = () => reject(new Error("读取文件失败"));
+        r.readAsDataURL(f);
+      });
+      const up = await uploadMut.mutateAsync({ base64, mimeType: f.type || "image/png", filename: `tutorial-${slug}.png` });
+      await setMut.mutateAsync({ slug, url: up.url });
+    } catch (e) {
+      toast.error("上传失败：" + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+  const fmtTime = (t: string | null | undefined) =>
+    t ? new Date(t).toLocaleString("zh-CN", { hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+
+  return (
+    <div style={{ ...cardStyle }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <h3 style={{ margin: 0, fontSize: 15, color: "var(--c-t1)" }}>教程截图总表</h3>
+        <span style={{ fontSize: 12, color: "var(--c-t4)" }}>
+          共 {rows.length} 张 · 自定义 {customCount} · 默认 {rows.length - customCount}{missing.size > 0 ? ` · 缺失 ${missing.size}` : ""}
+        </span>
+        <button onClick={() => window.open("/tutorial", "_blank")}
+          style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: "0 12px", borderRadius: 9, fontSize: 12, fontWeight: 700, background: "var(--c-surface)", color: "var(--c-t2)", border: "1px solid var(--c-bd2)", cursor: "pointer" }}>
+          <ExternalLink size={12} /> 打开教程中心
+        </button>
+      </div>
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--c-t4)", lineHeight: 1.6 }}>
+        教程正文只引用 slug；这里替换后立即对所有用户生效（教程页图上悬停也可直接更换）。「恢复默认」删除自定义图、回退到内置默认截图。
+      </p>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ color: "var(--c-t4)", textAlign: "left" }}>
+              {["预览", "章节", "说明", "slug", "来源", "更换时间", "操作"].map((h) => (
+                <th key={h} style={{ padding: "6px 10px", borderBottom: "1px solid var(--c-bd2)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const custom = overrides[r.slug];
+              const src = custom ?? `/tutorial/${r.slug}.png`;
+              const isMissing = !custom && missing.has(r.slug);
+              return (
+                <tr key={r.slug} style={{ borderBottom: "1px solid var(--c-bd1)" }}>
+                  <td style={{ padding: "8px 10px" }}>
+                    {isMissing ? (
+                      <div style={{ width: 120, height: 68, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, background: "var(--c-input)", border: "1px dashed var(--c-bd3)", color: "var(--c-t4)", fontSize: 11 }}>无图</div>
+                    ) : (
+                      <img key={src} src={src} alt={r.caption} loading="lazy" draggable={false}
+                        onError={() => setMissing((prev) => new Set(prev).add(r.slug))}
+                        onClick={() => window.open(src, "_blank")}
+                        style={{ width: 120, height: 68, objectFit: "cover", borderRadius: 8, border: "1px solid var(--c-bd2)", cursor: "zoom-in", display: "block" }} />
+                    )}
+                  </td>
+                  <td style={{ padding: "8px 10px", whiteSpace: "nowrap", color: "var(--c-t3)" }}>{r.chapter}</td>
+                  <td style={{ padding: "8px 10px", color: "var(--c-t2)", minWidth: 160 }}>{r.caption}</td>
+                  <td style={{ padding: "8px 10px" }}><code style={{ fontFamily: "monospace", fontSize: 11, color: "var(--c-t3)" }}>{r.slug}</code></td>
+                  <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                    <span style={{ display: "inline-block", padding: "2px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+                      background: custom ? "oklch(0.65 0.2 160 / 0.15)" : isMissing ? "oklch(0.6 0.2 25 / 0.15)" : "var(--c-surface)",
+                      color: custom ? "oklch(0.75 0.17 160)" : isMissing ? "#f87171" : "var(--c-t3)",
+                      border: `1px solid ${custom ? "oklch(0.65 0.2 160 / 0.3)" : isMissing ? "oklch(0.6 0.2 25 / 0.3)" : "var(--c-bd2)"}` }}>
+                      {custom ? "自定义" : isMissing ? "缺失" : "默认"}
+                    </span>
+                  </td>
+                  <td style={{ padding: "8px 10px", whiteSpace: "nowrap", color: "var(--c-t4)", fontVariantNumeric: "tabular-nums" }}>{custom ? fmtTime(updatedAtMap[r.slug]) : "—"}</td>
+                  <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => pickFor(r.slug)} disabled={busy} title="上传一张新截图替换（立即对所有用户生效）"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 26, padding: "0 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: "var(--c-surface)", color: "var(--c-t2)", border: "1px solid var(--c-bd2)", cursor: busy ? "wait" : "pointer" }}>
+                        {busy && pendingSlugRef.current === r.slug ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} 更换
+                      </button>
+                      {custom && (
+                        <button onClick={() => resetMut.mutate({ slug: r.slug })} disabled={busy} title="删除自定义截图，恢复内置默认图"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 26, padding: "0 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: "var(--c-surface)", color: "var(--c-t3)", border: "1px solid var(--c-bd2)", cursor: busy ? "wait" : "pointer" }}>
+                          <RotateCcw size={11} /> 恢复默认
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
+        onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }} />
+    </div>
+  );
+}
 
 // ── kie.ai key management ─────────────────────────────────────────────────────
 
