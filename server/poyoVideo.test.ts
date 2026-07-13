@@ -128,11 +128,33 @@ describe("submitPoyoVideo multi-image mapping (per-model)", () => {
     expect((await submitWithRefs("poyo_kling_o3_pro", [A, B, C])).input.reference_image_urls).toEqual([A, B, C]);
   });
 
-  it("happy-horse → 1 img keeps legacy single field, 2+ = reference_image_urls", async () => {
-    // Single image: unchanged legacy mapping (reference_image_url) — we don't
-    // touch working single-image behavior. Multiple: reference mode.
-    expect((await submitWithRefs("poyo_happy_horse", [A])).input.reference_image_url).toBe(A);
+  it("happy-horse → 1 img = image_urls（官方 I2V 字段），2+ = reference_image_urls", async () => {
+    // #112 复核修正：happy-horse 文档的图生字段是 image_urls 单张作首帧；
+    // reference_image_url（单数）仅是 wan2.7 视频编辑的字段，其它模型发它会被静默丢弃。
+    const one = await submitWithRefs("poyo_happy_horse", [A]);
+    expect(one.input.image_urls).toEqual([A]);
+    expect("reference_image_url" in one.input).toBe(false);
     expect((await submitWithRefs("poyo_happy_horse", [A, B])).input.reference_image_urls).toEqual([A, B]);
+  });
+
+  // #112 增量模型复核：kling-1.6 / kling-3.0-turbo / happy-horse-1.1 / omni-flash 的
+  // with-params 文档均无 reference_image_url 字段——单图必须走 image_urls。
+  it("kling-1.6 → 单图/双图都走 image_urls（文档 1-4 张）", async () => {
+    const one = await submitWithRefs("poyo_kling16_std", [A]);
+    expect(one.input.image_urls).toEqual([A]);
+    expect("reference_image_url" in one.input).toBe(false);
+    expect((await submitWithRefs("poyo_kling16_pro", [A, B])).input.image_urls).toEqual([A, B]);
+  });
+  it("kling-3.0-turbo → image_urls 封顶 1 张（文档 maxItems=1）", async () => {
+    expect((await submitWithRefs("poyo_kling30turbo_std", [A])).input.image_urls).toEqual([A]);
+    expect((await submitWithRefs("poyo_kling30turbo_pro", [A, B])).input.image_urls).toEqual([A]);
+  });
+  it("happy-horse-1.1 / omni-flash → 单图走 image_urls", async () => {
+    const hh = await submitWithRefs("poyo_happy_horse_11", [A]);
+    expect(hh.input.image_urls).toEqual([A]);
+    expect("reference_image_url" in hh.input).toBe(false);
+    expect((await submitWithRefs("poyo_happy_horse_11", [A, B])).input.reference_image_urls).toEqual([A, B]);
+    expect((await submitWithRefs("poyo_omni_flash", [A])).input.image_urls).toEqual([A]);
   });
 
   it("model without multi support → first image only, single mapping", async () => {
