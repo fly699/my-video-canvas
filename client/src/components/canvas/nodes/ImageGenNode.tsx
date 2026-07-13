@@ -623,17 +623,29 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         draggable={false}
         style={{ display: "block" }}
       />
-      {/* #125 极简显示 + 已收起：单张预览右上角「展开 N 张」还原平铺 */}
-      {minimalDisplay && hasMultiple && payload.minimalCollapsed === true && (
+      {/* #128 右上角操作行：放大（hover 浮现）+ #125 极简收起态的「展开 N 张」。
+          原预览中央的「放大 / 3D 换视角 / 真3D」浮层按用户要求取消——遮挡画面；
+          3D 两个入口在选中节点的上浮工具条常驻（BaseNode），能力不丢失。 */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+        {minimalDisplay && hasMultiple && payload.minimalCollapsed === true && (
+          <button
+            className="nodrag flex items-center gap-1"
+            title="展开为平铺网格（仅极简显示形态）"
+            onClick={(e) => { e.stopPropagation(); update("minimalCollapsed", false); }}
+            style={{ padding: "3px 10px", borderRadius: 99, fontSize: 10.5, fontWeight: 700, background: "oklch(0 0 0 / 0.6)", border: "1px solid oklch(1 0 0 / 0.25)", color: "#fff", cursor: "pointer", backdropFilter: "blur(6px)", opacity: 0.8 }}
+          >
+            <ChevronDown style={{ width: 11, height: 11 }} /> 展开 {payload.imageUrls!.length} 张
+          </button>
+        )}
         <button
-          className="nodrag absolute top-2 right-2 z-10 flex items-center gap-1"
-          title="展开为平铺网格（仅极简显示形态）"
-          onClick={(e) => { e.stopPropagation(); update("minimalCollapsed", false); }}
-          style={{ padding: "3px 10px", borderRadius: 99, fontSize: 10.5, fontWeight: 700, background: "oklch(0 0 0 / 0.6)", border: "1px solid oklch(1 0 0 / 0.25)", color: "#fff", cursor: "pointer", backdropFilter: "blur(6px)", opacity: 0.8 }}
+          onClick={(e) => { e.stopPropagation(); setLightboxIndex(0); }}
+          title="放大预览"
+          className="nodrag opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
+          style={{ padding: "3px 10px", borderRadius: 99, fontSize: 10.5, fontWeight: 700, background: "oklch(0 0 0 / 0.6)", border: "1px solid oklch(1 0 0 / 0.25)", color: "#fff", cursor: "pointer", backdropFilter: "blur(6px)" }}
         >
-          <ChevronDown style={{ width: 11, height: 11 }} /> 展开 {payload.imageUrls!.length} 张
+          <ZoomIn style={{ width: 11, height: 11 }} /> 放大
         </button>
-      )}
+      </div>
       {imgStoredInMinio && (
         <div
           title="已存储到 MinIO·长期有效"
@@ -641,37 +653,6 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }}
         />
       )}
-      <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
-        style={{ background: "oklch(0 0 0 / 0.45)" }}
-      >
-        <button
-          onClick={(e) => { e.stopPropagation(); setLightboxIndex(0); }}
-          className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-          style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
-        >
-          <ZoomIn className="w-3 h-3" />
-          放大
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); setView3dSrc(payload.imageUrl!); }}
-          title="把这张图虚拟化为 3D，拖拽换视角后重绘"
-          className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-          style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
-        >
-          <Rotate3d className="w-3 h-3" />
-          3D 换视角
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); openTrue3d(payload.imageUrl!); }}
-          title="图生真 3D 网格（Tripo3D），完整 360° 环绕后从新视角重绘"
-          className="nodrag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-          style={{ background: "color-mix(in oklch, var(--c-base) 80%, transparent)", backdropFilter: "blur(10px)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t1)" }}
-        >
-          <Boxes className="w-3 h-3" />
-          真3D
-        </button>
-      </div>
     </div>
   ) : heroRefUrl ? (
     // 无结果但有参考图 → 收缩时把参考图当 hero 预览（避免只剩标题栏、参考图看不见）。

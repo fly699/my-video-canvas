@@ -1461,24 +1461,49 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // same canvas context menu so users can still add nodes from empty space.
   // Skip when the gesture lands on a node, edge, or any interactive widget so
   // existing dblclick behaviors (e.g. inline title edits) keep working.
+  // #128 双击聚焦的还原状态：prev=聚焦链开始前的视口；focused=聚焦动画落定后的视口
+  //（判定「二次双击=还原」的参照，用户手动移开超容差则重新聚焦）。
+  const dblFocusRef = useRef<{ nodeId: string; prev: { x: number; y: number; zoom: number }; focused: { x: number; y: number; zoom: number } | null } | null>(null);
   const handleCanvasDoubleClick = useCallback((e: React.MouseEvent) => {
     const t = e.target as HTMLElement;
     // #123 双击节点=快速聚焦放大居中。走 wrapper 合成事件而非 onNodeDoubleClick——
     // 后者在本项目环境不触发（节点内原生 dblclick 委托不可靠，见 InlineBarParts 注释）。
     // 豁免：交互控件（各有自身双击语义）、标题（双击=改名，data-dblfocus-exempt）、群组。
+    // #128：video 预览不再豁免（视频节点也要双击聚焦）；preventDefault 压掉
+    // Chromium 对带原生 controls 的 <video> 的「双击切全屏」默认行为。
     const nodeEl = t.closest(".react-flow__node") as HTMLElement | null;
     if (nodeEl) {
-      if (t.closest('input, textarea, select, button, video, audio, a, [contenteditable="true"], [data-dblfocus-exempt]')) return;
+      if (t.closest('input, textarea, select, button, audio, a, [contenteditable="true"], [data-dblfocus-exempt]')) return;
+      e.preventDefault();
       const nid = nodeEl.getAttribute("data-id");
       const n = nid ? useCanvasStore.getState().nodes.find((nn) => nn.id === nid) : undefined;
       if (!n || n.data.nodeType === "group") return;
+      // #128 二次双击还原：若仍停在上次聚焦后的视口（容差内），双击同一节点=回到聚焦前视口。
+      const cur = reactFlow.getViewport();
+      const st = dblFocusRef.current;
+      if (st && st.nodeId === n.id && st.focused
+        && Math.abs(cur.x - st.focused.x) < 40 && Math.abs(cur.y - st.focused.y) < 40
+        && Math.abs(cur.zoom - st.focused.zoom) < 0.15) {
+        void reactFlow.setViewport(st.prev, { duration: 420 });
+        dblFocusRef.current = null;
+        return;
+      }
       // 手动算目标缩放 + setCenter：fitView 的 maxZoom 选项对单节点聚焦不生效（实测
       // 冲到 5×被实例上限 6 兜底）。目标=节点约占视口 75%，钳制 [0.8, 3]
       //（用户两轮反馈放大不够：1.25→2→3）。
       const nw = n.measured?.width ?? 340;
       const nh = n.measured?.height ?? 240;
       const zoom = Math.min(3, Math.max(0.8, Math.min(window.innerWidth * 0.75 / nw, window.innerHeight * 0.75 / nh)));
+      // prev 只在「非聚焦状态→聚焦」时记录；A→B 连续聚焦保留最初的 prev，
+      // 使 B 上的二次双击直接回到整个聚焦链开始前的视口。
+      dblFocusRef.current = { nodeId: n.id, prev: st?.prev ?? cur, focused: null };
       void reactFlow.setCenter(n.position.x + nw / 2, n.position.y + nh / 2, { zoom, duration: 420 });
+      // 动画结束后记录聚焦视口，供下次双击判定「仍在聚焦态」（用户中途手动平移/缩放
+      // 超出容差后，双击同一节点=重新聚焦而非还原）。
+      window.setTimeout(() => {
+        const rec = dblFocusRef.current;
+        if (rec && rec.nodeId === n.id && !rec.focused) rec.focused = reactFlow.getViewport();
+      }, 470);
       return;
     }
     if (
