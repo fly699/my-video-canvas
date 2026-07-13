@@ -676,6 +676,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     <>
     <BaseNode id={id} selected={selected} nodeType="image_gen" title={data.title} minHeight={300} heroMedia={heroMedia}
       onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim()} hasResult={!!payload.imageUrl}
+      onCancelGenerate={genMutation.isPending ? abandonWait : undefined}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       extraHandles={

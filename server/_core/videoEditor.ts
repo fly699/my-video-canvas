@@ -695,11 +695,29 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       inputPaths.forEach((p) => { args.push("-i", p); });
 
       const durations: number[] = [];
+      const sizes: { w: number; h: number }[] = [];
       for (const p of inputPaths) {
         try {
-          const r = await execFileAsync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", p]);
-          durations.push(parseFloat(r.stdout.trim()) || 5);
-        } catch { durations.push(5); }
+          const r = await execFileAsync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-show_entries", "format=duration", "-of", "json", p]);
+          const j = JSON.parse(r.stdout) as { streams?: { width?: number; height?: number }[]; format?: { duration?: string } };
+          durations.push(parseFloat(j.format?.duration ?? "") || 5);
+          sizes.push({ w: j.streams?.[0]?.width ?? 0, h: j.streams?.[0]?.height ?? 0 });
+        } catch { durations.push(5); sizes.push({ w: 0, h: 0 }); }
+      }
+      // #146 xfade 要求两路输入分辨率与 SAR 完全一致——不同尺寸的段（如 1280×720 混
+      // 1168×768）直接报 -22「input link parameters do not match」合并失败（用户实报）。
+      // 各段先统一到首段分辨率：等比缩放 + 补黑边（contain，不裁不变形）+ setsar=1。
+      const baseW = sizes.find((s) => s.w > 0)?.w ?? 1280;
+      const baseH = sizes.find((s) => s.h > 0)?.h ?? 720;
+      const evenW = baseW % 2 === 0 ? baseW : baseW + 1; // libx264 要求偶数维度
+      const evenH = baseH % 2 === 0 ? baseH : baseH + 1;
+      let normStr = "";
+      const segLabel: string[] = [];
+      if (n > 1) {
+        for (let i = 0; i < n; i++) {
+          normStr += `[${i}:v]scale=${evenW}:${evenH}:force_original_aspect_ratio=decrease,pad=${evenW}:${evenH}:(ow-iw)/2:(oh-ih)/2,setsar=1[nv${i}];`;
+          segLabel.push(`[nv${i}]`);
+        }
       }
 
       const globalXfade = transition === "dissolve" ? "dissolve" : "fade";
@@ -718,8 +736,8 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         const dur = Math.min(td, durations[i] ?? td, durations[i + 1] ?? td);
         return { type: XFADE_MAP[t] ?? globalXfade, dur };
       };
-      let filterStr = "";
-      let lastLabel = "[0:v]";
+      let filterStr = normStr;
+      let lastLabel = segLabel[0] ?? "[0:v]";
       let timeOffset = 0;
       const segStarts: number[] = [0]; // 各段在成片中的起点（配音 adelay 对位用）
 
@@ -728,7 +746,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         timeOffset = Math.max(0, timeOffset + durations[i - 1] - c.dur);
         segStarts.push(timeOffset);
         const outLabel = i === n - 1 ? "[vout]" : `[v${i}]`;
-        filterStr += `${lastLabel}[${i}:v]xfade=transition=${c.type}:duration=${c.dur.toFixed(3)}:offset=${timeOffset.toFixed(3)}${outLabel};`;
+        filterStr += `${lastLabel}${segLabel[i]}xfade=transition=${c.type}:duration=${c.dur.toFixed(3)}:offset=${timeOffset.toFixed(3)}${outLabel};`;
         lastLabel = `[v${i}]`;
       }
       if (n === 1) filterStr = "[0:v]copy[vout];";

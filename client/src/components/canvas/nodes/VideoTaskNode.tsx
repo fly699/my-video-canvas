@@ -594,6 +594,22 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload.status, payload.taskId, id, updateNodeData]);
 
+  // #140/#143 放弃等待（云端任务提交即计费、不可撤回）：停轮询、清任务引用、节点解锁。
+  // 传给 BaseNode onCancelGenerate——生成中标题栏▶直接变成可点的取消（用户指定放标题栏）。
+  const abandonWait = useCallback(() => {
+    updateNodeData(id, { status: "pending", taskId: undefined, externalTaskId: undefined, errorMessage: undefined }, true);
+    toast.info("已放弃等待：节点已解锁。云端任务仍在生成（费用照常发生），其结果不会回填本节点", { duration: 7000 });
+  }, [id, updateNodeData]);
+
+  // #143 stale processing 自愈：processing 但没有 taskId（提交中断/页面刷新丢时序）——
+  // 轮询 effect 因缺 taskId 永远不跑，节点卡死在「生成中」且▶被禁用。挂载时回落 failed。
+  useEffect(() => {
+    if (payload.status === "processing" && payload.taskId == null && !createTaskMutation.isPending) {
+      updateNodeData(id, { status: "failed", errorMessage: "生成已中断（页面刷新或提交失败），请重新提交" }, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleChange = useCallback(
     (field: keyof VideoTaskNodeData, value: unknown) => { updateNodeData(id, { [field]: value }); },
     [id, updateNodeData]
@@ -1026,6 +1042,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   return (<>
     <BaseNode id={id} selected={selected} nodeType="video_task" title={data.title} minHeight={260} heroMedia={heroMedia}
       onRun={handleSubmit} running={createTaskMutation.isPending || payload.status === "processing"} canRun={!!payload.prompt?.trim()} hasResult={payload.status === "succeeded"}
+      onCancelGenerate={payload.status === "processing" ? abandonWait : undefined}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       extraHandles={
@@ -1986,10 +2003,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             // #140 放弃等待（云端任务提交即计费、平台不可撤回）：本地停轮询、节点解锁可
             // 改参重提；云端任务继续跑但结果不回填。status 改动触发轮询 effect cleanup。
             <button
-              onClick={() => {
-                updateNodeData(id, { status: "pending", taskId: undefined, externalTaskId: undefined, errorMessage: undefined }, true);
-                toast.info("已放弃等待：节点已解锁。云端任务仍在生成（费用照常发生），其结果不会回填本节点", { duration: 7000 });
-              }}
+              onClick={abandonWait}
               className="nodrag flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all"
               style={{ background: "var(--c-surface)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; }}

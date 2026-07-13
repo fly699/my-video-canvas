@@ -68,6 +68,30 @@ d("mergeVideos 配乐对齐 × 真机 ffmpeg", () => {
     expect(Math.abs(newDur - total)).toBeLessThan(0.25);
   }, 120_000);
 
+  it("#146 不同分辨率段 xfade：旧滤镜直接 -22 报错（复现），归一化链修复后成功且输出=首段尺寸", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "xf146-"));
+    const v1 = join(dir, "v1.mp4"), v2 = join(dir, "v2.mp4");
+    // 用户实报的尺寸组合：1280×720 + 1168×768（缩小同比例 320×180 + 292×192 提速）
+    await exec("ffmpeg", ["-f", "lavfi", "-i", "color=red:s=320x180:d=1:r=10", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", "-y", v1], { timeout: 30_000 });
+    await exec("ffmpeg", ["-f", "lavfi", "-i", "color=blue:s=292x192:d=1:r=10", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", "-y", v2], { timeout: 30_000 });
+
+    // 旧滤镜（无归一化）：xfade 尺寸不匹配 → 必须报错（bug 复现）
+    const oldOut = join(dir, "old.mp4");
+    const oldFilter = `[0:v][1:v]xfade=transition=dissolve:duration=0.300:offset=0.700[vout]`;
+    await expect(
+      exec("ffmpeg", ["-i", v1, "-i", v2, "-filter_complex", oldFilter, "-map", "[vout]", "-c:v", "libx264", "-preset", "ultrafast", "-y", oldOut], { timeout: 60_000 }),
+    ).rejects.toMatchObject({ code: expect.anything() });
+
+    // 新滤镜（与 mergeVideos 修复同构）：各段 scale+pad+setsar 归一到首段尺寸 → 成功
+    const newOut = join(dir, "new.mp4");
+    const norm = `[0:v]scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2,setsar=1[nv0];[1:v]scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2,setsar=1[nv1];`;
+    const newFilter = `${norm}[nv0][nv1]xfade=transition=dissolve:duration=0.300:offset=0.700[vout]`;
+    await exec("ffmpeg", ["-i", v1, "-i", v2, "-filter_complex", newFilter, "-map", "[vout]", "-c:v", "libx264", "-preset", "ultrafast", "-y", newOut], { timeout: 60_000 });
+    const probe = await exec("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", newOut]);
+    expect(probe.stdout.trim()).toBe("320,180"); // 输出统一为首段分辨率
+    expect(await probeDuration(newOut)).toBeGreaterThan(1.5); // 两段完整入片（1+1-0.3≈1.7s）
+  }, 120_000);
+
   it("音乐短于画面：apad 补齐，成片仍=画面总长（不被反向裁短）", async () => {
     const dir = mkdtempSync(join(tmpdir(), "bgm139b-"));
     const v1 = join(dir, "v1.mp4"), music = join(dir, "m.m4a");

@@ -302,7 +302,9 @@ export const NODE_CONFIGS: Record<NodeType, NodeConfig> = {
   },
   comfyui_workflow: {
     type: "comfyui_workflow",
-    label: "ComfyUI 自定义",
+    // #144 与快速设置/镜头表等入口统一叫「ComfyUI模板」——旧名「ComfyUI 自定义」
+    // 让用户在添加节点菜单里找不到模板节点。
+    label: "ComfyUI模板",
     icon: "Workflow",
     color: "oklch(0.65 0.20 140)",
     bgColor: "oklch(0.65 0.20 140 / 0.08)",
