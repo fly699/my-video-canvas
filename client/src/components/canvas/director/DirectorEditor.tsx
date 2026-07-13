@@ -177,11 +177,12 @@ function LightObj({ light, selected, onSelect, bindMarker }: {
             <bufferGeometry>
               <bufferAttribute attach="attributes-position" args={[new Float32Array([...light.position, ...tgt]), 3]} />
             </bufferGeometry>
-            <lineBasicMaterial color={light.color} transparent opacity={selected ? 0.7 : 0.35} />
+            {/* 用户反馈（2026-07）：光路太显眼——各指示物透明度整体下调约一半 */}
+            <lineBasicMaterial color={light.color} transparent opacity={selected ? 0.45 : 0.18} />
           </line>
           <mesh position={tgt} raycast={noRaycast}>
             <sphereGeometry args={[0.055, 10, 10]} />
-            <meshBasicMaterial color={light.color} transparent opacity={selected ? 0.8 : 0.45} />
+            <meshBasicMaterial color={light.color} transparent opacity={selected ? 0.55 : 0.25} />
           </mesh>
           {beamLen > 0.05 && (
             /* 光束锥：apex=灯位、底面=指向点、锥角=spotLight.angle（半角，同真实照射范围）。
@@ -189,7 +190,7 @@ function LightObj({ light, selected, onSelect, bindMarker }: {
             <group position={light.position} quaternion={beamQuat as never}>
               <mesh position={[0, 0, -beamLen / 2]} rotation={[Math.PI / 2, 0, 0]} raycast={noRaycast}>
                 <coneGeometry args={[beamLen * Math.tan(((light.angle ?? 40) * Math.PI) / 180), beamLen, 24, 1, true]} />
-                <meshBasicMaterial color={light.color} transparent opacity={selected ? 0.14 : 0.07} depthWrite={false} side={THREE.DoubleSide} />
+                <meshBasicMaterial color={light.color} transparent opacity={selected ? 0.07 : 0.03} depthWrite={false} side={THREE.DoubleSide} />
               </mesh>
             </group>
           )}
@@ -202,7 +203,7 @@ function LightObj({ light, selected, onSelect, bindMarker }: {
             <bufferGeometry>
               <bufferAttribute attach="attributes-position" args={[POINT_LIGHT_RAYS, 3]} />
             </bufferGeometry>
-            <lineBasicMaterial color={light.color} transparent opacity={selected ? 0.65 : 0.38} />
+            <lineBasicMaterial color={light.color} transparent opacity={selected ? 0.42 : 0.2} />
           </lineSegments>
         </group>
       )}
