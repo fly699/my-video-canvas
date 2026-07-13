@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Star, Search } from "lucide-react";
 import { STYLE_PRESETS, STYLE_CATEGORIES, type StylePreset, type StyleCategory } from "../../lib/stylePresets";
+import { StyleSwatchPreview } from "./CameraMotionPreview";
 
 interface Props {
   onSelect: (preset: StylePreset) => void;
@@ -148,10 +149,14 @@ export function StylePicker({ onSelect, onClose }: Props) {
                     >
                       <Star size={14} style={{ color: isFav ? "oklch(0.80 0.16 85)" : "var(--c-t4)", fill: isFav ? "oklch(0.80 0.16 85)" : "none" }} />
                     </button>
-                    <span style={{ fontSize: 26, lineHeight: 1 }}>{t.emoji}</span>
-                    <div style={{ paddingRight: 18 }}>
+                    {/* #135 风格色彩演示：迷你场景 + 风格滤镜（纯 CSS，带轻微呼吸感） */}
+                    <StyleSwatchPreview styleId={t.id} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, paddingRight: 18 }}>
+                      <span style={{ fontSize: 20, lineHeight: 1 }}>{t.emoji}</span>
+                    <div style={{ paddingRight: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--c-t1)" }}>{t.label}</div>
                       <div style={{ fontSize: 10, color: "var(--c-t4)" }}>{t.englishLabel}</div>
+                    </div>
                     </div>
                     <p style={{ margin: 0, fontSize: 11, color: "var(--c-t3)", lineHeight: 1.45 }}>{t.description}</p>
                   </div>
