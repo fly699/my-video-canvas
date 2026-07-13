@@ -93,11 +93,19 @@ export const SUPPORTS_NEGATIVE_PROMPT = new Set<string>([
   // kie: Kling 2.5 Turbo + Wan 2.5 document negative_prompt.
   "kie_kling25turbo_t2v", "kie_kling25turbo_i2v", "kie_wan25_t2v", "kie_wan25_i2v",
   "kie_kling21_std", "kie_kling21_pro", "kie_kling21_master_t2v", "kie_kling21_master_i2v",
+  // #112 复核：poyo kling-1.6 的 with-params 文档含 negative_prompt（3.0-turbo 没有）。
+  "poyo_kling16_std", "poyo_kling16_pro",
 ]);
 
 // ── Reusable param sets for the expanded model catalog ──
 const AR_3 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" }];
 const AR_2 = [{ value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }];
+// Happy Horse（1.0/1.1）与 kie happyhorse-1-1 t2v/r2v 的完整 9 值画幅枚举（with-params 文档）
+const AR_HH9 = [
+  { value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" }, { value: "1:1", label: "1:1 方形" },
+  { value: "4:3", label: "4:3" }, { value: "3:4", label: "3:4" }, { value: "4:5", label: "4:5" },
+  { value: "5:4", label: "5:4" }, { value: "21:9", label: "21:9 超宽" }, { value: "9:21", label: "9:21 超高" },
+];
 const DUR_5_10 = [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }];
 const DUR_6_10 = [{ value: 6, label: "6 秒" }, { value: 10, label: "10 秒" }];
 const seedDef: ParamDef = { type: "number", key: "seed", label: "随机种子（可选）", min: 0, max: 2147483647, step: 1 };
@@ -177,10 +185,17 @@ const KLING30_PARAMS: ParamDef[] = [
   { type: "toggle", key: "sound", label: "原生音频", default: false },
   seedDef,
 ];
-// Kling 1.6（增量新模型）：宽高比 + 时长（参数沿用 poyo kling 族）
+// Kling 1.6（增量新模型；with-params 文档：duration enum 5/10、aspect 3 值、cfg_scale 0-1）
 const KLING16_PARAMS: ParamDef[] = [
   { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
   { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
+  { type: "range", key: "cfg_scale", label: "灵活度 cfg", min: 0, max: 1, step: 0.1, default: 0.5 },
+];
+// Kling 3.0 Turbo（#112 复核修正：文档 duration 为 3-15 整数（非 5/10 枚举）、
+// 无 cfg_scale/negative_prompt——之前误与 Kling 1.6 共用参数集）
+const KLING30TURBO_PARAMS: ParamDef[] = [
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
 ];
 // Omni Flash（增量；resolution 720p/1080p/4k，duration 4/6/8/10，aspect 16:9/9:16）
 const OMNI_FLASH_PARAMS: ParamDef[] = [
@@ -253,7 +268,7 @@ const HAILUO23_PARAMS: ParamDef[] = [
 ];
 const HAPPY_HORSE_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: WAN_RES },
-  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_3 },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_HH9 },
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
   seedDef,
 ];
@@ -367,10 +382,10 @@ const KIE_KLING_V3TURBO_I2V_PARAMS: ParamDef[] = [
   { type: "select", key: "duration", label: "时长（秒）", default: 5, options: DUR_5_10 },
   { type: "select", key: "resolution", label: "分辨率", default: "720p", options: KIE_RES_WAN },
 ];
-// HappyHorse 1.1（增量；文档无 seed 字段）
+// HappyHorse 1.1（增量；文档无 seed 字段；#112 复核：画幅按文档补全 9 值）
 const KIE_HAPPYHORSE11_PARAMS: ParamDef[] = [
   { type: "select", key: "resolution", label: "分辨率", default: "1080p", options: KIE_RES_WAN },
-  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_5 },
+  { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9", options: AR_HH9 },
   { type: "range", key: "duration", label: "时长（秒）", min: 3, max: 15, step: 1, default: 5, unit: "s" },
 ];
 // HappyHorse 1.1 图生视频：无 aspect_ratio（schema 严格）
@@ -547,8 +562,8 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_kling30_4k: KLING30_PARAMS,
   poyo_kling16_std: KLING16_PARAMS,
   poyo_kling16_pro: KLING16_PARAMS,
-  poyo_kling30turbo_std: KLING16_PARAMS,
-  poyo_kling30turbo_pro: KLING16_PARAMS,
+  poyo_kling30turbo_std: KLING30TURBO_PARAMS,
+  poyo_kling30turbo_pro: KLING30TURBO_PARAMS,
   poyo_wan27_t2v: WAN27_T2V_PARAMS,
   poyo_wan27_i2v: WAN27_I2V_PARAMS,
   poyo_wan27_ref: WAN27_REF_PARAMS,

@@ -84,8 +84,8 @@ const VIDEO_PARAM_KEYS: Record<string, string[]> = {
   "kling-2.5-turbo-pro": ["aspect_ratio", "duration"],
   "kling-3.0/standard": ["aspect_ratio", "duration", "sound", "seed"],
   "kling-3.0/pro":      ["aspect_ratio", "duration", "sound", "seed"],
-  "kling-1.6/standard": ["aspect_ratio", "duration"],
-  "kling-1.6/pro":      ["aspect_ratio", "duration"],
+  "kling-1.6/standard": ["aspect_ratio", "duration", "cfg_scale"],
+  "kling-1.6/pro":      ["aspect_ratio", "duration", "cfg_scale"],
   "kling-3.0-turbo/standard": ["aspect_ratio", "duration"],
   "kling-3.0-turbo/pro":      ["aspect_ratio", "duration"],
   "happy-horse-1.1":   ["resolution", "aspect_ratio", "duration", "seed"],
@@ -162,6 +162,14 @@ const SINGLE_IMAGE_URLS_MODELS = new Set<string>([
   // 多模态参考，二者互斥），结果单图被悄悄丢弃。reference（主体）模式仍由上游
   // 的 referenceMode="reference" 分支走 reference_image_urls，不受影响。
   "seedance-2", "seedance-2-fast",
+  // #112 增量模型复核（with-params 文档）：以下模型的 input schema 都【没有】
+  // 通用兜底的 reference_image_url 字段——单张参考图落进兜底会被 Poyo 静默丢弃，
+  // I2V 退化成 T2V 还照常扣费。文档合法的单图字段均为 image_urls：
+  // kling-1.6 image_urls(1-4)；kling-3.0-turbo image_urls(≤1)；
+  // happy-horse / happy-horse-1.1 image_urls 单张作首帧；omni-flash image_urls(0-3)。
+  "kling-1.6/standard", "kling-1.6/pro",
+  "kling-3.0-turbo/standard", "kling-3.0-turbo/pro",
+  "happy-horse", "happy-horse-1.1", "omni-flash",
 ]);
 
 function applySingleImage(input: Record<string, unknown>, model: string, url: string): void {
@@ -196,8 +204,9 @@ const MULTI_IMAGE_SPEC: Record<string, MultiImageSpec> = {
   "kling-3.0/pro":        { imageUrls: 2 },
   "kling-1.6/standard":   { imageUrls: 2 },
   "kling-1.6/pro":        { imageUrls: 2 },
-  "kling-3.0-turbo/standard": { imageUrls: 2 },
-  "kling-3.0-turbo/pro":      { imageUrls: 2 },
+  // kling-3.0-turbo：文档 image_urls maxItems=1（无首尾帧模式），多给会 400/丢弃
+  "kling-3.0-turbo/standard": { imageUrls: 1 },
+  "kling-3.0-turbo/pro":      { imageUrls: 1 },
   "happy-horse-1.1":      { imageUrls: 1, referenceImages: 9 },
   "omni-flash":           { imageUrls: 3 },
   "kling-3.0/4K":         { imageUrls: 2 },
