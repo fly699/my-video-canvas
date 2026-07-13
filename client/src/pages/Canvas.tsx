@@ -1457,8 +1457,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // existing dblclick behaviors (e.g. inline title edits) keep working.
   const handleCanvasDoubleClick = useCallback((e: React.MouseEvent) => {
     const t = e.target as HTMLElement;
+    // #123 双击节点=快速聚焦放大居中。走 wrapper 合成事件而非 onNodeDoubleClick——
+    // 后者在本项目环境不触发（节点内原生 dblclick 委托不可靠，见 InlineBarParts 注释）。
+    // 豁免：交互控件（各有自身双击语义）、标题（双击=改名，data-dblfocus-exempt）、群组。
+    const nodeEl = t.closest(".react-flow__node") as HTMLElement | null;
+    if (nodeEl) {
+      if (t.closest('input, textarea, select, button, video, audio, a, [contenteditable="true"], [data-dblfocus-exempt]')) return;
+      const nid = nodeEl.getAttribute("data-id");
+      const n = nid ? useCanvasStore.getState().nodes.find((nn) => nn.id === nid) : undefined;
+      if (!n || n.data.nodeType === "group") return;
+      // 手动算目标缩放 + setCenter：fitView 的 maxZoom 选项对单节点聚焦不生效（实测
+      // 冲到 5×被实例上限 6 兜底）。目标=节点约占视口 70%，钳制 [0.8, 2]。
+      const nw = n.measured?.width ?? 340;
+      const nh = n.measured?.height ?? 240;
+      const zoom = Math.min(2, Math.max(0.8, Math.min(window.innerWidth * 0.7 / nw, window.innerHeight * 0.7 / nh)));
+      void reactFlow.setCenter(n.position.x + nw / 2, n.position.y + nh / 2, { zoom, duration: 420 });
+      return;
+    }
     if (
-      t.closest(".react-flow__node") ||
       t.closest(".react-flow__edge") ||
       t.closest(".react-flow__controls") ||
       t.closest(".react-flow__minimap") ||
@@ -1467,7 +1483,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
     // ◆7 双击空白 → 直接打开节点选择器(可搜索、回车加首个匹配),而非弹右键菜单。
     if (isReadOnly) return;
     setShowNodePicker(true);
-  }, [isReadOnly, setShowNodePicker]);
+  }, [isReadOnly, setShowNodePicker, reactFlow]);
 
   // When the canvas right-click menu is pinned, the user can add several nodes
   // in a row from the same anchor — without a per-add offset they all stack at
@@ -1816,6 +1832,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
       window.dispatchEvent(new CustomEvent("canvas:minimal-change"));
     };
   }, []);
+
+  // #112 画布助手的 fit_view / 整理布局后适应视图：agentApply 无 reactFlow 实例，
+  // 经自定义事件转交这里执行。
+  useEffect(() => {
+    const onFit = () => reactFlow.fitView({ padding: 0.15, duration: 400 });
+    window.addEventListener("canvas:fit-view", onFit);
+    return () => window.removeEventListener("canvas:fit-view", onFit);
+  }, [reactFlow]);
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -2833,14 +2857,6 @@ function CanvasInner({ projectId }: { projectId: number }) {
               markGestureSelected(useCanvasStore.getState().nodes.filter((n) => n.selected).map((n) => n.id));
             }}
             onNodeClick={(_, node) => clearGestureSelected(node.id)}
-            onNodeDoubleClick={(e, node) => {
-              // #123 双击节点=快速聚焦：平滑缩放并居中该节点。避开交互控件内的双击
-              //（输入框/按钮/视频等有自身双击语义），群组不聚焦（组标题双击=改名）。
-              if ((node as CanvasNode).data.nodeType === "group") return;
-              const t = e.target as HTMLElement;
-              if (t.closest('input, textarea, select, button, video, audio, a, [contenteditable="true"]')) return;
-              void reactFlow.fitView({ nodes: [{ id: node.id }], duration: 420, padding: 0.25, maxZoom: 1.25 });
-            }}
             onPaneClick={() => clearGestureSelected()}
             panOnDrag={isMobile ? true : [1, 2]}
             panOnScroll

@@ -1297,7 +1297,9 @@ export interface ComfyuiWorkflowNodeData {
  *  through the canvas store (create/connect/update/delete), so every change is
  *  undoable & persisted exactly like a manual edit. */
 export interface AgentOperation {
-  op: "create" | "update" | "connect" | "delete";
+  op: "create" | "update" | "connect" | "delete" | "canvas";
+  /** canvas: 画布级动作（不针对单个节点）——极简显示开/关、整理布局、适应视图、批量下载成品。 */
+  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all";
   /** create: agent-assigned temp id so later `connect` ops can reference the
    *  not-yet-created node. */
   tempId?: string;

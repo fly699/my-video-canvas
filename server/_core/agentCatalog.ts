@@ -320,10 +320,18 @@ export function sanitizeOperationDetailed(
   if (!raw || typeof raw !== "object") return { drop: "无法识别的操作（非对象）" };
   const o = raw as Record<string, unknown>;
   const op = o.op;
-  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete") return { drop: `未知的操作类型「${String(op)}」` };
+  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete" && op !== "canvas") return { drop: `未知的操作类型「${String(op)}」` };
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
   // note 是给人看的一句话理由，行内展示——超长（LLM 跑偏）截到 120 字防撑爆消息存储。
   const noteStr = (v: unknown) => { const t = str(v); return t && t.length > 120 ? t.slice(0, 120) + "…" : t; };
+
+  // #112 画布级动作：白名单校验 action，其余字段一律剥除（无 payload/ref 概念）。
+  if (op === "canvas") {
+    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all"]);
+    const action = str(o.action);
+    if (!action || !CANVAS_ACTIONS.has(action)) return { drop: `未知的画布动作「${String(o.action)}」` };
+    return { op: { op: "canvas", action: action as AgentOperation["action"], note: noteStr(o.note) } };
+  }
 
   if (op === "create") {
     const nodeType = str(o.nodeType) as NodeType | undefined;
