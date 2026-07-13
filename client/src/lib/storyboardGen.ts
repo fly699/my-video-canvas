@@ -283,6 +283,9 @@ export function assembleFromStoryboards(
   edges: Array<{ source: string; target: string }>,
 ): AssembledPlan | { error: string } {
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  // #134 成片参与范围：节点「跳过参与」（payload.disabled，右键/多选条/助手均可设）——
+  // 装配与运行/估价同口径：工位或其上游分镜被跳过的段不进成片。
+  const isOff = (n?: { data: { payload?: unknown } }) => (n?.data.payload as { disabled?: boolean } | undefined)?.disabled === true;
   type Entry = { num: number; url: string; transition: string | undefined; voice: string | null; voiceDur: number | null; sfx: string | null; dialogue: string | null; sbId: string | null; vidId: string; sceneNumber: number | string | undefined };
   const entries: Entry[] = [];
   for (const e of edges) {
@@ -290,6 +293,7 @@ export function assembleFromStoryboards(
     const vn = byId.get(e.source);
     const vt = vn?.data.nodeType;
     if (!vn || (vt !== "video_task" && vt !== "comfyui_video" && vt !== "comfyui_workflow")) continue;
+    if (isOff(vn)) continue;
     const vp = vn.data.payload as { resultVideoUrl?: string; outputUrl?: string; outputType?: string };
     // comfyui_workflow 出图运行（outputType=image）不是视频段，跳过（开源工作流主力：
     // 出视频的自定义工作流与 comfyui_video / 云端 video_task 一视同仁纳入装配）。
@@ -299,6 +303,7 @@ export function assembleFromStoryboards(
     // 回溯该视频的上游分镜
     const sbEdge = edges.find((e2) => e2.target === vn.id && byId.get(e2.source)?.data.nodeType === "storyboard");
     const sb = sbEdge ? byId.get(sbEdge.source) : undefined;
+    if (sb && isOff(sb)) continue; // 分镜被「跳过参与」→ 整段（含其工位产物）不进成片
     const sp = sb?.data.payload as { sceneNumber?: number | string; transition?: string; dialogue?: string } | undefined;
     // 该分镜下游的已出声音频，按类别分轨：配音（dubbing/未标类别）与音效（sfx）。
     // music 明确排除——整体配乐走合并节点的 BGM 通道，不按镜对位。
