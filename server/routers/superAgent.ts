@@ -81,6 +81,19 @@ function disposeCodeSession(key: string) {
   if (s) { try { rmSync(s.dir, { recursive: true, force: true }); } catch { /* ignore */ } codeSessions.delete(key); }
 }
 
+// buildComfyWorkflow 的「最终结果」缓存。工程智能体搭工作流是一次长请求（最多十几轮 LLM+ComfyUI
+// 真机跑，动辄数分钟）。经公网隧道时，cloudflared 对单个 HTTP 响应有 ~100s 上限，长请求会被切断，
+// 客户端拿到 network error——但服务端其实已跑完。为此：跑完后除了 HTTP 返回，同时把最终结果经 socket
+// 广播（隧道 socket 已 attach，见 tunnel 血泪教训），并在此缓存一份，供客户端 getBuildResult 兜底重载。
+interface CachedBuildResult { at: number; result: unknown }
+const buildResults = new Map<string, CachedBuildResult>();
+const BUILD_RESULT_TTL_MS = 15 * 60 * 1000;
+function cacheBuildResult(key: string, result: unknown) {
+  const now = Date.now();
+  buildResults.set(key, { at: now, result });
+  buildResults.forEach((v, k) => { if (now - v.at > BUILD_RESULT_TTL_MS) buildResults.delete(k); });
+}
+
 export const superAgentRouter = router({
   // 自然语言任务 → 自动编写并真机调通一份 ComfyUI API 格式工作流。
   // 活动日志经 socket "superagent:event" 流式推给项目房间；本 mutation 结束时返回最终产物。
@@ -94,7 +107,7 @@ export const superAgentRouter = router({
         /** 目标 ComfyUI 服务器（留空用服务端 COMFYUI_BASE_URL）。Phase 1 仅本地自建。 */
         customBaseUrl: z.string().max(512).optional(),
         model: z.string().max(64).optional(),
-        maxIterations: z.number().int().min(1).max(16).optional(),
+        maxIterations: z.number().int().min(1).max(40).optional(),
         /** 连续对话：上一版调通的 workflowJson，本轮在其基础上改。 */
         seedWorkflowJson: z.string().max(200_000).optional(),
         /** 连续对话：先前若干轮的精简历史。 */
@@ -144,7 +157,7 @@ export const superAgentRouter = router({
           task: input.task,
           tools,
           llm,
-          maxIterations: input.maxIterations ?? 12,
+          maxIterations: input.maxIterations ?? 20,
           emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
           signal,
           seedWorkflowJson: input.seedWorkflowJson,
@@ -162,7 +175,7 @@ export const superAgentRouter = router({
       });
 
       // 日志已流式推送；这里回传最终产物 + 精简日志（去掉可能很大的 data 字段）。
-      return {
+      const finalResult = {
         status: result.status,
         workflowJson: result.workflowJson,
         analysis: result.analysis,
@@ -172,6 +185,19 @@ export const superAgentRouter = router({
         iterations: result.iterations,
         log: result.log.map((e) => ({ type: e.type, iteration: e.iteration, message: e.message })),
       };
+      // 兜底：把最终结果经 socket 再送一份（隧道下 HTTP 可能已超时切断，socket 仍能送达）+ 缓存供重载。
+      // 客户端据此在 network error 后自动回填，不再丢失已跑通的工作流。
+      emitSuperAgentEvent(input.projectId, input.nodeId, { type: "result", message: "__final_result__", data: finalResult });
+      cacheBuildResult(key, finalResult);
+      return finalResult;
+    }),
+
+  // 兜底重载：客户端在长请求被隧道切断（network error）后，据此拉取服务端已跑完的最终结果。
+  getBuildResult: managerProc
+    .input(z.object({ projectId: z.number(), nodeId: z.string().max(64) }))
+    .query(({ input }) => {
+      const c = buildResults.get(jobKey(input.projectId, input.nodeId));
+      return { result: c ? c.result : null };
     }),
 
   // 是否可用（前端据此显示/隐藏「代码任务」入口）。任何 L3+ 都能查询状态。

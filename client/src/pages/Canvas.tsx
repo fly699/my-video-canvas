@@ -1350,10 +1350,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
       }
     });
     // 工程智能体（super_agent）活动日志：把服务端 emit 的事件追加到目标节点的 log（transient）。
-    socket.on("superagent:event", (msg: { nodeId: string | null; event: { type: string; iteration: number; message: string } }) => {
+    socket.on("superagent:event", (msg: { nodeId: string | null; event: { type: string; iteration: number; message: string; data?: unknown } }) => {
       if (!msg?.nodeId) return;
       const node = useCanvasStore.getState().nodes.find((n) => n.id === msg.nodeId);
       if (!node) return;
+      // 终局结果事件：把最终产物写入瞬态 pendingBuildResult，节点据此兜底回填（隧道下 HTTP 被切断时救场）。
+      if (msg.event.type === "result" && msg.event.data != null) {
+        useCanvasStore.getState().updateNodeData(msg.nodeId, { pendingBuildResult: msg.event.data }, true);
+        return;
+      }
       const prev = ((node.data.payload as { log?: { type: string; iteration: number; message: string }[] }).log) ?? [];
       const next = [...prev, { type: msg.event.type, iteration: msg.event.iteration, message: msg.event.message }].slice(-200);
       useCanvasStore.getState().updateNodeData(msg.nodeId, { log: next }, true);

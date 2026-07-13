@@ -273,6 +273,50 @@ describe("runComfyAgent — 闭环编排", () => {
     expect(describedWith).toEqual(["KSampler"]); // execute 报错点名 KSampler → 自动查其 schema
   });
 
+  it("search_resources：在完整资源清单里按关键词检索命中并喂回（突破提示名单截断）", async () => {
+    // 造一个「远超展示上限」的资源集：checkpoints 有 200 个，只有其中一个含关键词。
+    const many = Array.from({ length: 200 }, (_, i) => `ck_${i}.safetensors`);
+    many.push("flux_dev_fp8.safetensors");
+    const bigRes: ComfyResourceList = { ...RES, checkpoints: many, nodeClasses: [...RES.nodeClasses, "FluxGuidance"] };
+    const seen: string[] = [];
+    const r = await runComfyAgent({
+      task: "用 flux 出图",
+      tools: fakeTools({ listResources: async () => bigRes }),
+      llm: scriptedLLM(
+        [`{"action":"search_resources","query":"flux"}`,
+         `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`, `{"action":"execute"}`],
+        (msgs) => seen.push(msgs[msgs.length - 1].content),
+      ),
+    });
+    expect(r.status).toBe("success");
+    // 检索结果喂回，且命中被截断名单外的真实资源。
+    expect(seen.some((c) => c.includes("search_resources") && c.includes("flux_dev_fp8.safetensors") && c.includes("FluxGuidance"))).toBe(true);
+    expect(r.log.some((e) => e.type === "tool_result" && (e.data as { tool: string }).tool === "search_resources")).toBe(true);
+  });
+
+  it("search_resources：无匹配 → 明确告知没有该资源、不崩溃", async () => {
+    const seen: string[] = [];
+    const r = await runComfyAgent({
+      task: "出图",
+      tools: fakeTools(),
+      llm: scriptedLLM(
+        [`{"action":"search_resources","query":"nonexistent_model_xyz"}`,
+         `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`, `{"action":"execute"}`],
+        (msgs) => seen.push(msgs[msgs.length - 1].content),
+      ),
+    });
+    expect(r.status).toBe("success");
+    expect(seen.some((c) => c.includes("无匹配"))).toBe(true);
+  });
+
+  it("buildSystemPrompt：清单超上限时提示总数并引导 search_resources 检索完整清单", () => {
+    const many = Array.from({ length: 300 }, (_, i) => `ck_${i}.safetensors`);
+    const p = buildSystemPrompt("出图", { ...RES, checkpoints: many });
+    expect(p).toContain("300 checkpoints");           // 告知真实总数
+    expect(p).toContain("search_resources");           // 引导检索
+    expect(p).toContain("…(+");                          // 截断标记
+  });
+
   it("describe_nodes：无工具 → 提示直接 author、不崩溃", async () => {
     const seen: string[] = [];
     const r = await runComfyAgent({
