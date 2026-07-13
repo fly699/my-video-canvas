@@ -80,6 +80,16 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 规划改「submitChat 提交 → chatStatus 轮询」：长生成不再押一条 HTTP 长连接（断连/掐线/
   // 服务端慢都曾让已生成完的回复报「网络请求失败」白丢）。busy 为本地进行中状态。
   const [busy, setBusy] = useState(false);
+  // #136 规划进度可见：服务端阶段（分析模板库/模型规划中…）+ 本地每秒计时，替代干等。
+  const [planStage, setPlanStage] = useState("");
+  const [planSec, setPlanSec] = useState(0);
+  useEffect(() => {
+    if (!busy) return;
+    const startedAt = Date.now();
+    setPlanSec(0);
+    const t = setInterval(() => setPlanSec(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [busy]);
   // 服务端持久化：跨设备/清缓存后对话仍在（替代原来仅 localStorage）。
   const historyQuery = trpc.agent.getHistory.useQuery({ projectId }, { staleTime: Infinity, refetchOnWindowFocus: false });
   const saveHistoryMut = trpc.agent.saveHistory.useMutation();
@@ -402,7 +412,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const summary = buildGraphSummary("", focus.length ? { focusNodeIds: focus } : {});
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
       // 提交后台任务 → 轮询取结果（runAgentChatJob：短请求轮询，断连/掐线/重启不丢等待）。
-      const r = await runAgentChatJob(utils.client, { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined }, controller.signal);
+      setPlanStage("");
+      const r = await runAgentChatJob(
+        utils.client,
+        { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined },
+        controller.signal,
+        (p) => { if (p.stage) setPlanStage(p.stage); },
+      );
       const ops = (r.operations ?? []) as AgentOperation[];
       // 服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）——此前画布助手完全不展示，
       // 用户只见「operations 静默变少」。合并进「未应用」提示，与客户端 apply 失败一并可见。
@@ -593,8 +609,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         ))}
         {busy && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: accent }}>
-            <Loader2 size={13} className="animate-spin" /> 正在规划并修改画布…
-            <span style={{ color: "var(--c-t4)", fontSize: 11 }}>（本机模型大计划可能较久）</span>
+            <Loader2 size={13} className="animate-spin" /> {planStage || "正在规划并修改画布"}…
+            <span style={{ color: "var(--c-t4)", fontSize: 11 }}>{planSec > 0 ? `已 ${planSec}s` : ""}{planSec > 60 ? "（本机模型大计划可能较久）" : ""}</span>
             <button onClick={cancelSend} title="取消本次规划"
               style={{ marginLeft: "auto", fontSize: 11, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "2px 8px", cursor: "pointer" }}>
               取消

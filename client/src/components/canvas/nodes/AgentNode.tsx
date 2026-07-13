@@ -120,6 +120,16 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
   // 规划走「submitChat 提交 → chatStatus 轮询」（runAgentChatJob）：长生成不押 HTTP 长连接。
   const trpcUtils = trpc.useUtils();
   const [busy, setBusy] = useState(false);
+  // #136 规划进度可见：服务端阶段 + 本地计时（与画布助手窗同款）。
+  const [planStage, setPlanStage] = useState("");
+  const [planSec, setPlanSec] = useState(0);
+  useEffect(() => {
+    if (!busy) return;
+    const startedAt = Date.now();
+    setPlanSec(0);
+    const t = setInterval(() => setPlanSec(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [busy]);
   const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
   const analysisQuery = trpc.comfyTemplates.analysisList.useQuery(undefined, { staleTime: 30_000, enabled: showTemplates });
   const templatePrefs = payload.templatePrefs ?? {};
@@ -351,6 +361,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
     // Read the freshest template choice from the store (the picker may have just set it).
     const tp = ((useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as AgentNodeData | undefined)?.templatePrefs) ?? {};
     setBusy(true);
+    setPlanStage("");
     try {
       const r = await runAgentChatJob(trpcUtils.client, {
         projectId: data.projectId, message: text, history,
@@ -360,7 +371,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
         imageTemplateId: tp.imageTemplateId,
         videoTemplateId: tp.videoTemplateId,
         includeCharacterLibrary: planPrefs.tellAgentCharacters !== false,
-      });
+      }, undefined, (p) => { if (p.stage) setPlanStage(p.stage); });
       setMessages([...baseMessages, { role: "assistant", content: r.reply, operations: r.operations, plan: r.plan, dropped: r.dropped }]);
       // Duration-aware capacity check: if the plan split a target longer than the
       // model's per-shot cap into many shots, let the user choose how to proceed
@@ -748,7 +759,7 @@ export const AgentNode = memo(function AgentNode({ id, selected, data }: Props) 
           ))}
           {busy && (
             <div style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--c-t3)", padding: "7px 10px" }}>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />规划中…
+              <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />{planStage || "规划中"}…{planSec > 0 ? <span style={{ color: "var(--c-t4)", fontSize: 11 }}>已 {planSec}s</span> : null}
             </div>
           )}
         </div>
