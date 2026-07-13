@@ -42,16 +42,26 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
   const stRef = useRef({ start: 0, end: 0, duration: 0, loop: true, snap: true });
   stRef.current = { start, end, duration, loop, snap };
   // 自绘手柄拖拽（替代叠加双 range——上层 range 会永远盖住入点手柄，导致前段裁不了）。
-  const dragRef2 = useRef<"start" | "end" | null>(null);
+  // 用户反馈修复：按在选区中段 = "move" 整体平移（保持宽度）；靠近手柄才拖入/出点。
+  const dragRef2 = useRef<"start" | "end" | "move" | null>(null);
+  const moveGrabRef = useRef(0); // move 模式：按下点相对入点的时间偏移
   const posToTime = (clientX: number) => {
     const r = trackRef.current?.getBoundingClientRect();
     if (!r || !stRef.current.duration) return 0;
     return Math.max(0, Math.min(stRef.current.duration, ((clientX - r.left) / r.width) * stRef.current.duration));
   };
-  const applyDrag = (which: "start" | "end", t: number) => {
-    const v = stRef.current.snap ? Math.round(t) : t;
-    if (which === "start") setStart(Math.min(v, stRef.current.end - 0.2));
-    else setEnd(Math.min(stRef.current.duration, Math.max(v, stRef.current.start + 0.2)));
+  const applyDrag = (which: "start" | "end" | "move", t: number) => {
+    const { snap: sn, duration: d, start: s, end: e2 } = stRef.current;
+    if (which === "move") {
+      const w = e2 - s;
+      let ns = Math.max(0, Math.min(d - w, t - moveGrabRef.current));
+      if (sn) ns = Math.max(0, Math.min(d - w, Math.round(ns)));
+      setStart(ns); setEnd(ns + w);
+      return;
+    }
+    const v = sn ? Math.round(t) : t;
+    if (which === "start") setStart(Math.min(v, e2 - 0.2));
+    else setEnd(Math.min(d, Math.max(v, s + 0.2)));
   };
 
   const trimMutation = trpc.clip.trimVideo.useMutation({
@@ -86,6 +96,9 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
   }, []);
   const togglePlayRef = useRef(togglePlay); togglePlayRef.current = togglePlay;
 
+  // 变速实时作用于预览（确认时服务端 ffmpeg 也按同倍速出片，所听即所得）。
+  useEffect(() => { const v = videoRef.current; if (v) v.playbackRate = speed; }, [speed]);
+
   // 播放循环：越过出点 → 回入点（loop）或暂停。
   const onTimeUpdate = () => {
     const v = videoRef.current; if (!v) return;
@@ -105,25 +118,28 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
       const { start: s, end: e2, duration: d } = stRef.current;
       const step = e.shiftKey ? 0.01 : (e.metaKey || e.ctrlKey) ? 1 : 0.1;
       const clamp = (v: number) => Math.max(0, Math.min(d, v));
-      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCloseRef.current(); }
-      else if (e.key === "Enter") { e.preventDefault(); confirmRef.current(); }
-      else if (e.key === " ") { e.preventDefault(); togglePlayRef.current(); }
+      // 已处理的键必须同时 stopPropagation：ReactFlow 自带「方向键移动选中节点」，
+      // 之前只 preventDefault 不阻断传播 → 用户按 ←/→ 移动选区时节点也跟着跑。
+      const eat = () => { e.preventDefault(); e.stopPropagation(); };
+      if (e.key === "Escape") { eat(); onCloseRef.current(); }
+      else if (e.key === "Enter") { eat(); confirmRef.current(); }
+      else if (e.key === " ") { eat(); togglePlayRef.current(); }
       else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
+        eat();
         const delta = e.key === "ArrowLeft" ? -step : step;
         const w = e2 - s;
         const ns = clamp(s + delta);
         setStart(ns); setEnd(Math.min(d, ns + w));
       } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-        e.preventDefault();
+        eat();
         const delta = e.key === "ArrowUp" ? step : -step;
         setEnd(Math.max(s + 0.2, clamp(e2 + delta)));
       } else if (e.key === "i" || e.key === "I") {
-        e.preventDefault();
+        eat();
         const t = videoRef.current?.currentTime ?? 0;
         setStart(Math.min(t, e2 - 0.2));
       } else if (e.key === "o" || e.key === "O") {
-        e.preventDefault();
+        eat();
         const t = videoRef.current?.currentTime ?? d;
         setEnd(Math.max(t, s + 0.2));
       }
@@ -135,7 +151,7 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
 
   const pct = (v: number) => (duration > 0 ? `${(v / duration) * 100}%` : "0%");
   const KBD_ROWS: { label: string; keys: string }[] = [
-    { label: "移动选区", keys: "← →" },
+    { label: "整体平移选区", keys: "拖选区中段 / ← →" },
     { label: "扩展/收缩选区", keys: "↑ ↓" },
     { label: "设置入点/出点", keys: "I / O" },
     { label: "精确模式", keys: "按住 Shift" },
@@ -172,10 +188,12 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
       {/* 预览 + 选区轨道 */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
         <div style={{ position: "relative", width: 96, height: 54, borderRadius: 8, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+          {/* 用户反馈修复：预览不再写死 muted——声音跟随右侧「静音」开关（开=预览也无声，
+              直接听得出效果）；变速同理实时作用于预览（playbackRate 同步 effect）。 */}
           <video
             ref={videoRef}
             src={mediaFetchUrl(videoUrl)}
-            muted
+            muted={mute}
             playsInline
             preload="metadata"
             onLoadedMetadata={(e) => { const d = (e.target as HTMLVideoElement).duration || 0; setDuration(d); setStart(0); setEnd(d); }}
@@ -198,10 +216,18 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
               if (!duration) return;
               e.preventDefault(); e.stopPropagation();
               const t = posToTime(e.clientX);
-              // 就近吸附：按下点离哪个手柄近就拖哪个 → 入点/出点都能拖（修复前段裁不了）。
-              const which = Math.abs(t - stRef.current.start) <= Math.abs(t - stRef.current.end) ? "start" : "end";
+              const { start: s, end: e2 } = stRef.current;
+              const r = trackRef.current!.getBoundingClientRect();
+              const handlePx = 12; // 手柄命中半径（屏幕像素）
+              const px = (tv: number) => r.left + (tv / stRef.current.duration) * r.width;
+              // 三段式：手柄附近拖入/出点；选区中段整体平移；选区外就近拉手柄。
+              let which: "start" | "end" | "move";
+              if (Math.abs(e.clientX - px(s)) <= handlePx) which = "start";
+              else if (Math.abs(e.clientX - px(e2)) <= handlePx) which = "end";
+              else if (t > s && t < e2) { which = "move"; moveGrabRef.current = t - s; }
+              else which = Math.abs(t - s) <= Math.abs(t - e2) ? "start" : "end";
               dragRef2.current = which;
-              applyDrag(which, t);
+              if (which !== "move") applyDrag(which, t);
               (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             }}
             onPointerMove={(e) => { if (dragRef2.current) applyDrag(dragRef2.current, posToTime(e.clientX)); }}
@@ -232,7 +258,7 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
         <Gauge size={13} /> {speed}×
       </button>
       {/* #127 静音：确认时去掉原声 */}
-      <button onClick={() => setMute((v) => !v)} title={mute ? "静音（开）——确认时去掉原声" : "静音（关）——保留原声"}
+      <button onClick={() => setMute((v) => !v)} title={mute ? "静音（开）——预览与成片都去掉原声" : "静音（关）——保留原声（预览可试听）"}
         style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${mute ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)" : "var(--c-bd2)"}`, background: mute ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 14%, var(--c-surface))" : "var(--c-surface)", color: mute ? "var(--c-t1)" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         {mute ? <VolumeX size={14} /> : <Volume2 size={14} />}
       </button>
