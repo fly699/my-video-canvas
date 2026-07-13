@@ -9,7 +9,13 @@ export type AgentChatResult = Awaited<ReturnType<Client["agent"]["chat"]["mutate
  *  已生成完的结果白丢）。轮询为短请求：单次失败自动重试；连续 3 次 missing 判
  *  任务丢失（服务器重启）；signal 中止立即抛 AbortError（后台任务仍会跑完，结果丢弃）。
  *  首轮 0.8s 快查（云端模型几秒就完，不白等 2.5s），之后每 2.5s 一次，20 分钟硬上限。 */
-export async function runAgentChatJob(client: Client, input: ChatInput, signal?: AbortSignal): Promise<AgentChatResult> {
+export async function runAgentChatJob(
+  client: Client,
+  input: ChatInput,
+  signal?: AbortSignal,
+  /** #136 每次轮询到 running 时回调服务端阶段（分析模板库/模型规划中…）与已耗时，供 UI 实时显示。 */
+  onProgress?: (p: { stage?: string; elapsedMs?: number }) => void,
+): Promise<AgentChatResult> {
   // 可中断等待：abort 时立即唤醒，而不是睡满整个轮询间隔（否则点「取消」最多要干等 2.5s 才有反馈）。
   const wait = (ms: number) => new Promise<void>((res) => {
     const done = () => { signal?.removeEventListener("abort", done); clearTimeout(t); res(); };
@@ -30,7 +36,11 @@ export async function runAgentChatJob(client: Client, input: ChatInput, signal?:
     try {
       st = await client.agent.chatStatus.query({ jobId });
     } catch { continue; } // 网络抖动/服务重启中：下一轮再试
-    if (st.state === "running") continue;
+    if (st.state === "running") {
+      const run = st as { stage?: string; elapsedMs?: number };
+      onProgress?.({ stage: run.stage, elapsedMs: run.elapsedMs });
+      continue;
+    }
     if (st.state === "missing") {
       if (++missCount >= 3) throw new Error("任务已丢失（服务器可能重启过）。请重新发送。");
       continue;

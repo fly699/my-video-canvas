@@ -195,7 +195,7 @@ type AuthedCtx = TrpcContext & { user: NonNullable<TrpcContext["user"]> };
 // 长生成（本机 Claude/GPT 大计划 3~10 分钟）靠一条 HTTP 长连接等结果太脆：网络抖动/代理
 // 掐线/服务重启都会让客户端白等——真实翻车：回复已生成完，连接中途断了报「网络请求失败」。
 // 改为 submitChat 提交 → chatStatus 轮询（同图生 3D 的两端点模式），彻底不依赖长连接。
-type AgentChatJob = { userId: number; createdAt: number; done: boolean; result?: Awaited<ReturnType<typeof runAgentChat>>; error?: string };
+type AgentChatJob = { userId: number; createdAt: number; done: boolean; stage?: string; result?: Awaited<ReturnType<typeof runAgentChat>>; error?: string };
 const agentChatJobs = new Map<string, AgentChatJob>();
 const AGENT_JOB_TTL_MS = 30 * 60_000; // 完成后 30 分钟内没被取走（客户端崩了）就清理
 function sweepAgentChatJobs(): void {
@@ -203,7 +203,12 @@ function sweepAgentChatJobs(): void {
   agentChatJobs.forEach((j, k) => { if (now - j.createdAt > AGENT_JOB_TTL_MS) agentChatJobs.delete(k); });
 }
 
-async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput>) {
+// #136 规划提速：非 comfyOnly 的模板增量分析改为后台执行（不阻塞规划链路）。
+// 在飞守卫：多轮对话/多用户并发时不重复起分析（runLibraryAnalysis 本身是增量的，
+// 但并发两份会对同一批新模板各跑一遍 LLM 分析，白花钱）。
+let libraryAnalysisInFlight: Promise<unknown> | null = null;
+
+async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput>, onStage?: (stage: string) => void) {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       // 自定义模型走自带 key 体系：门控收敛到 invokeLLMWithKie（自带 key 放行 / env 兜底门控）。
       if (!isCustomLLMModel(input.model)) await assertLLMAllowed(ctx, input.model);
@@ -213,14 +218,21 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
       // 上下文总量预算动态分配（正文永不截断），避免大输入单次生成撞 LLM fetch 超时。
       const ctxBudget = allocateContextBudget(input);
 
-      // Before planning, refresh template knowledge: incrementally analyze any
-      // newly-added / changed templates (capped so a turn isn't blocked on a big
-      // backlog), then read the latest analyses to feed the model. Best-effort.
       // Refresh template knowledge before planning. comfyOnly REQUIRES the full
       // library be analyzed (otherwise the agent only "knows" a partial subset and
-      // picks the wrong templates), so analyze many per turn there; results are
-      // cached so only new/changed templates re-run on later turns.
-      try { await runLibraryAnalysis(ctx, model, { max: input.comfyOnly ? 40 : 6 }); } catch { /* non-fatal */ }
+      // picks the wrong templates), so there we still await (many per turn, cached).
+      // #136 非 comfyOnly：分析改后台跑、绝不阻塞规划——此前每逢新增/变更模板，规划前要
+      // 串行等最多 6 次 LLM 分析调用（实测数十秒到分钟级），这是「规划太慢」的头号元凶。
+      // 本轮直接用现有分析结果（新模板下一轮自然可见），后台增量分析继续补齐。
+      if (input.comfyOnly) {
+        onStage?.("分析模板库");
+        try { await runLibraryAnalysis(ctx, model, { max: 40 }); } catch { /* non-fatal */ }
+      } else if (!libraryAnalysisInFlight) {
+        libraryAnalysisInFlight = runLibraryAnalysis(ctx, model, { max: 6 })
+          .catch((e) => console.warn("[agent] bg template analysis failed:", e instanceof Error ? e.message : e))
+          .finally(() => { libraryAnalysisInFlight = null; });
+      }
+      onStage?.("读取画布与知识");
       let templateSection = "";
       const validTemplateIds = new Set<number>();
       let hasImageTemplate = false;
@@ -393,7 +405,9 @@ ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.
       // response_format json_object — the default model is Claude (proxied), where
       // the OpenAI-style flag isn't reliably supported; the robust parse below
       // handles fences/prose instead.
+      onStage?.("模型规划中");
       const response = await invokeLLMWithKie(ctx, { messages, model, maxTokens: ctxBudget.maxTokens });
+      onStage?.("整理规划结果");
       const text = extractTextContent(response);
 
       let reply = text.trim();
@@ -511,7 +525,7 @@ export const agentRouter = router({
       const jobId = `acj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
       const job: AgentChatJob = { userId: ctx.user.id, createdAt: Date.now(), done: false };
       agentChatJobs.set(jobId, job);
-      void runAgentChat(ctx, input)
+      void runAgentChat(ctx, input, (s) => { job.stage = s; })
         .then((r) => { job.result = r; job.done = true; })
         .catch((e) => { job.error = e instanceof Error ? e.message : String(e); job.done = true; });
       return { jobId };
@@ -524,7 +538,8 @@ export const agentRouter = router({
       sweepAgentChatJobs(); // 轮询频繁，顺带清理过期任务（不只依赖 submit 时清扫）
       const j = agentChatJobs.get(input.jobId);
       if (!j || j.userId !== ctx.user.id) return { state: "missing" as const };
-      if (!j.done) return { state: "running" as const };
+      // #136 running 时带上阶段与耗时，前端等待行显示「模型规划中 · 已 Ns」而非干等。
+      if (!j.done) return { state: "running" as const, stage: j.stage, elapsedMs: Date.now() - j.createdAt };
       agentChatJobs.delete(input.jobId);
       return j.error
         ? { state: "error" as const, error: j.error }
