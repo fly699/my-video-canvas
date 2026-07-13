@@ -3233,6 +3233,49 @@ export async function deleteComfyTemplateAnalysis(templateId: number): Promise<v
   await db.delete(comfyTemplateAnalysis).where(eq(comfyTemplateAnalysis.templateId, templateId));
 }
 
+// ── #116 教程截图自定义（slug→url）────────────────────────────────────────────
+// 教程正文只引用 slug；管理员可随时上传替换（存 MinIO 后把 URL 记到这里），
+// 前端加载顺序 = 自定义 URL → 内置默认图（/tutorial/<slug>.png 构建产物）。
+// 自愈建表（CREATE TABLE IF NOT EXISTS，MySQL 8 兼容）；dev 无库时内存兜底。
+const _devTutorialImages = new Map<string, string>();
+let _tutorialImagesReady: Promise<void> | null = null;
+async function ensureTutorialImagesTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<void> {
+  if (_tutorialImagesReady) return _tutorialImagesReady;
+  _tutorialImagesReady = (async () => {
+    await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`tutorial_images\` (
+      \`slug\` VARCHAR(128) PRIMARY KEY,
+      \`url\` TEXT NOT NULL,
+      \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`));
+  })().catch((e) => { _tutorialImagesReady = null; throw e; });
+  return _tutorialImagesReady;
+}
+
+export async function listTutorialImages(): Promise<Record<string, string>> {
+  const db = await getDb();
+  if (!db) return Object.fromEntries(_devTutorialImages);
+  await ensureTutorialImagesTable(db);
+  const rows = await db.execute(sql.raw("SELECT `slug`, `url` FROM `tutorial_images`"));
+  const out: Record<string, string> = {};
+  for (const r of rows[0] as unknown as { slug: string; url: string }[]) out[r.slug] = r.url;
+  return out;
+}
+
+export async function setTutorialImage(slug: string, url: string): Promise<void> {
+  const db = await getDb();
+  if (!db) { _devTutorialImages.set(slug, url); return; }
+  await ensureTutorialImagesTable(db);
+  await db.execute(sql`INSERT INTO tutorial_images (slug, url) VALUES (${slug}, ${url})
+    ON DUPLICATE KEY UPDATE url = VALUES(url)`);
+}
+
+export async function deleteTutorialImage(slug: string): Promise<void> {
+  const db = await getDb();
+  if (!db) { _devTutorialImages.delete(slug); return; }
+  await ensureTutorialImagesTable(db);
+  await db.execute(sql`DELETE FROM tutorial_images WHERE slug = ${slug}`);
+}
+
 // ── ComfyUI 压测历史 / 模板 ───────────────────────────────────────────────────
 // 历史：任务结束（completed/cancelled/failed）由 comfyStress core 自动落库。
 // dev bypass（无 DB）时静默跳过——压测页本就是管理员专属，dev 下不可达。

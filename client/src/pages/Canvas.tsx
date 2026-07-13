@@ -2499,6 +2499,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 }}><MonitorUp className="w-3.5 h-3.5 mr-2" /> 副屏打开</DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => setShowHelp((v) => !v)}><HelpCircle className="w-3.5 h-3.5 mr-2" /> 操作指南</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => window.open("/tutorial", "_blank")}><HelpCircle className="w-3.5 h-3.5 mr-2" /> 详细教程</DropdownMenuItem>
               <DropdownMenuItem onClick={() => startGuide(0)}><Compass className="w-3.5 h-3.5 mr-2" /> 新手导览</DropdownMenuItem>
               <DropdownMenuItem onClick={() => { resetCanvasTips(); toast.success("已重新开启操作小贴士"); }}><Lightbulb className="w-3.5 h-3.5 mr-2" /> 重新开启小贴士</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowNotifySettings(true)}><Bell className="w-3.5 h-3.5 mr-2" /> 产物推送设置</DropdownMenuItem>
