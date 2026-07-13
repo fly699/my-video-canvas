@@ -60,6 +60,16 @@ export function aspectToComfyWH(aspect?: string): { width?: number; height?: num
     : { width: 512, height: r64(512 * rh / rw) };
 }
 
+/** 节点当前实际尺寸：顶层 width/height（NodeResizer 手动缩放写这里，渲染优先级最高）
+ *  → style（创建/加载时写这里）→ 节点类型默认值。#120：此前只读 style，手动缩放过的
+ *  节点在群组测量/适应里用的仍是旧尺寸。 */
+function nodeSizeOf(n: CanvasNode): { w: number; h: number } {
+  const cfg = getNodeConfig(n.data.nodeType);
+  const w = (typeof n.width === "number" ? n.width : typeof n.style?.width === "number" ? n.style.width : cfg.defaultWidth) || 280;
+  const h = (typeof n.height === "number" ? n.height : typeof n.style?.height === "number" ? n.style.height : (cfg.defaultHeight ?? 200)) || 200;
+  return { w, h };
+}
+
 function getSnapshotKey(projectId: number | null) {
   return `ai-video-canvas:snapshots:${projectId ?? "default"}`;
 }
@@ -200,6 +210,8 @@ interface CanvasStore {
   deleteGroupWithMembers: (groupId: string) => string[];
   /** 重新计算群组容器边界以包裹其当前成员（一键自适应）。 */
   fitGroupToMembers: (groupId: string) => void;
+  /** #121 组内成员自动排列：横向一排 / 垂直一列 / 宫格，排完底框自适应。 */
+  arrangeGroupMembers: (groupId: string, mode: "row" | "column" | "grid") => void;
   /** 折叠/展开群组：折叠时把容器高度缩成标题小条并记下原高度，展开时恢复。 */
   toggleGroupCollapsed: (groupId: string) => void;
   /** 整体复制群组：连同成员节点 + 成员间内部连线一起克隆（新 id、整体偏移），返回新群组 id。 */
@@ -708,9 +720,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     if (members.length < 2) return null;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of members) {
-      const cfg = getNodeConfig(n.data.nodeType);
-      const w = (typeof n.style?.width === "number" ? n.style.width : cfg.defaultWidth) || 280;
-      const h = (typeof n.style?.height === "number" ? n.style.height : (cfg.defaultHeight ?? 200)) || 200;
+      const { w, h } = nodeSizeOf(n); // #120 顶层优先，含手动缩放后的实际尺寸
       minX = Math.min(minX, n.position.x);
       minY = Math.min(minY, n.position.y);
       maxX = Math.max(maxX, n.position.x + w);
@@ -797,9 +807,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     if (members.length === 0) return;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of members) {
-      const cfg = getNodeConfig(n.data.nodeType);
-      const w = (typeof n.style?.width === "number" ? n.style.width : cfg.defaultWidth) || 280;
-      const h = (typeof n.style?.height === "number" ? n.style.height : (cfg.defaultHeight ?? 200)) || 200;
+      const { w, h } = nodeSizeOf(n);
       minX = Math.min(minX, n.position.x);
       minY = Math.min(minY, n.position.y);
       maxX = Math.max(maxX, n.position.x + w);
@@ -809,9 +817,71 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const rect = { x: minX - PAD, y: minY - PAD - HEADER, width: (maxX - minX) + PAD * 2, height: (maxY - minY) + PAD * 2 + HEADER };
     set((state) => ({
       ...(get()._suppressHistory ? {} : pushHistory(state)),
+      // #120 同步写顶层 width/height：手动缩放过的组顶层已有值且渲染优先级更高，
+      // 只写 style 的程序化改尺寸会被旧顶层值压住不生效。
       nodes: state.nodes.map((n) => (n.id === groupId
-        ? { ...n, position: { x: rect.x, y: rect.y }, style: { ...n.style, width: rect.width, height: rect.height } }
+        ? { ...n, position: { x: rect.x, y: rect.y }, width: rect.width, height: rect.height, style: { ...n.style, width: rect.width, height: rect.height } }
         : n)),
+      isDirty: true,
+    }));
+  },
+
+  // #121 群组成员自动排列：横向一排 / 垂直一列 / 宫格。按阅读序（先上后下、再左后右）
+  // 保持成员相对顺序直觉；排完底框自适应包住所有成员（同 fitGroupToMembers 的 PAD/HEADER）。
+  arrangeGroupMembers: (groupId, mode) => {
+    const all = get().nodes;
+    const grp = all.find((n) => n.id === groupId && n.data.nodeType === "group");
+    if (!grp) return;
+    const childIds = (grp.data.payload as GroupNodeData).childIds ?? [];
+    const members = all.filter((n) => childIds.includes(n.id) && n.data.nodeType !== "group");
+    if (members.length === 0) return;
+    const sorted = [...members].sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
+    const GAP = 40, PAD = 36, HEADER = 44;
+    const originX = grp.position.x + PAD;
+    const originY = grp.position.y + HEADER + PAD;
+    const posMap = new Map<string, { x: number; y: number }>();
+    if (mode === "row") {
+      let x = originX;
+      for (const n of sorted) { posMap.set(n.id, { x, y: originY }); x += nodeSizeOf(n).w + GAP; }
+    } else if (mode === "column") {
+      let y = originY;
+      for (const n of sorted) { posMap.set(n.id, { x: originX, y }); y += nodeSizeOf(n).h + GAP; }
+    } else {
+      // 宫格：≈正方形列数；每列取最宽、每行取最高对齐，保证不重叠
+      const cols = Math.max(1, Math.ceil(Math.sqrt(sorted.length)));
+      const colW: number[] = [], rowH: number[] = [];
+      sorted.forEach((n, i) => {
+        const { w, h } = nodeSizeOf(n);
+        const c = i % cols, r = Math.floor(i / cols);
+        colW[c] = Math.max(colW[c] ?? 0, w);
+        rowH[r] = Math.max(rowH[r] ?? 0, h);
+      });
+      const colX: number[] = []; let cx = originX;
+      for (let c = 0; c < cols; c++) { colX[c] = cx; cx += (colW[c] ?? 0) + GAP; }
+      const rowY: number[] = []; let cy = originY;
+      for (let r = 0; r < rowH.length; r++) { rowY[r] = cy; cy += (rowH[r] ?? 0) + GAP; }
+      sorted.forEach((n, i) => posMap.set(n.id, { x: colX[i % cols], y: rowY[Math.floor(i / cols)] }));
+    }
+    let maxX = -Infinity, maxY = -Infinity;
+    for (const n of sorted) {
+      const p = posMap.get(n.id)!;
+      const { w, h } = nodeSizeOf(n);
+      maxX = Math.max(maxX, p.x + w);
+      maxY = Math.max(maxY, p.y + h);
+    }
+    const width = (maxX - grp.position.x) + PAD;
+    const height = (maxY - grp.position.y) + PAD;
+    set((state) => ({
+      ...(get()._suppressHistory ? {} : pushHistory(state)),
+      nodes: state.nodes.map((n) => {
+        if (n.id === groupId) {
+          const gp = n.data.payload as GroupNodeData;
+          // 排列隐含展开（折叠小条上排列无意义），同步写顶层+style（同 fitGroupToMembers）
+          return { ...n, width, height, style: { ...n.style, width, height }, data: { ...n.data, payload: { ...gp, collapsed: false } } };
+        }
+        const p = posMap.get(n.id);
+        return p ? { ...n, position: p } : n;
+      }),
       isDirty: true,
     }));
   },
@@ -824,12 +894,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         if (n.id !== groupId || n.data.nodeType !== "group") return n;
         const gp = n.data.payload as GroupNodeData;
         const collapsing = !(gp.collapsed ?? false);
-        const curH = typeof n.style?.height === "number" ? n.style.height : 200;
+        // #120 顶层优先：手动缩放过的组高度在顶层，只读 style 会把旧高度当展开高度记下
+        const curH = typeof n.height === "number" ? n.height : typeof n.style?.height === "number" ? n.style.height : 200;
         if (collapsing) {
-          return { ...n, style: { ...n.style, height: COLLAPSED_H }, data: { ...n.data, payload: { ...gp, collapsed: true, expandedHeight: curH } } };
+          return { ...n, height: COLLAPSED_H, style: { ...n.style, height: COLLAPSED_H }, data: { ...n.data, payload: { ...gp, collapsed: true, expandedHeight: curH } } };
         }
         const restore = gp.expandedHeight ?? 200;
-        return { ...n, style: { ...n.style, height: restore }, data: { ...n.data, payload: { ...gp, collapsed: false } } };
+        return { ...n, height: restore, style: { ...n.style, height: restore }, data: { ...n.data, payload: { ...gp, collapsed: false } } };
       }),
       isDirty: true,
     }));
