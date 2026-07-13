@@ -432,11 +432,11 @@ describe("applyAgentOperations 快速设置落地", () => {
     expect(payloadOf("video_task").provider).toBe("kie_grok_i2v");
   });
 
-  it("LLM 已显式选模型时不覆盖", () => {
+  it("#145 用户锁定强制覆盖 LLM 自选（曾把锁定的 grok 落成 LLM 自写的 GPT Image）", () => {
     applyAgentOperations([
       { op: "create", nodeType: "video_task", tempId: "vt", payload: { prompt: "p", provider: "kie_veo31_fast" } },
     ], { x: 0, y: 0 }, { videoProvider: "kie_grok_i2v" });
-    expect(payloadOf("video_task").provider).toBe("kie_veo31_fast");
+    expect(payloadOf("video_task").provider).toBe("kie_grok_i2v");
   });
 
   it("生成节点白名单：清单外的生成类 create 判失败，非生成节点不受限", () => {

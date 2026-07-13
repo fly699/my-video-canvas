@@ -371,14 +371,15 @@ export function applyAgentOperations(
               if (Object.keys(add).length) payload = { ...(payload ?? {}), ...add };
             }
           }
-          // 快速设置指定模型：fill-only 写入新建生成节点（LLM 显式选的模型优先）。
-          if (op.nodeType === "image_gen" && opts.imageModel && !(payload as Record<string, unknown> | undefined)?.model) {
+          // 快速设置指定模型：强制覆盖新建生成节点（#145 此前是 fill-only「LLM 自选优先」，
+          // 用户锁定的 grok 被 LLM 自写的 GPT Image 压掉——用户显式锁定必须赢过模型输出）。
+          if (op.nodeType === "image_gen" && opts.imageModel) {
             payload = { ...(payload ?? {}), model: opts.imageModel };
           }
-          if (op.nodeType === "storyboard" && opts.imageModel && !(payload as Record<string, unknown> | undefined)?.imageModel) {
+          if (op.nodeType === "storyboard" && opts.imageModel) {
             payload = { ...(payload ?? {}), imageModel: opts.imageModel };
           }
-          if (op.nodeType === "video_task" && opts.videoProvider && !(payload as Record<string, unknown> | undefined)?.provider) {
+          if (op.nodeType === "video_task" && opts.videoProvider) {
             payload = { ...(payload ?? {}), provider: opts.videoProvider };
           }
           // video_task 的 duration 在智能体目录是【顶层字段】，但节点实际读 payload.params.duration

@@ -1010,7 +1010,18 @@ export const BaseNode = memo(function BaseNode({
             boxShadow: "var(--c-node-shadow-hover)",
           }}
         >
-            {onRun && (
+            {onRun && (nodeRunning && onCancelGenerate ? (
+              // #143 生成中标题栏按钮不再是「禁用的转圈」——直接变成可点的「放弃等待/取消」
+              //（用户实报：生成中点重新生成无效、找不到取消入口）。
+              <button
+                onClick={(e) => { e.stopPropagation(); onCancelGenerate(); }}
+                title="放弃等待 / 取消生成"
+                className="studio-toolbtn flex items-center justify-center w-7 h-7 rounded-lg"
+                style={{ background: "oklch(0.62 0.20 25 / 0.16)", color: "oklch(0.62 0.20 25)", border: "none", cursor: "pointer" }}
+              >
+                <X size={13} />
+              </button>
+            ) : (
               <button
                 onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
                 disabled={!canRun || nodeRunning}
@@ -1025,7 +1036,7 @@ export const BaseNode = memo(function BaseNode({
               >
                 {nodeRunning ? <Loader2 size={13} className="animate-spin" /> : (hasResult ? <RefreshCw size={13} /> : <Play size={13} />)}
               </button>
-            )}
+            ))}
             {/* download — the one genuinely non-duplicate top-toolbar action (the title
                 bar has no download). Gated by downloadMedia's authorization gate; the
                 server still enforces. Only shown when the node has a result media URL. */}
@@ -1302,18 +1313,30 @@ export const BaseNode = memo(function BaseNode({
                 background: "var(--c-surface)", color: "var(--c-t2)", cursor: "pointer", boxShadow: "0 3px 12px oklch(0 0 0 / 0.4)" }}
             ><Download size={14} /></button>
           )}
-          <button
-            onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
-            disabled={!canRun || nodeRunning}
-            title={nodeRunning ? "生成中…" : (hasResult ? "重新生成" : "运行")}
-            style={{ width: 30, height: 30, borderRadius: "50%", border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-              background: !canRun || nodeRunning ? "var(--c-surface)" : "#fff",
-              color: !canRun || nodeRunning ? "var(--c-t4)" : "#111",
-              cursor: !canRun || nodeRunning ? "not-allowed" : "pointer",
-              boxShadow: "0 3px 12px oklch(0 0 0 / 0.4)" }}
-          >
-            {nodeRunning ? <Loader2 size={14} className="animate-spin" /> : (hasResult ? <RefreshCw size={14} /> : <Play size={14} />)}
-          </button>
+          {nodeRunning && onCancelGenerate ? (
+            // #143 生成中 = 可点的「放弃等待/取消」（红），不再是禁用的转圈。
+            <button
+              onClick={(e) => { e.stopPropagation(); onCancelGenerate(); }}
+              title="放弃等待 / 取消生成"
+              style={{ width: 30, height: 30, borderRadius: "50%", border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+                background: "oklch(0.62 0.20 25 / 0.9)", color: "#fff", cursor: "pointer", boxShadow: "0 3px 12px oklch(0 0 0 / 0.4)" }}
+            >
+              <X size={14} />
+            </button>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
+              disabled={!canRun || nodeRunning}
+              title={nodeRunning ? "生成中…" : (hasResult ? "重新生成" : "运行")}
+              style={{ width: 30, height: 30, borderRadius: "50%", border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+                background: !canRun || nodeRunning ? "var(--c-surface)" : "#fff",
+                color: !canRun || nodeRunning ? "var(--c-t4)" : "#111",
+                cursor: !canRun || nodeRunning ? "not-allowed" : "pointer",
+                boxShadow: "0 3px 12px oklch(0 0 0 / 0.4)" }}
+            >
+              {nodeRunning ? <Loader2 size={14} className="animate-spin" /> : (hasResult ? <RefreshCw size={14} /> : <Play size={14} />)}
+            </button>
+          )}
         </div>
       )}
 
@@ -1691,10 +1714,13 @@ export const BaseNode = memo(function BaseNode({
           </div>
         )}
         {runStatus === "failed" && (
+          // #143 上次「运行全部」失败的徽标：用户会误当取消按钮点——让它真的可点（=重试），
+          // title 讲清语义。
           <div
             className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full"
-            style={{ background: "oklch(0.62 0.22 25 / 0.18)", border: "1px solid oklch(0.62 0.22 25 / 0.55)" }}
-            title="失败"
+            style={{ background: "oklch(0.62 0.22 25 / 0.18)", border: "1px solid oklch(0.62 0.22 25 / 0.55)", cursor: onRun && canRun ? "pointer" : "default" }}
+            title={onRun && canRun ? "上次运行失败——点击重试" : "上次运行失败"}
+            onClick={(e) => { if (onRun && canRun && !nodeRunning) { e.stopPropagation(); onRun(); } }}
           >
             <X className="w-3 h-3" style={{ color: "oklch(0.62 0.22 25)" }} />
           </div>
@@ -1792,7 +1818,7 @@ export const BaseNode = memo(function BaseNode({
             <button
               className="nodrag"
               onClick={(e) => { e.stopPropagation(); onCancelGenerate(); }}
-              title="取消生成（中断本地 ComfyUI 推理）"
+              title="取消生成 / 放弃等待"
               style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: "1px 7px", borderRadius: 6, background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", cursor: "pointer", lineHeight: "14px" }}
             >
               取消
