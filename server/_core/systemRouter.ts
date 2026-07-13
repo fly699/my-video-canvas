@@ -26,8 +26,15 @@ export const systemRouter = router({
     devtoolsBlock: await isDevtoolsBlockEnabled(),
   })),
 
-  // ── #116 教程截图自定义：正文引用 slug，管理员可随时替换（前端优先取此处 URL）──
-  tutorialImages: protectedProcedure.query(async () => ({ images: await listTutorialImages() })),
+  // ── #116 教程截图自定义：正文引用 slug，管理员可随时替换（前端优先取此处 URL）。
+  // images 保持 Record<slug, url>（教程页消费不变）；updatedAt 供管理后台总表显示更换时间。──
+  tutorialImages: protectedProcedure.query(async () => {
+    const rich = await listTutorialImages();
+    const images: Record<string, string> = {};
+    const updatedAt: Record<string, string | null> = {};
+    for (const [slug, v] of Object.entries(rich)) { images[slug] = v.url; updatedAt[slug] = v.updatedAt; }
+    return { images, updatedAt };
+  }),
   setTutorialImage: adminProcedure
     .input(z.object({
       slug: z.string().regex(/^[a-z0-9][a-z0-9-]{0,118}[a-z0-9]$/, "slug 仅限小写字母/数字/连字符"),

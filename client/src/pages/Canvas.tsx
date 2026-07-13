@@ -2833,6 +2833,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
               markGestureSelected(useCanvasStore.getState().nodes.filter((n) => n.selected).map((n) => n.id));
             }}
             onNodeClick={(_, node) => clearGestureSelected(node.id)}
+            onNodeDoubleClick={(e, node) => {
+              // #123 双击节点=快速聚焦：平滑缩放并居中该节点。避开交互控件内的双击
+              //（输入框/按钮/视频等有自身双击语义），群组不聚焦（组标题双击=改名）。
+              if ((node as CanvasNode).data.nodeType === "group") return;
+              const t = e.target as HTMLElement;
+              if (t.closest('input, textarea, select, button, video, audio, a, [contenteditable="true"]')) return;
+              void reactFlow.fitView({ nodes: [{ id: node.id }], duration: 420, padding: 0.25, maxZoom: 1.25 });
+            }}
             onPaneClick={() => clearGestureSelected()}
             panOnDrag={isMobile ? true : [1, 2]}
             panOnScroll
