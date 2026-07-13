@@ -2,7 +2,9 @@
 // 实时点数消耗预估 — 单一数据源
 // ---------------------------------------------------------------------------
 // 依据 docs/poyo-credits-pricing.md（Poyo，单位 cr，1 cr = $0.005）与
-// docs/kie-pricing.md（kie，单位 点）人工整理的计费规则，按「当前所选模型 +
+// docs/kie-pricing.md（kie，单位 点）人工整理的计费规则；2026-07 起以
+// docs/incremental-models/2026-07-round2-final.json 为最新权威价（第 150 轮全量核对），
+// 按「当前所选模型 +
 // 已设置参数」计算预估消耗，显示在各节点的生成按钮上，并随生成请求传给后端
 // 计入管理员日志。仅供参考——实际扣费以平台账单为准；价格会随上游调整，
 // 改价时同步更新这里与 models.ts 的 costLabel/costNote。
@@ -42,9 +44,10 @@ const on = (p: P, k: string): boolean => p[k] === true;
 /** 每个视频模型的计费规则（provider value → 估算函数）。未列出 = 无法预估。 */
 const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   // ── Poyo（cr）──
-  poyo_sora2_pro:          () => cr(100),
+  poyo_sora2_pro:          () => cr(100), // sora-2-pro 已不在 round2 文档，沿用旧价
   poyo_sora2_official:     (p) => cr(12 * num(p, "duration", 8)),
-  poyo_sora2_pro_official: () => cr(100),
+  // round2 文档：sora-2-pro-official 按秒×分辨率（720p 48 / 1024p 80 / 1080p 112 cr/s）
+  poyo_sora2_pro_official: (p) => cr(({ "720p": 48, "1024p": 80, "1080p": 112 }[str(p, "resolution", "720p")] ?? 48) * num(p, "duration", 8)),
   poyo_kling21_std:   (p) => cr(6 * num(p, "duration", 5)),
   poyo_kling21_pro:   (p) => cr(11 * num(p, "duration", 5)),
   poyo_kling25_turbo: (p) => cr(8.4 * num(p, "duration", 5)),
@@ -67,8 +70,16 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   poyo_wan22_t2v_fast: (p) => cr(str(p, "resolution", "720p") === "480p" ? 6 : 12),
   poyo_wan22_i2v_fast: (p) => cr(str(p, "resolution", "720p") === "480p" ? 6 : 12),
   poyo_seedance1_pro:  (p) => cr((str(p, "resolution", "720p") === "1080p" ? 43 : 21) * (num(p, "duration", 5) / 5)),
-  poyo_seedance15_pro: (p) => cr(({ "480p": 9, "720p": 16, "1080p": 32 }[str(p, "resolution", "720p")] ?? 16) * (num(p, "duration", 5) / 5), true),
-  poyo_seedance:       (p) => cr(({ "480p": 10, "720p": 20, "1080p": 45 }[str(p, "resolution", "720p")] ?? 20) * num(p, "duration", 5)),
+  // Seedance 1.5 Pro（round2 文档）：整条计价，按 分辨率×时长档(4/8/12s)，音频 ×2；已无 1080p 档。
+  poyo_seedance15_pro: (p) => {
+    const res = str(p, "resolution", "720p") === "480p" ? "480p" : "720p";
+    const dur = num(p, "duration", 4);
+    const d = dur >= 12 ? 12 : dur >= 8 ? 8 : 4;
+    const base = { "480p": { 4: 9, 8: 18, 12: 21 }, "720p": { 4: 16, 8: 32, 12: 42 } }[res][d];
+    return cr(base * (on(p, "generate_audio") ? 2 : 1), d !== dur);
+  },
+  // Seedance 2（round2 文档「无视频输入」口径——节点只送文/图）：480p 20 / 720p 40 / 1080p 90 / 4K 200 cr·s
+  poyo_seedance:       (p) => cr(({ "480p": 20, "720p": 40, "1080p": 90, "4K": 200, "4k": 200 }[str(p, "resolution", "720p")] ?? 40) * num(p, "duration", 5)),
   poyo_hailuo02:     (p) => cr(7 * num(p, "duration", 6)),
   poyo_hailuo02_pro: () => cr(65),
   poyo_hailuo23:     (p) => cr(str(p, "resolution", "768p") === "1080p" ? 60 : (num(p, "duration", 6) === 6 ? 35 : 70), true),
@@ -76,6 +87,17 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   poyo_happy_horse_11: (p) => cr((str(p, "resolution", "720p") === "1080p" ? 28 : 22) * num(p, "duration", 5)),
   poyo_grok_video:   (p) => cr(num(p, "duration", 6) <= 6 ? 30 : 40),
   poyo_runway45:     (p) => cr(15 * num(p, "duration", 5)),
+  // Veo 3.1 官方版（round2 文档 veo-3-1-official 三档：基础档→Fast、(pro)→Quality、(lite)→Lite；
+  // 档位对应经官方原价交叉核对：Fast $0.10-0.15/s、Quality(pro) $0.40/s、Lite $0.03-0.05/s）。
+  poyo_veo_fast_official: (p) => {
+    const k4 = /4k/i.test(str(p, "resolution", "720p"));
+    return cr((k4 ? (on(p, "sound") ? 35 : 30) : (on(p, "sound") ? 15 : 10)) * num(p, "duration", 8), true);
+  },
+  poyo_veo_quality_official: (p) => {
+    const k4 = /4k/i.test(str(p, "resolution", "720p"));
+    return cr((k4 ? (on(p, "sound") ? 72 : 48) : (on(p, "sound") ? 48 : 24)) * num(p, "duration", 8), true);
+  },
+  poyo_veo_lite_official: (p) => cr((on(p, "sound") ? 6 : 3.6) * num(p, "duration", 8), true),
   // ── kie（点）──
   kie_veo31_quality: () => pt(250, true), // 720p 250 / 1080p 255 / 4K 380；分辨率由上游自动，取最常用档
   kie_veo31_fast:    () => pt(60, true),
@@ -200,10 +222,11 @@ export function estimateImageCost(model: string, count = 1, opts?: { resolution?
 }
 
 // ── 音频 ─────────────────────────────────────────────────────────────────────
-/** 音乐生成：Suno（Poyo 20 cr / kie 12 点）按次。MiniMax 未公布 → null。 */
+/** 音乐生成：Suno（Poyo 20 cr / kie 12 点）与 MiniMax Music 2.6（round2 文档 20 cr/次）按次。 */
 export function estimateMusicCost(model: string): CostEstimate {
   if (model.startsWith("kie_")) return pt(12);
   if (/suno/i.test(model)) return cr(20);
+  if (model === "minimax-music-2.6") return cr(20);
   return null;
 }
 

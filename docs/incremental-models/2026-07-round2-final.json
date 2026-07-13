@@ -1,0 +1,3978 @@
+[
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/seedream/5-pro-text-to-image.md",
+    "slug": "/market/seedream/5-pro-text-to-image",
+    "title": "5. Pro Text to Image",
+    "model_id": "5-pro-text-to-image",
+    "endpoint": "/v1/image/text-to-image",
+    "operation_id": "textToImage",
+    "top_level_fields": [
+      "prompt",
+      "negative_prompt",
+      "width",
+      "height",
+      "num_inference_steps",
+      "guidance_scale",
+      "seed",
+      "batch_size",
+      "sampler",
+      "nsfw_checker"
+    ],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "seedream 5 Pro, input image, First image free image ByteDance",
+        "credits": "0.5 per image",
+        "ourPrice": "$0.0025",
+        "officialPrice": "$0.003",
+        "discount": "−16.7% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, text-to-image, 2K image ByteDance",
+        "credits": "14 per image",
+        "ourPrice": "$0.07",
+        "officialPrice": "$0.09",
+        "discount": "−22.2% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, text-to-image, 1K image ByteDance",
+        "credits": "7 per image",
+        "ourPrice": "$0.035",
+        "officialPrice": "$0.045",
+        "discount": "−22.2% ↓"
+      }
+    ],
+    "pricing_match": "seedream 5 Pro",
+    "pricing_match_score": 0.85,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/seedream/5-pro-image-to-image.md",
+    "slug": "/market/seedream/5-pro-image-to-image",
+    "title": "Seedream5.0 Pro - Image to Image",
+    "model_id": "5-pro-image-to-image",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "seedream 5 Pro, image-to-image, 2K image ByteDance",
+        "credits": "14 per image",
+        "ourPrice": "$0.07",
+        "officialPrice": "$0.09",
+        "discount": "−22.2% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, image-to-image, 1K image ByteDance",
+        "credits": "7 per image",
+        "ourPrice": "$0.035",
+        "officialPrice": "$0.045",
+        "discount": "−22.2% ↓"
+      }
+    ],
+    "pricing_match": "seedream 5 Pro",
+    "pricing_match_score": 0.85,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/google/nano-banana-2-lite.md",
+    "slug": "/market/google/nano-banana-2-lite",
+    "title": "Google - Nano Banana 2 Lite",
+    "model_id": "nano-banana-2-lite",
+    "endpoint": "/api/v1/jobs/createTask",
+    "operation_id": "nano-banana-2-lite",
+    "top_level_fields": [
+      "model",
+      "callBackUrl",
+      "input"
+    ],
+    "input_fields": [
+      "image_urls",
+      "prompt",
+      "aspect_ratio"
+    ],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "nano-banana-2-lite, 1k image Google",
+        "credits": "4 per image",
+        "ourPrice": "$0.02",
+        "officialPrice": "$0.0336",
+        "discount": "−40.5% ↓"
+      }
+    ],
+    "pricing_match": "nano-banana-2-lite",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/chat/gpt-5-6-luna.md",
+    "slug": "/market/chat/gpt-5-6-luna",
+    "title": "GPT 5.6 Luna",
+    "model_id": "gpt-5-6-luna",
+    "endpoint": "/codex/v1/responses",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "gpt-5.6-luna, chat, Cache Writes chat OpenAI",
+        "credits": "70 per million tokens",
+        "ourPrice": "$0.35",
+        "officialPrice": "$1.25",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-luna, chat, Output chat OpenAI",
+        "credits": "336 per million tokens",
+        "ourPrice": "$1.68",
+        "officialPrice": "$6",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-luna, chat, Cached Input chat OpenAI",
+        "credits": "5.6 per million tokens",
+        "ourPrice": "$0.028",
+        "officialPrice": "$0.1",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-luna, chat, Input chat OpenAI",
+        "credits": "56 per million tokens",
+        "ourPrice": "$0.28",
+        "officialPrice": "$1",
+        "discount": "−72.0% ↓"
+      }
+    ],
+    "pricing_match": "gpt-5.6-luna",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/chat/gpt-5-6-terra.md",
+    "slug": "/market/chat/gpt-5-6-terra",
+    "title": "GPT 5.6 Terra",
+    "model_id": "gpt-5-6-terra",
+    "endpoint": "/codex/v1/responses",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "gpt-5.6-terra, chat, Output chat OpenAI",
+        "credits": "840 per million tokens",
+        "ourPrice": "$4.2",
+        "officialPrice": "$15",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-terra, chat, Cache Writes chat OpenAI",
+        "credits": "175 per million tokens",
+        "ourPrice": "$0.875",
+        "officialPrice": "$3.125",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-terra, chat, Cached Input chat OpenAI",
+        "credits": "14 per million tokens",
+        "ourPrice": "$0.07",
+        "officialPrice": "$0.25",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-terra, chat, Input chat OpenAI",
+        "credits": "140 per million tokens",
+        "ourPrice": "$0.7",
+        "officialPrice": "$2.5",
+        "discount": "−72.0% ↓"
+      }
+    ],
+    "pricing_match": "gpt-5.6-terra",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/chat/gpt-5-6-sol.md",
+    "slug": "/market/chat/gpt-5-6-sol",
+    "title": "GPT 5.6 Sol",
+    "model_id": "gpt-5-6-sol",
+    "endpoint": "/codex/v1/responses",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "gpt-5.6-sol, chat, Output chat OpenAI",
+        "credits": "1680 per million tokens",
+        "ourPrice": "$8.4",
+        "officialPrice": "$30",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-sol, chat, Cache Writes chat OpenAI",
+        "credits": "350 per million tokens",
+        "ourPrice": "$1.75",
+        "officialPrice": "$6.25",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-sol, chat, Cached Input chat OpenAI",
+        "credits": "28 per million tokens",
+        "ourPrice": "$0.14",
+        "officialPrice": "$0.5",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-sol, chat, Input chat OpenAI",
+        "credits": "280 per million tokens",
+        "ourPrice": "$1.4",
+        "officialPrice": "$5",
+        "discount": "−72.0% ↓"
+      }
+    ],
+    "pricing_match": "gpt-5.6-sol",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/claude/cluade-sonnet-5.md",
+    "slug": "/market/claude/cluade-sonnet-5",
+    "title": "Claude Sonnet 5",
+    "model_id": "cluade-sonnet-5",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "claude-sonnet-5, chat, Output chat Anthropic",
+        "credits": "855 per million tokens",
+        "ourPrice": "$4.275",
+        "officialPrice": "$10",
+        "discount": "−57.3% ↓"
+      },
+      {
+        "spec": "claude-sonnet-5, chat, Input chat Anthropic",
+        "credits": "170 per million tokens",
+        "ourPrice": "$0.850",
+        "officialPrice": "$2",
+        "discount": "−57.5% ↓"
+      }
+    ],
+    "pricing_match": "claude-sonnet-5",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/grok/grok-4-3.md",
+    "slug": "/market/grok/grok-4-3",
+    "title": "Grok 4.3",
+    "model_id": "grok-4-3",
+    "endpoint": "/grok/v1/responses",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "grok-4-3, Chat, Cached Input chat Grok",
+        "credits": "16 per million tokens",
+        "ourPrice": "$0.08",
+        "officialPrice": "$0.20",
+        "discount": "−60.0% ↓"
+      },
+      {
+        "spec": "grok-4-3, Chat, Output chat Grok",
+        "credits": "200 per million tokens",
+        "ourPrice": "$1",
+        "officialPrice": "$2.50",
+        "discount": "−60.0% ↓"
+      },
+      {
+        "spec": "grok-4-3, Chat, Input chat Grok",
+        "credits": "100 per million tokens",
+        "ourPrice": "$0.5",
+        "officialPrice": "$1.25",
+        "discount": "−60.0% ↓"
+      }
+    ],
+    "pricing_match": "grok-4-3",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/grok/grok-4-5.md",
+    "slug": "/market/grok/grok-4-5",
+    "title": "Grok 4.5",
+    "model_id": "grok-4-5",
+    "endpoint": "/grok/v1/responses",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "grok-4-5, Chat, Cached Input chat Grok",
+        "credits": "40",
+        "ourPrice": "$0.20",
+        "officialPrice": "$0.50",
+        "discount": "−60.0% ↓"
+      },
+      {
+        "spec": "grok-4-5, Chat, Output chat Grok",
+        "credits": "480",
+        "ourPrice": "$2.40",
+        "officialPrice": "$6.00",
+        "discount": "−60.0% ↓"
+      },
+      {
+        "spec": "grok-4-5, Chat, Input chat Grok",
+        "credits": "160",
+        "ourPrice": "$0.80",
+        "officialPrice": "$2.00",
+        "discount": "−60.0% ↓"
+      }
+    ],
+    "pricing_match": "grok-4-5",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/cn/market/seedream/5-pro-text-to-image.md",
+    "slug": "/cn/market/seedream/5-pro-text-to-image",
+    "title": "Seedream5.0 Pro 文生图",
+    "model_id": "5-pro-text-to-image",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "seedream 5 Pro, input image, First image free image ByteDance",
+        "credits": "0.5 per image",
+        "ourPrice": "$0.0025",
+        "officialPrice": "$0.003",
+        "discount": "−16.7% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, text-to-image, 2K image ByteDance",
+        "credits": "14 per image",
+        "ourPrice": "$0.07",
+        "officialPrice": "$0.09",
+        "discount": "−22.2% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, text-to-image, 1K image ByteDance",
+        "credits": "7 per image",
+        "ourPrice": "$0.035",
+        "officialPrice": "$0.045",
+        "discount": "−22.2% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, image-to-image, 2K image ByteDance",
+        "credits": "14 per image",
+        "ourPrice": "$0.07",
+        "officialPrice": "$0.09",
+        "discount": "−22.2% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, image-to-image, 1K image ByteDance",
+        "credits": "7 per image",
+        "ourPrice": "$0.035",
+        "officialPrice": "$0.045",
+        "discount": "−22.2% ↓"
+      }
+    ],
+    "pricing_match": "seedream 5 Pro",
+    "pricing_match_score": 0.897,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/cn/market/seedream/5-pro-image-to-image.md",
+    "slug": "/cn/market/seedream/5-pro-image-to-image",
+    "title": "Seedream5.0 Pro 图片编辑",
+    "model_id": "5-pro-image-to-image",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "seedream 5 Pro, input image, First image free image ByteDance",
+        "credits": "0.5 per image",
+        "ourPrice": "$0.0025",
+        "officialPrice": "$0.003",
+        "discount": "−16.7% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, text-to-image, 2K image ByteDance",
+        "credits": "14 per image",
+        "ourPrice": "$0.07",
+        "officialPrice": "$0.09",
+        "discount": "−22.2% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, text-to-image, 1K image ByteDance",
+        "credits": "7 per image",
+        "ourPrice": "$0.035",
+        "officialPrice": "$0.045",
+        "discount": "−22.2% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, image-to-image, 2K image ByteDance",
+        "credits": "14 per image",
+        "ourPrice": "$0.07",
+        "officialPrice": "$0.09",
+        "discount": "−22.2% ↓"
+      },
+      {
+        "spec": "seedream 5 Pro, image-to-image, 1K image ByteDance",
+        "credits": "7 per image",
+        "ourPrice": "$0.035",
+        "officialPrice": "$0.045",
+        "discount": "−22.2% ↓"
+      }
+    ],
+    "pricing_match": "seedream 5 Pro",
+    "pricing_match_score": 0.897,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/cn/market/google/nano-banana-2-lite.md",
+    "slug": "/cn/market/google/nano-banana-2-lite",
+    "title": "Nano Banana 2 Lite",
+    "model_id": "nano-banana-2-lite",
+    "endpoint": "/api/v1/jobs/createTask",
+    "operation_id": "nano-banana-2-lite",
+    "top_level_fields": [
+      "model",
+      "callBackUrl",
+      "input"
+    ],
+    "input_fields": [
+      "image_urls",
+      "prompt",
+      "aspect_ratio"
+    ],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "nano-banana-2-lite, 1k image Google",
+        "credits": "4 per image",
+        "ourPrice": "$0.02",
+        "officialPrice": "$0.0336",
+        "discount": "−40.5% ↓"
+      }
+    ],
+    "pricing_match": "nano-banana-2-lite",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/cn/market/chat/gpt-5-6-luna.md",
+    "slug": "/cn/market/chat/gpt-5-6-luna",
+    "title": "GPT 5.6 Luna",
+    "model_id": "gpt-5-6-luna",
+    "endpoint": "/codex/v1/responses",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "gpt-5.6-luna, chat, Cache Writes chat OpenAI",
+        "credits": "70 per million tokens",
+        "ourPrice": "$0.35",
+        "officialPrice": "$1.25",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-luna, chat, Output chat OpenAI",
+        "credits": "336 per million tokens",
+        "ourPrice": "$1.68",
+        "officialPrice": "$6",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-luna, chat, Cached Input chat OpenAI",
+        "credits": "5.6 per million tokens",
+        "ourPrice": "$0.028",
+        "officialPrice": "$0.1",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-luna, chat, Input chat OpenAI",
+        "credits": "56 per million tokens",
+        "ourPrice": "$0.28",
+        "officialPrice": "$1",
+        "discount": "−72.0% ↓"
+      }
+    ],
+    "pricing_match": "gpt-5.6-luna",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/cn/market/chat/gpt-5-6-terra.md",
+    "slug": "/cn/market/chat/gpt-5-6-terra",
+    "title": "GPT 5.6 Terra",
+    "model_id": "gpt-5-6-terra",
+    "endpoint": "/codex/v1/responses",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "gpt-5.6-terra, chat, Output chat OpenAI",
+        "credits": "840 per million tokens",
+        "ourPrice": "$4.2",
+        "officialPrice": "$15",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-terra, chat, Cache Writes chat OpenAI",
+        "credits": "175 per million tokens",
+        "ourPrice": "$0.875",
+        "officialPrice": "$3.125",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-terra, chat, Cached Input chat OpenAI",
+        "credits": "14 per million tokens",
+        "ourPrice": "$0.07",
+        "officialPrice": "$0.25",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-terra, chat, Input chat OpenAI",
+        "credits": "140 per million tokens",
+        "ourPrice": "$0.7",
+        "officialPrice": "$2.5",
+        "discount": "−72.0% ↓"
+      }
+    ],
+    "pricing_match": "gpt-5.6-terra",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/cn/market/chat/gpt-5-6-sol.md",
+    "slug": "/cn/market/chat/gpt-5-6-sol",
+    "title": "GPT 5.6 Sol",
+    "model_id": "gpt-5-6-sol",
+    "endpoint": "/codex/v1/responses",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "gpt-5.6-sol, chat, Output chat OpenAI",
+        "credits": "1680 per million tokens",
+        "ourPrice": "$8.4",
+        "officialPrice": "$30",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-sol, chat, Cache Writes chat OpenAI",
+        "credits": "350 per million tokens",
+        "ourPrice": "$1.75",
+        "officialPrice": "$6.25",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-sol, chat, Cached Input chat OpenAI",
+        "credits": "28 per million tokens",
+        "ourPrice": "$0.14",
+        "officialPrice": "$0.5",
+        "discount": "−72.0% ↓"
+      },
+      {
+        "spec": "gpt-5.6-sol, chat, Input chat OpenAI",
+        "credits": "280 per million tokens",
+        "ourPrice": "$1.4",
+        "officialPrice": "$5",
+        "discount": "−72.0% ↓"
+      }
+    ],
+    "pricing_match": "gpt-5.6-sol",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/market/claude/cluade-sonnet-5",
+    "slug": "/cn/market/claude/cluade-sonnet-5",
+    "title": "Claude Sonnet 5 - docs.kie.ai",
+    "model_id": "cluade-sonnet-5",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "claude-sonnet-5, chat, Output chat Anthropic",
+        "credits": "855 per million tokens",
+        "ourPrice": "$4.275",
+        "officialPrice": "$10",
+        "discount": "−57.3% ↓"
+      },
+      {
+        "spec": "claude-sonnet-5, chat, Input chat Anthropic",
+        "credits": "170 per million tokens",
+        "ourPrice": "$0.850",
+        "officialPrice": "$2",
+        "discount": "−57.5% ↓"
+      }
+    ],
+    "pricing_match": "claude-sonnet-5",
+    "pricing_match_score": 0.933,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "kie",
+    "url": "https://docs.kie.ai/cn/market/grok/grok-4-3.md",
+    "slug": "/cn/market/grok/grok-4-3",
+    "title": "Grok 4.3",
+    "model_id": "grok-4-3",
+    "endpoint": "/grok/v1/responses",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "grok-4-3, Chat, Cached Input chat Grok",
+        "credits": "16 per million tokens",
+        "ourPrice": "$0.08",
+        "officialPrice": "$0.20",
+        "discount": "−60.0% ↓"
+      },
+      {
+        "spec": "grok-4-3, Chat, Output chat Grok",
+        "credits": "200 per million tokens",
+        "ourPrice": "$1",
+        "officialPrice": "$2.50",
+        "discount": "−60.0% ↓"
+      },
+      {
+        "spec": "grok-4-3, Chat, Input chat Grok",
+        "credits": "100 per million tokens",
+        "ourPrice": "$0.5",
+        "officialPrice": "$1.25",
+        "discount": "−60.0% ↓"
+      }
+    ],
+    "pricing_match": "grok-4-3",
+    "pricing_match_score": 1.0,
+    "pricing_source": "kie.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/3d-series/hunyuan-3d-3-1.md",
+    "slug": "/api-manual/3d-series/hunyuan-3d-3-1",
+    "title": "Hunyuan 3D v3.1",
+    "model_id": "hunyuan-3d-3-1",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Base generation (×4 variants)",
+        "poyoPrice": "$0.180-0.300/gen (36-60 credits)",
+        "officialPrice": "$0.225-0.375/gen Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "PBR add-on",
+        "poyoPrice": "$0.120 (24 credits)",
+        "officialPrice": "$0.150 Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "Multi-view add-on",
+        "poyoPrice": "$0.120 (24 credits)",
+        "officialPrice": "$0.150 Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "Custom face count add-on",
+        "poyoPrice": "$0.120 (24 credits)",
+        "officialPrice": "$0.150 Official",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Hunyuan 3D v3.1",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/3d-series/meshy-6-3d.md",
+    "slug": "/api-manual/3d-series/meshy-6-3d",
+    "title": "Meshy 6 3D",
+    "model_id": "meshy-6-3d",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to 3D generation",
+        "poyoPrice": "$0.300/gen (60 credits/gen)",
+        "officialPrice": "$0.800/gen Fal",
+        "savings": "63%"
+      },
+      {
+        "spec": "Image to 3D generation",
+        "poyoPrice": "$0.300/gen (60 credits/gen)",
+        "officialPrice": "$0.800/gen Fal",
+        "savings": "63%"
+      },
+      {
+        "spec": "Multi image to 3D generation",
+        "poyoPrice": "$0.300/gen (60 credits/gen)",
+        "officialPrice": "$1.20/gen Fal",
+        "savings": "75%"
+      }
+    ],
+    "pricing_match": "Meshy 6 3D",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/3d-series/tripo-h31-3d.md",
+    "slug": "/api-manual/3d-series/tripo-h31-3d",
+    "title": "Tripo3D H3.1 API",
+    "model_id": "tripo3d-h31",
+    "endpoint": "/tripo3d/h31/generate",
+    "operation_id": "generateTripo3DH31",
+    "top_level_fields": [
+      "model",
+      "input"
+    ],
+    "input_fields": [
+      "prompt",
+      "image_url",
+      "image_base64",
+      "multiview_images",
+      "callback_url",
+      "output_format",
+      "texture_quality",
+      "geometry_quality",
+      "auto_size",
+      "quad"
+    ],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to 3D without textures",
+        "poyoPrice": "$0.075/gen (15 credits/gen)",
+        "officialPrice": "$0.100/gen Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "Text to 3D with standard textures",
+        "poyoPrice": "$0.150/gen (30 credits/gen)",
+        "officialPrice": "$0.200/gen Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "Text to 3D with HD textures",
+        "poyoPrice": "$0.225/gen (45 credits/gen)",
+        "officialPrice": "$0.300/gen Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "Image to 3D without textures",
+        "poyoPrice": "$0.150/gen (30 credits/gen)",
+        "officialPrice": "$0.200/gen Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "Image to 3D with standard textures",
+        "poyoPrice": "$0.225/gen (45 credits/gen)",
+        "officialPrice": "$0.300/gen Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "Image to 3D with HD textures",
+        "poyoPrice": "$0.300/gen (60 credits/gen)",
+        "officialPrice": "$0.400/gen Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "Multiview to 3D without textures",
+        "poyoPrice": "$0.075/gen (15 credits/gen)",
+        "officialPrice": "$0.100/gen Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "Multiview to 3D with standard textures",
+        "poyoPrice": "$0.150/gen (30 credits/gen)",
+        "officialPrice": "$0.200/gen Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "Multiview to 3D with HD textures",
+        "poyoPrice": "$0.225/gen (45 credits/gen)",
+        "officialPrice": "$0.300/gen Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "H3.1 detailed geometry add-on",
+        "poyoPrice": "$0.150 (30 credits)",
+        "officialPrice": "$0.200 Fal",
+        "savings": "25%"
+      },
+      {
+        "spec": "H3.1 quad mesh add-on",
+        "poyoPrice": "$0.037 (7.5 credits)",
+        "officialPrice": "$0.050 Fal",
+        "savings": "25%"
+      }
+    ],
+    "pricing_match": "Tripo3D H3.1",
+    "pricing_match_score": 0.957,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/3d-series/tripo-p1-3d.md",
+    "slug": "/api-manual/3d-series/tripo-p1-3d",
+    "title": "Tripo3D P1 API",
+    "model_id": "tripo-p1-3d",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to 3D without textures",
+        "poyoPrice": "$0.280/gen (56 credits/gen)",
+        "officialPrice": "$0.400/gen Fal",
+        "savings": "30%"
+      },
+      {
+        "spec": "Text to 3D with textures",
+        "poyoPrice": "$0.350/gen (70 credits/gen)",
+        "officialPrice": "$0.500/gen Fal",
+        "savings": "30%"
+      },
+      {
+        "spec": "Image to 3D without textures",
+        "poyoPrice": "$0.280/gen (56 credits/gen)",
+        "officialPrice": "$0.400/gen Fal",
+        "savings": "30%"
+      },
+      {
+        "spec": "Image to 3D with textures",
+        "poyoPrice": "$0.350/gen (70 credits/gen)",
+        "officialPrice": "$0.500/gen Fal",
+        "savings": "30%"
+      }
+    ],
+    "pricing_match": "Tripo3D P1",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/chat-series/chat-completions.md",
+    "slug": "/api-manual/chat-series/chat-completions",
+    "title": "General Chat API",
+    "model_id": "gpt-5.2",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Input",
+        "poyoPrice": "$0.438/1M tokens (87.5 credits/1M)",
+        "officialPrice": "$0.729/1M Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "Output",
+        "poyoPrice": "$3.50/1M tokens (700 credits/1M)",
+        "officialPrice": "$5.83/1M Official",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "GPT-5.2",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/chat-series/claude-messages.md",
+    "slug": "/api-manual/chat-series/claude-messages",
+    "title": "Claude Messages API",
+    "model_id": "claude-sonnet-4-5-20250929",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Input",
+        "poyoPrice": "$0.850/1M tokens (170 credits/1M)",
+        "officialPrice": "-",
+        "savings": "-"
+      },
+      {
+        "spec": "Output",
+        "poyoPrice": "$4.28/1M tokens (855 credits/1M)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Claude Sonnet 5",
+    "pricing_match_score": 0.732,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/chat-series/gemini-native-format.md",
+    "slug": "/api-manual/chat-series/gemini-native-format",
+    "title": "Gemini Native Format",
+    "model_id": "gemini-native-format",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [],
+    "pricing_match": null,
+    "pricing_match_score": 0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/chat-series/responses.md",
+    "slug": "/api-manual/chat-series/responses",
+    "title": "Responses API",
+    "model_id": "gpt-5.2",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Input",
+        "poyoPrice": "$0.438/1M tokens (87.5 credits/1M)",
+        "officialPrice": "$0.729/1M Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "Output",
+        "poyoPrice": "$3.50/1M tokens (700 credits/1M)",
+        "officialPrice": "$5.83/1M Official",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "GPT-5.2",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/file-series/upload-base64.md",
+    "slug": "/api-manual/file-series/upload-base64",
+    "title": "Upload File from Base64",
+    "model_id": "upload-base64",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [],
+    "pricing_match": null,
+    "pricing_match_score": 0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/file-series/upload-stream.md",
+    "slug": "/api-manual/file-series/upload-stream",
+    "title": "Upload File Stream",
+    "model_id": "upload-stream",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [],
+    "pricing_match": null,
+    "pricing_match_score": 0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/file-series/upload-url.md",
+    "slug": "/api-manual/file-series/upload-url",
+    "title": "Upload File from URL",
+    "model_id": "upload-url",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [],
+    "pricing_match": null,
+    "pricing_match_score": 0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/flux-2.md",
+    "slug": "/api-manual/image-series/flux-2",
+    "title": "Flux.2 Image Generation",
+    "model_id": "flux-2",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "1K (×2 variants)",
+        "poyoPrice": "$0.030/gen (6 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      },
+      {
+        "spec": "2K (×2 variants)",
+        "poyoPrice": "$0.045/gen (9 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      },
+      {
+        "spec": "1K Pro (×2 variants)",
+        "poyoPrice": "$0.090/gen (18 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      },
+      {
+        "spec": "2K Pro (×2 variants)",
+        "poyoPrice": "$0.135/gen (27 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "FLUX.2",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/flux-dev.md",
+    "slug": "/api-manual/image-series/flux-dev",
+    "title": "Flux Dev API",
+    "model_id": "flux-dev",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Output image",
+        "poyoPrice": "$0.020/MP (4 credits/MP)",
+        "officialPrice": "$0.025/MP Official",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Flux Dev",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/flux-kontext.md",
+    "slug": "/api-manual/image-series/flux-kontext",
+    "title": "Flux Kontext Image Generation",
+    "model_id": "flux-kontext",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Pro",
+        "poyoPrice": "$0.040/gen (8 credits/gen)",
+        "officialPrice": "$0.040/gen Official",
+        "savings": "-"
+      },
+      {
+        "spec": "Pro Edit",
+        "poyoPrice": "$0.040/gen (8 credits/gen)",
+        "officialPrice": "$0.040/gen Official",
+        "savings": "-"
+      },
+      {
+        "spec": "Max",
+        "poyoPrice": "$0.080/gen (16 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "-"
+      },
+      {
+        "spec": "Max Edit",
+        "poyoPrice": "$0.080/gen (16 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Flux Kontext",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/flux-schnell.md",
+    "slug": "/api-manual/image-series/flux-schnell",
+    "title": "Flux Schnell Image Generation",
+    "model_id": "flux-schnell",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Output image",
+        "poyoPrice": "$0.0024/MP (0.48 credits/MP)",
+        "officialPrice": "$0.003/MP Official",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Flux Schnell",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/gpt-4o-image.md",
+    "slug": "/api-manual/image-series/gpt-4o-image",
+    "title": "GPT-4o Image Generation",
+    "model_id": "gpt-4o-image",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.020/gen (4 credits/gen)",
+        "officialPrice": "$0.100/gen Official",
+        "savings": "80%"
+      }
+    ],
+    "pricing_match": "GPT-4o Image",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/gpt-image-1.5.md",
+    "slug": "/api-manual/image-series/gpt-image-1.5",
+    "title": "GPT Image 1.5 Generation",
+    "model_id": "gpt-image-1.5",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.010/gen (2 credits/gen)",
+        "officialPrice": "$0.013/gen Fal",
+        "savings": "23%"
+      }
+    ],
+    "pricing_match": "GPT Image 1.5",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/gpt-image-2.md",
+    "slug": "/api-manual/image-series/gpt-image-2",
+    "title": "GPT Image 2",
+    "model_id": "gpt-image-2",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Low quality - 1K",
+        "poyoPrice": "$0.010/gen (2 credits/gen)",
+        "officialPrice": "$0.040/gen Fal",
+        "savings": "75%"
+      },
+      {
+        "spec": "Low quality - 2K",
+        "poyoPrice": "$0.020/gen (4 credits/gen)",
+        "officialPrice": "$0.060/gen Fal",
+        "savings": "67%"
+      },
+      {
+        "spec": "Low quality - 4K",
+        "poyoPrice": "$0.040/gen (8 credits/gen)",
+        "officialPrice": "$0.110/gen Fal",
+        "savings": "64%"
+      },
+      {
+        "spec": "Medium quality - 1K",
+        "poyoPrice": "$0.042/gen (8.48 credits/gen)",
+        "officialPrice": "$0.053/gen Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "Medium quality - 2K",
+        "poyoPrice": "$0.045/gen (8.96 credits/gen)",
+        "officialPrice": "$0.056/gen Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "Medium quality - 4K",
+        "poyoPrice": "$0.081/gen (16.16 credits/gen)",
+        "officialPrice": "$0.101/gen Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "High quality - 1K",
+        "poyoPrice": "$0.169/gen (33.76 credits/gen)",
+        "officialPrice": "$0.211/gen Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "High quality - 2K",
+        "poyoPrice": "$0.178/gen (35.52 credits/gen)",
+        "officialPrice": "$0.222/gen Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "High quality - 4K",
+        "poyoPrice": "$0.321/gen (64.16 credits/gen)",
+        "officialPrice": "$0.401/gen Fal",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "GPT Image 2",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/grok-imagine-image.md",
+    "slug": "/api-manual/image-series/grok-imagine-image",
+    "title": "Grok Imagine Image Generation",
+    "model_id": "grok-imagine-image",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Image generation",
+        "poyoPrice": "$0.030/image (6 credits/image)",
+        "officialPrice": "$0.070/image Official",
+        "savings": "57%"
+      },
+      {
+        "spec": "Video generation (6s)",
+        "poyoPrice": "$0.150/video (30 credits/video)",
+        "officialPrice": "$0.349/video Official",
+        "savings": "57%"
+      },
+      {
+        "spec": "Video generation (10s)",
+        "poyoPrice": "$0.200/video (40 credits/video)",
+        "officialPrice": "$0.465/video Official",
+        "savings": "57%"
+      }
+    ],
+    "pricing_match": "Grok Imagine",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/grok-imagine-image-quality.md",
+    "slug": "/api-manual/image-series/grok-imagine-image-quality",
+    "title": "Grok Imagine Image Quality Generation",
+    "model_id": "grok-imagine-image-quality",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "1K output",
+        "poyoPrice": "$0.040/image (8 credits/image)",
+        "officialPrice": "$0.050/image Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "2K output",
+        "poyoPrice": "$0.055/image (11 credits/image)",
+        "officialPrice": "$0.070/image Official",
+        "savings": "21%"
+      },
+      {
+        "spec": "Reference image",
+        "poyoPrice": "$0.010/image (2 credits/image)",
+        "officialPrice": "$0.010/image Official",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Grok Imagine Image Quality",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/kling-o1.md",
+    "slug": "/api-manual/image-series/kling-o1",
+    "title": "Kling-o1",
+    "model_id": "kling-o1-image-edit",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "1K - 2K Edit",
+        "poyoPrice": "$0.018/image (3.5 credits/image)",
+        "officialPrice": "$0.028/image Fal",
+        "savings": "37%"
+      }
+    ],
+    "pricing_match": "Kling O1 Image",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/kling-o3.md",
+    "slug": "/api-manual/image-series/kling-o3",
+    "title": "Kling-o3",
+    "model_id": "kling-o3-image",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "No audio",
+        "poyoPrice": "$0.050/sec (10 credits/sec)",
+        "officialPrice": "$0.084/sec Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "With audio",
+        "poyoPrice": "$0.065/sec (13 credits/sec)",
+        "officialPrice": "$0.112/sec Fal",
+        "savings": "42%"
+      },
+      {
+        "spec": "No audio (1080p)",
+        "poyoPrice": "$0.065/sec (13 credits/sec)",
+        "officialPrice": "$0.112/sec Fal",
+        "savings": "42%"
+      },
+      {
+        "spec": "With audio (1080p)",
+        "poyoPrice": "$0.080/sec (16 credits/sec)",
+        "officialPrice": "$0.140/sec Fal",
+        "savings": "43%"
+      },
+      {
+        "spec": "4K",
+        "poyoPrice": "$0.250/sec (50 credits/sec)",
+        "officialPrice": "$0.420/sec Fal",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "Kling O3",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/nano-banana.md",
+    "slug": "/api-manual/image-series/nano-banana",
+    "title": "Nano Banana Image Generation",
+    "model_id": "nano-banana",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.039/gen Fal",
+        "savings": "36%"
+      }
+    ],
+    "pricing_match": "Nano Banana",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/nano-banana-2.md",
+    "slug": "/api-manual/image-series/nano-banana-2",
+    "title": "Nano Banana Pro Image Generation",
+    "model_id": "nano-banana-2",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "1K - Text to Image",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.080/gen Fal",
+        "savings": "69%"
+      },
+      {
+        "spec": "2K - Text to Image",
+        "poyoPrice": "$0.040/gen (8 credits/gen)",
+        "officialPrice": "$0.150/gen Fal",
+        "savings": "73%"
+      },
+      {
+        "spec": "4K - Text to Image",
+        "poyoPrice": "$0.060/gen (12 credits/gen)",
+        "officialPrice": "$0.300/gen Fal",
+        "savings": "80%"
+      },
+      {
+        "spec": "1K - Image Edit",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.080/gen Fal",
+        "savings": "69%"
+      },
+      {
+        "spec": "2K - Image Edit",
+        "poyoPrice": "$0.040/gen (8 credits/gen)",
+        "officialPrice": "$0.150/gen Fal",
+        "savings": "73%"
+      },
+      {
+        "spec": "4K - Image Edit",
+        "poyoPrice": "$0.060/gen (12 credits/gen)",
+        "officialPrice": "$0.300/gen Fal",
+        "savings": "80%"
+      },
+      {
+        "spec": "0.5K - Text to Image",
+        "poyoPrice": "$0.035/gen (7 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "56%"
+      },
+      {
+        "spec": "1K - Text to Image",
+        "poyoPrice": "$0.050/gen (10 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "38%"
+      },
+      {
+        "spec": "2K - Text to Image",
+        "poyoPrice": "$0.075/gen (15 credits/gen)",
+        "officialPrice": "$0.150/gen Official",
+        "savings": "50%"
+      },
+      {
+        "spec": "4K - Text to Image",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "$0.300/gen Official",
+        "savings": "67%"
+      },
+      {
+        "spec": "0.5K - Image Edit",
+        "poyoPrice": "$0.035/gen (7 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "56%"
+      },
+      {
+        "spec": "1K - Image Edit",
+        "poyoPrice": "$0.050/gen (10 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "38%"
+      },
+      {
+        "spec": "2K - Image Edit",
+        "poyoPrice": "$0.075/gen (15 credits/gen)",
+        "officialPrice": "$0.150/gen Official",
+        "savings": "50%"
+      },
+      {
+        "spec": "4K - Image Edit",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "$0.300/gen Official",
+        "savings": "67%"
+      }
+    ],
+    "pricing_match": "Nano Banana 2",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/nano-banana-2-lite.md",
+    "slug": "/api-manual/image-series/nano-banana-2-lite",
+    "title": "Nano Banana 2 Lite Image Generation",
+    "model_id": "nano-banana-2-lite",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to Image",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.034/gen Google",
+        "savings": "26%"
+      },
+      {
+        "spec": "Image Edit",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.034/gen Google",
+        "savings": "26%"
+      }
+    ],
+    "pricing_match": "Nano Banana 2 Lite",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/nano-banana-2-new.md",
+    "slug": "/api-manual/image-series/nano-banana-2-new",
+    "title": "Nano Banana 2 Image Generation",
+    "model_id": "nano-banana-2-new",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "1K - Text to Image",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.080/gen Fal",
+        "savings": "69%"
+      },
+      {
+        "spec": "2K - Text to Image",
+        "poyoPrice": "$0.040/gen (8 credits/gen)",
+        "officialPrice": "$0.150/gen Fal",
+        "savings": "73%"
+      },
+      {
+        "spec": "4K - Text to Image",
+        "poyoPrice": "$0.060/gen (12 credits/gen)",
+        "officialPrice": "$0.300/gen Fal",
+        "savings": "80%"
+      },
+      {
+        "spec": "1K - Image Edit",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.080/gen Fal",
+        "savings": "69%"
+      },
+      {
+        "spec": "2K - Image Edit",
+        "poyoPrice": "$0.040/gen (8 credits/gen)",
+        "officialPrice": "$0.150/gen Fal",
+        "savings": "73%"
+      },
+      {
+        "spec": "4K - Image Edit",
+        "poyoPrice": "$0.060/gen (12 credits/gen)",
+        "officialPrice": "$0.300/gen Fal",
+        "savings": "80%"
+      },
+      {
+        "spec": "0.5K - Text to Image",
+        "poyoPrice": "$0.035/gen (7 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "56%"
+      },
+      {
+        "spec": "1K - Text to Image",
+        "poyoPrice": "$0.050/gen (10 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "38%"
+      },
+      {
+        "spec": "2K - Text to Image",
+        "poyoPrice": "$0.075/gen (15 credits/gen)",
+        "officialPrice": "$0.150/gen Official",
+        "savings": "50%"
+      },
+      {
+        "spec": "4K - Text to Image",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "$0.300/gen Official",
+        "savings": "67%"
+      },
+      {
+        "spec": "0.5K - Image Edit",
+        "poyoPrice": "$0.035/gen (7 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "56%"
+      },
+      {
+        "spec": "1K - Image Edit",
+        "poyoPrice": "$0.050/gen (10 credits/gen)",
+        "officialPrice": "$0.080/gen Official",
+        "savings": "38%"
+      },
+      {
+        "spec": "2K - Image Edit",
+        "poyoPrice": "$0.075/gen (15 credits/gen)",
+        "officialPrice": "$0.150/gen Official",
+        "savings": "50%"
+      },
+      {
+        "spec": "4K - Image Edit",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "$0.300/gen Official",
+        "savings": "67%"
+      }
+    ],
+    "pricing_match": "Nano Banana 2",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/seedream-4.md",
+    "slug": "/api-manual/image-series/seedream-4",
+    "title": "Seedream-4 Image Generation",
+    "model_id": "seedream-4",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to Image",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      },
+      {
+        "spec": "Image Edit",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Seedream 4",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/seedream-4-5.md",
+    "slug": "/api-manual/image-series/seedream-4-5",
+    "title": "Seedream-4.5 Image Generation",
+    "model_id": "seedream-4-5",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.040/gen Fal",
+        "savings": "38%"
+      }
+    ],
+    "pricing_match": "Seedream 4.5",
+    "pricing_match_score": 0.917,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/seedream-5-0-lite.md",
+    "slug": "/api-manual/image-series/seedream-5-0-lite",
+    "title": "Seedream-5.0-Lite Image Generation",
+    "model_id": "seedream-5.0-lite",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to Image",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.035/gen Fal",
+        "savings": "29%"
+      },
+      {
+        "spec": "Image Edit",
+        "poyoPrice": "$0.025/gen (5 credits/gen)",
+        "officialPrice": "$0.035/gen Fal",
+        "savings": "29%"
+      }
+    ],
+    "pricing_match": "Seedream 5.0 Lite",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/seedream-5-0-pro.md",
+    "slug": "/api-manual/image-series/seedream-5-0-pro",
+    "title": "Seedream-5.0-Pro Image Generation",
+    "model_id": "seedream-5-0-pro",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to Image",
+        "poyoPrice": "$0.075/image (15 credits/image)",
+        "officialPrice": "$0.094/image Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "Image Edit",
+        "poyoPrice": "$0.075/image (15 credits/image)",
+        "officialPrice": "$0.094/image Official",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Seedream 5.0 Pro",
+    "pricing_match_score": 0.938,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/wan-2-7-image.md",
+    "slug": "/api-manual/image-series/wan-2-7-image",
+    "title": "Wan-2.7-Image",
+    "model_id": "wan-2.7-image",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard",
+        "poyoPrice": "$0.021/gen (4.2 credits/gen)",
+        "officialPrice": "$0.030/gen Fal",
+        "savings": "30%"
+      },
+      {
+        "spec": "Pro",
+        "poyoPrice": "$0.052/gen (10.5 credits/gen)",
+        "officialPrice": "$0.075/gen Fal",
+        "savings": "30%"
+      }
+    ],
+    "pricing_match": "Wan 2.7 Image",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/wan-2-7-image-pro.md",
+    "slug": "/api-manual/image-series/wan-2-7-image-pro",
+    "title": "Wan-2.7-Image-Pro",
+    "model_id": "wan-2.7-image-pro",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard",
+        "poyoPrice": "$0.021/gen (4.2 credits/gen)",
+        "officialPrice": "$0.030/gen Fal",
+        "savings": "30%"
+      },
+      {
+        "spec": "Pro",
+        "poyoPrice": "$0.052/gen (10.5 credits/gen)",
+        "officialPrice": "$0.075/gen Fal",
+        "savings": "30%"
+      }
+    ],
+    "pricing_match": "Wan 2.7 Image",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/image-series/z-image.md",
+    "slug": "/api-manual/image-series/z-image",
+    "title": "Z-Image Generation",
+    "model_id": "z-image",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.010/gen (2 credits/gen)",
+        "officialPrice": "$0.005/gen Fal",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Z-Image",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/add-instrumental.md",
+    "slug": "/api-manual/music-series/add-instrumental",
+    "title": "Music Series API",
+    "model_id": "add-instrumental",
+    "endpoint": "/music-series/add-instrumental",
+    "operation_id": "addInstrumental",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Add Instrumental",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/add-vocals.md",
+    "slug": "/api-manual/music-series/add-vocals",
+    "title": "Add Vocals",
+    "model_id": "add-vocals",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Add Vocals",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/boost-music-style.md",
+    "slug": "/api-manual/music-series/boost-music-style",
+    "title": "Boost Music Style",
+    "model_id": "boost-music-style",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.005/gen (1 credit/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Boost Music Style",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/convert-to-wav.md",
+    "slug": "/api-manual/music-series/convert-to-wav",
+    "title": "Convert to WAV",
+    "model_id": "convert-to-wav",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.005/gen (1 credit/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Convert to WAV",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/create-music-video.md",
+    "slug": "/api-manual/music-series/create-music-video",
+    "title": "Create Music Video",
+    "model_id": "create-music-video",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.020/gen (4 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "AI Music Video",
+    "pricing_match_score": 0.812,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/elevenlabs-music.md",
+    "slug": "/api-manual/music-series/elevenlabs-music",
+    "title": "ElevenLabs Music",
+    "model_id": "elevenlabs-music",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Music generation",
+        "poyoPrice": "$0.640/min (128 credits/min)",
+        "officialPrice": "$0.640/min Fal",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "ElevenLabs Music",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/elevenlabs-tts-turbo-2-5.md",
+    "slug": "/api-manual/music-series/elevenlabs-tts-turbo-2-5",
+    "title": "ElevenLabs TTS Turbo v2.5",
+    "model_id": "elevenlabs-tts-turbo-2-5",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to speech",
+        "poyoPrice": "$0.040/1K chars (8 credits/1K)",
+        "officialPrice": "$0.050/1K Fal",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "ElevenLabs TTS Turbo v2.5",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/elevenlabs-v3-tts.md",
+    "slug": "/api-manual/music-series/elevenlabs-v3-tts",
+    "title": "ElevenLabs V3 TTS",
+    "model_id": "elevenlabs-v3-tts",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to speech",
+        "poyoPrice": "$0.080/1K chars (16 credits/1K)",
+        "officialPrice": "$0.100/1K Fal",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "ElevenLabs V3 TTS",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/extend-music.md",
+    "slug": "/api-manual/music-series/extend-music",
+    "title": "Extend Music",
+    "model_id": "extend-music",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Extend Music",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/gemini-3-1-flash-tts.md",
+    "slug": "/api-manual/music-series/gemini-3-1-flash-tts",
+    "title": "Gemini 3.1 Flash TTS",
+    "model_id": "gemini-3-1-flash-tts",
+    "endpoint": "/tts/synthesize",
+    "operation_id": "synthesizeSpeech",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to speech",
+        "poyoPrice": "$0.120/1K chars (24 credits/1K)",
+        "officialPrice": "$0.150/1K Reference",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Gemini 3.1 Flash TTS",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/generate-lyrics.md",
+    "slug": "/api-manual/music-series/generate-lyrics",
+    "title": "Generate Lyrics",
+    "model_id": "generate-lyrics",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.005/gen (1 credit/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Generate Lyrics",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/generate-music.md",
+    "slug": "/api-manual/music-series/generate-music",
+    "title": "Music Generation API",
+    "model_id": "generate-music",
+    "endpoint": "/music/generate",
+    "operation_id": "generateMusic",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.005/gen (1 credit/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Generate Music Cover",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/generate-music-cover.md",
+    "slug": "/api-manual/music-series/generate-music-cover",
+    "title": "Generate Music Cover",
+    "model_id": "generate-music-cover",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.005/gen (1 credit/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Generate Music Cover",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/generate-persona.md",
+    "slug": "/api-manual/music-series/generate-persona",
+    "title": "Generate Persona",
+    "model_id": "generate-persona",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.005/gen (1 credit/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Generate Persona",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/get-timestamped-lyrics.md",
+    "slug": "/api-manual/music-series/get-timestamped-lyrics",
+    "title": "Get Timestamped Lyrics",
+    "model_id": "get-timestamped-lyrics",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.005/gen (1 credit/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Get Timestamped Lyrics",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/minimax-music-2.6.md",
+    "slug": "/api-manual/music-series/minimax-music-2.6",
+    "title": "MiniMax Music 2.6",
+    "model_id": "minimax-music-2.6",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "$0.150/gen Runware",
+        "savings": "33%"
+      }
+    ],
+    "pricing_match": "MiniMax Music 2.6",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/music-webhook.md",
+    "slug": "/api-manual/music-series/music-webhook",
+    "title": "Music Webhook",
+    "model_id": "music-webhook",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [],
+    "pricing_match": null,
+    "pricing_match_score": 0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/query-music-detail.md",
+    "slug": "/api-manual/music-series/query-music-detail",
+    "title": "Query Music Detail",
+    "model_id": "query-music-detail",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [],
+    "pricing_match": null,
+    "pricing_match_score": 0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/replace-section.md",
+    "slug": "/api-manual/music-series/replace-section",
+    "title": "Replace Section",
+    "model_id": "replace-section",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.050/gen (10 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Replace Section",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/upload-and-cover-audio.md",
+    "slug": "/api-manual/music-series/upload-and-cover-audio",
+    "title": "Upload and Cover Audio",
+    "model_id": "upload-and-cover-audio",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Upload and Cover Audio",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/upload-and-extend-audio.md",
+    "slug": "/api-manual/music-series/upload-and-extend-audio",
+    "title": "Upload and Extend Audio",
+    "model_id": "upload-and-extend-audio",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Upload and Extend Audio",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/vocal-remover/separate-vocals.md",
+    "slug": "/api-manual/music-series/vocal-remover/separate-vocals",
+    "title": "Separate Vocals",
+    "model_id": "separate-vocals",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Add Vocals",
+    "pricing_match_score": 0.64,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/vocal-remover/stem-split.md",
+    "slug": "/api-manual/music-series/vocal-remover/stem-split",
+    "title": "Stem Split",
+    "model_id": "stem-split",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [],
+    "pricing_match": null,
+    "pricing_match_score": 0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/vocal-remover/upload-and-separate-vocals.md",
+    "slug": "/api-manual/music-series/vocal-remover/upload-and-separate-vocals",
+    "title": "Upload and Separate Vocals",
+    "model_id": "upload-and-separate-vocals",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard generation",
+        "poyoPrice": "$0.100/gen (20 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Upload and Extend Audio",
+    "pricing_match_score": 0.653,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/music-series/xai-tts-1.md",
+    "slug": "/api-manual/music-series/xai-tts-1",
+    "title": "xAI TTS 1",
+    "model_id": "xai-tts-1",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Text to speech",
+        "poyoPrice": "$0.012/1K chars (2.4 credits/1K)",
+        "officialPrice": "$0.015/1K Fal",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "xAI TTS 1",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/grok-imagine.md",
+    "slug": "/api-manual/video-series/grok-imagine",
+    "title": "Grok Imagine Video Generation",
+    "model_id": "grok-imagine",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Image generation",
+        "poyoPrice": "$0.030/image (6 credits/image)",
+        "officialPrice": "$0.070/image Official",
+        "savings": "57%"
+      },
+      {
+        "spec": "Video generation (6s)",
+        "poyoPrice": "$0.150/video (30 credits/video)",
+        "officialPrice": "$0.349/video Official",
+        "savings": "57%"
+      },
+      {
+        "spec": "Video generation (10s)",
+        "poyoPrice": "$0.200/video (40 credits/video)",
+        "officialPrice": "$0.465/video Official",
+        "savings": "57%"
+      }
+    ],
+    "pricing_match": "Grok Imagine",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/grok-imagine-video-1-5.md",
+    "slug": "/api-manual/video-series/grok-imagine-video-1-5",
+    "title": "Grok Imagine Video 1.5",
+    "model_id": "grok-imagine-video-1-5",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "480p",
+        "poyoPrice": "$0.072/sec (14.5 credits/sec)",
+        "officialPrice": "$0.080/sec Provider",
+        "savings": "9%"
+      },
+      {
+        "spec": "720p",
+        "poyoPrice": "$0.125/sec (25 credits/sec)",
+        "officialPrice": "$0.140/sec Provider",
+        "savings": "11%"
+      },
+      {
+        "spec": "Input image",
+        "poyoPrice": "$0.010/image (2 credits/image)",
+        "officialPrice": "$0.010/image Provider",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Grok Imagine Video 1.5",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/hailuo-02.md",
+    "slug": "/api-manual/video-series/hailuo-02",
+    "title": "Hailuo 02",
+    "model_id": "hailuo-02",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "768p",
+        "poyoPrice": "$0.035/sec (7 credits/sec)",
+        "officialPrice": "$0.045/sec Fal",
+        "savings": "22%"
+      },
+      {
+        "spec": "Pro fixed price",
+        "poyoPrice": "$0.325/video (65 credits/video)",
+        "officialPrice": "$0.480/video Fal",
+        "savings": "32%"
+      }
+    ],
+    "pricing_match": "Hailuo 02",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/hailuo-2-3.md",
+    "slug": "/api-manual/video-series/hailuo-2-3",
+    "title": "Hailuo 2.3",
+    "model_id": "hailuo-2-3",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "768p - 6s",
+        "poyoPrice": "$0.175/video (35 credits/video)",
+        "officialPrice": "$0.280/video Fal",
+        "savings": "38%"
+      },
+      {
+        "spec": "768p - 10s",
+        "poyoPrice": "$0.350/video (70 credits/video)",
+        "officialPrice": "$0.560/video Fal",
+        "savings": "38%"
+      },
+      {
+        "spec": "1080p - 6s",
+        "poyoPrice": "$0.300/video (60 credits/video)",
+        "officialPrice": "$0.490/video Fal",
+        "savings": "39%"
+      }
+    ],
+    "pricing_match": "Hailuo 2.3",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/happy-horse.md",
+    "slug": "/api-manual/video-series/happy-horse",
+    "title": "Happy Horse",
+    "model_id": "happy-horse",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p",
+        "poyoPrice": "$0.080/sec (16 credits/sec)",
+        "officialPrice": "$0.140/sec Fal",
+        "savings": "43%"
+      },
+      {
+        "spec": "1080p",
+        "poyoPrice": "$0.160/sec (32 credits/sec)",
+        "officialPrice": "$0.280/sec Fal",
+        "savings": "43%"
+      },
+      {
+        "spec": "720p - video edit",
+        "poyoPrice": "$0.160/sec (32 credits/sec)",
+        "officialPrice": "$0.280/sec Fal",
+        "savings": "43%"
+      },
+      {
+        "spec": "1080p - video edit",
+        "poyoPrice": "$0.320/sec (64 credits/sec)",
+        "officialPrice": "$0.560/sec Fal",
+        "savings": "43%"
+      }
+    ],
+    "pricing_match": "Happy Horse",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-2-1.md",
+    "slug": "/api-manual/video-series/kling-2-1",
+    "title": "Kling 2.1",
+    "model_id": "kling-2-1",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "5s - Standard",
+        "poyoPrice": "$0.150/video (30 credits/video)",
+        "officialPrice": "$0.280/video Fal",
+        "savings": "46%"
+      },
+      {
+        "spec": "10s - Standard",
+        "poyoPrice": "$0.300/video (60 credits/video)",
+        "officialPrice": "$0.560/video Fal",
+        "savings": "46%"
+      },
+      {
+        "spec": "5s - Pro",
+        "poyoPrice": "$0.275/video (55 credits/video)",
+        "officialPrice": "$0.490/video Fal",
+        "savings": "44%"
+      },
+      {
+        "spec": "10s - Pro",
+        "poyoPrice": "$0.550/video (110 credits/video)",
+        "officialPrice": "$0.980/video Fal",
+        "savings": "44%"
+      }
+    ],
+    "pricing_match": "Kling 2.1",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-2-5-turbo-pro.md",
+    "slug": "/api-manual/video-series/kling-2-5-turbo-pro",
+    "title": "Kling 2.5 Turbo Pro",
+    "model_id": "kling-2-5-turbo-pro",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "5s",
+        "poyoPrice": "$0.210/video (42 credits/video)",
+        "officialPrice": "$0.350/video Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "10s",
+        "poyoPrice": "$0.420/video (84 credits/video)",
+        "officialPrice": "$0.700/video Fal",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "Kling 2.5 Turbo Pro",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-2-6.md",
+    "slug": "/api-manual/video-series/kling-2-6",
+    "title": "Kling 2.6 Video Generation",
+    "model_id": "kling-2-6",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "5s - no audio",
+        "poyoPrice": "$0.325/video (65 credits/video)",
+        "officialPrice": "$0.350/video Fal",
+        "savings": "7%"
+      },
+      {
+        "spec": "10s - no audio",
+        "poyoPrice": "$0.650/video (130 credits/video)",
+        "officialPrice": "$0.700/video Fal",
+        "savings": "7%"
+      },
+      {
+        "spec": "5s - with audio",
+        "poyoPrice": "$0.600/video (120 credits/video)",
+        "officialPrice": "$0.700/video Fal",
+        "savings": "14%"
+      },
+      {
+        "spec": "10s - with audio",
+        "poyoPrice": "$1.20/video (240 credits/video)",
+        "officialPrice": "$1.40/video Fal",
+        "savings": "14%"
+      }
+    ],
+    "pricing_match": "Kling 2.6",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-2.6-motion-control.md",
+    "slug": "/api-manual/video-series/kling-2.6-motion-control",
+    "title": "Kling 2.6 Motion Control",
+    "model_id": "kling-2.6-motion-control",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p",
+        "poyoPrice": "$0.040/sec (8 credits/sec)",
+        "officialPrice": "$0.070/sec Fal",
+        "savings": "43%"
+      },
+      {
+        "spec": "1080p",
+        "poyoPrice": "$0.060/sec (12 credits/sec)",
+        "officialPrice": "$0.112/sec Fal",
+        "savings": "46%"
+      }
+    ],
+    "pricing_match": "Kling 2.6 Motion Control",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-3-0.md",
+    "slug": "/api-manual/video-series/kling-3-0",
+    "title": "Kling 3.0 Video Generation",
+    "model_id": "kling-3-0",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p - no audio",
+        "poyoPrice": "$0.135/sec (27 credits/sec)",
+        "officialPrice": "$0.168/sec Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "720p - with audio",
+        "poyoPrice": "$0.195/sec (39 credits/sec)",
+        "officialPrice": "$0.224/sec Fal",
+        "savings": "13%"
+      },
+      {
+        "spec": "1080p - no audio",
+        "poyoPrice": "$0.195/sec (39 credits/sec)",
+        "officialPrice": "$0.224/sec Fal",
+        "savings": "13%"
+      },
+      {
+        "spec": "1080p - with audio",
+        "poyoPrice": "$0.245/sec (49 credits/sec)",
+        "officialPrice": "$0.280/sec Fal",
+        "savings": "13%"
+      },
+      {
+        "spec": "4K",
+        "poyoPrice": "$0.250/sec (50 credits/sec)",
+        "officialPrice": "$0.420/sec Fal",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "Kling 3.0",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-3-0-4k.md",
+    "slug": "/api-manual/video-series/kling-3-0-4k",
+    "title": "Kling 3.0 4K Video Generation",
+    "model_id": "kling-3-0-4k",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p - no audio",
+        "poyoPrice": "$0.135/sec (27 credits/sec)",
+        "officialPrice": "$0.168/sec Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "720p - with audio",
+        "poyoPrice": "$0.195/sec (39 credits/sec)",
+        "officialPrice": "$0.224/sec Fal",
+        "savings": "13%"
+      },
+      {
+        "spec": "1080p - no audio",
+        "poyoPrice": "$0.195/sec (39 credits/sec)",
+        "officialPrice": "$0.224/sec Fal",
+        "savings": "13%"
+      },
+      {
+        "spec": "1080p - with audio",
+        "poyoPrice": "$0.245/sec (49 credits/sec)",
+        "officialPrice": "$0.280/sec Fal",
+        "savings": "13%"
+      },
+      {
+        "spec": "4K",
+        "poyoPrice": "$0.250/sec (50 credits/sec)",
+        "officialPrice": "$0.420/sec Fal",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "Kling 3.0",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-3-0-motion-control.md",
+    "slug": "/api-manual/video-series/kling-3-0-motion-control",
+    "title": "Kling 3.0 Motion Control",
+    "model_id": "kling-3-0-motion-control",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p",
+        "poyoPrice": "$0.045/sec (9 credits/sec)",
+        "officialPrice": "$0.126/sec Fal",
+        "savings": "64%"
+      },
+      {
+        "spec": "1080p",
+        "poyoPrice": "$0.075/sec (15 credits/sec)",
+        "officialPrice": "$0.168/sec Fal",
+        "savings": "55%"
+      }
+    ],
+    "pricing_match": "Kling 3.0 Motion Control",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-avatar-2-0.md",
+    "slug": "/api-manual/video-series/kling-avatar-2-0",
+    "title": "Kling Avatar 2.0",
+    "model_id": "kling-avatar-2-0",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Standard",
+        "poyoPrice": "$0.035/sec (7 credits/sec)",
+        "officialPrice": "$0.056/sec Fal",
+        "savings": "38%"
+      },
+      {
+        "spec": "Pro",
+        "poyoPrice": "$0.070/sec (14 credits/sec)",
+        "officialPrice": "$0.115/sec Fal",
+        "savings": "39%"
+      }
+    ],
+    "pricing_match": "Kling Avatar 2.0",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-o3.md",
+    "slug": "/api-manual/video-series/kling-o3",
+    "title": "Kling O3 Video Generation",
+    "model_id": "kling-o3",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "No audio",
+        "poyoPrice": "$0.050/sec (10 credits/sec)",
+        "officialPrice": "$0.084/sec Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "With audio",
+        "poyoPrice": "$0.065/sec (13 credits/sec)",
+        "officialPrice": "$0.112/sec Fal",
+        "savings": "42%"
+      },
+      {
+        "spec": "No audio (1080p)",
+        "poyoPrice": "$0.065/sec (13 credits/sec)",
+        "officialPrice": "$0.112/sec Fal",
+        "savings": "42%"
+      },
+      {
+        "spec": "With audio (1080p)",
+        "poyoPrice": "$0.080/sec (16 credits/sec)",
+        "officialPrice": "$0.140/sec Fal",
+        "savings": "43%"
+      },
+      {
+        "spec": "4K",
+        "poyoPrice": "$0.250/sec (50 credits/sec)",
+        "officialPrice": "$0.420/sec Fal",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "Kling O3",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/kling-o3-4k.md",
+    "slug": "/api-manual/video-series/kling-o3-4k",
+    "title": "Kling-O3 4K",
+    "model_id": "kling-o3-4k",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "No audio",
+        "poyoPrice": "$0.050/sec (10 credits/sec)",
+        "officialPrice": "$0.084/sec Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "With audio",
+        "poyoPrice": "$0.065/sec (13 credits/sec)",
+        "officialPrice": "$0.112/sec Fal",
+        "savings": "42%"
+      },
+      {
+        "spec": "No audio (1080p)",
+        "poyoPrice": "$0.065/sec (13 credits/sec)",
+        "officialPrice": "$0.112/sec Fal",
+        "savings": "42%"
+      },
+      {
+        "spec": "With audio (1080p)",
+        "poyoPrice": "$0.080/sec (16 credits/sec)",
+        "officialPrice": "$0.140/sec Fal",
+        "savings": "43%"
+      },
+      {
+        "spec": "4K",
+        "poyoPrice": "$0.250/sec (50 credits/sec)",
+        "officialPrice": "$0.420/sec Fal",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "Kling O3",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/runway-gen-4-5.md",
+    "slug": "/api-manual/video-series/runway-gen-4-5",
+    "title": "Runway Gen-4.5",
+    "model_id": "runway-gen-4-5",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "5s",
+        "poyoPrice": "$0.375/video (75 credits/video)",
+        "officialPrice": "-",
+        "savings": "-"
+      },
+      {
+        "spec": "10s",
+        "poyoPrice": "$0.750/video (150 credits/video)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Runway Gen-4.5",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/seedance-1-5-pro.md",
+    "slug": "/api-manual/video-series/seedance-1-5-pro",
+    "title": "Seedance 1.5 Pro",
+    "model_id": "seedance-1.5-pro",
+    "endpoint": "/submit",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "480p - 4s - no audio",
+        "poyoPrice": "$0.045/video (9 credits/video)",
+        "officialPrice": "$0.080/video Fal",
+        "savings": "44%"
+      },
+      {
+        "spec": "480p - 8s - no audio",
+        "poyoPrice": "$0.090/video (18 credits/video)",
+        "officialPrice": "$0.160/video Fal",
+        "savings": "44%"
+      },
+      {
+        "spec": "480p - 12s - no audio",
+        "poyoPrice": "$0.105/video (21 credits/video)",
+        "officialPrice": "$0.210/video Fal",
+        "savings": "50%"
+      },
+      {
+        "spec": "720p - 4s - no audio",
+        "poyoPrice": "$0.080/video (16 credits/video)",
+        "officialPrice": "$0.120/video Fal",
+        "savings": "33%"
+      },
+      {
+        "spec": "720p - 8s - no audio",
+        "poyoPrice": "$0.160/video (32 credits/video)",
+        "officialPrice": "$0.240/video Fal",
+        "savings": "33%"
+      },
+      {
+        "spec": "720p - 12s - no audio",
+        "poyoPrice": "$0.210/video (42 credits/video)",
+        "officialPrice": "$0.320/video Fal",
+        "savings": "34%"
+      },
+      {
+        "spec": "480p - 4s - with audio",
+        "poyoPrice": "$0.090/video (18 credits/video)",
+        "officialPrice": "$0.190/video Fal",
+        "savings": "53%"
+      },
+      {
+        "spec": "480p - 8s - with audio",
+        "poyoPrice": "$0.180/video (36 credits/video)",
+        "officialPrice": "$0.380/video Fal",
+        "savings": "53%"
+      },
+      {
+        "spec": "480p - 12s - with audio",
+        "poyoPrice": "$0.210/video (42 credits/video)",
+        "officialPrice": "$0.480/video Fal",
+        "savings": "56%"
+      },
+      {
+        "spec": "720p - 4s - with audio",
+        "poyoPrice": "$0.160/video (32 credits/video)",
+        "officialPrice": "$0.260/video Fal",
+        "savings": "38%"
+      },
+      {
+        "spec": "720p - 8s - with audio",
+        "poyoPrice": "$0.320/video (64 credits/video)",
+        "officialPrice": "$0.520/video Fal",
+        "savings": "38%"
+      },
+      {
+        "spec": "720p - 12s - with audio",
+        "poyoPrice": "$0.420/video (84 credits/video)",
+        "officialPrice": "$0.680/video Fal",
+        "savings": "38%"
+      }
+    ],
+    "pricing_match": "Seedance 1.5 Pro",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/seedance-1.0-pro.md",
+    "slug": "/api-manual/video-series/seedance-1.0-pro",
+    "title": "Seedance 1.0 Pro",
+    "model_id": "seedance-1.0-pro",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p - 5s",
+        "poyoPrice": "$0.105/video (21 credits/video)",
+        "officialPrice": "$0.618/video Official",
+        "savings": "83%"
+      },
+      {
+        "spec": "720p - 10s",
+        "poyoPrice": "$0.210/video (42 credits/video)",
+        "officialPrice": "$1.24/video Official",
+        "savings": "83%"
+      },
+      {
+        "spec": "1080p - 5s",
+        "poyoPrice": "$0.215/video (43 credits/video)",
+        "officialPrice": "$0.620/video Fal",
+        "savings": "65%"
+      },
+      {
+        "spec": "1080p - 10s",
+        "poyoPrice": "$0.430/video (86 credits/video)",
+        "officialPrice": "$2.53/video Official",
+        "savings": "83%"
+      }
+    ],
+    "pricing_match": "Seedance 1.0 Pro",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/seedance-2.md",
+    "slug": "/api-manual/video-series/seedance-2",
+    "title": "Seedance-2",
+    "model_id": "seedance-2",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "480p - with video input",
+        "poyoPrice": "$0.058/sec (11.5 credits/sec)",
+        "officialPrice": "$0.091/sec Fal",
+        "savings": "37%"
+      },
+      {
+        "spec": "480p - no video input",
+        "poyoPrice": "$0.100/sec (20 credits/sec)",
+        "officialPrice": "$0.151/sec Fal",
+        "savings": "34%"
+      },
+      {
+        "spec": "720p - with video input",
+        "poyoPrice": "$0.125/sec (25 credits/sec)",
+        "officialPrice": "$0.181/sec Fal",
+        "savings": "31%"
+      },
+      {
+        "spec": "720p - no video input",
+        "poyoPrice": "$0.200/sec (40 credits/sec)",
+        "officialPrice": "$0.302/sec Fal",
+        "savings": "34%"
+      },
+      {
+        "spec": "1080p - with video input",
+        "poyoPrice": "$0.310/sec (62 credits/sec)",
+        "officialPrice": "$0.343/sec Fal",
+        "savings": "9%"
+      },
+      {
+        "spec": "1080p - no video input",
+        "poyoPrice": "$0.450/sec (90 credits/sec)",
+        "officialPrice": "$0.685/sec Fal",
+        "savings": "34%"
+      },
+      {
+        "spec": "4k - with video input",
+        "poyoPrice": "$0.640/sec (128 credits/sec)",
+        "officialPrice": "$0.625/sec Fal",
+        "savings": "-"
+      },
+      {
+        "spec": "4k - no video input",
+        "poyoPrice": "$1.00/sec (200 credits/sec)",
+        "officialPrice": "$1.25/sec Fal",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Seedance 2",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/seedance-2-mini.md",
+    "slug": "/api-manual/video-series/seedance-2-mini",
+    "title": "Seedance 2 Mini Video Generation",
+    "model_id": "seedance-2-mini",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "480p - with video input",
+        "poyoPrice": "$0.030/sec (6 credits/sec)",
+        "officialPrice": "$0.037/sec Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "480p - no video input",
+        "poyoPrice": "$0.050/sec (10 credits/sec)",
+        "officialPrice": "$0.063/sec Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "720p - with video input",
+        "poyoPrice": "$0.063/sec (12.5 credits/sec)",
+        "officialPrice": "$0.090/sec Official",
+        "savings": "31%"
+      },
+      {
+        "spec": "720p - no video input",
+        "poyoPrice": "$0.120/sec (24 credits/sec)",
+        "officialPrice": "$0.150/sec Official",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Seedance 2.0 Mini",
+    "pricing_match_score": 0.938,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/sora-2-official.md",
+    "slug": "/api-manual/video-series/sora-2-official",
+    "title": "Sora 2 Official",
+    "model_id": "sora-2-official",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "4s",
+        "poyoPrice": "$0.240/video (48 credits/video)",
+        "officialPrice": "$0.400/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "8s",
+        "poyoPrice": "$0.480/video (96 credits/video)",
+        "officialPrice": "$0.800/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "12s",
+        "poyoPrice": "$0.720/video (144 credits/video)",
+        "officialPrice": "$1.20/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "16s",
+        "poyoPrice": "$0.960/video (192 credits/video)",
+        "officialPrice": "$1.60/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "20s",
+        "poyoPrice": "$1.20/video (240 credits/video)",
+        "officialPrice": "$2.00/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "720p",
+        "poyoPrice": "$0.240/sec (48 credits/sec)",
+        "officialPrice": "$0.300/sec Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "1024p",
+        "poyoPrice": "$0.400/sec (80 credits/sec)",
+        "officialPrice": "$0.500/sec Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "1080p",
+        "poyoPrice": "$0.560/sec (112 credits/sec)",
+        "officialPrice": "$0.700/sec Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "4s/8s/12s",
+        "poyoPrice": "$0.200/video (40 credits/video)",
+        "officialPrice": "$0.250/video Official",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Sora 2 Official",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/sora-2-pro-official.md",
+    "slug": "/api-manual/video-series/sora-2-pro-official",
+    "title": "Sora 2 Pro Official",
+    "model_id": "sora-2-pro-official",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "4s",
+        "poyoPrice": "$0.240/video (48 credits/video)",
+        "officialPrice": "$0.400/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "8s",
+        "poyoPrice": "$0.480/video (96 credits/video)",
+        "officialPrice": "$0.800/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "12s",
+        "poyoPrice": "$0.720/video (144 credits/video)",
+        "officialPrice": "$1.20/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "16s",
+        "poyoPrice": "$0.960/video (192 credits/video)",
+        "officialPrice": "$1.60/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "20s",
+        "poyoPrice": "$1.20/video (240 credits/video)",
+        "officialPrice": "$2.00/video Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "720p",
+        "poyoPrice": "$0.240/sec (48 credits/sec)",
+        "officialPrice": "$0.300/sec Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "1024p",
+        "poyoPrice": "$0.400/sec (80 credits/sec)",
+        "officialPrice": "$0.500/sec Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "1080p",
+        "poyoPrice": "$0.560/sec (112 credits/sec)",
+        "officialPrice": "$0.700/sec Official",
+        "savings": "20%"
+      },
+      {
+        "spec": "4s/8s/12s",
+        "poyoPrice": "$0.200/video (40 credits/video)",
+        "officialPrice": "$0.250/video Official",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Sora 2 Official",
+    "pricing_match_score": 0.882,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/veo-3-1.md",
+    "slug": "/api-manual/video-series/veo-3-1",
+    "title": "VEO 3.1 Video Generation",
+    "model_id": "veo-3-1",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p",
+        "poyoPrice": "$0.100/video (20 credits/video)",
+        "officialPrice": "$0.385/video Official",
+        "savings": "74%"
+      },
+      {
+        "spec": "1080p",
+        "poyoPrice": "$0.100/video (20 credits/video)",
+        "officialPrice": "$0.385/video Official",
+        "savings": "74%"
+      },
+      {
+        "spec": "4K",
+        "poyoPrice": "$0.150/video (30 credits/video)",
+        "officialPrice": "$1.15/video Official",
+        "savings": "87%"
+      },
+      {
+        "spec": "720p (Fal)",
+        "poyoPrice": "$0.180/video (36 credits/video)",
+        "officialPrice": "$0.750/video Fal",
+        "savings": "76%"
+      },
+      {
+        "spec": "1080p (Fal)",
+        "poyoPrice": "$0.180/video (36 credits/video)",
+        "officialPrice": "$0.750/video Fal",
+        "savings": "76%"
+      },
+      {
+        "spec": "4K (Fal)",
+        "poyoPrice": "$0.300/video (60 credits/video)",
+        "officialPrice": "$2.80/video Fal",
+        "savings": "89%"
+      },
+      {
+        "spec": "720p (Premium)",
+        "poyoPrice": "$1.00/video (200 credits/video)",
+        "officialPrice": "$3.20/video Fal",
+        "savings": "69%"
+      },
+      {
+        "spec": "1080p (Premium)",
+        "poyoPrice": "$1.00/video (200 credits/video)",
+        "officialPrice": "$3.20/video Fal",
+        "savings": "69%"
+      },
+      {
+        "spec": "4K (Premium)",
+        "poyoPrice": "$2.00/video (400 credits/video)",
+        "officialPrice": "$4.80/video Fal",
+        "savings": "58%"
+      }
+    ],
+    "pricing_match": "Veo 3.1",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/veo-3-1-official.md",
+    "slug": "/api-manual/video-series/veo-3-1-official",
+    "title": "Veo 3.1 Official",
+    "model_id": "veo-3-1-official",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p - 1080p - no audio",
+        "poyoPrice": "$0.050/sec (10 credits/sec)",
+        "officialPrice": "$0.100/sec Official",
+        "savings": "50%"
+      },
+      {
+        "spec": "720p - 1080p - audio",
+        "poyoPrice": "$0.075/sec (15 credits/sec)",
+        "officialPrice": "$0.150/sec Official",
+        "savings": "50%"
+      },
+      {
+        "spec": "4K - no audio",
+        "poyoPrice": "$0.150/sec (30 credits/sec)",
+        "officialPrice": "$0.300/sec Official",
+        "savings": "50%"
+      },
+      {
+        "spec": "4K - audio",
+        "poyoPrice": "$0.175/sec (35 credits/sec)",
+        "officialPrice": "$0.350/sec Official",
+        "savings": "50%"
+      },
+      {
+        "spec": "720p - no audio (lite)",
+        "poyoPrice": "$0.018/sec (3.6 credits/sec)",
+        "officialPrice": "$0.030/sec Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "720p - audio (lite)",
+        "poyoPrice": "$0.030/sec (6 credits/sec)",
+        "officialPrice": "$0.050/sec Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "1080p - no audio (8s only)",
+        "poyoPrice": "$0.030/sec (6 credits/sec)",
+        "officialPrice": "$0.050/sec Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "1080p - audio (8s only)",
+        "poyoPrice": "$0.048/sec (9.6 credits/sec)",
+        "officialPrice": "$0.080/sec Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "720p - 1080p - no audio (pro)",
+        "poyoPrice": "$0.120/sec (24 credits/sec)",
+        "officialPrice": "$0.200/sec Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "720p - 1080p - audio (pro)",
+        "poyoPrice": "$0.240/sec (48 credits/sec)",
+        "officialPrice": "$0.400/sec Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "4K - no audio (pro)",
+        "poyoPrice": "$0.240/sec (48 credits/sec)",
+        "officialPrice": "$0.400/sec Official",
+        "savings": "40%"
+      },
+      {
+        "spec": "4K - audio (pro)",
+        "poyoPrice": "$0.360/sec (72 credits/sec)",
+        "officialPrice": "$0.600/sec Official",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "Veo 3.1 Official",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/wan-2-6.md",
+    "slug": "/api-manual/video-series/wan-2-6",
+    "title": "Wan 2.6 Video Generation",
+    "model_id": "wan-2-6",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p - 5s",
+        "poyoPrice": "$0.400/video (80 credits/video)",
+        "officialPrice": "$0.500/video Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "720p - 10s",
+        "poyoPrice": "$0.800/video (160 credits/video)",
+        "officialPrice": "$0.800/video Fal",
+        "savings": "-"
+      },
+      {
+        "spec": "720p - 15s",
+        "poyoPrice": "$1.20/video (240 credits/video)",
+        "officialPrice": "$1.50/video Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "1080p - 5s",
+        "poyoPrice": "$0.600/video (120 credits/video)",
+        "officialPrice": "$0.750/video Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "1080p - 10s",
+        "poyoPrice": "$1.20/video (240 credits/video)",
+        "officialPrice": "$1.50/video Fal",
+        "savings": "20%"
+      },
+      {
+        "spec": "1080p - 15s",
+        "poyoPrice": "$1.80/video (360 credits/video)",
+        "officialPrice": "$2.25/video Fal",
+        "savings": "20%"
+      }
+    ],
+    "pricing_match": "Wan 2.6",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/wan-2-7-video.md",
+    "slug": "/api-manual/video-series/wan-2-7-video",
+    "title": "Wan 2.7 Video",
+    "model_id": "wan-2-7-video",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "720p - text to video",
+        "poyoPrice": "$0.060/sec (12 credits/sec)",
+        "officialPrice": "$0.100/sec Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "1080p - text to video",
+        "poyoPrice": "$0.090/sec (18 credits/sec)",
+        "officialPrice": "$0.150/sec Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "720p - image to video",
+        "poyoPrice": "$0.060/sec (12 credits/sec)",
+        "officialPrice": "$0.100/sec Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "1080p - image to video",
+        "poyoPrice": "$0.090/sec (18 credits/sec)",
+        "officialPrice": "$0.150/sec Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "720p - reference to video",
+        "poyoPrice": "$0.060/sec (12 credits/sec)",
+        "officialPrice": "$0.100/sec Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "1080p - reference to video",
+        "poyoPrice": "$0.090/sec (18 credits/sec)",
+        "officialPrice": "$0.100/sec Fal",
+        "savings": "10%"
+      },
+      {
+        "spec": "720p - edit video",
+        "poyoPrice": "$0.060/sec (12 credits/sec)",
+        "officialPrice": "$0.100/sec Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "1080p - edit video",
+        "poyoPrice": "$0.090/sec (18 credits/sec)",
+        "officialPrice": "$0.100/sec Fal",
+        "savings": "10%"
+      }
+    ],
+    "pricing_match": "Wan 2.7 Video",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/wan-animate.md",
+    "slug": "/api-manual/video-series/wan-animate",
+    "title": "Wan Animate Video Generation",
+    "model_id": "wan-animate",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "Move 480p",
+        "poyoPrice": "$0.035/sec (7 credits/sec)",
+        "officialPrice": "$0.040/sec Fal",
+        "savings": "12%"
+      },
+      {
+        "spec": "Move 580p",
+        "poyoPrice": "$0.060/sec (12 credits/sec)",
+        "officialPrice": "$0.060/sec Fal",
+        "savings": "-"
+      },
+      {
+        "spec": "Move 720p",
+        "poyoPrice": "$0.075/sec (15 credits/sec)",
+        "officialPrice": "$0.080/sec Fal",
+        "savings": "6%"
+      },
+      {
+        "spec": "Replace 480p",
+        "poyoPrice": "$0.035/sec (7 credits/sec)",
+        "officialPrice": "$0.040/sec Fal",
+        "savings": "12%"
+      },
+      {
+        "spec": "Replace 580p",
+        "poyoPrice": "$0.060/sec (12 credits/sec)",
+        "officialPrice": "$0.060/sec Fal",
+        "savings": "-"
+      },
+      {
+        "spec": "Replace 720p",
+        "poyoPrice": "$0.075/sec (15 credits/sec)",
+        "officialPrice": "$0.080/sec Fal",
+        "savings": "6%"
+      }
+    ],
+    "pricing_match": "Wan Animate",
+    "pricing_match_score": 1.0,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/wan2.2-image-to-video-fast.md",
+    "slug": "/api-manual/video-series/wan2.2-image-to-video-fast",
+    "title": "Wan 2.2 Image-to-Video Fast",
+    "model_id": "wan2.2-image-to-video-fast",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "480p",
+        "poyoPrice": "$0.030/gen (6 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      },
+      {
+        "spec": "720p",
+        "poyoPrice": "$0.060/gen (12 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Wan 2.2 Fast",
+    "pricing_match_score": 0.615,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/wan2.2-text-to-video-fast.md",
+    "slug": "/api-manual/video-series/wan2.2-text-to-video-fast",
+    "title": "Wan 2.2 Text-to-Video Fast",
+    "model_id": "wan2.2-text-to-video-fast",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "480p",
+        "poyoPrice": "$0.030/gen (6 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      },
+      {
+        "spec": "720p",
+        "poyoPrice": "$0.060/gen (12 credits/gen)",
+        "officialPrice": "-",
+        "savings": "-"
+      }
+    ],
+    "pricing_match": "Wan 2.2 Fast",
+    "pricing_match_score": 0.632,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/wan2.5-image-to-video.md",
+    "slug": "/api-manual/video-series/wan2.5-image-to-video",
+    "title": "Wan 2.5 Image-to-Video",
+    "model_id": "wan2.5-image-to-video",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "480p or 832x480 - 5s",
+        "poyoPrice": "$0.150/video (30 credits/video)",
+        "officialPrice": "$0.250/video Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "720p or 1280x720 - 5s",
+        "poyoPrice": "$0.300/video (60 credits/video)",
+        "officialPrice": "$0.500/video Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "1080p or 1920x1080 - 5s",
+        "poyoPrice": "$0.450/video (90 credits/video)",
+        "officialPrice": "$0.750/video Fal",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "Wan 2.5",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  },
+  {
+    "site": "poyo",
+    "url": "https://docs.poyo.ai/api-manual/video-series/wan2.5-text-to-video.md",
+    "slug": "/api-manual/video-series/wan2.5-text-to-video",
+    "title": "Wan 2.5 Text-to-Video",
+    "model_id": "wan2.5-text-to-video",
+    "endpoint": "",
+    "operation_id": "",
+    "top_level_fields": [],
+    "input_fields": [],
+    "nested_input_fields": [],
+    "pricing_summary": "",
+    "pricing_rows": [
+      {
+        "spec": "480p or 832x480 - 5s",
+        "poyoPrice": "$0.150/video (30 credits/video)",
+        "officialPrice": "$0.250/video Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "720p or 1280x720 - 5s",
+        "poyoPrice": "$0.300/video (60 credits/video)",
+        "officialPrice": "$0.500/video Fal",
+        "savings": "40%"
+      },
+      {
+        "spec": "1080p or 1920x1080 - 5s",
+        "poyoPrice": "$0.450/video (90 credits/video)",
+        "officialPrice": "$0.750/video Fal",
+        "savings": "40%"
+      }
+    ],
+    "pricing_match": "Wan 2.5",
+    "pricing_match_score": 0.9,
+    "pricing_source": "poyo.ai/pricing"
+  }
+]
