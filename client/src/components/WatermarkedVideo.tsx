@@ -83,12 +83,18 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
     if (v && hoverPlayed.current) { v.pause(); hoverPlayed.current = false; }
   };
 
-  // 关闭放大预览：Esc。
+  // 关闭放大预览：Esc。#126 加固：capture + 阻断——放大层开着时 Esc 只关它，
+  // 不连带触发画布的 Esc 副作用（取消选中/关菜单），也不被其它监听抢走。
   useEffect(() => {
     if (!big) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setBig(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      setBig(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [big]);
 
   // 始终去掉原生控件的「下载 / 远程投放」项（移动端 Chrome 的 ⋮ 菜单里也不再有下载）；

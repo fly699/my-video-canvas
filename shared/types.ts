@@ -534,6 +534,9 @@ export interface ImageGenNodeData {
   /** Collapsed hero preview mode for a multi-image batch: "grid" (default) shows
    *  the whole grid, "single" shows only the selected image. */
   heroView?: "grid" | "single";
+  /** #125 极简显示(Alt+Q)下多产物平铺的收起状态：true=折成单张预览（与 heroView
+   *  互不影响——极简默认强制平铺，此字段仅在极简形态下生效）。 */
+  minimalCollapsed?: boolean;
   // Original upstream (AI-platform) URL(s) captured at generation time, kept so
   // that — when the re-hosted /manus-storage copy isn't reachable by upstream —
   // a downstream node can offer to switch the reference back to the still-valid

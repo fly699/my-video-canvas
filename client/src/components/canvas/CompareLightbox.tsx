@@ -64,9 +64,11 @@ export function CompareLightbox() {
     if (va && vb && Math.abs(va.currentTime - vb.currentTime) > 0.3) vb.currentTime = va.currentTime;
   };
   const renderMedia = (url: string, label: "A" | "B", ref: React.RefObject<HTMLVideoElement | null>, overlay?: boolean) => {
+    // #126 全屏充满：底图直接占满 92vw×88vh（objectFit:contain 保比例放大）——
+    // 此前用 maxWidth/auto，小分辨率媒体只按原始尺寸显示，全屏后中间一小块（同 #2 放大预览的修法）。
     const common: React.CSSProperties = overlay
       ? { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }
-      : { display: "block", maxWidth: "88vw", maxHeight: "84vh", width: "auto", height: "auto", pointerEvents: "none" };
+      : { display: "block", width: "92vw", height: "88vh", objectFit: "contain", pointerEvents: "none" };
     if (isVideoUrl(url)) {
       const muted = label === "A" ? audio !== "a" : audio !== "b";
       return <video ref={ref} src={mediaFetchUrl(url)} muted={muted} loop playsInline preload="metadata" onTimeUpdate={label === "A" ? onATime : undefined} onEnded={() => setPlaying(false)} style={common} />;
@@ -86,7 +88,7 @@ export function CompareLightbox() {
       <div
         ref={boxRef}
         className="nodrag"
-        style={{ position: "relative", borderRadius: 12, overflow: "hidden", cursor: "ew-resize", userSelect: "none", touchAction: "none", boxShadow: "0 24px 80px oklch(0 0 0 / 0.6)" }}
+        style={{ position: "relative", borderRadius: 12, overflow: "hidden", cursor: "ew-resize", userSelect: "none", touchAction: "none", boxShadow: "0 24px 80px oklch(0 0 0 / 0.6)", background: "#000" /* #126 contain 的黑边与对比框一体 */ }}
         onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); dragRef.current = true; (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setPos(e.clientX); }}
         onPointerMove={(e) => { if (dragRef.current) setPos(e.clientX); }}
         onPointerUp={(e) => { dragRef.current = false; (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); }}
