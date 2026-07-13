@@ -1307,6 +1307,21 @@ const MODEL_CATEGORIES: ModelCat[] = [
     // "editor:" 前缀，单独控制剪辑器可用模型（不影响 LLM 节点/聊天）。
     models: LLM_MODELS.filter((m) => !m.hidden).map((m) => ({ value: "editor:" + m.id, label: m.label, group: m.provider })),
   },
+  {
+    // #152 音频工具（人声分离/翻唱/续写/写歌词）——音频节点「工具」类别可用性开关。
+    // value 即工具 id，与音频节点选择器/useDisabledModels 同键（关闭即从下拉隐藏）。
+    key: "audio_tool",
+    label: "音频工具",
+    hint: "用于 音频 节点「工具」类别：人声分离 / 翻唱 / 续写 / 写歌词（Poyo）",
+    accent: "oklch(0.70 0.16 150)",
+    // 与 AudioNode 的 AUDIO_TOOL_MODELS 同键（关闭即从「工具」下拉隐藏，useDisabledModels 过滤）。
+    models: [
+      { value: "sep_vocals", label: "人声分离", group: "工具" },
+      { value: "cover", label: "翻唱 / 转曲风", group: "工具" },
+      { value: "extend", label: "音频续写", group: "工具" },
+      { value: "lyrics", label: "写歌词", group: "工具" },
+    ],
+  },
 ];
 
 

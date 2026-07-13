@@ -1,5 +1,5 @@
 import { ENV } from "./env";
-import { storagePut } from "../storage";
+import { storagePut, resolveToAbsoluteUrl } from "../storage";
 import { isAudioPersistenceEnabled } from "./storageConfig";
 
 const POYO_BASE = "https://api.poyo.ai";
@@ -237,6 +237,142 @@ export async function submitAndPollPoyoMusic(
   if (opts.styleWeight !== undefined) input.style_weight = opts.styleWeight;
   const taskId = await poyoSubmit("generate-music", input);
   return pollPoyoDetailMusic(taskId);
+}
+
+// ── #152 音乐工具第一批（人声分离 / 翻唱 / 续写 / 写歌词）──────────────────────
+// 参数与响应形态严格按 Poyo 官方 api-manual/music-series 各页 schema（MCP 取回）。
+// 提交都走 /api/generate/submit + 轮询 /api/generate/detail/music（同 Suno），
+// 但 files[0] 的结果字段各不相同：cover/extend→audio_url、separate→vocal_removal(JSON)、
+// lyrics→text。故此处单独走一套 detail 解析。
+export type PoyoMusicTool = "sep_vocals" | "cover" | "extend" | "lyrics";
+
+// UI 工具 id → Poyo wire model（禁止改名，旧节点 payload 引用这些值）。
+export const POYO_MUSIC_TOOL_WIRE: Record<PoyoMusicTool, string> = {
+  sep_vocals: "upload-and-separate-vocals",
+  cover:      "upload-and-cover-audio",
+  extend:     "upload-and-extend-audio",
+  lyrics:     "generate-lyrics",
+};
+
+export interface SubmitPoyoMusicToolOptions {
+  tool: PoyoMusicTool;
+  /** 源音频公网 URL（sep→audio_url；cover/extend→upload_url；lyrics 不需要）。 */
+  audioUrl?: string;
+  prompt?: string;                 // cover/extend 风格描述或歌词；lyrics 主题描述
+  // 人声分离
+  sepModel?: "base" | "enhanced" | "instrumental";
+  sepOutput?: "general" | "bass" | "drums" | "other" | "piano" | "guitar" | "vocals";
+  // 翻唱 / 续写（Suno 系子参数）
+  mv?: string;                     // V4 / V4_5 / V4_5ALL / V4_5PLUS / V5 / V5_5（默认 V5）
+  instrumental?: boolean;
+  negativeTags?: string;
+  vocalGender?: "m" | "f";
+  styleWeight?: number;
+  // 续写
+  continueAt?: number;             // 从第几秒开始续（必填 for extend）
+}
+
+export interface PoyoMusicToolResult {
+  kind: "audio" | "stems" | "lyrics";
+  url?: string;                    // cover / extend 产出音频（已转存）
+  duration?: number;
+  /** 人声分离产出的各音轨（键 = vocals/bass/drums/piano/guitar/other，已逐条转存）。 */
+  stems?: Record<string, string>;
+  lyrics?: string;                 // 写歌词产出文本
+  title?: string;
+}
+
+const VALID_MV = new Set(["V4", "V4_5", "V4_5ALL", "V4_5PLUS", "V5", "V5_5"]);
+const clampMv = (mv?: string): string => (mv && VALID_MV.has(mv) ? mv : "V5");
+
+// 轮询 detail/music 拿到 finished 的 files[0]（工具专用：不强求 audio_url）。
+async function pollPoyoToolDetail(taskId: string): Promise<Record<string, unknown>> {
+  for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    const res = await fetch(`${POYO_BASE}/api/generate/detail/music?task_id=${encodeURIComponent(taskId)}`, {
+      headers: { Authorization: `Bearer ${ENV.poyoApiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) continue;
+    const body = (await res.json()) as { code?: number; data?: { status?: string; files?: Array<Record<string, unknown>>; error_message?: string }; status?: string; files?: Array<Record<string, unknown>>; error_message?: string };
+    const d = (body.data ?? body) as { status?: string; files?: Array<Record<string, unknown>>; error_message?: string };
+    if (!d?.status) continue;
+    if (d.status === "finished") {
+      const file = d.files?.[0];
+      if (!file) throw new Error("[CHARGED] Poyo 音频工具生成完成但响应为空（积分已扣，请勿重试）");
+      return file;
+    }
+    if (IN_PROGRESS_STATUSES.has(d.status)) continue;
+    throw new Error(`Poyo 音频工具 status="${d.status}": ${d.error_message ?? "no detail"}`);
+  }
+  throw new Error("Poyo 音频工具生成超时");
+}
+
+export async function submitAndPollPoyoMusicTool(opts: SubmitPoyoMusicToolOptions): Promise<PoyoMusicToolResult> {
+  if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
+  const wire = POYO_MUSIC_TOOL_WIRE[opts.tool];
+
+  // ── 写歌词：仅 prompt，产出文本 ──
+  if (opts.tool === "lyrics") {
+    const desc = (opts.prompt ?? "").trim();
+    if (!desc) throw new Error("请先填写歌词主题 / 描述");
+    const taskId = await poyoSubmit(wire, { prompt: desc.slice(0, 2000) });
+    const file = await pollPoyoToolDetail(taskId);
+    const text = typeof file.text === "string" ? file.text : "";
+    if (!text) throw new Error("[CHARGED] 写歌词完成但响应未含歌词文本（积分已扣，请勿重试）");
+    return { kind: "lyrics", lyrics: text, title: typeof file.title === "string" ? file.title : undefined };
+  }
+
+  // 其余三个工具都需要源音频。
+  const src = (opts.audioUrl ?? "").trim();
+  if (!src) throw new Error("请先上传或连接一段源音频");
+  const absUrl = await resolveToAbsoluteUrl(src);
+
+  // ── 人声分离：audio_url + model_name + output_type，产出多轨 ──
+  if (opts.tool === "sep_vocals") {
+    const input: Record<string, unknown> = {
+      audio_url: absUrl,
+      model_name: opts.sepModel ?? "base",
+      output_type: opts.sepOutput ?? "general",
+    };
+    const taskId = await poyoSubmit(wire, input);
+    const file = await pollPoyoToolDetail(taskId);
+    // vocal_removal 是 JSON 字符串：{vocals,bass,drums,piano,guitar,other}（视 output_type 而定）。
+    let raw: Record<string, unknown> = {};
+    if (typeof file.vocal_removal === "string") { try { raw = JSON.parse(file.vocal_removal); } catch { raw = {}; } }
+    else if (file.vocal_removal && typeof file.vocal_removal === "object") raw = file.vocal_removal as Record<string, unknown>;
+    const stems: Record<string, string> = {};
+    for (const key of ["vocals", "bass", "drums", "piano", "guitar", "other"]) {
+      const u = raw[key];
+      if (typeof u === "string" && u) stems[key] = await persistAudioUrl(u);
+    }
+    if (Object.keys(stems).length === 0) throw new Error("[CHARGED] 人声分离完成但未返回任何音轨 URL（积分已扣，请勿重试）");
+    return { kind: "stems", stems };
+  }
+
+  // ── 翻唱 / 续写：Suno 系，产出音频（走非自定义模式：只需 prompt）──
+  const mv = clampMv(opts.mv);
+  const instrumental = opts.instrumental ?? false;
+  const desc = (opts.prompt ?? "").trim();
+  const input: Record<string, unknown> = { upload_url: absUrl, mv, instrumental };
+  if (opts.tool === "cover") {
+    input.custom_mode = false;               // 非自定义：prompt = 转换目标描述（≤500）
+    if (!desc) throw new Error("请描述想要的翻唱风格");
+    input.prompt = desc.slice(0, 500);
+  } else { // extend
+    input.default_param_flag = false;        // 非自定义：仅 continue_at 必填，prompt 可选
+    input.continue_at = Number.isFinite(opts.continueAt) ? Math.max(0, opts.continueAt as number) : 0;
+    if (desc) input.prompt = desc.slice(0, 500);
+  }
+  if (opts.negativeTags) input.negative_tags = opts.negativeTags;
+  if (opts.vocalGender) input.vocal_gender = opts.vocalGender;
+  if (opts.styleWeight !== undefined) input.style_weight = opts.styleWeight;
+  const taskId = await poyoSubmit(wire, input);
+  const file = await pollPoyoToolDetail(taskId);
+  const upstream = file.audio_url;
+  if (typeof upstream !== "string" || !upstream) throw new Error("[CHARGED] 音频工具完成但响应未含 audio_url（积分已扣，请勿重试）");
+  const url = await persistAudioUrl(upstream);
+  return { kind: "audio", url, duration: typeof file.duration === "number" ? file.duration : undefined };
 }
 
 /**

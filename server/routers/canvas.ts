@@ -65,7 +65,7 @@ import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { persistVideoOrFallback, persistVideosOrFallback } from "../_core/persistVideo";
 import { submitAndPollPoyoMusic, type PoyoMusicModel, type PoyoTTSModel } from "../_core/poyoAudio";
-import { submitAndPollPoyoTTS } from "../_core/poyoAudio";
+import { submitAndPollPoyoTTS, submitAndPollPoyoMusicTool } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, detectSceneChanges, extractFrame, extractAudio, concatAudioSegments, processAudioClip } from "../_core/videoEditor";
@@ -2751,6 +2751,74 @@ export const audioGenRouter = router({
       const opLabel = [hasTrim ? "截取" : null, hasSpeed ? `变速×${input.speed}` : null].filter(Boolean).join("+");
       await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "ffmpeg", model: null, url: result.url, name: `音频${opLabel}` });
       return result;
+    }),
+
+  // ── #152 音乐工具第一批：人声分离 / 翻唱 / 续写 / 写歌词（Poyo，走平台白名单）──
+  // 参数按 Poyo 官方 api-manual/music-series schema；结果形态随工具而异（音频/多轨/歌词）。
+  generateMusicTool: protectedProcedure
+    .input(
+      z.object({
+        tool: z.enum(["sep_vocals", "cover", "extend", "lyrics"]),
+        audioUrl: mediaUrlSchema.optional(),      // sep/cover/extend 的源音频（lyrics 不需要）
+        prompt: z.string().max(5000).optional(),  // cover/extend 风格描述；lyrics 主题
+        // 人声分离
+        sepModel: z.enum(["base", "enhanced", "instrumental"]).optional(),
+        sepOutput: z.enum(["general", "bass", "drums", "other", "piano", "guitar", "vocals"]).optional(),
+        // 翻唱 / 续写
+        mv: z.enum(["V4", "V4_5", "V4_5ALL", "V4_5PLUS", "V5", "V5_5"]).optional(),
+        instrumental: z.boolean().optional(),
+        negativeTags: z.string().max(500).optional(),
+        vocalGender: z.enum(["m", "f"]).optional(),
+        styleWeight: z.number().min(0).max(1).optional(),
+        continueAt: z.number().min(0).optional(),  // extend 起始秒
+        estimatedCost: z.string().max(32).optional(),
+        projectId: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx);  // Poyo 系，与 generateMusic 同门控
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      if (input.audioUrl) guardUrl(input.audioUrl);
+      const wireLabel = { sep_vocals: "人声分离", cover: "翻唱/转曲风", extend: "音频续写", lyrics: "写歌词" }[input.tool];
+      return dedupe("audioGen.generateMusicTool", ctx.user.id, input, async () => {
+        const result = await submitAndPollPoyoMusicTool({
+          tool: input.tool,
+          audioUrl: input.audioUrl,
+          prompt: input.prompt,
+          sepModel: input.sepModel,
+          sepOutput: input.sepOutput,
+          mv: input.mv,
+          instrumental: input.instrumental,
+          negativeTags: input.negativeTags,
+          vocalGender: input.vocalGender,
+          styleWeight: input.styleWeight,
+          continueAt: input.continueAt,
+        });
+        writeAuditLog({ ctx, action: "audio_music_tool", detail: {
+          tool: input.tool, label: wireLabel,
+          resultUrl: result.url ?? null,
+          stemCount: result.stems ? Object.keys(result.stems).length : 0,
+          hasLyrics: !!result.lyrics,
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: true,
+        } });
+        // 落素材库：音频类产物入库（分离多轨逐条入库；歌词非媒体不入库）。
+        if (result.kind === "audio" && result.url) {
+          await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "poyo", model: input.tool, url: result.url, name: wireLabel });
+        } else if (result.kind === "stems" && result.stems) {
+          for (const [stem, u] of Object.entries(result.stems)) {
+            await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "poyo", model: input.tool, url: u, name: `人声分离·${stem}` });
+          }
+        }
+        return result;
+      }).catch((err: unknown) => {
+        writeAuditLog({ ctx, action: "audio_music_tool", detail: {
+          tool: input.tool, label: wireLabel,
+          ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
+          success: false, error: truncate(err instanceof Error ? err.message : String(err)),
+        } });
+        throw err;
+      });
     }),
 });
 
