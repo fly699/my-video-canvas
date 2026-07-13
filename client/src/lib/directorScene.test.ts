@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   aspectRatioValue, makeActor, makeDefaultDirectorScene, mannequinModel, nextActorName, MANNEQUIN_MODELS,
   makeCrowd, bakeGroupTransform, ensureCameras, nextCameraName, respaceCrowdMembers, cloneGroupWithMembers, makeGroupFromActors, CROWD_SPACING,
-  actorWorldPosition, shotAimTarget, faceCameraYaw,
+  actorWorldPosition, shotAimTarget, faceCameraYaw, describeCameraMove,
 } from "./directorScene";
 import type { DirectorActor, DirectorGroup } from "../../../shared/types";
 
@@ -259,5 +259,26 @@ describe("director lights (#78)", () => {
     expect(s).toContain("基础环境光已压暗");
     const s2 = describeLights(lights, false);
     expect(s2).not.toContain("压暗");
+  });
+
+  // #110 机位动画路径 → 中文运镜描述
+  it("describeCameraMove：无 moveTo / 起终几乎相同 → null", () => {
+    const base = { position: [0, 1.5, 4] as [number, number, number], target: [0, 1, 0] as [number, number, number], fov: 50, name: "机位1" };
+    expect(describeCameraMove(base)).toBeNull();
+    expect(describeCameraMove({ ...base, moveTo: { position: [0.01, 1.5, 4.02], target: [0, 1, 0] } })).toBeNull();
+  });
+
+  it("describeCameraMove：沿视线前移 → 前推（快速档）", () => {
+    const s = describeCameraMove({ position: [0, 1, 4], target: [0, 1, 0], fov: 50, name: "机位1", moveTo: { position: [0, 1, 2], target: [0, 1, 0] } });
+    expect(s).toContain("机位1运镜");
+    expect(s).toContain("快速前推");
+  });
+
+  it("describeCameraMove：视线向左转 → 向左摇镜；机位升高 → 升高机位", () => {
+    const pan = describeCameraMove({ position: [0, 1, 4], target: [0, 1, 0], fov: 50, moveTo: { position: [0, 1, 4], target: [-3, 1, 0] } });
+    expect(pan).toContain("向左");
+    expect(pan).toContain("摇镜");
+    const ped = describeCameraMove({ position: [0, 1, 4], target: [0, 1, 0], fov: 50, moveTo: { position: [0, 2.5, 4], target: [0, 1, 0] } });
+    expect(ped).toContain("升高机位");
   });
 });

@@ -601,6 +601,9 @@ export interface DirectorCamera {
   id?: string;          // 多机位：机位 id（命名机位列表用；单机位 legacy 无此字段）
   name?: string;        // 机位名（如「机位1」）
   lookAtActorId?: string; // 注视目标 = 指定角色（置位时 target 跟随该角色位置）
+  /** #110 机位动画路径：镜头终点位姿（起点=本机位当前 position/target）。
+   *  用于预览飞行与推导中文运镜描述（推/拉/摇/移/升降），随截图输出给下游图生视频。 */
+  moveTo?: { position: Vec3; target: Vec3 };
 }
 
 /** #78 导演台真 3D 灯光：可摆位光源（点光/聚光），实时照亮人偶与道具（LibTV 无此能力）。 */
@@ -657,6 +660,9 @@ export interface DirectorNodeData {
   controlMap?: { url: string; kind: "depth" | "normal" | "pose"; strength: number };
   /** #78 截图时由 scene.lights 自动生成的中文光效描述（下游提示词可直接引用）。 */
   lightingDesc?: string;
+  /** #110 截图时由激活机位的动画路径（moveTo）推导的中文运镜描述（推/拉/摇/移/升降），
+   *  供下游图生视频的运镜提示词直接引用。无动画路径则为空。 */
+  cameraMoveDesc?: string;
   /** #78 相机截图库（LibTV「摄像机截图」）：多张暂存，可全部清空 / 发送到画布落成分镜节点。 */
   shots?: { url: string; name: string }[];
   status?: "idle" | "processing" | "done" | "failed";
