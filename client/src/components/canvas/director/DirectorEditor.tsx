@@ -110,6 +110,17 @@ function Slider({ label, value, min, max, step = 1, fixed = 0, onChange }: {
 // ── #78 真 3D 灯光实体：真实 three 光源（实时照亮人偶/道具）+ 可点选标记球（截图时隐藏）──
 // 标记组 name="light-marker"：shoot/renderGrid/截图入库前统一隐藏（hideLightMarkers），
 // 控制图渲染走「顶层非 ACTORS_GROUP 全隐藏」路径自然covered。decay=0 使强度手感线性可控。
+
+// #118 光路指示共用：指示物禁用射线拾取（不拦截标记球/人偶的点选）+ 点光全向短射线顶点
+const noRaycast = () => null;
+const POINT_LIGHT_RAYS = (() => {
+  const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+    [0.707, 0.707, 0], [-0.707, 0.707, 0], [0.707, -0.707, 0], [-0.707, -0.707, 0]];
+  const pts: number[] = [];
+  for (const [x, y, z] of dirs) pts.push(x * 0.14, y * 0.14, z * 0.14, x * 0.32, y * 0.32, z * 0.32);
+  return new Float32Array(pts);
+})();
+
 function LightObj({ light, selected, onSelect, bindMarker }: {
   light: DirectorLight; selected: boolean; onSelect: () => void;
   bindMarker?: (el: THREE.Object3D | null) => void;
@@ -123,6 +134,16 @@ function LightObj({ light, selected, onSelect, bindMarker }: {
     }
   }, [light.kind, light.target]);
   const tgt = light.target ?? [0, 1.0, 0];
+  // #118 光束锥朝向/长度：apex=灯位、局部 -Z 指向 target（相机式 lookAt，同 CameraGizmo；
+  // Matrix4.lookAt 对「垂直向下打光」等与 up 平行的退化方向有内置兜底，安全）
+  const beamLen = light.kind === "spot"
+    ? Math.hypot(tgt[0] - light.position[0], tgt[1] - light.position[1], tgt[2] - light.position[2]) : 0;
+  const beamQuat = useMemo(() => {
+    if (light.kind !== "spot") return undefined;
+    const m = new THREE.Matrix4().lookAt(new THREE.Vector3(...light.position), new THREE.Vector3(tgt[0], tgt[1], tgt[2]), new THREE.Vector3(0, 1, 0));
+    return new THREE.Quaternion().setFromRotationMatrix(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [light.kind, light.position[0], light.position[1], light.position[2], tgt[0], tgt[1], tgt[2]]);
   return (
     <>
       {light.kind === "spot" ? (
@@ -148,19 +169,41 @@ function LightObj({ light, selected, onSelect, bindMarker }: {
           </mesh>
         )}
       </group>
-      {selected && light.kind === "spot" && (
+      {light.kind === "spot" && (
         <group name="light-marker">
-          {/* 指向线：光位 → 指向点（选中时可视化聚光方向） */}
+          {/* #118 光路指示常驻化：指向线 + 指向点 + 半透明光束锥（选中时更亮）。
+              此前仅选中灯才画指向线，用户反馈「布光没有光路指示」——改为所有聚光常驻可见。 */}
           <line>
             <bufferGeometry>
               <bufferAttribute attach="attributes-position" args={[new Float32Array([...light.position, ...tgt]), 3]} />
             </bufferGeometry>
-            <lineBasicMaterial color={light.color} transparent opacity={0.6} />
+            <lineBasicMaterial color={light.color} transparent opacity={selected ? 0.7 : 0.35} />
           </line>
-          <mesh position={tgt}>
+          <mesh position={tgt} raycast={noRaycast}>
             <sphereGeometry args={[0.055, 10, 10]} />
-            <meshBasicMaterial color={light.color} transparent opacity={0.8} />
+            <meshBasicMaterial color={light.color} transparent opacity={selected ? 0.8 : 0.45} />
           </mesh>
+          {beamLen > 0.05 && (
+            /* 光束锥：apex=灯位、底面=指向点、锥角=spotLight.angle（半角，同真实照射范围）。
+               openEnded + 双面 + 不写深度，纯视觉提示不遮挡场景、不拦截点选。 */
+            <group position={light.position} quaternion={beamQuat as never}>
+              <mesh position={[0, 0, -beamLen / 2]} rotation={[Math.PI / 2, 0, 0]} raycast={noRaycast}>
+                <coneGeometry args={[beamLen * Math.tan(((light.angle ?? 40) * Math.PI) / 180), beamLen, 24, 1, true]} />
+                <meshBasicMaterial color={light.color} transparent opacity={selected ? 0.14 : 0.07} depthWrite={false} side={THREE.DoubleSide} />
+              </mesh>
+            </group>
+          )}
+        </group>
+      )}
+      {light.kind === "point" && (
+        <group name="light-marker" position={light.position}>
+          {/* #118 点光全向短射线：提示这是无方向的全向光源 */}
+          <lineSegments raycast={noRaycast}>
+            <bufferGeometry>
+              <bufferAttribute attach="attributes-position" args={[POINT_LIGHT_RAYS, 3]} />
+            </bufferGeometry>
+            <lineBasicMaterial color={light.color} transparent opacity={selected ? 0.65 : 0.38} />
+          </lineSegments>
         </group>
       )}
     </>
@@ -1675,7 +1718,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 压暗基础光（布光造型主导明暗）
               </label>
               <button onClick={() => removeLight(selectedLight.id)} style={{ ...chip, justifyContent: "center", width: "100%", marginTop: 10, color: "oklch(0.65 0.2 25)" }}><Trash2 size={11} /> 删除灯光</button>
-              <p style={hint}>光照实时作用于人偶/道具（LibTV 只有天空色没有布光）。截图时标记球自动隐藏、光照保留，并生成中文光效描述随节点输出。</p>
+              <p style={hint}>光照实时作用于人偶/道具（LibTV 只有天空色没有布光）。聚光常驻显示光束锥+指向线、点光显示全向射线；截图时标记球/光路指示自动隐藏、光照保留，并生成中文光效描述随节点输出。</p>
             </div>
           ) : selectedGroup ? (
             <div style={panel}>
