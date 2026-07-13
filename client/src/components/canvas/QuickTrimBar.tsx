@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Check, Keyboard, Loader2, Play, Pause, Repeat, Magnet } from "lucide-react";
+import { X, Check, Keyboard, Loader2, Play, Pause, Repeat, Magnet, Gauge, Volume2, VolumeX, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { mediaFetchUrl } from "@/lib/download";
@@ -34,6 +34,10 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
   const [kbdOpen, setKbdOpen] = useState(false);
   // 整秒磁吸：开启时拖动手柄吸附到整秒（键盘微调不受影响，仍可精确）。
   const [snap, setSnap] = useState(true);
+  // #127 轻量增强：变速（确认时随剪辑一并应用）+ 静音（去掉原声）。
+  const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+  const [speed, setSpeed] = useState<number>(1);
+  const [mute, setMute] = useState(false);
   // 快捷键/拖拽 handler 里读最新值用 refs（listener 只挂一次）。
   const stRef = useRef({ start: 0, end: 0, duration: 0, loop: true, snap: true });
   stRef.current = { start, end, duration, loop, snap };
@@ -54,14 +58,24 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
     onSuccess: (r) => { toast.success("剪辑完成，已替换为选区结果"); onDone(r.url, r.duration); onClose(); },
     onError: (e) => toast.error("剪辑失败：" + e.message),
   });
+  // #127 截取当前帧：服务端 ffmpeg 抽帧并自动记入素材库（复用剪辑器的 extractFrame）。
+  const frameMutation = trpc.clip.extractFrame.useMutation({
+    onSuccess: () => toast.success("已截取当前帧，存入素材库（左栏「资产」可见）"),
+    onError: (e) => toast.error("截帧失败：" + e.message),
+  });
   const busy = trimMutation.isPending;
 
   const confirm = useCallback(() => {
     const { start: s, end: e2 } = stRef.current;
     if (busy) return;
     if (!(e2 - s >= 0.2)) { toast.error("选区太短（至少 0.2 秒）"); return; }
-    trimMutation.mutate({ inputUrl: videoUrl, startTime: s, endTime: e2, projectId, nodeId });
-  }, [busy, trimMutation, videoUrl, projectId, nodeId]);
+    trimMutation.mutate({
+      inputUrl: videoUrl, startTime: s, endTime: e2, projectId, nodeId,
+      // #127 变速/静音随剪辑一并应用（1×/未静音时不传，保持原行为字节级不变）
+      ...(speed !== 1 ? { speed } : {}),
+      ...(mute ? { audioVolume: 0 } : {}),
+    });
+  }, [busy, trimMutation, videoUrl, projectId, nodeId, speed, mute]);
   const confirmRef = useRef(confirm); confirmRef.current = confirm;
   const onCloseRef = useRef(onClose); onCloseRef.current = onClose;
 
@@ -211,6 +225,24 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
           </div>
         </div>
       </div>
+      {/* #127 变速：循环 0.5→0.75→1→1.25→1.5→2×，确认时随剪辑一并应用 */}
+      <button onClick={() => setSpeed((v) => SPEEDS[(SPEEDS.indexOf(v as typeof SPEEDS[number]) + 1) % SPEEDS.length])}
+        title={`变速 ${speed}×（点击切换；确认时随剪辑应用${speed !== 1 ? `，成片时长约 ${fmt(Math.max(0, end - start) / speed)}` : ""}）`}
+        style={{ height: 34, padding: "0 9px", borderRadius: 10, border: `1px solid ${speed !== 1 ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)" : "var(--c-bd2)"}`, background: speed !== 1 ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 14%, var(--c-surface))" : "var(--c-surface)", color: speed !== 1 ? "var(--c-t1)" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4, flexShrink: 0, fontSize: 11, fontWeight: 700 }}>
+        <Gauge size={13} /> {speed}×
+      </button>
+      {/* #127 静音：确认时去掉原声 */}
+      <button onClick={() => setMute((v) => !v)} title={mute ? "静音（开）——确认时去掉原声" : "静音（关）——保留原声"}
+        style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${mute ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)" : "var(--c-bd2)"}`, background: mute ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 14%, var(--c-surface))" : "var(--c-surface)", color: mute ? "var(--c-t1)" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {mute ? <VolumeX size={14} /> : <Volume2 size={14} />}
+      </button>
+      {/* #127 截取当前帧 → 素材库 */}
+      <button onClick={() => { if (!frameMutation.isPending) frameMutation.mutate({ inputUrl: videoUrl, time: Math.min(Math.max(current, 0), Math.max(0, duration - 0.01)), projectId, nodeId }); }}
+        disabled={frameMutation.isPending}
+        title="截取当前帧为图片（存入素材库，可作参考图/封面）"
+        style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: frameMutation.isPending ? "wait" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {frameMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+      </button>
       {/* 整秒磁吸开关：拖动手柄吸附到整秒（键盘微调不受影响） */}
       <button onClick={() => setSnap((v) => !v)} title={snap ? "整秒磁吸（开）——拖动吸附到整秒" : "整秒磁吸（关）——自由拖动"}
         style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${snap ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)" : "var(--c-bd2)"}`, background: snap ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 14%, var(--c-surface))" : "var(--c-surface)", color: snap ? "var(--c-t1)" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
