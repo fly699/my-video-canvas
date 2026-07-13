@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Check, Star, Search } from "lucide-react";
+import { CameraMotionPreview, inferCamMotion } from "./CameraMotionPreview";
 import {
   CINEMATOGRAPHY_TEMPLATES,
   CINEMATOGRAPHY_CATEGORIES,
@@ -216,6 +217,8 @@ export function CinematographyPicker({ provider, activeTemplateId, onSelect, onC
                     onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = "translateY(-1px)"; if (!isActive) el.style.borderColor = "var(--c-t4)"; }}
                     onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = "translateY(0)"; if (!isActive) el.style.borderColor = "var(--c-bd2)"; }}
                   >
+                    {/* #135 运镜动画预览（纯 CSS，LibTV 式动图卡） */}
+                    <CameraMotionPreview motion={inferCamMotion(t.id, t.englishLabel)} />
                     {/* 收藏星标 */}
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleFav(t.id); }}
