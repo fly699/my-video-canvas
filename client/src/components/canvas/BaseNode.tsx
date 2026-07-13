@@ -116,6 +116,10 @@ interface BaseNodeProps {
   onAssetImageDrop?: (urls: string[]) => void;
   /** 可选：鼠标悬停标题栏满 1 秒触发（true）、离开时（false）。用于临时展开参考图/提示词吸附窗。 */
   onHeaderHoverChange?: (hovering: boolean) => void;
+  /** #133 全净卡（LibTV 角色卡形态）：创意模式且有 heroMedia 时，标题栏不再占布局——
+   *  改为悬停/选中才浮现的顶部渐变叠加条（改名/按钮功能全保留）。姓名等身份信息由
+   *  节点自己的 hero 内元素（如角色姓名条）承担。 */
+  heroBareHeader?: boolean;
 }
 
 /** LibTV 化 3.3：创意模式英雄区右下角的尺寸标注 chip——读取容器内首个
@@ -188,6 +192,7 @@ export const BaseNode = memo(function BaseNode({
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
   heroMedia, leftDock, extraHandles, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
   onHeaderHoverChange,
+  heroBareHeader,
 }: BaseNodeProps) {
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
@@ -1366,6 +1371,16 @@ export const BaseNode = memo(function BaseNode({
           borderBottom: isCreative ? "none" : `1px solid ${isLight ? "var(--c-bd1)" : "oklch(0.20 0.008 260 / 0.60)"}`,
           minHeight: isCreative ? 20 : 36,
           ...(isCreative ? { paddingTop: 2, paddingBottom: 2 } : {}),
+          // #133 全净卡（heroBareHeader，放末尾覆盖上面各键）：创意+有 hero 时标题栏脱离布局，
+          // 改为悬停/选中才浮现的顶部渐变叠加条——角色卡以 hero 内姓名条承担身份信息，卡顶纯媒体。
+          ...(heroBareHeader && isCreative && hasHero ? {
+            position: "absolute" as const, top: 3, left: 0, right: 0, zIndex: 12,
+            opacity: (isHovered || storeSelected || pinned || editingTitle) ? 1 : 0,
+            pointerEvents: (isHovered || storeSelected || pinned || editingTitle) ? ("auto" as const) : ("none" as const),
+            background: "linear-gradient(oklch(0 0 0 / 0.6), transparent)",
+            transition: "opacity 160ms ease",
+            paddingTop: 4, paddingBottom: 10,
+          } : {}),
         }}
       >
         {/* Drag grip — 创意(LibTV)皮肤下移除：卡顶应是极简「图标+名称」小标签，

@@ -10,7 +10,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { CharacterNodeData, CharacterKind, StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { User, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles, Music, Dices, SlidersHorizontal } from "lucide-react";
+import { User, Users, Mountain, Upload, X, Image as ImageIcon, Loader2, Plus, Search, Save, Sparkles, Music, Dices, SlidersHorizontal } from "lucide-react";
 import { InlineGenBar } from "../InlineGenBar";
 import { ToolChip } from "../InlineBarParts";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
@@ -534,6 +534,25 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     if (all.length) useLightbox.getState().open(all, Math.min(startIdx, all.length - 1), "image", data.title, id);
   }, [payload.referenceImageUrl, extraViews, data.title, id]);
 
+  // #133：角色库下拉（从库整包替换）——hero hover 带与空态引导卡共用同一份 JSX。
+  const libPickerDropdown = (
+    <div className="nowheel" style={{ width: 210, maxHeight: 240, overflowY: "auto", padding: 6, borderRadius: 10, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 10px 30px oklch(0 0 0 / 0.5)", display: "flex", flexDirection: "column", gap: 3 }}>
+      {libQuery.isLoading && <span style={{ fontSize: 10.5, color: "var(--c-t4)", padding: 6 }}>加载角色库…</span>}
+      {!libQuery.isLoading && (libQuery.data ?? []).length === 0 && <span style={{ fontSize: 10.5, color: "var(--c-t4)", padding: 6 }}>角色库为空——先「存库」积累角色</span>}
+      {(libQuery.data ?? []).map((it) => (
+        <button key={it.id} onClick={(e) => { e.stopPropagation(); replaceFromLibrary(it as never); }}
+          title={`替换为「${it.name}」`}
+          style={{ display: "flex", alignItems: "center", gap: 7, padding: "4px 6px", borderRadius: 7, border: "1px solid var(--c-bd1)", background: "var(--c-surface)", cursor: "pointer", textAlign: "left" }}>
+          {it.thumbnail
+            ? <img src={it.thumbnail.startsWith("http") ? `/api/image-proxy?url=${encodeURIComponent(it.thumbnail)}` : it.thumbnail} alt="" style={{ width: 26, height: 26, objectFit: "cover", borderRadius: 5, flexShrink: 0 }} />
+            : <span style={{ width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 5, background: "var(--c-input)", flexShrink: 0 }}>{it.characterKind === "scene" ? <Mountain style={{ width: 13, height: 13, color: "var(--c-t4)" }} /> : <User style={{ width: 13, height: 13, color: "var(--c-t4)" }} />}</span>}
+          <span style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: "var(--c-t1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.name}</span>
+          <span style={{ fontSize: 9, color: "var(--c-t4)", flexShrink: 0 }}>{it.characterKind === "scene" ? "场景" : "人物"}</span>
+        </button>
+      ))}
+    </div>
+  );
+
   // #76 批1：LibTV 角色卡——hero 底部姓名/身份渐变标签条（双击就地改名）
   const displayName = ((kind === "scene" ? payload.sceneName : payload.name) ?? "").trim();
   const commitName = (v: string) => { update(kind === "scene" ? "sceneName" : "name", v.trim()); setNameEditing(false); };
@@ -644,23 +663,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               </button>
             ))}
           </div>
-{libPickerOpen && (
-            <div className="nowheel" style={{ width: 210, maxHeight: 240, overflowY: "auto", padding: 6, borderRadius: 10, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 10px 30px oklch(0 0 0 / 0.5)", display: "flex", flexDirection: "column", gap: 3 }}>
-              {libQuery.isLoading && <span style={{ fontSize: 10.5, color: "var(--c-t4)", padding: 6 }}>加载角色库…</span>}
-              {!libQuery.isLoading && (libQuery.data ?? []).length === 0 && <span style={{ fontSize: 10.5, color: "var(--c-t4)", padding: 6 }}>角色库为空——先「存库」积累角色</span>}
-              {(libQuery.data ?? []).map((it) => (
-                <button key={it.id} onClick={(e) => { e.stopPropagation(); replaceFromLibrary(it as never); }}
-                  title={`替换为「${it.name}」`}
-                  style={{ display: "flex", alignItems: "center", gap: 7, padding: "4px 6px", borderRadius: 7, border: "1px solid var(--c-bd1)", background: "var(--c-surface)", cursor: "pointer", textAlign: "left" }}>
-                  {it.thumbnail
-                    ? <img src={it.thumbnail.startsWith("http") ? `/api/image-proxy?url=${encodeURIComponent(it.thumbnail)}` : it.thumbnail} alt="" style={{ width: 26, height: 26, objectFit: "cover", borderRadius: 5, flexShrink: 0 }} />
-                    : <span style={{ width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 5, background: "var(--c-input)", flexShrink: 0 }}>{it.characterKind === "scene" ? <Mountain style={{ width: 13, height: 13, color: "var(--c-t4)" }} /> : <User style={{ width: 13, height: 13, color: "var(--c-t4)" }} />}</span>}
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: "var(--c-t1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.name}</span>
-                  <span style={{ fontSize: 9, color: "var(--c-t4)", flexShrink: 0 }}>{it.characterKind === "scene" ? "场景" : "人物"}</span>
-                </button>
-              ))}
-            </div>
-          )}
+{libPickerOpen && libPickerDropdown}
         </div>
       )}
       {/* 姓名条仅创意模式——studio 选中态 hero 可见（CSS 只藏未选中态），不得漏入 */}
@@ -684,17 +687,31 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         </div>
       );
     }
-    // #76 批1：LibTV 式剪影占位——无图也呈现「角色卡」形态（图标 + 名字 + 上传/生成提示），
-    // 已填字段以摘要行带出；不再返回 null 留白。
+    // #76 批1 → #133 升级：LibTV 式空态引导卡——无主图时常驻显示剪影 + 两个直达入口
+    //（上传主图 / 从角色库选），不再塌成一条光杆标题栏；已填字段以摘要行带出。
     return (
-      <div style={{ position: "relative", padding: "16px 14px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, textAlign: "center", background: "linear-gradient(oklch(0.2 0.015 285 / 0.35), transparent)" }}>
-        {/* 空态引导只在「选中且完全没填内容」时显示——已填字段或未选中时纯属视觉噪音
-            （真实反馈：提示叠在角色描述上方碍眼），此时只展示摘要行。 */}
-        {selected && bits.length === 0 && (<>
+      <div style={{ position: "relative", padding: "18px 14px 44px", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, textAlign: "center", background: "linear-gradient(oklch(0.2 0.015 285 / 0.35), transparent)" }}>
+        {bits.length === 0 && (<>
           {kind === "scene"
-            ? <Mountain style={{ width: 26, height: 26, color: "var(--c-t4)", opacity: 0.75 }} />
-            : <User style={{ width: 26, height: 26, color: "var(--c-t4)", opacity: 0.75 }} />}
-          <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>上传参考图，或用「多视角」直接生成</span>
+            ? <Mountain style={{ width: 30, height: 30, color: "var(--c-t4)", opacity: 0.7 }} />
+            : <User style={{ width: 30, height: 30, color: "var(--c-t4)", opacity: 0.7 }} />}
+          <div className="nodrag flex items-center justify-center" style={{ gap: 6 }}>
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+              disabled={uploading}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 26, padding: "0 11px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: accentA(0.16), border: `1px solid ${accentA(0.45)}`, color: accent, cursor: uploading ? "wait" : "pointer" }}>
+              <Upload style={{ width: 11, height: 11 }} /> {uploading ? "上传中…" : "上传主图"}
+            </button>
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); setLibPickerOpen((v) => !v); }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 26, padding: "0 11px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
+              <Users style={{ width: 11, height: 11 }} /> 从角色库选
+            </button>
+          </div>
+          <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>也可直接拖入图片，或选中后用「多视角」生成</span>
+          {libPickerOpen && <div className="nodrag" style={{ display: "flex", justifyContent: "center" }}>{libPickerDropdown}</div>}
         </>)}
         {bits.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "left", width: "100%", marginTop: 2 }}>
@@ -1174,7 +1191,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
 
   return (
     <>
-    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={isCreativeMode ? 72 : 160} resizable heroMedia={heroMedia}
+    <BaseNode id={id} selected={selected} nodeType="character" title={data.title} minHeight={isCreativeMode ? 72 : 160} resizable heroMedia={heroMedia} heroBareHeader
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <>
