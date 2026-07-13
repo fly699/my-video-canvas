@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Play, Combine, Download, X, Clapperboard, SlidersHorizontal } from "lucide-react";
+import { Play, Combine, Download, X, Clapperboard, SlidersHorizontal, Ban, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { useUIStyle } from "../../../contexts/UIStyleContext";
@@ -105,6 +105,19 @@ export function MultiSelectBar() {
     toast.success(`自动成片：装配 ${plan.videoNodeIds.length} 段${plan.audioNodeId ? " + 配乐" : ""} · 淡入淡出转场，开始合成…`, { duration: 3000 });
   };
   const group = () => { const gid = useCanvasStore.getState().groupSelected(ids); if (gid) toast.success(`已组合 ${ids.length} 个节点`, { duration: 1200 }); };
+  // #134 成片参与范围：批量「跳过参与 / 恢复参与」（payload.disabled）——运行全部、
+  // 估价、按镜头表装配三条链路统一跳过被排除的节点；「只用这几段成片」框选其余一键排除。
+  const allOff = (() => {
+    const st = useCanvasStore.getState();
+    const sel = st.nodes.filter((n) => ids.includes(n.id));
+    return sel.length > 0 && sel.every((n) => (n.data.payload as { disabled?: boolean }).disabled === true);
+  })();
+  const toggleParticipate = () => {
+    const st = useCanvasStore.getState();
+    // disabled 是跨类型通用旗标（右键「跳过执行」同款），不在各 NodeData 接口内——窄断言绕过 union
+    st.batchUpdateNodeData(ids.map((nid) => ({ id: nid, payload: { disabled: !allOff } as never })));
+    toast.success(allOff ? `已恢复 ${ids.length} 个节点参与（运行/估价/装配）` : `已排除 ${ids.length} 个节点（运行/估价/装配都会跳过，可随时恢复）`, { duration: 2200 });
+  };
   const clear = () => { const st = useCanvasStore.getState(); st.setNodes(st.nodes.map((n) => (n.selected ? { ...n, selected: false } : n))); };
   const downloadAll = () => {
     const st = useCanvasStore.getState();
@@ -159,6 +172,7 @@ export function MultiSelectBar() {
           </div>
         )}
       </div>
+      <BarBtn onClick={toggleParticipate} icon={allOff ? <RotateCcw size={13} /> : <Ban size={13} />} label={allOff ? "恢复参与" : "跳过参与"} active={allOff} />
       <BarBtn onClick={group} icon={<Combine size={13} />} label="成组" />
       <BarBtn onClick={downloadAll} icon={<Download size={13} />} label="下载全部" />
       <BarBtn onClick={() => { setShowParams(false); clear(); }} icon={<X size={13} />} label="取消" />

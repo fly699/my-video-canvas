@@ -167,6 +167,29 @@ describe("assembleFromStoryboards（装配端收集）", () => {
     expect(r.sfxUrls).toEqual([null, null]);                // 无音效节点
   });
 
+  it("#134 参与范围：disabled 的视频工位与分镜整段跳过（与运行/估价同口径）", () => {
+    const n3 = [
+      N("m", "merge", {}),
+      N("sb1", "storyboard", { sceneNumber: 1 }),
+      N("sb2", "storyboard", { sceneNumber: 2, disabled: true }),   // 分镜被排除 → 其工位段不进
+      N("sb3", "storyboard", { sceneNumber: 3 }),
+      N("v1", "video_task", { resultVideoUrl: "v1.mp4" }),
+      N("v2", "video_task", { resultVideoUrl: "v2.mp4" }),
+      N("v3", "video_task", { resultVideoUrl: "v3.mp4", disabled: true }), // 工位被排除
+      N("v4", "video_task", { resultVideoUrl: "v4.mp4" }),
+      N("sb4", "storyboard", { sceneNumber: 4 }),
+    ];
+    const e3 = [
+      { source: "sb1", target: "v1" }, { source: "sb2", target: "v2" },
+      { source: "sb3", target: "v3" }, { source: "sb4", target: "v4" },
+      { source: "v1", target: "m" }, { source: "v2", target: "m" },
+      { source: "v3", target: "m" }, { source: "v4", target: "m" },
+    ];
+    const r = assembleFromStoryboards("m", n3, e3);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.inputVideoUrls).toEqual(["v1.mp4", "v4.mp4"]); // 镜2（分镜禁）与镜3（工位禁）都被剔除
+  });
+
   it("音频按类别分轨：sfx→音效轨、music 排除、dubbing/未标→配音轨", () => {
     const withSfx = [
       ...nodes,
