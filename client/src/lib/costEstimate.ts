@@ -86,7 +86,33 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   poyo_happy_horse:  (p) => cr((str(p, "resolution", "1080p") === "1080p" ? 32 : 16) * num(p, "duration", 5)),
   poyo_happy_horse_11: (p) => cr((str(p, "resolution", "720p") === "1080p" ? 28 : 22) * num(p, "duration", 5)),
   poyo_grok_video:   (p) => cr(num(p, "duration", 6) <= 6 ? 30 : 40),
+  // Omni Flash（v2 文档）：无视频输入 720p/1080p {4:120,6:150,8:200,10:220}、4K {4:250,6:300,8:350,10:450} cr/次
+  poyo_omni_flash: (p) => {
+    const k4 = /4k/i.test(str(p, "resolution", "720p"));
+    const d = num(p, "duration", 6);
+    const tier = d >= 10 ? 10 : d >= 8 ? 8 : d >= 6 ? 6 : 4;
+    const table = k4 ? { 4: 250, 6: 300, 8: 350, 10: 450 } : { 4: 120, 6: 150, 8: 200, 10: 220 };
+    return cr(table[tier], true); // 视频输入(V2V)另价 300/400，估价按 T2V/I2V 口径
+  },
   poyo_runway45:     (p) => cr(15 * num(p, "duration", 5)),
+  // ── #151 round2 新接入模型（计价按 2026-07-round2-final.json）──
+  // Grok Imagine Video 1.5：480p 14.5 / 720p 25 cr·s + 输入图 2 cr/张
+  poyo_grok_video_15: (p) => cr((str(p, "resolution", "720p") === "480p" ? 14.5 : 25) * num(p, "duration", 6) + 2, true),
+  // Kling Avatar 2.0：标准 7 / 专业 14 cr·s，时长随驱动音频，按 10s 估
+  poyo_kling_avatar2_std: () => cr(7 * 10, true),
+  poyo_kling_avatar2_pro: () => cr(14 * 10, true),
+  // Seedance 2 Mini：无视频输入口径 480p 10 / 720p 24 cr·s（接参考视频时为 6/12.5）
+  poyo_seedance2_mini: (p) => cr(({ "480p": 10, "720p": 24 }[str(p, "resolution", "720p")] ?? 24) * num(p, "duration", 5), true),
+  // Wan 2.5：整条计价 480p 30 / 720p 60 / 1080p 90 cr·5s（t2v 按尺寸串判档）
+  poyo_wan25_text: (p) => {
+    const ar = str(p, "aspect_ratio", "1280*720");
+    const per5s = ar.includes("1080") ? 90 : (ar.includes("480") ? 30 : 60);
+    return cr(per5s * (num(p, "duration", 5) / 5));
+  },
+  poyo_wan25_image: (p) => cr(({ "480p": 30, "720p": 60, "1080p": 90 }[str(p, "resolution", "720p")] ?? 60) * (num(p, "duration", 5) / 5)),
+  // Wan Animate：480p 7 / 580p 12 / 720p 15 cr·s，时长随源视频，按 5s 估
+  poyo_wan_animate_move:    (p) => cr(({ "480p": 7, "580p": 12, "720p": 15 }[str(p, "resolution", "480p")] ?? 7) * 5, true),
+  poyo_wan_animate_replace: (p) => cr(({ "480p": 7, "580p": 12, "720p": 15 }[str(p, "resolution", "480p")] ?? 7) * 5, true),
   // Veo 3.1 官方版（round2 文档 veo-3-1-official 三档：基础档→Fast、(pro)→Quality、(lite)→Lite；
   // 档位对应经官方原价交叉核对：Fast $0.10-0.15/s、Quality(pro) $0.40/s、Lite $0.03-0.05/s）。
   poyo_veo_fast_official: (p) => {
@@ -190,8 +216,8 @@ function imageUnitCost(model: string): CostEstimate {
   // "起 2cr × 1/2/4x"（gpt image 按分辨率倍率）→ 基价近似
   const base = note.match(/^起\s*([\d.]+)\s*cr/);
   if (base) return { credits: Number(base[1]), unit, approx: true };
-  // "4 点/百万像素"（Qwen）→ 按 ~1MP 估
-  const perMp = note.match(/^([\d.]+)\s*点\/百万像素$/);
+  // "4 点/百万像素"（Qwen）/ "4 cr/百万像素"（#151 flux-dev/schnell）→ 按 ~1MP 估
+  const perMp = note.match(/^([\d.]+)\s*(?:点|cr)\/百万像素$/);
   if (perMp) return { credits: Number(perMp[1]), unit, approx: true };
   return null; // 模型页 / 分辨率×n 等无法预估
 }
@@ -227,6 +253,7 @@ export function estimateMusicCost(model: string): CostEstimate {
   if (model.startsWith("kie_")) return pt(12);
   if (/suno/i.test(model)) return cr(20);
   if (model === "minimax-music-2.6") return cr(20);
+  if (model === "elevenlabs-music") return cr(128, true); // #151：128 cr/分钟，按 1 分钟估
   return null;
 }
 
@@ -236,6 +263,10 @@ export function estimateTtsCost(model: string, textLength: number): CostEstimate
   if (model === "kie_elevenlabs_tts") return pt(6 * kChars);
   if (model === "kie_elevenlabs_tts_ml") return pt(12 * kChars);
   if (model === "kie_elevenlabs_v3") return pt(14 * kChars);
+  // #151 round2 新 TTS（须在通用 elevenlabs 正则之前判定）
+  if (model === "elevenlabs-tts-turbo-2-5") return cr(8 * kChars);
+  if (model === "gemini-3-1-flash-tts") return cr(24 * kChars);
+  if (model === "xai-tts-1") return cr(2.4 * kChars);
   if (/elevenlabs/i.test(model)) return cr(16 * kChars); // Poyo ElevenLabs V3：16 cr/1k 字
   if (/voxcpm|local/i.test(model)) return cr(0);
   return null; // OpenAI TTS 按 token 计费，无固定点数

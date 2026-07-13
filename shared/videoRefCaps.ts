@@ -45,8 +45,8 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   poyo_wan27_ref: 4,     // 参考生：多模态参考图 ≤4（reference_image_urls）
   poyo_wan22_t2v_fast: 0,
   poyo_wan22_i2v_fast: 2,
-  // Hailuo
-  poyo_hailuo02: 1,
+  // Hailuo（#151：hailuo-02 支持首帧+尾帧 2 图，第 2 张走 end_image_url）
+  poyo_hailuo02: 2,
   poyo_hailuo02_pro: 1,
   poyo_hailuo23: 1,
   // others
@@ -55,6 +55,15 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   poyo_omni_flash: 3,    // image_urls 0/1/3
   kie_seedance2_mini: 9,
   kie_happyhorse11_r2v: 9,
+  // ── #151 round2 poyo 新模型 ──
+  poyo_grok_video_15: 1,       // I2V：恰 1 张源图
+  poyo_kling_avatar2_std: 1,   // 数字人：单张肖像图 + 驱动音频
+  poyo_kling_avatar2_pro: 1,
+  poyo_seedance2_mini: 9,      // 首尾帧(≤2)/多模态参考（UI 上限同 seedance-2）
+  poyo_wan25_text: 0,
+  poyo_wan25_image: 1,
+  poyo_wan_animate_move: 1,    // 单张角色图 + 源视频
+  poyo_wan_animate_replace: 1,
   kie_omnihuman15: 1,        // 数字人：单张肖像图
   kie_volcengine_lipsync: 0, // 视频对口型：无图，仅源视频+音频
   poyo_grok_video: 1,

@@ -77,6 +77,13 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   { id: "kie_gpt_52_codex",     label: "GPT 5.2 Codex（kie）",     short: "Cdx52",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
   { id: "kie_gpt_53_codex",     label: "GPT 5.3 Codex（kie）",     short: "Cdx53",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
   { id: "kie_gpt_54_codex",     label: "GPT 5.4 Codex（kie）",     short: "Cdx54",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
+  // ── #151 round2 新模型（round2-final-v2 文档）──
+  { id: "kie_gpt_5_6_luna",     label: "GPT 5.6 Luna（kie）",      short: "Luna",   family: "GPT",    tag: "kie·快",   provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "低", vision: true, costNote: "入56/出336" },
+  { id: "kie_gpt_5_6_terra",    label: "GPT 5.6 Terra（kie）",     short: "Terra",  family: "GPT",    tag: "kie",     provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", vision: true, costNote: "入140/出840" },
+  { id: "kie_gpt_5_6_sol",      label: "GPT 5.6 Sol（kie）",       short: "Sol",    family: "GPT",    tag: "kie·旗舰", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", vision: true, costNote: "入280/出1680" },
+  { id: "kie_claude_sonnet_5",  label: "Claude Sonnet 5（kie）",   short: "Son5",   family: "Claude", tag: "kie·新",   provider: "Kie", color: "oklch(0.68 0.18 280)", costTier: "高", costNote: "入170/出855" },
+  { id: "kie_grok_4_3",         label: "Grok 4.3（kie）",          short: "Grok43", family: "GPT",    tag: "kie",     provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", costNote: "入100/出200" },
+  { id: "kie_grok_4_5",         label: "Grok 4.5（kie）",          short: "Grok45", family: "GPT",    tag: "kie",     provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", costNote: "入160/出480" },
   // ── 自定义模型（用户自带 API Key，直连 OpenAI / Anthropic 官方端点）──
   // 密钥与底层模型名「前端工具栏录入 > 后端 env」解析；前端经请求头 x-openai-key /
   // x-anthropic-key（+ x-*-model）随所有 LLM 请求透传（main.tsx）。server/_core/customLlm.ts。

@@ -15,12 +15,19 @@ export const SUPPORTS_REF_VIDEO = new Set<string>([
   "kie_kling26_motion", "kie_kling30_motion", "kie_wan_animate_move", "kie_wan_animate_replace",
   "kie_topaz_upscale", "kie_runway_aleph",
   "kie_volcengine_lipsync",  // 视频对口型：源视频
+  // #151 round2 poyo 新模型：Wan Animate 需要源视频；seedance-2-mini 支持参考视频
+  "poyo_wan_animate_move", "poyo_wan_animate_replace",
+  "poyo_seedance2_mini",
+  "poyo_happy_horse",  // #151 二轮核查：happy-horse 视频编辑模式（video_url，3-60s 源视频）
 ]);
 export const SUPPORTS_REF_AUDIO = new Set<string>([
   "poyo_seedance", "poyo_seedance2_fast", "kie_seedance2", "kie_seedance2_fast", "kie_seedance2_mini",
   // 数字人 / 对口型：需连线音频
   "kie_kling_avatar_std", "kie_kling_avatar_pro",
   "kie_omnihuman15", "kie_volcengine_lipsync",
+  // #151 round2 poyo 新模型：Kling Avatar 2.0 需驱动音频；seedance-2-mini 支持参考音频
+  "poyo_kling_avatar2_std", "poyo_kling_avatar2_pro",
+  "poyo_seedance2_mini",
 ]);
 
 // 取更严的 character 系列签名（position 要求 {x,y}），它同时满足较松的

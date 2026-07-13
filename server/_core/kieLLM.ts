@@ -24,7 +24,7 @@ export interface KieLLMSpec {
   path: string;           // POST path (model-prefixed for openai-chat)
   format: KieLLMFormat;
   label: string;
-  provider: "Claude" | "Gemini" | "GPT";
+  provider: "Claude" | "Gemini" | "GPT" | "Grok";
   creditNote: string;     // 入/出 点·百万tokens
 }
 
@@ -57,6 +57,16 @@ export const KIE_LLM_MODELS: Record<string, KieLLMSpec> = {
   kie_gpt_52_codex:     { model: "gpt-5.2-codex", path: "/api/v1/responses", format: "responses", label: "GPT 5.2 Codex（kie）", provider: "GPT", creditNote: "入 140 / 出 1120 点·百万tokens" },
   kie_gpt_53_codex:     { model: "gpt-5.3-codex", path: "/api/v1/responses", format: "responses", label: "GPT 5.3 Codex（kie）", provider: "GPT", creditNote: "入 140 / 出 1120 点·百万tokens" },
   kie_gpt_54_codex:     { model: "gpt-5.4-codex", path: "/api/v1/responses", format: "responses", label: "GPT 5.4 Codex（kie）", provider: "GPT", creditNote: "入 140 / 出 1120 点·百万tokens" },
+  // ── #151 round2 新模型（docs/incremental-models/2026-07-round2-final-v2.json）──
+  // GPT 5.6 三档（/codex/v1/responses，Responses API）
+  kie_gpt_5_6_luna:  { model: "gpt-5-6-luna",  path: "/codex/v1/responses", format: "responses", label: "GPT 5.6 Luna（kie）",  provider: "GPT", creditNote: "入 56 / 出 336 点·百万tokens" },
+  kie_gpt_5_6_terra: { model: "gpt-5-6-terra", path: "/codex/v1/responses", format: "responses", label: "GPT 5.6 Terra（kie）", provider: "GPT", creditNote: "入 140 / 出 840 点·百万tokens" },
+  kie_gpt_5_6_sol:   { model: "gpt-5-6-sol",   path: "/codex/v1/responses", format: "responses", label: "GPT 5.6 Sol（kie）",   provider: "GPT", creditNote: "入 280 / 出 1680 点·百万tokens" },
+  // Claude Sonnet 5：v2 文档 model enum=["claude-sonnet-5"]（页面 slug 的 cluade 是笔误，body 用正确拼写）
+  kie_claude_sonnet_5: { model: "claude-sonnet-5", path: "/claude/v1/messages", format: "claude", label: "Claude Sonnet 5（kie）", provider: "Claude", creditNote: "入 170 / 出 855 点·百万tokens" },
+  // Grok 4.3 / 4.5（/grok/v1/responses，Responses API）
+  kie_grok_4_3: { model: "grok-4-3", path: "/grok/v1/responses", format: "responses", label: "Grok 4.3（kie）", provider: "Grok", creditNote: "入 100 / 出 200 点·百万tokens" },
+  kie_grok_4_5: { model: "grok-4-5", path: "/grok/v1/responses", format: "responses", label: "Grok 4.5（kie）", provider: "Grok", creditNote: "入 160 / 出 480 点·百万tokens" },
 };
 
 export function isKieLLMModel(model?: string): boolean {

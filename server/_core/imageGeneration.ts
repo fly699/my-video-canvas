@@ -70,6 +70,9 @@ type PoyoImageSpec = {
    *  cap. Without this, the reference图 was silently dropped → 图生图能力丢失。 */
   unifiedRef?: number;
   sizeMode?: "size" | "aspect_ratio" | false;
+  /** aspect_ratio 模式下的合法枚举（#151 grok-imagine-image-quality 仅收 5 档）；
+   *  客户端传了枚举外比例时钳制回默认 16:9，避免上游 400。 */
+  aspectEnum?: string[];
   resolution?: boolean;
   quality?: boolean;     // low/medium/high
   n?: boolean;
@@ -107,6 +110,18 @@ export const POYO_IMAGE_SPECS: Record<string, PoyoImageSpec> = {
   // Others — unified models, auto-edit when image_urls present (1 ref image each)
   poyo_z_image:    { wire: "z-image",            sizeMode: "size", unifiedRef: 1 },
   poyo_grok_image: { wire: "grok-imagine-image", sizeMode: "size", unifiedRef: 1 },
+  // ── #151 round2 新模型（参数按 Poyo 官方 api-manual/image-series）──
+  // Nano Banana 2 Lite：基础 wire 不支持 image_urls，编辑走 -edit（v2 文档 size 枚举无 auto）
+  poyo_nano_banana_2_lite: { wire: "nano-banana-2-lite", edit: "nano-banana-2-lite-edit", sizeMode: "size" },
+  // Seedream 5.0 Pro：size 枚举 1K/2K/1:1/4:3/3:4/16:9/9:16（默认 2K）、n、output_format；编辑走 -edit（1-10 图）
+  poyo_seedream_5_pro: { wire: "seedream-5.0-pro", edit: "seedream-5.0-pro-edit", sizeMode: "size", n: true, outputFormat: true },
+  // Grok Imagine Image Quality：aspect_ratio 枚举(1:1/2:3/3:2/9:16/16:9) + resolution 1K/2K + n + output_format；
+  // 同 wire 带 image_urls 即编辑（文档未标上限，UI 截 10）
+  poyo_grok_image_quality: { wire: "grok-imagine-image-quality", sizeMode: "aspect_ratio", aspectEnum: ["1:1", "2:3", "3:2", "9:16", "16:9"], resolution: true, n: true, outputFormat: true, unifiedRef: 10 },
+  // Flux Dev：size(比例枚举+自定义 WxH)、n、output_format；同 wire 单图编辑
+  poyo_flux_dev: { wire: "flux-dev", sizeMode: "size", n: true, outputFormat: true, unifiedRef: 1 },
+  // Flux Schnell：纯文生图（schema 无 image_urls）
+  poyo_flux_schnell: { wire: "flux-schnell", sizeMode: "size", n: true, outputFormat: true },
   // Legacy aliases (kept so old payloads keep routing)。edit 变体必须与上面的正式 spec
   // 同步：默认管线（model 未传）走的正是 "gpt-image-2" 别名，此前漏配 edit → 带参考图的
   // 请求参考图被静默丢弃（画面推演/多角度宫格真实故障：产物与源图完全无关）。
@@ -132,7 +147,10 @@ export async function buildPoyoImageInput(spec: PoyoImageSpec, options: Generate
   const isEdit = spec.editOnly || (hasRefs && !!spec.edit);
 
   if (spec.sizeMode === "size" && options.size) input.size = options.size;
-  else if (spec.sizeMode === "aspect_ratio") input.aspect_ratio = options.size ?? "16:9";
+  else if (spec.sizeMode === "aspect_ratio") {
+    const ar = options.size ?? "16:9";
+    input.aspect_ratio = spec.aspectEnum && !spec.aspectEnum.includes(ar) ? "16:9" : ar;
+  }
 
   if (spec.resolution && options.resolution) input.resolution = options.resolution;
   if (spec.quality && options.quality) input.quality = options.quality;

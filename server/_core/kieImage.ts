@@ -88,6 +88,13 @@ export const KIE_IMAGE_MODELS: Record<string, KieImageSpec> = {
   kie_gpt_image_2:     { id: "gpt-image-2-text-to-image", label: "GPT Image 2", family: "GPT Image", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" }, resOptions: ["1K", "2K", "4K"] },
   kie_gpt_image_2_i2i: { id: "gpt-image-2-image-to-image", label: "GPT Image 2 图生图", family: "GPT Image", ref: "input_urls", aspect: "aspect_ratio", aspects: A_GPT2, fixed: { resolution: "1K" }, resOptions: ["1K", "2K", "4K"] },
   kie_seedream_5lite:  { id: "seedream/5-lite-text-to-image", label: "Seedream 5.0 Lite", family: "Seedream", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
+  // ── #151 round2 新模型（v2 文档给全 schema）──
+  // nano-banana-2-lite：createTask，aspect_ratio 必填(默认 auto，枚举同 nano-banana-2)，image_urls ≤10 可选（拆 t2i/i2i 两条对齐现架构）
+  kie_nano_banana_2_lite:     { id: "nano-banana-2-lite", label: "Nano Banana 2 Lite", family: "Nano Banana", aspect: "aspect_ratio", aspects: A_NANO2 },
+  kie_nano_banana_2_lite_i2i: { id: "nano-banana-2-lite", label: "Nano Banana 2 Lite 编辑", family: "Nano Banana", ref: "image_urls", aspect: "aspect_ratio", aspects: A_NANO2 },
+  // Seedream 5 Pro 图生图：createTask，model=seedream/5-pro-image-to-image；prompt 3-5000、image_urls 必填、
+  // aspect_ratio 8 值枚举、quality basic(1K,7点)/high(2K,14点) 必填——固定 basic 档
+  kie_seedream_5pro_i2i: { id: "seedream/5-pro-image-to-image", label: "Seedream 5 Pro 编辑", family: "Seedream", ref: "image_urls", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
   kie_seedream_5lite_i2i: { id: "seedream/5-lite-image-to-image", label: "Seedream 5.0 Lite 编辑", family: "Seedream", ref: "image_urls", aspect: "aspect_ratio", aspects: A_SEEDREAM45, fixed: { quality: "basic" } },
   kie_wan27_image:     { id: "wan/2-7-image", label: "Wan 2.7 Image", family: "Wan", aspect: "aspect_ratio", aspects: A_WAN27, fixed: { resolution: "1K" } },
   kie_wan27_image_pro: { id: "wan/2-7-image-pro", label: "Wan 2.7 Image Pro", family: "Wan", aspect: "aspect_ratio", aspects: A_WAN27, fixed: { resolution: "1K" } },
@@ -132,6 +139,7 @@ export function isKieImageModel(model?: string): boolean {
  *  多角度宫格/剧情推演等）必然产出无关画面（2026-07 真实故障：GPT Image 2 推演跑偏）。
  *  只登记同版本、参数兼容的精确配对，禁止跨版本猜配（如 Seedream 4.5 无同版编辑模型就不配）。 */
 export const KIE_T2I_TO_I2I: Record<string, string> = {
+  kie_nano_banana_2_lite: "kie_nano_banana_2_lite_i2i", // #151
   kie_nano_banana: "kie_nano_banana_edit",
   kie_seedream_v4: "kie_seedream_v4_edit",
   kie_flux2_pro: "kie_flux2_pro_i2i",

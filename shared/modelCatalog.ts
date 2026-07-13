@@ -90,6 +90,12 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   // --- Poyo · others ---
   { value: "poyo_z_image",    label: "Z-Image",      desc: "超快 · 风格化", group: "Poyo", family: "Z",    provider: "Poyo", costNote: "2 cr/张", caps: ["T2I", "自动编辑"] },
   { value: "poyo_grok_image", label: "Grok Imagine", desc: "xAI · 高对比",  group: "Poyo", family: "Grok", provider: "Poyo", costNote: "6 cr/张", caps: ["T2I", "I2I"], note: "每次固定返回一组约 6 张候选（按次计费，张数不可控）" },
+  // ── #151 round2 新模型（计价按 2026-07-round2-final.json）──
+  { value: "poyo_seedream_5_pro",     label: "Seedream 5.0 Pro",     desc: "字节旗舰 · 排版/多参考", group: "Poyo", family: "Seedream", provider: "Poyo", cost: 15, caps: ["T2I", "编辑", "10图参考", "2K"] },
+  { value: "poyo_grok_image_quality", label: "Grok Imagine 高清版",  desc: "xAI · 1K/2K 高质量",     group: "Poyo", family: "Grok",     provider: "Poyo", costNote: "8-11 cr/张", caps: ["T2I", "编辑", "2K"] },
+  { value: "poyo_flux_dev",           label: "Flux Dev",             desc: "BFL · 开源开发版",       group: "Poyo", family: "Flux",     provider: "Poyo", costNote: "4 cr/百万像素", caps: ["T2I", "I2I"] },
+  { value: "poyo_flux_schnell",       label: "Flux Schnell",         desc: "BFL · 极速极廉",         group: "Poyo", family: "Flux",     provider: "Poyo", costNote: "0.48 cr/百万像素", caps: ["T2I"] },
+  { value: "poyo_nano_banana_2_lite", label: "Nano Banana 2 Lite",   desc: "Gemini Lite · 高性价比", group: "Poyo", family: "Nano",     provider: "Poyo", cost: 5, caps: ["T2I", "编辑"] },
 
   // --- Higgsfield ---
   { value: "hf_soul_standard", label: "Soul Standard",    desc: "旗舰 · 电影级",   group: "Higgsfield", family: "Soul",     provider: "Higgsfield", costNote: "HF 计费", caps: ["T2I", "参考图"] },
@@ -132,6 +138,10 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "kie_flux_kontext_pro",  label: "Flux Kontext Pro",   desc: "上下文编辑 · 文/图",  group: "Kie", family: "Flux Kontext", provider: "Kie", costNote: "5 点/张",  caps: ["T2I", "I2I", "编辑"] },
   { value: "kie_flux_kontext_max",  label: "Flux Kontext Max",   desc: "上下文编辑 · 排版",   group: "Kie", family: "Flux Kontext", provider: "Kie", costNote: "10 点/张", caps: ["T2I", "I2I", "编辑", "排版"] },
   { value: "kie_gpt_4o_image",      label: "GPT-4o Image",       desc: "GPT-4o · 文/图编辑",  group: "Kie", family: "GPT Image",    provider: "Kie", costNote: "6 点/张",  caps: ["T2I", "I2I", "蒙版"] },
+  // ── #151 round2 新模型 ──
+  { value: "kie_nano_banana_2_lite",     label: "Nano Banana 2 Lite",      desc: "Google Lite · 廉价",  group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "4 点/张", caps: ["T2I"] },
+  { value: "kie_nano_banana_2_lite_i2i", label: "Nano Banana 2 Lite 编辑", desc: "图生图 · ≤10图",      group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "4 点/张", caps: ["I2I", "编辑"], requiresRef: true },
+  { value: "kie_seedream_5pro_i2i",      label: "Seedream 5 Pro 编辑",     desc: "字节旗舰 · 图生图",   group: "Kie", family: "Seedream",    provider: "Kie", costNote: "7 点/张", caps: ["I2I", "编辑"], requiresRef: true },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -242,8 +252,17 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   // ── others ──
   { value: "poyo_happy_horse",        label: "Happy Horse",         group: "Poyo", family: "其他",     costLabel: "720p 16/1080p 32 cr/s",      caps: ["四工作流", "1080p"] },
   { value: "poyo_happy_horse_11",     label: "Happy Horse 1.1",     group: "Poyo", family: "其他",     costLabel: "720p 22/1080p 28 cr/s",      caps: ["T2V", "I2V", "参考生", "1080p"] },
-  { value: "poyo_omni_flash",         label: "Omni Flash",          group: "Poyo", family: "其他",     costLabel: "120-450 cr/次（按分辨率/时长）", caps: ["T2V", "I2V", "V2V", "三图融合", "4K"] },
+  { value: "poyo_omni_flash",         label: "Omni Flash",          group: "Poyo", family: "其他",     costLabel: "720p/1080p 120-220/4K 250-450 cr/次", caps: ["T2V", "I2V", "V2V", "三图融合", "4K"] },
   { value: "poyo_grok_video",         label: "Grok Imagine",        group: "Poyo", family: "其他",     costLabel: "6s 30/10s 40 cr/次",      caps: ["T2V", "I2V", "6/10s"] },
+  // ── #151 round2 新模型（计价按 2026-07-round2-final.json）──
+  { value: "poyo_grok_video_15",       label: "Grok Imagine Video 1.5", group: "Poyo", family: "其他",     costLabel: "480p 14.5/720p 25 cr/s",  caps: ["I2V", "1-15s"] },
+  { value: "poyo_kling_avatar2_std",   label: "Kling Avatar 2.0 标准",  group: "Poyo", family: "Kling",    costLabel: "7 cr/s",                  caps: ["数字人", "图+音频"] },
+  { value: "poyo_kling_avatar2_pro",   label: "Kling Avatar 2.0 专业",  group: "Poyo", family: "Kling",    costLabel: "14 cr/s",                 caps: ["数字人", "图+音频"] },
+  { value: "poyo_seedance2_mini",      label: "Seedance 2 Mini",        group: "Poyo", family: "Seedance", costLabel: "480p 10/720p 24 cr/s",    caps: ["T2V", "首尾帧", "参考", "音频"] },
+  { value: "poyo_wan25_text",          label: "Wan 2.5 文生视频",       group: "Poyo", family: "Wan",      costLabel: "480p 30/720p 60/1080p 90 cr/次(5s)", caps: ["T2V", "5/10s"] },
+  { value: "poyo_wan25_image",         label: "Wan 2.5 图生视频",       group: "Poyo", family: "Wan",      costLabel: "480p 30/720p 60/1080p 90 cr/次(5s)", caps: ["I2V", "5/10s"] },
+  { value: "poyo_wan_animate_move",    label: "Wan Animate 动作迁移",   group: "Poyo", family: "Wan",      costLabel: "480p 7/580p 12/720p 15 cr/s", caps: ["视频+图", "角色动画"] },
+  { value: "poyo_wan_animate_replace", label: "Wan Animate 角色替换",   group: "Poyo", family: "Wan",      costLabel: "480p 7/580p 12/720p 15 cr/s", caps: ["视频+图", "角色替换"] },
   { value: "poyo_runway45",           label: "Runway Gen 4.5",      group: "Poyo", family: "Runway",   costLabel: "5s 75/10s 150 cr/次",      caps: ["T2V", "+1图", "5/10s"] },
   // ── Higgsfield (公共 API 仅 DoP 3 档；其余 Kling/Seedance/Veo 在私有后端) ──
   { value: "hf_dop_standard",         label: "DoP Standard",        group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "运镜"] },
