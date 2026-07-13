@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles, ChevronsLeftRight, ChevronsRightLeft, Eraser } from "lucide-react";
+import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles, ChevronsLeftRight, ChevronsRightLeft, Eraser, BrainCircuit } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -231,6 +231,19 @@ export function ComfyServerStatusIndicator() {
     });
   };
 
+  // 复位「知识记忆体」：清掉该服务器已学习的资源/节点记忆并立即重学（refreshKnowledge=invalidate+重抓）。
+  // 复位后，工程智能体 / ComfyUI 节点 / 画布助手下次调用记忆时拿到的即是最新清单（装/删模型后手动复位用）。
+  const refreshKnowledgeMut = trpc.comfyui.refreshKnowledge.useMutation();
+  const resetMemory = (baseUrl: string) => {
+    refreshKnowledgeMut.mutate({ customBaseUrl: baseUrl }, {
+      onSuccess: (r) => {
+        if (!r.configured) { toast.error("未配置 ComfyUI 地址"); return; }
+        toast.success(`已复位并重建记忆：${r.counts.checkpoints} checkpoint · ${r.counts.loras} LoRA · ${r.counts.nodeClasses} 节点类`);
+      },
+      onError: (e) => toast.error(`复位记忆失败：${e.message}`),
+    });
+  };
+
   useEffect(() => { if (visible && btnRef.current) setBtnRect(btnRef.current.getBoundingClientRect()); }, [visible]);
 
   // Drag the panel by its header.
@@ -410,6 +423,7 @@ export function ComfyServerStatusIndicator() {
                                 <ActBtn icon={<Ban className="w-3 h-3" />} label="中断" color="oklch(0.65 0.21 25)" disabled={busy} onClick={() => runAction(s.baseUrl, "interrupt", "中断")} />
                                 <ActBtn icon={<ListX className="w-3 h-3" />} label="清空队列" color="oklch(0.74 0.16 80)" disabled={busy} onClick={() => runAction(s.baseUrl, "clearQueue", "清空队列")} />
                                 <ActBtn icon={<Sparkles className="w-3 h-3" />} label="推荐工作流" color="oklch(0.72 0.18 285)" onClick={() => setRecommendFor(s.baseUrl)} />
+                                <ActBtn icon={<BrainCircuit className="w-3 h-3" />} label="复位记忆" color="oklch(0.7 0.16 40)" disabled={refreshKnowledgeMut.isPending} onClick={() => resetMemory(s.baseUrl)} />
                                 <ActBtn icon={<RefreshCw className="w-3 h-3" />} label="刷新" color="oklch(0.64 0.16 250)" disabled={statusQuery.isFetching} onClick={() => statusQuery.refetch()} />
                               </div>
                             )}
