@@ -145,7 +145,12 @@ const SINGLE_START_IMAGE_MODELS = new Set<string>([
 ]);
 // veo3.1-lite 是纯文生视频模型：不支持 image_urls 也不支持 generation_type
 // (docs/poyo-video-api.md:70)。给它发任何参考图字段都会 400，故整条参考链路对它跳过。
-const TEXT_ONLY_MODELS = new Set<string>(["veo3.1-lite"]);
+// #129 全量审计补充：wan 各文生 wire 文档同样没有任何参考图字段（图生是独立 wire），
+// 之前误连参考图会发无效的 reference_image_url——按文档改为整条参考链路跳过。
+const TEXT_ONLY_MODELS = new Set<string>([
+  "veo3.1-lite",
+  "wan2.6-text-to-video", "wan2.7-text-to-video", "wan2.2-text-to-video-fast",
+]);
 
 // 专属「参考生视频」wire：参考图永远走 reference_image_urls（多模态参考），不当首尾帧；
 // 且必须至少提供一张参考图或一个参考视频，否则 Poyo 400（docs/poyo-video-api.md:166）。
@@ -170,7 +175,36 @@ const SINGLE_IMAGE_URLS_MODELS = new Set<string>([
   "kling-1.6/standard", "kling-1.6/pro",
   "kling-3.0-turbo/standard", "kling-3.0-turbo/pro",
   "happy-horse", "happy-horse-1.1", "omni-flash",
+  // #129 全量审计（docs/poyo-video-api.md）：kling-3.0 图生=首尾帧 image_urls（§kling-3-0，
+  // 元素引用时 image_urls 必填）；kling-o3 图生=image_urls ≤2（§kling-o3）；
+  // runway-gen-4.5 可选 image_urls ≤1（§runway-gen-4-5）。三组单图此前都掉进
+  // reference_image_url 兜底被静默丢弃。
+  "kling-3.0/standard", "kling-3.0/pro", "kling-3.0/4K",
+  "kling-o3/standard", "kling-o3/pro", "kling-o3/4K",
+  "runway-gen-4.5",
 ]);
+
+// #129 守卫：官方文档【没有列出】图生字段名的模型——维持历史 reference_image_url 兜底
+// 行为不变（无文档依据就不改，避免把「可能在跑」的路径改坏）。任何新接入的 wire 若
+// 未被归进 TEXT_ONLY / REFERENCE_ONLY / SINGLE_START / SINGLE_IMAGE_URLS / 本白名单
+// 之一，poyoVideo.test.ts 的守卫用例会直接失败，逼迫接入者按文档显式归类。
+const SINGLE_IMAGE_FALLBACK_OK = new Set<string>([
+  "sora-2", "sora-2-pro",          // 文档只说「文生+图生」，未列字段名
+  "kling-2.6",                     // 同上
+  "seedance-1.0-pro", "seedance-1.5-pro", // 同上（seedance-2 才明确 image_urls）
+  "hailuo-02", "hailuo-02-pro",    // 同上（hailuo-2.3 才明确 start_image_url）
+  "grok-imagine",                  // 同上
+]);
+
+/** #129 单图字段归类（守卫测试用）：返回 null = 未显式归类，禁止上线。 */
+export function classifySingleImage(model: string): "text-only" | "reference-only" | "start" | "image_urls" | "fallback" | null {
+  if (TEXT_ONLY_MODELS.has(model)) return "text-only";
+  if (REFERENCE_ONLY_MODELS.has(model)) return "reference-only";
+  if (SINGLE_START_IMAGE_MODELS.has(model)) return "start";
+  if (SINGLE_IMAGE_URLS_MODELS.has(model)) return "image_urls";
+  if (SINGLE_IMAGE_FALLBACK_OK.has(model)) return "fallback";
+  return null;
+}
 
 function applySingleImage(input: Record<string, unknown>, model: string, url: string): void {
   if (SINGLE_START_IMAGE_MODELS.has(model)) input.start_image_url = url;
