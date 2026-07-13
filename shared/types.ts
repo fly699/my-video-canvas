@@ -1002,6 +1002,8 @@ export interface SubtitleMotionNodeData {
 }
 
 export interface SmartCutNodeData {
+  /** 选段决策 LLM（转写文本 → 保留片段判定）。未设时用全局 AI 工具偏好，再兜底平台默认。 */
+  llmModel?: string;
   /** #100 场景检测切点（秒，clip.detectScenes 产出）——剪辑边界吸附用。 */
   sceneBoundaries?: number[];
   inputVideoUrl?: string;

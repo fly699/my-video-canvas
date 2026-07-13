@@ -8,6 +8,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import type { SmartCutNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { loadAiToolModel } from "../NodeTextInput";
+import { LLMModelPicker, LLM_MODELS, type LLMModelId } from "../LLMModelPicker";
 import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -129,8 +130,8 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
         const merged = Array.from(new Set([...(shotBoundariesFor(videoUrl) ?? []), ...(payload.sceneBoundaries ?? [])])).sort((a, b) => a - b).slice(0, 60);
         return merged.length ? merged : undefined;
       })(),
-      // #73：此前不传 model 暗走服务端默认——随宽幅弹窗 AI 工具偏好（含自建/桥接）
-      ...(loadAiToolModel() ? { model: loadAiToolModel() } : {}),
+      // 模型优先级：节点内选择 > 全局 AI 工具偏好 > 服务端平台默认（不传）
+      ...((payload.llmModel || loadAiToolModel()) ? { model: payload.llmModel || loadAiToolModel() } : {}),
     });
   };
 
@@ -163,6 +164,22 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
           </span>
         </div>
 
+
+        {/* 用户反馈补齐：选段决策模型可见可选（此前暗走全局 AI 工具偏好/平台默认）。
+            流程 = 转写出带时间戳的文本 → LLM 按激进度决定保留片段 → ffmpeg 剪。 */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+            <label style={{ ...labelStyle, marginBottom: 0 }}>选段决策模型</label>
+            <LLMModelPicker
+              value={(payload.llmModel || loadAiToolModel() || LLM_MODELS[0].id) as LLMModelId}
+              onChange={(m) => update({ llmModel: m })}
+              disabled={isProcessing}
+            />
+          </div>
+          <p style={{ fontSize: 9.5, color: "var(--c-t4)", lineHeight: 1.4, margin: 0 }}>
+            {payload.llmModel ? "已固定本节点模型" : loadAiToolModel() ? "跟随全局 AI 工具偏好（点击可固定本节点专用模型）" : "未选择时使用平台默认模型"}
+          </p>
+        </div>
 
         {/* Aggressiveness */}
         <div>
