@@ -15,6 +15,7 @@ import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { invalidateSystemDefaultModelsCache } from "../_core/systemDefaultModels";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { reloadBridgeMcpConfig } from "../_core/bridgeMcp";
+import { reloadSuperAgentConfig } from "../_core/superAgent/config";
 import { bridgeLocalUrl } from "../_core/claudeBridge";
 import { buildConfigChecklist } from "../_core/configChecklist";
 import { sendTestEmail } from "../_core/verificationEmail";
@@ -689,6 +690,30 @@ export const adminRouter = router({
         }
         await db.setBridgeMcpConfig({ mcpConfig, skills: input.skills, strict: input.strict, permissionMode: input.permissionMode, allowedTools: input.allowedTools, workspace: input.workspace });
         await reloadBridgeMcpConfig(); // 立即热更新桥接增强参数缓存
+        return { success: true };
+      }),
+    // ── 工程智能体权限（admin）：替代 SUPER_AGENT_* env，后台开关即生效（无需重启）。
+    //   读取所有管理员可见（配置体检页 L3+）；修改限站长 L5（等同于放开代码/Bash 执行的高危权限，
+    //   与代码任务本身 L4 使用权做级别隔离——避免 L4 自行放开再自用）。
+    getSuperAgent: adminProcedure.query(async () => {
+      const dbCfg = await db.getSuperAgentConfigRaw();
+      const env = {
+        codeEnabled: process.env.SUPER_AGENT_CODE_ENABLED === "1",
+        allowBash: process.env.SUPER_AGENT_CODE_ALLOW_BASH === "1",
+        autoInstall: process.env.SUPER_AGENT_AUTO_INSTALL === "1",
+      };
+      const resolved = dbCfg ?? env; // 后台已配置则以 DB 为准，否则回退 env
+      return { ...resolved, dbConfigured: !!dbCfg, env, permissionCmdSet: !!process.env.SUPER_AGENT_PERMISSION_CMD?.trim() };
+    }),
+    setSuperAgent: ownerProc
+      .input(z.object({
+        codeEnabled: z.boolean().default(false),
+        allowBash: z.boolean().default(false),
+        autoInstall: z.boolean().default(false),
+      }))
+      .mutation(async ({ input }) => {
+        await db.setSuperAgentConfig({ codeEnabled: input.codeEnabled, allowBash: input.allowBash, autoInstall: input.autoInstall });
+        await reloadSuperAgentConfig(); // 立即热更新运行时快照（isCodeAgentEnabled 等）
         return { success: true };
       }),
     // ── 系统默认模型（admin）：按槽位 llm/image/video/transcribe，作用于所有项目 ──

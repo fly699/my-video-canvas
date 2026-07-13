@@ -568,6 +568,13 @@
       "when": 1784200000000,
       "tag": "0080_admin_perm_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "5",
+      "when": 1784300000000,
+      "tag": "0081_super_agent_config",
+      "breakpoints": true
     }
   ]
 }
