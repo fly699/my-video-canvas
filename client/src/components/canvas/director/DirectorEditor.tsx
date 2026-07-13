@@ -16,7 +16,7 @@ import {
   MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers, respaceCrowdMembers, makeGroupFromActors, CROWD_SPACING,
   ensureCameras, newCameraId, nextCameraName, actorWorldPosition, shotAimTarget, faceCameraYaw,
   PROP_PRIMS, makeProp, LAYOUT_TEMPLATES, templateActors, type PropPrim,
-  makeLight, LIGHT_RIG_PRESETS, lightsFromRig, describeLights, LIGHT_KIND_LABEL, type LightRigPreset,
+  makeLight, LIGHT_RIG_PRESETS, lightsFromRig, describeLights, describeCameraMove, LIGHT_KIND_LABEL, type LightRigPreset,
   loadMyLightRigs, saveMyLightRig, deleteMyLightRig, type MyLightRig,
 } from "../../../lib/directorScene";
 import { usePerfStore, selectPerfLite } from "../../../lib/perfMode";
@@ -892,6 +892,34 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     patchCam({ target, lookAtActorId: actorId });
   }, [patchCam]);
 
+  // #110 机位动画路径：终点 = 当前导演视角（用户先自由飞到想要的收尾画面再点按钮）；
+  // 预览 = 导演视角从机位起点插值飞到终点（easeInOut 2s），直观感受这段运镜。
+  const setMoveToFromView = () => {
+    const cap = captureRef.current; if (!cap?.orbit) return;
+    const position = cap.camera.position.toArray() as Vec3;
+    const target = cap.orbit.target.toArray() as Vec3;
+    patchCam({ moveTo: { position, target } });
+    toast.success("已把当前导演视角设为镜头终点（截图将附带中文运镜描述）");
+  };
+  const previewMove = () => {
+    const cap = captureRef.current; const mv = sceneRef.current.camera.moveTo;
+    if (!cap?.orbit || !mv) return;
+    const c0 = sceneRef.current.camera;
+    const p0 = new THREE.Vector3(...c0.position), p1 = new THREE.Vector3(...mv.position);
+    const t0 = new THREE.Vector3(...c0.target), t1 = new THREE.Vector3(...mv.target);
+    const start = performance.now(); const DUR = 2000;
+    const orbit = cap.orbit; // 上方守卫已确认非空；闭包内收窄给 tsc
+    const tick = () => {
+      const k = Math.min(1, (performance.now() - start) / DUR);
+      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; // easeInOutQuad
+      cap.camera.position.lerpVectors(p0, p1, e);
+      orbit.target.lerpVectors(t0, t1, e);
+      orbit.update();
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+
   // 景别预设（LibTV 模块28「五种景别」）：保持当前机位方位角，按景别设定 FOV + 与主体距离 +
   // 注视高度，一键在 远景/全景/中景/近景/特写 间切换，配合多机位实现叙事镜头序列。
   const applyShot = useCallback((shot: { fov: number; dist: number; aimY: number }) => {
@@ -946,8 +974,10 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
       const result = await uploadMut.mutateAsync({ base64, mimeType: "image/png", filename: "director-3d.png" });
       // #78 光效中文描述随截图落进节点，下游提示词可直接引用（无布光则清空）
       const lightingDesc = describeLights(sceneRef.current.lights, sceneRef.current.dimBase) || undefined;
-      updateNodeData(nodeId, { scene: sceneRef.current, imageUrl: result.url, imageStorageKey: result.storageKey, aspectRatio: scene.aspectRatio, status: "done", lightingDesc });
-      toast.success(lightingDesc ? "已截图输出参考图（含布光描述）" : "已截图并输出为参考图");
+      // #110 激活机位的运镜描述（有动画路径才产出）随截图一并写入
+      const cameraMoveDesc = describeCameraMove(sceneRef.current.camera) || undefined;
+      updateNodeData(nodeId, { scene: sceneRef.current, imageUrl: result.url, imageStorageKey: result.storageKey, aspectRatio: scene.aspectRatio, status: "done", lightingDesc, cameraMoveDesc });
+      toast.success(cameraMoveDesc ? "已截图输出参考图（含布光/运镜描述）" : lightingDesc ? "已截图输出参考图（含布光描述）" : "已截图并输出为参考图");
     } catch (e) {
       toast.error("截图失败：" + (e instanceof Error ? e.message : String(e)));
     } finally { setSaving(false); }
@@ -1461,6 +1491,27 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   onSelect={() => selectCameraFromScene(c.id!)}
                   bindRef={camSelected && c.id === activeCameraId ? ((el) => setCamGizmoTarget(el)) : undefined} />
               ))}
+              {/* #110 机位动画路径可视化：起点→终点连线 + 终点虚影方块（组名 cam-marker，
+                  截图/宫格/入库时随机位实体统一隐藏，不进成片） */}
+              {(() => {
+                const ac = cameras.find((c) => c.id === activeCameraId);
+                const mv = ac?.moveTo;
+                if (!mv) return null;
+                return (
+                  <group name="cam-marker">
+                    <line>
+                      <bufferGeometry>
+                        <bufferAttribute attach="attributes-position" args={[new Float32Array([...ac!.position, ...mv.position]), 3]} />
+                      </bufferGeometry>
+                      <lineBasicMaterial color="#ffb020" transparent opacity={0.5} />
+                    </line>
+                    <mesh position={mv.position}>
+                      <boxGeometry args={[0.18, 0.125, 0.1]} />
+                      <meshBasicMaterial color="#ffb020" transparent opacity={0.35} wireframe />
+                    </mesh>
+                  </group>
+                );
+              })()}
               {scene.groundVisible && (
                 <Grid args={[40, 40]} cellSize={0.5} cellThickness={0.6} sectionSize={2} sectionThickness={1} infiniteGrid fadeDistance={26} cellColor="#2a2f3a" sectionColor="#3a4150" position={[origin[0], 0, origin[2]]} />
               )}
@@ -1647,6 +1698,29 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 {scene.actors.map((a) => <option key={a.id} value={a.id}>对准 {a.name}</option>)}
               </select>
               <Xyz v={scene.camera.target} min={-reachFor(scene.camera.target)} max={reachFor(scene.camera.target)} onChange={(target) => { patchCam({ target, lookAtActorId: undefined }); moveLiveCamera({ ...scene.camera, target }); }} />
+              {/* #110 运镜动画：设终点 → 预览飞行 → 中文运镜描述随截图输出 */}
+              <div style={sub}>运镜动画（起点=本机位当前位姿）</div>
+              <div className="flex gap-1">
+                <button onClick={setMoveToFromView} style={{ ...chip, flex: 1, justifyContent: "center" }}
+                  title="把当前导演视角设为镜头终点——先在画面里自由飞到想要的收尾构图，再点这里">
+                  🎯 设终点=当前视角
+                </button>
+                {scene.camera.moveTo && (
+                  <button onClick={() => patchCam({ moveTo: undefined })} style={{ ...chip, justifyContent: "center" }} title="清除动画路径">×</button>
+                )}
+              </div>
+              {scene.camera.moveTo && (
+                <>
+                  <button onClick={previewMove} style={{ ...chip, justifyContent: "center", width: "100%", marginTop: 5 }}
+                    title="导演视角从起点飞到终点（2 秒 easeInOut），直观预览这段运镜">
+                    ▶ 预览运镜（2s）
+                  </button>
+                  <p style={{ ...hint, marginTop: 4 }}>
+                    {describeCameraMove(scene.camera) ?? "起点与终点几乎相同——移动视角后重新设终点"}
+                    {describeCameraMove(scene.camera) ? "（截图时随参考图写入节点，供图生视频运镜提示词直接引用）" : ""}
+                  </p>
+                </>
+              )}
               {/* #78 相机截图库（LibTV「摄像机截图」）：多张暂存 → 全部清空 / 发送到画布 */}
               <div style={sub}>相机截图库{shots.length ? `（${shots.length}）` : ""}</div>
               <button onClick={shootToLibrary} disabled={saving} style={{ ...chip, justifyContent: "center", width: "100%", opacity: saving ? 0.6 : 1 }}

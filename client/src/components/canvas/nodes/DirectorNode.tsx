@@ -55,6 +55,12 @@ export const DirectorNode = memo(function DirectorNode({ id, selected, data }: P
             💡 {payload.lightingDesc}
           </div>
         )}
+        {/* #110 运镜描述（机位动画路径推导，随截图写入）——下游图生视频提示词可直接引用 */}
+        {payload.cameraMoveDesc && (
+          <div title={payload.cameraMoveDesc} style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            🎬 {payload.cameraMoveDesc}
+          </div>
+        )}
 
         <div className="flex items-center justify-between" style={{ fontSize: 11, color: "var(--c-t4)" }}>
           <span>{scene.actors.length} 个角色{scene.lights?.length ? ` · ${scene.lights.length} 盏灯` : ""} · 画幅 {scene.aspectRatio} · {scene.camera.fov.toFixed(0)}°</span>

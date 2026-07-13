@@ -429,6 +429,45 @@ export function describeLights(lights: DirectorLight[] | undefined, dimBase?: bo
   return `画面布光：${parts.join("；")}${tail}`;
 }
 
+/** #110 机位动画路径 → 中文运镜描述。起点 = cam.position/target，终点 = cam.moveTo。
+ *  按摄影术语分解：视线方向推拉（dolly）、横向平移（truck）、垂直升降（pedestal）、
+ *  水平摇（pan）与俯仰（tilt）。位移 <0.15m、角度 <3° 视为无该项动作；
+ *  幅度分档：位移 <1.2m / 角度 <20° = 缓慢/轻微，否则 快速/大幅。
+ *  无 moveTo 或全部动作近零 → null（固定机位，不产描述）。 */
+export function describeCameraMove(cam: DirectorCamera): string | null {
+  const mv = cam.moveTo;
+  if (!mv) return null;
+  const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const len = (v: Vec3) => Math.hypot(v[0], v[1], v[2]);
+  const norm = (v: Vec3): Vec3 => { const l = len(v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const d = sub(mv.position, cam.position);       // 机位位移
+  const fwd = norm(sub(cam.target, cam.position)); // 起点视线方向
+  // 水平右方向 = fwd × up（three 右手系；fwd 朝 -z 时 right = +x = 画面右）
+  const right = norm([-fwd[2], 0, fwd[0]]);
+  const dolly = dot(d, fwd);   // >0 前推 / <0 后拉
+  const truck = dot(d, right); // >0 右移 / <0 左移
+  const ped = d[1];            // >0 升 / <0 降
+  const fwd1 = norm(sub(mv.target, mv.position));
+  const yaw0 = Math.atan2(fwd[0], -fwd[2]), yaw1 = Math.atan2(fwd1[0], -fwd1[2]);
+  let dyaw = ((yaw1 - yaw0) * 180) / Math.PI;
+  while (dyaw > 180) dyaw -= 360;
+  while (dyaw < -180) dyaw += 360;
+  const asDeg = (y: number) => (Math.asin(Math.max(-1, Math.min(1, y))) * 180) / Math.PI;
+  const dpitch = asDeg(fwd1[1]) - asDeg(fwd[1]);
+  const D_MIN = 0.15, D_FAST = 1.2, A_MIN = 3, A_FAST = 20;
+  const dm = (v: number) => (Math.abs(v) < D_FAST ? "缓慢" : "快速");
+  const am = (v: number) => (Math.abs(v) < A_FAST ? "轻微" : "大幅");
+  const parts: string[] = [];
+  if (Math.abs(dolly) >= D_MIN) parts.push(`${dm(dolly)}${dolly > 0 ? "前推" : "后拉"}`);
+  if (Math.abs(truck) >= D_MIN) parts.push(`向${truck > 0 ? "右" : "左"}${dm(truck)}平移`);
+  if (Math.abs(ped) >= D_MIN) parts.push(`${dm(ped)}${ped > 0 ? "升高" : "降低"}机位`);
+  if (Math.abs(dyaw) >= A_MIN) parts.push(`向${dyaw < 0 ? "左" : "右"}${am(dyaw)}摇镜`);
+  if (Math.abs(dpitch) >= A_MIN) parts.push(`${dpitch > 0 ? "上仰" : "下俯"}${am(dpitch)}`);
+  if (!parts.length) return null;
+  return `${cam.name ?? "机位"}运镜：${parts.join("，")}`;
+}
+
 /** 按模板生成一批新角色（追加式；落点相对 origin），返回新角色数组。 */
 export function templateActors(tpl: LayoutTemplate, existing: DirectorActor[], origin: Vec3): DirectorActor[] {
   const out: DirectorActor[] = [];
