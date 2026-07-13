@@ -107,7 +107,9 @@ export const superAgentRouter = router({
         /** 目标 ComfyUI 服务器（留空用服务端 COMFYUI_BASE_URL）。Phase 1 仅本地自建。 */
         customBaseUrl: z.string().max(512).optional(),
         model: z.string().max(64).optional(),
-        maxIterations: z.number().int().min(1).max(40).optional(),
+        maxIterations: z.number().int().min(1).max(60).optional(),
+        /** 「加载全部资源」：系统提示不截断，列出服务器全部已装模型/LoRA/节点（配合大上下文模型）。 */
+        showAllResources: z.boolean().optional(),
         /** 连续对话：上一版调通的 workflowJson，本轮在其基础上改。 */
         seedWorkflowJson: z.string().max(200_000).optional(),
         /** 连续对话：先前若干轮的精简历史。 */
@@ -163,6 +165,7 @@ export const superAgentRouter = router({
           seedWorkflowJson: input.seedWorkflowJson,
           history: input.history,
           referenceExamples,
+          showAllResources: input.showAllResources,
         });
       } finally {
         runningJobs.delete(key);

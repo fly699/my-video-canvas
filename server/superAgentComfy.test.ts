@@ -317,6 +317,29 @@ describe("runComfyAgent — 闭环编排", () => {
     expect(p).toContain("…(+");                          // 截断标记
   });
 
+  it("buildSystemPrompt：showAll=true 不截断，列出全部资源（含末位名字），无截断标记", () => {
+    const many = Array.from({ length: 300 }, (_, i) => `ck_${i}.safetensors`);
+    const p = buildSystemPrompt("出图", { ...RES, checkpoints: many }, false, false, false, [], true);
+    expect(p).toContain("ck_299.safetensors"); // 末位也列出 → 未截断
+    expect(p).not.toContain("…(+");             // 无截断标记
+  });
+
+  it("showAllResources 透传：runComfyAgent 以不截断清单构建系统提示", async () => {
+    const many = Array.from({ length: 300 }, (_, i) => `ck_${i}.safetensors`);
+    let sys = "";
+    await runComfyAgent({
+      task: "出图",
+      tools: fakeTools({ listResources: async () => ({ ...RES, checkpoints: many }) }),
+      showAllResources: true,
+      llm: scriptedLLM(
+        [`{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`, `{"action":"execute"}`],
+        (msgs) => { if (msgs[0]?.role === "system") sys = msgs[0].content; },
+      ),
+    });
+    expect(sys).toContain("ck_299.safetensors"); // 全量清单入提示
+    expect(sys).not.toContain("…(+");
+  });
+
   it("describe_nodes：无工具 → 提示直接 author、不崩溃", async () => {
     const seen: string[] = [];
     const r = await runComfyAgent({

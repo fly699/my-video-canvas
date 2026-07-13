@@ -187,6 +187,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         projectId: data.projectId, nodeId: id, task: instruction,
         customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
         ...(payload.maxIterations ? { maxIterations: payload.maxIterations } : {}),
+        ...(payload.showAllResources ? { showAllResources: true } : {}),
         ...(isFollowup ? { seedWorkflowJson: payload.resultWorkflowJson, history: buildHistory(priorConv) } : {}),
       },
       {
@@ -213,7 +214,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         },
       },
     );
-  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.maxIterations, llmModel, data.projectId, id, buildMut, update, applyBuildResult, utils]);
+  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.maxIterations, payload.showAllResources, llmModel, data.projectId, id, buildMut, update, applyBuildResult, utils]);
 
   // ── 代码任务模式（连续对话：claude --resume 续接同一会话，保留上下文与工作区文件）──
   const handleRunCode = useCallback(() => {
@@ -316,12 +317,20 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                   <div>
                     <label style={labelStyle}>
                       <Settings2 size={9} style={{ display: "inline", marginRight: 3 }} />最大自驱轮次：<b style={{ color: accent }}>{payload.maxIterations ?? 20}</b>
-                      <span style={{ color: "var(--c-t4)", marginLeft: 4 }}>（轮次越高越能自愈复杂工作流，但更慢/更耗）</span>
+                      <span style={{ color: "var(--c-t4)", marginLeft: 4 }}>（越高越能自愈复杂工作流，但更慢/更耗；不建议无限——调不通会烧钱）</span>
                     </label>
-                    <input type="range" min={4} max={40} step={1} value={payload.maxIterations ?? 20} disabled={running}
+                    <input type="range" min={4} max={60} step={1} value={payload.maxIterations ?? 20} disabled={running}
                       onChange={(e) => update({ maxIterations: Number(e.target.value) })}
                       className="nodrag" style={{ width: "100%", accentColor: accent, cursor: running ? "not-allowed" : "pointer" }} />
                   </div>
+                  <label style={{ ...labelStyle, display: "flex", alignItems: "flex-start", gap: 6, cursor: running ? "not-allowed" : "pointer" }}>
+                    <input type="checkbox" checked={payload.showAllResources ?? false} disabled={running}
+                      onChange={(e) => update({ showAllResources: e.target.checked })}
+                      className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
+                    <span>加载全部模型 / LoRA / 节点（不截断）<br />
+                      <span style={{ color: "var(--c-t4)" }}>把服务器上全部已装资源都摆给智能体，避免名单被截断。资源极多时更耗 token，建议配大上下文模型；不勾也能用 search_resources 按需检索。</span>
+                    </span>
+                  </label>
                 </div>
               )}
             </div>
