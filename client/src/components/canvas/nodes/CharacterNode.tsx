@@ -827,9 +827,10 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           {/* #73 纳管：三视图生成模型选择 + 计价（此前隐形走服务端默认模型） */}
           <div className="nodrag flex items-center gap-2" style={{ marginTop: 4 }}>
             <ModelPicker value={maModel} onChange={pickMaModel} options={maOptionsResolved} minWidth={150} />
-            <ComfyCkptSelect enabled={maModel === COMFY_LOCAL_MODEL} width={140} />
             <span style={{ fontSize: 9.5, color: "var(--c-t4)", whiteSpace: "nowrap" }} title="三视图为单张大图，计一次生成">预计：{maCost}</span>
           </div>
+          {/* 本地 ComfyUI（自建）：地址(全能服务器管理) + checkpoint，仅选自建模型时出现 */}
+          {maModel === COMFY_LOCAL_MODEL && <div style={{ marginTop: 6 }}><ComfyCkptSelect enabled width={140} /></div>}
         </div>
 
         {/* ── 人物 (Person) fields ── */}
