@@ -29,7 +29,7 @@ import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterR
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption, useResolvedDefaultImageOption } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
-import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../../lib/comfyLocalRoute";
+import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt, loadComfyBase } from "../../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { PosePresetPicker } from "../PosePresetPicker";
 import { ZoomableImage } from "../ZoomableImage";
@@ -251,6 +251,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         const ref = payload.referenceImageUrl?.trim();
         const gen = await maComfyMut.mutateAsync({
           nodeId: id, projectId: data.projectId, ckpt,
+          customBaseUrl: loadComfyBase() || undefined,
           workflowTemplate: ref ? "img2img" : "txt2img",
           prompt: buildGridPrompt(subject, preset).slice(0, 2000),
           ...(ref ? { referenceImageUrl: ref, denoise: 0.75 } : {}),

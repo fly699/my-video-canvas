@@ -38,7 +38,7 @@ import { handleStyle } from "../../lib/handleStyle";
 import { agentBadge } from "../../lib/agentOwnership";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, useResolvedDefaultImageOption, type ModelPickerOption } from "./ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../lib/costEstimate";
-import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../lib/comfyLocalRoute";
+import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt, loadComfyBase } from "../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "./ComfyCkptSelect";
 import { QuickTrimBar } from "./QuickTrimBar";
 
@@ -544,7 +544,7 @@ export const BaseNode = memo(function BaseNode({
         const ckpt = loadComfyCkpt();
         if (!ckpt) { toast.error("本地 ComfyUI 需先在工具箱菜单里选择 checkpoint 模型", { id: tid }); setGridBusy(false); return; }
         const gen = await gridComfyMut.mutateAsync({
-          nodeId: id, projectId: projectId ?? 0, workflowTemplate: "img2img", ckpt,
+          nodeId: id, projectId: projectId ?? 0, workflowTemplate: "img2img", ckpt, customBaseUrl: loadComfyBase() || undefined,
           prompt: buildGridPrompt(subject, preset).slice(0, 2000),
           referenceImageUrl: resultImageUrl, denoise: 0.8,
         });
@@ -602,7 +602,7 @@ export const BaseNode = memo(function BaseNode({
         const ckpt = loadComfyCkpt();
         if (!ckpt) { toast.error("本地 ComfyUI 需先在工具箱菜单里选择 checkpoint 模型", { id: tid }); setGridBusy(false); return; }
         const gen = await gridComfyMut.mutateAsync({
-          nodeId: id, projectId: projectId ?? 0, workflowTemplate: "img2img", ckpt,
+          nodeId: id, projectId: projectId ?? 0, workflowTemplate: "img2img", ckpt, customBaseUrl: loadComfyBase() || undefined,
           prompt: tsPrompt.slice(0, 2000), referenceImageUrl: resultImageUrl, denoise: 0.7,
         });
         url = gen.url || "";

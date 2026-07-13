@@ -4,7 +4,7 @@ import { X, RotateCcw, Loader2, Send, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
 import { trpc } from "@/lib/trpc";
 import { ModelPicker, type ModelPickerOption } from "../ModelPicker";
 import { IMAGE_EDIT_MODEL_GROUPS, DEFAULT_IMAGE_EDIT_MODEL, buildImageEditInstruction, comfyDenoiseForOp } from "../../../../../shared/imageEdit";
-import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt } from "../../../lib/comfyLocalRoute";
+import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt, loadComfyBase } from "../../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { sourceAspectRatio } from "../../../lib/imageAspect";
@@ -263,7 +263,7 @@ export function MultiAngleEditor({ sourceUrl, nodeId, projectId, onApply, onClos
         const ckpt = loadComfyCkpt();
         if (!ckpt) { toast.error("请先在下方选择本地 ComfyUI 的 checkpoint 模型"); return; }
         const r = await comfyGen.mutateAsync({
-          nodeId, projectId, workflowTemplate: "img2img", ckpt,
+          nodeId, projectId, workflowTemplate: "img2img", ckpt, customBaseUrl: loadComfyBase() || undefined,
           prompt: buildImageEditInstruction("reangle", promptText).slice(0, 2000),
           referenceImageUrl: sourceUrl, denoise: comfyDenoiseForOp("reangle"),
         });
@@ -409,7 +409,7 @@ export function RelightEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
         const ckpt = loadComfyCkpt();
         if (!ckpt) { toast.error("请先在下方选择本地 ComfyUI 的 checkpoint 模型"); return; }
         const r = await comfyGen.mutateAsync({
-          nodeId, projectId, workflowTemplate: "img2img", ckpt,
+          nodeId, projectId, workflowTemplate: "img2img", ckpt, customBaseUrl: loadComfyBase() || undefined,
           prompt: buildImageEditInstruction("relight", promptText).slice(0, 2000),
           referenceImageUrl: sourceUrl, denoise: comfyDenoiseForOp("relight"),
         });
