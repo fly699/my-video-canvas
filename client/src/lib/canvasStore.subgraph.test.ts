@@ -45,18 +45,48 @@ describe("cloneSubgraph", () => {
 });
 
 describe("autoLayout", () => {
-  it("按连线方向分层：链 a→b→c 排成三列", () => {
+  it("flow：按连线方向分层，链 a→b→c 排成三列", () => {
     seed([node("a", "prompt", 999, 5), node("b", "image_gen", 10, 200), node("c", "video_task", 50, 50)],
       [edge("e1", "a", "b"), edge("e2", "b", "c")]);
-    const n = useCanvasStore.getState().autoLayout();
-    expect(n).toBe(3);
+    const r = useCanvasStore.getState().autoLayout("flow");
+    expect(r.count).toBe(3);
+    expect(r.label).toBe("流向分层");
     const st = useCanvasStore.getState();
     const px = (id: string) => st.nodes.find((x) => x.id === id)!.position.x;
     expect(px("b") - px("a")).toBe(360); // 相邻层间距 COL
     expect(px("c") - px("b")).toBe(360);
   });
-  it("少于 2 个自由节点返回 0", () => {
+  // #124 其余排法：横向同 y 递增 x、垂直同 x 递增 y、宫格 2 列对齐
+  it("row：横向一排（同 y、x 递增不重叠）", () => {
+    seed([node("a", "prompt", 0, 100), node("b", "image_gen", 10, 200), node("c", "video_task", 50, 50)], []);
+    const r = useCanvasStore.getState().autoLayout("row");
+    expect(r.count).toBe(3);
+    expect(r.label).toBe("横向一排");
+    const st = useCanvasStore.getState();
+    const p = (id: string) => st.nodes.find((x) => x.id === id)!.position;
+    expect(p("a").y).toBe(p("b").y);
+    expect(p("b").y).toBe(p("c").y);
+    // 阅读序 c(y=50) → a(y=100) → b(y=200)
+    expect(p("c").x).toBeLessThan(p("a").x);
+    expect(p("a").x).toBeLessThan(p("b").x);
+  });
+  it("column：垂直一列（同 x、y 递增）", () => {
+    seed([node("a", "prompt", 0, 100), node("b", "image_gen", 10, 200)], []);
+    const r = useCanvasStore.getState().autoLayout("column");
+    expect(r.label).toBe("垂直一列");
+    const st = useCanvasStore.getState();
+    const p = (id: string) => st.nodes.find((x) => x.id === id)!.position;
+    expect(p("a").x).toBe(p("b").x);
+    expect(p("a").y).toBeLessThan(p("b").y);
+  });
+  it("不传 mode 时循环切换排法（连续两次调用 label 不同）", () => {
+    seed([node("a", "prompt", 0, 0), node("b", "image_gen", 10, 10)], []);
+    const r1 = useCanvasStore.getState().autoLayout();
+    const r2 = useCanvasStore.getState().autoLayout();
+    expect(r1.label).not.toBe(r2.label);
+  });
+  it("少于 2 个自由节点返回 count=0", () => {
     seed([node("a", "prompt")], []);
-    expect(useCanvasStore.getState().autoLayout()).toBe(0);
+    expect(useCanvasStore.getState().autoLayout().count).toBe(0);
   });
 });
