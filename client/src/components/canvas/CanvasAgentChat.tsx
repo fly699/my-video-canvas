@@ -434,7 +434,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const skipComfyTemplates = !quickPrefs.genNodes.some((n) => n.startsWith("comfyui"));
       const r = await runAgentChatJob(
         utils.client,
-        { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined },
+        // #141 模型清单按需注入：锁定的模型随每轮请求实时传入（服务端无状态）——
+        // 改模型下一轮即按新模型注入、选回「默认」下一轮即恢复该类别全量清单。
+        { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined },
         controller.signal,
         (p) => { if (p.stage) setPlanStage(p.stage); },
       );
