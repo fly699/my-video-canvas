@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Camera } from "lucide-react";
+import { RigViewfinderPreview } from "./CameraMotionPreview";
 
 /**
  * 摄像机参数选择器（对齐 LibTV 图三）：相机 / 镜头 / 焦距 / 光圈 四列选择，
@@ -88,6 +89,10 @@ export function CameraRigPicker({ active, onApply, onClear, onClose }: {
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
           ><X size={14} /></button>
+        </div>
+        {/* #135 实时取景窗：焦距→推拉、光圈→景深虚化、镜头→宽银幕眩光/渐晕、机身→胶片质感 */}
+        <div style={{ padding: "14px 16px 0" }}>
+          <RigViewfinderPreview cam={cam} lens={lens} focal={focal} ap={ap} />
         </div>
         <div style={{ display: "flex", gap: 10, padding: 16 }}>
           <Col title="相机" items={CAMERAS.map((c) => c.v)} value={cam} onChange={setCam} render={(v) => CAMERAS.find((c) => c.v === v)?.label ?? v} />

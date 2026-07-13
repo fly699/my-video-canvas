@@ -36,7 +36,7 @@ export function inferCamMotion(id: string, english = ""): CamMotion {
   return "push-in";
 }
 
-const STYLE_ID = "cmp-keyframes-v1";
+const STYLE_ID = "cmp-keyframes-v2";
 const CSS = `
 .cmp-frame{position:relative;overflow:hidden;background:#0b0d13;perspective:520px}
 .cmp-scene{position:absolute;left:-20%;top:-20%;width:140%;height:140%;will-change:transform}
@@ -86,8 +86,99 @@ const CSS = `
 .cmp-orbit .cmp-scene{animation:cmpOrbit 3.2s ease-in-out infinite alternate;transform-origin:50% 60%}
 .cmp-handheld .cmp-scene{animation:cmpHand 1.6s linear infinite}
 .cmp-dolly-zoom .cmp-bg{animation:cmpDollyZoomBg 2.4s ease-in-out infinite alternate;transform-origin:50% 55%}
+@keyframes smpBreath{from{transform:scale(1.02)}to{transform:scale(1.09)}}
+@keyframes smpGrain{0%{opacity:.14;transform:translate(0,0)}50%{opacity:.22;transform:translate(-2%,1%)}100%{opacity:.14;transform:translate(1%,-2%)}}
+.smp-live .cmp-scene{animation:smpBreath 4.5s ease-in-out infinite alternate}
+.smp-ov{position:absolute;inset:0;pointer-events:none}
+.smp-ov-neon{background:linear-gradient(115deg, rgba(255,0,180,.28), transparent 42%, rgba(0,220,255,.30))}
+.smp-ov-vapor{background:linear-gradient(160deg, rgba(255,120,220,.35), rgba(120,90,255,.30))}
+.smp-ov-grain{background:repeating-linear-gradient(0deg, rgba(255,255,255,.06) 0 1px, transparent 1px 3px),repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 1px, transparent 1px 2px);animation:smpGrain 0.9s steps(3) infinite}
+.smp-ov-dots{background:radial-gradient(rgba(0,0,0,.35) 1px, transparent 1.4px);background-size:6px 6px}
+.smp-ov-lines{background:repeating-linear-gradient(45deg, rgba(0,0,0,.16) 0 1px, transparent 1px 4px)}
+.smp-ov-letterbox::before,.smp-ov-letterbox::after{content:"";position:absolute;left:0;right:0;height:12%;background:#000}
+.smp-ov-letterbox::before{top:0}.smp-ov-letterbox::after{bottom:0}
+.smp-ov-flare{background:linear-gradient(90deg, transparent 30%, rgba(80,170,255,.35) 49%, rgba(80,170,255,.5) 50%, rgba(80,170,255,.35) 51%, transparent 70%);mix-blend-mode:screen}
 @media (prefers-reduced-motion: reduce){.cmp-frame *{animation:none !important}}
 `;
+
+// ── #135 第二批：风格库色彩演示 ──────────────────────────────────────────────
+// 同一迷你场景 + 每款风格专属 CSS filter/叠加层 + 轻微「呼吸」推近，让风格卡
+// 像 LibTV 一样"活"起来。滤镜按风格语义近似（黑白/胶片/赛博霓虹/水墨/波普网点…）。
+const STYLE_FX: Record<string, { filter: string; ov?: string }> = {
+  cinematic:     { filter: "contrast(1.15) saturate(1.12)", ov: "letterbox" },
+  film_grain:    { filter: "sepia(.35) contrast(1.05) saturate(1.1)", ov: "grain" },
+  bw:            { filter: "grayscale(1) contrast(1.35)" },
+  low_key:       { filter: "brightness(.55) contrast(1.45)" },
+  cyberpunk:     { filter: "hue-rotate(30deg) saturate(1.9) contrast(1.15)", ov: "neon" },
+  hk_retro:      { filter: "sepia(.4) hue-rotate(-14deg) saturate(1.55) contrast(1.08)", ov: "grain" },
+  golden_hour:   { filter: "sepia(.5) saturate(1.45) brightness(1.12)" },
+  high_contrast: { filter: "contrast(1.65) saturate(1.1)" },
+  ink_wash:      { filter: "grayscale(1) contrast(.85) brightness(1.3) blur(.4px)" },
+  oil:           { filter: "saturate(1.45) contrast(1.12)", ov: "lines" },
+  watercolor:    { filter: "saturate(1.25) brightness(1.18) blur(.5px)" },
+  anime:         { filter: "saturate(1.75) contrast(1.15) brightness(1.05)" },
+  ukiyoe:        { filter: "sepia(.3) saturate(1.35) contrast(1.12)", ov: "lines" },
+  pencil:        { filter: "grayscale(1) contrast(1.5) brightness(1.15)", ov: "lines" },
+  popart:        { filter: "saturate(2.2) contrast(1.3)", ov: "dots" },
+  vaporwave:     { filter: "hue-rotate(300deg) saturate(1.6) brightness(1.08)", ov: "vapor" },
+  cg3d:          { filter: "saturate(1.15) contrast(1.12) brightness(1.06)" },
+  clay:          { filter: "saturate(1.35) blur(.4px) brightness(1.12)" },
+  lowpoly:       { filter: "saturate(1.45) contrast(1.25)" },
+  isometric:     { filter: "saturate(1.2) brightness(1.12)" },
+  felt:          { filter: "blur(.6px) saturate(1.25) brightness(1.12)" },
+  pixar:         { filter: "saturate(1.55) brightness(1.14) contrast(1.05)" },
+  ghibli:        { filter: "saturate(1.4) brightness(1.16) sepia(.15)" },
+  pixel:         { filter: "contrast(1.35) saturate(1.6)", ov: "dots" },
+};
+
+export function StyleSwatchPreview({ styleId, height = 76 }: { styleId: string; height?: number }) {
+  useEffect(ensureKeyframes, []);
+  const fx = STYLE_FX[styleId] ?? { filter: "saturate(1.2)" };
+  return (
+    <div className="cmp-frame smp-live" style={{ height, borderRadius: 7 }} aria-hidden data-style-swatch={styleId}>
+      <div className="cmp-scene" style={{ filter: fx.filter }}>
+        <div className="cmp-bg" />
+        <div className="cmp-mid" />
+        <div className="cmp-subject"><div className="cmp-head" /><div className="cmp-torso" /></div>
+      </div>
+      {fx.ov && <div className={`smp-ov smp-ov-${fx.ov}`} />}
+      <div className="cmp-vignette" />
+    </div>
+  );
+}
+
+// ── #135 第二批：摄像机实时取景窗 ────────────────────────────────────────────
+// 焦距→推拉（视角收窄）、光圈→背景景深虚化（主体独立层保持清晰）、镜头→变形宽银幕
+// 眩光/旋焦渐晕、机身→胶片/IMAX 质感。参数即点即变（transition 过渡=天然动画）。
+const FOCAL_SCALE: Record<number, number> = { 14: 0.9, 24: 1, 35: 1.12, 50: 1.24, 75: 1.4, 85: 1.48, 135: 1.72 };
+
+export function RigViewfinderPreview({ cam, lens, focal, ap, height = 110 }: {
+  cam: string; lens: string; focal: number; ap: string; height?: number;
+}) {
+  useEffect(ensureKeyframes, []);
+  const scale = FOCAL_SCALE[focal] ?? (0.85 + (focal / 135) * 0.8);
+  const f = parseFloat(ap) || 4;
+  const bgBlur = Math.min(6, 7 / f); // f/1.2≈5.8px 大虚化，f/16≈0.4px 近全清
+  const anamorphic = /anamorphic/i.test(lens);
+  const dreamy = /lensbaby|helios|cooke/i.test(lens);
+  const film = /super 8/i.test(cam);
+  const imax = /imax/i.test(cam);
+  const camFilter = film ? "sepia(.45) contrast(1.05) saturate(1.15)" : imax ? "contrast(1.18) saturate(1.15)" : "";
+  return (
+    <div className="cmp-frame" style={{ height, borderRadius: 9 }} aria-hidden data-rig-preview
+      data-rig={`${focal}mm f/${ap}`}>
+      <div className="cmp-scene" style={{ transform: `scale(${scale}) ${anamorphic ? "scaleX(1.12)" : ""}`, transition: "transform 450ms cubic-bezier(.4,0,.2,1)", transformOrigin: "50% 58%" }}>
+        <div className="cmp-bg" style={{ filter: `blur(${bgBlur}px) ${camFilter}`, transition: "filter 450ms ease" }} />
+        <div className="cmp-mid" style={{ filter: `blur(${(bgBlur * 0.55).toFixed(2)}px) ${camFilter}`, transition: "filter 450ms ease" }} />
+        <div className="cmp-subject" style={{ filter: camFilter, transition: "filter 450ms ease" }}><div className="cmp-head" /><div className="cmp-torso" /></div>
+      </div>
+      {anamorphic && <div className="smp-ov smp-ov-flare" />}
+      {film && <div className="smp-ov smp-ov-grain" />}
+      <div className="cmp-vignette" style={dreamy ? { boxShadow: "inset 0 0 34px 18px rgba(0,0,0,.68)" } : undefined} />
+      <span className="cmp-badge">{focal}mm · f/{ap}</span>
+    </div>
+  );
+}
 
 function ensureKeyframes() {
   if (document.getElementById(STYLE_ID)) return;
