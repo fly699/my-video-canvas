@@ -586,6 +586,28 @@ export interface MergeResult {
   segStarts?: number[];
 }
 
+// ── #139 配乐/音轨对齐画面总长 ────────────────────────────────────────────────
+// 音乐模型（Suno 等）时长由模型决定、无 duration 参数，配乐经常比画面长；而 amix
+// 默认 duration=longest 且输出无 -shortest —— 超长配乐会把成片整体拉长，画面播完
+// 后剩下的全是黑屏放音乐（用户实报）。修复不能用 -shortest（音轨短于画面时会反把
+// 画面裁短），改为把音轨精确对齐画面总长：短补静音、长裁断。
+
+/** 背景音乐链：裁到画面总长 + 尾部淡出（配乐被裁硬切很难听；音乐短于画面时
+ *  atrim/afade 均无副作用）。输出 label 固定 [bgm]。 */
+export function bgmAlignChain(inputLabel: string, totalDuration: number): string {
+  const t = Math.max(0.1, totalDuration);
+  const fadeD = Math.min(2, Math.max(0.2, t / 4)); // 尾部淡出 ≤2s，极短片按 1/4 片长
+  const fadeSt = Math.max(0, t - fadeD);
+  return `${inputLabel}atrim=0:${t.toFixed(3)},afade=t=out:st=${fadeSt.toFixed(3)}:d=${fadeD.toFixed(3)},aresample=async=1[bgm]`;
+}
+
+/** 混音输出的对齐尾巴：apad 补静音到画面总长、atrim 裁掉超出——[aout] 恰好等于
+ *  画面时长，成片总长永远以画面为准（不能用 -shortest：短音轨会反裁画面）。 */
+export function audioAlignTail(totalDuration: number): string {
+  const t = Math.max(0.1, totalDuration).toFixed(3);
+  return `,apad=whole_dur=${t},atrim=0:${t}`;
+}
+
 export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
   const transition = opts.transition ?? "none";
   const td = opts.transitionDuration ?? 0.5;
@@ -637,10 +659,12 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         args.push("-map", "0:v:0", "-map", "[aout]");
         args.push("-c:v", "copy", "-c:a", "aac", "-shortest");
       } else if (bgMusicPath) {
-        // 源视频没有音轨（或混有无声段）→ 沿用音乐作唯一音轨的旧行为。
+        // 源视频没有音轨（或混有无声段）→ 音乐作唯一音轨。#139：音乐尾部 apad 补静音
+        // 再 -shortest —— 输出恒等于画面长度。此前音乐短于画面时 -shortest 会反把
+        // 画面裁短（与「音乐超长拉长成片」同族的反向坑）。
         args.push("-map", "0:v:0", "-map", "1:a:0");
         args.push("-c:v", "libx264", "-preset", "fast");
-        args.push("-af", `volume=${bgVol.toFixed(4)}`);
+        args.push("-af", `volume=${bgVol.toFixed(4)},apad`);
         args.push("-c:a", "aac", "-shortest");
       } else if (Math.abs(origVol - 1) > 1e-3 && fastAllHaveAudio) {
         // 只调原声音量（无音乐）：音频重编码，视频仍流拷贝。
@@ -710,6 +734,9 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       if (n === 1) filterStr = "[0:v]copy[vout];";
       filterStr = filterStr.replace(/;$/, "");
 
+      // 画面总长此刻已定（末段起点 + 末段时长）——提前算出供音轨对齐（#139）。
+      totalDuration = (segStarts[n - 1] ?? 0) + (durations[n - 1] ?? 0);
+
       // Only build audio filter when all inputs have an audio track.
       // hasAudioTrack returns true on ffprobe failure (conservative), so a single
       // silent video in the mix will cause FFmpeg to fail on [i:a] reference.
@@ -757,7 +784,10 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       }
       if (bgMusicPath) {
         args.push("-i", bgMusicPath);
-        mixParts.push({ label: `[${nextIdx}:a]`, weight: bgVol });
+        // #139 配乐裁到画面总长 + 尾部淡出：amix 默认 duration=longest，超长配乐
+        // 曾把成片拉长（画面播完后黑屏放音乐）。
+        pre += `;${bgmAlignChain(`[${nextIdx}:a]`, totalDuration)}`;
+        mixParts.push({ label: "[bgm]", weight: bgVol });
         nextIdx++;
       }
       for (const vp of voicePaths) {
@@ -767,13 +797,16 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         mixParts.push({ label: `[${vp.tag}${vp.segIdx}]`, weight: vp.weight });
         nextIdx++;
       }
+      // #139 [aout] 统一对齐画面总长（apad 补静音 + atrim 裁断）：任何超长音轨（配乐/
+      // 段尾配音）都不再拉长成片，短音轨也不会（如用 -shortest 那样）反把画面裁短。
+      const alignTail = audioAlignTail(totalDuration);
       if (mixParts.length > 1) {
-        audioFilter = `${pre};${mixParts.map((m) => m.label).join("")}amix=inputs=${mixParts.length}:normalize=0:weights=${mixParts.map((m) => m.weight.toFixed(4)).join("|")},alimiter=limit=0.95[aout]`;
+        audioFilter = `${pre};${mixParts.map((m) => m.label).join("")}amix=inputs=${mixParts.length}:normalize=0:weights=${mixParts.map((m) => m.weight.toFixed(4)).join("|")},alimiter=limit=0.95${alignTail}[aout]`;
       } else if (mixParts.length === 1) {
         // 单独原声也应用原声音量（≠1 时）；anull 保持零回归。
         const ov = opts.originalVolume ?? 1;
         const acatChain = Math.abs(ov - 1) > 1e-3 ? `volume=${ov.toFixed(4)}` : "anull";
-        audioFilter = mixParts[0].label === "[acat]" ? `${pre};[acat]${acatChain}[aout]` : `${pre};${mixParts[0].label}aresample=async=1[aout]`;
+        audioFilter = mixParts[0].label === "[acat]" ? `${pre};[acat]${acatChain}${alignTail}[aout]` : `${pre};${mixParts[0].label}aresample=async=1${alignTail}[aout]`;
       }
 
       args.push("-filter_complex", filterStr + audioFilter);
@@ -793,9 +826,7 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
         throw new Error(`FFmpeg xfade merge failed:\n${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
       }
 
-      // 末段起点 + 末段时长 = 成片总长（逐切点 duration 各异时仍精确；
-      // 全局统一转场时与旧公式 Σdur - td*(n-1) 等价）。
-      totalDuration = (segStarts[n - 1] ?? 0) + (durations[n - 1] ?? 0);
+      // 成片总长已在滤镜构建后提前算出（#139 音轨对齐用）；此处只回填段起点。
       outSegStarts = segStarts;
     }
 
