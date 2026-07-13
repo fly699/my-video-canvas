@@ -98,7 +98,7 @@ export function MultiSelectBar() {
     if (plan.audioNodeId) {
       st.onConnect({ source: plan.audioNodeId, target: merge.id, sourceHandle: null, targetHandle: "input" });
     }
-    st.updateNodeData(merge.id, { transition: "fade", transitionDuration: 0.5 });
+    st.updateNodeData(merge.id, { transition: "none" }); // #147 合并默认直切
     // 选中新合并节点、取消其它，便于用户立刻看到/调整。
     st.setNodes(st.nodes.map((n) => (n.selected !== (n.id === merge.id) ? { ...n, selected: n.id === merge.id } : n)));
     st.requestRun(null, [merge.id]);
