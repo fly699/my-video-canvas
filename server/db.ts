@@ -112,6 +112,8 @@ import {
   type InsertComfyOpsRecord,
   comfyOpsSettings,
   type ComfyOpsSettings,
+  comfyKnowledge,
+  type ComfyResourceMemoryJson,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -1736,6 +1738,47 @@ export async function setSuperAgentConfig(cfg: SuperAgentConfig): Promise<void> 
   if (!db) { devModelToggleSettings.superAgent = superAgent; return; }
   await db.insert(modelToggleSettings).values({ id: 1, superAgent })
     .onDuplicateKeyUpdate({ set: { superAgent } });
+}
+
+// ── ComfyUI 知识记忆体持久化（跨重启）。dev/无 DB 时返回 null / no-op：记忆体退化为纯进程内缓存，
+//    行为与无持久化一致（单测不受影响）。objectInfo 存 JSON 文本，读时解析回对象。 ──
+export interface ComfyKnowledgeRowData { objectInfo: Record<string, unknown> | null; resources: ComfyResourceMemoryJson; fetchedAt: number }
+
+export async function getComfyKnowledgeRow(baseUrl: string): Promise<ComfyKnowledgeRowData | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(comfyKnowledge).where(eq(comfyKnowledge.baseUrl, baseUrl)).limit(1);
+  const r = rows[0];
+  if (!r) return null;
+  let objectInfo: Record<string, unknown> | null = null;
+  if (r.objectInfo) { try { objectInfo = JSON.parse(r.objectInfo) as Record<string, unknown>; } catch { objectInfo = null; } }
+  // JSON 列：MySQL 8 返回对象、MariaDB 返回字符串，两者都容错。
+  let resources = r.resources as ComfyResourceMemoryJson | string | null;
+  if (typeof resources === "string") { try { resources = JSON.parse(resources) as ComfyResourceMemoryJson; } catch { resources = null; } }
+  const res = (resources && typeof resources === "object" ? resources : { checkpoints: [], loras: [], vaes: [], samplers: [], schedulers: [], nodeClasses: [] }) as ComfyResourceMemoryJson;
+  return { objectInfo, resources: res, fetchedAt: Number(r.fetchedAt) || 0 };
+}
+
+export async function setComfyKnowledgeRow(baseUrl: string, data: ComfyKnowledgeRowData): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const objectInfo = data.objectInfo ? JSON.stringify(data.objectInfo) : null;
+  const resources = data.resources;
+  const fetchedAt = data.fetchedAt;
+  await db.insert(comfyKnowledge).values({ baseUrl, objectInfo, resources, fetchedAt })
+    .onDuplicateKeyUpdate({ set: { objectInfo, resources, fetchedAt } });
+}
+
+export async function deleteComfyKnowledgeRow(baseUrl: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(comfyKnowledge).where(eq(comfyKnowledge.baseUrl, baseUrl));
+}
+
+export async function deleteAllComfyKnowledgeRows(): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(comfyKnowledge);
 }
 
 /** 管理员配置的「系统默认模型」（按槽位 llm/image/video/transcribe）。单行 id=1 的 JSON 列。 */

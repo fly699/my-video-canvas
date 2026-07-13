@@ -38,6 +38,9 @@ import { MediaImage } from "../MediaImage";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
+import { COMFY_LOCAL_MODEL } from "@/lib/comfyLocalRoute";
+import { buildLocalComfyImageInput } from "@/lib/comfyLocalImageGen";
+import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { SyncNodesDialog } from "../SyncNodesDialog";
 import { ParamControls } from "../ParamControls";
 import { IMAGE_MODEL_PARAMS, resolveImageParam } from "@/lib/paramDefs";
@@ -367,25 +370,23 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     e.target.value = "";
   };
 
-  const genImageMutation = trpc.imageGen.generate.useMutation({
-    onSuccess: (result) => {
-      // 写回走单一事实源（历史维护 / 来源 URL / 推给已连视频节点），批量生成同一条路。
-      const newUrls = applyStoryboardGenResult(id, result, {
-        getNodes: () => useCanvasStore.getState().nodes,
-        updateNodeData: (nid, p) => updateNodeData(nid, p),
-        propagateRefImage,
-      });
-      setGenerating(false);
-      if (!useCanvasStore.getState().nodes.some(n => n.id === id)) return; // 节点已删
-      if (!newUrls.length) { toast.error("生成完成但未返回图像"); return; }
-      if (newUrls.length > 1) setShowHistory(true);
-      toast.success(newUrls.length > 1 ? `已生成 ${newUrls.length} 张，可在历史中切换` : "分镜图像已生成");
-    },
-    onError: (err) => {
-      setGenerating(false);
-      toast.error("图像生成失败：" + err.message);
-    },
-  });
+  // 生成结果写回（云端 imageGen 与本地 ComfyUI 两路共用单一事实源）。
+  const applySbResult = (result: { url?: string; urls?: string[]; sourceUrl?: string; sourceUrls?: string[]; sourceAt?: number }) => {
+    const newUrls = applyStoryboardGenResult(id, result, {
+      getNodes: () => useCanvasStore.getState().nodes,
+      updateNodeData: (nid, p) => updateNodeData(nid, p),
+      propagateRefImage,
+    });
+    setGenerating(false);
+    if (!useCanvasStore.getState().nodes.some(n => n.id === id)) return; // 节点已删
+    if (!newUrls.length) { toast.error("生成完成但未返回图像"); return; }
+    if (newUrls.length > 1) setShowHistory(true);
+    toast.success(newUrls.length > 1 ? `已生成 ${newUrls.length} 张，可在历史中切换` : "分镜图像已生成");
+  };
+  const onGenError = (err: { message: string }) => { setGenerating(false); toast.error("图像生成失败：" + err.message); };
+  const genImageMutation = trpc.imageGen.generate.useMutation({ onSuccess: applySbResult, onError: onGenError });
+  // #87 自建算力：分镜模型选「本地 ComfyUI」时改走此 mutation（comfyui.generateImage，txt2img/img2img）。
+  const comfyLocalMut = trpc.comfyui.generateImage.useMutation({ onSuccess: applySbResult, onError: onGenError });
 
   // AI prompt expansion
   const [expandingPrompt, setExpandingPrompt] = useState(false);
@@ -449,7 +450,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
 
   useEffect(() => {
     if (!pendingGen3d) return;
-    if (generating || genImageMutation.isPending) return;
+    if (generating || genImageMutation.isPending || comfyLocalMut.isPending) return;
     setPendingGen3d(false);
     handleGenerate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -458,7 +459,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const handleGenerate = () => {
     // Double guard — local state is async (could be stale on rapid double-click) so
     // also check the mutation's own isPending which tRPC flips synchronously
-    if (generating || genImageMutation.isPending) return;
+    if (generating || genImageMutation.isPending || comfyLocalMut.isPending) return;
     // 组装走单一事实源（lib/storyboardGen）：角色/场景/@图像注入、效果注入、
     // 分模型 sizing、kie 块（临时 key + 比例）、点数预估——与镜头表批量同一条路。
     const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
@@ -468,6 +469,21 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
       projectId: data.projectId, // 归属项目→入素材库（与 ImageGen/批量视频同口径，此前漏）
     });
     if (built.blocked) { toast.error(built.blocked); return; }
+    // #87 自建算力：本地 ComfyUI（无参考=txt2img，有参考=img2img），复用全局地址/checkpoint。
+    if ((payload.imageModel as string | undefined) === COMFY_LOCAL_MODEL) {
+      const bi = built.input as { prompt?: string; style?: string; negativePrompt?: string };
+      const g = payload as unknown as { aspectRatio?: string; imageSize?: string; poyoAspectRatio?: string; imageN?: number };
+      const local = buildLocalComfyImageInput({
+        prompt: bi.prompt ?? payload.promptText ?? "",
+        style: bi.style, negativePrompt: bi.negativePrompt, refUrl: built.refUrl,
+        aspect: g.aspectRatio || g.imageSize || g.poyoAspectRatio, batch: g.imageN,
+        projectId: data.projectId, nodeId: id,
+      });
+      if (!local.ok) { toast.error(local.blocked); return; }
+      setGenerating(true);
+      comfyLocalMut.mutate(local.input);
+      return;
+    }
     const submit = () => {
       setGenerating(true);
       genImageMutation.mutate(built.input as Parameters<typeof genImageMutation.mutate>[0]);
@@ -1138,7 +1154,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         <div className="nodrag flex items-stretch gap-1.5">
           <div className="flex-1 min-w-0">
             <ModelPicker
-              value={model}
+              value={(payload.imageModel as string) || model}
               onChange={(v) => setModel(v)}
               options={IMAGE_MODEL_PICKER_OPTIONS}
             />
@@ -1169,6 +1185,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             </select>
           )}
         </div>
+        {/* #87 自建算力：选「本地 ComfyUI」时展示地址 + checkpoint（全能服务器管理器，全局共享） */}
+        {(payload.imageModel as string | undefined) === COMFY_LOCAL_MODEL && (
+          <div className="nodrag" style={{ marginTop: 6 }}><ComfyCkptSelect enabled width={160} /></div>
+        )}
         {/* ── 同步参数 ── 移到模型选择下方独立一行，右对齐，让模型下拉拿到整行宽度 ── */}
         <div className="nodrag flex justify-end">
           <button
@@ -1429,7 +1449,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
         )}
         {/* ── Row4：精简控制行 ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <ModelPicker value={model} onChange={setModel} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
+          <ModelPicker value={(payload.imageModel as string) || model} onChange={setModel} options={IMAGE_MODEL_PICKER_OPTIONS} minWidth={130} />
           {/* LibTV 控制行分组竖分隔线：模型 │ 参数·高级 … 积分 │ 发送 */}
           <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <span style={{ position: "relative", display: "inline-flex" }}>
@@ -1508,6 +1528,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             {generating ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
           </button>
         </div>
+        {/* #87 自建算力：创意模式下也展示地址 + checkpoint 配置 */}
+        {(payload.imageModel as string | undefined) === COMFY_LOCAL_MODEL && (
+          <div className="nodrag" style={{ marginTop: 6 }}><ComfyCkptSelect enabled width={160} /></div>
+        )}
       </InlineGenBar>
     )}
 

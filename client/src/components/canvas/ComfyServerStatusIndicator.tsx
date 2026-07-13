@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles, ChevronsLeftRight, ChevronsRightLeft, Eraser } from "lucide-react";
+import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles, ChevronsLeftRight, ChevronsRightLeft, Eraser, BrainCircuit } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -231,6 +231,16 @@ export function ComfyServerStatusIndicator() {
     });
   };
 
+  // 复位「全部服务器」记忆体：清空进程内缓存 + DB 持久化全表（含数据库）。各服务器下次被调用时自动重建。
+  const resetAllMemoryMut = trpc.comfyui.resetAllKnowledge.useMutation();
+  const resetAllMemory = () => {
+    if (!window.confirm("复位全部服务器的记忆体？将清空所有已学的资源/节点记忆（含数据库）。各服务器下次被调用时会自动重新学习。")) return;
+    resetAllMemoryMut.mutate(undefined, {
+      onSuccess: () => toast.success("已复位全部服务器的记忆体（含数据库），下次调用自动重建"),
+      onError: (e) => toast.error(`复位全部记忆失败：${e.message}`),
+    });
+  };
+
   useEffect(() => { if (visible && btnRef.current) setBtnRect(btnRef.current.getBoundingClientRect()); }, [visible]);
 
   // Drag the panel by its header.
@@ -342,6 +352,12 @@ export function ComfyServerStatusIndicator() {
                   className="topbar-btn" style={{ width: 22, height: 22, color: "oklch(0.66 0.18 30)" }} onClick={cleanAllFailed}>
                   <Eraser className="w-3 h-3" />
                 </button>
+                {isAdmin && (
+                  <button title="复位全部服务器的知识记忆体（清空已学资源/节点，含数据库；下次调用自动重学）"
+                    className="topbar-btn" style={{ width: 22, height: 22, color: "oklch(0.7 0.16 40)" }} disabled={resetAllMemoryMut.isPending} onClick={resetAllMemory}>
+                    <BrainCircuit className="w-3 h-3" />
+                  </button>
+                )}
                 <button
                   title={panelCompact ? "展开：显示选卡栏与操作按钮" : "折叠：隐藏选卡栏与操作按钮（仅留指标）"}
                   className="topbar-btn"

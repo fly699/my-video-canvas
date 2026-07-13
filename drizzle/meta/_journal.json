@@ -575,6 +575,13 @@
       "when": 1784300000000,
       "tag": "0081_super_agent_config",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "5",
+      "when": 1784400000000,
+      "tag": "0082_comfy_knowledge",
+      "breakpoints": true
     }
   ]
 }

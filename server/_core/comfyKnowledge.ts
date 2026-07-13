@@ -6,6 +6,7 @@
 // 纯读取（listResources/describeNodes）都改走这里，天然跨「一次会话/一次生成」复用。DB 持久化可后续再加
 // （现为进程内，重启即重建；对「同一会话反复调、多节点共享」已足够）。
 import { fetchComfyModels } from "./comfyui";
+import { getComfyKnowledgeRow, setComfyKnowledgeRow, deleteComfyKnowledgeRow, deleteAllComfyKnowledgeRows } from "../db";
 
 export interface ComfyResourceMemory {
   checkpoints: string[];
@@ -47,7 +48,7 @@ async function defaultFetchObjectInfo(baseUrl: string): Promise<Record<string, u
   } catch { return null; }
 }
 
-/** 抓取并写入记忆（覆盖同一 baseUrl 的旧记忆）。 */
+/** 抓取真机并写入记忆（进程内缓存 + DB 持久化，覆盖同一 baseUrl 的旧记忆）。 */
 async function refetch(baseUrl: string, f: KnowledgeFetchers): Promise<ComfyKnowledge> {
   const key = norm(baseUrl);
   const fetchModels = f.fetchModels ?? ((b: string) => fetchComfyModels(b).catch(() => null));
@@ -70,18 +71,33 @@ async function refetch(baseUrl: string, f: KnowledgeFetchers): Promise<ComfyKnow
     fetchedAt: Date.now(),
   };
   cache.set(key, knowledge);
+  // 写穿到 DB 持久化（跨重启复用）；best-effort，不阻塞返回、失败不影响记忆使用。
+  void setComfyKnowledgeRow(key, { objectInfo: knowledge.objectInfo, resources: knowledge.resources, fetchedAt: knowledge.fetchedAt }).catch(() => { /* DB 不可用无妨 */ });
   return knowledge;
 }
 
-/** 取某服务器的知识记忆：新鲜则命中缓存，过期/未有/force 则重新抓取真机并写回记忆。 */
+/** 取某服务器的知识记忆：内存新鲜→命中；否则查 DB 持久化（重启后免真机重拉）；再否则抓真机。
+ *  force / 过期都会跳过内存与 DB、直抓真机（复位后重建走这条）。 */
 export async function getComfyKnowledge(
   baseUrl: string,
   opts: { force?: boolean; maxAgeMs?: number } & KnowledgeFetchers = {},
 ): Promise<ComfyKnowledge> {
   const key = norm(baseUrl);
-  const hit = cache.get(key);
   const maxAge = opts.maxAgeMs ?? DEFAULT_TTL_MS;
-  if (!opts.force && hit && Date.now() - hit.fetchedAt < maxAge) return hit;
+  const fresh = (t: number) => Date.now() - t < maxAge;
+  if (!opts.force) {
+    const hit = cache.get(key);
+    if (hit && fresh(hit.fetchedAt)) return hit;
+    // 内存未命中/过期：查 DB 持久化——重启后第一手从 DB 复用，不必真机重拉。
+    try {
+      const row = await getComfyKnowledgeRow(key);
+      if (row && fresh(row.fetchedAt)) {
+        const k: ComfyKnowledge = { baseUrl: key, objectInfo: row.objectInfo, resources: row.resources, fetchedAt: row.fetchedAt };
+        cache.set(key, k);
+        return k;
+      }
+    } catch { /* DB 读失败：退回抓真机 */ }
+  }
   return refetch(key, opts);
 }
 
@@ -106,8 +122,15 @@ export function searchComfyKnowledge(
   return { ...out, total: Object.values(out).reduce((a, b) => a + b.length, 0) };
 }
 
-/** 清空记忆（不传 baseUrl 清全部）。装/删模型或换服务器后调用，强制下次重新学习。 */
+/** 清空记忆（不传 baseUrl 清全部）+ 删 DB 持久化。装/删模型或手动「复位记忆体」后调用，
+ *  强制下次重新学习（getComfyKnowledge 内存/DB 皆落空 → 抓真机重建）。全清同时清内存与 DB 全表。 */
 export function invalidateComfyKnowledge(baseUrl?: string): void {
-  if (baseUrl) cache.delete(norm(baseUrl));
-  else cache.clear();
+  if (baseUrl) {
+    const key = norm(baseUrl);
+    cache.delete(key);
+    void deleteComfyKnowledgeRow(key).catch(() => { /* DB 不可用无妨 */ });
+  } else {
+    cache.clear();
+    void deleteAllComfyKnowledgeRows().catch(() => { /* DB 不可用无妨 */ });
+  }
 }

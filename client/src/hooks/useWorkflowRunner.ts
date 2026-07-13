@@ -461,11 +461,26 @@ export function useWorkflowRunner() {
             kieTempKey: localStorage.getItem("kie:tempKey"),
           });
           if (built.blocked) { failed.push(nodeId); return "fail"; }
-          const result = await imageGenMutation.mutateAsync({
-            // built.input 不含 projectId（逐节点也不传）——运行全部需补上以保留项目归属/access 校验。
-            ...(built.input as Parameters<typeof imageGenMutation.mutateAsync>[0]),
-            projectId: node.data.projectId,
-          });
+          // #87 自建算力：分镜模型为「本地 ComfyUI」时改走 comfyui.generateImage（与逐节点同口径）。
+          const sbi = built.input as { model?: string; prompt?: string; style?: string; negativePrompt?: string };
+          let result: { url?: string; urls?: string[] };
+          if (sbi.model === COMFY_LOCAL_MODEL) {
+            const local = buildLocalComfyImageInput({
+              prompt: sbi.prompt ?? (p.promptText as string) ?? "",
+              style: sbi.style, negativePrompt: sbi.negativePrompt, refUrl: built.refUrl,
+              aspect: (p.aspectRatio as string) || (p.imageSize as string) || (p.poyoAspectRatio as string),
+              batch: p.imageN as number | undefined,
+              projectId: node.data.projectId, nodeId,
+            });
+            if (!local.ok) { failed.push(nodeId); return "fail"; }
+            result = await comfyuiImageMutation.mutateAsync(local.input);
+          } else {
+            result = await imageGenMutation.mutateAsync({
+              // built.input 不含 projectId（逐节点也不传）——运行全部需补上以保留项目归属/access 校验。
+              ...(built.input as Parameters<typeof imageGenMutation.mutateAsync>[0]),
+              projectId: node.data.projectId,
+            });
+          }
           applyStoryboardGenResult(nodeId, result, {
             getNodes: () => useCanvasStore.getState().nodes,
             // skipHistory=true：与 runner 其它写回一致，批量运行不污染 undo 历史。

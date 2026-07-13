@@ -6,6 +6,7 @@ import {
   mysqlEnum,
   mysqlTable,
   text,
+  longtext,
   timestamp,
   varchar,
   json,
@@ -870,6 +871,18 @@ export const comfySettings = mysqlTable("comfy_settings", {
   servers: text("servers"),
 });
 export type ComfySettingsRow = typeof comfySettings.$inferSelect;
+
+// ComfyUI 「知识记忆体」持久化（跨重启）：按服务器地址记住其资源清单与 /object_info 节点 schema，
+// 让工程智能体 / ComfyUI 节点 / 画布助手复用，不必每次重拉真机检索。objectInfo 存 JSON 文本（可较大，
+// 用 longtext）；resources 为轻量名单 JSON。fetchedAt 记学习时刻，按 TTL 判新鲜/复位后重建。
+export type ComfyResourceMemoryJson = { checkpoints: string[]; loras: string[]; vaes: string[]; samplers: string[]; schedulers: string[]; nodeClasses: string[] };
+export const comfyKnowledge = mysqlTable("comfy_knowledge", {
+  baseUrl: varchar("baseUrl", { length: 512 }).primaryKey(),
+  objectInfo: longtext("objectInfo"),
+  resources: json("resources").$type<ComfyResourceMemoryJson>(),
+  fetchedAt: bigint("fetchedAt", { mode: "number" }).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 
 export const whitelistEntries = mysqlTable("whitelistEntries", {
   id: int("id").autoincrement().primaryKey(),

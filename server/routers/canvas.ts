@@ -3835,6 +3835,13 @@ export const comfyuiRouter = router({
       const r = k.resources;
       return { configured: true as const, fetchedAt: k.fetchedAt, counts: { checkpoints: r.checkpoints.length, loras: r.loras.length, vaes: r.vaes.length, nodeClasses: r.nodeClasses.length } };
     }),
+  // resetAllKnowledge：复位「全部服务器」的知识记忆体——清空进程内缓存 + DB 持久化全表。
+  // 不立即重学（各服务器下次被调用时按需自动重建），避免同时触发多台真机抓取。
+  resetAllKnowledge: levelProcedure(3).mutation(async ({ ctx }) => {
+    await assertComfyuiAllowed(ctx);
+    invalidateComfyKnowledge(); // 内存全清 + DB 全表删（见 comfyKnowledge.ts）
+    return { ok: true as const };
+  }),
   // searchKnowledge：在记忆里按关键词检索资源（不发起真机检索，除非尚无记忆才先学习一次）。
   searchKnowledge: protectedProcedure
     .input(z.object({ customBaseUrl: z.string().max(2048).optional(), query: z.string().max(200) }))
