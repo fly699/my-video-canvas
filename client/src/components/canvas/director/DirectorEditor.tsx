@@ -731,14 +731,24 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const target = shotAimTarget(base, { sceneScale: scn.sceneScale, offsetX: scn.sceneOffsetX, offsetY: scn.sceneOffsetY, offsetZ: scn.sceneOffsetZ, actorScale: a.scale, aimY: 1.0 });
     patchLight(lightId, { target });
   };
-  // 截图前隐藏灯光标记球/指向线 + 机位 gizmo + TransformControls 手柄
-  // （不隐藏光源本身——光照必须留在成片里；#84 机位实体同为编辑器专属标记）。
+  // 截图前隐藏一切「编辑器专属标记」——不进成片/参考图（不隐藏光源本身，光照必须留在成片里）：
+  //   · 灯光标记球/指向线(light-marker)、#84 机位实体(cam-marker)
+  //   · TransformControls 拖拽手柄（isTransformControls 根 + 其 Gizmo/Plane 子件——不同 three
+  //     版本挂法不一，按 type 前缀兜底）
+  //   · 选中角色脚下的选中环（RingGeometry，即「脚下圆圈」）
+  //   · 布景原点的三色轴 axesHelper（即「坐标指示」）
   const hideLightMarkers = useCallback(() => {
     const cap = captureRef.current;
     const hidden: THREE.Object3D[] = [];
     cap?.scene.traverse((o) => {
       const anyO = o as THREE.Object3D & { isTransformControls?: boolean };
-      if ((o.name === "light-marker" || o.name === "cam-marker" || anyO.isTransformControls) && o.visible) { o.visible = false; hidden.push(o); }
+      const mesh = o as THREE.Mesh;
+      const isGizmo =
+        o.name === "light-marker" || o.name === "cam-marker"
+        || anyO.isTransformControls || o.type.startsWith("TransformControls")
+        || o.type === "AxesHelper"
+        || (mesh.isMesh && (mesh.geometry as THREE.BufferGeometry | undefined)?.type === "RingGeometry");
+      if (isGizmo && o.visible) { o.visible = false; hidden.push(o); }
     });
     return () => hidden.forEach((o) => { o.visible = true; });
   }, []);
