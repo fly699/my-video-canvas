@@ -14,6 +14,7 @@ import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
 import { getSuperAgentConfig } from "../_core/superAgent/config";
+import { invalidateComfyKnowledge } from "../_core/comfyKnowledge";
 import { installModel, installCustomNode, isValidDownloadUrl, isValidModelFilename, isValidGitUrl, MODEL_DIRS, type ModelDir } from "../_core/ops/modelOps";
 import * as db from "../db";
 import type { TrpcContext } from "../_core/context";
@@ -39,12 +40,12 @@ async function resolveInstallTools(ctx: TrpcContext, baseUrl: string): Promise<P
       if (!isValidDownloadUrl(url)) return { ok: false, message: "下载 URL 未通过安全校验" };
       if (!isValidModelFilename(filename)) return { ok: false, message: "文件名未通过校验（需 .safetensors/.ckpt 等）" };
       if (!(MODEL_DIRS as readonly string[]).includes(dir)) return { ok: false, message: `目标子目录非法（允许：${MODEL_DIRS.join("/")}）` };
-      try { const r = await installModel(sid, url, dir as ModelDir, filename); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
+      try { const r = await installModel(sid, url, dir as ModelDir, filename); if (r.ok) invalidateComfyKnowledge(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
       catch (e) { return { ok: false, message: e instanceof Error ? e.message : String(e) }; }
     },
     installNode: async (gitUrl) => {
       if (!isValidGitUrl(gitUrl)) return { ok: false, message: "git 仓库 URL 未通过校验" };
-      try { const r = await installCustomNode(sid, gitUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
+      try { const r = await installCustomNode(sid, gitUrl); if (r.ok) invalidateComfyKnowledge(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
       catch (e) { return { ok: false, message: e instanceof Error ? e.message : String(e) }; }
     },
   };
@@ -107,7 +108,9 @@ export const superAgentRouter = router({
         /** 目标 ComfyUI 服务器（留空用服务端 COMFYUI_BASE_URL）。Phase 1 仅本地自建。 */
         customBaseUrl: z.string().max(512).optional(),
         model: z.string().max(64).optional(),
-        maxIterations: z.number().int().min(1).max(40).optional(),
+        maxIterations: z.number().int().min(1).max(60).optional(),
+        /** 「加载全部资源」：系统提示不截断，列出服务器全部已装模型/LoRA/节点（配合大上下文模型）。 */
+        showAllResources: z.boolean().optional(),
         /** 连续对话：上一版调通的 workflowJson，本轮在其基础上改。 */
         seedWorkflowJson: z.string().max(200_000).optional(),
         /** 连续对话：先前若干轮的精简历史。 */
@@ -163,6 +166,7 @@ export const superAgentRouter = router({
           seedWorkflowJson: input.seedWorkflowJson,
           history: input.history,
           referenceExamples,
+          showAllResources: input.showAllResources,
         });
       } finally {
         runningJobs.delete(key);

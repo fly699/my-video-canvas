@@ -60,6 +60,7 @@ import { sliceGridImage } from "../_core/imageGrid";
 import { extractStoryboardFrames } from "../_core/videoStoryboard";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeHunyuan3D, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
 import type { ComfyModelList } from "../_core/comfyui";
+import { getComfyKnowledge, peekComfyKnowledge, searchComfyKnowledge, invalidateComfyKnowledge } from "../_core/comfyKnowledge";
 import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
@@ -3803,6 +3804,46 @@ export const comfyuiRouter = router({
       }
       for (const key of Object.keys(merged) as (keyof ComfyModelList)[]) merged[key].sort();
       return merged;
+    }),
+
+  // ── ComfyUI 知识记忆体（跨会话/跨节点共享）：把某台服务器的资源清单 + 节点 schema 记住，
+  //    工程智能体 / ComfyUI 节点 / 画布助手都能复用，不必每次重拉。三端共用，见 comfyKnowledge.ts。──
+  // getKnowledge：有新鲜记忆则命中，否则拉真机并写入记忆。返回资源摘要（不含庞大的 objectInfo 原文）。
+  getKnowledge: protectedProcedure
+    .input(z.object({ customBaseUrl: z.string().max(2048).optional(), force: z.boolean().optional() }))
+    .query(async ({ ctx, input }) => {
+      await assertComfyuiAllowed(ctx);
+      const baseUrl = (await resolveComfyBase(input.customBaseUrl)).trim();
+      if (!baseUrl) return { configured: false as const };
+      const k = await getComfyKnowledge(baseUrl, { force: input.force });
+      const r = k.resources;
+      return {
+        configured: true as const, baseUrl: k.baseUrl, fetchedAt: k.fetchedAt,
+        counts: { checkpoints: r.checkpoints.length, loras: r.loras.length, vaes: r.vaes.length, samplers: r.samplers.length, schedulers: r.schedulers.length, nodeClasses: r.nodeClasses.length },
+        resources: r,
+      };
+    }),
+  // refreshKnowledge：强制重新学习（装/删模型后调）。同时清 objectInfo 记忆。
+  refreshKnowledge: protectedProcedure
+    .input(z.object({ customBaseUrl: z.string().max(2048).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertComfyuiAllowed(ctx);
+      const baseUrl = (await resolveComfyBase(input.customBaseUrl)).trim();
+      if (!baseUrl) return { configured: false as const };
+      invalidateComfyKnowledge(baseUrl);
+      const k = await getComfyKnowledge(baseUrl, { force: true });
+      const r = k.resources;
+      return { configured: true as const, fetchedAt: k.fetchedAt, counts: { checkpoints: r.checkpoints.length, loras: r.loras.length, vaes: r.vaes.length, nodeClasses: r.nodeClasses.length } };
+    }),
+  // searchKnowledge：在记忆里按关键词检索资源（不发起真机检索，除非尚无记忆才先学习一次）。
+  searchKnowledge: protectedProcedure
+    .input(z.object({ customBaseUrl: z.string().max(2048).optional(), query: z.string().max(200) }))
+    .query(async ({ ctx, input }) => {
+      await assertComfyuiAllowed(ctx);
+      const baseUrl = (await resolveComfyBase(input.customBaseUrl)).trim();
+      if (!baseUrl) return { configured: false as const, matches: null };
+      const k = peekComfyKnowledge(baseUrl) ?? (await getComfyKnowledge(baseUrl));
+      return { configured: true as const, matches: searchComfyKnowledge(k, input.query) };
     }),
 
   analyzeWorkflow: protectedProcedure

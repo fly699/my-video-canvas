@@ -109,6 +109,8 @@ export interface RunComfyAgentOptions {
   history?: AgentMessage[];
   /** 参考范例：同库里「已在真实 ComfyUI 调通/保存」的相似工作流，供 LLM 借鉴结构/连线（已裁剪）。 */
   referenceExamples?: { label: string; workflowJson: string }[];
+  /** 「加载全部资源」：系统提示里不截断，列出服务器全部已装 checkpoint/LoRA/VAE/节点（需大上下文模型）。 */
+  showAllResources?: boolean;
 }
 
 /** LLM 每轮必须返回的单个 JSON 动作。 */
@@ -137,9 +139,10 @@ const ACTION_HINT =
   "author/finish 时 workflowJson 必须是完整的 ComfyUI **API 格式** 图（形如 {\"节点id\":{\"class_type\":...,\"inputs\":{...}}}）。";
 
 /** 构建系统提示（纯函数，便于单测）。continuing=多轮修改；canInstall=宿主开放了下载安装能力；
- *  canDescribe=可用 describe_nodes 查节点精确 schema。 */
-export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false, canInstall = false, canDescribe = false, examples: { label: string; workflowJson: string }[] = []): string {
-  const cap = (arr: string[], n: number) => (arr.length > n ? arr.slice(0, n).concat(`…(+${arr.length - n}，用 search_resources 关键词检索完整清单)`) : arr);
+ *  canDescribe=可用 describe_nodes 查节点精确 schema；showAll=不截断，列出服务器全部资源（配合大上下文模型）。 */
+export function buildSystemPrompt(task: string, res: ComfyResourceList, continuing = false, canInstall = false, canDescribe = false, examples: { label: string; workflowJson: string }[] = [], showAll = false): string {
+  // showAll：一列不截断，把服务器上全部已装资源都摆给智能体（不受名单上限影响，用于「加载全部资源」）。
+  const cap = (arr: string[], n: number) => (!showAll && arr.length > n ? arr.slice(0, n).concat(`…(+${arr.length - n}，用 search_resources 关键词检索完整清单)`) : arr);
   // 节点类名只作「目录」，具体字段规格靠 describe_nodes 查，故可放宽展示上限；超出部分用 search_resources 检索。
   const nodeCap = canDescribe ? 600 : 200;
   return [
@@ -156,7 +159,7 @@ export function buildSystemPrompt(task: string, res: ComfyResourceList, continui
     `- schedulers: ${cap(res.schedulers, 40).join(", ") || "（无）"}`,
     `- 已安装节点类（仅名字目录${canDescribe ? "，具体输入字段用 describe_nodes 查" : ""}）: ${cap(res.nodeClasses, nodeCap).join(", ") || "（未知）"}`,
     "",
-    "**若上面清单被截断（出现 …(+N) 提示）而你想用的模型/LoRA/节点没列出，用 search_resources 按关键词检索完整清单**" +
+    "**若上面清单被截断（末尾出现「省略 N 项」标记）而你想用的模型/LoRA/节点没列出，用 search_resources 按关键词检索完整清单**" +
       "（如 {\"action\":\"search_resources\",\"query\":\"flux\"}），它会在服务器全部资源里匹配返回，避免因名单截断而误判「没有该资源」或编造名字。",
     "",
     ...(canDescribe
@@ -257,7 +260,7 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
   const continuing = !!opts.seedWorkflowJson;
   const canInstall = !!(opts.tools.installModel || opts.tools.installNode);
   const canDescribe = !!opts.tools.describeNodes;
-  const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing, canInstall, canDescribe, opts.referenceExamples ?? []) }];
+  const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing, canInstall, canDescribe, opts.referenceExamples ?? [], opts.showAllResources) }];
   // 连续对话：并入先前若干轮精简历史。
   for (const h of opts.history ?? []) messages.push(h);
 

@@ -1,13 +1,13 @@
 // 超级智能体 · Phase 1 —— 用现有 comfyui.ts 过程兑现引擎所需的 ComfyAgentTools，
 // 并用 invokeLLMWithKie 兑现 AgentLLM。全程 HTTP + LLM，无 shell/子进程。
 import {
-  fetchComfyModels,
   validateWorkflow,
   executeCustomWorkflow,
   analyzeWorkflow,
   type WorkflowValidationResult,
   type WorkflowValidationIssue,
 } from "../comfyui";
+import { getComfyKnowledge, type ComfyKnowledge } from "../comfyKnowledge";
 import { invokeLLMWithKie } from "../llmWithKie";
 import { extractTextContent } from "../llm";
 import type { TrpcContext } from "../context";
@@ -147,18 +147,6 @@ export function suggestMissingLinks(workflowJson: string, info: Record<string, u
   return hints;
 }
 
-/** 拉取 /object_info 全量（每个节点类的输入/输出 schema）。best-effort，失败返回 null。 */
-async function fetchObjectInfo(baseUrl: string): Promise<Record<string, unknown> | null> {
-  try {
-    const url = baseUrl.replace(/\/+$/, "") + "/object_info";
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) return null;
-    return (await res.json()) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 /** 把一个输入项 `[typeSpec, opts?]` 拍平成一行给 LLM 看的字段说明（纯函数，便于单测）。 */
 export function formatInputField(name: string, spec: unknown): string {
   const arr = Array.isArray(spec) ? spec : [spec];
@@ -209,23 +197,14 @@ export interface ComfyToolsAdapterOptions {
 /** 用 comfyui.ts 过程兑现引擎工具接口。 */
 export function createComfyTools(opts: ComfyToolsAdapterOptions): ComfyAgentTools {
   const { baseUrl, apiKey, projectId, nodeId } = opts;
-  // /object_info 全量拉一次即缓存：listResources 取键作节点目录、describeNodes 取每类 schema，共用。
-  let objectInfoPromise: Promise<Record<string, unknown> | null> | null = null;
-  const objectInfo = () => (objectInfoPromise ??= fetchObjectInfo(baseUrl));
+  // 走共享「知识记忆体」：同一台服务器的 /object_info + 资源清单跨会话/跨节点复用，不必每次重拉。
+  // listResources 取资源清单、describeNodes 取每类 schema，共用同一份记忆。
+  let knowledgePromise: Promise<ComfyKnowledge> | null = null;
+  const knowledge = () => (knowledgePromise ??= getComfyKnowledge(baseUrl));
+  const objectInfo = async () => (await knowledge()).objectInfo;
   return {
     async listResources() {
-      const [models, info] = await Promise.all([
-        fetchComfyModels(baseUrl).catch(() => null),
-        objectInfo(),
-      ]);
-      return {
-        checkpoints: models?.ckpts ?? [],
-        loras: models?.loras ?? [],
-        vaes: models?.vaes ?? [],
-        samplers: models?.samplers ?? [],
-        schedulers: models?.schedulers ?? [],
-        nodeClasses: info ? Object.keys(info) : [],
-      };
+      return (await knowledge()).resources;
     },
     async describeNodes(classNames) {
       return formatNodeSchemas(await objectInfo(), classNames);
