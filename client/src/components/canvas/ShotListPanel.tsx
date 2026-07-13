@@ -2,10 +2,11 @@ import { useMemo, useState } from "react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic, Zap } from "lucide-react";
+import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic, Zap, Film } from "lucide-react";
 import type { StoryboardNodeData, ScriptNodeData, CharacterNodeData } from "../../../../shared/types";
 import { parseDialogueLines, stripDialogueRoles, extractRoles, shouldCast, planCastSegments, type CastMap, type CastVoice } from "../../lib/dialogueCasting";
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
+import { buildAnimaticDoc, type AnimaticShot } from "../../lib/animatic";
 import { materializeTemplate } from "../../lib/agentApply";
 import { propagateRefImage } from "../../lib/refImagePropagation";
 import { PROVIDER_PARAMS, withParamDefaults, PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
@@ -639,6 +640,72 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     toast.success("批量音效完成（装配成片时自动按镜对位、低权重混入）");
   };
 
+  // ── 一键动态样片 Animatic（#137）────────────────────────────────────────────
+  // 关键帧图 + 镜头表时长/转场（+ 已有逐镜配音）直接走剪辑器渲染管线出片：
+  // 不等每镜视频生成、不花视频模型的钱，几分钟看到「会动的分镜」。
+  const [animBusy, setAnimBusy] = useState(false);
+  const [animStage, setAnimStage] = useState("");
+  const [animAspect, setAnimAspect] = useState(() => localStorage.getItem("shotlist:animAspect") || "16:9");
+  const [animKen, setAnimKen] = useState(true);
+
+  const runAnimatic = async () => {
+    if (animBusy) return;
+    const store = useCanvasStore.getState();
+    const projectId = store.projectId;
+    // 勾选优先；没勾就全表。#134 口径：disabled 的镜不参与成片。
+    const picked = rows.filter((r) => sel.has(r.id));
+    const targets = (picked.length ? picked : rows).filter((r) => !(r.payload as { disabled?: boolean }).disabled);
+    const withImg = targets.filter((r) => r.payload.imageUrl);
+    if (!withImg.length) { toast.error("没有可用的镜：请先给分镜生成/上传关键帧图（可用上方「批量生成分镜图」）"); return; }
+    const skipped = targets.length - withImg.length;
+    const shots: AnimaticShot[] = withImg.map((r) => {
+      // 逐镜配音：分镜下游的 audio 节点（音效 sfx 除外），与装配端同口径。
+      let voiceUrl: string | null = null, voiceDuration: number | null = null;
+      for (const e of store.edges) {
+        if (e.source !== r.id) continue;
+        const t = store.nodes.find((n) => n.id === e.target);
+        if (t?.data.nodeType !== "audio") continue;
+        const ap = t.data.payload as { url?: string; duration?: number; audioCategory?: string };
+        if (ap.audioCategory === "sfx" || !ap.url) continue;
+        voiceUrl = ap.url; voiceDuration = ap.duration ?? null;
+        break;
+      }
+      return { imageUrl: r.payload.imageUrl!, duration: r.payload.duration, transition: r.payload.transition, voiceUrl, voiceDuration };
+    });
+    const dims = animAspect === "9:16" ? { width: 720, height: 1280 } : animAspect === "1:1" ? { width: 960, height: 960 } : { width: 1280, height: 720 };
+    const doc = buildAnimaticDoc(shots, { ...dims, kenBurns: animKen });
+    setAnimBusy(true);
+    setAnimStage("创建渲染任务");
+    try {
+      const name = `动态样片 · ${withImg.length}镜`;
+      const { id: sessId } = await utils.client.editor.create.mutate({ name, projectId: projectId ?? undefined, ...dims, fps: 30 });
+      await utils.client.editor.save.mutate({ id: sessId, doc });
+      const { jobId } = await utils.client.editor.export.mutate({ id: sessId, quality: "medium" });
+      const t0 = Date.now();
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 1500));
+        if (Date.now() - t0 > 10 * 60_000) throw new Error("渲染超过 10 分钟未完成——可稍后到「剪辑」里打开该会话查看结果");
+        let st: Awaited<ReturnType<typeof utils.client.editor.exportStatus.query>>;
+        try { st = await utils.client.editor.exportStatus.query({ jobId }); } catch { continue; } // 网络抖动下一轮再查
+        if (st.status === "error") throw new Error(st.error || "渲染失败");
+        setAnimStage(`${st.stage || "渲染中"} ${st.progress ?? 0}%`);
+        if (st.status === "done" && st.url) {
+          const s2 = useCanvasStore.getState();
+          const host = s2.nodes.find((n) => n.id === id);
+          const an = s2.addNode("asset", { x: (host?.position.x ?? 0) + 560, y: (host?.position.y ?? 0) - 140 });
+          s2.updateNodeData(an.id, { url: st.url, type: "video", name } as never);
+          toast.success(`动态样片已生成（${withImg.length} 镜${skipped ? `，${skipped} 镜无图已跳过` : ""}）——成片已放到画布，也可在剪辑器「${name}」里继续精修`, { duration: 8000 });
+          break;
+        }
+      }
+    } catch (e) {
+      toast.error("动态样片失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setAnimBusy(false);
+      setAnimStage("");
+    }
+  };
+
   const continuityMut = trpc.scripts.refineShotContinuity.useMutation({
     onSuccess: (r, vars) => {
       const targetId = fixingId;
@@ -851,6 +918,32 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
         >
           {dubBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Mic style={{ width: 11, height: 11 }} />}
           批量生成配音
+        </button>
+      </div>
+
+      {/* 一键动态样片 Animatic（#137）：关键帧图+镜头表时长/转场 → 本地渲染预览片（免费） */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 13px", borderBottom: "1px solid var(--c-bd1)", flexShrink: 0, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t2)", flexShrink: 0 }}>动态样片</span>
+        <select className="nodrag" value={animAspect} onChange={(e) => { setAnimAspect(e.target.value); localStorage.setItem("shotlist:animAspect", e.target.value); }}
+          style={{ fontSize: 9.5, padding: "3px 6px", borderRadius: 6, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }}>
+          <option value="16:9">16:9 横屏</option>
+          <option value="9:16">9:16 竖屏</option>
+          <option value="1:1">1:1 方形</option>
+        </select>
+        <label className="nodrag" title="Ken-Burns 动感：每镜关键帧图缓慢推近/拉远交替，静态图不再像 PPT" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9.5, color: animKen ? "oklch(0.72 0.16 230)" : "var(--c-t4)", cursor: "pointer" }}>
+          <input type="checkbox" checked={animKen} onChange={(e) => setAnimKen(e.target.checked)} style={{ accentColor: "oklch(0.72 0.16 230)", margin: 0 }} />
+          推拉动感
+        </label>
+        {animBusy && <span style={{ fontSize: 9.5, color: "var(--c-t3)" }}>{animStage}</span>}
+        <button
+          onClick={() => void runAnimatic()}
+          disabled={animBusy}
+          title="用已有关键帧图 + 镜头表时长/转场（+ 已生成的逐镜配音）直接合成动态分镜预览片——本地渲染免费，不等每镜视频、不花视频模型的钱；勾选镜优先，没勾选就整表（跳过无图与已禁用的镜）"
+          className="nodrag ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md"
+          style={{ fontSize: 10, fontWeight: 700, background: animBusy ? "var(--c-surface)" : "oklch(0.72 0.16 230 / 0.14)", border: `1px solid ${animBusy ? "var(--c-bd2)" : "oklch(0.72 0.16 230 / 0.5)"}`, color: animBusy ? "var(--c-t4)" : "oklch(0.72 0.16 230)", cursor: animBusy ? "wait" : "pointer" }}
+        >
+          {animBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Film style={{ width: 11, height: 11 }} />}
+          生成动态样片
         </button>
       </div>
 

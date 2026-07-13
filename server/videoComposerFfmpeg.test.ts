@@ -67,6 +67,21 @@ d("buildFilterGraph × 真机 ffmpeg（音频/转场/叠加全链路）", () => 
     await render(g, [av(), av()]);
   }, 60_000);
 
+  it("#137 动态样片形状：image 段 Ken-Burns 关键帧 + dissolve/fade 转场 + 逐镜音频对位", async () => {
+    // buildAnimaticDoc 产出的 doc 经 composeTimeline 映射后的 Segment 形状（image 时长编码
+    // trimIn=0/trimOut=秒数、fit=cover、keyframes 交替推拉、transition 取前镜转场）。
+    const pngPath = join(dir, "kf.png");
+    await exec("ffmpeg", ["-f", "lavfi", "-i", "testsrc=size=64x48:rate=1:duration=1", "-frames:v", "1", "-y", pngPath], { timeout: 30_000 });
+    const segs: Segment[] = [
+      { isImage: true, hasAudio: false, trimIn: 0, trimOut: 1, speed: 1, fit: "cover", keyframes: [{ t: 0, scale: 1, ease: "inout" }, { t: 1, scale: 1.08 }] },
+      { isImage: true, hasAudio: false, trimIn: 0, trimOut: 0.8, speed: 1, fit: "cover", keyframes: [{ t: 0, scale: 1.08, ease: "inout" }, { t: 0.8, scale: 1 }], transition: { type: "dissolve", duration: 0.3 } },
+      { isImage: true, hasAudio: false, trimIn: 0, trimOut: 0.8, speed: 1, fit: "cover", transition: { type: "fade", duration: 0.3 } },
+    ];
+    const img = (t: number) => ["-loop", "1", "-t", t.toFixed(3), "-i", pngPath];
+    const g = buildFilterGraph(segs, OPTS, [], { audioClips: [{ trimIn: 0, trimOut: 0.5, speed: 1, start: 1, volume: 1, fadeIn: 0, fadeOut: 0 }] });
+    await render(g, [img(1), img(0.8), img(0.8), av()]);
+  }, 60_000);
+
   it("基轨黑场空隙段（lavfi 无音频→静音补齐）+ 绝对定位叠加/音频", async () => {
     const segs: Segment[] = [
       { isImage: false, hasAudio: false, trimIn: 0, trimOut: 0.3, speed: 1 }, // 黑场 gap（lavfi color 输入）
