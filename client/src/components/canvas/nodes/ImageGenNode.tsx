@@ -491,7 +491,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // #109 极简显示（Alt+Q）：多产物强制网格平铺（堆叠只显一张，选片场景看不全）
   const minimalDisplay = useMinimalDisplay();
   const heroShowStack = hasMultiple && isCreativeMode && !!payload.imageUrl && payload.heroView !== "grid" && !minimalDisplay;
-  const heroShowGrid = hasMultiple && !heroShowStack && (minimalDisplay || payload.heroView !== "single");
+  // #125 极简下默认平铺（#109），但可经 minimalCollapsed 收起为单张（网格右上角「收起」钮）。
+  const heroShowGrid = hasMultiple && !heroShowStack && (minimalDisplay ? payload.minimalCollapsed !== true : payload.heroView !== "single");
   const stackOthers = heroShowStack ? (payload.imageUrls ?? []).filter((u) => u !== payload.imageUrl) : [];
   const stackCycle = (dir: 1 | -1) => {
     const urls = payload.imageUrls ?? [];
@@ -538,7 +539,18 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     /* #77 网格视图按钮重排：网格级「收起」从图面移到常驻头行（不再与每图 hover 的
        「下载」挤在右上角）；每图 hover 改为底部渐变 + 图标圆钮（下载/设为主图），
        可视性与命中率都更好。 */
-    <div className="flex flex-col">
+    <div className="relative flex flex-col">
+      {/* #125 极简显示：网格右上角常显半透明「收起」钮（头行被极简隐藏，需独立控制） */}
+      {minimalDisplay && (
+        <button
+          className="nodrag absolute top-2 right-2 z-10 flex items-center gap-1"
+          title="收起为单张预览（仅极简显示形态）"
+          onClick={(e) => { e.stopPropagation(); update("minimalCollapsed", true); }}
+          style={{ padding: "3px 10px", borderRadius: 99, fontSize: 10.5, fontWeight: 700, background: "oklch(0 0 0 / 0.6)", border: "1px solid oklch(1 0 0 / 0.25)", color: "#fff", cursor: "pointer", backdropFilter: "blur(6px)", opacity: 0.8 }}
+        >
+          <ChevronUp style={{ width: 11, height: 11 }} /> 收起
+        </button>
+      )}
       {!minimalDisplay && (
       <div className="nodrag flex items-center justify-between" style={{ padding: "6px 10px 0" }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t4)" }}>{payload.imageUrls!.length} 张 · 网格视图</span>
@@ -611,6 +623,17 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         draggable={false}
         style={{ display: "block" }}
       />
+      {/* #125 极简显示 + 已收起：单张预览右上角「展开 N 张」还原平铺 */}
+      {minimalDisplay && hasMultiple && payload.minimalCollapsed === true && (
+        <button
+          className="nodrag absolute top-2 right-2 z-10 flex items-center gap-1"
+          title="展开为平铺网格（仅极简显示形态）"
+          onClick={(e) => { e.stopPropagation(); update("minimalCollapsed", false); }}
+          style={{ padding: "3px 10px", borderRadius: 99, fontSize: 10.5, fontWeight: 700, background: "oklch(0 0 0 / 0.6)", border: "1px solid oklch(1 0 0 / 0.25)", color: "#fff", cursor: "pointer", backdropFilter: "blur(6px)", opacity: 0.8 }}
+        >
+          <ChevronDown style={{ width: 11, height: 11 }} /> 展开 {payload.imageUrls!.length} 张
+        </button>
+      )}
       {imgStoredInMinio && (
         <div
           title="已存储到 MinIO·长期有效"

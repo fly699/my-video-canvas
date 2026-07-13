@@ -80,7 +80,8 @@ export function ImageLightbox({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // #126 Esc 加固：阻断后再关——预览层开着时 Esc 只关它，不连带画布副作用。
+      if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); onClose(); }
       if (e.key === "ArrowLeft" && hasPrev) onNavigate(currentIndex - 1);
       if (e.key === "ArrowRight" && hasNext) onNavigate(currentIndex + 1);
       if (e.key === "Enter") onSelect?.(currentUrl);
@@ -92,8 +93,9 @@ export function ImageLightbox({
   );
 
   useEffect(() => {
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    // #126 capture：确保比画布全局快捷键先拿到 Esc
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [handleKeyDown]);
 
   // 无障碍：打开时把焦点移入预览层（读屏聚焦 + 方向键/Esc 立即可用），关闭时归还焦点给触发元素。
