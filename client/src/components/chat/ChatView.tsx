@@ -62,9 +62,44 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
       recCancelRef.current = true;
       try { mediaRecRef.current?.stop(); } catch { /* ignore */ }
     }
+    // 切会话同时停掉 AI 语音输入，避免识别串到别的会话输入框。
+    try { sttRef.current?.stop(); } catch { /* noop */ }
     // 仅在会话 id 变化时判断
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConv?.id]);
+  // ── AI 助手语音输入（Web Speech API 语音转文字 → 追加到输入框；区别于上方「录制语音消息」）──
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sttRef = useRef<any>(null);
+  const sttBaseRef = useRef("");
+  const [sttOn, setSttOn] = useState(false);
+  const sttSupported = typeof window !== "undefined" && !!((window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition);
+  useEffect(() => () => { try { sttRef.current?.stop(); } catch { /* noop */ } }, []);
+  const stopStt = () => { try { sttRef.current?.stop(); } catch { /* noop */ } };
+  const toggleStt = () => {
+    if (sttOn) { stopStt(); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR: any = (window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
+    if (!SR) { toast.error("当前浏览器不支持语音输入"); return; }
+    let rec: unknown;
+    try { rec = new SR(); } catch { toast.error("无法启动语音识别"); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = rec as any;
+    r.lang = "zh-CN"; r.interimResults = true; r.continuous = true;
+    sttBaseRef.current = text.trim() ? text.trim() + " " : "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r.onresult = (e: any) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i];
+        if (res.isFinal) sttBaseRef.current += res[0].transcript; else interim += res[0].transcript;
+      }
+      setText(sttBaseRef.current + interim);
+    };
+    r.onend = () => setSttOn(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r.onerror = (e: any) => { setSttOn(false); if (e?.error && e.error !== "aborted" && e.error !== "no-speech") toast.error("语音识别出错：" + e.error); };
+    try { r.start(); sttRef.current = r; setSttOn(true); } catch { toast.error("无法启动语音识别（请检查麦克风权限）"); }
+  };
   const [dragOver, setDragOver] = useState(false);
   const [askEncrypt, setAskEncrypt] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
@@ -238,6 +273,7 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
 
   async function doSend(encrypt?: boolean) {
     if (busy) return;
+    if (sttOn) stopStt();
     if (!text.trim() && staged.length === 0) return;
     // AI 助手会话：把输入（文本 + 图片附件）发给 LLM，用户消息与 AI 回复经广播实时回灌到列表。
     if (isAI) {
@@ -595,6 +631,8 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
         <button onClick={() => fileRef.current?.click()} title={isAI ? "添加附件（图片可作参考图，需视觉模型）" : `添加文件（单文件 ≤ ${maxFileMb}MB）`} style={iconBtn}><Paperclip size={18} /></button>
         {!isAI && <button onClick={() => screenshot()} disabled={capturing} title="框选截图（跨屏跨窗口：选择屏幕/窗口后，在截图上拖框选区域）" style={{ ...iconBtn, opacity: capturing ? 0.5 : 1 }}><Crop size={18} /></button>}
         {!isAI && <button onClick={() => void startRec()} title="录制语音消息" style={iconBtn}><Mic size={18} /></button>}
+        {/* AI 助手：语音输入（语音转文字，追加到输入框），浏览器支持时显示；录音中红色脉冲 */}
+        {isAI && sttSupported && <button onClick={toggleStt} title={sttOn ? "停止语音输入" : "语音输入"} style={{ ...iconBtn, ...(sttOn ? { color: "#e5484d", borderColor: "#e5484d" } : {}) }}><Mic size={18} className={sttOn ? "animate-pulse" : undefined} /></button>}
         <textarea value={text} onChange={(e) => { setText(e.target.value); emitTyping(); }}
           onKeyDown={(e) => {
             // 技能面板开着时，方向键/Enter/Esc/Tab 归面板用，不触发发送。
