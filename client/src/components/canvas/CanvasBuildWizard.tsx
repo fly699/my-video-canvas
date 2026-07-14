@@ -6,6 +6,8 @@ import { X, ChevronRight, ChevronLeft, Wand2, CheckCircle2, Film, Image as Image
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { applyAgentOperations } from "@/lib/agentApply";
 import { buildWizardOps, groupCreatedByFunction, WIZARD_DEFAULT, type WizardChoices, type WizardGoal, type WizardSource } from "@/lib/wizardPlan";
+import { IMAGE_MODELS, VIDEO_MODELS } from "@/lib/models";
+import { trpc } from "@/lib/trpc";
 import type { NodeType } from "../../../../shared/types";
 
 // ── 新建画布「建立向导」(#159)：分步选择 → 自动建节点链 + 按功能分区自动群组化 ────────
@@ -76,10 +78,26 @@ export function CanvasBuildWizard({ onClose }: { onClose: () => void }) {
   const reactFlow = useReactFlow();
   const [step, setStep] = useState<Step>("goal");
   const [c, setC] = useState<WizardChoices>(WIZARD_DEFAULT);
+  // 选中的 ComfyUI 模版 id（仅驱动下拉显示；对应的干净 payload 存进 choices）。
+  const [imgTplId, setImgTplId] = useState("");
+  const [vidTplId, setVidTplId] = useState("");
   const set = <K extends keyof WizardChoices>(k: K, v: WizardChoices[K]) => setC((p) => ({ ...p, [k]: v }));
 
   const ops = useMemo(() => buildWizardOps(c), [c]);
   const createCount = useMemo(() => ops.filter((o) => o.op === "create").length, [ops]);
+
+  // #159 增强：自建来源可选「已保存的 ComfyUI 模版」；仅在选到 comfy 来源时拉取。
+  const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { enabled: c.source === "comfy", staleTime: 60_000 });
+  const comfyImageTemplates = useMemo(
+    () => (templatesQuery.data ?? []).filter((t) => t.nodeType === "comfyui_image" || t.nodeType === "comfyui_workflow"),
+    [templatesQuery.data],
+  );
+  const comfyVideoTemplates = useMemo(
+    () => (templatesQuery.data ?? []).filter((t) => t.nodeType === "comfyui_video" || t.nodeType === "comfyui_workflow"),
+    [templatesQuery.data],
+  );
+  const wantVideoModel = c.goal === "film" || c.goal === "video";
+  const wantImageModel = c.goal === "images" || ((c.goal === "film" || c.goal === "video") && c.imageFirst);
 
   const idx = STEPS.findIndex((s) => s.id === step);
   const isLast = step === "confirm";
@@ -221,6 +239,72 @@ export function CanvasBuildWizard({ onClose }: { onClose: () => void }) {
               {(c.goal === "film" || c.goal === "video") && (
                 <Toggle checked={c.imageFirst} onChange={(v) => set("imageFirst", v)} label="先生图再图生视频" hint="更可控的关键帧首帧；关闭则文生视频直出" />
               )}
+
+              {/* #159 增强：云端来源选生图/生视频模型；自建来源选已保存的 ComfyUI 模版。 */}
+              {c.source === "cloud" && (wantImageModel || wantVideoModel) && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px dashed var(--c-bd1)", paddingTop: 10 }}>
+                  {wantImageModel && (
+                    <label>
+                      <span style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--c-t2)", marginBottom: 5 }}>生图模型</span>
+                      <select value={c.imageModel ?? ""} onChange={(e) => set("imageModel", e.target.value || undefined)} style={fieldStyle}>
+                        <option value="">默认（节点内置）</option>
+                        {IMAGE_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}{m.costNote ? ` · ${m.costNote}` : ""}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {wantVideoModel && (
+                    <label>
+                      <span style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--c-t2)", marginBottom: 5 }}>生视频模型</span>
+                      <select value={c.videoProvider ?? ""} onChange={(e) => set("videoProvider", e.target.value || undefined)} style={fieldStyle}>
+                        <option value="">默认（节点内置）</option>
+                        {VIDEO_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}{m.costLabel ? ` · ${m.costLabel}` : ""}</option>)}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              )}
+              {c.source === "comfy" && (wantImageModel || wantVideoModel) && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px dashed var(--c-bd1)", paddingTop: 10 }}>
+                  {templatesQuery.isLoading && <span style={{ fontSize: 11.5, color: "var(--c-t4)" }}>正在载入 ComfyUI 模版…</span>}
+                  {!templatesQuery.isLoading && (templatesQuery.data?.length ?? 0) === 0 && (
+                    <span style={{ fontSize: 11.5, color: "var(--c-t4)" }}>暂无已保存的 ComfyUI 模版（可先在工作流节点里「存为模板」）。将用空白 ComfyUI 节点，稍后手动导入工作流。</span>
+                  )}
+                  {wantImageModel && comfyImageTemplates.length > 0 && (
+                    <label>
+                      <span style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--c-t2)", marginBottom: 5 }}>生图 ComfyUI 模版</span>
+                      <select
+                        value={imgTplId}
+                        onChange={(e) => {
+                          setImgTplId(e.target.value);
+                          const t = comfyImageTemplates.find((x) => String(x.id) === e.target.value);
+                          set("comfyImagePayload", t ? (t.payload as Record<string, unknown>) : undefined);
+                        }}
+                        style={fieldStyle}
+                      >
+                        <option value="">不套用模版（空白节点）</option>
+                        {comfyImageTemplates.map((t) => <option key={t.id} value={String(t.id)}>{t.label}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {wantVideoModel && comfyVideoTemplates.length > 0 && (
+                    <label>
+                      <span style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--c-t2)", marginBottom: 5 }}>生视频 ComfyUI 模版</span>
+                      <select
+                        value={vidTplId}
+                        onChange={(e) => {
+                          setVidTplId(e.target.value);
+                          const t = comfyVideoTemplates.find((x) => String(x.id) === e.target.value);
+                          set("comfyVideoPayload", t ? (t.payload as Record<string, unknown>) : undefined);
+                        }}
+                        style={fieldStyle}
+                      >
+                        <option value="">不套用模版（空白节点）</option>
+                        {comfyVideoTemplates.map((t) => <option key={t.id} value={String(t.id)}>{t.label}</option>)}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -246,6 +330,12 @@ export function CanvasBuildWizard({ onClose }: { onClose: () => void }) {
                 <li>· 目标：{GOALS.find((g) => g.id === c.goal)?.label}</li>
                 {c.goal !== "audio" && <li>· 比例 {c.aspect || "不指定"} · {c.goal === "images" ? `${c.shots} 张` : `${c.shots} 镜 × ${c.durationSec}s`}{c.style ? ` · 风格「${c.style}」` : ""}</li>}
                 {c.goal !== "audio" && <li>· 来源：{c.source === "comfy" ? "自建 ComfyUI" : "云端模型"}{(c.goal === "film" || c.goal === "video") && c.imageFirst ? " · 先生图再图生视频" : ""}</li>}
+                {c.goal !== "audio" && c.source === "cloud" && (c.imageModel || c.videoProvider) && (
+                  <li>· 模型：{[c.imageModel && `图 ${IMAGE_MODELS.find((m) => m.value === c.imageModel)?.label ?? c.imageModel}`, c.videoProvider && `视频 ${VIDEO_MODELS.find((m) => m.value === c.videoProvider)?.label ?? c.videoProvider}`].filter(Boolean).join(" · ")}</li>
+                )}
+                {c.goal !== "audio" && c.source === "comfy" && (c.comfyImagePayload || c.comfyVideoPayload) && (
+                  <li>· ComfyUI 模版：{[c.comfyImagePayload && "生图", c.comfyVideoPayload && "生视频"].filter(Boolean).join(" · ")}已套用</li>
+                )}
                 <li>· 增强：{[c.addMusic && "配乐", c.addVoice && "配音", c.addSubtitle && "字幕", c.addMerge && (c.goal !== "images" && c.goal !== "audio") && "合成"].filter(Boolean).join("、") || "无"}</li>
               </ul>
               <div style={{ fontSize: 11.5, color: "var(--c-t4)" }}>完成后将按功能（剧本/分镜/生图/生视频/音频/合成）自动分区群组，方便整体管理。</div>

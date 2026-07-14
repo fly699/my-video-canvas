@@ -18,6 +18,11 @@ export interface WizardChoices {
   addVoice: boolean;         // 配音（旁白）
   useStoryboard: boolean;    // 用分镜节点承载（否则逐镜 prompt 节点）
   addMerge: boolean;         // 合成成片
+  // ── 生成模型/模板（#159 增强）──
+  imageModel?: string;       // 云端来源：生图模型（写入 image_gen.model / storyboard.imageModel）
+  videoProvider?: string;    // 云端来源：生视频模型（写入 video_task.provider）
+  comfyImagePayload?: Record<string, unknown>; // 自建来源：选中的 ComfyUI 生图模版 payload（并入 comfyui_image 节点）
+  comfyVideoPayload?: Record<string, unknown>; // 自建来源：选中的 ComfyUI 生视频模版 payload（并入 comfyui_video 节点）
 }
 
 export const WIZARD_DEFAULT: WizardChoices = {
@@ -30,6 +35,17 @@ const stylePrefix = (s: string) => (s.trim() ? `${s.trim()}, ` : "");
 
 function imageNodeType(source: WizardSource): NodeType { return source === "comfy" ? "comfyui_image" : "image_gen"; }
 function videoNodeType(source: WizardSource): NodeType { return source === "comfy" ? "comfyui_video" : "video_task"; }
+
+/** 生图节点 payload：云端 image_gen 写 model；自建 comfyui_image 并入选中模版 payload。 */
+function imagePayload(c: WizardChoices, base: Record<string, unknown>): Record<string, unknown> {
+  if (c.source === "comfy") return { ...(c.comfyImagePayload ?? {}), ...base };
+  return c.imageModel ? { ...base, model: c.imageModel } : base;
+}
+/** 生视频节点 payload：云端 video_task 写 provider；自建 comfyui_video 并入选中模版 payload。 */
+function videoPayload(c: WizardChoices, base: Record<string, unknown>): Record<string, unknown> {
+  if (c.source === "comfy") return { ...(c.comfyVideoPayload ?? {}), ...base };
+  return c.videoProvider ? { ...base, provider: c.videoProvider } : base;
+}
 
 /** 把向导选择编译为画布操作（create + connect）。纯函数。 */
 export function buildWizardOps(c: WizardChoices): AgentOperation[] {
@@ -48,7 +64,7 @@ export function buildWizardOps(c: WizardChoices): AgentOperation[] {
   if (c.goal === "images") {
     const imgType = imageNodeType(c.source);
     for (let i = 1; i <= shots; i++) {
-      ops.push({ op: "create", nodeType: imgType, tempId: `img${i}`, title: `图 ${i}`, payload: withAspectImg({ prompt: stylePrefix(c.style) }), note: `第 ${i} 张` });
+      ops.push({ op: "create", nodeType: imgType, tempId: `img${i}`, title: `图 ${i}`, payload: imagePayload(c, withAspectImg({ prompt: stylePrefix(c.style) })), note: `第 ${i} 张` });
     }
     return ops;
   }
@@ -79,13 +95,13 @@ export function buildWizardOps(c: WizardChoices): AgentOperation[] {
     let tail = carrierId; // 链尾（连到 merge / 下游）
     if (perShotImage) {
       const imgId = `img${i}`;
-      ops.push({ op: "create", nodeType: imgType, tempId: imgId, title: `图 ${i}`, payload: withAspectImg({ prompt: stylePrefix(c.style) }), note: `第 ${i} 镜出图` });
+      ops.push({ op: "create", nodeType: imgType, tempId: imgId, title: `图 ${i}`, payload: imagePayload(c, withAspectImg({ prompt: stylePrefix(c.style) })), note: `第 ${i} 镜出图` });
       ops.push({ op: "connect", sourceRef: carrierId, targetRef: imgId });
       tail = imgId;
     }
     if (wantVideo) {
       const vidId = `vid${i}`;
-      ops.push({ op: "create", nodeType: vidType, tempId: vidId, title: `视频 ${i}`, payload: { prompt: stylePrefix(c.style), ...(c.durationSec ? { duration: c.durationSec } : {}) }, note: `第 ${i} 镜生视频` });
+      ops.push({ op: "create", nodeType: vidType, tempId: vidId, title: `视频 ${i}`, payload: videoPayload(c, { prompt: stylePrefix(c.style), ...(c.durationSec ? { duration: c.durationSec } : {}) }), note: `第 ${i} 镜生视频` });
       ops.push({ op: "connect", sourceRef: tail, targetRef: vidId });
       tail = vidId;
     }

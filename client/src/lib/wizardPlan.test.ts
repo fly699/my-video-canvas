@@ -90,6 +90,41 @@ describe("buildWizardOps — 其它目标", () => {
   });
 });
 
+describe("buildWizardOps — #159 模型/模版注入", () => {
+  const payloadOfType = (ops: ReturnType<typeof buildWizardOps>, t: NodeType) =>
+    (creates(ops).find((o) => o.nodeType === t)?.payload ?? {}) as Record<string, unknown>;
+
+  it("云端来源：imageModel 写入 image_gen.model、videoProvider 写入 video_task.provider", () => {
+    const ops = buildWizardOps(make({ imageModel: "kie_seedream_45", videoProvider: "kie_veo31_fast" }));
+    expect(payloadOfType(ops, "image_gen").model).toBe("kie_seedream_45");
+    expect(payloadOfType(ops, "video_task").provider).toBe("kie_veo31_fast");
+  });
+
+  it("未选模型 → 不写 model/provider（用节点默认）", () => {
+    const ops = buildWizardOps(make());
+    expect(payloadOfType(ops, "image_gen").model).toBeUndefined();
+    expect(payloadOfType(ops, "video_task").provider).toBeUndefined();
+  });
+
+  it("自建来源：选中的 ComfyUI 模版 payload 并入 comfyui_image/comfyui_video 节点", () => {
+    const ops = buildWizardOps(make({
+      source: "comfy",
+      comfyImagePayload: { workflowJson: "{img}", customBaseUrl: "http://c" },
+      comfyVideoPayload: { workflowJson: "{vid}" },
+    }));
+    expect(payloadOfType(ops, "comfyui_image").workflowJson).toBe("{img}");
+    expect(payloadOfType(ops, "comfyui_image").customBaseUrl).toBe("http://c");
+    expect(payloadOfType(ops, "comfyui_video").workflowJson).toBe("{vid}");
+  });
+
+  it("云端的模型字段不会污染自建节点（反之亦然）", () => {
+    const ops = buildWizardOps(make({ source: "comfy", imageModel: "kie_seedream_45", comfyImagePayload: { workflowJson: "{img}" } }));
+    // comfy 节点不写 model（imageModel 仅对云端 image_gen 生效）
+    expect(payloadOfType(ops, "comfyui_image").model).toBeUndefined();
+    expect(payloadOfType(ops, "comfyui_image").workflowJson).toBe("{img}");
+  });
+});
+
 describe("buildWizardOps — 比例/风格注入", () => {
   it("指定比例 → 图像节点 payload 带 aspectRatio", () => {
     const ops = buildWizardOps(make({ goal: "images", aspect: "9:16", shots: 1 }));
