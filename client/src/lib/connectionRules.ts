@@ -4,19 +4,19 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // script → note：专业审查（Coverage）报告一键存为便签节点留档。
   // 注：曾有 script → character，但 CharacterNode 只消费图源（detectUpstreamImagesExpanded），
   // 不读任何脚本文本——连了无效，已删（角色人设走角色节点自身编辑 / 向导，不从脚本文本生成）。
-  script: ["storyboard", "prompt", "ai_chat", "note"],
+  script: ["storyboard", "prompt", "ai_chat", "note", "super_agent"],
   // storyboard → audio：分镜的「对白/旁白」字段自动喂给下游音频节点作配音文案。
   // storyboard → image_edit：分镜生成的关键帧可再进图像编辑精修（image_edit 走 getNodeImageOutput 认 storyboard 的 imageUrl）。
   // storyboard → character/pose_control：分镜关键帧是合法图源，character 经 detectUpstreamImagesExpanded
   // （IMAGE_SOURCE_TYPES 含 storyboard）取其图作参考图、pose_control 经 getNodeImageOutput 取其图抽姿态/构图，
   // 与 image_gen/image_edit/director 等其它图源一视同仁（此前被矩阵单独拒收，属不对称缺口）。
-  storyboard: ["image_gen", "image_edit", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio", "character", "pose_control", "compare"],
+  storyboard: ["image_gen", "image_edit", "video_task", "prompt", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio", "character", "pose_control", "compare", "super_agent"],
   // 注：曾有 prompt → script，但 ScriptNode 不读任何上游（正文走自身编辑 / 向导 / AI 生成）——
   // 连了无效，已删。prompt 的有效去向是生图 / 视频 / 分镜 / ComfyUI。
-  prompt: ["image_gen", "video_task", "storyboard", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  prompt: ["image_gen", "video_task", "storyboard", "comfyui_image", "comfyui_video", "comfyui_workflow", "super_agent"],
   // 注：曾有 character → prompt，但 PromptNode 只读 detectUpstreamPrompt（不含 character）——
   // 连了无效，已删。要在提示词里引用角色身份，用提示词框内的 @角色 引用（无需连线）。
-  character: ["storyboard", "image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow"],
+  character: ["storyboard", "image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow", "super_agent"],
   // image_gen → storyboard：精修工位回链——分镜「送精修」后图像节点连回分镜，
   // 出图仅作为「关键帧候选」供分镜显式点「采用此图」，无任何自动写入。
   // 注：image_gen/image_edit/comfyui_image 产出的是「图像」，不能连 clip（剪辑只裁切视频，
@@ -24,11 +24,11 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // comfyui_video/comfyui_workflow(video) 提供。
   // image_gen → comfyui_image：出图可作 ComfyUI 图像的 img2img/参考图（detectUpstreamImages 的
   // IMAGE_SOURCE_TYPES 含 image_gen）；此前缺失导致「图像生成 → ComfyUI 图像」拖线弹不出该目标。
-  image_gen: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard", "compare"],
+  image_gen: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard", "compare", "super_agent"],
   // image_edit 输出仍是一张图：可作 i2v 首帧、存素材、当角色/参考图、回链分镜关键帧、或再串一次编辑。
-  image_edit: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard", "compare"],
+  image_edit: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard", "compare", "super_agent"],
   // 导演台输出 3D 渲染截图（同图像产出）：作构图参考图喂给生图/视频/编辑/角色/ComfyUI/分镜关键帧。
-  director: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard", "compare"],
+  director: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard", "compare", "super_agent"],
   // video_task → video_task：生成的视频可作另一视频任务的「源视频」参考——V2V/运动控制/
   // 上采样/Aleph/对口型等 provider 会经 collectVideoRefMedia 取上游视频（不支持的 provider 自动忽略，
   // 拖线无害）。这是唯一保留的同类自链（其它同类如 prompt/storyboard 仍禁止）。
@@ -40,9 +40,9 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // audio → video_task：数字人/视频对口型（OmniHuman、Volcengine、Kling Avatar）的
   // 驱动音频——连线音频节点作为 audio_url。模型不支持音频时该连接被 collectRefMedia 忽略。
   audio: ["clip", "audio", "comfyui_workflow", "merge", "video_task"],
-  asset: ["image_gen", "image_edit", "video_task", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio", "compare"],
+  asset: ["image_gen", "image_edit", "video_task", "clip", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "pose_control", "character", "comfyui_image", "comfyui_video", "comfyui_workflow", "audio", "compare", "super_agent"],
   // 注：曾有 ai_chat → script，但 ScriptNode 不读任何上游——连了无效，已删。
-  ai_chat: ["storyboard", "prompt"],
+  ai_chat: ["storyboard", "prompt", "super_agent"],
   clip: ["asset", "overlay", "merge", "subtitle", "subtitle_motion", "smart_cut", "video_task", "compare"],
   post_process: ["video_task", "image_gen", "asset"],
   // 视频后处理节点（overlay/subtitle/subtitle_motion/smart_cut/clip/merge）互为视频源与视频消费者
@@ -73,7 +73,7 @@ export const CONNECTION_MATRIX: Partial<Record<NodeType, NodeType[]>> = {
   // merge → clip/overlay/subtitle/subtitle_motion/smart_cut：合并成片后仍可继续后处理（整片加字幕/
   // 叠加水印/裁段/智能剪辑），merge 输出是视频源；→ merge 合并链；→ video_task 作 V2V 源；→ asset 存档。
   merge: ["asset", "clip", "merge", "overlay", "subtitle", "subtitle_motion", "smart_cut", "video_task", "compare"],
-  comfyui_image: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard", "compare"],
+  comfyui_image: ["video_task", "asset", "pose_control", "character", "image_gen", "image_edit", "comfyui_image", "comfyui_video", "comfyui_workflow", "storyboard", "compare", "super_agent"],
   // comfyui_video 产出的是「视频」（resultVideoUrl）。下游 comfyui_image/comfyui_video 只经
   // useComfyUpstreamAutoFill→detectUpstreamImages 取「图源」（IMAGE_SOURCE_TYPES 不含 comfyui_video），
   // comfyui_workflow 的参数绑定类型只有 image/audio/text/number（无 video 输入槽）——三者都消费不了
@@ -313,6 +313,6 @@ export const CONNECTION_HINTS: Record<
   super_agent: {
     label: "工程智能体",
     outgoing: "自动编写并真机调通 ComfyUI 工作流，产物一键写回 comfyui_workflow 节点（不经连线）",
-    incoming: "输入工程任务，服务端跑「写→校验→运行→读错→修」闭环",
+    incoming: "← 提示词 / 角色·场景 / 分镜 / 脚本 / 图像生成·编辑 / 导演台 / ComfyUI图像 / 素材 / AI对话（连入的提示词·角色设定·参考图会并入工程任务）",
   },
 };

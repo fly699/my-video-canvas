@@ -1,7 +1,8 @@
 import { memo, useCallback, useRef, useEffect, useState } from "react";
-import { useReactFlow } from "@xyflow/react";
+import { useReactFlow, Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { collectAgentUpstream, composeAgentTask, agentUpstreamSummary } from "@/lib/superAgentUpstream";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Boxes, Loader2, XCircle, ArrowRightCircle, Square, Server, Cpu, Send, RefreshCw, Settings2, ChevronDown, ChevronUp } from "lucide-react";
@@ -63,6 +64,8 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const update = useCallback((patch: Partial<SuperAgentNodeData>) => updateNodeData(id, patch), [id, updateNodeData]);
 
   const mode = payload.mode ?? "comfy";
+  // 上游连入的提示词/角色/参考图摘要（画布助手连线后一眼可见「已接收上游」）。
+  const upstreamSummary = useCanvasStore((s) => agentUpstreamSummary(collectAgentUpstream(id, s.edges, s.nodes)));
   const { resolve } = useNodeDefaultModels();
   const llmModel = (payload.model || resolve("super_agent", "llm")) as LLMModelId;
   const modelShort = LLM_MODELS.find((m) => m.id === llmModel)?.short ?? "默认";
@@ -202,6 +205,10 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     if (running) return;
     const instruction = (typeof taskOverride === "string" ? taskOverride : (inputRef.current?.value ?? inputText)).trim();
     if (!instruction) { if (!taskOverride) toast.error("请输入指令"); return; }
+    // 折入上游连入的提示词/角色/参考图（画布助手产出的提示词与角色据此被工程智能体接收）。
+    // 会话仍展示原始指令，实际发给引擎的 task/goal 追加上游参考块。
+    const st0 = useCanvasStore.getState();
+    const agentTask = composeAgentTask(instruction, collectAgentUpstream(id, st0.edges, st0.nodes));
     const priorConv = payload.conversation ?? [];
     const isFollowup = !!payload.resultWorkflowJson && priorConv.length > 0;
     const conv: Turn[] = [...priorConv, { role: "user", text: instruction }];
@@ -236,7 +243,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     if (payload.orchestrate) {
       orchestrateMut.mutate(
         {
-          projectId: data.projectId, nodeId: id, goal: instruction,
+          projectId: data.projectId, nodeId: id, goal: agentTask,
           customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
           ...(payload.maxIterations ? { maxIterations: payload.maxIterations } : {}),
           ...(payload.useMemory === false ? { useMemory: false } : {}),
@@ -247,7 +254,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     }
     buildMut.mutate(
       {
-        projectId: data.projectId, nodeId: id, task: instruction,
+        projectId: data.projectId, nodeId: id, task: agentTask,
         customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
         ...(payload.maxIterations ? { maxIterations: payload.maxIterations } : {}),
         ...(payload.showAllResources ? { showAllResources: true } : {}),
@@ -334,7 +341,13 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [conversation.length, codeConversation.length, log.length]);
 
   return (
-    <BaseNode id={id} selected={selected} nodeType="super_agent" title={data.title} minHeight={340} resizable showHandles={false} capNodeHeight>
+    <BaseNode id={id} selected={selected} nodeType="super_agent" title={data.title} minHeight={340} resizable showHandles={false} capNodeHeight
+      extraHandles={
+        // 仅输入桩（工程智能体不参与出线）：接收上游提示词/角色/参考图连入。
+        <Handle type="target" position={Position.Left} id="input"
+          title="连入提示词 / 角色·场景 / 分镜 / 图像 作为工程任务参考"
+          style={{ width: 12, height: 12, borderRadius: "50%", background: accent, border: "2px solid var(--c-surface)", left: -7, top: "50%" }} />
+      }>
       <div className="flex flex-col gap-2" style={{ padding: "2px 2px 4px" }}>
         {/* 模式切换 */}
         <div className="nodrag flex" style={{ gap: 4, background: "var(--c-surface)", padding: 3, borderRadius: 9, border: `1px solid ${BORDER}` }}>
@@ -414,6 +427,14 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
             {linked && (
               <div className="flex items-center gap-1" style={{ fontSize: 10.5, color: accent }}>
                 <ArrowRightCircle style={{ width: 11, height: 11 }} /> 已链接一个 ComfyUI 节点：调通后自动同步，可一键重新生成
+              </div>
+            )}
+
+            {/* 上游接收提示：画布助手/手动连入的提示词·角色·参考图，发送时并入工程任务 */}
+            {upstreamSummary && (
+              <div className="flex items-start gap-1" style={{ fontSize: 10.5, color: "var(--c-t3)", lineHeight: 1.5 }}>
+                <ArrowRightCircle style={{ width: 11, height: 11, flexShrink: 0, marginTop: 1, color: GREEN }} />
+                <span>已接收上游：<b style={{ color: "var(--c-t2)" }}>{upstreamSummary}</b>，发送时自动并入工程任务</span>
               </div>
             )}
 
