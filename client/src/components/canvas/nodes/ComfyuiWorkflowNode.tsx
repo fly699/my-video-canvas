@@ -18,6 +18,7 @@ import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
 import { summarizeComfyWorkflow } from "@/lib/comfyWorkflowSummary";
 import { detectWorkflowFormat, extractComfyWorkflowsFromPng } from "@/lib/comfyWorkflowImport";
+import { buildWorkflowExportJson, workflowExportFilename } from "@/lib/comfyWorkflowExport";
 import { MediaImage } from "../MediaImage";
 import { RefHeroPreview } from "../RefHeroPreview";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -29,7 +30,7 @@ import { useNodeDocks, useCharSceneItems, useAudioStripItems } from "../../../ho
 import { openNodeImage } from "../NodeImageLightbox";
 import { toast } from "sonner";
 import {
-  Workflow, Loader2, Upload, X, ChevronDown, ChevronRight,
+  Workflow, Loader2, Upload, Download, X, ChevronDown, ChevronRight,
   Server, Play, RotateCcw, ImageIcon, FileVideo, Plus, Trash2, Copy, AlertTriangle, Wand2, Rotate3d, Boxes, SlidersHorizontal, Check,
 } from "lucide-react";
 import { SyncConfigDialog } from "../SyncConfigDialog";
@@ -823,6 +824,27 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     setEditingBindings(false);
   }, [localBindings, update]);
 
+  // #160 导出工作流：把当前 API-format workflowJson（回写用户已设的非图像/音频参数值）
+  // 下载为 .json——可在 ComfyUI 里 Load 直接复用，或存档/分享。
+  const handleExportWorkflow = useCallback(() => {
+    const json = buildWorkflowExportJson(payload.workflowJson, payload.paramBindings, payload.paramValues);
+    if (!json) { toast.error("当前没有可导出的工作流"); return; }
+    try {
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = workflowExportFilename(payload.workflowName);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      toast.success("已导出工作流 JSON（API 格式，可在 ComfyUI 里 Load）");
+    } catch {
+      toast.error("导出失败，请重试");
+    }
+  }, [payload.workflowJson, payload.paramBindings, payload.paramValues, payload.workflowName]);
+
   // ── 左侧只读「汇总吸附窗」：把本工作流所有图像参数当前绑定的图集中预览 ──
   // 每张图绑定到一个具体的工作流图像参数（key=`节点.字段`），排序/插入无意义，
   // 故只读：仅预览 + 点击放大 + 删除（删除＝清空该参数）。节点折叠后仍可见。
@@ -1262,6 +1284,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 </button>
                 <button
                   style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontFamily: "var(--font-sans)" }}
+                  onClick={handleExportWorkflow}
+                  title="导出当前工作流为 API 格式 .json（含已设参数，可在 ComfyUI 里 Load）"
+                >
+                  <Download size={11} style={{ display: "inline", marginRight: 3 }} />
+                  导出
+                </button>
+                <button
+                  style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontFamily: "var(--font-sans)" }}
                   onClick={handleReset}
                 >
                   <RotateCcw size={11} style={{ display: "inline", marginRight: 3 }} />
@@ -1403,6 +1433,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 >
                   <Wand2 size={11} style={{ display: "inline", marginRight: 3 }} />
                   换工作流
+                </button>
+                <button
+                  style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontFamily: "var(--font-sans)" }}
+                  onClick={handleExportWorkflow}
+                  title="导出当前工作流为 API 格式 .json（含已设参数，可在 ComfyUI 里 Load）"
+                >
+                  <Download size={11} style={{ display: "inline", marginRight: 3 }} />
+                  导出
                 </button>
                 <button
                   style={{ fontSize: 11, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontFamily: "var(--font-sans)" }}
@@ -2137,6 +2175,13 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
             <button className="nodrag" onClick={(e) => { e.stopPropagation(); setShowWizard(true); }}
               style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer" }}>
               <Upload size={12} /> 导入工作流 / 模板
+            </button>
+          )}
+          {!!payload.workflowJson?.trim() && (
+            <button className="nodrag" onClick={(e) => { e.stopPropagation(); handleExportWorkflow(); }}
+              title="导出当前工作流为 API 格式 .json（含已设参数，可在 ComfyUI 里 Load）"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>
+              <Download size={12} /> 导出
             </button>
           )}
           <button
