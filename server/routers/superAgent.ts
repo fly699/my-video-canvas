@@ -436,7 +436,8 @@ export const superAgentRouter = router({
       z.object({
         projectId: z.number(),
         nodeId: z.string().max(64).optional(),
-        task: z.string().min(1).max(8000),
+        // 代码任务常把整段代码内联进 task（工件「运行」），8000 太小易触顶——放宽到 40000。
+        task: z.string().min(1).max(40_000),
         model: z.string().max(64).optional(),
         /** 成本封顶（美元），1–20，默认 2。 */
         maxBudgetUsd: z.number().min(0.1).max(20).optional(),

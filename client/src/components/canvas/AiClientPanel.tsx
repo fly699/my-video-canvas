@@ -272,6 +272,8 @@ export function AiClientPanel() {
   const runArtifact = (a: CodeArtifact) => {
     if (!projectId) { toast.error("画布未就绪"); return; }
     if (runCodeMut.isPending) return;
+    // 代码任务 task 上限 40000；极端超长的工件先下载/落成节点再手动运行，避免静默触顶。
+    if (a.content.length > 39000) { toast.error("代码过长（超运行上限），请先下载或落成节点后手动运行"); return; }
     setRunResult(null);
     const task = `请把下面的代码保存为 ${a.filename} 并在沙箱中运行，返回运行输出/结果（若报错请贴出完整报错）：\n\n\`\`\`${a.lang || ""}\n${a.content}\n\`\`\``;
     // 执行走本机桥接沙箱：仅本机桥接模型（claude-local*/gpt-local*）可传给 runCodeTask；
