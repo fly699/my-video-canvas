@@ -15,6 +15,7 @@ import ChatPage from "./pages/ChatPage";
 import Library from "./pages/Library";
 import TutorialPage from "./pages/TutorialPage";
 import Editor from "./pages/Editor";
+import AiClientStandalone from "./pages/AiClientStandalone";
 import { WhitelistBlockedDialog } from "./components/WhitelistBlockedDialog";
 import { useParams } from "wouter";
 import { useEffect, useState } from "react";
@@ -103,6 +104,7 @@ function Router() {
       <Route path="/tutorial" component={TutorialPage} />
       <Route path="/editor" component={Editor} />
       <Route path="/editor/:id" component={Editor} />
+      <Route path="/ai" component={AiClientStandalone} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

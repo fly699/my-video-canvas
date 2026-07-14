@@ -200,6 +200,17 @@ export const projectsRouter = router({
       return project;
     }),
 
+  // #175 首页独立 AI 客户端：获取/创建当前用户专用的「AI 客户端」项目（会话空间独立于画布工作）。
+  getOrCreateAiClient: protectedProcedure.mutation(async ({ ctx }) => {
+    const NAME = "AI 客户端";
+    const owned = await getProjectsByUser(ctx.user.id);
+    const existing = owned.find((p) => p.name === NAME);
+    if (existing) return existing;
+    const project = await createProject({ userId: ctx.user.id, name: NAME, description: "AI 客户端专用会话空间" });
+    if (!project) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "创建 AI 客户端项目失败" });
+    return project;
+  }),
+
   // Save As: duplicate a project (nodes + edges + viewport + thumbnail) into a new
   // one owned by the current user. Node ids are a global primary key, so every
   // node gets a fresh id and edges are remapped onto the new ids.
