@@ -32,6 +32,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { downloadToTemp, execFileAsync } from "./videoEditor";
 import { getTranscribeOverride } from "./transcribeConfig";
+import { transcribeProviderOf } from "../../shared/transcribeRouting";
 
 export type TranscribeOptions = {
   audioUrl: string; // URL to the audio file (e.g., S3 URL)
@@ -87,31 +88,69 @@ export type TranscriptionError = {
  * @param options - Audio data and metadata
  * @returns Transcription result or error
  */
-/** 解析转写端点（OpenAI 兼容 /v1/audio/transcriptions）。优先级：
- *  1) TRANSCRIBE_API_URL + TRANSCRIBE_API_KEY（显式覆盖，可指自建 whisper）
- *  2) 内置 Forge（BUILT_IN_FORGE_API_URL + KEY）
- *  3) OpenAI 官方（OPENAI_API_KEY；用户常已为 TTS 配音设了它）
- *  三者皆无 → null（调用方回退「未配置」错误）。 */
-export function resolveTranscribeEndpoint(): { baseUrl: string; apiKey: string; model?: string } | null {
-  // 0) 管理后台配置优先（DB 快照；未配置回退 env）。
-  const o = getTranscribeOverride();
-  if (o && o.url && o.apiKey) return { baseUrl: o.url, apiKey: o.apiKey, model: o.model || undefined };
-  if (ENV.transcribeApiUrl && ENV.transcribeApiKey) return { baseUrl: ENV.transcribeApiUrl, apiKey: ENV.transcribeApiKey };
-  if (ENV.forgeApiUrl && ENV.forgeApiKey) return { baseUrl: ENV.forgeApiUrl, apiKey: ENV.forgeApiKey };
-  if (ENV.openaiApiKey) return { baseUrl: "https://api.openai.com", apiKey: ENV.openaiApiKey };
+/** 自建 / 自定义转写端点（provider="self"）：管理后台配置（DB 优先）→ TRANSCRIBE_API_* env。 */
+function selfHostedTranscribeEndpoint(): { url: string; apiKey: string; model: string } | null {
+  const o = getTranscribeOverride(); // DB 快照
+  if (o && o.url && o.apiKey) return { url: o.url, apiKey: o.apiKey, model: (o.model || ENV.transcribeModel).trim() };
+  if (ENV.transcribeApiUrl && ENV.transcribeApiKey) return { url: ENV.transcribeApiUrl, apiKey: ENV.transcribeApiKey, model: ENV.transcribeModel.trim() };
   return null;
+}
+
+/** 内置 Forge（OpenAI 兼容）→ OpenAI 官方 兜底。用于 provider="forge" 的模型（whisper-1 / gpt-4o(-mini)-transcribe）。 */
+function forgeTranscribeEndpoint(): { url: string; apiKey: string } | null {
+  if (ENV.forgeApiUrl && ENV.forgeApiKey) return { url: ENV.forgeApiUrl, apiKey: ENV.forgeApiKey };
+  if (ENV.openaiApiKey) return { url: "https://api.openai.com", apiKey: ENV.openaiApiKey };
+  return null;
+}
+
+/** 按【所选模型的 provider】路由到对应转写后端（方案 B：多后端并存）。
+ *  - groq 模型（whisper-large-v3(-turbo)）→ Groq（独立 GROQ_API_KEY），未配则返回 null（明确「未配置」）。
+ *  - forge 模型（whisper-1 / gpt-4o(-mini)-transcribe）→ 内置 Forge / OpenAI 兜底。
+ *  - 未知/自建模型 id、或未指定模型 → 自建端点（后台配置 / TRANSCRIBE_API_*）。
+ *  这样「选 Groq 真走 Groq、选自建真走自建」，不再共用一个端点变量造成「选了没用」。
+ *  返回的 model 为最终发给该端点的模型 id。 */
+export function resolveTranscribeEndpoint(requested?: string): { baseUrl: string; apiKey: string; model: string } | null {
+  const req = (requested || "").trim();
+  const prov = transcribeProviderOf(req); // "forge" | "groq" | ""
+  const self = selfHostedTranscribeEndpoint();
+
+  // groq：走 Groq 独立端点（未配则 null，由上层报「未配置」——诚实，不静默改走别处）。
+  if (prov === "groq") {
+    if (ENV.groqApiKey) return { baseUrl: "https://api.groq.com/openai", apiKey: ENV.groqApiKey, model: req };
+    return null;
+  }
+  // forge：走内置 Forge / OpenAI。
+  if (prov === "forge") {
+    const f = forgeTranscribeEndpoint();
+    if (f) return { baseUrl: f.url, apiKey: f.apiKey, model: req };
+    return null;
+  }
+  // prov==""（未指定 / 未知 model id）：优先自建端点（自建 whisper 的 HF id 就落这里），
+  // 无自建再回退内置 Forge / OpenAI（用请求的或默认模型）。
+  if (self) return { baseUrl: self.url, apiKey: self.apiKey, model: (req || self.model || "whisper-1") };
+  const f = forgeTranscribeEndpoint();
+  if (f) return { baseUrl: f.url, apiKey: f.apiKey, model: req || "whisper-1" };
+  return null;
+}
+
+/** 「未配置」错误的针对性提示：按所选模型的 provider 指出该配哪个。 */
+function transcribeUnconfiguredHint(requested?: string): string {
+  const prov = transcribeProviderOf((requested || "").trim());
+  if (prov === "groq") return "所选模型是 Groq whisper，但未配置 Groq——请设置环境变量 GROQ_API_KEY";
+  if (prov === "forge") return "内置转写后端未配置——请设置 BUILT_IN_FORGE_API_URL+KEY 或 OPENAI_API_KEY";
+  return "未配置自建转写端点——请在管理后台「模型管理 › 语音/转写端点」填写 URL/Key/Model，或设置 TRANSCRIBE_API_URL+KEY；也可用内置 Forge/OpenAI";
 }
 
 export async function transcribeAudio(
   options: TranscribeOptions
 ): Promise<TranscriptionResponse | TranscriptionError> {
-  // Step 1: Resolve the transcription endpoint (Forge / OpenAI / explicit override).
-  const endpoint = resolveTranscribeEndpoint();
+  // Step 1: 按所选模型的 provider 路由到对应端点（Groq / Forge / 自建）。
+  const endpoint = resolveTranscribeEndpoint(options.model);
   if (!endpoint) {
     return {
       error: "Voice transcription service is not configured",
       code: "SERVICE_ERROR",
-      details: "请设置以下之一：OPENAI_API_KEY（走 OpenAI 官方 whisper-1）、BUILT_IN_FORGE_API_URL+BUILT_IN_FORGE_API_KEY、或 TRANSCRIBE_API_URL+TRANSCRIBE_API_KEY（自建 OpenAI 兼容转写端点）",
+      details: transcribeUnconfiguredHint(options.model),
     };
   }
   let srcTemp: string | null = null;
@@ -136,9 +175,9 @@ export async function transcribeAudioBuffer(
   ext: string,
   options: Omit<TranscribeOptions, "audioUrl"> = {}
 ): Promise<TranscriptionResponse | TranscriptionError> {
-  const endpoint = resolveTranscribeEndpoint();
+  const endpoint = resolveTranscribeEndpoint(options.model);
   if (!endpoint) {
-    return { error: "Voice transcription service is not configured", code: "SERVICE_ERROR", details: "未配置转写端点（whisper：自建 / Forge / OPENAI_API_KEY）" };
+    return { error: "Voice transcription service is not configured", code: "SERVICE_ERROR", details: transcribeUnconfiguredHint(options.model) };
   }
   const safeExt = /^[a-z0-9]{2,5}$/i.test(ext) ? ext.toLowerCase() : "webm";
   const srcTemp = join(tmpdir(), `voicein-${randomUUID()}.${safeExt}`);
@@ -211,8 +250,8 @@ async function transcribeLocalFile(
   const audioBlob = new Blob([new Uint8Array(payload.buffer)], { type: payload.mime });
   formData.append("file", audioBlob, payload.filename);
 
-  // 模型优先级：**显式选择 > 后台端点配置的 model > TRANSCRIBE_MODEL（env）> whisper-1**。
-  const model = (options.model?.trim() || endpoint.model?.trim() || ENV.transcribeModel.trim() || "whisper-1");
+  // 模型 = resolveTranscribeEndpoint 已按 provider 路由决定的最终模型（endpoint.model）。
+  const model = (endpoint.model?.trim() || options.model?.trim() || ENV.transcribeModel.trim() || "whisper-1");
   formData.append("model", model);
   formData.append("response_format", "verbose_json");
   if (options.wordTimestamps) {

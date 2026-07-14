@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Boxes } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS } from "@/lib/models";
+import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
+import { useTranscribeModels } from "@/lib/useTranscribeModels";
 import { FACTORY_DEFAULT_MODELS, type ModelSlot } from "@shared/nodeDefaultModels";
 
 type Opt = { value: string; label: string };
@@ -15,6 +16,7 @@ export function SystemDefaultModelsSection() {
   const utils = trpc.useUtils();
   const q = trpc.admin.models.getSystemDefaults.useQuery();
   const selfHosted = useSelfHostedLlmModels();
+  const transcribeModels = useTranscribeModels();
 
   const [sel, setSel] = useState<Record<ModelSlot, string>>({ llm: "", image: "", video: "", transcribe: "" });
   const serverKey = JSON.stringify(q.data ?? {});
@@ -42,9 +44,9 @@ export function SystemDefaultModelsSection() {
       { slot: "llm" as ModelSlot, label: "对话 / 推理 LLM", opts: llmOpts, hint: "AI 对话节点、脚本/规划、聊天 AI 助手" },
       { slot: "image" as ModelSlot, label: "图像生成", opts: IMAGE_MODELS.map((m) => ({ value: m.value, label: m.label })), hint: "图像生成节点" },
       { slot: "video" as ModelSlot, label: "视频生成", opts: VIDEO_MODELS.map((m) => ({ value: m.value, label: m.label })), hint: "视频生成节点" },
-      { slot: "transcribe" as ModelSlot, label: "语音转录", opts: TRANSCRIBE_MODELS.map((m) => ({ value: m.value, label: m.label })), hint: "字幕节点转录" },
+      { slot: "transcribe" as ModelSlot, label: "语音转录", opts: transcribeModels.map((m) => ({ value: m.value, label: m.label })), hint: "字幕节点转录" },
     ];
-  }, [selfHosted]);
+  }, [selfHosted, transcribeModels]);
 
   // 出厂默认的展示标签（下拉里「跟随出厂默认」一项标注具体是哪个模型）。
   const labelOf = (slot: ModelSlot, value: string): string => {

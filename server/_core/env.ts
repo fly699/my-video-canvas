@@ -30,6 +30,9 @@ export const ENV = {
   // 自建=各异）。设了就用它（含词级时间戳时也用它，须为支持 word 粒度的 whisper 系）；
   // 未设则默认 whisper-1（OpenAI 官方）。
   transcribeModel: process.env.TRANSCRIBE_MODEL ?? "",
+  // Groq 云端 whisper 的独立密钥（provider=groq 的转写模型专用，与自建端点解耦，
+  // 不再和 TRANSCRIBE_API_URL 抢同一个变量）。base 固定 https://api.groq.com/openai。
+  groqApiKey: process.env.GROQ_API_KEY ?? "",
   // Self-hosted OpenAI-compatible LLM endpoint (vLLM / Ollama / LM Studio / TGI …).
   // Routes ONLY the model ids in SELF_HOSTED_LLM_MODELS (comma list; defaults to the
   // built-in self-hosted entries) to `${URL}/v1/chat/completions`, so it coexists with

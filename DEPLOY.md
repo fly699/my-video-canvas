@@ -200,17 +200,17 @@ codex 会静默落到 `OPENAI_API_KEY` 按量计费，务必放好凭证再用 `
 
 **作用范围**：AI 助手/客户端的**语音输入**（浏览器 Web Speech 依赖 Google，国内/无法访问 Google 时自动回退到这里）、以及**字幕 / 动态字幕 / AI 智能剪辑**的语音转文字。
 
-**端点解析优先级（DB 优先 + env 兜底）**：
-```
-① 管理后台「模型管理›语音/转写端点」(存 DB)   ← 填了就用它，优先级最高
-② TRANSCRIBE_API_URL + TRANSCRIBE_API_KEY (env)
-③ 内置 Forge STT 代理 (BUILT_IN_FORGE_API_URL + KEY)   ← 多数部署本就有，Groq 云端 whisper
-④ OPENAI_API_KEY (官方 whisper-1，约 $0.006/分钟)
-以上全无 → 转写不可用（语音输入按钮在浏览器不支持时隐藏、服务端调用会明确报「未配置」）
-```
-> 注意「模型管理›**字幕转录(STT)模型**」那个开关是**选哪些 STT 模型出现在选择器**（走内置 Forge/③），
-> 与这里的「**端点**配置」是两回事：前者管「用哪个模型」，后者管「转写走哪个后端」。已有内置 Forge 的部署，
-> 语音输入兜底其实已能用（走③）；自建端点的意义 = **零 API 费用 + 不依赖 Groq/Google 可达性 + 隐私**。
+**按【所选模型的 provider】路由到对应后端（多后端并存，各自独立配置，互不抢变量）**：
+
+| 模型（provider） | 路由到的后端 | 怎么配 |
+|---|---|---|
+| whisper-1 / gpt-4o(-mini)-transcribe（**forge**） | 内置 Forge → OpenAI 兜底 | `BUILT_IN_FORGE_API_URL`+`KEY`，或 `OPENAI_API_KEY` |
+| whisper-large-v3(-turbo)（**groq**） | Groq 云端 whisper | **`GROQ_API_KEY`**（独立变量，不再与自建抢 `TRANSCRIBE_API_URL`） |
+| 自建/自定义 model id（如 `Systran/faster-whisper-large-v3`） | 自建端点 | 管理后台「语音/转写端点」(DB 优先) 或 `TRANSCRIBE_API_URL`+`KEY`+`MODEL` |
+
+- **模型选择器只列「已配置 provider」的模型**——选哪个就真路由到哪个后端，杜绝「选 Groq 实际走本地」的歧义。某 provider 未配 → 其模型不出现在下拉，选到也会明确报「未配置」。
+- 「模型管理›**字幕转录(STT)模型**」开关是**选哪些模型出现在选择器**；「**语音/转写端点**」配的是**自建那个 provider 的后端**。两者配合上表理解。
+- **语音输入兜底**：麦克风不指定模型 → 走自建端点（若配）否则内置 Forge。已有内置 Forge 的部署本就能用；自建端点意义 = **零 API 费用 + 不依赖 Groq/Google 可达性 + 隐私**。
 
 **方式 1：管理后台可视化配置（推荐，免改 env、免重启）**
 管理后台 → 模型管理 → **语音/转写端点** → 填 URL / 模型 / Key → 保存 → 点「测试连通」（绿=通）。
@@ -218,9 +218,12 @@ codex 会静默落到 `OPENAI_API_KEY` 按量计费，务必放好凭证再用 `
 
 **方式 2：环境变量（`.env`，改后重启服务）**
 ```bash
+# 自建 / 自定义端点（provider=自建）
 TRANSCRIBE_API_URL=http://127.0.0.1:8000     # base，自动补 /v1/audio/transcriptions
 TRANSCRIBE_API_KEY=local-any-nonempty        # ⚠️ 必填非空（自建常不校验，但代码要求非空才认这组）
 TRANSCRIBE_MODEL=Systran/faster-whisper-large-v3
+# Groq 云端 whisper（provider=groq，独立变量，与自建端点解耦）
+GROQ_API_KEY=gsk_...
 ```
 
 **自建 whisper（Docker，零 API 费用，最省）——以 speaches 为例**

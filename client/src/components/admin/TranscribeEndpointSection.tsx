@@ -63,11 +63,14 @@ export function TranscribeEndpointSection() {
         <Mic className="w-4 h-4" style={{ color: "oklch(0.70 0.16 200)" }} /> 语音 / 转写端点（whisper，OpenAI 兼容）
       </div>
       <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.6, margin: 0 }}>
-        配置一个 OpenAI 兼容的 <code>/v1/audio/transcriptions</code> 端点（自建 faster-whisper / speaches / vLLM，或 OpenAI 官方）。
+        这是<strong>「自建 / 自定义」转写后端</strong>（OpenAI 兼容 <code>/v1/audio/transcriptions</code>：自建 faster-whisper / speaches / vLLM）。
         作用于：AI 助手/客户端<strong>语音输入</strong>在无法访问 Google 时的兜底、以及字幕 / 动态字幕 / AI 智能剪辑的转写。
-        <strong>自建端点 = 零 API 费用</strong>；留空则回退环境变量（<code>TRANSCRIBE_*</code> / Forge / <code>OPENAI_API_KEY</code>）。
+        <strong>自建端点 = 零 API 费用</strong>；留空则回退环境变量 <code>TRANSCRIBE_*</code>。
         <br />
         自建最省：<code>docker run -d -p 8000:8000 ghcr.io/speaches-ai/speaches:latest-cpu</code>，地址填 <code>http://127.0.0.1:8000</code>、模型填 <code>Systran/faster-whisper-large-v3</code>、Key 随便填个非空占位串。
+        <br />
+        <strong>多后端并存</strong>：Groq 云端 whisper 用独立的环境变量 <code>GROQ_API_KEY</code>（不与此处冲突）；内置 Forge / OpenAI 的 whisper-1、gpt-4o-transcribe 无需在此配置。
+        转写模型选择器只会列出「已配置 provider」的模型——选哪个就路由到哪个后端，所见即所得。
       </p>
 
       {/* 当前生效来源 */}
