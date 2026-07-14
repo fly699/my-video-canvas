@@ -164,6 +164,8 @@ import {
   Bell,
   PanelLeft,
   Gauge,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { usePerfStore, selectPerfLite, PERF_MODE_LABEL, PERF_MODE_ORDER } from "../lib/perfMode";
@@ -564,7 +566,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
       guideOpenedRef.current = want;
     }
   }, [setGuidePanel]);
-  const { mode: canvasMode } = useCanvasMode();
+  const { mode: canvasMode, creativeTheme, toggleCreativeTheme } = useCanvasMode();
   const { theme } = useTheme();
   const themeIsDark = THEMES.find((t) => t.id === theme)?.dark ?? true;
   // LibTV 化 3.1：创意模式为 LibTV 暗色皮肤——一律按暗分支处理（minimap 遮罩等）。
@@ -3443,6 +3445,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
             {/* Divider (only when add button is shown) */}
             {!isReadOnly && <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />}
+
+            {/* 创意模式浅色/深色主题切换（朴素浅色皮肤，防视觉疲劳）。仅创意模式显示。 */}
+            {canvasMode === "creative" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={toggleCreativeTheme}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                    style={{ color: "var(--c-t3)" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                  >
+                    {creativeTheme === "light" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">{creativeTheme === "light" ? "切换到深色皮肤" : "切换到浅色皮肤（朴素护眼）"}</TooltipContent>
+              </Tooltip>
+            )}
 
             {/* Zoom controls — 合并为一个百分比药丸，点击向上弹出缩放菜单（三种模式通用） */}
             <ZoomControl />
