@@ -408,13 +408,37 @@ async function submitWorkflow(baseUrl: string, workflow: unknown, signal?: Abort
   return data.prompt_id;
 }
 
+/** 任务是否仍在 ComfyUI 队列（运行中或排队中）。/queue 的 queue_running / queue_pending
+ *  每条形如 [number, promptId, prompt, extra, outputs]，故扫描每条元素判断是否含本 promptId。
+ *  查询失败/网络抖动时保守返回 true（视为「仍在」），避免把还活着的任务误判为超时。 */
+/** 纯判断：/queue 响应里 queue_running / queue_pending 是否含指定 promptId。可单测。 */
+export function promptInQueueLists(q: { queue_running?: unknown[][]; queue_pending?: unknown[][] } | null | undefined, promptId: string): boolean {
+  const inList = (arr?: unknown[][]) => Array.isArray(arr) && arr.some((e) => Array.isArray(e) && e.some((v) => v === promptId));
+  return !!q && (inList(q.queue_running) || inList(q.queue_pending));
+}
+
+async function isPromptInComfyQueue(baseUrl: string, promptId: string, signal?: AbortSignal, apiKey?: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl}/queue`, { signal: withTimeout(5_000, signal), ...(apiKey ? { headers: comfyAuthHeaders(apiKey) } : {}) });
+    if (!res.ok) return true;
+    const q = (await res.json()) as { queue_running?: unknown[][]; queue_pending?: unknown[][] };
+    return promptInQueueLists(q, promptId);
+  } catch { return true; }
+}
+
 async function pollHistory(baseUrl: string, promptId: string, maxAttempts: number, signal?: AbortSignal, apiKey?: string): Promise<HistoryEntry> {
   // Early exit when the server keeps refusing connections (down / unreachable) —
   // bail after 5 consecutive transient failures (~15s) instead of waiting the full
-  // 5/10-minute timeout.
+  // timeout.
   const MAX_CONSECUTIVE_NET_ERRORS = 5;
+  // 队列感知：超过软上限（maxAttempts）后不立即判超时——只要任务仍在 ComfyUI 队列里（模型冷加载
+  // 慢 / 队列拥堵 / 显卡慢等，任务其实还活着），就继续等，直到「离开队列且 history 仍无结果」或
+  // 触达绝对上限（软上限 ×4，防止无限等）。这样修掉「任务还在跑却被误报 ComfyUI 任务超时」。
+  const HARD_CAP = maxAttempts * 4;
   let consecutiveNetErrors = 0;
-  for (let i = 0; i < maxAttempts; i++) {
+  let queueMissStreak = 0;
+  let i = 0;
+  for (; i < HARD_CAP; i++) {
     await abortableSleep(POLL_INTERVAL_MS, signal);
     try {
       const res = await fetch(`${baseUrl}/history/${promptId}`, {
@@ -444,20 +468,30 @@ async function pollHistory(baseUrl: string, promptId: string, maxAttempts: numbe
         const detail = extractExecError(messages) ?? raw.slice(-600);
         throw new Error(`ComfyUI 执行失败: ${detail.slice(0, 800)}${comfyErrorHint(raw)}`);
       }
+      // 软上限之后：任务仍在队列 → 继续等；连续 3 轮离队且 history 无结果 → 判定已结束但无产出。
+      if (i >= maxAttempts) {
+        if (await isPromptInComfyQueue(baseUrl, promptId, signal, apiKey)) {
+          queueMissStreak = 0;
+        } else if (++queueMissStreak >= 3) {
+          const mins = Math.round((i * POLL_INTERVAL_MS) / 60_000);
+          throw new Error(`ComfyUI 任务超时（约 ${mins} 分钟：任务已离开队列但未产出结果，可能执行失败或队列被清空）`);
+        }
+      }
     } catch (err) {
       // External abort (立即停止) — propagate immediately, don't treat as a retryable net error.
       // Gated on `signal` being present so original node callers (signal === undefined) are
       // provably unaffected: their AbortSignal.timeout fires a TimeoutError, which must keep
       // flowing into the consecutiveNetErrors retry path exactly as before.
       if (signal && (signal.aborted || (err instanceof Error && err.name === "AbortError"))) throw new Error("已停止");
-      if (err instanceof Error && (err.message.startsWith("ComfyUI 执行失败") || err.message.startsWith("ComfyUI 服务器持续无响应"))) throw err;
+      if (err instanceof Error && (err.message.startsWith("ComfyUI 执行失败") || err.message.startsWith("ComfyUI 服务器持续无响应") || err.message.startsWith("ComfyUI 任务超时"))) throw err;
       consecutiveNetErrors++;
       if (consecutiveNetErrors >= MAX_CONSECUTIVE_NET_ERRORS) {
         throw new Error(`ComfyUI 服务器不可达 (连续 ${consecutiveNetErrors} 次连接失败): ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }
-  throw new Error("ComfyUI 任务超时");
+  const mins = Math.round((HARD_CAP * POLL_INTERVAL_MS) / 60_000);
+  throw new Error(`ComfyUI 任务超时（已等待约 ${mins} 分钟仍未完成，可在服务器端查看队列或稍后重试）`);
 }
 
 /**

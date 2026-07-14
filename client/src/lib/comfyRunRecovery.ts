@@ -27,15 +27,17 @@ export interface PollDeps {
   /** 轮询服务端 workflowResult 查询。 */
   fetchResult: (jobId: string) => Promise<ComfyResultQuery>;
   sleep: (ms: number) => Promise<void>;
-  maxMs?: number;      // 兜底总时限（默认 12 分钟，覆盖最慢视频工作流）
+  maxMs?: number;      // 兜底总时限（默认 45 分钟，需 ≥ 服务端 pollHistory 硬上限，覆盖冷加载/拥堵的最慢工作流）
   intervalMs?: number; // 轮询间隔（默认 3 秒）
   now?: () => number;
 }
 
-/** socket 回灌优先 + workflowResult 轮询兜底，直到拿到终局结果或超时。 */
+/** socket 回灌优先 + workflowResult 轮询兜底，直到拿到终局结果或超时。
+ *  时限须覆盖服务端 pollHistory 的硬上限（队列感知延长后视频最长约 40 分钟）——服务端总会在硬上限内
+ *  产出 done/error 终局，本轮询只需等到那一刻；故默认 45 分钟即可，不会真的空等（服务端一给终局就返回）。 */
 export async function pollComfyRun(deps: PollDeps): Promise<RecoveredRun> {
   const { jobId, readPending, fetchResult, sleep } = deps;
-  const maxMs = deps.maxMs ?? 12 * 60 * 1000;
+  const maxMs = deps.maxMs ?? 45 * 60 * 1000;
   const intervalMs = deps.intervalMs ?? 3000;
   const now = deps.now ?? Date.now;
   const started = now();
