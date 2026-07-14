@@ -8,13 +8,17 @@ import { assertProjectAccess } from "../_core/permissions";
 import { assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog } from "../_core/auditLog";
 import { ENV } from "../_core/env";
-import { runComfyAgent, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
+import { runComfyAgent, extractRunLessons, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
 import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferenceCandidates } from "../_core/superAgent/comfyAdapters";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
 import { getSuperAgentConfig } from "../_core/superAgent/config";
-import { invalidateComfyKnowledge } from "../_core/comfyKnowledge";
+import { invalidateComfyKnowledge, getComfyKnowledge } from "../_core/comfyKnowledge";
+import {
+  recordWorkflowExperience, recallWorkflowExperiences, recordWorkflowFailure, recallPitfalls, pruneResolvedPitfalls,
+  listWorkflowExperiences, searchWorkflowExperiences, deleteWorkflowExperience, clearWorkflowExperiences,
+} from "../_core/comfyExperience";
 import { installModel, installCustomNode, isValidDownloadUrl, isValidModelFilename, isValidGitUrl, MODEL_DIRS, type ModelDir } from "../_core/ops/modelOps";
 import * as db from "../db";
 import type { TrpcContext } from "../_core/context";
@@ -28,6 +32,15 @@ const norm = (u: string) => u.replace(/\/+$/, "").trim();
  * 对象——引擎无安装能力，只能用现有资源。安装经 modelOps 的字符集+单引号注入防护 + 这里的
  * URL/文件名/目录白名单校验。
  */
+/** 装完模型/节点后：强制重学资源记忆（拿到最新已装清单），并清理「缺件已补齐」的过时坑（自愈）。best-effort。 */
+async function afterComfyInstall(baseUrl: string): Promise<void> {
+  invalidateComfyKnowledge(baseUrl); // 资源记忆失效 → 下面 force 重学最新已装清单
+  try {
+    const k = await getComfyKnowledge(baseUrl, { force: true });
+    await pruneResolvedPitfalls(baseUrl, k.resources);
+  } catch { /* 重学/清理失败无妨，下次召回时也会自动跳过过时坑 */ }
+}
+
 async function resolveInstallTools(ctx: TrpcContext, baseUrl: string): Promise<Pick<ComfyAgentTools, "installModel" | "installNode">> {
   if (!getSuperAgentConfig().autoInstall) return {};
   if ((ctx.user?.adminLevel ?? 0) < 3) return {};
@@ -40,12 +53,12 @@ async function resolveInstallTools(ctx: TrpcContext, baseUrl: string): Promise<P
       if (!isValidDownloadUrl(url)) return { ok: false, message: "下载 URL 未通过安全校验" };
       if (!isValidModelFilename(filename)) return { ok: false, message: "文件名未通过校验（需 .safetensors/.ckpt 等）" };
       if (!(MODEL_DIRS as readonly string[]).includes(dir)) return { ok: false, message: `目标子目录非法（允许：${MODEL_DIRS.join("/")}）` };
-      try { const r = await installModel(sid, url, dir as ModelDir, filename); if (r.ok) invalidateComfyKnowledge(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
+      try { const r = await installModel(sid, url, dir as ModelDir, filename); if (r.ok) await afterComfyInstall(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
       catch (e) { return { ok: false, message: e instanceof Error ? e.message : String(e) }; }
     },
     installNode: async (gitUrl) => {
       if (!isValidGitUrl(gitUrl)) return { ok: false, message: "git 仓库 URL 未通过校验" };
-      try { const r = await installCustomNode(sid, gitUrl); if (r.ok) invalidateComfyKnowledge(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
+      try { const r = await installCustomNode(sid, gitUrl); if (r.ok) await afterComfyInstall(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
       catch (e) { return { ok: false, message: e instanceof Error ? e.message : String(e) }; }
     },
   };
@@ -115,6 +128,8 @@ export const superAgentRouter = router({
         seedWorkflowJson: z.string().max(200_000).optional(),
         /** 连续对话：先前若干轮的精简历史。 */
         history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(8000) })).max(20).optional(),
+        /** 是否使用记忆体（资源记忆 + 工作流经验召回）。默认 true；关掉则忽略记忆、直接读真机。 */
+        useMemory: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -126,16 +141,40 @@ export const superAgentRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点里填写目标服务器或服务端设置 COMFYUI_BASE_URL" });
       }
 
+      const useMemory = input.useMemory !== false; // 默认用记忆体；显式 false 才关闭
       const installTools = await resolveInstallTools(ctx, baseUrl); // 默认空（框架 inert）；满足前提才开放
-      const tools = { ...createComfyTools({ baseUrl, projectId: input.projectId, nodeId: input.nodeId }), ...installTools };
+      // useMemory=false：资源记忆也不用，强制读真机（仍写穿缓存，供他方复用）。
+      const tools = { ...createComfyTools({ baseUrl, projectId: input.projectId, nodeId: input.nodeId, useMemory }), ...installTools };
       const llm = createAgentLLM(ctx, input.model); // LLM 白名单/密钥门控在 invokeLLMWithKie 内部强制
 
-      // 从零编写时，检索参考范例：优先本项目画布上已有的 comfyui_workflow 节点（你自己刚跑通的图），
-      // 再加共享模板库里「已在真实 ComfyUI 保存/调通」的相似工作流。安全语料、可滚雪球。
-      // 续接（seedWorkflowJson）已有基底，不再注入以省上下文。
+      // 从零编写时，检索参考范例：优先「工作流经验记忆体」召回本服务器成功搭通过的相似工作流（最高信号、
+      // 尽量给全量图供直接参考），再加本项目画布上的 comfyui_workflow 节点、共享模板库里的相似工作流。
+      // 续接（seedWorkflowJson）已有基底，不再注入以省上下文。useMemory=false 时不召回经验。
+      // 失败教训/已知坑：召回本服务器过往在类似任务上踩过的坑，注入引擎开头主动规避（useMemory 时）。
+      // 本次真实看到的服务器资源（useMemory=false 时 createComfyTools 已 force 读真机 → 这里拿到的是最新已装清单）。
+      // 供「召回时剔除过时坑」+「构建结束按最新资源 prune 已解决的坑」共用，只取一次（内部有 knowledgePromise 复用）。
+      const curRes = await tools.listResources().catch(() => null);
+      let knownPitfalls: string[] = [];
+      if (useMemory) {
+        try {
+          // 传入当前资源 → 召回时自动剔除「缺件已补齐」的过时坑（装上缺失节点/模型后不再误报）。
+          knownPitfalls = await recallPitfalls(baseUrl, input.task, 10, curRes);
+          if (knownPitfalls.length) {
+            emitSuperAgentEvent(input.projectId, input.nodeId, {
+              type: "memory",
+              message: `已调用失败经验记忆体：注入 ${knownPitfalls.length} 条过往踩过的坑，本次将主动规避（避免重复造车）。`,
+              data: { kind: "pitfalls", count: knownPitfalls.length },
+            });
+          }
+        } catch { /* 召回失败不阻断 */ }
+      }
+
       let referenceExamples: { label: string; workflowJson: string }[] = [];
       if (!input.seedWorkflowJson) {
         try {
+          // 经验优先且尽量给全（8000 上限，绝大多数图可完整参考、不失真）。
+          const exp = useMemory ? await recallWorkflowExperiences(baseUrl, input.task, 2, 8000).catch(() => []) : [];
+          const expExamples = exp.map((e) => ({ label: `经验·${e.label}`, workflowJson: e.workflowJson }));
           const canvasCands = (await db.getNodesByProject(input.projectId).catch(() => []))
             .filter((n) => n.type === "comfyui_workflow")
             .map((n) => {
@@ -145,9 +184,18 @@ export const superAgentRouter = router({
           const tplCands = (await db.listComfyNodeTemplates().catch(() => []))
             .filter((r) => r.nodeType === "comfyui_workflow")
             .map((r) => ({ label: r.label, note: r.note ?? undefined, workflowJson: String((r.payload as Record<string, unknown> | null)?.workflowJson ?? "") }));
-          // 画布优先（同分时保序），去重同一份 workflowJson。
-          const all = dedupeReferenceCandidates([...canvasCands, ...tplCands]);
-          referenceExamples = pickReferenceWorkflows(input.task, all, 2);
+          const picked = pickReferenceWorkflows(input.task, dedupeReferenceCandidates([...canvasCands, ...tplCands]), 2);
+          // 经验在前（已按相关度排序、内容更全），再补画布/模板参考；整体去重同一份图、总数封顶 3。
+          referenceExamples = dedupeReferenceCandidates([...expExamples, ...picked].map((x) => ({ ...x, note: undefined })))
+            .map((x) => ({ label: x.label, workflowJson: x.workflowJson })).slice(0, 3);
+          if (exp.length) {
+            // 记忆体调用提醒：本次参考了 N 条历史成功经验（永不过期，如需清理到经验记忆面板手动删除）。
+            emitSuperAgentEvent(input.projectId, input.nodeId, {
+              type: "memory",
+              message: `已调用工作流经验记忆体：参考了 ${exp.length} 条历史成功工作流（越用越快；如经验已过时，可在「工作流经验记忆」里手动删除）。`,
+              data: { kind: "experience", count: exp.length, tasks: exp.map((e) => e.label).slice(0, 3) },
+            });
+          }
         } catch { /* 检索失败不阻断 */ }
       }
 
@@ -167,6 +215,7 @@ export const superAgentRouter = router({
           history: input.history,
           referenceExamples,
           showAllResources: input.showAllResources,
+          knownPitfalls,
         });
       } finally {
         runningJobs.delete(key);
@@ -177,6 +226,53 @@ export const superAgentRouter = router({
         action: "superagent_comfy_build",
         detail: { projectId: input.projectId, task: input.task.slice(0, 200), status: result.status, iterations: result.iterations, baseUrl },
       });
+
+      // 全量沉淀进「工作流经验记忆体」（best-effort，不阻断返回，与是否「使用」记忆解耦——始终学习）：
+      // - 成功：完整工作流 + 分析/样例产物/迭代/LLM + 过程中克服的问题（lessons）。
+      // - 失败/耗尽（非用户取消）：把拦路的问题当「踩过的坑」沉淀，下次同类任务主动规避、不重复造车。
+      const lessons = extractRunLessons(result.log);
+      if (result.status === "success" && result.workflowJson) {
+        void recordWorkflowExperience({
+          baseUrl, task: input.task, workflowJson: result.workflowJson, outputType: result.outputType ?? null,
+          meta: {
+            analysis: result.analysis ? { paramBindings: result.analysis.paramBindings, outputNodeIds: result.analysis.outputNodeIds, outputType: result.analysis.outputType ?? null } : undefined,
+            images: result.images, videos: result.videos,
+            iterations: result.iterations, llmModel: input.model ?? null,
+            lessons: lessons.length ? lessons : undefined,
+          },
+        }).then((saved) => {
+          if (saved) emitSuperAgentEvent(input.projectId, input.nodeId, {
+            type: "memory",
+            message: "已把本次成功工作流存入经验记忆体，下次相似任务将自动参考（永不过期，可手动清理）。",
+            data: { kind: "experience-saved" },
+          });
+        }).catch(() => { /* 沉淀失败无妨 */ });
+      } else if ((result.status === "failed" || result.status === "exhausted") && lessons.length) {
+        // aborted（用户取消）不记；纯连接/超时噪声已被 extractRunLessons 过滤（lessons 为空则不记）。
+        void recordWorkflowFailure({
+          baseUrl, task: input.task, status: result.status, failReasons: lessons,
+          workflowJson: result.workflowJson, meta: { iterations: result.iterations, llmModel: input.model ?? null },
+        }).then((saved) => {
+          if (saved) emitSuperAgentEvent(input.projectId, input.nodeId, {
+            type: "memory",
+            message: `已把本次失败教训（${lessons.length} 条踩过的坑）存入记忆体，下次同类任务将主动规避。`,
+            data: { kind: "pitfall-saved", count: lessons.length },
+          });
+        }).catch(() => { /* 沉淀失败无妨 */ });
+      }
+
+      // 构建结束顺手「自愈剪枝」：按本次真实看到的资源删掉已补齐的过时坑。
+      // 尤其「不用记忆」跑（useMemory=false，force 读真机拿到最新已装清单）等于一次「刷新记忆」——
+      // 把之前误报的缺件坑清理掉。curRes 为空/资源缺失时 isPitfallReasonResolved 只会保留、绝不误删。
+      if (curRes) {
+        void pruneResolvedPitfalls(baseUrl, curRes).then((removed) => {
+          if (removed > 0) emitSuperAgentEvent(input.projectId, input.nodeId, {
+            type: "memory",
+            message: `已自动清理 ${removed} 条过时的失败坑（相关缺失节点/模型现已就绪）。`,
+            data: { kind: "pitfall-pruned", count: removed },
+          });
+        }).catch(() => { /* 剪枝失败无妨 */ });
+      }
 
       // 日志已流式推送；这里回传最终产物 + 精简日志（去掉可能很大的 data 字段）。
       const finalResult = {
@@ -202,6 +298,57 @@ export const superAgentRouter = router({
     .query(({ input }) => {
       const c = buildResults.get(jobKey(input.projectId, input.nodeId));
       return { result: c ? c.result : null };
+    }),
+
+  // ── 工作流经验记忆体（多方查询/管理）。永不自动过期，只手动删除/清空。L3+ 可读可管。 ──
+  listWorkflowMemory: managerProc
+    .input(z.object({ baseUrl: z.string().max(512).optional() }).optional())
+    .query(async ({ input }) => {
+      const rows = await listWorkflowExperiences(input?.baseUrl);
+      // 不回传完整 workflowJson（可能很大）；给摘要 + 长度，详情按需再取。
+      return rows.map((r) => ({
+        id: r.id, baseUrl: r.baseUrl, task: r.task, status: r.status, nodeClasses: r.nodeClasses,
+        outputType: r.outputType, usageCount: r.usageCount, createdAt: r.createdAt,
+        workflowJsonLength: r.workflowJson.length,
+        failReasons: r.meta?.failReasons ?? null, lessons: r.meta?.lessons ?? null,
+      }));
+    }),
+
+  searchWorkflowMemory: managerProc
+    .input(z.object({ query: z.string().max(200), baseUrl: z.string().max(512).optional(), limit: z.number().int().min(1).max(200).optional() }))
+    .query(async ({ input }) => {
+      const rows = await searchWorkflowExperiences(input.query, input.baseUrl, input.limit ?? 50);
+      return rows.map((r) => ({
+        id: r.id, baseUrl: r.baseUrl, task: r.task, status: r.status, nodeClasses: r.nodeClasses,
+        outputType: r.outputType, usageCount: r.usageCount, createdAt: r.createdAt,
+        workflowJsonLength: r.workflowJson.length,
+        failReasons: r.meta?.failReasons ?? null, lessons: r.meta?.lessons ?? null,
+      }));
+    }),
+
+  // 取一条经验的完整 workflowJson（前端「查看/套用」用）。
+  getWorkflowMemory: managerProc
+    .input(z.object({ id: z.number().int() }))
+    .query(async ({ input }) => {
+      const rows = await listWorkflowExperiences();
+      const r = rows.find((x) => x.id === input.id);
+      return r ? { id: r.id, task: r.task, workflowJson: r.workflowJson, nodeClasses: r.nodeClasses, outputType: r.outputType, createdAt: r.createdAt } : null;
+    }),
+
+  deleteWorkflowMemory: managerProc
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      await deleteWorkflowExperience(input.id);
+      writeAuditLog({ ctx, action: "superagent_workflow_memory_delete", detail: { id: input.id } });
+      return { ok: true as const };
+    }),
+
+  clearWorkflowMemory: managerProc
+    .input(z.object({ baseUrl: z.string().max(512).optional() }).optional())
+    .mutation(async ({ ctx, input }) => {
+      await clearWorkflowExperiences(input?.baseUrl);
+      writeAuditLog({ ctx, action: "superagent_workflow_memory_clear", detail: { baseUrl: input?.baseUrl ?? "ALL" } });
+      return { ok: true as const };
     }),
 
   // 是否可用（前端据此显示/隐藏「代码任务」入口）。任何 L3+ 都能查询状态。

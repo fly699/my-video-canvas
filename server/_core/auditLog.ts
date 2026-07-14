@@ -130,7 +130,9 @@ export type AuditAction =
   | "ops:ai_generate"
   | "ops:trust_toggle"
   | "superagent_comfy_build"
-  | "superagent_code_task";
+  | "superagent_code_task"
+  | "superagent_workflow_memory_delete"
+  | "superagent_workflow_memory_clear";
 
 export interface AuditOpts {
   ctx?: TrpcContext;

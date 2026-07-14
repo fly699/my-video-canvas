@@ -884,6 +884,45 @@ export const comfyKnowledge = mysqlTable("comfy_knowledge", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// ComfyUI 「工作流经验记忆体」：工程智能体每次成功搭通一份工作流，就把「任务描述 + 最终
+// workflowJson + 用到的节点类/输出类型」沉淀一条。下次相似任务先召回这些成功范例注入上下文，
+// 少走多轮推理——越用越快。与资源记忆体一样【永不自动过期】，只由用户手动管理（删除/清空）。
+// workflowJson 可较大用 longtext；nodeClasses 轻量 JSON 便于按节点集合召回与展示。hash 为
+// workflowJson 归一化后的指纹，用于去重（同一服务器上同一份图不重复沉淀）。
+export type ComfyWorkflowMemoryNodeClasses = string[];
+// meta 全量留存本次成功搭建的一切有用信息（不落下）：分析结果（参数绑定/输出节点/输出类型）、
+// 用到的模型（checkpoints/loras）、样例产物 URL、迭代轮数、搭建所用 LLM、参考来源、原始任务等。
+// 用 JSON 灵活承载、随需扩展，避免频繁加列。workflowJson 本身即完整 API 图（永不截断存储）。
+export type ComfyWorkflowMemoryMeta = {
+  analysis?: { paramBindings?: unknown; outputNodeIds?: unknown; outputType?: string | null };
+  models?: { checkpoints?: string[]; loras?: string[]; vaes?: string[] };
+  images?: string[];
+  videos?: string[];
+  iterations?: number;
+  llmModel?: string | null;
+  referenceLabels?: string[];
+  /** 成功时：过程中克服过的问题（教训）。 */
+  lessons?: string[];
+  /** 失败时：拦路的问题/放弃原因（下次当作已知坑规避）。 */
+  failReasons?: string[];
+  [k: string]: unknown;
+};
+// status：success=调通并沉淀为可复用范例；failed/exhausted=失败经验（记「踩过的坑」，下次规避）。
+export const comfyWorkflowMemory = mysqlTable("comfy_workflow_memory", {
+  id: int("id").autoincrement().primaryKey(),
+  baseUrl: varchar("baseUrl", { length: 512 }).notNull(),
+  task: varchar("task", { length: 2000 }).notNull(),
+  workflowJson: longtext("workflowJson").notNull(),
+  hash: varchar("hash", { length: 64 }).notNull(),
+  status: varchar("status", { length: 24 }).default("success").notNull(),
+  nodeClasses: json("nodeClasses").$type<ComfyWorkflowMemoryNodeClasses>(),
+  outputType: varchar("outputType", { length: 32 }),
+  meta: json("meta").$type<ComfyWorkflowMemoryMeta>(),
+  usageCount: int("usageCount").default(0).notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const whitelistEntries = mysqlTable("whitelistEntries", {
   id: int("id").autoincrement().primaryKey(),
   type: mysqlEnum("type", ["ip", "user"]).notNull(),

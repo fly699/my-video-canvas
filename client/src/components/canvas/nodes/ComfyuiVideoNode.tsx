@@ -17,6 +17,7 @@ import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../m
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { useComfyMemoryEnabled } from "@/lib/comfyMemoryPref";
 import { toast } from "sonner";
 import { applyFreeVramToAllComfyNodes } from "../../../lib/comfyFreeVram";
 import {
@@ -123,8 +124,9 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   // not the union of saved servers. Unioning (customBaseUrls) showed models that
   // exist on another saved server but not the one the request targets, so a
   // dropdown pick could fail with "not in list" on submit.
+  const comfyMemoryOn = useComfyMemoryEnabled();
   const modelsQuery = trpc.comfyui.fetchModels.useQuery(
-    { customBaseUrl: debouncedUrl },
+    { customBaseUrl: debouncedUrl, useMemory: comfyMemoryOn },
     { staleTime: 60_000, retry: false }
   );
 

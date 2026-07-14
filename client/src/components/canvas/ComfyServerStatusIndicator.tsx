@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles, ChevronsLeftRight, ChevronsRightLeft, Eraser, BrainCircuit } from "lucide-react";
+import { Server, Plus, X, Cpu, RefreshCw, Pin, PinOff, Zap, Ban, ListX, Sparkles, ChevronsLeftRight, ChevronsRightLeft, Eraser, BrainCircuit, Database, DatabaseZap } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useComfyMemoryEnabled, setComfyMemoryEnabled } from "@/lib/comfyMemoryPref";
 import { WorkflowRecommenderDialog } from "./WorkflowRecommenderDialog";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useComfyServersStore } from "../../hooks/useComfyServersStore";
@@ -233,6 +234,7 @@ export function ComfyServerStatusIndicator() {
 
   // 复位「全部服务器」记忆体：清空进程内缓存 + DB 持久化全表（含数据库）。各服务器下次被调用时自动重建。
   const resetAllMemoryMut = trpc.comfyui.resetAllKnowledge.useMutation();
+  const memoryEnabled = useComfyMemoryEnabled();
   const resetAllMemory = () => {
     if (!window.confirm("复位全部服务器的记忆体？将清空所有已学的资源/节点记忆（含数据库）。各服务器下次被调用时会自动重新学习。")) return;
     resetAllMemoryMut.mutate(undefined, {
@@ -351,6 +353,14 @@ export function ComfyServerStatusIndicator() {
                 <button title="清理画布所有失效服务器（从全局列表 + 每个 ComfyUI 节点删除离线地址）"
                   className="topbar-btn" style={{ width: 22, height: 22, color: "oklch(0.66 0.18 30)" }} onClick={cleanAllFailed}>
                   <Eraser className="w-3 h-3" />
+                </button>
+                <button
+                  title={memoryEnabled
+                    ? "ComfyUI 节点正在使用记忆体：模型清单走缓存（学过一次秒开、跨节点共享、永不过期）。点击切到「每次读真机」"
+                    : "ComfyUI 节点未使用记忆体：每次读真机刷新模型清单。点击切回「使用记忆体缓存」"}
+                  className="topbar-btn" style={{ width: 22, height: 22, color: memoryEnabled ? "oklch(0.68 0.16 160)" : "var(--c-t3)" }}
+                  onClick={() => setComfyMemoryEnabled(!memoryEnabled)}>
+                  {memoryEnabled ? <Database className="w-3 h-3" /> : <DatabaseZap className="w-3 h-3" />}
                 </button>
                 {isAdmin && (
                   <button title="复位全部服务器的知识记忆体（清空已学资源/节点，含数据库；下次调用自动重学）"

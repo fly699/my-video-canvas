@@ -340,6 +340,34 @@ describe("runComfyAgent — 闭环编排", () => {
     expect(sys).not.toContain("…(+");
   });
 
+  it("记忆体提醒：resources 事件带学习时刻 + 复位提醒（旧记忆）", async () => {
+    const events: { type: string; message: string; data?: unknown }[] = [];
+    const oldAt = 1_000_000; // 一个很早的时刻 → 记忆很旧
+    await runComfyAgent({
+      task: "出图",
+      tools: fakeTools({ resourceMemoryFetchedAt: async () => oldAt }),
+      emit: (e) => events.push(e),
+      llm: scriptedLLM([`{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`, `{"action":"execute"}`]),
+    });
+    const res = events.find((e) => e.type === "resources");
+    expect(res).toBeTruthy();
+    expect(res!.message).toContain("复位全部记忆"); // 提醒用户可复位
+    expect((res!.data as { memoryFetchedAt?: number }).memoryFetchedAt).toBe(oldAt);
+    expect((res!.data as { memoryAgeMs?: number }).memoryAgeMs).toBeGreaterThan(0);
+  });
+
+  it("记忆体提醒：无 resourceMemoryFetchedAt（如云端）→ 不附提醒", async () => {
+    const events: { type: string; message: string }[] = [];
+    await runComfyAgent({
+      task: "出图",
+      tools: fakeTools(), // 无 resourceMemoryFetchedAt
+      emit: (e) => events.push(e),
+      llm: scriptedLLM([`{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`, `{"action":"execute"}`]),
+    });
+    const res = events.find((e) => e.type === "resources");
+    expect(res!.message).not.toContain("复位");
+  });
+
   it("describe_nodes：无工具 → 提示直接 author、不崩溃", async () => {
     const seen: string[] = [];
     const r = await runComfyAgent({

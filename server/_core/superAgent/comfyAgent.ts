@@ -43,6 +43,9 @@ export interface ComfyAgentTools {
   /** 查询若干节点类的精确输入/输出 schema（字段名·类型·枚举·默认），供 LLM 写图前对齐、
    *  不再靠记忆猜。返回一段人类可读文本（每个节点一块）。可选：老适配器不实现则引擎自动禁用。 */
   describeNodes?(classNames: string[]): Promise<string>;
+  /** 可选：本次资源清单/schema 的「知识记忆体」学习时刻（ms）。用于提醒用户记忆是否可能过时、
+   *  需不需要复位记忆体重学。不实现（如云端）则不提示。 */
+  resourceMemoryFetchedAt?(): Promise<number | null>;
   /** 可选：下载安装缺失模型（checkpoint/LoRA/VAE…）。仅当宿主提供（已注册 ops 服务器 + 权限 +
    *  开关）时可用；不提供则智能体无安装能力，只能用现有资源。参数经宿主侧安全校验。 */
   installModel?(spec: { url: string; dir: string; filename: string }): Promise<{ ok: boolean; message: string }>;
@@ -111,6 +114,34 @@ export interface RunComfyAgentOptions {
   referenceExamples?: { label: string; workflowJson: string }[];
   /** 「加载全部资源」：系统提示里不截断，列出服务器全部已装 checkpoint/LoRA/VAE/节点（需大上下文模型）。 */
   showAllResources?: boolean;
+  /** 已知坑/失败教训：本服务器过往在类似任务上踩过的坑（来自失败经验记忆体），开头提醒 LLM 主动规避。 */
+  knownPitfalls?: string[];
+}
+
+/** 从一次运行的事件日志里抽出「教训」——distinct 的校验/运行错误签名（去噪、去重、截断）。
+ *  成功时 = 过程中克服过的问题；失败时 = 拦路的问题。纯函数，便于单测与多处复用。 */
+export function extractRunLessons(log: AgentEvent[], cap = 12): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  // 连接/超时/取消类是环境噪声，不是「工作流本身的坑」，不入教训（避免污染未来规避提示）。
+  const noise = /超时|timeout|无法连接|连接失败|拒绝连接|ECONN|ETIMEDOUT|fetch failed|socket hang|abort|已取消/i;
+  const add = (s: string) => {
+    const sig = String(s).trim().replace(/\s+/g, " ").slice(0, 240);
+    if (!sig || noise.test(sig)) return;
+    const key = sig.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(sig);
+  };
+  for (const e of log) {
+    const d = (e.data ?? {}) as { tool?: string; ok?: boolean; errors?: unknown; error?: unknown };
+    if (d.tool === "validate" && d.ok === false && Array.isArray(d.errors)) {
+      for (const err of d.errors) if (typeof err === "string") add(err);
+    } else if (d.tool === "execute" && d.ok === false && typeof d.error === "string") {
+      add("运行失败：" + d.error);
+    }
+  }
+  return out.slice(0, cap);
 }
 
 /** LLM 每轮必须返回的单个 JSON 动作。 */
@@ -255,12 +286,27 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
 
   // 0. 拉资源清单，进系统提示。
   const resources = await opts.tools.listResources();
-  emit({ type: "resources", iteration: 0, message: `已获取服务器资源：${resources.checkpoints.length} checkpoints / ${resources.loras.length} loras / ${resources.nodeClasses.length} 节点类`, data: resources });
+  // 记忆体提醒：本次资源来自「知识记忆体」（内存/DB 缓存）时，附上学习时刻与「如已增删模型/节点请复位记忆体」
+  // 提醒，让用户判断记忆是否过时。刚学的（age 很小）也如实告知来源，满足「每次调用记忆都提示」。
+  const memAt = (await opts.tools.resourceMemoryFetchedAt?.().catch(() => null)) ?? null;
+  const memNote = ((): string => {
+    if (memAt == null) return "";
+    const ageMs = Date.now() - memAt;
+    const mins = Math.max(0, Math.round(ageMs / 60000));
+    const when = mins <= 0 ? "刚学习" : mins < 60 ? `${mins} 分钟前学习` : `${Math.round(mins / 60)} 小时前学习`;
+    return `（记忆体·${when}；若已增删模型/节点，请点服务器面板『复位全部记忆』重学）`;
+  })();
+  emit({ type: "resources", iteration: 0, message: `已获取服务器资源：${resources.checkpoints.length} checkpoints / ${resources.loras.length} loras / ${resources.nodeClasses.length} 节点类${memNote}`, data: { ...resources, memoryFetchedAt: memAt, memoryAgeMs: memAt == null ? null : Date.now() - memAt } });
 
   const continuing = !!opts.seedWorkflowJson;
   const canInstall = !!(opts.tools.installModel || opts.tools.installNode);
   const canDescribe = !!opts.tools.describeNodes;
   const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing, canInstall, canDescribe, opts.referenceExamples ?? [], opts.showAllResources) }];
+  // 已知坑/失败教训注入：本服务器过往在类似任务上踩过的坑，开头提醒主动规避，避免重复造车。
+  const pitfalls = (opts.knownPitfalls ?? []).filter((s) => typeof s === "string" && s.trim()).slice(0, 12);
+  if (pitfalls.length) {
+    messages.push({ role: "user", content: `⚠️ 本服务器过往在类似任务上踩过以下坑（来自失败经验记忆体），请在动手前主动规避、不要重复踩：\n${pitfalls.map((p) => `- ${p}`).join("\n")}` });
+  }
   // 连续对话：并入先前若干轮精简历史。
   for (const h of opts.history ?? []) messages.push(h);
 

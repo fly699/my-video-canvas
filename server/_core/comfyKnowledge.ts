@@ -5,7 +5,7 @@
 // 设计：进程内 Map（key=归一化 baseUrl）+ TTL 新鲜度 + 显式刷新。首次/过期时拉真机，之后命中缓存。
 // 纯读取（listResources/describeNodes）都改走这里，天然跨「一次会话/一次生成」复用。DB 持久化可后续再加
 // （现为进程内，重启即重建；对「同一会话反复调、多节点共享」已足够）。
-import { fetchComfyModels } from "./comfyui";
+import { fetchComfyModels, emptyModelList, type ComfyModelList } from "./comfyui";
 import { getComfyKnowledgeRow, setComfyKnowledgeRow, deleteComfyKnowledgeRow, deleteAllComfyKnowledgeRows } from "../db";
 
 export interface ComfyResourceMemory {
@@ -25,12 +25,18 @@ export interface ComfyKnowledge {
   objectInfo: Record<string, unknown> | null;
   /** 资源清单（模型/LoRA/采样器 + 节点类名目录）。 */
   resources: ComfyResourceMemory;
+  /** 全量模型清单（含 ckpts/loras/vaes/unets/controlnets/clips/... 全部类目），供 ComfyUI 节点模型选择器复用。
+   *  比 resources 更全（resources 只是给智能体用的精简子集）；进程内缓存，不入 DB（重启后首取重拉）。 */
+  modelList: ComfyModelList | null;
   /** 记忆写入时刻（ms）。 */
   fetchedAt: number;
 }
 
 const norm = (u: string) => u.replace(/\/+$/, "").trim();
-const DEFAULT_TTL_MS = 10 * 60 * 1000; // 10 分钟新鲜度：内网 ComfyUI 装/删模型不频繁，够用又不至太陈
+// 记忆默认【永不自动过期】：ComfyUI 的模型/节点不会老变，10 分钟 TTL 反而让内网服务器
+// 被反复重拉、还常打断正在跑的会话。改为完全由用户手动保鲜——顶栏「复位全部记忆」清空
+// 后下次调用重学；每次调用都会提醒「N 前学习」，由用户判断是否需要复位。仍保留 maxAgeMs
+// 逃生阀（传具体毫秒可临时启用过期，主要给单测/特殊场景）。
 
 const cache = new Map<string, ComfyKnowledge>();
 
@@ -68,6 +74,8 @@ async function refetch(baseUrl: string, f: KnowledgeFetchers): Promise<ComfyKnow
       schedulers: models?.schedulers ?? [],
       nodeClasses: objectInfo ? Object.keys(objectInfo) : [],
     },
+    // 全量模型清单（生产的 fetchComfyModels 返回全类目；注入的测试 fetcher 可能只有子集）。
+    modelList: (models as ComfyModelList | null) ?? null,
     fetchedAt: Date.now(),
   };
   cache.set(key, knowledge);
@@ -83,7 +91,7 @@ export async function getComfyKnowledge(
   opts: { force?: boolean; maxAgeMs?: number } & KnowledgeFetchers = {},
 ): Promise<ComfyKnowledge> {
   const key = norm(baseUrl);
-  const maxAge = opts.maxAgeMs ?? DEFAULT_TTL_MS;
+  const maxAge = opts.maxAgeMs ?? Infinity; // 默认永不过期，只认 force / 手动复位
   const fresh = (t: number) => Date.now() - t < maxAge;
   if (!opts.force) {
     const hit = cache.get(key);
@@ -92,7 +100,9 @@ export async function getComfyKnowledge(
     try {
       const row = await getComfyKnowledgeRow(key);
       if (row && fresh(row.fetchedAt)) {
-        const k: ComfyKnowledge = { baseUrl: key, objectInfo: row.objectInfo, resources: row.resources, fetchedAt: row.fetchedAt };
+        // DB 不持久化全量 modelList（仅精简 resources），从 DB 复用时 modelList=null，
+        // 首次需要全量模型清单的调用会按需重拉真机（见 getComfyModelList）。
+        const k: ComfyKnowledge = { baseUrl: key, objectInfo: row.objectInfo, resources: row.resources, modelList: null, fetchedAt: row.fetchedAt };
         cache.set(key, k);
         return k;
       }
@@ -104,6 +114,18 @@ export async function getComfyKnowledge(
 /** 只读命中的记忆，绝不发起抓取（未缓存返回 null）。供「有则用记忆、无则不阻塞」的场景。 */
 export function peekComfyKnowledge(baseUrl: string): ComfyKnowledge | null {
   return cache.get(norm(baseUrl)) ?? null;
+}
+
+/** 取某服务器的全量模型清单（供 ComfyUI 节点模型选择器）。命中记忆则直接返回（永不过期，手动复位才重学）；
+ *  记忆里没有全量 modelList（如刚从 DB 复用、或从未学过）时按需重拉真机一次并写入记忆。force=强制重拉。 */
+export async function getComfyModelList(baseUrl: string, opts: { force?: boolean } = {}): Promise<ComfyModelList> {
+  const key = norm(baseUrl);
+  if (!opts.force) {
+    const hit = cache.get(key);
+    if (hit?.modelList) return { ...emptyModelList(), ...hit.modelList };
+  }
+  const k = await refetch(key, {}); // 全量重拉（含 modelList），写穿记忆
+  return { ...emptyModelList(), ...(k.modelList ?? {}) };
 }
 
 /** 在记忆里按关键词检索各类资源（子串、大小写不敏感），每类截断 limit。 */

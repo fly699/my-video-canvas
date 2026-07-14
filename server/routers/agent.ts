@@ -13,6 +13,9 @@ import { runLibraryAnalysis } from "../_core/templateAnalysis";
 import { broadcastAgentHistoryUpdated } from "../_core/agentBus";
 import { assertSafeUrl } from "../_core/videoEditor";
 import { storagePut, assertObjectStorageWritable } from "../storage";
+import { ENV } from "../_core/env";
+import { peekComfyKnowledge, getComfyKnowledge, type ComfyKnowledge } from "../_core/comfyKnowledge";
+import { recallWorkflowExperiences } from "../_core/comfyExperience";
 import * as db from "../db";
 import type { AgentOperation } from "../../shared/types";
 
@@ -168,6 +171,8 @@ const agentChatInput = z.object({
          *  未勾任何 comfyui_* 复选框）时传 true——不触发后台模板分析、不读模板表、
          *  不注入模板知识段，省 DB 读与提示词体积。与 comfyOnly 互斥（comfyOnly 优先）。 */
         skipComfyTemplates: z.boolean().optional(),
+        /** 是否使用 ComfyUI 记忆体（资源记忆 + 工作流经验）注入规划上下文。默认 true；关掉则不注入。 */
+        useComfyMemory: z.boolean().optional(),
         /** #141 模型清单按需注入：快速设置锁定的图/视频模型 id——对应类别只注入所锁模型
          *  的完整参数条目（其余压成名字目录），提示词大幅缩身。空/无效值 = 该类别全量。 */
         pinnedImageModel: z.string().max(128).optional(),
@@ -219,6 +224,65 @@ function sweepAgentChatJobs(): void {
 // 在飞守卫：多轮对话/多用户并发时不重复起分析（runLibraryAnalysis 本身是增量的，
 // 但并发两份会对同一批新模板各跑一遍 LLM 分析，白花钱）。
 let libraryAnalysisInFlight: Promise<unknown> | null = null;
+
+// ── ComfyUI 知识记忆体接入画布助手 ─────────────────────────────────────────────
+// 工程智能体每次检索 ComfyUI 服务器的 checkpoint/LoRA/VAE/采样器/节点类都会写入「知识记忆体」
+// （server/_core/comfyKnowledge.ts，内存 + DB 持久化）。画布助手是「一次性 JSON 规划」智能体，
+// 无法在生成中途调用工具，所以「接成可查询的工具」= 规划前把记忆体里该服务器真实装有的资源直接
+// 注入规划上下文——助手据此按真实存在的 checkpoint/LoRA/节点来规划（如为 comfyui_image 选真实
+// 存在的 ckpt、避免编造），与工程智能体、ComfyUI 节点共享同一份记忆，天然复用不重复检索。
+async function resolveAgentComfyBase(): Promise<string> {
+  if (ENV.comfyuiBaseUrl) return ENV.comfyuiBaseUrl;
+  try { return (await db.getComfyGlobalServers())[0] ?? ""; } catch { return ""; }
+}
+
+export function buildComfyResourceSection(k: ComfyKnowledge): string {
+  const r = k.resources;
+  const list = (arr: string[], cap: number) =>
+    arr.length ? arr.slice(0, cap).join("、") + (arr.length > cap ? ` …(共 ${arr.length} 项)` : "") : "（无）";
+  const ageMs = Date.now() - k.fetchedAt;
+  const mins = Math.round(ageMs / 60000);
+  const when = mins <= 0 ? "刚学习" : mins < 60 ? `${mins} 分钟前学习` : `${Math.round(mins / 60)} 小时前学习`;
+  const lines = [
+    `- checkpoints（大模型，共 ${r.checkpoints.length}）：${list(r.checkpoints, 40)}`,
+    `- LoRA（共 ${r.loras.length}）：${list(r.loras, 40)}`,
+  ];
+  if (r.vaes.length) lines.push(`- VAE（共 ${r.vaes.length}）：${list(r.vaes, 20)}`);
+  if (r.samplers.length) lines.push(`- 采样器：${list(r.samplers, 30)}`);
+  if (r.schedulers.length) lines.push(`- 调度器：${list(r.schedulers, 30)}`);
+  if (r.nodeClasses.length) lines.push(`- 已安装节点类（共 ${r.nodeClasses.length}）：${list(r.nodeClasses, 80)}`);
+  return `\n\n# ComfyUI 服务器已装资源（知识记忆体·${when}）\n（以下是工程智能体从你的 ComfyUI 服务器真实检索并记住的资源清单，与工程智能体/ComfyUI 节点共享同一份记忆。规划涉及 ComfyUI 的节点时，checkpoint/LoRA/VAE/采样器/节点类【只能从下面真实存在的项里选】，禁止编造清单外的名称；若这里为空或与实际不符，可到画布顶栏服务器面板点「复位全部记忆」重新学习。）\n${lines.join("\n")}`;
+}
+
+/** 取该 ComfyUI 服务器的记忆体资源段（供规划注入）。优先命中记忆（内存/DB，即时），
+ *  冷启动的真机抓取不阻塞规划——超时则本轮返回空段（后台抓取仍在预热，下轮即可用）。 */
+async function loadComfyResourceSection(): Promise<string> {
+  const base = (await resolveAgentComfyBase()).trim();
+  if (!base) return "";
+  const hit = peekComfyKnowledge(base);
+  const k = hit ?? (await Promise.race([
+    getComfyKnowledge(base).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+  ]));
+  if (!k) return "";
+  const r = k.resources;
+  // 全空（既没模型也没节点类）多半是没连上/记忆无效，注入空段无意义，跳过。
+  if (!r.checkpoints.length && !r.loras.length && !r.nodeClasses.length) return "";
+  return buildComfyResourceSection(k);
+}
+
+/** 取该 ComfyUI 服务器上、与本次任务相似的「成功工作流经验」摘要段（供规划参考，不含完整 JSON）。 */
+async function loadComfyExperienceSection(task: string): Promise<string> {
+  const base = (await resolveAgentComfyBase()).trim();
+  if (!base) return "";
+  const exps = await recallWorkflowExperiences(base, task, 3).catch(() => []);
+  if (!exps.length) return "";
+  const lines = exps.map((e) => {
+    const cls = e.nodeClasses.slice(0, 12).join("、") + (e.nodeClasses.length > 12 ? " …" : "");
+    return `- 「${e.label}」${cls ? `（关键节点：${cls}）` : ""}`;
+  });
+  return `\n\n# ComfyUI 工作流经验记忆体（工程智能体已成功搭通的相似工作流）\n（工程智能体在你这台 ComfyUI 上真实搭建并跑通过下列工作流；说明这些效果在本服务器上「可实现」。若规划需要用到 ComfyUI 自定义工作流，可据此判断哪些方案可行、优先复用已验证的路子；具体套用可让工程智能体按同类任务再建。）\n${lines.join("\n")}`;
+}
 
 async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput>, onStage?: (stage: string) => void) {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
@@ -305,6 +369,19 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
         }
       }
 
+      // 知识记忆体接入：把工程智能体学过的 ComfyUI 服务器真实资源 + 成功工作流经验注入规划上下文
+      //（best-effort）。跳过模板链路（客户端确定本轮不用 ComfyUI）时无需注入，省上下文与记忆读取。
+      let comfyResourceSection = "";
+      let comfyExperienceSection = "";
+      if (!skipTemplates && input.useComfyMemory !== false) {
+        try {
+          [comfyResourceSection, comfyExperienceSection] = await Promise.all([
+            loadComfyResourceSection(),
+            loadComfyExperienceSection(input.message),
+          ]);
+        } catch (e) { console.warn("[agent] comfy knowledge unavailable:", e instanceof Error ? e.message : e); }
+      }
+
       // 仅 ComfyUI 模式但没有任何「已分析模板」可用：拒绝并明确指引，避免 LLM 编造模板生成空壳节点。
       if (input.comfyOnly && validTemplateIds.size === 0) {
         return {
@@ -358,7 +435,7 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
 
 # 可用节点目录（只能使用下面列出的节点类型与字段，禁止编造任何不存在的节点或字段）
-${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel })}`}
+${catalogText({ comfyOnly: input.comfyOnly })}${templateSection}${comfyResourceSection}${comfyExperienceSection}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel })}`}
 
 # 当前画布
 ${ctxBudget.graphSummary || "（空画布）"}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}

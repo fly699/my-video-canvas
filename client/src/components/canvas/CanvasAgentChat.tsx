@@ -28,8 +28,8 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string };
-const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "", videoProvider: "", genNodes: [], workflowTemplateIds: [], noStoryboard: false, dialogueLang: "" };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; useComfyMemory: boolean };
+const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "", videoProvider: "", genNodes: [], workflowTemplateIds: [], noStoryboard: false, dialogueLang: "", useComfyMemory: true };
 
 /** 对白语种（#138）：对白/旁白/台词统一书写语言；空 = 跟随内容默认。 */
 const QP_DIALOGUE_LANGS = [
@@ -436,7 +436,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         utils.client,
         // #141 模型清单按需注入：锁定的模型随每轮请求实时传入（服务端无状态）——
         // 改模型下一轮即按新模型注入、选回「默认」下一轮即恢复该类别全量清单。
-        { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined },
+        { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined },
         controller.signal,
         (p) => { if (p.stage) setPlanStage(p.stage); },
       );
@@ -586,7 +586,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               </div>
             )}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["imageFirst", "生图 → 再生视频", ""], ["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"]] as const).map(([k, label, tip]) => (
+              {([["imageFirst", "生图 → 再生视频", ""], ["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["useComfyMemory", "使用 ComfyUI 记忆体", "规划时注入你 ComfyUI 服务器已学的资源（模型/LoRA/节点）与工程智能体成功过的工作流经验，让助手按真实可用资源规划。关掉则本次不注入。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>

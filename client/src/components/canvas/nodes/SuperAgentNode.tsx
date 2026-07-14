@@ -188,6 +188,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
         ...(payload.maxIterations ? { maxIterations: payload.maxIterations } : {}),
         ...(payload.showAllResources ? { showAllResources: true } : {}),
+        ...(payload.useMemory === false ? { useMemory: false } : {}),
         ...(isFollowup ? { seedWorkflowJson: payload.resultWorkflowJson, history: buildHistory(priorConv) } : {}),
       },
       {
@@ -329,6 +330,14 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                       className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
                     <span>加载全部模型 / LoRA / 节点（不截断）<br />
                       <span style={{ color: "var(--c-t4)" }}>把服务器上全部已装资源都摆给智能体，避免名单被截断。资源极多时更耗 token，建议配大上下文模型；不勾也能用 search_resources 按需检索。</span>
+                    </span>
+                  </label>
+                  <label style={{ ...labelStyle, display: "flex", alignItems: "flex-start", gap: 6, cursor: running ? "not-allowed" : "pointer" }}>
+                    <input type="checkbox" checked={payload.useMemory ?? true} disabled={running}
+                      onChange={(e) => update({ useMemory: e.target.checked })}
+                      className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
+                    <span>使用记忆体（资源记忆 + 工作流经验）<br />
+                      <span style={{ color: "var(--c-t4)" }}>默认开：复用已学的服务器资源、并参考历史成功工作流，越用越快。关掉则本次忽略记忆、直接读真机（成功经验仍会照常沉淀）。</span>
                     </span>
                   </label>
                 </div>

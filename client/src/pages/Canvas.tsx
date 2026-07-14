@@ -681,6 +681,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const isPopout = useMemo(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("popout"), []);
   const popoutVpKey = `ui:canvas:popoutViewport:${projectId}`;
   const bcRef = useRef<BroadcastChannel | null>(null);
+  // 工程智能体「使用了记忆体」提醒的去重时刻（每次运行一提醒；仅 3 秒去重防 socket 重复投递）。
+  const memoryNoticeRef = useRef<number>(0);
   // Toolbar & minimap layout persists across reloads. Keys are namespaced
   // `ui:*` so the localStorage admin can grep for them. The validate fn
   // discards corrupted payloads (e.g. partial migrations) rather than
@@ -1358,6 +1360,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
       if (msg.event.type === "result" && msg.event.data != null) {
         useCanvasStore.getState().updateNodeData(msg.nodeId, { pendingBuildResult: msg.event.data }, true);
         return;
+      }
+      // 记忆体提醒：只要本次走了「知识记忆体」（内存/DB，memoryFetchedAt 非空），每次调用都弹一次提醒——
+      // 如已增删模型/节点，去顶栏服务器面板「复位全部记忆」重学。resources 事件每次运行只发一次，故为
+      // 「每次调用一提醒」；仅 3 秒极短去重，防 socket 重复投递刷两条（不抑制正常的每次运行提醒）。
+      if (msg.event.type === "resources") {
+        const at = (msg.event.data as { memoryFetchedAt?: number | null } | undefined)?.memoryFetchedAt;
+        const age = (msg.event.data as { memoryAgeMs?: number | null } | undefined)?.memoryAgeMs;
+        if (typeof at === "number") {
+          const now = Date.now();
+          if (now - memoryNoticeRef.current > 3_000) {
+            memoryNoticeRef.current = now;
+            const mins = typeof age === "number" ? Math.round(age / 60_000) : 0;
+            const when = mins <= 0 ? "刚学习" : mins < 60 ? `${mins} 分钟前学习` : `${Math.round(mins / 60)} 小时前学习`;
+            toast.info(`工程智能体本次使用了 ComfyUI 记忆体（${when}）。若你已增删模型/节点，请到顶栏服务器面板点「复位全部记忆」重学。`, { duration: 8000 });
+          }
+        }
       }
       const prev = ((node.data.payload as { log?: { type: string; iteration: number; message: string }[] }).log) ?? [];
       const next = [...prev, { type: msg.event.type, iteration: msg.event.iteration, message: msg.event.message }].slice(-200);
