@@ -9,6 +9,7 @@ import { assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog } from "../_core/auditLog";
 import { ENV } from "../_core/env";
 import { runComfyAgent, extractRunLessons, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
+import { runOrchestration } from "../_core/superAgent/orchestrator";
 import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferenceCandidates } from "../_core/superAgent/comfyAdapters";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
@@ -287,6 +288,58 @@ export const superAgentRouter = router({
       };
       // 兜底：把最终结果经 socket 再送一份（隧道下 HTTP 可能已超时切断，socket 仍能送达）+ 缓存供重载。
       // 客户端据此在 network error 后自动回填，不再丢失已跑通的工作流。
+      emitSuperAgentEvent(input.projectId, input.nodeId, { type: "result", message: "__final_result__", data: finalResult });
+      cacheBuildResult(key, finalResult);
+      return finalResult;
+    }),
+
+  // 编排（B 阶段）：把一个复杂目标自动拆成若干 ComfyUI 子任务，逐个派给工程智能体搭建调通、失败自动
+  // 重试，全程带记忆。这是「画布助手全自动指挥工程智能体多轮完成复杂任务」的服务端入口。权限同 build（L3+）。
+  orchestrate: managerProc
+    .input(
+      z.object({
+        projectId: z.number(),
+        nodeId: z.string().max(64).optional(),
+        goal: z.string().min(1).max(4000),
+        customBaseUrl: z.string().max(512).optional(),
+        model: z.string().max(64).optional(),
+        maxSubtasks: z.number().int().min(1).max(12).optional(),
+        maxIterations: z.number().int().min(1).max(60).optional(),
+        useMemory: z.boolean().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      await assertComfyuiAllowed(ctx);
+      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点里填写目标服务器或服务端设置 COMFYUI_BASE_URL" });
+
+      const useMemory = input.useMemory !== false;
+      const installTools = await resolveInstallTools(ctx, baseUrl);
+      const tools = { ...createComfyTools({ baseUrl, projectId: input.projectId, nodeId: input.nodeId, useMemory }), ...installTools };
+      const llm = createAgentLLM(ctx, input.model);
+
+      const signal = { aborted: false };
+      const key = jobKey(input.projectId, input.nodeId);
+      runningJobs.set(key, () => { signal.aborted = true; });
+      let result;
+      try {
+        result = await runOrchestration({
+          goal: input.goal, baseUrl, tools, llm, signal, useMemory,
+          maxSubtasks: input.maxSubtasks, maxIterations: input.maxIterations ?? 20,
+          emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
+        });
+      } finally {
+        runningJobs.delete(key);
+      }
+
+      writeAuditLog({
+        ctx, action: "superagent_comfy_build",
+        detail: { projectId: input.projectId, task: `[编排] ${input.goal.slice(0, 180)}`, status: `${result.successCount}/${result.subtasks.length}`, iterations: result.subtasks.reduce((a, s) => a + s.iterations, 0), baseUrl },
+      });
+
+      const finalResult = { kind: "orchestration" as const, goal: result.goal, successCount: result.successCount, subtasks: result.subtasks };
+      // 隧道兜底：socket 再送一份 + 缓存供 getBuildResult 重载。
       emitSuperAgentEvent(input.projectId, input.nodeId, { type: "result", message: "__final_result__", data: finalResult });
       cacheBuildResult(key, finalResult);
       return finalResult;
