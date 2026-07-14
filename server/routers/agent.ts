@@ -378,7 +378,8 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
           "可创建 super_agent 节点：在 task 写清要搭什么工作流（出图/出视频、用什么大模型/LoRA/风格/分辨率/关键节点等），并设 autoRun=true 让它建好后自动搭建调通。" +
           "一个 super_agent 节点对应一份工作流（如「每镜一份图生视频工作流」可建多个）。" +
           "【接收上游】把相关的 prompt（提示词）、character（角色/场景）、storyboard（分镜）、图像节点【连线到 super_agent】（connect: 源→super_agent），这些提示词/角色设定/参考图会自动并入它的工程任务——务必把每镜的提示词/角色连给对应的工程智能体，不要只写在 task 文本里。" +
-          "【重要·连线约束】super_agent 只有输入桩、【没有输出桩】：绝不要建 super_agent→merge 或 super_agent→任何节点 的连线（会被拒）。它调通后产物会自动写回一个 comfyui_workflow 节点，成片合成由那个产物节点承接（后续由系统或用户接入 merge）。" +
+          "【成片汇入】要把工程智能体的产物汇入成片时，直接 connect: super_agent→merge——系统会把它转成「产物目标」，工程智能体调通后【自动】把产出的 comfyui_workflow 节点接到该 merge（无需你连 comfyui_workflow）。一个 super_agent 只设一个产物目标（连一条到 merge 即可）。" +
+          "（super_agent 本身无输出桩，除了这条『→merge 表意产物汇入』外，不要从 super_agent 连去其它节点。）" +
           "若模板库已有可用模板，优先用 comfyui_workflow 引用模板（更快），不必事事都派工程智能体。"
         : "";
       // 知识记忆体接入：把工程智能体学过的 ComfyUI 服务器真实资源 + 成功工作流经验注入规划上下文

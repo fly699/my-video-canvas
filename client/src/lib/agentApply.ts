@@ -422,6 +422,16 @@ export function applyAgentOperations(
           // Enforce the same connection rules as the manual UI so the agent can't
           // build illegal pairings (e.g. merge → script).
           const st = typeById.get(source), tt = typeById.get(target);
+          // super_agent 无出线桩（#171）：画布助手把 super_agent→下游（通常是 merge）表达为
+          // 「产物目标」——转记到 super_agent.wireToNodeId，调通后由节点自动把产出的
+          // comfyui_workflow 接到该下游，打通全自动成片；不建真实死边、也不判失败。
+          if (st === "super_agent") {
+            store.updateNodeData(source, { wireToNodeId: target }, true);
+            op.status = "applied";
+            res.touchedIds.push(source);
+            res.connected++;
+            return;
+          }
           if (st && tt && !isConnectionValid(st, tt)) { fail(index, op, `不允许的连接：${st} → ${tt}`); return; }
           const edgeKey = `${source} ${target}`;
           const isNewEdge = !edgeKeys.has(edgeKey);
