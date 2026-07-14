@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { BookOpen, User, Film, Music, Plus, LayoutGrid } from "lucide-react";
+import { BookOpen, User, Film, Music, Plus, LayoutGrid, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { applyAgentOperations } from "@/lib/agentApply";
 import { AGENT_RECIPES, buildRecipeOps, recipeDefaultConfig } from "@/lib/agentRecipes";
+import { CanvasBuildWizard } from "./CanvasBuildWizard";
 import type { AgentOperation } from "../../../../shared/types";
 
 /**
@@ -64,6 +65,7 @@ export function EmptyCanvasGuide({ onAddNode, onImportWorkflow }: {
 } = {}) {
   const reactFlow = useReactFlow();
   const nodeCount = useCanvasStore((s) => s.nodes.length);
+  const [showWizard, setShowWizard] = useState(false);
   // 加载期（boot 骨架/数据未回）画布短暂为空——延迟 1.2s 再显示，避免闪现误导。
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -90,8 +92,24 @@ export function EmptyCanvasGuide({ onAddNode, onImportWorkflow }: {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: "var(--c-t3)" }}>
         <span style={{ display: "inline-flex", width: 22, height: 22, alignItems: "center", justifyContent: "center", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", fontSize: 11 }}>🖱</span>
-        <span><strong style={{ color: "var(--c-t2)" }}>双击画布</strong> 添加节点 · 或从下面选一个工作流开始</span>
+        <span><strong style={{ color: "var(--c-t2)" }}>双击画布</strong> 添加节点 · 或用向导 / 工作流卡快速开始</span>
       </div>
+      {/* #159 建立向导：分步选择需求 → 自动搭建节点链 + 功能分区群组。放在最显眼处。 */}
+      <div style={{ pointerEvents: "auto" }}>
+        <button
+          onClick={() => setShowWizard(true)}
+          className="nodrag"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 22px", borderRadius: 12, fontSize: 13.5, fontWeight: 800,
+            border: "none", cursor: "pointer", color: "#fff",
+            background: "linear-gradient(135deg, oklch(0.66 0.21 300), oklch(0.70 0.20 320))",
+            boxShadow: "0 6px 20px oklch(0.66 0.21 300 / 0.35)",
+          }}
+        >
+          <Wand2 size={17} /> 建立向导 · 分步搭建工作流
+        </button>
+      </div>
+      {showWizard && <CanvasBuildWizard onClose={() => setShowWizard(false)} />}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center", maxWidth: "min(92vw, 1080px)", pointerEvents: "auto" }}>
         {CARDS.map((card) => (
           <button
