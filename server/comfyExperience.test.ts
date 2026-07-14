@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   recordWorkflowExperience, recallWorkflowExperiences, listWorkflowExperiences,
   searchWorkflowExperiences, deleteWorkflowExperience, clearWorkflowExperiences,
-  recordWorkflowFailure, recallPitfalls,
+  recordWorkflowFailure, recallPitfalls, pruneResolvedPitfalls, isPitfallReasonResolved,
   extractNodeClasses, extractModels, hashWorkflow,
 } from "./_core/comfyExperience";
 import { extractRunLessons } from "./_core/superAgent/comfyAgent";
@@ -122,6 +122,35 @@ describe("comfyExperience 工作流经验记忆体", () => {
 
   it("failReasons 为空不沉淀失败（纯噪声已过滤）", async () => {
     expect(await recordWorkflowFailure({ baseUrl: BASE, task: "x", status: "failed", failReasons: [] })).toBe(false);
+  });
+
+  it("缺件坑自愈：补上缺失节点后，召回自动剔除过时坑 + prune 落库删除", async () => {
+    await recordWorkflowFailure({
+      baseUrl: BASE, task: "flux controlnet 出图", status: "failed",
+      failReasons: ["缺少节点类型（自定义节点未安装）：ControlNetApplyAdvanced"],
+      nodeClasses: ["ControlNetApplyAdvanced"],
+    });
+    const emptyRes = { nodeClasses: ["KSampler"], checkpoints: [], loras: [], vaes: [], samplers: [], schedulers: [] };
+    const installedRes = { nodeClasses: ["KSampler", "ControlNetApplyAdvanced"], checkpoints: [], loras: [], vaes: [], samplers: [], schedulers: [] };
+
+    // 未装：判定未解决，召回仍注入
+    expect(isPitfallReasonResolved("缺少节点类型（自定义节点未安装）：ControlNetApplyAdvanced", emptyRes)).toBe(false);
+    expect((await recallPitfalls(BASE, "flux controlnet 出图", 10, emptyRes)).length).toBe(1);
+
+    // 补上后：判定已解决，召回自动剔除
+    expect(isPitfallReasonResolved("缺少节点类型（自定义节点未安装）：ControlNetApplyAdvanced", installedRes)).toBe(true);
+    expect((await recallPitfalls(BASE, "flux controlnet 出图", 10, installedRes)).length).toBe(0);
+
+    // prune 落库删除已全部解决的坑
+    expect(await pruneResolvedPitfalls(BASE, installedRes)).toBe(1);
+    expect((await listWorkflowExperiences(BASE)).length).toBe(0);
+  });
+
+  it("参数错/逻辑错类坑不因资源变化被误判解决（保留）", () => {
+    const res = { nodeClasses: ["KSampler"], checkpoints: ["sd_xl.safetensors"], loras: [], vaes: [], samplers: [], schedulers: [] };
+    // 非「缺件类」措辞 → 永不自动判定解决
+    expect(isPitfallReasonResolved("运行失败：CUDA out of memory", res)).toBe(false);
+    expect(isPitfallReasonResolved("必填输入缺失：KSampler.seed 既没连线也没值", res)).toBe(false);
   });
 
   it("extractRunLessons：从运行日志抽出校验/运行错误，过滤连接噪声", () => {

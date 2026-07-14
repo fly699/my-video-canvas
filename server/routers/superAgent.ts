@@ -14,9 +14,9 @@ import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
 import { getSuperAgentConfig } from "../_core/superAgent/config";
-import { invalidateComfyKnowledge } from "../_core/comfyKnowledge";
+import { invalidateComfyKnowledge, getComfyKnowledge } from "../_core/comfyKnowledge";
 import {
-  recordWorkflowExperience, recallWorkflowExperiences, recordWorkflowFailure, recallPitfalls,
+  recordWorkflowExperience, recallWorkflowExperiences, recordWorkflowFailure, recallPitfalls, pruneResolvedPitfalls,
   listWorkflowExperiences, searchWorkflowExperiences, deleteWorkflowExperience, clearWorkflowExperiences,
 } from "../_core/comfyExperience";
 import { installModel, installCustomNode, isValidDownloadUrl, isValidModelFilename, isValidGitUrl, MODEL_DIRS, type ModelDir } from "../_core/ops/modelOps";
@@ -32,6 +32,15 @@ const norm = (u: string) => u.replace(/\/+$/, "").trim();
  * 对象——引擎无安装能力，只能用现有资源。安装经 modelOps 的字符集+单引号注入防护 + 这里的
  * URL/文件名/目录白名单校验。
  */
+/** 装完模型/节点后：强制重学资源记忆（拿到最新已装清单），并清理「缺件已补齐」的过时坑（自愈）。best-effort。 */
+async function afterComfyInstall(baseUrl: string): Promise<void> {
+  invalidateComfyKnowledge(baseUrl); // 资源记忆失效 → 下面 force 重学最新已装清单
+  try {
+    const k = await getComfyKnowledge(baseUrl, { force: true });
+    await pruneResolvedPitfalls(baseUrl, k.resources);
+  } catch { /* 重学/清理失败无妨，下次召回时也会自动跳过过时坑 */ }
+}
+
 async function resolveInstallTools(ctx: TrpcContext, baseUrl: string): Promise<Pick<ComfyAgentTools, "installModel" | "installNode">> {
   if (!getSuperAgentConfig().autoInstall) return {};
   if ((ctx.user?.adminLevel ?? 0) < 3) return {};
@@ -44,12 +53,12 @@ async function resolveInstallTools(ctx: TrpcContext, baseUrl: string): Promise<P
       if (!isValidDownloadUrl(url)) return { ok: false, message: "下载 URL 未通过安全校验" };
       if (!isValidModelFilename(filename)) return { ok: false, message: "文件名未通过校验（需 .safetensors/.ckpt 等）" };
       if (!(MODEL_DIRS as readonly string[]).includes(dir)) return { ok: false, message: `目标子目录非法（允许：${MODEL_DIRS.join("/")}）` };
-      try { const r = await installModel(sid, url, dir as ModelDir, filename); if (r.ok) invalidateComfyKnowledge(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
+      try { const r = await installModel(sid, url, dir as ModelDir, filename); if (r.ok) await afterComfyInstall(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
       catch (e) { return { ok: false, message: e instanceof Error ? e.message : String(e) }; }
     },
     installNode: async (gitUrl) => {
       if (!isValidGitUrl(gitUrl)) return { ok: false, message: "git 仓库 URL 未通过校验" };
-      try { const r = await installCustomNode(sid, gitUrl); if (r.ok) invalidateComfyKnowledge(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
+      try { const r = await installCustomNode(sid, gitUrl); if (r.ok) await afterComfyInstall(baseUrl); return { ok: r.ok, message: (r.output || "").slice(-500) }; }
       catch (e) { return { ok: false, message: e instanceof Error ? e.message : String(e) }; }
     },
   };
@@ -145,7 +154,9 @@ export const superAgentRouter = router({
       let knownPitfalls: string[] = [];
       if (useMemory) {
         try {
-          knownPitfalls = await recallPitfalls(baseUrl, input.task, 10);
+          // 传入当前资源 → 召回时自动剔除「缺件已补齐」的过时坑（装上缺失节点/模型后不再误报）。
+          const curRes = await tools.listResources().catch(() => null);
+          knownPitfalls = await recallPitfalls(baseUrl, input.task, 10, curRes);
           if (knownPitfalls.length) {
             emitSuperAgentEvent(input.projectId, input.nodeId, {
               type: "memory",

@@ -150,8 +150,31 @@ export async function recallWorkflowExperiences(
   }));
 }
 
-/** 召回与任务相关的「失败教训/已知坑」（只看失败记录），去重后返回若干条，供注入引擎主动规避。 */
-export async function recallPitfalls(baseUrl: string, task: string, limit = 10): Promise<string[]> {
+/** 「缺件类」坑资源可用性检查：某条坑提到的缺失名（节点类/模型）若现在服务器上已存在→判定已解决（过时）。
+ *  只对含「未安装/不存在/缺少/缺失/missing/not found」的坑做自动判定；参数错/逻辑错等不自动判定（保留）。纯函数。 */
+export function isPitfallReasonResolved(reason: string, resources: ResourceNames | null | undefined): boolean {
+  if (!resources) return false;
+  // 「取值非法/合法值示例」类：尾部列的是【存在的】合法值，不能据此判定坑已解决（否则误删）。
+  if (/取值非法|合法值/.test(reason)) return false;
+  if (!/未安装|不存在|缺少|缺失|missing|not found/i.test(reason)) return false;
+  const tail = (reason.split(/[：:]/).pop() ?? "").trim();
+  const names = tail.split(/[,，、\s]+/).map((s) => s.trim().replace(/[。.,，、]+$/, "")).filter((s) => s.length >= 2);
+  if (!names.length) return false;
+  const pool = new Set(
+    [resources.nodeClasses, resources.checkpoints, resources.loras, resources.vaes, resources.samplers, resources.schedulers]
+      .flatMap((a) => a ?? []).map((x) => x.toLowerCase()),
+  );
+  // 该坑提到的缺失名里，若有任一现已存在 → 视为已补齐、坑过时。
+  return names.some((n) => pool.has(n.toLowerCase()));
+}
+
+export interface ResourceNames {
+  nodeClasses?: string[]; checkpoints?: string[]; loras?: string[]; vaes?: string[]; samplers?: string[]; schedulers?: string[];
+}
+
+/** 召回与任务相关的「失败教训/已知坑」（只看失败记录），去重后返回若干条，供注入引擎主动规避。
+ *  传入 resources（服务器当前资源）时，自动剔除「缺件已补齐」的过时坑（自愈：装上缺失节点/模型后不再误报）。 */
+export async function recallPitfalls(baseUrl: string, task: string, limit = 10, resources?: ResourceNames | null): Promise<string[]> {
   const taskTokens = tokenizeForMatch(task);
   if (!taskTokens.size) return [];
   let rows: ComfyWorkflowMemoryRow[];
@@ -172,11 +195,29 @@ export async function recallPitfalls(baseUrl: string, task: string, limit = 10):
     for (const reason of r.meta!.failReasons!) {
       const key = reason.trim().toLowerCase();
       if (!key || seen.has(key)) continue;
+      if (isPitfallReasonResolved(reason, resources)) continue; // 已补齐的缺件坑不再注入
       seen.add(key); out.push(reason.trim());
       if (out.length >= limit) return out;
     }
   }
   return out;
+}
+
+/** 清理「已解决」的过时坑：某失败记录的 failReasons 若在当前资源下全部已补齐 → 删除该行（自愈落库）。
+ *  在装完模型/节点、或复位资源记忆后调用。返回删除条数。best-effort，异常不抛。 */
+export async function pruneResolvedPitfalls(baseUrl: string, resources: ResourceNames | null | undefined): Promise<number> {
+  if (!resources) return 0;
+  let rows: ComfyWorkflowMemoryRow[];
+  try { rows = await listComfyWorkflowMemory(norm(baseUrl)); } catch { return 0; }
+  let removed = 0;
+  for (const r of rows) {
+    if (r.status === "success" || !r.meta?.failReasons?.length) continue;
+    // 只有当「缺件类」坑全部已补齐、且不含无法自动判定的其它坑时，才整条删除，避免误删仍有效的教训。
+    const reasons = r.meta.failReasons;
+    const allResolved = reasons.every((reason) => isPitfallReasonResolved(reason, resources));
+    if (allResolved) { try { await deleteComfyWorkflowMemory(r.id); removed++; } catch { /* 忽略 */ } }
+  }
+  return removed;
 }
 
 /** 列出经验（管理 UI / 多方查询）。 */
