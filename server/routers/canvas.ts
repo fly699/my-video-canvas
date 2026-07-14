@@ -58,7 +58,8 @@ import { generateImage } from "../_core/imageGeneration";
 import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL } from "../../shared/imageEdit";
 import { sliceGridImage } from "../_core/imageGrid";
 import { extractStoryboardFrames } from "../_core/videoStoryboard";
-import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeHunyuan3D, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList } from "../_core/comfyui";
+import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeHunyuan3D, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList, emitComfyWorkflowResult } from "../_core/comfyui";
+import { getComfyJob, setComfyJobDone, setComfyJobError } from "../_core/comfyJobStore";
 import type { ComfyModelList } from "../_core/comfyui";
 import { getComfyKnowledge, peekComfyKnowledge, searchComfyKnowledge, invalidateComfyKnowledge, getComfyModelList } from "../_core/comfyKnowledge";
 import { ENV } from "../_core/env";
@@ -4050,6 +4051,10 @@ export const comfyuiRouter = router({
       // Opt-in: after a successful run, unload models + free VRAM on the server —
       // but only when its queue is idle (no other task using that GPU). Local only.
       freeVramAfterRun: z.boolean().optional(),
+      // #163 前端生成的一次性任务 id：服务端在运行终局把结果按此 id 存入 comfyJobStore
+      // 并经 socket 回灌（comfyui:result）。隧道把这条超长 HTTP 切断时，前端凭 jobId 走
+      // socket 回灌 / workflowResult 轮询兜底仍能拿到结果。
+      jobId: z.string().max(64).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await assertComfyuiAllowed(ctx);
@@ -4095,6 +4100,10 @@ export const comfyuiRouter = router({
           for (const u of result.urls) {
             await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: result.outputType === "video" ? "video" : "image", source: "generated", provider: "comfyui", model: null, url: u, name: "自定义工作流", mimeType: result.outputType === "video" ? "video/mp4" : "image/png" });
           }
+          // #163 终局回灌：存 jobId + 广播 socket 结果。服务端跑到这里说明任务已完成——即便
+          // 客户端的超长 HTTP 已被隧道切断，socket 回灌 / workflowResult 轮询仍能把结果送达前端。
+          if (input.jobId) setComfyJobDone(input.jobId, result.urls, result.outputType === "video" ? "video" : "image");
+          emitComfyWorkflowResult(input.projectId, { nodeId: input.nodeId, jobId: input.jobId ?? "", ok: true, urls: result.urls, outputType: result.outputType === "video" ? "video" : "image" });
           // Optional post-run VRAM cleanup (local only, queue must be idle). Awaited
           // so the runner only advances to the next layer AFTER the cache is freed;
           // best-effort — never let a cleanup hiccup fail the (already-successful) run.
@@ -4106,12 +4115,23 @@ export const comfyuiRouter = router({
           }
           return result;
         } catch (err) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+          const msg = err instanceof Error ? err.message : String(err);
+          // #163 失败也回灌：让隧道切断 HTTP 后前端能凭 jobId 收到「失败」而非永久卡在运行中。
+          if (input.jobId) setComfyJobError(input.jobId, msg);
+          emitComfyWorkflowResult(input.projectId, { nodeId: input.nodeId, jobId: input.jobId ?? "", ok: false, error: msg });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
         }
         },
         (r) => ({ resultUrl: r.urls[0], resultCount: r.urls.length }),
       ));
     }),
+
+  // #163 轮询兜底：前端在超长 HTTP 被隧道切断后，用运行时生成的 jobId 轮询本查询取终局结果。
+  // pending = 仍在运行（或结果已过期/未知）；done/error = 终局。结果 URL 均为已落库的自有资产，
+  // jobId 为不可猜的一次性随机串，故仅需登录态即可查询。
+  workflowResult: protectedProcedure
+    .input(z.object({ jobId: z.string().max(64) }))
+    .query(({ input }) => getComfyJob(input.jobId) ?? { status: "pending" as const }),
 });
 
 // ── AI Prompt Enhancement ─────────────────────────────────────────────────────

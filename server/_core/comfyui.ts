@@ -33,6 +33,15 @@ const MAX_REF_IMAGE_BYTES = 30 * 1024 * 1024;     // 30 MB — sane upper bound 
 let _io: SocketIOServer | null = null;
 export function setComfySocketIO(io: SocketIOServer): void { _io = io; }
 
+/** #163 把自定义工作流运行的**终局结果**回灌到节点所在项目房间（socket 回灌）。隧道下 HTTP
+ *  被切断时，前端仍能凭此即时收到结果、结束「运行中」；与 workflowResult 轮询查询互为兜底。 */
+export function emitComfyWorkflowResult(
+  projectId: number,
+  payload: { nodeId: string; jobId: string; ok: boolean; urls?: string[]; outputType?: "image" | "video"; error?: string },
+): void {
+  _io?.to(`project:${projectId}`).emit("comfyui:result", payload);
+}
+
 /** A progress callback that relays sampling progress and (throttled) live preview
  * frames to the node's project room over socket.io. Shared by the image/video/
  * custom-workflow run paths. */

@@ -42,6 +42,8 @@ import type { ResultSnapshot } from "../../../../../shared/types";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { InlineGenBar } from "../InlineGenBar";
+import { nanoid } from "nanoid";
+import { isTransportCutError, pollComfyRun, type PendingComfyResult, type RecoveredRun } from "@/lib/comfyRunRecovery";
 
 interface Props {
   id: string;
@@ -339,6 +341,19 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   const executeMutation = trpc.comfyui.executeWorkflow.useMutation();
   const uploadImageMutation = trpc.comfyui.uploadWorkflowImage.useMutation();
 
+  // #163 隧道兜底取回：socket 回灌（pendingComfyResult）优先 + workflowResult 轮询，直到终局或超时。
+  const recoverComfyRun = useCallback((jobId: string, nodeId: string): Promise<RecoveredRun> => {
+    return pollComfyRun({
+      jobId,
+      readPending: () => {
+        const n = useCanvasStore.getState().nodes.find((x) => x.id === nodeId);
+        return (n?.data.payload as { pendingComfyResult?: PendingComfyResult } | undefined)?.pendingComfyResult;
+      },
+      fetchResult: (jid) => utils.comfyui.workflowResult.fetch({ jobId: jid }),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    });
+  }, [utils]);
+
   const handleAnalyze = useCallback(async (json: string) => {
     const trimmed = json.trim();
     if (!trimmed) { toast.error("请粘贴 Workflow JSON"); return; }
@@ -473,7 +488,12 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         }
       }
     }
-    update({ status: "processing", errorMessage: undefined, progress: 0 }, true);
+    update({ status: "processing", errorMessage: undefined, progress: 0, pendingComfyResult: undefined }, true);
+    // #163 一次性任务 id：随请求带给服务端；隧道切断超长 HTTP 时用它走 socket 回灌 / 轮询兜底取结果。
+    const jobId = nanoid();
+    // 落地成功产物（HTTP 正常返回 与 隧道切断后的兜底回灌 共用此路径）。在 try 外声明，使 catch
+    // 的兜底分支也能调用；try 内计算出 effectiveParamValues 后再赋真身。
+    let applyRunOutputs: (urls: string[], outputType: "image" | "video") => void = () => {};
     try {
       // Pull upstream images (multi-reference → fill blank image params in order)
       // and upstream prompt text (→ blank positive/negative prompt params).
@@ -562,6 +582,30 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       const runWorkflowJson = effectiveAspect
         ? applyAspectToWorkflow(workflowJson, effectiveAspect).json
         : workflowJson;
+      applyRunOutputs = (urls: string[], outputType: "image" | "video") => {
+        update({
+          outputUrl: urls[0] ?? "",
+          outputUrls: urls,
+          // Persist the actual produced type so onConnect/resolveNodeOutputImageUrl
+          // never mistakes a video output for a reference image (config may be "auto").
+          outputType,
+          status: "done",
+          errorMessage: undefined,
+          progress: 100,
+          pendingComfyResult: undefined,
+        });
+        // Auto-fill downstream reference-image targets — image outputs only.
+        if (urls[0] && outputType !== "video") propagateRefImage(id, urls[0]);
+        // Push the resolved prompt to downstream comfyui_video nodes (下发提示词).
+        const bs = payload.paramBindings ?? [];
+        const keyOf = (b?: WorkflowParamBinding) => (b ? `${b.nodeId}.${b.fieldPath}` : undefined);
+        const posKey = keyOf(bs.find((b) => b.role === "positive") ?? bs.find((b) => b.type === "text" && /提示词|prompt/i.test(b.label) && !/负|negative/i.test(b.label)));
+        const negKey = keyOf(bs.find((b) => b.role === "negative") ?? bs.find((b) => b.type === "text" && /负|negative/i.test(b.label)));
+        const posText = posKey ? String(effectiveParamValues[posKey] ?? "") : "";
+        const negText = negKey ? String(effectiveParamValues[negKey] ?? "") : undefined;
+        if (posText.trim()) propagateWorkflowPrompt(id, posText, negText);
+      };
+
       const result = await executeMutation.mutateAsync({
         nodeId: id,
         projectId: data.projectId,
@@ -574,35 +618,34 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
         outputNodeIds: payload.outputNodeIds,
         outputType: payload.outputType ?? "auto",
         freeVramAfterRun: payload.freeVramAfterRun === true,
+        jobId,
       });
-      update({
-        outputUrl: result.urls[0] ?? "",
-        outputUrls: result.urls,
-        // Persist the actual produced type so onConnect/resolveNodeOutputImageUrl
-        // never mistakes a video output for a reference image (config may be "auto").
-        outputType: result.outputType,
-        status: "done",
-        errorMessage: undefined,
-        progress: 100,
-      });
-      // Auto-fill downstream reference-image targets — image outputs only. Use
-      // the run's actual outputType, not the config (which can be "auto").
-      if (result.urls[0] && result.outputType !== "video") propagateRefImage(id, result.urls[0]);
-      // Push the resolved prompt to downstream comfyui_video nodes (下发提示词).
-      const bs = payload.paramBindings ?? [];
-      const keyOf = (b?: WorkflowParamBinding) => (b ? `${b.nodeId}.${b.fieldPath}` : undefined);
-      const posKey = keyOf(bs.find((b) => b.role === "positive") ?? bs.find((b) => b.type === "text" && /提示词|prompt/i.test(b.label) && !/负|negative/i.test(b.label)));
-      const negKey = keyOf(bs.find((b) => b.role === "negative") ?? bs.find((b) => b.type === "text" && /负|negative/i.test(b.label)));
-      const posText = posKey ? String(effectiveParamValues[posKey] ?? "") : "";
-      const negText = negKey ? String(effectiveParamValues[negKey] ?? "") : undefined;
-      if (posText.trim()) propagateWorkflowPrompt(id, posText, negText);
+      applyRunOutputs(result.urls, result.outputType === "video" ? "video" : "image");
       toast.success("执行完成");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      update({ status: "failed", errorMessage: msg, progress: undefined }, true);
+      // #163 隧道兜底：整个应用经 cloudflared 隧道时，这条超长 HTTP 在 ~100s 被切断——但服务端
+      // **不因客户端断开而取消**，仍会跑完并把结果经 socket 回灌 + 存入 comfyJobStore。故传输类错误
+      // （fetch/abort/超时/网关）不当作失败，转入「socket 回灌优先 + workflowResult 轮询」兜底取结果；
+      // 服务端明确返回的业务错误（含具体信息、非传输类）则直接判失败。
+      if (isTransportCutError(msg)) {
+        const rec = await recoverComfyRun(jobId, id);
+        if (rec?.ok && rec.urls) {
+          applyRunOutputs(rec.urls, rec.outputType ?? "image");
+          toast.success("执行完成（隧道切断后经回灌取回结果）");
+          return;
+        }
+        if (rec && !rec.ok) {
+          update({ status: "failed", errorMessage: rec.error ?? "执行失败", progress: undefined, pendingComfyResult: undefined }, true);
+          toast.error("执行失败：" + (rec.error ?? "").slice(0, 120));
+          return;
+        }
+        // 兜底轮询超时仍无终局 → 保持处理中提示但结束本次等待，落回失败态并给出可重试信息。
+      }
+      update({ status: "failed", errorMessage: msg, progress: undefined, pendingComfyResult: undefined }, true);
       toast.error("执行失败：" + msg.slice(0, 120));
     }
-  }, [executeMutation, id, data.projectId, payload, update, batchRunning]);
+  }, [executeMutation, id, data.projectId, payload, update, batchRunning, recoverComfyRun]);
 
   // 3D 换视角：工作流的「首个图像输入参数」（type==="image" 的绑定）。有它才能把换视角截图
   // 回灌重跑；纯文生工作流无图像输入 → 禁用真·重绘（仍可看/截图）。

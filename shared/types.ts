@@ -1332,6 +1332,9 @@ export interface ComfyuiWorkflowNodeData {
   queueRemaining?: number;  // ComfyUI server queue depth while waiting to start (transient)
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
+  /** #163 瞬态：隧道切断超长 HTTP 后，服务端经 socket(comfyui:result) 回灌的终局结果，
+   *  节点据此兜底回填、结束「运行中」。消费后清空。 */
+  pendingComfyResult?: { jobId: string; ok: boolean; urls?: string[]; outputType?: "image" | "video"; error?: string };
 }
 
 // ── Agent (Copilot) node ──────────────────────────────────────────────────────
