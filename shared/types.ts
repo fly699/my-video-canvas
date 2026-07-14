@@ -1467,6 +1467,11 @@ export interface SuperAgentNodeData {
   /** code 模式：被 commandPolicy 拦截而中止的危险命令。 */
   blockedCommand?: string;
   errorMessage?: string;
+  /** #173 code 模式：连接的 GitHub 仓库（owner/repo 或 https://github.com/...）；新会话时用 PAT 克隆进沙箱。
+   *  PAT 不存节点/DB，仅前端 localStorage 保存并随请求透传。 */
+  gitRepo?: string;
+  /** #173 克隆分支（可选）。 */
+  gitBranch?: string;
 }
 
 export interface AgentPlanPrefs {
