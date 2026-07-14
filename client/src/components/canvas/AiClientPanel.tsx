@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -11,6 +11,8 @@ import { buildNodeContextContent, isReferableNode, nodeContextLabel, planMessage
 import { loadNodeless, saveNodeless, addSession, removeSession, updateSession, sortSessions, makeNodelessId, isNodelessId, type NodelessSession } from "@/lib/aiClientNodeless";
 import { parseMessageSegments, latestCodeArtifactFrom, CODE_MODE_SYSTEM_PROMPT, type CodeArtifact } from "@/lib/codeArtifacts";
 import { CHAT_MODELS } from "@/lib/models";
+import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, NO_PERSONA_PROMPT } from "@/lib/aiAssistantTemplates";
+import { useBridgeSkills } from "@/lib/useBridgeSkills";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { trpc } from "@/lib/trpc";
@@ -90,6 +92,26 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   const [input, setInput] = useState("");
   const [model, setModel] = useState<string>(CHAT_MODELS.find((m) => m.tag === "默认")?.id ?? CHAT_MODELS[0].id);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // 模板（人设）——复用聊天助手/ai_chat 节点同一套模板；存 id，发送时解析为 systemPrompt。
+  const [aiTemplate, setAiTemplate] = useState<string>(() => { try { return localStorage.getItem("avc:ai-client-template") ?? BLANK_TEMPLATE_ID; } catch { return BLANK_TEMPLATE_ID; } });
+  const personaPrompt = aiTemplate === BLANK_TEMPLATE_ID ? NO_PERSONA_PROMPT : ALL_AI_TEMPLATES.find((t) => t.id === aiTemplate)?.prompt;
+  const changeTemplate = (id: string) => { setAiTemplate(id); try { localStorage.setItem("avc:ai-client-template", id); } catch { /* restricted */ } };
+  // 「/ 唤起技能」——仅本机 Claude 桥接模型（技能是 Claude 能力）且服务端放行 Skill 时启用。
+  const isClaudeLocalModel = model.toLowerCase().startsWith("claude-local");
+  const bridgeSkills = useBridgeSkills(isClaudeLocalModel);
+  const [skillHi, setSkillHi] = useState(0);
+  const skillHiRef = useRef<HTMLButtonElement | null>(null);
+  const [skillDismiss, setSkillDismiss] = useState("");
+  const slashFrag = /^\/([^\s/]*)$/.exec(input)?.[1];
+  const skillMatches = useMemo(() => {
+    if (slashFrag === undefined) return [];
+    const q = slashFrag.toLowerCase();
+    return bridgeSkills.skills.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [slashFrag, bridgeSkills.skills]);
+  const showSkillPicker = isClaudeLocalModel && bridgeSkills.enabled && slashFrag !== undefined && input !== skillDismiss && skillMatches.length > 0;
+  useEffect(() => { setSkillHi(0); }, [slashFrag]);
+  useEffect(() => { skillHiRef.current?.scrollIntoView({ block: "nearest" }); }, [skillHi]);
+  const pickSkill = (name: string) => { setInput(`用 ${name} 技能：`); setSkillDismiss(""); };
   const [pendingAtts, setPendingAtts] = useState<ChatMsgAttachment[]>([]);
   // #176 各栏可拖动调宽（会话侧栏 / 工件面板），持久化。
   const [sidebarW, setSidebarW] = useState<number>(() => { try { return Number(localStorage.getItem("avc:ai-sidebar-w")) || 196; } catch { return 196; } });
@@ -203,9 +225,11 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   const doSend = (text: string, attachments: ChatMsgAttachment[]) => {
     if (!active || !projectId) return;
     const contextContent = buildNodeContextContent(nodes, contextIds);
+    // systemPrompt = 模板人设（空模板=NO_PERSONA_PROMPT）；代码模式再叠加 Canvas/Artifacts 指令。
+    const sysPrompt = codeMode ? [CODE_MODE_SYSTEM_PROMPT, personaPrompt].filter(Boolean).join("\n\n") : personaPrompt;
     sendMut.mutate({
       nodeId: active, projectId, message: text, model,
-      ...(codeMode ? { systemPrompt: CODE_MODE_SYSTEM_PROMPT } : {}),
+      ...(sysPrompt ? { systemPrompt: sysPrompt } : {}),
       ...(contextContent ? { contextContent } : {}),
       ...(attachments.length > 0 ? { attachments: attachments.map((a) => ({ type: a.type, url: a.url, mimeType: a.mimeType || "image/jpeg", name: a.name || "图片" })) } : {}),
       ...(model.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
@@ -507,6 +531,24 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
             )}
           </div>
           <div style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)", position: "relative" }}>
+            {/* 模板（人设）+ /技能 提示——移植自聊天室 AI 助手 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7, fontSize: 11.5, color: "var(--c-t3)", flexWrap: "wrap" }}>
+              <BookOpen size={13} style={{ color: ACCENT, flexShrink: 0 }} />
+              <span style={{ flexShrink: 0 }}>模板</span>
+              <select value={aiTemplate} onChange={(e) => changeTemplate(e.target.value)} className="nodrag"
+                title={aiTemplate === BLANK_TEMPLATE_ID ? "无任何人设，通用助手直接回答" : ALL_AI_TEMPLATES.find((t) => t.id === aiTemplate)?.blurb}
+                style={{ fontSize: 11.5, padding: "3px 6px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", maxWidth: 200 }}>
+                <option value={BLANK_TEMPLATE_ID}>空模板（无人设）</option>
+                {AI_TEMPLATE_CATEGORIES.map((cat) => (
+                  <optgroup key={cat.label} label={cat.label}>
+                    {cat.templates.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              {isClaudeLocalModel && bridgeSkills.enabled && bridgeSkills.skills.length > 0 && (
+                <span style={{ color: ACCENT }}>· 输入 <strong>/</strong> 选技能</span>
+              )}
+            </div>
             {/* 已引用的画布节点 chips + @ 添加引用（打通 contextNodeIds，作为对话上下文） */}
             {active && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center", marginBottom: 7 }}>
@@ -561,6 +603,23 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                 ))}
               </div>
             )}
+            {/* 「/ 唤起技能」面板：输入以 / 开头时浮在输入框上方（本机 Claude 桥接专属） */}
+            {showSkillPicker && (
+              <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
+                style={{ position: "absolute", left: 12, right: 12, bottom: "calc(100% - 4px)", maxHeight: 240, overflowY: "auto", zIndex: 6,
+                  background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.4)", padding: 6 }}>
+                <div style={{ fontSize: 10.5, color: "var(--c-t4)", padding: "3px 8px 5px" }}>技能 · ↑↓ 选择 · Enter 确认 · Esc 关闭</div>
+                {skillMatches.map((s, i) => (
+                  <button key={s.name} type="button" ref={i === skillHi ? skillHiRef : undefined}
+                    onMouseMove={() => setSkillHi(i)} onClick={() => pickSkill(s.name)} className="nodrag"
+                    style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 9px", borderRadius: 7, border: "none", cursor: "pointer",
+                      background: i === skillHi ? `color-mix(in oklch, ${ACCENT} 12%, transparent)` : "transparent", color: "var(--c-t1)" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: i === skillHi ? ACCENT : "var(--c-t1)" }}>/{s.name}</div>
+                    {s.description && <div style={{ fontSize: 11, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.description}</div>}
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 12, padding: "8px 10px" }}>
               <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { void onPickFiles(e.target.files); e.target.value = ""; }} />
               <button onClick={() => fileRef.current?.click()} disabled={uploadMut.isPending} className="nodrag" title="添加图片附件"
@@ -571,7 +630,16 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                 className="nodrag nowheel"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                onKeyDown={(e) => {
+                  // 技能面板打开时，↑↓ 选择 / Enter 确认 / Esc 关闭，优先于发送。
+                  if (showSkillPicker) {
+                    if (e.key === "ArrowDown") { e.preventDefault(); setSkillHi((h) => Math.min(h + 1, skillMatches.length - 1)); return; }
+                    if (e.key === "ArrowUp") { e.preventDefault(); setSkillHi((h) => Math.max(h - 1, 0)); return; }
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); pickSkill(skillMatches[skillHi]?.name ?? skillMatches[0].name); return; }
+                    if (e.key === "Escape") { e.preventDefault(); setSkillDismiss(input); return; }
+                  }
+                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+                }}
                 placeholder={active ? "输入消息，Enter 发送 · Shift+Enter 换行" : "输入消息开始新会话…"}
                 rows={1}
                 style={{ flex: 1, resize: "none", maxHeight: 140, minHeight: 22, background: "transparent", border: "none", outline: "none", color: "var(--c-t1)", fontSize: 13, lineHeight: 1.5, fontFamily: "inherit" }}
