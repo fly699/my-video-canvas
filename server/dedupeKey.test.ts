@@ -30,4 +30,19 @@ describe("dedupe key 忽略展示字段 estimatedCost（M1）", () => {
     await Promise.all([a, b]);
     expect(calls).toBe(2); // prompt 不同 → 两次
   });
+
+  // #163 回归：executeWorkflow 每次带一个新 jobId（socket 回灌/轮询用的相关 id），它必须被
+  // 排除出 dedupe key，否则双击相同参数的两次运行会因 jobId 不同而各自提交、双重扣费。
+  it("仅 jobId 不同的并发请求 → 合并为一次执行", async () => {
+    _resetDedupeCacheForTests();
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const fn = async () => { calls++; await gate; return calls; };
+    const a = dedupe("comfyui.executeWorkflow", 1, { nodeId: "n1", workflowJson: "{}", jobId: "aaa" }, fn);
+    const b = dedupe("comfyui.executeWorkflow", 1, { nodeId: "n1", workflowJson: "{}", jobId: "bbb" }, fn);
+    release();
+    await Promise.all([a, b]);
+    expect(calls).toBe(1); // 一次执行 → 一次扣费
+  });
 });

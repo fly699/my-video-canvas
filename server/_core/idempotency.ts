@@ -53,7 +53,10 @@ function canonicalize(v: unknown): unknown {
 // differ between otherwise-identical requests — e.g. `estimatedCost` ("≈5 cr") is
 // recomputed per render and a one-char difference would silently defeat dedup and
 // double-charge. Stripped only at the top level (the request root), never deep.
-const IGNORED_KEY_FIELDS = new Set(["estimatedCost"]);
+// `jobId` (#163) is a fresh per-call correlation id for socket 回灌 / poll fallback —
+// it differs on every run by design, so including it would give each request a unique
+// key and silently defeat dedup (double-submit / double-charge on rapid identical runs).
+const IGNORED_KEY_FIELDS = new Set(["estimatedCost", "jobId"]);
 
 function hashKey(bucket: string, userId: number, keyInput: unknown): string {
   let k = keyInput;
