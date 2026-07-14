@@ -91,6 +91,11 @@ export function AiClientPanel() {
   const [model, setModel] = useState<string>(CHAT_MODELS.find((m) => m.tag === "默认")?.id ?? CHAT_MODELS[0].id);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingAtts, setPendingAtts] = useState<ChatMsgAttachment[]>([]);
+  // #176 各栏可拖动调宽（会话侧栏 / 工件面板），持久化。
+  const [sidebarW, setSidebarW] = useState<number>(() => { try { return Number(localStorage.getItem("avc:ai-sidebar-w")) || 196; } catch { return 196; } });
+  const [artifactW, setArtifactW] = useState<number>(() => { try { return Number(localStorage.getItem("avc:ai-artifact-w")) || 340; } catch { return 340; } });
+  useEffect(() => { try { localStorage.setItem("avc:ai-sidebar-w", String(sidebarW)); } catch { /* restricted */ } }, [sidebarW]);
+  useEffect(() => { try { localStorage.setItem("avc:ai-artifact-w", String(artifactW)); } catch { /* restricted */ } }, [artifactW]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadMut = trpc.upload.uploadAiChatImage.useMutation();
@@ -328,6 +333,19 @@ export function AiClientPanel() {
     const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setLiveGeo((g) => { if (g) setGeometry(g); return null; }); };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
+  // #176 栏宽拖拽：侧栏向右拖变宽；工件面板向左拖变宽（各自钳制）。
+  const startColResize = (which: "sidebar" | "artifact") => (e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX;
+    const start0 = which === "sidebar" ? sidebarW : artifactW;
+    const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      if (which === "sidebar") setSidebarW(clamp(start0 + dx, 140, 380));
+      else setArtifactW(clamp(start0 - dx, 240, 620));
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
 
   if (!open) return null;
 
@@ -379,7 +397,10 @@ export function AiClientPanel() {
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         {/* 会话侧栏（同源于 ai_chat 节点） */}
-        <div style={{ width: 196, flexShrink: 0, borderRight: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", background: "var(--c-bg, var(--c-surface))" }}>
+        <div style={{ position: "relative", width: sidebarW, flexShrink: 0, borderRight: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", background: "var(--c-bg, var(--c-surface))" }}>
+          {/* #176 右边框拖拽调宽 */}
+          <div onPointerDown={startColResize("sidebar")} className="nodrag" title="拖动调整侧栏宽度"
+            style={{ position: "absolute", top: 0, right: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 3, touchAction: "none" }} />
           <button onClick={newSession} className="nodrag"
             style={{ margin: 10, padding: "8px 10px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none", color: "#fff", background: ACCENT }}>
             <Plus size={14} /> 新会话
@@ -557,7 +578,10 @@ export function AiClientPanel() {
 
         {/* 代码模式「工件面板」（对齐 GPT Canvas / Claude Artifacts）：展示最新代码，可预览/复制/下载/落成节点 */}
         {codeMode && (
-          <div style={{ width: 340, maxWidth: "52%", flexShrink: 0, borderLeft: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, var(--c-surface))" }}>
+          <div style={{ position: "relative", width: artifactW, flexShrink: 0, borderLeft: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, var(--c-surface))" }}>
+            {/* #176 左边框拖拽调宽 */}
+            <div onPointerDown={startColResize("artifact")} className="nodrag" title="拖动调整工件面板宽度"
+              style={{ position: "absolute", top: 0, left: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 3, touchAction: "none" }} />
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderBottom: "1px solid var(--c-bd1)" }}>
               <FileDown size={13} style={{ color: ACCENT, flexShrink: 0 }} />
               <span style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{artifact ? artifact.filename : "代码工件"}</span>
