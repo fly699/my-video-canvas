@@ -262,7 +262,8 @@ export const editorRouter = router({
     .mutation(async ({ ctx, input }) => {
       // 白名单门控：与画布字幕/智能剪辑节点一致（aiCut 又转写又调 LLM，成本更高，必须门控）。
       await assertWhitelisted(ctx);
-      const tr = await transcribeAudio({ audioUrl: input.assetUrl, wordTimestamps: !!input.subtitles });
+      // 转写受「系统默认模型 › 字幕转录」(transcribe 槽) 控制，按 provider 路由。
+      const tr = await transcribeAudio({ audioUrl: input.assetUrl, wordTimestamps: !!input.subtitles, model: await getSystemDefaultModel("transcribe") });
       if ("error" in tr) {
         console.warn("[aiCut] 转写失败", tr.code, tr.error, tr.details);
         throw new TRPCError({ code: "BAD_REQUEST", message: `转写失败：${tr.error}${tr.details ? `（${String(tr.details).slice(0, 240)}）` : ""}` });

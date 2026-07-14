@@ -7,21 +7,24 @@
 
 import type { NodeType } from "./types";
 
-/** 一个节点可能持有的「模型槽位」类别。 */
-export type ModelSlot = "llm" | "image" | "video" | "transcribe";
+/** 一个节点可能持有的「模型槽位」类别。voiceTranscribe = 语音输入（麦克风）的转写，
+ *  与字幕类 transcribe 分开，可各自单独指定默认模型。 */
+export type ModelSlot = "llm" | "image" | "video" | "transcribe" | "voiceTranscribe";
 
 /**
  * 出厂默认模型（项目级配置缺省时的兜底）。
  * - llm：除 ComfyUI 外的文本/对话/规划，以及 ComfyUI 节点的提示词翻译，统一用 kie Opus 4.7。
  * - image：生图统一用 kie GPT Image 2。
  * - video：非 ComfyUI 视频节点统一用 kie Grok Imagine 图生（i2v）。
- * - transcribe：字幕节点的语音转录，统一用 Whisper v1（内置 Forge STT）。
+ * - transcribe：字幕/智能剪辑的语音转录，统一用 Whisper v1（内置 Forge STT）。
+ * - voiceTranscribe：AI 助手/客户端语音输入（麦克风）的转写，出厂同 Whisper v1；可单独改。
  */
 export const FACTORY_DEFAULT_MODELS: Record<ModelSlot, string> = {
   llm: "kie_claude_opus_47",
   image: "kie_gpt_image_2",
   video: "kie_grok_i2v",
   transcribe: "whisper-1",
+  voiceTranscribe: "whisper-1",
 };
 
 /** 项目级「节点默认模型」配置。存于 projects.defaultModels（JSON 列）。 */
@@ -78,7 +81,7 @@ export function normalizeSystemDefaultModels(v: unknown): SystemDefaultModels {
   if (typeof v === "string") { try { o = JSON.parse(v); } catch { o = {}; } }
   const out: SystemDefaultModels = {};
   if (o && typeof o === "object") {
-    for (const slot of ["llm", "image", "video", "transcribe"] as ModelSlot[]) {
+    for (const slot of ["llm", "image", "video", "transcribe", "voiceTranscribe"] as ModelSlot[]) {
       const val = (o as Record<string, unknown>)[slot];
       if (typeof val === "string" && val.trim()) out[slot] = val.trim();
     }

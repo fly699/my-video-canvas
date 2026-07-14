@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
 import { transcribeAudioBuffer, resolveTranscribeEndpoint } from "../_core/voiceTranscription";
+import { getSystemDefaultModel } from "../_core/systemDefaultModels";
 import { assertLLMAllowed } from "../_core/whitelist";
 import { writeAuditLog } from "../_core/auditLog";
 
@@ -22,13 +23,16 @@ export const voiceRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertLLMAllowed(ctx);
-      if (!resolveTranscribeEndpoint()) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "服务端语音识别未配置：请管理员设置 whisper 转写端点（自建 / Forge / OPENAI_API_KEY）" });
+      // 语音输入受「系统默认模型 › 语音输入转录」(voiceTranscribe 槽) 控制，与字幕类 transcribe 各自独立；
+      // 按所选模型的 provider 路由（Groq/自建/Forge）——选谁就走谁的后端。
+      const model = await getSystemDefaultModel("voiceTranscribe");
+      if (!resolveTranscribeEndpoint(model)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "服务端语音识别未配置：请管理员设置 whisper 转写端点（自建 / Forge / OPENAI_API_KEY），或在「系统默认模型 › 语音输入转录」选一个已配置 provider 的模型" });
       }
       const buffer = Buffer.from(input.base64, "base64");
       if (buffer.byteLength === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "空音频" });
       if (buffer.byteLength > 10 * 1024 * 1024) throw new TRPCError({ code: "BAD_REQUEST", message: "录音过长（>10MB），请分段" });
-      const result = await transcribeAudioBuffer(buffer, input.ext ?? "webm", { language: input.language });
+      const result = await transcribeAudioBuffer(buffer, input.ext ?? "webm", { language: input.language, model });
       if ("error" in result) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error + (result.details ? `：${result.details}` : "") });
       }
