@@ -3,6 +3,8 @@ import { BaseNode } from "../BaseNode";
 import type { AssetNodeData } from "../../../../../shared/types";
 import { FileVideo, FileImage, FileAudio, File, ExternalLink, Upload, RefreshCw, Loader2, Play, X } from "lucide-react";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
+import { useCanvasMode } from "../../../contexts/CanvasModeContext";
+import { useUIStyle } from "../../../contexts/UIStyleContext";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
@@ -27,6 +29,11 @@ const accentColor = "oklch(0.65 0.18 60)";
 export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) {
   const payload = data.payload;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  // 创意 / 工作室皮肤下会渲染标题栏下方的「英雄区」预览（heroMedia）；此时配置区不能再
+  // 渲染一遍同一份媒体，否则选中展开后出现「两个一模一样的预览框」（用户反馈）。
+  const { mode: canvasMode } = useCanvasMode();
+  const { uiStyle } = useUIStyle();
+  const heroShown = uiStyle === "studio" || canvasMode === "creative";
   const [uploading, setUploading] = useState(false);
   const [videoPreview, setVideoPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -259,7 +266,9 @@ export const AssetNode = memo(function AssetNode({ id, selected, data }: Props) 
   return (
     <BaseNode id={id} selected={selected} nodeType="asset" title={data.title} minHeight={160} resizable heroMedia={heroMedia}>
       <div className="p-3.5 flex flex-col gap-3">
-        {renderPreview()}
+        {/* 英雄区已展示媒体时不再重复渲染预览（避免选中后出现两个相同预览框）；
+            专业版无英雄区，配置区预览是唯一预览，照常渲染。 */}
+        {!heroShown && renderPreview()}
         <div className="flex items-center gap-2">
           <TypeIcon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: accentColor }} />
           <span className="text-xs truncate flex-1" style={{ color: "var(--c-t3)" }}>
