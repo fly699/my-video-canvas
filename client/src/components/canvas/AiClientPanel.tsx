@@ -52,10 +52,31 @@ export function AiClientPanel() {
   const firstCodexId = useMemo(() => codeModels.find((m) => m.code)?.id, [codeModels]);
   const [showPreview, setShowPreview] = useState(false);
 
-  // 无节点会话（不建 ai_chat 节点，也能记住；索引按项目存 localStorage，消息仍在服务端）。
+  // 无节点会话（不建 ai_chat 节点，也能记住）。#174：随账号服务端持久化（跨设备），
+  // localStorage 仅作离线缓存/兜底。加载时先用缓存秒显，再用服务端结果合并覆盖。
   const [nodeless, setNodeless] = useState<NodelessSession[]>([]);
   useEffect(() => { setNodeless(projectId ? loadNodeless(projectId) : []); }, [projectId]);
+  const sessionsQuery = trpc.aiChat.listSessions.useQuery({ projectId: projectId ?? 0 }, { enabled: !!projectId, staleTime: 30_000 });
+  const upsertSessionMut = trpc.aiChat.upsertSession.useMutation();
+  const deleteSessionMut = trpc.aiChat.deleteSession.useMutation();
+  // 服务端结果到达 → 合并进本地（服务端权威、按 updatedAt 取新），并写回 localStorage 缓存。
+  useEffect(() => {
+    if (!projectId || !sessionsQuery.data) return;
+    const server = sessionsQuery.data.map((r) => ({ id: r.sessionId, title: r.title, model: r.model ?? undefined, contextNodeIds: r.contextNodeIds ?? undefined, updatedAt: r.updatedAt }));
+    setNodeless((local) => {
+      const byId = new Map<string, NodelessSession>();
+      for (const s of local) byId.set(s.id, s);
+      for (const s of server) { const cur = byId.get(s.id); if (!cur || s.updatedAt >= cur.updatedAt) byId.set(s.id, s); }
+      const merged = sortSessions(Array.from(byId.values()));
+      saveNodeless(projectId, merged);
+      return merged;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionsQuery.data, projectId]);
   const persistNodeless = (list: NodelessSession[]) => { setNodeless(list); if (projectId) saveNodeless(projectId, list); };
+  // 单条会话服务端 upsert（随账号持久化）。projectId 缺失时静默跳过（仍有 localStorage 兜底）。
+  const syncSessionUp = (s: NodelessSession) => { if (projectId) upsertSessionMut.mutate({ projectId, sessionId: s.id, title: s.title, ...(s.model ? { model: s.model } : {}), ...(s.contextNodeIds ? { contextNodeIds: s.contextNodeIds } : {}), updatedAt: s.updatedAt }); };
+  const syncSessionDel = (id: string) => { if (projectId) deleteSessionMut.mutate({ projectId, sessionId: id }); };
 
   // 统一会话列表：画布 ai_chat 节点（同源）+ 无节点会话，按更新时间/出现顺序合并。
   const nodeSessions = useMemo(() => deriveAiSessions(nodes).map((s) => ({ id: s.nodeId, title: s.title, preview: s.preview, nodeless: false })), [nodes]);
@@ -90,8 +111,11 @@ export function AiClientPanel() {
   const referable = useMemo(() => nodes.filter((n) => n.id !== active && isReferableNode(n)), [nodes, active]);
   const setContextIds = (ids: string[]) => {
     if (!active) return;
-    if (isNodeless) persistNodeless(updateSession(nodeless, active, { contextNodeIds: ids }));
-    else useCanvasStore.getState().updateNodeData(active, { contextNodeIds: ids }, true);
+    if (isNodeless) {
+      const list = updateSession(nodeless, active, { contextNodeIds: ids, updatedAt: Date.now() });
+      persistNodeless(list);
+      const s = list.find((x) => x.id === active); if (s) syncSessionUp(s);
+    } else useCanvasStore.getState().updateNodeData(active, { contextNodeIds: ids }, true);
   };
   const toggleContext = (nodeId: string) => setContextIds(contextIds.includes(nodeId) ? contextIds.filter((x) => x !== nodeId) : [...contextIds, nodeId]);
 
@@ -104,8 +128,11 @@ export function AiClientPanel() {
   const changeModel = (m: string) => {
     setModel(m);
     if (!active) return;
-    if (isNodeless) persistNodeless(updateSession(nodeless, active, { model: m }));
-    else useCanvasStore.getState().updateNodeData(active, { model: m }, true);
+    if (isNodeless) {
+      const list = updateSession(nodeless, active, { model: m, updatedAt: Date.now() });
+      persistNodeless(list);
+      const s = list.find((x) => x.id === active); if (s) syncSessionUp(s);
+    } else useCanvasStore.getState().updateNodeData(active, { model: m }, true);
   };
   // 切换代码模式：持久化开关；开启时若当前不是代码模型，切到首个 Codex。
   const toggleCodeMode = () => {
@@ -154,6 +181,7 @@ export function AiClientPanel() {
   const newSession = () => {
     const s: NodelessSession = { id: makeNodelessId(nanoid(8)), title: "新会话", model, updatedAt: Date.now() };
     persistNodeless(addSession(nodeless, s));
+    syncSessionUp(s); // #174 随账号持久化
     setActive(s.id);
     setInput(""); setPendingAtts([]);
     toast.success("已新建会话");
@@ -161,6 +189,7 @@ export function AiClientPanel() {
   // 删除无节点会话（清索引 + 清服务端消息）。节点会话由画布管理，这里不删。
   const deleteNodelessSession = (id: string) => {
     persistNodeless(removeSession(nodeless, id));
+    syncSessionDel(id); // #174 清服务端会话索引
     if (projectId) clearMut.mutate({ nodeId: id, projectId });
     if (active === id) setActive(null);
     toast.success("已删除会话");
@@ -189,7 +218,9 @@ export function AiClientPanel() {
     if (isNodeless && active) {
       const cur = nodeless.find((s) => s.id === active);
       const title = cur && cur.title !== "新会话" ? cur.title : (text.slice(0, 30) || cur?.title || "新会话");
-      persistNodeless(updateSession(nodeless, active, { title, updatedAt: Date.now() }));
+      const list = updateSession(nodeless, active, { title, updatedAt: Date.now() });
+      persistNodeless(list);
+      const s = list.find((x) => x.id === active); if (s) syncSessionUp(s); // #174 随账号持久化
     }
     doSend(text, atts);
   };

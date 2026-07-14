@@ -923,6 +923,23 @@ export const comfyWorkflowMemory = mysqlTable("comfy_workflow_memory", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// AI 客户端「会话索引」随账号持久化（#174）：无节点会话的 id/标题/模型/引用节点/更新时间按
+// (用户, 项目) 存，跨设备可见。消息本身仍在 chatMessages（按 nodeId），这里只存索引。
+export const aiClientSessions = mysqlTable("ai_client_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  projectId: int("projectId").notNull(),
+  sessionId: varchar("sessionId", { length: 64 }).notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  model: varchar("model", { length: 64 }),
+  contextNodeIds: json("contextNodeIds").$type<string[]>(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+}, (t) => ({
+  userProjSessUniq: uniqueIndex("ai_client_sessions_user_proj_sess_unique").on(t.userId, t.projectId, t.sessionId),
+}));
+
+export type AiClientSessionRow = typeof aiClientSessions.$inferSelect;
+
 export const whitelistEntries = mysqlTable("whitelistEntries", {
   id: int("id").autoincrement().primaryKey(),
   type: mysqlEnum("type", ["ip", "user"]).notNull(),

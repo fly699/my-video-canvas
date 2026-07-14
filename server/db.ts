@@ -116,6 +116,8 @@ import {
   type ComfyResourceMemoryJson,
   comfyWorkflowMemory,
   type ComfyWorkflowMemoryMeta,
+  aiClientSessions,
+  type AiClientSessionRow,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -1839,6 +1841,49 @@ export async function insertComfyWorkflowMemory(row: InsertComfyWorkflowMemory):
     nodeClasses: row.nodeClasses, outputType: row.outputType, meta: row.meta ?? null, createdAt: row.createdAt,
   });
   return true;
+}
+
+// ── AI 客户端会话索引（#174，随账号持久化）───────────────────────────────────
+export interface AiClientSession { sessionId: string; title: string; model?: string | null; contextNodeIds?: string[] | null; updatedAt: number }
+const devAiSessions: (AiClientSession & { userId: number; projectId: number })[] = [];
+
+/** 列出某用户在某项目下的 AI 客户端会话（最近更新在前）。 */
+export async function listAiClientSessions(userId: number, projectId: number): Promise<AiClientSession[]> {
+  const db = await getDb();
+  if (!db) {
+    return devAiSessions.filter((r) => r.userId === userId && r.projectId === projectId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((r) => ({ sessionId: r.sessionId, title: r.title, model: r.model ?? null, contextNodeIds: r.contextNodeIds ?? null, updatedAt: r.updatedAt }));
+  }
+  const rows: AiClientSessionRow[] = await db.select().from(aiClientSessions)
+    .where(and(eq(aiClientSessions.userId, userId), eq(aiClientSessions.projectId, projectId)))
+    .orderBy(desc(aiClientSessions.updatedAt));
+  return rows.map((r) => ({ sessionId: r.sessionId, title: r.title, model: r.model ?? null, contextNodeIds: (r.contextNodeIds as string[] | null) ?? null, updatedAt: Number(r.updatedAt) || 0 }));
+}
+
+/** 插入或更新一条会话（按 用户+项目+sessionId 唯一）。 */
+export async function upsertAiClientSession(userId: number, projectId: number, s: AiClientSession): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    const i = devAiSessions.findIndex((r) => r.userId === userId && r.projectId === projectId && r.sessionId === s.sessionId);
+    const rec = { userId, projectId, sessionId: s.sessionId, title: s.title, model: s.model ?? null, contextNodeIds: s.contextNodeIds ?? null, updatedAt: s.updatedAt };
+    if (i >= 0) devAiSessions[i] = rec; else devAiSessions.push(rec);
+    return;
+  }
+  await db.insert(aiClientSessions)
+    .values({ userId, projectId, sessionId: s.sessionId, title: s.title, model: s.model ?? null, contextNodeIds: s.contextNodeIds ?? null, updatedAt: s.updatedAt })
+    .onDuplicateKeyUpdate({ set: { title: s.title, model: s.model ?? null, contextNodeIds: s.contextNodeIds ?? null, updatedAt: s.updatedAt } });
+}
+
+/** 删除一条会话（清索引；消息由 chat.clearMessages 单独清）。 */
+export async function deleteAiClientSession(userId: number, projectId: number, sessionId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    const i = devAiSessions.findIndex((r) => r.userId === userId && r.projectId === projectId && r.sessionId === sessionId);
+    if (i >= 0) devAiSessions.splice(i, 1);
+    return;
+  }
+  await db.delete(aiClientSessions).where(and(eq(aiClientSessions.userId, userId), eq(aiClientSessions.projectId, projectId), eq(aiClientSessions.sessionId, sessionId)));
 }
 
 export async function deleteComfyWorkflowMemory(id: number): Promise<void> {
