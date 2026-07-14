@@ -20,6 +20,7 @@ import type { NodeType } from "../../../shared/types";
 
 const ACCENT = "oklch(0.70 0.20 300)";
 const TOPBAR_H = 116; // 顶栏（标题 + 模型跑马灯 + 项目切换）高度，面板从其下方铺满
+const TOPBAR_H_NARROW = 52; // 移动端顶栏：单行紧凑（隐藏跑马灯 + 副标题）
 
 function StandaloneInner() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -81,6 +82,15 @@ function StandaloneInner() {
     else void document.documentElement.requestFullscreen().catch(() => {});
   };
 
+  // 移动端：窄屏（<640）时收起跑马灯 + 副标题，顶栏单行紧凑、按钮仅图标。
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < 640);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const topbarH = narrow ? TOPBAR_H_NARROW : TOPBAR_H;
+
   // 项目切换菜单
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const allProjects = useMemo(() => {
@@ -95,24 +105,27 @@ function StandaloneInner() {
   return (
     <div style={{ position: "fixed", inset: 0, background: "var(--c-bg, #0c0c10)", overflow: "hidden" }}>
       {/* 顶栏：品牌标题 + 模型跑马灯 + 项目切换 + 全屏 + 返回（无地址栏 / 无外链） */}
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: TOPBAR_H, padding: "12px 20px 8px", display: "flex", flexDirection: "column", gap: 8, borderBottom: "1px solid var(--c-bd1)", background: "var(--c-surface)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ display: "inline-flex", width: 32, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 10, background: `color-mix(in oklch, ${ACCENT} 16%, transparent)`, color: ACCENT }}><Bot size={19} /></span>
-          <div style={{ display: "flex", flexDirection: "column" }}>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: topbarH, padding: narrow ? "0 10px" : "12px 20px 8px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, borderBottom: "1px solid var(--c-bd1)", background: "var(--c-surface)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: narrow ? 8 : 12 }}>
+          <span style={{ display: "inline-flex", width: narrow ? 28 : 32, height: narrow ? 28 : 32, flexShrink: 0, alignItems: "center", justifyContent: "center", borderRadius: 10, background: `color-mix(in oklch, ${ACCENT} 16%, transparent)`, color: ACCENT }}><Bot size={narrow ? 17 : 19} /></span>
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
             <span style={{ fontSize: 15, fontWeight: 900, color: "var(--c-t1)" }}>AI 客户端</span>
-            <span style={{ fontSize: 11, color: "var(--c-t4)" }}>独立窗口 · 全部主流大模型一处对话（含代码模式 / @画布上下文）</span>
+            {!narrow && <span style={{ fontSize: 11, color: "var(--c-t4)" }}>独立窗口 · 全部主流大模型一处对话（含代码模式 / @画布上下文）</span>}
           </div>
-          <div style={{ flex: 1, minWidth: 0, margin: "0 8px" }}>
-            <ModelShowcaseCard compact />
-          </div>
+          {!narrow && (
+            <div style={{ flex: 1, minWidth: 0, margin: "0 8px" }}>
+              <ModelShowcaseCard compact />
+            </div>
+          )}
+          {narrow && <div style={{ flex: 1, minWidth: 0 }} />}
           {/* 项目上下文切换 */}
           <div style={{ position: "relative", flexShrink: 0 }}>
             <button onClick={() => setSwitcherOpen((v) => !v)}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: 9, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t2)", cursor: "pointer", maxWidth: 220 }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: narrow ? "7px 9px" : "7px 12px", borderRadius: 9, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t2)", cursor: "pointer", maxWidth: narrow ? 130 : 220 }}
               title="切换会话所在项目（决定 @ 引用可选的画布节点）">
               <FolderOpen size={13} style={{ color: ACCENT, flexShrink: 0 }} />
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeProject?.name ?? "AI 客户端"}</span>
-              <ChevronDown size={13} style={{ flexShrink: 0 }} />
+              {!narrow && <ChevronDown size={13} style={{ flexShrink: 0 }} />}
             </button>
             {switcherOpen && (
               <>
@@ -136,18 +149,18 @@ function StandaloneInner() {
             )}
           </div>
           {/* 全屏（隐藏浏览器地址栏，真正独占） */}
-          <button onClick={toggleFullscreen} style={topBtn} title={isFs ? "退出全屏" : "全屏独占（隐藏浏览器地址栏）"}>
-            {isFs ? <Minimize2 size={13} /> : <Maximize2 size={13} />} {isFs ? "退出全屏" : "全屏"}
+          <button onClick={toggleFullscreen} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title={isFs ? "退出全屏" : "全屏独占（隐藏浏览器地址栏）"}>
+            {isFs ? <Minimize2 size={13} /> : <Maximize2 size={13} />} {!narrow && (isFs ? "退出全屏" : "全屏")}
           </button>
           {/* 返回首页（内部路由，非外链） */}
-          <button onClick={() => navigate("/")} style={topBtn} title="返回首页">
-            <ArrowLeft size={13} /> 首页
+          <button onClick={() => navigate("/")} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title="返回首页">
+            <ArrowLeft size={13} /> {!narrow && "首页"}
           </button>
         </div>
       </div>
 
       {/* 复用画布内同一套 AI 客户端面板（embedded：无浮动壳、铺满内容区，不再窗口套窗口） */}
-      <div style={{ position: "absolute", top: TOPBAR_H, left: 0, right: 0, bottom: 0 }}>
+      <div style={{ position: "absolute", top: topbarH, left: 0, right: 0, bottom: 0 }}>
         <AiClientPanel embedded />
       </div>
     </div>

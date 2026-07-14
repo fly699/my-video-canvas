@@ -120,6 +120,12 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   useEffect(() => { try { localStorage.setItem("avc:ai-artifact-w", String(artifactW)); } catch { /* restricted */ } }, [artifactW]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // 移动端（窄屏）：embedded 独立页在手机上会话侧栏/工件面板不能与聊天并排挤压，改为抽屉/浮层。
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => { const f = () => setNarrow(window.innerWidth < 640); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
+  const mobile = embedded && narrow;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mobileArtifactOpen, setMobileArtifactOpen] = useState(false);
   const uploadMut = trpc.upload.uploadAiChatImage.useMutation();
   const clearMut = trpc.aiChat.clearMessages.useMutation();
   // #172-批2 代码真实执行：工件「运行」桥接工程智能体沙箱（runCodeTask，需 L4 + 服务端开启）。
@@ -426,6 +432,10 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     >
       {/* 顶栏（浮动模式可拖拽移动窗口；嵌入模式不可拖、不显窗口控制） */}
       <div onPointerDown={embedded ? undefined : startDrag} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid var(--c-bd1)", cursor: embedded ? "default" : "move", touchAction: "none" }}>
+        {/* 移动端：会话抽屉开关（汉堡） */}
+        {mobile && (
+          <button onClick={() => setDrawerOpen(true)} title="会话列表" style={iconBtn}><MessageSquare size={17} /></button>
+        )}
         {!embedded && <>
           <span style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 16%, transparent)`, color: ACCENT }}><Bot size={16} /></span>
           <span style={{ fontSize: 13, fontWeight: 800, color: "var(--c-t1)" }}>AI 客户端</span>
@@ -438,6 +448,10 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
         <div style={{ flex: 1 }} />
         <button onClick={toggleCodeMode} title={codeMode ? "退出代码模式" : "代码模式（Codex 写码 + 工件面板/预览，对齐 Canvas/Artifacts）"}
           style={{ ...iconBtn, color: codeMode ? ACCENT : "var(--c-t3)", background: codeMode ? `color-mix(in oklch, ${ACCENT} 16%, transparent)` : "transparent" }}><Code2 size={15} /></button>
+        {/* 移动端：代码模式下用浮层展开「工件面板」（不再与聊天并排挤压） */}
+        {mobile && codeMode && (
+          <button onClick={() => setMobileArtifactOpen(true)} title="代码工件" style={iconBtn}><FileDown size={15} /></button>
+        )}
         {!embedded && <>
           <button onClick={() => setPinned(!pinned)} title={pinned ? "取消钉住" : "钉住（记住展开态，进画布自动打开）"} style={{ ...iconBtn, color: pinned ? ACCENT : "var(--c-t3)" }}><Pin size={15} fill={pinned ? ACCENT : "none"} /></button>
           <button onClick={() => setMinimized(true)} title="最小化（Cmd/Ctrl+J）" style={iconBtn}><Minus size={16} /></button>
@@ -445,13 +459,25 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
         </>}
       </div>
 
-      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        {/* 会话侧栏（同源于 ai_chat 节点） */}
-        <div style={{ position: "relative", width: sidebarW, flexShrink: 0, borderRight: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", background: "var(--c-bg, var(--c-surface))" }}>
-          {/* #176 右边框拖拽调宽 */}
-          <div onPointerDown={startColResize("sidebar")} className="nodrag" title="拖动调整侧栏宽度"
-            style={{ position: "absolute", top: 0, right: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 3, touchAction: "none" }} />
-          <button onClick={newSession} className="nodrag"
+      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+        {/* 移动端抽屉遮罩 */}
+        {mobile && drawerOpen && (
+          <div onClick={() => setDrawerOpen(false)} style={{ position: "absolute", inset: 0, zIndex: 9, background: "oklch(0 0 0 / 0.45)" }} />
+        )}
+        {/* 会话侧栏（同源于 ai_chat 节点）——移动端为左侧抽屉，桌面为常驻分栏 */}
+        <div style={mobile ? {
+          position: "absolute", top: 0, left: 0, bottom: 0, width: "min(280px, 82%)", zIndex: 10,
+          borderRight: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", background: "var(--c-elevated, var(--c-surface))",
+          transform: drawerOpen ? "translateX(0)" : "translateX(-102%)", transition: "transform 0.2s ease", boxShadow: drawerOpen ? "4px 0 24px rgba(0,0,0,0.4)" : "none",
+        } : {
+          position: "relative", width: sidebarW, flexShrink: 0, borderRight: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", background: "var(--c-bg, var(--c-surface))",
+        }}>
+          {/* #176 右边框拖拽调宽（移动端抽屉不需要） */}
+          {!mobile && (
+            <div onPointerDown={startColResize("sidebar")} className="nodrag" title="拖动调整侧栏宽度"
+              style={{ position: "absolute", top: 0, right: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 3, touchAction: "none" }} />
+          )}
+          <button onClick={() => { newSession(); if (mobile) setDrawerOpen(false); }} className="nodrag"
             style={{ margin: 10, padding: "8px 10px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none", color: "#fff", background: ACCENT }}>
             <Plus size={14} /> 新会话
           </button>
@@ -468,7 +494,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitRename(); } else if (e.key === "Escape") { e.preventDefault(); setRenamingId(null); } }}
                       style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", background: "var(--c-input)", border: `1px solid ${ACCENT}`, borderRadius: 9, color: "var(--c-t1)", fontSize: 12, fontWeight: 600, outline: "none" }} />
                   ) : (
-                  <button onClick={() => setActive(s.id)} onDoubleClick={() => startRename(s.id, s.title)} className="nodrag"
+                  <button onClick={() => { setActive(s.id); if (mobile) setDrawerOpen(false); }} onDoubleClick={() => startRename(s.id, s.title)} className="nodrag"
                     style={{ width: "100%", textAlign: "left", padding: "8px 9px", background: "transparent", border: "none", cursor: "pointer", color: "var(--c-t1)" }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: s.nodeless ? 34 : 18 }}>
                       <MessageSquare size={12} style={{ flexShrink: 0, color: on ? ACCENT : "var(--c-t4)" }} />
@@ -687,16 +713,26 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
           </div>
         </div>
 
-        {/* 代码模式「工件面板」（对齐 GPT Canvas / Claude Artifacts）：展示最新代码，可预览/复制/下载/落成节点 */}
-        {codeMode && (
-          <div style={{ position: "relative", width: artifactW, flexShrink: 0, borderLeft: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, var(--c-surface))" }}>
-            {/* #176 左边框拖拽调宽 */}
-            <div onPointerDown={startColResize("artifact")} className="nodrag" title="拖动调整工件面板宽度"
-              style={{ position: "absolute", top: 0, left: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 3, touchAction: "none" }} />
+        {/* 代码模式「工件面板」（对齐 GPT Canvas / Claude Artifacts）：展示最新代码，可预览/复制/下载/落成节点。
+            移动端为全宽浮层（避免与聊天并排挤压），点顶栏工件按钮开、右上角 X 关。 */}
+        {codeMode && (!mobile || mobileArtifactOpen) && (
+          <div style={mobile ? {
+            position: "absolute", inset: 0, zIndex: 12, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, var(--c-surface))",
+          } : {
+            position: "relative", width: artifactW, flexShrink: 0, borderLeft: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, var(--c-surface))",
+          }}>
+            {/* #176 左边框拖拽调宽（移动端浮层不需要） */}
+            {!mobile && (
+              <div onPointerDown={startColResize("artifact")} className="nodrag" title="拖动调整工件面板宽度"
+                style={{ position: "absolute", top: 0, left: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 3, touchAction: "none" }} />
+            )}
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderBottom: "1px solid var(--c-bd1)" }}>
               <FileDown size={13} style={{ color: ACCENT, flexShrink: 0 }} />
               <span style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{artifact ? artifact.filename : "代码工件"}</span>
               <div style={{ flex: 1 }} />
+              {mobile && (
+                <button onClick={() => setMobileArtifactOpen(false)} className="nodrag" title="关闭工件面板" style={{ ...iconBtn, width: 24, height: 24 }}><X size={15} /></button>
+              )}
               {artifact?.previewable && (
                 <button onClick={() => setShowPreview((v) => !v)} className="nodrag" title={showPreview ? "看源码" : "实时预览"}
                   style={{ ...iconBtn, width: 24, height: 24, color: showPreview ? ACCENT : "var(--c-t3)" }}><Eye size={14} /></button>
