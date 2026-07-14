@@ -81,8 +81,41 @@ export async function recordWorkflowExperience(input: RecordExperienceInput): Pr
   if (!meta.models) meta.models = extractModels(workflowJson);
   try {
     return await insertComfyWorkflowMemory({
-      baseUrl, task, workflowJson, hash: hashWorkflow(workflowJson),
+      baseUrl, task, workflowJson, hash: hashWorkflow(workflowJson), status: "success",
       nodeClasses, outputType: input.outputType ?? null, meta, createdAt: Date.now(),
+    });
+  } catch { return false; }
+}
+
+export interface RecordFailureInput {
+  baseUrl: string; task: string;
+  /** "failed" | "exhausted"（不传按 failed）。aborted / 连接类噪声不应调本函数。 */
+  status?: string;
+  /** 拦路的问题/放弃原因（下次当作已知坑规避）。为空则不沉淀（无信息量）。 */
+  failReasons: string[];
+  /** 最后一版（未调通的）workflowJson，可选留存供复盘。 */
+  workflowJson?: string;
+  nodeClasses?: string[];
+  meta?: ComfyWorkflowMemoryMeta;
+}
+
+/** 沉淀一条失败教训（踩过的坑），供下次同类任务规避。按「服务器 + 失败签名」去重（同样的坑不重复记）。
+ *  failReasons 为空（无信息量，如纯连接失败已被过滤）则跳过。返回是否新写入。 */
+export async function recordWorkflowFailure(input: RecordFailureInput): Promise<boolean> {
+  const reasons = (input.failReasons ?? []).map((s) => String(s).trim()).filter(Boolean).slice(0, 20);
+  if (!reasons.length) return false;
+  const baseUrl = norm(input.baseUrl);
+  const task = (input.task || "").slice(0, 2000);
+  const status = input.status === "exhausted" ? "exhausted" : "failed";
+  const workflowJson = (input.workflowJson || "").trim();
+  const nodeClasses = (input.nodeClasses && input.nodeClasses.length ? input.nodeClasses : extractNodeClasses(workflowJson)).slice(0, 200);
+  // 去重签名 = 服务器 + 失败原因集合（排序）——同样的坑（无论 workflow 是否相同）只记一次。
+  const hash = createHash("sha1").update(reasons.slice().sort().join("\n")).digest("hex");
+  const meta: ComfyWorkflowMemoryMeta = { ...(input.meta ?? {}), failReasons: reasons };
+  try {
+    return await insertComfyWorkflowMemory({
+      baseUrl, task, workflowJson, hash, status,
+      nodeClasses, outputType: null, meta, createdAt: Date.now(),
     });
   } catch { return false; }
 }
@@ -97,12 +130,14 @@ export async function recallWorkflowExperiences(
   if (!taskTokens.size) return [];
   let rows: ComfyWorkflowMemoryRow[];
   try { rows = await listComfyWorkflowMemory(norm(baseUrl)); } catch { return []; }
-  const scored = rows.map((r) => {
-    const ct = tokenizeForMatch(`${r.task} ${r.nodeClasses.join(" ")}`);
-    let score = 0, strong = false;
-    ct.forEach((t) => { if (taskTokens.has(t)) { score++; if (/^[a-z0-9]{3,}$/.test(t)) strong = true; } });
-    return { r, score, strong };
-  })
+  const scored = rows
+    .filter((r) => r.status === "success") // 只把「成功工作流」当可复用范例召回
+    .map((r) => {
+      const ct = tokenizeForMatch(`${r.task} ${r.nodeClasses.join(" ")}`);
+      let score = 0, strong = false;
+      ct.forEach((t) => { if (taskTokens.has(t)) { score++; if (/^[a-z0-9]{3,}$/.test(t)) strong = true; } });
+      return { r, score, strong };
+    })
     .filter((x) => x.strong || x.score >= 2)
     .sort((a, b) => (b.score - a.score) || (b.r.createdAt - a.r.createdAt))
     .slice(0, n);
@@ -113,6 +148,35 @@ export async function recallWorkflowExperiences(
     nodeClasses: x.r.nodeClasses,
     createdAt: x.r.createdAt,
   }));
+}
+
+/** 召回与任务相关的「失败教训/已知坑」（只看失败记录），去重后返回若干条，供注入引擎主动规避。 */
+export async function recallPitfalls(baseUrl: string, task: string, limit = 10): Promise<string[]> {
+  const taskTokens = tokenizeForMatch(task);
+  if (!taskTokens.size) return [];
+  let rows: ComfyWorkflowMemoryRow[];
+  try { rows = await listComfyWorkflowMemory(norm(baseUrl)); } catch { return []; }
+  const relevant = rows
+    .filter((r) => r.status !== "success" && r.meta?.failReasons?.length)
+    .map((r) => {
+      const ct = tokenizeForMatch(`${r.task} ${r.nodeClasses.join(" ")}`);
+      let score = 0, strong = false;
+      ct.forEach((t) => { if (taskTokens.has(t)) { score++; if (/^[a-z0-9]{3,}$/.test(t)) strong = true; } });
+      return { r, score, strong };
+    })
+    .filter((x) => x.strong || x.score >= 2)
+    .sort((a, b) => (b.score - a.score) || (b.r.createdAt - a.r.createdAt));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const { r } of relevant) {
+    for (const reason of r.meta!.failReasons!) {
+      const key = reason.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key); out.push(reason.trim());
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
 }
 
 /** 列出经验（管理 UI / 多方查询）。 */

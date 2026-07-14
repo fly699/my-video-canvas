@@ -8,7 +8,7 @@ import { assertProjectAccess } from "../_core/permissions";
 import { assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog } from "../_core/auditLog";
 import { ENV } from "../_core/env";
-import { runComfyAgent, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
+import { runComfyAgent, extractRunLessons, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
 import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferenceCandidates } from "../_core/superAgent/comfyAdapters";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
@@ -16,7 +16,7 @@ import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/su
 import { getSuperAgentConfig } from "../_core/superAgent/config";
 import { invalidateComfyKnowledge } from "../_core/comfyKnowledge";
 import {
-  recordWorkflowExperience, recallWorkflowExperiences,
+  recordWorkflowExperience, recallWorkflowExperiences, recordWorkflowFailure, recallPitfalls,
   listWorkflowExperiences, searchWorkflowExperiences, deleteWorkflowExperience, clearWorkflowExperiences,
 } from "../_core/comfyExperience";
 import { installModel, installCustomNode, isValidDownloadUrl, isValidModelFilename, isValidGitUrl, MODEL_DIRS, type ModelDir } from "../_core/ops/modelOps";
@@ -141,6 +141,21 @@ export const superAgentRouter = router({
       // 从零编写时，检索参考范例：优先「工作流经验记忆体」召回本服务器成功搭通过的相似工作流（最高信号、
       // 尽量给全量图供直接参考），再加本项目画布上的 comfyui_workflow 节点、共享模板库里的相似工作流。
       // 续接（seedWorkflowJson）已有基底，不再注入以省上下文。useMemory=false 时不召回经验。
+      // 失败教训/已知坑：召回本服务器过往在类似任务上踩过的坑，注入引擎开头主动规避（useMemory 时）。
+      let knownPitfalls: string[] = [];
+      if (useMemory) {
+        try {
+          knownPitfalls = await recallPitfalls(baseUrl, input.task, 10);
+          if (knownPitfalls.length) {
+            emitSuperAgentEvent(input.projectId, input.nodeId, {
+              type: "memory",
+              message: `已调用失败经验记忆体：注入 ${knownPitfalls.length} 条过往踩过的坑，本次将主动规避（避免重复造车）。`,
+              data: { kind: "pitfalls", count: knownPitfalls.length },
+            });
+          }
+        } catch { /* 召回失败不阻断 */ }
+      }
+
       let referenceExamples: { label: string; workflowJson: string }[] = [];
       if (!input.seedWorkflowJson) {
         try {
@@ -187,6 +202,7 @@ export const superAgentRouter = router({
           history: input.history,
           referenceExamples,
           showAllResources: input.showAllResources,
+          knownPitfalls,
         });
       } finally {
         runningJobs.delete(key);
@@ -198,8 +214,10 @@ export const superAgentRouter = router({
         detail: { projectId: input.projectId, task: input.task.slice(0, 200), status: result.status, iterations: result.iterations, baseUrl },
       });
 
-      // 成功搭通 → 全量沉淀进「工作流经验记忆体」（同图去重），供下次相似任务召回复用。不落下有用信息：
-      // 分析结果、样例产物、迭代轮数、所用 LLM 一并留存。best-effort，不阻断返回。始终沉淀（与是否「使用」记忆解耦）。
+      // 全量沉淀进「工作流经验记忆体」（best-effort，不阻断返回，与是否「使用」记忆解耦——始终学习）：
+      // - 成功：完整工作流 + 分析/样例产物/迭代/LLM + 过程中克服的问题（lessons）。
+      // - 失败/耗尽（非用户取消）：把拦路的问题当「踩过的坑」沉淀，下次同类任务主动规避、不重复造车。
+      const lessons = extractRunLessons(result.log);
       if (result.status === "success" && result.workflowJson) {
         void recordWorkflowExperience({
           baseUrl, task: input.task, workflowJson: result.workflowJson, outputType: result.outputType ?? null,
@@ -207,12 +225,25 @@ export const superAgentRouter = router({
             analysis: result.analysis ? { paramBindings: result.analysis.paramBindings, outputNodeIds: result.analysis.outputNodeIds, outputType: result.analysis.outputType ?? null } : undefined,
             images: result.images, videos: result.videos,
             iterations: result.iterations, llmModel: input.model ?? null,
+            lessons: lessons.length ? lessons : undefined,
           },
         }).then((saved) => {
           if (saved) emitSuperAgentEvent(input.projectId, input.nodeId, {
             type: "memory",
             message: "已把本次成功工作流存入经验记忆体，下次相似任务将自动参考（永不过期，可手动清理）。",
             data: { kind: "experience-saved" },
+          });
+        }).catch(() => { /* 沉淀失败无妨 */ });
+      } else if ((result.status === "failed" || result.status === "exhausted") && lessons.length) {
+        // aborted（用户取消）不记；纯连接/超时噪声已被 extractRunLessons 过滤（lessons 为空则不记）。
+        void recordWorkflowFailure({
+          baseUrl, task: input.task, status: result.status, failReasons: lessons,
+          workflowJson: result.workflowJson, meta: { iterations: result.iterations, llmModel: input.model ?? null },
+        }).then((saved) => {
+          if (saved) emitSuperAgentEvent(input.projectId, input.nodeId, {
+            type: "memory",
+            message: `已把本次失败教训（${lessons.length} 条踩过的坑）存入记忆体，下次同类任务将主动规避。`,
+            data: { kind: "pitfall-saved", count: lessons.length },
           });
         }).catch(() => { /* 沉淀失败无妨 */ });
       }
@@ -250,9 +281,10 @@ export const superAgentRouter = router({
       const rows = await listWorkflowExperiences(input?.baseUrl);
       // 不回传完整 workflowJson（可能很大）；给摘要 + 长度，详情按需再取。
       return rows.map((r) => ({
-        id: r.id, baseUrl: r.baseUrl, task: r.task, nodeClasses: r.nodeClasses,
+        id: r.id, baseUrl: r.baseUrl, task: r.task, status: r.status, nodeClasses: r.nodeClasses,
         outputType: r.outputType, usageCount: r.usageCount, createdAt: r.createdAt,
         workflowJsonLength: r.workflowJson.length,
+        failReasons: r.meta?.failReasons ?? null, lessons: r.meta?.lessons ?? null,
       }));
     }),
 
@@ -261,9 +293,10 @@ export const superAgentRouter = router({
     .query(async ({ input }) => {
       const rows = await searchWorkflowExperiences(input.query, input.baseUrl, input.limit ?? 50);
       return rows.map((r) => ({
-        id: r.id, baseUrl: r.baseUrl, task: r.task, nodeClasses: r.nodeClasses,
+        id: r.id, baseUrl: r.baseUrl, task: r.task, status: r.status, nodeClasses: r.nodeClasses,
         outputType: r.outputType, usageCount: r.usageCount, createdAt: r.createdAt,
         workflowJsonLength: r.workflowJson.length,
+        failReasons: r.meta?.failReasons ?? null, lessons: r.meta?.lessons ?? null,
       }));
     }),
 

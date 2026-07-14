@@ -901,14 +901,20 @@ export type ComfyWorkflowMemoryMeta = {
   iterations?: number;
   llmModel?: string | null;
   referenceLabels?: string[];
+  /** 成功时：过程中克服过的问题（教训）。 */
+  lessons?: string[];
+  /** 失败时：拦路的问题/放弃原因（下次当作已知坑规避）。 */
+  failReasons?: string[];
   [k: string]: unknown;
 };
+// status：success=调通并沉淀为可复用范例；failed/exhausted=失败经验（记「踩过的坑」，下次规避）。
 export const comfyWorkflowMemory = mysqlTable("comfy_workflow_memory", {
   id: int("id").autoincrement().primaryKey(),
   baseUrl: varchar("baseUrl", { length: 512 }).notNull(),
   task: varchar("task", { length: 2000 }).notNull(),
   workflowJson: longtext("workflowJson").notNull(),
   hash: varchar("hash", { length: 64 }).notNull(),
+  status: varchar("status", { length: 24 }).default("success").notNull(),
   nodeClasses: json("nodeClasses").$type<ComfyWorkflowMemoryNodeClasses>(),
   outputType: varchar("outputType", { length: 32 }),
   meta: json("meta").$type<ComfyWorkflowMemoryMeta>(),

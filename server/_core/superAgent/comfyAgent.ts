@@ -114,6 +114,34 @@ export interface RunComfyAgentOptions {
   referenceExamples?: { label: string; workflowJson: string }[];
   /** 「加载全部资源」：系统提示里不截断，列出服务器全部已装 checkpoint/LoRA/VAE/节点（需大上下文模型）。 */
   showAllResources?: boolean;
+  /** 已知坑/失败教训：本服务器过往在类似任务上踩过的坑（来自失败经验记忆体），开头提醒 LLM 主动规避。 */
+  knownPitfalls?: string[];
+}
+
+/** 从一次运行的事件日志里抽出「教训」——distinct 的校验/运行错误签名（去噪、去重、截断）。
+ *  成功时 = 过程中克服过的问题；失败时 = 拦路的问题。纯函数，便于单测与多处复用。 */
+export function extractRunLessons(log: AgentEvent[], cap = 12): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  // 连接/超时/取消类是环境噪声，不是「工作流本身的坑」，不入教训（避免污染未来规避提示）。
+  const noise = /超时|timeout|无法连接|连接失败|拒绝连接|ECONN|ETIMEDOUT|fetch failed|socket hang|abort|已取消/i;
+  const add = (s: string) => {
+    const sig = String(s).trim().replace(/\s+/g, " ").slice(0, 240);
+    if (!sig || noise.test(sig)) return;
+    const key = sig.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(sig);
+  };
+  for (const e of log) {
+    const d = (e.data ?? {}) as { tool?: string; ok?: boolean; errors?: unknown; error?: unknown };
+    if (d.tool === "validate" && d.ok === false && Array.isArray(d.errors)) {
+      for (const err of d.errors) if (typeof err === "string") add(err);
+    } else if (d.tool === "execute" && d.ok === false && typeof d.error === "string") {
+      add("运行失败：" + d.error);
+    }
+  }
+  return out.slice(0, cap);
 }
 
 /** LLM 每轮必须返回的单个 JSON 动作。 */
@@ -274,6 +302,11 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
   const canInstall = !!(opts.tools.installModel || opts.tools.installNode);
   const canDescribe = !!opts.tools.describeNodes;
   const messages: AgentMessage[] = [{ role: "system", content: buildSystemPrompt(opts.task, resources, continuing, canInstall, canDescribe, opts.referenceExamples ?? [], opts.showAllResources) }];
+  // 已知坑/失败教训注入：本服务器过往在类似任务上踩过的坑，开头提醒主动规避，避免重复造车。
+  const pitfalls = (opts.knownPitfalls ?? []).filter((s) => typeof s === "string" && s.trim()).slice(0, 12);
+  if (pitfalls.length) {
+    messages.push({ role: "user", content: `⚠️ 本服务器过往在类似任务上踩过以下坑（来自失败经验记忆体），请在动手前主动规避、不要重复踩：\n${pitfalls.map((p) => `- ${p}`).join("\n")}` });
+  }
   // 连续对话：并入先前若干轮精简历史。
   for (const h of opts.history ?? []) messages.push(h);
 

@@ -1787,11 +1787,11 @@ export async function deleteAllComfyKnowledgeRows(): Promise<void> {
 //    工程智能体成功搭通的工作流沉淀到此，供相似任务召回复用。永不自动过期，仅手动管理。
 //    dev/无 DB 时用进程内数组兜底（重启即空），行为与有 DB 一致，单测/开发可用。
 export interface ComfyWorkflowMemoryRow {
-  id: number; baseUrl: string; task: string; workflowJson: string; hash: string;
+  id: number; baseUrl: string; task: string; workflowJson: string; hash: string; status: string;
   nodeClasses: string[]; outputType: string | null; meta: ComfyWorkflowMemoryMeta | null; usageCount: number; createdAt: number;
 }
 export interface InsertComfyWorkflowMemory {
-  baseUrl: string; task: string; workflowJson: string; hash: string;
+  baseUrl: string; task: string; workflowJson: string; hash: string; status?: string;
   nodeClasses: string[]; outputType: string | null; meta?: ComfyWorkflowMemoryMeta | null; createdAt: number;
 }
 const devWorkflowMemory: ComfyWorkflowMemoryRow[] = [];
@@ -1816,7 +1816,7 @@ export async function listComfyWorkflowMemory(baseUrl?: string): Promise<ComfyWo
   const q = db.select().from(comfyWorkflowMemory);
   const rows = await (baseUrl ? q.where(eq(comfyWorkflowMemory.baseUrl, baseUrl)) : q).orderBy(desc(comfyWorkflowMemory.createdAt));
   return rows.map((r) => ({
-    id: r.id, baseUrl: r.baseUrl, task: r.task, workflowJson: r.workflowJson, hash: r.hash,
+    id: r.id, baseUrl: r.baseUrl, task: r.task, workflowJson: r.workflowJson, hash: r.hash, status: r.status ?? "success",
     nodeClasses: _normNodeClasses(r.nodeClasses), outputType: r.outputType ?? null,
     meta: _normMeta(r.meta), usageCount: Number(r.usageCount) || 0, createdAt: Number(r.createdAt) || 0,
   }));
@@ -1825,16 +1825,17 @@ export async function listComfyWorkflowMemory(baseUrl?: string): Promise<ComfyWo
 /** 沉淀一条经验；同一服务器上同一份 workflow（按 hash）已存在则跳过（返回 false）。 */
 export async function insertComfyWorkflowMemory(row: InsertComfyWorkflowMemory): Promise<boolean> {
   const db = await getDb();
+  const status = row.status ?? "success";
   if (!db) {
     if (devWorkflowMemory.some((r) => r.baseUrl === row.baseUrl && r.hash === row.hash)) return false;
-    devWorkflowMemory.push({ ...row, id: devWorkflowMemorySeq++, usageCount: 0, nodeClasses: [...row.nodeClasses], meta: row.meta ?? null });
+    devWorkflowMemory.push({ ...row, id: devWorkflowMemorySeq++, status, usageCount: 0, nodeClasses: [...row.nodeClasses], meta: row.meta ?? null });
     return true;
   }
   const dup = await db.select({ id: comfyWorkflowMemory.id }).from(comfyWorkflowMemory)
     .where(and(eq(comfyWorkflowMemory.baseUrl, row.baseUrl), eq(comfyWorkflowMemory.hash, row.hash))).limit(1);
   if (dup[0]) return false;
   await db.insert(comfyWorkflowMemory).values({
-    baseUrl: row.baseUrl, task: row.task, workflowJson: row.workflowJson, hash: row.hash,
+    baseUrl: row.baseUrl, task: row.task, workflowJson: row.workflowJson, hash: row.hash, status,
     nodeClasses: row.nodeClasses, outputType: row.outputType, meta: row.meta ?? null, createdAt: row.createdAt,
   });
   return true;

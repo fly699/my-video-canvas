@@ -4,8 +4,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   recordWorkflowExperience, recallWorkflowExperiences, listWorkflowExperiences,
   searchWorkflowExperiences, deleteWorkflowExperience, clearWorkflowExperiences,
+  recordWorkflowFailure, recallPitfalls,
   extractNodeClasses, extractModels, hashWorkflow,
 } from "./_core/comfyExperience";
+import { extractRunLessons } from "./_core/superAgent/comfyAgent";
 
 const BASE = "http://comfy:8188";
 const txt2img = JSON.stringify({
@@ -95,6 +97,46 @@ describe("comfyExperience 工作流经验记忆体", () => {
     expect(m.checkpoints).toContain("sd_xl.safetensors");
     expect(m.loras).toContain("detail.safetensors");
     expect(m.vaes).toContain("ae.safetensors");
+  });
+
+  it("失败教训沉淀 + 召回已知坑；成功范例与失败教训分离", async () => {
+    // 成功范例
+    await recordWorkflowExperience({ baseUrl: BASE, task: "flux 文生图", workflowJson: txt2img });
+    // 失败教训
+    expect(await recordWorkflowFailure({
+      baseUrl: BASE, task: "flux 文生图 加 controlnet",
+      status: "failed", failReasons: ["缺少节点类型（未安装）：ControlNetApplyAdvanced"],
+      nodeClasses: ["ControlNetApplyAdvanced"],
+    })).toBe(true);
+    // 同样的坑不重复记（失败签名去重）
+    expect(await recordWorkflowFailure({
+      baseUrl: BASE, task: "另一个 flux controlnet 任务",
+      status: "failed", failReasons: ["缺少节点类型（未安装）：ControlNetApplyAdvanced"],
+    })).toBe(false);
+    // 召回成功范例只含 success；召回坑只含 failure
+    const succ = await recallWorkflowExperiences(BASE, "flux 文生图", 5);
+    expect(succ.length).toBe(1);
+    const pits = await recallPitfalls(BASE, "flux controlnet 出图", 10);
+    expect(pits.some((p) => p.includes("ControlNetApplyAdvanced"))).toBe(true);
+  });
+
+  it("failReasons 为空不沉淀失败（纯噪声已过滤）", async () => {
+    expect(await recordWorkflowFailure({ baseUrl: BASE, task: "x", status: "failed", failReasons: [] })).toBe(false);
+  });
+
+  it("extractRunLessons：从运行日志抽出校验/运行错误，过滤连接噪声", () => {
+    const log = [
+      { type: "tool_result", iteration: 1, message: "", data: { tool: "validate", ok: false, errors: ["缺少节点类型（未安装）：FooNode", "取值非法：sampler"] } },
+      { type: "tool_result", iteration: 2, message: "", data: { tool: "validate", ok: true, errors: [] } },
+      { type: "tool_result", iteration: 3, message: "", data: { tool: "execute", ok: false, error: "连接超时 timeout" } },
+      { type: "tool_result", iteration: 4, message: "", data: { tool: "execute", ok: false, error: "CUDA out of memory" } },
+    ];
+    const lessons = extractRunLessons(log as never);
+    expect(lessons.some((l) => l.includes("FooNode"))).toBe(true);
+    expect(lessons.some((l) => l.includes("sampler"))).toBe(true);
+    expect(lessons.some((l) => l.includes("CUDA out of memory"))).toBe(true);
+    // 连接/超时噪声被过滤
+    expect(lessons.some((l) => /timeout|超时/.test(l))).toBe(false);
   });
 
   it("全量记忆：meta 留存分析/样例产物/迭代/LLM，且模型自动抽取", async () => {

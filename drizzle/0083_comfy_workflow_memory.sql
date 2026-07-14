@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS `comfy_workflow_memory` (
   `task` varchar(2000) NOT NULL,
   `workflowJson` longtext NOT NULL,
   `hash` varchar(64) NOT NULL,
+  `status` varchar(24) NOT NULL DEFAULT 'success',
   `nodeClasses` json,
   `outputType` varchar(32),
   `meta` json,
