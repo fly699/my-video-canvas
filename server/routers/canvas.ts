@@ -40,6 +40,9 @@ import {
   addChatMessage,
   addChatMessagePair,
   clearChatMessages,
+  listAiClientSessions,
+  upsertAiClientSession,
+  deleteAiClientSession,
 } from "../db";
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl, toInternalStoragePath, storagePresignPut, isStorageConfigured, finalizeStorageKey } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
@@ -1200,6 +1203,38 @@ export const aiChatRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await clearChatMessages(input.nodeId, input.projectId);
+      return { success: true };
+    }),
+
+  // ── AI 客户端会话索引（#174，随账号持久化；无节点会话跨设备可见）──
+  listSessions: protectedProcedure
+    .input(z.object({ projectId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "viewer");
+      return listAiClientSessions(ctx.user.id, input.projectId);
+    }),
+  upsertSession: protectedProcedure
+    .input(z.object({
+      projectId: z.number(),
+      sessionId: z.string().max(64),
+      title: z.string().max(200),
+      model: z.string().max(64).optional(),
+      contextNodeIds: z.array(z.string().max(64)).max(64).optional(),
+      updatedAt: z.number(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      await upsertAiClientSession(ctx.user.id, input.projectId, {
+        sessionId: input.sessionId, title: input.title, model: input.model ?? null,
+        contextNodeIds: input.contextNodeIds ?? null, updatedAt: input.updatedAt,
+      });
+      return { success: true };
+    }),
+  deleteSession: protectedProcedure
+    .input(z.object({ projectId: z.number(), sessionId: z.string().max(64) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      await deleteAiClientSession(ctx.user.id, input.projectId, input.sessionId);
       return { success: true };
     }),
 

@@ -589,6 +589,13 @@
       "when": 1784500000000,
       "tag": "0083_comfy_workflow_memory",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "5",
+      "when": 1784600000000,
+      "tag": "0084_ai_client_sessions",
+      "breakpoints": true
     }
   ]
 }
