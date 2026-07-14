@@ -16,6 +16,8 @@ import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../m
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { useComfyMemoryEnabled } from "@/lib/comfyMemoryPref";
+import { pollComfyRun, isTransportCutError, type PendingComfyResult } from "@/lib/comfyRunRecovery";
+import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import {
   Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Download, ZoomIn,
@@ -158,20 +160,59 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // client-side, so when it eventually settles we skip overwriting the node
   // (which we've already flipped to a cancelled state for instant feedback).
   const cancelledRef = useRef(false);
+  const utils = trpc.useUtils();
+  // #163 隧道兜底：一次性 jobId + 「socket 回灌优先 + workflowResult 轮询」取回结果。
+  const jobIdRef = useRef<string>("");
+  const [recovering, setRecovering] = useState(false);
+  const recoverComfyRun = useCallback((jobId: string, nodeId: string) => pollComfyRun({
+    jobId,
+    readPending: () => {
+      const n = useCanvasStore.getState().nodes.find((x) => x.id === nodeId);
+      return (n?.data.payload as { pendingComfyResult?: PendingComfyResult } | undefined)?.pendingComfyResult;
+    },
+    fetchResult: (jid) => utils.comfyui.workflowResult.fetch({ jobId: jid }),
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  }), [utils]);
+  const applyImageResult = useCallback((urls: string[]) => {
+    const url = urls[0] ?? "";
+    updateNodeData(id, { imageUrl: url, imageUrls: urls, status: "done", errorMessage: undefined, progress: undefined, pendingComfyResult: undefined });
+    if (url) propagateRefImage(id, url);
+    const sendToVideo = (useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as ComfyuiImageNodeData | undefined)?.sendPromptToVideo;
+    if (sendToVideo) propagatePromptToVideo(id);
+  }, [id, updateNodeData]);
   const genMutation = trpc.comfyui.generateImage.useMutation({
     onSuccess: (result) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       if (cancelledRef.current) { cancelledRef.current = false; return; }
-      updateNodeData(id, { imageUrl: result.url, imageUrls: result.urls, status: "done", errorMessage: undefined, progress: undefined });
-      if (result.url) propagateRefImage(id, result.url);
-      if (payload.sendPromptToVideo) propagatePromptToVideo(id);
+      applyImageResult(result.urls?.length ? result.urls : (result.url ? [result.url] : []));
       toast.success("ComfyUI 图像生成成功");
     },
-    onError: (err) => {
+    onError: async (err) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       if (cancelledRef.current) { cancelledRef.current = false; return; }
-      updateNodeData(id, { status: "failed", errorMessage: err.message, progress: undefined });
-      toast.error("ComfyUI 图像生成失败：" + err.message);
+      const msg = err.message;
+      // #163 隧道兜底：经 cloudflared 隧道时这条超长 HTTP 在 ~100s 被切断——但服务端不因客户端
+      // 断开而取消，仍跑完并把结果经 socket 回灌 + 存入 comfyJobStore。传输类错误转入兜底取回。
+      if (isTransportCutError(msg) && jobIdRef.current) {
+        setRecovering(true);
+        try {
+          const rec = await recoverComfyRun(jobIdRef.current, id);
+          if (cancelledRef.current) { cancelledRef.current = false; return; }
+          if (rec?.ok && rec.urls?.length) {
+            applyImageResult(rec.urls);
+            toast.success("ComfyUI 图像生成成功（隧道切断后经回灌取回）");
+            return;
+          }
+          if (rec && !rec.ok) {
+            updateNodeData(id, { status: "failed", errorMessage: rec.error ?? "生成失败", progress: undefined, pendingComfyResult: undefined });
+            toast.error("ComfyUI 图像生成失败：" + (rec.error ?? "").slice(0, 120));
+            return;
+          }
+          // 轮询超时仍无终局 → 落回失败态（可重试）。
+        } finally { setRecovering(false); }
+      }
+      updateNodeData(id, { status: "failed", errorMessage: msg, progress: undefined });
+      toast.error("ComfyUI 图像生成失败：" + msg);
     },
   });
 
@@ -345,7 +386,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   const batchRunning = useWorkflowRunState().running;
 
   const handleGenerate = () => {
-    if (genMutation.isPending) return;
+    if (genMutation.isPending || recovering) return;
     if (batchRunning) { toast.error("批量运行进行中，请等待完成后再单独运行"); return; }
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
@@ -364,9 +405,13 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
     const { nodes: gnodes, edges: gedges } = useCanvasStore.getState();
     // Cap to the server's prompt max(2000); preserves the base prompt, trims injection.
     const finalPrompt = mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.prompt, gnodes), gnodes), effectiveCharacters(id, payload.prompt, gedges, gnodes), 2000);
+    const jobId = nanoid();
+    jobIdRef.current = jobId;
+    updateNodeData(id, { pendingComfyResult: undefined }, true);
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,
+      jobId,
       customBaseUrl: payload.customBaseUrl?.trim() || undefined,
       workflowTemplate: payload.workflowTemplate ?? "txt2img",
       prompt: finalPrompt,
@@ -600,7 +645,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="comfyui_image" title={data.title} minHeight={320} resizable heroMedia={heroMedia}
-      onRun={handleGenerate} running={genMutation.isPending} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}
+      onRun={handleGenerate} running={genMutation.isPending || recovering} canRun={!!payload.prompt?.trim() && !!payload.ckpt?.trim()} hasResult={!!payload.imageUrl}
       onCancelGenerate={handleCancel}
       onAssetImageDrop={(urls) => updateNodeData(id, { referenceImageUrl: urls[0], ...(payload.workflowTemplate !== "img2img" && payload.workflowTemplate !== "inpaint" ? { workflowTemplate: "img2img" } : {}) })}
       headerTooltip={modelTip || undefined}
