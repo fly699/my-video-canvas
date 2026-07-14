@@ -13,6 +13,7 @@ import {
 import type { NodeType, NodeData, CollaboratorCursor, GroupNodeData } from "../../../shared/types";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { getNodeConfig } from "../lib/nodeConfig";
+import { pickNodeSize } from "../lib/nodeSize";
 import { makeDefaultDirectorScene } from "../lib/directorScene";
 import { resolveNodeOutputImageUrl, isRefImageTarget, effectiveTargetHandle, storedControlMap, controlnetForStoredMap } from "../lib/refImagePropagation";
 import { defaultTargetHandle } from "../lib/connectionRules";
@@ -65,9 +66,8 @@ export function aspectToComfyWH(aspect?: string): { width?: number; height?: num
  *  节点在群组测量/适应里用的仍是旧尺寸。 */
 function nodeSizeOf(n: CanvasNode): { w: number; h: number } {
   const cfg = getNodeConfig(n.data.nodeType);
-  const w = (typeof n.width === "number" ? n.width : typeof n.style?.width === "number" ? n.style.width : cfg.defaultWidth) || 280;
-  const h = (typeof n.height === "number" ? n.height : typeof n.style?.height === "number" ? n.style.height : (cfg.defaultHeight ?? 200)) || 200;
-  return { w, h };
+  // 纳入 measured（渲染后实测尺寸）取较大值——否则未显式设高、但实际渲染更高的节点会探出群组底框。
+  return pickNodeSize(n, { defaultWidth: cfg.defaultWidth, defaultHeight: cfg.defaultHeight });
 }
 
 // #124 整理布局的循环游标（会话内，不持久化）：连点「整理布局」按顺序换排法。
