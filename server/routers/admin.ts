@@ -830,11 +830,12 @@ export const adminRouter = router({
         image: z.string().max(120).optional(),
         video: z.string().max(120).optional(),
         transcribe: z.string().max(120).optional(),
+        voiceTranscribe: z.string().max(120).optional(),
       }))
       .mutation(async ({ input }) => {
         // 空串/未填 = 该槽位不设系统默认（回退出厂默认）；只落非空项。
         const cfg: Record<string, string> = {};
-        for (const slot of ["llm", "image", "video", "transcribe"] as const) {
+        for (const slot of ["llm", "image", "video", "transcribe", "voiceTranscribe"] as const) {
           const v = input[slot]?.trim();
           if (v) cfg[slot] = v;
         }

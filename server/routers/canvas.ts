@@ -3028,7 +3028,8 @@ export const clipRouter = router({
       await assertWhitelisted(ctx);
       guardUrl(input.inputUrl);
       return dedupe("clip.smartCut", ctx.user.id, input, async () => {
-        const transcription = await transcribeAudio({ audioUrl: input.inputUrl });
+        // 智能剪辑转写受「系统默认模型 › 字幕转录」(transcribe 槽) 控制，按 provider 路由。
+        const transcription = await transcribeAudio({ audioUrl: input.inputUrl, model: await getSystemDefaultModel("transcribe") });
         if ("error" in transcription) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `转录失败：${transcription.error}` });
         }

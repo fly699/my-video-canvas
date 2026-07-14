@@ -18,11 +18,11 @@ export function SystemDefaultModelsSection() {
   const selfHosted = useSelfHostedLlmModels();
   const transcribeModels = useTranscribeModels();
 
-  const [sel, setSel] = useState<Record<ModelSlot, string>>({ llm: "", image: "", video: "", transcribe: "" });
+  const [sel, setSel] = useState<Record<ModelSlot, string>>({ llm: "", image: "", video: "", transcribe: "", voiceTranscribe: "" });
   const serverKey = JSON.stringify(q.data ?? {});
   useEffect(() => {
     const d = (q.data ?? {}) as Partial<Record<ModelSlot, string>>;
-    setSel({ llm: d.llm ?? "", image: d.image ?? "", video: d.video ?? "", transcribe: d.transcribe ?? "" });
+    setSel({ llm: d.llm ?? "", image: d.image ?? "", video: d.video ?? "", transcribe: d.transcribe ?? "", voiceTranscribe: d.voiceTranscribe ?? "" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverKey]);
 
@@ -44,7 +44,8 @@ export function SystemDefaultModelsSection() {
       { slot: "llm" as ModelSlot, label: "对话 / 推理 LLM", opts: llmOpts, hint: "AI 对话节点、脚本/规划、聊天 AI 助手" },
       { slot: "image" as ModelSlot, label: "图像生成", opts: IMAGE_MODELS.map((m) => ({ value: m.value, label: m.label })), hint: "图像生成节点" },
       { slot: "video" as ModelSlot, label: "视频生成", opts: VIDEO_MODELS.map((m) => ({ value: m.value, label: m.label })), hint: "视频生成节点" },
-      { slot: "transcribe" as ModelSlot, label: "语音转录", opts: transcribeModels.map((m) => ({ value: m.value, label: m.label })), hint: "字幕节点转录" },
+      { slot: "transcribe" as ModelSlot, label: "字幕转录", opts: transcribeModels.map((m) => ({ value: m.value, label: m.label })), hint: "字幕 / 动态字幕 / 智能剪辑 的转录" },
+      { slot: "voiceTranscribe" as ModelSlot, label: "语音输入转录", opts: transcribeModels.map((m) => ({ value: m.value, label: m.label })), hint: "AI 助手 / 客户端 语音输入（麦克风）；与字幕转录各自独立" },
     ];
   }, [selfHosted, transcribeModels]);
 
@@ -59,7 +60,7 @@ export function SystemDefaultModelsSection() {
     setSel(next);
     // 只提交非空项（空 = 该槽位跟随出厂默认）。
     const payload: Record<string, string> = {};
-    for (const k of ["llm", "image", "video", "transcribe"] as ModelSlot[]) if (next[k]) payload[k] = next[k];
+    for (const k of ["llm", "image", "video", "transcribe", "voiceTranscribe"] as ModelSlot[]) if (next[k]) payload[k] = next[k];
     setMut.mutate(payload);
   };
 
