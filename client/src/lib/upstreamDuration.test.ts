@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectUpstreamStoryboardDuration, resolveComfyFramesFromDuration, detectUpstreamAspectRatio } from "./comfyWorkflowParams";
+import { detectUpstreamStoryboardDuration, resolveComfyFramesFromDuration, detectUpstreamAspectRatio, detectUpstreamDuration } from "./comfyWorkflowParams";
 import { clampDurationForProvider } from "./storyboardGen";
 
 const N = (id: string, nodeType: string, payload: unknown) => ({ id, data: { nodeType, payload } });
@@ -32,6 +32,20 @@ describe("detectUpstreamAspectRatio（comfyui_workflow 图生视频：用上游�
   it("无上游 / 无比例信号 → undefined", () => {
     expect(detectUpstreamAspectRatio("w", [], [N("w", "comfyui_workflow", {})])).toBeUndefined();
     expect(detectUpstreamAspectRatio("w", e, [N("s", "storyboard", { imageUrl: IMG }), N("w", "comfyui_workflow", {})])).toBeUndefined();
+  });
+});
+
+describe("detectUpstreamDuration（#161 comfyui_workflow 广读上游时长，按 帧数=fps×时长 自动算）", () => {
+  it("广读多类上游时长字段（duration/durationSec/seconds/shotSeconds/totalDuration）", () => {
+    const e = [{ source: "s", target: "w" }];
+    expect(detectUpstreamDuration("w", e, [N("s", "storyboard", { duration: 5 }), N("w", "comfyui_workflow", {})])).toBe(5);
+    expect(detectUpstreamDuration("w", e, [N("s", "script", { totalDuration: 30 }), N("w", "comfyui_workflow", {})])).toBe(30);
+    expect(detectUpstreamDuration("w", e, [N("s", "video_task", { durationSec: 8 }), N("w", "comfyui_workflow", {})])).toBe(8);
+  });
+  it("无上游 / 无时长 / 非正数 → undefined", () => {
+    expect(detectUpstreamDuration("w", [], [N("w", "comfyui_workflow", {})])).toBeUndefined();
+    expect(detectUpstreamDuration("w", [{ source: "s", target: "w" }], [N("s", "prompt", {}), N("w", "comfyui_workflow", {})])).toBeUndefined();
+    expect(detectUpstreamDuration("w", [{ source: "s", target: "w" }], [N("s", "storyboard", { duration: 0 }), N("w", "comfyui_workflow", {})])).toBeUndefined();
   });
 });
 

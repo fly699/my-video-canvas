@@ -69,6 +69,23 @@ export function detectUpstreamStoryboardDuration(targetId: string, edges: MiniEd
   return undefined;
 }
 
+/** 上游直连节点的目标时长（秒），供 comfyui_workflow 按 帧数=round(fps×时长) 自动算帧数。
+ *  广读多类上游：分镜 duration、脚本 totalDuration、以及各类节点常见时长字段。取第一个直连的正数。纯函数。 */
+export function detectUpstreamDuration(targetId: string, edges: MiniEdge[], nodes: MiniNode[]): number | undefined {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = edges.map((e, i) => ({ e, i })).filter(({ e }) => e.target === targetId);
+  incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+  for (const { e } of incoming) {
+    const src = byId.get(e.source);
+    if (!src) continue;
+    const p = (src.data.payload ?? {}) as Record<string, unknown>;
+    for (const v of [p.duration, p.durationSec, p.seconds, p.shotSeconds, p.totalDuration]) {
+      if (typeof v === "number" && v > 0) return v;
+    }
+  }
+  return undefined;
+}
+
 /** 上游直连图像源的画面比例（"W:H"）。供 comfyui_workflow「图生视频」在比例覆盖未手动开启、
  *  且提示词里没写比例时，用**输入图的比例**覆盖工作流原生画幅——否则把 9:16 的图喂进模板仍出
  *  工作流默认（如 16:9），比例对不上。取第一个能解析出比例的直连上游图像节点：优先

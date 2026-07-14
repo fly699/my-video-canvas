@@ -12,7 +12,7 @@ import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImag
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding, ReferenceImage } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { safeHref } from "@/lib/safeUrl";
-import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources, applyAspectToWorkflow, parseAspectRatioFromText, detectUpstreamAspectRatio } from "@/lib/comfyWorkflowParams";
+import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources, applyAspectToWorkflow, parseAspectRatioFromText, detectUpstreamAspectRatio, detectUpstreamDuration } from "@/lib/comfyWorkflowParams";
 import { effectiveCharacters, connectedCharacterLora, effectiveCharacterRefImages, stripCharacterMentions } from "@/lib/characterConditioning";
 import { mergeCharactersIntoPrompt } from "@/lib/characterPrompt";
 import { applyFreeVramToAllComfyNodes } from "@/lib/comfyFreeVram";
@@ -532,6 +532,20 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
       if (Object.keys(seedPatch).length > 0) {
         update({ paramValues: { ...(payload.paramValues ?? {}), ...seedPatch } }, true);
       }
+      // #161 帧数跟随上游时长：开启后按 帧数=round(fps×上游时长) 覆盖帧数参数（上游无时长则保持原值）。
+      if (payload.framesFollowUpstream) {
+        const bs2 = payload.paramBindings ?? [];
+        const fB = bs2.find((b) => b.type === "number" && (/(?:^|[._])(length|num_frames?|frames?(_number)?|frame_count|video_frames)$/i.test(b.fieldPath) || /帧数/i.test(b.label)));
+        const rB = bs2.find((b) => b.type === "number" && (/\b(fps|frame[_-]?rate)\b/i.test(b.fieldPath) || /帧率|fps/i.test(b.label)));
+        if (fB) {
+          const dur = detectUpstreamDuration(id, edges, nodes);
+          if (dur && dur > 0) {
+            const fpsKey = rB ? `${rB.nodeId}.${rB.fieldPath}` : null;
+            const fps = Number((fpsKey ? effectiveParamValues[fpsKey] : undefined) ?? 24) || 24;
+            effectiveParamValues[`${fB.nodeId}.${fB.fieldPath}`] = Math.max(1, Math.round(fps * dur));
+          }
+        }
+      }
       // 按比例覆盖工作流尺寸（保留像素面积、/64 对齐）：① 用户显式「按比例覆盖」→ 用
       // payload.aspectRatio；② 否则从生效提示词里解析画面比例（如 "16:9"）；③ 提示词没写则
       // **回退到上游输入图的比例**（图生视频关键：把 9:16 的图喂进模板不再出工作流默认 16:9）。
@@ -706,6 +720,39 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     img.onerror = () => toast.error("读取上游图失败（图片无法加载）");
     img.src = url;
   }, [applyWH]);
+
+  // #161 帧率/帧数：识别工作流暴露的 fps / 帧数（length/num_frames/…）绑定，支持「时长×帧率自动算帧数」+ 快填。
+  const fpsBinding = useMemo(() => {
+    const bs = payload.paramBindings ?? [];
+    return bs.find((b) => b.type === "number" && (/\b(fps|frame[_-]?rate)\b/i.test(b.fieldPath) || /帧率|fps/i.test(b.label))) ?? null;
+  }, [payload.paramBindings]);
+  const framesBinding = useMemo(() => {
+    const bs = payload.paramBindings ?? [];
+    return bs.find((b) => b.type === "number" && (/(?:^|[._])(length|num_frames?|frames?(_number)?|frame_count|video_frames)$/i.test(b.fieldPath) || /帧数/i.test(b.label))) ?? null;
+  }, [payload.paramBindings]);
+  const bkey = (b: WorkflowParamBinding) => `${b.nodeId}.${b.fieldPath}`;
+  const effectiveFps = useCallback((): number => {
+    if (!fpsBinding) return 24;
+    const v = Number(payload.paramValues?.[bkey(fpsBinding)] ?? 24);
+    return v > 0 ? v : 24;
+  }, [fpsBinding, payload.paramValues]);
+  /** 按时长（秒）写入帧数 = round(fps × 时长)（帧数下限 1）。 */
+  const applyFramesFromDuration = useCallback((durationSec: number) => {
+    if (!framesBinding || !(durationSec > 0)) return false;
+    const frames = Math.max(1, Math.round(effectiveFps() * durationSec));
+    update({ paramValues: { ...payload.paramValues, [bkey(framesBinding)]: frames } }, true);
+    return true;
+  }, [framesBinding, effectiveFps, payload.paramValues, update]);
+  const setFps = useCallback((fps: number) => {
+    if (!fpsBinding || !(fps > 0)) return;
+    update({ paramValues: { ...payload.paramValues, [bkey(fpsBinding)]: fps } }, true);
+  }, [fpsBinding, payload.paramValues, update]);
+  /** 「按上游时长算帧数」：读上游直连节点时长 → 写帧数。 */
+  const fillFramesFromUpstream = useCallback(() => {
+    const dur = detectUpstreamDuration(id, edgesForSources, nodesForSources);
+    if (!dur) { toast.error("没有可用的上游时长——请连上分镜/脚本/视频等带时长的上游节点"); return; }
+    if (applyFramesFromDuration(dur)) toast.success(`已按上游时长 ${dur}s × ${effectiveFps()}fps 填入帧数 ${Math.round(effectiveFps() * dur)}`);
+  }, [id, edgesForSources, nodesForSources, applyFramesFromDuration, effectiveFps]);
 
   // Upload a local image file to our storage and return its URL (the run flow
   // then re-uploads URL-valued image params to ComfyUI). Powers drag-in / file
@@ -2044,6 +2091,43 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                   <option value="832x480">16:9 小 · 832×480</option>
                   <option value="480x832">9:16 小 · 480×832</option>
                 </select>
+              )}
+              {/* #161 帧率/帧数快填：选帧率写 fps；选时长按 帧数=round(fps×时长) 写帧数；或按上游时长自动算 */}
+              {(fpsBinding || framesBinding) && (
+                <select
+                  className="nodrag"
+                  value=""
+                  title="帧率/帧数快填：选帧率写入 FPS；选时长按 帧数=round(fps×时长) 写入帧数；「按上游时长」读上游分镜/脚本/视频的时长自动算"
+                  onChange={(e) => {
+                    const v = e.target.value; e.currentTarget.value = "";
+                    if (!v) return;
+                    if (v === "up") { fillFramesFromUpstream(); return; }
+                    if (v.startsWith("fps:")) { setFps(Number(v.slice(4))); return; }
+                    if (v.startsWith("dur:")) { const d = Number(v.slice(4)); if (applyFramesFromDuration(d)) toast.success(`已按 ${d}s × ${effectiveFps()}fps 填入帧数 ${Math.round(effectiveFps() * d)}`); }
+                  }}
+                  style={{ height: 26, fontSize: 10.5, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 7, color: "var(--c-t2)", padding: "0 4px" }}
+                >
+                  <option value="">帧率/时长快填…</option>
+                  {framesBinding && <option value="up">按上游时长算帧数</option>}
+                  {fpsBinding && <option value="fps:24">帧率 24</option>}
+                  {fpsBinding && <option value="fps:25">帧率 25</option>}
+                  {fpsBinding && <option value="fps:30">帧率 30</option>}
+                  {fpsBinding && <option value="fps:60">帧率 60</option>}
+                  {framesBinding && <option value="dur:3">时长 3s → 帧数</option>}
+                  {framesBinding && <option value="dur:5">时长 5s → 帧数</option>}
+                  {framesBinding && <option value="dur:8">时长 8s → 帧数</option>}
+                  {framesBinding && <option value="dur:10">时长 10s → 帧数</option>}
+                </select>
+              )}
+              {/* #161 帧数跟随上游时长：勾选后每次运行自动按上游时长×fps 覆盖帧数 */}
+              {framesBinding && (
+                <label className="nodrag" title="勾选后：每次运行自动按「上游时长 × 帧率」覆盖帧数（上游无时长则保持当前值）"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: payload.framesFollowUpstream ? accent : "var(--c-t4)", cursor: "pointer", whiteSpace: "nowrap" }}>
+                  <input type="checkbox" className="nodrag" checked={payload.framesFollowUpstream ?? false}
+                    onChange={(e) => update({ framesFollowUpstream: e.target.checked })}
+                    style={{ accentColor: accent }} />
+                  帧数跟随上游时长
+                </label>
               )}
             </div>
           );

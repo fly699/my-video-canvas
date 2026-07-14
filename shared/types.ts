@@ -1297,6 +1297,8 @@ export interface ComfyuiWorkflowNodeData {
    *  `aspectRatio` 改写（保留原像素面积、/64 对齐）。比例由 `aspectRatio` 决定。 */
   overrideRatioSize?: boolean;
   aspectRatio?: string;
+  /** #161 帧数跟随上游时长：开启后每次运行按「上游时长 × fps」自动覆盖帧数参数（上游无时长则保持当前值）。 */
+  framesFollowUpstream?: boolean;
   /** Whether a connected upstream prompt/storyboard OVERRIDES this node's
    *  positive/negative prompt params even if the user typed a value. Defaults to
    *  ON (undefined ⇒ upstream-priority); set explicitly to false for "fill only
