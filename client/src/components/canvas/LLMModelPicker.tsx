@@ -12,7 +12,8 @@ export type LLMModelId = (typeof ALL_LLM_MODELS)[number]["id"];
 
 // Visible models in the dropdown (hide back-compat aliases). The current value
 // is still resolved against the full list so an aliased pick renders fine.
-const VISIBLE_MODELS = ALL_LLM_MODELS.filter((m) => !m.hidden);
+// 代码专用模型（Codex 系）不进对话/规划类下拉——它们面向编程、非通用对话（用户反馈「无法对话」）。
+const VISIBLE_MODELS = ALL_LLM_MODELS.filter((m) => !m.hidden && !m.code);
 
 interface Props {
   value: LLMModelId;
