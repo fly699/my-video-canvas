@@ -307,8 +307,12 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     const el = codeInputRef.current as (HTMLTextAreaElement & { commitValue?: (v: string) => void }) | null;
     el?.commitValue?.("");
     update({ codeConversation: conv, status: "running", log: [], codeResult: undefined, blockedCommand: undefined, errorMessage: undefined });
+    // #173 连 GitHub：新会话（非续接）且填了仓库时，带上仓库 + PAT（PAT 存 localStorage，不入节点/DB）。
+    const gitRepo = payload.gitRepo?.trim();
+    const gitToken = (() => { try { return localStorage.getItem("github:pat") || undefined; } catch { return undefined; } })();
+    const gitFields = (!resume && gitRepo) ? { gitRepo, ...(gitToken ? { gitToken } : {}), ...(payload.gitBranch?.trim() ? { gitBranch: payload.gitBranch.trim() } : {}) } : {};
     codeMut.mutate(
-      { projectId: data.projectId, nodeId: id, task, resume },
+      { projectId: data.projectId, nodeId: id, task, resume, ...gitFields },
       {
         onSuccess: (res) => {
           const isOk = res.status === "success";
@@ -331,7 +335,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         onError: (e) => { update({ status: "failed", errorMessage: e.message, codeConversation: [...conv, { role: "agent", text: "❌ " + e.message, status: "failed" }] }); toast.error("运行失败：" + e.message); },
       },
     );
-  }, [running, codeInputText, payload.codeConversation, payload.codeSessionId, data.projectId, id, codeMut, update]);
+  }, [running, codeInputText, payload.codeConversation, payload.codeSessionId, payload.gitRepo, payload.gitBranch, data.projectId, id, codeMut, update]);
 
   // 新对话：清掉服务端持久工作区 + 前端对话/会话。
   const handleResetCode = useCallback(() => {
@@ -554,6 +558,22 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                   <span><b style={{ color: GREEN }}>只读沙箱</b>：仅在一次性隔离工作区读写，<b>碰不到你的项目/服务器代码</b>（未放行 Shell）。</span>
                 </div>
               )
+            )}
+
+            {/* #173 连 GitHub 仓库：新会话时用 PAT 克隆进沙箱（需放行 Shell）。PAT 存 localStorage、不入节点/DB。 */}
+            {codeEnabled && bashAllowed && !codeContinuing && (
+              <div className="flex flex-col gap-1.5" style={{ border: `1px solid ${BORDER}`, borderRadius: 9, padding: "8px 9px", background: "var(--c-surface)" }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>GitHub 仓库（可选，克隆进沙箱后可改/推送）</label>
+                <input value={payload.gitRepo ?? ""} onChange={(e) => update({ gitRepo: e.target.value })} disabled={running}
+                  placeholder="owner/repo 或 https://github.com/owner/repo" className="nodrag" style={{ ...fieldStyle, fontSize: 11.5 }} />
+                <div className="flex gap-1.5">
+                  <input defaultValue={(() => { try { return localStorage.getItem("github:pat") || ""; } catch { return ""; } })()}
+                    onChange={(e) => { try { e.target.value ? localStorage.setItem("github:pat", e.target.value) : localStorage.removeItem("github:pat"); } catch { /* restricted */ } }}
+                    type="password" disabled={running} placeholder="GitHub PAT（本地保存，不入库）" className="nodrag" style={{ ...fieldStyle, fontSize: 11.5, flex: 2 }} />
+                  <input value={payload.gitBranch ?? ""} onChange={(e) => update({ gitBranch: e.target.value })} disabled={running}
+                    placeholder="分支(可选)" className="nodrag" style={{ ...fieldStyle, fontSize: 11.5, flex: 1, minWidth: 0 }} />
+                </div>
+              </div>
             )}
 
             {/* 连续对话状态 + 新对话 */}

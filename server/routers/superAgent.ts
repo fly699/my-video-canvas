@@ -12,6 +12,7 @@ import { runComfyAgent, extractRunLessons, type ComfyAgentTools } from "../_core
 import { runOrchestration } from "../_core/superAgent/orchestrator";
 import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferenceCandidates } from "../_core/superAgent/comfyAdapters";
 import { pickLeastLoaded } from "../_core/superAgent/serverAssign";
+import { parseGitHubRepo, cloneRepoInto, publicRemote } from "../_core/superAgent/gitClone";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
@@ -443,6 +444,12 @@ export const superAgentRouter = router({
         timeoutSec: z.number().int().min(30).max(900).optional(),
         /** 连续对话：续接本节点上一轮的 claude 会话（复用工作区 + --resume），claude 保留完整上下文与文件。 */
         resume: z.boolean().optional(),
+        /** #173 连 GitHub：仓库定位（owner/repo 或 https://github.com/...），新会话时用 PAT 克隆进工作区。 */
+        gitRepo: z.string().max(200).optional(),
+        /** GitHub 访问令牌（PAT，用户自带）：不落库、仅本次克隆/推送用，日志脱敏。 */
+        gitToken: z.string().max(256).optional(),
+        /** 克隆分支（可选）。 */
+        gitBranch: z.string().max(100).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -466,10 +473,28 @@ export const superAgentRouter = router({
         workspace = mkdtempSync(join(tmpdir(), "superagent-code-"));
       }
       const emit = (e: { type: string; message: string; data?: unknown }) => emitSuperAgentEvent(input.projectId, input.nodeId, e);
+
+      // #173 连 GitHub：新会话且带仓库 → 用 PAT 克隆进工作区（token 不落库、输出脱敏）。
+      // 续接沿用已克隆的工作区，不重复克隆。克隆需放行 Shell（git 是外部命令）。
+      let clonedRepo: string | undefined;
+      if (!resuming && input.gitRepo) {
+        const repo = parseGitHubRepo(input.gitRepo);
+        if (!repo) throw new TRPCError({ code: "BAD_REQUEST", message: "GitHub 仓库地址无效（仅支持 github.com 的 owner/repo）" });
+        if (!isBashAllowed()) throw new TRPCError({ code: "BAD_REQUEST", message: "连接 Git 仓库需服务端放行 Shell（SUPER_AGENT_CODE_ALLOW_BASH=1）" });
+        if (!input.gitToken) throw new TRPCError({ code: "BAD_REQUEST", message: "缺少 GitHub 访问令牌（PAT）——请在设置里填写个人访问令牌" });
+        const cr = await cloneRepoInto(workspace, repo, input.gitToken, input.gitBranch);
+        emit({ type: cr.ok ? "action" : "error", message: cr.ok ? `📦 ${cr.message}` : `GitHub 克隆失败：${cr.message}` });
+        if (!cr.ok) { try { rmSync(workspace, { recursive: true, force: true }); } catch { /* ignore */ } throw new TRPCError({ code: "BAD_REQUEST", message: "GitHub 克隆失败：" + cr.message }); }
+        clonedRepo = publicRemote(repo);
+      }
+      const taskWithRepo = clonedRepo
+        ? `${input.task}\n\n（工作区已克隆 GitHub 仓库 ${clonedRepo}，就在当前目录；已配置好推送凭据，如需提交可 git add/commit/push。）`
+        : input.task;
+
       let keepWorkspace = false;
       try {
         const handle = streamClaudeCode({
-          task: frameCodeTask(input.task, resuming), // 首轮前置沙箱边界说明；续接不重复
+          task: frameCodeTask(taskWithRepo, resuming), // 首轮前置沙箱边界说明；续接不重复
           cwd: workspace,
           timeoutMs: (input.timeoutSec ?? 300) * 1000,
           argsBuilder: (policy) => buildClaudeArgs({
