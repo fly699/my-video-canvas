@@ -25,6 +25,7 @@ import {
   type SelfHostedLlmConfig,
   type BridgeMcpConfig,
   type SuperAgentConfig,
+  type TranscribeEndpointConfig,
   auditLogs,
   comfyUsageLogs,
   llmUsageLogs,
@@ -139,7 +140,7 @@ export function isDupEntryError(e: unknown): boolean {
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
-const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; superAgent?: import("../drizzle/schema").SuperAgentConfig; systemDefaultModels?: Record<string, string> } = { disabledModels: [] };
+const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; superAgent?: import("../drizzle/schema").SuperAgentConfig; systemDefaultModels?: Record<string, string>; transcribeEndpoint?: import("../drizzle/schema").TranscribeEndpointConfig } = { disabledModels: [] };
 const devAuthSettings = { emailVerificationEnabled: false, registrationApprovalEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
@@ -1742,6 +1743,35 @@ export async function setSuperAgentConfig(cfg: SuperAgentConfig): Promise<void> 
   if (!db) { devModelToggleSettings.superAgent = superAgent; return; }
   await db.insert(modelToggleSettings).values({ id: 1, superAgent })
     .onDuplicateKeyUpdate({ set: { superAgent } });
+}
+
+/** 归一化「转写端点」列。返回 null 表示后台未配置（列 NULL 或 url 为空）→ 上层回退 env；
+ *  非 null 表示后台已显式配置有效 url → 以此为准、覆盖 env。 */
+export function normalizeTranscribeEndpoint(v: unknown): TranscribeEndpointConfig | null {
+  let o: Record<string, unknown> | null = null;
+  if (typeof v === "string") { try { o = JSON.parse(v) as Record<string, unknown>; } catch { o = null; } }
+  else if (v && typeof v === "object") o = v as Record<string, unknown>;
+  if (!o) return null;
+  const url = typeof o.url === "string" ? o.url.trim() : "";
+  if (!url) return null; // url 为空视为未配置 → 回退 env
+  return { url, apiKey: typeof o.apiKey === "string" ? o.apiKey : "", model: typeof o.model === "string" ? o.model.trim() : "" };
+}
+
+/** 管理员配置的语音/转写端点（替代 TRANSCRIBE_* env）。单行 id=1 的 JSON 列。
+ *  返回 null = 后台未配置（回退 env）；非 null = DB 显式覆盖。 */
+export async function getTranscribeEndpointConfigRaw(): Promise<TranscribeEndpointConfig | null> {
+  const db = await getDb();
+  if (!db) return normalizeTranscribeEndpoint(devModelToggleSettings.transcribeEndpoint ?? null);
+  const rows = await db.select().from(modelToggleSettings).limit(1);
+  return normalizeTranscribeEndpoint(rows[0]?.transcribeEndpoint);
+}
+
+export async function setTranscribeEndpointConfig(cfg: TranscribeEndpointConfig): Promise<void> {
+  const transcribeEndpoint: TranscribeEndpointConfig = { url: cfg.url.trim(), apiKey: cfg.apiKey ?? "", model: (cfg.model ?? "").trim() };
+  const db = await getDb();
+  if (!db) { devModelToggleSettings.transcribeEndpoint = transcribeEndpoint; return; }
+  await db.insert(modelToggleSettings).values({ id: 1, transcribeEndpoint })
+    .onDuplicateKeyUpdate({ set: { transcribeEndpoint } });
 }
 
 // ── ComfyUI 知识记忆体持久化（跨重启）。dev/无 DB 时返回 null / no-op：记忆体退化为纯进程内缓存，

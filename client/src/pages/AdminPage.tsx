@@ -16,6 +16,7 @@ import { downloadTextFile } from "@/lib/download";
 import { toast } from "sonner";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 import { SelfHostedLlmSection } from "@/components/admin/SelfHostedLlmSection";
+import { TranscribeEndpointSection } from "@/components/admin/TranscribeEndpointSection";
 import { BridgeMcpSection } from "@/components/admin/BridgeMcpSection";
 import { SuperAgentPermSection } from "@/components/admin/SuperAgentPermSection";
 import { SystemDefaultModelsSection } from "@/components/admin/SystemDefaultModelsSection";
@@ -1400,6 +1401,9 @@ function ModelsPanel() {
 
       {/* 自建 LLM 配置（粘贴 curl 登记 OpenAI 兼容端点） */}
       <SelfHostedLlmSection />
+
+      {/* 语音/转写端点配置（whisper：自建/Forge/OpenAI，作用于语音输入兜底 + 字幕/智能剪辑转写） */}
+      <TranscribeEndpointSection />
 
       {/* 桥接 MCP 配置（贴 mcpServers JSON → 保存即生效，让本机 Claude 桥接能调 ComfyUI 等 MCP） */}
       <BridgeMcpSection />

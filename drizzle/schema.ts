@@ -848,6 +848,10 @@ export type BridgeMcpConfig = { mcpConfig: string; skills: boolean; strict: bool
 // （对应 SUPER_AGENT_CODE_ALLOW_BASH）、autoInstall=ComfyUI 缺件自动安装（对应 SUPER_AGENT_AUTO_INSTALL）。
 // 该列为「显式覆盖」：一旦后台保存（即使全 false）即以 DB 为准、覆盖 env；未保存过（列为 NULL）才回退 env。
 export type SuperAgentConfig = { codeEnabled: boolean; allowBash: boolean; autoInstall: boolean };
+// 管理员后台配置的「语音/转写端点」（OpenAI 兼容 whisper：url + apiKey + model），替代
+// TRANSCRIBE_API_URL/KEY/MODEL 环境变量。NULL 或 url 为空=后台未配置→回退 env（Forge/OpenAI）；
+// 非空=以本列为准。apiKey 明文存于此列（与 selfHostedLlm 同基线），但读接口不回传明文（仅回 hasKey）。
+export type TranscribeEndpointConfig = { url: string; apiKey: string; model: string };
 export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   id: int("id").primaryKey(),
   disabledModels: json("disabledModels").$type<string[]>(),
@@ -861,6 +865,9 @@ export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   // 管理员配置的「系统级默认模型」（按槽位 llm/image/video/transcribe），作用于所有项目：
   // 解析优先级排在项目级配置之下、出厂默认之上。{ llm?, image?, video?, transcribe? }。
   systemDefaultModels: json("systemDefaultModels").$type<Record<string, string>>(),
+  // 管理员后台配置的语音/转写端点（替代 TRANSCRIBE_* env）：{ url, apiKey, model }。
+  // NULL 或 url 空=后台未配置→回退 env；非空=以本列为准。
+  transcribeEndpoint: json("transcribeEndpoint").$type<TranscribeEndpointConfig>(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
