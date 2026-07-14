@@ -119,29 +119,41 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
       return { role: m.role === "system" ? "system" : (isAssistant ? "assistant" : "user"), content };
     });
     // 推理模型（GPT-5.x / Grok 4.x 等 Responses API）：max_output_tokens 同时覆盖
-    // 「推理 + 正文」。默认 4096 常被推理吃光 → 正文为空（用户反馈「所有 kie 的 gpt 模型回复为空」）。
-    // 给足推理余量（+8192），确保正文能产出。
-    body = { model: spec.model, input, max_output_tokens: maxTokens + 8192, stream: false };
+    // 「推理 + 正文」。默认 4096 常被推理吃光 → 正文为空（用户反馈「kie 的 gpt 模型回复为空」）。
+    // 双保险：① reasoning.effort=low 大幅压低推理 token 占用（更快更省、正文更可靠）；
+    // ② max_output_tokens 给足余量（下限 8000 再 +8192）。
+    body = { model: spec.model, input, max_output_tokens: Math.max(maxTokens, 8000) + 8192, reasoning: { effort: "low" }, stream: false };
   } else {
     // OpenAI chat/completions (model in the path; include in body too — harmless).
     body = { model: spec.model, messages: opts.messages, max_tokens: maxTokens, stream: false };
   }
 
-  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(120_000) });
-  if (!res.ok) {
+  const doPost = (b: Record<string, unknown>) => fetch(url, { method: "POST", headers, body: JSON.stringify(b), signal: AbortSignal.timeout(120_000) });
+  let res = await doPost(body);
+  // 少数网关可能不认 reasoning 字段而整体报错——去掉后重试一次，避免因附加字段拖垮整个请求。
+  if (!res.ok && spec.format === "responses" && "reasoning" in body) {
+    const firstErr = await res.text().catch(() => "");
+    const { reasoning: _drop, ...noReasoning } = body as Record<string, unknown>;
+    void _drop;
+    res = await doPost(noReasoning);
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`kie LLM 调用失败 (${res.status}): ${(t || firstErr).slice(0, 300)}`);
+    }
+  } else if (!res.ok) {
     const t = await res.text().catch(() => "");
     throw new Error(`kie LLM 调用失败 (${res.status}): ${t.slice(0, 300)}`);
   }
   const data = await res.json() as Record<string, unknown>;
   const text = extractKieLLMText(spec.format, data);
-  // 正文为空且响应明确标记「未完成」（多因推理占满 token）→ 抛明确错误，避免静默返回空串
-  // 让上层误判为「模型不回复」。有正文则正常返回。
+  // 正文为空（responses 推理模型的常见坑）→ 抛带「响应形态」的诊断错误，而非静默返回空串让上层
+  // 显示「模型未返回内容」。形态含 status / 未完成原因 / output 各项 type，便于精准定位（推理占满
+  // token？还是结构变了解析漏了？），不泄露正文内容。
   if (!text && spec.format === "responses") {
-    const status = typeof data.status === "string" ? data.status : undefined;
+    const status = typeof data.status === "string" ? data.status : "?";
     const reason = (data.incomplete_details as { reason?: string } | undefined)?.reason;
-    if (status === "incomplete" || reason) {
-      throw new Error(`kie 模型未产出正文（${reason ?? status}）——多因推理占满 token，请重试或改用其它模型`);
-    }
+    const outTypes = Array.isArray(data.output) ? (data.output as Array<{ type?: string }>).map((o) => o?.type ?? "?").join(",") : "无 output";
+    throw new Error(`kie 模型未产出正文（status=${status}${reason ? `, 未完成原因=${reason}` : ""}, output=[${outTypes}]）——多因推理占满 token，请重试、换模型或调低提问复杂度`);
   }
   return { text };
 }
@@ -155,15 +167,22 @@ export function extractKieLLMText(format: KieLLMFormat, data: Record<string, unk
   if (format === "responses") {
     // Prefer the convenience field when present, else dig output[].content[].text.
     if (typeof data.output_text === "string" && data.output_text) return data.output_text;
-    const output = (data.output as Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> | undefined) ?? [];
-    // 扫描全部 output 项的全部 content 片段收集正文——推理模型（GPT-5.x）常先出 reasoning 项
-    // 再出 message 项，也可能有多段 message；只取 output.find(message) 会在结构变化时漏掉正文。
-    // type 兼容 output_text / text（凡含 "text" 且有 text 字段即视为正文）。
+    const output = (data.output as Array<{ type?: string; text?: string; content?: unknown }> | undefined) ?? [];
+    // 扫描全部 output 项收集正文——推理模型（GPT-5.x）常先出 reasoning 项再出 message 项，也可能
+    // 有多段 message；结构还可能是 content 为字符串、或文本挂在 item.text 上。尽量宽容地取，
+    // 只跳过 reasoning 项（其 summary/text 不是正文）。
     const texts: string[] = [];
     for (const o of output) {
-      for (const c of o.content ?? []) {
-        if (typeof c.text === "string" && c.text && /text/.test(c.type ?? "")) texts.push(c.text);
+      if (o?.type === "reasoning") continue; // 推理摘要不作正文
+      const c = o?.content;
+      if (typeof c === "string" && c) { texts.push(c); continue; }
+      if (Array.isArray(c)) {
+        for (const part of c as Array<{ type?: string; text?: string }>) {
+          if (typeof part?.text === "string" && part.text && /text/.test(part.type ?? "text")) texts.push(part.text);
+        }
       }
+      // 兜底：文本直接挂在 item 上（少数变体 message 项无 content 数组）。
+      if (!c && typeof o?.text === "string" && o.text && o.type !== "reasoning") texts.push(o.text);
     }
     return texts.join("");
   }

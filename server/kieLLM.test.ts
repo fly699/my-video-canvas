@@ -62,6 +62,13 @@ describe("extractKieLLMText — responses 解析（GPT-5.x 推理模型）", () 
   it("只有 reasoning、无正文 → 返回空串（由上层按 incomplete 抛错）", () => {
     expect(extractKieLLMText("responses", { output: [{ type: "reasoning", summary: [] }], status: "incomplete" })).toBe("");
   });
+  it("content 为字符串 / 文本挂在 item.text 上也能取到（宽容解析）", () => {
+    expect(extractKieLLMText("responses", { output: [{ type: "message", content: "直接字符串" }] })).toBe("直接字符串");
+    expect(extractKieLLMText("responses", { output: [{ type: "message", text: "挂在item上" }] })).toBe("挂在item上");
+  });
+  it("reasoning 项的 text 不被当作正文", () => {
+    expect(extractKieLLMText("responses", { output: [{ type: "reasoning", text: "内部推理" }, { type: "message", content: [{ type: "output_text", text: "正文" }] }] })).toBe("正文");
+  });
   it("claude / openai-chat 解析不受影响", () => {
     expect(extractKieLLMText("claude", { content: [{ type: "text", text: "C" }] })).toBe("C");
     expect(extractKieLLMText("openai-chat", { choices: [{ message: { content: "O" } }] })).toBe("O");
