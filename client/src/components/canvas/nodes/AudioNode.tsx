@@ -450,6 +450,10 @@ function GenerateBtn({
 export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const payload = data.payload;
+  // 本地 VoxCPM 全站默认地址是否已配置（管理后台/VOXCPM_BASE_URL）——配了则节点「Gradio 服务地址」
+  // 变为可选（留空即用全站默认），不再强制每个节点各填一次。
+  const voxcpmDefault = trpc.config.voxcpmDefault.useQuery(undefined, { staleTime: 60_000 });
+  const voxcpmHasGlobalDefault = !!voxcpmDefault.data?.configured;
   // 生成中刷新/切项目后，在飞 mutation 随组件卸载丢失，但持久化的 "processing" 会让标题栏
   // 常驻「生成中」进度条永久残留、与实际不符。挂载时复位遗留 processing（与 ComfyUI 节点同理）。
   useEffect(() => {
@@ -799,13 +803,17 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     const speakText = unmentionText(payload.ttsText, useCanvasStore.getState().nodes);
     // 本地 VoxCPM：需服务地址；参考音频可选（上传或上游接入），不给则用模型自带/随机音色。
     if (isVox) {
-      if (!payload.ttsGradioBaseUrl?.trim()) { toast.error("请先填写本地 VoxCPM 的 Gradio 服务地址"); return; }
+      // 节点未填地址时，若后台配了全站默认则放行（服务端回退），否则提示。
+      if (!payload.ttsGradioBaseUrl?.trim() && !voxcpmHasGlobalDefault) {
+        toast.error("请先填写本地 VoxCPM 的 Gradio 服务地址（或在管理后台「模型管理 › 本地 VoxCPM 端点」配置全站默认）"); return;
+      }
       const refUrl = payload.ttsRefWavUrl?.trim() || detectUpstreamAudioUrl(id)?.url;
       ttsMutation.mutate({
         model: "voxcpm-local",
         text: speakText,
         projectId: data.projectId,
-        customBaseUrl: payload.ttsGradioBaseUrl.trim(),
+        // 留空 = 让服务端回退全站默认（DB → VOXCPM_BASE_URL）。
+        customBaseUrl: payload.ttsGradioBaseUrl?.trim() || undefined,
         refWavUrl: refUrl || undefined,
         controlInstruction: payload.ttsControlInstruction?.trim() || undefined,
         cfgValue: payload.ttsCfg ?? 2,
@@ -1350,11 +1358,11 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             {/* ── 本地 VoxCPM（Gradio）专属：服务地址 + 参考音色 + 参数 ── */}
             {isVox && (
               <>
-                {/* Gradio 服务地址 */}
+                {/* Gradio 服务地址（配了全站默认则可留空） */}
                 <div>
-                  <label style={labelStyle}>Gradio 服务地址</label>
+                  <label style={labelStyle}>Gradio 服务地址{voxcpmHasGlobalDefault ? "（可留空，用全站默认）" : ""}</label>
                   <NodeInput
-                    placeholder="例如：http://172.16.0.177:8808"
+                    placeholder={voxcpmHasGlobalDefault ? "留空即用管理后台配置的全站默认地址" : "例如：http://172.16.0.177:8808"}
                     value={payload.ttsGradioBaseUrl ?? ""}
                     onValueChange={(v) => update("ttsGradioBaseUrl", v)}
                     className="nodrag"
@@ -1363,6 +1371,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                     onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                     onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
                   />
+                  {voxcpmHasGlobalDefault && (
+                    <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4 }}>已配置全站默认（管理后台 › 本地 VoxCPM 端点）；此处留空即用它，填了则以本节点为准。</p>
+                  )}
                 </div>
                 {/* 参考音频（可选，克隆音色）：上传 or 上游接入；不给则用模型自带/随机音色 */}
                 <div>
@@ -1959,6 +1970,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
             {settingsOpen && (
               <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
                 style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 40, width: 288, maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 11, padding: 12, borderRadius: 12, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
+                {/* 说明：常用项在此；VoxCPM 服务地址/参考音频/控制指令、歌词等完整参数在「高级」里。 */}
                 {category === "music" && (<>
                   <div>
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>风格标签</div>
@@ -2024,6 +2036,14 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               </div>
             )}
           </span>
+          {/* 高级：展开节点内完整配置区（VoxCPM 服务地址/参考音频/控制指令、MiniMax 歌词、排除元素等
+              全部参数）——与图像/视频节点一致；「设置」浮层只放最常用项，完整参数在此。快捷键 A 亦可切换。 */}
+          <button className="nodrag"
+            onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
+            title={(advancedOpen ? "收起节点内完整配置区" : "展开节点内完整配置区（VoxCPM 地址/参考音频/控制指令/歌词等全部参数）") + " · 快捷键 A"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>
+            高级
+          </button>
           {category === "dubbing" && (
             <button className="nodrag" onClick={(e) => { e.stopPropagation(); handleTranslate(); }} disabled={translateMut.isPending}
               title={`翻译配音文本（目标：${payload.ttsTranslateTarget ?? "英语"}，配置区可改）`}

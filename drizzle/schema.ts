@@ -852,6 +852,10 @@ export type SuperAgentConfig = { codeEnabled: boolean; allowBash: boolean; autoI
 // TRANSCRIBE_API_URL/KEY/MODEL 环境变量。NULL 或 url 为空=后台未配置→回退 env（Forge/OpenAI）；
 // 非空=以本列为准。apiKey 明文存于此列（与 selfHostedLlm 同基线），但读接口不回传明文（仅回 hasKey）。
 export type TranscribeEndpointConfig = { url: string; apiKey: string; model: string };
+// 管理员后台配置的「本地 VoxCPM（Gradio TTS）全局默认地址」，替代 VOXCPM_BASE_URL 环境变量。
+// NULL 或 baseUrl 空=后台未配置→回退 env；非空=作为音频节点 VoxCPM 未填地址时的全站默认。
+// 仅存 baseUrl（Gradio 服务无 key/model：音色靠参考音频、端点名固定）。
+export type VoxcpmEndpointConfig = { baseUrl: string };
 export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   id: int("id").primaryKey(),
   disabledModels: json("disabledModels").$type<string[]>(),
@@ -868,6 +872,9 @@ export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   // 管理员后台配置的语音/转写端点（替代 TRANSCRIBE_* env）：{ url, apiKey, model }。
   // NULL 或 url 空=后台未配置→回退 env；非空=以本列为准。
   transcribeEndpoint: json("transcribeEndpoint").$type<TranscribeEndpointConfig>(),
+  // 管理员后台配置的本地 VoxCPM（Gradio TTS）全局默认地址（替代 VOXCPM_BASE_URL env）：{ baseUrl }。
+  // NULL 或 baseUrl 空=后台未配置→回退 env；非空=音频节点 VoxCPM 未填地址时的全站默认。
+  voxcpmEndpoint: json("voxcpmEndpoint").$type<VoxcpmEndpointConfig>(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

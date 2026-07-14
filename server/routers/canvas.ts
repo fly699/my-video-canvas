@@ -74,6 +74,7 @@ import { submitAndPollPoyoMusic, type PoyoMusicModel, type PoyoTTSModel } from "
 import { submitAndPollPoyoTTS, submitAndPollPoyoMusicTool } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
+import { resolveVoxcpmBaseUrl, voxcpmDefaultSource } from "../_core/voxcpmConfig";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, detectSceneChanges, extractFrame, extractAudio, concatAudioSegments, processAudioClip } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
@@ -2641,16 +2642,18 @@ export const audioGenRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: `${model} 单次配音上限 ${limit} 字（当前 ${input.text.length}）` });
       }
 
-      // Local Gradio needs a server address. 参考音频(ref_wav)可选——不给则用
-      // 模型自带/随机音色生成（与 VoxCPM 网页版一致）。
-      if (isGradioTTS && !input.customBaseUrl?.trim()) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "本地 VoxCPM 需要填写 Gradio 服务地址" });
+      // Local Gradio needs a server address. 优先用节点自填的地址；未填则回退全站默认
+      // （管理后台 VoxCPM 端点 DB 优先 → VOXCPM_BASE_URL env）。参考音频(ref_wav)可选——
+      // 不给则用模型自带/随机音色生成（与 VoxCPM 网页版一致）。
+      const voxcpmBaseUrl = isGradioTTS ? (input.customBaseUrl?.trim() || resolveVoxcpmBaseUrl()) : "";
+      if (isGradioTTS && !voxcpmBaseUrl) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "本地 VoxCPM 需要 Gradio 服务地址：请在节点里填写，或在管理后台「模型管理 › 本地 VoxCPM 端点」配置全站默认（或设 VOXCPM_BASE_URL）" });
       }
 
       return dedupe("audioGen.generateDubbing", ctx.user.id, input, async () => {
         const result = isGradioTTS
           ? await synthesizeGradioTTS({
-              baseUrl: input.customBaseUrl!,
+              baseUrl: voxcpmBaseUrl,
               text: input.text,
               refWavUrl: input.refWavUrl!,
               controlInstruction: input.controlInstruction,
@@ -2694,7 +2697,7 @@ export const audioGenRouter = router({
             ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}),
             success: true,
             ...(isPoyoTTS ? { stability: input.stability ?? null, timestamps: input.timestamps ?? false } : {}),
-            ...(isGradioTTS ? { gradioBaseUrl: input.customBaseUrl ?? null } : {}),
+            ...(isGradioTTS ? { gradioBaseUrl: voxcpmBaseUrl || null } : {}),
           },
         });
         const provider = isGradioTTS ? "gradio" : isKieTTSModel ? "kie" : isPoyoTTS ? "poyo" : "openai";
@@ -4417,5 +4420,11 @@ export const configRouter = router({
       groq: !!ENV.groqApiKey.trim(),                          // GROQ_API_KEY
       forge: !!((ENV.forgeApiUrl.trim() && ENV.forgeApiKey.trim()) || ENV.openaiApiKey.trim()), // 内置 Forge/OpenAI
     };
+  }),
+  // 本地 VoxCPM（Gradio TTS）全站默认地址是否已配置 + 来源 —— 供音频节点把「Gradio 服务地址」
+  // 改为可选（未填则用全站默认），并在占位符提示已有默认。不回传具体地址（内网地址，仅回布尔+来源）。
+  voxcpmDefault: protectedProcedure.query(async () => {
+    const source = voxcpmDefaultSource(); // db / env / none
+    return { configured: source !== "none", source };
   }),
 });

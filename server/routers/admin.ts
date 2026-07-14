@@ -18,6 +18,7 @@ import { reloadBridgeMcpConfig } from "../_core/bridgeMcp";
 import { reloadSuperAgentConfig } from "../_core/superAgent/config";
 import { reloadTranscribeConfig } from "../_core/transcribeConfig";
 import { resolveTranscribeEndpoint } from "../_core/voiceTranscription";
+import { reloadVoxcpmConfig, resolveVoxcpmBaseUrl, voxcpmDefaultSource } from "../_core/voxcpmConfig";
 import { bridgeLocalUrl } from "../_core/claudeBridge";
 import { buildConfigChecklist } from "../_core/configChecklist";
 import { sendTestEmail } from "../_core/verificationEmail";
@@ -711,6 +712,43 @@ export const adminRouter = router({
         if (res.ok) return { ok: true as const, ms, host, status: res.status };
         const body = await res.text().catch(() => "");
         return { ok: false as const, ms, host, status: res.status, error: `${res.status} ${res.statusText}${body ? `：${body.slice(0, 200)}` : ""}` };
+      } catch (e) {
+        return { ok: false as const, host, error: e instanceof Error ? e.message.slice(0, 200) : "请求失败（不可达/超时）" };
+      }
+    }),
+    // ── 本地 VoxCPM（Gradio TTS）全站默认地址（admin）：替代 VOXCPM_BASE_URL env，DB 优先 + env 兜底 ──
+    // 音频节点选「本地 VoxCPM2」但未在节点里填地址时，用这里的全站默认。仅 baseUrl（无 key/model）。
+    getVoxcpmEndpoint: adminProcedure.query(async () => {
+      const dbCfg = await db.getVoxcpmEndpointConfigRaw();
+      return {
+        baseUrl: dbCfg?.baseUrl ?? "",
+        dbConfigured: !!dbCfg,
+        source: voxcpmDefaultSource(),   // db / env / none
+        envBaseUrl: ENV.voxcpmBaseUrl.trim(),
+      };
+    }),
+    setVoxcpmEndpoint: managerProc
+      .input(z.object({ baseUrl: z.string().trim().max(2048) }))
+      .mutation(async ({ input }) => {
+        const baseUrl = input.baseUrl.trim();
+        if (baseUrl && !/^https?:\/\//i.test(baseUrl)) throw new TRPCError({ code: "BAD_REQUEST", message: "地址必须以 http:// 或 https:// 开头" });
+        await db.setVoxcpmEndpointConfig({ baseUrl }); // 清空 = 恢复 env 兜底
+        await reloadVoxcpmConfig();                    // 立即热更新快照
+        return { success: true };
+      }),
+    // 一键测试连通：对当前【实际生效】的 VoxCPM 地址发 GET（Gradio 根路径应返回页面/200）。
+    testVoxcpmEndpoint: managerProc.mutation(async () => {
+      const base = resolveVoxcpmBaseUrl();
+      if (!base) return { ok: false as const, error: "未配置 VoxCPM 地址（后台未填且 env 也没有）" };
+      let host = base; try { host = new URL(base).host; } catch { /* keep */ }
+      const started = Date.now();
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        const res = await fetch(base, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+        const ms = Date.now() - started;
+        // Gradio 根路径通常 200（返回 HTML）；只要可达（非网络错误）即视为连通。
+        return { ok: true as const, ms, host, status: res.status };
       } catch (e) {
         return { ok: false as const, host, error: e instanceof Error ? e.message.slice(0, 200) : "请求失败（不可达/超时）" };
       }
