@@ -25,7 +25,7 @@ const MIN_W = 420, MIN_H = 360;
 
 const ACCENT = "oklch(0.70 0.20 300)";
 
-export function AiClientPanel() {
+export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const reactFlow = useReactFlow();
   const { open, minimized, activeNodeId, close, setMinimized, setActive, pinned, setPinned, geometry, setGeometry } = useAiClient();
   const nodes = useCanvasStore((s) => s.nodes);
@@ -347,10 +347,11 @@ export function AiClientPanel() {
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
 
-  if (!open) return null;
+  // 嵌入模式（独立页 /ai）：始终渲染、无浮动壳、不最小化。
+  if (!embedded && !open) return null;
 
   // 最小化：右下角悬浮小球。
-  if (minimized) {
+  if (!embedded && minimized) {
     return createPortal(
       <button
         onClick={() => setMinimized(false)}
@@ -369,19 +370,24 @@ export function AiClientPanel() {
 
   const modelLabel = chatModels.find((m) => m.id === model)?.label ?? CHAT_MODELS.find((m) => m.id === model)?.label ?? model;
 
-  return createPortal(
+  const panelTree = (
     <div
       className="nodrag"
-      style={{
+      style={embedded ? {
+        position: "absolute", inset: 0, zIndex: 1,
+        display: "flex", flexDirection: "column", background: "var(--c-surface)", overflow: "hidden",
+      } : {
         position: "fixed", left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: 210,
         display: "flex", flexDirection: "column", background: "var(--c-surface)", border: "1px solid var(--c-bd2)",
         borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.45)", overflow: "hidden",
       }}
     >
-      {/* 顶栏（可拖拽移动窗口） */}
-      <div onPointerDown={startDrag} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid var(--c-bd1)", cursor: "move", touchAction: "none" }}>
-        <span style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 16%, transparent)`, color: ACCENT }}><Bot size={16} /></span>
-        <span style={{ fontSize: 13, fontWeight: 800, color: "var(--c-t1)" }}>AI 客户端</span>
+      {/* 顶栏（浮动模式可拖拽移动窗口；嵌入模式不可拖、不显窗口控制） */}
+      <div onPointerDown={embedded ? undefined : startDrag} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid var(--c-bd1)", cursor: embedded ? "default" : "move", touchAction: "none" }}>
+        {!embedded && <>
+          <span style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 16%, transparent)`, color: ACCENT }}><Bot size={16} /></span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: "var(--c-t1)" }}>AI 客户端</span>
+        </>}
         <select value={model} onChange={(e) => changeModel(e.target.value)} className="nodrag"
           style={{ marginLeft: 6, fontSize: 11.5, padding: "4px 8px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", maxWidth: 200 }}
           title={`当前模型：${modelLabel}`}>
@@ -390,9 +396,11 @@ export function AiClientPanel() {
         <div style={{ flex: 1 }} />
         <button onClick={toggleCodeMode} title={codeMode ? "退出代码模式" : "代码模式（Codex 写码 + 工件面板/预览，对齐 Canvas/Artifacts）"}
           style={{ ...iconBtn, color: codeMode ? ACCENT : "var(--c-t3)", background: codeMode ? `color-mix(in oklch, ${ACCENT} 16%, transparent)` : "transparent" }}><Code2 size={15} /></button>
-        <button onClick={() => setPinned(!pinned)} title={pinned ? "取消钉住" : "钉住（记住展开态，进画布自动打开）"} style={{ ...iconBtn, color: pinned ? ACCENT : "var(--c-t3)" }}><Pin size={15} fill={pinned ? ACCENT : "none"} /></button>
-        <button onClick={() => setMinimized(true)} title="最小化（Cmd/Ctrl+J）" style={iconBtn}><Minus size={16} /></button>
-        <button onClick={close} title="关闭" style={iconBtn}><X size={16} /></button>
+        {!embedded && <>
+          <button onClick={() => setPinned(!pinned)} title={pinned ? "取消钉住" : "钉住（记住展开态，进画布自动打开）"} style={{ ...iconBtn, color: pinned ? ACCENT : "var(--c-t3)" }}><Pin size={15} fill={pinned ? ACCENT : "none"} /></button>
+          <button onClick={() => setMinimized(true)} title="最小化（Cmd/Ctrl+J）" style={iconBtn}><Minus size={16} /></button>
+          <button onClick={close} title="关闭" style={iconBtn}><X size={16} /></button>
+        </>}
       </div>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
@@ -636,13 +644,14 @@ export function AiClientPanel() {
         )}
       </div>
 
-      {/* 右下角缩放手柄（拖拽改变窗口尺寸；持久化） */}
-      <div onPointerDown={startResize} className="nodrag" title="拖拽缩放"
+      {/* 右下角缩放手柄（仅浮动模式：拖拽改变窗口尺寸；持久化） */}
+      {!embedded && <div onPointerDown={startResize} className="nodrag" title="拖拽缩放"
         style={{ position: "absolute", right: 0, bottom: 0, width: 18, height: 18, cursor: "nwse-resize", touchAction: "none",
-          background: "linear-gradient(135deg, transparent 50%, var(--c-bd2) 50%, var(--c-bd2) 62%, transparent 62%, transparent 74%, var(--c-bd2) 74%, var(--c-bd2) 86%, transparent 86%)" }} />
-    </div>,
-    document.body,
+          background: "linear-gradient(135deg, transparent 50%, var(--c-bd2) 50%, var(--c-bd2) 62%, transparent 62%, transparent 74%, var(--c-bd2) 74%, var(--c-bd2) 86%, transparent 86%)" }} />}
+    </div>
   );
+  // 嵌入模式：就地渲染（铺满父容器）；浮动模式：portal 到 body。
+  return embedded ? panelTree : createPortal(panelTree, document.body);
 }
 
 const iconBtn: React.CSSProperties = {
