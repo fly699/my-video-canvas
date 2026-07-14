@@ -2,14 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2 } from "lucide-react";
+import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
 import { deriveAiSessions, resolveActiveSession } from "@/lib/aiClientSessions";
 import { buildNodeContextContent, isReferableNode, nodeContextLabel, planMessageDrop, type ChatMsgAttachment } from "@/lib/aiClientContext";
+import { loadNodeless, saveNodeless, addSession, removeSession, updateSession, sortSessions, makeNodelessId, isNodelessId, type NodelessSession } from "@/lib/aiClientNodeless";
 import { LLM_MODELS } from "@/lib/models";
 import { trpc } from "@/lib/trpc";
 import type { NodeType } from "../../../../shared/types";
+
+const MIN_W = 420, MIN_H = 360;
 
 // ── 全局悬浮「AI 客户端」(综合 Claude/GPT/Grok 取长) ─────────────────────────────
 // Cmd/Ctrl+J 呼出/最小化；左侧会话列表「同源」于画布 ai_chat 节点（会话即节点），中间对话流，
@@ -20,14 +24,23 @@ const ACCENT = "oklch(0.70 0.20 300)";
 
 export function AiClientPanel() {
   const reactFlow = useReactFlow();
-  const { open, minimized, activeNodeId, close, setMinimized, setActive } = useAiClient();
+  const { open, minimized, activeNodeId, close, setMinimized, setActive, pinned, setPinned, geometry, setGeometry } = useAiClient();
   const nodes = useCanvasStore((s) => s.nodes);
   const projectId = useCanvasStore((s) => s.projectId);
   const utils = trpc.useUtils();
 
-  const sessions = useMemo(() => deriveAiSessions(nodes), [nodes]);
-  // 保持激活会话（若被删则回落到第一个）。
-  const active = useMemo(() => resolveActiveSession(sessions, activeNodeId), [sessions, activeNodeId]);
+  // 无节点会话（不建 ai_chat 节点，也能记住；索引按项目存 localStorage，消息仍在服务端）。
+  const [nodeless, setNodeless] = useState<NodelessSession[]>([]);
+  useEffect(() => { setNodeless(projectId ? loadNodeless(projectId) : []); }, [projectId]);
+  const persistNodeless = (list: NodelessSession[]) => { setNodeless(list); if (projectId) saveNodeless(projectId, list); };
+
+  // 统一会话列表：画布 ai_chat 节点（同源）+ 无节点会话，按更新时间/出现顺序合并。
+  const nodeSessions = useMemo(() => deriveAiSessions(nodes).map((s) => ({ id: s.nodeId, title: s.title, preview: s.preview, nodeless: false })), [nodes]);
+  const sessions = useMemo(() => [
+    ...sortSessions(nodeless).map((s) => ({ id: s.id, title: s.title, preview: "", nodeless: true })),
+    ...nodeSessions,
+  ], [nodeless, nodeSessions]);
+  const active = useMemo(() => resolveActiveSession(sessions.map((s) => ({ nodeId: s.id, title: s.title, preview: s.preview, count: 0 })), activeNodeId), [sessions, activeNodeId]);
   useEffect(() => { if (active !== activeNodeId) setActive(active); }, [active, activeNodeId, setActive]);
 
   const [input, setInput] = useState("");
@@ -37,25 +50,36 @@ export function AiClientPanel() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadMut = trpc.upload.uploadAiChatImage.useMutation();
+  const clearMut = trpc.aiChat.clearMessages.useMutation();
 
-  // 当前会话引用的上下文节点（存在 ai_chat 节点 payload.contextNodeIds，与画布对话节点同源）。
   const activeNode = useMemo(() => nodes.find((n) => n.id === active), [nodes, active]);
+  const activeNodeless = useMemo(() => nodeless.find((s) => s.id === active), [nodeless, active]);
+  const isNodeless = isNodelessId(active);
+  // 当前会话引用的上下文节点：无节点会话存 nodeless 记录，节点会话存 ai_chat 节点 payload（同源）。
   const contextIds = useMemo(
-    () => ((activeNode?.data.payload as { contextNodeIds?: string[] } | undefined)?.contextNodeIds) ?? [],
-    [activeNode],
+    () => (isNodeless ? (activeNodeless?.contextNodeIds ?? []) : ((activeNode?.data.payload as { contextNodeIds?: string[] } | undefined)?.contextNodeIds ?? [])),
+    [isNodeless, activeNodeless, activeNode],
   );
-  // 可引用的画布节点（排除本会话自身与非文本类）。
   const referable = useMemo(() => nodes.filter((n) => n.id !== active && isReferableNode(n)), [nodes, active]);
-  const setContextIds = (ids: string[]) => { if (active) useCanvasStore.getState().updateNodeData(active, { contextNodeIds: ids }, true); };
+  const setContextIds = (ids: string[]) => {
+    if (!active) return;
+    if (isNodeless) persistNodeless(updateSession(nodeless, active, { contextNodeIds: ids }));
+    else useCanvasStore.getState().updateNodeData(active, { contextNodeIds: ids }, true);
+  };
   const toggleContext = (nodeId: string) => setContextIds(contextIds.includes(nodeId) ? contextIds.filter((x) => x !== nodeId) : [...contextIds, nodeId]);
 
-  // 逐会话模型：切换会话时载入该 ai_chat 节点保存的模型；切模型时持久化到该节点（同源）。
+  // 逐会话模型：切会话载入该会话保存的模型；切模型持久化到该会话（节点 payload 或 nodeless 记录）。
   useEffect(() => {
-    const m = (activeNode?.data.payload as { model?: string } | undefined)?.model;
+    const m = isNodeless ? activeNodeless?.model : (activeNode?.data.payload as { model?: string } | undefined)?.model;
     if (m && m !== model) setModel(m);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
-  const changeModel = (m: string) => { setModel(m); if (active) useCanvasStore.getState().updateNodeData(active, { model: m }, true); };
+  const changeModel = (m: string) => {
+    setModel(m);
+    if (!active) return;
+    if (isNodeless) persistNodeless(updateSession(nodeless, active, { model: m }));
+    else useCanvasStore.getState().updateNodeData(active, { model: m }, true);
+  };
 
   const msgQuery = trpc.aiChat.getMessages.useQuery(
     { nodeId: active ?? "", projectId: projectId ?? 0 },
@@ -74,20 +98,29 @@ export function AiClientPanel() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages.length, sendMut.isPending]);
 
-  // 回写节点 payload.messages，让画布上的 ai_chat 节点即时反映服务端权威消息（数据同源）。
+  // 回写节点 payload.messages，让画布上的 ai_chat 节点即时反映服务端权威消息（仅节点会话）。
   useEffect(() => {
-    if (!active || !msgQuery.data) return;
+    if (!active || isNodeless || !msgQuery.data) return;
     const stripped = msgQuery.data
       .filter((m): m is typeof m & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role, content: m.content }));
     useCanvasStore.getState().updateNodeData(active, { messages: stripped }, true);
-  }, [active, msgQuery.data]);
+  }, [active, isNodeless, msgQuery.data]);
 
+  // 新会话默认「无节点」（不在画布建 ai_chat 节点，免得画布被聊天节点堆乱），仍持久记住。
   const newSession = () => {
-    const pos = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-    const node = useCanvasStore.getState().addNode("ai_chat", pos);
-    setActive(node.id);
-    toast.success("已新建会话（画布上已生成对应 AI 对话节点）");
+    const s: NodelessSession = { id: makeNodelessId(nanoid(8)), title: "新会话", model, updatedAt: Date.now() };
+    persistNodeless(addSession(nodeless, s));
+    setActive(s.id);
+    setInput(""); setPendingAtts([]);
+    toast.success("已新建会话");
+  };
+  // 删除无节点会话（清索引 + 清服务端消息）。节点会话由画布管理，这里不删。
+  const deleteNodelessSession = (id: string) => {
+    persistNodeless(removeSession(nodeless, id));
+    if (projectId) clearMut.mutate({ nodeId: id, projectId });
+    if (active === id) setActive(null);
+    toast.success("已删除会话");
   };
 
   const doSend = (text: string, attachments: ChatMsgAttachment[]) => {
@@ -108,6 +141,12 @@ export function AiClientPanel() {
     if (!projectId) { toast.error("画布未就绪"); return; }
     const atts = pendingAtts;
     setInput(""); setPendingAtts([]);
+    // 无节点会话：用首句更新标题 + 刷新更新时间（首次发送前标题还是「新会话」）。
+    if (isNodeless && active) {
+      const cur = nodeless.find((s) => s.id === active);
+      const title = cur && cur.title !== "新会话" ? cur.title : (text.slice(0, 30) || cur?.title || "新会话");
+      persistNodeless(updateSession(nodeless, active, { title, updatedAt: Date.now() }));
+    }
     doSend(text, atts);
   };
 
@@ -153,6 +192,33 @@ export function AiClientPanel() {
     toast.success(`已落成 ${created} 个画布节点`);
   };
 
+  // ── 窗口几何：拖拽移动 + 缩放（默认右下角停靠；拖过/缩过后持久化）──────────────
+  const [liveGeo, setLiveGeo] = useState<import("../../hooks/useAiClient").AiClientGeometry | null>(null);
+  const defaultGeo = useMemo(() => {
+    const w = Math.min(760, Math.round((typeof window !== "undefined" ? window.innerWidth : 1200) * 0.94));
+    const h = Math.min(600, Math.round((typeof window !== "undefined" ? window.innerHeight : 800) * 0.86));
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    return { x: vw - w - 22, y: vh - h - 22, w, h };
+  }, []);
+  const geo = liveGeo ?? geometry ?? defaultGeo;
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  const startDrag = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest("button,select,input,textarea")) return; // 顶栏控件不触发拖拽
+    e.preventDefault();
+    const s = { mx: e.clientX, my: e.clientY, x: geo.x, y: geo.y };
+    const move = (ev: PointerEvent) => setLiveGeo({ ...geo, x: clamp(s.x + ev.clientX - s.mx, 0, window.innerWidth - 120), y: clamp(s.y + ev.clientY - s.my, 0, window.innerHeight - 44) });
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setLiveGeo((g) => { if (g) setGeometry(g); return null; }); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const s = { mx: e.clientX, my: e.clientY, w: geo.w, h: geo.h };
+    const move = (ev: PointerEvent) => setLiveGeo({ ...geo, w: clamp(s.w + ev.clientX - s.mx, MIN_W, window.innerWidth - geo.x - 8), h: clamp(s.h + ev.clientY - s.my, MIN_H, window.innerHeight - geo.y - 8) });
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setLiveGeo((g) => { if (g) setGeometry(g); return null; }); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+
   if (!open) return null;
 
   // 最小化：右下角悬浮小球。
@@ -179,13 +245,13 @@ export function AiClientPanel() {
     <div
       className="nodrag"
       style={{
-        position: "fixed", right: 22, bottom: 22, zIndex: 210, width: "min(760px, 94vw)", height: "min(600px, 86vh)",
+        position: "fixed", left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: 210,
         display: "flex", flexDirection: "column", background: "var(--c-surface)", border: "1px solid var(--c-bd2)",
         borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.45)", overflow: "hidden",
       }}
     >
-      {/* 顶栏 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid var(--c-bd1)" }}>
+      {/* 顶栏（可拖拽移动窗口） */}
+      <div onPointerDown={startDrag} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid var(--c-bd1)", cursor: "move", touchAction: "none" }}>
         <span style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 16%, transparent)`, color: ACCENT }}><Bot size={16} /></span>
         <span style={{ fontSize: 13, fontWeight: 800, color: "var(--c-t1)" }}>AI 客户端</span>
         <select value={model} onChange={(e) => changeModel(e.target.value)} className="nodrag"
@@ -194,6 +260,7 @@ export function AiClientPanel() {
           {LLM_MODELS.filter((m) => !m.hidden).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
         </select>
         <div style={{ flex: 1 }} />
+        <button onClick={() => setPinned(!pinned)} title={pinned ? "取消钉住" : "钉住（记住展开态，进画布自动打开）"} style={{ ...iconBtn, color: pinned ? ACCENT : "var(--c-t3)" }}><Pin size={15} fill={pinned ? ACCENT : "none"} /></button>
         <button onClick={() => setMinimized(true)} title="最小化（Cmd/Ctrl+J）" style={iconBtn}><Minus size={16} /></button>
         <button onClick={close} title="关闭" style={iconBtn}><X size={16} /></button>
       </div>
@@ -206,19 +273,31 @@ export function AiClientPanel() {
             <Plus size={14} /> 新会话
           </button>
           <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
-            {sessions.length === 0 && <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "12px 6px", lineHeight: 1.6 }}>还没有会话。点「新会话」开始——每个会话都会在画布上生成一个 AI 对话节点，数据互通。</div>}
+            {sessions.length === 0 && <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "12px 6px", lineHeight: 1.6 }}>还没有会话。点「新会话」开始——默认不建画布节点（保持画布清爽），对话仍会记住。</div>}
             {sessions.map((s) => {
-              const on = s.nodeId === active;
+              const on = s.id === active;
               return (
-                <button key={s.nodeId} onClick={() => setActive(s.nodeId)} className="nodrag" title={s.title}
-                  style={{ width: "100%", textAlign: "left", marginBottom: 4, padding: "8px 9px", borderRadius: 9, cursor: "pointer",
-                    border: `1px solid ${on ? ACCENT : "transparent"}`, background: on ? `color-mix(in oklch, ${ACCENT} 10%, transparent)` : "transparent", color: "var(--c-t1)" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <MessageSquare size={12} style={{ flexShrink: 0, color: on ? ACCENT : "var(--c-t4)" }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
-                  </span>
-                  {s.preview && <span style={{ display: "block", fontSize: 10.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{s.preview}</span>}
-                </button>
+                <div key={s.id} className="nodrag" title={s.title}
+                  style={{ position: "relative", marginBottom: 4, borderRadius: 9, border: `1px solid ${on ? ACCENT : "transparent"}`, background: on ? `color-mix(in oklch, ${ACCENT} 10%, transparent)` : "transparent" }}>
+                  <button onClick={() => setActive(s.id)} className="nodrag"
+                    style={{ width: "100%", textAlign: "left", padding: "8px 9px", background: "transparent", border: "none", cursor: "pointer", color: "var(--c-t1)" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 16 }}>
+                      <MessageSquare size={12} style={{ flexShrink: 0, color: on ? ACCENT : "var(--c-t4)" }} />
+                      <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+                      {!s.nodeless && <span title="画布节点会话" style={{ flexShrink: 0, fontSize: 9, color: "var(--c-t4)" }}>◈</span>}
+                    </span>
+                    {s.preview && <span style={{ display: "block", fontSize: 10.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{s.preview}</span>}
+                  </button>
+                  {/* 删除（仅无节点会话；画布节点会话请在画布上删）。 */}
+                  {s.nodeless && (
+                    <button onClick={() => deleteNodelessSession(s.id)} className="nodrag" title="删除会话"
+                      style={{ position: "absolute", top: 6, right: 6, width: 18, height: 18, borderRadius: 5, border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.2 20)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                      <Trash2 size={11} />
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -348,6 +427,11 @@ export function AiClientPanel() {
           </div>
         </div>
       </div>
+
+      {/* 右下角缩放手柄（拖拽改变窗口尺寸；持久化） */}
+      <div onPointerDown={startResize} className="nodrag" title="拖拽缩放"
+        style={{ position: "absolute", right: 0, bottom: 0, width: 18, height: 18, cursor: "nwse-resize", touchAction: "none",
+          background: "linear-gradient(135deg, transparent 50%, var(--c-bd2) 50%, var(--c-bd2) 62%, transparent 62%, transparent 74%, var(--c-bd2) 74%, var(--c-bd2) 86%, transparent 86%)" }} />
     </div>,
     document.body,
   );
