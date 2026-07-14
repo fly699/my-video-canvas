@@ -817,6 +817,24 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
     reader.readAsDataURL(file);
   }), [imgUploadMutation]);
 
+  // 「上传参考图」：直接上传本地图片作参考，填入工作流第一个（留空优先）图像参数——
+  // 无需先连上游图像节点，也无需展开高级参数绑定去逐个填。运行时服务端再把该 URL 上传到 ComfyUI。
+  const uploadRefInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingRef, setUploadingRef] = useState(false);
+  const handleUploadReference = useCallback(async (file: File) => {
+    const cur = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as ComfyuiWorkflowNodeData | undefined;
+    const imgs = (cur?.paramBindings ?? []).filter((b) => b.type === "image");
+    if (imgs.length === 0) { toast.error("该工作流没有图像输入参数——先在「参数绑定」把某个图像节点标为参数"); return; }
+    setUploadingRef(true);
+    const url = await uploadLocalImage(file);
+    setUploadingRef(false);
+    if (!url) return;
+    const isUrl = (v: unknown): v is string => typeof v === "string" && /^https?:\/\//.test(v.trim());
+    const target = imgs.find((b) => !isUrl(cur?.paramValues?.[`${b.nodeId}.${b.fieldPath}`])) ?? imgs[0];
+    setParamValue(`${target.nodeId}.${target.fieldPath}`, url);
+    toast.success(`参考图已上传并填入「${target.label}」`);
+  }, [id, uploadLocalImage, setParamValue]);
+
   // 上传本地音频到我们的存储，返回 URL；运行时服务端再把该 URL 上传到 ComfyUI。
   const uploadLocalAudio = useCallback((file: File): Promise<string | null> => new Promise((resolve) => {
     if (!file.type.startsWith("audio/")) { toast.error("请选择音频文件"); resolve(null); return; }
@@ -1500,6 +1518,29 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "oklch(0.7 0.16 145)" }}>
                 <ImageIcon size={11} />
                 已连接上游图片，运行时将自动填入留空的图像参数
+              </div>
+            )}
+
+            {/* 「上传参考图」：直接上传本地图片作参考（无需先连上游图/展开高级绑定），填入首个图像参数。 */}
+            {(payload.paramBindings ?? []).some((b) => b.type === "image") && (
+              <div style={{ marginTop: 6, marginBottom: 4 }}>
+                <input
+                  ref={uploadRefInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void handleUploadReference(f); }}
+                />
+                <button
+                  className="nodrag"
+                  disabled={uploadingRef}
+                  onClick={(e) => { e.stopPropagation(); uploadRefInputRef.current?.click(); }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, padding: "5px 10px", borderRadius: 7, cursor: uploadingRef ? "not-allowed" : "pointer", background: `${accent}14`, border: `1px solid ${accent}55`, color: accent, fontFamily: "var(--font-sans)" }}
+                  title="上传本地图片作参考，自动填入工作流第一个（留空优先）图像参数"
+                >
+                  {uploadingRef ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                  {uploadingRef ? "上传中…" : "上传参考图"}
+                </button>
               </div>
             )}
 
