@@ -1289,7 +1289,7 @@ const MODEL_CATEGORIES: ModelCat[] = [
   {
     key: "transcribe",
     label: "字幕转录（STT）模型",
-    hint: "用于 字幕 节点的语音识别转录（内置 Forge STT 代理）",
+    hint: "用于 字幕/动态字幕/智能剪辑/语音输入兜底 的转录（按模型 provider 路由：Groq→GROQ_API_KEY、自建→转写端点、Forge→内置）。配置了自建端点后「自建 · …」也会出现在此可单独启停",
     accent: "oklch(0.65 0.19 310)",
     models: TRANSCRIBE_MODELS.map((m) => ({ value: m.value, label: m.label, group: m.group })),
   },
@@ -1367,18 +1367,34 @@ function ModelsPanel() {
   // llm=裸 id（AI对话/脚本/Agent）、chat:=聊天助手、editor:=剪辑器。这样自建模型在模型管理里
   // 可见、可单独启用/禁用，与内置模型行为一致。
   const selfHosted = useSelfHostedLlmModels();
+  // 自建转写端点（provider 路由后置顶其 model）——与画布/后台转写选择器 useTranscribeModels 同源同键，
+  // 让后台「字幕转录(STT)」使能开关也能列出/单独启停自建模型（此前只列静态 Groq+Forge，自建缺席）。
+  const transcribeProviders = trpc.config.transcribeProviders.useQuery(undefined, { staleTime: 60_000 });
   const categories = useMemo(() => {
-    if (!selfHosted.length) return MODEL_CATEGORIES;
     const prefixByCat: Record<string, string> = { llm: "", chat: "chat:", editor: "editor:" };
-    return MODEL_CATEGORIES.map((cat) => {
-      const prefix = prefixByCat[cat.key];
-      if (prefix === undefined) return cat;
-      const injected: ModelCatItem[] = selfHosted
-        .filter((s) => !cat.models.some((m) => m.value === prefix + s.id))
-        .map((s) => ({ value: prefix + s.id, label: s.label, group: "SelfHosted" }));
-      return injected.length ? { ...cat, models: [...injected, ...cat.models] } : cat;
-    });
-  }, [selfHosted]);
+    const tp = transcribeProviders.data;
+    const selfTranscribe = tp?.self.configured && tp.self.model.trim() ? tp.self.model.trim() : "";
+    let cats = MODEL_CATEGORIES;
+    // 1) 自建 LLM 注入「对话/推理」「聊天 AI」「剪辑器 AI」（各用 value 前缀，与门控键一致）。
+    if (selfHosted.length) {
+      cats = cats.map((cat) => {
+        const prefix = prefixByCat[cat.key];
+        if (prefix === undefined) return cat;
+        const injected: ModelCatItem[] = selfHosted
+          .filter((s) => !cat.models.some((m) => m.value === prefix + s.id))
+          .map((s) => ({ value: prefix + s.id, label: s.label, group: "SelfHosted" }));
+        return injected.length ? { ...cat, models: [...injected, ...cat.models] } : cat;
+      });
+    }
+    // 2) 自建转写模型注入「字幕转录(STT)」——value=裸 model id，与 useTranscribeModels/disabledModels 同键。
+    if (selfTranscribe) {
+      cats = cats.map((cat) => {
+        if (cat.key !== "transcribe" || cat.models.some((m) => m.value === selfTranscribe)) return cat;
+        return { ...cat, models: [{ value: selfTranscribe, label: `自建 · ${selfTranscribe}`, group: "SelfHosted" }, ...cat.models] };
+      });
+    }
+    return cats;
+  }, [selfHosted, transcribeProviders.data]);
   const allValues = useMemo(() => categories.flatMap((c) => c.models.map((m) => m.value)), [categories]);
   const enabledCount = allValues.filter((v) => !disabled.has(v)).length;
 
