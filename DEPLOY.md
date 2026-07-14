@@ -115,7 +115,8 @@ DATABASE_URL="mysql://..." OAUTH_SERVER_URL="..." pnpm start
 配置分散在三处，`.env.example` 顶部有说明：
 - **`.env` 环境变量**：核心（DB/JWT/OWNER）、对象存储 `S3_*`、各 AI 平台密钥、订阅桥接、工程智能体。
 - **管理后台页面（存数据库）**：SMTP 邮件（注册认证页签）、公网隧道 token（公网隧道页签）、
-  kie 子密钥分发（kie.ai 密钥页签）、自建 LLM 地址/Key/模型（模型管理›自建 LLM）、存储持久化开关。
+  kie 子密钥分发（kie.ai 密钥页签）、自建 LLM 地址/Key/模型（模型管理›自建 LLM）、
+  语音/转写端点 URL/Key/Model（模型管理›语音/转写端点，见下文 F）、存储持久化开关。
 - **服务器上的 CLI 与凭证文件**：`ffmpeg`、`claude`/`codex` CLI、`~/.codex/auth.json` 订阅凭证。
 
 **部署后务必到【管理后台 →「配置体检」页签】逐项核对**：它把上述三处配置汇总成一张清单，
@@ -194,3 +195,49 @@ codex 会静默落到 `OPENAI_API_KEY` 按量计费，务必放好凭证再用 `
 
 镜像默认**不含** Claude Code / Codex CLI 与订阅凭证。需在镜像里补装 CLI（`npm i -g @anthropic-ai/claude-code @openai/codex`），
 并把宿主机的 `~/.claude`（如使用）与 `~/.codex/auth.json` 挂载/复制进容器对应的 HOME 路径，env 经 `-e` 注入。裸机/Windows 服务方式无此额外步骤。
+
+### F. 语音识别 / 转写端点（whisper）——语音输入 + 字幕 + 智能剪辑的转写
+
+**作用范围**：AI 助手/客户端的**语音输入**（浏览器 Web Speech 依赖 Google，国内/无法访问 Google 时自动回退到这里）、以及**字幕 / 动态字幕 / AI 智能剪辑**的语音转文字。
+
+**端点解析优先级（DB 优先 + env 兜底）**：
+```
+① 管理后台「模型管理›语音/转写端点」(存 DB)   ← 填了就用它，优先级最高
+② TRANSCRIBE_API_URL + TRANSCRIBE_API_KEY (env)
+③ 内置 Forge STT 代理 (BUILT_IN_FORGE_API_URL + KEY)   ← 多数部署本就有，Groq 云端 whisper
+④ OPENAI_API_KEY (官方 whisper-1，约 $0.006/分钟)
+以上全无 → 转写不可用（语音输入按钮在浏览器不支持时隐藏、服务端调用会明确报「未配置」）
+```
+> 注意「模型管理›**字幕转录(STT)模型**」那个开关是**选哪些 STT 模型出现在选择器**（走内置 Forge/③），
+> 与这里的「**端点**配置」是两回事：前者管「用哪个模型」，后者管「转写走哪个后端」。已有内置 Forge 的部署，
+> 语音输入兜底其实已能用（走③）；自建端点的意义 = **零 API 费用 + 不依赖 Groq/Google 可达性 + 隐私**。
+
+**方式 1：管理后台可视化配置（推荐，免改 env、免重启）**
+管理后台 → 模型管理 → **语音/转写端点** → 填 URL / 模型 / Key → 保存 → 点「测试连通」（绿=通）。
+密钥不回传明文（只显示已设置/未设置）；Key 留空=保留原值；URL 清空=恢复 env 兜底。保存即时生效。
+
+**方式 2：环境变量（`.env`，改后重启服务）**
+```bash
+TRANSCRIBE_API_URL=http://127.0.0.1:8000     # base，自动补 /v1/audio/transcriptions
+TRANSCRIBE_API_KEY=local-any-nonempty        # ⚠️ 必填非空（自建常不校验，但代码要求非空才认这组）
+TRANSCRIBE_MODEL=Systran/faster-whisper-large-v3
+```
+
+**自建 whisper（Docker，零 API 费用，最省）——以 speaches 为例**
+```bash
+# CPU（通用）
+docker run -d --name whisper --restart unless-stopped -p 8000:8000 \
+  -v hf-hub-cache:/home/ubuntu/.cache/huggingface/hub \
+  ghcr.io/speaches-ai/speaches:latest-cpu
+# NVIDIA GPU（需 NVIDIA Container Toolkit）：镜像换 :latest-cuda 并加 --gpus=all
+```
+- 提供原生 OpenAI 兼容 `POST /v1/audio/transcriptions`；`-v hf-hub-cache` 让模型缓存跨容器重建保留（删容器不重下）。
+- 验证：`curl.exe http://localhost:8000/v1/models`（Windows PowerShell 的 `curl` 是 Invoke-WebRequest 别名，会弹安全警告，用 `curl.exe` 或直接选「是」）。
+- 首次转写会自动下模型（large-v3 约 1.5G）；要更快用 `Systran/faster-whisper-large-v3-turbo`。
+- 随开机自启：`docker update --restart unless-stopped whisper` + Docker Desktop 勾选「登录时启动」。
+
+**⚠️ 端点地址填 localhost 还是 host.docker.internal**：取决于**本应用后端**跑在哪——
+- 后端在宿主机（裸机 / Windows 服务）→ `http://localhost:8000`
+- 后端也在 Docker 容器里 → `http://host.docker.internal:8000`（容器内的 localhost 指向容器自身，连不到宿主机的 whisper）
+
+**Docker 镜像内是否自带 whisper**：不带。自建 whisper 是**独立容器**，与本应用容器互不影响，按上面单独 `docker run` 即可。
