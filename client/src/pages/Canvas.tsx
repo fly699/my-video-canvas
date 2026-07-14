@@ -1351,6 +1351,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
         useCanvasStore.getState().updateNodeData(event.nodeId, { queueRemaining: event.queueRemaining }, true);
       }
     });
+    // #163 自定义工作流运行终局回灌：隧道切断超长 HTTP 时，服务端仍跑完并经此把结果送回。
+    // 写入目标节点的瞬态 pendingComfyResult，节点据此兜底回填、结束「运行中」（见 ComfyuiWorkflowNode）。
+    socket.on("comfyui:result", (msg: { nodeId: string; jobId: string; ok: boolean; urls?: string[]; outputType?: "image" | "video"; error?: string }) => {
+      if (!msg?.nodeId) return;
+      const node = useCanvasStore.getState().nodes.find((n) => n.id === msg.nodeId);
+      if (!node) return;
+      useCanvasStore.getState().updateNodeData(msg.nodeId, { pendingComfyResult: msg }, true);
+    });
     // 工程智能体（super_agent）活动日志：把服务端 emit 的事件追加到目标节点的 log（transient）。
     socket.on("superagent:event", (msg: { nodeId: string | null; event: { type: string; iteration: number; message: string; data?: unknown } }) => {
       if (!msg?.nodeId) return;
