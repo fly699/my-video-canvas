@@ -1444,6 +1444,9 @@ export interface SuperAgentNodeData {
   input?: string;
   /** 已写回/链接的 comfyui_workflow 节点 id：后续调参同步到它并可一键重新生成。 */
   appliedNodeId?: string;
+  /** 「产物目标」下游节点 id（通常是 merge）：调通后把产出的 comfyui_workflow 节点自动连到它，
+   *  打通「全自动成片」。super_agent 自身无出线桩，画布助手连 super_agent→下游时由 apply 层转记于此。 */
+  wireToNodeId?: string;
   /** 设置区（服务器/模型）是否展开（有对话后默认收起，减少干扰）。 */
   settingsOpen?: boolean;
   /** 流式活动日志（socket 回灌，非持久）。 */

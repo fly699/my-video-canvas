@@ -3,6 +3,8 @@ import { useReactFlow, Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { collectAgentUpstream, composeAgentTask, agentUpstreamSummary } from "@/lib/superAgentUpstream";
+import { isConnectionValid } from "@/lib/connectionRules";
+import type { NodeType } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Boxes, Loader2, XCircle, ArrowRightCircle, Square, Server, Cpu, Send, RefreshCw, Settings2, ChevronDown, ChevronUp } from "lucide-react";
@@ -113,6 +115,19 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     });
   }, [cancelMut, data.projectId, id]);
 
+  // #171 全自动成片：把产出的 comfyui_workflow 节点自动连到「产物目标」（通常 merge）。
+  // wireToNodeId 由 apply 层在「画布助手连 super_agent→下游」时转记（super_agent 无出线桩）。
+  // 现读 store 取最新值，校验 comfyui_workflow→目标 合法后连线（onConnect 幂等，可重复调用）。
+  const wireProductToTarget = useCallback((productNodeId: string) => {
+    const st = useCanvasStore.getState();
+    const wireTo = (st.nodes.find((n) => n.id === id)?.data.payload as SuperAgentNodeData | undefined)?.wireToNodeId;
+    if (!wireTo || wireTo === productNodeId) return;
+    const tgt = st.nodes.find((n) => n.id === wireTo);
+    if (tgt && isConnectionValid("comfyui_workflow" as NodeType, tgt.data.nodeType as NodeType)) {
+      st.onConnect({ source: productNodeId, target: wireTo, sourceHandle: "output", targetHandle: "input" });
+    }
+  }, [id]);
+
   // 同步当前工作流到「已链接的 comfyui_workflow 节点」；无则新建并链接。regenerate=true 则触发其重新生成。
   const syncToNode = useCallback((wf: string, analysis: SuperAgentNodeData["resultAnalysis"], regenerate: boolean) => {
     const st = useCanvasStore.getState();
@@ -133,9 +148,10 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
       update({ appliedNodeId: targetId });
     }
     updateNodeData(targetId, patch);
+    wireProductToTarget(targetId); // #171 自动接入下游（成片）
     if (regenerate) { st.requestRun(null, [targetId]); }
     return { targetId, isNew };
-  }, [payload.appliedNodeId, payload.customBaseUrl, id, addNode, updateNodeData, update]);
+  }, [payload.appliedNodeId, payload.customBaseUrl, id, addNode, updateNodeData, update, wireProductToTarget]);
 
   // 手动点「同步(并重新生成)」按钮。
   const applyLatest = useCallback((regenerate: boolean) => {
@@ -168,6 +184,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
           outputType: s.outputType === "video" ? "video" : "image",
           ...(payload.customBaseUrl?.trim() ? { customBaseUrl: payload.customBaseUrl.trim() } : {}),
         });
+        wireProductToTarget(node.id); // #171 编排产物也自动接入下游 merge（多镜汇入成片）
         created++;
       });
       const lines = subs.map((s, i) => `${i + 1}. ${s.status === "success" ? "✅" : "❌"} ${s.title}${s.retried ? "（重试）" : ""}${s.error ? ` — ${s.error}` : ""}`);
@@ -189,7 +206,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     if (res.status === "success" && res.workflowJson && payload.appliedNodeId) {
       if (st.nodes.some((n) => n.id === payload.appliedNodeId)) { syncToNode(res.workflowJson, res.analysis, false); toast.success("已同步到链接节点，可点「重新生成」"); }
     }
-  }, [id, update, payload.appliedNodeId, payload.customBaseUrl, syncToNode, addNode, updateNodeData, reactFlow]);
+  }, [id, update, payload.appliedNodeId, payload.customBaseUrl, syncToNode, addNode, updateNodeData, reactFlow, wireProductToTarget]);
 
   // socket 兜底：隧道下 HTTP 长请求被切断（network error）时，服务端把最终结果经 socket 回灌到
   // payload.pendingBuildResult（见 Canvas.tsx 的 superagent:event 处理），这里据此回填、结束「运行中」。
