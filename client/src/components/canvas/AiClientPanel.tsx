@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -220,6 +220,24 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     if (projectId) clearMut.mutate({ nodeId: id, projectId });
     if (active === id) setActive(null);
     toast.success("已删除会话");
+  };
+  // 会话更名：无节点会话改本地索引（+服务端持久化）；画布节点会话改节点标题（updateNodeTitle）。
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState("");
+  const startRename = (id: string, title: string) => { setRenamingId(id); setRenameText(title); };
+  const commitRename = () => {
+    const id = renamingId;
+    setRenamingId(null);
+    if (!id) return;
+    const title = renameText.trim();
+    if (!title) return;
+    if (isNodelessId(id)) {
+      const list = updateSession(nodeless, id, { title, updatedAt: Date.now() });
+      persistNodeless(list);
+      const up = list.find((x) => x.id === id); if (up) syncSessionUp(up);
+    } else {
+      useCanvasStore.getState().updateNodeTitle(id, title);
+    }
   };
 
   const doSend = (text: string, attachments: ChatMsgAttachment[]) => {
@@ -444,23 +462,40 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
               return (
                 <div key={s.id} className="nodrag" title={s.title}
                   style={{ position: "relative", marginBottom: 4, borderRadius: 9, border: `1px solid ${on ? ACCENT : "transparent"}`, background: on ? `color-mix(in oklch, ${ACCENT} 10%, transparent)` : "transparent" }}>
-                  <button onClick={() => setActive(s.id)} className="nodrag"
+                  {renamingId === s.id ? (
+                    <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)} className="nodrag"
+                      onBlur={commitRename}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitRename(); } else if (e.key === "Escape") { e.preventDefault(); setRenamingId(null); } }}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", background: "var(--c-input)", border: `1px solid ${ACCENT}`, borderRadius: 9, color: "var(--c-t1)", fontSize: 12, fontWeight: 600, outline: "none" }} />
+                  ) : (
+                  <button onClick={() => setActive(s.id)} onDoubleClick={() => startRename(s.id, s.title)} className="nodrag"
                     style={{ width: "100%", textAlign: "left", padding: "8px 9px", background: "transparent", border: "none", cursor: "pointer", color: "var(--c-t1)" }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 16 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: s.nodeless ? 34 : 18 }}>
                       <MessageSquare size={12} style={{ flexShrink: 0, color: on ? ACCENT : "var(--c-t4)" }} />
                       <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
                       {!s.nodeless && <span title="画布节点会话" style={{ flexShrink: 0, fontSize: 9, color: "var(--c-t4)" }}>◈</span>}
                     </span>
                     {s.preview && <span style={{ display: "block", fontSize: 10.5, color: "var(--c-t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{s.preview}</span>}
                   </button>
-                  {/* 删除（仅无节点会话；画布节点会话请在画布上删）。 */}
-                  {s.nodeless && (
-                    <button onClick={() => deleteNodelessSession(s.id)} className="nodrag" title="删除会话"
-                      style={{ position: "absolute", top: 6, right: 6, width: 18, height: 18, borderRadius: 5, border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.2 20)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
-                      <Trash2 size={11} />
-                    </button>
+                  )}
+                  {/* 更名（双击标题亦可）+ 删除（仅无节点会话；画布节点会话请在画布上删）。 */}
+                  {renamingId !== s.id && (
+                    <div style={{ position: "absolute", top: 6, right: 6, display: "flex", gap: 2 }}>
+                      <button onClick={() => startRename(s.id, s.title)} className="nodrag" title="重命名会话（或双击标题）"
+                        style={{ width: 18, height: 18, borderRadius: 5, border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                        <Pencil size={10} />
+                      </button>
+                      {s.nodeless && (
+                        <button onClick={() => deleteNodelessSession(s.id)} className="nodrag" title="删除会话"
+                          style={{ width: 18, height: 18, borderRadius: 5, border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.2 20)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                          <Trash2 size={11} />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               );
