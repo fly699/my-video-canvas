@@ -153,6 +153,10 @@ export function ZoomControl() {
 function MenuRow({ label, kbd: kbdText, onClick }: { label: string; kbd?: string; onClick: () => void }) {
   return (
     <button
+      // 关键修复「按钮无效」：菜单里的百分比输入框自动聚焦，点任意行会先触发它的 onBlur→commitInput→
+      // setOpen(false)（在 mousedown 阶段），在按钮的 onClick(mouseup) 之前就卸载了菜单，导致 onClick
+      // 永不触发。preventDefault 掉 mousedown 阻止输入框失焦，onClick 才能正常执行。
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       style={{ ...rowStyle, borderRadius: 9 }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
