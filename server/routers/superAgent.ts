@@ -151,11 +151,13 @@ export const superAgentRouter = router({
       // 尽量给全量图供直接参考），再加本项目画布上的 comfyui_workflow 节点、共享模板库里的相似工作流。
       // 续接（seedWorkflowJson）已有基底，不再注入以省上下文。useMemory=false 时不召回经验。
       // 失败教训/已知坑：召回本服务器过往在类似任务上踩过的坑，注入引擎开头主动规避（useMemory 时）。
+      // 本次真实看到的服务器资源（useMemory=false 时 createComfyTools 已 force 读真机 → 这里拿到的是最新已装清单）。
+      // 供「召回时剔除过时坑」+「构建结束按最新资源 prune 已解决的坑」共用，只取一次（内部有 knowledgePromise 复用）。
+      const curRes = await tools.listResources().catch(() => null);
       let knownPitfalls: string[] = [];
       if (useMemory) {
         try {
           // 传入当前资源 → 召回时自动剔除「缺件已补齐」的过时坑（装上缺失节点/模型后不再误报）。
-          const curRes = await tools.listResources().catch(() => null);
           knownPitfalls = await recallPitfalls(baseUrl, input.task, 10, curRes);
           if (knownPitfalls.length) {
             emitSuperAgentEvent(input.projectId, input.nodeId, {
@@ -257,6 +259,19 @@ export const superAgentRouter = router({
             data: { kind: "pitfall-saved", count: lessons.length },
           });
         }).catch(() => { /* 沉淀失败无妨 */ });
+      }
+
+      // 构建结束顺手「自愈剪枝」：按本次真实看到的资源删掉已补齐的过时坑。
+      // 尤其「不用记忆」跑（useMemory=false，force 读真机拿到最新已装清单）等于一次「刷新记忆」——
+      // 把之前误报的缺件坑清理掉。curRes 为空/资源缺失时 isPitfallReasonResolved 只会保留、绝不误删。
+      if (curRes) {
+        void pruneResolvedPitfalls(baseUrl, curRes).then((removed) => {
+          if (removed > 0) emitSuperAgentEvent(input.projectId, input.nodeId, {
+            type: "memory",
+            message: `已自动清理 ${removed} 条过时的失败坑（相关缺失节点/模型现已就绪）。`,
+            data: { kind: "pitfall-pruned", count: removed },
+          });
+        }).catch(() => { /* 剪枝失败无妨 */ });
       }
 
       // 日志已流式推送；这里回传最终产物 + 精简日志（去掉可能很大的 data 字段）。
