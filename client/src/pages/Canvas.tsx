@@ -3280,11 +3280,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <TooltipContent side="top" className="text-xs">{toolbarCollapsed ? "展开工具栏" : "折叠工具栏（隐藏不常用）"}</TooltipContent>
             </Tooltip>
 
-            {/* 恢复工具默认位置（常显·不标 data-tb-sec，收缩工具栏时也保留）——找不到画布助手/悬浮球/
-                浮动面板（拖到屏外、换分辨率）时一键复位。 */}
+            {/* 恢复工具默认位置：标 data-tb-sec → 收缩工具栏时隐藏（次要工具，与其它一致；关键时刻
+                展开工具栏，或用「更多 → 视图/面板 → 恢复工具默认位置」，或靠画布助手自愈自动归位）。 */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  data-tb-sec
                   onClick={resetToolLayout}
                   className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
                   style={{ color: "var(--c-t3)" }}
