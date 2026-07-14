@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
 import { deriveAiSessions, resolveActiveSession } from "@/lib/aiClientSessions";
@@ -33,7 +33,10 @@ export function AiClientPanel() {
   const [input, setInput] = useState("");
   const [model, setModel] = useState<string>(LLM_MODELS.find((m) => m.tag === "默认")?.id ?? LLM_MODELS[0].id);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pendingAtts, setPendingAtts] = useState<ChatMsgAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const uploadMut = trpc.upload.uploadAiChatImage.useMutation();
 
   // 当前会话引用的上下文节点（存在 ai_chat 节点 payload.contextNodeIds，与画布对话节点同源）。
   const activeNode = useMemo(() => nodes.find((n) => n.id === active), [nodes, active]);
@@ -45,6 +48,14 @@ export function AiClientPanel() {
   const referable = useMemo(() => nodes.filter((n) => n.id !== active && isReferableNode(n)), [nodes, active]);
   const setContextIds = (ids: string[]) => { if (active) useCanvasStore.getState().updateNodeData(active, { contextNodeIds: ids }, true); };
   const toggleContext = (nodeId: string) => setContextIds(contextIds.includes(nodeId) ? contextIds.filter((x) => x !== nodeId) : [...contextIds, nodeId]);
+
+  // 逐会话模型：切换会话时载入该 ai_chat 节点保存的模型；切模型时持久化到该节点（同源）。
+  useEffect(() => {
+    const m = (activeNode?.data.payload as { model?: string } | undefined)?.model;
+    if (m && m !== model) setModel(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+  const changeModel = (m: string) => { setModel(m); if (active) useCanvasStore.getState().updateNodeData(active, { model: m }, true); };
 
   const msgQuery = trpc.aiChat.getMessages.useQuery(
     { nodeId: active ?? "", projectId: projectId ?? 0 },
@@ -79,18 +90,53 @@ export function AiClientPanel() {
     toast.success("已新建会话（画布上已生成对应 AI 对话节点）");
   };
 
-  const send = () => {
-    const text = input.trim();
-    if (!text || sendMut.isPending) return;
-    if (!active) { newSession(); toast.info("已建会话，请再次发送"); return; }
-    if (!projectId) { toast.error("画布未就绪"); return; }
-    setInput("");
+  const doSend = (text: string, attachments: ChatMsgAttachment[]) => {
+    if (!active || !projectId) return;
     const contextContent = buildNodeContextContent(nodes, contextIds);
     sendMut.mutate({
       nodeId: active, projectId, message: text, model,
       ...(contextContent ? { contextContent } : {}),
+      ...(attachments.length > 0 ? { attachments: attachments.map((a) => ({ type: a.type, url: a.url, mimeType: a.mimeType || "image/jpeg", name: a.name || "图片" })) } : {}),
       ...(model.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
     });
+  };
+
+  const send = () => {
+    const text = input.trim();
+    if ((!text && pendingAtts.length === 0) || sendMut.isPending) return;
+    if (!active) { newSession(); toast.info("已建会话，请再次发送"); return; }
+    if (!projectId) { toast.error("画布未就绪"); return; }
+    const atts = pendingAtts;
+    setInput(""); setPendingAtts([]);
+    doSend(text, atts);
+  };
+
+  // 重新生成：以最后一条用户消息再问一次（无删除末条端点，故为新一轮）。
+  const regenerate = () => {
+    if (sendMut.isPending || !active) return;
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUser?.content) { toast.error("没有可重新生成的消息"); return; }
+    doSend(lastUser.content, []);
+  };
+
+  const copyText = (t: string) => { navigator.clipboard?.writeText(t).then(() => toast.success("已复制"), () => toast.error("复制失败")); };
+
+  // 图片附件：上传到自有存储（复用 uploadAiChatImage），随消息发送（素材库/产物互通）。
+  const onPickFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith("image/")) { toast.error(`仅支持图片：${file.name}`); continue; }
+      try {
+        const base64 = await new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result).replace(/^data:[^,]+,/, ""));
+          r.onerror = () => rej(r.error);
+          r.readAsDataURL(file);
+        });
+        const { url } = await uploadMut.mutateAsync({ base64, mimeType: file.type, filename: file.name });
+        setPendingAtts((prev) => [...prev, { type: "image", url, mimeType: file.type, name: file.name }]);
+      } catch (e) { toast.error("上传失败：" + (e instanceof Error ? e.message : "")); }
+    }
   };
 
   // 回答一键落成画布节点（文本→便签、图片附件→图像节点）。
@@ -142,7 +188,7 @@ export function AiClientPanel() {
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid var(--c-bd1)" }}>
         <span style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 16%, transparent)`, color: ACCENT }}><Bot size={16} /></span>
         <span style={{ fontSize: 13, fontWeight: 800, color: "var(--c-t1)" }}>AI 客户端</span>
-        <select value={model} onChange={(e) => setModel(e.target.value)} className="nodrag"
+        <select value={model} onChange={(e) => changeModel(e.target.value)} className="nodrag"
           style={{ marginLeft: 6, fontSize: 11.5, padding: "4px 8px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", maxWidth: 200 }}
           title={`当前模型：${modelLabel}`}>
           {LLM_MODELS.filter((m) => !m.hidden).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -193,16 +239,28 @@ export function AiClientPanel() {
                   background: m.role === "user" ? `color-mix(in oklch, ${ACCENT} 18%, var(--c-input))` : "var(--c-input)",
                   color: "var(--c-t1)", border: "1px solid var(--c-bd2)",
                 }}>{m.content}</div>
-                {/* 回答一键落成画布节点（仅 AI 回复，且有可落成内容）。 */}
-                {m.role === "assistant" && (m.content?.trim() || (atts?.length ?? 0) > 0) && (
-                  <button onClick={() => dropToCanvas(m.content, atts)} className="nodrag"
-                    title="把这条回答落成画布节点（文本→便签，图片→图像节点）"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--c-t4)", background: "transparent", border: "none", cursor: "pointer", padding: "0 2px" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
-                    <Download size={11} /> 落成节点
-                  </button>
-                )}
+                {/* 消息操作：复制（全部）+ 落成节点/重新生成（仅 AI 回复）。 */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "0 2px" }}>
+                  {m.content?.trim() && (
+                    <button onClick={() => copyText(m.content)} className="nodrag" title="复制"
+                      style={msgActBtn} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                      <Copy size={11} /> 复制
+                    </button>
+                  )}
+                  {m.role === "assistant" && (m.content?.trim() || (atts?.length ?? 0) > 0) && (
+                    <button onClick={() => dropToCanvas(m.content, atts)} className="nodrag"
+                      title="把这条回答落成画布节点（文本→便签，图片→图像节点）"
+                      style={msgActBtn} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                      <Download size={11} /> 落成节点
+                    </button>
+                  )}
+                  {m.role === "assistant" && i === messages.length - 1 && !sendMut.isPending && (
+                    <button onClick={regenerate} className="nodrag" title="以最后一条提问重新生成"
+                      style={msgActBtn} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                      <RefreshCw size={11} /> 重新生成
+                    </button>
+                  )}
+                </div>
               </div>
               );
             })}
@@ -256,7 +314,23 @@ export function AiClientPanel() {
                 })}
               </div>
             )}
+            {/* 待发送图片附件 chips */}
+            {pendingAtts.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 7 }}>
+                {pendingAtts.map((a, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 6px 0 8px", borderRadius: 7, fontSize: 11, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", maxWidth: 160 }}>
+                    <Paperclip size={10} /><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name || "图片"}</span>
+                    <button onClick={() => setPendingAtts((p) => p.filter((_, j) => j !== i))} className="nodrag" style={{ border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", padding: 0, lineHeight: 1 }}><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 12, padding: "8px 10px" }}>
+              <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { void onPickFiles(e.target.files); e.target.value = ""; }} />
+              <button onClick={() => fileRef.current?.click()} disabled={uploadMut.isPending} className="nodrag" title="添加图片附件"
+                style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                {uploadMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
+              </button>
               <textarea
                 className="nodrag nowheel"
                 value={input}
@@ -266,8 +340,8 @@ export function AiClientPanel() {
                 rows={1}
                 style={{ flex: 1, resize: "none", maxHeight: 140, minHeight: 22, background: "transparent", border: "none", outline: "none", color: "var(--c-t1)", fontSize: 13, lineHeight: 1.5, fontFamily: "inherit" }}
               />
-              <button onClick={send} disabled={!input.trim() || sendMut.isPending} className="nodrag"
-                style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: input.trim() && !sendMut.isPending ? "pointer" : "default", color: "#fff", background: input.trim() && !sendMut.isPending ? ACCENT : "var(--c-bd2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <button onClick={send} disabled={(!input.trim() && pendingAtts.length === 0) || sendMut.isPending} className="nodrag"
+                style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: (input.trim() || pendingAtts.length) && !sendMut.isPending ? "pointer" : "default", color: "#fff", background: (input.trim() || pendingAtts.length) && !sendMut.isPending ? ACCENT : "var(--c-bd2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                 {sendMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
               </button>
             </div>
@@ -282,4 +356,8 @@ export function AiClientPanel() {
 const iconBtn: React.CSSProperties = {
   width: 28, height: 28, borderRadius: 8, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer",
   display: "inline-flex", alignItems: "center", justifyContent: "center",
+};
+const msgActBtn: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--c-t4)",
+  background: "transparent", border: "none", cursor: "pointer", padding: 0,
 };
