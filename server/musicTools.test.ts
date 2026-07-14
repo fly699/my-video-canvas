@@ -98,6 +98,7 @@ describe("#152 poyo 音乐工具提交体", () => {
       cover: "upload-and-cover-audio",
       extend: "upload-and-extend-audio",
       lyrics: "generate-lyrics",
+      extend_native: "extend-music", // #153 原生续写（audio_id 路径）
     });
   });
 });
