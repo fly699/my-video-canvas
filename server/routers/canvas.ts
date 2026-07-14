@@ -3542,6 +3542,8 @@ export const comfyuiRouter = router({
         maskUrl: z.string().max(2048).optional(),
         // Opt-in: after a successful run, free VRAM on the (local) server when idle.
         freeVramAfterRun: z.boolean().optional(),
+        // #163 隧道兜底：一次性 jobId，隧道切断超长 HTTP 后前端凭它走 socket 回灌 / workflowResult 轮询取结果。
+        jobId: z.string().max(64).optional(),
       }).refine(
         (v) => (v.workflowTemplate !== "img2img" && v.workflowTemplate !== "inpaint") || (v.referenceImageUrl && v.referenceImageUrl.trim().length > 0),
         { message: "img2img / inpaint 模板必须提供 referenceImageUrl", path: ["referenceImageUrl"] }
@@ -3599,9 +3601,14 @@ export const comfyuiRouter = router({
             action: "comfyui_image_gen",
             detail: { template: input.workflowTemplate, ckpt: input.ckpt, prompt: truncate(input.prompt), resultUrl: result.url, nodeId: input.nodeId },
           });
-          for (const u of (result.urls?.length ? result.urls : [result.url])) {
+          const outUrls = result.urls?.length ? result.urls : (result.url ? [result.url] : []);
+          for (const u of outUrls) {
             await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: "image", source: "generated", provider: "comfyui", model: input.ckpt, url: u, name: input.ckpt || "ComfyUI 图像" });
           }
+          // #163 终局回灌：存 jobId + 广播 socket 结果。即便隧道已切断超长 HTTP，前端凭 jobId
+          // 走 socket 回灌 / workflowResult 轮询兜底仍能拿到结果（对齐自定义工作流节点）。
+          if (input.jobId) setComfyJobDone(input.jobId, outUrls, "image");
+          emitComfyWorkflowResult(input.projectId, { nodeId: input.nodeId, jobId: input.jobId ?? "", ok: true, urls: outUrls, outputType: "image" });
           // Optional post-run VRAM cleanup (local only, queue must be idle); awaited
           // so the runner advances only after the cache is freed. Best-effort.
           if (input.freeVramAfterRun) {
@@ -3612,7 +3619,11 @@ export const comfyuiRouter = router({
           }
           return { url: result.url, urls: result.urls };
         } catch (err) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+          const msg = err instanceof Error ? err.message : String(err);
+          // #163 失败也回灌：隧道切断 HTTP 后前端能凭 jobId 收到「失败」而非永久卡在运行中。
+          if (input.jobId) setComfyJobError(input.jobId, msg);
+          emitComfyWorkflowResult(input.projectId, { nodeId: input.nodeId, jobId: input.jobId ?? "", ok: false, error: msg });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
         }
         },
         (r) => ({ resultUrl: r.url, resultCount: r.urls?.length ?? 1 }),
@@ -3652,6 +3663,8 @@ export const comfyuiRouter = router({
         referenceImageUrl: z.string().max(2048).optional(),
         // Opt-in: after a successful run, free VRAM on the (local) server when idle.
         freeVramAfterRun: z.boolean().optional(),
+        // #163 隧道兜底：一次性 jobId，隧道切断超长 HTTP 后前端凭它走 socket 回灌 / workflowResult 轮询取结果。
+        jobId: z.string().max(64).optional(),
       }).refine(
         (v) => v.workflowTemplate !== "animatediff" || (v.motionModule && v.motionModule.trim().length > 0),
         { message: "AnimateDiff 模板必须提供 motionModule", path: ["motionModule"] }
@@ -3702,6 +3715,10 @@ export const comfyuiRouter = router({
             detail: { template: input.workflowTemplate, ckpt: input.ckpt, prompt: truncate(input.prompt), resultUrl: result.url, nodeId: input.nodeId },
           });
           await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, type: "video", source: "generated", provider: "comfyui", model: input.ckpt, url: result.url, name: input.ckpt || "ComfyUI 视频" });
+          // #163 终局回灌：存 jobId + 广播 socket 结果。隧道切断超长 HTTP 后前端凭 jobId
+          // 走 socket 回灌 / workflowResult 轮询兜底仍能拿到结果（对齐自定义工作流节点）。
+          if (input.jobId) setComfyJobDone(input.jobId, result.url ? [result.url] : [], "video");
+          emitComfyWorkflowResult(input.projectId, { nodeId: input.nodeId, jobId: input.jobId ?? "", ok: true, urls: result.url ? [result.url] : [], outputType: "video" });
           // Optional post-run VRAM cleanup (local only, queue must be idle). Best-effort.
           if (input.freeVramAfterRun) {
             try {
@@ -3711,7 +3728,11 @@ export const comfyuiRouter = router({
           }
           return { url: result.url };
         } catch (err) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+          const msg = err instanceof Error ? err.message : String(err);
+          // #163 失败也回灌：隧道切断 HTTP 后前端能凭 jobId 收到「失败」而非永久卡在运行中。
+          if (input.jobId) setComfyJobError(input.jobId, msg);
+          emitComfyWorkflowResult(input.projectId, { nodeId: input.nodeId, jobId: input.jobId ?? "", ok: false, error: msg });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
         }
         },
         (r) => ({ resultUrl: r.url, resultCount: 1 }),

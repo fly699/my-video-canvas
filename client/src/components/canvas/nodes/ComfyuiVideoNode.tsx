@@ -18,6 +18,8 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { useComfyMemoryEnabled } from "@/lib/comfyMemoryPref";
+import { pollComfyRun, isTransportCutError, type PendingComfyResult } from "@/lib/comfyRunRecovery";
+import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { applyFreeVramToAllComfyNodes } from "../../../lib/comfyFreeVram";
 import {
@@ -133,18 +135,52 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   // Set when the user cancels: the blocking generate request can't be aborted
   // client-side, so skip overwriting the node when it eventually settles.
   const cancelledRef = useRef(false);
+  const utils = trpc.useUtils();
+  // #163 隧道兜底：一次性 jobId + 「socket 回灌优先 + workflowResult 轮询」取回结果。
+  const jobIdRef = useRef<string>("");
+  const [recovering, setRecovering] = useState(false);
+  const recoverComfyRun = useCallback((jobId: string, nodeId: string) => pollComfyRun({
+    jobId,
+    readPending: () => {
+      const n = useCanvasStore.getState().nodes.find((x) => x.id === nodeId);
+      return (n?.data.payload as { pendingComfyResult?: PendingComfyResult } | undefined)?.pendingComfyResult;
+    },
+    fetchResult: (jid) => utils.comfyui.workflowResult.fetch({ jobId: jid }),
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  }), [utils]);
   const genMutation = trpc.comfyui.generateVideo.useMutation({
     onSuccess: (result) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       if (cancelledRef.current) { cancelledRef.current = false; return; }
-      updateNodeData(id, { resultVideoUrl: result.url, status: "done", errorMessage: undefined, progress: undefined });
+      updateNodeData(id, { resultVideoUrl: result.url, status: "done", errorMessage: undefined, progress: undefined, pendingComfyResult: undefined });
       toast.success("ComfyUI 视频生成成功");
     },
-    onError: (err) => {
+    onError: async (err) => {
       if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
       if (cancelledRef.current) { cancelledRef.current = false; return; }
-      updateNodeData(id, { status: "failed", errorMessage: err.message, progress: undefined });
-      toast.error("ComfyUI 视频生成失败：" + err.message);
+      const msg = err.message;
+      // #163 隧道兜底：经 cloudflared 隧道时超长 HTTP 在 ~100s 被切断——服务端不因客户端断开而取消，
+      // 仍跑完并把结果经 socket 回灌 + 存入 comfyJobStore。传输类错误转入兜底取回。
+      if (isTransportCutError(msg) && jobIdRef.current) {
+        setRecovering(true);
+        try {
+          const rec = await recoverComfyRun(jobIdRef.current, id);
+          if (cancelledRef.current) { cancelledRef.current = false; return; }
+          if (rec?.ok && rec.urls?.length) {
+            updateNodeData(id, { resultVideoUrl: rec.urls[0], status: "done", errorMessage: undefined, progress: undefined, pendingComfyResult: undefined });
+            toast.success("ComfyUI 视频生成成功（隧道切断后经回灌取回）");
+            return;
+          }
+          if (rec && !rec.ok) {
+            updateNodeData(id, { status: "failed", errorMessage: rec.error ?? "生成失败", progress: undefined, pendingComfyResult: undefined });
+            toast.error("ComfyUI 视频生成失败：" + (rec.error ?? "").slice(0, 120));
+            return;
+          }
+          // 轮询超时仍无终局 → 落回失败态（可重试）。
+        } finally { setRecovering(false); }
+      }
+      updateNodeData(id, { status: "failed", errorMessage: msg, progress: undefined });
+      toast.error("ComfyUI 视频生成失败：" + msg);
     },
   });
 
@@ -244,7 +280,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
   const batchRunning = useWorkflowRunState().running;
 
   const handleGenerate = () => {
-    if (genMutation.isPending) return;
+    if (genMutation.isPending || recovering) return;
     if (batchRunning) { toast.error("批量运行进行中，请等待完成后再单独运行"); return; }
     if (uploading) { toast.error("参考图正在上传中，请稍候"); return; }
     if (!payload.prompt?.trim()) { toast.error("请先填写提示词"); return; }
@@ -270,9 +306,13 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
     // are filled separately). Not persisted.
     // Cap to the server's prompt max(2000); preserves the base prompt, trims injection.
     const finalPrompt = mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(payload.prompt, gnodes), gnodes), effectiveCharacters(id, payload.prompt, gedges, gnodes), 2000);
+    const jobId = nanoid();
+    jobIdRef.current = jobId;
+    updateNodeData(id, { pendingComfyResult: undefined }, true);
     genMutation.mutate({
       nodeId: id,
       projectId: data.projectId,
+      jobId,
       customBaseUrl: payload.customBaseUrl?.trim() || undefined,
       workflowTemplate: payload.workflowTemplate ?? "animatediff",
       prompt: finalPrompt,
