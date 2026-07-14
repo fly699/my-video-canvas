@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
@@ -194,16 +194,81 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     [codeMode, messages],
   );
 
+  // 发送前的消息条数基线（供隧道超时后的「权威重载」判断回答是否已落库）。
+  const sendBaselineRef = useRef(0);
+  // 隧道/网络超时兜底轮询中（服务端仍在跑、跑完会落库）——与 sendMut.isPending 一起构成「忙」态。
+  const [recovering, setRecovering] = useState(false);
+  const recoverPollRef = useRef(false);
+
+  // 输入框高度可拖拽（顶部分隔线上下拖调「对话区 / 输入框」占比）；持久化到 localStorage。
+  const [composerH, setComposerH] = useState<number>(() => {
+    const v = Number(localStorage.getItem("avc:aichat:composerH"));
+    return v >= 22 && v <= 600 ? v : 40;
+  });
+  const composerDrag = useRef<{ startY: number; startH: number } | null>(null);
+  const onComposerResizeDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    composerDrag.current = { startY: e.clientY, startH: composerH };
+    const move = (ev: PointerEvent) => {
+      if (!composerDrag.current) return;
+      const next = Math.max(22, Math.min(600, composerDrag.current.startH + (composerDrag.current.startY - ev.clientY)));
+      setComposerH(next);
+    };
+    const up = () => {
+      composerDrag.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      // 收尾持久化（读最新值）。
+      setComposerH((h) => { try { localStorage.setItem("avc:aichat:composerH", String(h)); } catch { /* ignore */ } return h; });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, [composerH]);
+
+  // aiChat.sendMessage 是同步长 HTTP（服务端阻塞到 LLM 生成完才返回）。走公网隧道时，慢模型/大
+  // 计划会超过隧道空闲超时被切断 → 前端收到网络错误，但服务端其实已 addChatMessagePair 落库。
+  // 对齐 #163 思路：网络/超时（无 server code）时不报失败，改为轮询 getMessages 把已落库的回答恢复出来。
+  const recoverReply = useCallback(async (nodeId: string, pid: number, baselineLen: number) => {
+    if (recoverPollRef.current) return;
+    recoverPollRef.current = true;
+    setRecovering(true);
+    try {
+      const deadline = Date.now() + 240_000; // 兜底窗口，覆盖自建/本机大计划（LLM_SELF_HOSTED_TIMEOUT_MS≈300s）
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 3000));
+        let data: typeof messages | undefined;
+        try { data = await utils.aiChat.getMessages.fetch({ nodeId, projectId: pid }); }
+        catch { continue; } // 网络仍抖动：下一轮再试
+        if (data && data.length > baselineLen && data[data.length - 1]?.role === "assistant") {
+          utils.aiChat.getMessages.setData({ nodeId, projectId: pid }, data);
+          toast.success("网络中断，但回答已在服务端生成并恢复");
+          return;
+        }
+      }
+      toast.error("生成超时未恢复：请稍后刷新会话查看，或重试");
+    } finally {
+      recoverPollRef.current = false;
+      setRecovering(false);
+    }
+  }, [utils]);
+
   const sendMut = trpc.aiChat.sendMessage.useMutation({
     onSuccess: () => {
       if (active && projectId) void utils.aiChat.getMessages.invalidate({ nodeId: active, projectId });
     },
-    onError: (err) => toast.error("发送失败：" + err.message),
+    onError: (err) => {
+      // 服务端明确错误（有 data.code：白名单/空消息/模型报错等）→ 直接提示；
+      // 网络 / 隧道超时（无 code，请求被中途切断）→ 服务端可能仍在跑并已落库，轮询兜底恢复回答。
+      if (err.data?.code || !active || !projectId) { toast.error("发送失败：" + err.message); return; }
+      void recoverReply(active, projectId, sendBaselineRef.current);
+    },
   });
+  // 「忙」态 = 正在发送 或 正在超时兜底轮询——统一驱动 UI（禁用输入、转圈、隐藏末条重生成按钮）。
+  const busy = sendMut.isPending || recovering;
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages.length, sendMut.isPending]);
+  }, [messages.length, busy]);
 
   // 回写节点 payload.messages，让画布上的 ai_chat 节点即时反映服务端权威消息（仅节点会话）。
   useEffect(() => {
@@ -255,6 +320,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     const contextContent = buildNodeContextContent(nodes, contextIds);
     // systemPrompt = 模板人设（空模板=NO_PERSONA_PROMPT）；代码模式再叠加 Canvas/Artifacts 指令。
     const sysPrompt = codeMode ? [CODE_MODE_SYSTEM_PROMPT, personaPrompt].filter(Boolean).join("\n\n") : personaPrompt;
+    sendBaselineRef.current = messages.length; // 记基线：超时兜底靠它判断回答是否已落库
     sendMut.mutate({
       nodeId: active, projectId, message: text, model,
       ...(sysPrompt ? { systemPrompt: sysPrompt } : {}),
@@ -267,7 +333,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   const send = () => {
     if (voice.recording) voice.stop();
     const text = input.trim();
-    if ((!text && pendingAtts.length === 0) || sendMut.isPending) return;
+    if ((!text && pendingAtts.length === 0) || busy) return;
     if (!active) { newSession(); toast.info("已建会话，请再次发送"); return; }
     if (!projectId) { toast.error("画布未就绪"); return; }
     const atts = pendingAtts;
@@ -285,7 +351,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
 
   // 重新生成：以最后一条用户消息再问一次（无删除末条端点，故为新一轮）。
   const regenerate = () => {
-    if (sendMut.isPending || !active) return;
+    if (busy || !active) return;
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!lastUser?.content) { toast.error("没有可重新生成的消息"); return; }
     doSend(lastUser.content, []);
@@ -294,10 +360,11 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   const copyText = (t: string) => { navigator.clipboard?.writeText(t).then(() => toast.success("已复制"), () => toast.error("复制失败")); };
 
   // 图片附件：上传到自有存储（复用 uploadAiChatImage），随消息发送（素材库/产物互通）。
-  const onPickFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith("image/")) { toast.error(`仅支持图片：${file.name}`); continue; }
+  // 统一入口——文件选择框 / Ctrl+V 粘贴 / 拖拽 均走这里。
+  const handleImageFiles = async (files: File[]) => {
+    const imgs = files.filter((f) => f.type.startsWith("image/"));
+    if (files.length && !imgs.length) { toast.error("仅支持图片附件"); return; }
+    for (const file of imgs) {
       try {
         const base64 = await new Promise<string>((res, rej) => {
           const r = new FileReader();
@@ -305,10 +372,25 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
           r.onerror = () => rej(r.error);
           r.readAsDataURL(file);
         });
-        const { url } = await uploadMut.mutateAsync({ base64, mimeType: file.type, filename: file.name });
-        setPendingAtts((prev) => [...prev, { type: "image", url, mimeType: file.type, name: file.name }]);
+        const name = file.name || `粘贴图片-${base64.slice(0, 6)}.png`; // 剪贴板图片常无文件名
+        const { url } = await uploadMut.mutateAsync({ base64, mimeType: file.type, filename: name });
+        setPendingAtts((prev) => [...prev, { type: "image", url, mimeType: file.type, name }]);
       } catch (e) { toast.error("上传失败：" + (e instanceof Error ? e.message : "")); }
     }
+  };
+  const onPickFiles = (files: FileList | null) => { if (files?.length) void handleImageFiles(Array.from(files)); };
+  // Ctrl+V 粘贴图片（截图 / 复制的图片）：从剪贴板 items 取 image 文件走上传管线。
+  const onPasteImages = (e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const files = items.filter((it) => it.kind === "file" && it.type.startsWith("image/")).map((it) => it.getAsFile()).filter((f): f is File => !!f);
+    if (files.length) { e.preventDefault(); void handleImageFiles(files); }
+    // 无图片时不拦截：正常粘贴文本。
+  };
+  // 拖拽图片文件到输入区：上传为附件（拖拽画布节点不带 files，不误触）。
+  const [dragOver, setDragOver] = useState(false);
+  const onDropImages = (e: React.DragEvent) => {
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith("image/"));
+    if (files.length) { e.preventDefault(); setDragOver(false); void handleImageFiles(files); }
   };
 
   // 代码工件：下载为文件 / 落成便签节点（带围栏保留语言）。
@@ -580,7 +662,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                       <Download size={11} /> 落成节点
                     </button>
                   )}
-                  {m.role === "assistant" && i === messages.length - 1 && !sendMut.isPending && (
+                  {m.role === "assistant" && i === messages.length - 1 && !busy && (
                     <button onClick={regenerate} className="nodrag" title="以最后一条提问重新生成"
                       style={msgActBtn} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
                       <RefreshCw size={11} /> 重新生成
@@ -590,13 +672,30 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
               </div>
               );
             })}
-            {sendMut.isPending && (
-              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            {busy && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
                 <div style={{ padding: "9px 13px", borderRadius: 13, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)" }}><Loader2 size={15} className="animate-spin" /></div>
+                {recovering && <span style={{ fontSize: 10.5, color: "var(--c-t4)", paddingLeft: 4 }}>网络中断，正在等服务端出结果…（可稍候，不必重发）</span>}
               </div>
             )}
           </div>
-          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)", position: "relative" }}>
+          <div
+            onDragOver={(e) => { if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) { e.preventDefault(); setDragOver(true); } }}
+            onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
+            onDrop={onDropImages}
+            style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)", position: "relative", outline: dragOver ? `2px dashed ${ACCENT}` : "none", outlineOffset: -2 }}
+          >
+            {/* 顶部可拖拽分隔线：上下拖调「对话区 / 输入框」占比（悬停高亮，双击复位）。 */}
+            <div
+              className="nodrag"
+              onPointerDown={onComposerResizeDown}
+              onDoubleClick={() => { setComposerH(40); try { localStorage.setItem("avc:aichat:composerH", "40"); } catch { /* ignore */ } }}
+              title="拖动调整输入框高度 · 双击复位"
+              style={{ position: "absolute", top: -4, left: 0, right: 0, height: 8, cursor: "ns-resize", zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <div style={{ width: 40, height: 3, borderRadius: 2, background: "var(--c-bd3, var(--c-bd2))" }} />
+            </div>
+            {dragOver && <div style={{ position: "absolute", inset: 0, zIndex: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: ACCENT, pointerEvents: "none", background: "color-mix(in oklch, var(--c-surface) 70%, transparent)" }}>松开以添加图片附件</div>}
             {/* 模板（人设）+ /技能 提示——移植自聊天室 AI 助手 */}
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7, fontSize: 11.5, color: "var(--c-t3)", flexWrap: "wrap" }}>
               <BookOpen size={13} style={{ color: ACCENT, flexShrink: 0 }} />
@@ -722,13 +821,14 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                   }
                   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
                 }}
-                placeholder={active ? "输入消息，Enter 发送 · Shift+Enter 换行" : "输入消息开始新会话…"}
+                onPaste={onPasteImages}
+                placeholder={active ? "输入消息，Enter 发送 · Shift+Enter 换行 · 可粘贴/拖拽图片" : "输入消息开始新会话…"}
                 rows={1}
-                style={{ flex: 1, resize: "none", maxHeight: 140, minHeight: 22, background: "transparent", border: "none", outline: "none", color: "var(--c-t1)", fontSize: 13, lineHeight: 1.5, fontFamily: "inherit" }}
+                style={{ flex: 1, resize: "none", height: composerH, minHeight: 22, maxHeight: 600, overflowY: "auto", background: "transparent", border: "none", outline: "none", color: "var(--c-t1)", fontSize: 13, lineHeight: 1.5, fontFamily: "inherit" }}
               />
-              <button onClick={send} disabled={(!input.trim() && pendingAtts.length === 0) || sendMut.isPending} className="nodrag"
-                style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: (input.trim() || pendingAtts.length) && !sendMut.isPending ? "pointer" : "default", color: "#fff", background: (input.trim() || pendingAtts.length) && !sendMut.isPending ? ACCENT : "var(--c-bd2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                {sendMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              <button onClick={send} disabled={(!input.trim() && pendingAtts.length === 0) || busy} className="nodrag"
+                style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: (input.trim() || pendingAtts.length) && !busy ? "pointer" : "default", color: "#fff", background: (input.trim() || pendingAtts.length) && !busy ? ACCENT : "var(--c-bd2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
               </button>
             </div>
           </div>

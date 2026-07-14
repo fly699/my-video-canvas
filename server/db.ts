@@ -26,6 +26,7 @@ import {
   type BridgeMcpConfig,
   type SuperAgentConfig,
   type TranscribeEndpointConfig,
+  type VoxcpmEndpointConfig,
   auditLogs,
   comfyUsageLogs,
   llmUsageLogs,
@@ -140,7 +141,7 @@ export function isDupEntryError(e: unknown): boolean {
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
-const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; superAgent?: import("../drizzle/schema").SuperAgentConfig; systemDefaultModels?: Record<string, string>; transcribeEndpoint?: import("../drizzle/schema").TranscribeEndpointConfig } = { disabledModels: [] };
+const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; superAgent?: import("../drizzle/schema").SuperAgentConfig; systemDefaultModels?: Record<string, string>; transcribeEndpoint?: import("../drizzle/schema").TranscribeEndpointConfig; voxcpmEndpoint?: import("../drizzle/schema").VoxcpmEndpointConfig } = { disabledModels: [] };
 const devAuthSettings = { emailVerificationEnabled: false, registrationApprovalEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
@@ -1772,6 +1773,35 @@ export async function setTranscribeEndpointConfig(cfg: TranscribeEndpointConfig)
   if (!db) { devModelToggleSettings.transcribeEndpoint = transcribeEndpoint; return; }
   await db.insert(modelToggleSettings).values({ id: 1, transcribeEndpoint })
     .onDuplicateKeyUpdate({ set: { transcribeEndpoint } });
+}
+
+/** 归一化「VoxCPM 全局默认地址」列。返回 null=后台未配置（列 NULL 或 baseUrl 空）→ 回退 env；
+ *  非 null=后台已显式配置有效 baseUrl → 作为音频节点 VoxCPM 未填地址时的全站默认。 */
+export function normalizeVoxcpmEndpoint(v: unknown): VoxcpmEndpointConfig | null {
+  let o: Record<string, unknown> | null = null;
+  if (typeof v === "string") { try { o = JSON.parse(v) as Record<string, unknown>; } catch { o = null; } }
+  else if (v && typeof v === "object") o = v as Record<string, unknown>;
+  if (!o) return null;
+  const baseUrl = typeof o.baseUrl === "string" ? o.baseUrl.trim() : "";
+  if (!baseUrl) return null; // baseUrl 为空视为未配置 → 回退 env
+  return { baseUrl };
+}
+
+/** 管理员配置的 VoxCPM 全局默认地址（替代 VOXCPM_BASE_URL env）。单行 id=1 的 JSON 列。
+ *  返回 null=后台未配置（回退 env）；非 null=DB 显式覆盖。 */
+export async function getVoxcpmEndpointConfigRaw(): Promise<VoxcpmEndpointConfig | null> {
+  const db = await getDb();
+  if (!db) return normalizeVoxcpmEndpoint(devModelToggleSettings.voxcpmEndpoint ?? null);
+  const rows = await db.select().from(modelToggleSettings).limit(1);
+  return normalizeVoxcpmEndpoint(rows[0]?.voxcpmEndpoint);
+}
+
+export async function setVoxcpmEndpointConfig(cfg: VoxcpmEndpointConfig): Promise<void> {
+  const voxcpmEndpoint: VoxcpmEndpointConfig = { baseUrl: (cfg.baseUrl ?? "").trim() };
+  const db = await getDb();
+  if (!db) { devModelToggleSettings.voxcpmEndpoint = voxcpmEndpoint; return; }
+  await db.insert(modelToggleSettings).values({ id: 1, voxcpmEndpoint })
+    .onDuplicateKeyUpdate({ set: { voxcpmEndpoint } });
 }
 
 // ── ComfyUI 知识记忆体持久化（跨重启）。dev/无 DB 时返回 null / no-op：记忆体退化为纯进程内缓存，

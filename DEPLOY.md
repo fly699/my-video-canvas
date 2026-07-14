@@ -244,3 +244,16 @@ docker run -d --name whisper --restart unless-stopped -p 8000:8000 \
 - 后端也在 Docker 容器里 → `http://host.docker.internal:8000`（容器内的 localhost 指向容器自身，连不到宿主机的 whisper）
 
 **Docker 镜像内是否自带 whisper**：不带。自建 whisper 是**独立容器**，与本应用容器互不影响，按上面单独 `docker run` 即可。
+
+### G. 本地 VoxCPM（Gradio TTS · 参考音色克隆）全站默认地址
+
+**作用范围**：音频节点选「本地 VoxCPM2」配音（文字→语音、可用参考音频克隆音色）。**与上面 §F 的 whisper 转写是两套东西**（那是语音→文字，这是文字→语音），别混。
+
+**地址在哪配（三选一，优先级从高到低）**：
+1. **节点里**：音频节点选「本地 VoxCPM2」→ 展开「高级」→「Gradio 服务地址」（每个节点各自可覆盖）。
+2. **管理后台（推荐做全站默认）**：管理后台 → 模型管理 → **本地 VoxCPM 端点** → 填地址 → 保存 → 「测试连通」。配了之后，节点里**不填地址就用这个默认**（DB 优先，免改 env、免重启）。
+3. **环境变量**：`VOXCPM_BASE_URL=http://127.0.0.1:8808`（改后重启服务；后台配置优先于它）。
+
+- VoxCPM **无需 key/model**（音色靠参考音频、Gradio 端点名固定），只填一个 base 地址。
+- ⚠️ **地址填 localhost 还是 host.docker.internal**：同 §F——是**本应用后端**去访问 VoxCPM，后端在宿主机→`http://IP:8808`；后端在 Docker 里→`http://host.docker.internal:8808`。
+- 常见报错 `model '…' not installed locally`：那是 whisper（§F）的报错，VoxCPM 不涉及；若 VoxCPM 连不上，报错会明说「是部署后端的服务器去访问该地址、不是浏览器」。

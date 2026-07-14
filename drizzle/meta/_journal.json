@@ -603,6 +603,13 @@
       "when": 1784700000000,
       "tag": "0085_transcribe_endpoint",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "5",
+      "when": 1784800000000,
+      "tag": "0086_voxcpm_endpoint",
+      "breakpoints": true
     }
   ]
 }

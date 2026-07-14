@@ -33,6 +33,10 @@ export const ENV = {
   // Groq 云端 whisper 的独立密钥（provider=groq 的转写模型专用，与自建端点解耦，
   // 不再和 TRANSCRIBE_API_URL 抢同一个变量）。base 固定 https://api.groq.com/openai。
   groqApiKey: process.env.GROQ_API_KEY ?? "",
+  // 本地 VoxCPM（Gradio TTS）全局默认地址（可选）：音频节点选「本地 VoxCPM2」但未在节点里填
+  // 「Gradio 服务地址」时的兜底。也可在【管理后台 › 模型管理 › 本地 VoxCPM 端点】可视化配置
+  // （DB 优先 + env 兜底）。例：VOXCPM_BASE_URL=http://172.16.0.177:8808（后端可达该地址）。
+  voxcpmBaseUrl: process.env.VOXCPM_BASE_URL ?? "",
   // Self-hosted OpenAI-compatible LLM endpoint (vLLM / Ollama / LM Studio / TGI …).
   // Routes ONLY the model ids in SELF_HOSTED_LLM_MODELS (comma list; defaults to the
   // built-in self-hosted entries) to `${URL}/v1/chat/completions`, so it coexists with
