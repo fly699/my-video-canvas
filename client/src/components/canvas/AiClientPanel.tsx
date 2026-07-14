@@ -13,6 +13,7 @@ import { parseMessageSegments, latestCodeArtifactFrom, CODE_MODE_SYSTEM_PROMPT, 
 import { CHAT_MODELS } from "@/lib/models";
 import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, NO_PERSONA_PROMPT } from "@/lib/aiAssistantTemplates";
 import { useBridgeSkills } from "@/lib/useBridgeSkills";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { trpc } from "@/lib/trpc";
@@ -121,42 +122,8 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
-  // 语音输入（Web Speech API）：中文识别，实时把识别文本追加到输入框。全平台可用（浏览器支持时）。
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
-  const voiceBaseRef = useRef("");
-  const [recording, setRecording] = useState(false);
-  const voiceSupported = typeof window !== "undefined" && !!((window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition);
-  // 卸载时停止识别，避免残留麦克风占用。
-  useEffect(() => () => { try { recognitionRef.current?.stop(); } catch { /* noop */ } }, []);
-  const toggleVoice = () => {
-    if (recording) { try { recognitionRef.current?.stop(); } catch { /* noop */ } return; }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR: any = (window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
-    if (!SR) { toast.error("当前浏览器不支持语音输入"); return; }
-    let rec: unknown;
-    try { rec = new SR(); } catch { toast.error("无法启动语音识别"); return; }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const r = rec as any;
-    r.lang = "zh-CN";
-    r.interimResults = true;
-    r.continuous = true;
-    voiceBaseRef.current = input.trim() ? input.trim() + " " : "";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    r.onresult = (e: any) => {
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const res = e.results[i];
-        if (res.isFinal) voiceBaseRef.current += res[0].transcript;
-        else interim += res[0].transcript;
-      }
-      setInput(voiceBaseRef.current + interim);
-    };
-    r.onend = () => setRecording(false);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    r.onerror = (e: any) => { setRecording(false); if (e?.error && e.error !== "aborted" && e.error !== "no-speech") toast.error("语音识别出错：" + e.error); };
-    try { r.start(); recognitionRef.current = r; setRecording(true); } catch { toast.error("无法启动语音识别（请检查麦克风权限）"); }
-  };
+  // 语音输入：Web Speech 主路径 + 无法访问 Google 时自动回退服务端 whisper（见 useVoiceInput）。
+  const voice = useVoiceInput({ getText: () => input, setText: setInput });
   // 移动端（窄屏）：embedded 独立页在手机上会话侧栏/工件面板不能与聊天并排挤压，改为抽屉/浮层。
   const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
   useEffect(() => { const f = () => setNarrow(window.innerWidth < 640); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
@@ -298,7 +265,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   };
 
   const send = () => {
-    if (recording) { try { recognitionRef.current?.stop(); } catch { /* noop */ } }
+    if (voice.recording) voice.stop();
     const text = input.trim();
     if ((!text && pendingAtts.length === 0) || sendMut.isPending) return;
     if (!active) { newSession(); toast.info("已建会话，请再次发送"); return; }
@@ -734,11 +701,11 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                   <Camera size={15} />
                 </button>
               )}
-              {/* 语音输入（麦克风）：浏览器支持时显示；录音中红色脉冲 */}
-              {voiceSupported && (
-                <button onClick={toggleVoice} className="nodrag" title={recording ? "停止语音输入" : "语音输入"}
-                  style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: recording ? "color-mix(in oklch, #e5484d 20%, transparent)" : "transparent", color: recording ? "#e5484d" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  <Mic size={15} className={recording ? "animate-pulse" : undefined} />
+              {/* 语音输入（麦克风）：Web Speech 主路径 + 服务端 whisper 兜底；录音中红色脉冲、转写中转圈 */}
+              {voice.supported && (
+                <button onClick={voice.toggle} disabled={voice.busy} className="nodrag" title={voice.recording ? "停止语音输入" : voice.busy ? "识别中…" : "语音输入"}
+                  style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: voice.recording ? "color-mix(in oklch, #e5484d 20%, transparent)" : "transparent", color: voice.recording ? "#e5484d" : "var(--c-t3)", cursor: voice.busy ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  {voice.busy ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} className={voice.recording ? "animate-pulse" : undefined} />}
                 </button>
               )}
               <textarea

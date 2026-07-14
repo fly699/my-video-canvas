@@ -27,6 +27,7 @@ import {
   configRouter,
 } from "./routers/canvas";
 import { uploadRouter } from "./routers/upload";
+import { voiceRouter } from "./routers/voice";
 import { comfyStressRouter } from "./routers/comfyStress";
 import { adminRouter } from "./routers/admin";
 import { collaborationRouter } from "./routers/collaboration";
@@ -97,6 +98,7 @@ export const appRouter = router({
   characterLibrary: characterLibraryRouter,
   promptLibrary: promptLibraryRouter,
   userPrefs: userPrefsRouter,
+  voice: voiceRouter,
 });
 
 export type AppRouter = typeof appRouter;
