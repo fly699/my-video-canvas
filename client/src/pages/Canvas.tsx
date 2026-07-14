@@ -537,6 +537,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // 画布助手（对话式操作画布）浮层开关。默认打开，且**每次进入画布都自动打开**（不持久化关闭态）——
   // 本次会话内关掉即隐藏，重新打开画布/项目会再次弹出。历史对话已落库，重开不丢上下文。
   const [agentChatOpen, setAgentChatOpen] = useState<boolean>(true);
+  // 恢复所有浮动工具到默认位置：清掉持久化几何（画布助手球/面板/尺寸、AI 客户端侧栏宽/输入框高，
+  // 及任何 avc: 命名空间下的位置/尺寸类 key），重开画布助手，随后刷新让全部浮动工具以默认几何重建。
+  // 应对「拖到屏外 / 换分辨率后找不到工具、悬浮球消失」。
+  const resetToolLayout = useCallback(() => {
+    try {
+      const explicit = ["avc:canvasAgent:ballpos", "avc:canvasAgent:pos", "avc:canvasAgent:size", "avc:canvasAgent:collapsed", "avc:ai-sidebar-w", "avc:aichat:composerH"];
+      for (const k of explicit) localStorage.removeItem(k);
+      // 兜底：清掉任何 avc: 下的几何类 key（位置/尺寸/宽度），防遗漏与未来新增。
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && /^avc:/.test(k) && /(pos|ballpos|:size$|:w$|-w$|width|composerh|geom|rect|bounds)/i.test(k)) localStorage.removeItem(k);
+      }
+    } catch { /* ignore */ }
+    setAgentChatOpen(true);
+    toast.success("已恢复所有工具默认位置，正在刷新…");
+    setTimeout(() => window.location.reload(), 400); // 刷新确保每个浮动工具都以默认几何重新初始化
+  }, []);
   const [showArcPicker, setShowArcPicker] = useState(false);
   // 交互式新手导览：start 供「更多 → 新手导览」与欢迎弹窗触发；每步 openPanel 由 handleGuideStep
   // 程序化打开对应面板（面板多为条件渲染，不先打开就无从高亮）。
@@ -2654,6 +2671,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               <DropdownMenuItem onClick={() => setShowTimeline((v) => !v)}><ListVideo className="w-3.5 h-3.5 mr-2" /> 时间轴预览</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowArcPicker(true)}><Spline className="w-3.5 h-3.5 mr-2" /> 叙事弧线编排</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowSnapshots((v) => !v)}><History className="w-3.5 h-3.5 mr-2" /> 版本历史</DropdownMenuItem>
+              <DropdownMenuItem onClick={resetToolLayout}><RotateCcw className="w-3.5 h-3.5 mr-2" /> 恢复工具默认位置</DropdownMenuItem>
 
               <DropdownMenuSeparator />
               <DropdownMenuLabel>导入 / 导出</DropdownMenuLabel>
@@ -3260,6 +3278,24 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">{toolbarCollapsed ? "展开工具栏" : "折叠工具栏（隐藏不常用）"}</TooltipContent>
+            </Tooltip>
+
+            {/* 恢复工具默认位置：标 data-tb-sec → 收缩工具栏时隐藏（次要工具，与其它一致；关键时刻
+                展开工具栏，或用「更多 → 视图/面板 → 恢复工具默认位置」，或靠画布助手自愈自动归位）。 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  data-tb-sec
+                  onClick={resetToolLayout}
+                  className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+                  style={{ color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">恢复工具默认位置（找不到助手/悬浮球时点这里）</TooltipContent>
             </Tooltip>
 
             {/* Orientation toggle (horizontal ↔ vertical) */}

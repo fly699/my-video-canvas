@@ -216,6 +216,18 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 创意（创作者）模式默认停在右下角，其它模式默认左下角；用户拖过则用其保存位置。
   const ballLeft = ballPos ? ballPos.left : (canvasMode === "creative" ? Math.max(8, (typeof window !== "undefined" ? window.innerWidth : 1280) - BALL - 16) : 16);
   const ballTop = ballPos ? ballPos.top : Math.max(8, (window.visualViewport?.height ?? window.innerHeight) - BALL - 16);
+  // 自愈：加载 / 窗口尺寸变化时把小球与面板位置夹回视口内——防「拖到屏外、换分辨率后找不到」。
+  useEffect(() => {
+    const clampIntoView = () => {
+      const vw = window.innerWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      setBallPos((p) => (p ? { left: Math.max(0, Math.min(vw - BALL, p.left)), top: Math.max(0, Math.min(vh - BALL, p.top)) } : p));
+      setPos((p) => (p ? { left: Math.max(8, Math.min(vw - 120, p.left)), top: Math.max(8, Math.min(vh - 40, p.top)) } : p));
+    };
+    clampIntoView();
+    window.addEventListener("resize", clampIntoView);
+    return () => window.removeEventListener("resize", clampIntoView);
+  }, [BALL]);
   const [ballMenu, setBallMenu] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     if (!ballMenu) return;
