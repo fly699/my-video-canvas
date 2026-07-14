@@ -262,7 +262,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         {
           projectId: data.projectId, nodeId: id, goal: agentTask,
           customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
-          ...(payload.maxIterations ? { maxIterations: payload.maxIterations } : {}),
+          maxIterations: payload.maxIterations ?? 50,
           ...(payload.useMemory === false ? { useMemory: false } : {}),
         },
         runHandlers as Parameters<typeof orchestrateMut.mutate>[1],
@@ -273,8 +273,9 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
       {
         projectId: data.projectId, nodeId: id, task: agentTask,
         customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
-        ...(payload.maxIterations ? { maxIterations: payload.maxIterations } : {}),
-        ...(payload.showAllResources ? { showAllResources: true } : {}),
+        maxIterations: payload.maxIterations ?? 50,
+        // 默认加载全部资源（不截断）；显式取消勾选时传 false 覆盖服务端默认。
+        showAllResources: payload.showAllResources ?? true,
         ...(payload.useMemory === false ? { useMemory: false } : {}),
         ...(isFollowup ? { seedWorkflowJson: payload.resultWorkflowJson, history: buildHistory(priorConv) } : {}),
       },
@@ -409,15 +410,15 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                   </div>
                   <div>
                     <label style={labelStyle}>
-                      <Settings2 size={9} style={{ display: "inline", marginRight: 3 }} />最大自驱轮次：<b style={{ color: accent }}>{payload.maxIterations ?? 20}</b>
+                      <Settings2 size={9} style={{ display: "inline", marginRight: 3 }} />最大自驱轮次：<b style={{ color: accent }}>{payload.maxIterations ?? 50}</b>
                       <span style={{ color: "var(--c-t4)", marginLeft: 4 }}>（越高越能自愈复杂工作流，但更慢/更耗；不建议无限——调不通会烧钱）</span>
                     </label>
-                    <input type="range" min={4} max={60} step={1} value={payload.maxIterations ?? 20} disabled={running}
+                    <input type="range" min={4} max={60} step={1} value={payload.maxIterations ?? 50} disabled={running}
                       onChange={(e) => update({ maxIterations: Number(e.target.value) })}
                       className="nodrag" style={{ width: "100%", accentColor: accent, cursor: running ? "not-allowed" : "pointer" }} />
                   </div>
                   <label style={{ ...labelStyle, display: "flex", alignItems: "flex-start", gap: 6, cursor: running ? "not-allowed" : "pointer" }}>
-                    <input type="checkbox" checked={payload.showAllResources ?? false} disabled={running}
+                    <input type="checkbox" checked={payload.showAllResources ?? true} disabled={running}
                       onChange={(e) => update({ showAllResources: e.target.checked })}
                       className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
                     <span>加载全部模型 / LoRA / 节点（不截断）<br />

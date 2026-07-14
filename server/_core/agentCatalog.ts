@@ -201,7 +201,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "autoRun", type: "boolean", desc: "true=节点建好后自动开跑（无需用户点运行）；规划里想让它自动干活就设 true" },
       { name: "customBaseUrl", type: "string", desc: "目标 ComfyUI 服务器地址（留空用全局默认服务器）" },
       { name: "useMemory", type: "boolean", desc: "是否使用记忆体（资源记忆+工作流经验+已知坑），默认 true；关掉则忽略记忆直接读真机" },
-      { name: "maxIterations", type: "number", desc: "最大自驱轮次 4-60，默认 20；复杂工作流可调高" },
+      { name: "maxIterations", type: "number", desc: "最大自驱轮次 4-60，默认 50；复杂工作流可调高" },
     ],
   },
   {

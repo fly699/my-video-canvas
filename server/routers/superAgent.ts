@@ -222,13 +222,13 @@ export const superAgentRouter = router({
           task: input.task,
           tools,
           llm,
-          maxIterations: input.maxIterations ?? 20,
+          maxIterations: input.maxIterations ?? 50,
           emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
           signal,
           seedWorkflowJson: input.seedWorkflowJson,
           history: input.history,
           referenceExamples,
-          showAllResources: input.showAllResources,
+          showAllResources: input.showAllResources ?? true,
           knownPitfalls,
         });
       } finally {
@@ -346,7 +346,7 @@ export const superAgentRouter = router({
       try {
         result = await runOrchestration({
           goal: input.goal, baseUrl, tools: makeTools(baseUrl), servers, makeTools, llm, signal, useMemory,
-          maxSubtasks: input.maxSubtasks, maxIterations: input.maxIterations ?? 20,
+          maxSubtasks: input.maxSubtasks, maxIterations: input.maxIterations ?? 50,
           emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
         });
       } finally {
