@@ -7,8 +7,8 @@ import {
   type ModelSlot,
 } from "../../../../shared/nodeDefaultModels";
 import { useNodeDefaultModels } from "../../contexts/NodeDefaultModelsContext";
-import { TRANSCRIBE_MODELS } from "../../lib/models";
 import { useDisabledModels } from "../../lib/useDisabledModels";
+import { useTranscribeModels } from "../../lib/useTranscribeModels";
 import { LLMModelPicker, type LLMModelId } from "./LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "./ModelPicker";
 import { PROVIDER_PICKER_OPTIONS } from "./nodes/VideoTaskNode";
@@ -56,6 +56,7 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
   const catVideo = config?.categories?.video ?? FACTORY_DEFAULT_MODELS.video;
   const catTranscribe = config?.categories?.transcribe ?? FACTORY_DEFAULT_MODELS.transcribe;
   const disabledModels = useDisabledModels();
+  const transcribeModels = useTranscribeModels(); // 只列已配置 provider 的模型（含自建）
 
   const setCategory = (slot: ModelSlot, modelId: string) =>
     setConfig({ ...config, categories: { ...config?.categories, [slot]: modelId } });
@@ -160,7 +161,7 @@ export function NodeDefaultModelsButton({ orient = "h" }: { orient?: "h" | "v" }
               onChange={(e) => setCategory("transcribe", e.target.value)}
               style={{ width: "100%", fontSize: 12, padding: "7px 8px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", cursor: "pointer" }}
             >
-              {TRANSCRIBE_MODELS.filter((m) => !disabledModels.has(m.value)).map((m) => (
+              {transcribeModels.filter((m) => !disabledModels.has(m.value)).map((m) => (
                 <option key={m.value} value={m.value}>{m.label} · {m.desc}</option>
               ))}
             </select>

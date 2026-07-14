@@ -43,6 +43,7 @@ import {
   listAiClientSessions,
   upsertAiClientSession,
   deleteAiClientSession,
+  getTranscribeEndpointConfigRaw,
 } from "../db";
 import { storagePut, resolveToAbsoluteUrl, canBrowserReachStorageDirectly, storageBackend, assertObjectStorageWritable, isOwnStorageUrl, toInternalStoragePath, storagePresignPut, isStorageConfigured, finalizeStorageKey } from "../storage";
 import { signUploadToken } from "../_core/uploadToken";
@@ -4404,5 +4405,17 @@ export const configRouter = router({
     const cfg = getSelfHostedConfig(); // 含 env 兜底（DB 优先）
     const configured = !!cfg.url.trim();
     return { configured, models: configured ? cfg.models.map((m) => ({ id: m.id, label: m.label })) : [] };
+  }),
+  // 各转写 provider 是否已配置 + 自建端点的 model —— 供转写模型选择器只列「真能用」的模型
+  // （方案B：Groq/自建/Forge 各自独立端点，选哪个就路由到哪个）。避免「选了走不通」的歧义。
+  transcribeProviders: protectedProcedure.query(async () => {
+    const dbCfg = await getTranscribeEndpointConfigRaw();
+    const selfUrl = (dbCfg?.url || ENV.transcribeApiUrl).trim();
+    const selfModel = (dbCfg?.model || ENV.transcribeModel).trim();
+    return {
+      self: { configured: !!selfUrl, model: selfModel },     // 自建/自定义端点
+      groq: !!ENV.groqApiKey.trim(),                          // GROQ_API_KEY
+      forge: !!((ENV.forgeApiUrl.trim() && ENV.forgeApiKey.trim()) || ENV.openaiApiKey.trim()), // 内置 Forge/OpenAI
+    };
   }),
 });

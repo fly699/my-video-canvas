@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
-import { TRANSCRIBE_MODELS } from "@/lib/models";
+import { useTranscribeModels } from "@/lib/useTranscribeModels";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { Captions, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
@@ -77,6 +77,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
   const { updateNodeData, nodes, edges } = useCanvasStore(useShallow((s) => ({ updateNodeData: s.updateNodeData, nodes: s.nodes, edges: s.edges })));
   const { resolve } = useNodeDefaultModels();
   const disabledModels = useDisabledModels();
+  const transcribeModels = useTranscribeModels(); // 只列已配置 provider 的模型（含自建）
   const payload = data.payload;
   // 转录模型：节点显式选 > 「节点默认模型」里 subtitle.transcribe 的默认 > 出厂 whisper-1。
   const defaultTranscribeModel = resolve("subtitle", "transcribe");
@@ -301,7 +302,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                 onChange={(e) => update({ transcribeModel: e.target.value })}
                 style={{ ...fieldStyle, cursor: "pointer" }}
               >
-                {TRANSCRIBE_MODELS.filter((m) => !disabledModels.has(m.value) || m.value === transcribeModel).map((m) => (
+                {transcribeModels.filter((m) => !disabledModels.has(m.value) || m.value === transcribeModel).map((m) => (
                   <option key={m.value} value={m.value}>{m.label} · {m.desc}</option>
                 ))}
               </select>
