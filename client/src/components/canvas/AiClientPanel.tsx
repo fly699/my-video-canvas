@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
 import { deriveAiSessions, resolveActiveSession } from "@/lib/aiClientSessions";
+import { buildNodeContextContent, isReferableNode, nodeContextLabel, planMessageDrop, type ChatMsgAttachment } from "@/lib/aiClientContext";
 import { LLM_MODELS } from "@/lib/models";
 import { trpc } from "@/lib/trpc";
+import type { NodeType } from "../../../../shared/types";
 
 // ── 全局悬浮「AI 客户端」(综合 Claude/GPT/Grok 取长) ─────────────────────────────
 // Cmd/Ctrl+J 呼出/最小化；左侧会话列表「同源」于画布 ai_chat 节点（会话即节点），中间对话流，
@@ -30,7 +32,19 @@ export function AiClientPanel() {
 
   const [input, setInput] = useState("");
   const [model, setModel] = useState<string>(LLM_MODELS.find((m) => m.tag === "默认")?.id ?? LLM_MODELS[0].id);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 当前会话引用的上下文节点（存在 ai_chat 节点 payload.contextNodeIds，与画布对话节点同源）。
+  const activeNode = useMemo(() => nodes.find((n) => n.id === active), [nodes, active]);
+  const contextIds = useMemo(
+    () => ((activeNode?.data.payload as { contextNodeIds?: string[] } | undefined)?.contextNodeIds) ?? [],
+    [activeNode],
+  );
+  // 可引用的画布节点（排除本会话自身与非文本类）。
+  const referable = useMemo(() => nodes.filter((n) => n.id !== active && isReferableNode(n)), [nodes, active]);
+  const setContextIds = (ids: string[]) => { if (active) useCanvasStore.getState().updateNodeData(active, { contextNodeIds: ids }, true); };
+  const toggleContext = (nodeId: string) => setContextIds(contextIds.includes(nodeId) ? contextIds.filter((x) => x !== nodeId) : [...contextIds, nodeId]);
 
   const msgQuery = trpc.aiChat.getMessages.useQuery(
     { nodeId: active ?? "", projectId: projectId ?? 0 },
@@ -71,10 +85,26 @@ export function AiClientPanel() {
     if (!active) { newSession(); toast.info("已建会话，请再次发送"); return; }
     if (!projectId) { toast.error("画布未就绪"); return; }
     setInput("");
+    const contextContent = buildNodeContextContent(nodes, contextIds);
     sendMut.mutate({
       nodeId: active, projectId, message: text, model,
+      ...(contextContent ? { contextContent } : {}),
       ...(model.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
     });
+  };
+
+  // 回答一键落成画布节点（文本→便签、图片附件→图像节点）。
+  const dropToCanvas = (content: string, attachments?: ChatMsgAttachment[]) => {
+    const plans = planMessageDrop(content, attachments);
+    if (plans.length === 0) { toast.error("这条回答没有可落成的内容"); return; }
+    const base = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2 - 120, y: window.innerHeight / 2 - 80 });
+    let created = 0;
+    plans.forEach((plan, i) => {
+      const node = useCanvasStore.getState().addNode(plan.nodeType as NodeType, { x: base.x + i * 40, y: base.y + i * 40 });
+      useCanvasStore.getState().updateNodeData(node.id, plan.payload);
+      created++;
+    });
+    toast.success(`已落成 ${created} 个画布节点`);
   };
 
   if (!open) return null;
@@ -154,22 +184,78 @@ export function AiClientPanel() {
             {!active && <div style={{ margin: "auto", textAlign: "center", color: "var(--c-t4)", fontSize: 13 }}><Bot size={30} style={{ opacity: 0.5 }} /><div style={{ marginTop: 8 }}>选择或新建一个会话开始对话</div></div>}
             {active && messages.length === 0 && !msgQuery.isLoading && <div style={{ margin: "auto", textAlign: "center", color: "var(--c-t4)", fontSize: 13 }}>开始你的第一句对话吧</div>}
             {active && msgQuery.isLoading && <div style={{ margin: "auto", color: "var(--c-t4)" }}><Loader2 size={20} className="animate-spin" /></div>}
-            {messages.map((m, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+            {messages.map((m, i) => {
+              const atts = (m as { attachments?: ChatMsgAttachment[] }).attachments;
+              return (
+              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 3 }}>
                 <div style={{
                   maxWidth: "82%", padding: "9px 13px", borderRadius: 13, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word",
                   background: m.role === "user" ? `color-mix(in oklch, ${ACCENT} 18%, var(--c-input))` : "var(--c-input)",
                   color: "var(--c-t1)", border: "1px solid var(--c-bd2)",
                 }}>{m.content}</div>
+                {/* 回答一键落成画布节点（仅 AI 回复，且有可落成内容）。 */}
+                {m.role === "assistant" && (m.content?.trim() || (atts?.length ?? 0) > 0) && (
+                  <button onClick={() => dropToCanvas(m.content, atts)} className="nodrag"
+                    title="把这条回答落成画布节点（文本→便签，图片→图像节点）"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--c-t4)", background: "transparent", border: "none", cursor: "pointer", padding: "0 2px" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                    <Download size={11} /> 落成节点
+                  </button>
+                )}
               </div>
-            ))}
+              );
+            })}
             {sendMut.isPending && (
               <div style={{ display: "flex", justifyContent: "flex-start" }}>
                 <div style={{ padding: "9px 13px", borderRadius: 13, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)" }}><Loader2 size={15} className="animate-spin" /></div>
               </div>
             )}
           </div>
-          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)" }}>
+          <div style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)", position: "relative" }}>
+            {/* 已引用的画布节点 chips + @ 添加引用（打通 contextNodeIds，作为对话上下文） */}
+            {active && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center", marginBottom: 7 }}>
+                <button onClick={() => setPickerOpen((v) => !v)} className="nodrag"
+                  title="引用画布节点作为上下文"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 3, height: 22, padding: "0 8px", borderRadius: 7, fontSize: 11, cursor: "pointer",
+                    background: pickerOpen ? `color-mix(in oklch, ${ACCENT} 14%, transparent)` : "var(--c-input)", border: `1px solid ${pickerOpen ? ACCENT : "var(--c-bd2)"}`, color: pickerOpen ? ACCENT : "var(--c-t3)" }}>
+                  <AtSign size={11} /> 引用节点
+                </button>
+                {contextIds.map((cid) => {
+                  const n = nodes.find((x) => x.id === cid);
+                  if (!n) return null;
+                  return (
+                    <span key={cid} style={{ display: "inline-flex", alignItems: "center", gap: 3, height: 22, padding: "0 6px 0 8px", borderRadius: 7, fontSize: 11, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", maxWidth: 160 }}>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nodeContextLabel(n)}</span>
+                      <button onClick={() => toggleContext(cid)} className="nodrag" style={{ border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", padding: 0, lineHeight: 1 }}><X size={11} /></button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            {/* @ 引用选择器（列出可引用画布节点） */}
+            {pickerOpen && active && (
+              <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
+                style={{ position: "absolute", left: 12, right: 12, bottom: "calc(100% - 4px)", maxHeight: 240, overflowY: "auto", zIndex: 5,
+                  background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.4)", padding: 6 }}>
+                {referable.length === 0 && <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "10px 8px" }}>画布上暂无可引用的节点（脚本/分镜/提示词/图像/角色/便签等）。</div>}
+                {referable.map((n) => {
+                  const on = contextIds.includes(n.id);
+                  return (
+                    <button key={n.id} onClick={() => toggleContext(n.id)} className="nodrag"
+                      style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 8, cursor: "pointer", textAlign: "left",
+                        border: "none", background: on ? `color-mix(in oklch, ${ACCENT} 10%, transparent)` : "transparent", color: "var(--c-t1)" }}
+                      onMouseEnter={(e) => { if (!on) (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+                      onMouseLeave={(e) => { if (!on) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                      <span style={{ width: 14, flexShrink: 0, color: on ? ACCENT : "var(--c-t4)" }}>{on ? "✓" : ""}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nodeContextLabel(n)}</span>
+                      <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--c-t4)", flexShrink: 0 }}>{n.data.nodeType}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 12, padding: "8px 10px" }}>
               <textarea
                 className="nodrag nowheel"
