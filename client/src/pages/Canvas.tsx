@@ -71,6 +71,8 @@ import { AlignToolbar } from "../components/canvas/AlignToolbar";
 import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
 import { ReturnToNodesHint } from "../components/canvas/ReturnToNodesHint";
 import { EmptyCanvasGuide } from "../components/canvas/EmptyCanvasGuide";
+import { AiClientPanel } from "../components/canvas/AiClientPanel";
+import { useAiClient } from "../hooks/useAiClient";
 import { setBoxSelecting } from "../hooks/useBoxSelecting";
 import { markGestureSelected, clearGestureSelected } from "../hooks/useNodeExpandGuard";
 import { useEdgeInsert } from "../hooks/useEdgeInsert";
@@ -1940,6 +1942,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
         saveCanvas();
         if (wasDirty) toast.success("已保存");
       }
+      // Cmd/Ctrl+J — 呼出 / 最小化 全局 AI 客户端（GPT/Claude/Grok 式，会话同源于 ai_chat 节点）
+      if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
+        e.preventDefault();
+        useAiClient.getState().toggle();
+      }
       if (e.key === "Escape") {
         setContextMenu(null); setConnectMenu(null); setShowNodePicker(false); useEdgeInsert.getState().clear(); setShowNodeSearch(false); setShowTemplates(false); setShowNodeLib(false); runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); setShowHelp(false); setShowArcPicker(false); setShowShortcuts(false); setShowGridStoryboard(false);
         // 取消节点选中（与快捷键面板「Esc 取消选中」对齐）。用 reactFlow.setNodes 才能让
@@ -3111,6 +3118,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <AlignToolbar />
           {/* 操作小贴士（右下角，定时/情境弹出，可自动消失，右键不再显示） */}
           <CanvasTips />
+          {/* 全局悬浮 AI 客户端（Cmd/Ctrl+J 呼出；会话同源于 ai_chat 节点）。 */}
+          {!isPopout && isAuthenticated && <AiClientPanel />}
           {/* 「返回节点」提示：视野里看不到任何节点时浮出，一键归位（对标 LibTV） */}
           <ReturnToNodesHint />
           {/* 空画布引导：双击提示 + 工作流入口卡（对标 LibTV；有节点即消失）。
