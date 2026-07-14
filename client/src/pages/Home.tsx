@@ -3,6 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { BrandLogo } from "@/components/BrandLogo";
 import { AuroraBackground } from "@/components/AuroraBackground";
+import { ModelShowcaseCard } from "@/components/ModelShowcaseCard";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
@@ -534,6 +535,52 @@ function PlatformIntroCard() {
         <div className="flex items-center gap-1 text-xs" style={{ color: "var(--c-t4)" }}>
           <Sparkles className="w-3 h-3" />
           <span>架构 · 模型 · 特色一览</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// #175 AI 客户端独立入口卡片 — 点击在独占单窗口打开 /ai（不进入画布）。
+// 封面用模型动图跑马灯（ChatGPT/Claude/Grok/Gemini/通义千问…循环滚动），炫酷现代。
+function AiClientEntryCard() {
+  const accent = "oklch(0.70 0.20 300)"; // AI 客户端主色（紫）
+  const a = (alpha: number) => accent.replace(")", ` / ${alpha})`);
+  // 独立单窗口打开（弹窗独占）；无外链、页面内自带「返回首页」内部路由。
+  const openStandalone = () => {
+    const w = Math.min(1280, Math.round(window.screen.availWidth * 0.9));
+    const h = Math.min(860, Math.round(window.screen.availHeight * 0.9));
+    const feat = `popup,width=${w},height=${h},left=${Math.round((window.screen.availWidth - w) / 2)},top=${Math.round((window.screen.availHeight - h) / 2)}`;
+    const win = window.open("/ai", "ai-client", feat);
+    if (!win) window.location.assign("/ai"); // 弹窗被拦截时退化为本页跳转
+  };
+  return (
+    <div
+      className="group relative flex flex-col rounded-xl border cursor-pointer overflow-hidden lift-card animate-fade-up"
+      role="button" tabIndex={0} aria-label="打开 AI 客户端（独立窗口）"
+      onClick={openStandalone}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openStandalone(); } }}
+      style={{ borderColor: a(0.35), background: "var(--c-surface)", boxShadow: "0 1px 2px oklch(0 0 0 / 0.2), 0 4px 16px oklch(0 0 0 / 0.1)" }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = accent; (e.currentTarget as HTMLElement).style.background = "var(--c-elevated)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = a(0.35); (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+    >
+      <div className="relative h-36 overflow-hidden flex items-center" style={{ background: a(0.07) }}>
+        <div className="w-full px-2"><ModelShowcaseCard compact /></div>
+        <span className="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide" style={{ background: a(0.9), color: "#fff" }}>
+          AI 客户端
+        </span>
+        <div className="absolute bottom-2 right-2 z-10 w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: a(0.18), border: `1px solid ${a(0.4)}`, backdropFilter: "blur(4px)" }}>
+          <Bot className="w-3.5 h-3.5" style={{ color: accent }} />
+        </div>
+      </div>
+      <div className="flex flex-col gap-1 p-4">
+        <h3 className="text-sm font-semibold leading-snug flex items-center gap-1.5" style={{ color: "var(--c-t1)" }}>
+          AI 客户端
+          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" style={{ color: accent }} />
+        </h3>
+        <div className="flex items-center gap-1 text-xs" style={{ color: "var(--c-t4)" }}>
+          <Bot className="w-3 h-3" />
+          <span>独立窗口 · 全模型对话 / 代码模式</span>
         </div>
       </div>
     </div>
@@ -1281,6 +1328,7 @@ export default function Home() {
                   onOpen={() => navigate("/library")}
                 />
                 <EditorEntryCard onOpen={() => navigate("/editor")} isAuthenticated={isAuthenticated} />
+                <AiClientEntryCard />
                 <PlatformIntroCard />
               </div>
             </div>
