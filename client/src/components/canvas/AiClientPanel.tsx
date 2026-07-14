@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2 } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
 import { deriveAiSessions, resolveActiveSession } from "@/lib/aiClientSessions";
 import { buildNodeContextContent, isReferableNode, nodeContextLabel, planMessageDrop, type ChatMsgAttachment } from "@/lib/aiClientContext";
 import { loadNodeless, saveNodeless, addSession, removeSession, updateSession, sortSessions, makeNodelessId, isNodelessId, type NodelessSession } from "@/lib/aiClientNodeless";
+import { parseMessageSegments, latestCodeArtifactFrom, CODE_MODE_SYSTEM_PROMPT, type CodeArtifact } from "@/lib/codeArtifacts";
 import { CHAT_MODELS } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { useDisabledModels } from "@/lib/useDisabledModels";
@@ -39,6 +40,17 @@ export function AiClientPanel() {
     const pool = selfHosted.length ? [...selfHosted.filter((s) => !CHAT_MODELS.some((m) => m.id === s.id)), ...CHAT_MODELS] : [...CHAT_MODELS];
     return pool.filter((m) => !m.hidden && !m.code && !disabledModels.has("chat:" + m.id));
   }, [selfHosted, disabledModels]);
+  // 代码模式（对齐 GPT Canvas / Claude Artifacts）：模型池含代码专用模型（Codex 系置顶），
+  // 默认用 Codex。持久化开关。
+  const [codeMode, setCodeMode] = useState<boolean>(() => { try { return localStorage.getItem("avc:ai-client-code") === "1"; } catch { return false; } });
+  const codeModels = useMemo(() => {
+    const pool = selfHosted.length ? [...selfHosted.filter((s) => !CHAT_MODELS.some((m) => m.id === s.id)), ...CHAT_MODELS] : [...CHAT_MODELS];
+    return pool.filter((m) => !m.hidden && !disabledModels.has("chat:" + m.id))
+      .slice().sort((a, b) => (b.code ? 1 : 0) - (a.code ? 1 : 0)); // 代码模型置顶
+  }, [selfHosted, disabledModels]);
+  const modelOptions = codeMode ? codeModels : chatModels;
+  const firstCodexId = useMemo(() => codeModels.find((m) => m.code)?.id, [codeModels]);
+  const [showPreview, setShowPreview] = useState(false);
 
   // 无节点会话（不建 ai_chat 节点，也能记住；索引按项目存 localStorage，消息仍在服务端）。
   const [nodeless, setNodeless] = useState<NodelessSession[]>([]);
@@ -91,12 +103,28 @@ export function AiClientPanel() {
     if (isNodeless) persistNodeless(updateSession(nodeless, active, { model: m }));
     else useCanvasStore.getState().updateNodeData(active, { model: m }, true);
   };
+  // 切换代码模式：持久化开关；开启时若当前不是代码模型，切到首个 Codex。
+  const toggleCodeMode = () => {
+    const next = !codeMode;
+    setCodeMode(next);
+    try { localStorage.setItem("avc:ai-client-code", next ? "1" : "0"); } catch { /* restricted */ }
+    if (next) {
+      setShowPreview(false);
+      const curIsCode = codeModels.find((m) => m.id === model)?.code;
+      if (!curIsCode && firstCodexId) changeModel(firstCodexId);
+    }
+  };
 
   const msgQuery = trpc.aiChat.getMessages.useQuery(
     { nodeId: active ?? "", projectId: projectId ?? 0 },
     { enabled: open && !minimized && !!active && !!projectId },
   );
   const messages = msgQuery.data ?? [];
+  // 代码模式工件：从对话里取最新代码块，供右侧工件面板展示/预览/下载/落成节点。
+  const artifact = useMemo<CodeArtifact | null>(
+    () => (codeMode ? latestCodeArtifactFrom(messages.map((m) => ({ role: m.role, content: m.content }))) : null),
+    [codeMode, messages],
+  );
 
   const sendMut = trpc.aiChat.sendMessage.useMutation({
     onSuccess: () => {
@@ -139,6 +167,7 @@ export function AiClientPanel() {
     const contextContent = buildNodeContextContent(nodes, contextIds);
     sendMut.mutate({
       nodeId: active, projectId, message: text, model,
+      ...(codeMode ? { systemPrompt: CODE_MODE_SYSTEM_PROMPT } : {}),
       ...(contextContent ? { contextContent } : {}),
       ...(attachments.length > 0 ? { attachments: attachments.map((a) => ({ type: a.type, url: a.url, mimeType: a.mimeType || "image/jpeg", name: a.name || "图片" })) } : {}),
       ...(model.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
@@ -187,6 +216,22 @@ export function AiClientPanel() {
         setPendingAtts((prev) => [...prev, { type: "image", url, mimeType: file.type, name: file.name }]);
       } catch (e) { toast.error("上传失败：" + (e instanceof Error ? e.message : "")); }
     }
+  };
+
+  // 代码工件：下载为文件 / 落成便签节点（带围栏保留语言）。
+  const downloadArtifact = (a: CodeArtifact) => {
+    try {
+      const blob = new Blob([a.content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const el = document.createElement("a"); el.href = url; el.download = a.filename; el.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { toast.error("下载失败"); }
+  };
+  const dropArtifactToCanvas = (a: CodeArtifact) => {
+    const base = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2 - 120, y: window.innerHeight / 2 - 80 });
+    const node = useCanvasStore.getState().addNode("note", base);
+    useCanvasStore.getState().updateNodeData(node.id, { content: "```" + (a.lang || "") + "\n" + a.content + "\n```" });
+    toast.success("代码已落成便签节点");
   };
 
   // 回答一键落成画布节点（文本→便签、图片附件→图像节点）。
@@ -268,9 +313,11 @@ export function AiClientPanel() {
         <select value={model} onChange={(e) => changeModel(e.target.value)} className="nodrag"
           style={{ marginLeft: 6, fontSize: 11.5, padding: "4px 8px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", maxWidth: 200 }}
           title={`当前模型：${modelLabel}`}>
-          {chatModels.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          {modelOptions.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
         </select>
         <div style={{ flex: 1 }} />
+        <button onClick={toggleCodeMode} title={codeMode ? "退出代码模式" : "代码模式（Codex 写码 + 工件面板/预览，对齐 Canvas/Artifacts）"}
+          style={{ ...iconBtn, color: codeMode ? ACCENT : "var(--c-t3)", background: codeMode ? `color-mix(in oklch, ${ACCENT} 16%, transparent)` : "transparent" }}><Code2 size={15} /></button>
         <button onClick={() => setPinned(!pinned)} title={pinned ? "取消钉住" : "钉住（记住展开态，进画布自动打开）"} style={{ ...iconBtn, color: pinned ? ACCENT : "var(--c-t3)" }}><Pin size={15} fill={pinned ? ACCENT : "none"} /></button>
         <button onClick={() => setMinimized(true)} title="最小化（Cmd/Ctrl+J）" style={iconBtn}><Minus size={16} /></button>
         <button onClick={close} title="关闭" style={iconBtn}><X size={16} /></button>
@@ -325,10 +372,26 @@ export function AiClientPanel() {
               return (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 3 }}>
                 <div style={{
-                  maxWidth: "82%", padding: "9px 13px", borderRadius: 13, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word",
+                  maxWidth: "82%", borderRadius: 13, fontSize: 13, lineHeight: 1.6, wordBreak: "break-word", overflow: "hidden",
                   background: m.role === "user" ? `color-mix(in oklch, ${ACCENT} 18%, var(--c-input))` : "var(--c-input)",
                   color: "var(--c-t1)", border: "1px solid var(--c-bd2)",
-                }}>{m.content}</div>
+                }}>
+                  {parseMessageSegments(m.content).map((seg, si) => seg.type === "text" ? (
+                    <div key={si} style={{ padding: "9px 13px", whiteSpace: "pre-wrap" }}>{seg.content}</div>
+                  ) : (
+                    <div key={si} style={{ background: "var(--c-base)", borderTop: "1px solid var(--c-bd1)", borderBottom: "1px solid var(--c-bd1)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", fontSize: 10.5, color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd1)" }}>
+                        <Code2 size={11} /><span>{seg.lang || "code"}</span>
+                        <div style={{ flex: 1 }} />
+                        <button onClick={() => copyText(seg.content)} className="nodrag" title="复制代码"
+                          style={{ ...msgActBtn, fontSize: 10 }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                          <Copy size={10} /> 复制
+                        </button>
+                      </div>
+                      <pre className="nowheel" style={{ margin: 0, padding: "10px 12px", overflowX: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, lineHeight: 1.5, color: "var(--c-t1)" }}><code>{seg.content}</code></pre>
+                    </div>
+                  ))}
+                </div>
                 {/* 消息操作：复制（全部）+ 落成节点/重新生成（仅 AI 回复）。 */}
                 <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "0 2px" }}>
                   {m.content?.trim() && (
@@ -437,6 +500,37 @@ export function AiClientPanel() {
             </div>
           </div>
         </div>
+
+        {/* 代码模式「工件面板」（对齐 GPT Canvas / Claude Artifacts）：展示最新代码，可预览/复制/下载/落成节点 */}
+        {codeMode && (
+          <div style={{ width: 340, maxWidth: "52%", flexShrink: 0, borderLeft: "1px solid var(--c-bd1)", display: "flex", flexDirection: "column", minWidth: 0, background: "var(--c-bg, var(--c-surface))" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderBottom: "1px solid var(--c-bd1)" }}>
+              <FileDown size={13} style={{ color: ACCENT, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{artifact ? artifact.filename : "代码工件"}</span>
+              <div style={{ flex: 1 }} />
+              {artifact?.previewable && (
+                <button onClick={() => setShowPreview((v) => !v)} className="nodrag" title={showPreview ? "看源码" : "实时预览"}
+                  style={{ ...iconBtn, width: 24, height: 24, color: showPreview ? ACCENT : "var(--c-t3)" }}><Eye size={14} /></button>
+              )}
+              {artifact && <>
+                <button onClick={() => copyText(artifact.content)} className="nodrag" title="复制代码" style={{ ...iconBtn, width: 24, height: 24 }}><Copy size={13} /></button>
+                <button onClick={() => downloadArtifact(artifact)} className="nodrag" title="下载文件" style={{ ...iconBtn, width: 24, height: 24 }}><Download size={13} /></button>
+                <button onClick={() => dropArtifactToCanvas(artifact)} className="nodrag" title="落成便签节点" style={{ ...iconBtn, width: 24, height: 24 }}><Plus size={14} /></button>
+              </>}
+            </div>
+            <div style={{ flex: 1, overflow: "auto", minHeight: 0 }} className="nowheel">
+              {!artifact ? (
+                <div style={{ margin: "auto", padding: "24px 16px", textAlign: "center", color: "var(--c-t4)", fontSize: 12, lineHeight: 1.7 }}>
+                  <Code2 size={26} style={{ opacity: 0.5 }} /><div style={{ marginTop: 8 }}>让 AI 写代码，产物会出现在这里<br />（可预览 HTML、复制、下载、落成节点）</div>
+                </div>
+              ) : (artifact.previewable && showPreview) ? (
+                <iframe title="preview" sandbox="allow-scripts" srcDoc={artifact.content} style={{ width: "100%", height: "100%", border: "none", background: "#fff" }} />
+              ) : (
+                <pre style={{ margin: 0, padding: "10px 12px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, lineHeight: 1.5, color: "var(--c-t1)", whiteSpace: "pre", minWidth: "min-content" }}><code>{artifact.content}</code></pre>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 右下角缩放手柄（拖拽改变窗口尺寸；持久化） */}
