@@ -16,6 +16,8 @@ import { invalidateSystemDefaultModelsCache } from "../_core/systemDefaultModels
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { reloadBridgeMcpConfig } from "../_core/bridgeMcp";
 import { reloadSuperAgentConfig } from "../_core/superAgent/config";
+import { reloadTranscribeConfig } from "../_core/transcribeConfig";
+import { resolveTranscribeEndpoint } from "../_core/voiceTranscription";
 import { bridgeLocalUrl } from "../_core/claudeBridge";
 import { buildConfigChecklist } from "../_core/configChecklist";
 import { sendTestEmail } from "../_core/verificationEmail";
@@ -648,6 +650,71 @@ export const adminRouter = router({
         await reloadSelfHostedConfig(); // 立即热更新路由/门控缓存
         return { success: true };
       }),
+    // ── 语音/转写端点配置（admin）：替代 TRANSCRIBE_* env，DB 优先 + env 兜底 ──
+    // 敏感基线（模式B）：读接口不回传 apiKey 明文，只回 hasKey；保存时 apiKey 留空=保留原值。
+    getTranscribeEndpoint: adminProcedure.query(async () => {
+      const dbCfg = await db.getTranscribeEndpointConfigRaw();
+      const envUrl = ENV.transcribeApiUrl.trim();
+      const envKey = ENV.transcribeApiKey.trim();
+      // 判定当前实际生效来源（与 resolveTranscribeEndpoint 优先级一致）。
+      const source = dbCfg ? "db"
+        : (envUrl && envKey) ? "env"
+          : (ENV.forgeApiUrl.trim() && ENV.forgeApiKey.trim()) ? "forge"
+            : ENV.openaiApiKey.trim() ? "openai"
+              : "none";
+      return {
+        url: dbCfg?.url ?? "",
+        model: dbCfg?.model ?? "",
+        hasKey: !!(dbCfg?.apiKey), // 不回传明文
+        dbConfigured: !!dbCfg,
+        source,                    // db / env / forge / openai / none
+        envModel: ENV.transcribeModel.trim(),
+      };
+    }),
+    setTranscribeEndpoint: managerProc
+      .input(z.object({
+        url: z.string().trim().max(2048),
+        // 留空 = 保留已保存的 key（模式B：前端不持有明文，故不回填也不覆盖）。
+        apiKey: z.string().max(512).optional(),
+        model: z.string().trim().max(120).default(""),
+      }))
+      .mutation(async ({ input }) => {
+        const url = input.url.trim();
+        if (url && !/^https?:\/\//i.test(url)) throw new TRPCError({ code: "BAD_REQUEST", message: "地址必须以 http:// 或 https:// 开头" });
+        // url 清空 = 恢复 env 兜底：整条清掉（含 key）。
+        if (!url) {
+          await db.setTranscribeEndpointConfig({ url: "", apiKey: "", model: "" });
+          await reloadTranscribeConfig();
+          return { success: true };
+        }
+        // key 留空则保留原值（模式B）。
+        const prior = await db.getTranscribeEndpointConfigRaw();
+        const apiKey = (input.apiKey && input.apiKey.length > 0) ? input.apiKey : (prior?.apiKey ?? "");
+        await db.setTranscribeEndpointConfig({ url, apiKey, model: input.model });
+        await reloadTranscribeConfig(); // 立即热更新转写快照
+        return { success: true };
+      }),
+    // 一键测试连通：对当前【实际生效】的转写端点发 GET /v1/models（验证可达 + 鉴权）。
+    // 需先保存再测（模式B 下前端不持有 key，无法测未保存的输入）。
+    testTranscribeEndpoint: managerProc.mutation(async () => {
+      const ep = resolveTranscribeEndpoint();
+      if (!ep) return { ok: false as const, error: "未配置转写端点（后台未填且 env 也没有）", source: "none" };
+      const base = ep.baseUrl.endsWith("/") ? ep.baseUrl : `${ep.baseUrl}/`;
+      let host = base; try { host = new URL(base).host; } catch { /* keep */ }
+      const started = Date.now();
+      try {
+        const url = new URL("v1/models", base).toString();
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        const res = await fetch(url, { headers: { authorization: `Bearer ${ep.apiKey}` }, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+        const ms = Date.now() - started;
+        if (res.ok) return { ok: true as const, ms, host, status: res.status };
+        const body = await res.text().catch(() => "");
+        return { ok: false as const, ms, host, status: res.status, error: `${res.status} ${res.statusText}${body ? `：${body.slice(0, 200)}` : ""}` };
+      } catch (e) {
+        return { ok: false as const, host, error: e instanceof Error ? e.message.slice(0, 200) : "请求失败（不可达/超时）" };
+      }
+    }),
     // ── 桥接 MCP/技能配置（admin）：替代 CLAUDE_BRIDGE_* env，界面贴 JSON 保存即生效（无需重启） ──
     getBridgeMcp: adminProcedure.query(async () => db.getBridgeMcpConfig()),
     // 诊断：给定 mcpConfig（内联 JSON 或服务器文件路径），在服务端按桥接的同一套逻辑解析出服务器名，

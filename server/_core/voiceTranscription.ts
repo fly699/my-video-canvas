@@ -31,6 +31,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { downloadToTemp, execFileAsync } from "./videoEditor";
+import { getTranscribeOverride } from "./transcribeConfig";
 
 export type TranscribeOptions = {
   audioUrl: string; // URL to the audio file (e.g., S3 URL)
@@ -91,7 +92,10 @@ export type TranscriptionError = {
  *  2) 内置 Forge（BUILT_IN_FORGE_API_URL + KEY）
  *  3) OpenAI 官方（OPENAI_API_KEY；用户常已为 TTS 配音设了它）
  *  三者皆无 → null（调用方回退「未配置」错误）。 */
-export function resolveTranscribeEndpoint(): { baseUrl: string; apiKey: string } | null {
+export function resolveTranscribeEndpoint(): { baseUrl: string; apiKey: string; model?: string } | null {
+  // 0) 管理后台配置优先（DB 快照；未配置回退 env）。
+  const o = getTranscribeOverride();
+  if (o && o.url && o.apiKey) return { baseUrl: o.url, apiKey: o.apiKey, model: o.model || undefined };
   if (ENV.transcribeApiUrl && ENV.transcribeApiKey) return { baseUrl: ENV.transcribeApiUrl, apiKey: ENV.transcribeApiKey };
   if (ENV.forgeApiUrl && ENV.forgeApiKey) return { baseUrl: ENV.forgeApiUrl, apiKey: ENV.forgeApiKey };
   if (ENV.openaiApiKey) return { baseUrl: "https://api.openai.com", apiKey: ENV.openaiApiKey };
@@ -155,7 +159,7 @@ async function transcribeLocalFile(
   srcTemp: string,
   nameHint: string,
   options: Omit<TranscribeOptions, "audioUrl">,
-  endpoint: { baseUrl: string; apiKey: string }
+  endpoint: { baseUrl: string; apiKey: string; model?: string }
 ): Promise<TranscriptionResponse | TranscriptionError> {
   // Step 2: 抽音轨（与 video-use 一致：先 ffmpeg 从视频/音频提取纯音频，再转写）。
   // 归一到 16kHz 单声道 mp3。ffmpeg 缺失/源无音轨/解码失败时回退：直接送原文件（合法扩展名）。
@@ -207,8 +211,8 @@ async function transcribeLocalFile(
   const audioBlob = new Blob([new Uint8Array(payload.buffer)], { type: payload.mime });
   formData.append("file", audioBlob, payload.filename);
 
-  // 模型优先级：**显式选择 > TRANSCRIBE_MODEL（部署默认）> whisper-1**。
-  const model = (options.model?.trim() || ENV.transcribeModel.trim() || "whisper-1");
+  // 模型优先级：**显式选择 > 后台端点配置的 model > TRANSCRIBE_MODEL（env）> whisper-1**。
+  const model = (options.model?.trim() || endpoint.model?.trim() || ENV.transcribeModel.trim() || "whisper-1");
   formData.append("model", model);
   formData.append("response_format", "verbose_json");
   if (options.wordTimestamps) {
