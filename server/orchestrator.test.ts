@@ -81,6 +81,28 @@ describe("orchestrator.runOrchestration", () => {
     expect(r.subtasks[0].status).toBe("success");
   });
 
+  it("多服务器：子任务在多台间负载均衡分配（都被用到）", async () => {
+    const used: string[] = [];
+    const makeTools = (baseUrl: string): ComfyAgentTools => ({
+      listResources: async () => RES,
+      validate: async () => ({ ok: true, errors: [] }),
+      execute: async () => { used.push(baseUrl); return { ok: true, images: ["http://x/o.png"], outputType: "image" }; },
+      analyze: async () => ({ paramBindings: [], outputNodeIds: ["3"], outputType: "image" }),
+    });
+    const r = await runOrchestration({
+      goal: "g", baseUrl: "http://a", tools: makeTools("http://a"),
+      servers: ["http://a", "http://b"], makeTools, llm: alwaysFinishLLM(), useMemory: false,
+      decompose: async () => [
+        { title: "1", task: "t1" }, { title: "2", task: "t2" }, { title: "3", task: "t3" }, { title: "4", task: "t4" },
+      ],
+    });
+    expect(r.subtasks.length).toBe(4);
+    expect(r.successCount).toBe(4);
+    // 两台服务器都被分到过子任务（负载均衡）。
+    expect(used).toContain("http://a");
+    expect(used).toContain("http://b");
+  });
+
   it("取消信号置位后不再开始新子任务", async () => {
     const signal = { aborted: true };
     const r = await runOrchestration({

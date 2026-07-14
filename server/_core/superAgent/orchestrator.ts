@@ -66,9 +66,14 @@ export async function decomposeGoal(llm: AgentLLM, goal: string, max: number): P
 
 export interface RunOrchestrationOptions {
   goal: string;
+  /** 单服务器（向后兼容）。多服务器负载均衡请用 servers + makeTools。 */
   baseUrl: string;
   tools: ComfyAgentTools;
   llm: AgentLLM;
+  /** #162 多服务器：编排把子任务在这些服务器间负载均衡分配（并行、择空闲）。缺省=[baseUrl] 单机。 */
+  servers?: string[];
+  /** #162 每台服务器一套工具（createComfyTools(baseUrl) + 该机安装工具）。缺省对所有服务器复用 tools。 */
+  makeTools?: (baseUrl: string) => ComfyAgentTools;
   maxSubtasks?: number;
   maxIterations?: number;
   useMemory?: boolean;
@@ -79,74 +84,117 @@ export interface RunOrchestrationOptions {
   decompose?: (llm: AgentLLM, goal: string, max: number) => Promise<OrchestrationSubtask[]>;
 }
 
-/** 编排主流程：分解 → 逐个子任务搭建（失败重试一次）→ 记忆沉淀/召回/剪枝 → 汇总。 */
+const normServer = (u: string) => u.replace(/\/+$/, "").trim();
+
+/** 编排主流程：分解 → 子任务在多台 ComfyUI 服务器间负载均衡搭建（失败换机重试一次）→ 记忆沉淀/召回/剪枝 → 汇总。 */
 export async function runOrchestration(opts: RunOrchestrationOptions): Promise<OrchestrationResult> {
-  const { goal, baseUrl, tools, llm } = opts;
+  const { goal, llm } = opts;
   const maxSubtasks = Math.min(Math.max(opts.maxSubtasks ?? 6, 1), 12);
   const maxIterations = opts.maxIterations ?? 20;
   const useMemory = opts.useMemory !== false;
   const emit = opts.emit ?? (() => {});
   const decompose = opts.decompose ?? decomposeGoal;
+  // 服务器池：多台去重归一化；缺省单机（= baseUrl）。makeTools 缺省对所有机复用传入的 tools。
+  const servers = Array.from(new Set((opts.servers && opts.servers.length ? opts.servers : [opts.baseUrl]).map(normServer).filter(Boolean)));
+  const makeTools = opts.makeTools ?? (() => opts.tools);
+  const toolsCache = new Map<string, ComfyAgentTools>();
+  const toolsFor = (s: string) => { let t = toolsCache.get(s); if (!t) { t = makeTools(s); toolsCache.set(s, t); } return t; };
 
   emit({ type: "action", iteration: 0, message: "编排：分解复杂目标为子任务…" });
   const subtasks = (await decompose(llm, goal, maxSubtasks)).slice(0, maxSubtasks);
-  emit({ type: "action", iteration: 0, message: `编排：拆出 ${subtasks.length} 个子任务`, data: { subtasks: subtasks.map((s) => s.title) } });
+  emit({ type: "action", iteration: 0, message: `编排：拆出 ${subtasks.length} 个子任务${servers.length > 1 ? `，将在 ${servers.length} 台服务器间负载均衡` : ""}`, data: { subtasks: subtasks.map((s) => s.title), servers: servers.length } });
 
-  const curRes = await tools.listResources().catch(() => null);
-  const results: OrchestrationSubResult[] = [];
+  // 每台服务器的资源（供记忆召回/剪枝），懒取一次。
+  const resCache = new Map<string, Awaited<ReturnType<ComfyAgentTools["listResources"]>> | null>();
+  const resFor = async (s: string) => {
+    if (resCache.has(s)) return resCache.get(s)!;
+    const r = await toolsFor(s).listResources().catch(() => null);
+    resCache.set(s, r); return r;
+  };
+  // 负载计数：择当前在飞子任务最少的服务器（简单显卡池均衡）。
+  const load = new Map<string, number>(servers.map((s) => [s, 0]));
+  const pickServer = (exclude?: string) => {
+    const pool = servers.filter((s) => s !== exclude);
+    const cands = pool.length ? pool : servers;
+    return cands.reduce((best, s) => ((load.get(s) ?? 0) < (load.get(best) ?? 0) ? s : best), cands[0]);
+  };
 
-  for (let i = 0; i < subtasks.length; i++) {
-    if (opts.signal?.aborted) break;
+  const results: (OrchestrationSubResult | undefined)[] = new Array(subtasks.length);
+
+  const runSubtaskOnce = (server: string, st: OrchestrationSubtask, tag: string, task: string, pitfalls: string[], referenceExamples: { label: string; workflowJson: string }[]) =>
+    runComfyAgent({
+      task, tools: toolsFor(server), llm, maxIterations, signal: opts.signal,
+      emit: (e) => emit({ ...e, message: `${tag}${servers.length > 1 ? `@${server}` : ""} · ${e.message}` }),
+      referenceExamples, knownPitfalls: pitfalls,
+    });
+
+  const processSubtask = async (i: number) => {
+    if (opts.signal?.aborted) return;
     const st = subtasks[i];
     const tag = `[子任务 ${i + 1}/${subtasks.length}] ${st.title}`;
-    emit({ type: "action", iteration: i + 1, message: `${tag}：开始搭建` });
+    let server = pickServer();
+    load.set(server, (load.get(server) ?? 0) + 1);
+    try {
+      const curRes = await resFor(server);
+      const pitfalls = useMemory ? await recallPitfalls(server, st.task, 10, curRes).catch(() => []) : [];
+      const exp = useMemory ? await recallWorkflowExperiences(server, st.task, 2, 8000).catch(() => []) : [];
+      const refs = exp.map((e) => ({ label: `经验·${e.label}`, workflowJson: e.workflowJson }));
+      emit({ type: "action", iteration: i + 1, message: `${tag}：开始搭建${servers.length > 1 ? `（服务器 ${server}）` : ""}` });
 
-    const pitfalls = useMemory ? await recallPitfalls(baseUrl, st.task, 10, curRes).catch(() => []) : [];
-    const exp = useMemory ? await recallWorkflowExperiences(baseUrl, st.task, 2, 8000).catch(() => []) : [];
-    const referenceExamples = exp.map((e) => ({ label: `经验·${e.label}`, workflowJson: e.workflowJson }));
-
-    const runOnce = (task: string, extraPitfalls: string[]) => runComfyAgent({
-      task, tools, llm, maxIterations, signal: opts.signal,
-      emit: (e) => emit({ ...e, message: `${tag} · ${e.message}` }),
-      referenceExamples, knownPitfalls: [...pitfalls, ...extraPitfalls],
-    });
-
-    let r = await runOnce(st.task, []);
-    let retried = false;
-    // 失败重试一次：把本次失败原因喂回，要求换方案（非用户取消、且有信息量时）。
-    if (r.status !== "success" && r.status !== "aborted") {
-      const lessons = extractRunLessons(r.log);
-      if (lessons.length) {
-        retried = true;
-        emit({ type: "action", iteration: i + 1, message: `${tag}：首次未通过，带教训重试一次` });
-        r = await runOnce(`${st.task}\n\n（上次未成功，遇到的问题：${clip(lessons.join("；"), 800)}。请换一种方案规避这些问题。）`, lessons);
+      let r = await runSubtaskOnce(server, st, tag, st.task, pitfalls, refs);
+      let retried = false;
+      if (r.status !== "success" && r.status !== "aborted") {
+        const lessons0 = extractRunLessons(r.log);
+        if (lessons0.length) {
+          retried = true;
+          // 失败换机重试（多机时择另一台，均衡+规避个别机故障）。
+          load.set(server, (load.get(server) ?? 1) - 1);
+          const server2 = pickServer(server); server = server2;
+          load.set(server, (load.get(server) ?? 0) + 1);
+          emit({ type: "action", iteration: i + 1, message: `${tag}：首次未通过，带教训重试${servers.length > 1 ? `（改用服务器 ${server}）` : "一次"}` });
+          const curRes2 = await resFor(server);
+          const pitfalls2 = useMemory ? await recallPitfalls(server, st.task, 10, curRes2).catch(() => []) : [];
+          r = await runSubtaskOnce(server, st, tag, `${st.task}\n\n（上次未成功，遇到的问题：${clip(lessons0.join("；"), 800)}。请换一种方案规避这些问题。）`, [...pitfalls2, ...lessons0], refs);
+        }
       }
+
+      const lessons = extractRunLessons(r.log);
+      if (r.status === "success" && r.workflowJson) {
+        void recordWorkflowExperience({
+          baseUrl: server, task: st.task, workflowJson: r.workflowJson, outputType: r.outputType ?? null,
+          meta: { images: r.images, videos: r.videos, iterations: r.iterations, lessons: lessons.length ? lessons : undefined },
+        }).catch(() => {});
+      } else if ((r.status === "failed" || r.status === "exhausted") && lessons.length) {
+        void recordWorkflowFailure({ baseUrl: server, task: st.task, status: r.status, failReasons: lessons, workflowJson: r.workflowJson }).catch(() => {});
+      }
+      results[i] = {
+        title: st.title, task: st.task, status: r.status,
+        workflowJson: r.workflowJson, images: r.images, videos: r.videos, outputType: r.outputType,
+        iterations: r.iterations, retried,
+        error: r.status !== "success" ? (lessons[0] ?? "未调通") : undefined,
+      };
+      emit({ type: "tool_result", iteration: i + 1, message: `${tag}：${r.status === "success" ? "✅ 已调通" : "未调通"}`, data: { status: r.status, server } });
+    } finally {
+      load.set(server, Math.max(0, (load.get(server) ?? 1) - 1));
     }
+  };
 
-    // 记忆沉淀（与是否使用记忆解耦，始终学习）。
-    const lessons = extractRunLessons(r.log);
-    if (r.status === "success" && r.workflowJson) {
-      void recordWorkflowExperience({
-        baseUrl, task: st.task, workflowJson: r.workflowJson, outputType: r.outputType ?? null,
-        meta: { images: r.images, videos: r.videos, iterations: r.iterations, lessons: lessons.length ? lessons : undefined },
-      }).catch(() => {});
-    } else if ((r.status === "failed" || r.status === "exhausted") && lessons.length) {
-      void recordWorkflowFailure({ baseUrl, task: st.task, status: r.status, failReasons: lessons, workflowJson: r.workflowJson }).catch(() => {});
+  // 并发度 = 服务器数（单机则串行，与原行为一致）。工作协程从共享游标取子任务，按 pickServer 均衡派机。
+  let cursor = 0;
+  const worker = async () => {
+    while (!opts.signal?.aborted) {
+      const i = cursor++;
+      if (i >= subtasks.length) break;
+      await processSubtask(i);
     }
+  };
+  await Promise.all(servers.map(() => worker()));
 
-    results.push({
-      title: st.title, task: st.task, status: r.status,
-      workflowJson: r.workflowJson, images: r.images, videos: r.videos, outputType: r.outputType,
-      iterations: r.iterations, retried,
-      error: r.status !== "success" ? (lessons[0] ?? "未调通") : undefined,
-    });
-    emit({ type: "tool_result", iteration: i + 1, message: `${tag}：${r.status === "success" ? "✅ 已调通" : "未调通"}`, data: { status: r.status } });
-  }
+  // 自愈剪枝：对用过的每台服务器按其资源清理过时坑。
+  for (const s of servers) { const r = resCache.get(s); if (r) void pruneResolvedPitfalls(s, r).catch(() => {}); }
 
-  // 自愈剪枝：按当前资源清理已解决的过时坑。
-  if (curRes) void pruneResolvedPitfalls(baseUrl, curRes).catch(() => {});
-
-  const successCount = results.filter((r) => r.status === "success").length;
-  emit({ type: "done", iteration: subtasks.length, message: `编排完成：${successCount}/${results.length} 个子任务调通` });
-  return { goal, subtasks: results, successCount };
+  const out = results.filter((x): x is OrchestrationSubResult => !!x);
+  const successCount = out.filter((r) => r.status === "success").length;
+  emit({ type: "done", iteration: subtasks.length, message: `编排完成：${successCount}/${out.length} 个子任务调通${servers.length > 1 ? `（${servers.length} 台服务器）` : ""}` });
+  return { goal, subtasks: out, successCount };
 }
