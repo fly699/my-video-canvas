@@ -1423,6 +1423,10 @@ export interface SuperAgentNodeData {
   showAllResources?: boolean;
   /** 是否使用记忆体（资源记忆 + 工作流经验召回）。默认 true；false=本次忽略记忆、直接读真机。 */
   useMemory?: boolean;
+  /** 「自动运行」：节点建好后自动用 task 开跑一次（画布助手编排用）。触发后即清除，避免重复运行。 */
+  autoRun?: boolean;
+  /** 「编排模式」(B阶段)：把输入当复杂目标，自动拆成多个子任务逐个搭建，成功的各落一个 comfyui_workflow 节点。 */
+  orchestrate?: boolean;
   status?: "idle" | "running" | "success" | "failed" | "exhausted" | "aborted";
   /** ComfyUI 模式连续对话记录（用户指令 + 智能体每轮结果摘要）。 */
   conversation?: { role: "user" | "agent"; text: string; workflowJson?: string; status?: string }[];

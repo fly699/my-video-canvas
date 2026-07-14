@@ -67,12 +67,13 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   const llmModel = (payload.model || resolve("super_agent", "llm")) as LLMModelId;
   const modelShort = LLM_MODELS.find((m) => m.id === llmModel)?.short ?? "默认";
   const buildMut = trpc.superAgent.buildComfyWorkflow.useMutation();
+  const orchestrateMut = trpc.superAgent.orchestrate.useMutation();
   const codeMut = trpc.superAgent.runCodeTask.useMutation();
   const cancelMut = trpc.superAgent.cancel.useMutation();
   const codeStatus = trpc.superAgent.codeStatus.useQuery(undefined, { enabled: mode === "code", retry: false });
   const codeEnabled = codeStatus.data?.enabled === true;
   const bashAllowed = codeStatus.data?.bashAllowed === true;
-  const running = payload.status === "running" || buildMut.isPending || codeMut.isPending;
+  const running = payload.status === "running" || buildMut.isPending || orchestrateMut.isPending || codeMut.isPending;
 
   // 刷新/切项目后，持久化的 "running" 没有对应的在飞 mutation（刷新即丢），否则节点会被永久
   // 锁死（输入/发送/模式/重置全禁用、无恢复路径）。挂载时若见遗留 running 复位为 aborted，
@@ -144,10 +145,36 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
 
   // 应用一次 build 的最终结果（HTTP 返回或 socket 兜底两路共用；幂等——只应用一次）。
   // 从 store 取当前 conversation 追加 agent 轮，避免闭包里的 conv 过期。
-  type BuildResult = { status: string; workflowJson?: string; analysis?: SuperAgentNodeData["resultAnalysis"]; iterations?: number; log?: SuperAgentNodeData["log"] };
+  type OrchSub = { title: string; task: string; status: string; workflowJson?: string; outputType?: string; retried?: boolean; error?: string };
+  type BuildResult = { status?: string; workflowJson?: string; analysis?: SuperAgentNodeData["resultAnalysis"]; iterations?: number; log?: SuperAgentNodeData["log"]; kind?: string; goal?: string; successCount?: number; subtasks?: OrchSub[] };
   const applyBuildResult = useCallback((res: BuildResult) => {
     if (!awaitingBuildRef.current) return; // 已被另一路径应用过 → 幂等跳过（防重复轮次）
     awaitingBuildRef.current = false;
+    // 编排结果（B 阶段）：为每个成功子任务落一个 comfyui_workflow 节点，会话里汇总各子任务状态。
+    if (res.kind === "orchestration") {
+      const st0 = useCanvasStore.getState();
+      const cur0 = ((st0.nodes.find((n) => n.id === id)?.data.payload as SuperAgentNodeData | undefined)?.conversation) ?? [];
+      const subs = res.subtasks ?? [];
+      const basePos = st0.nodes.find((n) => n.id === id)?.position ?? { x: 0, y: 0 };
+      let created = 0;
+      subs.forEach((s) => {
+        if (s.status !== "success" || !s.workflowJson) return;
+        const node = addNode("comfyui_workflow", { x: basePos.x + 460, y: basePos.y + created * 260 });
+        updateNodeData(node.id, {
+          workflowJson: s.workflowJson, templateLabel: `编排·${s.title}`,
+          outputType: s.outputType === "video" ? "video" : "image",
+          ...(payload.customBaseUrl?.trim() ? { customBaseUrl: payload.customBaseUrl.trim() } : {}),
+        });
+        created++;
+      });
+      const lines = subs.map((s, i) => `${i + 1}. ${s.status === "success" ? "✅" : "❌"} ${s.title}${s.retried ? "（重试）" : ""}${s.error ? ` — ${s.error}` : ""}`);
+      const okCount = res.successCount ?? subs.filter((s) => s.status === "success").length;
+      const summary = `编排完成：${okCount}/${subs.length} 个子任务调通${created ? `，已生成 ${created} 个 ComfyUI 工作流节点` : ""}\n${lines.join("\n")}`;
+      const orchStatus: SuperAgentNodeData["status"] = okCount > 0 ? "success" : "failed";
+      update({ conversation: [...cur0, { role: "agent", text: summary, status: orchStatus }], status: orchStatus, pendingBuildResult: undefined });
+      if (created) setTimeout(() => reactFlow.fitView({ padding: 0.25, duration: 400 }), 80);
+      return;
+    }
     const st = useCanvasStore.getState();
     const cur = ((st.nodes.find((n) => n.id === id)?.data.payload as SuperAgentNodeData | undefined)?.conversation) ?? [];
     const summary = res.status === "success" ? `✅ 已调通（${res.iterations ?? "?"} 轮）`
@@ -159,7 +186,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     if (res.status === "success" && res.workflowJson && payload.appliedNodeId) {
       if (st.nodes.some((n) => n.id === payload.appliedNodeId)) { syncToNode(res.workflowJson, res.analysis, false); toast.success("已同步到链接节点，可点「重新生成」"); }
     }
-  }, [id, update, payload.appliedNodeId, syncToNode]);
+  }, [id, update, payload.appliedNodeId, payload.customBaseUrl, syncToNode, addNode, updateNodeData, reactFlow]);
 
   // socket 兜底：隧道下 HTTP 长请求被切断（network error）时，服务端把最终结果经 socket 回灌到
   // payload.pendingBuildResult（见 Canvas.tsx 的 superagent:event 处理），这里据此回填、结束「运行中」。
@@ -170,10 +197,11 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   }, [payload.pendingBuildResult, applyBuildResult, update]);
 
   // ── ComfyUI 模式：连续对话发送 ──
-  const handleSend = useCallback(() => {
+  // taskOverride：画布助手「自动运行」等场景直接派任务（不依赖输入框内容）。
+  const handleSend = useCallback((taskOverride?: string) => {
     if (running) return;
-    const instruction = (inputRef.current?.value ?? inputText).trim();
-    if (!instruction) { toast.error("请输入指令"); return; }
+    const instruction = (typeof taskOverride === "string" ? taskOverride : (inputRef.current?.value ?? inputText)).trim();
+    if (!instruction) { if (!taskOverride) toast.error("请输入指令"); return; }
     const priorConv = payload.conversation ?? [];
     const isFollowup = !!payload.resultWorkflowJson && priorConv.length > 0;
     const conv: Turn[] = [...priorConv, { role: "user", text: instruction }];
@@ -182,6 +210,41 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
     el?.commitValue?.(""); // 聚焦时也即时清空（NodeTextArea 聚焦中不采纳外部 value）
     update({ conversation: conv, status: "running", log: [], errorMessage: undefined, pendingBuildResult: undefined });
     awaitingBuildRef.current = true; // 标记「等待结果」——HTTP 或 socket 谁先回都能应用一次
+    // 成功/网络错误处理两路共用（build 与 orchestrate 编排均走此，复用隧道超时兜底）。
+    const runHandlers = {
+      onSuccess: (res: BuildResult) => applyBuildResult(res),
+      onError: (e: { message?: string }) => {
+        // 隧道下长请求可能被切断（cloudflared ~100s/请求），但服务端仍在跑、最终结果会经 socket 回填。
+        const netErr = /network|fetch|timeout|timed out|Failed to fetch|Load failed|ERR_|502|503|504|reset|aborted|socket hang/i.test(e.message || "");
+        if (netErr && awaitingBuildRef.current) {
+          update({ status: "running" });
+          toast.info("请求超时（可能是公网隧道对长任务的限制）——任务仍在后台运行，完成后会自动回填结果，请稍候。", { duration: 9000 });
+          setTimeout(() => {
+            if (!awaitingBuildRef.current) return;
+            utils.superAgent.getBuildResult.fetch({ projectId: data.projectId, nodeId: id })
+              .then((r) => { if (r?.result && awaitingBuildRef.current) applyBuildResult(r.result as BuildResult); })
+              .catch(() => { /* 兜底失败无妨，socket 仍是主路径 */ });
+          }, 8000);
+          return;
+        }
+        awaitingBuildRef.current = false;
+        update({ status: "failed", errorMessage: e.message, conversation: [...conv, { role: "agent", text: "❌ " + (e.message ?? "失败"), status: "failed" }] });
+        toast.error("运行失败：" + (e.message ?? ""));
+      },
+    };
+    // 编排模式：把输入当复杂目标，自动拆解并逐个派工程智能体搭建（B 阶段）。
+    if (payload.orchestrate) {
+      orchestrateMut.mutate(
+        {
+          projectId: data.projectId, nodeId: id, goal: instruction,
+          customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
+          ...(payload.maxIterations ? { maxIterations: payload.maxIterations } : {}),
+          ...(payload.useMemory === false ? { useMemory: false } : {}),
+        },
+        runHandlers as Parameters<typeof orchestrateMut.mutate>[1],
+      );
+      return;
+    }
     buildMut.mutate(
       {
         projectId: data.projectId, nodeId: id, task: instruction,
@@ -191,31 +254,22 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         ...(payload.useMemory === false ? { useMemory: false } : {}),
         ...(isFollowup ? { seedWorkflowJson: payload.resultWorkflowJson, history: buildHistory(priorConv) } : {}),
       },
-      {
-        onSuccess: (res) => applyBuildResult(res),
-        onError: (e) => {
-          // 隧道下长请求可能被切断（cloudflared ~100s/请求），但服务端仍在跑、最终结果会经 socket 回填。
-          // 这类网络错误不判失败——保持「运行中」并提示，等 socket 的 pendingBuildResult 到达再回填。
-          const netErr = /network|fetch|timeout|timed out|Failed to fetch|Load failed|ERR_|502|503|504|reset|aborted|socket hang/i.test(e.message || "");
-          if (netErr && awaitingBuildRef.current) {
-            update({ status: "running" });
-            toast.info("请求超时（可能是公网隧道对长任务的限制）——任务仍在后台运行，完成后会自动回填结果，请稍候。", { duration: 9000 });
-            // 兜底：一段时间后主动拉一次服务端已缓存的最终结果（防 socket 漏收）。
-            setTimeout(() => {
-              if (!awaitingBuildRef.current) return;
-              utils.superAgent.getBuildResult.fetch({ projectId: data.projectId, nodeId: id })
-                .then((r) => { if (r?.result && awaitingBuildRef.current) applyBuildResult(r.result as BuildResult); })
-                .catch(() => { /* 兜底失败无妨，socket 仍是主路径 */ });
-            }, 8000);
-            return;
-          }
-          awaitingBuildRef.current = false;
-          update({ status: "failed", errorMessage: e.message, conversation: [...conv, { role: "agent", text: "❌ " + e.message, status: "failed" }] });
-          toast.error("运行失败：" + e.message);
-        },
-      },
+      runHandlers as Parameters<typeof buildMut.mutate>[1],
     );
-  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.maxIterations, payload.showAllResources, llmModel, data.projectId, id, buildMut, update, applyBuildResult, utils]);
+  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.maxIterations, payload.showAllResources, payload.useMemory, payload.orchestrate, llmModel, data.projectId, id, buildMut, orchestrateMut, update, applyBuildResult, utils]);
+
+  // 画布助手「自动运行」：节点带 autoRun+task 建好后自动开跑一次（不需用户点运行）。
+  // 一次性：跑前清掉 autoRun 标记，避免刷新/重载/协作方重复触发。
+  const autoRanRef = useRef(false);
+  useEffect(() => {
+    if (autoRanRef.current) return;
+    if (mode !== "comfy") return;
+    if (!payload.autoRun || !payload.task?.trim()) return;
+    if (running || (payload.conversation?.length ?? 0) > 0 || (payload.status && payload.status !== "idle")) return;
+    autoRanRef.current = true;
+    update({ autoRun: false });
+    handleSend(payload.task.trim());
+  }, [payload.autoRun, payload.task, payload.status, payload.conversation, mode, running, handleSend, update]);
 
   // ── 代码任务模式（连续对话：claude --resume 续接同一会话，保留上下文与工作区文件）──
   const handleRunCode = useCallback(() => {
@@ -333,6 +387,14 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                     </span>
                   </label>
                   <label style={{ ...labelStyle, display: "flex", alignItems: "flex-start", gap: 6, cursor: running ? "not-allowed" : "pointer" }}>
+                    <input type="checkbox" checked={payload.orchestrate ?? false} disabled={running}
+                      onChange={(e) => update({ orchestrate: e.target.checked })}
+                      className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
+                    <span>编排模式（复杂目标自动拆解多工作流）<br />
+                      <span style={{ color: "var(--c-t4)" }}>开启后把输入当「复杂目标」，自动拆成多个 ComfyUI 子任务逐个搭建调通（失败自动重试），每个成功子任务落一个 ComfyUI 工作流节点。适合「做一整套/一个短片的多份工作流」。</span>
+                    </span>
+                  </label>
+                  <label style={{ ...labelStyle, display: "flex", alignItems: "flex-start", gap: 6, cursor: running ? "not-allowed" : "pointer" }}>
                     <input type="checkbox" checked={payload.useMemory ?? true} disabled={running}
                       onChange={(e) => update({ useMemory: e.target.checked })}
                       className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
@@ -407,7 +469,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); } }}
                 style={{ ...fieldStyle, resize: "vertical", flex: 1 }}
               />
-              <button onClick={handleSend} disabled={running}
+              <button onClick={() => handleSend()} disabled={running}
                 className="nodrag flex items-center justify-center rounded-lg" style={{ width: 38, height: 38, flexShrink: 0, background: running ? "var(--c-surface)" : accentA(0.16), border: `1px solid ${running ? BORDER : accentA(0.5)}`, color: running ? "var(--c-t4)" : accent, cursor: running ? "not-allowed" : "pointer" }}
                 title="发送（Enter 发送，Shift+Enter 换行）">
                 {running ? <Loader2 style={{ width: 15, height: 15 }} className="animate-spin" /> : <Send style={{ width: 15, height: 15 }} />}
