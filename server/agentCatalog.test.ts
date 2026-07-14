@@ -1,5 +1,31 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeOperation, sanitizeOperationDetailed } from "./_core/agentCatalog";
+import { sanitizeOperation, sanitizeOperationDetailed, catalogText } from "./_core/agentCatalog";
+
+describe("agentCatalog super_agent 门控（画布助手驱动工程智能体·A阶段）", () => {
+  it("catalogText 默认不含 super_agent；allowSuperAgent 时才列出", () => {
+    expect(catalogText()).not.toContain("super_agent");
+    const withSA = catalogText({ allowSuperAgent: true });
+    expect(withSA).toContain("super_agent");
+    expect(withSA).toContain("工程智能体");
+  });
+
+  it("无权限：super_agent create 被丢弃", () => {
+    expect(sanitizeOperation({ op: "create", nodeType: "super_agent", payload: { task: "搭一个 flux 出图工作流", autoRun: true } })).toBeNull();
+    const d = sanitizeOperationDetailed({ op: "create", nodeType: "super_agent", payload: { task: "x" } });
+    expect("drop" in d).toBe(true);
+  });
+
+  it("有权限：super_agent create 通过，白名单保留 task/autoRun/useMemory，丢弃幻觉字段", () => {
+    const op = sanitizeOperation(
+      { op: "create", tempId: "sa1", nodeType: "super_agent", payload: { task: "搭一个 flux+lora 高清出图工作流", autoRun: true, useMemory: false, maxIterations: 30, bogus: 1 } },
+      { allowSuperAgent: true },
+    );
+    expect(op).not.toBeNull();
+    expect(op!.nodeType).toBe("super_agent");
+    expect(op!.payload).toMatchObject({ task: "搭一个 flux+lora 高清出图工作流", autoRun: true, useMemory: false, maxIterations: 30 });
+    expect((op!.payload as Record<string, unknown>).bogus).toBeUndefined();
+  });
+});
 
 describe("agentCatalog.sanitizeOperation", () => {
   it("accepts a valid create op and filters unknown payload fields", () => {

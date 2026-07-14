@@ -192,6 +192,19 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     ],
   },
   {
+    type: "super_agent", label: "工程智能体", purpose:
+      "自建 ComfyUI「工程智能体」：给它一句自然语言任务，它会多轮自动搭建并真机调通一份 ComfyUI 工作流（自动选节点/连线/填参、校验、运行、按报错自愈）。" +
+      "适用：用自建 ComfyUI 且【模板库没有现成可用模板】、或需要一个定制/复杂工作流时——不用你手动引用 templateId，让它现搭。搭通后产出图/视频（产物在本节点上，不通过连线传递）。",
+    connectsTo: [],
+    fields: [
+      { name: "task", type: "string", desc: "要它搭的工作流的自然语言描述（越具体越好：出图还是出视频、用什么大模型/LoRA/风格、分辨率、关键节点等）" },
+      { name: "autoRun", type: "boolean", desc: "true=节点建好后自动开跑（无需用户点运行）；规划里想让它自动干活就设 true" },
+      { name: "customBaseUrl", type: "string", desc: "目标 ComfyUI 服务器地址（留空用全局默认服务器）" },
+      { name: "useMemory", type: "boolean", desc: "是否使用记忆体（资源记忆+工作流经验+已知坑），默认 true；关掉则忽略记忆直接读真机" },
+      { name: "maxIterations", type: "number", desc: "最大自驱轮次 4-60，默认 20；复杂工作流可调高" },
+    ],
+  },
+  {
     type: "note", label: "便签", purpose: "说明/批注，可连接任意节点",
     connectsTo: [],
     fields: [{ name: "content", type: "string", desc: "便签文本" }],
@@ -287,10 +300,13 @@ const ALL_SPEC_FIELDS = new Set<string>([
 const COMFY_ONLY_EXCLUDED = new Set<NodeType>(["image_gen", "video_task", "audio", "comfyui_image", "comfyui_video", "storyboard"]);
 
 /** Render the catalog as compact text for the LLM system prompt. In comfyOnly
- *  mode, the excluded generation nodes are dropped so the model can't pick them. */
-export function catalogText(opts: { comfyOnly?: boolean } = {}): string {
+ *  mode, the excluded generation nodes are dropped so the model can't pick them.
+ *  super_agent（工程智能体）仅在 allowSuperAgent（用户 L3+，能真正运行它）时列出，
+ *  否则不注入——避免给无权限用户规划出跑不起来的节点。 */
+export function catalogText(opts: { comfyOnly?: boolean; allowSuperAgent?: boolean } = {}): string {
   return AGENT_NODE_CATALOG
     .filter((s) => !(opts.comfyOnly && COMFY_ONLY_EXCLUDED.has(s.type)))
+    .filter((s) => s.type !== "super_agent" || opts.allowSuperAgent)
     .map((s) => {
       const fields = s.fields.map((f) => `${f.name}(${f.type}): ${f.desc}`).join("; ");
       const to = s.connectsTo.length ? s.connectsTo.join(", ") : "（无固定下游）";
@@ -325,7 +341,7 @@ export function templateKnowledgeText(
  */
 export function sanitizeOperation(
   raw: unknown,
-  opts: { comfyOnly?: boolean; validTemplateIds?: Set<number> } = {},
+  opts: { comfyOnly?: boolean; validTemplateIds?: Set<number>; allowSuperAgent?: boolean } = {},
 ): AgentOperation | null {
   const r = sanitizeOperationDetailed(raw, opts);
   return "op" in r ? r.op : null;
@@ -339,7 +355,7 @@ export function sanitizeOperation(
  */
 export function sanitizeOperationDetailed(
   raw: unknown,
-  opts: { comfyOnly?: boolean; validTemplateIds?: Set<number> } = {},
+  opts: { comfyOnly?: boolean; validTemplateIds?: Set<number>; allowSuperAgent?: boolean } = {},
 ): { op: AgentOperation } | { drop: string } {
   if (!raw || typeof raw !== "object") return { drop: "无法识别的操作（非对象）" };
   const o = raw as Record<string, unknown>;
@@ -362,6 +378,8 @@ export function sanitizeOperationDetailed(
     if (!nodeType || !SPEC_BY_TYPE.has(nodeType)) return { drop: `不支持的节点类型「${String(o.nodeType)}」` };
     // comfyOnly: drop any generation node that isn't comfyui_workflow.
     if (opts.comfyOnly && COMFY_ONLY_EXCLUDED.has(nodeType)) return { drop: `「仅 ComfyUI」模式下不支持 ${nodeType} 节点` };
+    // super_agent（工程智能体）需 L3+ 才能运行——无权限用户即使 LLM 提议也丢弃，避免建出跑不起来的节点。
+    if (nodeType === "super_agent" && !opts.allowSuperAgent) return { drop: "工程智能体节点需要 L3+ 权限，已跳过" };
     const spec = SPEC_BY_TYPE.get(nodeType)!;
     const allowed = new Set(spec.fields.map((f) => f.name));
     const payload: Record<string, unknown> = {};

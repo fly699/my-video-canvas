@@ -170,10 +170,11 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
   }, [payload.pendingBuildResult, applyBuildResult, update]);
 
   // ── ComfyUI 模式：连续对话发送 ──
-  const handleSend = useCallback(() => {
+  // taskOverride：画布助手「自动运行」等场景直接派任务（不依赖输入框内容）。
+  const handleSend = useCallback((taskOverride?: string) => {
     if (running) return;
-    const instruction = (inputRef.current?.value ?? inputText).trim();
-    if (!instruction) { toast.error("请输入指令"); return; }
+    const instruction = (typeof taskOverride === "string" ? taskOverride : (inputRef.current?.value ?? inputText)).trim();
+    if (!instruction) { if (!taskOverride) toast.error("请输入指令"); return; }
     const priorConv = payload.conversation ?? [];
     const isFollowup = !!payload.resultWorkflowJson && priorConv.length > 0;
     const conv: Turn[] = [...priorConv, { role: "user", text: instruction }];
@@ -216,6 +217,19 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
       },
     );
   }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.maxIterations, payload.showAllResources, llmModel, data.projectId, id, buildMut, update, applyBuildResult, utils]);
+
+  // 画布助手「自动运行」：节点带 autoRun+task 建好后自动开跑一次（不需用户点运行）。
+  // 一次性：跑前清掉 autoRun 标记，避免刷新/重载/协作方重复触发。
+  const autoRanRef = useRef(false);
+  useEffect(() => {
+    if (autoRanRef.current) return;
+    if (mode !== "comfy") return;
+    if (!payload.autoRun || !payload.task?.trim()) return;
+    if (running || (payload.conversation?.length ?? 0) > 0 || (payload.status && payload.status !== "idle")) return;
+    autoRanRef.current = true;
+    update({ autoRun: false });
+    handleSend(payload.task.trim());
+  }, [payload.autoRun, payload.task, payload.status, payload.conversation, mode, running, handleSend, update]);
 
   // ── 代码任务模式（连续对话：claude --resume 续接同一会话，保留上下文与工作区文件）──
   const handleRunCode = useCallback(() => {
@@ -407,7 +421,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); } }}
                 style={{ ...fieldStyle, resize: "vertical", flex: 1 }}
               />
-              <button onClick={handleSend} disabled={running}
+              <button onClick={() => handleSend()} disabled={running}
                 className="nodrag flex items-center justify-center rounded-lg" style={{ width: 38, height: 38, flexShrink: 0, background: running ? "var(--c-surface)" : accentA(0.16), border: `1px solid ${running ? BORDER : accentA(0.5)}`, color: running ? "var(--c-t4)" : accent, cursor: running ? "not-allowed" : "pointer" }}
                 title="发送（Enter 发送，Shift+Enter 换行）">
                 {running ? <Loader2 style={{ width: 15, height: 15 }} className="animate-spin" /> : <Send style={{ width: 15, height: 15 }} />}
