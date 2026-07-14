@@ -553,6 +553,33 @@
     color-scheme: dark;
   }
 
+  /* 创意模式「朴素浅色」变体：软纸白背景 + 中性灰面板 + 深岩灰文字，近零色偏、低对比，
+     不刺眼、久看不易疲劳。比 data-canvas-mode="creative" 单选择器更高优先级，故 data-canvas-theme
+     ="light" 时覆盖上面的近黑皮肤；默认 dark 时本块不生效。 */
+  :root[data-canvas-mode="creative"][data-canvas-theme="light"] {
+    --c-canvas:   #f3f2ef;                  /* 软纸白（非纯白，防刺眼） */
+    --c-base:     #eceae6;                  /* 顶栏/dock/面板：温和米灰 */
+    --c-surface:  #f0efeb;                  /* cards */
+    --c-elevated: #e3e1dc;                  /* 控件/抬升 */
+    --c-overlay:  #eeece8;                  /* 浮层（略高于面板，带轻阴影区分） */
+    --c-input:    #e6e4df;                  /* 凹陷输入底 */
+    --c-bd1:      oklch(0 0 0 / 0.06);      /* faint divider */
+    --c-bd2:      oklch(0 0 0 / 0.11);      /* node borders */
+    --c-bd3:      oklch(0 0 0 / 0.18);      /* stronger border */
+    --c-t1:       #2c2c30;                  /* 深岩灰（非纯黑，降低对比疲劳） */
+    --c-t2:       #55555c;                  /* secondary */
+    --c-t3:       #7c7c83;                  /* labels */
+    --c-t4:       #a6a6ac;                  /* placeholder */
+    --c-node-bg:  #f0efeb;                  /* light cards */
+    /* 反色强调（浅色下发送按钮=深底浅箭头、选中态近深灰，与深色变体镜像） */
+    --ui-accent:  #2c2c30;
+    --c-node-shadow-rest:     0 1px 2px oklch(0 0 0 / 0.06), 0 3px 12px oklch(0 0 0 / 0.07);
+    --c-node-shadow-hover:    0 5px 18px oklch(0 0 0 / 0.10), 0 1px 4px oklch(0 0 0 / 0.07);
+    --c-node-shadow-selected: 0 8px 28px oklch(0 0 0 / 0.14), 0 2px 7px oklch(0 0 0 / 0.09);
+    --c-node-shadow-run:      0 6px 20px oklch(0 0 0 / 0.10);
+    color-scheme: light;
+  }
+
   /* ── UI style skin: "studio" (media-first cinema). Orthogonal to data-theme.
      Structural tokens (--ui-*) apply on EVERY theme so the studio layout/shape is
      consistent. The signature cinematic COLOR palette is scoped to the dark/default
