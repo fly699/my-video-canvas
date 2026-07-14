@@ -311,12 +311,18 @@ export const superAgentRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await assertComfyuiAllowed(ctx);
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
-      if (!baseUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点里填写目标服务器或服务端设置 COMFYUI_BASE_URL" });
+      // #162 多服务器负载均衡：指定了 customBaseUrl 只用它；否则拉取全局服务器列表在多台间均衡分配。
+      const explicit = input.customBaseUrl?.trim();
+      let servers = explicit ? [explicit] : (await db.getComfyGlobalServers().catch(() => [])).map((s) => s.trim()).filter(Boolean);
+      if (!servers.length && ENV.comfyuiBaseUrl) servers = [ENV.comfyuiBaseUrl];
+      if (!servers.length) throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在管理后台添加全局服务器、或在节点填写目标服务器/设置 COMFYUI_BASE_URL" });
+      const baseUrl = servers[0];
 
       const useMemory = input.useMemory !== false;
-      const installTools = await resolveInstallTools(ctx, baseUrl);
-      const tools = { ...createComfyTools({ baseUrl, projectId: input.projectId, nodeId: input.nodeId, useMemory }), ...installTools };
+      // 每台服务器预解析安装工具（默认空）+ 各自一套 comfy 工具（记忆/资源按服务器归属）。
+      const installByServer = new Map<string, Pick<ComfyAgentTools, "installModel" | "installNode">>();
+      for (const s of servers) installByServer.set(s, await resolveInstallTools(ctx, s));
+      const makeTools = (s: string): ComfyAgentTools => ({ ...createComfyTools({ baseUrl: s, projectId: input.projectId, nodeId: input.nodeId, useMemory }), ...(installByServer.get(s) ?? {}) });
       const llm = createAgentLLM(ctx, input.model);
 
       const signal = { aborted: false };
@@ -325,7 +331,7 @@ export const superAgentRouter = router({
       let result;
       try {
         result = await runOrchestration({
-          goal: input.goal, baseUrl, tools, llm, signal, useMemory,
+          goal: input.goal, baseUrl, tools: makeTools(baseUrl), servers, makeTools, llm, signal, useMemory,
           maxSubtasks: input.maxSubtasks, maxIterations: input.maxIterations ?? 20,
           emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
         });
