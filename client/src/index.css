@@ -1752,6 +1752,15 @@ button:active:not(:disabled) {
 :root[data-canvas-mode="creative"] .react-flow__edge.selected .react-flow__edge-path {
   stroke-opacity: 0.7 !important;
 }
+/* 创意浅色变体：近白线在浅底上完全看不见 → 改深墨线（更高特异性覆盖上面的白线；
+   静止态透明度略高一档，浅底上更清晰）。 */
+:root[data-canvas-mode="creative"][data-canvas-theme="light"] .react-flow__edge-path {
+  stroke: oklch(0.30 0 0) !important;
+  stroke-opacity: 0.42 !important;
+}
+:root[data-canvas-mode="creative"][data-canvas-theme="light"] .react-flow__edge.selected .react-flow__edge-path {
+  stroke-opacity: 0.85 !important;
+}
 
 /* Creative mode: filmstrip follows dark tokens */
 :root[data-canvas-mode="creative"] .canvas-filmstrip {

@@ -70,8 +70,11 @@ export const CustomEdge = memo(function CustomEdge({
   const dimmed = focusState === "dim";
   // LibTV 化 3.1：创意模式连线为「低透明细白直线」——路径与配色都按模式分支，
   // hooks 需在 orderBadge 计算之前取得。
-  const { mode: canvasMode } = useCanvasMode();
+  const { mode: canvasMode, creativeTheme } = useCanvasMode();
   const isCreative = canvasMode === "creative";
+  // 创意浅色变体：连线的「反色强调」要翻成深色，否则近白线在浅底上完全看不见。
+  const isCreativeLight = isCreative && creativeTheme === "light";
+  const inkBase = isCreativeLight ? "0.30 0 0" : "0.97 0 0"; // 浅色→深墨线；深色→近白线
   const { uiStyle } = useUIStyle();
   const isStudio = uiStyle === "studio";
   let orderBadge: { x: number; y: number; n: number } | null = null;
@@ -149,8 +152,9 @@ export const CustomEdge = memo(function CustomEdge({
     : sourceFailed
       ? "oklch(0.62 0.24 25 / 0.9)"
       : isCreative
-        // LibTV：低透明细白线，交互只提亮不变彩色（反色强调）；完成/失败保留状态色。
-        ? (selected ? "oklch(0.97 0 0 / 0.95)" : hovered ? "oklch(0.97 0 0 / 0.6)" : "oklch(0.97 0 0 / 0.25)")
+        // LibTV：低透明细「墨线」，交互只加深/提亮不变彩色（反色强调）；完成/失败保留状态色。
+        // 深色皮肤=近白线；浅色皮肤=深墨线（否则白线在浅底上不可见），静止态浅色下透明度略高更清晰。
+        ? (selected ? `oklch(${inkBase} / 0.95)` : hovered ? `oklch(${inkBase} / ${isCreativeLight ? 0.7 : 0.6})` : `oklch(${inkBase} / ${isCreativeLight ? 0.42 : 0.25})`)
         : selected
           ? (typeColor ?? "oklch(0.68 0.24 285)")
           : hovered
@@ -224,7 +228,7 @@ export const CustomEdge = memo(function CustomEdge({
           // upgraded for selected / completed / failed states.
           // LibTV（创意）极简：常态不带彩色光晕，只留运行/完成/失败的状态辉光。
           filter: selected
-            ? (isCreative ? "drop-shadow(0 0 5px oklch(0.97 0 0 / 0.35))" : "drop-shadow(0 0 6px oklch(0.68 0.22 285 / 0.55))")
+            ? (isCreative ? `drop-shadow(0 0 5px oklch(${inkBase} / 0.35))` : "drop-shadow(0 0 6px oklch(0.68 0.22 285 / 0.55))")
             : sourceCompleted
               ? "drop-shadow(0 0 5px oklch(0.65 0.20 155 / 0.45))"
               : sourceFailed
