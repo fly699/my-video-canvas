@@ -11,6 +11,7 @@ import { ENV } from "../_core/env";
 import { runComfyAgent, extractRunLessons, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
 import { runOrchestration } from "../_core/superAgent/orchestrator";
 import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferenceCandidates } from "../_core/superAgent/comfyAdapters";
+import { pickLeastLoaded } from "../_core/superAgent/serverAssign";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
@@ -74,6 +75,9 @@ const superProc = levelProcedure(4); // 代码任务=任意执行级能力，限
 
 // 运行中任务的取消登记表：key=`${projectId}:${nodeId}` → 取消函数（comfy=置 abort 位；code=杀进程）。
 const runningJobs = new Map<string, () => void>();
+
+// #170 单份构建的「在飞负载」计数（按服务器 url）：无显式地址时择空闲机自分配，多节点并发自动均衡。
+const serverLoad = new Map<string, number>();
 const jobKey = (projectId: number, nodeId: string | undefined) => `${projectId}:${nodeId ?? ""}`;
 
 // 代码任务「连续对话」的会话登记表：key=jobKey → { 持久工作区目录, claude 会话 id, 最后使用时刻 }。
@@ -137,13 +141,14 @@ export const superAgentRouter = router({
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await assertComfyuiAllowed(ctx);
 
-      // 地址解析：节点自定义 > 环境变量 COMFYUI_BASE_URL > 后台「全局服务器列表」第一台。
-      // 此前只查到 ENV 就停——用户在后台设了「默认服务器」（存 DB 全局列表），单份工作流构建路径
-      // 却读不到、每个工程智能体节点都误报「未配置」（与 orchestrate/canvas resolveComfyBase 不一致的翻车）。
-      const baseUrl = input.customBaseUrl?.trim()
-        || ENV.comfyuiBaseUrl
-        || (await db.getComfyGlobalServers().catch(() => []))[0]?.trim()
-        || "";
+      // 地址解析：节点自定义 > 环境变量 COMFYUI_BASE_URL > 后台「全局服务器列表」（多台时按在飞负载
+      // 最少自选，实现自动分配/均衡；#170）。此前只查到 ENV 就停——用户在后台设了「默认服务器」（存 DB
+      // 全局列表）读不到、每个工程智能体节点都误报「未配置」（与 orchestrate/canvas resolveComfyBase 不一致的翻车）。
+      let baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl || "";
+      if (!baseUrl) {
+        const globals = await db.getComfyGlobalServers().catch(() => []);
+        baseUrl = pickLeastLoaded(globals, serverLoad) ?? "";
+      }
       if (!baseUrl) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在管理后台「ComfyUI 服务器」页添加全局默认地址，或在节点里填写目标服务器/设置 COMFYUI_BASE_URL" });
       }
@@ -209,6 +214,7 @@ export const superAgentRouter = router({
       const signal = { aborted: false };
       const key = jobKey(input.projectId, input.nodeId);
       runningJobs.set(key, () => { signal.aborted = true; });
+      serverLoad.set(baseUrl, (serverLoad.get(baseUrl) ?? 0) + 1); // #170 计入在飞负载（供无地址节点自分配择空闲机）
       let result;
       try {
         result = await runComfyAgent({
@@ -226,6 +232,7 @@ export const superAgentRouter = router({
         });
       } finally {
         runningJobs.delete(key);
+        serverLoad.set(baseUrl, Math.max(0, (serverLoad.get(baseUrl) ?? 1) - 1));
       }
 
       writeAuditLog({
