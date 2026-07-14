@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -74,6 +74,10 @@ export function AiClientPanel() {
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadMut = trpc.upload.uploadAiChatImage.useMutation();
   const clearMut = trpc.aiChat.clearMessages.useMutation();
+  // #172-批2 代码真实执行：工件「运行」桥接工程智能体沙箱（runCodeTask，需 L4 + 服务端开启）。
+  const codeStatusQuery = trpc.superAgent.codeStatus.useQuery(undefined, { enabled: codeMode, retry: false });
+  const runCodeMut = trpc.superAgent.runCodeTask.useMutation();
+  const [runResult, setRunResult] = useState<{ status: string; text: string } | null>(null);
 
   const activeNode = useMemo(() => nodes.find((n) => n.id === active), [nodes, active]);
   const activeNodeless = useMemo(() => nodeless.find((s) => s.id === active), [nodeless, active]);
@@ -232,6 +236,23 @@ export function AiClientPanel() {
     const node = useCanvasStore.getState().addNode("note", base);
     useCanvasStore.getState().updateNodeData(node.id, { content: "```" + (a.lang || "") + "\n" + a.content + "\n```" });
     toast.success("代码已落成便签节点");
+  };
+  // 运行工件：把代码作为任务派给工程智能体沙箱真实执行（runCodeTask），回填运行结果。
+  const runArtifact = (a: CodeArtifact) => {
+    if (!projectId) { toast.error("画布未就绪"); return; }
+    if (runCodeMut.isPending) return;
+    setRunResult(null);
+    const task = `请把下面的代码保存为 ${a.filename} 并在沙箱中运行，返回运行输出/结果（若报错请贴出完整报错）：\n\n\`\`\`${a.lang || ""}\n${a.content}\n\`\`\``;
+    // 执行走本机桥接沙箱：仅本机桥接模型（claude-local*/gpt-local*）可传给 runCodeTask；
+    // kie/云端模型无法本机执行 → 省略 model 用桥接默认（本机订阅模型）。
+    const runModel = (model.startsWith("claude-local") || model.startsWith("gpt-local")) ? model : undefined;
+    runCodeMut.mutate(
+      { projectId, nodeId: `code-${active ?? "run"}`, task, ...(runModel ? { model: runModel } : {}) },
+      {
+        onSuccess: (r) => setRunResult({ status: r.status, text: r.result ?? r.diagnostic ?? "（无输出）" }),
+        onError: (e) => { setRunResult({ status: "failed", text: e.message }); toast.error("运行失败：" + e.message); },
+      },
+    );
   };
 
   // 回答一键落成画布节点（文本→便签、图片附件→图像节点）。
@@ -513,6 +534,12 @@ export function AiClientPanel() {
                   style={{ ...iconBtn, width: 24, height: 24, color: showPreview ? ACCENT : "var(--c-t3)" }}><Eye size={14} /></button>
               )}
               {artifact && <>
+                {codeStatusQuery.data?.enabled && (
+                  <button onClick={() => runArtifact(artifact)} disabled={runCodeMut.isPending} className="nodrag" title="在工程智能体沙箱运行（本机桥接）"
+                    style={{ ...iconBtn, width: 24, height: 24, color: runCodeMut.isPending ? "var(--c-t4)" : "oklch(0.62 0.2 155)" }}>
+                    {runCodeMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                  </button>
+                )}
                 <button onClick={() => copyText(artifact.content)} className="nodrag" title="复制代码" style={{ ...iconBtn, width: 24, height: 24 }}><Copy size={13} /></button>
                 <button onClick={() => downloadArtifact(artifact)} className="nodrag" title="下载文件" style={{ ...iconBtn, width: 24, height: 24 }}><Download size={13} /></button>
                 <button onClick={() => dropArtifactToCanvas(artifact)} className="nodrag" title="落成便签节点" style={{ ...iconBtn, width: 24, height: 24 }}><Plus size={14} /></button>
@@ -529,6 +556,25 @@ export function AiClientPanel() {
                 <pre style={{ margin: 0, padding: "10px 12px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, lineHeight: 1.5, color: "var(--c-t1)", whiteSpace: "pre", minWidth: "min-content" }}><code>{artifact.content}</code></pre>
               )}
             </div>
+            {/* 运行结果 / 代码任务未启用提示 */}
+            {(runResult || runCodeMut.isPending) && (
+              <div style={{ flexShrink: 0, maxHeight: "40%", overflow: "auto", borderTop: "1px solid var(--c-bd1)", background: "var(--c-canvas, var(--c-base))" }} className="nowheel">
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", fontSize: 10.5, color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd1)" }}>
+                  <Play size={11} /><span>运行结果{runResult ? `（${runResult.status === "success" ? "成功" : runResult.status === "aborted" ? "已拦截" : "失败"}）` : "…"}</span>
+                  {runResult && <button onClick={() => setRunResult(null)} className="nodrag" style={{ ...iconBtn, width: 18, height: 18, marginLeft: "auto" }}><X size={11} /></button>}
+                </div>
+                {runCodeMut.isPending ? (
+                  <div style={{ padding: "10px 12px", color: "var(--c-t4)", fontSize: 12 }}><Loader2 size={14} className="animate-spin" /> 沙箱运行中…</div>
+                ) : (
+                  <pre style={{ margin: 0, padding: "10px 12px", fontFamily: "ui-monospace, monospace", fontSize: 11.5, lineHeight: 1.5, color: runResult?.status === "success" ? "var(--c-t1)" : "oklch(0.7 0.18 25)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{runResult?.text}</pre>
+                )}
+              </div>
+            )}
+            {artifact && codeStatusQuery.data && !codeStatusQuery.data.enabled && (
+              <div style={{ flexShrink: 0, padding: "6px 10px", borderTop: "1px solid var(--c-bd1)", fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5 }}>
+                代码任务未启用——「运行」需超管 L4 + 服务端开启（可复制/下载/落成节点/预览照常可用）。
+              </div>
+            )}
           </div>
         )}
       </div>
