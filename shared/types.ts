@@ -765,6 +765,11 @@ export interface AudioNodeData {
   toolContinueAt?: number;               // extend 起始秒
   toolStems?: Record<string, string>;    // 分离产出各音轨 URL
   toolLyrics?: string;                   // 写歌词产出文本
+  // ── #153 音乐工具第二批：本站生成的 Suno 曲目持久化 audio_id/task_id，供「原生续写」等
+  //    依赖 audio_id 的工具使用（非上传路径）。仅当本节点由 Poyo Suno generate-music 产出时写入。
+  poyoAudioId?: string;                  // Poyo 曲目唯一 id（原生续写/段落重写入参）
+  poyoTaskId?: string;                   // Poyo 生成任务 id
+  poyoMv?: string;                       // 产出所用 Suno 版本（V4/V4_5/…），原生续写沿用
   // Legacy compat
   source?: AudioSource;
 }

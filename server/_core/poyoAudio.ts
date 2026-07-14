@@ -64,6 +64,10 @@ export interface PoyoMusicResult {
   url: string;
   duration?: number;
   imageUrl?: string;            // Suno cover image (detail/music)
+  // #153 音频/任务唯一标识——持久化到节点后，作为「原生续写/段落重写/分离/加人声」等
+  // 依赖 audio_id 的第二批工具的入参。仅 Suno 系 generate-music / MiniMax 的 detail 返回。
+  audioId?: string;
+  taskId?: string;
   // ElevenLabs V3 TTS with timestamps enabled returns a second `timestamps.json`
   // file (file_type:"other"). Surfaced here so the TTS path can hand back a
   // download URL. The music path never sets this.
@@ -141,6 +145,8 @@ async function pollPoyoDetailMusic(taskId: string): Promise<PoyoMusicResult> {
         url,
         duration: typeof file?.duration === "number" ? (file.duration as number) : undefined,
         imageUrl: typeof file?.image_url === "string" ? (file.image_url as string) : undefined,
+        audioId: typeof file?.audio_id === "string" ? (file.audio_id as string) : undefined,
+        taskId,
       };
     }
     if (IN_PROGRESS_STATUSES.has(d.status)) continue;
@@ -159,7 +165,7 @@ async function pollPoyoStatusAudio(taskId: string): Promise<PoyoMusicResult> {
     });
     if (!res.ok) continue;
     const body = (await res.json()) as {
-      data?: { status: string; files?: Array<{ file_url: string; file_type: string; duration?: number }>; error_message?: string };
+      data?: { status: string; files?: Array<{ file_url: string; file_type: string; duration?: number; audio_id?: string }>; error_message?: string };
     };
     const d = body.data;
     if (!d) continue;
@@ -167,7 +173,7 @@ async function pollPoyoStatusAudio(taskId: string): Promise<PoyoMusicResult> {
       const file = d.files?.find((f) => f.file_type === "audio") ?? d.files?.[0];
       if (!file?.file_url) throw new Error("[CHARGED] Poyo 音乐生成完成但响应未含 audio file URL（积分已扣，请勿重试）");
       const url = await persistAudioUrl(file.file_url);
-      return { url, duration: file.duration };
+      return { url, duration: file.duration, audioId: typeof file.audio_id === "string" ? file.audio_id : undefined, taskId };
     }
     if (IN_PROGRESS_STATUSES.has(d.status)) continue;
     throw new Error(`Poyo music status="${d.status}": ${d.error_message ?? "no detail"}`);
@@ -244,20 +250,24 @@ export async function submitAndPollPoyoMusic(
 // 提交都走 /api/generate/submit + 轮询 /api/generate/detail/music（同 Suno），
 // 但 files[0] 的结果字段各不相同：cover/extend→audio_url、separate→vocal_removal(JSON)、
 // lyrics→text。故此处单独走一套 detail 解析。
-export type PoyoMusicTool = "sep_vocals" | "cover" | "extend" | "lyrics";
+// extend_native（#153 第二批）：对「本站已生成」的 Suno 曲目原生续写，用 audio_id（非 upload_url）。
+export type PoyoMusicTool = "sep_vocals" | "cover" | "extend" | "lyrics" | "extend_native";
 
 // UI 工具 id → Poyo wire model（禁止改名，旧节点 payload 引用这些值）。
 export const POYO_MUSIC_TOOL_WIRE: Record<PoyoMusicTool, string> = {
-  sep_vocals: "upload-and-separate-vocals",
-  cover:      "upload-and-cover-audio",
-  extend:     "upload-and-extend-audio",
-  lyrics:     "generate-lyrics",
+  sep_vocals:   "upload-and-separate-vocals",
+  cover:        "upload-and-cover-audio",
+  extend:       "upload-and-extend-audio",
+  lyrics:       "generate-lyrics",
+  extend_native: "extend-music",
 };
 
 export interface SubmitPoyoMusicToolOptions {
   tool: PoyoMusicTool;
-  /** 源音频公网 URL（sep→audio_url；cover/extend→upload_url；lyrics 不需要）。 */
+  /** 源音频公网 URL（sep→audio_url；cover/extend→upload_url；lyrics/extend_native 不需要）。 */
   audioUrl?: string;
+  /** #153 本站曲目的 audio_id（extend_native 必填；非上传，指向已生成的 Suno 曲目）。 */
+  audioId?: string;
   prompt?: string;                 // cover/extend 风格描述或歌词；lyrics 主题描述
   // 人声分离
   sepModel?: "base" | "enhanced" | "instrumental";
@@ -280,6 +290,9 @@ export interface PoyoMusicToolResult {
   stems?: Record<string, string>;
   lyrics?: string;                 // 写歌词产出文本
   title?: string;
+  // #153 extend_native 产出的**新**曲目 audio_id / task_id——回写节点即可继续链式续写。
+  audioId?: string;
+  taskId?: string;
 }
 
 const VALID_MV = new Set(["V4", "V4_5", "V4_5ALL", "V4_5PLUS", "V5", "V5_5"]);
@@ -321,6 +334,26 @@ export async function submitAndPollPoyoMusicTool(opts: SubmitPoyoMusicToolOption
     const text = typeof file.text === "string" ? file.text : "";
     if (!text) throw new Error("[CHARGED] 写歌词完成但响应未含歌词文本（积分已扣，请勿重试）");
     return { kind: "lyrics", lyrics: text, title: typeof file.title === "string" ? file.title : undefined };
+  }
+
+  // ── #153 原生续写：对本站已生成的 Suno 曲目用 audio_id 续写（Simple 模式：仅 audio_id + mv）──
+  // 文档 extend-music：Simple(`default_param_flag:false`) 仅需 audio_id + mv，自动续写。
+  if (opts.tool === "extend_native") {
+    const audioId = (opts.audioId ?? "").trim();
+    if (!audioId) throw new Error("该音频缺少 audio_id，无法原生续写（请用「本站生成的 Suno 曲目」）");
+    const input: Record<string, unknown> = { audio_id: audioId, mv: clampMv(opts.mv), default_param_flag: false };
+    if ((opts.prompt ?? "").trim()) input.prompt = (opts.prompt as string).trim().slice(0, 500);
+    const taskId = await poyoSubmit(POYO_MUSIC_TOOL_WIRE.extend_native, input);
+    const file = await pollPoyoToolDetail(taskId);
+    const upstream = file.audio_url;
+    if (typeof upstream !== "string" || !upstream) throw new Error("[CHARGED] 原生续写完成但响应未含 audio_url（积分已扣，请勿重试）");
+    const url = await persistAudioUrl(upstream);
+    return {
+      kind: "audio", url,
+      duration: typeof file.duration === "number" ? file.duration : undefined,
+      audioId: typeof file.audio_id === "string" ? file.audio_id : undefined,
+      taskId,
+    };
   }
 
   // 其余三个工具都需要源音频。
