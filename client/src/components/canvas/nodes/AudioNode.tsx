@@ -25,6 +25,7 @@ import { useCanvasMode } from "../../../contexts/CanvasModeContext";
 import { ModelPicker } from "../ModelPicker";
 import { estimateMusicCost, estimateTtsCost, estimateAudioToolCost, costEstimateLabel } from "@/lib/costEstimate";
 import { useDisabledModels } from "@/lib/useDisabledModels";
+import { sunoMvForModel } from "@/lib/sunoMv";
 
 interface Props {
   id: string;
@@ -510,11 +511,16 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
     onSuccess: (result) => {
       audioRef.current?.pause();
       setIsPlaying(false);
+      // #153 持久化 audio_id/task_id（仅 Suno 系有 mv）——供「原生续写」等第二批工具使用。
+      const mv = sunoMvForModel(payload.musicModel);
       updateNodeData(id, {
         url: result.url,
         duration: result.duration,
         status: "success",
         name: `${payload.musicStyle ? payload.musicStyle + " · " : ""}${payload.musicPrompt?.slice(0, 24) ?? "配乐"}`,
+        poyoAudioId: mv && result.audioId ? result.audioId : undefined,
+        poyoTaskId: mv && result.audioId ? result.taskId : undefined,
+        poyoMv: mv && result.audioId ? mv : undefined,
       });
       toast.success("配乐生成完成");
     },
@@ -528,7 +534,13 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       audioRef.current?.pause();
       setIsPlaying(false);
       if (result.kind === "audio" && result.url) {
-        updateNodeData(id, { url: result.url, duration: result.duration, status: "success", toolStems: undefined, toolLyrics: undefined, name: payload.toolModel === "cover" ? "翻唱" : "续写音频" });
+        // #153 原生续写：产出新曲目，回写新的 audio_id/task_id 以便继续链式续写（mv 沿用）。
+        const isNativeExtend = !!result.audioId && !!payload.poyoAudioId;
+        updateNodeData(id, {
+          url: result.url, duration: result.duration, status: "success", toolStems: undefined, toolLyrics: undefined,
+          name: payload.toolModel === "cover" ? "翻唱" : "续写音频",
+          ...(isNativeExtend ? { poyoAudioId: result.audioId, poyoTaskId: result.taskId } : {}),
+        });
         toast.success("生成完成");
       } else if (result.kind === "stems" && result.stems) {
         // 主 url 取人声（无则任一轨），全部轨存 toolStems 供列表展示/下载。
@@ -745,6 +757,21 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       ...(musicModelIsKie(modelVal) ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
       // 实时点数预估随请求上报，成功/失败都计入管理员日志（仅供参考）。
       estimatedCost: costEstimateLabel(estimateMusicCost(modelVal)) || undefined,
+      projectId: data.projectId,
+    });
+  };
+
+  // #153 原生续写：对本站生成的 Suno 曲目用其 audio_id 续写（无需上传源音频）。仅当本节点
+  // 持久化了 poyoAudioId（Suno 系产出）时可用；产出新曲目并回写新的 audio_id 以便继续链式续写。
+  const handleNativeExtend = () => {
+    if (toolMutation.isPending || musicMutation.isPending) return;
+    if (!payload.poyoAudioId) { toast.error("该音频不支持原生续写（仅限本站 Suno 生成的曲目）"); return; }
+    toolMutation.mutate({
+      tool: "extend_native",
+      audioId: payload.poyoAudioId,
+      mv: (payload.poyoMv || undefined) as "V4" | "V4_5" | "V4_5ALL" | "V4_5PLUS" | "V5" | "V5_5" | undefined,
+      prompt: payload.musicPrompt?.trim() || undefined, // 可选：给续写方向
+      estimatedCost: costEstimateLabel(estimateAudioToolCost("extend")) || undefined,
       projectId: data.projectId,
     });
   };
@@ -1188,6 +1215,21 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
               label="生成配乐"
               costLabel={costEstimateLabel(estimateMusicCost(normalizeMusicModel(payload.musicModel ?? payload.aiModel)))}
             />
+            {/* #153 原生续写：本站 Suno 曲目生成后出现——用 audio_id 直接续写，无需上传源音频。 */}
+            {payload.poyoAudioId && (
+              <button
+                className="nodrag"
+                onClick={handleNativeExtend}
+                disabled={toolMutation.isPending || musicMutation.isPending}
+                title="用本曲的 audio_id 原生续写（Suno），产出更长的曲目"
+                style={{ marginTop: 6, width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)",
+                  opacity: (toolMutation.isPending || musicMutation.isPending) ? 0.6 : 1 }}
+              >
+                {toolMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} 原生续写
+              </button>
+            )}
           </>
           );
         })()}

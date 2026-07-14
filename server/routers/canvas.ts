@@ -2460,7 +2460,9 @@ export const audioGenRouter = router({
           });
           writeAuditLog({ ctx, action: "audio_music", detail: { model: input.model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration, ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}), success: true } });
           await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "kie", model: input.model, url: result.url, name: input.model });
-          return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
+          // kie Suno 走自有 key 体系，不提供 Poyo 的 audio_id（原生续写不适用）——补 undefined 使
+          // 两条返回分支形状一致（否则前端 onSuccess 取 result.audioId 报缺属性）。
+          return { url: result.url, duration: result.duration, imageUrl: result.imageUrl, audioId: undefined as string | undefined, taskId: undefined as string | undefined };
         }).catch(auditMusicFail);
       }
       await assertWhitelisted(ctx);
@@ -2494,7 +2496,8 @@ export const audioGenRouter = router({
           detail: { model, prompt: truncate(input.prompt), resultUrl: result.url, duration: result.duration, ...(input.estimatedCost ? { estimatedCost: input.estimatedCost } : {}), success: true },
         });
         await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "audio", source: "generated", provider: "poyo", model, url: result.url, name: model });
-        return { url: result.url, duration: result.duration, imageUrl: result.imageUrl };
+        // #153 回传 audio_id / task_id——节点持久化后作为第二批「原生续写」等工具的入参。
+        return { url: result.url, duration: result.duration, imageUrl: result.imageUrl, audioId: result.audioId, taskId: result.taskId };
       }).catch(auditMusicFail);
     }),
 
@@ -2760,8 +2763,9 @@ export const audioGenRouter = router({
   generateMusicTool: protectedProcedure
     .input(
       z.object({
-        tool: z.enum(["sep_vocals", "cover", "extend", "lyrics"]),
-        audioUrl: mediaUrlSchema.optional(),      // sep/cover/extend 的源音频（lyrics 不需要）
+        tool: z.enum(["sep_vocals", "cover", "extend", "lyrics", "extend_native"]),
+        audioUrl: mediaUrlSchema.optional(),      // sep/cover/extend 的源音频（lyrics/extend_native 不需要）
+        audioId: z.string().max(128).optional(),  // #153 extend_native：本站 Suno 曲目的 audio_id
         prompt: z.string().max(5000).optional(),  // cover/extend 风格描述；lyrics 主题
         // 人声分离
         sepModel: z.enum(["base", "enhanced", "instrumental"]).optional(),
@@ -2781,11 +2785,12 @@ export const audioGenRouter = router({
       await assertWhitelisted(ctx);  // Poyo 系，与 generateMusic 同门控
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       if (input.audioUrl) guardUrl(input.audioUrl);
-      const wireLabel = { sep_vocals: "人声分离", cover: "翻唱/转曲风", extend: "音频续写", lyrics: "写歌词" }[input.tool];
+      const wireLabel = { sep_vocals: "人声分离", cover: "翻唱/转曲风", extend: "音频续写", lyrics: "写歌词", extend_native: "原生续写" }[input.tool];
       return dedupe("audioGen.generateMusicTool", ctx.user.id, input, async () => {
         const result = await submitAndPollPoyoMusicTool({
           tool: input.tool,
           audioUrl: input.audioUrl,
+          audioId: input.audioId,
           prompt: input.prompt,
           sepModel: input.sepModel,
           sepOutput: input.sepOutput,
