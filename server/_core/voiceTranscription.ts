@@ -27,6 +27,9 @@
  */
 import { ENV } from "./env";
 import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { downloadToTemp, execFileAsync } from "./videoEditor";
 
 export type TranscribeOptions = {
@@ -98,146 +101,170 @@ export function resolveTranscribeEndpoint(): { baseUrl: string; apiKey: string }
 export async function transcribeAudio(
   options: TranscribeOptions
 ): Promise<TranscriptionResponse | TranscriptionError> {
-  try {
-    // Step 1: Resolve the transcription endpoint (Forge / OpenAI / explicit override).
-    const endpoint = resolveTranscribeEndpoint();
-    if (!endpoint) {
-      return {
-        error: "Voice transcription service is not configured",
-        code: "SERVICE_ERROR",
-        details: "请设置以下之一：OPENAI_API_KEY（走 OpenAI 官方 whisper-1）、BUILT_IN_FORGE_API_URL+BUILT_IN_FORGE_API_KEY、或 TRANSCRIBE_API_URL+TRANSCRIBE_API_KEY（自建 OpenAI 兼容转写端点）",
-      };
-    }
-
-    // Step 2: 抽音轨（与 video-use 一致：先 ffmpeg 从视频/音频提取纯音频，再转写）。
-    // 归一到 16kHz 单声道 mp3 —— 既满足转写端点的格式白名单（原来把整段视频丢给 Groq，
-    // 它按扩展名严格校验直接 400），又把长视频体积压到极小。downloadToTemp 内含 SSRF 防护
-    // 与我方存储解析（含 302 重定向复检）。ffmpeg 缺失/源无音轨/解码失败时回退：直接送
-    // 原文件（用修正后的合法扩展名）。
-    let payload: { buffer: Buffer; filename: string; mime: string } | null = null;
-    let srcTemp: string | null = null;
-    let audioTemp: string | null = null;
-    try {
-      try {
-        srcTemp = await downloadToTemp(options.audioUrl, "src");
-      } catch (dlErr) {
-        return { error: "Failed to fetch audio file", code: "SERVICE_ERROR", details: dlErr instanceof Error ? dlErr.message.slice(0, 200) : "download failed" };
-      }
-      // 安全门（防 LFI/SSRF）：源文件是用户可控内容。**绝不能**先把它交给 ffmpeg/ffprobe 去
-      // 自动探测容器——DASH/HLS 等「清单型」子解复用器会去抓 manifest 里引用的外部 URL
-      // （内网 http、云元数据 169.254.169.254、file://），且**无视 -protocol_whitelist**（真机
-      // strace/nc 实测确有外连），连 ffprobe 探测这一步都会触发。故改为 **Node 侧 magic 字节
-      // 白名单**：只有识别为二进制 A/V 容器的文件才交给 ffmpeg 抽音轨；文本清单(m3u8/MPD/
-      // ffconcat)与未知内容一律不碰 ffmpeg，直接原样直送转写端点（清单在第三方端点会被判非法
-      // 音频而拒，无本机 SSRF）。`-protocol_whitelist` 仍保留作纵深防御（挡顶层远程输入）。
-      const header = await readHead(srcTemp, 512);
-      if (looksLikeAVContainer(header)) {
-        audioTemp = `${srcTemp}.mp3`;
-        try {
-          await execFileAsync("ffmpeg", ["-y", "-protocol_whitelist", "file,crypto,data", "-i", srcTemp, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", "-f", "mp3", audioTemp], { timeoutMs: 180000 });
-          const audioBuf = await fs.readFile(audioTemp);
-          if (!audioBuf.length) throw new Error("提取到空音频（源可能无音轨）");
-          const sizeMB = audioBuf.length / (1024 * 1024);
-          if (sizeMB > 24) {
-            return { error: "Audio too long for transcription", code: "FILE_TOO_LARGE", details: `提取音频 ${sizeMB.toFixed(1)}MB 超过转写上限，请剪短或分段后再试` };
-          }
-          payload = { buffer: audioBuf, filename: "audio.mp3", mime: "audio/mpeg" };
-        } catch (ffErr) {
-          // 回退：ffmpeg 缺失/源无音轨/解码失败 → 直接送原文件（修正为合法扩展名）
-          const raw = await fs.readFile(srcTemp);
-          if (raw.length / (1024 * 1024) > 16) {
-            return { error: "Audio file exceeds maximum size limit", code: "FILE_TOO_LARGE", details: `无法提取音频（${ffErr instanceof Error ? ffErr.message.slice(0, 80) : "ffmpeg 失败"}），且原文件 > 16MB` };
-          }
-          payload = { buffer: raw, filename: `audio.${resolveTranscribeExt(options.audioUrl, "")}`, mime: "application/octet-stream" };
-        }
-      } else {
-        // 非已知二进制 A/V 容器（可能是清单/未知）：绝不喂 ffmpeg（防子解复用器外连），直接直送。
-        const raw = await fs.readFile(srcTemp);
-        if (raw.length / (1024 * 1024) > 16) {
-          return { error: "Audio file exceeds maximum size limit", code: "FILE_TOO_LARGE", details: "非常规音频容器且 > 16MB" };
-        }
-        payload = { buffer: raw, filename: `audio.${resolveTranscribeExt(options.audioUrl, "")}`, mime: "application/octet-stream" };
-      }
-    } finally {
-      if (srcTemp) fs.unlink(srcTemp).catch(() => { /* best-effort cleanup */ });
-      if (audioTemp) fs.unlink(audioTemp).catch(() => { /* best-effort cleanup */ });
-    }
-    if (!payload) return { error: "Failed to prepare audio", code: "SERVICE_ERROR", details: "no payload" };
-
-    // Step 3: Create FormData for multipart upload to the transcription API.
-    const formData = new FormData();
-    const audioBlob = new Blob([new Uint8Array(payload.buffer)], { type: payload.mime });
-    formData.append("file", audioBlob, payload.filename);
-
-    // 模型优先级：**节点显式选择 > TRANSCRIBE_MODEL（部署默认）> whisper-1**。
-    // 节点保留自选模型的自由；仅当节点未指定时才用部署默认（如指向 Groq 的 whisper-large-v3），
-    // 都没有则回落官方 whisper-1（词级时间戳的稳妥选择）。
-    const model = (options.model?.trim() || ENV.transcribeModel.trim() || "whisper-1");
-    formData.append("model", model);
-    formData.append("response_format", "verbose_json");
-    if (options.wordTimestamps) {
-      // OpenAI 数组参数按重复字段追加；同时要 word 与 segment（保留段级便于分句/静音判断）。
-      formData.append("timestamp_granularities[]", "word");
-      formData.append("timestamp_granularities[]", "segment");
-    }
-
-    // Add prompt - use custom prompt if provided, otherwise generate based on language
-    const prompt = options.prompt || (
-      options.language 
-        ? `Transcribe the user's voice to text, the user's working language is ${getLanguageName(options.language)}`
-        : "Transcribe the user's voice to text"
-    );
-    formData.append("prompt", prompt);
-
-    if (options.language) {
-      formData.append("language", options.language);
-    }
-
-    // Step 4: Call the transcription service (resolved endpoint from Step 1)
-    const baseUrl = endpoint.baseUrl.endsWith("/") ? endpoint.baseUrl : `${endpoint.baseUrl}/`;
-    const fullUrl = new URL("v1/audio/transcriptions", baseUrl).toString();
-
-    const response = await fetch(fullUrl, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${endpoint.apiKey}`,
-        "Accept-Encoding": "identity",
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      let host = baseUrl; try { host = new URL(baseUrl).host; } catch { /* keep */ }
-      return {
-        error: "Transcription service request failed",
-        code: "TRANSCRIPTION_FAILED",
-        details: `[${host}] ${response.status} ${response.statusText}${errorText ? `: ${errorText.slice(0, 300)}` : ""}`
-      };
-    }
-
-    // Step 5: Parse and return the transcription result
-    const whisperResponse = await response.json() as WhisperResponse;
-    
-    // Validate response structure
-    if (!whisperResponse.text || typeof whisperResponse.text !== 'string') {
-      return {
-        error: "Invalid transcription response",
-        code: "SERVICE_ERROR",
-        details: "Transcription service returned an invalid response format"
-      };
-    }
-
-    return whisperResponse; // Return native Whisper API response directly
-
-  } catch (error) {
-    // Handle unexpected errors
+  // Step 1: Resolve the transcription endpoint (Forge / OpenAI / explicit override).
+  const endpoint = resolveTranscribeEndpoint();
+  if (!endpoint) {
     return {
-      error: "Voice transcription failed",
+      error: "Voice transcription service is not configured",
       code: "SERVICE_ERROR",
-      details: error instanceof Error ? error.message : "An unexpected error occurred"
+      details: "请设置以下之一：OPENAI_API_KEY（走 OpenAI 官方 whisper-1）、BUILT_IN_FORGE_API_URL+BUILT_IN_FORGE_API_KEY、或 TRANSCRIBE_API_URL+TRANSCRIBE_API_KEY（自建 OpenAI 兼容转写端点）",
     };
   }
+  let srcTemp: string | null = null;
+  try {
+    try {
+      srcTemp = await downloadToTemp(options.audioUrl, "src");
+    } catch (dlErr) {
+      return { error: "Failed to fetch audio file", code: "SERVICE_ERROR", details: dlErr instanceof Error ? dlErr.message.slice(0, 200) : "download failed" };
+    }
+    return await transcribeLocalFile(srcTemp, options.audioUrl, options, endpoint);
+  } catch (error) {
+    return { error: "Voice transcription failed", code: "SERVICE_ERROR", details: error instanceof Error ? error.message : "An unexpected error occurred" };
+  } finally {
+    if (srcTemp) fs.unlink(srcTemp).catch(() => { /* best-effort cleanup */ });
+  }
+}
+
+/** 直接从内存音频 Buffer 转写（语音输入用）：不落对象存储、不留 PII 语音文件——
+ *  写一次性临时文件后走与 transcribeAudio 完全相同的抽音轨/多段 POST/解析逻辑。 */
+export async function transcribeAudioBuffer(
+  buffer: Buffer,
+  ext: string,
+  options: Omit<TranscribeOptions, "audioUrl"> = {}
+): Promise<TranscriptionResponse | TranscriptionError> {
+  const endpoint = resolveTranscribeEndpoint();
+  if (!endpoint) {
+    return { error: "Voice transcription service is not configured", code: "SERVICE_ERROR", details: "未配置转写端点（whisper：自建 / Forge / OPENAI_API_KEY）" };
+  }
+  const safeExt = /^[a-z0-9]{2,5}$/i.test(ext) ? ext.toLowerCase() : "webm";
+  const srcTemp = join(tmpdir(), `voicein-${randomUUID()}.${safeExt}`);
+  try {
+    await fs.writeFile(srcTemp, buffer);
+    return await transcribeLocalFile(srcTemp, `audio.${safeExt}`, options, endpoint);
+  } catch (error) {
+    return { error: "Voice transcription failed", code: "SERVICE_ERROR", details: error instanceof Error ? error.message : "An unexpected error occurred" };
+  } finally {
+    fs.unlink(srcTemp).catch(() => { /* best-effort cleanup */ });
+  }
+}
+
+/** 共享核心：本地音频文件 → 转写文本（抽音轨 magic 白名单 + ffmpeg + 多段 POST + 解析）。
+ *  transcribeAudio（URL 下载）与 transcribeAudioBuffer（内存 Buffer）都复用它。
+ *  nameHint 仅用于「回退直送原文件」时推断合法扩展名。调用方负责清理 srcTemp。 */
+async function transcribeLocalFile(
+  srcTemp: string,
+  nameHint: string,
+  options: Omit<TranscribeOptions, "audioUrl">,
+  endpoint: { baseUrl: string; apiKey: string }
+): Promise<TranscriptionResponse | TranscriptionError> {
+  // Step 2: 抽音轨（与 video-use 一致：先 ffmpeg 从视频/音频提取纯音频，再转写）。
+  // 归一到 16kHz 单声道 mp3。ffmpeg 缺失/源无音轨/解码失败时回退：直接送原文件（合法扩展名）。
+  let payload: { buffer: Buffer; filename: string; mime: string } | null = null;
+  let audioTemp: string | null = null;
+  try {
+    // 安全门（防 LFI/SSRF）：源文件是用户可控内容。**绝不能**先把它交给 ffmpeg/ffprobe 去
+    // 自动探测容器——DASH/HLS 等「清单型」子解复用器会去抓 manifest 里引用的外部 URL
+    // （内网 http、云元数据 169.254.169.254、file://），且**无视 -protocol_whitelist**（真机
+    // strace/nc 实测确有外连），连 ffprobe 探测这一步都会触发。故改为 **Node 侧 magic 字节
+    // 白名单**：只有识别为二进制 A/V 容器的文件才交给 ffmpeg 抽音轨；文本清单(m3u8/MPD/
+    // ffconcat)与未知内容一律不碰 ffmpeg，直接原样直送转写端点（清单在第三方端点会被判非法
+    // 音频而拒，无本机 SSRF）。`-protocol_whitelist` 仍保留作纵深防御（挡顶层远程输入）。
+    const header = await readHead(srcTemp, 512);
+    if (looksLikeAVContainer(header)) {
+      audioTemp = `${srcTemp}.mp3`;
+      try {
+        await execFileAsync("ffmpeg", ["-y", "-protocol_whitelist", "file,crypto,data", "-i", srcTemp, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", "-f", "mp3", audioTemp], { timeoutMs: 180000 });
+        const audioBuf = await fs.readFile(audioTemp);
+        if (!audioBuf.length) throw new Error("提取到空音频（源可能无音轨）");
+        const sizeMB = audioBuf.length / (1024 * 1024);
+        if (sizeMB > 24) {
+          return { error: "Audio too long for transcription", code: "FILE_TOO_LARGE", details: `提取音频 ${sizeMB.toFixed(1)}MB 超过转写上限，请剪短或分段后再试` };
+        }
+        payload = { buffer: audioBuf, filename: "audio.mp3", mime: "audio/mpeg" };
+      } catch (ffErr) {
+        // 回退：ffmpeg 缺失/源无音轨/解码失败 → 直接送原文件（修正为合法扩展名）
+        const raw = await fs.readFile(srcTemp);
+        if (raw.length / (1024 * 1024) > 16) {
+          return { error: "Audio file exceeds maximum size limit", code: "FILE_TOO_LARGE", details: `无法提取音频（${ffErr instanceof Error ? ffErr.message.slice(0, 80) : "ffmpeg 失败"}），且原文件 > 16MB` };
+        }
+        payload = { buffer: raw, filename: `audio.${resolveTranscribeExt(nameHint, "")}`, mime: "application/octet-stream" };
+      }
+    } else {
+      // 非已知二进制 A/V 容器（可能是清单/未知）：绝不喂 ffmpeg（防子解复用器外连），直接直送。
+      const raw = await fs.readFile(srcTemp);
+      if (raw.length / (1024 * 1024) > 16) {
+        return { error: "Audio file exceeds maximum size limit", code: "FILE_TOO_LARGE", details: "非常规音频容器且 > 16MB" };
+      }
+      payload = { buffer: raw, filename: `audio.${resolveTranscribeExt(nameHint, "")}`, mime: "application/octet-stream" };
+    }
+  } finally {
+    if (audioTemp) fs.unlink(audioTemp).catch(() => { /* best-effort cleanup */ });
+  }
+  if (!payload) return { error: "Failed to prepare audio", code: "SERVICE_ERROR", details: "no payload" };
+
+  // Step 3: Create FormData for multipart upload to the transcription API.
+  const formData = new FormData();
+  const audioBlob = new Blob([new Uint8Array(payload.buffer)], { type: payload.mime });
+  formData.append("file", audioBlob, payload.filename);
+
+  // 模型优先级：**显式选择 > TRANSCRIBE_MODEL（部署默认）> whisper-1**。
+  const model = (options.model?.trim() || ENV.transcribeModel.trim() || "whisper-1");
+  formData.append("model", model);
+  formData.append("response_format", "verbose_json");
+  if (options.wordTimestamps) {
+    // OpenAI 数组参数按重复字段追加；同时要 word 与 segment（保留段级便于分句/静音判断）。
+    formData.append("timestamp_granularities[]", "word");
+    formData.append("timestamp_granularities[]", "segment");
+  }
+
+  // Add prompt - use custom prompt if provided, otherwise generate based on language
+  const prompt = options.prompt || (
+    options.language
+      ? `Transcribe the user's voice to text, the user's working language is ${getLanguageName(options.language)}`
+      : "Transcribe the user's voice to text"
+  );
+  formData.append("prompt", prompt);
+
+  if (options.language) {
+    formData.append("language", options.language);
+  }
+
+  // Step 4: Call the transcription service (resolved endpoint from Step 1)
+  const baseUrl = endpoint.baseUrl.endsWith("/") ? endpoint.baseUrl : `${endpoint.baseUrl}/`;
+  const fullUrl = new URL("v1/audio/transcriptions", baseUrl).toString();
+
+  const response = await fetch(fullUrl, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${endpoint.apiKey}`,
+      "Accept-Encoding": "identity",
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    let host = baseUrl; try { host = new URL(baseUrl).host; } catch { /* keep */ }
+    return {
+      error: "Transcription service request failed",
+      code: "TRANSCRIPTION_FAILED",
+      details: `[${host}] ${response.status} ${response.statusText}${errorText ? `: ${errorText.slice(0, 300)}` : ""}`
+    };
+  }
+
+  // Step 5: Parse and return the transcription result
+  const whisperResponse = await response.json() as WhisperResponse;
+
+  // Validate response structure
+  if (!whisperResponse.text || typeof whisperResponse.text !== 'string') {
+    return {
+      error: "Invalid transcription response",
+      code: "SERVICE_ERROR",
+      details: "Transcription service returned an invalid response format"
+    };
+  }
+
+  return whisperResponse; // Return native Whisper API response directly
 }
 
 /**

@@ -64,6 +64,7 @@ export type AuditAction =
   | "audio_dubbing"
   | "audio_sfx"
   | "subtitle_transcribe"
+  | "voice_transcribe"
   // #73 纳管审计补漏：此前无审计日志的 AI 调用
   | "pose_control"
   | "smart_cut"
