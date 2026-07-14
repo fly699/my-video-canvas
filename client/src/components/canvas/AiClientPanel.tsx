@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -120,6 +120,43 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   useEffect(() => { try { localStorage.setItem("avc:ai-artifact-w", String(artifactW)); } catch { /* restricted */ } }, [artifactW]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  // 语音输入（Web Speech API）：中文识别，实时把识别文本追加到输入框。全平台可用（浏览器支持时）。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+  const voiceBaseRef = useRef("");
+  const [recording, setRecording] = useState(false);
+  const voiceSupported = typeof window !== "undefined" && !!((window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition);
+  // 卸载时停止识别，避免残留麦克风占用。
+  useEffect(() => () => { try { recognitionRef.current?.stop(); } catch { /* noop */ } }, []);
+  const toggleVoice = () => {
+    if (recording) { try { recognitionRef.current?.stop(); } catch { /* noop */ } return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR: any = (window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
+    if (!SR) { toast.error("当前浏览器不支持语音输入"); return; }
+    let rec: unknown;
+    try { rec = new SR(); } catch { toast.error("无法启动语音识别"); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = rec as any;
+    r.lang = "zh-CN";
+    r.interimResults = true;
+    r.continuous = true;
+    voiceBaseRef.current = input.trim() ? input.trim() + " " : "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r.onresult = (e: any) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i];
+        if (res.isFinal) voiceBaseRef.current += res[0].transcript;
+        else interim += res[0].transcript;
+      }
+      setInput(voiceBaseRef.current + interim);
+    };
+    r.onend = () => setRecording(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r.onerror = (e: any) => { setRecording(false); if (e?.error && e.error !== "aborted" && e.error !== "no-speech") toast.error("语音识别出错：" + e.error); };
+    try { r.start(); recognitionRef.current = r; setRecording(true); } catch { toast.error("无法启动语音识别（请检查麦克风权限）"); }
+  };
   // 移动端（窄屏）：embedded 独立页在手机上会话侧栏/工件面板不能与聊天并排挤压，改为抽屉/浮层。
   const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
   useEffect(() => { const f = () => setNarrow(window.innerWidth < 640); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
@@ -261,6 +298,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   };
 
   const send = () => {
+    if (recording) { try { recognitionRef.current?.stop(); } catch { /* noop */ } }
     const text = input.trim();
     if ((!text && pendingAtts.length === 0) || sendMut.isPending) return;
     if (!active) { newSession(); toast.info("已建会话，请再次发送"); return; }
@@ -683,10 +721,26 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
             )}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 12, padding: "8px 10px" }}>
               <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { void onPickFiles(e.target.files); e.target.value = ""; }} />
+              {/* 移动端相机：capture=environment 直接唤起后置摄像头拍照，复用图片附件上传管线 */}
+              <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => { void onPickFiles(e.target.files); e.target.value = ""; }} />
               <button onClick={() => fileRef.current?.click()} disabled={uploadMut.isPending} className="nodrag" title="添加图片附件"
                 style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                 {uploadMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
               </button>
+              {/* 移动端相机拍照 */}
+              {mobile && (
+                <button onClick={() => cameraRef.current?.click()} disabled={uploadMut.isPending} className="nodrag" title="拍照"
+                  style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <Camera size={15} />
+                </button>
+              )}
+              {/* 语音输入（麦克风）：浏览器支持时显示；录音中红色脉冲 */}
+              {voiceSupported && (
+                <button onClick={toggleVoice} className="nodrag" title={recording ? "停止语音输入" : "语音输入"}
+                  style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: recording ? "color-mix(in oklch, #e5484d 20%, transparent)" : "transparent", color: recording ? "#e5484d" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <Mic size={15} className={recording ? "animate-pulse" : undefined} />
+                </button>
+              )}
               <textarea
                 className="nodrag nowheel"
                 value={input}
