@@ -118,7 +118,10 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
       for (const u of partsImages(m.content)) content.push({ type: "input_image", image_url: u });
       return { role: m.role === "system" ? "system" : (isAssistant ? "assistant" : "user"), content };
     });
-    body = { model: spec.model, input, max_output_tokens: maxTokens, stream: false };
+    // 推理模型（GPT-5.x / Grok 4.x 等 Responses API）：max_output_tokens 同时覆盖
+    // 「推理 + 正文」。默认 4096 常被推理吃光 → 正文为空（用户反馈「所有 kie 的 gpt 模型回复为空」）。
+    // 给足推理余量（+8192），确保正文能产出。
+    body = { model: spec.model, input, max_output_tokens: maxTokens + 8192, stream: false };
   } else {
     // OpenAI chat/completions (model in the path; include in body too — harmless).
     body = { model: spec.model, messages: opts.messages, max_tokens: maxTokens, stream: false };
@@ -130,21 +133,39 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
     throw new Error(`kie LLM 调用失败 (${res.status}): ${t.slice(0, 300)}`);
   }
   const data = await res.json() as Record<string, unknown>;
-  return { text: extractKieLLMText(spec.format, data) };
+  const text = extractKieLLMText(spec.format, data);
+  // 正文为空且响应明确标记「未完成」（多因推理占满 token）→ 抛明确错误，避免静默返回空串
+  // 让上层误判为「模型不回复」。有正文则正常返回。
+  if (!text && spec.format === "responses") {
+    const status = typeof data.status === "string" ? data.status : undefined;
+    const reason = (data.incomplete_details as { reason?: string } | undefined)?.reason;
+    if (status === "incomplete" || reason) {
+      throw new Error(`kie 模型未产出正文（${reason ?? status}）——多因推理占满 token，请重试或改用其它模型`);
+    }
+  }
+  return { text };
 }
 
 // Pull the assistant text out of each format's response envelope.
-function extractKieLLMText(format: KieLLMFormat, data: Record<string, unknown>): string {
+export function extractKieLLMText(format: KieLLMFormat, data: Record<string, unknown>): string {
   if (format === "claude") {
     const content = (data.content as Array<{ type?: string; text?: string }> | undefined) ?? [];
     return content.filter((c) => c.type === "text" && c.text).map((c) => c.text).join("");
   }
   if (format === "responses") {
     // Prefer the convenience field when present, else dig output[].content[].text.
-    if (typeof data.output_text === "string") return data.output_text;
+    if (typeof data.output_text === "string" && data.output_text) return data.output_text;
     const output = (data.output as Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> | undefined) ?? [];
-    const msg = output.find((o) => o.type === "message") ?? output[0];
-    return (msg?.content ?? []).filter((c) => typeof c.text === "string" && /text/.test(c.type ?? "")).map((c) => c.text).join("");
+    // 扫描全部 output 项的全部 content 片段收集正文——推理模型（GPT-5.x）常先出 reasoning 项
+    // 再出 message 项，也可能有多段 message；只取 output.find(message) 会在结构变化时漏掉正文。
+    // type 兼容 output_text / text（凡含 "text" 且有 text 字段即视为正文）。
+    const texts: string[] = [];
+    for (const o of output) {
+      for (const c of o.content ?? []) {
+        if (typeof c.text === "string" && c.text && /text/.test(c.type ?? "")) texts.push(c.text);
+      }
+    }
+    return texts.join("");
   }
   // openai-chat
   const choices = (data.choices as Array<{ message?: { content?: string } }> | undefined) ?? [];

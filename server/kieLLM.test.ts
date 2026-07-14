@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { KIE_LLM_MODELS, isKieLLMModel } from "./_core/kieLLM";
+import { KIE_LLM_MODELS, isKieLLMModel, extractKieLLMText } from "./_core/kieLLM";
 
 describe("kie LLM specs", () => {
   it("isKieLLMModel 只对已注册 kie 对话模型为真", () => {
@@ -34,5 +34,36 @@ describe("kie LLM specs", () => {
       expect(s.creditNote.length, `${k} 缺 creditNote`).toBeGreaterThan(0);
       expect(s.label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("extractKieLLMText — responses 解析（GPT-5.x 推理模型）", () => {
+  it("output_text 便捷字段优先", () => {
+    expect(extractKieLLMText("responses", { output_text: "你好" })).toBe("你好");
+  });
+  it("reasoning 项在前、message 项在后：仍取到正文", () => {
+    const data = {
+      output: [
+        { type: "reasoning", summary: [] },
+        { type: "message", content: [{ type: "output_text", text: "答案在此" }] },
+      ],
+    };
+    expect(extractKieLLMText("responses", data)).toBe("答案在此");
+  });
+  it("多段 message 文本拼接；type 兼容 text/output_text", () => {
+    const data = {
+      output: [
+        { type: "message", content: [{ type: "output_text", text: "甲" }] },
+        { type: "message", content: [{ type: "text", text: "乙" }] },
+      ],
+    };
+    expect(extractKieLLMText("responses", data)).toBe("甲乙");
+  });
+  it("只有 reasoning、无正文 → 返回空串（由上层按 incomplete 抛错）", () => {
+    expect(extractKieLLMText("responses", { output: [{ type: "reasoning", summary: [] }], status: "incomplete" })).toBe("");
+  });
+  it("claude / openai-chat 解析不受影响", () => {
+    expect(extractKieLLMText("claude", { content: [{ type: "text", text: "C" }] })).toBe("C");
+    expect(extractKieLLMText("openai-chat", { choices: [{ message: { content: "O" } }] })).toBe("O");
   });
 });
