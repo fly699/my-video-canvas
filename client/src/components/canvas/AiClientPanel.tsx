@@ -9,7 +9,9 @@ import { useAiClient } from "../../hooks/useAiClient";
 import { deriveAiSessions, resolveActiveSession } from "@/lib/aiClientSessions";
 import { buildNodeContextContent, isReferableNode, nodeContextLabel, planMessageDrop, type ChatMsgAttachment } from "@/lib/aiClientContext";
 import { loadNodeless, saveNodeless, addSession, removeSession, updateSession, sortSessions, makeNodelessId, isNodelessId, type NodelessSession } from "@/lib/aiClientNodeless";
-import { LLM_MODELS } from "@/lib/models";
+import { CHAT_MODELS } from "@/lib/models";
+import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
+import { useDisabledModels } from "@/lib/useDisabledModels";
 import { trpc } from "@/lib/trpc";
 import type { NodeType } from "../../../../shared/types";
 
@@ -29,6 +31,15 @@ export function AiClientPanel() {
   const projectId = useCanvasStore((s) => s.projectId);
   const utils = trpc.useUtils();
 
+  // 对话模型池（对齐聊天室助手）：内置聊天模型 + 后台「自建/桥接 LLM」，去重，
+  // 过滤隐藏/代码专用（Codex）/后台停用（键 "chat:"）——补齐本地桥接/自建、剔除无法对话的代码模型。
+  const selfHosted = useSelfHostedLlmModels();
+  const disabledModels = useDisabledModels();
+  const chatModels = useMemo(() => {
+    const pool = selfHosted.length ? [...selfHosted.filter((s) => !CHAT_MODELS.some((m) => m.id === s.id)), ...CHAT_MODELS] : [...CHAT_MODELS];
+    return pool.filter((m) => !m.hidden && !m.code && !disabledModels.has("chat:" + m.id));
+  }, [selfHosted, disabledModels]);
+
   // 无节点会话（不建 ai_chat 节点，也能记住；索引按项目存 localStorage，消息仍在服务端）。
   const [nodeless, setNodeless] = useState<NodelessSession[]>([]);
   useEffect(() => { setNodeless(projectId ? loadNodeless(projectId) : []); }, [projectId]);
@@ -44,7 +55,7 @@ export function AiClientPanel() {
   useEffect(() => { if (active !== activeNodeId) setActive(active); }, [active, activeNodeId, setActive]);
 
   const [input, setInput] = useState("");
-  const [model, setModel] = useState<string>(LLM_MODELS.find((m) => m.tag === "默认")?.id ?? LLM_MODELS[0].id);
+  const [model, setModel] = useState<string>(CHAT_MODELS.find((m) => m.tag === "默认")?.id ?? CHAT_MODELS[0].id);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingAtts, setPendingAtts] = useState<ChatMsgAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -239,7 +250,7 @@ export function AiClientPanel() {
     );
   }
 
-  const modelLabel = LLM_MODELS.find((m) => m.id === model)?.label ?? model;
+  const modelLabel = chatModels.find((m) => m.id === model)?.label ?? CHAT_MODELS.find((m) => m.id === model)?.label ?? model;
 
   return createPortal(
     <div
@@ -257,7 +268,7 @@ export function AiClientPanel() {
         <select value={model} onChange={(e) => changeModel(e.target.value)} className="nodrag"
           style={{ marginLeft: 6, fontSize: 11.5, padding: "4px 8px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", maxWidth: 200 }}
           title={`当前模型：${modelLabel}`}>
-          {LLM_MODELS.filter((m) => !m.hidden).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          {chatModels.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
         </select>
         <div style={{ flex: 1 }} />
         <button onClick={() => setPinned(!pinned)} title={pinned ? "取消钉住" : "钉住（记住展开态，进画布自动打开）"} style={{ ...iconBtn, color: pinned ? ACCENT : "var(--c-t3)" }}><Pin size={15} fill={pinned ? ACCENT : "none"} /></button>

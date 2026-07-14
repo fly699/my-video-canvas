@@ -31,6 +31,9 @@ export type LLMModelMeta = {
    *  其它平台按 token 计费、无固定点数，留空只显示 costTier。 */
   costNote?: string;
   hidden?: boolean;    // kept for back-compat but not listed
+  /** 代码专用模型（OpenAI Codex 系）——面向编程/软件工程，非通用对话。对话类下拉
+   *  （AI 客户端 / 聊天室 / 各节点 LLM 选择器）过滤掉，避免用户误选来闲聊。 */
+  code?: boolean;
   /** 是否支持图片输入（看图）。本部署里 Poyo 的 Claude 不接受 image_url、Forge 的 Claude
    *  也不稳定，故 Claude 系标记为非视觉；GPT / Gemini 支持。供「看图识人」等需要视觉的功能
    *  过滤模型选择器。 */
@@ -72,8 +75,8 @@ export const LLM_MODELS: readonly LLMModelMeta[] = [
   { id: "kie_gemini_25_pro",    label: "Gemini 2.5 Pro（kie）",    short: "G25Pro", family: "Gemini", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "中", vision: true, costNote: "入76/出600" },
   { id: "kie_gemini_25_flash",  label: "Gemini 2.5 Flash（kie）",  short: "G25Fl",  family: "Gemini", tag: "kie·快",   provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "低", vision: true, costNote: "入18/出150" },
   { id: "kie_gemini_35_flash",  label: "Gemini 3.5 Flash（kie）",  short: "G35Fl",  family: "Gemini", tag: "kie",     provider: "Kie", color: "oklch(0.68 0.18 160)", costTier: "中", vision: true, costNote: "入90/出540" },
-  { id: "kie_gpt_5_codex",      label: "GPT 5 Codex（kie）",       short: "Codex5", family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", costNote: "入100/出800" },
-  { id: "kie_gpt_51_codex",     label: "GPT 5.1 Codex（kie）",     short: "Cdx51",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", costNote: "入100/出800" },
+  { id: "kie_gpt_5_codex",      label: "GPT 5 Codex（kie）",       short: "Codex5", family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", costNote: "入100/出800", code: true },
+  { id: "kie_gpt_51_codex",     label: "GPT 5.1 Codex（kie）",     short: "Cdx51",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "中", costNote: "入100/出800", code: true },
   { id: "kie_gpt_52_codex",     label: "GPT 5.2 Codex（kie）",     short: "Cdx52",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
   { id: "kie_gpt_53_codex",     label: "GPT 5.3 Codex（kie）",     short: "Cdx53",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },
   { id: "kie_gpt_54_codex",     label: "GPT 5.4 Codex（kie）",     short: "Cdx54",  family: "GPT",    tag: "kie·代码", provider: "Kie", color: "oklch(0.62 0.16 240)", costTier: "高", costNote: "入140/出1120" },

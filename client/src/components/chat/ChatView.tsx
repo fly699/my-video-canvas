@@ -107,7 +107,8 @@ export function ChatView({ membersOpen: _m, narrow = false }: { membersOpen?: bo
   // 聊天 AI 可选模型：受「模型管理 · 聊天」分组开关过滤（独立于 LLM 节点的开关，键加 "chat:" 前缀）。
   const _selfHostedChat = useSelfHostedLlmModels();
   const _chatPool = _selfHostedChat.length ? [..._selfHostedChat.filter((x) => !CHAT_MODELS.some((m) => m.id === x.id)), ...CHAT_MODELS] : CHAT_MODELS;
-  const chatModels = _chatPool.filter((m) => !m.hidden && !disabledModels.has("chat:" + m.id));
+  // 排除代码专用模型（Codex 系）：它们面向编程、非通用对话，不该出现在聊天下拉。
+  const chatModels = _chatPool.filter((m) => !m.hidden && !m.code && !disabledModels.has("chat:" + m.id));
   const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem("chat:aiModel") || "");
   // 默认模型：用户显式选过的优先；否则用管理员「系统默认」的 LLM（若可用且未被停用）；再否则列表第一个。
   const sysDefaultLlm = useSystemDefaultModels().llm;
