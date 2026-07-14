@@ -166,6 +166,7 @@ import {
   Gauge,
   Sun,
   Moon,
+  Bot,
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { usePerfStore, selectPerfLite, PERF_MODE_LABEL, PERF_MODE_ORDER } from "../lib/perfMode";
@@ -3445,6 +3446,22 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
             {/* Divider (only when add button is shown) */}
             {!isReadOnly && <div style={{ width: 1, height: 18, background: "var(--c-bd2)", flexShrink: 0 }} />}
+
+            {/* AI 客户端入口（所有模式常驻，避免只靠 Cmd/Ctrl+J 快捷键难发现）。 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => useAiClient.getState().toggle()}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: "var(--c-t3)" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}
+                >
+                  <Bot className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">AI 客户端（Cmd/Ctrl+J）</TooltipContent>
+            </Tooltip>
 
             {/* 创意模式浅色/深色主题切换（朴素浅色皮肤，防视觉疲劳）。仅创意模式显示。 */}
             {canvasMode === "creative" && (
