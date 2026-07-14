@@ -319,6 +319,10 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
 
   const log = payload.log ?? [];
   const conversation = payload.conversation ?? [];
+  // 上一轮失败/中止时，用于「重跑」的最后一条用户指令（autoRun 建的节点任务已被消费、输入框为空，
+  // 配好服务器后无从重试——见用户反馈）。
+  const lastUserTask = [...conversation].reverse().find((t) => t.role === "user")?.text ?? "";
+  const canRetry = !running && (payload.status === "failed" || payload.status === "aborted") && !!lastUserTask;
   const codeConversation = payload.codeConversation ?? [];
   const settingsOpen = payload.settingsOpen ?? conversation.length === 0;
   const hasResult = (payload.status === "success" || payload.status === "exhausted") && !!payload.resultWorkflowJson;
@@ -456,6 +460,16 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                 className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium"
                 style={{ background: "oklch(0.62 0.2 25 / 0.10)", border: `1px solid ${RED}`, color: RED, cursor: "pointer" }}>
                 <Square style={{ width: 12, height: 12 }} /> 停止
+              </button>
+            )}
+
+            {/* 重跑：上一轮失败/中止（如刚配好服务器）→ 一键重试最后一条指令，不必重敲 */}
+            {canRetry && (
+              <button onClick={() => handleSend(lastUserTask)}
+                title="用最后一条指令重新运行（配好服务器后重试）"
+                className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold"
+                style={{ background: accentA(0.16), border: `1px solid ${accentA(0.5)}`, color: accent, cursor: "pointer" }}>
+                <RefreshCw style={{ width: 13, height: 13 }} /> 重跑（重试上一条指令）
               </button>
             )}
 

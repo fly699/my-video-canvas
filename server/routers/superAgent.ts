@@ -137,9 +137,15 @@ export const superAgentRouter = router({
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       await assertComfyuiAllowed(ctx);
 
-      const baseUrl = input.customBaseUrl?.trim() || ENV.comfyuiBaseUrl;
+      // 地址解析：节点自定义 > 环境变量 COMFYUI_BASE_URL > 后台「全局服务器列表」第一台。
+      // 此前只查到 ENV 就停——用户在后台设了「默认服务器」（存 DB 全局列表），单份工作流构建路径
+      // 却读不到、每个工程智能体节点都误报「未配置」（与 orchestrate/canvas resolveComfyBase 不一致的翻车）。
+      const baseUrl = input.customBaseUrl?.trim()
+        || ENV.comfyuiBaseUrl
+        || (await db.getComfyGlobalServers().catch(() => []))[0]?.trim()
+        || "";
       if (!baseUrl) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在节点里填写目标服务器或服务端设置 COMFYUI_BASE_URL" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "ComfyUI URL 未配置：请在管理后台「ComfyUI 服务器」页添加全局默认地址，或在节点里填写目标服务器/设置 COMFYUI_BASE_URL" });
       }
 
       const useMemory = input.useMemory !== false; // 默认用记忆体；显式 false 才关闭
