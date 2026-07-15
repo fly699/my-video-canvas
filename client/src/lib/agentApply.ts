@@ -50,6 +50,9 @@ export interface ApplyResult {
   /** 本批【新建】的节点 id（仅 create）。可安全用于「撤销本次改动=删除新建节点」——
    *  只删本轮 AI 建的节点，不碰被 update/connect 的用户既有节点。 */
   createdIds: string[];
+  /** 确定性自动接线的「角色→生成节点」边数（不含 LLM 显式 connect）。供 UI 透明反馈——
+   *  这些边不对应任何 op，opsSummary 统计不到，否则用户看不到角色被自动接入。 */
+  autoLinkedChars: number;
 }
 
 const COMFY_NODE_TYPES = new Set<string>(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
@@ -208,7 +211,7 @@ export function applyAgentOperations(
   // would create a dangling edge, and an illegal pairing would bypass the rules.
   const liveIds = new Set(store.nodes.map((n) => n.id));
   const typeById = new Map<string, NodeType>(store.nodes.map((n) => [n.id, n.data.nodeType as NodeType]));
-  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, canvasActions: 0, failures: [], touchedIds: [], createdIds: [] };
+  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, canvasActions: 0, failures: [], touchedIds: [], createdIds: [], autoLinkedChars: 0 };
   const fail = (index: number, op: AgentOperation, reason: string) => {
     op.status = "failed"; op.error = reason;
     res.failures.push({ index, op: op.op, reason });
@@ -541,6 +544,7 @@ export function applyAgentOperations(
             hasCharInEdge.add(gid);
             res.touchedIds.push(gid);
             res.connected++;
+            res.autoLinkedChars++;
           }
         }
       }

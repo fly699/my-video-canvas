@@ -296,6 +296,7 @@ describe("applyAgentOperations 角色确定性自动连线（方案2）", () => 
     const edges = useCanvasStore.getState().edges;
     for (const gid of genIds) expect(edges.some((e) => e.source === charId && e.target === gid)).toBe(true);
     expect(r.connected).toBeGreaterThanOrEqual(2);
+    expect(r.autoLinkedChars).toBe(2); // image_gen + storyboard 各一条自动接线
     setLibraryCharacters([]);
   });
 
@@ -330,6 +331,7 @@ describe("applyAgentOperations 角色确定性自动连线（方案2）", () => 
     const edges = useCanvasStore.getState().edges.filter((e) => e.source === charId && e.target === gid);
     expect(edges.length).toBe(1); // 只有 LLM 那一条，自动连线因 edgeKeys 去重不重复
     expect(r.connected).toBe(1);
+    expect(r.autoLinkedChars).toBe(0); // LLM 已显式连线 → 不再自动补
     setLibraryCharacters([]);
   });
 });
