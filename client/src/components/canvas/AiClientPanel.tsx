@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, Check } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -282,9 +282,22 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   // 「忙」态 = 正在发送 或 正在超时兜底轮询——统一驱动 UI（禁用输入、转圈、隐藏末条重生成按钮）。
   const busy = sendMut.isPending || recovering;
 
+  // 「贴底才自动滚」：用户上翻看历史时，新消息/流式回灌不再把视图强拽到底；
+  // 只有当前已在底部附近（或刚发过消息）才跟随滚动。atBottomRef 供效应读取避免闭包过期。
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  const scrollToBottom = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; };
+  const onMsgScroll = () => {
+    const el = scrollRef.current; if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    atBottomRef.current = near;
+    setAtBottom(near);
+  };
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (atBottomRef.current) scrollToBottom();
   }, [messages.length, busy]);
+  // 切会话：回到底部（新会话应看最新，而非停在上个会话的滚动位）。
+  useEffect(() => { atBottomRef.current = true; setAtBottom(true); requestAnimationFrame(scrollToBottom); }, [active]);
 
   // 回写节点 payload.messages，让画布上的 ai_chat 节点即时反映服务端权威消息（仅节点会话）。
   useEffect(() => {
@@ -315,6 +328,9 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   // 会话更名：无节点会话改本地索引（+服务端持久化）；画布节点会话改节点标题（updateNodeTitle）。
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState("");
+  // 会话搜索（会话多时按标题过滤）+ 删除二次确认（首击预警、再击才删，防误删）。
+  const [sessionQuery, setSessionQuery] = useState("");
+  const [confirmDelId, setConfirmDelId] = useState<string | null>(null);
   const startRename = (id: string, title: string) => { setRenamingId(id); setRenameText(title); };
   const commitRename = () => {
     const id = renamingId;
@@ -354,6 +370,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     if (!projectId) { toast.error("画布未就绪"); return; }
     const atts = pendingAtts;
     setInput(""); setPendingAtts([]);
+    atBottomRef.current = true; // 发送后跟随滚到底看回答（即使此前上翻着历史）
     // 无节点会话：用首句更新标题 + 刷新更新时间（首次发送前标题还是「新会话」）。
     if (isNodeless && active) {
       const cur = nodeless.find((s) => s.id === active);
@@ -585,9 +602,23 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
             style={{ margin: 10, padding: "8px 10px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none", color: "#fff", background: ACCENT }}>
             <Plus size={14} /> 新会话
           </button>
+          {/* 会话搜索：会话较多时（≥6）按标题过滤，快速定位。 */}
+          {sessions.length >= 6 && (
+            <div style={{ position: "relative", margin: "0 10px 8px" }}>
+              <input value={sessionQuery} onChange={(e) => setSessionQuery(e.target.value)} className="nodrag" placeholder="搜索会话…"
+                style={{ width: "100%", boxSizing: "border-box", padding: "6px 26px 6px 9px", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 8, color: "var(--c-t1)", fontSize: 11.5, outline: "none" }} />
+              {sessionQuery && (
+                <button onClick={() => setSessionQuery("")} className="nodrag" title="清除"
+                  style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", width: 18, height: 18, borderRadius: 5, border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><X size={11} /></button>
+              )}
+            </div>
+          )}
           <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
             {sessions.length === 0 && <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "12px 6px", lineHeight: 1.6 }}>还没有会话。点「新会话」开始——默认不建画布节点（保持画布清爽），对话仍会记住。</div>}
-            {sessions.map((s) => {
+            {sessions.length > 0 && sessions.filter((s) => !sessionQuery.trim() || s.title.toLowerCase().includes(sessionQuery.trim().toLowerCase())).length === 0 && (
+              <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "12px 6px" }}>没有匹配「{sessionQuery.trim()}」的会话</div>
+            )}
+            {sessions.filter((s) => !sessionQuery.trim() || s.title.toLowerCase().includes(sessionQuery.trim().toLowerCase())).map((s) => {
               const on = s.id === active;
               return (
                 <div key={s.id} className="nodrag" title={s.title}
@@ -618,11 +649,14 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                         <Pencil size={10} />
                       </button>
                       {s.nodeless && (
-                        <button onClick={() => deleteNodelessSession(s.id)} className="nodrag" title="删除会话"
-                          style={{ width: 18, height: 18, borderRadius: 5, border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.2 20)"; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
-                          <Trash2 size={11} />
+                        <button
+                          onClick={() => { if (confirmDelId === s.id) { deleteNodelessSession(s.id); setConfirmDelId(null); } else setConfirmDelId(s.id); }}
+                          onBlur={() => { if (confirmDelId === s.id) setConfirmDelId(null); }}
+                          className="nodrag" title={confirmDelId === s.id ? "再次点击确认删除" : "删除会话"}
+                          style={{ width: 18, height: 18, borderRadius: 5, border: confirmDelId === s.id ? "1px solid oklch(0.62 0.2 20)" : "none", background: confirmDelId === s.id ? "color-mix(in oklch, oklch(0.62 0.2 20) 18%, transparent)" : "transparent", color: confirmDelId === s.id ? "oklch(0.62 0.2 20)" : "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                          onMouseEnter={(e) => { if (confirmDelId !== s.id) (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.2 20)"; }}
+                          onMouseLeave={(e) => { if (confirmDelId !== s.id) (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                          {confirmDelId === s.id ? <Check size={11} /> : <Trash2 size={11} />}
                         </button>
                       )}
                     </div>
@@ -634,8 +668,8 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
         </div>
 
         {/* 对话流 + 输入 */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-          <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
+          <div ref={scrollRef} onScroll={onMsgScroll} style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
             {(!active || (messages.length === 0 && !msgQuery.isLoading)) && (
               <div style={{ margin: "auto", width: "100%", maxWidth: 420, textAlign: "center", padding: "0 4px" }}>
                 <span style={{ display: "inline-flex", width: 52, height: 52, alignItems: "center", justifyContent: "center", borderRadius: 15, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={28} /></span>
@@ -662,8 +696,13 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
               const atts = (m as { attachments?: ChatMsgAttachment[] }).attachments;
               return (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 3 }}>
+                <div style={{ display: "flex", gap: 7, alignItems: "flex-start", maxWidth: "88%" }}>
+                  {/* AI 回复左侧头像锚点（用户消息不加，保持右对齐简洁） */}
+                  {m.role !== "user" && (
+                    <span style={{ flexShrink: 0, marginTop: 1, display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={15} /></span>
+                  )}
                 <div style={{
-                  maxWidth: "82%", borderRadius: 13, fontSize: 13, lineHeight: 1.6, wordBreak: "break-word", overflow: "hidden",
+                  maxWidth: "100%", borderRadius: 13, fontSize: 13, lineHeight: 1.6, wordBreak: "break-word", overflow: "hidden",
                   background: m.role === "user" ? `color-mix(in oklch, ${ACCENT} 18%, var(--c-input))` : "var(--c-input)",
                   color: "var(--c-t1)", border: "1px solid var(--c-bd2)",
                 }}>
@@ -683,8 +722,9 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                     </div>
                   ))}
                 </div>
-                {/* 消息操作：复制（全部）+ 落成节点/重新生成（仅 AI 回复）。 */}
-                <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "0 2px" }}>
+                </div>
+                {/* 消息操作：复制（全部）+ 落成节点/重新生成（仅 AI 回复）。AI 侧缩进对齐气泡（让开头像宽度）。 */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "0 2px", paddingLeft: m.role !== "user" ? 33 : 2 }}>
                   {m.content?.trim() && (
                     <button onClick={() => copyText(m.content)} className="nodrag" title="复制"
                       style={msgActBtn} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
@@ -715,6 +755,15 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
               </div>
             )}
           </div>
+          {/* 「回到底部」——仅在上翻离底且有消息时出现（避免流式回灌把用户从历史里强拽走）。 */}
+          {!atBottom && active && messages.length > 0 && (
+            <button onClick={() => { scrollToBottom(); atBottomRef.current = true; setAtBottom(true); }} className="nodrag" title="回到最新"
+              style={{ position: "absolute", right: 16, bottom: 12, zIndex: 6, width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--c-bd2)",
+                background: "var(--c-elevated, var(--c-surface))", color: "var(--c-t2)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.3)" }}>
+              <ChevronDown size={18} />
+            </button>
+          )}
           <div
             onDragOver={(e) => { if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) { e.preventDefault(); setDragOver(true); } }}
             onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
