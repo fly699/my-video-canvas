@@ -168,9 +168,11 @@ export function AiModelMenu({ value, options, onChange }: Props) {
                               <div style={{ fontSize: 11.5, fontWeight: selected ? 700 : 500, color: selected ? "var(--c-t1)" : "var(--c-t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {m.label}
                               </div>
-                              {m.costNote && (
-                                <div style={{ fontSize: 8.5, color: "var(--c-t4)", marginTop: 1, fontWeight: 600 }}>{m.costNote} 点/百万tokens</div>
-                              )}
+                              {/* 计价：有 costNote 显示精确点数（kie 系）；否则回退计费档（Forge/Poyo/自定义
+                                  等按 token 计费、无固定点数）——保证每个模型都能看到费用信息，不再只有 kie 有。 */}
+                              <div style={{ fontSize: 8.5, color: "var(--c-t4)", marginTop: 1, fontWeight: 600 }}>
+                                {m.costNote ? `${m.costNote} 点/百万tokens` : `计费档：${m.costTier}（按 tokens）`}
+                              </div>
                             </div>
                             <span style={{ fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: badge.bg, color: badge.fg, letterSpacing: "0.04em", flexShrink: 0 }}>{m.provider}</span>
                             <span style={{ fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: selected ? `${m.color}25` : "var(--c-bd1)", color: selected ? m.color : "var(--c-t4)", letterSpacing: "0.04em", flexShrink: 0 }}>{m.tag}</span>

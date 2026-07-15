@@ -8,7 +8,10 @@ export type AgentChatResult = Awaited<ReturnType<Client["agent"]["chat"]["mutate
  *  不押一条 HTTP 长连接（3~10 分钟的本机模型生成中，断连/掐线/服务重启都曾让
  *  已生成完的结果白丢）。轮询为短请求：单次失败自动重试；连续 3 次 missing 判
  *  任务丢失（服务器重启）；signal 中止立即抛 AbortError（后台任务仍会跑完，结果丢弃）。
- *  首轮 0.8s 快查（云端模型几秒就完，不白等 2.5s），之后每 2.5s 一次，20 分钟硬上限。 */
+ *  首轮 0.8s 快查（云端模型几秒就完，不白等 2.5s），之后间隔按 +300ms 温和爬坡至 2.5s 上限。
+ *  爬坡而非固定 2.5s：job 完成到客户端发现平均少死等约 0.6–1.2s（chatStatus 是纯内存查询、
+ *  不碰 DB，加密轮询近乎零成本），对 4–8s 就返回的云端模型收益最明显；长任务仍收敛到 2.5s
+ *  避免高频轮询。20 分钟硬上限。 */
 export async function runAgentChatJob(
   client: Client,
   input: ChatInput,
@@ -30,7 +33,8 @@ export async function runAgentChatJob(
     if (signal?.aborted) throw new DOMException("已取消", "AbortError");
     if (Date.now() - startedAt > 20 * 60_000) throw new Error("生成超过 20 分钟仍未完成。请重试，或缩短输入/减少一次性规划的镜头数。");
     await wait(delay);
-    delay = 2500;
+    delay = Math.min(2500, delay + 300); // 温和爬坡：800→1100→1400…→2500，快返回少死等、长任务不高频
+
     if (signal?.aborted) throw new DOMException("已取消", "AbortError");
     let st: Awaited<ReturnType<Client["agent"]["chatStatus"]["query"]>>;
     try {
