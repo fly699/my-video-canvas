@@ -234,7 +234,7 @@ export async function buildConfigChecklist(): Promise<{ items: CheckItem[]; envE
     probeCommand(codexSpawn.cmd, codexSpawn.args, codexSpawn.shell),
     safe(db.getAuthSettings(), { smtpHost: "", emailVerificationEnabled: false } as Awaited<ReturnType<typeof db.getAuthSettings>>),
     safe(db.getTunnelSettings(), { enabled: false, token: "", preferQuick: false } as Awaited<ReturnType<typeof db.getTunnelSettings>>),
-    safe(db.getSelfHostedLlmConfig(), { url: "", apiKey: "", models: [] } as Awaited<ReturnType<typeof db.getSelfHostedLlmConfig>>),
+    safe(db.getSelfHostedLlmConfig(), { servers: [] } as Awaited<ReturnType<typeof db.getSelfHostedLlmConfig>>),
   ]);
 
   // 桥接 MCP 配置状态：内联 JSON（{ 开头）就地解析；文件路径读出解析。取服务器名 + 是否合法。
@@ -292,7 +292,12 @@ export async function buildConfigChecklist(): Promise<{ items: CheckItem[]; envE
       tunnelEnabled: !!tunnelSettings.enabled,
       tunnelTokenSet: !!tunnelSettings.token?.trim(),
       tunnelPreferQuick: !!tunnelSettings.preferQuick,
-      selfHosted: { url: selfHosted.url || "", apiKey: selfHosted.apiKey || "", modelIds: (selfHosted.models || []).map((m) => m.id) },
+      // 多自建服务器：桥接检查取「指向本机桥接的那台」（否则第一台）的 url/key；模型 id 拉平所有服务器。
+      selfHosted: (() => {
+        const servers = selfHosted.servers || [];
+        const bridgeSrv = servers.find((sv) => /\/api\/claude-bridge/i.test(sv.url)) || servers[0];
+        return { url: bridgeSrv?.url || "", apiKey: bridgeSrv?.apiKey || "", modelIds: servers.flatMap((sv) => sv.models.map((m) => m.id)) };
+      })(),
     },
   };
 

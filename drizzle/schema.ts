@@ -839,7 +839,11 @@ export const tunnelSettings = mysqlTable("tunnel_settings", {
 });
 export type TunnelEmailNotify = { to: string; host: string; port: number; user: string; pass: string; secure: boolean; from: string };
 
-export type SelfHostedLlmConfig = { url: string; apiKey: string; models: { id: string; label: string }[] };
+export type SelfHostedLlmModelEntry = { id: string; label: string };
+export type SelfHostedLlmServer = { url: string; apiKey: string; models: SelfHostedLlmModelEntry[] };
+// 多自建服务器：每个 server 各自 URL/Key + 各自模型，按模型 id 路由到其所属 server。
+// 向后兼容：旧单服务器形态 {url,apiKey,models} 由 normalizeSelfHostedLlm 归一化为 { servers:[该单条] }。
+export type SelfHostedLlmConfig = { servers: SelfHostedLlmServer[] };
 // 管理员后台配置的「本机 Claude 桥接」MCP/技能增强（替代 CLAUDE_BRIDGE_* 环境变量）。
 // mcpConfig：{mcpServers:{...}} 的原始 JSON 文本，或服务器上一个配置文件的绝对路径。
 export type BridgeMcpConfig = { mcpConfig: string; skills: boolean; strict: boolean; permissionMode: string; allowedTools: string; workspace: boolean };

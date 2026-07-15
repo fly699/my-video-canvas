@@ -639,15 +639,25 @@ export const adminRouter = router({
     getSelfHostedLlm: adminProcedure.query(async () => ({ ...(await db.getSelfHostedLlmConfig()), bridgeLocalUrl: bridgeLocalUrl() })),
     setSelfHostedLlm: managerProc
       .input(z.object({
-        url: z.string().trim().max(2048),
-        apiKey: z.string().max(512).default(""),
-        models: z.array(z.object({ id: z.string().min(1).max(120), label: z.string().max(120) })).max(50),
+        // 多自建服务器：每个 server 各自 URL/Key + 各自模型。兼容旧单服务器入参（url/apiKey/models）。
+        servers: z.array(z.object({
+          url: z.string().trim().max(2048),
+          apiKey: z.string().max(512).default(""),
+          models: z.array(z.object({ id: z.string().min(1).max(120), label: z.string().max(120) })).max(50),
+        })).max(20).optional(),
+        // 旧单服务器入参（向后兼容，仍接受）：
+        url: z.string().trim().max(2048).optional(),
+        apiKey: z.string().max(512).optional(),
+        models: z.array(z.object({ id: z.string().min(1).max(120), label: z.string().max(120) })).max(50).optional(),
       }))
       .mutation(async ({ input }) => {
-        // 仅接受 http(s)（与代理一致），允许内网地址（部署方自有服务器）。
-        const url = input.url.trim();
-        if (url && !/^https?:\/\//i.test(url)) throw new TRPCError({ code: "BAD_REQUEST", message: "地址必须以 http:// 或 https:// 开头" });
-        await db.setSelfHostedLlmConfig({ url, apiKey: input.apiKey, models: input.models });
+        const rawServers = input.servers ?? (input.url !== undefined ? [{ url: input.url, apiKey: input.apiKey ?? "", models: input.models ?? [] }] : []);
+        // 仅接受 http(s)（与代理一致），允许内网地址（部署方自有服务器）。逐条校验；空 url 条目丢弃。
+        const servers = rawServers.map((s) => ({ url: s.url.trim(), apiKey: s.apiKey ?? "", models: s.models ?? [] })).filter((s) => s.url);
+        for (const s of servers) {
+          if (!/^https?:\/\//i.test(s.url)) throw new TRPCError({ code: "BAD_REQUEST", message: `地址必须以 http:// 或 https:// 开头：${s.url.slice(0, 60)}` });
+        }
+        await db.setSelfHostedLlmConfig({ servers });
         await reloadSelfHostedConfig(); // 立即热更新路由/门控缓存
         return { success: true };
       }),

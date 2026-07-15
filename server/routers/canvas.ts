@@ -52,7 +52,7 @@ import { getCachedStorageSettings } from "../_core/storageConfig";
 import { getCachedDisabledModels } from "../_core/modelToggles";
 import { getCachedSystemDefaultModels, getSystemDefaultModel } from "../_core/systemDefaultModels";
 import { listBridgeSkills } from "../_core/bridgeSkills";
-import { getSelfHostedConfig } from "../_core/selfHostedLlm";
+import { allSelfHostedModels } from "../_core/selfHostedLlm";
 import { parseDocumentToText, isParsableDocument } from "../_core/documentParse";
 import { extractTextContent } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
@@ -4406,9 +4406,8 @@ export const configRouter = router({
   // 管理员配置的自建 LLM 模型清单（仅 id/label，绝不含 apiKey）——所有登录用户可读，
   // 前端据此把自建模型动态并入各模型选择器。url 仅返回是否已配置（布尔），不回传具体地址。
   selfHostedLlmModels: protectedProcedure.query(async () => {
-    const cfg = getSelfHostedConfig(); // 含 env 兜底（DB 优先）
-    const configured = !!cfg.url.trim();
-    return { configured, models: configured ? cfg.models.map((m) => ({ id: m.id, label: m.label })) : [] };
+    const models = allSelfHostedModels(); // 拉平所有自建服务器的模型（含 env 兜底，DB 优先）
+    return { configured: models.length > 0, models };
   }),
   // 各转写 provider 是否已配置 + 自建端点的 model —— 供转写模型选择器只列「真能用」的模型
   // （方案B：Groq/自建/Forge 各自独立端点，选哪个就路由到哪个）。避免「选了走不通」的歧义。
