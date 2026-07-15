@@ -305,9 +305,14 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     return v >= 22 && v <= 600 ? v : 40;
   });
   const composerDrag = useRef<{ startY: number; startH: number } | null>(null);
+  const [composerHandleHot, setComposerHandleHot] = useState(false); // 手柄 hover/按住高亮
   const onComposerResizeDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
+    // 指针捕获：触摸屏上把该指针的后续事件锁定到手柄本身，避免手指移动被浏览器当成滚动
+    // 而中途丢失（需配合 touch-action:none）。
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
     composerDrag.current = { startY: e.clientY, startH: composerH };
+    setComposerHandleHot(true);
     const move = (ev: PointerEvent) => {
       if (!composerDrag.current) return;
       const next = Math.max(22, Math.min(600, composerDrag.current.startH + (composerDrag.current.startY - ev.clientY)));
@@ -315,13 +320,16 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     };
     const up = () => {
       composerDrag.current = null;
+      setComposerHandleHot(false);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       // 收尾持久化（读最新值）。
       setComposerH((h) => { try { localStorage.setItem("avc:aichat:composerH", String(h)); } catch { /* ignore */ } return h; });
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }, [composerH]);
 
   // aiChat.sendMessage 是同步长 HTTP（服务端阻塞到 LLM 生成完才返回）。走公网隧道时，慢模型/大
@@ -897,15 +905,24 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
             onDrop={onDropImages}
             style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)", position: "relative", outline: dragOver ? `2px dashed ${ACCENT}` : "none", outlineOffset: -2 }}
           >
-            {/* 顶部可拖拽分隔线：上下拖调「对话区 / 输入框」占比（悬停高亮，双击复位）。 */}
+            {/* 顶部可拖拽分隔线：上下拖调「对话区 / 输入框」占比（悬停高亮，双击复位）。
+                触摸屏优化：抓取区扩到 26px 高（远超原 8px），touch-action:none 防手指拖动被当滚动，
+                手柄更宽更粗（56×6）更易看清瞄准；hover/按住时加深，给出清晰反馈。 */}
             <div
               className="nodrag"
               onPointerDown={onComposerResizeDown}
               onDoubleClick={() => { setComposerH(40); try { localStorage.setItem("avc:aichat:composerH", "40"); } catch { /* ignore */ } }}
               title="拖动调整输入框高度 · 双击复位"
-              style={{ position: "absolute", top: -4, left: 0, right: 0, height: 8, cursor: "ns-resize", zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center" }}
+              onPointerEnter={() => setComposerHandleHot(true)}
+              onPointerLeave={() => { if (!composerDrag.current) setComposerHandleHot(false); }}
+              style={{ position: "absolute", top: -14, left: 0, right: 0, height: 28, cursor: "ns-resize", zIndex: 6, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "none" }}
             >
-              <div style={{ width: 40, height: 3, borderRadius: 2, background: "var(--c-bd3, var(--c-bd2))" }} />
+              <div style={{
+                width: composerHandleHot ? 72 : 56, height: 6, borderRadius: 3,
+                background: composerHandleHot ? ACCENT : "var(--c-bd3, var(--c-bd2))",
+                boxShadow: composerHandleHot ? `0 0 0 4px color-mix(in oklch, ${ACCENT} 18%, transparent)` : "none",
+                transition: "width 140ms ease, background 140ms ease, box-shadow 140ms ease",
+              }} />
             </div>
             {dragOver && <div style={{ position: "absolute", inset: 0, zIndex: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: ACCENT, pointerEvents: "none", background: "color-mix(in oklch, var(--c-surface) 70%, transparent)" }}>松开以添加图片附件</div>}
             {/* 模板（人设）+ /技能 提示——移植自聊天室 AI 助手 */}
