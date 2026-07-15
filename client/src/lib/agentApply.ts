@@ -501,6 +501,50 @@ export function applyAgentOperations(
         fail(index, op, e instanceof Error ? e.message : String(e));
       }
     });
+    // 角色确定性自动接线（方案2）：把本批新建的角色节点接到同批新建的生成节点，
+    // 不再赌 LLM 主动 emit connect——否则「@角色→首帧/分镜/视频」拿不到角色参考图。
+    // 规则：① 生成节点提示词里出现某角色名 → 接该角色（支持多角色分派）；② 若某生成节点
+    // 无任何角色（提示词未提及、也没被连过）且本批只建了一个角色 → 接该唯一角色（单主角兜底）。
+    // 仅在连接合法、边不存在、且目标尚无角色入边时建；与手动/@提及在下游 effectiveCharacters 去重。
+    {
+      const CHAR_TARGETS = new Set<NodeType>(["storyboard", "image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow"]);
+      const nodesNow = useCanvasStore.getState().nodes;
+      const byId = new Map(nodesNow.map((n) => [n.id, n] as const));
+      const createdChars = res.createdIds
+        .filter((id) => typeById.get(id) === "character")
+        .map((id) => ({ id, name: charDisplayName((byId.get(id)?.data.payload ?? {}) as CharacterNodeData) }))
+        .filter((c) => c.name.length > 0);
+      if (createdChars.length) {
+        // 已有「角色→X」入边的生成节点：不再自动补（尊重 LLM/用户既有选择）。
+        const hasCharInEdge = new Set<string>();
+        for (const e of useCanvasStore.getState().edges) {
+          if (typeById.get(e.source) === "character") hasCharInEdge.add(e.target);
+        }
+        const genTargets = res.createdIds.filter((id) => CHAR_TARGETS.has(typeById.get(id) as NodeType));
+        const promptOf = (id: string): string => {
+          const p = (byId.get(id)?.data.payload ?? {}) as Record<string, unknown>;
+          return [p.prompt, p.promptText, p.description, p.positivePrompt, p.negPrompt]
+            .filter((x): x is string => typeof x === "string").join(" ");
+        };
+        for (const gid of genTargets) {
+          const gtype = typeById.get(gid) as NodeType;
+          if (!isConnectionValid("character", gtype)) continue;
+          const text = promptOf(gid);
+          let attach = createdChars.filter((c) => text.includes(c.name));
+          // 无名字命中 + 目标尚无角色入边 + 本批仅一个角色 → 单主角兜底
+          if (!attach.length && !hasCharInEdge.has(gid) && createdChars.length === 1) attach = createdChars;
+          for (const c of attach) {
+            const edgeKey = `${c.id} ${gid}`;
+            if (edgeKeys.has(edgeKey)) continue;
+            store.onConnect({ source: c.id, target: gid, sourceHandle: "output", targetHandle: defaultTargetHandle(gtype, "character") });
+            edgeKeys.add(edgeKey);
+            hasCharInEdge.add(gid);
+            res.touchedIds.push(gid);
+            res.connected++;
+          }
+        }
+      }
+    }
     // Wrap each planned scene's shots in a 「场景」group container (behind nodes).
     for (const box of sceneBoxes) store.addGroupBox(box, box.title);
   });
