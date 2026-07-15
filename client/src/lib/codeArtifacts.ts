@@ -39,10 +39,25 @@ export function guessFilename(lang: string | undefined, index = 0): string {
   return `${base}.${ext}`;
 }
 
-/** 把一条消息按 ``` 围栏拆成文本/代码段。无围栏 → 单个文本段。空内容 → []。 */
+// 解析结果按内容字符串缓存：消息区在任何无关状态（拖拽手柄悬停/滚动/输入框调高…）变化时
+// 都会整列重渲染，未缓存则每次对每条消息重跑正则；内容不变时结果恒定，缓存命中零成本。
+// 有界 LRU（>256 条时清空重来）避免长会话内存无限增长——上限远大于一屏可见消息数。
+const _segCache = new Map<string, MsgSegment[]>();
+const _SEG_CACHE_MAX = 256;
+
+/** 把一条消息按 ``` 围栏拆成文本/代码段。无围栏 → 单个文本段。空内容 → []。结果按内容字符串缓存。 */
 export function parseMessageSegments(content: string): MsgSegment[] {
   const text = content ?? "";
   if (!text) return [];
+  const cached = _segCache.get(text);
+  if (cached) return cached;
+  const result = _parseMessageSegments(text);
+  if (_segCache.size >= _SEG_CACHE_MAX) _segCache.clear();
+  _segCache.set(text, result);
+  return result;
+}
+
+function _parseMessageSegments(text: string): MsgSegment[] {
   const segments: MsgSegment[] = [];
   const fence = /```([^\n`]*)\n?([\s\S]*?)```/g;
   let last = 0;

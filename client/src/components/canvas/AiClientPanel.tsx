@@ -531,6 +531,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     if (busy || !active) return;
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!lastUser?.content) { toast.error("没有可重新生成的消息"); return; }
+    stoppedRef.current = false; // 上一轮若被手动停止会置真，这里必须复位，否则兜底轮询直接 return、拿不到本轮回答
     doSend(lastUser.content, []);
   };
 

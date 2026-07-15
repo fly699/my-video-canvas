@@ -464,6 +464,17 @@ export const superAgentRouter = router({
       // 续接：复用本节点持久工作区 + 上轮会话 id；否则开一次新会话（先删旧工作区）。
       const prior = codeSessions.get(key);
       const resuming = input.resume === true && !!prior && existsSync(prior.dir);
+
+      // #173 GitHub 连接参数校验：在建工作区之前完成（不依赖 workspace 的纯参数校验），
+      // 避免校验失败时把已经 mkdtemp 出来的临时目录泄漏在磁盘上（B-BUG-2）。
+      let gitRepoParsed: ReturnType<typeof parseGitHubRepo> | undefined;
+      if (!resuming && input.gitRepo) {
+        gitRepoParsed = parseGitHubRepo(input.gitRepo);
+        if (!gitRepoParsed) throw new TRPCError({ code: "BAD_REQUEST", message: "GitHub 仓库地址无效（仅支持 github.com 的 owner/repo）" });
+        if (!isBashAllowed()) throw new TRPCError({ code: "BAD_REQUEST", message: "连接 Git 仓库需服务端放行 Shell（SUPER_AGENT_CODE_ALLOW_BASH=1）" });
+        if (!input.gitToken) throw new TRPCError({ code: "BAD_REQUEST", message: "缺少 GitHub 访问令牌（PAT）——请在设置里填写个人访问令牌" });
+      }
+
       let resumeSessionId: string | undefined;
       let workspace: string;
       if (resuming && prior) {
@@ -476,14 +487,11 @@ export const superAgentRouter = router({
       const emit = (e: { type: string; message: string; data?: unknown }) => emitSuperAgentEvent(input.projectId, input.nodeId, e);
 
       // #173 连 GitHub：新会话且带仓库 → 用 PAT 克隆进工作区（token 不落库、输出脱敏）。
-      // 续接沿用已克隆的工作区，不重复克隆。克隆需放行 Shell（git 是外部命令）。
+      // 续接沿用已克隆的工作区，不重复克隆。克隆需放行 Shell（git 是外部命令）。参数校验已在上方完成。
       let clonedRepo: string | undefined;
-      if (!resuming && input.gitRepo) {
-        const repo = parseGitHubRepo(input.gitRepo);
-        if (!repo) throw new TRPCError({ code: "BAD_REQUEST", message: "GitHub 仓库地址无效（仅支持 github.com 的 owner/repo）" });
-        if (!isBashAllowed()) throw new TRPCError({ code: "BAD_REQUEST", message: "连接 Git 仓库需服务端放行 Shell（SUPER_AGENT_CODE_ALLOW_BASH=1）" });
-        if (!input.gitToken) throw new TRPCError({ code: "BAD_REQUEST", message: "缺少 GitHub 访问令牌（PAT）——请在设置里填写个人访问令牌" });
-        const cr = await cloneRepoInto(workspace, repo, input.gitToken, input.gitBranch);
+      if (!resuming && input.gitRepo && gitRepoParsed) {
+        const repo = gitRepoParsed;
+        const cr = await cloneRepoInto(workspace, repo, input.gitToken!, input.gitBranch);
         emit({ type: cr.ok ? "action" : "error", message: cr.ok ? `📦 ${cr.message}` : `GitHub 克隆失败：${cr.message}` });
         if (!cr.ok) { try { rmSync(workspace, { recursive: true, force: true }); } catch { /* ignore */ } throw new TRPCError({ code: "BAD_REQUEST", message: "GitHub 克隆失败：" + cr.message }); }
         clonedRepo = publicRemote(repo);

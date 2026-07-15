@@ -27,6 +27,13 @@ describe("parseMessageSegments", () => {
   it("空内容 → 空数组", () => {
     expect(parseMessageSegments("")).toEqual([]);
   });
+  it("同内容重复调用命中缓存（引用稳定，避免整列重渲染时重复解析）", () => {
+    const s = "解释\n```ts\nconst a = 1;\n```\n收尾";
+    const a = parseMessageSegments(s);
+    const b = parseMessageSegments(s);
+    expect(b).toBe(a); // 同一引用 = 缓存命中
+    expect(a).toHaveLength(3);
+  });
 });
 
 describe("isPreviewableLang / extForLang / guessFilename", () => {
