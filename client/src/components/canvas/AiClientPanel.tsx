@@ -1014,28 +1014,12 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                 ))}
               </div>
             )}
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 12, padding: "8px 10px" }}>
+            {/* 竖排组合框：文本域占满整行在上（不再被左侧按钮挤出「无法输入的左空白」），
+                工具按钮 + 发送在下方一行。对齐主流聊天输入框布局。 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 12, padding: "8px 10px" }}>
               <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { void onPickFiles(e.target.files); e.target.value = ""; }} />
               {/* 移动端相机：capture=environment 直接唤起后置摄像头拍照，复用图片附件上传管线 */}
               <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => { void onPickFiles(e.target.files); e.target.value = ""; }} />
-              <button onClick={() => fileRef.current?.click()} disabled={uploadMut.isPending} className="nodrag" title="添加图片附件"
-                style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                {uploadMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
-              </button>
-              {/* 移动端相机拍照 */}
-              {mobile && (
-                <button onClick={() => cameraRef.current?.click()} disabled={uploadMut.isPending} className="nodrag" title="拍照"
-                  style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  <Camera size={15} />
-                </button>
-              )}
-              {/* 语音输入（麦克风）：Web Speech 主路径 + 服务端 whisper 兜底；录音中红色脉冲、转写中转圈 */}
-              {voice.supported && (
-                <button onClick={voice.toggle} disabled={voice.busy} className="nodrag" title={voice.recording ? "停止语音输入" : voice.busy ? "识别中…" : "语音输入"}
-                  style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: voice.recording ? "color-mix(in oklch, #e5484d 20%, transparent)" : "transparent", color: voice.recording ? "#e5484d" : "var(--c-t3)", cursor: voice.busy ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  {voice.busy ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} className={voice.recording ? "animate-pulse" : undefined} />}
-                </button>
-              )}
               <textarea
                 ref={composerRef}
                 className="nodrag nowheel"
@@ -1054,20 +1038,41 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                 onPaste={onPasteImages}
                 placeholder={active ? "输入消息，Enter 发送 · Shift+Enter 换行 · 可粘贴/拖拽图片" : "输入消息开始新会话…"}
                 rows={1}
-                style={{ flex: 1, resize: "none", height: composerH, minHeight: 22, maxHeight: 600, overflowY: "auto", background: "transparent", border: "none", outline: "none", color: "var(--c-t1)", fontSize: 13, lineHeight: 1.5, fontFamily: "inherit" }}
+                style={{ width: "100%", resize: "none", height: composerH, minHeight: 22, maxHeight: 600, overflowY: "auto", background: "transparent", border: "none", outline: "none", color: "var(--c-t1)", fontSize: 13, lineHeight: 1.5, fontFamily: "inherit" }}
               />
-              {busy ? (
-                /* #1 生成中显示「停止」——点它放弃等待（服务端 LLM 无法真中止，见 stopWaiting）。 */
-                <button onClick={stopWaiting} className="nodrag" title="停止等待当前回复"
-                  style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: "pointer", color: "#fff", background: "oklch(0.62 0.2 20)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  <Square size={14} fill="#fff" />
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <button onClick={() => fileRef.current?.click()} disabled={uploadMut.isPending} className="nodrag" title="添加图片附件"
+                  style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  {uploadMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
                 </button>
-              ) : (
-                <button onClick={send} disabled={!input.trim() && pendingAtts.length === 0} className="nodrag"
-                  style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: (input.trim() || pendingAtts.length) ? "pointer" : "default", color: "#fff", background: (input.trim() || pendingAtts.length) ? ACCENT : "var(--c-bd2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  <Send size={16} />
-                </button>
-              )}
+                {/* 移动端相机拍照 */}
+                {mobile && (
+                  <button onClick={() => cameraRef.current?.click()} disabled={uploadMut.isPending} className="nodrag" title="拍照"
+                    style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <Camera size={15} />
+                  </button>
+                )}
+                {/* 语音输入（麦克风）：Web Speech 主路径 + 服务端 whisper 兜底；录音中红色脉冲、转写中转圈 */}
+                {voice.supported && (
+                  <button onClick={voice.toggle} disabled={voice.busy} className="nodrag" title={voice.recording ? "停止语音输入" : voice.busy ? "识别中…" : "语音输入"}
+                    style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "none", background: voice.recording ? "color-mix(in oklch, #e5484d 20%, transparent)" : "transparent", color: voice.recording ? "#e5484d" : "var(--c-t3)", cursor: voice.busy ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    {voice.busy ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} className={voice.recording ? "animate-pulse" : undefined} />}
+                  </button>
+                )}
+                <div style={{ flex: 1 }} />
+                {busy ? (
+                  /* #1 生成中显示「停止」——点它放弃等待（服务端 LLM 无法真中止，见 stopWaiting）。 */
+                  <button onClick={stopWaiting} className="nodrag" title="停止等待当前回复"
+                    style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: "pointer", color: "#fff", background: "oklch(0.62 0.2 20)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <Square size={14} fill="#fff" />
+                  </button>
+                ) : (
+                  <button onClick={send} disabled={!input.trim() && pendingAtts.length === 0} className="nodrag"
+                    style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: (input.trim() || pendingAtts.length) ? "pointer" : "default", color: "#fff", background: (input.trim() || pendingAtts.length) ? ACCENT : "var(--c-bd2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <Send size={16} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
