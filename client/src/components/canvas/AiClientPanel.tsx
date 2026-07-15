@@ -15,6 +15,7 @@ import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, NO_PERSONA
 import { useBridgeSkills } from "@/lib/useBridgeSkills";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
+import { AiModelMenu } from "./AiModelMenu";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { trpc } from "@/lib/trpc";
 import type { NodeType } from "../../../../shared/types";
@@ -503,8 +504,6 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     );
   }
 
-  const modelLabel = chatModels.find((m) => m.id === model)?.label ?? CHAT_MODELS.find((m) => m.id === model)?.label ?? model;
-
   const panelTree = (
     <div
       className="nodrag"
@@ -527,11 +526,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
           <span style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 16%, transparent)`, color: ACCENT }}><Bot size={16} /></span>
           <span style={{ fontSize: 13, fontWeight: 800, color: "var(--c-t1)" }}>AI 客户端</span>
         </>}
-        <select value={model} onChange={(e) => changeModel(e.target.value)} className="nodrag"
-          style={{ marginLeft: 6, fontSize: 11.5, padding: "4px 8px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", maxWidth: 200 }}
-          title={`当前模型：${modelLabel}`}>
-          {modelOptions.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-        </select>
+        <AiModelMenu value={model} options={modelOptions} onChange={changeModel} />
         <div style={{ flex: 1 }} />
         <button onClick={toggleCodeMode} title={codeMode ? "退出代码模式" : "代码模式（Codex 写码 + 工件面板/预览，对齐 Canvas/Artifacts）"}
           style={{ ...iconBtn, color: codeMode ? ACCENT : "var(--c-t3)", background: codeMode ? `color-mix(in oklch, ${ACCENT} 16%, transparent)` : "transparent" }}><Code2 size={15} /></button>
