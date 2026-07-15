@@ -425,6 +425,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
 
   async function send() {
     const files = staged;
+    const rawInput = input; // 出错时用于恢复输入原文（避免规划失败后要重打字）
     const msg = input.trim() || (files.length ? "请参考附件规划画布。" : "");
     if (!msg || busy) return;
     setInput(""); setStaged([]); setAttachErr("");
@@ -486,6 +487,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         return;
       }
       setTurns((p) => [...p, { role: "assistant", content: friendlyClientLLMError(e), error: true }]);
+      // 规划失败：把原文恢复到输入框（仅当用户还没另起输入），改一改就能重发，不用重打。
+      if (rawInput.trim()) setInput((cur) => (cur ? cur : rawInput));
     } finally {
       abortRef.current = null;
       setBusy(false);
