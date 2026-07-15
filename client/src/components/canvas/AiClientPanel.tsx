@@ -696,8 +696,13 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
               const atts = (m as { attachments?: ChatMsgAttachment[] }).attachments;
               return (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 3 }}>
+                <div style={{ display: "flex", gap: 7, alignItems: "flex-start", maxWidth: "88%" }}>
+                  {/* AI 回复左侧头像锚点（用户消息不加，保持右对齐简洁） */}
+                  {m.role !== "user" && (
+                    <span style={{ flexShrink: 0, marginTop: 1, display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={15} /></span>
+                  )}
                 <div style={{
-                  maxWidth: "82%", borderRadius: 13, fontSize: 13, lineHeight: 1.6, wordBreak: "break-word", overflow: "hidden",
+                  maxWidth: "100%", borderRadius: 13, fontSize: 13, lineHeight: 1.6, wordBreak: "break-word", overflow: "hidden",
                   background: m.role === "user" ? `color-mix(in oklch, ${ACCENT} 18%, var(--c-input))` : "var(--c-input)",
                   color: "var(--c-t1)", border: "1px solid var(--c-bd2)",
                 }}>
@@ -717,8 +722,9 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                     </div>
                   ))}
                 </div>
-                {/* 消息操作：复制（全部）+ 落成节点/重新生成（仅 AI 回复）。 */}
-                <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "0 2px" }}>
+                </div>
+                {/* 消息操作：复制（全部）+ 落成节点/重新生成（仅 AI 回复）。AI 侧缩进对齐气泡（让开头像宽度）。 */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "0 2px", paddingLeft: m.role !== "user" ? 33 : 2 }}>
                   {m.content?.trim() && (
                     <button onClick={() => copyText(m.content)} className="nodrag" title="复制"
                       style={msgActBtn} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
