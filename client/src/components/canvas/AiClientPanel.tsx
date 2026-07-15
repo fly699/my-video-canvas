@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, Check } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, ChevronUp, Check, Square } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -16,6 +16,7 @@ import { useBridgeSkills } from "@/lib/useBridgeSkills";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { AiModelMenu } from "./AiModelMenu";
+import { openNodeImage } from "./NodeImageLightbox";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { trpc } from "@/lib/trpc";
 import type { NodeType } from "../../../../shared/types";
@@ -42,6 +43,42 @@ const CODE_STARTERS: { icon: string; label: string; prompt: string }[] = [
   { icon: "🧹", label: "重构优化", prompt: "在保持行为不变的前提下重构下面的代码，让它更清晰、更高效：\n\n" },
   { icon: "📖", label: "解释代码", prompt: "逐步讲清楚下面这段代码在做什么、有哪些坑：\n\n" },
 ];
+
+// 代码块：长代码（>16 行）默认折叠，点「展开 N 行」看全文——避免一段长代码把对话撑满。
+const CODE_FOLD_LINES = 16;
+function CodeSegment({ lang, content, onCopy }: { lang?: string; content: string; onCopy: (t: string) => void }) {
+  const lineCount = content.split("\n").length;
+  const foldable = lineCount > CODE_FOLD_LINES;
+  const [collapsed, setCollapsed] = useState(foldable);
+  return (
+    <div style={{ background: "var(--c-base)", borderTop: "1px solid var(--c-bd1)", borderBottom: "1px solid var(--c-bd1)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", fontSize: 10.5, color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd1)" }}>
+        <Code2 size={11} /><span>{lang || "code"}</span>
+        {foldable && <span style={{ color: "var(--c-t4)" }}>· {lineCount} 行</span>}
+        <div style={{ flex: 1 }} />
+        {foldable && (
+          <button onClick={() => setCollapsed((v) => !v)} className="nodrag" title={collapsed ? "展开全部" : "折叠"}
+            style={{ ...msgActBtn, fontSize: 10 }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+            {collapsed ? <><ChevronDown size={11} /> 展开 {lineCount} 行</> : <><ChevronUp size={11} /> 折叠</>}
+          </button>
+        )}
+        <button onClick={() => onCopy(content)} className="nodrag" title="复制代码"
+          style={{ ...msgActBtn, fontSize: 10 }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+          <Copy size={10} /> 复制
+        </button>
+      </div>
+      <div style={{ position: "relative" }}>
+        <pre className="nowheel" style={{ margin: 0, padding: "10px 12px", overflowX: "auto", overflowY: "hidden", maxHeight: collapsed ? CODE_FOLD_LINES * 18 : undefined, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, lineHeight: 1.5, color: "var(--c-t1)" }}><code>{content}</code></pre>
+        {collapsed && (
+          <button onClick={() => setCollapsed(false)} className="nodrag"
+            style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 42, border: "none", cursor: "pointer", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 6, fontSize: 11, fontWeight: 600, color: ACCENT, background: "linear-gradient(to bottom, transparent, var(--c-base) 70%)" }}>
+            展开剩余 {lineCount - CODE_FOLD_LINES} 行
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const reactFlow = useReactFlow();
@@ -215,6 +252,8 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   // 隧道/网络超时兜底轮询中（服务端仍在跑、跑完会落库）——与 sendMut.isPending 一起构成「忙」态。
   const [recovering, setRecovering] = useState(false);
   const recoverPollRef = useRef(false);
+  // 「停止」：用户主动中断等待——服务端 LLM 无法真中止，故停止=停掉客户端等待/兜底轮询、隐藏转圈。
+  const stoppedRef = useRef(false);
 
   // 输入框高度可拖拽（顶部分隔线上下拖调「对话区 / 输入框」占比）；持久化到 localStorage。
   const [composerH, setComposerH] = useState<number>(() => {
@@ -273,12 +312,22 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
       if (active && projectId) void utils.aiChat.getMessages.invalidate({ nodeId: active, projectId });
     },
     onError: (err) => {
+      if (stoppedRef.current) return; // 用户已主动停止 → 不再兜底轮询、不弹错
       // 服务端明确错误（有 data.code：白名单/空消息/模型报错等）→ 直接提示；
       // 网络 / 隧道超时（无 code，请求被中途切断）→ 服务端可能仍在跑并已落库，轮询兜底恢复回答。
       if (err.data?.code || !active || !projectId) { toast.error("发送失败：" + err.message); return; }
       void recoverReply(active, projectId, sendBaselineRef.current);
     },
   });
+  // 停止等待：LLM 服务端无法真中止，这里停掉客户端等待/兜底轮询并复位忙态（回答若已落库，
+  // 下次刷新/重载会话仍能看到）。
+  const stopWaiting = () => {
+    stoppedRef.current = true;
+    recoverPollRef.current = false;
+    setRecovering(false);
+    sendMut.reset();
+    toast.info("已停止等待（服务端可能仍在生成，稍后刷新会话可见）");
+  };
   // 「忙」态 = 正在发送 或 正在超时兜底轮询——统一驱动 UI（禁用输入、转圈、隐藏末条重生成按钮）。
   const busy = sendMut.isPending || recovering;
 
@@ -370,7 +419,17 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     if (!projectId) { toast.error("画布未就绪"); return; }
     const atts = pendingAtts;
     setInput(""); setPendingAtts([]);
+    stoppedRef.current = false;
     atBottomRef.current = true; // 发送后跟随滚到底看回答（即使此前上翻着历史）
+    // 乐观插入用户消息 → 立即显示，不必等 AI 回复落库后才出现（#4）。服务端成功后 invalidate
+    // 会用权威数据覆盖这条乐观消息。
+    if (projectId && active) {
+      utils.aiChat.getMessages.setData({ nodeId: active, projectId }, (old) => {
+        const list = old ?? [];
+        const optimistic = { role: "user", content: text, attachments: atts.length ? atts : undefined } as unknown as typeof list[number];
+        return [...list, optimistic] as typeof list;
+      });
+    }
     // 无节点会话：用首句更新标题 + 刷新更新时间（首次发送前标题还是「新会话」）。
     if (isNodeless && active) {
       const cur = nodeless.find((s) => s.id === active);
@@ -709,18 +768,18 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                   {parseMessageSegments(m.content).map((seg, si) => seg.type === "text" ? (
                     <div key={si} style={{ padding: "9px 13px", whiteSpace: "pre-wrap" }}>{seg.content}</div>
                   ) : (
-                    <div key={si} style={{ background: "var(--c-base)", borderTop: "1px solid var(--c-bd1)", borderBottom: "1px solid var(--c-bd1)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", fontSize: 10.5, color: "var(--c-t4)", borderBottom: "1px solid var(--c-bd1)" }}>
-                        <Code2 size={11} /><span>{seg.lang || "code"}</span>
-                        <div style={{ flex: 1 }} />
-                        <button onClick={() => copyText(seg.content)} className="nodrag" title="复制代码"
-                          style={{ ...msgActBtn, fontSize: 10 }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
-                          <Copy size={10} /> 复制
-                        </button>
-                      </div>
-                      <pre className="nowheel" style={{ margin: 0, padding: "10px 12px", overflowX: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, lineHeight: 1.5, color: "var(--c-t1)" }}><code>{seg.content}</code></pre>
-                    </div>
+                    <CodeSegment key={si} lang={seg.lang} content={seg.content} onCopy={copyText} />
                   ))}
+                  {/* 图片附件内联渲染（用户上传图 / AI 生成图产物均在此显示；点击放大）。 */}
+                  {(atts?.filter((a) => a.type === "image" && a.url) ?? []).length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 10px" }}>
+                      {atts!.filter((a) => a.type === "image" && a.url).map((a, ai) => (
+                        <img key={ai} src={a.url} alt={a.name || "图片"} loading="lazy"
+                          onClick={() => openNodeImage(a.url)} className="nodrag"
+                          style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, cursor: "zoom-in", objectFit: "cover", border: "1px solid var(--c-bd2)" }} />
+                      ))}
+                    </div>
+                  )}
                 </div>
                 </div>
                 {/* 消息操作：复制（全部）+ 落成节点/重新生成（仅 AI 回复）。AI 侧缩进对齐气泡（让开头像宽度）。 */}
@@ -750,8 +809,15 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
             })}
             {busy && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
-                <div style={{ padding: "9px 13px", borderRadius: 13, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)" }}><Loader2 size={15} className="animate-spin" /></div>
-                {recovering && <span style={{ fontSize: 10.5, color: "var(--c-t4)", paddingLeft: 4 }}>网络中断，正在等服务端出结果…（可稍候，不必重发）</span>}
+                {/* #2 思考/生成提示：转圈 + 文案，带 AI 头像锚点（与回复气泡对齐）。 */}
+                <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                  <span style={{ flexShrink: 0, display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={15} /></span>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 13px", borderRadius: 13, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t3)", fontSize: 12.5 }}>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>{recovering ? "网络中断，正在等服务端出结果…" : "正在思考…"}</span>
+                  </div>
+                </div>
+                {recovering && <span style={{ fontSize: 10.5, color: "var(--c-t4)", paddingLeft: 33 }}>（可稍候，不必重发；或点输入框旁「停止」放弃等待）</span>}
               </div>
             )}
           </div>
@@ -912,10 +978,18 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                 rows={1}
                 style={{ flex: 1, resize: "none", height: composerH, minHeight: 22, maxHeight: 600, overflowY: "auto", background: "transparent", border: "none", outline: "none", color: "var(--c-t1)", fontSize: 13, lineHeight: 1.5, fontFamily: "inherit" }}
               />
-              <button onClick={send} disabled={(!input.trim() && pendingAtts.length === 0) || busy} className="nodrag"
-                style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: (input.trim() || pendingAtts.length) && !busy ? "pointer" : "default", color: "#fff", background: (input.trim() || pendingAtts.length) && !busy ? ACCENT : "var(--c-bd2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              </button>
+              {busy ? (
+                /* #1 生成中显示「停止」——点它放弃等待（服务端 LLM 无法真中止，见 stopWaiting）。 */
+                <button onClick={stopWaiting} className="nodrag" title="停止等待当前回复"
+                  style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: "pointer", color: "#fff", background: "oklch(0.62 0.2 20)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <Square size={14} fill="#fff" />
+                </button>
+              ) : (
+                <button onClick={send} disabled={!input.trim() && pendingAtts.length === 0} className="nodrag"
+                  style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: "none", cursor: (input.trim() || pendingAtts.length) ? "pointer" : "default", color: "#fff", background: (input.trim() || pendingAtts.length) ? ACCENT : "var(--c-bd2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <Send size={16} />
+                </button>
+              )}
             </div>
           </div>
         </div>

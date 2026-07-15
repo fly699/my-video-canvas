@@ -70,6 +70,8 @@ import { ENV } from "../_core/env";
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "../_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "../_core/higgsfield";
 import { persistVideoOrFallback, persistVideosOrFallback } from "../_core/persistVideo";
+import { extractHiggsfieldUrls, rehostMcpAsset } from "./agent";
+import { stripRehostedUrls } from "./chat";
 import { submitAndPollPoyoMusic, type PoyoMusicModel, type PoyoTTSModel } from "../_core/poyoAudio";
 import { submitAndPollPoyoTTS, submitAndPollPoyoMusicTool } from "../_core/poyoAudio";
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
@@ -1199,16 +1201,38 @@ export const aiChatRouter = router({
         });
       }
 
-      // Persist user message (with attachments) and assistant reply atomically.
+      // AI 生成产物落地（与聊天室 sendToAssistant 同款，#37）：本机 Claude/GPT 桥接挂 Higgsfield
+      // MCP 时，回复常带其外链（约 24h 过期、绕过下载门控）。① 转存自有 S3 并记入素材库
+      // （rehostMcpAsset，与画布助手/聊天室走同一存储守卫，故不会像「AI 生成结果无写入权限」那样失败）；
+      // ② 裸外链替换为占位；③ 产物作为助手附件下发，AI 客户端内联渲染 + 可落成节点。
+      let assistantAttachments: Array<{ type: "image" | "file"; url: string; mimeType: string; name: string }> | undefined;
+      try {
+        const hfUrls = extractHiggsfieldUrls(assistantContent).slice(0, 6);
+        if (hfUrls.length > 0) {
+          const atts: Array<{ type: "image" | "file"; url: string; mimeType: string; name: string }> = [];
+          const replaced: Array<{ url: string; type: string }> = [];
+          for (const oldUrl of hfUrls) {
+            const r = await rehostMcpAsset(ctx.user.id, input.projectId, oldUrl);
+            if (!r) continue;
+            atts.push({ type: r.type === "image" ? "image" : "file", url: r.url, mimeType: r.mimeType, name: r.name });
+            replaced.push({ url: oldUrl, type: r.type });
+          }
+          assistantContent = stripRehostedUrls(assistantContent, replaced);
+          if (atts.length > 0) assistantAttachments = atts;
+        }
+      } catch { /* 落地失败不影响正常回复 */ }
+
+      // Persist user message (with attachments) and assistant reply (with rehosted media) atomically.
       await addChatMessagePair(
         input.nodeId,
         input.projectId,
         input.message,
         assistantContent,
         input.attachments?.length ? input.attachments : undefined,
+        assistantAttachments,
       );
 
-      return { content: assistantContent };
+      return { content: assistantContent, attachments: assistantAttachments };
     }),
 
   clearMessages: protectedProcedure
