@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, ChevronUp, Check, Square, Brain } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, ChevronUp, Check, Square, Brain, Github } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -232,6 +232,13 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   // #172-批2 代码真实执行：工件「运行」桥接工程智能体沙箱（runCodeTask，需 L4 + 服务端开启）。
   const codeStatusQuery = trpc.superAgent.codeStatus.useQuery(undefined, { enabled: codeMode, retry: false });
   const runCodeMut = trpc.superAgent.runCodeTask.useMutation();
+  // #173 连 GitHub（/ai 代码模式）：仓库/分支存本地；PAT 复用 github:pat（与工程智能体节点同源，
+  // 一处填写两处通用）。点「运行工件」时把仓库克隆进沙箱，可让 AI 改代码并 git push。
+  const [gitConnectOpen, setGitConnectOpen] = useState(false);
+  const [gitRepo, setGitRepoState] = useState<string>(() => { try { return localStorage.getItem("avc:ai-client-git-repo") ?? ""; } catch { return ""; } });
+  const [gitBranch, setGitBranchState] = useState<string>(() => { try { return localStorage.getItem("avc:ai-client-git-branch") ?? ""; } catch { return ""; } });
+  const setGitRepo = (v: string) => { setGitRepoState(v); try { v ? localStorage.setItem("avc:ai-client-git-repo", v) : localStorage.removeItem("avc:ai-client-git-repo"); } catch { /* restricted */ } };
+  const setGitBranch = (v: string) => { setGitBranchState(v); try { v ? localStorage.setItem("avc:ai-client-git-branch", v) : localStorage.removeItem("avc:ai-client-git-branch"); } catch { /* restricted */ } };
   const [runResult, setRunResult] = useState<{ status: string; text: string } | null>(null);
 
   const activeNode = useMemo(() => nodes.find((n) => n.id === active), [nodes, active]);
@@ -575,8 +582,13 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     // 执行走本机桥接沙箱：仅本机桥接模型（claude-local*/gpt-local*）可传给 runCodeTask；
     // kie/云端模型无法本机执行 → 省略 model 用桥接默认（本机订阅模型）。
     const runModel = (model.startsWith("claude-local") || model.startsWith("gpt-local")) ? model : undefined;
+    // 连了 GitHub 仓库：带上 repo + PAT（复用 github:pat）+ 分支，服务端克隆进沙箱后跑任务。
+    const gitToken = (() => { try { return localStorage.getItem("github:pat") || undefined; } catch { return undefined; } })();
+    const gitFields = gitRepo.trim()
+      ? { gitRepo: gitRepo.trim(), ...(gitToken ? { gitToken } : {}), ...(gitBranch.trim() ? { gitBranch: gitBranch.trim() } : {}) }
+      : {};
     runCodeMut.mutate(
-      { projectId, nodeId: `code-${active ?? "run"}`, task, ...(runModel ? { model: runModel } : {}) },
+      { projectId, nodeId: `code-${active ?? "run"}`, task, ...(runModel ? { model: runModel } : {}), ...gitFields },
       {
         onSuccess: (r) => setRunResult({ status: r.status, text: r.result ?? r.diagnostic ?? "（无输出）" }),
         onError: (e) => { setRunResult({ status: "failed", text: e.message }); toast.error("运行失败：" + e.message); },
@@ -1113,6 +1125,34 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                 <button onClick={() => dropArtifactToCanvas(artifact)} className="nodrag" title="落成便签节点" style={{ ...iconBtn, width: 24, height: 24 }}><Plus size={14} /></button>
               </>}
             </div>
+            {/* #173 连 GitHub：沙箱可用时显示——填仓库 + PAT，点「运行」会先克隆进沙箱，
+                可让 AI 改代码并 git push。PAT 与工程智能体节点共用 github:pat（一处填两处通用）。 */}
+            {codeStatusQuery.data?.enabled && (
+              <div style={{ flexShrink: 0, borderBottom: "1px solid var(--c-bd1)", background: "var(--c-canvas, var(--c-base))" }}>
+                <button onClick={() => setGitConnectOpen((v) => !v)} className="nodrag"
+                  style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 10px", background: "transparent", border: "none", cursor: "pointer", color: gitRepo.trim() ? ACCENT : "var(--c-t3)", fontSize: 11.5 }}>
+                  <Github size={13} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{gitRepo.trim() ? `已连接 ${gitRepo.trim()}` : "连接 GitHub 仓库（可选）"}</span>
+                  <div style={{ flex: 1 }} />
+                  {gitConnectOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                </button>
+                {gitConnectOpen && (
+                  <div className="nodrag" style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 10px 8px" }}>
+                    <input value={gitRepo} onChange={(e) => setGitRepo(e.target.value)} placeholder="owner/repo 或 https://github.com/owner/repo"
+                      style={{ width: "100%", boxSizing: "border-box", height: 30, padding: "0 8px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", fontSize: 11.5, outline: "none" }} />
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input type="password" defaultValue={(() => { try { return localStorage.getItem("github:pat") || ""; } catch { return ""; } })()}
+                        onChange={(e) => { try { e.target.value ? localStorage.setItem("github:pat", e.target.value) : localStorage.removeItem("github:pat"); } catch { /* restricted */ } }}
+                        placeholder="GitHub PAT（本地保存，不入库）"
+                        style={{ flex: 2, minWidth: 0, boxSizing: "border-box", height: 30, padding: "0 8px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", fontSize: 11.5, outline: "none" }} />
+                      <input value={gitBranch} onChange={(e) => setGitBranch(e.target.value)} placeholder="分支(可选)"
+                        style={{ flex: 1, minWidth: 0, boxSizing: "border-box", height: 30, padding: "0 8px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", fontSize: 11.5, outline: "none" }} />
+                    </div>
+                    <span style={{ fontSize: 10, color: "var(--c-t4)", lineHeight: 1.5 }}>连接后点「运行」会先把仓库克隆进沙箱，可让 AI 改代码并 <b>git push</b>。需服务端放行 Shell（PAT 仅本次克隆/推送用、不入库）。</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ flex: 1, overflow: "auto", minHeight: 0 }} className="nowheel">
               {!artifact ? (
                 <div style={{ margin: "auto", padding: "24px 16px", textAlign: "center", color: "var(--c-t4)", fontSize: 12, lineHeight: 1.7 }}>
