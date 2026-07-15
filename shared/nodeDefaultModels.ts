@@ -20,7 +20,7 @@ export type ModelSlot = "llm" | "image" | "video" | "transcribe" | "voiceTranscr
  * - voiceTranscribe：AI 助手/客户端语音输入（麦克风）的转写，出厂同 Whisper v1；可单独改。
  */
 export const FACTORY_DEFAULT_MODELS: Record<ModelSlot, string> = {
-  llm: "kie_claude_opus_47",
+  llm: "kie_claude_opus_48",
   image: "kie_gpt_image_2",
   video: "kie_grok_i2v",
   transcribe: "whisper-1",
