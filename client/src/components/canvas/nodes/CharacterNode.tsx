@@ -76,6 +76,10 @@ const fieldStyle: React.CSSProperties = {
   transition: "border-color 150ms ease",
   lineHeight: 1.5,
   fontFamily: "var(--font-sans)",
+  // 单行 <input>/<select> 在创意模式浮动资料面板里会塌成近零高（textarea 靠 rows 撑高不受影响），
+  // 导致「姓名/职业/年龄」标签与输入框叠在一起。给最小高度 + border-box 兜底，杜绝塌陷。
+  minHeight: 34,
+  boxSizing: "border-box",
 };
 
 const labelStyle: React.CSSProperties = {
@@ -730,17 +734,19 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // 输入条下方的浮动资料面板里（卡体保持纯「角色卡」形态）。
   const formBody = (
     <>
-        {/* Kind toggle */}
+        {/* Kind toggle（人物 / 场景）：加高按钮，不再细如线条 */}
         <div
-          className="flex gap-0.5 p-0.5 rounded-lg"
+          className="flex gap-1 p-1 rounded-lg"
           style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}
         >
           {KINDS.map((k) => (
             <button
               key={k.id}
               onClick={() => update("characterKind", k.id)}
-              className="nodrag flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all"
+              className="nodrag flex-1 flex items-center justify-center gap-1.5 rounded-md font-medium transition-all"
               style={{
+                minHeight: 34,
+                fontSize: 13,
                 background: kind === k.id ? accentA(0.18) : "transparent",
                 border: `1px solid ${kind === k.id ? accentA(0.40) : "transparent"}`,
                 color: kind === k.id ? accent : "var(--c-t3)",
@@ -825,9 +831,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             </button>
           )}
           {/* #73 纳管：三视图生成模型选择 + 计价（此前隐形走服务端默认模型） */}
-          <div className="nodrag flex items-center gap-2" style={{ marginTop: 4 }}>
-            <ModelPicker value={maModel} onChange={pickMaModel} options={maOptionsResolved} minWidth={150} />
-            <span style={{ fontSize: 9.5, color: "var(--c-t4)", whiteSpace: "nowrap" }} title="三视图为单张大图，计一次生成">预计：{maCost}</span>
+          <div className="nodrag" style={{ marginTop: 6 }}>
+            <label style={{ ...labelStyle, marginBottom: 4 }}>多视角模型（一键多视角用此模型）</label>
+            <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+              <ModelPicker value={maModel} onChange={pickMaModel} options={maOptionsResolved} minWidth={150} />
+              <span style={{ fontSize: 9.5, color: "var(--c-t4)", whiteSpace: "nowrap" }} title="三视图为单张大图，计一次生成">预计：{maCost}</span>
+            </div>
           </div>
           {/* 本地 ComfyUI（自建）：地址(全能服务器管理) + checkpoint，仅选自建模型时出现 */}
           {maModel === COMFY_LOCAL_MODEL && <div style={{ marginTop: 6 }}><ComfyCkptSelect enabled width={140} /></div>}
@@ -1287,8 +1296,12 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         {/* #76 批1：下浮动资料面板——「高级」展开时表单浮现在输入条下方（内部滚动），
             卡体不再被表单撑开；有状态挂载物（隐藏上传 input、识别/一致性面板）常驻卡体不受影响 */}
         {advancedOpen && (
-          <div className="nodrag nowheel flex flex-col" style={{ gap: 12, maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
-            {formBody}
+          // ⚠ 滚动容器必须是 block，内层才用 flex-col 排版：若滚动容器本身是 flex-col + maxHeight，
+          // 表单高于 52vh 时 flex-shrink 会把各字段行压扁（输入框溢出、标签叠在一起）。见反馈修复。
+          <div className="nodrag nowheel" style={{ maxHeight: "52vh", overflowY: "auto", overscrollBehavior: "contain", paddingTop: 10, marginTop: 4, borderTop: "1px solid var(--c-bd1)" }}>
+            <div className="flex flex-col" style={{ gap: 12 }}>
+              {formBody}
+            </div>
           </div>
         )}
       </InlineGenBar>
