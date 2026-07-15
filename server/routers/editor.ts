@@ -273,10 +273,15 @@ export const editorRouter = router({
       const words = (tr.words ?? []).map((w) => ({ word: w.word, start: w.start, end: w.end }));
 
       const aggr = input.aggressiveness ?? "medium";
+      // 每个保留区间左右外扩的安全边距：轻=多留、狠=少留。防止把语音首尾（气口/辅音尾音）切掉。
+      const padByAggr: Record<string, number> = { low: 0.22, medium: 0.12, high: 0.06 };
+      const padSec = padByAggr[aggr] ?? 0.12;
       const lines = segments.map((s) => `[${s.start.toFixed(2)}-${s.end.toFixed(2)}]${s.no_speech_prob > 0.6 ? "(疑似静音)" : ""} ${s.text.trim()}`).join("\n");
       const sys = "你是专业视频剪辑师。下面是一段视频的逐段转写（含时间戳，单位秒）。判断哪些区间应【保留】，"
-        + `删除口头禅/重复/长停顿/跑题/疑似静音，产出紧凑连贯的成片。剪辑激进度=${aggr}（low 少删、high 多删）。`
-        + (input.targetSec ? `目标成片时长约 ${input.targetSec} 秒。` : "")
+        + `删除口头禅/重复/长停顿/跑题/疑似静音，产出紧凑连贯的成片。剪辑激进度=${aggr}（low=保守，仅删明显冗余/长静音；medium=适中；high=多删）。`
+        + "\n【务必】保留区间的起止要包含完整的句子/词首尾，宁可在每段语音前后各多留 0.2 秒，也绝不要切进正在说话的语音中间、或吃掉句子开头的第一个字/结尾的尾音。short 停顿（<0.6s）属正常语流，不要删。"
+        + (aggr === "low" ? "\n当前为 low：只在明显有必要时才删，拿不准就保留。" : "")
+        + (input.targetSec ? `\n目标成片时长约 ${input.targetSec} 秒。` : "")
         + '\n只输出一个 JSON：{"keep":[{"start":秒,"end":秒}],"grade":"none|subtle|neutral_punch|warm_cinematic"}。'
         + "keep 按时间升序、区间不重叠、落在视频时长内；grade 为可选整体调色档（不确定用 none）。禁止输出任何解释或 Markdown 代码围栏。";
       const res = await invokeLLMWithKie(ctx, {
@@ -288,7 +293,7 @@ export const editorRouter = router({
       if (!plan || !plan.keep.length) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未产出有效剪辑方案，请重试或调整激进度" });
       const doc = buildAiCutDoc(
         { assetId: input.assetId, assetUrl: input.assetUrl, width: input.width, height: input.height, fps: input.fps, durationSec: input.durationSec },
-        plan, words, { grade: input.grade, subtitles: input.subtitles },
+        plan, words, { grade: input.grade, subtitles: input.subtitles, padSec },
       );
       if (!doc.tracks.find((t) => t.type === "video")!.clips.length) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "剪辑结果为空（保留区间无效），请重试" });
       writeAuditLog({ ctx, action: "editor:aiCut", detail: { clips: doc.tracks[0].clips.length, subtitles: !!input.subtitles } });

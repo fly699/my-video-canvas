@@ -75,6 +75,18 @@ describe("buildAiCutDoc（保留区间 → EditorDoc）", () => {
     const doc2 = buildAiCutDoc(SRC, { keep: [{ start: 2, end: 3 }] }, [], { subtitles: true });
     expect(doc2.tracks.find((t) => t.type === "text")!.clips.length).toBe(0);
   });
+  it("字幕默认底部居中（transform 显式写入，预览=导出）", () => {
+    const words: CutWord[] = [{ word: "一", start: 2.1, end: 2.4 }, { word: "二", start: 2.4, end: 2.8 }];
+    const doc = buildAiCutDoc(SRC, { keep: [{ start: 2, end: 3 }] }, words, { subtitles: true });
+    const sub = doc.tracks.find((t) => t.type === "text")!.clips[0];
+    expect(sub.transform).toMatchObject({ x: 0.1, y: 0.82, scale: 0.8 }); // y≈底部、水平居中
+  });
+  it("padSec 左右外扩保留区间（防切语音首尾）", () => {
+    const noPad = buildAiCutDoc(SRC, { keep: [{ start: 5, end: 10 }] }, [], {});
+    expect(noPad.tracks[0].clips[0]).toMatchObject({ trimIn: 5, trimOut: 10 });
+    const pad = buildAiCutDoc(SRC, { keep: [{ start: 5, end: 10 }] }, [], { padSec: 0.2 });
+    expect(pad.tracks[0].clips[0]).toMatchObject({ trimIn: 4.8, trimOut: 10.2 }); // 两端各外扩 0.2s
+  });
 });
 
 describe("buildSubtitleClips 跨删除段断句 + aiCutStats", () => {
