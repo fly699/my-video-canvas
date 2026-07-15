@@ -155,9 +155,27 @@ export function libraryOverlayByName(
   if (!target) return null;
   const libs = _libraryChars.filter((n) => n.data.nodeType === "character");
   const named = libs.map((n) => n.data.payload as CharacterNodeData);
-  const match =
+  // 名字匹配容错（智能体建节点时名字常有漂移：加前后缀/空格/大小写）。逐级放宽：
+  // ① 精确同名（优先同 kind）② 归一化同名（去空白/NFKC/小写）③ 唯一包含匹配（库名⊆目标 或
+  // 目标⊆库名，≥2 字，仅当唯一命中才代入，避免多角色歧义误代入）。
+  const norm = (s: string) => (s ?? "").normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+  const nt = norm(target);
+  let match: CharacterNodeData | undefined =
     named.find((p) => charDisplayName(p) === target && (p.characterKind ?? "person") === kind) ??
     named.find((p) => charDisplayName(p) === target);
+  if (!match) {
+    const normEq = named.filter((p) => norm(charDisplayName(p)) === nt);
+    match = normEq.find((p) => (p.characterKind ?? "person") === kind) ?? normEq[0];
+  }
+  if (!match && nt.length >= 2) {
+    const contains = named.filter((p) => {
+      const n = norm(charDisplayName(p));
+      return n.length >= 2 && (n.includes(nt) || nt.includes(n));
+    });
+    const sameKind = contains.filter((p) => (p.characterKind ?? "person") === kind);
+    const pick = sameKind.length ? sameKind : contains;
+    if (pick.length === 1) match = pick[0]; // 唯一命中才代入
+  }
   if (!match) return null;
 
   const overlay: Record<string, unknown> = {};

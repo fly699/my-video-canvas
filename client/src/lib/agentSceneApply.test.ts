@@ -261,6 +261,77 @@ describe("applyAgentOperations 角色库代入（@角色 生成节点）", () =>
     expect(p.appearance).toBe("路人");
     setLibraryCharacters([]);
   });
+
+  it("方案1 名字漂移兜底：LLM 加了前后缀/空格也能命中库角色代入参考图", () => {
+    setLibraryCharacters(LIB);
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1", payload: { name: "少年 林晓（主角）", appearance: "x" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 }, { characterImportMode: "conditioning" });
+    const p = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "character")!.data.payload as Record<string, unknown>;
+    expect(p.referenceImageUrl).toBe("lin.png"); // 包含匹配唯一命中 → 代入
+    setLibraryCharacters([]);
+  });
+});
+
+describe("applyAgentOperations 角色确定性自动连线（方案2）", () => {
+  const LIB = [{
+    id: "lib:1",
+    data: { nodeType: "character" as const, payload: {
+      characterKind: "person", name: "林晓", referenceImageUrl: "lin.png",
+    } },
+  }];
+
+  it("单主角兜底：本批唯一角色自动接到所有新建生成节点（LLM 未 emit connect）", () => {
+    setLibraryCharacters(LIB);
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1", payload: { name: "林晓" } },
+      { op: "create", nodeType: "image_gen", tempId: "g1", payload: { prompt: "公园漫步" } },
+      { op: "create", nodeType: "storyboard", tempId: "s1", payload: { promptText: "咖啡馆" } },
+    ];
+    const r = applyAgentOperations(ops, { x: 0, y: 0 });
+    const nodes = useCanvasStore.getState().nodes;
+    const charId = nodes.find((n) => n.data.nodeType === "character")!.id;
+    const genIds = nodes.filter((n) => ["image_gen", "storyboard"].includes(n.data.nodeType)).map((n) => n.id);
+    const edges = useCanvasStore.getState().edges;
+    for (const gid of genIds) expect(edges.some((e) => e.source === charId && e.target === gid)).toBe(true);
+    expect(r.connected).toBeGreaterThanOrEqual(2);
+    setLibraryCharacters([]);
+  });
+
+  it("多角色按名分派：只接提示词里点名的角色，不交叉污染", () => {
+    setLibraryCharacters([]);
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "a", payload: { name: "阿明" } },
+      { op: "create", nodeType: "character", tempId: "b", payload: { name: "小红" } },
+      { op: "create", nodeType: "image_gen", tempId: "g1", payload: { prompt: "阿明 在雨中" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const nodes = useCanvasStore.getState().nodes;
+    const idOf = (name: string) => nodes.find((n) => n.data.nodeType === "character" && (n.data.payload as { name?: string }).name === name)!.id;
+    const gid = nodes.find((n) => n.data.nodeType === "image_gen")!.id;
+    const edges = useCanvasStore.getState().edges;
+    expect(edges.some((e) => e.source === idOf("阿明") && e.target === gid)).toBe(true);   // 点名的接
+    expect(edges.some((e) => e.source === idOf("小红") && e.target === gid)).toBe(false); // 未点名不接（多角色时无单主角兜底）
+    setLibraryCharacters([]);
+  });
+
+  it("已有 LLM 显式连线：不重复补线", () => {
+    setLibraryCharacters([]);
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1", payload: { name: "林晓" } },
+      { op: "create", nodeType: "image_gen", tempId: "g1", payload: { prompt: "公园" } },
+      { op: "connect", sourceRef: "c1", targetRef: "g1" },
+    ];
+    const r = applyAgentOperations(ops, { x: 0, y: 0 });
+    const nodes = useCanvasStore.getState().nodes;
+    const charId = nodes.find((n) => n.data.nodeType === "character")!.id;
+    const gid = nodes.find((n) => n.data.nodeType === "image_gen")!.id;
+    const edges = useCanvasStore.getState().edges.filter((e) => e.source === charId && e.target === gid);
+    expect(edges.length).toBe(1); // 只有 LLM 那一条，自动连线因 edgeKeys 去重不重复
+    expect(r.connected).toBe(1);
+    setLibraryCharacters([]);
+  });
 });
 
 describe("aspectFieldsFor 画面比例字段映射", () => {
