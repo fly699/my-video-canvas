@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, Check } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -328,6 +328,9 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   // 会话更名：无节点会话改本地索引（+服务端持久化）；画布节点会话改节点标题（updateNodeTitle）。
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState("");
+  // 会话搜索（会话多时按标题过滤）+ 删除二次确认（首击预警、再击才删，防误删）。
+  const [sessionQuery, setSessionQuery] = useState("");
+  const [confirmDelId, setConfirmDelId] = useState<string | null>(null);
   const startRename = (id: string, title: string) => { setRenamingId(id); setRenameText(title); };
   const commitRename = () => {
     const id = renamingId;
@@ -599,9 +602,23 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
             style={{ margin: 10, padding: "8px 10px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none", color: "#fff", background: ACCENT }}>
             <Plus size={14} /> 新会话
           </button>
+          {/* 会话搜索：会话较多时（≥6）按标题过滤，快速定位。 */}
+          {sessions.length >= 6 && (
+            <div style={{ position: "relative", margin: "0 10px 8px" }}>
+              <input value={sessionQuery} onChange={(e) => setSessionQuery(e.target.value)} className="nodrag" placeholder="搜索会话…"
+                style={{ width: "100%", boxSizing: "border-box", padding: "6px 26px 6px 9px", background: "var(--c-input)", border: "1px solid var(--c-bd2)", borderRadius: 8, color: "var(--c-t1)", fontSize: 11.5, outline: "none" }} />
+              {sessionQuery && (
+                <button onClick={() => setSessionQuery("")} className="nodrag" title="清除"
+                  style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", width: 18, height: 18, borderRadius: 5, border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><X size={11} /></button>
+              )}
+            </div>
+          )}
           <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
             {sessions.length === 0 && <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "12px 6px", lineHeight: 1.6 }}>还没有会话。点「新会话」开始——默认不建画布节点（保持画布清爽），对话仍会记住。</div>}
-            {sessions.map((s) => {
+            {sessions.length > 0 && sessions.filter((s) => !sessionQuery.trim() || s.title.toLowerCase().includes(sessionQuery.trim().toLowerCase())).length === 0 && (
+              <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "12px 6px" }}>没有匹配「{sessionQuery.trim()}」的会话</div>
+            )}
+            {sessions.filter((s) => !sessionQuery.trim() || s.title.toLowerCase().includes(sessionQuery.trim().toLowerCase())).map((s) => {
               const on = s.id === active;
               return (
                 <div key={s.id} className="nodrag" title={s.title}
@@ -632,11 +649,14 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                         <Pencil size={10} />
                       </button>
                       {s.nodeless && (
-                        <button onClick={() => deleteNodelessSession(s.id)} className="nodrag" title="删除会话"
-                          style={{ width: 18, height: 18, borderRadius: 5, border: "none", background: "transparent", color: "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.2 20)"; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
-                          <Trash2 size={11} />
+                        <button
+                          onClick={() => { if (confirmDelId === s.id) { deleteNodelessSession(s.id); setConfirmDelId(null); } else setConfirmDelId(s.id); }}
+                          onBlur={() => { if (confirmDelId === s.id) setConfirmDelId(null); }}
+                          className="nodrag" title={confirmDelId === s.id ? "再次点击确认删除" : "删除会话"}
+                          style={{ width: 18, height: 18, borderRadius: 5, border: confirmDelId === s.id ? "1px solid oklch(0.62 0.2 20)" : "none", background: confirmDelId === s.id ? "color-mix(in oklch, oklch(0.62 0.2 20) 18%, transparent)" : "transparent", color: confirmDelId === s.id ? "oklch(0.62 0.2 20)" : "var(--c-t4)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                          onMouseEnter={(e) => { if (confirmDelId !== s.id) (e.currentTarget as HTMLElement).style.color = "oklch(0.62 0.2 20)"; }}
+                          onMouseLeave={(e) => { if (confirmDelId !== s.id) (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                          {confirmDelId === s.id ? <Check size={11} /> : <Trash2 size={11} />}
                         </button>
                       )}
                     </div>
