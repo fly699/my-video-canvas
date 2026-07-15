@@ -415,6 +415,11 @@ export function sanitizeOperationDetailed(
             if (typeof d.min === "number" && n < d.min) n = d.min;
             if (typeof d.max === "number" && n > d.max) n = d.max;
             cleaned[k] = n;
+          } else if (d.type === "select") {
+            // 枚举型：仅保留模型声明的合法档位；非法枚举（如给 480p/720p 的 grok 设 8K）丢弃，
+            // 回退模型默认，而非原样透传被下游拒绝。数字/字符串档位统一按字符串比对。
+            const allowed = new Set(d.options.map((o) => String(o.value)));
+            if (allowed.has(String(v))) cleaned[k] = v;
           } else {
             cleaned[k] = v;
           }

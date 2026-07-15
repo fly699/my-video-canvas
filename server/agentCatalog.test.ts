@@ -184,6 +184,18 @@ describe("agentCatalog.sanitizeOperationDetailed", () => {
     if ("op" in ok) expect((ok.op.payload as { params?: { duration?: number } }).params?.duration).toBe(18); // 范围内不动
   });
 
+  it("video_task.params：非法枚举丢弃（回退默认），合法枚举保留", () => {
+    const r = sanitizeOperationDetailed({
+      op: "create", nodeType: "video_task",
+      payload: { provider: "kie_grok_i2v", params: { resolution: "8K", mode: "normal" } },
+    });
+    if ("op" in r) {
+      const params = (r.op.payload as { params?: Record<string, unknown> }).params ?? {};
+      expect("resolution" in params).toBe(false); // 8K 非 grok 合法档（480p/720p）→ 丢弃回退默认
+      expect(params.mode).toBe("normal");         // 合法枚举保留
+    }
+  });
+
   // #112 画布级动作：合法 action 保留（多余字段剥除），非法 action / 缺 action 丢弃并说明
   it("canvas op with whitelisted action is kept, extra fields stripped", () => {
     for (const action of ["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all"]) {
