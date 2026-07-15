@@ -29,4 +29,18 @@ describe("下载门控分级 isLevelExemptFromDownloadGate", () => {
     expect(userAdminLevel({ role: "user" })).toBe(0);
     expect(userAdminLevel({ adminLevel: null, role: "admin" })).toBe(1);
   });
+
+  // 回归：downloads.config / checkAccess 的免控判定必须与本函数（服务端 gate 同款）一致，
+  // 而非旧的粗粒度 role==="admin"。曾经运营(L2, role=admin) 在阈值=3 时被客户端误判免控、
+  // 跳过「申请下载」弹窗，直连服务端拿到 403 JSON 存成文件。客户端与服务端同用这套判定后：
+  it("回归：运营(L2) 在阈值 3 时应受控（客户端须弹「申请下载」，不能按 role=admin 放行）", () => {
+    const bypassLevel = 3;
+    const operations = { role: "admin", adminLevel: 2 }; // 运营 L2：role 是 admin 但级别不足
+    // 旧逻辑（role==="admin"）会放行 → 错误跳过弹窗；正确逻辑应受控：
+    expect(isLevelExemptFromDownloadGate(userAdminLevel(operations), bypassLevel)).toBe(false);
+    // 管理员 L3 及以上（>=阈值）仍免控：
+    expect(isLevelExemptFromDownloadGate(userAdminLevel({ role: "admin", adminLevel: 3 }), bypassLevel)).toBe(true);
+    // 普通用户始终受控：
+    expect(isLevelExemptFromDownloadGate(userAdminLevel({ role: "user" }), bypassLevel)).toBe(false);
+  });
 });
