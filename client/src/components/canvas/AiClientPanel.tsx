@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, ChevronUp, Check, Square } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, ChevronUp, Check, Square, Brain } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -43,6 +43,26 @@ const CODE_STARTERS: { icon: string; label: string; prompt: string }[] = [
   { icon: "🧹", label: "重构优化", prompt: "在保持行为不变的前提下重构下面的代码，让它更清晰、更高效：\n\n" },
   { icon: "📖", label: "解释代码", prompt: "逐步讲清楚下面这段代码在做什么、有哪些坑：\n\n" },
 ];
+
+// 「思考过程」：推理模型（DeepSeek-R1 / Qwen3 / QwQ / Claude 思考等）的思维链，默认折叠，
+// 点开看全文。存在 attachments(type:"reasoning")、不进正式答案。
+function ThinkingBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ margin: "0 0 8px", borderRadius: 10, border: "1px dashed var(--c-bd2)", background: "color-mix(in oklch, var(--c-t4) 6%, transparent)", overflow: "hidden" }}>
+      <button onClick={() => setOpen((v) => !v)} className="nodrag"
+        style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 10px", border: "none", background: "transparent", color: "var(--c-t3)", cursor: "pointer", fontSize: 11.5, fontWeight: 600, textAlign: "left" }}>
+        <Brain size={13} style={{ flexShrink: 0, opacity: 0.8 }} />
+        <span>思考过程</span>
+        <span style={{ flex: 1 }} />
+        {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+      </button>
+      {open && (
+        <div className="nowheel" style={{ maxHeight: 320, overflowY: "auto", padding: "0 12px 10px", fontSize: 11.5, lineHeight: 1.6, color: "var(--c-t3)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{text}</div>
+      )}
+    </div>
+  );
+}
 
 // 代码块：长代码（>16 行）默认折叠，点「展开 N 行」看全文——避免一段长代码把对话撑满。
 const CODE_FOLD_LINES = 16;
@@ -406,7 +426,12 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
       nodeId: active, projectId, message: text, model,
       ...(sysPrompt ? { systemPrompt: sysPrompt } : {}),
       ...(contextContent ? { contextContent } : {}),
-      ...(attachments.length > 0 ? { attachments: attachments.map((a) => ({ type: a.type, url: a.url, mimeType: a.mimeType || "image/jpeg", name: a.name || "图片" })) } : {}),
+      ...((() => {
+        // 只把 image/file 且有 url 的附件传给后端（reasoning 等无 url 的本地类型不外发）。
+        const out = attachments.filter((a): a is ChatMsgAttachment & { type: "image" | "file"; url: string } => (a.type === "image" || a.type === "file") && !!a.url)
+          .map((a) => ({ type: a.type, url: a.url, mimeType: a.mimeType || "image/jpeg", name: a.name || "图片" }));
+        return out.length > 0 ? { attachments: out } : {};
+      })()),
       ...(model.startsWith("kie_") ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
     });
   };
@@ -765,6 +790,8 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                   background: m.role === "user" ? `color-mix(in oklch, ${ACCENT} 18%, var(--c-input))` : "var(--c-input)",
                   color: "var(--c-t1)", border: "1px solid var(--c-bd2)",
                 }}>
+                  {/* 思考过程（推理模型）——在正式答案之上，默认折叠。 */}
+                  {(() => { const r = atts?.find((a) => a.type === "reasoning")?.text; return r ? <div style={{ padding: "9px 13px 0" }}><ThinkingBlock text={r} /></div> : null; })()}
                   {parseMessageSegments(m.content).map((seg, si) => seg.type === "text" ? (
                     <div key={si} style={{ padding: "9px 13px", whiteSpace: "pre-wrap" }}>{seg.content}</div>
                   ) : (
@@ -775,7 +802,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 10px" }}>
                       {atts!.filter((a) => a.type === "image" && a.url).map((a, ai) => (
                         <img key={ai} src={a.url} alt={a.name || "图片"} loading="lazy"
-                          onClick={() => openNodeImage(a.url)} className="nodrag"
+                          onClick={() => openNodeImage(a.url!)} className="nodrag"
                           style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, cursor: "zoom-in", objectFit: "cover", border: "1px solid var(--c-bd2)" }} />
                       ))}
                     </div>

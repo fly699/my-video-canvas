@@ -50,7 +50,9 @@ export function isReferableNode(node: MiniNode): boolean {
 }
 
 // ── 回答一键落成画布节点 ────────────────────────────────────────────────────────
-export type ChatMsgAttachment = { type: "image" | "file"; url: string; mimeType?: string; name?: string };
+// type "reasoning" 为推理模型的「思考过程」（存 attachments、不进 content），无 url、内容在 text；
+// 仅 AI 客户端渲染折叠展示，落成节点/图片渲染等都会跳过它。
+export type ChatMsgAttachment = { type: "image" | "file" | "reasoning"; url?: string; mimeType?: string; name?: string; text?: string };
 export type DropPlan = { nodeType: NodeType; payload: Record<string, unknown>; label: string };
 
 /** 把一条 AI 回答编译成「落成画布节点」的计划：图片附件→asset 图像节点（各一个）；
