@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
@@ -282,9 +282,22 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   // 「忙」态 = 正在发送 或 正在超时兜底轮询——统一驱动 UI（禁用输入、转圈、隐藏末条重生成按钮）。
   const busy = sendMut.isPending || recovering;
 
+  // 「贴底才自动滚」：用户上翻看历史时，新消息/流式回灌不再把视图强拽到底；
+  // 只有当前已在底部附近（或刚发过消息）才跟随滚动。atBottomRef 供效应读取避免闭包过期。
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  const scrollToBottom = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; };
+  const onMsgScroll = () => {
+    const el = scrollRef.current; if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    atBottomRef.current = near;
+    setAtBottom(near);
+  };
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (atBottomRef.current) scrollToBottom();
   }, [messages.length, busy]);
+  // 切会话：回到底部（新会话应看最新，而非停在上个会话的滚动位）。
+  useEffect(() => { atBottomRef.current = true; setAtBottom(true); requestAnimationFrame(scrollToBottom); }, [active]);
 
   // 回写节点 payload.messages，让画布上的 ai_chat 节点即时反映服务端权威消息（仅节点会话）。
   useEffect(() => {
@@ -354,6 +367,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     if (!projectId) { toast.error("画布未就绪"); return; }
     const atts = pendingAtts;
     setInput(""); setPendingAtts([]);
+    atBottomRef.current = true; // 发送后跟随滚到底看回答（即使此前上翻着历史）
     // 无节点会话：用首句更新标题 + 刷新更新时间（首次发送前标题还是「新会话」）。
     if (isNodeless && active) {
       const cur = nodeless.find((s) => s.id === active);
@@ -634,8 +648,8 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
         </div>
 
         {/* 对话流 + 输入 */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-          <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
+          <div ref={scrollRef} onScroll={onMsgScroll} style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
             {(!active || (messages.length === 0 && !msgQuery.isLoading)) && (
               <div style={{ margin: "auto", width: "100%", maxWidth: 420, textAlign: "center", padding: "0 4px" }}>
                 <span style={{ display: "inline-flex", width: 52, height: 52, alignItems: "center", justifyContent: "center", borderRadius: 15, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={28} /></span>
@@ -715,6 +729,15 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
               </div>
             )}
           </div>
+          {/* 「回到底部」——仅在上翻离底且有消息时出现（避免流式回灌把用户从历史里强拽走）。 */}
+          {!atBottom && active && messages.length > 0 && (
+            <button onClick={() => { scrollToBottom(); atBottomRef.current = true; setAtBottom(true); }} className="nodrag" title="回到最新"
+              style={{ position: "absolute", right: 16, bottom: 12, zIndex: 6, width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--c-bd2)",
+                background: "var(--c-elevated, var(--c-surface))", color: "var(--c-t2)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.3)" }}>
+              <ChevronDown size={18} />
+            </button>
+          )}
           <div
             onDragOver={(e) => { if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) { e.preventDefault(); setDragOver(true); } }}
             onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
