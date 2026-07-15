@@ -44,6 +44,30 @@ const CODE_STARTERS: { icon: string; label: string; prompt: string }[] = [
   { icon: "📖", label: "解释代码", prompt: "逐步讲清楚下面这段代码在做什么、有哪些坑：\n\n" },
 ];
 
+// 消息时间戳 / 日期分隔工具。createdAt 可能是 Date / ISO 字符串 / 毫秒数（tRPC 序列化差异），统一解析。
+function msgTime(v: unknown): number {
+  if (v == null) return 0;
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "number") return v;
+  const t = Date.parse(String(v));
+  return Number.isNaN(t) ? 0 : t;
+}
+function fmtClock(t: number): string {
+  if (!t) return "";
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+function fmtDaySep(t: number): string {
+  if (!t) return "";
+  const d = new Date(t), now = new Date();
+  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((midnight(now) - midnight(d)) / 86400000);
+  if (days === 0) return "今天";
+  if (days === 1) return "昨天";
+  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
 // 「思考过程」：推理模型（DeepSeek-R1 / Qwen3 / QwQ / Claude 思考等）的思维链，默认折叠，
 // 点开看全文。存在 attachments(type:"reasoning")、不进正式答案。
 function ThinkingBlock({ text }: { text: string }) {
@@ -451,7 +475,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     if (projectId && active) {
       utils.aiChat.getMessages.setData({ nodeId: active, projectId }, (old) => {
         const list = old ?? [];
-        const optimistic = { role: "user", content: text, attachments: atts.length ? atts : undefined } as unknown as typeof list[number];
+        const optimistic = { role: "user", content: text, attachments: atts.length ? atts : undefined, createdAt: new Date() } as unknown as typeof list[number];
         return [...list, optimistic] as typeof list;
       });
     }
@@ -778,8 +802,16 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
             {active && msgQuery.isLoading && <div style={{ margin: "auto", color: "var(--c-t4)" }}><Loader2 size={20} className="animate-spin" /></div>}
             {messages.map((m, i) => {
               const atts = (m as { attachments?: ChatMsgAttachment[] }).attachments;
+              const ts = msgTime((m as { createdAt?: unknown }).createdAt);
+              const prevTs = i > 0 ? msgTime((messages[i - 1] as { createdAt?: unknown }).createdAt) : 0;
+              // 日期分隔：首条、或与上一条不同天时插一行居中「今天 / 昨天 / M月D日」。
+              const showDaySep = ts > 0 && (i === 0 || new Date(ts).toDateString() !== new Date(prevTs).toDateString());
               return (
-              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 3 }}>
+              <div key={i} style={{ display: "contents" }}>
+              {showDaySep && (
+                <div style={{ alignSelf: "center", margin: "4px 0", padding: "2px 10px", borderRadius: 20, fontSize: 10.5, color: "var(--c-t4)", background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>{fmtDaySep(ts)}</div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 3 }}>
                 <div style={{ display: "flex", gap: 7, alignItems: "flex-start", maxWidth: "88%" }}>
                   {/* AI 回复左侧头像锚点（用户消息不加，保持右对齐简洁） */}
                   {m.role !== "user" && (
@@ -830,7 +862,9 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                       <RefreshCw size={11} /> 重新生成
                     </button>
                   )}
+                  {ts > 0 && <span style={{ fontSize: 10, color: "var(--c-t4)", marginLeft: "auto", flexShrink: 0 }} title={new Date(ts).toLocaleString()}>{fmtClock(ts)}</span>}
                 </div>
+              </div>
               </div>
               );
             })}
