@@ -473,6 +473,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           excludeStoryboard: quickPrefs.noStoryboard || undefined,
         });
         applied = opsSummary(ops); createdIds = res.createdIds ?? [];
+        // 角色确定性自动接线（不对应任何 op，opsSummary 统计不到）——透明反馈，让用户知道
+        // 角色参考图已接入生成节点（是「@角色→首帧看不到参考图」修复的可见闭环）。
+        if (res.autoLinkedChars > 0) applied = [applied, `角色接入 ${res.autoLinkedChars}`].filter(Boolean).join(" · ");
         if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
       }
       const failed = [droppedMsg, applyFailMsg].filter(Boolean).join(" · ") || undefined;
