@@ -19,7 +19,14 @@ export interface AiCutOptions {
   subtitles?: boolean;      // 生成逐词字幕（需要词级时间戳）
   subtitleMaxWords?: number;// 每条字幕最多词数（默认 5，兼顾"逐词"与可读/条数）
   subtitleMaxSec?: number;  // 每条字幕最长时长（默认 2.5s）
+  padSec?: number;          // 每个保留区间左右外扩的安全边距（秒）——防止语音首尾（气口/辅音尾音）
+                            // 被切掉。按激进度传入（轻=大边距、狠=小边距），默认 0。
 }
+
+// 字幕默认版式：底部居中（对齐常见成片字幕位置）。x/scale 让 0.8 宽的文本框水平居中，
+// y=0.82 使字幕落在画面下方。预览(PreviewStage)与导出(collectTextClips)均读 transform，
+// 显式写入才能保证「所见=所出」（否则二者默认值不一致：预览左上、导出左下）。
+export const SUBTITLE_TRANSFORM = { x: 0.1, y: 0.82, scale: 0.8 } as const;
 
 const VALID_GRADES = new Set(["subtle", "neutral_punch", "warm_cinematic", "none"]);
 
@@ -145,6 +152,7 @@ export function buildSubtitleClips(words: CutWord[], kept: CutRange[], opts: AiC
     clips.push({
       id: `ai-sub-${n++}`, kind: "text", start: round3(startOut), trimIn: 0,
       trimOut: Math.max(0.3, round3(endOut - startOut)),
+      transform: { ...SUBTITLE_TRANSFORM }, // 底部居中，保证预览与导出一致
       text: { content, size: fontSize, color: "#ffffff", strokeColor: "#000000", strokeWidth: Math.max(2, Math.round(fontSize / 16)), align: "center", motionStyle: "none" },
     });
     i = j;
@@ -159,7 +167,11 @@ export function buildAiCutDoc(source: AiCutSource, plan: AiCutPlan, words: CutWo
   const fade = opts.fadeSec ?? 0.03;
   const grade = (opts.grade ?? plan.grade ?? "none");
   const useGrade = !!grade && grade !== "none";
-  const kept = sanitizeRanges(snapToWordBoundaries(plan.keep, words), source.durationSec);
+  // 先吸附到词边界，再左右外扩安全边距（防切掉语音首尾），最后 sanitize 夹取并合并重叠。
+  const pad = Math.max(0, opts.padSec ?? 0);
+  const snapped = snapToWordBoundaries(plan.keep, words);
+  const padded = pad > 0 ? snapped.map((r) => ({ start: r.start - pad, end: r.end + pad })) : snapped;
+  const kept = sanitizeRanges(padded, source.durationSec);
 
   const doc = emptyEditorDoc(source.width, source.height, source.fps);
   doc.normalizeAudio = true; // video-use 收尾 loudnorm；导出统一到 -14 LUFS
