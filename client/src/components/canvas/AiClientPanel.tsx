@@ -370,11 +370,25 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     onSuccess: () => {
       if (active && projectId) void utils.aiChat.getMessages.invalidate({ nodeId: active, projectId });
     },
-    onError: (err) => {
+    onError: (err, variables) => {
       if (stoppedRef.current) return; // 用户已主动停止 → 不再兜底轮询、不弹错
       // 服务端明确错误（有 data.code：白名单/空消息/模型报错等）→ 直接提示；
       // 网络 / 隧道超时（无 code，请求被中途切断）→ 服务端可能仍在跑并已落库，轮询兜底恢复回答。
-      if (err.data?.code || !active || !projectId) { toast.error("发送失败：" + err.message); return; }
+      if (err.data?.code || !active || !projectId) {
+        toast.error("发送失败：" + err.message);
+        // 回滚乐观插入的用户消息（服务端没落库、也不会有回复）——否则这条消息悬在对话里
+        // 永远没有回应；同时把原文恢复到输入框（仅当用户还没另起输入），方便改后重发。
+        const vNode = variables?.nodeId, vPid = variables?.projectId, vMsg = variables?.message;
+        if (vNode && vPid && typeof vMsg === "string") {
+          utils.aiChat.getMessages.setData({ nodeId: vNode, projectId: vPid }, (old) => {
+            if (!old?.length) return old;
+            const last = old[old.length - 1];
+            return (last?.role === "user" && last?.content === vMsg) ? old.slice(0, -1) : old;
+          });
+          setInput((cur) => (cur ? cur : vMsg));
+        }
+        return;
+      }
       void recoverReply(active, projectId, sendBaselineRef.current);
     },
   });
