@@ -1,7 +1,7 @@
 import { ENV } from "./env";
 import { isKieLLMModel, invokeKieLLM, type OAMessage } from "./kieLLM";
 import { isCustomLLMModel, invokeCustomLLM, CUSTOM_LLM_MODELS } from "./customLlm";
-import { isSelfHostedLlmModel, getSelfHostedConfig, selfHostedChatUrl } from "./selfHostedLlm";
+import { isSelfHostedLlmModel, selfHostedChatUrl, resolveSelfHostedEndpoint } from "./selfHostedLlm";
 import { Agent as UndiciAgent } from "undici";
 import { rewriteBridgeSelfUrl, isClaudeBridgeEnabled, bridgeLocalUrl, claudeBridgeKey, isBridgeModel } from "./claudeBridge";
 
@@ -259,7 +259,7 @@ const resolveApiUrl = (model?: string) => {
   // 指向本应用桥接（本机 Claude/GPT 订阅）的地址强制改走本机回环——防「填了公网域名，服务器调
   // 自己还绕出公网再回来」被隧道/Cloudflare 卡死（真实翻车：CF 502 HTML 整页糊进聊天）。
   // rewriteBridgeSelfUrl 对非桥接地址是恒等变换，普通自建 vLLM/Ollama 不受影响。
-  if (isSelfHostedModel(model)) return rewriteBridgeSelfUrl(selfHostedChatUrl(getSelfHostedConfig().url));
+  { const sh = resolveSelfHostedEndpoint(model); if (sh) return rewriteBridgeSelfUrl(selfHostedChatUrl(sh.url)); }
   // Poyo-routed models (GPT-*, Poyo Claude) → Poyo API when key is available
   if (ENV.poyoApiKey && routesToPoyo(model)) return "https://api.poyo.ai/v1/chat/completions";
   // Other models (Gemini, Claude Sonnet 4.6 / Haiku, etc.) → Forge/Manus API
@@ -275,7 +275,7 @@ const getApiKey = (model?: string) => {
   if (isBridgeModel(model) && isClaudeBridgeEnabled()) return claudeBridgeKey() || "sk-local-noauth";
   // Self-hosted endpoint: its own key (may be empty for no-auth vLLM/Ollama; send a
   // placeholder so the Authorization header is well-formed and ignored by the server).
-  if (isSelfHostedModel(model)) return getSelfHostedConfig().apiKey || "sk-local-noauth";
+  { const sh = resolveSelfHostedEndpoint(model); if (sh) return sh.apiKey || "sk-local-noauth"; }
   if (ENV.poyoApiKey && routesToPoyo(model)) return ENV.poyoApiKey;
   // When a custom forge URL is configured, require the forge key — don't fall through to poyoApiKey
   // which would send the wrong credentials to the custom proxy.

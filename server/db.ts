@@ -1659,15 +1659,29 @@ export async function setDisabledModels(ids: string[]): Promise<void> {
     .onDuplicateKeyUpdate({ set: { disabledModels } });
 }
 
+function normalizeSelfHostedModels(v: unknown): { id: string; label: string }[] {
+  return Array.isArray(v) ? v.filter((m): m is { id: string; label: string } =>
+    !!m && typeof m === "object" && typeof (m as { id?: unknown }).id === "string")
+    .map((m) => ({ id: String(m.id), label: String((m as { label?: unknown }).label ?? m.id) })) : [];
+}
 export function normalizeSelfHostedLlm(v: unknown): SelfHostedLlmConfig {
   // JSON columns come back parsed on MySQL 8 but as a STRING on MariaDB (JSON=longtext),
   // so accept both: parse a string, else use the object.
   let o: Record<string, unknown> = {};
   if (typeof v === "string") { try { o = JSON.parse(v) as Record<string, unknown>; } catch { o = {}; } }
   else if (v && typeof v === "object") o = v as Record<string, unknown>;
-  const models = Array.isArray(o.models) ? o.models.filter((m): m is { id: string; label: string } =>
-    !!m && typeof m === "object" && typeof (m as { id?: unknown }).id === "string").map((m) => ({ id: String(m.id), label: String((m as { label?: unknown }).label ?? m.id) })) : [];
-  return { url: typeof o.url === "string" ? o.url : "", apiKey: typeof o.apiKey === "string" ? o.apiKey : "", models };
+  // 新形态 { servers:[{url,apiKey,models}] }：逐条归一化，丢弃 url 为空的条目。
+  if (Array.isArray(o.servers)) {
+    const servers = o.servers
+      .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
+      .map((s) => ({ url: typeof s.url === "string" ? s.url : "", apiKey: typeof s.apiKey === "string" ? s.apiKey : "", models: normalizeSelfHostedModels(s.models) }))
+      .filter((s) => s.url.trim());
+    return { servers };
+  }
+  // 旧形态 { url,apiKey,models }：包成单条 server（url 空则视为未配置）。
+  const url = typeof o.url === "string" ? o.url : "";
+  if (!url.trim()) return { servers: [] };
+  return { servers: [{ url, apiKey: typeof o.apiKey === "string" ? o.apiKey : "", models: normalizeSelfHostedModels(o.models) }] };
 }
 
 /** 管理员配置的自建 OpenAI 兼容 LLM（url/apiKey/models）。单行 id=1 的 JSON 列。 */
