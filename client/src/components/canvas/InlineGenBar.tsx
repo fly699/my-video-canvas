@@ -12,7 +12,7 @@ import { NodeToolbar, Position } from "@xyflow/react";
  * （image_gen 先行；video_task / storyboard 复用同一容器扩展）。仅创意模式
  * （LibTV 模式宿主）由调用方决定是否渲染——组件自身不感知皮肤。
  */
-export function InlineGenBar({ nodeId, visible, width = 480, children }: {
+export function InlineGenBar({ nodeId, visible, width = 520, children }: {
   /** 显式锚定的节点 id（渲染位置可在节点树外，锚定不受容器变化影响）。 */
   nodeId: string;
   visible: boolean;
@@ -29,12 +29,13 @@ export function InlineGenBar({ nodeId, visible, width = 480, children }: {
         className="nodrag nowheel"
         onClick={(e) => e.stopPropagation()}
         style={{
+          // 对齐 LibTV/悠船就地条：更宽 + 更大内边距/行间距，整体更舒展有呼吸感。
           width, maxWidth: "94vw",
-          display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px",
-          borderRadius: 14,
+          display: "flex", flexDirection: "column", gap: 10, padding: "14px 16px",
+          borderRadius: 16,
           background: "color-mix(in oklch, var(--c-base) 96%, transparent)",
           border: "1px solid var(--c-bd2)",
-          boxShadow: "0 14px 44px oklch(0 0 0 / 0.45)",
+          boxShadow: "0 16px 48px oklch(0 0 0 / 0.5)",
           backdropFilter: "blur(16px)",
         }}
       >

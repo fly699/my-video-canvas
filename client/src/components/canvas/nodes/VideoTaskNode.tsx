@@ -2123,7 +2123,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           value={payload.prompt ?? ""}
           onValueChange={(v) => handleChange("prompt", v)}
           disabled={isLocked}
-          style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit", opacity: isLocked ? 0.6 : 1 }}
+          style={{ width: "100%", resize: "none", fontSize: 15, lineHeight: 1.75, padding: "6px 8px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit", opacity: isLocked ? 0.6 : 1 }}
         />
         {/* ── Row3.5：标记引用 chips（嵌入提示词后仍可下拉换选元素 / 移除，LibTV 同款） ── */}
         {(payload.markRefs?.length ?? 0) > 0 && (

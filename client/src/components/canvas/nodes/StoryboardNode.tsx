@@ -1431,7 +1431,7 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
           placeholder="描述本镜画面…（@ 引用角色/素材）"
           value={payload.promptText ?? ""}
           onValueChange={(v) => handleChange("promptText", v)}
-          style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+          style={{ width: "100%", resize: "none", fontSize: 15, lineHeight: 1.75, padding: "6px 8px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
         />
         {/* ── Row3.5：标记引用 chips（嵌入提示词后仍可下拉换选元素 / 移除，#90 与图像节点同款） ── */}
         {(payload.markRefs?.length ?? 0) > 0 && (

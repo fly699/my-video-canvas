@@ -1585,7 +1585,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           placeholder="描述你想生成的画面…（@ 引用角色/素材）"
           value={payload.prompt ?? ""}
           onValueChange={(v) => update("prompt", v)}
-          style={{ width: "100%", resize: "none", fontSize: 14, lineHeight: 1.7, padding: "4px 6px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
+          style={{ width: "100%", resize: "none", fontSize: 15, lineHeight: 1.75, padding: "6px 8px", borderRadius: 8, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none", fontFamily: "inherit" }}
         />
         {/* ── Row3.5：标记引用 chips（嵌入提示词后仍可下拉换选元素 / 移除，LibTV 同款） ── */}
         {(payload.markRefs?.length ?? 0) > 0 && (
