@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldRepairPlan, buildRepairInstruction } from "./routers/agent";
+import { shouldRepairPlan, buildRepairInstruction, splitSystemForCache } from "./routers/agent";
 
 // 画布助手「规划自愈」触发判定 —— 仅在「原本就要放弃/给不出有用结果」的失败路径触发，
 // 成功规划一律不触发（否则平白多一次 LLM 调用拖慢正常请求）。
@@ -46,6 +46,46 @@ describe("shouldRepairPlan（自愈触发判定）", () => {
       parsedOk: true, operations: [], dropped: ["未知节点类型 foo", "编造的模型 id"],
       cleaned: "{...}", text: "{...}",
     })).toBe(true);
+  });
+});
+
+describe("splitSystemForCache（prompt caching 静态前缀/易变尾部切分）", () => {
+  const system = [
+    "你是副驾。",
+    "",
+    "# 可用节点目录",
+    "catalog...模型清单...",
+    "",
+    "# 当前画布",
+    "（空画布）角色库...",
+    "",
+    "# 输出要求",
+    "严格只输出 JSON...规则...",
+  ].join("\n");
+
+  it("正常切分：静态前缀 = 目录 + 输出规则，易变尾部 = 当前画布段 + 追加的经验", () => {
+    const { systemStatic, systemVolatile } = splitSystemForCache(system, "\n\n# 相关工作流经验\nexp...");
+    // 静态前缀含目录与输出规则，但不含「当前画布」易变段
+    expect(systemStatic).toContain("# 可用节点目录");
+    expect(systemStatic).toContain("# 输出要求");
+    expect(systemStatic).not.toContain("# 当前画布");
+    // 易变尾部含当前画布段 + 经验，但不含输出规则
+    expect(systemVolatile).toContain("# 当前画布");
+    expect(systemVolatile).toContain("# 相关工作流经验");
+    expect(systemVolatile).not.toContain("# 输出要求");
+  });
+
+  it("切分无损：静态前缀 + 易变尾部（去掉追加经验）可还原原文的两段拼接", () => {
+    const { systemStatic, systemVolatile } = splitSystemForCache(system, "");
+    // 拼接顺序为 目录段 + 规则段 + 当前画布段；覆盖原文全部实质内容（不丢字）
+    expect((systemStatic + systemVolatile).length).toBe(system.length);
+  });
+
+  it("标记缺失 → 兜底单块（systemVolatile 空，经验补回静态块，不发第二个 system 消息）", () => {
+    const plain = "没有结构标记的提示词";
+    const { systemStatic, systemVolatile } = splitSystemForCache(plain, "\n\nEXP");
+    expect(systemVolatile).toBe("");
+    expect(systemStatic).toBe(plain + "\n\nEXP");
   });
 });
 

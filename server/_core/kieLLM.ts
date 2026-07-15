@@ -84,6 +84,10 @@ const partsImages = (c: string | ContentPart[]): string[] =>
 
 export interface KieLLMResult { text: string }
 
+// prompt caching 降级开关：一旦确认网关不认 system 块上的 cache_control（还原为纯字符串重试即成功），
+// 就永久跳过缓存字段，避免此后每次 claude 调用都白多一趟「失败→重试」往返。进程级、保守单向。
+let claudeCacheDisabled = false;
+
 /** Adapt + dispatch a chat request to the right kie endpoint/format. */
 export async function invokeKieLLM(opts: { model: string; messages: OAMessage[]; apiKey: string; maxTokens?: number }): Promise<KieLLMResult> {
   const spec = KIE_LLM_MODELS[opts.model];
@@ -95,7 +99,7 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
   let body: Record<string, unknown>;
   if (spec.format === "claude") {
     // Anthropic: system is a separate field; messages carry text/image blocks.
-    const system = opts.messages.filter((m) => m.role === "system").map((m) => partsToText(m.content)).join("\n\n");
+    const systemTexts = opts.messages.filter((m) => m.role === "system").map((m) => partsToText(m.content)).filter(Boolean);
     const msgs = opts.messages.filter((m) => m.role !== "system").map((m) => {
       const imgs = partsImages(m.content);
       const text = partsToText(m.content);
@@ -104,7 +108,19 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
       for (const u of imgs) blocks.push({ type: "image", source: { type: "url", url: u } });
       return { role: m.role === "assistant" ? "assistant" : "user", content: blocks.length ? blocks : text };
     });
-    body = { model: spec.model, system: system || undefined, messages: msgs, max_tokens: maxTokens, stream: false };
+    // prompt caching：调用方给 ≥2 个 system 块时（画布助手：静态前缀在前、易变尾部在末块），
+    // 对「除最后一块外」的前缀块打 cache_control（ephemeral，~5min TTL）——多轮对话与「自愈重试」
+    // 间前缀命中缓存，省 TTFT 与费用；末块（易变）不缓存故其变动不使前缀缓存失效。
+    // 单块（其它入口）保持纯字符串，行为完全不变。claudeCacheDisabled 时全部回退纯字符串。
+    let system: unknown;
+    if (systemTexts.length >= 2 && !claudeCacheDisabled) {
+      system = systemTexts.map((text, i) => i < systemTexts.length - 1
+        ? { type: "text", text, cache_control: { type: "ephemeral" } }
+        : { type: "text", text });
+    } else {
+      system = systemTexts.join("\n\n") || undefined;
+    }
+    body = { model: spec.model, system, messages: msgs, max_tokens: maxTokens, stream: false };
   } else if (spec.format === "responses") {
     // kie Responses API：请求侧 InputContentItem 的 type 枚举只有 input_text /
     // input_image / input_file（docs/kie-api.md，无 output_text）——assistant 历史
@@ -137,6 +153,17 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
     void _drop;
     res = await doPost(noReasoning);
     if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`kie LLM 调用失败 (${res.status}): ${(t || firstErr).slice(0, 300)}`);
+    }
+  } else if (!res.ok && spec.format === "claude" && Array.isArray(body.system)) {
+    // 个别网关不认 system 块上的 cache_control → 还原为纯字符串 system 重试一次。
+    // 重试成功即说明缓存字段是元凶，永久禁用缓存（避免此后每次都白多一趟往返）。
+    const firstErr = await res.text().catch(() => "");
+    const plainSystem = (body.system as Array<{ text?: string }>).map((b) => b.text ?? "").join("\n\n") || undefined;
+    res = await doPost({ ...body, system: plainSystem });
+    if (res.ok) claudeCacheDisabled = true;
+    else {
       const t = await res.text().catch(() => "");
       throw new Error(`kie LLM 调用失败 (${res.status}): ${(t || firstErr).slice(0, 300)}`);
     }
