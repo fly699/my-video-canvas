@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, memo } from "react";
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, getStraightPath, Position } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, Position } from "@xyflow/react";
 import type { EdgeProps } from "@xyflow/react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useHoverStore } from "../../hooks/useHoverStore";
@@ -86,9 +86,9 @@ export const CustomEdge = memo(function CustomEdge({
       // FIXED distance piles every badge on top of each other near the handle.
       // Stagger each badge's distance along its curve by its order index — since the
       // edge bundle fans out away from the node, different distances separate them.
-      // 创意模式是直线：控制点取端点本身（贝塞尔退化为线段上的点，公式不变）。
-      const sc = isCreative ? [sourceX, sourceY] as [number, number] : bezierControl(sourcePosition, sourceX, sourceY, targetX, targetY);
-      const tc = isCreative ? [targetX, targetY] as [number, number] : bezierControl(targetPosition, targetX, targetY, sourceX, sourceY);
+      // 全模式统一贝塞尔曲线，序号徽标沿真实曲线取点（控制点用与 getBezierPath 同款算法）。
+      const sc = bezierControl(sourcePosition, sourceX, sourceY, targetX, targetY);
+      const tc = bezierControl(targetPosition, targetX, targetY, sourceX, sourceY);
       const frac = total > 1 ? index / (total - 1) : 0; // 0..1 across the order
       const spread = Math.min(0.34, 0.05 * total); // wider stagger when more edges
       // "in": closest to target for #1, stepping further back; "out": mirror.
@@ -100,13 +100,11 @@ export const CustomEdge = memo(function CustomEdge({
   const sourceNodeType = nodes.find(n => n.id === source)?.data.nodeType as string | undefined;
   const typeColor = sourceNodeType ? getNodeConfig(sourceNodeType as Parameters<typeof getNodeConfig>[0]).color : null;
 
-  // LibTV：创意模式直线；其余模式保持贝塞尔曲线。
-  const [edgePath, labelX, labelY] = isCreative
-    ? getStraightPath({ sourceX, sourceY, targetX, targetY })
-    : getBezierPath({
-        sourceX, sourceY, sourcePosition,
-        targetX, targetY, targetPosition,
-      });
+  // 全模式统一平滑贝塞尔曲线（对齐 LibTV/悠船——其连线是平滑曲线，而非早前误判的直线）。
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX, sourceY, sourcePosition,
+    targetX, targetY, targetPosition,
+  });
 
   const { updateEdgeLabel, onEdgesChange } = useCanvasStore();
   const [editing, setEditing] = useState(false);
