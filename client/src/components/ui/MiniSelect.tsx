@@ -7,7 +7,7 @@ import { ChevronDown } from "lucide-react";
 // 菜单 portal 到 body 并按可用空间自动上/下展开，避免被父容器 overflow:hidden 裁切
 // （画布助手面板顶部的模板选择器就曾因此被标题栏裁掉）。
 // 结构色走 var(--c-*)（各主题通用），高亮色由 accent/accentSoft 传入（聊天=琥珀 / 画布助手=紫）。
-export interface MiniGroup { label?: string; options: { value: string; label: string; title?: string }[] }
+export interface MiniGroup { label?: string; options: { value: string; label: string; title?: string; note?: string }[] }
 
 const MENU_MAX_H = 300;
 
@@ -72,7 +72,8 @@ export function MiniSelect({
                 <button key={o.value} type="button" title={o.title} onClick={() => { onChange(o.value); setOpen(false); }}
                   style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 9px", borderRadius: 6, fontSize: 12, lineHeight: 1.4,
                     background: o.value === value ? accentSoft : "transparent", color: o.value === value ? accent : "var(--c-t1)", border: "none", cursor: "pointer" }}>
-                  {o.label}
+                  <span>{o.label}</span>
+                  {o.note && <span style={{ display: "block", fontSize: 10, lineHeight: 1.3, marginTop: 1, color: o.value === value ? accent : "var(--c-t4)", opacity: o.value === value ? 0.85 : 1, whiteSpace: "normal" }}>{o.note}</span>}
                 </button>
               ))}
             </div>
