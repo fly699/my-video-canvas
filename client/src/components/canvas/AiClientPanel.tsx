@@ -15,6 +15,7 @@ import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, NO_PERSONA
 import { useBridgeSkills } from "@/lib/useBridgeSkills";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
+import { AiModelMenu } from "./AiModelMenu";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { trpc } from "@/lib/trpc";
 import type { NodeType } from "../../../../shared/types";
@@ -27,6 +28,20 @@ const MIN_W = 420, MIN_H = 360;
 // 互通②③（@引用节点上下文 / 回答落成节点 / 素材库）在后续批次接入。
 
 const ACCENT = "oklch(0.70 0.20 300)";
+
+// 空态「快速开始」建议——点一下预填到输入框。对话模式偏创作/影视，代码模式偏工程。
+const CHAT_STARTERS: { icon: string; label: string; prompt: string }[] = [
+  { icon: "🎬", label: "写短视频脚本", prompt: "帮我写一个 30 秒的产品短视频脚本，包含分镜、口播文案和运镜建议。主题是：" },
+  { icon: "🎥", label: "想运镜方案", prompt: "为下面这个画面想 5 个电影感运镜方案，说明适用情绪与节奏：" },
+  { icon: "🌐", label: "台词翻译润色", prompt: "把这段中文台词翻译成自然、口语化的英文（保留情绪与语气）：" },
+  { icon: "💡", label: "视觉概念头脑风暴", prompt: "围绕这个主题，头脑风暴 8 个有记忆点的视觉概念和画面关键词：" },
+];
+const CODE_STARTERS: { icon: string; label: string; prompt: string }[] = [
+  { icon: "⚛️", label: "写个组件", prompt: "用 React + TypeScript 写一个可复用的组件，需求是：" },
+  { icon: "🐛", label: "帮我查 bug", prompt: "帮我分析下面这段代码为什么不工作，并给出修复：\n\n" },
+  { icon: "🧹", label: "重构优化", prompt: "在保持行为不变的前提下重构下面的代码，让它更清晰、更高效：\n\n" },
+  { icon: "📖", label: "解释代码", prompt: "逐步讲清楚下面这段代码在做什么、有哪些坑：\n\n" },
+];
 
 export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const reactFlow = useReactFlow();
@@ -120,6 +135,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   useEffect(() => { try { localStorage.setItem("avc:ai-sidebar-w", String(sidebarW)); } catch { /* restricted */ } }, [sidebarW]);
   useEffect(() => { try { localStorage.setItem("avc:ai-artifact-w", String(artifactW)); } catch { /* restricted */ } }, [artifactW]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   // 语音输入：Web Speech 主路径 + 无法访问 Google 时自动回退服务端 whisper（见 useVoiceInput）。
@@ -349,6 +365,13 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     doSend(text, atts);
   };
 
+  // 空态建议：点一下预填提示词到输入框并聚焦（不自动发送，留给用户微调）。无会话时先建一个。
+  const startWithPrompt = (text: string) => {
+    if (!active) newSession();
+    setInput(text);
+    requestAnimationFrame(() => { const el = composerRef.current; if (el) { el.focus(); el.setSelectionRange(text.length, text.length); } });
+  };
+
   // 重新生成：以最后一条用户消息再问一次（无删除末条端点，故为新一轮）。
   const regenerate = () => {
     if (busy || !active) return;
@@ -503,8 +526,6 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     );
   }
 
-  const modelLabel = chatModels.find((m) => m.id === model)?.label ?? CHAT_MODELS.find((m) => m.id === model)?.label ?? model;
-
   const panelTree = (
     <div
       className="nodrag"
@@ -527,11 +548,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
           <span style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 16%, transparent)`, color: ACCENT }}><Bot size={16} /></span>
           <span style={{ fontSize: 13, fontWeight: 800, color: "var(--c-t1)" }}>AI 客户端</span>
         </>}
-        <select value={model} onChange={(e) => changeModel(e.target.value)} className="nodrag"
-          style={{ marginLeft: 6, fontSize: 11.5, padding: "4px 8px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", maxWidth: 200 }}
-          title={`当前模型：${modelLabel}`}>
-          {modelOptions.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-        </select>
+        <AiModelMenu value={model} options={modelOptions} onChange={changeModel} />
         <div style={{ flex: 1 }} />
         <button onClick={toggleCodeMode} title={codeMode ? "退出代码模式" : "代码模式（Codex 写码 + 工件面板/预览，对齐 Canvas/Artifacts）"}
           style={{ ...iconBtn, color: codeMode ? ACCENT : "var(--c-t3)", background: codeMode ? `color-mix(in oklch, ${ACCENT} 16%, transparent)` : "transparent" }}><Code2 size={15} /></button>
@@ -619,8 +636,27 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
         {/* 对话流 + 输入 */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
           <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-            {!active && <div style={{ margin: "auto", textAlign: "center", color: "var(--c-t4)", fontSize: 13 }}><Bot size={30} style={{ opacity: 0.5 }} /><div style={{ marginTop: 8 }}>选择或新建一个会话开始对话</div></div>}
-            {active && messages.length === 0 && !msgQuery.isLoading && <div style={{ margin: "auto", textAlign: "center", color: "var(--c-t4)", fontSize: 13 }}>开始你的第一句对话吧</div>}
+            {(!active || (messages.length === 0 && !msgQuery.isLoading)) && (
+              <div style={{ margin: "auto", width: "100%", maxWidth: 420, textAlign: "center", padding: "0 4px" }}>
+                <span style={{ display: "inline-flex", width: 52, height: 52, alignItems: "center", justifyContent: "center", borderRadius: 15, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={28} /></span>
+                <div style={{ marginTop: 12, fontSize: 16, fontWeight: 800, color: "var(--c-t1)" }}>{codeMode ? "代码助手" : "你好，我是 AI 助手"}</div>
+                <div style={{ marginTop: 5, fontSize: 12.5, color: "var(--c-t4)", lineHeight: 1.6 }}>
+                  {codeMode ? "描述需求，我来写码——右侧工件面板可预览/下载/落成节点。" : "写脚本、想运镜、翻译润色、头脑风暴——挑一个开始，或直接输入。"}
+                </div>
+                <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {(codeMode ? CODE_STARTERS : CHAT_STARTERS).map((s) => (
+                    <button key={s.label} onClick={() => startWithPrompt(s.prompt)} className="nodrag"
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 11px", borderRadius: 11, cursor: "pointer", textAlign: "left",
+                        background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", transition: "border-color 150ms, background 150ms" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${ACCENT}80`; e.currentTarget.style.background = `color-mix(in oklch, ${ACCENT} 8%, var(--c-input))`; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--c-bd2)"; e.currentTarget.style.background = "var(--c-input)"; }}>
+                      <span style={{ fontSize: 17, flexShrink: 0 }}>{s.icon}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {active && msgQuery.isLoading && <div style={{ margin: "auto", color: "var(--c-t4)" }}><Loader2 size={20} className="animate-spin" /></div>}
             {messages.map((m, i) => {
               const atts = (m as { attachments?: ChatMsgAttachment[] }).attachments;
@@ -808,6 +844,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                 </button>
               )}
               <textarea
+                ref={composerRef}
                 className="nodrag nowheel"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
