@@ -8,7 +8,8 @@ const managerProc = levelProcedure(3);
 import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
 import { toInternalStoragePath } from "../storage";
-import { isDownloadAuthEnabled } from "../_core/storageConfig";
+import { isDownloadAuthEnabled, getDownloadAuthBypassLevel } from "../_core/storageConfig";
+import { userAdminLevel, isLevelExemptFromDownloadGate } from "../_core/downloadAuth";
 import { notifyAdminsOfDownloadRequest } from "../_core/downloadNotify";
 import { postDownloadRequestToChannel } from "./chat";
 
@@ -21,9 +22,12 @@ function keyOf(url: string): string {
 // ── User-facing download authorization ───────────────────────────────────────
 export const downloadsRouter = router({
   // Whether strict download authorization is enforced in this deployment.
+  // 免控判定必须与服务端 gate（downloadAuth.authorizeDownload）完全一致——按「管理级别 >=
+  // 免控阈值 bypassLevel」判，而非粗粒度的 role==="admin"。否则运营(L2)等 role=admin 但级别
+  // 低于阈值的用户会被客户端误判为免控、跳过「申请下载」弹窗，直连服务端拿到 403 JSON 存成文件。
   config: protectedProcedure.query(async ({ ctx }) => ({
     enabled: await isDownloadAuthEnabled(),
-    isAdmin: ctx.user.role === "admin",
+    isAdmin: isLevelExemptFromDownloadGate(userAdminLevel(ctx.user), await getDownloadAuthBypassLevel()),
   })),
 
   // Can the current user download this file right now? Drives the client UI
@@ -31,7 +35,9 @@ export const downloadsRouter = router({
   checkAccess: protectedProcedure
     .input(z.object({ url: z.string().min(1).max(2048), assetId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
-      if (!(await isDownloadAuthEnabled()) || ctx.user.role === "admin") return { allowed: true as const, reason: "open" as const };
+      // 与服务端 gate 一致：按级别免控（role==="admin" 但级别不足者仍受控）。
+      if (!(await isDownloadAuthEnabled())) return { allowed: true as const, reason: "open" as const };
+      if (isLevelExemptFromDownloadGate(userAdminLevel(ctx.user), await getDownloadAuthBypassLevel())) return { allowed: true as const, reason: "open" as const };
       const storageKey = keyOf(input.url);
       let assetId = input.assetId ?? null;
       let projectId: number | null = null;
