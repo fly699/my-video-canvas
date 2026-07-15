@@ -150,9 +150,10 @@ export const CustomEdge = memo(function CustomEdge({
     : sourceFailed
       ? "oklch(0.62 0.24 25 / 0.9)"
       : isCreative
-        // LibTV：低透明细「墨线」，交互只加深/提亮不变彩色（反色强调）；完成/失败保留状态色。
-        // 深色皮肤=近白线；浅色皮肤=深墨线（否则白线在浅底上不可见），静止态浅色下透明度略高更清晰。
-        ? (selected ? `oklch(${inkBase} / 0.95)` : hovered ? `oklch(${inkBase} / ${isCreativeLight ? 0.7 : 0.6})` : `oklch(${inkBase} / ${isCreativeLight ? 0.42 : 0.25})`)
+        // LibTV：细「墨线」，交互只加深/提亮不变彩色（反色强调）；完成/失败保留状态色。
+        // 深色皮肤=近白线；浅色皮肤=深墨线。对齐 LibTV——静止态也要清晰可辨，
+        // 之前 0.25 太淡近乎不可见，提到 0.5/0.6 让连线在近黑底上明确可读。
+        ? (selected ? `oklch(${inkBase} / 0.98)` : hovered ? `oklch(${inkBase} / ${isCreativeLight ? 0.85 : 0.82})` : `oklch(${inkBase} / ${isCreativeLight ? 0.6 : 0.5})`)
         : selected
           ? (typeColor ?? "oklch(0.68 0.24 285)")
           : hovered
@@ -164,7 +165,7 @@ export const CustomEdge = memo(function CustomEdge({
   // Slightly thinner than the bold pass (user asked to slim down a touch);
   // hover/selection still step up for emphasis.
   const strokeWidth = isCreative
-    ? selected ? 2.25 : hovered ? 1.75 : 1.25
+    ? selected ? 2.5 : hovered ? 2 : 1.6
     : isStudio
       ? selected ? 3.5 : hovered ? 3 : 2.4   // studio: a touch thicker/softer flow
       : selected ? 3.5 : hovered ? 2.75 : 2;

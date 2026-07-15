@@ -49,18 +49,23 @@ const QP_GEN_NODES: { v: string; label: string }[] = [
 ];
 const QP_ASPECTS = ["", "16:9", "9:16", "1:1", "4:3"];
 // 指定模型下拉的分组选项（与节点选择器同源清单；MiniSelect 自绘下拉，缩放窗口内可点）。
-const groupModelOptions = <T extends { group: string; value: string; label: string }>(ms: readonly T[], title: (m: T) => string | undefined) => {
+// note=计价（下拉项内常显，让用户选前就看到花费）；title=悬停 tooltip（补充描述/计价全文）。
+const groupModelOptions = <T extends { group: string; value: string; label: string }>(
+  ms: readonly T[], title: (m: T) => string | undefined, note: (m: T) => string | undefined,
+) => {
   const order: string[] = []; const by = new Map<string, T[]>();
   for (const m of ms) { if (!by.has(m.group)) { by.set(m.group, []); order.push(m.group); } by.get(m.group)!.push(m); }
-  return order.map((g) => ({ label: g, options: by.get(g)!.map((m) => ({ value: m.value, label: m.label, title: title(m) })) }));
+  return order.map((g) => ({ label: g, options: by.get(g)!.map((m) => ({ value: m.value, label: m.label, title: title(m), note: note(m) })) }));
 };
+// 图像模型计价：优先 costNote（如「18-35 cr/张」），否则用数字 cost（Poyo 积分/张）。
+const imgCostText = (m: (typeof IMAGE_MODELS)[number]) => m.costNote ?? (typeof m.cost === "number" ? `${m.cost} cr/张` : undefined);
 const QP_IMAGE_MODEL_GROUPS = [
-  { options: [{ value: "", label: "默认（助手自选）" }] },
-  ...groupModelOptions(IMAGE_MODELS, (m) => m.desc),
+  { options: [{ value: "", label: "默认（助手自选）", note: "按各节点默认模型计价" }] },
+  ...groupModelOptions(IMAGE_MODELS, (m) => [m.desc, imgCostText(m)].filter(Boolean).join(" · "), imgCostText),
 ];
 const QP_VIDEO_MODEL_GROUPS = [
-  { options: [{ value: "", label: "默认（助手自选）" }] },
-  ...groupModelOptions(VIDEO_MODELS.filter((m) => m.value !== "mock"), (m) => m.costLabel),
+  { options: [{ value: "", label: "默认（助手自选）", note: "按各节点默认模型计价" }] },
+  ...groupModelOptions(VIDEO_MODELS.filter((m) => m.value !== "mock"), (m) => m.costLabel, (m) => m.costLabel),
 ];
 const QP_STYLES = ["电影感", "赛博朋克", "写实", "动漫", "水彩插画", "3D 渲染", "复古胶片", "极简", "梦幻唯美"];
 const QP_DURATIONS: { v: number; label: string }[] = [{ v: 0, label: "不限" }, { v: 15, label: "15s" }, { v: 30, label: "30s" }, { v: 60, label: "60s" }];
