@@ -14,6 +14,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useCanvasStore, type CanvasNode } from "@/hooks/useCanvasStore";
 import { useAiClient } from "@/hooks/useAiClient";
 import { AiClientPanel } from "@/components/canvas/AiClientPanel";
+import { NodeImageLightbox } from "@/components/canvas/NodeImageLightbox";
 import { ModelShowcaseCard } from "@/components/ModelShowcaseCard";
 import { getNodeConfig } from "@/lib/nodeConfig";
 import type { NodeType } from "../../../shared/types";
@@ -163,6 +164,9 @@ function StandaloneInner() {
       <div style={{ position: "absolute", top: topbarH, left: 0, right: 0, bottom: 0 }}>
         <AiClientPanel embedded />
       </div>
+      {/* 图片放大预览层（AiClientPanel 点击图片附件走 openNodeImage → 该组件监听）。画布页由
+          Canvas.tsx 挂载；/ai 独立页需自挂，否则「点击图片不能放大」。 */}
+      <NodeImageLightbox />
     </div>
   );
 }

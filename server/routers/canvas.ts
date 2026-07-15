@@ -54,7 +54,7 @@ import { getCachedSystemDefaultModels, getSystemDefaultModel } from "../_core/sy
 import { listBridgeSkills } from "../_core/bridgeSkills";
 import { allSelfHostedModels } from "../_core/selfHostedLlm";
 import { parseDocumentToText, isParsableDocument } from "../_core/documentParse";
-import { extractTextContent } from "../_core/llm";
+import { extractTextContent, extractReasoning } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { isClaudeBridgeEnabled } from "../_core/claudeBridge";
 import { mergeAiBindings, parseAiBindings, nodeClassMap } from "../_core/workflowAiAnalyze";
@@ -1189,11 +1189,13 @@ export const aiChatRouter = router({
       ];
 
       let assistantContent: string;
+      let reasoning = "";
       try {
         // kie 模型与其它模型统一走 invokeLLMWithKie：内部按 临时(显式 kieTempKey 或请求头)>分配>公用
         // 解析并校验权限。显式 input.kieTempKey 优先（与历史行为一致）。
         const response = await invokeLLMWithKie(ctx, { messages, model: input.model }, input.kieTempKey);
         assistantContent = extractTextContent(response) || "（模型返回内容为空）";
+        reasoning = extractReasoning(response); // 推理模型的「思考过程」，单独存/展示（不进正式答案）
       } catch (err) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -1205,22 +1207,24 @@ export const aiChatRouter = router({
       // MCP 时，回复常带其外链（约 24h 过期、绕过下载门控）。① 转存自有 S3 并记入素材库
       // （rehostMcpAsset，与画布助手/聊天室走同一存储守卫，故不会像「AI 生成结果无写入权限」那样失败）；
       // ② 裸外链替换为占位；③ 产物作为助手附件下发，AI 客户端内联渲染 + 可落成节点。
-      let assistantAttachments: Array<{ type: "image" | "file"; url: string; mimeType: string; name: string }> | undefined;
+      // 附件 = 「思考过程」（推理模型）+ 转存的 AI 图产物。存进 attachments JSON（不进 content），
+      // 故画布 ai_chat 节点/历史/agent 等 content 消费方不受影响；AI 客户端读取并渲染折叠「思考过程」。
+      const assistantAtts: Array<{ type: "image" | "file" | "reasoning"; url?: string; mimeType?: string; name?: string; text?: string }> = [];
+      if (reasoning) assistantAtts.push({ type: "reasoning", text: reasoning, name: "思考过程" });
       try {
         const hfUrls = extractHiggsfieldUrls(assistantContent).slice(0, 6);
         if (hfUrls.length > 0) {
-          const atts: Array<{ type: "image" | "file"; url: string; mimeType: string; name: string }> = [];
           const replaced: Array<{ url: string; type: string }> = [];
           for (const oldUrl of hfUrls) {
             const r = await rehostMcpAsset(ctx.user.id, input.projectId, oldUrl);
             if (!r) continue;
-            atts.push({ type: r.type === "image" ? "image" : "file", url: r.url, mimeType: r.mimeType, name: r.name });
+            assistantAtts.push({ type: r.type === "image" ? "image" : "file", url: r.url, mimeType: r.mimeType, name: r.name });
             replaced.push({ url: oldUrl, type: r.type });
           }
           assistantContent = stripRehostedUrls(assistantContent, replaced);
-          if (atts.length > 0) assistantAttachments = atts;
         }
       } catch { /* 落地失败不影响正常回复 */ }
+      const assistantAttachments = assistantAtts.length > 0 ? assistantAtts : undefined;
 
       // Persist user message (with attachments) and assistant reply (with rehosted media) atomically.
       await addChatMessagePair(

@@ -101,6 +101,9 @@ export type InvokeResult = {
       role: Role;
       content: string | Array<TextContent | ImageContent | FileContent>;
       tool_calls?: ToolCall[];
+      /** OpenAI 兼容推理模型（DeepSeek-R1 / Qwen3 / QwQ 等经 vLLM）把思维链单独放这里，
+       *  不在 content 里。供 extractReasoning 取出「思考过程」展示。 */
+      reasoning_content?: string;
     };
     finish_reason: string | null;
   }>;
@@ -426,6 +429,31 @@ export function extractTextContent(response: InvokeResult): string {
       ? raw.map((p) => (p.type === "text" ? p.text : "")).join("")
       : "";
   return stripReasoning(text);
+}
+
+/** 取出推理模型的「思考过程」（供展示，不进正式答案）。两个来源：
+ *  ① OpenAI 兼容的 message.reasoning_content 字段（DeepSeek-R1 / Qwen3 / QwQ 等）；
+ *  ② content 里的 <think>…</think> 块（含只有孤立开/闭标签的流式截断情况）。
+ *  取不到返回空串。 */
+export function extractReasoning(response: InvokeResult): string {
+  const msg = response.choices?.[0]?.message;
+  const rc = msg?.reasoning_content;
+  if (typeof rc === "string" && rc.trim()) return rc.trim();
+  const raw = typeof msg?.content === "string"
+    ? msg.content
+    : Array.isArray(msg?.content)
+      ? msg!.content.map((p) => (p.type === "text" ? p.text : "")).join("")
+      : "";
+  const m = /<think>([\s\S]*?)<\/think>/i.exec(raw);
+  if (m && m[1].trim()) return m[1].trim();
+  // 孤立开标签（推理被截断没闭合）→ 取 <think> 之后全部。
+  const lower = raw.toLowerCase();
+  const open = lower.indexOf("<think>");
+  if (open !== -1 && lower.indexOf("</think>") === -1) return raw.slice(open + "<think>".length).trim();
+  // 孤立闭标签（只流出 </think>）→ 取其之前全部。
+  const close = lower.indexOf("</think>");
+  if (close !== -1 && open === -1) return raw.slice(0, close).trim();
+  return "";
 }
 
 // Upstream gateway hiccups (Gemini 3 preview especially) intermittently return
