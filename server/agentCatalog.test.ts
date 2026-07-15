@@ -196,6 +196,18 @@ describe("agentCatalog.sanitizeOperationDetailed", () => {
     }
   });
 
+  it("update 与 create 同口径：改视频节点越界 duration 也夹取、非法枚举也丢弃", () => {
+    const r = sanitizeOperationDetailed({
+      op: "update", targetRef: "vid1",
+      payload: { provider: "kie_grok_i2v", params: { duration: 99, resolution: "16K" } },
+    });
+    if ("op" in r) {
+      const params = (r.op.payload as { params?: Record<string, unknown> }).params ?? {};
+      expect(params.duration).toBe(30);          // 夹到上限
+      expect("resolution" in params).toBe(false); // 非法枚举丢弃
+    }
+  });
+
   // #112 画布级动作：合法 action 保留（多余字段剥除），非法 action / 缺 action 丢弃并说明
   it("canvas op with whitelisted action is kept, extra fields stripped", () => {
     for (const action of ["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all"]) {

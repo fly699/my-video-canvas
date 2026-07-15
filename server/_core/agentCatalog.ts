@@ -231,6 +231,29 @@ function paramDefBrief(d: ParamDef): string {
   return `${d.key}=true|false${d.default !== undefined ? `(默认${String(d.default)})` : ""}`;
 }
 
+/** video_task.params 按模型参数表清洗：丢弃幻觉键、range/number 夹到 [min,max]、select 非法枚举
+ *  丢弃（回退模型默认）。create 与 update 两条路径共用，保证行为一致（防「改时长/分辨率」越界）。 */
+function cleanVideoTaskParams(params: Record<string, unknown>, defs: ParamDef[]): Record<string, unknown> {
+  const defByKey = new Map(defs.map((d) => [d.key, d]));
+  const cleaned: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(params)) {
+    const d = defByKey.get(k);
+    if (!d) continue; // 幻觉键：丢弃（上游会拒绝或静默无效）
+    if ((d.type === "range" || d.type === "number") && typeof v === "number" && Number.isFinite(v)) {
+      let n = v;
+      if (typeof d.min === "number" && n < d.min) n = d.min;
+      if (typeof d.max === "number" && n > d.max) n = d.max;
+      cleaned[k] = n;
+    } else if (d.type === "select") {
+      const allowed = new Set(d.options.map((o) => String(o.value)));
+      if (allowed.has(String(v))) cleaned[k] = v; // 合法枚举保留；非法丢弃回退默认
+    } else {
+      cleaned[k] = v;
+    }
+  }
+  return cleaned;
+}
+
 /** 视频模型清单：每行一个模型（id、名称、能力标签、参考图/反向词支持、完整参数表）。
  *  only 提供时只输出该模型的完整条目（#141 按需注入）。 */
 export function videoModelDigestText(only?: string): string {
@@ -401,31 +424,8 @@ export function sanitizeOperationDetailed(
     if (nodeType === "video_task" && payload.params && typeof payload.params === "object") {
       const prov = typeof payload.provider === "string" ? payload.provider : undefined;
       const defs = prov ? PROVIDER_PARAMS[prov] : undefined;
-      if (defs) {
-        const defByKey = new Map(defs.map((d) => [d.key, d]));
-        const cleaned: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(payload.params as Record<string, unknown>)) {
-          const d = defByKey.get(k);
-          if (!d) continue; // 幻觉键：丢弃（上游会拒绝或静默无效）
-          // 数值型参数（range/number，如 duration）夹到模型声明的 [min,max]，防越界。
-          // 尤其「合并短镜」开启后，LLM 可能把 duration 设成超过模型单次上限的合并总时长
-          // （如给 6~30s 的 grok 设成 35），不夹取会被下游 API 拒绝。
-          if ((d.type === "range" || d.type === "number") && typeof v === "number" && Number.isFinite(v)) {
-            let n = v;
-            if (typeof d.min === "number" && n < d.min) n = d.min;
-            if (typeof d.max === "number" && n > d.max) n = d.max;
-            cleaned[k] = n;
-          } else if (d.type === "select") {
-            // 枚举型：仅保留模型声明的合法档位；非法枚举（如给 480p/720p 的 grok 设 8K）丢弃，
-            // 回退模型默认，而非原样透传被下游拒绝。数字/字符串档位统一按字符串比对。
-            const allowed = new Set(d.options.map((o) => String(o.value)));
-            if (allowed.has(String(v))) cleaned[k] = v;
-          } else {
-            cleaned[k] = v;
-          }
-        }
-        payload.params = cleaned;
-      }
+      // 键过滤 + 数值夹取 + 枚举校验（尤其「合并短镜」开启后 LLM 可能把 duration 设成超模型上限）。
+      if (defs) payload.params = cleanVideoTaskParams(payload.params as Record<string, unknown>, defs);
     }
     // Hard-guard comfyui_workflow templateId against the real analyzed-template set
     // so the model can't fabricate a template (e.g. an invented name with a made-up
@@ -474,14 +474,11 @@ export function sanitizeOperationDetailed(
     if (typeof payload.model === "string" && !VALID_IMAGE_MODELS.has(payload.model)) delete payload.model;
     if (typeof payload.imageModel === "string" && !VALID_IMAGE_MODELS.has(payload.imageModel)) delete payload.imageModel;
     if (payload.params !== undefined && (typeof payload.params !== "object" || payload.params === null || Array.isArray(payload.params))) delete payload.params;
+    // 与 create 同口径清洗：键过滤 + 数值夹取 + 枚举校验（「改时长/分辨率」也不越界）。
+    // 注：update 未带 provider 时无从取参数表，只能透传（生成时按节点实际 provider 再夹取）。
     if (payload.params && typeof payload.provider === "string") {
       const defs = PROVIDER_PARAMS[payload.provider];
-      if (defs) {
-        const known = new Set(defs.map((d) => d.key));
-        const cleaned: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(payload.params as Record<string, unknown>)) if (known.has(k)) cleaned[k] = v;
-        payload.params = cleaned;
-      }
+      if (defs) payload.params = cleanVideoTaskParams(payload.params as Record<string, unknown>, defs);
     }
     return { op: { op: "update", targetRef, title: str(o.title), payload, note: noteStr(o.note) } };
   }
