@@ -402,9 +402,23 @@ export function sanitizeOperationDetailed(
       const prov = typeof payload.provider === "string" ? payload.provider : undefined;
       const defs = prov ? PROVIDER_PARAMS[prov] : undefined;
       if (defs) {
-        const known = new Set(defs.map((d) => d.key));
+        const defByKey = new Map(defs.map((d) => [d.key, d]));
         const cleaned: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(payload.params as Record<string, unknown>)) if (known.has(k)) cleaned[k] = v;
+        for (const [k, v] of Object.entries(payload.params as Record<string, unknown>)) {
+          const d = defByKey.get(k);
+          if (!d) continue; // 幻觉键：丢弃（上游会拒绝或静默无效）
+          // 数值型参数（range/number，如 duration）夹到模型声明的 [min,max]，防越界。
+          // 尤其「合并短镜」开启后，LLM 可能把 duration 设成超过模型单次上限的合并总时长
+          // （如给 6~30s 的 grok 设成 35），不夹取会被下游 API 拒绝。
+          if ((d.type === "range" || d.type === "number") && typeof v === "number" && Number.isFinite(v)) {
+            let n = v;
+            if (typeof d.min === "number" && n < d.min) n = d.min;
+            if (typeof d.max === "number" && n > d.max) n = d.max;
+            cleaned[k] = n;
+          } else {
+            cleaned[k] = v;
+          }
+        }
         payload.params = cleaned;
       }
     }

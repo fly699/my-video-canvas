@@ -159,6 +159,31 @@ describe("agentCatalog.sanitizeOperationDetailed", () => {
     expect("drop" in r && r.drop.includes("999")).toBe(true);
   });
 
+  // video_task.params 数值夹取：越界 duration 夹到模型 [min,max]（合并短镜可能设超上限）
+  it("video_task.params：越界 duration 夹到模型范围，越界键内、幻觉键丢弃", () => {
+    const r = sanitizeOperationDetailed({
+      op: "create", nodeType: "video_task",
+      payload: { provider: "kie_grok_i2v", params: { duration: 35, bogus_key: "x" } },
+    });
+    expect("op" in r).toBe(true);
+    if ("op" in r) {
+      const params = (r.op.payload as { params?: Record<string, unknown> }).params ?? {};
+      expect(params.duration).toBe(30);       // grok i2v 上限 30
+      expect("bogus_key" in params).toBe(false); // 幻觉键丢弃
+    }
+  });
+
+  it("video_task.params：偏低 duration 夹到下限，范围内值原样保留", () => {
+    const low = sanitizeOperationDetailed({
+      op: "create", nodeType: "video_task", payload: { provider: "kie_grok_i2v", params: { duration: 2 } },
+    });
+    if ("op" in low) expect((low.op.payload as { params?: { duration?: number } }).params?.duration).toBe(6); // 下限 6
+    const ok = sanitizeOperationDetailed({
+      op: "create", nodeType: "video_task", payload: { provider: "kie_grok_i2v", params: { duration: 18 } },
+    });
+    if ("op" in ok) expect((ok.op.payload as { params?: { duration?: number } }).params?.duration).toBe(18); // 范围内不动
+  });
+
   // #112 画布级动作：合法 action 保留（多余字段剥除），非法 action / 缺 action 丢弃并说明
   it("canvas op with whitelisted action is kept, extra fields stripped", () => {
     for (const action of ["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all"]) {
