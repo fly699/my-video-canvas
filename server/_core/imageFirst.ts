@@ -53,7 +53,10 @@ export function enforceImageFirst(ops: AgentOperation[]): AgentOperation[] {
     ) {
       const st = typeByTemp.get(o.sourceRef);
       const sourceIsImage = !!st && IMAGE_PRODUCER_TYPES.has(st);
-      if (!sourceIsImage) {
+      // 源必须是本批新建节点才知道其类型；源是画布【已存在节点】（typeByTemp 无记录）时保守跳过、
+      // 绝不强插——它可能本就是图片节点，强插会把「现有图直接当首帧」改成「现有图→重新生图→视频」，
+      // 既改画面又多烧一次生图钱。这才真正兑现函数注释承诺的「pre-existing canvas nodes left untouched」。
+      if (typeByTemp.has(o.sourceRef) && !sourceIsImage) {
         let imgRef = imgForVideo.get(o.targetRef);
         if (!imgRef) {
           imgRef = `imgfirst_${++counter}`;
@@ -93,11 +96,15 @@ export function enforceImageFirstComfy(
 ): AgentOperation[] {
   const tplByTemp = new Map<string, number>();
   const createByTemp = new Map<string, AgentOperation>();
+  const createdTemps = new Set<string>(); // 本批新建的所有 tempId（含 prompt 等非工作流文本源）
   for (const o of ops) {
-    if (o.op === "create" && o.tempId && o.nodeType === "comfyui_workflow") {
-      const tid = Number((o.payload as Record<string, unknown> | undefined)?.templateId);
-      if (Number.isFinite(tid)) tplByTemp.set(o.tempId, tid);
-      createByTemp.set(o.tempId, o);
+    if (o.op === "create" && o.tempId) {
+      createdTemps.add(o.tempId);
+      if (o.nodeType === "comfyui_workflow") {
+        const tid = Number((o.payload as Record<string, unknown> | undefined)?.templateId);
+        if (Number.isFinite(tid)) tplByTemp.set(o.tempId, tid);
+        createByTemp.set(o.tempId, o);
+      }
     }
   }
   const videoTemps = new Set<string>();
@@ -119,7 +126,9 @@ export function enforceImageFirstComfy(
     if (o.op === "connect" && o.sourceRef && o.targetRef && videoTemps.has(o.targetRef) && !videoHasImage.has(o.targetRef)) {
       const st = tplByTemp.get(o.sourceRef);
       const sourceIsImage = st != null && imageTplIds.has(st);
-      if (!sourceIsImage) {
+      // 同 enforceImageFirst：源须是本批新建节点（prompt 文本源或工作流）；源是画布【已存在节点】
+      // 时保守跳过、绝不强插（它可能本就是出图工作流，强插会改画面 + 多烧一次生图钱）。
+      if (createdTemps.has(o.sourceRef) && !sourceIsImage) {
         let imgRef = imgForVideo.get(o.targetRef);
         if (!imgRef) {
           imgRef = `imgfirst_cw_${++counter}`;

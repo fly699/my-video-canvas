@@ -531,7 +531,9 @@ export function applyAgentOperations(
         const genTargets = res.createdIds.filter((id) => CHAR_TARGETS.has(typeById.get(id) as NodeType));
         const promptOf = (id: string): string => {
           const p = (byId.get(id)?.data.payload ?? {}) as Record<string, unknown>;
-          return [p.prompt, p.promptText, p.description, p.positivePrompt, p.negPrompt]
+          // 只用【正向】文本判定「角色名是否出现」——绝不含 negPrompt：角色名若出现在反向词里
+          // （如「不要出现 X」）本意是排除该角色，误接会注入与意图相反的角色条件。
+          return [p.prompt, p.promptText, p.description, p.positivePrompt]
             .filter((x): x is string => typeof x === "string").join(" ");
         };
         for (const gid of genTargets) {
