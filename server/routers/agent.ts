@@ -388,7 +388,15 @@ ${ctxBudget.graphSummary || "（空画布）"}${input.prefs?.trim() ? `\n\n# 用
       // 本轮直接用现有分析结果（新模板下一轮自然可见），后台增量分析继续补齐。
       // #140 跳过模板知识：客户端确定本轮不会用 ComfyUI（快速设置未勾任何 comfyui_*）时
       // 完全绕开模板链路——不触发分析、不读模板表、不注入模板知识段。comfyOnly 优先生效。
-      const skipTemplates = !input.comfyOnly && input.skipComfyTemplates === true;
+      // A3 批2：框选节点 = 增量编辑意图的确定性信号（不靠 LLM 分类，零误判）。编辑模式下
+      // 裁剪 system prompt 静态骨干：模型清单压成 id 目录（见 modelKnowledgeText.compact）；
+      // 框选子图摘要里没有任何 comfyui 节点（且非 comfyOnly、未显式指定模板）时，本轮编辑
+      // 用不到模板知识 → 走 #140 同一跳过路径（不读模板表、不注入模板段与 comfy 记忆段）。
+      const editMode = (input.selectedNodeIds?.length ?? 0) > 0;
+      const editSkipsTemplates = editMode && !input.comfyOnly
+        && !input.imageTemplateId && !input.videoTemplateId
+        && !/comfyui/i.test(input.graphSummary ?? "");
+      const skipTemplates = (!input.comfyOnly && input.skipComfyTemplates === true) || editSkipsTemplates;
       if (input.comfyOnly) {
         onStage?.("分析模板库");
         try { await runLibraryAnalysis(ctx, model, { max: 40 }); } catch { /* non-fatal */ }
@@ -533,7 +541,7 @@ ${ctxBudget.graphSummary || "（空画布）"}${input.prefs?.trim() ? `\n\n# 用
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
 
 # 可用节点目录（只能使用下面列出的节点类型与字段，禁止编造任何不存在的节点或字段）
-${catalogText({ comfyOnly: input.comfyOnly, allowSuperAgent })}${templateSection}${comfyResourceSection}${comfyExperienceSection}${planPitfallSection}${superAgentHint}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel })}`}
+${catalogText({ comfyOnly: input.comfyOnly, allowSuperAgent })}${templateSection}${comfyResourceSection}${comfyExperienceSection}${planPitfallSection}${superAgentHint}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel, compact: editMode || undefined })}`}
 
 # 当前画布
 ${ctxBudget.graphSummary || "（空画布）"}${input.selectedNodeIds?.length ? `\n\n# 用户已框选节点（本轮硬约束）\n用户框选了 ${input.selectedNodeIds.length} 个节点：${input.selectedNodeIds.slice(0, 60).join("、")}。本轮的 update/delete 只允许作用于这些节点（或本轮新建节点的 tempId）——框选外的既有节点一律不要修改、不要删除（系统会直接拒绝这类操作）。除非用户明确要求新增内容，否则不要 create 新节点。` : ""}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}
