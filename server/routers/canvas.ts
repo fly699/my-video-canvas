@@ -29,6 +29,8 @@ import {
   createAsset,
   recordGeneratedAsset,
   deleteAsset,
+  getAssetById,
+  updateAssetMeta,
   getVideoTasksByProject,
   createVideoTask,
   updateVideoTask,
@@ -95,6 +97,7 @@ import { writeAuditLog, truncate, auditVideoTaskResult } from "../_core/auditLog
 import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
 import { runImageQc } from "../_core/imageQcCore";
+import { runImageTag } from "../_core/imageTagCore";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
 
 /**
@@ -571,6 +574,26 @@ export const assetsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await deleteAsset(input.id, ctx.user.id);
       return { success: true };
+    }),
+
+  // E2 语义搜索：给素材做 AI 打标（视觉模型产出中文标签 + 一句话描述，写进 meta，
+  // 搜索时与文件名联合命中）。仅本人素材；图片直接用原图，视频用封面图（无封面则不支持）。
+  // 门控/计费/日志经 invokeLLMWithKie 统一入口自动继承；dedupe 防连点双付。
+  tagAsset: protectedProcedure
+    .input(z.object({ id: z.number(), model: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertLLMAllowed(ctx, input.model);
+      const asset = await getAssetById(input.id, ctx.user.id);
+      if (!asset || asset.deletedAt) throw new TRPCError({ code: "NOT_FOUND", message: "素材不存在或已删除" });
+      const imgUrl = asset.type === "image" ? asset.url : (asset.thumbnailUrl || null);
+      if (!imgUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "仅图片素材或带封面图的视频素材支持 AI 打标" });
+      return dedupe("assets.tagAsset", ctx.user.id, input, async () => {
+        const r = await runImageTag(ctx, { imageUrl: imgUrl, name: asset.name, model: input.model });
+        const prior = (asset.meta && typeof asset.meta === "object") ? asset.meta as Record<string, unknown> : {};
+        const meta = { ...prior, aiTags: r.tags, aiDesc: r.desc, aiModel: input.model ?? "gpt-5.2", taggedAt: Date.now() };
+        await updateAssetMeta(asset.id, ctx.user.id, meta);
+        return { id: asset.id, meta };
+      });
     }),
 
   // Bulk soft-delete (multi-select in the library). Each is user-scoped, so a

@@ -217,6 +217,9 @@ export const assets = mysqlTable("assets", {
   provider: varchar("provider", { length: 32 }),   // poyo|higgsfield|openai|forge|comfyui|edit|manus
   model: varchar("model", { length: 128 }),         // generating model / checkpoint / template
   nodeId: varchar("nodeId", { length: 64 }),        // canvas node that produced it (if any)
+  // E2 semantic search: AI tagging payload { aiTags, aiDesc, aiModel, taggedAt }
+  // (shape helpers in shared/assetMeta.ts). Added by migration 0087.
+  meta: json("meta"),
   deletedAt: timestamp("deletedAt"),                // soft delete: hidden from user, file kept in MinIO
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (t) => ({

@@ -821,6 +821,14 @@ export interface AssetFilter {
 function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
+/**
+ * E2 语义搜索：q 同时命中文件名与 AI 打标 meta（aiTags/aiDesc）。meta 是 JSON 列，
+ * MySQL 不允许直接 LIKE JSON——CAST 成 CHAR 再匹配（MySQL/MariaDB 通用）。
+ */
+function assetQueryCond(q: string) {
+  const p = `%${escapeLike(q)}%`;
+  return or(like(assets.name, p), sql`CAST(${assets.meta} AS CHAR) LIKE ${p}`)!;
+}
 export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) {
   const db = await getDb();
   if (!db) return DEV_MODE ? dev.devGetAssetsByUser(userId, filter) : [];
@@ -830,7 +838,7 @@ export async function getAssetsByUser(userId: number, filter: AssetFilter = {}) 
   if (filter.type) conds.push(eq(assets.type, filter.type));
   if (filter.source) conds.push(eq(assets.source, filter.source));
   if (filter.model) conds.push(eq(assets.model, filter.model));
-  if (filter.q) conds.push(like(assets.name, `%${escapeLike(filter.q)}%`));
+  if (filter.q) conds.push(assetQueryCond(filter.q)); // 名称 + AI 标签/描述（E2 语义搜索）
   return db.select().from(assets).where(and(...conds)).orderBy(desc(assets.createdAt));
 }
 
@@ -846,7 +854,7 @@ export async function getAssetsByProject(projectId: number, filter: Omit<AssetFi
   if (filter.type) conds.push(eq(assets.type, filter.type));
   if (filter.source) conds.push(eq(assets.source, filter.source));
   if (filter.model) conds.push(eq(assets.model, filter.model));
-  if (filter.q) conds.push(like(assets.name, `%${escapeLike(filter.q)}%`));
+  if (filter.q) conds.push(assetQueryCond(filter.q)); // 名称 + AI 标签/描述（E2 语义搜索）
   return db.select().from(assets).where(and(...conds)).orderBy(desc(assets.createdAt));
 }
 
@@ -982,7 +990,7 @@ export async function getAllAssets(filter: AdminAssetFilter = {}) {
   if (filter.source) conds.push(eq(assets.source, filter.source));
   if (filter.model) conds.push(eq(assets.model, filter.model));
   if (filter.projectId) conds.push(eq(assets.projectId, filter.projectId));
-  if (filter.q) conds.push(like(assets.name, `%${escapeLike(filter.q)}%`));
+  if (filter.q) conds.push(assetQueryCond(filter.q)); // 名称 + AI 标签/描述（E2 语义搜索）
   return db.select().from(assets)
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(assets.createdAt))
@@ -1001,9 +1009,17 @@ export async function createAsset(data: InsertAsset) {
 
 export async function getAssetById(id: number, userId: number) {
   const db = await getDb();
-  if (!db) return null;
+  if (!db) return DEV_MODE ? dev.devGetAssetById(id, userId) : null;
   const rows = await db.select().from(assets).where(and(eq(assets.id, id), eq(assets.userId, userId)));
   return rows[0] ?? null;
+}
+
+/** E2 AI 打标：整体覆写素材的 meta（json 列）。仅本人素材。返回是否命中一行。 */
+export async function updateAssetMeta(id: number, userId: number, meta: unknown) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devUpdateAssetMeta(id, userId, meta); throw new Error("DB unavailable"); }
+  await db.update(assets).set({ meta }).where(and(eq(assets.id, id), eq(assets.userId, userId), isNull(assets.deletedAt)));
+  return true;
 }
 
 export async function deleteAsset(id: number, userId: number) {

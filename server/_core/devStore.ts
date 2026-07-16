@@ -2,6 +2,7 @@
  * In-memory store used when DATABASE_URL is not configured (local dev/testing).
  * Only active when NODE_ENV=development AND DATABASE_URL is unset.
  */
+import { assetMatchesQuery } from "@shared/assetMeta";
 import type {
   User,
   Project,
@@ -175,7 +176,7 @@ export function devGetAssetsByUser(
       && (!filter.type || a.type === filter.type)
       && (!filter.source || a.source === filter.source)
       && (!filter.model || a.model === filter.model)
-      && (!filter.q || a.name.toLowerCase().includes(filter.q.toLowerCase())))
+      && (!filter.q || assetMatchesQuery(a, filter.q))) // E2：名称 + AI 标签/描述
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
@@ -188,7 +189,7 @@ export function devGetAssetsByProject(
       && (!filter.type || a.type === filter.type)
       && (!filter.source || a.source === filter.source)
       && (!filter.model || a.model === filter.model)
-      && (!filter.q || a.name.toLowerCase().includes(filter.q.toLowerCase())))
+      && (!filter.q || assetMatchesQuery(a, filter.q))) // E2：名称 + AI 标签/描述
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
@@ -226,11 +227,23 @@ export function devCreateAsset(data: InsertAsset): Asset {
     provider: data.provider ?? null,
     model: data.model ?? null,
     nodeId: data.nodeId ?? null,
+    meta: data.meta ?? null,
     deletedAt: null,
     createdAt: now(),
   };
   assetsMap.set(id, asset);
   return asset;
+}
+
+export function devGetAssetById(id: number, userId: number): Asset | null {
+  const a = assetsMap.get(id);
+  return a && a.userId === userId ? a : null;
+}
+
+export function devUpdateAssetMeta(id: number, userId: number, meta: unknown) {
+  const a = assetsMap.get(id);
+  if (a && a.userId === userId && a.deletedAt == null) a.meta = meta;
+  return true;
 }
 
 export function devDeleteAsset(id: number, userId: number) {

@@ -141,7 +141,7 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
         <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
           <div style={{ position: "relative", flex: 1 }}>
             <Search size={13} style={{ position: "absolute", left: 8, top: 8, color: EC.t4 }} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索素材…"
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索名称 / AI 标签…"
               style={{ width: "100%", padding: "6px 8px 6px 26px", fontSize: 12, borderRadius: 7, border: `1px solid ${EC.border}`, background: EC.elevated, color: EC.t1, outline: "none" }} />
           </div>
           <button

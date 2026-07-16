@@ -4,7 +4,8 @@ import { createPortal } from "react-dom";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
-import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play, Filter, ChevronDown, ChevronUp, Search } from "lucide-react";
+import { Upload, X, FileImage, FileVideo, FileAudio, File, Trash2, Plus, Loader2, Download, Check, Play, Filter, ChevronDown, ChevronUp, Search, Sparkles } from "lucide-react";
+import { assetMatchesQuery, readAssetAiMeta } from "@shared/assetMeta";
 import { ImageLightbox } from "./ImageLightbox";
 import { uploadAssetFile, MAX_MB } from "@/lib/assetUpload";
 import { confirmDialog } from "@/components/ui/dialogService";
@@ -55,12 +56,11 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
     refetchOnWindowFocus: true,
   });
 
-  // 应用复选过滤（空集合 = 全部）+ 名称搜索（按素材名，忽略大小写）。
-  const nameQ = query.trim().toLowerCase();
+  // 应用复选过滤（空集合 = 全部）+ 语义搜索（E2：文件名 + AI 标签 + AI 描述联合命中）。
   const filteredAssets = (assets ?? []).filter((a) =>
     (typeFilter.size === 0 || typeFilter.has(a.type as TypeFilter)) &&
     (sourceFilter.size === 0 || sourceFilter.has((a.source ?? "") as SourceFilter)) &&
-    (!nameQ || (a.name ?? "").toLowerCase().includes(nameQ))
+    assetMatchesQuery(a, query)
   ).sort((a, b) => {
     // 服务端默认按 createdAt 倒序返回；此处客户端排序覆盖之。
     switch (sort) {
@@ -84,6 +84,30 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
     onSuccess: (r) => { toast.success(`已删除 ${(r as { count?: number })?.count ?? selected.size} 个素材`); setSelected(new Set()); refetch(); },
     onError: (e) => toast.error("删除失败：" + e.message),
   });
+
+  // E2 AI 打标：视觉模型给素材生成标签+描述（存 meta），搜索可命中。逐个串行、可批量。
+  const tagMutation = trpc.assets.tagAsset.useMutation();
+  const [tagging, setTagging] = useState<{ done: number; total: number } | null>(null);
+  const taggableOf = (a: { type: string; thumbnailUrl?: string | null; meta?: unknown }) =>
+    a.type === "image" || (a.type === "video" && !!a.thumbnailUrl);
+  const tagOne = useCallback(async (id: number) => {
+    try { await tagMutation.mutateAsync({ id }); return true; } catch (e) { toast.error("打标失败：" + (e instanceof Error ? e.message : "")); return false; }
+  }, [tagMutation]);
+  const BATCH_TAG_LIMIT = 12; // 一次批量最多打 12 个（每个一次视觉调用费用，防误触巨额批量）
+  const batchTag = useCallback(async () => {
+    if (tagging) return;
+    const untagged = (assets ?? []).filter((a) => taggableOf(a) && !readAssetAiMeta(a.meta).taggedAt).slice(0, BATCH_TAG_LIMIT);
+    if (!untagged.length) { toast.info("没有待打标的素材（仅图片 / 带封面的视频支持）"); return; }
+    if (!(await confirmDialog({ title: `AI 打标 ${untagged.length} 个素材？`, message: "用视觉模型为每个素材生成搜索标签与描述，每个产生一次视觉调用费用。" }))) return;
+    setTagging({ done: 0, total: untagged.length });
+    let ok = 0;
+    for (let i = 0; i < untagged.length; i++) {
+      if (await tagOne(untagged[i].id)) ok++;
+      setTagging({ done: i + 1, total: untagged.length });
+    }
+    setTagging(null);
+    if (ok) { toast.success(`已为 ${ok} 个素材生成 AI 标签`); refetch(); }
+  }, [assets, tagging, tagOne, refetch]);
 
   const importMutation = trpc.assets.importFromUrl.useMutation({
     onSuccess: () => { toast.success("已从链接导入"); refetch(); },
@@ -241,7 +265,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
         <div>
           <h3 className="text-sm font-semibold" style={{ color: "var(--c-t1)" }}>素材库</h3>
           <p className="text-[10px] mt-0.5 flex items-center gap-2" style={{ color: "var(--c-t4)" }}>
-            <span>{filteredAssets.length} 个素材{(typeFilter.size || sourceFilter.size || nameQ) ? ` / 共 ${assets?.length ?? 0}` : ""}</span>
+            <span>{filteredAssets.length} 个素材{(typeFilter.size || sourceFilter.size || query.trim()) ? ` / 共 ${assets?.length ?? 0}` : ""}</span>
             {filteredAssets.length > 0 && (
               <button
                 onMouseDown={(e) => e.stopPropagation()}
@@ -308,6 +332,15 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
           >
             {importMutation.isPending ? "导入中…" : "＋ 链接"}
           </button>
+          <button
+            onClick={batchTag}
+            disabled={!!tagging}
+            title={`AI 批量打标：为未打标的图片/视频封面生成搜索标签与描述（一次最多 ${BATCH_TAG_LIMIT} 个，每个一次视觉调用费用）`}
+            className="text-[11px] py-1.5 px-2.5 rounded-lg transition-all flex-shrink-0 whitespace-nowrap flex items-center gap-1"
+            style={{ border: "1px dashed var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: tagging ? "default" : "pointer" }}
+          >
+            {tagging ? <><Loader2 className="w-3 h-3 animate-spin" />打标 {tagging.done}/{tagging.total}</> : <><Sparkles className="w-3 h-3" />AI 打标</>}
+          </button>
         </div>
       </div>
 
@@ -320,7 +353,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onMouseDown={(e) => e.stopPropagation()}
-            placeholder="搜索素材名称"
+            placeholder="搜索名称 / AI 标签 / 描述"
             className="flex-1 min-w-0"
             style={{ fontSize: 11, background: "transparent", border: "none", color: "var(--c-t1)", outline: "none" }}
           />
@@ -403,8 +436,8 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
               <FileImage className="w-6 h-6" style={{ color: "var(--c-bd3)" }} />
             </div>
             <p className="text-xs text-center" style={{ color: "var(--c-t4)" }}>
-              {(typeFilter.size || sourceFilter.size || nameQ) ? "没有符合条件的素材" : "暂无素材"}<br />
-              <span style={{ color: "var(--c-bd3)", fontSize: 10 }}>{nameQ ? `无名称含「${query.trim()}」的素材` : (typeFilter.size || sourceFilter.size) ? "试试调整筛选条件" : "上传后将在此显示"}</span>
+              {(typeFilter.size || sourceFilter.size || query.trim()) ? "没有符合条件的素材" : "暂无素材"}<br />
+              <span style={{ color: "var(--c-bd3)", fontSize: 10 }}>{query.trim() ? `无名称/标签/描述含「${query.trim()}」的素材` : (typeFilter.size || sourceFilter.size) ? "试试调整筛选条件" : "上传后将在此显示"}</span>
             </p>
           </div>
         ) : (
@@ -431,7 +464,7 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
                     border: isSel ? "1.5px solid oklch(0.65 0.18 285)" : "1px solid var(--c-bd1)",
                     cursor: (asset.type === "image" || asset.type === "video") ? "zoom-in" : "grab",
                   }}
-                  title={asset.name}
+                  title={(() => { const ai = readAssetAiMeta(asset.meta); return [asset.name, ai.aiDesc, ai.aiTags?.length ? `标签：${ai.aiTags.join(" / ")}` : ""].filter(Boolean).join("\n"); })()}
                   onClick={() => {
                     if (selected.size > 0) { toggleSelect(asset.id); return; } // selecting mode → toggle
                     if (asset.type === "image") { const i = imageUrls.indexOf(asset.url); if (i >= 0) setLightboxIdx(i); }
@@ -469,6 +502,14 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
                     <p className="text-[9.5px] leading-tight truncate text-white">{asset.name}</p>
                   </div>
                   <div data-touch-show className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {taggableOf(asset) && (
+                      <button title={readAssetAiMeta(asset.meta).taggedAt ? "重新 AI 打标（覆盖已有标签/描述）" : "AI 打标（生成搜索标签与描述，一次视觉调用费用）"}
+                        className="w-5 h-5 rounded flex items-center justify-center"
+                        style={{ background: "oklch(0 0 0 / 0.55)", color: readAssetAiMeta(asset.meta).taggedAt ? "oklch(0.75 0.15 285)" : "white" }}
+                        onClick={(e) => { e.stopPropagation(); void tagOne(asset.id).then((ok) => { if (ok) { toast.success("已生成 AI 标签"); refetch(); } }); }}>
+                        <Sparkles className="w-3 h-3" />
+                      </button>
+                    )}
                     <button title="下载" className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.55)", color: "white" }}
                       onClick={(e) => { e.stopPropagation(); void downloadMedia(asset.url, asset.name, asset.type === "video" ? "video" : "image", asset.id); }}>
                       <Download className="w-3 h-3" />
