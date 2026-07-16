@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { requestAgentPrefill, hasAgentPrefill, consumeAgentPrefill } from "./agentPrefill";
+import { requestAgentPrefill, hasAgentPrefill, consumeAgentPrefill, consumeCloseAiClient } from "./agentPrefill";
 
 // vitest 环境为 node（无 sessionStorage / window）——装一个 Map 支撑的最小桩，覆盖纯逻辑。
 beforeEach(() => {
@@ -39,5 +39,12 @@ describe("agentPrefill 通道", () => {
   it("文本首尾空白被裁剪", () => {
     requestAgentPrefill(3, "  你好  ");
     expect(consumeAgentPrefill(3)).toBe("你好");
+  });
+
+  it("关闭浮动 AI 客户端信号：同项目一次性消费，不同项目不误触", () => {
+    requestAgentPrefill(7, "文本");
+    expect(consumeCloseAiClient(9)).toBe(false); // 别的项目不触发
+    expect(consumeCloseAiClient(7)).toBe(true);  // 本项目触发
+    expect(consumeCloseAiClient(7)).toBe(false); // 一次性
   });
 });

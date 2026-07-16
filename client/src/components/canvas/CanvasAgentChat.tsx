@@ -357,9 +357,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     const pull = () => {
       const t = consumeAgentPrefill(projectId);
       if (!t) return;
-      setCollapsed(false);
+      setCollapsed(false); // 从悬浮球展开
+      setSize((s) => ({ w: Math.max(s.w, DEFAULT_SIZE.w), h: Math.max(s.h, DEFAULT_SIZE.h) })); // 放大到至少默认尺寸
       setInput((cur) => (cur.trim() ? cur + "\n" + t : t));
-      setTimeout(() => { const el = composerRef.current; if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; } }, 0);
+      setTimeout(() => { const el = composerRef.current; if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; } }, 0); // 聚焦输入框
     };
     pull();
     window.addEventListener(AGENT_PREFILL_EVENT, pull);
