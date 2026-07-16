@@ -196,6 +196,19 @@ describe("agentCatalog.sanitizeOperationDetailed", () => {
     }
   });
 
+  it("video_task.params：数字写成字符串也取值夹取，非数值串丢弃", () => {
+    const r = sanitizeOperationDetailed({
+      op: "create", nodeType: "video_task",
+      payload: { provider: "kie_grok_i2v", params: { duration: "40" } }, // LLM 把数字写成串
+    });
+    if ("op" in r) expect((r.op.payload as { params?: { duration?: number } }).params?.duration).toBe(30); // "40"→40→夹到30
+    const bad = sanitizeOperationDetailed({
+      op: "create", nodeType: "video_task",
+      payload: { provider: "kie_grok_i2v", params: { duration: "abc" } },
+    });
+    if ("op" in bad) expect("duration" in ((bad.op.payload as { params?: Record<string, unknown> }).params ?? {})).toBe(false); // 非数值丢弃
+  });
+
   it("update 与 create 同口径：改视频节点越界 duration 也夹取、非法枚举也丢弃", () => {
     const r = sanitizeOperationDetailed({
       op: "update", targetRef: "vid1",
