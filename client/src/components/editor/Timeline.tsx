@@ -1,7 +1,7 @@
 import { useRef, useCallback, useState, useEffect } from "react";
 import { ZoomIn, ZoomOut, Maximize2, Scissors, Magnet, Trash2, Copy, ClipboardCopy, ClipboardPaste, SplitSquareHorizontal, Combine, Volume2, VolumeX, Eye, EyeOff, Lock, Unlock, Plus, Blend, AlignHorizontalJustifyStart, GripVertical } from "lucide-react";
 import { EC, trackColor, trackLabel, fmtTime, probeMediaDuration } from "./theme";
-import { useEditorStore, clipDuration, canMergeClips, canMergeSource, rightNeighbour, trimRightSource } from "./editorStore";
+import { useEditorStore, clipDuration, canMergeClips, canMergeSource, rightNeighbour, trimRightSource, clipSplitTrims } from "./editorStore";
 import { ClipThumb } from "./ClipThumb";
 import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
 import { usePersistentState } from "@/hooks/usePersistentState";
@@ -86,9 +86,25 @@ export function Timeline() {
   const [dropTrackIdx, setDropTrackIdx] = useState<number | null>(null);
   const [addMenu, setAddMenu] = useState(false);
 
-  // Keyboard — clip ops. Del 删除 / Shift+Del 波纹删除 / S 分割 / Shift+S 全轨分割 /
-  // Ctrl+D 原地复制 / Ctrl+C 拷贝 / Ctrl+V 粘贴到播放头. Paste needs no selection.
+  // Keyboard — clip ops. Del 删除 / Shift+Del 波纹删除 / S 或 Ctrl+B(剪映) 分割 / Shift+S 全轨分割 /
+  // Q/W 向左/向右裁剪(剪映：裁掉播放头左/右侧) / Ctrl+D 原地复制 / Ctrl+C 拷贝 / Ctrl+X 剪切 /
+  // Ctrl+V 粘贴到播放头. Paste needs no selection.
   useEffect(() => {
+    // 剪映式 Q/W：把选中片段在播放头处裁掉左/右一侧（单步撤销、关键帧经 trimClip 自动重基准）。
+    const cutSide = (side: "left" | "right") => {
+      const st = useEditorStore.getState();
+      const sel = st.selectedClipId;
+      if (!st.doc || !sel) return;
+      let clip = null as ReturnType<typeof st.selectedClip> | null;
+      for (const tr of st.doc.tracks) { const c = tr.clips.find((x) => x.id === sel); if (c) { clip = c; break; } }
+      if (!clip) return;
+      const dur = clipDuration(clip);
+      const offset = st.playhead - clip.start;
+      if (offset <= 0.05 || offset >= dur - 0.05) return; // 播放头不在片段内（或贴边）
+      const { left, right } = clipSplitTrims(clip, offset);
+      if (side === "left") st.trimClip(sel, { ...right, start: st.playhead }); // 裁掉左侧：片段起点挪到播放头
+      else st.trimClip(sel, left);                                            // 裁掉右侧：出点收到播放头
+    };
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, select, [contenteditable='true']")) return;
@@ -102,7 +118,14 @@ export function Timeline() {
       if ((e.key === "Delete" || e.key === "Backspace") && e.shiftKey) { e.preventDefault(); multi ? st.rippleDeleteSelected() : st.rippleDeleteClip(sel); }
       else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); multi ? st.removeSelected() : st.removeClip(sel); }
       else if ((e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); multi ? st.copySelected() : st.copyClip(sel); }
+      // Ctrl+X 剪切（剪映）：拷贝后删除
+      else if ((e.key === "x" || e.key === "X") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (multi) { st.copySelected(); useEditorStore.getState().removeSelected(); } else { st.copyClip(sel); useEditorStore.getState().removeClip(sel); } }
+      // Ctrl+B 分割（剪映同款；S 为本编辑器原有同义键）
+      else if ((e.key === "b" || e.key === "B") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.splitClip(sel, st.playhead); }
       else if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitClip(sel, st.playhead); }
+      // Q/W 向左/向右裁剪（剪映）
+      else if ((e.key === "q" || e.key === "Q") && !e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); cutSide("left"); }
+      else if ((e.key === "w" || e.key === "W") && !e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); cutSide("right"); }
       else if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (e.shiftKey) st.rippleMergeSelected(); else multi ? st.mergeSelectedClips() : st.mergeClipWithNext(sel); }
       else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); multi ? st.duplicateSelected() : st.duplicateClip(sel); }
     };

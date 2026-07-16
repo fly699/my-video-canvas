@@ -316,7 +316,7 @@ export const editorRouter = router({
   export: protectedProcedure
     .input(z.object({
       id: z.number(),
-      format: z.enum(["mp4", "hevc", "webm", "mov"]).optional(),
+      format: z.enum(["mp4", "hevc", "webm", "mov", "mp3"]).optional(),
       quality: z.enum(["high", "medium", "low"]).optional(),
       qualityPct: z.number().int().min(1).max(100).optional(),
       encoder: z.enum(["software", "hardware"]).optional(),
@@ -343,7 +343,7 @@ export const editorRouter = router({
         if (end - start > 0.05) doc = sliceEditorDoc(doc, start, end);
       }
       const job = createRenderJob(ctx.user.id, input.id);
-      const mimeType = input.format === "webm" ? "video/webm" : input.format === "mov" ? "video/quicktime" : "video/mp4";
+      const mimeType = input.format === "webm" ? "video/webm" : input.format === "mov" ? "video/quicktime" : input.format === "mp3" ? "audio/mpeg" : "video/mp4";
 
       // Fire-and-forget; progress/result are reported through the job registry.
       void (async () => {
@@ -361,7 +361,7 @@ export const editorRouter = router({
             fps: input.fps,
           });
           await db.recordGeneratedAsset({
-            userId: ctx.user.id, projectId: session.projectId ?? null, type: "video",
+            userId: ctx.user.id, projectId: session.projectId ?? null, type: input.format === "mp3" ? "audio" : "video",
             source: "generated", provider: "editor", model: "timeline",
             url: res.url, storageKey: res.storageKey, name: session.name, mimeType,
           }).catch(() => undefined);

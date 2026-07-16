@@ -9,6 +9,7 @@ import { Timeline } from "@/components/editor/Timeline";
 import { PreviewStage } from "@/components/editor/PreviewStage";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import { CanvasSettings } from "@/components/editor/CanvasSettings";
+import { EditorShortcutsPanel } from "@/components/editor/EditorShortcutsPanel";
 import { downloadMedia } from "@/lib/download";
 import { estimateExportBytes, formatBytes } from "@shared/exportQuality";
 import { usePersistentState } from "@/hooks/usePersistentState";
@@ -202,6 +203,7 @@ function EditorWorkspace({ id }: { id: number }) {
         if (k === "z" && !e.shiftKey) { e.preventDefault(); st.undo(); }
         else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); st.redo(); }
         else if (k === "a") { e.preventDefault(); st.selectAll(); } // 全选片段
+        else if (k === "e") { e.preventDefault(); setExportMenu((v) => !v); } // 导出设置（剪映 Ctrl+E）
         return;
       }
       if (!st.doc) return;
@@ -230,7 +232,7 @@ function EditorWorkspace({ id }: { id: number }) {
   const [exportStage, setExportStage] = useState("");
   const [exportUrl, setExportUrl] = useState<string | null>(null);
   // Export settings (format / quality / resolution).
-  const [exportFormat, setExportFormat] = useState<"mp4" | "hevc" | "webm" | "mov">("mp4");
+  const [exportFormat, setExportFormat] = useState<"mp4" | "hevc" | "webm" | "mov" | "mp3">("mp4");
   const [exportQualityPct, setExportQualityPct] = useState<number>(85);
   const [exportEncoder, setExportEncoder] = useState<"software" | "hardware">("software");
   const [exportRes, setExportRes] = useState<"source" | "2160" | "1080" | "720" | "480">("source");
@@ -432,68 +434,7 @@ function EditorWorkspace({ id }: { id: number }) {
             title="快捷键速查 (?)"
             style={{ ...iconBtn, color: showShortcuts ? ACCENT : "var(--c-t2)", borderColor: showShortcuts ? ACCENT : "var(--c-bd2)" }}
           ><Keyboard size={16} /></button>
-          {showShortcuts && (
-            <div
-              style={{
-                position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 50, width: 280,
-                borderRadius: 16, padding: 16,
-                background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
-                backdropFilter: "blur(24px)", border: "1px solid var(--c-bd2)",
-                boxShadow: "0 16px 48px oklch(0 0 0 / 0.55), 0 4px 12px oklch(0 0 0 / 0.35)",
-              }}
-            >
-              <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 12, color: "var(--c-t4)" }}>剪辑器快捷键</p>
-              {[
-                { group: "播放 / 定位", items: [
-                  { key: "空格", desc: "播放 / 暂停" },
-                  { key: "Home", desc: "跳到开头" },
-                  { key: "End", desc: "跳到结尾" },
-                  { key: "← / →", desc: "逐帧步进" },
-                  { key: "Shift + ← / →", desc: "一次跳 10 帧" },
-                ]},
-                { group: "选择", items: [
-                  { key: "点击", desc: "选中片段" },
-                  { key: "Shift/Ctrl + 点击", desc: "加选 / 减选片段" },
-                  { key: "空白处拖拽", desc: "框选多个片段" },
-                  { key: "Cmd/Ctrl + A", desc: "全选所有片段" },
-                  { key: ", / .", desc: "逐帧微移所选（Shift = 5 帧）" },
-                ]},
-                { group: "片段编辑", items: [
-                  { key: "Del / Backspace", desc: "删除选中片段" },
-                  { key: "Shift + Del", desc: "波纹删除（关闭缺口）" },
-                  { key: "S", desc: "在播放头处分割" },
-                  { key: "M", desc: "合并相邻同源片段（多选可一次合并连续多段）" },
-                  { key: "Shift + M", desc: "波纹合并（容忍间隙合并 + 从合并点起紧凑排布）" },
-                  { key: "拖片段两端", desc: "裁切入/出点" },
-                  { key: "Shift + S", desc: "全轨分割（切所有轨道）" },
-                  { key: "Cmd/Ctrl + D", desc: "原地复制片段" },
-                  { key: "Cmd/Ctrl + C", desc: "拷贝选中片段" },
-                  { key: "Cmd/Ctrl + V", desc: "粘贴到播放头" },
-                ]},
-                { group: "撤销 / 重做", items: [
-                  { key: "Cmd/Ctrl + Z", desc: "撤销" },
-                  { key: "Cmd/Ctrl + Shift + Z", desc: "重做" },
-                  { key: "Ctrl + Y", desc: "重做（Windows）" },
-                ]},
-                { group: "其他", items: [
-                  { key: "?", desc: "开关本速查面板" },
-                  { key: "Esc", desc: "关闭本面板" },
-                ]},
-              ].map(({ group, items }) => (
-                <div key={group} style={{ marginBottom: 12 }}>
-                  <p style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6, color: "var(--c-t4)" }}>{group}</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {items.map(({ key, desc }) => (
-                      <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                        <span style={{ fontSize: 11, color: "var(--c-t2)" }}>{desc}</span>
-                        <span style={{ fontFamily: "monospace", fontSize: 10, padding: "1px 6px", borderRadius: 6, background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "oklch(0.72 0.12 285)", whiteSpace: "nowrap", flexShrink: 0 }}>{key}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {showShortcuts && <EditorShortcutsPanel />}
         </div>
         {exportUrl && (
           <button onClick={() => downloadMedia(exportUrl, `${displayName}.${exportFormat === "hevc" ? "mp4" : exportFormat}`)} style={{ ...primaryBtn, background: "transparent", color: ACCENT, border: `1px solid ${ACCENT}` }}>
@@ -519,9 +460,10 @@ function EditorWorkspace({ id }: { id: number }) {
               <div style={{ position: "absolute", top: 40, right: 0, zIndex: 41, width: 230, padding: 12, borderRadius: 12, background: "var(--c-base)", border: "1px solid var(--c-bd2)", boxShadow: "0 16px 48px oklch(0 0 0 / 0.5)", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t1)" }}>导出设置</div>
                 {([
-                  { label: "格式", value: exportFormat, set: (v: string) => setExportFormat(v as typeof exportFormat), opts: [["mp4", "MP4 (H.264)"], ["hevc", "MP4 (H.265/HEVC)"], ["webm", "WebM (VP9)"], ["mov", "MOV (H.264)"]] },
-                  { label: "分辨率", value: exportRes, set: (v: string) => setExportRes(v as typeof exportRes), opts: [["source", "原始（画布尺寸）"], ["2160", "2160p (4K)"], ["1080", "1080p"], ["720", "720p"], ["480", "480p"]] },
-                ] as const).map((row) => (
+                  { label: "格式", value: exportFormat, set: (v: string) => setExportFormat(v as typeof exportFormat), opts: [["mp4", "MP4 (H.264)"], ["hevc", "MP4 (H.265/HEVC)"], ["webm", "WebM (VP9)"], ["mov", "MOV (H.264)"], ["mp3", "MP3（仅音频）"]] },
+                  // MP3 仅音频：分辨率无意义，隐藏该行
+                  ...(exportFormat === "mp3" ? [] : [{ label: "分辨率", value: exportRes, set: (v: string) => setExportRes(v as typeof exportRes), opts: [["source", "原始（画布尺寸）"], ["2160", "2160p (4K)"], ["1080", "1080p"], ["720", "720p"], ["480", "480p"]] }]),
+                ] as { label: string; value: string; set: (v: string) => void; opts: readonly (readonly [string, string])[] }[]).map((row) => (
                   <label key={row.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span style={{ fontSize: 11, color: "var(--c-t3)" }}>{row.label}</span>
                     <select
@@ -533,8 +475,8 @@ function EditorWorkspace({ id }: { id: number }) {
                     </select>
                   </label>
                 ))}
-                {/* 编码方式：软件(CPU) vs 硬件(GPU) */}
-                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {/* 编码方式：软件(CPU) vs 硬件(GPU)。MP3 仅音频无视频编码，隐藏 */}
+                {exportFormat !== "mp3" && <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <span style={{ fontSize: 11, color: "var(--c-t3)" }}>编码方式</span>
                   <select value={exportEncoder} onChange={(e) => setExportEncoder(e.target.value as typeof exportEncoder)}
                     style={{ padding: "6px 8px", borderRadius: 8, fontSize: 12, background: "var(--c-elevated)", border: "1px solid var(--c-bd3)", color: "var(--c-t1)", outline: "none" }}>
@@ -546,11 +488,11 @@ function EditorWorkspace({ id }: { id: number }) {
                       ? "用 CPU（libx264/265）编码：同体积画质最佳、文件更小，但较慢。"
                       : "用 GPU（NVENC 等）编码：速度快很多、省 CPU，同体积画质略逊；服务器无对应 GPU 时自动回退软件。WebM 不支持硬件。"}
                   </span>
-                </label>
+                </label>}
                 {/* 质量：百分比精细调节（100%=最清晰文件最大；越低文件越小） */}
                 <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <span style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--c-t3)" }}>
-                    <span>质量</span>
+                    <span>{exportFormat === "mp3" ? "音质（96–320kbps）" : "质量"}</span>
                     <span style={{ color: "var(--c-t1)", fontWeight: 600 }}>{exportQualityPct}%{exportQualityPct >= 90 ? "（接近无损）" : exportQualityPct >= 70 ? "（高清）" : exportQualityPct >= 45 ? "（标准）" : "（省空间）"}</span>
                   </span>
                   <input type="range" min={20} max={100} step={1} value={exportQualityPct}

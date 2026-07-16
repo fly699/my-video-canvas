@@ -1,8 +1,14 @@
 // 导出质量（百分比 → CRF）与文件大小预估。纯函数，前后端共用。
 // 说明：CRF 是恒定质量因子，码率随画面内容浮动，故文件大小为「预估」量级，仅供参考。
 
-export type ExportFormat = "mp4" | "hevc" | "webm" | "mov";
+export type ExportFormat = "mp4" | "hevc" | "webm" | "mov" | "mp3";
 export type VideoCodec = "h264" | "hevc" | "vp9";
+
+/** MP3（仅音频导出）：质量百分比 → 码率 kbps（1%≈96k，100%=320k，与导出实际编码一致）。 */
+export function mp3KbpsOf(pct: number): number {
+  const p = Math.min(100, Math.max(1, Math.round(pct))) / 100;
+  return Math.round(96 + p * (320 - 96));
+}
 
 /** 每种编码的 CRF 与码率基准：
  *  best/worst = 100%/1% 对应的 CRF；ref/refKbps = 基准 CRF 下 1080p30 的典型码率(kbps)。 */
@@ -32,7 +38,10 @@ export function qualityPctToCrf(format: ExportFormat, pct: number): number {
 export function estimateExportBytes(o: {
   width: number; height: number; fps: number; durationSec: number; format: ExportFormat; qualityPct: number;
 }): number {
-  if (o.durationSec <= 0 || o.width <= 0 || o.height <= 0) return 0;
+  if (o.durationSec <= 0) return 0;
+  // MP3 仅音频：大小 = 码率 × 时长，与画面尺寸无关。
+  if (o.format === "mp3") return Math.round((mp3KbpsOf(o.qualityPct) * 1000 / 8) * o.durationSec);
+  if (o.width <= 0 || o.height <= 0) return 0;
   const codec = codecOf(o.format);
   const { ref, refKbps } = CODEC[codec];
   const crf = qualityPctToCrf(o.format, o.qualityPct);

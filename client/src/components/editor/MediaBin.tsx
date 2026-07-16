@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square, Scissors } from "lucide-react";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square, Scissors, LayoutGrid, GalleryVertical, List } from "lucide-react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
 import { MusicGen } from "./MusicGen";
 import { EC } from "./theme";
@@ -20,9 +21,15 @@ export interface MediaDragPayload {
 }
 export const MEDIA_DND_MIME = "application/x-editor-media";
 
+type BinView = "grid" | "large" | "list";
+
 export function MediaBin({ width = 252 }: { width?: number } = {}) {
   const [type, setType] = useState<TypeFilter>("");
   const [q, setQ] = useState("");
+  // 素材库视图：网格（小图标）/ 超大图标 / 详细信息列表，持久化。
+  const [view, setView] = usePersistentState<BinView>("ui:editor:mediabin-view:v1", "grid", {
+    validate: (p) => (p === "grid" || p === "large" || p === "list" ? p : null),
+  });
   const [preview, setPreview] = useState<PreviewAsset | null>(null);
   const [musicOpen, setMusicOpen] = useState(false);
   // Refetch when the window/tab regains focus and when the bin is shown again,
@@ -150,55 +157,101 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
               background: type === v ? EC.accentSoft : "transparent", color: type === v ? EC.accent : EC.t3,
             }}>{label}</button>
           ))}
+          {/* 视图切换：网格 / 超大图标 / 详细信息 */}
+          <span style={{ width: 1, alignSelf: "stretch", background: EC.border, margin: "0 2px" }} />
+          {([["grid", LayoutGrid, "网格视图"], ["large", GalleryVertical, "超大图标"], ["list", List, "详细信息列表"]] as [BinView, typeof LayoutGrid, string][]).map(([v, Ic, tip]) => (
+            <button key={v} onClick={() => setView(v)} title={tip} style={{
+              flexShrink: 0, width: 26, display: "inline-flex", alignItems: "center", justifyContent: "center",
+              padding: "4px 0", borderRadius: 6, cursor: "pointer",
+              border: `1px solid ${view === v ? EC.accent : EC.border}`,
+              background: view === v ? EC.accentSoft : "transparent", color: view === v ? EC.accent : EC.t3,
+            }}><Ic size={13} /></button>
+          ))}
         </div>
       </div>
 
       {/* gridAutoRows:max-content is REQUIRED: the cards use overflow:hidden, which
           lets a grid compress their auto rows below content when the list overflows
           (many assets) — collapsing thumbnails into thin strips. Pinning rows to
-          content size keeps every thumbnail full-height and the list scrolls. */}
-      <div style={{ flex: 1, overflowY: "auto", padding: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gridAutoRows: "max-content", gap: 6, alignContent: "start" }}>
+          content size keeps every thumbnail full-height and the list scrolls.
+          视图：grid=两列小图标 / large=单列超大图标 / list=详细信息列表（缩略图+名称+类型+来源+日期）。 */}
+      <div style={{ flex: 1, overflowY: "auto", padding: 8, display: "grid", gridTemplateColumns: view === "grid" ? "1fr 1fr" : "1fr", gridAutoRows: "max-content", gap: 6, alignContent: "start" }}>
         {listQuery.isLoading && Array.from({ length: 6 }).map((_, i) => (
-          <div key={`sk-${i}`} className="animate-pulse" aria-hidden="true" style={{ height: 92, borderRadius: 8, border: `1px solid ${EC.border}`, background: EC.elevated }} />
+          <div key={`sk-${i}`} className="animate-pulse" aria-hidden="true" style={{ height: view === "list" ? 44 : view === "large" ? 170 : 92, borderRadius: 8, border: `1px solid ${EC.border}`, background: EC.elevated }} />
         ))}
         {!listQuery.isLoading && assets.length === 0 && <div style={{ gridColumn: "1/-1", fontSize: 12, color: EC.t4, padding: "20px 0", textAlign: "center" }}>暂无素材<br/>可在素材库上传或生成</div>}
         {assets.map((a) => {
           const kind = kindFromAssetType(a.type) as "video" | "image" | "audio";
           const Icon = kind === "video" ? FileVideo : kind === "audio" ? FileAudio : FileImage;
           const payload: MediaDragPayload = { assetId: a.id, url: a.url, name: a.name, kind };
+          const kindLabel = kind === "video" ? "视频" : kind === "audio" ? "音频" : "图片";
+          const meta = a as unknown as { source?: string; provider?: string; model?: string; createdAt?: string | Date };
+          const srcLabel = meta.source === "upload" ? "上传" : meta.source === "generated" ? (meta.model || meta.provider || "生成") : meta.source === "external" ? "外部" : "";
+          const dateLabel = meta.createdAt ? new Date(meta.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+          const common = {
+            className: "editor-media-card",
+            draggable: true,
+            onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData(MEDIA_DND_MIME, JSON.stringify(payload)); e.dataTransfer.effectAllowed = "copy" as const; },
+            onClick: () => setPreview({ id: a.id, url: a.url, name: a.name, kind }),
+            onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+            title: `${a.name}${srcLabel ? ` · ${srcLabel}` : ""}${dateLabel ? ` · ${dateLabel}` : ""}（点击放大预览 · 拖拽或＋加入时间轴）`,
+          };
+          const addBtn = (size = 22) => (
+            <button
+              className="editor-media-add"
+              title="加入时间轴"
+              onClick={(e) => { e.stopPropagation(); quickAdd(a); }}
+              style={{ position: "absolute", top: 4, right: 4, zIndex: 2, width: size, height: size, borderRadius: 6, border: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", background: EC.accent, color: "#fff", cursor: "pointer", opacity: 0, transition: "opacity 120ms" }}
+            ><Plus size={size - 8} /></button>
+          );
+          // 详细信息列表：小缩略图 + 名称 + 类型/来源/日期 两行
+          if (view === "list") {
+            return (
+              <div key={a.id} {...common}
+                style={{ position: "relative", cursor: "zoom-in", borderRadius: 8, overflow: "hidden", border: `1px solid ${EC.border}`, background: EC.elevated, display: "flex", alignItems: "center", gap: 8, padding: "4px 6px" }}>
+                {addBtn(20)}
+                <div style={{ width: 52, height: 36, flexShrink: 0, borderRadius: 5, overflow: "hidden", backgroundColor: "var(--c-canvas, #0c0c10)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {kind === "image" ? (
+                    <div style={{ width: "100%", height: "100%", backgroundImage: `url("${a.url}")`, backgroundSize: "cover", backgroundPosition: "center" }} />
+                  ) : kind === "video" ? (
+                    <video src={a.url} muted preload="metadata" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <Icon size={16} style={{ color: EC.t3 }} />
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+                  <span style={{ fontSize: 11, color: EC.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                  <span style={{ fontSize: 9.5, color: EC.t4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {kindLabel}{srcLabel ? ` · ${srcLabel}` : ""}{dateLabel ? ` · ${dateLabel}` : ""}
+                  </span>
+                </div>
+              </div>
+            );
+          }
+          // 网格（92px）/ 超大图标（170px）
+          const thumbH = view === "large" ? 170 : 92;
           return (
-            <div
-              key={a.id}
-              className="editor-media-card"
-              draggable
-              onDragStart={(e) => { e.dataTransfer.setData(MEDIA_DND_MIME, JSON.stringify(payload)); e.dataTransfer.effectAllowed = "copy"; }}
-              onClick={() => setPreview({ id: a.id, url: a.url, name: a.name, kind })}
-              onContextMenu={(e) => e.preventDefault()}
-              title={`${a.name}（点击放大预览 · 拖拽或＋加入时间轴）`}
-              style={{ position: "relative", cursor: "zoom-in", borderRadius: 8, overflow: "hidden", border: `1px solid ${EC.border}`, background: EC.elevated }}
-            >
-              {/* hover "+": add to timeline without leaving the bin */}
-              <button
-                className="editor-media-add"
-                title="加入时间轴"
-                onClick={(e) => { e.stopPropagation(); quickAdd(a); }}
-                style={{ position: "absolute", top: 4, right: 4, zIndex: 2, width: 22, height: 22, borderRadius: 6, border: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", background: EC.accent, color: "#fff", cursor: "pointer", opacity: 0, transition: "opacity 120ms" }}
-              ><Plus size={14} /></button>
+            <div key={a.id} {...common}
+              style={{ position: "relative", cursor: "zoom-in", borderRadius: 8, overflow: "hidden", border: `1px solid ${EC.border}`, background: EC.elevated }}>
+              {addBtn(view === "large" ? 26 : 22)}
               {/* Each media gets its OWN explicit pixel height — never a % height
                   inside a flex box — so the thumbnail box can't collapse even in
                   WebViews that mishandle aspect-ratio / percentage heights. */}
               {kind === "image" ? (
-                <div style={{ height: 92, minHeight: 92, backgroundImage: `url("${a.url}")`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
+                <div style={{ height: thumbH, minHeight: thumbH, backgroundImage: `url("${a.url}")`, backgroundSize: view === "large" ? "contain" : "cover", backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
               ) : kind === "video" ? (
-                <video src={a.url} muted preload="metadata" style={{ display: "block", width: "100%", height: 92, minHeight: 92, objectFit: "cover", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
+                <video src={a.url} muted preload="metadata" style={{ display: "block", width: "100%", height: thumbH, minHeight: thumbH, objectFit: view === "large" ? "contain" : "cover", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
               ) : (
-                <div style={{ height: 92, minHeight: 92, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }}>
-                  <Icon size={22} style={{ color: EC.t3 }} />
+                <div style={{ height: thumbH, minHeight: thumbH, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }}>
+                  <Icon size={view === "large" ? 38 : 22} style={{ color: EC.t3 }} />
                 </div>
               )}
               <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "3px 5px" }}>
                 <Icon size={10} style={{ color: EC.t4, flexShrink: 0 }} />
                 <span style={{ fontSize: 10, color: EC.t3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                {view === "large" && (srcLabel || dateLabel) && (
+                  <span style={{ marginLeft: "auto", fontSize: 9.5, color: EC.t4, flexShrink: 0 }}>{[kindLabel, srcLabel, dateLabel].filter(Boolean).join(" · ")}</span>
+                )}
               </div>
             </div>
           );

@@ -5,7 +5,7 @@ import { storagePut, assertObjectStorageWritable } from "../storage";
 import { execFileAsync, downloadToTemp, buildAtempoFilters, probeStreams, cssColorToASSHex, cssColorToASSAlpha, escapeASSText, formatASSTime } from "./videoEditor";
 import { sanitizeFilenamePrefix } from "./comfyui";
 import type { EditorDoc, Clip, ClipEffects, ClipTransform, ClipText, ClipMask, FitMode, TransformKeyframe, EaseType } from "@shared/editorTypes";
-import { qualityPctToCrf } from "@shared/exportQuality";
+import { qualityPctToCrf, mp3KbpsOf } from "@shared/exportQuality";
 import { shapeToSvg, type ShapeSpec } from "@shared/shapeSvg";
 import { Resvg } from "@resvg/resvg-js";
 
@@ -18,7 +18,7 @@ export interface ComposeOptions {
   projectName?: string | null;
   onProgress?: (pct: number, stage: string) => void;
   // Export overrides (optional). Default: doc dimensions/fps, mp4/H.264, high quality.
-  format?: "mp4" | "hevc" | "webm" | "mov";
+  format?: "mp4" | "hevc" | "webm" | "mov" | "mp3"; // mp3 = 仅音频导出（时间轴混音成 MP3）
   quality?: "high" | "medium" | "low";
   qualityPct?: number; // 1..100 精细质量（优先于 quality 档位）→ 映射为对应编码的 CRF
   encoder?: "software" | "hardware"; // 软件(CPU/libx264)质量优先 | 硬件(GPU/NVENC 等)速度优先；硬件不可用自动回退
@@ -1074,10 +1074,11 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     const format = opts.format ?? "mp4";
     const quality = opts.quality ?? "high";
     // H.265/HEVC lives in an .mp4 container (tag hvc1 for QuickTime/Apple players).
-    const ext = format === "webm" ? "webm" : format === "mov" ? "mov" : "mp4";
-    const mimeType = format === "webm" ? "video/webm" : format === "mov" ? "video/quicktime" : "video/mp4";
+    const ext = format === "webm" ? "webm" : format === "mov" ? "mov" : format === "mp3" ? "mp3" : "mp4";
+    const mimeType = format === "webm" ? "video/webm" : format === "mov" ? "video/quicktime" : format === "mp3" ? "audio/mpeg" : "video/mp4";
     const isWebm = format === "webm";
     const isHevc = format === "hevc";
+    const isMp3 = format === "mp3";
     // 精细质量：传了 qualityPct(1..100) 则按编码映射成 CRF，覆盖三档预设（只有匹配
     // 当前格式编码的那一路会被实际使用，故三者同赋无副作用）。
     const pctCrf = opts.qualityPct != null ? String(qualityPctToCrf(format, opts.qualityPct)) : null;
@@ -1094,7 +1095,7 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     // 选第一个真正可用的；都不可用则回退软件。
     let vCodec = swVCodec;
     let hwUsed: string | null = null;
-    if (opts.encoder === "hardware" && !isWebm) {
+    if (opts.encoder === "hardware" && !isWebm && !isMp3) {
       const crfNum = Number(isHevc ? hevcCrf : h264Crf);
       for (const enc of hwCandidates(isHevc)) {
         if (await probeEncoder(enc)) { vCodec = hwVideoArgs(enc, crfNum, isHevc); hwUsed = enc; break; }
@@ -1109,7 +1110,16 @@ export async function composeTimeline(doc: EditorDoc, opts: ComposeOptions): Pro
     // 留下的成片临时文件（可能是 0 字节，也可能是超时被杀的大体积半成品）会漏删、长期填满 /tmp。
     tmpFiles.push(outPath);
 
-    const buildArgs = (vc: string[]) => [
+    // MP3 仅音频：filter_complex 的 [outv] 输出必须被消费（未连接的输出直接报错），
+    // 用「-f null -」丢弃（不做视频编码，只跑滤镜），[outa] 混音结果编成 MP3。
+    const mp3Kbps = mp3KbpsOf(opts.qualityPct ?? 85);
+    const buildArgs = (vc: string[]) => isMp3 ? [
+      ...inputArgs,
+      "-filter_complex", graph.filterComplex,
+      "-map", graph.outV, "-f", "null", "-",
+      "-map", graph.outA, "-c:a", "libmp3lame", "-b:a", `${mp3Kbps}k`,
+      "-y", outPath,
+    ] : [
       ...inputArgs,
       "-filter_complex", graph.filterComplex,
       "-map", graph.outV, "-map", graph.outA,
