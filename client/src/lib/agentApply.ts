@@ -7,6 +7,11 @@ import { isConnectionValid, defaultTargetHandle } from "./connectionRules";
 import { charDisplayName, libraryOverlayByName, type CharacterImportMode } from "./characterConditioning";
 import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding, CharacterNodeData, CharacterKind } from "../../../shared/types";
 
+/** 边去重 key 的分隔符：用 NUL（节点 id 里绝不会出现，防拼接碰撞）。以转义写出而非裸字节，
+ *  避免源文件被 git 当二进制（裸 0x00 会让 diff/grep 失效）。种子与查重两侧必须用同一分隔符——
+ *  曾因「种子用 NUL、查重用空格」不匹配，导致对画布已存在边的去重失效、误标下游节点重跑（白耗生成）。 */
+const EDGE_SEP = "\u0000";
+
 /** Library template shape (subset of comfyTemplates.list output) used to
  *  materialize an agent-proposed comfyui_workflow node from a templateId. */
 export interface AgentTemplate { id: number; label: string; payload: Record<string, unknown> }
@@ -262,7 +267,7 @@ export function applyAgentOperations(
   // Seed with existing edges so a connect that duplicates an already-present edge
   // (store.onConnect dedupes by source+target and silently no-ops) is not counted
   // as a freshly established connection — keeps `res.connected` truthful.
-  const edgeKeys = new Set(store.edges.map((e) => `${e.source} ${e.target}`));
+  const edgeKeys = new Set(store.edges.map((e) => `${e.source}${EDGE_SEP}${e.target}`));
   // Whole plan = one undo step.
   store.runBatch(() => {
     let createdIdx = 0;
@@ -436,7 +441,7 @@ export function applyAgentOperations(
             return;
           }
           if (st && tt && !isConnectionValid(st, tt)) { fail(index, op, `不允许的连接：${st} → ${tt}`); return; }
-          const edgeKey = `${source} ${target}`;
+          const edgeKey = `${source}${EDGE_SEP}${target}`;
           const isNewEdge = !edgeKeys.has(edgeKey);
           // clip 无 `input` 桩——LLM 通常省略 targetHandle，缺省时按目标类型推默认输入桩
           // （clip→video-in；音频源→audio-in），否则边落到不存在的桩、剪辑入边不渲染。
@@ -537,7 +542,7 @@ export function applyAgentOperations(
           // 无名字命中 + 目标尚无角色入边 + 本批仅一个角色 → 单主角兜底
           if (!attach.length && !hasCharInEdge.has(gid) && createdChars.length === 1) attach = createdChars;
           for (const c of attach) {
-            const edgeKey = `${c.id} ${gid}`;
+            const edgeKey = `${c.id}${EDGE_SEP}${gid}`;
             if (edgeKeys.has(edgeKey)) continue;
             store.onConnect({ source: c.id, target: gid, sourceHandle: "output", targetHandle: defaultTargetHandle(gtype, "character") });
             edgeKeys.add(edgeKey);

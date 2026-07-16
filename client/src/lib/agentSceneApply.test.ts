@@ -135,6 +135,23 @@ describe("applyAgentOperations touchedIds（自愈收窄重跑范围）", () => 
   });
 });
 
+describe("applyAgentOperations 边去重（种子/查重分隔符一致）", () => {
+  it("对画布已存在的边再发 connect → 不重复计数、不误标下游重跑", () => {
+    const store = useCanvasStore.getState();
+    const a = store.addNode("prompt", { x: 0, y: 0 });
+    const b = store.addNode("video_task", { x: 200, y: 0 });
+    // 先建立一条真实存在的边
+    const first = applyAgentOperations([{ op: "connect", sourceRef: a.id, targetRef: b.id }], { x: 0, y: 0 });
+    expect(first.connected).toBe(1); // 确认边建成
+    // 再对同一条边发 connect（增量编辑很常见）——应被识别为已存在而去重：
+    // 曾因「种子用 NUL、查重用空格」分隔符不一致，这里 isNewEdge 误判为真，导致 connected 虚增
+    // 且把下游 b 误标进 touchedIds（白白重跑、耗生成积分）。
+    const again = applyAgentOperations([{ op: "connect", sourceRef: a.id, targetRef: b.id }], { x: 0, y: 0 });
+    expect(again.connected).toBe(0);
+    expect(again.touchedIds).not.toContain(b.id);
+  });
+});
+
 describe("精准增量编辑防护", () => {
   it("分级截断：小范围摘要放宽到 400 字（增量编辑可见原文全貌）", () => {
     const store = useCanvasStore.getState();
