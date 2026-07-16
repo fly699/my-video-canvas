@@ -9,10 +9,19 @@ type MiniNode = {
 
 const CONTEXT_CAP = 8000; // 与服务端 contextContent.max(8000) 对齐
 
-/** 从节点 payload 里抽出「有意义的文本内容」（脚本/分镜描述/提示词/便签等）。 */
-export function extractNodeText(payload: unknown): string {
+/** 从节点 payload 里抽出「有意义的文本内容」（脚本/分镜描述/提示词/便签/角色等）。 */
+export function extractNodeText(payload: unknown, nodeType?: NodeType): string {
   const p = (payload ?? {}) as Record<string, unknown>;
-  const pick = (k: string) => (typeof p[k] === "string" ? (p[k] as string) : "");
+  const pick = (k: string) => (typeof p[k] === "string" ? (p[k] as string).trim() : "");
+  // 角色节点：正文落在 name/appearance/personality（而非 content/prompt）。不特殊处理会整段读成空——
+  // 用户 @引用「沈砚(主角)」后 LLM 收到空上下文、答「他是谁」（无法读取画布 bug）。
+  if (nodeType === "character") {
+    const bits: string[] = [];
+    if (pick("name")) bits.push(`角色名：${pick("name")}`);
+    if (pick("appearance")) bits.push(`外貌：${pick("appearance")}`);
+    if (pick("personality")) bits.push(`性格：${pick("personality")}`);
+    if (bits.length) return bits.join("；");
+  }
   return (
     pick("content") || pick("description") || pick("positivePrompt") ||
     pick("prompt") || pick("synopsis") || pick("ttsText") || pick("musicPrompt") || ""
@@ -27,7 +36,7 @@ export function buildNodeContextContent(nodes: MiniNode[], contextNodeIds: strin
   for (const nodeId of ids) {
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) continue;
-    const text = extractNodeText(node.data.payload);
+    const text = extractNodeText(node.data.payload, node.data.nodeType);
     if (text) parts.push(`[${node.data.title || node.data.nodeType}]: ${text}`);
   }
   const joined = parts.join("\n\n");

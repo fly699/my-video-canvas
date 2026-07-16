@@ -13,6 +13,14 @@ describe("extractNodeText", () => {
     expect(extractNodeText({ synopsis: "剧情梗概" })).toBe("剧情梗概");
     expect(extractNodeText({})).toBe("");
   });
+  it("角色节点：抽 name/appearance/personality（此前读成空 → 引用角色无上下文）", () => {
+    expect(extractNodeText({ name: "沈砚", appearance: "黑衣剑客", personality: "沉默寡言" }, "character"))
+      .toBe("角色名：沈砚；外貌：黑衣剑客；性格：沉默寡言");
+    // 仅有名字也够用
+    expect(extractNodeText({ name: "沈砚" }, "character")).toBe("角色名：沈砚");
+    // 不带 nodeType 时按老逻辑（character 字段不识别 → 空），确保没有回归其它类型
+    expect(extractNodeText({ name: "沈砚" })).toBe("");
+  });
 });
 
 describe("buildNodeContextContent", () => {

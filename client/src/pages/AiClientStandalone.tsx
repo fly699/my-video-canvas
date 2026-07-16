@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { useLocation } from "wouter";
-import { Bot, FolderOpen, ChevronDown, ArrowLeft, Check, Maximize2, Minimize2 } from "lucide-react";
+import { Bot, FolderOpen, ChevronDown, ArrowLeft, Check, Maximize2, Minimize2, SquareArrowOutUpRight, PanelsTopLeft } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useCanvasStore, type CanvasNode } from "@/hooks/useCanvasStore";
@@ -137,18 +137,33 @@ function StandaloneInner() {
                   {allProjects.map((p) => {
                     const on = p.id === projectId;
                     return (
-                      <button key={p.id} onClick={() => { setProjectId(p.id); setSwitcherOpen(false); }}
-                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, textAlign: "left", padding: "8px 9px", borderRadius: 8, border: "none", cursor: "pointer", background: on ? `color-mix(in oklch, ${ACCENT} 12%, transparent)` : "transparent", color: "var(--c-t1)" }}>
-                        <FolderOpen size={13} style={{ flexShrink: 0, color: on ? ACCENT : "var(--c-t4)" }} />
-                        <span style={{ flex: 1, fontSize: 12.5, fontWeight: on ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                        {on && <Check size={13} style={{ color: ACCENT, flexShrink: 0 }} />}
-                      </button>
+                      <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 2, borderRadius: 8, background: on ? `color-mix(in oklch, ${ACCENT} 12%, transparent)` : "transparent" }}>
+                        <button onClick={() => { setProjectId(p.id); setSwitcherOpen(false); }}
+                          style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, textAlign: "left", padding: "8px 9px", borderRadius: 8, border: "none", cursor: "pointer", background: "transparent", color: "var(--c-t1)" }}
+                          title="选为对话上下文">
+                          <FolderOpen size={13} style={{ flexShrink: 0, color: on ? ACCENT : "var(--c-t4)" }} />
+                          <span style={{ flex: 1, fontSize: 12.5, fontWeight: on ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                          {on && <Check size={13} style={{ color: ACCENT, flexShrink: 0 }} />}
+                        </button>
+                        {/* 一键进入该项目画布（内部路由，非外链） */}
+                        <button onClick={() => { setSwitcherOpen(false); navigate(`/canvas/${p.id}`); }}
+                          title={`进入「${p.name}」的画布`}
+                          style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, marginRight: 4, borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}>
+                          <SquareArrowOutUpRight size={13} />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
               </>
             )}
           </div>
+          {/* 一键进入当前选中项目的画布（内部路由，非外链）——仅在选了某个真实项目时显示 */}
+          {activeProject && (
+            <button onClick={() => navigate(`/canvas/${projectId}`)} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title={`进入「${activeProject.name}」的画布`}>
+              <PanelsTopLeft size={13} /> {!narrow && "进入画布"}
+            </button>
+          )}
           {/* 全屏（隐藏浏览器地址栏，真正独占） */}
           <button onClick={toggleFullscreen} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title={isFs ? "退出全屏" : "全屏独占（隐藏浏览器地址栏）"}>
             {isFs ? <Minimize2 size={13} /> : <Maximize2 size={13} />} {!narrow && (isFs ? "退出全屏" : "全屏")}

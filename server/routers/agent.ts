@@ -78,6 +78,17 @@ export const HISTORY_MIN_ENTRY_CHARS = 1000;
 
 type AgentTurn = { role: "user" | "assistant"; content: string };
 
+/** ③ 对话/规划分流：解析意图分类器输出。**强偏 plan**——只有明确判为纯闲聊/问答（含 chat 且不含
+ *  任何要动画布的信号）才回 "chat"；空/异常/拿不准一律回 "plan"（= 原完整规划路径，绝不比原来差）。
+ *  纯函数便于单测。 */
+export function parseIntentDecision(raw: string | null | undefined): "chat" | "plan" {
+  const t = (raw ?? "").toLowerCase().trim();
+  if (!t) return "plan";
+  const planHit = /\bplan\b|规划|建节点|做视频|生成|加节点|改节点|删节点|连线|整理布局|动画布/.test(t);
+  const chatHit = /\bchat\b|闲聊|纯问答|无需|不需要/.test(t);
+  return chatHit && !planHit ? "chat" : "plan";
+}
+
 export function allocateContextBudget(args: {
   message: string;
   history?: AgentTurn[];
@@ -212,6 +223,11 @@ const agentChatInput = z.object({
         videoTemplateId: z.number().optional(),
         /** 让智能体「知道」角色库：系统提示里列出已有角色/场景名，要求按原名复用。默认开启。 */
         includeCharacterLibrary: z.boolean().optional(),
+        /** ③ 对话/规划分流（快速设置「简单问答免规划」，默认关）：开启后，先用一次极短分类判定
+         *  本轮是【纯闲聊/问答】还是【要动画布】；判为闲聊时走轻量短回答（不注入目录/模型清单/模板，
+         *  跳过全部模板与记忆读取），简单问答快数倍、省次数。分类拿不准或涉及做视频/加改节点一律走
+         *  完整规划（与原行为一致，不会更差）；带参考附件时同样直接走规划。 */
+        fastChatRoute: z.boolean().optional(),
         /** 参考附件（图/文档）：url 为 data: URI 或 http(s)。图片走 image_url、文档走 file_url，
          *  由底层 invokeLLM/桥接统一喂给多模态模型；纯文本模型仅能读文档文本、忽略图。 */
         attachments: z
@@ -315,6 +331,42 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
 
       // 上下文总量预算动态分配（正文永不截断），避免大输入单次生成撞 LLM fetch 超时。
       const ctxBudget = allocateContextBudget(input);
+
+      // ③ 对话/规划分流（opt-in，快速设置「简单问答免规划」）：开启且无参考附件时，先用一次极短分类
+      // 判定意图；判为纯闲聊/问答就走轻量短回答——跳过目录/模型清单/模板/记忆的全部拼装与 DB 读取，
+      // 简单问答快数倍、省一次大规划。分类拿不准/异常一律 fall through 到下方完整规划（绝不比原来差）。
+      // 带附件（图/文档）时用户多半想「据此做点什么」，直接走完整规划、不快路。
+      if (input.fastChatRoute && !(input.attachments && input.attachments.length)) {
+        try {
+          onStage?.("判定意图");
+          const clsMessages: Message[] = [
+            { role: "system", content: "你是意图分类器。判断用户这轮消息是【纯闲聊或一般问答，无需在画布上增删改节点/连线/执行画布动作】，还是【需要动画布：做视频、加/改/删节点、连线、整理布局、批量生成等】。只输出一个词：chat 或 plan。拿不准，或涉及做视频/加改节点/画布动作，一律输出 plan。" },
+            ...ctxBudget.history.slice(-2).map((m) => ({ role: m.role, content: m.content })),
+            { role: "user", content: input.message },
+          ];
+          const clsResp = await invokeLLMWithKie(ctx, { messages: clsMessages, model, maxTokens: 8 });
+          if (parseIntentDecision(extractTextContent(clsResp)) === "chat") {
+            onStage?.("回答中");
+            const chatSystem = `你是「AI 视频画布」的智能助手，用简洁中文回答用户的问题或闲聊。
+# 当前画布（仅供参考，不要编造画布上没有的东西）
+${ctxBudget.graphSummary || "（空画布）"}${input.prefs?.trim() ? `\n\n# 用户偏好/约束\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设\n${input.persona.trim()}` : ""}
+直接用自然语言回答，不要输出 JSON、不要凭空捏造画布内容。若用户其实想在画布上做点什么（建节点/做视频等），用一句话提示他直接说需求，你会为他编排。`;
+            const chatResp = await invokeLLMWithKie(ctx, {
+              messages: [
+                { role: "system", content: chatSystem },
+                ...ctxBudget.history.map((m) => ({ role: m.role, content: m.content })),
+                { role: "user", content: input.message },
+              ],
+              model,
+              maxTokens: Math.min(ctxBudget.maxTokens, 1500),
+            });
+            const reply = extractTextContent(chatResp).trim() || "（我这边没有生成有效回答，请再说一次或换个问法。）";
+            return { reply, operations: [] as AgentOperation[], repaired: false };
+          }
+        } catch (e) {
+          console.warn("[agent] fast chat route failed, fall through to full plan:", e instanceof Error ? e.message : e);
+        }
+      }
 
       // Refresh template knowledge before planning. comfyOnly REQUIRES the full
       // library be analyzed (otherwise the agent only "knows" a partial subset and
