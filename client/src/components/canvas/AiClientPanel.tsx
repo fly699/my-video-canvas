@@ -8,7 +8,7 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
 import { deriveAiSessions, resolveActiveSession } from "@/lib/aiClientSessions";
 import { buildNodeContextContent, isReferableNode, nodeContextLabel, planMessageDrop, type ChatMsgAttachment } from "@/lib/aiClientContext";
-import { requestAgentPrefill } from "@/lib/agentPrefill";
+import { requestAgentPrefill, consumeCloseAiClient, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 import { useLocation } from "wouter";
 import { loadNodeless, saveNodeless, addSession, removeSession, updateSession, sortSessions, makeNodelessId, isNodelessId, type NodelessSession } from "@/lib/aiClientNodeless";
 import { parseMessageSegments, latestCodeArtifactFrom, CODE_MODE_SYSTEM_PROMPT, type CodeArtifact } from "@/lib/codeArtifacts";
@@ -658,6 +658,16 @@ export function AiClientPanel({ embedded = false, onLatestReply }: { embedded?: 
     const last = [...messages].reverse().find((m) => m.role === "assistant" && m.content?.trim());
     onLatestReply(last?.content?.trim() || null);
   }, [messages, onLatestReply]);
+
+  // 「进入画布并发送至画布助手」后：画布内的浮动 AI 客户端自动关闭，把焦点让给画布助手。
+  // 仅作用于浮动实例（!embedded）；单页 embedded 实例会随路由切换整页卸载，不需处理。
+  useEffect(() => {
+    if (embedded) return;
+    const maybeClose = () => { if (consumeCloseAiClient(projectId ?? 0)) { setMinimized(false); close(); } };
+    maybeClose(); // 进入画布挂载时（事件先于本实例派发的场景）
+    window.addEventListener(AGENT_PREFILL_EVENT, maybeClose); // 已在画布内的实时场景
+    return () => window.removeEventListener(AGENT_PREFILL_EVENT, maybeClose);
+  }, [embedded, projectId, close, setMinimized]);
 
   // ── 窗口几何：拖拽移动 + 缩放（默认右下角停靠；拖过/缩过后持久化）──────────────
   const [liveGeo, setLiveGeo] = useState<import("../../hooks/useAiClient").AiClientGeometry | null>(null);
