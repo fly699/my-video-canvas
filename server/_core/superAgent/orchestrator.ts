@@ -82,6 +82,9 @@ export interface RunOrchestrationOptions {
   emit?: (e: AgentEvent) => void;
   /** 便于单测：注入自定义子任务拆解器（默认用 LLM decomposeGoal）。 */
   decompose?: (llm: AgentLLM, goal: string, max: number) => Promise<OrchestrationSubtask[]>;
+  /** B1 产物验收：每个子任务 execute 成功后质检产物（入参=该子任务原始描述 + 产物），
+   *  未过由引擎把拒因喂回修一轮（每次 run 仅拒一次，见 runComfyAgent.verifyProduct）。 */
+  verifyProduct?: (subtaskTask: string, r: { images: string[]; videos: string[] }) => Promise<{ ok: boolean; reasons: string[] }>;
 }
 
 const normServer = (u: string) => u.replace(/\/+$/, "").trim();
@@ -126,6 +129,8 @@ export async function runOrchestration(opts: RunOrchestrationOptions): Promise<O
       task, tools: toolsFor(server), llm, maxIterations, signal: opts.signal,
       emit: (e) => emit({ ...e, message: `${tag}${servers.length > 1 ? `@${server}` : ""} · ${e.message}` }),
       referenceExamples, knownPitfalls: pitfalls,
+      // 产物验收用子任务的原始描述（st.task）做符合度判定，不用带教训重试时改写过的 task。
+      verifyProduct: opts.verifyProduct ? (r) => opts.verifyProduct!(st.task, r) : undefined,
     });
 
   const processSubtask = async (i: number) => {

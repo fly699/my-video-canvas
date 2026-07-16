@@ -40,6 +40,42 @@ export function shouldKeepWorkspace(opts: { hasSession: boolean; resuming: boole
   return opts.hasSession && (opts.resuming || !opts.spawnError);
 }
 
+// ── 失败自动修复一轮（B1 批2）────────────────────────────────────────────────
+
+export interface CodeRepairDecision { repair: boolean; budgetUsd?: number }
+
+/**
+ * 首轮失败后是否自动带错误 --resume 修一轮。纯函数，便于单测。
+ * 只修「真失败」：用户取消（cancelled/aborted）、危险命令拦截（blockedCommand）、超时、
+ * spawn 失败、拿不到会话 id（无法 resume）都不修。
+ * 成本守恒：两轮合计不超过用户设定的 maxBudgetUsd——首轮已花过 70% 或剩余不足 $0.1 就放弃，
+ * 修复轮预算 = 上限 - 已花（绝不悄悄翻倍用户的成本上限）。
+ */
+export function planCodeRepair(opts: {
+  status: "success" | "failed" | "aborted";
+  cancelled: boolean;
+  blockedCommand?: string;
+  timedOut: boolean;
+  spawnError: boolean;
+  hasSession: boolean;
+  costUsd?: number;
+  maxBudgetUsd: number;
+}): CodeRepairDecision {
+  if (opts.status !== "failed" || opts.cancelled) return { repair: false };
+  if (opts.blockedCommand || opts.timedOut || opts.spawnError || !opts.hasSession) return { repair: false };
+  const spent = opts.costUsd ?? 0;
+  const remaining = opts.maxBudgetUsd - spent;
+  if (spent > opts.maxBudgetUsd * 0.7 || remaining < 0.1) return { repair: false };
+  return { repair: true, budgetUsd: Math.round(remaining * 100) / 100 };
+}
+
+/** 修复轮提示词：把首轮错误喂回（--resume 续接同一会话，claude 已有完整上下文与文件）。 */
+export function buildCodeRepairPrompt(errText: string | undefined): string {
+  const err = (errText ?? "").trim().slice(0, 1500);
+  return `上一轮任务执行失败${err ? `，错误信息：\n${err}` : "（无明确错误输出）"}\n\n` +
+    "请先诊断失败原因（查看相关文件与命令输出），修复问题后继续完成原任务；若确认无法修复，请明确说明原因。";
+}
+
 // ── 参数构建 ─────────────────────────────────────────────────────────────────
 
 export type ClaudePermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions";
