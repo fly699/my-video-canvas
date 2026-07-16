@@ -279,11 +279,12 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         showAllResources: payload.showAllResources ?? true,
         ...(payload.useMemory === false ? { useMemory: false } : {}),
         ...(payload.verifyOutput ? { verifyOutput: true } : {}), // B1 产物 AI 质检（默认关）
+        ...(payload.autoRoute && !isFollowup ? { autoRoute: true } : {}), // B2 自动路由（续接不路由）
         ...(isFollowup ? { seedWorkflowJson: payload.resultWorkflowJson, history: buildHistory(priorConv) } : {}),
       },
       runHandlers as Parameters<typeof buildMut.mutate>[1],
     );
-  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.maxIterations, payload.showAllResources, payload.useMemory, payload.orchestrate, llmModel, data.projectId, id, buildMut, orchestrateMut, update, applyBuildResult, utils]);
+  }, [running, inputText, payload.conversation, payload.resultWorkflowJson, payload.customBaseUrl, payload.maxIterations, payload.showAllResources, payload.useMemory, payload.orchestrate, payload.autoRoute, payload.verifyOutput, llmModel, data.projectId, id, buildMut, orchestrateMut, update, applyBuildResult, utils]);
 
   // 画布助手「自动运行」：节点带 autoRun+task 建好后自动开跑一次（不需用户点运行）。
   // 一次性：跑前清掉 autoRun 标记，避免刷新/重载/协作方重复触发。
@@ -435,6 +436,16 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                       <span style={{ color: "var(--c-t4)" }}>开启后把输入当「复杂目标」，自动拆成多个 ComfyUI 子任务逐个搭建调通（失败自动重试），每个成功子任务落一个 ComfyUI 工作流节点。适合「做一整套/一个短片的多份工作流」。</span>
                     </span>
                   </label>
+                  {!payload.orchestrate && (
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "flex-start", gap: 6, cursor: running ? "not-allowed" : "pointer" }}>
+                      <input type="checkbox" checked={payload.autoRoute ?? false} disabled={running}
+                        onChange={(e) => update({ autoRoute: e.target.checked })}
+                        className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
+                      <span>自动路由（按任务复杂度自动选构建方式）<br />
+                        <span style={{ color: "var(--c-t4)" }}>运行前先轻量拆解任务（一次简短 AI 调用）：拆出多个独立子任务就自动改走编排模式，简单任务仍按单份工作流构建。续接对话不路由。不确定该不该开编排时勾这个即可。</span>
+                      </span>
+                    </label>
+                  )}
                   <label style={{ ...labelStyle, display: "flex", alignItems: "flex-start", gap: 6, cursor: running ? "not-allowed" : "pointer" }}>
                     <input type="checkbox" checked={payload.useMemory ?? true} disabled={running}
                       onChange={(e) => update({ useMemory: e.target.checked })}

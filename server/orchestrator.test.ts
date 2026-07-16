@@ -1,6 +1,6 @@
 // 工程智能体编排器（B 阶段）：目标分解解析 + 逐子任务搭建（失败重试）+ 汇总。
 import { describe, it, expect, beforeEach } from "vitest";
-import { parseSubtasks, runOrchestration } from "./_core/superAgent/orchestrator";
+import { parseSubtasks, runOrchestration, decomposeGoal } from "./_core/superAgent/orchestrator";
 import type { ComfyAgentTools, AgentLLM } from "./_core/superAgent/comfyAgent";
 import { clearWorkflowExperiences } from "./_core/comfyExperience";
 
@@ -138,5 +138,20 @@ describe("orchestrator.verifyProduct（B1 批2：编排路径产物验收）", (
       decompose: async () => [{ title: "a", task: "a" }],
     });
     expect(r.successCount).toBe(1);
+  });
+});
+
+describe("orchestrator.decomposeGoal（B2 自动路由复用的轻量拆解）", () => {
+  it("LLM 返回合法 JSON → 解析子任务清单", async () => {
+    const llm: AgentLLM = { async complete() { return '{"subtasks":[{"title":"出图","task":"文生图"},{"title":"转视频","task":"图生视频"}]}'; } };
+    const r = await decomposeGoal(llm, "做个短片", 6);
+    expect(r.length).toBe(2);
+    expect(r[0].title).toBe("出图");
+  });
+  it("LLM 输出不可解析 → 兜底整目标当单任务（自动路由据此回落单份构建）", async () => {
+    const llm: AgentLLM = { async complete() { return "抱歉我不会 JSON"; } };
+    const r = await decomposeGoal(llm, "画一张赛博朋克海报", 6);
+    expect(r.length).toBe(1);
+    expect(r[0].task).toBe("画一张赛博朋克海报");
   });
 });
