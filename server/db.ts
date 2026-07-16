@@ -1014,6 +1014,14 @@ export async function getAssetById(id: number, userId: number) {
   return rows[0] ?? null;
 }
 
+/** E2 批2：写回视频素材抽帧生成的缩略图（仅本人素材、未删除）。 */
+export async function updateAssetThumbnail(id: number, userId: number, thumbnailUrl: string) {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) return dev.devUpdateAssetThumbnail(id, userId, thumbnailUrl); throw new Error("DB unavailable"); }
+  await db.update(assets).set({ thumbnailUrl }).where(and(eq(assets.id, id), eq(assets.userId, userId), isNull(assets.deletedAt)));
+  return true;
+}
+
 /** E2 AI 打标：整体覆写素材的 meta（json 列）。仅本人素材。返回是否命中一行。 */
 export async function updateAssetMeta(id: number, userId: number, meta: unknown) {
   const db = await getDb();

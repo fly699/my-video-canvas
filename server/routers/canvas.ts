@@ -31,6 +31,7 @@ import {
   deleteAsset,
   getAssetById,
   updateAssetMeta,
+  updateAssetThumbnail,
   getVideoTasksByProject,
   createVideoTask,
   updateVideoTask,
@@ -98,6 +99,7 @@ import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
 import { runImageQc } from "../_core/imageQcCore";
 import { runImageTag } from "../_core/imageTagCore";
+import { extractVideoFrameJpeg } from "../_core/videoFrame";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
 
 /**
@@ -585,8 +587,20 @@ export const assetsRouter = router({
       await assertLLMAllowed(ctx, input.model);
       const asset = await getAssetById(input.id, ctx.user.id);
       if (!asset || asset.deletedAt) throw new TRPCError({ code: "NOT_FOUND", message: "素材不存在或已删除" });
-      const imgUrl = asset.type === "image" ? asset.url : (asset.thumbnailUrl || null);
-      if (!imgUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "仅图片素材或带封面图的视频素材支持 AI 打标" });
+      let imgUrl = asset.type === "image" ? asset.url : (asset.thumbnailUrl || null);
+      // E2 批2：无封面的视频素材 → ffmpeg 抽首帧（0.5s 失败回退 0s）存库作缩略图，
+      // 一次抽帧长期复用（列表预览 + 后续重打标都用它），再继续打标。
+      if (!imgUrl && asset.type === "video") {
+        try {
+          const frame = await extractVideoFrameJpeg(asset.url);
+          const { url } = await storagePut(`u/${ctx.user.id}/thumbs/${nanoid()}-vthumb.jpg`, frame, "image/jpeg");
+          await updateAssetThumbnail(asset.id, ctx.user.id, url);
+          imgUrl = url;
+        } catch (e) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `视频抽帧失败，无法打标：${e instanceof Error ? e.message.slice(0, 200) : "未知错误"}` });
+        }
+      }
+      if (!imgUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "仅图片与视频素材支持 AI 打标" });
       return dedupe("assets.tagAsset", ctx.user.id, input, async () => {
         const r = await runImageTag(ctx, { imageUrl: imgUrl, name: asset.name, model: input.model });
         const prior = (asset.meta && typeof asset.meta === "object") ? asset.meta as Record<string, unknown> : {};
