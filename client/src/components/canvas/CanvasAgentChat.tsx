@@ -29,8 +29,9 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean };
-const QP_DEFAULT: QuickPrefs = { aspect: "", style: "", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "", videoProvider: "", genNodes: [], workflowTemplateIds: [], noStoryboard: false, dialogueLang: "", useComfyMemory: true, coalesceShots: false, fastChat: false };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean };
+// 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
+const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_grok_image", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: true, fastChat: false };
 
 /** 对白语种（#138）：对白/旁白/台词统一书写语言；空 = 跟随内容默认。 */
 const QP_DIALOGUE_LANGS = [
@@ -166,7 +167,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const setQP = (patch: Partial<QuickPrefs>) => setQuickPrefs((p) => ({ ...p, ...patch }));
   const qpActiveCount = (quickPrefs.aspect ? 1 : 0) + (quickPrefs.style ? 1 : 0) + (quickPrefs.durationSec ? 1 : 0) + (quickPrefs.imageFirst ? 1 : 0) + (quickPrefs.addMusic ? 1 : 0) + (quickPrefs.addSubtitle ? 1 : 0)
     + (quickPrefs.imageModel ? 1 : 0) + (quickPrefs.videoProvider ? 1 : 0) + (quickPrefs.genNodes.length ? 1 : 0) + (quickPrefs.workflowTemplateIds.length ? 1 : 0)
-    + (quickPrefs.noStoryboard ? 1 : 0) + (quickPrefs.dialogueLang ? 1 : 0) + (quickPrefs.coalesceShots ? 1 : 0) + (quickPrefs.fastChat ? 1 : 0);
+    + (quickPrefs.noStoryboard ? 1 : 0) + (quickPrefs.dialogueLang ? 1 : 0) + (quickPrefs.promptLang ? 1 : 0) + (quickPrefs.coalesceShots ? 1 : 0) + (quickPrefs.fastChat ? 1 : 0);
   // 「ComfyUI模板」的二级选择：模板库中已存在的工作流模板（只有 comfyui_workflow 型模板
   // 带 workflowJson，可被 comfyui_workflow 节点引用）。选中 = 只允许助手用这些模板。
   const workflowTemplates = (templatesQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow");
@@ -183,7 +184,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     if (quickPrefs.imageModel) lines.push(`- 【强制】图像生成一律使用模型 ${quickPrefs.imageModel}（写入 image_gen.model / storyboard.imageModel）。`);
     if (quickPrefs.videoProvider) lines.push(`- 【强制】视频生成一律使用模型 ${quickPrefs.videoProvider}（写入 video_task.provider；params 键与取值严格按该模型的参数表）。`);
     if (quickPrefs.noStoryboard) lines.push("- 【强制·排除分镜节点】禁止创建 storyboard 分镜节点；镜头拆分与每镜画面描述改用 prompt 提示词节点承载（每镜一个 prompt 节点连到该镜的生成节点），链路：script → prompt → 生成节点 → merge。已存在的 storyboard 节点也不要新增连线到新链路。");
-    if (quickPrefs.dialogueLang) lines.push(`- 【强制·对白语种】所有对白/旁白/台词/口播文案一律用${quickPrefs.dialogueLang}书写（storyboard.dialogue、脚本台词、字幕文本等人声内容）；画面生成提示词的语言不受此限制，仍按生成模型的最佳实践。`);
+    if (quickPrefs.dialogueLang) lines.push(`- 【强制·对白语种】所有对白/旁白/台词/口播文案一律用${quickPrefs.dialogueLang}书写（storyboard.dialogue、脚本台词、字幕文本等人声内容）。`);
+    if (quickPrefs.promptLang) lines.push(`- 【强制·提示词语种】所有喂给生成模型的【画面提示词】一律用${quickPrefs.promptLang}书写（image_gen.prompt、storyboard.promptText、video_task.prompt、comfyui 节点的 prompt 等画面描述提示词）。`);
     if (quickPrefs.coalesceShots) lines.push("- 【合并短镜·省次数】在不破坏叙事的前提下，把【连续、同场景/同一连续动作】且时长之和 ≤ 所选视频模型单次最长时长（见「云端生成模型清单」里该视频模型 params 的 duration 上限，如 kie_grok_i2v 为 30s）的多个镜头，合并为【一个】 video_task 视频节点一次生成：把这些镜头的画面合成一段按时间推进的连贯提示词（用时间 beat 标注，如「0-6s …；6-12s …；12-18s …」），该节点的 duration 设为合并后的总秒数（不得超过模型上限）。遇明显转场/换场景/换主体就断开、另起一个新节点；无法合并的镜头正常逐个建节点。合并后仍在该节点 description 里逐 beat 分行说明。此举减少生成次数、更省更快，但会牺牲逐镜单独重生成的粒度——务必只合并画面连贯的镜头。");
     if (chosenWorkflowTpls.length) lines.push(`- 【强制】comfyui_workflow 节点只允许引用以下模板：${chosenWorkflowTpls.map((t) => `id=${t.id}「${t.label}」`).join("、")}；其它模板一律禁止。`);
     return lines.length ? lines.join("\n") : undefined;
@@ -610,9 +612,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 title="指定视频生成模型（写入 video_task.provider；默认=助手自选）" groups={QP_VIDEO_MODEL_GROUPS} onChange={(v) => setQP({ videoProvider: v })} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="对白/旁白/台词/口播文案统一用所选语言书写；默认=跟随内容">语种</span>
-              <MiniSelect value={quickPrefs.dialogueLang} placeholder="默认" maxWidth={150} accent={accent} accentSoft={accentSoft}
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="对白与最终提示词的书写语言；默认=跟随内容">语种</span>
+              <span style={{ fontSize: 10.5, color: "var(--c-t4)", flexShrink: 0 }}>对白</span>
+              <MiniSelect value={quickPrefs.dialogueLang} placeholder="默认" maxWidth={128} accent={accent} accentSoft={accentSoft}
                 title="对白语种：对白/旁白/台词/字幕文本统一书写语言（画面提示词不受影响）；默认=跟随内容" groups={[{ options: [{ value: "", label: "默认（跟随内容）" }, ...QP_DIALOGUE_LANGS] }]} onChange={(v) => setQP({ dialogueLang: v })} />
+              <span style={{ fontSize: 10.5, color: "var(--c-t4)", flexShrink: 0 }}>提示词</span>
+              <MiniSelect value={quickPrefs.promptLang} placeholder="默认" maxWidth={128} accent={accent} accentSoft={accentSoft}
+                title="最终提示词语种：喂给生成模型的画面提示词（image_gen.prompt / 分镜 promptText / 视频 prompt 等）统一书写语言；默认=助手按模型最佳实践（多数图/视模型英文提示更稳）" groups={[{ options: [{ value: "", label: "默认（按模型最佳实践）" }, ...QP_DIALOGUE_LANGS] }]} onChange={(v) => setQP({ promptLang: v })} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }} title="勾选=只允许助手用这些生成节点；全不勾=不限。提示：未勾任何 ComfyUI 系时，规划会跳过模板库查询与注入（更快）——需要助手引用工作流模板时请勾选 ComfyUI模板">节点</span>
