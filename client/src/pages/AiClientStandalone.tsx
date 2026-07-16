@@ -8,7 +8,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { useLocation } from "wouter";
-import { Bot, FolderOpen, ChevronDown, ArrowLeft, Check, Maximize2, Minimize2, SquareArrowOutUpRight, PanelsTopLeft } from "lucide-react";
+import { Bot, FolderOpen, ChevronDown, ArrowLeft, Check, Maximize2, Minimize2, SquareArrowOutUpRight, PanelsTopLeft, Download } from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useCanvasStore, type CanvasNode } from "@/hooks/useCanvasStore";
@@ -21,8 +22,11 @@ import { getNodeConfig } from "@/lib/nodeConfig";
 import type { NodeType } from "../../../shared/types";
 
 const ACCENT = "oklch(0.70 0.20 300)";
-const TOPBAR_H = 116; // 顶栏（标题 + 模型跑马灯 + 项目切换）高度，面板从其下方铺满
+const TOPBAR_H = 60; // 顶栏（标题 + 极薄模型细条 + 项目切换）单行紧凑，面板从其下方铺满
 const TOPBAR_H_NARROW = 52; // 移动端顶栏：单行紧凑（隐藏跑马灯 + 副标题）
+
+// PWA「下载为应用」的 beforeinstallprompt 事件类型（浏览器扩展事件，标准库无声明）。
+type BeforeInstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
 function StandaloneInner() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -84,6 +88,36 @@ function StandaloneInner() {
     else void document.documentElement.requestFullscreen().catch(() => {});
   };
 
+  // 「下载为应用」（PWA 安装）：把全站 manifest 换成 /ai 专用（安装后打开即 AI 客户端）；
+  // 捕获 beforeinstallprompt 供按钮触发；已安装（standalone 显示模式）则隐藏按钮。
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(() => typeof window !== "undefined" && window.matchMedia?.("(display-mode: standalone)").matches === true);
+  useEffect(() => {
+    // 换 manifest：安装此页时用 start_url=/ai 的清单（否则用全站 /chat 清单会装成聊天）。
+    const link = document.querySelector('link[rel="manifest"]') as HTMLLinkElement | null;
+    const prev = link?.getAttribute("href") ?? null;
+    if (link) link.setAttribute("href", "/ai-client.webmanifest");
+    const onBIP = (e: Event) => { e.preventDefault(); setInstallPrompt(e as BeforeInstallPromptEvent); };
+    const onInstalled = () => { setInstalled(true); setInstallPrompt(null); };
+    window.addEventListener("beforeinstallprompt", onBIP);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBIP);
+      window.removeEventListener("appinstalled", onInstalled);
+      if (link && prev) link.setAttribute("href", prev); // 离开 /ai 时恢复全站清单
+    };
+  }, []);
+  const installApp = () => {
+    if (installPrompt) {
+      void installPrompt.prompt();
+      void installPrompt.userChoice.then((r) => { if (r.outcome === "accepted") setInstalled(true); setInstallPrompt(null); });
+      return;
+    }
+    // 无 beforeinstallprompt（iOS/Safari 或尚未满足条件）：给出手动安装指引。
+    const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    toast.info(iOS ? "Safari：点底部「分享」→「添加到主屏幕」即可把 AI 客户端装成应用。" : "在浏览器地址栏右侧点「安装」图标，或菜单里选「安装应用 / 添加到主屏幕」。", { duration: 6000 });
+  };
+
   // 移动端：窄屏（<640）时收起跑马灯 + 副标题，顶栏单行紧凑、按钮仅图标。
   const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
   useEffect(() => {
@@ -119,7 +153,7 @@ function StandaloneInner() {
           </div>
           {!narrow && (
             <div style={{ flex: 1, minWidth: 0, margin: "0 8px" }}>
-              <ModelShowcaseCard compact />
+              <ModelShowcaseCard mini />
             </div>
           )}
           {narrow && <div style={{ flex: 1, minWidth: 0 }} />}
@@ -166,6 +200,12 @@ function StandaloneInner() {
           {activeProject && projectId && (
             <button onClick={() => enterCanvas(projectId)} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title={`进入「${activeProject.name}」的画布${latestReply ? "（携带最后一条回复到画布助手）" : ""}`}>
               <PanelsTopLeft size={13} /> {!narrow && "进入画布"}
+            </button>
+          )}
+          {/* 下载为应用（PWA 安装）——已安装则隐藏 */}
+          {!installed && (
+            <button onClick={installApp} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title="下载为应用（安装到桌面 / 主屏幕，独立窗口打开）">
+              <Download size={13} /> {!narrow && "下载为应用"}
             </button>
           )}
           {/* 全屏（隐藏浏览器地址栏，真正独占） */}
