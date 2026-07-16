@@ -199,6 +199,13 @@ export interface Track {
   clips: Clip[];
 }
 
+/** 批3 时间轴标记点（打点）：纯剪辑辅助，不参与导出渲染。 */
+export interface EditorMarker {
+  t: number;        // 时间轴时刻（秒）
+  label?: string;   // 可选备注
+  color?: string;   // 可选颜色（CSS 颜色串）
+}
+
 export interface EditorDoc {
   version: typeof EDITOR_DOC_VERSION;
   width: number;   // output canvas width  (e.g. 1080)
@@ -207,6 +214,9 @@ export interface EditorDoc {
   normalizeAudio?: boolean; // 导出时把最终音轨响度归一化到 -14 LUFS（流媒体标准）
   masterFadeIn?: number;    // 整片开头淡入（秒，从黑+静音渐显），0/缺省=关
   masterFadeOut?: number;   // 整片结尾淡出（秒，渐隐到黑+静音），0/缺省=关
+  /** 时间轴标记点（K 键打点）。注意：新增顶层字段必须同步 server/routers/editor.ts 的
+   *  docSchema，否则保存时被 zod 静默剥离（keyframes 曾踩过同坑）。 */
+  markers?: EditorMarker[];
   tracks: Track[];
 }
 

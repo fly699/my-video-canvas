@@ -145,13 +145,27 @@ export function ClipThumb({ kind, assetUrl, trimIn, color }: {
   color: string;
 }) {
   const videoThumb = useVideoThumb(kind === "video" ? assetUrl : undefined, trimIn);
-  const peaks = useAudioPeaks(kind === "audio" ? assetUrl : undefined);
+  // 批3：视频片段也解码音轨画波形（decodeAudioData 对 mp4/webm 取首条音轨；纯画面/超大
+  // 文件/解码失败均静默回退无波形）。与音频片段共用同一 peaks 缓存与去重。
+  const peaks = useAudioPeaks(kind === "audio" || kind === "video" ? assetUrl : undefined);
 
   if (kind === "image" && assetUrl) {
     return <div style={{ position: "absolute", inset: 0, opacity: 0.45, backgroundImage: `url(${assetUrl})`, backgroundSize: "cover", backgroundPosition: "center", pointerEvents: "none" }} />;
   }
-  if (kind === "video" && videoThumb) {
-    return <div style={{ position: "absolute", inset: 0, opacity: 0.5, backgroundImage: `url(${videoThumb})`, backgroundSize: "cover", backgroundPosition: "center", pointerEvents: "none" }} />;
+  if (kind === "video" && (videoThumb || (peaks && peaks.length > 0))) {
+    return (
+      <>
+        {videoThumb && <div style={{ position: "absolute", inset: 0, opacity: 0.5, backgroundImage: `url(${videoThumb})`, backgroundSize: "cover", backgroundPosition: "center", pointerEvents: "none" }} />}
+        {peaks && peaks.length > 0 && (
+          // 底部 32% 高度的波形条：叠在缩略图上方，便于对口型/音效定位剪切点。
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "32%", display: "flex", alignItems: "flex-end", gap: 0, padding: "0 2px", pointerEvents: "none" }}>
+            {peaks.map((p, i) => (
+              <div key={i} style={{ flex: 1, minWidth: 0, height: `${Math.max(8, p * 100)}%`, background: "oklch(0.92 0.02 250 / 0.55)", borderRadius: 0.5 }} />
+            ))}
+          </div>
+        )}
+      </>
+    );
   }
   if (kind === "audio" && peaks && peaks.length > 0) {
     return (

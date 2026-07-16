@@ -115,6 +115,8 @@ export function Timeline() {
       // paste & 全轨分割 work without a current selection
       if ((e.key === "v" || e.key === "V") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); st.pasteClip(st.playhead); return; }
       if ((e.key === "s" || e.key === "S") && e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); st.splitAllAtPlayhead(st.playhead); return; }
+      // K 打点（批3）：播放头处加/删标记（±0.15s 内已有则删除），无需选中片段。
+      if ((e.key === "k" || e.key === "K") && !e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); st.toggleMarker(st.playhead); return; }
       const sel = st.selectedClipId;
       if (!sel) return;
       const multi = st.selectedClipIds.length > 1;
@@ -417,6 +419,29 @@ export function Timeline() {
     }
   }, [sceneMut, sceneLv]);
 
+  // 批3 淡入淡出手柄：拖 clip 顶角小三角改 fadeIn/fadeOut（秒；两者合计不超片长-0.05s；
+  // 拖回 0 即清除）。updateClip 连续手势合并为一步撤销。
+  const beginFadeDrag = useCallback((e: React.PointerEvent, clipId: string, side: "in" | "out") => {
+    e.stopPropagation(); e.preventDefault();
+    const st0 = useEditorStore.getState();
+    let clip: import("@shared/editorTypes").Clip | undefined;
+    for (const t of st0.doc?.tracks ?? []) { const c = t.clips.find((x) => x.id === clipId); if (c) { clip = c; break; } }
+    if (!clip) return;
+    const startX = e.clientX;
+    const dur = clipDuration(clip);
+    const start = side === "in" ? (clip.fadeIn ?? 0) : (clip.fadeOut ?? 0);
+    const other = side === "in" ? (clip.fadeOut ?? 0) : (clip.fadeIn ?? 0);
+    const onMove = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startX) / pxPerSec;
+      const raw = side === "in" ? start + dx : start - dx;
+      const v = Math.round(Math.min(Math.max(0, raw), Math.max(0, dur - other - 0.05)) * 100) / 100;
+      useEditorStore.getState().updateClip(clipId, side === "in" ? { fadeIn: v > 0.01 ? v : undefined } : { fadeOut: v > 0.01 ? v : undefined });
+    };
+    const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [pxPerSec]);
+
   const onDrop = useCallback(async (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
     setDropLane(null);
@@ -556,6 +581,16 @@ export function Timeline() {
                   <span style={{ fontSize: 9, color: EC.t4, marginLeft: 3 }}>{fmtTime(t).split(".")[0]}</span>
                 </div>
               ))}
+              {/* 批3 标记点：K 键打点 → 标尺小旗；点击跳转、右键删除。 */}
+              {(doc.markers ?? []).map((m, i) => (
+                <div key={`mk-${i}`} title={`标记 ${fmtTime(m.t)}${m.label ? ` · ${m.label}` : ""}（点击跳转 / 右键删除）`}
+                  onPointerDown={(e) => { e.stopPropagation(); }}
+                  onClick={(e) => { e.stopPropagation(); useEditorStore.getState().setPlayhead(m.t); }}
+                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); useEditorStore.getState().removeMarker(m.t); }}
+                  style={{ position: "absolute", left: m.t * pxPerSec - 5, bottom: 0, width: 10, height: 13, cursor: "pointer", zIndex: 7,
+                    clipPath: "polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%)",
+                    background: m.color || "oklch(0.8 0.17 90)", boxShadow: "0 0 3px oklch(0 0 0 / 0.5)" }} />
+              ))}
             </div>
 
             {/* tracks */}
@@ -609,6 +644,25 @@ export function Timeline() {
                               border: "1px solid oklch(0.3 0 0)", borderRadius: 1, pointerEvents: "none", zIndex: 2 }} />
                         ));
                       })()}
+                      {/* 批3 淡入淡出：渐变遮罩可视化 + 顶角拖拽手柄（text/shape 也支持透明度 fade） */}
+                      {(c.fadeIn ?? 0) > 0 && (
+                        <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: Math.min((c.fadeIn ?? 0) * pxPerSec, width), background: "linear-gradient(to right, oklch(0 0 0 / 0.55), transparent)", pointerEvents: "none", zIndex: 1 }} />
+                      )}
+                      {(c.fadeOut ?? 0) > 0 && (
+                        <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: Math.min((c.fadeOut ?? 0) * pxPerSec, width), background: "linear-gradient(to left, oklch(0 0 0 / 0.55), transparent)", pointerEvents: "none", zIndex: 1 }} />
+                      )}
+                      {selected && width > 40 && (
+                        <>
+                          <div onPointerDown={(e) => beginFadeDrag(e, c.id, "in")}
+                            title={`淡入：${(c.fadeIn ?? 0).toFixed(2)}s（向右拖加长，拖回 0 清除）`}
+                            style={{ position: "absolute", top: 0, left: Math.min((c.fadeIn ?? 0) * pxPerSec, width - 14), width: 14, height: 12, cursor: "ew-resize", zIndex: 4,
+                              clipPath: "polygon(0 0, 100% 0, 0 100%)", background: (c.fadeIn ?? 0) > 0 ? "oklch(0.85 0.15 200)" : "oklch(1 0 0 / 0.5)" }} />
+                          <div onPointerDown={(e) => beginFadeDrag(e, c.id, "out")}
+                            title={`淡出：${(c.fadeOut ?? 0).toFixed(2)}s（向左拖加长，拖回 0 清除）`}
+                            style={{ position: "absolute", top: 0, right: Math.min((c.fadeOut ?? 0) * pxPerSec, width - 14), width: 14, height: 12, cursor: "ew-resize", zIndex: 4,
+                              clipPath: "polygon(0 0, 100% 0, 100% 100%)", background: (c.fadeOut ?? 0) > 0 ? "oklch(0.85 0.15 200)" : "oklch(1 0 0 / 0.5)" }} />
+                        </>
+                      )}
                       {/* trim handles — wider hit area + visible grip */}
                       <div onPointerDown={(e) => onClipPointerDown(e, c.id, "trim-l")} className="editor-trim"
                         title={c.kind === "video" ? "拖动裁剪片头（按住 Ctrl 同样裁剪）" : "拖动裁剪片头"}
@@ -657,7 +711,7 @@ export function Timeline() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderTop: `1px solid ${EC.border}`, fontSize: 10, color: EC.t4, flexShrink: 0 }}>
-        <Scissors size={11} /> 拖动移动/换轨 · Shift/Ctrl 点击多选 · 空白拖拽框选 · Ctrl+A 全选 · ,/. 逐帧微移 · 拖两端 裁切 · Del 删除 · Shift+Del 波纹删除 · S 分割 · M 合并(多选连续多段) · Shift+M 波纹合并(容隙+紧凑) · Shift+S 全轨分割 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 复制 · 空格 播放/暂停
+        <Scissors size={11} /> 拖动移动/换轨 · Shift/Ctrl 点击多选 · 空白拖拽框选 · Ctrl+A 全选 · ,/. 逐帧微移 · 拖两端 裁切 · Del 删除 · Shift+Del 波纹删除 · S 分割 · M 合并(多选连续多段) · Shift+M 波纹合并(容隙+紧凑) · Shift+S 全轨分割 · K 打点标记 · 选中片段拖顶角三角=淡入淡出 · Ctrl+C/V 拷贝/粘贴 · Ctrl+D 复制 · 空格 播放/暂停
       </div>
 
       {menu && (() => {

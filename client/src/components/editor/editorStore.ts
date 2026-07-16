@@ -300,6 +300,10 @@ export interface EditorStore {
 
   // playback / view
   setPlayhead: (t: number) => void;
+  /** 批3 标记点：播放头处加标记；±0.15s 内已有标记则删除（toggle）。独立撤销步。 */
+  toggleMarker: (t: number) => void;
+  /** 删除指定时刻的标记（右键标记旗）。 */
+  removeMarker: (t: number) => void;
   setPlaying: (b: boolean) => void;
   setPxPerSec: (n: number) => void;
 
@@ -929,6 +933,20 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setPlayhead: (t) => set({ playhead: Math.max(0, t) }),
+  toggleMarker: (t) => set((s) => {
+    if (!s.doc) return {};
+    const ms = s.doc.markers ?? [];
+    const idx = ms.findIndex((m) => Math.abs(m.t - t) < 0.15);
+    const markers = idx >= 0
+      ? ms.filter((_, i) => i !== idx)
+      : [...ms, { t: Math.round(t * 100) / 100 }].sort((a, b) => a.t - b.t);
+    return withHistory(s, { ...s.doc, markers }, {}, false);
+  }),
+  removeMarker: (t) => set((s) => {
+    if (!s.doc) return {};
+    const markers = (s.doc.markers ?? []).filter((m) => m.t !== t);
+    return withHistory(s, { ...s.doc, markers }, {}, false);
+  }),
   // 播放结束（播放头停在片尾）后再次播放 → 自动跳回首帧重播（覆盖空格键与播放按钮两个入口）。
   setPlaying: (b) => set((s) => {
     if (b && s.doc) {
