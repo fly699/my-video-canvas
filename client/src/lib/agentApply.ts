@@ -278,6 +278,13 @@ export function applyAgentOperations(
           // 未知节点类型（服务端 sanitize 漏网 / 非官方客户端）——友好拦截，避免 store.addNode
           // 读 NODE_CONFIGS[未知].defaultTitle 抛「Cannot read properties of undefined」内部错误。
           if (!(op.nodeType in NODE_CONFIGS)) { fail(index, op, `未知节点类型：${op.nodeType}`); return; }
+          // imageFirst（生图→生视频）在服务端确定性插入的图像节点：tempId 前缀 imgfirst_。
+          // 它是「结构性管线注入」而非 LLM 自选节点类型——若被下面的「允许生成节点/模板」硬约束
+          // 拦掉（用户把 imageFirst 打开、却又没把 image_gen/该出图模板列入允许项，这种自相矛盾
+          // 的配置 UI 上可达），该图像节点创建失败、其上下游两条 connect 随之 liveIds 落空，视频
+          // 节点最终【零入边】被孤立、用户本意的 文本→视频 连接被静默丢弃。故这类注入节点豁免这两条
+          // 快捷设置硬约束（用户既开了 imageFirst，就应尊重其自动首帧管线）。
+          const isImageFirstSplice = typeof op.tempId === "string" && op.tempId.startsWith("imgfirst_");
           // 快速设置「排除分镜节点」硬约束（#138）：LLM 违规创建 storyboard → 判失败
           // （失败原因随自愈回路喂回 LLM，促使改用 prompt 节点承载镜头信息）。
           if (opts.excludeStoryboard && op.nodeType === "storyboard") {
@@ -286,13 +293,13 @@ export function applyAgentOperations(
           }
           // 快速设置「允许使用的生成节点」硬约束：LLM 违规选了未勾选的生成节点类型 → 判失败
           // （失败原因会随自愈回路喂回 LLM，促使换成允许的类型），非生成类节点不受限。
-          if (opts.allowedGenNodes && opts.allowedGenNodes.length && (GEN_NODE_TYPES as readonly string[]).includes(op.nodeType) && !opts.allowedGenNodes.includes(op.nodeType)) {
+          if (!isImageFirstSplice && opts.allowedGenNodes && opts.allowedGenNodes.length && (GEN_NODE_TYPES as readonly string[]).includes(op.nodeType) && !opts.allowedGenNodes.includes(op.nodeType)) {
             fail(index, op, `规划设置不允许使用 ${op.nodeType} 节点（允许：${opts.allowedGenNodes.join("/")}）`);
             return;
           }
           // 快速设置「允许的工作流模板」硬约束：comfyui_workflow 必须引用所选模板之一
           //（未带 templateId 的空壳节点在限定模式下同样拒绝——空壳跑不了也没意义）。
-          if (op.nodeType === "comfyui_workflow" && opts.allowedTemplateIds && opts.allowedTemplateIds.length) {
+          if (!isImageFirstSplice && op.nodeType === "comfyui_workflow" && opts.allowedTemplateIds && opts.allowedTemplateIds.length) {
             const tid = Number((op.payload as Record<string, unknown> | undefined)?.templateId);
             if (!Number.isInteger(tid) || !opts.allowedTemplateIds.includes(tid)) {
               fail(index, op, `规划设置只允许使用模板 id ∈ [${opts.allowedTemplateIds.join(", ")}]（本操作 templateId=${String((op.payload as Record<string, unknown> | undefined)?.templateId ?? "缺失")}）`);

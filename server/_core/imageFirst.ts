@@ -40,6 +40,11 @@ export function enforceImageFirst(ops: AgentOperation[]): AgentOperation[] {
     if (o.op === "connect" && o.targetRef && videoTemps.has(o.targetRef) && o.sourceRef) {
       const st = typeByTemp.get(o.sourceRef);
       if (st && IMAGE_PRODUCER_TYPES.has(st)) videoHasImage.add(o.targetRef);
+      // 源是画布【已存在节点】（typeByTemp 无记录、类型未知）→ 保守把整段视频标记为「可能已有图源」，
+      // 不再对它的其它源强插。否则「已存在图 E + 新建文本 P 同时接入新视频 V」时，E→V 只是被上面
+      // 的守卫跳过、V 却没进 videoHasImage，导致 P→V 仍被强插一个 image_gen：V 出现双首帧且多烧一次
+      // 生图钱。用户显式接了 E，应尊重其接线、不擅自改画面。
+      else if (!typeByTemp.has(o.sourceRef)) videoHasImage.add(o.targetRef);
     }
   }
 
@@ -116,6 +121,9 @@ export function enforceImageFirstComfy(
     if (o.op === "connect" && o.targetRef && videoTemps.has(o.targetRef) && o.sourceRef) {
       const st = tplByTemp.get(o.sourceRef);
       if (st != null && imageTplIds.has(st)) videoHasImage.add(o.targetRef);
+      // 同 enforceImageFirst：源是画布【已存在节点】（createdTemps 无记录）→ 保守标记整段视频，
+      // 不对其它源强插（避免「已存在出图工作流 + 新建文本」双首帧、多烧一次生图钱）。
+      else if (!createdTemps.has(o.sourceRef)) videoHasImage.add(o.targetRef);
     }
   }
 
