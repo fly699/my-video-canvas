@@ -528,3 +528,62 @@ describe("runComfyAgent — 闭环编排", () => {
     expect(emitted.length).toBe(r.log.length);
   });
 });
+
+// ── B1 产物验收（verifyProduct 钩子）────────────────────────────────────────────
+describe("B1 产物验收：execute 成功后质检，未过喂回修错循环（仅拒一次）", () => {
+  it("验收未过 → 原因喂回 → 二次成功直接采纳（不再验收）", async () => {
+    let verifyCalls = 0;
+    const fedBack: string[] = [];
+    const r = await runComfyAgent({
+      task: "做一张赛博朋克城市图",
+      tools: fakeTools(),
+      llm: scriptedLLM(
+        [
+          `{"action":"author","workflowJson":${JSON.stringify(WF("v1"))}}`,
+          '{"action":"execute"}',
+          `{"action":"author","workflowJson":${JSON.stringify(WF("v2"))}}`,
+          '{"action":"execute"}',
+        ],
+        (msgs) => { const last = msgs[msgs.length - 1]; if (last.role === "user" && last.content.includes("质量验收未过")) fedBack.push(last.content); },
+      ),
+      verifyProduct: async () => {
+        verifyCalls++;
+        return { ok: false, reasons: ["画面全黑", "主体缺失"] };
+      },
+      maxIterations: 8,
+    });
+    expect(r.status).toBe("success");
+    expect(verifyCalls).toBe(1);                       // 整个 run 只验收/拒绝一次
+    expect(fedBack.length).toBe(1);                    // 未过原因确实喂回了 LLM
+    expect(fedBack[0]).toContain("画面全黑");
+    expect(r.log.some((e) => e.data && (e.data as { tool?: string }).tool === "verify_product")).toBe(true);
+  });
+
+  it("验收通过 → 正常成功；未配置钩子 → 行为与从前完全一致", async () => {
+    let calls = 0;
+    const r1 = await runComfyAgent({
+      task: "t", tools: fakeTools(),
+      llm: scriptedLLM([`{"action":"author","workflowJson":${JSON.stringify(WF("a"))}}`, '{"action":"execute"}']),
+      verifyProduct: async () => { calls++; return { ok: true, reasons: [] }; },
+      maxIterations: 4,
+    });
+    expect(r1.status).toBe("success");
+    expect(calls).toBe(1);
+    const r2 = await runComfyAgent({
+      task: "t", tools: fakeTools(),
+      llm: scriptedLLM([`{"action":"author","workflowJson":${JSON.stringify(WF("b"))}}`, '{"action":"execute"}']),
+      maxIterations: 4,
+    });
+    expect(r2.status).toBe("success");
+  });
+
+  it("验收钩子抛异常 → fail-open 按通过处理（质检挂了不拖垮主流程）", async () => {
+    const r = await runComfyAgent({
+      task: "t", tools: fakeTools(),
+      llm: scriptedLLM([`{"action":"author","workflowJson":${JSON.stringify(WF("c"))}}`, '{"action":"execute"}']),
+      verifyProduct: async () => { throw new Error("视觉模型不可用"); },
+      maxIterations: 4,
+    });
+    expect(r.status).toBe("success");
+  });
+});

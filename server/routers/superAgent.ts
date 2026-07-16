@@ -18,6 +18,7 @@ import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } fro
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
 import { getSuperAgentConfig } from "../_core/superAgent/config";
 import { invalidateComfyKnowledge, getComfyKnowledge } from "../_core/comfyKnowledge";
+import { runImageQc } from "../_core/imageQcCore";
 import {
   recordWorkflowExperience, recallWorkflowExperiences, recordWorkflowFailure, recallPitfalls, pruneResolvedPitfalls,
   listWorkflowExperiences, searchWorkflowExperiences, deleteWorkflowExperience, clearWorkflowExperiences,
@@ -136,6 +137,9 @@ export const superAgentRouter = router({
         history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(8000) })).max(20).optional(),
         /** 是否使用记忆体（资源记忆 + 工作流经验召回）。默认 true；关掉则忽略记忆、直接读真机。 */
         useMemory: z.boolean().optional(),
+        /** B1 产物验收：execute 成功后用视觉模型质检首张产物图（符合度/畸形/黑屏等硬伤），
+         *  未过把原因喂回引擎修错循环（整个 run 仅拒一次）。默认关（额外一次视觉调用费用）。 */
+        verifyOutput: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -230,6 +234,13 @@ export const superAgentRouter = router({
           referenceExamples,
           showAllResources: input.showAllResources ?? true,
           knownPitfalls,
+          // B1 产物验收：视觉模型质检首张产物图（runImageQc 与图像节点 A1 质检共用核心，
+          // 门控/计费/日志经统一入口继承）。仅图像产物；无图（纯视频等）按通过处理。
+          verifyProduct: input.verifyOutput ? async ({ images }) => {
+            if (!images.length) return { ok: true, reasons: [] };
+            const v = await runImageQc(ctx, { imageUrl: images[0], prompt: input.task.slice(0, 2000) });
+            return { ok: v.pass, reasons: v.pass ? [] : [...v.issues, ...(v.suggestion ? [`修正建议：${v.suggestion}`] : [])] };
+          } : undefined,
         });
       } finally {
         runningJobs.delete(key);

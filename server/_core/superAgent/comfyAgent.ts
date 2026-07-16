@@ -116,6 +116,10 @@ export interface RunComfyAgentOptions {
   showAllResources?: boolean;
   /** 已知坑/失败教训：本服务器过往在类似任务上踩过的坑（来自失败经验记忆体），开头提醒 LLM 主动规避。 */
   knownPitfalls?: string[];
+  /** B1 产物验收（可选）：execute 成功后对产物做质量判定（如视觉模型质检首图）。
+   *  返回 !ok 时把 reasons 当 execute 错误喂回修错循环（整个 run 只拒绝一次，防质检死循环；
+   *  第二次 execute 成功不再验收直接采纳）。回调抛异常按通过处理（fail-open，质检挂了不拖垮主流程）。 */
+  verifyProduct?: (r: { images: string[]; videos: string[] }) => Promise<{ ok: boolean; reasons: string[] }>;
 }
 
 /** 从一次运行的事件日志里抽出「教训」——distinct 的校验/运行错误签名（去噪、去重、截断）。
@@ -311,6 +315,7 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
   for (const h of opts.history ?? []) messages.push(h);
 
   let current: string | undefined;
+  let qcRejected = false; // B1 产物验收：整个 run 只拒绝一次（防质检死循环）
   if (continuing) {
     current = opts.seedWorkflowJson;
     messages.push({ role: "user", content: `当前已有一版调通的工作流（如下）。请在其基础上按本轮指令「${opts.task}」修改，author 出完整的新版 workflowJson：\n${clip(opts.seedWorkflowJson!)}` });
@@ -426,6 +431,21 @@ export async function runComfyAgent(opts: RunComfyAgentOptions): Promise<ComfyAg
       const r = await opts.tools.execute(current);
       emit({ type: "tool_result", iteration: iter, message: r.ok ? "真机运行成功" : `运行失败：${clip(r.error ?? "未知错误")}`, data: { tool: "execute", ok: r.ok, error: r.error } });
       if (r.ok) {
+        // B1 产物验收：execute 成功≠产物合格（黑图/畸形/跑题此前一概放行）。有验收钩子且
+        // 本 run 尚未拒绝过时先验收；未过把原因当 execute 错误喂回修错循环（只拒一次，防
+        // 质检死循环——二次成功直接采纳）；验收自身异常按通过处理（fail-open）。
+        if (opts.verifyProduct && !qcRejected) {
+          let v: { ok: boolean; reasons: string[] } | null = null;
+          try { v = await opts.verifyProduct({ images: r.images ?? [], videos: r.videos ?? [] }); } catch { v = null; }
+          if (v && !v.ok) {
+            qcRejected = true;
+            const reasons = v.reasons.filter(Boolean).slice(0, 5).join("；") || "产物未通过质量验收";
+            emit({ type: "tool_result", iteration: iter, message: `产物验收未过：${clip(reasons)}`, data: { tool: "verify_product", ok: false, reasons: v.reasons } });
+            messages.push({ role: "user", content: `execute 虽然运行成功，但产物质量验收未过：${clip(reasons)}。\n请针对上述问题修正 workflowJson（如调整提示词/采样参数/模型选择）后再 execute。本次验收仅此一次，下次运行成功即采纳。` });
+            continue;
+          }
+          if (v) emit({ type: "tool_result", iteration: iter, message: "产物验收通过", data: { tool: "verify_product", ok: true } });
+        }
         let analysis: ComfyAgentResult["analysis"];
         try { analysis = await opts.tools.analyze(current); } catch { /* 分析失败不阻断成功 */ }
         emit({ type: "done", iteration: iter, message: "工作流已调通 ✅" });
