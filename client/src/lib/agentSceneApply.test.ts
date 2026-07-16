@@ -152,6 +152,23 @@ describe("applyAgentOperations 边去重（种子/查重分隔符一致）", () 
   });
 });
 
+describe("buildGraphSummary 硬帽保持合法 JSON（超大画布不从中间切断）", () => {
+  it("超 18000 字上限时按整条丢弃末尾，仍是可解析 JSON", () => {
+    const store = useCanvasStore.getState();
+    // 建足够多节点撑爆 18000 字上限（每节点带一段接近截断长度的提示词）。
+    for (let i = 0; i < 300; i++) {
+      const n = store.addNode("prompt", { x: i * 10, y: 0 });
+      store.updateNodeData(n.id, { positivePrompt: "镜头描述" + "x".repeat(60) });
+    }
+    const summary = buildGraphSummary("none");
+    expect(summary.length).toBeLessThanOrEqual(18000);
+    // 关键：必须是合法 JSON（旧版从中间 slice 会抛解析错误）
+    const parsed = JSON.parse(summary) as { nodes: unknown[]; edges: unknown[] };
+    expect(Array.isArray(parsed.nodes)).toBe(true);
+    expect(parsed.nodes.length).toBeGreaterThan(0); // 至少保住部分节点
+  });
+});
+
 describe("精准增量编辑防护", () => {
   it("分级截断：小范围摘要放宽到 400 字（增量编辑可见原文全貌）", () => {
     const store = useCanvasStore.getState();

@@ -647,7 +647,16 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       return o;
     });
   if (nodeLines.length === 0 && edgeLines.length === 0) return "";
-  const json = JSON.stringify({ nodes: nodeLines, edges: edgeLines });
-  // Hard cap to stay well under the chat input's 20000-char graphSummary limit.
+  // 硬帽（远低于聊天输入 20000 字上限）：超限时按「整条边 / 整个节点」丢弃末尾条目，保持 JSON 合法。
+  // 不能像旧版那样从中间 slice——截断出的半截 JSON 会让 LLM 读到残缺结构、误判画布。
+  // 优先丢边（连线是次要信息），边丢完仍超限再丢末尾节点（尽量保住「有哪些节点」这一主信息）。
+  let nl = nodeLines, el = edgeLines;
+  let json = JSON.stringify({ nodes: nl, edges: el });
+  while (json.length > 18000 && (el.length > 0 || nl.length > 1)) {
+    if (el.length > 0) el = el.slice(0, -1);
+    else nl = nl.slice(0, -1);
+    json = JSON.stringify({ nodes: nl, edges: el });
+  }
+  // 极端兜底：单个节点自身就超 18000（几乎不可能，字段已逐项截断）→ 硬切保底、不崩。
   return json.length > 18000 ? json.slice(0, 18000) : json;
 }
