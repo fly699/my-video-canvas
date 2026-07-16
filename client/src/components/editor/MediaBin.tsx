@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/dialogService";
 import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square, Scissors, LayoutGrid, GalleryVertical, List } from "lucide-react";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
@@ -50,6 +51,17 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
   const silenceCutMut = trpc.editor.silenceCut.useMutation();
   const [aiCutting, setAiCutting] = useState(false);
   const [silenceCutting, setSilenceCutting] = useState(false);
+  // 批2：静音剪除灵敏度档位（持久化）。灵敏=更容易判静（阈值高、最短时长短，剪得多）；
+  // 宽松=只剪明显长静音。噪音大的素材用「宽松」防误剪。
+  type SilLevel = "sensitive" | "normal" | "loose";
+  const SIL_PARAMS: Record<SilLevel, { noiseDb: number; minSilenceSec: number; label: string }> = {
+    sensitive: { noiseDb: -25, minSilenceSec: 0.4, label: "灵敏" },
+    normal: { noiseDb: -32, minSilenceSec: 0.6, label: "标准" },
+    loose: { noiseDb: -42, minSilenceSec: 1.0, label: "宽松" },
+  };
+  const [silLevel, setSilLevel] = usePersistentState<SilLevel>("ui:editor:silencecut-level:v1", "normal", {
+    validate: (p) => (p === "sensitive" || p === "normal" || p === "loose" ? p : null),
+  });
   const [aiAggr, setAiAggr] = useState<"low" | "medium" | "high">("medium");
   const [aiSubs, setAiSubs] = useState(true);
   const srtRef = useRef<HTMLInputElement>(null);
@@ -94,13 +106,22 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
     setSilenceCutting(true);
     try {
       const durationSec = await probeMediaDuration(abs, "video");
+      const lv = SIL_PARAMS[silLevel];
       const r = await silenceCutMut.mutateAsync({
         assetUrl: abs, assetId: src.assetId, durationSec: Math.max(0.5, durationSec),
         width: doc.width, height: doc.height, fps: doc.fps,
+        noiseDb: lv.noiseDb, minSilenceSec: lv.minSilenceSec,
       });
       if (!r.doc) { toast.info(r.message ?? "未检测到可剪除的静音段"); return; }
-      applyDoc(r.doc);
       const s = r.stats!;
+      // 批2：先确认再落地——展示将删除多少，误检可直接取消（换个灵敏度档再试）。
+      const pct = durationSec > 0 ? Math.round((s.removedSec / durationSec) * 100) : 0;
+      const ok = await confirmDialog({
+        title: `剪除静音：将删除 ${s.removedSec}s（约 ${pct}%）`,
+        message: `检测灵敏度「${lv.label}」：保留 ${s.keptSec}s、切成 ${s.clips} 段。应用后整档替换时间轴（可一键撤销）。删得太多/太少可取消后换灵敏度档位重试。`,
+      });
+      if (!ok) return;
+      applyDoc(r.doc);
       toast.success(`已剪除静音：保留 ${s.keptSec}s、删除 ${s.removedSec}s，共 ${s.clips} 段（可撤销）`);
     } catch (e) {
       toast.error("静音剪除失败：" + (e instanceof Error ? e.message : String(e)));
@@ -339,6 +360,15 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
           title="用本地音频分析找出 ≥0.6 秒的静音段并剪掉（保留段前后各留 0.12s 缓冲）。不消耗任何 AI 调用；语义级删口头禅/跑题请用「AI 智能剪辑」。"
           style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: silenceCutting ? EC.t4 : EC.t2, cursor: silenceCutting ? "default" : "pointer" }}
         ><Scissors size={13} /> {silenceCutting ? "分析静音中…" : "剪除静音（免AI）"}</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: 11, color: EC.t3 }}>
+          <span>灵敏度</span>
+          {(Object.keys(SIL_PARAMS) as SilLevel[]).map((lv) => (
+            <button key={lv} onClick={() => setSilLevel(lv)} disabled={silenceCutting}
+              title={lv === "sensitive" ? "灵敏：-25dB / ≥0.4s 即判静音，剪得最多" : lv === "normal" ? "标准：-32dB / ≥0.6s" : "宽松：-42dB / ≥1s，只剪明显长静音（噪音大的素材用这档）"}
+              style={{ flex: 1, padding: "3px 0", borderRadius: 6, fontSize: 11, cursor: "pointer", border: `1px solid ${silLevel === lv ? EC.accent : EC.border}`, background: silLevel === lv ? EC.accentSoft : "transparent", color: silLevel === lv ? EC.accent : EC.t3 }}
+            >{SIL_PARAMS[lv].label}</button>
+          ))}
+        </div>
         <button
           disabled={transcribeMut.isPending}
           onClick={autoSubtitle}
