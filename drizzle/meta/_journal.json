@@ -610,6 +610,13 @@
       "when": 1784800000000,
       "tag": "0086_voxcpm_endpoint",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "5",
+      "when": 1784900000000,
+      "tag": "0087_asset_ai_meta",
+      "breakpoints": true
     }
   ]
 }
