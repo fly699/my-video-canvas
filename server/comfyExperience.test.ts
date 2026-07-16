@@ -182,3 +182,44 @@ describe("comfyExperience 工作流经验记忆体", () => {
     expect(r.meta?.models?.checkpoints).toContain("sd_xl.safetensors");
   });
 });
+
+// ── A4 画布助手「规划坑」记忆（失败经验自动入库）──────────────────────────────
+import { filterPlanPitfallReasons, recordPlanPitfall, AGENT_PLAN_MEMORY_BASE } from "./_core/comfyExperience";
+
+describe("A4 规划坑记忆（filterPlanPitfallReasons / recordPlanPitfall）", () => {
+  beforeEach(async () => { await clearWorkflowExperiences(); });
+
+  it("filter：剔权限/白名单类、去重、截断、上限 8 条", () => {
+    const out = filterPlanPitfallReasons([
+      "未知的节点类型「magic_node」",
+      "未知的节点类型「magic_node」",           // 重复
+      "工程智能体节点需要 L3+ 权限，已跳过",     // 权限类剔除
+      "未通过白名单校验",                        // 白名单类剔除
+      "  ",                                      // 空白剔除
+      "x".repeat(500),                           // 截断到 200
+      ...Array.from({ length: 10 }, (_, i) => `坑${i}`),
+    ]);
+    expect(out[0]).toBe("未知的节点类型「magic_node」");
+    expect(out.some((r) => /权限|白名单/.test(r))).toBe(false);
+    expect(out.find((r) => r.startsWith("xxx"))!.length).toBe(200);
+    expect(out.length).toBe(8);
+  });
+
+  it("record → recallPitfalls 闭环：同任务召回拒因；同拒因集合不重复写", async () => {
+    const task = "做一个赛博朋克风格的城市夜景短片";
+    const ok1 = await recordPlanPitfall(task, ["未知的节点类型「magic_node」", "未知的画布动作「fly」"]);
+    expect(ok1).toBe(true);
+    const ok2 = await recordPlanPitfall(task, ["未知的画布动作「fly」", "未知的节点类型「magic_node」"]); // 集合相同（顺序不同）
+    expect(ok2).toBe(false); // 签名去重
+    const pitfalls = await recallPitfalls(AGENT_PLAN_MEMORY_BASE, "赛博朋克城市夜景的视频");
+    expect(pitfalls).toContain("未知的节点类型「magic_node」");
+    expect(pitfalls).toContain("未知的画布动作「fly」");
+  });
+
+  it("纯权限类拒因过滤后为空 → 不入库", async () => {
+    const ok = await recordPlanPitfall("测试任务", ["工程智能体节点需要 L3+ 权限，已跳过"]);
+    expect(ok).toBe(false);
+    const pitfalls = await recallPitfalls(AGENT_PLAN_MEMORY_BASE, "测试任务");
+    expect(pitfalls.length).toBe(0);
+  });
+});

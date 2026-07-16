@@ -120,6 +120,52 @@ export async function recordWorkflowFailure(input: RecordFailureInput): Promise<
   } catch { return false; }
 }
 
+// ── A4 画布助手「规划坑」记忆 ─────────────────────────────────────────────────
+// 画布助手规划操作被目录校验拒绝（sanitize drop）的原因，沉淀为避坑经验：复用本表，
+// 用伪 baseUrl 作独立作用域（不与各 ComfyUI 服务器的工作流记忆混淆），status=failed、
+// meta.failReasons=拒因。写入按拒因签名去重（recordWorkflowFailure 既有机制），
+// 另加容量上限（本表原本无上限，自动入库必须自带淘汰）。
+export const AGENT_PLAN_MEMORY_BASE = "agent:plan";
+const PLAN_PITFALL_CAP = 100;
+
+/** 过滤适合入库的规划拒因（纯函数，单测）：剔除用户/权限相关（全局表无 userId，个人权限
+ *  问题入全局记忆会误导他人规划）、去重、每条截断、最多 8 条。 */
+export function filterPlanPitfallReasons(reasons: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of reasons) {
+    const r = String(raw ?? "").trim().slice(0, 200);
+    if (!r) continue;
+    if (/权限|白名单/.test(r)) continue; // 用户特定，不入全局记忆
+    const key = r.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/** 把一轮规划的最终拒因沉淀为「规划坑」。best-effort：过滤后为空/写入失败都静默。
+ *  新写入成功后做容量维护：超过上限时删最旧的失败记录（只动本作用域，不碰成功经验与
+ *  各 ComfyUI 服务器的记忆）。返回是否新写入。 */
+export async function recordPlanPitfall(task: string, reasons: string[]): Promise<boolean> {
+  const failReasons = filterPlanPitfallReasons(reasons);
+  if (!failReasons.length) return false;
+  const ok = await recordWorkflowFailure({ baseUrl: AGENT_PLAN_MEMORY_BASE, task, failReasons, status: "failed" });
+  if (ok) {
+    try {
+      const rows = await listComfyWorkflowMemory(AGENT_PLAN_MEMORY_BASE);
+      const overflow = rows
+        .filter((r) => r.status !== "success")
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .slice(0, Math.max(0, rows.length - PLAN_PITFALL_CAP));
+      for (const r of overflow) await deleteComfyWorkflowMemory(r.id).catch(() => undefined);
+    } catch { /* 容量维护失败不影响主流程 */ }
+  }
+  return ok;
+}
+
 export interface RecalledExperience { id: number; label: string; workflowJson: string; nodeClasses: string[]; createdAt: number }
 
 /** 召回与任务最相关的若干条成功经验（按任务 + 节点类关键词重合度打分）。裁剪 workflowJson 防撑爆上下文。 */
