@@ -240,6 +240,12 @@ export function devGetAssetById(id: number, userId: number): Asset | null {
   return a && a.userId === userId ? a : null;
 }
 
+export function devUpdateAssetThumbnail(id: number, userId: number, thumbnailUrl: string) {
+  const a = assetsMap.get(id);
+  if (a && a.userId === userId && a.deletedAt == null) a.thumbnailUrl = thumbnailUrl;
+  return true;
+}
+
 export function devUpdateAssetMeta(id: number, userId: number, meta: unknown) {
   const a = assetsMap.get(id);
   if (a && a.userId === userId && a.deletedAt == null) a.meta = meta;

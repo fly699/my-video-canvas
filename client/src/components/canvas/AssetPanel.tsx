@@ -88,8 +88,9 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
   // E2 AI 打标：视觉模型给素材生成标签+描述（存 meta），搜索可命中。逐个串行、可批量。
   const tagMutation = trpc.assets.tagAsset.useMutation();
   const [tagging, setTagging] = useState<{ done: number; total: number } | null>(null);
+  // E2 批2：视频不再要求已有封面——服务端打标时自动抽首帧存为缩略图。
   const taggableOf = (a: { type: string; thumbnailUrl?: string | null; meta?: unknown }) =>
-    a.type === "image" || (a.type === "video" && !!a.thumbnailUrl);
+    a.type === "image" || a.type === "video";
   const tagOne = useCallback(async (id: number) => {
     try { await tagMutation.mutateAsync({ id }); return true; } catch (e) { toast.error("打标失败：" + (e instanceof Error ? e.message : "")); return false; }
   }, [tagMutation]);
@@ -97,8 +98,8 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
   const batchTag = useCallback(async () => {
     if (tagging) return;
     const untagged = (assets ?? []).filter((a) => taggableOf(a) && !readAssetAiMeta(a.meta).taggedAt).slice(0, BATCH_TAG_LIMIT);
-    if (!untagged.length) { toast.info("没有待打标的素材（仅图片 / 带封面的视频支持）"); return; }
-    if (!(await confirmDialog({ title: `AI 打标 ${untagged.length} 个素材？`, message: "用视觉模型为每个素材生成搜索标签与描述，每个产生一次视觉调用费用。" }))) return;
+    if (!untagged.length) { toast.info("没有待打标的素材（支持图片与视频，视频自动抽首帧）"); return; }
+    if (!(await confirmDialog({ title: `AI 打标 ${untagged.length} 个素材？`, message: "用视觉模型为每个素材生成搜索标签与描述（视频自动抽首帧作封面），每个产生一次视觉调用费用。" }))) return;
     setTagging({ done: 0, total: untagged.length });
     let ok = 0;
     for (let i = 0; i < untagged.length; i++) {
