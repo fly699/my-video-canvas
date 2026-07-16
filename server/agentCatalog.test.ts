@@ -377,3 +377,30 @@ describe("模型清单文本（喂给 LLM 的知识块）", () => {
     expect(modelKnowledgeText().length).toBeLessThan(25000);
   });
 });
+
+describe("agentCatalog.sanitizeOperationDetailed · A3 框选硬约束（allowedTargetIds）", () => {
+  const allowed = new Set(["node-1", "tmp_a"]);
+
+  it("update/delete 目标在允许集内（选中节点或本轮 tempId）→ 放行", () => {
+    const u = sanitizeOperationDetailed({ op: "update", targetRef: "node-1", payload: { prompt: "x" } }, { allowedTargetIds: allowed });
+    expect("op" in u).toBe(true);
+    const d = sanitizeOperationDetailed({ op: "delete", targetRef: "tmp_a" }, { allowedTargetIds: allowed });
+    expect("op" in d).toBe(true);
+  });
+
+  it("update/delete 目标在框选外 → 拒绝并说明原因", () => {
+    const u = sanitizeOperationDetailed({ op: "update", targetRef: "node-9", payload: { prompt: "x" } }, { allowedTargetIds: allowed });
+    expect("drop" in u && /框选/.test((u as { drop: string }).drop)).toBe(true);
+    const d = sanitizeOperationDetailed({ op: "delete", targetRef: "node-9" }, { allowedTargetIds: allowed });
+    expect("drop" in d && /框选/.test((d as { drop: string }).drop)).toBe(true);
+  });
+
+  it("未传 allowedTargetIds（未框选）→ 行为不变；create/connect 不受该约束", () => {
+    const u = sanitizeOperationDetailed({ op: "update", targetRef: "node-9", payload: { prompt: "x" } });
+    expect("op" in u).toBe(true);
+    const c = sanitizeOperationDetailed({ op: "connect", sourceRef: "node-9", targetRef: "node-8" }, { allowedTargetIds: allowed });
+    expect("op" in c).toBe(true);
+    const cr = sanitizeOperationDetailed({ op: "create", nodeType: "prompt", payload: { positivePrompt: "x" } }, { allowedTargetIds: allowed });
+    expect("op" in cr).toBe(true);
+  });
+});
