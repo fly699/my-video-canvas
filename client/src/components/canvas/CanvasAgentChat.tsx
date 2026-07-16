@@ -14,7 +14,8 @@ import { MiniSelect } from "@/components/ui/MiniSelect";
 import { useBridgeSkills } from "@/lib/useBridgeSkills";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, BLANK_TEMPLATE_LABEL } from "@/lib/aiAssistantTemplates";
-import { IMAGE_MODELS, VIDEO_MODELS } from "@/lib/models";
+import { IMAGE_MODELS, VIDEO_MODELS, LLM_MODELS } from "@/lib/models";
+import { extractFrameMedia } from "../../lib/nodeMedia";
 import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 import type { AgentOperation } from "../../../../shared/types";
 
@@ -370,7 +371,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   }, [projectId]);
 
   // ── @角色/素材/上传 / 技能 触发面板（输入末尾 @片段 或 /片段 时浮出可选列表）──
-  type PickItem = { name: string; sub?: string; kind: "char" | "skill" | "asset" | "upload"; url?: string };
+  type PickItem = { name: string; sub?: string; kind: "char" | "skill" | "asset" | "upload" | "node"; url?: string };
   const [pickHi, setPickHi] = useState(0);
   const [pickDismiss, setPickDismiss] = useState("");
   const trig = /(^|\s)([@/])([^\s@/]*)$/.exec(input);
@@ -397,8 +398,17 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const assets: PickItem[] = imageAssets
         .filter((a) => !pickFrag || a.name.toLowerCase().includes(pickFrag))
         .slice(0, 4).map((a) => ({ name: a.name, sub: "素材库 · 作为参考图附件", kind: "asset" as const, url: a.url }));
+      // A2 画布视觉输入：@ 可引用【画布节点的产物图】作参考附件——助手规划时真正「看见」
+      // 该节点的画面（如「照第 3 镜的画风再来两镜」）。extractFrameMedia 统一各节点产物字段；
+      // 惰性读 store（picker 随输入逐键重算，无需订阅 nodes 引发画布拖拽级重渲染）。
+      const nodeItems: PickItem[] = useCanvasStore.getState().nodes
+        .map((n) => ({ title: (n.data.title ?? "").trim() || n.data.nodeType, url: extractFrameMedia(n.data.payload as Record<string, unknown>).imageUrl }))
+        .filter((x): x is { title: string; url: string } => !!x.url)
+        .filter((x) => !pickFrag || x.title.toLowerCase().includes(pickFrag))
+        .slice(0, 4)
+        .map((x) => ({ name: x.title, sub: "画布节点产物 · 作为参考图附件", kind: "node" as const, url: x.url }));
       // 「上传」常驻最后：直接选本地图/文档作参考附件（免先进素材库）。
-      return [...chars, ...assets, { name: "上传图片 / 文档…", sub: "本地文件作为参考附件", kind: "upload" as const }];
+      return [...chars, ...nodeItems, ...assets, { name: "上传图片 / 文档…", sub: "本地文件作为参考附件", kind: "upload" as const }];
     }
     if (pickMode === "/" && isClaudeLocal && bridgeSkills.enabled) {
       return bridgeSkills.skills
@@ -414,8 +424,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const applyPick = (it: PickItem) => {
     if (!trig) return;
     if (it.kind === "upload") { cutTrig(); fileInputRef.current?.click(); return; }
-    if (it.kind === "asset" && it.url) {
-      // 素材 → 拉成 File 进现有附件管线（chip 展示、大小护栏、发送时转 data URI 喂 LLM）。
+    if ((it.kind === "asset" || it.kind === "node") && it.url) {
+      // 素材/节点产物 → 拉成 File 进现有附件管线（chip 展示、大小护栏、发送时转 data URI 喂 LLM）。
       cutTrig();
       void (async () => {
         try {
@@ -773,6 +783,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             );
           })}
           {attachErr && <span style={{ fontSize: 10.5, color: "oklch(0.72 0.16 60)", alignSelf: "center" }}>{attachErr}</span>}
+          {/* A2 视觉能力提示：本部署部分模型（Claude 系走 Poyo/Forge）不接受 image_url，
+              带图时给出明确预期，避免「附了图却像没附」的困惑（服务端不做静默丢图，保持现状）。 */}
+          {staged.some((f) => f.type.startsWith("image/")) && LLM_MODELS.find((m) => m.id === model)?.vision !== true && (
+            <span style={{ fontSize: 10.5, color: "oklch(0.72 0.16 60)", alignSelf: "center" }}>当前模型不支持读图，图片附件可能被忽略（可换 GPT / Gemini 系视觉模型）</span>
+          )}
         </div>
       )}
 
