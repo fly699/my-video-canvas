@@ -1446,6 +1446,9 @@ export interface SuperAgentNodeData {
   autoRun?: boolean;
   /** 「编排模式」(B阶段)：把输入当复杂目标，自动拆成多个子任务逐个搭建，成功的各落一个 comfyui_workflow 节点。 */
   orchestrate?: boolean;
+  /** B2 能力路由「自动路由」：运行前先轻量拆解任务，拆出多个独立子任务则自动改走编排、
+   *  否则按单份工作流构建（续接对话不路由）。与 orchestrate 互斥（编排勾选时优先）。默认关。 */
+  autoRoute?: boolean;
   status?: "idle" | "running" | "success" | "failed" | "exhausted" | "aborted";
   /** ComfyUI 模式连续对话记录（用户指令 + 智能体每轮结果摘要）。 */
   conversation?: { role: "user" | "agent"; text: string; workflowJson?: string; status?: string }[];

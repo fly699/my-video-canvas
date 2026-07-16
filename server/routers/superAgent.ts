@@ -9,7 +9,7 @@ import { assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog } from "../_core/auditLog";
 import { ENV } from "../_core/env";
 import { runComfyAgent, extractRunLessons, type ComfyAgentTools, type AgentEvent } from "../_core/superAgent/comfyAgent";
-import { runOrchestration } from "../_core/superAgent/orchestrator";
+import { runOrchestration, decomposeGoal } from "../_core/superAgent/orchestrator";
 import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferenceCandidates } from "../_core/superAgent/comfyAdapters";
 import { pickLeastLoaded } from "../_core/superAgent/serverAssign";
 import { parseGitHubRepo, cloneRepoInto, publicRemote } from "../_core/superAgent/gitClone";
@@ -140,6 +140,9 @@ export const superAgentRouter = router({
         /** B1 产物验收：execute 成功后用视觉模型质检首张产物图（符合度/畸形/黑屏等硬伤），
          *  未过把原因喂回引擎修错循环（整个 run 仅拒一次）。默认关（额外一次视觉调用费用）。 */
         verifyOutput: z.boolean().optional(),
+        /** B2 能力路由：运行前先轻量拆解任务（一次短 LLM 调用），拆出多个独立子任务则自动
+         *  改走编排（拆解结果直接复用，不重复调用），否则按单份构建。续接对话不路由。默认关。 */
+        autoRoute: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -223,6 +226,43 @@ export const superAgentRouter = router({
       let result;
       let buildRetried = false;
       try {
+        // B2 能力路由：自动判断本次该走「单份构建」还是「编排」。先用一次轻量 LLM 拆解
+        // （decomposeGoal，与编排模式的第一步同款），拆出 >1 个独立子任务 → 直接把拆解结果
+        // 注入 runOrchestration（decompose 复用、不重复付费），产物验收钩子同样生效；
+        // 拆出 1 个（或拆解失败）→ 按原单份构建继续，行为与不开自动路由完全一致。
+        // 续接对话（seedWorkflowJson）永不路由——在既有工作流上迭代必然是单份。
+        if (input.autoRoute && !input.seedWorkflowJson && !signal.aborted) {
+          emitSuperAgentEvent(input.projectId, input.nodeId, { type: "action", message: "自动路由：轻量拆解任务，判断走单份构建还是编排…" });
+          let routed: { title: string; task: string }[] = [];
+          try { routed = await decomposeGoal(llm, input.task, 6); } catch { routed = []; }
+          if (routed.length > 1 && !signal.aborted) {
+            emitSuperAgentEvent(input.projectId, input.nodeId, {
+              type: "action",
+              message: `自动路由：目标较复杂，拆为 ${routed.length} 个子任务，改走编排模式（每个子任务独立搭建调通、失败自动重试）。`,
+              data: { kind: "auto-route", subtasks: routed.map((s) => s.title) },
+            });
+            const orch = await runOrchestration({
+              goal: input.task, baseUrl, tools, llm, signal, useMemory,
+              maxIterations: input.maxIterations ?? 50,
+              decompose: async () => routed, // 复用已拆结果，不再二次调用
+              emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
+              verifyProduct: input.verifyOutput ? async (subtaskTask, { images }) => {
+                if (!images.length) return { ok: true, reasons: [] };
+                const v = await runImageQc(ctx, { imageUrl: images[0], prompt: subtaskTask.slice(0, 2000) });
+                return { ok: v.pass, reasons: v.pass ? [] : [...v.issues, ...(v.suggestion ? [`修正建议：${v.suggestion}`] : [])] };
+              } : undefined,
+            });
+            writeAuditLog({
+              ctx, action: "superagent_comfy_build",
+              detail: { projectId: input.projectId, task: `[自动编排] ${input.task.slice(0, 180)}`, status: `${orch.successCount}/${orch.subtasks.length}`, iterations: orch.subtasks.reduce((a, s) => a + s.iterations, 0), baseUrl },
+            });
+            const finalResult = { kind: "orchestration" as const, goal: orch.goal, successCount: orch.successCount, subtasks: orch.subtasks, autoRouted: true };
+            emitSuperAgentEvent(input.projectId, input.nodeId, { type: "result", message: "__final_result__", data: finalResult });
+            cacheBuildResult(key, finalResult);
+            return finalResult;
+          }
+          emitSuperAgentEvent(input.projectId, input.nodeId, { type: "action", message: "自动路由：任务适合单份工作流，按常规构建。" });
+        }
         const engineOpts = {
           task: input.task,
           tools,
