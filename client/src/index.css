@@ -523,9 +523,10 @@
   /* 逐帧分析 LibTV 定标：近黑画布（≈#0d0e10）+ 深灰大圆角卡（≈#1a1b1e）+
      低透明细白边框/连线 + 反色（近白）强调。整组变量覆盖所有 data-theme 块
      （MUST appear after all theme blocks to win equal-specificity cascade）。 */
-  :root[data-canvas-mode="creative"] {
+  :root[data-canvas-mode="creative"]:not([data-ai-client]) {
     /* 3.1b 精校：逐帧采样 LibTV 操作视频的实际像素值——画布 #121212、
-       顶栏/dock/输入面板统一 #252525、控件 #303030，全部纯中性灰（零色偏）。 */
+       顶栏/dock/输入面板统一 #252525、控件 #303030，全部纯中性灰（零色偏）。
+       :not([data-ai-client]) 排除 /ai 单页——它不是画布，须跟随全局明暗主题而非创意近黑皮肤。 */
     --c-canvas:   #121212;                  /* canvas（视频实测 RGB 18,18,18） */
     --c-base:     #252525;                  /* 顶栏/dock/面板（实测 37,37,37） */
     --c-surface:  #232323;                  /* cards — 比面板略深一档 */
@@ -556,7 +557,7 @@
   /* 创意模式「朴素浅色」变体：软纸白背景 + 中性灰面板 + 深岩灰文字，近零色偏、低对比，
      不刺眼、久看不易疲劳。比 data-canvas-mode="creative" 单选择器更高优先级，故 data-canvas-theme
      ="light" 时覆盖上面的近黑皮肤；默认 dark 时本块不生效。 */
-  :root[data-canvas-mode="creative"][data-canvas-theme="light"] {
+  :root[data-canvas-mode="creative"][data-canvas-theme="light"]:not([data-ai-client]) {
     /* 层级修正（3.1c）：画布=温和灰「桌面」，面板/卡片=近白「抬升」——
        浅色 UI 里越靠上的层越亮，配合投影才有清晰的卡片边界；旧版把面板做得比画布更深，
        导致整体发灰、卡片与画布糊成一片。文字统一加深至 WCAG 可读区间。 */
