@@ -1292,6 +1292,50 @@ export async function detectSceneChanges(inputUrl: string, threshold = 0.3): Pro
   }
 }
 
+/** 解析 ffmpeg silencedetect 的 stderr 输出为静音区间。durationSec 提供时，
+ *  收尾未闭合的 silence_start（静音一直到片尾，ffmpeg 只打 start 不打 end）按片尾闭合。
+ *  纯函数便于单测。 */
+export function parseSilenceDetect(stderr: string, durationSec?: number): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  let open: number | null = null;
+  for (const line of String(stderr ?? "").split(/\r?\n/)) {
+    const s = /silence_start:\s*(-?[0-9]+(?:\.[0-9]+)?)/.exec(line);
+    if (s) { open = Math.max(0, parseFloat(s[1])); continue; }
+    const e = /silence_end:\s*(-?[0-9]+(?:\.[0-9]+)?)/.exec(line);
+    if (e && open != null) {
+      const end = parseFloat(e[1]);
+      if (end > open) out.push({ start: open, end });
+      open = null;
+    }
+  }
+  if (open != null && durationSec != null && durationSec > open) out.push({ start: open, end: durationSec });
+  return out;
+}
+
+/** 静音区间检测：ffmpeg silencedetect（本地执行，无第三方 AI）。noiseDb 为判静阈值
+ *  （越低越严格，常用 -32），minSilenceSec 为最短静音时长。结果打在 stderr。 */
+export async function detectSilences(
+  inputUrl: string,
+  opts: { noiseDb?: number; minSilenceSec?: number; durationSec?: number } = {},
+): Promise<{ start: number; end: number }[]> {
+  const noise = opts.noiseDb ?? -32;
+  const minDur = opts.minSilenceSec ?? 0.5;
+  const srcPath = await downloadToTemp(inputUrl, "mp4");
+  try {
+    const { stderr } = await execFileAsync("ffmpeg", [
+      "-i", srcPath,
+      "-af", `silencedetect=n=${noise}dB:d=${minDur}`,
+      "-vn", "-f", "null", "-",
+    ]);
+    return parseSilenceDetect(String(stderr ?? ""), opts.durationSec);
+  } catch (err: unknown) {
+    const e = err as { stderr?: string; message?: string };
+    throw new Error(`静音检测失败：${summarizeFfmpegStderr(e.stderr, e.message ?? String(err))}`);
+  } finally {
+    await fs.unlink(srcPath).catch(() => undefined);
+  }
+}
+
 export async function smartCutVideo(opts: SmartCutOptions): Promise<SmartCutResult> {
   if (opts.keepSegments.length === 0) throw new Error("keepSegments 不能为空");
 

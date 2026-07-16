@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseAiCutPlan, sanitizeRanges, snapToWordBoundaries, buildAiCutDoc, aiCutStats, buildSubtitleClips, type CutWord } from "./_core/aiCut";
+import { parseAiCutPlan, sanitizeRanges, snapToWordBoundaries, buildAiCutDoc, aiCutStats, buildSubtitleClips, invertSilencesToKeep, type CutWord } from "./_core/aiCut";
 
 const SRC = { assetId: 7, assetUrl: "https://x/v.mp4", width: 1920, height: 1080, fps: 30, durationSec: 30 };
 
@@ -98,5 +98,20 @@ describe("buildSubtitleClips 跨删除段断句 + aiCutStats", () => {
   it("aiCutStats 统计保留/删除时长", () => {
     const doc = buildAiCutDoc(SRC, { keep: [{ start: 0, end: 4 }, { start: 10, end: 16 }] }, [], {});
     expect(aiCutStats(doc, 30)).toMatchObject({ keptSec: 10, removedSec: 20, clips: 2 });
+  });
+});
+
+describe("invertSilencesToKeep（静音剪除：静音区间 → 保留区间）", () => {
+  it("反转中段静音，保留首尾与间隔段", () => {
+    const keep = invertSilencesToKeep([{ start: 2, end: 4 }, { start: 7, end: 8 }], 10);
+    expect(keep).toEqual([{ start: 0, end: 2 }, { start: 4, end: 7 }, { start: 8, end: 10 }]);
+  });
+  it("片头/片尾静音正确裁掉；重叠静音先合并", () => {
+    const keep = invertSilencesToKeep([{ start: 0, end: 1 }, { start: 0.5, end: 2 }, { start: 9, end: 10 }], 10);
+    expect(keep).toEqual([{ start: 2, end: 9 }]);
+  });
+  it("全片静音 → 空数组；无静音 → 整片保留", () => {
+    expect(invertSilencesToKeep([{ start: 0, end: 10 }], 10)).toEqual([]);
+    expect(invertSilencesToKeep([], 10)).toEqual([{ start: 0, end: 10 }]);
   });
 });

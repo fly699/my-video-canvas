@@ -84,6 +84,20 @@ function extractPlanObject(text: string): Record<string, unknown> | null {
   return firstParsed;
 }
 
+/** 静音剪除：把静音区间反转为保留区间（非静音段）。区间会先夹取排序；
+ *  全片静音 → 空数组（调用方据此报「无可保留内容」）。纯函数便于单测。 */
+export function invertSilencesToKeep(silences: CutRange[], durationSec: number): CutRange[] {
+  const sil = sanitizeRanges(silences, durationSec);
+  const keep: CutRange[] = [];
+  let cursor = 0;
+  for (const s of sil) {
+    if (s.start > cursor) keep.push({ start: cursor, end: s.start });
+    cursor = Math.max(cursor, s.end);
+  }
+  if (durationSec > cursor) keep.push({ start: cursor, end: durationSec });
+  return keep.filter((r) => r.end - r.start > 0.02);
+}
+
 /** 清洗保留区间：夹到 [0,duration]、去零/负长、按 start 排序、合并重叠/相邻(<0.02s)。 */
 export function sanitizeRanges(ranges: CutRange[], durationSec: number): CutRange[] {
   const cleaned = ranges
