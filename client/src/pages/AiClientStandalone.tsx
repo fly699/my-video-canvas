@@ -148,7 +148,7 @@ function StandaloneInner() {
   const topBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "7px 11px", borderRadius: 9, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer", flexShrink: 0 };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "var(--c-bg, #0c0c10)", overflow: "hidden" }}>
+    <div style={{ position: "fixed", inset: 0, background: "var(--c-canvas)", overflow: "hidden" }}>
       {/* 顶栏：品牌标题 + 模型跑马灯 + 项目切换 + 全屏 + 返回（无地址栏 / 无外链） */}
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: topbarH, padding: narrow ? "0 10px" : "12px 20px 8px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, borderBottom: "1px solid var(--c-bd1)", background: "var(--c-surface)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: narrow ? 8 : 12 }}>

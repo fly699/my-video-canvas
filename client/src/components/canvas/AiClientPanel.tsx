@@ -870,7 +870,7 @@ export function AiClientPanel({ embedded = false, onLatestReply }: { embedded?: 
         {/* 对话流 + 输入 */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
           <div ref={scrollRef} onScroll={onMsgScroll} onTouchStart={onMsgTouchStart} onTouchMove={onMsgTouchMove} onTouchEnd={onMsgTouchEnd}
-            style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12, zoom: fontZoom }}>
+            style={{ flex: 1, overflowY: "auto", padding: "16px 10px", display: "flex", flexDirection: "column", gap: 12, zoom: fontZoom }}>
             {(!active || (messages.length === 0 && !msgQuery.isLoading)) && (
               <div style={{ margin: "auto", width: "100%", maxWidth: 420, textAlign: "center", padding: "0 4px" }}>
                 <span style={{ display: "inline-flex", width: 52, height: 52, alignItems: "center", justifyContent: "center", borderRadius: 15, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={28} /></span>
@@ -905,7 +905,7 @@ export function AiClientPanel({ embedded = false, onLatestReply }: { embedded?: 
                 <div style={{ alignSelf: "center", margin: "4px 0", padding: "2px 10px", borderRadius: 20, fontSize: 10.5, color: "var(--c-t4)", background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>{fmtDaySep(ts)}</div>
               )}
               <div style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 3 }}>
-                <div style={{ display: "flex", gap: 7, alignItems: "flex-start", maxWidth: "88%" }}>
+                <div style={{ display: "flex", gap: 7, alignItems: "flex-start", maxWidth: "95%" }}>
                   {/* AI 回复左侧头像锚点（用户消息不加，保持右对齐简洁） */}
                   {m.role !== "user" && (
                     <span style={{ flexShrink: 0, marginTop: 1, display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 8, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={15} /></span>
@@ -995,7 +995,8 @@ export function AiClientPanel({ embedded = false, onLatestReply }: { embedded?: 
             onDragOver={(e) => { if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) { e.preventDefault(); setDragOver(true); } }}
             onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
             onDrop={onDropImages}
-            style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)", position: "relative", outline: dragOver ? `2px dashed ${ACCENT}` : "none", outlineOffset: -2 }}
+            onTouchStart={onMsgTouchStart} onTouchMove={onMsgTouchMove} onTouchEnd={onMsgTouchEnd}
+            style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)", position: "relative", outline: dragOver ? `2px dashed ${ACCENT}` : "none", outlineOffset: -2, zoom: fontZoom }}
           >
             {/* 顶部可拖拽分隔线：上下拖调「对话区 / 输入框」占比（悬停高亮，双击复位）。
                 触摸屏优化：抓取区扩到 26px 高（远超原 8px），touch-action:none 防手指拖动被当滚动，
