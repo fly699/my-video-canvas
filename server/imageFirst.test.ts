@@ -131,6 +131,23 @@ describe("enforceImageFirst", () => {
     // 原连线原样保留（existing_img → vt1，未被重定向）
     expect(has(out, (o) => o.op === "connect" && o.sourceRef === "existing_img" && o.targetRef === "vt1")).toBe(true);
   });
+
+  it("已存在图节点 + 本批文本节点同时接入同一新视频 → 不强插（避免双首帧+多烧钱）", () => {
+    const ops: AgentOperation[] = [
+      // existing_img 是画布已有图片节点（非本批 tempId），P 是本批新建文本节点，两者都接 vt1
+      { op: "create", nodeType: "prompt", tempId: "p1", payload: {} },
+      { op: "create", nodeType: "video_task", tempId: "vt1", payload: { prompt: "让画面动起来" } },
+      { op: "connect", sourceRef: "existing_img", targetRef: "vt1" },
+      { op: "connect", sourceRef: "p1", targetRef: "vt1" },
+    ];
+    const out = enforceImageFirst(ops);
+    // 关键：视频已被已存在源标记为「可能已有图源」，P 也不再被强插 image_gen
+    expect(creates(out, "image_gen")).toHaveLength(0);
+    // 两条原连线都原样保留、未被重定向
+    expect(has(out, (o) => o.op === "connect" && o.sourceRef === "existing_img" && o.targetRef === "vt1")).toBe(true);
+    expect(has(out, (o) => o.op === "connect" && o.sourceRef === "p1" && o.targetRef === "vt1")).toBe(true);
+    expect(out).toEqual(ops);
+  });
 });
 
 describe("enforceImageFirstComfy", () => {
@@ -198,5 +215,19 @@ describe("enforceImageFirstComfy", () => {
     const out = enforceImageFirstComfy(ops, IMG, VID, 10);
     expect(cw(out)).toHaveLength(1); // 未新增出图工作流
     expect(out.some((o) => o.op === "connect" && o.sourceRef === "existing_cw" && o.targetRef === "vcw1")).toBe(true);
+  });
+
+  it("已存在出图工作流 + 本批文本节点同时接入同一新视频 cw → 不强插（避免双首帧+多烧钱）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "prompt", tempId: "p1", payload: { positivePrompt: "猫" } },
+      { op: "create", nodeType: "comfyui_workflow", tempId: "vcw1", payload: { templateId: 20, prompt: "猫" } },
+      { op: "connect", sourceRef: "existing_cw", targetRef: "vcw1" }, // 已存在节点作首帧
+      { op: "connect", sourceRef: "p1", targetRef: "vcw1" },
+    ];
+    const out = enforceImageFirstComfy(ops, IMG, VID, 10);
+    expect(cw(out)).toHaveLength(1); // 未新增出图工作流
+    expect(out.some((o) => o.op === "connect" && o.sourceRef === "existing_cw" && o.targetRef === "vcw1")).toBe(true);
+    expect(out.some((o) => o.op === "connect" && o.sourceRef === "p1" && o.targetRef === "vcw1")).toBe(true);
+    expect(out).toEqual(ops);
   });
 });
