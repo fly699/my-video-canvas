@@ -238,6 +238,19 @@ export function AiClientPanel({ embedded = false, onLatestReply }: { embedded?: 
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  // 移动端：双指捏合缩放对话区字号（页面 viewport 禁用了原生缩放，故自绘）。持久化。
+  const [fontZoom, setFontZoom] = useState<number>(() => { try { return Number(localStorage.getItem("avc:ai-font-zoom")) || 1; } catch { return 1; } });
+  useEffect(() => { try { localStorage.setItem("avc:ai-font-zoom", String(fontZoom)); } catch { /* restricted */ } }, [fontZoom]);
+  const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
+  const touchDist = (t: React.TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const onMsgTouchStart = (e: React.TouchEvent) => { if (e.touches.length === 2) pinchRef.current = { startDist: touchDist(e.touches), startZoom: fontZoom }; };
+  const onMsgTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchRef.current && pinchRef.current.startDist > 0) {
+      const z = pinchRef.current.startZoom * (touchDist(e.touches) / pinchRef.current.startDist);
+      setFontZoom(Math.round(Math.max(0.8, Math.min(2.2, z)) * 100) / 100);
+    }
+  };
+  const onMsgTouchEnd = (e: React.TouchEvent) => { if (e.touches.length < 2) pinchRef.current = null; };
   // 语音输入：Web Speech 主路径 + 无法访问 Google 时自动回退服务端 whisper（见 useVoiceInput）。
   const voice = useVoiceInput({ getText: () => input, setText: setInput });
   // 移动端（窄屏）：embedded 独立页在手机上会话侧栏/工件面板不能与聊天并排挤压，改为抽屉/浮层。
@@ -856,7 +869,8 @@ export function AiClientPanel({ embedded = false, onLatestReply }: { embedded?: 
 
         {/* 对话流 + 输入 */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
-          <div ref={scrollRef} onScroll={onMsgScroll} style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div ref={scrollRef} onScroll={onMsgScroll} onTouchStart={onMsgTouchStart} onTouchMove={onMsgTouchMove} onTouchEnd={onMsgTouchEnd}
+            style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12, zoom: fontZoom }}>
             {(!active || (messages.length === 0 && !msgQuery.isLoading)) && (
               <div style={{ margin: "auto", width: "100%", maxWidth: 420, textAlign: "center", padding: "0 4px" }}>
                 <span style={{ display: "inline-flex", width: 52, height: 52, alignItems: "center", justifyContent: "center", borderRadius: 15, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={28} /></span>

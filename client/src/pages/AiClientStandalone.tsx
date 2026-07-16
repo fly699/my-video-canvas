@@ -8,8 +8,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { useLocation } from "wouter";
-import { Bot, FolderOpen, ChevronDown, ArrowLeft, Check, Maximize2, Minimize2, SquareArrowOutUpRight, PanelsTopLeft, Download } from "lucide-react";
+import { Bot, FolderOpen, ChevronDown, ArrowLeft, Check, Maximize2, Minimize2, SquareArrowOutUpRight, PanelsTopLeft, Download, Sun, Moon } from "lucide-react";
 import { toast } from "sonner";
+import { useTheme, THEMES } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useCanvasStore, type CanvasNode } from "@/hooks/useCanvasStore";
@@ -22,7 +23,7 @@ import { getNodeConfig } from "@/lib/nodeConfig";
 import type { NodeType } from "../../../shared/types";
 
 const ACCENT = "oklch(0.70 0.20 300)";
-const TOPBAR_H = 60; // 顶栏（标题 + 极薄模型细条 + 项目切换）单行紧凑，面板从其下方铺满
+const TOPBAR_H = 116; // 顶栏（标题 + 模型跑马灯 + 项目切换）高度，面板从其下方铺满
 const TOPBAR_H_NARROW = 52; // 移动端顶栏：单行紧凑（隐藏跑马灯 + 副标题）
 
 // PWA「下载为应用」的 beforeinstallprompt 事件类型（浏览器扩展事件，标准库无声明）。
@@ -107,6 +108,11 @@ function StandaloneInner() {
       if (link && prev) link.setAttribute("href", prev); // 离开 /ai 时恢复全站清单
     };
   }, []);
+  // 深/浅主题切换（复用全站 ThemeContext；移动端 /ai 无设置入口，这里给一个直达开关）。
+  const { theme, setTheme } = useTheme();
+  const isDark = THEMES.find((t) => t.id === theme)?.dark ?? true;
+  const toggleTheme = () => setTheme(isDark ? "light" : "dark");
+
   const installApp = () => {
     if (installPrompt) {
       void installPrompt.prompt();
@@ -153,7 +159,7 @@ function StandaloneInner() {
           </div>
           {!narrow && (
             <div style={{ flex: 1, minWidth: 0, margin: "0 8px" }}>
-              <ModelShowcaseCard mini />
+              <ModelShowcaseCard compact />
             </div>
           )}
           {narrow && <div style={{ flex: 1, minWidth: 0 }} />}
@@ -202,6 +208,10 @@ function StandaloneInner() {
               <PanelsTopLeft size={13} /> {!narrow && "进入画布"}
             </button>
           )}
+          {/* 深/浅主题切换 */}
+          <button onClick={toggleTheme} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title={isDark ? "切换到浅色主题" : "切换到深色主题"}>
+            {isDark ? <Sun size={13} /> : <Moon size={13} />} {!narrow && (isDark ? "浅色" : "深色")}
+          </button>
           {/* 下载为应用（PWA 安装）——已安装则隐藏 */}
           {!installed && (
             <button onClick={installApp} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title="下载为应用（安装到桌面 / 主屏幕，独立窗口打开）">

@@ -20,32 +20,29 @@ function activeBrands(): Brand[] {
   return BRANDS.filter((b) => (b.key === "Grok" ? hasGrok : fams.has(b.key as never)));
 }
 
-function Chip({ b, mini }: { b: Brand; mini?: boolean }) {
+function Chip({ b }: { b: Brand }) {
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", gap: mini ? 5 : 8, flexShrink: 0,
-      padding: mini ? "3px 10px" : "10px 18px", borderRadius: 999, fontSize: mini ? 11.5 : 15, fontWeight: 700, color: "#fff",
+      display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0,
+      padding: "10px 18px", borderRadius: 999, fontSize: 15, fontWeight: 700, color: "#fff",
       background: `linear-gradient(135deg, ${b.c1}, ${b.c2})`,
-      boxShadow: mini ? "none" : `0 6px 20px color-mix(in oklch, ${b.c1} 40%, transparent)`,
+      boxShadow: `0 6px 20px color-mix(in oklch, ${b.c1} 40%, transparent)`,
       whiteSpace: "nowrap",
     }}>
-      <span style={{ fontSize: mini ? 12 : 17 }}>{b.emoji}</span>{b.label}
+      <span style={{ fontSize: 17 }}>{b.emoji}</span>{b.label}
     </span>
   );
 }
 
-// compact：无标题、常规芯片；mini：极薄单行细条（跑马灯，大幅省顶栏空间，用于 /ai 顶栏）。
-export function ModelShowcaseCard({ compact = false, mini = false }: { compact?: boolean; mini?: boolean }) {
+export function ModelShowcaseCard({ compact = false }: { compact?: boolean }) {
   const brands = activeBrands();
   const loop = [...brands, ...brands]; // 两遍拼接做无缝跑马灯
   return (
     <div style={{
-      position: "relative", overflow: "hidden", borderRadius: mini ? 999 : 18,
-      padding: mini ? "3px 0" : compact ? "16px 0" : "26px 0",
-      background: mini
-        ? "linear-gradient(90deg, oklch(0.26 0.05 300 / 0.55), oklch(0.2 0.03 260 / 0.55))"
-        : "radial-gradient(120% 140% at 0% 0%, oklch(0.28 0.06 300 / 0.9), oklch(0.18 0.03 260 / 0.9))",
-      border: mini ? "1px solid oklch(0.6 0.1 300 / 0.22)" : "1px solid oklch(0.6 0.1 300 / 0.35)",
+      position: "relative", overflow: "hidden", borderRadius: 18,
+      padding: compact ? "16px 0" : "26px 0",
+      background: "radial-gradient(120% 140% at 0% 0%, oklch(0.28 0.06 300 / 0.9), oklch(0.18 0.03 260 / 0.9))",
+      border: "1px solid oklch(0.6 0.1 300 / 0.35)",
     }}>
       <style>{`
         @keyframes avc-showcase-marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
@@ -65,14 +62,14 @@ export function ModelShowcaseCard({ compact = false, mini = false }: { compact?:
       )}
       {/* 跑马灯：两遍拼接 + translateX(-50%) 无缝循环 */}
       <div className="avc-showcase" style={{ width: "100%", overflow: "hidden", maskImage: "linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent)" }}>
-        <div className="avc-showcase-track" style={mini ? { gap: 8 } : undefined}>
-          {loop.map((b, i) => <Chip key={`${b.key}-${i}`} b={b} mini={mini} />)}
+        <div className="avc-showcase-track">
+          {loop.map((b, i) => <Chip key={`${b.key}-${i}`} b={b} />)}
         </div>
       </div>
-      {/* 底部微光（mini 省略，进一步减负） */}
-      {!mini && <div style={{ position: "absolute", inset: 0, pointerEvents: "none",
+      {/* 底部微光 */}
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none",
         background: "radial-gradient(60% 40% at 50% 120%, oklch(0.7 0.2 300 / 0.25), transparent)",
-        animation: "avc-showcase-glow 4s ease-in-out infinite" }} />}
+        animation: "avc-showcase-glow 4s ease-in-out infinite" }} />
     </div>
   );
 }
