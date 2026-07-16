@@ -295,17 +295,26 @@ export function imageModelDigestText(only?: string): string {
  *  图/视频独立裁剪：只锁图像时视频仍全量，反之亦然；不锁 = 全量（与旧版逐字一致）。
  *  可靠性依据：快速设置随每轮请求实时传入、服务端无状态——改模型下一轮即按新模型
  *  注入、选回「默认」下一轮即恢复全量，无缓存/同步问题。 */
-export function modelKnowledgeText(opts: { pinnedImageModel?: string; pinnedVideoModel?: string } = {}): string {
+export function modelKnowledgeText(opts: { pinnedImageModel?: string; pinnedVideoModel?: string; compact?: boolean } = {}): string {
   const imgPin = opts.pinnedImageModel && IMAGE_MODELS.some((m) => m.value === opts.pinnedImageModel) ? opts.pinnedImageModel : undefined;
   const vidPin = opts.pinnedVideoModel && VIDEO_MODELS.some((m) => m.value === opts.pinnedVideoModel && m.value !== "mock") ? opts.pinnedVideoModel : undefined;
   const restNote = (kind: string, pin: string, rest: string) =>
     `\n（已由用户在快速设置锁定${kind}模型 ${pin}，生成一律用它。其余${kind}模型仅名字目录、仅供答疑提及，本轮生成【禁止】选用——它们的参数未提供，选用即编造：${rest}）`;
+  // A3 批2 编辑模式精简清单：框选=增量编辑意图，通常不涉及重新选型，全量参数表（清单
+  // 最大体积来源）压成「仅合法 id 目录」；锁定（pinned）类别不受影响（保留所锁完整条目）。
+  const compactNote = (kind: string, ids: string) =>
+    `（编辑模式精简清单——${kind}模型合法 id 目录：${ids}。如需换模型只从此目录取 id；参数表本轮未注入，`
+    + `不清楚某模型的 params 键就【不要】写 params，交由节点默认与服务端校验兜底。）`;
   const imgSection = imgPin
     ? imageModelDigestText(imgPin) + restNote("图像", imgPin, IMAGE_MODELS.filter((m) => m.value !== imgPin).map((m) => m.value).join("、"))
-    : imageModelDigestText();
+    : opts.compact
+      ? compactNote("图像", IMAGE_MODELS.map((m) => m.value).join("、"))
+      : imageModelDigestText();
   const vidSection = vidPin
     ? videoModelDigestText(vidPin) + restNote("视频", vidPin, VIDEO_MODELS.filter((m) => m.value !== vidPin && m.value !== "mock").map((m) => m.value).join("、"))
-    : videoModelDigestText();
+    : opts.compact
+      ? compactNote("视频", VIDEO_MODELS.filter((m) => m.value !== "mock").map((m) => m.value).join("、"))
+      : videoModelDigestText();
   return `## 图像模型（image_gen.model / storyboard.imageModel 的合法取值）\n${imgSection}\n## 视频模型（video_task.provider 的合法取值；params 键与取值严格按各自参数表，*=默认）\n${vidSection}`;
 }
 

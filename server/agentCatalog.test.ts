@@ -404,3 +404,24 @@ describe("agentCatalog.sanitizeOperationDetailed · A3 框选硬约束（allowed
     expect("op" in cr).toBe(true);
   });
 });
+
+describe("agentCatalog.modelKnowledgeText · A3 批2 编辑模式精简清单（compact）", () => {
+  it("compact：两类均压成 id 目录，体积远小于全量，仍含合法模型 id", () => {
+    const full = modelKnowledgeText();
+    const compact = modelKnowledgeText({ compact: true });
+    expect(compact.length).toBeLessThan(full.length / 3);
+    expect(compact).toContain("编辑模式精简清单");
+    expect(compact).toContain("不要】写 params");
+  });
+  it("pinned 优先于 compact：锁定类别保留完整条目，未锁类别仍精简", () => {
+    const full = modelKnowledgeText();
+    const pinnedId = /-\s(\S+)「/.exec(full)?.[1]; // 从全量清单里取第一个图像模型 id
+    expect(pinnedId).toBeTruthy();
+    const r = modelKnowledgeText({ pinnedImageModel: pinnedId, compact: true });
+    expect(r).toContain(`已由用户在快速设置锁定图像模型 ${pinnedId}`);
+    expect(r).toContain("编辑模式精简清单——视频模型合法 id 目录");
+  });
+  it("不传 compact 与旧行为逐字一致", () => {
+    expect(modelKnowledgeText({})).toBe(modelKnowledgeText());
+  });
+});
