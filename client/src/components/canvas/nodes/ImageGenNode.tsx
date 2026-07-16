@@ -30,7 +30,8 @@ import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, ChevronUp, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin, Camera } from "lucide-react";
+import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, ChevronUp, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin, Camera, ShieldCheck } from "lucide-react";
+import { buildQcRetryPrompt } from "../../../../../shared/imageQc";
 import { StylePicker } from "../StylePicker";
 import { CameraRigPicker, stripCameraRig } from "../CameraRigPicker";
 import { ToolChip, RefThumbRow, MarkElementPicker, MarkChipRow, loadMarkModel, saveMarkModel, switchMark, removeMark } from "../InlineBarParts";
@@ -291,6 +292,45 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     if (lightboxIndex >= len) setLightboxIndex(null);
   }, [hasMultiple, payload.imageUrls, payload.imageUrl, lightboxIndex]);
 
+  // ── A1 质检回环：生成结果 AI 质检 ────────────────────────────────────────────
+  // 手动：结果区「AI 质检」按钮，任何有结果的节点可用。
+  // 自动：仅「画布助手创建的节点（payload.createdByAgent）+ 快捷设置开了 autoQc」——
+  // 生成完成即质检；未过且带修正意见时把意见并进提示词自动重试一次（qcRetried 防循环）。
+  // 视觉模型与「标记」共用（loadMarkModel 偏好）；计费/门控/日志由服务端统一入口继承。
+  const qcMut = trpc.aiEnhance.qcImage.useMutation();
+  const [pendingQcRegen, setPendingQcRegen] = useState(false);
+  // 自动重试走 handleGenerate 时跳过「新一轮复位 qc/qcRetried」，否则守卫被自己清掉 → 无限重试。
+  const skipQcResetRef = useRef(false);
+  const readAutoQcPref = () => {
+    try { return (JSON.parse(localStorage.getItem("avc:canvasAgent:prefs") ?? "{}") as { autoQc?: boolean }).autoQc === true; } catch { return false; }
+  };
+  const runQc = useCallback((url: string, auto: boolean) => {
+    updateNodeData(id, { qc: { status: "checking", at: Date.now() } });
+    const nodeNow = () => useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as ImageGenNodeData | undefined;
+    qcMut.mutate({ imageUrl: url, prompt: nodeNow()?.prompt?.trim() || undefined, model: markModel }, {
+      onSuccess: (v) => {
+        if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+        updateNodeData(id, { qc: { status: v.pass ? "pass" : "fail", score: v.score, issues: v.issues, suggestion: v.suggestion, at: Date.now() } });
+        if (v.pass) { if (!auto) toast.success(`质检通过（${v.score} 分）`); return; }
+        const cur = nodeNow();
+        if (auto && cur && !cur.qcRetried && v.suggestion) {
+          updateNodeData(id, { prompt: buildQcRetryPrompt(cur.prompt ?? "", v.suggestion), qcRetried: true });
+          toast.info(`质检未过（${v.issues.join("；") || "存在硬伤"}），正在按修正意见自动重试一次…`, { duration: 6000 });
+          skipQcResetRef.current = true;
+          setPendingQcRegen(true); // 等 payload.prompt 反映到位再触发（同 pendingGen3d 模式）
+        } else {
+          toast.error(`质检未过：${v.issues.join("；") || "存在硬伤"}${v.suggestion ? `。建议：${v.suggestion}` : ""}`, { duration: 8000 });
+        }
+      },
+      onError: (err) => {
+        if (!useCanvasStore.getState().nodes.some((n) => n.id === id)) return;
+        updateNodeData(id, { qc: undefined }); // 质检本身失败不留「进行中」残态
+        if (!auto) toast.error("质检失败：" + err.message);
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, markModel, updateNodeData]);
+
   // #140 放弃等待：云端生图是「提交即计费」的一次长请求，无法撤回；放弃 = 本地不再等、
   // 结果不回填（abandonedRef 守卫 onSuccess）。每次重新生成时复位。
   const abandonedRef = useRef(false);
@@ -311,6 +351,9 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       });
       propagateRefImage(id, result.urls[0]);
       toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
+      // A1 自动质检（批量：只检主图=第一张）
+      const curB = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as ImageGenNodeData | undefined;
+      if (curB?.createdByAgent && readAutoQcPref()) runQc(result.urls[0], true);
     } else {
       const imageUrl = result.url ?? result.urls?.[0];
       if (!imageUrl) { toast.error("生成完成但未返回图像"); return; }
@@ -323,8 +366,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
       });
       propagateRefImage(id, imageUrl);
       toast.success("图像生成成功");
+      // A1 自动质检（助手节点 + 快捷设置 autoQc 开）
+      const curS = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as ImageGenNodeData | undefined;
+      if (curS?.createdByAgent && readAutoQcPref()) runQc(imageUrl, true);
     }
-  }, [id, updateNodeData, propagateRefImage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, updateNodeData, propagateRefImage, runQc]);
   const applyGenError = useCallback((err: { message: string }) => {
     if (abandonedRef.current) return; // 已放弃——错误也不打扰
     toast.error("图像生成失败：" + err.message);
@@ -422,6 +469,10 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     });
     if (built.blocked) { toast.error(built.blocked); return; }
     abandonedRef.current = false; // 新一轮生成：复位「放弃等待」标记
+    // A1：用户手动发起的新一轮生成 → 清上一轮质检态与重试守卫（质检回环自己触发的重试
+    // 经 skipQcResetRef 跳过，否则守卫被清 → 无限重试）。
+    if (skipQcResetRef.current) skipQcResetRef.current = false;
+    else if (payload.qc || payload.qcRetried) updateNodeData(id, { qc: undefined, qcRetried: undefined });
     // #87 自建算力：走本地 ComfyUI（无参考=txt2img，有参考=img2img），复用全局地址/checkpoint。
     if ((payload.model as string | undefined) === COMFY_LOCAL_MODEL) {
       const bi = built.input as { prompt?: string; style?: string; negativePrompt?: string };
@@ -465,6 +516,16 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     handleGenerate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingGen3d, uploading, payload.referenceImages, payload.referenceImageUrl]);
+
+  // A1 质检自动重试：修正后的 prompt 写进 payload、re-render 反映到位后再触发生成
+  // （与上面 pendingGen3d 同款延迟触发模式，避免同 tick 读到旧 payload）。
+  useEffect(() => {
+    if (!pendingQcRegen) return;
+    if (uploading || isGenerating) return;
+    setPendingQcRegen(false);
+    handleGenerate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingQcRegen, uploading, isGenerating, payload.prompt]);
 
   // #5 版本历史：采集用共享 hook；回滚把某条快照写回当前结果（进撤销栈，便于再撤销回来）。
   useResultHistoryCapture(id, { current: payload.imageUrl, urls: payload.imageUrls, prompt: payload.prompt, history: payload.resultHistory });
@@ -1505,6 +1566,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
             if (isGenerating) return batch > 1 ? `批量生成中 (${batch} 张)...` : "AI 生成中...";
             return batch > 1 ? `批量生成 ${batch} 张` : "生成图像";
           })()}
+          {/* A1 质检徽标/按钮渲染于本按钮之后（见下方 qcRow） */}
           {genCostLabel && !isGenerating && (
             <span
               title="按当前模型与参数实时预估的点数消耗，仅供参考，实际以平台账单为准"
@@ -1524,6 +1586,31 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           >
             <X className="w-3 h-3" /> 放弃等待
           </button>
+        )}
+        {/* A1 质检回环：手动质检按钮 + 最近判定徽标（有结果图才显示）。自动质检只对
+            助手创建节点 + 快捷设置 autoQc 生效；此处按钮任何节点可手动触发。 */}
+        {payload.imageUrl && !isGenerating && (
+          <div className="nodrag flex items-center gap-2" style={{ marginTop: 6, fontSize: 10.5 }}>
+            <button
+              onClick={() => runQc(payload.imageUrl!, false)}
+              disabled={qcMut.isPending || payload.qc?.status === "checking"}
+              title={`用视觉模型质检当前结果图（符合度/畸形/黑屏/水印等硬伤）。质检模型与「标记」共用：${markModel}`}
+              className="nodrag flex items-center gap-1 px-2 py-0.5 rounded"
+              style={{ background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", fontSize: 10.5, cursor: qcMut.isPending ? "default" : "pointer" }}
+            >
+              {(qcMut.isPending || payload.qc?.status === "checking") ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+              {(qcMut.isPending || payload.qc?.status === "checking") ? "质检中…" : "AI 质检"}
+            </button>
+            {payload.qc && payload.qc.status === "pass" && (
+              <span title={`质检通过（${payload.qc.score ?? "—"} 分）`} style={{ color: "oklch(0.72 0.17 150)", fontWeight: 600 }}>✓ 质检通过 {payload.qc.score ?? ""}</span>
+            )}
+            {payload.qc && payload.qc.status === "fail" && (
+              <span
+                title={`问题：${(payload.qc.issues ?? []).join("；") || "存在硬伤"}${payload.qc.suggestion ? `\n修正建议：${payload.qc.suggestion}` : ""}${payload.qcRetried ? "\n（已自动重试过一次）" : ""}`}
+                style={{ color: "oklch(0.75 0.16 60)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}
+              >⚠ 质检未过{(payload.qc.issues?.length ?? 0) > 0 ? `：${payload.qc.issues![0]}${payload.qc.issues!.length > 1 ? ` 等${payload.qc.issues!.length}项` : ""}` : ""}</span>
+            )}
+          </div>
         )}
 
         </div>{/* end input collapse wrapper */}

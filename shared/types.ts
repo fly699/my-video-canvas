@@ -543,6 +543,12 @@ export interface ImageGenNodeData {
   fluxNumImages?: number;
   // Batch generation results
   imageUrls?: string[]; // multiple generated images (Soul batchSize=4, etc.)
+  /** A1 质检回环：画布助手创建的节点标记（agentApply 落地时盖章），自动质检只作用于它们。 */
+  createdByAgent?: boolean;
+  /** A1 质检回环：最近一次 AI 质检结果（checking=进行中）。 */
+  qc?: { status: "checking" | "pass" | "fail"; score?: number; issues?: string[]; suggestion?: string; at?: number };
+  /** A1 质检回环：本轮已按质检意见自动重试过一次（防循环重试；新一轮手动生成时复位）。 */
+  qcRetried?: boolean;
   /** Collapsed hero preview mode for a multi-image batch: "grid" (default) shows
    *  the whole grid, "single" shows only the selected image. */
   heroView?: "grid" | "single";

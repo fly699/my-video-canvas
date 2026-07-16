@@ -415,8 +415,11 @@ export function applyAgentOperations(
           }
           // Stamp ownership (multi-agent) + scene membership (so a Character can
           // "应用到本场景所有镜头"). Both stored in payload like `createdBy`.
+          // createdByAgent：助手产出标记（A1 质检回环等「只对助手建的节点自动化」的功能靠它区分，
+          // 此前 payload 无任何来源标记，createdBy 记的是触发助手的用户）。
           const ownedPayload = {
             ...(payload ?? {}),
+            createdByAgent: true,
             ...(opts.ownerAgentId ? { ownerAgentId: opts.ownerAgentId } : {}),
             ...(op.sceneGroup?.trim() ? { sceneGroup: op.sceneGroup.trim() } : {}),
           };
