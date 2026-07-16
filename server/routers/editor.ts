@@ -5,7 +5,7 @@ import * as db from "../db";
 import { writeAuditLog } from "../_core/auditLog";
 import { EDITOR_DOC_VERSION, emptyEditorDoc, sliceEditorDoc, editorDocDuration, type EditorDoc } from "@shared/editorTypes";
 import { composeTimeline } from "../_core/videoComposer";
-import { execFileAsync, downloadToTemp } from "../_core/videoEditor";
+import { execFileAsync, downloadToTemp, detectSilences } from "../_core/videoEditor";
 import { looksLikeAVContainer, readHead } from "../_core/voiceTranscription";
 import { promises as fsp } from "node:fs";
 import { createRenderJob, getRenderJob, updateRenderJob, countRunningRenderJobs, getActiveRenderJobForSession } from "../_core/editorRenderJobs";
@@ -15,7 +15,7 @@ import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { getSystemDefaultModel } from "../_core/systemDefaultModels";
-import { buildAiCutDoc, parseAiCutPlan, aiCutStats } from "../_core/aiCut";
+import { buildAiCutDoc, parseAiCutPlan, aiCutStats, invertSilencesToKeep } from "../_core/aiCut";
 import { buildAutoComposeDoc, parseAutoComposePlan } from "../_core/autoCompose";
 
 // ── EDL validation ────────────────────────────────────────────────────────────
@@ -299,6 +299,45 @@ export const editorRouter = router({
       if (!doc.tracks.find((t) => t.type === "video")!.clips.length) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "剪辑结果为空（保留区间无效），请重试" });
       writeAuditLog({ ctx, action: "editor:aiCut", detail: { clips: doc.tracks[0].clips.length, subtitles: !!input.subtitles } });
       return { doc, stats: aiCutStats(doc, input.durationSec) };
+    }),
+
+  // 静音自动剪除：本地 ffmpeg silencedetect 找静音段 → 反转成保留区间 → 复用 aiCut 的
+  // 确定性组装（30ms 淡入淡出 + 音量归一）产出新 EditorDoc，客户端 applyDoc 整档替换
+  // （可一键撤销）。零 LLM/转写成本 → 不做白名单门控（对齐 canvas.detectScenes 策略）；
+  // SSRF 由 downloadToTemp 内部守卫（自有存储直通、外链拦内网）。
+  silenceCut: protectedProcedure
+    .input(z.object({
+      assetUrl: z.string().min(1).max(2048),
+      assetId: z.number().optional(),
+      durationSec: z.number().positive().max(4 * 3600),
+      width: z.number().int().min(16).max(8192),
+      height: z.number().int().min(16).max(8192),
+      fps: z.number().min(1).max(240),
+      /** 判静阈值 dB（越低越严格），默认 -32。 */
+      noiseDb: z.number().min(-60).max(-10).optional(),
+      /** 最短静音时长（秒），默认 0.6——短于此的正常语流停顿不剪。 */
+      minSilenceSec: z.number().min(0.2).max(5).optional(),
+      /** 保留段前后外扩（秒），默认 0.12——防切掉语音首尾。 */
+      padSec: z.number().min(0).max(1).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const silences = await detectSilences(input.assetUrl, {
+        noiseDb: input.noiseDb ?? -32,
+        minSilenceSec: input.minSilenceSec ?? 0.6,
+        durationSec: input.durationSec,
+      });
+      if (!silences.length) return { doc: null, stats: null, message: "未检测到可剪除的静音段（可调高阈值或缩短最短静音时长后重试）" };
+      const keep = invertSilencesToKeep(silences, input.durationSec);
+      if (!keep.length) return { doc: null, stats: null, message: "整段都被判为静音，未生成剪辑（试试把阈值调低，如 -45dB）" };
+      const doc = buildAiCutDoc(
+        { assetId: input.assetId, assetUrl: input.assetUrl, width: input.width, height: input.height, fps: input.fps, durationSec: input.durationSec },
+        { keep }, [], { padSec: input.padSec ?? 0.12 },
+      );
+      if (!doc.tracks.find((t) => t.type === "video")!.clips.length) {
+        return { doc: null, stats: null, message: "剪辑结果为空，已放弃应用" };
+      }
+      writeAuditLog({ ctx, action: "editor:silenceCut", detail: { silences: silences.length, clips: doc.tracks[0].clips.length } });
+      return { doc, stats: aiCutStats(doc, input.durationSec), message: null };
     }),
 
   // D1 AI 一键成片：素材清单 + 创作要求 → LLM 出剪辑决策（排序/截取/转场/标题/配乐/调色）

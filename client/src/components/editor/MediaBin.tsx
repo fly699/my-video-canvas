@@ -47,7 +47,9 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
   const applyDoc = useEditorStore((s) => s.applyDoc);
   const transcribeMut = trpc.subtitle.transcribe.useMutation();
   const aiCutMut = trpc.editor.aiCut.useMutation();
+  const silenceCutMut = trpc.editor.silenceCut.useMutation();
   const [aiCutting, setAiCutting] = useState(false);
+  const [silenceCutting, setSilenceCutting] = useState(false);
   const [aiAggr, setAiAggr] = useState<"low" | "medium" | "high">("medium");
   const [aiSubs, setAiSubs] = useState(true);
   const srtRef = useRef<HTMLInputElement>(null);
@@ -77,6 +79,33 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
       toast.error("智能剪辑失败：" + (e instanceof Error ? e.message : String(e)));
     } finally {
       setAiCutting(false);
+    }
+  }
+
+  // 静音自动剪除：本地 ffmpeg silencedetect 找静音段 → 反转保留区间 → 整档替换（可撤销）。
+  // 零 LLM/转写成本，秒级出结果——口播视频剪长停顿的免费快捷路径（语义级删冗余用上面的 AI 智能剪辑）。
+  async function silenceCut() {
+    const doc = useEditorStore.getState().doc;
+    if (!doc) return;
+    let src: { assetId?: number; assetUrl?: string } | undefined;
+    for (const t of doc.tracks) for (const c of t.clips) if (c.kind === "video" && c.assetUrl) { src = c; break; }
+    if (!src?.assetUrl) { toast.error("先在时间轴添加一个视频片段再剪静音"); return; }
+    const abs = new URL(src.assetUrl, location.origin).href;
+    setSilenceCutting(true);
+    try {
+      const durationSec = await probeMediaDuration(abs, "video");
+      const r = await silenceCutMut.mutateAsync({
+        assetUrl: abs, assetId: src.assetId, durationSec: Math.max(0.5, durationSec),
+        width: doc.width, height: doc.height, fps: doc.fps,
+      });
+      if (!r.doc) { toast.info(r.message ?? "未检测到可剪除的静音段"); return; }
+      applyDoc(r.doc);
+      const s = r.stats!;
+      toast.success(`已剪除静音：保留 ${s.keptSec}s、删除 ${s.removedSec}s，共 ${s.clips} 段（可撤销）`);
+    } catch (e) {
+      toast.error("静音剪除失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setSilenceCutting(false);
     }
   }
 
@@ -303,6 +332,13 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
             <input type="checkbox" checked={aiSubs} onChange={(e) => setAiSubs(e.target.checked)} disabled={aiCutting} /> 字幕
           </label>
         </div>
+        {/* 静音剪除：本地 ffmpeg 检测静音段并剪掉——免转写免 AI 调用、秒级出结果（可撤销）。 */}
+        <button
+          disabled={silenceCutting}
+          onClick={silenceCut}
+          title="用本地音频分析找出 ≥0.6 秒的静音段并剪掉（保留段前后各留 0.12s 缓冲）。不消耗任何 AI 调用；语义级删口头禅/跑题请用「AI 智能剪辑」。"
+          style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: silenceCutting ? EC.t4 : EC.t2, cursor: silenceCutting ? "default" : "pointer" }}
+        ><Scissors size={13} /> {silenceCutting ? "分析静音中…" : "剪除静音（免AI）"}</button>
         <button
           disabled={transcribeMut.isPending}
           onClick={autoSubtitle}

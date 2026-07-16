@@ -5,6 +5,8 @@ import { useEditorStore, clipDuration, canMergeClips, canMergeSource, rightNeigh
 import { ClipThumb } from "./ClipThumb";
 import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 import type { TrackType, TransformKeyframe } from "@shared/editorTypes";
 
 const LABEL_W = 132;
@@ -359,6 +361,45 @@ export function Timeline() {
     if (avail > 0) setPxPerSec(Math.min(400, Math.max(8, avail / sec)));
   }, [duration, setPxPerSec]);
 
+  // 场景自动分割：本地 ffmpeg 场景检测（复用画布 #100 的 detectScenes，免 AI 调用）→
+  // 切点从源时间映射到时间轴 → 逐点 splitClip（每刀一个撤销步，可逐段撤销）。
+  const sceneMut = trpc.clip.detectScenes.useMutation();
+  const [sceneSplitting, setSceneSplitting] = useState(false);
+  const sceneSplit = useCallback(async () => {
+    const st = useEditorStore.getState();
+    const doc = st.doc, sel = st.selectedClipId;
+    if (!doc || !sel) return;
+    let clip: (typeof doc.tracks)[number]["clips"][number] | undefined, trackId = "";
+    for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === sel); if (c) { clip = c; trackId = t.id; break; } }
+    if (!clip || clip.kind !== "video" || !clip.assetUrl) { toast.error("请先选中一个视频片段"); return; }
+    if (clip.reverse) { toast.error("倒放片段暂不支持场景分割"); return; }
+    const abs = new URL(clip.assetUrl, location.origin).href;
+    const speed = clip.speed || 1;
+    setSceneSplitting(true);
+    try {
+      const { boundaries } = await sceneMut.mutateAsync({ inputUrl: abs, threshold: 0.3 });
+      // 只取落在本片段 trim 区间内的切点（留 0.1s 边距防切出碎渣），映射到时间轴时刻。
+      const times = boundaries
+        .filter((b) => b > clip!.trimIn + 0.1 && b < clip!.trimOut - 0.1)
+        .map((b) => clip!.start + (b - clip!.trimIn) / speed)
+        .sort((a, b) => a - b);
+      if (!times.length) { toast.info("未检测到场景切换点（可能是单一连续场景）"); return; }
+      // 逐点分割：每切一刀 clip id 会变，按当前 store 状态在该轨道上重新定位包含此时刻的同源片段。
+      let splits = 0;
+      for (const t of times) {
+        const cur = useEditorStore.getState().doc;
+        const track = cur?.tracks.find((tr) => tr.id === trackId);
+        const target = track?.clips.find((c) => c.assetUrl === clip!.assetUrl && t > c.start + 0.05 && t < c.start + clipDuration(c) - 0.05);
+        if (target) { useEditorStore.getState().splitClip(target.id, t); splits++; }
+      }
+      toast.success(splits ? `场景分割完成：新增 ${splits} 个切点（可撤销）` : "切点都在片段边缘，未分割");
+    } catch (e) {
+      toast.error("场景分割失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setSceneSplitting(false);
+    }
+  }, [sceneMut]);
+
   const onDrop = useCallback(async (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
     setDropLane(null);
@@ -418,6 +459,10 @@ export function Timeline() {
           style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selCount ? "oklch(0.65 0.2 25)" : EC.t4, opacity: selCount ? 1 : 0.5, cursor: selCount ? "pointer" : "not-allowed" }}><Trash2 size={13} /><span style={{ fontSize: 11 }}>删除</span></button>
         <div style={{ width: 1, height: 16, background: EC.border, flexShrink: 0 }} />
         <button onClick={() => useEditorStore.getState().splitAllAtPlayhead(playhead)} title="全轨分割：在播放头切开所有轨道的片段 (Shift+S)" style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center" }}><Scissors size={13} /><span style={{ fontSize: 11 }}>全轨分割</span></button>
+        <button disabled={!selectedClipId || sceneSplitting}
+          onClick={() => { void sceneSplit(); }}
+          title="场景分割：本地分析选中视频片段的画面切换点并自动逐点分割（免 AI 调用，可撤销）"
+          style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selectedClipId && !sceneSplitting ? EC.t2 : EC.t4, opacity: selectedClipId ? 1 : 0.5, cursor: selectedClipId && !sceneSplitting ? "pointer" : "not-allowed" }}><Blend size={13} /><span style={{ fontSize: 11 }}>{sceneSplitting ? "分析中…" : "场景分割"}</span></button>
         {/* 导出区段：在播放头设入/出点，仅导出选定范围 */}
         <button onClick={() => useEditorStore.getState().setInPoint(playhead)} title="设入点（导出区段起点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: inPoint != null ? EC.accent : EC.t3, borderColor: inPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>入点</span></button>
         <button onClick={() => useEditorStore.getState().setOutPoint(playhead)} title="设出点（导出区段终点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: outPoint != null ? EC.accent : EC.t3, borderColor: outPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>出点</span></button>
