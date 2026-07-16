@@ -929,7 +929,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   setPlayhead: (t) => set({ playhead: Math.max(0, t) }),
-  setPlaying: (b) => set({ playing: b }),
+  // 播放结束（播放头停在片尾）后再次播放 → 自动跳回首帧重播（覆盖空格键与播放按钮两个入口）。
+  setPlaying: (b) => set((s) => {
+    if (b && s.doc) {
+      const dur = editorDocDuration(s.doc);
+      if (dur > 0 && s.playhead >= dur - 1e-3) return { playing: true, playhead: 0 };
+    }
+    return { playing: b };
+  }),
   setPxPerSec: (n) => set({ pxPerSec: Math.min(400, Math.max(8, n)) }),
   setInPoint: (t) => set((s) => ({ inPoint: t == null ? null : Math.max(0, t), outPoint: t != null && s.outPoint != null && s.outPoint <= t ? null : s.outPoint })),
   setOutPoint: (t) => set((s) => ({ outPoint: t == null ? null : Math.max(0, t), inPoint: t != null && s.inPoint != null && s.inPoint >= t ? null : s.inPoint })),

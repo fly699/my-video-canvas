@@ -270,6 +270,18 @@ export function PreviewStage() {
     document.addEventListener("fullscreenchange", onFs);
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
+  // Ctrl/⌘+F 全屏预览（剪映同款；拦截浏览器查找）。输入框内不响应。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || (e.key !== "f" && e.key !== "F") || e.shiftKey || e.altKey) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, select, [contenteditable='true']")) return;
+      e.preventDefault();
+      toggleFullscreen();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleFullscreen]);
   const dragRef = useRef<DragState | null>(null);
   const safeDragRef = useRef<{ mode: "move" | "nw" | "ne" | "sw" | "se"; sx: number; sy: number; start: { x: number; y: number; w: number; h: number } } | null>(null);
   const rafRef = useRef<number | null>(null);

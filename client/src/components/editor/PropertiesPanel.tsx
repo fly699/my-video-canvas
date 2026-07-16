@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Trash2, Mic, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { useState, useRef, useEffect, createContext, useContext } from "react";
+import { Trash2, Mic, AlignLeft, AlignCenter, AlignRight, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { EC, probeMediaDuration } from "./theme";
@@ -107,6 +107,10 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
     for (const t of s.doc.tracks) { const c = t.clips.find((x) => x.id === s.selectedClipId); if (c && (c.kind === "video" || c.kind === "image") && c.assetUrl) return c.kind; }
     return null;
   });
+  // 分区手风琴：展开的分区标题（"" = 初始仅第一个展开）；切换选中片段时复位。
+  const [openSec, setOpenSec] = useState<string>("");
+  useEffect(() => { setOpenSec(""); }, [selectedClipId]);
+  const firstSec = { current: null as string | null }; // 每次渲染重建，由首个 Section 认领
   const [mediaMeta, setMediaMeta] = useState<{ w: number; h: number; duration?: number } | "loading" | "error" | null>(null);
   useEffect(() => {
     if (!probeUrl) { setMediaMeta(null); return; }
@@ -240,6 +244,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
 
   return (
     <aside style={{ ...panel, width }}>
+      <SecCtx.Provider value={{ open: openSec, set: setOpenSec, first: firstSec }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 12px", borderBottom: `1px solid ${EC.border}` }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: EC.t1, flex: 1 }}>{labelKind(c.kind)} 属性</span>
         <button onClick={() => remove(c.id)} title="删除片段" style={{ display: "inline-flex", width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 7, border: `1px solid ${EC.border}`, background: "transparent", color: "oklch(0.62 0.20 25)", cursor: "pointer" }}><Trash2 size={14} /></button>
@@ -614,6 +619,7 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
           <div style={{ fontSize: 10.5, color: EC.t4, lineHeight: 1.5 }}>与<b>前一个主轨片段</b>交叉转场（cross-dissolve）。预览在转场区间叠化演示；导出由 ffmpeg xfade 精确合成。</div>
         </Section>
       </div>
+      </SecCtx.Provider>
     </aside>
   );
 }
@@ -631,11 +637,26 @@ function Toggle({ on, onClick, title, wide, children }: { on: boolean; onClick: 
   );
 }
 
+// 手风琴上下文：属性面板里的分区可点击标题展开/收起，展开一个自动收起其它（accordion）。
+// open: "" = 初始（仅第一个分区展开）；"__none__" = 全部收起；其它 = 展开的分区标题。
+// first 每次渲染新建（{current:null}），首个渲染到的 Section 认领为「第一分区」。
+const SecCtx = createContext<{ open: string; set: (t: string) => void; first: { current: string | null } } | null>(null);
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const ctx = useContext(SecCtx);
+  if (ctx && ctx.first.current == null) ctx.first.current = title;
+  const open = !ctx ? true : ctx.open === "" ? ctx.first.current === title : ctx.open === title;
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: EC.t3, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>{title}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
+      <div
+        onClick={ctx ? () => ctx.set(open ? "__none__" : title) : undefined}
+        title={ctx ? (open ? "收起该分区" : "展开该分区（其它分区自动收起）") : undefined}
+        style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: open ? EC.t2 : EC.t3, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: open ? 8 : 0, cursor: ctx ? "pointer" : "default", userSelect: "none" }}
+      >
+        {ctx && (open ? <ChevronDown size={12} style={{ flexShrink: 0 }} /> : <ChevronRight size={12} style={{ flexShrink: 0 }} />)}
+        {title}
+      </div>
+      {open && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>}
     </div>
   );
 }
