@@ -264,6 +264,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
           customBaseUrl: payload.customBaseUrl?.trim() || undefined, model: llmModel,
           maxIterations: payload.maxIterations ?? 50,
           ...(payload.useMemory === false ? { useMemory: false } : {}),
+          ...(payload.verifyOutput ? { verifyOutput: true } : {}), // B1 产物 AI 质检（编排模式对每个子任务生效）
         },
         runHandlers as Parameters<typeof orchestrateMut.mutate>[1],
       );
@@ -447,7 +448,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                       onChange={(e) => update({ verifyOutput: e.target.checked })}
                       className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
                     <span>产物 AI 质检（运行成功后验收首图）<br />
-                      <span style={{ color: "var(--c-t4)" }}>工作流跑通后用视觉模型质检首张产物图（与任务符合度 / 畸形 / 黑图 / 乱码水印）；未过把原因喂回智能体自动再修一轮（整次运行仅拒一次，不会死循环）。额外产生一次视觉分析调用费用。</span>
+                      <span style={{ color: "var(--c-t4)" }}>工作流跑通后用视觉模型质检首张产物图（与任务符合度 / 畸形 / 黑图 / 乱码水印）；未过把原因喂回智能体自动再修一轮（整次运行仅拒一次，不会死循环）。编排模式下对每个子任务分别生效。额外产生视觉分析调用费用。</span>
                     </span>
                   </label>
                 </div>

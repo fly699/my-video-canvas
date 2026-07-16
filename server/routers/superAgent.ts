@@ -8,13 +8,13 @@ import { assertProjectAccess } from "../_core/permissions";
 import { assertComfyuiAllowed } from "../_core/whitelist";
 import { writeAuditLog } from "../_core/auditLog";
 import { ENV } from "../_core/env";
-import { runComfyAgent, extractRunLessons, type ComfyAgentTools } from "../_core/superAgent/comfyAgent";
+import { runComfyAgent, extractRunLessons, type ComfyAgentTools, type AgentEvent } from "../_core/superAgent/comfyAgent";
 import { runOrchestration } from "../_core/superAgent/orchestrator";
 import { createComfyTools, createAgentLLM, pickReferenceWorkflows, dedupeReferenceCandidates } from "../_core/superAgent/comfyAdapters";
 import { pickLeastLoaded } from "../_core/superAgent/serverAssign";
 import { parseGitHubRepo, cloneRepoInto, publicRemote } from "../_core/superAgent/gitClone";
 import { emitSuperAgentEvent } from "../_core/superAgent/socket";
-import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace } from "../_core/superAgent/codeAgent";
+import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace, planCodeRepair, buildCodeRepairPrompt } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
 import { getSuperAgentConfig } from "../_core/superAgent/config";
 import { invalidateComfyKnowledge, getComfyKnowledge } from "../_core/comfyKnowledge";
@@ -221,13 +221,14 @@ export const superAgentRouter = router({
       runningJobs.set(key, () => { signal.aborted = true; });
       serverLoad.set(baseUrl, (serverLoad.get(baseUrl) ?? 0) + 1); // #170 计入在飞负载（供无地址节点自分配择空闲机）
       let result;
+      let buildRetried = false;
       try {
-        result = await runComfyAgent({
+        const engineOpts = {
           task: input.task,
           tools,
           llm,
           maxIterations: input.maxIterations ?? 50,
-          emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
+          emit: (e: AgentEvent) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
           signal,
           seedWorkflowJson: input.seedWorkflowJson,
           history: input.history,
@@ -236,12 +237,32 @@ export const superAgentRouter = router({
           knownPitfalls,
           // B1 产物验收：视觉模型质检首张产物图（runImageQc 与图像节点 A1 质检共用核心，
           // 门控/计费/日志经统一入口继承）。仅图像产物；无图（纯视频等）按通过处理。
-          verifyProduct: input.verifyOutput ? async ({ images }) => {
+          verifyProduct: input.verifyOutput ? async ({ images }: { images: string[] }) => {
             if (!images.length) return { ok: true, reasons: [] };
             const v = await runImageQc(ctx, { imageUrl: images[0], prompt: input.task.slice(0, 2000) });
             return { ok: v.pass, reasons: v.pass ? [] : [...v.issues, ...(v.suggestion ? [`修正建议：${v.suggestion}`] : [])] };
           } : undefined,
-        });
+        };
+        result = await runComfyAgent(engineOpts);
+        // B1 批2：整轮未通（失败/耗尽，非用户取消）且有可诊断教训 → 带教训整体重试一次，
+        // 与编排器子任务的「失败带教训重试」同机制（换方案重来常能救活卡死的运行）。
+        if ((result.status === "failed" || result.status === "exhausted") && !signal.aborted) {
+          const lessons0 = extractRunLessons(result.log);
+          if (lessons0.length) {
+            buildRetried = true;
+            emitSuperAgentEvent(input.projectId, input.nodeId, {
+              type: "action",
+              message: `首轮未通过，带 ${lessons0.length} 条教训自动重试一次（换方案规避已知问题）…`,
+              data: { kind: "build-retry", lessons: lessons0.slice(0, 5) },
+            });
+            const clipJoin = (arr: string[], n: number) => { const s = arr.join("；"); return s.length > n ? s.slice(0, n) + "…" : s; };
+            result = await runComfyAgent({
+              ...engineOpts,
+              task: `${input.task}\n\n（上次未成功，遇到的问题：${clipJoin(lessons0, 800)}。请换一种方案规避这些问题。）`,
+              knownPitfalls: [...knownPitfalls, ...lessons0],
+            });
+          }
+        }
       } finally {
         runningJobs.delete(key);
         serverLoad.set(baseUrl, Math.max(0, (serverLoad.get(baseUrl) ?? 1) - 1));
@@ -309,6 +330,7 @@ export const superAgentRouter = router({
         videos: result.videos,
         outputType: result.outputType,
         iterations: result.iterations,
+        retried: buildRetried,
         log: result.log.map((e) => ({ type: e.type, iteration: e.iteration, message: e.message })),
       };
       // 兜底：把最终结果经 socket 再送一份（隧道下 HTTP 可能已超时切断，socket 仍能送达）+ 缓存供重载。
@@ -331,6 +353,8 @@ export const superAgentRouter = router({
         maxSubtasks: z.number().int().min(1).max(12).optional(),
         maxIterations: z.number().int().min(1).max(60).optional(),
         useMemory: z.boolean().optional(),
+        /** B1 产物验收：每个子任务 execute 成功后质检首张产物图，未过喂回修一轮（同 build）。默认关。 */
+        verifyOutput: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -359,6 +383,12 @@ export const superAgentRouter = router({
           goal: input.goal, baseUrl, tools: makeTools(baseUrl), servers, makeTools, llm, signal, useMemory,
           maxSubtasks: input.maxSubtasks, maxIterations: input.maxIterations ?? 50,
           emit: (e) => emitSuperAgentEvent(input.projectId, input.nodeId, e),
+          // B1 产物验收：按子任务描述质检首张产物图（与 build 同口径，runImageQc 统一门控/计费/日志）。
+          verifyProduct: input.verifyOutput ? async (subtaskTask, { images }) => {
+            if (!images.length) return { ok: true, reasons: [] };
+            const v = await runImageQc(ctx, { imageUrl: images[0], prompt: subtaskTask.slice(0, 2000) });
+            return { ok: v.pass, reasons: v.pass ? [] : [...v.issues, ...(v.suggestion ? [`修正建议：${v.suggestion}`] : [])] };
+          } : undefined,
         });
       } finally {
         runningJobs.delete(key);
@@ -513,30 +543,58 @@ export const superAgentRouter = router({
 
       let keepWorkspace = false;
       try {
-        const handle = streamClaudeCode({
-          task: frameCodeTask(taskWithRepo, resuming), // 首轮前置沙箱边界说明；续接不重复
-          cwd: workspace,
-          timeoutMs: (input.timeoutSec ?? 300) * 1000,
-          argsBuilder: (policy) => buildClaudeArgs({
-            ...policy,
-            addDirs: [workspace],
-            model: input.model,
-            maxBudgetUsd: input.maxBudgetUsd ?? 2,
-            resumeSessionId,
-          }),
-        });
-        runningJobs.set(key, () => handle.kill()); // 取消=杀进程
+        const capUsd = input.maxBudgetUsd ?? 2;
+        let cancelled = false; // 用户取消（runningJobs 回调）→ 绝不自动修复重跑
+        const runOnce = async (taskText: string, resumeId: string | undefined, budgetUsd: number) => {
+          const handle = streamClaudeCode({
+            task: taskText,
+            cwd: workspace,
+            timeoutMs: (input.timeoutSec ?? 300) * 1000,
+            argsBuilder: (policy) => buildClaudeArgs({
+              ...policy,
+              addDirs: [workspace],
+              model: input.model,
+              maxBudgetUsd: budgetUsd,
+              resumeSessionId: resumeId,
+            }),
+          });
+          runningJobs.set(key, () => { cancelled = true; handle.kill(); }); // 取消=杀进程
+          const result = await runCodeAgent({ lines: handle.lines, emit, onAbort: () => handle.kill() });
+          handle.kill();
+          const proc = await handle.done;
+          return { result, proc, stderr: handle.stderr(), spawnError: handle.spawnError() };
+        };
 
-        const result = await runCodeAgent({ lines: handle.lines, emit, onAbort: () => handle.kill() });
-        handle.kill();
-        const proc = await handle.done;
-        const stderr = handle.stderr();
-        const spawnError = handle.spawnError();
+        // 首轮（首轮前置沙箱边界说明；续接不重复）。
+        let round = await runOnce(frameCodeTask(taskWithRepo, resuming), resumeSessionId, capUsd);
+        let { result, proc, stderr, spawnError } = round;
+        let repaired = false;
+
+        // B1 批2：真失败自动带错误 --resume 修一轮（取消/拦截/超时/spawn 失败/无会话不修；
+        // 两轮合计成本 ≤ maxBudgetUsd，预算逻辑见 planCodeRepair）。
+        const sid0 = result.sessionId ?? resumeSessionId;
+        const plan = planCodeRepair({
+          status: result.status, cancelled, blockedCommand: result.blockedCommand,
+          timedOut: proc.timedOut, spawnError: !!spawnError, hasSession: !!sid0,
+          costUsd: result.costUsd, maxBudgetUsd: capUsd,
+        });
+        if (plan.repair && sid0) {
+          repaired = true;
+          const firstCost = result.costUsd;
+          emit({ type: "command", message: `⚙️ 首轮失败，自动带错误修复一轮（剩余预算 $${plan.budgetUsd}）…` });
+          const errText = result.result?.trim() || stderr.trim().slice(-1200) || undefined;
+          round = await runOnce(buildCodeRepairPrompt(errText), sid0, plan.budgetUsd!);
+          ({ result, proc, stderr, spawnError } = round);
+          // 两轮成本合并上报；修复轮未回会话 id 时沿用首轮的（同一会话续接）。
+          if (firstCost != null || result.costUsd != null) result = { ...result, costUsd: (firstCost ?? 0) + (result.costUsd ?? 0) };
+          if (!result.sessionId) result = { ...result, sessionId: sid0 };
+        }
 
         // 拿到会话 id（新的或沿用上轮）→ 保留工作区并刷新使用时间，供下一轮 --resume 续接。
         // 续接工作区即使本轮失败也保留（否则一次失败毁掉整段连续对话）；新建工作区仅成功时保留。
         const newSessionId = result.sessionId ?? resumeSessionId;
-        keepWorkspace = shouldKeepWorkspace({ hasSession: !!newSessionId, resuming, spawnError: !!spawnError });
+        // 修复轮本质是 --resume 续接（首轮已建会话），按续接口径决定工作区去留。
+        keepWorkspace = shouldKeepWorkspace({ hasSession: !!newSessionId, resuming: resuming || repaired, spawnError: !!spawnError });
         if (keepWorkspace && newSessionId) {
           codeSessions.set(key, { dir: workspace, sessionId: newSessionId, lastUsed: Date.now() });
         }
@@ -553,7 +611,7 @@ export const superAgentRouter = router({
         writeAuditLog({
           ctx,
           action: "superagent_code_task",
-          detail: { projectId: input.projectId, task: input.task.slice(0, 200), status: result.status, blockedCommand: result.blockedCommand ?? null, costUsd: result.costUsd ?? null, numTurns: result.numTurns ?? null, exitCode: proc.exitCode, timedOut: proc.timedOut, spawnError, stderrTail: stderr.slice(-800) || null },
+          detail: { projectId: input.projectId, task: input.task.slice(0, 200), status: result.status, repaired, blockedCommand: result.blockedCommand ?? null, costUsd: result.costUsd ?? null, numTurns: result.numTurns ?? null, exitCode: proc.exitCode, timedOut: proc.timedOut, spawnError, stderrTail: stderr.slice(-800) || null },
         });
 
         return {
@@ -563,6 +621,7 @@ export const superAgentRouter = router({
           costUsd: result.costUsd,
           numTurns: result.numTurns,
           timedOut: proc.timedOut,
+          repaired, // B1 批2：本次结果经过了一轮自动修复
           diagnostic: diag,
           sessionId: newSessionId, // 供前端保存，下一轮传 resume:true 续接
           log: result.events.map((e) => ({ type: e.type, message: e.message })),

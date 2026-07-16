@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildClaudeArgs, parseStreamLine, runCodeAgent, frameCodeTask, CODE_SANDBOX_PREAMBLE, shouldKeepWorkspace } from "./_core/superAgent/codeAgent";
+import { buildClaudeArgs, parseStreamLine, runCodeAgent, frameCodeTask, CODE_SANDBOX_PREAMBLE, shouldKeepWorkspace, planCodeRepair, buildCodeRepairPrompt } from "./_core/superAgent/codeAgent";
 import type { CommandRisk } from "./_core/ops/commandPolicy";
 
 // 便捷：把假 stream-json 行数组变成 AsyncIterable。
@@ -186,5 +186,48 @@ describe("runCodeAgent", () => {
       J({ type: "result", subtype: "success", result: "ok" }),
     ]) });
     expect(r2.sessionId).toBe("sess-init");
+  });
+});
+
+describe("planCodeRepair（B1 批2：失败自动修一轮决策）", () => {
+  const base = { status: "failed" as const, cancelled: false, timedOut: false, spawnError: false, hasSession: true, maxBudgetUsd: 2 };
+
+  it("真失败 + 有会话 + 预算充足 → 修，预算 = 上限 - 已花", () => {
+    const d = planCodeRepair({ ...base, costUsd: 0.5 });
+    expect(d.repair).toBe(true);
+    expect(d.budgetUsd).toBe(1.5);
+  });
+
+  it("成功 / 用户取消 / aborted 不修", () => {
+    expect(planCodeRepair({ ...base, status: "success", costUsd: 0.1 }).repair).toBe(false);
+    expect(planCodeRepair({ ...base, cancelled: true, costUsd: 0.1 }).repair).toBe(false);
+    expect(planCodeRepair({ ...base, status: "aborted", costUsd: 0.1 }).repair).toBe(false);
+  });
+
+  it("危险命令拦截 / 超时 / spawn 失败 / 无会话 不修", () => {
+    expect(planCodeRepair({ ...base, blockedCommand: "rm -rf /", costUsd: 0.1 }).repair).toBe(false);
+    expect(planCodeRepair({ ...base, timedOut: true, costUsd: 0.1 }).repair).toBe(false);
+    expect(planCodeRepair({ ...base, spawnError: true, costUsd: 0.1 }).repair).toBe(false);
+    expect(planCodeRepair({ ...base, hasSession: false, costUsd: 0.1 }).repair).toBe(false);
+  });
+
+  it("成本守恒：已花超 70% 或剩余不足 $0.1 不修（两轮合计 ≤ 上限）", () => {
+    expect(planCodeRepair({ ...base, costUsd: 1.5 }).repair).toBe(false); // 1.5 > 2*0.7
+    expect(planCodeRepair({ ...base, maxBudgetUsd: 0.1, costUsd: 0.05 }).repair).toBe(false); // 剩 0.05 < 0.1
+    expect(planCodeRepair({ ...base, costUsd: undefined }).repair).toBe(true); // 未上报成本按 0 处理
+  });
+});
+
+describe("buildCodeRepairPrompt", () => {
+  it("带错误信息并截断到 1500 字", () => {
+    const p = buildCodeRepairPrompt("TypeError: x is undefined");
+    expect(p).toContain("TypeError: x is undefined");
+    expect(p).toContain("诊断失败原因");
+    const long = buildCodeRepairPrompt("e".repeat(3000));
+    expect(long.length).toBeLessThan(1700);
+  });
+  it("无错误信息时说明「无明确错误输出」", () => {
+    expect(buildCodeRepairPrompt(undefined)).toContain("无明确错误输出");
+    expect(buildCodeRepairPrompt("   ")).toContain("无明确错误输出");
   });
 });

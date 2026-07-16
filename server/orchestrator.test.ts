@@ -112,3 +112,31 @@ describe("orchestrator.runOrchestration", () => {
     expect(r.subtasks.length).toBe(0);
   });
 });
+
+describe("orchestrator.verifyProduct（B1 批2：编排路径产物验收）", () => {
+  it("验收钩子按子任务原始描述调用；未过喂回引擎修一轮后二次成功采纳", async () => {
+    const verifyCalls: string[] = [];
+    let verdictGiven = false;
+    const r = await runOrchestration({
+      goal: "g", baseUrl: "http://c", tools: fakeTools(), llm: alwaysFinishLLM(), useMemory: false,
+      decompose: async () => [{ title: "出图", task: "文生图关键帧" }],
+      verifyProduct: async (subtaskTask, { images }) => {
+        verifyCalls.push(subtaskTask);
+        expect(images.length).toBe(1);
+        if (!verdictGiven) { verdictGiven = true; return { ok: false, reasons: ["画面全黑"] }; }
+        return { ok: true, reasons: [] };
+      },
+    });
+    // 引擎的单次拒绝守卫：验收只拒一次，第二次运行成功即采纳（钩子不再被调用）。
+    expect(verifyCalls).toEqual(["文生图关键帧"]);
+    expect(r.subtasks[0].status).toBe("success");
+  });
+
+  it("不传验收钩子时行为不变（后向兼容）", async () => {
+    const r = await runOrchestration({
+      goal: "g", baseUrl: "http://c", tools: fakeTools(), llm: alwaysFinishLLM(), useMemory: false,
+      decompose: async () => [{ title: "a", task: "a" }],
+    });
+    expect(r.successCount).toBe(1);
+  });
+});
