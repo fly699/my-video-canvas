@@ -383,7 +383,12 @@ export function sanitizeOperation(
  */
 export function sanitizeOperationDetailed(
   raw: unknown,
-  opts: { comfyOnly?: boolean; validTemplateIds?: Set<number>; allowSuperAgent?: boolean } = {},
+  opts: {
+    comfyOnly?: boolean; validTemplateIds?: Set<number>; allowSuperAgent?: boolean;
+    /** A3 增量规划：用户框选节点时的硬约束——update/delete 的 targetRef 必须在此集合内
+     *  （调用方需预先把本轮 create 的 tempId 并入，允许「新建节点再改它」）。不传=不启用。 */
+    allowedTargetIds?: Set<string>;
+  } = {},
 ): { op: AgentOperation } | { drop: string } {
   if (!raw || typeof raw !== "object") return { drop: "无法识别的操作（非对象）" };
   const o = raw as Record<string, unknown>;
@@ -458,6 +463,10 @@ export function sanitizeOperationDetailed(
   if (op === "update") {
     const targetRef = str(o.targetRef);
     if (!targetRef) return { drop: "修改操作缺少目标节点引用" };
+    // A3：框选模式下只允许改选中节点（或本轮新建的 tempId），防止增量修改误伤无关节点。
+    if (opts.allowedTargetIds && !opts.allowedTargetIds.has(targetRef)) {
+      return { drop: `已框选节点：仅允许修改选中节点，「${targetRef}」不在框选范围` };
+    }
     // 与 create 对称地过滤字段：targetRef 不带 nodeType，按全目录字段并集 + customBaseUrl 放行，
     // 丢弃并集外的幻觉字段（截断回写损坏仍由客户端 agentApply 的截断守卫兜底）。
     const payload: Record<string, unknown> = {};
@@ -490,5 +499,9 @@ export function sanitizeOperationDetailed(
   // delete
   const targetRef = str(o.targetRef);
   if (!targetRef) return { drop: "删除操作缺少目标节点引用" };
+  // A3：框选模式下只允许删选中节点（或本轮新建的 tempId）——删除比误改更不可逆，必须硬拦。
+  if (opts.allowedTargetIds && !opts.allowedTargetIds.has(targetRef)) {
+    return { drop: `已框选节点：仅允许删除选中节点，「${targetRef}」不在框选范围` };
+  }
   return { op: { op: "delete", targetRef, note: noteStr(o.note) } };
 }

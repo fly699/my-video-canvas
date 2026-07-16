@@ -498,7 +498,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         utils.client,
         // #141 模型清单按需注入：锁定的模型随每轮请求实时传入（服务端无状态）——
         // 改模型下一轮即按新模型注入、选回「默认」下一轮即恢复该类别全量清单。
-        { projectId, message: msg, history, graphSummary: summary || undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined },
+        // A3 增量规划：框选节点透传服务端 → prompt 硬约束 + sanitize 拦框选外的 update/delete。
+        { projectId, message: msg, history, graphSummary: summary || undefined, selectedNodeIds: focus.length ? focus.slice(0, 200) : undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined },
         controller.signal,
         (p) => { if (p.stage) setPlanStage(p.stage); },
       );
