@@ -239,11 +239,16 @@ function cleanVideoTaskParams(params: Record<string, unknown>, defs: ParamDef[])
   for (const [k, v] of Object.entries(params)) {
     const d = defByKey.get(k);
     if (!d) continue; // 幻觉键：丢弃（上游会拒绝或静默无效）
-    if ((d.type === "range" || d.type === "number") && typeof v === "number" && Number.isFinite(v)) {
-      let n = v;
-      if (typeof d.min === "number" && n < d.min) n = d.min;
-      if (typeof d.max === "number" && n > d.max) n = d.max;
-      cleaned[k] = n;
+    if (d.type === "range" || d.type === "number") {
+      // 数值型：容忍 LLM 把数字写成字符串（"18"）——数字或可解析数字串都取值夹到 [min,max]；
+      // 非数值（如 "abc"）丢弃回退默认，避免把垃圾串透传给下游报错。
+      const n = typeof v === "number" ? v : (typeof v === "string" && v.trim() !== "" ? Number(v) : NaN);
+      if (Number.isFinite(n)) {
+        let c = n;
+        if (typeof d.min === "number" && c < d.min) c = d.min;
+        if (typeof d.max === "number" && c > d.max) c = d.max;
+        cleaned[k] = c;
+      }
     } else if (d.type === "select") {
       const allowed = new Set(d.options.map((o) => String(o.value)));
       if (allowed.has(String(v))) cleaned[k] = v; // 合法枚举保留；非法丢弃回退默认
