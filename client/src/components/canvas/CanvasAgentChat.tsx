@@ -490,8 +490,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         return;
       }
       setTurns((p) => [...p, { role: "assistant", content: friendlyClientLLMError(e), error: true }]);
-      // 规划失败：把原文恢复到输入框（仅当用户还没另起输入），改一改就能重发，不用重打。
+      // 规划失败：把原文与暂存附件一并恢复（仅当用户还没另起输入/附件），改一改就能重发，不用重打、
+      // 也不会丢参考图（此前只恢复文本，用户以为直接重发即可，实际参考图已被清空 → 重发变成无参考图）。
       if (rawInput.trim()) setInput((cur) => (cur ? cur : rawInput));
+      if (files.length) setStaged((cur) => (cur.length ? cur : files));
     } finally {
       abortRef.current = null;
       setBusy(false);

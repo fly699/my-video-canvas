@@ -152,6 +152,24 @@ describe("applyAgentOperations 边去重（种子/查重分隔符一致）", () 
   });
 });
 
+describe("角色自动接线：名字匹配只看正向文本（排除 negPrompt）", () => {
+  it("角色名只出现在 negPrompt 里 → 不误接（用两个角色规避单主角兜底）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "cA", payload: { name: "阿明", appearance: "男" } },
+      { op: "create", nodeType: "character", tempId: "cB", payload: { name: "阿红", appearance: "女" } },
+      { op: "create", nodeType: "video_task", tempId: "v1", payload: { prompt: "阿明在街头奔跑", negPrompt: "阿红, 模糊" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const nodes = useCanvasStore.getState().nodes;
+    const cA = nodes.find((n) => (n.data.payload as { name?: string }).name === "阿明")!.id;
+    const cB = nodes.find((n) => (n.data.payload as { name?: string }).name === "阿红")!.id;
+    const v1 = nodes.find((n) => n.data.nodeType === "video_task")!.id;
+    const edges = useCanvasStore.getState().edges;
+    expect(edges.some((e) => e.source === cA && e.target === v1)).toBe(true);  // 正向提及 → 接
+    expect(edges.some((e) => e.source === cB && e.target === v1)).toBe(false); // 仅负向提及 → 不接
+  });
+});
+
 describe("buildGraphSummary 硬帽保持合法 JSON（超大画布不从中间切断）", () => {
   it("超 18000 字上限时按整条丢弃末尾，仍是可解析 JSON", () => {
     const store = useCanvasStore.getState();

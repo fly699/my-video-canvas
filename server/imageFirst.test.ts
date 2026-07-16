@@ -119,6 +119,18 @@ describe("enforceImageFirst", () => {
     ];
     expect(creates(enforceImageFirst(ops), "image_gen")[0].sceneGroup).toBe("s2");
   });
+
+  it("源是画布已存在节点（非本批 tempId）→ 不强插 image_gen（可能本就是图片节点，强插会改画面+多烧钱）", () => {
+    const ops: AgentOperation[] = [
+      // existing_img 未在本批 create（= 画布已有图片节点 id），LLM 让它直接喂新视频作首帧
+      { op: "create", nodeType: "video_task", tempId: "vt1", payload: { prompt: "让这张图动起来" } },
+      { op: "connect", sourceRef: "existing_img", targetRef: "vt1" },
+    ];
+    const out = enforceImageFirst(ops);
+    expect(creates(out, "image_gen")).toHaveLength(0); // 绝不插入
+    // 原连线原样保留（existing_img → vt1，未被重定向）
+    expect(has(out, (o) => o.op === "connect" && o.sourceRef === "existing_img" && o.targetRef === "vt1")).toBe(true);
+  });
 });
 
 describe("enforceImageFirstComfy", () => {
@@ -176,5 +188,15 @@ describe("enforceImageFirstComfy", () => {
       { op: "connect", sourceRef: "p1", targetRef: "icw1" },
     ];
     expect(enforceImageFirstComfy(ops, IMG, VID, 10)).toEqual(ops);
+  });
+
+  it("源是画布已存在节点（非本批 tempId）→ 不强插出图工作流", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "comfyui_workflow", tempId: "vcw1", payload: { templateId: 20 } },
+      { op: "connect", sourceRef: "existing_cw", targetRef: "vcw1" }, // 源是已存在节点
+    ];
+    const out = enforceImageFirstComfy(ops, IMG, VID, 10);
+    expect(cw(out)).toHaveLength(1); // 未新增出图工作流
+    expect(out.some((o) => o.op === "connect" && o.sourceRef === "existing_cw" && o.targetRef === "vcw1")).toBe(true);
   });
 });
