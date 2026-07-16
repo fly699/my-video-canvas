@@ -5,6 +5,7 @@ import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Pl
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
 import { MusicGen } from "./MusicGen";
+import { AutoCompose } from "./AutoCompose";
 import { EC } from "./theme";
 import { useEditorStore, kindFromAssetType, trackEnd, clipDuration } from "./editorStore";
 import { probeMediaDuration } from "./theme";
@@ -32,6 +33,7 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
   });
   const [preview, setPreview] = useState<PreviewAsset | null>(null);
   const [musicOpen, setMusicOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false); // D1 AI 一键成片弹窗
   // Refetch when the window/tab regains focus and when the bin is shown again,
   // so assets uploaded or generated elsewhere appear without a full page reload.
   // A manual 刷新 button is also provided for an explicit refresh.
@@ -279,6 +281,11 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
           }}
           style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px dashed ${EC.border}`, background: "transparent", color: EC.t2, cursor: "pointer" }}
         ><Square size={13} /> 添加形状 / SVG</button>
+        {/* D1 AI 一键成片：选素材 → LLM 出剪辑决策（排序/截取/转场/标题/配乐）→ 整档替换（可撤销）。 */}
+        <button
+          onClick={() => setComposeOpen(true)}
+          style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0", fontSize: 12, fontWeight: 600, borderRadius: 7, border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent, cursor: "pointer" }}
+        ><Scissors size={13} /> AI 一键成片</button>
         {/* AI 智能剪辑：转写 → LLM 去口头禅/停顿 → 整档替换（可撤销）。附激进度 + 逐词字幕开关。 */}
         <button
           disabled={aiCutting}
@@ -317,6 +324,7 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
 
       {preview && <MediaPreview asset={preview} onClose={() => setPreview(null)} />}
       {musicOpen && <MusicGen onClose={() => setMusicOpen(false)} />}
+      {composeOpen && <AutoCompose assets={assets} onClose={() => setComposeOpen(false)} />}
     </aside>
   );
 }

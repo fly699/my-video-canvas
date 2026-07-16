@@ -16,6 +16,7 @@ import { extractTextContent } from "../_core/llm";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { getSystemDefaultModel } from "../_core/systemDefaultModels";
 import { buildAiCutDoc, parseAiCutPlan, aiCutStats } from "../_core/aiCut";
+import { buildAutoComposeDoc, parseAutoComposePlan } from "../_core/autoCompose";
 
 // ── EDL validation ────────────────────────────────────────────────────────────
 // Kept tolerant: unknown effect/transition keys are allowed through so the
@@ -298,6 +299,55 @@ export const editorRouter = router({
       if (!doc.tracks.find((t) => t.type === "video")!.clips.length) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "剪辑结果为空（保留区间无效），请重试" });
       writeAuditLog({ ctx, action: "editor:aiCut", detail: { clips: doc.tracks[0].clips.length, subtitles: !!input.subtitles } });
       return { doc, stats: aiCutStats(doc, input.durationSec) };
+    }),
+
+  // D1 AI 一键成片：素材清单 + 创作要求 → LLM 出剪辑决策（排序/截取/转场/标题/配乐/调色）
+  // → 服务端确定性组装 EditorDoc（所有越界值夹取，LLM 给什么都不至于产出非法时间轴），
+  // 客户端 applyDoc 整档替换（可一键撤销，与 aiCut 同模式）。
+  autoCompose: protectedProcedure
+    .input(z.object({
+      assets: z.array(z.object({
+        url: z.string().min(1).max(2048),
+        kind: z.enum(["video", "image", "audio"]),
+        name: z.string().max(200),
+        durationSec: z.number().min(0).max(36000).optional(),
+        assetId: z.number().optional(),
+      })).min(1).max(40),
+      brief: z.string().max(2000).optional(),
+      targetSec: z.number().min(3).max(1800).optional(),
+      width: z.number().int().min(16).max(7680),
+      height: z.number().int().min(16).max(7680),
+      fps: z.number().int().min(1).max(120),
+      model: z.string().max(64).optional(),
+      kieTempKey: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWhitelisted(ctx); // 与 aiCut 同门槛（一次 LLM 规划调用）
+      const manifest = input.assets
+        .map((a, i) => `#${i} [${a.kind === "video" ? "视频" : a.kind === "image" ? "图片" : "音频"}${a.durationSec ? ` ${a.durationSec.toFixed(1)}s` : ""}] ${a.name}`)
+        .join("\n");
+      const sys = "你是专业视频剪辑师兼导演。给定素材清单（含索引/类型/时长）与创作要求，产出一键成片方案。"
+        + "\n规则：只能引用清单里的素材索引；按叙事逻辑排列镜头（开场吸睛→主体→收尾）；"
+        + "视频素材可截取精华段（trimIn/trimOut，单位秒，须落在素材时长内）；图片素材给 durationSec（2-5 秒）；"
+        + "从第 2 段起可给 transition（可选值：fade/dissolve/fadeblack/wipeleft/wiperight/slideleft/slideright/circleopen/zoomin/pixelize，克制使用，同类内容用硬切=不写）；"
+        + "可选 texts：开头标题（role=title，at=0）与收尾一句（role=caption），content ≤ 20 字；"
+        + "清单里有音频素材时可选一条作 bgm（填其索引）；grade 为整体调色档（none/subtle/neutral_punch/warm_cinematic/cinematic/teal_orange/vivid，拿不准用 none）。"
+        + (input.targetSec ? `\n目标成片总时长约 ${input.targetSec} 秒（按此分配每段时长）。` : "")
+        + '\n只输出一个 JSON：{"clips":[{"asset":0,"trimIn":2,"trimOut":8,"transition":"fade"},{"asset":1,"durationSec":3}],"texts":[{"content":"标题","at":0,"durationSec":3,"role":"title"}],"bgm":2,"grade":"none"}。'
+        + "禁止输出任何解释或 Markdown 代码围栏。";
+      const res = await invokeLLMWithKie(ctx, {
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: `素材清单：\n${manifest}\n\n创作要求：${input.brief?.trim() || "把素材剪成一条节奏流畅、观感完整的成片"}` },
+        ],
+        model: input.model ?? await getSystemDefaultModel("llm"), maxTokens: 2400,
+      }, input.kieTempKey ?? null);
+      const plan = parseAutoComposePlan(extractTextContent(res));
+      if (!plan || !plan.clips.length) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未产出有效成片方案，请重试或补充创作要求" });
+      const { doc, stats } = buildAutoComposeDoc(input.assets, plan, { width: input.width, height: input.height, fps: input.fps });
+      if (!stats.clips) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "成片方案为空（未引用任何画面素材），请重试" });
+      writeAuditLog({ ctx, action: "editor:autoCompose", detail: { assets: input.assets.length, ...stats } });
+      return { doc, stats };
     }),
 
   // Soft-delete (hidden from the user; row kept).
