@@ -92,7 +92,7 @@ const clipSchema = z.object({
   }).optional(),
 });
 
-const docSchema = z.object({
+export const docSchema = z.object({ // exported for schema-guard tests (markers 剥离守卫)
   version: z.literal(EDITOR_DOC_VERSION),
   width: z.number().int().min(16).max(7680),
   height: z.number().int().min(16).max(7680),
@@ -100,6 +100,13 @@ const docSchema = z.object({
   normalizeAudio: z.boolean().optional(),
   masterFadeIn: z.number().min(0).max(10).optional(),
   masterFadeOut: z.number().min(0).max(10).optional(),
+  // 批3 时间轴标记点（K 键打点）——必须在此声明，否则 zod 静默剥离、保存即丢
+  // （keyframes 曾踩过同坑，见 clipSchema 上方注释）。
+  markers: z.array(z.object({
+    t: z.number().min(0),
+    label: z.string().max(80).optional(),
+    color: z.string().max(24).optional(),
+  })).max(300).optional(),
   tracks: z.array(z.object({
     id: z.string().min(1).max(64),
     type: z.enum(["video", "audio", "text", "overlay", "attachment"]),
