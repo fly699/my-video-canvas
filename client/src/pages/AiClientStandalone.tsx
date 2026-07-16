@@ -77,6 +77,34 @@ function StandaloneInner() {
     useCanvasStore.getState().setNodes(flow);
   }, [nodesQuery.data, projectId]);
 
+  // 浅色主题在 /ai 生效的关键：全站默认 data-canvas-mode="creative"（CanvasModeProvider），
+  // 而 index.css 的 [data-canvas-mode="creative"] 会把 --c-canvas/--c-surface 等强制成近黑
+  // (#121212/#232323)，优先级压过全局明暗主题 → 本页切浅色无效。/ai 不是画布，这里挂一个
+  // data-ai-client 标记（无任何 Provider 会改它，避免与 CanvasModeProvider 的挂载 effect 抢写
+  // data-canvas-mode 的竞态）；index.css 里创意皮肤的配色块用 :not([data-ai-client]) 排除本页，
+  // 让全局 data-theme 明暗主题变量重新作数。卸载时清除标记。
+  useEffect(() => {
+    const el = document.documentElement;
+    el.setAttribute("data-ai-client", "1");
+    return () => { el.removeAttribute("data-ai-client"); };
+  }, []);
+
+  // 移动端：双指捏合缩放整页字号（viewport 禁用了原生缩放，故自绘）。持久化，与面板浮动实例
+  // 共用同一 key（avc:ai-font-zoom）。zoom 作用于最外层 fixed 根 → 顶栏 + 面板整页统一缩放
+  // （实测 fixed inset:0 元素加 zoom 不产生横向溢出，盒仍被夹到 viewport 宽）。
+  const [fontZoom, setFontZoom] = useState<number>(() => { try { return Number(localStorage.getItem("avc:ai-font-zoom")) || 1; } catch { return 1; } });
+  useEffect(() => { try { localStorage.setItem("avc:ai-font-zoom", String(fontZoom)); } catch { /* restricted */ } }, [fontZoom]);
+  const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
+  const touchDist = (t: React.TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const onPageTouchStart = (e: React.TouchEvent) => { if (e.touches.length === 2) pinchRef.current = { startDist: touchDist(e.touches), startZoom: fontZoom }; };
+  const onPageTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchRef.current && pinchRef.current.startDist > 0) {
+      const z = pinchRef.current.startZoom * (touchDist(e.touches) / pinchRef.current.startDist);
+      setFontZoom(Math.round(Math.max(0.8, Math.min(2.2, z)) * 100) / 100);
+    }
+  };
+  const onPageTouchEnd = (e: React.TouchEvent) => { if (e.touches.length < 2) pinchRef.current = null; };
+
   // 全屏（隐藏浏览器地址栏 / 所有浏览器 UI，真正独占）。需用户手势触发。
   const [isFs, setIsFs] = useState(false);
   useEffect(() => {
@@ -148,7 +176,8 @@ function StandaloneInner() {
   const topBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "7px 11px", borderRadius: 9, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer", flexShrink: 0 };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "var(--c-canvas)", overflow: "hidden" }}>
+    <div onTouchStart={onPageTouchStart} onTouchMove={onPageTouchMove} onTouchEnd={onPageTouchEnd}
+      style={{ position: "fixed", inset: 0, background: "var(--c-canvas)", overflow: "hidden", zoom: fontZoom }}>
       {/* 顶栏：品牌标题 + 模型跑马灯 + 项目切换 + 全屏 + 返回（无地址栏 / 无外链） */}
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: topbarH, padding: narrow ? "0 10px" : "12px 20px 8px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, borderBottom: "1px solid var(--c-bd1)", background: "var(--c-surface)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: narrow ? 8 : 12 }}>

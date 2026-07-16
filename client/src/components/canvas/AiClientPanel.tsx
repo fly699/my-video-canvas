@@ -869,8 +869,9 @@ export function AiClientPanel({ embedded = false, onLatestReply }: { embedded?: 
 
         {/* 对话流 + 输入 */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
-          <div ref={scrollRef} onScroll={onMsgScroll} onTouchStart={onMsgTouchStart} onTouchMove={onMsgTouchMove} onTouchEnd={onMsgTouchEnd}
-            style={{ flex: 1, overflowY: "auto", padding: "16px 10px", display: "flex", flexDirection: "column", gap: 12, zoom: fontZoom }}>
+          <div ref={scrollRef} onScroll={onMsgScroll}
+            onTouchStart={embedded ? undefined : onMsgTouchStart} onTouchMove={embedded ? undefined : onMsgTouchMove} onTouchEnd={embedded ? undefined : onMsgTouchEnd}
+            style={{ flex: 1, overflowY: "auto", padding: "16px 10px", display: "flex", flexDirection: "column", gap: 12, zoom: embedded ? undefined : fontZoom }}>
             {(!active || (messages.length === 0 && !msgQuery.isLoading)) && (
               <div style={{ margin: "auto", width: "100%", maxWidth: 420, textAlign: "center", padding: "0 4px" }}>
                 <span style={{ display: "inline-flex", width: 52, height: 52, alignItems: "center", justifyContent: "center", borderRadius: 15, background: `color-mix(in oklch, ${ACCENT} 15%, transparent)`, color: ACCENT }}><Bot size={28} /></span>
@@ -995,8 +996,8 @@ export function AiClientPanel({ embedded = false, onLatestReply }: { embedded?: 
             onDragOver={(e) => { if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) { e.preventDefault(); setDragOver(true); } }}
             onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
             onDrop={onDropImages}
-            onTouchStart={onMsgTouchStart} onTouchMove={onMsgTouchMove} onTouchEnd={onMsgTouchEnd}
-            style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)", position: "relative", outline: dragOver ? `2px dashed ${ACCENT}` : "none", outlineOffset: -2, zoom: fontZoom }}
+            onTouchStart={embedded ? undefined : onMsgTouchStart} onTouchMove={embedded ? undefined : onMsgTouchMove} onTouchEnd={embedded ? undefined : onMsgTouchEnd}
+            style={{ padding: "10px 12px", borderTop: "1px solid var(--c-bd1)", position: "relative", outline: dragOver ? `2px dashed ${ACCENT}` : "none", outlineOffset: -2, zoom: embedded ? undefined : fontZoom }}
           >
             {/* 顶部可拖拽分隔线：上下拖调「对话区 / 输入框」占比（悬停高亮，双击复位）。
                 触摸屏优化：抓取区扩到 26px 高（远超原 8px），touch-action:none 防手指拖动被当滚动，
