@@ -189,6 +189,22 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
   const [input, setInput] = useState("");
   const [model, setModel] = useState<string>(CHAT_MODELS.find((m) => m.tag === "默认")?.id ?? CHAT_MODELS[0].id);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // @引用节点选择器：点外部 / Esc 自动关闭（多选仍可，点框内不关；此前只能再点「引用节点」按钮才收，
+  // 用户以为选完就该收、结果一直挡着预览——「选择框不会自动隐藏」bug）。
+  const pickerBtnRef = useRef<HTMLButtonElement | null>(null);
+  const pickerPopRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (t && (pickerBtnRef.current?.contains(t) || pickerPopRef.current?.contains(t))) return;
+      setPickerOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPickerOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [pickerOpen]);
   // 模板（人设）——复用聊天助手/ai_chat 节点同一套模板；存 id，发送时解析为 systemPrompt。
   const [aiTemplate, setAiTemplate] = useState<string>(() => { try { return localStorage.getItem("avc:ai-client-template") ?? BLANK_TEMPLATE_ID; } catch { return BLANK_TEMPLATE_ID; } });
   const personaPrompt = aiTemplate === BLANK_TEMPLATE_ID ? NO_PERSONA_PROMPT : ALL_AI_TEMPLATES.find((t) => t.id === aiTemplate)?.prompt;
@@ -973,7 +989,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
             {/* 已引用的画布节点 chips + @ 添加引用（打通 contextNodeIds，作为对话上下文） */}
             {active && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center", marginBottom: 7 }}>
-                <button onClick={() => setPickerOpen((v) => !v)} className="nodrag"
+                <button ref={pickerBtnRef} onClick={() => setPickerOpen((v) => !v)} className="nodrag"
                   title="引用画布节点作为上下文"
                   style={{ display: "inline-flex", alignItems: "center", gap: 3, height: 22, padding: "0 8px", borderRadius: 7, fontSize: 11, cursor: "pointer",
                     background: pickerOpen ? `color-mix(in oklch, ${ACCENT} 14%, transparent)` : "var(--c-input)", border: `1px solid ${pickerOpen ? ACCENT : "var(--c-bd2)"}`, color: pickerOpen ? ACCENT : "var(--c-t3)" }}>
@@ -993,7 +1009,7 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
             )}
             {/* @ 引用选择器（列出可引用画布节点） */}
             {pickerOpen && active && (
-              <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
+              <div ref={pickerPopRef} className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
                 style={{ position: "absolute", left: 12, right: 12, bottom: "calc(100% - 4px)", maxHeight: 240, overflowY: "auto", zIndex: 5,
                   background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.4)", padding: 6 }}>
                 {referable.length === 0 && <div style={{ fontSize: 11.5, color: "var(--c-t4)", padding: "10px 8px" }}>画布上暂无可引用的节点（脚本/分镜/提示词/图像/角色/便签等）。</div>}
