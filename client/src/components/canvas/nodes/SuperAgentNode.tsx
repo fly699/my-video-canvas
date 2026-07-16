@@ -277,6 +277,7 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
         // 默认加载全部资源（不截断）；显式取消勾选时传 false 覆盖服务端默认。
         showAllResources: payload.showAllResources ?? true,
         ...(payload.useMemory === false ? { useMemory: false } : {}),
+        ...(payload.verifyOutput ? { verifyOutput: true } : {}), // B1 产物 AI 质检（默认关）
         ...(isFollowup ? { seedWorkflowJson: payload.resultWorkflowJson, history: buildHistory(priorConv) } : {}),
       },
       runHandlers as Parameters<typeof buildMut.mutate>[1],
@@ -439,6 +440,14 @@ export const SuperAgentNode = memo(function SuperAgentNode({ id, selected, data 
                       className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
                     <span>使用记忆体（资源记忆 + 工作流经验）<br />
                       <span style={{ color: "var(--c-t4)" }}>默认开：复用已学的服务器资源、并参考历史成功工作流，越用越快。关掉则本次忽略记忆、直接读真机（成功经验仍会照常沉淀）。</span>
+                    </span>
+                  </label>
+                  <label style={{ ...labelStyle, display: "flex", alignItems: "flex-start", gap: 6, cursor: running ? "not-allowed" : "pointer" }}>
+                    <input type="checkbox" checked={payload.verifyOutput ?? false} disabled={running}
+                      onChange={(e) => update({ verifyOutput: e.target.checked })}
+                      className="nodrag" style={{ marginTop: 1, accentColor: accent }} />
+                    <span>产物 AI 质检（运行成功后验收首图）<br />
+                      <span style={{ color: "var(--c-t4)" }}>工作流跑通后用视觉模型质检首张产物图（与任务符合度 / 畸形 / 黑图 / 乱码水印）；未过把原因喂回智能体自动再修一轮（整次运行仅拒一次，不会死循环）。额外产生一次视觉分析调用费用。</span>
                     </span>
                   </label>
                 </div>
