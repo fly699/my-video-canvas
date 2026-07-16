@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, ChevronUp, Check, Square, Brain, Github } from "lucide-react";
+import { Bot, Plus, Minus, X, Send, Loader2, MessageSquare, AtSign, Download, Copy, RefreshCw, Paperclip, Pin, Trash2, Code2, Eye, FileDown, Play, BookOpen, Pencil, Mic, Camera, ChevronDown, ChevronUp, Check, Square, Brain, Github, SquareArrowOutUpRight } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useAiClient } from "../../hooks/useAiClient";
 import { deriveAiSessions, resolveActiveSession } from "@/lib/aiClientSessions";
 import { buildNodeContextContent, isReferableNode, nodeContextLabel, planMessageDrop, type ChatMsgAttachment } from "@/lib/aiClientContext";
+import { requestAgentPrefill } from "@/lib/agentPrefill";
+import { useLocation } from "wouter";
 import { loadNodeless, saveNodeless, addSession, removeSession, updateSession, sortSessions, makeNodelessId, isNodelessId, type NodelessSession } from "@/lib/aiClientNodeless";
 import { parseMessageSegments, latestCodeArtifactFrom, CODE_MODE_SYSTEM_PROMPT, type CodeArtifact } from "@/lib/codeArtifacts";
 import { CHAT_MODELS } from "@/lib/models";
@@ -124,7 +126,8 @@ function CodeSegment({ lang, content, onCopy }: { lang?: string; content: string
   );
 }
 
-export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {}) {
+export function AiClientPanel({ embedded = false, onLatestReply }: { embedded?: boolean; onLatestReply?: (text: string | null) => void } = {}) {
+  const [, navigate] = useLocation();
   const reactFlow = useReactFlow();
   const { open, minimized, activeNodeId, close, setMinimized, setActive, pinned, setPinned, geometry, setGeometry } = useAiClient();
   const nodes = useCanvasStore((s) => s.nodes);
@@ -641,6 +644,21 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
     toast.success(`已落成 ${created} 个画布节点`);
   };
 
+  // 进入画布并把这条回答填入画布助手输入框（只填不自动发送，用户可再改）。
+  const enterCanvasWithReply = (content: string) => {
+    const text = (content ?? "").trim();
+    if (!projectId) { toast.error("画布未就绪"); return; }
+    if (text) requestAgentPrefill(projectId, text);
+    navigate(`/canvas/${projectId}`);
+  };
+
+  // 把「最新一条 AI 回复」上抛给父页（单页 AI 客户端的顶栏「进入画布」按钮据此携带最后回复）。
+  useEffect(() => {
+    if (!onLatestReply) return;
+    const last = [...messages].reverse().find((m) => m.role === "assistant" && m.content?.trim());
+    onLatestReply(last?.content?.trim() || null);
+  }, [messages, onLatestReply]);
+
   // ── 窗口几何：拖拽移动 + 缩放（默认右下角停靠；拖过/缩过后持久化）──────────────
   const [liveGeo, setLiveGeo] = useState<import("../../hooks/useAiClient").AiClientGeometry | null>(null);
   const defaultGeo = useMemo(() => {
@@ -905,6 +923,13 @@ export function AiClientPanel({ embedded = false }: { embedded?: boolean } = {})
                       title="把这条回答落成画布节点（文本→便签，图片→图像节点）"
                       style={msgActBtn} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
                       <Download size={11} /> 落成节点
+                    </button>
+                  )}
+                  {m.role === "assistant" && m.content?.trim() && projectId && (
+                    <button onClick={() => enterCanvasWithReply(m.content)} className="nodrag"
+                      title="进入画布，并把这条回答填入画布助手输入框（可再改后发送）"
+                      style={msgActBtn} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = ACCENT; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--c-t4)"; }}>
+                      <SquareArrowOutUpRight size={11} /> 画布助手
                     </button>
                   )}
                   {m.role === "assistant" && i === messages.length - 1 && !busy && (

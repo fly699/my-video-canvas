@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import { hasAgentPrefill, AGENT_PREFILL_EVENT } from "../lib/agentPrefill";
 import { useParams, useLocation } from "wouter";
 import {
   ReactFlow,
@@ -537,6 +538,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // 画布助手（对话式操作画布）浮层开关。默认打开，且**每次进入画布都自动打开**（不持久化关闭态）——
   // 本次会话内关掉即隐藏，重新打开画布/项目会再次弹出。历史对话已落库，重开不丢上下文。
   const [agentChatOpen, setAgentChatOpen] = useState<boolean>(true);
+  // AI 客户端「进入画布并发送至画布助手」：若助手本会话被关掉（未挂载），收到待填内容时自动打开它，
+  // 让 CanvasAgentChat 挂载后消费待填文本（进入画布默认已打开，此处只兜底「关掉后」的实时场景）。
+  useEffect(() => {
+    const open = () => setAgentChatOpen(true);
+    if (hasAgentPrefill(projectId)) open();
+    window.addEventListener(AGENT_PREFILL_EVENT, open);
+    return () => window.removeEventListener(AGENT_PREFILL_EVENT, open);
+  }, [projectId]);
   // 恢复所有浮动工具到默认位置：清掉持久化几何（画布助手球/面板/尺寸、AI 客户端侧栏宽/输入框高，
   // 及任何 avc: 命名空间下的位置/尺寸类 key），重开画布助手，随后刷新让全部浮动工具以默认几何重建。
   // 应对「拖到屏外 / 换分辨率后找不到工具、悬浮球消失」。

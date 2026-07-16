@@ -15,6 +15,7 @@ import { useBridgeSkills } from "@/lib/useBridgeSkills";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, BLANK_TEMPLATE_LABEL } from "@/lib/aiAssistantTemplates";
 import { IMAGE_MODELS, VIDEO_MODELS } from "@/lib/models";
+import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 import type { AgentOperation } from "../../../../shared/types";
 
 /** 浮动「画布助手」：对话式让 AI（如本机 Claude）边聊边直接改画布。复用智能体节点同一套引擎
@@ -133,6 +134,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [staged, setStaged] = useState<File[]>([]);
   const [attachErr, setAttachErr] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  // 输入框高度（可拖拽调整「对话区/输入框」比例）。0 = 默认自适应（单行起、随内容长到 120）。
+  const [composerH, setComposerH] = useState<number>(() => { try { return Number(localStorage.getItem("avc:canvasAgent:composerH")) || 0; } catch { return 0; } });
+  useEffect(() => { try { localStorage.setItem("avc:canvasAgent:composerH", String(composerH)); } catch { /* restricted */ } }, [composerH]);
   const addFiles = (files: File[]) => {
     if (!files.length) return;
     setAttachErr("");
@@ -287,6 +292,17 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
     window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp); window.addEventListener("pointercancel", onUp);
   };
+  // 拖拽调整「对话区 / 输入框」高度比例：上拖 = 输入框变高、对话区变矮（对话区 flex:1 自动收缩）。
+  const startComposerResize = (e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const sy = e.clientY, base = composerH || 46;
+    const onMove = (mv: PointerEvent) => {
+      const max = Math.max(60, size.h - 220); // 给对话区 + 头部留足空间，输入框不至于吃满
+      setComposerH(Math.max(44, Math.min(max, base + (sy - mv.clientY))));
+    };
+    const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
+    window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp); window.addEventListener("pointercancel", onUp);
+  };
 
   useEffect(() => { try { localStorage.setItem(`avc:canvasAgent:${projectId}`, JSON.stringify(turns.slice(-40))); } catch { /* quota */ } }, [turns, projectId]);
   // 挂载时以 DB 为跨设备真相 hydrate（只做一次）。关键：**若用户在 DB 返回前已操作**（turns 变了），
@@ -335,6 +351,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:template", template); } catch { /* quota */ } }, [template]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:prefs", JSON.stringify(quickPrefs)); } catch { /* quota */ } }, [quickPrefs]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [turns, busy]);
+  // AI 客户端「进入画布并发送至画布助手」：进入本画布（挂载）或收到实时事件时，把待填文本灌进输入框、
+  // 展开面板、聚焦（只填不自动发送，用户可再改）。仅消费属于本 projectId 的待填内容。
+  useEffect(() => {
+    const pull = () => {
+      const t = consumeAgentPrefill(projectId);
+      if (!t) return;
+      setCollapsed(false);
+      setInput((cur) => (cur.trim() ? cur + "\n" + t : t));
+      setTimeout(() => { const el = composerRef.current; if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; } }, 0);
+    };
+    pull();
+    window.addEventListener(AGENT_PREFILL_EVENT, pull);
+    return () => window.removeEventListener(AGENT_PREFILL_EVENT, pull);
+  }, [projectId]);
 
   // ── @角色/素材/上传 / 技能 触发面板（输入末尾 @片段 或 /片段 时浮出可选列表）──
   type PickItem = { name: string; sub?: string; kind: "char" | "skill" | "asset" | "upload"; url?: string };
@@ -625,7 +655,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       })()}
 
       {/* messages */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div ref={scrollRef} style={{ flex: 1, minHeight: 60, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 10 }}>
         {turns.length === 0 && (
           <div style={{ color: "var(--c-t3)", fontSize: 12, lineHeight: 1.7 }}>
             用自然语言直接指挥画布，例如：<br />
@@ -739,15 +769,21 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         </div>
       )}
 
+      {/* 拖拽调整「对话区 / 输入框」高度比例 */}
+      <div onPointerDown={startComposerResize} title="拖动调整输入框与对话区高度比例"
+        style={{ height: 9, flexShrink: 0, cursor: "ns-resize", touchAction: "none", display: "flex", alignItems: "center", justifyContent: "center", borderTop: "1px solid var(--c-bd2)" }}>
+        <div style={{ width: 34, height: 3, borderRadius: 2, background: "var(--c-bd3)" }} />
+      </div>
+
       {/* input */}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 10px 10px", borderTop: "1px solid var(--c-bd2)", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 10px 10px", flexShrink: 0 }}>
         <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx" style={{ display: "none" }}
           onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); if (fileInputRef.current) fileInputRef.current.value = ""; }} />
         <button onClick={() => fileInputRef.current?.click()} disabled={busy} title="附参考图 / 文档（据图规划画面·风格·角色）"
           style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: staged.length ? accent : "var(--c-t3)", cursor: busy ? "not-allowed" : "pointer", flexShrink: 0 }}>
           <Paperclip size={16} />
         </button>
-        <textarea value={input} onChange={(e) => setInput(e.target.value)}
+        <textarea ref={composerRef} value={input} onChange={(e) => setInput(e.target.value)}
           onPaste={(e) => { const fs = Array.from(e.clipboardData.files); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
           onDrop={(e) => { const fs = Array.from(e.dataTransfer.files); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
           onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
@@ -761,7 +797,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); }
           }}
           placeholder="指挥画布，Enter 发送；@ 角色、/ 技能、📎 附参考图" rows={1}
-          style={{ flex: 1, resize: "none", maxHeight: 120, padding: "9px 11px", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t1)", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
+          style={{ flex: 1, resize: "none", padding: "9px 11px", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t1)", fontSize: 13, outline: "none", fontFamily: "inherit",
+            // 拖拽过手柄（composerH>0）→ 固定高度、内部滚动；否则默认单行起、随内容长到 120。
+            ...(composerH > 0 ? { height: composerH, maxHeight: composerH, overflowY: "auto" as const } : { maxHeight: 120 }) }} />
         <button onClick={() => void send()} disabled={busy || (!input.trim() && staged.length === 0)} title="发送"
           style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${accent}`, background: accentSoft, color: accent, cursor: busy || (!input.trim() && !staged.length) ? "not-allowed" : "pointer", opacity: busy || (!input.trim() && !staged.length) ? 0.5 : 1, flexShrink: 0 }}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}

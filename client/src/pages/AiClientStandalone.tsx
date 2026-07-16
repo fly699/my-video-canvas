@@ -14,6 +14,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useCanvasStore, type CanvasNode } from "@/hooks/useCanvasStore";
 import { useAiClient } from "@/hooks/useAiClient";
 import { AiClientPanel } from "@/components/canvas/AiClientPanel";
+import { requestAgentPrefill } from "@/lib/agentPrefill";
 import { NodeImageLightbox } from "@/components/canvas/NodeImageLightbox";
 import { ModelShowcaseCard } from "@/components/ModelShowcaseCard";
 import { getNodeConfig } from "@/lib/nodeConfig";
@@ -94,6 +95,9 @@ function StandaloneInner() {
 
   // 项目切换菜单
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  // 最新一条 AI 回复（由 AiClientPanel 上抛）——「进入画布」时携带它，自动填入画布助手输入框。
+  const [latestReply, setLatestReply] = useState<string | null>(null);
+  const enterCanvas = (pid: number) => { if (latestReply) requestAgentPrefill(pid, latestReply); navigate(`/canvas/${pid}`); };
   const allProjects = useMemo(() => {
     const owned = projectsQuery.data?.owned ?? [];
     const shared = projectsQuery.data?.shared ?? [];
@@ -159,8 +163,8 @@ function StandaloneInner() {
             )}
           </div>
           {/* 一键进入当前选中项目的画布（内部路由，非外链）——仅在选了某个真实项目时显示 */}
-          {activeProject && (
-            <button onClick={() => navigate(`/canvas/${projectId}`)} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title={`进入「${activeProject.name}」的画布`}>
+          {activeProject && projectId && (
+            <button onClick={() => enterCanvas(projectId)} style={narrow ? { ...topBtn, padding: "7px 9px" } : topBtn} title={`进入「${activeProject.name}」的画布${latestReply ? "（携带最后一条回复到画布助手）" : ""}`}>
               <PanelsTopLeft size={13} /> {!narrow && "进入画布"}
             </button>
           )}
@@ -177,7 +181,7 @@ function StandaloneInner() {
 
       {/* 复用画布内同一套 AI 客户端面板（embedded：无浮动壳、铺满内容区，不再窗口套窗口） */}
       <div style={{ position: "absolute", top: topbarH, left: 0, right: 0, bottom: 0 }}>
-        <AiClientPanel embedded />
+        <AiClientPanel embedded onLatestReply={setLatestReply} />
       </div>
       {/* 图片放大预览层（AiClientPanel 点击图片附件走 openNodeImage → 该组件监听）。画布页由
           Canvas.tsx 挂载；/ai 独立页需自挂，否则「点击图片不能放大」。 */}
