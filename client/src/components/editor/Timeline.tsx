@@ -7,6 +7,7 @@ import { MEDIA_DND_MIME, type MediaDragPayload } from "./MediaBin";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/dialogService";
 import type { TrackType, TransformKeyframe } from "@shared/editorTypes";
 
 const LABEL_W = 132;
@@ -365,6 +366,16 @@ export function Timeline() {
   // 切点从源时间映射到时间轴 → 逐点 splitClip（每刀一个撤销步，可逐段撤销）。
   const sceneMut = trpc.clip.detectScenes.useMutation();
   const [sceneSplitting, setSceneSplitting] = useState(false);
+  // 批2：场景检测灵敏度（threshold 越低越敏感，切点越多）。持久化；点按钮循环切档。
+  const SCENE_LEVELS = [
+    { key: "sensitive", threshold: 0.2, label: "敏感" },
+    { key: "normal", threshold: 0.3, label: "标准" },
+    { key: "loose", threshold: 0.45, label: "宽松" },
+  ] as const;
+  const [sceneLevel, setSceneLevel] = usePersistentState<string>("ui:editor:scenesplit-level:v1", "normal", {
+    validate: (p) => (SCENE_LEVELS.some((l) => l.key === p) ? (p as string) : null),
+  });
+  const sceneLv = SCENE_LEVELS.find((l) => l.key === sceneLevel) ?? SCENE_LEVELS[1];
   const sceneSplit = useCallback(async () => {
     const st = useEditorStore.getState();
     const doc = st.doc, sel = st.selectedClipId;
@@ -377,13 +388,19 @@ export function Timeline() {
     const speed = clip.speed || 1;
     setSceneSplitting(true);
     try {
-      const { boundaries } = await sceneMut.mutateAsync({ inputUrl: abs, threshold: 0.3 });
+      const { boundaries } = await sceneMut.mutateAsync({ inputUrl: abs, threshold: sceneLv.threshold });
       // 只取落在本片段 trim 区间内的切点（留 0.1s 边距防切出碎渣），映射到时间轴时刻。
       const times = boundaries
         .filter((b) => b > clip!.trimIn + 0.1 && b < clip!.trimOut - 0.1)
         .map((b) => clip!.start + (b - clip!.trimIn) / speed)
         .sort((a, b) => a - b);
-      if (!times.length) { toast.info("未检测到场景切换点（可能是单一连续场景）"); return; }
+      if (!times.length) { toast.info(`未检测到场景切换点（灵敏度「${sceneLv.label}」；可点旁边的灵敏度按钮换档重试）`); return; }
+      // 批2：先确认再动刀——切点多时避免一下把片段剁碎。
+      const ok = await confirmDialog({
+        title: `检测到 ${times.length} 个场景切点，确认分割？`,
+        message: `将把选中片段按画面切换点分成 ${times.length + 1} 段（灵敏度「${sceneLv.label}」，每刀均可撤销）。切点过多/过少可取消后换灵敏度档。`,
+      });
+      if (!ok) return;
       // 逐点分割：每切一刀 clip id 会变，按当前 store 状态在该轨道上重新定位包含此时刻的同源片段。
       let splits = 0;
       for (const t of times) {
@@ -398,7 +415,7 @@ export function Timeline() {
     } finally {
       setSceneSplitting(false);
     }
-  }, [sceneMut]);
+  }, [sceneMut, sceneLv]);
 
   const onDrop = useCallback(async (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
@@ -463,6 +480,10 @@ export function Timeline() {
           onClick={() => { void sceneSplit(); }}
           title="场景分割：本地分析选中视频片段的画面切换点并自动逐点分割（免 AI 调用，可撤销）"
           style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selectedClipId && !sceneSplitting ? EC.t2 : EC.t4, opacity: selectedClipId ? 1 : 0.5, cursor: selectedClipId && !sceneSplitting ? "pointer" : "not-allowed" }}><Blend size={13} /><span style={{ fontSize: 11 }}>{sceneSplitting ? "分析中…" : "场景分割"}</span></button>
+        <button disabled={sceneSplitting}
+          onClick={() => { const i = SCENE_LEVELS.findIndex((l) => l.key === sceneLv.key); setSceneLevel(SCENE_LEVELS[(i + 1) % SCENE_LEVELS.length].key); }}
+          title={`场景检测灵敏度：${sceneLv.label}（阈值 ${sceneLv.threshold}）。点击循环切换 敏感→标准→宽松；越敏感切点越多。`}
+          style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: EC.t3 }}><span style={{ fontSize: 11 }}>{sceneLv.label}</span></button>
         {/* 导出区段：在播放头设入/出点，仅导出选定范围 */}
         <button onClick={() => useEditorStore.getState().setInPoint(playhead)} title="设入点（导出区段起点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: inPoint != null ? EC.accent : EC.t3, borderColor: inPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>入点</span></button>
         <button onClick={() => useEditorStore.getState().setOutPoint(playhead)} title="设出点（导出区段终点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: outPoint != null ? EC.accent : EC.t3, borderColor: outPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>出点</span></button>
