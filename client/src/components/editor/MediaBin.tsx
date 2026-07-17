@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/ui/dialogService";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square, Scissors, LayoutGrid, GalleryVertical, List, Play } from "lucide-react";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square, Scissors, LayoutGrid, GalleryVertical, List, Play, HardDrive, X } from "lucide-react";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
 import { MusicGen } from "./MusicGen";
@@ -22,6 +22,19 @@ export interface MediaDragPayload {
   kind: "video" | "image" | "audio";
 }
 export const MEDIA_DND_MIME = "application/x-editor-media";
+
+// ── 本机素材（不上传素材库）────────────────────────────────────────────────
+// File → objectURL，全程本机预览/剪辑，零上传。仅本页会话有效（刷新后失效）。
+// 模块级缓存：切页/组件重挂载不丢；导出成片前由 Editor 的导出守卫提示一键上传替换
+// （blob: URL 服务端 ffmpeg 无法访问，必须先换成素材库 URL 才能出片）。
+export interface LocalMediaItem {
+  id: string;
+  name: string;
+  kind: "video" | "image" | "audio";
+  url: string; // blob: objectURL
+  file: File;
+}
+export const localMediaCache: LocalMediaItem[] = [];
 
 type BinView = "grid" | "large" | "list";
 
@@ -51,7 +64,14 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
   const thumbBusyRef = useRef(false);
   useEffect(() => {
     if (thumbBusyRef.current) return;
-    const missing = assets.filter((a) => a.type === "video" && !a.thumbnailUrl && !thumbTriedRef.current.has(a.id)).slice(0, 6);
+    const missingAll = assets.filter((a) => a.type === "video" && !a.thumbnailUrl && !thumbTriedRef.current.has(a.id));
+    // 时间轴上正在用的素材优先补缩略图（用户先看到自己正在剪的东西）
+    const doc = useEditorStore.getState().doc;
+    const usedIds = new Set<number>(); const usedUrls = new Set<string>();
+    if (doc) for (const tr of doc.tracks) for (const c of tr.clips) { if (c.assetId != null) usedIds.add(c.assetId); if (c.assetUrl) usedUrls.add(c.assetUrl); }
+    const inUse = (a: { id: number; url: string }) => usedIds.has(a.id) || usedUrls.has(a.url);
+    missingAll.sort((a, b) => Number(inUse(b)) - Number(inUse(a)));
+    const missing = missingAll.slice(0, 6);
     if (!missing.length) return;
     thumbBusyRef.current = true;
     missing.forEach((a) => thumbTriedRef.current.add(a.id));
@@ -62,6 +82,28 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
       if (ok) void listQuery.refetch();
     })();
   }, [assets, makeThumbMut, listQuery]);
+
+  // ── 本机素材：选本地文件 → objectURL 直接进时间轴，不经过上传 ──
+  const [localItems, setLocalItems] = useState<LocalMediaItem[]>(() => [...localMediaCache]);
+  const localFileRef = useRef<HTMLInputElement>(null);
+  const addLocalFiles = (files: File[]) => {
+    const ok = files.filter((f) => /^(video|image|audio)\//.test(f.type));
+    if (!ok.length) { if (files.length) toast.error("仅支持视频 / 图片 / 音频文件"); return; }
+    const items: LocalMediaItem[] = ok.map((f) => ({
+      id: `lm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: f.name,
+      kind: f.type.startsWith("video/") ? "video" : f.type.startsWith("audio/") ? "audio" : "image",
+      url: URL.createObjectURL(f),
+      file: f,
+    }));
+    localMediaCache.push(...items);
+    setLocalItems([...localMediaCache]);
+    toast.success(`已加入 ${items.length} 个本机素材（不上传，本机直接剪辑）`);
+  };
+  const removeLocal = (id: string) => {
+    const idx = localMediaCache.findIndex((x) => x.id === id);
+    if (idx >= 0) { URL.revokeObjectURL(localMediaCache[idx].url); localMediaCache.splice(idx, 1); setLocalItems([...localMediaCache]); }
+  };
 
   const addClip = useEditorStore((s) => s.addClip);
   const applyDoc = useEditorStore((s) => s.applyDoc);
@@ -202,6 +244,18 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
     // insert at the playhead (not appended to the track's end)
     const start = Math.max(0, useEditorStore.getState().playhead);
     addClip(track.id, { kind, assetId: a.id, assetUrl: a.url, start, trimIn: 0, trimOut: dur });
+  }
+
+  // 本机素材加入时间轴：objectURL 直接作 assetUrl（无 assetId），预览/剪辑全本地。
+  async function quickAddLocal(it: LocalMediaItem) {
+    const doc = useEditorStore.getState().doc;
+    if (!doc) return;
+    const trackType = it.kind === "audio" ? "audio" : "video";
+    const track = doc.tracks.find((t) => t.type === trackType) ?? doc.tracks[0];
+    let dur = 5;
+    if (it.kind !== "image") { try { dur = await probeMediaDuration(it.url, it.kind); } catch { /* 保底 5s */ } }
+    const start = Math.max(0, useEditorStore.getState().playhead);
+    addClip(track.id, { kind: it.kind, assetUrl: it.url, start, trimIn: 0, trimOut: dur });
   }
 
   return (
@@ -350,6 +404,50 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
           );
         })}
       </div>
+      </div>
+
+      {/* ── 卡片：本机素材（不上传，objectURL 直接剪辑；导出前守卫提示上传替换） ── */}
+      <div style={{ flexShrink: 0, maxHeight: "24%", display: "flex", flexDirection: "column", borderRadius: 10, border: `1px solid ${EC.border}`, background: EC.surface, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderBottom: `1px solid ${EC.border}`, flexShrink: 0 }}>
+          <HardDrive size={13} style={{ color: EC.t3, flexShrink: 0 }} />
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: EC.t2, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title="本机文件不上传服务器，objectURL 直接预览/剪辑；导出成片时会提示一键上传替换">本机素材 · 免上传</span>
+          <button onClick={() => localFileRef.current?.click()}
+            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", fontSize: 11, borderRadius: 6, border: `1px solid ${EC.border}`, background: EC.elevated, color: EC.t2, cursor: "pointer" }}>
+            <Plus size={11} /> 添加文件
+          </button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+          {localItems.length === 0 && (
+            <div style={{ fontSize: 10.5, color: EC.t4, padding: "6px 4px", lineHeight: 1.6 }}>
+              选择本机视频/图片/音频直接剪辑，<b>无需上传素材库</b>。仅本次会话有效；导出成片时会提示一键上传。
+            </div>
+          )}
+          {localItems.map((it) => {
+            const Icon = it.kind === "video" ? FileVideo : it.kind === "audio" ? FileAudio : FileImage;
+            const payload: MediaDragPayload = { url: it.url, name: it.name, kind: it.kind };
+            return (
+              <div key={it.id} draggable
+                onDragStart={(e) => { e.dataTransfer.setData(MEDIA_DND_MIME, JSON.stringify(payload)); e.dataTransfer.effectAllowed = "copy"; }}
+                title={`${it.name}（拖拽或＋加入时间轴 · 本机文件不上传）`}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 6px", borderRadius: 7, border: `1px solid ${EC.border}`, background: EC.elevated, cursor: "grab" }}>
+                {it.kind === "image"
+                  ? <div style={{ width: 30, height: 22, flexShrink: 0, borderRadius: 4, backgroundImage: `url("${it.url}")`, backgroundSize: "cover", backgroundPosition: "center" }} />
+                  : <Icon size={14} style={{ color: EC.t3, flexShrink: 0 }} />}
+                <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: EC.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
+                <button onClick={() => void quickAddLocal(it)} title="加入时间轴（插入到播放头）"
+                  style={{ flexShrink: 0, width: 20, height: 20, borderRadius: 5, border: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", background: EC.accent, color: "#fff", cursor: "pointer" }}>
+                  <Plus size={12} />
+                </button>
+                <button onClick={() => removeLocal(it.id)} title="从本机素材列表移除（不影响已在时间轴上的片段）"
+                  style={{ flexShrink: 0, width: 20, height: 20, borderRadius: 5, border: `1px solid ${EC.border}`, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "transparent", color: EC.t4, cursor: "pointer" }}>
+                  <X size={11} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <input ref={localFileRef} type="file" multiple accept="video/*,image/*,audio/*" style={{ display: "none" }}
+          onChange={(e) => { addLocalFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
       </div>
 
       {/* ── 卡片二：功能区（限高 45%，超出自行滚动，不挤压素材卡） ── */}

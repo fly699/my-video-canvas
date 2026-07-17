@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Check, Keyboard, Loader2, Play, Pause, Repeat, Magnet, Gauge, Volume2, VolumeX, Camera } from "lucide-react";
+import { X, Check, Keyboard, Loader2, Play, Pause, Repeat, Magnet, Gauge, Volume2, VolumeX, Camera, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { mediaFetchUrl } from "@/lib/download";
@@ -50,6 +50,25 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
     if (!r || !stRef.current.duration) return 0;
     return Math.max(0, Math.min(stRef.current.duration, ((clientX - r.left) / r.width) * stRef.current.duration));
   };
+  // 节点里的预览视频（画布上那个）：快剪期间跟随小预览同步 seek / 播放（静音防双声）。
+  const nodeVideoRef = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const nv = document.querySelector(`.react-flow__node[data-id="${CSS.escape(nodeId)}"] video`) as HTMLVideoElement | null;
+    nodeVideoRef.current = nv;
+    if (!nv) return;
+    const wasMuted = nv.muted;
+    nv.muted = true; // 声音只从快剪条预览出，节点侧静音防双声
+    if (!nv.paused) nv.pause();
+    return () => { nv.muted = wasMuted; nodeVideoRef.current = null; };
+  }, [nodeId]);
+  // 拖动手柄 = 实时 seek：小预览与节点预览都跳到手柄时间（所拖即所见）。
+  const seekBoth = (t: number) => {
+    const v = videoRef.current;
+    if (v) { if (!v.paused) v.pause(); v.currentTime = t; }
+    const nv = nodeVideoRef.current;
+    if (nv) { if (!nv.paused) nv.pause(); nv.currentTime = t; }
+  };
+
   const applyDrag = (which: "start" | "end" | "move", t: number) => {
     const { snap: sn, duration: d, start: s, end: e2 } = stRef.current;
     if (which === "move") {
@@ -57,11 +76,12 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
       let ns = Math.max(0, Math.min(d - w, t - moveGrabRef.current));
       if (sn) ns = Math.max(0, Math.min(d - w, Math.round(ns)));
       setStart(ns); setEnd(ns + w);
+      seekBoth(ns);
       return;
     }
     const v = sn ? Math.round(t) : t;
-    if (which === "start") setStart(Math.min(v, e2 - 0.2));
-    else setEnd(Math.min(d, Math.max(v, s + 0.2)));
+    if (which === "start") { const nv = Math.min(v, e2 - 0.2); setStart(nv); seekBoth(nv); }
+    else { const nv = Math.min(d, Math.max(v, s + 0.2)); setEnd(nv); seekBoth(nv); }
   };
 
   const trimMutation = trpc.clip.trimVideo.useMutation({
@@ -74,6 +94,68 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
     onError: (e) => toast.error("截帧失败：" + e.message),
   });
   const busy = trimMutation.isPending;
+
+  // 本机 AI 自动剪辑：ffmpeg silencedetect（零 LLM 成本）找静音段 → 掐头去尾设入/出点。
+  const silenceMutation = trpc.clip.detectSilences.useMutation();
+  const autoTrim = useCallback(async () => {
+    const { duration: d } = stRef.current;
+    if (silenceMutation.isPending || !d) return;
+    toast.info("本机分析静音中…（不消耗 AI 调用）");
+    try {
+      const { silences } = await silenceMutation.mutateAsync({ inputUrl: videoUrl, durationSec: d, projectId });
+      if (!silences.length) { toast.info("未检测到明显静音段，入/出点保持不变"); return; }
+      // 掐头去尾：起始静音（贴 0 开始）→ 入点收到其结束；结尾静音（贴片尾结束）→ 出点收到其开始。
+      const lead = silences.find((s) => s.start <= 0.05);
+      const trail = [...silences].reverse().find((s) => s.end >= d - 0.05);
+      let ns = lead ? Math.min(lead.end, d - 0.2) : 0;
+      let ne = trail ? Math.max(trail.start, ns + 0.2) : d;
+      if (ne - ns < 0.2) { ns = 0; ne = d; }
+      const interior = silences.filter((s) => s !== lead && s !== trail).length;
+      if (!lead && !trail) { toast.info(`首尾无静音；中段有 ${interior} 处静音（单选区无法跳剪，可到「视频剪辑器」做多段剪除）`); return; }
+      setStart(ns); setEnd(ne);
+      seekBoth(ns);
+      toast.success(`已自动掐头去尾：入 ${ns.toFixed(2)}s · 出 ${ne.toFixed(2)}s${interior ? `（另有 ${interior} 处中段静音，多段剪除请用剪辑器）` : ""}`);
+    } catch (e) {
+      toast.error("静音分析失败：" + (e instanceof Error ? e.message : String(e)));
+    }
+  }, [silenceMutation, videoUrl, projectId]);
+
+  // 时间轴缩略帧（本地抽帧，不发请求）：临时 <video> 逐点 seek + canvas 截帧，完成即释放。
+  const [strip, setStrip] = useState<string[]>([]);
+  useEffect(() => {
+    if (!duration || duration <= 0) return;
+    let cancelled = false;
+    const v = document.createElement("video");
+    v.crossOrigin = "anonymous";
+    v.src = mediaFetchUrl(videoUrl);
+    v.muted = true; v.playsInline = true; v.preload = "auto";
+    const N = 8;
+    const canvas = document.createElement("canvas");
+    canvas.width = 64; canvas.height = 36;
+    const c2d = canvas.getContext("2d");
+    const seek = (t: number) => new Promise<void>((res, rej) => {
+      const done = () => { v.removeEventListener("seeked", done); res(); };
+      v.addEventListener("seeked", done);
+      const guard = setTimeout(() => { v.removeEventListener("seeked", done); rej(new Error("seek timeout")); }, 4000);
+      void guard;
+      v.currentTime = Math.min(Math.max(t, 0), Math.max(0, duration - 0.05));
+    });
+    void (async () => {
+      try {
+        await new Promise<void>((res, rej) => { v.onloadeddata = () => res(); v.onerror = () => rej(new Error("load fail")); });
+        const frames: string[] = [];
+        for (let i = 0; i < N; i++) {
+          if (cancelled || !c2d) return;
+          await seek(((i + 0.5) / N) * duration);
+          c2d.drawImage(v, 0, 0, canvas.width, canvas.height);
+          frames.push(canvas.toDataURL("image/jpeg", 0.55));
+        }
+        if (!cancelled) setStrip(frames);
+      } catch { /* 跨域/解码失败 → 无缩略帧背景，不影响剪辑 */ }
+      finally { v.removeAttribute("src"); v.load(); }
+    })();
+    return () => { cancelled = true; v.removeAttribute("src"); v.load(); };
+  }, [duration, videoUrl]);
 
   const confirm = useCallback(() => {
     const { start: s, end: e2 } = stRef.current;
@@ -91,8 +173,13 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current; if (!v) return;
-    if (v.paused) { if (v.currentTime < stRef.current.start || v.currentTime >= stRef.current.end) v.currentTime = stRef.current.start; void v.play(); }
-    else v.pause();
+    const nv = nodeVideoRef.current;
+    if (v.paused) {
+      if (v.currentTime < stRef.current.start || v.currentTime >= stRef.current.end) v.currentTime = stRef.current.start;
+      void v.play();
+      // 节点预览同步播放（静音）：同起点、同速率
+      if (nv) { nv.currentTime = v.currentTime; nv.playbackRate = v.playbackRate; void nv.play().catch(() => { /* 无源 */ }); }
+    } else { v.pause(); nv?.pause(); }
   }, []);
   const togglePlayRef = useRef(togglePlay); togglePlayRef.current = togglePlay;
 
@@ -106,7 +193,13 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
     const { start: s, end: e2, loop: lp } = stRef.current;
     if (e2 > s && v.currentTime >= e2) {
       if (lp) { v.currentTime = s; }
-      else { v.pause(); }
+      else { v.pause(); nodeVideoRef.current?.pause(); }
+    }
+    // 节点预览跟播：漂移超过 0.35s 时校正（含循环回卷），播放态跟随
+    const nv = nodeVideoRef.current;
+    if (nv) {
+      if (Math.abs(nv.currentTime - v.currentTime) > 0.35) nv.currentTime = v.currentTime;
+      if (!v.paused && nv.paused) void nv.play().catch(() => { /* 无源 */ });
     }
   };
 
@@ -159,6 +252,7 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
     { label: "播放/暂停", keys: "Space" },
     { label: "确认剪辑", keys: "Enter" },
     { label: "退出", keys: "Esc" },
+    { label: "自动剪辑（掐头去尾）", keys: "魔棒按钮" },
   ];
 
   return createPortal(
@@ -234,6 +328,14 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
             onPointerUp={() => { dragRef2.current = null; }}
             onPointerCancel={() => { dragRef2.current = null; }}
             style={{ position: "relative", height: 34, borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", overflow: "hidden", cursor: "ew-resize", touchAction: "none" }}>
+            {/* 缩略帧背景（本地抽帧 filmstrip）：拖动时能看见剪的是什么画面 */}
+            {strip.length > 0 && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", pointerEvents: "none" }}>
+                {strip.map((f, i) => (
+                  <img key={i} src={f} alt="" style={{ flex: 1, minWidth: 0, height: "100%", objectFit: "cover", opacity: 0.55, display: "block" }} />
+                ))}
+              </div>
+            )}
             {/* 选区 */}
             <div style={{ position: "absolute", top: 0, bottom: 0, left: pct(start), width: duration > 0 ? `${((end - start) / duration) * 100}%` : "100%", background: "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 22%, transparent)", border: "1px solid color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)", pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--c-t1)", textShadow: "0 1px 2px rgba(0,0,0,0.5)", whiteSpace: "nowrap" }}>{fmt(Math.max(0, end - start))}</span>
@@ -251,6 +353,12 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
           </div>
         </div>
       </div>
+      {/* 本机 AI 自动剪辑：ffmpeg 静音分析（零 AI 调用）→ 自动掐头去尾 */}
+      <button onClick={() => void autoTrim()} disabled={silenceMutation.isPending}
+        title="本机 AI 自动剪辑：分析静音自动掐头去尾（本地 ffmpeg，免 AI 调用）"
+        style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: silenceMutation.isPending ? "var(--c-t4)" : "var(--c-t3)", cursor: silenceMutation.isPending ? "wait" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {silenceMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+      </button>
       {/* #127 变速：循环 0.5→0.75→1→1.25→1.5→2×，确认时随剪辑一并应用 */}
       <button onClick={() => setSpeed((v) => SPEEDS[(SPEEDS.indexOf(v as typeof SPEEDS[number]) + 1) % SPEEDS.length])}
         title={`变速 ${speed}×（点击切换；确认时随剪辑应用${speed !== 1 ? `，成片时长约 ${fmt(Math.max(0, end - start) / speed)}` : ""}）`}
