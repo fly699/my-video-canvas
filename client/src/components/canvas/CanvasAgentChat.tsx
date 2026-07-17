@@ -173,6 +173,16 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           if (saved.imageModel === "kie_grok_image") saved.imageModel = "kie_gpt_image_2";
           localStorage.setItem("avc:canvasAgent:qpMigV2", "1");
         }
+        // V3（用户实报默认仍不是 GPT Image 2）：V2 只迁了旧值 kie_grok_image，老缓存里存的
+        // ""（历史出厂「默认=不锁定」）或中间版默认 kie_gpt_image_15 都原样保留，导致这批
+        // 用户的生图模型仍不是 GPT Image 2。一次性把这三类「旧默认痕迹」统一迁到新默认；
+        // 用户主动锁定的其它模型不动，迁移后再改回任何值也不再被动。
+        if (!localStorage.getItem("avc:canvasAgent:qpMigV3")) {
+          if (saved.imageModel === undefined || saved.imageModel === "" || saved.imageModel === "kie_grok_image" || saved.imageModel === "kie_gpt_image_15") {
+            saved.imageModel = "kie_gpt_image_2";
+          }
+          localStorage.setItem("avc:canvasAgent:qpMigV3", "1");
+        }
         return { ...QP_DEFAULT, ...saved };
       }
     } catch { /* ignore */ }
@@ -527,7 +537,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     if (!msg || busy) return;
     if (!overrideMsg) { setInput(""); setStaged([]); setAttachErr(""); }
     // 每条截到 8000（服务端 history zod 上限）——否则发过超长消息后，下一条会整包被 400 拒掉。
-    const history = turns.slice(-10).map((t) => ({ role: t.role, content: t.content.slice(0, 8000) }));
+    // 交互式规划的多轮决策（4 决策点 ≈ 8-10 条）会顶满 10 条窗口，放宽到 16 条防共识被挤出；
+    // 服务端 ctxBudget 仍按总字符预算兜底裁剪，不会撑爆输入。
+    const history = turns.slice(quickPrefs.interactive ? -16 : -10).map((t) => ({ role: t.role, content: t.content.slice(0, 8000) }));
     const attachLabel = files.length ? `　📎 ${files.map((f) => f.name).join("、")}` : "";
     setTurns((p) => [...p, { role: "user", content: msg + attachLabel }]);
     // 软取消：本机 Claude/GPT 大计划可能等 1~10 分钟——「取消」按钮立刻拿回控制
@@ -746,8 +758,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               color: t.error ? "oklch(0.72 0.18 25)" : "var(--c-t1)" }}>
               {t.content}
             </div>
-            {/* 交互式规划：最后一条助手消息里的编号选项渲染成快捷回复按钮，点击即发送。 */}
-            {quickPrefs.interactive && t.role === "assistant" && !t.error && i === turns.length - 1 && !busy && (() => {
+            {/* 交互式规划：最后一条助手消息里的编号选项渲染成快捷回复按钮，点击即发送。
+                已落地（applied 非空）的回复不再渲染——落地说明里若含编号清单（如「已创建：1. …」）
+                会被误解析成选项，误点「开始落地」还会再触发一轮规划。 */}
+            {quickPrefs.interactive && t.role === "assistant" && !t.error && !t.applied && i === turns.length - 1 && !busy && (() => {
               const opts = t.content.split("\n")
                 .map((l) => /^\s*([1-9])[.、．)]\s*(.{1,80})/.exec(l))
                 .filter((m): m is RegExpExecArray => !!m)

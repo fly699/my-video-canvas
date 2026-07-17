@@ -13,6 +13,42 @@ import { ENV } from "./env";
 const POYO_BASE = "https://api.poyo.ai";
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 
+// ── #232 官方限流自适应节流（5 次/分/Key）────────────────────────────────────
+// 此前不做任何节流：批量运行（多镜头 × 多参考图）1 分钟内轻松超过 5 次 → 429 →
+// 直接放弃回落 presign；而启用本 fallback 的部署恰恰是「本地存储不对公网开放」，
+// presign 上游拉不到 → 参考图静默丢失。这里用滑动窗口把突发请求排队错峰：窗口满
+// 时等到最早一次滚出 60s 再发，宁可慢几十秒也不丢参考图。
+const RATE_LIMIT = 5;
+const RATE_WINDOW_MS = 60_000;
+const _stamps: number[] = [];
+let _queue: Promise<void> = Promise.resolve();
+
+/** 纯函数：给定已发时间戳窗口与当前时刻，算还需等待的毫秒数（0=可立即发）。单测用。 */
+export function computeThrottleWaitMs(stamps: number[], now: number, limit = RATE_LIMIT, windowMs = RATE_WINDOW_MS): number {
+  const live = stamps.filter((t) => now - t < windowMs);
+  if (live.length < limit) return 0;
+  return windowMs - (now - live[live.length - limit]) + 250; // +250ms 余量防边界
+}
+
+async function acquireUploadSlot(): Promise<void> {
+  // 串行化排队（并发调用按先来后到依次占坑），避免多个并发同时判定「有空位」齐发。
+  const prev = _queue;
+  let release!: () => void;
+  _queue = new Promise<void>((r) => { release = r; });
+  await prev;
+  try {
+    for (;;) {
+      const wait = computeThrottleWaitMs(_stamps, Date.now());
+      if (wait <= 0) break;
+      await new Promise((r) => setTimeout(r, wait));
+    }
+    while (_stamps.length && Date.now() - _stamps[0] >= RATE_WINDOW_MS) _stamps.shift();
+    _stamps.push(Date.now());
+  } finally {
+    release();
+  }
+}
+
 const ALLOWED_IMAGE = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const ALLOWED_VIDEO = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/x-matroska"]);
 
@@ -33,6 +69,8 @@ export async function uploadStreamToPoyo(
   if (isVideo && buf.byteLength > MAX_VIDEO_BYTES) {
     throw new Error(`Poyo 流式上传视频超出 100MB 上限（当前 ${(buf.byteLength / 1024 / 1024).toFixed(1)}MB）`);
   }
+
+  await acquireUploadSlot(); // 官方 5 次/分限流：排队错峰而非撞 429 丢参考图
 
   const form = new FormData();
   // Copy into a standalone Uint8Array so the Blob part is a plain ArrayBuffer view.
