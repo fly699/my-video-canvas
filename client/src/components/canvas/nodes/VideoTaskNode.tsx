@@ -14,7 +14,7 @@ import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effect
 import { composeCharacterEffectPrompt } from "../../../lib/promptCompose";
 import { clampDurationForProvider } from "../../../lib/storyboardGen";
 import { detectUpstreamPrompt, detectUpstreamImageUrl, detectUpstreamStoryboardDuration, listUpstreamVideoSources, listUpstreamAudioSources, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
-import { SUPPORTS_REF_VIDEO, SUPPORTS_REF_AUDIO, collectVideoRefMedia } from "../../../lib/videoRefMedia";
+import { SUPPORTS_REF_VIDEO, SUPPORTS_REF_AUDIO, collectVideoRefMedia, planCharacterRefs } from "../../../lib/videoRefMedia";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
@@ -419,6 +419,15 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // 给每张打「主体N」编号（N = 发送顺序，与 buildRefUrls 同源），提示词可用
   // 主体1/主体2… 指代对应图。仅编号会真正发送的前 max 张。
   const providerMaxRefs = maxRefImagesForProvider(payload.provider);
+  // #228 角色参考状态提示：角色/场景定妆照本次「会不会发送、以什么方式发送」，与提交
+  // 路径（buildRefUrls/refModeForSubmit）共用 planCharacterRefs 单一决策源，所见即所发。
+  const upstreamFrameUrl = useCanvasStore((s) => detectUpstreamImageUrl(id, s.edges, s.nodes));
+  const charRefPlan = useMemo(() => planCharacterRefs({
+    charRefCount: charSceneItems.filter((it) => it.label === "角色" || it.label === "场景").length,
+    manualRefCount: refImages.images.length,
+    hasUpstreamFrame: !!(payload.referenceImageUrl?.trim() || upstreamFrameUrl),
+    providerMaxRefs,
+  }), [charSceneItems, refImages.images.length, payload.referenceImageUrl, upstreamFrameUrl, providerMaxRefs]);
   const subjectTagging = providerMaxRefs > 1 && refImages.images.length > 1;
   const subjectCount = subjectTagging ? Math.min(refImages.images.length, providerMaxRefs) : 0;
   const insertSubjectToken = useCallback((n: number) => {
@@ -746,13 +755,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       // No manually-attached refs → lock identity on ALL views of any connected
       // character (multi-reference); person identity refs first, then SCENE backdrop
       // refs (location/style context), falling back to the single primary ref.
-      const charRefs = [...effectiveCharacterRefImages(id, payload.prompt, ge, gn), ...effectiveSceneRefImages(id, payload.prompt, ge, gn)];
+      // 首帧优先（#228，与「运行全部」runner 同口径）：已有手填/推送主图或上游首帧图时，
+      // 角色参考不再并入多图列表——此前这里会把角色图切成主体参考、静默丢弃用户的首帧
+      // 构图，且与批量运行结果分叉；一致性由首帧画面继承（首帧由生图节点吃定妆照生成）。
+      const framePrimary = payload.referenceImageUrl?.trim() || detectUpstreamImageUrl(id, ge, gn);
+      const charRefs = framePrimary ? [] : [...effectiveCharacterRefImages(id, payload.prompt, ge, gn), ...effectiveSceneRefImages(id, payload.prompt, ge, gn)];
       base = charRefs.length ? charRefs : (primary ? [primary] : []);
     }
     base = Array.from(new Set([...base, ...atImgs]));
     const max = maxRefImagesForProvider(provider);
     return max > 1 && base.length > 1 ? base.slice(0, max) : undefined;
-  }, [refImages.images, id, payload.prompt]);
+  }, [refImages.images, id, payload.prompt, payload.referenceImageUrl]);
 
   // Reference (subject) mode: when the references come from connected CHARACTERS
   // (identity), they are SUBJECTS, not 首尾帧 — so on multi-reference-capable models
@@ -763,10 +776,13 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const refModeForSubmit = useCallback((): "reference" | undefined => {
     if (refImages.images.length > 0) return undefined; // manual refs → keep frame default
     const { nodes: gn, edges: ge } = useCanvasStore.getState();
+    // 首帧优先（#228）：有手填/推送主图或上游首帧图 → 保持首帧 i2v 路径，不切主体参考模式
+    //（与 buildRefUrls / runner 同口径，否则首帧被服务端 reference 分支忽略）。
+    if (payload.referenceImageUrl?.trim() || detectUpstreamImageUrl(id, ge, gn)) return undefined;
     // Person identity OR scene backdrop refs are context, not 首尾帧 → reference mode.
     const hasCharRefs = effectiveCharacterRefImages(id, payload.prompt, ge, gn).length > 0 || effectiveSceneRefImages(id, payload.prompt, ge, gn).length > 0;
     return hasCharRefs ? "reference" : undefined;
-  }, [refImages.images, id, payload.prompt]);
+  }, [refImages.images, id, payload.prompt, payload.referenceImageUrl]);
 
   // Multi-modal references: gather video/audio URLs for models that accept them, from
   // ALL participating sources — upstream 来源（video_task/comfyui_video/audio/asset 视频音频）
@@ -1595,6 +1611,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               onSwitch={(u) => handleChange("referenceImageUrl", u)}
             />
           </label>
+
+          {charRefPlan && (
+            <div style={{ fontSize: 10, lineHeight: 1.5, marginTop: 2, color: charRefPlan.mode === "none" ? "var(--c-t4)" : "oklch(0.70 0.13 150)" }}>
+              ⓘ {charRefPlan.note}
+            </div>
+          )}
 
           {refImages.images.length > 0 && (
             <div className="nowheel" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>

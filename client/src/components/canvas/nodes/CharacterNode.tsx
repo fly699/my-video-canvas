@@ -37,6 +37,7 @@ import { useLightbox } from "../studio/Lightbox";
 import { downloadMedia } from "../../../lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
+import { buildPortraitPrompt, PORTRAIT_ASPECT } from "@/lib/characterPortrait";
 import { detectUpstreamImagesExpanded } from "@/lib/comfyWorkflowParams";
 
 interface Props {
@@ -287,6 +288,59 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       toast.error("多视角生成失败：" + (err instanceof Error ? err.message : String(err)));
     } finally {
       setMultiAngleBusy(false);
+    }
+  };
+
+  // 一键定妆照（#227）：按角色描述生成单张「全身正面素背景」定妆照 → 设为主参考图
+  //（原主图自动移入备用视角，不丢）。提示词/比例与画布助手「角色自动定妆照」共用
+  // characterPortrait.ts 单一事实源；模型沿用下方「生成模型」选择（与一键多视角共用）。
+  const [portraitBusy, setPortraitBusy] = useState(false);
+  const handlePortrait = async () => {
+    if (portraitBusy) return;
+    const prompt = buildPortraitPrompt(payload);
+    if (!prompt) { toast.error("请先填写角色外貌 / 服装等描述"); return; }
+    const oldMain = payload.referenceImageUrl?.trim();
+    if (oldMain && !window.confirm("已有主参考图。生成定妆照将设为新的主参考图（原主图自动移入备用视角），继续？")) return;
+    setPortraitBusy(true);
+    try {
+      let url = "";
+      if (maModel === COMFY_LOCAL_MODEL) {
+        const ckpt = loadComfyCkpt();
+        if (!ckpt) { toast.error("本地 ComfyUI 需先选择 checkpoint 模型"); setPortraitBusy(false); return; }
+        const gen = await maComfyMut.mutateAsync({
+          nodeId: id, projectId: data.projectId, ckpt,
+          customBaseUrl: loadComfyBase() || undefined,
+          workflowTemplate: oldMain ? "img2img" : "txt2img",
+          prompt: prompt.slice(0, 2000),
+          ...(oldMain ? { referenceImageUrl: oldMain, denoise: 0.75 } : {}),
+        });
+        url = gen.url || "";
+      } else {
+        const gen = await maGenMut.mutateAsync({
+          prompt,
+          ...(oldMain ? { referenceImageUrl: oldMain } : {}),
+          aspectRatio: PORTRAIT_ASPECT,
+          poyoAspectRatio: PORTRAIT_ASPECT,
+          reveAspectRatio: PORTRAIT_ASPECT,
+          projectId: data.projectId,
+          ...(maModel ? { model: maModel, estimatedCost: maCost } : {}),
+        } as Parameters<typeof maGenMut.mutateAsync>[0]);
+        url = gen.urls?.[0] || gen.url || "";
+      }
+      if (!url) { toast.error("定妆照生成失败：未返回图像"); return; }
+      const extras = (payload.additionalImageUrls ?? []).map((u) => (u ?? "").trim()).filter(Boolean);
+      updateNodeData(id, {
+        referenceImageUrl: url,
+        referenceStorageKey: undefined,
+        ...(oldMain && oldMain !== url
+          ? { additionalImageUrls: Array.from(new Set([oldMain, ...extras.filter((u) => u !== url)])).slice(0, MAX_ADDITIONAL_IMAGES) }
+          : {}),
+      });
+      toast.success("定妆照已生成并设为主参考图");
+    } catch (err) {
+      toast.error("定妆照生成失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setPortraitBusy(false);
     }
   };
 
@@ -810,6 +864,18 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           )}
           {kind === "person" && (
             <button
+              onClick={() => void handlePortrait()}
+              disabled={portraitBusy}
+              className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] font-medium transition-all"
+              style={{ marginTop: 6, background: accentA(0.10), border: `1px solid ${accentA(0.32)}`, color: accent, cursor: portraitBusy ? "not-allowed" : "pointer" }}
+              title="按角色描述生成一张全身正面素背景定妆照，设为主参考图（原主图自动移入备用视角）。下游生图/生视频以此锁脸"
+            >
+              {portraitBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Sparkles style={{ width: 11, height: 11 }} />}
+              {portraitBusy ? "生成定妆照中…" : "一键定妆照（生成主参考图）"}
+            </button>
+          )}
+          {kind === "person" && (
+            <button
               onClick={handleMultiAngle}
               disabled={multiAngleBusy}
               className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] font-medium transition-all"
@@ -832,7 +898,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           )}
           {/* #73 纳管：三视图生成模型选择 + 计价（此前隐形走服务端默认模型） */}
           <div className="nodrag" style={{ marginTop: 6 }}>
-            <label style={{ ...labelStyle, marginBottom: 4 }}>多视角模型（一键多视角用此模型）</label>
+            <label style={{ ...labelStyle, marginBottom: 4 }}>生成模型（定妆照 / 一键多视角共用）</label>
             <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
               <ModelPicker value={maModel} onChange={pickMaModel} options={maOptionsResolved} minWidth={150} />
               <span style={{ fontSize: 9.5, color: "var(--c-t4)", whiteSpace: "nowrap" }} title="三视图为单张大图，计一次生成">预计：{maCost}</span>
@@ -1260,6 +1326,8 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             onClick={() => fileInputRef.current?.click()} disabled={uploading} title="上传参考图（可拖入素材）" />
           <ToolChip icon={recognizeMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} label="识别"
             onClick={handleRecognize} disabled={recognizeMut.isPending} title="AI 看图识别，自动填充外貌/服装等字段" />
+          <ToolChip icon={portraitBusy ? <Loader2 size={13} className="animate-spin" /> : <User size={13} />} label="定妆照"
+            onClick={() => void handlePortrait()} disabled={portraitBusy} title="一键定妆照：按角色描述生成全身正面素背景主参考图（下游生图/生视频锁脸）" />
           <ToolChip icon={multiAngleBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} label="多视角"
             onClick={() => void handleMultiAngle()} disabled={multiAngleBusy} title="一键多视角（三视图参考，强化跨镜一致性）" />
           {/* #133 批C：高频操作一级化——姿势库 / 应用到分镜 从 hover 带提为输入条常驻 chip */}

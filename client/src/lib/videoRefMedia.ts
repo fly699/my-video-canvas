@@ -30,6 +30,43 @@ export const SUPPORTS_REF_AUDIO = new Set<string>([
   "poyo_seedance2_mini",
 ]);
 
+// ── 角色参考图参与计划（#228）─────────────────────────────────────────────────
+// 视频任务里「角色/场景参考图（定妆照等）」如何参与本次生成的单一决策源：
+// VideoTaskNode 的提交路径（buildRefUrls / refModeForSubmit）与配置区的状态提示行
+// 共用它，保证「提示说会发送」与「实际发送」永不分叉。口径与「运行全部」runner 一致：
+// 首帧优先——已有手动参考图或上游首帧图时角色参考不直接发送（一致性由首帧画面继承，
+// 首帧本身由生图节点吃角色定妆照生成）。
+export type CharRefPlan = {
+  /** reference=以主体参考(多图锁脸)发送；frame=作为单图首帧输入发送；none=本次不发送。 */
+  mode: "reference" | "frame" | "none";
+  /** 给用户看的一句话说明（配置区提示行直接渲染）。 */
+  note: string;
+};
+
+/** 角色/场景参考图的参与计划；没有角色参考图时返回 null（不渲染提示、不影响提交）。 */
+export function planCharacterRefs(opts: {
+  charRefCount: number;
+  manualRefCount: number;
+  hasUpstreamFrame: boolean;
+  providerMaxRefs: number;
+}): CharRefPlan | null {
+  const { charRefCount, manualRefCount, hasUpstreamFrame, providerMaxRefs } = opts;
+  if (charRefCount <= 0) return null;
+  if (manualRefCount > 0) {
+    return { mode: "none", note: "已手动附参考图，角色定妆照本次不发送（以手动参考图为准）" };
+  }
+  if (hasUpstreamFrame) {
+    return { mode: "none", note: "已有首帧图（手填或上游连线），角色一致性经首帧画面继承，定妆照不直接发送" };
+  }
+  if (providerMaxRefs === 0) {
+    return { mode: "none", note: "当前模型为文生视频不支持图片输入，角色定妆照不生效（可换支持参考图的模型）" };
+  }
+  if (providerMaxRefs > 1) {
+    return { mode: "reference", note: `角色定妆照 ×${charRefCount} 将以主体参考发送（多图锁脸）` };
+  }
+  return { mode: "frame", note: "角色定妆照将作为首帧输入发送（当前模型仅支持单图）" };
+}
+
 // 取更严的 character 系列签名（position 要求 {x,y}），它同时满足较松的
 // listUpstreamVideoSources / mentionedMediaUrls 的 MiniNode 参数。
 type RefEdges = Parameters<typeof effectiveCharacterVideoRefs>[2];
