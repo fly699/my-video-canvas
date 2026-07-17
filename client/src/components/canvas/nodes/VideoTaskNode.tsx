@@ -355,6 +355,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // 「高级」展开态不跨选中记忆：取消选中即复位，下次点选默认收起、需再点「高级」才展开。
   useEffect(() => { if (!selected) setAdvancedOpen(false); }, [selected]);
+  // 展开「高级」时把节点内滚动容器滚回顶部——配置区从视频块后顶到最前，立刻可见。
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (advancedOpen) bodyScrollRef.current?.scrollTo({ top: 0 }); }, [advancedOpen]);
   // 快捷键 A：选中时切换「高级」参数区（Canvas 派发 canvas:toggle-advanced）。
   useEffect(() => {
     if (!selected) return;
@@ -1030,7 +1033,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Only treat a finished result video as a "hero" preview — a bare reference
   // image is an INPUT, not a result, so the node must stay expanded (showing its
   // controls) until it has actually produced a video.
-  const heroMedia = payload.status === "succeeded" && videoSrc ? (
+  // 创意模式展开「高级」时连 hero 一并收起——hero 常驻会占满节点，把展开的配置区
+  // 顶出可视范围，点「高级」看起来毫无反应（用户实报）；收起高级即恢复 hero。
+  const heroMedia = payload.status === "succeeded" && videoSrc && !(isCreativeMode && advancedOpen) ? (
     <div className="relative" style={{ width: "100%" }}>
       <WatermarkedVideo
         block
@@ -1093,7 +1098,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       }>
       {/* 创意模式收起态（未展开高级）：body 内容全被隐藏，padding/gap 一并归零，
           否则点击带结果节点后预览下会剩一块空 padding 灰条（空节点预设卡场景保留 padding）。 */}
-      <div className="flex flex-col h-full overflow-auto" style={isCreativeMode && !advancedOpen && !isEmptyNode ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
+      <div ref={bodyScrollRef} className="flex flex-col h-full overflow-auto" style={isCreativeMode && !advancedOpen && !isEmptyNode ? { padding: 0, gap: 0 } : { padding: 14, gap: 12 }}>
 
         {/* ── Status pill ──
             生成完成后不再显示绿色状态条（结果视频本身即状态，全模式）；创意收起态整条隐藏
@@ -1153,7 +1158,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             2-column grid showing all clips; each gets its own download link.
             Hidden inside the studio floating panel — the card hero already shows it. */}
         <HideWhenStudioFloating>
-        {payload.status === "succeeded" && videoSrc && (
+        {/* 创意模式展开「高级」时暂时收起结果视频——否则成片占满节点，展开的配置区
+            压在节点内部滚动区深处，点「高级」看起来毫无反应（用户实报）。收起高级即恢复。 */}
+        {payload.status === "succeeded" && videoSrc && !(isCreativeMode && advancedOpen) && (
           <div className="flex-shrink-0">
             {hasMultiResults && (
               <div style={{ fontSize: 10, color: "var(--c-t3)", marginBottom: 4 }}>
