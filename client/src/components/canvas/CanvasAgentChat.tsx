@@ -17,7 +17,8 @@ import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, BLANK_TEMP
 import { IMAGE_MODELS, VIDEO_MODELS, LLM_MODELS } from "@/lib/models";
 import { extractFrameMedia } from "../../lib/nodeMedia";
 import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
-import type { AgentOperation } from "../../../../shared/types";
+import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
+import { buildPortraitPrompt, PORTRAIT_ASPECT } from "@/lib/characterPortrait";
 
 /** 浮动「画布助手」：对话式让 AI（如本机 Claude）边聊边直接改画布。复用智能体节点同一套引擎
  *  （agent.chat 规划 + buildGraphSummary 看实时画布 + applyAgentOperations 落地）。
@@ -30,9 +31,9 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean };
 // 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
-const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false };
+const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false, autoPortrait: false };
 
 /** 对白语种（#138）：对白/旁白/台词统一书写语言；空 = 跟随内容默认。 */
 const QP_DIALOGUE_LANGS = [
@@ -181,7 +182,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const setQP = (patch: Partial<QuickPrefs>) => setQuickPrefs((p) => ({ ...p, ...patch }));
   const qpActiveCount = (quickPrefs.aspect ? 1 : 0) + (quickPrefs.style ? 1 : 0) + (quickPrefs.durationSec ? 1 : 0) + (quickPrefs.imageFirst ? 1 : 0) + (quickPrefs.addMusic ? 1 : 0) + (quickPrefs.addSubtitle ? 1 : 0)
     + (quickPrefs.imageModel ? 1 : 0) + (quickPrefs.videoProvider ? 1 : 0) + (quickPrefs.genNodes.length ? 1 : 0) + (quickPrefs.workflowTemplateIds.length ? 1 : 0)
-    + (quickPrefs.noStoryboard ? 1 : 0) + (quickPrefs.dialogueLang ? 1 : 0) + (quickPrefs.promptLang ? 1 : 0) + (quickPrefs.coalesceShots ? 1 : 0) + (quickPrefs.fastChat ? 1 : 0) + (quickPrefs.autoQc ? 1 : 0) + (quickPrefs.useModelSkills ? 1 : 0) + (quickPrefs.interactive ? 1 : 0);
+    + (quickPrefs.noStoryboard ? 1 : 0) + (quickPrefs.dialogueLang ? 1 : 0) + (quickPrefs.promptLang ? 1 : 0) + (quickPrefs.coalesceShots ? 1 : 0) + (quickPrefs.fastChat ? 1 : 0) + (quickPrefs.autoQc ? 1 : 0) + (quickPrefs.useModelSkills ? 1 : 0) + (quickPrefs.interactive ? 1 : 0) + (quickPrefs.autoPortrait ? 1 : 0);
   // 「ComfyUI模板」的二级选择：模板库中已存在的工作流模板（只有 comfyui_workflow 型模板
   // 带 workflowJson，可被 comfyui_workflow 节点引用）。选中 = 只允许助手用这些模板。
   const workflowTemplates = (templatesQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow");
@@ -480,6 +481,44 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setTurns((p) => p.map((x, i) => (i === idx ? { ...x, undone: true } : x)));
   };
 
+  // #227 角色自动定妆照：规划落地后，为本轮【新建】且【还没有参考图】的人物角色节点
+  // 逐个按角色描述生成定妆照并写入主参考图（fill-only，绝不覆盖已有图——角色库代入的
+  // 定妆照优先）。串行执行防生图并发风暴；单个失败不阻断其余。fire-and-forget：不占用
+  // 聊天 busy 状态，进度用 toast 反馈。提示词/比例与角色卡「一键定妆照」同源（characterPortrait.ts）。
+  const autoPortraits = async (createdIds: string[]) => {
+    const st = useCanvasStore.getState();
+    const targets = st.nodes
+      .filter((n) => createdIds.includes(n.id) && n.data.nodeType === "character")
+      .map((n) => ({ id: n.id, p: n.data.payload as CharacterNodeData }))
+      .filter(({ p }) => (p.characterKind ?? "person") === "person" && !p.referenceImageUrl?.trim() && !!buildPortraitPrompt(p));
+    if (!targets.length) return;
+    toast.info(`正在为 ${targets.length} 个角色生成定妆照…`, { duration: 3500 });
+    let ok = 0;
+    for (const t of targets) {
+      try {
+        const gen = await utils.client.imageGen.generate.mutate({
+          prompt: buildPortraitPrompt(t.p),
+          aspectRatio: PORTRAIT_ASPECT,
+          poyoAspectRatio: PORTRAIT_ASPECT,
+          reveAspectRatio: PORTRAIT_ASPECT,
+          projectId,
+          ...(quickPrefs.imageModel ? { model: quickPrefs.imageModel } : {}),
+        } as Parameters<typeof utils.client.imageGen.generate.mutate>[0]);
+        const url = gen.urls?.[0] || gen.url || "";
+        // 节点可能在生成期间被删除/撤销——落图前复核仍在画布且仍无参考图。
+        const live = useCanvasStore.getState().nodes.find((n) => n.id === t.id);
+        if (url && live && !(live.data.payload as CharacterNodeData).referenceImageUrl?.trim()) {
+          useCanvasStore.getState().updateNodeData(t.id, { referenceImageUrl: url, referenceStorageKey: undefined }, true);
+          ok++;
+        }
+      } catch (err) {
+        console.warn("[autoPortrait] 角色定妆照生成失败", t.id, err);
+      }
+    }
+    if (ok > 0) toast.success(`已为 ${ok} 个角色生成定妆照（写入角色卡主参考图）`);
+    else toast.error("角色定妆照自动生成未成功（可在角色卡上点「一键定妆照」重试）");
+  };
+
   async function send(overrideMsg?: string) {
     // overrideMsg：交互式规划的「选项快捷回复」直接发送，不经输入框。
     const files = overrideMsg ? [] : staged;
@@ -539,6 +578,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         // 服务端自愈生效（首轮 JSON 截断/非法或操作全被拒 → 自动修复一次后成功）——透明反馈。
         if (r.repaired) applied = [applied, "已自动修正规划"].filter(Boolean).join(" · ");
         if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
+        // #227 角色自动定妆照（开关开启时）：后台跑，不阻塞对话。
+        if (quickPrefs.autoPortrait && createdIds.length) void autoPortraits(createdIds);
       }
       const failed = [droppedMsg, applyFailMsg].filter(Boolean).join(" · ") || undefined;
       setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);
@@ -676,7 +717,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               </div>
             )}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["imageFirst", "生图 → 再生视频", ""], ["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["useComfyMemory", "使用 ComfyUI 记忆体", "规划时注入你 ComfyUI 服务器已学的资源（模型/LoRA/节点）与工程智能体成功过的工作流经验，让助手按真实可用资源规划。关掉则本次不注入。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["autoQc", "生成后自动质检（图像）", "助手创建的图像节点生成完成后，自动用视觉模型质检结果图（与提示词的符合度 / 肢体畸形 / 黑屏 / 乱码水印等硬伤）。质检未过时带修正意见自动重新生成一次（仅一次，防循环）。会额外产生一次视觉分析调用与可能的一次重生成费用。质检模型与图像节点「标记」功能共用（在节点标记面板可换）。"], ["useModelSkills", "模型技能（提示词技法）", "开启后：把「模型技能库」（管理后台 → 模型 → 技能库）中为最终使用模型维护的提示词技法注入规划参考，助手按该模型的官方技法撰写提示词与参数。当前对上方锁定的图像/视频模型生效（锁定=最终使用模型确定）；未锁定的类别、该模型无技能条目、或技能被停用时不注入。关闭时与现状完全一致，不注入任何内容。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"]] as const).map(([k, label, tip]) => (
+              {([["imageFirst", "生图 → 再生视频", ""], ["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["useComfyMemory", "使用 ComfyUI 记忆体", "规划时注入你 ComfyUI 服务器已学的资源（模型/LoRA/节点）与工程智能体成功过的工作流经验，让助手按真实可用资源规划。关掉则本次不注入。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["autoQc", "生成后自动质检（图像）", "助手创建的图像节点生成完成后，自动用视觉模型质检结果图（与提示词的符合度 / 肢体畸形 / 黑屏 / 乱码水印等硬伤）。质检未过时带修正意见自动重新生成一次（仅一次，防循环）。会额外产生一次视觉分析调用与可能的一次重生成费用。质检模型与图像节点「标记」功能共用（在节点标记面板可换）。"], ["useModelSkills", "模型技能（提示词技法）", "开启后：把「模型技能库」（管理后台 → 模型 → 技能库）中为最终使用模型维护的提示词技法注入规划参考，助手按该模型的官方技法撰写提示词与参数。当前对上方锁定的图像/视频模型生效（锁定=最终使用模型确定）；未锁定的类别、该模型无技能条目、或技能被停用时不注入。关闭时与现状完全一致，不注入任何内容。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["autoPortrait", "角色自动定妆照", "规划落地后，自动为本轮新建、还没有参考图的人物角色节点按其角色描述生成一张「全身正面素背景」定妆照并设为主参考图——运行工作流前角色即已锁脸，无需逐个手动定妆。使用上方锁定的图像模型（未锁定则用系统默认），每个角色计一次生图费用。已有参考图的角色（如从角色库代入）自动跳过。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>
