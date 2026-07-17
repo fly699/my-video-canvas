@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useRef } from "react";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { InlineGenBar } from "../InlineGenBar";
 import { SlidersHorizontal } from "lucide-react";
@@ -106,8 +106,12 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
     return undefined;
   };
 
+  // 取消/放弃等待（对齐 #140/#143/合并节点）：服务器任务无法中止，放弃 = 本地解锁、
+  // 迟到结果不回填。
+  const abandonedRef = useRef(false);
   const transcribeMutation = trpc.subtitle.transcribe.useMutation({
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       update({
         entries: result.entries,
         language: result.language,
@@ -117,6 +121,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
       toast.success(`转录完成，共 ${result.entries.length} 条字幕，语言：${result.language}`);
     },
     onError: (err) => {
+      if (abandonedRef.current) return;
       update({ status: "failed", errorMessage: err.message });
       toast.error("转录失败：" + err.message);
     },
@@ -124,14 +129,22 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
 
   const burnMutation = trpc.subtitle.burnIn.useMutation({
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       update({ outputUrl: result.url, status: "done", errorMessage: undefined });
       toast.success("字幕烧录完成");
     },
     onError: (err) => {
+      if (abandonedRef.current) return;
       update({ status: "failed", errorMessage: err.message });
       toast.error("字幕烧录失败：" + err.message);
     },
   });
+
+  const abandonWait = () => {
+    abandonedRef.current = true;
+    update({ status: payload.entries?.length || payload.outputUrl ? "done" : "idle", errorMessage: undefined });
+    toast.info("已取消等待：节点已解锁。服务器上的转录/烧录任务无法中止，其结果不会回填本节点", { duration: 6000 });
+  };
 
   const exportSRTMutation = trpc.subtitle.exportSRT.useMutation({
     onSuccess: (result) => {
@@ -155,6 +168,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
     if (payload.status === "transcribing" || payload.status === "burning") return;
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
     if (!videoUrl) { toast.error("请先连接一个视频节点或填写视频 URL"); return; }
+    abandonedRef.current = false; // 新一轮转录：复位「放弃等待」标记
     update({ status: "transcribing" });
     transcribeMutation.mutate({ audioUrl: videoUrl, language: payload.language || undefined, model: transcribeModel });
   };
@@ -195,6 +209,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
     // and cap to the server's max(2000) — mirrors SubtitleMotionNode / smartCut.
     const entries = payload.entries.filter((e) => e.end > e.start).slice(0, 2000);
     if (entries.length === 0) { toast.error("没有有效字幕（每条的结束时间需大于开始时间）"); return; }
+    abandonedRef.current = false; // 新一轮烧录：复位「放弃等待」标记
     update({ status: "burning" });
     burnMutation.mutate({
       videoUrl,
@@ -229,8 +244,10 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
     update({ entries });
   };
 
-  const isTranscribing = payload.status === "transcribing" || transcribeMutation.isPending;
-  const isBurning = payload.status === "burning" || burnMutation.isPending;
+  // 只看持久化 status——两条链路都会同步先置状态；并上 isPending 会让
+  // 「放弃等待」后节点解不开锁（请求仍在飞）。
+  const isTranscribing = payload.status === "transcribing";
+  const isBurning = payload.status === "burning";
 
   const expanded = Boolean(selected) || Boolean((payload as { pinned?: boolean }).pinned);
 
@@ -479,6 +496,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="subtitle" title={data.title} minHeight={240} resizable
+      onCancelGenerate={isTranscribing || isBurning ? abandonWait : undefined}
       heroMedia={/* #105 创意未选中且有成片→英雄区（悬停自动播放；选中走卡体预览避免双播放器；极简形态据此覆盖） */
       isCreativeMode && !selected && payload.outputUrl ? <WatermarkedVideo block key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)} preload="metadata" className="w-full" style={{ display: "block" }} /> : null}>
       <div
@@ -492,11 +510,19 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
       >
       <div className="flex flex-col gap-3 p-3.5">
 
-        {/* Status */}
+        {/* Status —— 附「取消」（对齐 #143/合并节点：处理中不再只能干等） */}
         {(isTranscribing || isBurning) && (
           <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
             <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
-            <span className="text-xs" style={{ color: accent }}>{isTranscribing ? "Whisper 转录中..." : "FFmpeg 烧录中..."}</span>
+            <span className="text-xs" style={{ color: accent, flex: 1 }}>{isTranscribing ? "Whisper 转录中..." : "FFmpeg 烧录中..."}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); abandonWait(); }}
+              className="nodrag flex-shrink-0"
+              title="放弃等待 / 取消（服务器任务无法中止，其结果不会回填）"
+              style={{ padding: 2, lineHeight: 0, background: "none", border: "none", color: "oklch(0.62 0.20 25)", cursor: "pointer" }}
+            >
+              <X style={{ width: 13, height: 13 }} />
+            </button>
           </div>
         )}
 

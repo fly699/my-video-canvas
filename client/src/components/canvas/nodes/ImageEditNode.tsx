@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import { BaseNode } from "../BaseNode";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { safeHref } from "@/lib/safeUrl";
@@ -85,13 +85,20 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
   const backend: "cloud" | "comfyui" = payload.backend ?? "cloud";
   const srcUrl = payload.sourceImageUrl?.trim() || sourceImageUrl;
 
+  // 取消/放弃等待（对齐 #140/#143/合并节点）：云端编辑提交即计费、无法撤回；
+  // 放弃 = 本地解锁、迟到结果不回填。
+  const abandonedRef = useRef(false);
   const onResult = useCallback((url?: string) => {
+    if (abandonedRef.current) return;
     if (!url) { update({ status: "failed", errorMessage: "未返回结果图像" }); toast.error("编辑失败：未返回图像"); return; }
     update({ outputUrl: url, status: "done", errorMessage: undefined });
     propagateRefImage(id, url);
     toast.success("图像编辑完成");
   }, [id, update]);
-  const onFail = useCallback((msg: string) => { update({ status: "failed", errorMessage: msg }); toast.error("编辑失败：" + msg); }, [update]);
+  const onFail = useCallback((msg: string) => {
+    if (abandonedRef.current) return;
+    update({ status: "failed", errorMessage: msg }); toast.error("编辑失败：" + msg);
+  }, [update]);
 
   const editMutation = trpc.imageEdit.run.useMutation({
     onSuccess: (result) => onResult(result.url),
@@ -107,7 +114,15 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
     onError: (err) => toast.error("蒙版上传失败：" + err.message),
   });
 
-  const isProcessing = payload.status === "processing" || editMutation.isPending || comfyMutation.isPending;
+  // 只看持久化 status——handleRun 两条分支都会同步先置 "processing"；并上 isPending
+  // 会让「放弃等待」后节点解不开锁（请求仍在飞）。
+  const isProcessing = payload.status === "processing";
+
+  const abandonWait = () => {
+    abandonedRef.current = true;
+    update({ status: payload.outputUrl ? "done" : "idle", errorMessage: undefined });
+    toast.info("已取消等待：节点已解锁。云端/ComfyUI 编辑仍在进行（费用照常发生），其结果不会回填本节点", { duration: 7000 });
+  };
 
   const handleRun = () => {
     if (editMutation.isPending || comfyMutation.isPending) return;
@@ -115,6 +130,7 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
     const prompt = payload.prompt?.trim() ?? "";
     if (opSpec.needsPrompt && !prompt) { toast.error(`「${opSpec.label}」需要填写说明`); return; }
     if (prompt.length > 1000) { toast.error("说明上限 1000 字，请截断"); return; }
+    abandonedRef.current = false; // 新一轮编辑：复位「放弃等待」标记
 
     if (backend === "comfyui") {
       const ckpt = payload.ckpt?.trim();
@@ -270,6 +286,7 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="image_edit" title={data.title} minHeight={isCreativeMode ? 140 : 220} resizable
+      onCancelGenerate={isProcessing ? abandonWait : undefined}
       onRun={handleRun} running={isProcessing} canRun={!!srcUrl} hasResult={!!payload.outputUrl}
       // 创意模式：无结果时用源图作 hero（卡体即「正在编辑的图」），有结果换结果图。
       heroMedia={(payload.outputUrl || (isCreativeMode ? srcUrl : undefined))
@@ -363,11 +380,14 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
 
         {/* Run（非创意；创意模式在输入条上运行） */}
         {!isCreativeMode && (<>
-        <button onClick={handleRun} disabled={isProcessing}
+        <button onClick={isProcessing ? abandonWait : handleRun}
+          title={isProcessing ? "放弃等待 / 取消（云端编辑无法撤回，费用照常发生，其结果不会回填）" : undefined}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
-          style={{ background: isProcessing ? "var(--c-surface)" : accentA(0.15), border: `1px solid ${isProcessing ? BORDER_DEFAULT : accentA(0.5)}`, color: isProcessing ? "var(--c-t4)" : accent, cursor: isProcessing ? "not-allowed" : "pointer" }}>
-          {isProcessing ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Sparkles style={{ width: 12, height: 12 }} />}
-          {isProcessing ? "生成中..." : `运行 · ${opSpec.label}`}
+          style={isProcessing
+            ? { background: "oklch(0.62 0.20 25 / 0.12)", border: "1px solid oklch(0.62 0.20 25 / 0.4)", color: "oklch(0.62 0.20 25)", cursor: "pointer" }
+            : { background: accentA(0.15), border: `1px solid ${accentA(0.5)}`, color: accent, cursor: "pointer" }}>
+          {isProcessing ? <RotateCcw style={{ width: 12, height: 12 }} /> : <Sparkles style={{ width: 12, height: 12 }} />}
+          {isProcessing ? "取消（生成中...）" : `运行 · ${opSpec.label}`}
         </button>
 
         <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: 0 }}>
@@ -427,12 +447,12 @@ export const ImageEditNode = memo(function ImageEditNode({ id, selected, data }:
           <div style={{ flex: 1 }} />
           <button
             className="nodrag"
-            onClick={(e) => { e.stopPropagation(); if (!isProcessing && srcUrl) handleRun(); }}
-            disabled={isProcessing || !srcUrl}
-            title={!srcUrl ? "请先连接上游图像或在「高级」里填源图" : isProcessing ? "生成中…" : `运行 · ${opSpec.label}`}
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: isProcessing || !srcUrl ? "not-allowed" : "pointer", background: isProcessing || !srcUrl ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: isProcessing || !srcUrl ? "var(--c-t4)" : "#0b0d12" }}
+            onClick={(e) => { e.stopPropagation(); if (isProcessing) { abandonWait(); return; } if (srcUrl) handleRun(); }}
+            disabled={!isProcessing && !srcUrl}
+            title={isProcessing ? "放弃等待 / 取消（云端编辑无法撤回，其结果不会回填）" : !srcUrl ? "请先连接上游图像或在「高级」里填源图" : `运行 · ${opSpec.label}`}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: !isProcessing && !srcUrl ? "not-allowed" : "pointer", background: isProcessing ? "oklch(0.62 0.20 25 / 0.16)" : !srcUrl ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: isProcessing ? "oklch(0.62 0.20 25)" : !srcUrl ? "var(--c-t4)" : "#0b0d12" }}
           >
-            {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
+            {isProcessing ? <RotateCcw size={14} /> : <ArrowUp size={15} />}
           </button>
         </div>
         {/* 参数下浮面板：后端 / 源图 / 模型（comfy 时的服务器与 ckpt）/ 蒙版 / 画幅 / 重置 */}

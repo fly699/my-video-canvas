@@ -510,11 +510,21 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
   const toolFileInputRef = useRef<HTMLInputElement>(null);       // #152 音乐工具源音频上传
   const disabledModels = useDisabledModels();                    // 后台「音频工具」使能过滤
 
+  // 取消/放弃等待（对齐 #140/#143/合并节点）：云端音频生成无法撤回（费用照常发生），
+  // 放弃 = 本地解锁、迟到结果不回填。四条生成链（配乐/音乐工具/配音/音效）共用。
+  const abandonedRef = useRef(false);
+  const abandonWait = () => {
+    abandonedRef.current = true;
+    updateNodeData(id, { status: payload.url ? "success" : undefined, errorMessage: undefined });
+    toast.info("已取消等待：节点已解锁。云端生成仍在进行（费用照常发生），其结果不会回填本节点", { duration: 7000 });
+  };
+
   const musicMutation = trpc.audioGen.generateMusic.useMutation({
     // payload.status 驱动 BaseNode 标题栏下方的常驻进度条/失败红条——节点收缩
     // （取消选中）后依然可见「生成中/失败」（音乐生成可达数分钟，此前收缩即失联）。
-    onMutate: () => updateNodeData(id, { status: "processing", errorMessage: undefined }),
+    onMutate: () => { abandonedRef.current = false; updateNodeData(id, { status: "processing", errorMessage: undefined }); },
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       audioRef.current?.pause();
       setIsPlaying(false);
       // #153 持久化 audio_id/task_id（仅 Suno 系有 mv）——供「原生续写」等第二批工具使用。
@@ -530,13 +540,14 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       });
       toast.success("配乐生成完成");
     },
-    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
+    onError: (err) => { if (abandonedRef.current) return; updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
   });
 
   // #152 音乐工具（人声分离/翻唱/续写/写歌词）。结果形态随工具：音频→url、分离→toolStems、歌词→toolLyrics。
   const toolMutation = trpc.audioGen.generateMusicTool.useMutation({
-    onMutate: () => updateNodeData(id, { status: "processing", errorMessage: undefined }),
+    onMutate: () => { abandonedRef.current = false; updateNodeData(id, { status: "processing", errorMessage: undefined }); },
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       audioRef.current?.pause();
       setIsPlaying(false);
       if (result.kind === "audio" && result.url) {
@@ -558,7 +569,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         toast.success("歌词已生成");
       }
     },
-    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
+    onError: (err) => { if (abandonedRef.current) return; updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
   });
 
   // 配音文本翻译（支持语言与中文方言），翻译后覆盖 ttsText。
@@ -586,8 +597,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
   const ttsMutation = trpc.audioGen.generateDubbing.useMutation({
     // 同 musicMutation：payload.status 让 BaseNode 常驻进度条在节点收缩后仍可见。
-    onMutate: () => updateNodeData(id, { status: "processing", errorMessage: undefined }),
+    onMutate: () => { abandonedRef.current = false; updateNodeData(id, { status: "processing", errorMessage: undefined }); },
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       audioRef.current?.pause();
       setIsPlaying(false);
       // Always write duration (undefined for OpenAI TTS). The brief "--:--"
@@ -605,7 +617,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       });
       toast.success("配音生成完成");
     },
-    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("配音生成失败：" + err.message); },
+    onError: (err) => { if (abandonedRef.current) return; updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("配音生成失败：" + err.message); },
   });
 
   // Resolve active category (support legacy source field)
@@ -859,8 +871,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
 
   const sfxMutation = trpc.audioGen.generateSFX.useMutation({
     // 同 musicMutation：payload.status 让 BaseNode 常驻进度条在节点收缩后仍可见。
-    onMutate: () => updateNodeData(id, { status: "processing", errorMessage: undefined }),
+    onMutate: () => { abandonedRef.current = false; updateNodeData(id, { status: "processing", errorMessage: undefined }); },
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       audioRef.current?.pause();
       setIsPlaying(false);
       updateNodeData(id, {
@@ -871,7 +884,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       });
       toast.success("音效生成完成");
     },
-    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("音效生成失败：" + err.message); },
+    onError: (err) => { if (abandonedRef.current) return; updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("音效生成失败：" + err.message); },
   });
   const handleGenerateSFX = () => {
     const prompt = unmentionText(payload.sfxPrompt, useCanvasStore.getState().nodes).trim();
@@ -1050,6 +1063,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
       </NodeToolbar>
     )}
     <BaseNode id={id} selected={selected} nodeType="audio" title={data.title} minHeight={isCreativeMode ? 56 : 160} resizable
+      onCancelGenerate={payload.status === "processing" ? abandonWait : undefined}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <>
