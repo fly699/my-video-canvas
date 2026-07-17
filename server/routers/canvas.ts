@@ -610,6 +610,22 @@ export const assetsRouter = router({
       });
     }),
 
+  // 视频素材补缩略图（无 LLM、无门控）：服务端抽首帧存库。素材库网格用静态缩略图替代
+  // <video> 解码器（大量视频素材同时建解码器会把浏览器主线程卡到「页面无响应」），
+  // 旧视频没有缩略图时由前端懒补调用此端点。已有缩略图直接返回（幂等）。
+  makeThumbnail: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const asset = await getAssetById(input.id, ctx.user.id);
+      if (!asset || asset.deletedAt) throw new TRPCError({ code: "NOT_FOUND", message: "素材不存在或已删除" });
+      if (asset.type !== "video") throw new TRPCError({ code: "BAD_REQUEST", message: "仅视频素材需要补缩略图" });
+      if (asset.thumbnailUrl) return { thumbnailUrl: asset.thumbnailUrl };
+      const frame = await extractVideoFrameJpeg(asset.url);
+      const { url } = await storagePut(`u/${ctx.user.id}/thumbs/${nanoid()}-vthumb.jpg`, frame, "image/jpeg");
+      await updateAssetThumbnail(asset.id, ctx.user.id, url);
+      return { thumbnailUrl: url };
+    }),
+
   // Bulk soft-delete (multi-select in the library). Each is user-scoped, so a
   // caller can only delete their own assets even if foreign ids are mixed in.
   deleteMany: protectedProcedure

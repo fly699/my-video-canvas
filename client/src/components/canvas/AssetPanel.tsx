@@ -110,6 +110,25 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
     if (ok) { toast.success(`已为 ${ok} 个素材生成 AI 标签`); refetch(); }
   }, [assets, tagging, tagOne, refetch]);
 
+  // 旧视频素材缺缩略图 → 面板打开后自动懒补（串行、每次最多 6 个、每个 id 只试一次），
+  // 服务端抽首帧存库后 refetch，网格即从灰卡变缩略图。失败静默（下次打开再试其它素材）。
+  const makeThumbMut = trpc.assets.makeThumbnail.useMutation();
+  const thumbTriedRef = useRef<Set<number>>(new Set());
+  const thumbBusyRef = useRef(false);
+  useEffect(() => {
+    if (thumbBusyRef.current) return;
+    const missing = (assets ?? []).filter((a) => a.type === "video" && !a.thumbnailUrl && !thumbTriedRef.current.has(a.id)).slice(0, 6);
+    if (!missing.length) return;
+    thumbBusyRef.current = true;
+    missing.forEach((a) => thumbTriedRef.current.add(a.id));
+    void (async () => {
+      let ok = 0;
+      for (const a of missing) { try { await makeThumbMut.mutateAsync({ id: a.id }); ok++; } catch { /* 单个失败继续 */ } }
+      thumbBusyRef.current = false;
+      if (ok) void refetch();
+    })();
+  }, [assets, makeThumbMut, refetch]);
+
   const importMutation = trpc.assets.importFromUrl.useMutation({
     onSuccess: () => { toast.success("已从链接导入"); refetch(); },
     onError: (err) => toast.error("导入失败：" + err.message),
@@ -474,10 +493,16 @@ export function AssetPanel({ projectId, onClose, onHeaderMouseDown, embedded }: 
                 >
                   {/* Thumbnail fill */}
                   {asset.type === "image" ? (
-                    <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" draggable={false} />
+                    <img src={asset.url} alt={asset.name} loading="lazy" decoding="async" className="w-full h-full object-cover" draggable={false} />
                   ) : asset.type === "video" ? (
+                    // 修「素材库慢/无响应」：网格不再为每个视频建 <video> 解码器（大量解码器同时
+                    // 初始化会卡死主线程）——改用抽帧缩略图；无缩略图的由懒补机制自动生成。
                     <>
-                      <video src={asset.url} muted preload="metadata" className="w-full h-full object-cover" />
+                      {asset.thumbnailUrl ? (
+                        <img src={asset.thumbnailUrl} alt={asset.name} loading="lazy" decoding="async" className="w-full h-full object-cover" draggable={false} />
+                      ) : (
+                        <div className="w-full h-full" style={{ background: "oklch(0.2 0.01 260)" }} />
+                      )}
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <Play className="w-4 h-4 text-white" fill="white" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6))" }} />
                       </div>

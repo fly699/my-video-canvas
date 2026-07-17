@@ -266,7 +266,9 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
                   {kind === "image" ? (
                     <div style={{ width: "100%", height: "100%", backgroundImage: `url("${a.url}")`, backgroundSize: "cover", backgroundPosition: "center" }} />
                   ) : kind === "video" ? (
-                    <video src={a.url} muted preload="metadata" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+                    a.thumbnailUrl
+                      ? <img src={a.thumbnailUrl} alt={a.name} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+                      : <div style={{ width: "100%", height: "100%", background: "oklch(0.2 0.01 260)" }} />
                   ) : (
                     <Icon size={16} style={{ color: EC.t3 }} />
                   )}
@@ -292,7 +294,9 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
               {kind === "image" ? (
                 <div style={{ height: thumbH, minHeight: thumbH, backgroundImage: `url("${a.url}")`, backgroundSize: view === "large" ? "contain" : "cover", backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
               ) : kind === "video" ? (
-                <video src={a.url} muted preload="metadata" style={{ display: "block", width: "100%", height: thumbH, minHeight: thumbH, objectFit: view === "large" ? "contain" : "cover", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
+                a.thumbnailUrl
+                  ? <img src={a.thumbnailUrl} alt={a.name} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: thumbH, minHeight: thumbH, objectFit: view === "large" ? "contain" : "cover", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
+                  : <div style={{ width: "100%", height: thumbH, minHeight: thumbH, background: "var(--c-canvas, #0c0c10)" }} />
               ) : (
                 <div style={{ height: thumbH, minHeight: thumbH, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }}>
                   <Icon size={view === "large" ? 38 : 22} style={{ color: EC.t3 }} />
