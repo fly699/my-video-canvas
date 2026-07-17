@@ -3040,6 +3040,27 @@ export const clipRouter = router({
       return { url: result.url, duration: result.duration };
     }),
 
+  // 快剪多段分割合成：给定升序、互不重叠的保留区间 → 本机 ffmpeg 一次拼接
+  //（复用 smartCutVideo 的确定性多段路径；无 LLM/转写 → 不做白名单门控，对齐 trimVideo）。
+  cutSegments: protectedProcedure
+    .input(z.object({
+      inputUrl: mediaUrlSchema,
+      projectId: z.number().optional(),
+      nodeId: z.string().optional(),
+      segments: z.array(z.object({ start: z.number().min(0), end: z.number().min(0) })).min(1).max(50),
+    }).refine((d) => d.segments.every((s) => s.end > s.start), { message: "每段出点必须大于入点", path: ["segments"] }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.inputUrl);
+      const segs = [...input.segments].sort((a, b) => a.start - b.start);
+      for (let i = 1; i < segs.length; i++) {
+        if (segs[i].start < segs[i - 1].end - 0.001) throw new TRPCError({ code: "BAD_REQUEST", message: "保留区间不能重叠" });
+      }
+      const result = await smartCutVideo({ inputUrl: input.inputUrl, keepSegments: segs });
+      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "快剪分割" });
+      return { url: result.url, duration: result.outputDuration };
+    }),
+
   extractFrame: protectedProcedure
     .input(z.object({ inputUrl: mediaUrlSchema, time: z.number().min(0), projectId: z.number().optional(), nodeId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {

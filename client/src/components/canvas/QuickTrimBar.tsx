@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
-import { X, Check, Keyboard, Loader2, Play, Pause, Repeat, Magnet, Gauge, Volume2, VolumeX, Camera, Wand2 } from "lucide-react";
+import { X, Check, Keyboard, Loader2, Play, Pause, Repeat, Magnet, Gauge, Volume2, VolumeX, Camera, Wand2, Scissors } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { mediaFetchUrl } from "@/lib/download";
@@ -130,6 +130,21 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
       setMultiCutBusy(false);
     }
   }, [multiCutBusy, utils, videoUrl, projectId, navigate]);
+  // 分割（直接在快剪时间轴上）：S/剪刀按钮在播放头处加切点（纯前端状态，不发请求）；
+  // 时间轴上出现切线，点击分段可剔除/恢复，点击切线删除该切点；确认时把保留段一次性合成。
+  const [cuts, setCuts] = useState<number[]>([]);
+  const [removedSegs, setRemovedSegs] = useState<Set<string>>(new Set());
+  const [splitBusy, setSplitBusy] = useState(false);
+  const segKey = (a: number, b: number) => `${a.toFixed(3)}|${b.toFixed(3)}`;
+  const splitAt = useCallback(() => {
+    const { duration: d, start: s, end: e2 } = stRef.current;
+    const t = videoRef.current?.currentTime ?? 0;
+    if (!d) return;
+    if (t <= s + 0.1 || t >= e2 - 0.1) { toast.error("播放头需位于选区内（距两端至少 0.1 秒）——点时间轴或播放到目标位置再分割"); return; }
+    setCuts((prev) => (prev.some((c) => Math.abs(c - t) < 0.05) ? prev : [...prev, t].sort((x, y) => x - y)));
+  }, []);
+  const splitAtRef = useRef(splitAt); splitAtRef.current = splitAt;
+
   const autoTrim = useCallback(async () => {
     const { duration: d } = stRef.current;
     if (silenceMutation.isPending || !d) return;
@@ -197,15 +212,41 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
 
   const confirm = useCallback(() => {
     const { start: s, end: e2 } = stRef.current;
-    if (busy) return;
+    if (busy || splitBusy) return;
     if (!(e2 - s >= 0.2)) { toast.error("选区太短（至少 0.2 秒）"); return; }
-    trimMutation.mutate({
-      inputUrl: videoUrl, startTime: s, endTime: e2, projectId, nodeId,
-      // #127 变速/静音随剪辑一并应用（1×/未静音时不传，保持原行为字节级不变）
-      ...(speed !== 1 ? { speed } : {}),
-      ...(mute ? { audioVolume: 0 } : {}),
-    });
-  }, [busy, trimMutation, videoUrl, projectId, nodeId, speed, mute]);
+    // 分割模式：选区被切点分成若干段，剔除的段跳过，相邻保留段合并回连续区间。
+    const inner = cuts.filter((c) => c > s + 0.05 && c < e2 - 0.05).sort((a, b) => a - b);
+    const bounds = [s, ...inner, e2];
+    const kept: { start: number; end: number }[] = [];
+    for (let i = 0; i < bounds.length - 1; i++) {
+      if (removedSegs.has(segKey(bounds[i], bounds[i + 1]))) continue;
+      const last = kept[kept.length - 1];
+      if (last && Math.abs(bounds[i] - last.end) < 0.001) last.end = bounds[i + 1];
+      else kept.push({ start: bounds[i], end: bounds[i + 1] });
+    }
+    if (!kept.length) { toast.error("所有分段都被剔除了——至少保留一段"); return; }
+    if (kept.length === 1) {
+      // 单连续区间（无切点 / 剔除后仍连续）→ 原 trimVideo 路径，变速/静音照常支持。
+      trimMutation.mutate({
+        inputUrl: videoUrl, startTime: kept[0].start, endTime: kept[0].end, projectId, nodeId,
+        // #127 变速/静音随剪辑一并应用（1×/未静音时不传，保持原行为字节级不变）
+        ...(speed !== 1 ? { speed } : {}),
+        ...(mute ? { audioVolume: 0 } : {}),
+      });
+      return;
+    }
+    // 多段 → 服务端一次性拼接（clip.cutSegments，本机 ffmpeg 免 AI）。
+    if (speed !== 1 || mute) toast.info("多段拼接暂不支持变速/静音，这两项已按原样忽略");
+    setSplitBusy(true);
+    utils.client.clip.cutSegments.mutate({ inputUrl: videoUrl, projectId, nodeId, segments: kept })
+      .then((r) => {
+        toast.success(`已按 ${kept.length} 段拼接完成（剔除部分已剪除），已替换为结果`);
+        onDone(r.url, r.duration);
+        onClose();
+      })
+      .catch((e) => toast.error("多段剪辑失败：" + (e instanceof Error ? e.message : String(e))))
+      .finally(() => setSplitBusy(false));
+  }, [busy, splitBusy, cuts, removedSegs, trimMutation, videoUrl, projectId, nodeId, speed, mute, utils, onDone, onClose]);
   const confirmRef = useRef(confirm); confirmRef.current = confirm;
   const onCloseRef = useRef(onClose); onCloseRef.current = onClose;
 
@@ -273,6 +314,9 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
         eat();
         const t = videoRef.current?.currentTime ?? d;
         setEnd(Math.max(t, s + 0.2));
+      } else if (e.key === "s" || e.key === "S") {
+        eat();
+        splitAtRef.current();
       }
     };
     // capture 阶段抢在画布快捷键（Esc 取消选中等）之前处理。
@@ -290,6 +334,9 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
     { label: "播放/暂停", keys: "Space" },
     { label: "确认剪辑", keys: "Enter" },
     { label: "退出", keys: "Esc" },
+    { label: "在播放头分割", keys: "S / 剪刀按钮" },
+    { label: "剔除/恢复分段", keys: "点击分段" },
+    { label: "删除切点 / 全部清除", keys: "点切线 / 右键剪刀" },
     { label: "自动剪辑（掐头去尾）", keys: "魔棒按钮" },
   ];
 
@@ -383,6 +430,39 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
             {/* 手柄视觉（拖拽由轨道 pointer 事件统一处理：就近吸附入/出点） */}
             <div style={{ position: "absolute", top: 0, bottom: 0, left: pct(start), width: 5, borderRadius: 2, background: "var(--ui-accent, var(--c-accent))", pointerEvents: "none" }} />
             <div style={{ position: "absolute", top: 0, bottom: 0, left: `calc(${pct(end)} - 5px)`, width: 5, borderRadius: 2, background: "var(--ui-accent, var(--c-accent))", pointerEvents: "none" }} />
+            {/* 分割模式：切线（点击删除切点）+ 分段点选剔除/恢复；首末段向内收缩给手柄留抓取区 */}
+            {duration > 0 && cuts.filter((c) => c > start + 0.05 && c < end - 0.05).length > 0 && (() => {
+              const inner = cuts.filter((c) => c > start + 0.05 && c < end - 0.05);
+              const bounds = [start, ...inner, end];
+              return (
+                <>
+                  {bounds.slice(0, -1).map((a, i) => {
+                    const b = bounds[i + 1];
+                    const key = segKey(a, b);
+                    const off = removedSegs.has(key);
+                    const insetL = i === 0 ? 12 : 4, insetR = i === bounds.length - 2 ? 12 : 4;
+                    return (
+                      <div key={key}
+                        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                        onClick={(e) => { e.stopPropagation(); setRemovedSegs((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; }); }}
+                        title={off ? `${a.toFixed(2)}–${b.toFixed(2)}s 已剔除（点击恢复）` : `${a.toFixed(2)}–${b.toFixed(2)}s 保留中（点击剔除，确认时跳过该段）`}
+                        style={{ position: "absolute", top: 0, bottom: 0, left: `calc(${pct(a)} + ${insetL}px)`, width: `calc(${((b - a) / duration) * 100}% - ${insetL + insetR}px)`, zIndex: 2, cursor: "pointer", background: off ? "oklch(0.5 0.19 25 / 0.5)" : "transparent", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+                        {off && <span style={{ fontSize: 8.5, fontWeight: 800, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.6)", paddingBottom: 1 }}>剔除</span>}
+                      </div>
+                    );
+                  })}
+                  {inner.map((c) => (
+                    <div key={`cut-${c}`}
+                      onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                      onClick={(e) => { e.stopPropagation(); setCuts((prev) => prev.filter((x) => x !== c)); }}
+                      title={`切点 ${c.toFixed(2)}s（点击删除）`}
+                      style={{ position: "absolute", top: 0, bottom: 0, left: `calc(${pct(c)} - 3px)`, width: 7, zIndex: 3, cursor: "pointer", display: "flex", justifyContent: "center" }}>
+                      <div style={{ width: 2, height: "100%", background: "oklch(0.78 0.17 60)", boxShadow: "0 0 3px oklch(0.78 0.17 60 / 0.8)" }} />
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--c-t4)" }}>
             <span>入 {fmt(start)}</span>
@@ -391,6 +471,13 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
           </div>
         </div>
       </div>
+      {/* 分割（S）：播放头处加切点——时间轴分段可点选剔除，确认时多段一次合成；右键清除全部切点 */}
+      <button onClick={splitAt}
+        onContextMenu={(e) => { e.preventDefault(); if (cuts.length) { setCuts([]); setRemovedSegs(new Set()); toast.info("已清除全部切点"); } }}
+        title={`在播放头处分割（S）——切开后点击分段可剔除/恢复，点击切线删除切点，确认时按保留段合成${cuts.length ? `；当前 ${cuts.length} 个切点（右键清除全部）` : ""}`}
+        style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${cuts.length ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)" : "var(--c-bd2)"}`, background: cuts.length ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 14%, var(--c-surface))" : "var(--c-surface)", color: cuts.length ? "var(--c-t1)" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Scissors size={14} />
+      </button>
       {/* 本机 AI 自动剪辑：ffmpeg 静音分析（零 AI 调用）→ 掐头去尾；中段静音则可一键去剪辑器多段剪除 */}
       <button onClick={() => void autoTrim()} disabled={silenceMutation.isPending || multiCutBusy}
         title="本机 AI 自动剪辑：分析静音自动掐头去尾；检出中段静音时可一键生成剪辑器多段剪除（本地 ffmpeg，免 AI 调用）"
@@ -425,10 +512,10 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
         style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${loop ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)" : "var(--c-bd2)"}`, background: loop ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 14%, var(--c-surface))" : "var(--c-surface)", color: loop ? "var(--c-t1)" : "var(--c-t3)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         <Repeat size={14} />
       </button>
-      {/* ✓ 确认 */}
-      <button onClick={confirm} disabled={busy} title="确认剪辑（Enter）"
-        style={{ width: 44, height: 40, borderRadius: 12, border: "none", background: busy ? "var(--c-surface)" : "var(--c-t1)", color: busy ? "var(--c-t4)" : "var(--c-base)", cursor: busy ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        {busy ? <Loader2 size={17} className="animate-spin" /> : <Check size={18} />}
+      {/* ✓ 确认（多段合成期间同样转圈禁用） */}
+      <button onClick={confirm} disabled={busy || splitBusy} title="确认剪辑（Enter）"
+        style={{ width: 44, height: 40, borderRadius: 12, border: "none", background: busy || splitBusy ? "var(--c-surface)" : "var(--c-t1)", color: busy || splitBusy ? "var(--c-t4)" : "var(--c-base)", cursor: busy || splitBusy ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {busy || splitBusy ? <Loader2 size={17} className="animate-spin" /> : <Check size={18} />}
       </button>
     </div>,
     document.body,
