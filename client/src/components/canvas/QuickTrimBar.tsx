@@ -32,14 +32,14 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
   const [playing, setPlaying] = useState(false);
   const [loop, setLoop] = useState(true);
   const [kbdOpen, setKbdOpen] = useState(false);
-  // 整秒磁吸：开启时拖动手柄吸附到整秒（键盘微调不受影响，仍可精确）。
-  const [snap, setSnap] = useState(true);
+  // 整秒磁吸：开启时拖动手柄吸附到整秒（键盘微调不受影响，仍可精确）。默认关闭，自由拖动。
+  const [snap, setSnap] = useState(false);
   // #127 轻量增强：变速（确认时随剪辑一并应用）+ 静音（去掉原声）。
   const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
   const [speed, setSpeed] = useState<number>(1);
   const [mute, setMute] = useState(false);
   // 快捷键/拖拽 handler 里读最新值用 refs（listener 只挂一次）。
-  const stRef = useRef({ start: 0, end: 0, duration: 0, loop: true, snap: true });
+  const stRef = useRef({ start: 0, end: 0, duration: 0, loop: true, snap: false });
   stRef.current = { start, end, duration, loop, snap };
   // 自绘手柄拖拽（替代叠加双 range——上层 range 会永远盖住入点手柄，导致前段裁不了）。
   // 用户反馈修复：按在选区中段 = "move" 整体平移（保持宽度）；靠近手柄才拖入/出点。
