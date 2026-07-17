@@ -1497,17 +1497,23 @@ function CanvasInner({ projectId }: { projectId: number }) {
     }
     // ◆6 锁定：payload.locked 的节点不可拖、不可删（draggable/deletable=false）。
     const anyLocked = nodes.some((n) => (n.data.payload as { locked?: boolean } | undefined)?.locked);
-    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0 && !anyLocked) {
+    // 选中的【非群组】节点手动抬到最上层——elevateNodesOnSelect 因 #117（群组盒被抬高
+    // 会盖住组内成员）全局关闭，副作用是节点展开的高级配置区会被相邻节点覆盖（用户
+    // 实报截图）。这里只给普通节点做选中抬高，群组保持原层级，两个问题互不打架。
+    const anyElevate = nodes.some((n) => n.selected && n.data.nodeType !== "group");
+    if (collapsedHiddenIds.size === 0 && highlightIds.size === 0 && !anyLocked && !anyElevate) {
       return { displayNodes: nodes, displayEdges: edges };
     }
     const dNodes = nodes.map((n) => {
       const hide = collapsedHiddenIds.has(n.id);
       const hl = highlightIds.has(n.id) && !hide;
       const locked = !!(n.data.payload as { locked?: boolean } | undefined)?.locked;
-      if (!hide && !hl && !locked) return n;
+      const elevate = n.selected && n.data.nodeType !== "group" && !hide;
+      if (!hide && !hl && !locked && !elevate) return n;
       return {
         ...n,
         ...(locked ? { draggable: false, deletable: false } : {}),
+        ...(elevate ? { zIndex: 1000 + (n.zIndex ?? 0) } : {}),
         hidden: hide || n.hidden,
         className: hl ? `${n.className ?? ""} group-member-highlight`.trim() : n.className,
       };
