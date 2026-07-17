@@ -799,7 +799,9 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   const status = STATUS[payload.status] ?? STATUS.pending;
   const StatusIcon = status.icon;
-  const isLocked = payload.status === "processing" || payload.status === "succeeded";
+  // 只在生成中锁定输入。succeeded 不再锁——生成成功后应可换模型/改词直接重新生成
+  //（与生图节点同口径；此前成功即锁死模型选择器，用户须先重置才能换模型，实报不便）。
+  const isLocked = payload.status === "processing";
   const isResettable = payload.status === "succeeded" || payload.status === "failed";
 
   const onFocusAccent = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = "oklch(0.62 0.20 25 / 0.6)"; };
