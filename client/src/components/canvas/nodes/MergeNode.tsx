@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { InlineGenBar } from "../InlineGenBar";
 import { SlidersHorizontal } from "lucide-react";
@@ -89,13 +89,19 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   // 点「参数设置」/快捷键 A 展开。
   const { isCreativeMode, advancedOpen, setAdvancedOpen } = useCreativeAdvanced(selected);
 
+  // 放弃等待（对齐 #140/#143）：服务器上的合并/烧字幕任务无法中止，放弃 = 本地解锁、
+  // 迟到结果不回填。用 ref 而非 state——回调闭包里要读到最新值。
+  const abandonedRef = useRef(false);
+
   // 内嵌字幕烧录（成片字幕一步到位）：合并产物 + 镜头表对白 + 回传 segStarts → 烧字幕。
   const burnSubMutation = trpc.subtitle.burnIn.useMutation({
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       updateNodeData(id, { outputUrl: result.url, status: "done", errorMessage: undefined });
       toast.success("成片已内嵌字幕");
     },
     onError: (err) => {
+      if (abandonedRef.current) return;
       // 字幕烧录失败不丢成片：保留无字幕成片为输出，仅提示。
       updateNodeData(id, { status: "done", errorMessage: undefined });
       toast.error("字幕烧录失败（已保留无字幕成片）：" + err.message);
@@ -104,6 +110,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
 
   const mergeMutation = trpc.merge.mergeVideos.useMutation({
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       updateNodeData(id, {
         outputUrl: result.url,
         outputDuration: result.duration,
@@ -134,6 +141,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       toast.success(`合并完成，总时长 ${result.duration.toFixed(1)}s`);
     },
     onError: (err) => {
+      if (abandonedRef.current) return;
       updateNodeData(id, { status: "failed", errorMessage: err.message });
       toast.error("合并失败：" + err.message);
     },
@@ -278,6 +286,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       return;
     }
 
+    abandonedRef.current = false; // 新一轮合并：复位「放弃等待」标记
     update({ status: "processing", errorMessage: undefined });
     // 装配产物仅在与当前段顺序完全对齐时随单发送（用户手动改过顺序/输入则失配丢弃，防错位）。
     const aligned = !!payload.segTransitions
@@ -304,7 +313,18 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     update({ outputUrl: undefined, outputDuration: undefined, status: "idle", errorMessage: undefined });
   };
 
-  const isProcessing = payload.status === "processing" || mergeMutation.isPending || burnSubMutation.isPending;
+  /** 取消/放弃等待：本地解锁节点，迟到的合并/烧字幕结果不回填（服务器任务无法中止）。
+   *  有旧成片则回到 done（保留旧片），否则回 idle。也兜住「刷新后 status 卡在
+   *  processing 但请求已不在」的死锁态。 */
+  const abandonWait = () => {
+    abandonedRef.current = true;
+    update({ status: payload.outputUrl ? "done" : "idle", errorMessage: undefined });
+    toast.info("已取消等待：节点已解锁。服务器上的合并任务无法中止，其结果不会回填本节点", { duration: 6000 });
+  };
+
+  // 只看持久化 status——handleMerge/烧字幕都会同步先置 "processing"，isPending 并集
+  // 反而让「放弃等待」后节点解不开锁（请求仍在飞、isPending 还是 true）。
+  const isProcessing = payload.status === "processing";
   const isDone = payload.status === "done";
   const isFailed = payload.status === "failed";
 
@@ -550,7 +570,16 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         {isProcessing && (
           <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg" style={{ background: accentA(0.08), border: `1px solid ${accentA(0.3)}` }}>
             <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
-            <span className="text-xs" style={{ color: accent }}>合并视频中...</span>
+            <span className="text-xs" style={{ color: accent, flex: 1 }}>合并视频中...</span>
+            {/* 收起态也能取消（展开态另有大按钮） */}
+            <button
+              onClick={(e) => { e.stopPropagation(); abandonWait(); }}
+              className="nodrag flex-shrink-0"
+              title="放弃等待 / 取消合并"
+              style={{ padding: 2, lineHeight: 0, background: "none", border: "none", color: "oklch(0.62 0.20 25)", cursor: "pointer" }}
+            >
+              <X style={{ width: 13, height: 13 }} />
+            </button>
           </div>
         )}
 
@@ -615,25 +644,40 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         {/* Editing controls — collapse when the node is deselected. */}
         {expanded && !isCreativeMode && configBody}
 
-        {/* 合并按钮 —— 移出收起区：选中即常显（LibTV 主操作优先） */}
+        {/* 合并按钮 —— 移出收起区：选中即常显（LibTV 主操作优先）。
+            合并中变为可点的「取消」（对齐 #143：不再是禁用死按钮）。 */}
         {expanded && (<>
-        {/* Merge button */}
+        {isProcessing ? (
+          <button
+            onClick={abandonWait}
+            className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
+            title="放弃等待 / 取消合并（服务器任务无法中止，其结果不会回填）"
+            style={{
+              background: "oklch(0.62 0.20 25 / 0.12)",
+              border: "1px solid oklch(0.62 0.20 25 / 0.4)",
+              color: "oklch(0.62 0.20 25)",
+              cursor: "pointer",
+            }}
+          >
+            <X style={{ width: 13, height: 13 }} />
+            取消（合并中...）
+          </button>
+        ) : (
         <button
           onClick={handleMerge}
-          disabled={isProcessing || isDone}
+          disabled={isDone}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
           style={{
-            background: isProcessing || isDone ? "var(--c-surface)" : accentA(0.15),
-            border: `1px solid ${isProcessing || isDone ? BORDER_DEFAULT : accentA(0.5)}`,
-            color: isProcessing || isDone ? "var(--c-t4)" : accent,
-            cursor: isProcessing || isDone ? "not-allowed" : "pointer",
+            background: isDone ? "var(--c-surface)" : accentA(0.15),
+            border: `1px solid ${isDone ? BORDER_DEFAULT : accentA(0.5)}`,
+            color: isDone ? "var(--c-t4)" : accent,
+            cursor: isDone ? "not-allowed" : "pointer",
           }}
         >
-          {isProcessing
-            ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />
-            : <Merge style={{ width: 13, height: 13 }} />}
-          {isProcessing ? "合并中..." : isDone ? "已完成（重置后可重新合并）" : "合并视频"}
+          <Merge style={{ width: 13, height: 13 }} />
+          {isDone ? "已完成（重置后可重新合并）" : "合并视频"}
         </button>
+        )}
 
         </>)}
 
