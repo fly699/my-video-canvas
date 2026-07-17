@@ -52,3 +52,23 @@ export async function getModelSkillText(modelId: string): Promise<string | null>
 
 export type { ModelSkillKind };
 export const MODEL_SKILL_KINDS: ModelSkillKind[] = ["image", "video", "audio", "music", "llm", "other"];
+
+/**
+ * #211 画布助手「模型技能」注入段（首个调用方）：给定最终使用的模型 id 列表
+ * （当前 = 快速设置锁定的图/视频模型），拼出附在「云端生成模型清单」之后的
+ * 提示词技法参考段。无命中/全部停用/读库失败 → 返回 ""（调用方原样拼接即零改动）。
+ * 措辞明确「仅作写作参考、不改字段与 JSON 输出格式」，不触碰 # 输出要求 的位置。
+ */
+export async function buildAgentModelSkillSection(modelIds: (string | undefined)[]): Promise<string> {
+  const ids = Array.from(new Set(modelIds.filter((v): v is string => !!v && !!v.trim())));
+  if (!ids.length) return "";
+  const parts: string[] = [];
+  for (const id of ids) {
+    try {
+      const t = await getModelSkillText(id);
+      if (t) parts.push(`### ${id}\n${t.trim()}`);
+    } catch { /* 技能库不可用绝不影响规划主链路 */ }
+  }
+  if (!parts.length) return "";
+  return `\n\n# 模型提示词技法（用户已开启「模型技能」开关；为下列锁定模型撰写 prompt/params 时优先运用这些官方技法。仅作提示词写作参考——不新增/更改任何节点字段，绝不改变输出 JSON 格式）\n${parts.join("\n\n")}`;
+}

@@ -8,6 +8,7 @@ import { extractTextContent, type Message, type MessageContent } from "../_core/
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import type { TrpcContext } from "../_core/context";
 import { catalogText, sanitizeOperationDetailed, templateKnowledgeText, modelKnowledgeText } from "../_core/agentCatalog";
+import { buildAgentModelSkillSection } from "../_core/modelSkills";
 import { assignServersRoundRobin } from "../_core/superAgent/serverAssign";
 import { enforceImageFirst, enforceImageFirstComfy } from "../_core/imageFirst";
 import { runLibraryAnalysis } from "../_core/templateAnalysis";
@@ -212,6 +213,10 @@ const agentChatInput = z.object({
          *  的完整参数条目（其余压成名字目录），提示词大幅缩身。空/无效值 = 该类别全量。 */
         pinnedImageModel: z.string().max(128).optional(),
         pinnedVideoModel: z.string().max(128).optional(),
+        /** #211 模型技能（快速设置开关，默认关）：开启且锁定了图/视频模型时，把技能库
+         *  （管理后台「模型→技能库」）中该模型的提示词技法附在模型清单后作写作参考。
+         *  关闭/未锁定/无技能 → 完全不注入，提示词与现状逐字一致。 */
+        useModelSkills: z.boolean().optional(),
         /** #145 对白语种（快速设置）：所有人声文本统一语言。独立字段而非只靠 prefs 文本——
          *  注入 system 输出要求区的最高优先级硬规则（prefs 尾部弱约束曾被模型无视，中文
          *  设置仍出英文对白）。 */
@@ -538,10 +543,18 @@ ${ctxBudget.graphSummary || "（空画布）"}${input.prefs?.trim() ? `\n\n# 用
         ? `\n\n# 用户附带的参考附件（重要）\n${[imageAtts.length ? `${imageAtts.length} 张参考图` : "", docAtts.length ? `${docAtts.length} 份参考文档` : ""].filter(Boolean).join("、")}已随本条消息提供。请据此规划画面风格/构图/角色外观/分镜与文案。注意：你无法把二进制图片直接写进节点，只能据图产出对应的提示词、参数与节点结构（如据参考图写 promptText/appearance）；若用户要把某张图当作某节点的输入素材，提示他用「素材节点」上传后连线。`
         : "";
 
+      // #211 模型技能注入（默认关 = 空串 = 提示词逐字不变）：开关开启且非 comfyOnly
+      // （comfyOnly 无云端模型清单，技能无处挂靠）时，取锁定图/视频模型的技能文本。
+      // 段落插在「云端生成模型清单」之后、「# 当前画布」之前——与 #141 按需注入同区，
+      // # 输出要求 保持在提示词末尾（prompt caching 复盘的 wire-format 红线）。
+      const modelSkillSection = input.useModelSkills && !input.comfyOnly
+        ? await buildAgentModelSkillSection([input.pinnedImageModel, input.pinnedVideoModel])
+        : "";
+
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
 
 # 可用节点目录（只能使用下面列出的节点类型与字段，禁止编造任何不存在的节点或字段）
-${catalogText({ comfyOnly: input.comfyOnly, allowSuperAgent })}${templateSection}${comfyResourceSection}${comfyExperienceSection}${planPitfallSection}${superAgentHint}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel, compact: editMode || undefined })}`}
+${catalogText({ comfyOnly: input.comfyOnly, allowSuperAgent })}${templateSection}${comfyResourceSection}${comfyExperienceSection}${planPitfallSection}${superAgentHint}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel, compact: editMode || undefined })}`}${modelSkillSection}
 
 # 当前画布
 ${ctxBudget.graphSummary || "（空画布）"}${input.selectedNodeIds?.length ? `\n\n# 用户已框选节点（本轮硬约束）\n用户框选了 ${input.selectedNodeIds.length} 个节点：${input.selectedNodeIds.slice(0, 60).join("、")}。本轮的 update/delete 只允许作用于这些节点（或本轮新建节点的 tempId）——框选外的既有节点一律不要修改、不要删除（系统会直接拒绝这类操作）。除非用户明确要求新增内容，否则不要 create 新节点。` : ""}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}

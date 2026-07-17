@@ -1,7 +1,8 @@
 // #203 模型技能库：种子格式守卫 + DB(devStore) 覆盖/回退/停用合并语义。
+// #211 画布助手注入段（buildAgentModelSkillSection）：空/未命中必须回 ""（开关关闭零改动的另一半保障）。
 import { describe, it, expect } from "vitest";
 import { MODEL_SKILL_SEEDS } from "../shared/modelSkillSeeds";
-import { getMergedModelSkills, getModelSkillText, MODEL_SKILL_KINDS } from "./_core/modelSkills";
+import { getMergedModelSkills, getModelSkillText, MODEL_SKILL_KINDS, buildAgentModelSkillSection } from "./_core/modelSkills";
 import { devUpsertModelSkill, devDeleteModelSkill } from "./_core/devStore";
 
 describe("模型技能库种子（shared/modelSkillSeeds）", () => {
@@ -49,5 +50,36 @@ describe("合并读取（DB 覆盖种子 / 回退 / 停用）", () => {
     expect(await getModelSkillText("my_custom_model")).toBe("自定义模型技法");
     devDeleteModelSkill("my_custom_model");
     expect((await getMergedModelSkills()).some((s) => s.modelId === "my_custom_model")).toBe(false);
+  });
+});
+
+describe("#211 画布助手模型技能注入段（buildAgentModelSkillSection）", () => {
+  it("无 id / 全 undefined / 空串 → 返回空串（拼接零改动）", async () => {
+    expect(await buildAgentModelSkillSection([])).toBe("");
+    expect(await buildAgentModelSkillSection([undefined, undefined])).toBe("");
+    expect(await buildAgentModelSkillSection(["", "  "])).toBe("");
+  });
+
+  it("未命中技能库的模型 → 空串", async () => {
+    expect(await buildAgentModelSkillSection(["no_such_model_xyz"])).toBe("");
+  });
+
+  it("命中种子模型 → 含标题行、### 模型段与技法文本；重复 id 去重", async () => {
+    const s = await buildAgentModelSkillSection(["kie_grok_i2v", "kie_grok_i2v"]);
+    expect(s).toContain("# 模型提示词技法");
+    expect(s.match(/### kie_grok_i2v/g)?.length).toBe(1);
+    expect(s).toContain("英文");
+    expect(s.startsWith("\n\n")).toBe(true); // 直接拼在模型清单之后，段前空行由本函数自带
+  });
+
+  it("图+视频双命中 → 两个 ### 段；被停用的模型不出现", async () => {
+    const both = await buildAgentModelSkillSection(["kie_grok_image", "kie_grok_i2v"]);
+    expect(both).toContain("### kie_grok_image");
+    expect(both).toContain("### kie_grok_i2v");
+    devUpsertModelSkill({ modelId: "kie_grok_image", kind: "image", tips: "x", enabled: false });
+    const one = await buildAgentModelSkillSection(["kie_grok_image", "kie_grok_i2v"]);
+    expect(one).not.toContain("### kie_grok_image");
+    expect(one).toContain("### kie_grok_i2v");
+    devDeleteModelSkill("kie_grok_image");
   });
 });
