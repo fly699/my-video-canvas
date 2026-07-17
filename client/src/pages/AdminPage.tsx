@@ -1406,8 +1406,10 @@ function ModelSkillsPanel() {
         })}
         {!listQ.isLoading && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--c-t4)", padding: "12px 0" }}>无匹配条目</div>}
       </div>
-      {editing && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0 0 0 / 0.55)" }} onClick={() => setEditing(null)}>
+      {editing && createPortal(
+        // 必须 portal 到 body：tab 内容外层 <div className="animate-fade-up"> 的动画 transform
+        // 会劫持 fixed 的包含块——弹窗看似 fixed 实则跟着列表滚动、滚轮一滚就"消失"（同素材面板旧坑）。
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0 0 0 / 0.55)" }} onClick={() => setEditing(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: "min(640px, 92vw)", maxHeight: "84vh", overflowY: "auto", padding: 18, borderRadius: 14, background: "var(--c-base)", border: "1px solid var(--c-bd2)", boxShadow: "0 24px 60px oklch(0 0 0 / 0.5)", display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)" }}>{editing.isNew ? "新增模型技能" : `编辑：${editing.modelId}`}</div>
             {editing.isNew && (
@@ -1424,11 +1426,13 @@ function ModelSkillsPanel() {
                 <input type="checkbox" checked={editing.enabled} onChange={(e) => setEditing({ ...editing, enabled: e.target.checked })} /> 启用
               </label>
             </div>
+            <div style={{ fontSize: 11, color: "var(--c-t4)" }}>技能正文<span style={{ color: "var(--c-t3)" }}>（必填——注入给智能体的提示词技法本体，一行一条）</span></div>
             <textarea value={editing.tips} onChange={(e) => setEditing({ ...editing, tips: e.target.value })} rows={8}
               placeholder="技能正文（提示词技法等，写给「为该模型撰写提示词的人/LLM」看；一行一条更清晰）"
-              style={{ padding: "9px 11px", fontSize: 12.5, lineHeight: 1.7, borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t1)", outline: "none", resize: "vertical", fontFamily: "inherit" }} />
+              style={{ padding: "9px 11px", fontSize: 12.5, lineHeight: 1.7, borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t1)", outline: "none", resize: "vertical", fontFamily: "inherit", marginTop: -4 }} />
+            <div style={{ fontSize: 11, color: "var(--c-t4)" }}>来源备注<span style={{ color: "var(--c-t3)" }}>（选填——只做管理溯源，不会注入给智能体）</span></div>
             <input value={editing.source} onChange={(e) => setEditing({ ...editing, source: e.target.value })} placeholder="来源备注（官方文档位置/链接，便于日后核对，选填）"
-              style={{ padding: "7px 10px", fontSize: 12, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t2)", outline: "none" }} />
+              style={{ padding: "7px 10px", fontSize: 12, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t2)", outline: "none", marginTop: -4 }} />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button onClick={() => setEditing(null)} style={{ padding: "7px 14px", fontSize: 12.5, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}>取消</button>
               <button
@@ -1439,7 +1443,8 @@ function ModelSkillsPanel() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
