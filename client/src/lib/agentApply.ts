@@ -253,6 +253,49 @@ export function applyAgentOperations(
     }
   }
 
+  // ── 追加批次避让（用户实报：后续让助手加节点会直接叠在已有节点上）──────────
+  // 规划坐标只相对 anchor 摆放、不看画布现状；这里做确定性整批下移：算出本批
+  // 计划占用区（场景列 or 3 列扇出的外接矩形），若与任何已有节点矩形相交，则把
+  // 整批（含场景框）垂直下移到「与计划区横向重叠的已有节点」最低沿之下留边距。
+  // 只平移不改相对布局——排布规则（列宽/行高/场景框）原样保留。
+  let layoutShiftY = 0;
+  if (createOps.length > 0) {
+    const NODE_H_EST = 420, AVOID_MARGIN = 80;
+    // 计划占用区外接矩形
+    let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
+    const addRect = (x: number, y: number, w: number, h: number) => {
+      pMinX = Math.min(pMinX, x); pMaxX = Math.max(pMaxX, x + w);
+      pMinY = Math.min(pMinY, y); pMaxY = Math.max(pMaxY, y + h);
+    };
+    if (useScenes) {
+      for (const b of sceneBoxes) addRect(b.x, b.y, b.width, b.height);
+      for (const p of Array.from(posByOp.values())) addRect(p.x, p.y, NODE_W, NODE_H_EST);
+    } else {
+      const rows = Math.ceil(createOps.length / 3);
+      addRect(anchor.x + 560, anchor.y, Math.min(3, createOps.length) * 540, rows * 480 + NODE_H_EST - 480);
+    }
+    if (pMinX !== Infinity) {
+      const existing = store.nodes
+        .filter((n) => !n.hidden)
+        .map((n) => ({
+          x: n.position.x, y: n.position.y,
+          w: (typeof n.width === "number" ? n.width : undefined) ?? NODE_W,
+          h: (typeof n.height === "number" ? n.height : undefined) ?? NODE_H_EST,
+        }));
+      const hits = existing.filter((r) =>
+        r.x < pMaxX + AVOID_MARGIN && r.x + r.w > pMinX - AVOID_MARGIN &&
+        r.y < pMaxY + AVOID_MARGIN && r.y + r.h > pMinY - AVOID_MARGIN);
+      if (hits.length) {
+        // 下移到所有「横向与计划区重叠」节点的最低沿之下（不只相交者——避免下移后又撞上更低的）
+        const xOverlap = existing.filter((r) => r.x < pMaxX + AVOID_MARGIN && r.x + r.w > pMinX - AVOID_MARGIN);
+        const maxBottom = Math.max(...xOverlap.map((r) => r.y + r.h));
+        layoutShiftY = maxBottom + AVOID_MARGIN - pMinY;
+        for (const p of Array.from(posByOp.values())) p.y += layoutShiftY;
+        for (const b of sceneBoxes) b.y += layoutShiftY;
+      }
+    }
+  }
+
   // Apply order: all `create` first (preserving their relative order), then the
   // rest (connect/update/delete) in their original relative order. The LLM's op
   // array isn't guaranteed to be topologically sorted — a connect/update that
@@ -341,10 +384,11 @@ export function applyAgentOperations(
             const pt = typeof payload.promptText === "string" ? payload.promptText.trim() : "";
             if (!pt && d) payload = { ...payload, promptText: d };
           }
-          // Scene layout when planned, else fan out 3 per row to the agent's right.
+          // Scene layout when planned, else fan out 3 per row to the agent's right
+          //（layoutShiftY：整批避让已有节点的垂直位移，见上方规划段）。
           const pos = posByOp.get(op) ?? {
             x: anchor.x + 560 + (createdIdx % 3) * 540,
-            y: anchor.y + Math.floor(createdIdx / 3) * 480,
+            y: anchor.y + Math.floor(createdIdx / 3) * 480 + layoutShiftY,
           };
           const node = store.addNode(op.nodeType as NodeType, pos);
           res.touchedIds.push(node.id);

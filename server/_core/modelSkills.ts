@@ -70,5 +70,5 @@ export async function buildAgentModelSkillSection(modelIds: (string | undefined)
     } catch { /* 技能库不可用绝不影响规划主链路 */ }
   }
   if (!parts.length) return "";
-  return `\n\n# 模型提示词技法（用户已开启「模型技能」开关；为下列锁定模型撰写 prompt/params 时优先运用这些官方技法。仅作提示词写作参考——不新增/更改任何节点字段，绝不改变输出 JSON 格式）\n${parts.join("\n\n")}`;
+  return `\n\n# 模型提示词技法（用户已开启「模型技能」开关；为下列锁定模型撰写 prompt/params 时【必须运用】这些官方技法——每条相应模型节点的提示词都应体现技法要点，而非泛泛描述。技法只影响提示词/参数的写法——不新增/更改任何节点字段，绝不改变输出 JSON 格式）\n${parts.join("\n\n")}`;
 }
