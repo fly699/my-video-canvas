@@ -617,6 +617,13 @@
       "when": 1784900000000,
       "tag": "0087_asset_ai_meta",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "5",
+      "when": 1784900100000,
+      "tag": "0088_model_skills",
+      "breakpoints": true
     }
   ]
 }

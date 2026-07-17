@@ -14,6 +14,7 @@ import { AuroraBackground } from "@/components/AuroraBackground";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { downloadTextFile } from "@/lib/download";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/dialogService";
 import { adminTabFromUrl, ADMIN_TAB_EVENT } from "@/lib/adminNav";
 import { SelfHostedLlmSection } from "@/components/admin/SelfHostedLlmSection";
 import { TranscribeEndpointSection } from "@/components/admin/TranscribeEndpointSection";
@@ -294,7 +295,7 @@ export default function AdminPage() {
           {activeTab === "perms" && <PermsPanel />}
           {activeTab === "llmLogs" && <LlmLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
-          {activeTab === "models" && <LevelGate need={3} tab="models"><ModelsPanel /></LevelGate>}
+          {activeTab === "models" && <LevelGate need={3} tab="models"><><ModelsPanel /><ModelSkillsPanel /></></LevelGate>}
           {activeTab === "chat" && <ChatAdminPanel />}
           {activeTab === "comfyServers" && <LevelGate need={3} tab="comfyServers" label="只读模式 · 修改全局 ComfyUI 服务器列表需「管理员」及以上权限"><ComfyServersPanel /></LevelGate>}
           {activeTab === "comfyStress" && <LevelGate need={3} tab="comfyStress" label="只读模式 · ComfyUI 压测需「管理员」及以上权限"><ComfyStressPanel /></LevelGate>}
@@ -1327,6 +1328,122 @@ const MODEL_CATEGORIES: ModelCat[] = [
   },
 ];
 
+
+// ── #203 模型技能库：独立的按模型「提示词技法」库（DB 覆盖内置种子，可随时维护）。
+// 本批只建库不接智能体；未来各智能体（画布助手/扩写工具等）按需读取，另行规划。
+const SKILL_KINDS = ["image", "video", "audio", "music", "llm", "other"] as const;
+function ModelSkillsPanel() {
+  const utils = trpc.useUtils();
+  const listQ = trpc.admin.modelSkills.list.useQuery();
+  const [q, setQ] = useState("");
+  const [editing, setEditing] = useState<null | { modelId: string; kind: string; tips: string; source: string; enabled: boolean; isNew: boolean; origin: string }>(null);
+  const upsertMut = trpc.admin.modelSkills.upsert.useMutation({
+    onSuccess: () => { toast.success("技能已保存"); void utils.admin.modelSkills.list.invalidate(); setEditing(null); },
+    onError: (e) => toast.error("保存失败：" + e.message),
+  });
+  const removeMut = trpc.admin.modelSkills.remove.useMutation({
+    onSuccess: () => { toast.success("已移除自定义内容（种子模型回退内置版本）"); void utils.admin.modelSkills.list.invalidate(); },
+    onError: (e) => toast.error("删除失败：" + e.message),
+  });
+  const rows = (listQ.data ?? []).filter((r) => {
+    const k = q.trim().toLowerCase();
+    return !k || r.modelId.toLowerCase().includes(k) || r.tips.toLowerCase().includes(k) || r.kind.includes(k);
+  });
+  const originBadge = (o: string) =>
+    o === "builtin" ? { label: "内置", color: "var(--c-t4)" }
+    : o === "overridden" ? { label: "已覆盖", color: "oklch(0.72 0.16 60)" }
+    : { label: "自定义", color: "oklch(0.72 0.2 285)" };
+  return (
+    <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--c-t1)", margin: 0 }}>模型技能库</h3>
+        <span style={{ fontSize: 11.5, color: "var(--c-t4)" }}>
+          按模型维护「提示词技法」等技能文本（内置种子依官方文档整理；改动存库覆盖种子、删除即回退）。当前为独立库，各智能体的调用接入另行规划。
+        </span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索模型 id / 技法内容…"
+            style={{ width: 220, padding: "6px 10px", fontSize: 12, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t1)", outline: "none" }} />
+          <button onClick={() => setEditing({ modelId: "", kind: "video", tips: "", source: "", enabled: true, isNew: true, origin: "custom" })}
+            style={{ padding: "6px 12px", fontSize: 12, fontWeight: 600, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "var(--c-elevated)", color: "var(--c-t1)", cursor: "pointer" }}>
+            + 新增模型技能
+          </button>
+        </div>
+      </div>
+      {listQ.isLoading && <div style={{ fontSize: 12, color: "var(--c-t4)" }}>加载中…</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {rows.map((r) => {
+          const b = originBadge(r.origin);
+          return (
+            <div key={r.modelId} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px", borderRadius: 10, border: "1px solid var(--c-bd1)", background: "var(--c-surface)", opacity: r.enabled ? 1 : 0.55 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span className="font-mono" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--c-t1)" }}>{r.modelId}</span>
+                  <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 99, border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}>{r.kind}</span>
+                  <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 99, border: `1px solid ${b.color}`, color: b.color }}>{b.label}</span>
+                  {!r.enabled && <span style={{ fontSize: 10, color: "oklch(0.62 0.2 25)" }}>已停用</span>}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--c-t3)", marginTop: 4, whiteSpace: "pre-wrap", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }} title={r.tips}>{r.tips}</div>
+                {r.source && <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 3 }}>来源：{r.source}</div>}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <button onClick={() => setEditing({ modelId: r.modelId, kind: r.kind, tips: r.tips, source: r.source ?? "", enabled: r.enabled, isNew: false, origin: r.origin })}
+                  style={{ padding: "4px 10px", fontSize: 11, borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t2)", cursor: "pointer" }}>编辑</button>
+                <button
+                  onClick={() => upsertMut.mutate({ modelId: r.modelId, kind: r.kind as typeof SKILL_KINDS[number], tips: r.tips, source: r.source ?? undefined, enabled: !r.enabled })}
+                  title={r.enabled ? "停用（调用方将取不到该模型技能）" : "启用"}
+                  style={{ padding: "4px 10px", fontSize: 11, borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: r.enabled ? "var(--c-t3)" : "oklch(0.7 0.17 150)", cursor: "pointer" }}>
+                  {r.enabled ? "停用" : "启用"}
+                </button>
+                {r.origin !== "builtin" && (
+                  <button onClick={async () => { if (await confirmDialog({ title: `移除「${r.modelId}」的自定义内容？`, message: r.origin === "overridden" ? "该模型将回退到内置种子版本。" : "自定义模型技能将被彻底删除。", danger: true })) removeMut.mutate({ modelId: r.modelId }); }}
+                    style={{ padding: "4px 10px", fontSize: 11, borderRadius: 7, border: "1px solid oklch(0.62 0.2 25 / 0.4)", background: "transparent", color: "oklch(0.68 0.18 25)", cursor: "pointer" }}>
+                    {r.origin === "overridden" ? "回退内置" : "删除"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {!listQ.isLoading && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--c-t4)", padding: "12px 0" }}>无匹配条目</div>}
+      </div>
+      {editing && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0 0 0 / 0.55)" }} onClick={() => setEditing(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(640px, 92vw)", maxHeight: "84vh", overflowY: "auto", padding: 18, borderRadius: 14, background: "var(--c-base)", border: "1px solid var(--c-bd2)", boxShadow: "0 24px 60px oklch(0 0 0 / 0.5)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--c-t1)" }}>{editing.isNew ? "新增模型技能" : `编辑：${editing.modelId}`}</div>
+            {editing.isNew && (
+              <input value={editing.modelId} onChange={(e) => setEditing({ ...editing, modelId: e.target.value })} placeholder="模型 id（与系统内 wire id 一致，如 kie_grok_i2v / suno-v5）"
+                style={{ padding: "7px 10px", fontSize: 12.5, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t1)", outline: "none" }} />
+            )}
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 11.5, color: "var(--c-t3)" }}>类别</span>
+              {SKILL_KINDS.map((k) => (
+                <button key={k} onClick={() => setEditing({ ...editing, kind: k })}
+                  style={{ padding: "3px 10px", fontSize: 11, borderRadius: 99, border: `1px solid ${editing.kind === k ? "oklch(0.72 0.2 285)" : "var(--c-bd2)"}`, background: editing.kind === k ? "oklch(0.72 0.2 285 / 0.15)" : "transparent", color: editing.kind === k ? "oklch(0.75 0.18 285)" : "var(--c-t3)", cursor: "pointer" }}>{k}</button>
+              ))}
+              <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--c-t2)", cursor: "pointer" }}>
+                <input type="checkbox" checked={editing.enabled} onChange={(e) => setEditing({ ...editing, enabled: e.target.checked })} /> 启用
+              </label>
+            </div>
+            <textarea value={editing.tips} onChange={(e) => setEditing({ ...editing, tips: e.target.value })} rows={8}
+              placeholder="技能正文（提示词技法等，写给「为该模型撰写提示词的人/LLM」看；一行一条更清晰）"
+              style={{ padding: "9px 11px", fontSize: 12.5, lineHeight: 1.7, borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t1)", outline: "none", resize: "vertical", fontFamily: "inherit" }} />
+            <input value={editing.source} onChange={(e) => setEditing({ ...editing, source: e.target.value })} placeholder="来源备注（官方文档位置/链接，便于日后核对，选填）"
+              style={{ padding: "7px 10px", fontSize: 12, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "var(--c-input)", color: "var(--c-t2)", outline: "none" }} />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button onClick={() => setEditing(null)} style={{ padding: "7px 14px", fontSize: 12.5, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}>取消</button>
+              <button
+                disabled={upsertMut.isPending || !editing.modelId.trim() || !editing.tips.trim()}
+                onClick={() => upsertMut.mutate({ modelId: editing.modelId.trim(), kind: editing.kind as typeof SKILL_KINDS[number], tips: editing.tips.trim(), source: editing.source.trim() || undefined, enabled: editing.enabled })}
+                style={{ padding: "7px 16px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: "none", background: "oklch(0.72 0.2 285)", color: "#fff", cursor: "pointer", opacity: upsertMut.isPending || !editing.modelId.trim() || !editing.tips.trim() ? 0.5 : 1 }}>
+                {upsertMut.isPending ? "保存中…" : "保存"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ModelsPanel() {
   const utils = trpc.useUtils();

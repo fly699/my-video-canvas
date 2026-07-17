@@ -33,6 +33,7 @@ import { randomBytes } from "crypto";
 import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate, restartServer, getRunningVsDisk } from "../_core/selfUpdate";
 import { hashPassword } from "../_core/emailAuth";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
+import { getMergedModelSkills, MODEL_SKILL_KINDS } from "../_core/modelSkills";
 import { writeAuditLog } from "../_core/auditLog";
 import { broadcastSystemAnnouncement, setPersistentAnnouncement } from "./chat";
 import { sendLogEmailNow } from "../_core/logEmailer";
@@ -193,6 +194,33 @@ export const adminRouter = router({
         return { success: true, count: input.ids.length, objectsDeleted, objectsFailed };
       }),
   }),
+  // ── #203 模型技能库：独立的按模型「提示词技法」库（DB 覆盖代码种子，随时维护）。
+  //    本批只建库不接智能体；未来调用方经 server/_core/modelSkills.getModelSkillText 读取。
+  modelSkills: router({
+    list: adminProcedure.query(() => getMergedModelSkills()),
+    upsert: managerProc
+      .input(z.object({
+        modelId: z.string().min(1).max(128),
+        kind: z.enum(MODEL_SKILL_KINDS as [string, ...string[]]),
+        tips: z.string().min(1).max(8000),
+        source: z.string().max(512).optional(),
+        enabled: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.upsertModelSkillRow(input);
+        writeAuditLog({ ctx, action: "model_skill_upsert", detail: { modelId: input.modelId, kind: input.kind, enabled: input.enabled ?? true } });
+        return { success: true };
+      }),
+    /** 删除 DB 覆盖行——种子模型回退内置内容，自定义模型彻底移除。 */
+    remove: managerProc
+      .input(z.object({ modelId: z.string().min(1).max(128) }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteModelSkillRow(input.modelId);
+        writeAuditLog({ ctx, action: "model_skill_delete", detail: { modelId: input.modelId } });
+        return { success: true };
+      }),
+  }),
+
   logs: router({
     list: logsView
       .input(z.object({

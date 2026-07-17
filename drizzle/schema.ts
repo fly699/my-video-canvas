@@ -1315,3 +1315,23 @@ export const comfyOpsSettings = mysqlTable("comfy_ops_settings", {
 
 export type ComfyOpsSettings = typeof comfyOpsSettings.$inferSelect;
 export type InsertComfyOpsSettings = typeof comfyOpsSettings.$inferInsert;
+
+/** #203 模型技能库：按模型 id 存「提示词技法」等技能文本，管理后台随时维护。
+ *  读取时与代码内置种子（shared/modelSkillSeeds.ts）合并——DB 行覆盖同 modelId 的
+ *  种子（#155 DB优先+代码兜底模式）。本批只建库，不接任何智能体（调用另行规划）。 */
+export const modelSkills = mysqlTable("model_skills", {
+  id: int("id").autoincrement().primaryKey(),
+  /** 系统内模型 id（modelCatalog 的 value，如 kie_grok_i2v / poyo_grok_image）。唯一。 */
+  modelId: varchar("modelId", { length: 128 }).notNull().unique(),
+  /** 类别：image / video / audio / music / llm / other（冗余存储便于筛选）。 */
+  kind: varchar("kind", { length: 16 }).notNull().default("other"),
+  /** 技能正文（提示词技法等，多行文本）。 */
+  tips: text("tips").notNull(),
+  /** 来源备注（官方文档/链接/整理人），维护时溯源用。 */
+  source: varchar("source", { length: 512 }),
+  enabled: boolean("enabled").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ModelSkill = typeof modelSkills.$inferSelect;
+export type InsertModelSkill = typeof modelSkills.$inferInsert;

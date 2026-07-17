@@ -120,6 +120,8 @@ import {
   type ComfyWorkflowMemoryMeta,
   aiClientSessions,
   type AiClientSessionRow,
+  modelSkills,
+  type ModelSkill,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -3788,4 +3790,26 @@ export async function setOpsSettings(patch: Partial<Omit<ComfyOpsSettings, "id">
   if (!db) return;
   await db.insert(comfyOpsSettings).values({ id: 1, ...patch })
     .onDuplicateKeyUpdate({ set: patch });
+}
+
+// ── #203 模型技能库（DB 行覆盖代码种子；合并逻辑在 server/_core/modelSkills.ts） ──
+
+export async function listModelSkillRows(): Promise<ModelSkill[]> {
+  const db = await getDb();
+  if (!db) return DEV_MODE ? dev.devListModelSkills() : [];
+  return db.select().from(modelSkills).orderBy(desc(modelSkills.updatedAt));
+}
+
+export async function upsertModelSkillRow(data: { modelId: string; kind: string; tips: string; source?: string | null; enabled?: boolean }): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devUpsertModelSkill(data); return; } throw new Error("DB unavailable"); }
+  const set = { kind: data.kind, tips: data.tips, source: data.source ?? null, enabled: data.enabled ?? true };
+  await db.insert(modelSkills).values({ modelId: data.modelId, ...set }).onDuplicateKeyUpdate({ set });
+}
+
+/** 删除 DB 覆盖行——该 modelId 回退到代码种子（若有）。 */
+export async function deleteModelSkillRow(modelId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) { if (DEV_MODE) { dev.devDeleteModelSkill(modelId); return; } throw new Error("DB unavailable"); }
+  await db.delete(modelSkills).where(eq(modelSkills.modelId, modelId));
 }
