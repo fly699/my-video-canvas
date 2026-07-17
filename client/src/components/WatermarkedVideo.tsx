@@ -83,6 +83,14 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
     if (v && hoverPlayed.current) { v.pause(); hoverPlayed.current = false; }
   };
 
+  // 放大预览打开时自动暂停内联预览：放大层是另一个独立的 <video autoPlay>，
+  // 不停内联（尤其 hover 自动播放中）会两路同播——双声音、双解码器。关闭后不自动续播。
+  useEffect(() => {
+    if (!big) return;
+    const v = videoRef.current;
+    if (v && !v.paused) { v.pause(); hoverPlayed.current = false; }
+  }, [big]);
+
   // 关闭放大预览：Esc。#126 加固：capture + 阻断——放大层开着时 Esc 只关它，
   // 不连带触发画布的 Esc 副作用（取消选中/关菜单），也不被其它监听抢走。
   useEffect(() => {
