@@ -144,6 +144,9 @@ function typewriterVisibleCount(content: string, tInto: number, clipDur: number,
   return Math.min(chars.length, Math.floor(tInto / per) + 1);
 }
 
+// 硬切预告窗口（秒）：切点前提前挂载并预 seek 下一段视频，消除切换黑帧。
+const HARDCUT_PREROLL = 0.6;
+
 function activeAt(doc: EditorDoc, t: number): { clip: Clip; trackType: string; muted: boolean; trackVolume: number }[] {
   const out: { clip: Clip; trackType: string; muted: boolean; trackVolume: number }[] = [];
   for (const track of doc.tracks) {
@@ -331,6 +334,21 @@ export function PreviewStage() {
       if (!playing && !el.paused) el.pause();
     }
     mediaRefs.current.forEach((el, id) => { if (!active.has(id) && !el.paused) el.pause(); });
+    // 硬切黑帧修复（预告 seek）：即将激活的下一段视频元素已由渲染层提前挂载（隐藏），
+    // 这里把它 seek 到自己的首帧并保持暂停——切换瞬间帧已解码，不再黑一闪。
+    for (const track of doc.tracks) {
+      if (track.type !== "video" || track.hidden) continue;
+      for (const c of track.clips) {
+        if (c.kind !== "video" || active.has(c.id)) continue;
+        if (sampleT < c.start - HARDCUT_PREROLL || sampleT >= c.start) continue;
+        const el = mediaRefs.current.get(c.id);
+        if (!el) continue;
+        if (!el.paused) el.pause();
+        el.volume = 0;
+        const first = sourceTimeAt(c, c.start);
+        if (Math.abs(el.currentTime - first) > 0.05) el.currentTime = first;
+      }
+    }
   }, [doc, sampleT, playing]);
 
   const stageSize = () => { const r = stageRef.current?.getBoundingClientRect(); return { w: r?.width ?? 1, h: r?.height ?? 1, left: r?.left ?? 0, top: r?.top ?? 0 }; };
@@ -469,6 +487,20 @@ export function PreviewStage() {
         fade.set(A.id, 1 - p);
         fade.set(B.id, p);
         incoming.push({ clip: B, trackType: "video", muted: true }); // B not active yet
+      }
+    }
+  }
+  // 硬切黑帧修复（预告挂载）：切点前 HARDCUT_PREROLL 秒把下一段视频元素提前挂上
+  //（完全透明、静音，sync effect 会把它预 seek 到首帧）——激活瞬间帧已解码好，
+  // 不再出现「元素刚挂载还没画面 → 预览黑一闪」（剪除静音/智能剪辑的多段硬切尤其明显）。
+  // 转场(transitionIn)分支已在上方设置渐变透明度，这里跳过避免覆盖。
+  for (const track of doc.tracks) {
+    if (track.type !== "video" || track.hidden) continue;
+    for (const B of track.clips) {
+      if (B.kind !== "video" || fade.has(B.id)) continue;
+      if (playhead >= B.start - HARDCUT_PREROLL && playhead < B.start) {
+        fade.set(B.id, 0);
+        incoming.push({ clip: B, trackType: "video", muted: true });
       }
     }
   }

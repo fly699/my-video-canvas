@@ -194,21 +194,25 @@ export function buildAiCutDoc(source: AiCutSource, plan: AiCutPlan, words: CutWo
   doc.normalizeAudio = true; // video-use 收尾 loudnorm；导出统一到 -14 LUFS
   const vTrack = doc.tracks.find((t) => t.type === "video")!;
 
+  // 起点精确连续：trim 先各自取 3 位小数，段长用「取整后的 trim」计算并同样保持 3 位，
+  // 逐段累加不产生浮点漂移——相邻片段 start 严格首尾相接（漂移会造成亚帧空隙，
+  // 预览在空隙瞬间无激活片段 → 黑一闪；导出侧空隙则可能补黑帧）。
   let outT = 0;
   kept.forEach((r, idx) => {
-    const dur = r.end - r.start;
+    const tin = round3(r.start), tout = round3(r.end);
+    const dur = tout - tin;
     if (dur <= 0.02) return;
     const f = Math.min(fade, dur / 2);
     const clip: Clip = {
       id: `ai-v-${idx}`, kind: "video",
       ...(source.assetId != null ? { assetId: source.assetId } : {}),
       assetUrl: source.assetUrl,
-      start: round3(outT), trimIn: round3(r.start), trimOut: round3(r.end),
+      start: round3(outT), trimIn: tin, trimOut: tout,
       fadeIn: round3(f), fadeOut: round3(f), fadeCurve: "hsin",
       ...(useGrade ? { effects: { filter: grade } } : {}),
     };
     vTrack.clips.push(clip);
-    outT += dur;
+    outT = round3(outT + dur);
   });
 
   if (opts.subtitles && words.length) {
