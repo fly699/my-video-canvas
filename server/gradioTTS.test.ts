@@ -130,4 +130,18 @@ describe("gradioTTS.buildGradioDataFromSchema（#212）", () => {
     const noText: GradioParamInfo[] = [P("prompt_wav", "Prompt Speech", "Audio", null, "filepath"), P("cfg", "CFG", "Slider", 2, "float")];
     expect(buildGradioDataFromSchema(noText, VALS)).toBeNull();
   });
+
+  it("#215 指定 seed：seed 槽取用户值，Random Seed 复选框置 false", () => {
+    const withSeed = [...V2, P("seed", "Seed", "Number", 0, "int"), P("randomize", "Random Seed", "Checkbox", true, "bool")];
+    const d = buildGradioDataFromSchema(withSeed, { ...VALS, seed: 123 })!;
+    expect(d[d.length - 2]).toBe(123);
+    expect(d[d.length - 1]).toBe(false);
+  });
+
+  it("#215 未指定 seed：seed 槽取声明默认，Random Seed 保持默认（true）", () => {
+    const withSeed = [...V2, P("seed", "Seed", "Number", 0, "int"), P("randomize", "Random Seed", "Checkbox", true, "bool")];
+    const d = buildGradioDataFromSchema(withSeed, VALS)!;
+    expect(d[d.length - 2]).toBe(0);
+    expect(d[d.length - 1]).toBe(true);
+  });
 });

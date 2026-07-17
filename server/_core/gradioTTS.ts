@@ -26,6 +26,7 @@ export interface SynthesizeGradioTTSOptions {
   doNormalize?: boolean;           // 文本规范化
   denoise?: boolean;               // 参考音频降噪
   ditSteps?: number;               // 扩散步数，默认 10
+  seed?: number;                   // #215 可复现 Seed（留空=随机；仅新版接口有该参数时生效）
   apiName?: string;                // 端点名，默认 "generate"
 }
 
@@ -246,6 +247,8 @@ export interface GradioDataValues {
   doNormalize: boolean;
   denoise: boolean;
   ditSteps: number;
+  /** #215 显式 Seed；undefined=随机（映射时 randomize 参数取 true、seed 参数取其默认值）。 */
+  seed?: number;
 }
 
 /** 拉取端点参数表；/info 不可用或无该端点 → null（调用方走旧固定顺序）。 */
@@ -281,10 +284,13 @@ export function buildGradioDataFromSchema(params: GradioParamInfo[], vals: Gradi
     if (comp.includes("checkbox") || pyType === "bool" || typeof p.parameter_default === "boolean") {
       if (n.includes("normal")) return vals.doNormalize;
       if (n.includes("denoi")) return vals.denoise;
+      // Random Seed 开关：用户给了显式 seed → false（用它），否则 true/默认（随机）。
+      if (n.includes("random")) return vals.seed == null ? (p.parameter_has_default ? p.parameter_default : true) : false;
       if (n.includes("prompt")) return vals.usePromptText;
       return p.parameter_has_default ? p.parameter_default : false;
     }
     if (comp.includes("slider") || comp.includes("number") || pyType === "float" || pyType === "int" || typeof p.parameter_default === "number") {
+      if (n.includes("seed")) return vals.seed ?? (p.parameter_has_default ? p.parameter_default : 0);
       if (n.includes("cfg") || n.includes("guidance")) return vals.cfgValue;
       if (n.includes("step") || n.includes("timestep")) return vals.ditSteps;
       return p.parameter_has_default ? p.parameter_default : 0;
@@ -348,6 +354,7 @@ export async function synthesizeGradioTTS(opts: SynthesizeGradioTTSOptions): Pro
     doNormalize: opts.doNormalize ?? false,
     denoise: opts.denoise ?? false,
     ditSteps: opts.ditSteps ?? 10,
+    seed: opts.seed,
   };
   const legacyData: unknown[] = [
     vals.text, vals.controlInstruction, vals.refData, vals.usePromptText, vals.promptTextValue,

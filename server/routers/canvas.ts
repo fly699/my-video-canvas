@@ -2674,6 +2674,10 @@ export const audioGenRouter = router({
         ditSteps: z.number().int().min(1).max(100).optional(),
         denoise: z.boolean().optional(),
         doNormalize: z.boolean().optional(),
+        // #215 对齐官方 VoxCPM2：极致克隆（参考音频文本引导，与控制指令互斥）+ 可复现 Seed
+        usePromptText: z.boolean().optional(),
+        promptTextValue: z.string().max(5000).optional(),
+        seed: z.number().int().min(0).max(4294967295).optional(),
         kieTempKey: z.string().max(256).optional(), // kie_elevenlabs_* only
         // 客户端实时计算的点数预估（如 "≈6 点"），仅供管理员日志参考。
         estimatedCost: z.string().max(32).optional(),
@@ -2743,6 +2747,9 @@ export const audioGenRouter = router({
               ditSteps: input.ditSteps,
               denoise: input.denoise,
               doNormalize: input.doNormalize,
+              usePromptText: input.usePromptText,
+              promptTextValue: input.promptTextValue,
+              seed: input.seed,
             })
           : isKieTTSModel
           ? await submitAndPollKieTTS({

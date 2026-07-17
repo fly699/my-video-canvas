@@ -151,6 +151,8 @@ function modelIsVoxCPM(model?: string): boolean {
 // VoxCPM 控制指令快速模板：多级（分类 → 短语），点击把短语拼进控制指令。
 // pos: "front" 的（方言/语种口音）插到指令最前面，其余追加到末尾。
 const VOX_CONTROL_TEMPLATES: { cat: string; pos: "front" | "end"; items: string[] }[] = [
+  // #215 对齐官方声音设计（Voice Design）示例：指令以「性别+年龄」开头（如「中老年女性，声音低沉阴冷…」）。
+  { cat: "性别年龄", pos: "front", items: ["年轻女性", "年轻男性", "中年女性", "中年男性", "中老年女性", "中老年男性", "老年女性", "老年男性", "少女", "少年", "女孩童声", "男孩童声"] },
   { cat: "方言口音", pos: "front", items: ["普通话", "粤语", "四川话", "东北话", "河南话", "陕西话", "天津话", "山东话", "上海话", "重庆话", "云南话", "湖南话", "江西话", "闽南语", "客家话", "潮汕话", "台湾腔", "香港普通话", "新疆口音", "甜美奶音"] },
   { cat: "语种口音", pos: "front", items: ["美式英语", "英式英语", "澳洲英语", "印度英语", "日语", "韩语", "法语", "德语", "西班牙语", "意大利语", "葡萄牙语", "俄语", "泰语", "越南语", "印尼语", "阿拉伯语"] },
   { cat: "语速", pos: "end", items: ["语速很慢", "语速较慢", "语速正常", "语速较快", "语速很快", "语速极快"] },
@@ -808,6 +810,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         toast.error("请先填写本地 VoxCPM 的 Gradio 服务地址（或在管理后台「模型管理 › 本地 VoxCPM 端点」配置全站默认）"); return;
       }
       const refUrl = payload.ttsRefWavUrl?.trim() || detectUpstreamAudioUrl(id)?.url;
+      // #215 极致克隆（官方 Ultimate Cloning）：基于参考音频文本引导，与控制指令互斥——
+      // 开启时不发 controlInstruction（官方明确该模式下 Control Instruction 被禁用）。
+      const ultimate = !!payload.ttsUsePromptText && !!refUrl;
       ttsMutation.mutate({
         model: "voxcpm-local",
         text: speakText,
@@ -815,7 +820,10 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
         // 留空 = 让服务端回退全站默认（DB → VOXCPM_BASE_URL）。
         customBaseUrl: payload.ttsGradioBaseUrl?.trim() || undefined,
         refWavUrl: refUrl || undefined,
-        controlInstruction: payload.ttsControlInstruction?.trim() || undefined,
+        controlInstruction: ultimate ? undefined : payload.ttsControlInstruction?.trim() || undefined,
+        usePromptText: ultimate || undefined,
+        promptTextValue: ultimate ? payload.ttsPromptText?.trim() || undefined : undefined,
+        seed: payload.ttsSeed ?? undefined,
         cfgValue: payload.ttsCfg ?? 2,
         ditSteps: payload.ttsDitSteps ?? 10,
         denoise: payload.ttsDenoise ?? false,
@@ -1424,60 +1432,119 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                     </p>
                   )}
                 </div>
-                {/* 音色/风格控制指令（可选）+ 快速模板 */}
-                <div>
-                  <label style={labelStyle}>控制指令（可选）</label>
-                  <NodeInput
-                    placeholder="例如：用粤语，语速较慢，语气温柔"
-                    value={payload.ttsControlInstruction ?? ""}
-                    onValueChange={(v) => update("ttsControlInstruction", v)}
-                    className="nodrag"
-                    noMention
-                    style={fieldStyle}
-                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
-                  />
-                  <ControlTemplatePicker
-                    value={payload.ttsControlInstruction ?? ""}
-                    onChange={(v) => update("ttsControlInstruction", v)}
-                  />
+                {/* #215 极致克隆（官方 Ultimate Cloning）：参考音频文本引导续写，与控制指令互斥 */}
+                <div className="flex items-center justify-between">
+                  <label
+                    style={{ ...labelStyle, marginBottom: 0 }}
+                    title="模型把参考音频视为已说出的前文，以音频续写方式完整还原参考音色的全部声音细节；需提供参考音频及其文字内容。与控制指令互斥。"
+                  >
+                    极致克隆模式
+                  </label>
+                  <button
+                    onClick={() => update("ttsUsePromptText", !payload.ttsUsePromptText)}
+                    className="nodrag relative flex-shrink-0"
+                    style={{
+                      width: 32, height: 18, borderRadius: 9,
+                      background: payload.ttsUsePromptText ? accentA(0.5) : "var(--c-bd1)",
+                      border: `1px solid ${payload.ttsUsePromptText ? accentA(0.5) : "var(--c-bd3)"}`,
+                      cursor: "pointer", transition: "background 150ms ease",
+                    }}
+                  >
+                    <span style={{
+                      position: "absolute", top: 2, left: payload.ttsUsePromptText ? 14 : 2,
+                      width: 12, height: 12, borderRadius: "50%",
+                      background: "var(--c-t1)", transition: "left 150ms ease",
+                    }} />
+                  </button>
                 </div>
-                {/* CFG */}
+                {payload.ttsUsePromptText ? (
+                  /* 极致克隆开启：需要参考音频的文字内容；控制指令被忽略（互斥），隐藏 */
+                  <div>
+                    <label style={labelStyle}>参考音频内容文本（极致克隆用）</label>
+                    <textarea
+                      placeholder="逐字填写参考音频里说的内容，越准确克隆越像"
+                      value={payload.ttsPromptText ?? ""}
+                      onChange={(e) => update("ttsPromptText", e.target.value)}
+                      className="nodrag w-full"
+                      rows={2}
+                      style={{ ...fieldStyle, resize: "vertical", minHeight: 44 }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                    />
+                    <p style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4, lineHeight: 1.5 }}>
+                      极致克隆与控制指令互斥：开启后控制指令不生效。需已提供参考音频（上传或上游连入）。
+                    </p>
+                  </div>
+                ) : (
+                  /* 音色/风格控制指令（可选）+ 快速模板 */
+                  <div>
+                    <label style={labelStyle}>控制指令（可选）</label>
+                    <NodeInput
+                      placeholder="例如：年轻女性，用粤语，语速较慢，语气温柔"
+                      value={payload.ttsControlInstruction ?? ""}
+                      onValueChange={(v) => update("ttsControlInstruction", v)}
+                      className="nodrag"
+                      noMention
+                      style={fieldStyle}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                    />
+                    <ControlTemplatePicker
+                      value={payload.ttsControlInstruction ?? ""}
+                      onChange={(v) => update("ttsControlInstruction", v)}
+                    />
+                  </div>
+                )}
+                {/* CFG（官方范围 1–3，默认 2） */}
                 <div>
                   <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>CFG</label>
+                    <label style={{ ...labelStyle, marginBottom: 0 }} title="CFG 引导强度：高=更贴合指令/参考音频，低=更自由">CFG 引导强度</label>
                     <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
                       {(payload.ttsCfg ?? 2).toFixed(1)}
                     </span>
                   </div>
                   <input
-                    type="range" min={0} max={5} step={0.1}
-                    value={payload.ttsCfg ?? 2}
+                    type="range" min={1} max={3} step={0.1}
+                    value={Math.min(3, Math.max(1, payload.ttsCfg ?? 2))}
                     onChange={(e) => update("ttsCfg", Number(e.target.value))}
                     className="nodrag w-full"
                     style={{ accentColor: accent }}
                   />
                 </div>
-                {/* 扩散步数 */}
+                {/* LocDiT 流匹配迭代步数（官方范围 1–50，默认 10） */}
                 <div>
                   <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>扩散步数</label>
+                    <label style={{ ...labelStyle, marginBottom: 0 }} title="LocDiT 流匹配估计器迭代步数：多=质量更好、更慢">LocDiT 迭代步数</label>
                     <span style={{ fontSize: 11, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>
                       {payload.ttsDitSteps ?? 10}
                     </span>
                   </div>
                   <input
-                    type="range" min={4} max={50} step={1}
+                    type="range" min={1} max={50} step={1}
                     value={payload.ttsDitSteps ?? 10}
                     onChange={(e) => update("ttsDitSteps", Number(e.target.value))}
                     className="nodrag w-full"
                     style={{ accentColor: accent }}
                   />
                 </div>
+                {/* Seed（留空=每次随机） */}
+                <div>
+                  <label style={labelStyle}>Seed（留空=每次随机）</label>
+                  <input
+                    type="number" min={0} step={1}
+                    value={payload.ttsSeed ?? ""}
+                    onChange={(e) => update("ttsSeed", e.target.value === "" ? undefined : Math.max(0, Math.floor(Number(e.target.value))))}
+                    placeholder="随机"
+                    className="nodrag w-full"
+                    style={fieldStyle}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                  />
+                </div>
                 {/* 降噪 / 文本规范化 开关 */}
                 {([
-                  { key: "ttsDenoise" as const, label: "参考音频降噪" },
-                  { key: "ttsDoNormalize" as const, label: "文本规范化" },
+                  { key: "ttsDenoise" as const, label: "参考音频降噪（ZipEnhancer）" },
+                  { key: "ttsDoNormalize" as const, label: "文本规范化（wetext）" },
                 ]).map(({ key, label }) => {
                   const on = (payload[key] as boolean | undefined) ?? false;
                   return (
@@ -2052,36 +2119,63 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                       <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4, lineHeight: 1.5 }}>留空则用模型自带/随机音色；也可从上游「音频 / 素材(音频)」节点连线克隆音色</div>
                     )}
                   </div>
+                  {/* #215 极致克隆（官方 Ultimate Cloning）：参考音频文本引导续写，完整还原音色/节奏/情感；
+                      与控制指令互斥（开启时官方禁用 Control Instruction）。 */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }} title="模型把参考音频视为已说出的前文，以音频续写方式完整还原参考音色的全部声音细节；需提供参考音频及其文字内容。与控制指令互斥。">极致克隆模式</span>
+                    <button className="nodrag" onClick={() => updateNodeData(id, { ttsUsePromptText: !payload.ttsUsePromptText })}
+                      style={{ position: "relative", width: 32, height: 18, borderRadius: 9, background: payload.ttsUsePromptText ? "color-mix(in oklab, var(--ui-accent) 70%, transparent)" : "var(--c-bd1)", border: "1px solid var(--c-bd3)", cursor: "pointer" }}>
+                      <span style={{ position: "absolute", top: 2, left: payload.ttsUsePromptText ? 14 : 2, width: 12, height: 12, borderRadius: "50%", background: "var(--c-t1)", transition: "left 150ms ease" }} />
+                    </button>
+                  </div>
+                  {payload.ttsUsePromptText ? (
+                    <div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>参考音频内容文本（极致克隆用）</div>
+                      <textarea value={payload.ttsPromptText ?? ""} rows={3} className="nodrag nowheel"
+                        onChange={(e) => updateNodeData(id, { ttsPromptText: e.target.value })}
+                        placeholder="填写参考音频里说的原话（越准确还原越好）"
+                        style={{ width: "100%", fontSize: 11, lineHeight: 1.6, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", resize: "vertical", fontFamily: "inherit" }} />
+                      <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 3, lineHeight: 1.5 }}>该模式需要参考音频；开启后「控制指令」暂时禁用（官方互斥）。</div>
+                    </div>
+                  ) : (<>
                   <div>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>音色/风格控制指令（可选）</div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>音色/风格控制指令（可选，声音设计）</div>
                     <input value={payload.ttsControlInstruction ?? ""} className="nodrag"
                       onChange={(e) => updateNodeData(id, { ttsControlInstruction: e.target.value })}
-                      placeholder="如：用四川话，语速快一点，低沉磁性"
+                      placeholder="描述性别/年龄/语气/情绪/语速，如：中年女性，温柔，语速较慢"
                       style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
-                    {/* 快速模板（方言/语种/语速/语气/音色）——与「高级」同一组件同一数据源 */}
+                    {/* 快速模板（性别年龄/方言/语种/语速/语气/音色）——与「高级」同一组件同一数据源 */}
                     <ControlTemplatePicker value={payload.ttsControlInstruction ?? ""} onChange={(v) => updateNodeData(id, { ttsControlInstruction: v })} />
                   </div>
+                  </>)}
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>CFG（越高越贴合指令）</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>CFG 引导强度（高=贴合指令/参考，低=更自由）</span>
                       <span style={{ fontSize: 11, color: "var(--c-t3)" }}>{(payload.ttsCfg ?? 2).toFixed(1)}</span>
                     </div>
-                    <input type="range" min={0} max={5} step={0.1} value={payload.ttsCfg ?? 2} className="nodrag"
+                    <input type="range" min={1} max={3} step={0.1} value={Math.min(3, Math.max(1, payload.ttsCfg ?? 2))} className="nodrag"
                       onChange={(e) => updateNodeData(id, { ttsCfg: Number(e.target.value) })}
                       style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))" }} />
                   </div>
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>扩散步数（越高越细致、越慢）</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>LocDiT 迭代步数（多=质量更好、更慢）</span>
                       <span style={{ fontSize: 11, color: "var(--c-t3)" }}>{payload.ttsDitSteps ?? 10}</span>
                     </div>
-                    <input type="range" min={4} max={50} step={1} value={payload.ttsDitSteps ?? 10} className="nodrag"
+                    <input type="range" min={1} max={50} step={1} value={payload.ttsDitSteps ?? 10} className="nodrag"
                       onChange={(e) => updateNodeData(id, { ttsDitSteps: Number(e.target.value) })}
                       style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))" }} />
                   </div>
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>Seed（可选，留空=每次随机；相同 Seed 可复现）</div>
+                    <input type="number" min={0} step={1} value={payload.ttsSeed ?? ""} className="nodrag"
+                      onChange={(e) => updateNodeData(id, { ttsSeed: e.target.value === "" ? undefined : Math.max(0, Math.floor(Number(e.target.value))) })}
+                      placeholder="随机"
+                      style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+                  </div>
                   {([
-                    { key: "ttsDenoise" as const, label: "参考音频降噪" },
-                    { key: "ttsDoNormalize" as const, label: "文本规范化" },
+                    { key: "ttsDenoise" as const, label: "参考音频降噪（ZipEnhancer）" },
+                    { key: "ttsDoNormalize" as const, label: "文本规范化（wetext）" },
                   ]).map(({ key, label }) => {
                     const on = (payload[key] as boolean | undefined) ?? false;
                     return (
