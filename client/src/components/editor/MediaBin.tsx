@@ -285,9 +285,15 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
                   {kind === "image" ? (
                     <div style={{ width: "100%", height: "100%", backgroundImage: `url("${a.url}")`, backgroundSize: "cover", backgroundPosition: "center" }} />
                   ) : kind === "video" ? (
-                    a.thumbnailUrl
-                      ? <img src={a.thumbnailUrl} alt={a.name} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-                      : <div style={{ width: "100%", height: "100%", background: "var(--c-elevated, oklch(0.2 0.01 260))", display: "flex", alignItems: "center", justifyContent: "center" }}><Play size={18} style={{ color: "var(--c-t4)" }} /></div>
+                    // 视频标志常驻叠加：抽帧缩略图和图片长得一样，没角标分不清哪个是视频
+                    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+                      {a.thumbnailUrl
+                        ? <img src={a.thumbnailUrl} alt={a.name} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+                        : <div style={{ width: "100%", height: "100%", background: "var(--c-elevated, oklch(0.2 0.01 260))" }} />}
+                      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                        <Play size={12} style={{ color: "#fff", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.7))" }} fill="#fff" />
+                      </div>
+                    </div>
                   ) : (
                     <Icon size={16} style={{ color: EC.t3 }} />
                   )}
@@ -313,9 +319,17 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
               {kind === "image" ? (
                 <div style={{ height: thumbH, minHeight: thumbH, backgroundImage: `url("${a.url}")`, backgroundSize: view === "large" ? "contain" : "cover", backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
               ) : kind === "video" ? (
-                a.thumbnailUrl
-                  ? <img src={a.thumbnailUrl} alt={a.name} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: thumbH, minHeight: thumbH, objectFit: view === "large" ? "contain" : "cover", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
-                  : <div style={{ width: "100%", height: thumbH, minHeight: thumbH, background: "var(--c-elevated, #14141a)", display: "flex", alignItems: "center", justifyContent: "center" }}><Play size={22} style={{ color: "var(--c-t4)" }} /></div>
+                // 视频标志常驻叠加：抽帧缩略图和图片长得一样，没角标分不清哪个是视频
+                <div style={{ position: "relative", height: thumbH, minHeight: thumbH }}>
+                  {a.thumbnailUrl
+                    ? <img src={a.thumbnailUrl} alt={a.name} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: "100%", objectFit: view === "large" ? "contain" : "cover", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
+                    : <div style={{ width: "100%", height: "100%", background: "var(--c-elevated, #14141a)" }} />}
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                    <div style={{ width: view === "large" ? 34 : 26, height: view === "large" ? 34 : 26, borderRadius: "50%", background: "oklch(0 0 0 / 0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Play size={view === "large" ? 15 : 12} style={{ color: "#fff" }} fill="#fff" />
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div style={{ height: thumbH, minHeight: thumbH, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }}>
                   <Icon size={view === "large" ? 38 : 22} style={{ color: EC.t3 }} />
