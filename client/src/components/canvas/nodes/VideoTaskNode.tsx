@@ -26,6 +26,7 @@ import { ensureNotificationPermission, showCompletionNotification } from "@/lib/
 import { CinematographyPicker } from "../CinematographyPicker";
 import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, providerNeedsPublicMedia, usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import { ModelPicker } from "../ModelPicker";
+import { confirmRegenerate } from "@/lib/confirmRegenerate";
 import { SyncNodesDialog } from "../SyncNodesDialog";
 import { platformBadge, VIDEO_MODELS } from "../../../lib/models";
 import { estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
@@ -621,6 +622,12 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     },
     [id, updateNodeData, payload.params]
   );
+
+  /** 按钮入口专用：已有成片时先二次确认再提交（助手/工作流等程序化触发直接调 handleSubmit）。 */
+  const submitViaButton = () => {
+    if (payload.status === "succeeded") { void confirmRegenerate("生成的视频").then((ok) => { if (ok) handleSubmit(); }); return; }
+    handleSubmit();
+  };
 
   const handleSubmit = () => {
     if (createTaskMutation.isPending) return;
@@ -2036,30 +2043,30 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             </button>
           )}
           <button
-            onClick={handleSubmit}
-            disabled={isLocked || isResettable || createTaskMutation.isPending}
+            onClick={submitViaButton}
+            disabled={isLocked || createTaskMutation.isPending}
             className="nodrag flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all"
             style={{
-              background: isLocked || isResettable || createTaskMutation.isPending
+              background: isLocked || createTaskMutation.isPending
                 ? "var(--c-surface)"
                 : "oklch(0.62 0.20 25 / 0.15)",
               borderWidth: 1, borderStyle: "solid",
-              borderColor: isLocked || isResettable || createTaskMutation.isPending
+              borderColor: isLocked || createTaskMutation.isPending
                 ? BORDER_DEFAULT
                 : "oklch(0.62 0.20 25 / 0.4)",
-              color: isLocked || isResettable || createTaskMutation.isPending
+              color: isLocked || createTaskMutation.isPending
                 ? "var(--c-t4)"
                 : accentColor,
-              cursor: isLocked || isResettable || createTaskMutation.isPending ? "not-allowed" : "pointer",
+              cursor: isLocked || createTaskMutation.isPending ? "not-allowed" : "pointer",
             }}
-            title={isResettable ? "请先点击「重置」再重新提交" : ""}
+            title={payload.status === "succeeded" ? "重新生成（将二次确认）" : ""}
           >
             {createTaskMutation.isPending || payload.status === "processing" ? (
               <Loader2 className="w-3 h-3 animate-spin" />
             ) : (
               <Play className="w-3 h-3" />
             )}
-            {payload.status === "processing" ? "生成中..." : "提交任务"}
+            {payload.status === "processing" ? "生成中..." : payload.status === "succeeded" ? "重新生成" : "提交任务"}
             {costLabel && payload.status !== "processing" && !createTaskMutation.isPending && (
               <span
                 title="按当前模型与参数实时预估的点数消耗，仅供参考，实际以平台账单为准"
@@ -2266,10 +2273,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <button
             className="nodrag"
-            onClick={(e) => { e.stopPropagation(); if (!isLocked && !isResettable && !createTaskMutation.isPending && payload.prompt?.trim()) handleSubmit(); }}
-            disabled={isLocked || isResettable || createTaskMutation.isPending || !payload.prompt?.trim()}
-            title={payload.status === "processing" || createTaskMutation.isPending ? "生成中…" : isResettable ? "请先在配置区点「重置」再重新提交" : "提交任务"}
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: isLocked || isResettable || createTaskMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer", background: isLocked || isResettable || createTaskMutation.isPending || !payload.prompt?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: isLocked || isResettable || createTaskMutation.isPending || !payload.prompt?.trim() ? "var(--c-t4)" : "#0b0d12" }}
+            onClick={(e) => { e.stopPropagation(); if (!isLocked && !createTaskMutation.isPending && payload.prompt?.trim()) submitViaButton(); }}
+            disabled={isLocked || createTaskMutation.isPending || !payload.prompt?.trim()}
+            title={payload.status === "processing" || createTaskMutation.isPending ? "生成中…" : payload.status === "succeeded" ? "重新生成（将二次确认）" : "提交任务"}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: isLocked || createTaskMutation.isPending || !payload.prompt?.trim() ? "not-allowed" : "pointer", background: isLocked || createTaskMutation.isPending || !payload.prompt?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: isLocked || createTaskMutation.isPending || !payload.prompt?.trim() ? "var(--c-t4)" : "#0b0d12" }}
           >
             {createTaskMutation.isPending || payload.status === "processing" ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
           </button>

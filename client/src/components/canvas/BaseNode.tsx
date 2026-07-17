@@ -41,6 +41,7 @@ import { estimateImageCost, costEstimateLabel } from "../../lib/costEstimate";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt, loadComfyBase } from "../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "./ComfyCkptSelect";
 import { QuickTrimBar } from "./QuickTrimBar";
+import { confirmRegenerate } from "../../lib/confirmRegenerate";
 
 // Nodes that keep their full PRO body in the studio skin (no floating command bar,
 // no top toolbar, no compact panel). Their UX isn't a parameter form.
@@ -198,6 +199,13 @@ export const BaseNode = memo(function BaseNode({
   heroBareHeader,
   onCancelGenerate,
 }: BaseNodeProps) {
+  // 已有生成结果时，点「运行/重新生成」按钮先二次确认（仅按钮入口；助手/工作流等
+  // 程序化触发直接调各节点 submit，不经过这里）。
+  const triggerRun = () => {
+    if (!onRun) return;
+    if (hasResult) { void confirmRegenerate().then((ok) => { if (ok) onRun(); }); return; }
+    onRun();
+  };
   const config = getNodeConfig(nodeType);
   const Icon = NODE_ICONS[config.icon] ?? FileText;
   // 窄 selector：只订阅这几个稳定 action + projectId，避免无 selector 订阅整个 store——
@@ -1039,7 +1047,7 @@ export const BaseNode = memo(function BaseNode({
               </button>
             ) : (
               <button
-                onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
+                onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) triggerRun(); }}
                 disabled={!canRun || nodeRunning}
                 title={nodeRunning ? "生成中…" : (hasResult ? "重新生成" : "运行")}
                 className="studio-toolbtn flex items-center justify-center w-7 h-7 rounded-lg"
@@ -1341,7 +1349,7 @@ export const BaseNode = memo(function BaseNode({
             </button>
           ) : (
             <button
-              onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
+              onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) triggerRun(); }}
               disabled={!canRun || nodeRunning}
               title={nodeRunning ? "生成中…" : (hasResult ? "重新生成" : "运行")}
               style={{ width: 30, height: 30, borderRadius: "50%", border: "none", display: "flex", alignItems: "center", justifyContent: "center",
@@ -1645,7 +1653,7 @@ export const BaseNode = memo(function BaseNode({
         {/* 标题栏常驻"运行/重新生成"按钮 — 折叠时也能一键运行，覆盖所有主题/模式 */}
         {onRun && (
           <button
-            onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) onRun(); }}
+            onClick={(e) => { e.stopPropagation(); if (canRun && !nodeRunning) triggerRun(); }}
             disabled={!canRun || nodeRunning}
             title={nodeRunning ? "生成中…" : (hasResult ? "重新生成" : "运行")}
             className="nodrag flex-shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded"

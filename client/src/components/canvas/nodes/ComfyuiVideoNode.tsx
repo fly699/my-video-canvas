@@ -17,6 +17,7 @@ import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../m
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import type { ComfyuiVideoNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { confirmRegenerate } from "@/lib/confirmRegenerate";
 import { useComfyMemoryEnabled } from "@/lib/comfyMemoryPref";
 import { pollComfyRun, isTransportCutError, type PendingComfyResult } from "@/lib/comfyRunRecovery";
 import { nanoid } from "nanoid";
@@ -1049,7 +1050,7 @@ export const ComfyuiVideoNode = memo(function ComfyuiVideoNode({ id, selected, d
 
         {/* ── Action button ── */}
         <button
-          onClick={handleGenerate}
+          onClick={() => { if (payload.status === "done" && payload.resultVideoUrl) { void confirmRegenerate("生成的视频").then((ok) => { if (ok) handleGenerate(); }); return; } handleGenerate(); }}
           disabled={genMutation.isPending || batchRunning || !payload.prompt?.trim() || !payload.ckpt?.trim() || payload.status === "processing"}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
