@@ -357,6 +357,15 @@ export async function storagePresignPut(
  * uses; the upstream API has minutes (typical signed-URL TTL) to fetch
  * before it expires.
  */
+// ── #232 Poyo 暂存 URL 复用缓存 ───────────────────────────────────────────────
+// 此前每次解析都重新上传同一个文件：同一张定妆照被 N 个镜头引用、批量运行一次就发
+// N 个上传，必撞官方 5 次/分限流。同一存储对象在 TTL 内直接复用首次暂存返回的公网
+// URL。TTL 取 12h，远小于 Poyo 官方保存期下限（视频 24h / 图片 72h），复用期内链接
+// 必然仍有效；容量上限 500 条按插入序淘汰，防长驻进程无界增长。
+const _poyoStageCache = new Map<string, { url: string; expiresAt: number }>();
+const POYO_STAGE_TTL_MS = 12 * 3600_000;
+const POYO_STAGE_CACHE_MAX = 500;
+
 export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string> {
   if (/^https?:\/\//i.test(urlOrRelPath)) return urlOrRelPath;
   if (!urlOrRelPath.startsWith("/manus-storage/")) {
@@ -373,6 +382,8 @@ export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string
     try {
       const { isPoyoUploadFallbackEnabled } = await import("./_core/storageConfig");
       if (await isPoyoUploadFallbackEnabled()) {
+        const hit = _poyoStageCache.get(key);
+        if (hit && hit.expiresAt > Date.now()) return hit.url; // 复用暂存，不重复上传
         const { uploadStreamToPoyo } = await import("./_core/poyoUpload");
         const { body, contentType } = await storageFetchStream(key);
         const chunks: Buffer[] = [];
@@ -382,6 +393,11 @@ export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string
         const ext = key.split(".").pop() || "bin";
         const fileName = `ref-${Date.now()}.${ext}`;
         const poyoUrl = await uploadStreamToPoyo(buf, fileName, ct);
+        if (_poyoStageCache.size >= POYO_STAGE_CACHE_MAX) {
+          const oldest = _poyoStageCache.keys().next().value;
+          if (oldest !== undefined) _poyoStageCache.delete(oldest);
+        }
+        _poyoStageCache.set(key, { url: poyoUrl, expiresAt: Date.now() + POYO_STAGE_TTL_MS });
         // 暂存到 Poyo 的每个文件都留 log：控制台 + 审计日志（管理后台「系统日志」可查）。
         console.log(`[storage] Poyo 暂存：key=${key} size=${buf.length}B type=${ct} → ${poyoUrl}`);
         try {

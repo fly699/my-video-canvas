@@ -356,7 +356,10 @@ async function runAgentChat(ctx: AuthedCtx, input: z.infer<typeof agentChatInput
       // 判定意图；判为纯闲聊/问答就走轻量短回答——跳过目录/模型清单/模板/记忆的全部拼装与 DB 读取，
       // 简单问答快数倍、省一次大规划。分类拿不准/异常一律 fall through 到下方完整规划（绝不比原来差）。
       // 带附件（图/文档）时用户多半想「据此做点什么」，直接走完整规划、不快路。
-      if (input.fastChatRoute && !(input.attachments && input.attachments.length)) {
+      // #230：交互式规划开启时禁用快路——分步决策的中间轮次（「选 2：治愈日系」「1」等
+      // 纯选项回复）极易被意图分类器判成 chat，走轻量问答就绕开了交互协议段（丢共识推进、
+      // 不给下一个决策点选项、更不会落地）。交互模式的每一轮都必须走完整规划链路。
+      if (input.fastChatRoute && !input.interactive && !(input.attachments && input.attachments.length)) {
         try {
           onStage?.("判定意图");
           const clsMessages: Message[] = [
