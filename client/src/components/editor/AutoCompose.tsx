@@ -9,7 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { EC, probeMediaDuration } from "./theme";
 import { useEditorStore, kindFromAssetType } from "./editorStore";
 
-export interface AutoComposeAsset { id: number; url: string; name: string; type: string }
+export interface AutoComposeAsset { id: number; url: string; name: string; type: string; thumbnailUrl?: string | null }
 
 const TARGETS: [number | 0, string][] = [[0, "自动"], [15, "约 15 秒"], [30, "约 30 秒"], [60, "约 1 分钟"], [180, "约 3 分钟"]];
 
@@ -89,7 +89,12 @@ export function AutoCompose({ assets, onClose }: { assets: AutoComposeAsset[]; o
                     {a.kind === "image" ? (
                       <div style={{ height: 60, backgroundImage: `url("${a.url}")`, backgroundSize: "cover", backgroundPosition: "center" }} />
                     ) : a.kind === "video" ? (
-                      <video src={a.url} muted preload="metadata" style={{ display: "block", width: "100%", height: 60, objectFit: "cover" }} />
+                      // 静态缩略图代替 <video preload>：逐卡解码器素材多时超出 Chromium 上限会卡死整页
+                      a.thumbnailUrl ? (
+                        <div style={{ height: 60, backgroundImage: `url("${a.thumbnailUrl}")`, backgroundSize: "cover", backgroundPosition: "center" }} />
+                      ) : (
+                        <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.3)" }}><Icon size={18} style={{ color: EC.t3 }} /></div>
+                      )
                     ) : (
                       <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={18} style={{ color: EC.t3 }} /></div>
                     )}

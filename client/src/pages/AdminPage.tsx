@@ -3723,7 +3723,7 @@ function DownloadsAdminPanel() {
 }
 
 // ── Admin asset lightbox (click-to-enlarge) ──────────────────────────────────
-type AdminAsset = { id: number; name: string; type: string; url: string; userId: number; source: string | null; provider: string | null; model: string | null };
+type AdminAsset = { id: number; name: string; type: string; url: string; userId: number; source: string | null; provider: string | null; model: string | null; thumbnailUrl?: string | null };
 function AdminAssetLightbox({ asset, onClose }: { asset: AdminAsset; onClose: () => void }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -3964,10 +3964,15 @@ function AssetsAdminPanel() {
               style={{ height: 110, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative", overflow: "hidden" }}
             >
               {a.type === "image" ? (
-                <img src={a.url} alt={a.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img src={a.url} alt={a.name} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : a.type === "video" ? (
                 <>
-                  <video src={a.url} muted preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  {/* 静态缩略图代替 <video preload>：逐卡解码器素材多时超出 Chromium 上限会卡死整页 */}
+                  {a.thumbnailUrl ? (
+                    <img src={a.thumbnailUrl} alt={a.name} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <div style={{ width: "100%", height: "100%", background: "rgba(0,0,0,0.35)" }} />
+                  )}
                   <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
                     <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0 0 0 / 0.5)" }}>
                       <Play style={{ width: 14, height: 14, color: "white" }} fill="white" />

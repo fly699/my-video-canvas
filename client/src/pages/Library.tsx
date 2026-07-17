@@ -43,6 +43,7 @@ type Asset = {
   size: number | null;
   projectId: number | null;
   createdAt: Date | string;
+  thumbnailUrl?: string | null;
 };
 
 const ACCENT = "oklch(0.65 0.18 60)"; // 素材库主色（琥珀金）
@@ -166,13 +167,23 @@ function AssetCard({
       >
         {asset.type === "image" ? (
           <img
-            src={asset.url} alt={asset.name} loading="lazy"
+            src={asset.url} alt={asset.name} loading="lazy" decoding="async"
             className="w-full h-full object-cover"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
           />
         ) : asset.type === "video" ? (
           <>
-            <video src={asset.url} muted preload="metadata" className="w-full h-full object-cover" />
+            {/* 静态缩略图代替 <video preload>：每卡一个解码器素材多时会超出
+                Chromium 媒体解码器上限，整页无响应（真正的播放器只在预览弹窗创建）。 */}
+            {asset.thumbnailUrl ? (
+              <img
+                src={asset.thumbnailUrl} alt={asset.name} loading="lazy" decoding="async"
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
+              />
+            ) : (
+              <div className="w-full h-full" style={{ background: "var(--c-elevated, oklch(0.2 0.01 260))" }} />
+            )}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "oklch(0 0 0 / 0.5)" }}>
                 <Play className="w-4 h-4 text-white" fill="white" />
@@ -288,6 +299,29 @@ export default function Library() {
     onSuccess: () => { toast.success("已从链接导入"); refetch(); },
     onError: (err) => toast.error("导入失败：" + err.message),
   });
+
+  // 旧视频素材缺缩略图时后台懒补（服务端抽首帧，幂等）：每批最多 6 个、
+  // 串行、每 id 只试一次、失败静默；补到至少一张后 refetch 让灰卡变缩略图。
+  const makeThumbMut = trpc.assets.makeThumbnail.useMutation();
+  const thumbTriedRef = useRef<Set<number>>(new Set());
+  const thumbBusyRef = useRef(false);
+  useEffect(() => {
+    if (thumbBusyRef.current) return;
+    const missing = list
+      .filter((a) => a.type === "video" && !a.thumbnailUrl && !thumbTriedRef.current.has(a.id))
+      .slice(0, 6);
+    if (!missing.length) return;
+    thumbBusyRef.current = true;
+    missing.forEach((a) => thumbTriedRef.current.add(a.id));
+    void (async () => {
+      let ok = 0;
+      for (const a of missing) {
+        try { await makeThumbMut.mutateAsync({ id: a.id }); ok++; } catch { /* 单个失败继续 */ }
+      }
+      thumbBusyRef.current = false;
+      if (ok) void refetch();
+    })();
+  }, [list, makeThumbMut, refetch]);
 
   // 多文件上传（多选 / 拖拽 / 粘贴）。用户仓库上传不绑定具体项目（projectId 省略），
   // 归入个人专有仓库；走流式/预签名直传，支持大文件、无 base64 限制；逐个上传避免并发风暴。
