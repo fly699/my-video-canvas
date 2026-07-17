@@ -68,6 +68,7 @@ export const EDITABLE_TAB_KEYS = Object.keys(DEFAULT_LEVEL).filter((k) => k !== 
 export const ADMIN_SUBROUTER_TAB_ALIAS: Record<string, string> = {
   logEmail: "logs",  // 日志邮送设置在「操作日志」页
   update: "system",  // 系统更新在「系统更新」页
+  modelSkills: "models", // #203 模型技能库在「模型」页
 };
 
 // 少数「后台管理功能」不在 admin.* 命名空间下（挂在顶层/共享 router），必须显式登记到对应 tab，

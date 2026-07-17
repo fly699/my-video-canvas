@@ -87,6 +87,8 @@ export type AuditAction =
   | "asset_import_url"
   | "asset_admin_delete"
   | "asset_admin_hard_delete"
+  | "model_skill_upsert"
+  | "model_skill_delete"
   | "download:request"
   | "download:approve"
   | "download:deny"

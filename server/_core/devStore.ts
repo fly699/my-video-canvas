@@ -1167,3 +1167,37 @@ export function devUpdateComfyNodeTemplate(
 export function devDeleteComfyNodeTemplate(id: number): void {
   comfyTemplatesMap.delete(id);
 }
+
+// ── #203 模型技能库（dev bypass 内存版；DB 行覆盖代码种子的语义与线上一致） ──
+export interface DevModelSkill {
+  id: number;
+  modelId: string;
+  kind: string;
+  tips: string;
+  source: string | null;
+  enabled: boolean;
+  updatedAt: Date;
+}
+const devModelSkillsMap = new Map<string, DevModelSkill>();
+let devModelSkillSeq = 1;
+
+export function devListModelSkills(): DevModelSkill[] {
+  return Array.from(devModelSkillsMap.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
+export function devUpsertModelSkill(data: { modelId: string; kind: string; tips: string; source?: string | null; enabled?: boolean }): void {
+  const prev = devModelSkillsMap.get(data.modelId);
+  devModelSkillsMap.set(data.modelId, {
+    id: prev?.id ?? devModelSkillSeq++,
+    modelId: data.modelId,
+    kind: data.kind,
+    tips: data.tips,
+    source: data.source ?? null,
+    enabled: data.enabled ?? true,
+    updatedAt: now(),
+  });
+}
+
+export function devDeleteModelSkill(modelId: string): void {
+  devModelSkillsMap.delete(modelId);
+}
