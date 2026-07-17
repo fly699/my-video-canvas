@@ -211,10 +211,92 @@ export function formatGradioError(payload: string): string {
   const isHfModelLoad =
     (lower.includes("hub") || lower.includes("local cache") || lower.includes("huggingface")) &&
     (lower.includes("cache") || lower.includes("connection") || lower.includes("internet") || lower.includes("locate"));
+  const isArgCountMismatch = lower.includes("didn't receive enough input values") || lower.includes("did not receive enough input");
   const hint = isHfModelLoad
     ? "（这是 VoxCPM/Gradio 服务自身从 HuggingFace 拉取模型失败：请让该机器能访问 huggingface.co，或预先把模型缓存到本地；国内可设镜像 HF_ENDPOINT=https://hf-mirror.com 后重启服务）"
-    : "";
+    : isArgCountMismatch
+      ? "（该 Gradio 服务的 generate 接口参数数量与常见版本不同，且其 /info 接口不可用、无法自动适配——请确认服务正常暴露 /gradio_api/info，或反馈该 VoxCPM 版本号以便适配）"
+      : "";
   return `Gradio 生成出错：${msg.slice(0, 400)}${hint}`;
+}
+
+// ── VoxCPM2 兼容：按服务端 /info 的参数表自适应组装入参（#212）─────────────────
+// 新版 VoxCPM 给 /generate 增了参数（needed: 10, got: 9），版本还会继续变。
+// 与其硬编每个版本的参数顺序，不如调用前拉取 Gradio 自己的接口描述
+// （GET {base}{prefix}/info → named_endpoints["/generate"].parameters），按
+// parameter_name/label/组件类型把我们已有的值归位，认不出的新参数用它声明的
+// parameter_default。仅在参数数 ≠ 9 时启用（=9 的既有部署保持原固定顺序零回归）。
+
+export interface GradioParamInfo {
+  label?: string;
+  parameter_name?: string;
+  parameter_has_default?: boolean;
+  parameter_default?: unknown;
+  component?: string;
+  python_type?: { type?: string };
+}
+
+export interface GradioDataValues {
+  text: string;
+  controlInstruction: string;
+  refData: unknown;
+  usePromptText: boolean;
+  promptTextValue: string;
+  cfgValue: number;
+  doNormalize: boolean;
+  denoise: boolean;
+  ditSteps: number;
+}
+
+/** 拉取端点参数表；/info 不可用或无该端点 → null（调用方走旧固定顺序）。 */
+async function fetchEndpointParams(base: string, apiName: string, preferredPrefix?: string): Promise<GradioParamInfo[] | null> {
+  const order = preferredPrefix !== undefined
+    ? [preferredPrefix, preferredPrefix === "/gradio_api" ? "" : "/gradio_api"]
+    : ["/gradio_api", ""];
+  for (const prefix of order.filter((p, i) => order.indexOf(p) === i)) {
+    try {
+      const res = await fetch(`${base}${prefix}/info`, { signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) continue;
+      const j = (await res.json()) as { named_endpoints?: Record<string, { parameters?: GradioParamInfo[] }> };
+      const ep = j.named_endpoints?.[`/${apiName}`] ?? j.named_endpoints?.[apiName];
+      if (ep && Array.isArray(ep.parameters) && ep.parameters.length > 0) return ep.parameters;
+    } catch { /* info 拉取失败 → 保持旧行为 */ }
+  }
+  return null;
+}
+
+/**
+ * 按参数表组装 data。归位规则（parameter_name 与 label 合并小写匹配）：
+ * Audio 组件 → 参考音频；bool → normalize/denoise/prompt 关键词归位，未知取默认；
+ * 数值 → cfg/step 关键词归位，未知取默认；文本 → prompt 文本 / control 指令 /
+ * 首个未占用的目标文本。无法给目标文本找到落点时返回 null（调用方回退旧顺序）。
+ */
+export function buildGradioDataFromSchema(params: GradioParamInfo[], vals: GradioDataValues): unknown[] | null {
+  let textAssigned = false;
+  const data = params.map((p) => {
+    const n = `${p.parameter_name ?? ""} ${p.label ?? ""}`.toLowerCase();
+    const comp = (p.component ?? "").toLowerCase();
+    const pyType = p.python_type?.type ?? "";
+    if (comp.includes("audio") || n.includes("wav") || (n.includes("audio") && !comp.includes("text"))) return vals.refData;
+    if (comp.includes("checkbox") || pyType === "bool" || typeof p.parameter_default === "boolean") {
+      if (n.includes("normal")) return vals.doNormalize;
+      if (n.includes("denoi")) return vals.denoise;
+      if (n.includes("prompt")) return vals.usePromptText;
+      return p.parameter_has_default ? p.parameter_default : false;
+    }
+    if (comp.includes("slider") || comp.includes("number") || pyType === "float" || pyType === "int" || typeof p.parameter_default === "number") {
+      if (n.includes("cfg") || n.includes("guidance")) return vals.cfgValue;
+      if (n.includes("step") || n.includes("timestep")) return vals.ditSteps;
+      return p.parameter_has_default ? p.parameter_default : 0;
+    }
+    // 文本类：先 prompt 参考文本，再控制/风格指令，再首个未占用的目标文本。
+    if (n.includes("prompt")) return vals.promptTextValue;
+    if (n.includes("control") || n.includes("instruct") || n.includes("style") || n.includes("指令")) return vals.controlInstruction;
+    if (!textAssigned) { textAssigned = true; return vals.text; }
+    return p.parameter_has_default ? p.parameter_default : "";
+  });
+  if (!textAssigned) return null; // 目标文本没有落点 → 让调用方回退旧固定顺序，别发一个没文本的请求
+  return data;
 }
 
 /** 从 complete 输出里解析音频文件的可访问 URL。 */
@@ -253,18 +335,30 @@ export async function synthesizeGradioTTS(opts: SynthesizeGradioTTSOptions): Pro
     preferredPrefix = up.prefix;
   }
 
-  // 2) 按 /generate 的入参顺序构造 data 数组（与文档一致）
-  const data: unknown[] = [
-    opts.text,
-    opts.controlInstruction ?? "",
+  // 2) 构造 data 数组。默认按经典 VoxCPM 9 参固定顺序（与既有部署逐字一致，零回归）；
+  //    仅当服务端 /info 显示该端点参数数 ≠ 9（如 VoxCPM2 的 10 参 _generate）时，
+  //    改按其参数表自适应组装（#212，否则报 "didn't receive enough input values"）。
+  const vals: GradioDataValues = {
+    text: opts.text,
+    controlInstruction: opts.controlInstruction ?? "",
     refData,
-    opts.usePromptText ?? false,
-    opts.promptTextValue ?? "",
-    opts.cfgValue ?? 2,
-    opts.doNormalize ?? false,
-    opts.denoise ?? false,
-    opts.ditSteps ?? 10,
+    usePromptText: opts.usePromptText ?? false,
+    promptTextValue: opts.promptTextValue ?? "",
+    cfgValue: opts.cfgValue ?? 2,
+    doNormalize: opts.doNormalize ?? false,
+    denoise: opts.denoise ?? false,
+    ditSteps: opts.ditSteps ?? 10,
+  };
+  const legacyData: unknown[] = [
+    vals.text, vals.controlInstruction, vals.refData, vals.usePromptText, vals.promptTextValue,
+    vals.cfgValue, vals.doNormalize, vals.denoise, vals.ditSteps,
   ];
+  let data = legacyData;
+  const schemaParams = await fetchEndpointParams(base, apiName, preferredPrefix);
+  if (schemaParams && schemaParams.length !== legacyData.length) {
+    const adaptive = buildGradioDataFromSchema(schemaParams, vals);
+    if (adaptive) data = adaptive;
+  }
   const { eventId, prefix } = await submitCall(base, apiName, data, preferredPrefix);
 
   // 3) 读 SSE 结果并解析音频 URL
