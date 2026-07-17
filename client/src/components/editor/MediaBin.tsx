@@ -1,8 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/ui/dialogService";
-import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square, Scissors, LayoutGrid, GalleryVertical, List } from "lucide-react";
+import { FileVideo, FileAudio, FileImage, Search, Type as TypeIcon, Captions, Plus, Music, RefreshCw, Upload, Square, Scissors, LayoutGrid, GalleryVertical, List, Play } from "lucide-react";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { MediaPreview, type PreviewAsset } from "./MediaPreview";
 import { MusicGen } from "./MusicGen";
@@ -43,6 +43,25 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
     { refetchOnWindowFocus: true, refetchOnMount: "always" },
   );
   const assets = (listQuery.data ?? []).filter((a) => a.type !== "other");
+
+  // #1037 后续：MediaBin 也自动懒补视频缩略图（此前只有画布资产面板有懒补，
+  // 剪辑器这边旧视频全是灰卡、看起来像「无显示」）。每次最多 6 个、串行、每 id 只试一次。
+  const makeThumbMut = trpc.assets.makeThumbnail.useMutation();
+  const thumbTriedRef = useRef<Set<number>>(new Set());
+  const thumbBusyRef = useRef(false);
+  useEffect(() => {
+    if (thumbBusyRef.current) return;
+    const missing = assets.filter((a) => a.type === "video" && !a.thumbnailUrl && !thumbTriedRef.current.has(a.id)).slice(0, 6);
+    if (!missing.length) return;
+    thumbBusyRef.current = true;
+    missing.forEach((a) => thumbTriedRef.current.add(a.id));
+    void (async () => {
+      let ok = 0;
+      for (const a of missing) { try { await makeThumbMut.mutateAsync({ id: a.id }); ok++; } catch { /* 单个失败继续 */ } }
+      thumbBusyRef.current = false;
+      if (ok) void listQuery.refetch();
+    })();
+  }, [assets, makeThumbMut, listQuery]);
 
   const addClip = useEditorStore((s) => s.addClip);
   const applyDoc = useEditorStore((s) => s.applyDoc);
@@ -268,7 +287,7 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
                   ) : kind === "video" ? (
                     a.thumbnailUrl
                       ? <img src={a.thumbnailUrl} alt={a.name} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-                      : <div style={{ width: "100%", height: "100%", background: "oklch(0.2 0.01 260)" }} />
+                      : <div style={{ width: "100%", height: "100%", background: "var(--c-elevated, oklch(0.2 0.01 260))", display: "flex", alignItems: "center", justifyContent: "center" }}><Play size={18} style={{ color: "var(--c-t4)" }} /></div>
                   ) : (
                     <Icon size={16} style={{ color: EC.t3 }} />
                   )}
@@ -296,7 +315,7 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
               ) : kind === "video" ? (
                 a.thumbnailUrl
                   ? <img src={a.thumbnailUrl} alt={a.name} loading="lazy" decoding="async" style={{ display: "block", width: "100%", height: thumbH, minHeight: thumbH, objectFit: view === "large" ? "contain" : "cover", backgroundColor: "var(--c-canvas, #0c0c10)" }} />
-                  : <div style={{ width: "100%", height: thumbH, minHeight: thumbH, background: "var(--c-canvas, #0c0c10)" }} />
+                  : <div style={{ width: "100%", height: thumbH, minHeight: thumbH, background: "var(--c-elevated, #14141a)", display: "flex", alignItems: "center", justifyContent: "center" }}><Play size={22} style={{ color: "var(--c-t4)" }} /></div>
               ) : (
                 <div style={{ height: thumbH, minHeight: thumbH, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--c-canvas, #0c0c10)" }}>
                   <Icon size={view === "large" ? 38 : 22} style={{ color: EC.t3 }} />
