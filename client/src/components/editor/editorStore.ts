@@ -304,6 +304,8 @@ export interface EditorStore {
   toggleMarker: (t: number) => void;
   /** 删除指定时刻的标记（右键标记旗）。 */
   removeMarker: (t: number) => void;
+  /** 批4 自动踩点：批量写入标记（与已有去重 ±0.1s，总量夹到 300——与服务端 schema 上限一致）。 */
+  addMarkers: (ts: number[]) => void;
   setPlaying: (b: boolean) => void;
   setPxPerSec: (n: number) => void;
 
@@ -945,6 +947,14 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   removeMarker: (t) => set((s) => {
     if (!s.doc) return {};
     const markers = (s.doc.markers ?? []).filter((m) => m.t !== t);
+    return withHistory(s, { ...s.doc, markers }, {}, false);
+  }),
+  addMarkers: (ts) => set((s) => {
+    if (!s.doc || !ts.length) return {};
+    const existing = s.doc.markers ?? [];
+    const fresh = ts.filter((t) => !existing.some((m) => Math.abs(m.t - t) < 0.1)).map((t) => ({ t: Math.round(t * 100) / 100 }));
+    if (!fresh.length) return {};
+    const markers = [...existing, ...fresh].sort((a, b) => a.t - b.t).slice(0, 300);
     return withHistory(s, { ...s.doc, markers }, {}, false);
   }),
   // 播放结束（播放头停在片尾）后再次播放 → 自动跳回首帧重播（覆盖空格键与播放按钮两个入口）。
