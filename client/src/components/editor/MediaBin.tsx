@@ -45,6 +45,11 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
   const [view, setView] = usePersistentState<BinView>("ui:editor:mediabin-view:v1", "grid", {
     validate: (p) => (p === "grid" || p === "large" || p === "list" ? p : null),
   });
+  // 左栏卡片标签：素材库 / 本机素材 / 功能——顶部标签切换，当前卡满高显示
+  //（此前三卡竖向堆叠互相挤压；标签化后每张卡都有完整空间）。持久化记住上次所在标签。
+  const [tab, setTab] = usePersistentState<"lib" | "local" | "tools">("ui:editor:mediabin-tab:v1", "lib", {
+    validate: (p) => (p === "lib" || p === "local" || p === "tools" ? p : null),
+  });
   const [preview, setPreview] = useState<PreviewAsset | null>(null);
   const [musicOpen, setMusicOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false); // D1 AI 一键成片弹窗
@@ -259,10 +264,22 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
   }
 
   return (
-    // 素材库与功能区改为两张独立卡片：素材卡占主空间（内部滚动），功能卡限高 +
-    // 自带滚动——矮窗口下功能区不再把素材网格挤到只剩一行。
+    // 左栏 = 顶部标签条 + 当前卡片满高显示（素材库 / 本机素材 / 功能三选一），
+    // 不再竖向堆叠互相挤压；标签持久化记住上次停留。
     <aside style={{ width, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.bg, padding: 8, gap: 8 }}>
-      {/* ── 卡片一：素材库（筛选头 + 网格，flex:1 占主空间，网格内部滚动） ── */}
+      {/* ── 顶部标签条 ── */}
+      <div style={{ flexShrink: 0, display: "flex", gap: 4, padding: 4, borderRadius: 10, border: `1px solid ${EC.border}`, background: EC.surface }}>
+        {([["lib", "素材库", LayoutGrid], ["local", "本机素材", HardDrive], ["tools", "功能", Scissors]] as const).map(([key, label, Ic]) => (
+          <button key={key} onClick={() => setTab(key)}
+            title={key === "local" ? "本机文件免上传直接剪辑" : label}
+            style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "6px 0", fontSize: 12, fontWeight: 600, borderRadius: 7, cursor: "pointer", border: "none", background: tab === key ? EC.accentSoft : "transparent", color: tab === key ? EC.accent : EC.t3 }}>
+            <Ic size={13} /> {label}{key === "local" && localItems.length > 0 ? ` ${localItems.length}` : ""}
+          </button>
+        ))}
+      </div>
+
+      {/* ── 卡片一：素材库（筛选头 + 网格，满高，网格内部滚动） ── */}
+      {tab === "lib" && (
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", borderRadius: 10, border: `1px solid ${EC.border}`, background: EC.surface, overflow: "hidden" }}>
       <div style={{ padding: 10, borderBottom: `1px solid ${EC.border}` }}>
         <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
@@ -405,9 +422,11 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
         })}
       </div>
       </div>
+      )}
 
       {/* ── 卡片：本机素材（不上传，objectURL 直接剪辑；导出前守卫提示上传替换） ── */}
-      <div style={{ flexShrink: 0, maxHeight: "24%", display: "flex", flexDirection: "column", borderRadius: 10, border: `1px solid ${EC.border}`, background: EC.surface, overflow: "hidden" }}>
+      {tab === "local" && (
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", borderRadius: 10, border: `1px solid ${EC.border}`, background: EC.surface, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderBottom: `1px solid ${EC.border}`, flexShrink: 0 }}>
           <HardDrive size={13} style={{ color: EC.t3, flexShrink: 0 }} />
           <span style={{ fontSize: 11.5, fontWeight: 700, color: EC.t2, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title="本机文件不上传服务器，objectURL 直接预览/剪辑；导出成片时会提示一键上传替换">本机素材 · 免上传</span>
@@ -449,9 +468,11 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
         <input ref={localFileRef} type="file" multiple accept="video/*,image/*,audio/*" style={{ display: "none" }}
           onChange={(e) => { addLocalFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
       </div>
+      )}
 
-      {/* ── 卡片二：功能区（限高 45%，超出自行滚动，不挤压素材卡） ── */}
-      <div style={{ flexShrink: 0, maxHeight: "45%", overflowY: "auto", borderRadius: 10, border: `1px solid ${EC.border}`, background: EC.surface, padding: 8 }}>
+      {/* ── 卡片二：功能区（满高，超出自行滚动） ── */}
+      {tab === "tools" && (
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", borderRadius: 10, border: `1px solid ${EC.border}`, background: EC.surface, padding: 8 }}>
         <button
           onClick={() => {
             const doc = useEditorStore.getState().doc; if (!doc) return;
@@ -528,6 +549,7 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
           style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 0", fontSize: 12, borderRadius: 7, border: `1px solid ${EC.accent}`, background: EC.accentSoft, color: EC.accent, cursor: "pointer" }}
         ><Music size={13} /> AI 配乐</button>
       </div>
+      )}
 
       {preview && <MediaPreview asset={preview} onClose={() => setPreview(null)} />}
       {musicOpen && <MusicGen onClose={() => setMusicOpen(false)} />}
