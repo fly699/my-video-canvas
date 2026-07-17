@@ -2020,16 +2020,46 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                 </>)}
                 {/* 本地 VoxCPM 专属常用参数（原来只剩一个空「音色」下拉——它无固定音色列表）：
                     控制指令 / CFG / 扩散步数 / 降噪 / 规范化；服务地址、参考音频与指令快速模板在「高级」。 */}
-                {category === "dubbing" && modelIsVoxCPM(payload.ttsModel) && (<>
-                  <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.6 }}>
-                    音色由「参考音频」克隆（在「高级」里上传，或从上游音频节点连线）；留空则用模型自带/随机音色。
+                {category === "dubbing" && modelIsVoxCPM(payload.ttsModel) && (() => {
+                  // 上游连入的参考音频需在本作用域自行探测（高级区的 upstreamRef 是那边的块级变量，
+                  // 这里引用会 ReferenceError 崩掉整个节点——真机测出的坑）。
+                  const upstreamRef = detectUpstreamAudioUrl(id);
+                  return (<>
+                  {/* 参考音频（克隆音色）：与「高级」同源——已传显示可移除，未传给上传按钮；上游连入优先展示 */}
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>参考音频（可选，克隆音色）</div>
+                    {payload.ttsRefWavUrl ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)" }}>
+                        <Volume2 style={{ width: 12, height: 12, color: "var(--ui-accent, var(--c-accent))", flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: "var(--c-t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{payload.ttsRefWavName ?? "已上传参考音频"}</span>
+                        <button className="nodrag" onClick={() => updateNodeData(id, { ttsRefWavUrl: undefined, ttsRefWavName: undefined })} title="移除参考音频"
+                          style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--c-t4)", flexShrink: 0, display: "inline-flex" }}>
+                          <X style={{ width: 12, height: 12 }} />
+                        </button>
+                      </div>
+                    ) : upstreamRef ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid color-mix(in oklab, var(--ui-accent, var(--c-accent)) 40%, transparent)" }}>
+                        <Volume2 style={{ width: 12, height: 12, color: "var(--ui-accent, var(--c-accent))", flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: "var(--c-t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>上游音频：{upstreamRef.name ?? "已连入"}</span>
+                      </div>
+                    ) : null}
+                    <button className="nodrag" onClick={() => refFileInputRef.current?.click()} disabled={refUploading}
+                      style={{ marginTop: 6, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "6px 0", fontSize: 11, borderRadius: 7, background: "var(--c-input)", border: "1px dashed var(--c-bd2)", color: "var(--c-t3)", cursor: refUploading ? "not-allowed" : "pointer" }}>
+                      {refUploading ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Upload style={{ width: 11, height: 11 }} />}
+                      {refUploading ? "上传中..." : (payload.ttsRefWavUrl ? "更换参考音频" : "上传参考音频")}
+                    </button>
+                    {!payload.ttsRefWavUrl && !upstreamRef && (
+                      <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 4, lineHeight: 1.5 }}>留空则用模型自带/随机音色；也可从上游「音频 / 素材(音频)」节点连线克隆音色</div>
+                    )}
                   </div>
                   <div>
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>音色/风格控制指令（可选）</div>
                     <input value={payload.ttsControlInstruction ?? ""} className="nodrag"
                       onChange={(e) => updateNodeData(id, { ttsControlInstruction: e.target.value })}
-                      placeholder="如：用四川话，语速快一点，低沉磁性（快速模板在「高级」）"
+                      placeholder="如：用四川话，语速快一点，低沉磁性"
                       style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+                    {/* 快速模板（方言/语种/语速/语气/音色）——与「高级」同一组件同一数据源 */}
+                    <ControlTemplatePicker value={payload.ttsControlInstruction ?? ""} onChange={(v) => updateNodeData(id, { ttsControlInstruction: v })} />
                   </div>
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -2064,8 +2094,9 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                       </div>
                     );
                   })}
-                  <div style={{ fontSize: 10, color: "var(--c-t4)" }}>Gradio 服务地址 / 参考音频上传 / 指令快速模板 → 点「高级」展开完整配置。</div>
-                </>)}
+                  <div style={{ fontSize: 10, color: "var(--c-t4)" }}>Gradio 服务地址等完整配置 → 点「高级」展开。</div>
+                  </>);
+                })()}
                 {category === "sfx" && (<>
                   <div>
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>时长（秒，0.5–22，留空自动）</div>
