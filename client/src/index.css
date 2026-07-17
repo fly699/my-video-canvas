@@ -1504,6 +1504,39 @@ button:active:not(:disabled) {
   max-width: 100%;
   margin: 0 auto;
 }
+/* #229 角色卡 hero 弹性填充：节点框有持久化高度时，此前 hero 图按自然高度排版——
+   图比框高就把下面的多视角缩略条挤出框外裁掉（「多视角图默认不显示」）；选中态又有
+   460px 高度帽 + 行内 width:100%，contain 规则失效回落 object-fit:fill，图片被拉伸
+   （「点击预览会变比例」）。改为：hero 区吃满节点剩余高度，内部图片区(flex:1) +
+   缩略条(flex-shrink:0) 纵向排布——图片 cover 顶部锚定绝不变形，缩略条钉在卡底常驻。
+   节点无持久化高度时各级 flex/height 均退化为内容自然高度，行为不变。 */
+[data-node-type="character"][data-has-hero="true"] .node-hero-media {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+[data-node-type="character"][data-has-hero="true"][data-selected="false"] .node-hero-media,
+:root[data-ui="studio"] [data-node-type="character"][data-has-hero="true"] .node-hero-media,
+:root[data-canvas-mode="creative"] [data-node-type="character"][data-has-hero="true"][data-selected="true"] .node-hero-media {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  /* 必须在此高特异性块内重申弹性：studio/creative 的选中态通用规则带 flex-shrink:0，
+     特异性高于上面的基础规则，会把 hero 撑回内容高度、缩略条再次被挤出框外。 */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* 角色主图交给行内样式（height:100% + object-fit:cover）控制，撤销各态 img 通用规则的
+   width/height/max-height 干预，避免再次出现「态间比例漂移」。 */
+[data-node-type="character"][data-has-hero="true"] .node-hero-media img.char-hero-img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  object-fit: cover;
+  object-position: top;
+}
+
 /* Studio: when selected, inset the hero into a rounded media block with a hairline
    ring so the result reads as a framed preview (media-first card), not a flush band. */
 :root[data-ui="studio"] [data-has-hero="true"][data-selected="true"] .node-hero-media {

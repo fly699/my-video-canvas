@@ -939,6 +939,8 @@ export const BaseNode = memo(function BaseNode({
       aria-label={`${title || config?.label || nodeType} 节点${config?.label && title ? `（${config.label}）` : ""}${runStatus === "running" ? " · 生成中" : genError ? " · 失败" : ""}`}
       data-selected={(storeSelected || pinned) ? "true" : "false"}
       data-has-hero={hasHero ? "true" : "false"}
+      /* #229 供 CSS 按节点类型定制 hero 布局（角色卡弹性填充等），零 JS 开销 */
+      data-node-type={nodeType}
       /* #102/#103 极简显示（Alt+Q）：只有「有真实媒体结果」的节点才极简化——
          data-has-hero 不可靠（提示词等节点无结果也传占位 heroMedia）。 */
       data-has-result={(resultVideoUrl || resultImageUrl) ? "true" : "false"}
