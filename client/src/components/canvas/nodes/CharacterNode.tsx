@@ -669,7 +669,7 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // 首格=当前主图（高亮不可点），其余=备用视角：点击设为主图（互换）、hover 放大/下载/删除。
   const VIEW_LABELS = ["正面", "侧面", "背面"];
   const viewStrip = isCreativeMode && payload.referenceImageUrl && extraViews.length > 0 ? (
-    <div className="nodrag flex items-center" style={{ gap: 4, padding: "5px 6px", background: "oklch(0.13 0.01 285)", borderTop: "1px solid var(--c-bd1)", overflowX: "auto" }}>
+    <div className="nodrag flex items-center" style={{ gap: 4, padding: "5px 6px", background: "oklch(0.13 0.01 285)", borderTop: "1px solid var(--c-bd1)", overflowX: "auto", flexShrink: 0 }}>
       {[payload.referenceImageUrl, ...extraViews].map((u, i) => (
         <div key={`${i}-${u.slice(-24)}`} className="group/view relative flex-shrink-0"
           title={i === 0 ? `主图（${VIEW_LABELS[0]}）` : `点击设为主图${i < VIEW_LABELS.length ? `（${VIEW_LABELS[i]}）` : ""}`}
@@ -694,13 +694,16 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   ) : null;
 
   const heroMedia = payload.referenceImageUrl ? (
-    <div style={{ width: "100%" }}>
-    <div className="group/chero relative" style={{ width: "100%" }}>
-      {/* #74：随预览自适应——按原图比例铺满宽度，框体高度跟随图片（resizable 可再拉大） */}
+    // #229：hero 弹性填充（配套 index.css 的 [data-node-type="character"] 规则）——
+    // 图片区吃节点剩余高度、缩略条钉底常驻；节点无持久化高度时退化为自然高度。
+    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div className="group/chero relative" style={{ width: "100%", flex: "1 1 auto", minHeight: 0, overflow: "hidden" }}>
+      {/* #74→#229：cover 顶部锚定——任何选中态/高度帽下只裁不拉伸，比例永不漂移 */}
       <MediaImage
         src={payload.referenceImageUrl}
         alt="参考图"
-        style={{ width: "100%", height: "auto", display: "block" }}
+        className="char-hero-img"
+        style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top", display: "block" }}
         draggable={false}
       />
       {isOwnStorageUrl(payload.referenceImageUrl) && (
