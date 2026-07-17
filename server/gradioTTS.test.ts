@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeBase, resolveAudioUrl, describeFetchError, formatGradioError } from "./_core/gradioTTS";
+import { normalizeBase, resolveAudioUrl, describeFetchError, formatGradioError, buildGradioDataFromSchema, type GradioParamInfo } from "./_core/gradioTTS";
 
 describe("gradioTTS.normalizeBase", () => {
   it("去掉末尾斜杠并补全 http 协议", () => {
@@ -81,5 +81,53 @@ describe("gradioTTS.formatGradioError", () => {
   it("非 JSON 文本原样保留", () => {
     const out = formatGradioError("Traceback: something broke");
     expect(out).toContain("something broke");
+  });
+
+  it("参数数不匹配（VoxCPM2 needed 10 got 9）附自动适配提示", () => {
+    const out = formatGradioError(JSON.stringify({ error: "An event handler (_generate) didn't receive enough input values (needed: 10, got: 9)." }));
+    expect(out).toContain("无法自动适配");
+  });
+});
+
+// ── #212 VoxCPM2 兼容：按 /info 参数表自适应组装入参 ─────────────────────────
+describe("gradioTTS.buildGradioDataFromSchema（#212）", () => {
+  const P = (parameter_name: string, label: string, component: string, def: unknown, pyType: string): GradioParamInfo =>
+    ({ parameter_name, label, component, parameter_has_default: def !== undefined, parameter_default: def, python_type: { type: pyType } });
+  const VALS = {
+    text: "目标文本", controlInstruction: "温柔女声", refData: { path: "/x.wav" } as unknown,
+    usePromptText: true, promptTextValue: "参考文本", cfgValue: 2.5,
+    doNormalize: true, denoise: false, ditSteps: 16,
+  };
+  // VoxCPM2 形态：新增 streaming Checkbox 插在 cfg 之后的中段（最刁钻位置）。
+  const V2: GradioParamInfo[] = [
+    P("text", "Target Text", "Textbox", "", "str"),
+    P("instruct", "控制指令(可选)", "Textbox", "", "str"),
+    P("prompt_wav", "Prompt Speech", "Audio", null, "filepath"),
+    P("use_prompt_text", "Use Prompt Text", "Checkbox", false, "bool"),
+    P("prompt_text", "Prompt Text", "Textbox", "", "str"),
+    P("cfg_value", "CFG Value", "Slider", 2, "float"),
+    P("streaming", "Streaming Output", "Checkbox", false, "bool"),
+    P("do_normalize", "Normalize Text", "Checkbox", false, "bool"),
+    P("denoise", "Denoise Prompt", "Checkbox", false, "bool"),
+    P("inference_timesteps", "Inference Timesteps", "Slider", 10, "int"),
+  ];
+
+  it("10 参 VoxCPM2：各值归位，中段未知新参取声明默认", () => {
+    expect(buildGradioDataFromSchema(V2, VALS)).toEqual(
+      ["目标文本", "温柔女声", { path: "/x.wav" }, true, "参考文本", 2.5, false, true, false, 16]);
+  });
+
+  it("经典 9 参 schema：产物与旧固定顺序完全一致", () => {
+    const v1 = V2.filter((p) => p.parameter_name !== "streaming");
+    expect(buildGradioDataFromSchema(v1, VALS)).toEqual(
+      ["目标文本", "温柔女声", { path: "/x.wav" }, true, "参考文本", 2.5, true, false, 16]);
+  });
+
+  it("未知数值参数取默认；目标文本无落点时返回 null（调用方回退旧顺序）", () => {
+    const withNum = [...V2, P("speed", "Speed", "Slider", 1.0, "float")];
+    const d = buildGradioDataFromSchema(withNum, VALS)!;
+    expect(d[d.length - 1]).toBe(1.0);
+    const noText: GradioParamInfo[] = [P("prompt_wav", "Prompt Speech", "Audio", null, "filepath"), P("cfg", "CFG", "Slider", 2, "float")];
+    expect(buildGradioDataFromSchema(noText, VALS)).toBeNull();
   });
 });
