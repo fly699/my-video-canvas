@@ -217,6 +217,9 @@ const agentChatInput = z.object({
          *  （管理后台「模型→技能库」）中该模型的提示词技法附在模型清单后作写作参考。
          *  关闭/未锁定/无技能 → 完全不注入，提示词与现状逐字一致。 */
         useModelSkills: z.boolean().optional(),
+        /** 交互式规划（快速设置开关，默认关）：开启后进入分步交互模式——每轮只聚焦一个
+         *  决策点、给编号选项、operations 留空，直到用户确认「开始落地」才输出完整操作。 */
+        interactive: z.boolean().optional(),
         /** #145 对白语种（快速设置）：所有人声文本统一语言。独立字段而非只靠 prefs 文本——
          *  注入 system 输出要求区的最高优先级硬规则（prefs 尾部弱约束曾被模型无视，中文
          *  设置仍出英文对白）。 */
@@ -554,7 +557,15 @@ ${ctxBudget.graphSummary || "（空画布）"}${input.prefs?.trim() ? `\n\n# 用
       const system = `你是「AI 视频画布」的智能体副驾（Copilot）。用户用自然语言描述想做的视频，你负责把它拆解为画布上的节点工作流。
 
 # 可用节点目录（只能使用下面列出的节点类型与字段，禁止编造任何不存在的节点或字段）
-${catalogText({ comfyOnly: input.comfyOnly, allowSuperAgent })}${templateSection}${comfyResourceSection}${comfyExperienceSection}${planPitfallSection}${superAgentHint}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel, compact: editMode || undefined })}`}${modelSkillSection}
+${catalogText({ comfyOnly: input.comfyOnly, allowSuperAgent })}${templateSection}${comfyResourceSection}${comfyExperienceSection}${planPitfallSection}${superAgentHint}${comfyConstraint}${input.comfyOnly ? "" : `\n\n# 云端生成模型清单（与节点选择器同源；模型 id 与 params 键/取值【严格】从此清单取，清单外一律视为编造）\n${modelKnowledgeText({ pinnedImageModel: input.pinnedImageModel, pinnedVideoModel: input.pinnedVideoModel, compact: editMode || undefined })}`}${modelSkillSection}${input.interactive ? `
+
+# 交互式规划模式（用户已开启「交互式规划」开关）
+- 复杂编排不要一次性出完整方案：先分步与用户确认关键决策。每轮 reply 只聚焦【一个决策点】，给出 2-4 个编号选项（每个选项独立一行、以「1. 」「2. 」开头，推荐项在行尾加「（推荐）」），reply 最后一行固定提示：「回复序号选择，也可以直接说出你的想法；说『开始落地』即按当前共识生成节点。」
+- 在用户明确表示「开始落地 / 执行 / 就这样做」或所有关键决策都已确认之前，operations 必须是空数组 []——绝不提前创建任何节点。
+- 建议决策顺序（用户已明确的直接跳过）：① 内容与结构（叙事线/分几幕/风格基调）→ ② 规模与规格（镜头数、每镜时长、画幅、生图/生视频模型）→ ③ 角色与场景设定 → ④ 汇总已确认共识并请用户确认落地。
+- 用户任意时刻说「不用问了 / 直接做」→ 立即按已确认信息 + 合理默认值输出完整 operations。
+- 每轮 reply 开头用一句话累积复述已确认的共识（如「已定：竖屏 9:16 · 6 镜 · 悬疑风」），用户不回翻也能看到进展。
+- 简单请求（改单个字段、加一个节点、纯问答）不必分步——直接给 operations 或直接回答。` : ""}
 
 # 当前画布
 ${ctxBudget.graphSummary || "（空画布）"}${input.selectedNodeIds?.length ? `\n\n# 用户已框选节点（本轮硬约束）\n用户框选了 ${input.selectedNodeIds.length} 个节点：${input.selectedNodeIds.slice(0, 60).join("、")}。本轮的 update/delete 只允许作用于这些节点（或本轮新建节点的 tempId）——框选外的既有节点一律不要修改、不要删除（系统会直接拒绝这类操作）。除非用户明确要求新增内容，否则不要 create 新节点。` : ""}${characterSection}${input.prefs?.trim() ? `\n\n# 用户偏好/约束（必须遵守）\n${input.prefs.trim()}` : ""}${input.persona?.trim() ? `\n\n# 创作风格 / 人设（最高优先级：按此风格与视角构思画面、文案、镜头语言；但绝不能因此破坏下面的 JSON 输出格式）\n${input.persona.trim()}` : ""}${attachmentHint}
