@@ -47,12 +47,13 @@ describe("snapToWordBoundaries（吸附词边界，避免切词中间）", () =>
 });
 
 describe("buildAiCutDoc（保留区间 → EditorDoc）", () => {
-  it("视频轨按区间切片、start 累积、30ms 淡入淡出、调色写到 effects", () => {
+  it("视频轨按区间切片、start 累积、默认直切（无淡入淡出黑帧）、调色写到 effects", () => {
     const doc = buildAiCutDoc(SRC, { keep: [{ start: 2, end: 6 }, { start: 10, end: 13 }], grade: "neutral_punch" }, [], {});
     expect(doc.normalizeAudio).toBe(true);
     const v = doc.tracks.find((t) => t.type === "video")!;
     expect(v.clips.length).toBe(2);
-    expect(v.clips[0]).toMatchObject({ kind: "video", assetId: 7, assetUrl: "https://x/v.mp4", start: 0, trimIn: 2, trimOut: 6, fadeIn: 0.03, fadeOut: 0.03, effects: { filter: "neutral_punch" } });
+    // 默认 fade=0：fade 渲染为「画面从黑渐显/渐黑」，内部切点加 fade 会逐转场闪黑帧（用户实测反馈）
+    expect(v.clips[0]).toMatchObject({ kind: "video", assetId: 7, assetUrl: "https://x/v.mp4", start: 0, trimIn: 2, trimOut: 6, fadeIn: 0, fadeOut: 0, effects: { filter: "neutral_punch" } });
     expect(v.clips[1].start).toBe(4); // 第一段 4s 后接第二段
     expect(v.clips[1]).toMatchObject({ trimIn: 10, trimOut: 13 });
   });

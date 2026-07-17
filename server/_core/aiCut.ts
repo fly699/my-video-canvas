@@ -14,7 +14,9 @@ export interface AiCutSource {
   durationSec: number;
 }
 export interface AiCutOptions {
-  fadeSec?: number;         // 每段淡入淡出（video-use 用 30ms 消爆音）默认 0.03
+  fadeSec?: number;         // 每段淡入淡出（秒）。默认 0（直切）——fade 在导出/预览都是
+                            // 「画面从黑渐显/渐黑」，内部切点加 fade 会在每个转场闪黑帧
+                            //（用户实测反馈）；静音剪除的切点本在静音区，也无爆音可消。
   grade?: string;           // 覆盖 plan.grade（"none"/空 = 不调色）
   subtitles?: boolean;      // 生成逐词字幕（需要词级时间戳）
   subtitleMaxWords?: number;// 每条字幕最多词数（默认 5，兼顾"逐词"与可读/条数）
@@ -178,7 +180,8 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** 核心：保留区间 + 词级时间戳 → EditorDoc（视频切片 + 30ms 淡入淡出 + 调色 + 可选字幕）。 */
 export function buildAiCutDoc(source: AiCutSource, plan: AiCutPlan, words: CutWord[], opts: AiCutOptions = {}): EditorDoc {
-  const fade = opts.fadeSec ?? 0.03;
+  // 默认直切（#147 同原则）：0.03s 画面 fade 曾让每个内部切点闪黑帧（fade=t=in 是从黑渐显）。
+  const fade = opts.fadeSec ?? 0;
   const grade = (opts.grade ?? plan.grade ?? "none");
   const useGrade = !!grade && grade !== "none";
   // 先吸附到词边界，再左右外扩安全边距（防切掉语音首尾），最后 sanitize 夹取并合并重叠。
