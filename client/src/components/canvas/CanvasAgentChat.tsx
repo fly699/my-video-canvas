@@ -32,7 +32,7 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
 type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean };
 // 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
-const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_grok_image", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: true, fastChat: false, autoQc: false, useModelSkills: false };
+const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false };
 
 /** 对白语种（#138）：对白/旁白/台词统一书写语言；空 = 跟随内容默认。 */
 const QP_DIALOGUE_LANGS = [
@@ -161,7 +161,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [template, setTemplate] = useState<string>(() => localStorage.getItem("avc:canvasAgent:template") || BLANK_TEMPLATE_ID);
   // 快速设置（比例/风格/时长/生图先行/配乐/字幕）——注入助手规划。
   const [quickPrefs, setQuickPrefs] = useState<QuickPrefs>(() => {
-    try { const s = localStorage.getItem("avc:canvasAgent:prefs"); if (s) return { ...QP_DEFAULT, ...JSON.parse(s) }; } catch { /* ignore */ }
+    try {
+      const s = localStorage.getItem("avc:canvasAgent:prefs");
+      if (s) {
+        const saved = JSON.parse(s) as Partial<QuickPrefs>;
+        // 2026-07 出厂默认调整（不合并短镜 + 生图默认 GPT Image 2）：老缓存里跟着
+        // 旧默认存下的值一次性迁移（用标记区分；用户此后的主动选择不再被动）。
+        if (!localStorage.getItem("avc:canvasAgent:qpMigV2")) {
+          saved.coalesceShots = false;
+          if (saved.imageModel === "kie_grok_image") saved.imageModel = "kie_gpt_image_2";
+          localStorage.setItem("avc:canvasAgent:qpMigV2", "1");
+        }
+        return { ...QP_DEFAULT, ...saved };
+      }
+    } catch { /* ignore */ }
     return QP_DEFAULT;
   });
   const [showQuick, setShowQuick] = useState(false);

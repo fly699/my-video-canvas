@@ -20,7 +20,7 @@ import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
 import {
   Scissors, Play, Pause, Loader2, Download, RotateCcw, Repeat,
   ArrowRight, Volume2, Music, Film, Image as ImageIcon,
-  RotateCw, FlipHorizontal, FlipVertical, ChevronDown, ChevronRight, Sliders,
+  RotateCw, FlipHorizontal, FlipVertical, ChevronDown, ChevronRight, Sliders, X,
 } from "lucide-react";
 
 interface Props {
@@ -642,8 +642,12 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   };
 
   // ── Trim mutation ──────────────────────────────────────────────────────────
+  // 取消/放弃等待（对齐 #140/#143/合并节点）：服务器任务无法中止，放弃 = 本地解锁、
+  // 迟到结果不回填。
+  const abandonedRef = useRef(false);
   const trimMutation = trpc.clip.trimVideo.useMutation({
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       updateNodeData(id, {
         status: "done",
         outputUrl: result.url,
@@ -653,16 +657,24 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
       toast.success("剪辑完成");
     },
     onError: (err) => {
+      if (abandonedRef.current) return;
       updateNodeData(id, { status: "failed", errorMessage: err.message });
       toast.error("剪辑失败：" + err.message);
     },
   });
+
+  const abandonWait = () => {
+    abandonedRef.current = true;
+    updateNodeData(id, { status: payload.outputUrl ? "done" : "idle", errorMessage: undefined });
+    toast.info("已取消等待：节点已解锁。服务器上的剪辑任务无法中止，其结果不会回填本节点", { duration: 6000 });
+  };
 
   const handleTrim = () => {
     if (trimMutation.isPending || payload.status === "processing") return;
     if (!activeVideoUrl) { toast.error("请先连接视频节点"); return; }
     if (endTime <= startTime) { toast.error("出点必须大于入点"); return; }
 
+    abandonedRef.current = false; // 新一轮剪辑：复位「放弃等待」标记
     update("status", "processing");
     const edit = {
       reverse: payload.reverse || undefined,
@@ -740,7 +752,9 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
     void downloadMedia(payload.outputUrl, `clip-${Date.now()}.mp4`);
   };
 
-  const isProcessing = trimMutation.isPending || payload.status === "processing";
+  // 只看持久化 status——handleTrim 会同步先置 "processing"；并上 isPending 会让
+  // 「放弃等待」后节点解不开锁（请求仍在飞）。
+  const isProcessing = payload.status === "processing";
   const clipDuration = (endTime - startTime) / speed;
 
   const displayUrl = previewMode === "output" && payload.outputUrl
@@ -858,6 +872,7 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="clip" title={data.title} minHeight={280} resizable showHandles={false}
+      onCancelGenerate={isProcessing ? abandonWait : undefined}
       heroMedia={/* #105 创意未选中且有成片→英雄区（悬停自动播放；选中走卡体预览避免双播放器；极简形态据此覆盖） */
       isCreativeMode && !selected && payload.outputUrl ? <WatermarkedVideo block key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)} preload="metadata" className="w-full" style={{ display: "block" }} /> : null}
       onHeaderHoverChange={docks.onHeaderHoverChange}
@@ -1039,24 +1054,39 @@ export const ClipNode = memo(function ClipNode({ id, selected, data }: Props) {
                 {!isCreativeMode && configBody}
                 <AdvancedEditPanel payload={payload} update={update} hasAudioTracks={audioSources.length > 0} />
 
-                {/* Process button */}
+                {/* Process button —— 处理中变为可点的「取消」（对齐 #143/合并节点） */}
+                {isProcessing ? (
+                  <button
+                    onClick={abandonWait}
+                    className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
+                    title="放弃等待 / 取消剪辑（服务器任务无法中止，其结果不会回填）"
+                    style={{
+                      background: "oklch(0.62 0.20 25 / 0.12)",
+                      borderWidth: 1, borderStyle: "solid",
+                      borderColor: "oklch(0.62 0.20 25 / 0.4)",
+                      color: "oklch(0.62 0.20 25)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <X style={{ width: 13, height: 13 }} />
+                    取消（处理中...）
+                  </button>
+                ) : (
                 <button
                   onClick={handleTrim}
-                  disabled={isProcessing}
                   className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
                   style={{
-                    background: isProcessing ? "var(--c-surface)" : accentA(0.18),
+                    background: accentA(0.18),
                     borderWidth: 1, borderStyle: "solid",
-                    borderColor: isProcessing ? BORDER_DEFAULT : accentA(0.45),
-                    color: isProcessing ? "var(--c-t4)" : accent,
-                    cursor: isProcessing ? "not-allowed" : "pointer",
+                    borderColor: accentA(0.45),
+                    color: accent,
+                    cursor: "pointer",
                   }}
                 >
-                  {isProcessing
-                    ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />
-                    : <Scissors style={{ width: 13, height: 13 }} />}
-                  {isProcessing ? "处理中，请稍候..." : "执行剪辑"}
+                  <Scissors style={{ width: 13, height: 13 }} />
+                  执行剪辑
                 </button>
+                )}
 
                 <button
                   onClick={handleExtractFrame}

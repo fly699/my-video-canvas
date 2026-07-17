@@ -1,4 +1,4 @@
-import { memo, useCallback, useState, useMemo } from "react";
+import { memo, useCallback, useState, useMemo, useRef } from "react";
 import { BaseNode } from "../BaseNode";
 import { InlineGenBar } from "../InlineGenBar";
 import { SlidersHorizontal } from "lucide-react";
@@ -15,7 +15,6 @@ import { propagateRefImage } from "../../../lib/refImagePropagation";
 import { sourceAspectRatio } from "../../../lib/imageAspect";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
-import { Loader2 } from "lucide-react";
 import { Copy, ChevronDown, ChevronRight, X, Layers, Palette, Aperture, Gauge, Sun, PenTool, Camera, ArrowLeftRight, Film, Wind, Circle, Zap, Flower2, PenLine, ScanLine, Maximize, Building2, Globe, Combine, Sparkles, Timer, Activity, TrendingUp, CloudFog, Lightbulb, Waves, Sunrise, Moon, Brush, Stars, Grid2x2, MessageSquare, Droplet, Box, Monitor, Thermometer, CircleDot, Blend, Wand2, RotateCcw, Image, type LucideIcon } from "lucide-react";
 
 const EFFECT_ICONS: Record<string, LucideIcon> = {
@@ -110,21 +109,36 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
     return payload.inputImageUrl?.trim() || undefined;
   }, [ppEdges, ppNodes, id, payload.inputImageUrl]);
   const [applyModel, setApplyModel] = useState("");
+  // 取消/放弃等待（对齐 #140/#143/合并节点）：云端生图提交即计费、无法撤回；
+  // 放弃 = 本地解锁、迟到结果不回填。
+  const abandonedRef = useRef(false);
   const applyMut = trpc.imageGen.generate.useMutation({
     onSuccess: (r) => {
+      if (abandonedRef.current) return;
       const url = r.url ?? r.urls?.[0];
       if (!url) { updateNodeData(id, { status: "failed", errorMessage: "未返回结果图像" }); toast.error("应用效果失败：未返回图像"); return; }
       updateNodeData(id, { outputUrl: url, status: "done", errorMessage: undefined });
       propagateRefImage(id, url);
       toast.success("效果已应用，结果图已生成");
     },
-    onError: (err) => { updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("应用效果失败：" + err.message); },
+    onError: (err) => {
+      if (abandonedRef.current) return;
+      updateNodeData(id, { status: "failed", errorMessage: err.message }); toast.error("应用效果失败：" + err.message);
+    },
   });
-  const isApplying = payload.status === "processing" || applyMut.isPending;
+  // 只看持久化 status——handleApply 会同步先置 "processing"；并上 isPending 会让
+  // 「放弃等待」后节点解不开锁（请求仍在飞）。
+  const isApplying = payload.status === "processing";
+  const abandonWait = useCallback(() => {
+    abandonedRef.current = true;
+    updateNodeData(id, { status: payload.outputUrl ? "done" : "idle", errorMessage: undefined });
+    toast.info("已取消等待：节点已解锁。云端生成仍在进行（费用照常发生），其结果不会回填本节点", { duration: 7000 });
+  }, [id, payload.outputUrl, updateNodeData]);
   const handleApply = useCallback(async () => {
     if (isApplying) return;
     if (!srcUrl) { toast.error("请先连接上游图像节点（图像生成/素材/分镜等）"); return; }
     if (!generatedPrompt) { toast.error("请先选择至少一个效果"); return; }
+    abandonedRef.current = false; // 新一轮生成：复位「放弃等待」标记
     updateNodeData(id, { status: "processing", errorMessage: undefined });
     const ar = await sourceAspectRatio(srcUrl); // 结果必须继承源图画幅
     applyMut.mutate({
@@ -145,13 +159,24 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
           {applyModel ? (costEstimateLabel(estimateImageCost(applyModel)) || "按模型页") : "按系统默认模型"}
         </span>
       </div>
+      {/* 生成中变为可点的「取消」（对齐 #143/合并节点） */}
+      {isApplying ? (
+        <button onClick={abandonWait}
+          title="放弃等待 / 取消（云端生成无法撤回，费用照常发生，其结果不会回填）"
+          className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
+          style={{ background: "oklch(0.62 0.20 25 / 0.12)", border: "1px solid oklch(0.62 0.20 25 / 0.4)", color: "oklch(0.62 0.20 25)", cursor: "pointer" }}>
+          <X style={{ width: 12, height: 12 }} />
+          取消（应用效果生成中...）
+        </button>
+      ) : (
       <button onClick={() => void handleApply()} disabled={!canApply}
-        title={!srcUrl ? "请先连接上游图像节点" : !generatedPrompt ? "请先选择效果" : isApplying ? "生成中…" : "把已选效果应用到上游图像，生成结果图"}
+        title={!srcUrl ? "请先连接上游图像节点" : !generatedPrompt ? "请先选择效果" : "把已选效果应用到上游图像，生成结果图"}
         className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
         style={{ background: !canApply ? "var(--c-surface)" : accentA(0.15), border: `1px solid ${!canApply ? "var(--c-bd2)" : accentA(0.5)}`, color: !canApply ? "var(--c-t4)" : accent, cursor: !canApply ? "not-allowed" : "pointer" }}>
-        {isApplying ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Wand2 style={{ width: 12, height: 12 }} />}
-        {isApplying ? "应用效果生成中..." : `应用效果到上游图像${selectedEffects.length ? `（已选 ${selectedEffects.length}）` : ""}`}
+        <Wand2 style={{ width: 12, height: 12 }} />
+        {`应用效果到上游图像${selectedEffects.length ? `（已选 ${selectedEffects.length}）` : ""}`}
       </button>
+      )}
       {payload.status === "failed" && payload.errorMessage && (
         <p style={{ fontSize: 10, color: "oklch(0.62 0.20 25)", margin: 0 }}>{payload.errorMessage}</p>
       )}
@@ -364,6 +389,7 @@ export const PostProcessNode = memo(function PostProcessNode({ id, selected, dat
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="post_process" title={data.title} minHeight={320} resizable
+      onCancelGenerate={isApplying ? abandonWait : undefined}
       onRun={() => void handleApply()} running={isApplying} canRun={!!srcUrl && !!generatedPrompt} hasResult={!!payload.outputUrl}
       heroMedia={payload.outputUrl ? <img src={payload.outputUrl} alt="后处理结果" style={{ width: "100%", height: "auto", display: "block" }} /> : undefined}>
       <div

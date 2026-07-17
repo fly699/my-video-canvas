@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState, useRef } from "react";
 import { BaseNode } from "../BaseNode";
 import { InlineGenBar } from "../InlineGenBar";
 import { SlidersHorizontal } from "lucide-react";
@@ -13,7 +13,7 @@ import { getNodeImageOutput } from "@/lib/canvasPassthrough";
 import type { PoseControlNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Layers, Loader2, Download, RotateCcw, PersonStanding } from "lucide-react";
+import { Layers, Loader2, Download, RotateCcw, PersonStanding, X } from "lucide-react";
 import { PosePresetPicker } from "../PosePresetPicker";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { useSimpleRefStrip } from "../../../hooks/useSimpleRefStrip";
@@ -67,15 +67,25 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
     return undefined;
   }, [edges, nodes, id]);
 
+  // 取消/放弃等待（对齐 #140/#143/合并节点）：云端生成提交即计费、无法撤回；
+  // 放弃 = 本地解锁、迟到结果不回填。
+  const abandonedRef = useRef(false);
   const poseControlMutation = trpc.clip.poseControl.useMutation({
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       update({ outputImageUrl: result.url, outputUrl: result.url, status: "done" });
       // Auto-fill any already-connected downstream reference-image targets.
       propagateRefImage(id, result.url);
       toast.success("构图控制图像已生成");
     },
-    onError: (err) => { update({ status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
+    onError: (err) => { if (abandonedRef.current) return; update({ status: "failed", errorMessage: err.message }); toast.error("生成失败：" + err.message); },
   });
+
+  const abandonWait = () => {
+    abandonedRef.current = true;
+    update({ status: payload.outputUrl ? "done" : "idle", errorMessage: undefined });
+    toast.info("已取消等待：节点已解锁。云端生成仍在进行（费用照常发生），其结果不会回填本节点", { duration: 7000 });
+  };
 
   const handleRun = () => {
     if (poseControlMutation.isPending) return;
@@ -83,6 +93,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
     if (!refUrl) { toast.error("请先连接图像节点或填写参考图 URL"); return; }
     if (!payload.prompt?.trim()) { toast.error("请填写图像描述提示词"); return; }
     if (payload.prompt.trim().length > 1000) { toast.error("提示词上限 1000 字，请截断"); return; } // server max(1000)
+    abandonedRef.current = false; // 新一轮生成：复位「放弃等待」标记
     update({ status: "processing", errorMessage: undefined });
     poseControlMutation.mutate({
       referenceImageUrl: refUrl,
@@ -91,7 +102,9 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
     });
   };
 
-  const isProcessing = payload.status === "processing" || poseControlMutation.isPending;
+  // 只看持久化 status——handleRun 会同步先置 "processing"；并上 isPending 会让
+  // 「放弃等待」后节点解不开锁（请求仍在飞）。
+  const isProcessing = payload.status === "processing";
 
   // 统一吸附窗：左侧参考构图（单张）+ 顶部「最终提示词」（本地图像描述）。无按钮：悬停标题栏
   // 1 秒临时展开，点击吸附窗钉住。
@@ -163,6 +176,7 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="pose_control" title={data.title} minHeight={200} resizable
+      onCancelGenerate={isProcessing ? abandonWait : undefined}
       onAssetImageDrop={(urls) => update({ referenceImageUrl: urls[0] })}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
@@ -222,11 +236,14 @@ export const PoseControlNode = memo(function PoseControlNode({ id, selected, dat
         )}
 
         {/* Run button */}
-        <button onClick={handleRun} disabled={isProcessing}
+        <button onClick={isProcessing ? abandonWait : handleRun}
+          title={isProcessing ? "放弃等待 / 取消（云端生成无法撤回，其结果不会回填）" : undefined}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
-          style={{ background: isProcessing ? "var(--c-surface)" : accentA(0.15), border: `1px solid ${isProcessing ? BORDER_DEFAULT : accentA(0.5)}`, color: isProcessing ? "var(--c-t4)" : accent, cursor: isProcessing ? "not-allowed" : "pointer" }}>
-          {isProcessing ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Layers style={{ width: 12, height: 12 }} />}
-          {isProcessing ? "Flux Pro Kontext 生成中..." : "生成保留构图的新图像"}
+          style={isProcessing
+            ? { background: "oklch(0.62 0.20 25 / 0.12)", border: "1px solid oklch(0.62 0.20 25 / 0.4)", color: "oklch(0.62 0.20 25)", cursor: "pointer" }
+            : { background: accentA(0.15), border: `1px solid ${accentA(0.5)}`, color: accent, cursor: "pointer" }}>
+          {isProcessing ? <X style={{ width: 12, height: 12 }} /> : <Layers style={{ width: 12, height: 12 }} />}
+          {isProcessing ? "取消（生成中...）" : "生成保留构图的新图像"}
         </button>
 
         <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: 0 }}>

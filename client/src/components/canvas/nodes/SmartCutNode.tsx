@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useRef } from "react";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { InlineGenBar } from "../InlineGenBar";
 import { SlidersHorizontal } from "lucide-react";
@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
-import { Zap, Loader2, Download, RotateCcw, Clapperboard } from "lucide-react";
+import { Zap, Loader2, Download, RotateCcw, Clapperboard, XCircle } from "lucide-react";
 
 interface Props {
   id: string;
@@ -71,13 +71,26 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
     return undefined;
   };
 
+  // 取消/放弃等待（对齐 #140/#143/合并节点）：服务器任务无法中止，放弃 = 本地解锁、
+  // 迟到结果不回填。
+  const abandonedRef = useRef(false);
   const smartCutMutation = trpc.clip.smartCut.useMutation({
     onSuccess: (result) => {
+      if (abandonedRef.current) return;
       update({ outputUrl: result.url, outputDuration: result.outputDuration, originalDuration: result.originalDuration, status: "done" });
       toast.success(`智能剪辑完成，输出时长约 ${result.outputDuration.toFixed(1)}s`);
     },
-    onError: (err) => { update({ status: "failed", errorMessage: err.message }); toast.error("智能剪辑失败：" + err.message); },
+    onError: (err) => {
+      if (abandonedRef.current) return;
+      update({ status: "failed", errorMessage: err.message }); toast.error("智能剪辑失败：" + err.message);
+    },
   });
+
+  const abandonWait = () => {
+    abandonedRef.current = true;
+    update({ status: payload.outputUrl ? "done" : "idle", errorMessage: undefined });
+    toast.info("已取消等待：节点已解锁。服务器上的智能剪辑任务无法中止，其结果不会回填本节点", { duration: 6000 });
+  };
 
 
   // #100 场景切点检测：本地 ffmpeg 找视觉切换点，作为剪辑边界吸附（与镜界保护同通道）。
@@ -117,6 +130,7 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
     if (smartCutMutation.isPending) return;
     const videoUrl = payload.inputVideoUrl || findSourceVideoUrl();
     if (!videoUrl) { toast.error("请先连接视频节点或填写视频 URL"); return; }
+    abandonedRef.current = false; // 新一轮剪辑：复位「放弃等待」标记
     update({ status: "processing", errorMessage: undefined });
     smartCutMutation.mutate({
       inputUrl: videoUrl,
@@ -135,7 +149,9 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
     });
   };
 
-  const isProcessing = payload.status === "processing" || smartCutMutation.isPending;
+  // 只看持久化 status——handleRun 会同步先置 "processing"；并上 isPending 会让
+  // 「放弃等待」后节点解不开锁（请求仍在飞）。
+  const isProcessing = payload.status === "processing";
   const aggressiveness = payload.aggressiveness ?? "medium";
 
   // #97 配置区单一来源：非创意内联卡体（原样）；创意模式挂输入条「参数与操作」下浮面板。
@@ -212,6 +228,7 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="smart_cut" title={data.title} minHeight={200} resizable
+      onCancelGenerate={isProcessing ? abandonWait : undefined}
       heroMedia={/* #105 创意未选中且有成片→英雄区（悬停自动播放；选中走卡体预览避免双播放器；极简形态据此覆盖） */
       isCreativeMode && !selected && payload.outputUrl ? <WatermarkedVideo block key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)} preload="metadata" className="w-full" style={{ display: "block" }} /> : null}>
 
@@ -282,12 +299,15 @@ export const SmartCutNode = memo(function SmartCutNode({ id, selected, data }: P
           </div>
         )}
 
-        {/* Run button */}
-        <button onClick={handleRun} disabled={isProcessing}
+        {/* Run button —— 处理中变为可点的「取消」（对齐 #143/合并节点） */}
+        <button onClick={isProcessing ? abandonWait : handleRun}
+          title={isProcessing ? "放弃等待 / 取消智能剪辑（服务器任务无法中止，其结果不会回填）" : undefined}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs font-semibold transition-all"
-          style={{ background: isProcessing ? "var(--c-surface)" : accentA(0.15), border: `1px solid ${isProcessing ? BORDER_DEFAULT : accentA(0.5)}`, color: isProcessing ? "var(--c-t4)" : accent, cursor: isProcessing ? "not-allowed" : "pointer" }}>
-          {isProcessing ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Zap style={{ width: 12, height: 12 }} />}
-          {isProcessing ? "AI 智能剪辑中..." : "运行智能剪辑"}
+          style={isProcessing
+            ? { background: "oklch(0.62 0.20 25 / 0.12)", border: "1px solid oklch(0.62 0.20 25 / 0.4)", color: "oklch(0.62 0.20 25)", cursor: "pointer" }
+            : { background: accentA(0.15), border: `1px solid ${accentA(0.5)}`, color: accent, cursor: "pointer" }}>
+          {isProcessing ? <XCircle style={{ width: 12, height: 12 }} /> : <Zap style={{ width: 12, height: 12 }} />}
+          {isProcessing ? "取消（AI 智能剪辑中...）" : "运行智能剪辑"}
         </button>
 
         <p style={{ fontSize: 9, color: "var(--c-t4)", lineHeight: 1.5, margin: 0 }}>
