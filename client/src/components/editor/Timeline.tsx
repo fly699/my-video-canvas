@@ -364,6 +364,28 @@ export function Timeline() {
     if (avail > 0) setPxPerSec(Math.min(400, Math.max(8, avail / sec)));
   }, [duration, setPxPerSec]);
 
+  // Shift + 滚轮缩放时间轴：以鼠标所指时间为锚点缩放（缩放后该时间仍停在指针下）。
+  // 原生监听 + passive:false——Shift+滚轮浏览器默认横向滚动，React onWheel 阻不掉。
+  useEffect(() => {
+    const el = scrollRef.current; if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.shiftKey) return;
+      e.preventDefault();
+      const st = useEditorStore.getState();
+      const cur = st.pxPerSec;
+      const dy = e.deltaY !== 0 ? e.deltaY : e.deltaX; // Shift 按下时部分设备把滚动量报在 deltaX
+      const next = Math.min(400, Math.max(8, cur * (dy < 0 ? 1.2 : 1 / 1.2)));
+      if (next === cur) return;
+      const rect = el.getBoundingClientRect();
+      const pointerX = e.clientX - rect.left;
+      const anchorSec = Math.max(0, (el.scrollLeft + pointerX - LABEL_W) / cur);
+      st.setPxPerSec(next);
+      requestAnimationFrame(() => { el.scrollLeft = Math.max(0, anchorSec * next - pointerX + LABEL_W); });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   // 场景自动分割：本地 ffmpeg 场景检测（复用画布 #100 的 detectScenes，免 AI 调用）→
   // 切点从源时间映射到时间轴 → 逐点 splitClip（每刀一个撤销步，可逐段撤销）。
   const sceneMut = trpc.clip.detectScenes.useMutation();
@@ -585,6 +607,11 @@ export function Timeline() {
           onClick={splitAtMarkers}
           title="按标记分割：在选中片段范围内的所有标记点处逐点分割（每刀可撤销）"
           style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selectedClipId ? EC.t2 : EC.t4, opacity: selectedClipId ? 1 : 0.5, cursor: selectedClipId ? "pointer" : "not-allowed" }}><SplitSquareHorizontal size={13} /><span style={{ fontSize: 11 }}>按标记分割</span></button>
+        {/* 多选自动排布：全选(Ctrl+A)/框选后一键把各轨选中片段首尾衔接，消除间隙/重叠（一步撤销） */}
+        <button disabled={selCount < 2}
+          onClick={() => { useEditorStore.getState().arrangeSelected(); }}
+          title={selCount >= 2 ? "自动排布：每条轨道内把选中片段按开始时间首尾衔接、消除间隙/重叠（一步撤销）。Ctrl+A 全选后一键整理" : "自动排布：先多选 ≥2 个片段（Ctrl+A 全选 / 框选）"}
+          style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selCount >= 2 ? EC.t2 : EC.t4, opacity: selCount >= 2 ? 1 : 0.5, cursor: selCount >= 2 ? "pointer" : "not-allowed" }}><AlignHorizontalJustifyStart size={13} /><span style={{ fontSize: 11 }}>自动排布</span></button>
         {/* 导出区段：在播放头设入/出点，仅导出选定范围 */}
         <button onClick={() => useEditorStore.getState().setInPoint(playhead)} title="设入点（导出区段起点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: inPoint != null ? EC.accent : EC.t3, borderColor: inPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>入点</span></button>
         <button onClick={() => useEditorStore.getState().setOutPoint(playhead)} title="设出点（导出区段终点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: outPoint != null ? EC.accent : EC.t3, borderColor: outPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>出点</span></button>

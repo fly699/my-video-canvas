@@ -288,6 +288,8 @@ export interface EditorStore {
   // track ops
   updateTrack: (trackId: string, patch: Partial<Pick<Track, "muted" | "volume" | "hidden" | "locked" | "name">>) => void;
   arrangeTrack: (trackId: string, clipIds?: string[]) => void; // 首尾衔接排布本轨片段（clipIds 为空=全部）
+  /** 多选自动排布：每条轨道内把选中的片段按开始时间首尾衔接、消除间隙/重叠（一步撤销）。全选后一键整理。 */
+  arrangeSelected: () => void;
   addTrack: (type: TrackType) => void;
   reorderTrack: (trackId: string, toIndex: number) => void;
   removeTrack: (trackId: string) => void;
@@ -853,6 +855,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (!s.doc) return s;
     const ids = clipIds && clipIds.length ? new Set(clipIds) : null;
     const tracks = s.doc.tracks.map((t) => (t.id !== trackId ? t : { ...t, clips: arrangeClips(t.clips, clipDuration, ids) }));
+    return withHistory(s, { ...s.doc, tracks });
+  }),
+
+  arrangeSelected: () => set((s) => {
+    if (!s.doc || s.selectedClipIds.length < 2) return s;
+    const sel = new Set(s.selectedClipIds);
+    const tracks = s.doc.tracks.map((t) => {
+      const ids = new Set(t.clips.filter((c) => sel.has(c.id)).map((c) => c.id));
+      return ids.size >= 2 ? { ...t, clips: arrangeClips(t.clips, clipDuration, ids) } : t;
+    });
     return withHistory(s, { ...s.doc, tracks });
   }),
 

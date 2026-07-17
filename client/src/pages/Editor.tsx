@@ -7,6 +7,7 @@ import { useEditorStore } from "@/components/editor/editorStore";
 import { MediaBin } from "@/components/editor/MediaBin";
 import { Timeline } from "@/components/editor/Timeline";
 import { PreviewStage } from "@/components/editor/PreviewStage";
+import { TimelinePreload } from "@/components/editor/TimelinePreload";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import { CanvasSettings } from "@/components/editor/CanvasSettings";
 import { EditorShortcutsPanel } from "@/components/editor/EditorShortcutsPanel";
@@ -14,6 +15,8 @@ import { downloadMedia } from "@/lib/download";
 import { estimateExportBytes, formatBytes } from "@shared/exportQuality";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { confirmDialog, promptDialog } from "@/components/ui/dialogService";
+import { uploadAssetFileForUrl } from "@/lib/assetUpload";
+import { localMediaCache } from "@/components/editor/MediaBin";
 
 // Draggable divider between editor panels. Reports incremental pixel deltas; the
 // parent applies them to the adjacent panel's size (persisted).
@@ -300,8 +303,43 @@ function EditorWorkspace({ id }: { id: number }) {
 
   // Kick off an export, translating the resolution preset into output dims that
   // preserve the document's aspect ratio.
-  const startExport = () => {
+  const trpcUtils = trpc.useUtils();
+  const startExport = async () => {
     setExportMenu(false);
+    // 本机素材守卫：blob: objectURL 只在本机浏览器有效，服务端 ffmpeg 无法访问——
+    // 导出前把用到的本机文件一键上传到素材库并替换时间轴引用（一个撤销步），再继续导出。
+    {
+      const d0 = useEditorStore.getState().doc;
+      if (d0) {
+        const blobUrls = new Set<string>();
+        for (const tr of d0.tracks) for (const c of tr.clips) { if (c.assetUrl?.startsWith("blob:")) blobUrls.add(c.assetUrl); }
+        if (blobUrls.size > 0) {
+          const pairs = Array.from(blobUrls).map((u) => ({ url: u, item: localMediaCache.find((x) => x.url === u) }));
+          const lost = pairs.filter((p) => !p.item);
+          if (lost.length) { toast.error(`时间轴有 ${lost.length} 个本机素材引用已失效（页面刷新会使本机文件失效）。请删除对应片段或重新添加本机文件后重试。`); return; }
+          const ok = await confirmDialog({
+            title: `先上传 ${blobUrls.size} 个本机素材再导出？`,
+            message: "时间轴包含「本机素材」（未上传的本地文件）。导出成片需要服务端可访问的地址：将把这些文件上传到素材库并替换时间轴引用（可撤销），然后自动继续导出。",
+          });
+          if (!ok) return;
+          toast.info(`正在上传 ${blobUrls.size} 个本机素材…`);
+          const replace = new Map<string, string>();
+          for (const { url, item } of pairs) {
+            const newUrl = await uploadAssetFileForUrl(trpcUtils.client, item!.file);
+            if (!newUrl) { toast.error(`「${item!.name}」上传失败，已中止导出`); return; }
+            replace.set(url, newUrl);
+          }
+          const cur = useEditorStore.getState().doc;
+          if (cur) {
+            useEditorStore.getState().applyDoc({
+              ...cur,
+              tracks: cur.tracks.map((tr) => ({ ...tr, clips: tr.clips.map((c) => (c.assetUrl && replace.has(c.assetUrl) ? { ...c, assetUrl: replace.get(c.assetUrl)! } : c)) })),
+            });
+          }
+          toast.success("本机素材已上传并替换引用，继续导出");
+        }
+      }
+    }
     const d = useEditorStore.getState().doc;
     let width: number | undefined;
     let height: number | undefined;
@@ -543,6 +581,7 @@ function EditorWorkspace({ id }: { id: number }) {
         <MediaBin width={leftW} />
         <Resizer axis="x" onResize={(d) => setLeftW((w) => clampSize(w + d, 180, 480))} />
         <PreviewStage />
+        <TimelinePreload />
         <Resizer axis="x" onResize={(d) => setRightW((w) => clampSize(w - d, 180, 520))} />
         <PropertiesPanel width={rightW} />
       </div>

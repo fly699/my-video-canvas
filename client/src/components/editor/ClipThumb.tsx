@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ClipKind } from "@shared/editorTypes";
+import { mediaFetchUrl } from "@/lib/download";
 
 // Lazily-built, module-level caches so a thumbnail/waveform is extracted once per
 // asset and reused across re-renders and clips. All extraction is best-effort —
@@ -77,7 +78,10 @@ function useVideoThumb(url: string | undefined, trimIn: number): string | null {
       v.addEventListener("seeked", grab, { once: true });
       try { v.currentTime = seekTo; } catch { grab(); }
     }, { once: true });
-    v.src = url;
+    // 修「打开剪辑器时间轴素材不自动加载」：外链存储多半没有 CORS 头，
+    // crossOrigin=anonymous 直连会直接 error（缩略/波形全灭，播放却正常——播放走代理）。
+    // 统一改走同源 /api/video-proxy（blob:/相对路径原样透传），canvas 不再跨域污染。
+    v.src = mediaFetchUrl(url);
     return () => { cancelled = true; };
   }, [url, trimIn]);
   return thumb;
@@ -114,7 +118,7 @@ function useAudioPeaks(url: string | undefined, maxBytes = 40 * 1024 * 1024): nu
           else setTimeout(r, 800);
         });
         if (cancelled && !waiters.has(key)) return;
-        const res = await fetch(url);
+        const res = await fetch(mediaFetchUrl(url)); // 同源代理：外链存储无 CORS 头时 fetch 才不被拦
         const buf = await res.arrayBuffer();
         if (buf.byteLength > maxBytes) throw new Error("audio too large to waveform");
         ac = getAudioContext();

@@ -60,6 +60,24 @@ const GROUPS: { group: string; items: SC[] }[] = [
     ],
   },
   {
+    group: "标记 / 淡变",
+    items: [
+      { keys: ["K"], label: "K", desc: "在播放头打标记点（卡点旗标）" },
+      { keys: [], label: "点击标尺旗标", desc: "播放头跳到该标记点" },
+      { keys: [], label: "右键标尺旗标", desc: "删除该标记点" },
+      { keys: [], label: "拖选中片段顶角三角", desc: "淡入 / 淡出时长" },
+    ],
+  },
+  {
+    group: "时间轴鼠标操作",
+    items: [
+      { keys: [], label: "拖动片段", desc: "移动位置 / 拖到其它轨道（换轨）" },
+      { keys: [], label: "拖片段两端", desc: "裁切（调整入点 / 出点）" },
+      { keys: ["SHIFT"], label: "Shift + 滚轮", desc: "缩放时间轴（以鼠标处为锚点）" },
+      { keys: [], label: "素材卡拖入 / ＋", desc: "素材加入时间轴（插入到播放头）" },
+    ],
+  },
+  {
     group: "导出 / 面板",
     items: [
       { keys: ["CTRL", "E"], label: "Ctrl + E", desc: "打开 / 关闭导出设置", jy: true },

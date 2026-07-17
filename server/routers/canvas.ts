@@ -80,7 +80,7 @@ import { submitAndPollPoyoTTS, submitAndPollPoyoMusicTool } from "../_core/poyoA
 import { synthesizeOpenAITTS, type OpenAITTSModel } from "../_core/openaiTTS";
 import { synthesizeGradioTTS } from "../_core/gradioTTS";
 import { resolveVoxcpmBaseUrl, voxcpmDefaultSource } from "../_core/voxcpmConfig";
-import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, detectSceneChanges, extractFrame, extractAudio, concatAudioSegments, processAudioClip } from "../_core/videoEditor";
+import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, detectSceneChanges, detectSilences, extractFrame, extractAudio, concatAudioSegments, processAudioClip } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
@@ -3092,6 +3092,25 @@ export const clipRouter = router({
       guardUrl(input.inputUrl);
       const boundaries = await detectSceneChanges(input.inputUrl, input.threshold);
       return { boundaries };
+    }),
+
+  // 快剪「本机 AI 自动剪辑」：ffmpeg silencedetect 找静音段（零 LLM/转写成本，
+  // 不做白名单门控，对齐 detectScenes 策略）。前端据此掐头去尾设入/出点。
+  detectSilences: protectedProcedure
+    .input(z.object({
+      inputUrl: mediaUrlSchema,
+      noiseDb: z.number().min(-60).max(-10).default(-32),
+      minSilenceSec: z.number().min(0.2).max(5).default(0.5),
+      durationSec: z.number().min(0).max(24 * 3600).optional(),
+      projectId: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      guardUrl(input.inputUrl);
+      const silences = await detectSilences(input.inputUrl, {
+        noiseDb: input.noiseDb, minSilenceSec: input.minSilenceSec, durationSec: input.durationSec,
+      });
+      return { silences };
     }),
 
   smartCut: protectedProcedure
