@@ -205,7 +205,11 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
   }
 
   return (
-    <aside style={{ width, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.surface }}>
+    // 素材库与功能区改为两张独立卡片：素材卡占主空间（内部滚动），功能卡限高 +
+    // 自带滚动——矮窗口下功能区不再把素材网格挤到只剩一行。
+    <aside style={{ width, flexShrink: 0, borderRight: `1px solid ${EC.border}`, display: "flex", flexDirection: "column", minHeight: 0, background: EC.bg, padding: 8, gap: 8 }}>
+      {/* ── 卡片一：素材库（筛选头 + 网格，flex:1 占主空间，网格内部滚动） ── */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", borderRadius: 10, border: `1px solid ${EC.border}`, background: EC.surface, overflow: "hidden" }}>
       <div style={{ padding: 10, borderBottom: `1px solid ${EC.border}` }}>
         <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
           <div style={{ position: "relative", flex: 1 }}>
@@ -346,8 +350,10 @@ export function MediaBin({ width = 252 }: { width?: number } = {}) {
           );
         })}
       </div>
+      </div>
 
-      <div style={{ borderTop: `1px solid ${EC.border}`, padding: 8 }}>
+      {/* ── 卡片二：功能区（限高 45%，超出自行滚动，不挤压素材卡） ── */}
+      <div style={{ flexShrink: 0, maxHeight: "45%", overflowY: "auto", borderRadius: 10, border: `1px solid ${EC.border}`, background: EC.surface, padding: 8 }}>
         <button
           onClick={() => {
             const doc = useEditorStore.getState().doc; if (!doc) return;
