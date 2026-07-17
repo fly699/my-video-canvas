@@ -16,14 +16,26 @@ function ratioLabel(w: number, h: number): string {
   return `${Math.round(w / d)}:${Math.round(h / d)}`;
 }
 
+/** 滤镜强度：把预设的 CSS filter 函数串按 s(0..1) 向「无效果」插值——
+ *  sepia/grayscale/invert → ×s；contrast/saturate/brightness → 1+(v-1)·s；hue-rotate → 角度×s。 */
+function scaleCssPreset(fns: string, s: number): string {
+  return fns.replace(/([a-z-]+)\((-?[\d.]+)(deg)?\)/g, (_m, fn: string, val: string, deg?: string) => {
+    const v = parseFloat(val);
+    if (deg) return `${fn}(${(v * s).toFixed(1)}deg)`;
+    if (fn === "contrast" || fn === "saturate" || fn === "brightness") return `${fn}(${(1 + (v - 1) * s).toFixed(3)})`;
+    return `${fn}(${(v * s).toFixed(3)})`;
+  });
+}
+
 /** CSS approximation of the ffmpeg color effects (preview only; export is exact). */
 function cssFilter(c: Clip): string {
   const e = c.effects;
-  const parts: string[] = [];
+  const outer: string[] = [];
+  const parts: string[] = []; // 滤镜预设部分（受强度插值）
   if (e) {
-    if (e.brightness != null) parts.push(`brightness(${(1 + e.brightness).toFixed(3)})`);
-    if (e.contrast != null) parts.push(`contrast(${e.contrast})`);
-    if (e.saturation != null) parts.push(`saturate(${e.saturation})`);
+    if (e.brightness != null) outer.push(`brightness(${(1 + e.brightness).toFixed(3)})`);
+    if (e.contrast != null) outer.push(`contrast(${e.contrast})`);
+    if (e.saturation != null) outer.push(`saturate(${e.saturation})`);
     switch (e.filter) {
       // video-use 移植预设的 CSS 近似（导出以后端 ffmpeg colorChain 为准）
       case "warm_cinematic": parts.push("sepia(0.14) contrast(1.12) saturate(0.9) brightness(0.99)"); break;
@@ -44,9 +56,12 @@ function cssFilter(c: Clip): string {
       case "gold": parts.push("sepia(0.35) saturate(1.15) brightness(1.03)"); break;
     }
     // 锐化：CSS 无真正卷积锐化，用轻微对比度提升近似（导出由 ffmpeg unsharp 精确处理）。
-    if (e.sharpen != null && e.sharpen > 0) parts.push(`contrast(${(1 + e.sharpen * 0.28).toFixed(3)})`);
+    if (e.sharpen != null && e.sharpen > 0) outer.push(`contrast(${(1 + e.sharpen * 0.28).toFixed(3)})`);
   }
-  return parts.join(" ");
+  // 滤镜强度：仅对预设部分插值（与导出侧 split+blend 混合语义一致）；手动调色不受影响。
+  const s = e?.filter && e.filterStrength != null ? Math.min(1, Math.max(0, e.filterStrength)) : 1;
+  const presetCss = parts.join(" ");
+  return [...outer, s >= 0.999 ? presetCss : s <= 0.001 ? "" : scaleCssPreset(presetCss, s)].filter(Boolean).join(" ");
 }
 
 /** 形状蒙版的 CSS 近似（叠加层/画中画）：椭圆用 radial-gradient mask（支持羽化/反转），

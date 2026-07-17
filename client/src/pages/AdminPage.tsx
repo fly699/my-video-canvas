@@ -295,7 +295,7 @@ export default function AdminPage() {
           {activeTab === "perms" && <PermsPanel />}
           {activeTab === "llmLogs" && <LlmLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
-          {activeTab === "models" && <LevelGate need={3} tab="models"><><ModelsPanel /><ModelSkillsPanel /></></LevelGate>}
+          {activeTab === "models" && <LevelGate need={3} tab="models"><ModelsHubPanel /></LevelGate>}
           {activeTab === "chat" && <ChatAdminPanel />}
           {activeTab === "comfyServers" && <LevelGate need={3} tab="comfyServers" label="只读模式 · 修改全局 ComfyUI 服务器列表需「管理员」及以上权限"><ComfyServersPanel /></LevelGate>}
           {activeTab === "comfyStress" && <LevelGate need={3} tab="comfyStress" label="只读模式 · ComfyUI 压测需「管理员」及以上权限"><ComfyStressPanel /></LevelGate>}
@@ -1354,7 +1354,7 @@ function ModelSkillsPanel() {
     : o === "overridden" ? { label: "已覆盖", color: "oklch(0.72 0.16 60)" }
     : { label: "自定义", color: "oklch(0.72 0.2 285)" };
   return (
-    <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--c-t1)", margin: 0 }}>模型技能库</h3>
         <span style={{ fontSize: 11.5, color: "var(--c-t4)" }}>
@@ -1445,6 +1445,61 @@ function ModelSkillsPanel() {
   );
 }
 
+// ── 「模型」页二级卡片壳：内容太多，拆成 使能开关 / 默认模型 / 端点与自建 / 技能库 四个
+//    二级卡片按需渲染（记住上次停留的卡片）。
+const MODELS_SUBTABS = [
+  { key: "toggles", label: "使能开关", hint: "各节点模型下拉的显示/隐藏" },
+  { key: "defaults", label: "默认模型", hint: "按槽位指定全站默认模型" },
+  { key: "endpoints", label: "端点与自建", hint: "自建 LLM / 转写 / VoxCPM / 桥接 MCP" },
+  { key: "skills", label: "技能库", hint: "按模型维护提示词技法" },
+] as const;
+type ModelsSubTab = (typeof MODELS_SUBTABS)[number]["key"];
+
+function ModelsHubPanel() {
+  const [sub, setSub] = useState<ModelsSubTab>(() => {
+    const v = localStorage.getItem("admin:models-subtab:v1");
+    return MODELS_SUBTABS.some((t) => t.key === v) ? (v as ModelsSubTab) : "toggles";
+  });
+  const switchTo = (k: ModelsSubTab) => {
+    setSub(k);
+    try { localStorage.setItem("admin:models-subtab:v1", k); } catch { /* 隐私模式等存不了就算了 */ }
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+        {MODELS_SUBTABS.map((t) => {
+          const active = sub === t.key;
+          return (
+            <button key={t.key} onClick={() => switchTo(t.key)} style={{
+              textAlign: "left", padding: "10px 14px", borderRadius: 12, cursor: "pointer",
+              border: `1px solid ${active ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 55%, transparent)" : "var(--c-bd1)"}`,
+              background: active ? "color-mix(in oklab, var(--ui-accent, var(--c-accent)) 12%, var(--c-surface))" : "var(--c-surface)",
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: active ? "var(--c-t1)" : "var(--c-t2)" }}>{t.label}</div>
+              <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.hint}</div>
+            </button>
+          );
+        })}
+      </div>
+      {sub === "toggles" && <ModelsPanel />}
+      {sub === "defaults" && <SystemDefaultModelsSection />}
+      {sub === "endpoints" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* 自建 LLM 配置（粘贴 curl 登记 OpenAI 兼容端点） */}
+          <SelfHostedLlmSection />
+          {/* 语音/转写端点配置（whisper：自建/Forge/OpenAI，作用于语音输入兜底 + 字幕/智能剪辑转写） */}
+          <TranscribeEndpointSection />
+          {/* 本地 VoxCPM（Gradio TTS）全站默认地址：音频节点未填地址时的兜底（DB 优先 + env 兜底） */}
+          <VoxcpmEndpointSection />
+          {/* 桥接 MCP 配置（贴 mcpServers JSON → 保存即生效，让本机 Claude 桥接能调 ComfyUI 等 MCP） */}
+          <BridgeMcpSection />
+        </div>
+      )}
+      {sub === "skills" && <ModelSkillsPanel />}
+    </div>
+  );
+}
+
 function ModelsPanel() {
   const utils = trpc.useUtils();
   const query = trpc.admin.models.getDisabled.useQuery();
@@ -1529,21 +1584,6 @@ function ModelsPanel() {
         修改即时保存、对所有用户生效（约 30 秒内）。当前已启用 <strong style={{ color: "var(--c-t1)" }}>{enabledCount}</strong> / {allValues.length} 个模型。
         {query.isLoading && <span style={{ color: "var(--c-t3)" }}>（加载中…）</span>}
       </div>
-
-      {/* 系统默认模型（按槽位指定全站默认，作用于项目配置与出厂默认之间） */}
-      <SystemDefaultModelsSection />
-
-      {/* 自建 LLM 配置（粘贴 curl 登记 OpenAI 兼容端点） */}
-      <SelfHostedLlmSection />
-
-      {/* 语音/转写端点配置（whisper：自建/Forge/OpenAI，作用于语音输入兜底 + 字幕/智能剪辑转写） */}
-      <TranscribeEndpointSection />
-
-      {/* 本地 VoxCPM（Gradio TTS）全站默认地址：音频节点未填地址时的兜底（DB 优先 + env 兜底） */}
-      <VoxcpmEndpointSection />
-
-      {/* 桥接 MCP 配置（贴 mcpServers JSON → 保存即生效，让本机 Claude 桥接能调 ComfyUI 等 MCP） */}
-      <BridgeMcpSection />
 
       {categories.map((cat) => {
         // 该分类下按来源平台分组（Kie 排在 Poyo 之前），便于整组开关。

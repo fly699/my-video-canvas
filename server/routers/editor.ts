@@ -74,6 +74,7 @@ const clipSchema = z.object({
   effects: z.object({
     brightness: z.number().optional(), contrast: z.number().optional(),
     saturation: z.number().optional(), filter: z.string().max(64).optional(),
+    filterStrength: z.number().min(0).max(1).optional(),
     vignette: z.number().min(0).max(1).optional(), sharpen: z.number().min(0).max(1).optional(),
   }).optional(),
   transform: transformSchema.optional(),

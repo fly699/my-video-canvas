@@ -368,6 +368,10 @@ function EditorWorkspace({ id }: { id: number }) {
   }, [sessionQuery.data, id, load]);
 
   // Debounced autosave whenever the doc becomes dirty.
+  // 依赖必须用稳定的 mutate 引用而非 saveMut 整个对象：useMutation 每次渲染返回新对象，
+  // 放进 deps 会让本 effect 在 setSaveState("saving") 触发的渲染后立刻重跑，
+  // cleanup 恰好杀掉刚设的 800ms 防抖计时器 → 永不保存、「保存中」永转。
+  const saveMutate = saveMut.mutate;
   useEffect(() => {
     const unsub = useEditorStore.subscribe((state, prev) => {
       if (state.doc === prev.doc) return;
@@ -377,7 +381,7 @@ function EditorWorkspace({ id }: { id: number }) {
       (autosaveTimer as { t?: ReturnType<typeof setTimeout> }).t = setTimeout(() => {
         const cur = useEditorStore.getState();
         if (!cur.doc) return;
-        saveMut.mutate({ id, doc: cur.doc }, {
+        saveMutate({ id, doc: cur.doc }, {
           onSuccess: () => { useEditorStore.getState().markClean(); setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1500); },
           onError: (e) => { setSaveState("idle"); toast.error("保存失败：" + e.message); },
         });
@@ -390,7 +394,7 @@ function EditorWorkspace({ id }: { id: number }) {
     // effect below already persists the outgoing session's doc on cleanup, so
     // dropping the debounce here loses no edits.
     return () => { unsub(); clearTimeout((autosaveTimer as { t?: ReturnType<typeof setTimeout> }).t); };
-  }, [id, saveMut]);
+  }, [id, saveMutate]);
 
   // Flush a pending (debounced) save when leaving the editor — navigation or tab
   // close — so an edit made within the 800ms debounce isn't lost (mirrors Canvas).

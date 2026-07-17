@@ -11,6 +11,7 @@ import { SHAPE_ICONS, iconSvg } from "@shared/shapeIcons";
 import { LLMModelPicker, type LLMModelId } from "@/components/canvas/LLMModelPicker";
 import { LLM_MODELS } from "@/lib/models";
 import { useDisabledModels } from "@/lib/useDisabledModels";
+import { promptDialog, confirmDialog } from "@/components/ui/dialogService";
 
 // TTS models available for AI 配音 (mirror audioGen.generateDubbing).
 const TTS_MODELS: [string, string][] = [
@@ -66,6 +67,56 @@ const TEXT_PRESETS: { id: string; label: string; style: TextStyle }[] = [
   { id: "pop",      label: "卡通描边", style: { size: 64, color: "#FFFFFF", bold: true,  italic: false, strokeWidth: 11, strokeColor: "#FF2D55", shadow: false, bgColor: undefined, font: "SimHei" } },
   { id: "bar",      label: "字幕条",   style: { size: 38, color: "#FFFFFF", bold: false, italic: false, strokeWidth: 0,  shadow: false, bgColor: "#000000", font: "" } },
 ];
+
+// ── 调色自定义预设：当前「调色 / 滤镜」整组设置存本机（localStorage），chips 随时一键调用 ──
+type CustomGrade = { name: string; eff: NonNullable<Clip["effects"]> };
+const GRADES_KEY = "editor:custom-grades:v1";
+const loadGrades = (): CustomGrade[] => {
+  try {
+    const v = JSON.parse(localStorage.getItem(GRADES_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((g) => g && typeof g.name === "string" && g.eff) : [];
+  } catch { return []; }
+};
+
+function CustomGrades({ current, onApply }: { current: NonNullable<Clip["effects"]>; onApply: (eff: NonNullable<Clip["effects"]>) => void }) {
+  const [grades, setGrades] = useState<CustomGrade[]>(loadGrades);
+  const persist = (next: CustomGrade[]) => {
+    setGrades(next);
+    try { localStorage.setItem(GRADES_KEY, JSON.stringify(next)); } catch { /* 存储满/隐私模式忽略 */ }
+  };
+  const hasAny = Object.values(current).some((v) => v != null);
+  const saveCurrent = async () => {
+    if (!hasAny) { toast.info("当前没有任何调色/滤镜设置可保存"); return; }
+    const name = await promptDialog({ title: "存为自定义调色预设", message: "为当前「调色 / 滤镜」整组设置起个名字（重名将覆盖）", defaultValue: "", confirmLabel: "保存" });
+    if (name === null) return;
+    const n = name.trim() || `预设 ${grades.length + 1}`;
+    persist([...grades.filter((g) => g.name !== n), { name: n, eff: { ...current } }]);
+    toast.success(`已保存自定义预设「${n}」`);
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 10.5, color: EC.t4 }}>自定义预设</span>
+        <button onClick={() => void saveCurrent()} title="把当前 亮度/对比度/饱和度/滤镜/强度/暗角/锐化 整组存为预设"
+          style={{ marginLeft: "auto", padding: "3px 8px", fontSize: 10.5, fontWeight: 600, borderRadius: 6, border: `1px solid ${EC.border}`, background: "transparent", color: EC.accent, cursor: "pointer" }}>
+          ＋ 存为自定义
+        </button>
+      </div>
+      {grades.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {grades.map((g) => (
+            <span key={g.name} style={{ display: "inline-flex", alignItems: "center", gap: 4, borderRadius: 7, border: `1px solid ${EC.border}`, background: EC.accentSoft, overflow: "hidden" }}>
+              <button onClick={() => { onApply(g.eff); toast.success(`已应用「${g.name}」`); }} title="点击应用整组调色/滤镜设置"
+                style={{ padding: "4px 6px 4px 9px", fontSize: 11, border: "none", background: "transparent", color: EC.t1, cursor: "pointer" }}>{g.name}</button>
+              <button onClick={async () => { if (await confirmDialog({ title: `删除预设「${g.name}」？`, message: "仅删除本机保存的这条自定义预设。", danger: true })) { persist(grades.filter((x) => x.name !== g.name)); } }}
+                title="删除该预设" style={{ padding: "4px 7px 4px 3px", fontSize: 11, border: "none", background: "transparent", color: EC.t4, cursor: "pointer" }}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
@@ -537,8 +588,13 @@ export function PropertiesPanel({ width = 250 }: { width?: number } = {}) {
             <Slider label={`对比度 ${(eff.contrast ?? 1).toFixed(2)}`} min={0} max={2} step={0.02} value={eff.contrast ?? 1} onChange={(v) => setEff("contrast", v)} />
             <Slider label={`饱和度 ${(eff.saturation ?? 1).toFixed(2)}`} min={0} max={3} step={0.02} value={eff.saturation ?? 1} onChange={(v) => setEff("saturation", v)} />
             <Row label="滤镜"><Select value={eff.filter ?? ""} options={FILTERS} onChange={(v) => setEff("filter", v || undefined)} /></Row>
+            {!!eff.filter && (
+              <Slider label={`滤镜强度 ${Math.round((eff.filterStrength ?? 1) * 100)}%`} min={0} max={1} step={0.02} value={eff.filterStrength ?? 1}
+                onChange={(v) => setEff("filterStrength", v >= 0.999 ? undefined : v)} />
+            )}
             <Slider label={`暗角 ${Math.round((eff.vignette ?? 0) * 100)}%`} min={0} max={1} step={0.02} value={eff.vignette ?? 0} onChange={(v) => setEff("vignette", v || undefined)} />
             <Slider label={`锐化 ${Math.round((eff.sharpen ?? 0) * 100)}%`} min={0} max={1} step={0.02} value={eff.sharpen ?? 0} onChange={(v) => setEff("sharpen", v || undefined)} />
+            <CustomGrades current={eff} onApply={(g) => update(c.id, { effects: Object.keys(g).length ? { ...g } : undefined })} />
           </Section>
         )}
 
