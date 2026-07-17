@@ -1997,7 +1997,7 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                       style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
                   </div>
                 </>)}
-                {category === "dubbing" && (<>
+                {category === "dubbing" && !modelIsVoxCPM(payload.ttsModel) && (<>
                   <div>
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>音色</div>
                     <select value={payload.ttsVoice ?? voicesForModel(payload.ttsModel)[0]?.value ?? ""} className="nodrag"
@@ -2017,6 +2017,54 @@ export const AudioNode = memo(function AudioNode({ id, selected, data }: Props) 
                         style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))" }} />
                     </div>
                   )}
+                </>)}
+                {/* 本地 VoxCPM 专属常用参数（原来只剩一个空「音色」下拉——它无固定音色列表）：
+                    控制指令 / CFG / 扩散步数 / 降噪 / 规范化；服务地址、参考音频与指令快速模板在「高级」。 */}
+                {category === "dubbing" && modelIsVoxCPM(payload.ttsModel) && (<>
+                  <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.6 }}>
+                    音色由「参考音频」克隆（在「高级」里上传，或从上游音频节点连线）；留空则用模型自带/随机音色。
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)", marginBottom: 6 }}>音色/风格控制指令（可选）</div>
+                    <input value={payload.ttsControlInstruction ?? ""} className="nodrag"
+                      onChange={(e) => updateNodeData(id, { ttsControlInstruction: e.target.value })}
+                      placeholder="如：用四川话，语速快一点，低沉磁性（快速模板在「高级」）"
+                      style={{ width: "100%", fontSize: 11, padding: "5px 8px", borderRadius: 7, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none" }} />
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>CFG（越高越贴合指令）</span>
+                      <span style={{ fontSize: 11, color: "var(--c-t3)" }}>{(payload.ttsCfg ?? 2).toFixed(1)}</span>
+                    </div>
+                    <input type="range" min={0} max={5} step={0.1} value={payload.ttsCfg ?? 2} className="nodrag"
+                      onChange={(e) => updateNodeData(id, { ttsCfg: Number(e.target.value) })}
+                      style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))" }} />
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>扩散步数（越高越细致、越慢）</span>
+                      <span style={{ fontSize: 11, color: "var(--c-t3)" }}>{payload.ttsDitSteps ?? 10}</span>
+                    </div>
+                    <input type="range" min={4} max={50} step={1} value={payload.ttsDitSteps ?? 10} className="nodrag"
+                      onChange={(e) => updateNodeData(id, { ttsDitSteps: Number(e.target.value) })}
+                      style={{ width: "100%", accentColor: "var(--ui-accent, var(--c-accent))" }} />
+                  </div>
+                  {([
+                    { key: "ttsDenoise" as const, label: "参考音频降噪" },
+                    { key: "ttsDoNormalize" as const, label: "文本规范化" },
+                  ]).map(({ key, label }) => {
+                    const on = (payload[key] as boolean | undefined) ?? false;
+                    return (
+                      <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t3)" }}>{label}</span>
+                        <button className="nodrag" onClick={() => updateNodeData(id, { [key]: !on })}
+                          style={{ position: "relative", width: 32, height: 18, borderRadius: 9, background: on ? "color-mix(in oklab, var(--ui-accent) 70%, transparent)" : "var(--c-bd1)", border: "1px solid var(--c-bd3)", cursor: "pointer" }}>
+                          <span style={{ position: "absolute", top: 2, left: on ? 14 : 2, width: 12, height: 12, borderRadius: "50%", background: "var(--c-t1)", transition: "left 150ms ease" }} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div style={{ fontSize: 10, color: "var(--c-t4)" }}>Gradio 服务地址 / 参考音频上传 / 指令快速模板 → 点「高级」展开完整配置。</div>
                 </>)}
                 {category === "sfx" && (<>
                   <div>
