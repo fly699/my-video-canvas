@@ -11,6 +11,7 @@ import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateRefImage, propagateWorkflowPrompt } from "../../../lib/refImagePropagation";
 import type { ComfyuiWorkflowNodeData, WorkflowParamBinding, ReferenceImage } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { confirmRegenerate } from "@/lib/confirmRegenerate";
 import { safeHref } from "@/lib/safeUrl";
 import { detectUpstreamImageUrl, detectUpstreamPrompt, fillWorkflowPromptParams, fillWorkflowLoraParam, positivePromptParamKey, listUpstreamImageSources, resolveImageParamsWithMap, listUpstreamAudioSources, resolveAudioParamsWithMap, mentionedMediaSources, applyAspectToWorkflow, parseAspectRatioFromText, detectUpstreamAspectRatio, detectUpstreamDuration } from "@/lib/comfyWorkflowParams";
 import { effectiveCharacters, connectedCharacterLora, effectiveCharacterRefImages, stripCharacterMentions } from "@/lib/characterConditioning";
@@ -1990,7 +1991,7 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
               }}
               disabled={isProcessing || batchRunning}
-              onClick={handleRun}
+              onClick={() => { if (payload.outputUrls?.length) { void confirmRegenerate("执行产物").then((ok) => { if (ok) handleRun(); }); return; } handleRun(); }}
             >
               {isProcessing
                 ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />执行中…</>

@@ -15,6 +15,7 @@ import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { usePreferUpstreamRefSource, useAutoPreferUpstreamRefSource } from "../mediaReachability";
 import type { ComfyuiImageNodeData, ComfyuiLoraEntry } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { confirmRegenerate } from "@/lib/confirmRegenerate";
 import { useComfyMemoryEnabled } from "@/lib/comfyMemoryPref";
 import { pollComfyRun, isTransportCutError, type PendingComfyResult } from "@/lib/comfyRunRecovery";
 import { nanoid } from "nanoid";
@@ -1830,7 +1831,7 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
 
         {/* ── Generate button ── */}
         <button
-          onClick={handleGenerate}
+          onClick={() => { if (payload.imageUrl) { void confirmRegenerate("生成的图像").then((ok) => { if (ok) handleGenerate(); }); return; } handleGenerate(); }}
           disabled={genMutation.isPending || batchRunning || !payload.prompt?.trim() || !payload.ckpt?.trim()}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{

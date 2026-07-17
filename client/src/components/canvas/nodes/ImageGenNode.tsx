@@ -29,6 +29,7 @@ import { RefHeroPreview } from "../RefHeroPreview";
 import { useNodeDocks, useCharSceneItems } from "../../../hooks/useNodeDocks";
 import type { ImageGenNodeData, ImageGenModel, NodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
+import { confirmRegenerate } from "@/lib/confirmRegenerate";
 import { toast } from "sonner";
 import { Sparkles, Loader2, RefreshCw, Upload, X, Cpu, Check, Grid2X2, Download, ZoomIn, ChevronDown, ChevronRight, ChevronUp, Lock, Unlock, ImagePlus, AlertTriangle, Rotate3d, Boxes , ArrowUp, Palette, Plus, MapPin, Camera, ShieldCheck } from "lucide-react";
 import { buildQcRetryPrompt } from "../../../../../shared/imageQc";
@@ -455,6 +456,12 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // 却为 false，导致手动「运行」可对同一节点再发一次 → 双扣费/占卡。批量运行中禁用手动运行。
   const batchRunning = useWorkflowRunState().running;
 
+  /** 按钮入口专用：已有结果图时先二次确认再生成（助手/质检自动重试等程序化触发直接调 handleGenerate）。 */
+  const generateViaButton = () => {
+    if (payload.imageUrl) { void confirmRegenerate("生成的图像").then((ok) => { if (ok) handleGenerate(); }); return; }
+    handleGenerate();
+  };
+
   const handleGenerate = () => {
     if (isGenerating) return;
     if (batchRunning) { toast.error("批量运行进行中，请等待完成后再单独运行"); return; }
@@ -847,7 +854,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
                   })}
                 </div>
                 <button
-                  onClick={handleGenerate}
+                  onClick={generateViaButton}
                   disabled={isGenerating}
                   className="nodrag flex items-center gap-1 px-2 py-0.5 rounded text-xs"
                   style={{ background: "oklch(0.72 0.20 330 / 0.12)", borderWidth: 1, borderStyle: "solid", borderColor: BORDER_ACCENT, color: accent, fontSize: 10 }}
@@ -1542,7 +1549,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
 
         {/* Generate button */}
         <button
-          onClick={handleGenerate}
+          onClick={generateViaButton}
           disabled={isGenerating || batchRunning || !payload.prompt?.trim()}
           className="nodrag flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-semibold transition-all"
           style={{
@@ -1753,7 +1760,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
           <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
           <button
             className="nodrag"
-            onClick={(e) => { e.stopPropagation(); if (!isGenerating && payload.prompt?.trim()) handleGenerate(); }}
+            onClick={(e) => { e.stopPropagation(); if (!isGenerating && payload.prompt?.trim()) generateViaButton(); }}
             disabled={isGenerating || !payload.prompt?.trim()}
             title={isGenerating ? "生成中…" : "生成"}
             style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 30, borderRadius: 9, border: "none", cursor: isGenerating || !payload.prompt?.trim() ? "not-allowed" : "pointer", background: isGenerating || !payload.prompt?.trim() ? "var(--c-surface)" : "var(--ui-accent, var(--c-accent))", color: isGenerating || !payload.prompt?.trim() ? "var(--c-t4)" : "#0b0d12" }}
