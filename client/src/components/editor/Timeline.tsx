@@ -442,6 +442,74 @@ export function Timeline() {
     window.addEventListener("pointerup", onUp);
   }, [pxPerSec]);
 
+  // 批4 卡点套件①：自动踩点——解码选中音/视频片段音轨，能量峰值节拍检测 → 批量写入标记点。
+  // 本地 WebAudio 计算、免 AI 调用；强节奏 BGM 效果好，轻音乐检出偏少属预期。
+  const [beatDetecting, setBeatDetecting] = useState(false);
+  const autoBeat = useCallback(async () => {
+    const st = useEditorStore.getState();
+    const doc = st.doc, sel = st.selectedClipId;
+    if (!doc || !sel) return;
+    let clip: import("@shared/editorTypes").Clip | undefined;
+    for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === sel); if (c) { clip = c; break; } }
+    if (!clip || (clip.kind !== "audio" && clip.kind !== "video") || !clip.assetUrl) { toast.error("请先选中一个音频或视频片段"); return; }
+    setBeatDetecting(true);
+    try {
+      const abs = new URL(clip.assetUrl, location.origin).href;
+      const res = await fetch(abs);
+      const buf = await res.arrayBuffer();
+      if (buf.byteLength > 40 * 1024 * 1024) throw new Error("文件超过 40MB，暂不支持踩点分析");
+      const AC = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext });
+      const Ctor = AC.AudioContext ?? AC.webkitAudioContext;
+      if (!Ctor) throw new Error("浏览器不支持音频解码");
+      const ac = new Ctor();
+      try {
+        const audio = await ac.decodeAudioData(buf);
+        const { energyEnvelope, detectBeats } = await import("@/lib/beatDetect");
+        const hop = 0.02;
+        const beats = detectBeats(energyEnvelope(audio.getChannelData(0), audio.sampleRate, hop), hop);
+        // 源时间 → 时间轴时刻（按 trim 区间过滤 + 变速换算；倒放少见，跳过不支持）。
+        if (clip.reverse) { toast.error("倒放片段暂不支持自动踩点"); return; }
+        const speed = clip.speed || 1;
+        const times = beats
+          .filter((b) => b > clip!.trimIn + 0.05 && b < clip!.trimOut - 0.05)
+          .map((b) => clip!.start + (b - clip!.trimIn) / speed);
+        if (!times.length) { toast.info("未检测到明显节拍（轻音乐/人声检出偏少，可换强节奏 BGM）"); return; }
+        const ok = await confirmDialog({
+          title: `检测到 ${times.length} 个节拍点，写入标记？`,
+          message: "将在时间轴标尺上打点（与已有标记 ±0.1s 去重，总量上限 300）。配合「按标记分割」即可一键卡点剪辑；可撤销。",
+        });
+        if (!ok) return;
+        useEditorStore.getState().addMarkers(times);
+        toast.success(`已写入节拍标记（可按 K 增删，右键旗子删除）`);
+      } finally { try { await ac.close(); } catch { /* ignore */ } }
+    } catch (e) {
+      toast.error("自动踩点失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBeatDetecting(false);
+    }
+  }, []);
+
+  // 批4 卡点套件②：按标记分割——选中片段在其范围内的所有标记处逐点分割（每刀独立撤销步）。
+  const splitAtMarkers = useCallback(() => {
+    const st = useEditorStore.getState();
+    const doc = st.doc, sel = st.selectedClipId;
+    if (!doc || !sel) return;
+    let clip: import("@shared/editorTypes").Clip | undefined, trackId = "";
+    for (const t of doc.tracks) { const c = t.clips.find((x) => x.id === sel); if (c) { clip = c; trackId = t.id; break; } }
+    if (!clip) return;
+    const end = clip.start + clipDuration(clip);
+    const times = (doc.markers ?? []).map((m) => m.t).filter((t) => t > clip!.start + 0.05 && t < end - 0.05).sort((a, b) => a - b);
+    if (!times.length) { toast.info("选中片段范围内没有标记点（先用 K 打点或「自动踩点」）"); return; }
+    let splits = 0;
+    for (const t of times) {
+      const cur = useEditorStore.getState().doc;
+      const track = cur?.tracks.find((tr) => tr.id === trackId);
+      const target = track?.clips.find((c) => c.assetUrl === clip!.assetUrl && c.kind === clip!.kind && t > c.start + 0.05 && t < c.start + clipDuration(c) - 0.05);
+      if (target) { useEditorStore.getState().splitClip(target.id, t); splits++; }
+    }
+    toast.success(splits ? `已按标记分割：${splits} 刀（可撤销）` : "标记都在片段边缘，未分割");
+  }, []);
+
   const onDrop = useCallback(async (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
     setDropLane(null);
@@ -509,6 +577,14 @@ export function Timeline() {
           onClick={() => { const i = SCENE_LEVELS.findIndex((l) => l.key === sceneLv.key); setSceneLevel(SCENE_LEVELS[(i + 1) % SCENE_LEVELS.length].key); }}
           title={`场景检测灵敏度：${sceneLv.label}（阈值 ${sceneLv.threshold}）。点击循环切换 敏感→标准→宽松；越敏感切点越多。`}
           style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: EC.t3 }}><span style={{ fontSize: 11 }}>{sceneLv.label}</span></button>
+        <button disabled={!selectedClipId || beatDetecting}
+          onClick={() => { void autoBeat(); }}
+          title="自动踩点：本地分析选中音/视频片段的节拍（免 AI 调用），批量写入标记点；配合「按标记分割」一键卡点剪辑"
+          style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selectedClipId && !beatDetecting ? EC.t2 : EC.t4, opacity: selectedClipId ? 1 : 0.5, cursor: selectedClipId && !beatDetecting ? "pointer" : "not-allowed" }}><Magnet size={13} /><span style={{ fontSize: 11 }}>{beatDetecting ? "分析中…" : "自动踩点"}</span></button>
+        <button disabled={!selectedClipId}
+          onClick={splitAtMarkers}
+          title="按标记分割：在选中片段范围内的所有标记点处逐点分割（每刀可撤销）"
+          style={{ ...zoomBtn, width: "auto", padding: "0 8px", gap: 4, display: "inline-flex", alignItems: "center", color: selectedClipId ? EC.t2 : EC.t4, opacity: selectedClipId ? 1 : 0.5, cursor: selectedClipId ? "pointer" : "not-allowed" }}><SplitSquareHorizontal size={13} /><span style={{ fontSize: 11 }}>按标记分割</span></button>
         {/* 导出区段：在播放头设入/出点，仅导出选定范围 */}
         <button onClick={() => useEditorStore.getState().setInPoint(playhead)} title="设入点（导出区段起点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: inPoint != null ? EC.accent : EC.t3, borderColor: inPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>入点</span></button>
         <button onClick={() => useEditorStore.getState().setOutPoint(playhead)} title="设出点（导出区段终点）" style={{ ...zoomBtn, width: "auto", padding: "0 7px", color: outPoint != null ? EC.accent : EC.t3, borderColor: outPoint != null ? EC.accent : EC.border }}><span style={{ fontSize: 11 }}>出点</span></button>

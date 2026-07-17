@@ -83,8 +83,13 @@ function useVideoThumb(url: string | undefined, trimIn: number): string | null {
   return thumb;
 }
 
-/** Decode an audio clip and compute normalized peak samples for a waveform. */
-function useAudioPeaks(url: string | undefined): number[] | null {
+// 波形提取全局串行队列：多个片段同时整文件 fetch + decode 会抢素材库/页面带宽，
+// 且并发大解码引发内存峰值——一次只跑一个，其余排队（inFlight 去重仍然生效）。
+let peaksChain: Promise<void> = Promise.resolve();
+
+/** Decode an audio clip and compute normalized peak samples for a waveform.
+ *  maxBytes：文件大小上限（视频比音频更大，调用方给更紧的上限防内存峰值）。 */
+function useAudioPeaks(url: string | undefined, maxBytes = 40 * 1024 * 1024): number[] | null {
   const [peaks, setPeaks] = useState<number[] | null>(() => (url ? audioPeaksCache.get(url) ?? null : null));
   useEffect(() => {
     if (!url) { setPeaks(null); return; }
@@ -99,12 +104,19 @@ function useAudioPeaks(url: string | undefined): number[] | null {
     }
     inFlight.add(key);
     let cancelled = false;
-    void (async () => {
+    const task = async () => {
       let ac: AudioContext | null = null;
       try {
+        // 让出首屏：等页面空闲再开始整文件下载/解码（波形是增强信息，不该跟素材库抢加载）。
+        await new Promise<void>((r) => {
+          const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void };
+          if (w.requestIdleCallback) w.requestIdleCallback(() => r(), { timeout: 3000 });
+          else setTimeout(r, 800);
+        });
+        if (cancelled && !waiters.has(key)) return;
         const res = await fetch(url);
         const buf = await res.arrayBuffer();
-        if (buf.byteLength > 40 * 1024 * 1024) throw new Error("audio too large to waveform");
+        if (buf.byteLength > maxBytes) throw new Error("audio too large to waveform");
         ac = getAudioContext();
         if (!ac) throw new Error("no AudioContext");
         const audio = await ac.decodeAudioData(buf);
@@ -119,6 +131,9 @@ function useAudioPeaks(url: string | undefined): number[] | null {
           for (let j = 0; j < block; j++) { const a = Math.abs(ch[base + j] || 0); if (a > peak) peak = a; }
           out.push(peak);
           if (peak > max) max = peak;
+          // 长素材整条 PCM 上亿样本，单次同步遍历会把主线程卡到「页面无响应」——
+          // 每 12 块让出一次事件循环（约几 ms 一段），UI 保持可交互。
+          if (i % 12 === 11) await new Promise((r) => setTimeout(r, 0));
         }
         const norm = out.map((p) => p / max); // 0..1
         audioPeaksCache.set(url, norm);
@@ -130,9 +145,10 @@ function useAudioPeaks(url: string | undefined): number[] | null {
         notifyWaiters(key); // wake other clips of this asset (cache is set on success above)
         try { await ac?.close(); } catch { /* ignore */ }
       }
-    })();
+    };
+    peaksChain = peaksChain.then(task, task); // 串行化（前一个失败也继续）
     return () => { cancelled = true; };
-  }, [url]);
+  }, [url, maxBytes]);
   return peaks;
 }
 
@@ -147,7 +163,8 @@ export function ClipThumb({ kind, assetUrl, trimIn, color }: {
   const videoThumb = useVideoThumb(kind === "video" ? assetUrl : undefined, trimIn);
   // 批3：视频片段也解码音轨画波形（decodeAudioData 对 mp4/webm 取首条音轨；纯画面/超大
   // 文件/解码失败均静默回退无波形）。与音频片段共用同一 peaks 缓存与去重。
-  const peaks = useAudioPeaks(kind === "audio" || kind === "video" ? assetUrl : undefined);
+  // 视频上限收紧到 25MB：整文件解码的内存峰值远大于音频，大视频跳过波形（修「素材库慢/无响应」）。
+  const peaks = useAudioPeaks(kind === "audio" || kind === "video" ? assetUrl : undefined, kind === "video" ? 25 * 1024 * 1024 : undefined);
 
   if (kind === "image" && assetUrl) {
     return <div style={{ position: "absolute", inset: 0, opacity: 0.45, backgroundImage: `url(${assetUrl})`, backgroundSize: "cover", backgroundPosition: "center", pointerEvents: "none" }} />;
