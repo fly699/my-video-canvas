@@ -453,8 +453,9 @@ function xfadeName(t: string): string {
   return "fade";                          // unknown → safe default
 }
 
-/** Color/filter chain for a visual clip (ffmpeg eq + preset). Empty when none. */
-function colorChain(e?: ClipEffects): string[] {
+/** Color/filter chain for a visual clip (ffmpeg eq + preset). Empty when none.
+ *  `lbl` 为滤镜强度混合分支的标签前缀（同一 filter graph 内必须唯一，调用方传片段索引）。 */
+function colorChain(e?: ClipEffects, lbl = "cg"): string[] {
   if (!e) return [];
   const out: string[] = [];
   const parts: string[] = [];
@@ -462,29 +463,37 @@ function colorChain(e?: ClipEffects): string[] {
   if (e.contrast != null) parts.push(`contrast=${e.contrast}`);
   if (e.saturation != null) parts.push(`saturation=${e.saturation}`);
   if (parts.length) out.push(`eq=${parts.join(":")}`);
+  const preset: string[] = [];
   switch (e.filter) {
-    case "vintage": out.push("curves=preset=vintage"); break;
-    case "warm": out.push("colorbalance=rm=0.12:gm=0.04:bm=-0.12"); break;
-    case "cool": out.push("colorbalance=rm=-0.12:gm=-0.02:bm=0.12"); break;
-    case "bw": case "mono": out.push("hue=s=0"); break;
-    case "cinematic": out.push("curves=preset=increase_contrast"); break;
-    case "teal_orange": out.push("colorbalance=rs=-0.08:bs=0.08:rh=0.10:bh=-0.08", "eq=contrast=1.06"); break;
-    case "sepia": out.push("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"); break;
-    case "noir": out.push("hue=s=0", "eq=contrast=1.25:brightness=-0.02"); break;
-    case "faded": out.push("curves=preset=lighter", "eq=saturation=0.72"); break;
-    case "vivid": out.push("eq=saturation=1.40:contrast=1.08"); break;
-    case "cyberpunk": out.push("colorbalance=rs=0.05:bs=0.12:rh=0.05:bh=0.10", "eq=saturation=1.30:contrast=1.05"); break;
-    case "moody": out.push("colorbalance=rs=-0.06:bs=0.06", "eq=contrast=1.10:brightness=-0.05:saturation=0.90"); break;
-    case "gold": out.push("colorbalance=rm=0.12:gm=0.06:bm=-0.10", "eq=saturation=1.10"); break;
+    case "vintage": preset.push("curves=preset=vintage"); break;
+    case "warm": preset.push("colorbalance=rm=0.12:gm=0.04:bm=-0.12"); break;
+    case "cool": preset.push("colorbalance=rm=-0.12:gm=-0.02:bm=0.12"); break;
+    case "bw": case "mono": preset.push("hue=s=0"); break;
+    case "cinematic": preset.push("curves=preset=increase_contrast"); break;
+    case "teal_orange": preset.push("colorbalance=rs=-0.08:bs=0.08:rh=0.10:bh=-0.08", "eq=contrast=1.06"); break;
+    case "sepia": preset.push("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"); break;
+    case "noir": preset.push("hue=s=0", "eq=contrast=1.25:brightness=-0.02"); break;
+    case "faded": preset.push("curves=preset=lighter", "eq=saturation=0.72"); break;
+    case "vivid": preset.push("eq=saturation=1.40:contrast=1.08"); break;
+    case "cyberpunk": preset.push("colorbalance=rs=0.05:bs=0.12:rh=0.05:bh=0.10", "eq=saturation=1.30:contrast=1.05"); break;
+    case "moody": preset.push("colorbalance=rs=-0.06:bs=0.06", "eq=contrast=1.10:brightness=-0.05:saturation=0.90"); break;
+    case "gold": preset.push("colorbalance=rm=0.12:gm=0.06:bm=-0.10", "eq=saturation=1.10"); break;
     // ── video-use 移植（MIT，见 THIRD_PARTY_NOTICES.md）：三档「成片级」调色预设 ──
     // 数值与 browser-use/video-use helpers/grade.py 的 PRESETS 逐字一致（per-clip 生效）。
-    case "subtle": out.push("eq=contrast=1.03:saturation=0.98"); break;
-    case "neutral_punch": out.push("eq=contrast=1.06:saturation=1.0", "curves=master='0/0 0.25/0.23 0.75/0.77 1/1'"); break;
-    case "warm_cinematic": out.push(
+    case "subtle": preset.push("eq=contrast=1.03:saturation=0.98"); break;
+    case "neutral_punch": preset.push("eq=contrast=1.06:saturation=1.0", "curves=master='0/0 0.25/0.23 0.75/0.77 1/1'"); break;
+    case "warm_cinematic": preset.push(
       "eq=contrast=1.12:brightness=-0.02:saturation=0.88",
       "colorbalance=rs=0.02:gs=0.0:bs=-0.03:rm=0.04:gm=0.01:bm=-0.02:rh=0.08:gh=0.02:bh=-0.05",
       "curves=master='0/0 0.25/0.22 0.75/0.78 1/1'",
     ); break;
+  }
+  if (preset.length) {
+    // 滤镜强度：s=1（缺省）走原链零回归；0<s<1 把预设结果与原画 split+blend 线性混合
+    // （blend 首输入为 top；all_opacity=s → s·滤镜 + (1-s)·原画，真机 ffmpeg 实测验证）；s=0 完全跳过。
+    const s = e.filterStrength == null ? 1 : Math.min(1, Math.max(0, e.filterStrength));
+    if (s >= 0.999) out.push(...preset);
+    else if (s > 0.001) out.push(`split[${lbl}o][${lbl}t];[${lbl}t]${preset.join(",")}[${lbl}f];[${lbl}f][${lbl}o]blend=all_mode=normal:all_opacity=${s.toFixed(3)}`);
   }
   // 画质质感：暗角 / 锐化（独立于上面的调色预设，叠加其后）。0/缺省时完全跳过 → 零回归。
   if (e.vignette != null && e.vignette > 0) {
@@ -575,7 +584,7 @@ export function buildFilterGraph(
     const opChain = opKfExpr != null
       ? [`format=rgb24`, `geq=r='r(X,Y)*clip(${opKfExpr.replace(/\bt\b/g, "T")},0,1)':g='g(X,Y)*clip(${opKfExpr.replace(/\bt\b/g, "T")},0,1)':b='b(X,Y)*clip(${opKfExpr.replace(/\bt\b/g, "T")},0,1)'`]
       : op < 0.999 ? [`colorchannelmixer=rr=${op.toFixed(3)}:gg=${op.toFixed(3)}:bb=${op.toFixed(3)}`] : [];
-    const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects), ...opChain, "format=yuv420p", ...videoFadeFilters(s.fadeIn, s.fadeOut, dur), `settb=1/${fps}`];
+    const post: string[] = ["setsar=1", `fps=${fps}`, ...colorChain(s.effects, `fs${i}`), ...opChain, "format=yuv420p", ...videoFadeFilters(s.fadeIn, s.fadeOut, dur), `settb=1/${fps}`];
 
     if (s.fit === "blur") {
       // 模糊填充：同一画面放大铺满 + 高斯/盒式模糊作背景，原画完整居中叠加，消除黑边。
