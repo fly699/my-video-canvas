@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "wouter";
 import { X, Check, Keyboard, Loader2, Play, Pause, Repeat, Magnet, Gauge, Volume2, VolumeX, Camera, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { mediaFetchUrl } from "@/lib/download";
+import { confirmDialog } from "@/components/ui/dialogService";
 
 /**
  * 视频节点「快速剪辑」条（对齐 LibTV 图五）：屏幕底部固定条——
@@ -97,6 +99,37 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
 
   // 本机 AI 自动剪辑：ffmpeg silencedetect（零 LLM 成本）找静音段 → 掐头去尾设入/出点。
   const silenceMutation = trpc.clip.detectSilences.useMutation();
+  const utils = trpc.useUtils();
+  const [, navigate] = useLocation();
+  const [multiCutBusy, setMultiCutBusy] = useState(false);
+  // 中段静音单选区跳不过 → 征询后一键生成剪辑器「多段剪除」时间轴并跳转
+  //（服务端 editor.silenceCut 复用剪辑器同一条静音剪除管线；原视频与节点不动，剪辑器里可微调后导出）。
+  const openMultiCutInEditor = useCallback(async (interior: number) => {
+    const d = stRef.current.duration;
+    if (!d || multiCutBusy) return;
+    const ok = await confirmDialog({
+      title: `发现 ${interior} 处中段静音`,
+      message: "快剪只有单个选区，跳不过中段静音。是否自动生成「多段剪除」时间轴并打开视频剪辑器？原视频与节点保持不变，剪辑器里可继续微调后导出。",
+    });
+    if (!ok) return;
+    setMultiCutBusy(true);
+    toast.info("正在生成多段剪除时间轴…");
+    try {
+      const v = videoRef.current;
+      const w = v?.videoWidth || 1280, h = v?.videoHeight || 720;
+      const r = await utils.client.editor.silenceCut.mutate({ assetUrl: videoUrl, durationSec: d, width: w, height: h, fps: 30 });
+      if (!r.doc) { toast.info(r.message || "未生成剪辑"); return; }
+      const clips = r.doc.tracks.find((t) => t.type === "video")?.clips.length ?? 0;
+      const { id } = await utils.client.editor.create.mutate({ name: `静音剪除 · ${clips}段`, projectId, width: w, height: h, fps: 30 });
+      await utils.client.editor.save.mutate({ id, doc: r.doc });
+      toast.success(`已生成 ${clips} 段剪除结果，正在打开剪辑器…`);
+      navigate(`/editor/${id}`);
+    } catch (e) {
+      toast.error("生成失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setMultiCutBusy(false);
+    }
+  }, [multiCutBusy, utils, videoUrl, projectId, navigate]);
   const autoTrim = useCallback(async () => {
     const { duration: d } = stRef.current;
     if (silenceMutation.isPending || !d) return;
@@ -111,14 +144,19 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
       let ne = trail ? Math.max(trail.start, ns + 0.2) : d;
       if (ne - ns < 0.2) { ns = 0; ne = d; }
       const interior = silences.filter((s) => s !== lead && s !== trail).length;
-      if (!lead && !trail) { toast.info(`首尾无静音；中段有 ${interior} 处静音（单选区无法跳剪，可到「视频剪辑器」做多段剪除）`); return; }
+      if (!lead && !trail) { await openMultiCutInEditor(interior); return; }
       setStart(ns); setEnd(ne);
       seekBoth(ns);
-      toast.success(`已自动掐头去尾：入 ${ns.toFixed(2)}s · 出 ${ne.toFixed(2)}s${interior ? `（另有 ${interior} 处中段静音，多段剪除请用剪辑器）` : ""}`);
+      if (interior) {
+        toast.success(`已自动掐头去尾：入 ${ns.toFixed(2)}s · 出 ${ne.toFixed(2)}s`);
+        await openMultiCutInEditor(interior); // 中段还有静音 → 顺带征询是否去剪辑器多段剪除
+      } else {
+        toast.success(`已自动掐头去尾：入 ${ns.toFixed(2)}s · 出 ${ne.toFixed(2)}s`);
+      }
     } catch (e) {
       toast.error("静音分析失败：" + (e instanceof Error ? e.message : String(e)));
     }
-  }, [silenceMutation, videoUrl, projectId]);
+  }, [silenceMutation, videoUrl, projectId, openMultiCutInEditor]);
 
   // 时间轴缩略帧（本地抽帧，不发请求）：临时 <video> 逐点 seek + canvas 截帧，完成即释放。
   const [strip, setStrip] = useState<string[]>([]);
@@ -353,11 +391,11 @@ export function QuickTrimBar({ videoUrl, projectId, nodeId, onClose, onDone }: {
           </div>
         </div>
       </div>
-      {/* 本机 AI 自动剪辑：ffmpeg 静音分析（零 AI 调用）→ 自动掐头去尾 */}
-      <button onClick={() => void autoTrim()} disabled={silenceMutation.isPending}
-        title="本机 AI 自动剪辑：分析静音自动掐头去尾（本地 ffmpeg，免 AI 调用）"
-        style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: silenceMutation.isPending ? "var(--c-t4)" : "var(--c-t3)", cursor: silenceMutation.isPending ? "wait" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        {silenceMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+      {/* 本机 AI 自动剪辑：ffmpeg 静音分析（零 AI 调用）→ 掐头去尾；中段静音则可一键去剪辑器多段剪除 */}
+      <button onClick={() => void autoTrim()} disabled={silenceMutation.isPending || multiCutBusy}
+        title="本机 AI 自动剪辑：分析静音自动掐头去尾；检出中段静音时可一键生成剪辑器多段剪除（本地 ffmpeg，免 AI 调用）"
+        style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: silenceMutation.isPending || multiCutBusy ? "var(--c-t4)" : "var(--c-t3)", cursor: silenceMutation.isPending || multiCutBusy ? "wait" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {silenceMutation.isPending || multiCutBusy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
       </button>
       {/* #127 变速：循环 0.5→0.75→1→1.25→1.5→2×，确认时随剪辑一并应用 */}
       <button onClick={() => setSpeed((v) => SPEEDS[(SPEEDS.indexOf(v as typeof SPEEDS[number]) + 1) % SPEEDS.length])}
