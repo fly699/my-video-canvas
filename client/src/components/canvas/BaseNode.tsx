@@ -1065,7 +1065,7 @@ export const BaseNode = memo(function BaseNode({
                 }}
                 title="下载结果"
                 className="studio-toolbtn flex items-center justify-center w-7 h-7 rounded-lg"
-                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer" }}
+                style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer" }}
               >
                 <Download size={13} />
               </button>
@@ -1082,7 +1082,7 @@ export const BaseNode = memo(function BaseNode({
                 }}
                 title="快剪（时间轴选区截取 · I/O 出入点 · Enter 确认；与「剪辑」节点区分）"
                 className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
               >
                 <Scissors size={12} /> 快剪
               </button>
@@ -1093,7 +1093,7 @@ export const BaseNode = memo(function BaseNode({
                 onClick={(e) => { e.stopPropagation(); openSelfCompare(resultVideoUrl || resultImageUrl!); }}
                 title="对比：全屏滑块对比本节点当前结果与上一版本/其它批量结果（视频同步播放），不建节点"
                 className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
               >
                 <Columns2 size={12} /> 对比
               </button>
@@ -1108,7 +1108,7 @@ export const BaseNode = memo(function BaseNode({
                     onClick={(e) => { e.stopPropagation(); spawnImageEdit(op, label); }}
                     title={`${label}（生成连好源图的图像编辑节点）`}
                     className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                    style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                    style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                   >
                     <Icon size={12} /> {label}
                   </button>
@@ -1122,7 +1122,7 @@ export const BaseNode = memo(function BaseNode({
                       onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().requestPanel(id, "pseudo3d"); }}
                       title="3D 换视角（深度位移伪 3D，拖拽换视角后截图重绘）"
                       className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                      style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                      style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                     >
                       <Rotate3d size={12} /> 3D
                     </button>
@@ -1130,7 +1130,7 @@ export const BaseNode = memo(function BaseNode({
                       onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().requestPanel(id, "true3d"); }}
                       title="真 3D 建模（Tripo3D 图生网格，完整 360° 环绕后从新视角重绘）"
                       className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                      style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                      style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                     >
                       <Boxes size={12} /> 真3D
                     </button>
@@ -1142,7 +1142,7 @@ export const BaseNode = memo(function BaseNode({
                   onClick={(e) => { e.stopPropagation(); setAngleEditorOpen(true); }}
                   title="多角度（球面机位控件 + 预设视角 + 景别，换机位重拍本图，结果入版本历史）"
                   className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                  style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                  style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                 >
                   <Rotate3d size={12} /> 多角度
                 </button>
@@ -1151,7 +1151,7 @@ export const BaseNode = memo(function BaseNode({
                   onClick={(e) => { e.stopPropagation(); setRelightEditorOpen(true); }}
                   title="打光效果（光源球面控件 + 全局亮度/颜色 + 轮廓光 + 智能模式 + 8 款预设，结果入版本历史）"
                   className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                  style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                  style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                 >
                   <Sun size={12} /> 打光
                 </button>
@@ -1162,7 +1162,7 @@ export const BaseNode = memo(function BaseNode({
                     disabled={gridBusy}
                     title="工具箱（连贯分镜 / 剧情推演 / 画面推演±5s / 三视图 / 表情表——以本图为参考一键生成）"
                     className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                    style={{ background: toolkitOpen ? "var(--c-elevated)" : "var(--c-surface)", color: gridBusy ? "var(--c-t4)" : "var(--c-t2)", border: "none", cursor: gridBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                    style={{ background: toolkitOpen ? "var(--c-elevated)" : "var(--c-surface)", color: gridBusy ? "var(--c-t4)" : "var(--c-t1)", border: "none", cursor: gridBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
                   >
                     <Wand2 size={12} /> 工具箱 <ChevronDown size={10} />
                   </button>
@@ -1179,7 +1179,7 @@ export const BaseNode = memo(function BaseNode({
                       ] as const).map((it) => (
                         <button key={it.label} onClick={(e) => { e.stopPropagation(); void it.run(); }}
                           className="studio-toolbtn rounded-md"
-                          style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1, padding: "5px 9px", background: "var(--c-surface)", color: "var(--c-t2)", border: "1px solid var(--c-bd1)", cursor: "pointer", textAlign: "left" }}>
+                          style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1, padding: "5px 9px", background: "var(--c-surface)", color: "var(--c-t1)", border: "1px solid var(--c-bd1)", cursor: "pointer", textAlign: "left" }}>
                           <span style={{ fontSize: 11, fontWeight: 700 }}>{it.label}</span>
                           <span style={{ fontSize: 9.5, color: "var(--c-t4)" }}>{it.desc}</span>
                         </button>
@@ -1201,7 +1201,7 @@ export const BaseNode = memo(function BaseNode({
                     disabled={gridBusy}
                     title="宫格切分（把宫格图切成多张子图，产物落入新节点）"
                     className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                    style={{ background: gridMenuOpen ? "var(--c-elevated)" : "var(--c-surface)", color: gridBusy ? "var(--c-t4)" : "var(--c-t2)", border: "none", cursor: gridBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                    style={{ background: gridMenuOpen ? "var(--c-elevated)" : "var(--c-surface)", color: gridBusy ? "var(--c-t4)" : "var(--c-t1)", border: "none", cursor: gridBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
                   >
                     <Grid3X3 size={12} /> 宫格切分 <ChevronDown size={10} />
                   </button>
@@ -1212,7 +1212,7 @@ export const BaseNode = memo(function BaseNode({
                         {([[2, 2], [3, 3], [4, 4], [1, 2], [2, 1], [1, 3], [3, 1], [2, 3], [3, 2], [2, 4], [4, 2], [5, 5]] as const).map(([r, c]) => (
                           <button key={`${r}x${c}`} onClick={(e) => { e.stopPropagation(); void handleGridSlice(r, c); }}
                             className="studio-toolbtn rounded-md"
-                            style={{ padding: "4px 8px", fontSize: 11, whiteSpace: "nowrap", background: "var(--c-surface)", color: "var(--c-t2)", border: "1px solid var(--c-bd1)", cursor: "pointer", textAlign: "center" }}>
+                            style={{ padding: "4px 8px", fontSize: 11, whiteSpace: "nowrap", background: "var(--c-surface)", color: "var(--c-t1)", border: "1px solid var(--c-bd1)", cursor: "pointer", textAlign: "center" }}>
                             {r}×{c}
                           </button>
                         ))}
@@ -1255,7 +1255,7 @@ export const BaseNode = memo(function BaseNode({
                   onClick={(e) => { e.stopPropagation(); spawnVideoFromImage(); }}
                   title="图生视频（用本图作首帧，生成连好源图的视频任务节点）"
                   className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                  style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                  style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                 >
                   <Video size={12} /> 生成视频
                 </button>
@@ -1276,7 +1276,7 @@ export const BaseNode = memo(function BaseNode({
                       onClick={(e) => { e.stopPropagation(); spawnDownstream(type, label); }}
                       title={`${label}（生成连好源视频的下游节点）`}
                       className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                      style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                      style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                     >
                       <Icon size={12} /> {label}
                     </button>
@@ -1287,7 +1287,7 @@ export const BaseNode = memo(function BaseNode({
                     disabled={audioSepBusy}
                     title="音频分离（提取整条音轨为 mp3，落入新音频节点）"
                     className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                    style={{ background: "var(--c-surface)", color: audioSepBusy ? "var(--c-t4)" : "var(--c-t2)", border: "none", cursor: audioSepBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                    style={{ background: "var(--c-surface)", color: audioSepBusy ? "var(--c-t4)" : "var(--c-t1)", border: "none", cursor: audioSepBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
                   >
                     {audioSepBusy ? <Loader2 size={12} className="animate-spin" /> : <Music2 size={12} />} 音频分离
                   </button>
@@ -1297,7 +1297,7 @@ export const BaseNode = memo(function BaseNode({
                       onClick={(e) => { e.stopPropagation(); spawnVideoUpscale(); }}
                       title="高清放大（Topaz 视频超分，生成连好源视频的任务节点）"
                       className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
-                      style={{ background: "var(--c-surface)", color: "var(--c-t2)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                      style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                     >
                       <Sparkles size={12} /> 高清放大
                     </button>
@@ -1326,7 +1326,7 @@ export const BaseNode = memo(function BaseNode({
               }}
               title="下载结果"
               style={{ width: 30, height: 30, borderRadius: "50%", border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-                background: "var(--c-surface)", color: "var(--c-t2)", cursor: "pointer", boxShadow: "0 3px 12px oklch(0 0 0 / 0.4)" }}
+                background: "var(--c-surface)", color: "var(--c-t1)", cursor: "pointer", boxShadow: "0 3px 12px oklch(0 0 0 / 0.4)" }}
             ><Download size={14} /></button>
           )}
           {nodeRunning && onCancelGenerate ? (
