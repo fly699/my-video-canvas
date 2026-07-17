@@ -156,7 +156,8 @@ export function EditorShortcutsPanel() {
     <div
       style={{
         position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 50, width: 720, maxWidth: "calc(100vw - 32px)",
-        maxHeight: "min(76vh, 780px)", overflowY: "auto",
+        // 键盘图始终悬浮在顶部：外层不滚动（flex 列），只让下方清单区滚动。
+        maxHeight: "min(76vh, 780px)", display: "flex", flexDirection: "column",
         borderRadius: 16, padding: 16,
         background: "color-mix(in oklch, var(--c-base) 97%, transparent)",
         backdropFilter: "blur(24px)", border: `1px solid ${EC.border}`,
@@ -168,8 +169,8 @@ export function EditorShortcutsPanel() {
         <span style={{ fontSize: 10, color: EC.t4 }}>· 鼠标移到功能上，下方键盘图对应键位会高亮 · <span style={{ color: ACCENT }}>●</span> = 剪映同款键位</span>
       </div>
 
-      {/* 键盘全键图（主键区 + 编辑/导航键区） */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 14, padding: 10, borderRadius: 12, background: "oklch(0 0 0 / 0.18)", border: `1px solid ${EC.border}` }}>
+      {/* 键盘全键图（主键区 + 编辑/导航键区）——固定不随清单滚动 */}
+      <div style={{ flexShrink: 0, display: "flex", gap: 10, marginBottom: 14, padding: 10, borderRadius: 12, background: "oklch(0 0 0 / 0.18)", border: `1px solid ${EC.border}` }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
           {KEY_ROWS.map((row, i) => (
             <div key={i} style={{ display: "flex", gap: 4 }}>
@@ -186,8 +187,8 @@ export function EditorShortcutsPanel() {
         </div>
       </div>
 
-      {/* 分组快捷键清单（两列；悬停行 → 键盘高亮） */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 18px" }} onMouseLeave={() => setHl(new Set())}>
+      {/* 分组快捷键清单（两列；悬停行 → 键盘高亮）——仅此区滚动，键盘图常驻可见 */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 18px", overflowY: "auto", minHeight: 0 }} onMouseLeave={() => setHl(new Set())}>
         {GROUPS.map(({ group, items }) => (
           <div key={group} style={{ marginBottom: 12, breakInside: "avoid" }}>
             <p style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6, color: EC.t4 }}>{group}</p>
