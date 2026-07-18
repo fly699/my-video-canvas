@@ -99,7 +99,7 @@ import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
 import { runImageQc } from "../_core/imageQcCore";
 import { runImageTag } from "../_core/imageTagCore";
-import { extractVideoFrameJpeg } from "../_core/videoFrame";
+import { extractVideoFrameJpeg, extractVideoTailFrameJpeg } from "../_core/videoFrame";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
 
 /**
@@ -3133,6 +3133,28 @@ export const clipRouter = router({
       }
       await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "audio", name: "音频分离", mimeType: "audio/mpeg" });
       return { url: result.url, duration: result.duration };
+    }),
+
+  // #245 链式衔接：抽视频尾帧存自有存储，返回可直接作下一镜首帧参考的图片 URL。
+  // 本地 ffmpeg、无第三方 AI——仅项目门控 + SSRF 守卫（对齐 extractAudio/detectScenes 口径）。
+  // 另收 data:video（dev 无对象存储时上传素材即此形态；纯本地解码，无 SSRF 面），
+  // 此时产物也以 data:image 返回、不入素材库。
+  extractTailFrame: protectedProcedure
+    .input(z.object({
+      inputUrl: z.union([mediaUrlSchema, z.string().max(48_000_000).regex(/^data:video\//i, "仅支持视频 data: URL")]),
+      projectId: z.number().optional(), nodeId: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      const isInline = /^data:video\//i.test(input.inputUrl);
+      if (!isInline) guardUrl(input.inputUrl);
+      const frame = await extractVideoTailFrameJpeg(input.inputUrl);
+      if (isInline || !isStorageConfigured()) {
+        return { url: `data:image/jpeg;base64,${frame.toString("base64")}` };
+      }
+      const { url } = await storagePut(`u/${ctx.user.id}/frames/${nanoid()}-tail.jpg`, frame, "image/jpeg");
+      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url, type: "image", name: "尾帧图", mimeType: "image/jpeg" });
+      return { url };
     }),
 
   getVideoDuration: protectedProcedure

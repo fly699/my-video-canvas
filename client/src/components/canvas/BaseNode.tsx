@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals, useStore } from "@xyflow/react";
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
-import type { NodeType, ImageEditOp } from "../../../../shared/types";
+import type { NodeType, ImageEditOp, VideoTaskNodeData } from "../../../../shared/types";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useShallow } from "zustand/react/shallow";
 import { useStudioExpandAll } from "../../hooks/useStudioExpandAll";
@@ -23,7 +23,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2, Lock,
-  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes, Focus, Eraser, Columns2,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes, Focus, Eraser, Columns2, Link2,
 } from "lucide-react";
 import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
 import { sourceAspectRatio, imageNaturalRatio, nearestAspect } from "../../lib/imageAspect";
@@ -718,6 +718,35 @@ export const BaseNode = memo(function BaseNode({
       toast.error("音频分离失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
     } finally { setAudioSepBusy(false); }
   };
+  // #245 链式下一镜（转场自然衔接批2）：抽本镜尾帧 → 尾帧图 asset 节点 + 新视频节点
+  // （继承本节点模型）并连好线——下一镜以尾帧为首帧参考，生成层面保证画面连续。
+  // 纯手动一键、无自动行为；尾帧同时入素材库（recordEditedAsset），可复用。
+  const tailFrameMut = trpc.clip.extractTailFrame.useMutation();
+  const [chainBusy, setChainBusy] = useState(false);
+  const handleChainNextShot = async () => {
+    if (chainBusy || !resultVideoUrl) return;
+    setChainBusy(true);
+    const tid = toast.loading("抽取尾帧中（作下一镜首帧参考）…");
+    try {
+      const r = await tailFrameMut.mutateAsync({ inputUrl: resultVideoUrl, ...(projectId ? { projectId } : {}), nodeId: id });
+      const st = useCanvasStore.getState();
+      const self = st.nodes.find((n) => n.id === id);
+      if (!self) return;
+      const w = (self.style?.width as number | undefined) ?? config.defaultWidth ?? 320;
+      const imgNode = st.addNode("asset", { x: self.position.x + w + 60, y: self.position.y });
+      st.updateNodeTitle(imgNode.id, "尾帧（链式首帧）");
+      st.updateNodeData(imgNode.id, { name: "尾帧.jpg", type: "image", url: r.url, mimeType: "image/jpeg" });
+      const vidNode = st.addNode("video_task", { x: self.position.x + w + 360, y: self.position.y });
+      st.updateNodeTitle(vidNode.id, "下一镜（链式衔接）");
+      const prov = (self.data.payload as VideoTaskNodeData).provider;
+      if (prov) st.updateNodeData(vidNode.id, { provider: prov });
+      st.onConnect({ source: imgNode.id, sourceHandle: "output", target: vidNode.id, targetHandle: "input" });
+      useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === vidNode.id })) }));
+      toast.success("已创建下一镜：尾帧已连作首帧参考，填提示词点运行即可无缝衔接", { id: tid, duration: 4200 });
+    } catch (e) {
+      toast.error("链式下一镜失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
+    } finally { setChainBusy(false); }
+  };
   const spawnVideoUpscale = () => {
     if (!resultVideoUrl) return;
     const st = useCanvasStore.getState();
@@ -1310,6 +1339,18 @@ export const BaseNode = memo(function BaseNode({
                       style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                     >
                       <Sparkles size={12} /> 高清放大
+                    </button>
+                  )}
+                  {/* #245 链式下一镜：尾帧→下一镜首帧参考（转场自然衔接批2） */}
+                  {getCompatibleTargets(nodeType).includes("video_task") && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void handleChainNextShot(); }}
+                      disabled={chainBusy}
+                      title="链式下一镜（抽本镜尾帧作下一镜首帧参考，画面无缝衔接）"
+                      className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                      style={{ background: "var(--c-surface)", color: chainBusy ? "var(--c-t4)" : "var(--c-t1)", border: "none", cursor: chainBusy ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                    >
+                      {chainBusy ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />} 链式下一镜
                     </button>
                   )}
                 </>
