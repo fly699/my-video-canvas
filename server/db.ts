@@ -142,7 +142,7 @@ export function isDupEntryError(e: unknown): boolean {
 
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
-const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
+const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, uploadStagingProvider: "", minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
 const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; superAgent?: import("../drizzle/schema").SuperAgentConfig; systemDefaultModels?: Record<string, string>; transcribeEndpoint?: import("../drizzle/schema").TranscribeEndpointConfig; voxcpmEndpoint?: import("../drizzle/schema").VoxcpmEndpointConfig } = { disabledModels: [] };
 const devAuthSettings = { emailVerificationEnabled: false, registrationApprovalEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
@@ -1540,7 +1540,7 @@ export async function getWhitelistEntries() {
 
 // ── Storage persistence settings ────────────────────────────────────────────
 
-export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; downloadAuthBypassLevel: number; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean; devtoolsBlockEnabled: boolean }> {
+export async function getStorageSettings(): Promise<{ persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; uploadStagingProvider: string; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; downloadAuthBypassLevel: number; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean; devtoolsBlockEnabled: boolean }> {
   const db = await getDb();
   if (!db) return {
     persistAudio: devStorageSettings.persistAudio,
@@ -1548,6 +1548,7 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     persistImage: devStorageSettings.persistImage,
     presignTtlSec: devStorageSettings.presignTtlSec,
     poyoUploadFallback: devStorageSettings.poyoUploadFallback,
+    uploadStagingProvider: devStorageSettings.uploadStagingProvider,
     minioOnly: devStorageSettings.minioOnly,
     preferUpstreamRefSource: devStorageSettings.preferUpstreamRefSource,
     downloadAuthEnabled: devStorageSettings.downloadAuthEnabled,
@@ -1565,6 +1566,7 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
     persistImage: row?.persistImage ?? true,
     presignTtlSec: row?.presignTtlSec ?? 3600,
     poyoUploadFallback: row?.poyoUploadFallback ?? false,
+    uploadStagingProvider: row?.uploadStagingProvider ?? "",
     minioOnly: row?.minioOnly ?? true,
     preferUpstreamRefSource: row?.preferUpstreamRefSource ?? false,
     downloadAuthEnabled: row?.downloadAuthEnabled ?? false,
@@ -1576,7 +1578,7 @@ export async function getStorageSettings(): Promise<{ persistAudio: boolean; per
   };
 }
 
-export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number; poyoUploadFallback?: boolean; minioOnly?: boolean; preferUpstreamRefSource?: boolean; downloadAuthEnabled?: boolean; downloadAuthBypassLevel?: number; forceStorageRelay?: boolean; watermarkEnabled?: boolean; downloadWatermarkEnabled?: boolean; devtoolsBlockEnabled?: boolean }): Promise<void> {
+export async function setStorageSettings(patch: { persistAudio?: boolean; persistVideo?: boolean; persistImage?: boolean; presignTtlSec?: number; poyoUploadFallback?: boolean; uploadStagingProvider?: string; minioOnly?: boolean; preferUpstreamRefSource?: boolean; downloadAuthEnabled?: boolean; downloadAuthBypassLevel?: number; forceStorageRelay?: boolean; watermarkEnabled?: boolean; downloadWatermarkEnabled?: boolean; devtoolsBlockEnabled?: boolean }): Promise<void> {
   const db = await getDb();
   if (!db) {
     if (patch.persistAudio !== undefined) devStorageSettings.persistAudio = patch.persistAudio;
@@ -1584,6 +1586,7 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
     if (patch.persistImage !== undefined) devStorageSettings.persistImage = patch.persistImage;
     if (patch.presignTtlSec !== undefined) devStorageSettings.presignTtlSec = patch.presignTtlSec;
     if (patch.poyoUploadFallback !== undefined) devStorageSettings.poyoUploadFallback = patch.poyoUploadFallback;
+    if (patch.uploadStagingProvider !== undefined) devStorageSettings.uploadStagingProvider = patch.uploadStagingProvider;
     if (patch.minioOnly !== undefined) devStorageSettings.minioOnly = patch.minioOnly;
     if (patch.preferUpstreamRefSource !== undefined) devStorageSettings.preferUpstreamRefSource = patch.preferUpstreamRefSource;
     if (patch.downloadAuthEnabled !== undefined) devStorageSettings.downloadAuthEnabled = patch.downloadAuthEnabled;
@@ -1594,12 +1597,13 @@ export async function setStorageSettings(patch: { persistAudio?: boolean; persis
     if (patch.devtoolsBlockEnabled !== undefined) devStorageSettings.devtoolsBlockEnabled = patch.devtoolsBlockEnabled;
     return;
   }
-  const set: Record<string, boolean | number> = {};
+  const set: Record<string, boolean | number | string> = {};
   if (patch.persistAudio !== undefined) set.persistAudio = patch.persistAudio;
   if (patch.persistVideo !== undefined) set.persistVideo = patch.persistVideo;
   if (patch.persistImage !== undefined) set.persistImage = patch.persistImage;
   if (patch.presignTtlSec !== undefined) set.presignTtlSec = patch.presignTtlSec;
   if (patch.poyoUploadFallback !== undefined) set.poyoUploadFallback = patch.poyoUploadFallback;
+  if (patch.uploadStagingProvider !== undefined) set.uploadStagingProvider = patch.uploadStagingProvider;
   if (patch.minioOnly !== undefined) set.minioOnly = patch.minioOnly;
   if (patch.preferUpstreamRefSource !== undefined) set.preferUpstreamRefSource = patch.preferUpstreamRefSource;
   if (patch.downloadAuthEnabled !== undefined) set.downloadAuthEnabled = patch.downloadAuthEnabled;

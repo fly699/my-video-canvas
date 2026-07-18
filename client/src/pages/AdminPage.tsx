@@ -793,7 +793,7 @@ function StoragePanel() {
   const [ioBusy, setIoBusy] = useState(false);
 
   const STORAGE_KEYS = [
-    "persistAudio", "persistVideo", "persistImage", "presignTtlSec", "poyoUploadFallback",
+    "persistAudio", "persistVideo", "persistImage", "presignTtlSec", "poyoUploadFallback", "uploadStagingProvider",
     "minioOnly", "preferUpstreamRefSource", "downloadAuthEnabled", "downloadAuthBypassLevel", "forceStorageRelay",
     "watermarkEnabled", "downloadWatermarkEnabled", "devtoolsBlockEnabled",
   ] as const;
@@ -1032,20 +1032,54 @@ function StoragePanel() {
             disabled={setMut.isPending}
             onSave={(sec) => setMut.mutate({ presignTtlSec: sec })}
           />
-          <ToggleRow
-            label="Poyo 流式暂存（参考图/视频公网中转）"
-            description={
-              "附加功能·默认关闭：当 MinIO/S3 未暴露公网（未设 S3_PUBLIC_ENDPOINT）时，把参考图/视频经 Poyo 流式上传换取公网 URL 供 AI 模型读取。关闭后完全不影响原有存储逻辑。需配置 POYO_API_KEY。" +
-              "\n限制：图片支持 JPEG / PNG / GIF / WebP，公网有效期约 72 小时；视频支持 MP4 / WebM / MOV / AVI / MKV，单文件 ≤ 100MB，有效期约 24 小时；每次 1 个文件；接口限流 5 次/分钟。仅用于生成时临时中转参考素材，不替代本地持久化存储。"
-            }
-            enabled={settings.poyoUploadFallback}
-            disabled={setMut.isPending}
-            onClick={() => setMut.mutate({ poyoUploadFallback: !settings.poyoUploadFallback })}
-            statusOn={poyoStagingActive
-              ? "🟢 已生效：参考图/视频会经 Poyo 暂存换取公网链接（生成时后端打印 [storage] Poyo 暂存 日志）"
-              : "⚠️ 已开启，但未检测到 POYO_API_KEY → 暂不生效，请在服务端配置 POYO_API_KEY 后重启"}
-            statusOff="已关闭（不影响原有存储逻辑）"
-          />
+          {/* #234 通用暂存通道：关闭 / Poyo / Kie 按钮切换。空值=老部署未设置，按旧
+              poyoUploadFallback 布尔显示；点任一按钮即写显式值（并同步旧布尔，保证降级兼容）。 */}
+          {(() => {
+            const explicit = (settings as { uploadStagingProvider?: string }).uploadStagingProvider ?? "";
+            const chosen = explicit === "poyo" || explicit === "kie" || explicit === "off"
+              ? explicit
+              : settings.poyoUploadFallback ? "poyo" : "off";
+            const active = (reach.data as { stagingProvider?: string } | undefined)?.stagingProvider ?? (poyoStagingActive ? "poyo" : "off");
+            const pick = (v: "off" | "poyo" | "kie") =>
+              setMut.mutate({ uploadStagingProvider: v, poyoUploadFallback: v === "poyo" });
+            const status = chosen === "off"
+              ? "已关闭（不影响原有存储逻辑）"
+              : active === chosen
+                ? `🟢 已生效：参考图/视频会经 ${chosen === "poyo" ? "Poyo" : "Kie"} 暂存换取公网链接（生成时后端打印 [storage] 暂存日志，系统日志可查）`
+                : `⚠️ 已选择 ${chosen === "poyo" ? "Poyo" : "Kie"}，但未检测到对应 API Key（${chosen === "poyo" ? "POYO_API_KEY" : "KIE_API_KEY"}）→ 暂不生效，请在服务端配置后重启`;
+            return (
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+                padding: "14px 18px", background: "var(--c-surface, rgba(255,255,255,0.03))",
+                border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 10,
+              }}>
+                <div style={{ flex: 1, minWidth: 260 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: "var(--c-t1, #f0f0f4)" }}>暂存通道（参考图/视频公网中转）</div>
+                  <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))", marginTop: 3, whiteSpace: "pre-line", lineHeight: 1.6 }}>
+                    {"附加功能·默认关闭：当 MinIO/S3 未暴露公网（未设 S3_PUBLIC_ENDPOINT）时，把参考图/视频经所选平台流式上传换取公网 URL 供 AI 模型读取。关闭后完全不影响原有存储逻辑。仅临时中转参考素材，不替代本地持久化存储。\n" +
+                      "· Poyo（需 POYO_API_KEY）：图 JPEG/PNG/GIF/WebP 存约 72h；视频 MP4/WebM/MOV/AVI/MKV ≤100MB 存约 24h；限流 5 次/分（已自动排队错峰 + 同文件 12h 复用缓存）。\n" +
+                      "· Kie（需 KIE_API_KEY）：通用文件存储，≤100MB，存 24h，免费；同样自动排队 + 复用缓存。"}
+                  </div>
+                  <div style={{ fontSize: 11, color: chosen !== "off" && active === chosen ? "oklch(0.7 0.18 145)" : chosen === "off" ? "var(--c-t3)" : "oklch(0.72 0.16 60)", marginTop: 4, fontWeight: 600 }}>
+                    状态：{status}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  {([["off", "关闭"], ["poyo", "Poyo"], ["kie", "Kie"]] as const).map(([v, label]) => (
+                    <button key={v} onClick={() => pick(v)} disabled={setMut.isPending}
+                      style={{
+                        padding: "6px 14px", fontSize: 12.5, fontWeight: 600, borderRadius: 8, cursor: setMut.isPending ? "wait" : "pointer",
+                        background: chosen === v ? "oklch(0.55 0.16 265 / 0.25)" : "var(--c-surface)",
+                        border: `1px solid ${chosen === v ? "oklch(0.62 0.18 265 / 0.6)" : "var(--c-bd2)"}`,
+                        color: chosen === v ? "var(--c-t1)" : "var(--c-t2)",
+                      }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <ToggleRow
             label="仅允许 MinIO/S3（禁用 Forge 存储回退）"
             description={

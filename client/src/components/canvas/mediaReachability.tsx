@@ -75,17 +75,22 @@ export function shouldWarnRefImage(args: {
  * 查询部署级"上游可拉取媒体"标志。部署期内基本不变，故 staleTime 设长、不重复请求。
  * 查询失败时按"可达"处理（reachable=true），以免误拦正常部署（Forge / 已配公网端点）。
  */
-export function useMediaReachability(): { reachable: boolean; poyoStaging: boolean; isLoading: boolean } {
+export function useMediaReachability(): { reachable: boolean; poyoStaging: boolean; stagingProvider: "off" | "poyo" | "kie"; stagingLabel: string; isLoading: boolean } {
   const q = trpc.config.mediaReachability.useQuery(undefined, {
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
     retry: 1,
   });
-  // Poyo 暂存开启时，参考图会被暂存到 Poyo 公网链接给上游读取 → 视为可达。
-  const poyoStaging = q.data?.poyoStagingActive ?? false;
+  // #234 通用暂存通道生效时（Poyo 或 Kie），参考图会被暂存到该通道公网链接给上游读取
+  // → 视为可达。stagingProvider 为新字段；老服务端没有它时回退旧布尔 poyoStagingActive。
+  const raw = (q.data as { stagingProvider?: "off" | "poyo" | "kie" } | undefined)?.stagingProvider;
+  const stagingProvider: "off" | "poyo" | "kie" = raw ?? ((q.data?.poyoStagingActive ?? false) ? "poyo" : "off");
+  const staging = stagingProvider !== "off";
   return {
-    reachable: (q.data?.upstreamCanFetchMedia ?? true) || poyoStaging,
-    poyoStaging,
+    reachable: (q.data?.upstreamCanFetchMedia ?? true) || staging,
+    poyoStaging: staging, // 兼容既有调用点：任一通道生效都视同旧「poyo 暂存生效」语义
+    stagingProvider,
+    stagingLabel: stagingProvider === "kie" ? "Kie" : "Poyo",
     isLoading: q.isLoading,
   };
 }
@@ -102,13 +107,13 @@ export function RefImageReachabilityBadge(props: {
   reachable: boolean;
   className?: string;
 }) {
-  const { poyoStaging } = useMediaReachability();
+  const { poyoStaging, stagingLabel } = useMediaReachability();
   // 这次生成是否「本会因不可达而警告」的同等场景（URL-only 上游 + 内部参考图）。
   const relevant =
     Boolean(props.refImageUrl) &&
     providerNeedsPublicMedia(props.model) &&
     !isExternalPublicUrl(props.refImageUrl);
-  // Poyo 暂存开启 → 亮绿灯，提示参考图会经 Poyo 暂存给上游读取。
+  // 暂存通道生效（Poyo / Kie）→ 亮绿灯，提示参考图会经该通道暂存给上游读取。
   if (relevant && poyoStaging) {
     return (
       <Tooltip>
@@ -123,7 +128,7 @@ export function RefImageReachabilityBadge(props: {
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-[260px] text-left">
-          已连接有效 Poyo 暂存：参考图会自动暂存到 Poyo 公网链接供上游读取，无需公网存储。
+          已连接有效 {stagingLabel} 暂存：参考图会自动暂存到 {stagingLabel} 公网链接供上游读取，无需公网存储。
         </TooltipContent>
       </Tooltip>
     );
@@ -147,23 +152,23 @@ export function RefImageReachabilityBadge(props: {
 }
 
 /**
- * 顶部工具栏常驻的存储/暂存状态灯：
- * - Poyo 暂存有效 → 绿灯「Poyo 暂存」；
+ * 顶部工具栏常驻的存储/暂存状态灯（#234 通用暂存通道）：
+ * - 暂存通道生效（Poyo / Kie）→ 绿灯「Poyo 暂存 / Kie 暂存」；
  * - 否则存储不对公网开放 → 琥珀「存储未公网」预警；
  * - 存储本就公网可达 → 不显示（无需打扰）。
  */
 export function PoyoStorageStatusChip(props: { className?: string }) {
-  const { reachable, poyoStaging } = useMediaReachability();
+  const { reachable, poyoStaging, stagingLabel } = useMediaReachability();
   if (poyoStaging) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
           <span className={"nodrag inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 " + (props.className ?? "")}>
-            <CircleCheck className="h-3 w-3" /> Poyo 暂存
+            <CircleCheck className="h-3 w-3" /> {stagingLabel} 暂存
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-[240px] text-xs text-left">
-          已连接有效 Poyo 暂存：参考图/视频会经 Poyo 换取公网链接供上游读取。生成时后端打印 [storage] Poyo 暂存 日志，管理后台「系统日志」可查（动作=Poyo 暂存）。
+          已连接有效 {stagingLabel} 暂存：参考图/视频会经 {stagingLabel} 换取公网链接供上游读取。生成时后端打印 [storage] {stagingLabel} 暂存 日志，管理后台「系统日志」可查。
         </TooltipContent>
       </Tooltip>
     );
@@ -177,7 +182,7 @@ export function PoyoStorageStatusChip(props: { className?: string }) {
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-[240px] text-xs text-left">
-          存储未对公网开放，且未开启 Poyo 暂存——带参考图的 Poyo/Higgsfield 生成可能失败。可在管理后台开启「Poyo 流式暂存」。
+          存储未对公网开放，且未开启暂存通道——带参考图的云端生成可能失败。可在管理后台「存储」页选择暂存通道（Poyo / Kie）。
         </TooltipContent>
       </Tooltip>
     );

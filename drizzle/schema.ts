@@ -778,6 +778,9 @@ export const storageSettings = mysqlTable("storageSettings", {
   // When MinIO/S3 is not publicly reachable, route reference images/videos
   // through Poyo's stream-upload endpoint to obtain a public URL for AI models.
   poyoUploadFallback: boolean("poyoUploadFallback").notNull().default(false),
+  // #234 通用暂存通道显式选择："poyo" / "kie" / "off"；""（默认）= 未设置，沿用
+  // poyoUploadFallback 旧布尔语义（老部署升级零行为变化）。解析见 stagingProvider.ts。
+  uploadStagingProvider: varchar("uploadStagingProvider", { length: 8 }).notNull().default(""),
   // When true, object storage is restricted to MinIO/S3 ONLY — the Forge
   // storage fallback is disabled, so no file is ever written to Manus/Forge
   // storage (writes fail if MinIO/S3 isn't configured). ON by default (migration
