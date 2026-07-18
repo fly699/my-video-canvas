@@ -561,16 +561,16 @@ export async function extractAudio(opts: { inputUrl: string }): Promise<{ url: s
 
 export interface MergeOptions {
   inputUrls: string[];
-  transition?: "none" | "fade" | "dissolve";
+  transition?: "none" | "fade" | "dissolve" | "fadeblack" | "fadewhite" | "smoothleft";
   transitionDuration?: number;
   bgMusicUrl?: string;
   bgMusicVolume?: number;
   /** 原视频自带声音的音量（0..2，默认 1）。接入音频输入时原声与音乐 amix 共存，
    *  不再被音乐整轨替换。 */
   originalVolume?: number;
-  /** 逐切点转场（长度 = 段数-1；来自分镜镜头表的 transition 字段）。给出时覆盖全局
-   *  transition。"none"/cut 用 1 帧 xfade 实现硬切（避免 concat/xfade 混链时基问题）。 */
-  transitions?: ("none" | "fade" | "dissolve" | "wipe")[];
+  /** 逐切点转场（长度 = 段数-1；来自分镜镜头表或 #244 手动逐接缝编辑）。给出时覆盖全局
+   *  transition。"none"/cut 用 2 帧 xfade 实现硬切（避免 concat/xfade 混链时基问题）。 */
+  transitions?: ("none" | "fade" | "dissolve" | "wipe" | "fadeblack" | "fadewhite" | "smoothleft")[];
   /** 逐段配音轨（与 inputUrls 对位；null=该段无配音）。每条按所在段起点 adelay 后
    *  与原声/BGM amix——视频+配音对位混装（装配端）。 */
   voiceUrls?: (string | null)[];
@@ -606,6 +606,46 @@ export function bgmAlignChain(inputLabel: string, totalDuration: number): string
 export function audioAlignTail(totalDuration: number): string {
   const t = Math.max(0.1, totalDuration).toFixed(3);
   return `,apad=whole_dur=${t},atrim=0:${t}`;
+}
+
+// ── #244 批1 接缝转场计算（纯函数，单测覆盖；mergeVideos 视频与音频链共用同一份
+//    接缝决策，保证画面 xfade 与 acrossfade 逐切点严格同长同类型对齐）──
+// 映射表按 ffmpeg xfade 原生名（docs/CLAUDE.md 已真机验证 xfade 语义）；未知值回退 fade。
+const MERGE_XFADE_MAP: Record<string, string> = {
+  fade: "fade", dissolve: "dissolve", wipe: "wipeleft", none: "fade",
+  fadeblack: "fadeblack", fadewhite: "fadewhite", smoothleft: "smoothleft",
+};
+/** 第 i 个切点（段 i → 段 i+1）的转场类型与时长。
+ *  "none"(cut/match-cut) → 2 帧极短 fade ≈ 硬切（亚帧 duration 会让 xfade 在第一路 EOF
+ *  提前终止截断成片，1/15≈0.067 对 24/30fps 都安全——历史真机复现结论，勿改小）。
+ *  时长夹取 ≤ 相邻两段各自时长，防转场超出短段帧数导致 offset 倒退/短镜被洗掉。 */
+export function computeMergeSeam(
+  i: number,
+  transition: string,
+  td: number,
+  durations: number[],
+  segTransitions?: string[] | null,
+): { type: string; dur: number } {
+  const t = segTransitions?.[i] ?? (transition === "none" ? "none" : transition);
+  if (t === "none") return { type: "fade", dur: 1 / 15 };
+  const dur = Math.min(td, durations[i] ?? td, durations[i + 1] ?? td);
+  return { type: MERGE_XFADE_MAP[t] ?? "fade", dur };
+}
+
+/** #244：advanced 路径逐段归一链（分辨率 contain + SAR + fps 统一）。fps 不齐的源直接
+ *  xfade 会时基错乱/报参数不匹配（与 #146 尺寸不齐同族）——统一到首段实测 fps。
+ *  仅 advanced（转场/装配）路径使用；「直切且非装配」的 concat 快路径一行未动（关闭零影响）。 */
+export function buildMergeNormChain(i: number, evenW: number, evenH: number, fpsBase: number): string {
+  return `[${i}:v]scale=${evenW}:${evenH}:force_original_aspect_ratio=decrease,pad=${evenW}:${evenH}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fpsBase}[nv${i}];`;
+}
+
+/** 解析 ffprobe r_frame_rate（"30000/1001" / "25/1"）→ 整数 fps（钳 12~60，非法回退 30）。 */
+export function parseFpsBase(rFrameRate: string | undefined | null): number {
+  if (!rFrameRate) return 30;
+  const m = /^(\d+)\/(\d+)$/.exec(rFrameRate.trim());
+  const v = m ? Number(m[1]) / Math.max(1, Number(m[2])) : Number(rFrameRate);
+  if (!Number.isFinite(v) || v <= 0) return 30;
+  return Math.min(60, Math.max(12, Math.round(v)));
 }
 
 export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
@@ -696,13 +736,15 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
 
       const durations: number[] = [];
       const sizes: { w: number; h: number }[] = [];
+      const fpsList: number[] = [];
       for (const p of inputPaths) {
         try {
-          const r = await execFileAsync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-show_entries", "format=duration", "-of", "json", p]);
-          const j = JSON.parse(r.stdout) as { streams?: { width?: number; height?: number }[]; format?: { duration?: string } };
+          const r = await execFileAsync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate", "-show_entries", "format=duration", "-of", "json", p]);
+          const j = JSON.parse(r.stdout) as { streams?: { width?: number; height?: number; r_frame_rate?: string }[]; format?: { duration?: string } };
           durations.push(parseFloat(j.format?.duration ?? "") || 5);
           sizes.push({ w: j.streams?.[0]?.width ?? 0, h: j.streams?.[0]?.height ?? 0 });
-        } catch { durations.push(5); sizes.push({ w: 0, h: 0 }); }
+          fpsList.push(parseFpsBase(j.streams?.[0]?.r_frame_rate));
+        } catch { durations.push(5); sizes.push({ w: 0, h: 0 }); fpsList.push(30); }
       }
       // #146 xfade 要求两路输入分辨率与 SAR 完全一致——不同尺寸的段（如 1280×720 混
       // 1168×768）直接报 -22「input link parameters do not match」合并失败（用户实报）。
@@ -711,31 +753,18 @@ export async function mergeVideos(opts: MergeOptions): Promise<MergeResult> {
       const baseH = sizes.find((s) => s.h > 0)?.h ?? 720;
       const evenW = baseW % 2 === 0 ? baseW : baseW + 1; // libx264 要求偶数维度
       const evenH = baseH % 2 === 0 ? baseH : baseH + 1;
+      // #244：fps 基准 = 首段实测（回退 30）——各段统一到同一帧率再 xfade。
+      const fpsBase = fpsList[0] ?? 30;
       let normStr = "";
       const segLabel: string[] = [];
       if (n > 1) {
         for (let i = 0; i < n; i++) {
-          normStr += `[${i}:v]scale=${evenW}:${evenH}:force_original_aspect_ratio=decrease,pad=${evenW}:${evenH}:(ow-iw)/2:(oh-ih)/2,setsar=1[nv${i}];`;
+          normStr += buildMergeNormChain(i, evenW, evenH, fpsBase);
           segLabel.push(`[nv${i}]`);
         }
       }
 
-      const globalXfade = transition === "dissolve" ? "dissolve" : "fade";
-      // 逐切点：type/duration 各自决定。"none"(cut/match-cut) → 极短 fade ≈ 硬切。
-      // 硬切时长必须 ≥ 一个帧间隔：真实 ffmpeg 复现发现 1/30 经 toFixed(3) 得 0.033 <
-      // 帧间隔 0.0333…，亚帧 duration 会让 xfade 在第一路 EOF 处提前终止、后段整段丢失
-      // （成片被截断）。取 1/15≈0.067（2 帧 @30fps；对 24fps 源也 > 单帧间隔 0.0417），
-      // 视觉上仍是硬切。
-      const XFADE_MAP: Record<string, string> = { fade: "fade", dissolve: "dissolve", wipe: "wipeleft", none: "fade" };
-      const cutAt = (i: number): { type: string; dur: number } => {
-        const t = segTransitions?.[i] ?? (transition === "none" ? "none" : transition);
-        if (t === "none") return { type: "fade", dur: 1 / 15 };
-        // 夹取转场时长 ≤ 相邻两段各自时长（transition i crossfades 段 i 与 i+1）。否则 xfade 会
-        // 超出短段帧数，使 offset 倒退、相邻转场重叠、短镜头被洗掉（实测 6.1.1：0.3s 段配 0.5s 转场
-        // → 中间帧变红蓝混合品红、绿段丢失）。与 composeTimeline 的 Math.min(td, curDur, dur) 同理。
-        const dur = Math.min(td, durations[i] ?? td, durations[i + 1] ?? td);
-        return { type: XFADE_MAP[t] ?? globalXfade, dur };
-      };
+      const cutAt = (i: number): { type: string; dur: number } => computeMergeSeam(i, transition, td, durations, segTransitions);
       let filterStr = normStr;
       let lastLabel = segLabel[0] ?? "[0:v]";
       let timeOffset = 0;

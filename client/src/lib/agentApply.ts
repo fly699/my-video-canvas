@@ -205,6 +205,10 @@ export function applyAgentOperations(
     allowedTemplateIds?: number[];
     /** 快速设置「排除分镜节点」（#138）：为真时 storyboard 的 create 直接判失败（镜头信息应改由 prompt 节点承载）。 */
     excludeStoryboard?: boolean;
+    /** #244 快捷设置「转场风格」：dissolve/cinematic 时对新建 merge 节点 fill-only 写入全局
+     *  transition/transitionDuration 兜底（LLM 已写则尊重；smart 只靠提示词引导逐镜差异化，
+     *  不在此硬注入；空串=默认直切，完全不注入）。 */
+    transitionStyle?: string;
   } = {},
 ): ApplyResult {
   injectFreeVramIntoOps(ops, opts.freeVramAfterRun === true);
@@ -455,6 +459,20 @@ export function applyAgentOperations(
             if (params.aspect_ratio === undefined || params.aspect_ratio === "") {
               params.aspect_ratio = opts.aspect;
               payload = { ...rest, params };
+            }
+          }
+          // #244 转场风格确定性兜底（fill-only，与 aspectFieldsFor 同思路）：快捷设置选了
+          // 柔和叠化/电影黑场时给新建 merge 节点写全局转场；LLM 已自写 transition 则尊重。
+          // 「智能」风格靠提示词引导 LLM 写分镜 transition / merge.segTransitions，不硬注入。
+          if (op.nodeType === "merge" && (opts.transitionStyle === "dissolve" || opts.transitionStyle === "cinematic")) {
+            const cur = (payload ?? {}) as Record<string, unknown>;
+            if (cur.transition === undefined || cur.transition === "" || cur.transition === "none") {
+              const cinematic = opts.transitionStyle === "cinematic";
+              payload = {
+                ...cur,
+                transition: cinematic ? "fadeblack" : "dissolve",
+                transitionDuration: typeof cur.transitionDuration === "number" ? cur.transitionDuration : (cinematic ? 0.6 : 0.35),
+              };
             }
           }
           // Stamp ownership (multi-agent) + scene membership (so a Character can

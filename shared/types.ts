@@ -963,13 +963,29 @@ export interface ClipNodeData {
   errorMessage?: string;
 }
 
-export type MergeTransition = "none" | "fade" | "dissolve";
+// #244 批1 转场库精选扩充（自然向，均为 ffmpeg xfade 原生转场名）：
+// none=直切（默认，现状不变）；fade/dissolve 为历史值；新增 fadeblack（经黑场，
+// 换场景/换时间的电影感过渡）、fadewhite（经白场，回忆/梦境感）、smoothleft（平滑推移）。
+export type MergeTransition = "none" | "fade" | "dissolve" | "fadeblack" | "fadewhite" | "smoothleft";
+/** 逐接缝可选转场（含 wipe 装配端历史值）。 */
+export type MergeSeamTransition = MergeTransition | "wipe";
+/** UI 下拉共用选项（value 顺序即展示顺序）。 */
+export const MERGE_TRANSITION_OPTIONS: { value: MergeTransition; label: string }[] = [
+  { value: "none", label: "直切（默认）" },
+  { value: "fade", label: "淡入淡出" },
+  { value: "dissolve", label: "叠化" },
+  { value: "fadeblack", label: "经黑场（电影感）" },
+  { value: "fadewhite", label: "经白场" },
+  { value: "smoothleft", label: "平滑推移" },
+];
 export interface MergeNodeData {
   inputVideoUrls?: string[];
   outputUrl?: string;
   transition?: MergeTransition;
-  /** 装配端：逐切点转场（来自「按镜头表装配」；长度=段数-1，优先于全局 transition）。 */
-  segTransitions?: ("none" | "fade" | "dissolve" | "wipe")[];
+  /** 逐切点转场（长度=段数-1，优先于全局 transition）。来源：「按镜头表装配」自动写入，
+   *  或 #244 参数面板「逐接缝转场」手动编辑；两者都同时写 inputVideoUrls 快照，发送时经
+   *  aligned 守卫（顺序变了即失配丢弃回全局）。 */
+  segTransitions?: MergeSeamTransition[];
   /** 装配端：逐段配音轨（与 inputVideoUrls 对位；null=该段无配音）。 */
   voiceUrls?: (string | null)[];
   /** 装配端：逐段音效轨（与 inputVideoUrls 对位；混入权重低于配音）。 */

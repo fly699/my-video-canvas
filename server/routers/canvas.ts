@@ -3431,10 +3431,10 @@ export const mergeRouter = router({
     .input(
       z.object({
         inputUrls: z.array(mediaUrlSchema).min(2).max(50),
-        transition: z.enum(["none", "fade", "dissolve"]).optional(),
+        transition: z.enum(["none", "fade", "dissolve", "fadeblack", "fadewhite", "smoothleft"]).optional(),
         transitionDuration: z.number().min(0.1).max(2.0).optional(),
-        // 装配端：逐切点转场（来自分镜镜头表；长度=段数-1）+ 逐段配音/音效轨（与段对位）
-        transitions: z.array(z.enum(["none", "fade", "dissolve", "wipe"])).max(49).optional(),
+        // 逐切点转场（长度=段数-1；来源：镜头表装配 或 #244 合并节点逐接缝编辑）+ 逐段配音/音效轨（与段对位）
+        transitions: z.array(z.enum(["none", "fade", "dissolve", "fadeblack", "fadewhite", "smoothleft", "wipe"])).max(49).optional(),
         voiceUrls: z.array(mediaUrlSchema.nullable()).max(50).optional(),
         sfxUrls: z.array(mediaUrlSchema.nullable()).max(50).optional(),
         bgMusicUrl: mediaUrlSchema.optional(),

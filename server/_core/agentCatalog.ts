@@ -13,7 +13,7 @@ import { PROVIDER_PARAMS, SUPPORTS_NEGATIVE_PROMPT, REQUIRES_REFERENCE_IMAGE, ty
 
 export interface AgentFieldSpec {
   name: string;
-  type: "string" | "number" | "boolean" | "object";
+  type: "string" | "number" | "boolean" | "object" | "string[]";
   desc: string;
 }
 
@@ -74,7 +74,7 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "promptText", type: "string", desc: "图像/视频生成提示词（必填，详细到可直接喂生成模型）" },
       { name: "negativePrompt", type: "string", desc: "反向提示词" },
       { name: "dialogue", type: "string", desc: "对白/旁白（格式「角色名：台词」，纯旁白直接写文本；批量配音直接取用）" },
-      { name: "transition", type: "string", desc: "切到下一镜的转场：cut/fade/dissolve/wipe/match-cut（装配成片按它设逐切点转场）" },
+      { name: "transition", type: "string", desc: "切到下一镜的转场：cut/fade/dissolve/wipe/fadeblack/fadewhite/smoothleft/match-cut，默认 cut（装配成片按它设逐切点转场）" },
       { name: "shotType", type: "string", desc: "景别：ECU/CU/MS/MLS/WS/establishing" },
       { name: "cameraMovement", type: "string", desc: "运镜：static/pan-left/zoom-in 等" },
       { name: "duration", type: "number", desc: "时长（秒）" },
@@ -158,8 +158,9 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     type: "merge", label: "合并", purpose: "把多个视频拼接成片。上游视频若能回溯到分镜，用户可在节点上一键「按镜头表装配」（镜号排序 + 逐镜转场 + 配音对位），无需手动排序",
     connectsTo: ["subtitle", "overlay", "asset"],
     fields: [
-      { name: "transition", type: "string", desc: "全局转场：none/fade/dissolve，默认 none 直切——除非用户点名要转场，否则不要设置（逐镜转场由装配按分镜 transition 自动设置）" },
+      { name: "transition", type: "string", desc: "全局转场：none/fade/dissolve/fadeblack/fadewhite/smoothleft，默认 none 直切——除非用户点名要转场或快捷设置选了转场风格，否则不要设置（逐镜转场由装配按分镜 transition 自动设置）" },
       { name: "transitionDuration", type: "number", desc: "转场时长（秒，0.1-2.0，默认 0.5）" },
+      { name: "segTransitions", type: "string[]", desc: "逐接缝转场数组（长度=段数-1，值同 transition 另加 wipe；仅当用户要求按镜头关系差异化转场时写：同场景连续动作→none 直切，时间/地点跳转→fadeblack，情绪过渡→dissolve）" },
       { name: "burnShotSubtitles", type: "boolean", desc: "true 时装配完成后把镜头表对白直接烧录为成片字幕" },
     ],
   },

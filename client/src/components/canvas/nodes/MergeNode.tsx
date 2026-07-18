@@ -8,7 +8,7 @@ import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { useShallow } from "zustand/react/shallow";
-import type { MergeNodeData, MergeTransition } from "../../../../../shared/types";
+import { MERGE_TRANSITION_OPTIONS, type MergeNodeData, type MergeSeamTransition, type MergeTransition } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { buildShotSubtitles } from "@/lib/shotSubtitles";
@@ -61,10 +61,12 @@ const fieldStyle: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
-const TRANSITIONS: { value: MergeTransition; label: string }[] = [
-  { value: "none",    label: "直切（无转场）" },
-  { value: "fade",    label: "淡入淡出" },
-  { value: "dissolve", label: "叠化溶解" },
+// #244：转场选项收敛到 shared 单一事实源（新增 经黑场/经白场/平滑推移 自然向精选）。
+const TRANSITIONS = MERGE_TRANSITION_OPTIONS;
+// 逐接缝下拉额外含 wipe（装配端历史值，服务端 xfade 映射为 wipeleft）。
+const SEAM_TRANSITIONS: { value: MergeSeamTransition; label: string }[] = [
+  ...MERGE_TRANSITION_OPTIONS,
+  { value: "wipe", label: "划像（左推）" },
 ];
 
 export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) {
@@ -223,6 +225,28 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     update({ inputVideoUrls: arr });
   };
 
+  // #244 逐接缝转场编辑：仅当 segTransitions 与当前段顺序对齐时视为「开启」——
+  // 「按镜头表装配」的产物天然满足此条件，可直接在此微调；顺序一变即自动失配收起
+  // （与发送端 aligned 守卫同一判定，UI 状态与实际生效状态永远一致）。
+  const seamUrls = orderItems.map((x) => x.url);
+  const seamEditOn = !!payload.segTransitions?.length
+    && payload.inputVideoUrls?.length === seamUrls.length
+    && payload.inputVideoUrls.every((u, i) => u === seamUrls[i]);
+  const seamValues: MergeSeamTransition[] = Array.from(
+    { length: Math.max(seamUrls.length - 1, 0) },
+    (_, i) => (seamEditOn ? payload.segTransitions?.[i] : undefined) ?? payload.transition ?? "none",
+  );
+  const toggleSeamEdit = () => {
+    if (seamEditOn) { update({ segTransitions: undefined }); return; }
+    // 开启时同时写 inputVideoUrls 快照，保证发送时通过 aligned 守卫。
+    update({ segTransitions: seamValues, inputVideoUrls: seamUrls });
+  };
+  const setSeamAt = (i: number, v: MergeSeamTransition) => {
+    const next = [...seamValues];
+    next[i] = v;
+    update({ segTransitions: next, inputVideoUrls: seamUrls });
+  };
+
   // Auto-detect a connected AudioNode (or audio-mime asset) for background music
   const detectedBgMusicUrl = (() => {
     const incomingEdges = edges.filter((e) => e.target === id);
@@ -292,14 +316,19 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     const aligned = !!payload.segTransitions
       && payload.inputVideoUrls?.length === urls.length
       && payload.inputVideoUrls.every((u, i) => u === urls[i]);
+    // #244 发送口枚举收敛（单一咽喉点）：服务端 zod 是硬枚举，助手/历史数据里混入的
+    // 非法值（如 "cut"/"match-cut"）会让整个请求 400——非法一律收敛为 "none" 直切。
+    const GLOBAL_SET = new Set<string>(MERGE_TRANSITION_OPTIONS.map((o) => o.value));
+    const SEAM_SET = new Set<string>([...MERGE_TRANSITION_OPTIONS.map((o) => o.value), "wipe"]);
+    const safeTransition = (payload.transition && GLOBAL_SET.has(payload.transition) ? payload.transition : "none") as MergeTransition;
     mergeMutation.mutate({
       inputUrls: urls,
       projectId: data.projectId,
       nodeId: id,
-      transition: payload.transition,
-      transitionDuration: payload.transition !== "none" ? payload.transitionDuration : undefined,
+      transition: safeTransition,
+      transitionDuration: safeTransition !== "none" ? payload.transitionDuration : undefined,
       ...(aligned ? {
-        transitions: payload.segTransitions?.slice(0, urls.length - 1),
+        transitions: payload.segTransitions?.slice(0, urls.length - 1).map((t) => (SEAM_SET.has(t) ? t : "none") as MergeSeamTransition),
         voiceUrls: payload.voiceUrls?.slice(0, urls.length),
         sfxUrls: payload.sfxUrls?.slice(0, urls.length),
       } : {}),
@@ -412,6 +441,46 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
               className="nodrag w-full"
               style={{ accentColor: accent }}
             />
+          </div>
+        )}
+
+        {/* #244 逐接缝转场（段数≥2 才显示）：每个接缝单独指定转场；关闭即清空、
+            回到上方全局转场（默认直切走 concat 快路径，现状完全不变）。 */}
+        {orderItems.length >= 2 && (
+          <div>
+            <button
+              onClick={toggleSeamEdit}
+              className="nodrag flex items-center justify-between w-full px-2.5 py-2 rounded-lg text-xs transition-all"
+              style={{
+                background: seamEditOn ? accentA(0.08) : "var(--c-surface)",
+                border: `1px solid ${seamEditOn ? accentA(0.3) : "var(--c-bd2)"}`,
+                color: seamEditOn ? accent : "var(--c-t3)",
+                cursor: "pointer",
+              }}
+              title="为每个接缝单独指定转场（如 段1→段2 叠化、段2→段3 经黑场）；关闭恢复全局转场"
+            >
+              <span>逐接缝转场（可选）</span>
+              <ChevronDown style={{ width: 11, height: 11, transform: seamEditOn ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
+            </button>
+            {seamEditOn && (
+              <div className="flex flex-col gap-1" style={{ marginTop: 6 }}>
+                {seamValues.map((t, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ flexShrink: 0, width: 84, fontSize: 10.5, color: "var(--c-t3)", fontVariantNumeric: "tabular-nums" }}>段{i + 1} → 段{i + 2}</span>
+                    <select
+                      value={t}
+                      onChange={(e) => setSeamAt(i, e.target.value as MergeSeamTransition)}
+                      className="nodrag"
+                      style={{ ...fieldStyle, padding: "5px 8px", fontSize: 11, cursor: "pointer" }}
+                    >
+                      {SEAM_TRANSITIONS.map((o) => (
+                        <option key={o.value} value={o.value} style={{ background: "var(--c-base)" }}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
