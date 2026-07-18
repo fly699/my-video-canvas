@@ -33,7 +33,12 @@ import { randomBytes } from "crypto";
 import { getUpdateStatus, getVersionInfo, getUpdateAvailable, startUpdate, restartServer, getRunningVsDisk } from "../_core/selfUpdate";
 import { hashPassword } from "../_core/emailAuth";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
-import { getMergedModelSkills, MODEL_SKILL_KINDS } from "../_core/modelSkills";
+import { getMergedModelSkills, MODEL_SKILL_KINDS, SKILL_DRAFT_PREFIX } from "../_core/modelSkills";
+import { imageModelDigestText, videoModelDigestText } from "../_core/agentCatalog";
+import { IMAGE_MODELS, VIDEO_MODELS } from "../../shared/modelCatalog";
+import { invokeLLMWithKie } from "../_core/llmWithKie";
+import { extractTextContent } from "../_core/llm";
+import { getSystemDefaultModel } from "../_core/systemDefaultModels";
 import { writeAuditLog } from "../_core/auditLog";
 import { getActiveStagingProvider } from "../_core/storageConfig";
 import { broadcastSystemAnnouncement, setPersistentAnnouncement } from "./chat";
@@ -231,6 +236,89 @@ export const adminRouter = router({
       .mutation(async ({ ctx, input }) => {
         await db.deleteModelSkillRow(input.modelId);
         writeAuditLog({ ctx, action: "model_skill_delete", detail: { modelId: input.modelId } });
+        return { success: true };
+      }),
+
+    // ── #224 批1 自动更新（本地官方文档提炼 → 草稿区 → 人工审核入库） ──
+    // 提炼源 = 系统内已核对过官方 with-params 文档的权威参数表（agentCatalog 的
+    // imageModelDigestText/videoModelDigestText，与画布助手「云端生成模型清单」同源），
+    // 不喂整本 OpenAPI、不联网（联网搜索是批2，需先真机验证网关能力）。
+    // 草稿与正式技能同表存储（modelId 前缀 draft: + enabled=false 双保险，零迁移），
+    // 正式读取口径（getMergedModelSkills / 智能体注入）已过滤前缀。提炼 LLM 模型可选
+    //（用户拍板要求），缺省用系统默认 llm。
+    listDrafts: adminProcedure.query(async () => {
+      const rows = (await db.listModelSkillRows()).filter((r) => r.modelId.startsWith(SKILL_DRAFT_PREFIX));
+      const merged = await getMergedModelSkills();
+      return rows.map((r) => {
+        const realId = r.modelId.slice(SKILL_DRAFT_PREFIX.length);
+        const cur = merged.find((m) => m.modelId === realId);
+        return {
+          modelId: realId, kind: r.kind, tips: r.tips, source: r.source ?? null,
+          updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : null,
+          currentTips: cur?.tips ?? null, currentOrigin: cur?.origin ?? null,
+        };
+      });
+    }),
+    autoDraft: managerProc
+      .input(z.object({
+        modelIds: z.array(z.string().min(1).max(120)).min(1).max(8),
+        llmModel: z.string().max(120).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const llm = input.llmModel?.trim() || await getSystemDefaultModel("llm");
+        const results: { modelId: string; ok: boolean; error?: string }[] = [];
+        // 串行提炼：防 LLM 网关并发风暴；单个失败不阻断其余。
+        for (const rawId of input.modelIds) {
+          const id = rawId.trim();
+          const img = IMAGE_MODELS.find((m) => m.value === id);
+          const vid = !img ? VIDEO_MODELS.find((m) => m.value === id && m.value !== "mock") : undefined;
+          if (!img && !vid) { results.push({ modelId: id, ok: false, error: "不在图像/视频模型目录中（批1 仅覆盖图/视频模型）" }); continue; }
+          const kind = img ? "image" : "video";
+          const paramDoc = img ? imageModelDigestText(id) : videoModelDigestText(id);
+          try {
+            const response = await invokeLLMWithKie(ctx, {
+              messages: [
+                {
+                  role: "system" as const,
+                  content: `你是提示词技法工程师。根据下面给出的【官方参数表摘要】（已核对官方文档，权威），为该生成模型撰写一条「模型技能」（提示词技法）供撰写提示词的 LLM 参考。\n`
+                    + `要求：\n- 中文，200-450 字，一行一条要点（用「- 」开头）；\n- 内容只含三类：①参数要点（可用键、枚举档位、默认值、数值范围与推荐值）；②提示词写作建议（只写能从参数表推断的，如支持负向词就建议如何用、需参考图就强调先接图；不得编造参数表以外的「官方技巧」）；③注意事项（易错点，如枚举取值必须精确、超范围会被丢弃）。\n- 禁止编造参数表中不存在的键或取值；禁止输出标题/前后缀，只输出要点行。`,
+                },
+                { role: "user" as const, content: `模型：${id}（${kind === "image" ? "图像" : "视频"}生成）\n\n官方参数表摘要：\n${paramDoc || "（该模型无参数表条目）"}` },
+              ],
+              model: llm,
+              maxTokens: 1600,
+            });
+            const tips = extractTextContent(response).replace(/```[a-z]*/gi, "").trim().slice(0, 8000);
+            if (!tips) { results.push({ modelId: id, ok: false, error: "LLM 未返回内容" }); continue; }
+            await db.upsertModelSkillRow({
+              modelId: `${SKILL_DRAFT_PREFIX}${id}`, kind, tips,
+              source: `自动提炼·本地参数文档 · 提炼模型:${llm}`, enabled: false,
+            });
+            results.push({ modelId: id, ok: true });
+          } catch (err) {
+            results.push({ modelId: id, ok: false, error: err instanceof Error ? err.message.slice(0, 200) : String(err) });
+          }
+        }
+        writeAuditLog({ ctx, action: "model_skill_upsert", detail: { draft: true, llm, requested: input.modelIds.length, ok: results.filter((r) => r.ok).length } });
+        return { results };
+      }),
+    /** 审核通过：草稿转正（覆盖/新建正式技能行，enabled=true），并删除草稿。 */
+    applyDraft: managerProc
+      .input(z.object({ modelId: z.string().min(1).max(120) }))
+      .mutation(async ({ ctx, input }) => {
+        const draftId = `${SKILL_DRAFT_PREFIX}${input.modelId}`;
+        const row = (await db.listModelSkillRows()).find((r) => r.modelId === draftId);
+        if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "草稿不存在或已被处理" });
+        await db.upsertModelSkillRow({ modelId: input.modelId, kind: row.kind, tips: row.tips, source: row.source ?? undefined, enabled: true });
+        await db.deleteModelSkillRow(draftId);
+        writeAuditLog({ ctx, action: "model_skill_upsert", detail: { modelId: input.modelId, fromDraft: true } });
+        return { success: true };
+      }),
+    dismissDraft: managerProc
+      .input(z.object({ modelId: z.string().min(1).max(120) }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteModelSkillRow(`${SKILL_DRAFT_PREFIX}${input.modelId}`);
+        writeAuditLog({ ctx, action: "model_skill_delete", detail: { modelId: input.modelId, draft: true } });
         return { success: true };
       }),
   }),

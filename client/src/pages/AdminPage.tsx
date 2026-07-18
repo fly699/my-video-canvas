@@ -1384,6 +1384,30 @@ function ModelSkillsPanel() {
     onSuccess: () => { toast.success("已移除自定义内容（种子模型回退内置版本）"); void utils.admin.modelSkills.list.invalidate(); },
     onError: (e) => toast.error("删除失败：" + e.message),
   });
+  // ── #224 批1 自动更新：本地官方参数文档提炼 → 草稿区 → 人工审核入库；提炼 LLM 可选 ──
+  const draftsQ = trpc.admin.modelSkills.listDrafts.useQuery();
+  const [draftTarget, setDraftTarget] = useState("");
+  const [draftLlm, setDraftLlm] = useState("");
+  const autoDraftMut = trpc.admin.modelSkills.autoDraft.useMutation({
+    onSuccess: (r) => {
+      const ok = r.results.filter((x) => x.ok).length;
+      if (ok) toast.success(`已生成 ${ok} 条技法草稿，请在下方审核入库`);
+      r.results.filter((x) => !x.ok).forEach((f) => toast.error(`${f.modelId}：${f.error}`));
+      void utils.admin.modelSkills.listDrafts.invalidate();
+    },
+    onError: (e) => toast.error("提炼失败：" + e.message),
+  });
+  const applyDraftMut = trpc.admin.modelSkills.applyDraft.useMutation({
+    onSuccess: () => { toast.success("草稿已审核入库（技能立即生效）"); void utils.admin.modelSkills.list.invalidate(); void utils.admin.modelSkills.listDrafts.invalidate(); },
+    onError: (e) => toast.error("入库失败：" + e.message),
+  });
+  const dismissDraftMut = trpc.admin.modelSkills.dismissDraft.useMutation({
+    onSuccess: () => { toast.success("草稿已丢弃"); void utils.admin.modelSkills.listDrafts.invalidate(); },
+    onError: (e) => toast.error("丢弃失败：" + e.message),
+  });
+  const skillIds = new Set((listQ.data ?? []).filter((r) => r.enabled && r.tips.trim()).map((r) => r.modelId));
+  const missingIds = [...IMAGE_MODELS.map((m) => m.value), ...VIDEO_MODELS.filter((m) => m.value !== "mock").map((m) => m.value)]
+    .filter((v) => !skillIds.has(v));
   const rows = (listQ.data ?? []).filter((r) => {
     const k = q.trim().toLowerCase();
     return !k || r.modelId.toLowerCase().includes(k) || r.tips.toLowerCase().includes(k) || r.kind.includes(k);
@@ -1407,6 +1431,71 @@ function ModelSkillsPanel() {
             + 新增模型技能
           </button>
         </div>
+      </div>
+      {/* ── #224 批1：自动更新（本地文档提炼 → 草稿区 → 人工审核入库）── */}
+      <div data-testid="skill-auto-update" style={{ padding: "10px 12px", borderRadius: 10, border: "1px dashed var(--c-bd2)", background: "var(--c-surface)", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--c-t1)" }}>自动更新（本地文档提炼）</span>
+          <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>
+            从系统内已核对官方文档的模型参数表提炼「提示词技法」→ 生成草稿 → 人工审核后才入库生效；不联网（联网搜索为批2，待网关能力验证）。
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <select value={draftTarget} onChange={(e) => setDraftTarget(e.target.value)}
+            style={{ ...inputStyle, width: 240, padding: "5px 8px", fontSize: 11.5 }}>
+            <option value="">选择目标模型…</option>
+            <optgroup label="图像模型">
+              {IMAGE_MODELS.map((m) => <option key={m.value} value={m.value}>{m.value}{skillIds.has(m.value) ? "（已有技能）" : ""}</option>)}
+            </optgroup>
+            <optgroup label="视频模型">
+              {VIDEO_MODELS.filter((m) => m.value !== "mock").map((m) => <option key={m.value} value={m.value}>{m.value}{skillIds.has(m.value) ? "（已有技能）" : ""}</option>)}
+            </optgroup>
+          </select>
+          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--c-t3)" }}>提炼模型
+            <select value={draftLlm} onChange={(e) => setDraftLlm(e.target.value)}
+              style={{ ...inputStyle, width: 200, padding: "5px 8px", fontSize: 11.5 }}>
+              <option value="">系统默认 LLM</option>
+              {LLM_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          </label>
+          <button disabled={!draftTarget || autoDraftMut.isPending}
+            onClick={() => autoDraftMut.mutate({ modelIds: [draftTarget], llmModel: draftLlm || undefined })}
+            style={{ padding: "5px 12px", fontSize: 11.5, fontWeight: 700, borderRadius: 8, border: "1px solid oklch(0.72 0.2 285 / 0.5)", background: draftTarget ? "oklch(0.72 0.2 285 / 0.14)" : "var(--c-surface)", color: draftTarget ? "oklch(0.76 0.18 285)" : "var(--c-t4)", cursor: draftTarget && !autoDraftMut.isPending ? "pointer" : "not-allowed" }}>
+            {autoDraftMut.isPending ? "提炼中…" : "提炼草稿"}
+          </button>
+          <button disabled={missingIds.length === 0 || autoDraftMut.isPending}
+            title={missingIds.length ? `缺技能模型（${missingIds.length} 个）：${missingIds.slice(0, 8).join("、")}${missingIds.length > 8 ? " …" : ""}` : "全部图/视频模型均已有技能"}
+            onClick={() => autoDraftMut.mutate({ modelIds: missingIds.slice(0, 8), llmModel: draftLlm || undefined })}
+            style={{ padding: "5px 12px", fontSize: 11.5, fontWeight: 600, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "transparent", color: missingIds.length ? "var(--c-t2)" : "var(--c-t4)", cursor: missingIds.length && !autoDraftMut.isPending ? "pointer" : "not-allowed" }}>
+            批量提炼缺技能模型（{Math.min(8, missingIds.length)}）
+          </button>
+        </div>
+        {(draftsQ.data?.length ?? 0) > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "oklch(0.72 0.16 60)" }}>待审核草稿（{draftsQ.data!.length}）——入库前请核对内容，入库即生效</div>
+            {draftsQ.data!.map((d) => (
+              <div key={d.modelId} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 11px", borderRadius: 9, border: "1px solid oklch(0.72 0.16 60 / 0.35)", background: "oklch(0.72 0.16 60 / 0.05)" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span className="font-mono" style={{ fontSize: 12, fontWeight: 700, color: "var(--c-t1)" }}>{d.modelId}</span>
+                    <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 99, border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}>{d.kind}</span>
+                    <span style={{ fontSize: 10, color: d.currentTips ? "oklch(0.72 0.16 60)" : "oklch(0.7 0.17 150)" }}>
+                      {d.currentTips ? `入库将覆盖现有技能（${d.currentOrigin === "builtin" ? "内置种子" : "自定义"}）` : "新增技能"}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--c-t2)", marginTop: 4, whiteSpace: "pre-wrap", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical" }} title={d.tips}>{d.tips}</div>
+                  {d.source && <div style={{ fontSize: 10, color: "var(--c-t4)", marginTop: 3 }}>{d.source}</div>}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => applyDraftMut.mutate({ modelId: d.modelId })} disabled={applyDraftMut.isPending}
+                    style={{ padding: "4px 12px", fontSize: 11, fontWeight: 700, borderRadius: 7, border: "1px solid oklch(0.7 0.17 150 / 0.5)", background: "oklch(0.7 0.17 150 / 0.12)", color: "oklch(0.75 0.15 150)", cursor: "pointer" }}>审核入库</button>
+                  <button onClick={() => dismissDraftMut.mutate({ modelId: d.modelId })} disabled={dismissDraftMut.isPending}
+                    style={{ padding: "4px 12px", fontSize: 11, borderRadius: 7, border: "1px solid var(--c-bd2)", background: "transparent", color: "var(--c-t3)", cursor: "pointer" }}>丢弃</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       {listQ.isLoading && <div style={{ fontSize: 12, color: "var(--c-t4)" }}>加载中…</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

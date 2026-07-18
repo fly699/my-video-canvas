@@ -29,6 +29,7 @@ import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterR
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption, useResolvedDefaultImageOption } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
+import { countCharacterCoverage } from "../../../lib/characterCoverage";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt, loadComfyBase } from "../../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { PosePresetPicker } from "../PosePresetPicker";
@@ -202,6 +203,20 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     }
     return out;
   }, [connectedTuples]);
+
+  // #225 批②「已覆盖 N 镜」：计数逻辑抽为纯函数 countCharacterCoverage（单测覆盖），
+  // 此处仅做 store 适配（唯一目标计数 + 主参考图随行数）。
+  const [coveredShots, coveredWithRef] = useCanvasStore(
+    useShallow((s) => {
+      const r = countCharacterCoverage(
+        id,
+        payload.referenceImageUrl,
+        s.edges,
+        s.nodes.map((n) => ({ id: n.id, nodeType: n.data.nodeType, payload: n.data.payload })),
+      );
+      return [r.total, r.withRef];
+    }),
+  );
 
   const [consistencyOpen, setConsistencyOpen] = useState(false);
   const [consistencyResult, setConsistencyResult] = useState<ConsistencyResult | null>(null);
@@ -676,6 +691,37 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         <Dices style={{ width: 10, height: 10, flexShrink: 0 }} />
         {payload.consistencySeed != null ? `#${String(payload.consistencySeed).slice(0, 6)}` : "种子"}
       </button>
+      {/* #225 批②：已覆盖镜头指示——一眼看出该角色接入了多少下游生成节点、参考图是否已随行 */}
+      <span
+        data-testid="char-coverage-chip"
+        onPointerDown={(e) => e.stopPropagation()}
+        title={coveredShots > 0
+          ? `本角色已连入 ${coveredShots} 个下游生成节点（分镜/图像/视频/ComfyUI），其中 ${coveredWithRef} 个已带本角色主参考图。参考图未随行的镜头可用「应用到分镜」一键套用。`
+          : "本角色还未接入任何镜头——把角色节点连到分镜/图像/视频等生成节点，注入才会生效。"}
+        style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, height: 18, padding: "0 7px", borderRadius: 9, fontSize: 9.5, fontWeight: 700, lineHeight: 1, background: coveredShots > 0 ? "oklch(0.55 0.14 150 / 0.4)" : "oklch(0 0 0 / 0.45)", border: `1px solid ${coveredShots > 0 ? "oklch(0.65 0.14 150 / 0.7)" : "var(--c-bd3)"}`, color: "#fff", cursor: "help" }}
+      >
+        🎬 {coveredShots} 镜{coveredShots > 0 && coveredWithRef < coveredShots ? ` · 图${coveredWithRef}` : ""}
+      </span>
+      {/* #225 批③：多视角齐全度——主图+备用视角共 X 张，目标 3（正/侧/背）。仅人物显示。 */}
+      {kind === "person" && (
+        <span
+          data-testid="char-views-chip"
+          onPointerDown={(e) => e.stopPropagation()}
+          title={(() => {
+            const views = (payload.referenceImageUrl?.trim() ? 1 : 0) + extraViews.length;
+            return views >= 3
+              ? `多视角参考已齐全（主图 + ${extraViews.length} 个备用视角）——支持多图参考的模型可用它们强化跨镜一致性。`
+              : `多视角参考 ${views}/3（正/侧/背）：${views === 0 ? "还没有参考图，" : ""}建议用底部工具条「多视角」按角色描述一键生成三视图，跨镜头一致性更稳。`;
+          })()}
+          style={(() => {
+            const views = (payload.referenceImageUrl?.trim() ? 1 : 0) + extraViews.length;
+            const ok = views >= 3;
+            return { flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, height: 18, padding: "0 7px", borderRadius: 9, fontSize: 9.5, fontWeight: 700, lineHeight: 1, background: ok ? "oklch(0.55 0.14 150 / 0.4)" : views > 0 ? "oklch(0.6 0.14 70 / 0.35)" : "oklch(0 0 0 / 0.45)", border: `1px solid ${ok ? "oklch(0.65 0.14 150 / 0.7)" : views > 0 ? "oklch(0.7 0.14 70 / 0.6)" : "var(--c-bd3)"}`, color: "#fff", cursor: "help" } as React.CSSProperties;
+          })()}
+        >
+          视角 {Math.min(3, (payload.referenceImageUrl?.trim() ? 1 : 0) + extraViews.length)}/3{((payload.referenceImageUrl?.trim() ? 1 : 0) + extraViews.length) > 3 ? "+" : ""}
+        </span>
+      )}
     </div>
   );
 
