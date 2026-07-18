@@ -45,6 +45,8 @@ const DEFAULT_LEVEL: Record<string, number> = {
   comfyOps: 1,
   assets: 1,
   downloads: 3,
+  tutorialImgs: 1, // #243 补登记：此前漏在矩阵外（靠 unknown-tab 回退放行）；默认 L1 行为不变，但站长可配
+
   system: 1,
   config: 1,
   report: 1,

@@ -28,6 +28,7 @@ import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOr
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { DEFAULT_TAB_ACCESS, ADMIN_LEVEL_LABELS, EDITABLE_TAB_KEYS, type TabAccess } from "@shared/adminPerms";
 import { NATIVE_WEB_SEARCH_LLMS, WEB_SEARCH_MODELS_HINT } from "@shared/webSearchModels";
+import { ADMIN_TAB_CATEGORIES, categoryOfTab } from "@/lib/adminTabCategories";
 
 // 权限矩阵二维级别（{view 可见, operate 可操作}）经 Context 下发给各 Panel，
 // 使 LevelGate 与各 canX 写门控在「静态地板」之上叠加站长配置的 operate（取严 max）。
@@ -119,6 +120,16 @@ export default function AdminPage() {
   // Initial tab comes from ?tab= so deep links (e.g. a download-approval "查看")
   // land on the right sub-page instead of the default.
   const [activeTab, setActiveTab] = useState<Tab>(() => adminTabFromUrl() as Tab);
+  // #243 两级导航：一级分类（activeCat）只决定二级标签行显示哪些标签；activeTab 仍是
+  // 唯一内容真相。深链 ?tab= / ADMIN_TAB_EVENT / 越权兜底改变 activeTab 时自动定位所属分类。
+  const [activeCat, setActiveCat] = useState<string>(() => categoryOfTab(adminTabFromUrl()).key);
+  useEffect(() => {
+    const cat = categoryOfTab(activeTab);
+    if (cat.key !== activeCat && !ADMIN_TAB_CATEGORIES.find((c) => c.key === activeCat)?.tabs.includes(activeTab)) {
+      setActiveCat(cat.key);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
   const [, navigate] = useLocation();
 
   // 越权兜底：（经深链/事件）落到无权标签时跳回第一个有权限的页，避免看到无权面板。
@@ -235,9 +246,47 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Tabs — 胶囊式（带图标） */}
-        <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px", animationDelay: "60ms" }}>
-          {TAB_DEFS.filter(([tab]) => tabAllowed(tab)).map(([tab, label, Icon, hue]) => {
+        {/* #243 两级导航：一级分类胶囊（按管理任务分七类）→ 二级该分类下的标签胶囊。
+            分类内全部标签被矩阵 view 挡掉时整个分类隐藏；点分类自动进入其中第一个有权标签。 */}
+        <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px", animationDelay: "40ms" }}>
+          {ADMIN_TAB_CATEGORIES.filter((c) => c.tabs.some((t) => tabAllowed(t as Tab))).map((c) => {
+            const active = c.key === activeCat;
+            const catDot = c.tabs.includes("system") && hasUpdate && !active; // 更新红点上浮到分类
+            return (
+              <button key={c.key} data-testid={`admin-cat-${c.key}`}
+                onClick={() => {
+                  setActiveCat(c.key);
+                  // 当前标签不在该分类内 → 跳到分类内第一个有权限的标签（一步到位）。
+                  if (!c.tabs.includes(activeTab)) {
+                    const first = c.tabs.find((t) => tabAllowed(t as Tab));
+                    if (first) setActiveTab(first as Tab);
+                  }
+                }}
+                style={{
+                  position: "relative", display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "8px 16px", borderRadius: 11, fontSize: 13.5, fontWeight: active ? 700 : 500, cursor: "pointer",
+                  border: active ? `1px solid oklch(0.68 0.18 ${c.hue} / 0.55)` : "1px solid var(--c-bd1, rgba(255,255,255,0.06))",
+                  background: active ? `linear-gradient(135deg, oklch(0.68 0.18 ${c.hue} / 0.22), oklch(0.60 0.16 ${c.hue} / 0.10))` : "var(--c-surface, rgba(255,255,255,0.03))",
+                  color: active ? "var(--c-t1, #f0f0f4)" : "var(--c-t3, rgba(255,255,255,0.45))",
+                  boxShadow: active ? `0 2px 14px oklch(0.68 0.18 ${c.hue} / 0.22)` : "none",
+                  transition: "all 160ms ease",
+                }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: `oklch(0.72 0.16 ${c.hue})`, flexShrink: 0 }} />
+                {c.label}
+                <span style={{ fontSize: 10.5, color: active ? "var(--c-t3)" : "var(--c-t4)" }}>{c.tabs.filter((t) => tabAllowed(t as Tab)).length}</span>
+                {catDot && (
+                  <span style={{ position: "absolute", top: 5, right: 6, width: 7, height: 7, borderRadius: "50%", background: "oklch(0.65 0.22 25)", boxShadow: "0 0 6px oklch(0.65 0.22 25 / 0.8)" }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {/* 二级：当前分类下的标签（保留 #237 的专属色相与图标；顺序按分类定义） */}
+        <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px", padding: "8px 10px", borderRadius: 12, border: "1px solid var(--c-bd1, rgba(255,255,255,0.05))", background: "oklch(1 0 0 / 0.015)", animationDelay: "60ms" }}>
+          {(ADMIN_TAB_CATEGORIES.find((c) => c.key === activeCat)?.tabs ?? [])
+            .map((t) => TAB_DEFS.find(([tab]) => tab === t))
+            .filter((d): d is (typeof TAB_DEFS)[number] => !!d && tabAllowed(d[0]))
+            .map(([tab, label, Icon, hue]) => {
             const active = activeTab === tab;
             return (
               <button
@@ -2926,13 +2975,11 @@ function PermsPanel() {
     for (const k of EDITABLE_TAB_KEYS) merged[k] = cur(k);
     mu.mutate({ access: merged });
   };
-  const groups: [string, string[]][] = [
-    ["日志与审计", ["logs", "comfyLogs", "llmLogs"]],
-    ["聊天与用户", ["chat", "users", "auth", "whitelist", "downloads"]],
-    ["资源与模型", ["assets", "storage", "staging", "models", "kie"]],
-    ["ComfyUI", ["comfyServers", "comfyStress", "comfyOps"]],
-    ["系统", ["tunnel", "system", "config", "report", "intro"]],
-  ];
+  // #243 与两级导航共用同一分类定义（perms 自身恒站长、不可配置，故从矩阵编辑里剔除）。
+  // 此前手写分组漏掉了 tutorialImgs——收敛到 ADMIN_TAB_CATEGORIES 后由单测守卫全覆盖。
+  const groups: [string, string[]][] = ADMIN_TAB_CATEGORIES
+    .map((c): [string, string[]] => [c.label, c.tabs.filter((t) => t !== "perms")])
+    .filter(([, tabs]) => tabs.length > 0);
   const levelOpts = ADMIN_LEVEL_LABELS.filter(([lv]) => lv >= 1);
   return (
     <div style={cardStyle}>

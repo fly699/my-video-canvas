@@ -7,8 +7,10 @@
 //   2. dispatch an event so an ALREADY-mounted Admin page switches immediately
 //      (wouter's location is path-only, so a query-only change won't re-render it).
 
+// 注意：新增后台 tab 必须同步三处——此白名单、shared/adminPerms DEFAULT_LEVEL、
+// lib/adminTabCategories 分类；adminTabCategories.test.ts 有守卫，漏一处即测试失败。
 export const ADMIN_TABS = [
-  "whitelist", "kie", "users", "logs", "comfyLogs", "llmLogs", "storage", "models", "chat", "comfyServers", "comfyStress", "comfyOps", "assets", "downloads", "tutorialImgs", "system", "config", "tunnel", "auth", "report", "intro", "perms",
+  "whitelist", "kie", "users", "logs", "comfyLogs", "llmLogs", "storage", "staging", "models", "chat", "comfyServers", "comfyStress", "comfyOps", "assets", "downloads", "tutorialImgs", "system", "config", "tunnel", "auth", "report", "intro", "perms",
 ] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
