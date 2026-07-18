@@ -190,6 +190,25 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   });
   const [showQuick, setShowQuick] = useState(false);
   const setQP = (patch: Partial<QuickPrefs>) => setQuickPrefs((p) => ({ ...p, ...patch }));
+  // #242 快捷设置预设：把当前整套快捷设置存成多套命名预设（localStorage），一键调取/重命名/覆盖/删除。
+  type QpPreset = { id: string; name: string; prefs: QuickPrefs };
+  const [qpPresets, setQpPresets] = useState<QpPreset[]>(() => {
+    try { const s = localStorage.getItem("avc:canvasAgent:qpPresets"); if (s) return JSON.parse(s) as QpPreset[]; } catch { /* ignore */ }
+    return [];
+  });
+  useEffect(() => { try { localStorage.setItem("avc:canvasAgent:qpPresets", JSON.stringify(qpPresets)); } catch { /* quota */ } }, [qpPresets]);
+  const [renamingPreset, setRenamingPreset] = useState<string | null>(null);
+  const savePreset = () => {
+    if (qpPresets.length >= 12) { toast.error("预设最多 12 套（可删除不用的再存）"); return; }
+    const id = `qp_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
+    setQpPresets((p) => [...p, { id, name: `预设${p.length + 1}`, prefs: { ...quickPrefs } }]);
+    setRenamingPreset(id); // 存完立刻进入重命名，鼓励起个可辨识的名字
+  };
+  const applyPreset = (p: QpPreset) => {
+    // 与 QP_DEFAULT 合并：老预设缺新增字段时回落出厂默认，不会出现 undefined。
+    setQuickPrefs({ ...QP_DEFAULT, ...p.prefs });
+    toast.success(`已调取预设「${p.name}」`);
+  };
   const qpActiveCount = (quickPrefs.aspect ? 1 : 0) + (quickPrefs.style ? 1 : 0) + (quickPrefs.durationSec ? 1 : 0) + (quickPrefs.imageFirst ? 1 : 0) + (quickPrefs.addMusic ? 1 : 0) + (quickPrefs.addSubtitle ? 1 : 0)
     + (quickPrefs.imageModel ? 1 : 0) + (quickPrefs.videoProvider ? 1 : 0) + (quickPrefs.genNodes.length ? 1 : 0) + (quickPrefs.workflowTemplateIds.length ? 1 : 0)
     + (quickPrefs.noStoryboard ? 1 : 0) + (quickPrefs.dialogueLang ? 1 : 0) + (quickPrefs.promptLang ? 1 : 0) + (quickPrefs.coalesceShots ? 1 : 0) + (quickPrefs.fastChat ? 1 : 0) + (quickPrefs.autoQc ? 1 : 0) + (quickPrefs.useModelSkills ? 1 : 0) + (quickPrefs.interactive ? 1 : 0) + (quickPrefs.autoPortrait ? 1 : 0) + (quickPrefs.anchorCompress ? 1 : 0);
@@ -697,8 +716,35 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       {showQuick && (() => {
         const chip = (on: boolean): React.CSSProperties => ({ padding: "3px 9px", fontSize: 11, borderRadius: 7, cursor: "pointer",
           border: `1px solid ${on ? accent : "var(--c-bd2)"}`, background: on ? accentSoft : "var(--c-surface)", color: on ? accent : "var(--c-t3)" });
+        // #242 分组小节标题：把十几行控件归类，扫一眼就能定位要改的设置。
+        const secHead = (label: string): React.ReactNode => (
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "var(--c-t4)", marginTop: 3, borderTop: "1px dashed var(--c-bd1)", paddingTop: 7 }}>{label}</div>
+        );
+        const iconBtn: React.CSSProperties = { padding: "0 3px", fontSize: 10, lineHeight: 1, background: "transparent", border: "none", color: "var(--c-t4)", cursor: "pointer" };
         return (
-          <div className="nowheel" style={{ padding: "8px 12px 10px", borderBottom: "1px solid var(--c-bd2)", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="nowheel" style={{ padding: "8px 12px 10px", borderBottom: "1px solid var(--c-bd2)", display: "flex", flexDirection: "column", gap: 8, maxHeight: "46vh", overflowY: "auto" }}>
+            {/* ── 预设条：整套设置的保存 / 一键调取 / 重命名 / 覆盖 / 删除 ── */}
+            <div data-testid="qp-preset-bar" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="把当前整套快捷设置存成命名预设，随时一键调取（存在本浏览器）">预设</span>
+              {qpPresets.map((p) => renamingPreset === p.id ? (
+                <input key={p.id} autoFocus defaultValue={p.name} data-testid="qp-preset-rename"
+                  onBlur={(e) => { const n = e.target.value.trim().slice(0, 20); setQpPresets((arr) => arr.map((x) => x.id === p.id ? { ...x, name: n || x.name } : x)); setRenamingPreset(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setRenamingPreset(null); }}
+                  style={{ width: 92, padding: "2px 7px", fontSize: 11, borderRadius: 7, border: `1px solid ${accent}`, background: "var(--c-input, var(--c-surface))", color: "var(--c-t1)", outline: "none" }} />
+              ) : (
+                <span key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 1, padding: "2px 4px 2px 9px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)" }}>
+                  <button onClick={() => applyPreset(p)} title={`一键调取「${p.name}」（整套覆盖当前快捷设置）`} data-testid="qp-preset-apply"
+                    style={{ padding: 0, fontSize: 11, background: "transparent", border: "none", color: "var(--c-t1)", cursor: "pointer", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</button>
+                  <button onClick={() => setRenamingPreset(p.id)} title="重命名" style={iconBtn}>✎</button>
+                  <button onClick={() => { setQpPresets((arr) => arr.map((x) => x.id === p.id ? { ...x, prefs: { ...quickPrefs } } : x)); toast.success(`已用当前设置覆盖「${p.name}」`); }} title="用当前设置覆盖此预设" style={iconBtn}>⟳</button>
+                  <button onClick={() => setQpPresets((arr) => arr.filter((x) => x.id !== p.id))} title="删除此预设" style={{ ...iconBtn, color: "oklch(0.6 0.15 25)" }}>×</button>
+                </span>
+              ))}
+              <button onClick={savePreset} data-testid="qp-preset-save" title="把当前整套快捷设置保存为新预设（保存后可重命名）"
+                style={{ ...chip(false), borderStyle: "dashed" }}>+ 存为预设</button>
+            </div>
+
+            {secHead("画面与时长")}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }}>比例</span>
               {QP_ASPECTS.map((a) => <button key={a || "auto"} onClick={() => setQP({ aspect: a })} style={chip(quickPrefs.aspect === a)}>{a || "默认"}</button>)}
@@ -713,6 +759,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }}>时长</span>
               {QP_DURATIONS.map((d) => <button key={d.v} onClick={() => setQP({ durationSec: d.v })} style={chip(quickPrefs.durationSec === d.v)}>{d.label}</button>)}
             </div>
+            {secHead("模型与语种")}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>模型</span>
               <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>图</span>
@@ -731,6 +778,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               <MiniSelect value={quickPrefs.promptLang} placeholder="默认" maxWidth={128} accent={accent} accentSoft={accentSoft}
                 title="最终提示词语种：喂给生成模型的画面提示词（image_gen.prompt / 分镜 promptText / 视频 prompt 等）统一书写语言；默认=助手按模型最佳实践（多数图/视模型英文提示更稳）" groups={[{ options: [{ value: "", label: "默认（按模型最佳实践）" }, ...QP_DIALOGUE_LANGS] }]} onChange={(v) => setQP({ promptLang: v })} />
             </div>
+            {secHead("节点与模板")}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }} title="勾选=只允许助手用这些生成节点；全不勾=不限。提示：未勾任何 ComfyUI 系时，规划会跳过模板库查询与注入（更快）——需要助手引用工作流模板时请勾选 ComfyUI模板">节点</span>
               {QP_GEN_NODES.map((n) => {
@@ -761,8 +809,17 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 )}
               </div>
             )}
+            {secHead("规划流程")}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["imageFirst", "生图 → 再生视频", ""], ["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["useComfyMemory", "使用 ComfyUI 记忆体", "规划时注入你 ComfyUI 服务器已学的资源（模型/LoRA/节点）与工程智能体成功过的工作流经验，让助手按真实可用资源规划。关掉则本次不注入。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["autoQc", "生成后自动质检（图像）", "助手创建的图像节点生成完成后，自动用视觉模型质检结果图（与提示词的符合度 / 肢体畸形 / 黑屏 / 乱码水印等硬伤）。质检未过时带修正意见自动重新生成一次（仅一次，防循环）。会额外产生一次视觉分析调用与可能的一次重生成费用。质检模型与图像节点「标记」功能共用（在节点标记面板可换）。"], ["useModelSkills", "模型技能（提示词技法）", "开启后：把「模型技能库」（管理后台 → 模型 → 技能库）中为最终使用模型维护的提示词技法注入规划参考，助手按该模型的官方技法撰写提示词与参数。当前对上方锁定的图像/视频模型生效（锁定=最终使用模型确定）；未锁定的类别、该模型无技能条目、或技能被停用时不注入。关闭时与现状完全一致，不注入任何内容。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["autoPortrait", "角色自动定妆照", "规划落地后，自动为本轮新建、还没有参考图的人物角色节点按其角色描述生成一张「全身正面素背景」定妆照并设为主参考图——运行工作流前角色即已锁脸，无需逐个手动定妆。使用上方锁定的图像模型（未锁定则用系统默认），每个角色计一次生图费用。已有参考图的角色（如从角色库代入）自动跳过。"], ["anchorCompress", "外观锚点压缩（默认开）", "规划落地后，自动把本轮新建人物角色的外貌/服装/标志描述压缩成 15-30 字「外观锚点短语」写入角色卡——之后所有下游节点的提示词注入用「名字，身份，锚点」替代全量字段：省 token、跨镜头措辞恒定更利一致性。全量字段原样保留；在角色卡上可随时点小按钮切回未压缩的全量注入。每个角色一次极小的文本 LLM 调用；已有锚点的角色自动跳过。"]] as const).map(([k, label, tip]) => (
+              {([["imageFirst", "生图 → 再生视频", ""], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"]] as const).map(([k, label, tip]) => (
+                <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
+                  <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
+                </label>
+              ))}
+            </div>
+            {secHead("自动增强")}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
+              {([["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["autoPortrait", "角色自动定妆照", "规划落地后，自动为本轮新建、还没有参考图的人物角色节点按其角色描述生成一张「全身正面素背景」定妆照并设为主参考图——运行工作流前角色即已锁脸，无需逐个手动定妆。使用上方锁定的图像模型（未锁定则用系统默认），每个角色计一次生图费用。已有参考图的角色（如从角色库代入）自动跳过。"], ["anchorCompress", "外观锚点压缩（默认开）", "规划落地后，自动把本轮新建人物角色的外貌/服装/标志描述压缩成 15-30 字「外观锚点短语」写入角色卡——之后所有下游节点的提示词注入用「名字，身份，锚点」替代全量字段：省 token、跨镜头措辞恒定更利一致性。全量字段原样保留；在角色卡上可随时点小按钮切回未压缩的全量注入。每个角色一次极小的文本 LLM 调用；已有锚点的角色自动跳过。"], ["autoQc", "生成后自动质检（图像）", "助手创建的图像节点生成完成后，自动用视觉模型质检结果图（与提示词的符合度 / 肢体畸形 / 黑屏 / 乱码水印等硬伤）。质检未过时带修正意见自动重新生成一次（仅一次，防循环）。会额外产生一次视觉分析调用与可能的一次重生成费用。质检模型与图像节点「标记」功能共用（在节点标记面板可换）。"], ["useModelSkills", "模型技能（提示词技法）", "开启后：把「模型技能库」（管理后台 → 模型 → 技能库）中为最终使用模型维护的提示词技法注入规划参考，助手按该模型的官方技法撰写提示词与参数。当前对上方锁定的图像/视频模型生效（锁定=最终使用模型确定）；未锁定的类别、该模型无技能条目、或技能被停用时不注入。关闭时与现状完全一致，不注入任何内容。"], ["useComfyMemory", "使用 ComfyUI 记忆体", "规划时注入你 ComfyUI 服务器已学的资源（模型/LoRA/节点）与工程智能体成功过的工作流经验，让助手按真实可用资源规划。关掉则本次不注入。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>
