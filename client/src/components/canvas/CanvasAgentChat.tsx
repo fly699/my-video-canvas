@@ -15,6 +15,7 @@ import { useBridgeSkills } from "@/lib/useBridgeSkills";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, BLANK_TEMPLATE_LABEL } from "@/lib/aiAssistantTemplates";
 import { IMAGE_MODELS, VIDEO_MODELS, LLM_MODELS } from "@/lib/models";
+import { maxRefImagesForProvider, videoRefCapBadge } from "../../../../shared/videoRefCaps";
 import { extractFrameMedia } from "../../lib/nodeMedia";
 import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
@@ -67,9 +68,15 @@ const QP_IMAGE_MODEL_GROUPS = [
   { options: [{ value: "", label: "默认（助手自选）", note: "按各节点默认模型计价" }] },
   ...groupModelOptions(IMAGE_MODELS, (m) => [m.desc, imgCostText(m)].filter(Boolean).join(" · "), imgCostText),
 ];
+// #246 视频模型下拉透明标注吃图能力（videoRefCaps 单一事实源）：纯文生模型的首帧/
+// 角色参考/链式尾帧全不生效，行内直接标出，让用户选择时就能权衡。
 const QP_VIDEO_MODEL_GROUPS = [
   { options: [{ value: "", label: "默认（助手自选）", note: "按各节点默认模型计价" }] },
-  ...groupModelOptions(VIDEO_MODELS.filter((m) => m.value !== "mock"), (m) => m.costLabel, (m) => m.costLabel),
+  ...groupModelOptions(
+    VIDEO_MODELS.filter((m) => m.value !== "mock"),
+    (m) => [m.costLabel, `参考图：${videoRefCapBadge(m.value)}`].filter(Boolean).join(" · "),
+    (m) => [m.costLabel, maxRefImagesForProvider(m.value) === 0 ? "🚫图" : undefined].filter(Boolean).join(" · "),
+  ),
 ];
 const QP_STYLES = ["电影感", "赛博朋克", "写实", "动漫", "水彩插画", "3D 渲染", "复古胶片", "极简", "梦幻唯美"];
 const QP_DURATIONS: { v: number; label: string }[] = [{ v: 0, label: "不限" }, { v: 15, label: "15s" }, { v: 30, label: "30s" }, { v: 60, label: "60s" }];
@@ -785,8 +792,14 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 title="指定图像生成模型（写入 image_gen/分镜关键帧；默认=助手自选）" groups={QP_IMAGE_MODEL_GROUPS} onChange={(v) => setQP({ imageModel: v })} />
               <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>视</span>
               <MiniSelect value={quickPrefs.videoProvider} placeholder="默认" maxWidth={128} accent={accent} accentSoft={accentSoft}
-                title="指定视频生成模型（写入 video_task.provider；默认=助手自选）" groups={QP_VIDEO_MODEL_GROUPS} onChange={(v) => setQP({ videoProvider: v })} />
+                title="指定视频生成模型（写入 video_task.provider；默认=助手自选）。每项 hover 可见参考图能力：纯文生模型（标🚫图）不吃任何参考图" groups={QP_VIDEO_MODEL_GROUPS} onChange={(v) => setQP({ videoProvider: v })} />
             </div>
+            {/* #246 透明警告：锁定了纯文生模型时，依赖首帧图的能力全不生效——让用户当场权衡 */}
+            {!!quickPrefs.videoProvider && maxRefImagesForProvider(quickPrefs.videoProvider) === 0 && (
+              <div data-testid="qp-noimg-warn" style={{ fontSize: 10.5, lineHeight: 1.5, color: "oklch(0.68 0.14 65)", background: "oklch(0.68 0.14 65 / 0.08)", border: "1px solid oklch(0.68 0.14 65 / 0.25)", borderRadius: 8, padding: "5px 8px" }}>
+                ⚠ 所选视频模型<b>不吃参考图（纯文生）</b>：「生图 → 再生视频」的首帧、角色定妆照参考、「链式下一镜」的尾帧衔接都不会生效。需要这些能力请换支持首帧图的模型（下拉各项已标注）。
+              </div>
+            )}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="对白与最终提示词的书写语言；默认=跟随内容">语种</span>
               <span style={{ fontSize: 10.5, color: "var(--c-t4)", flexShrink: 0 }}>对白</span>
@@ -829,7 +842,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             )}
             {secHead("规划流程")}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["imageFirst", "生图 → 再生视频", ""], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"]] as const).map(([k, label, tip]) => (
+              {([["imageFirst", "生图 → 再生视频", "每个镜头先生成一张首帧图，再图生视频——画面更可控、跨镜更一致。依赖视频模型支持首帧参考图：上方「视」下拉标注「🚫图」的纯文生模型不生效（会有警告提示）。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>
