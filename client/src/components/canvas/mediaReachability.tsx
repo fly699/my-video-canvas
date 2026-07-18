@@ -77,8 +77,11 @@ export function shouldWarnRefImage(args: {
  */
 export function useMediaReachability(): { reachable: boolean; poyoStaging: boolean; stagingProvider: "off" | "poyo" | "kie"; stagingLabel: string; isLoading: boolean } {
   const q = trpc.config.mediaReachability.useQuery(undefined, {
-    staleTime: 5 * 60_000,
-    refetchOnWindowFocus: false,
+    // #234 后暂存通道可在管理后台运行时切换，不再是「部署期内基本不变」：staleTime 缩到
+    // 1 分钟并允许窗口聚焦重查，否则已打开的画布标签页会一直显示切换前的旧状态
+    //（用户实报：后台已生效、画布仍显示未暂存），只能整页刷新才能纠正。
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
     retry: 1,
   });
   // #234 通用暂存通道生效时（Poyo 或 Kie），参考图会被暂存到该通道公网链接给上游读取
