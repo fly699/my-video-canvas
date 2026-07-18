@@ -1058,7 +1058,7 @@ function StoragePanel() {
                   <div style={{ fontSize: 11, color: "var(--c-t3, rgba(255,255,255,0.4))", marginTop: 3, whiteSpace: "pre-line", lineHeight: 1.6 }}>
                     {"附加功能·默认关闭：当 MinIO/S3 未暴露公网（未设 S3_PUBLIC_ENDPOINT）时，把参考图/视频经所选平台流式上传换取公网 URL 供 AI 模型读取。关闭后完全不影响原有存储逻辑。仅临时中转参考素材，不替代本地持久化存储。\n" +
                       "· Poyo（需 POYO_API_KEY）：图 JPEG/PNG/GIF/WebP 存约 72h；视频 MP4/WebM/MOV/AVI/MKV ≤100MB 存约 24h；限流 5 次/分（已自动排队错峰 + 同文件 12h 复用缓存）。\n" +
-                      "· Kie（需 KIE_API_KEY）：通用文件存储，≤100MB，存 24h，免费；同样自动排队 + 复用缓存。"}
+                      "· Kie（需 KIE_API_KEY）：通用文件存储，≤100MB，存 24h，免费；官方无上传限流条款 → 全并发直发（429 才自适应退避重试）+ 复用缓存。"}
                   </div>
                   <div style={{ fontSize: 11, color: chosen !== "off" && active === chosen ? "oklch(0.7 0.18 145)" : chosen === "off" ? "var(--c-t3)" : "oklch(0.72 0.16 60)", marginTop: 4, fontWeight: 600 }}>
                     状态：{status}
