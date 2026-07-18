@@ -35,8 +35,6 @@ import { hashPassword } from "../_core/emailAuth";
 import { startBackfill, getBackfillStatus } from "../_core/assetBackfill";
 import { getMergedModelSkills, MODEL_SKILL_KINDS } from "../_core/modelSkills";
 import { writeAuditLog } from "../_core/auditLog";
-import { uploadStreamToPoyo } from "../_core/poyoUpload";
-import { uploadStreamToKie } from "../_core/kieUpload";
 import { getActiveStagingProvider } from "../_core/storageConfig";
 import { broadcastSystemAnnouncement, setPersistentAnnouncement } from "./chat";
 import { sendLogEmailNow } from "../_core/logEmailer";
@@ -199,10 +197,10 @@ export const adminRouter = router({
   }),
   // ── #203 模型技能库：独立的按模型「提示词技法」库（DB 覆盖代码种子，随时维护）。
   //    本批只建库不接智能体；未来调用方经 server/_core/modelSkills.getModelSkillText 读取。
-  // #238 文件暂存：管理员手动上传文件 → Poyo/Kie 暂存 → 返回公网直链（一键复制，
-  // 供喂给 AI 模型 / 临时外发）。读（info）任意管理员（受矩阵 view）；写（upload）
-  // 静态地板 L2 运营，站长可经矩阵 operate 进一步收紧。admin.staging.* 自动落入
-  // 权限矩阵 "staging" 页（adminTabFromRpcPath 按子路由名解析）。
+  // #238/#239 文件暂存：管理员手动上传文件 → Poyo/Kie 暂存 → 返回公网直链。
+  // 实际上传走【原生二进制直传路由】/api/admin/staging-upload（见 _core/stagingUploadRoute.ts，
+  // 不经 JSON/base64，单文件 ≤100MB，路由内手动强制 管理员 + L2 地板 + 矩阵 staging.operate，
+  // 与 enforceAdminMatrix 同口径）。这里只保留只读 info（受矩阵 view 门控）。
   staging: router({
     info: adminProcedure.query(async () => ({
       hasPoyoKey: !!ENV.poyoApiKey,
@@ -210,36 +208,6 @@ export const adminRouter = router({
       // 参考图暂存通道当前生效的 provider（仅展示参考，本面板可自由选任一有 Key 的通道）
       activeProvider: await getActiveStagingProvider(),
     })),
-    upload: operatorProc
-      .input(z.object({
-        provider: z.enum(["poyo", "kie"]),
-        fileName: z.string().min(1).max(200),
-        contentType: z.string().min(1).max(120),
-        // ~32MB 原始文件的 base64 上限（express json 50mb 的安全余量；更大文件走素材库/画布通道）
-        dataBase64: z.string().min(1).max(45_000_000),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const buf = Buffer.from(input.dataBase64, "base64");
-        if (buf.byteLength === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "文件内容为空或 base64 解码失败" });
-        if (buf.byteLength > 32 * 1024 * 1024) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "本面板单文件上限 32MB（更大文件请使用素材库 / 画布上传通道）" });
-        }
-        // 文件名清洗：保留中英文/数字/点/横线，其余替换为下划线（provider 侧按原样存展示名）
-        const safeName = input.fileName.replace(/[^\w.\-一-龥]/g, "_").slice(0, 120) || "file";
-        try {
-          const url = input.provider === "poyo"
-            ? await uploadStreamToPoyo(buf, safeName, input.contentType)
-            : await uploadStreamToKie(buf, safeName, input.contentType);
-          writeAuditLog({
-            ctx,
-            action: input.provider === "poyo" ? "poyo_stage" : "kie_stage",
-            detail: { manual: true, fileName: safeName, bytes: buf.byteLength, contentType: input.contentType },
-          });
-          return { url, bytes: buf.byteLength };
-        } catch (err) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: err instanceof Error ? err.message : String(err) });
-        }
-      }),
   }),
 
   modelSkills: router({

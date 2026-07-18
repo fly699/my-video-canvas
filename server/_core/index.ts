@@ -9,6 +9,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerEmailAuthRoutes } from "./emailAuth";
 import { registerGoogleAuthRoutes } from "./googleAuth";
 import { registerStorageProxy, registerStorageUploadProxy } from "./storageProxy";
+import { registerStagingUploadRoute } from "./stagingUploadRoute";
 import { registerFileRelay } from "./fileRelay";
 import { registerVideoProxy } from "./videoProxy";
 import { registerImageProxy } from "./imageProxy";
@@ -125,6 +126,10 @@ async function startServer() {
 
   // 局域网大文件中转站（同样需在 body 解析器之前注册，PUT 走原始流式写盘）。
   registerFileRelay(app);
+
+  // #238 管理后台「文件暂存」二进制直传（同样需在 body 解析器之前注册，
+  // 原生二进制 ≤100MB，不经 base64/JSON 限额；路由内手动强制管理员级别+权限矩阵）。
+  registerStagingUploadRoute(app);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
