@@ -31,6 +31,16 @@ const DEFAULT_SCENE_TEMPLATE =
  * character is so empty it'd be just decoration noise. */
 export function characterToPromptInjection(char: CharacterNodeData): string {
   const kind = char.characterKind ?? "person";
+  // #225 外观锚点短语（默认压缩）：人物角色带非空锚点且未被切到「全量注入」
+  // （appearanceAnchorEnabled === false，角色卡小按钮）时，用「名字，身份，锚点」
+  // 的紧凑注入替代全量字段模板——省 token 且跨镜头措辞恒定，更利一致性。
+  // customPromptTemplate 优先级更高（用户显式定制注入格式时锚点让位）；场景不适用。
+  const anchor = (char.appearanceAnchor ?? "").trim();
+  if (kind === "person" && !char.customPromptTemplate && anchor && char.appearanceAnchorEnabled !== false) {
+    const name = (char.name ?? "").trim();
+    const role = (char.role ?? "").trim();
+    return cleanupSeparators([name, role, anchor].filter(Boolean).join("，"));
+  }
   const template = char.customPromptTemplate
     ? char.customPromptTemplate
     : kind === "scene"

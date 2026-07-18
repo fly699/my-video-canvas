@@ -1,8 +1,59 @@
 import { describe, it, expect } from "vitest";
-import { mergeCharactersIntoPrompt } from "./characterPrompt";
+import { characterToPromptInjection, mergeCharactersIntoPrompt } from "./characterPrompt";
 import type { CharacterNodeData } from "../../../shared/types";
 
 const c = (over: Partial<CharacterNodeData>): CharacterNodeData => ({ characterKind: "person", ...over });
+
+// #225 外观锚点短语：压缩注入（默认）/ 全量注入 切换
+describe("characterToPromptInjection appearance anchor (#225)", () => {
+  const full = c({
+    name: "Alice", role: "侦探", age: "30岁", gender: "女",
+    appearance: "银灰色短发，锐利的绿色眼睛，身材高挑", outfit: "黑色风衣配红围巾",
+    personality: "冷静多疑", signature: "左眼下有一道疤痕",
+  });
+
+  it("anchor present → compressed 「名字，身份，锚点」, full fields NOT injected", () => {
+    const out = characterToPromptInjection({ ...full, appearanceAnchor: "银灰短发、左眼疤痕、黑风衣红围巾" });
+    expect(out).toBe("Alice，侦探，银灰短发、左眼疤痕、黑风衣红围巾");
+    expect(out).not.toContain("锐利的绿色眼睛");
+    expect(out).not.toContain("冷静多疑");
+  });
+
+  it("appearanceAnchorEnabled === false → byte-identical to no-anchor full injection", () => {
+    const withOff = characterToPromptInjection({ ...full, appearanceAnchor: "银灰短发、左眼疤痕", appearanceAnchorEnabled: false });
+    const without = characterToPromptInjection(full);
+    expect(withOff).toBe(without);
+    expect(withOff).toContain("锐利的绿色眼睛");
+  });
+
+  it("empty / whitespace anchor → unchanged full injection (opt-in only)", () => {
+    expect(characterToPromptInjection({ ...full, appearanceAnchor: "" })).toBe(characterToPromptInjection(full));
+    expect(characterToPromptInjection({ ...full, appearanceAnchor: "   " })).toBe(characterToPromptInjection(full));
+  });
+
+  it("customPromptTemplate takes precedence over the anchor", () => {
+    const out = characterToPromptInjection({ ...full, appearanceAnchor: "银灰短发", customPromptTemplate: "主角{name}身穿{outfit}" });
+    expect(out).toBe("主角Alice身穿黑色风衣配红围巾");
+    expect(out).not.toContain("银灰短发");
+  });
+
+  it("scene kind ignores the anchor entirely", () => {
+    const scene = c({ characterKind: "scene", sceneName: "夜街", sceneDescription: "霓虹灯下的湿滑街道", appearanceAnchor: "不该出现" });
+    expect(characterToPromptInjection(scene)).not.toContain("不该出现");
+  });
+
+  it("name/role missing → anchor-only injection without dangling separators", () => {
+    const out = characterToPromptInjection(c({ appearanceAnchor: "银灰短发、黑风衣" }));
+    expect(out).toBe("银灰短发、黑风衣");
+  });
+
+  it("merge path uses the compressed form too", () => {
+    const out = mergeCharactersIntoPrompt("在公园散步", [{ ...full, appearanceAnchor: "银灰短发、左眼疤痕" }]);
+    expect(out).toContain("银灰短发、左眼疤痕");
+    expect(out).not.toContain("锐利的绿色眼睛");
+    expect(out.endsWith("在公园散步")).toBe(true);
+  });
+});
 
 describe("mergeCharactersIntoPrompt", () => {
   it("single character → bracketed block, no ordinal", () => {

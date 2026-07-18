@@ -227,6 +227,20 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     recognizeMut.mutate({ imageUrls: imgs, characterKind: kind, model: recognizeModel });
   };
 
+  // #225 外观锚点短语：把全量外貌/服装/标志压成 15-30 字视觉锚点（AI 压缩按钮），
+  // 非空时提示词注入默认用「名字，身份，锚点」的压缩形态（小按钮可切回全量注入）。
+  const anchorMut = trpc.scripts.compressCharacterAnchor.useMutation({
+    onSuccess: (res) => { update("appearanceAnchor", res.phrase); toast.success("已生成外观锚点（压缩注入已启用，可点小按钮切回全量）"); },
+    onError: (err) => toast.error("AI 压缩失败：" + err.message),
+  });
+  const handleCompressAnchor = () => {
+    if (anchorMut.isPending) return;
+    const profileText = [payload.appearance, payload.outfit, payload.signature, payload.gender, payload.age]
+      .map((s) => (s ?? "").trim()).filter(Boolean).join("；");
+    if (!profileText) { toast.error("请先填写外貌 / 服装 / 标志等描述"); return; }
+    anchorMut.mutate({ profileText: profileText.slice(0, 2000) });
+  };
+
   // 一键多视角：用角色描述（+已有参考图作身份）生成三视图大图 → 切成 front/side/back，
   // 写入 referenceImageUrl（正面）+ additionalImageUrls（侧/背），强化跨镜一致性。
   const [multiAngleBusy, setMultiAngleBusy] = useState(false);
@@ -1024,6 +1038,40 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
                 onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
               />
+            </div>
+            {/* ── #225 外观锚点短语：非空时提示词默认压缩注入「名字，身份，锚点」，
+                小按钮可随时切回全量注入（全量字段永远保留，只影响注入形态） ── */}
+            <div>
+              <label style={labelStyle}>外观锚点（压缩注入用，15-30 字）</label>
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <NodeInput
+                  type="text"
+                  placeholder="银灰短发、左眼疤痕、黑西装红领带…（可 AI 压缩生成）"
+                  value={payload.appearanceAnchor ?? ""}
+                  onValueChange={(v) => update("appearanceAnchor", v)}
+                  className="nodrag"
+                  style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = BORDER_ACCENT; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = BORDER_DEFAULT; }}
+                />
+                <button
+                  className="nodrag" data-testid="anchor-compress-btn"
+                  onClick={handleCompressAnchor}
+                  disabled={anchorMut.isPending}
+                  title="用 AI 把上方外貌 / 服装 / 标志描述压缩成 15-30 字视觉锚点短语（一次文本调用）"
+                  style={{ flexShrink: 0, height: 26, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: accentA(0.16), border: `1px solid ${accentA(0.45)}`, color: accent, cursor: anchorMut.isPending ? "wait" : "pointer" }}
+                >{anchorMut.isPending ? "压缩中…" : "AI 压缩"}</button>
+              </div>
+              {(payload.appearanceAnchor ?? "").trim().length > 0 && (
+                <button
+                  className="nodrag" data-testid="anchor-mode-toggle"
+                  onClick={() => update("appearanceAnchorEnabled", payload.appearanceAnchorEnabled === false)}
+                  title={payload.appearanceAnchorEnabled !== false
+                    ? "当前注入提示词时用锚点短语替代全量外貌/穿着/性格/标志（省 token、跨镜头措辞一致）。点击恢复未压缩的全量注入。"
+                    : "当前按全量字段注入（与无锚点时完全一致）。点击改用锚点短语压缩注入。"}
+                  style={{ marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4, height: 20, padding: "0 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, lineHeight: 1, background: payload.appearanceAnchorEnabled !== false ? accentA(0.28) : "oklch(0 0 0 / 0.45)", border: `1px solid ${payload.appearanceAnchorEnabled !== false ? accentA(0.55) : "var(--c-bd3)"}`, color: "#fff", cursor: "pointer" }}
+                >{payload.appearanceAnchorEnabled !== false ? "● 压缩注入中 · 点击恢复全量" : "○ 全量注入中 · 点击启用压缩"}</button>
+              )}
             </div>
           </>
         )}
