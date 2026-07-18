@@ -41,6 +41,7 @@ import { extractTextContent } from "../_core/llm";
 import { getSystemDefaultModel } from "../_core/systemDefaultModels";
 import { fetchDocText } from "../_core/webDocFetch";
 import { kieWebSearchSupported, KIE_WEB_SEARCH_MODELS } from "../_core/kieLLM";
+import { searchViaPoyoResponses, searchViaDuckDuckGo, type SearchChannelResult } from "../_core/webSearchChannels";
 import { writeAuditLog } from "../_core/auditLog";
 import { getActiveStagingProvider } from "../_core/storageConfig";
 import { broadcastSystemAnnouncement, setPersistentAnnouncement } from "./chat";
@@ -353,6 +354,11 @@ export const adminRouter = router({
     //   · 网关拒绝 web_search tools（kieLLM 自动去 tools 重试）或联网调用失败 →
     //     回退【所选模型内置知识】提炼，草稿来源明确标注「未联网」，返回 note 通知，
     //     UI 以警示 toast 呈现——功能始终可用，联网与否全程透明。
+    // #224 批2c：多渠道并行搜索（互相独立，任一成功即产出材料）+ 所选模型「自动整理」合并：
+    //   A. Kie 原生联网模型（GPT-5.2 / GPT-5.4，官方 tools 契约；所选模型支持则用之，否则自动改用）
+    //   B. Poyo Responses API（官方 web_search_preview 工具）
+    //   C. DuckDuckGo HTML 检索（无 Key 通用网络来源：标题/链接/摘要）
+    // 全部渠道失败 → 回退所选模型内置知识（来源标注未联网），逐渠道原因随 note 通知——功能恒可用。
     autoDraftSearch: managerProc
       .input(z.object({
         modelId: z.string().min(1).max(120).refine((v) => !v.startsWith("draft:"), "非法模型 id"),
@@ -361,55 +367,88 @@ export const adminRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const chosen = input.llmModel?.trim() || await getSystemDefaultModel("llm");
-        // 搜索执行模型：所选模型支持就用它；否则改用文档声明支持的模型（首选集合第一项）。
-        const searchModel = kieWebSearchSupported(chosen) ? chosen : Array.from(KIE_WEB_SEARCH_MODELS)[0];
-        const switched = searchModel !== chosen;
-        const sysPrompt =
-          `你是提示词技法工程师，可使用联网搜索。请搜索生成模型「${input.modelId}」（类别 ${input.kind}）的【官方】最新提示词技法与参数说明（官方文档/官方博客/模型页优先）。\n`
-          + `输出要求：\n- 中文，200-500 字，一行一条要点（「- 」开头）：参数要点 / 官方提示词写作技巧 / 限制与注意事项；\n`
-          + `- 只收录有来源依据的内容，最后加一行「引用：」列出来源 URL（分号分隔）；\n`
-          + `- 搜不到可靠官方信息时只输出「无可提炼内容」六个字；不输出标题/前后缀。`;
-        const userPrompt = `请联网搜索并提炼「${input.modelId}」的官方提示词技法。`;
+        const kieSearchModel = kieWebSearchSupported(chosen) ? chosen : Array.from(KIE_WEB_SEARCH_MODELS)[0];
+        const searchAsk =
+          `请联网搜索生成模型「${input.modelId}」（类别 ${input.kind}）的【官方】最新提示词技法与参数说明（官方文档/官方博客/模型页优先）。`
+          + `输出要点行（「- 」开头）并在末尾加「引用：」列出来源 URL；只收录有来源依据的内容；搜不到可靠官方信息时只输出「无可提炼内容」。`;
+
+        const channels: SearchChannelResult[] = await Promise.all([
+          (async (): Promise<SearchChannelResult> => {
+            const channel = `Kie ${kieSearchModel} 联网`;
+            try {
+              const r = await invokeLLMWithKie(ctx, {
+                messages: [
+                  { role: "system" as const, content: "你是提示词技法工程师，可使用联网搜索工具，回答必须基于搜索结果。" },
+                  { role: "user" as const, content: searchAsk },
+                ],
+                model: kieSearchModel, maxTokens: 2000, kieWebSearch: true,
+              });
+              if (r.kieWebSearchApplied !== true) return { channel, ok: false, error: "网关未接受联网搜索参数" };
+              const text = extractTextContent(r).trim();
+              if (!text || text.includes("无可提炼内容")) return { channel, ok: false, error: "无可靠官方结果" };
+              return { channel, ok: true, text: text.slice(0, 8000) };
+            } catch (err) {
+              return { channel, ok: false, error: err instanceof Error ? err.message.slice(0, 160) : String(err) };
+            }
+          })(),
+          searchViaPoyoResponses(searchAsk),
+          searchViaDuckDuckGo(`${input.modelId} model official prompt guide 参数 提示词 技巧`),
+        ]);
+        const okCh = channels.filter((c) => c.ok && c.text);
 
         let tips = "";
         let usedWebSearch = false;
-        let note = switched ? `所选模型不支持联网搜索，已改用 ${searchModel}（官方 Web Search）执行搜索。` : "";
-        try {
+        let note = "";
+        if (okCh.length > 0) {
+          // 自动整理：多渠道材料 → 所选提炼模型合并去重成一条草稿（冲突以官方来源优先，保留引用）。
+          const material = okCh.map((c) => `【材料渠道：${c.channel}】\n${c.text}`).join("\n\n");
           const r = await invokeLLMWithKie(ctx, {
             messages: [
-              { role: "system" as const, content: sysPrompt },
-              { role: "user" as const, content: userPrompt },
+              {
+                role: "system" as const,
+                content: `你是提示词技法工程师。下面是关于生成模型「${input.modelId}」（类别 ${input.kind}）的多渠道联网搜索材料，请整理成一条「模型技能」（提示词技法）。\n`
+                  + `要求：\n- 中文，250-550 字，一行一条要点（「- 」开头）：参数要点 / 官方提示词写作技巧 / 限制与注意事项；\n`
+                  + `- 跨渠道合并去重，冲突时以官方文档/官方来源为准；只收录材料中有依据的内容，不得自行补充编造；\n`
+                  + `- 末尾加一行「引用：」汇总材料中的来源 URL（分号分隔，去重）；\n`
+                  + `- 材料与该模型无关或无可用信息时只输出「无可提炼内容」；不输出标题/前后缀。`,
+              },
+              { role: "user" as const, content: material.slice(0, 24_000) },
             ],
-            model: searchModel,
-            maxTokens: 2000,
-            kieWebSearch: true,
+            model: chosen, maxTokens: 2000,
           });
           tips = extractTextContent(r).replace(/```[a-z]*/gi, "").trim().slice(0, 8000);
-          usedWebSearch = r.kieWebSearchApplied === true;
-          if (!usedWebSearch) note = `${note ? note + " " : ""}网关未接受联网搜索参数，本次结果来自模型内置知识（未联网）。`;
-        } catch (err) {
-          // 联网调用整体失败 → 回退：用所选模型的内置知识提炼（明确标注未联网）。
-          note = `${note ? note + " " : ""}联网搜索调用失败（${err instanceof Error ? err.message.slice(0, 120) : String(err)}），已回退模型内置知识提炼（未联网）。`;
+          if (tips && !tips.includes("无可提炼内容")) usedWebSearch = true;
+          else tips = "";
+          const failed = channels.filter((c) => !c.ok);
+          if (failed.length) note = `部分渠道不可用：${failed.map((c) => `${c.channel}（${c.error}）`).join("；")}`;
+        }
+        if (!tips) {
+          // 全渠道失败 / 整理判定材料无关 → 回退内置知识（明确标注未联网，逐渠道原因通知）。
+          note = `联网渠道均未产出可用材料（${channels.map((c) => `${c.channel}:${c.ok ? "材料与该模型无关" : c.error}`).join("；")}），已回退模型内置知识提炼（未联网）。`;
           const r2 = await invokeLLMWithKie(ctx, {
             messages: [
               { role: "system" as const, content: `你是提示词技法工程师（本次不联网，凭已有知识作答）。为生成模型「${input.modelId}」（类别 ${input.kind}）写一条提示词技法：中文 200-450 字、一行一条「- 」要点，只写你有把握的通用要点与该模型公开已知的特性，不确定的不写；不了解该模型时只输出「无可提炼内容」。` },
               { role: "user" as const, content: `请提炼「${input.modelId}」的提示词技法（内置知识）。` },
             ],
-            model: chosen,
-            maxTokens: 1600,
+            model: chosen, maxTokens: 1600,
           });
           tips = extractTextContent(r2).replace(/```[a-z]*/gi, "").trim().slice(0, 8000);
         }
         if (!tips || tips.includes("无可提炼内容")) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: `未获得可用技法（${usedWebSearch ? "联网搜索无可靠官方来源" : "模型无相关知识"}）。${note}` });
+          throw new TRPCError({ code: "BAD_REQUEST", message: `未获得可用技法（${usedWebSearch ? "整理无产出" : "联网与内置知识均无结果"}）。${note}` });
         }
         await db.upsertModelSkillRow({
           modelId: `${SKILL_DRAFT_PREFIX}${input.modelId}`, kind: input.kind, tips,
-          source: `自动提炼·${usedWebSearch ? `联网搜索(${searchModel})` : "未联网·内置知识——审核时注意时效"} · LLM:${usedWebSearch ? searchModel : chosen}`.slice(0, 512),
+          source: (usedWebSearch
+            ? `自动提炼·联网聚合[${okCh.map((c) => c.channel).join("+")}] · 整理:${chosen}`
+            : `自动提炼·未联网·内置知识——审核时注意时效 · LLM:${chosen}`).slice(0, 512),
           enabled: false,
         });
-        writeAuditLog({ ctx, action: "model_skill_upsert", detail: { draft: true, search: true, usedWebSearch, modelId: input.modelId, llm: usedWebSearch ? searchModel : chosen } });
-        return { success: true, usedWebSearch, note: note || undefined };
+        writeAuditLog({ ctx, action: "model_skill_upsert", detail: { draft: true, search: true, usedWebSearch, modelId: input.modelId, channels: channels.map((c) => `${c.channel}:${c.ok ? "ok" : "fail"}`), llm: chosen } });
+        return {
+          success: true, usedWebSearch, note: note || undefined,
+          channels: channels.map((c) => ({ channel: c.channel, ok: c.ok, error: c.error })),
+        };
       }),
 
     /** 审核通过：草稿转正（覆盖/新建正式技能行，enabled=true），并删除草稿。 */
