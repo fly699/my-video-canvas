@@ -23,8 +23,13 @@ export interface MergedModelSkill {
   updatedAt: string | null;
 }
 
+/** #224 自动更新草稿：草稿与正式技能同表存储，modelId 加此前缀区分（varchar(128) 足够）。
+ *  零迁移；草稿 enabled 恒 false 双保险。所有「正式技能」读取口径必须过滤此前缀。 */
+export const SKILL_DRAFT_PREFIX = "draft:";
+
 export async function getMergedModelSkills(): Promise<MergedModelSkill[]> {
-  const rows = await listModelSkillRows();
+  // 草稿行绝不混入正式技能清单（管理列表/智能体注入都从这里走）。
+  const rows = (await listModelSkillRows()).filter((r) => !r.modelId.startsWith(SKILL_DRAFT_PREFIX));
   const byId = new Map(rows.map((r) => [r.modelId, r]));
   const seedIds = new Set(MODEL_SKILL_SEEDS.map((s) => s.modelId));
   const out: MergedModelSkill[] = [];

@@ -2,7 +2,7 @@
 // #211 画布助手注入段（buildAgentModelSkillSection）：空/未命中必须回 ""（开关关闭零改动的另一半保障）。
 import { describe, it, expect } from "vitest";
 import { MODEL_SKILL_SEEDS } from "../shared/modelSkillSeeds";
-import { getMergedModelSkills, getModelSkillText, MODEL_SKILL_KINDS, buildAgentModelSkillSection } from "./_core/modelSkills";
+import { getMergedModelSkills, getModelSkillText, MODEL_SKILL_KINDS, buildAgentModelSkillSection, SKILL_DRAFT_PREFIX } from "./_core/modelSkills";
 import { devUpsertModelSkill, devDeleteModelSkill } from "./_core/devStore";
 
 describe("模型技能库种子（shared/modelSkillSeeds）", () => {
@@ -41,6 +41,18 @@ describe("合并读取（DB 覆盖种子 / 回退 / 停用）", () => {
     hit = (await getMergedModelSkills()).find((s) => s.modelId === "kie_grok_i2v");
     expect(hit?.origin).toBe("builtin");
     expect(await getModelSkillText("kie_grok_i2v")).toContain("英文");
+  });
+
+  // #224 批1：草稿行（draft: 前缀）绝不混入正式技能口径（管理列表与智能体注入共用）。
+  it("draft: 前缀草稿行不出现在合并清单，也不参与技能注入", async () => {
+    devUpsertModelSkill({ modelId: `${SKILL_DRAFT_PREFIX}kie_grok_i2v`, kind: "video", tips: "草稿内容不可外泄", enabled: false });
+    const all = await getMergedModelSkills();
+    expect(all.some((s) => s.modelId.startsWith(SKILL_DRAFT_PREFIX))).toBe(false);
+    // 正式条目（种子）不受同名草稿影响
+    expect((all.find((s) => s.modelId === "kie_grok_i2v"))?.origin).toBe("builtin");
+    const inject = await buildAgentModelSkillSection(["kie_grok_i2v"]);
+    expect(inject).not.toContain("草稿内容不可外泄");
+    devDeleteModelSkill(`${SKILL_DRAFT_PREFIX}kie_grok_i2v`);
   });
 
   it("DB 新增种子外模型 → custom；删除后彻底消失", async () => {
