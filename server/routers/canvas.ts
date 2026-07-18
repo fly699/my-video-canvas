@@ -99,7 +99,7 @@ import { withComfyUsageLog } from "../_core/comfyUsageLog";
 import { dedupe } from "../_core/idempotency";
 import { runImageQc } from "../_core/imageQcCore";
 import { runImageTag } from "../_core/imageTagCore";
-import { extractVideoFrameJpeg, extractVideoTailFrameJpeg } from "../_core/videoFrame";
+import { extractVideoFrameJpeg, extractVideoTailFrameJpeg, extractVideoHeadFrameJpeg } from "../_core/videoFrame";
 import { assertProjectAccess, assertProjectOwner } from "../_core/permissions";
 
 /**
@@ -3142,18 +3142,21 @@ export const clipRouter = router({
   extractTailFrame: protectedProcedure
     .input(z.object({
       inputUrl: z.union([mediaUrlSchema, z.string().max(48_000_000).regex(/^data:video\//i, "仅支持视频 data: URL")]),
+      // #247 生成式转场需要「后段首帧」——同一端点按 position 抽首/尾帧（默认 tail 向后兼容）。
+      position: z.enum(["tail", "head"]).optional(),
       projectId: z.number().optional(), nodeId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (input.projectId != null) await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const isInline = /^data:video\//i.test(input.inputUrl);
       if (!isInline) guardUrl(input.inputUrl);
-      const frame = await extractVideoTailFrameJpeg(input.inputUrl);
+      const head = input.position === "head";
+      const frame = head ? await extractVideoHeadFrameJpeg(input.inputUrl) : await extractVideoTailFrameJpeg(input.inputUrl);
       if (isInline || !isStorageConfigured()) {
         return { url: `data:image/jpeg;base64,${frame.toString("base64")}` };
       }
-      const { url } = await storagePut(`u/${ctx.user.id}/frames/${nanoid()}-tail.jpg`, frame, "image/jpeg");
-      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url, type: "image", name: "尾帧图", mimeType: "image/jpeg" });
+      const { url } = await storagePut(`u/${ctx.user.id}/frames/${nanoid()}-${head ? "head" : "tail"}.jpg`, frame, "image/jpeg");
+      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url, type: "image", name: head ? "首帧图" : "尾帧图", mimeType: "image/jpeg" });
       return { url };
     }),
 

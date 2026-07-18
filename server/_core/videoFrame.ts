@@ -51,18 +51,41 @@ export async function extractTailFrameFromFile(srcPath: string): Promise<Buffer>
   }
 }
 
-/** 按 URL 抽尾帧（SSRF 守卫同 extractVideoFrameJpeg）。另支持 data:video;base64 内联
- *  （dev 无对象存储时上传素材即此形态；无网络请求、无 SSRF 面，直接解码落临时文件）。 */
-export async function extractVideoTailFrameJpeg(videoUrl: string): Promise<Buffer> {
-  let src: string;
+/** #247 首帧高清版：第一帧原样抓取（分辨率口径同尾帧，min(1920,iw)）。
+ *  与 extractFrameFromFile（0.5s 处 480 宽缩略图）用途不同——这张要喂生成模型作帧参考。 */
+export async function extractHeadFrameFromFile(srcPath: string): Promise<Buffer> {
+  const out = path.join(os.tmpdir(), `vhead-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
+  try {
+    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", srcPath, "-frames:v", "1", "-vf", "scale='min(1920,iw)':-2", "-q:v", "2", "-y", out], { timeoutMs: 120_000 });
+    return await fs.readFile(out);
+  } finally {
+    void fs.unlink(out).catch(() => { /* 临时文件清理失败无妨 */ });
+  }
+}
+
+/** URL/data:video → 本地临时文件（SSRF 守卫走 downloadToTemp；data: 纯本地解码无网络面）。 */
+async function videoUrlToTemp(videoUrl: string): Promise<string> {
   if (/^data:video\//i.test(videoUrl)) {
     const comma = videoUrl.indexOf(",");
     if (comma < 0) throw new Error("非法的 data: 视频 URL");
-    src = path.join(os.tmpdir(), `vtailsrc-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`);
+    const src = path.join(os.tmpdir(), `vfsrc-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`);
     await fs.writeFile(src, Buffer.from(videoUrl.slice(comma + 1), "base64"));
-  } else {
-    src = await downloadToTemp(videoUrl, "mp4");
+    return src;
   }
+  return downloadToTemp(videoUrl, "mp4");
+}
+
+/** 按 URL 抽尾帧（SSRF 守卫同 extractVideoFrameJpeg）。另支持 data:video;base64 内联
+ *  （dev 无对象存储时上传素材即此形态；无网络请求、无 SSRF 面，直接解码落临时文件）。 */
+export async function extractVideoTailFrameJpeg(videoUrl: string): Promise<Buffer> {
+  const src = await videoUrlToTemp(videoUrl);
   try { return await extractTailFrameFromFile(src); }
+  finally { void fs.unlink(src).catch(() => { /* 同上 */ }); }
+}
+
+/** #247 按 URL 抽高清首帧（口径同尾帧版）。 */
+export async function extractVideoHeadFrameJpeg(videoUrl: string): Promise<Buffer> {
+  const src = await videoUrlToTemp(videoUrl);
+  try { return await extractHeadFrameFromFile(src); }
   finally { void fs.unlink(src).catch(() => { /* 同上 */ }); }
 }
