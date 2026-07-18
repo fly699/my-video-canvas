@@ -46,6 +46,14 @@ describe("管理后台权限矩阵（effectiveTabAccess 二维 view/operate）",
     expect(EDITABLE_TAB_KEYS).not.toContain("perms");
     expect(EDITABLE_TAB_KEYS.length).toBe(Object.keys(DEFAULT_TAB_LEVELS).length - 1);
   });
+
+  // #238 文件暂存页：登记入矩阵（任意管理员可见；upload 另有静态地板 L2，矩阵只能收紧）
+  it("staging 页已登记入矩阵且 admin.staging.* 正确归属", () => {
+    expect(DEFAULT_TAB_LEVELS.staging).toBe(1);
+    expect(EDITABLE_TAB_KEYS).toContain("staging");
+    expect(adminTabFromRpcPath("admin.staging.upload")).toBe("staging");
+    expect(adminTabFromRpcPath("admin.staging.info")).toBe("staging");
+  });
 });
 
 describe("adminTabFromRpcPath：路径 → 受矩阵约束的 tab", () => {
