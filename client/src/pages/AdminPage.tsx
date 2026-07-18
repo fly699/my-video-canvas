@@ -1402,6 +1402,15 @@ function ModelSkillsPanel() {
     onSuccess: () => { toast.success("已从文档页提炼技法草稿，请在下方审核入库"); setDraftUrl(""); void utils.admin.modelSkills.listDrafts.invalidate(); },
     onError: (e) => toast.error("联网提炼失败：" + e.message),
   });
+  // #224 批2b 联网搜索提炼：成功区分「真联网」与「已回退未联网」——回退时明确警示通知（用户拍板要求）。
+  const autoDraftSearchMut = trpc.admin.modelSkills.autoDraftSearch.useMutation({
+    onSuccess: (r) => {
+      if (r.usedWebSearch) toast.success(`已联网搜索并生成技法草稿${r.note ? `（${r.note}）` : ""}，请在下方审核入库`);
+      else toast.warning(`已生成草稿，但【未联网】：${r.note ?? "联网搜索不可用"}。来源已标注「未联网·内置知识」，审核时请注意时效性。`, { duration: 9000 });
+      void utils.admin.modelSkills.listDrafts.invalidate();
+    },
+    onError: (e) => toast.error("搜索提炼失败：" + e.message),
+  });
   const applyDraftMut = trpc.admin.modelSkills.applyDraft.useMutation({
     onSuccess: () => { toast.success("草稿已审核入库（技能立即生效）"); void utils.admin.modelSkills.list.invalidate(); void utils.admin.modelSkills.listDrafts.invalidate(); },
     onError: (e) => toast.error("入库失败：" + e.message),
@@ -1489,6 +1498,15 @@ function ModelSkillsPanel() {
             }}
             style={{ padding: "5px 12px", fontSize: 11.5, fontWeight: 700, borderRadius: 8, flexShrink: 0, border: "1px solid oklch(0.7 0.15 200 / 0.5)", background: draftTarget && /^https?:\/\//.test(draftUrl.trim()) ? "oklch(0.7 0.15 200 / 0.14)" : "var(--c-surface)", color: draftTarget && /^https?:\/\//.test(draftUrl.trim()) ? "oklch(0.76 0.13 200)" : "var(--c-t4)", cursor: draftTarget && /^https?:\/\//.test(draftUrl.trim()) && !autoDraftUrlMut.isPending ? "pointer" : "not-allowed" }}>
             {autoDraftUrlMut.isPending ? "抓取提炼中…" : "联网提炼草稿"}
+          </button>
+          <button disabled={!draftTarget || autoDraftSearchMut.isPending} data-testid="skill-web-search-btn"
+            title={!draftTarget ? "先在上方选择目标模型" : "用支持官方 Web Search 的模型（GPT 5.2·kie）实时联网搜索该模型最新官方技法并生成草稿；若所选提炼模型不支持联网会自动改用支持的模型，网关不支持联网时自动回退内置知识并明确提示（来源会标注是否联网）"}
+            onClick={() => {
+              const kind = IMAGE_MODELS.some((m) => m.value === draftTarget) ? "image" : "video";
+              autoDraftSearchMut.mutate({ modelId: draftTarget, kind, llmModel: draftLlm || undefined });
+            }}
+            style={{ padding: "5px 12px", fontSize: 11.5, fontWeight: 700, borderRadius: 8, flexShrink: 0, border: "1px solid oklch(0.72 0.16 60 / 0.5)", background: draftTarget ? "oklch(0.72 0.16 60 / 0.14)" : "var(--c-surface)", color: draftTarget ? "oklch(0.78 0.14 60)" : "var(--c-t4)", cursor: draftTarget && !autoDraftSearchMut.isPending ? "pointer" : "not-allowed" }}>
+            {autoDraftSearchMut.isPending ? "搜索提炼中…" : "🔎 联网搜索提炼"}
           </button>
         </div>
         {(draftsQ.data?.length ?? 0) > 0 && (
