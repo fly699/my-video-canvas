@@ -39,6 +39,7 @@ import { IMAGE_MODELS, VIDEO_MODELS } from "../../shared/modelCatalog";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
 import { getSystemDefaultModel } from "../_core/systemDefaultModels";
+import { fetchDocText } from "../_core/webDocFetch";
 import { writeAuditLog } from "../_core/auditLog";
 import { getActiveStagingProvider } from "../_core/storageConfig";
 import { broadcastSystemAnnouncement, setPersistentAnnouncement } from "./chat";
@@ -302,6 +303,48 @@ export const adminRouter = router({
         writeAuditLog({ ctx, action: "model_skill_upsert", detail: { draft: true, llm, requested: input.modelIds.length, ok: results.filter((r) => r.ok).length } });
         return { results };
       }),
+    // #224 批2 联网提炼：抓取管理员指定的【官方文档页】正文（服务端 fetch + SSRF 防护 +
+    // 重定向逐跳复校验，见 _core/webDocFetch.ts）→ LLM 提炼该模型技法 → 草稿区待审核。
+    // 不依赖 LLM 网关的 web search（未经真机验证的能力不用）；LLM 只做纯文本提炼（批1 同款）。
+    autoDraftFromUrl: managerProc
+      .input(z.object({
+        modelId: z.string().min(1).max(120).refine((v) => !v.startsWith("draft:"), "非法模型 id"),
+        kind: z.enum(MODEL_SKILL_KINDS as [string, ...string[]]).default("other"),
+        url: z.string().min(8).max(2048),
+        llmModel: z.string().max(120).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const llm = input.llmModel?.trim() || await getSystemDefaultModel("llm");
+        let doc: { text: string; finalUrl: string };
+        try { doc = await fetchDocText(input.url); }
+        catch (err) { throw new TRPCError({ code: "BAD_REQUEST", message: `文档页抓取失败：${err instanceof Error ? err.message : String(err)}` }); }
+        // 与批1 同一套约束框架，但联网源允许收录页面里的官方提示词技巧/最佳实践（有据可依）。
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            {
+              role: "system" as const,
+              content: `你是提示词技法工程师。下面给你一篇【官方文档页正文】，请为指定的生成模型提炼一条「模型技能」（提示词技法）供撰写提示词的 LLM 参考。\n`
+                + `要求：\n- 中文，200-500 字，一行一条要点（用「- 」开头）；\n- 只收录文档中【明确写到】的内容：参数键/枚举/默认值/范围、官方提示词写作建议与示例技巧、限制与注意事项；\n- 文档未提及的绝不编造；若文档与该模型无关或无可提炼内容，只输出「无可提炼内容」六个字；\n- 不输出标题/前后缀，只输出要点行。`,
+            },
+            { role: "user" as const, content: `目标模型：${input.modelId}（类别 ${input.kind}）\n来源：${doc.finalUrl}\n\n文档正文：\n${doc.text}` },
+          ],
+          model: llm,
+          maxTokens: 1800,
+        });
+        const tips = extractTextContent(response).replace(/```[a-z]*/gi, "").trim().slice(0, 8000);
+        if (!tips || tips.includes("无可提炼内容")) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "该文档页没有可提炼的该模型技法（换个更相关的官方页面试试）" });
+        }
+        let host = "";
+        try { host = new URL(doc.finalUrl).hostname; } catch { /* 展示用，失败留空 */ }
+        await db.upsertModelSkillRow({
+          modelId: `${SKILL_DRAFT_PREFIX}${input.modelId}`, kind: input.kind, tips,
+          source: `自动提炼·联网:${host} · LLM:${llm}`.slice(0, 512), enabled: false,
+        });
+        writeAuditLog({ ctx, action: "model_skill_upsert", detail: { draft: true, web: true, modelId: input.modelId, host, llm } });
+        return { success: true };
+      }),
+
     /** 审核通过：草稿转正（覆盖/新建正式技能行，enabled=true），并删除草稿。 */
     applyDraft: managerProc
       .input(z.object({ modelId: z.string().min(1).max(120) }))
