@@ -247,6 +247,55 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     update({ segTransitions: next, inputVideoUrls: seamUrls });
   };
 
+  // #247 生成式转场：抽 段i 尾帧 + 段i+1 首帧 → 画布上搭一个首尾帧视频节点（口径复用
+  // LibTV-B 首尾帧预设：两图连 ref-image-in，图一=首帧、图二=尾帧，提示词写明帧序）。
+  // 纯手动：用户点该节点运行、出片后连回本合并节点并在顺序列表拖到两段之间。
+  const tailFrameMut = trpc.clip.extractTailFrame.useMutation();
+  const [aiTransBusy, setAiTransBusy] = useState<number | null>(null);
+  const buildAiTransition = async (i: number) => {
+    if (aiTransBusy != null) return;
+    const [prevUrl, nextUrl] = [seamUrls[i], seamUrls[i + 1]];
+    if (!prevUrl || !nextUrl) return;
+    setAiTransBusy(i);
+    const tid = toast.loading(`抽取 段${i + 1} 尾帧与 段${i + 2} 首帧…`);
+    try {
+      const [tail, head] = await Promise.all([
+        tailFrameMut.mutateAsync({ inputUrl: prevUrl, position: "tail", projectId: data.projectId, nodeId: id }),
+        tailFrameMut.mutateAsync({ inputUrl: nextUrl, position: "head", projectId: data.projectId, nodeId: id }),
+      ]);
+      const st = useCanvasStore.getState();
+      const self = st.nodes.find((n) => n.id === id);
+      const bx = (self?.position.x ?? 0) + i * 60, by = (self?.position.y ?? 0) - 460;
+      const img1 = st.addNode("asset", { x: bx, y: by });
+      st.updateNodeTitle(img1.id, `过渡首帧（段${i + 1}尾）`);
+      st.updateNodeData(img1.id, { name: "过渡首帧.jpg", type: "image", url: tail.url, mimeType: "image/jpeg" });
+      const img2 = st.addNode("asset", { x: bx, y: by + 220 });
+      st.updateNodeTitle(img2.id, `过渡尾帧（段${i + 2}首）`);
+      st.updateNodeData(img2.id, { name: "过渡尾帧.jpg", type: "image", url: head.url, mimeType: "image/jpeg" });
+      const vid = st.addNode("video_task", { x: bx + 320, y: by + 60 });
+      st.updateNodeTitle(vid.id, `AI过渡 段${i + 1}→段${i + 2}`);
+      st.onConnect({ source: img1.id, target: vid.id, sourceHandle: null, targetHandle: "ref-image-in" });
+      st.onConnect({ source: img2.id, target: vid.id, sourceHandle: null, targetHandle: "ref-image-in" });
+      // 连线只是结构可见；双图发送靠 referenceImages 参考条（buildRefUrls 只认它，连线
+      // 推送写的是单字段且后连覆盖先连）——必须在连线之后写 payload，把顺序定死为
+      // [0]=首帧(前段尾) [1]=尾帧(后段首)，与 wan2.7 图生的 [0]start [1]end 语义对齐。
+      // 节点上可随时换其它支持首尾帧的模型（模型下拉有吃图能力标注，#246）。
+      st.updateNodeData(vid.id, {
+        provider: "poyo_wan27_i2v",
+        prompt: "以图一为首帧、图二为尾帧，生成一段平滑的电影感过渡：画面从首帧自然运动、光影连续地过渡到尾帧，无跳切、无闪烁、无文字。",
+        referenceImageUrl: tail.url,
+        referenceImages: [
+          { id: `trans_a_${Date.now()}`, url: tail.url, source: "upstream", label: "首帧（前段尾）" },
+          { id: `trans_b_${Date.now()}`, url: head.url, source: "upstream", label: "尾帧（后段首）" },
+        ],
+      });
+      useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === vid.id })) }));
+      toast.success(`已搭好「AI过渡 段${i + 1}→段${i + 2}」工作流：在该视频节点点运行生成过渡片段；出片后把它连入本合并节点，并在顺序列表拖到 段${i + 1} 与 段${i + 2} 之间`, { id: tid, duration: 8000 });
+    } catch (e) {
+      toast.error("AI 过渡搭建失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
+    } finally { setAiTransBusy(null); }
+  };
+
   // Auto-detect a connected AudioNode (or audio-mime asset) for background music
   const detectedBgMusicUrl = (() => {
     const incomingEdges = edges.filter((e) => e.target === id);
@@ -477,6 +526,14 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
                         <option key={o.value} value={o.value} style={{ background: "var(--c-base)" }}>{o.label}</option>
                       ))}
                     </select>
+                    {/* #247 生成式转场：抽两侧帧搭首尾帧视频节点，生成真实过渡片段 */}
+                    <button
+                      onClick={() => void buildAiTransition(i)}
+                      disabled={aiTransBusy != null}
+                      className="nodrag"
+                      title={`AI 过渡：抽 段${i + 1} 尾帧 + 段${i + 2} 首帧，搭一个首尾帧视频节点生成真实过渡片段（需支持首尾帧的模型，默认 Wan2.7 图生，可换）；出片后连回本节点拖到两段之间`}
+                      style={{ flexShrink: 0, padding: "5px 7px", fontSize: 11, lineHeight: 1, borderRadius: 7, background: accentA(0.1), border: `1px solid ${accentA(0.3)}`, color: accent, cursor: aiTransBusy != null ? "wait" : "pointer" }}
+                    >{aiTransBusy === i ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : "✨AI"}</button>
                   </div>
                 ))}
               </div>
