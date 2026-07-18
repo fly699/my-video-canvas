@@ -83,3 +83,12 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
 export function maxRefImagesForProvider(provider: string): number {
   return VIDEO_PROVIDER_MAX_REF_IMAGES[provider] ?? 1;
 }
+
+/** #246 图参考能力短标注（UI 透明化单一来源：助手模型下拉/警告行/链式回退共用）。
+ *  0=纯文生——首帧图、角色参考、链式尾帧全都不生效，必须让用户看得见再权衡。 */
+export function videoRefCapBadge(provider: string): string {
+  const n = maxRefImagesForProvider(provider);
+  if (n === 0) return "不吃图（纯文生）";
+  if (n === 1) return "首帧图×1";
+  return `首尾帧/多图×${n}`;
+}

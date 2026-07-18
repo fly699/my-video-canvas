@@ -4,6 +4,7 @@ import { Handle, Position, NodeResizer, NodeToolbar, useUpdateNodeInternals, use
 import { getNodeConfig, COLLABORATOR_COLORS } from "../../lib/nodeConfig";
 import { CONNECTION_HINTS, getCompatibleTargets, defaultTargetHandle } from "../../lib/connectionRules";
 import type { NodeType, ImageEditOp, VideoTaskNodeData } from "../../../../shared/types";
+import { maxRefImagesForProvider } from "../../../../shared/videoRefCaps";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { useShallow } from "zustand/react/shallow";
 import { useStudioExpandAll } from "../../hooks/useStudioExpandAll";
@@ -738,11 +739,16 @@ export const BaseNode = memo(function BaseNode({
       st.updateNodeData(imgNode.id, { name: "尾帧.jpg", type: "image", url: r.url, mimeType: "image/jpeg" });
       const vidNode = st.addNode("video_task", { x: self.position.x + w + 360, y: self.position.y });
       st.updateNodeTitle(vidNode.id, "下一镜（链式衔接）");
+      // #246 透明权衡：继承本镜模型前先查它吃不吃参考图（videoRefCaps 单一事实源）——
+      // 纯文生模型会静默忽略尾帧、让用户误以为衔接生效。此时改用节点默认图生视频模型并明说。
       const prov = (self.data.payload as VideoTaskNodeData).provider;
-      if (prov) st.updateNodeData(vidNode.id, { provider: prov });
+      const provEatsImage = prov ? maxRefImagesForProvider(prov) > 0 : true;
+      if (prov && provEatsImage) st.updateNodeData(vidNode.id, { provider: prov });
       st.onConnect({ source: imgNode.id, sourceHandle: "output", target: vidNode.id, targetHandle: "input" });
       useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === vidNode.id })) }));
-      toast.success("已创建下一镜：尾帧已连作首帧参考，填提示词点运行即可无缝衔接", { id: tid, duration: 4200 });
+      toast.success(prov && !provEatsImage
+        ? `已创建下一镜：本镜模型 ${prov} 不吃参考图（纯文生），下一镜已改用默认图生视频模型——尾帧首帧参考才会生效`
+        : "已创建下一镜：尾帧已连作首帧参考，填提示词点运行即可无缝衔接", { id: tid, duration: 5000 });
     } catch (e) {
       toast.error("链式下一镜失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
     } finally { setChainBusy(false); }
