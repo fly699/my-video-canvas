@@ -3496,12 +3496,18 @@ function KiePanel() {
       <div style={{ marginBottom: 20 }}>
         <ToggleRow
           label="公用 kie 额度（白名单 kie 开关）"
-          description={"开启：通过白名单的非管理员用户可使用主 env key（KIE_API_KEY）跑 kie。\n关闭：仅有管理员分配 key、或自填临时 key 的用户能用。管理员始终可用。"}
+          description={
+            "开启：通过白名单的非管理员用户可使用主 env key（KIE_API_KEY）跑 kie。\n关闭：仅有管理员分配 key、或自填临时 key 的用户能用。管理员始终可用。\n" +
+            "【门控范围说明】本开关只门控「白名单用户用公用 key 花钱生成」这一条路径，其它一概不受影响：\n" +
+            "· 用户自填的临时 key / 管理员分配的专属 key —— 各花各的额度，不经过本开关；\n" +
+            "· 存储页的「暂存通道 · Kie」（参考图公网中转）—— 系统级调用且官方上传免费，不扣积分、不受本开关限制；\n" +
+            "· 管理员 —— 始终可用公用 key。"
+          }
           enabled={kieEnabled}
           disabled={setKieEnabled.isPending}
           onClick={() => setKieEnabled.mutate({ kieEnabled: !kieEnabled })}
-          statusOn="已开启（白名单用户可用公用 key）"
-          statusOff="已关闭（仅分配/临时 key 可用）"
+          statusOn="已开启（白名单用户可用公用 key 生成；临时/分配 key 与 Kie 暂存不受本开关影响）"
+          statusOff="已关闭（普通用户仅分配/临时 key 可生成；临时/分配 key 与 Kie 暂存不受本开关影响）"
         />
       </div>
 
