@@ -36,6 +36,7 @@ const DEFAULT_LEVEL: Record<string, number> = {
   comfyLogs: 4,
   llmLogs: 4,
   storage: 1,
+  staging: 1, // #238 文件暂存：任意管理员可见；upload 写操作另有静态地板 L2（运营），矩阵只能再收紧
   models: 1,
   tunnel: 1,
   chat: 4,

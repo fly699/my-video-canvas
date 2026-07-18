@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, RotateCcw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, BrainCircuit, Search, Send, Upload, GraduationCap, type LucideIcon } from "lucide-react";
+import { Shield, Trash2, Plus, ToggleLeft, ToggleRight, ClipboardList, ClipboardCheck, RefreshCw, HardDrive, ArrowLeft, Loader2, CheckCircle2, XCircle, DownloadCloud, RotateCw, RotateCcw, GitCommit, X, Check, CheckSquare, Square, Download, Play, KeyRound, Users, ScrollText, Boxes, MessageCircle, Activity, Image as ImageIcon, Wrench, Globe2, MailCheck, FileBarChart2, FileText, ExternalLink, Server as ServerIcon, BrainCircuit, Search, Send, Upload, GraduationCap, Lock, Copy, UploadCloud, type LucideIcon } from "lucide-react";
 import { allTutorialImageSlugs } from "@/lib/tutorialContent";
 import { ConfigChecklistPanel } from "@/components/admin/ConfigChecklistPanel";
 import { ConfigBackupSection } from "@/components/admin/ConfigBackupSection";
@@ -42,32 +42,35 @@ function useEffOperate(tab: string, staticFloor: number): number {
 }
 
 type EntryType = "ip" | "user";
-type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "perms" | "storage" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "tutorialImgs" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
+type Tab = "whitelist" | "kie" | "users" | "logs" | "comfyLogs" | "llmLogs" | "perms" | "storage" | "staging" | "models" | "chat" | "comfyServers" | "comfyStress" | "comfyOps" | "assets" | "downloads" | "tutorialImgs" | "system" | "config" | "tunnel" | "auth" | "report" | "intro";
 
-// 标签页定义：[key, 中文标签, 图标]
-const TAB_DEFS: [Tab, string, LucideIcon][] = [
-  ["whitelist", "白名单管理", Shield],
-  ["kie", "kie.ai 密钥", KeyRound],
-  ["users", "用户管理", Users],
-  ["auth", "注册认证", MailCheck],
-  ["logs", "操作日志", ClipboardList],
-  ["comfyLogs", "ComfyUI 日志", ScrollText],
-  ["llmLogs", "LLM 日志", BrainCircuit],
-  ["storage", "存储设置", HardDrive],
-  ["models", "模型管理", Boxes],
-  ["tunnel", "公网隧道", Globe2],
-  ["chat", "聊天管理", MessageCircle],
-  ["comfyServers", "ComfyUI 服务器", ServerIcon],
-  ["comfyStress", "ComfyUI 压测", Activity],
-  ["comfyOps", "ComfyUI 运维中心", Wrench],
-  ["assets", "素材库(全用户)", ImageIcon],
-  ["downloads", "下载审批", DownloadCloud],
-  ["tutorialImgs", "教程截图", GraduationCap],
-  ["system", "系统更新", RotateCw],
-  ["config", "配置体检", ClipboardCheck],
-  ["report", "工作成果报告", FileBarChart2],
-  ["intro", "项目功能汇报", FileText],
-  ["perms", "权限管理", KeyRound],
+// 标签页定义：[key, 中文标签, 图标, 专属色相(oklch hue)]。
+// #237 标签多了不好识别：每个标签配一个稳定的专属色相——图标常显该色、
+// 激活态的边框/底色/阴影也用该色（替代原先统一紫色），颜色+图标双通道辨识。
+const TAB_DEFS: [Tab, string, LucideIcon, number][] = [
+  ["whitelist", "白名单管理", Shield, 150],
+  ["kie", "kie.ai 密钥", KeyRound, 85],
+  ["users", "用户管理", Users, 245],
+  ["auth", "注册认证", MailCheck, 185],
+  ["logs", "操作日志", ClipboardList, 65],
+  ["comfyLogs", "ComfyUI 日志", ScrollText, 45],
+  ["llmLogs", "LLM 日志", BrainCircuit, 305],
+  ["storage", "存储设置", HardDrive, 215],
+  ["staging", "文件暂存", UploadCloud, 175],
+  ["models", "模型管理", Boxes, 285],
+  ["tunnel", "公网隧道", Globe2, 165],
+  ["chat", "聊天管理", MessageCircle, 350],
+  ["comfyServers", "ComfyUI 服务器", ServerIcon, 265],
+  ["comfyStress", "ComfyUI 压测", Activity, 25],
+  ["comfyOps", "ComfyUI 运维中心", Wrench, 105],
+  ["assets", "素材库(全用户)", ImageIcon, 330],
+  ["downloads", "下载审批", DownloadCloud, 140],
+  ["tutorialImgs", "教程截图", GraduationCap, 95],
+  ["system", "系统更新", RotateCw, 15],
+  ["config", "配置体检", ClipboardCheck, 125],
+  ["report", "工作成果报告", FileBarChart2, 235],
+  ["intro", "项目功能汇报", FileText, 200],
+  ["perms", "权限管理", Lock, 0],
 ];
 
 // 管理员级别 → 可执行的「写操作」最低级别（与服务端 levelProcedure 一致）：
@@ -233,7 +236,7 @@ export default function AdminPage() {
 
         {/* Tabs — 胶囊式（带图标） */}
         <div className="animate-fade-up" style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px", animationDelay: "60ms" }}>
-          {TAB_DEFS.filter(([tab]) => tabAllowed(tab)).map(([tab, label, Icon]) => {
+          {TAB_DEFS.filter(([tab]) => tabAllowed(tab)).map(([tab, label, Icon, hue]) => {
             const active = activeTab === tab;
             return (
               <button
@@ -244,15 +247,15 @@ export default function AdminPage() {
                   display: "inline-flex", alignItems: "center", gap: "6px",
                   padding: "7px 13px",
                   borderRadius: 10,
-                  border: active ? "1px solid oklch(0.68 0.22 285 / 0.45)" : "1px solid var(--c-bd1, rgba(255,255,255,0.06))",
+                  border: active ? `1px solid oklch(0.68 0.20 ${hue} / 0.50)` : "1px solid var(--c-bd1, rgba(255,255,255,0.06))",
                   background: active
-                    ? "linear-gradient(135deg, oklch(0.68 0.22 285 / 0.18), oklch(0.60 0.20 310 / 0.14))"
+                    ? `linear-gradient(135deg, oklch(0.68 0.20 ${hue} / 0.20), oklch(0.60 0.18 ${hue} / 0.10))`
                     : "var(--c-surface, rgba(255,255,255,0.03))",
                   color: active ? "var(--c-t1, #f0f0f4)" : "var(--c-t3, rgba(255,255,255,0.45))",
                   fontSize: "13px",
                   fontWeight: active ? 600 : 500,
                   cursor: "pointer",
-                  boxShadow: active ? "0 2px 14px oklch(0.68 0.22 285 / 0.18)" : "none",
+                  boxShadow: active ? `0 2px 14px oklch(0.68 0.20 ${hue} / 0.20)` : "none",
                   transition: "all 160ms ease",
                 }}
                 onMouseEnter={(e) => {
@@ -268,7 +271,8 @@ export default function AdminPage() {
                   el.style.color = "var(--c-t3, rgba(255,255,255,0.45))";
                 }}
               >
-                <Icon style={{ width: 14, height: 14, color: active ? "oklch(0.74 0.18 290)" : "currentColor" }} />
+                {/* 图标常显专属色（非激活稍暗），颜色+图标双通道辨识 */}
+                <Icon style={{ width: 14, height: 14, color: active ? `oklch(0.76 0.17 ${hue})` : `oklch(0.62 0.12 ${hue})` }} />
                 {label}
                 {tab === "system" && hasUpdate && (
                   <span style={{
@@ -295,6 +299,7 @@ export default function AdminPage() {
           {activeTab === "perms" && <PermsPanel />}
           {activeTab === "llmLogs" && <LlmLogsPanel />}
           {activeTab === "storage" && <StoragePanel />}
+          {activeTab === "staging" && <StagingPanel />}
           {activeTab === "models" && <LevelGate need={3} tab="models"><ModelsHubPanel /></LevelGate>}
           {activeTab === "chat" && <ChatAdminPanel />}
           {activeTab === "comfyServers" && <LevelGate need={3} tab="comfyServers" label="只读模式 · 修改全局 ComfyUI 服务器列表需「管理员」及以上权限"><ComfyServersPanel /></LevelGate>}
@@ -2595,6 +2600,175 @@ function ComfyUsageLogsPanel() {
 // ── 权限管理（站长 L5 独占）────────────────────────────────────────────────────
 // 配置各后台页面的最低可见/可查级别。日志三页 + 聊天管理默认 L4；服务端对这些页面的
 // 接口按同一矩阵强制（改矩阵 30 秒内全局生效）。「权限管理」页自身恒 L5 不可下放。
+// ── #238 文件暂存：上传 → Poyo/Kie 暂存 → 公网直链一键复制 ──────────────────
+// 面板任意管理员可见（矩阵 view）；上传写操作静态地板 L2 运营 + 矩阵 operate 取严。
+// 链接为公网可访问的临时直链（Poyo 图~72h/视频24h；Kie 24h 自动删除）——UI 明示勿传敏感文件。
+const STAGING_PROVIDERS: {
+  id: "poyo" | "kie"; name: string; hue: number;
+  limits: string[];
+}[] = [
+  {
+    id: "poyo", name: "Poyo", hue: 210,
+    limits: [
+      "类型：图片 JPEG/PNG/GIF/WebP；视频 MP4/WebM/MOV/AVI/MKV（其它类型不支持）",
+      "大小：视频 ≤100MB（图片官方未标上限）",
+      "频率：5 次/分/Key（超出服务端自动排队错峰）",
+      "保存：图片约 72 小时 / 视频约 24 小时后自动删除",
+    ],
+  },
+  {
+    id: "kie", name: "Kie", hue: 85,
+    limits: [
+      "类型：任意文件类型（图 / 视频 / 音频 / 文档均可）",
+      "大小：单文件 ≤100MB",
+      "频率：官方无频率条款（全并发直发，真 429 自动退避重试）",
+      "保存：24 小时后自动删除；上传免费",
+    ],
+  },
+];
+const STAGING_MAX_BYTES = 32 * 1024 * 1024; // 本面板经 JSON(base64) 传输的安全上限（express 50mb 余量）
+const fmtBytes = (n: number) => n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`;
+
+function StagingPanel() {
+  const { user } = useAuth();
+  const myLevel = user?.adminLevel ?? 0;
+  const effOp = useEffOperate("staging", 2); // 静态地板 L2（运营）+ 矩阵 operate 取严
+  const canUpload = myLevel >= effOp;
+  const infoQ = trpc.admin.staging.info.useQuery();
+  const upMut = trpc.admin.staging.upload.useMutation();
+  const [provider, setProvider] = useState<"poyo" | "kie" | null>(null);
+  const [busyName, setBusyName] = useState("");
+  const [results, setResults] = useState<{ url: string; name: string; bytes: number; provider: string; at: number }[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const hasKey = (p: "poyo" | "kie") => (p === "poyo" ? !!infoQ.data?.hasPoyoKey : !!infoQ.data?.hasKieKey);
+  // 默认选中：参考图暂存通道当前生效的 provider；无则选有 Key 的一个。
+  const chosen: "poyo" | "kie" | null = provider
+    ?? (infoQ.data ? (infoQ.data.activeProvider === "poyo" || infoQ.data.activeProvider === "kie"
+      ? infoQ.data.activeProvider
+      : infoQ.data.hasKieKey ? "kie" : infoQ.data.hasPoyoKey ? "poyo" : null) : null);
+
+  const onFiles = async (files: FileList | null) => {
+    if (!files?.length || !chosen) return;
+    if (!canUpload) { toast.error(`上传需 L${effOp} 及以上权限（当前 L${myLevel}）`); return; }
+    for (const f of Array.from(files)) {
+      if (f.size > STAGING_MAX_BYTES) { toast.error(`「${f.name}」超过本面板 32MB 上限（更大文件请走素材库/画布通道）`); continue; }
+      setBusyName(f.name);
+      try {
+        const dataUri: string = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result));
+          r.onerror = () => rej(new Error("读取文件失败"));
+          r.readAsDataURL(f);
+        });
+        const b64 = dataUri.slice(dataUri.indexOf(",") + 1);
+        const out = await upMut.mutateAsync({ provider: chosen, fileName: f.name, contentType: f.type || "application/octet-stream", dataBase64: b64 });
+        setResults((p) => [{ url: out.url, name: f.name, bytes: f.size, provider: chosen, at: Date.now() }, ...p].slice(0, 50));
+        toast.success(`「${f.name}」已暂存到 ${chosen === "poyo" ? "Poyo" : "Kie"}，链接已生成`);
+      } catch (err) {
+        toast.error(`「${f.name}」暂存失败：${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setBusyName("");
+      }
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const copyUrl = async (url: string) => {
+    try { await navigator.clipboard.writeText(url); toast.success("链接已复制"); }
+    catch {
+      // clipboard API 不可用（非 https 等）：回退 execCommand
+      const ta = document.createElement("textarea");
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); toast.success("链接已复制"); } catch { toast.error("复制失败，请手动选择复制"); }
+      ta.remove();
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={cardStyle}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <UploadCloud style={{ width: 16, height: 16, color: "oklch(0.72 0.15 175)" }} />
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--c-t1)" }}>文件暂存 · 换取公网直链</h3>
+        </div>
+        <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--c-t3)", lineHeight: 1.6 }}>
+          上传文件暂存到 Poyo / Kie 存储，返回<b>公网可直接访问的临时链接</b>（一键复制，可喂给 AI 模型或临时外发）。
+          本面板经 JSON 传输，单文件 ≤32MB；更大文件请走素材库 / 画布上传通道。
+          <b style={{ color: "oklch(0.72 0.17 60)" }}>链接公开可访问且不可提前撤销，请勿上传敏感文件。</b>
+          {" "}上传需 <b>L{effOp}</b> 及以上（当前 L{myLevel}{canUpload ? "，可上传" : "，仅可查看"}）；每次上传记入操作日志。
+        </p>
+        {/* provider 选择卡（含限制说明与 Key 状态） */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10, marginBottom: 12 }}>
+          {STAGING_PROVIDERS.map((p) => {
+            const on = chosen === p.id;
+            const keyed = hasKey(p.id);
+            return (
+              <button key={p.id} onClick={() => setProvider(p.id)} disabled={!keyed}
+                style={{
+                  textAlign: "left", padding: "10px 13px", borderRadius: 10, cursor: keyed ? "pointer" : "not-allowed",
+                  border: `1px solid ${on ? `oklch(0.68 0.18 ${p.hue} / 0.55)` : "var(--c-bd1, rgba(255,255,255,0.07))"}`,
+                  background: on ? `oklch(0.68 0.18 ${p.hue} / 0.10)` : "var(--c-surface, rgba(255,255,255,0.03))",
+                  opacity: keyed ? 1 : 0.55,
+                }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: on ? `oklch(0.78 0.15 ${p.hue})` : "var(--c-t1)" }}>
+                    {on ? "● " : "○ "}{p.name} 暂存
+                    {infoQ.data?.activeProvider === p.id && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: "var(--c-t4)" }}>（参考图暂存当前通道）</span>}
+                  </span>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: keyed ? "oklch(0.72 0.17 150)" : "oklch(0.7 0.19 25)" }}>
+                    {keyed ? "Key 已配置" : "未配置 Key"}
+                  </span>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, lineHeight: 1.7, color: "var(--c-t3)" }}>
+                  {p.limits.map((l) => <li key={l}>{l}</li>)}
+                </ul>
+              </button>
+            );
+          })}
+        </div>
+        {/* 上传按钮 */}
+        <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => onFiles(e.target.files)} />
+        <button onClick={() => fileRef.current?.click()} disabled={!chosen || !!busyName || !canUpload || upMut.isPending}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 20px", borderRadius: 9, fontSize: 13, fontWeight: 700,
+            border: "1px solid oklch(0.68 0.15 175 / 0.5)",
+            background: (!chosen || !canUpload) ? "var(--c-surface)" : "oklch(0.68 0.15 175 / 0.14)",
+            color: (!chosen || !canUpload) ? "var(--c-t4)" : "oklch(0.78 0.13 175)",
+            cursor: (!chosen || !!busyName || !canUpload) ? "not-allowed" : "pointer",
+          }}>
+          {busyName ? <><Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> 上传中：{busyName}</>
+            : <><Upload style={{ width: 14, height: 14 }} /> 选择文件上传{chosen ? `到 ${chosen === "poyo" ? "Poyo" : "Kie"}` : ""}（可多选）</>}
+        </button>
+        {!canUpload && <span style={{ marginLeft: 10, fontSize: 11.5, color: "oklch(0.72 0.17 60)" }}>只读模式 · 上传需 L{effOp} 及以上权限</span>}
+      </div>
+
+      {/* 结果列表（本次会话内，最多留 50 条） */}
+      {results.length > 0 && (
+        <div style={cardStyle}>
+          <h3 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 600, color: "var(--c-t1)" }}>已暂存链接（本次会话 · {results.length} 条）</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {results.map((r) => (
+              <div key={r.url + r.at} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, border: "1px solid var(--c-bd1, rgba(255,255,255,0.07))", background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+                <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 99, background: r.provider === "poyo" ? "oklch(0.68 0.18 210 / 0.18)" : "oklch(0.68 0.18 85 / 0.18)", color: r.provider === "poyo" ? "oklch(0.78 0.14 210)" : "oklch(0.78 0.14 85)" }}>
+                  {r.provider === "poyo" ? "Poyo" : "Kie"}
+                </span>
+                <span style={{ flexShrink: 0, fontSize: 12, color: "var(--c-t2)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</span>
+                <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--c-t4)" }}>{fmtBytes(r.bytes)}</span>
+                <a href={r.url} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.url}>{r.url}</a>
+                <button onClick={() => copyUrl(r.url)} data-testid="staging-copy-btn"
+                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 7, fontSize: 11.5, fontWeight: 700, border: "1px solid oklch(0.68 0.15 175 / 0.45)", background: "oklch(0.68 0.15 175 / 0.12)", color: "oklch(0.78 0.13 175)", cursor: "pointer" }}>
+                  <Copy style={{ width: 12, height: 12 }} /> 复制
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PermsPanel() {
   const utils = trpc.useUtils();
   const q = trpc.admin.perms.get.useQuery();
@@ -2621,7 +2795,7 @@ function PermsPanel() {
   const groups: [string, string[]][] = [
     ["日志与审计", ["logs", "comfyLogs", "llmLogs"]],
     ["聊天与用户", ["chat", "users", "auth", "whitelist", "downloads"]],
-    ["资源与模型", ["assets", "storage", "models", "kie"]],
+    ["资源与模型", ["assets", "storage", "staging", "models", "kie"]],
     ["ComfyUI", ["comfyServers", "comfyStress", "comfyOps"]],
     ["系统", ["tunnel", "system", "config", "report", "intro"]],
   ];
