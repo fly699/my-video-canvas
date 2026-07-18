@@ -9,7 +9,7 @@
 // 2. 后处理「效果注入」（connectedEffectPrompts）——此前连了后处理节点对分镜无效；
 // 3. 手动多参考图（payload.referenceImages[]）并入参考集合；
 // 4. imageN/批量张数计入点数预估。
-import type { StoryboardNodeData, ReferenceImage } from "../../../shared/types";
+import type { StoryboardNodeData, ReferenceImage, MergeSeamTransition } from "../../../shared/types";
 import { FACTORY_DEFAULT_MODELS } from "../../../shared/nodeDefaultModels";
 import {
   effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions,
@@ -236,18 +236,17 @@ export function clampDurationForProvider(
 }
 
 // ── 装配端：按镜头表收集合并输入（视频段顺序 / 逐切点转场 / 逐段配音）────────────
-/** 分镜 transition → 合并转场映射（cut/match-cut=硬切）。 */
-export function mapShotTransition(t: string | undefined): "none" | "fade" | "dissolve" | "wipe" {
-  if (t === "fade") return "fade";
-  if (t === "dissolve") return "dissolve";
-  if (t === "wipe") return "wipe";
-  return "none"; // cut / match-cut / 未设
+/** 分镜 transition → 合并转场映射（cut/match-cut=硬切）。#244 扩含 fadeblack/fadewhite/
+ *  smoothleft（未知值仍收敛为 none，旧行为不变）。 */
+export function mapShotTransition(t: string | undefined): MergeSeamTransition {
+  if (t === "fade" || t === "dissolve" || t === "wipe" || t === "fadeblack" || t === "fadewhite" || t === "smoothleft") return t;
+  return "none"; // cut / match-cut / 未设 / 未知
 }
 
 export interface AssembledPlan {
   inputVideoUrls: string[];
   /** 逐切点转场（长度 = 段数-1），取「前一镜」的 transition（指向下一镜）。 */
-  transitions: ("none" | "fade" | "dissolve" | "wipe")[];
+  transitions: MergeSeamTransition[];
   /** 逐段配音（该镜下游 dubbing 音频节点的 url；无则 null）。 */
   voiceUrls: (string | null)[];
   /** 逐段音效（该镜下游 sfx 音频节点的 url；无则 null），混入时权重低于配音。 */

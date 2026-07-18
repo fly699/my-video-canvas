@@ -31,9 +31,9 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string };
 // 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
-const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false, autoPortrait: false, anchorCompress: true };
+const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false, autoPortrait: false, anchorCompress: true, transitionStyle: "" };
 
 /** 对白语种（#138）：对白/旁白/台词统一书写语言；空 = 跟随内容默认。 */
 const QP_DIALOGUE_LANGS = [
@@ -224,6 +224,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     if (quickPrefs.aspect) lines.push(`- 画面比例统一为 ${quickPrefs.aspect}。`);
     if (quickPrefs.style.trim()) lines.push(`- 整体视觉风格：${quickPrefs.style.trim()}。`);
     if (quickPrefs.durationSec > 0) lines.push(`- 目标总时长约 ${quickPrefs.durationSec} 秒，据此规划镜头数与每镜时长。`);
+    // #244 转场风格：dissolve/cinematic 有 agentApply fill-only 确定性兜底（LLM 忘写也生效）；
+    // smart 纯靠提示词引导 LLM 按镜头关系差异化写分镜 transition（装配成片逐接缝生效）。
+    if (quickPrefs.transitionStyle === "dissolve") lines.push("- 【转场风格·柔和叠化】若创建 merge 合并节点，设置 transition=\"dissolve\"、transitionDuration=0.35，让镜头间柔和衔接。");
+    if (quickPrefs.transitionStyle === "cinematic") lines.push("- 【转场风格·电影黑场】若创建 merge 合并节点，设置 transition=\"fadeblack\"、transitionDuration=0.6（经黑场过渡，电影感）。");
+    if (quickPrefs.transitionStyle === "smart") lines.push("- 【转场风格·智能匹配】按相邻镜头的叙事关系为每个切点选择转场：同场景连续动作→cut 直切；时间/地点跳转→fadeblack；情绪缓冲/回忆→dissolve；平行叙事切换→smoothleft。有 storyboard 分镜时写在每镜的 transition 字段（装配成片按它逐接缝生效）；直接创建 merge 节点时写 segTransitions 数组（长度=段数-1，值取 none/fade/dissolve/fadeblack/fadewhite/smoothleft/wipe）。");
     if (quickPrefs.genNodes.length) lines.push(`- 【强制】生成节点只允许使用：${quickPrefs.genNodes.join(" / ")}；其余生成节点类型（image_gen/video_task/comfyui_image/comfyui_video/comfyui_workflow 中未列出的）一律禁止创建。`);
     if (quickPrefs.imageModel) lines.push(`- 【强制】图像生成一律使用模型 ${quickPrefs.imageModel}（写入 image_gen.model / storyboard.imageModel）。`);
     if (quickPrefs.videoProvider) lines.push(`- 【强制】视频生成一律使用模型 ${quickPrefs.videoProvider}（写入 video_task.provider；params 键与取值严格按该模型的参数表）。`);
@@ -632,6 +637,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           allowedGenNodes: quickPrefs.genNodes.length ? quickPrefs.genNodes : undefined,
           allowedTemplateIds: quickPrefs.workflowTemplateIds.length ? quickPrefs.workflowTemplateIds : undefined,
           excludeStoryboard: quickPrefs.noStoryboard || undefined,
+          transitionStyle: quickPrefs.transitionStyle || undefined,
         });
         applied = opsSummary(ops); createdIds = res.createdIds ?? [];
         // 角色确定性自动接线（不对应任何 op，opsSummary 统计不到）——透明反馈，让用户知道
@@ -758,6 +764,18 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }}>时长</span>
               {QP_DURATIONS.map((d) => <button key={d.v} onClick={() => setQP({ durationSec: d.v })} style={chip(quickPrefs.durationSec === d.v)}>{d.label}</button>)}
+            </div>
+            {/* #244 成片转场风格：默认=直切（现状，concat 快路径零改动）；其余风格作用于合并成片 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="合并成片时镜头间的转场风格；默认=直切（不设转场，与以前完全一致）">转场</span>
+              <MiniSelect value={quickPrefs.transitionStyle} placeholder="默认" maxWidth={168} accent={accent} accentSoft={accentSoft}
+                title="成片转场风格：默认直切=现状不变；柔和叠化=全片 dissolve 0.35s；电影黑场=全片经黑场 0.6s；智能匹配=助手按镜头叙事关系逐接缝选转场（直切/叠化/黑场/推移）"
+                groups={[{ options: [
+                  { value: "", label: "默认（直切）" },
+                  { value: "dissolve", label: "柔和叠化" },
+                  { value: "cinematic", label: "电影黑场" },
+                  { value: "smart", label: "智能匹配（逐镜）" },
+                ] }]} onChange={(v) => setQP({ transitionStyle: v })} />
             </div>
             {secHead("模型与语种")}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
