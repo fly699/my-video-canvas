@@ -1397,6 +1397,11 @@ function ModelSkillsPanel() {
     },
     onError: (e) => toast.error("提炼失败：" + e.message),
   });
+  const [draftUrl, setDraftUrl] = useState("");
+  const autoDraftUrlMut = trpc.admin.modelSkills.autoDraftFromUrl.useMutation({
+    onSuccess: () => { toast.success("已从文档页提炼技法草稿，请在下方审核入库"); setDraftUrl(""); void utils.admin.modelSkills.listDrafts.invalidate(); },
+    onError: (e) => toast.error("联网提炼失败：" + e.message),
+  });
   const applyDraftMut = trpc.admin.modelSkills.applyDraft.useMutation({
     onSuccess: () => { toast.success("草稿已审核入库（技能立即生效）"); void utils.admin.modelSkills.list.invalidate(); void utils.admin.modelSkills.listDrafts.invalidate(); },
     onError: (e) => toast.error("入库失败：" + e.message),
@@ -1468,6 +1473,22 @@ function ModelSkillsPanel() {
             onClick={() => autoDraftMut.mutate({ modelIds: missingIds.slice(0, 8), llmModel: draftLlm || undefined })}
             style={{ padding: "5px 12px", fontSize: 11.5, fontWeight: 600, borderRadius: 8, border: "1px solid var(--c-bd2)", background: "transparent", color: missingIds.length ? "var(--c-t2)" : "var(--c-t4)", cursor: missingIds.length && !autoDraftMut.isPending ? "pointer" : "not-allowed" }}>
             批量提炼缺技能模型（{Math.min(8, missingIds.length)}）
+          </button>
+        </div>
+        {/* #224 批2：联网提炼——服务端抓取指定官方文档页正文（SSRF 防护）→ LLM 提炼 → 草稿区 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>联网提炼</span>
+          <input value={draftUrl} onChange={(e) => setDraftUrl(e.target.value)} data-testid="skill-web-url"
+            placeholder="粘贴该模型的官方文档/模型页链接（https://…），服务端抓取正文后提炼"
+            style={{ ...inputStyle, flex: 1, minWidth: 260, padding: "5px 8px", fontSize: 11.5 }} />
+          <button disabled={!draftTarget || !/^https?:\/\//.test(draftUrl.trim()) || autoDraftUrlMut.isPending}
+            title={!draftTarget ? "先在上方选择目标模型" : "抓取该链接的文档正文 → 用所选提炼模型生成技法草稿（只收录文档明确写到的内容，无关页面会被拒绝）"}
+            onClick={() => {
+              const kind = IMAGE_MODELS.some((m) => m.value === draftTarget) ? "image" : "video";
+              autoDraftUrlMut.mutate({ modelId: draftTarget, kind, url: draftUrl.trim(), llmModel: draftLlm || undefined });
+            }}
+            style={{ padding: "5px 12px", fontSize: 11.5, fontWeight: 700, borderRadius: 8, flexShrink: 0, border: "1px solid oklch(0.7 0.15 200 / 0.5)", background: draftTarget && /^https?:\/\//.test(draftUrl.trim()) ? "oklch(0.7 0.15 200 / 0.14)" : "var(--c-surface)", color: draftTarget && /^https?:\/\//.test(draftUrl.trim()) ? "oklch(0.76 0.13 200)" : "var(--c-t4)", cursor: draftTarget && /^https?:\/\//.test(draftUrl.trim()) && !autoDraftUrlMut.isPending ? "pointer" : "not-allowed" }}>
+            {autoDraftUrlMut.isPending ? "抓取提炼中…" : "联网提炼草稿"}
           </button>
         </div>
         {(draftsQ.data?.length ?? 0) > 0 && (
