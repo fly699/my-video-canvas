@@ -4516,12 +4516,17 @@ export const configRouter = router({
   // images to URL-only providers, so the frontend warns before spending credits.
   mediaReachability: protectedProcedure.query(async () => {
     const settings = await getCachedStorageSettings();
-    // Poyo 暂存：开关开启 + 配了 Poyo Key 时，即便本地存储不对公网开放，参考图也会
-    // 被暂存到 Poyo 公网链接给上游读取——此时视为「可达」，并据此在前端亮绿灯。
-    const poyoStagingActive = settings.poyoUploadFallback && !!ENV.poyoApiKey;
+    // #234 通用暂存通道：生效通道（显式选择/旧开关兼容 + API Key 守卫）与
+    // storage.resolveToAbsoluteUrl 同一决策源——即便本地存储不对公网开放，参考图也会
+    // 被暂存到该通道的公网链接给上游读取，此时视为「可达」，并据此在前端亮绿灯。
+    const { getActiveStagingProvider } = await import("../_core/storageConfig");
+    const stagingProvider = await getActiveStagingProvider();
     return {
       upstreamCanFetchMedia: canBrowserReachStorageDirectly(),
-      poyoStagingActive,
+      // 兼容旧客户端字段：poyo 通道生效时为 true（老前端绿灯语义不变）。
+      poyoStagingActive: stagingProvider === "poyo",
+      // 新字段：当前生效的暂存通道（off/poyo/kie），前端顶栏 chip / 后台状态行用。
+      stagingProvider,
       backend: storageBackend(),
       // Admin toggle (readable by all users): auto-prefer the upstream AI temporary
       // public URL as the reference source when it probes alive. Off by default.

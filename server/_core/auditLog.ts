@@ -103,6 +103,7 @@ export type AuditAction =
   | "editor:silenceCut"
   | "editor:autoCompose"
   | "poyo_stage"
+  | "kie_stage"
   | "kie_key_add"
   | "kie_key_toggle"
   | "kie_key_delete"

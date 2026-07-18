@@ -12,8 +12,10 @@
  */
 import * as db from "../db";
 import { isS3Configured } from "../storage";
+import { ENV } from "./env";
+import { resolveStagingProvider, type StagingProvider } from "./stagingProvider";
 
-type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; downloadAuthBypassLevel: number; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean; devtoolsBlockEnabled: boolean };
+type Cached = { persistAudio: boolean; persistVideo: boolean; persistImage: boolean; presignTtlSec: number; poyoUploadFallback: boolean; uploadStagingProvider: string; minioOnly: boolean; preferUpstreamRefSource: boolean; downloadAuthEnabled: boolean; downloadAuthBypassLevel: number; forceStorageRelay: boolean; watermarkEnabled: boolean; downloadWatermarkEnabled: boolean; devtoolsBlockEnabled: boolean };
 
 let _cached: Cached | null = null;
 let _expiresAt = 0;
@@ -45,7 +47,7 @@ export async function getCachedStorageSettings(): Promise<Cached> {
       // that DB outages can't silently bypass the admin's explicit "off"
       // intent and burn S3 quota.
       if (_cached) return _cached;
-      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600, poyoUploadFallback: false, minioOnly: false, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false };
+      return { persistAudio: false, persistVideo: false, persistImage: false, presignTtlSec: 3600, poyoUploadFallback: false, uploadStagingProvider: "", minioOnly: false, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false };
     } finally {
       _inflight = null;
     }
@@ -80,6 +82,14 @@ export async function isImagePersistenceEnabled(): Promise<boolean> {
  */
 export async function isPoyoUploadFallbackEnabled(): Promise<boolean> {
   return (await getCachedStorageSettings()).poyoUploadFallback;
+}
+
+/** #234 当前「生效」的暂存通道（显式选择 + 旧开关兼容 + API Key 守卫后的最终结果）。
+ *  storage.resolveToAbsoluteUrl 与 config.mediaReachability（前端灯/顶栏 chip）共用，
+ *  保证「显示已生效」与「实际会上传」永远一致。 */
+export async function getActiveStagingProvider(): Promise<StagingProvider> {
+  const s = await getCachedStorageSettings();
+  return resolveStagingProvider(s, { hasPoyoKey: !!ENV.poyoApiKey, hasKieKey: !!ENV.kieApiKey });
 }
 
 /** Admin-controlled master switch for strict download authorization. */

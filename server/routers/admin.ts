@@ -513,6 +513,8 @@ export const adminRouter = router({
         presignTtlSec: z.number().int().min(60).max(604_800).optional(),
         // Poyo stream-upload fallback (additive; off by default).
         poyoUploadFallback: z.boolean().optional(),
+        // #234 通用暂存通道显式选择：""=未设置（沿用旧布尔）/ off / poyo / kie。
+        uploadStagingProvider: z.enum(["", "off", "poyo", "kie"]).optional(),
         // Restrict object storage to MinIO/S3 only (disable Forge fallback).
         minioOnly: z.boolean().optional(),
         // Prefer the upstream AI temporary public URL as the reference source when alive.
@@ -535,7 +537,7 @@ export const adminRouter = router({
         if (
           input.persistAudio === undefined && input.persistVideo === undefined &&
           input.persistImage === undefined && input.presignTtlSec === undefined &&
-          input.poyoUploadFallback === undefined && input.minioOnly === undefined &&
+          input.poyoUploadFallback === undefined && input.uploadStagingProvider === undefined && input.minioOnly === undefined &&
           input.preferUpstreamRefSource === undefined && input.downloadAuthEnabled === undefined &&
           input.downloadAuthBypassLevel === undefined &&
           input.forceStorageRelay === undefined && input.watermarkEnabled === undefined &&

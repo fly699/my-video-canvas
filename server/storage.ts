@@ -357,14 +357,15 @@ export async function storagePresignPut(
  * uses; the upstream API has minutes (typical signed-URL TTL) to fetch
  * before it expires.
  */
-// ── #232 Poyo 暂存 URL 复用缓存 ───────────────────────────────────────────────
+// ── #232/#234 暂存 URL 复用缓存（Poyo / Kie 通用）──────────────────────────────
 // 此前每次解析都重新上传同一个文件：同一张定妆照被 N 个镜头引用、批量运行一次就发
-// N 个上传，必撞官方 5 次/分限流。同一存储对象在 TTL 内直接复用首次暂存返回的公网
-// URL。TTL 取 12h，远小于 Poyo 官方保存期下限（视频 24h / 图片 72h），复用期内链接
-// 必然仍有效；容量上限 500 条按插入序淘汰，防长驻进程无界增长。
-const _poyoStageCache = new Map<string, { url: string; expiresAt: number }>();
-const POYO_STAGE_TTL_MS = 12 * 3600_000;
-const POYO_STAGE_CACHE_MAX = 500;
+// N 个上传，必撞官方限流（Poyo 5 次/分）。同一存储对象在 TTL 内直接复用首次暂存返回
+// 的公网 URL。TTL 取 12h，小于两家官方保存期下限（Poyo 视频 24h / Kie 全部 24h），
+// 复用期内链接必然仍有效。缓存键带 provider 前缀——管理员切换通道后不会误用旧通道的
+// URL。容量上限 500 条按插入序淘汰，防长驻进程无界增长。
+const _stageCache = new Map<string, { url: string; expiresAt: number }>();
+const STAGE_TTL_MS = 12 * 3600_000;
+const STAGE_CACHE_MAX = 500;
 
 export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string> {
   if (/^https?:\/\//i.test(urlOrRelPath)) return urlOrRelPath;
@@ -373,18 +374,20 @@ export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string
   }
   const key = urlOrRelPath.slice("/manus-storage/".length);
 
-  // ── Additive Poyo stream-upload fallback (off by default) ──
-  // Only when: admin enabled it, our storage is NOT publicly reachable, and a
-  // Poyo key exists. Stages the file on Poyo and returns its public URL so AI
-  // models can fetch it. Any failure falls through to the original behavior —
-  // when the toggle is off this whole block is skipped and logic is unchanged.
-  if (!canBrowserReachStorageDirectly() && ENV.poyoApiKey) {
+  // ── Additive staging fallback（#234 通用暂存通道：Poyo / Kie，后台按钮切换）──
+  // Only when: our storage is NOT publicly reachable AND the resolved provider
+  // is active（显式选择或旧开关兼容，且对应 API Key 已配——见 resolveStagingProvider）。
+  // Stages the file on the provider and returns its public URL so AI models can
+  // fetch it. Any failure falls through to the original presign behavior —
+  // provider="off" 时整块跳过，与旧逻辑逐字节一致。
+  if (!canBrowserReachStorageDirectly()) {
     try {
-      const { isPoyoUploadFallbackEnabled } = await import("./_core/storageConfig");
-      if (await isPoyoUploadFallbackEnabled()) {
-        const hit = _poyoStageCache.get(key);
+      const { getActiveStagingProvider } = await import("./_core/storageConfig");
+      const provider = await getActiveStagingProvider();
+      if (provider !== "off") {
+        const cacheKey = `${provider}:${key}`;
+        const hit = _stageCache.get(cacheKey);
         if (hit && hit.expiresAt > Date.now()) return hit.url; // 复用暂存，不重复上传
-        const { uploadStreamToPoyo } = await import("./_core/poyoUpload");
         const { body, contentType } = await storageFetchStream(key);
         const chunks: Buffer[] = [];
         for await (const chunk of body) chunks.push(Buffer.from(chunk));
@@ -392,22 +395,25 @@ export async function resolveToAbsoluteUrl(urlOrRelPath: string): Promise<string
         const ct = contentType ?? "application/octet-stream";
         const ext = key.split(".").pop() || "bin";
         const fileName = `ref-${Date.now()}.${ext}`;
-        const poyoUrl = await uploadStreamToPoyo(buf, fileName, ct);
-        if (_poyoStageCache.size >= POYO_STAGE_CACHE_MAX) {
-          const oldest = _poyoStageCache.keys().next().value;
-          if (oldest !== undefined) _poyoStageCache.delete(oldest);
+        const stagedUrl = provider === "poyo"
+          ? await (await import("./_core/poyoUpload")).uploadStreamToPoyo(buf, fileName, ct)
+          : await (await import("./_core/kieUpload")).uploadStreamToKie(buf, fileName, ct);
+        if (_stageCache.size >= STAGE_CACHE_MAX) {
+          const oldest = _stageCache.keys().next().value;
+          if (oldest !== undefined) _stageCache.delete(oldest);
         }
-        _poyoStageCache.set(key, { url: poyoUrl, expiresAt: Date.now() + POYO_STAGE_TTL_MS });
-        // 暂存到 Poyo 的每个文件都留 log：控制台 + 审计日志（管理后台「系统日志」可查）。
-        console.log(`[storage] Poyo 暂存：key=${key} size=${buf.length}B type=${ct} → ${poyoUrl}`);
+        _stageCache.set(cacheKey, { url: stagedUrl, expiresAt: Date.now() + STAGE_TTL_MS });
+        // 每个暂存文件都留 log：控制台 + 审计日志（管理后台「系统日志」可查）。
+        const label = provider === "poyo" ? "Poyo" : "Kie";
+        console.log(`[storage] ${label} 暂存：key=${key} size=${buf.length}B type=${ct} → ${stagedUrl}`);
         try {
           const { writeAuditLog } = await import("./_core/auditLog");
-          writeAuditLog({ action: "poyo_stage", detail: { key, sizeBytes: buf.length, contentType: ct, poyoUrl } });
+          writeAuditLog({ action: provider === "poyo" ? "poyo_stage" : "kie_stage", detail: { key, sizeBytes: buf.length, contentType: ct, stagedUrl } });
         } catch { /* 审计失败不影响主流程 */ }
-        return poyoUrl;
+        return stagedUrl;
       }
     } catch (err) {
-      console.warn("[storage] Poyo upload fallback failed, using presigned URL:", err instanceof Error ? err.message : err);
+      console.warn("[storage] staging fallback failed, using presigned URL:", err instanceof Error ? err.message : err);
       // fall through to the original presign behavior
     }
   }
