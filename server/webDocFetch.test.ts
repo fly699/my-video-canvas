@@ -58,3 +58,38 @@ describe("kieWebSearchSupported / tools 契约", () => {
     expect(KIE_WEB_SEARCH_TOOLS).toEqual([{ type: "function", function: { name: "web_search" } }]);
   });
 });
+
+// #224 批2c：多渠道搜索——DDG 结果解析纯函数 + 原生联网模型清单
+import { parseDuckDuckGoHtml } from "./_core/webSearchChannels";
+import { NATIVE_WEB_SEARCH_LLMS } from "../shared/webSearchModels";
+
+describe("parseDuckDuckGoHtml", () => {
+  const html = `
+<div class="result results_links"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdocs.kie.ai%2Fgrok&rut=x">Grok 官方文档 <b>提示词</b></a>
+<a class="result__snippet" href="#">官方 prompt guide，包含参数说明。</a></div>
+<div class="result"><a class="result__a" href="https://blog.example.com/tips">Grok tips</a></div>
+<div class="result"><a class="result__a" href="javascript:void(0)">坏链接</a></div>`;
+  it("解析标题/摘要，还原 uddg 重定向为真实 URL，跳过非 http 链接", () => {
+    const out = parseDuckDuckGoHtml(html);
+    expect(out).toContain("Grok 官方文档 提示词");
+    expect(out).toContain("https://docs.kie.ai/grok");
+    expect(out).toContain("官方 prompt guide");
+    expect(out).toContain("https://blog.example.com/tips");
+    expect(out).not.toContain("javascript:");
+    expect(out).not.toContain("uddg=");
+  });
+  it("maxResults 截断", () => {
+    expect(parseDuckDuckGoHtml(html, 1).split("\n- ").length).toBe(1); // 只留第一条
+  });
+  it("无结果页返回空串", () => {
+    expect(parseDuckDuckGoHtml("<html><body>no results</body></html>")).toBe("");
+  });
+});
+
+describe("原生联网模型清单（shared 单一事实源）", () => {
+  it("含官方声明的 GPT-5.2 与 GPT-5.4，且 kieWebSearchSupported 一致", () => {
+    expect(NATIVE_WEB_SEARCH_LLMS).toContain("kie_gpt_5_2");
+    expect(NATIVE_WEB_SEARCH_LLMS).toContain("kie_gpt_5_4");
+    expect(kieWebSearchSupported("kie_gpt_5_4")).toBe(true);
+  });
+});

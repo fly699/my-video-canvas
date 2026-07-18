@@ -18,6 +18,8 @@ import { KIE_BASE_URL } from "./kie";
 // The resolved kie key is passed in by the router (resolveKieKey); credits are
 // per-million-tokens (docs/kie-pricing.md).
 
+import { NATIVE_WEB_SEARCH_LLMS } from "../../shared/webSearchModels";
+
 type KieLLMFormat = "openai-chat" | "claude" | "responses";
 export interface KieLLMSpec {
   model: string;          // wire model string
@@ -84,15 +86,19 @@ const partsImages = (c: string | ContentPart[]): string[] =>
 
 export interface KieLLMResult { text: string; /** 请求确实带着 web_search tools 成功返回（#224 批2b）。 */ webSearchApplied?: boolean }
 
-// ── #224 批2b Web Search grounding（官方契约：docs/kie-api.md · GPT 5.2 端点）──
-// tools 参数按文档原样：{"type":"function","function":{"name":"web_search"}} 开启实时联网检索。
-// 只对【文档明确声明支持】的模型启用（不按同族猜测）；网关若拒绝 tools，自动去掉重试一次
-// 并把 webSearchApplied=false 冒泡给调用方——由调用方决定「通知 + 回退」语义。
+// ── #224 批2b/2c Web Search grounding（官方契约：docs/kie-api.md）──
+// 两个端点、两种 tools 形态（都按文档原样，不猜）：
+//  - GPT 5.2（openai-chat）：tools=[{"type":"function","function":{"name":"web_search"}}]
+//  - GPT 5.4（responses /codex/v1/responses）：tools=[{"type":"web_search"}]（与 function calling 互斥）
+// 只对【文档明确声明支持】的模型启用（清单在 shared/webSearchModels.ts，前后端共享）；
+// 网关若拒绝 tools，自动去掉重试一次并把 webSearchApplied=false 冒泡——调用方决定「通知+回退」。
 export const KIE_WEB_SEARCH_TOOLS = [{ type: "function", function: { name: "web_search" } }];
-export const KIE_WEB_SEARCH_MODELS: ReadonlySet<string> = new Set(["kie_gpt_5_2"]);
+export const KIE_WEB_SEARCH_TOOLS_RESPONSES = [{ type: "web_search" }];
+export const KIE_WEB_SEARCH_MODELS: ReadonlySet<string> = new Set(NATIVE_WEB_SEARCH_LLMS);
 export function kieWebSearchSupported(modelId?: string): boolean {
   if (!modelId || !KIE_WEB_SEARCH_MODELS.has(modelId)) return false;
-  return KIE_LLM_MODELS[modelId]?.format === "openai-chat"; // tools 契约仅 openai-chat 端点声明
+  const f = KIE_LLM_MODELS[modelId]?.format;
+  return f === "openai-chat" || f === "responses"; // 两种契约端点
 }
 
 /** Adapt + dispatch a chat request to the right kie endpoint/format. */
@@ -134,6 +140,9 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
     // 双保险：① reasoning.effort=low 大幅压低推理 token 占用（更快更省、正文更可靠）；
     // ② max_output_tokens 给足余量（下限 8000 再 +8192）。
     body = { model: spec.model, input, max_output_tokens: Math.max(maxTokens, 8000) + 8192, reasoning: { effort: "low" }, stream: false };
+    // #224 批2c：GPT-5.4 responses 端点的 Web Search（官方 tools 契约；与 function calling 互斥，
+    // 本调用不传自定义函数，无冲突）。
+    if (opts.webSearch && kieWebSearchSupported(opts.model)) body.tools = KIE_WEB_SEARCH_TOOLS_RESPONSES;
   } else {
     // OpenAI chat/completions (model in the path; include in body too — harmless).
     body = { model: spec.model, messages: opts.messages, max_tokens: maxTokens, stream: false };
@@ -144,30 +153,20 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
 
   const doPost = (b: Record<string, unknown>) => fetch(url, { method: "POST", headers, body: JSON.stringify(b), signal: AbortSignal.timeout(120_000) });
   let res = await doPost(body);
-  // 少数网关可能不认 reasoning 字段而整体报错——去掉后重试一次，避免因附加字段拖垮整个请求。
-  if (!res.ok && spec.format === "responses" && "reasoning" in body) {
+  // 网关不认可选附加字段（tools=web_search / reasoning）时逐个剥掉重试，避免附加字段
+  // 拖垮整个请求：先去 tools（联网回退，标志冒泡给调用方通知用户），再去 reasoning。
+  if (!res.ok) {
     const firstErr = await res.text().catch(() => "");
-    const { reasoning: _drop, ...noReasoning } = body as Record<string, unknown>;
-    void _drop;
-    res = await doPost(noReasoning);
+    for (const field of ["tools", "reasoning"] as const) {
+      if (res.ok || !(field in body)) continue;
+      delete (body as Record<string, unknown>)[field];
+      if (field === "tools") webSearchApplied = false;
+      res = await doPost(body);
+    }
     if (!res.ok) {
       const t = await res.text().catch(() => "");
       throw new Error(`kie LLM 调用失败 (${res.status}): ${(t || firstErr).slice(0, 300)}`);
     }
-  } else if (!res.ok && webSearchApplied) {
-    // 网关不认 web_search tools → 去掉重试一次（回退非联网），标志冒泡给调用方通知用户。
-    const firstErr = await res.text().catch(() => "");
-    const { tools: _dropTools, ...noTools } = body as Record<string, unknown>;
-    void _dropTools;
-    webSearchApplied = false;
-    res = await doPost(noTools);
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      throw new Error(`kie LLM 调用失败 (${res.status}): ${(t || firstErr).slice(0, 300)}`);
-    }
-  } else if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`kie LLM 调用失败 (${res.status}): ${t.slice(0, 300)}`);
   }
   const data = await res.json() as Record<string, unknown>;
   const text = extractKieLLMText(spec.format, data);

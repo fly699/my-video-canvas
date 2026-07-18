@@ -27,6 +27,7 @@ import { BroadcastComposer } from "@/components/chat/BroadcastComposer";
 import { LLM_MODELS, IMAGE_MODELS, VIDEO_MODELS, TRANSCRIBE_MODELS, modelGroupOrder, platformBadge } from "@/lib/models";
 import { useSelfHostedLlmModels } from "@/lib/useSelfHostedModels";
 import { DEFAULT_TAB_ACCESS, ADMIN_LEVEL_LABELS, EDITABLE_TAB_KEYS, type TabAccess } from "@shared/adminPerms";
+import { NATIVE_WEB_SEARCH_LLMS, WEB_SEARCH_MODELS_HINT } from "@shared/webSearchModels";
 
 // 权限矩阵二维级别（{view 可见, operate 可操作}）经 Context 下发给各 Panel，
 // 使 LevelGate 与各 canX 写门控在「静态地板」之上叠加站长配置的 operate（取严 max）。
@@ -1405,8 +1406,12 @@ function ModelSkillsPanel() {
   // #224 批2b 联网搜索提炼：成功区分「真联网」与「已回退未联网」——回退时明确警示通知（用户拍板要求）。
   const autoDraftSearchMut = trpc.admin.modelSkills.autoDraftSearch.useMutation({
     onSuccess: (r) => {
-      if (r.usedWebSearch) toast.success(`已联网搜索并生成技法草稿${r.note ? `（${r.note}）` : ""}，请在下方审核入库`);
-      else toast.warning(`已生成草稿，但【未联网】：${r.note ?? "联网搜索不可用"}。来源已标注「未联网·内置知识」，审核时请注意时效性。`, { duration: 9000 });
+      const okNames = (r.channels ?? []).filter((c) => c.ok).map((c) => c.channel).join("、");
+      if (r.usedWebSearch) {
+        toast.success(`已聚合联网渠道【${okNames}】并自动整理成技法草稿${r.note ? `（${r.note}）` : ""}，请在下方审核入库`, { duration: 7000 });
+      } else {
+        toast.warning(`已生成草稿，但【未联网】：${r.note ?? "联网渠道均不可用"}。来源已标注「未联网·内置知识」，审核时请注意时效性。`, { duration: 9000 });
+      }
       void utils.admin.modelSkills.listDrafts.invalidate();
     },
     onError: (e) => toast.error("搜索提炼失败：" + e.message),
@@ -1451,7 +1456,8 @@ function ModelSkillsPanel() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--c-t1)" }}>自动更新（本地文档提炼）</span>
           <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>
-            从系统内已核对官方文档的模型参数表提炼「提示词技法」→ 生成草稿 → 人工审核后才入库生效；不联网（联网搜索为批2，待网关能力验证）。
+            三种提炼方式（产物均进下方草稿区，人工审核后才入库生效）：①本地参数文档提炼（不联网）；②粘贴官方文档页链接抓取提炼；③🔎 多渠道联网搜索（Kie GPT-5.2/5.4 官方联网 + Poyo 联网 + DuckDuckGo 检索，自动整理合并）。
+            {WEB_SEARCH_MODELS_HINT}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -1466,10 +1472,10 @@ function ModelSkillsPanel() {
             </optgroup>
           </select>
           <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--c-t3)" }}>提炼模型
-            <select value={draftLlm} onChange={(e) => setDraftLlm(e.target.value)}
-              style={{ ...inputStyle, width: 200, padding: "5px 8px", fontSize: 11.5 }}>
+            <select value={draftLlm} onChange={(e) => setDraftLlm(e.target.value)} title={WEB_SEARCH_MODELS_HINT}
+              style={{ ...inputStyle, width: 210, padding: "5px 8px", fontSize: 11.5 }}>
               <option value="">系统默认 LLM</option>
-              {LLM_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              {LLM_MODELS.map((m) => <option key={m.id} value={m.id}>{NATIVE_WEB_SEARCH_LLMS.includes(m.id) ? "🌐 " : ""}{m.label}</option>)}
             </select>
           </label>
           <button disabled={!draftTarget || autoDraftMut.isPending}
@@ -1500,7 +1506,7 @@ function ModelSkillsPanel() {
             {autoDraftUrlMut.isPending ? "抓取提炼中…" : "联网提炼草稿"}
           </button>
           <button disabled={!draftTarget || autoDraftSearchMut.isPending} data-testid="skill-web-search-btn"
-            title={!draftTarget ? "先在上方选择目标模型" : "用支持官方 Web Search 的模型（GPT 5.2·kie）实时联网搜索该模型最新官方技法并生成草稿；若所选提炼模型不支持联网会自动改用支持的模型，网关不支持联网时自动回退内置知识并明确提示（来源会标注是否联网）"}
+            title={!draftTarget ? "先在上方选择目标模型" : "多渠道联网搜索并自动整理：并行走 Kie 原生联网模型（GPT 5.2/5.4，🌐 标注；所选提炼模型不支持时自动改用）+ Poyo 官方联网 + DuckDuckGo 检索，任一渠道命中即用你所选的提炼模型合并去重成草稿（附引用来源）；全部渠道不可用时自动回退内置知识并明确警示（来源会标注是否联网）"}
             onClick={() => {
               const kind = IMAGE_MODELS.some((m) => m.value === draftTarget) ? "image" : "video";
               autoDraftSearchMut.mutate({ modelId: draftTarget, kind, llmModel: draftLlm || undefined });
