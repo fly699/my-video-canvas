@@ -2626,7 +2626,9 @@ const STAGING_PROVIDERS: {
     ],
   },
 ];
-const STAGING_MAX_BYTES = 32 * 1024 * 1024; // 本面板经 JSON(base64) 传输的安全上限（express 50mb 余量）
+// #239 原生二进制直传（/api/admin/staging-upload，json 中间件之前注册的 Express 路由）：
+// 不经 base64/JSON 限额，单文件上限直接对齐两家服务商的 100MB。
+const STAGING_MAX_BYTES = 100 * 1024 * 1024;
 const fmtBytes = (n: number) => n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`;
 
 function StagingPanel() {
@@ -2635,7 +2637,6 @@ function StagingPanel() {
   const effOp = useEffOperate("staging", 2); // 静态地板 L2（运营）+ 矩阵 operate 取严
   const canUpload = myLevel >= effOp;
   const infoQ = trpc.admin.staging.info.useQuery();
-  const upMut = trpc.admin.staging.upload.useMutation();
   const [provider, setProvider] = useState<"poyo" | "kie" | null>(null);
   const [busyName, setBusyName] = useState("");
   const [results, setResults] = useState<{ url: string; name: string; bytes: number; provider: string; at: number }[]>([]);
@@ -2652,18 +2653,17 @@ function StagingPanel() {
     if (!files?.length || !chosen) return;
     if (!canUpload) { toast.error(`上传需 L${effOp} 及以上权限（当前 L${myLevel}）`); return; }
     for (const f of Array.from(files)) {
-      if (f.size > STAGING_MAX_BYTES) { toast.error(`「${f.name}」超过本面板 32MB 上限（更大文件请走素材库/画布通道）`); continue; }
+      if (f.size > STAGING_MAX_BYTES) { toast.error(`「${f.name}」超过 100MB 上限（两家服务商单文件上限均为 100MB）`); continue; }
       setBusyName(f.name);
       try {
-        const dataUri: string = await new Promise((res, rej) => {
-          const r = new FileReader();
-          r.onload = () => res(String(r.result));
-          r.onerror = () => rej(new Error("读取文件失败"));
-          r.readAsDataURL(f);
-        });
-        const b64 = dataUri.slice(dataUri.indexOf(",") + 1);
-        const out = await upMut.mutateAsync({ provider: chosen, fileName: f.name, contentType: f.type || "application/octet-stream", dataBase64: b64 });
-        setResults((p) => [{ url: out.url, name: f.name, bytes: f.size, provider: chosen, at: Date.now() }, ...p].slice(0, 50));
+        // #239 原生二进制直传：fetch body 直接传 File（不经 base64/JSON），上限 100MB。
+        const resp = await fetch(
+          `/api/admin/staging-upload?provider=${chosen}&fileName=${encodeURIComponent(f.name)}`,
+          { method: "POST", body: f, headers: { "content-type": f.type || "application/octet-stream" }, credentials: "include" },
+        );
+        const out = await resp.json().catch(() => null) as { ok?: boolean; url?: string; error?: string } | null;
+        if (!resp.ok || !out?.ok || !out.url) throw new Error(out?.error || `HTTP ${resp.status}`);
+        setResults((p) => [{ url: out.url!, name: f.name, bytes: f.size, provider: chosen, at: Date.now() }, ...p].slice(0, 50));
         toast.success(`「${f.name}」已暂存到 ${chosen === "poyo" ? "Poyo" : "Kie"}，链接已生成`);
       } catch (err) {
         toast.error(`「${f.name}」暂存失败：${err instanceof Error ? err.message : String(err)}`);
@@ -2694,7 +2694,7 @@ function StagingPanel() {
         </div>
         <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--c-t3)", lineHeight: 1.6 }}>
           上传文件暂存到 Poyo / Kie 存储，返回<b>公网可直接访问的临时链接</b>（一键复制，可喂给 AI 模型或临时外发）。
-          本面板经 JSON 传输，单文件 ≤32MB；更大文件请走素材库 / 画布上传通道。
+          原生二进制直传，单文件 ≤100MB（对齐两家服务商上限）。
           <b style={{ color: "oklch(0.72 0.17 60)" }}>链接公开可访问且不可提前撤销，请勿上传敏感文件。</b>
           {" "}上传需 <b>L{effOp}</b> 及以上（当前 L{myLevel}{canUpload ? "，可上传" : "，仅可查看"}）；每次上传记入操作日志。
         </p>
@@ -2729,7 +2729,7 @@ function StagingPanel() {
         </div>
         {/* 上传按钮 */}
         <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => onFiles(e.target.files)} />
-        <button onClick={() => fileRef.current?.click()} disabled={!chosen || !!busyName || !canUpload || upMut.isPending}
+        <button onClick={() => fileRef.current?.click()} disabled={!chosen || !!busyName || !canUpload}
           style={{
             display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 20px", borderRadius: 9, fontSize: 13, fontWeight: 700,
             border: "1px solid oklch(0.68 0.15 175 / 0.5)",
