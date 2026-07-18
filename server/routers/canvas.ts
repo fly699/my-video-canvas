@@ -2395,6 +2395,42 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
       });
     }),
 
+  // #225 外观锚点短语压缩：把角色的全量外貌/服装/标志描述压成 15-30 字的视觉锚点
+  // 短语（发型发色/显著标记/服装主色款式/体貌），供角色卡「压缩注入」模式使用——
+  // 跨镜头注入同一短语措辞恒定、省 token。纯文本 LLM 调用，无视觉输入。
+  compressCharacterAnchor: protectedProcedure
+    .input(z.object({
+      profileText: z.string().min(1).max(2000),
+      model: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertLLMAllowed(ctx, input.model);
+      return dedupe("scripts.compressCharacterAnchor", ctx.user.id, input, async () => {
+        const systemPrompt =
+          `你是角色一致性专家。把用户给出的角色外观描述压缩成一个 15-30 字的中文「外观锚点短语」。\n`
+          + `要求：只保留 3-4 个最具辨识度的【视觉】特征（发型发色 / 显著标记(疤痕纹身眼镜等) / 服装主色与款式 / 体貌），`
+          + `用顿号「、」分隔；不含名字、性格、场景、动作；不加引号或任何解释，只输出短语本身。`;
+        const response = await invokeLLMWithKie(ctx, {
+          messages: [
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: `角色外观描述：\n${input.profileText}` },
+          ],
+          model: input.model ?? await getSystemDefaultModel("llm"),
+          maxTokens: 120,
+        });
+        // 剥掉模型可能加的引号/句号并硬截 60 字符（锚点定位是「短」，超长即失去意义）。
+        const phrase = extractTextContent(response)
+          .replace(/```[a-z]*/gi, "")
+          .trim()
+          .replace(/^["'「『]+|["'」』。.]+$/g, "")
+          .trim()
+          .slice(0, 60);
+        if (!phrase) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI 未返回有效的锚点短语，请重试或换模型" });
+        writeAuditLog({ ctx, action: "image_gen", detail: { kind: "character_anchor_compress", len: phrase.length } });
+        return { phrase };
+      });
+    }),
+
   generateVariants: protectedProcedure
     .input(z.object({
       synopsis: z.string().min(1).max(2000),

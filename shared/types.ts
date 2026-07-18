@@ -796,6 +796,14 @@ export interface CharacterNodeData {
   personality?: string;
   outfit?: string;             // 服装（如：黑色西装 + 红色领带）
   signature?: string;          // 标志性物件 / 特征（如：银怀表 / 左眼疤痕）
+  /** #225 外观锚点短语：15-30 字压缩版视觉锚点（发型发色/显著标记/服装主色/体貌），
+   *  由「AI 压缩」按钮从 appearance/outfit/signature 提炼或手填。非空且未被切到
+   *  「全量注入」时，提示词注入用「名字，身份，锚点」替代全量字段模板——省 token、
+   *  跨镜头措辞恒定更利一致性。全量字段原样保留，仅不参与注入；customPromptTemplate
+   *  优先级更高（自定义模板存在时锚点不生效）。 */
+  appearanceAnchor?: string;
+  /** false = 恢复全量注入（角色卡小按钮切换）；undefined/true = 有锚点即压缩注入（默认压缩）。 */
+  appearanceAnchorEnabled?: boolean;
   // Scene (场景)
   sceneName?: string;
   locationType?: string;
