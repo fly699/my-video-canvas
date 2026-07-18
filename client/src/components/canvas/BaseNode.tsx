@@ -739,16 +739,18 @@ export const BaseNode = memo(function BaseNode({
       st.updateNodeData(imgNode.id, { name: "尾帧.jpg", type: "image", url: r.url, mimeType: "image/jpeg" });
       const vidNode = st.addNode("video_task", { x: self.position.x + w + 360, y: self.position.y });
       st.updateNodeTitle(vidNode.id, "下一镜（链式衔接）");
-      // #246 透明权衡：继承本镜模型前先查它吃不吃参考图（videoRefCaps 单一事实源）——
-      // 纯文生模型会静默忽略尾帧、让用户误以为衔接生效。此时改用节点默认图生视频模型并明说。
+      // #248 用户设置永远第一位：下一镜始终继承用户在本镜选的模型，绝不擅自替换。
+      // 模型不吃参考图时只做透明警告 + 建议（videoRefCaps 单一事实源），换不换由用户决定。
       const prov = (self.data.payload as VideoTaskNodeData).provider;
       const provEatsImage = prov ? maxRefImagesForProvider(prov) > 0 : true;
-      if (prov && provEatsImage) st.updateNodeData(vidNode.id, { provider: prov });
+      if (prov) st.updateNodeData(vidNode.id, { provider: prov });
       st.onConnect({ source: imgNode.id, sourceHandle: "output", target: vidNode.id, targetHandle: "input" });
       useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === vidNode.id })) }));
-      toast.success(prov && !provEatsImage
-        ? `已创建下一镜：本镜模型 ${prov} 不吃参考图（纯文生），下一镜已改用默认图生视频模型——尾帧首帧参考才会生效`
-        : "已创建下一镜：尾帧已连作首帧参考，填提示词点运行即可无缝衔接", { id: tid, duration: 5000 });
+      if (prov && !provEatsImage) {
+        toast.warning(`已创建下一镜（沿用您选的模型 ${prov}）。注意：该模型不吃参考图（纯文生），尾帧首帧参考不会生效——建议在新节点上换一个支持首帧图的模型（模型下拉有「🚫图」标注可辨）`, { id: tid, duration: 8000 });
+      } else {
+        toast.success("已创建下一镜：尾帧已连作首帧参考，填提示词点运行即可无缝衔接", { id: tid, duration: 5000 });
+      }
     } catch (e) {
       toast.error("链式下一镜失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
     } finally { setChainBusy(false); }

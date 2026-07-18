@@ -8,7 +8,8 @@ import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
 import { useNodeDocks, useAudioStripItems } from "../../../hooks/useNodeDocks";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { useShallow } from "zustand/react/shallow";
-import { MERGE_TRANSITION_OPTIONS, type MergeNodeData, type MergeSeamTransition, type MergeTransition } from "../../../../../shared/types";
+import { MERGE_TRANSITION_OPTIONS, type MergeNodeData, type MergeSeamTransition, type MergeTransition, type VideoTaskNodeData } from "../../../../../shared/types";
+import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { trpc } from "@/lib/trpc";
 import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { buildShotSubtitles } from "@/lib/shotSubtitles";
@@ -276,12 +277,21 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       st.updateNodeTitle(vid.id, `AI过渡 段${i + 1}→段${i + 2}`);
       st.onConnect({ source: img1.id, target: vid.id, sourceHandle: null, targetHandle: "ref-image-in" });
       st.onConnect({ source: img2.id, target: vid.id, sourceHandle: null, targetHandle: "ref-image-in" });
+      // #248 用户设置第一位：优先用助手快捷设置里用户锁定的视频模型（须支持双图首尾帧，
+      // maxRef≥2）；用户没锁或锁的模型吃不下两张图时，才由系统选 wan2.7（[0]start [1]end
+      // 语义明确）并在 toast 里说明。节点上可随时再换（模型下拉有吃图能力标注，#246）。
+      let userProv = "";
+      try { userProv = (JSON.parse(localStorage.getItem("avc:canvasAgent:prefs") ?? "{}") as { videoProvider?: string }).videoProvider ?? ""; } catch { /* ignore */ }
+      const useUserProv = !!userProv && maxRefImagesForProvider(userProv) >= 2;
+      const transProvider = useUserProv ? userProv : "poyo_wan27_i2v";
+      const provNote = useUserProv
+        ? `（已按您快捷设置锁定的模型 ${userProv}）`
+        : userProv ? `（您锁定的 ${userProv} 不支持首尾帧双图，已改用 Wan2.7，可在节点上换）` : "（默认 Wan2.7 图生，可在节点上换）";
       // 连线只是结构可见；双图发送靠 referenceImages 参考条（buildRefUrls 只认它，连线
       // 推送写的是单字段且后连覆盖先连）——必须在连线之后写 payload，把顺序定死为
-      // [0]=首帧(前段尾) [1]=尾帧(后段首)，与 wan2.7 图生的 [0]start [1]end 语义对齐。
-      // 节点上可随时换其它支持首尾帧的模型（模型下拉有吃图能力标注，#246）。
+      // [0]=首帧(前段尾) [1]=尾帧(后段首)，与首尾帧模型的 start/end 语义对齐。
       st.updateNodeData(vid.id, {
-        provider: "poyo_wan27_i2v",
+        provider: transProvider as VideoTaskNodeData["provider"],
         prompt: "以图一为首帧、图二为尾帧，生成一段平滑的电影感过渡：画面从首帧自然运动、光影连续地过渡到尾帧，无跳切、无闪烁、无文字。",
         referenceImageUrl: tail.url,
         referenceImages: [
@@ -290,7 +300,7 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         ],
       });
       useCanvasStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === vid.id })) }));
-      toast.success(`已搭好「AI过渡 段${i + 1}→段${i + 2}」工作流：在该视频节点点运行生成过渡片段；出片后把它连入本合并节点，并在顺序列表拖到 段${i + 1} 与 段${i + 2} 之间`, { id: tid, duration: 8000 });
+      toast.success(`已搭好「AI过渡 段${i + 1}→段${i + 2}」工作流${provNote}：在该视频节点点运行生成过渡片段；出片后把它连入本合并节点，并在顺序列表拖到 段${i + 1} 与 段${i + 2} 之间`, { id: tid, duration: 8000 });
     } catch (e) {
       toast.error("AI 过渡搭建失败：" + (e instanceof Error ? e.message : String(e)), { id: tid });
     } finally { setAiTransBusy(null); }
