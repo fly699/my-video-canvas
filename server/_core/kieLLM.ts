@@ -82,10 +82,21 @@ const partsToText = (c: string | ContentPart[]): string =>
 const partsImages = (c: string | ContentPart[]): string[] =>
   typeof c === "string" ? [] : c.filter((p): p is Extract<ContentPart, { type: "image_url" }> => p.type === "image_url").map((p) => p.image_url.url);
 
-export interface KieLLMResult { text: string }
+export interface KieLLMResult { text: string; /** 请求确实带着 web_search tools 成功返回（#224 批2b）。 */ webSearchApplied?: boolean }
+
+// ── #224 批2b Web Search grounding（官方契约：docs/kie-api.md · GPT 5.2 端点）──
+// tools 参数按文档原样：{"type":"function","function":{"name":"web_search"}} 开启实时联网检索。
+// 只对【文档明确声明支持】的模型启用（不按同族猜测）；网关若拒绝 tools，自动去掉重试一次
+// 并把 webSearchApplied=false 冒泡给调用方——由调用方决定「通知 + 回退」语义。
+export const KIE_WEB_SEARCH_TOOLS = [{ type: "function", function: { name: "web_search" } }];
+export const KIE_WEB_SEARCH_MODELS: ReadonlySet<string> = new Set(["kie_gpt_5_2"]);
+export function kieWebSearchSupported(modelId?: string): boolean {
+  if (!modelId || !KIE_WEB_SEARCH_MODELS.has(modelId)) return false;
+  return KIE_LLM_MODELS[modelId]?.format === "openai-chat"; // tools 契约仅 openai-chat 端点声明
+}
 
 /** Adapt + dispatch a chat request to the right kie endpoint/format. */
-export async function invokeKieLLM(opts: { model: string; messages: OAMessage[]; apiKey: string; maxTokens?: number }): Promise<KieLLMResult> {
+export async function invokeKieLLM(opts: { model: string; messages: OAMessage[]; apiKey: string; maxTokens?: number; webSearch?: boolean }): Promise<KieLLMResult> {
   const spec = KIE_LLM_MODELS[opts.model];
   if (!spec) throw new Error(`未知 kie LLM 模型：${opts.model}`);
   const maxTokens = opts.maxTokens ?? 4096;
@@ -126,7 +137,10 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
   } else {
     // OpenAI chat/completions (model in the path; include in body too — harmless).
     body = { model: spec.model, messages: opts.messages, max_tokens: maxTokens, stream: false };
+    // #224 批2b：Web Search grounding（仅 openai-chat 端点、按官方 tools 契约）。
+    if (opts.webSearch && spec.format === "openai-chat") body.tools = KIE_WEB_SEARCH_TOOLS;
   }
+  let webSearchApplied = "tools" in body;
 
   const doPost = (b: Record<string, unknown>) => fetch(url, { method: "POST", headers, body: JSON.stringify(b), signal: AbortSignal.timeout(120_000) });
   let res = await doPost(body);
@@ -136,6 +150,17 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
     const { reasoning: _drop, ...noReasoning } = body as Record<string, unknown>;
     void _drop;
     res = await doPost(noReasoning);
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`kie LLM 调用失败 (${res.status}): ${(t || firstErr).slice(0, 300)}`);
+    }
+  } else if (!res.ok && webSearchApplied) {
+    // 网关不认 web_search tools → 去掉重试一次（回退非联网），标志冒泡给调用方通知用户。
+    const firstErr = await res.text().catch(() => "");
+    const { tools: _dropTools, ...noTools } = body as Record<string, unknown>;
+    void _dropTools;
+    webSearchApplied = false;
+    res = await doPost(noTools);
     if (!res.ok) {
       const t = await res.text().catch(() => "");
       throw new Error(`kie LLM 调用失败 (${res.status}): ${(t || firstErr).slice(0, 300)}`);
@@ -155,7 +180,7 @@ export async function invokeKieLLM(opts: { model: string; messages: OAMessage[];
     const outTypes = Array.isArray(data.output) ? (data.output as Array<{ type?: string }>).map((o) => o?.type ?? "?").join(",") : "无 output";
     throw new Error(`kie 模型未产出正文（status=${status}${reason ? `, 未完成原因=${reason}` : ""}, output=[${outTypes}]）——多因推理占满 token，请重试、换模型或调低提问复杂度`);
   }
-  return { text };
+  return { text, webSearchApplied };
 }
 
 // Pull the assistant text out of each format's response envelope.

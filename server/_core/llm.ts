@@ -75,6 +75,10 @@ export type InvokeParams = {
   /** kie.ai 自有对话模型（kie_*）用的密钥；由调用方按「临时>分配>公用」解析后传入。
    *  缺省时回退公用 key（KIE_API_KEY）。非 kie 模型忽略此字段。 */
   kieApiKey?: string;
+  /** #224 批2b：kie Web Search grounding（官方 tools 契约，仅文档声明支持的 openai-chat
+   *  模型生效，见 kieLLM.kieWebSearchSupported）。网关拒绝 tools 时自动去掉重试，
+   *  结果的 kieWebSearchApplied=false——调用方据此「通知用户 + 回退」。非 kie 模型忽略。 */
+  kieWebSearch?: boolean;
   /** 自定义模型（custom_openai / custom_claude）的前端录入密钥；缺省回退后端 env。
    *  由 invokeLLMWithKie 从请求头解析后传入。非自定义模型忽略。 */
   customApiKey?: string;
@@ -112,6 +116,9 @@ export type InvokeResult = {
     completion_tokens: number;
     total_tokens: number;
   };
+  /** #224 批2b：本次 kie 调用确实带着 web_search tools 成功返回（联网检索生效）。
+   *  false/缺省 = 未联网（模型不支持 / 网关拒绝 tools 已回退 / 非 kie 路由）。 */
+  kieWebSearchApplied?: boolean;
 };
 
 export type JsonSchema = {
@@ -505,17 +512,19 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   if (isKieLLMModel(resolvedModel)) {
     const apiKey = params.kieApiKey?.trim();
     if (!apiKey) throw new Error("kie.ai LLM 模型需经 invokeLLMWithKie 提供已授权的密钥（临时/分配/公用）");
-    const { text } = await invokeKieLLM({
+    const { text, webSearchApplied } = await invokeKieLLM({
       model: resolvedModel,
       messages: messages as unknown as OAMessage[],
       apiKey,
       maxTokens: params.maxTokens ?? params.max_tokens,
+      webSearch: params.kieWebSearch,
     });
     return {
       id: `kie-${Date.now()}`,
       created: Math.floor(Date.now() / 1000),
       model: resolvedModel,
       choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+      kieWebSearchApplied: webSearchApplied,
     };
   }
 

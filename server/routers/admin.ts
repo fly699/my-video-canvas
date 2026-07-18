@@ -40,6 +40,7 @@ import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { extractTextContent } from "../_core/llm";
 import { getSystemDefaultModel } from "../_core/systemDefaultModels";
 import { fetchDocText } from "../_core/webDocFetch";
+import { kieWebSearchSupported, KIE_WEB_SEARCH_MODELS } from "../_core/kieLLM";
 import { writeAuditLog } from "../_core/auditLog";
 import { getActiveStagingProvider } from "../_core/storageConfig";
 import { broadcastSystemAnnouncement, setPersistentAnnouncement } from "./chat";
@@ -343,6 +344,72 @@ export const adminRouter = router({
         });
         writeAuditLog({ ctx, action: "model_skill_upsert", detail: { draft: true, web: true, modelId: input.modelId, host, llm } });
         return { success: true };
+      }),
+
+    // #224 批2b「联网搜索提炼」：用官方声明支持 Web Search grounding 的 kie 模型
+    // （docs/kie-api.md · GPT 5.2，tools=web_search）实时搜索该模型最新官方技法 → 草稿区。
+    // 回退语义（用户拍板「LLM 不支持要通知并回退」）：
+    //   · 所选提炼模型不支持联网 → 自动改用支持的模型执行搜索（返回 note 通知）；
+    //   · 网关拒绝 web_search tools（kieLLM 自动去 tools 重试）或联网调用失败 →
+    //     回退【所选模型内置知识】提炼，草稿来源明确标注「未联网」，返回 note 通知，
+    //     UI 以警示 toast 呈现——功能始终可用，联网与否全程透明。
+    autoDraftSearch: managerProc
+      .input(z.object({
+        modelId: z.string().min(1).max(120).refine((v) => !v.startsWith("draft:"), "非法模型 id"),
+        kind: z.enum(MODEL_SKILL_KINDS as [string, ...string[]]).default("other"),
+        llmModel: z.string().max(120).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const chosen = input.llmModel?.trim() || await getSystemDefaultModel("llm");
+        // 搜索执行模型：所选模型支持就用它；否则改用文档声明支持的模型（首选集合第一项）。
+        const searchModel = kieWebSearchSupported(chosen) ? chosen : Array.from(KIE_WEB_SEARCH_MODELS)[0];
+        const switched = searchModel !== chosen;
+        const sysPrompt =
+          `你是提示词技法工程师，可使用联网搜索。请搜索生成模型「${input.modelId}」（类别 ${input.kind}）的【官方】最新提示词技法与参数说明（官方文档/官方博客/模型页优先）。\n`
+          + `输出要求：\n- 中文，200-500 字，一行一条要点（「- 」开头）：参数要点 / 官方提示词写作技巧 / 限制与注意事项；\n`
+          + `- 只收录有来源依据的内容，最后加一行「引用：」列出来源 URL（分号分隔）；\n`
+          + `- 搜不到可靠官方信息时只输出「无可提炼内容」六个字；不输出标题/前后缀。`;
+        const userPrompt = `请联网搜索并提炼「${input.modelId}」的官方提示词技法。`;
+
+        let tips = "";
+        let usedWebSearch = false;
+        let note = switched ? `所选模型不支持联网搜索，已改用 ${searchModel}（官方 Web Search）执行搜索。` : "";
+        try {
+          const r = await invokeLLMWithKie(ctx, {
+            messages: [
+              { role: "system" as const, content: sysPrompt },
+              { role: "user" as const, content: userPrompt },
+            ],
+            model: searchModel,
+            maxTokens: 2000,
+            kieWebSearch: true,
+          });
+          tips = extractTextContent(r).replace(/```[a-z]*/gi, "").trim().slice(0, 8000);
+          usedWebSearch = r.kieWebSearchApplied === true;
+          if (!usedWebSearch) note = `${note ? note + " " : ""}网关未接受联网搜索参数，本次结果来自模型内置知识（未联网）。`;
+        } catch (err) {
+          // 联网调用整体失败 → 回退：用所选模型的内置知识提炼（明确标注未联网）。
+          note = `${note ? note + " " : ""}联网搜索调用失败（${err instanceof Error ? err.message.slice(0, 120) : String(err)}），已回退模型内置知识提炼（未联网）。`;
+          const r2 = await invokeLLMWithKie(ctx, {
+            messages: [
+              { role: "system" as const, content: `你是提示词技法工程师（本次不联网，凭已有知识作答）。为生成模型「${input.modelId}」（类别 ${input.kind}）写一条提示词技法：中文 200-450 字、一行一条「- 」要点，只写你有把握的通用要点与该模型公开已知的特性，不确定的不写；不了解该模型时只输出「无可提炼内容」。` },
+              { role: "user" as const, content: `请提炼「${input.modelId}」的提示词技法（内置知识）。` },
+            ],
+            model: chosen,
+            maxTokens: 1600,
+          });
+          tips = extractTextContent(r2).replace(/```[a-z]*/gi, "").trim().slice(0, 8000);
+        }
+        if (!tips || tips.includes("无可提炼内容")) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `未获得可用技法（${usedWebSearch ? "联网搜索无可靠官方来源" : "模型无相关知识"}）。${note}` });
+        }
+        await db.upsertModelSkillRow({
+          modelId: `${SKILL_DRAFT_PREFIX}${input.modelId}`, kind: input.kind, tips,
+          source: `自动提炼·${usedWebSearch ? `联网搜索(${searchModel})` : "未联网·内置知识——审核时注意时效"} · LLM:${usedWebSearch ? searchModel : chosen}`.slice(0, 512),
+          enabled: false,
+        });
+        writeAuditLog({ ctx, action: "model_skill_upsert", detail: { draft: true, search: true, usedWebSearch, modelId: input.modelId, llm: usedWebSearch ? searchModel : chosen } });
+        return { success: true, usedWebSearch, note: note || undefined };
       }),
 
     /** 审核通过：草稿转正（覆盖/新建正式技能行，enabled=true），并删除草稿。 */

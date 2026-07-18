@@ -42,3 +42,19 @@ describe("htmlToText", () => {
     expect(t).not.toContain("<p>");
   });
 });
+
+// #224 批2b：kie Web Search 支持集合（只收官方文档声明的模型，不按同族猜测）
+import { kieWebSearchSupported, KIE_WEB_SEARCH_TOOLS } from "./_core/kieLLM";
+
+describe("kieWebSearchSupported / tools 契约", () => {
+  it("gpt-5.2（kie）支持；未声明的模型与非 kie 模型不支持", () => {
+    expect(kieWebSearchSupported("kie_gpt_5_2")).toBe(true);
+    expect(kieWebSearchSupported("kie_gemini_3_pro")).toBe(false); // 文档未声明，不猜
+    expect(kieWebSearchSupported("kie_gpt_52_codex")).toBe(false); // responses 格式，契约不适用
+    expect(kieWebSearchSupported("gpt-5.2")).toBe(false);          // 非 kie 系统 id
+    expect(kieWebSearchSupported(undefined)).toBe(false);
+  });
+  it("tools 参数与官方文档逐字段一致", () => {
+    expect(KIE_WEB_SEARCH_TOOLS).toEqual([{ type: "function", function: { name: "web_search" } }]);
+  });
+});
