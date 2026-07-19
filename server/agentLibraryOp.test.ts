@@ -81,3 +81,21 @@ describe("sanitize: canvas 口令直达动作（#266）", () => {
     expect("op" in sanitizeOperationDetailed({ op: "canvas", action: "download_all" })).toBe(true);
   });
 });
+
+// ── #267 group / duplicate sanitize 守卫 ─────────────────────────────────────
+describe("sanitize: group / duplicate（#267）", () => {
+  it("group：≥2 个引用放行（去重去空），<2 或缺 targetRefs → drop", () => {
+    const ok = sanitizeOperationDetailed({ op: "group", targetRefs: ["a", "b", " b ", ""], title: "场景1" });
+    expect("op" in ok).toBe(true);
+    if ("op" in ok) { expect(ok.op.targetRefs).toEqual(["a", "b"]); expect(ok.op.title).toBe("场景1"); }
+    expect("drop" in sanitizeOperationDetailed({ op: "group", targetRefs: ["only-one"] })).toBe(true);
+    expect("drop" in sanitizeOperationDetailed({ op: "group" })).toBe(true);
+  });
+
+  it("duplicate：targetRef 必填，tempId 可选保留；缺 targetRef → drop", () => {
+    const ok = sanitizeOperationDetailed({ op: "duplicate", targetRef: "n1", tempId: "copy1", title: "镜3底子" });
+    expect("op" in ok).toBe(true);
+    if ("op" in ok) { expect(ok.op.targetRef).toBe("n1"); expect(ok.op.tempId).toBe("copy1"); }
+    expect("drop" in sanitizeOperationDetailed({ op: "duplicate" })).toBe(true);
+  });
+});

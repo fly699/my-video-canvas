@@ -775,3 +775,56 @@ describe("#266 canvas 口令直达动作", () => {
     expect((useCanvasStore.getState().runRequest?.token ?? 0)).toBe(before); // 未新发信号
   });
 });
+
+// ── #267 group / duplicate apply 层守卫 ──────────────────────────────────────
+describe("#267 编组 / 复制节点", () => {
+  it("group：混用已存在 id 与本批 tempId，建出群组容器并包含全部成员", () => {
+    const st = useCanvasStore.getState();
+    const existing = st.addNode("script", { x: 0, y: 0 });
+    const r = applyAgentOperations([
+      { op: "create", nodeType: "storyboard", tempId: "s1" },
+      { op: "group", targetRefs: [existing.id, "s1"], title: "第一幕" },
+    ] as AgentOperation[], { x: 0, y: 0 });
+    expect(r.failures).toEqual([]);
+    const group = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "group");
+    expect(group).toBeTruthy();
+    expect(group!.data.title).toContain("第一幕");
+  });
+
+  it("group：引用不存在的节点被过滤，解析后不足 2 个 → failures", () => {
+    const st = useCanvasStore.getState();
+    const only = st.addNode("script", { x: 0, y: 0 });
+    const r = applyAgentOperations([
+      { op: "group", targetRefs: [only.id, "ghost1", "ghost2"] },
+    ] as AgentOperation[], { x: 0, y: 0 });
+    expect(r.failures.length).toBe(1);
+    expect(r.failures[0].reason).toContain("至少 2 个存在的节点");
+  });
+
+  it("duplicate：副本剥离产物字段 + tempId 可被同批 connect 引用", () => {
+    const st = useCanvasStore.getState();
+    const src = st.addNode("image_gen", { x: 0, y: 0 });
+    st.updateNodeData(src.id, { prompt: "原提示词", imageUrl: "done.png", status: "succeeded" });
+    const merge = st.addNode("video_task", { x: 500, y: 0 });
+    const r = applyAgentOperations([
+      { op: "duplicate", targetRef: src.id, tempId: "dup1", title: "镜2底子" },
+      { op: "connect", sourceRef: "dup1", targetRef: merge.id },
+    ] as AgentOperation[], { x: 0, y: 0 });
+    expect(r.failures).toEqual([]);
+    expect(r.created).toBe(1);
+    const nodes = useCanvasStore.getState().nodes;
+    const dup = nodes.find((n) => n.data.nodeType === "image_gen" && n.id !== src.id)!;
+    const p = dup.data.payload as { prompt?: string; imageUrl?: string; status?: string };
+    expect(p.prompt).toBe("原提示词");          // 配置字段保留
+    expect(p.imageUrl).toBeUndefined();          // 产物字段剥离（不复制假完成态）
+    expect(dup.data.title).toBe("镜2底子");
+    expect(useCanvasStore.getState().edges.some((e) => e.source === dup.id && e.target === merge.id)).toBe(true); // tempId 连线成功
+  });
+
+  it("duplicate：目标不存在 → failures，不产生副本", () => {
+    const before = useCanvasStore.getState().nodes.length;
+    const r = applyAgentOperations([{ op: "duplicate", targetRef: "ghost" } as AgentOperation], { x: 0, y: 0 });
+    expect(r.failures.length).toBe(1);
+    expect(useCanvasStore.getState().nodes.length).toBe(before);
+  });
+});

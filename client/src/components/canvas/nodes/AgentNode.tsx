@@ -60,6 +60,9 @@ const OP_META: Record<AgentOperation["op"], { Icon: typeof Plus; label: string }
   // #260 附件入库操作（「将此图加入角色库」）——AgentNode 的规划路径不消费该操作
   // （由 CanvasAgentChat 抽走执行），此条仅为操作预览行的图标/标签兜底显示。
   library: { Icon: Plus, label: "入库" },
+  // #267 编组 / 复制节点（Record 完备性：缺条目 tsc 直接报错，见 #260 同款教训）。
+  group: { Icon: Link2, label: "编组" },
+  duplicate: { Icon: Plus, label: "复制" },
 };
 
 // #112 画布级动作的人话标签（操作预览行展示）。

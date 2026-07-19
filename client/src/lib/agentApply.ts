@@ -631,6 +631,34 @@ export function applyAgentOperations(
           if (err) { fail(index, op, err); return; }
           op.status = "applied";
           res.canvasActions++;
+        } else if (op.op === "group") {
+          // #267 编组：refs 可混已存在 id 与本批 tempId；解析后按实际存活节点二次校验
+          //（sanitize 只做形状校验，「引用了不存在的节点」只有这里知道）。
+          const ids = Array.from(new Set((op.targetRefs ?? []).map((r) => resolve(r)).filter((id): id is string => !!id && liveIds.has(id))));
+          if (ids.length < 2) { fail(index, op, `编组需要至少 2 个存在的节点（解析到 ${ids.length} 个）`); return; }
+          const gid = store.groupSelected(ids, op.title || undefined);
+          if (!gid) { fail(index, op, "编组失败（画布拒绝了该分组）"); return; }
+          res.touchedIds.push(...ids);
+          op.status = "applied";
+          res.canvasActions++;
+        } else if (op.op === "duplicate") {
+          // #267 复制节点：store.duplicateNode 无返回值——用「调用前后 id 集合差」拿到
+          // 副本 id（副本剥离产物/任务状态由 store 统一负责，绝不复制出假完成态）。
+          // 副本注册进 idMap/liveIds/typeById：同批后续 connect/update 可用 tempId 引用它。
+          const srcId = resolve(op.targetRef);
+          if (!srcId || !liveIds.has(srcId)) { fail(index, op, `要复制的节点未找到（${String(op.targetRef)}）`); return; }
+          const before = new Set(useCanvasStore.getState().nodes.map((n) => n.id));
+          store.duplicateNode(srcId);
+          const dup = useCanvasStore.getState().nodes.find((n) => !before.has(n.id));
+          if (!dup) { fail(index, op, "复制失败（未产生副本节点）"); return; }
+          if (op.tempId) idMap.set(op.tempId, dup.id);
+          liveIds.add(dup.id);
+          typeById.set(dup.id, dup.data.nodeType as NodeType);
+          if (op.title) store.updateNodeTitle(dup.id, op.title);
+          res.touchedIds.push(dup.id);
+          res.createdIds.push(dup.id);
+          op.status = "applied";
+          res.created++;
         }
       } catch (e) {
         fail(index, op, e instanceof Error ? e.message : String(e));

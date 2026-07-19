@@ -421,7 +421,7 @@ export function sanitizeOperationDetailed(
   if (!raw || typeof raw !== "object") return { drop: "无法识别的操作（非对象）" };
   const o = raw as Record<string, unknown>;
   const op = o.op;
-  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete" && op !== "canvas" && op !== "library") return { drop: `未知的操作类型「${String(op)}」` };
+  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete" && op !== "canvas" && op !== "library" && op !== "group" && op !== "duplicate") return { drop: `未知的操作类型「${String(op)}」` };
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
   // note 是给人看的一句话理由，行内展示——超长（LLM 跑偏）截到 120 字防撑爆消息存储。
   const noteStr = (v: unknown) => { const t = str(v); return t && t.length > 120 ? t.slice(0, 120) + "…" : t; };
@@ -453,6 +453,23 @@ export function sanitizeOperationDetailed(
     // 保证旧动作 sanitize 结果与 #266 之前逐字节一致（零回归守卫测试锁定）。
     const keepRef = action === "assemble" || action === "run_node";
     return { op: { op: "canvas", action: action as AgentOperation["action"], ...(keepRef ? { targetRef: str(o.targetRef) } : {}), note: noteStr(o.note) } };
+  }
+
+  // #267 编组：targetRefs 必须是 ≥2 个非空字符串（可混已存在 id 与本批 tempId，客户端
+  // resolve 后按实际存活节点再校验一次）；上限 50 防幻觉爆表。title 可选（群组标题）。
+  if (op === "group") {
+    const raw = Array.isArray(o.targetRefs) ? o.targetRefs : [];
+    const refs = Array.from(new Set(raw.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()))).slice(0, 50);
+    if (refs.length < 2) return { drop: `编组至少需要 2 个节点引用（收到 ${refs.length} 个）` };
+    return { op: { op: "group", targetRefs: refs, title: str(o.title), note: noteStr(o.note) } };
+  }
+
+  // #267 复制节点：targetRef 必填（要复制谁）；tempId 可选（副本的引用名，供同批
+  // 后续 connect/update 使用）。副本的产物/运行时字段由 store.duplicateNode 统一剥离。
+  if (op === "duplicate") {
+    const targetRef = str(o.targetRef);
+    if (!targetRef) return { drop: "duplicate 操作缺少 targetRef（要复制哪个节点）" };
+    return { op: { op: "duplicate", targetRef, tempId: str(o.tempId), title: str(o.title), note: noteStr(o.note) } };
   }
 
   if (op === "create") {
