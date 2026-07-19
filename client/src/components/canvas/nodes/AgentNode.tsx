@@ -57,6 +57,9 @@ const OP_META: Record<AgentOperation["op"], { Icon: typeof Plus; label: string }
   update: { Icon: Pencil, label: "更新" },
   delete: { Icon: Trash2, label: "删除" },
   canvas: { Icon: Sparkles, label: "画布" }, // #112 画布级动作
+  // #260 附件入库操作（「将此图加入角色库」）——AgentNode 的规划路径不消费该操作
+  // （由 CanvasAgentChat 抽走执行），此条仅为操作预览行的图标/标签兜底显示。
+  library: { Icon: Plus, label: "入库" },
 };
 
 // #112 画布级动作的人话标签（操作预览行展示）。

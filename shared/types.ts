@@ -1381,9 +1381,16 @@ export interface ComfyuiWorkflowNodeData {
  *  through the canvas store (create/connect/update/delete), so every change is
  *  undoable & persisted exactly like a manual edit. */
 export interface AgentOperation {
-  op: "create" | "update" | "connect" | "delete" | "canvas";
+  /** #260 新增 "library"：把用户附件图存入角色/场景库并命名（「将此图加入角色库，名称为李宁」）。
+   *  该操作不落画布节点，由 CanvasAgentChat 应用层在 applyAgentOperations 之前抽走并调用
+   *  characterLibrary.create 执行（agentApply 保持纯画布语义，不做网络请求）。 */
+  op: "create" | "update" | "connect" | "delete" | "canvas" | "library";
   /** canvas: 画布级动作（不针对单个节点）——极简显示开/关、整理布局、适应视图、批量下载成品。 */
   action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all";
+  /** library: 入库类型——person=角色库、scene=场景库。 */
+  libraryKind?: "person" | "scene";
+  /** library: 库条目名称（用户指定原文，如「李宁」「足球场」），入库后可 @名称 引用。 */
+  name?: string;
   /** create: agent-assigned temp id so later `connect` ops can reference the
    *  not-yet-created node. */
   tempId?: string;

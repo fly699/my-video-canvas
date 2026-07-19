@@ -5,6 +5,8 @@ import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerU
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
+// #260 附件即可引用：{{refN}} 占位符 → 附件真实地址的确定性替换 + library 入库操作抽取。
+import { resolveAttachmentRefs } from "@/lib/attachmentRefs";
 import { runAgentChatJob, pollAgentChatJob, type AgentChatResult } from "@/lib/agentChatJob";
 import { friendlyClientLLMError } from "@/lib/friendlyClientError";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
@@ -131,6 +133,15 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const hydratedRef = useRef(false);
   const templatesQuery = trpc.comfyTemplates.list.useQuery(undefined, { staleTime: 30_000 });
   const charsQuery = trpc.characterLibrary.list.useQuery(undefined, { staleTime: 30_000 });
+  // #260 附件即可引用：发送时登记「占位符 → 附件真实地址」映射（仅图片、按序 ref1..，
+  // 与服务端 attachRefList 同规则）；applyChatResult 用它做确定性替换。ref 而非 state：
+  // 只在 apply 时读、不驱动渲染，且恢复路径（映射为空）有内置容错。
+  const attachRefsRef = useRef<Record<string, string>>({});
+  // #260 图片附件上传换稳定地址（走既有 upload 通道：生产入自有存储、dev 回退 data URL）。
+  const attachUploadMut = trpc.upload.uploadImage.useMutation();
+  // #260 语音式入库：「将此图加入角色库，名称为李宁」→ LLM 输出 library 操作 →
+  // 此 mutation 落库（与右键「存为角色主体」同一后端接口，同名冲突不覆盖）。
+  const libraryCreateMut = trpc.characterLibrary.create.useMutation();
   const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
 
   const [turns, setTurns] = useState<Turn[]>(() => {
@@ -662,7 +673,30 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 规划结果统一落地（send 与 #251 跨会话恢复共用）：应用操作 → 追加助手回合 → 自动增强。
   // 恢复路径用的是「当前」quickPrefs（附件等一次性上下文只影响规划本身，结果应用不依赖）。
   const applyChatResult = (r: AgentChatResult) => {
-    const ops = (r.operations ?? []) as AgentOperation[];
+    // #260 附件即可引用：先把 {{refN}} 占位符替换成发送时登记的附件真实地址、并抽走
+    // library 入库操作（applyAgentOperations 只认画布语义）。attachRefsRef 在 send() 时
+    // 按「图片附件顺序 ref1..」构建（与服务端 attachRefList 同规则）；会话恢复路径映射
+    // 为空 → resolveAttachmentRefs 内置容错（剥引用/跳过入库并告警），绝不让规划整体失败。
+    const resolved = resolveAttachmentRefs((r.operations ?? []) as AgentOperation[], attachRefsRef.current);
+    for (const w of resolved.warnings) toast.warning(w, { duration: 6000 });
+    // 入库操作异步执行（不阻塞画布应用）：复用「存为角色主体」同一后端接口与 payload 形状。
+    // 同名冲突不覆盖（尊重 characterLibrary.create 的默认语义），提示用户改名重试。
+    for (const lib of resolved.libraryOps) {
+      const payload = lib.kind === "scene"
+        ? { characterKind: "scene", sceneName: lib.name, referenceImageUrl: lib.url }
+        : { characterKind: "person", name: lib.name, referenceImageUrl: lib.url };
+      libraryCreateMut.mutate(
+        { name: lib.name, characterKind: lib.kind, payload, thumbnail: lib.url },
+        {
+          onSuccess: () => {
+            toast.success(`已加入${lib.kind === "scene" ? "场景" : "角色"}库「${lib.name}」——之后可直接 @${lib.name} 引用`);
+            void utils.characterLibrary.list.invalidate(); // @ 菜单/角色库立即可见
+          },
+          onError: (e) => toast.error(`加入${lib.kind === "scene" ? "场景" : "角色"}库失败：${e.message}`),
+        },
+      );
+    }
+    const ops = resolved.nodeOps;
     // 服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）——此前画布助手完全不展示，
     // 用户只见「operations 静默变少」。合并进「未应用」提示，与客户端 apply 失败一并可见。
     const droppedMsg = (r.droppedCount ?? 0) > 0 ? `服务端忽略 ${r.droppedCount} 项：${(r.dropped ?? []).slice(0, 3).join("；")}` : "";
@@ -746,9 +780,38 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     abortRef.current = controller;
     setBusy(true);
     try {
+      // #260 附件即可引用：图片附件先走既有上传通道换成【稳定地址】（生产=自有存储 URL、
+      // dev 无对象存储时服务端回退返回 data URL）——同一个地址既作视觉输入喂模型，也供
+      // 规划节点 referenceImageUrl / 入库操作确定性替换引用。上传失败回退 data URI：
+      // 视觉理解不受影响，仅「被外部生成平台拉取」在生产可能不可达（与节点手动传参考图同语义）。
+      // 文档附件不上传（不参与节点引用），保持 data URI 直传。
       const attachments = files.length
-        ? await Promise.all(files.map(async (f) => ({ url: await fileToDataUri(f), mimeType: f.type || "application/octet-stream", name: f.name })))
+        ? await Promise.all(files.map(async (f) => {
+            const dataUri = await fileToDataUri(f);
+            let url = dataUri;
+            if ((f.type || "").startsWith("image/")) {
+              try {
+                const up = await attachUploadMut.mutateAsync({
+                  base64: dataUri.replace(/^data:[^,]*,/, ""), // uploadInput 拒绝带 data: 前缀
+                  mimeType: f.type || "image/jpeg",
+                  filename: f.name,
+                });
+                if (up?.url) url = up.url;
+              } catch { /* 回退 data URI，见上方注释 */ }
+            }
+            return { url, mimeType: f.type || "application/octet-stream", name: f.name };
+          }))
         : undefined;
+      // 登记占位符映射：仅图片、按消息内顺序 ref1 起——判定与编号规则必须与服务端
+      // attachRefList（isImageAtt + 过滤后序号）逐字一致，否则图张错位。每轮发送重建，
+      // 旧轮映射即失效（resolveAttachmentRefs 对失效引用有剥除告警兜底）。
+      attachRefsRef.current = {};
+      if (attachments) {
+        let n = 0;
+        for (const a of attachments) {
+          if ((a.mimeType || "").toLowerCase().startsWith("image/") || /^data:image\//i.test(a.url)) attachRefsRef.current[`ref${++n}`] = a.url;
+        }
+      }
       const focus = selectedNodeIds.filter(Boolean);
       const summary = buildGraphSummary("", focus.length ? { focusNodeIds: focus } : {});
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
