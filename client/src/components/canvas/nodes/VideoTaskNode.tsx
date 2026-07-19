@@ -381,7 +381,6 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();
   useAutoPreferUpstreamRefSource({ nodeId: id, refImageUrl: payload.referenceImageUrl, enabled: preferUpstreamRef, onSwitch: (u) => updateNodeData(id, { referenceImageUrl: u }, true) });
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Count of parallel-mode createTaskMutation calls currently in flight.
   // When > 0, the shared mutation's global onSuccess/onError must NOT write to payload —
   // the per-mutate handler updates parallelResults instead. A single counter (vs. boolean
@@ -570,17 +569,26 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
 
   useEffect(() => {
     if (!(payload.status === "processing" && payload.taskId)) return;
-    // Tolerate transient poll failures — the server-side task is still running and credits
-    // are already spent. Marking the node "failed" on a single network blip would tempt the user
-    // to re-submit and double-charge. Only flip to failed after several consecutive failures.
+    // #253 轮询失败 ≠ 任务失败：云端任务已计费、照常生成，且往往已成功——此前连续失败
+    // 5 次（仅 25 秒的网络/隧道抖动或服务热重启窗口）就把节点标 failed，用户实报
+    // 「显示轮询失败，平台侧其实已出片」，还会诱导重提双花钱。改为：
+    //  - 网络类失败【永不放弃】：第 5 次连续失败时 toast 警示一次并把间隔退避到 15s，
+    //    继续自动重试直到拿到明确状态或用户点「放弃等待」；
+    //  - 仅「任务不存在/已删除」这类明确结论才终止标 failed。
     let consecutiveFailures = 0;
     const MAX_POLL_FAILURES = 5;
-    const timerId = setInterval(async () => {
+    const isTerminalErr = (m: string) => /NOT_FOUND|不存在|已删除|无权/.test(m);
+    let stopped = false;
+    let delay = 5000;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      if (stopped) return;
       try {
         const result = await pollQueryRef.current.refetch();
         if (result.error) throw result.error;
         if (result.data) {
           consecutiveFailures = 0;
+          delay = 5000;
           const task = result.data;
           if (task.status === "succeeded" || task.status === "failed") {
             updateNodeData(id, {
@@ -588,22 +596,25 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
               resultVideoUrl: task.resultVideoUrl ?? undefined,
               errorMessage: task.errorMessage ?? undefined,
             }, true);
-            clearInterval(timerId);
+            return; // 拿到终态，停止轮询
           }
         }
       } catch (err) {
         consecutiveFailures += 1;
         const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "未知错误";
-        if (consecutiveFailures >= MAX_POLL_FAILURES) {
-          updateNodeData(id, { status: "failed", errorMessage: `轮询持续失败：${msg}` }, true);
-          clearInterval(timerId);
-          toast.error("轮询持续失败，任务可能仍在服务端运行；如需重新提交请先在服务端确认");
+        if (isTerminalErr(msg)) {
+          updateNodeData(id, { status: "failed", errorMessage: `任务查询失败：${msg}` }, true);
+          return;
         }
-        // Otherwise: silent retry on next tick
+        if (consecutiveFailures === MAX_POLL_FAILURES) {
+          toast.warning("查询任务状态暂时失败（网络/隧道抖动）——云端任务不受影响，将继续自动重试；不想等可点「放弃等待」解锁节点", { duration: 8000 });
+        }
+        if (consecutiveFailures >= MAX_POLL_FAILURES) delay = 15000; // 退避但不放弃
       }
-    }, 5000);
-    pollRef.current = timerId;
-    return () => { clearInterval(timerId); pollRef.current = null; };
+      if (!stopped) timer = setTimeout(tick, delay);
+    };
+    timer = setTimeout(tick, 5000);
+    return () => { stopped = true; clearTimeout(timer); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload.status, payload.taskId, id, updateNodeData]);
 
@@ -613,6 +624,29 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     updateNodeData(id, { status: "pending", taskId: undefined, externalTaskId: undefined, errorMessage: undefined }, true);
     toast.info("已放弃等待：节点已解锁。云端任务仍在生成（费用照常发生），其结果不会回填本节点", { duration: 7000 });
   }, [id, updateNodeData]);
+
+  // #253 查询云端结果（救回入口）：被误标 failed 但 taskId 仍在（云端任务其实可能已
+  // 出片）的节点，手动按 taskId 再查一次——成功则直接回填结果；仍在跑则恢复轮询等待。
+  const [refreshingResult, setRefreshingResult] = useState(false);
+  const refreshCloudResult = async () => {
+    if (payload.taskId == null || refreshingResult) return;
+    setRefreshingResult(true);
+    try {
+      const task = await utils.videoTasks.poll.fetch({ id: payload.taskId });
+      if (task?.status === "succeeded") {
+        updateNodeData(id, { status: "succeeded", resultVideoUrl: task.resultVideoUrl ?? undefined, errorMessage: undefined }, true);
+        toast.success("已从云端找回生成结果");
+      } else if (task?.status === "failed") {
+        updateNodeData(id, { status: "failed", errorMessage: task.errorMessage ?? "云端任务失败" }, true);
+        toast.error("云端任务确实失败了：" + (task.errorMessage ?? "未知原因"));
+      } else {
+        updateNodeData(id, { status: "processing", errorMessage: undefined }, true); // 重新进入轮询 effect
+        toast.info("云端任务仍在生成，已恢复自动等待");
+      }
+    } catch (e) {
+      toast.error("查询云端结果失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally { setRefreshingResult(false); }
+  };
 
   // #143 stale processing 自愈：processing 但没有 taskId（提交中断/页面刷新丢时序）——
   // 轮询 effect 因缺 taskId 永远不跑，节点卡死在「生成中」且▶被禁用。挂载时回落 failed。
@@ -2069,6 +2103,21 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             >
               {resetTaskMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               重置
+            </button>
+          )}
+          {/* #253 失败但 taskId 仍在：云端任务可能其实已出片（轮询误报/网络中断）——一键找回 */}
+          {payload.status === "failed" && payload.taskId != null && (
+            <button
+              onClick={() => void refreshCloudResult()}
+              disabled={refreshingResult}
+              className="nodrag flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all"
+              style={{ background: "var(--c-surface)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--c-bd2)", color: refreshingResult ? "var(--c-t4)" : "var(--c-t2)", cursor: refreshingResult ? "wait" : "pointer" }}
+              onMouseEnter={(e) => { if (!refreshingResult) (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-surface)"; }}
+              title="按任务号向云端再查一次：任务其实已完成则直接找回结果（轮询失败常是网络问题，云端任务并未失败）"
+            >
+              {refreshingResult ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              查询云端结果
             </button>
           )}
           <button

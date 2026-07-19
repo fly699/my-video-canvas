@@ -21,9 +21,11 @@ interface Props {
   disabled?: boolean;
   /** 可选：进一步筛选可选模型（如只显示支持视觉的模型）。 */
   filter?: (m: (typeof ALL_LLM_MODELS)[number]) => boolean;
+  /** #254 触发按钮显示完整模型名（默认显示缩写 short；容器较宽的场景开它）。 */
+  fullLabel?: boolean;
 }
 
-export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
+export function LLMModelPicker({ value, onChange, disabled, filter, fullLabel }: Props) {
   const disabledModels = useDisabledModels();
   const selfHosted = useSelfHostedLlmModels(); // 管理员后台配置的自建模型，动态并入
   // 自建模型置顶 + 内置模型；按 id 去重。过滤：管理员禁用的不显示（当前已选值除外）。
@@ -64,8 +66,10 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
           letterSpacing: "0.03em",
         }}
       >
-        <Bot style={{ width: 10, height: 10 }} />
-        <span>{current.short}</span>
+        <Bot style={{ width: 10, height: 10, flexShrink: 0 }} />
+        <span style={fullLabel ? { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 190 } : undefined} title={fullLabel ? current.label : undefined}>
+          {fullLabel ? current.label : current.short}
+        </span>
         <ChevronDown
           style={{
             width: 8,

@@ -1372,6 +1372,20 @@ button:active:not(:disabled) {
   }
 }
 
+/* #254 中屏（768–1180，平板/横屏手机/小笔电）顶栏也允许横向滚动兜底——此前只 ≤767
+   生效，这个区间按钮溢出被直接裁掉、后面的按钮完全够不着（用户实报）。下拉浮层均已
+   portal 到 body，不受 overflow 裁剪影响。 */
+@media (max-width: 1180px) {
+  .canvas-topbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .canvas-topbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CREATIVE MODE — LibTV-inspired media-first canvas layout
    ═══════════════════════════════════════════════════════════════════════════ */
