@@ -560,6 +560,60 @@ export const adminRouter = router({
       writeAuditLog({ ctx, action: "llm_logs_cleared", detail: {} });
       return { success: true };
     }),
+
+    // ── #259 规划质量统计 ────────────────────────────────────────────────────
+    // 数据源：runAgentChat 主路径完成时写入的操作日志（action=agent_plan_quality，
+    // detail 含 ops/droppedCount/repaired/parsedOk/durationMs/开关组合/锁定模型）。
+    // 聚合方式：拉最近 N 条（上限 2000，按时间倒序）在 JS 内按「开关组合」分组——
+    // 组合键 = leanPrompt/selfCheck/interactive/comfyOnly 四个布尔的拼串。之所以不用
+    // SQL 聚合：detail 是 JSON 列（MariaDB 存 longtext），跨引擎 JSON 函数语法不一致
+    // （见 #252 血泪：json 列 MariaDB 读回字符串），JS 聚合 2000 条毫秒级、零兼容风险。
+    // 用途：数据化评估 #258 两个实验开关（精简提示词/输出自查）在真实流量上的效果——
+    // 拒因率（droppedCount>0 占比）、自愈率（repaired 占比）、解析失败率、平均操作数、
+    // 平均耗时，先看数据再决定是否把开关转默认开。挂 llmLogsView 权限（与 LLM 日志同级只读）。
+    planQuality: llmLogsView
+      .input(z.object({ sinceMs: z.number().int().optional() }).optional())
+      .query(async ({ input }) => {
+        const { rows } = await db.getAuditLogs({ action: "agent_plan_quality", limit: 2000, offset: 0 });
+        const since = input?.sinceMs;
+        type Row = { model?: string; ops?: number; droppedCount?: number; repaired?: boolean; parsedOk?: boolean; durationMs?: number; leanPrompt?: boolean; selfCheck?: boolean; interactive?: boolean; comfyOnly?: boolean };
+        const groups = new Map<string, { key: string; flags: Record<string, boolean>; n: number; opsSum: number; droppedRuns: number; repairedRuns: number; parseFailRuns: number; durSum: number; models: Map<string, number> }>();
+        for (const r of rows) {
+          const at = r.createdAt instanceof Date ? r.createdAt.getTime() : new Date(r.createdAt as unknown as string).getTime();
+          if (since && at < since) continue;
+          // detail 跨引擎归一：真 MySQL json 列 mysql2 自动解析为对象，MariaDB 读回字符串（同 #252）。
+          let d: Row = {};
+          try { d = (typeof r.detail === "string" ? JSON.parse(r.detail) : r.detail) as Row ?? {}; } catch { /* 坏行跳过统计 */ }
+          const flags = { leanPrompt: !!d.leanPrompt, selfCheck: !!d.selfCheck, interactive: !!d.interactive, comfyOnly: !!d.comfyOnly };
+          const key = Object.entries(flags).filter(([, v]) => v).map(([k]) => k).join("+") || "default";
+          let g = groups.get(key);
+          if (!g) { g = { key, flags, n: 0, opsSum: 0, droppedRuns: 0, repairedRuns: 0, parseFailRuns: 0, durSum: 0, models: new Map() }; groups.set(key, g); }
+          g.n++;
+          g.opsSum += Number(d.ops) || 0;
+          if ((Number(d.droppedCount) || 0) > 0) g.droppedRuns++;
+          if (d.repaired) g.repairedRuns++;
+          if (d.parsedOk === false) g.parseFailRuns++;
+          g.durSum += Number(d.durationMs) || 0;
+          const m = String(d.model ?? "unknown");
+          g.models.set(m, (g.models.get(m) ?? 0) + 1);
+        }
+        // 输出按样本量降序；rate 均为「发生该情况的规划轮次占比」（不是操作条数占比）。
+        return {
+          total: rows.length,
+          groups: Array.from(groups.values())
+            .sort((a, b) => b.n - a.n)
+            .map((g) => ({
+              key: g.key,
+              runs: g.n,
+              avgOps: g.n ? Math.round((g.opsSum / g.n) * 10) / 10 : 0,
+              droppedRate: g.n ? Math.round((g.droppedRuns / g.n) * 1000) / 10 : 0,   // % 有拒因的轮次
+              repairedRate: g.n ? Math.round((g.repairedRuns / g.n) * 1000) / 10 : 0, // % 触发自愈的轮次
+              parseFailRate: g.n ? Math.round((g.parseFailRuns / g.n) * 1000) / 10 : 0, // % 解析失败的轮次
+              avgDurationMs: g.n ? Math.round(g.durSum / g.n) : 0,
+              topModels: Array.from(g.models.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([m, c]) => `${m}×${c}`),
+            })),
+        };
+      }),
   }),
 
   // ── 日志加密打包邮送（操作/LLM/ComfyUI 三类，AES-256 zip + SMTP）──────────
