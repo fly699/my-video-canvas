@@ -232,7 +232,12 @@ export function applyAgentOperations(
   // Otherwise fall back to the original 3-per-row fan-out (unchanged behavior).
   // Generous spacing so connection edges stay visible between (often tall) nodes —
   // node ≈340w and image/video nodes run 400–600px tall, so columns/rows need room.
-  const SCENE_COL_W = 560, ROW_H = 480, PAD = 40, HEADER = 48, NODE_W = 340;
+  // #256 用户拍板「排布再分散一些」：列距 600→680、行高 480→560；角色节点生成定妆照后
+  // 卡体会显著长大（预览自适应 + 多视角缩略条 + 人物标签），行高单独预留 780，避免
+  // 生成后压住/遮挡下方节点。
+  const SCENE_COL_W = 640, ROW_H = 560, CHAR_ROW_H = 780, PAD = 40, HEADER = 48, NODE_W = 340;
+  const FAN_COL_W = 620; // 非场景 3 列扇出的列距（原 540）
+  const rowHFor = (o: AgentOperation) => (o.nodeType === "character" ? CHAR_ROW_H : ROW_H);
   const createOps = ops.filter((o) => o.op === "create");
   const sceneKeys: string[] = [];
   for (const o of createOps) {
@@ -246,14 +251,25 @@ export function applyAgentOperations(
     sceneKeys.forEach((key, sIdx) => {
       const sceneOps = createOps.filter((o) => o.sceneGroup?.trim() === key);
       const baseX = anchor.x + 560 + sIdx * (SCENE_COL_W + PAD);
-      sceneOps.forEach((o, i) => posByOp.set(o, { x: baseX + PAD, y: anchor.y + HEADER + i * ROW_H }));
-      sceneBoxes.push({ x: baseX, y: anchor.y, width: NODE_W + PAD * 2, height: HEADER + sceneOps.length * ROW_H, title: `场景${sIdx + 1}` });
+      // 逐节点累计行高（角色行更高），场景框高度随之取累计值。
+      let yy = anchor.y + HEADER;
+      for (const o of sceneOps) { posByOp.set(o, { x: baseX + PAD, y: yy }); yy += rowHFor(o); }
+      sceneBoxes.push({ x: baseX, y: anchor.y, width: NODE_W + PAD * 2, height: yy - anchor.y, title: `场景${sIdx + 1}` });
     });
     // Scene-less create ops (e.g. shared script / merge) go in a trailing column.
     const tailX = anchor.x + 560 + sceneKeys.length * (SCENE_COL_W + PAD);
-    let tailIdx = 0;
+    let tailY = anchor.y + HEADER;
     for (const o of createOps) {
-      if (!o.sceneGroup?.trim()) { posByOp.set(o, { x: tailX, y: anchor.y + HEADER + tailIdx * ROW_H }); tailIdx++; }
+      if (!o.sceneGroup?.trim()) { posByOp.set(o, { x: tailX, y: tailY }); tailY += rowHFor(o); }
+    }
+  } else if (createOps.length > 0) {
+    // #256 非场景扇出也改为预排：仍是 3 列网格，但行高按该行节点的最大预留取值
+    //（含角色的行整体加高），角色生成后长大的卡体不再压到下一行。
+    let rowY = anchor.y;
+    for (let r = 0; r * 3 < createOps.length; r++) {
+      const rowOps = createOps.slice(r * 3, r * 3 + 3);
+      rowOps.forEach((o, c) => posByOp.set(o, { x: anchor.x + 560 + c * FAN_COL_W, y: rowY }));
+      rowY += Math.max(...rowOps.map(rowHFor));
     }
   }
 
@@ -271,13 +287,10 @@ export function applyAgentOperations(
       pMinX = Math.min(pMinX, x); pMaxX = Math.max(pMaxX, x + w);
       pMinY = Math.min(pMinY, y); pMaxY = Math.max(pMaxY, y + h);
     };
-    if (useScenes) {
-      for (const b of sceneBoxes) addRect(b.x, b.y, b.width, b.height);
-      for (const p of Array.from(posByOp.values())) addRect(p.x, p.y, NODE_W, NODE_H_EST);
-    } else {
-      const rows = Math.ceil(createOps.length / 3);
-      addRect(anchor.x + 560, anchor.y, Math.min(3, createOps.length) * 540, rows * 480 + NODE_H_EST - 480);
-    }
+    // #256 两种模式的计划坐标现在都在 posByOp 里，占用区统一按真实预排矩形累计
+    //（角色节点按其更高的预留行高估算）。
+    for (const b of sceneBoxes) addRect(b.x, b.y, b.width, b.height);
+    for (const [o, p] of Array.from(posByOp.entries())) addRect(p.x, p.y, NODE_W, Math.max(NODE_H_EST, rowHFor(o) - 60));
     if (pMinX !== Infinity) {
       const existing = store.nodes
         .filter((n) => !n.hidden)
@@ -390,9 +403,10 @@ export function applyAgentOperations(
           }
           // Scene layout when planned, else fan out 3 per row to the agent's right
           //（layoutShiftY：整批避让已有节点的垂直位移，见上方规划段）。
+          // #256 两种模式均已预排进 posByOp；此兜底公式仅防御性保留（常量同步 620/560）。
           const pos = posByOp.get(op) ?? {
-            x: anchor.x + 560 + (createdIdx % 3) * 540,
-            y: anchor.y + Math.floor(createdIdx / 3) * 480 + layoutShiftY,
+            x: anchor.x + 560 + (createdIdx % 3) * FAN_COL_W,
+            y: anchor.y + Math.floor(createdIdx / 3) * ROW_H + layoutShiftY,
           };
           const node = store.addNode(op.nodeType as NodeType, pos);
           res.touchedIds.push(node.id);
