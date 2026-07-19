@@ -58,3 +58,26 @@ describe("sanitize: referenceImageUrl 占位符锁死（#260）", () => {
     expect("op" in s && s.op.payload!.referenceImageUrl).toBe("{{ref1}}");
   });
 });
+
+// ── #266 canvas 新动作 sanitize 守卫 ─────────────────────────────────────────
+describe("sanitize: canvas 口令直达动作（#266）", () => {
+  it("assemble / run_all / run_node 放行，targetRef 保留", () => {
+    const a = sanitizeOperationDetailed({ op: "canvas", action: "assemble", targetRef: "m1" });
+    expect("op" in a && a.op.action).toBe("assemble");
+    expect("op" in a && a.op.targetRef).toBe("m1");
+    const b = sanitizeOperationDetailed({ op: "canvas", action: "run_all" });
+    expect("op" in b && b.op.action).toBe("run_all");
+    const c = sanitizeOperationDetailed({ op: "canvas", action: "run_node", targetRef: "n7" });
+    expect("op" in c && c.op.targetRef).toBe("n7");
+  });
+
+  it("run_node 缺 targetRef → drop；未知动作仍 drop（旧行为不变）", () => {
+    expect("drop" in sanitizeOperationDetailed({ op: "canvas", action: "run_node" })).toBe(true);
+    expect("drop" in sanitizeOperationDetailed({ op: "canvas", action: "self_destruct" })).toBe(true);
+  });
+
+  it("旧动作零回归：minimal_on / download_all 照常放行", () => {
+    expect("op" in sanitizeOperationDetailed({ op: "canvas", action: "minimal_on" })).toBe(true);
+    expect("op" in sanitizeOperationDetailed({ op: "canvas", action: "download_all" })).toBe(true);
+  });
+});

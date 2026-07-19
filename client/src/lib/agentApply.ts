@@ -5,6 +5,7 @@ import { getNodeImageOutput } from "./canvasPassthrough";
 import { downloadMedia } from "./download";
 import { isConnectionValid, defaultTargetHandle } from "./connectionRules";
 import { charDisplayName, libraryOverlayByName, type CharacterImportMode } from "./characterConditioning";
+import { assembleFromStoryboards, assembledPlanToMergePatch } from "./storyboardGen";
 import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding, CharacterNodeData, CharacterKind } from "../../../shared/types";
 
 /** 边去重 key 的分隔符：用 NUL（节点 id 里绝不会出现，防拼接碰撞）。以转义写出而非裸字节，
@@ -146,12 +147,48 @@ function nodeResultMedia(nodeType: string, payload: Record<string, unknown>): { 
   return img ? { url: img, type: "image" } : null;
 }
 
-/** 执行一个画布级动作；返回失败原因（null=成功）。 */
-function runCanvasAction(action: AgentOperation["action"]): string | null {
-  const el = document.documentElement;
+/** 执行一个画布级动作；返回失败原因（null=成功）。
+ *  #266 起接收整个 op（新动作需要 targetRef）与 resolve（tempId→真实 id 映射：
+ *  「先建后运行/装配」同批场景里 targetRef 可能引用本批 tempId）。 */
+function runCanvasAction(op: AgentOperation, resolve: (ref?: string) => string | undefined): string | null {
+  const action = op.action;
   switch (action) {
+    // ── #266 口令直达三动作 ────────────────────────────────────────────────
+    case "assemble": {
+      // 按镜头表装配：与合并节点上的装配按钮、智能体引导卡完全同一套确定性纯函数
+      //（storyboardGen 单一事实源）；分镜未指定转场的接缝会回退合并节点全局转场（#264）。
+      const st = useCanvasStore.getState();
+      const merges = st.nodes.filter((n) => n.data.nodeType === "merge");
+      const targetId = resolve(op.targetRef) || (merges.length === 1 ? merges[0].id : undefined);
+      if (!targetId) return merges.length === 0 ? "画布上没有合并节点，无法装配" : "画布上有多个合并节点，请指明装配哪一个";
+      if (!st.nodes.some((n) => n.id === targetId && n.data.nodeType === "merge")) return `装配目标不是合并节点（${String(op.targetRef)}）`;
+      const plan = assembleFromStoryboards(targetId, st.nodes, st.edges);
+      if ("error" in plan) return `装配失败：${plan.error}`;
+      st.updateNodeData(targetId, assembledPlanToMergePatch(plan));
+      const voiced = plan.voiceUrls.filter(Boolean).length;
+      toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐镜转场${voiced ? ` · ${voiced} 条配音对位` : ""}）——在合并节点点「合并」即可成片`, { duration: 5000 });
+      return null;
+    }
+    case "run_all":
+    case "run_node": {
+      // 花钱防线：这里只发 runRequest 信号——Canvas 消费该信号时走【既有】运行确认
+      // 流程（费用可见、用户点确认才真正开跑），助手永远不能绕过确认直接扣费。
+      const st = useCanvasStore.getState();
+      if (action === "run_node") {
+        const targetId = resolve(op.targetRef);
+        if (!targetId || !st.nodes.some((n) => n.id === targetId)) return `要运行的节点未找到（${String(op.targetRef)}）`;
+        st.requestRun(null, [targetId]);
+      } else {
+        st.requestRun(null);
+      }
+      toast.success(action === "run_all" ? "已发起「运行全部」请求，请在画布确认" : "已发起该节点的运行请求，请在画布确认", { duration: 3000 });
+      return null;
+    }
     case "minimal_on":
     case "minimal_off": {
+      // document 访问收进本分支：#266 新动作（assemble/run_*）在无 DOM 的单测环境
+      // 也要可执行，函数入口不能无条件摸 document。
+      const el = document.documentElement;
       if (el.getAttribute("data-canvas-mode") !== "creative") return "极简显示仅在创意模式可用";
       const on = action === "minimal_on";
       if (on) el.setAttribute("data-canvas-minimal", "1");
@@ -588,8 +625,9 @@ export function applyAgentOperations(
           op.status = "applied";
           res.deleted++;
         } else if (op.op === "canvas") {
-          // #112 画布级动作：不针对单个节点。失败原因（如非创意模式）走统一 failures 通道。
-          const err = runCanvasAction(op.action);
+          // #112 画布级动作。失败原因（如非创意模式）走统一 failures 通道。
+          // #266 传入整个 op + resolve：assemble/run_node 需要 targetRef（可为本批 tempId）。
+          const err = runCanvasAction(op, resolve);
           if (err) { fail(index, op, err); return; }
           op.status = "applied";
           res.canvasActions++;
