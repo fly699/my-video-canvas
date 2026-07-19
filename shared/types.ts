@@ -1384,7 +1384,12 @@ export interface AgentOperation {
   /** #260 新增 "library"：把用户附件图存入角色/场景库并命名（「将此图加入角色库，名称为李宁」）。
    *  该操作不落画布节点，由 CanvasAgentChat 应用层在 applyAgentOperations 之前抽走并调用
    *  characterLibrary.create 执行（agentApply 保持纯画布语义，不做网络请求）。 */
-  op: "create" | "update" | "connect" | "delete" | "canvas" | "library";
+  /** #267 新增 "group"（把 targetRefs 指定的多个节点编成一个「群组」容器）与
+   *  "duplicate"（复制 targetRef 节点为副本；副本剥离运行时/产物字段，可带 tempId
+   *  供同批后续 connect/update 引用）。两者都是纯画布确定性操作，不发任何网络请求。 */
+  op: "create" | "update" | "connect" | "delete" | "canvas" | "library" | "group" | "duplicate";
+  /** group: 要编组的节点引用列表（≥2 个；可混用已存在节点 id 与本批 tempId）。 */
+  targetRefs?: string[];
   /** canvas: 画布级动作（不针对单个节点）——极简显示开/关、整理布局、适应视图、批量下载成品。
    *  #266 新增三个「口令直达」动作：
    *   - assemble：按镜头表装配合并节点（targetRef 可选：省略时自动定位画布上唯一的
