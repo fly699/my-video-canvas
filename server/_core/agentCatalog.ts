@@ -169,7 +169,12 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
     fields: [
       { name: "transition", type: "string", desc: "全局转场：none/fade/dissolve/fadeblack/fadewhite/smoothleft，默认 none 直切——除非用户点名要转场或快捷设置选了转场风格，否则不要设置（逐镜转场由装配按分镜 transition 自动设置）" },
       { name: "transitionDuration", type: "number", desc: "转场时长（秒，0.1-2.0，默认 0.5）" },
-      { name: "segTransitions", type: "string[]", desc: "逐接缝转场数组（长度=段数-1，值同 transition 另加 wipe；仅当用户要求按镜头关系差异化转场时写：同场景连续动作→none 直切，时间/地点跳转→fadeblack，情绪过渡→dissolve）" },
+      // #263 修正：此前 desc 鼓励在【新建】merge 时写 segTransitions，但该数组只有与
+      // 实际视频段顺序逐项对齐才会生效（对齐守卫防错位）——规划时视频尚未生成、段顺序
+      // 未知，写了必然是永不生效的死数据，还让 LLM 误以为已完成逐镜转场编排。
+      // 正确通路：逐镜差异化转场写在各分镜节点的 transition 字段（指向下一镜的切法），
+      // 出片后用户/助手一键「按镜头表装配」会按镜号自动生成本数组。
+      { name: "segTransitions", type: "string[]", desc: "逐接缝转场数组（长度=段数-1，值同 transition 另加 wipe）。【新建合并节点时禁止写】——它须与实际视频段顺序对齐才生效，规划期视频未生成，写了无效；逐镜差异化转场请写在各分镜的 transition 字段，装配时自动带入。仅在增量编辑「已装配」的合并节点微调接缝时才可改写" },
       { name: "burnShotSubtitles", type: "boolean", desc: "true 时装配完成后把镜头表对白直接烧录为成片字幕" },
     ],
   },
