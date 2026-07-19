@@ -56,6 +56,9 @@ async function lookupGeo(ip: string): Promise<GeoResult> {
 export type AuditAction =
   | "login_email"
   | "login_oauth"
+  // #259 画布助手规划质量打点：runAgentChat 主路径完成时落一条（detail 含操作数/拒因数/
+  // 自愈标记/解析状态/耗时/快捷设置开关组合），管理后台「LLM 日志 → 规划质量」聚合展示。
+  | "agent_plan_quality"
   | "image_gen"
   | "image_edit"
   | "video_gen"

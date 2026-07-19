@@ -3181,6 +3181,9 @@ function LlmLogsPanel() {
   useEffect(() => { const t = setTimeout(() => { setKwApplied(kw.trim()); setOffset(0); }, 400); return () => clearTimeout(t); }, [kw]);
 
   const summaryQ = trpc.admin.llmLogs.summary.useQuery({ sinceMs });
+  // #259 规划质量聚合（画布助手 agent_plan_quality 打点，服务端按开关组合分组）。
+  // 与 summary 共用 sinceMs 日期范围联动；无打点数据时表格整块不渲染（老部署无感）。
+  const planQ = trpc.admin.llmLogs.planQuality.useQuery({ sinceMs });
   const listQ = trpc.admin.llmLogs.list.useQuery(
     {
       limit: LIMIT, offset, sinceMs,
@@ -3342,6 +3345,44 @@ function LlmLogsPanel() {
         {miniTable("按模型", "模型", (s?.byModel ?? []).map((it) => ({ key: it.model ?? "-", label: it.model ?? "(默认)", calls: it.calls, errors: it.errors, avgMs: it.avgMs, active: modelFilter === (it.model ?? ""), onClick: () => { setModelFilter(modelFilter === (it.model ?? "") ? "" : (it.model ?? "")); setOffset(0); } })))}
         {miniTable("按用户", "用户", (s?.byUser ?? []).map((it) => ({ key: String(it.userId ?? "-"), label: `${it.userName ?? "?"} #${it.userId ?? "-"}`, calls: it.calls, errors: it.errors, avgMs: it.avgMs, active: userFilter === it.userId, onClick: () => { setUserFilter(userFilter === it.userId ? null : it.userId); setOffset(0); } })))}
       </div>
+
+      {/* ── #259 规划质量（画布助手）──────────────────────────────────────────
+          数据源：runAgentChat 每次完整规划落的 agent_plan_quality 操作日志；服务端已按
+          「开关组合」聚合（default = 全关基线；leanPrompt/selfCheck/interactive/comfyOnly
+          任意开启则组合成键）。看什么：
+          - 拒因率：该组合下有操作被目录校验拒绝的轮次占比（越低越好——反映首轮就做对）；
+          - 自愈率：触发规划自愈重试的轮次占比（越低越好——自愈=多花一轮时间与费用）；
+          - 解析失败率：输出 JSON 没解析成功的轮次占比（截断/格式劣化的信号）；
+          - 平均操作数/耗时：规划体量与速度的横向对照。
+          用途：对比「default 基线」vs「selfCheck」vs「leanPrompt」各行指标，数据化决定
+          实验开关是否值得转默认开（#258 真模型 A/B 的线上放大版）。样本随日期范围筛选联动。 */}
+      {(planQ.data?.groups?.length ?? 0) > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-t2)", marginBottom: 6 }}>规划质量（画布助手 · 按快捷设置开关组合，共 {planQ.data!.total} 轮）</div>
+          <div style={{ border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 8, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 760 }}>
+              <thead><tr style={{ background: "var(--c-surface, rgba(255,255,255,0.03))" }}>
+                {["开关组合", "轮次", "平均操作数", "拒因率", "自愈率", "解析失败率", "平均耗时", "主要模型"].map((h) => <th key={h} style={{ padding: "6px 9px", textAlign: "left", color: "var(--c-t3)", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {planQ.data!.groups.map((g) => (
+                  <tr key={g.key} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t1)", whiteSpace: "nowrap" }}>{g.key === "default" ? "全关（基线）" : g.key}</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t2)" }}>{g.runs}</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t2)" }}>{g.avgOps}</td>
+                    {/* 拒因/自愈/解析失败：>0 黄色提醒、>20% 红色告警——阈值只是视觉提示，不做硬判定 */}
+                    <td style={{ padding: "6px 9px", color: g.droppedRate > 20 ? "#f87171" : g.droppedRate > 0 ? "#fbbf24" : "#4ade80" }}>{g.droppedRate}%</td>
+                    <td style={{ padding: "6px 9px", color: g.repairedRate > 20 ? "#f87171" : g.repairedRate > 0 ? "#fbbf24" : "#4ade80" }}>{g.repairedRate}%</td>
+                    <td style={{ padding: "6px 9px", color: g.parseFailRate > 20 ? "#f87171" : g.parseFailRate > 0 ? "#fbbf24" : "#4ade80" }}>{g.parseFailRate}%</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{(g.avgDurationMs / 1000).toFixed(1)}s</td>
+                    <td style={{ padding: "6px 9px", color: "var(--c-t3)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.topModels.join("、")}>{g.topModels.join("、")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* 明细列表 */}
       <div style={{ border: "1px solid var(--c-bd1, rgba(255,255,255,0.06))", borderRadius: 8, overflow: "auto" }}>
