@@ -638,13 +638,14 @@ describe("applyAgentOperations 排布分散 + 角色节点预留增大空间（#
     const row1Y = yOf("character"), row2Y = yOf("storyboard"), row3Y = yOf("prompt");
     const charRowGap = row2Y - row1Y;   // 含角色的行 → 更高
     const normalRowGap = row3Y - row2Y; // 普通行
-    expect(charRowGap).toBeGreaterThanOrEqual(700);        // 角色行预留 ≥700
+    // #265 再加一档：角色行 ≥1000（有定妆照的角色卡实高 ~800px，780 会贴住/压到下方节点）
+    expect(charRowGap).toBeGreaterThanOrEqual(1000);
     expect(charRowGap).toBeGreaterThan(normalRowGap);      // 且严格高于普通行
-    expect(normalRowGap).toBeGreaterThanOrEqual(520);      // 普通行也放宽（原 480）
-    // 列距放宽（原 540）：同行相邻两列 x 间距 ≥600
+    expect(normalRowGap).toBeGreaterThanOrEqual(620);      // 普通行 #256 ≥520 → #265 ≥620
+    // 列距 #256 ≥600 → #265 ≥720：340 宽节点间留 ≥380 走线空间
     const xs = nodes.filter((n) => ["character", "image_gen", "video_task"].includes(n.data.nodeType)).map((n) => n.position.x).sort((a, b) => a - b);
-    expect(xs[1] - xs[0]).toBeGreaterThanOrEqual(600);
-    expect(xs[2] - xs[1]).toBeGreaterThanOrEqual(600);
+    expect(xs[1] - xs[0]).toBeGreaterThanOrEqual(720);
+    expect(xs[2] - xs[1]).toBeGreaterThanOrEqual(720);
   });
 
   it("场景列：角色节点之后的下一节点间距加大，场景框高度按累计行高取值", () => {
@@ -658,7 +659,7 @@ describe("applyAgentOperations 排布分散 + 角色节点预留增大空间（#
     const col = nodes.filter((n) => n.data.nodeType !== "group").sort((x, y) => x.position.y - y.position.y);
     const gapAfterNormal = col[1].position.y - col[0].position.y; // 分镜→角色
     const gapAfterChar = col[2].position.y - col[1].position.y;   // 角色→分镜（应更大）
-    expect(gapAfterChar).toBeGreaterThanOrEqual(700);
+    expect(gapAfterChar).toBeGreaterThanOrEqual(1000); // #265 角色行 ≥1000（同扇出口径）
     expect(gapAfterChar).toBeGreaterThan(gapAfterNormal);
     // 场景框高度覆盖整列累计（框底 ≥ 最后一个节点 y + 预留）
     const group = nodes.find((n) => n.data.nodeType === "group")!;
