@@ -1385,8 +1385,14 @@ export interface AgentOperation {
    *  该操作不落画布节点，由 CanvasAgentChat 应用层在 applyAgentOperations 之前抽走并调用
    *  characterLibrary.create 执行（agentApply 保持纯画布语义，不做网络请求）。 */
   op: "create" | "update" | "connect" | "delete" | "canvas" | "library";
-  /** canvas: 画布级动作（不针对单个节点）——极简显示开/关、整理布局、适应视图、批量下载成品。 */
-  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all";
+  /** canvas: 画布级动作（不针对单个节点）——极简显示开/关、整理布局、适应视图、批量下载成品。
+   *  #266 新增三个「口令直达」动作：
+   *   - assemble：按镜头表装配合并节点（targetRef 可选：省略时自动定位画布上唯一的
+   *     合并节点；复用 assembleFromStoryboards 确定性逻辑，与节点上的装配按钮同源）。
+   *   - run_all：请求运行画布全部可运行节点。仅置 store.runRequest 信号——真正执行
+   *     走 Canvas 既有的运行确认流程（费用可见、用户点确认才跑），助手绝不直接扣费。
+   *   - run_node：请求运行 targetRef 指定的单个节点（同样走运行确认流程）。 */
+  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node";
   /** library: 入库类型——person=角色库、scene=场景库。 */
   libraryKind?: "person" | "scene";
   /** library: 库条目名称（用户指定原文，如「李宁」「足球场」），入库后可 @名称 引用。 */
