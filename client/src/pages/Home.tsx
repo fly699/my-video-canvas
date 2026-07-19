@@ -44,6 +44,9 @@ import {
   Bell,
 } from "lucide-react";
 
+// #250 无 hover 环境（手机/平板触屏）一次性判定：悬停浮现类按钮在这些设备上改为常显。
+const NO_HOVER = typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches === true;
+
 // ── Project card ─────────────────────────────────────────────────────────────
 // The cover is persisted in `thumbnail` as a JSON array of 1–4 image URLs;
 // legacy single-URL strings are still accepted.
@@ -279,7 +282,9 @@ function ProjectCard({
           onClick={() => setMenuOpen(!menuOpen)}
           aria-label="项目操作"
           title="重命名或删除"
-          className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+          // 触屏设备没有 hover——「悬停浮现」的 ⋯ 按钮在手机上永远不可见，重命名/删除
+          // 入口彻底丢失（用户实报）。无 hover 环境（hover:none）改为常显。
+          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${NO_HOVER ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
           style={{ color: "var(--c-t3)" }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-overlay)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--c-t3)"; }}

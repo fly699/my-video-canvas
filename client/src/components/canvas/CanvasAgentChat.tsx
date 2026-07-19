@@ -5,7 +5,7 @@ import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerU
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
-import { runAgentChatJob } from "@/lib/agentChatJob";
+import { runAgentChatJob, pollAgentChatJob, type AgentChatResult } from "@/lib/agentChatJob";
 import { friendlyClientLLMError } from "@/lib/friendlyClientError";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
 import { useCanvasMode } from "../../contexts/CanvasModeContext";
@@ -641,6 +641,73 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     if (ok > 0) toast.success(`已为 ${ok} 个角色生成外观锚点（提示词压缩注入，角色卡可切回全量）`, { duration: 4000 });
   };
 
+  // 规划结果统一落地（send 与 #251 跨会话恢复共用）：应用操作 → 追加助手回合 → 自动增强。
+  // 恢复路径用的是「当前」quickPrefs（附件等一次性上下文只影响规划本身，结果应用不依赖）。
+  const applyChatResult = (r: AgentChatResult) => {
+    const ops = (r.operations ?? []) as AgentOperation[];
+    // 服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）——此前画布助手完全不展示，
+    // 用户只见「operations 静默变少」。合并进「未应用」提示，与客户端 apply 失败一并可见。
+    const droppedMsg = (r.droppedCount ?? 0) > 0 ? `服务端忽略 ${r.droppedCount} 项：${(r.dropped ?? []).slice(0, 3).join("；")}` : "";
+    let applied = "", applyFailMsg = "", createdIds: string[] = [];
+    if (ops.length) {
+      const anchor = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2 - 120, y: window.innerHeight / 2 - 120 });
+      const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
+      const res = applyAgentOperations(ops, anchor, {
+        templates, ownerAgentId: "canvas-agent-chat", aspect: quickPrefs.aspect || undefined,
+        imageModel: quickPrefs.imageModel || undefined, videoProvider: quickPrefs.videoProvider || undefined,
+        allowedGenNodes: quickPrefs.genNodes.length ? quickPrefs.genNodes : undefined,
+        allowedTemplateIds: quickPrefs.workflowTemplateIds.length ? quickPrefs.workflowTemplateIds : undefined,
+        excludeStoryboard: quickPrefs.noStoryboard || undefined,
+        transitionStyle: quickPrefs.transitionStyle || undefined,
+      });
+      applied = opsSummary(ops); createdIds = res.createdIds ?? [];
+      // 角色确定性自动接线（不对应任何 op，opsSummary 统计不到）——透明反馈，让用户知道
+      // 角色参考图已接入生成节点（是「@角色→首帧看不到参考图」修复的可见闭环）。
+      if (res.autoLinkedChars > 0) applied = [applied, `角色接入 ${res.autoLinkedChars}`].filter(Boolean).join(" · ");
+      // 服务端自愈生效（首轮 JSON 截断/非法或操作全被拒 → 自动修复一次后成功）——透明反馈。
+      if (r.repaired) applied = [applied, "已自动修正规划"].filter(Boolean).join(" · ");
+      if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
+      // #227 角色自动定妆照（开关开启时）：后台跑，不阻塞对话。
+      if (quickPrefs.autoPortrait && createdIds.length) void autoPortraits(createdIds);
+      // #225 外观锚点自动压缩（默认开）：后台跑，不阻塞对话。
+      if (quickPrefs.anchorCompress && createdIds.length) void autoAnchors(createdIds);
+    }
+    const failed = [droppedMsg, applyFailMsg].filter(Boolean).join(" · ") || undefined;
+    setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);
+  };
+
+  // #251 跨进出画布续跑：挂载后查本项目是否有「进行中/已完成未取走」的规划任务
+  // （上次提交后退出画布，服务端任务仍在跑/已跑完）——有则自动恢复轮询并落地结果，
+  // 无需用户重发。仅恢复一次；弹窗版（isPopout）不参与。
+  const resumedRef = useRef(false);
+  const pendingChatQuery = trpc.agent.pendingChat.useQuery({ projectId }, {
+    enabled: !!projectId, staleTime: Infinity, refetchOnWindowFocus: false, retry: false,
+  });
+  useEffect(() => {
+    const job = pendingChatQuery.data?.job;
+    if (!job || busy || resumedRef.current) return;
+    resumedRef.current = true;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBusy(true);
+    setPlanStage("");
+    toast.info(job.running ? "检测到上次未完成的规划任务，已自动恢复等待…" : "上次的规划已在后台完成，正在取回并应用…", { duration: 4000 });
+    void (async () => {
+      try {
+        const r = await pollAgentChatJob(utils.client, job.jobId, controller.signal, (p) => { if (p.stage) setPlanStage(p.stage); });
+        applyChatResult(r);
+        toast.success("已恢复并完成上次的规划任务", { duration: 3500 });
+      } catch (e) {
+        if (controller.signal.aborted || (e instanceof Error && e.name === "AbortError")) return;
+        setTurns((p) => [...p, { role: "assistant", content: `恢复上次规划失败：${friendlyClientLLMError(e)}`, error: true }]);
+      } finally {
+        abortRef.current = null;
+        setBusy(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingChatQuery.data]);
+
   async function send(overrideMsg?: string) {
     // overrideMsg：交互式规划的「选项快捷回复」直接发送，不经输入框。
     const files = overrideMsg ? [] : staged;
@@ -680,36 +747,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         controller.signal,
         (p) => { if (p.stage) setPlanStage(p.stage); },
       );
-      const ops = (r.operations ?? []) as AgentOperation[];
-      // 服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）——此前画布助手完全不展示，
-      // 用户只见「operations 静默变少」。合并进「未应用」提示，与客户端 apply 失败一并可见。
-      const droppedMsg = (r.droppedCount ?? 0) > 0 ? `服务端忽略 ${r.droppedCount} 项：${(r.dropped ?? []).slice(0, 3).join("；")}` : "";
-      let applied = "", applyFailMsg = "", createdIds: string[] = [];
-      if (ops.length) {
-        const anchor = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2 - 120, y: window.innerHeight / 2 - 120 });
-        const templates = (templatesQuery.data ?? []).map((t) => ({ id: t.id, label: t.label, payload: t.payload }));
-        const res = applyAgentOperations(ops, anchor, {
-          templates, ownerAgentId: "canvas-agent-chat", aspect: quickPrefs.aspect || undefined,
-          imageModel: quickPrefs.imageModel || undefined, videoProvider: quickPrefs.videoProvider || undefined,
-          allowedGenNodes: quickPrefs.genNodes.length ? quickPrefs.genNodes : undefined,
-          allowedTemplateIds: quickPrefs.workflowTemplateIds.length ? quickPrefs.workflowTemplateIds : undefined,
-          excludeStoryboard: quickPrefs.noStoryboard || undefined,
-          transitionStyle: quickPrefs.transitionStyle || undefined,
-        });
-        applied = opsSummary(ops); createdIds = res.createdIds ?? [];
-        // 角色确定性自动接线（不对应任何 op，opsSummary 统计不到）——透明反馈，让用户知道
-        // 角色参考图已接入生成节点（是「@角色→首帧看不到参考图」修复的可见闭环）。
-        if (res.autoLinkedChars > 0) applied = [applied, `角色接入 ${res.autoLinkedChars}`].filter(Boolean).join(" · ");
-        // 服务端自愈生效（首轮 JSON 截断/非法或操作全被拒 → 自动修复一次后成功）——透明反馈。
-        if (r.repaired) applied = [applied, "已自动修正规划"].filter(Boolean).join(" · ");
-        if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
-        // #227 角色自动定妆照（开关开启时）：后台跑，不阻塞对话。
-        if (quickPrefs.autoPortrait && createdIds.length) void autoPortraits(createdIds);
-        // #225 外观锚点自动压缩（默认开）：后台跑，不阻塞对话。
-        if (quickPrefs.anchorCompress && createdIds.length) void autoAnchors(createdIds);
-      }
-      const failed = [droppedMsg, applyFailMsg].filter(Boolean).join(" · ") || undefined;
-      setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);
+      applyChatResult(r);
     } catch (e) {
       if (controller.signal.aborted || (e instanceof Error && e.name === "AbortError")) {
         setTurns((p) => [...p, { role: "assistant", content: "已取消本次规划（后台任务可能仍会完成，结果已忽略）。", error: true }]);

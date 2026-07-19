@@ -19,13 +19,24 @@ export async function runAgentChatJob(
   /** #136 每次轮询到 running 时回调服务端阶段（分析模板库/模型规划中…）与已耗时，供 UI 实时显示。 */
   onProgress?: (p: { stage?: string; elapsedMs?: number }) => void,
 ): Promise<AgentChatResult> {
+  const { jobId } = await client.agent.submitChat.mutate(input);
+  return pollAgentChatJob(client, jobId, signal, onProgress);
+}
+
+/** #251 只轮询已有 jobId（跨进出画布续跑：重进画布后凭服务端记的 pending jobId 接着等结果）。
+ *  轮询节奏/异常语义与 runAgentChatJob 完全一致（本就是从它抽出的内核）。 */
+export async function pollAgentChatJob(
+  client: Client,
+  jobId: string,
+  signal?: AbortSignal,
+  onProgress?: (p: { stage?: string; elapsedMs?: number }) => void,
+): Promise<AgentChatResult> {
   // 可中断等待：abort 时立即唤醒，而不是睡满整个轮询间隔（否则点「取消」最多要干等 2.5s 才有反馈）。
   const wait = (ms: number) => new Promise<void>((res) => {
     const done = () => { signal?.removeEventListener("abort", done); clearTimeout(t); res(); };
     const t = setTimeout(done, ms);
     signal?.addEventListener("abort", done, { once: true });
   });
-  const { jobId } = await client.agent.submitChat.mutate(input);
   const startedAt = Date.now();
   let missCount = 0;
   let delay = 800;
