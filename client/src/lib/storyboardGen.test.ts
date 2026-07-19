@@ -238,4 +238,48 @@ describe("assembleFromStoryboards（装配端收集）", () => {
     expect(mapShotTransition("wipe")).toBe("wipe");
     expect(mapShotTransition(undefined)).toBe("none");
   });
+
+  // ── #264 装配后全直切修复：三档语义 + 全局转场回退 ──────────────────────────
+  it("#264 mapShotTransition 三档：显式 cut 永远硬切；已知值用自身；未设/未知才回退 fallback", () => {
+    expect(mapShotTransition("cut", "dissolve")).toBe("none");        // 档1：显式硬切不被全局覆盖
+    expect(mapShotTransition("match-cut", "dissolve")).toBe("none");
+    expect(mapShotTransition("fade", "dissolve")).toBe("fade");       // 档2：逐镜意图最优先
+    expect(mapShotTransition(undefined, "dissolve")).toBe("dissolve"); // 档3：未设 → 跟全局
+    expect(mapShotTransition("", "fadeblack")).toBe("fadeblack");
+    expect(mapShotTransition("某种未知转场", "fade")).toBe("fade");
+    expect(mapShotTransition(undefined)).toBe("none");                // 无 fallback：旧行为不变
+  });
+
+  it("#264 中文别名映射（LLM/用户写中文不再被收敛成直切）", () => {
+    expect(mapShotTransition("叠化")).toBe("dissolve");
+    expect(mapShotTransition("黑场")).toBe("fadeblack");
+    expect(mapShotTransition("白场")).toBe("fadewhite");
+    expect(mapShotTransition("擦除")).toBe("wipe");
+    expect(mapShotTransition("淡入淡出")).toBe("fade");
+  });
+
+  it("#264 装配回退全局转场：merge 设了 dissolve → 未指定转场的接缝= dissolve、显式 cut 仍= none", () => {
+    const n = [
+      N("m", "merge", { transition: "dissolve" }),   // 用户在合并节点设了全局叠化
+      N("sb1", "storyboard", { sceneNumber: 1 }),                        // 未设转场 → 跟全局
+      N("sb2", "storyboard", { sceneNumber: 2, transition: "cut" }),     // 显式硬切 → none
+      N("sb3", "storyboard", { sceneNumber: 3, transition: "fadeblack" }), // 显式黑场 → 用自身
+      N("v1", "video_task", { resultVideoUrl: "v1.mp4" }),
+      N("v2", "video_task", { resultVideoUrl: "v2.mp4" }),
+      N("v3", "video_task", { resultVideoUrl: "v3.mp4" }),
+    ];
+    const e = [
+      { source: "sb1", target: "v1" }, { source: "sb2", target: "v2" }, { source: "sb3", target: "v3" },
+      { source: "v1", target: "m" }, { source: "v2", target: "m" }, { source: "v3", target: "m" },
+    ];
+    const r = assembleFromStoryboards("m", n, e);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.transitions).toEqual(["dissolve", "none"]); // 接缝1=镜1(未设→全局叠化)，接缝2=镜2(显式cut)
+  });
+
+  it("#264 零回归：merge 未设全局转场（默认直切）→ 装配行为与旧版完全一致", () => {
+    const r = assembleFromStoryboards("m", nodes, edges); // fixture 的 merge payload 为空
+    if ("error" in r) throw new Error(r.error);
+    expect(r.transitions).toEqual(["dissolve"]); // 镜1 显式 dissolve；镜2 的 cut 语义不受影响
+  });
 });

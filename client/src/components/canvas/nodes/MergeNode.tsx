@@ -1,7 +1,8 @@
 import { memo, useMemo, useRef, useState } from "react";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { InlineGenBar } from "../InlineGenBar";
-import { SlidersHorizontal } from "lucide-react";
+import { ToolChip } from "../InlineBarParts";
+import { SlidersHorizontal, Clapperboard } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
@@ -826,7 +827,23 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
       <InlineGenBar nodeId={id} visible={!!selected} width={440}>
         <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t2)", whiteSpace: "nowrap" }}>合并</span>
-          <span style={{ fontSize: 10.5, color: "var(--c-t4)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>轨道排序 / 音量 / 音频轨参数</span>
+          {/* #264 高频主操作一级化：装配 / 合并（合并中→取消）/ 重置 此前全藏在
+              「参数与操作」展开面板里，用户要多点一层才能触达——挪进底部悬浮条常驻。
+              卡体（非创意模式 expanded 区）里的原按钮保持不动，零回归。 */}
+          <ToolChip icon={<Clapperboard size={13} />} label="装配"
+            onClick={handleAssemble} disabled={isProcessing}
+            title="按镜头表装配：镜号排序 · 逐镜转场（分镜未指定的接缝跟随全局转场）· 配音对位" />
+          {isProcessing ? (
+            <ToolChip icon={<X size={13} />} label="取消"
+              onClick={abandonWait} title="放弃等待 / 取消合并（服务器任务无法中止，其结果不会回填）" />
+          ) : (
+            <ToolChip icon={<Merge size={13} />} label={isDone ? "已完成" : "合并"}
+              onClick={handleMerge} disabled={isDone}
+              title={isDone ? "已完成（重置后可重新合并）" : "合并视频"} />
+          )}
+          <ToolChip icon={<RotateCcw size={13} />} label="重置"
+            onClick={handleReset} title="清除合并结果，回到待合并状态" />
+          <span style={{ flex: 1, minWidth: 0 }} />
           <button className="nodrag" onClick={(e) => { e.stopPropagation(); setAdvancedOpen((v) => !v); }}
             title={(advancedOpen ? "收起参数面板" : "展开参数与操作面板（浮现于输入条下方，不撑开节点卡体）") + " · 快捷键 A"}
             style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: advancedOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
