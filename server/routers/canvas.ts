@@ -67,6 +67,7 @@ import { sliceGridImage } from "../_core/imageGrid";
 import { extractStoryboardFrames } from "../_core/videoStoryboard";
 import { generateComfyImage, generateComfyVideo, fetchComfyModels, fetchComfyServerStatus, analyzeWorkflow, validateWorkflow, convertUiWorkflowToApi, extractControlMap, CONTROL_MAP_PREPROCESSORS, executeCustomWorkflow, executeHunyuan3D, executeCloudWorkflow, testCloudConnection, uploadImageForWorkflow, interruptComfy, freeComfyMemory, getComfyQueueDepth, shouldFreeVram, clearComfyQueue, emptyModelList, emitComfyWorkflowResult } from "../_core/comfyui";
 import { getComfyJob, setComfyJobDone, setComfyJobError } from "../_core/comfyJobStore";
+import { getGenJob, setGenJobDone, setGenJobError } from "../_core/genJobStore";
 import type { ComfyModelList } from "../_core/comfyui";
 import { getComfyKnowledge, peekComfyKnowledge, searchComfyKnowledge, invalidateComfyKnowledge, getComfyModelList } from "../_core/comfyKnowledge";
 import { ENV } from "../_core/env";
@@ -1400,6 +1401,9 @@ export const imageGenRouter = router({
         // 客户端实时计算的点数预估（如 "≈5 cr"），仅供管理员日志参考。
         estimatedCost: z.string().max(32).optional(),
         projectId: z.number().optional(),
+        // #255 隧道兜底：一次性 jobId。仅当前端因传输类错误（隧道 ~100s 掐线）收不到本
+        // 响应时才凭它轮询 imageGen.result 取回；不影响本请求的同步返回路径。
+        recoveryJobId: z.string().max(64).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1432,7 +1436,10 @@ export const imageGenRouter = router({
       // Server-side idempotency: collapse concurrent identical submits (e.g. devtools
       // replay, browser retries) into a single external image-gen call & charge.
       // 失败也要计入管理员日志（带预估点数 + success:false），随后原样抛出。
-      return dedupe("imageGen", ctx.user.id, input, async () => {
+      // #255：recoveryJobId 每次提交都是新随机串，必须从 dedupe key 剔除，否则浏览器
+      // 重放/并发同参提交不再被折叠（回归双扣费风险）。
+      const { recoveryJobId, ...dedupeKeyInput } = input;
+      return dedupe("imageGen", ctx.user.id, dedupeKeyInput, async () => {
       const isHfModel = input.model?.startsWith("hf_");
       // 原生支持 negative_prompt 的图像模型：Higgsfield 全系 + kie 的 Imagen4 家族 /
       // Ideogram V3 / Qwen 系列（docs 对照，见 kieImage.ts negPrompt）。这些走「干净 prompt +
@@ -1514,13 +1521,17 @@ export const imageGenRouter = router({
           await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "image", source: "generated", provider: prov, model: input.model ?? "default", url: u, name: input.model ?? "图像生成" });
         }
       }
-      return {
+      const response = {
         url: result.url,
         urls: result.urls,
         sourceUrl: result.sourceUrl,
         sourceUrls: result.sourceUrls,
         sourceAt: result.sourceAt,
       };
+      // #255 兜底回灌：同步返回路径不变，只在完成后追加一次内存暂存——隧道把本次
+      // HTTP 掐断时，前端凭 recoveryJobId 轮询 imageGen.result 仍能取回（不用重生成重扣费）。
+      if (recoveryJobId) setGenJobDone(recoveryJobId, ctx.user.id, response);
+      return response;
       }).catch((err: unknown) => {
         writeAuditLog({
           ctx,
@@ -1533,8 +1544,22 @@ export const imageGenRouter = router({
             error: truncate(err instanceof Error ? err.message : String(err)),
           },
         });
+        // #255 失败也回灌：隧道切断后前端能凭 jobId 拿到真实失败原因，而非干等超时。
+        if (recoveryJobId) setGenJobError(recoveryJobId, ctx.user.id, err instanceof Error ? err.message : String(err));
         throw err;
       });
+    }),
+
+  // #255 隧道兜底取回：仅当 generate 的 HTTP 被传输层掐断时前端才轮询本端点。
+  // pending = 任务仍在跑（或 jobId 不存在/已过期——前端有轮询时限，不会永等）。
+  result: protectedProcedure
+    .input(z.object({ jobId: z.string().min(1).max(64) }))
+    .query(({ ctx, input }) => {
+      const r = getGenJob(input.jobId, ctx.user.id);
+      if (!r) return { status: "pending" as const };
+      return r.status === "done"
+        ? { status: "done" as const, value: r.value as { url?: string; urls?: string[]; sourceUrl?: string; sourceUrls?: string[]; sourceAt?: number } }
+        : { status: "error" as const, error: r.error };
     }),
 });
 

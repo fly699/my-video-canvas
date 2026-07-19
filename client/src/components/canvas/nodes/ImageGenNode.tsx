@@ -52,6 +52,8 @@ import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, useP
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS } from "../ModelPicker";
 import { COMFY_LOCAL_MODEL } from "@/lib/comfyLocalRoute";
 import { buildLocalComfyImageInput } from "@/lib/comfyLocalImageGen";
+import { pollGenRecovery } from "@/lib/genRecovery";
+import { pollComfyRun, isTransportCutError } from "@/lib/comfyRunRecovery";
 import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { estimateImageCost, costEstimateLabel, KIE_IMAGE_RES_COST } from "@/lib/costEstimate";
 import { SyncNodesDialog } from "../SyncNodesDialog";
@@ -373,15 +375,59 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, updateNodeData, propagateRefImage, runQc]);
-  const applyGenError = useCallback((err: { message: string }) => {
+  // #255 隧道兜底：每次提交带一次性 recoveryJobId；阻塞请求被【传输层】掐断（经 cloudflared
+  // 隧道时 ~100s 切线，但服务端不取消、已计费照常出图）时，凭它轮询取回结果——云端走
+  // imageGen.result，本地 ComfyUI 走既有 comfyui.workflowResult（服务端 #163 已回灌）。
+  // 【零回归】仅 isTransportCutError 命中的失败才进兜底；本机/局域网直连的成功路径与
+  // 业务错误（服务端明确返回的信息）行为与从前逐字一致。
+  const recoveryJobIdRef = useRef("");
+  const [recovering, setRecovering] = useState(false);
+  const genUtils = trpc.useUtils();
+  const recoverFromCut = useCallback(async (kind: "cloud" | "comfy", errMsg: string) => {
+    const jobId = recoveryJobIdRef.current;
+    if (!jobId) { toast.error("图像生成失败：" + errMsg); return; }
+    setRecovering(true);
+    toast.info("连接中断，正在向服务器取回生成结果……生成仍在进行，请勿重复提交", { duration: 8000 });
+    try {
+      const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+      if (kind === "cloud") {
+        const r = await pollGenRecovery<{ url?: string; urls?: string[]; sourceUrl?: string; sourceUrls?: string[]; sourceAt?: number }>({
+          jobId,
+          fetchResult: (jid) => genUtils.imageGen.result.fetch({ jobId: jid }),
+          sleep,
+          stopped: () => abandonedRef.current,
+        });
+        if (abandonedRef.current) return;
+        if (r?.ok) { applyGenResult(r.value); toast.success("已从服务器取回生成结果"); return; }
+        toast.error("图像生成失败：" + (r ? r.error ?? errMsg : `连接中断且取回超时（${errMsg}）`));
+      } else {
+        const r = await pollComfyRun({
+          jobId,
+          readPending: () => undefined, // image_gen 节点无 socket 回灌通道，纯轮询即可
+          fetchResult: (jid) => genUtils.comfyui.workflowResult.fetch({ jobId: jid }),
+          sleep,
+          maxMs: 10 * 60 * 1000,
+        });
+        if (abandonedRef.current) return;
+        if (r?.ok) {
+          applyGenResult(r.urls.length > 1 ? { urls: r.urls } : { url: r.urls[0] });
+          toast.success("已从服务器取回生成结果");
+          return;
+        }
+        toast.error("图像生成失败：" + (r ? r.error ?? errMsg : `连接中断且取回超时（${errMsg}）`));
+      }
+    } finally { setRecovering(false); }
+  }, [genUtils, applyGenResult]);
+  const applyGenError = useCallback((err: { message: string }, kind: "cloud" | "comfy") => {
     if (abandonedRef.current) return; // 已放弃——错误也不打扰
+    if (isTransportCutError(err.message)) { void recoverFromCut(kind, err.message); return; }
     toast.error("图像生成失败：" + err.message);
-  }, []);
-  const genMutation = trpc.imageGen.generate.useMutation({ onSuccess: applyGenResult, onError: applyGenError });
+  }, [recoverFromCut]);
+  const genMutation = trpc.imageGen.generate.useMutation({ onSuccess: applyGenResult, onError: (e) => applyGenError(e, "cloud") });
   // #87 自建算力：模型选「本地 ComfyUI」时改走此 mutation（comfyui.generateImage，txt2img/img2img）。
-  const comfyLocalMut = trpc.comfyui.generateImage.useMutation({ onSuccess: applyGenResult, onError: applyGenError });
-  // 两条生成路径合一的「进行中」状态，供按钮禁用/转圈统一读取。
-  const isGenerating = genMutation.isPending || comfyLocalMut.isPending;
+  const comfyLocalMut = trpc.comfyui.generateImage.useMutation({ onSuccess: applyGenResult, onError: (e) => applyGenError(e, "comfy") });
+  // 两条生成路径合一的「进行中」状态，供按钮禁用/转圈统一读取（含兜底取回中）。
+  const isGenerating = genMutation.isPending || comfyLocalMut.isPending || recovering;
 
   const uploadMutation = trpc.upload.uploadImage.useMutation();
 
@@ -496,19 +542,25 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         nodeId: id,
       });
       if (!local.ok) { toast.error(local.blocked); return; }
-      comfyLocalMut.mutate(local.input);
+      recoveryJobIdRef.current = nanoid(); // #255 隧道掐线后凭此 jobId 走 workflowResult 取回
+      comfyLocalMut.mutate({ ...local.input, jobId: recoveryJobIdRef.current });
       return;
     }
-    const submit = () => genMutation.mutate({
-      ...(built.input as Parameters<typeof genMutation.mutate>[0]),
-      projectId: data.projectId,
-    });
+    const submit = () => {
+      recoveryJobIdRef.current = nanoid(); // #255 隧道掐线后凭此 jobId 走 imageGen.result 取回
+      genMutation.mutate({
+        ...(built.input as Parameters<typeof genMutation.mutate>[0]),
+        projectId: data.projectId,
+        recoveryJobId: recoveryJobIdRef.current,
+      });
+    };
     guard({ model: payload.model ?? resolve("image_gen", "image"), refImageUrl: built.refUrl }, submit);
   };
 
   // #140 放弃等待：本地解锁按钮与状态；云端生成继续（提交即计费，不可撤回），结果不回填。
   const abandonWait = () => {
     abandonedRef.current = true;
+    setRecovering(false); // #255 兜底取回循环下一轮 stopped() 即退出；立即解锁 UI
     genMutation.reset();
     comfyLocalMut.reset(); // 自建算力路径同样解锁
     toast.info("已放弃等待：节点已解锁。云端生成仍在进行（费用照常发生），其结果不会回填本节点", { duration: 7000 });
