@@ -232,11 +232,14 @@ export function applyAgentOperations(
   // Otherwise fall back to the original 3-per-row fan-out (unchanged behavior).
   // Generous spacing so connection edges stay visible between (often tall) nodes —
   // node ≈340w and image/video nodes run 400–600px tall, so columns/rows need room.
-  // #256 用户拍板「排布再分散一些」：列距 600→680、行高 480→560；角色节点生成定妆照后
-  // 卡体会显著长大（预览自适应 + 多视角缩略条 + 人物标签），行高单独预留 780，避免
-  // 生成后压住/遮挡下方节点。
-  const SCENE_COL_W = 640, ROW_H = 560, CHAR_ROW_H = 780, PAD = 40, HEADER = 48, NODE_W = 340;
-  const FAN_COL_W = 620; // 非场景 3 列扇出的列距（原 540）
+  // #256 用户拍板「排布再分散一些」：列距 600→680、行高 480→560、角色行 780。
+  // #265 用户复测仍觉密集，再加一档：列距 680→800、行高 560→660；【角色行 780→1050】——
+  // 角色节点生成定妆照后卡体实高可到 ~800px（340 宽竖版 2:3 预览 ≈510px 高 + 标题栏/
+  // 人物标签/种子行/多视角缩略条 ≈250-300px），780 的行距意味着图一出来就贴住甚至压到
+  // 下方节点；1050 让有图角色卡与下一节点之间仍留 ~250px 呼吸空隙。行高语义是「本节点
+  // 顶部 → 下一节点顶部」，所以必须按【生成后】的最大卡体高度预留，而不是空卡高度。
+  const SCENE_COL_W = 760, ROW_H = 660, CHAR_ROW_H = 1050, PAD = 40, HEADER = 48, NODE_W = 340;
+  const FAN_COL_W = 760; // 非场景 3 列扇出的列距（#256 540→620，#265 →760）
   const rowHFor = (o: AgentOperation) => (o.nodeType === "character" ? CHAR_ROW_H : ROW_H);
   const createOps = ops.filter((o) => o.op === "create");
   const sceneKeys: string[] = [];
