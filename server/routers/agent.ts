@@ -270,11 +270,18 @@ const pendingJobByProject = new Map<number, { jobId: string; userId: number; pro
 function clearPendingByJobId(jobId: string): void {
   pendingJobByProject.forEach((p, projectId) => { if (p.jobId === jobId) pendingJobByProject.delete(projectId); });
 }
+let _lastRowSweep = 0;
 function sweepAgentChatJobs(): void {
   const now = Date.now();
   agentChatJobs.forEach((j, k) => {
     if (now - j.createdAt > AGENT_JOB_TTL_MS) { agentChatJobs.delete(k); clearPendingByJobId(k); }
   });
+  // #252 持久层清扫节流（chatStatus 高频调用，别每次都发 DELETE）：每 10 分钟一次，
+  // 清 24 小时前的旧行（结果一次性消费，久未取走视为弃单）。
+  if (now - _lastRowSweep > 10 * 60_000) {
+    _lastRowSweep = now;
+    void db.sweepAgentChatJobRows(24 * 3600_000).catch(() => { /* 持久层清扫失败无碍主流程 */ });
+  }
 }
 
 // #136 规划提速：非 comfyOnly 的模板增量分析改为后台执行（不阻塞规划链路）。
@@ -818,9 +825,18 @@ export const agentRouter = router({
       agentChatJobs.set(jobId, job);
       // #251：登记项目级 pending——用户中途退出画布也能重进后凭 projectId 找回本任务续跑。
       pendingJobByProject.set(input.projectId, { jobId, userId: ctx.user.id, prompt: (input.message ?? "").slice(0, 300) });
+      // #252 落库兜底：内存 Map 服务重启即丢，DB 行让「已完成的结果」重启后仍可取回。
+      // 写失败不阻断主流程（dev 无 DB 时 helper 本身就是 no-op）。
+      void db.insertAgentChatJobRow({ jobId, projectId: input.projectId, userId: ctx.user.id, prompt: (input.message ?? "").slice(0, 300) }).catch(() => {});
       void runAgentChat(ctx, input, (s) => { job.stage = s; })
-        .then((r) => { job.result = r; job.done = true; })
-        .catch((e) => { job.error = e instanceof Error ? e.message : String(e); job.done = true; });
+        .then((r) => {
+          job.result = r; job.done = true;
+          void db.finishAgentChatJobRow(jobId, { result: r }).catch(() => {});
+        })
+        .catch((e) => {
+          job.error = e instanceof Error ? e.message : String(e); job.done = true;
+          void db.finishAgentChatJobRow(jobId, { error: job.error }).catch(() => {});
+        });
       return { jobId };
     }),
 
@@ -831,7 +847,13 @@ export const agentRouter = router({
     .query(async ({ ctx, input }) => {
       await assertProjectAccess(input.projectId, ctx.user.id, "editor");
       const p = pendingJobByProject.get(input.projectId);
-      if (!p || p.userId !== ctx.user.id) return { job: null };
+      if (!p || p.userId !== ctx.user.id) {
+        // #252 内存登记随重启丢失 → 查持久层最近一行：done 的结果重启后仍可恢复应用；
+        // running 行=任务已随重启中断，也返回给前端（chatStatus 会给出明确的中断报错）。
+        const row = await db.getLatestAgentChatJobForProject(input.projectId, ctx.user.id).catch(() => undefined);
+        if (!row) return { job: null };
+        return { job: { jobId: row.jobId, prompt: row.prompt ?? "", running: row.status === "running" } };
+      }
       const j = agentChatJobs.get(p.jobId);
       if (!j) { pendingJobByProject.delete(input.projectId); return { job: null }; }
       return { job: { jobId: p.jobId, prompt: p.prompt, running: !j.done } };
@@ -840,14 +862,27 @@ export const agentRouter = router({
   // 轮询任务状态；done 后取走即删（结果一次性消费，客户端拿到后自行持久化到会话）。
   chatStatus: protectedProcedure
     .input(z.object({ jobId: z.string().max(64) }))
-    .query(({ ctx, input }) => {
+    .query(async ({ ctx, input }) => {
       sweepAgentChatJobs(); // 轮询频繁，顺带清理过期任务（不只依赖 submit 时清扫）
       const j = agentChatJobs.get(input.jobId);
-      if (!j || j.userId !== ctx.user.id) return { state: "missing" as const };
+      if (!j || j.userId !== ctx.user.id) {
+        // #252 内存 miss → 查持久层：服务重启后「已完成的结果」仍能取回；
+        // 行状态仍是 running 说明任务随重启中断（后台 promise 已死），明确报错别让客户端干等。
+        const row = await db.getAgentChatJobRow(input.jobId).catch(() => undefined);
+        if (!row || row.userId !== ctx.user.id) return { state: "missing" as const };
+        void db.deleteAgentChatJobRow(input.jobId).catch(() => {}); // 一次性消费，取走即删
+        clearPendingByJobId(input.jobId);
+        if (row.status === "done" && row.result) {
+          return { state: "done" as const, result: row.result as Awaited<ReturnType<typeof runAgentChat>> };
+        }
+        if (row.status === "error") return { state: "error" as const, error: row.error || "规划失败" };
+        return { state: "error" as const, error: "服务重启导致本次规划中断，请重新发送" };
+      }
       // #136 running 时带上阶段与耗时，前端等待行显示「模型规划中 · 已 Ns」而非干等。
       if (!j.done) return { state: "running" as const, stage: j.stage, elapsedMs: Date.now() - j.createdAt };
       agentChatJobs.delete(input.jobId);
       clearPendingByJobId(input.jobId); // #251 结果被取走 → 项目级 pending 登记同步清除
+      void db.deleteAgentChatJobRow(input.jobId).catch(() => {}); // #252 持久层行同步删除
       return j.error
         ? { state: "error" as const, error: j.error }
         : { state: "done" as const, result: j.result };

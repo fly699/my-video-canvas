@@ -631,6 +631,13 @@
       "when": 1784900200000,
       "tag": "0089_upload_staging_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "5",
+      "when": 1784900300000,
+      "tag": "0090_agent_chat_jobs",
+      "breakpoints": true
     }
   ]
 }

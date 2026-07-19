@@ -1,4 +1,4 @@
-import { eq, and, or, desc, sql, inArray, isNull, like, count, gte } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray, isNull, like, count, gte, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -122,6 +122,8 @@ import {
   type AiClientSessionRow,
   modelSkills,
   type ModelSkill,
+  agentChatJobRows,
+  type AgentChatJobRow,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
@@ -3484,6 +3486,63 @@ export async function setUserPref(userId: number, prefKey: string, value: unknow
   const db = await getDb();
   if (!db) { if (DEV_MODE) { _devUserPrefs.set(`${userId}:${prefKey}`, value); return; } throw new Error("DB unavailable"); }
   await db.insert(userPrefs).values({ userId, prefKey, value }).onDuplicateKeyUpdate({ set: { value } });
+}
+
+// ── #252 画布助手规划任务持久层（服务重启不丢）────────────────────────────────
+// 内存 agentChatJobs 是快路径，这里只做持久兜底：无 DB（dev bypass）时全部 no-op/空——
+// dev 的续跑由内存版覆盖，语义不变。
+export async function insertAgentChatJobRow(row: { jobId: string; projectId: number; userId: number; prompt: string }): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(agentChatJobRows).values(row);
+}
+
+export async function finishAgentChatJobRow(jobId: string, patch: { result?: unknown; error?: string }): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(agentChatJobRows)
+    .set(patch.error != null ? { status: "error", error: patch.error.slice(0, 8000) } : { status: "done", result: patch.result ?? null })
+    .where(eq(agentChatJobRows.jobId, jobId));
+}
+
+/** json 列跨引擎归一：真 MySQL 的 JSON 类型 mysql2 会自动解析成对象，而 MariaDB 存
+ * longtext 读回是字符串——两种引擎都可能出现，统一在读取处解析（真机 MariaDB 实测踩中）。 */
+function normalizeAgentChatJobRow(row: AgentChatJobRow | undefined): AgentChatJobRow | undefined {
+  if (row && typeof row.result === "string") {
+    try { row = { ...row, result: JSON.parse(row.result) }; } catch { /* 非法 JSON 原样保留 */ }
+  }
+  return row;
+}
+
+export async function getAgentChatJobRow(jobId: string): Promise<AgentChatJobRow | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(agentChatJobRows).where(eq(agentChatJobRows.jobId, jobId)).limit(1);
+  return normalizeAgentChatJobRow(rows[0]);
+}
+
+export async function deleteAgentChatJobRow(jobId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(agentChatJobRows).where(eq(agentChatJobRows.jobId, jobId));
+}
+
+/** 项目最近一条规划任务行（仅本人）——pendingChat 的重启后回退查询。 */
+export async function getLatestAgentChatJobForProject(projectId: number, userId: number): Promise<AgentChatJobRow | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(agentChatJobRows)
+    .where(and(eq(agentChatJobRows.projectId, projectId), eq(agentChatJobRows.userId, userId)))
+    .orderBy(desc(agentChatJobRows.id)).limit(1);
+  return normalizeAgentChatJobRow(rows[0]);
+}
+
+/** 清理超过 maxAgeMs 的任务行（结果一次性消费，久未取走视为弃单）。 */
+export async function sweepAgentChatJobRows(maxAgeMs: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const cutoff = new Date(Date.now() - maxAgeMs);
+  await db.delete(agentChatJobRows).where(lt(agentChatJobRows.createdAt, cutoff));
 }
 
 // ── ComfyUI template analysis (agent planning knowledge) ──────────────────────

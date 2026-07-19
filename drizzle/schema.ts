@@ -343,6 +343,29 @@ export const userPrefs = mysqlTable("user_prefs", {
 export type UserPrefRow = typeof userPrefs.$inferSelect;
 export type InsertUserPref = typeof userPrefs.$inferInsert;
 
+// ── #252 画布助手规划任务落库（服务重启不丢）──────────────────────────────────
+// 内存 agentChatJobs 仍是快路径；此表为持久层：submitChat 落行、完成回写 result、
+// chatStatus / pendingChat 在内存 miss（服务重启过）时回退查库——已完成的结果照样
+// 能取回并应用；running 行且内存无任务 = 重启中断，前端收到明确错误而非干等。
+export const agentChatJobRows = mysqlTable("agent_chat_jobs", {
+  id: int("id").autoincrement().primaryKey(),
+  jobId: varchar("jobId", { length: 64 }).notNull(),
+  projectId: int("projectId").notNull(),
+  userId: int("userId").notNull(),
+  prompt: varchar("prompt", { length: 512 }).notNull().default(""),
+  /** running | done | error */
+  status: varchar("status", { length: 16 }).notNull().default("running"),
+  result: json("result"),
+  error: text("error"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  jobIdUniq: uniqueIndex("agent_chat_jobs_jobid_uniq").on(t.jobId),
+  projectIdx: index("agent_chat_jobs_project_idx").on(t.projectId),
+}));
+
+export type AgentChatJobRow = typeof agentChatJobRows.$inferSelect;
+
 // ── ComfyUI stress-test persistence ───────────────────────────────────────────
 // History: one row per finished stress job (auto-saved by the core when a job
 // reaches completed/cancelled/failed). `result` is the full StressJobView
