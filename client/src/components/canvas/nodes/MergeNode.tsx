@@ -680,8 +680,11 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     <>
     <BaseNode id={id} selected={selected} nodeType="merge" title={data.title} minHeight={200} resizable
       onCancelGenerate={isProcessing ? abandonWait : undefined}
-      heroMedia={/* #105 创意未选中且有成片→英雄区（悬停自动播放；选中走卡体预览避免双播放器；极简形态据此覆盖） */
-      isCreativeMode && !selected && payload.outputUrl ? <WatermarkedVideo block key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)} preload="metadata" className="w-full" style={{ display: "block" }} /> : null}
+      heroMedia={/* #105 创意模式有成片→英雄区（悬停自动播放；极简形态据此覆盖）。
+          #264 后续反馈：选中时也走 hero——与视频节点同款「预览自适应充满节点框」；
+          卡体内预览在创意模式不再渲染（见下方 !isCreativeMode 条件），不会双播放器。
+          选中态带 controls 供播放操控（与 VideoTaskNode hero 同口径）。 */
+      isCreativeMode && payload.outputUrl ? <WatermarkedVideo block key={payload.outputUrl} src={mediaFetchUrl(payload.outputUrl)} controls={!!selected} preload="metadata" className="w-full" style={{ display: "block" }} /> : null}
       onHeaderHoverChange={docks.onHeaderHoverChange}
       leftDock={
         <ReferenceImageStrip
@@ -731,8 +734,11 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         )}
 
         {/* Output video — fills the node height so it scales when the node is
-            resized (was locked at 140px). */}
-        {isDone && payload.outputUrl && (
+            resized (was locked at 140px).
+            #264 后续反馈：创意模式下整块不渲染——成片预览由 hero 英雄区接管（自适应
+            充满节点框，与视频节点一致），随附的「重置」按钮行也一并省去（底部悬浮
+            工具栏已有重置）。非创意模式布局与按钮原样保留，零回归。 */}
+        {isDone && payload.outputUrl && !isCreativeMode && (
           <div className="flex flex-col gap-1.5 flex-1" style={{ minHeight: 0 }}>
             <div className="relative" style={{ flex: 1, minHeight: 0, display: "flex" }}>
               <WatermarkedVideo
@@ -783,8 +789,10 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         {expanded && !isCreativeMode && configBody}
 
         {/* 合并按钮 —— 移出收起区：选中即常显（LibTV 主操作优先）。
-            合并中变为可点的「取消」（对齐 #143：不再是禁用死按钮）。 */}
-        {expanded && (<>
+            合并中变为可点的「取消」（对齐 #143：不再是禁用死按钮）。
+            #264 后续反馈：创意模式下隐藏——底部悬浮工具栏已常驻「合并（→取消）/重置」，
+            卡体内的大按钮成了重复入口还压缩预览空间。非创意模式保留，零回归。 */}
+        {expanded && !isCreativeMode && (<>
         {isProcessing ? (
           <button
             onClick={abandonWait}
