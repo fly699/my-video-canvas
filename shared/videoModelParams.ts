@@ -736,3 +736,19 @@ export function withParamDefaults(provider: string, params: Record<string, unkno
   }
   return merged;
 }
+
+/** #257 视频模型单次生成的时长上限（秒）：duration 参数 select 取最大档、range 取 max；
+ *  无 duration 参数（固定时长模型）或未知 provider 返回 undefined。
+ *  供画布助手快捷设置把「合并短镜/目标时长」的上限直接算成准数注入提示词，
+ *  免得 LLM 自己查表算错（与 clampDurationForProvider 的档位语义同源）。 */
+export function videoDurationCap(provider: string | undefined): number | undefined {
+  if (!provider) return undefined;
+  const d = (PROVIDER_PARAMS[provider] ?? []).find((x) => x.key === "duration");
+  if (!d) return undefined;
+  if (d.type === "select" && d.options?.length) {
+    const nums = d.options.map((o) => Number(o.value)).filter((n) => Number.isFinite(n) && n > 0);
+    return nums.length ? Math.max(...nums) : undefined;
+  }
+  if (d.type === "range") return d.max;
+  return undefined;
+}

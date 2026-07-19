@@ -45,6 +45,16 @@ describe("#141 modelKnowledgeText 按需注入", () => {
     expect(pinned).toBeLessThan(full * 0.5);
   });
 
+  it("#257 锁定条目头部有 ★ 就地标注（约束贴着参数表，不只在清单尾部）", () => {
+    const t = modelKnowledgeText({ pinnedImageModel: IMG, pinnedVideoModel: VID });
+    expect(t).toContain(`★ 用户已锁定本轮图像模型：${IMG}`);
+    expect(t).toContain(`★ 用户已锁定本轮视频模型：${VID}`);
+    // 标注位于该模型完整条目之前
+    expect(t.indexOf(`★ 用户已锁定本轮图像模型：${IMG}`)).toBeLessThan(t.indexOf(`- ${IMG}「`));
+    // 不锁不出现
+    expect(modelKnowledgeText()).not.toContain("★ 用户已锁定");
+  });
+
   it("无效锁定值（拼错/已下架/mock）回退该类别全量，绝不让助手失明", () => {
     expect(modelKnowledgeText({ pinnedImageModel: "no_such_model" })).toBe(modelKnowledgeText());
     expect(modelKnowledgeText({ pinnedVideoModel: "mock" })).toBe(modelKnowledgeText());

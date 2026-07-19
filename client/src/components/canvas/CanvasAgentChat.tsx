@@ -16,6 +16,7 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { AI_TEMPLATE_CATEGORIES, ALL_AI_TEMPLATES, BLANK_TEMPLATE_ID, BLANK_TEMPLATE_LABEL } from "@/lib/aiAssistantTemplates";
 import { IMAGE_MODELS, VIDEO_MODELS, LLM_MODELS } from "@/lib/models";
 import { maxRefImagesForProvider, videoRefCapBadge } from "../../../../shared/videoRefCaps";
+import { videoDurationCap } from "../../../../shared/videoModelParams";
 import { extractFrameMedia } from "../../lib/nodeMedia";
 import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
@@ -259,28 +260,41 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 带 workflowJson，可被 comfyui_workflow 节点引用）。选中 = 只允许助手用这些模板。
   const workflowTemplates = (templatesQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow");
   const chosenWorkflowTpls = workflowTemplates.filter((t) => quickPrefs.workflowTemplateIds.includes(t.id));
+  // #257 提示词优化批①：prefs 分「硬约束（系统逐条校验，违反即拒）/创作偏好」两区提升遵从；
+  // 锁定视频模型时把时长上限算成准数注入（LLM 查表算术是历史拒因）；风格贯穿逐条提示词；
+  // 转场风格同步给 storyboard.transition 倾向；对白语种弱版删除（#145 已是 system 硬规则，
+  // 双份注入措辞不一致且白占 token——dialogueLang 仍作为独立字段传服务端，语义不变）。
   const buildQuickPrefsText = (): string | undefined => {
-    const lines: string[] = [];
-    if (quickPrefs.imageFirst) lines.push("- 【强制·先生图再生视频】每个视频镜头先建 image_gen 图像节点（把镜头画面描述作为它的 prompt），再建 video_task 视频节点并连接 image_gen → video_task 作首帧，严禁 storyboard/prompt/script 直连 video_task 做文生视频。");
-    if (quickPrefs.addMusic) lines.push("- 自动添加 audio 配乐节点并连入 merge 合并节点。");
-    if (quickPrefs.addSubtitle) lines.push("- 自动添加 subtitle 字幕节点（接在视频/合并之后）。");
-    if (quickPrefs.aspect) lines.push(`- 画面比例统一为 ${quickPrefs.aspect}。`);
-    if (quickPrefs.style.trim()) lines.push(`- 整体视觉风格：${quickPrefs.style.trim()}。`);
-    if (quickPrefs.durationSec > 0) lines.push(`- 目标总时长约 ${quickPrefs.durationSec} 秒，据此规划镜头数与每镜时长。`);
+    const hard: string[] = [];  // 会被 agentApply/sanitize 真实校验或确定性强制的条目
+    const soft: string[] = [];  // 创作偏好与写作要求（无程序校验，但必须遵守）
+    // #257 锁定视频模型的单次时长上限（准数）：合并短镜/目标时长两条直接引用，免 LLM 查表。
+    const vidCap = quickPrefs.videoProvider ? videoDurationCap(quickPrefs.videoProvider) : undefined;
+    if (quickPrefs.imageFirst) hard.push("- 【强制·先生图再生视频】每个视频镜头先建 image_gen 图像节点（把镜头画面描述作为它的 prompt），再建 video_task 视频节点并连接 image_gen → video_task 作首帧，严禁 storyboard/prompt/script 直连 video_task 做文生视频。");
+    if (quickPrefs.genNodes.length) hard.push(`- 【强制】生成节点只允许使用：${quickPrefs.genNodes.join(" / ")}；其余生成节点类型（image_gen/video_task/comfyui_image/comfyui_video/comfyui_workflow 中未列出的）一律禁止创建。`);
+    if (quickPrefs.imageModel) hard.push(`- 【强制】图像生成一律使用模型 ${quickPrefs.imageModel}（写入 image_gen.model / storyboard.imageModel）。`);
+    if (quickPrefs.videoProvider) hard.push(`- 【强制】视频生成一律使用模型 ${quickPrefs.videoProvider}（写入 video_task.provider；params 键与取值严格按该模型的参数表${vidCap ? `；该模型单镜最长 ${vidCap}s，duration 不得超过` : ""}）。`);
+    if (quickPrefs.noStoryboard) hard.push("- 【强制·排除分镜节点】禁止创建 storyboard 分镜节点；镜头拆分与每镜画面描述改用 prompt 提示词节点承载（每镜一个 prompt 节点连到该镜的生成节点），链路：script → prompt → 生成节点 → merge。已存在的 storyboard 节点也不要新增连线到新链路。");
+    if (chosenWorkflowTpls.length) hard.push(`- 【强制】comfyui_workflow 节点只允许引用以下模板：${chosenWorkflowTpls.map((t) => `id=${t.id}「${t.label}」`).join("、")}；其它模板一律禁止。`);
+    if (quickPrefs.addMusic) soft.push("- 自动添加 audio 配乐节点并连入 merge 合并节点。");
+    if (quickPrefs.addSubtitle) soft.push("- 自动添加 subtitle 字幕节点（接在视频/合并之后）。");
+    if (quickPrefs.aspect) soft.push(`- 画面比例统一为 ${quickPrefs.aspect}（系统会把比例确定性写入各生成节点的比例字段，你无需在 payload 里逐个补写各族比例字段）。`);
+    // #257 风格贯穿：不再只给一行偏好，明确要求写进每条提示词的风格质感要素（视频五要素之⑤）。
+    if (quickPrefs.style.trim()) soft.push(`- 整体视觉风格：${quickPrefs.style.trim()}。【贯穿要求】每一条图像/视频提示词的「风格质感」要素都必须落这一风格（视频提示词五要素之⑤统一写它），不得只在部分镜头出现或漂移成其它风格。`);
+    if (quickPrefs.durationSec > 0) soft.push(`- 目标总时长约 ${quickPrefs.durationSec} 秒，据此规划镜头数与每镜时长${vidCap ? `。所锁视频模型每镜上限 ${vidCap}s → 至少需要 ${Math.ceil(quickPrefs.durationSec / vidCap)} 个镜头（镜头数 × 每镜时长 ≈ ${quickPrefs.durationSec}s）` : ""}。`);
     // #244 转场风格：dissolve/cinematic 有 agentApply fill-only 确定性兜底（LLM 忘写也生效）；
     // smart 纯靠提示词引导 LLM 按镜头关系差异化写分镜 transition（装配成片逐接缝生效）。
-    if (quickPrefs.transitionStyle === "dissolve") lines.push("- 【转场风格·柔和叠化】若创建 merge 合并节点，设置 transition=\"dissolve\"、transitionDuration=0.35，让镜头间柔和衔接。");
-    if (quickPrefs.transitionStyle === "cinematic") lines.push("- 【转场风格·电影黑场】若创建 merge 合并节点，设置 transition=\"fadeblack\"、transitionDuration=0.6（经黑场过渡，电影感）。");
-    if (quickPrefs.transitionStyle === "smart") lines.push("- 【转场风格·智能匹配】按相邻镜头的叙事关系为每个切点选择转场：同场景连续动作→cut 直切；时间/地点跳转→fadeblack；情绪缓冲/回忆→dissolve；平行叙事切换→smoothleft。有 storyboard 分镜时写在每镜的 transition 字段（装配成片按它逐接缝生效）；直接创建 merge 节点时写 segTransitions 数组（长度=段数-1，值取 none/fade/dissolve/fadeblack/fadewhite/smoothleft/wipe）。");
-    if (quickPrefs.genNodes.length) lines.push(`- 【强制】生成节点只允许使用：${quickPrefs.genNodes.join(" / ")}；其余生成节点类型（image_gen/video_task/comfyui_image/comfyui_video/comfyui_workflow 中未列出的）一律禁止创建。`);
-    if (quickPrefs.imageModel) lines.push(`- 【强制】图像生成一律使用模型 ${quickPrefs.imageModel}（写入 image_gen.model / storyboard.imageModel）。`);
-    if (quickPrefs.videoProvider) lines.push(`- 【强制】视频生成一律使用模型 ${quickPrefs.videoProvider}（写入 video_task.provider；params 键与取值严格按该模型的参数表）。`);
-    if (quickPrefs.noStoryboard) lines.push("- 【强制·排除分镜节点】禁止创建 storyboard 分镜节点；镜头拆分与每镜画面描述改用 prompt 提示词节点承载（每镜一个 prompt 节点连到该镜的生成节点），链路：script → prompt → 生成节点 → merge。已存在的 storyboard 节点也不要新增连线到新链路。");
-    if (quickPrefs.dialogueLang) lines.push(`- 【强制·对白语种】所有对白/旁白/台词/口播文案一律用${quickPrefs.dialogueLang}书写（storyboard.dialogue、脚本台词、字幕文本等人声内容）。`);
-    if (quickPrefs.promptLang) lines.push(`- 【强制·提示词语种】所有喂给生成模型的【画面提示词】一律用${quickPrefs.promptLang}书写（image_gen.prompt、storyboard.promptText、video_task.prompt、comfyui 节点的 prompt 等画面描述提示词）。`);
-    if (quickPrefs.coalesceShots) lines.push("- 【合并短镜·省次数】在不破坏叙事的前提下，把【连续、同场景/同一连续动作】且时长之和 ≤ 所选视频模型单次最长时长（见「云端生成模型清单」里该视频模型 params 的 duration 上限，如 kie_grok_i2v 为 30s）的多个镜头，合并为【一个】 video_task 视频节点一次生成：把这些镜头的画面合成一段按时间推进的连贯提示词（用时间 beat 标注，如「0-6s …；6-12s …；12-18s …」），该节点的 duration 设为合并后的总秒数（不得超过模型上限）。遇明显转场/换场景/换主体就断开、另起一个新节点；无法合并的镜头正常逐个建节点。合并后仍在该节点 description 里逐 beat 分行说明。此举减少生成次数、更省更快，但会牺牲逐镜单独重生成的粒度——务必只合并画面连贯的镜头。");
-    if (chosenWorkflowTpls.length) lines.push(`- 【强制】comfyui_workflow 节点只允许引用以下模板：${chosenWorkflowTpls.map((t) => `id=${t.id}「${t.label}」`).join("、")}；其它模板一律禁止。`);
-    return lines.length ? lines.join("\n") : undefined;
+    // #257 补齐：dissolve/cinematic 同步给 storyboard.transition 倾向——「按镜头表装配」走的是
+    // 逐镜 transition，只约束 merge 全局字段时装配路径会漂回 LLM 自由发挥。
+    if (quickPrefs.transitionStyle === "dissolve") soft.push("- 【转场风格·柔和叠化】若创建 merge 合并节点，设置 transition=\"dissolve\"、transitionDuration=0.35，让镜头间柔和衔接。有 storyboard 分镜时，各镜 transition 字段也统一写 \"dissolve\"（开场收尾可用 fade）——「按镜头表装配」按逐镜 transition 生效，需与整体风格一致。");
+    if (quickPrefs.transitionStyle === "cinematic") soft.push("- 【转场风格·电影黑场】若创建 merge 合并节点，设置 transition=\"fadeblack\"、transitionDuration=0.6（经黑场过渡，电影感）。有 storyboard 分镜时，开场收尾镜 transition 写 \"fade\"、主要场景切换写 \"fadeblack\"、同场景连续动作可 cut——装配路径按逐镜 transition 生效。");
+    if (quickPrefs.transitionStyle === "smart") soft.push("- 【转场风格·智能匹配】按相邻镜头的叙事关系为每个切点选择转场：同场景连续动作→cut 直切；时间/地点跳转→fadeblack；情绪缓冲/回忆→dissolve；平行叙事切换→smoothleft。有 storyboard 分镜时写在每镜的 transition 字段（装配成片按它逐接缝生效）；直接创建 merge 节点时写 segTransitions 数组（长度=段数-1，值取 none/fade/dissolve/fadeblack/fadewhite/smoothleft/wipe）。");
+    if (quickPrefs.promptLang) soft.push(`- 【强制·提示词语种】所有喂给生成模型的【画面提示词】一律用${quickPrefs.promptLang}书写（image_gen.prompt、storyboard.promptText、video_task.prompt、comfyui 节点的 prompt 等画面描述提示词）。`);
+    if (quickPrefs.coalesceShots) soft.push(`- 【合并短镜·省次数】在不破坏叙事的前提下，把【连续、同场景/同一连续动作】且时长之和 ≤ ${vidCap ? `${vidCap} 秒（所锁视频模型 ${quickPrefs.videoProvider} 的单次生成上限）` : "所选视频模型单次最长时长（见「云端生成模型清单」里该视频模型 params 的 duration 上限）"}的多个镜头，合并为【一个】 video_task 视频节点一次生成：把这些镜头的画面合成一段按时间推进的连贯提示词（用时间 beat 标注，如「0-6s …；6-12s …；12-18s …」），该节点的 duration 设为合并后的总秒数（不得超过上限）。遇明显转场/换场景/换主体就断开、另起一个新节点；无法合并的镜头正常逐个建节点。合并后仍在该节点 description 里逐 beat 分行说明。此举减少生成次数、更省更快，但会牺牲逐镜单独重生成的粒度——务必只合并画面连贯的镜头。`);
+    if (!hard.length && !soft.length) return undefined;
+    const parts: string[] = [];
+    if (hard.length) parts.push(`【硬约束——系统会对操作逐条校验，违反的 create/update 会被直接拒绝并触发重规划，务必首轮就做对】\n${hard.join("\n")}`);
+    if (soft.length) parts.push(`【创作偏好与写作要求——同样必须遵守】\n${soft.join("\n")}`);
+    return parts.join("\n");
   };
   const scrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
