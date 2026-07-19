@@ -39,6 +39,7 @@ import { downloadMedia } from "../../../lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
 import { buildPortraitPrompt, PORTRAIT_ASPECT } from "@/lib/characterPortrait";
+import { multiAngleResultPatch, MULTI_ANGLE_IDENTITY_CLAUSE } from "@/lib/characterMultiAngle";
 import { detectUpstreamImagesExpanded } from "@/lib/comfyWorkflowParams";
 
 interface Props {
@@ -274,6 +275,13 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     const preset = getGridPreset("turnaround")!;
     const subject = charPromptText.trim() || [payload.name, payload.appearance, payload.outfit, payload.role].filter(Boolean).join(", ");
     if (!subject) { toast.error("请先填写角色外貌 / 服装等描述"); return; }
+    // #262 主参考图（定妆照/上传主图）在整个流程里的双重角色：
+    //  ① 生成端：作为参考图传给模型（云端自动切 edit/i2i 管线、本地走 img2img），并给
+    //     提示词追加「以参考图角色为准」的身份约束句——不点名时文字描述往往压过图像
+    //     身份，产出与定妆照无关的人（用户实拍翻车场景）。
+    //  ② 落地端：主图绝不覆盖，三视图切片进备用视角（multiAngleResultPatch 统一口径）。
+    const mainRef = payload.referenceImageUrl?.trim();
+    const gridPrompt = buildGridPrompt(subject, preset) + (mainRef ? MULTI_ANGLE_IDENTITY_CLAUSE : "");
     setMultiAngleBusy(true);
     try {
       let gridUrl = "";
@@ -282,19 +290,18 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         // 故无图时回落 txt2img）
         const ckpt = loadComfyCkpt();
         if (!ckpt) { toast.error("本地 ComfyUI 需先选择 checkpoint 模型"); setMultiAngleBusy(false); return; }
-        const ref = payload.referenceImageUrl?.trim();
         const gen = await maComfyMut.mutateAsync({
           nodeId: id, projectId: data.projectId, ckpt,
           customBaseUrl: loadComfyBase() || undefined,
-          workflowTemplate: ref ? "img2img" : "txt2img",
-          prompt: buildGridPrompt(subject, preset).slice(0, 2000),
-          ...(ref ? { referenceImageUrl: ref, denoise: 0.75 } : {}),
+          workflowTemplate: mainRef ? "img2img" : "txt2img",
+          prompt: gridPrompt.slice(0, 2000),
+          ...(mainRef ? { referenceImageUrl: mainRef, denoise: 0.75 } : {}),
         });
         gridUrl = gen.url || "";
       } else {
         const gen = await maGenMut.mutateAsync({
-          prompt: buildGridPrompt(subject, preset),
-          ...(payload.referenceImageUrl?.trim() ? { referenceImageUrl: payload.referenceImageUrl.trim() } : {}),
+          prompt: gridPrompt,
+          ...(mainRef ? { referenceImageUrl: mainRef } : {}),
           aspectRatio: preset.sheetAspect,
           poyoAspectRatio: preset.sheetAspect,
           reveAspectRatio: preset.sheetAspect,
@@ -306,13 +313,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       if (!gridUrl) { toast.error("三视图生成失败：未返回图像"); setMultiAngleBusy(false); return; }
       const sliced = await maSliceMut.mutateAsync({ imageUrl: gridUrl, rows: preset.rows, cols: preset.cols, projectId: data.projectId });
       if (sliced.urls.length < 1) { toast.error("切分失败：未产生子图"); setMultiAngleBusy(false); return; }
-      const [front, ...rest] = sliced.urls;
-      updateNodeData(id, {
-        referenceImageUrl: front,
-        referenceStorageKey: undefined,
-        additionalImageUrls: rest.slice(0, MAX_ADDITIONAL_IMAGES),
-      });
-      toast.success(`已生成多视角参考（${sliced.urls.length} 张：正面/侧面/背面）`);
+      // #262 落地：有定妆照→主图不动、切片进备用；无主图→维持旧行为（front 设主图）。
+      updateNodeData(id, multiAngleResultPatch(payload, sliced.urls, MAX_ADDITIONAL_IMAGES));
+      toast.success(mainRef
+        ? `已按主参考图生成 ${sliced.urls.length} 张多视角（正/侧/背），已放入备用视角，定妆照保持为主图`
+        : `已生成多视角参考（${sliced.urls.length} 张：正面/侧面/背面）`);
     } catch (err) {
       toast.error("多视角生成失败：" + (err instanceof Error ? err.message : String(err)));
     } finally {
