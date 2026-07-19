@@ -37,7 +37,12 @@ export function LLMModelPicker({ value, onChange, disabled, filter }: Props) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [btnRect, setBtnRect] = useState<DOMRect | null>(null);
-  const current = [...selfHosted, ...ALL_LLM_MODELS].find((m) => m.id === value) ?? ALL_LLM_MODELS[0];
+  // #249 未登记模型的显示兜底：当前值不在清单（如出厂默认 claude-local:opus 但管理后台
+  // 还没登记该自建模型）时按 id 构造展示项，而不是误显示成清单第一个模型。
+  const current = [...selfHosted, ...ALL_LLM_MODELS].find((m) => m.id === value)
+    ?? (value?.toLowerCase().startsWith("claude-local")
+      ? { id: value, label: `本机 Claude${value.includes(":") ? ` · ${value.split(":")[1]}` : ""}`, short: "本机Claude", provider: "本机", tag: "桥接", color: "#d97757", costNote: undefined as string | undefined }
+      : ALL_LLM_MODELS[0]);
 
   return (
     <>

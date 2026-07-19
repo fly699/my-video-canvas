@@ -203,7 +203,43 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     try { const s = localStorage.getItem("avc:canvasAgent:qpPresets"); if (s) return JSON.parse(s) as QpPreset[]; } catch { /* ignore */ }
     return [];
   });
-  useEffect(() => { try { localStorage.setItem("avc:canvasAgent:qpPresets", JSON.stringify(qpPresets)); } catch { /* quota */ } }, [qpPresets]);
+  // #249 预设/快捷设置/规划模型随账号持久化：服务端（userPrefs KV）为权威、跨设备一致；
+  // localStorage 只作本地缓存与「老用户首次迁移」来源。serverSnap 记服务端已知值的 JSON，
+  // 防「载入 setState → 保存 effect 又回写服务端」的空转循环。
+  const prefsSetMut = trpc.userPrefs.set.useMutation();
+  const serverSnap = useRef<{ presets?: string; quick?: string; model?: string }>({});
+  const presetsPref = trpc.userPrefs.get.useQuery({ key: "canvasAgentPresets" }, { staleTime: Infinity, refetchOnWindowFocus: false });
+  const quickPref = trpc.userPrefs.get.useQuery({ key: "canvasAgentQuick" }, { staleTime: Infinity, refetchOnWindowFocus: false });
+  const modelPref = trpc.userPrefs.get.useQuery({ key: "canvasAgentModel" }, { staleTime: Infinity, refetchOnWindowFocus: false });
+  useEffect(() => {
+    if (!presetsPref.isSuccess) return;
+    const v = presetsPref.data.value;
+    if (Array.isArray(v)) { serverSnap.current.presets = JSON.stringify(v); setQpPresets(v as QpPreset[]); }
+    else if (qpPresets.length) { serverSnap.current.presets = JSON.stringify(qpPresets); prefsSetMut.mutate({ key: "canvasAgentPresets", value: qpPresets }); } // 首次迁移本地→账号
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetsPref.isSuccess]);
+  useEffect(() => {
+    if (!quickPref.isSuccess) return;
+    const v = quickPref.data.value;
+    if (v && typeof v === "object" && !Array.isArray(v)) { serverSnap.current.quick = JSON.stringify(v); setQuickPrefs({ ...QP_DEFAULT, ...(v as Partial<QuickPrefs>) }); }
+    else { serverSnap.current.quick = JSON.stringify(quickPrefs); prefsSetMut.mutate({ key: "canvasAgentQuick", value: quickPrefs }); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickPref.isSuccess]);
+  useEffect(() => {
+    if (!modelPref.isSuccess) return;
+    const v = modelPref.data.value;
+    if (typeof v === "string" && v) { serverSnap.current.model = v; setModel(v as LLMModelId); }
+    else { serverSnap.current.model = model; prefsSetMut.mutate({ key: "canvasAgentModel", value: model }); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelPref.isSuccess]);
+  useEffect(() => {
+    try { localStorage.setItem("avc:canvasAgent:qpPresets", JSON.stringify(qpPresets)); } catch { /* quota */ }
+    const j = JSON.stringify(qpPresets);
+    if (!presetsPref.isSuccess || j === serverSnap.current.presets) return;
+    const t = setTimeout(() => { serverSnap.current.presets = j; prefsSetMut.mutate({ key: "canvasAgentPresets", value: qpPresets }); }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qpPresets]);
   const [renamingPreset, setRenamingPreset] = useState<string | null>(null);
   const savePreset = () => {
     if (qpPresets.length >= 12) { toast.error("预设最多 12 套（可删除不用的再存）"); return; }
@@ -405,9 +441,23 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     return () => window.removeEventListener("avc:agent-history-updated", onRemote);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, saveHistoryMut.isPending, projectId]);
-  useEffect(() => { try { localStorage.setItem("avc:canvasAgent:model", model); } catch { /* quota */ } }, [model]);
+  useEffect(() => {
+    try { localStorage.setItem("avc:canvasAgent:model", model); } catch { /* quota */ }
+    // #249 随账号：模型选择防抖回写服务端（载入回灌的相同值被 serverSnap 挡掉）。
+    if (!modelPref.isSuccess || model === serverSnap.current.model) return;
+    const t = setTimeout(() => { serverSnap.current.model = model; prefsSetMut.mutate({ key: "canvasAgentModel", value: model }); }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model]);
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:template", template); } catch { /* quota */ } }, [template]);
-  useEffect(() => { try { localStorage.setItem("avc:canvasAgent:prefs", JSON.stringify(quickPrefs)); } catch { /* quota */ } }, [quickPrefs]);
+  useEffect(() => {
+    try { localStorage.setItem("avc:canvasAgent:prefs", JSON.stringify(quickPrefs)); } catch { /* quota */ }
+    const j = JSON.stringify(quickPrefs);
+    if (!quickPref.isSuccess || j === serverSnap.current.quick) return;
+    const t = setTimeout(() => { serverSnap.current.quick = j; prefsSetMut.mutate({ key: "canvasAgentQuick", value: quickPrefs }); }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickPrefs]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [turns, busy]);
   // AI 客户端「进入画布并发送至画布助手」：进入本画布（挂载）或收到实时事件时，把待填文本灌进输入框、
   // 展开面板、聚焦（只填不自动发送，用户可再改）。仅消费属于本 projectId 的待填内容。
