@@ -63,6 +63,8 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "atmosphere", type: "string", desc: "氛围（场景），如 阴郁压抑/明快温暖" },
       { name: "timeOfDay", type: "string", desc: "时间（场景），如 黄昏/深夜/清晨" },
       { name: "notes", type: "string", desc: "补充备注（通用）" },
+      // #260 附件即可引用：用户附了本人/场景的参考图时可直接作为角色主体图（锁脸/锁场景）。
+      { name: "referenceImageUrl", type: "string", desc: '主体参考图（锁脸/锁场景）。【只能】写用户附件占位符，如 "{{ref1}}"；禁止编造 URL（非占位符值会被剥除）' },
     ],
   },
   {
@@ -87,6 +89,8 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "imageModel", type: "string", desc: "关键帧生成用图像模型 id（见「云端生成模型清单·图像模型」，勿编造）" },
       { name: "imageResolution", type: "string", desc: "kie 图像分辨率档，如 1K/2K/4K（逐档计价，按模型支持档位夹取）" },
       { name: "skipAutoImage", type: "boolean", desc: "true=分镜仅作镜头表数据行：「运行全部」不为它兜底生关键帧图、预算不计入。分镜已连下游 image_gen 出图工位时系统自动跳过（无需设置）；仅『分镜独立出图但想暂停』时才设 true" },
+      // #260 附件即可引用：某镜以用户附件为参考画面（构图/风格/主体基准）时写占位符。
+      { name: "referenceImageUrl", type: "string", desc: '该镜参考图。【只能】写用户附件占位符，如 "{{ref1}}"；禁止编造 URL（非占位符值会被剥除）' },
     ],
   },
   {
@@ -111,6 +115,9 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "imageResolution", type: "string", desc: "kie 图像分辨率档，如 1K/2K/4K（逐档计价，按模型支持档位夹取）" },
       { name: "seed", type: "number", desc: "随机种子（可选；同角色跨镜锁同一 seed 可提升一致性）" },
       { name: "batchSize", type: "number", desc: "出图张数（仅部分模型生效：hf_soul_standard 支持 1/4；kie/poyo 的 Grok Imagine 每次固定返回一组约 6 张候选、按次计费，张数不可控，设了也无效）" },
+      // #260 附件即可引用：值被 sanitize 严格限定为 {{refN}} 占位符（其余值静默剥除），
+      // 应用层确定性替换为附件真实地址——LLM 永远不接触/编造 URL。
+      { name: "referenceImageUrl", type: "string", desc: '参考图（图生图输入）。【只能】写用户附件占位符，如 "{{ref1}}"（编号见「用户附带的参考附件」清单，原样含双花括号）；禁止编造 URL 或写任何其它值（会被剥除）' },
     ],
   },
   {
@@ -152,6 +159,8 @@ export const AGENT_NODE_CATALOG: AgentNodeSpec[] = [
       { name: "provider", type: "string", desc: "视频模型 id（见「云端生成模型清单·视频模型」，勿编造；不设则用节点默认。选型看清单的能力标签：T2V=文生、I2V=图生需上游图）" },
       { name: "duration", type: "number", desc: "单镜时长（秒）；会写入所选视频模型的时长参数并按其档位夹取。连了分镜时也会自动继承分镜的 duration，故通常无需显式设" },
       { name: "params", type: "object", desc: '视频模型专属参数对象，如 {"aspect_ratio":"16:9","resolution":"720p"}。设比例/分辨率/模式用这里；可用键与取值【严格】按「云端生成模型清单·视频模型」中该 provider 的参数表（各模型键名/枚举档不同，清单外的键会被丢弃）' },
+      // #260 附件即可引用（与 image_gen 同机制）：仅 {{refN}} 占位符，应用层确定性替换。
+      { name: "referenceImageUrl", type: "string", desc: '首帧参考图（I2V 输入；所选模型须吃图）。【只能】写用户附件占位符，如 "{{ref1}}"；禁止编造 URL（非占位符值会被剥除）。有上游图像节点连线时无需设此字段' },
     ],
   },
   {
@@ -407,10 +416,24 @@ export function sanitizeOperationDetailed(
   if (!raw || typeof raw !== "object") return { drop: "无法识别的操作（非对象）" };
   const o = raw as Record<string, unknown>;
   const op = o.op;
-  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete" && op !== "canvas") return { drop: `未知的操作类型「${String(op)}」` };
+  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete" && op !== "canvas" && op !== "library") return { drop: `未知的操作类型「${String(op)}」` };
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
   // note 是给人看的一句话理由，行内展示——超长（LLM 跑偏）截到 120 字防撑爆消息存储。
   const noteStr = (v: unknown) => { const t = str(v); return t && t.length > 120 ? t.slice(0, 120) + "…" : t; };
+
+  // #260 附件入库操作（「将此图加入角色库，名称为李宁」）：三字段全部严格校验——
+  // libraryKind 白名单、name 非空 ≤120（与 characterLibrary.create 的 zod 上限一致）、
+  // sourceRef【只接受】{{refN}} 附件占位符（真实 URL 由客户端应用层确定性替换后调用
+  // 入库接口；LLM 写任何非占位符值一律丢弃，防编造 URL / 防把画布里无关地址塞进库）。
+  if (op === "library") {
+    const kind = str(o.libraryKind);
+    if (kind !== "person" && kind !== "scene") return { drop: `入库类型必须是 person（角色库）或 scene（场景库），收到「${String(o.libraryKind)}」` };
+    const name = str(o.name)?.trim();
+    if (!name || name.length > 120) return { drop: "入库操作缺少有效名称（1-120 字）" };
+    const src = str(o.sourceRef);
+    if (!src || !/^\{\{ref\d+\}\}$/.test(src)) return { drop: `入库操作的 sourceRef 只能是附件占位符（如 {{ref1}}），收到「${String(o.sourceRef)}」` };
+    return { op: { op: "library", libraryKind: kind, name, sourceRef: src, note: noteStr(o.note) } };
+  }
 
   // #112 画布级动作：白名单校验 action，其余字段一律剥除（无 payload/ref 概念）。
   if (op === "canvas") {
@@ -435,6 +458,10 @@ export function sanitizeOperationDetailed(
         if (!allowed.has(k)) continue;
         // object 型字段（如 video_task.params）必须是纯对象——字符串/数组会破坏节点参数面板。
         if (k === "params" && (typeof v !== "object" || v === null || Array.isArray(v))) continue;
+        // #260 附件引用字段值锁死：referenceImageUrl【只接受】{{refN}} 附件占位符——
+        // 真实地址由客户端应用层替换写入；LLM 写 http/data/编造串一律静默剥除（保住整个
+        // create，不因一个坏引用毁掉节点），防幻觉 URL 落进节点被生成平台拉取报错。
+        if (k === "referenceImageUrl" && !(typeof v === "string" && /^\{\{ref\d+\}\}$/.test(v))) continue;
         payload[k] = v;
       }
     }
@@ -486,6 +513,9 @@ export function sanitizeOperationDetailed(
     const payload: Record<string, unknown> = {};
     if (o.payload && typeof o.payload === "object") {
       for (const [k, v] of Object.entries(o.payload as Record<string, unknown>)) {
+        // #260 与 create 同口径：update 路径的 referenceImageUrl 也只接受附件占位符——
+        // 尤其防「增量编辑时 LLM 把画布摘要里看不到的参考图字段用编造 URL 回写」。
+        if (k === "referenceImageUrl" && !(typeof v === "string" && /^\{\{ref\d+\}\}$/.test(v))) continue;
         if (ALL_SPEC_FIELDS.has(k)) payload[k] = v;
       }
     }

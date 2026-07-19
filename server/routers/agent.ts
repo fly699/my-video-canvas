@@ -572,8 +572,12 @@ ${ctxBudget.graphSummary || "（空画布）"}${input.prefs?.trim() ? `\n\n# 用
         (a.mimeType ?? "").toLowerCase().startsWith("image/") || /^data:image\//i.test(a.url);
       const imageAtts = attachments.filter(isImageAtt);
       const docAtts = attachments.filter((a) => !isImageAtt(a));
+      // #260 附件即可引用：图片附件按【消息中的图片顺序】编号 ref1..refN（客户端替换时
+      // 用同一规则构建映射，两端编号必须一致——都是「过滤出图片后按序」）。LLM 只写
+      // {{refN}} 占位符，真实 URL 由客户端应用层确定性替换；sanitize 会剥除一切非占位符值。
+      const attachRefList = imageAtts.map((a, i) => `- {{ref${i + 1}}} = 第 ${i + 1} 张参考图${a.name ? `「${a.name}」` : ""}`).join("\n");
       const attachmentHint = attachments.length
-        ? `\n\n# 用户附带的参考附件（重要）\n${[imageAtts.length ? `${imageAtts.length} 张参考图` : "", docAtts.length ? `${docAtts.length} 份参考文档` : ""].filter(Boolean).join("、")}已随本条消息提供。请据此规划画面风格/构图/角色外观/分镜与文案。注意：你无法把二进制图片直接写进节点，只能据图产出对应的提示词、参数与节点结构（如据参考图写 promptText/appearance）；若用户要把某张图当作某节点的输入素材，提示他用「素材节点」上传后连线。`
+        ? `\n\n# 用户附带的参考附件（重要）\n${[imageAtts.length ? `${imageAtts.length} 张参考图` : "", docAtts.length ? `${docAtts.length} 份参考文档` : ""].filter(Boolean).join("、")}已随本条消息提供。请据此规划画面风格/构图/角色外观/分镜与文案。${imageAtts.length ? `\n【附件引用清单】\n${attachRefList}\n【附件即可被节点引用】需要把某张参考图直接作为节点的输入图时，在该节点 payload 的 referenceImageUrl 字段写对应占位符（原样含双花括号，如 "{{ref1}}"）——系统会在应用时替换为真实地址。可用于：image_gen（图生图参考）、video_task（首帧，所选模型须吃图）、character（角色/场景主体图锁脸）、storyboard（该镜参考画面）。同一张图可在多个节点引用同一占位符；【严禁】编造 URL 或写清单外的编号（会被剥除）。\n【附件入库】用户要求把附件图存入角色库/场景库并命名时（如「将此图加入角色库，名称为李宁」「加入场景库名为足球场」），输出入库操作：{"op":"library","libraryKind":"person"或"scene","name":"用户指定的名称原文","sourceRef":"{{ref1}}"}——person=人物角色、scene=场景；入库成功后用户即可在后续对话用 @名称 引用；同时不必再为它创建画布节点（除非用户另有要求）。` : ""}注意：除上述占位符机制外，你无法把二进制图片直接写进节点；据图写提示词、参数与节点结构（如据参考图写 promptText/appearance）仍是主要方式。`
         : "";
 
       // #211 模型技能注入（默认关 = 空串 = 提示词逐字不变）：开关开启且非 comfyOnly
