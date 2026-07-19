@@ -27,6 +27,15 @@ export const FACTORY_DEFAULT_MODELS: Record<ModelSlot, string> = {
   voiceTranscribe: "whisper-1",
 };
 
+/** #249 出厂「节点类型+槽位」级默认（比类别出厂更细，仅列例外）。
+ *  - agent.llm：画布助手规划默认走本机 Claude 桥接 Opus（用户拍板；需 Max 订阅 +
+ *    管理后台已配桥接）。仅影响规划槽——其它 LLM 槽（脚本/翻译/对话节点）仍走类别默认。
+ *  优先级：项目 perSlot > 项目 category > 系统默认(管理员) > 出厂 perSlot(此表) > 出厂类别
+ *  ——任何显式配置（项目/管理员/用户在 UI 里选过的模型）都盖过这里。 */
+export const FACTORY_SLOT_DEFAULTS: Record<string, string> = {
+  "agent.llm": "claude-local:opus",
+};
+
 /** 项目级「节点默认模型」配置。存于 projects.defaultModels（JSON 列）。 */
 export interface NodeDefaultModelsConfig {
   /** 类别级默认，覆盖出厂默认。 */
@@ -61,7 +70,7 @@ export function resolveNodeModel(
   if (byCategory) return byCategory;
   const bySystem = system?.[slot];
   if (bySystem) return bySystem;
-  return FACTORY_DEFAULT_MODELS[slot];
+  return FACTORY_SLOT_DEFAULTS[slotKey(nodeType, slot)] ?? FACTORY_DEFAULT_MODELS[slot];
 }
 
 /** 解析「类别级」默认（不针对具体节点类型）：用于服务端兜底、以及无 nodeType 上下文处。
