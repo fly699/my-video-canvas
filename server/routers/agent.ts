@@ -263,9 +263,18 @@ type AuthedCtx = TrpcContext & { user: NonNullable<TrpcContext["user"]> };
 type AgentChatJob = { userId: number; createdAt: number; done: boolean; stage?: string; result?: Awaited<ReturnType<typeof runAgentChat>>; error?: string };
 const agentChatJobs = new Map<string, AgentChatJob>();
 const AGENT_JOB_TTL_MS = 30 * 60_000; // 完成后 30 分钟内没被取走（客户端崩了）就清理
+// #251 跨进出画布续跑：按项目记「进行中/已完成未取走」的规划任务。此前 jobId 只在前端
+// 组件 state 里——退出画布即失联，服务端任务白跑、结果 30 分钟后被清。重进画布凭
+// projectId 找回 jobId 接着轮询。内存 Map 与 agentChatJobs 同生命周期（服务重启同丢）。
+const pendingJobByProject = new Map<number, { jobId: string; userId: number; prompt: string }>();
+function clearPendingByJobId(jobId: string): void {
+  pendingJobByProject.forEach((p, projectId) => { if (p.jobId === jobId) pendingJobByProject.delete(projectId); });
+}
 function sweepAgentChatJobs(): void {
   const now = Date.now();
-  agentChatJobs.forEach((j, k) => { if (now - j.createdAt > AGENT_JOB_TTL_MS) agentChatJobs.delete(k); });
+  agentChatJobs.forEach((j, k) => {
+    if (now - j.createdAt > AGENT_JOB_TTL_MS) { agentChatJobs.delete(k); clearPendingByJobId(k); }
+  });
 }
 
 // #136 规划提速：非 comfyOnly 的模板增量分析改为后台执行（不阻塞规划链路）。
@@ -807,10 +816,25 @@ export const agentRouter = router({
       const jobId = `acj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
       const job: AgentChatJob = { userId: ctx.user.id, createdAt: Date.now(), done: false };
       agentChatJobs.set(jobId, job);
+      // #251：登记项目级 pending——用户中途退出画布也能重进后凭 projectId 找回本任务续跑。
+      pendingJobByProject.set(input.projectId, { jobId, userId: ctx.user.id, prompt: (input.message ?? "").slice(0, 300) });
       void runAgentChat(ctx, input, (s) => { job.stage = s; })
         .then((r) => { job.result = r; job.done = true; })
         .catch((e) => { job.error = e instanceof Error ? e.message : String(e); job.done = true; });
       return { jobId };
+    }),
+
+  // #251 跨进出画布续跑：查本项目是否有「进行中/已完成未取走」的规划任务（仅提交者本人可见
+  // ——恢复即会把结果应用到画布并计入其历史，不能替别人续）。job 已被取走/过期则顺带清登记。
+  pendingChat: protectedProcedure
+    .input(z.object({ projectId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      const p = pendingJobByProject.get(input.projectId);
+      if (!p || p.userId !== ctx.user.id) return { job: null };
+      const j = agentChatJobs.get(p.jobId);
+      if (!j) { pendingJobByProject.delete(input.projectId); return { job: null }; }
+      return { job: { jobId: p.jobId, prompt: p.prompt, running: !j.done } };
     }),
 
   // 轮询任务状态；done 后取走即删（结果一次性消费，客户端拿到后自行持久化到会话）。
@@ -823,6 +847,7 @@ export const agentRouter = router({
       // #136 running 时带上阶段与耗时，前端等待行显示「模型规划中 · 已 Ns」而非干等。
       if (!j.done) return { state: "running" as const, stage: j.stage, elapsedMs: Date.now() - j.createdAt };
       agentChatJobs.delete(input.jobId);
+      clearPendingByJobId(input.jobId); // #251 结果被取走 → 项目级 pending 登记同步清除
       return j.error
         ? { state: "error" as const, error: j.error }
         : { state: "done" as const, result: j.result };
