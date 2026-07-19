@@ -715,6 +715,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     const msg = (overrideMsg ?? input).trim() || (files.length ? "请参考附件规划画布。" : "");
     if (!msg || busy) return;
     if (!overrideMsg) { setInput(""); setStaged([]); setAttachErr(""); }
+    setShowQuick(false); // #254 发送指令即自动收回快捷设置面板（设置已随本轮生效，无需占屏）
     // 每条截到 8000（服务端 history zod 上限）——否则发过超长消息后，下一条会整包被 400 拒掉。
     // 交互式规划的多轮决策（4 决策点 ≈ 8-10 条）会顶满 10 条窗口，放宽到 16 条防共识被挤出；
     // 服务端 ctxBudget 仍按总字符预算兜底裁剪，不会撑爆输入。
@@ -784,7 +785,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <Sparkles className="w-4 h-4" style={{ color: accent }} />
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--c-t1)" }}>画布助手</span>
         <div style={{ flex: 1 }} />
-        <div style={{ maxWidth: 150 }}><LLMModelPicker value={model} onChange={setModel} disabled={busy} /></div>
+        {/* #254 选择框加宽 + 显示完整模型名（此前 150px 只放得下缩写，长模型名认不出） */}
+        <div style={{ maxWidth: 240 }}><LLMModelPicker value={model} onChange={setModel} disabled={busy} fullLabel /></div>
         <button
           onClick={() => {
             if (!turns.length) { toast.info("当前已是新对话（暂无历史可清空）"); return; }
