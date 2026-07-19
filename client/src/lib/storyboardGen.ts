@@ -236,11 +236,34 @@ export function clampDurationForProvider(
 }
 
 // ── 装配端：按镜头表收集合并输入（视频段顺序 / 逐切点转场 / 逐段配音）────────────
-/** 分镜 transition → 合并转场映射（cut/match-cut=硬切）。#244 扩含 fadeblack/fadewhite/
- *  smoothleft（未知值仍收敛为 none，旧行为不变）。 */
-export function mapShotTransition(t: string | undefined): MergeSeamTransition {
-  if (t === "fade" || t === "dissolve" || t === "wipe" || t === "fadeblack" || t === "fadewhite" || t === "smoothleft") return t;
-  return "none"; // cut / match-cut / 未设 / 未知
+/** #264 中文/别名 → 标准转场值。画布助手（LLM）或用户偶尔会往分镜 transition 写中文
+ *  （「叠化」「黑场」等），旧映射一律收敛 none → 用户明明写了转场、装配后却全直切。
+ *  只登记语义无歧义的常见叫法，冷僻词仍走未知值路径（回退 fallback）。 */
+const SHOT_TRANSITION_ALIASES: Record<string, MergeSeamTransition> = {
+  "叠化": "dissolve", "溶解": "dissolve", "交叉叠化": "dissolve",
+  "淡入淡出": "fade", "渐隐": "fade", "淡化": "fade",
+  "黑场": "fadeblack", "渐黑": "fadeblack", "闪黑": "fadeblack",
+  "白场": "fadewhite", "渐白": "fadewhite", "闪白": "fadewhite",
+  "擦除": "wipe", "划像": "wipe",
+  "横扫": "smoothleft", "滑动": "smoothleft",
+};
+
+/** 分镜 transition → 合并转场映射。#244 扩含 fadeblack/fadewhite/smoothleft。
+ *
+ *  #264 修复「装配后全直切」——三档语义（fallback 由调用方传合并节点的全局转场）：
+ *   1. 显式硬切（cut / match-cut）→ none：导演点名要硬切，任何全局设置都不覆盖它；
+ *   2. 显式已知转场（含中文别名）→ 用它：分镜逐镜意图最优先；
+ *   3. 【未设置 / 未知值】→ fallback（默认 "none" 保持旧行为）：此前这档被硬收敛为
+ *      none，于是「快捷设置选了柔和叠化 → 全局 transition=dissolve → 一点装配全被
+ *      长度=段数-1 的全 none segTransitions 覆盖成直切」（发送口逐接缝数组优先于
+ *      全局转场，见 videoEditor.mergeVideos 的 advanced 分支）——用户设置第一位被违背。
+ *      现在未指定的接缝跟随用户设的全局转场；全局没设（none）时仍旧全直切，零回归。 */
+export function mapShotTransition(t: string | undefined, fallback: MergeSeamTransition = "none"): MergeSeamTransition {
+  if (t === "cut" || t === "match-cut") return "none";           // 档1：显式硬切
+  if (t === "fade" || t === "dissolve" || t === "wipe" || t === "fadeblack" || t === "fadewhite" || t === "smoothleft") return t; // 档2
+  const alias = SHOT_TRANSITION_ALIASES[(t ?? "").trim()];
+  if (alias) return alias;                                        // 档2（中文别名）
+  return fallback;                                                // 档3：未设 / 未知
 }
 
 export interface AssembledPlan {
@@ -327,14 +350,21 @@ export function assembleFromStoryboards(
   }
   if (entries.length < 2) return { error: "需要至少 2 个已出片、且能回溯到分镜的上游视频节点" };
   entries.sort((a, b) => a.num - b.num);
+  // #264 用户设置第一位：合并节点已设的【全局转场】作为「分镜未指定转场」接缝的回退值。
+  // 此前这些接缝被硬收敛为 none，装配产生的 segTransitions（发送时优先于全局转场）把
+  // 用户设置整体清成直切。全局默认 none 时回退仍是 none——默认直切原则（#147）不变。
+  const mergePayload = byId.get(mergeId)?.data.payload as { transition?: string } | undefined;
+  const gt = mergePayload?.transition;
+  const seamFallback: MergeSeamTransition =
+    gt === "fade" || gt === "dissolve" || gt === "fadeblack" || gt === "fadewhite" || gt === "smoothleft" ? gt : "none";
   return {
     inputVideoUrls: entries.map((x) => x.url),
-    transitions: entries.slice(0, -1).map((x) => mapShotTransition(x.transition)),
+    transitions: entries.slice(0, -1).map((x) => mapShotTransition(x.transition, seamFallback)),
     voiceUrls: entries.map((x) => x.voice),
     sfxUrls: entries.map((x) => x.sfx),
     dialogues: entries.map((x) => x.dialogue),
     voiceDurations: entries.map((x) => x.voiceDur),
     sourceShots: entries.map((x) => ({ sb: x.sbId, vid: x.vidId, num: x.sceneNumber })),
-    shots: entries.map((x) => ({ sceneNumber: x.sceneNumber, hasVoice: !!x.voice, hasSfx: !!x.sfx, transition: mapShotTransition(x.transition) })),
+    shots: entries.map((x) => ({ sceneNumber: x.sceneNumber, hasVoice: !!x.voice, hasSfx: !!x.sfx, transition: mapShotTransition(x.transition, seamFallback) })),
   };
 }

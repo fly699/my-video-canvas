@@ -854,7 +854,9 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
             style={{ ...fieldStyle, width: 110, padding: "7px 6px" }}
           >
             <option value="">转场→</option>
-            {["cut", "dissolve", "fade", "wipe", "match-cut"].map((t) => <option key={t} value={t}>{t}</option>)}
+            {/* #264 补全 #244 扩充的转场档（fadeblack/fadewhite/smoothleft 此前下拉缺失，
+                只能靠助手写入）+ 中文标注。「未设置」时装配会跟随合并节点的全局转场。 */}
+            {[["cut", "cut 硬切"], ["dissolve", "dissolve 叠化"], ["fade", "fade 渐隐"], ["fadeblack", "fadeblack 黑场"], ["fadewhite", "fadewhite 白场"], ["wipe", "wipe 擦除"], ["smoothleft", "smoothleft 横扫"], ["match-cut", "match-cut 匹配剪辑"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         {/* ── Duration slider ── */}
