@@ -337,7 +337,11 @@ export function removeMergeSegmentPatch(p: MergeSegArrays, urls: string[], i: nu
   if (i < 0 || i >= n) return {};
   const newUrls = urls.filter((_, j) => j !== i);
   const prev = p.inputVideoUrls ?? [];
-  const sameList = prev.length === n && prev.every((u, j) => u === urls[j]);
+  // #283 位置对齐视同快照对齐：助手【规划期】写的 segTransitions 没有 URL 快照
+  //（prev 为空）——此时转场数与当前段数吻合即按位置对待，删段照常精确跟随
+  //（此前走保守分支原样保留，长度对不上被发送守卫整体回退成全局转场，用户实报
+  // 「删除某一分镜后转场回退了」）。逐数组的 length 门在下方各自把关。
+  const sameList = (prev.length === n && prev.every((u, j) => u === urls[j])) || prev.length === 0;
   if (!sameList) {
     const patch: MergeSegArrays = { inputVideoUrls: newUrls };
     // prev 仍是新列表前缀（删的是追加段）→ 数组保留；否则（删了 prev 内的段）清转场。
@@ -369,7 +373,8 @@ export function reorderMergeSegmentsPatch(p: MergeSegArrays, urls: string[], fro
   perm.splice(to, 0, moved); // perm[新下标] = 旧下标
   const newUrls = perm.map((j) => urls[j]);
   const prev = p.inputVideoUrls ?? [];
-  const sameList = prev.length === n && prev.every((u, j) => u === urls[j]);
+  // #283 与删除同口径：规划期无快照时按位置对待（见 removeMergeSegmentPatch 注释）。
+  const sameList = (prev.length === n && prev.every((u, j) => u === urls[j])) || prev.length === 0;
   if (!sameList) {
     const patch: MergeSegArrays = { inputVideoUrls: newUrls };
     if (!prevIsAlignedPrefix(newUrls, prev) && Array.isArray(p.segTransitions)) patch.segTransitions = undefined;
@@ -462,14 +467,22 @@ export function assembleFromStoryboards(
   const prevSeg = mergePayload?.segTransitions ?? [];
   const seamKeep = new Map<string, MergeSeamTransition>();
   for (let i = 0; i + 1 < prevUrls.length && i < prevSeg.length; i++) {
-    if (SEAM_OK.has(prevSeg[i])) seamKeep.set(`${prevUrls[i]} ${prevUrls[i + 1]}`, prevSeg[i] as MergeSeamTransition);
+    if (SEAM_OK.has(prevSeg[i])) seamKeep.set(`${prevUrls[i]}\u0000${prevUrls[i + 1]}`, prevSeg[i] as MergeSeamTransition);
   }
+  // #283 位置继承（用户实报「手动装配转场传不过来、必须指挥助手」的根因）：助手在
+  // 【规划期】就把逐缝转场写进合并节点——届时视频尚未出片、inputVideoUrls 快照无从
+  // 写入（没有 URL），上面的 URL 接缝对齐必然落空，手动装配把助手写好的转场整体冲成
+  // 全局回退。此时若旧转场数恰等于装配后的接缝数，按【位置】继承——助手按镜号顺序
+  // 写、装配也按镜号排序，位置语义一致；数量不符则不继承（绝不错位套用）。
+  // 有 URL 快照时仍以内容对齐为准（更精确，重排/删段后依旧安全）。
+  const positional = prevUrls.length === 0 && prevSeg.length === entries.length - 1;
   return {
     inputVideoUrls: entries.map((x) => x.url),
     transitions: entries.slice(0, -1).map((x, i) =>
       x.transition
         ? mapShotTransition(x.transition, seamFallback)
-        : (seamKeep.get(`${x.url} ${entries[i + 1].url}`) ?? mapShotTransition(undefined, seamFallback))),
+        : (seamKeep.get(`${x.url}\u0000${entries[i + 1].url}`)
+          ?? (positional && SEAM_OK.has(prevSeg[i]) ? (prevSeg[i] as MergeSeamTransition) : mapShotTransition(undefined, seamFallback)))),
     voiceUrls: entries.map((x) => x.voice),
     sfxUrls: entries.map((x) => x.sfx),
     dialogues: entries.map((x) => x.dialogue),
