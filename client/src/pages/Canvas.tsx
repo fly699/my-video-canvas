@@ -105,7 +105,7 @@ import { toast } from "sonner";
 import type { NodeType, NodeData, GroupNodeData } from "../../../shared/types";
 import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS, type NodeConfig } from "../lib/nodeConfig";
 import { sortNodeConfigsForPalette } from "../lib/nodeOrder";
-import { estimateCanvasBudget } from "../lib/costEstimate";
+import { buildRunPlanItems, aggregateRunPlan, costEstimateLabel, type RunPlanItem } from "../lib/costEstimate";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { io, type Socket } from "socket.io-client";
 import {
@@ -656,6 +656,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // When set, the run is restricted to exactly these (box-selected) node ids.
   const [pendingRunOnlyIds, setPendingRunOnlyIds] = useState<string[] | null>(null);
   const [runConfirmCountdown, setRunConfirmCountdown] = useState(3);
+  // #276 运行确认弹窗强化：逐节点勾选参与（默认全选=与旧行为一致，零回归）。
+  // runDeselected 记「被取消勾选」的节点 id——默认空集即全选，勾选状态每次打开弹窗重置。
+  // runExpandedTypes 记二级展开的分类（按 nodeType）。用户一旦开始勾选/展开等交互，
+  // 立即停掉倒计时（setRunConfirmCountdown(0)）——正在研究清单的人不该被倒计时催。
+  const [runDeselected, setRunDeselected] = useState<Set<string>>(new Set());
+  const [runExpandedTypes, setRunExpandedTypes] = useState<Set<string>>(new Set());
   const runConfirmOpenRef = useRef(false);
   const runStateRunningRef = useRef(false);
   runStateRunningRef.current = runState.running;
@@ -673,6 +679,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setPendingRunNodeId(startNodeId);
     setPendingRunOnlyIds(onlyIds && onlyIds.length > 0 ? onlyIds : null);
     setRunConfirmCountdown(3);
+    setRunDeselected(new Set()); // #276 每次打开重置为全选
+    setRunExpandedTypes(new Set());
     setShowRunConfirm(true);
   }, []);
 
@@ -4405,33 +4413,69 @@ function CanvasInner({ projectId }: { projectId: number }) {
         <PresentationMode nodes={nodes} onClose={() => setShowPresentation(false)} />
       )}
 
-      {/* ── Run workflow confirmation dialog ── */}
+      {/* ── Run workflow confirmation dialog（#276 重做：分类统计+二级展开+勾选+实时算价）── */}
       {showRunConfirm && (() => {
-        // Single source of truth — what the workflow runner will actually execute.
-        // Keeping this in sync with RUNNABLE_TYPES prevents the dialog from claiming
-        // "N AI nodes will run" for stub/manual-only nodes (pose_control / voice_clone /
-        // lip_sync / avatar) that runWorkflow() refuses to dispatch.
+        // 与运行器严格同源：buildRunPlanItems 只覆盖 RUNNABLE_TYPES 且跳过判定
+        //（disabled/分镜纯镜头表行/角色 fill-only）与 useWorkflowRunner 同口径，
+        // 弹窗展示的就是「本次运行真正会发生什么」。
         const onlySet = pendingRunOnlyIds ? new Set(pendingRunOnlyIds) : null;
         const scopeNodes = onlySet ? nodes.filter(n => onlySet.has(n.id)) : nodes;
-        const aiNodes = scopeNodes.filter(n => RUNNABLE_TYPES.includes(n.data.nodeType as NodeType));
         const totalNodes = scopeNodes.length;
-        // 预估本次消耗（复用 BudgetButton 同源的精算函数，逐节点按当前模型/参数汇总）。
-        const budget = estimateCanvasBudget(
-          scopeNodes.map((n) => ({ id: n.id, data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })),
+        const items = buildRunPlanItems(
+          scopeNodes.map((n) => ({ id: n.id, title: n.data.title, data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })),
           resolveActiveNodeModel as (nt: string, slot: "llm" | "image" | "video") => string,
-          // edges：让「有下游 image_gen 的分镜」按运行器同口径不计价（防 Nano Banana 幻影预算）。
           edges.map((e) => ({ source: e.source, target: e.target })),
         );
+        // 勾选后的实时汇总（默认全选=旧行为）。
+        const totals = aggregateRunPlan(items, runDeselected);
+        const selectableItems = items.filter((i) => i.kind !== "skipped");
+        const selectedIds = selectableItems.filter((i) => !runDeselected.has(i.id)).map((i) => i.id);
+        // 按节点类型分组 + 组内小计；排序：花钱的在前（小计降序）→ 未估价 → 本地/免费 → 全跳过。
+        const groups = new Map<string, RunPlanItem[]>();
+        for (const it of items) { const g = groups.get(it.nodeType); if (g) g.push(it); else groups.set(it.nodeType, [it]); }
+        const kindRank = (its: RunPlanItem[]) =>
+          its.some((i) => i.kind === "priced") ? 0 : its.some((i) => i.kind === "unknown") ? 1 : its.some((i) => i.kind === "local" || i.kind === "free") ? 2 : 3;
+        const groupStat = (t: string, its: RunPlanItem[]) => {
+          const sub = aggregateRunPlan(its, runDeselected);
+          return { type: t, items: its, ...sub, rank: kindRank(its) };
+        };
+        const groupList = Array.from(groups.entries()).map(([t, its]) => groupStat(t, its))
+          .sort((a, b) => a.rank - b.rank || (b.pt + b.cr) - (a.pt + a.cr));
         const kieAmount = kieBalQ.data?.configured ? (kieBalQ.data.creditsAmount ?? null) : null;
         const poyoAmount = poyoBalQ.data?.configured ? (poyoBalQ.data.creditsAmount ?? null) : null;
-        const overKie = kieAmount != null && budget.pt > kieAmount;
-        const overPoyo = poyoAmount != null && budget.cr > poyoAmount;
+        const overKie = kieAmount != null && totals.pt > kieAmount;
+        const overPoyo = poyoAmount != null && totals.cr > poyoAmount;
         const fmtN = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
         const startLabel = onlySet
-          ? `仅运行框选的 ${aiNodes.length} 个节点（不自动带上下游）`
+          ? `仅运行框选的节点（不自动带上下游）`
           : pendingRunNodeId
             ? `从节点「${nodes.find(n => n.id === pendingRunNodeId)?.data.title ?? pendingRunNodeId}」开始执行`
             : "从头执行全部流程";
+        // 用户开始研究/勾选清单 → 立刻停倒计时（不催正在做决定的人）。
+        const stopCd = () => setRunConfirmCountdown(0);
+        const toggleIds = (ids: string[], deselect: boolean) => {
+          stopCd();
+          setRunDeselected((prev) => {
+            const next = new Set(prev);
+            for (const id of ids) { if (deselect) next.add(id); else next.delete(id); }
+            return next;
+          });
+        };
+        const costText = (it: RunPlanItem): string =>
+          it.kind === "priced" && it.est ? costEstimateLabel(it.est)
+          : it.kind === "unknown" ? "未估价"
+          : it.kind === "local" ? "本地"
+          : it.kind === "free" ? "免费"
+          : "跳过";
+        const subText = (g: { pt: number; cr: number; selectedCount: number; unknownCount: number }): string => {
+          const parts: string[] = [];
+          if (g.pt > 0) parts.push(`≈${fmtN(g.pt)} 点`);
+          if (g.cr > 0) parts.push(`≈${fmtN(g.cr)} cr`);
+          if (g.unknownCount > 0) parts.push(`${g.unknownCount} 项未估价`);
+          if (!parts.length) parts.push(g.selectedCount > 0 ? "免费/本地" : "—");
+          return parts.join(" · ");
+        };
+        const confirmDisabled = runConfirmCountdown > 0 || runState.running || selectedIds.length === 0;
         return (
           <div
             style={{
@@ -4445,10 +4489,10 @@ function CanvasInner({ projectId }: { projectId: number }) {
               background: "var(--c-surface)",
               border: "1px solid var(--c-bd2)",
               borderRadius: 16,
-              padding: "28px 32px",
-              width: 380,
+              padding: "24px 26px",
+              width: 480, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto",
               boxShadow: "0 24px 64px oklch(0 0 0 / 0.4)",
-              display: "flex", flexDirection: "column", gap: 16,
+              display: "flex", flexDirection: "column", gap: 13,
             }}>
               {/* Header */}
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -4456,44 +4500,110 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 <span style={{ fontSize: 16, fontWeight: 700, color: "var(--c-text)" }}>确认执行工作流</span>
               </div>
 
-              {/* Info */}
-              <div style={{ fontSize: 13, color: "var(--c-text-2)", lineHeight: 1.65 }}>
+              {/* Info（数量随勾选实时变化） */}
+              <div style={{ fontSize: 13, color: "var(--c-text-2)", lineHeight: 1.6 }}>
                 <div>{startLabel}</div>
-                <div style={{ marginTop: 8 }}>
-                  共 <b style={{ color: "var(--c-text)" }}>{totalNodes}</b> 个节点，
-                  其中 <b style={{ color: "oklch(0.72 0.22 142)" }}>{aiNodes.length}</b> 个 AI 节点将调用大模型接口，消耗相应算力额度。
+                <div style={{ marginTop: 6 }}>
+                  范围内共 <b style={{ color: "var(--c-text)" }}>{totalNodes}</b> 个节点，
+                  已勾选 <b style={{ color: "oklch(0.72 0.22 142)" }}>{totals.selectedCount}</b> / {totals.selectableCount} 个参与运行
+                  {totals.skippedCount > 0 && <span style={{ color: "var(--c-t4)" }}>（另 {totals.skippedCount} 个自动跳过）</span>}。
                 </div>
               </div>
 
-              {/* 预估消耗 vs 余额（复用 BudgetButton 同源精算） */}
-              {(budget.pt > 0 || budget.cr > 0 || budget.runnableCount > 0) && (
+              {/* #276 分类清单：类型行（三态勾选+小计）→ 二级展开逐节点（勾选+模型+单价） */}
+              {groupList.length > 0 && (
                 <div style={{
-                  background: "oklch(0.62 0.2 285 / 0.08)", border: "1px solid oklch(0.62 0.2 285 / 0.28)",
-                  borderRadius: 10, padding: "10px 13px", fontSize: 12.5, lineHeight: 1.7, color: "var(--c-text-2)",
+                  border: "1px solid var(--c-bd2)", borderRadius: 10,
+                  maxHeight: "min(42vh, 380px)", overflowY: "auto",
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ color: "var(--c-t3)" }}>本次预计消耗</span>
-                    {budget.pt > 0 && <b style={{ color: overKie ? "oklch(0.62 0.20 25)" : "oklch(0.78 0.16 285)" }}>≈ ⚡{fmtN(budget.pt)} 点</b>}
-                    {budget.pt > 0 && budget.cr > 0 && <span style={{ color: "var(--c-t4)" }}>·</span>}
-                    {budget.cr > 0 && <b style={{ color: overPoyo ? "oklch(0.62 0.20 25)" : "oklch(0.72 0.16 250)" }}>≈ {fmtN(budget.cr)} cr</b>}
-                    {budget.pt === 0 && budget.cr === 0 && <b style={{ color: "var(--c-t2)" }}>本地/免费</b>}
-                    {budget.approx && <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>（近似）</span>}
-                  </div>
-                  {(kieAmount != null || poyoAmount != null) && (
-                    <div style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 2 }}>
-                      余额 {kieAmount != null && `kie ${fmtN(kieAmount)} 点`}{kieAmount != null && poyoAmount != null && " · "}{poyoAmount != null && `Poyo ${fmtN(poyoAmount)} cr`}
-                    </div>
-                  )}
-                  {(overKie || overPoyo) && (
-                    <div style={{ marginTop: 5, color: "oklch(0.68 0.20 25)", fontWeight: 600 }}>
-                      ⚠️ 预估消耗已超当前余额，运行可能中途失败——请先充值或减少节点。
-                    </div>
-                  )}
-                  {budget.unknownCount > 0 && (
-                    <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 2 }}>{budget.unknownCount} 项未估价（未选模型/无固定价），实际以账单为准。</div>
-                  )}
+                  {groupList.map((g) => {
+                    const cfg = getNodeConfig(g.type as NodeType);
+                    const gSelectable = g.items.filter((i) => i.kind !== "skipped");
+                    const gSelected = gSelectable.filter((i) => !runDeselected.has(i.id));
+                    const allOn = gSelectable.length > 0 && gSelected.length === gSelectable.length;
+                    const expanded = runExpandedTypes.has(g.type);
+                    return (
+                      <div key={g.type} style={{ borderBottom: "1px solid var(--c-bd1)" }}>
+                        {/* 类型行 */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", fontSize: 12.5 }}>
+                          <input
+                            type="checkbox"
+                            checked={allOn}
+                            disabled={gSelectable.length === 0}
+                            ref={(el) => { if (el) el.indeterminate = gSelected.length > 0 && gSelected.length < gSelectable.length; }}
+                            onChange={() => toggleIds(gSelectable.map((i) => i.id), allOn)}
+                            style={{ cursor: gSelectable.length ? "pointer" : "not-allowed", accentColor: cfg.color }}
+                            title={gSelectable.length ? "勾选/取消整类节点" : "该类节点全部自动跳过"}
+                          />
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
+                          <span style={{ fontWeight: 600, color: "var(--c-text)", whiteSpace: "nowrap" }}>{cfg.label}</span>
+                          <span style={{ color: "var(--c-t4)", whiteSpace: "nowrap" }}>{gSelected.length}/{g.items.length}</span>
+                          <span style={{ marginLeft: "auto", color: "var(--c-t3)", whiteSpace: "nowrap" }}>{subText(g)}</span>
+                          <button
+                            onClick={() => { stopCd(); setRunExpandedTypes((prev) => { const n2 = new Set(prev); if (n2.has(g.type)) n2.delete(g.type); else n2.add(g.type); return n2; }); }}
+                            style={{ background: "none", border: "none", color: "var(--c-t3)", cursor: "pointer", fontSize: 12, padding: "0 2px" }}
+                            title={expanded ? "收起" : "展开逐节点明细"}
+                          >{expanded ? "▾" : "▸"}</button>
+                        </div>
+                        {/* 二级：逐节点行 */}
+                        {expanded && g.items.map((it) => {
+                          const skipped = it.kind === "skipped";
+                          const on = !skipped && !runDeselected.has(it.id);
+                          return (
+                            <div key={it.id} style={{
+                              display: "flex", alignItems: "center", gap: 8,
+                              padding: "4px 10px 4px 28px", fontSize: 11.5,
+                              color: skipped ? "var(--c-t4)" : "var(--c-text-2)",
+                              background: "oklch(0.5 0 0 / 0.04)",
+                            }}>
+                              {skipped
+                                ? <span style={{ width: 13, textAlign: "center", flexShrink: 0 }} title={it.skipReason}>⊘</span>
+                                : <input type="checkbox" checked={on} onChange={() => toggleIds([it.id], on)} style={{ cursor: "pointer" }} />}
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textDecoration: skipped || !on ? "line-through" : undefined, opacity: !skipped && !on ? 0.55 : 1 }} title={it.title}>
+                                {it.title}
+                              </span>
+                              {skipped
+                                ? <span style={{ fontSize: 10.5, whiteSpace: "nowrap", maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis" }} title={it.skipReason}>{it.skipReason}</span>
+                                : <>
+                                    {it.modelLabel && <span style={{ fontSize: 10.5, color: "var(--c-t4)", whiteSpace: "nowrap", maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis" }} title={it.modelLabel}>{it.modelLabel}</span>}
+                                    <span style={{ whiteSpace: "nowrap", color: it.kind === "priced" ? "var(--c-t2)" : "var(--c-t4)", minWidth: 44, textAlign: "right" }}>{costText(it)}</span>
+                                  </>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
+
+              {/* 预估消耗 vs 余额（随勾选实时重算） */}
+              <div style={{
+                background: "oklch(0.62 0.2 285 / 0.08)", border: "1px solid oklch(0.62 0.2 285 / 0.28)",
+                borderRadius: 10, padding: "10px 13px", fontSize: 12.5, lineHeight: 1.7, color: "var(--c-text-2)",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ color: "var(--c-t3)" }}>本次预计消耗</span>
+                  {totals.pt > 0 && <b style={{ color: overKie ? "oklch(0.62 0.20 25)" : "oklch(0.78 0.16 285)" }}>≈ ⚡{fmtN(totals.pt)} 点</b>}
+                  {totals.pt > 0 && totals.cr > 0 && <span style={{ color: "var(--c-t4)" }}>·</span>}
+                  {totals.cr > 0 && <b style={{ color: overPoyo ? "oklch(0.62 0.20 25)" : "oklch(0.72 0.16 250)" }}>≈ {fmtN(totals.cr)} cr</b>}
+                  {totals.pt === 0 && totals.cr === 0 && <b style={{ color: "var(--c-t2)" }}>本地/免费</b>}
+                  {totals.approx && <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>（近似）</span>}
+                </div>
+                {(kieAmount != null || poyoAmount != null) && (
+                  <div style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 2 }}>
+                    余额 {kieAmount != null && `kie ${fmtN(kieAmount)} 点`}{kieAmount != null && poyoAmount != null && " · "}{poyoAmount != null && `Poyo ${fmtN(poyoAmount)} cr`}
+                  </div>
+                )}
+                {(overKie || overPoyo) && (
+                  <div style={{ marginTop: 5, color: "oklch(0.68 0.20 25)", fontWeight: 600 }}>
+                    ⚠️ 预估消耗已超当前余额，运行可能中途失败——请先充值或取消勾选部分节点。
+                  </div>
+                )}
+                {totals.unknownCount > 0 && (
+                  <div style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 2 }}>{totals.unknownCount} 项未估价（未选模型/无固定价），实际以账单为准。</div>
+                )}
+              </div>
 
               {/* Warning */}
               <div style={{
@@ -4510,7 +4620,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </div>
 
               {/* Buttons */}
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 2 }}>
                 <button
                   onClick={() => { runConfirmOpenRef.current = false; setShowRunConfirm(false); setRunConfirmCountdown(5); }}
                   style={{
@@ -4522,25 +4632,35 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   取消
                 </button>
                 <button
-                  disabled={runConfirmCountdown > 0 || runState.running}
+                  disabled={confirmDisabled}
                   onClick={() => {
                     runConfirmOpenRef.current = false;
                     setShowRunConfirm(false);
-                    runWorkflow(pendingRunNodeId, { onlyIds: pendingRunOnlyIds ?? undefined });
+                    // 零回归关键：用户没动过勾选（默认全选）时，按旧口径原样调用——
+                    // 保留 startNodeId 的「祖先+后代 DFS」语义；只要用户取消过任一勾选，
+                    // 改传显式 onlyIds（runWorkflow 的 onlyIds 分支：只跑清单、不自动带上下游）。
+                    if (runDeselected.size === 0) {
+                      runWorkflow(pendingRunNodeId, { onlyIds: pendingRunOnlyIds ?? undefined });
+                    } else {
+                      runWorkflow(pendingRunNodeId, { onlyIds: selectedIds });
+                    }
                   }}
                   style={{
                     padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                    background: (runConfirmCountdown > 0 || runState.running)
+                    background: confirmDisabled
                       ? "oklch(0.72 0.22 142 / 0.07)"
                       : "oklch(0.72 0.22 142 / 0.15)",
-                    border: `1px solid oklch(0.72 0.22 142 / ${(runConfirmCountdown > 0 || runState.running) ? "0.2" : "0.5"})`,
-                    color: (runConfirmCountdown > 0 || runState.running) ? "oklch(0.72 0.22 142 / 0.45)" : "oklch(0.72 0.22 142)",
-                    cursor: (runConfirmCountdown > 0 || runState.running) ? "not-allowed" : "pointer",
+                    border: `1px solid oklch(0.72 0.22 142 / ${confirmDisabled ? "0.2" : "0.5"})`,
+                    color: confirmDisabled ? "oklch(0.72 0.22 142 / 0.45)" : "oklch(0.72 0.22 142)",
+                    cursor: confirmDisabled ? "not-allowed" : "pointer",
                     minWidth: 110,
                     transition: "all 0.3s ease",
                   }}
                 >
-                  {runState.running ? "运行中…" : runConfirmCountdown > 0 ? `确认执行 (${runConfirmCountdown}s)` : "确认执行"}
+                  {runState.running ? "运行中…"
+                    : selectedIds.length === 0 ? "未勾选任何节点"
+                    : runConfirmCountdown > 0 ? `确认执行 (${runConfirmCountdown}s)`
+                    : `确认执行 ${totals.selectedCount} 个节点`}
                 </button>
               </div>
             </div>

@@ -15,6 +15,10 @@
 //   approx   — true 表示取近似/中值（标 ≈）
 //   null     — 无法预估（模型页未公布固定价 / 本地免费除外）
 import { IMAGE_MODELS, VIDEO_MODELS } from "./models";
+import { COMFY_LOCAL_MODEL } from "./comfyLocalRoute";
+import { buildCharacterImagePrompt, characterToolkitImageModel } from "./characterPortrait";
+import { RUNNABLE_TYPES } from "./runnableTypes";
+import type { CharacterNodeData } from "../../../shared/types";
 
 export type CostEstimate = {
   credits: number;
@@ -306,15 +310,35 @@ const LOCAL_BUDGET_TYPES = new Set(["comfyui_image", "comfyui_video", "comfyui_w
  *  `resolveModel(nodeType, slot)` 用于补全「节点未显式存模型、运行时取默认模型」的情形
  *  （分镜/图像/视频任务都可能不在 payload 里存模型，而用 resolveActiveNodeModel 的默认）——
  *  传入后这些节点不再被记为「未估价」。调用方（BudgetButton/AgentNode）传 resolveActiveNodeModel。 */
+type ModelResolver = (nodeType: string, slot: "llm" | "image" | "video") => string | undefined;
+
+const vLabel = (v: string) => VIDEO_MODELS.find((m) => m.value === v)?.label ?? v;
+const iLabel = (v: string) => IMAGE_MODELS.find((m) => m.value === v)?.label ?? v;
+
+/** #275 角色/场景节点的运行决策——运行器执行、估价汇总、运行确认弹窗三处共用的
+ *  单一事实源（保证「估价的模型 == 实际生成的模型」「估价跳过 == 运行跳过」）。
+ *  fill-only 语义：已有主参考图绝不覆盖、没有可用描述绝不烧空提示词。
+ *  模型优先级：角色卡「生成模型」（localStorage 工具箱模型，用户显式选择第一位）
+ *  > resolveModel("character","image")（项目/系统生图默认）。 */
+export function characterRunPlan(
+  p: Record<string, unknown>,
+  resolveModel?: ModelResolver,
+): { skip?: string; model: string } {
+  if (String(p.referenceImageUrl ?? "").trim()) return { skip: "已有主参考图（仅补缺，跳过生成）", model: "" };
+  if (!buildCharacterImagePrompt(p as unknown as CharacterNodeData)) {
+    const isScene = String(p.characterKind ?? "person") === "scene";
+    return { skip: isScene ? "未填写场景描述，无法生成场景图" : "未填写外貌/服装等描述，无法生成定妆照", model: "" };
+  }
+  return { model: characterToolkitImageModel() || resolveModel?.("character", "image") || "" };
+}
+
 export function estimateCanvasBudget(
   nodes: BudgetNode[],
-  resolveModel?: (nodeType: string, slot: "llm" | "image" | "video") => string | undefined,
+  resolveModel?: ModelResolver,
   edges?: BudgetEdge[],
 ): CanvasBudget {
   const map = new Map<string, CanvasBudgetLine>();
   let totPt = 0, totCr = 0, approx = false, unknownCount = 0, localCount = 0, runnableCount = 0;
-  const vLabel = (v: string) => VIDEO_MODELS.find((m) => m.value === v)?.label ?? v;
-  const iLabel = (v: string) => IMAGE_MODELS.find((m) => m.value === v)?.label ?? v;
   const add = (key: string, label: string, est: CostEstimate) => {
     if (!est) { unknownCount++; return; }
     if (est.approx) approx = true;
@@ -358,6 +382,18 @@ export function estimateCanvasBudget(
       if (!model || !IMAGE_MODELS.some((m) => m.value === model)) { unknownCount++; continue; }
       const count = model === "hf_soul_standard" ? (Number(p.batchSize) === 4 ? 4 : 1) : 1;
       add(model, iLabel(model), estimateImageCost(model, count, { resolution: p.imageResolution as string | undefined }));
+    } else if (t === "character") {
+      // #275 角色/场景节点纳入运行：按类别生成定妆照(3:4)/场景图(16:9)。
+      // fill-only：已有主参考图或无可用描述 → 运行器跳过，估价同口径不计。
+      const plan = characterRunPlan(p, resolveModel);
+      if (plan.skip) continue;
+      if (plan.model === COMFY_LOCAL_MODEL) { localCount++; continue; }
+      runnableCount++;
+      if (!plan.model) { unknownCount++; continue; }
+      const isScene = String(p.characterKind ?? "person") === "scene";
+      const kindLabel = isScene ? "场景图" : "定妆照";
+      // key 带类别：人物定妆照与场景概念图即使同模型也分行显示（合并会丢掉场景行标签）。
+      add(`character:${isScene ? "scene" : "person"}:${plan.model}`, `${kindLabel} · ${iLabel(plan.model)}`, estimateImageCost(plan.model, 1));
     } else if (t === "audio") {
       runnableCount++;
       const cat = String(p.audioCategory ?? "");
@@ -385,5 +421,137 @@ export function estimateCanvasBudget(
     cr: Math.round(totCr * 10) / 10,
     approx, unknownCount, localCount, runnableCount,
     lines: Array.from(map.values()).sort((a, b) => b.credits - a.credits),
+  };
+}
+
+// ── #276 运行确认弹窗：逐节点运行计划明细 ──────────────────────────────────
+// 与 estimateCanvasBudget 的区别：那个是「整画布预算汇总」（含 audio 等运行器不执行
+// 的计费节点，供 BudgetButton/AgentNode 用）；这里是「本次运行会发生什么」的逐节点
+// 清单——只覆盖 RUNNABLE_TYPES（运行器真正会派发的类型），每个节点给出
+// 参与状态（计价/未估价/本地/免费/跳过）+ 单节点估价 + 跳过原因，供弹窗做
+// 分类统计、二级展开与勾选实时算价。跳过判定与 useWorkflowRunner 严格同口径：
+// disabled、分镜纯镜头表行（skipAutoImage / 有下游 image_gen 工位）、角色 fill-only。
+export type RunPlanKind = "priced" | "unknown" | "local" | "free" | "skipped";
+export type RunPlanItem = {
+  id: string;
+  title: string;
+  nodeType: string;
+  kind: RunPlanKind;
+  /** priced 时该节点的单独估价（unit 点/cr、approx）。 */
+  est?: CostEstimate;
+  /** 参与生成时显示的模型/说明（本地、免费类为口径说明）。 */
+  modelLabel?: string;
+  /** skipped 的原因——运行器会自动跳过，弹窗中不可勾选。 */
+  skipReason?: string;
+};
+type RunPlanNode = { id: string; title: string; data: { nodeType: string; payload?: Record<string, unknown> } };
+
+// 运行器会执行、但不消耗云端点数/积分的类型 → 免费口径说明。
+// prompt 走 LLM 文本调用（按 token 计费但金额极小、无固定价），如实标注而非冒充免费。
+const FREE_RUN_NOTE: Record<string, string> = {
+  prompt: "LLM 文本处理（费用极低，未计价）",
+  clip: "本机 ffmpeg 剪辑（免费）",
+  merge: "本机 ffmpeg 合并（免费）",
+  overlay: "本机 ffmpeg 叠加（免费）",
+  subtitle_motion: "内置转录 + 本机烧录（免费）",
+  smart_cut: "本机分析剪辑（免费）",
+};
+
+export function buildRunPlanItems(
+  nodes: RunPlanNode[],
+  resolveModel?: ModelResolver,
+  edges?: BudgetEdge[],
+): RunPlanItem[] {
+  const typeById = new Map<string, string>();
+  for (const n of nodes) typeById.set(n.id, n.data.nodeType);
+  const hasDownstreamImageGen = (id: string) =>
+    !!edges?.some((e) => e.source === id && typeById.get(e.target) === "image_gen");
+  const items: RunPlanItem[] = [];
+  for (const n of nodes) {
+    const t = n.data.nodeType;
+    if (!(RUNNABLE_TYPES as readonly string[]).includes(t)) continue;
+    const p = (n.data.payload ?? {}) as Record<string, unknown>;
+    const base = { id: n.id, title: n.title, nodeType: t };
+    if (p.disabled === true) {
+      items.push({ ...base, kind: "skipped", skipReason: "已设为「跳过执行」（右键节点可恢复）" });
+    } else if (t === "comfyui_image" || t === "comfyui_video" || t === "comfyui_workflow") {
+      items.push({ ...base, kind: "local", modelLabel: "自建 ComfyUI（免云端积分）" });
+    } else if (t === "subtitle") {
+      items.push({ ...base, kind: "local", modelLabel: "内置转录（免费）" });
+    } else if (FREE_RUN_NOTE[t]) {
+      items.push({ ...base, kind: "free", modelLabel: FREE_RUN_NOTE[t] });
+    } else if (t === "video_task") {
+      const provider = String(p.provider ?? resolveModel?.("video_task", "video") ?? "");
+      const est = provider ? estimateVideoCost(provider, p) : null;
+      items.push(provider
+        ? { ...base, kind: est ? "priced" : "unknown", est: est ?? undefined, modelLabel: vLabel(provider) }
+        : { ...base, kind: "unknown", modelLabel: "未选模型" });
+    } else if (t === "image_gen") {
+      const model = String(p.model ?? resolveModel?.("image_gen", "image") ?? "");
+      if (!model) { items.push({ ...base, kind: "unknown", modelLabel: "未选模型" }); continue; }
+      if (model === COMFY_LOCAL_MODEL) { items.push({ ...base, kind: "local", modelLabel: "本地 ComfyUI（免云端积分）" }); continue; }
+      const count = Math.max(1, Number(p.imageN ?? p.batchSize ?? p.fluxNumImages ?? 1) || 1);
+      const est = estimateImageCost(model, count, { resolution: p.imageResolution as string | undefined });
+      items.push({ ...base, kind: est ? "priced" : "unknown", est: est ?? undefined, modelLabel: `${iLabel(model)}${count > 1 ? ` ×${count}` : ""}` });
+    } else if (t === "storyboard") {
+      if (p.skipAutoImage === true) {
+        items.push({ ...base, kind: "skipped", skipReason: "已关闭自动生图（纯镜头表行）" });
+      } else if (hasDownstreamImageGen(n.id)) {
+        items.push({ ...base, kind: "skipped", skipReason: "已接出图工位（由下游 image_gen 出图）" });
+      } else {
+        const model = String(p.imageModel ?? p.model ?? resolveModel?.("storyboard", "image") ?? "");
+        if (!model || !IMAGE_MODELS.some((m) => m.value === model)) {
+          items.push({ ...base, kind: "unknown", modelLabel: model || "未选模型" });
+        } else if (model === COMFY_LOCAL_MODEL) {
+          items.push({ ...base, kind: "local", modelLabel: "本地 ComfyUI（免云端积分）" });
+        } else {
+          const count = model === "hf_soul_standard" ? (Number(p.batchSize) === 4 ? 4 : 1) : 1;
+          const est = estimateImageCost(model, count, { resolution: p.imageResolution as string | undefined });
+          items.push({ ...base, kind: est ? "priced" : "unknown", est: est ?? undefined, modelLabel: `${iLabel(model)}${count > 1 ? ` ×${count}` : ""}` });
+        }
+      }
+    } else if (t === "character") {
+      const plan = characterRunPlan(p, resolveModel);
+      const kindLabel = String(p.characterKind ?? "person") === "scene" ? "场景图" : "定妆照";
+      if (plan.skip) {
+        items.push({ ...base, kind: "skipped", skipReason: plan.skip });
+      } else if (plan.model === COMFY_LOCAL_MODEL) {
+        items.push({ ...base, kind: "local", modelLabel: `${kindLabel} · 本地 ComfyUI` });
+      } else if (!plan.model) {
+        items.push({ ...base, kind: "unknown", modelLabel: `${kindLabel} · 未选模型` });
+      } else {
+        const est = estimateImageCost(plan.model, 1);
+        items.push({ ...base, kind: est ? "priced" : "unknown", est: est ?? undefined, modelLabel: `${kindLabel} · ${iLabel(plan.model)}` });
+      }
+    } else {
+      // 新增 RUNNABLE 类型未在此归类时兜底成 unknown——宁可显示「未估价」也不静默漏项。
+      items.push({ ...base, kind: "unknown" });
+    }
+  }
+  return items;
+}
+
+/** 按当前勾选集（deselected = 被取消勾选的节点 id）实时汇总运行计划。
+ *  skipped 项不可勾选、永远不计；其余项默认全选。纯函数，弹窗每次勾选变化时重算。 */
+export function aggregateRunPlan(
+  items: RunPlanItem[],
+  deselected?: ReadonlySet<string>,
+): { pt: number; cr: number; approx: boolean; unknownCount: number; selectedCount: number; selectableCount: number; skippedCount: number } {
+  let pt = 0, cr = 0, approx = false, unknownCount = 0, selectedCount = 0, selectableCount = 0, skippedCount = 0;
+  for (const it of items) {
+    if (it.kind === "skipped") { skippedCount++; continue; }
+    selectableCount++;
+    if (deselected?.has(it.id)) continue;
+    selectedCount++;
+    if (it.kind === "unknown") unknownCount++;
+    if (it.kind === "priced" && it.est) {
+      if (it.est.approx) approx = true;
+      if (it.est.unit === "点") pt += it.est.credits; else cr += it.est.credits;
+    }
+  }
+  return {
+    pt: Math.round(pt * 10) / 10,
+    cr: Math.round(cr * 10) / 10,
+    approx, unknownCount, selectedCount, selectableCount, skippedCount,
   };
 }

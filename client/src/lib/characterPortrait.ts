@@ -54,3 +54,16 @@ export function buildCharacterImagePrompt(p: CharacterNodeData): string {
 export function characterImageAspect(p: CharacterNodeData): string {
   return (p.characterKind ?? "person") === "scene" ? SCENE_ASPECT : PORTRAIT_ASPECT;
 }
+
+/** #275 角色卡「生成模型」选择（CharacterNode 的 maModel，localStorage 全局共享）。
+ *  「运行全部」执行角色节点与运行确认弹窗估价共用这一读取器，保证
+ *  估价模型 == 实际生成模型（用户的设置永远第一位）。空串 = 未选，调用方回退
+ *  resolveActiveNodeModel("character","image") 的项目/系统默认。node 测试环境无
+ *  localStorage → 返回空串，走确定性的 resolveModel 回退，纯函数可测。 */
+export function characterToolkitImageModel(): string {
+  try {
+    return typeof localStorage !== "undefined" ? (localStorage.getItem("canvas.toolkitImageModel") ?? "") : "";
+  } catch {
+    return "";
+  }
+}
