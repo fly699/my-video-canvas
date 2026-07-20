@@ -141,7 +141,52 @@ describe("clampDurationForProvider（时长夹取）", () => {
   });
 });
 
-import { assembleFromStoryboards, mapShotTransition } from "./storyboardGen";
+import { assembleFromStoryboards, mapShotTransition, removeMergeSegmentPatch, reorderMergeSegmentsPatch } from "./storyboardGen";
+
+describe("#281 合并段列表删段/重排：平行数组确定性跟随（此前静默错位）", () => {
+  const urls = ["a.mp4", "b.mp4", "c.mp4", "d.mp4"];
+  const p = {
+    inputVideoUrls: urls,
+    segTransitions: ["t0", "t1", "t2"],                       // t_j = 段 j 自己的转场（管辖接缝 j→j+1）
+    voiceUrls: ["va", "vb", "vc", "vd"],
+    sfxUrls: [null, "sb", null, null] as (string | null)[],
+    segDialogues: ["da", "db", "dc", "dd"],
+    segVoiceDurations: [1, 2, 3, 4] as (number | null)[],
+    sourceShots: [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }],
+  };
+  it("删中间段：删它自己的转场，其后接缝不再前移错套；逐镜配音等同步删", () => {
+    const r = removeMergeSegmentPatch(p, urls, 1); // 删 b
+    expect(r.inputVideoUrls).toEqual(["a.mp4", "c.mp4", "d.mp4"]);
+    expect(r.segTransitions).toEqual(["t0", "t2"]); // a→c 用 a 的 t0；c→d 仍是 t2（旧逻辑会错成 t1）
+    expect(r.voiceUrls).toEqual(["va", "vc", "vd"]);
+    expect(r.sfxUrls).toEqual([null, null, null]);
+    expect(r.segVoiceDurations).toEqual([1, 3, 4]);
+  });
+  it("删末段：删最后一个接缝；删到只剩 1 段时 segTransitions 清空", () => {
+    const r = removeMergeSegmentPatch(p, urls, 3);
+    expect(r.segTransitions).toEqual(["t0", "t1"]);
+    const two = { inputVideoUrls: ["a.mp4", "b.mp4"], segTransitions: ["t0"], voiceUrls: ["va", "vb"] };
+    const r2 = removeMergeSegmentPatch(two, ["a.mp4", "b.mp4"], 0);
+    expect(r2.inputVideoUrls).toEqual(["b.mp4"]);
+    expect(r2.segTransitions).toBeUndefined();
+  });
+  it("重排：转场随段携带（段的属性），配音/音效按同一置换", () => {
+    const r = reorderMergeSegmentsPatch(p, urls, 0, 2); // a 拖到第 3 位 → b,c,a,d
+    expect(r.inputVideoUrls).toEqual(["b.mp4", "c.mp4", "a.mp4", "d.mp4"]);
+    expect(r.segTransitions).toEqual(["t1", "t2", "t0"]); // 各段自带转场随行；末段 d 的 none 被裁掉
+    expect(r.voiceUrls).toEqual(["vb", "vc", "va", "vd"]);
+    expect(r.sourceShots).toEqual([{ n: 2 }, { n: 3 }, { n: 1 }, { n: 4 }]);
+  });
+  it("长度失配的历史数据原样不动（绝不伪造）；越界/原地操作返回空补丁", () => {
+    const stale = { segTransitions: ["t0"], voiceUrls: ["va"] }; // 与 4 段不匹配
+    const r = removeMergeSegmentPatch(stale, urls, 1);
+    expect(r.inputVideoUrls).toEqual(["a.mp4", "c.mp4", "d.mp4"]);
+    expect(r.segTransitions).toBeUndefined(); // 未写入补丁 = 原样保留
+    expect(r.voiceUrls).toBeUndefined();
+    expect(removeMergeSegmentPatch(p, urls, 9)).toEqual({});
+    expect(reorderMergeSegmentsPatch(p, urls, 2, 2)).toEqual({});
+  });
+});
 
 describe("assembleFromStoryboards（装配端收集）", () => {
   const nodes = [

@@ -731,8 +731,11 @@ export function useWorkflowRunner() {
           }
           // 与逐节点「合并」按钮同口径：若已「按镜头表装配」(有 segTransitions)，批量运行
           // 也带上逐切点转场 + 逐段配音/音效，否则成片退化成「全局单转场、无配音」。
+          // #281 长度守卫：segTransitions 必须恰为 段数-1 才视为对齐——此前只看存在就
+          // slice 发送，段列表被删过段/历史失配数据会把错位的转场/配音真实合成进片；
+          // 失配时回退全局转场（宁可少转场，不合成错位片）。
           const segTransitions = p.segTransitions as string[] | undefined;
-          const aligned = !!segTransitions;
+          const aligned = !!segTransitions && segTransitions.length === inputUrls.length - 1;
           const result = await mergeMutation.mutateAsync({
             inputUrls,
             transition: (p.transition as "none" | "fade" | "dissolve") || undefined,
