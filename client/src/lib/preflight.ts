@@ -1,6 +1,7 @@
 import type { NodeType } from "../../../shared/types";
 import { RUNNABLE_TYPES } from "./runnableTypes";
 import { estimateNodesBudget, type BudgetEstimate } from "./agentBudget";
+import { nearestUpstreamStoryboard } from "./inputOrder";
 
 // 运行前体检（pre-flight）— a pure, side-effect-free scan of the canvas graph that
 // surfaces problems which would make a run fail or produce nothing, plus a
@@ -159,7 +160,8 @@ export function runPreflight(nodes: PFNode[], edges: PFEdge[]): PreflightResult 
       const vp = vn.data.payload ?? {};
       if (vt === "comfyui_workflow" && vp.outputType === "image") continue; // 出图运行不算视频段
       if (!vp.resultVideoUrl && !vp.outputUrl) continue; // 未出片
-      const hasSb = edges.some((e2) => e2.target === vn.id && byId.get(e2.source)?.data.nodeType === "storyboard");
+      // #280 与 assembleFromStoryboards 同口径：多跳回溯（隔 image_gen 工位也认）。
+      const hasSb = !!nearestUpstreamStoryboard(vn.id, edges, byId as never);
       if (hasSb) assemblable++;
     }
     if (assemblable >= 2) {

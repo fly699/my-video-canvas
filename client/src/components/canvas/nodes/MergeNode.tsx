@@ -19,7 +19,7 @@ import { mediaFetchUrl } from "@/lib/download";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { NodeTextArea } from "../NodeTextInput";
-import { compareUpstreamNodes } from "../../../lib/inputOrder";
+import { makeShotOrderComparator } from "../../../lib/inputOrder";
 import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
 import { Merge, Loader2, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
 
@@ -186,12 +186,15 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   // AudioNode is explicitly excluded — if a user connects an audio source it should
   // populate `bgMusicUrl` instead of being treated as a video track (would crash FFmpeg).
   const VIDEO_SOURCE_TYPES = new Set(["video_task", "clip", "merge", "overlay", "asset", "subtitle", "subtitle_motion", "smart_cut", "comfyui_video", "comfyui_workflow"]);
-  // Connected video inputs, smart-ordered (title number → Y → connection order),
-  // each with a display label (the source node's title).
+  // Connected video inputs, smart-ordered（#280 镜号优先：上游分镜 sceneNumber（多跳
+  // 回溯，隔 image_gen 工位也认）→ 标题尾号 → Y → 连接序），each with a display label.
+  // 与 useWorkflowRunner.collectInputVideoUrls 共用 makeShotOrderComparator——
+  // 逐节点「合并」按钮与「运行全部」两条路径段序绝不漂移。无分镜画布行为不变。
   const collectInputItems = (): { url: string; label: string }[] => {
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const incoming = edges.map((e, i) => ({ e, i })).filter(({ e }) => e.target === id);
-    incoming.sort((a, b) => compareUpstreamNodes(byId.get(a.e.source), byId.get(b.e.source), a.i, b.i));
+    const shotCmp = makeShotOrderComparator(byId, edges);
+    incoming.sort((a, b) => shotCmp(a.e.source, b.e.source, a.i, b.i));
     const items: { url: string; label: string }[] = [];
     for (const { e } of incoming) {
       const srcNode = byId.get(e.source);

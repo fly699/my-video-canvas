@@ -167,6 +167,109 @@ describe("assembleFromStoryboards（装配端收集）", () => {
     expect(r.sfxUrls).toEqual([null, null]);                // 无音效节点
   });
 
+  it("#280 多跳回溯：分镜→image_gen 出图工位→视频 的标准管线也按镜号排序（此前一跳直查回溯断链、退化成连线顺序）", () => {
+    const n = [
+      N("m", "merge", {}),
+      N("sb1", "storyboard", { sceneNumber: 1, transition: "dissolve" }),
+      N("sb2", "storyboard", { sceneNumber: 2 }),
+      N("sb3", "storyboard", { sceneNumber: 3 }),
+      N("ig1", "image_gen", {}), N("ig2", "image_gen", {}), N("ig3", "image_gen", {}),
+      N("v1", "video_task", { resultVideoUrl: "v1.mp4" }),
+      N("v2", "video_task", { resultVideoUrl: "v2.mp4" }),
+      N("v3", "video_task", { resultVideoUrl: "v3.mp4" }),
+    ];
+    const e = [
+      { source: "sb1", target: "ig1" }, { source: "ig1", target: "v1" },
+      { source: "sb2", target: "ig2" }, { source: "ig2", target: "v2" },
+      { source: "sb3", target: "ig3" }, { source: "ig3", target: "v3" },
+      // 故意按 3→1→2 乱序连入合并
+      { source: "v3", target: "m" }, { source: "v1", target: "m" }, { source: "v2", target: "m" },
+    ];
+    const r = assembleFromStoryboards("m", n, e);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.inputVideoUrls).toEqual(["v1.mp4", "v2.mp4", "v3.mp4"]); // 隔工位仍按镜号
+    expect(r.transitions[0]).toBe("dissolve");                        // 镜1 转场也回溯到了
+    expect(r.sourceShots.map((s) => s.sb)).toEqual(["sb1", "sb2", "sb3"]);
+  });
+
+  it("#280 disabled 分镜隔着工位也整段剔除；穿透不跨 merge（不会把别镜分镜错认成本段的）", () => {
+    const n = [
+      N("m", "merge", {}),
+      N("sb1", "storyboard", { sceneNumber: 1, disabled: true }),
+      N("sb2", "storyboard", { sceneNumber: 2 }),
+      N("ig1", "image_gen", {}),
+      N("v1", "video_task", { resultVideoUrl: "v1.mp4" }),
+      N("v2", "video_task", { resultVideoUrl: "v2.mp4" }),
+      // v3 上游是另一个 merge（汇聚节点）——不得穿透去认 sb2
+      N("m0", "merge", { outputUrl: "pre.mp4" }),
+      N("v3", "video_task", { resultVideoUrl: "v3.mp4" }),
+    ];
+    const e = [
+      { source: "sb1", target: "ig1" }, { source: "ig1", target: "v1" },
+      { source: "sb2", target: "v2" },
+      { source: "sb2", target: "m0" }, { source: "m0", target: "v3" },
+      { source: "v1", target: "m" }, { source: "v2", target: "m" }, { source: "v3", target: "m" },
+    ];
+    const r = assembleFromStoryboards("m", n, e);
+    if ("error" in r) throw new Error(r.error);
+    // v1 因 sb1 disabled 剔除；v3 穿不过 merge → 无分镜 → 垫底但仍纳入
+    expect(r.inputVideoUrls).toEqual(["v2.mp4", "v3.mp4"]);
+    expect(r.sourceShots.map((s) => s.sb)).toEqual(["sb2", null]);
+  });
+
+  it("#280 无分镜画布也能装配：按视频节点标题镜号排序（SH 前缀/数字不在结尾都认）", () => {
+    const n = [
+      N("m", "merge", {}),
+      N("va", "video_task", { resultVideoUrl: "a.mp4" }, "SH03 高潮"),
+      N("vb", "video_task", { resultVideoUrl: "b.mp4" }, "SH01 开场"),
+      N("vc", "video_task", { resultVideoUrl: "c.mp4" }, "SH02 追逐"),
+    ];
+    const e = [
+      { source: "va", target: "m" }, { source: "vb", target: "m" }, { source: "vc", target: "m" },
+    ];
+    const r = assembleFromStoryboards("m", n, e);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.inputVideoUrls).toEqual(["b.mp4", "c.mp4", "a.mp4"]); // SH01→SH02→SH03
+    expect(r.shots.map((s) => s.sceneNumber)).toEqual([1, 2, 3]);
+  });
+
+  it("#280 装配保留已配置的逐缝转场（按接缝内容对齐）：助手写的 segTransitions 不再被冲成全局回退", () => {
+    const n = [
+      N("m", "merge", {
+        // 助手已按 SH01→SH02→SH03 写好逐缝转场
+        inputVideoUrls: ["b.mp4", "c.mp4", "a.mp4"],
+        segTransitions: ["smoothleft", "fadeblack"],
+      }),
+      N("va", "video_task", { resultVideoUrl: "a.mp4" }, "SH03 高潮"),
+      N("vb", "video_task", { resultVideoUrl: "b.mp4" }, "SH01 开场"),
+      N("vc", "video_task", { resultVideoUrl: "c.mp4" }, "SH02 追逐"),
+    ];
+    const e = [
+      { source: "va", target: "m" }, { source: "vb", target: "m" }, { source: "vc", target: "m" },
+    ];
+    const r = assembleFromStoryboards("m", n, e);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.inputVideoUrls).toEqual(["b.mp4", "c.mp4", "a.mp4"]);
+    expect(r.transitions).toEqual(["smoothleft", "fadeblack"]); // 重装配后原逐缝转场按接缝保留
+  });
+
+  it("#280 分镜显式 transition 仍最高优先（不被旧接缝值顶掉）", () => {
+    const n = [
+      N("m", "merge", { inputVideoUrls: ["v1.mp4", "v2.mp4"], segTransitions: ["fadeblack"] }),
+      N("sb1", "storyboard", { sceneNumber: 1, transition: "dissolve" }),
+      N("sb2", "storyboard", { sceneNumber: 2 }),
+      N("v1", "video_task", { resultVideoUrl: "v1.mp4" }),
+      N("v2", "video_task", { resultVideoUrl: "v2.mp4" }),
+    ];
+    const e = [
+      { source: "sb1", target: "v1" }, { source: "sb2", target: "v2" },
+      { source: "v1", target: "m" }, { source: "v2", target: "m" },
+    ];
+    const r = assembleFromStoryboards("m", n, e);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.transitions).toEqual(["dissolve"]); // 分镜说了算，旧接缝 fadeblack 不顶替
+  });
+
   it("#134 参与范围：disabled 的视频工位与分镜整段跳过（与运行/估价同口径）", () => {
     const n3 = [
       N("m", "merge", {}),

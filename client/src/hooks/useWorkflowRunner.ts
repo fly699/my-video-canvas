@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
-import { compareUpstreamNodes } from "@/lib/inputOrder";
+import { compareUpstreamNodes, makeShotOrderComparator } from "@/lib/inputOrder";
 import { toast } from "sonner";
 import type { NodeType, WorkflowParamBinding, StoryboardNodeData, ImageGenNodeData, NodeData, ComfyuiWorkflowNodeData, CharacterNodeData } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
@@ -174,14 +174,26 @@ function detectBgMusicUrl(
   return undefined;
 }
 
-/** Collect all video URLs from nodes connected into targetId. */
+/** Collect all video URLs from nodes connected into targetId（合并段序）。
+ *  #280 镜号优先：上游分镜 sceneNumber（多跳回溯）→ 标题尾号 → Y → 连接序，
+ *  与 MergeNode.collectInputItems 共用 makeShotOrderComparator（两侧不漂移）；
+ *  与「按镜头表装配」同一权威源（镜号），修「合并镜头排序总不对」。
+ *  无分镜/无镜号的画布回退原口径，行为不变。 */
 function collectInputVideoUrls(
   targetId: string,
   edges: { source: string; target: string }[],
   nodes: CanvasNode[],
 ): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const shotCmp = makeShotOrderComparator(byId, edges);
+  const sorted = edges
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => e.target === targetId)
+    .sort((a, b) => shotCmp(a.e.source, b.e.source, a.i, b.i))
+    .map(({ e }) => byId.get(e.source))
+    .filter((n): n is CanvasNode => !!n);
   const urls: string[] = [];
-  for (const src of sortedIncomingSources(targetId, edges, nodes)) {
+  for (const src of sorted) {
     if (!VIDEO_SOURCE_TYPES.has(src.data.nodeType)) continue;
     const payload = src.data.payload as Record<string, unknown>;
     if (!isVideoAsset(src.data.nodeType, payload)) continue;

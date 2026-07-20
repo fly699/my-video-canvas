@@ -96,6 +96,43 @@ describe("applyAgentOperations storyboard promptText backstop", () => {
   });
 });
 
+describe("#280 buildGraphSummary 视频可见性 + 截断标记", () => {
+  it("视频类节点带 hasVideo、comfyui_workflow 出图带 hasImage、已装配合并带 assembled", () => {
+    const store = useCanvasStore.getState();
+    const v = store.addNode("video_task", { x: 0, y: 0 });
+    store.updateNodeData(v.id, { resultVideoUrl: "https://x/a.mp4" });
+    const v2 = store.addNode("video_task", { x: 0, y: 100 }); // 未出片 → 无 hasVideo
+    const cw = store.addNode("comfyui_workflow", { x: 0, y: 200 });
+    store.updateNodeData(cw.id, { outputUrl: "https://x/b.png", outputType: "image" });
+    const m = store.addNode("merge", { x: 0, y: 300 });
+    store.updateNodeData(m.id, { segTransitions: ["none"] });
+    const parsed = JSON.parse(buildGraphSummary("none")) as { nodes: Array<Record<string, unknown>> };
+    const byId = new Map(parsed.nodes.map((x) => [x.id, x]));
+    expect(byId.get(v.id)?.hasVideo).toBe(true);
+    expect(byId.get(v2.id)?.hasVideo).toBeUndefined();
+    expect(byId.get(cw.id)?.hasImage).toBe(true);
+    expect(byId.get(cw.id)?.hasVideo).toBeUndefined();
+    expect(byId.get(m.id)?.assembled).toBe(true);
+  });
+  it("超帽截断：先丢便签保住视频/合并等管线节点，且顶层带 truncated 标记（不再静默丢）", () => {
+    const store = useCanvasStore.getState();
+    // 150 个便签把摘要撑爆 18000 硬帽（>12 节点时字段截 60 字，行约 120+ 字符）
+    for (let i = 0; i < 150; i++) {
+      const nn = store.addNode("note", { x: 0, y: i * 10 });
+      store.updateNodeData(nn.id, { content: "长".repeat(200) });
+    }
+    const v = store.addNode("video_task", { x: 0, y: 9999 }); // 在数组末尾——旧逻辑正好砍它
+    store.updateNodeData(v.id, { resultVideoUrl: "https://x/tail.mp4" });
+    const raw = buildGraphSummary("none");
+    expect(raw.length).toBeLessThanOrEqual(18000);
+    const parsed = JSON.parse(raw) as { nodes: Array<{ id: string; type: string }>; truncated?: string };
+    expect(parsed.truncated).toContain("省略");
+    // 视频节点存活（便签先被丢），「找不到视频节点」的根因不再发生
+    expect(parsed.nodes.some((x) => x.id === v.id)).toBe(true);
+    expect(parsed.nodes.filter((x) => x.type === "note").length).toBeLessThan(150);
+  });
+});
+
 describe("buildGraphSummary failure context", () => {
   it("includes errorMessage (clipped) for failed nodes so self-heal can target the root cause", () => {
     const store = useCanvasStore.getState();
