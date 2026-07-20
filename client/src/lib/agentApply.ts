@@ -169,6 +169,24 @@ function runCanvasAction(op: AgentOperation, resolve: (ref?: string) => string |
       toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐镜转场${voiced ? ` · ${voiced} 条配音对位` : ""}）——在合并节点点「合并」即可成片`, { duration: 5000 });
       return null;
     }
+    case "ungroup": {
+      // #268 解组：只删群组容器、成员全部保留（store.ungroup 语义）。targetRef 省略时
+      // 自动定位画布上唯一群组——与 assemble 的「唯一合并节点」同一便利口径。
+      const st = useCanvasStore.getState();
+      const groups = st.nodes.filter((n) => n.data.nodeType === "group");
+      const targetId = resolve(op.targetRef) || (groups.length === 1 ? groups[0].id : undefined);
+      if (!targetId) return groups.length === 0 ? "画布上没有群组，无需解组" : "画布上有多个群组，请指明解开哪一个";
+      if (!st.nodes.some((n) => n.id === targetId && n.data.nodeType === "group")) return `解组目标不是群组节点（${String(op.targetRef)}）`;
+      st.ungroup(targetId);
+      toast.success("已解组（组内节点全部保留）", { duration: 2000 });
+      return null;
+    }
+    case "animatic":
+      // #268 动态样片需要 tRPC 渲染管线（editor.create/save/export）——apply 层是纯画布
+      // store 操作、绝不发网络（与 #260 library 同一架构边界）。CanvasAgentChat 应用层
+      // 会在调用本函数【之前】把 animatic 动作抽走执行，正常路径不会走到这里；只有
+      // 画布上的智能体节点（AgentNode）等旁路会看到这条明确提示。
+      return "动态样片请通过画布助手聊天窗口发起（其他入口暂不支持）";
     case "run_all":
     case "run_node": {
       // 花钱防线：这里只发 runRequest 信号——Canvas 消费该信号时走【既有】运行确认
@@ -786,6 +804,11 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       const p = (n.data.payload ?? {}) as Record<string, unknown>;
       const kv: Record<string, unknown> = {};
       for (const f of fields) if (p[f] != null && p[f] !== "") kv[f] = clip(p[f]);
+      // #268 动态样片可用性信号：分镜是否已有关键帧图。SUMMARY_FIELDS 一直不含
+      // imageUrl（URL 长且无语义价值，纯浪费 token），导致模型对「图已生成」完全失明
+      //（真机实测：图在画布上、模型仍答『没有关键帧图』拒发 animatic）。注入 1 个
+      // 布尔即可让 animatic / 批量生图跳过判断有据可依，token 成本 ~15 字符/镜。
+      if (type === "storyboard" && typeof p.imageUrl === "string" && p.imageUrl) kv.hasImage = true;
       // Surface generation status so the agent knows what's done/failed.
       if (typeof p.status === "string" && p.status !== "idle") kv.status = p.status;
       // 失败原因直达：自愈要对症下药，光知道 failed 不知道为什么修不准。错误文本

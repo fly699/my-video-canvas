@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
 // #260 附件即可引用：{{refN}} 占位符 → 附件真实地址的确定性替换 + library 入库操作抽取。
 import { resolveAttachmentRefs } from "@/lib/attachmentRefs";
+import { runAnimaticFromCanvas, type AnimaticEditorClient } from "@/lib/animaticRun";
 import { runAgentChatJob, pollAgentChatJob, type AgentChatResult } from "@/lib/agentChatJob";
 import { friendlyClientLLMError } from "@/lib/friendlyClientError";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
@@ -697,7 +698,17 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         },
       );
     }
-    const ops = resolved.nodeOps;
+    // #268 动态样片动作在应用层抽走（apply 层纯 store 不发网络，与 library 同边界）：
+    // 多条只执行一次（渲染是全镜头表级别的重活，重复毫无意义）；异步启动不阻塞
+    // 其余画布操作落地，进度/结果全程 toast 反馈（runAnimaticFromCanvas 内部负责）。
+    const wantAnimatic = (resolved.nodeOps as AgentOperation[]).some((o) => o.op === "canvas" && o.action === "animatic");
+    const ops = wantAnimatic
+      ? (resolved.nodeOps as AgentOperation[]).filter((o) => !(o.op === "canvas" && o.action === "animatic"))
+      : resolved.nodeOps;
+    if (wantAnimatic) {
+      // utils.client 的 tRPC 精确类型与最小接口结构兼容（仅取 editor 四端点的所需形状）。
+      void runAnimaticFromCanvas(utils.client as unknown as AnimaticEditorClient, { aspect: quickPrefs.aspect || undefined });
+    }
     // 服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）——此前画布助手完全不展示，
     // 用户只见「operations 静默变少」。合并进「未应用」提示，与客户端 apply 失败一并可见。
     const droppedMsg = (r.droppedCount ?? 0) > 0 ? `服务端忽略 ${r.droppedCount} 项：${(r.dropped ?? []).slice(0, 3).join("；")}` : "";
