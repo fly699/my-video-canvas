@@ -240,7 +240,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
   // 会连平行数组一起对齐（守卫保持为真、转场语义正确）；此守卫仍拦「图侧顺序变化
   //（新连线/改标题）导致的失配」，失配即收起、发送端同判定不发错位数据。
   const seamUrls = orderItems.map((x) => x.url);
+  // #281 审查修复：补长度校验（transitions 须恰为 段数-1），与发送端/runner 三处同口径。
   const seamEditOn = !!payload.segTransitions?.length
+    && payload.segTransitions.length === seamUrls.length - 1
     && payload.inputVideoUrls?.length === seamUrls.length
     && payload.inputVideoUrls.every((u, i) => u === seamUrls[i]);
   const seamValues: MergeSeamTransition[] = Array.from(
@@ -382,7 +384,10 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     abandonedRef.current = false; // 新一轮合并：复位「放弃等待」标记
     update({ status: "processing", errorMessage: undefined });
     // 装配产物仅在与当前段顺序完全对齐时随单发送（用户手动改过顺序/输入则失配丢弃，防错位）。
+    // #281 审查修复：补 transitions 长度校验（须恰为 段数-1）——内容比较对「快照被 UI
+    // 同步更新」的场景失明，stale 短/长数组会被 slice 后照发；与 runner 守卫同口径。
     const aligned = !!payload.segTransitions
+      && payload.segTransitions.length === urls.length - 1
       && payload.inputVideoUrls?.length === urls.length
       && payload.inputVideoUrls.every((u, i) => u === urls[i]);
     // #244 发送口枚举收敛（单一咽喉点）：服务端 zod 是硬枚举，助手/历史数据里混入的
