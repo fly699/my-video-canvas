@@ -909,10 +909,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const skipComfyTemplates = !quickPrefs.genNodes.some((n) => n.startsWith("comfyui"));
       // #290 摘要档位：压缩=短别名 nN（发送前 ensureAliasNums 持久化补号；框选白名单同时
       // 携带 短号+真实 id 双形态，模型引用哪种都过 sanitize/apply）；标准=全量真实 id 回退档。
-      const aliasMode = quickPrefs.summaryMode !== "standard";
+      // #292 三档语义：compressed=短号+相关性调度；standard=真实 id（旧行为）；
+      // full=全量完整（真实 id、1000 字截断、58000 帽、服务端预算联动放宽）。
+      const fullMode = quickPrefs.summaryMode === "full";
+      const aliasMode = quickPrefs.summaryMode !== "standard" && !fullMode;
       const doPlan = async (aliasOn: boolean, extraDetail?: string) => {
         if (aliasOn) ensureAliasNums();
-        const summary = buildGraphSummary("", { ...(focus.length ? { focusNodeIds: focus } : {}), aliasIds: aliasOn, relevanceQuery: msg });
+        const summary = buildGraphSummary("", { ...(focus.length ? { focusNodeIds: focus } : {}), aliasIds: aliasOn, relevanceQuery: fullMode ? undefined : msg, fullMode });
         let selIds: string[] | undefined;
         if (focus.length) {
           const numById = new Map(useCanvasStore.getState().nodes.map((n) => [n.id, (n.data.payload as { aliasNum?: unknown } | undefined)?.aliasNum]));
@@ -926,7 +929,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           // #141 模型清单按需注入：锁定的模型随每轮请求实时传入（服务端无状态）——
           // 改模型下一轮即按新模型注入、选回「默认」下一轮即恢复该类别全量清单。
           // A3 增量规划：框选节点透传服务端 → prompt 硬约束 + sanitize 拦框选外的 update/delete。
-          { projectId, message: extraDetail ? `${msg}\n\n【系统注入·你上一轮 fetch_details 请求的节点全文】\n${extraDetail}` : msg, history, graphSummary: summary || undefined, selectedNodeIds: selIds, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined, useModelSkills: quickPrefs.useModelSkills || undefined, interactive: quickPrefs.interactive || undefined, leanPrompt: quickPrefs.leanPrompt || undefined, selfCheck: quickPrefs.selfCheck || undefined },
+          { projectId, message: extraDetail ? `${msg}\n\n【系统注入·你上一轮 fetch_details 请求的节点全文】\n${extraDetail}` : msg, history, graphSummary: summary || undefined, summaryFull: fullMode || undefined, summaryMode: quickPrefs.summaryMode || undefined, selectedNodeIds: selIds, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined, useModelSkills: quickPrefs.useModelSkills || undefined, interactive: quickPrefs.interactive || undefined, leanPrompt: quickPrefs.leanPrompt || undefined, selfCheck: quickPrefs.selfCheck || undefined },
           controller.signal,
           (p) => { if (p.stage) setPlanStage(p.stage); },
         );
@@ -1089,6 +1092,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 groups={[{ options: [
                   { value: "compressed", label: "压缩（短号，推荐）" },
                   { value: "standard", label: "标准（全量 id）" },
+                  { value: "full", label: "全量完整（最大最全，较慢较贵）", title: "不做任何存根/省略：字段截断放宽到 1000 字、摘要上限提高到 58000 字符——适合要求助手看到画布每一个字的场景；每轮更贵更慢" },
                 ] }]} onChange={(v) => setQP({ summaryMode: v || "compressed" })} />
             </div>
             {secHead("模型与语种")}
