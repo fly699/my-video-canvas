@@ -775,6 +775,19 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         <div title="已存储到 MinIO·长期有效" className="absolute top-1.5 left-1.5 z-10 rounded-full pointer-events-none"
           style={{ width: 10, height: 10, background: "oklch(0.72 0.18 155)", boxShadow: "0 0 0 2.5px oklch(0.72 0.18 155 / 0.35)" }} />
       )}
+      {/* #270 左上角常显角色名（仅创意模式，用户拍板）：有生成结果（hero 图）后，
+          heroBareHeader 让标题栏只在悬停/选中时浮现、底部姓名条又可能随长图滚出视野——
+          非悬停状态下卡上完全看不到「这是谁」。此 chip 常驻左上角标识身份；悬停时顶部
+          渐变标题条（含标题+按钮）浮现，chip 同步淡出，避免同一区域双名字叠显。
+          pointer-events:none：纯标识、绝不抢 hero 区的点击/拖拽/双击聚焦。 */}
+      {isCreativeMode && (
+        <div className="pointer-events-none absolute z-10 group-hover/chero:opacity-0"
+          // lineHeight 必须显式给：hero 图片容器为消除 img 行内缝隙把 line-height 置 0，
+          // chip 若继承之则内容高度归零、文字被自身 overflow:hidden 拦腰裁掉（真机踩中）。
+          style={{ top: 5, left: isOwnStorageUrl(payload.referenceImageUrl) ? 20 : 6, maxWidth: "72%", padding: "2px 8px", borderRadius: 7, background: "oklch(0 0 0 / 0.55)", backdropFilter: "blur(4px)", color: "#fff", fontSize: 11.5, lineHeight: 1.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: "0 1px 3px oklch(0 0 0 / 0.5)", transition: "opacity 150ms ease" }}>
+          {displayName || (kind === "scene" ? "未命名场景" : "未命名角色")}
+        </div>
+      )}
       {/* #76 批3：hover 主图操作带（仅创意模式）——存库 / 从库替换 / 应用到分镜 */}
       {isCreativeMode && (
         <div className="nodrag absolute top-1.5 right-1.5 z-10 flex-col items-end gap-1 hidden group-hover/chero:flex" style={{ display: undefined }}>
