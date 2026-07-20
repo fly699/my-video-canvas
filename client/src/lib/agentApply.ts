@@ -297,17 +297,40 @@ export function applyAgentOperations(
   // When create ops carry `sceneGroup` (duration-aware scene planning), lay each
   // scene out as its own vertical column and wrap it in a `group` "场景" box.
   // Otherwise fall back to the original 3-per-row fan-out (unchanged behavior).
-  // Generous spacing so connection edges stay visible between (often tall) nodes —
-  // node ≈340w and image/video nodes run 400–600px tall, so columns/rows need room.
-  // #256 用户拍板「排布再分散一些」：列距 600→680、行高 480→560、角色行 780。
-  // #265 用户复测仍觉密集，再加一档：列距 680→800、行高 560→660；【角色行 780→1050】——
-  // 角色节点生成定妆照后卡体实高可到 ~800px（340 宽竖版 2:3 预览 ≈510px 高 + 标题栏/
-  // 人物标签/种子行/多视角缩略条 ≈250-300px），780 的行距意味着图一出来就贴住甚至压到
-  // 下方节点；1050 让有图角色卡与下一节点之间仍留 ~250px 呼吸空隙。行高语义是「本节点
-  // 顶部 → 下一节点顶部」，所以必须按【生成后】的最大卡体高度预留，而不是空卡高度。
-  const SCENE_COL_W = 760, ROW_H = 660, CHAR_ROW_H = 1050, PAD = 40, HEADER = 48, NODE_W = 340;
-  const FAN_COL_W = 760; // 非场景 3 列扇出的列距（#256 540→620，#265 →760）
-  const rowHFor = (o: AgentOperation) => (o.nodeType === "character" ? CHAR_ROW_H : ROW_H);
+  // #270 间距改「按比例预估生成后尺寸 + 固定间距」（用户拍板，覆盖 #265 的固定大行距）：
+  // #256/#265 用一刀切的大行距（660/角色 1050）按【最坏情况：竖版 9:16】预留，结果横版
+  // 16:9 项目（预览仅 ~191px 高）排出来极其稀疏。正确做法是布局时就读快捷设置的画面
+  // 比例（opts.aspect，与 aspectFieldsFor 写进生成节点的是同一个值——所以预估高度与
+  // 生成后的真实预览高度天然一致），按比例算出每个节点【生成后】的卡体高度，行距 =
+  // 估高 + 固定 V_GAP。间距原则：不要太大，能看清节点间的连线即可（用户原话）。
+  const PAD = 40, HEADER = 48, NODE_W = 340;
+  const V_GAP = 100;  // 垂直固定间隙：上一卡底 → 下一卡顶，足够看清连线拐弯
+  const H_GAP = 200;  // 水平固定间隙：340 宽卡之间留 200 走线（左→右主流向的连线段）
+  // 画面比例 → 高/宽比。解析 "16:9" / "9:16" / "1:1"（分隔符容忍 : x ×）；未设比例或
+  // 解析失败按 16:9 兜底（平台生成默认横版）。
+  const ratioHW = (() => {
+    const m = /^(\d+(?:\.\d+)?)\s*[:xX×]\s*(\d+(?:\.\d+)?)$/.exec((opts.aspect ?? "").trim());
+    const rw = m ? Number(m[1]) : 0, rh = m ? Number(m[2]) : 0;
+    return rw > 0 && rh > 0 ? rh / rw : 9 / 16;
+  })();
+  // 预估「生成后」卡体总高：预览类节点 = NODE_W 宽按比例的预览高 + 卡体 chrome（标题栏/
+  // 标签行/就地输入条 ≈170）；角色卡定妆照管线固定竖版 2:3（不吃 quickPrefs 比例，预览
+  // ≈510 + 姓名条/人物标签/多视角缩略条 chrome ≈280，见 #265 实测 ~800）；其余功能节点
+  // 无媒体预览，按常见实高给固定估值。
+  const PREVIEW_TYPES = new Set<NodeType>(["storyboard", "image_gen", "video_task", "comfyui_image", "comfyui_video", "comfyui_workflow", "image_edit", "asset"]);
+  const estHeight = (o: AgentOperation): number => {
+    if (o.nodeType === "character") return Math.round(NODE_W * 1.5) + 280;
+    if (o.nodeType && PREVIEW_TYPES.has(o.nodeType)) return Math.round(NODE_W * ratioHW) + 170;
+    if (o.nodeType === "script") return 340;   // 脚本大文本卡
+    if (o.nodeType === "merge") return 320;    // 合并卡含装配/工具行
+    return 300;                                 // prompt/audio/note 等
+  };
+  // 行距语义不变：「本节点顶部 → 下一节点顶部」= 本节点估高 + V_GAP。
+  // 16:9 → 预览行 ≈461（旧 660 太稀疏）；9:16 → ≈874（旧 660 反而会压叠，竖版自动放大）；
+  // 角色 → ≈890（旧 1050），呼吸空隙仍有 100px 且能看清连线。
+  const rowHFor = (o: AgentOperation) => estHeight(o) + V_GAP;
+  const SCENE_COL_W = NODE_W + PAD * 2 + 120; // 场景框宽 420 + 框间 120（步进另加 PAD）
+  const FAN_COL_W = NODE_W + H_GAP;           // 非场景 3 列扇出列距 = 540
   const createOps = ops.filter((o) => o.op === "create");
   const sceneKeys: string[] = [];
   for (const o of createOps) {
@@ -473,10 +496,11 @@ export function applyAgentOperations(
           }
           // Scene layout when planned, else fan out 3 per row to the agent's right
           //（layoutShiftY：整批避让已有节点的垂直位移，见上方规划段）。
-          // #256 两种模式均已预排进 posByOp；此兜底公式仅防御性保留（常量同步 620/560）。
+          // #256 两种模式均已预排进 posByOp；此兜底公式仅防御性保留。#270 起行距同源
+          // rowHFor（按比例估高 + 固定间隙），不再引用已删除的一刀切 ROW_H 常量。
           const pos = posByOp.get(op) ?? {
             x: anchor.x + 560 + (createdIdx % 3) * FAN_COL_W,
-            y: anchor.y + Math.floor(createdIdx / 3) * ROW_H + layoutShiftY,
+            y: anchor.y + Math.floor(createdIdx / 3) * rowHFor(op) + layoutShiftY,
           };
           const node = store.addNode(op.nodeType as NodeType, pos);
           res.touchedIds.push(node.id);
