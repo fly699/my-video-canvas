@@ -50,7 +50,11 @@ export type GenerateImageResponse = {
 
 const POYO_BASE = "https://api.poyo.ai";
 const POLL_INTERVAL_MS = 3000;
-const POLL_MAX_ATTEMPTS = 40; // 2 min max
+// 5 min max —— 与 kieImage.ts 的窗口对齐（那边早在 #151 就因 GPT Image 2 实测超 3 分钟
+// 扩到了 5 分钟，Poyo 这边一直漏着还是 40 次=2 分钟）。2026-07 用户实报：Poyo 出图高峰期
+// 超 2 分钟，服务端在这里提前放弃报 "timed out"，而平台侧任务其实仍在跑、完成后照样扣费
+// ——白花钱还拿不到图。轮询多等 3 分钟没有额外成本（任务已提交），比提前放弃严格更优。
+const POLL_MAX_ATTEMPTS = 100;
 
 // ---------------------------------------------------------------------------
 // Poyo image model specs — maps each UI model value to its wire name and which
@@ -274,7 +278,10 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
     }
   }
 
-  throw new Error("Poyo image generation timed out");
+  // 超时时任务已在平台侧提交、可能仍在生成且完成后会扣费——[CHARGED?] 前缀是
+  // 服务端「可能已扣费」标记（VideoTaskNode 同一约定：CHARGED=确已扣，CHARGED?=不确定），
+  // 提醒用户别立即重试造成重复扣费。
+  throw new Error("[CHARGED?] Poyo 图像生成超时（等待已超 5 分钟）：任务可能仍在平台侧运行、完成后照常扣费，请稍候片刻再重试或换用其他模型");
 }
 
 async function generateImageForge(options: GenerateImageOptions): Promise<GenerateImageResponse> {
