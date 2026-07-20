@@ -19,6 +19,7 @@ import { mergeCharactersIntoPrompt } from "./characterPrompt";
 import { connectedEffectPrompts, appendEffectPrompts } from "./effectPrompt";
 import { resolveImageParam, resolvePoyoImageSize } from "./paramDefs";
 import { estimateImageCost, costEstimateLabel } from "./costEstimate";
+import { nearestUpstreamStoryboard, titleShotNumber } from "./inputOrder";
 
 // 与 StoryboardNode UI 共用的模型常量（单一事实源）。
 export const SOUL_SIZES_LIST = [
@@ -322,9 +323,10 @@ export function assembleFromStoryboards(
     if (vt === "comfyui_workflow" && vp.outputType === "image") continue;
     const url = (vp.resultVideoUrl ?? vp.outputUrl)?.split("\n")[0];
     if (!url) continue;
-    // 回溯该视频的上游分镜
-    const sbEdge = edges.find((e2) => e2.target === vn.id && byId.get(e2.source)?.data.nodeType === "storyboard");
-    const sb = sbEdge ? byId.get(sbEdge.source) : undefined;
+    // 回溯该视频的上游分镜（#280 改多跳）：标准管线是 分镜→image_gen 出图工位→视频
+    //（imageFirst 也会强插 image_gen），此前只查一跳直连——隔了工位就回溯不到分镜，
+    // 镜号全体失效退化成连线顺序，正是「装配镜头排序总不对」的根因。
+    const sb = nearestUpstreamStoryboard(vn.id, edges, byId as never) as (typeof nodes)[number] | undefined;
     if (sb && isOff(sb)) continue; // 分镜被「跳过参与」→ 整段（含其工位产物）不进成片
     const sp = sb?.data.payload as { sceneNumber?: number | string; transition?: string; dialogue?: string } | undefined;
     // 该分镜下游的已出声音频，按类别分轨：配音（dubbing/未标类别）与音效（sfx）。
@@ -346,20 +348,38 @@ export function assembleFromStoryboards(
       }
     }
     const num = Number(sp?.sceneNumber);
-    entries.push({ num: Number.isFinite(num) && num > 0 ? num : 9000 + entries.length, url, transition: sp?.transition, voice, voiceDur, sfx, dialogue: sp?.dialogue?.trim() || null, sbId: sb?.id ?? null, vidId: vn.id, sceneNumber: sp?.sceneNumber });
+    // #280 无分镜管线也要能装配：回溯不到分镜（用户画布可以完全不用分镜节点，如
+    // prompt「SH06」+首帧→视频 直连合并）时，退用【视频节点标题里的镜号】（SH06/
+    // 镜头6/结尾数字等，titleShotNumber 与合并段序比较器同源）；标题也无镜号才
+    // 按连线顺序垫底（9000+）。此前无分镜段一律 9000+ 连线序，装配等于白点。
+    const tNum = titleShotNumber(vn.data.title);
+    entries.push({ num: Number.isFinite(num) && num > 0 ? num : (Number.isFinite(tNum) ? tNum : 9000 + entries.length), url, transition: sp?.transition, voice, voiceDur, sfx, dialogue: sp?.dialogue?.trim() || null, sbId: sb?.id ?? null, vidId: vn.id, sceneNumber: sp?.sceneNumber ?? (Number.isFinite(tNum) ? tNum : undefined) });
   }
-  if (entries.length < 2) return { error: "需要至少 2 个已出片、且能回溯到分镜的上游视频节点" };
+  if (entries.length < 2) return { error: "需要至少 2 个已出片的上游视频节点" };
   entries.sort((a, b) => a.num - b.num);
   // #264 用户设置第一位：合并节点已设的【全局转场】作为「分镜未指定转场」接缝的回退值。
   // 此前这些接缝被硬收敛为 none，装配产生的 segTransitions（发送时优先于全局转场）把
   // 用户设置整体清成直切。全局默认 none 时回退仍是 none——默认直切原则（#147）不变。
-  const mergePayload = byId.get(mergeId)?.data.payload as { transition?: string } | undefined;
+  const mergePayload = byId.get(mergeId)?.data.payload as { transition?: string; inputVideoUrls?: string[]; segTransitions?: string[] } | undefined;
   const gt = mergePayload?.transition;
   const seamFallback: MergeSeamTransition =
     gt === "fade" || gt === "dissolve" || gt === "fadeblack" || gt === "fadewhite" || gt === "smoothleft" ? gt : "none";
+  // #280 已配置的【逐缝转场】按「接缝内容」（前段URL→后段URL）对齐保留：用户命令
+  // 助手写好 segTransitions 后再点「装配」，此前无分镜段的转场被整体冲成全局回退
+  //（实报「装配无效」）。分镜显式 transition 仍最高；只有分镜没说的接缝才继承旧值。
+  const SEAM_OK = new Set(["none", "fade", "dissolve", "fadeblack", "fadewhite", "smoothleft"]);
+  const prevUrls = mergePayload?.inputVideoUrls ?? [];
+  const prevSeg = mergePayload?.segTransitions ?? [];
+  const seamKeep = new Map<string, MergeSeamTransition>();
+  for (let i = 0; i + 1 < prevUrls.length && i < prevSeg.length; i++) {
+    if (SEAM_OK.has(prevSeg[i])) seamKeep.set(`${prevUrls[i]} ${prevUrls[i + 1]}`, prevSeg[i] as MergeSeamTransition);
+  }
   return {
     inputVideoUrls: entries.map((x) => x.url),
-    transitions: entries.slice(0, -1).map((x) => mapShotTransition(x.transition, seamFallback)),
+    transitions: entries.slice(0, -1).map((x, i) =>
+      x.transition
+        ? mapShotTransition(x.transition, seamFallback)
+        : (seamKeep.get(`${x.url} ${entries[i + 1].url}`) ?? mapShotTransition(undefined, seamFallback))),
     voiceUrls: entries.map((x) => x.voice),
     sfxUrls: entries.map((x) => x.sfx),
     dialogues: entries.map((x) => x.dialogue),

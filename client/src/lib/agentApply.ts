@@ -862,6 +862,17 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       //（真机实测：图在画布上、模型仍答『没有关键帧图』拒发 animatic）。注入 1 个
       // 布尔即可让 animatic / 批量生图跳过判断有据可依，token 成本 ~15 字符/镜。
       if (type === "storyboard" && typeof p.imageUrl === "string" && p.imageUrl) kv.hasImage = true;
+      // #280 视频「已出片」信号（与 hasImage 同哲学）：SUMMARY_FIELDS 不含结果 URL，
+      // 模型对「视频已生成」完全失明——用户说「把已生成的视频合并/装配」时模型误答
+      // 「画布上没有可用视频」（用户实报『明明有视频节点却找不到』的一半根因）。
+      if ((type === "video_task" || type === "comfyui_video") && typeof (p.resultVideoUrl ?? p.outputUrl) === "string" && (p.resultVideoUrl ?? p.outputUrl)) {
+        kv.hasVideo = true;
+      }
+      if (type === "comfyui_workflow" && typeof p.outputUrl === "string" && p.outputUrl) {
+        if (p.outputType === "image") kv.hasImage = true; else kv.hasVideo = true;
+      }
+      // 合并节点「已装配」信号：模型答排序/装配类问题时有据可依。
+      if (type === "merge" && Array.isArray(p.segTransitions)) kv.assembled = true;
       // Surface generation status so the agent knows what's done/failed.
       if (typeof p.status === "string" && p.status !== "idle") kv.status = p.status;
       // 失败原因直达：自愈要对症下药，光知道 failed 不知道为什么修不准。错误文本
@@ -880,15 +891,45 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       return o;
     });
   if (nodeLines.length === 0 && edgeLines.length === 0) return "";
-  // 硬帽（远低于聊天输入 20000 字上限）：超限时按「整条边 / 整个节点」丢弃末尾条目，保持 JSON 合法。
+  // 硬帽（远低于聊天输入 20000 字上限）：超限时按「整条边 / 整个节点」丢弃条目，保持 JSON 合法。
   // 不能像旧版那样从中间 slice——截断出的半截 JSON 会让 LLM 读到残缺结构、误判画布。
-  // 优先丢边（连线是次要信息），边丢完仍超限再丢末尾节点（尽量保住「有哪些节点」这一主信息）。
+  // 优先丢边（连线是次要信息），边丢完仍超限再丢节点。
+  // #280 两处修正（用户实报『画布上明明有视频节点助手却找不到』的根因）：
+  // ① 丢节点不再盲目砍末尾——视频/合并等管线节点通常最后创建、恰在数组末尾，
+  //    正好是被砍的；改按「可丢弃优先级」丢：便签→角色→脚本→提示词→其余，
+  //    生成管线节点（分镜/视频/合并…）最后才动。
+  // ② 丢弃不再静默：JSON 顶层加 truncated 字段明示省略数量——此前模型把不完整
+  //    摘要当全量画布，自信地回答「画布上没有 X」。
+  const DROP_RANK: Partial<Record<string, number>> = { note: 0, character: 1, script: 2, prompt: 3 };
   let nl = nodeLines, el = edgeLines;
-  let json = JSON.stringify({ nodes: nl, edges: el });
+  // ③ stats：各类型节点的【真实总数】（按全量 nodeLines 统计，与是否被省略无关）。
+  // 「画布上共几个视频节点/缺不缺 SH06」这类清点问题，模型此前靠在几十行 JSON 里
+  // 人肉数数，漏数了就反复否定用户（实报截图：先说缺 SH11、再说缺 SH06/SH09）。
+  // 有了确定性计数，数量问题直接读 stats；即使摘要被截断，真实总数也不失真。
+  const stats: Record<string, number> = {};
+  for (const x of nodeLines) { const t = (x as { type?: string }).type ?? "unknown"; stats[t] = (stats[t] ?? 0) + 1; }
+  const build = () => {
+    const dropN = nodeLines.length - nl.length, dropE = edgeLines.length - el.length;
+    const o: Record<string, unknown> = { stats, nodes: nl, edges: el };
+    if (dropN > 0 || dropE > 0) {
+      o.truncated = `画布过大，本摘要已省略${dropN > 0 ? ` ${dropN} 个节点` : ""}${dropN > 0 && dropE > 0 ? "、" : ""}${dropE > 0 ? ` ${dropE} 条连线` : ""}——省略≠不存在，回答「画布上有没有/找不到某节点」类问题前必须先说明摘要不完整`;
+    }
+    return JSON.stringify(o);
+  };
+  let json = build();
   while (json.length > 18000 && (el.length > 0 || nl.length > 1)) {
-    if (el.length > 0) el = el.slice(0, -1);
-    else nl = nl.slice(0, -1);
-    json = JSON.stringify({ nodes: nl, edges: el });
+    if (el.length > 0) {
+      el = el.slice(0, -1);
+    } else {
+      // 找「最可丢」的一条：DROP_RANK 越小越先丢；同级丢靠后的（保住早期主链）。
+      let victim = nl.length - 1, best = Number.POSITIVE_INFINITY;
+      for (let i = nl.length - 1; i >= 0; i--) {
+        const r = DROP_RANK[(nl[i] as { type?: string }).type ?? ""] ?? 10;
+        if (r < best) { best = r; victim = i; if (r === 0) break; }
+      }
+      nl = nl.filter((_, i) => i !== victim);
+    }
+    json = build();
   }
   // 极端兜底：单个节点自身就超 18000（几乎不可能，字段已逐项截断）→ 硬切保底、不崩。
   return json.length > 18000 ? json.slice(0, 18000) : json;
