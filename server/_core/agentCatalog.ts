@@ -445,15 +445,15 @@ export function sanitizeOperationDetailed(
   // 节点、run_node 指定运行目标；其余动作没有目标语义，即便 LLM 乱带也无害——应用层
   // 只在需要时读取）。run_node 缺 targetRef 直接 drop（无目标的单节点运行无意义）。
   if (op === "canvas") {
-    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup", "focus_node"]);
+    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup", "focus_node", "save_library"]);
     const action = str(o.action);
     if (!action || !CANVAS_ACTIONS.has(action)) return { drop: `未知的画布动作「${String(o.action)}」` };
     if (action === "run_node" && !str(o.targetRef)) return { drop: "run_node 画布动作缺少 targetRef（要运行哪个节点）" };
     // #269 focus_node 与 run_node 同口径：无目标的「聚焦」没有意义，缺 targetRef 直接 drop。
     if (action === "focus_node" && !str(o.targetRef)) return { drop: "focus_node 画布动作缺少 targetRef（要聚焦哪个节点）" };
-    // targetRef 只对 assemble/run_node/ungroup/focus_node 有意义；旧五个动作维持原输出
-    // （不带该键），保证旧动作 sanitize 结果与 #266 之前逐字节一致（零回归守卫测试锁定）。
-    const keepRef = action === "assemble" || action === "run_node" || action === "ungroup" || action === "focus_node";
+    // targetRef 只对 assemble/run_node/ungroup/focus_node/save_library 有意义；旧五个动作
+    // 维持原输出（不带该键），保证旧动作 sanitize 结果与 #266 之前逐字节一致（零回归守卫锁定）。
+    const keepRef = action === "assemble" || action === "run_node" || action === "ungroup" || action === "focus_node" || action === "save_library";
     return { op: { op: "canvas", action: action as AgentOperation["action"], ...(keepRef ? { targetRef: str(o.targetRef) } : {}), note: noteStr(o.note) } };
   }
 

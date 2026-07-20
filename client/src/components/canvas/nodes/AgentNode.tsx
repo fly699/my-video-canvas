@@ -74,6 +74,7 @@ const CANVAS_ACTION_LABEL: Record<string, string> = {
   arrange_layout: "整理布局", fit_view: "适应视图", download_all: "批量下载全部成品",
   assemble: "按镜头表装配", run_all: "运行全部（需确认）", run_node: "运行节点（需确认）",
   animatic: "生成动态样片", ungroup: "解组", focus_node: "聚焦节点",
+  save_library: "角色/场景批量入库",
 };
 
 function opText(op: AgentOperation): string {

@@ -190,6 +190,10 @@ function runCanvasAction(op: AgentOperation, resolve: (ref?: string) => string |
       // 会在调用本函数【之前】把 animatic 动作抽走执行，正常路径不会走到这里；只有
       // 画布上的智能体节点（AgentNode）等旁路会看到这条明确提示。
       return "动态样片请通过画布助手聊天窗口发起（其他入口暂不支持）";
+    case "save_library":
+      // #272 批量入库需要 tRPC（characterLibrary.create）——同 animatic 边界：
+      // CanvasAgentChat 应用层在画布操作落地后抽走执行，正常路径不会走到这里。
+      return "批量入库请通过画布助手聊天窗口发起（其他入口暂不支持）";
     case "focus_node": {
       // #269 聚焦节点：只动视口、不改任何画布数据（无需入历史）。存在性在这里校验——
       // Canvas 侧的事件监听器拿到的一定是真实存活节点 id，无需二次防御。
