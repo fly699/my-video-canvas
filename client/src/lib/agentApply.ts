@@ -976,7 +976,7 @@ export function buildNodeDetailText(refs: string[], opts: { aliasIds?: boolean }
   return rows.length ? JSON.stringify(rows) : "";
 }
 
-export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[]; aliasIds?: boolean; relevanceQuery?: string } = {}): string {
+export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[]; aliasIds?: boolean; relevanceQuery?: string; fullMode?: boolean } = {}): string {
   const { nodes, edges } = useCanvasStore.getState();
   // #290 短别名：压缩档摘要以 nN 替代 21 字符 nanoid——节点行、每条连线×2、以及模型
   // 输出的全部 targetRef/sourceRef 同步受益（输出 token 是规划延迟大头）。号取自
@@ -996,7 +996,10 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
   // 分级截断：小范围（微调选中/小画布，≤12 节点）放宽到 400 字——增量编辑需要看到
   // 原文全貌才能精准改写；大画布维持 60 字防摘要爆 token（18000 硬帽兜底）。
   const scopedCount = focus ? focus.size : nodes.length;
-  const clipLen = scopedCount <= 12 ? 400 : 60;
+  // #292 全量完整档：字段截断放宽到 1000、硬帽 58000（服务端 zod 60000 内）、不存根
+  // 不丢节点（超帽仍先丢连线兜底、极端时才动节点——语义为「尽最大可能完整」）。
+  const clipLen = opts.fullMode ? 1000 : scopedCount <= 12 ? 400 : 60;
+  const HARD_CAP = opts.fullMode ? 58000 : 18000;
   // #291 相关性优先填充：本轮消息里【点名】的节点（名字/标题出现在消息中）与 failed
   // 节点视为「相关」——大画布下相关节点仍给 400 字全文（其余维持 60 字），且收缩时
   // 同优先级【先存根/丢弃不相关的】。relevanceQuery 不传（既有全部调用）时行为逐字节不变。
@@ -1121,7 +1124,7 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
     return JSON.stringify(o);
   };
   let json = build();
-  while (json.length > 18000 && (el.length > 0 || nl.length > 1)) {
+  while (json.length > HARD_CAP && (el.length > 0 || nl.length > 1)) {
     if (el.length > 0) {
       el = el.slice(0, -1);
     } else {
@@ -1159,5 +1162,5 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
     json = build();
   }
   // 极端兜底：单个节点自身就超 18000（几乎不可能，字段已逐项截断）→ 硬切保底、不崩。
-  return json.length > 18000 ? json.slice(0, 18000) : json;
+  return json.length > HARD_CAP ? json.slice(0, HARD_CAP) : json;
 }

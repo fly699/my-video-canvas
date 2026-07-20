@@ -1359,3 +1359,35 @@ describe("#291 摘要三期：相关性优先填充 + buildNodeDetailText 取详
     expect(buildNodeDetailText(["no-such-ref"])).toBe("");
   });
 });
+
+describe("#292 摘要四期全量完整档：1000 字截断 + 58000 帽 + 大画布不存根", () => {
+  it("fullMode：60 长字段角色 + 30 视频全部全文在场（无存根无省略），普通档同画布必截断", () => {
+    const store = useCanvasStore.getState();
+    for (let i = 0; i < 60; i++) {
+      const c = store.addNode("character", { x: i * 10, y: 0 });
+      store.updateNodeData(c.id, { characterKind: "person", name: `群演${i}`, appearance: "外观" + "x".repeat(150), outfit: "服装" + "y".repeat(150) }, true);
+    }
+    for (let i = 0; i < 30; i++) {
+      const v = store.addNode("video_task", { x: i * 10, y: 400 });
+      store.updateNodeData(v.id, { prompt: "镜头" + "p".repeat(150) }, true);
+    }
+    const full = JSON.parse(buildGraphSummary("none", { fullMode: true })) as { nodes: Array<{ type: string; appearance?: string }>; truncated?: string };
+    expect(full.truncated).toBeUndefined(); // 全量档：零省略零存根
+    const chars = full.nodes.filter((n) => n.type === "character");
+    expect(chars.length).toBe(60);
+    expect(chars.every((c) => (c.appearance ?? "").length > 100)).toBe(true); // 长字段未被 60 截断
+    const normal = buildGraphSummary("none");
+    expect(JSON.parse(normal).truncated).toBeDefined(); // 普通档同画布必截断（对照）
+    expect(buildGraphSummary("none", { fullMode: true }).length).toBeLessThanOrEqual(58000);
+  });
+
+  it("fullMode 字段截断放宽到 1000（超长仍截，防单字段爆帽）", () => {
+    const store = useCanvasStore.getState();
+    const s1 = store.addNode("script", { x: 0, y: 0 });
+    store.updateNodeData(s1.id, { synopsis: "剧本" + "字".repeat(2000) }, true);
+    const full = JSON.parse(buildGraphSummary("none", { fullMode: true })) as { nodes: Array<{ id: string; synopsis?: string }> };
+    const len = (full.nodes.find((n) => n.id === s1.id)!.synopsis ?? "").length;
+    expect(len).toBeGreaterThan(900);
+    expect(len).toBeLessThanOrEqual(1001);
+  });
+});
