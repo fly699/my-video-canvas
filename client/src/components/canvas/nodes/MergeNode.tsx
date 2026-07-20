@@ -231,8 +231,27 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     if (patch.inputVideoUrls) update(patch as Partial<typeof payload>);
   };
   const removeSegAt = (i: number) => {
+    const removedUrl = orderItems[i]?.url;
     const patch = removeMergeSegmentPatch(payload, orderItems.map((x) => x.url), i);
     if (patch.inputVideoUrls) update(patch as Partial<typeof payload>);
+    // 删段必须连上游连线一起断开（用户实报：删除某镜后总数不变、只是排到了最后，
+    // 装配后又复位）——orderItems 会把「仍有连线的段」从 graphItems 重新追加到队尾
+    //（上方 manualOrder 分支的 append 行为），「装配」更是按连线全量重建。只删
+    // payload 列表而留着连线，删除对用户来说等于没删。仅断开产出该 URL 的视频类
+    // 入边：URL 匹配 + VIDEO_SOURCE_TYPES 双重过滤，背景音乐/参考图等其它入边不受
+    // 影响；走 onEdgesChange(remove) 入撤销历史，误删可 Ctrl+Z 恢复。
+    if (removedUrl) {
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const doomed = edges.filter((e) => {
+        if (e.target !== id) return false;
+        const src = byId.get(e.source);
+        if (!src || !VIDEO_SOURCE_TYPES.has(src.data.nodeType)) return false;
+        return getNodeVideoOutput(src.data.nodeType, src.data.payload as Record<string, unknown>) === removedUrl;
+      });
+      if (doomed.length) {
+        useCanvasStore.getState().onEdgesChange(doomed.map((e) => ({ type: "remove" as const, id: e.id })));
+      }
+    }
   };
 
   // #244 逐接缝转场编辑：仅当 segTransitions 与当前段顺序对齐时视为「开启」——
