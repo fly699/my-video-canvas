@@ -781,6 +781,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       // 角色确定性自动接线（不对应任何 op，opsSummary 统计不到）——透明反馈，让用户知道
       // 角色参考图已接入生成节点（是「@角色→首帧看不到参考图」修复的可见闭环）。
       if (res.autoLinkedChars > 0) applied = [applied, `角色接入 ${res.autoLinkedChars}`].filter(Boolean).join(" · ");
+      // #285 已有角色确定性复用（LLM 重复 create 的同名角色被合并到画布已有节点，不重建
+      // 不重新定妆）——透明反馈；复用节点不在 createdIds 里，下方自动定妆天然不会重跑它们。
+      if (res.reusedCharacters > 0) applied = [applied, `复用已有角色 ${res.reusedCharacters}`].filter(Boolean).join(" · ");
       // 服务端自愈生效（首轮 JSON 截断/非法或操作全被拒 → 自动修复一次后成功）——透明反馈。
       if (r.repaired) applied = [applied, "已自动修正规划"].filter(Boolean).join(" · ");
       if (res.failures.length) applyFailMsg = `${res.failures.length} 项未应用：${res.failures.map((f) => f.reason).slice(0, 3).join("；")}`;
