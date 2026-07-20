@@ -21,6 +21,9 @@ import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { NodeTextArea } from "../NodeTextInput";
 import { makeShotOrderComparator } from "../../../lib/inputOrder";
 import { getNodeVideoOutput } from "@/lib/canvasPassthrough";
+import { nanoid } from "nanoid";
+import { isTransportCutError } from "@/lib/comfyRunRecovery";
+import { pollGenRecovery } from "@/lib/genRecovery";
 import { Merge, Loader2, RotateCcw, Music, ChevronDown, GripVertical, X } from "lucide-react";
 
 interface Props {
@@ -112,8 +115,9 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     },
   });
 
-  const mergeMutation = trpc.merge.mergeVideos.useMutation({
-    onSuccess: (result) => {
+  // #284 合并结果落地：onSuccess 与「隧道掐线兜底取回」共用同一落地口，两条路径行为
+  // 逐字一致（成片写回 → 可选续烧字幕 → toast）。
+  const applyMergeResult = (result: { url: string; duration: number; segStarts?: number[] }) => {
       if (abandonedRef.current) return;
       updateNodeData(id, {
         outputUrl: result.url,
@@ -143,9 +147,34 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         }
       }
       toast.success(`合并完成，总时长 ${result.duration.toFixed(1)}s`);
-    },
+  };
+  // #284 隧道掐线兜底（同 #255 imageGen）：13 镜带转场的 ffmpeg 合并是数分钟级长 HTTP，
+  // 经 cloudflared 公网隧道 ~100s 被掐（前端只看到 network error），但服务端合并照常
+  // 完成——每次提交带一次性 recoveryJobId，仅当失败是【传输类错误】时凭它轮询取回。
+  // 本机/局域网直连的成功路径与业务错误行为与从前逐字一致（零回归硬约束）。
+  const mergeJobIdRef = useRef("");
+  const mergeUtils = trpc.useUtils();
+  const recoverMergeFromCut = async (errMsg: string) => {
+    const jobId = mergeJobIdRef.current;
+    toast.info("连接中断，正在向服务器取回合并结果……合并仍在进行，请勿重复提交", { duration: 8000 });
+    const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+    const r = await pollGenRecovery<{ url: string; duration: number; segStarts?: number[] }>({
+      jobId,
+      fetchResult: (jid) => mergeUtils.merge.result.fetch({ jobId: jid }),
+      sleep,
+      stopped: () => abandonedRef.current,
+      maxMs: 15 * 60 * 1000, // 多镜逐缝转场合并比云端生图更慢，放宽到 15 分钟
+    });
+    if (abandonedRef.current) return;
+    if (r?.ok) { applyMergeResult(r.value); toast.success("已从服务器取回合并结果"); return; }
+    updateNodeData(id, { status: "failed", errorMessage: r ? (r.error ?? errMsg) : errMsg });
+    toast.error("合并失败：" + (r ? (r.error ?? errMsg) : `连接中断且取回超时（${errMsg}）`));
+  };
+  const mergeMutation = trpc.merge.mergeVideos.useMutation({
+    onSuccess: applyMergeResult,
     onError: (err) => {
       if (abandonedRef.current) return;
+      if (isTransportCutError(err.message) && mergeJobIdRef.current) { void recoverMergeFromCut(err.message); return; }
       updateNodeData(id, { status: "failed", errorMessage: err.message });
       toast.error("合并失败：" + err.message);
     },
@@ -414,8 +443,10 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     const GLOBAL_SET = new Set<string>(MERGE_TRANSITION_OPTIONS.map((o) => o.value));
     const SEAM_SET = new Set<string>([...MERGE_TRANSITION_OPTIONS.map((o) => o.value), "wipe"]);
     const safeTransition = (payload.transition && GLOBAL_SET.has(payload.transition) ? payload.transition : "none") as MergeTransition;
+    mergeJobIdRef.current = nanoid(); // #284 一次性取回票据，随请求发送
     mergeMutation.mutate({
       inputUrls: urls,
+      recoveryJobId: mergeJobIdRef.current,
       projectId: data.projectId,
       nodeId: id,
       transition: safeTransition,

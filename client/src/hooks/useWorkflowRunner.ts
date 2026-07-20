@@ -26,6 +26,9 @@ import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImag
 import { mergeCharactersIntoPrompt } from "../lib/characterPrompt";
 import { collectVideoRefMedia } from "../lib/videoRefMedia";
 import { RUNNABLE_TYPES } from "../lib/runnableTypes";
+import { nanoid } from "nanoid";
+import { isTransportCutError } from "../lib/comfyRunRecovery";
+import { pollGenRecovery } from "../lib/genRecovery";
 // 与逐节点「生成」按钮同口径：负向词按 provider 能力白名单发送 + 参数套 ParamDef 默认值。
 import { withParamDefaults, SUPPORTS_NEGATIVE_PROMPT, PROVIDER_PARAMS } from "../components/canvas/nodes/VideoTaskNode";
 
@@ -736,18 +739,37 @@ export function useWorkflowRunner() {
           // 失配时回退全局转场（宁可少转场，不合成错位片）。
           const segTransitions = p.segTransitions as string[] | undefined;
           const aligned = !!segTransitions && segTransitions.length === inputUrls.length - 1;
-          const result = await mergeMutation.mutateAsync({
-            inputUrls,
-            transition: (p.transition as "none" | "fade" | "dissolve") || undefined,
-            transitionDuration: typeof p.transitionDuration === "number" ? p.transitionDuration : undefined,
-            ...(aligned ? {
-              transitions: segTransitions.slice(0, inputUrls.length - 1) as ("none" | "fade" | "dissolve")[],
-              voiceUrls: (p.voiceUrls as string[] | undefined)?.slice(0, inputUrls.length),
-              sfxUrls: (p.sfxUrls as string[] | undefined)?.slice(0, inputUrls.length),
-            } : {}),
-            bgMusicUrl: (p.bgMusicUrl as string) || detectBgMusicUrl(nodeId, es, ns) || undefined,
-            bgMusicVolume: typeof p.bgMusicVolume === "number" ? p.bgMusicVolume : undefined,
-          });
+          // #284 隧道兜底（同 MergeNode 手动合并/#255 imageGen）：长合并被隧道 ~100s 掐断时
+          // 凭一次性 jobId 轮询取回；仅传输类错误进兜底，业务错误照常抛给失败处理（零回归）。
+          const mergeJobId = nanoid();
+          let result: { url: string; duration: number; segStarts?: number[] };
+          try {
+            result = await mergeMutation.mutateAsync({
+              inputUrls,
+              recoveryJobId: mergeJobId,
+              transition: (p.transition as "none" | "fade" | "dissolve") || undefined,
+              transitionDuration: typeof p.transitionDuration === "number" ? p.transitionDuration : undefined,
+              ...(aligned ? {
+                transitions: segTransitions.slice(0, inputUrls.length - 1) as ("none" | "fade" | "dissolve")[],
+                voiceUrls: (p.voiceUrls as string[] | undefined)?.slice(0, inputUrls.length),
+                sfxUrls: (p.sfxUrls as string[] | undefined)?.slice(0, inputUrls.length),
+              } : {}),
+              bgMusicUrl: (p.bgMusicUrl as string) || detectBgMusicUrl(nodeId, es, ns) || undefined,
+              bgMusicVolume: typeof p.bgMusicVolume === "number" ? p.bgMusicVolume : undefined,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!isTransportCutError(msg)) throw err;
+            toast.info("连接中断，正在向服务器取回合并结果……合并仍在进行", { duration: 8000 });
+            const r = await pollGenRecovery<{ url: string; duration: number; segStarts?: number[] }>({
+              jobId: mergeJobId,
+              fetchResult: (jid) => runnerUtils.merge.result.fetch({ jobId: jid }),
+              sleep: (ms) => new Promise<void>((res) => setTimeout(res, ms)),
+              maxMs: 15 * 60 * 1000,
+            });
+            if (!r?.ok) throw new Error(r ? (r.error ?? msg) : `连接中断且取回超时（${msg}）`);
+            result = r.value;
+          }
           useCanvasStore.getState().updateNodeData(nodeId, {
             outputUrl: result.url,
             outputDuration: result.duration,
