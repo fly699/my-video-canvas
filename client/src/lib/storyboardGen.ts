@@ -320,11 +320,31 @@ export interface MergeSegArrays {
 }
 const SEG_PARALLEL_KEYS = ["voiceUrls", "sfxUrls", "segDialogues", "segVoiceDurations", "sourceShots"] as const;
 
-/** 删除第 i 段：urls 为当前生效段顺序（UI 的 orderItems）。返回要 update 的补丁。 */
+/** 旧快照 prev（平行数组真正对位的列表）是否仍是 next 的前缀（逐项相等）。
+ *  消费端按位置 slice 对齐，前缀保持 = 数组仍对位、可原样保留。 */
+function prevIsAlignedPrefix(next: string[], prev: string[]): boolean {
+  return prev.length <= next.length && prev.every((u, j) => u === next[j]);
+}
+
+/** 删除第 i 段：urls 为当前生效段顺序（UI 的 orderItems）。返回要 update 的补丁。
+ *  【混合态审查修复】装配后又新连了视频时，orderItems = 旧快照 prev + 追加段——
+ *  平行数组只与 prev 对位。此时：删「追加段」→ prev 仍是新列表前缀，数组原样保留
+ * （删完可健康恢复完全对齐）；删「prev 内的原装配段」→ 数组永失对位，且删除后
+ *  长度恰好重新吻合、各消费端长度守卫会被意外骗过——必须清 segTransitions
+ * （宁可退全局转场，绝不错位发送）。 */
 export function removeMergeSegmentPatch(p: MergeSegArrays, urls: string[], i: number): MergeSegArrays {
   const n = urls.length;
   if (i < 0 || i >= n) return {};
-  const patch: MergeSegArrays = { inputVideoUrls: urls.filter((_, j) => j !== i) };
+  const newUrls = urls.filter((_, j) => j !== i);
+  const prev = p.inputVideoUrls ?? [];
+  const sameList = prev.length === n && prev.every((u, j) => u === urls[j]);
+  if (!sameList) {
+    const patch: MergeSegArrays = { inputVideoUrls: newUrls };
+    // prev 仍是新列表前缀（删的是追加段）→ 数组保留；否则（删了 prev 内的段）清转场。
+    if (!prevIsAlignedPrefix(newUrls, prev) && Array.isArray(p.segTransitions)) patch.segTransitions = undefined;
+    return patch;
+  }
+  const patch: MergeSegArrays = { inputVideoUrls: newUrls };
   for (const k of SEG_PARALLEL_KEYS) {
     const arr = p[k];
     if (Array.isArray(arr) && arr.length === n) (patch as Record<string, unknown>)[k] = arr.filter((_, j) => j !== i);
@@ -338,14 +358,24 @@ export function removeMergeSegmentPatch(p: MergeSegArrays, urls: string[], i: nu
   return patch;
 }
 
-/** 段从 from 拖到 to：平行数组按同一置换重排；转场随段携带（own[末段]=none 填充）。 */
+/** 段从 from 拖到 to：平行数组按同一置换重排；转场随段携带（own[末段]=none 填充）。
+ *  【混合态审查修复】列表与旧快照不一致时：置换后 prev 仍是前缀（只在追加区内挪动）
+ *  → 数组原样保留；prev 元素被挪位 → 数组永失对位，清 segTransitions 防错位发送。 */
 export function reorderMergeSegmentsPatch(p: MergeSegArrays, urls: string[], from: number, to: number): MergeSegArrays {
   const n = urls.length;
   if (from === to || from < 0 || from >= n || to < 0 || to >= n) return {};
   const perm = urls.map((_, j) => j);
   const [moved] = perm.splice(from, 1);
   perm.splice(to, 0, moved); // perm[新下标] = 旧下标
-  const patch: MergeSegArrays = { inputVideoUrls: perm.map((j) => urls[j]) };
+  const newUrls = perm.map((j) => urls[j]);
+  const prev = p.inputVideoUrls ?? [];
+  const sameList = prev.length === n && prev.every((u, j) => u === urls[j]);
+  if (!sameList) {
+    const patch: MergeSegArrays = { inputVideoUrls: newUrls };
+    if (!prevIsAlignedPrefix(newUrls, prev) && Array.isArray(p.segTransitions)) patch.segTransitions = undefined;
+    return patch;
+  }
+  const patch: MergeSegArrays = { inputVideoUrls: newUrls };
   for (const k of SEG_PARALLEL_KEYS) {
     const arr = p[k];
     if (Array.isArray(arr) && arr.length === n) (patch as Record<string, unknown>)[k] = perm.map((j) => arr[j]);
