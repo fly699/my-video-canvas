@@ -299,7 +299,30 @@ export function applyAgentOperations(
   injectFreeVramIntoOps(ops, opts.freeVramAfterRun === true);
   const store = useCanvasStore.getState();
   const idMap = new Map<string, string>(); // tempId → real node id
-  const resolve = (ref?: string): string | undefined => (ref ? idMap.get(ref) ?? ref : undefined);
+  // #290 短别名译回（无条件支持，与摘要档位无关——历史轮里可能混有短号引用）：
+  // 摘要压缩档给节点发短号 nN（payload.aliasNum 持久化、终身稳定），模型引用短号，
+  // 这里确定性译回真实 id。优先级：tempId（本批新建）> 短别名 > 原样字符串——
+  // tempId 优先保证「模型把 nN 误用作新建 tempId」时后续引用指向新节点（见下方预处理）。
+  const aliasMap = new Map<string, string>();
+  for (const n of store.nodes) {
+    const num = (n.data.payload as { aliasNum?: unknown } | undefined)?.aliasNum;
+    if (typeof num === "number" && Number.isInteger(num)) aliasMap.set(`n${num}`, n.id);
+  }
+  // tempId 撞短号预处理：create 的 tempId 形如 nN 且与已有短号冲突 → 全批改写为唯一
+  // tempId（该 nN 的后续引用按「先建后引」语义指向新节点）。提示词已禁用该形态，此为兜底。
+  for (const o of ops) {
+    if (o.op === "create" && typeof o.tempId === "string" && /^n\d+$/.test(o.tempId) && aliasMap.has(o.tempId)) {
+      const oldId = o.tempId, newId = `t_${oldId}`;
+      o.tempId = newId;
+      for (const o2 of ops) {
+        if (o2 === o) continue;
+        if (o2.targetRef === oldId) o2.targetRef = newId;
+        if (o2.sourceRef === oldId) o2.sourceRef = newId;
+        if (Array.isArray(o2.targetRefs)) o2.targetRefs = o2.targetRefs.map((r) => (r === oldId ? newId : r));
+      }
+    }
+  }
+  const resolve = (ref?: string): string | undefined => (ref ? idMap.get(ref) ?? aliasMap.get(ref) ?? ref : undefined);
   // Track live node ids (existing + created this batch) and their types so connect
   // ops can be validated — otherwise a connect to a hallucinated/uncreated ref
   // would create a dangling edge, and an illegal pairing would bypass the rules.
@@ -901,8 +924,42 @@ export function summarizePlanOps(
   return parts.join(" · ");
 }
 
-export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[] } = {}): string {
+/** #290 给画布节点分配终身稳定的短别名号（payload.aliasNum，持久化+协作广播）。
+ *  惰性补号：只给缺号节点分配 max+1 起的新号；复制节点带来的重复号保留先创建者、
+ *  后者重新分配。号一旦分配终身不变——跨轮对话里模型引用的 nN 永远指向同一节点。 */
+export function ensureAliasNums(): void {
+  const store = useCanvasStore.getState();
+  const seen = new Set<number>();
+  let max = 0;
+  const needs: string[] = [];
+  for (const n of store.nodes) {
+    const num = (n.data.payload as { aliasNum?: unknown } | undefined)?.aliasNum;
+    if (typeof num === "number" && Number.isInteger(num) && num > 0 && !seen.has(num)) {
+      seen.add(num);
+      if (num > max) max = num;
+    } else {
+      needs.push(n.id);
+    }
+  }
+  for (const id of needs) {
+    max += 1;
+    store.updateNodeData(id, { aliasNum: max } as Partial<NodeData>, true);
+  }
+}
+
+export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[]; aliasIds?: boolean } = {}): string {
   const { nodes, edges } = useCanvasStore.getState();
+  // #290 短别名：压缩档摘要以 nN 替代 21 字符 nanoid——节点行、每条连线×2、以及模型
+  // 输出的全部 targetRef/sourceRef 同步受益（输出 token 是规划延迟大头）。号取自
+  // payload.aliasNum（发送前 ensureAliasNums 补齐）；缺号节点回退真实 id（依旧无损）。
+  const aliasById = new Map<string, string>(
+    nodes.map((n) => {
+      if (!opts.aliasIds) return [n.id, n.id] as const;
+      const num = (n.data.payload as { aliasNum?: unknown } | undefined)?.aliasNum;
+      return [n.id, typeof num === "number" && Number.isInteger(num) ? `n${num}` : n.id] as const;
+    }),
+  );
+  const aid = (id: string) => aliasById.get(id) ?? id;
   const focus = opts.focusNodeIds && opts.focusNodeIds.length ? new Set(opts.focusNodeIds) : null;
   // 分级截断：小范围（微调选中/小画布，≤12 节点）放宽到 400 字——增量编辑需要看到
   // 原文全貌才能精准改写；大画布维持 60 字防摘要爆 token（18000 硬帽兜底）。
@@ -943,7 +1000,7 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       if (p.status === "failed" && typeof p.errorMessage === "string" && p.errorMessage.trim()) {
         kv.error = p.errorMessage.length > 160 ? p.errorMessage.slice(0, 160) + "…" : p.errorMessage;
       }
-      const row: Record<string, unknown> = { id: n.id, type, title: n.data.title, ...kv };
+      const row: Record<string, unknown> = { id: aid(n.id), type, title: n.data.title, ...kv };
       // #289 可推导冗余剔除（真无损，规则已写进规划提示的摘要读法）：
       // ① 角色标题与名字完全相同 → 省 title（缺 title 的角色行标题即其名字）；
       // ② 分镜 promptText 与 description 相同（生成本就按 promptText||description 回退）
@@ -955,7 +1012,7 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
   const edgeLines = edges
     .filter((e) => e.source !== excludeNodeId && e.target !== excludeNodeId)
     .map((e) => {
-      const o: Record<string, unknown> = { from: e.source, to: e.target };
+      const o: Record<string, unknown> = { from: aid(e.source), to: aid(e.target) };
       if (e.sourceHandle && e.sourceHandle !== "output") o.fromHandle = e.sourceHandle;
       if (e.targetHandle && e.targetHandle !== "input") o.toHandle = e.targetHandle;
       return o;

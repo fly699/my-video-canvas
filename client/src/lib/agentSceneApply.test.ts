@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useCanvasStore } from "../hooks/useCanvasStore";
-import { applyAgentOperations, buildGraphSummary, summarizePlanOps, aspectFieldsFor } from "./agentApply";
+import { applyAgentOperations, buildGraphSummary, summarizePlanOps, aspectFieldsFor, ensureAliasNums } from "./agentApply";
 import { setLibraryCharacters } from "./characterConditioning";
 import type { AgentOperation } from "../../../shared/types";
 
@@ -1237,5 +1237,76 @@ describe("#289 摘要一期无损压缩：邻接分组 + 可推导冗余剔除",
     expect(parsed.nodes.find((n) => n.id === s1.id)!.promptText).toBeUndefined();
     expect(parsed.nodes.find((n) => n.id === s1.id)!.description).toBe("海边日出");
     expect(parsed.nodes.find((n) => n.id === s2.id)!.promptText).toBe("金色海面，逆光剪影");
+  });
+});
+
+describe("#290 摘要二期短别名：稳定分配 + 摘要短号 + apply 双形态译回 + tempId 撞号兜底", () => {
+  it("ensureAliasNums 惰性补号且终身稳定；重复号保留先创建者、后者重分", () => {
+    const store = useCanvasStore.getState();
+    const a = store.addNode("prompt", { x: 0, y: 0 });
+    const b = store.addNode("video_task", { x: 0, y: 100 });
+    ensureAliasNums();
+    const numOf = (id: string) => (useCanvasStore.getState().nodes.find((n) => n.id === id)!.data.payload as { aliasNum?: number }).aliasNum;
+    const na = numOf(a.id), nb = numOf(b.id);
+    expect(na).toBe(1); expect(nb).toBe(2);
+    // 再跑不改号（稳定性）
+    ensureAliasNums();
+    expect(numOf(a.id)).toBe(na); expect(numOf(b.id)).toBe(nb);
+    // 复制型重复号：手工造一个与 a 同号的新节点 → 先创建者保号、后者重分
+    const c = store.addNode("prompt", { x: 0, y: 200 });
+    useCanvasStore.getState().updateNodeData(c.id, { aliasNum: na } as never, true);
+    ensureAliasNums();
+    expect(numOf(a.id)).toBe(na);
+    expect(numOf(c.id)).not.toBe(na);
+  });
+
+  it("aliasIds=true 时摘要节点/连线全用短号；默认（不传）仍是真实 id——既有行为零回归", () => {
+    const store = useCanvasStore.getState();
+    const a = store.addNode("prompt", { x: 0, y: 0 });
+    const b = store.addNode("video_task", { x: 200, y: 0 });
+    store.onConnect({ source: a.id, target: b.id, sourceHandle: null, targetHandle: null });
+    ensureAliasNums();
+    const plain = JSON.parse(buildGraphSummary("none")) as { nodes: Array<{ id: string }>; edges: Array<{ from: string; to: string }> };
+    expect(plain.nodes.some((n) => n.id === a.id)).toBe(true); // 默认真实 id
+    const aliased = JSON.parse(buildGraphSummary("none", { aliasIds: true })) as { nodes: Array<{ id: string }>; edges: Array<{ from: string; to: string }> };
+    expect(aliased.nodes.every((n) => /^n\d+$/.test(n.id))).toBe(true);
+    expect(aliased.edges.every((e) => /^n\d+$/.test(e.from) && /^n\d+$/.test(String(e.to)))).toBe(true);
+  });
+
+  it("apply 对短号引用确定性译回：update/connect/delete 用 nN 落到真实节点；真实 id 同样可用（双形态）", () => {
+    const store = useCanvasStore.getState();
+    const v = store.addNode("video_task", { x: 0, y: 0 });
+    ensureAliasNums();
+    const num = (useCanvasStore.getState().nodes.find((n) => n.id === v.id)!.data.payload as { aliasNum?: number }).aliasNum!;
+    const ops: AgentOperation[] = [
+      { op: "update", targetRef: `n${num}`, payload: { prompt: "短号改写生效" } },
+      { op: "create", nodeType: "merge", tempId: "mg" },
+      { op: "connect", sourceRef: `n${num}`, targetRef: "mg" },
+    ];
+    const res = applyAgentOperations(ops, { x: 0, y: 0 });
+    expect(res.updated).toBe(1);
+    const st = useCanvasStore.getState();
+    expect((st.nodes.find((n) => n.id === v.id)!.data.payload as { prompt?: string }).prompt).toBe("短号改写生效");
+    const mg = st.nodes.find((n) => n.data.nodeType === "merge")!;
+    expect(st.edges.some((e) => e.source === v.id && e.target === mg.id)).toBe(true);
+  });
+
+  it("tempId 撞已有短号（nN 形态）→ 全批改写为唯一 tempId，后续引用指向新节点、不误伤旧节点", () => {
+    const store = useCanvasStore.getState();
+    const old = store.addNode("prompt", { x: 0, y: 0 });
+    ensureAliasNums();
+    const num = (useCanvasStore.getState().nodes.find((n) => n.id === old.id)!.data.payload as { aliasNum?: number }).aliasNum!;
+    const clash = `n${num}`;
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "video_task", tempId: clash, payload: { prompt: "新节点" } },
+      { op: "update", targetRef: clash, payload: { prompt: "改的是新节点" } },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const st = useCanvasStore.getState();
+    // 旧 prompt 节点未被误改
+    expect((st.nodes.find((n) => n.id === old.id)!.data.payload as { prompt?: string; positivePrompt?: string }).prompt).toBeUndefined();
+    // 新视频节点被创建且 update 落在它身上
+    const nv = st.nodes.find((n) => n.data.nodeType === "video_task")!;
+    expect((nv.data.payload as { prompt?: string }).prompt).toBe("改的是新节点");
   });
 });

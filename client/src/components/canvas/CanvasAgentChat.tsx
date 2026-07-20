@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { buildGraphSummary, applyAgentOperations } from "@/lib/agentApply";
+import { buildGraphSummary, applyAgentOperations, ensureAliasNums } from "@/lib/agentApply";
 // #260 附件即可引用：{{refN}} 占位符 → 附件真实地址的确定性替换 + library 入库操作抽取。
 import { resolveAttachmentRefs } from "@/lib/attachmentRefs";
 import { runAnimaticFromCanvas, type AnimaticEditorClient } from "@/lib/animaticRun";
@@ -37,13 +37,13 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; summaryMode: string };
 // 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
 const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false, // #259 selfCheck 默认开：#258 真模型 A/B 实证质量提升（自查后主动补齐角色一致性管线），
 // 且注入方式是「# 输出要求 末尾纯追加一条规则」——与 #145 对白语种硬规则同风险级（已有
 // 生产先例）。老用户存档里无 selfCheck 键 → 展开 QP_DEFAULT 时吃到新默认 true；随时可关。
 // leanPrompt 保持默认关（省 token 属锦上添花，等「规划质量」面板数据佐证后再评估转默认）。
-autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: false, selfCheck: true };
+autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: false, selfCheck: true, summaryMode: "compressed" };
 
 /** 对白语种（#138）：对白/旁白/台词统一书写语言；空 = 跟随内容默认。 */
 const QP_DIALOGUE_LANGS = [
@@ -722,7 +722,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
 
   // 规划结果统一落地（send 与 #251 跨会话恢复共用）：应用操作 → 追加助手回合 → 自动增强。
   // 恢复路径用的是「当前」quickPrefs（附件等一次性上下文只影响规划本身，结果应用不依赖）。
-  const applyChatResult = (r: AgentChatResult) => {
+  const applyChatResult = (r: AgentChatResult): ReturnType<typeof applyAgentOperations> | null => {
+    let applyRes: ReturnType<typeof applyAgentOperations> | null = null;
     // #260 附件即可引用：先把 {{refN}} 占位符替换成发送时登记的附件真实地址、并抽走
     // library 入库操作（applyAgentOperations 只认画布语义）。attachRefsRef 在 send() 时
     // 按「图片附件顺序 ref1..」构建（与服务端 attachRefList 同规则）；会话恢复路径映射
@@ -777,6 +778,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         excludeStoryboard: quickPrefs.noStoryboard || undefined,
         transitionStyle: quickPrefs.transitionStyle || undefined,
       });
+      applyRes = res;
       applied = opsSummary(ops); createdIds = res.createdIds ?? [];
       // 角色确定性自动接线（不对应任何 op，opsSummary 统计不到）——透明反馈，让用户知道
       // 角色参考图已接入生成节点（是「@角色→首帧看不到参考图」修复的可见闭环）。
@@ -801,6 +803,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     }
     const failed = [droppedMsg, applyFailMsg].filter(Boolean).join(" · ") || undefined;
     setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);
+    return applyRes;
   };
 
   // #251 跨进出画布续跑：挂载后查本项目是否有「进行中/已完成未取走」的规划任务
@@ -888,23 +891,47 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         }
       }
       const focus = selectedNodeIds.filter(Boolean);
-      const summary = buildGraphSummary("", focus.length ? { focusNodeIds: focus } : {});
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
       // 提交后台任务 → 轮询取结果（runAgentChatJob：短请求轮询，断连/掐线/重启不丢等待）。
       setPlanStage("");
       // #140 快速设置「节点」未勾任何 ComfyUI 系 → 本轮用不到模板：让服务端完全跳过
       // 模板分析与模板知识注入（省 DB 读与提示词体积，规划更快）。
       const skipComfyTemplates = !quickPrefs.genNodes.some((n) => n.startsWith("comfyui"));
-      const r = await runAgentChatJob(
-        utils.client,
-        // #141 模型清单按需注入：锁定的模型随每轮请求实时传入（服务端无状态）——
-        // 改模型下一轮即按新模型注入、选回「默认」下一轮即恢复该类别全量清单。
-        // A3 增量规划：框选节点透传服务端 → prompt 硬约束 + sanitize 拦框选外的 update/delete。
-        { projectId, message: msg, history, graphSummary: summary || undefined, selectedNodeIds: focus.length ? focus.slice(0, 200) : undefined, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined, useModelSkills: quickPrefs.useModelSkills || undefined, interactive: quickPrefs.interactive || undefined, leanPrompt: quickPrefs.leanPrompt || undefined, selfCheck: quickPrefs.selfCheck || undefined },
-        controller.signal,
-        (p) => { if (p.stage) setPlanStage(p.stage); },
-      );
-      applyChatResult(r);
+      // #290 摘要档位：压缩=短别名 nN（发送前 ensureAliasNums 持久化补号；框选白名单同时
+      // 携带 短号+真实 id 双形态，模型引用哪种都过 sanitize/apply）；标准=全量真实 id 回退档。
+      const aliasMode = quickPrefs.summaryMode !== "standard";
+      const doPlan = async (aliasOn: boolean) => {
+        if (aliasOn) ensureAliasNums();
+        const summary = buildGraphSummary("", { ...(focus.length ? { focusNodeIds: focus } : {}), aliasIds: aliasOn });
+        let selIds: string[] | undefined;
+        if (focus.length) {
+          const numById = new Map(useCanvasStore.getState().nodes.map((n) => [n.id, (n.data.payload as { aliasNum?: unknown } | undefined)?.aliasNum]));
+          const aliases = aliasOn
+            ? focus.map((id) => { const num = numById.get(id); return typeof num === "number" ? `n${num}` : null; }).filter((v): v is string => !!v)
+            : [];
+          selIds = Array.from(new Set([...aliases, ...focus])).slice(0, 200);
+        }
+        const r = await runAgentChatJob(
+          utils.client,
+          // #141 模型清单按需注入：锁定的模型随每轮请求实时传入（服务端无状态）——
+          // 改模型下一轮即按新模型注入、选回「默认」下一轮即恢复该类别全量清单。
+          // A3 增量规划：框选节点透传服务端 → prompt 硬约束 + sanitize 拦框选外的 update/delete。
+          { projectId, message: msg, history, graphSummary: summary || undefined, selectedNodeIds: selIds, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined, useModelSkills: quickPrefs.useModelSkills || undefined, interactive: quickPrefs.interactive || undefined, leanPrompt: quickPrefs.leanPrompt || undefined, selfCheck: quickPrefs.selfCheck || undefined },
+          controller.signal,
+          (p) => { if (p.stage) setPlanStage(p.stage); },
+        );
+        return applyChatResult(r);
+      };
+      const appliedRes = await doPlan(aliasMode);
+      // #290 自动回退（单次，防循环）：压缩档下失败项 ≥2 且过半是「未找到 nN」型
+      // （幻觉短号/摘要-画布错位）→ 自动切全量 id 重发一次。零星幻觉引用不触发。
+      if (aliasMode && appliedRes && appliedRes.failures.length >= 2) {
+        const misses = appliedRes.failures.filter((f) => /[（「(]n\d+[）」)]/.test(f.reason)).length;
+        if (misses >= 2 && misses * 2 >= appliedRes.failures.length) {
+          toast.info("检测到短号引用异常，已自动切换全量 id 重试一次…", { duration: 5000 });
+          await doPlan(false);
+        }
+      }
     } catch (e) {
       if (controller.signal.aborted || (e instanceof Error && e.name === "AbortError")) {
         setTurns((p) => [...p, { role: "assistant", content: "已取消本次规划（后台任务可能仍会完成，结果已忽略）。", error: true }]);
@@ -1029,6 +1056,17 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                   { value: "cinematic", label: "电影黑场" },
                   { value: "smart", label: "智能匹配（逐镜）" },
                 ] }]} onChange={(v) => setQP({ transitionStyle: v })} />
+            </div>
+            {/* #290 画布摘要档位：压缩=短别名 nN（更省更快，落地前确定性译回真实 id，失败自动
+                回退全量 id 重试）；标准=真实 id（回退档，行为与短别名引入前一致）。 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="发给助手的画布摘要编码方式">摘要</span>
+              <MiniSelect value={quickPrefs.summaryMode} placeholder="压缩" maxWidth={168} accent={accent} accentSoft={accentSoft}
+                title="压缩（推荐）：节点用短号 nN 表示，摘要更小、规划更快更省，系统落地前自动译回真实节点，异常时自动切全量 id 重试一次；标准：全程真实节点 id（与旧版行为一致的回退档）"
+                groups={[{ options: [
+                  { value: "compressed", label: "压缩（短号，推荐）" },
+                  { value: "standard", label: "标准（全量 id）" },
+                ] }]} onChange={(v) => setQP({ summaryMode: v || "compressed" })} />
             </div>
             {secHead("模型与语种")}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
